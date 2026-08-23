@@ -5,14 +5,15 @@ from __future__ import annotations
 import copy
 import math
 import random
+from collections.abc import Callable, Iterable, Mapping
 from contextlib import nullcontext
 from dataclasses import asdict, dataclass
-from typing import Any, Callable, Iterable, Mapping
+from typing import Any
 
 import torch
 from torch import Tensor, nn
 from torch.optim import AdamW, Optimizer
-from torch.optim.lr_scheduler import LRScheduler, LambdaLR
+from torch.optim.lr_scheduler import LambdaLR, LRScheduler
 
 from .config import TrainerConfig
 from .loss import causal_lm_loss, causal_pair_loss
