@@ -1,6 +1,7 @@
 """Stage composition and release bookkeeping contracts."""
 
 from .manifest import (
+    AuditEvidence,
     AuditVerdict,
     CandidateStatus,
     ComponentDisposition,
@@ -9,6 +10,7 @@ from .manifest import (
 )
 
 __all__ = [
+    "AuditEvidence",
     "AuditVerdict",
     "CandidateStatus",
     "ComponentDisposition",
