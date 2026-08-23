@@ -11,6 +11,8 @@ from .contracts import InferenceBackend
 from .loader import load_backend
 from .sampling import greedy_token
 
+PARITY_SCHEMA = "12-6.inference-parity.v1"
+
 
 @dataclass(frozen=True, slots=True)
 class ParityFailure:
@@ -26,6 +28,9 @@ class ParityReport:
     steps_compared: int
     max_abs_error: float
     max_rel_error: float
+    max_new_tokens: int
+    atol: float
+    rtol: float
     failures: tuple[ParityFailure, ...]
 
     @property
@@ -34,9 +39,13 @@ class ParityReport:
 
     def to_dict(self) -> dict[str, object]:
         return {
+            "schema": PARITY_SCHEMA,
             "passed": self.passed,
             "prompts_compared": self.prompts_compared,
             "steps_compared": self.steps_compared,
+            "max_new_tokens": self.max_new_tokens,
+            "atol": self.atol,
+            "rtol": self.rtol,
             "max_abs_error": self.max_abs_error,
             "max_rel_error": self.max_rel_error,
             "failures": [asdict(failure) for failure in self.failures],
@@ -142,7 +151,16 @@ def compare_backends(
 
     contract_failure = _contract_failure(reference, candidate)
     if contract_failure is not None:
-        return ParityReport(0, 0, 0.0, 0.0, (contract_failure,))
+        return ParityReport(
+            prompts_compared=0,
+            steps_compared=0,
+            max_abs_error=0.0,
+            max_rel_error=0.0,
+            max_new_tokens=max_new_tokens,
+            atol=atol,
+            rtol=rtol,
+            failures=(contract_failure,),
+        )
 
     failures: list[ParityFailure] = []
     steps_compared = 0
@@ -244,6 +262,9 @@ def compare_backends(
         steps_compared=steps_compared,
         max_abs_error=max_abs_error,
         max_rel_error=max_rel_error,
+        max_new_tokens=max_new_tokens,
+        atol=atol,
+        rtol=rtol,
         failures=tuple(failures),
     )
 
@@ -289,7 +310,9 @@ def main(argv: list[str] | None = None) -> int:
         verdict = "PASS" if report.passed else "FAIL"
         print(
             f"parity: {verdict} prompts={report.prompts_compared} "
-            f"steps={report.steps_compared} max_abs_error={report.max_abs_error:.12g} "
+            f"steps={report.steps_compared} max_new_tokens={report.max_new_tokens} "
+            f"atol={report.atol:.12g} rtol={report.rtol:.12g} "
+            f"max_abs_error={report.max_abs_error:.12g} "
             f"max_rel_error={report.max_rel_error:.12g}"
         )
         for failure in report.failures:

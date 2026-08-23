@@ -1,6 +1,6 @@
 from collections.abc import Sequence
 
-from twelve_six.inference.parity import compare_backends
+from twelve_six.inference.parity import PARITY_SCHEMA, compare_backends
 
 
 class ParityBackend:
@@ -95,9 +95,20 @@ def test_context_window_mismatch_fails_contract() -> None:
     assert report.failures[0].kind == "context_window_mismatch"
 
 
-def test_report_serializes_machine_readable_result() -> None:
-    report = compare_backends(ParityBackend(), ParityBackend(), ["x"], max_new_tokens=1)
+def test_report_serializes_evidence_parameters() -> None:
+    report = compare_backends(
+        ParityBackend(),
+        ParityBackend(),
+        ["x"],
+        max_new_tokens=1,
+        atol=2e-6,
+        rtol=3e-5,
+    )
     payload = report.to_dict()
+    assert payload["schema"] == PARITY_SCHEMA
     assert payload["passed"] is True
     assert payload["prompts_compared"] == 1
+    assert payload["max_new_tokens"] == 1
+    assert payload["atol"] == 2e-6
+    assert payload["rtol"] == 3e-5
     assert payload["failures"] == []

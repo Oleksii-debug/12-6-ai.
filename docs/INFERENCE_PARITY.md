@@ -6,7 +6,7 @@ D07 uses a backend-neutral parity harness to compare a canonical checkpoint path
 
 `compare_backends` fails when the two backends disagree on context window, EOS token identity, prompt token IDs, logit shape/tolerance, greedy next-token IDs, or decode output. It records prompt indexes rather than prompt text in failure evidence.
 
-Logit acceptance uses the standard bound `abs_error <= atol + rtol * abs(reference)`. NaNs and non-matching infinities fail. The report records maximum observed absolute and relative error across compared generation steps.
+Logit acceptance uses the standard bound `abs_error <= atol + rtol * abs(reference)`. NaNs and non-matching infinities fail. The versioned `12-6.inference-parity.v1` report records `atol`, `rtol`, `max_new_tokens`, prompt/step counts, and maximum observed absolute/relative error so the tolerance is part of the durable evidence rather than shell history.
 
 This is deterministic greedy comparison. Sampling parity is not used as the primary conversion proof because equivalent probability distributions can produce different samples after tiny numeric perturbations. Sampling behavior remains a separate functional test.
 
@@ -31,4 +31,4 @@ Repeat `--prompt` for multiple probes. Exit code is 0 for parity PASS, 1 for a m
 
 ## Evidence boundary
 
-The harness is infrastructure only. A unit-test PASS does not prove Transformers, vLLM, GGUF, llama.cpp, or any exported 12-6 artifact is equivalent. Every concrete alternative artifact must be compared against the exact canonical checkpoint and the chosen tolerance must be recorded with the artifact/checkpoint hashes.
+The harness is infrastructure only. A unit-test PASS does not prove Transformers, vLLM, GGUF, llama.cpp, or any exported 12-6 artifact is equivalent. Every concrete alternative artifact must be compared against the exact canonical checkpoint; the checkpoint/artifact hashes must be stored alongside the emitted versioned report.
