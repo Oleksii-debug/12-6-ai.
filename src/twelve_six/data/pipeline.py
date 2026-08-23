@@ -5,9 +5,10 @@ import hashlib
 import json
 import re
 import unicodedata
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 EMAIL_RE = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE)
 PHONE_RE = re.compile(r"(?<!\w)(?:\+?\d[\d ()-]{7,}\d)(?!\w)")
@@ -255,7 +256,7 @@ def build_dataset(
     ranked = sorted(
         near_deduped,
         key=lambda item: hashlib.sha256(
-            f"{config.split_seed}\0{item['id']}".encode("utf-8")
+            f"{config.split_seed}\0{item['id']}".encode()
         ).hexdigest(),
     )
     validation_ids = {item["id"] for item in ranked[:validation_count]}
