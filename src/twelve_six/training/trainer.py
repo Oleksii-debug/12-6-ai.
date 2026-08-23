@@ -34,6 +34,7 @@ class StepMetrics:
     micro_step: int
     optimizer_step: int
     loss: float
+    update_loss: float | None
     learning_rate: float
     grad_norm: float | None
     tokens: int
@@ -156,6 +157,9 @@ class Trainer:
         self.micro_step = 0
         self.optimizer_step = 0
         self.tokens_seen = 0
+        self._pending_tokens = 0
+        self._pending_loss_sum = 0.0
+        self._update_incomplete = False
         self.optimizer.zero_grad(set_to_none=True)
 
     @staticmethod
@@ -228,7 +232,9 @@ class Trainer:
             raise NonFiniteTrainingError(f"non-finite loss at micro_step={self.micro_step + 1}")
         return loss
 
-    def _grad_norm(self) -> Tensor:
+    def _normalize_gradients_and_norm(self, token_count: int) -> Tensor:
+        if token_count <= 0:
+            raise RuntimeError("optimizer update requires at least one valid target token")
         squared_norm = torch.zeros((), device=self.device)
         found = False
         for parameter in self.model.parameters():
@@ -241,6 +247,7 @@ class Trainer:
                 raise NonFiniteTrainingError(
                     f"non-finite gradient at micro_step={self.micro_step}"
                 )
+            grad.div_(token_count)
             squared_norm += torch.sum(grad.float() * grad.float())
         if not found:
             return torch.zeros((), device=self.device)
@@ -250,31 +257,37 @@ class Trainer:
         """Backpropagate one microbatch and update only at the accumulation boundary."""
         self.model.train()
         input_ids, targets, loss_mask, aligned_targets = self._prepare_batch(batch)
+        tokens = _count_training_tokens(
+            targets,
+            aligned_targets=aligned_targets,
+            loss_mask=loss_mask,
+        )
+        if tokens <= 0:
+            raise ValueError("microbatch must contain at least one valid target token")
+
         loss = self._forward_loss(
             input_ids,
             targets,
             loss_mask=loss_mask,
             aligned_targets=aligned_targets,
         )
-        scaled_loss = loss / self.config.gradient_accumulation_steps
-        self.scaler.scale(scaled_loss).backward()
+        self.scaler.scale(loss * tokens).backward()
 
         self.micro_step += 1
-        tokens = _count_training_tokens(
-            targets,
-            aligned_targets=aligned_targets,
-            loss_mask=loss_mask,
-        )
         self.tokens_seen += tokens
+        self._pending_tokens += tokens
+        self._pending_loss_sum += float(loss.detach().float().item()) * tokens
 
         should_step = self.micro_step % self.config.gradient_accumulation_steps == 0
         grad_norm_value: float | None = None
+        update_loss: float | None = None
         learning_rate = float(self.optimizer.param_groups[0]["lr"])
 
         if should_step:
             self.scaler.unscale_(self.optimizer)
-            raw_grad_norm = self._grad_norm()
+            raw_grad_norm = self._normalize_gradients_and_norm(self._pending_tokens)
             grad_norm_value = float(raw_grad_norm.item())
+            update_loss = self._pending_loss_sum / self._pending_tokens
 
             if self.config.gradient_clip_norm is not None:
                 torch.nn.utils.clip_grad_norm_(
@@ -283,17 +296,22 @@ class Trainer:
                     error_if_nonfinite=True,
                 )
 
+            self._update_incomplete = True
             self.scaler.step(self.optimizer)
+            self.optimizer_step += 1
             self.scaler.update()
             self.optimizer.zero_grad(set_to_none=True)
-            self.optimizer_step += 1
             if self.scheduler is not None:
                 self.scheduler.step()
+            self._pending_tokens = 0
+            self._pending_loss_sum = 0.0
+            self._update_incomplete = False
 
         return StepMetrics(
             micro_step=self.micro_step,
             optimizer_step=self.optimizer_step,
             loss=float(loss.detach().float().item()),
+            update_loss=update_loss,
             learning_rate=learning_rate,
             grad_norm=grad_norm_value,
             tokens=tokens,
@@ -379,6 +397,8 @@ class Trainer:
 
     def assert_checkpoint_safe(self) -> None:
         """Require all consumed microbatches to belong to committed optimizer steps."""
+        if self._update_incomplete:
+            raise RuntimeError("optimizer/scheduler update failed with ambiguous committed state")
         self.assert_accumulation_boundary()
         expected_micro_steps = self.optimizer_step * self.config.gradient_accumulation_steps
         if self.micro_step != expected_micro_steps:
@@ -386,6 +406,8 @@ class Trainer:
                 "trainer has consumed but uncommitted microbatches: "
                 f"micro_step={self.micro_step}, committed_expected={expected_micro_steps}"
             )
+        if self._pending_tokens != 0 or self._pending_loss_sum != 0.0:
+            raise RuntimeError("trainer has pending accumulation statistics")
 
     def state_dict(self) -> TrainerState:
         """Return checkpoint-safe trainer state only after committed optimizer steps."""
@@ -431,4 +453,7 @@ class Trainer:
         self.micro_step = state.micro_step
         self.optimizer_step = state.optimizer_step
         self.tokens_seen = state.tokens_seen
+        self._pending_tokens = 0
+        self._pending_loss_sum = 0.0
+        self._update_incomplete = False
         self.optimizer.zero_grad(set_to_none=True)
