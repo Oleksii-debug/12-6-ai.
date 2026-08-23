@@ -1,0 +1,532 @@
+"""12-6 AI checkpoint format v1.
+
+The checkpoint is a self-contained directory with SafeTensors payloads, a
+JSON state tree, a manifest, and SHA-256 integrity records. Loading verifies
+all recorded checksums before mutating model or trainer state.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import importlib
+import json
+import os
+import platform
+import random
+import shutil
+import subprocess
+import sys
+import tempfile
+from collections.abc import Mapping
+from dataclasses import asdict, dataclass, is_dataclass
+from datetime import UTC, datetime
+from importlib import metadata
+from pathlib import Path
+from typing import Any
+
+import numpy as np
+from safetensors.numpy import load_file as load_safetensors
+from safetensors.numpy import save_file as save_safetensors
+
+from .state_tree import pack_state_tree, unpack_state_tree
+
+FORMAT_NAME = "12-6-checkpoint"
+FORMAT_VERSION = 1
+MANIFEST_NAME = "manifest.json"
+MANIFEST_CHECKSUM_NAME = "MANIFEST.sha256"
+WEIGHTS_NAME = "weights.safetensors"
+STATE_TENSORS_NAME = "state.safetensors"
+STATE_TREE_NAME = "state.json"
+
+
+class CheckpointError(RuntimeError):
+    """Base checkpoint failure."""
+
+
+class CheckpointIntegrityError(CheckpointError):
+    """Raised when a checkpoint checksum or identity check fails."""
+
+
+class CheckpointCompatibilityError(CheckpointError):
+    """Raised when a checkpoint cannot be applied to the requested target."""
+
+
+@dataclass(frozen=True)
+class CheckpointIdentity:
+    """Inputs that define the training/artifact lineage of a checkpoint."""
+
+    git_sha: str
+    model_spec: Mapping[str, Any]
+    parameter_count: int
+    tokenizer_hash: str
+    dataset_manifest_hash: str
+    training_config: Mapping[str, Any]
+    seed: int
+    precision: str
+    step: int
+    tokens_seen: int
+    optimizer: Mapping[str, Any]
+    scheduler: Mapping[str, Any] | None
+    environment_lock_hash: str | None = None
+
+    def validate(self) -> None:
+        required_text = {
+            "git_sha": self.git_sha,
+            "tokenizer_hash": self.tokenizer_hash,
+            "dataset_manifest_hash": self.dataset_manifest_hash,
+            "precision": self.precision,
+        }
+        for name, value in required_text.items():
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"{name} must be a non-empty string")
+        if self.parameter_count <= 0:
+            raise ValueError("parameter_count must be positive")
+        if self.step < 0 or self.tokens_seen < 0:
+            raise ValueError("step and tokens_seen must be non-negative")
+
+
+@dataclass(frozen=True)
+class LoadResult:
+    """Verified checkpoint metadata and decoded trainer state."""
+
+    manifest: dict[str, Any]
+    trainer_state: Mapping[str, Any]
+    rng_state: Mapping[str, Any]
+
+
+def canonical_json_bytes(value: Any) -> bytes:
+    """Canonical JSON encoding used for all identity hashes."""
+
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+
+
+def sha256_bytes(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def sha256_file(path: str | Path) -> str:
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def hash_json(value: Any) -> str:
+    return sha256_bytes(canonical_json_bytes(value))
+
+
+def _jsonable(value: Any) -> Any:
+    if is_dataclass(value):
+        return _jsonable(asdict(value))
+    if isinstance(value, Mapping):
+        return {str(key): _jsonable(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_jsonable(item) for item in value]
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    if hasattr(value, "model_dump"):
+        return _jsonable(value.model_dump(mode="json"))
+    if hasattr(value, "to_dict"):
+        return _jsonable(value.to_dict())
+    raise TypeError(f"value cannot be encoded as canonical JSON: {type(value)!r}")
+
+
+def detect_git_sha(cwd: str | Path | None = None) -> str | None:
+    """Return HEAD when running in a Git checkout; never fabricate a SHA."""
+
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=cwd,
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    sha = result.stdout.strip()
+    return sha if sha else None
+
+
+def environment_snapshot() -> dict[str, Any]:
+    """Capture dependency/environment facts relevant to resume evidence."""
+
+    package_names = ("numpy", "safetensors", "torch")
+    packages: dict[str, str | None] = {}
+    for name in package_names:
+        try:
+            packages[name] = metadata.version(name)
+        except metadata.PackageNotFoundError:
+            packages[name] = None
+    return {
+        "python": sys.version.split()[0],
+        "implementation": platform.python_implementation(),
+        "platform": platform.platform(),
+        "machine": platform.machine(),
+        "packages": packages,
+    }
+
+
+def capture_rng_state() -> dict[str, Any]:
+    """Capture Python, NumPy, and available PyTorch RNG state."""
+
+    state: dict[str, Any] = {
+        "python": random.getstate(),
+        "numpy": np.random.get_state(),
+    }
+    try:
+        torch = importlib.import_module("torch")
+    except ModuleNotFoundError:
+        state["torch"] = None
+        return state
+    torch_state: dict[str, Any] = {
+        "cpu": torch.get_rng_state(),
+        "cuda": [],
+        "deterministic_algorithms": bool(torch.are_deterministic_algorithms_enabled()),
+    }
+    if torch.cuda.is_available():
+        torch_state["cuda"] = torch.cuda.get_rng_state_all()
+    state["torch"] = torch_state
+    return state
+
+
+def restore_rng_state(state: Mapping[str, Any]) -> dict[str, Any]:
+    """Restore captured RNG streams and report the exact restored scope."""
+
+    scope = {"python": False, "numpy": False, "torch_cpu": False, "torch_cuda_devices": 0}
+    if "python" in state:
+        random.setstate(state["python"])
+        scope["python"] = True
+    if "numpy" in state:
+        np.random.set_state(state["numpy"])
+        scope["numpy"] = True
+    torch_state = state.get("torch")
+    if torch_state:
+        try:
+            torch = importlib.import_module("torch")
+        except ModuleNotFoundError as exc:
+            raise CheckpointCompatibilityError("checkpoint contains torch RNG state but torch is unavailable") from exc
+        torch.set_rng_state(torch_state["cpu"].cpu())
+        scope["torch_cpu"] = True
+        cuda_states = torch_state.get("cuda", [])
+        if cuda_states:
+            if not torch.cuda.is_available():
+                raise CheckpointCompatibilityError(
+                    "checkpoint contains CUDA RNG state but CUDA is unavailable; load with restore_rng=False"
+                )
+            if len(cuda_states) != torch.cuda.device_count():
+                raise CheckpointCompatibilityError(
+                    "CUDA device count differs from the checkpoint; load with restore_rng=False"
+                )
+            torch.cuda.set_rng_state_all([item.cpu() for item in cuda_states])
+            scope["torch_cuda_devices"] = len(cuda_states)
+        torch.use_deterministic_algorithms(bool(torch_state.get("deterministic_algorithms", False)))
+    return scope
+
+
+def _model_state_to_numpy(model: Any) -> dict[str, np.ndarray]:
+    if not hasattr(model, "state_dict"):
+        raise TypeError("model must provide state_dict()")
+    state = model.state_dict()
+    if not isinstance(state, Mapping) or not state:
+        raise ValueError("model.state_dict() must be a non-empty mapping")
+    output: dict[str, np.ndarray] = {}
+    for name, value in state.items():
+        if isinstance(value, np.ndarray):
+            output[str(name)] = np.ascontiguousarray(value)
+            continue
+        cls = value.__class__
+        if cls.__module__.startswith("torch") and cls.__name__ in {"Tensor", "Parameter"}:
+            tensor = value.detach().cpu().contiguous()
+            if str(tensor.dtype) == "torch.bfloat16":
+                torch = importlib.import_module("torch")
+                output[str(name)] = tensor.view(torch.uint16).numpy().copy()
+            else:
+                output[str(name)] = tensor.numpy().copy()
+            continue
+        raise TypeError(f"unsupported model state tensor {name!r}: {type(value)!r}")
+    return output
+
+
+def _materialize_for_target(array: np.ndarray, target: Any) -> Any:
+    if isinstance(target, np.ndarray):
+        if tuple(target.shape) != tuple(array.shape):
+            raise CheckpointCompatibilityError(
+                f"shape mismatch: checkpoint {tuple(array.shape)} vs target {tuple(target.shape)}"
+            )
+        return array.astype(target.dtype, copy=True)
+    cls = target.__class__
+    if cls.__module__.startswith("torch") and cls.__name__ in {"Tensor", "Parameter"}:
+        torch = importlib.import_module("torch")
+        if str(target.dtype) == "torch.bfloat16" and array.dtype == np.uint16:
+            tensor = torch.from_numpy(array.copy()).view(torch.bfloat16)
+        else:
+            tensor = torch.from_numpy(array.copy()).to(dtype=target.dtype)
+        if tuple(target.shape) != tuple(tensor.shape):
+            raise CheckpointCompatibilityError(
+                f"shape mismatch: checkpoint {tuple(tensor.shape)} vs target {tuple(target.shape)}"
+            )
+        return tensor.to(device=target.device)
+    raise CheckpointCompatibilityError(f"unsupported target tensor type {type(target)!r}")
+
+
+def _load_model_weights(model: Any, arrays: Mapping[str, np.ndarray], strict: bool) -> None:
+    target_state = model.state_dict()
+    target_keys = set(target_state)
+    source_keys = set(arrays)
+    if strict and target_keys != source_keys:
+        missing = sorted(target_keys - source_keys)
+        unexpected = sorted(source_keys - target_keys)
+        raise CheckpointCompatibilityError(f"state_dict keys differ: missing={missing}, unexpected={unexpected}")
+    materialized = {
+        name: _materialize_for_target(arrays[name], target_state[name])
+        for name in target_state.keys() & arrays.keys()
+    }
+    if hasattr(model, "load_state_dict"):
+        try:
+            model.load_state_dict(materialized, strict=strict)
+        except TypeError:
+            model.load_state_dict(materialized)
+        return
+    raise TypeError("model must provide load_state_dict()")
+
+
+def _state_dict_or_none(obj: Any | None) -> Any | None:
+    if obj is None:
+        return None
+    if not hasattr(obj, "state_dict"):
+        raise TypeError(f"{type(obj).__name__} must provide state_dict()")
+    return obj.state_dict()
+
+
+def _artifact_record(path: Path) -> dict[str, Any]:
+    return {"sha256": sha256_file(path), "bytes": path.stat().st_size}
+
+
+def _write_json(path: Path, value: Any) -> None:
+    path.write_bytes(canonical_json_bytes(value) + b"\n")
+
+
+def _build_identity(identity: CheckpointIdentity, environment: Mapping[str, Any]) -> dict[str, Any]:
+    identity.validate()
+    model_spec = _jsonable(identity.model_spec)
+    training_config = _jsonable(identity.training_config)
+    optimizer = _jsonable(identity.optimizer)
+    scheduler = _jsonable(identity.scheduler)
+    return {
+        "git_sha": identity.git_sha,
+        "model_spec": model_spec,
+        "model_spec_hash": hash_json(model_spec),
+        "parameter_count": identity.parameter_count,
+        "tokenizer_hash": identity.tokenizer_hash,
+        "dataset_manifest_hash": identity.dataset_manifest_hash,
+        "training_config": training_config,
+        "training_config_hash": hash_json(training_config),
+        "seed": identity.seed,
+        "optimizer": optimizer,
+        "optimizer_hash": hash_json(optimizer),
+        "scheduler": scheduler,
+        "scheduler_hash": hash_json(scheduler),
+        "precision": identity.precision,
+        "step": identity.step,
+        "tokens_seen": identity.tokens_seen,
+        "environment": _jsonable(environment),
+        "environment_hash": hash_json(environment),
+        "environment_lock_hash": identity.environment_lock_hash,
+    }
+
+
+def save_checkpoint(
+    directory: str | Path,
+    *,
+    model: Any,
+    identity: CheckpointIdentity,
+    optimizer: Any | None = None,
+    scheduler: Any | None = None,
+    trainer_state: Mapping[str, Any] | None = None,
+    overwrite: bool = False,
+) -> dict[str, Any]:
+    """Atomically create a verified checkpoint directory.
+
+    The function fails closed when required lineage fields are missing. It does
+    not use pickle. Optimizer, scheduler, trainer, and RNG tensor leaves are
+    stored in SafeTensors with their nested structure in JSON.
+    """
+
+    destination = Path(directory)
+    if destination.exists() and not overwrite:
+        raise FileExistsError(f"checkpoint already exists: {destination}")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temp_dir = Path(tempfile.mkdtemp(prefix=f".{destination.name}.tmp-", dir=destination.parent))
+    try:
+        save_safetensors(_model_state_to_numpy(model), str(temp_dir / WEIGHTS_NAME))
+        combined_state = {
+            "optimizer": _state_dict_or_none(optimizer),
+            "scheduler": _state_dict_or_none(scheduler),
+            "trainer": dict(trainer_state or {}),
+            "rng": capture_rng_state(),
+        }
+        packed = pack_state_tree(combined_state)
+        if packed.tensors:
+            save_safetensors(packed.tensors, str(temp_dir / STATE_TENSORS_NAME))
+        else:
+            save_safetensors({}, str(temp_dir / STATE_TENSORS_NAME))
+        _write_json(temp_dir / STATE_TREE_NAME, packed.tree)
+
+        environment = environment_snapshot()
+        identity_record = _build_identity(identity, environment)
+        files = {
+            WEIGHTS_NAME: _artifact_record(temp_dir / WEIGHTS_NAME),
+            STATE_TENSORS_NAME: _artifact_record(temp_dir / STATE_TENSORS_NAME),
+            STATE_TREE_NAME: _artifact_record(temp_dir / STATE_TREE_NAME),
+        }
+        checkpoint_id = hash_json({"identity": identity_record, "files": files})
+        manifest = {
+            "format": FORMAT_NAME,
+            "format_version": FORMAT_VERSION,
+            "created_at_utc": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+            "checkpoint_id": checkpoint_id,
+            "identity": identity_record,
+            "files": files,
+            "serialization": {
+                "weights": "safetensors",
+                "state_tensors": "safetensors",
+                "state_tree": "canonical-json",
+                "pickle": False,
+            },
+        }
+        _write_json(temp_dir / MANIFEST_NAME, manifest)
+        manifest_sha = sha256_file(temp_dir / MANIFEST_NAME)
+        (temp_dir / MANIFEST_CHECKSUM_NAME).write_text(
+            f"{manifest_sha}  {MANIFEST_NAME}\n", encoding="ascii"
+        )
+        verify_checkpoint(temp_dir)
+        if destination.exists():
+            shutil.rmtree(destination)
+        os.replace(temp_dir, destination)
+        return manifest
+    except Exception:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        raise
+
+
+def _read_manifest(directory: Path) -> dict[str, Any]:
+    manifest_path = directory / MANIFEST_NAME
+    checksum_path = directory / MANIFEST_CHECKSUM_NAME
+    if not manifest_path.is_file() or not checksum_path.is_file():
+        raise CheckpointIntegrityError("checkpoint is missing manifest integrity files")
+    checksum_line = checksum_path.read_text(encoding="ascii").strip().split()
+    if len(checksum_line) != 2 or checksum_line[1] != MANIFEST_NAME:
+        raise CheckpointIntegrityError("invalid MANIFEST.sha256 format")
+    actual_manifest_hash = sha256_file(manifest_path)
+    if checksum_line[0] != actual_manifest_hash:
+        raise CheckpointIntegrityError("manifest checksum mismatch")
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise CheckpointIntegrityError("manifest is not valid JSON") from exc
+    if manifest.get("format") != FORMAT_NAME or manifest.get("format_version") != FORMAT_VERSION:
+        raise CheckpointCompatibilityError(
+            f"unsupported checkpoint format: {manifest.get('format')!r} v{manifest.get('format_version')!r}"
+        )
+    return manifest
+
+
+def verify_checkpoint(directory: str | Path) -> dict[str, Any]:
+    """Verify manifest and every file checksum without mutating application state."""
+
+    root = Path(directory)
+    manifest = _read_manifest(root)
+    files = manifest.get("files")
+    if not isinstance(files, dict) or not files:
+        raise CheckpointIntegrityError("manifest contains no file records")
+    for name, record in files.items():
+        if Path(name).name != name:
+            raise CheckpointIntegrityError(f"unsafe artifact path in manifest: {name!r}")
+        path = root / name
+        if not path.is_file():
+            raise CheckpointIntegrityError(f"missing checkpoint artifact: {name}")
+        if path.stat().st_size != record.get("bytes"):
+            raise CheckpointIntegrityError(f"size mismatch for {name}")
+        if sha256_file(path) != record.get("sha256"):
+            raise CheckpointIntegrityError(f"checksum mismatch for {name}")
+    expected_id = hash_json({"identity": manifest["identity"], "files": manifest["files"]})
+    if expected_id != manifest.get("checkpoint_id"):
+        raise CheckpointIntegrityError("checkpoint_id does not match identity and artifact records")
+    return manifest
+
+
+def assert_identity(
+    manifest: Mapping[str, Any],
+    *,
+    git_sha: str | None = None,
+    model_spec_hash: str | None = None,
+    tokenizer_hash: str | None = None,
+    dataset_manifest_hash: str | None = None,
+) -> None:
+    """Fail closed when a requested lineage constraint differs from the checkpoint."""
+
+    identity = manifest["identity"]
+    expected = {
+        "git_sha": git_sha,
+        "model_spec_hash": model_spec_hash,
+        "tokenizer_hash": tokenizer_hash,
+        "dataset_manifest_hash": dataset_manifest_hash,
+    }
+    mismatches = {
+        key: {"expected": value, "actual": identity.get(key)}
+        for key, value in expected.items()
+        if value is not None and identity.get(key) != value
+    }
+    if mismatches:
+        raise CheckpointCompatibilityError(f"checkpoint identity mismatch: {mismatches}")
+
+
+def load_checkpoint(
+    directory: str | Path,
+    *,
+    model: Any,
+    optimizer: Any | None = None,
+    scheduler: Any | None = None,
+    strict_model: bool = True,
+    restore_rng: bool = True,
+    expected_git_sha: str | None = None,
+    expected_model_spec_hash: str | None = None,
+    expected_tokenizer_hash: str | None = None,
+    expected_dataset_manifest_hash: str | None = None,
+) -> LoadResult:
+    """Verify then restore model/trainer state from a checkpoint."""
+
+    root = Path(directory)
+    manifest = verify_checkpoint(root)
+    assert_identity(
+        manifest,
+        git_sha=expected_git_sha,
+        model_spec_hash=expected_model_spec_hash,
+        tokenizer_hash=expected_tokenizer_hash,
+        dataset_manifest_hash=expected_dataset_manifest_hash,
+    )
+    arrays = load_safetensors(str(root / WEIGHTS_NAME))
+    _load_model_weights(model, arrays, strict_model)
+    state_arrays = load_safetensors(str(root / STATE_TENSORS_NAME))
+    state_tree = json.loads((root / STATE_TREE_NAME).read_text(encoding="utf-8"))
+    combined_state = unpack_state_tree(state_tree, state_arrays)
+    if optimizer is not None:
+        state = combined_state.get("optimizer")
+        if state is None:
+            raise CheckpointCompatibilityError("optimizer was requested but checkpoint has no optimizer state")
+        optimizer.load_state_dict(state)
+    if scheduler is not None:
+        state = combined_state.get("scheduler")
+        if state is None:
+            raise CheckpointCompatibilityError("scheduler was requested but checkpoint has no scheduler state")
+        scheduler.load_state_dict(state)
+    if restore_rng:
+        restore_rng_state(combined_state["rng"])
+    return LoadResult(
+        manifest=manifest,
+        trainer_state=combined_state.get("trainer", {}),
+        rng_state=combined_state["rng"],
+    )
