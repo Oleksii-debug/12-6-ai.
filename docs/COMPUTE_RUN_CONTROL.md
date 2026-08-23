@@ -32,6 +32,16 @@ The table gives engineering classes, not measured performance. Every completed r
 
 For a ~10K-parameter FP32 model, raw weights are roughly 40 KiB. FP32 gradients add roughly another 40 KiB; Adam first/second moments add roughly 80 KiB. These are parameter-state payloads only and do not predict process RSS, allocator workspace, activations, dataloader buffers, Python overhead, or CUDA context overhead. C01 records measured peak host RAM/VRAM for every real run and does not extrapolate later stages from S0 framework overhead.
 
+## Factual hardware profile
+
+Do not infer the owner's local CPU/GPU/RAM from the model size or from a hosted CI runner. Before a real local run, capture the actual host profile:
+
+```bash
+python -m twelve_six.run_control.hardware > artifacts/runs/<run_id>/hardware.json
+```
+
+The probe is dependency-free and reports logical CPU cores, total host RAM when the platform exposes it, disk capacity, Python/platform facts, and optional Torch/CUDA/MPS facts when Torch is installed. Hardware discovery explicitly does not infer cost authorization.
+
 ## Required identity before any integrated training launch
 
 The launch manifest must bind all of the following:
