@@ -1,6 +1,6 @@
+from collections.abc import Sequence
 from pathlib import Path
 from types import ModuleType
-from typing import Sequence
 
 import pytest
 

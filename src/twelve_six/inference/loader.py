@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import importlib
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable, cast
+from typing import cast
 
 from .contracts import InferenceBackend
-
 
 BackendLoader = Callable[[Path], InferenceBackend]
 
