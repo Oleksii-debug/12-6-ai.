@@ -79,6 +79,24 @@ def test_gradient_accumulation_steps_only_on_boundary() -> None:
     assert trainer.tokens_seen == 28
 
 
+def test_warmup_lr_metrics_report_rate_applied_to_each_optimizer_update() -> None:
+    trainer = Trainer(
+        ToyBigramLM(vocab_size=4),
+        TrainerConfig(
+            learning_rate=0.3,
+            max_steps=3,
+            warmup_steps=3,
+            scheduler="linear_warmup",
+            seed=3,
+        ),
+    )
+
+    metrics = [trainer.train_microbatch(repeating_batch()) for _ in range(3)]
+
+    assert [item.learning_rate for item in metrics] == pytest.approx([0.1, 0.2, 0.3])
+    assert trainer.optimizer.param_groups[0]["lr"] == pytest.approx(0.3)
+
+
 def test_optimizer_step_changes_weights_with_finite_metrics() -> None:
     torch.manual_seed(5)
     model = ToyBigramLM(vocab_size=4)
