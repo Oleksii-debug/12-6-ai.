@@ -6,7 +6,12 @@ from pathlib import Path
 import pytest
 import torch
 
-from twelve_six import ModelSpec, TwelveSixDecoder, count_trainable_parameters, load_stage_config
+from twelve_six import (
+    ModelSpec,
+    TwelveSixDecoder,
+    count_trainable_parameters,
+    load_stage_config,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -124,7 +129,14 @@ def test_gqa_shape_contract_and_parameter_formula() -> None:
     ],
 )
 def test_invalid_attention_shapes_fail_closed(kwargs: dict[str, int]) -> None:
-    base = dict(vocab_size=64, max_seq_len=16, d_model=32, n_layers=1, n_heads=4, d_ff=64)
+    base = {
+        "vocab_size": 64,
+        "max_seq_len": 16,
+        "d_model": 32,
+        "n_layers": 1,
+        "n_heads": 4,
+        "d_ff": 64,
+    }
     base.update(kwargs)
     with pytest.raises(ValueError):
         ModelSpec(**base)
