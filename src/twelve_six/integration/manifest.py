@@ -50,7 +50,7 @@ class AuditVerdict(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class AuditEvidence:
-    """Durable audit verdict bound to one exact candidate SHA."""
+    """Durable independent-audit verdict bound to one exact candidate SHA."""
 
     auditor_id: str
     verdict: AuditVerdict
@@ -153,7 +153,9 @@ class StageCandidateManifest:
                     component.contains_behavioral_weights
                     or component.component_kind in _BEHAVIORAL_WEIGHT_KINDS
                 ):
-                    raise ValueError("behavioral/alignment/specialization weights cannot enter Base lineage")
+                    raise ValueError(
+                        "behavioral/alignment/specialization weights cannot enter Base lineage"
+                    )
 
         gated_statuses = {
             CandidateStatus.CANDIDATE,
@@ -176,6 +178,11 @@ class StageCandidateManifest:
             if audit.candidate_sha != self.candidate_sha:
                 raise ValueError("audit evidence is not bound to this exact candidate_sha")
 
+        if self.audit_a is not None and self.audit_a.auditor_id != "AUDIT-A":
+            raise ValueError("audit_a evidence must identify AUDIT-A")
+        if self.audit_b is not None and self.audit_b.auditor_id != "AUDIT-B":
+            raise ValueError("audit_b evidence must identify AUDIT-B")
+
         if self.status in {CandidateStatus.AUDITED_CANDIDATE, CandidateStatus.STABLE}:
             if self.audit_a is None or self.audit_b is None:
                 raise ValueError(
@@ -186,8 +193,6 @@ class StageCandidateManifest:
                     "AUDITED_CANDIDATE/STABLE require passing independent "
                     "AUDIT-A and AUDIT-B verdicts"
                 )
-            if self.audit_a.auditor_id == self.audit_b.auditor_id:
-                raise ValueError("AUDIT-A and AUDIT-B must have distinct auditor_id values")
             if self.audit_a.evidence_ref == self.audit_b.evidence_ref:
                 raise ValueError("AUDIT-A and AUDIT-B must have distinct evidence_ref values")
 
@@ -238,6 +243,7 @@ class StageCandidateManifest:
             and self.audit_b.passes
             and self.audit_a.candidate_sha == self.candidate_sha
             and self.audit_b.candidate_sha == self.candidate_sha
-            and self.audit_a.auditor_id != self.audit_b.auditor_id
+            and self.audit_a.auditor_id == "AUDIT-A"
+            and self.audit_b.auditor_id == "AUDIT-B"
             and self.audit_a.evidence_ref != self.audit_b.evidence_ref
         )
