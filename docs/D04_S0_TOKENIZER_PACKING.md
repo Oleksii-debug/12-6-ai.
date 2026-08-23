@@ -66,18 +66,38 @@ D03 packages immutable ordered JSONL records containing at least `id` and normal
 remains owner of provenance, source/content hashes, filtering, deduplication, contamination checks
 and dataset split assignment.
 
-`measure_d03_packaged_split` now binds all of the following before token measurement:
+`measure_d03_packaged_split` now binds and verifies all of the following before/while token
+measurement:
 
-- the exact D03 dataset identity;
-- the exact packaged source-file SHA-256 from the D03 manifest;
+- exact D03 dataset identity;
+- exact packaged source-file SHA-256 from the D03 manifest;
 - requested split name to the exact `<split>.jsonl` output name;
-- the D04 tokenizer and packing identities in the emitted `PackedSplitManifest`.
+- exact ordered record IDs for that split from D03 `document_assignments`;
+- D04 tokenizer config, vocabulary, and packing identities.
 
 Passing committed `train.jsonl` as `split="validation"`, or `validation.jsonl` as `split="train"`,
-fails closed before records are relabeled. Negative tests cover both directions. This closes the D10
-P0 split-integrity finding recorded in Issue #5.
+fails closed before records are relabeled. A source file whose record IDs/order disagree with the
+manifest assignments also fails while streaming. Negative tests cover both cross-label directions
+and assignment mismatch. No full-corpus in-memory materialization is required for this check.
 
 `iter_packed_examples(..., expected_split=...)` also rejects records already carrying another split.
+
+## Packed split manifest schema
+
+`PackedSplitManifest` schema version **2** binds:
+
+- dataset ID and dataset identity SHA-256;
+- split and source JSONL SHA-256;
+- tokenizer version;
+- tokenizer config SHA-256;
+- tokenizer vocabulary SHA-256;
+- vocabulary size;
+- packing version/config SHA-256 and sequence length;
+- document/codepoint/UTF-8 byte/token counts;
+- causal loss-token count, packed-example count, capacity, and masked-fill count.
+
+The vocabulary hash was added before any canonical S0 checkpoint promotion so downstream D05/D10
+manifests can prove token-ID meaning, not merely vocabulary cardinality.
 
 ## D02 boundary
 
