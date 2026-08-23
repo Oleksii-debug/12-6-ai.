@@ -12,9 +12,17 @@ def generate(
     config: GenerationConfig | None = None,
 ) -> GenerationResult:
     config = config or GenerationConfig()
+    if not isinstance(backend.max_context_tokens, int) or backend.max_context_tokens < 1:
+        raise ValueError("backend max_context_tokens must be a positive integer")
+
     prompt_token_ids = backend.encode(prompt)
     if not prompt_token_ids:
         raise ValueError("prompt encoded to zero tokens; backend must provide a non-empty context")
+    if len(prompt_token_ids) > backend.max_context_tokens:
+        raise ValueError(
+            f"prompt has {len(prompt_token_ids)} tokens but backend max_context_tokens="
+            f"{backend.max_context_tokens}"
+        )
 
     generated: list[int] = []
     rng = random.Random(config.seed)
@@ -22,7 +30,12 @@ def generate(
     matched_stop: str | None = None
 
     for _ in range(config.max_new_tokens):
-        logits = backend.next_token_logits((*prompt_token_ids, *generated))
+        input_ids = (*prompt_token_ids, *generated)
+        if len(input_ids) >= backend.max_context_tokens:
+            stop_reason = "context_limit"
+            break
+
+        logits = backend.next_token_logits(input_ids)
         if config.sample:
             token_id = sample_token(
                 logits,
