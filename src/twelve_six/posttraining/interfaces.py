@@ -6,8 +6,9 @@ reimplementing their training loops in this repository.
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Mapping, Protocol, Sequence, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from .contracts import BackendCapabilities, Candidate, PostTrainingExperiment
 
