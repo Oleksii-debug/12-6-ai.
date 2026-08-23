@@ -1,0 +1,21 @@
+{
+  "format_version": "posttraining-experiment-v1",
+  "experiment_id": "d09-isolated-verifier-smoke",
+  "training_enabled": false,
+  "behavioral_training_authorization_id": null,
+  "algorithm": "verifier_only",
+  "backend_id": "external-adapter-placeholder",
+  "input_checkpoint": {
+    "lineage": "base",
+    "mode": "read_only_reference"
+  },
+  "output_lineage": "posttrain",
+  "compute_class": "local_free",
+  "external_synthetic_generator_allowed": false,
+  "external_synthetic_owner_policy_ref": null,
+  "verifiers": [
+    "exact_text",
+    "numeric_tolerance"
+  ],
+  "notes": "Schema/integration smoke only. It must not write weights, use an external teacher, or promote a Base checkpoint."
+}
