@@ -38,6 +38,7 @@ class PackedSplitManifest:
     source_jsonl_sha256: str
     tokenizer_version: str
     tokenizer_config_sha256: str
+    tokenizer_vocab_sha256: str
     vocab_size: int
     packing_version: str
     packing_config_sha256: str
@@ -99,6 +100,10 @@ def measure_packed_split(
             f"sequence_length must be {DEFAULT_SEQUENCE_LENGTH}"
         )
 
+    identity = tokenizer.identity
+    _require_sha256(identity.config_sha256, "tokenizer_config_sha256")
+    _require_sha256(identity.vocab_sha256, "tokenizer_vocab_sha256")
+
     document_count = 0
     codepoint_count = 0
     utf8_byte_count = 0
@@ -134,15 +139,15 @@ def measure_packed_split(
     packed_capacity_token_count = packed_example_count * sequence_length
     masked_fill_position_count = packed_capacity_token_count - packed_input_token_count
 
-    identity = tokenizer.identity
     return PackedSplitManifest(
-        schema_version=1,
+        schema_version=2,
         dataset_id=dataset_id,
         dataset_identity_sha256=dataset_identity_sha256,
         split=split,
         source_jsonl_sha256=source_jsonl_sha256,
         tokenizer_version=identity.version,
         tokenizer_config_sha256=identity.config_sha256,
+        tokenizer_vocab_sha256=identity.vocab_sha256,
         vocab_size=identity.vocab_size,
         packing_version=PACKING_VERSION,
         packing_config_sha256=PACKING_CONFIG_HASH,
