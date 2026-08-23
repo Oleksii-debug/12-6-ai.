@@ -1,0 +1,18 @@
+{
+  "format_version": "posttraining-experiment-v1",
+  "experiment_id": "d09-isolated-verifier-smoke",
+  "training_enabled": false,
+  "algorithm": "verifier_only",
+  "backend_id": "external-adapter-placeholder",
+  "input_checkpoint": {
+    "lineage": "base",
+    "mode": "read_only_reference"
+  },
+  "output_lineage": "posttrain",
+  "compute_class": "local_free",
+  "verifiers": [
+    "exact_text",
+    "numeric_tolerance"
+  ],
+  "notes": "Schema/integration smoke only. It must not write weights or promote a Base checkpoint."
+}
