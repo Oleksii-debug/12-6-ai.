@@ -7,7 +7,7 @@ import math
 import random
 from contextlib import nullcontext
 from dataclasses import asdict, dataclass
-from typing import Any, Mapping
+from typing import Any, Callable, Iterable, Mapping
 
 import torch
 from torch import Tensor, nn
@@ -24,6 +24,10 @@ class NonFiniteTrainingError(FloatingPointError):
     """Raised before an unsafe optimizer update when training becomes non-finite."""
 
 
+class CheckpointHookError(RuntimeError):
+    """A checkpoint hook failed after an optimizer step was already committed."""
+
+
 @dataclass(frozen=True, slots=True)
 class StepMetrics:
     micro_step: int
@@ -33,6 +37,16 @@ class StepMetrics:
     grad_norm: float | None
     tokens: int
     optimizer_stepped: bool
+
+
+@dataclass(frozen=True, slots=True)
+class TrainingRunResult:
+    start_optimizer_step: int
+    end_optimizer_step: int
+    optimizer_steps_completed: int
+    microbatches_consumed: int
+    tokens_consumed: int
+    final_metrics: StepMetrics | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -113,7 +127,8 @@ class Trainer:
     """Small backend-clean trainer for S0 and later stage-specific composition.
 
     One call to :meth:`train_microbatch` consumes one microbatch. An optimizer update
-    happens exactly every ``gradient_accumulation_steps`` calls.
+    happens exactly every ``gradient_accumulation_steps`` calls. :meth:`run` adds a
+    boundary-safe reusable loop without owning dataset iteration semantics.
     """
 
     def __init__(
@@ -284,6 +299,74 @@ class Trainer:
             optimizer_stepped=should_step,
         )
 
+    def run(
+        self,
+        batches: Iterable[Batch],
+        *,
+        on_metrics: Callable[[StepMetrics], None] | None = None,
+        on_checkpoint: Callable[[Trainer, StepMetrics], None] | None = None,
+        checkpoint_every_steps: int | None = None,
+    ) -> TrainingRunResult:
+        """Train from the current state until ``config.max_steps`` optimizer steps.
+
+        The iterable controls data order/epochs and must contain enough microbatches.
+        Checkpoint hooks run only after committed optimizer/scheduler steps. A final
+        hook is emitted at ``max_steps`` even when it is off cadence. Hook failure is
+        explicit because the optimizer step must not be blindly replayed.
+        """
+        self.assert_accumulation_boundary()
+        if checkpoint_every_steps is not None and checkpoint_every_steps <= 0:
+            raise ValueError("checkpoint_every_steps must be > 0")
+        if checkpoint_every_steps is not None and on_checkpoint is None:
+            raise ValueError("checkpoint_every_steps requires on_checkpoint")
+        if self.optimizer_step > self.config.max_steps:
+            raise RuntimeError("optimizer_step exceeds configured max_steps")
+
+        start_step = self.optimizer_step
+        start_tokens = self.tokens_seen
+        consumed = 0
+        final_metrics: StepMetrics | None = None
+
+        for batch in batches:
+            if self.optimizer_step >= self.config.max_steps:
+                break
+            metrics = self.train_microbatch(batch)
+            consumed += 1
+            final_metrics = metrics
+            if on_metrics is not None:
+                on_metrics(metrics)
+
+            if metrics.optimizer_stepped and on_checkpoint is not None:
+                on_cadence = (
+                    checkpoint_every_steps is not None
+                    and metrics.optimizer_step % checkpoint_every_steps == 0
+                )
+                is_final = metrics.optimizer_step == self.config.max_steps
+                if on_cadence or is_final:
+                    try:
+                        on_checkpoint(self, metrics)
+                    except Exception as exc:
+                        raise CheckpointHookError(
+                            "checkpoint hook failed after committed "
+                            f"optimizer_step={metrics.optimizer_step}; do not replay blindly"
+                        ) from exc
+
+        if self.optimizer_step < self.config.max_steps:
+            self.assert_accumulation_boundary()
+            raise RuntimeError(
+                "batch iterable exhausted before max_steps: "
+                f"optimizer_step={self.optimizer_step}, max_steps={self.config.max_steps}"
+            )
+        self.assert_accumulation_boundary()
+        return TrainingRunResult(
+            start_optimizer_step=start_step,
+            end_optimizer_step=self.optimizer_step,
+            optimizer_steps_completed=self.optimizer_step - start_step,
+            microbatches_consumed=consumed,
+            tokens_consumed=self.tokens_seen - start_tokens,
+            final_metrics=final_metrics,
+        )
+
     def assert_accumulation_boundary(self) -> None:
         """Fail rather than silently discarding partial accumulated gradients."""
         remainder = self.micro_step % self.config.gradient_accumulation_steps
@@ -294,7 +377,8 @@ class Trainer:
             )
 
     def state_dict(self) -> TrainerState:
-        """Return trainer-owned state for D05 checkpoint serialization."""
+        """Return checkpoint-safe trainer state only at an accumulation boundary."""
+        self.assert_accumulation_boundary()
         return TrainerState(
             micro_step=self.micro_step,
             optimizer_step=self.optimizer_step,
@@ -314,6 +398,17 @@ class Trainer:
 
         if state.config != asdict(self.config):
             raise ValueError("trainer config mismatch; refusing unsafe resume")
+        if state.micro_step < 0 or state.optimizer_step < 0 or state.tokens_seen < 0:
+            raise ValueError("trainer counters must be non-negative")
+        expected_micro_steps = state.optimizer_step * self.config.gradient_accumulation_steps
+        if state.micro_step != expected_micro_steps:
+            raise ValueError(
+                "checkpoint is not at a complete accumulation boundary: "
+                f"micro_step={state.micro_step}, expected={expected_micro_steps}"
+            )
+        if state.optimizer_step > self.config.max_steps:
+            raise ValueError("checkpoint optimizer_step exceeds configured max_steps")
+
         self.optimizer.load_state_dict(state.optimizer)
         if (state.scheduler is None) != (self.scheduler is None):
             raise ValueError("scheduler state/config mismatch")
