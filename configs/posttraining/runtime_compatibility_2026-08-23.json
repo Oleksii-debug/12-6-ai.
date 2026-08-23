@@ -1,16 +1,16 @@
 {
   "format_version": "posttraining-runtime-compat-v1",
-  "snapshot_id": "posttraining-runtime-compat-2026-08-23",
+  "snapshot_id": "posttraining-runtime-compat-2026-08-23-r2",
   "observed_on": "2026-08-23",
   "status": "RESEARCH_PIN_NOT_INSTALLED",
   "trl": {
     "observed_version": "1.10.0",
     "released": "2026-08-13",
-    "vllm_supported_min": "0.17.0",
-    "vllm_supported_max": "0.26.0",
+    "vllm_supported_min": "0.16.0",
+    "vllm_supported_max": "0.23.0",
     "sources": [
       "https://pypi.org/project/trl/",
-      "https://huggingface.co/docs/trl/vllm_integration"
+      "https://huggingface.co/docs/trl/main/vllm_integration"
     ]
   },
   "verl": {
@@ -25,9 +25,8 @@
   "vllm": {
     "latest_observed_version": "0.27.1",
     "latest_released": "2026-08-11",
-    "selected_joint_compatibility_version": "0.26.0",
-    "selection_reason": "Current TRL documentation caps supported vLLM at 0.26.0; latest 0.27.1 is outside that declared range.",
-    "source": "https://pypi.org/project/vllm/"
+    "selected_joint_compatibility_version": "0.23.0",
+    "selection_reason": "Current TRL main documentation declares vLLM 0.16.0..0.23.0; verl declares >=0.18.0, so 0.23.0 is the highest documented joint planning version at this cutoff."
   },
   "execution": {
     "runtime_imported": false,
