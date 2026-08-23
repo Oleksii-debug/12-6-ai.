@@ -4,7 +4,13 @@
     "id": "synthetic-s0-evidence-fixture",
     "random_init": true,
     "model_constructed": true,
-    "parameter_count": 10240
+    "parameter_count": 10240,
+    "model_vocab_size": 259
+  },
+  "tokenizer": {
+    "identity": "s0-byte-v1@synthetic-fixture",
+    "vocab_size": 259,
+    "max_token_id": 258
   },
   "eval_config": {
     "id": "synthetic-s0-eval-fixture-v1"
