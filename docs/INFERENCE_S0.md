@@ -4,9 +4,11 @@ D07 owns the user-facing generation boundary. S0 deliberately uses a plain Pytho
 
 ## Backend boundary
 
-A checkpoint adapter must provide `eos_token_id`, `encode(text)`, `decode(token_ids)`, and `next_token_logits(input_ids)`. The CLI loads that adapter through `--backend-loader MODULE:CALLABLE`; the callable receives the local checkpoint `Path`. This keeps D07 independent of the final D01 model class and D05 serialization shape while those lanes are still being implemented.
+A checkpoint adapter must provide `eos_token_id`, positive integer `max_context_tokens`, `encode(text)`, `decode(token_ids)`, and `next_token_logits(input_ids)`. The CLI loads that adapter through `--backend-loader MODULE:CALLABLE`; the callable receives the local checkpoint `Path`.
 
-Once D01/D05 publish the canonical checkpoint/model loader, D07 should add a first-party adapter and make it the normal path. The generic loader remains useful for conversion comparison and compatibility tests.
+`max_context_tokens` is a required capability, not an advisory value. D07 rejects prompts that already exceed the backend context window and stops with `context_limit` before it would call the backend with a full/overflowing context. This keeps the generic harness fail-closed for the D01 `max_seq_len` boundary without copying D01 model logic.
+
+Once D01/D04/D05 accepted surfaces are composed, D07 should add a first-party adapter that obtains this value from the accepted ModelSpec, verifies the tokenizer/checkpoint identities, and makes that adapter the normal path. The generic loader remains useful for conversion comparison and compatibility tests.
 
 ## Commands
 
@@ -36,4 +38,4 @@ Transformers-compatible export is preferred as soon as D01/D05 can express the a
 
 ## NOT TESTED in this package
 
-No real 12-6 checkpoint exists in this branch, so real checkpoint loading, canonical-logit comparison, Transformers loading, vLLM, OpenAI-compatible serving, KV-cache behavior, and GGUF/llama.cpp are not claimed here. Those require committed D01/D05 integration surfaces.
+The generic context guard is unit-tested, but no real composed 12-6 checkpoint is loaded in this branch. Real D01+D04+D05 adapter loading, canonical-logit comparison, Transformers loading, vLLM, OpenAI-compatible serving, KV-cache behavior, and GGUF/llama.cpp remain NOT TESTED until those accepted surfaces are composed.
