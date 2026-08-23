@@ -6,7 +6,12 @@ from pathlib import Path
 
 import pytest
 
-from twelve_six.data.pipeline import DataContractError, PipelineConfig, build_dataset, language_id
+from twelve_six.data.pipeline import (
+    DataContractError,
+    PipelineConfig,
+    build_dataset,
+    language_id,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
