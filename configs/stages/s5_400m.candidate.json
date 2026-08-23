@@ -1,0 +1,42 @@
+{
+  "stage": "S5",
+  "target_parameters": 400000000,
+  "expected_parameters": 400598016,
+  "canonical_base": "random_init",
+  "status": "engineering_candidate_not_frozen",
+  "promotion_allowed": false,
+  "requires_preceding_stage_pass": true,
+  "selection_basis": "D01 dense scaling solver candidate; benchmark/research selection pending",
+  "expected_model_identity_sha256": "9abfb6d1ac2e9c28fac20aff4ae804ad54b4102ce6f1bdeeadddf5a56027f28c",
+  "expected_init_identity_sha256": "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5",
+  "model": {
+    "schema_version": 1,
+    "vocab_size": 32768,
+    "max_seq_len": 4096,
+    "d_model": 1024,
+    "n_layers": 20,
+    "n_heads": 16,
+    "n_kv_heads": 4,
+    "head_dim": 64,
+    "d_ff": 5120,
+    "activation": "swiglu",
+    "norm_kind": "rmsnorm",
+    "norm_placement": "pre",
+    "norm_eps": 1e-5,
+    "position_embedding": "rope",
+    "rope_theta": 10000.0,
+    "rope_rotary_dim": 64,
+    "attention_bias": false,
+    "mlp_bias": false,
+    "attention_dropout": 0.0,
+    "final_norm": true,
+    "tie_word_embeddings": true,
+    "lm_head_bias": false
+  },
+  "init": {
+    "schema_version": 1,
+    "family": "normal",
+    "std": 0.02,
+    "residual_branch_scale": "sqrt_2_layers"
+  }
+}
