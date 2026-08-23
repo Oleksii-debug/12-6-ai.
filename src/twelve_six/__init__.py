@@ -1,5 +1,7 @@
 """12-6 AI model package."""
 
+__version__ = "0.2.0-dev"
+
 from .model import (
     CausalLMOutput,
     ModelSpec,
