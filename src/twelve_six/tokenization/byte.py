@@ -11,6 +11,7 @@ from .base import TokenizerIdentity
 
 BYTE_TOKENIZER_VERSION = "s0-byte-v1"
 BYTE_TOKENIZER_HASH = "b04055c1061dd641dcab7cb9d62a931f09b8d1a070140a926ceb4e91d73ca8e1"
+BYTE_VOCAB_HASH = "905ed40bb42cc4d550e228ff5f24158d504b38e8ed5974dfa3077bd5867ad571"
 
 _CONFIG = {
     "schema_version": 1,
@@ -26,13 +27,27 @@ _CONFIG = {
 
 
 def canonical_config_json() -> str:
-    """Return the exact canonical serialization used for tokenizer identity."""
+    """Return the exact canonical serialization used for tokenizer config identity."""
     return json.dumps(_CONFIG, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
 
 def tokenizer_config_hash() -> str:
     """Return the SHA-256 identity of the canonical tokenizer config."""
     return hashlib.sha256(canonical_config_json().encode("utf-8")).hexdigest()
+
+
+def canonical_vocab_json() -> str:
+    """Serialize the complete token-ID meaning independently of tokenizer config."""
+    payload = {
+        "schema_version": 1,
+        "entries": [{"id": token_id, "token_hex": f"{token_id:02x}"} for token_id in range(256)],
+    }
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+
+
+def vocab_hash() -> str:
+    """Return the SHA-256 fingerprint of the complete token-ID vocabulary mapping."""
+    return hashlib.sha256(canonical_vocab_json().encode("utf-8")).hexdigest()
 
 
 class ByteTokenizer:
@@ -58,12 +73,15 @@ class ByteTokenizer:
             raise RuntimeError(
                 "Byte tokenizer config identity drifted without a version/hash update"
             )
+        if vocab_hash() != BYTE_VOCAB_HASH:
+            raise RuntimeError("Byte vocabulary identity drifted without an explicit hash update")
 
     @property
     def identity(self) -> TokenizerIdentity:
         return TokenizerIdentity(
             version=self.version,
             config_sha256=BYTE_TOKENIZER_HASH,
+            vocab_sha256=BYTE_VOCAB_HASH,
             vocab_size=self.vocab_size,
             normalization=self.normalization,
             encoding=self.encoding,
