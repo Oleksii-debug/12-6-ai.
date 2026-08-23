@@ -3,18 +3,36 @@
   "target_parameters": 100000,
   "expected_parameters": 107856,
   "canonical_base": "random_init",
+  "expected_model_identity_sha256": "2f0aa97a5d19e98c4e292fd5f1b454ada45ec4d2c7324e14ab7e48af19908ce6",
+  "expected_init_identity_sha256": "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5",
   "model": {
+    "schema_version": 1,
     "vocab_size": 512,
     "max_seq_len": 256,
     "d_model": 48,
     "n_layers": 3,
     "n_heads": 4,
     "n_kv_heads": 4,
+    "head_dim": 12,
     "d_ff": 128,
-    "rope_theta": 10000.0,
+    "activation": "swiglu",
+    "norm_kind": "rmsnorm",
+    "norm_placement": "pre",
     "norm_eps": 1e-5,
-    "init_std": 0.02,
-    "dropout": 0.0,
-    "tie_embeddings": true
+    "position_embedding": "rope",
+    "rope_theta": 10000.0,
+    "rope_rotary_dim": 12,
+    "attention_bias": false,
+    "mlp_bias": false,
+    "attention_dropout": 0.0,
+    "final_norm": true,
+    "tie_word_embeddings": true,
+    "lm_head_bias": false
+  },
+  "init": {
+    "schema_version": 1,
+    "family": "normal",
+    "std": 0.02,
+    "residual_branch_scale": "sqrt_2_layers"
   }
 }
