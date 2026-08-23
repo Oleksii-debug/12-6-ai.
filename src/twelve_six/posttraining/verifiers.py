@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
-from typing import Mapping, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from .contracts import Candidate, VerifierTask
 
@@ -66,7 +67,7 @@ class ExactTextVerifier:
 class NumericToleranceVerifier:
     """Verify a decimal-valued answer without using eval or executing code."""
 
-    tolerance: Decimal = Decimal("0")
+    tolerance: Decimal = Decimal(0)
     name: str = "numeric_tolerance"
 
     def __post_init__(self) -> None:
