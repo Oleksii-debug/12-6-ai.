@@ -10,6 +10,22 @@ from twelve_six.packing.measure import main, measure_d03_packaged_split
 from twelve_six.tokenization import BYTE_TOKENIZER_HASH, ByteTokenizer
 
 
+def _dataset_manifest(
+    *,
+    output_name: str,
+    source_hash: str,
+    assignments: list[tuple[str, str]],
+) -> dict[str, object]:
+    return {
+        "dataset_id": "fixture-v1",
+        "dataset_identity_sha256": "c" * 64,
+        "outputs": {output_name: source_hash},
+        "document_assignments": [
+            {"id": record_id, "split": split} for record_id, split in assignments
+        ],
+    }
+
+
 def test_measure_packed_split_binds_exact_identities_and_counts() -> None:
     manifest = measure_packed_split(
         [TextRecord("a", "abc", "train"), TextRecord("b", "Ж", "train")],
@@ -80,11 +96,11 @@ def test_d03_measurement_verifies_source_hash_and_preserves_split(tmp_path) -> N
     dataset_manifest_path = tmp_path / "manifest.json"
     dataset_manifest_path.write_text(
         json.dumps(
-            {
-                "dataset_id": "fixture-v1",
-                "dataset_identity_sha256": "c" * 64,
-                "outputs": {"train.jsonl": source_hash},
-            }
+            _dataset_manifest(
+                output_name="train.jsonl",
+                source_hash=source_hash,
+                assignments=[("d1", "train"), ("held", "validation"), ("d2", "train")],
+            )
         ),
         encoding="utf-8",
     )
@@ -113,13 +129,14 @@ def test_d03_measurement_rejects_cross_labeled_split(
     split_path.write_text('{"id":"d1","text":"held out"}\n', encoding="utf-8")
     source_hash = hashlib.sha256(split_path.read_bytes()).hexdigest()
     dataset_manifest_path = tmp_path / "manifest.json"
+    actual_split = filename.removesuffix(".jsonl")
     dataset_manifest_path.write_text(
         json.dumps(
-            {
-                "dataset_id": "fixture-v1",
-                "dataset_identity_sha256": "c" * 64,
-                "outputs": {filename: source_hash},
-            }
+            _dataset_manifest(
+                output_name=filename,
+                source_hash=source_hash,
+                assignments=[("d1", actual_split)],
+            )
         ),
         encoding="utf-8",
     )
@@ -132,17 +149,41 @@ def test_d03_measurement_rejects_cross_labeled_split(
         )
 
 
+def test_d03_measurement_rejects_record_assignment_mismatch(tmp_path) -> None:
+    split_path = tmp_path / "train.jsonl"
+    split_path.write_text('{"id":"d1","text":"train"}\n', encoding="utf-8")
+    source_hash = hashlib.sha256(split_path.read_bytes()).hexdigest()
+    dataset_manifest_path = tmp_path / "manifest.json"
+    dataset_manifest_path.write_text(
+        json.dumps(
+            _dataset_manifest(
+                output_name="train.jsonl",
+                source_hash=source_hash,
+                assignments=[("different-id", "train")],
+            )
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="record assignment mismatch"):
+        measure_d03_packaged_split(
+            dataset_manifest_path,
+            split_path,
+            split="train",
+        )
+
+
 def test_d03_measurement_fails_closed_on_source_hash_mismatch(tmp_path) -> None:
     split_path = tmp_path / "validation.jsonl"
     split_path.write_text('{"id":"d1","text":"valid"}\n', encoding="utf-8")
     dataset_manifest_path = tmp_path / "manifest.json"
     dataset_manifest_path.write_text(
         json.dumps(
-            {
-                "dataset_id": "fixture-v1",
-                "dataset_identity_sha256": "d" * 64,
-                "outputs": {"validation.jsonl": "0" * 64},
-            }
+            _dataset_manifest(
+                output_name="validation.jsonl",
+                source_hash="0" * 64,
+                assignments=[("d1", "validation")],
+            )
         ),
         encoding="utf-8",
     )
@@ -162,11 +203,11 @@ def test_measure_cli_prints_machine_readable_manifest(tmp_path, capsys) -> None:
     dataset_manifest_path = tmp_path / "manifest.json"
     dataset_manifest_path.write_text(
         json.dumps(
-            {
-                "dataset_id": "fixture-v1",
-                "dataset_identity_sha256": "e" * 64,
-                "outputs": {"train.jsonl": source_hash},
-            }
+            _dataset_manifest(
+                output_name="train.jsonl",
+                source_hash=source_hash,
+                assignments=[("d1", "train")],
+            )
         ),
         encoding="utf-8",
     )
