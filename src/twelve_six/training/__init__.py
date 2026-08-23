@@ -9,6 +9,7 @@ from .trainer import (
     Trainer,
     TrainerState,
     TrainingRunResult,
+    TrainingStateInvalidError,
     build_optimizer,
     build_scheduler,
 )
@@ -23,6 +24,7 @@ __all__ = [
     "TrainerConfig",
     "TrainerState",
     "TrainingRunResult",
+    "TrainingStateInvalidError",
     "build_optimizer",
     "build_scheduler",
     "causal_lm_loss",
