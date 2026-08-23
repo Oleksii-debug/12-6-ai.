@@ -13,7 +13,8 @@ forms are supported and may not be mixed:
    predict label `t + 1`.
 2. Already-aligned packed pairs: `target_ids: LongTensor[B, T]`, optionally with
    binary `loss_mask: Tensor[B, T]`. `causal_pair_loss` does **not** shift again.
-   This is the contract used by D04 `PackedCausalExample` and prevents a double shift.
+   D04 can collate its packed examples into this form explicitly, preventing a double
+   shift.
 
 The model is called as `model(input_ids)` and may return:
 
@@ -64,10 +65,24 @@ A checkpoint-safe state must satisfy both conditions:
 - no partial accumulation group is pending; and
 - `micro_step == optimizer_step * gradient_accumulation_steps`.
 
-The trainer also refuses checkpointing while an optimizer/scheduler update has an
-ambiguous incomplete outcome or while accumulation statistics are pending. D05's
-trainer adapter can therefore serialize `Trainer.state_dict()` without silently
-losing accumulated gradients.
+The trainer refuses checkpointing while accumulation statistics are pending. It also
+enters a fail-closed poisoned state after a non-finite loss/gradient, backward failure,
+or ambiguous optimizer/scheduler failure. Once poisoned, that Trainer object refuses
+further training, serialization, and in-place `load_state_dict()` recovery.
+
+This fresh-instance rule is intentional: trainer-only state cannot prove model weights
+were restored if an optimizer transition may have partially committed. Canonical
+failure recovery is therefore:
+
+1. verify the D05 checkpoint and all required identities/hashes;
+2. restore/construct the checkpoint model weights;
+3. construct a **fresh** Trainer with the exact training configuration;
+4. load the verified trainer-owned optimizer/scheduler/scaler/counter state;
+5. restore RNG state under the D05 reproducibility contract;
+6. continue from the committed optimizer boundary.
+
+A clean Trainer can load a verified `TrainerState` normally. D05 owns the durable file
+format and full model/RNG restore ordering; D02 owns the trainer-side safety contract.
 
 ## Numerical safety invariants
 
@@ -76,6 +91,7 @@ losing accumulated gradients.
 - Gradient accumulation is exact over valid target tokens.
 - An optimizer/scheduler step occurs only at an accumulation boundary.
 - Partial or failed accumulated gradients cannot be checkpointed as completed state.
+- Ambiguous failed transitions require fresh-instance checkpoint recovery.
 - Gradient clipping happens after unscale and token normalization, before the update.
 - Telemetry reports real loss, update loss, applied learning rate, pre-clip gradient
   norm, token count, micro-step, optimizer-step, and whether the optimizer stepped.
@@ -84,23 +100,33 @@ losing accumulated gradients.
 - Resume refuses trainer-config mismatch and inconsistent/corrupt counters.
 - Warmup scheduling starts at `1 / warmup_steps` of base LR and reaches base LR on
   the final warmup update without an off-by-one duplicate first rate.
+- Hyperparameter configuration rejects non-finite values, invalid ranges, unsupported
+  scheduler/precision modes, and type/value mismatches before training starts.
 
 ## Precision
 
 S0 CPU smoke tests use fp32. bf16 autocast is available where the selected backend
 supports it. fp16 is rejected on CPU rather than pretending to run mixed precision.
+GPU numerical parity remains a separate evidence requirement for later stages.
 
 ## Current S0 integration status
 
 The D02 trainer is model-agnostic and has deterministic CPU convergence evidence on
-a test-only learnable bigram stub. That stub is not a canonical model.
+a test-only learnable bigram stub. That stub is not a canonical model or capability
+evidence.
 
-D01 PR #24 now provides a real decoder candidate and D03/D04 provide deterministic
-data/token contracts, but an integration blocker was found: D01 S0 currently declares
-`vocab_size=256`, while D04 frozen `s0-byte-v1` declares `vocab_size=259` with valid
-IDs 0..258. Canonical D01+D04 integration must fail closed until these identities are
-reconciled. Setting D01 S0 vocab to 259 would make the current 10,140-parameter design
-10,200 parameters and remain near the S0 ~10K target.
+The earlier D01/D04 vocabulary mismatch is resolved at the current contract level.
+D01 PR #24 uses S0 `vocab_size=256` with exactly 10,140 trainable parameters. D04 PR
+#23 now uses a raw UTF-8 byte tokenizer with IDs `0..255`, vocab 256, no semantic
+special tokens, so tokenizer/model vocabulary compatibility is exact. D04 can produce
+raw shifted labels or aligned `target_ids + loss_mask`, both supported by D02.
 
-Final S0 training acceptance also requires the exact integrated D01/D03/D04/D05/D06
-candidate, observed CI, and independent audit evidence.
+D03 provides the deterministic controlled train/validation corpus, and D05 provides
+the checkpoint substrate. D10 currently owns selective composition and has only a
+partial experimental composition, not a full D01-D08 S0 candidate.
+
+Final S0 training acceptance therefore still requires one exact D10-composed green
+candidate containing D01-D08, a real CPU D01+D03+D04 training-loss decrease with
+finite numerics, D05 save/load/interrupted-resume evidence, D06 held-out/stage-gate
+evidence, D07 generation from the trained/reloaded checkpoint, and independent audits
+bound to that exact candidate SHA.
