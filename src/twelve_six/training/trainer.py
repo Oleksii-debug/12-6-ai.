@@ -25,6 +25,10 @@ class NonFiniteTrainingError(FloatingPointError):
     """Raised before an unsafe optimizer update when training becomes non-finite."""
 
 
+class TrainingStateInvalidError(RuntimeError):
+    """Raised when training must restore a verified checkpoint before continuing."""
+
+
 class CheckpointHookError(RuntimeError):
     """A checkpoint hook failed after an optimizer step was already committed."""
 
@@ -160,6 +164,7 @@ class Trainer:
         self._pending_tokens = 0
         self._pending_loss_sum = 0.0
         self._update_incomplete = False
+        self._failure_reason: str | None = None
         self.optimizer.zero_grad(set_to_none=True)
 
     @staticmethod
@@ -186,6 +191,23 @@ class Trainer:
             return nullcontext()
         dtype = torch.bfloat16 if self.config.precision == "bf16" else torch.float16
         return torch.autocast(device_type=self.device.type, dtype=dtype)
+
+    def _mark_failed(self, reason: str) -> None:
+        if self._failure_reason is None:
+            self._failure_reason = reason
+        self.optimizer.zero_grad(set_to_none=True)
+
+    def _assert_trainable(self) -> None:
+        if self._failure_reason is not None:
+            raise TrainingStateInvalidError(
+                "trainer state is invalid after a failed training transition; "
+                f"restore a verified checkpoint before continuing: {self._failure_reason}"
+            )
+        if self._update_incomplete:
+            raise TrainingStateInvalidError(
+                "optimizer/scheduler update has ambiguous committed state; "
+                "restore a verified checkpoint before continuing"
+            )
 
     def _prepare_batch(
         self, batch: Batch
@@ -228,8 +250,9 @@ class Trainer:
             else:
                 loss = causal_lm_loss(logits, targets)
         if not torch.isfinite(loss).item():
-            self.optimizer.zero_grad(set_to_none=True)
-            raise NonFiniteTrainingError(f"non-finite loss at micro_step={self.micro_step + 1}")
+            reason = f"non-finite loss at micro_step={self.micro_step + 1}"
+            self._mark_failed(reason)
+            raise NonFiniteTrainingError(reason)
         return loss
 
     def _normalize_gradients_and_norm(self, token_count: int) -> Tensor:
@@ -243,10 +266,9 @@ class Trainer:
             found = True
             grad = parameter.grad.detach()
             if not torch.isfinite(grad).all().item():
-                self.optimizer.zero_grad(set_to_none=True)
-                raise NonFiniteTrainingError(
-                    f"non-finite gradient at micro_step={self.micro_step}"
-                )
+                reason = f"non-finite gradient at micro_step={self.micro_step}"
+                self._mark_failed(reason)
+                raise NonFiniteTrainingError(reason)
             grad.div_(token_count)
             squared_norm += torch.sum(grad.float() * grad.float())
         if not found:
@@ -255,6 +277,7 @@ class Trainer:
 
     def train_microbatch(self, batch: Batch) -> StepMetrics:
         """Backpropagate one microbatch and update only at the accumulation boundary."""
+        self._assert_trainable()
         self.model.train()
         input_ids, targets, loss_mask, aligned_targets = self._prepare_batch(batch)
         tokens = _count_training_tokens(
@@ -271,7 +294,11 @@ class Trainer:
             loss_mask=loss_mask,
             aligned_targets=aligned_targets,
         )
-        self.scaler.scale(loss * tokens).backward()
+        try:
+            self.scaler.scale(loss * tokens).backward()
+        except RuntimeError:
+            self._mark_failed(f"backward failed at micro_step={self.micro_step + 1}")
+            raise
 
         self.micro_step += 1
         self.tokens_seen += tokens
@@ -284,25 +311,31 @@ class Trainer:
         learning_rate = float(self.optimizer.param_groups[0]["lr"])
 
         if should_step:
-            self.scaler.unscale_(self.optimizer)
-            raw_grad_norm = self._normalize_gradients_and_norm(self._pending_tokens)
-            grad_norm_value = float(raw_grad_norm.item())
-            update_loss = self._pending_loss_sum / self._pending_tokens
-
-            if self.config.gradient_clip_norm is not None:
-                torch.nn.utils.clip_grad_norm_(
-                    self.model.parameters(),
-                    self.config.gradient_clip_norm,
-                    error_if_nonfinite=True,
-                )
-
             self._update_incomplete = True
-            self.scaler.step(self.optimizer)
-            self.optimizer_step += 1
-            self.scaler.update()
-            self.optimizer.zero_grad(set_to_none=True)
-            if self.scheduler is not None:
-                self.scheduler.step()
+            try:
+                self.scaler.unscale_(self.optimizer)
+                raw_grad_norm = self._normalize_gradients_and_norm(self._pending_tokens)
+                grad_norm_value = float(raw_grad_norm.item())
+                update_loss = self._pending_loss_sum / self._pending_tokens
+
+                if self.config.gradient_clip_norm is not None:
+                    torch.nn.utils.clip_grad_norm_(
+                        self.model.parameters(),
+                        self.config.gradient_clip_norm,
+                        error_if_nonfinite=True,
+                    )
+
+                self.scaler.step(self.optimizer)
+                self.optimizer_step += 1
+                self.scaler.update()
+                self.optimizer.zero_grad(set_to_none=True)
+                if self.scheduler is not None:
+                    self.scheduler.step()
+            except Exception:
+                self._mark_failed(
+                    f"optimizer/scheduler update failed at micro_step={self.micro_step}"
+                )
+                raise
             self._pending_tokens = 0
             self._pending_loss_sum = 0.0
             self._update_incomplete = False
@@ -397,8 +430,7 @@ class Trainer:
 
     def assert_checkpoint_safe(self) -> None:
         """Require all consumed microbatches to belong to committed optimizer steps."""
-        if self._update_incomplete:
-            raise RuntimeError("optimizer/scheduler update failed with ambiguous committed state")
+        self._assert_trainable()
         self.assert_accumulation_boundary()
         expected_micro_steps = self.optimizer_step * self.config.gradient_accumulation_steps
         if self.micro_step != expected_micro_steps:
@@ -456,4 +488,5 @@ class Trainer:
         self._pending_tokens = 0
         self._pending_loss_sum = 0.0
         self._update_incomplete = False
+        self._failure_reason = None
         self.optimizer.zero_grad(set_to_none=True)
