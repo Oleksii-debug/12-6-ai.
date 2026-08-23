@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, is_dataclass
-from enum import Enum
 import hashlib
 import json
 import re
-from typing import Any, Mapping
+from collections.abc import Mapping
+from dataclasses import asdict, dataclass, is_dataclass
+from enum import Enum
+from typing import Any
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 

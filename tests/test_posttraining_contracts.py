@@ -4,8 +4,8 @@ from twelve_six.posttraining import (
     ArtifactRef,
     BaseLineageViolation,
     BehavioralTrainingNotAuthorized,
-    ExecutionMode,
     ExactMatchVerifier,
+    ExecutionMode,
     FrameworkKind,
     PostTrainingExperimentConfig,
     PostTrainingMethod,
@@ -15,7 +15,6 @@ from twelve_six.posttraining import (
     VerifierRegistry,
     content_fingerprint,
 )
-
 
 ZERO = "0" * 64
 ONE = "1" * 64
