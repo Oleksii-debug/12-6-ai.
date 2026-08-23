@@ -13,7 +13,6 @@ from twelve_six import (
     load_stage_config,
 )
 
-
 ROOT = Path(__file__).resolve().parents[1]
 
 
