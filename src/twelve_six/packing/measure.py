@@ -27,7 +27,7 @@ def measure_d03_packaged_split(
     *,
     split: str,
 ) -> PackedSplitManifest:
-    """Verify the D03 file hash and measure it with the frozen S0 byte path."""
+    """Verify D03 split identity/source bytes, then measure the frozen S0 byte path."""
     manifest_path = Path(dataset_manifest_path)
     split_path = Path(jsonl_path)
     payload = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -45,10 +45,20 @@ def measure_d03_packaged_split(
         raise TypeError("dataset manifest dataset_identity_sha256 must be a string")
     if not isinstance(outputs, dict):
         raise TypeError("dataset manifest outputs must be a mapping")
+    if not split:
+        raise ValueError("split must be non-empty")
 
-    expected_source_hash = outputs.get(split_path.name)
+    expected_output_name = f"{split}.jsonl"
+    if split_path.name != expected_output_name:
+        raise ValueError(
+            "split/output mismatch: "
+            f"requested split {split!r} requires {expected_output_name!r}, "
+            f"got {split_path.name!r}"
+        )
+
+    expected_source_hash = outputs.get(expected_output_name)
     if expected_source_hash is None:
-        raise ValueError(f"dataset manifest does not bind output {split_path.name!r}")
+        raise ValueError(f"dataset manifest does not bind output {expected_output_name!r}")
     if not isinstance(expected_source_hash, str):
         raise TypeError("dataset manifest output SHA-256 must be a string")
     actual_source_hash = _sha256_file(split_path)
