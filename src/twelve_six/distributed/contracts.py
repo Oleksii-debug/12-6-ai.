@@ -59,17 +59,36 @@ class ParallelPlan:
 
     @property
     def world_size(self) -> int:
+        """Return physical rank count for the orthogonal DP/TP/PP/CP dimensions.
+
+        Expert parallelism is represented as a subgroup inside the data-parallel domain, matching
+        the target Megatron-style MoE topology. It therefore does not independently multiply the
+        physical world size.
+        """
+
         return (
             self.data_parallel
             * self.tensor_parallel
             * self.pipeline_parallel
             * self.context_parallel
-            * self.expert_parallel
         )
 
     @property
+    def expert_data_parallel(self) -> int:
+        if self.data_parallel % self.expert_parallel != 0:
+            raise ValueError("expert_parallel must divide data_parallel")
+        return self.data_parallel // self.expert_parallel
+
+    @property
     def model_state_shard_factor(self) -> int:
-        factor = self.tensor_parallel * self.pipeline_parallel * self.expert_parallel
+        """Dense-model state shard factor only.
+
+        EP is intentionally excluded: expert sharding applies only to MoE expert parameters, not
+        all model parameters. A future MoE-aware estimator must model dense and expert parameters
+        separately.
+        """
+
+        factor = self.tensor_parallel * self.pipeline_parallel
         if self.shard_model_state_across_data_parallel:
             factor *= self.data_parallel
         return factor
@@ -88,3 +107,5 @@ class ParallelPlan:
         ):
             if getattr(self, name) < 1:
                 raise ValueError(f"{name} must be >= 1")
+        if self.data_parallel % self.expert_parallel != 0:
+            raise ValueError("expert_parallel must divide data_parallel")
