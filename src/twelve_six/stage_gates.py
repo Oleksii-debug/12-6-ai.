@@ -18,8 +18,9 @@ from twelve_six.evaluation import (
 )
 
 _MISSING = object()
-_EXACT_GIT_SHA = re.compile(r"^(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})$")
-_SHA256 = re.compile(r"^[0-9a-fA-F]{64}$")
+_EXACT_GIT_SHA = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
+_SHA256 = re.compile(r"^[0-9a-f]{64}$")
+_PASSING_AUDIT_VERDICTS = frozenset({"PASS", "PASS_WITH_NOTES"})
 
 
 def _get(data: Mapping[str, Any], path: str) -> Any:
@@ -116,7 +117,7 @@ def _vocab_compatibility_gate(evidence: Mapping[str, Any]) -> GateResult:
 def _strengthen_exact_candidate_identity(
     gates: list[dict[str, Any]], evidence: Mapping[str, Any]
 ) -> None:
-    """Require an exact Git object id for the candidate identity gate."""
+    """Require an exact lowercase Git object id for the candidate identity gate."""
 
     candidate_sha = _get(evidence, "candidate.sha")
     if candidate_sha is _MISSING:
@@ -126,7 +127,7 @@ def _strengthen_exact_candidate_identity(
         return
     if not isinstance(candidate_sha, str) or _EXACT_GIT_SHA.fullmatch(candidate_sha) is None:
         identity_gate["status"] = GateStatus.FAIL.value
-        identity_gate["reason"] = "candidate.sha must be an exact 40- or 64-hex Git object id"
+        identity_gate["reason"] = "candidate.sha must be an exact lowercase 40- or 64-hex Git id"
         identity_gate["evidence"]["candidate.sha"] = candidate_sha
 
 
@@ -155,11 +156,11 @@ def _audit_binding(
         return False, missing, captured
 
     blockers: list[str] = []
-    if verdict != "PASS":
-        blockers.append(f"{base}.verdict must be PASS")
+    if verdict not in _PASSING_AUDIT_VERDICTS:
+        blockers.append(f"{base}.verdict must be PASS or PASS_WITH_NOTES")
     if not isinstance(audit_sha, str) or _EXACT_GIT_SHA.fullmatch(audit_sha) is None:
-        blockers.append(f"{base}.candidate_sha must be an exact Git object id")
-    elif audit_sha.lower() != candidate_sha.lower():
+        blockers.append(f"{base}.candidate_sha must be an exact lowercase Git object id")
+    elif audit_sha != candidate_sha:
         blockers.append(f"{base}.candidate_sha does not match candidate.sha")
     if not isinstance(evidence_ref, str) or not evidence_ref.strip():
         blockers.append(f"{base}.evidence_ref must be a non-empty durable reference")
@@ -204,7 +205,7 @@ def _promotion_authority(evidence: Mapping[str, Any]) -> dict[str, Any]:
 
     blockers: list[str] = []
     if not isinstance(candidate_sha, str) or _EXACT_GIT_SHA.fullmatch(candidate_sha) is None:
-        blockers.append("candidate.sha must be an exact 40- or 64-hex Git object id")
+        blockers.append("candidate.sha must be an exact lowercase 40- or 64-hex Git id")
         candidate_sha_for_binding = ""
     else:
         candidate_sha_for_binding = candidate_sha
@@ -213,7 +214,7 @@ def _promotion_authority(evidence: Mapping[str, Any]) -> dict[str, Any]:
     if type(manifest_validated) is not bool or not manifest_validated:
         blockers.append("promotion.candidate_manifest_validated must be exact boolean true")
     if not isinstance(manifest_sha, str) or _SHA256.fullmatch(manifest_sha) is None:
-        blockers.append("promotion.candidate_manifest_sha256 must be a 64-hex SHA-256")
+        blockers.append("promotion.candidate_manifest_sha256 must be a lowercase 64-hex SHA-256")
     if type(ci_success) is not bool or not ci_success:
         blockers.append("promotion.candidate_ci.success must be exact boolean true")
     if isinstance(ci_run_id, bool) or not isinstance(ci_run_id, int) or ci_run_id <= 0:
@@ -227,6 +228,15 @@ def _promotion_authority(evidence: Mapping[str, Any]) -> dict[str, Any]:
         audit_evidence[audit_key] = captured
         if not ok:
             blockers.extend(audit_blockers)
+
+    audit_a_ref = audit_evidence["audit_a"]["evidence_ref"]
+    audit_b_ref = audit_evidence["audit_b"]["evidence_ref"]
+    if (
+        isinstance(audit_a_ref, str)
+        and audit_a_ref.strip()
+        and audit_a_ref == audit_b_ref
+    ):
+        blockers.append("AUDIT-A and AUDIT-B must have distinct durable evidence references")
 
     return {
         "status": GateStatus.PASS.value if not blockers else GateStatus.FAIL.value,
@@ -324,7 +334,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     dump_stage_gate_result(result, args.output)
     if args.fail_on_incomplete and not result["summary"]["evaluation_complete"]:
         return 2
-    if args.fail_on_ineligible and not result["summary"]["promotion_eligible"]:
+    if args.fail_on-ineligible and not result["summary"]["promotion_eligible"]:
         return 3
     return 0
 
