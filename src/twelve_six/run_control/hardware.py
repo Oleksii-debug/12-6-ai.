@@ -7,7 +7,7 @@ import json
 import os
 import platform
 import shutil
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -92,7 +92,7 @@ def collect_hardware_profile(*, working_directory: str | Path | None = None) -> 
     disk = shutil.disk_usage(working_path)
     return {
         "schema_version": 1,
-        "captured_at_utc": datetime.now(timezone.utc).isoformat(),
+        "captured_at_utc": datetime.now(UTC).isoformat(),
         "platform": {
             "system": platform.system(),
             "release": platform.release(),
