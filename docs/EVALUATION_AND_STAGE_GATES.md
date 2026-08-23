@@ -4,7 +4,7 @@
 
 D06 owns conservative evaluation evidence. A parameter count, lower training loss, or a generation demo is not a capability claim and is not sufficient for promotion.
 
-The current S0 implementation consumes machine-readable evidence from D01-D05/D07/D10 and emits a deterministic `12-6.stage-gate-result.v1` JSON result with explicit `PASS`, `FAIL`, and `NOT_TESTED` per gate.
+The S0 implementation consumes machine-readable evidence from D01-D05/D07/D10 and emits deterministic JSON with explicit `PASS`, `FAIL`, and `NOT_TESTED` per gate. `twelve_six.evaluation` provides the core 14 gates; `twelve_six.stage_gates` adds cross-lane integration compatibility and emits `12-6.integrated-stage-gate-result.v1`.
 
 Missing evidence is `NOT_TESTED`, never implicit `PASS`. Any required `FAIL` or `NOT_TESTED` blocks `promotion_eligible`.
 
@@ -29,9 +29,12 @@ S0 currently requires machine evidence for:
 11. held-out data excluded from training with bounded split overlap;
 12. at least two distinct training batches so S0 is not presented as a one-fixed-batch memorization demo;
 13. a completed benchmark/held-out contamination check with zero overlap;
-14. an executed regression suite with zero failures.
+14. an executed regression suite with zero failures;
+15. tokenizer/model vocabulary compatibility: tokenizer identity is explicit, tokenizer vocab matches model vocab, and the maximum tokenizer ID is representable by the model embedding table.
 
 Validation loss is required to be measured, not necessarily monotonically improved. The separate random-vs-trained gate is the generalization sanity check for S0.
+
+The vocabulary gate is an integration gate, not a tokenizer-quality metric. It exists because independently valid model and tokenizer packages can still be mutually unusable.
 
 ## Perplexity
 
@@ -45,10 +48,10 @@ The registry is a protection mechanism, not proof by itself. Real promotion evid
 
 ## Machine-readable execution
 
-Example synthetic smoke fixture:
+Example synthetic integrated contract fixture:
 
 ```bash
-python -m twelve_six.evaluation \
+python -m twelve_six.stage_gates \
   tests/fixtures/s0_complete_evidence.json \
   --policy configs/stages/s0_eval_gate.json \
   --output s0_gate_result.json \
@@ -57,18 +60,24 @@ python -m twelve_six.evaluation \
 
 The synthetic fixture exists only to validate the evaluator contract. It is not model capability evidence and must never be cited as a real S0 result.
 
-A real candidate evidence JSON should include the exact Git SHA/checkpoint identity, eval-config identity, dataset/manifests identity, before/after losses, random baseline, generation probe hashes, checkpoint/resume evidence, contamination counts, and regression result.
+A real candidate evidence JSON should include the exact Git SHA/checkpoint identity, eval-config identity, dataset/manifests identity, tokenizer identity/vocab/max-token-ID, ModelSpec vocab/parameter count, before/after losses, random baseline, generation probe hashes, checkpoint/resume evidence, contamination counts, and regression result.
+
+## Live S0 compatibility finding — 2026-08-23
+
+At the D06 observation cutoff, D01 PR #24 declares S0 `vocab_size=256` and expected parameters 10,140, while D04 PR #23 declares `s0-byte-v1` with vocab size 259 and valid token IDs 0..258. That pair fails `s0.tokenizer_model_vocab`: token IDs 256..258 cannot be represented by a 256-row embedding.
+
+If D01 changes only the vocabulary size from 256 to 259 while retaining `d_model=20` and a tied LM head, the embedding contributes 60 additional parameters and the corresponding expected S0 count becomes 10,200. This remains near the 10K target but requires an explicit ModelSpec/tokenizer/checkpoint identity update; D06 does not authorize a silent composition override.
 
 ## Integration ownership
 
-- D01: model construction, exact parameter count, random-init architecture lineage.
+- D01: model construction, exact parameter count, random-init architecture lineage and model vocabulary.
 - D02: training telemetry/loss/numerics.
 - D03: data provenance, split identity, contamination inputs.
-- D04: tokenizer/packing/split-consumption identity.
-- D05: save/load/resume and artifact identity.
+- D04: tokenizer/packing/split-consumption identity, vocabulary and max token ID.
+- D05: save/load/resume and artifact identity, including tokenizer compatibility binding.
 - D07: generation execution evidence.
 - D10: exact integrated candidate and CI composition.
 - AUDIT-A/B: independent verification required before promotion.
-- D06: consumes those facts, runs evaluation, records metrics/probes, and issues the stage-gate verdict.
+- D06: consumes those facts, runs evaluation, records metrics/probes, detects cross-lane incompatibilities, and issues the stage-gate verdict.
 
-Until a real integrated S0 candidate exists, model-specific gates remain `NOT_TESTED` even though the D06 evaluation framework itself is tested.
+Until a real integrated S0 candidate exists, model-specific gates remain `NOT_TESTED` even though the D06 evaluation framework itself is tested. A known cross-lane incompatibility may be `FAIL` before integration when exact component contracts already prove that the proposed composition cannot execute correctly.
