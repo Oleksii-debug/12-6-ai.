@@ -5,10 +5,12 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+from collections.abc import Iterable, Iterator
 from pathlib import Path
 
 from twelve_six.tokenization import ByteTokenizer
 
+from .core import TextRecord
 from .jsonl import load_jsonl_records
 from .manifest import PackedSplitManifest, measure_packed_split
 
@@ -19,6 +21,55 @@ def _sha256_file(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _assignment_ids_for_split(payload: dict[str, object], *, split: str) -> tuple[str, ...]:
+    assignments = payload.get("document_assignments")
+    if not isinstance(assignments, list):
+        raise TypeError("dataset manifest document_assignments must be a list")
+
+    selected: list[str] = []
+    seen_ids: set[str] = set()
+    for index, assignment in enumerate(assignments):
+        if not isinstance(assignment, dict):
+            raise TypeError(f"dataset manifest assignment {index} must be a mapping")
+        record_id = assignment.get("id")
+        assigned_split = assignment.get("split")
+        if not isinstance(record_id, str) or not record_id:
+            raise TypeError(f"dataset manifest assignment {index} has invalid id")
+        if not isinstance(assigned_split, str) or not assigned_split:
+            raise TypeError(f"dataset manifest assignment {index} has invalid split")
+        if record_id in seen_ids:
+            raise ValueError(f"dataset manifest contains duplicate assignment id {record_id!r}")
+        seen_ids.add(record_id)
+        if assigned_split == split:
+            selected.append(record_id)
+    return tuple(selected)
+
+
+def _require_assignment_order(
+    records: Iterable[TextRecord],
+    expected_record_ids: tuple[str, ...],
+) -> Iterator[TextRecord]:
+    consumed = 0
+    for consumed, record in enumerate(records, start=1):
+        index = consumed - 1
+        if index >= len(expected_record_ids):
+            raise ValueError(
+                f"packaged split contains unexpected record {record.record_id!r} at index {index}"
+            )
+        expected_id = expected_record_ids[index]
+        if record.record_id != expected_id:
+            raise ValueError(
+                "packaged split record assignment mismatch: "
+                f"index {index} has {record.record_id!r}, expected {expected_id!r}"
+            )
+        yield record
+    if consumed != len(expected_record_ids):
+        raise ValueError(
+            "packaged split record count does not match manifest assignments: "
+            f"consumed {consumed}, expected {len(expected_record_ids)}"
+        )
 
 
 def measure_d03_packaged_split(
@@ -67,8 +118,13 @@ def measure_d03_packaged_split(
             f"source JSONL hash mismatch: {actual_source_hash} != {expected_source_hash}"
         )
 
-    return measure_packed_split(
+    expected_record_ids = _assignment_ids_for_split(payload, split=split)
+    records = _require_assignment_order(
         load_jsonl_records(split_path, split=split),
+        expected_record_ids,
+    )
+    return measure_packed_split(
+        records,
         ByteTokenizer(),
         dataset_id=dataset_id,
         dataset_identity_sha256=dataset_identity,
