@@ -42,7 +42,9 @@ def _require_text(value: Any, field: str) -> str:
 
 
 def _require_sha256(value: Any, field: str) -> str:
-    text = _require_text(value, field).lower()
+    text = _require_text(value, field)
+    if text != text.lower():
+        raise ExternalDataContractError(f"{field} must be lowercase SHA-256 hex")
     if len(text) != 64 or any(char not in "0123456789abcdef" for char in text):
         raise ExternalDataContractError(f"{field} must be a lowercase SHA-256 hex digest")
     return text
@@ -50,8 +52,8 @@ def _require_sha256(value: Any, field: str) -> str:
 
 def _validate_source_url(value: str) -> None:
     parsed = urlsplit(value)
-    if parsed.scheme not in {"https", "http", "hf"}:
-        raise ExternalDataContractError("source_url must use http, https, or hf")
+    if parsed.scheme not in {"https", "hf"}:
+        raise ExternalDataContractError("source_url must use https or hf")
     if parsed.username or parsed.password:
         raise ExternalDataContractError("source_url must not contain embedded credentials")
     if parsed.query or parsed.fragment:
@@ -250,7 +252,10 @@ def external_source_from_mapping(data: Mapping[str, Any]) -> ExternalSourceSpec:
 def build_external_source_registry(
     sources: Iterable[ExternalSourceSpec],
 ) -> dict[str, Any]:
-    entries = sorted((source.to_dict() for source in sources), key=lambda item: item["source_id"])
+    entries = sorted(
+        (source.to_dict() for source in sources),
+        key=lambda item: (item["source_id"], item["source_version"]),
+    )
     keys = [(entry["source_id"], entry["source_version"]) for entry in entries]
     if len(set(keys)) != len(keys):
         raise ExternalDataContractError("duplicate source_id/source_version in registry")
@@ -272,6 +277,60 @@ def build_reserved_fingerprint_registry(
     return {**core, "registry_identity_sha256": _sha256_bytes(_canonical_json_bytes(core))}
 
 
+def validate_external_source_registry(
+    registry: Mapping[str, Any],
+) -> tuple[ExternalSourceSpec, ...]:
+    if registry.get("schema_version") != REGISTRY_SCHEMA:
+        raise ExternalDataContractError("unsupported external source registry schema")
+    raw_sources = registry.get("sources")
+    if not isinstance(raw_sources, list):
+        raise ExternalDataContractError("external source registry sources must be an array")
+    sources = tuple(external_source_from_mapping(item) for item in raw_sources)
+    expected = build_external_source_registry(sources)
+    if registry.get("registry_identity_sha256") != expected["registry_identity_sha256"]:
+        raise ExternalDataContractError("external source registry identity mismatch")
+    if dict(registry) != expected:
+        raise ExternalDataContractError("external source registry is not canonical")
+    return sources
+
+
+def validate_reserved_fingerprint_registry(
+    registry: Mapping[str, Any],
+) -> tuple[ReservedSetSpec, ...]:
+    if registry.get("schema_version") != RESERVED_SCHEMA:
+        raise ExternalDataContractError("unsupported reserved fingerprint registry schema")
+    raw_sets = registry.get("sets")
+    if not isinstance(raw_sets, list):
+        raise ExternalDataContractError("reserved fingerprint registry sets must be an array")
+    sets: list[ReservedSetSpec] = []
+    for item in raw_sets:
+        if not isinstance(item, Mapping):
+            raise ExternalDataContractError("reserved set entry must be an object")
+        known = {"set_id", "version", "source_id", "purpose", "normalized_sha256"}
+        unknown = set(item) - known
+        if unknown:
+            raise ExternalDataContractError(f"unknown reserved set fields: {sorted(unknown)}")
+        hashes = item.get("normalized_sha256")
+        if not isinstance(hashes, list):
+            raise ExternalDataContractError("reserved normalized_sha256 must be an array")
+        sets.append(
+            ReservedSetSpec(
+                set_id=item.get("set_id"),
+                version=item.get("version"),
+                source_id=item.get("source_id"),
+                purpose=item.get("purpose"),
+                normalized_sha256=tuple(hashes),
+            )
+        )
+    result = tuple(sets)
+    expected = build_reserved_fingerprint_registry(result)
+    if registry.get("registry_identity_sha256") != expected["registry_identity_sha256"]:
+        raise ExternalDataContractError("reserved fingerprint registry identity mismatch")
+    if dict(registry) != expected:
+        raise ExternalDataContractError("reserved fingerprint registry is not canonical")
+    return result
+
+
 def verify_local_snapshot(snapshot: SnapshotSpec, path: str | Path) -> None:
     candidate = Path(path)
     payload = candidate.read_bytes()
@@ -285,21 +344,13 @@ def contamination_report(
     training_records: Iterable[Mapping[str, Any]],
     reserved_registry: Mapping[str, Any],
 ) -> dict[str, Any]:
-    if reserved_registry.get("schema_version") != RESERVED_SCHEMA:
-        raise ExternalDataContractError("unsupported reserved fingerprint registry schema")
-    reserved_sets = reserved_registry.get("sets")
-    if not isinstance(reserved_sets, list):
-        raise ExternalDataContractError("reserved fingerprint registry sets must be an array")
-    reserved_sources: set[str] = set()
-    reserved_hashes: set[str] = set()
-    for item in reserved_sets:
-        if not isinstance(item, Mapping):
-            raise ExternalDataContractError("reserved set entry must be an object")
-        reserved_sources.add(_require_text(item.get("source_id"), "reserved.source_id"))
-        hashes = item.get("normalized_sha256")
-        if not isinstance(hashes, list):
-            raise ExternalDataContractError("reserved normalized_sha256 must be an array")
-        reserved_hashes.update(_require_sha256(value, "reserved hash") for value in hashes)
+    reserved_sets = validate_reserved_fingerprint_registry(reserved_registry)
+    reserved_sources = {item.source_id for item in reserved_sets}
+    reserved_hashes = {
+        fingerprint
+        for item in reserved_sets
+        for fingerprint in item.normalized_sha256
+    }
 
     source_collisions: list[str] = []
     content_collisions: list[str] = []
