@@ -67,6 +67,30 @@ def test_gradient_accumulation_steps_only_on_boundary() -> None:
     assert trainer.tokens_seen == 28
 
 
+def test_optimizer_step_changes_weights_with_finite_metrics() -> None:
+    torch.manual_seed(5)
+    model = ToyBigramLM(vocab_size=4)
+    before = model.table.weight.detach().clone()
+    trainer = Trainer(
+        model,
+        TrainerConfig(
+            learning_rate=0.1,
+            max_steps=1,
+            gradient_clip_norm=1.0,
+            seed=5,
+        ),
+    )
+
+    metrics = trainer.train_microbatch(repeating_batch())
+    after = model.table.weight.detach()
+
+    assert metrics.optimizer_stepped is True
+    assert metrics.optimizer_step == 1
+    assert math.isfinite(metrics.loss)
+    assert metrics.grad_norm is not None and math.isfinite(metrics.grad_norm)
+    assert not torch.equal(before, after)
+
+
 def test_loss_decreases_on_deterministic_tiny_corpus() -> None:
     torch.manual_seed(7)
     model = ToyBigramLM(vocab_size=4)
