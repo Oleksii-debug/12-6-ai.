@@ -73,10 +73,68 @@ def test_gradient_accumulation_steps_only_on_boundary() -> None:
 
     assert first.optimizer_stepped is False
     assert first.optimizer_step == 0
+    assert first.update_loss is None
     assert second.optimizer_stepped is True
     assert second.optimizer_step == 1
+    assert second.update_loss is not None and math.isfinite(second.update_loss)
     assert second.grad_norm is not None and math.isfinite(second.grad_norm)
     assert trainer.tokens_seen == 28
+
+
+def test_variable_token_accumulation_matches_one_combined_batch() -> None:
+    torch.manual_seed(19)
+    accumulated_model = ToyBigramLM(vocab_size=4)
+    combined_model = ToyBigramLM(vocab_size=4)
+    combined_model.load_state_dict(accumulated_model.state_dict())
+
+    first_batch = {
+        "input_ids": torch.tensor([[0, 1, 2, 0]], dtype=torch.long),
+        "target_ids": torch.tensor([[1, 2, 3, 0]], dtype=torch.long),
+        "loss_mask": torch.tensor([[1, 1, 1, 0]], dtype=torch.long),
+    }
+    second_batch = {
+        "input_ids": torch.tensor([[3, 0, 0, 0]], dtype=torch.long),
+        "target_ids": torch.tensor([[0, 1, 0, 0]], dtype=torch.long),
+        "loss_mask": torch.tensor([[1, 0, 0, 0]], dtype=torch.long),
+    }
+    combined_batch = {
+        key: torch.cat((first_batch[key], second_batch[key]), dim=0)
+        for key in first_batch
+    }
+
+    accumulated = Trainer(
+        accumulated_model,
+        TrainerConfig(
+            learning_rate=0.05,
+            weight_decay=0.0,
+            max_steps=1,
+            gradient_accumulation_steps=2,
+            gradient_clip_norm=None,
+            seed=19,
+        ),
+    )
+    combined = Trainer(
+        combined_model,
+        TrainerConfig(
+            learning_rate=0.05,
+            weight_decay=0.0,
+            max_steps=1,
+            gradient_accumulation_steps=1,
+            gradient_clip_norm=None,
+            seed=19,
+        ),
+    )
+
+    accumulated.train_microbatch(first_batch)
+    accumulated_metrics = accumulated.train_microbatch(second_batch)
+    combined_metrics = combined.train_microbatch(combined_batch)
+
+    assert accumulated_metrics.update_loss == pytest.approx(combined_metrics.loss)
+    assert accumulated.tokens_seen == combined.tokens_seen == 4
+    for accumulated_parameter, combined_parameter in zip(
+        accumulated_model.parameters(), combined_model.parameters(), strict=True
+    ):
+        torch.testing.assert_close(accumulated_parameter, combined_parameter)
 
 
 def test_warmup_lr_metrics_report_rate_applied_to_each_optimizer_update() -> None:
@@ -117,6 +175,7 @@ def test_optimizer_step_changes_weights_with_finite_metrics() -> None:
     assert metrics.optimizer_stepped is True
     assert metrics.optimizer_step == 1
     assert math.isfinite(metrics.loss)
+    assert metrics.update_loss == pytest.approx(metrics.loss)
     assert metrics.grad_norm is not None and math.isfinite(metrics.grad_norm)
     assert not torch.equal(before, after)
 
