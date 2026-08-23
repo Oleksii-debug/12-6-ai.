@@ -1,0 +1,35 @@
+{
+  "format_version": "stage-candidate-manifest-v1",
+  "stage": "S0",
+  "integration_anchor_sha": "f2e94c7212888cdb960bb66154d56d210e9b27ab",
+  "status": "experimental",
+  "base_lineage": true,
+  "candidate_sha": null,
+  "audit_a": "NOT_RUN",
+  "audit_b": "NOT_RUN",
+  "required_lanes": [
+    "D01",
+    "D02",
+    "D03",
+    "D04",
+    "D05",
+    "D06",
+    "D07"
+  ],
+  "components": [
+    {
+      "lane": "D08",
+      "source_sha": "f2e94c7212888cdb960bb66154d56d210e9b27ab",
+      "disposition": "held",
+      "component_kind": "scale_interface",
+      "notes": "Accept selectively only when relevant S0 interface evidence exists."
+    },
+    {
+      "lane": "D09",
+      "source_sha": "f2e94c7212888cdb960bb66154d56d210e9b27ab",
+      "disposition": "held",
+      "component_kind": "behavioral_weights",
+      "notes": "Early S0 Base excludes behavioral alignment weights."
+    }
+  ]
+}
