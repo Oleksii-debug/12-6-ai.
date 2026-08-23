@@ -11,6 +11,7 @@ from twelve_six.training import (
     NonFiniteTrainingError,
     Trainer,
     TrainerConfig,
+    TrainingStateInvalidError,
     causal_lm_loss,
     causal_pair_loss,
 )
@@ -310,7 +311,7 @@ def test_checkpoint_hook_failure_marks_optimizer_step_as_already_committed() -> 
     trainer.assert_checkpoint_safe()
 
 
-def test_nonfinite_loss_fails_before_optimizer_step() -> None:
+def test_nonfinite_loss_fails_before_optimizer_step_and_poison_state() -> None:
     class NaNModel(nn.Module):
         def __init__(self) -> None:
             super().__init__()
@@ -325,6 +326,10 @@ def test_nonfinite_loss_fails_before_optimizer_step() -> None:
     with pytest.raises(NonFiniteTrainingError):
         trainer.train_microbatch(repeating_batch())
     assert trainer.optimizer_step == 0
+    with pytest.raises(TrainingStateInvalidError, match="restore a verified checkpoint"):
+        trainer.train_microbatch(repeating_batch())
+    with pytest.raises(TrainingStateInvalidError):
+        trainer.state_dict()
 
 
 def test_nonfinite_gradient_fails_before_optimizer_step_and_blocks_checkpoint() -> None:
@@ -334,8 +339,51 @@ def test_nonfinite_gradient_fails_before_optimizer_step_and_blocks_checkpoint() 
     with pytest.raises(NonFiniteTrainingError, match="gradient"):
         trainer.train_microbatch(repeating_batch())
     assert trainer.optimizer_step == 0
-    with pytest.raises(RuntimeError, match="consumed but uncommitted"):
+    with pytest.raises(TrainingStateInvalidError, match="restore a verified checkpoint"):
         trainer.state_dict()
+
+
+def test_failed_mid_accumulation_requires_restore_before_training_continues() -> None:
+    class ToggleNaNBigramLM(ToyBigramLM):
+        def __init__(self) -> None:
+            super().__init__(vocab_size=4)
+            self.fail = False
+
+        def forward(self, input_ids: torch.Tensor) -> torch.Tensor:
+            logits = super().forward(input_ids)
+            if self.fail:
+                return logits / torch.tensor(0.0)
+            return logits
+
+    config = TrainerConfig(
+        learning_rate=0.05,
+        max_steps=2,
+        gradient_accumulation_steps=2,
+        seed=23,
+    )
+    model = ToggleNaNBigramLM()
+    trainer = Trainer(model, config)
+    trainer.train_microbatch(repeating_batch())
+    trainer.train_microbatch(repeating_batch())
+    checkpoint_model = {key: value.detach().clone() for key, value in model.state_dict().items()}
+    checkpoint_trainer = trainer.state_dict()
+
+    trainer.train_microbatch(repeating_batch())
+    model.fail = True
+    with pytest.raises(NonFiniteTrainingError):
+        trainer.train_microbatch(repeating_batch())
+    with pytest.raises(TrainingStateInvalidError):
+        trainer.train_microbatch(repeating_batch())
+
+    model.load_state_dict(checkpoint_model)
+    model.fail = False
+    trainer.load_state_dict(checkpoint_trainer)
+    trainer.train_microbatch(repeating_batch())
+    metrics = trainer.train_microbatch(repeating_batch())
+
+    assert metrics.optimizer_stepped is True
+    assert trainer.optimizer_step == 2
+    trainer.assert_checkpoint_safe()
 
 
 def test_refuses_partial_accumulation_boundary_and_checkpoint() -> None:
