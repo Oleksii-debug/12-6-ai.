@@ -326,7 +326,7 @@ def test_nonfinite_loss_fails_before_optimizer_step_and_poison_state() -> None:
     with pytest.raises(NonFiniteTrainingError):
         trainer.train_microbatch(repeating_batch())
     assert trainer.optimizer_step == 0
-    with pytest.raises(TrainingStateInvalidError, match="restore a verified checkpoint"):
+    with pytest.raises(TrainingStateInvalidError, match="fresh trainer"):
         trainer.train_microbatch(repeating_batch())
     with pytest.raises(TrainingStateInvalidError):
         trainer.state_dict()
@@ -339,11 +339,11 @@ def test_nonfinite_gradient_fails_before_optimizer_step_and_blocks_checkpoint() 
     with pytest.raises(NonFiniteTrainingError, match="gradient"):
         trainer.train_microbatch(repeating_batch())
     assert trainer.optimizer_step == 0
-    with pytest.raises(TrainingStateInvalidError, match="restore a verified checkpoint"):
+    with pytest.raises(TrainingStateInvalidError, match="fresh trainer"):
         trainer.state_dict()
 
 
-def test_failed_mid_accumulation_requires_restore_before_training_continues() -> None:
+def test_failed_mid_accumulation_requires_fresh_trainer_checkpoint_restore() -> None:
     class ToggleNaNBigramLM(ToyBigramLM):
         def __init__(self) -> None:
             super().__init__(vocab_size=4)
@@ -373,17 +373,18 @@ def test_failed_mid_accumulation_requires_restore_before_training_continues() ->
     with pytest.raises(NonFiniteTrainingError):
         trainer.train_microbatch(repeating_batch())
     with pytest.raises(TrainingStateInvalidError):
-        trainer.train_microbatch(repeating_batch())
+        trainer.load_state_dict(checkpoint_trainer)
 
-    model.load_state_dict(checkpoint_model)
-    model.fail = False
-    trainer.load_state_dict(checkpoint_trainer)
-    trainer.train_microbatch(repeating_batch())
-    metrics = trainer.train_microbatch(repeating_batch())
+    restored_model = ToggleNaNBigramLM()
+    restored_model.load_state_dict(checkpoint_model)
+    restored = Trainer(restored_model, config)
+    restored.load_state_dict(checkpoint_trainer)
+    restored.train_microbatch(repeating_batch())
+    metrics = restored.train_microbatch(repeating_batch())
 
     assert metrics.optimizer_stepped is True
-    assert trainer.optimizer_step == 2
-    trainer.assert_checkpoint_safe()
+    assert restored.optimizer_step == 2
+    restored.assert_checkpoint_safe()
 
 
 def test_refuses_partial_accumulation_boundary_and_checkpoint() -> None:
