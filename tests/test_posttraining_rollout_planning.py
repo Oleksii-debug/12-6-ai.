@@ -93,6 +93,15 @@ def test_sampling_plan_rejects_unknown_or_ambiguous_keys() -> None:
         SamplingPlan.from_mapping({"max_tokens": "8", "max_new_tokens": "8"})
 
 
+def test_sampling_plan_preserves_range_validation_diagnostics() -> None:
+    with pytest.raises(RolloutPlanningError, match="max_tokens must be > 0"):
+        SamplingPlan.from_mapping({"max_tokens": "0"})
+    with pytest.raises(RolloutPlanningError, match="top_p must be finite"):
+        SamplingPlan.from_mapping({"max_tokens": "8", "top_p": "2.0"})
+    with pytest.raises(RolloutPlanningError, match="generation values must be numeric"):
+        SamplingPlan.from_mapping({"max_tokens": "eight"})
+
+
 def test_trl_dry_run_rejects_latest_vllm_outside_declared_range() -> None:
     with pytest.raises(RolloutPlanningError, match="does not support vLLM 0.27.1"):
         build_dry_run_rollout_plan(
