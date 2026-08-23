@@ -7,6 +7,7 @@ import torch
 from torch import nn
 
 from twelve_six.training import (
+    CheckpointHookError,
     NonFiniteTrainingError,
     Trainer,
     TrainerConfig,
@@ -175,6 +176,63 @@ def test_trainer_consumes_d04_aligned_target_contract_without_double_shift() -> 
     assert math.isfinite(metrics.loss)
 
 
+def test_run_reaches_max_steps_and_checkpoints_only_committed_boundaries() -> None:
+    trainer = Trainer(
+        ToyBigramLM(vocab_size=4),
+        TrainerConfig(
+            learning_rate=0.1,
+            max_steps=3,
+            gradient_accumulation_steps=2,
+            seed=17,
+        ),
+    )
+    metric_steps: list[tuple[int, int]] = []
+    checkpoint_steps: list[tuple[int, int]] = []
+
+    def checkpoint_hook(current: Trainer, metrics) -> None:
+        checkpoint_steps.append((metrics.optimizer_step, current.state_dict().optimizer_step))
+
+    result = trainer.run(
+        [repeating_batch() for _ in range(6)],
+        on_metrics=lambda metrics: metric_steps.append(
+            (metrics.micro_step, metrics.optimizer_step)
+        ),
+        on_checkpoint=checkpoint_hook,
+        checkpoint_every_steps=2,
+    )
+
+    assert result.start_optimizer_step == 0
+    assert result.end_optimizer_step == 3
+    assert result.optimizer_steps_completed == 3
+    assert result.microbatches_consumed == 6
+    assert result.tokens_consumed == 84
+    assert len(metric_steps) == 6
+    assert checkpoint_steps == [(2, 2), (3, 3)]
+
+
+def test_run_fails_if_batch_iterable_exhausts_before_max_steps() -> None:
+    trainer = Trainer(
+        ToyBigramLM(vocab_size=4),
+        TrainerConfig(max_steps=2, gradient_accumulation_steps=2),
+    )
+    with pytest.raises(RuntimeError, match="exhausted before max_steps"):
+        trainer.run([repeating_batch(), repeating_batch()])
+    assert trainer.optimizer_step == 1
+    trainer.assert_checkpoint_safe()
+
+
+def test_checkpoint_hook_failure_marks_optimizer_step_as_already_committed() -> None:
+    trainer = Trainer(ToyBigramLM(vocab_size=4), TrainerConfig(max_steps=1))
+
+    def fail_checkpoint(_trainer: Trainer, _metrics) -> None:
+        raise OSError("simulated storage failure")
+
+    with pytest.raises(CheckpointHookError, match="do not replay blindly"):
+        trainer.run([repeating_batch()], on_checkpoint=fail_checkpoint)
+    assert trainer.optimizer_step == 1
+    trainer.assert_checkpoint_safe()
+
+
 def test_nonfinite_loss_fails_before_optimizer_step() -> None:
     class NaNModel(nn.Module):
         def __init__(self) -> None:
@@ -192,16 +250,18 @@ def test_nonfinite_loss_fails_before_optimizer_step() -> None:
     assert trainer.optimizer_step == 0
 
 
-def test_nonfinite_gradient_fails_before_optimizer_step() -> None:
+def test_nonfinite_gradient_fails_before_optimizer_step_and_blocks_checkpoint() -> None:
     model = ToyBigramLM(vocab_size=4)
     model.table.weight.register_hook(lambda grad: torch.full_like(grad, float("inf")))
     trainer = Trainer(model, TrainerConfig(max_steps=1))
     with pytest.raises(NonFiniteTrainingError, match="gradient"):
         trainer.train_microbatch(repeating_batch())
     assert trainer.optimizer_step == 0
+    with pytest.raises(RuntimeError, match="consumed but uncommitted"):
+        trainer.state_dict()
 
 
-def test_refuses_partial_accumulation_boundary() -> None:
+def test_refuses_partial_accumulation_boundary_and_checkpoint() -> None:
     trainer = Trainer(
         ToyBigramLM(vocab_size=4),
         TrainerConfig(max_steps=4, gradient_accumulation_steps=2),
@@ -209,3 +269,5 @@ def test_refuses_partial_accumulation_boundary() -> None:
     trainer.train_microbatch(repeating_batch())
     with pytest.raises(RuntimeError, match="mid-accumulation"):
         trainer.assert_accumulation_boundary()
+    with pytest.raises(RuntimeError, match="mid-accumulation"):
+        trainer.state_dict()
