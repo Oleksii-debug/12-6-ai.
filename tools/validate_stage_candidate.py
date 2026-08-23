@@ -26,11 +26,20 @@ def load_manifest(path: Path) -> StageCandidateManifest:
             component_kind=item["component_kind"],
             pr_number=item.get("pr_number"),
             artifact_sha256=item.get("artifact_sha256"),
+            contains_behavioral_weights=bool(item.get("contains_behavioral_weights", False)),
+            contains_foreign_pretrained_weights=bool(
+                item.get("contains_foreign_pretrained_weights", False)
+            ),
             notes=item.get("notes", ""),
         )
         for item in raw.get("components", [])
     )
-    required = frozenset(raw.get("required_lanes", ["D01", "D02", "D03", "D04", "D05", "D06", "D07"]))
+    required = frozenset(
+        raw.get(
+            "required_lanes",
+            ["D01", "D02", "D03", "D04", "D05", "D06", "D07", "D08"],
+        )
+    )
     return StageCandidateManifest.compose(
         stage=raw["stage"],
         integration_anchor_sha=raw["integration_anchor_sha"],
