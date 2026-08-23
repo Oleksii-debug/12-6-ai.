@@ -1,0 +1,109 @@
+{
+  "schema_version": "12-6.d06-live-preintegration-gate.v1",
+  "observed_at": "2026-08-23T16:34:45+03:00",
+  "stage": "S0",
+  "canonical_main_observed": "f2e94c7212888cdb960bb66154d56d210e9b27ab",
+  "integrated_candidate": null,
+  "promotion_eligible": false,
+  "overall_status": "NOT_TESTED",
+  "truth_boundary": "Timestamped pre-integration observation. PASS means only that the named gate is proven on exact committed component surfaces; it is not an integrated S0 capability claim.",
+  "d06_framework": {
+    "pr": 28,
+    "head_sha_before_this_report": "7c39e44a287d098f9715e0bcfaed6b4bedd85b5d",
+    "general_ci_run": 32642705425,
+    "general_ci": "PASS",
+    "d06_gate_ci_run": 32642705427,
+    "d06_gate_ci": "PASS",
+    "integrated_gate_count": 15
+  },
+  "components": {
+    "D01": {
+      "pr": 24,
+      "head_sha": "ccdefe51d4e648c241473eb635284a208e0fbc84",
+      "ci_run": 32642629819,
+      "ci": "PASS",
+      "parameter_count": 10140,
+      "model_vocab_size": 256,
+      "canonical_base": "random_init"
+    },
+    "D02": {
+      "pr": 22,
+      "head_sha": "b03bef4f30b68e58e2523b725e5562c436bbe827",
+      "ci_run": 32642736580,
+      "ci": "FAIL_RUFF_PYTEST_SKIPPED",
+      "integrated_training": "NOT_TESTED"
+    },
+    "D03": {
+      "pr": 27,
+      "head_sha": "f0e31d4200cb348f770346be9ab22ad450227f2d",
+      "ci_run": 32642596872,
+      "ci": "PASS",
+      "dataset_identity_sha256": "bab60119d49e93303c972b77900fcb5553817f754cbc5d9a58019228cfa0ca89",
+      "train_examples": 10,
+      "validation_examples": 2
+    },
+    "D04": {
+      "pr": 23,
+      "head_sha": "b2de4845ce3b2aa5e675409289369ccef8d28641",
+      "ci_run": 32642580412,
+      "ci": "FAIL_RUFF_PYTEST_SKIPPED",
+      "tokenizer_version": "s0-byte-v1",
+      "vocab_size": 256,
+      "max_token_id": 255,
+      "special_tokens": []
+    },
+    "D05": {
+      "pr": 26,
+      "head_sha": "b130583743481f09779cdcc2cd33599d69081124",
+      "ci_run": 32642506669,
+      "ci": "PASS",
+      "integrated_s0_save_load_resume": "NOT_TESTED"
+    },
+    "D07": {
+      "pr": 17,
+      "head_sha": "f4c2e6c471259278f05e2b211f48cb4a74ef4c96",
+      "ci_run": 32642179117,
+      "ci": "PASS",
+      "real_s0_checkpoint_generation": "NOT_TESTED"
+    },
+    "D10": {
+      "pr": 25,
+      "head_sha": "86d1c2b869ffc5ecb1c1511c8036cbfca6690d5f",
+      "ci_run": 32642636332,
+      "ci": "PASS",
+      "integrated_candidate": null
+    },
+    "AUDIT_A": {
+      "verdict": "CHANGES_REQUIRED",
+      "note": "latest durable audit remains non-promoting; D05 has posted a retest trigger"
+    },
+    "AUDIT_B": {
+      "verdict": null,
+      "note": "no durable lane comment observed"
+    }
+  },
+  "gates": [
+    {"gate_id": "s0.identity", "status": "NOT_TESTED", "reason": "no integrated candidate/eval/dataset identity"},
+    {"gate_id": "s0.random_init", "status": "PASS", "reason": "D01 exact CI-green implementation initializes modules from random distributions and S0 config requires canonical_base=random_init"},
+    {"gate_id": "s0.model_constructs", "status": "PASS", "reason": "D01 exact CI-green model package constructs TwelveSixDecoder and enforces instantiated-vs-analytic parameter invariant"},
+    {"gate_id": "s0.parameter_range", "status": "PASS", "reason": "D01 exact S0 count 10140 lies inside current proposed D06 range 8000..12000"},
+    {"gate_id": "s0.training_learns", "status": "NOT_TESTED", "reason": "D02 convergence proof is test-only stub; D01+D03+D04 integrated training not executed and current D02 head CI is red"},
+    {"gate_id": "s0.validation_measured", "status": "NOT_TESTED", "reason": "no integrated before/after held-out validation metrics"},
+    {"gate_id": "s0.random_vs_trained", "status": "NOT_TESTED", "reason": "no matched integrated random-init versus trained held-out comparison"},
+    {"gate_id": "s0.generation", "status": "NOT_TESTED", "reason": "generic/D01 generation surfaces exist but no hashed D06 probe from a real trained/reloaded S0 checkpoint"},
+    {"gate_id": "s0.save_load", "status": "NOT_TESTED", "reason": "D05 generic substrate is CI-green; real S0 model round-trip not executed"},
+    {"gate_id": "s0.resume", "status": "NOT_TESTED", "reason": "D05 generic resume proof is CI-green; exact integrated S0 resume not executed"},
+    {"gate_id": "s0.heldout_integrity", "status": "NOT_TESTED", "reason": "D03 split is CI-green but trainer consumption excluding validation is not yet proven"},
+    {"gate_id": "s0.not_single_fixed_batch", "status": "NOT_TESTED", "reason": "no integrated training run with distinct-batch evidence"},
+    {"gate_id": "s0.contamination", "status": "NOT_TESTED", "reason": "D03 sentinels exist; integrated D03+D06 benchmark/training-manifest comparison not frozen"},
+    {"gate_id": "s0.regressions", "status": "NOT_TESTED", "reason": "no single integrated candidate regression suite; D02 and D04 current exact heads are CI-red"},
+    {"gate_id": "s0.tokenizer_model_vocab", "status": "PASS", "reason": "D01 model vocab=256; corrected D04 raw-byte tokenizer vocab=256 with max token ID 255"}
+  ],
+  "summary": {
+    "PASS": 4,
+    "FAIL": 0,
+    "NOT_TESTED": 11,
+    "required_gate_count": 15
+  },
+  "next_action": "Obtain green D02/D04 exact heads, compose one D10 candidate, then run real D06 train/validation/random-baseline/generation/save-load/resume/heldout/contamination/regression gates on that exact SHA."
+}
