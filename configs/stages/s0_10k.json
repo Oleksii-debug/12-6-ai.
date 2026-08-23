@@ -3,7 +3,6 @@
   "target_parameters": 10000,
   "expected_parameters": 10140,
   "canonical_base": "random_init",
-  "status": "candidate_reference",
   "model": {
     "vocab_size": 256,
     "max_seq_len": 128,

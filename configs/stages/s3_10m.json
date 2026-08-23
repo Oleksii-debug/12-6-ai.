@@ -1,0 +1,20 @@
+{
+  "stage": "S3",
+  "target_parameters": 10000000,
+  "expected_parameters": 10059840,
+  "canonical_base": "random_init",
+  "model": {
+    "vocab_size": 8192,
+    "max_seq_len": 1024,
+    "d_model": 320,
+    "n_layers": 6,
+    "n_heads": 8,
+    "n_kv_heads": 8,
+    "d_ff": 864,
+    "rope_theta": 10000.0,
+    "norm_eps": 1e-5,
+    "init_std": 0.02,
+    "dropout": 0.0,
+    "tie_embeddings": true
+  }
+}

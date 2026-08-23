@@ -1,0 +1,20 @@
+{
+  "stage": "S1",
+  "target_parameters": 100000,
+  "expected_parameters": 107856,
+  "canonical_base": "random_init",
+  "model": {
+    "vocab_size": 512,
+    "max_seq_len": 256,
+    "d_model": 48,
+    "n_layers": 3,
+    "n_heads": 4,
+    "n_kv_heads": 4,
+    "d_ff": 128,
+    "rope_theta": 10000.0,
+    "norm_eps": 1e-5,
+    "init_std": 0.02,
+    "dropout": 0.0,
+    "tie_embeddings": true
+  }
+}
