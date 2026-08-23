@@ -14,7 +14,8 @@
     "D04",
     "D05",
     "D06",
-    "D07"
+    "D07",
+    "D08"
   ],
   "components": [
     {
@@ -29,6 +30,7 @@
       "source_sha": "f2e94c7212888cdb960bb66154d56d210e9b27ab",
       "disposition": "held",
       "component_kind": "behavioral_weights",
+      "contains_behavioral_weights": true,
       "notes": "Early S0 Base excludes behavioral alignment weights."
     }
   ]
