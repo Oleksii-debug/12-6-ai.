@@ -3,15 +3,18 @@
 from .config import PrecisionMode, SchedulerKind, TrainerConfig
 from .loss import causal_lm_loss, causal_pair_loss
 from .trainer import (
+    CheckpointHookError,
     NonFiniteTrainingError,
     StepMetrics,
     Trainer,
     TrainerState,
+    TrainingRunResult,
     build_optimizer,
     build_scheduler,
 )
 
 __all__ = [
+    "CheckpointHookError",
     "NonFiniteTrainingError",
     "PrecisionMode",
     "SchedulerKind",
@@ -19,6 +22,7 @@ __all__ = [
     "Trainer",
     "TrainerConfig",
     "TrainerState",
+    "TrainingRunResult",
     "build_optimizer",
     "build_scheduler",
     "causal_lm_loss",
