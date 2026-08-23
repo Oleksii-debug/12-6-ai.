@@ -40,6 +40,7 @@ from .verifiers import (
 )
 
 __all__ = [
+    "TRL_TRAINER_RECORD_KINDS",
     "BackendCapabilities",
     "Candidate",
     "CaseVerification",
@@ -56,7 +57,6 @@ __all__ = [
     "RecordKind",
     "Split",
     "SyntheticProvenance",
-    "TRL_TRAINER_RECORD_KINDS",
     "VerificationCase",
     "VerificationResult",
     "Verifier",
