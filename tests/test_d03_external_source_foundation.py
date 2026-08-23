@@ -15,6 +15,8 @@ from twelve_six.data.external_sources import (
     build_external_source_registry,
     build_reserved_fingerprint_registry,
     contamination_report,
+    validate_external_source_registry,
+    validate_reserved_fingerprint_registry,
     verify_local_snapshot,
 )
 from twelve_six.data.scalable_ingestion import DataTroveParquetPlan, ScalableIngestionError
@@ -46,11 +48,14 @@ def _snapshot(payload: bytes = b"immutable fixture") -> SnapshotSpec:
 
 
 def _source(
-    source_id: str = "source-a", *, rights: RightsDecision | None = None
+    source_id: str = "source-a",
+    *,
+    source_version: str = "v1",
+    rights: RightsDecision | None = None,
 ) -> ExternalSourceSpec:
     return ExternalSourceSpec(
         source_id=source_id,
-        source_version="v1",
+        source_version=source_version,
         provider="example-provider",
         source_url="https://example.invalid/source",
         source_kind="jsonl",
@@ -74,11 +79,29 @@ def test_noassertion_cannot_be_approved_for_training() -> None:
         _rights(RIGHTS_APPROVED, license_id="NOASSERTION")
 
 
-def test_registry_identity_is_order_independent() -> None:
-    first = build_external_source_registry([_source("b"), _source("a")])
-    second = build_external_source_registry([_source("a"), _source("b")])
+def test_registry_identity_is_order_independent_across_versions() -> None:
+    a1 = _source("a", source_version="v1")
+    a2 = _source("a", source_version="v2")
+    b1 = _source("b", source_version="v1")
+    first = build_external_source_registry([a2, b1, a1])
+    second = build_external_source_registry([a1, a2, b1])
     assert first == second
+    assert validate_external_source_registry(first) == (a1, a2, b1)
     assert len(first["registry_identity_sha256"]) == 64
+
+
+def test_registry_identity_tamper_fails_closed() -> None:
+    registry = build_external_source_registry([_source()])
+    registry["registry_identity_sha256"] = "0" * 64
+    with pytest.raises(ExternalDataContractError, match="identity mismatch"):
+        validate_external_source_registry(registry)
+
+
+def test_reserved_registry_identity_tamper_fails_closed() -> None:
+    registry = build_reserved_fingerprint_registry([])
+    registry["registry_identity_sha256"] = "0" * 64
+    with pytest.raises(ExternalDataContractError, match="identity mismatch"):
+        validate_reserved_fingerprint_registry(registry)
 
 
 def test_snapshot_uri_rejects_secret_or_unstable_query() -> None:
