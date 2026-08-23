@@ -2,11 +2,31 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Literal
 
 PrecisionMode = Literal["fp32", "bf16", "fp16"]
 SchedulerKind = Literal["constant", "linear_warmup", "cosine"]
+
+_PRECISION_MODES = frozenset({"fp32", "bf16", "fp16"})
+_SCHEDULER_KINDS = frozenset({"constant", "linear_warmup", "cosine"})
+
+
+def _require_finite(name: str, value: float, *, positive: bool) -> None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{name} must be a finite number")
+    if not math.isfinite(value):
+        raise ValueError(f"{name} must be finite")
+    if positive and value <= 0:
+        raise ValueError(f"{name} must be > 0")
+    if not positive and value < 0:
+        raise ValueError(f"{name} must be >= 0")
+
+
+def _require_int(name: str, value: int, *, minimum: int) -> None:
+    if not isinstance(value, int) or isinstance(value, bool) or value < minimum:
+        raise ValueError(f"{name} must be an integer >= {minimum}")
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,19 +51,39 @@ class TrainerConfig:
     deterministic_warn_only: bool = False
 
     def __post_init__(self) -> None:
-        if self.learning_rate <= 0:
-            raise ValueError("learning_rate must be > 0")
-        if self.weight_decay < 0:
-            raise ValueError("weight_decay must be >= 0")
-        if len(self.betas) != 2 or not all(0.0 <= beta < 1.0 for beta in self.betas):
+        _require_finite("learning_rate", self.learning_rate, positive=True)
+        _require_finite("weight_decay", self.weight_decay, positive=False)
+        _require_finite("eps", self.eps, positive=True)
+
+        if not isinstance(self.betas, tuple) or len(self.betas) != 2:
             raise ValueError("betas must contain two values in [0, 1)")
-        if self.eps <= 0:
-            raise ValueError("eps must be > 0")
-        if self.max_steps <= 0:
-            raise ValueError("max_steps must be > 0")
-        if self.warmup_steps < 0 or self.warmup_steps > self.max_steps:
-            raise ValueError("warmup_steps must be in [0, max_steps]")
-        if self.gradient_accumulation_steps <= 0:
-            raise ValueError("gradient_accumulation_steps must be > 0")
-        if self.gradient_clip_norm is not None and self.gradient_clip_norm <= 0:
-            raise ValueError("gradient_clip_norm must be > 0 when enabled")
+        for beta in self.betas:
+            if (
+                isinstance(beta, bool)
+                or not isinstance(beta, (int, float))
+                or not math.isfinite(beta)
+                or not 0.0 <= beta < 1.0
+            ):
+                raise ValueError("betas must contain two finite values in [0, 1)")
+
+        _require_int("max_steps", self.max_steps, minimum=1)
+        _require_int("warmup_steps", self.warmup_steps, minimum=0)
+        if self.warmup_steps > self.max_steps:
+            raise ValueError("warmup_steps must be <= max_steps")
+        _require_int(
+            "gradient_accumulation_steps",
+            self.gradient_accumulation_steps,
+            minimum=1,
+        )
+        _require_int("seed", self.seed, minimum=0)
+
+        if self.gradient_clip_norm is not None:
+            _require_finite("gradient_clip_norm", self.gradient_clip_norm, positive=True)
+        if self.scheduler not in _SCHEDULER_KINDS:
+            raise ValueError(f"unsupported scheduler: {self.scheduler!r}")
+        if self.precision not in _PRECISION_MODES:
+            raise ValueError(f"unsupported precision: {self.precision!r}")
+        if not isinstance(self.deterministic_algorithms, bool):
+            raise ValueError("deterministic_algorithms must be bool")
+        if not isinstance(self.deterministic_warn_only, bool):
+            raise ValueError("deterministic_warn_only must be bool")
