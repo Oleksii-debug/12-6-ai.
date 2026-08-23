@@ -18,6 +18,7 @@ from .core import (
     verify_checkpoint,
 )
 from .hf_export import export_hf_directory
+from .trainer_adapter import load_trainer_checkpoint, save_trainer_checkpoint
 
 __all__ = [
     "CheckpointCompatibilityError",
@@ -32,8 +33,10 @@ __all__ = [
     "export_hf_directory",
     "hash_json",
     "load_checkpoint",
+    "load_trainer_checkpoint",
     "restore_rng_state",
     "save_checkpoint",
+    "save_trainer_checkpoint",
     "sha256_file",
     "verify_checkpoint",
 ]
