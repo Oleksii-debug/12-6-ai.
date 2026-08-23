@@ -45,7 +45,10 @@ def validate_topology(
     if plan.shard_model_state_across_data_parallel and plan.data_parallel == 1:
         notes.append("model-state sharding flag has no effect with data_parallel=1")
     if plan.expert_parallel > 1:
-        notes.append("expert parallelism requires an MoE-capable backend; dense S0 must keep EP=1")
+        notes.append(
+            "expert parallelism is a subgroup of data parallelism and requires an MoE-capable "
+            "backend; dense S0 must keep EP=1"
+        )
     return TopologyReport(world_size=hardware.world_size, valid=True, notes=tuple(notes))
 
 
