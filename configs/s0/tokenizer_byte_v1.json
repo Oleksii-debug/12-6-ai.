@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "tokenizer_version": "s0-byte-v1",
+  "type": "utf8-byte",
+  "normalization": "none",
+  "encoding": "utf-8",
+  "special_tokens": {
+    "pad": 0,
+    "bos": 1,
+    "eos": 2
+  },
+  "byte_offset": 3,
+  "byte_values": 256,
+  "vocab_size": 259
+}
