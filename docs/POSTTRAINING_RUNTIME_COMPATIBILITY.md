@@ -8,14 +8,16 @@ Status: research compatibility snapshot and dry-run planning only. No runtime in
 - verl latest observed stable release: `0.9.0` (PyPI release 2026-08-14).
 - vLLM latest observed stable release: `0.27.1` (PyPI release 2026-08-11).
 
-Current TRL vLLM-integration documentation states that TRL supports vLLM `0.17.0` through `0.26.0`. Therefore vLLM `0.27.1`, despite being newer, is deliberately **not** the selected TRL compatibility version in this snapshot. The selected joint planning pin is vLLM `0.26.0`.
+Current TRL **main** vLLM-integration documentation states that TRL supports vLLM `0.16.0` through `0.23.0`. Current verl installation documentation states that vLLM `0.18.0` and later are supported for rollout. Therefore the highest version inside the documented intersection at this cutoff is **vLLM `0.23.0`**.
 
-Current verl installation documentation states vLLM `0.18.0` and later are supported for rollout. The vLLM `0.26.0` planning pin therefore lies inside the documented TRL and verl ranges at this cutoff.
+vLLM `0.27.1` is newer but outside TRL's declared range. Versions `0.24.0` through `0.27.1` are not selected for the joint TRL+verl planning path unless upstream compatibility documentation changes and the snapshot is deliberately revised.
+
+This corrects an earlier same-day research snapshot that had recorded a wider TRL range and selected `0.26.0`. That earlier pin was never installed or executed, produced no weights, and is superseded by snapshot `posttraining-runtime-compat-2026-08-23-r2`.
 
 Sources:
 
 - https://pypi.org/project/trl/
-- https://huggingface.co/docs/trl/vllm_integration
+- https://huggingface.co/docs/trl/main/vllm_integration
 - https://pypi.org/project/verl/0.9.0/
 - https://verl.readthedocs.io/en/latest/start/install.html
 - https://pypi.org/project/vllm/
@@ -38,7 +40,7 @@ Only item 2 exists here. Item 3 remains NOT TESTED.
 - `trl_vllm_server`;
 - `verl_vllm`.
 
-The planner normalizes `max_new_tokens`/`max_tokens`, temperature, top-p, top-k, seed and candidate count. It binds the request to an immutable `CheckpointRef`, records exact runtime version pins, and emits deterministic request/plan SHA-256 identities.
+The planner normalizes `max_new_tokens`/`max_tokens`, temperature, top-p, top-k, seed and candidate count. It binds the request to an immutable `CheckpointRef`, records exact research runtime version pins, and emits deterministic request/plan SHA-256 identities.
 
 It does **not** import TRL, verl or vLLM, open a network connection, allocate a GPU, generate a token, update a reward, compute a gradient or mutate a checkpoint. `execution_enabled=true` is rejected by construction.
 
@@ -52,7 +54,7 @@ D01/D05/D07 must first stabilize the exact model/export/inference surfaces neede
 
 - importing TRL `1.10.0` in the project environment;
 - importing verl `0.9.0` in the project environment;
-- importing vLLM `0.26.0` or `0.27.1`;
+- importing vLLM `0.23.0` or `0.27.1`;
 - CUDA/driver/PyTorch compatibility;
 - a real vLLM load of 12-6 weights;
 - TRL server or colocate mode;
