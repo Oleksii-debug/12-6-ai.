@@ -81,18 +81,18 @@ class RuntimeCompatibilitySnapshot:
 
 
 CURRENT_RUNTIME_COMPATIBILITY = RuntimeCompatibilitySnapshot(
-    snapshot_id="posttraining-runtime-compat-2026-08-23",
+    snapshot_id="posttraining-runtime-compat-2026-08-23-r2",
     observed_on="2026-08-23",
     trl_version=SemanticVersion.parse("1.10.0"),
     verl_version=SemanticVersion.parse("0.9.0"),
     vllm_latest_version=SemanticVersion.parse("0.27.1"),
-    vllm_selected_version=SemanticVersion.parse("0.26.0"),
-    trl_vllm_min=SemanticVersion.parse("0.17.0"),
-    trl_vllm_max=SemanticVersion.parse("0.26.0"),
+    vllm_selected_version=SemanticVersion.parse("0.23.0"),
+    trl_vllm_min=SemanticVersion.parse("0.16.0"),
+    trl_vllm_max=SemanticVersion.parse("0.23.0"),
     verl_vllm_min=SemanticVersion.parse("0.18.0"),
     sources=(
         "https://pypi.org/project/trl/",
-        "https://huggingface.co/docs/trl/vllm_integration",
+        "https://huggingface.co/docs/trl/main/vllm_integration",
         "https://pypi.org/project/verl/0.9.0/",
         "https://verl.readthedocs.io/en/latest/start/install.html",
         "https://pypi.org/project/vllm/",
