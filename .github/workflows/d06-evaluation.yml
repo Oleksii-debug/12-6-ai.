@@ -4,10 +4,13 @@ on:
   pull_request:
     paths:
       - "src/twelve_six/evaluation.py"
+      - "src/twelve_six/stage_gates.py"
       - "tests/test_evaluation_stage_gates.py"
+      - "tests/test_integrated_stage_gates.py"
       - "tests/fixtures/s0_complete_evidence.json"
       - "configs/stages/s0_eval_gate.json"
       - "docs/EVALUATION_AND_STAGE_GATES.md"
+      - "pyproject.toml"
       - ".github/workflows/d06-evaluation.yml"
   workflow_dispatch:
 
@@ -25,10 +28,10 @@ jobs:
       - run: python -m pip install --upgrade pip
       - run: pip install -e .[dev]
       - run: ruff check src tests
-      - run: pytest -q tests/test_evaluation_stage_gates.py
-      - name: Produce machine-readable synthetic gate result
+      - run: pytest -q tests/test_evaluation_stage_gates.py tests/test_integrated_stage_gates.py
+      - name: Produce machine-readable synthetic integrated gate result
         run: |
-          python -m twelve_six.evaluation \
+          python -m twelve_six.stage_gates \
             tests/fixtures/s0_complete_evidence.json \
             --policy configs/stages/s0_eval_gate.json \
             --output /tmp/s0_gate_result.json \
@@ -38,7 +41,7 @@ jobs:
           from pathlib import Path
 
           result = json.loads(Path('/tmp/s0_gate_result.json').read_text(encoding='utf-8'))
-          assert result['schema_version'] == '12-6.stage-gate-result.v1'
+          assert result['schema_version'] == '12-6.integrated-stage-gate-result.v1'
           assert result['summary']['promotion_eligible'] is True
-          assert result['summary']['counts'] == {'FAIL': 0, 'NOT_TESTED': 0, 'PASS': 14}
+          assert result['summary']['counts'] == {'FAIL': 0, 'NOT_TESTED': 0, 'PASS': 15}
           PY
