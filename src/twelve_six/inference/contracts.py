@@ -10,6 +10,7 @@ class InferenceBackend(Protocol):
     """Minimal backend boundary required by the S0 generation harness."""
 
     eos_token_id: int | None
+    max_context_tokens: int
 
     def encode(self, text: str) -> list[int]: ...
 
@@ -43,7 +44,13 @@ class GenerationConfig:
             raise ValueError("stop strings must not be empty")
 
 
-StopReason = Literal["max_new_tokens", "eos", "stop_token", "stop_string"]
+StopReason = Literal[
+    "max_new_tokens",
+    "context_limit",
+    "eos",
+    "stop_token",
+    "stop_string",
+]
 
 
 @dataclass(frozen=True, slots=True)
