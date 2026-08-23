@@ -79,16 +79,17 @@ class SamplingPlan:
             raise RolloutPlanningError("use only one of n or num_generations")
         generation_count = values.get("num_generations", values.get("n", "1"))
         try:
-            return cls(
-                max_tokens=int(max_value),
-                temperature=float(values.get("temperature", "1.0")),
-                top_p=float(values.get("top_p", "1.0")),
-                top_k=int(values.get("top_k", "-1")),
-                seed=int(values.get("seed", "0")),
-                num_generations=int(generation_count),
-            )
+            parsed = {
+                "max_tokens": int(max_value),
+                "temperature": float(values.get("temperature", "1.0")),
+                "top_p": float(values.get("top_p", "1.0")),
+                "top_k": int(values.get("top_k", "-1")),
+                "seed": int(values.get("seed", "0")),
+                "num_generations": int(generation_count),
+            }
         except ValueError as exc:
             raise RolloutPlanningError("generation values must be numeric") from exc
+        return cls(**parsed)
 
     def as_vllm_sampling(self) -> dict[str, int | float]:
         return {
