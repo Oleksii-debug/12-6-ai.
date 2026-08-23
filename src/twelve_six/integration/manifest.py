@@ -13,6 +13,18 @@ S0_REQUIRED_LANES = frozenset(
     {"D01", "D02", "D03", "D04", "D05", "D06", "D07", "D08"}
 )
 _PASSING_AUDITS = frozenset({"PASS", "PASS_WITH_NOTES"})
+_BEHAVIORAL_WEIGHT_KINDS = frozenset(
+    {
+        "behavioral_weights",
+        "alignment_weights",
+        "instruction_weights",
+        "preference_weights",
+        "rl_weights",
+        "specialization_weights",
+        "refusal_policy_weights",
+        "assistant_personality_weights",
+    }
+)
 
 
 class ComponentDisposition(StrEnum):
@@ -37,6 +49,28 @@ class AuditVerdict(StrEnum):
 
 
 @dataclass(frozen=True, slots=True)
+class AuditEvidence:
+    """Durable audit verdict bound to one exact candidate SHA."""
+
+    auditor_id: str
+    verdict: AuditVerdict
+    candidate_sha: str
+    evidence_ref: str
+
+    def __post_init__(self) -> None:
+        if not self.auditor_id.strip():
+            raise ValueError("auditor_id must be non-empty")
+        if not _GIT_SHA_RE.fullmatch(self.candidate_sha):
+            raise ValueError("audit candidate_sha must be an exact git SHA")
+        if not self.evidence_ref.strip():
+            raise ValueError("audit evidence_ref must be non-empty")
+
+    @property
+    def passes(self) -> bool:
+        return self.verdict.value in _PASSING_AUDITS
+
+
+@dataclass(frozen=True, slots=True)
 class ComponentRef:
     lane: str
     source_sha: str
@@ -44,8 +78,8 @@ class ComponentRef:
     component_kind: str
     pr_number: int | None = None
     artifact_sha256: str | None = None
-    contains_behavioral_weights: bool = False
-    contains_foreign_pretrained_weights: bool = False
+    contains_behavioral_weights: bool | None = None
+    contains_foreign_pretrained_weights: bool | None = None
     notes: str = ""
 
     def __post_init__(self) -> None:
@@ -61,6 +95,12 @@ class ComponentRef:
             self.artifact_sha256
         ):
             raise ValueError("artifact_sha256 must be a lowercase 64-hex digest")
+        for field_name, value in (
+            ("contains_behavioral_weights", self.contains_behavioral_weights),
+            ("contains_foreign_pretrained_weights", self.contains_foreign_pretrained_weights),
+        ):
+            if value is not None and not isinstance(value, bool):
+                raise TypeError(f"{field_name} must be bool or None")
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,8 +113,8 @@ class StageCandidateManifest:
     base_lineage: bool
     components: tuple[ComponentRef, ...]
     candidate_sha: str | None = None
-    audit_a: AuditVerdict = AuditVerdict.NOT_RUN
-    audit_b: AuditVerdict = AuditVerdict.NOT_RUN
+    audit_a: AuditEvidence | None = None
+    audit_b: AuditEvidence | None = None
     required_lanes: frozenset[str] = S0_REQUIRED_LANES
 
     def __post_init__(self) -> None:
@@ -85,6 +125,13 @@ class StageCandidateManifest:
         if self.candidate_sha is not None and not _GIT_SHA_RE.fullmatch(self.candidate_sha):
             raise ValueError("candidate_sha must be an exact git SHA")
 
+        if self.stage.upper() == "S0" and not S0_REQUIRED_LANES.issubset(self.required_lanes):
+            missing_policy_lanes = sorted(S0_REQUIRED_LANES - self.required_lanes)
+            raise ValueError(
+                "S0 required_lanes cannot weaken canonical policy; missing: "
+                + ", ".join(missing_policy_lanes)
+            )
+
         lanes = [component.lane for component in self.components]
         if len(lanes) != len(set(lanes)):
             raise ValueError("manifest contains duplicate lane entries")
@@ -93,19 +140,20 @@ class StageCandidateManifest:
             for component in self.components:
                 if component.disposition is not ComponentDisposition.ACCEPTED:
                     continue
+                if (
+                    component.contains_behavioral_weights is None
+                    or component.contains_foreign_pretrained_weights is None
+                ):
+                    raise ValueError(
+                        "accepted Base components require explicit forbidden-weight classification"
+                    )
                 if component.contains_foreign_pretrained_weights:
                     raise ValueError("foreign pretrained weights cannot enter Base lineage")
-                behavioral_kind = component.component_kind in {
-                    "behavioral_weights",
-                    "alignment_weights",
-                    "instruction_weights",
-                    "preference_weights",
-                    "rl_weights",
-                }
-                if component.lane == "D09" and (
-                    component.contains_behavioral_weights or behavioral_kind
+                if (
+                    component.contains_behavioral_weights
+                    or component.component_kind in _BEHAVIORAL_WEIGHT_KINDS
                 ):
-                    raise ValueError("D09 behavioral/alignment weights cannot enter Base lineage")
+                    raise ValueError("behavioral/alignment/specialization weights cannot enter Base lineage")
 
         gated_statuses = {
             CandidateStatus.CANDIDATE,
@@ -121,16 +169,27 @@ class StageCandidateManifest:
                     f"candidate status missing required accepted lanes: {', '.join(missing)}"
                 )
 
+        audits = tuple(audit for audit in (self.audit_a, self.audit_b) if audit is not None)
+        if audits and self.candidate_sha is None:
+            raise ValueError("audit evidence requires exact candidate_sha")
+        for audit in audits:
+            if audit.candidate_sha != self.candidate_sha:
+                raise ValueError("audit evidence is not bound to this exact candidate_sha")
+
         if self.status in {CandidateStatus.AUDITED_CANDIDATE, CandidateStatus.STABLE}:
-            audits_pass = (
-                self.audit_a.value in _PASSING_AUDITS
-                and self.audit_b.value in _PASSING_AUDITS
-            )
-            if not audits_pass:
+            if self.audit_a is None or self.audit_b is None:
+                raise ValueError(
+                    "AUDITED_CANDIDATE/STABLE require AUDIT-A and AUDIT-B evidence"
+                )
+            if not self.audit_a.passes or not self.audit_b.passes:
                 raise ValueError(
                     "AUDITED_CANDIDATE/STABLE require passing independent "
                     "AUDIT-A and AUDIT-B verdicts"
                 )
+            if self.audit_a.auditor_id == self.audit_b.auditor_id:
+                raise ValueError("AUDIT-A and AUDIT-B must have distinct auditor_id values")
+            if self.audit_a.evidence_ref == self.audit_b.evidence_ref:
+                raise ValueError("AUDIT-A and AUDIT-B must have distinct evidence_ref values")
 
     @classmethod
     def compose(
@@ -142,8 +201,8 @@ class StageCandidateManifest:
         base_lineage: bool,
         components: Iterable[ComponentRef],
         candidate_sha: str | None = None,
-        audit_a: AuditVerdict = AuditVerdict.NOT_RUN,
-        audit_b: AuditVerdict = AuditVerdict.NOT_RUN,
+        audit_a: AuditEvidence | None = None,
+        audit_b: AuditEvidence | None = None,
         required_lanes: frozenset[str] = S0_REQUIRED_LANES,
     ) -> StageCandidateManifest:
         return cls(
@@ -172,4 +231,13 @@ class StageCandidateManifest:
         return not self.missing_required_lanes()
 
     def audits_pass(self) -> bool:
-        return self.audit_a.value in _PASSING_AUDITS and self.audit_b.value in _PASSING_AUDITS
+        return bool(
+            self.audit_a is not None
+            and self.audit_b is not None
+            and self.audit_a.passes
+            and self.audit_b.passes
+            and self.audit_a.candidate_sha == self.candidate_sha
+            and self.audit_b.candidate_sha == self.candidate_sha
+            and self.audit_a.auditor_id != self.audit_b.auditor_id
+            and self.audit_a.evidence_ref != self.audit_b.evidence_ref
+        )
