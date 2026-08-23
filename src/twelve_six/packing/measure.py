@@ -32,21 +32,25 @@ def measure_d03_packaged_split(
     split_path = Path(jsonl_path)
     payload = json.loads(manifest_path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
-        raise ValueError("dataset manifest must contain a JSON object")
+        raise TypeError("dataset manifest must contain a JSON object")
 
     dataset_id = payload.get("dataset_id")
     dataset_identity = payload.get("dataset_identity_sha256")
     outputs = payload.get("outputs")
-    if not isinstance(dataset_id, str) or not dataset_id:
-        raise ValueError("dataset manifest has invalid dataset_id")
+    if not isinstance(dataset_id, str):
+        raise TypeError("dataset manifest dataset_id must be a string")
+    if not dataset_id:
+        raise ValueError("dataset manifest dataset_id must be non-empty")
     if not isinstance(dataset_identity, str):
-        raise ValueError("dataset manifest has invalid dataset_identity_sha256")
+        raise TypeError("dataset manifest dataset_identity_sha256 must be a string")
     if not isinstance(outputs, dict):
-        raise ValueError("dataset manifest has invalid outputs mapping")
+        raise TypeError("dataset manifest outputs must be a mapping")
 
     expected_source_hash = outputs.get(split_path.name)
-    if not isinstance(expected_source_hash, str):
+    if expected_source_hash is None:
         raise ValueError(f"dataset manifest does not bind output {split_path.name!r}")
+    if not isinstance(expected_source_hash, str):
+        raise TypeError("dataset manifest output SHA-256 must be a string")
     actual_source_hash = _sha256_file(split_path)
     if actual_source_hash != expected_source_hash:
         raise ValueError(
