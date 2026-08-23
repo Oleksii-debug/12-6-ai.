@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
 import hashlib
 import json
-from typing import Any, Iterable
+from collections.abc import Iterable
+from dataclasses import asdict, dataclass
+from typing import Any
 
 from .contracts import Split
 
@@ -57,7 +58,7 @@ class DatasetManifest:
         cls,
         dataset_id: str,
         entries: Iterable[ManifestEntry],
-    ) -> "DatasetManifest":
+    ) -> DatasetManifest:
         ordered = tuple(sorted(entries, key=lambda item: item.record_id))
         return cls(dataset_id=dataset_id, entries=ordered)
 
