@@ -35,10 +35,14 @@ def _assignment_ids_for_split(payload: dict[str, object], *, split: str) -> tupl
             raise TypeError(f"dataset manifest assignment {index} must be a mapping")
         record_id = assignment.get("id")
         assigned_split = assignment.get("split")
-        if not isinstance(record_id, str) or not record_id:
-            raise TypeError(f"dataset manifest assignment {index} has invalid id")
-        if not isinstance(assigned_split, str) or not assigned_split:
-            raise TypeError(f"dataset manifest assignment {index} has invalid split")
+        if not isinstance(record_id, str):
+            raise TypeError(f"dataset manifest assignment {index} id must be a string")
+        if not record_id:
+            raise ValueError(f"dataset manifest assignment {index} id must be non-empty")
+        if not isinstance(assigned_split, str):
+            raise TypeError(f"dataset manifest assignment {index} split must be a string")
+        if not assigned_split:
+            raise ValueError(f"dataset manifest assignment {index} split must be non-empty")
         if record_id in seen_ids:
             raise ValueError(f"dataset manifest contains duplicate assignment id {record_id!r}")
         seen_ids.add(record_id)
