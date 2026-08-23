@@ -314,7 +314,7 @@ class Trainer:
         hook is emitted at ``max_steps`` even when it is off cadence. Hook failure is
         explicit because the optimizer step must not be blindly replayed.
         """
-        self.assert_accumulation_boundary()
+        self.assert_checkpoint_safe()
         if checkpoint_every_steps is not None and checkpoint_every_steps <= 0:
             raise ValueError("checkpoint_every_steps must be > 0")
         if checkpoint_every_steps is not None and on_checkpoint is None:
@@ -352,12 +352,12 @@ class Trainer:
                         ) from exc
 
         if self.optimizer_step < self.config.max_steps:
-            self.assert_accumulation_boundary()
+            self.assert_checkpoint_safe()
             raise RuntimeError(
                 "batch iterable exhausted before max_steps: "
                 f"optimizer_step={self.optimizer_step}, max_steps={self.config.max_steps}"
             )
-        self.assert_accumulation_boundary()
+        self.assert_checkpoint_safe()
         return TrainingRunResult(
             start_optimizer_step=start_step,
             end_optimizer_step=self.optimizer_step,
@@ -368,7 +368,7 @@ class Trainer:
         )
 
     def assert_accumulation_boundary(self) -> None:
-        """Fail rather than silently discarding partial accumulated gradients."""
+        """Require no incomplete gradient-accumulation group."""
         remainder = self.micro_step % self.config.gradient_accumulation_steps
         if remainder:
             raise RuntimeError(
@@ -376,9 +376,19 @@ class Trainer:
                 f"{remainder}/{self.config.gradient_accumulation_steps} microbatches pending"
             )
 
-    def state_dict(self) -> TrainerState:
-        """Return checkpoint-safe trainer state only at an accumulation boundary."""
+    def assert_checkpoint_safe(self) -> None:
+        """Require all consumed microbatches to belong to committed optimizer steps."""
         self.assert_accumulation_boundary()
+        expected_micro_steps = self.optimizer_step * self.config.gradient_accumulation_steps
+        if self.micro_step != expected_micro_steps:
+            raise RuntimeError(
+                "trainer has consumed but uncommitted microbatches: "
+                f"micro_step={self.micro_step}, committed_expected={expected_micro_steps}"
+            )
+
+    def state_dict(self) -> TrainerState:
+        """Return checkpoint-safe trainer state only after committed optimizer steps."""
+        self.assert_checkpoint_safe()
         return TrainerState(
             micro_step=self.micro_step,
             optimizer_step=self.optimizer_step,
@@ -403,7 +413,7 @@ class Trainer:
         expected_micro_steps = state.optimizer_step * self.config.gradient_accumulation_steps
         if state.micro_step != expected_micro_steps:
             raise ValueError(
-                "checkpoint is not at a complete accumulation boundary: "
+                "checkpoint is not at a complete committed accumulation boundary: "
                 f"micro_step={state.micro_step}, expected={expected_micro_steps}"
             )
         if state.optimizer_step > self.config.max_steps:
