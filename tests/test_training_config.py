@@ -6,24 +6,26 @@ from twelve_six.training import TrainerConfig
 
 
 @pytest.mark.parametrize(
-    "override",
+    ("override", "error_type"),
     [
-        {"learning_rate": float("nan")},
-        {"weight_decay": float("inf")},
-        {"eps": float("nan")},
-        {"betas": (0.9, float("nan"))},
-        {"max_steps": 1.5},
-        {"warmup_steps": True},
-        {"gradient_accumulation_steps": 0},
-        {"gradient_clip_norm": float("inf")},
-        {"scheduler": "polynomial"},
-        {"precision": "tf32"},
-        {"seed": -1},
-        {"deterministic_algorithms": 1},
+        ({"learning_rate": float("nan")}, ValueError),
+        ({"weight_decay": float("inf")}, ValueError),
+        ({"eps": float("nan")}, ValueError),
+        ({"betas": (0.9, float("nan"))}, ValueError),
+        ({"max_steps": 1.5}, TypeError),
+        ({"warmup_steps": True}, TypeError),
+        ({"gradient_accumulation_steps": 0}, ValueError),
+        ({"gradient_clip_norm": float("inf")}, ValueError),
+        ({"scheduler": "polynomial"}, ValueError),
+        ({"precision": "tf32"}, ValueError),
+        ({"seed": -1}, ValueError),
+        ({"deterministic_algorithms": 1}, TypeError),
     ],
 )
-def test_invalid_training_config_fails_closed(override: dict[str, object]) -> None:
-    with pytest.raises(ValueError):
+def test_invalid_training_config_fails_closed(
+    override: dict[str, object], error_type: type[Exception]
+) -> None:
+    with pytest.raises(error_type):
         TrainerConfig(**override)
 
 
