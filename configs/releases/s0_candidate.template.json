@@ -5,8 +5,8 @@
   "status": "experimental",
   "base_lineage": true,
   "candidate_sha": null,
-  "audit_a": "NOT_RUN",
-  "audit_b": "NOT_RUN",
+  "audit_a": null,
+  "audit_b": null,
   "required_lanes": [
     "D01",
     "D02",
@@ -31,6 +31,7 @@
       "disposition": "held",
       "component_kind": "behavioral_weights",
       "contains_behavioral_weights": true,
+      "contains_foreign_pretrained_weights": false,
       "notes": "Early S0 Base excludes behavioral alignment weights."
     }
   ]
