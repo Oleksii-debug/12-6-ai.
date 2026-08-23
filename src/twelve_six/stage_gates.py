@@ -334,7 +334,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     dump_stage_gate_result(result, args.output)
     if args.fail_on_incomplete and not result["summary"]["evaluation_complete"]:
         return 2
-    if args.fail_on-ineligible and not result["summary"]["promotion_eligible"]:
+    if args.fail_on_ineligible and not result["summary"]["promotion_eligible"]:
         return 3
     return 0
 
