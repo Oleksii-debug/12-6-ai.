@@ -1,5 +1,8 @@
+import json
+from pathlib import Path
+
 from twelve_six.evaluation import stable_text_sha256
-from twelve_six.stage_gates import evaluate_s0_integrated
+from twelve_six.stage_gates import evaluate_s0_integrated, main as stage_gate_main
 
 
 def complete_integrated_evidence() -> dict:
@@ -186,3 +189,19 @@ def test_missing_tokenizer_evidence_is_not_tested():
     assert gate(result, "s0.tokenizer_model_vocab")["status"] == "NOT_TESTED"
     assert result["summary"]["evaluation_complete"] is False
     assert result["summary"]["promotion_eligible"] is False
+
+
+def test_cli_distinguishes_evaluation_completion_from_promotion(tmp_path: Path):
+    evidence_path = tmp_path / "evidence.json"
+    output_path = tmp_path / "result.json"
+    evidence_path.write_text(json.dumps(complete_integrated_evidence()), encoding="utf-8")
+
+    evaluation_exit = stage_gate_main(
+        [str(evidence_path), "--output", str(output_path), "--fail-on-incomplete"]
+    )
+    promotion_exit = stage_gate_main(
+        [str(evidence_path), "--output", str(output_path), "--fail-on-ineligible"]
+    )
+
+    assert evaluation_exit == 0
+    assert promotion_exit == 3
