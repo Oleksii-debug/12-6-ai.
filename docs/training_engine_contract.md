@@ -24,6 +24,27 @@ The model is called as `model(input_ids)` and may return:
 Token telemetry counts only actual optimized targets: shifted non-ignored tokens for
 raw labels, or non-ignored targets selected by `loss_mask` for aligned packed pairs.
 
+## Exact gradient accumulation
+
+Accumulation is normalized by **valid target tokens**, not by the number of
+microbatches. This matters for D04 padded tails and any future variable-token batch.
+For each accumulation window the trainer:
+
+1. backpropagates each microbatch's mean loss multiplied by its valid-token count;
+2. accumulates those loss-sum gradients without stepping;
+3. unscales once at the optimizer boundary;
+4. divides accumulated gradients by the exact total valid-token count;
+5. measures the pre-clip normalized gradient norm, clips if configured, then steps.
+
+This is equivalent to one combined batch under the same token-level mean objective,
+even when microbatches have different `loss_mask` cardinalities. Tests compare the
+resulting AdamW parameter update directly against a single combined batch.
+
+`StepMetrics.loss` is the real mean loss of the current microbatch.
+`StepMetrics.update_loss` is populated on optimizer boundaries with the exact
+token-weighted mean loss of the full accumulation window. `learning_rate` is the rate
+actually applied to that optimizer update, not the scheduler's next-step rate.
+
 ## Training loop and recovery
 
 `Trainer.run()` consumes an arbitrary iterable of batch mappings until the configured
@@ -43,24 +64,26 @@ A checkpoint-safe state must satisfy both conditions:
 - no partial accumulation group is pending; and
 - `micro_step == optimizer_step * gradient_accumulation_steps`.
 
-The second invariant is important after failures: a NaN/Inf gradient can consume a
-microbatch without committing an optimizer step. Such a state is deliberately not
-serializable. D05's trainer adapter can safely call `Trainer.state_dict()` only when
-these invariants hold.
+The trainer also refuses checkpointing while an optimizer/scheduler update has an
+ambiguous incomplete outcome or while accumulation statistics are pending. D05's
+trainer adapter can therefore serialize `Trainer.state_dict()` without silently
+losing accumulated gradients.
 
 ## Numerical safety invariants
 
 - Loss must be finite before backward proceeds.
-- Gradients must be finite before an optimizer update.
-- Gradient accumulation divides loss by the exact configured accumulation count.
+- Gradients must be finite after unscale and before an optimizer update.
+- Gradient accumulation is exact over valid target tokens.
 - An optimizer/scheduler step occurs only at an accumulation boundary.
 - Partial or failed accumulated gradients cannot be checkpointed as completed state.
-- Gradient clipping happens after unscale and before the optimizer update.
-- Telemetry reports real loss, learning rate, pre-clip gradient norm, token count,
-  micro-step, optimizer-step, and whether the optimizer actually stepped.
+- Gradient clipping happens after unscale and token normalization, before the update.
+- Telemetry reports real loss, update loss, applied learning rate, pre-clip gradient
+  norm, token count, micro-step, optimizer-step, and whether the optimizer stepped.
 - `state_dict` exposes trainer-owned optimizer/scheduler/scaler/counter state for
   D05 serialization and deep-copies mutable optimizer/scheduler state.
 - Resume refuses trainer-config mismatch and inconsistent/corrupt counters.
+- Warmup scheduling starts at `1 / warmup_steps` of base LR and reaches base LR on
+  the final warmup update without an off-by-one duplicate first rate.
 
 ## Precision
 
