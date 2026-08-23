@@ -18,6 +18,7 @@ from .core import (
     verify_checkpoint,
 )
 from .hf_export import export_hf_directory
+from .run_binding import bind_checkpoint_identity
 from .trainer_adapter import load_trainer_checkpoint, save_trainer_checkpoint
 
 __all__ = [
@@ -27,6 +28,7 @@ __all__ = [
     "CheckpointIntegrityError",
     "LoadResult",
     "assert_identity",
+    "bind_checkpoint_identity",
     "capture_rng_state",
     "detect_git_sha",
     "environment_snapshot",
