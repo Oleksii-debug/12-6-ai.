@@ -25,6 +25,9 @@ def load_backend(loader_spec: str, checkpoint: Path) -> InferenceBackend:
     backend = cast(BackendLoader, loader)(checkpoint)
     if not isinstance(backend, InferenceBackend):
         raise TypeError(
-            "backend must provide eos_token_id, encode(), decode(), and next_token_logits()"
+            "backend must provide eos_token_id, max_context_tokens, encode(), decode(), "
+            "and next_token_logits()"
         )
+    if not isinstance(backend.max_context_tokens, int) or backend.max_context_tokens < 1:
+        raise ValueError("backend max_context_tokens must be a positive integer")
     return backend
