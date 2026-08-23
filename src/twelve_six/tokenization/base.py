@@ -27,9 +27,9 @@ class TokenizerIdentity:
 
 
 class TokenizerProtocol(Protocol):
-    pad_id: int
-    bos_id: int
-    eos_id: int
+    pad_id: int | None
+    bos_id: int | None
+    eos_id: int | None
     vocab_size: int
     version: str
 
