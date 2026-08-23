@@ -268,10 +268,25 @@ def batch_examples(
         yield tuple(batch)
 
 
+def _aligned_target_ids(example: PackedCausalExample) -> tuple[int, ...]:
+    return tuple(
+        example.labels[index + 1] if keep else DEFAULT_IGNORE_INDEX
+        for index, keep in enumerate(example.loss_mask)
+    )
+
+
 def collate_rows(
     examples: Sequence[PackedCausalExample],
+    *,
+    target_mode: str = "labels",
 ) -> dict[str, tuple[tuple[int, ...], ...]]:
-    """Return tensor-ready rows with D02-native `input_ids` and `labels` keys."""
+    """Return tensor-ready rows for either D02-supported causal target convention.
+
+    ``labels`` emits raw/unshifted labels and deliberately omits ``loss_mask``;
+    D02 performs the one-token shift and uses ``-100`` tail labels as ignore
+    positions. ``target_ids`` emits already-aligned next-token targets plus the
+    binary ``loss_mask`` expected by D02's direct causal-pair loss.
+    """
     if not examples:
         raise ValueError("examples must not be empty")
     split = examples[0].split
@@ -280,12 +295,19 @@ def collate_rows(
     size = len(examples[0].input_ids)
     if any(len(example.input_ids) != size for example in examples):
         raise ValueError("all examples in a batch must have the same sequence length")
-    return {
+
+    rows = {
         "input_ids": tuple(example.input_ids for example in examples),
-        "labels": tuple(example.labels for example in examples),
         "attention_mask": tuple(example.attention_mask for example in examples),
-        "loss_mask": tuple(example.loss_mask for example in examples),
     }
+    if target_mode == "labels":
+        rows["labels"] = tuple(example.labels for example in examples)
+        return rows
+    if target_mode == "target_ids":
+        rows["target_ids"] = tuple(_aligned_target_ids(example) for example in examples)
+        rows["loss_mask"] = tuple(example.loss_mask for example in examples)
+        return rows
+    raise ValueError("target_mode must be 'labels' or 'target_ids'")
 
 
 def deterministic_shard(

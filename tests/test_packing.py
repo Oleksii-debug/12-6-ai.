@@ -113,7 +113,7 @@ def test_split_mixing_fails_closed() -> None:
         list(iter_packed_examples(records, tokenizer, expected_split="train"))
 
 
-def test_batching_and_collation_keep_tail_by_default() -> None:
+def test_batching_and_collation_support_both_d02_target_conventions() -> None:
     tokenizer = ByteTokenizer()
     records = [TextRecord(str(i), "abcd", "train") for i in range(5)]
     examples = list(
@@ -127,10 +127,24 @@ def test_batching_and_collation_keep_tail_by_default() -> None:
     batches = list(batch_examples(examples, batch_size=4))
     assert sum(len(batch) for batch in batches) == len(examples)
 
-    rows = collate_rows(batches[0])
-    assert set(rows) == {"input_ids", "labels", "attention_mask", "loss_mask"}
-    assert len(rows["input_ids"]) == len(batches[0])
-    assert len(rows["input_ids"][0]) == 4
+    raw_rows = collate_rows(batches[0])
+    assert set(raw_rows) == {"input_ids", "labels", "attention_mask"}
+    assert len(raw_rows["input_ids"]) == len(batches[0])
+    assert len(raw_rows["input_ids"][0]) == 4
+
+    aligned_rows = collate_rows(batches[0], target_mode="target_ids")
+    assert set(aligned_rows) == {
+        "input_ids",
+        "target_ids",
+        "attention_mask",
+        "loss_mask",
+    }
+    expected_targets = (*tokenizer.encode("bcd"), -100)
+    assert aligned_rows["target_ids"][0] == expected_targets
+    assert aligned_rows["loss_mask"][0] == (1, 1, 1, 0)
+
+    with pytest.raises(ValueError, match="target_mode"):
+        collate_rows(batches[0], target_mode="other")
 
 
 def test_deterministic_sharding_is_disjoint_and_complete() -> None:
