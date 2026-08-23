@@ -38,15 +38,24 @@ def estimate_training_memory(
     activation_bytes: int = 2,
     activation_multiplier: float = 8.0,
 ) -> MemoryEstimate:
-    """Estimate per-rank memory using an explicit Adam-like state model.
+    """Estimate per-rank memory using an explicit dense Adam-like state model.
 
     Defaults approximate bf16/fp16 parameters and gradients, fp32 master weights, and two fp32
     Adam moments. Activation memory is a coarse B*S*H*L coefficient. It must be replaced by
     measured profiler evidence before a capacity claim or paid run.
+
+    EP>1 fails closed because total_parameters alone cannot distinguish replicated dense weights
+    from expert-only weights. A future MoE-aware estimator must receive that decomposition.
     """
 
     model.validate()
     plan.validate()
+    if plan.expert_parallel > 1:
+        raise ValueError(
+            "generic memory estimator does not model MoE dense/expert parameter partition; "
+            "use expert_parallel=1 or a future MoE-aware estimator"
+        )
+
     coefficients = (
         parameter_bytes,
         gradient_bytes,
