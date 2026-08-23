@@ -66,6 +66,34 @@ def test_posttraining_experiment_may_read_base_but_cannot_output_base() -> None:
     )
     assert experiment.input_checkpoint.lineage is LineageKind.BASE
     assert experiment.output_lineage is LineageKind.POSTTRAIN
+    assert experiment.training_enabled is False
+
+
+def test_behavioral_training_requires_explicit_owner_authorization_reference() -> None:
+    with pytest.raises(ValueError, match="behavioral_training_authorization_id"):
+        PostTrainingExperiment(
+            experiment_id="exp-sft",
+            algorithm="sft",
+            backend_id="trl",
+            input_checkpoint=_base_checkpoint(),
+            output_lineage=LineageKind.POSTTRAIN,
+            dataset_manifest_sha256=HEX_C,
+            seed=7,
+            training_enabled=True,
+        )
+
+    experiment = PostTrainingExperiment(
+        experiment_id="exp-sft-authorized",
+        algorithm="sft",
+        backend_id="trl",
+        input_checkpoint=_base_checkpoint(),
+        output_lineage=LineageKind.POSTTRAIN,
+        dataset_manifest_sha256=HEX_C,
+        seed=7,
+        training_enabled=True,
+        behavioral_training_authorization_id="owner-decision-123",
+    )
+    assert experiment.training_enabled is True
 
 
 def test_material_paid_compute_requires_external_authorization_reference() -> None:
@@ -89,6 +117,27 @@ def test_synthetic_provenance_requires_generator_identity() -> None:
             content_sha256=HEX_A,
             synthetic=True,
         )
+
+
+def test_external_synthetic_generator_requires_owner_policy_reference() -> None:
+    with pytest.raises(ValueError, match="owner_policy_ref"):
+        SyntheticProvenance(
+            source_id="external-synthetic-1",
+            content_sha256=HEX_A,
+            synthetic=True,
+            generator_id="external-teacher",
+            external_generator=True,
+        )
+
+    provenance = SyntheticProvenance(
+        source_id="external-synthetic-2",
+        content_sha256=HEX_A,
+        synthetic=True,
+        generator_id="external-teacher",
+        external_generator=True,
+        owner_policy_ref="owner-policy-456",
+    )
+    assert provenance.external_generator is True
 
 
 def test_dataset_manifest_hash_is_order_independent() -> None:
