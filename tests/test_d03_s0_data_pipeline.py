@@ -6,12 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from twelve_six.data.pipeline import (
-    DataContractError,
-    PipelineConfig,
-    build_dataset,
-    language_id,
-)
+from twelve_six.data import pipeline
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -25,7 +20,7 @@ def _sha256(path: Path) -> str:
 
 
 def test_committed_s0_package_rebuild_is_byte_deterministic(tmp_path: Path) -> None:
-    manifest = build_dataset(SOURCE_REGISTRY, CONTAMINATION_REGISTRY, tmp_path)
+    manifest = pipeline.build_dataset(SOURCE_REGISTRY, CONTAMINATION_REGISTRY, tmp_path)
     assert manifest["stats"]["input_documents"] == 12
     assert manifest["stats"]["train_documents"] == 10
     assert manifest["stats"]["validation_documents"] == 2
@@ -57,8 +52,8 @@ def test_source_registry_hash_mismatch_fails_closed(tmp_path: Path) -> None:
     bad_registry = registry_dir / "source_registry.json"
     bad_registry.write_text(json.dumps(registry), encoding="utf-8")
 
-    with pytest.raises(DataContractError, match="immutable source hash mismatch"):
-        build_dataset(bad_registry, CONTAMINATION_REGISTRY, tmp_path / "out")
+    with pytest.raises(pipeline.DataContractError, match="immutable source hash mismatch"):
+        pipeline.build_dataset(bad_registry, CONTAMINATION_REGISTRY, tmp_path / "out")
 
 
 def test_synthetic_source_requires_explicit_kind(tmp_path: Path) -> None:
@@ -67,8 +62,8 @@ def test_synthetic_source_requires_explicit_kind(tmp_path: Path) -> None:
     bad_registry = tmp_path / "source_registry.json"
     bad_registry.write_text(json.dumps(registry), encoding="utf-8")
 
-    with pytest.raises(DataContractError, match="synthetic_kind"):
-        build_dataset(bad_registry, CONTAMINATION_REGISTRY, tmp_path / "out")
+    with pytest.raises(pipeline.DataContractError, match="synthetic_kind"):
+        pipeline.build_dataset(bad_registry, CONTAMINATION_REGISTRY, tmp_path / "out")
 
 
 def test_benchmark_source_purpose_is_rejected(tmp_path: Path) -> None:
@@ -77,8 +72,8 @@ def test_benchmark_source_purpose_is_rejected(tmp_path: Path) -> None:
     bad_registry = tmp_path / "source_registry.json"
     bad_registry.write_text(json.dumps(registry), encoding="utf-8")
 
-    with pytest.raises(DataContractError, match="benchmark/evaluation"):
-        build_dataset(bad_registry, CONTAMINATION_REGISTRY, tmp_path / "out")
+    with pytest.raises(pipeline.DataContractError, match="benchmark/evaluation"):
+        pipeline.build_dataset(bad_registry, CONTAMINATION_REGISTRY, tmp_path / "out")
 
 
 def test_contamination_hash_is_filtered(tmp_path: Path) -> None:
@@ -107,7 +102,7 @@ def test_contamination_hash_is_filtered(tmp_path: Path) -> None:
     registry_path.parent.mkdir(parents=True, exist_ok=True)
     registry_path.write_text(json.dumps(registry), encoding="utf-8")
 
-    manifest = build_dataset(registry_path, CONTAMINATION_REGISTRY, tmp_path / "out")
+    manifest = pipeline.build_dataset(registry_path, CONTAMINATION_REGISTRY, tmp_path / "out")
     assert manifest["stats"]["contamination_rejected"] == 1
     assert manifest["stats"]["accepted_documents"] == 2
 
@@ -154,7 +149,7 @@ def test_pii_email_is_filtered(tmp_path: Path) -> None:
     registry_path.parent.mkdir(parents=True, exist_ok=True)
     registry_path.write_text(json.dumps(registry), encoding="utf-8")
 
-    manifest = build_dataset(registry_path, CONTAMINATION_REGISTRY, tmp_path / "out")
+    manifest = pipeline.build_dataset(registry_path, CONTAMINATION_REGISTRY, tmp_path / "out")
     assert manifest["stats"]["quality_rejected"] == 1
     assert manifest["stats"]["accepted_documents"] == 2
 
@@ -190,8 +185,8 @@ def test_exact_and_near_dedup_stats(tmp_path: Path) -> None:
     registry_path.parent.mkdir(parents=True, exist_ok=True)
     registry_path.write_text(json.dumps(registry), encoding="utf-8")
 
-    config = PipelineConfig(near_duplicate_threshold=0.70)
-    manifest = build_dataset(
+    config = pipeline.PipelineConfig(near_duplicate_threshold=0.70)
+    manifest = pipeline.build_dataset(
         registry_path, CONTAMINATION_REGISTRY, tmp_path / "out", config=config
     )
     assert manifest["stats"]["exact_duplicates_removed"] == 1
@@ -200,5 +195,7 @@ def test_exact_and_near_dedup_stats(tmp_path: Path) -> None:
 
 
 def test_language_id_covers_s0_languages() -> None:
-    assert language_id("This English sentence contains enough alphabetic characters.") == "en"
-    assert language_id("Це українське речення містить достатньо літер для визначення мови.") == "uk"
+    assert pipeline.language_id("This English sentence contains enough alphabetic characters.") == "en"
+    assert pipeline.language_id(
+        "Це українське речення містить достатньо літер для визначення мови."
+    ) == "uk"
