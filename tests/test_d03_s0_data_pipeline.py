@@ -8,7 +8,6 @@ import pytest
 
 from twelve_six.data import pipeline
 
-
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE_REGISTRY = ROOT / "data/s0/source_registry.json"
 CONTAMINATION_REGISTRY = ROOT / "data/s0/contamination_registry.json"
