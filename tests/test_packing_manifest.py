@@ -1,0 +1,146 @@
+from __future__ import annotations
+
+import hashlib
+import json
+
+import pytest
+
+from twelve_six.packing import TextRecord, measure_packed_split
+from twelve_six.packing.measure import main, measure_d03_packaged_split
+from twelve_six.tokenization import BYTE_TOKENIZER_HASH, ByteTokenizer
+
+
+def test_measure_packed_split_binds_exact_identities_and_counts() -> None:
+    manifest = measure_packed_split(
+        [TextRecord("a", "abc", "train"), TextRecord("b", "Ж", "train")],
+        ByteTokenizer(),
+        dataset_id="fixture-v1",
+        dataset_identity_sha256="a" * 64,
+        source_jsonl_sha256="b" * 64,
+        split="train",
+        sequence_length=4,
+    )
+
+    assert manifest.dataset_id == "fixture-v1"
+    assert manifest.tokenizer_config_sha256 == BYTE_TOKENIZER_HASH
+    assert manifest.document_count == 2
+    assert manifest.codepoint_count == 4
+    assert manifest.utf8_byte_count == 5
+    assert manifest.token_count == 5
+    assert manifest.causal_loss_token_count == 3
+    assert manifest.packed_example_count == 2
+    assert manifest.packed_input_token_count == 5
+    assert manifest.packed_capacity_token_count == 8
+    assert manifest.masked_fill_position_count == 3
+    assert manifest.documents_without_causal_pair == 0
+    assert manifest.fertility_ratio == (5, 4)
+    assert manifest.packed_input_utilization_ratio == (5, 8)
+    assert len(manifest.manifest_sha256) == 64
+
+
+def test_measure_packed_split_reports_documents_without_causal_pair() -> None:
+    manifest = measure_packed_split(
+        [TextRecord("empty", "", "validation"), TextRecord("one", "A", "validation")],
+        ByteTokenizer(),
+        dataset_id="fixture-v1",
+        dataset_identity_sha256="a" * 64,
+        source_jsonl_sha256="b" * 64,
+        split="validation",
+        sequence_length=8,
+    )
+    assert manifest.document_count == 2
+    assert manifest.documents_without_causal_pair == 2
+    assert manifest.packed_example_count == 0
+    assert manifest.causal_loss_token_count == 0
+
+
+def test_d03_measurement_verifies_source_hash_and_preserves_split(tmp_path) -> None:
+    split_path = tmp_path / "train.jsonl"
+    split_text = "\n".join(
+        [
+            json.dumps({"id": "d1", "text": "alpha"}, separators=(",", ":")),
+            json.dumps({"id": "d2", "text": "βeta"}, separators=(",", ":")),
+        ]
+    ) + "\n"
+    split_path.write_text(split_text, encoding="utf-8")
+    source_hash = hashlib.sha256(split_path.read_bytes()).hexdigest()
+
+    dataset_manifest_path = tmp_path / "manifest.json"
+    dataset_manifest_path.write_text(
+        json.dumps(
+            {
+                "dataset_id": "fixture-v1",
+                "dataset_identity_sha256": "c" * 64,
+                "outputs": {"train.jsonl": source_hash},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    measured = measure_d03_packaged_split(
+        dataset_manifest_path,
+        split_path,
+        split="train",
+    )
+    assert measured.dataset_id == "fixture-v1"
+    assert measured.source_jsonl_sha256 == source_hash
+    assert measured.document_count == 2
+    assert measured.split == "train"
+
+
+def test_d03_measurement_fails_closed_on_source_hash_mismatch(tmp_path) -> None:
+    split_path = tmp_path / "validation.jsonl"
+    split_path.write_text('{"id":"d1","text":"valid"}\n', encoding="utf-8")
+    dataset_manifest_path = tmp_path / "manifest.json"
+    dataset_manifest_path.write_text(
+        json.dumps(
+            {
+                "dataset_id": "fixture-v1",
+                "dataset_identity_sha256": "d" * 64,
+                "outputs": {"validation.jsonl": "0" * 64},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="hash mismatch"):
+        measure_d03_packaged_split(
+            dataset_manifest_path,
+            split_path,
+            split="validation",
+        )
+
+
+def test_measure_cli_prints_machine_readable_manifest(tmp_path, capsys) -> None:
+    split_path = tmp_path / "train.jsonl"
+    split_path.write_text('{"id":"d1","text":"abcdef"}\n', encoding="utf-8")
+    source_hash = hashlib.sha256(split_path.read_bytes()).hexdigest()
+    dataset_manifest_path = tmp_path / "manifest.json"
+    dataset_manifest_path.write_text(
+        json.dumps(
+            {
+                "dataset_id": "fixture-v1",
+                "dataset_identity_sha256": "e" * 64,
+                "outputs": {"train.jsonl": source_hash},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert (
+        main(
+            [
+                "--dataset-manifest",
+                str(dataset_manifest_path),
+                "--jsonl",
+                str(split_path),
+                "--split",
+                "train",
+            ]
+        )
+        == 0
+    )
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["dataset_id"] == "fixture-v1"
+    assert payload["tokenizer_config_sha256"] == BYTE_TOKENIZER_HASH
+    assert len(payload["manifest_sha256"]) == 64

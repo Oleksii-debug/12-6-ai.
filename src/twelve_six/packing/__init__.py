@@ -18,6 +18,7 @@ from .core import (
     packing_config_hash,
 )
 from .jsonl import JsonlRecordError, load_jsonl_records, records_from_jsonl_lines
+from .manifest import PackedSplitManifest, measure_packed_split
 
 __all__ = [
     "DEFAULT_FILL_TOKEN_ID",
@@ -28,6 +29,7 @@ __all__ = [
     "DeterministicMixtureSampler",
     "JsonlRecordError",
     "PackedCausalExample",
+    "PackedSplitManifest",
     "SplitMixError",
     "TextRecord",
     "batch_examples",
@@ -36,6 +38,7 @@ __all__ = [
     "deterministic_shard",
     "iter_packed_examples",
     "load_jsonl_records",
+    "measure_packed_split",
     "packing_config_hash",
     "records_from_jsonl_lines",
 ]
