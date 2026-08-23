@@ -201,12 +201,12 @@ class Trainer:
         if self._failure_reason is not None:
             raise TrainingStateInvalidError(
                 "trainer state is invalid after a failed training transition; "
-                f"restore a verified checkpoint before continuing: {self._failure_reason}"
+                f"construct a fresh trainer and restore a verified checkpoint: {self._failure_reason}"
             )
         if self._update_incomplete:
             raise TrainingStateInvalidError(
                 "optimizer/scheduler update has ambiguous committed state; "
-                "restore a verified checkpoint before continuing"
+                "construct a fresh trainer and restore a verified checkpoint"
             )
 
     def _prepare_batch(
@@ -457,7 +457,18 @@ class Trainer:
         )
 
     def load_state_dict(self, state: TrainerState | Mapping[str, Any]) -> None:
-        """Restore optimizer/scheduler/scaler counters without touching model weights."""
+        """Restore checkpoint state into a clean trainer instance.
+
+        A trainer that has entered a poisoned or ambiguous state cannot be repaired
+        in place because trainer-only state cannot prove that model weights were also
+        restored. Construct a fresh Trainer around the verified checkpoint model and
+        then load the trainer state.
+        """
+        if self._failure_reason is not None or self._update_incomplete:
+            raise TrainingStateInvalidError(
+                "failed trainer cannot be repaired in place; construct a fresh trainer "
+                "and restore the verified model + trainer checkpoint"
+            )
         if isinstance(state, Mapping):
             state = TrainerState(**state)
 
