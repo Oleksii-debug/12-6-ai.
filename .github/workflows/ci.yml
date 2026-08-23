@@ -25,6 +25,7 @@ jobs:
           python-version: "3.11.16"
       - run: python -m pip --version
       - run: python -m pip install --disable-pip-version-check -e .[dev]
+      - run: python tools/check_repo_policy.py
       - run: ruff check src tests tools
       - run: pytest -q
       - run: python tools/validate_stage_candidate.py configs/releases/s0_candidate.template.json
