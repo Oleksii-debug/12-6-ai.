@@ -9,11 +9,14 @@ import pytest
 from twelve_six.tokenization import (
     BYTE_TOKENIZER_HASH,
     BYTE_TOKENIZER_VERSION,
+    BYTE_VOCAB_HASH,
     ByteTokenizer,
     TokenizerCompatibilityError,
     canonical_config_json,
+    canonical_vocab_json,
     require_tokenizer_identity,
     tokenizer_config_hash,
+    vocab_hash,
 )
 
 
@@ -64,6 +67,18 @@ def test_identity_matches_repository_config() -> None:
     assert tokenizer.identity.to_dict()["config_sha256"] == BYTE_TOKENIZER_HASH
 
 
+def test_vocabulary_identity_freezes_every_raw_byte_id_meaning() -> None:
+    tokenizer = ByteTokenizer()
+    payload = json.loads(canonical_vocab_json())
+
+    assert len(payload["entries"]) == 256
+    assert payload["entries"][0] == {"id": 0, "token_hex": "00"}
+    assert payload["entries"][255] == {"id": 255, "token_hex": "ff"}
+    assert vocab_hash() == BYTE_VOCAB_HASH
+    assert BYTE_VOCAB_HASH == "905ed40bb42cc4d550e228ff5f24158d504b38e8ed5974dfa3077bd5867ad571"
+    assert tokenizer.identity.vocab_sha256 == BYTE_VOCAB_HASH
+
+
 def test_fertility_counts_utf8_bytes_per_code_point() -> None:
     tokenizer = ByteTokenizer()
     assert tokenizer.fertility("") == 0.0
@@ -78,6 +93,7 @@ def test_checkpoint_identity_guard_fails_closed() -> None:
         expected_version=BYTE_TOKENIZER_VERSION,
         expected_config_sha256=BYTE_TOKENIZER_HASH,
         expected_vocab_size=256,
+        expected_vocab_sha256=BYTE_VOCAB_HASH,
     )
     with pytest.raises(TokenizerCompatibilityError):
         require_tokenizer_identity(
@@ -85,4 +101,13 @@ def test_checkpoint_identity_guard_fails_closed() -> None:
             expected_version="other",
             expected_config_sha256=BYTE_TOKENIZER_HASH,
             expected_vocab_size=256,
+            expected_vocab_sha256=BYTE_VOCAB_HASH,
+        )
+    with pytest.raises(TokenizerCompatibilityError, match="vocab_sha256"):
+        require_tokenizer_identity(
+            tokenizer,
+            expected_version=BYTE_TOKENIZER_VERSION,
+            expected_config_sha256=BYTE_TOKENIZER_HASH,
+            expected_vocab_size=256,
+            expected_vocab_sha256="0" * 64,
         )
