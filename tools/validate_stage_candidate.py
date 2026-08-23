@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Validate a stage-candidate manifest without mutating repository state."""
 
 from __future__ import annotations
@@ -30,7 +29,9 @@ def load_manifest(path: Path) -> StageCandidateManifest:
         )
         for item in raw.get("components", [])
     )
-    required = frozenset(raw.get("required_lanes", ["D01", "D02", "D03", "D04", "D05", "D06", "D07"]))
+    required = frozenset(
+        raw.get("required_lanes", ["D01", "D02", "D03", "D04", "D05", "D06", "D07"])
+    )
     return StageCandidateManifest.compose(
         stage=raw["stage"],
         integration_anchor_sha=raw["integration_anchor_sha"],
