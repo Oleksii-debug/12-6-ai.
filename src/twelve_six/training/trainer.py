@@ -66,7 +66,7 @@ class TrainerState:
 def _lr_lambda(config: TrainerConfig):
     def factor(step: int) -> float:
         if config.warmup_steps and step < config.warmup_steps:
-            return max(step, 1) / config.warmup_steps
+            return (step + 1) / config.warmup_steps
         if config.scheduler == "constant":
             return 1.0
         if config.scheduler == "linear_warmup":
@@ -269,6 +269,7 @@ class Trainer:
 
         should_step = self.micro_step % self.config.gradient_accumulation_steps == 0
         grad_norm_value: float | None = None
+        learning_rate = float(self.optimizer.param_groups[0]["lr"])
 
         if should_step:
             self.scaler.unscale_(self.optimizer)
@@ -289,7 +290,6 @@ class Trainer:
             if self.scheduler is not None:
                 self.scheduler.step()
 
-        learning_rate = float(self.optimizer.param_groups[0]["lr"])
         return StepMetrics(
             micro_step=self.micro_step,
             optimizer_step=self.optimizer_step,
