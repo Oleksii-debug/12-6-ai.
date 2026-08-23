@@ -5,8 +5,9 @@
   "status": "experimental",
   "base_lineage": true,
   "candidate_sha": null,
-  "audit_a": "NOT_RUN",
-  "audit_b": "NOT_RUN",
+  "audit_a": null,
+  "audit_b": null,
+  "release_artifact": null,
   "required_lanes": [
     "D01",
     "D02",
@@ -23,15 +24,16 @@
       "source_sha": "f2e94c7212888cdb960bb66154d56d210e9b27ab",
       "disposition": "held",
       "component_kind": "scale_interface",
-      "notes": "Accept selectively only when relevant S0 interface evidence exists."
+      "notes": "Accept only with exact source-head CI evidence and candidate ancestry."
     },
     {
       "lane": "D09",
       "source_sha": "f2e94c7212888cdb960bb66154d56d210e9b27ab",
-      "disposition": "held",
+      "disposition": "rejected",
       "component_kind": "behavioral_weights",
       "contains_behavioral_weights": true,
-      "notes": "Early S0 Base excludes behavioral alignment weights."
+      "contains_foreign_pretrained_weights": false,
+      "notes": "Early S0 Base rejects behavioral alignment weights."
     }
   ]
 }
