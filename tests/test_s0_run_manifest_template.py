@@ -1,5 +1,5 @@
-from pathlib import Path
 import json
+from pathlib import Path
 
 
 MANIFEST_PATH = Path("configs/runs/s0_10k.local_cpu.example.json")
