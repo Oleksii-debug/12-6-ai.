@@ -15,5 +15,6 @@ jobs:
           python-version: "3.11"
       - run: python -m pip install --upgrade pip
       - run: pip install -e .[dev]
-      - run: ruff check src tests
+      - run: ruff check src tests tools
       - run: pytest -q
+      - run: python tools/validate_stage_candidate.py configs/releases/s0_candidate.template.json
