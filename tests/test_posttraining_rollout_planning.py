@@ -47,18 +47,21 @@ def _request(**generation: str) -> RolloutRequest:
 
 
 def test_semantic_version_parse_and_order() -> None:
-    assert SemanticVersion.parse("0.26.0") < SemanticVersion.parse("0.27.1")
+    assert SemanticVersion.parse("0.23.0") < SemanticVersion.parse("0.27.1")
     assert str(SemanticVersion.parse("1.10.0")) == "1.10.0"
     with pytest.raises(ValueError, match="invalid semantic version"):
-        SemanticVersion.parse("v0.26")
+        SemanticVersion.parse("v0.23")
 
 
 def test_snapshot_selects_joint_version_instead_of_latest() -> None:
     snapshot = CURRENT_RUNTIME_COMPATIBILITY
+    assert snapshot.snapshot_id.endswith("-r2")
     assert str(snapshot.trl_version) == "1.10.0"
     assert str(snapshot.verl_version) == "0.9.0"
     assert str(snapshot.vllm_latest_version) == "0.27.1"
-    assert str(snapshot.vllm_selected_version) == "0.26.0"
+    assert str(snapshot.vllm_selected_version) == "0.23.0"
+    assert str(snapshot.trl_vllm_min) == "0.16.0"
+    assert str(snapshot.trl_vllm_max) == "0.23.0"
     assert snapshot.selected_is_jointly_supported()
     assert not snapshot.latest_is_jointly_supported()
 
@@ -69,6 +72,8 @@ def test_checked_in_compatibility_snapshot_matches_code_contract() -> None:
     snapshot = CURRENT_RUNTIME_COMPATIBILITY
     assert config["snapshot_id"] == snapshot.snapshot_id
     assert config["trl"]["observed_version"] == str(snapshot.trl_version)
+    assert config["trl"]["vllm_supported_min"] == str(snapshot.trl_vllm_min)
+    assert config["trl"]["vllm_supported_max"] == str(snapshot.trl_vllm_max)
     assert config["verl"]["observed_version"] == str(snapshot.verl_version)
     assert config["vllm"]["latest_observed_version"] == str(snapshot.vllm_latest_version)
     assert config["vllm"]["selected_joint_compatibility_version"] == str(
@@ -102,14 +107,15 @@ def test_sampling_plan_preserves_range_validation_diagnostics() -> None:
         SamplingPlan.from_mapping({"max_tokens": "eight"})
 
 
-def test_trl_dry_run_rejects_latest_vllm_outside_declared_range() -> None:
-    with pytest.raises(RolloutPlanningError, match="does not support vLLM 0.27.1"):
-        build_dry_run_rollout_plan(
-            _request(),
-            _checkpoint(),
-            RolloutTarget.TRL_VLLM_SERVER,
-            vllm_version=SemanticVersion.parse("0.27.1"),
-        )
+def test_trl_dry_run_rejects_versions_above_declared_range() -> None:
+    for version in ("0.24.0", "0.26.0", "0.27.1"):
+        with pytest.raises(RolloutPlanningError, match=f"does not support vLLM {version}"):
+            build_dry_run_rollout_plan(
+                _request(),
+                _checkpoint(),
+                RolloutTarget.TRL_VLLM_SERVER,
+                vllm_version=SemanticVersion.parse(version),
+            )
 
 
 def test_trl_dry_run_uses_selected_joint_compatibility_version() -> None:
@@ -120,7 +126,7 @@ def test_trl_dry_run_uses_selected_joint_compatibility_version() -> None:
     )
     payload = plan.normalized_payload()
     assert payload["execution_enabled"] is False
-    assert payload["runtime"] == {"trl": "1.10.0", "vllm": "0.26.0"}
+    assert payload["runtime"] == {"trl": "1.10.0", "vllm": "0.23.0"}
     assert payload["checkpoint"]["lineage"] == "base"
     assert payload["sampling"]["max_tokens"] == 32
 
@@ -132,7 +138,7 @@ def test_verl_dry_run_records_versioned_rollout_contract() -> None:
         RolloutTarget.VERL_VLLM,
     )
     payload = plan.normalized_payload()
-    assert payload["runtime"] == {"verl": "0.9.0", "vllm": "0.26.0"}
+    assert payload["runtime"] == {"verl": "0.9.0", "vllm": "0.23.0"}
     assert payload["sampling"]["n"] == 2
 
 
@@ -163,7 +169,7 @@ def test_dry_run_plan_cannot_be_converted_into_execution_declaration() -> None:
             request=_request(),
             checkpoint=_checkpoint(),
             sampling=SamplingPlan.from_mapping(_request().generation),
-            vllm_version=SemanticVersion.parse("0.26.0"),
+            vllm_version=SemanticVersion.parse("0.23.0"),
             compatibility_snapshot_id="test-snapshot",
             execution_enabled=True,
         )
