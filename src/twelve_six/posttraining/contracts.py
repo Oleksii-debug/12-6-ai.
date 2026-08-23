@@ -28,8 +28,14 @@ class Split(StrEnum):
 
 
 class RecordKind(StrEnum):
+    """Task-oriented record kinds kept independent of any one training runtime."""
+
+    LANGUAGE_MODELING = "language_modeling"
+    PROMPT_ONLY = "prompt_only"
     PROMPT_COMPLETION = "prompt_completion"
     PREFERENCE = "preference"
+    UNPAIRED_PREFERENCE = "unpaired_preference"
+    STEPWISE_SUPERVISION = "stepwise_supervision"
     VERIFIER_TASK = "verifier_task"
     CANDIDATE = "candidate"
 
@@ -94,14 +100,15 @@ class SyntheticProvenance:
 class DatasetRecord:
     """Framework-neutral dataset row.
 
-    Payload keys are algorithm-specific, while identity, split and provenance are
-    mandatory and stable across SFT/preference/verifier pipelines.
+    Payload shape is validated by task-specific adapters. ``object`` is deliberate:
+    conversational messages, booleans and step lists cannot be represented by a
+    string-only mapping. Identity, split and provenance stay stable across runtimes.
     """
 
     record_id: str
     kind: RecordKind
     split: Split
-    payload: Mapping[str, str]
+    payload: Mapping[str, object]
     provenance: SyntheticProvenance
 
     def __post_init__(self) -> None:
@@ -124,6 +131,8 @@ class Candidate:
     def __post_init__(self) -> None:
         if not self.candidate_id.strip() or not self.prompt_id.strip():
             raise ValueError("candidate_id and prompt_id must be non-empty")
+        if not self.text:
+            raise ValueError("candidate text must be non-empty")
         if not _SHA256_RE.fullmatch(self.generation_config_sha256):
             raise ValueError("generation_config_sha256 must be a lowercase 64-hex digest")
 
@@ -138,6 +147,8 @@ class VerifierTask:
     def __post_init__(self) -> None:
         if not self.task_id.strip():
             raise ValueError("task_id must be non-empty")
+        if not self.prompt:
+            raise ValueError("prompt must be non-empty")
 
 
 @dataclass(frozen=True, slots=True)
