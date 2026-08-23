@@ -5,15 +5,24 @@ architecture, tokenizer IDs, dataset semantics, or durable checkpoint file forma
 
 ## Batch/model boundary
 
-A microbatch is a mapping containing `input_ids: LongTensor[B, T]` and optionally
-`labels: LongTensor[B, T]`. If labels are omitted, `input_ids` are used as labels.
+A microbatch always contains `input_ids: LongTensor[B, T]`. Two explicit causal-target
+forms are supported and may not be mixed:
+
+1. Raw/unshifted labels: optional `labels: LongTensor[B, T]`. If omitted, `input_ids`
+   are used as labels. `causal_lm_loss` shifts internally so logits at position `t`
+   predict label `t + 1`.
+2. Already-aligned packed pairs: `target_ids: LongTensor[B, T]`, optionally with
+   binary `loss_mask: Tensor[B, T]`. `causal_pair_loss` does **not** shift again.
+   This is the contract used by D04 `PackedCausalExample` and prevents a double shift.
+
 The model is called as `model(input_ids)` and may return:
 
 - a logits tensor `[B, T, V]`;
 - a mapping containing a `logits` tensor; or
 - an object with a `.logits` tensor.
 
-`causal_lm_loss` shifts internally so logits at position `t` predict label `t + 1`.
+Token telemetry counts only actual optimized targets: shifted non-ignored tokens for
+raw labels, or non-ignored targets selected by `loss_mask` for aligned packed pairs.
 
 ## Safety invariants
 
@@ -35,7 +44,15 @@ supports it. fp16 is rejected on CPU rather than pretending to run mixed precisi
 
 ## Current S0 integration status
 
-The trainer is model-agnostic and tested with a test-only learnable bigram stub.
-That stub is not a canonical model. Final S0 convergence evidence remains blocked
-until D01 publishes the real ~10K random-init model and D03/D04 publish the
-deterministic corpus/token path.
+The D02 trainer is model-agnostic and has deterministic CPU convergence evidence on
+a test-only learnable bigram stub. That stub is not a canonical model.
+
+D01 PR #24 now provides a real decoder candidate and D03/D04 provide deterministic
+data/token contracts, but an integration blocker was found: D01 S0 currently declares
+`vocab_size=256`, while D04 frozen `s0-byte-v1` declares `vocab_size=259` with valid
+IDs 0..258. Canonical D01+D04 integration must fail closed until these identities are
+reconciled. Setting D01 S0 vocab to 259 would make the current 10,140-parameter design
+10,200 parameters and remain near the S0 ~10K target.
+
+Final S0 training acceptance also requires the exact integrated D01/D03/D04/D05/D06
+candidate, observed CI, and independent audit evidence.
