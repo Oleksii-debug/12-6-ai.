@@ -100,6 +100,38 @@ def test_d03_measurement_verifies_source_hash_and_preserves_split(tmp_path) -> N
     assert measured.split == "train"
 
 
+@pytest.mark.parametrize(
+    ("filename", "requested_split"),
+    [("train.jsonl", "validation"), ("validation.jsonl", "train")],
+)
+def test_d03_measurement_rejects_cross_labeled_split(
+    tmp_path,
+    filename: str,
+    requested_split: str,
+) -> None:
+    split_path = tmp_path / filename
+    split_path.write_text('{"id":"d1","text":"held out"}\n', encoding="utf-8")
+    source_hash = hashlib.sha256(split_path.read_bytes()).hexdigest()
+    dataset_manifest_path = tmp_path / "manifest.json"
+    dataset_manifest_path.write_text(
+        json.dumps(
+            {
+                "dataset_id": "fixture-v1",
+                "dataset_identity_sha256": "c" * 64,
+                "outputs": {filename: source_hash},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="split/output mismatch"):
+        measure_d03_packaged_split(
+            dataset_manifest_path,
+            split_path,
+            split=requested_split,
+        )
+
+
 def test_d03_measurement_fails_closed_on_source_hash_mismatch(tmp_path) -> None:
     split_path = tmp_path / "validation.jsonl"
     split_path.write_text('{"id":"d1","text":"valid"}\n', encoding="utf-8")
