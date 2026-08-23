@@ -24,18 +24,43 @@ The model is called as `model(input_ids)` and may return:
 Token telemetry counts only actual optimized targets: shifted non-ignored tokens for
 raw labels, or non-ignored targets selected by `loss_mask` for aligned packed pairs.
 
-## Safety invariants
+## Training loop and recovery
+
+`Trainer.run()` consumes an arbitrary iterable of batch mappings until the configured
+`max_steps` optimizer-step target. Dataset order, epochs, and sampling remain outside
+D02 ownership. The loop:
+
+- resumes from the current committed optimizer step rather than resetting counters;
+- requires enough microbatches to reach `max_steps` and fails loudly on exhaustion;
+- emits real per-microbatch metrics through an optional callback;
+- invokes checkpoint hooks only after committed optimizer/scheduler steps;
+- supports checkpoint cadence and always emits the final checkpoint hook at max steps;
+- wraps checkpoint-hook failure as `CheckpointHookError` stating that the optimizer
+  step is already committed and must not be blindly replayed.
+
+A checkpoint-safe state must satisfy both conditions:
+
+- no partial accumulation group is pending; and
+- `micro_step == optimizer_step * gradient_accumulation_steps`.
+
+The second invariant is important after failures: a NaN/Inf gradient can consume a
+microbatch without committing an optimizer step. Such a state is deliberately not
+serializable. D05's trainer adapter can safely call `Trainer.state_dict()` only when
+these invariants hold.
+
+## Numerical safety invariants
 
 - Loss must be finite before backward proceeds.
 - Gradients must be finite before an optimizer update.
 - Gradient accumulation divides loss by the exact configured accumulation count.
 - An optimizer/scheduler step occurs only at an accumulation boundary.
-- Partial accumulated gradients are never silently presented as a completed step.
+- Partial or failed accumulated gradients cannot be checkpointed as completed state.
 - Gradient clipping happens after unscale and before the optimizer update.
 - Telemetry reports real loss, learning rate, pre-clip gradient norm, token count,
   micro-step, optimizer-step, and whether the optimizer actually stepped.
 - `state_dict` exposes trainer-owned optimizer/scheduler/scaler/counter state for
-  D05 serialization. It refuses resume under a mismatched trainer configuration.
+  D05 serialization and deep-copies mutable optimizer/scheduler state.
+- Resume refuses trainer-config mismatch and inconsistent/corrupt counters.
 
 ## Precision
 
