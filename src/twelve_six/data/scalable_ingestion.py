@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import asdict, dataclass
+from importlib.metadata import PackageNotFoundError, version
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -52,7 +53,9 @@ class DataTroveParquetPlan:
                 raise ScalableIngestionError(f"{field} must be a non-empty string")
         for field in ("snapshot_sha256", "registry_identity_sha256"):
             value = getattr(self, field)
-            if len(value) != 64 or any(char not in "0123456789abcdef" for char in value.lower()):
+            if value != value.lower():
+                raise ScalableIngestionError(f"{field} must be lowercase SHA-256 hex")
+            if len(value) != 64 or any(char not in "0123456789abcdef" for char in value):
                 raise ScalableIngestionError(f"{field} must be a SHA-256 hex digest")
         if self.input_format not in {"jsonl", "parquet"}:
             raise ScalableIngestionError("input_format must be jsonl or parquet")
@@ -86,6 +89,18 @@ class DataTroveParquetPlan:
 
 def build_datatrove_executor(plan: DataTroveParquetPlan):
     """Build a DataTrove 0.10.0 local executor without making DataTrove a base dependency."""
+
+    try:
+        installed_version = version("datatrove")
+    except PackageNotFoundError as exc:  # pragma: no cover - optional dependency boundary
+        raise RuntimeError(
+            "DataTrove execution requires optional dependency datatrove[io]==0.10.0"
+        ) from exc
+    if installed_version != plan.datatrove_version:
+        raise RuntimeError(
+            f"DataTrove runtime version mismatch: expected {plan.datatrove_version}, "
+            f"got {installed_version}"
+        )
 
     try:
         from datatrove.executor import LocalPipelineExecutor
