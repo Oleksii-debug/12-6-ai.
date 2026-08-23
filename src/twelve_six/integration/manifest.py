@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+import re
+from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import StrEnum
-import re
-from typing import Iterable
 
 _GIT_SHA_RE = re.compile(r"^[0-9a-f]{7,40}$")
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -121,7 +121,7 @@ class StageCandidateManifest:
         audit_a: AuditVerdict = AuditVerdict.NOT_RUN,
         audit_b: AuditVerdict = AuditVerdict.NOT_RUN,
         required_lanes: frozenset[str] = S0_REQUIRED_LANES,
-    ) -> "StageCandidateManifest":
+    ) -> StageCandidateManifest:
         return cls(
             stage=stage,
             integration_anchor_sha=integration_anchor_sha,
