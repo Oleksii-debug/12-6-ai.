@@ -19,7 +19,7 @@ import sys
 import tempfile
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass, is_dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from importlib import metadata
 from pathlib import Path
 from typing import Any
@@ -369,7 +369,10 @@ def save_checkpoint(
             "rng": capture_rng_state(),
         }
         packed = pack_state_tree(combined_state)
-        save_safetensors(packed.tensors, str(temp_dir / STATE_TENSORS_NAME))
+        if packed.tensors:
+            save_safetensors(packed.tensors, str(temp_dir / STATE_TENSORS_NAME))
+        else:
+            save_safetensors({}, str(temp_dir / STATE_TENSORS_NAME))
         _write_json(temp_dir / STATE_TREE_NAME, packed.tree)
 
         environment = environment_snapshot()
@@ -383,7 +386,7 @@ def save_checkpoint(
         manifest = {
             "format": FORMAT_NAME,
             "format_version": FORMAT_VERSION,
-            "created_at_utc": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            "created_at_utc": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
             "checkpoint_id": checkpoint_id,
             "identity": identity_record,
             "files": files,
