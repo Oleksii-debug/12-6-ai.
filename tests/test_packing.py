@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from collections import Counter
 import json
+from collections import Counter
+from itertools import pairwise
 from pathlib import Path
 
 import pytest
@@ -39,11 +40,11 @@ def test_packing_is_deterministic_and_preserves_all_within_document_pairs() -> N
         TextRecord("r1", "abcdef", "train"),
         TextRecord("r2", "Ж🙂", "train"),
     ]
-    kwargs = dict(
-        tokenizer=tokenizer,
-        expected_split="train",
-        sequence_length=4,
-    )
+    kwargs = {
+        "tokenizer": tokenizer,
+        "expected_split": "train",
+        "sequence_length": 4,
+    }
     first = list(iter_packed_examples(records, **kwargs))
     second = list(iter_packed_examples(records, **kwargs))
     assert first == second
@@ -51,7 +52,7 @@ def test_packing_is_deterministic_and_preserves_all_within_document_pairs() -> N
     expected_pairs = []
     for record in records:
         stream = tokenizer.encode(record.text)
-        expected_pairs.extend(zip(stream, stream[1:]))
+        expected_pairs.extend(pairwise(stream))
     assert _training_pairs(first) == expected_pairs
 
 
@@ -85,9 +86,8 @@ def test_full_blocks_overlap_one_token_for_d02_shifted_loss() -> None:
     )
     assert first.input_ids == tuple(tokenizer.encode("abcd"))
     assert second.input_ids[:2] == tuple(tokenizer.encode("de"))
-    assert _training_pairs([first, second]) == list(
-        zip(tokenizer.encode("abcde"), tokenizer.encode("abcde")[1:])
-    )
+    encoded = tokenizer.encode("abcde")
+    assert _training_pairs([first, second]) == list(pairwise(encoded))
 
 
 def test_cross_document_packing_fails_without_semantic_eos() -> None:
@@ -139,7 +139,7 @@ def test_deterministic_sharding_is_disjoint_and_complete() -> None:
     ids = [record.record_id for shard in shards for record in shard]
     assert Counter(ids) == Counter(record.record_id for record in records)
     assert all(
-        set(a.record_id for a in shards[i]).isdisjoint(b.record_id for b in shards[j])
+        {a.record_id for a in shards[i]}.isdisjoint(b.record_id for b in shards[j])
         for i in range(3)
         for j in range(i + 1, 3)
     )

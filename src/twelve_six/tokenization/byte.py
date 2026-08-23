@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Iterable
 from types import MappingProxyType
-from typing import Iterable
 
 from .base import TokenizerIdentity
 
