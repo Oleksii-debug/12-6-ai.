@@ -7,7 +7,7 @@ import pytest
 
 from twelve_six.packing import TextRecord, measure_packed_split
 from twelve_six.packing.measure import main, measure_d03_packaged_split
-from twelve_six.tokenization import BYTE_TOKENIZER_HASH, ByteTokenizer
+from twelve_six.tokenization import BYTE_TOKENIZER_HASH, BYTE_VOCAB_HASH, ByteTokenizer
 
 
 def _dataset_manifest(
@@ -36,8 +36,10 @@ def test_measure_packed_split_binds_exact_identities_and_counts() -> None:
         split="train",
     )
 
+    assert manifest.schema_version == 2
     assert manifest.dataset_id == "fixture-v1"
     assert manifest.tokenizer_config_sha256 == BYTE_TOKENIZER_HASH
+    assert manifest.tokenizer_vocab_sha256 == BYTE_VOCAB_HASH
     assert manifest.sequence_length == 128
     assert manifest.document_count == 2
     assert manifest.codepoint_count == 4
@@ -112,6 +114,7 @@ def test_d03_measurement_verifies_source_hash_and_preserves_split(tmp_path) -> N
     )
     assert measured.dataset_id == "fixture-v1"
     assert measured.source_jsonl_sha256 == source_hash
+    assert measured.tokenizer_vocab_sha256 == BYTE_VOCAB_HASH
     assert measured.document_count == 2
     assert measured.split == "train"
 
@@ -226,6 +229,8 @@ def test_measure_cli_prints_machine_readable_manifest(tmp_path, capsys) -> None:
         == 0
     )
     payload = json.loads(capsys.readouterr().out)
+    assert payload["schema_version"] == 2
     assert payload["dataset_id"] == "fixture-v1"
     assert payload["tokenizer_config_sha256"] == BYTE_TOKENIZER_HASH
+    assert payload["tokenizer_vocab_sha256"] == BYTE_VOCAB_HASH
     assert len(payload["manifest_sha256"]) == 64
