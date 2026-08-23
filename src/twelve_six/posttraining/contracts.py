@@ -68,6 +68,8 @@ class SyntheticProvenance:
     content_sha256: str
     synthetic: bool = False
     generator_id: str | None = None
+    external_generator: bool = False
+    owner_policy_ref: str | None = None
     parent_sha256: tuple[str, ...] = ()
     metadata: Mapping[str, str] = field(default_factory=dict)
 
@@ -78,6 +80,11 @@ class SyntheticProvenance:
             raise ValueError("content_sha256 must be a lowercase 64-hex digest")
         if self.synthetic and not (self.generator_id and self.generator_id.strip()):
             raise ValueError("synthetic provenance requires generator_id")
+        if self.external_generator:
+            if not self.synthetic:
+                raise ValueError("external_generator requires synthetic=true")
+            if not (self.owner_policy_ref and self.owner_policy_ref.strip()):
+                raise ValueError("external synthetic generator requires owner_policy_ref")
         for digest in self.parent_sha256:
             if not _SHA256_RE.fullmatch(digest):
                 raise ValueError("parent_sha256 contains an invalid digest")
@@ -155,7 +162,8 @@ class PostTrainingExperiment:
 
     A post-training run may consume a Base checkpoint as an immutable parent, but
     its output must always be a distinct POSTTRAIN lineage. This prevents an
-    isolated experiment from being mislabeled as canonical Base.
+    isolated experiment from being mislabeled as canonical Base. Declaring actual
+    behavioral weight training additionally requires an explicit owner decision.
     """
 
     experiment_id: str
@@ -165,6 +173,8 @@ class PostTrainingExperiment:
     output_lineage: LineageKind
     dataset_manifest_sha256: str
     seed: int
+    training_enabled: bool = False
+    behavioral_training_authorization_id: str | None = None
     compute_class: ComputeClass = ComputeClass.LOCAL_FREE
     compute_authorization_id: str | None = None
     verifier_names: tuple[str, ...] = ()
@@ -180,6 +190,13 @@ class PostTrainingExperiment:
             raise ValueError("dataset_manifest_sha256 must be a lowercase 64-hex digest")
         if self.seed < 0:
             raise ValueError("seed must be non-negative")
+        if self.training_enabled and not (
+            self.behavioral_training_authorization_id
+            and self.behavioral_training_authorization_id.strip()
+        ):
+            raise ValueError(
+                "behavioral weight training requires behavioral_training_authorization_id"
+            )
         if self.compute_class is ComputeClass.MATERIAL_PAID and not (
             self.compute_authorization_id and self.compute_authorization_id.strip()
         ):
