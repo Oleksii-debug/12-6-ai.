@@ -12,9 +12,16 @@ from .model import (
     count_trainable_parameters,
     load_stage_config,
 )
+from .scaling import (
+    DenseScalingCandidate,
+    DenseScalingTemplate,
+    solve_dense_scaling_candidates,
+)
 
 __all__ = [
     "CausalLMOutput",
+    "DenseScalingCandidate",
+    "DenseScalingTemplate",
     "InitSpec",
     "ModelSpec",
     "StageConfig",
@@ -22,4 +29,5 @@ __all__ = [
     "canonical_json_sha256",
     "count_trainable_parameters",
     "load_stage_config",
+    "solve_dense_scaling_candidates",
 ]
