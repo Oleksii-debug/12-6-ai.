@@ -49,6 +49,25 @@ def test_tensor_parallel_requires_head_divisibility() -> None:
         )
 
 
+def test_expert_parallel_is_subgroup_not_world_size_multiplier() -> None:
+    model = ModelScaleSpec(1_000_000, 128, 4, 4, 256)
+    plan = ParallelPlan(data_parallel=4, tensor_parallel=2, expert_parallel=2)
+    report = validate_topology(
+        HardwareProfile(nodes=1, accelerators_per_node=8),
+        model,
+        plan,
+    )
+    assert plan.world_size == 8
+    assert plan.expert_data_parallel == 2
+    assert report.world_size == 8
+    assert any("subgroup of data parallelism" in note for note in report.notes)
+
+
+def test_expert_parallel_must_divide_data_parallel() -> None:
+    with pytest.raises(ValueError, match="expert_parallel must divide data_parallel"):
+        ParallelPlan(data_parallel=6, expert_parallel=4).validate()
+
+
 def test_memory_estimate_reports_transparent_breakdown() -> None:
     estimate = estimate_training_memory(s0_model(), ParallelPlan())
     assert estimate.parameter_bytes_per_rank == 20_000
@@ -75,6 +94,12 @@ def test_fsdp_style_sharding_reduces_model_state_estimate() -> None:
         ParallelPlan(data_parallel=4, shard_model_state_across_data_parallel=True),
     )
     assert sharded.parameter_bytes_per_rank == unsharded.parameter_bytes_per_rank // 4
+
+
+def test_generic_memory_estimator_rejects_expert_parallelism() -> None:
+    model = ModelScaleSpec(1_000_000, 128, 4, 4, 256)
+    with pytest.raises(ValueError, match="does not model MoE"):
+        estimate_training_memory(model, ParallelPlan(data_parallel=4, expert_parallel=2))
 
 
 def test_torchrun_builder_only_constructs_command() -> None:
