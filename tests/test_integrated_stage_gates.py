@@ -99,6 +99,17 @@ def test_bound_candidate_ci_manifest_and_dual_audits_allow_promotion_eligibility
     assert result["promotion_authority"]["blockers"] == []
 
 
+def test_pass_with_notes_is_a_passing_bound_audit_verdict():
+    evidence = complete_integrated_evidence()
+    add_bound_promotion_authority(evidence)
+    evidence["promotion"]["audit_b"]["verdict"] = "PASS_WITH_NOTES"
+
+    result = evaluate_s0_integrated(evidence)
+
+    assert result["summary"]["promotion_authority_status"] == "PASS"
+    assert result["summary"]["promotion_eligible"] is True
+
+
 def test_stale_audit_sha_blocks_promotion_without_changing_eval_result():
     evidence = complete_integrated_evidence()
     add_bound_promotion_authority(evidence)
@@ -110,7 +121,23 @@ def test_stale_audit_sha_blocks_promotion_without_changing_eval_result():
     assert result["summary"]["overall_status"] == "PASS"
     assert result["summary"]["promotion_authority_status"] == "FAIL"
     assert result["summary"]["promotion_eligible"] is False
-    assert any("audit_b.candidate_sha does not match" in item for item in result["promotion_authority"]["blockers"])
+    blockers = result["promotion_authority"]["blockers"]
+    assert any("audit_b.candidate_sha does not match" in item for item in blockers)
+
+
+def test_auditors_must_have_distinct_durable_evidence_references():
+    evidence = complete_integrated_evidence()
+    add_bound_promotion_authority(evidence)
+    common_ref = evidence["promotion"]["audit_a"]["evidence_ref"]
+    evidence["promotion"]["audit_b"]["evidence_ref"] = common_ref
+
+    result = evaluate_s0_integrated(evidence)
+
+    assert result["summary"]["evaluation_complete"] is True
+    assert result["summary"]["promotion_authority_status"] == "FAIL"
+    assert result["summary"]["promotion_eligible"] is False
+    blockers = result["promotion_authority"]["blockers"]
+    assert any("distinct durable evidence references" in item for item in blockers)
 
 
 def test_candidate_sha_must_be_exact_git_object_id():
