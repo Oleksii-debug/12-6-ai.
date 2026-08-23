@@ -15,7 +15,7 @@ from torch.optim import AdamW, Optimizer
 from torch.optim.lr_scheduler import LRScheduler, LambdaLR
 
 from .config import TrainerConfig
-from .loss import causal_lm_loss
+from .loss import causal_lm_loss, causal_pair_loss
 
 Batch = Mapping[str, Tensor]
 
@@ -94,8 +94,19 @@ def _extract_logits(output: Any) -> Tensor:
     )
 
 
-def _batch_tokens(labels: Tensor) -> int:
-    return int(labels[:, 1:].numel())
+def _count_training_tokens(
+    targets: Tensor,
+    *,
+    aligned_targets: bool,
+    loss_mask: Tensor | None,
+    ignore_index: int = -100,
+) -> int:
+    if aligned_targets:
+        valid = targets.ne(ignore_index)
+        if loss_mask is not None:
+            valid = valid & loss_mask.bool()
+        return int(valid.sum().item())
+    return int(targets[:, 1:].ne(ignore_index).sum().item())
 
 
 class Trainer:
@@ -156,19 +167,46 @@ class Trainer:
         dtype = torch.bfloat16 if self.config.precision == "bf16" else torch.float16
         return torch.autocast(device_type=self.device.type, dtype=dtype)
 
-    def _prepare_batch(self, batch: Batch) -> tuple[Tensor, Tensor]:
+    def _prepare_batch(
+        self, batch: Batch
+    ) -> tuple[Tensor, Tensor, Tensor | None, bool]:
         if "input_ids" not in batch:
             raise KeyError("batch must contain input_ids")
-        input_ids = batch["input_ids"].to(self.device)
-        labels = batch.get("labels", batch["input_ids"]).to(self.device)
-        if input_ids.ndim != 2 or labels.ndim != 2:
-            raise ValueError("input_ids and labels must both have shape [batch, time]")
-        return input_ids, labels
+        if "labels" in batch and "target_ids" in batch:
+            raise ValueError("batch must not contain both labels and target_ids")
 
-    def _forward_loss(self, input_ids: Tensor, labels: Tensor) -> Tensor:
+        input_ids = batch["input_ids"].to(self.device)
+        aligned_targets = "target_ids" in batch
+        targets = batch.get(
+            "target_ids",
+            batch.get("labels", batch["input_ids"]),
+        ).to(self.device)
+        loss_mask = batch.get("loss_mask")
+        if loss_mask is not None:
+            if not aligned_targets:
+                raise ValueError("loss_mask is only valid with already-aligned target_ids")
+            loss_mask = loss_mask.to(self.device)
+
+        if input_ids.ndim != 2 or targets.ndim != 2:
+            raise ValueError("input_ids and training targets must have shape [batch, time]")
+        if input_ids.shape != targets.shape:
+            raise ValueError("input_ids and training targets must have identical shape")
+        return input_ids, targets, loss_mask, aligned_targets
+
+    def _forward_loss(
+        self,
+        input_ids: Tensor,
+        targets: Tensor,
+        *,
+        loss_mask: Tensor | None,
+        aligned_targets: bool,
+    ) -> Tensor:
         with self._autocast_context():
             logits = _extract_logits(self.model(input_ids))
-            loss = causal_lm_loss(logits, labels)
+            if aligned_targets:
+                loss = causal_pair_loss(logits, targets, loss_mask=loss_mask)
+            else:
+                loss = causal_lm_loss(logits, targets)
         if not torch.isfinite(loss).item():
             self.optimizer.zero_grad(set_to_none=True)
             raise NonFiniteTrainingError(f"non-finite loss at micro_step={self.micro_step + 1}")
@@ -195,13 +233,22 @@ class Trainer:
     def train_microbatch(self, batch: Batch) -> StepMetrics:
         """Backpropagate one microbatch and update only at the accumulation boundary."""
         self.model.train()
-        input_ids, labels = self._prepare_batch(batch)
-        loss = self._forward_loss(input_ids, labels)
+        input_ids, targets, loss_mask, aligned_targets = self._prepare_batch(batch)
+        loss = self._forward_loss(
+            input_ids,
+            targets,
+            loss_mask=loss_mask,
+            aligned_targets=aligned_targets,
+        )
         scaled_loss = loss / self.config.gradient_accumulation_steps
         self.scaler.scale(scaled_loss).backward()
 
         self.micro_step += 1
-        tokens = _batch_tokens(labels)
+        tokens = _count_training_tokens(
+            targets,
+            aligned_targets=aligned_targets,
+            loss_mask=loss_mask,
+        )
         self.tokens_seen += tokens
 
         should_step = self.micro_step % self.config.gradient_accumulation_steps == 0
