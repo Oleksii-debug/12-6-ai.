@@ -7,8 +7,8 @@ from twelve_six.posttraining.contracts import (
     SyntheticProvenance,
 )
 from twelve_six.posttraining.dataset_adapters import (
-    DatasetSchemaError,
     TRL_TRAINER_RECORD_KINDS,
+    DatasetSchemaError,
     to_trl_example,
     validate_trl_compatible_record,
 )
