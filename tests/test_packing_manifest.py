@@ -18,11 +18,11 @@ def test_measure_packed_split_binds_exact_identities_and_counts() -> None:
         dataset_identity_sha256="a" * 64,
         source_jsonl_sha256="b" * 64,
         split="train",
-        sequence_length=4,
     )
 
     assert manifest.dataset_id == "fixture-v1"
     assert manifest.tokenizer_config_sha256 == BYTE_TOKENIZER_HASH
+    assert manifest.sequence_length == 128
     assert manifest.document_count == 2
     assert manifest.codepoint_count == 4
     assert manifest.utf8_byte_count == 5
@@ -30,12 +30,25 @@ def test_measure_packed_split_binds_exact_identities_and_counts() -> None:
     assert manifest.causal_loss_token_count == 3
     assert manifest.packed_example_count == 2
     assert manifest.packed_input_token_count == 5
-    assert manifest.packed_capacity_token_count == 8
-    assert manifest.masked_fill_position_count == 3
+    assert manifest.packed_capacity_token_count == 256
+    assert manifest.masked_fill_position_count == 251
     assert manifest.documents_without_causal_pair == 0
     assert manifest.fertility_ratio == (5, 4)
-    assert manifest.packed_input_utilization_ratio == (5, 8)
+    assert manifest.packed_input_utilization_ratio == (5, 256)
     assert len(manifest.manifest_sha256) == 64
+
+
+def test_measure_packed_split_rejects_noncanonical_sequence_length() -> None:
+    with pytest.raises(ValueError, match="sequence_length must be 128"):
+        measure_packed_split(
+            [TextRecord("a", "abc", "train")],
+            ByteTokenizer(),
+            dataset_id="fixture-v1",
+            dataset_identity_sha256="a" * 64,
+            source_jsonl_sha256="b" * 64,
+            split="train",
+            sequence_length=4,
+        )
 
 
 def test_measure_packed_split_reports_documents_without_causal_pair() -> None:
@@ -46,7 +59,6 @@ def test_measure_packed_split_reports_documents_without_causal_pair() -> None:
         dataset_identity_sha256="a" * 64,
         source_jsonl_sha256="b" * 64,
         split="validation",
-        sequence_length=8,
     )
     assert manifest.document_count == 2
     assert manifest.documents_without_causal_pair == 2

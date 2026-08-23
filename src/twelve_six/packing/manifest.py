@@ -88,13 +88,16 @@ def measure_packed_split(
     split: str,
     sequence_length: int = DEFAULT_SEQUENCE_LENGTH,
 ) -> PackedSplitManifest:
-    """Measure one ordered split and bind it to dataset/tokenizer/packing identities."""
+    """Measure one ordered split and bind it to canonical S0 packing identity."""
     _require_nonempty(dataset_id, "dataset_id")
     _require_nonempty(split, "split")
     _require_sha256(dataset_identity_sha256, "dataset_identity_sha256")
     _require_sha256(source_jsonl_sha256, "source_jsonl_sha256")
-    if sequence_length < 2:
-        raise ValueError("sequence_length must be at least two")
+    if sequence_length != DEFAULT_SEQUENCE_LENGTH:
+        raise ValueError(
+            "packed split manifests bind the canonical S0 packing config; "
+            f"sequence_length must be {DEFAULT_SEQUENCE_LENGTH}"
+        )
 
     document_count = 0
     codepoint_count = 0
