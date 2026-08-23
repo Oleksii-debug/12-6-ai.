@@ -19,14 +19,14 @@ A synthetic fixture can therefore prove that the evaluator contract works while 
 
 Before D06 can emit `promotion_eligible=true`, machine evidence must additionally show:
 
-- `candidate.sha` is a full 40- or 64-hex Git object ID;
+- `candidate.sha` is a full lowercase 40- or 64-hex Git object ID;
 - `candidate.integrated` is exact boolean `true`;
 - the candidate manifest was validated and has a recorded SHA-256;
 - candidate CI succeeded and has a positive run ID;
-- AUDIT-A verdict is `PASS`, includes the same exact candidate SHA, and has a durable evidence reference;
-- AUDIT-B verdict is `PASS`, includes the same exact candidate SHA, and has a durable evidence reference.
+- AUDIT-A verdict is `PASS` or `PASS_WITH_NOTES`, includes the same exact candidate SHA, and has a durable evidence reference;
+- AUDIT-B verdict is `PASS` or `PASS_WITH_NOTES`, includes the same exact candidate SHA, and has a different durable evidence reference.
 
-This authority envelope does not replace D10, AUDIT-A, or AUDIT-B. It prevents D06 output from converting an all-green synthetic/component evaluation into a promotion claim.
+This authority envelope mirrors D10's passing-audit semantics but does not replace D10, AUDIT-A, or AUDIT-B. It prevents D06 output from converting an all-green synthetic/component evaluation into a promotion claim.
 
 ## Current S0 policy
 
