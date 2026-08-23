@@ -15,7 +15,7 @@ _SCHEDULER_KINDS = frozenset({"constant", "linear_warmup", "cosine"})
 
 def _require_finite(name: str, value: float, *, positive: bool) -> None:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise ValueError(f"{name} must be a finite number")
+        raise TypeError(f"{name} must be a finite number")
     if not math.isfinite(value):
         raise ValueError(f"{name} must be finite")
     if positive and value <= 0:
@@ -25,8 +25,10 @@ def _require_finite(name: str, value: float, *, positive: bool) -> None:
 
 
 def _require_int(name: str, value: int, *, minimum: int) -> None:
-    if not isinstance(value, int) or isinstance(value, bool) or value < minimum:
-        raise ValueError(f"{name} must be an integer >= {minimum}")
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise TypeError(f"{name} must be an integer")
+    if value < minimum:
+        raise ValueError(f"{name} must be >= {minimum}")
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,15 +57,14 @@ class TrainerConfig:
         _require_finite("weight_decay", self.weight_decay, positive=False)
         _require_finite("eps", self.eps, positive=True)
 
-        if not isinstance(self.betas, tuple) or len(self.betas) != 2:
+        if not isinstance(self.betas, tuple):
+            raise TypeError("betas must be a tuple")
+        if len(self.betas) != 2:
             raise ValueError("betas must contain two values in [0, 1)")
         for beta in self.betas:
-            if (
-                isinstance(beta, bool)
-                or not isinstance(beta, (int, float))
-                or not math.isfinite(beta)
-                or not 0.0 <= beta < 1.0
-            ):
+            if isinstance(beta, bool) or not isinstance(beta, (int, float)):
+                raise TypeError("betas must contain numeric values")
+            if not math.isfinite(beta) or not 0.0 <= beta < 1.0:
                 raise ValueError("betas must contain two finite values in [0, 1)")
 
         _require_int("max_steps", self.max_steps, minimum=1)
@@ -84,6 +85,6 @@ class TrainerConfig:
         if self.precision not in _PRECISION_MODES:
             raise ValueError(f"unsupported precision: {self.precision!r}")
         if not isinstance(self.deterministic_algorithms, bool):
-            raise ValueError("deterministic_algorithms must be bool")
+            raise TypeError("deterministic_algorithms must be bool")
         if not isinstance(self.deterministic_warn_only, bool):
-            raise ValueError("deterministic_warn_only must be bool")
+            raise TypeError("deterministic_warn_only must be bool")
