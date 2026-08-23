@@ -12,6 +12,8 @@ from .external_sources import (
     build_external_source_registry,
     build_reserved_fingerprint_registry,
     contamination_report,
+    validate_external_source_registry,
+    validate_reserved_fingerprint_registry,
     verify_local_snapshot,
 )
 from .pipeline import DataContractError, PipelineConfig, build_dataset, language_id, normalize_text
@@ -43,5 +45,7 @@ __all__ = [
     "contamination_report",
     "language_id",
     "normalize_text",
+    "validate_external_source_registry",
+    "validate_reserved_fingerprint_registry",
     "verify_local_snapshot",
 ]
