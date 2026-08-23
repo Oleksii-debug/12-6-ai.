@@ -1,0 +1,39 @@
+{
+  "format_version": "posttraining-runtime-compat-v1",
+  "snapshot_id": "posttraining-runtime-compat-2026-08-23",
+  "observed_on": "2026-08-23",
+  "status": "RESEARCH_PIN_NOT_INSTALLED",
+  "trl": {
+    "observed_version": "1.10.0",
+    "released": "2026-08-13",
+    "vllm_supported_min": "0.17.0",
+    "vllm_supported_max": "0.26.0",
+    "sources": [
+      "https://pypi.org/project/trl/",
+      "https://huggingface.co/docs/trl/vllm_integration"
+    ]
+  },
+  "verl": {
+    "observed_version": "0.9.0",
+    "released": "2026-08-14",
+    "vllm_supported_min": "0.18.0",
+    "sources": [
+      "https://pypi.org/project/verl/0.9.0/",
+      "https://verl.readthedocs.io/en/latest/start/install.html"
+    ]
+  },
+  "vllm": {
+    "latest_observed_version": "0.27.1",
+    "latest_released": "2026-08-11",
+    "selected_joint_compatibility_version": "0.26.0",
+    "selection_reason": "Current TRL documentation caps supported vLLM at 0.26.0; latest 0.27.1 is outside that declared range.",
+    "source": "https://pypi.org/project/vllm/"
+  },
+  "execution": {
+    "runtime_imported": false,
+    "gpu_required_by_this_snapshot": false,
+    "training_authorized": false,
+    "weights_mutated": false
+  },
+  "notes": "Research compatibility snapshot only. Recheck upstream compatibility and produce a hash-locked environment before any real runtime execution."
+}
