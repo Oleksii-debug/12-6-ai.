@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
 import json
 import math
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
 import torch
-from torch import Tensor, nn
 import torch.nn.functional as F
+from torch import Tensor, nn
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,7 +77,7 @@ class ModelSpec:
         return payload
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "ModelSpec":
+    def from_dict(cls, payload: dict[str, Any]) -> ModelSpec:
         return cls(**payload)
 
     def parameter_breakdown(self) -> dict[str, int]:
@@ -92,12 +92,7 @@ class ModelSpec:
         block_per_layer = attention_per_layer + mlp_per_layer + norms_per_layer
         final_norm = self.d_model
         lm_head = 0 if self.tie_embeddings else self.vocab_size * self.d_model
-        total = (
-            embedding
-            + self.n_layers * block_per_layer
-            + final_norm
-            + lm_head
-        )
+        total = embedding + self.n_layers * block_per_layer + final_norm + lm_head
         return {
             "token_embedding": embedding,
             "attention_per_layer": attention_per_layer,
@@ -123,7 +118,7 @@ class StageConfig:
     model: ModelSpec
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "StageConfig":
+    def from_dict(cls, payload: dict[str, Any]) -> StageConfig:
         return cls(
             stage=str(payload["stage"]),
             target_parameters=int(payload["target_parameters"]),
