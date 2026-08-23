@@ -11,6 +11,7 @@ from typing import Protocol
 class TokenizerIdentity:
     version: str
     config_sha256: str
+    vocab_sha256: str
     vocab_size: int
     normalization: str
     encoding: str
@@ -20,6 +21,7 @@ class TokenizerIdentity:
         return {
             "version": self.version,
             "config_sha256": self.config_sha256,
+            "vocab_sha256": self.vocab_sha256,
             "vocab_size": self.vocab_size,
             "normalization": self.normalization,
             "encoding": self.encoding,
@@ -58,6 +60,7 @@ def require_tokenizer_identity(
     expected_version: str,
     expected_config_sha256: str,
     expected_vocab_size: int,
+    expected_vocab_sha256: str | None = None,
 ) -> None:
     """Fail closed if checkpoint-recorded tokenizer identity does not match runtime."""
     identity = tokenizer.identity
@@ -70,5 +73,9 @@ def require_tokenizer_identity(
         )
     if identity.vocab_size != expected_vocab_size:
         mismatches.append(f"vocab_size={identity.vocab_size} expected {expected_vocab_size}")
+    if expected_vocab_sha256 is not None and identity.vocab_sha256 != expected_vocab_sha256:
+        mismatches.append(
+            f"vocab_sha256={identity.vocab_sha256!r} expected {expected_vocab_sha256!r}"
+        )
     if mismatches:
         raise TokenizerCompatibilityError("; ".join(mismatches))
