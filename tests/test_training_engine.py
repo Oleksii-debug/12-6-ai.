@@ -11,6 +11,7 @@ from twelve_six.training import (
     Trainer,
     TrainerConfig,
     causal_lm_loss,
+    causal_pair_loss,
 )
 
 
@@ -42,6 +43,16 @@ def test_causal_loss_uses_next_token_shift() -> None:
     logits[0, 1, 3] = 10.0
     labels = torch.tensor([[1, 2, 3]])
     assert causal_lm_loss(logits, labels).item() < 1e-6
+
+
+def test_causal_pair_loss_uses_aligned_targets_and_masks_padding() -> None:
+    logits = torch.full((1, 3, 4), -10.0)
+    logits[0, 0, 2] = 10.0
+    logits[0, 1, 3] = 10.0
+    logits[0, 2, 0] = 10.0
+    target_ids = torch.tensor([[2, 3, 1]])
+    loss_mask = torch.tensor([[1, 1, 0]])
+    assert causal_pair_loss(logits, target_ids, loss_mask=loss_mask).item() < 1e-6
 
 
 def test_gradient_accumulation_steps_only_on_boundary() -> None:
@@ -143,6 +154,25 @@ def test_trainer_state_resume_preserves_optimizer_scheduler_and_counters() -> No
         source_model.parameters(), target_model.parameters(), strict=True
     ):
         torch.testing.assert_close(source_parameter, target_parameter)
+
+
+def test_trainer_consumes_d04_aligned_target_contract_without_double_shift() -> None:
+    torch.manual_seed(13)
+    trainer = Trainer(
+        ToyBigramLM(vocab_size=4),
+        TrainerConfig(learning_rate=0.1, max_steps=1, seed=13),
+    )
+    batch = {
+        "input_ids": torch.tensor([[0, 1, 2, 0]], dtype=torch.long),
+        "target_ids": torch.tensor([[1, 2, 3, 0]], dtype=torch.long),
+        "loss_mask": torch.tensor([[1, 1, 1, 0]], dtype=torch.long),
+    }
+
+    metrics = trainer.train_microbatch(batch)
+
+    assert metrics.optimizer_stepped is True
+    assert metrics.tokens == 3
+    assert math.isfinite(metrics.loss)
 
 
 def test_nonfinite_loss_fails_before_optimizer_step() -> None:
