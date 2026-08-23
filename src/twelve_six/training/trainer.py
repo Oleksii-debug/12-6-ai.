@@ -278,6 +278,8 @@ class Trainer:
     def train_microbatch(self, batch: Batch) -> StepMetrics:
         """Backpropagate one microbatch and update only at the accumulation boundary."""
         self._assert_trainable()
+        if self.optimizer_step >= self.config.max_steps:
+            raise RuntimeError("configured max_steps already reached")
         self.model.train()
         input_ids, targets, loss_mask, aligned_targets = self._prepare_batch(batch)
         tokens = _count_training_tokens(
@@ -371,8 +373,6 @@ class Trainer:
             raise ValueError("checkpoint_every_steps must be > 0")
         if checkpoint_every_steps is not None and on_checkpoint is None:
             raise ValueError("checkpoint_every_steps requires on_checkpoint")
-        if self.optimizer_step > self.config.max_steps:
-            raise RuntimeError("optimizer_step exceeds configured max_steps")
 
         start_step = self.optimizer_step
         start_tokens = self.tokens_seen
@@ -431,6 +431,8 @@ class Trainer:
     def assert_checkpoint_safe(self) -> None:
         """Require all consumed microbatches to belong to committed optimizer steps."""
         self._assert_trainable()
+        if self.optimizer_step > self.config.max_steps:
+            raise RuntimeError("optimizer_step exceeds configured max_steps")
         self.assert_accumulation_boundary()
         expected_micro_steps = self.optimizer_step * self.config.gradient_accumulation_steps
         if self.micro_step != expected_micro_steps:
