@@ -11,9 +11,12 @@ from twelve_six.integration import (
     AuditEvidence,
     AuditVerdict,
     CandidateStatus,
+    CIEvidence,
     ComponentDisposition,
     ComponentRef,
+    ReleaseArtifactEvidence,
     StageCandidateManifest,
+    validate_repository_evidence,
 )
 
 
@@ -26,6 +29,32 @@ def _audit_evidence(value: Any, *, field_name: str) -> AuditEvidence | None:
         auditor_id=value["auditor_id"],
         verdict=AuditVerdict(value["verdict"]),
         candidate_sha=value["candidate_sha"],
+        cutoff_utc=value["cutoff_utc"],
+        evidence_ref=value["evidence_ref"],
+    )
+
+
+def _ci_evidence(value: Any) -> CIEvidence | None:
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise TypeError("ci_evidence must be null or an object")
+    return CIEvidence(
+        run_id=value["run_id"],
+        head_sha=value["head_sha"],
+        conclusion=value["conclusion"],
+        evidence_ref=value["evidence_ref"],
+    )
+
+
+def _release_artifact(value: Any) -> ReleaseArtifactEvidence | None:
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise TypeError("release_artifact must be null or an object")
+    return ReleaseArtifactEvidence(
+        path=value["path"],
+        sha256=value["sha256"],
         evidence_ref=value["evidence_ref"],
     )
 
@@ -44,7 +73,10 @@ def load_manifest(path: Path) -> StageCandidateManifest:
             disposition=ComponentDisposition(item["disposition"]),
             component_kind=item["component_kind"],
             pr_number=item.get("pr_number"),
+            ci_evidence=_ci_evidence(item.get("ci_evidence")),
+            artifact_path=item.get("artifact_path"),
             artifact_sha256=item.get("artifact_sha256"),
+            artifact_evidence_ref=item.get("artifact_evidence_ref"),
             contains_behavioral_weights=item.get("contains_behavioral_weights"),
             contains_foreign_pretrained_weights=item.get(
                 "contains_foreign_pretrained_weights"
@@ -68,6 +100,7 @@ def load_manifest(path: Path) -> StageCandidateManifest:
         candidate_sha=raw.get("candidate_sha"),
         audit_a=_audit_evidence(raw.get("audit_a"), field_name="audit_a"),
         audit_b=_audit_evidence(raw.get("audit_b"), field_name="audit_b"),
+        release_artifact=_release_artifact(raw.get("release_artifact")),
         required_lanes=required,
     )
 
@@ -75,14 +108,17 @@ def load_manifest(path: Path) -> StageCandidateManifest:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("manifest", type=Path)
+    parser.add_argument("--repo-root", type=Path, default=Path("."))
     args = parser.parse_args()
     manifest = load_manifest(args.manifest)
+    validate_repository_evidence(manifest, args.repo_root)
     missing = manifest.missing_required_lanes()
     print(f"stage={manifest.stage}")
     print(f"status={manifest.status.value}")
     print(f"accepted_lanes={','.join(sorted(manifest.accepted_lanes())) or '-'}")
     print(f"missing_required_lanes={','.join(missing) or '-'}")
     print(f"audits_pass={str(manifest.audits_pass()).lower()}")
+    print("repository_evidence=verified")
     return 0
 
 
