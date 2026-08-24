@@ -14,14 +14,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from twelve_six.integration.dependency_lock import canonical_json_bytes
-from twelve_six.integration.dependency_security import (
-    build_lock_sbom,
-    build_security_evidence,
-    unique_components,
-    write_json,
-)
+from _dependency_contract_loader import load_dependency_contracts
 
+LOCK, SECURITY = load_dependency_contracts()
 OSV_BATCH_URL = "https://api.osv.dev/v1/querybatch"
 PYPI_BASE_URL = "https://pypi.org/pypi"
 USER_AGENT = "12-6-ai-dependency-evidence/1"
@@ -32,7 +27,7 @@ class EvidenceCollectionError(RuntimeError):
 
 
 def _json_sha256(value: Any) -> str:
-    return hashlib.sha256(canonical_json_bytes(value)).hexdigest()
+    return hashlib.sha256(LOCK.canonical_json_bytes(value)).hexdigest()
 
 
 def _request_json(url: str, *, payload: dict[str, Any] | None = None) -> tuple[Any, str]:
@@ -143,12 +138,12 @@ def main() -> int:
     parser.add_argument("--fail-on-review-required", action="store_true")
     args = parser.parse_args()
 
-    sbom = build_lock_sbom(root=args.root, source_sha=args.source_sha)
-    components = unique_components(sbom)
+    sbom = SECURITY.build_lock_sbom(root=args.root, source_sha=args.source_sha)
+    components = SECURITY.unique_components(sbom)
     osv_records, osv_batch_sha256 = _collect_osv(components)
     pypi_records, pypi_set_sha256 = _collect_pypi(components)
     generated_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-    evidence = build_security_evidence(
+    evidence = SECURITY.build_security_evidence(
         sbom=sbom,
         generated_at=generated_at,
         license_records=pypi_records,
@@ -168,8 +163,8 @@ def main() -> int:
             },
         },
     )
-    write_json(args.sbom_out, sbom)
-    write_json(args.evidence_out, evidence)
+    SECURITY.write_json(args.sbom_out, sbom)
+    SECURITY.write_json(args.evidence_out, evidence)
     print(f"sbom_sha256={sbom['sbom_sha256']}")
     print(f"evidence_sha256={evidence['evidence_sha256']}")
     print(f"status={evidence['status']}")
