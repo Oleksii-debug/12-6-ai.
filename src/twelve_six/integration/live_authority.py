@@ -72,7 +72,7 @@ class LiveAuthorityError(ReleaseAttestationError):
 
 def _parse_timestamp(value: str, field_name: str) -> datetime:
     try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(value)
     except ValueError as exc:
         raise LiveAuthorityError(f"{field_name} must be an ISO-8601 timestamp") from exc
     if parsed.tzinfo is None or parsed.utcoffset() is None:
@@ -224,9 +224,12 @@ def _verify_artifact_record(
         if workflow_run.get("head_sha") not in {None, expected_head_sha}:
             raise LiveAuthorityError("workflow artifact belongs to a stale source head")
     digest = record.get("digest")
-    if expected_sha256 is not None and digest is not None:
-        if digest != f"sha256:{expected_sha256}":
-            raise LiveAuthorityError("workflow artifact digest differs from bound SHA-256")
+    if (
+        expected_sha256 is not None
+        and digest is not None
+        and digest != f"sha256:{expected_sha256}"
+    ):
+        raise LiveAuthorityError("workflow artifact digest differs from bound SHA-256")
 
 
 def _verify_environment_artifacts(
