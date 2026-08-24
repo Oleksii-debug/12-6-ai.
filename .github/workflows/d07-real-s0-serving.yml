@@ -1,0 +1,80 @@
+name: D07 Real S0 Checkpoint Serving
+
+on:
+  pull_request:
+    paths:
+      - "src/twelve_six/inference/**"
+      - "src/twelve_six/integration/**"
+      - "src/twelve_six/checkpoint/**"
+      - "src/twelve_six/training/**"
+      - "src/twelve_six/model.py"
+      - "src/twelve_six/tokenization/**"
+      - "src/twelve_six/packing/**"
+      - "data/s0/**"
+      - "configs/stages/**"
+      - "requirements/locks/**"
+      - "tests/test_s0_serving_evidence.py"
+      - "docs/D07_REAL_S0_SERVING_EVIDENCE.md"
+      - ".github/workflows/d07-real-s0-serving.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  real-s0-serving-evidence:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Prove exact source checkout
+        run: test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - run: python -m pip --version
+      - run: python -m pip install --disable-pip-version-check -e .[dev]
+      - run: python tools/check_repo_policy.py
+      - run: ruff check src tests tools
+      - name: Focused trained checkpoint serving tests
+        run: pytest -q tests/test_s0_serving_evidence.py
+      - name: Run real 40-step LOCAL_FREE checkpoint serving evidence
+        run: |
+          python -m twelve_six.inference.s0_serving_evidence \
+            --repo-root . \
+            --candidate-sha "$CANDIDATE_SHA" \
+            --output-dir "$RUNNER_TEMP/s0-serving-evidence" \
+            --train-steps 40 \
+            --seed 20260825
+      - name: Validate exact-source serving evidence
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          from twelve_six.inference.s0_serving_evidence import validate_serving_evidence
+
+          root = Path(os.environ["RUNNER_TEMP"]) / "s0-serving-evidence"
+          evidence = json.loads((root / "serving_evidence.json").read_text(encoding="utf-8"))
+          validate_serving_evidence(evidence, expected_candidate_sha=os.environ["CANDIDATE_SHA"])
+          assert (root / "checkpoint" / "manifest.json").is_file()
+          assert (root / "checkpoint" / "MANIFEST.sha256").is_file()
+          assert (root / "checkpoint" / "weights.safetensors").is_file()
+          PY
+      - name: Full repository regression suite
+        run: pytest -q
+      - name: Upload trained checkpoint and serving evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: s0-d07-real-serving-${{ env.CANDIDATE_SHA }}
+          path: ${{ runner.temp }}/s0-serving-evidence/
+          if-no-files-found: warn
+          retention-days: 14
