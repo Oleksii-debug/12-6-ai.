@@ -6,16 +6,13 @@ import argparse
 import subprocess
 from pathlib import Path
 
-from twelve_six.integration.dependency_evidence import (
-    SupplyChainEvidenceError,
-    build_supply_chain_documents,
-    validate_supply_chain_evidence,
-)
-from twelve_six.integration.dependency_lock import DependencyLockError, validate_lock_index
-from twelve_six.integration.repo_policy import RepositoryPolicyError, validate_repository_policy
-from twelve_six.integration.workflow_policy import WorkflowPolicyError, validate_repository_workflows
+from _integration_bootstrap import load_integration_module
 
 ROOT = Path(__file__).resolve().parents[1]
+_DEPENDENCY_EVIDENCE = load_integration_module(ROOT, "dependency_evidence")
+_DEPENDENCY_LOCK = load_integration_module(ROOT, "dependency_lock")
+_REPO_POLICY = load_integration_module(ROOT, "repo_policy")
+_WORKFLOW_POLICY = load_integration_module(ROOT, "workflow_policy")
 
 
 def _git_head() -> str:
@@ -31,10 +28,10 @@ def _git_head() -> str:
 
 
 def local_preflight(profile: str, source_sha: str) -> dict[str, str]:
-    validate_repository_policy(ROOT)
-    validate_repository_workflows(ROOT)
-    validate_lock_index(root=ROOT, index_path="requirements/locks/index.json")
-    _, evidence = build_supply_chain_documents(
+    _REPO_POLICY.validate_repository_policy(ROOT)
+    _WORKFLOW_POLICY.validate_repository_workflows(ROOT)
+    _DEPENDENCY_LOCK.validate_lock_index(root=ROOT, index_path="requirements/locks/index.json")
+    _, evidence = _DEPENDENCY_EVIDENCE.build_supply_chain_documents(
         root=ROOT,
         profile_id=profile,
         source_sha=source_sha,
@@ -56,10 +53,10 @@ def release_preflight(
 ) -> dict[str, str]:
     head = _git_head()
     if head != source_sha:
-        raise SupplyChainEvidenceError(
+        raise _DEPENDENCY_EVIDENCE.SupplyChainEvidenceError(
             f"release source SHA must equal checkout HEAD: expected {source_sha} got {head}"
         )
-    evidence = validate_supply_chain_evidence(
+    evidence = _DEPENDENCY_EVIDENCE.validate_supply_chain_evidence(
         root=ROOT,
         sbom_path=sbom_path,
         evidence_path=evidence_path,
@@ -67,7 +64,7 @@ def release_preflight(
         require_resolved=True,
     )
     if evidence.get("profile_id") != profile:
-        raise SupplyChainEvidenceError("release profile/evidence mismatch")
+        raise _DEPENDENCY_EVIDENCE.SupplyChainEvidenceError("release profile/evidence mismatch")
     return {
         "source_sha": source_sha,
         "profile": profile,
@@ -102,10 +99,10 @@ def main() -> int:
                 args.evidence,
             )
     except (
-        DependencyLockError,
-        RepositoryPolicyError,
-        SupplyChainEvidenceError,
-        WorkflowPolicyError,
+        _DEPENDENCY_LOCK.DependencyLockError,
+        _REPO_POLICY.RepositoryPolicyError,
+        _DEPENDENCY_EVIDENCE.SupplyChainEvidenceError,
+        _WORKFLOW_POLICY.WorkflowPolicyError,
         subprocess.SubprocessError,
     ) as exc:
         print(f"preflight=FAIL: {exc}")
