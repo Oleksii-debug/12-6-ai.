@@ -1,0 +1,72 @@
+name: D05 S0 Inference Artifact Evidence
+on:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  locked-trained-checkpoint-inference:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Prove exact source checkout
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Verify locked environment and repository checks
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: >-
+          python tools/verify_locked_environment.py
+          --profile linux-x86_64
+          --source-sha "$SOURCE_SHA"
+          --evidence-out locked-environment-linux-x86_64.json
+          --run-repo-checks
+      - name: Create exact locked D05 execution environment
+        run: |
+          python -m venv .d05-inference-locked
+          .d05-inference-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .d05-inference-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .d05-inference-locked/bin/python -m pip install --no-deps --no-build-isolation -e .
+          .d05-inference-locked/bin/python -c "import torch,twelve_six; assert torch.__version__; print(twelve_six.__version__)"
+      - name: Build exact trained checkpoint and inference evidence
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          .d05-inference-locked/bin/python tools/run_s0_inference_artifact_evidence.py \
+            --source-sha "$SOURCE_SHA" \
+            --output-dir d05-s0-inference-artifact \
+            --seed 1337 \
+            --max-steps 40 \
+            --batch-size 3
+          .d05-inference-locked/bin/python tools/validate_s0_inference_artifact_evidence.py \
+            d05-s0-inference-artifact/inference-evidence.json \
+            --checkpoint d05-s0-inference-artifact/checkpoint \
+            --expected-source-sha "$SOURCE_SHA"
+          cat d05-s0-inference-artifact/inference-evidence.json
+      - name: Exercise installed text CLI against retained checkpoint
+        run: >-
+          .d05-inference-locked/bin/twelve-six-generate
+          --checkpoint d05-s0-inference-artifact/checkpoint
+          --prompt "12-6"
+          --greedy
+          --max-new-tokens 8
+          --seed 1337
+          --json
+      - name: Upload exact trained checkpoint and inference evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: d05-s0-trained-checkpoint-inference-evidence
+          path: |
+            locked-environment-linux-x86_64.json
+            d05-s0-inference-artifact/inference-evidence.json
+            d05-s0-inference-artifact/checkpoint
+          if-no-files-found: error
+          retention-days: 30
