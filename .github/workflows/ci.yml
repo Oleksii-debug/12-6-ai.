@@ -5,24 +5,78 @@ on:
   pull_request:
 permissions:
   contents: read
+
+env:
+  GITLEAKS_VERSION: "8.30.1"
+  GITLEAKS_ARCHIVE_SHA256: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
+
 jobs:
   locked-x86-64:
     runs-on: ubuntu-24.04
-    timeout-minutes: 35
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: Scan Git history for secrets
-        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITLEAKS_ENABLE_COMMENTS: "false"
-          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"
+      - name: Install hash-verified Gitleaks
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/gitleaks.tar.gz"
+          bindir="$RUNNER_TEMP/gitleaks-bin"
+          mkdir -p "$bindir"
+          curl --fail --location --proto '=https' --tlsv1.2 --retry 3 --retry-all-errors \
+            --output "$archive" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          printf '%s  %s\n' "$GITLEAKS_ARCHIVE_SHA256" "$archive" | sha256sum --check --strict
+          tar -xzf "$archive" -C "$bindir" gitleaks
+          "$bindir/gitleaks" version
+          echo "$bindir" >> "$GITHUB_PATH"
+      - name: Scan complete Git history for secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          gitleaks git --redact --exit-code 2 --config .gitleaks.toml \
+            --log-opts="--full-history --all --diff-filter=tuxdb" .
+      - name: Secret-gate negative fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          fixture="$RUNNER_TEMP/gitleaks-negative-fixture"
+          git init -q "$fixture"
+          git -C "$fixture" config user.name "12-6 CI fixture"
+          git -C "$fixture" config user.email "ci-fixture@example.invalid"
+          printf 'token=%s%s\n' 'ghp_A1b2C3d4E5f6G7h8I9' 'J0k1L2m3N4o5P6q7R8' \
+            > "$fixture/canary.txt"
+          git -C "$fixture" add canary.txt
+          git -C "$fixture" commit -q -m "synthetic secret gate canary"
+          set +e
+          (cd "$fixture" && gitleaks git --redact --exit-code 23 .)
+          status=$?
+          set -e
+          if [ "$status" -ne 23 ]; then
+            echo "secret gate negative fixture expected exit 23, got $status" >&2
+            exit 1
+          fi
+          rm -rf "$fixture"
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.11.16"
+          cache: pip
+          cache-dependency-path: |
+            requirements/locks/linux-x86_64/toolchain.lock.txt
+            requirements/locks/linux-x86_64/runtime.lock.txt
+            requirements/locks/linux-x86_64/dev.lock.txt
+            requirements/locks/linux-x86_64/profile.json
+            requirements/locks/index.json
+      - name: Fast fail-closed local preflight
+        env:
+          PYTHONPATH: src
+        run: >-
+          python tools/preflight.py local
+          --profile linux-x86_64
+          --source-sha "${{ github.event.pull_request.head.sha || github.sha }}"
       - name: Locked clean install, package smoke and full checks
         run: >-
           python tools/verify_locked_environment.py
@@ -30,11 +84,23 @@ jobs:
           --source-sha "${{ github.event.pull_request.head.sha || github.sha }}"
           --evidence-out locked-environment-linux-x86_64.json
           --run-repo-checks
-      - name: Upload locked environment evidence
+      - name: Generate SBOM and explicit adjudication evidence
+        env:
+          PYTHONPATH: src
+        run: >-
+          python tools/generate_supply_chain_evidence.py
+          --profile linux-x86_64
+          --source-sha "${{ github.event.pull_request.head.sha || github.sha }}"
+          --sbom-out sbom-linux-x86_64.cdx.json
+          --evidence-out supply-chain-linux-x86_64.json
+      - name: Upload locked environment and supply-chain evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: locked-environment-linux-x86_64
-          path: locked-environment-linux-x86_64.json
+          name: locked-supply-chain-linux-x86_64
+          path: |
+            locked-environment-linux-x86_64.json
+            sbom-linux-x86_64.cdx.json
+            supply-chain-linux-x86_64.json
           if-no-files-found: error
           retention-days: 30
 
@@ -44,20 +110,40 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 1
           persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.11.16"
+          cache: pip
+          cache-dependency-path: |
+            requirements/locks/linux-aarch64/toolchain.lock.txt
+            requirements/locks/linux-aarch64/runtime.lock.txt
+            requirements/locks/linux-aarch64/dev.lock.txt
+            requirements/locks/linux-aarch64/profile.json
+            requirements/locks/index.json
       - name: Locked clean install and package smoke
         run: >-
           python tools/verify_locked_environment.py
           --profile linux-aarch64
           --source-sha "${{ github.event.pull_request.head.sha || github.sha }}"
           --evidence-out locked-environment-linux-aarch64.json
-      - name: Upload locked environment evidence
+      - name: Generate SBOM and explicit adjudication evidence
+        env:
+          PYTHONPATH: src
+        run: >-
+          python tools/generate_supply_chain_evidence.py
+          --profile linux-aarch64
+          --source-sha "${{ github.event.pull_request.head.sha || github.sha }}"
+          --sbom-out sbom-linux-aarch64.cdx.json
+          --evidence-out supply-chain-linux-aarch64.json
+      - name: Upload locked environment and supply-chain evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: locked-environment-linux-aarch64
-          path: locked-environment-linux-aarch64.json
+          name: locked-supply-chain-linux-aarch64
+          path: |
+            locked-environment-linux-aarch64.json
+            sbom-linux-aarch64.cdx.json
+            supply-chain-linux-aarch64.json
           if-no-files-found: error
           retention-days: 30

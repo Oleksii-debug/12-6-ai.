@@ -1,0 +1,29 @@
+name: Fast CI
+on:
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  policy-fast-path:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Repository and workflow policy fast path
+        env:
+          PYTHONPATH: src
+        run: |
+          set -euo pipefail
+          python tools/check_repo_policy.py
+          python tools/check_workflow_policy.py
+          python -m compileall -q src/twelve_six/integration tools
