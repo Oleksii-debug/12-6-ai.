@@ -130,5 +130,5 @@ def test_candidate_contract_rejects_environment_binding_tamper(
     tampered["identity_sha256"] = _canonical_hash(tampered["identity"])
     tampered.pop("evidence_sha256")
     tampered["evidence_sha256"] = _canonical_hash(tampered)
-    with pytest.raises(S0EvidenceContractError, match="training lock semantic mismatch"):
+    with pytest.raises(S0EvidenceContractError, match="training lock_index_sha256 mismatch"):
         validate_s0_training_evidence(tampered)
