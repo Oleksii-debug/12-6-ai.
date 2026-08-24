@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Validate the prepared S0 train/checkpoint/evaluation handoff evidence."""
 
 from __future__ import annotations
