@@ -158,6 +158,28 @@ def test_chat_messages_and_streaming_fail_closed() -> None:
     assert "stream=true" in stream["error"]["message"]  # type: ignore[index]
 
 
+def test_unknown_fields_and_wrong_model_fail_closed() -> None:
+    backend = RecordingBackend()
+    with running_server(backend) as address:
+        unknown_status, unknown = request(
+            address,
+            "POST",
+            "/v1/completions",
+            {"prompt": "x", "presence_penalty": 1.0},
+        )
+        model_status, model = request(
+            address,
+            "POST",
+            "/v1/completions",
+            {"model": "another-model", "prompt": "x"},
+        )
+
+    assert unknown_status == model_status == 400
+    assert "presence_penalty" in unknown["error"]["message"]  # type: ignore[index]
+    assert "requested model" in model["error"]["message"]  # type: ignore[index]
+    assert backend.prompts == []
+
+
 def test_protocol_rejects_bad_json_media_type_and_oversized_body() -> None:
     backend = RecordingBackend()
     with running_server(backend, max_request_bytes=32) as address:
