@@ -15,7 +15,6 @@ import threading
 from collections.abc import Mapping, Sequence
 from http.client import HTTPConnection
 from pathlib import Path
-from typing import Any
 
 from .contracts import GenerationConfig, GenerationResult, InferenceBackend
 from .first_party import load_first_party_backend
