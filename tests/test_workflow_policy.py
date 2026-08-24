@@ -76,6 +76,11 @@ def _messages(text: str) -> str:
     return "\n".join(item.message for item in validate_workflow_text("workflow.yml", text))
 
 
+def _insert_before_setup(text: str, step: str) -> str:
+    marker = f"      - uses: actions/setup-python@{PIN}"
+    return text.replace(marker, f"      - run: {step}\n{marker}", 1)
+
+
 def test_authoritative_and_fast_fixtures_pass() -> None:
     assert validate_workflow_text("ci.yml", _authoritative_ci()) == ()
     assert validate_workflow_text("fast-ci.yml", _fast_ci()) == ()
@@ -117,6 +122,11 @@ def test_every_job_needs_bounded_timeout() -> None:
     assert "every job" in _messages(text)
 
 
+def test_mutable_latest_runner_is_rejected() -> None:
+    text = _fast_ci().replace("runs-on: ubuntu-24.04", "runs-on: ubuntu-latest")
+    assert "mutable latest runner" in _messages(text)
+
+
 def test_authoritative_ci_requires_explicit_full_history_raw_scan() -> None:
     text = _authoritative_ci().replace("--full-history --all", "--first-parent")
     assert "all full history" in _messages(text)
@@ -145,12 +155,28 @@ def test_cache_must_be_lock_keyed() -> None:
 
 
 def test_floating_pip_upgrade_is_rejected() -> None:
-    text = _fast_ci().replace(
-        f"      - uses: actions/setup-python@{PIN}",
-        "      - run: python -m pip install --upgrade pip\n"
-        f"      - uses: actions/setup-python@{PIN}",
-    )
+    text = _insert_before_setup(_fast_ci(), "python -m pip install --upgrade pip")
     assert "must not float pip" in _messages(text)
+
+
+def test_unlocked_editable_dependency_resolution_is_rejected() -> None:
+    text = _insert_before_setup(
+        _fast_ci(), "python -m pip install --disable-pip-version-check -e .[dev]"
+    )
+    assert "direct pip install must use requirements/locks" in _messages(text)
+
+
+def test_hash_locked_direct_install_is_allowed() -> None:
+    text = _insert_before_setup(
+        _fast_ci(),
+        "python -m pip install --require-hashes -r requirements/locks/linux-x86_64/dev.lock.txt",
+    )
+    assert validate_workflow_text("fast-ci.yml", text) == ()
+
+
+def test_local_project_no_deps_install_is_allowed() -> None:
+    text = _insert_before_setup(_fast_ci(), "python -m pip install --no-deps -e .")
+    assert validate_workflow_text("fast-ci.yml", text) == ()
 
 
 def test_violations_raise_deterministically(tmp_path: Path) -> None:
