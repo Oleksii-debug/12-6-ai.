@@ -15,8 +15,8 @@ from dataclasses import dataclass
 from typing import Any
 
 from .live_authority import (
-    CANONICAL_REPOSITORY,
     CANDIDATE_WORKFLOW_NAME,
+    CANONICAL_REPOSITORY,
     GITHUB_API_ROOT,
     GITHUB_WEB_ROOT,
     JsonGetter,
@@ -95,7 +95,7 @@ class ReleaseGovernanceExpectation:
     required_status_checks: tuple[str, ...]
 
     @classmethod
-    def from_dict(cls, raw: Mapping[str, Any]) -> "ReleaseGovernanceExpectation":
+    def from_dict(cls, raw: Mapping[str, Any]) -> ReleaseGovernanceExpectation:
         if raw.get("schema_version") != SCHEMA_VERSION:
             raise ReleaseGovernanceError(f"schema_version must be {SCHEMA_VERSION!r}")
         repository = _string(raw.get("repository"), "repository")
