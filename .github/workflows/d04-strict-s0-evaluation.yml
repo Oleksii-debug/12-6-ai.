@@ -1,0 +1,90 @@
+name: D04 Strict S0 Exact-Candidate Evaluation
+
+on:
+  pull_request:
+    paths:
+      - "src/twelve_six/s0_candidate_evaluation.py"
+      - "src/twelve_six/evaluation.py"
+      - "src/twelve_six/stage_gates.py"
+      - "src/twelve_six/checkpoint/**"
+      - "src/twelve_six/inference/**"
+      - "src/twelve_six/training/**"
+      - "data/s0/**"
+      - "configs/stages/**"
+      - "requirements/locks/**"
+      - "tests/test_s0_candidate_evaluation.py"
+      - "tests/fixtures/s0_complete_evidence.json"
+      - "docs/S0_EXACT_CANDIDATE_EVALUATION.md"
+      - ".github/workflows/d04-strict-s0-evaluation.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  exact-candidate-evaluation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Prove exact source checkout
+        run: test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - run: python -m pip --version
+      - run: python -m pip install --disable-pip-version-check -e .[dev]
+      - run: python tools/check_repo_policy.py
+      - run: ruff check src tests tools
+      - name: Focused strict collector and fail-closed negatives
+        run: pytest -q tests/test_s0_candidate_evaluation.py
+      - name: Run real 40-step LOCAL_FREE exact-candidate evaluation
+        run: |
+          python -m twelve_six.s0_candidate_evaluation \
+            --repo-root . \
+            --candidate-sha "$CANDIDATE_SHA" \
+            --output-dir "$RUNNER_TEMP/s0-exact-evaluation" \
+            --train-steps 40 \
+            --fail-on-incomplete
+      - name: Validate machine reports and non-promotion boundary
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path(os.environ["RUNNER_TEMP"]) / "s0-exact-evaluation"
+          evidence = json.loads((root / "candidate_evidence.json").read_text(encoding="utf-8"))
+          gate = json.loads((root / "stage_gate_report.json").read_text(encoding="utf-8"))
+          promotion = json.loads((root / "promotion_eligibility.json").read_text(encoding="utf-8"))
+          sha = os.environ["CANDIDATE_SHA"]
+
+          assert evidence["candidate"]["sha"] == sha
+          assert evidence["provenance"]["checkout_head_sha"] == sha
+          assert gate["candidate"]["sha"] == sha
+          assert gate["summary"]["counts"] == {"FAIL": 0, "NOT_TESTED": 0, "PASS": 15}
+          assert gate["summary"]["evaluation_complete"] is True
+          assert gate["summary"]["overall_status"] == "PASS"
+          assert gate["summary"]["promotion_authority_status"] == "NOT_TESTED"
+          assert gate["summary"]["promotion_eligible"] is False
+          assert promotion["candidate_sha"] == sha
+          assert promotion["quality_overall_status"] == "PASS"
+          assert promotion["promotion_authority_status"] == "NOT_TESTED"
+          assert promotion["promotion_eligible"] is False
+          PY
+      - name: Full repository regression suite
+        run: pytest -q
+      - name: Upload exact-candidate gate evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: s0-d04-exact-evaluation-${{ env.CANDIDATE_SHA }}
+          path: ${{ runner.temp }}/s0-exact-evaluation/*.json
+          if-no-files-found: warn
+          retention-days: 14
