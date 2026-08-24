@@ -81,6 +81,16 @@ def _checkpoint_spec(manifest: Mapping[str, Any]) -> ModelSpec:
         raise CheckpointCompatibilityError("checkpoint ModelSpec semantic identity mismatch")
     if spec.parameter_count() != identity.get("parameter_count"):
         raise CheckpointCompatibilityError("checkpoint parameter count does not match ModelSpec")
+
+    training_config = identity.get("training_config")
+    if isinstance(training_config, Mapping):
+        training = training_config.get("training")
+        if isinstance(training, Mapping):
+            declared_context = training.get("context_length")
+            if declared_context is not None and declared_context != spec.max_seq_len:
+                raise CheckpointCompatibilityError(
+                    "checkpoint training context_length does not match ModelSpec max_seq_len"
+                )
     return spec
 
 
@@ -100,6 +110,16 @@ def _require_byte_tokenizer(manifest: Mapping[str, Any], spec: ModelSpec) -> Byt
         raise CheckpointCompatibilityError(
             "checkpoint ModelSpec vocabulary size does not match canonical tokenizer"
         )
+
+    training_config = identity.get("training_config")
+    if isinstance(training_config, Mapping):
+        data = training_config.get("data")
+        if isinstance(data, Mapping):
+            declared_version = data.get("tokenizer_version")
+            if declared_version is not None and declared_version != expected.version:
+                raise CheckpointCompatibilityError(
+                    "checkpoint tokenizer version does not match canonical s0-byte-v1"
+                )
     return tokenizer
 
 
