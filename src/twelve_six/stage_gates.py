@@ -181,6 +181,7 @@ def _promotion_authority(evidence: Mapping[str, Any]) -> dict[str, Any]:
         "promotion.candidate_manifest_sha256",
         "promotion.candidate_ci.success",
         "promotion.candidate_ci.run_id",
+        "promotion.candidate_ci.head_sha",
         "promotion.audit_a.verdict",
         "promotion.audit_a.candidate_sha",
         "promotion.audit_a.evidence_ref",
@@ -202,6 +203,7 @@ def _promotion_authority(evidence: Mapping[str, Any]) -> dict[str, Any]:
     manifest_sha = _get(evidence, "promotion.candidate_manifest_sha256")
     ci_success = _get(evidence, "promotion.candidate_ci.success")
     ci_run_id = _get(evidence, "promotion.candidate_ci.run_id")
+    ci_head_sha = _get(evidence, "promotion.candidate_ci.head_sha")
 
     blockers: list[str] = []
     if not isinstance(candidate_sha, str) or _EXACT_GIT_SHA.fullmatch(candidate_sha) is None:
@@ -219,6 +221,10 @@ def _promotion_authority(evidence: Mapping[str, Any]) -> dict[str, Any]:
         blockers.append("promotion.candidate_ci.success must be exact boolean true")
     if isinstance(ci_run_id, bool) or not isinstance(ci_run_id, int) or ci_run_id <= 0:
         blockers.append("promotion.candidate_ci.run_id must be a positive integer")
+    if not isinstance(ci_head_sha, str) or _EXACT_GIT_SHA.fullmatch(ci_head_sha) is None:
+        blockers.append("promotion.candidate_ci.head_sha must be an exact lowercase Git object id")
+    elif ci_head_sha != candidate_sha_for_binding:
+        blockers.append("promotion.candidate_ci.head_sha does not match candidate.sha")
 
     audit_evidence: dict[str, Any] = {}
     for audit_key in ("audit_a", "audit_b"):
@@ -241,7 +247,7 @@ def _promotion_authority(evidence: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "status": GateStatus.PASS.value if not blockers else GateStatus.FAIL.value,
         "reason": (
-            "candidate integration, CI, manifest, and both independent audits are bound"
+            "candidate integration, exact-head CI, manifest, and both independent audits are bound"
             if not blockers
             else "promotion authority evidence failed closed"
         ),
@@ -251,7 +257,11 @@ def _promotion_authority(evidence: Mapping[str, Any]) -> dict[str, Any]:
             "candidate_integrated": integrated,
             "candidate_manifest_validated": manifest_validated,
             "candidate_manifest_sha256": manifest_sha,
-            "candidate_ci": {"success": ci_success, "run_id": ci_run_id},
+            "candidate_ci": {
+                "success": ci_success,
+                "run_id": ci_run_id,
+                "head_sha": ci_head_sha,
+            },
             **audit_evidence,
         },
     }

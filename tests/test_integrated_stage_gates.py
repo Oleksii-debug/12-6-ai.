@@ -62,7 +62,11 @@ def add_bound_promotion_authority(evidence: dict) -> None:
     evidence["promotion"] = {
         "candidate_manifest_validated": True,
         "candidate_manifest_sha256": "c" * 64,
-        "candidate_ci": {"success": True, "run_id": 123456789},
+        "candidate_ci": {
+            "success": True,
+            "run_id": 123456789,
+            "head_sha": candidate_sha,
+        },
         "audit_a": {
             "verdict": "PASS",
             "candidate_sha": candidate_sha,
@@ -101,6 +105,23 @@ def test_bound_candidate_ci_manifest_and_dual_audits_allow_promotion_eligibility
     assert result["summary"]["promotion_authority_status"] == "PASS"
     assert result["summary"]["promotion_eligible"] is True
     assert result["promotion_authority"]["blockers"] == []
+
+
+def test_stale_candidate_ci_head_blocks_promotion_without_changing_quality_result():
+    evidence = complete_integrated_evidence()
+    add_bound_promotion_authority(evidence)
+    evidence["promotion"]["candidate_ci"]["head_sha"] = "e" * 40
+
+    result = evaluate_s0_integrated(evidence)
+
+    assert result["summary"]["evaluation_complete"] is True
+    assert result["summary"]["overall_status"] == "PASS"
+    assert result["summary"]["promotion_authority_status"] == "FAIL"
+    assert result["summary"]["promotion_eligible"] is False
+    assert any(
+        "candidate_ci.head_sha does not match" in item
+        for item in result["promotion_authority"]["blockers"]
+    )
 
 
 def test_pass_with_notes_is_a_passing_bound_audit_verdict():
