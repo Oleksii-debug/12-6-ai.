@@ -1,0 +1,87 @@
+{
+  "schema": "12-6.d12-scale-research-evidence.v1",
+  "run_id": "12-6-AI-SWARM-EXP-01",
+  "date_utc": "2026-08-24",
+  "authority": {
+    "repository": "Oleksii-debug/12-6-ai.",
+    "base_branch": "d08/dependency-lock-packaging-20260824",
+    "base_sha": "3d5d2332577d1ccb2b6ecbb5197b1d95a4baba6f",
+    "base_ci_run": 32742220948,
+    "base_ci_conclusion": "success",
+    "main_sha": "f2e94c7212888cdb960bb66154d56d210e9b27ab"
+  },
+  "constraints": {
+    "paid_compute_authorized": false,
+    "base_mode": "random_init_pretraining_only",
+    "promotion_claim": false,
+    "audit_verdict_claim": false
+  },
+  "d08_audit": {
+    "project_world_size": "DP*TP*PP*CP",
+    "project_ep_semantics": "EP is a subgroup of DP; EP divides DP; EDP=DP/EP",
+    "finding": "Current Megatron Core documents EP as a separate/foldable parallel dimension. The project EP-as-DP-subgroup profile is therefore not a universal Megatron invariant; a future Megatron adapter requires explicit topology translation."
+  },
+  "primary_sources": [
+    {
+      "name": "PyTorch FSDP2 fully_shard",
+      "url": "https://docs.pytorch.org/docs/main/distributed.fsdp.fully_shard.html",
+      "observed": "DTensor-based per-parameter FSDP2; DCP is the higher-level reshard/full-state seam."
+    },
+    {
+      "name": "TorchTitan checkpointing",
+      "url": "https://github.com/pytorch/torchtitan/blob/main/docs/checkpoint.md",
+      "observed": "DCP checkpoints, async modes, seed checkpoint on CPU and topology-changing reshard."
+    },
+    {
+      "name": "TorchTitan Float8",
+      "url": "https://github.com/pytorch/torchtitan/blob/main/torchtitan/components/quantization/float8.md",
+      "observed": "Float8 benefit is hardware/GEMM-shape dependent; not an S0 default."
+    },
+    {
+      "name": "TorchTitan debugging",
+      "url": "https://github.com/pytorch/torchtitan/blob/main/docs/debugging.md",
+      "observed": "Memory snapshots and profiling are maintained observability seams."
+    },
+    {
+      "name": "OLMo-core distributed architecture",
+      "url": "https://github.com/allenai/OLMo-core/blob/main/AGENTS.md",
+      "observed": "Combinable data/tensor/pipeline/context/expert parallel and distributed checkpoint packages."
+    },
+    {
+      "name": "OLMo-core changelog",
+      "url": "https://github.com/allenai/OLMo-core/blob/main/CHANGELOG.md",
+      "observed": "Current distributed-checkpoint maintenance and v2.5.0 scale/debug improvements."
+    },
+    {
+      "name": "Megatron Core parallelism guide",
+      "url": "https://docs.nvidia.com/megatron-core/developer-guide/latest/user-guide/parallelism-guide.html",
+      "observed": "DP/TP/PP/CP/EP/FSDP selection guidance and explicit multi-axis scale topology."
+    },
+    {
+      "name": "Megatron Core MoE guide",
+      "url": "https://docs.nvidia.com/megatron-core/developer-guide/latest/user-guide/features/moe.html",
+      "observed": "MoE Parallel Folding can break legacy EP<=DP coupling and requires richer expert topology."
+    },
+    {
+      "name": "Megatron Core distributed checkpointing",
+      "url": "https://docs.nvidia.com/megatron-core/developer-guide/latest/api-guide/core/dist_checkpointing.html",
+      "observed": "torch_dist resharding and distinct optimizer checkpoint reshardability modes."
+    }
+  ],
+  "local_free_evidence": {
+    "new_contract_tests": {
+      "command": "python -m pytest -q test_distributed_runtime_contracts.py",
+      "result": "11 passed",
+      "elapsed_seconds": 5.8
+    },
+    "cpu_state_measurement": {
+      "module": "torch.nn.Linear(3,2,bias=True)",
+      "parameter_count": 8,
+      "parameter_bytes_fp32": 32,
+      "gradient_bytes_fp32": 32,
+      "estimator_match_bytes": 64
+    },
+    "ruff": "NOT_TESTED_LOCALLY: module unavailable in execution container",
+    "repo_wide_tests": "PENDING_GITHUB_ACTIONS_ON_D12_HEAD"
+  }
+}
