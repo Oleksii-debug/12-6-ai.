@@ -1,0 +1,51 @@
+{
+  "schema": "12-6.d12-distributed-contract-matrix.v1",
+  "run_id": "12-6-AI-SWARM-EXP-01",
+  "date_utc": "2026-08-24",
+  "parent": {
+    "pull_request": 74,
+    "branch": "d12/distributed-runtime-contracts-20260824",
+    "head_sha": "3a6c2aab85f0adbac82341bf5d7b3c0f119aa8f2",
+    "ci_run": 32747138599,
+    "ci_x86_conclusion": "failure",
+    "ci_arm64_conclusion": "success",
+    "x86_failure_surface": "ruff-only"
+  },
+  "matrix": {
+    "data_parallel_values": [1, 2, 4, 6, 8],
+    "tensor_parallel_values": [1, 2],
+    "pipeline_parallel_values": [1, 2],
+    "context_parallel_values": [1, 2],
+    "expert_parallel_rule": "every positive divisor of project data_parallel",
+    "valid_topology_cases": 112,
+    "logical_rank_coordinates_checked": 1971,
+    "hsdp_mesh_factorizations": 368,
+    "backend_trigger_combinations": 64
+  },
+  "invariants": [
+    "rank-coordinate bijection",
+    "DP/TP/PP/CP process-group partition coverage",
+    "EP and expert-DP subgroup partition coverage inside project DP",
+    "dense shared-weight sync domain is DP*CP with TP/PP fixed",
+    "Torch mesh factorization preserves project physical world size",
+    "Megatron translation preserves TP*PP*CP*EP*expert_DP == project world size",
+    "physical shard ownership/checksum changes do not mutate D05 semantic parent identity",
+    "topology-changing reshard cannot claim exact rank-local RNG trajectory",
+    "state-dict schema drift blocks resume",
+    "CPU/Gloo probe refuses world_size > 8 before spawn"
+  ],
+  "product_changes": {
+    "semantic_changes": false,
+    "mechanical_parent_lint_fixes": 4,
+    "new_test_files": 1,
+    "new_docs_files": 1,
+    "new_evidence_files": 1
+  },
+  "constraints": {
+    "paid_compute_authorized": false,
+    "gpu_or_nccl_execution": false,
+    "base_behavior_changed": false,
+    "promotion_claim": false,
+    "audit_verdict_claim": false
+  }
+}
