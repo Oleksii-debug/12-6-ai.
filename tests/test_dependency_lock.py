@@ -8,9 +8,9 @@ from pathlib import Path
 import pytest
 
 from twelve_six.integration.dependency_lock import (
-    DependencyLockError,
     EXACT_PYTHON_VERSION,
     SUPPORTED_PROFILES,
+    DependencyLockError,
     validate_lock_index,
     validate_profile_manifest,
 )
