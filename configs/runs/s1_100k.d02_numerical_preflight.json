@@ -28,12 +28,14 @@
     "tokenizer_vocab_sha256": "905ed40bb42cc4d550e228ff5f24158d504b38e8ed5974dfa3077bd5867ad571",
     "tokenizer_vocab_size": 256,
     "packing_config_sha256": "23a695b807f3e3f5c61d19c34968bcd88fafc6a45346dc08673d7a494219f285",
-    "unused_s1_vocab_rows_expected": 256
+    "model_token_ids_not_emitted_by_fixture": 256,
+    "note": "IDs 256..511 are not emitted as fixture inputs/targets; tied output rows may still receive softmax gradients"
   },
   "environment": {
     "profile_id": "linux-x86_64",
     "python_version": "3.11.16",
-    "locked_environment_evidence": "RUNTIME_REQUIRED_SAME_SOURCE_SHA_JSON"
+    "locked_environment_evidence": "RUNTIME_REQUIRED_SAME_SOURCE_SHA_JSON",
+    "downstream_validation_requires_companion": true
   },
   "training": {
     "seed": 1337,
@@ -55,7 +57,8 @@
     "validation_optimized_tokens": 0,
     "train_validation_record_overlap": 0,
     "same_optimizer_step_before_after_final_validation": true,
-    "self_hashed": true
+    "self_hashed": true,
+    "same_source_locked_environment_companion": true
   },
   "prohibited_claims": {
     "s1_architecture_frozen": false,
@@ -67,5 +70,6 @@
     "paid_compute_authorized_or_used": false,
     "cross_hardware_bitwise_reproducibility": false
   },
-  "command": "python tools/run_s1_numerical_preflight.py --source-sha <FULL_HEAD_SHA> --locked-environment-evidence <LOCKED_ENVIRONMENT_JSON> --output <EVIDENCE_JSON> --seed 1337 --max-steps 6 --batch-size 3"
+  "command": "python tools/run_s1_numerical_preflight.py --source-sha <FULL_HEAD_SHA> --locked-environment-evidence <LOCKED_ENVIRONMENT_JSON> --output <EVIDENCE_JSON> --seed 1337 --max-steps 6 --batch-size 3",
+  "validator": "python tools/validate_s1_numerical_preflight.py <EVIDENCE_JSON> --locked-environment-evidence <LOCKED_ENVIRONMENT_JSON>"
 }
