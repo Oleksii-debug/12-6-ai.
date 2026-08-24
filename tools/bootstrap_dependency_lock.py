@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import subprocess
 import sys
@@ -13,18 +14,20 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "src"))
+LOCK_MODULE = ROOT / "src" / "twelve_six" / "integration" / "dependency_lock.py"
+_spec = importlib.util.spec_from_file_location("twelve_six_dependency_lock", LOCK_MODULE)
+if _spec is None or _spec.loader is None:
+    raise RuntimeError("cannot load dependency lock module")
+_lock = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_lock)
 
-from twelve_six.integration.dependency_lock import (  # noqa: E402
-    EXACT_PYTHON_VERSION,
-    PROJECT_DISTRIBUTION,
-    assert_exact_python,
-    build_profile_manifest,
-    canonical_distribution_name,
-    current_profile_id,
-    write_manifest,
-)
-
+EXACT_PYTHON_VERSION = _lock.EXACT_PYTHON_VERSION
+PROJECT_DISTRIBUTION = _lock.PROJECT_DISTRIBUTION
+assert_exact_python = _lock.assert_exact_python
+build_profile_manifest = _lock.build_profile_manifest
+canonical_distribution_name = _lock.canonical_distribution_name
+current_profile_id = _lock.current_profile_id
+write_manifest = _lock.write_manifest
 LOCK_ROOT = Path("requirements/locks")
 
 
