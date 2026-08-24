@@ -5,12 +5,10 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from twelve_six.integration.dependency_evidence import (
-    build_supply_chain_documents,
-    write_supply_chain_documents,
-)
+from _integration_bootstrap import load_integration_module
 
 ROOT = Path(__file__).resolve().parents[1]
+_EVIDENCE = load_integration_module(ROOT, "dependency_evidence")
 
 
 def main() -> int:
@@ -23,14 +21,14 @@ def main() -> int:
     parser.add_argument("--license-adjudication", type=Path)
     args = parser.parse_args()
 
-    sbom, evidence = build_supply_chain_documents(
+    sbom, evidence = _EVIDENCE.build_supply_chain_documents(
         root=ROOT,
         profile_id=args.profile,
         source_sha=args.source_sha,
         vulnerability_adjudication=args.vulnerability_adjudication,
         license_adjudication=args.license_adjudication,
     )
-    write_supply_chain_documents(
+    _EVIDENCE.write_supply_chain_documents(
         sbom=sbom,
         evidence=evidence,
         sbom_path=args.sbom_out,
