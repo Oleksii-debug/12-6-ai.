@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+import copy
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
 from twelve_six.checkpoint import (
     CheckpointCompatibilityError,
-    load_checkpoint,
-    verify_checkpoint,
+    CheckpointIntegrityError,
+    load_verified_checkpoint,
+    prepare_checkpoint_load,
 )
 from twelve_six.integration.s0_runtime import S0TorchInferenceBackend
 from twelve_six.model import ModelSpec, TwelveSixDecoder
@@ -28,8 +30,14 @@ class FirstPartyInferenceBackend(S0TorchInferenceBackend):
         checkpoint_path: Path,
     ) -> None:
         super().__init__(model, tokenizer)
-        self.manifest = dict(manifest)
+        self._manifest = copy.deepcopy(dict(manifest))
         self.checkpoint_path = checkpoint_path
+
+    @property
+    def manifest(self) -> dict[str, Any]:
+        """Return a defensive copy of the verified checkpoint manifest."""
+
+        return copy.deepcopy(self._manifest)
 
     def next_token_logits(self, input_ids: Sequence[int]) -> Sequence[float]:
         for token_id in input_ids:
@@ -45,10 +53,10 @@ class FirstPartyInferenceBackend(S0TorchInferenceBackend):
     def diagnostics(self) -> dict[str, object]:
         """Return privacy-safe checkpoint and runtime identities for CLI/evidence."""
 
-        identity = self.manifest["identity"]
+        identity = self._manifest["identity"]
         return {
             "backend": "first_party_torch",
-            "checkpoint_id": self.manifest["checkpoint_id"],
+            "checkpoint_id": self._manifest["checkpoint_id"],
             "git_sha": identity["git_sha"],
             "model_spec_sha256": identity["model_spec_hash"],
             "parameter_count": identity["parameter_count"],
@@ -124,30 +132,43 @@ def _require_byte_tokenizer(manifest: Mapping[str, Any], spec: ModelSpec) -> Byt
 
 
 def load_first_party_backend(checkpoint: Path) -> FirstPartyInferenceBackend:
-    """Verify a canonical checkpoint, reconstruct D01, bind D04, and expose D07.
+    """Snapshot one canonical checkpoint and expose that exact snapshot through D07.
 
-    Verification runs before any checkpoint weights are applied. RNG state is
-    intentionally not restored for inference.
+    The D05 byte snapshot is prepared once. ModelSpec/tokenizer identities,
+    loaded weights, and diagnostics all derive from that same immutable in-memory
+    snapshot. Later filesystem mutation cannot swap compatible weights underneath
+    an already-verified manifest. RNG state is intentionally not restored for
+    inference.
     """
 
     checkpoint = Path(checkpoint)
-    manifest = verify_checkpoint(checkpoint)
+    verified = prepare_checkpoint_load(checkpoint)
+    manifest = verified.manifest
     spec = _checkpoint_spec(manifest)
     tokenizer = _require_byte_tokenizer(manifest, spec)
+    identity = manifest["identity"]
 
     model = TwelveSixDecoder(spec)
-    load_checkpoint(
-        checkpoint,
+    load_result = load_verified_checkpoint(
+        verified,
         model=model,
         restore_rng=False,
+        expected_git_sha=identity["git_sha"],
         expected_model_spec_hash=spec.identity_sha256(),
         expected_tokenizer_hash=tokenizer.identity.config_sha256,
         expected_tokenizer_vocab_hash=tokenizer.identity.vocab_sha256,
+        expected_dataset_manifest_hash=identity["dataset_manifest_hash"],
+        expected_run_manifest_hash=identity["run_manifest_hash"],
     )
+    if load_result.manifest != manifest:
+        raise CheckpointIntegrityError(
+            "verified checkpoint manifest changed between inference preflight and load"
+        )
+
     model.eval()
     return FirstPartyInferenceBackend(
         model,
         tokenizer,
-        manifest=manifest,
+        manifest=load_result.manifest,
         checkpoint_path=checkpoint,
     )
