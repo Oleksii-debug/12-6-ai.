@@ -73,5 +73,10 @@ def test_sanitizer_output_is_deterministic() -> None:
 
 
 def test_sanitizer_rejects_non_array_report() -> None:
-    with pytest.raises(ValueError, match="JSON array"):
+    with pytest.raises(TypeError, match="JSON array"):
         sanitize_findings({"findings": []})
+
+
+def test_sanitizer_rejects_non_object_finding() -> None:
+    with pytest.raises(TypeError, match="JSON object"):
+        sanitize_findings(["not-a-finding"])
