@@ -37,3 +37,14 @@ def test_s0_local_cpu_example_cannot_be_mistaken_for_launch_ready():
     assert "candidate.modelspec_sha256" in unresolved
     assert "data.dataset_manifest_sha256" in unresolved
     assert "data.tokenizer_sha256" in unresolved
+    assert "data.tokenizer_vocab_sha256" in unresolved
+
+
+def test_tokenizer_config_and_vocabulary_identities_are_separate_launch_gates():
+    manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
+    required = manifest["launch_gate"]["required_non_null"]
+
+    assert "tokenizer_sha256" in manifest["data"]
+    assert "tokenizer_vocab_sha256" in manifest["data"]
+    assert required.count("data.tokenizer_sha256") == 1
+    assert required.count("data.tokenizer_vocab_sha256") == 1
