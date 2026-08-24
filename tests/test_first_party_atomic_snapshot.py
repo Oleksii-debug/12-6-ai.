@@ -5,8 +5,8 @@ from pathlib import Path
 
 import torch
 
-import twelve_six.inference.first_party as first_party
 from twelve_six.checkpoint import CheckpointIdentity, save_checkpoint, verify_checkpoint
+from twelve_six.inference import first_party
 from twelve_six.model import TwelveSixDecoder, load_stage_config
 from twelve_six.tokenization import ByteTokenizer
 
