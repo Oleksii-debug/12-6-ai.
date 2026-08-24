@@ -10,8 +10,8 @@ import torch
 from twelve_six.data import build_dataset
 from twelve_six.inference import GenerationConfig, generate
 from twelve_six.integration import (
-    CIEvidence,
     CandidateStatus,
+    CIEvidence,
     ComponentDisposition,
     ComponentRef,
     S0TorchInferenceBackend,
@@ -94,7 +94,7 @@ def test_s0_accepted_contracts_execute_model_data_tokenizer_train_and_inference(
     assert result.stop_reason == "max_new_tokens"
 
 
-def test_s0_evidence_fails_closed_while_checkpoint_and_eval_heads_are_red() -> None:
+def test_s0_evidence_accepts_green_checkpoint_lineage_but_holds_red_eval() -> None:
     payload = json.loads(EVIDENCE_PATH.read_text(encoding="utf-8"))
     components = []
     for row in payload["components"]:
@@ -129,10 +129,15 @@ def test_s0_evidence_fails_closed_while_checkpoint_and_eval_heads_are_red() -> N
     )
 
     assert convergence.accepted_lanes() == frozenset(
-        {"D01", "D02", "D03", "D04", "D07", "D08"}
+        {"D01", "D02", "D03", "D04", "D05", "D07", "D08"}
     )
-    assert convergence.missing_required_lanes() == ("D05", "D06")
+    assert convergence.missing_required_lanes() == ("D06",)
     assert convergence.ready_for_candidate() is False
+    assert payload["accepted_package_reconciliation"]["dependencies"] == [
+        "numpy>=1.26",
+        "safetensors>=0.5",
+        "torch>=2.5",
+    ]
     assert payload["audits"] == {
         "AUDIT-A": "CHANGES_REQUIRED",
         "AUDIT-B": "CHANGES_REQUIRED",
