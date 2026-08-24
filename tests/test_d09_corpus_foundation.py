@@ -213,15 +213,15 @@ def test_exact_dedup_plan_rejects_uri_aliasing() -> None:
 
 
 def test_datatrove_minhash_plan_is_pinned_restartable_and_topology_safe() -> None:
-    kwargs = dict(
-        corpus_identity_sha256="1" * 64,
-        input_parquet_uri="file:///m/input",
-        signatures_uri="file:///m/signatures",
-        buckets_uri="file:///m/buckets",
-        remove_ids_uri="file:///m/remove",
-        output_parquet_uri="file:///m/output",
-        logging_uri="file:///m/logs",
-    )
+    kwargs = {
+        "corpus_identity_sha256": "1" * 64,
+        "input_parquet_uri": "file:///m/input",
+        "signatures_uri": "file:///m/signatures",
+        "buckets_uri": "file:///m/buckets",
+        "remove_ids_uri": "file:///m/remove",
+        "output_parquet_uri": "file:///m/output",
+        "logging_uri": "file:///m/logs",
+    }
     plan = DataTroveMinhashPlan(**kwargs, tasks=8, workers=4)
     manifest = plan.manifest()
     assert manifest["datatrove_version"] == "0.10.0"
