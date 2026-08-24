@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Sanitize a Gitleaks JSON report without retaining secret material."""
 
 from __future__ import annotations
@@ -34,12 +33,12 @@ def _required_line(finding: dict[str, Any], key: str, index: int) -> int:
 def sanitize_findings(payload: Any) -> dict[str, Any]:
     """Return minimal location/rule metadata and reject malformed report shapes."""
     if not isinstance(payload, list):
-        raise ValueError("Gitleaks report must be a JSON array")
+        raise TypeError("Gitleaks report must be a JSON array")
 
     sanitized: list[dict[str, Any]] = []
     for index, finding in enumerate(payload):
         if not isinstance(finding, dict):
-            raise ValueError(f"finding {index} must be a JSON object")
+            raise TypeError(f"finding {index} must be a JSON object")
         if not _FORBIDDEN_FIELDS.issubset(finding):
             missing = sorted(_FORBIDDEN_FIELDS.difference(finding))
             raise ValueError(f"finding {index} is missing expected sensitive fields: {missing}")
