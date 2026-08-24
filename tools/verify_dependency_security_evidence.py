@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Verify retained dependency-security evidence without network access."""
 
 from __future__ import annotations
