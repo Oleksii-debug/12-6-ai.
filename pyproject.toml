@@ -6,7 +6,8 @@ build-backend = "setuptools.build_meta"
 name = "twelve-six-ai"
 version = "0.2.0.dev0"
 description = "12-6 AI from-scratch language model research"
-requires-python = ">=3.11"
+readme = "README.md"
+requires-python = ">=3.11,<3.12"
 dependencies = ["numpy>=1.26", "safetensors>=0.5", "torch>=2.5"]
 
 [project.scripts]
