@@ -19,6 +19,7 @@ PYTHON_IMPLEMENTATION = "cpython"
 SUPPORTED_REQUIRES_PYTHON = ">=3.11,<3.12"
 PROJECT_DISTRIBUTION = "twelve-six-ai"
 CONSOLE_SCRIPTS = {"twelve-six-generate": "twelve_six.inference.cli:main"}
+SUPPORTED_PROFILES = {"linux-x86_64", "linux-aarch64"}
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _NAME_NORMALIZER = re.compile(r"[-_.]+")
 
@@ -51,11 +52,12 @@ def current_profile_id() -> str:
     machine = platform.machine().lower()
     if machine in {"amd64", "x86_64"}:
         machine = "x86_64"
-    if system == "linux" and machine == "x86_64":
-        return "linux-x86_64"
-    if system == "windows" and machine == "x86_64":
-        return "windows-x86_64"
-    raise DependencyLockError(f"unsupported lock platform: {system}/{machine}")
+    elif machine in {"arm64", "aarch64"}:
+        machine = "aarch64"
+    profile_id = f"{system}-{machine}"
+    if profile_id not in SUPPORTED_PROFILES:
+        raise DependencyLockError(f"unsupported lock platform: {system}/{machine}")
+    return profile_id
 
 
 def assert_exact_python() -> None:
@@ -76,9 +78,7 @@ def _project_metadata(pyproject_path: Path) -> dict[str, Any]:
     if canonical_distribution_name(str(project.get("name", ""))) != PROJECT_DISTRIBUTION:
         raise DependencyLockError("unexpected project distribution name")
     if project.get("requires-python") != SUPPORTED_REQUIRES_PYTHON:
-        raise DependencyLockError(
-            f"requires-python must be exactly {SUPPORTED_REQUIRES_PYTHON!r}"
-        )
+        raise DependencyLockError(f"requires-python must be exactly {SUPPORTED_REQUIRES_PYTHON!r}")
     scripts = project.get("scripts") or {}
     if scripts != CONSOLE_SCRIPTS:
         raise DependencyLockError("console-script metadata drift")
@@ -102,6 +102,8 @@ def build_profile_manifest(
     platform_system: str | None = None,
     platform_machine: str | None = None,
 ) -> dict[str, Any]:
+    if profile_id not in SUPPORTED_PROFILES:
+        raise DependencyLockError(f"unsupported profile id: {profile_id}")
     root_path = Path(root)
     pyproject = root_path / "pyproject.toml"
     metadata = _project_metadata(pyproject)
@@ -169,17 +171,20 @@ def validate_profile_manifest(
         raise DependencyLockError("profile manifest self-hash mismatch")
     if manifest.get("project") != PROJECT_DISTRIBUTION:
         raise DependencyLockError("profile project identity mismatch")
-    python_info = manifest.get("python")
+    if manifest.get("profile_id") not in SUPPORTED_PROFILES:
+        raise DependencyLockError("unsupported profile identity")
     expected_python = {
         "implementation": PYTHON_IMPLEMENTATION,
         "version": EXACT_PYTHON_VERSION,
         "requires_python": SUPPORTED_REQUIRES_PYTHON,
     }
-    if python_info != expected_python:
+    if manifest.get("python") != expected_python:
         raise DependencyLockError("profile Python policy mismatch")
-    _project_metadata(root_path / "pyproject.toml")
+    metadata = _project_metadata(root_path / "pyproject.toml")
     if manifest.get("pyproject_sha256") != sha256_file(root_path / "pyproject.toml"):
         raise DependencyLockError("profile is stale for current pyproject.toml")
+    if manifest.get("declared_requirements") != metadata:
+        raise DependencyLockError("profile declared dependency union mismatch")
     if manifest.get("console_scripts") != CONSOLE_SCRIPTS:
         raise DependencyLockError("profile console-script binding mismatch")
     if enforce_current_platform and manifest.get("profile_id") != current_profile_id():
@@ -207,6 +212,8 @@ def validate_profile_manifest(
 
 def build_lock_index(*, root: str | Path, manifests: Mapping[str, str | Path]) -> dict[str, Any]:
     root_path = Path(root)
+    if set(manifests) != SUPPORTED_PROFILES:
+        raise DependencyLockError("lock index must bind every supported profile")
     profiles: dict[str, dict[str, str]] = {}
     for profile_id, relative in sorted(manifests.items()):
         manifest = validate_profile_manifest(
@@ -246,8 +253,8 @@ def validate_lock_index(*, root: str | Path, index_path: str | Path) -> dict[str
     if index.get("python_version") != EXACT_PYTHON_VERSION:
         raise DependencyLockError("dependency-lock index Python mismatch")
     profiles = index.get("profiles")
-    if not isinstance(profiles, dict) or set(profiles) != {"linux-x86_64", "windows-x86_64"}:
-        raise DependencyLockError("dependency-lock index must bind Linux and Windows x86_64")
+    if not isinstance(profiles, dict) or set(profiles) != SUPPORTED_PROFILES:
+        raise DependencyLockError("dependency-lock index profile set mismatch")
     for profile_id, record in profiles.items():
         if not isinstance(record, dict):
             raise DependencyLockError("dependency-lock index profile must be an object")
