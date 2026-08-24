@@ -1,0 +1,47 @@
+{
+  "console_scripts": {
+    "twelve-six-generate": "twelve_six.inference.cli:main"
+  },
+  "declared_requirements": {
+    "dev_requirements": [
+      "pytest>=8",
+      "ruff>=0.12"
+    ],
+    "runtime_requirements": [
+      "numpy>=1.26",
+      "safetensors>=0.5",
+      "torch>=2.5"
+    ]
+  },
+  "locks": {
+    "dev": {
+      "package_count": 6,
+      "path": "requirements/locks/linux-x86_64/dev.lock.txt",
+      "sha256": "1869e05c5eeaf056813df1c99dc63c7e5febb9794351ec640d265f62efaeac28"
+    },
+    "runtime": {
+      "package_count": 31,
+      "path": "requirements/locks/linux-x86_64/runtime.lock.txt",
+      "sha256": "ffefba3ea32b3ed267e92110bcc348cbeda21e8253c72c64a191ea762a6d6c14"
+    },
+    "toolchain": {
+      "package_count": 4,
+      "path": "requirements/locks/linux-x86_64/toolchain.lock.txt",
+      "sha256": "06b3f872e648e0b7f3cc33a92bd8b04709dea5d9a9821df4f2e8141f646cdcf3"
+    }
+  },
+  "manifest_sha256": "283ca83571e527babda700e0c66ed03fb1c2aa4674bee0dba2272f64f344e1bf",
+  "platform": {
+    "machine": "x86_64",
+    "system": "Linux"
+  },
+  "profile_id": "linux-x86_64",
+  "project": "twelve-six-ai",
+  "pyproject_sha256": "2051db3adfcdd6da2e6a3cb17c8015135c9e100e222a79ebb877ab35b34e2a15",
+  "python": {
+    "implementation": "cpython",
+    "requires_python": ">=3.11,<3.12",
+    "version": "3.11.16"
+  },
+  "schema_version": "12-6.dependency-lock-profile.v1"
+}

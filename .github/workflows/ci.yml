@@ -6,9 +6,9 @@ on:
 permissions:
   contents: read
 jobs:
-  bootstrap:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+  locked-x86-64:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -23,11 +23,41 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.11.16"
-      - run: python -m pip --version
-      - run: python -m pip install --disable-pip-version-check -e .[dev]
-      - run: python tools/check_repo_policy.py
-      - run: ruff check src tests tools
-      - name: Focused S0 convergence integration
-        run: pytest -q tests/test_s0_convergence_integration.py
-      - run: pytest -q
-      - run: python tools/validate_stage_candidate.py configs/releases/s0_candidate.template.json
+      - name: Locked clean install, package smoke and full checks
+        run: >-
+          python tools/verify_locked_environment.py
+          --profile linux-x86_64
+          --source-sha "${{ github.event.pull_request.head.sha || github.sha }}"
+          --evidence-out locked-environment-linux-x86_64.json
+          --run-repo-checks
+      - name: Upload locked environment evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: locked-environment-linux-x86_64
+          path: locked-environment-linux-x86_64.json
+          if-no-files-found: error
+          retention-days: 30
+
+  locked-arm64:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Locked clean install and package smoke
+        run: >-
+          python tools/verify_locked_environment.py
+          --profile linux-aarch64
+          --source-sha "${{ github.event.pull_request.head.sha || github.sha }}"
+          --evidence-out locked-environment-linux-aarch64.json
+      - name: Upload locked environment evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: locked-environment-linux-aarch64
+          path: locked-environment-linux-aarch64.json
+          if-no-files-found: error
+          retention-days: 30
