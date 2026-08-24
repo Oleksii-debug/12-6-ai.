@@ -58,6 +58,7 @@ class IntegerMixturePlan:
     def to_dict(self) -> dict[str, object]:
         return {
             "schema": SCALE_PLAN_SCHEMA,
+            "kind": "integer-hash-mixture",
             "seed": self.seed,
             "components": [
                 {
@@ -134,7 +135,9 @@ class PackingRestartCursor:
     """Fail-closed restart identity for deterministic stream reconstruction."""
 
     mixture_plan_sha256: str
+    shard_plan_sha256: str
     dataset_manifest_sha256: str
+    tokenizer_config_sha256: str
     tokenizer_vocab_sha256: str
     packing_config_sha256: str
     split: str
@@ -149,7 +152,9 @@ class PackingRestartCursor:
     def __post_init__(self) -> None:
         for field, value in (
             ("mixture_plan_sha256", self.mixture_plan_sha256),
+            ("shard_plan_sha256", self.shard_plan_sha256),
             ("dataset_manifest_sha256", self.dataset_manifest_sha256),
+            ("tokenizer_config_sha256", self.tokenizer_config_sha256),
             ("tokenizer_vocab_sha256", self.tokenizer_vocab_sha256),
             ("packing_config_sha256", self.packing_config_sha256),
         ):
@@ -175,7 +180,9 @@ class PackingRestartCursor:
         return {
             "schema": RESTART_SCHEMA,
             "mixture_plan_sha256": self.mixture_plan_sha256,
+            "shard_plan_sha256": self.shard_plan_sha256,
             "dataset_manifest_sha256": self.dataset_manifest_sha256,
+            "tokenizer_config_sha256": self.tokenizer_config_sha256,
             "tokenizer_vocab_sha256": self.tokenizer_vocab_sha256,
             "packing_config_sha256": self.packing_config_sha256,
             "split": self.split,
@@ -196,7 +203,9 @@ class PackingRestartCursor:
         self,
         *,
         mixture_plan_sha256: str,
+        shard_plan_sha256: str,
         dataset_manifest_sha256: str,
+        tokenizer_config_sha256: str,
         tokenizer_vocab_sha256: str,
         packing_config_sha256: str,
         split: str,
@@ -205,7 +214,9 @@ class PackingRestartCursor:
     ) -> None:
         expected = {
             "mixture_plan_sha256": mixture_plan_sha256,
+            "shard_plan_sha256": shard_plan_sha256,
             "dataset_manifest_sha256": dataset_manifest_sha256,
+            "tokenizer_config_sha256": tokenizer_config_sha256,
             "tokenizer_vocab_sha256": tokenizer_vocab_sha256,
             "packing_config_sha256": packing_config_sha256,
             "split": split,
@@ -261,23 +272,36 @@ def audit_packed_examples(
             raise ValueError("attention_mask must be binary")
         if any(value not in (0, 1) for value in example.loss_mask):
             raise ValueError("loss_mask must be binary")
+        attended_here = sum(example.attention_mask)
+        loss_here = sum(example.loss_mask)
+        if attended_here < 2:
+            raise ValueError("packed example must expose at least two attended tokens")
+        if require_single_document and loss_here != attended_here - 1:
+            raise ValueError("isolated packed example loss-token accounting drifted")
         if example.loss_mask[-1] != 0:
             raise ValueError("last sequence position cannot own a shifted causal target")
+        for index, attention in enumerate(example.attention_mask):
+            label = example.labels[index]
+            if attention:
+                if label < 0 or label >= vocab_size:
+                    raise ValueError("attended label lies outside tokenizer vocabulary")
+            else:
+                masked += 1
+                if label != ignore_index:
+                    raise ValueError("masked filler position must use ignore_index label")
+                if example.loss_mask[index]:
+                    raise ValueError("masked filler position must not contribute loss")
         for index, keep in enumerate(example.loss_mask[:-1]):
             if keep:
                 if not example.attention_mask[index] or not example.attention_mask[index + 1]:
                     raise ValueError("loss_mask exposes a masked input/target position")
-                if example.labels[index + 1] == ignore_index:
+                target = example.labels[index + 1]
+                if target == ignore_index:
                     raise ValueError("loss_mask exposes an ignored shifted target")
-        for index, attention in enumerate(example.attention_mask):
-            if not attention:
-                masked += 1
-                if example.labels[index] != ignore_index:
-                    raise ValueError("masked filler position must use ignore_index label")
-                if example.loss_mask[index]:
-                    raise ValueError("masked filler position must not contribute loss")
-        attended += sum(example.attention_mask)
-        loss_tokens += sum(example.loss_mask)
+                if target < 0 or target >= vocab_size:
+                    raise ValueError("loss_mask exposes an out-of-vocabulary shifted target")
+        attended += attended_here
+        loss_tokens += loss_here
     if example_count == 0:
         raise ValueError("examples must not be empty")
     return PackedAccounting(
