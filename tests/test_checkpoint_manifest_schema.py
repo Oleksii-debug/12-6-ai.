@@ -1,3 +1,4 @@
+import hashlib
 import json
 from pathlib import Path
 
@@ -11,7 +12,11 @@ from twelve_six.checkpoint import (
     save_checkpoint,
     verify_checkpoint,
 )
-from twelve_six.checkpoint.core import MANIFEST_CHECKSUM_NAME, MANIFEST_NAME, canonical_json_bytes
+from twelve_six.checkpoint.core import (
+    MANIFEST_CHECKSUM_NAME,
+    MANIFEST_NAME,
+    canonical_json_bytes,
+)
 
 
 class Model:
@@ -67,8 +72,6 @@ def rewrite_manifest(
         )
     payload = canonical_json_bytes(manifest) + b"\n"
     path.write_bytes(payload)
-    import hashlib
-
     digest = hashlib.sha256(payload).hexdigest()
     (checkpoint / MANIFEST_CHECKSUM_NAME).write_text(
         f"{digest}  {MANIFEST_NAME}\n", encoding="ascii"
@@ -170,7 +173,7 @@ def test_checkpoint_v1_rejects_unknown_file_record_field_even_with_new_checkpoin
         manifest["files"]["weights.safetensors"]["codec"] = "implicit"
 
     rewrite_manifest(checkpoint, mutate, recompute_checkpoint_id=True)
-    with pytest.raises(CheckpointIntegrityError, match="file record keys"):
+    with pytest.raises(CheckpointIntegrityError, match=r"file record .* keys"):
         verify_checkpoint(checkpoint)
 
 
@@ -185,7 +188,10 @@ def test_checkpoint_v1_rejects_unknown_file_record_field_even_with_new_checkpoin
 )
 def test_checkpoint_v1_rejects_invalid_created_at_utc(tmp_path: Path, created_at):
     checkpoint = make_checkpoint(tmp_path)
-    rewrite_manifest(checkpoint, lambda manifest: manifest.__setitem__("created_at_utc", created_at))
+    rewrite_manifest(
+        checkpoint,
+        lambda manifest: manifest.__setitem__("created_at_utc", created_at),
+    )
 
     with pytest.raises(CheckpointIntegrityError, match="created_at_utc"):
         verify_checkpoint(checkpoint)
