@@ -9,6 +9,9 @@ description = "12-6 AI from-scratch language model research"
 requires-python = ">=3.11"
 dependencies = ["torch>=2.2"]
 
+[project.scripts]
+twelve-six-generate = "twelve_six.inference.cli:main"
+
 [project.optional-dependencies]
 dev = ["pytest>=8", "ruff>=0.12"]
 
