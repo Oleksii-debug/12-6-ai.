@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Generate one platform-specific, hash-locked dependency profile from pip reports."""
 
 from __future__ import annotations
@@ -52,7 +51,7 @@ def _run_report(requirements: list[str]) -> dict[str, Any]:
     finally:
         report_path.unlink(missing_ok=True)
     if not isinstance(report, dict):
-        raise RuntimeError("pip report must contain an object")
+        raise TypeError("pip report must contain an object")
     return report
 
 
@@ -60,13 +59,13 @@ def _packages(report: dict[str, Any]) -> dict[str, tuple[str, tuple[str, ...]]]:
     result: dict[str, tuple[str, tuple[str, ...]]] = {}
     installations = report.get("install")
     if not isinstance(installations, list):
-        raise RuntimeError("pip report is missing install list")
+        raise TypeError("pip report is missing install list")
     for item in installations:
         if not isinstance(item, dict):
-            raise RuntimeError("pip report install entry must be an object")
+            raise TypeError("pip report install entry must be an object")
         metadata = item.get("metadata")
         if not isinstance(metadata, dict):
-            raise RuntimeError("pip report install entry is missing metadata")
+            raise TypeError("pip report install entry is missing metadata")
         name = canonical_distribution_name(str(metadata.get("name", "")))
         if name == PROJECT_DISTRIBUTION:
             continue
@@ -76,7 +75,7 @@ def _packages(report: dict[str, Any]) -> dict[str, tuple[str, tuple[str, ...]]]:
             raise RuntimeError(f"pip report lacks exact artifact evidence for {name}")
         archive = download.get("archive_info")
         if not isinstance(archive, dict):
-            raise RuntimeError(f"pip report lacks archive info for {name}")
+            raise TypeError(f"pip report lacks archive info for {name}")
         hashes = archive.get("hashes")
         if not isinstance(hashes, dict) or not hashes.get("sha256"):
             raise RuntimeError(f"pip report lacks SHA-256 for {name}=={version}")
@@ -86,7 +85,7 @@ def _packages(report: dict[str, Any]) -> dict[str, tuple[str, tuple[str, ...]]]:
         elif isinstance(sha_values, list):
             digest_values = tuple(str(value) for value in sha_values)
         else:
-            raise RuntimeError(f"pip report SHA-256 is malformed for {name}")
+            raise TypeError(f"pip report SHA-256 is malformed for {name}")
         normalized_hashes = tuple(sorted(set(digest_values)))
         previous = result.get(name)
         current = (version, normalized_hashes)
@@ -117,7 +116,7 @@ def _declared_toolchain() -> list[str]:
     build = document.get("build-system", {})
     requires = build.get("requires", []) if isinstance(build, dict) else []
     if not isinstance(requires, list):
-        raise RuntimeError("build-system.requires must be a list")
+        raise TypeError("build-system.requires must be a list")
     return ["pip==26.2.1", *[str(item) for item in requires]]
 
 
