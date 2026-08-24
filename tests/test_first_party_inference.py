@@ -121,6 +121,7 @@ def _fixture_identity(
     tokenizer_hash: str | None = None,
     context_length: int | None = None,
 ) -> CheckpointIdentity:
+    declared_context = spec.max_seq_len if context_length is None else context_length
     return CheckpointIdentity(
         git_sha="a" * 40,
         model_spec=spec.to_dict(),
@@ -131,11 +132,7 @@ def _fixture_identity(
         run_manifest_hash="c" * 64,
         training_config={
             "run_id": "first-party-compat-fixture",
-            "training": {
-                "context_length": spec.max_seq_len
-                if context_length is None
-                else context_length
-            },
+            "training": {"context_length": declared_context},
             "data": {"tokenizer_version": tokenizer.identity.version},
         },
         seed=1,
@@ -191,13 +188,12 @@ def test_real_trained_reload_greedy_sampling_logits_and_parity(tmp_path: Path) -
 
     diagnostics = reloaded.diagnostics()
     assert diagnostics["git_sha"] == identity.git_sha
-    assert diagnostics["model_spec_sha256"] == identity.model_spec_hash if False else hash_json(
-        identity.model_spec
-    )
+    assert diagnostics["model_spec_sha256"] == hash_json(identity.model_spec)
     assert diagnostics["tokenizer_config_sha256"] == tokenizer.identity.config_sha256
     assert diagnostics["tokenizer_vocab_sha256"] == tokenizer.identity.vocab_sha256
     assert diagnostics["parameter_count"] == 10_140
     assert diagnostics["max_context_tokens"] == 128
+    assert reloaded.eos_token_id is None
 
 
 def test_stop_context_decode_and_token_validation_on_first_party_backend(tmp_path: Path) -> None:
@@ -213,6 +209,15 @@ def test_stop_context_decode_and_token_validation_on_first_party_backend(tmp_pat
     )
     assert stopped.generated_token_ids == (first_token,)
     assert stopped.stop_reason == "stop_token"
+
+    first_text = backend.decode([first_token])
+    text_stopped = generate(
+        backend,
+        prompt,
+        GenerationConfig(max_new_tokens=8, stop_strings=(first_text,)),
+    )
+    assert text_stopped.stop_reason == "stop_string"
+    assert text_stopped.text == ""
 
     context_full = generate(backend, "A" * 128, GenerationConfig(max_new_tokens=1))
     assert context_full.generated_token_ids == ()
@@ -339,9 +344,13 @@ def test_openai_completion_handoff_preserves_raw_base_semantics(tmp_path: Path) 
         "12-6",
         GenerationConfig(max_new_tokens=3, sample=False, seed=19),
     )
-    assert response["choices"][0]["text"] == direct.text
-    assert response["usage"]["prompt_tokens"] == len(direct.prompt_token_ids)
-    assert response["usage"]["completion_tokens"] == len(direct.generated_token_ids)
+    choices = response["choices"]
+    usage = response["usage"]
+    assert isinstance(choices, list)
+    assert isinstance(usage, dict)
+    assert choices[0]["text"] == direct.text
+    assert usage["prompt_tokens"] == len(direct.prompt_token_ids)
+    assert usage["completion_tokens"] == len(direct.generated_token_ids)
     assert response["model"] == "12-6-base-s0"
 
     with pytest.raises(ValueError, match="chat/messages"):
