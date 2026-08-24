@@ -125,6 +125,11 @@ def test_max_new_tokens_rejects_bool_float_and_string(value: Any) -> None:
         compare_backends(Backend(), Backend(), ["probe"], max_new_tokens=value)
 
 
+def test_max_new_tokens_zero_rejects_vacuous_numerical_parity() -> None:
+    with pytest.raises(ValueError, match="max_new_tokens"):
+        compare_backends(Backend(), Backend(), ["probe"], max_new_tokens=0)
+
+
 def test_invalid_backend_context_is_structured_failure() -> None:
     reference = Backend()
     reference.max_context_tokens = True  # type: ignore[assignment]
@@ -164,6 +169,18 @@ def test_reference_prompt_token_contract_fails_closed(prompt_tokens: Any, kind: 
 
     assert not report.passed
     assert _failure_kinds(report) == [kind]
+
+
+def test_prompt_filling_context_cannot_produce_zero_step_pass() -> None:
+    tokens = list(range(8))
+    reference = Backend(prompt_tokens=tokens, logits=[1.0] * 9)
+    candidate = Backend(prompt_tokens=tokens, logits=[1.0] * 9)
+
+    report = compare_backends(reference, candidate, ["probe"], max_new_tokens=1)
+
+    assert not report.passed
+    assert report.steps_compared == 0
+    assert _failure_kinds(report) == ["no_logit_steps"]
 
 
 def test_prompt_token_outside_runtime_logit_vocabulary_fails_closed() -> None:
