@@ -1,0 +1,71 @@
+{
+  "schema_version": "12-6.s1-numerical-preflight-config.v1",
+  "stage": "S1",
+  "run_kind": "engineering_numerical_preflight_not_stage_evidence",
+  "authorization": {
+    "compute_class": "LOCAL_FREE_OR_FREE_HOSTED_CPU",
+    "materially_paid_compute_authorized": false,
+    "promotion_authority": false
+  },
+  "source": {
+    "repository": "Oleksii-debug/12-6-ai.",
+    "integration_parent_sha": "c631c024e641dac102036fafee6d78ba31c067cd",
+    "git_sha": "RUNTIME_REQUIRED_FULL_HEAD_SHA"
+  },
+  "s1_engineering_candidate": {
+    "stage_config": "configs/stages/s1_100k.json",
+    "modelspec_sha256": "2f0aa97a5d19e98c4e292fd5f1b454ada45ec4d2c7324e14ab7e48af19908ce6",
+    "initspec_sha256": "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5",
+    "expected_parameters": 107856,
+    "model_vocab_size": 512,
+    "max_seq_len": 256,
+    "frozen": false
+  },
+  "controlled_fixture": {
+    "purpose": "CONTROLLED_S0_FIXTURE_COMPATIBILITY_ONLY_NOT_S1_CORPUS_OR_TOKENIZER",
+    "dataset_identity_sha256": "bab60119d49e93303c972b77900fcb5553817f754cbc5d9a58019228cfa0ca89",
+    "tokenizer_config_sha256": "b04055c1061dd641dcab7cb9d62a931f09b8d1a070140a926ceb4e91d73ca8e1",
+    "tokenizer_vocab_sha256": "905ed40bb42cc4d550e228ff5f24158d504b38e8ed5974dfa3077bd5867ad571",
+    "tokenizer_vocab_size": 256,
+    "packing_config_sha256": "23a695b807f3e3f5c61d19c34968bcd88fafc6a45346dc08673d7a494219f285",
+    "unused_s1_vocab_rows_expected": 256
+  },
+  "environment": {
+    "profile_id": "linux-x86_64",
+    "python_version": "3.11.16",
+    "locked_environment_evidence": "RUNTIME_REQUIRED_SAME_SOURCE_SHA_JSON"
+  },
+  "training": {
+    "seed": 1337,
+    "seed_before_model_construction": true,
+    "optimizer": "AdamW",
+    "learning_rate": 0.01,
+    "weight_decay": 0.0,
+    "max_steps": 6,
+    "batch_size": 3,
+    "gradient_accumulation_steps": 1,
+    "gradient_clip_norm": 1.0,
+    "profiles": ["fp32", "bf16"],
+    "fp16_cpu_expected": "FAIL_CLOSED_AS_DESIGNED"
+  },
+  "required_evidence": {
+    "schema_version": "12-6.s1-numerical-preflight.v1",
+    "finite_loss_and_gradient_norms": true,
+    "actual_weight_delta": true,
+    "validation_optimized_tokens": 0,
+    "train_validation_record_overlap": 0,
+    "same_optimizer_step_before_after_final_validation": true,
+    "self_hashed": true
+  },
+  "prohibited_claims": {
+    "s1_architecture_frozen": false,
+    "s1_corpus_or_tokenizer_frozen": false,
+    "s1_quality_or_capability_evidence": false,
+    "candidate_or_stable_promotion": false,
+    "foreign_pretrained_weights_used": false,
+    "instruction_or_alignment_training": false,
+    "paid_compute_authorized_or_used": false,
+    "cross_hardware_bitwise_reproducibility": false
+  },
+  "command": "python tools/run_s1_numerical_preflight.py --source-sha <FULL_HEAD_SHA> --locked-environment-evidence <LOCKED_ENVIRONMENT_JSON> --output <EVIDENCE_JSON> --seed 1337 --max-steps 6 --batch-size 3"
+}
