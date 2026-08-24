@@ -1,16 +1,24 @@
 from __future__ import annotations
 
 import copy
+import importlib.util
 import json
 from pathlib import Path
 
 import pytest
 
-from tools.validate_c01_compute_plan import PlanValidationError, validate_queue, validate_scale_plan
-
 ROOT = Path(__file__).resolve().parents[1]
 QUEUE = ROOT / "configs/runs/c01_s0_run_queue.v3.json"
 SCALE = ROOT / "configs/runs/c01_stage_compute_plan_s1_s14.v1.json"
+VALIDATOR = ROOT / "tools/validate_c01_compute_plan.py"
+
+_spec = importlib.util.spec_from_file_location("validate_c01_compute_plan", VALIDATOR)
+assert _spec is not None and _spec.loader is not None
+_validator = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_validator)
+PlanValidationError = _validator.PlanValidationError
+validate_queue = _validator.validate_queue
+validate_scale_plan = _validator.validate_scale_plan
 
 
 def _load(path: Path) -> dict[str, object]:
