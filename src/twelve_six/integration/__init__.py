@@ -15,8 +15,8 @@ from .manifest import (
 __all__ = [
     "AuditEvidence",
     "AuditVerdict",
-    "CandidateStatus",
     "CIEvidence",
+    "CandidateStatus",
     "ComponentDisposition",
     "ComponentRef",
     "ReleaseArtifactEvidence",
