@@ -167,6 +167,7 @@ def save_durable_checkpoint(
         )
 
     staged = parent / f".{destination.name}.durable-{uuid.uuid4().hex}"
+    staged_owned = False
     published = False
     try:
         manifest = save_checkpoint(
@@ -178,6 +179,7 @@ def save_durable_checkpoint(
             trainer_state=trainer_state,
             overwrite=False,
         )
+        staged_owned = True
         try:
             _sync_verified_tree(staged)
         except OSError as exc:
@@ -197,6 +199,7 @@ def save_durable_checkpoint(
             raise CheckpointDurabilityError(
                 f"atomic checkpoint publication failed: {exc}", published=False
             ) from exc
+        staged_owned = False
         published = True
 
         try:
@@ -209,5 +212,5 @@ def save_durable_checkpoint(
             ) from exc
         return manifest
     finally:
-        if not published and staged.exists():
+        if staged_owned and not published and staged.exists():
             shutil.rmtree(staged, ignore_errors=True)
