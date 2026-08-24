@@ -7,7 +7,9 @@ import json
 import math
 import sys
 from dataclasses import asdict, dataclass
+from numbers import Real
 from pathlib import Path
+from typing import Any
 
 from .contracts import InferenceBackend
 from .loader import load_backend
@@ -37,7 +39,13 @@ class ParityReport:
 
     @property
     def passed(self) -> bool:
-        return not self.failures
+        """Require both zero failures and non-vacuous numerical comparison."""
+
+        return (
+            not self.failures
+            and self.prompts_compared > 0
+            and self.steps_compared > 0
+        )
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -54,20 +62,74 @@ class ParityReport:
         }
 
 
-def _validated_tolerance(atol: float, rtol: float) -> tuple[float, float]:
-    atol = float(atol)
-    rtol = float(rtol)
-    if not math.isfinite(atol) or atol < 0:
-        raise ValueError("atol must be finite and >= 0")
-    if not math.isfinite(rtol) or rtol < 0:
-        raise ValueError("rtol must be finite and >= 0")
-    return atol, rtol
+def _validated_tolerance(name: str, value: Real) -> float:
+    if isinstance(value, bool) or not isinstance(value, Real):
+        raise TypeError(f"{name} must be a real number, not bool or coerced text")
+    converted = float(value)
+    if not math.isfinite(converted) or converted < 0:
+        raise ValueError(f"{name} must be finite and >= 0")
+    return converted
+
+
+def _validated_max_new_tokens(value: Any) -> int:
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise TypeError("max_new_tokens must be a positive integer")
+    if value <= 0:
+        raise ValueError("max_new_tokens must be > 0 for parity evidence")
+    return value
+
+
+def _validated_prompts(prompts: list[str] | tuple[str, ...]) -> tuple[str, ...]:
+    if not isinstance(prompts, (list, tuple)):
+        raise TypeError("prompts must be a list or tuple of strings")
+    if not prompts:
+        raise ValueError("at least one prompt is required")
+    for index, prompt in enumerate(prompts):
+        if not isinstance(prompt, str):
+            raise TypeError(f"prompt at index {index} must be a string")
+    return tuple(prompts)
+
+
+def _backend_contract_failure(
+    backend: InferenceBackend,
+    *,
+    role: str,
+) -> ParityFailure | None:
+    context = backend.max_context_tokens
+    if not isinstance(context, int) or isinstance(context, bool) or context <= 0:
+        return ParityFailure(
+            -1,
+            None,
+            f"invalid_{role}_context_window",
+            f"{role} max_context_tokens must be a positive integer",
+        )
+
+    eos_token_id = backend.eos_token_id
+    if eos_token_id is not None and (
+        not isinstance(eos_token_id, int)
+        or isinstance(eos_token_id, bool)
+        or eos_token_id < 0
+    ):
+        return ParityFailure(
+            -1,
+            None,
+            f"invalid_{role}_eos_token",
+            f"{role} eos_token_id must be None or a non-negative integer",
+        )
+    return None
 
 
 def _contract_failure(
     reference: InferenceBackend,
     candidate: InferenceBackend,
 ) -> ParityFailure | None:
+    reference_failure = _backend_contract_failure(reference, role="reference")
+    if reference_failure is not None:
+        return reference_failure
+    candidate_failure = _backend_contract_failure(candidate, role="candidate")
+    if candidate_failure is not None:
+        return candidate_failure
+
     if reference.max_context_tokens != candidate.max_context_tokens:
         detail = (
             f"reference={reference.max_context_tokens} "
@@ -78,6 +140,33 @@ def _contract_failure(
         detail = f"reference={reference.eos_token_id} candidate={candidate.eos_token_id}"
         return ParityFailure(-1, None, "eos_token_mismatch", detail)
     return None
+
+
+def _validated_token_ids(
+    token_ids: Any,
+    *,
+    role: str,
+) -> tuple[int, ...] | ParityFailure:
+    if not isinstance(token_ids, list):
+        return ParityFailure(
+            -1,
+            None,
+            f"invalid_{role}_encoded_prompt",
+            f"{role} encode() must return list[int]",
+        )
+    for token_index, token_id in enumerate(token_ids):
+        if (
+            not isinstance(token_id, int)
+            or isinstance(token_id, bool)
+            or token_id < 0
+        ):
+            return ParityFailure(
+                -1,
+                None,
+                f"invalid_{role}_encoded_prompt",
+                f"{role} token at index {token_index} must be a non-negative integer",
+            )
+    return tuple(token_ids)
 
 
 def _compare_logits(
@@ -93,6 +182,8 @@ def _compare_logits(
             f"candidate={len(candidate_logits)}"
         )
         return False, 0.0, 0.0, detail
+    if not reference_logits:
+        return False, 0.0, 0.0, "logit vectors must not be empty"
 
     max_abs_error = 0.0
     max_rel_error = 0.0
@@ -118,6 +209,45 @@ def _compare_logits(
     return True, max_abs_error, max_rel_error, None
 
 
+def _runtime_vocab_failure(
+    reference: InferenceBackend,
+    candidate: InferenceBackend,
+    *,
+    input_ids: tuple[int, ...],
+    vocab_size: int,
+    prompt_index: int,
+    step_index: int,
+) -> ParityFailure | None:
+    for token_index, token_id in enumerate(input_ids):
+        if token_id >= vocab_size:
+            return ParityFailure(
+                prompt_index,
+                step_index,
+                "input_token_out_of_vocab",
+                (
+                    f"input token at index {token_index} is {token_id}; "
+                    f"logit vocabulary size is {vocab_size}"
+                ),
+            )
+
+    eos_token_id = reference.eos_token_id
+    if eos_token_id is not None and eos_token_id >= vocab_size:
+        return ParityFailure(
+            prompt_index,
+            step_index,
+            "eos_token_out_of_vocab",
+            f"shared eos_token_id={eos_token_id} is outside vocabulary size {vocab_size}",
+        )
+    if candidate.eos_token_id != eos_token_id:
+        return ParityFailure(
+            prompt_index,
+            step_index,
+            "eos_token_mismatch",
+            f"reference={eos_token_id} candidate={candidate.eos_token_id}",
+        )
+    return None
+
+
 def compare_backends(
     reference: InferenceBackend,
     candidate: InferenceBackend,
@@ -127,11 +257,10 @@ def compare_backends(
     atol: float = 1e-6,
     rtol: float = 1e-5,
 ) -> ParityReport:
-    if not prompts:
-        raise ValueError("at least one prompt is required")
-    if max_new_tokens < 0:
-        raise ValueError("max_new_tokens must be >= 0")
-    atol, rtol = _validated_tolerance(atol, rtol)
+    prompts = _validated_prompts(prompts)
+    max_new_tokens = _validated_max_new_tokens(max_new_tokens)
+    atol = _validated_tolerance("atol", atol)
+    rtol = _validated_tolerance("rtol", rtol)
 
     contract_failure = _contract_failure(reference, candidate)
     if contract_failure is not None:
@@ -152,9 +281,30 @@ def compare_backends(
     max_rel_error = 0.0
 
     for prompt_index, prompt in enumerate(prompts):
-        reference_prompt = reference.encode(prompt)
-        candidate_prompt = candidate.encode(prompt)
-        if reference_prompt != candidate_prompt:
+        reference_encoded = _validated_token_ids(reference.encode(prompt), role="reference")
+        if isinstance(reference_encoded, ParityFailure):
+            failures.append(
+                ParityFailure(
+                    prompt_index,
+                    None,
+                    reference_encoded.kind,
+                    reference_encoded.detail,
+                )
+            )
+            continue
+        candidate_encoded = _validated_token_ids(candidate.encode(prompt), role="candidate")
+        if isinstance(candidate_encoded, ParityFailure):
+            failures.append(
+                ParityFailure(
+                    prompt_index,
+                    None,
+                    candidate_encoded.kind,
+                    candidate_encoded.detail,
+                )
+            )
+            continue
+
+        if reference_encoded != candidate_encoded:
             failures.append(
                 ParityFailure(
                     prompt_index,
@@ -164,14 +314,14 @@ def compare_backends(
                 )
             )
             continue
-        if not reference_prompt:
+        if not reference_encoded:
             failures.append(
                 ParityFailure(prompt_index, None, "empty_prompt", "prompt encoded to zero tokens")
             )
             continue
-        if len(reference_prompt) > reference.max_context_tokens:
+        if len(reference_encoded) > reference.max_context_tokens:
             detail = (
-                f"prompt_tokens={len(reference_prompt)} "
+                f"prompt_tokens={len(reference_encoded)} "
                 f"context={reference.max_context_tokens}"
             )
             failures.append(ParityFailure(prompt_index, None, "prompt_over_context", detail))
@@ -179,8 +329,9 @@ def compare_backends(
 
         generated: list[int] = []
         prompt_failed = False
+        prompt_steps_before = steps_compared
         for step_index in range(max_new_tokens):
-            input_ids = (*reference_prompt, *generated)
+            input_ids = (*reference_encoded, *generated)
             if len(input_ids) >= reference.max_context_tokens:
                 break
 
@@ -207,6 +358,19 @@ def compare_backends(
                 prompt_failed = True
                 break
 
+            runtime_failure = _runtime_vocab_failure(
+                reference,
+                candidate,
+                input_ids=input_ids,
+                vocab_size=len(reference_logits),
+                prompt_index=prompt_index,
+                step_index=step_index,
+            )
+            if runtime_failure is not None:
+                failures.append(runtime_failure)
+                prompt_failed = True
+                break
+
             reference_token = greedy_token(reference_logits)
             candidate_token = greedy_token(candidate_logits)
             if reference_token != candidate_token:
@@ -222,6 +386,19 @@ def compare_backends(
                 break
 
         if prompt_failed:
+            continue
+        if steps_compared == prompt_steps_before:
+            failures.append(
+                ParityFailure(
+                    prompt_index,
+                    None,
+                    "no_logit_steps",
+                    (
+                        "prompt left no context capacity for a numerical parity step; "
+                        "parity evidence cannot pass vacuously"
+                    ),
+                )
+            )
             continue
         if reference.decode(generated) != candidate.decode(generated):
             failures.append(
