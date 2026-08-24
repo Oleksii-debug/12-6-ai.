@@ -1,0 +1,116 @@
+{
+  "schema_version": "12-6.s0-repeatability-intake.v1",
+  "run_id": "12-6-AI-SWARM-EXP-01",
+  "repository": "Oleksii-debug/12-6-ai.",
+  "stage": "S0",
+  "status": "experimental",
+  "canonical_base": "random_init_pretraining_only",
+  "composition_complete": true,
+  "repeatability_evidence_complete": true,
+  "promotion_eligible": false,
+  "integration_branch": "d01/s0-repeatability-intake-20260825",
+  "candidate_sha_policy": "exact git HEAD at validation time; this manifest intentionally does not self-reference its containing commit",
+  "authority_snapshot": {
+    "main_sha": "f2e94c7212888cdb960bb66154d56d210e9b27ab",
+    "main_protected": false,
+    "parent_candidate_pr": 88,
+    "parent_candidate_sha": "59193ada9586d0542b027f46d32ac923841fae7f",
+    "repeatability_pr": 89,
+    "repeatability_source_sha": "c631c024e641dac102036fafee6d78ba31c067cd"
+  },
+  "inherited_candidate_manifest": "configs/releases/s0_candidate_successor_convergence_20260825.experimental.json",
+  "accepted_successor": {
+    "lane": "D02",
+    "pr_number": 89,
+    "source_sha": "c631c024e641dac102036fafee6d78ba31c067cd",
+    "direct_parent_sha": "59193ada9586d0542b027f46d32ac923841fae7f",
+    "surface": "fresh_run_repeatability_and_seed_causality",
+    "changed_path_overlap_with_parent_product": 0,
+    "changed_paths": [
+      ".github/workflows/d02-s0-repeatability.yml",
+      "configs/runs/s0_10k.d02_repeatability.json",
+      "docs/D02_S0_REPEATABILITY_EVIDENCE.md",
+      "src/twelve_six/training/s0_repeatability.py",
+      "tests/test_s0_repeatability.py",
+      "tools/collect_s0_repeatability_evidence.py",
+      "tools/run_s0_determinism_probe.py",
+      "tools/validate_s0_repeatability_evidence.py"
+    ],
+    "workflows": [
+      {"name": "CI", "run_id": 32778688850, "conclusion": "success"},
+      {"name": "D02 Real S0 Training", "run_id": 32778688832, "conclusion": "success"},
+      {"name": "D04 Strict S0 Exact-Candidate Evaluation", "run_id": 32778688844, "conclusion": "success"},
+      {"name": "D02 S0 Determinism Repeatability", "run_id": 32778688829, "conclusion": "success"}
+    ],
+    "artifact": {
+      "id": 9539007219,
+      "name": "d02-s0-repeatability-evidence",
+      "digest": "sha256:bf04e840eef4ddf6a0eecbe91224d426ed2aaa05fd7bb88c4db32d7aef11d45d",
+      "expires_at": "2026-09-23T21:20:35Z"
+    },
+    "evidence": {
+      "status": "PASS",
+      "source_sha": "c631c024e641dac102036fafee6d78ba31c067cd",
+      "evidence_sha256": "263e372d413ca8be98f2ee20210b6ce5a6bed0e25a068519362fa181e519e1f1",
+      "identity_sha256": "4beacccdd21f9c293d3933560dbceb7d4a16c4ee04449651acfc9c32130ce3d7",
+      "locked_environment_evidence_sha256": "ad3c66e2c7cf1ebf94209f040fd160fa5cc6b70691cf14aeb4da52dc56516fd5",
+      "same_seed": 1337,
+      "different_seed": 1338,
+      "same_seed_exact_equivalence": true,
+      "different_seed_initialization_diverges": true,
+      "different_seed_training_diverges": true,
+      "validation_optimized_tokens": 0,
+      "same_seed_initial_model_sha256": "fb1b30726c6e3d70f88fdab009fa323f3b29e79ce1ea3f8079a88fcd0916f5e0",
+      "same_seed_final_model_sha256": "06d15760a1e54c3e746335ffb9f3883e347a3bf3752c9be68b1214bc7253a8c5",
+      "same_seed_final_trainer_state_sha256": "8d090bfcec1bd2a745c54a902888d7fc3efca9258c235392463024e0a8cd1af0",
+      "same_seed_step_trace_sha256": "b9e48ebf714d30705298d6a6c17373ff30c94111853098630f1bccd8b6d8c226",
+      "different_seed_initial_model_sha256": "e674def70cf0b53e435a5539e72f797dfca13a71e0791c5c9877bcf055aa71a3",
+      "different_seed_final_model_sha256": "6ff171c40bb8ed8e5c186ff694300baf3a95a1eec9f899c1bec288a5339947eb",
+      "different_seed_step_trace_sha256": "83c69a303d1157f8888c04f727904e79bbf10b728595f199c73514a157de9b6c",
+      "same_seed_initial_train_loss": 5.557927955757261,
+      "same_seed_final_train_loss": 2.7985758682820183,
+      "same_seed_initial_validation_loss": 5.559258974424683,
+      "same_seed_final_validation_loss": 2.7907250027845403,
+      "optimized_tokens": 10833,
+      "changed_parameter_elements": 10140,
+      "trainable_parameter_elements": 10140
+    }
+  },
+  "identity": {
+    "model_spec_sha256": "86c75b31dff05b7b5db9f6ed068c571a6ead01ba663412fe630f5e52b09d9b6b",
+    "init_spec_sha256": "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5",
+    "dataset_identity_sha256": "bab60119d49e93303c972b77900fcb5553817f754cbc5d9a58019228cfa0ca89",
+    "dataset_manifest_sha256": "b085a7ab56510575a11a80824fcff3a95a17f237d46d1be820e59d1289f220c2",
+    "tokenizer_config_sha256": "b04055c1061dd641dcab7cb9d62a931f09b8d1a070140a926ceb4e91d73ca8e1",
+    "tokenizer_vocab_sha256": "905ed40bb42cc4d550e228ff5f24158d504b38e8ed5974dfa3077bd5867ad571",
+    "packing_config_sha256": "23a695b807f3e3f5c61d19c34968bcd88fafc6a45346dc08673d7a494219f285",
+    "environment_lock_index_file_sha256": "61fa31fbb5da7a4289cccce5abfcebde943664f5318b0ce3d69ae9bb3db852ac",
+    "parameter_count": 10140
+  },
+  "claims": {
+    "candidate_or_stable_promotion": false,
+    "cross_hardware_bitwise_reproducibility": false,
+    "gpu_reproducibility": false,
+    "distributed_reproducibility": false,
+    "foreign_pretrained_weights_used": false,
+    "instruction_or_alignment_training": false,
+    "paid_compute_authorized_or_used": false
+  },
+  "audits": {
+    "AUDIT-A": {"issue": 13, "verdict": "CHANGES_REQUIRED", "candidate_sha": "not_retested_on_repeatability_successor"},
+    "AUDIT-B": {"issue": 14, "verdict": "CHANGES_REQUIRED", "candidate_sha": "not_retested_on_repeatability_successor"}
+  },
+  "held_active_ownership": [
+    {"surface": "PR #79", "reason": "secret/history and release evidence control plane remains separately owned"},
+    {"surface": "PR #80", "reason": "live promotion-authority verification remains separately owned"},
+    {"surface": "PR #87", "reason": "release-governance trusted-root work remains separately owned"},
+    {"surface": "PR #62", "reason": "dependency vulnerability/license evidence remains separately owned"}
+  ],
+  "promotion_blockers": [
+    "AUDIT-A must independently retest the exact final candidate head and issue a new verdict",
+    "AUDIT-B must independently retest the exact final candidate head and issue a new verdict",
+    "main branch protection/trusted release root is not established by this Product integration package",
+    "release/supply-chain adjudication remains a separately owned fail-closed control-plane concern"
+  ],
+  "next_action": "Treat PR #89 repeatability as accepted ancestry; rerun inherited exact-head CI/training/evaluation/repeatability on this integration wrapper, then route the resulting exact head to AUDIT-A and AUDIT-B without inferring promotion authority."
+}
