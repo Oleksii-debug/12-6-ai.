@@ -93,7 +93,10 @@ def _tensor_batches(
 
 
 @torch.no_grad()
-def _evaluate(model: TwelveSixDecoder, batches: list[dict[str, torch.Tensor]]) -> tuple[float, int]:
+def _evaluate(
+    model: TwelveSixDecoder,
+    batches: list[dict[str, torch.Tensor]],
+) -> tuple[float, int]:
     model.eval()
     weighted_loss = 0.0
     token_count = 0
@@ -158,10 +161,13 @@ def _failure_recovery_probe(
         model = TwelveSixDecoder(stage.model, stage.init)
         trainer = Trainer(model, probe_config, device="cpu")
         trainer.train_microbatch(batch)
-        safe_model = _weight_snapshot(model)
+        safe_model = {
+            name: tensor.detach().clone() for name, tensor in model.state_dict().items()
+        }
         safe_state = trainer.state_dict()
+        first_token = int(batch["input_ids"][0, 0].item())
         with torch.no_grad():
-            next(model.parameters()).view(-1)[0] = value
+            model.token_embedding.weight[first_token, 0] = value
         try:
             trainer.train_microbatch(batch)
         except NonFiniteTrainingError:
@@ -183,8 +189,10 @@ def _failure_recovery_probe(
         resumed = restored_trainer.train_microbatch(batch)
         return bool(resumed.optimizer_stepped and math.isfinite(resumed.loss))
 
-    return {"nan_fail_closed_and_fresh_recovery": run_fault(float("nan")),
-            "inf_fail_closed_and_fresh_recovery": run_fault(float("inf"))}
+    return {
+        "nan_fail_closed_and_fresh_recovery": run_fault(float("nan")),
+        "inf_fail_closed_and_fresh_recovery": run_fault(float("inf")),
+    }
 
 
 def run_s0_training_evidence(
@@ -247,7 +255,9 @@ def run_s0_training_evidence(
     trainer = Trainer(model, config, device="cpu")
 
     initial_train_loss, initial_train_eval_tokens = _evaluate(model, train_batches)
-    initial_validation_loss, initial_validation_eval_tokens = _evaluate(model, validation_batches)
+    initial_validation_loss, initial_validation_eval_tokens = _evaluate(
+        model, validation_batches
+    )
     validation_step_before_training = trainer.optimizer_step
 
     step_metrics: list[StepMetrics] = []
@@ -262,7 +272,9 @@ def run_s0_training_evidence(
 
     final_train_loss, final_train_eval_tokens = _evaluate(model, train_batches)
     validation_step_before_eval = trainer.optimizer_step
-    final_validation_loss, final_validation_eval_tokens = _evaluate(model, validation_batches)
+    final_validation_loss, final_validation_eval_tokens = _evaluate(
+        model, validation_batches
+    )
     validation_step_after_eval = trainer.optimizer_step
 
     grad_norms = [metric.grad_norm for metric in step_metrics if metric.grad_norm is not None]
@@ -273,14 +285,16 @@ def run_s0_training_evidence(
         raise RuntimeError("real S0 training produced no model weight changes")
     if not final_train_loss < initial_train_loss:
         raise RuntimeError("real S0 training did not reduce full-train loss")
-    if not all(math.isfinite(value) for value in (
-        initial_train_loss, final_train_loss, initial_validation_loss, final_validation_loss
-    )):
+    measured_losses = (
+        initial_train_loss,
+        final_train_loss,
+        initial_validation_loss,
+        final_validation_loss,
+    )
+    if not all(math.isfinite(value) for value in measured_losses):
         raise RuntimeError("non-finite measured S0 loss")
 
-    failure_probe = _failure_recovery_probe(
-        stage_path, train_batches[0], seed=seed + 1
-    )
+    failure_probe = _failure_recovery_probe(stage_path, train_batches[0], seed=seed + 1)
 
     identity_payload = {
         "repository": "Oleksii-debug/12-6-ai.",
@@ -345,7 +359,7 @@ def run_s0_training_evidence(
             "wall_seconds": wall_seconds,
             "process_cpu_seconds": process_cpu_seconds,
             "python": platform.python_version(),
-            "torch": torch.__version__,
+            "torch": str(torch.__version__),
             "platform": platform.platform(),
             "device": "cpu",
         },
