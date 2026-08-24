@@ -23,6 +23,7 @@
   "data": {
     "dataset_manifest_sha256": null,
     "tokenizer_sha256": null,
+    "tokenizer_vocab_sha256": null,
     "tokenizer_version": null,
     "split_identity": null
   },
@@ -70,6 +71,7 @@
       "candidate.parameter_count",
       "data.dataset_manifest_sha256",
       "data.tokenizer_sha256",
+      "data.tokenizer_vocab_sha256",
       "data.tokenizer_version",
       "data.split_identity",
       "training.seed",
