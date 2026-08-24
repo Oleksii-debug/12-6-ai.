@@ -10,18 +10,23 @@ from .contracts import GenerationConfig
 from .generation import generate
 from .loader import load_backend
 
+DEFAULT_BACKEND_LOADER = "twelve_six.inference.first_party:load_first_party_backend"
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="twelve-six-generate",
-        description="Generate text from a local 12-6 AI checkpoint.",
+        description="Generate a raw Base completion from a local 12-6 AI checkpoint.",
     )
     parser.add_argument("--checkpoint", type=Path, required=True)
     parser.add_argument(
         "--backend-loader",
-        required=True,
+        default=DEFAULT_BACKEND_LOADER,
         metavar="MODULE:CALLABLE",
-        help="factory that accepts checkpoint Path and returns the D07 inference backend",
+        help=(
+            "checkpoint backend factory; defaults to the verified first-party "
+            "D01+D04+D05 adapter"
+        ),
     )
     parser.add_argument("--prompt", help="prompt text; when omitted, read all prompt text from stdin")
     parser.add_argument("--max-new-tokens", type=int, default=64)
@@ -60,6 +65,18 @@ def _read_prompt(parser: argparse.ArgumentParser, prompt: str | None) -> str:
     return sys.stdin.read()
 
 
+def _backend_diagnostics(backend: object) -> dict[str, object] | None:
+    diagnostics = getattr(backend, "diagnostics", None)
+    if diagnostics is None:
+        return None
+    if not callable(diagnostics):
+        raise TypeError("backend diagnostics attribute must be callable")
+    payload = diagnostics()
+    if not isinstance(payload, dict):
+        raise TypeError("backend diagnostics must return a dictionary")
+    return payload
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -78,12 +95,29 @@ def main(argv: Sequence[str] | None = None) -> int:
             strip_stop_strings=not args.keep_stop_string,
         )
         backend = load_backend(args.backend_loader, args.checkpoint)
+        backend_diagnostics = _backend_diagnostics(backend)
         result = generate(backend, prompt, config)
-    except (ImportError, AttributeError, FileNotFoundError, TypeError, ValueError) as exc:
+    except (
+        ImportError,
+        AttributeError,
+        FileNotFoundError,
+        RuntimeError,
+        TypeError,
+        ValueError,
+    ) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 
     mode = "sample" if config.sample else "greedy"
+    if backend_diagnostics is not None:
+        print(
+            "backend: "
+            f"kind={backend_diagnostics.get('backend')} "
+            f"checkpoint_id={backend_diagnostics.get('checkpoint_id')} "
+            f"model_spec={backend_diagnostics.get('model_spec_sha256')} "
+            f"tokenizer={backend_diagnostics.get('tokenizer_config_sha256')}",
+            file=sys.stderr,
+        )
     print(
         "generation: "
         f"mode={mode} seed={config.seed} "
@@ -101,8 +135,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             "stop_reason": result.stop_reason,
             "seed": config.seed,
             "mode": mode,
+            "backend": backend_diagnostics,
         }
-        print(json.dumps(payload, ensure_ascii=False))
+        print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
     else:
         print(result.text)
     return 0

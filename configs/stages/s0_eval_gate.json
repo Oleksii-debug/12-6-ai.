@@ -1,0 +1,11 @@
+{
+  "schema_version": "12-6.s0-gate-policy.v1",
+  "stage": "S0",
+  "policy_status": "PROPOSED_NOT_FROZEN",
+  "target_parameters": 10000,
+  "min_parameters": 8000,
+  "max_parameters": 12000,
+  "min_distinct_train_batches": 2,
+  "max_train_validation_overlap": 0,
+  "require_trained_validation_better_than_random": true
+}
