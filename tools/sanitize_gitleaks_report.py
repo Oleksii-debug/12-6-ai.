@@ -5,28 +5,34 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
 from typing import Any
 
 _SCHEMA = "12-6.gitleaks-sanitized-findings.v1"
-_SAFE_FIELDS = (
-    "RuleID",
-    "Description",
-    "File",
-    "StartLine",
-    "EndLine",
-    "Commit",
-    "Author",
-    "Date",
-    "Message",
-    "Tags",
-    "Fingerprint",
-)
+_GIT_SHA = re.compile(r"^[0-9a-f]{40}$")
+_CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 _FORBIDDEN_FIELDS = {"Secret", "Match"}
 
 
+def _required_text(finding: dict[str, Any], key: str, index: int) -> str:
+    value = finding.get(key)
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"finding {index} field {key!r} must be non-empty text")
+    if _CONTROL.search(value):
+        raise ValueError(f"finding {index} field {key!r} contains control characters")
+    return value
+
+
+def _required_line(finding: dict[str, Any], key: str, index: int) -> int:
+    value = finding.get(key)
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise ValueError(f"finding {index} field {key!r} must be a positive integer")
+    return value
+
+
 def sanitize_findings(payload: Any) -> dict[str, Any]:
-    """Return metadata-only findings and reject malformed report shapes."""
+    """Return minimal location/rule metadata and reject malformed report shapes."""
     if not isinstance(payload, list):
         raise ValueError("Gitleaks report must be a JSON array")
 
@@ -38,11 +44,34 @@ def sanitize_findings(payload: Any) -> dict[str, Any]:
             missing = sorted(_FORBIDDEN_FIELDS.difference(finding))
             raise ValueError(f"finding {index} is missing expected sensitive fields: {missing}")
 
-        item = {field: finding[field] for field in _SAFE_FIELDS if field in finding}
-        if not item.get("RuleID") or not item.get("File") or not item.get("Commit"):
-            raise ValueError(f"finding {index} lacks rule/file/commit identity")
-        sanitized.append(item)
+        rule_id = _required_text(finding, "RuleID", index)
+        file_path = _required_text(finding, "File", index)
+        commit = _required_text(finding, "Commit", index)
+        if _GIT_SHA.fullmatch(commit) is None:
+            raise ValueError(f"finding {index} Commit must be a lowercase 40-hex Git SHA")
+        start_line = _required_line(finding, "StartLine", index)
+        end_line = _required_line(finding, "EndLine", index)
+        if end_line < start_line:
+            raise ValueError(f"finding {index} EndLine must be >= StartLine")
 
+        sanitized.append(
+            {
+                "RuleID": rule_id,
+                "File": file_path,
+                "StartLine": start_line,
+                "EndLine": end_line,
+                "Commit": commit,
+            }
+        )
+
+    sanitized.sort(
+        key=lambda item: (
+            item["Commit"],
+            item["File"],
+            item["StartLine"],
+            item["RuleID"],
+        )
+    )
     return {
         "schema": _SCHEMA,
         "finding_count": len(sanitized),
