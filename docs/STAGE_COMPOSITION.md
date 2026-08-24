@@ -1,27 +1,44 @@
 # Stage Composition and Promotion
 
-D10 integrates exact committed evidence selectively. A green branch is evidence about tests, not authority to merge every file from that branch.
+D10 integrates exact committed evidence selectively. Green CI is intake evidence, not authority to merge a whole branch or promote a stage.
 
 ## S0 intake
 
-The S0 Base candidate requires accepted evidence for D01 model, D02 trainer, D03 deterministic data, D04 tokenization/loading, D05 checkpointing, D06 evaluation, and D07 generation. D08 scale interfaces are accepted only when they are relevant and independently compatible with the S0 package.
+The S0 Base candidate requires accepted D01-D08 components. D09 behavioral, alignment, instruction, preference, RL, refusal-policy, personality, and specialization weights are excluded from the early Base lineage. Infrastructure-only D09 code may be reviewed separately and does not authorize behavioral training.
 
-D09 behavioral/alignment weights are excluded from the early Base candidate. Infrastructure-only D09 code may be reviewed independently, but accepting such code does not authorize post-training or alter checkpoint lineage.
+Every accepted component in a non-experimental candidate records:
 
-Each accepted component records its lane, exact source SHA, disposition, component kind, PR number when present, artifact hash when relevant, and notes. Held and rejected components remain visible instead of disappearing from provenance.
+- exact source Git SHA and PR when applicable;
+- exact CI run ID, tested head SHA, conclusion, and durable evidence reference;
+- explicit classification that it contains neither foreign pretrained weights nor behavioral weights for Base;
+- artifact path, SHA-256, and evidence reference together when the component has a materialized artifact.
+
+The CI head must equal the component source SHA and the conclusion must be `success`. Held and rejected components remain visible in provenance.
 
 ## Candidate states
 
-`EXPERIMENTAL` may be incomplete and has no promotion claim.
+`EXPERIMENTAL` may be incomplete and makes no promotion claim.
 
-`CANDIDATE` requires an exact candidate SHA. It is not automatically audited.
+`CANDIDATE` requires an exact candidate SHA, accepted D01-D08, successful exact-head CI evidence for every accepted component, and Git ancestry proving each accepted source SHA is contained by the checked-out candidate.
 
-`AUDITED_CANDIDATE` requires explicit audit bookkeeping but is still distinct from STABLE.
+`AUDITED_CANDIDATE` additionally requires independent AUDIT-A and AUDIT-B evidence objects. Each audit records auditor identity, verdict, the exact candidate SHA, timezone-aware cutoff, and a durable evidence reference. A stale audit from another candidate is rejected.
 
-`STABLE` is fail-closed: all required S0 lanes must be accepted, an exact candidate SHA must exist, and both AUDIT-A and AUDIT-B must have `PASS` or `PASS_WITH_NOTES` verdicts. CI alone cannot satisfy those requirements.
+`STABLE` additionally requires a materialized release artifact with a recorded SHA-256 and evidence reference. The validator re-hashes the artifact bytes. Both audits must be `PASS` or `PASS_WITH_NOTES`, must bind to the same candidate, and must use distinct evidence references.
 
-## Manifest tooling
+## Repository verification
 
-`configs/releases/s0_candidate.template.json` is a non-authoritative starting manifest. `tools/validate_stage_candidate.py` validates its structure and prints accepted/missing lane state. The template intentionally holds D08 and D09 until exact evidence is available.
+`tools/validate_stage_candidate.py` performs structural validation and, for non-experimental manifests, verifies against the checkout:
 
-A real candidate manifest must replace template source SHAs with the exact accepted lane SHAs and must never infer authority from a newer timestamp alone.
+1. `candidate_sha` equals checked-out `HEAD`;
+2. the integration anchor is an ancestor of the candidate;
+3. every accepted source SHA is an ancestor of the candidate;
+4. component artifact hashes are recomputed when artifact evidence is present;
+5. a STABLE release artifact exists inside the controlled checkout and its SHA-256 matches.
+
+This makes source-less selective copies insufficient as acceptance provenance: if a source commit is not in candidate ancestry, the candidate fails closed.
+
+CI and audit evidence references remain independently inspectable external evidence. The manifest does not infer success from a timestamp, PR state, or a user-entered `PASS` string.
+
+## Template
+
+`configs/releases/s0_candidate.template.json` is deliberately `experimental`, has no candidate SHA, no audits, and no release artifact. It is a starting schema only, not release evidence. A real candidate must replace all source identities with exact accepted heads and captured evidence.

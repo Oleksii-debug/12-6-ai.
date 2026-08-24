@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
+import subprocess
 from collections.abc import Iterable
 from dataclasses import dataclass
+from datetime import datetime
 from enum import StrEnum
+from pathlib import Path
 
 _GIT_SHA_RE = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -48,6 +52,43 @@ class AuditVerdict(StrEnum):
     BLOCKED = "BLOCKED"
 
 
+def _require_evidence_ref(value: str, field_name: str) -> None:
+    if not value.strip():
+        raise ValueError(f"{field_name} must be non-empty")
+
+
+def _require_aware_timestamp(value: str, field_name: str) -> None:
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError as exc:
+        raise ValueError(f"{field_name} must be an ISO-8601 timestamp") from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError(f"{field_name} must include a timezone offset")
+
+
+@dataclass(frozen=True, slots=True)
+class CIEvidence:
+    """One exact workflow result bound to the component head that it tested."""
+
+    run_id: int
+    head_sha: str
+    conclusion: str
+    evidence_ref: str
+
+    def __post_init__(self) -> None:
+        if self.run_id <= 0:
+            raise ValueError("CI run_id must be positive")
+        if not _GIT_SHA_RE.fullmatch(self.head_sha):
+            raise ValueError("CI head_sha must be an exact git SHA")
+        if not self.conclusion.strip():
+            raise ValueError("CI conclusion must be non-empty")
+        _require_evidence_ref(self.evidence_ref, "CI evidence_ref")
+
+    @property
+    def passes(self) -> bool:
+        return self.conclusion.lower() == "success"
+
+
 @dataclass(frozen=True, slots=True)
 class AuditEvidence:
     """Durable independent-audit verdict bound to one exact candidate SHA."""
@@ -55,6 +96,7 @@ class AuditEvidence:
     auditor_id: str
     verdict: AuditVerdict
     candidate_sha: str
+    cutoff_utc: str
     evidence_ref: str
 
     def __post_init__(self) -> None:
@@ -62,12 +104,29 @@ class AuditEvidence:
             raise ValueError("auditor_id must be non-empty")
         if not _GIT_SHA_RE.fullmatch(self.candidate_sha):
             raise ValueError("audit candidate_sha must be an exact git SHA")
-        if not self.evidence_ref.strip():
-            raise ValueError("audit evidence_ref must be non-empty")
+        _require_aware_timestamp(self.cutoff_utc, "audit cutoff_utc")
+        _require_evidence_ref(self.evidence_ref, "audit evidence_ref")
 
     @property
     def passes(self) -> bool:
         return self.verdict.value in _PASSING_AUDITS
+
+
+@dataclass(frozen=True, slots=True)
+class ReleaseArtifactEvidence:
+    """Release payload evidence that can be re-hashed from a controlled checkout."""
+
+    path: str
+    sha256: str
+    evidence_ref: str
+
+    def __post_init__(self) -> None:
+        candidate = Path(self.path)
+        if not self.path.strip() or candidate.is_absolute() or ".." in candidate.parts:
+            raise ValueError("release artifact path must be a safe relative path")
+        if not _SHA256_RE.fullmatch(self.sha256):
+            raise ValueError("release artifact sha256 must be a lowercase 64-hex digest")
+        _require_evidence_ref(self.evidence_ref, "release artifact evidence_ref")
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,7 +136,10 @@ class ComponentRef:
     disposition: ComponentDisposition
     component_kind: str
     pr_number: int | None = None
+    ci_evidence: CIEvidence | None = None
+    artifact_path: str | None = None
     artifact_sha256: str | None = None
+    artifact_evidence_ref: str | None = None
     contains_behavioral_weights: bool | None = None
     contains_foreign_pretrained_weights: bool | None = None
     notes: str = ""
@@ -91,10 +153,24 @@ class ComponentRef:
             raise ValueError("component_kind must be non-empty")
         if self.pr_number is not None and self.pr_number <= 0:
             raise ValueError("pr_number must be positive when supplied")
-        if self.artifact_sha256 is not None and not _SHA256_RE.fullmatch(
-            self.artifact_sha256
-        ):
-            raise ValueError("artifact_sha256 must be a lowercase 64-hex digest")
+        artifact_fields = (
+            self.artifact_path,
+            self.artifact_sha256,
+            self.artifact_evidence_ref,
+        )
+        if any(value is not None for value in artifact_fields):
+            if any(value is None for value in artifact_fields):
+                raise ValueError(
+                    "component artifact evidence requires path, sha256 and evidence_ref together"
+                )
+            candidate = Path(self.artifact_path or "")
+            if candidate.is_absolute() or ".." in candidate.parts:
+                raise ValueError("component artifact_path must be a safe relative path")
+            if not _SHA256_RE.fullmatch(self.artifact_sha256 or ""):
+                raise ValueError("artifact_sha256 must be a lowercase 64-hex digest")
+            _require_evidence_ref(
+                self.artifact_evidence_ref or "", "component artifact evidence_ref"
+            )
         for field_name, value in (
             ("contains_behavioral_weights", self.contains_behavioral_weights),
             ("contains_foreign_pretrained_weights", self.contains_foreign_pretrained_weights),
@@ -115,6 +191,7 @@ class StageCandidateManifest:
     candidate_sha: str | None = None
     audit_a: AuditEvidence | None = None
     audit_b: AuditEvidence | None = None
+    release_artifact: ReleaseArtifactEvidence | None = None
     required_lanes: frozenset[str] = S0_REQUIRED_LANES
 
     def __post_init__(self) -> None:
@@ -170,6 +247,21 @@ class StageCandidateManifest:
                 raise ValueError(
                     f"candidate status missing required accepted lanes: {', '.join(missing)}"
                 )
+            for component in self.components:
+                if component.disposition is not ComponentDisposition.ACCEPTED:
+                    continue
+                if component.ci_evidence is None:
+                    raise ValueError(
+                        f"accepted candidate component {component.lane} requires CI evidence"
+                    )
+                if component.ci_evidence.head_sha != component.source_sha:
+                    raise ValueError(
+                        f"CI evidence for {component.lane} is not bound to source_sha"
+                    )
+                if not component.ci_evidence.passes:
+                    raise ValueError(
+                        f"accepted candidate component {component.lane} requires successful CI"
+                    )
 
         audits = tuple(audit for audit in (self.audit_a, self.audit_b) if audit is not None)
         if audits and self.candidate_sha is None:
@@ -196,6 +288,9 @@ class StageCandidateManifest:
             if self.audit_a.evidence_ref == self.audit_b.evidence_ref:
                 raise ValueError("AUDIT-A and AUDIT-B must have distinct evidence_ref values")
 
+        if self.status is CandidateStatus.STABLE and self.release_artifact is None:
+            raise ValueError("STABLE requires release artifact hash evidence")
+
     @classmethod
     def compose(
         cls,
@@ -208,6 +303,7 @@ class StageCandidateManifest:
         candidate_sha: str | None = None,
         audit_a: AuditEvidence | None = None,
         audit_b: AuditEvidence | None = None,
+        release_artifact: ReleaseArtifactEvidence | None = None,
         required_lanes: frozenset[str] = S0_REQUIRED_LANES,
     ) -> StageCandidateManifest:
         return cls(
@@ -219,6 +315,7 @@ class StageCandidateManifest:
             candidate_sha=candidate_sha,
             audit_a=audit_a,
             audit_b=audit_b,
+            release_artifact=release_artifact,
             required_lanes=required_lanes,
         )
 
@@ -246,4 +343,84 @@ class StageCandidateManifest:
             and self.audit_a.auditor_id == "AUDIT-A"
             and self.audit_b.auditor_id == "AUDIT-B"
             and self.audit_a.evidence_ref != self.audit_b.evidence_ref
+        )
+
+
+def _git(repo_root: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", *args],
+        cwd=repo_root,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _verify_artifact(repo_root: Path, relative_path: str, expected_sha256: str) -> None:
+    artifact = (repo_root / relative_path).resolve()
+    if not artifact.is_relative_to(repo_root) or not artifact.is_file():
+        raise ValueError(f"artifact does not exist inside repository: {relative_path}")
+    if _sha256_file(artifact) != expected_sha256:
+        raise ValueError(f"artifact sha256 mismatch: {relative_path}")
+
+
+def validate_repository_evidence(
+    manifest: StageCandidateManifest,
+    repo_root: str | Path = ".",
+) -> None:
+    """Verify candidate ancestry and locally materialized artifact hashes.
+
+    CI/audit evidence is captured in the manifest and independently inspectable
+    through its evidence refs. Git ancestry and artifact bytes are re-verified
+    here instead of trusting manifest strings.
+    """
+
+    if manifest.status is CandidateStatus.EXPERIMENTAL:
+        return
+    if manifest.candidate_sha is None:
+        raise ValueError("repository evidence validation requires candidate_sha")
+
+    root = Path(repo_root).resolve()
+    head = _git(root, "rev-parse", "HEAD")
+    if head.returncode != 0:
+        raise ValueError("repo_root is not a readable Git checkout")
+    if head.stdout.strip() != manifest.candidate_sha:
+        raise ValueError("candidate_sha does not equal checked-out Git HEAD")
+
+    for label, source_sha in (
+        ("integration anchor", manifest.integration_anchor_sha),
+        *(
+            (f"component {component.lane}", component.source_sha)
+            for component in manifest.components
+            if component.disposition is ComponentDisposition.ACCEPTED
+        ),
+    ):
+        result = _git(root, "merge-base", "--is-ancestor", source_sha, manifest.candidate_sha)
+        if result.returncode != 0:
+            raise ValueError(f"{label} SHA is not contained by candidate ancestry")
+
+    for component in manifest.components:
+        if (
+            component.disposition is ComponentDisposition.ACCEPTED
+            and component.artifact_path is not None
+            and component.artifact_sha256 is not None
+        ):
+            _verify_artifact(root, component.artifact_path, component.artifact_sha256)
+
+    if manifest.status is CandidateStatus.STABLE:
+        if manifest.release_artifact is None:
+            raise ValueError("STABLE requires release artifact hash evidence")
+        _verify_artifact(
+            root,
+            manifest.release_artifact.path,
+            manifest.release_artifact.sha256,
         )
