@@ -11,6 +11,7 @@ from .manifest import (
     StageCandidateManifest,
     validate_repository_evidence,
 )
+from .s0_runtime import S0TorchInferenceBackend
 
 __all__ = [
     "AuditEvidence",
@@ -20,6 +21,7 @@ __all__ = [
     "ComponentDisposition",
     "ComponentRef",
     "ReleaseArtifactEvidence",
+    "S0TorchInferenceBackend",
     "StageCandidateManifest",
     "validate_repository_evidence",
 ]
