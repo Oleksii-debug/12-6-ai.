@@ -4,9 +4,9 @@ on:
 permissions:
   contents: read
 jobs:
-  local-free-equivalent-cpu-evidence:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+  locked-candidate-cpu-evidence:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -20,23 +20,41 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.11.16"
-      - run: python -m pip install --disable-pip-version-check -e .[dev]
-      - run: python tools/check_repo_policy.py
-      - run: ruff check src tests tools
-      - name: Real D01-D04 S0 focused contract test
-        run: pytest -q tests/test_s0_real_training_evidence.py
-      - name: Full repository tests on exact source head
-        run: pytest -q
-      - name: Existing experimental stage-candidate validator
-        run: python tools/validate_stage_candidate.py configs/releases/s0_candidate.template.json
-      - name: Execute real 40-step S0 CPU training and emit manifest
+      - name: Verify exact D08 locked environment and repository checks
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: >-
+          python tools/verify_locked_environment.py
+          --profile linux-x86_64
+          --source-sha "$SOURCE_SHA"
+          --evidence-out locked-environment-linux-x86_64.json
+          --run-repo-checks
+      - name: Create exact locked D02 execution environment
+        run: |
+          python -m venv .d02-locked
+          .d02-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .d02-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .d02-locked/bin/python -m pip install --no-deps --no-build-isolation -e .
+          .d02-locked/bin/python -c "import torch,twelve_six; assert torch.__version__; print(twelve_six.__version__)"
+      - name: Execute exact-head 40-step S0 CPU training
         env:
           SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          python tools/run_s0_real_training.py \
+          .d02-locked/bin/python tools/run_s0_real_training.py \
             --source-sha "$SOURCE_SHA" \
-            --output /tmp/s0-real-training-evidence.json \
+            --locked-environment-evidence locked-environment-linux-x86_64.json \
+            --output s0-real-training-evidence.json \
             --seed 1337 \
             --max-steps 40 \
             --batch-size 3
-          cat /tmp/s0-real-training-evidence.json
+          .d02-locked/bin/python tools/validate_s0_training_evidence.py s0-real-training-evidence.json
+          cat s0-real-training-evidence.json
+      - name: Upload exact candidate training evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: d02-s0-real-training-evidence
+          path: |
+            locked-environment-linux-x86_64.json
+            s0-real-training-evidence.json
+          if-no-files-found: error
+          retention-days: 30
