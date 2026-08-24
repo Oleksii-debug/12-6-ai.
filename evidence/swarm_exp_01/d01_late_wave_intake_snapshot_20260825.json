@@ -1,0 +1,225 @@
+{
+  "schema": "12-6.s0-late-wave-intake.v1",
+  "run_id": "12-6-AI-SWARM-EXP-01",
+  "repository": "Oleksii-debug/12-6-ai.",
+  "cutoff_utc": "2026-08-24T21:32:00Z",
+  "stage": "S0",
+  "base": {
+    "pr": 89,
+    "sha": "c631c024e641dac102036fafee6d78ba31c067cd",
+    "status": "EXACT_GREEN",
+    "required_workflows": {
+      "CI": {"run_id": 32778688850, "state": "completed", "conclusion": "success"},
+      "D02 Real S0 Training": {"run_id": 32778688832, "state": "completed", "conclusion": "success"},
+      "D02 S0 Determinism Repeatability": {"run_id": 32778688829, "state": "completed", "conclusion": "success"},
+      "D04 Strict S0 Exact-Candidate Evaluation": {"run_id": 32778688844, "state": "completed", "conclusion": "success"}
+    }
+  },
+  "truth_boundary": {
+    "canonical_base": "random_init_pretraining_only",
+    "foreign_pretrained_weights_allowed": false,
+    "instruction_or_alignment_base_work_allowed": false,
+    "paid_compute_authorized": false,
+    "promotion_eligible": false,
+    "audits": {
+      "AUDIT-A": "CHANGES_REQUIRED",
+      "AUDIT-B": "CHANGES_REQUIRED"
+    },
+    "main_sha": "f2e94c7212888cdb960bb66154d56d210e9b27ab",
+    "main_protected": false
+  },
+  "collision_groups": [
+    {
+      "id": "repeatability-intake",
+      "surface": ["configs/releases/s0_candidate_successor_convergence_20260825.experimental.json", "tests/test_s0_successor_convergence.py"],
+      "owner_pr": 90,
+      "members": [90, 97],
+      "rule": "PR90 is incumbent; PR97 closed unmerged as duplicate"
+    },
+    {
+      "id": "first-party-checkpoint-snapshot",
+      "surface": ["src/twelve_six/inference/first_party.py"],
+      "owner_pr": 91,
+      "members": [91, 94, 98, 102],
+      "rule": "PR91 is incumbent; later duplicate implementations must remain closed/held"
+    },
+    {
+      "id": "hf-export-transactionality",
+      "surface": ["src/twelve_six/checkpoint/hf_export.py"],
+      "owner_pr": null,
+      "members": [95, 111],
+      "rule": "competing D05 export implementations; select one terminal-green exact head after semantic comparison, never both wholesale"
+    },
+    {
+      "id": "retained-inference-evidence",
+      "surface": ["retained trained checkpoint/inference evidence"],
+      "owner_pr": null,
+      "members": [93, 108, 112, 116, 119],
+      "rule": "conceptually overlapping evidence packages; prefer the smallest terminal-green set that adds distinct audit evidence"
+    }
+  ],
+  "items": [
+    {
+      "pr": 90,
+      "lane": "D01",
+      "head": "df13fbc5c218ff42b00b749384e6b02a1bc775c9",
+      "kind": "repeatability_composition_intake",
+      "priority": "P0",
+      "disposition": "PENDING_EXACT_HEAD_CI",
+      "required_for_next_composition": true,
+      "workflow_state": {
+        "CI": "queued",
+        "D02 Real S0 Training": "success",
+        "D02 S0 Determinism Repeatability": "success"
+      }
+    },
+    {
+      "pr": 91,
+      "lane": "D05_D07",
+      "head": "ee620ff2f25fcba7537c41ef1322124ada82b02c",
+      "kind": "single_verified_checkpoint_snapshot",
+      "priority": "P0",
+      "disposition": "PENDING_EXACT_HEAD_CI",
+      "required_for_next_composition": true,
+      "workflow_state": {"CI": "queued", "D02 Real S0 Training": "queued", "D02 S0 Determinism Repeatability": "queued", "D04 Strict S0 Exact-Candidate Evaluation": "queued"}
+    },
+    {
+      "pr": 92,
+      "lane": "D04",
+      "head": "c910b008d628256fc38ecd58a87e43f462660b54",
+      "kind": "locked_runtime_evaluation_bundle",
+      "priority": "P1",
+      "disposition": "PENDING_EXACT_HEAD_CI",
+      "required_for_next_composition": false
+    },
+    {
+      "pr": 93,
+      "lane": "D05_D07",
+      "head": "963f4d9029c6fb6ee562699ae49e9851a8287419",
+      "kind": "replayable_inference_evidence",
+      "priority": "P1",
+      "disposition": "PENDING_EXACT_HEAD_CI",
+      "required_for_next_composition": false
+    },
+    {
+      "pr": 95,
+      "lane": "D03_D05",
+      "head": "c23ccb81d9ed31760ebed9f38b2a82fbcac44875",
+      "kind": "transactional_hf_export",
+      "priority": "P2",
+      "disposition": "RECHECK_NEW_HEAD_AFTER_HISTORICAL_RED",
+      "required_for_next_composition": false,
+      "historical_red": {"head": "ee548acb310097446cb0a48a641914c42c681470", "ci_run": 32779414158, "classification": "DOMAIN_OWNED_RUFF"}
+    },
+    {
+      "pr": 100,
+      "lane": "D04",
+      "head": "f6e95128c885fa176b9eb7f5f71abd154e0b30b7",
+      "kind": "evaluation_repeatability_binding",
+      "priority": "P0",
+      "disposition": "PENDING_EXACT_HEAD_CI",
+      "required_for_next_composition": true
+    },
+    {
+      "pr": 101,
+      "lane": "D05_D07",
+      "head": "154dd23955c8ada4b0bb7565b38679aa1efdd107",
+      "kind": "windows_cli_transport",
+      "priority": "P2",
+      "disposition": "PENDING_EXACT_HEAD_CI",
+      "required_for_next_composition": false
+    },
+    {
+      "pr": 106,
+      "lane": "D02",
+      "head": "ae31965787a3fa3e5c659183fe210e9daad41413",
+      "kind": "s1_numerical_preflight",
+      "priority": "P2",
+      "disposition": "EXCLUDE_FROM_S0_COMPOSITION",
+      "required_for_next_composition": false
+    },
+    {
+      "pr": 111,
+      "lane": "D05",
+      "head": "70325cf0bb2bac6b4bce9136ef8bba255c324644",
+      "kind": "hf_export_snapshot_runtime_parity",
+      "priority": "P2",
+      "disposition": "PENDING_AND_COLLIDES_WITH_PR95",
+      "required_for_next_composition": false
+    },
+    {
+      "pr": 112,
+      "lane": "D05_D07",
+      "head": "e3e6e88d8a9f799c8fd88d70102be3fca7db9187",
+      "kind": "inference_acceptance_evidence",
+      "priority": "P1",
+      "disposition": "PENDING_EXACT_HEAD_CI",
+      "required_for_next_composition": false
+    },
+    {
+      "pr": 113,
+      "lane": "D10",
+      "head": "5e9723ba7e15706055a578c9f8b9f40000e088c7",
+      "kind": "release_authority_successor",
+      "priority": "P0_GOVERNANCE",
+      "disposition": "HELD_D10_OWNED",
+      "required_for_next_composition": false
+    },
+    {
+      "pr": 116,
+      "lane": "D05_D07",
+      "head": "534ef0e1ee601672a5b6840a8135a85a9aea5513",
+      "kind": "trained_checkpoint_real_http_serving",
+      "priority": "P1",
+      "disposition": "PENDING_EXACT_HEAD_CI",
+      "required_for_next_composition": false
+    },
+    {
+      "pr": 117,
+      "lane": "D05_D07",
+      "head": "9b86590bd1c1d51da2bdcfb21c6bfd47c19903fe",
+      "kind": "generation_contract_numeric_hardening",
+      "priority": "P1",
+      "disposition": "PENDING_EXACT_HEAD_CI",
+      "required_for_next_composition": false
+    },
+    {
+      "pr": 118,
+      "lane": "D02",
+      "head": "4880af3d2e673dee815969a43d4265740f230a6b",
+      "kind": "precision_runtime_contract",
+      "priority": "P1",
+      "disposition": "PENDING_EXACT_HEAD_CI",
+      "required_for_next_composition": false
+    },
+    {
+      "pr": 119,
+      "lane": "D05_D07",
+      "head": "02a314f552d8b3ef8b0f02c454eab52134a1b133",
+      "kind": "retained_generation_artifact",
+      "priority": "P1",
+      "disposition": "PENDING_AND_OVERLAPS_EVIDENCE_GROUP",
+      "required_for_next_composition": false
+    },
+    {
+      "pr": 120,
+      "lane": "D05_D07",
+      "head": "1d2dc65bbf6190c4d6dedcc9d3679151868ab8e5",
+      "kind": "local_server_privacy_timeout_hardening",
+      "priority": "P1",
+      "disposition": "PENDING_EXACT_HEAD_CI",
+      "required_for_next_composition": false
+    }
+  ],
+  "next_composition_policy": {
+    "minimum_required": [90, 91, 100],
+    "optional_after_green_and_nonduplicate_review": [92, 93, 112, 116, 117, 118, 119, 120],
+    "governance_separate": [113],
+    "exclude_from_s0": [106],
+    "competing_choose_one": [[95, 111]],
+    "never_accept_queued_or_red": true,
+    "preserve_real_git_ancestry": true,
+    "rerun_full_exact_head_workflows_after_composition": true,
+    "request_both_independent_audits_on_final_exact_head": true
+  }
+}
