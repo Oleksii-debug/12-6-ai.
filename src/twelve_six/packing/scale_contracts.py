@@ -41,7 +41,7 @@ def _bounded_hash(key: str, upper_bound: int) -> int:
     limit = space - (space % upper_bound)
     counter = 0
     while True:
-        digest = hashlib.sha256(f"{key}:{counter}".encode("utf-8")).digest()
+        digest = hashlib.sha256(f"{key}:{counter}".encode()).digest()
         value = int.from_bytes(digest, "big")
         if value < limit:
             return value % upper_bound
