@@ -4,13 +4,16 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from twelve_six.integration.workflow_policy import WorkflowPolicyError, validate_repository_workflows
+from _integration_bootstrap import load_integration_module
+
+ROOT = Path(__file__).resolve().parents[1]
+_WORKFLOW_POLICY = load_integration_module(ROOT, "workflow_policy")
 
 
 def main() -> int:
     try:
-        validate_repository_workflows(Path("."))
-    except WorkflowPolicyError as exc:
+        _WORKFLOW_POLICY.validate_repository_workflows(ROOT)
+    except _WORKFLOW_POLICY.WorkflowPolicyError as exc:
         print(str(exc))
         return 1
     print("workflow_policy=pass")
