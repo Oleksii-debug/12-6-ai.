@@ -57,8 +57,12 @@ def _selected_provenance(distribution: importlib.metadata.Distribution) -> dict[
         direct_url = json.loads(raw)
     except json.JSONDecodeError as exc:
         raise EnvironmentInventoryError("invalid installed direct_url.json") from exc
+    if not isinstance(direct_url, dict):
+        raise EnvironmentInventoryError("installed direct_url.json must contain an object")
     directory = direct_url.get("dir_info") or {}
     vcs_info = direct_url.get("vcs_info") or {}
+    if not isinstance(directory, dict) or not isinstance(vcs_info, dict):
+        raise EnvironmentInventoryError("installed direct_url provenance fields must be objects")
     vcs = vcs_info.get("vcs")
     commit_id = vcs_info.get("commit_id")
     if commit_id is not None and not isinstance(commit_id, str):
@@ -88,12 +92,20 @@ def installed_distribution_record(distribution: importlib.metadata.Distribution)
 
 def declared_requirements(pyproject_path: str | Path) -> dict[str, list[str]]:
     path = Path(pyproject_path)
-    project = tomllib.loads(path.read_text(encoding="utf-8")).get("project", {})
+    document = tomllib.loads(path.read_text(encoding="utf-8"))
+    project = document.get("project", {})
+    build_system = document.get("build-system", {})
+    if not isinstance(project, dict) or not isinstance(build_system, dict):
+        raise EnvironmentInventoryError("pyproject project/build-system declarations are malformed")
     runtime = project.get("dependencies", []) or []
     optional = project.get("optional-dependencies", {}) or {}
-    if not isinstance(runtime, list) or not isinstance(optional, dict):
+    build_requires = build_system.get("requires", []) or []
+    if not isinstance(runtime, list) or not isinstance(optional, dict) or not isinstance(build_requires, list):
         raise EnvironmentInventoryError("pyproject dependency declarations are malformed")
-    result: dict[str, list[str]] = {"runtime": sorted(str(item) for item in runtime)}
+    result: dict[str, list[str]] = {
+        "build-system": sorted(str(item) for item in build_requires),
+        "runtime": sorted(str(item) for item in runtime),
+    }
     for group, requirements in sorted(optional.items()):
         if not isinstance(requirements, list):
             raise EnvironmentInventoryError(f"optional dependency group {group!r} must be a list")
@@ -102,26 +114,28 @@ def declared_requirements(pyproject_path: str | Path) -> dict[str, list[str]]:
 
 
 def _validate_packages(packages: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
-    normalized: list[dict[str, Any]] = []
-    seen: dict[str, str] = {}
+    by_name: dict[str, dict[str, Any]] = {}
     for package in packages:
         item = dict(package)
         name = canonical_distribution_name(str(item.get("name", "")))
         version = str(item.get("version", "")).strip()
         if not version:
             raise EnvironmentInventoryError(f"distribution {name!r} has an empty version")
-        if name in seen:
-            raise EnvironmentInventoryError(
-                f"ambiguous installed distribution {name!r}: {seen[name]!r} and {version!r}"
-            )
-        seen[name] = version
         item["name"] = name
         item["version"] = version
         record_hash = item.get("record_sha256")
         if record_hash is not None and _SHA256.fullmatch(str(record_hash)) is None:
             raise EnvironmentInventoryError(f"distribution {name!r} has invalid RECORD SHA-256")
-        normalized.append(item)
-    return sorted(normalized, key=lambda item: (item["name"], item["version"]))
+
+        previous = by_name.get(name)
+        if previous is not None:
+            if canonical_json_bytes(previous) == canonical_json_bytes(item):
+                continue
+            raise EnvironmentInventoryError(
+                f"ambiguous installed distribution {name!r}: conflicting installation evidence"
+            )
+        by_name[name] = item
+    return sorted(by_name.values(), key=lambda item: (item["name"], item["version"]))
 
 
 def build_environment_inventory(
