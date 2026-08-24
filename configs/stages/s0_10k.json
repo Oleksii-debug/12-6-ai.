@@ -3,8 +3,6 @@
   "target_parameters": 10000,
   "expected_parameters": 10140,
   "canonical_base": "random_init",
-  "status": "candidate_reference",
-  "paid_compute_authorized": false,
   "expected_model_identity_sha256": "86c75b31dff05b7b5db9f6ed068c571a6ead01ba663412fe630f5e52b09d9b6b",
   "expected_init_identity_sha256": "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5",
   "model": {
