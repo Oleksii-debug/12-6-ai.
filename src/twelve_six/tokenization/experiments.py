@@ -1,20 +1,19 @@
 """Future tokenizer experiment harnesses and controlled measurement contracts.
 
 Canonical S0 remains ``s0-byte-v1``. Everything in this module is explicitly
-experimental and must be bound to a versioned training manifest before its
-token IDs can be used by a checkpoint.
+experimental and must be bound to a versioned manifest before its token IDs can
+be used by any checkpoint or stage candidate.
 """
 
 from __future__ import annotations
 
 import hashlib
 import importlib
+import io
 import json
-import tempfile
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from importlib import metadata
-from pathlib import Path
 from types import MappingProxyType
 from typing import Any
 
@@ -24,6 +23,7 @@ EXPERIMENT_MANIFEST_SCHEMA = "12-6.tokenizer-training-manifest.v1"
 EXPERIMENT_ARTIFACT_SCHEMA = "12-6.tokenizer-artifact.v1"
 _ALLOWED_STAGES = frozenset({"S1", "S2", "S3", "S4"})
 _ALLOWED_BACKENDS = {"bpe": "tokenizers", "unigram": "sentencepiece"}
+_COVERAGE_STRATEGIES = {"bpe": "bytelevel-alphabet", "unigram": "byte-fallback"}
 
 
 def _canonical_json(payload: Mapping[str, object]) -> str:
@@ -34,13 +34,17 @@ def _sha256_bytes(payload: bytes) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
+def _sha256_json(payload: Mapping[str, object]) -> str:
+    return _sha256_bytes(_canonical_json(payload).encode("utf-8"))
+
+
 def _require_sha256(value: str, *, field: str) -> None:
     if len(value) != 64 or any(char not in "0123456789abcdef" for char in value):
         raise ValueError(f"{field} must be a lowercase SHA-256 hex digest")
 
 
 def corpus_sha256(texts: Iterable[str]) -> str:
-    """Hash an ordered training corpus without ambiguous concatenation."""
+    """Hash ordered logical documents with length-prefix framing."""
     digest = hashlib.sha256()
     count = 0
     for text in texts:
@@ -71,12 +75,12 @@ def ordered_vocab_sha256(vocab: Mapping[str, int]) -> str:
         "schema_version": 1,
         "entries": [{"id": token_id, "token": token} for token, token_id in by_id],
     }
-    return _sha256_bytes(_canonical_json(payload).encode("utf-8"))
+    return _sha256_json(payload)
 
 
 @dataclass(frozen=True)
 class TokenizerTrainingManifest:
-    """Versioned identity for one tokenizer-training execution."""
+    """Versioned identity for one deterministic tokenizer-training execution."""
 
     experiment_id: str
     stage: str
@@ -86,9 +90,9 @@ class TokenizerTrainingManifest:
     requested_vocab_size: int
     training_corpus_sha256: str
     training_document_count: int
+    coverage_strategy: str
+    training_config_sha256: str
     normalization: str = "none"
-    byte_fallback: bool = True
-    seed: int = 0
 
     def __post_init__(self) -> None:
         if not self.experiment_id:
@@ -102,17 +106,21 @@ class TokenizerTrainingManifest:
             raise ValueError(
                 f"{self.algorithm} experiments must use maintained library {expected_library!r}"
             )
+        expected_coverage = _COVERAGE_STRATEGIES[self.algorithm]
+        if self.coverage_strategy != expected_coverage:
+            raise ValueError(
+                f"{self.algorithm} coverage_strategy must be {expected_coverage!r}"
+            )
         if not self.backend_version:
             raise ValueError("backend_version must be recorded")
         if self.requested_vocab_size < 256:
             raise ValueError("requested_vocab_size must be at least 256")
         _require_sha256(self.training_corpus_sha256, field="training_corpus_sha256")
+        _require_sha256(self.training_config_sha256, field="training_config_sha256")
         if self.training_document_count <= 0:
             raise ValueError("training_document_count must be positive")
         if self.normalization != "none":
             raise ValueError("experiment harness currently requires normalization='none'")
-        if not isinstance(self.seed, int):
-            raise TypeError("seed must be int")
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -125,16 +133,16 @@ class TokenizerTrainingManifest:
             "requested_vocab_size": self.requested_vocab_size,
             "training_corpus_sha256": self.training_corpus_sha256,
             "training_document_count": self.training_document_count,
+            "coverage_strategy": self.coverage_strategy,
+            "training_config_sha256": self.training_config_sha256,
             "normalization": self.normalization,
-            "byte_fallback": self.byte_fallback,
-            "seed": self.seed,
             "canonical_s0_unchanged": True,
             "promotion_allowed": False,
         }
 
     @property
     def identity_sha256(self) -> str:
-        return _sha256_bytes(_canonical_json(self.to_dict()).encode("utf-8"))
+        return _sha256_json(self.to_dict())
 
 
 @dataclass(frozen=True)
@@ -177,7 +185,7 @@ class ExperimentalTokenizerArtifact:
 
     @property
     def identity_sha256(self) -> str:
-        return _sha256_bytes(_canonical_json(self.to_dict()).encode("utf-8"))
+        return _sha256_json(self.to_dict())
 
 
 @dataclass(frozen=True)
@@ -287,20 +295,17 @@ class _HuggingFaceTokenizerAdapter:
 
     def __init__(self, backend: Any, *, manifest: TokenizerTrainingManifest) -> None:
         self._backend = backend
-        raw_json = backend.to_str()
-        canonical_model = _canonical_json(json.loads(raw_json)).encode("utf-8")
+        canonical_model = _canonical_json(json.loads(backend.to_str())).encode("utf-8")
         self._model_sha256 = _sha256_bytes(canonical_model)
         vocab = backend.get_vocab()
         self.vocab_size = backend.get_vocab_size()
         self._identity = TokenizerIdentity(
             version=self.version,
-            config_sha256=_sha256_bytes(
-                _canonical_json(
-                    {
-                        "manifest_sha256": manifest.identity_sha256,
-                        "model_sha256": self._model_sha256,
-                    }
-                ).encode("utf-8")
+            config_sha256=_sha256_json(
+                {
+                    "manifest_sha256": manifest.identity_sha256,
+                    "model_sha256": self._model_sha256,
+                }
             ),
             vocab_sha256=ordered_vocab_sha256(vocab),
             vocab_size=self.vocab_size,
@@ -356,13 +361,11 @@ class _SentencePieceAdapter:
         )
         self._identity = TokenizerIdentity(
             version=self.version,
-            config_sha256=_sha256_bytes(
-                _canonical_json(
-                    {
-                        "manifest_sha256": manifest.identity_sha256,
-                        "model_sha256": self._model_sha256,
-                    }
-                ).encode("utf-8")
+            config_sha256=_sha256_json(
+                {
+                    "manifest_sha256": manifest.identity_sha256,
+                    "model_sha256": self._model_sha256,
+                }
             ),
             vocab_sha256=ordered_vocab_sha256(vocab),
             vocab_size=self.vocab_size,
@@ -411,13 +414,33 @@ def train_huggingface_bpe(
     stage: str,
     experiment_id: str,
     vocab_size: int,
-    seed: int = 0,
 ) -> tuple[_HuggingFaceTokenizerAdapter, TokenizerTrainingManifest]:
-    """Train a ByteLevel BPE experiment with Hugging Face Tokenizers."""
+    """Train a byte-complete BPE experiment with Hugging Face Tokenizers."""
     documents = tuple(texts)
     if vocab_size < 256:
         raise ValueError("ByteLevel BPE vocab_size must be at least 256")
     version = _backend_version("tokenizers")
+    tokenizers = importlib.import_module("tokenizers")
+    models = importlib.import_module("tokenizers.models")
+    pre_tokenizers = importlib.import_module("tokenizers.pre_tokenizers")
+    decoders = importlib.import_module("tokenizers.decoders")
+    trainers = importlib.import_module("tokenizers.trainers")
+
+    alphabet = sorted(pre_tokenizers.ByteLevel.alphabet())
+    training_config = {
+        "schema_version": 1,
+        "model": "bpe",
+        "normalization": "none",
+        "pre_tokenizer": "bytelevel",
+        "add_prefix_space": False,
+        "use_regex": True,
+        "decoder": "bytelevel",
+        "min_frequency": 1,
+        "special_tokens": [],
+        "initial_alphabet_sha256": _sha256_bytes(
+            json.dumps(alphabet, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        ),
+    }
     manifest = TokenizerTrainingManifest(
         experiment_id=experiment_id,
         stage=stage,
@@ -427,24 +450,19 @@ def train_huggingface_bpe(
         requested_vocab_size=vocab_size,
         training_corpus_sha256=corpus_sha256(documents),
         training_document_count=len(documents),
-        normalization="none",
-        byte_fallback=True,
-        seed=seed,
+        coverage_strategy="bytelevel-alphabet",
+        training_config_sha256=_sha256_json(training_config),
     )
-    tokenizers = importlib.import_module("tokenizers")
-    models = importlib.import_module("tokenizers.models")
-    pre_tokenizers = importlib.import_module("tokenizers.pre_tokenizers")
-    decoders = importlib.import_module("tokenizers.decoders")
-    trainers = importlib.import_module("tokenizers.trainers")
 
     tokenizer = tokenizers.Tokenizer(models.BPE())
-    tokenizer.pre_tokenizer = pre_tokenizers.ByteLevel(add_prefix_space=False)
+    tokenizer.pre_tokenizer = pre_tokenizers.ByteLevel(add_prefix_space=False, use_regex=True)
     tokenizer.decoder = decoders.ByteLevel()
     trainer = trainers.BpeTrainer(
         vocab_size=vocab_size,
         min_frequency=1,
         show_progress=False,
-        initial_alphabet=pre_tokenizers.ByteLevel.alphabet(),
+        initial_alphabet=alphabet,
+        special_tokens=[],
     )
     tokenizer.train_from_iterator(documents, trainer=trainer, length=len(documents))
     return _HuggingFaceTokenizerAdapter(tokenizer, manifest=manifest), manifest
@@ -456,13 +474,32 @@ def train_sentencepiece_unigram(
     stage: str,
     experiment_id: str,
     vocab_size: int,
-    seed: int = 0,
 ) -> tuple[_SentencePieceAdapter, TokenizerTrainingManifest]:
     """Train a byte-fallback Unigram experiment with SentencePiece."""
     documents = tuple(texts)
     if vocab_size < 300:
         raise ValueError("SentencePiece byte-fallback Unigram requires vocab_size >= 300")
     version = _backend_version("sentencepiece")
+    sentencepiece = importlib.import_module("sentencepiece")
+    training_config = {
+        "schema_version": 1,
+        "model_type": "unigram",
+        "character_coverage": 1.0,
+        "byte_fallback": True,
+        "normalization_rule_name": "identity",
+        "add_dummy_prefix": False,
+        "remove_extra_whitespaces": False,
+        "split_by_whitespace": False,
+        "bos_id": -1,
+        "eos_id": -1,
+        "pad_id": -1,
+        "unk_id": 0,
+        "hard_vocab_limit": False,
+        "shuffle_input_sentence": False,
+        "num_threads": 1,
+        "input_mode": "sentence_iterator",
+        "output_mode": "model_writer",
+    }
     manifest = TokenizerTrainingManifest(
         experiment_id=experiment_id,
         stage=stage,
@@ -472,38 +509,32 @@ def train_sentencepiece_unigram(
         requested_vocab_size=vocab_size,
         training_corpus_sha256=corpus_sha256(documents),
         training_document_count=len(documents),
-        normalization="none",
-        byte_fallback=True,
-        seed=seed,
+        coverage_strategy="byte-fallback",
+        training_config_sha256=_sha256_json(training_config),
     )
-    sentencepiece = importlib.import_module("sentencepiece")
-    with tempfile.TemporaryDirectory(prefix="twelve-six-sp-") as directory:
-        root = Path(directory)
-        corpus_path = root / "corpus.txt"
-        corpus_path.write_text("\n".join(documents) + "\n", encoding="utf-8")
-        model_prefix = root / "tokenizer"
-        sentencepiece.SentencePieceTrainer.Train(
-            input=str(corpus_path),
-            model_prefix=str(model_prefix),
-            model_type="unigram",
-            vocab_size=vocab_size,
-            character_coverage=1.0,
-            byte_fallback=True,
-            normalization_rule_name="identity",
-            add_dummy_prefix=False,
-            remove_extra_whitespaces=False,
-            split_by_whitespace=False,
-            bos_id=-1,
-            eos_id=-1,
-            pad_id=-1,
-            unk_id=0,
-            hard_vocab_limit=False,
-            shuffle_input_sentence=False,
-            num_threads=1,
-        )
-        model_path = model_prefix.with_suffix(".model")
-        model_bytes = model_path.read_bytes()
-        processor = sentencepiece.SentencePieceProcessor(model_file=str(model_path))
+
+    model_writer = io.BytesIO()
+    sentencepiece.SentencePieceTrainer.train(
+        sentence_iterator=iter(documents),
+        model_writer=model_writer,
+        model_type="unigram",
+        vocab_size=vocab_size,
+        character_coverage=1.0,
+        byte_fallback=True,
+        normalization_rule_name="identity",
+        add_dummy_prefix=False,
+        remove_extra_whitespaces=False,
+        split_by_whitespace=False,
+        bos_id=-1,
+        eos_id=-1,
+        pad_id=-1,
+        unk_id=0,
+        hard_vocab_limit=False,
+        shuffle_input_sentence=False,
+        num_threads=1,
+    )
+    model_bytes = model_writer.getvalue()
+    processor = sentencepiece.SentencePieceProcessor(model_proto=model_bytes)
     return _SentencePieceAdapter(processor, model_bytes, manifest=manifest), manifest
 
 
