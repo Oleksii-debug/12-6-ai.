@@ -6,7 +6,7 @@ import hashlib
 import json
 import re
 from collections.abc import Mapping
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -296,16 +296,16 @@ def validate_security_evidence(
     if not isinstance(generated_raw, str):
         raise DependencySecurityError("dependency security generated_at is missing")
     try:
-        generated = datetime.fromisoformat(generated_raw.replace("Z", "+00:00"))
+        generated = datetime.fromisoformat(generated_raw)
     except ValueError as exc:
         raise DependencySecurityError("dependency security generated_at is invalid") from exc
     if generated.tzinfo is None:
         raise DependencySecurityError("dependency security generated_at must be timezone-aware")
-    current = now or datetime.now(timezone.utc)
+    current = now or datetime.now(UTC)
     if current.tzinfo is None:
         raise DependencySecurityError("validation current time must be timezone-aware")
-    generated = generated.astimezone(timezone.utc)
-    current = current.astimezone(timezone.utc)
+    generated = generated.astimezone(UTC)
+    current = current.astimezone(UTC)
     if generated > current + timedelta(minutes=5):
         raise DependencySecurityError("dependency security evidence timestamp is in the future")
     if max_age_hours is not None:
