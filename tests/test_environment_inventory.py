@@ -46,6 +46,11 @@ def test_inventory_is_order_stable_and_self_validating() -> None:
     validate_environment_inventory(first)
 
 
+def test_byte_identical_duplicate_metadata_is_deduplicated() -> None:
+    inventory = _inventory([_package("Example_Pkg", "1.0"), _package("example-pkg", "1.0")])
+    assert inventory["summary"]["package_count"] == 1
+
+
 def test_inventory_hash_rejects_tampering() -> None:
     inventory = _inventory([_package("example", "1.0")])
     tampered = json.loads(json.dumps(inventory))
@@ -54,9 +59,9 @@ def test_inventory_hash_rejects_tampering() -> None:
         validate_environment_inventory(tampered)
 
 
-def test_duplicate_normalized_distribution_name_is_ambiguous() -> None:
+def test_conflicting_normalized_distribution_evidence_is_ambiguous() -> None:
     with pytest.raises(EnvironmentInventoryError, match="ambiguous installed distribution"):
-        _inventory([_package("Example_Pkg", "1.0"), _package("example-pkg", "1.0")])
+        _inventory([_package("Example_Pkg", "1.0"), _package("example-pkg", "2.0")])
 
 
 def test_unresolved_license_metadata_is_counted_not_silently_passed() -> None:
@@ -83,6 +88,9 @@ def test_declared_requirements_preserve_all_groups_deterministically(tmp_path: P
     pyproject = tmp_path / "pyproject.toml"
     pyproject.write_text(
         """
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+
 [project]
 name = "fixture"
 version = "0"
@@ -96,6 +104,7 @@ export = ["safetensors>=0.5"]
         encoding="utf-8",
     )
     assert declared_requirements(pyproject) == {
+        "build-system": ["setuptools>=75", "wheel"],
         "runtime": ["numpy>=1.26", "torch>=2.5"],
         "optional:dev": ["pytest>=8", "ruff>=0.12"],
         "optional:export": ["safetensors>=0.5"],
