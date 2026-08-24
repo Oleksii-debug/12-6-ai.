@@ -16,6 +16,15 @@ def _validated_logits(logits: Sequence[float]) -> list[float]:
     return values
 
 
+def _finite_number(value: object, *, field: str) -> float:
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        raise TypeError(f"{field} must be a finite number")
+    numeric = float(value)
+    if not math.isfinite(numeric):
+        raise ValueError(f"{field} must be a finite number")
+    return numeric
+
+
 def greedy_token(logits: Sequence[float]) -> int:
     values = _validated_logits(logits)
     return max(range(len(values)), key=values.__getitem__)
@@ -30,18 +39,31 @@ def sample_token(
     top_p: float = 1.0,
 ) -> int:
     values = _validated_logits(logits)
-    if temperature <= 0:
+    temperature_value = _finite_number(temperature, field="temperature")
+    if temperature_value <= 0:
         raise ValueError("temperature must be > 0")
-    if top_k is not None and top_k <= 0:
-        raise ValueError("top_k must be > 0 when set")
-    if not 0 < top_p <= 1:
+    if top_k is not None and (
+        not isinstance(top_k, int) or isinstance(top_k, bool) or top_k <= 0
+    ):
+        raise ValueError("top_k must be a positive integer when set")
+    top_p_value = _finite_number(top_p, field="top_p")
+    if not 0 < top_p_value <= 1:
         raise ValueError("top_p must be in (0, 1]")
 
-    scaled = [value / temperature for value in values]
-    max_logit = max(scaled)
+    # Subtract before temperature scaling. Dividing large finite logits by a
+    # tiny positive temperature first can overflow to +inf, after which the
+    # conventional ``scaled - max(scaled)`` normalization produces NaN. The
+    # delta is always <= 0, so this ordering is stable even at subnormal
+    # temperatures and underflow merely gives a zero-probability candidate.
+    max_logit = max(values)
     candidates = [
-        (index, 0.0 if value == -math.inf else math.exp(value - max_logit))
-        for index, value in enumerate(scaled)
+        (
+            index,
+            0.0
+            if value == -math.inf
+            else math.exp((value - max_logit) / temperature_value),
+        )
+        for index, value in enumerate(values)
     ]
     candidates = [candidate for candidate in candidates if candidate[1] > 0]
     candidates.sort(key=lambda item: (-item[1], item[0]))
@@ -49,14 +71,14 @@ def sample_token(
     if top_k is not None:
         candidates = candidates[: min(top_k, len(candidates))]
 
-    if top_p < 1.0:
+    if top_p_value < 1.0:
         total = sum(weight for _, weight in candidates)
         cumulative = 0.0
         nucleus: list[tuple[int, float]] = []
         for candidate in candidates:
             nucleus.append(candidate)
             cumulative += candidate[1] / total
-            if cumulative >= top_p:
+            if cumulative >= top_p_value:
                 break
         candidates = nucleus
 
