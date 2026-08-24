@@ -1,0 +1,43 @@
+{
+  "stage": "S3",
+  "candidate_id": "S3-D11-EXPLICIT-Q-GQA-v1",
+  "target_parameters": 10000000,
+  "expected_parameters": 9999680,
+  "canonical_base": "random_init",
+  "status": "engineering_candidate_not_frozen",
+  "promotion_allowed": false,
+  "requires_preceding_stage_pass": true,
+  "selection_basis": "D11 analytic tradeoff candidate: q width differs from residual width with deeper GQA; selection pending",
+  "expected_model_identity_sha256": "ebf3a73851c273211ff9f5f242d28afe22b109e22aacb998e5c0e86d5ff09a55",
+  "expected_init_identity_sha256": "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5",
+  "model": {
+    "schema_version": 1,
+    "vocab_size": 8192,
+    "max_seq_len": 2048,
+    "d_model": 320,
+    "n_layers": 8,
+    "n_heads": 6,
+    "n_kv_heads": 2,
+    "head_dim": 48,
+    "d_ff": 704,
+    "activation": "swiglu",
+    "norm_kind": "rmsnorm",
+    "norm_placement": "pre",
+    "norm_eps": 1e-05,
+    "position_embedding": "rope",
+    "rope_theta": 10000.0,
+    "rope_rotary_dim": 48,
+    "attention_bias": false,
+    "mlp_bias": false,
+    "attention_dropout": 0.0,
+    "final_norm": true,
+    "tie_word_embeddings": true,
+    "lm_head_bias": false
+  },
+  "init": {
+    "schema_version": 1,
+    "family": "normal",
+    "std": 0.02,
+    "residual_branch_scale": "sqrt_2_layers"
+  }
+}
