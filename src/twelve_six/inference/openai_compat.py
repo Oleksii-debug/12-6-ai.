@@ -1,4 +1,4 @@
-"""Dependency-free /v1/completions handoff for a future local HTTP server."""
+"""Dependency-free /v1/completions handoff for the local raw Base server."""
 
 from __future__ import annotations
 
@@ -9,6 +9,43 @@ from typing import Any
 
 from .contracts import GenerationConfig, GenerationResult, InferenceBackend
 from .generation import generate
+
+
+def _strict_int(value: Any, *, field: str, minimum: int | None = None) -> int:
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise TypeError(f"{field} must be an integer")
+    if minimum is not None and value < minimum:
+        raise ValueError(f"{field} must be >= {minimum}")
+    return value
+
+
+def _strict_number(
+    value: Any,
+    *,
+    field: str,
+    minimum: float | None = None,
+    minimum_exclusive: bool = False,
+    maximum: float | None = None,
+) -> float:
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        raise TypeError(f"{field} must be a real number")
+    number = float(value)
+    if not math.isfinite(number):
+        raise ValueError(f"{field} must be finite")
+    if minimum is not None:
+        if minimum_exclusive and number <= minimum:
+            raise ValueError(f"{field} must be > {minimum:g}")
+        if not minimum_exclusive and number < minimum:
+            raise ValueError(f"{field} must be >= {minimum:g}")
+    if maximum is not None and number > maximum:
+        raise ValueError(f"{field} must be <= {maximum:g}")
+    return number
+
+
+def _strict_bool(value: Any, *, field: str) -> bool:
+    if not isinstance(value, bool):
+        raise TypeError(f"{field} must be a boolean")
+    return value
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,27 +69,27 @@ class CompletionRequest:
         if not isinstance(prompt, str):
             raise TypeError("prompt must be a string")
 
-        max_tokens = payload.get("max_tokens", 16)
-        if not isinstance(max_tokens, int) or isinstance(max_tokens, bool) or max_tokens < 0:
-            raise ValueError("max_tokens must be a non-negative integer")
+        max_tokens = _strict_int(payload.get("max_tokens", 16), field="max_tokens", minimum=0)
+        temperature = _strict_number(
+            payload.get("temperature", 1.0), field="temperature", minimum=0.0
+        )
+        top_p = _strict_number(
+            payload.get("top_p", 1.0),
+            field="top_p",
+            minimum=0.0,
+            minimum_exclusive=True,
+            maximum=1.0,
+        )
+        seed = _strict_int(payload.get("seed", 0), field="seed")
 
-        temperature = float(payload.get("temperature", 1.0))
-        if not math.isfinite(temperature) or temperature < 0:
-            raise ValueError("temperature must be finite and >= 0")
-        top_p = float(payload.get("top_p", 1.0))
-        if not math.isfinite(top_p) or not 0 < top_p <= 1:
-            raise ValueError("top_p must be finite and in (0, 1]")
-
-        seed = payload.get("seed", 0)
-        if not isinstance(seed, int) or isinstance(seed, bool):
-            raise TypeError("seed must be an integer")
-
-        n = payload.get("n", 1)
+        n = _strict_int(payload.get("n", 1), field="n", minimum=1)
         if n != 1:
             raise ValueError("only n=1 is supported by the minimal local completion handoff")
-        if payload.get("stream", False):
+        stream = _strict_bool(payload.get("stream", False), field="stream")
+        if stream:
             raise ValueError("stream=true is not implemented by the minimal local handoff")
-        if payload.get("echo", False):
+        echo = _strict_bool(payload.get("echo", False), field="echo")
+        if echo:
             raise ValueError("echo=true is not supported; responses contain completion text only")
         if payload.get("logprobs") is not None:
             raise ValueError("logprobs are not implemented by the minimal local handoff")
@@ -109,8 +146,8 @@ def completion_response(
     """Execute one raw completion and return a server-ready response mapping.
 
     This function adds no hidden prompt, system message, instruction template,
-    refusal policy, or chat role. A future HTTP layer can expose it at
-    ``POST /v1/completions`` and supply request-specific ``id``/``created``.
+    refusal policy, or chat role. The HTTP layer exposes it at
+    ``POST /v1/completions`` and supplies request-specific ``id``/``created``.
     """
 
     request = CompletionRequest.from_payload(payload)
