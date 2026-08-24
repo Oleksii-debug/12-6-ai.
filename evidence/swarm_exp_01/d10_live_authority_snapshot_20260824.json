@@ -1,0 +1,57 @@
+{
+  "audits": {
+    "AUDIT-A": {
+      "candidate_sha": "f2e94c7212888cdb960bb66154d56d210e9b27ab",
+      "comment_id": 5386227720,
+      "issue": 13,
+      "stale_for_future_candidate": true,
+      "verdict": "CHANGES_REQUIRED"
+    },
+    "AUDIT-B": {
+      "candidate_sha": "f2e94c7212888cdb960bb66154d56d210e9b27ab",
+      "comment_id": 5386286257,
+      "issue": 14,
+      "stale_for_future_candidate": true,
+      "verdict": "CHANGES_REQUIRED"
+    }
+  },
+  "complete_history_secret_gate": {
+    "authoritative_ci_run": 32747331164,
+    "authoritative_ci_status": "FAILURE",
+    "fast_ci_run": 32747331325,
+    "fast_ci_status": "SUCCESS_NON_AUTHORITATIVE",
+    "finding_values_redacted": true,
+    "gitleaks_findings": 4,
+    "head_sha": "643bc57881248bdb8fd33df4be6b309d95a4f689",
+    "pr": 72
+  },
+  "dependency_security": {
+    "ci_run": 32746696921,
+    "ci_status": "SUCCESS",
+    "evidence_run": 32746696923,
+    "evidence_status": "SUCCESS",
+    "head_sha": "94048904551ade3826c9a9f3a8c73b2618b4d6bf",
+    "pr": 62
+  },
+  "main_sha": "f2e94c7212888cdb960bb66154d56d210e9b27ab",
+  "observed_cutoff_utc": "2026-08-24T17:31:00Z",
+  "promotion_state": "BLOCKED_NO_EXACT_AUDIT_PASS_AND_RED_FULL_HISTORY_GATE",
+  "release_attestation": {
+    "ci_run": 32747059609,
+    "ci_status": "SUCCESS",
+    "head_sha": "1a76689d99898052449aec9feadece0f0a04dafd",
+    "pr": 69
+  },
+  "repository": "Oleksii-debug/12-6-ai.",
+  "run": "12-6-AI-SWARM-EXP-01",
+  "schema_version": "12-6.d10-live-authority-snapshot.v1",
+  "snapshot_sha256": "b8a37312485186bcc758853e9ef0e5babd254da2a7f204180f7e193650364e42",
+  "truth_boundary": {
+    "audited_candidate_claimed": false,
+    "behavioral_d09_weights_admitted_to_base": false,
+    "candidate_transition_claimed": false,
+    "foreign_pretrained_base_admitted": false,
+    "paid_compute_authorized": false,
+    "stable_claimed": false
+  }
+}
