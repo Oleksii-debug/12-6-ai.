@@ -11,6 +11,23 @@ from .contracts import GenerationConfig, GenerationResult, InferenceBackend
 from .generation import generate
 
 
+def _payload_number(payload: Mapping[str, Any], field: str, default: float) -> float:
+    value = payload.get(field, default)
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        raise TypeError(f"{field} must be a number")
+    numeric = float(value)
+    if not math.isfinite(numeric):
+        raise ValueError(f"{field} must be finite")
+    return numeric
+
+
+def _payload_bool(payload: Mapping[str, Any], field: str, default: bool = False) -> bool:
+    value = payload.get(field, default)
+    if not isinstance(value, bool):
+        raise TypeError(f"{field} must be a boolean")
+    return value
+
+
 @dataclass(frozen=True, slots=True)
 class CompletionRequest:
     """Supported raw-Base subset of the OpenAI text-completions request shape."""
@@ -36,23 +53,23 @@ class CompletionRequest:
         if not isinstance(max_tokens, int) or isinstance(max_tokens, bool) or max_tokens < 0:
             raise ValueError("max_tokens must be a non-negative integer")
 
-        temperature = float(payload.get("temperature", 1.0))
-        if not math.isfinite(temperature) or temperature < 0:
-            raise ValueError("temperature must be finite and >= 0")
-        top_p = float(payload.get("top_p", 1.0))
-        if not math.isfinite(top_p) or not 0 < top_p <= 1:
-            raise ValueError("top_p must be finite and in (0, 1]")
+        temperature = _payload_number(payload, "temperature", 1.0)
+        if temperature < 0:
+            raise ValueError("temperature must be >= 0")
+        top_p = _payload_number(payload, "top_p", 1.0)
+        if not 0 < top_p <= 1:
+            raise ValueError("top_p must be in (0, 1]")
 
         seed = payload.get("seed", 0)
         if not isinstance(seed, int) or isinstance(seed, bool):
             raise TypeError("seed must be an integer")
 
         n = payload.get("n", 1)
-        if n != 1:
-            raise ValueError("only n=1 is supported by the minimal local completion handoff")
-        if payload.get("stream", False):
+        if not isinstance(n, int) or isinstance(n, bool) or n != 1:
+            raise ValueError("only integer n=1 is supported by the minimal local completion handoff")
+        if _payload_bool(payload, "stream"):
             raise ValueError("stream=true is not implemented by the minimal local handoff")
-        if payload.get("echo", False):
+        if _payload_bool(payload, "echo"):
             raise ValueError("echo=true is not supported; responses contain completion text only")
         if payload.get("logprobs") is not None:
             raise ValueError("logprobs are not implemented by the minimal local handoff")
