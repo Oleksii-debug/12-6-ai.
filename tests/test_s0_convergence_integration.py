@@ -7,6 +7,12 @@ from pathlib import Path
 
 import torch
 
+from twelve_six.checkpoint import (
+    bind_checkpoint_identity,
+    hash_json,
+    load_trainer_checkpoint,
+    save_trainer_checkpoint,
+)
 from twelve_six.data import build_dataset
 from twelve_six.inference import GenerationConfig, generate
 from twelve_six.integration import (
@@ -92,6 +98,117 @@ def test_s0_accepted_contracts_execute_model_data_tokenizer_train_and_inference(
     assert len(result.generated_token_ids) == 2
     assert all(0 <= token_id < tokenizer.vocab_size for token_id in result.generated_token_ids)
     assert result.stop_reason == "max_new_tokens"
+
+
+def test_s0_train_checkpoint_reload_and_inference_roundtrip(tmp_path: Path) -> None:
+    stage = load_stage_config(ROOT / "configs/stages/s0_10k.json")
+    tokenizer = ByteTokenizer()
+    record = _load_first_jsonl(ROOT / "data/s0/packaged/train.jsonl")
+    token_ids = tokenizer.encode(str(record["text"]))[: min(stage.model.max_seq_len, 64)]
+    batch_ids = torch.tensor([token_ids], dtype=torch.long)
+    seed = 20260824
+    trainer_config = TrainerConfig(
+        learning_rate=1e-2,
+        max_steps=2,
+        seed=seed,
+        precision="fp32",
+        deterministic_algorithms=True,
+    )
+
+    torch.manual_seed(seed)
+    model = TwelveSixDecoder(stage.model, stage.init)
+    trainer = Trainer(model, trainer_config, device="cpu")
+    metrics = trainer.train_microbatch({"input_ids": batch_ids, "labels": batch_ids})
+    assert metrics.optimizer_stepped is True
+    assert trainer.optimizer_step == 1
+
+    pre_checkpoint_generation = generate(
+        S0TorchInferenceBackend(model, tokenizer),
+        "12-6",
+        GenerationConfig(max_new_tokens=2, sample=False, seed=seed),
+    )
+
+    evidence = json.loads(EVIDENCE_PATH.read_text(encoding="utf-8"))
+    model_spec = stage.model.to_dict()
+    run_manifest = {
+        "schema_version": 1,
+        "run_id": "s0-local-free-integration-roundtrip",
+        "stage": "S0",
+        "run_kind": "integrated_training",
+        "state": "RUNNING",
+        "candidate": {
+            "repository": evidence["repository"],
+            "git_sha": evidence["integration_anchor_sha"],
+            "branch_or_tag": evidence["integration_branch"],
+            "modelspec_sha256": hash_json(model_spec),
+            "parameter_count": stage.expected_parameters,
+        },
+        "data": {
+            "dataset_manifest_sha256": DATASET_MANIFEST_SHA256,
+            "tokenizer_sha256": tokenizer.identity.config_sha256,
+            "tokenizer_vocab_sha256": tokenizer.identity.vocab_sha256,
+            "tokenizer_version": tokenizer.identity.version,
+            "split_identity": "s0-tiny-controlled-v1",
+        },
+        "training": {
+            "seed": seed,
+            "device": "cpu",
+            "precision": "fp32",
+            "optimizer": {"name": "AdamW", "lr": trainer_config.learning_rate},
+            "scheduler": {"name": trainer_config.scheduler},
+            "context_length": stage.model.max_seq_len,
+            "global_batch_tokens": len(token_ids),
+            "target_steps": trainer_config.max_steps,
+            "target_tokens": len(token_ids) * trainer_config.max_steps,
+            "checkpoint_interval_steps": 1,
+        },
+    }
+    identity = bind_checkpoint_identity(
+        run_manifest=run_manifest,
+        model_spec=model_spec,
+        tokenizer_identity=tokenizer.identity.to_dict(),
+        step=trainer.optimizer_step,
+        tokens_seen=trainer.tokens_seen,
+    )
+
+    checkpoint_dir = tmp_path / "s0-checkpoint"
+    manifest = save_trainer_checkpoint(
+        checkpoint_dir,
+        model=model,
+        trainer=trainer,
+        identity=identity,
+    )
+    assert manifest["serialization"]["pickle"] is False
+
+    restored_model = TwelveSixDecoder(stage.model, stage.init)
+    restored_trainer = Trainer(restored_model, trainer_config, device="cpu")
+    loaded = load_trainer_checkpoint(
+        checkpoint_dir,
+        model=restored_model,
+        trainer=restored_trainer,
+        restore_rng=False,
+        expected_git_sha=identity.git_sha,
+        expected_model_spec_hash=hash_json(model_spec),
+        expected_tokenizer_hash=tokenizer.identity.config_sha256,
+        expected_dataset_manifest_hash=DATASET_MANIFEST_SHA256,
+    )
+
+    assert loaded.identity.git_sha == identity.git_sha
+    assert restored_trainer.micro_step == trainer.micro_step == 1
+    assert restored_trainer.optimizer_step == trainer.optimizer_step == 1
+    assert restored_trainer.tokens_seen == trainer.tokens_seen
+    for expected, actual in zip(model.parameters(), restored_model.parameters(), strict=True):
+        torch.testing.assert_close(actual, expected, rtol=0.0, atol=0.0)
+
+    post_checkpoint_generation = generate(
+        S0TorchInferenceBackend(restored_model, tokenizer),
+        "12-6",
+        GenerationConfig(max_new_tokens=2, sample=False, seed=seed),
+    )
+    assert post_checkpoint_generation.generated_token_ids == (
+        pre_checkpoint_generation.generated_token_ids
+    )
+    assert post_checkpoint_generation.stop_reason == pre_checkpoint_generation.stop_reason
 
 
 def test_s0_evidence_accepts_green_checkpoint_lineage_but_holds_red_eval() -> None:
