@@ -1,0 +1,194 @@
+name: D05 S0 Artifact Upload Download Replay
+
+on:
+  pull_request:
+    paths:
+      - "src/twelve_six/inference/**"
+      - "src/twelve_six/checkpoint/**"
+      - "src/twelve_six/s0_candidate_evaluation.py"
+      - "src/twelve_six/model.py"
+      - "src/twelve_six/training/**"
+      - "src/twelve_six/tokenization/**"
+      - "src/twelve_six/packing/**"
+      - "data/s0/**"
+      - "configs/stages/**"
+      - "requirements/locks/**"
+      - ".github/workflows/d05-s0-artifact-upload-download.yml"
+      - "docs/S0_ARTIFACT_UPLOAD_DOWNLOAD_D05.md"
+
+permissions:
+  contents: read
+
+jobs:
+  producer:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+    outputs:
+      artifact-id: ${{ steps.upload.outputs.artifact-id }}
+      artifact-digest: ${{ steps.upload.outputs.artifact-digest }}
+      checksum-sha256: ${{ steps.checksums.outputs.checksum-sha256 }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Prove exact producer source checkout
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Verify producer D08 lock and repository checks
+        run: >-
+          python tools/verify_locked_environment.py
+          --profile linux-x86_64
+          --source-sha "$SOURCE_SHA"
+          --evidence-out "$RUNNER_TEMP/locked-environment-linux-x86_64.json"
+          --run-repo-checks
+      - name: Create exact producer environment
+        run: |
+          python -m venv .d05-upload-producer
+          .d05-upload-producer/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .d05-upload-producer/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          .d05-upload-producer/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/dev.lock.txt
+          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .d05-upload-producer/bin/python -m pip install --no-deps --no-build-isolation -e .
+      - name: Build and validate incumbent retained checkpoint evidence
+        run: |
+          mkdir -p "$RUNNER_TEMP/transport/payload"
+          .d05-upload-producer/bin/python -m twelve_six.inference.s0_artifact build \
+            --repo-root . \
+            --candidate-sha "$SOURCE_SHA" \
+            --checkpoint-out "$RUNNER_TEMP/transport/payload/checkpoint" \
+            --evidence-out "$RUNNER_TEMP/transport/payload/s0-generation-evidence.json" \
+            --train-steps 40 \
+            --seed 20260824
+          .d05-upload-producer/bin/python -m twelve_six.inference.s0_artifact validate \
+            --checkpoint "$RUNNER_TEMP/transport/payload/checkpoint" \
+            --evidence "$RUNNER_TEMP/transport/payload/s0-generation-evidence.json"
+          cp "$RUNNER_TEMP/locked-environment-linux-x86_64.json" \
+            "$RUNNER_TEMP/transport/payload/locked-environment-linux-x86_64.json"
+      - name: Bind producer file bytes before upload
+        id: checksums
+        run: |
+          cd "$RUNNER_TEMP/transport/payload"
+          find . -type f -print0 | sort -z | xargs -0 sha256sum > ../payload.sha256
+          sha256sum --check ../payload.sha256
+          CHECKSUM_SHA256="$(sha256sum ../payload.sha256 | cut -d' ' -f1)"
+          echo "checksum-sha256=$CHECKSUM_SHA256" >> "$GITHUB_OUTPUT"
+      - name: Upload retained payload for fresh-job replay
+        id: upload
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: d05-s0-upload-download-${{ env.SOURCE_SHA }}
+          path: ${{ runner.temp }}/transport
+          if-no-files-found: error
+          retention-days: 30
+
+  fresh-consumer:
+    needs: producer
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+      PRODUCER_ARTIFACT_ID: ${{ needs.producer.outputs.artifact-id }}
+      PRODUCER_ARTIFACT_DIGEST: ${{ needs.producer.outputs.artifact-digest }}
+      PRODUCER_CHECKSUM_SHA256: ${{ needs.producer.outputs.checksum-sha256 }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Prove exact fresh-consumer source checkout
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Create exact fresh-consumer environment
+        run: |
+          python -m venv .d05-upload-consumer
+          .d05-upload-consumer/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .d05-upload-consumer/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .d05-upload-consumer/bin/python -m pip install --no-deps --no-build-isolation -e .
+      - name: Download producer artifact into fresh runner
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: d05-s0-upload-download-${{ env.SOURCE_SHA }}
+          path: ${{ runner.temp }}/downloaded
+      - name: Prove downloaded bytes equal producer bytes
+        run: |
+          test -n "$PRODUCER_ARTIFACT_ID"
+          test -n "$PRODUCER_ARTIFACT_DIGEST"
+          test -n "$PRODUCER_CHECKSUM_SHA256"
+          test "$(sha256sum "$RUNNER_TEMP/downloaded/payload.sha256" | cut -d' ' -f1)" = "$PRODUCER_CHECKSUM_SHA256"
+          cd "$RUNNER_TEMP/downloaded/payload"
+          sha256sum --check ../payload.sha256
+      - name: Revalidate D05 and D07 evidence after download
+        run: |
+          .d05-upload-consumer/bin/python -m twelve_six.inference.s0_artifact validate \
+            --checkpoint "$RUNNER_TEMP/downloaded/payload/checkpoint" \
+            --evidence "$RUNNER_TEMP/downloaded/payload/s0-generation-evidence.json"
+      - name: Execute installed CLI from downloaded checkpoint bytes
+        run: |
+          printf '12-6' | .d05-upload-consumer/bin/twelve-six-generate \
+            --checkpoint "$RUNNER_TEMP/downloaded/payload/checkpoint" \
+            --greedy --max-new-tokens 8 \
+            > "$RUNNER_TEMP/consumer-stdin.txt" \
+            2> "$RUNNER_TEMP/consumer-stdin-diagnostics.txt"
+          .d05-upload-consumer/bin/twelve-six-generate \
+            --checkpoint "$RUNNER_TEMP/downloaded/payload/checkpoint" \
+            --prompt '12-6' --sample --seed 20260841 \
+            --temperature 0.8 --top-k 20 --top-p 0.95 --max-new-tokens 8 --json \
+            > "$RUNNER_TEMP/consumer-json.json" \
+            2> "$RUNNER_TEMP/consumer-json-diagnostics.txt"
+      - name: Emit fresh-consumer replay evidence
+        run: |
+          .d05-upload-consumer/bin/python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path(os.environ["RUNNER_TEMP"])
+          generation = json.loads(
+              (root / "downloaded/payload/s0-generation-evidence.json").read_text(encoding="utf-8")
+          )
+          cli = json.loads((root / "consumer-json.json").read_text(encoding="utf-8"))
+          assert generation["candidate_sha"] == os.environ["SOURCE_SHA"]
+          assert cli["backend"]["checkpoint_id"] == generation["checkpoint"]["checkpoint_id"]
+          assert cli["backend"]["git_sha"] == os.environ["SOURCE_SHA"]
+          payload = {
+              "schema_version": "12-6.s0-artifact-upload-download-replay.v1",
+              "authority": "FRESH_JOB_DOWNLOAD_REPLAY_EVIDENCE_NOT_PROMOTION",
+              "repository": "Oleksii-debug/12-6-ai.",
+              "source_sha": os.environ["SOURCE_SHA"],
+              "producer_artifact_id": os.environ["PRODUCER_ARTIFACT_ID"],
+              "producer_artifact_digest": os.environ["PRODUCER_ARTIFACT_DIGEST"],
+              "producer_checksum_file_sha256": os.environ["PRODUCER_CHECKSUM_SHA256"],
+              "checkpoint_id": generation["checkpoint"]["checkpoint_id"],
+              "generation_evidence_sha256": generation["evidence_sha256"],
+              "downloaded_bytes_sha256_checked": True,
+              "downloaded_checkpoint_and_generation_evidence_validated": True,
+              "downloaded_checkpoint_cli_executed": True,
+              "promotion_authority": False,
+          }
+          canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), allow_nan=False)
+          payload["evidence_sha256"] = hashlib.sha256(canonical.encode()).hexdigest()
+          output = root / "artifact-upload-download-replay.json"
+          output.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+          print(json.dumps(payload, indent=2, sort_keys=True))
+          PY
+      - name: Upload fresh-consumer replay evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: d05-s0-upload-download-replay-${{ env.SOURCE_SHA }}
+          path: |
+            ${{ runner.temp }}/artifact-upload-download-replay.json
+            ${{ runner.temp }}/consumer-stdin.txt
+            ${{ runner.temp }}/consumer-stdin-diagnostics.txt
+            ${{ runner.temp }}/consumer-json.json
+            ${{ runner.temp }}/consumer-json-diagnostics.txt
+          if-no-files-found: error
+          retention-days: 30
