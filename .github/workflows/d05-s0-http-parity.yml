@@ -1,0 +1,101 @@
+name: D05 Trained S0 HTTP Parity
+
+on:
+  pull_request:
+    paths:
+      - "src/twelve_six/inference/s0_http_evidence.py"
+      - "src/twelve_six/inference/first_party.py"
+      - "src/twelve_six/inference/server.py"
+      - "src/twelve_six/inference/openai_compat.py"
+      - "src/twelve_six/inference/parity.py"
+      - "src/twelve_six/checkpoint/**"
+      - "src/twelve_six/training/**"
+      - "data/s0/**"
+      - "configs/stages/**"
+      - "requirements/locks/**"
+      - "tests/test_s0_http_parity.py"
+      - "docs/S0_TRAINED_HTTP_PARITY_D05.md"
+      - ".github/workflows/d05-s0-http-parity.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  trained-checkpoint-http-parity:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Prove exact source checkout
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Verify exact D08 locked environment and repository checks
+        run: >-
+          python tools/verify_locked_environment.py
+          --profile linux-x86_64
+          --source-sha "$SOURCE_SHA"
+          --evidence-out locked-environment-linux-x86_64.json
+          --run-repo-checks
+      - name: Create exact locked D05 execution environment
+        run: |
+          python -m venv .d05-http-locked
+          .d05-http-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .d05-http-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .d05-http-locked/bin/python -m pip install --no-deps --no-build-isolation -e .
+      - name: Focused trained-checkpoint HTTP regression
+        run: .d05-http-locked/bin/python -m pytest -q tests/test_s0_http_parity.py
+      - name: Collect exact-head trained checkpoint HTTP parity evidence
+        run: |
+          .d05-http-locked/bin/python -m twelve_six.inference.s0_http_evidence \
+            --repo-root . \
+            --candidate-sha "$SOURCE_SHA" \
+            --output-dir "$RUNNER_TEMP/d05-s0-http-parity" \
+            --train-steps 4 \
+            --seed 20260825
+      - name: Validate retained evidence
+        run: |
+          .d05-http-locked/bin/python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          from twelve_six.inference.s0_http_evidence import validate_http_parity_evidence
+
+          root = Path(os.environ["RUNNER_TEMP"]) / "d05-s0-http-parity"
+          payload = json.loads(
+              (root / "s0-http-parity-evidence.json").read_text(encoding="utf-8")
+          )
+          validate_http_parity_evidence(
+              payload,
+              expected_candidate_sha=os.environ["SOURCE_SHA"],
+          )
+          assert payload["parity"]["passed"] is True
+          assert payload["http"]["greedy_matches_direct"] is True
+          assert payload["http"]["sampled_matches_direct"] is True
+          assert payload["http"]["seeded_sampling_repeatable"] is True
+          assert payload["http"]["stop_matches_direct"] is True
+          assert payload["http"]["context_limit_matches_direct"] is True
+          assert payload["http"]["over_context_rejected"] is True
+          assert payload["http"]["chat_rejected"] is True
+          assert payload["promotion"]["claimed"] is False
+          PY
+      - name: Upload exact-head checkpoint and HTTP parity evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: d05-s0-trained-http-parity-${{ env.SOURCE_SHA }}
+          path: |
+            locked-environment-linux-x86_64.json
+            ${{ runner.temp }}/d05-s0-http-parity/s0-http-parity-evidence.json
+            ${{ runner.temp }}/d05-s0-http-parity/checkpoint/
+          if-no-files-found: error
+          retention-days: 30
