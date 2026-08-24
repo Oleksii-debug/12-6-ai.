@@ -7,6 +7,7 @@ import pytest
 from twelve_six.integration.workflow_policy import (
     WorkflowPolicyError,
     validate_repository_workflows,
+    validate_workflow_files,
     validate_workflow_text,
 )
 
@@ -87,7 +88,6 @@ def test_workflow_outside_repository_root_fails(tmp_path: Path) -> None:
     repo.mkdir()
     outside = tmp_path / "outside.yml"
     outside.write_text("steps: []\n", encoding="utf-8")
-    from twelve_six.integration.workflow_policy import validate_workflow_files
 
     with pytest.raises(WorkflowPolicyError, match="outside repository root"):
         validate_workflow_files((outside,), repo)
