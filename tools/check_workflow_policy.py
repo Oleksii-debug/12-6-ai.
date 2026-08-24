@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from twelve_six.integration.workflow_policy import WorkflowPolicyError, validate_repository_workflows
+from twelve_six.integration.workflow_policy import (
+    WorkflowPolicyError,
+    validate_repository_workflows,
+)
 
 
 def main() -> int:
