@@ -24,15 +24,14 @@ def _finding() -> dict[str, object]:
     }
 
 
-def test_sanitizer_drops_secret_match_and_unknown_fields() -> None:
+def test_sanitizer_retains_only_minimum_location_and_rule_metadata() -> None:
     result = sanitize_findings([_finding()])
     assert result["schema"] == "12-6.gitleaks-sanitized-findings.v1"
     assert result["finding_count"] == 1
     item = result["findings"][0]
-    assert "Secret" not in item
-    assert "Match" not in item
-    assert "Entropy" not in item
+    assert set(item) == {"RuleID", "File", "StartLine", "EndLine", "Commit"}
     assert "do-not-retain-this-secret-value" not in repr(result)
+    assert "fixture" not in repr(result)
 
 
 def test_sanitizer_requires_sensitive_fields_to_prove_expected_report_shape() -> None:
@@ -42,11 +41,35 @@ def test_sanitizer_requires_sensitive_fields_to_prove_expected_report_shape() ->
         sanitize_findings([finding])
 
 
-def test_sanitizer_requires_rule_file_commit_identity() -> None:
+def test_sanitizer_requires_exact_commit_identity() -> None:
     finding = _finding()
-    finding["Commit"] = ""
-    with pytest.raises(ValueError, match="lacks rule/file/commit identity"):
+    finding["Commit"] = "ABC"
+    with pytest.raises(ValueError, match="lowercase 40-hex Git SHA"):
         sanitize_findings([finding])
+
+
+def test_sanitizer_rejects_invalid_line_range() -> None:
+    finding = _finding()
+    finding["StartLine"] = 7
+    finding["EndLine"] = 6
+    with pytest.raises(ValueError, match="EndLine"):
+        sanitize_findings([finding])
+
+
+def test_sanitizer_rejects_control_characters() -> None:
+    finding = _finding()
+    finding["File"] = "tests/example.txt\nforged"
+    with pytest.raises(ValueError, match="control characters"):
+        sanitize_findings([finding])
+
+
+def test_sanitizer_output_is_deterministic() -> None:
+    first = _finding()
+    first["File"] = "z.txt"
+    second = _finding()
+    second["File"] = "a.txt"
+    result = sanitize_findings([first, second])
+    assert [item["File"] for item in result["findings"]] == ["a.txt", "z.txt"]
 
 
 def test_sanitizer_rejects_non_array_report() -> None:
