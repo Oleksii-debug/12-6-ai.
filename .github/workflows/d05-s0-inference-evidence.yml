@@ -1,0 +1,93 @@
+name: D05 S0 First-Party Inference Evidence
+
+on:
+  pull_request:
+    paths:
+      - "src/twelve_six/inference/**"
+      - "src/twelve_six/checkpoint/**"
+      - "src/twelve_six/model.py"
+      - "src/twelve_six/training/**"
+      - "src/twelve_six/tokenization/**"
+      - "src/twelve_six/packing/**"
+      - "src/twelve_six/s0_candidate_evaluation.py"
+      - "data/s0/**"
+      - "configs/stages/**"
+      - "requirements/locks/**"
+      - "tests/test_s0_inference_evidence.py"
+      - "docs/S0_FIRST_PARTY_INFERENCE_EVIDENCE.md"
+      - ".github/workflows/d05-s0-inference-evidence.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  locked-trained-reload-evidence:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Prove exact source checkout
+        run: test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Verify exact D08 environment and repository checks
+        run: >-
+          python tools/verify_locked_environment.py
+          --profile linux-x86_64
+          --source-sha "$CANDIDATE_SHA"
+          --evidence-out "$RUNNER_TEMP/locked-environment-linux-x86_64.json"
+          --run-repo-checks
+      - name: Create hash-locked inference execution environment
+        run: |
+          python -m venv .d05-inference-locked
+          .d05-inference-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .d05-inference-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .d05-inference-locked/bin/python -m pip install --no-deps --no-build-isolation -e .
+          .d05-inference-locked/bin/python -c "import torch,twelve_six; assert torch.__version__; print(twelve_six.__version__)"
+      - name: Train, retain checkpoint, reload, and prove first-party inference
+        run: |
+          .d05-inference-locked/bin/python -m twelve_six.inference.s0_evidence \
+            --repo-root . \
+            --candidate-sha "$CANDIDATE_SHA" \
+            --output-dir "$RUNNER_TEMP/s0-first-party-inference" \
+            --train-steps 40 \
+            --seed 20260825
+      - name: Validate exact machine evidence
+        run: |
+          .d05-inference-locked/bin/python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          from twelve_six.inference.s0_evidence import validate_s0_inference_evidence
+
+          root = Path(os.environ["RUNNER_TEMP"]) / "s0-first-party-inference"
+          report = json.loads((root / "inference_evidence.json").read_text(encoding="utf-8"))
+          sha = os.environ["CANDIDATE_SHA"]
+          validate_s0_inference_evidence(report, expected_candidate_sha=sha)
+          assert report["training_fixture"]["steps"] == 40
+          assert report["candidate"]["parameter_count"] == 10140
+          assert report["parity"]["passed"] is True
+          assert report["parity"]["atol"] == 0.0
+          assert report["parity"]["rtol"] == 0.0
+          assert report["seeded_sampling"]["repeatable"] is True
+          assert report["openai_completion_handoff"]["raw_completion_matches_greedy"] is True
+          assert (root / "checkpoint-v1" / "model.safetensors").is_file()
+          PY
+          cp "$RUNNER_TEMP/locked-environment-linux-x86_64.json" "$RUNNER_TEMP/s0-first-party-inference/"
+      - name: Upload trained checkpoint and inference evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: s0-d05-first-party-inference-${{ env.CANDIDATE_SHA }}
+          path: ${{ runner.temp }}/s0-first-party-inference/**
+          if-no-files-found: error
+          retention-days: 30
