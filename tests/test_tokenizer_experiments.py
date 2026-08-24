@@ -14,6 +14,8 @@ from twelve_six.tokenization.experiments import (
     vocabulary_parameter_cost,
 )
 
+CONFIG_HASH = "f" * 64
+
 
 def _manifest() -> TokenizerTrainingManifest:
     texts = ("one", "два")
@@ -26,6 +28,8 @@ def _manifest() -> TokenizerTrainingManifest:
         requested_vocab_size=512,
         training_corpus_sha256=corpus_sha256(texts),
         training_document_count=len(texts),
+        coverage_strategy="bytelevel-alphabet",
+        training_config_sha256=CONFIG_HASH,
     )
 
 
@@ -52,6 +56,7 @@ def test_training_manifest_identity_is_stable_and_changes_on_semantic_drift() ->
     assert manifest.identity_sha256 == _manifest().identity_sha256
     assert replace(manifest, requested_vocab_size=1024).identity_sha256 != manifest.identity_sha256
     assert replace(manifest, backend_version="test-2.0").identity_sha256 != manifest.identity_sha256
+    assert replace(manifest, training_config_sha256="e" * 64).identity_sha256 != manifest.identity_sha256
 
 
 def test_training_manifest_rejects_backend_algorithm_mismatch() -> None:
@@ -65,7 +70,14 @@ def test_training_manifest_rejects_backend_algorithm_mismatch() -> None:
             requested_vocab_size=512,
             training_corpus_sha256=corpus_sha256(("x",)),
             training_document_count=1,
+            coverage_strategy="bytelevel-alphabet",
+            training_config_sha256=CONFIG_HASH,
         )
+
+
+def test_training_manifest_rejects_coverage_semantic_mislabel() -> None:
+    with pytest.raises(ValueError, match="coverage_strategy"):
+        replace(_manifest(), coverage_strategy="byte-fallback")
 
 
 def test_ordered_vocab_hash_detects_silent_token_id_drift() -> None:
