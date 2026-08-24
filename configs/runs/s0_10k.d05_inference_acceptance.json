@@ -1,0 +1,30 @@
+{
+  "schema_version": "12-6.s0-inference-acceptance-run-config.v1",
+  "authority": "LOCAL_FREE_OR_FREE_HOSTED_CPU_EVIDENCE_NOT_PROMOTION",
+  "stage": "S0",
+  "source_sha_resolution": "github.event.pull_request.head.sha",
+  "environment_profile": "linux-x86_64",
+  "python_version": "3.11.16",
+  "device": "cpu",
+  "precision": "fp32",
+  "train_steps": 40,
+  "seed": 20260825,
+  "checkpoint_format": "12-6-checkpoint-v1",
+  "required_surfaces": [
+    "trained_checkpoint_reload",
+    "greedy_generation",
+    "seeded_sampling",
+    "logit_token_decode_parity",
+    "stop_semantics",
+    "context_limits",
+    "plain_json_cli",
+    "loopback_v1_completions",
+    "corrupt_checkpoint_rejection",
+    "tokenizer_mismatch_rejection",
+    "context_mismatch_rejection",
+    "vocab_mismatch_rejection"
+  ],
+  "windows_nvda": "NOT_TESTED_BLOCKED_BY_REPOSITORY_IDENTITY",
+  "paid_compute": false,
+  "promotion_authority": false
+}
