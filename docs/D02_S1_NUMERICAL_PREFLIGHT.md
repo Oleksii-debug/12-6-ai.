@@ -18,7 +18,8 @@ That distinction is machine-enforced:
 
 - fixture purpose is `CONTROLLED_S0_FIXTURE_COMPATIBILITY_ONLY_NOT_S1_CORPUS_OR_TOKENIZER`;
 - S1 model vocab is 512 while the byte tokenizer has vocab 256 and emits IDs 0..255;
-- evidence records 256 unused S1 vocabulary rows under this fixture;
+- 256 S1 token IDs (256..511) are never emitted as fixture inputs or targets;
+- because the LM head is tied to the embedding matrix, those non-emitted rows may still receive output-softmax gradients, so this is **not** a claim that 256 parameter rows stay unchanged;
 - train and validation record IDs must remain disjoint;
 - validation optimized-token count must remain zero.
 
@@ -42,7 +43,9 @@ The existing Trainer contract intentionally rejects fp16 on CPU. This package ex
 
 ## Locked execution and evidence
 
-`.github/workflows/d02-s1-numerical-preflight.yml` checks out the exact PR head, validates the D08 Linux x86_64 hash-locked environment with full repository checks, creates a separate hash-locked execution environment, runs the S1 preflight, validates the self-hashed result, and retains the lock evidence plus numerical evidence for 30 days.
+`.github/workflows/d02-s1-numerical-preflight.yml` checks out the exact PR head, validates the D08 Linux x86_64 hash-locked environment with full repository checks, creates a separate hash-locked execution environment, runs the S1 preflight, validates the result, and retains both the lock evidence and numerical evidence for 30 days.
+
+The numerical JSON is self-hashed, but same-source environment authority is intentionally not inferred from a copied hash string alone. Downstream validation requires the retained D08 locked-environment JSON as a companion artifact, recomputes its self-hash, verifies its source SHA, and checks exact lock/profile identities against the binding in the S1 evidence.
 
 Run contract: `configs/runs/s1_100k.d02_numerical_preflight.json`.
 
@@ -61,7 +64,9 @@ python tools/run_s1_numerical_preflight.py \
 Validator:
 
 ```text
-python tools/validate_s1_numerical_preflight.py <EVIDENCE_JSON>
+python tools/validate_s1_numerical_preflight.py \
+  <EVIDENCE_JSON> \
+  --locked-environment-evidence <LOCKED_ENVIRONMENT_JSON>
 ```
 
 ## Authority boundary
