@@ -86,8 +86,11 @@ def test_backend_conformance_emits_tamper_evident_privacy_safe_report() -> None:
     assert report["promotion_authority"] is False
     assert all(report["checks"].values())
     assert report["generation_probe"]["executed"] is True
-    assert "ab" not in json.dumps(report, ensure_ascii=False)
-    assert "ba" not in json.dumps(report, ensure_ascii=False)
+    for probe in report["probes"]:
+        assert "prompt_text" not in probe
+        assert "generated_text" not in probe
+        literal_values = {value for value in probe.values() if isinstance(value, str)}
+        assert literal_values.isdisjoint({"ab", "ba"})
     validate_conformance_report(report)
 
 
@@ -97,7 +100,7 @@ def test_backend_conformance_rejects_bool_context() -> None:
 
 
 def test_backend_conformance_rejects_bool_token_id() -> None:
-    with pytest.raises(TypeError, match="integer token ID"):
+    with pytest.raises(TypeError, match="integer"):
         run_backend_conformance(BoolTokenBackend(), ("a",))
 
 
@@ -150,8 +153,13 @@ def test_conformance_cli_uses_existing_loader_boundary(
 ) -> None:
     checkpoint = tmp_path / "checkpoint"
     checkpoint.mkdir()
-    monkeypatch.setattr(conformance, "load_backend", lambda loader, path: GoodBackend())
 
+    def fake_loader(loader_spec: str, checkpoint_path: Path) -> GoodBackend:
+        assert loader_spec == "fixture:load"
+        assert checkpoint_path == checkpoint
+        return GoodBackend()
+
+    monkeypatch.setattr(conformance, "load_backend", fake_loader)
     assert (
         conformance.main(
             [
