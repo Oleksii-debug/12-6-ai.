@@ -124,7 +124,7 @@ class DeterministicShardPlan:
             (
                 f"{self.assignment_salt}:{self.dataset_manifest_sha256}:"
                 f"{self.split}:{record_id}"
-            ).encode("utf-8")
+            ).encode()
         ).digest()
         return int.from_bytes(digest[:16], "big") % self.num_shards
 
