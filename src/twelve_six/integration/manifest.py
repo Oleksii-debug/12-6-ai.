@@ -59,7 +59,7 @@ def _require_evidence_ref(value: str, field_name: str) -> None:
 
 def _require_aware_timestamp(value: str, field_name: str) -> None:
     try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(value)
     except ValueError as exc:
         raise ValueError(f"{field_name} must be an ISO-8601 timestamp") from exc
     if parsed.tzinfo is None or parsed.utcoffset() is None:
