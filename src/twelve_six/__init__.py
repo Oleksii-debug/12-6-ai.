@@ -13,13 +13,16 @@ from .model import (
     load_stage_config,
 )
 from .scaling import (
+    DenseParameterBreakdown,
     DenseScalingCandidate,
     DenseScalingTemplate,
+    dense_parameter_breakdown,
     solve_dense_scaling_candidates,
 )
 
 __all__ = [
     "CausalLMOutput",
+    "DenseParameterBreakdown",
     "DenseScalingCandidate",
     "DenseScalingTemplate",
     "InitSpec",
@@ -28,6 +31,7 @@ __all__ = [
     "TwelveSixDecoder",
     "canonical_json_sha256",
     "count_trainable_parameters",
+    "dense_parameter_breakdown",
     "load_stage_config",
     "solve_dense_scaling_candidates",
 ]

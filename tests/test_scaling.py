@@ -7,6 +7,7 @@ import pytest
 
 from twelve_six import (
     DenseScalingTemplate,
+    dense_parameter_breakdown,
     load_stage_config,
     solve_dense_scaling_candidates,
 )
@@ -56,6 +57,65 @@ def test_scaling_candidate_configs_have_exact_formula_and_identity(
     assert payload["requires_preceding_stage_pass"] is True
 
 
+@pytest.mark.parametrize(
+    ("template", "d_ff"),
+    [
+        (
+            DenseScalingTemplate(
+                vocab_size=512,
+                max_seq_len=256,
+                d_model=48,
+                n_layers=3,
+                n_heads=4,
+                n_kv_heads=4,
+                head_dim=12,
+                d_ff_multiple=8,
+            ),
+            128,
+        ),
+        (
+            DenseScalingTemplate(
+                vocab_size=8_192,
+                max_seq_len=2_048,
+                d_model=320,
+                n_layers=8,
+                n_heads=6,
+                n_kv_heads=2,
+                head_dim=48,
+                d_ff_multiple=32,
+            ),
+            704,
+        ),
+        (
+            DenseScalingTemplate(
+                vocab_size=2_048,
+                max_seq_len=512,
+                d_model=128,
+                n_layers=5,
+                n_heads=4,
+                n_kv_heads=1,
+                head_dim=32,
+                d_ff_multiple=8,
+                attention_bias=True,
+                mlp_bias=True,
+                final_norm=False,
+                tie_word_embeddings=False,
+                lm_head_bias=True,
+            ),
+            272,
+        ),
+    ],
+)
+def test_analytic_parameter_breakdown_matches_modelspec_for_semantic_matrix(
+    template: DenseScalingTemplate,
+    d_ff: int,
+) -> None:
+    analytic = dense_parameter_breakdown(template, d_ff)
+    spec = template.model_spec(d_ff)
+    assert analytic.to_dict() == spec.parameter_breakdown()
+    assert analytic.total == spec.parameter_count()
+
+
 def test_solver_reproduces_s4_nearest_candidate() -> None:
     template = DenseScalingTemplate(
         vocab_size=32_768,
@@ -74,6 +134,8 @@ def test_solver_reproduces_s4_nearest_candidate() -> None:
     assert best.exact_parameters == 100_384_512
     assert best.parameter_delta == 384_512
     assert best.relative_error < 0.004
+    assert best.attention_variant == "mha"
+    assert best.ffn_ratio == pytest.approx(2_240 / 768)
 
 
 def test_solver_reproduces_gqa_s5_candidate() -> None:
@@ -92,6 +154,33 @@ def test_solver_reproduces_gqa_s5_candidate() -> None:
     assert best.spec.q_dim == 1_024
     assert best.spec.kv_dim == 256
     assert best.exact_parameters == 400_598_016
+    assert best.attention_variant == "gqa"
+    assert best.q_width_ratio == 1.0
+    assert best.kv_width_ratio == 0.25
+
+
+def test_solver_accounts_for_untied_head_and_bias_terms() -> None:
+    template = DenseScalingTemplate(
+        vocab_size=2_048,
+        max_seq_len=512,
+        d_model=128,
+        n_layers=5,
+        n_heads=4,
+        n_kv_heads=1,
+        head_dim=32,
+        d_ff_multiple=8,
+        attention_bias=True,
+        mlp_bias=True,
+        tie_word_embeddings=False,
+        lm_head_bias=True,
+    )
+    best = solve_dense_scaling_candidates(1_250_000, (template,), max_relative_error=0.10)[0]
+    analytic = dense_parameter_breakdown(template, best.spec.d_ff)
+    assert analytic.total == best.exact_parameters
+    assert analytic.attention_biases_per_layer == 320
+    assert analytic.mlp_biases_per_layer == 2 * best.spec.d_ff + 128
+    assert analytic.lm_head_extra == 2_048 * 128 + 2_048
+    assert best.attention_variant == "mqa"
 
 
 def test_solver_is_deterministic_across_template_order() -> None:
@@ -129,14 +218,40 @@ def test_solver_rejects_invalid_search_contracts() -> None:
         head_dim=10,
         d_ff_multiple=8,
     )
+    with pytest.raises(TypeError):
+        solve_dense_scaling_candidates("10000", (template,))  # type: ignore[arg-type]
+    with pytest.raises(TypeError):
+        solve_dense_scaling_candidates(True, (template,))
     with pytest.raises(ValueError):
         solve_dense_scaling_candidates(0, (template,))
     with pytest.raises(ValueError):
         solve_dense_scaling_candidates(10_000, ())
+    with pytest.raises(TypeError):
+        solve_dense_scaling_candidates(
+            10_000,
+            (template,),
+            max_results=1.5,  # type: ignore[arg-type]
+        )
     with pytest.raises(ValueError):
         solve_dense_scaling_candidates(10_000, (template,), max_results=0)
+    with pytest.raises(TypeError):
+        solve_dense_scaling_candidates(10_000, (template,), max_relative_error=True)
     with pytest.raises(ValueError):
         solve_dense_scaling_candidates(10_000, (template,), max_relative_error=1.0)
+
+
+def test_template_rejects_invalid_geometry_types_before_value_checks() -> None:
+    with pytest.raises(TypeError):
+        DenseScalingTemplate(
+            vocab_size=True,
+            max_seq_len=128,
+            d_model=20,
+            n_layers=1,
+            n_heads=2,
+            n_kv_heads=2,
+            head_dim=10,
+            d_ff_multiple=8,
+        )
 
 
 def test_search_does_not_require_model_instantiation() -> None:

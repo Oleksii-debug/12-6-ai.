@@ -1,0 +1,43 @@
+{
+  "stage": "S1",
+  "candidate_id": "S1-D11-GQA-UNTIED-v1",
+  "target_parameters": 100000,
+  "expected_parameters": 101328,
+  "canonical_base": "random_init",
+  "status": "engineering_candidate_not_frozen",
+  "promotion_allowed": false,
+  "requires_preceding_stage_pass": true,
+  "selection_basis": "D11 analytic tradeoff candidate: GQA plus untied LM head; benchmark/training selection pending",
+  "expected_model_identity_sha256": "27f05952739e2c8e95155a187e193138c174302d164fce8e68da5c3c8501848c",
+  "expected_init_identity_sha256": "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5",
+  "model": {
+    "schema_version": 1,
+    "vocab_size": 512,
+    "max_seq_len": 256,
+    "d_model": 48,
+    "n_layers": 3,
+    "n_heads": 4,
+    "n_kv_heads": 2,
+    "head_dim": 12,
+    "d_ff": 72,
+    "activation": "swiglu",
+    "norm_kind": "rmsnorm",
+    "norm_placement": "pre",
+    "norm_eps": 1e-05,
+    "position_embedding": "rope",
+    "rope_theta": 10000.0,
+    "rope_rotary_dim": 12,
+    "attention_bias": false,
+    "mlp_bias": false,
+    "attention_dropout": 0.0,
+    "final_norm": true,
+    "tie_word_embeddings": false,
+    "lm_head_bias": false
+  },
+  "init": {
+    "schema_version": 1,
+    "family": "normal",
+    "std": 0.02,
+    "residual_branch_scale": "sqrt_2_layers"
+  }
+}
