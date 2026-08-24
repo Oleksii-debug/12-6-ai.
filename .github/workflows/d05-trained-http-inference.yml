@@ -40,8 +40,9 @@ jobs:
           python -m venv .d05-http-locked
           .d05-http-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
           .d05-http-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          .d05-http-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/dev.lock.txt
           PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .d05-http-locked/bin/python -m pip install --no-deps --no-build-isolation -e .
-          .d05-http-locked/bin/python -c "import torch,twelve_six; assert torch.__version__; print(twelve_six.__version__)"
+          .d05-http-locked/bin/python -c "import pytest,torch,twelve_six; assert torch.__version__; print(twelve_six.__version__)"
       - name: Focused trained HTTP conformance tests
         run: .d05-http-locked/bin/python -m pytest -q tests/test_trained_http_inference_evidence.py
       - name: Run exact 40-step trained checkpoint over real loopback HTTP
@@ -55,7 +56,6 @@ jobs:
           --max-tokens 8
       - name: Validate retained evidence against exact head
         run: |
-          EVIDENCE="$RUNNER_TEMP/d05-trained-http/s0-trained-http-inference-evidence.json"
           .d05-http-locked/bin/python - <<'PY'
           import json
           import os
