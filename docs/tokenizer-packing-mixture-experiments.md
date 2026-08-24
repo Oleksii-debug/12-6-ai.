@@ -9,11 +9,17 @@ and document-isolated `s0-byte-pack-v1`. Nothing here changes those meanings.
 
 ## Maintained-library experiment paths
 
-- BPE: Hugging Face `tokenizers`, ByteLevel pre-tokenizer/decoder, no S0 special-token reuse.
-- Unigram: Google SentencePiece, identity normalization, byte fallback, BOS/EOS/PAD disabled.
-- Both backends are optional experiment dependencies. They are imported lazily and their exact installed
-  distribution version is recorded in every training manifest. They are deliberately **not** added to
-  canonical package/lock metadata in this branch because D08 owns that active surface.
+- BPE: Hugging Face `tokenizers`, ByteLevel pre-tokenizer/decoder, no normalization,
+  no special tokens, and the complete 256-symbol ByteLevel initial alphabet. This is a
+  byte-complete alphabet strategy; it is deliberately not mislabeled as SentencePiece-style
+  `byte_fallback`.
+- Unigram: Google SentencePiece with identity normalization, `byte_fallback=True`,
+  BOS/EOS/PAD disabled, one thread, no sentence shuffling, and no whitespace rewriting.
+  Training uses the Python `sentence_iterator` + in-memory `model_writer` path so the
+  logical documents hashed by the manifest are the logical documents passed to the trainer.
+- Both backends are optional experiment dependencies. They are imported lazily and their exact
+  installed distribution version is recorded in every training manifest. They are deliberately
+  **not** added to canonical package/lock metadata in this branch because D08 owns that active surface.
 - Before any candidate is accepted, D08 must create a hash-locked experiment environment and CI must
   execute actual tiny training + round-trip measurements on that exact environment.
 
@@ -21,17 +27,19 @@ and document-isolated `s0-byte-pack-v1`. Nothing here changes those meanings.
 
 A future tokenizer is never identified by vocabulary size alone. An executed experiment binds:
 
-1. ordered training-corpus SHA-256;
+1. ordered logical training-corpus SHA-256 with unambiguous length-prefix framing;
 2. stage, algorithm, maintained backend and exact backend version;
-3. requested vocabulary size, normalization, byte fallback and seed;
-4. training-manifest SHA-256;
-5. canonical model artifact SHA-256;
-6. dense ordered token-ID vocabulary SHA-256;
-7. runtime tokenizer config SHA-256 derived from manifest + artifact;
-8. exact resulting vocabulary size.
+3. requested vocabulary size and exact coverage strategy;
+4. SHA-256 of the complete deterministic trainer configuration;
+5. training-manifest SHA-256;
+6. canonical trained model artifact SHA-256;
+7. dense ordered token-ID vocabulary SHA-256;
+8. runtime tokenizer config SHA-256 derived from manifest + artifact;
+9. exact resulting vocabulary size.
 
-Any token-ID reassignment changes `vocab_sha256`. A checkpoint must bind config and vocabulary hashes
-separately, matching the current D05/C01 contract.
+Any token-ID reassignment changes `vocab_sha256`, even when vocabulary cardinality is unchanged.
+A checkpoint must bind tokenizer config and vocabulary hashes separately, matching the current
+D05/C01 fail-closed identity contract.
 
 ## Controlled S0 baseline
 
@@ -57,7 +65,7 @@ their stage `d_model`; no vocabulary size is frozen by this package.
 
 ## S1-S4 deterministic data contracts
 
-`IntegerMixturePlan` replaces float threshold sampling with positive integer weight units and
+`IntegerMixturePlan` replaces float-threshold sampling with positive integer weight units and
 SHA-256 sample addressing. Selection at global sample index N is independent of process-global RNG
 consumption and mapping insertion order.
 
@@ -65,21 +73,33 @@ consumption and mapping insertion order.
 dataset-manifest identity, split, salt and record ID. This avoids silent shard reassignment merely
 because input enumeration order changes.
 
-`PackingRestartCursor` binds mixture, dataset, tokenizer vocabulary, packing config, split, exact
-stream offsets and rank/world-size topology. Resume fails closed on any identity or topology drift.
-Topology-changing elastic resume is intentionally **not** claimed.
+`PackingRestartCursor` fails closed unless all reconstruction identities match: mixture plan,
+shard plan, dataset manifest, tokenizer **config**, tokenizer **vocabulary**, packing config, split,
+stream offsets, and exact rank/world-size topology. Elastic topology-changing resume is intentionally
+not claimed.
 
-`audit_packed_examples` verifies input IDs, binary masks, shifted target visibility, ignored filler,
-exact loss-token accounting and the single-document invariant for isolated packing.
+`audit_packed_examples` verifies input and label token ranges, binary masks, shifted-target visibility,
+ignored filler, the isolated-sequence invariant `loss_tokens == attended_tokens - 1`, and exact aggregate
+loss-token accounting. Regressions explicitly exercise token-ID drift, double shifting, masked-token
+undercount and S0 cross-document rejection without semantic EOS.
 
 ## Recommendation matrix
 
-| candidate | Unicode coverage | expected fertility | artifact complexity | S1 recommendation |
+| candidate | Unicode coverage | expected fertility | artifact complexity | recommendation |
 |---|---|---|---|---|
 | raw UTF-8 bytes | lossless by construction | weak for multibyte scripts | minimal | keep as canonical S0 baseline |
-| ByteLevel BPE (`tokenizers`) | byte-complete | likely lower than bytes after training | moderate | benchmark, do not freeze |
-| Unigram + byte fallback (SentencePiece) | byte fallback | likely competitive on multilingual text | moderate | benchmark, do not freeze |
+| ByteLevel BPE (`tokenizers`) | complete ByteLevel alphabet | likely lower than bytes after training | moderate | benchmark; do not freeze |
+| Unigram + byte fallback (SentencePiece) | explicit byte fallback | likely competitive on multilingual text | moderate | benchmark; do not freeze |
 
-Promotion rule: train both candidates on the exact same manifested corpus, record backend versions
-and artifact/vocabulary hashes, run EN/UK/code/Unicode round-trip + fertility, compare parameter cost,
-then let the next stage gate choose. This document makes no winner claim.
+Promotion rule: train both candidates on the exact same manifested corpus, record backend versions,
+trainer-config/model/vocabulary hashes, run EN/UK/code/Unicode round-trip + fertility, compare parameter
+cost, then let the next stage gate choose. This package makes no winner claim.
+
+## Explicitly not tested / not claimed
+
+- actual BPE or Unigram training in the current canonical hash-locked environment;
+- representative-corpus fertility or throughput;
+- multiprocess/distributed dataloader throughput;
+- elastic resume across world-size changes;
+- paid/cloud/GPU training;
+- candidate or STABLE promotion.
