@@ -45,6 +45,11 @@ def generate(
         raise TypeError("backend max_context_tokens must be an integer")
     if backend.max_context_tokens < 1:
         raise ValueError("backend max_context_tokens must be a positive integer")
+    if backend.eos_token_id is not None:
+        if not isinstance(backend.eos_token_id, int) or isinstance(backend.eos_token_id, bool):
+            raise TypeError("backend eos_token_id must be an integer or None")
+        if backend.eos_token_id < 0:
+            raise ValueError("backend eos_token_id must be >= 0 when set")
 
     prompt_token_ids = backend.encode(prompt)
     if not isinstance(prompt_token_ids, list):
@@ -52,10 +57,10 @@ def generate(
     if not prompt_token_ids:
         raise ValueError("prompt encoded to zero tokens; backend must provide a non-empty context")
     if any(
-        not isinstance(token_id, int) or isinstance(token_id, bool)
+        not isinstance(token_id, int) or isinstance(token_id, bool) or token_id < 0
         for token_id in prompt_token_ids
     ):
-        raise TypeError("backend encode must return integer token IDs")
+        raise TypeError("backend encode must return non-negative integer token IDs")
     if len(prompt_token_ids) > backend.max_context_tokens:
         raise ValueError(
             f"prompt has {len(prompt_token_ids)} tokens but backend max_context_tokens="
