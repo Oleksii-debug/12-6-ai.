@@ -1,0 +1,100 @@
+{
+  "schema_version": 1,
+  "run_id": "S0-PR81-1CAA729C-LOCAL-FREE-01",
+  "stage": "S0",
+  "run_kind": "integrated_training_checkpoint_eval_inference",
+  "state": "PREPARED_NOT_LAUNCHED",
+  "authorization": {
+    "class": "LOCAL_FREE",
+    "compute_authorized": false,
+    "metered_cost_expected": false,
+    "currency": null,
+    "estimated_cost_min": 0,
+    "estimated_cost_max": 0,
+    "spending_ceiling": 0
+  },
+  "candidate": {
+    "repository": "Oleksii-debug/12-6-ai.",
+    "git_sha": "1caa729c8efafc84e7a5c4b1f7295eb8dcdb5a8d",
+    "branch_or_tag": "d01/s0-candidate-convergence-20260824-b",
+    "modelspec_sha256": "86c75b31dff05b7b5db9f6ed068c571a6ead01ba663412fe630f5e52b09d9b6b",
+    "initspec_sha256": "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5",
+    "parameter_count": 10140
+  },
+  "data": {
+    "dataset_manifest_sha256": "b085a7ab56510575a11a80824fcff3a95a17f237d46d1be820e59d1289f220c2",
+    "tokenizer_sha256": "b04055c1061dd641dcab7cb9d62a931f09b8d1a070140a926ceb4e91d73ca8e1",
+    "tokenizer_vocab_sha256": "905ed40bb42cc4d550e228ff5f24158d504b38e8ed5974dfa3077bd5867ad571",
+    "tokenizer_version": "s0-byte-v1",
+    "split_identity": "train=61d24b7138df56527d201cea405d11c9f607684b4a9593dfa20c599cc2ee6998;validation=57f18a846dcca75955a82612382d4635ba9583965aa6628e77626cd2a3eb19c5",
+    "packing_sha256": "23a695b807f3e3f5c61d19c34968bcd88fafc6a45346dc08673d7a494219f285",
+    "packing_version": "s0-byte-pack-v1"
+  },
+  "training": {
+    "seed": 1337,
+    "device": "cpu",
+    "precision": "fp32",
+    "optimizer": "AdamW",
+    "scheduler": "constant",
+    "context_length": 128,
+    "global_batch_tokens": 384,
+    "target_steps": 40,
+    "target_tokens": 10833,
+    "checkpoint_interval_steps": 20
+  },
+  "environment": {
+    "lock_sha256": "61fa31fbb5da7a4289cccce5abfcebde943664f5318b0ce3d69ae9bb3db852ac"
+  },
+  "hardware": {
+    "profile_id": "local_cpu_or_free_hosted_cpu",
+    "cpu_model": null,
+    "logical_cores": null,
+    "ram_bytes": null,
+    "gpu_model": null,
+    "gpu_count": 0,
+    "vram_bytes_per_gpu": 0
+  },
+  "destinations": {
+    "run_root": "runs/S0-PR81-1CAA729C-LOCAL-FREE-01",
+    "checkpoint_dir": "runs/S0-PR81-1CAA729C-LOCAL-FREE-01/checkpoints",
+    "metrics_path": "runs/S0-PR81-1CAA729C-LOCAL-FREE-01/metrics/training_evidence.json",
+    "eval_dir": "runs/S0-PR81-1CAA729C-LOCAL-FREE-01/evaluation"
+  },
+  "failure_policy": {
+    "abort_on_nan_or_inf": true,
+    "abort_on_identity_mismatch": true,
+    "blind_retry": false,
+    "max_transient_retries": 1,
+    "failure_cutoff": "first unexplained numerical, identity, serialization, authorization, evaluation, or inference failure"
+  },
+  "launch_gate": {
+    "fail_closed": true,
+    "required_non_null": [
+      "run_id",
+      "candidate.git_sha",
+      "candidate.branch_or_tag",
+      "candidate.modelspec_sha256",
+      "candidate.initspec_sha256",
+      "candidate.parameter_count",
+      "data.dataset_manifest_sha256",
+      "data.tokenizer_sha256",
+      "data.tokenizer_vocab_sha256",
+      "data.tokenizer_version",
+      "data.split_identity",
+      "data.packing_sha256",
+      "data.packing_version",
+      "training.seed",
+      "training.optimizer",
+      "training.scheduler",
+      "training.context_length",
+      "training.global_batch_tokens",
+      "training.target_steps",
+      "environment.lock_sha256",
+      "destinations.run_root",
+      "destinations.checkpoint_dir",
+      "destinations.metrics_path",
+      "destinations.eval_dir"
+    ],
+    "notes": "Resolved against PR #81 exact Product head. This manifest authorizes only LOCAL_FREE execution and does not authorize stage promotion or paid compute."
+  }
+}

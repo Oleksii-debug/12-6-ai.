@@ -1,0 +1,146 @@
+{
+  "schema": "12-6.d01-live-authority-map.v1",
+  "observed_at": "2026-08-24T19:04:00Z",
+  "run_id": "12-6-AI-SWARM-EXP-01",
+  "repository": "Oleksii-debug/12-6-ai.",
+  "main": {
+    "sha": "f2e94c7212888cdb960bb66154d56d210e9b27ab",
+    "classification": "bootstrap_only_not_s0_candidate"
+  },
+  "authority_order": [
+    "exact live GitHub SHA/PR/CI",
+    "permanent lane issues",
+    "independent audit evidence",
+    "Drive control prose"
+  ],
+  "current_s0_candidate": {
+    "pr_number": 81,
+    "branch": "d01/s0-candidate-convergence-20260824-b",
+    "sha": "1caa729c8efafc84e7a5c4b1f7295eb8dcdb5a8d",
+    "ci": [
+      {
+        "run_id": 32761570313,
+        "name": "CI",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "run_id": 32761570314,
+        "name": "D02 Real S0 Training",
+        "status": "completed",
+        "conclusion": "success"
+      }
+    ],
+    "classification": "composition_complete_experimental_audit_retest_required"
+  },
+  "s0_component_sources": [
+    {"lane":"D01","source_sha":"d646d417feca3409269518af6d66ac3455d9f2f3","disposition":"accepted","component_kind":"random_init_model","pr_number":35,"ci_runs":[32646829442],"ci_conclusion":"success","contains_behavioral_weights":false,"contains_foreign_pretrained_weights":false},
+    {"lane":"D02","source_sha":"403831cf623120da18f0f4c62e830a352afcef91","disposition":"accepted","component_kind":"training_engine_plus_real_s0_training_evidence","pr_number":60,"ci_runs":[32745954583,32745954611],"ci_conclusion":"success","contains_behavioral_weights":false,"contains_foreign_pretrained_weights":false},
+    {"lane":"D03","source_sha":"f0e31d4200cb348f770346be9ab22ad450227f2d","disposition":"accepted","component_kind":"controlled_s0_data","pr_number":27,"ci_runs":[32643041174],"ci_conclusion":"success","contains_behavioral_weights":false,"contains_foreign_pretrained_weights":false},
+    {"lane":"D04","source_sha":"967ed1e8ab1c227139e6a03e50f5d8ed180380ed","disposition":"accepted","component_kind":"byte_tokenizer_and_packing","pr_number":23,"ci_runs":[32646641453],"ci_conclusion":"success","contains_behavioral_weights":false,"contains_foreign_pretrained_weights":false},
+    {"lane":"D05","source_sha":"fa5e8365ae56c22da761e2183a4c71a0212a2aef","disposition":"accepted","component_kind":"strict_run_bound_checkpoint_resume","pr_number":61,"ci_runs":[32745892911],"ci_conclusion":"success","contains_behavioral_weights":false,"contains_foreign_pretrained_weights":false},
+    {"lane":"D06","source_sha":"89fa0b2c17ef78ba202d019a8959aa1a19377391","disposition":"accepted_selective","component_kind":"evaluation_and_integrated_stage_gates","pr_number":65,"ci_runs":[32747051335,32747051338],"ci_conclusion":"success","contains_behavioral_weights":false,"contains_foreign_pretrained_weights":false},
+    {"lane":"D07","source_sha":"9a1a6f8494b5d5dd9346afb644fc84de2e39d5e0","disposition":"accepted_selective","component_kind":"first_party_checkpoint_inference","pr_number":63,"ci_runs":[32745879308],"ci_conclusion":"success","contains_behavioral_weights":false,"contains_foreign_pretrained_weights":false},
+    {"lane":"D08","source_sha":"b8e01a38bfba18176e36c34b1530839ccaea4b21","disposition":"accepted","component_kind":"distributed_scale_readiness","pr_number":20,"ci_runs":[32646152647],"ci_conclusion":"success","contains_behavioral_weights":false,"contains_foreign_pretrained_weights":false}
+  ],
+  "integration_infrastructure": [
+    {
+      "role": "D08 dependency lock/package",
+      "pr_number": 58,
+      "sha": "3d5d2332577d1ccb2b6ecbb5197b1d95a4baba6f",
+      "ci_runs": [32742220948],
+      "conclusion": "success"
+    },
+    {
+      "role": "C01 tokenizer-vocabulary run-manifest binding",
+      "pr_number": 55,
+      "sha": "3c819579a3aa6991456c75ebef2e58e26361c972",
+      "ci_runs": [32736159775],
+      "conclusion": "success"
+    },
+    {
+      "role": "D10 CI supply-chain hardening accepted ancestor",
+      "sha": "4f76ebecbb106e44f357a2e2387a6ede029e3e4e",
+      "ci_runs": [32647291105],
+      "conclusion": "success"
+    }
+  ],
+  "active_collision_avoidance": [
+    {
+      "pr_number": 77,
+      "branch": "d01/s0-canonical-integration-20260824",
+      "sha": "44033e0ba118495b12b56e5ed35b27204fe975b6",
+      "ci_runs": [32755188261],
+      "conclusion": "success",
+      "surface": "docs/S0_CANONICAL_INTEGRATION_STATE_20260824.md",
+      "action": "avoid"
+    },
+    {
+      "pr_number": 79,
+      "branch": "d07/secret-history-triage-20260824",
+      "sha": "84f57b17f2488b0b4ed692fcea348d6c2c825f82",
+      "ci_runs": [32759964771, 32759964785, 32759964667],
+      "conclusion": "success",
+      "surface": "supply-chain secret/history triage",
+      "action": "avoid"
+    },
+    {
+      "pr_number": 80,
+      "branch": "d10/live-authority-verifier-20260824",
+      "sha": "3a50212a91c34bf1e2fefdd55ef11d8bbf4fc924",
+      "ci_runs": [32759639025],
+      "conclusion": "success",
+      "surface": "live promotion authority verification",
+      "action": "avoid"
+    },
+    {
+      "pr_number": 62,
+      "sha": "94048904551ade3826c9a9f3a8c73b2618b4d6bf",
+      "ci_runs": [32746696921, 32746696923],
+      "conclusion": "success",
+      "surface": "dependency security evidence",
+      "action": "avoid"
+    }
+  ],
+  "stale_or_superseded": [
+    {
+      "pr_number": 59,
+      "branch": "d01/s0-handoff-gate-20260824",
+      "sha": "19f813e780b544959c0bc0a5a4a523101a534461",
+      "ci_runs": [32745316086],
+      "conclusion": "success",
+      "classification": "stale_semantics_superseded_by_pr81",
+      "reason": "v1 handoff still holds obsolete red D06@914973... instead of PR81 exact-green D06 intake"
+    },
+    {
+      "pr_number": 45,
+      "sha": "f6aa818836d6c130b95f0753f727ef152b3ccdf3",
+      "classification": "older_convergence_superseded_for_current_candidate"
+    },
+    {
+      "pr_number": 57,
+      "sha": "c1e37854829faa96291ee76088f703f5096ea10b",
+      "classification": "useful_ancestor_not_current_candidate"
+    }
+  ],
+  "r01": {
+    "permanent_issue": 15,
+    "product_pr": null,
+    "classification": "research_issue_only_no_product_ownership",
+    "note": "S0 semantic-contract recommendations were consumed by D01 ModelSpec/InitSpec work."
+  },
+  "audits": {
+    "AUDIT-A": {
+      "issue_number": 13,
+      "exact_candidate_retest": "requested",
+      "candidate_sha": "1caa729c8efafc84e7a5c4b1f7295eb8dcdb5a8d",
+      "promotion_authority": false
+    },
+    "AUDIT-B": {
+      "issue_number": 14,
+      "exact_candidate_retest": "requested",
+      "candidate_sha": "1caa729c8efafc84e7a5c4b1f7295eb8dcdb5a8d",
+      "promotion_authority": false
+    }
+  }
+}
