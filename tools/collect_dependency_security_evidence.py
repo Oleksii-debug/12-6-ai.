@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Collect current OSV/PyPI evidence for the exact committed dependency locks."""
 
 from __future__ import annotations
@@ -10,7 +9,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -142,7 +141,7 @@ def main() -> int:
     components = SECURITY.unique_components(sbom)
     osv_records, osv_batch_sha256 = _collect_osv(components)
     pypi_records, pypi_set_sha256 = _collect_pypi(components)
-    generated_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    generated_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
     evidence = SECURITY.build_security_evidence(
         sbom=sbom,
         generated_at=generated_at,
