@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import random
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -76,8 +77,10 @@ def identity(step: int, tokens_seen: int) -> CheckpointIdentity:
         git_sha="f" * 40,
         model_spec={"kind": "numpy-test-model", "width": 3},
         parameter_count=3,
-        tokenizer_hash="tok:" + "a" * 64,
-        dataset_manifest_hash="data:" + "b" * 64,
+        tokenizer_hash="a" * 64,
+        tokenizer_vocab_hash="d" * 64,
+        dataset_manifest_hash="b" * 64,
+        run_manifest_hash="e" * 64,
         training_config={"batch_size": 1, "max_steps": 8},
         seed=17,
         precision="float64-test",
@@ -85,7 +88,7 @@ def identity(step: int, tokens_seen: int) -> CheckpointIdentity:
         tokens_seen=tokens_seen,
         optimizer={"name": "MomentumSGD", "lr": 0.03, "momentum": 0.8},
         scheduler={"name": "StepScheduler", "gamma": 0.95},
-        environment_lock_hash="env:" + "c" * 64,
+        environment_lock_hash="c" * 64,
     )
 
 
@@ -107,6 +110,24 @@ def seeded_stack():
     return model, optimizer, scheduler
 
 
+def test_direct_identity_rejects_weak_or_abbreviated_lineage() -> None:
+    good = identity(step=0, tokens_seen=0)
+    good.validate()
+
+    with pytest.raises(ValueError, match="git_sha"):
+        replace(good, git_sha="abcdef0").validate()
+    with pytest.raises(ValueError, match="tokenizer_hash"):
+        replace(good, tokenizer_hash="tok-hash").validate()
+    with pytest.raises(ValueError, match="tokenizer_vocab_hash"):
+        replace(good, tokenizer_vocab_hash="vocab-hash").validate()
+    with pytest.raises(ValueError, match="dataset_manifest_hash"):
+        replace(good, dataset_manifest_hash="data-hash").validate()
+    with pytest.raises(ValueError, match="run_manifest_hash"):
+        replace(good, run_manifest_hash="run-hash").validate()
+    with pytest.raises(ValueError, match="environment_lock_hash"):
+        replace(good, environment_lock_hash="lock-hash").validate()
+
+
 def test_save_load_roundtrip_and_manifest(tmp_path: Path):
     model, optimizer, scheduler = seeded_stack()
     for _ in range(3):
@@ -114,16 +135,20 @@ def test_save_load_roundtrip_and_manifest(tmp_path: Path):
     expected_weights = model.weights.copy()
     expected_velocity = optimizer.velocity.copy()
     ckpt = tmp_path / "ckpt"
+    expected_identity = identity(step=3, tokens_seen=24)
     manifest = save_checkpoint(
         ckpt,
         model=model,
         optimizer=optimizer,
         scheduler=scheduler,
         trainer_state={"loss": 1.25, "micro_step": 3},
-        identity=identity(step=3, tokens_seen=24),
+        identity=expected_identity,
     )
     assert manifest["serialization"]["pickle"] is False
-    assert manifest["identity"]["model_spec_hash"] == hash_json(identity(3, 24).model_spec)
+    assert manifest["identity"]["model_spec_hash"] == hash_json(expected_identity.model_spec)
+    assert manifest["identity"]["tokenizer_hash"] == expected_identity.tokenizer_hash
+    assert manifest["identity"]["tokenizer_vocab_hash"] == expected_identity.tokenizer_vocab_hash
+    assert manifest["identity"]["run_manifest_hash"] == expected_identity.run_manifest_hash
     assert verify_checkpoint(ckpt)["checkpoint_id"] == manifest["checkpoint_id"]
 
     model.weights[:] = 99.0
@@ -134,6 +159,8 @@ def test_save_load_roundtrip_and_manifest(tmp_path: Path):
         optimizer=optimizer,
         scheduler=scheduler,
         expected_model_spec_hash=manifest["identity"]["model_spec_hash"],
+        expected_tokenizer_vocab_hash=expected_identity.tokenizer_vocab_hash,
+        expected_run_manifest_hash=expected_identity.run_manifest_hash,
     )
     np.testing.assert_array_equal(model.weights, expected_weights)
     np.testing.assert_array_equal(optimizer.velocity, expected_velocity)
@@ -157,6 +184,32 @@ def test_checksum_tamper_is_rejected_before_load(tmp_path: Path):
         handle.write(b"tamper")
     with pytest.raises(CheckpointIntegrityError, match="size mismatch|checksum mismatch"):
         load_checkpoint(ckpt, model=model)
+
+
+def test_manifest_internal_identity_hash_tamper_is_rejected(tmp_path: Path):
+    model, optimizer, scheduler = seeded_stack()
+    ckpt = tmp_path / "ckpt"
+    save_checkpoint(
+        ckpt,
+        model=model,
+        optimizer=optimizer,
+        scheduler=scheduler,
+        trainer_state={},
+        identity=identity(step=0, tokens_seen=0),
+    )
+
+    manifest_path = ckpt / "manifest.json"
+    manifest = __import__("json").loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["identity"]["model_spec_hash"] = "0" * 64
+    manifest_path.write_text(
+        __import__("json").dumps(manifest, sort_keys=True, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+    manifest_sha = __import__("hashlib").sha256(manifest_path.read_bytes()).hexdigest()
+    (ckpt / "MANIFEST.sha256").write_text(f"{manifest_sha}  manifest.json\n", encoding="ascii")
+
+    with pytest.raises(CheckpointIntegrityError, match="model_spec_hash does not match model_spec"):
+        verify_checkpoint(ckpt)
 
 
 def test_interrupted_resume_matches_uninterrupted_training(tmp_path: Path):
@@ -231,8 +284,10 @@ def test_torch_state_roundtrip_if_available(tmp_path: Path):
         git_sha="e" * 40,
         model_spec={"kind": "torch-linear-test", "in": 3, "out": 2},
         parameter_count=sum(p.numel() for p in model.parameters()),
-        tokenizer_hash="tok:" + "1" * 64,
-        dataset_manifest_hash="data:" + "2" * 64,
+        tokenizer_hash="1" * 64,
+        tokenizer_vocab_hash="2" * 64,
+        dataset_manifest_hash="3" * 64,
+        run_manifest_hash="4" * 64,
         training_config={"steps": 1},
         seed=123,
         precision="float32",

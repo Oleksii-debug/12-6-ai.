@@ -1,0 +1,152 @@
+{
+  "schema": "12-6-ai.d01-fallback-authority-map.v1",
+  "project_chat_run": "12-6-AI-SWARM-EXP-01",
+  "cutoff_utc": "2026-08-24T13:56:22Z",
+  "authority": "exact_live_github",
+  "repository_full_name": "Oleksii-debug/12-6-ai.",
+  "prompt_repository_alias_without_trailing_dot": "STALE_NOT_RESOLVING",
+  "canonical_main": {
+    "sha": "f2e94c7212888cdb960bb66154d56d210e9b27ab",
+    "s0_candidate": false
+  },
+  "active_convergence": {
+    "pr": 45,
+    "branch": "d01/s0-convergence-20260824",
+    "head_sha": "508e2f8924c4229040e4a60c37adafa5034584bc",
+    "latest_ci": {
+      "run_id": 32735545817,
+      "status": "queued",
+      "conclusion": null
+    },
+    "ownership": "ACTIVE_OTHER_WORKER_DO_NOT_COLLIDE",
+    "accepted_intake_prs_observed": [46, 47, 48, 49, 50, 52, 53],
+    "accepted_component_sources": {
+      "D01": "d646d417feca3409269518af6d66ac3455d9f2f3",
+      "D02": "06575872fb48c52a8f615082796aa80700c8aa5e",
+      "D03": "f0e31d4200cb348f770346be9ab22ad450227f2d",
+      "D04": "967ed1e8ab1c227139e6a03e50f5d8ed180380ed",
+      "D07": "e59aee3e02ade84b76d4d44f8ec923d5786caae6",
+      "D08": "b8e01a38bfba18176e36c34b1530839ccaea4b21",
+      "D10_supply_chain": "4f76ebecbb106e44f357a2e2387a6ede029e3e4e"
+    },
+    "still_missing_for_exact_D01_D08_S0": ["D05", "D06"]
+  },
+  "lanes": {
+    "D01": {
+      "branch": "d01/modelspec-v1-semantics",
+      "head_sha": "d646d417feca3409269518af6d66ac3455d9f2f3",
+      "latest_ci": {"run_id": 32734539884, "status": "queued", "conclusion": null},
+      "prior_exact_head_success_run": 32646829442,
+      "intake": "ACCEPTED_IN_PR45_VIA_PR46"
+    },
+    "D02": {
+      "branch": "d02/s0-training-engine",
+      "head_sha": "06575872fb48c52a8f615082796aa80700c8aa5e",
+      "latest_ci": {"run_id": 32646813012, "status": "completed", "conclusion": "success"},
+      "intake": "ACCEPTED_RECONCILED_IN_PR45_VIA_PR52",
+      "superseded_direct_intake_pr": 51
+    },
+    "D03": {
+      "branch": "d03/s0-deterministic-data-pipeline-20260823",
+      "head_sha": "f0e31d4200cb348f770346be9ab22ad450227f2d",
+      "latest_ci": {"run_id": 32734599414, "status": "queued", "conclusion": null},
+      "prior_exact_head_success_run": 32643041174,
+      "intake": "ACCEPTED_IN_PR45_VIA_PR47"
+    },
+    "D04": {
+      "branch": "d04/s0-tokenizer-packing-v1",
+      "head_sha": "967ed1e8ab1c227139e6a03e50f5d8ed180380ed",
+      "latest_ci": {"run_id": 32734642413, "status": "queued", "conclusion": null},
+      "prior_exact_head_success_run": 32646641453,
+      "tokenizer_config_sha256": "b04055c1061dd641dcab7cb9d62a931f09b8d1a070140a926ceb4e91d73ca8e1",
+      "tokenizer_vocab_sha256": "905ed40bb42cc4d550e228ff5f24158d504b38e8ed5974dfa3077bd5867ad571",
+      "vocab_size": 256,
+      "intake": "ACCEPTED_IN_PR45_VIA_PR48"
+    },
+    "D05": {
+      "branch": "d05/s0-checkpoint-format-v1",
+      "head_sha": "6fbb48e5fc9670d6441715a8b64e59581b3e98cd",
+      "latest_ci": {"run_id": 32646148277, "status": "completed", "conclusion": "failure"},
+      "failure_classification": "DOMAIN_HEAD_RED_RUFF_I001_PYTEST_SKIPPED_PLUS_IDENTITY_HOLD",
+      "intake": "HELD",
+      "collision_safe_repair_pr": 54,
+      "repair_parent_head": "5f898e4491cd575c6eee47b01d3cb796254ca793"
+    },
+    "D06": {
+      "branch": "d06/s0-evaluation-stage-gates",
+      "head_sha": "914973502ab92a925a5cc29d72e4b3cce0e81c80",
+      "repo_ci": {"run_id": 32646767818, "status": "completed", "conclusion": "failure"},
+      "dedicated_ci": {"run_id": 32646767856, "status": "completed", "conclusion": "failure"},
+      "failure_classification": "DOMAIN_OWNED_RUFF_IMPORT_SPLIT_IN_tests/test_integrated_stage_gates.py",
+      "intake": "HELD"
+    },
+    "D07": {
+      "branch": "d07/s0-inference-harness",
+      "head_sha": "e59aee3e02ade84b76d4d44f8ec923d5786caae6",
+      "latest_ci": {"run_id": 32734691275, "status": "queued", "conclusion": null},
+      "prior_exact_head_success_run": 32646091451,
+      "intake": "ACCEPTED_IN_PR45_VIA_PR49"
+    },
+    "D08": {
+      "branch": "d08/s0-scale-readiness",
+      "head_sha": "b8e01a38bfba18176e36c34b1530839ccaea4b21",
+      "latest_ci": {"run_id": 32734742356, "status": "queued", "conclusion": null},
+      "prior_exact_head_success_run": 32646152647,
+      "intake": "ACCEPTED_IN_PR45_VIA_PR50"
+    },
+    "D09": {
+      "branch": "d09/posttraining-infra-v0",
+      "head_sha": "d56c0e4c4d44f8e1a5758abf5e5b7cc7000623c0",
+      "latest_ci": {"run_id": 32646351247, "status": "completed", "conclusion": "success"},
+      "intake": "OFF_S0_BASE_LINEAGE"
+    },
+    "D10": {
+      "evidence_branch": "d10/evidence-binding-v1",
+      "evidence_head_sha": "d3ec8a3df336227a6a9a9c7c9a8eb099844a1f1c",
+      "evidence_ci": {"run_id": 32646554499, "status": "completed", "conclusion": "failure"},
+      "supply_chain_branch": "d10/ci-supply-chain-v1",
+      "supply_chain_head_sha": "4f76ebecbb106e44f357a2e2387a6ede029e3e4e",
+      "supply_chain_latest_ci": {"run_id": 32734950475, "status": "queued", "conclusion": null},
+      "supply_chain_prior_exact_head_success_run": 32647291105,
+      "supply_chain_intake": "ACCEPTED_IN_PR45_VIA_PR53"
+    },
+    "C01": {
+      "branch": "c01/s0-run-control-20260823",
+      "head_sha": "3a2c789b7cd30ae066a82165663c805d80cb8ca9",
+      "latest_ci": {"run_id": 32642517867, "status": "completed", "conclusion": "success"},
+      "integration_blocker": "RUN_MANIFEST_DATA_MISSING_tokenizer_vocab_sha256_AND_REQUIRED_NON_NULL_BINDING"
+    },
+    "R01": {
+      "issue": 15,
+      "status": "ACTIVE_RESEARCH_ONLY_NO_CANONICAL_PRODUCT_MUTATION"
+    },
+    "AUDIT_A": {
+      "issue": 13,
+      "latest_durable_verdict": "CHANGES_REQUIRED",
+      "promotion_authority": false
+    },
+    "AUDIT_B": {
+      "issue": 14,
+      "latest_durable_verdict": "CHANGES_REQUIRED",
+      "promotion_authority": false
+    }
+  },
+  "fallback_package": {
+    "pr": 54,
+    "branch": "d01/d05-identity-hardening-20260824",
+    "base_branch": "d05/s0-checkpoint-format-v1",
+    "base_sha": "6fbb48e5fc9670d6441715a8b64e59581b3e98cd",
+    "reason": "PRIMARY_D01_D10_SURFACE_ACTIVELY_OWNED",
+    "mission": "CLOSE_D05_EXACT_LINEAGE_AND_TRAIN_TO_CHECKPOINT_HANDOFF_P0",
+    "no_claims": ["S0_CANDIDATE", "STABLE", "AUDIT_PASS", "PAID_COMPUTE_AUTHORIZATION"]
+  },
+  "candidate_status": "NOT_COMPLETE",
+  "candidate_blockers": [
+    "D05_HELD_PENDING_PR54_EXACT_HEAD_CI_AND_SELECTIVE_INTAKE",
+    "D06_EXACT_HEAD_CI_FAILURE_DOMAIN_OWNED",
+    "C01_RUN_MANIFEST_MUST_BIND_D04_TOKENIZER_VOCAB_SHA256",
+    "PR45_EXACT_HEAD_CI_QUEUED",
+    "AUDIT_A_CHANGES_REQUIRED_RETEST_PENDING",
+    "AUDIT_B_CHANGES_REQUIRED_RETEST_PENDING"
+  ]
+}

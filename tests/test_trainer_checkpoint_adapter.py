@@ -69,8 +69,10 @@ def identity() -> CheckpointIdentity:
         git_sha="c" * 40,
         model_spec={"kind": "trainer-adapter-test"},
         parameter_count=2,
-        tokenizer_hash="tok-hash",
-        dataset_manifest_hash="data-hash",
+        tokenizer_hash="1" * 64,
+        tokenizer_vocab_hash="2" * 64,
+        dataset_manifest_hash="3" * 64,
+        run_manifest_hash="4" * 64,
         training_config={"seed": 7, "precision": "fp32"},
         seed=7,
         precision="fp32",
@@ -78,7 +80,7 @@ def identity() -> CheckpointIdentity:
         tokens_seen=64,
         optimizer={"name": "trainer-owned"},
         scheduler={"name": "trainer-owned"},
-        environment_lock_hash="lock-hash",
+        environment_lock_hash="5" * 64,
     )
 
 
