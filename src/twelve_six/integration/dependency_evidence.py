@@ -306,7 +306,7 @@ def validate_supply_chain_evidence(
         raise SupplyChainEvidenceError("lock semantic identity mismatch")
     if lock_record.get("file_sha256") != sha256_file(root_path / "requirements/locks/index.json"):
         raise SupplyChainEvidenceError("lock file identity mismatch")
-    for kind in sorted(_KINDS):
+    for kind in ("vulnerability", "license"):
         record = evidence.get(kind)
         if not isinstance(record, dict) or record.get("status") not in _STATUSES:
             raise SupplyChainEvidenceError(f"{kind} evidence status is malformed")
