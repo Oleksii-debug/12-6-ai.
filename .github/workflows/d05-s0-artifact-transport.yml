@@ -1,0 +1,183 @@
+name: D05 S0 Artifact Transport Roundtrip
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  produce-retained-artifact:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+    outputs:
+      artifact-id: ${{ steps.upload.outputs.artifact-id }}
+      artifact-digest: ${{ steps.upload.outputs.artifact-digest }}
+      manifest-sha256: ${{ steps.manifest.outputs.manifest-sha256 }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Prove exact producer source checkout
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Verify producer locked environment and repository
+        run: >-
+          python tools/verify_locked_environment.py
+          --profile linux-x86_64
+          --source-sha "$SOURCE_SHA"
+          --evidence-out "$RUNNER_TEMP/locked-environment-linux-x86_64.json"
+          --run-repo-checks
+      - name: Create exact producer execution environment
+        run: |
+          python -m venv .d05-transport-producer
+          .d05-transport-producer/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .d05-transport-producer/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .d05-transport-producer/bin/python -m pip install --no-deps --no-build-isolation -e .
+      - name: Build incumbent retained S0 generation artifact
+        run: |
+          mkdir -p "$RUNNER_TEMP/transport/payload"
+          .d05-transport-producer/bin/python -m twelve_six.inference.s0_artifact build \
+            --repo-root . \
+            --candidate-sha "$SOURCE_SHA" \
+            --checkpoint-out "$RUNNER_TEMP/transport/payload/checkpoint" \
+            --evidence-out "$RUNNER_TEMP/transport/payload/s0-generation-evidence.json" \
+            --train-steps 40 \
+            --seed 20260824
+          cp "$RUNNER_TEMP/locked-environment-linux-x86_64.json" \
+            "$RUNNER_TEMP/transport/payload/locked-environment-linux-x86_64.json"
+      - name: Bind exact extracted byte tree before upload
+        id: manifest
+        run: |
+          .d05-transport-producer/bin/python tools/s0_artifact_transport.py build \
+            --payload-root "$RUNNER_TEMP/transport/payload" \
+            --source-sha "$SOURCE_SHA" \
+            --manifest-out "$RUNNER_TEMP/transport/transport-manifest.json"
+          .d05-transport-producer/bin/python tools/s0_artifact_transport.py validate \
+            --payload-root "$RUNNER_TEMP/transport/payload" \
+            --manifest "$RUNNER_TEMP/transport/transport-manifest.json" \
+            --expected-source-sha "$SOURCE_SHA"
+          MANIFEST_SHA256="$(.d05-transport-producer/bin/python -c 'import json,os,pathlib; p=pathlib.Path(os.environ["RUNNER_TEMP"])/"transport/transport-manifest.json"; print(json.loads(p.read_text(encoding="utf-8"))["manifest_sha256"])')"
+          echo "manifest-sha256=$MANIFEST_SHA256" >> "$GITHUB_OUTPUT"
+      - name: Upload bound artifact payload
+        id: upload
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: d05-s0-artifact-transport-${{ env.SOURCE_SHA }}
+          path: ${{ runner.temp }}/transport
+          if-no-files-found: error
+          retention-days: 30
+
+  consume-downloaded-artifact:
+    needs: produce-retained-artifact
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+      PRODUCER_ARTIFACT_ID: ${{ needs.produce-retained-artifact.outputs.artifact-id }}
+      PRODUCER_ARTIFACT_DIGEST: ${{ needs.produce-retained-artifact.outputs.artifact-digest }}
+      PRODUCER_MANIFEST_SHA256: ${{ needs.produce-retained-artifact.outputs.manifest-sha256 }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Prove exact fresh-consumer source checkout
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Create exact fresh-consumer execution environment
+        run: |
+          python -m venv .d05-transport-consumer
+          .d05-transport-consumer/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .d05-transport-consumer/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .d05-transport-consumer/bin/python -m pip install --no-deps --no-build-isolation -e .
+      - name: Download producer artifact into fresh runner
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: d05-s0-artifact-transport-${{ env.SOURCE_SHA }}
+          path: ${{ runner.temp }}/downloaded
+      - name: Verify post-download byte tree and canonical S0 evidence
+        run: |
+          test -n "$PRODUCER_ARTIFACT_ID"
+          test -n "$PRODUCER_ARTIFACT_DIGEST"
+          test -n "$PRODUCER_MANIFEST_SHA256"
+          .d05-transport-consumer/bin/python tools/s0_artifact_transport.py validate \
+            --payload-root "$RUNNER_TEMP/downloaded/payload" \
+            --manifest "$RUNNER_TEMP/downloaded/transport-manifest.json" \
+            --expected-source-sha "$SOURCE_SHA"
+          .d05-transport-consumer/bin/python -m twelve_six.inference.s0_artifact validate \
+            --checkpoint "$RUNNER_TEMP/downloaded/payload/checkpoint" \
+            --evidence "$RUNNER_TEMP/downloaded/payload/s0-generation-evidence.json"
+      - name: Execute installed CLI from downloaded checkpoint bytes
+        run: |
+          printf '12-6' | .d05-transport-consumer/bin/twelve-six-generate \
+            --checkpoint "$RUNNER_TEMP/downloaded/payload/checkpoint" \
+            --greedy --max-new-tokens 8 \
+            > "$RUNNER_TEMP/consumer-stdin.txt" \
+            2> "$RUNNER_TEMP/consumer-stdin-diagnostics.txt"
+          .d05-transport-consumer/bin/twelve-six-generate \
+            --checkpoint "$RUNNER_TEMP/downloaded/payload/checkpoint" \
+            --prompt '12-6' --sample --seed 20260841 \
+            --temperature 0.8 --top-k 20 --top-p 0.95 --max-new-tokens 8 --json \
+            > "$RUNNER_TEMP/consumer-json.json" \
+            2> "$RUNNER_TEMP/consumer-json-diagnostics.txt"
+      - name: Emit fresh-consumer transport evidence
+        run: |
+          .d05-transport-consumer/bin/python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path(os.environ["RUNNER_TEMP"])
+          manifest = json.loads((root / "downloaded/transport-manifest.json").read_text(encoding="utf-8"))
+          generation = json.loads((root / "downloaded/payload/s0-generation-evidence.json").read_text(encoding="utf-8"))
+          cli = json.loads((root / "consumer-json.json").read_text(encoding="utf-8"))
+          assert manifest["manifest_sha256"] == os.environ["PRODUCER_MANIFEST_SHA256"]
+          assert generation["candidate_sha"] == os.environ["SOURCE_SHA"]
+          assert cli["backend"]["checkpoint_id"] == manifest["checkpoint"]["checkpoint_id"]
+          assert cli["backend"]["git_sha"] == os.environ["SOURCE_SHA"]
+          payload = {
+              "schema_version": "12-6.s0-artifact-transport-consumer.v1",
+              "authority": "FRESH_JOB_DOWNLOAD_REPLAY_EVIDENCE_NOT_PROMOTION",
+              "repository": "Oleksii-debug/12-6-ai.",
+              "source_sha": os.environ["SOURCE_SHA"],
+              "producer_artifact_id": os.environ["PRODUCER_ARTIFACT_ID"],
+              "producer_artifact_digest": os.environ["PRODUCER_ARTIFACT_DIGEST"],
+              "transport_manifest_sha256": manifest["manifest_sha256"],
+              "checkpoint_id": manifest["checkpoint"]["checkpoint_id"],
+              "generation_evidence_sha256": generation["evidence_sha256"],
+              "downloaded_checkpoint_validated": True,
+              "downloaded_generation_evidence_validated": True,
+              "downloaded_checkpoint_cli_executed": True,
+              "promotion_authority": False,
+          }
+          canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), allow_nan=False)
+          payload["evidence_sha256"] = hashlib.sha256(canonical.encode()).hexdigest()
+          (root / "artifact-transport-consumer-evidence.json").write_text(
+              json.dumps(payload, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(payload, indent=2, sort_keys=True))
+          PY
+      - name: Upload fresh-consumer evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: d05-s0-artifact-transport-consumer-${{ env.SOURCE_SHA }}
+          path: |
+            ${{ runner.temp }}/artifact-transport-consumer-evidence.json
+            ${{ runner.temp }}/consumer-stdin.txt
+            ${{ runner.temp }}/consumer-stdin-diagnostics.txt
+            ${{ runner.temp }}/consumer-json.json
+            ${{ runner.temp }}/consumer-json-diagnostics.txt
+          if-no-files-found: error
+          retention-days: 30
