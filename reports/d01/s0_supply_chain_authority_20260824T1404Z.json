@@ -1,0 +1,79 @@
+{
+  "schema_version": "12-6.d01-supply-chain-fallback.v1",
+  "project_chat_run": "12-6-AI-SWARM-EXP-01",
+  "cutoff_utc": "2026-08-24T14:04:00Z",
+  "authority": "exact_live_github",
+  "repository_full_name": "Oleksii-debug/12-6-ai.",
+  "canonical_main": {
+    "sha": "f2e94c7212888cdb960bb66154d56d210e9b27ab",
+    "s0_candidate": false
+  },
+  "primary_convergence_observed": {
+    "pr": 45,
+    "branch": "d01/s0-convergence-20260824",
+    "head_sha": "f6aa818836d6c130b95f0753f727ef152b3ccdf3",
+    "latest_ci": {
+      "run_id": 32735864066,
+      "status": "completed",
+      "conclusion": "failure",
+      "first_failure": "ruff I001 in tests/test_s0_convergence_integration.py; focused integration and pytest skipped"
+    },
+    "ownership": "ACTIVE_OTHER_WORKER_DO_NOT_COLLIDE"
+  },
+  "other_active_collision_surfaces": [
+    {
+      "pr": 54,
+      "branch": "d01/d05-identity-hardening-20260824",
+      "surface": "D05 checkpoint identity and C01 binding",
+      "disposition": "avoid"
+    },
+    {
+      "pr": 55,
+      "branch": "d01/c01-vocab-binding-20260824",
+      "surface": "C01 tokenizer vocabulary launch binding",
+      "disposition": "avoid"
+    }
+  ],
+  "selected_fallback": {
+    "audit_finding": "AUDIT-B B-003",
+    "base_pr": 43,
+    "base_branch": "d10/ci-supply-chain-v1",
+    "base_sha": "4f76ebecbb106e44f357a2e2387a6ede029e3e4e",
+    "verified_ci_runs": [
+      {
+        "run_id": 32647291105,
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "run_id": 32734950475,
+        "status": "completed",
+        "conclusion": "success"
+      }
+    ],
+    "branch": "d01/d10-supply-chain-evidence-20260824"
+  },
+  "implemented_controls": [
+    "repository-wide external GitHub Action and reusable-workflow immutable SHA policy",
+    "Docker action digest policy",
+    "checkout persisted-credential rejection",
+    "setup-python exact patch-version requirement",
+    "floating pip self-upgrade rejection",
+    "deterministic installed-distribution inventory with package/version/license metadata and RECORD hashes",
+    "inventory binding to exact repository, source Git SHA and declared pyproject requirements",
+    "self-hashed inventory validation and tamper rejection",
+    "CI execution of workflow policy and environment inventory before lint/tests"
+  ],
+  "explicitly_not_closed": [
+    "hash-locked full transitive dependency graph is not yet produced",
+    "dependency vulnerability adjudication is not yet produced",
+    "license metadata inventory is evidence, not legal/license approval",
+    "environment inventory is not yet bound to a canonical D05 checkpoint because no exact S0 candidate exists",
+    "AUDIT-B B-003 requires independent retest on the future exact candidate",
+    "S0 remains non-promoting and AUDIT-A/AUDIT-B remain CHANGES_REQUIRED"
+  ],
+  "compute": {
+    "paid_compute_authorized": false,
+    "training_launched": false
+  }
+}

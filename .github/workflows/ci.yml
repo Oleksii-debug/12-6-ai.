@@ -26,6 +26,18 @@ jobs:
       - run: python -m pip --version
       - run: python -m pip install --disable-pip-version-check -e .[dev]
       - run: python tools/check_repo_policy.py
+      - run: python tools/check_workflow_policy.py
+      - name: Capture exact CI environment inventory
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: python tools/capture_environment_inventory.py --output /tmp/ci_environment_inventory.json
+      - name: Retain CI environment inventory
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ci-environment-inventory
+          path: /tmp/ci_environment_inventory.json
+          if-no-files-found: error
+          retention-days: 30
       - run: ruff check src tests tools
       - run: pytest -q
       - run: python tools/validate_stage_candidate.py configs/releases/s0_candidate.template.json
