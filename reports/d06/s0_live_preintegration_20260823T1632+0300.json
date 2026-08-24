@@ -1,0 +1,163 @@
+{
+  "schema_version": "12-6.d06-live-preintegration-gate.v1",
+  "observed_at": "2026-08-23T16:32:58+03:00",
+  "stage": "S0",
+  "canonical_main_observed": "f2e94c7212888cdb960bb66154d56d210e9b27ab",
+  "integrated_candidate": null,
+  "promotion_eligible": false,
+  "overall_status": "FAIL",
+  "truth_boundary": "This is a timestamped pre-integration observation. Standalone component evidence is not treated as an integrated S0 capability claim.",
+  "components": {
+    "D01": {
+      "pr": 24,
+      "head_sha": "4a89f42bb567376c2866e34ab323bb6baa4f2a86",
+      "ci": "FAIL",
+      "claimed_parameter_count": 10140,
+      "model_vocab_size": 256,
+      "status": "EVIDENCE_AVAILABLE_CI_RED"
+    },
+    "D02": {
+      "pr": 22,
+      "head_sha": "a3428408db2a6ebc792337965ce5d2186c71942c",
+      "ci": "FAIL",
+      "status": "TRAINER_EVIDENCE_AVAILABLE_CI_RED_INTEGRATED_MODEL_TRAINING_NOT_TESTED"
+    },
+    "D03": {
+      "pr": 27,
+      "head_sha": "1bffa55eddf048bd493dbee4bece42cda4d1ec19",
+      "ci": "FAIL",
+      "dataset_identity_sha256": "bab60119d49e93303c972b77900fcb5553817f754cbc5d9a58019228cfa0ca89",
+      "train_examples": 10,
+      "validation_examples": 2,
+      "status": "DATA_EVIDENCE_AVAILABLE_CI_RED_NOT_INTEGRATED"
+    },
+    "D04": {
+      "pr": 23,
+      "head_sha": "18f8226a6594012439c01ba923b3b98a3a0cd7d2",
+      "ci": "FAIL",
+      "tokenizer_version": "s0-byte-v1",
+      "tokenizer_config_sha256": "86e7696e39d04e00105dc0bd1149c67abd703d69734c54f503f4a88343256294",
+      "vocab_size": 259,
+      "max_token_id": 258,
+      "status": "TOKENIZER_EVIDENCE_AVAILABLE_CI_RED"
+    },
+    "D05": {
+      "pr": 26,
+      "head_sha": "715ac937664c1f3cebef8071995fbf9725b1910e",
+      "ci": "PASS",
+      "status": "GENERIC_CHECKPOINT_SUBSTRATE_PASS_INTEGRATED_S0_SAVE_LOAD_RESUME_NOT_TESTED"
+    },
+    "D07": {
+      "pr": 17,
+      "head_sha": "f4c2e6c471259278f05e2b211f48cb4a74ef4c96",
+      "ci": "PASS",
+      "status": "GENERIC_INFERENCE_HARNESS_PASS_REAL_S0_CHECKPOINT_GENERATION_NOT_TESTED"
+    },
+    "D10": {
+      "pr": 25,
+      "head_sha": "0c3ab9a63026e66071a2252a1198038d3d7fd9ac",
+      "ci": "PASS",
+      "status": "COMPOSITION_INFRA_PASS_NO_INTEGRATED_CANDIDATE"
+    },
+    "AUDIT_A": {
+      "verdict": "CHANGES_REQUIRED",
+      "status": "LATEST_DURABLE_AUDIT_AT_OBSERVATION"
+    },
+    "AUDIT_B": {
+      "verdict": null,
+      "status": "NO_DURABLE_COMMENT_AT_OBSERVATION"
+    }
+  },
+  "gates": [
+    {
+      "gate_id": "s0.identity",
+      "status": "NOT_TESTED",
+      "reason": "no exact integrated candidate SHA/eval/dataset identity"
+    },
+    {
+      "gate_id": "s0.random_init",
+      "status": "NOT_TESTED",
+      "reason": "D01 standalone random-init evidence exists, but no integrated candidate is frozen"
+    },
+    {
+      "gate_id": "s0.model_constructs",
+      "status": "NOT_TESTED",
+      "reason": "D01 standalone model exists but its current PR CI is red and it is not integrated"
+    },
+    {
+      "gate_id": "s0.parameter_range",
+      "status": "NOT_TESTED",
+      "reason": "D01 standalone count 10140 is not the resolved integrated count because tokenizer/model vocab contracts conflict"
+    },
+    {
+      "gate_id": "s0.training_learns",
+      "status": "NOT_TESTED",
+      "reason": "D02 convergence evidence uses a test-only stub, not the integrated D01 model/data/tokenizer candidate"
+    },
+    {
+      "gate_id": "s0.validation_measured",
+      "status": "NOT_TESTED",
+      "reason": "no integrated held-out before/after validation metrics"
+    },
+    {
+      "gate_id": "s0.random_vs_trained",
+      "status": "NOT_TESTED",
+      "reason": "no matched random-init versus trained held-out evaluation for one integrated candidate"
+    },
+    {
+      "gate_id": "s0.generation",
+      "status": "NOT_TESTED",
+      "reason": "D07 generic harness is CI-green but has not generated from a real integrated S0 checkpoint"
+    },
+    {
+      "gate_id": "s0.save_load",
+      "status": "NOT_TESTED",
+      "reason": "D05 generic checkpoint substrate is CI-green but integrated S0 model round-trip is not tested"
+    },
+    {
+      "gate_id": "s0.resume",
+      "status": "NOT_TESTED",
+      "reason": "D05 generic exact-resume substrate is CI-green but integrated S0 resume is not tested"
+    },
+    {
+      "gate_id": "s0.heldout_integrity",
+      "status": "NOT_TESTED",
+      "reason": "D03 committed deterministic split exists but current D03 CI is red and integrated consumption is not proven"
+    },
+    {
+      "gate_id": "s0.not_single_fixed_batch",
+      "status": "NOT_TESTED",
+      "reason": "no integrated training run with distinct-batch evidence"
+    },
+    {
+      "gate_id": "s0.contamination",
+      "status": "NOT_TESTED",
+      "reason": "D03 has S0 sentinels but no integrated D03+D06 corpus/benchmark comparison is frozen"
+    },
+    {
+      "gate_id": "s0.regressions",
+      "status": "NOT_TESTED",
+      "reason": "no integrated candidate regression suite exists"
+    },
+    {
+      "gate_id": "s0.tokenizer_model_vocab",
+      "status": "FAIL",
+      "reason": "D01 model_vocab_size=256 conflicts with D04 tokenizer vocab_size=259/max_token_id=258",
+      "evidence": {
+        "d01_sha": "4a89f42bb567376c2866e34ab323bb6baa4f2a86",
+        "d04_sha": "18f8226a6594012439c01ba923b3b98a3a0cd7d2",
+        "model_vocab_size": 256,
+        "tokenizer_vocab_size": 259,
+        "max_token_id": 258,
+        "repaired_parameter_count_if_only_vocab_changes_to_259": 10200
+      }
+    }
+  ],
+  "summary": {
+    "PASS": 0,
+    "FAIL": 1,
+    "NOT_TESTED": 14,
+    "required_gate_count": 15
+  },
+  "next_action": "Resolve D01-D04 vocab contract; obtain green exact heads; compose one D10 candidate; run integrated train/validation/random-baseline/generation/save-load/resume/contamination/regression evidence through D06 stage_gates."
+}
