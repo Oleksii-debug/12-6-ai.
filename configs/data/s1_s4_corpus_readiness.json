@@ -1,0 +1,62 @@
+{
+  "schema_version": "12-6.corpus-readiness-backlog.v1",
+  "generated_for_branch": "d09/data-provenance-corpus-foundation-20260824-b",
+  "foundation_base_sha": "ff39bf9285a1c59458a848a4e52d13135d76248b",
+  "canonical_s0_fixture_mutated": false,
+  "external_sources_approved_by_this_backlog": 0,
+  "paid_compute_authorized": false,
+  "promotion_allowed": false,
+  "stages": [
+    {
+      "stage": "S1",
+      "status": "NOT_READY",
+      "objective": "Prove one reviewed external source can traverse immutable acquisition to corpus eligibility without weakening held-out isolation.",
+      "acceptance_evidence": [
+        "One exact source_id/source_version with immutable snapshot URI, byte size and SHA-256.",
+        "Durable rights decision is APPROVED_FOR_TRAINING with explicit model-training permission and non-NOASSERTION license state.",
+        "All accepted records carry PASS metadata for quality, language, PII and copyright hooks; unresolved hook status fails closed.",
+        "D06 benchmark-registry manifest is imported by exact manifest SHA-256 and injected reserved source/content contamination is rejected.",
+        "Deterministic shard plan and resume manifest reproduce identical plan/manifests on repeated LOCAL_FREE execution.",
+        "Exact corpus eligibility manifest binds source-registry identity, record count, normalized bytes and streamed metadata SHA-256."
+      ]
+    },
+    {
+      "stage": "S2",
+      "status": "NOT_READY",
+      "objective": "Exercise multi-source Parquet/fsspec staging plus exact and near-dedup mechanics on reviewed snapshots.",
+      "acceptance_evidence": [
+        "At least three immutable source versions pass independent source-rights eligibility checks; zero unresolved source versions enter training.",
+        "Parquet/fsspec staging is executed from immutable snapshots with output manifests bound to exact source/registry identities.",
+        "Partitioned exact-dedup emits survivor and duplicate evidence with deterministic content-hash partitioning and tie-break rules.",
+        "Pinned DataTrove MinHash pipeline executes on synthetic duplicate/near-duplicate fixtures and records its exact DataTrove version and plan hash.",
+        "Near-dedup injection fixture demonstrates expected duplicate removal without treating semantic similarity as legal or rights approval.",
+        "Policy metadata coverage is 100% for quality, language, PII and copyright categories on train-eligible records."
+      ]
+    },
+    {
+      "stage": "S3",
+      "status": "NOT_READY",
+      "objective": "Prove restartable bounded-memory corpus construction across a larger immutable multi-source candidate.",
+      "acceptance_evidence": [
+        "Remote/object-store fsspec reads and writes use credential-free canonical metadata URIs and immutable source hashes.",
+        "Injected interruption followed by resume skips only content-addressed completed shards and yields identical final shard hashes.",
+        "Peak-memory and throughput measurements are captured for sharding, exact-dedup and MinHash mechanics at representative synthetic cardinality.",
+        "Training candidate has zero source-ID and exact-content overlap against the exact D06 reserved-registry identity used by evaluation.",
+        "Corpus candidate manifest binds source registry, rights/policy gate, dedup plans, contamination report and shard/resume identities."
+      ]
+    },
+    {
+      "stage": "S4",
+      "status": "NOT_READY",
+      "objective": "Prepare an auditable corpus-freeze candidate; do not freeze or promote it inside this package.",
+      "acceptance_evidence": [
+        "Every included external source has a complete immutable provenance and rights dossier with durable reviewer/policy references.",
+        "Exact D06 benchmark/evaluation identities and fingerprints are frozen for the corpus candidate before decontamination evidence is generated.",
+        "Exact-dedup and scalable near-dedup reports are bound to the same corpus candidate identity and retained as artifacts.",
+        "Deterministic sharding/rebuild/resume evidence reproduces exact final shard hashes from the exact source snapshot set.",
+        "AUDIT-B independently retests the exact corpus candidate and issues its own verdict; this backlog does not self-approve or self-promote.",
+        "Any materially paid corpus-processing compute has separate explicit authorization; absent authorization, only LOCAL_FREE evidence is valid."
+      ]
+    }
+  ]
+}

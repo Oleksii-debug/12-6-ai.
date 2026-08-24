@@ -1,0 +1,23 @@
+{
+  "datatrove_installed": false,
+  "datatrove_minhash_execution": "NOT_EXECUTED_BY_THIS_MECHANICS_BENCHMARK",
+  "elapsed_seconds": 3.6556957980000675,
+  "evidence_scope": "LOCAL_FREE_SYNTHETIC_MECHANICS_ONLY",
+  "exact_dedup_partitions": 256,
+  "exact_dedup_plan_sha256": "ee7940c5f0373253fc3eb3dea9ddfdb2d782d37f977040b0333945ba4873f24d",
+  "machine": "x86_64",
+  "paid_cost_usd": 0,
+  "partition_max_records": 845,
+  "partition_min_records": 716,
+  "peak_tracemalloc_bytes": 22557,
+  "peak_tracemalloc_bytes_per_record": 0.112785,
+  "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
+  "python_version": "3.13.5",
+  "records": 200000,
+  "records_per_second": 54709.147328236286,
+  "schema_version": "12-6.corpus-foundation-benchmark.v1",
+  "shard_count": 64,
+  "shard_max_records": 3312,
+  "shard_min_records": 3004,
+  "shard_plan_sha256": "28ac86b4b8e8dea6ea182a6b57f0cfb4a95296281e9de7aa3a991bea1f4013f0"
+}
