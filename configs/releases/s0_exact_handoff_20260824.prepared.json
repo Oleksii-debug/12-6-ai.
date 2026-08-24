@@ -1,0 +1,192 @@
+{
+  "schema": "12-6.s0-exact-candidate-handoff.v2",
+  "run_id": "12-6-AI-SWARM-EXP-01",
+  "execution_run_id": "S0-PR81-1CAA729C-LOCAL-FREE-01",
+  "repository": "Oleksii-debug/12-6-ai.",
+  "stage": "S0",
+  "handoff_state": "READY_LOCAL_FREE",
+  "promotion_allowed": false,
+  "target_candidate": {
+    "branch": "d01/s0-candidate-convergence-20260824-b",
+    "sha": "1caa729c8efafc84e7a5c4b1f7295eb8dcdb5a8d",
+    "pr_number": 81,
+    "status": "experimental",
+    "exact_head_runs": [
+      {
+        "name": "CI",
+        "run_id": 32761570313,
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "name": "D02 Real S0 Training",
+        "run_id": 32761570314,
+        "status": "completed",
+        "conclusion": "success"
+      }
+    ],
+    "source_manifest": "configs/releases/s0_candidate_convergence_20260824.experimental.json",
+    "source_manifest_git_blob_sha": "c3f33e35f7ef9f0db0c2ed542448f5d150cec6cf"
+  },
+  "authorization": {
+    "execution_class": "LOCAL_FREE",
+    "local_free_allowed": true,
+    "paid_compute_authorized": false,
+    "foreign_pretrained_base_allowed": false,
+    "behavioral_base_weights_allowed": false
+  },
+  "identities": {
+    "model_spec_sha256": "86c75b31dff05b7b5db9f6ed068c571a6ead01ba663412fe630f5e52b09d9b6b",
+    "init_spec_sha256": "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5",
+    "tokenizer_config_sha256": "b04055c1061dd641dcab7cb9d62a931f09b8d1a070140a926ceb4e91d73ca8e1",
+    "tokenizer_vocab_sha256": "905ed40bb42cc4d550e228ff5f24158d504b38e8ed5974dfa3077bd5867ad571",
+    "dataset_manifest_sha256": "b085a7ab56510575a11a80824fcff3a95a17f237d46d1be820e59d1289f220c2",
+    "packing_config_sha256": "23a695b807f3e3f5c61d19c34968bcd88fafc6a45346dc08673d7a494219f285",
+    "environment_lock_sha256": "61fa31fbb5da7a4289cccce5abfcebde943664f5318b0ce3d69ae9bb3db852ac"
+  },
+  "component_map_sha256": "710446f99bcb9a4609ed9bf6d0cc7c54f20c733e56967c05fa470a6d9c76ef4b",
+  "components": [
+    {
+      "lane": "D01",
+      "source_sha": "d646d417feca3409269518af6d66ac3455d9f2f3",
+      "disposition": "accepted",
+      "component_kind": "random_init_model",
+      "pr_number": 35,
+      "ci_runs": [32646829442],
+      "ci_conclusion": "success",
+      "contains_behavioral_weights": false,
+      "contains_foreign_pretrained_weights": false
+    },
+    {
+      "lane": "D02",
+      "source_sha": "403831cf623120da18f0f4c62e830a352afcef91",
+      "disposition": "accepted",
+      "component_kind": "training_engine_plus_real_s0_training_evidence",
+      "pr_number": 60,
+      "ci_runs": [32745954583, 32745954611],
+      "ci_conclusion": "success",
+      "contains_behavioral_weights": false,
+      "contains_foreign_pretrained_weights": false
+    },
+    {
+      "lane": "D03",
+      "source_sha": "f0e31d4200cb348f770346be9ab22ad450227f2d",
+      "disposition": "accepted",
+      "component_kind": "controlled_s0_data",
+      "pr_number": 27,
+      "ci_runs": [32643041174],
+      "ci_conclusion": "success",
+      "contains_behavioral_weights": false,
+      "contains_foreign_pretrained_weights": false
+    },
+    {
+      "lane": "D04",
+      "source_sha": "967ed1e8ab1c227139e6a03e50f5d8ed180380ed",
+      "disposition": "accepted",
+      "component_kind": "byte_tokenizer_and_packing",
+      "pr_number": 23,
+      "ci_runs": [32646641453],
+      "ci_conclusion": "success",
+      "contains_behavioral_weights": false,
+      "contains_foreign_pretrained_weights": false
+    },
+    {
+      "lane": "D05",
+      "source_sha": "fa5e8365ae56c22da761e2183a4c71a0212a2aef",
+      "disposition": "accepted",
+      "component_kind": "strict_run_bound_checkpoint_resume",
+      "pr_number": 61,
+      "ci_runs": [32745892911],
+      "ci_conclusion": "success",
+      "contains_behavioral_weights": false,
+      "contains_foreign_pretrained_weights": false
+    },
+    {
+      "lane": "D06",
+      "source_sha": "89fa0b2c17ef78ba202d019a8959aa1a19377391",
+      "disposition": "accepted_selective",
+      "component_kind": "evaluation_and_integrated_stage_gates",
+      "pr_number": 65,
+      "ci_runs": [32747051335, 32747051338],
+      "ci_conclusion": "success",
+      "contains_behavioral_weights": false,
+      "contains_foreign_pretrained_weights": false
+    },
+    {
+      "lane": "D07",
+      "source_sha": "9a1a6f8494b5d5dd9346afb644fc84de2e39d5e0",
+      "disposition": "accepted_selective",
+      "component_kind": "first_party_checkpoint_inference",
+      "pr_number": 63,
+      "ci_runs": [32745879308],
+      "ci_conclusion": "success",
+      "contains_behavioral_weights": false,
+      "contains_foreign_pretrained_weights": false
+    },
+    {
+      "lane": "D08",
+      "source_sha": "b8e01a38bfba18176e36c34b1530839ccaea4b21",
+      "disposition": "accepted",
+      "component_kind": "distributed_scale_readiness",
+      "pr_number": 20,
+      "ci_runs": [32646152647],
+      "ci_conclusion": "success",
+      "contains_behavioral_weights": false,
+      "contains_foreign_pretrained_weights": false
+    }
+  ],
+  "proven_exact_head_training": {
+    "run_id": 32761570314,
+    "train_loss_initial": 5.5579279558,
+    "train_loss_final": 2.7985758683,
+    "validation_loss_initial": 5.5592589744,
+    "validation_loss_final": 2.7907250028,
+    "optimized_tokens": 10833,
+    "changed_parameter_elements": 10140,
+    "total_parameter_elements": 10140,
+    "evidence_sha256": "00b11b27ae74fe59739080e656a84d063d030f0983e01940779e3b8b62d5de27"
+  },
+  "resolved_run_manifest": "configs/runs/s0_10k.pr81_exact_candidate.local_free.json",
+  "artifact_contract": {
+    "resolved_run_manifest": "runs/S0-PR81-1CAA729C-LOCAL-FREE-01/run_manifest.json",
+    "training_evidence": "runs/S0-PR81-1CAA729C-LOCAL-FREE-01/metrics/training_evidence.json",
+    "checkpoint_manifest": "runs/S0-PR81-1CAA729C-LOCAL-FREE-01/checkpoints/final/manifest.json",
+    "checkpoint_manifest_checksum": "runs/S0-PR81-1CAA729C-LOCAL-FREE-01/checkpoints/final/MANIFEST.sha256",
+    "resume_evidence": "runs/S0-PR81-1CAA729C-LOCAL-FREE-01/checkpoints/resume_evidence.json",
+    "evaluation_report": "runs/S0-PR81-1CAA729C-LOCAL-FREE-01/evaluation/stage_gate.json",
+    "inference_report": "runs/S0-PR81-1CAA729C-LOCAL-FREE-01/inference/first_party.json"
+  },
+  "audits": {
+    "AUDIT-A": {
+      "status": "RETEST_REQUESTED",
+      "candidate_sha": "1caa729c8efafc84e7a5c4b1f7295eb8dcdb5a8d",
+      "issue_number": 13
+    },
+    "AUDIT-B": {
+      "status": "RETEST_REQUESTED",
+      "candidate_sha": "1caa729c8efafc84e7a5c4b1f7295eb8dcdb5a8d",
+      "issue_number": 14
+    }
+  },
+  "supersession": [
+    {
+      "pr_number": 59,
+      "head_sha": "19f813e780b544959c0bc0a5a4a523101a534461",
+      "disposition": "superseded",
+      "reason": "v1 handoff is green but stale: it still holds D06@914973... while PR #81 selectively accepts exact-green D06@89fa0b2..."
+    },
+    {
+      "pr_number": 45,
+      "head_sha": "f6aa818836d6c130b95f0753f727ef152b3ccdf3",
+      "disposition": "superseded_for_current_s0_composition",
+      "reason": "older convergence path is ancestry/history; PR #81 is the strongest exact-green composition"
+    },
+    {
+      "pr_number": 57,
+      "head_sha": "c1e37854829faa96291ee76088f703f5096ea10b",
+      "disposition": "ancestor_not_current_candidate",
+      "reason": "accepted convergence ancestor retained through D05/D08 lineage"
+    }
+  ],
+  "next_action": "Execute the resolved LOCAL_FREE run against target candidate 1caa729c..., retain strict D05 checkpoint/resume plus D06 evaluation and D07 first-party inference artifacts, then bind independent AUDIT-A/B verdicts to that exact target SHA."
+}
