@@ -4,13 +4,16 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from twelve_six.integration.repo_policy import RepositoryPolicyError, validate_repository_policy
+from _integration_bootstrap import load_integration_module
+
+ROOT = Path(__file__).resolve().parents[1]
+_REPO_POLICY = load_integration_module(ROOT, "repo_policy")
 
 
 def main() -> int:
     try:
-        validate_repository_policy(Path("."))
-    except RepositoryPolicyError as exc:
+        _REPO_POLICY.validate_repository_policy(ROOT)
+    except _REPO_POLICY.RepositoryPolicyError as exc:
         print(str(exc))
         return 1
     print("repository_policy=pass")
