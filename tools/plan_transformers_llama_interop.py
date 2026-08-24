@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Emit a deterministic non-promoting Transformers Llama interoperability plan."""
 
 from __future__ import annotations
