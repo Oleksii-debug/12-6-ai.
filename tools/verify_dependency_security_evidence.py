@@ -7,7 +7,9 @@ import argparse
 import json
 from pathlib import Path
 
-from twelve_six.integration.dependency_security import validate_security_evidence
+from _dependency_contract_loader import load_dependency_contracts
+
+_, SECURITY = load_dependency_contracts()
 
 
 def main() -> int:
@@ -20,7 +22,7 @@ def main() -> int:
     args = parser.parse_args()
 
     evidence = json.loads(args.evidence.read_text(encoding="utf-8"))
-    validated = validate_security_evidence(
+    validated = SECURITY.validate_security_evidence(
         root=args.root,
         evidence=evidence,
         expected_source_sha=args.source_sha,
