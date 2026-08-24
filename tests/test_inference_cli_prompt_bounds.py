@@ -61,7 +61,7 @@ def test_stdin_overflow_is_detected_even_when_stream_returns_short_chunks(
     captured = capsys.readouterr()
     assert "stdin prompt exceeds --max-prompt-chars" in captured.err
     assert secret not in captured.err
-    assert sum(min(size, stream.max_chunk) for size in stream.read_sizes) >= 8
+    assert stream.position == 8
     assert all(size > 0 for size in stream.read_sizes)
 
 
@@ -123,3 +123,60 @@ def test_internal_prompt_limit_contract_fails_closed(value: object) -> None:
     expected = TypeError if isinstance(value, bool) else ValueError
     with pytest.raises(expected, match="positive integer"):
         cli._read_prompt(_parser(), "x", max_prompt_chars=value)  # type: ignore[arg-type]
+
+
+def test_explicit_overflow_stops_main_before_backend_load(monkeypatch, capsys) -> None:
+    backend_loaded = False
+
+    def fail_if_loaded(*args, **kwargs):
+        nonlocal backend_loaded
+        del args, kwargs
+        backend_loaded = True
+        raise AssertionError("backend must not load after prompt overflow")
+
+    monkeypatch.setattr(cli, "load_backend", fail_if_loaded)
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main(
+            [
+                "--checkpoint",
+                "unused",
+                "--prompt",
+                "PRIVATE-PROMPT",
+                "--max-prompt-chars",
+                "4",
+            ]
+        )
+
+    assert exc_info.value.code == 2
+    assert backend_loaded is False
+    assert "PRIVATE-PROMPT" not in capsys.readouterr().err
+
+
+def test_stdin_overflow_stops_main_before_backend_load(monkeypatch, capsys) -> None:
+    backend_loaded = False
+    stream = _PartialTextStream("PRIVATE-STDIN-PROMPT", max_chunk=2)
+
+    def fail_if_loaded(*args, **kwargs):
+        nonlocal backend_loaded
+        del args, kwargs
+        backend_loaded = True
+        raise AssertionError("backend must not load after stdin overflow")
+
+    monkeypatch.setattr(cli.sys, "stdin", stream)
+    monkeypatch.setattr(cli, "load_backend", fail_if_loaded)
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main(
+            [
+                "--checkpoint",
+                "unused",
+                "--max-prompt-chars",
+                "4",
+            ]
+        )
+
+    assert exc_info.value.code == 2
+    assert backend_loaded is False
+    assert stream.position == 5
+    assert "PRIVATE-STDIN-PROMPT" not in capsys.readouterr().err
