@@ -37,6 +37,7 @@ MANIFEST_CHECKSUM_NAME = "MANIFEST.sha256"
 WEIGHTS_NAME = "weights.safetensors"
 STATE_TENSORS_NAME = "state.safetensors"
 STATE_TREE_NAME = "state.json"
+_HEX = frozenset("0123456789abcdef")
 
 
 class CheckpointError(RuntimeError):
@@ -51,6 +52,16 @@ class CheckpointCompatibilityError(CheckpointError):
     """Raised when a checkpoint cannot be applied to the requested target."""
 
 
+def _require_exact_hex(value: Any, *, field: str, lengths: set[int]) -> str:
+    if not isinstance(value, str) or len(value) not in lengths:
+        expected = "/".join(str(length) for length in sorted(lengths))
+        raise ValueError(f"{field} must be exact lowercase {expected}-hex")
+    if value != value.lower() or any(ch not in _HEX for ch in value):
+        expected = "/".join(str(length) for length in sorted(lengths))
+        raise ValueError(f"{field} must be exact lowercase {expected}-hex")
+    return value
+
+
 @dataclass(frozen=True)
 class CheckpointIdentity:
     """Inputs that define the training/artifact lineage of a checkpoint."""
@@ -59,7 +70,9 @@ class CheckpointIdentity:
     model_spec: Mapping[str, Any]
     parameter_count: int
     tokenizer_hash: str
+    tokenizer_vocab_hash: str
     dataset_manifest_hash: str
+    run_manifest_hash: str
     training_config: Mapping[str, Any]
     seed: int
     precision: str
@@ -70,19 +83,44 @@ class CheckpointIdentity:
     environment_lock_hash: str | None = None
 
     def validate(self) -> None:
-        required_text = {
-            "git_sha": self.git_sha,
-            "tokenizer_hash": self.tokenizer_hash,
-            "dataset_manifest_hash": self.dataset_manifest_hash,
-            "precision": self.precision,
-        }
-        for name, value in required_text.items():
-            if not isinstance(value, str) or not value.strip():
-                raise ValueError(f"{name} must be a non-empty string")
-        if self.parameter_count <= 0:
-            raise ValueError("parameter_count must be positive")
-        if self.step < 0 or self.tokens_seen < 0:
-            raise ValueError("step and tokens_seen must be non-negative")
+        _require_exact_hex(self.git_sha, field="git_sha", lengths={40, 64})
+        _require_exact_hex(self.tokenizer_hash, field="tokenizer_hash", lengths={64})
+        _require_exact_hex(self.tokenizer_vocab_hash, field="tokenizer_vocab_hash", lengths={64})
+        _require_exact_hex(self.dataset_manifest_hash, field="dataset_manifest_hash", lengths={64})
+        _require_exact_hex(self.run_manifest_hash, field="run_manifest_hash", lengths={64})
+        if self.environment_lock_hash is not None:
+            _require_exact_hex(
+                self.environment_lock_hash,
+                field="environment_lock_hash",
+                lengths={64},
+            )
+        if not isinstance(self.model_spec, Mapping) or not self.model_spec:
+            raise ValueError("model_spec must be a non-empty mapping")
+        if not isinstance(self.training_config, Mapping) or not self.training_config:
+            raise ValueError("training_config must be a non-empty mapping")
+        if not isinstance(self.optimizer, Mapping) or not self.optimizer:
+            raise ValueError("optimizer must be a non-empty mapping")
+        if self.scheduler is not None and (not isinstance(self.scheduler, Mapping) or not self.scheduler):
+            raise ValueError("scheduler must be a non-empty mapping or None")
+        if (
+            not isinstance(self.parameter_count, int)
+            or isinstance(self.parameter_count, bool)
+            or self.parameter_count <= 0
+        ):
+            raise ValueError("parameter_count must be a positive integer")
+        if not isinstance(self.seed, int) or isinstance(self.seed, bool) or self.seed < 0:
+            raise ValueError("seed must be a non-negative integer")
+        if not isinstance(self.precision, str) or not self.precision.strip():
+            raise ValueError("precision must be a non-empty string")
+        if (
+            not isinstance(self.step, int)
+            or isinstance(self.step, bool)
+            or not isinstance(self.tokens_seen, int)
+            or isinstance(self.tokens_seen, bool)
+            or self.step < 0
+            or self.tokens_seen < 0
+        ):
+            raise ValueError("step and tokens_seen must be non-negative integers")
 
 
 @dataclass(frozen=True)
@@ -321,7 +359,9 @@ def _build_identity(identity: CheckpointIdentity, environment: Mapping[str, Any]
         "model_spec_hash": hash_json(model_spec),
         "parameter_count": identity.parameter_count,
         "tokenizer_hash": identity.tokenizer_hash,
+        "tokenizer_vocab_hash": identity.tokenizer_vocab_hash,
         "dataset_manifest_hash": identity.dataset_manifest_hash,
+        "run_manifest_hash": identity.run_manifest_hash,
         "training_config": training_config,
         "training_config_hash": hash_json(training_config),
         "seed": identity.seed,
@@ -434,11 +474,47 @@ def _read_manifest(directory: Path) -> dict[str, Any]:
     return manifest
 
 
+def _validate_manifest_identity(identity: Any) -> None:
+    if not isinstance(identity, Mapping):
+        raise CheckpointIntegrityError("manifest identity must be a mapping")
+    try:
+        _require_exact_hex(identity.get("git_sha"), field="identity.git_sha", lengths={40, 64})
+        for field in (
+            "model_spec_hash",
+            "tokenizer_hash",
+            "tokenizer_vocab_hash",
+            "dataset_manifest_hash",
+            "run_manifest_hash",
+            "training_config_hash",
+            "optimizer_hash",
+            "scheduler_hash",
+            "environment_hash",
+        ):
+            _require_exact_hex(identity.get(field), field=f"identity.{field}", lengths={64})
+        lock_hash = identity.get("environment_lock_hash")
+        if lock_hash is not None:
+            _require_exact_hex(lock_hash, field="identity.environment_lock_hash", lengths={64})
+    except ValueError as exc:
+        raise CheckpointIntegrityError(str(exc)) from exc
+
+    hash_pairs = (
+        ("model_spec", "model_spec_hash"),
+        ("training_config", "training_config_hash"),
+        ("optimizer", "optimizer_hash"),
+        ("scheduler", "scheduler_hash"),
+        ("environment", "environment_hash"),
+    )
+    for payload_key, hash_key in hash_pairs:
+        if hash_json(identity.get(payload_key)) != identity.get(hash_key):
+            raise CheckpointIntegrityError(f"{hash_key} does not match {payload_key}")
+
+
 def verify_checkpoint(directory: str | Path) -> dict[str, Any]:
-    """Verify manifest and every file checksum without mutating application state."""
+    """Verify manifest, lineage identities, and every file checksum without mutation."""
 
     root = Path(directory)
     manifest = _read_manifest(root)
+    _validate_manifest_identity(manifest.get("identity"))
     files = manifest.get("files")
     if not isinstance(files, dict) or not files:
         raise CheckpointIntegrityError("manifest contains no file records")
@@ -464,7 +540,9 @@ def assert_identity(
     git_sha: str | None = None,
     model_spec_hash: str | None = None,
     tokenizer_hash: str | None = None,
+    tokenizer_vocab_hash: str | None = None,
     dataset_manifest_hash: str | None = None,
+    run_manifest_hash: str | None = None,
 ) -> None:
     """Fail closed when a requested lineage constraint differs from the checkpoint."""
 
@@ -473,7 +551,9 @@ def assert_identity(
         "git_sha": git_sha,
         "model_spec_hash": model_spec_hash,
         "tokenizer_hash": tokenizer_hash,
+        "tokenizer_vocab_hash": tokenizer_vocab_hash,
         "dataset_manifest_hash": dataset_manifest_hash,
+        "run_manifest_hash": run_manifest_hash,
     }
     mismatches = {
         key: {"expected": value, "actual": identity.get(key)}
@@ -495,7 +575,9 @@ def load_checkpoint(
     expected_git_sha: str | None = None,
     expected_model_spec_hash: str | None = None,
     expected_tokenizer_hash: str | None = None,
+    expected_tokenizer_vocab_hash: str | None = None,
     expected_dataset_manifest_hash: str | None = None,
+    expected_run_manifest_hash: str | None = None,
 ) -> LoadResult:
     """Verify then restore model/trainer state from a checkpoint."""
 
@@ -506,7 +588,9 @@ def load_checkpoint(
         git_sha=expected_git_sha,
         model_spec_hash=expected_model_spec_hash,
         tokenizer_hash=expected_tokenizer_hash,
+        tokenizer_vocab_hash=expected_tokenizer_vocab_hash,
         dataset_manifest_hash=expected_dataset_manifest_hash,
+        run_manifest_hash=expected_run_manifest_hash,
     )
     arrays = load_safetensors(str(root / WEIGHTS_NAME))
     _load_model_weights(model, arrays, strict_model)
