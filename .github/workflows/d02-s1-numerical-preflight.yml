@@ -50,7 +50,9 @@ jobs:
             --seed 1337 \
             --max-steps 6 \
             --batch-size 3
-          .d02-s1-locked/bin/python tools/validate_s1_numerical_preflight.py s1-numerical-preflight.json
+          .d02-s1-locked/bin/python tools/validate_s1_numerical_preflight.py \
+            s1-numerical-preflight.json \
+            --locked-environment-evidence locked-environment-linux-x86_64.json
           cat s1-numerical-preflight.json
       - name: Upload S1 numerical preflight evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
