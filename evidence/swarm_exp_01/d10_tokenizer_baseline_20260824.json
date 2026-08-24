@@ -1,0 +1,40 @@
+{
+  "schema": "12-6.d10-tokenizer-controlled-baseline.v1",
+  "run": "12-6-AI-SWARM-EXP-01",
+  "base_source_sha": "3d5d2332577d1ccb2b6ecbb5197b1d95a4baba6f",
+  "canonical_s0_unchanged": true,
+  "s0_tokenizer": {
+    "version": "s0-byte-v1",
+    "vocab_size": 256,
+    "config_sha256": "b04055c1061dd641dcab7cb9d62a931f09b8d1a070140a926ceb4e91d73ca8e1",
+    "vocab_sha256": "905ed40bb42cc4d550e228ff5f24158d504b38e8ed5974dfa3077bd5867ad571"
+  },
+  "s0_packing": {
+    "version": "s0-byte-pack-v1",
+    "sequence_length": 128,
+    "config_sha256": "23a695b807f3e3f5c61d19c34968bcd88fafc6a45346dc08673d7a494219f285",
+    "cross_document": false
+  },
+  "controlled_measurements": {
+    "en": {"code_points": 104, "utf8_bytes": 104, "tokens": 104, "fertility": 1.0, "round_trip_rate": 1.0},
+    "uk": {"code_points": 86, "utf8_bytes": 158, "tokens": 158, "fertility": 1.8372093023255813, "round_trip_rate": 1.0},
+    "code": {"code_points": 107, "utf8_bytes": 113, "tokens": 113, "fertility": 1.0560747663551402, "round_trip_rate": 1.0},
+    "unicode": {"code_points": 70, "utf8_bytes": 101, "tokens": 101, "fertility": 1.4428571428571428, "round_trip_rate": 1.0},
+    "total": {"code_points": 367, "utf8_bytes": 476, "tokens": 476, "fertility": 1.2970027247956404, "round_trip_rate": 1.0}
+  },
+  "vocabulary_parameter_cost": {
+    "s0_tied_v256_d20": 5120,
+    "s1_current_tied_v512_d48": 24576
+  },
+  "experimental_backends": {
+    "bpe": {"library": "tokenizers", "status": "HARNESS_READY_RUNTIME_NOT_LOCKED"},
+    "unigram": {"library": "sentencepiece", "status": "HARNESS_READY_RUNTIME_NOT_LOCKED"}
+  },
+  "claims": {
+    "trained_bpe_quality": "NOT_TESTED",
+    "trained_unigram_quality": "NOT_TESTED",
+    "large_corpus_fertility": "NOT_TESTED",
+    "elastic_topology_resume": "NOT_TESTED",
+    "promotion_allowed": false
+  }
+}
