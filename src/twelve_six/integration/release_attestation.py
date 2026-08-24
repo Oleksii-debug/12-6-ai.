@@ -643,9 +643,11 @@ def validate_release_attestation(
     validate_repository_evidence(stage_manifest, repository_root)
     validate_audit_freshness(stage_manifest, attestation.candidate_ci)
 
-    if attestation.status in {CandidateStatus.AUDITED_CANDIDATE, CandidateStatus.STABLE}:
-        if not stage_manifest.audits_pass():
-            raise ReleaseAttestationError("audited transition requires independent passing audits")
+    if (
+        attestation.status in {CandidateStatus.AUDITED_CANDIDATE, CandidateStatus.STABLE}
+        and not stage_manifest.audits_pass()
+    ):
+        raise ReleaseAttestationError("audited transition requires independent passing audits")
 
     if attestation.status is CandidateStatus.STABLE:
         if stage_manifest.release_artifact is None or attestation.release_artifact is None:
