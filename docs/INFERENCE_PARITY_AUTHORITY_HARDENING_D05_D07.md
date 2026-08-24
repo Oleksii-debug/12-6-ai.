@@ -14,11 +14,13 @@ Related Python/runtime edge cases could reach the same authority gap:
 - two backends with the same invalid `max_context_tokens=True` could satisfy the equality check and leave a prompt with no numerical capacity;
 - a prompt that exactly filled the shared context window could complete parity with zero logits calls;
 - identical empty logit vectors were accepted by the vector comparator until later greedy selection;
+- matching string/bool logits could be silently converted through `float(...)` rather than rejected as a broken backend contract;
 - identical invalid EOS contracts were not rejected centrally;
 - backend `encode()` results outside the declared `list[int]` protocol were consumed without an explicit parity-contract failure;
-- token IDs or EOS identities outside the runtime logit vocabulary were not independently rejected by the parity harness.
+- token IDs or EOS identities outside the runtime logit vocabulary were not independently rejected by the parity harness;
+- two backends returning the same non-string value from `decode()` could appear equal even though both violated the `InferenceBackend` protocol.
 
-A zero-step PASS is unsuitable as evidence for canonical-vs-converted inference equivalence.
+A zero-step or mechanically-invalid PASS is unsuitable as evidence for canonical-vs-converted inference equivalence.
 
 ## Strengthened contract
 
@@ -30,9 +32,11 @@ A zero-step PASS is unsuitable as evidence for canonical-vs-converted inference 
 - both backends to expose a positive integer `max_context_tokens`;
 - each EOS identity to be `None` or a non-negative integer;
 - backend `encode()` to return `list[int]` containing non-negative, non-boolean token IDs;
+- every backend logit value to be an actual numeric scalar rather than bool/text coercion;
 - non-empty equal-length logit vectors for every numerical step;
 - input tokens and shared EOS identity to fit the runtime logit vocabulary;
-- at least one real numerical parity step for a prompt that otherwise had no failure.
+- at least one real numerical parity step for a prompt that otherwise had no failure;
+- backend `decode()` results to be strings before equality is considered.
 
 `ParityReport.passed` independently requires `prompts_compared > 0` and `steps_compared > 0` in addition to an empty failure set, so even a manually reconstructed report cannot claim a vacuous PASS through the normal report property/JSON serialization.
 
