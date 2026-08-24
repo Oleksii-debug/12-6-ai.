@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import secrets
 import sys
 import time
+from collections.abc import Mapping
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
@@ -34,6 +36,71 @@ _ALLOWED_COMPLETION_FIELDS = frozenset(
         "logprobs",
     }
 )
+_SERVING_IDENTITY_FIELDS = (
+    "backend",
+    "checkpoint_id",
+    "git_sha",
+    "model_spec_sha256",
+    "parameter_count",
+    "vocab_size",
+    "max_context_tokens",
+    "tokenizer_version",
+    "tokenizer_config_sha256",
+    "tokenizer_vocab_sha256",
+    "dataset_manifest_sha256",
+    "run_manifest_sha256",
+    "step",
+    "tokens_seen",
+    "device",
+)
+_SHA256_HEX = frozenset("0123456789abcdef")
+
+
+def _capture_serving_identity(
+    backend: InferenceBackend,
+) -> tuple[dict[str, object] | None, str | None]:
+    """Capture one privacy-safe immutable backend identity for server lifetime."""
+
+    diagnostics = getattr(backend, "diagnostics", None)
+    if not callable(diagnostics):
+        return None, None
+    raw = diagnostics()
+    if not isinstance(raw, Mapping):
+        raise TypeError("backend diagnostics must return a mapping")
+
+    selected = {
+        field: raw[field]
+        for field in _SERVING_IDENTITY_FIELDS
+        if field in raw
+    }
+    if not selected:
+        return None, None
+    try:
+        encoded = json.dumps(
+            selected,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+    except (TypeError, ValueError) as exc:
+        raise TypeError("backend diagnostics must be canonical JSON values") from exc
+    identity = json.loads(encoded.decode("utf-8"))
+    return identity, hashlib.sha256(encoded).hexdigest()
+
+
+def _checkpoint_header(identity: Mapping[str, object] | None) -> str | None:
+    if identity is None:
+        return None
+    value = identity.get("checkpoint_id")
+    if (
+        isinstance(value, str)
+        and len(value) == 64
+        and value == value.lower()
+        and set(value) <= _SHA256_HEX
+    ):
+        return value
+    return None
 
 
 class CompletionHTTPServer(HTTPServer):
@@ -56,6 +123,8 @@ class CompletionHTTPServer(HTTPServer):
         self.backend = backend
         self.model_name = model_name
         self.max_request_bytes = max_request_bytes
+        self.serving_identity, self.serving_fingerprint = _capture_serving_identity(backend)
+        self.checkpoint_id = _checkpoint_header(self.serving_identity)
         super().__init__(server_address, CompletionRequestHandler)
 
 
@@ -77,6 +146,13 @@ class CompletionRequestHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Connection", "close")
+        if self.server.serving_fingerprint is not None:
+            self.send_header(
+                "X-12-6-Serving-Fingerprint",
+                self.server.serving_fingerprint,
+            )
+        if self.server.checkpoint_id is not None:
+            self.send_header("X-12-6-Checkpoint-ID", self.server.checkpoint_id)
         self.end_headers()
         self.wfile.write(body)
 
@@ -95,24 +171,35 @@ class CompletionRequestHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         if self.path == "/healthz":
-            self._write_json(
-                HTTPStatus.OK,
-                {"status": "ok", "model": self.server.model_name},
-            )
+            payload: dict[str, object] = {
+                "status": "ok",
+                "model": self.server.model_name,
+            }
+            if self.server.serving_fingerprint is not None:
+                payload["serving_fingerprint"] = self.server.serving_fingerprint
+            if self.server.serving_identity is not None:
+                payload["serving_identity"] = self.server.serving_identity
+            self._write_json(HTTPStatus.OK, payload)
             return
         if self.path == "/v1/models":
+            model: dict[str, object] = {
+                "id": self.server.model_name,
+                "object": "model",
+                "created": 0,
+                "owned_by": "12-6-ai",
+            }
+            if self.server.serving_fingerprint is not None:
+                metadata: dict[str, object] = {
+                    "serving_fingerprint": self.server.serving_fingerprint,
+                }
+                if self.server.checkpoint_id is not None:
+                    metadata["checkpoint_id"] = self.server.checkpoint_id
+                model["metadata"] = metadata
             self._write_json(
                 HTTPStatus.OK,
                 {
                     "object": "list",
-                    "data": [
-                        {
-                            "id": self.server.model_name,
-                            "object": "model",
-                            "created": 0,
-                            "owned_by": "12-6-ai",
-                        }
-                    ],
+                    "data": [model],
                 },
             )
             return
@@ -288,23 +375,23 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def _startup_diagnostics(
-    backend: InferenceBackend,
+    server: CompletionHTTPServer,
     *,
     host: str,
     port: int,
-    model_name: str,
 ) -> dict[str, object]:
     payload: dict[str, object] = {
         "event": "server_ready",
         "host": host,
         "port": port,
-        "model": model_name,
+        "model": server.model_name,
         "completion_endpoint": "/v1/completions",
         "chat_semantics": False,
     }
-    diagnostics = getattr(backend, "diagnostics", None)
-    if callable(diagnostics):
-        payload["backend"] = diagnostics()
+    if server.serving_fingerprint is not None:
+        payload["serving_fingerprint"] = server.serving_fingerprint
+    if server.serving_identity is not None:
+        payload["serving_identity"] = server.serving_identity
     return payload
 
 
@@ -326,17 +413,21 @@ def main(argv: list[str] | None = None) -> int:
     )
     bound_host, bound_port = server.server_address[:2]
     diagnostics = _startup_diagnostics(
-        backend,
+        server,
         host=str(bound_host),
         port=int(bound_port),
-        model_name=args.model_name,
     )
     if args.json_diagnostics:
         print(json.dumps(diagnostics, sort_keys=True, allow_nan=False), file=sys.stderr)
     else:
+        fingerprint = (
+            f" fingerprint={server.serving_fingerprint}"
+            if server.serving_fingerprint is not None
+            else ""
+        )
         print(
             f"12-6-server ready http://{bound_host}:{bound_port}/v1/completions "
-            f"model={args.model_name}",
+            f"model={args.model_name}{fingerprint}",
             file=sys.stderr,
         )
     try:
