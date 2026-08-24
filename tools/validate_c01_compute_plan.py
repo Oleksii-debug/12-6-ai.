@@ -85,6 +85,12 @@ def validate_queue(payload: dict[str, Any]) -> None:
         _require(isinstance(job.get("state"), str) and job["state"], f"{run_id}: state")
         _require(isinstance(job.get("command"), str) and job["command"], f"{run_id}: command")
 
+        if job.get("compute_class") in PAID_CLASSES:
+            _require(
+                job.get("state") == "PREPARED_NOT_LAUNCHED",
+                f"{run_id}: paid/material compute cannot be launch-ready",
+            )
+
         job_sha = job.get("candidate_sha")
         if job_sha is None:
             _require(
@@ -106,12 +112,6 @@ def validate_queue(payload: dict[str, Any]) -> None:
         _require(isinstance(cancels, list) and cancels, f"{run_id}: cancellation criteria missing")
         _require(isinstance(failures, list) and failures, f"{run_id}: failure criteria missing")
         _require(isinstance(retry, str) and retry, f"{run_id}: retry policy missing")
-
-        if job.get("compute_class") in PAID_CLASSES:
-            _require(
-                job.get("state") == "PREPARED_NOT_LAUNCHED",
-                f"{run_id}: paid/material compute cannot be launch-ready",
-            )
 
     measured = payload.get("measured_s0")
     _require(isinstance(measured, dict), "measured_s0 missing")
