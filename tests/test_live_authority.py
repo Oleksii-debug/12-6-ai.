@@ -482,7 +482,7 @@ def test_stable_authority_requires_exact_owner_marker_and_freshness() -> None:
                 ref,
                 candidate_sha=CANDIDATE_SHA,
                 not_before=datetime(2026, 8, 24, 15, 9, tzinfo=UTC),
-                get_json=lambda _: bad,
+                get_json=lambda _, value=bad: value,
             )
 
 
