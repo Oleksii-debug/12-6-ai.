@@ -110,6 +110,19 @@ def bind_checkpoint_identity(
             "run manifest tokenizer SHA does not match supplied tokenizer identity"
         )
 
+    tokenizer_vocab_hash = _require_sha256(
+        data.get("tokenizer_vocab_sha256"),
+        field="data.tokenizer_vocab_sha256",
+    )
+    supplied_vocab_hash = _require_sha256(
+        tokenizer_identity.get("vocab_sha256"),
+        field="tokenizer_identity.vocab_sha256",
+    )
+    if tokenizer_vocab_hash != supplied_vocab_hash:
+        raise CheckpointCompatibilityError(
+            "run manifest tokenizer vocabulary SHA does not match supplied tokenizer identity"
+        )
+
     tokenizer_version = tokenizer_identity.get("version")
     if not isinstance(tokenizer_version, str) or not tokenizer_version:
         raise CheckpointCompatibilityError("tokenizer identity requires a non-empty version")
@@ -151,8 +164,10 @@ def bind_checkpoint_identity(
             field="environment_lock_hash",
         )
 
+    run_manifest_hash = hash_json(run_manifest)
     bound_training_config = {
         "run_id": run_id,
+        "run_manifest_sha256": run_manifest_hash,
         "stage": stage,
         "run_kind": run_kind,
         "training": dict(training),
@@ -160,6 +175,7 @@ def bind_checkpoint_identity(
             "dataset_manifest_sha256": dataset_hash,
             "split_identity": data.get("split_identity"),
             "tokenizer_sha256": tokenizer_hash,
+            "tokenizer_vocab_sha256": tokenizer_vocab_hash,
             "tokenizer_version": tokenizer_version,
         },
     }
@@ -169,7 +185,9 @@ def bind_checkpoint_identity(
         model_spec=dict(model_spec),
         parameter_count=parameter_count,
         tokenizer_hash=tokenizer_hash,
+        tokenizer_vocab_hash=tokenizer_vocab_hash,
         dataset_manifest_hash=dataset_hash,
+        run_manifest_hash=run_manifest_hash,
         training_config=bound_training_config,
         seed=seed,
         precision=precision,
