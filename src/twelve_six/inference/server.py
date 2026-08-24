@@ -93,7 +93,7 @@ class CompletionRequestHandler(BaseHTTPRequestHandler):
             },
         )
 
-    def do_GET(self) -> None:  # noqa: N802
+    def do_GET(self) -> None:
         if self.path == "/healthz":
             self._write_json(
                 HTTPStatus.OK,
@@ -118,7 +118,7 @@ class CompletionRequestHandler(BaseHTTPRequestHandler):
             return
         self._error(HTTPStatus.NOT_FOUND, "unknown endpoint", "invalid_request_error")
 
-    def do_POST(self) -> None:  # noqa: N802
+    def do_POST(self) -> None:
         if self.path != "/v1/completions":
             if self.path == "/v1/chat/completions":
                 self._error(
@@ -224,7 +224,7 @@ class CompletionRequestHandler(BaseHTTPRequestHandler):
         except (TypeError, ValueError) as exc:
             self._error(HTTPStatus.BAD_REQUEST, str(exc), "invalid_request_error")
             return
-        except Exception as exc:  # pragma: no cover - defensive transport boundary
+        except (RuntimeError, OSError) as exc:  # pragma: no cover - backend/system failure
             print(
                 f"12-6-server internal_error={type(exc).__name__}",
                 file=sys.stderr,
