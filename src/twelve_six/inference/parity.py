@@ -169,6 +169,45 @@ def _validated_token_ids(
     return tuple(token_ids)
 
 
+def _validated_logits(
+    values: Any,
+    *,
+    role: str,
+    prompt_index: int,
+    step_index: int,
+) -> tuple[list[float] | None, ParityFailure | None]:
+    try:
+        iterator = iter(values)
+    except TypeError:
+        return None, ParityFailure(
+            prompt_index,
+            step_index,
+            f"invalid_{role}_logits",
+            f"{role} next_token_logits() must return an iterable of numeric logits",
+        )
+
+    logits: list[float] = []
+    for logit_index, value in enumerate(iterator):
+        if isinstance(value, (bool, str, bytes)):
+            return None, ParityFailure(
+                prompt_index,
+                step_index,
+                f"invalid_{role}_logits",
+                f"{role} logit at index {logit_index} is not a numeric scalar",
+            )
+        try:
+            converted = float(value)
+        except (TypeError, ValueError, OverflowError):
+            return None, ParityFailure(
+                prompt_index,
+                step_index,
+                f"invalid_{role}_logits",
+                f"{role} logit at index {logit_index} is not float-convertible",
+            )
+        logits.append(converted)
+    return logits, None
+
+
 def _compare_logits(
     reference_logits: list[float],
     candidate_logits: list[float],
@@ -335,8 +374,43 @@ def compare_backends(
             if len(input_ids) >= reference.max_context_tokens:
                 break
 
-            reference_logits = [float(value) for value in reference.next_token_logits(input_ids)]
-            candidate_logits = [float(value) for value in candidate.next_token_logits(input_ids)]
+            reference_logits, reference_logit_failure = _validated_logits(
+                reference.next_token_logits(input_ids),
+                role="reference",
+                prompt_index=prompt_index,
+                step_index=step_index,
+            )
+            if reference_logit_failure is not None or reference_logits is None:
+                failures.append(
+                    reference_logit_failure
+                    or ParityFailure(
+                        prompt_index,
+                        step_index,
+                        "invalid_reference_logits",
+                        "reference logits validation failed",
+                    )
+                )
+                prompt_failed = True
+                break
+            candidate_logits, candidate_logit_failure = _validated_logits(
+                candidate.next_token_logits(input_ids),
+                role="candidate",
+                prompt_index=prompt_index,
+                step_index=step_index,
+            )
+            if candidate_logit_failure is not None or candidate_logits is None:
+                failures.append(
+                    candidate_logit_failure
+                    or ParityFailure(
+                        prompt_index,
+                        step_index,
+                        "invalid_candidate_logits",
+                        "candidate logits validation failed",
+                    )
+                )
+                prompt_failed = True
+                break
+
             steps_compared += 1
             ok, step_abs, step_rel, detail = _compare_logits(
                 reference_logits,
@@ -400,7 +474,30 @@ def compare_backends(
                 )
             )
             continue
-        if reference.decode(generated) != candidate.decode(generated):
+
+        reference_text = reference.decode(generated)
+        if not isinstance(reference_text, str):
+            failures.append(
+                ParityFailure(
+                    prompt_index,
+                    None,
+                    "invalid_reference_decode",
+                    "reference decode() must return a string",
+                )
+            )
+            continue
+        candidate_text = candidate.decode(generated)
+        if not isinstance(candidate_text, str):
+            failures.append(
+                ParityFailure(
+                    prompt_index,
+                    None,
+                    "invalid_candidate_decode",
+                    "candidate decode() must return a string",
+                )
+            )
+            continue
+        if reference_text != candidate_text:
             failures.append(
                 ParityFailure(
                     prompt_index,
