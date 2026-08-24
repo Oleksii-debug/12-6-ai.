@@ -24,7 +24,7 @@ SCHEMA_VERSION = "12-6.inference-backend-conformance.v1"
 AUTHORITY = "BACKEND_INTERFACE_CONFORMANCE_NOT_PARITY_OR_PROMOTION"
 _DEFAULT_LOADER = "twelve_six.inference.first_party:load_first_party_backend"
 _DEFAULT_PROMPTS = ("12-6", "Base", "Україна")
-_CHECK_NAMES = (
+_CHECK_NAMES = {
     "structural_contract",
     "deterministic_encode",
     "deterministic_decode",
@@ -34,7 +34,26 @@ _CHECK_NAMES = (
     "token_ids_in_vocab",
     "eos_in_vocab",
     "generation_path",
-)
+}
+_PROBE_KEYS = {
+    "prompt_utf8_sha256",
+    "prompt_token_count",
+    "prompt_token_ids_sha256",
+    "decoded_prompt_utf8_sha256",
+    "vocab_size",
+    "logits_float64_hex_sha256",
+    "repeat_max_abs_delta",
+    "greedy_token_id",
+    "greedy_text_utf8_sha256",
+}
+_GENERATION_KEYS = {
+    "executed",
+    "probe_index",
+    "generated_token_id",
+    "text_utf8_sha256",
+    "stop_reason",
+}
+_HEX = frozenset("0123456789abcdef")
 
 
 def _canonical_sha256(value: object) -> str:
@@ -52,11 +71,25 @@ def _text_sha256(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def _require_sha256(value: object, *, name: str) -> str:
+    if not isinstance(value, str) or len(value) != 64 or any(ch not in _HEX for ch in value):
+        raise ValueError(f"{name} must be a lowercase SHA-256 digest")
+    return value
+
+
 def _require_positive_int(value: object, *, name: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
         raise TypeError(f"{name} must be an integer, not {type(value).__name__}")
     if value < 1:
         raise ValueError(f"{name} must be >= 1")
+    return value
+
+
+def _require_nonnegative_int(value: object, *, name: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise TypeError(f"{name} must be an integer")
+    if value < 0:
+        raise ValueError(f"{name} must be non-negative")
     return value
 
 
@@ -66,19 +99,16 @@ def _require_token_ids(value: object, *, name: str) -> list[int]:
     if not value:
         raise ValueError(f"{name} returned zero tokens")
     for index, token_id in enumerate(value):
-        if isinstance(token_id, bool) or not isinstance(token_id, int):
-            raise TypeError(f"{name}[{index}] must be an integer token ID")
-        if token_id < 0:
-            raise ValueError(f"{name}[{index}] must be non-negative")
+        _require_nonnegative_int(token_id, name=f"{name}[{index}]")
     return value
 
 
 def _require_logits(value: object, *, name: str) -> list[float]:
     if isinstance(value, (str, bytes, bytearray)) or not isinstance(value, Sequence):
         raise TypeError(f"{name} must return a one-dimensional numeric sequence")
-    logits: list[float] = []
     if len(value) == 0:
         raise ValueError(f"{name} returned an empty vocabulary")
+    logits: list[float] = []
     for index, raw in enumerate(value):
         if isinstance(raw, bool) or not isinstance(raw, (int, float)):
             raise TypeError(f"{name}[{index}] must be a real numeric logit")
@@ -89,7 +119,7 @@ def _require_logits(value: object, *, name: str) -> list[float]:
     return logits
 
 
-def _validate_repeat_atol(value: float) -> float:
+def _validate_repeat_atol(value: object) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise TypeError("repeat_atol must be a real number")
     converted = float(value)
@@ -110,7 +140,8 @@ def _logit_fingerprint(logits: Sequence[float]) -> str:
 def _repeat_delta(first: Sequence[float], second: Sequence[float]) -> float:
     if len(first) != len(second):
         raise ValueError("repeated next_token_logits calls changed vocabulary width")
-    return max((abs(left - right) for left, right in zip(first, second, strict=True)), default=0.0)
+    deltas = (abs(left - right) for left, right in zip(first, second, strict=True))
+    return max(deltas, default=0.0)
 
 
 def _probe_backend(
@@ -194,6 +225,8 @@ def run_backend_conformance(
     repeat_atol: float = 0.0,
 ) -> dict[str, Any]:
     """Validate one backend before parity or serving evidence is attempted."""
+    if not isinstance(backend, InferenceBackend):
+        raise TypeError("backend does not satisfy the D07 InferenceBackend structure")
     repeat_atol = _validate_repeat_atol(repeat_atol)
     max_context_tokens = _require_positive_int(
         backend.max_context_tokens,
@@ -201,10 +234,7 @@ def run_backend_conformance(
     )
     eos_token_id = backend.eos_token_id
     if eos_token_id is not None:
-        if isinstance(eos_token_id, bool) or not isinstance(eos_token_id, int):
-            raise TypeError("backend eos_token_id must be int or None")
-        if eos_token_id < 0:
-            raise ValueError("backend eos_token_id must be non-negative when set")
+        _require_nonnegative_int(eos_token_id, name="backend eos_token_id")
 
     prompt_values = tuple(prompts)
     if not prompt_values:
@@ -235,33 +265,30 @@ def run_backend_conformance(
             "backend eos_token_id is outside inferred logits vocabulary: "
             f"eos={eos_token_id} vocab={inferred_vocab_size}"
         )
-
-    generation: dict[str, object]
     if generation_probe_index is None:
-        generation = {
-            "executed": False,
-            "reason": "all_probes_fill_context",
-        }
-    else:
-        generation_result = generate(
-            backend,
-            prompt_values[generation_probe_index],
-            GenerationConfig(max_new_tokens=1, sample=False),
+        raise ValueError(
+            "at least one conformance prompt must leave room for one canonical generation step"
         )
-        if len(generation_result.generated_token_ids) != 1:
-            raise ValueError("canonical generation path did not produce exactly one probe token")
-        generated_id = generation_result.generated_token_ids[0]
-        if not 0 <= generated_id < inferred_vocab_size:
-            raise ValueError("canonical generation path produced out-of-vocabulary token")
-        generation = {
-            "executed": True,
-            "probe_index": generation_probe_index,
-            "generated_token_id": generated_id,
-            "text_utf8_sha256": _text_sha256(generation_result.text),
-            "stop_reason": generation_result.stop_reason,
-        }
 
-    checks = {name: True for name in _CHECK_NAMES}
+    generation_result = generate(
+        backend,
+        prompt_values[generation_probe_index],
+        GenerationConfig(max_new_tokens=1, sample=False),
+    )
+    if len(generation_result.generated_token_ids) != 1:
+        raise ValueError("canonical generation path did not produce exactly one probe token")
+    generated_id = generation_result.generated_token_ids[0]
+    if not 0 <= generated_id < inferred_vocab_size:
+        raise ValueError("canonical generation path produced out-of-vocabulary token")
+    generation: dict[str, object] = {
+        "executed": True,
+        "probe_index": generation_probe_index,
+        "generated_token_id": generated_id,
+        "text_utf8_sha256": _text_sha256(generation_result.text),
+        "stop_reason": generation_result.stop_reason,
+    }
+
+    checks = {name: True for name in sorted(_CHECK_NAMES)}
     report: dict[str, Any] = {
         "schema_version": SCHEMA_VERSION,
         "authority": AUTHORITY,
@@ -282,6 +309,30 @@ def run_backend_conformance(
     report["report_sha256"] = _canonical_sha256(report)
     validate_conformance_report(report)
     return report
+
+
+def _validate_probe(probe: object, *, inferred_vocab_size: int, repeat_atol: float) -> None:
+    if not isinstance(probe, dict) or set(probe) != _PROBE_KEYS:
+        raise ValueError("conformance probe schema mismatch")
+    for key in (
+        "prompt_utf8_sha256",
+        "prompt_token_ids_sha256",
+        "decoded_prompt_utf8_sha256",
+        "logits_float64_hex_sha256",
+        "greedy_text_utf8_sha256",
+    ):
+        _require_sha256(probe[key], name=f"probe {key}")
+    _require_positive_int(probe["prompt_token_count"], name="probe prompt_token_count")
+    if probe["vocab_size"] != inferred_vocab_size:
+        raise ValueError("conformance probe vocabulary does not match report vocabulary")
+    greedy_id = _require_nonnegative_int(probe["greedy_token_id"], name="probe greedy_token_id")
+    if greedy_id >= inferred_vocab_size:
+        raise ValueError("conformance probe greedy token is outside inferred vocabulary")
+    delta = probe["repeat_max_abs_delta"]
+    if isinstance(delta, bool) or not isinstance(delta, (int, float)):
+        raise TypeError("probe repeat_max_abs_delta must be numeric")
+    if not math.isfinite(float(delta)) or not 0 <= float(delta) <= repeat_atol:
+        raise ValueError("probe repeat delta exceeds conformance tolerance")
 
 
 def validate_conformance_report(report: dict[str, Any]) -> None:
@@ -308,18 +359,56 @@ def validate_conformance_report(report: dict[str, Any]) -> None:
         raise ValueError("conformance report top-level schema mismatch")
     if report["schema_version"] != SCHEMA_VERSION or report["authority"] != AUTHORITY:
         raise ValueError("conformance report authority/schema mismatch")
+    if not isinstance(report["backend_type"], str) or not report["backend_type"]:
+        raise ValueError("conformance report backend_type is invalid")
     _require_positive_int(report["max_context_tokens"], name="report max_context_tokens")
-    _require_positive_int(report["inferred_vocab_size"], name="report inferred_vocab_size")
+    inferred_vocab_size = _require_positive_int(
+        report["inferred_vocab_size"],
+        name="report inferred_vocab_size",
+    )
+    eos_token_id = report["eos_token_id"]
+    if eos_token_id is not None:
+        eos_token_id = _require_nonnegative_int(eos_token_id, name="report eos_token_id")
+        if eos_token_id >= inferred_vocab_size:
+            raise ValueError("report eos_token_id is outside inferred vocabulary")
     repeat_atol = _validate_repeat_atol(report["repeat_atol"])
-    if repeat_atol != report["repeat_atol"]:
-        raise ValueError("conformance report repeat_atol must be canonical")
+
     probes = report["probes"]
     if not isinstance(probes, list) or not probes:
         raise ValueError("conformance report must contain probe evidence")
-    if report["probe_count"] != len(probes):
+    probe_count = _require_positive_int(report["probe_count"], name="report probe_count")
+    if probe_count != len(probes):
         raise ValueError("conformance report probe_count mismatch")
+    for probe in probes:
+        _validate_probe(
+            probe,
+            inferred_vocab_size=inferred_vocab_size,
+            repeat_atol=repeat_atol,
+        )
+
+    generation = report["generation_probe"]
+    if not isinstance(generation, dict) or set(generation) != _GENERATION_KEYS:
+        raise ValueError("conformance generation probe schema mismatch")
+    if generation["executed"] is not True:
+        raise ValueError("conformance generation probe must execute")
+    probe_index = _require_nonnegative_int(
+        generation["probe_index"],
+        name="generation probe_index",
+    )
+    if probe_index >= probe_count:
+        raise ValueError("generation probe_index is outside probe evidence")
+    generated_id = _require_nonnegative_int(
+        generation["generated_token_id"],
+        name="generation generated_token_id",
+    )
+    if generated_id >= inferred_vocab_size:
+        raise ValueError("generation token is outside inferred vocabulary")
+    _require_sha256(generation["text_utf8_sha256"], name="generation text_utf8_sha256")
+    if generation["stop_reason"] not in {"max_new_tokens", "eos"}:
+        raise ValueError("unexpected one-step generation stop reason")
+
     checks = report["checks"]
-    if not isinstance(checks, dict) or tuple(checks) != _CHECK_NAMES:
+    if not isinstance(checks, dict) or set(checks) != _CHECK_NAMES:
         raise ValueError("conformance report check schema mismatch")
     if not all(value is True for value in checks.values()):
         raise ValueError("conformance report contains a non-passing check")
@@ -331,9 +420,8 @@ def validate_conformance_report(report: dict[str, Any]) -> None:
         raise ValueError("generic conformance may not claim checkpoint identity")
     if report["promotion_authority"] is not False:
         raise ValueError("conformance may not grant promotion authority")
-    expected_hash = report["report_sha256"]
-    if not isinstance(expected_hash, str) or len(expected_hash) != 64:
-        raise ValueError("conformance report hash is invalid")
+
+    expected_hash = _require_sha256(report["report_sha256"], name="conformance report hash")
     unhashed = dict(report)
     unhashed.pop("report_sha256")
     if expected_hash != _canonical_sha256(unhashed):
