@@ -18,6 +18,7 @@ from .core import (
     CheckpointIdentity,
     LoadResult,
     load_checkpoint,
+    save_checkpoint,
     verify_checkpoint,
 )
 
