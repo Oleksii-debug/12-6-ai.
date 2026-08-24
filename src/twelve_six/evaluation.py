@@ -10,11 +10,12 @@ from __future__ import annotations
 import argparse
 import json
 import math
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import asdict, dataclass, field, fields
 from enum import Enum
 from hashlib import sha256
 from pathlib import Path
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any
 
 _MISSING = object()
 _FORBIDDEN_HELDOUT_USES = frozenset(
@@ -91,7 +92,7 @@ class S0GatePolicy:
             raise ValueError("max_train_validation_overlap must be >= 0")
 
     @classmethod
-    def from_mapping(cls, data: Mapping[str, Any]) -> "S0GatePolicy":
+    def from_mapping(cls, data: Mapping[str, Any]) -> S0GatePolicy:
         known = {item.name for item in fields(cls)}
         unknown = set(data) - known
         if unknown:
@@ -842,7 +843,7 @@ def dump_stage_gate_result(result: Mapping[str, Any], path: str | Path) -> None:
 def load_json_object(path: str | Path) -> dict[str, Any]:
     data = json.loads(Path(path).read_text(encoding="utf-8"))
     if not isinstance(data, dict):
-        raise ValueError(f"{path} must contain a JSON object")
+        raise TypeError(f"{path} must contain a JSON object")
     return data
 
 

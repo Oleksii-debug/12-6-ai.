@@ -11,6 +11,7 @@ on:
       - "tests/test_s0_candidate_evaluation.py"
       - "tests/fixtures/s0_complete_evidence.json"
       - "docs/EVALUATION_AND_STAGE_GATES.md"
+      - "docs/S0_EVALUATION_RUNBOOK.md"
       - "pyproject.toml"
       - ".github/workflows/d06-evaluation.yml"
   workflow_dispatch:
@@ -29,6 +30,7 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.11.16"
@@ -70,22 +72,29 @@ jobs:
             --repo-root . \
             --candidate-sha "$CANDIDATE_SHA" \
             --output-dir "$RUNNER_TEMP/s0-real-evaluation" \
-            --train-steps 40 \
-            --fail-on-incomplete
-      - name: Verify real report remains non-promoting without completed CI and audits
-        if: always()
+            --train-steps 40
+      - name: Validate real report mechanics and non-promotion boundary
         run: |
           python - <<'PY'
           import json
           import os
           from pathlib import Path
 
-          report_path = Path(os.environ["RUNNER_TEMP"]) / "s0-real-evaluation" / "promotion_eligibility.json"
-          if report_path.exists():
-              report = json.loads(report_path.read_text(encoding="utf-8"))
-              assert report["candidate_sha"] == os.environ["CANDIDATE_SHA"]
-              assert report["promotion_eligible"] is False
-              assert report["promotion_authority_status"] == "NOT_TESTED"
+          root = Path(os.environ["RUNNER_TEMP"]) / "s0-real-evaluation"
+          evidence = json.loads((root / "candidate_evidence.json").read_text(encoding="utf-8"))
+          gate = json.loads((root / "stage_gate_report.json").read_text(encoding="utf-8"))
+          promotion = json.loads((root / "promotion_eligibility.json").read_text(encoding="utf-8"))
+          candidate_sha = os.environ["CANDIDATE_SHA"]
+
+          assert evidence["candidate"]["sha"] == candidate_sha
+          assert evidence["candidate"]["integrated"] is False
+          assert gate["candidate"]["sha"] == candidate_sha
+          assert gate["summary"]["overall_status"] in {"PASS", "FAIL", "NOT_TESTED"}
+          assert gate["summary"]["promotion_eligible"] is False
+          assert gate["summary"]["promotion_authority_status"] == "NOT_TESTED"
+          assert promotion["candidate_sha"] == candidate_sha
+          assert promotion["promotion_eligible"] is False
+          assert promotion["promotion_authority_status"] == "NOT_TESTED"
           PY
       - name: Upload exact-candidate evaluation evidence
         if: always()

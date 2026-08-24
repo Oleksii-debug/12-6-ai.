@@ -2,10 +2,8 @@ import json
 from pathlib import Path
 
 from twelve_six.evaluation import stable_text_sha256
-from twelve_six.stage_gates import (
-    evaluate_s0_integrated,
-    main as stage_gate_main,
-)
+from twelve_six.stage_gates import evaluate_s0_integrated
+from twelve_six.stage_gates import main as stage_gate_main
 
 
 def complete_integrated_evidence() -> dict:

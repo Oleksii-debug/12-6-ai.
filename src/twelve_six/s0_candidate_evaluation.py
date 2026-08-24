@@ -41,7 +41,7 @@ def _sha256_file(path: Path) -> str:
 def _load_json(path: Path) -> dict[str, Any]:
     value = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(value, dict):
-        raise ValueError(f"{path} must contain a JSON object")
+        raise TypeError(f"{path} must contain a JSON object")
     return value
 
 
@@ -52,7 +52,7 @@ def _load_jsonl(path: Path) -> list[dict[str, Any]]:
             continue
         row = json.loads(line)
         if not isinstance(row, dict):
-            raise ValueError(f"{path}:{line_number} must contain a JSON object")
+            raise TypeError(f"{path}:{line_number} must contain a JSON object")
         rows.append(row)
     if not rows:
         raise ValueError(f"{path} contains no records")
@@ -219,7 +219,7 @@ def collect_s0_candidate_evidence(
         raise ValueError("unexpected S0 dataset identity")
     expected_outputs = manifest.get("outputs")
     if not isinstance(expected_outputs, dict):
-        raise ValueError("dataset manifest outputs must be an object")
+        raise TypeError("dataset manifest outputs must be an object")
     for name, path in (("train.jsonl", train_path), ("validation.jsonl", validation_path)):
         expected = expected_outputs.get(name)
         actual = _sha256_file(path)
@@ -258,7 +258,7 @@ def collect_s0_candidate_evidence(
     forbidden_purposes = set(forbidden_purposes_raw)
     sources = source_registry.get("sources", [])
     if not isinstance(sources, list):
-        raise ValueError("source registry sources must be an array")
+        raise TypeError("source registry sources must be an array")
     forbidden_source_count = sum(
         1
         for source in sources
