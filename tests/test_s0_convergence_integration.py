@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 from pathlib import Path
@@ -33,7 +34,9 @@ def _load_first_jsonl(path: Path) -> dict[str, object]:
     raise AssertionError(f"no records in {path}")
 
 
-def test_s0_accepted_contracts_execute_model_data_tokenizer_train_and_inference(tmp_path: Path) -> None:
+def test_s0_accepted_contracts_execute_model_data_tokenizer_train_and_inference(
+    tmp_path: Path,
+) -> None:
     stage = load_stage_config(ROOT / "configs/stages/s0_10k.json")
     tokenizer = ByteTokenizer()
 
@@ -50,7 +53,7 @@ def test_s0_accepted_contracts_execute_model_data_tokenizer_train_and_inference(
     )
     assert manifest["dataset_identity_sha256"] == DATASET_IDENTITY_SHA256
     committed_manifest_bytes = (ROOT / "data/s0/packaged/manifest.json").read_bytes()
-    assert __import__("hashlib").sha256(committed_manifest_bytes).hexdigest() == DATASET_MANIFEST_SHA256
+    assert hashlib.sha256(committed_manifest_bytes).hexdigest() == DATASET_MANIFEST_SHA256
     assert (rebuilt_dir / "manifest.json").read_bytes() == committed_manifest_bytes
 
     record = _load_first_jsonl(rebuilt_dir / "train.jsonl")
