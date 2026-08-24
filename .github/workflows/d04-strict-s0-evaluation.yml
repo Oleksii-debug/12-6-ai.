@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - "src/twelve_six/s0_candidate_evaluation.py"
+      - "src/twelve_six/evaluation_evidence.py"
       - "src/twelve_six/evaluation.py"
       - "src/twelve_six/stage_gates.py"
       - "src/twelve_six/checkpoint/**"
@@ -12,9 +13,13 @@ on:
       - "data/s0/**"
       - "configs/stages/**"
       - "requirements/locks/**"
+      - "tools/verify_locked_environment.py"
+      - "tools/validate_s0_evaluation_bundle.py"
       - "tests/test_s0_candidate_evaluation.py"
+      - "tests/test_s0_evaluation_bundle.py"
       - "tests/fixtures/s0_complete_evidence.json"
       - "docs/S0_EXACT_CANDIDATE_EVALUATION.md"
+      - "docs/S0_EVALUATION_BUNDLE_INTEGRITY.md"
       - ".github/workflows/d04-strict-s0-evaluation.yml"
   workflow_dispatch:
 
@@ -24,7 +29,7 @@ permissions:
 jobs:
   exact-candidate-evaluation:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 30
     env:
       CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
@@ -38,35 +43,55 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.11.16"
-      - run: python -m pip --version
-      - run: python -m pip install --disable-pip-version-check -e .[dev]
-      - run: python tools/check_repo_policy.py
-      - run: ruff check src tests tools
-      - name: Focused strict collector and fail-closed negatives
-        run: pytest -q tests/test_s0_candidate_evaluation.py
+      - name: Verify D08 locked environment and repository checks
+        run: >-
+          python tools/verify_locked_environment.py
+          --profile linux-x86_64
+          --source-sha "$CANDIDATE_SHA"
+          --evidence-out locked-environment-linux-x86_64.json
+          --run-repo-checks
+      - name: Create exact locked D04 execution environment
+        run: |
+          python -m venv .d04-locked
+          .d04-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .d04-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          .d04-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/dev.lock.txt
+          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .d04-locked/bin/python -m pip install --no-deps --no-build-isolation -e .
+          .d04-locked/bin/python -c "import torch,twelve_six; assert torch.__version__; print(twelve_six.__version__)"
+      - name: Focused strict collector and evidence-bundle negatives
+        run: >-
+          .d04-locked/bin/python -m pytest -q
+          tests/test_s0_candidate_evaluation.py
+          tests/test_s0_evaluation_bundle.py
       - name: Run real 40-step LOCAL_FREE exact-candidate evaluation
         run: |
-          python -m twelve_six.s0_candidate_evaluation \
+          .d04-locked/bin/python -m twelve_six.s0_candidate_evaluation \
             --repo-root . \
             --candidate-sha "$CANDIDATE_SHA" \
             --output-dir "$RUNNER_TEMP/s0-exact-evaluation" \
             --train-steps 40 \
             --fail-on-incomplete
-      - name: Validate machine reports and non-promotion boundary
+      - name: Bind reports to exact locked runtime and candidate
         run: |
-          python - <<'PY'
+          .d04-locked/bin/python tools/validate_s0_evaluation_bundle.py \
+            --candidate-sha "$CANDIDATE_SHA" \
+            --report-dir "$RUNNER_TEMP/s0-exact-evaluation" \
+            --locked-environment-evidence locked-environment-linux-x86_64.json \
+            --output "$RUNNER_TEMP/s0-exact-evaluation/evaluation_bundle.json" \
+            --require-quality-pass
+      - name: Validate non-promotion boundary
+        run: |
+          .d04-locked/bin/python - <<'PY'
           import json
           import os
           from pathlib import Path
 
           root = Path(os.environ["RUNNER_TEMP"]) / "s0-exact-evaluation"
-          evidence = json.loads((root / "candidate_evidence.json").read_text(encoding="utf-8"))
           gate = json.loads((root / "stage_gate_report.json").read_text(encoding="utf-8"))
           promotion = json.loads((root / "promotion_eligibility.json").read_text(encoding="utf-8"))
+          bundle = json.loads((root / "evaluation_bundle.json").read_text(encoding="utf-8"))
           sha = os.environ["CANDIDATE_SHA"]
 
-          assert evidence["candidate"]["sha"] == sha
-          assert evidence["provenance"]["checkout_head_sha"] == sha
           assert gate["candidate"]["sha"] == sha
           assert gate["summary"]["counts"] == {"FAIL": 0, "NOT_TESTED": 0, "PASS": 15}
           assert gate["summary"]["evaluation_complete"] is True
@@ -74,17 +99,18 @@ jobs:
           assert gate["summary"]["promotion_authority_status"] == "NOT_TESTED"
           assert gate["summary"]["promotion_eligible"] is False
           assert promotion["candidate_sha"] == sha
-          assert promotion["quality_overall_status"] == "PASS"
-          assert promotion["promotion_authority_status"] == "NOT_TESTED"
           assert promotion["promotion_eligible"] is False
+          assert bundle["candidate_sha"] == sha
+          assert bundle["summary"]["quality_overall_status"] == "PASS"
+          assert bundle["summary"]["promotion_eligible"] is False
           PY
-      - name: Full repository regression suite
-        run: pytest -q
       - name: Upload exact-candidate gate evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: s0-d04-exact-evaluation-${{ env.CANDIDATE_SHA }}
-          path: ${{ runner.temp }}/s0-exact-evaluation/*.json
+          path: |
+            ${{ runner.temp }}/s0-exact-evaluation/*.json
+            locked-environment-linux-x86_64.json
           if-no-files-found: warn
           retention-days: 14
