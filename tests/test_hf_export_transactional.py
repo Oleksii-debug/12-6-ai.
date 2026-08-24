@@ -1,5 +1,6 @@
 import json
 import os
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -11,6 +12,7 @@ from twelve_six.checkpoint import (
     CheckpointIntegrityError,
     export_hf_directory,
     save_checkpoint,
+    verify_checkpoint,
     verify_hf_directory,
 )
 
@@ -104,12 +106,49 @@ def test_export_consumes_verified_checkpoint_snapshot_without_reopening_source(
     verify_hf_directory(output)
 
 
+def test_parity_hook_reads_verified_reference_after_source_path_tamper(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    checkpoint = tmp_path / "checkpoint"
+    output = tmp_path / "hf"
+    manifest = save_checkpoint(checkpoint, model=Model(3.5), identity=identity("c"))
+    original_weights = (checkpoint / "weights.safetensors").read_bytes()
+    real_prepare = hf_export.prepare_checkpoint_load
+    first_call = True
+
+    def prepare_then_tamper(path: Path):
+        nonlocal first_call
+        verified = real_prepare(path)
+        if first_call:
+            first_call = False
+            (checkpoint / "weights.safetensors").write_bytes(b"source-path-now-corrupt")
+        return verified
+
+    def parity_hook(reference: Path, staging: Path):
+        assert verify_checkpoint(reference)["checkpoint_id"] == manifest["checkpoint_id"]
+        assert (reference / "weights.safetensors").read_bytes() == original_weights
+        assert (staging / "model.safetensors").read_bytes() == original_weights
+        return {"status": "PASS", "evidence_ref": "verified-reference-test"}
+
+    monkeypatch.setattr(hf_export, "prepare_checkpoint_load", prepare_then_tamper)
+    export_hf_directory(
+        checkpoint,
+        output,
+        hf_config={"model_type": "twelve_six_export_transactional"},
+        parity_hook=parity_hook,
+    )
+
+    verify_hf_directory(output)
+    assert not list(tmp_path.glob(".hf.reference-*"))
+
+
 def test_hook_failure_leaves_no_published_or_staging_export(tmp_path: Path):
     checkpoint = tmp_path / "checkpoint"
     output = tmp_path / "hf"
     save_checkpoint(checkpoint, model=Model(4.0), identity=identity("d"))
 
-    def broken_hook(source: Path, staging: Path):
+    def broken_hook(_reference: Path, _staging: Path):
         raise RuntimeError("parity failed")
 
     with pytest.raises(RuntimeError, match="parity failed"):
@@ -122,6 +161,34 @@ def test_hook_failure_leaves_no_published_or_staging_export(tmp_path: Path):
 
     assert not output.exists()
     assert not list(tmp_path.glob(".hf.staging-*"))
+    assert not list(tmp_path.glob(".hf.reference-*"))
+
+
+@pytest.mark.skipif(
+    os.name != "nt" and not sys.platform.startswith("linux"),
+    reason="atomic no-replace publish is only implemented on Windows/Linux",
+)
+def test_concurrent_destination_creation_is_not_replaced(tmp_path: Path):
+    checkpoint = tmp_path / "checkpoint"
+    output = tmp_path / "hf"
+    save_checkpoint(checkpoint, model=Model(4.5), identity=identity("d"))
+
+    def racing_hook(_reference: Path, _staging: Path):
+        output.mkdir()
+        (output / "owner-evidence.txt").write_text("preserve me", encoding="utf-8")
+        return {"status": "PASS", "evidence_ref": "racing-destination-test"}
+
+    with pytest.raises(FileExistsError, match="appeared during publish"):
+        export_hf_directory(
+            checkpoint,
+            output,
+            hf_config={"model_type": "twelve_six_export_transactional"},
+            parity_hook=racing_hook,
+        )
+
+    assert (output / "owner-evidence.txt").read_text(encoding="utf-8") == "preserve me"
+    assert not list(tmp_path.glob(".hf.staging-*"))
+    assert not list(tmp_path.glob(".hf.reference-*"))
 
 
 def test_export_verifier_rejects_payload_tamper(tmp_path: Path):
