@@ -1,0 +1,212 @@
+name: D05 Retained S0 Inference Evidence
+
+on:
+  pull_request:
+    paths:
+      - "src/twelve_six/inference/**"
+      - "src/twelve_six/checkpoint/**"
+      - "src/twelve_six/model/**"
+      - "src/twelve_six/training/**"
+      - "src/twelve_six/tokenization/**"
+      - "src/twelve_six/packing/**"
+      - "data/s0/**"
+      - "configs/stages/**"
+      - "requirements/locks/**"
+      - "tests/test_s0_retained_inference_evidence.py"
+      - ".github/workflows/d05-retained-inference-evidence.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  retained-first-party-evidence:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Prove exact source checkout
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Verify D08 locked environment and repository checks
+        run: >-
+          python tools/verify_locked_environment.py
+          --profile linux-x86_64
+          --source-sha "$SOURCE_SHA"
+          --evidence-out locked-environment-linux-x86_64.json
+          --run-repo-checks
+
+      - name: Create exact locked inference execution environment
+        run: |
+          python -m venv .d05-inference-locked
+          .d05-inference-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .d05-inference-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .d05-inference-locked/bin/python -m pip install --no-deps --no-build-isolation -e .
+          .d05-inference-locked/bin/python -c "import torch,twelve_six; assert torch.__version__; print(twelve_six.__version__)"
+
+      - name: Train, retain checkpoint, reload and prove exact first-party inference
+        run: |
+          ARTIFACT_ROOT="$RUNNER_TEMP/d05-retained-inference"
+          mkdir -p "$ARTIFACT_ROOT"
+          .d05-inference-locked/bin/python -m twelve_six.inference.s0_artifact_evidence \
+            --repo-root . \
+            --candidate-sha "$SOURCE_SHA" \
+            --output-dir "$ARTIFACT_ROOT/runtime" \
+            --train-steps 40 \
+            --seed 20260825
+          cp locked-environment-linux-x86_64.json "$ARTIFACT_ROOT/locked-environment-linux-x86_64.json"
+
+      - name: Exercise plain prompt and stdin JSON diagnostics
+        run: |
+          ARTIFACT_ROOT="$RUNNER_TEMP/d05-retained-inference"
+          CHECKPOINT="$ARTIFACT_ROOT/runtime/checkpoint"
+          .d05-inference-locked/bin/python -m twelve_six.inference.cli \
+            --checkpoint "$CHECKPOINT" \
+            --prompt "12-6" \
+            --greedy \
+            --max-new-tokens 4 \
+            --seed 20260825 \
+            --json \
+            > "$ARTIFACT_ROOT/cli-prompt.json" \
+            2> "$ARTIFACT_ROOT/cli-prompt.stderr"
+          printf 'stdin prompt' | .d05-inference-locked/bin/python -m twelve_six.inference.cli \
+            --checkpoint "$CHECKPOINT" \
+            --greedy \
+            --max-new-tokens 2 \
+            --seed 20260825 \
+            --json \
+            > "$ARTIFACT_ROOT/cli-stdin.json" \
+            2> "$ARTIFACT_ROOT/cli-stdin.stderr"
+          ARTIFACT_ROOT="$ARTIFACT_ROOT" .d05-inference-locked/bin/python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path(os.environ["ARTIFACT_ROOT"])
+          for name in ("cli-prompt.json", "cli-stdin.json"):
+              payload = json.loads((root / name).read_text(encoding="utf-8"))
+              assert payload["backend"]["backend"] == "first_party_torch"
+              assert payload["backend"]["git_sha"] == os.environ["SOURCE_SHA"]
+              assert payload["mode"] == "greedy"
+          for name in ("cli-prompt.json", "cli-stdin.json", "cli-prompt.stderr", "cli-stdin.stderr"):
+              assert "\x1b[" not in (root / name).read_text(encoding="utf-8")
+          PY
+
+      - name: Exercise actual loopback OpenAI-compatible completion server
+        run: |
+          ARTIFACT_ROOT="$RUNNER_TEMP/d05-retained-inference"
+          CHECKPOINT="$ARTIFACT_ROOT/runtime/checkpoint"
+          PORT=18765
+          .d05-inference-locked/bin/python -m twelve_six.inference.server \
+            --checkpoint "$CHECKPOINT" \
+            --host 127.0.0.1 \
+            --port "$PORT" \
+            --model-name 12-6-base-s0 \
+            --json-diagnostics \
+            > "$ARTIFACT_ROOT/server.stdout" \
+            2> "$ARTIFACT_ROOT/server.stderr" &
+          SERVER_PID=$!
+          cleanup() { kill "$SERVER_PID" 2>/dev/null || true; }
+          trap cleanup EXIT
+          for _ in $(seq 1 30); do
+            if grep -q '"event": "server_ready"' "$ARTIFACT_ROOT/server.stderr"; then
+              break
+            fi
+            sleep 1
+          done
+          grep -q '"event": "server_ready"' "$ARTIFACT_ROOT/server.stderr"
+          ARTIFACT_ROOT="$ARTIFACT_ROOT" PORT="$PORT" .d05-inference-locked/bin/python - <<'PY'
+          import json
+          import os
+          import urllib.request
+          from pathlib import Path
+
+          request = urllib.request.Request(
+              f"http://127.0.0.1:{os.environ['PORT']}/v1/completions",
+              data=json.dumps(
+                  {
+                      "model": "12-6-base-s0",
+                      "prompt": "12-6",
+                      "max_tokens": 4,
+                      "temperature": 0,
+                      "top_p": 1.0,
+                      "seed": 20260825,
+                  }
+              ).encode("utf-8"),
+              headers={"Content-Type": "application/json"},
+              method="POST",
+          )
+          with urllib.request.urlopen(request, timeout=10) as response:
+              payload = json.loads(response.read().decode("utf-8"))
+          assert payload["object"] == "text_completion"
+          assert payload["model"] == "12-6-base-s0"
+          assert isinstance(payload["choices"], list) and len(payload["choices"]) == 1
+          Path(os.environ["ARTIFACT_ROOT"], "server-response.json").write_text(
+              json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          cleanup
+          wait "$SERVER_PID" || true
+          trap - EXIT
+
+      - name: Build portable project wheel and artifact hash manifest
+        run: |
+          ARTIFACT_ROOT="$RUNNER_TEMP/d05-retained-inference"
+          mkdir -p "$ARTIFACT_ROOT/dist"
+          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .d05-inference-locked/bin/python -m pip wheel \
+            --no-deps \
+            --no-build-isolation \
+            --wheel-dir "$ARTIFACT_ROOT/dist" \
+            .
+          ARTIFACT_ROOT="$ARTIFACT_ROOT" .d05-inference-locked/bin/python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path(os.environ["ARTIFACT_ROOT"])
+          records = []
+          for path in sorted(item for item in root.rglob("*") if item.is_file()):
+              if path.name == "artifact-manifest.json":
+                  continue
+              records.append(
+                  {
+                      "path": path.relative_to(root).as_posix(),
+                      "bytes": path.stat().st_size,
+                      "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                  }
+              )
+          manifest = {
+              "schema": "12-6.s0-retained-inference-artifact.v1",
+              "source_sha": os.environ["SOURCE_SHA"],
+              "files": records,
+              "promotion_claim": False,
+              "windows_nvda_live_pass": False,
+          }
+          canonical = json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode("utf-8")
+          manifest["manifest_sha256"] = hashlib.sha256(canonical).hexdigest()
+          (root / "artifact-manifest.json").write_text(
+              json.dumps(manifest, sort_keys=True, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Upload retained checkpoint and inference evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: d05-s0-retained-inference-evidence
+          path: ${{ runner.temp }}/d05-retained-inference
+          if-no-files-found: error
+          retention-days: 30
