@@ -41,13 +41,22 @@ class S0TorchGenerationSession:
         try:
             output, self._cache = self._model.prefill_kv_cache(tensor)
             self._logits = output.logits[0, -1].detach().float().cpu().tolist()
-        except Exception:
+        except (RuntimeError, TypeError, ValueError):
             self._model.train(self._was_training)
             raise
 
     @property
     def sequence_length(self) -> int:
         return self._cache.sequence_length
+
+    @property
+    def cache_bytes(self) -> int:
+        self._require_open()
+        return sum(
+            layer.key.numel() * layer.key.element_size()
+            + layer.value.numel() * layer.value.element_size()
+            for layer in self._cache.layers
+        )
 
     def _require_open(self) -> None:
         if self._closed:
