@@ -1,0 +1,31 @@
+name: D02 Real S0 Training
+on:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  local-free-equivalent-cpu-evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - run: python -m pip install --disable-pip-version-check -e .[dev]
+      - run: ruff check src tests tools
+      - name: Real D01-D04 S0 focused contract test
+        run: pytest -q tests/test_s0_real_training_evidence.py
+      - name: Execute real 40-step S0 CPU training and emit manifest
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          python tools/run_s0_real_training.py \
+            --source-sha "$SOURCE_SHA" \
+            --output /tmp/s0-real-training-evidence.json \
+            --seed 1337 \
+            --max-steps 40 \
+            --batch-size 3
+          cat /tmp/s0-real-training-evidence.json
