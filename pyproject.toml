@@ -7,7 +7,7 @@ name = "twelve-six-ai"
 version = "0.2.0.dev0"
 description = "12-6 AI from-scratch language model research"
 requires-python = ">=3.11"
-dependencies = ["torch>=2.2"]
+dependencies = ["torch>=2.5"]
 
 [project.scripts]
 twelve-six-generate = "twelve_six.inference.cli:main"
