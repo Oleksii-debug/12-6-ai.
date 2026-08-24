@@ -91,7 +91,7 @@ def _read_locked_components(root: Path, profile: Mapping[str, Any]) -> list[dict
                     f"locked component version conflict for {name}: "
                     f"{current['version']} vs {version}"
                 )
-            current["hashes"] = tuple(sorted(set((*current["hashes"], *hashes))))
+            current["hashes"] = tuple(sorted({*current["hashes"], *hashes}))
             current["groups"].add(str(group))
 
     normalized: list[dict[str, Any]] = []
