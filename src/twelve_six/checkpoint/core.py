@@ -518,12 +518,7 @@ def save_checkpoint(
             f"{manifest_sha}  {MANIFEST_NAME}\n", encoding="ascii"
         )
         verify_checkpoint(temp_dir)
-        try:
-            os.replace(temp_dir, destination)
-        except OSError:
-            # The destination may have appeared after the initial existence check.
-            # A valid winning checkpoint is non-empty, so rename fails instead of replacing it.
-            raise
+        os.replace(temp_dir, destination)
         return manifest
     except Exception:
         if temp_dir.exists():
