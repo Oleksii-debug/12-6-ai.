@@ -17,9 +17,9 @@ from .core import (
     CheckpointCompatibilityError,
     CheckpointIdentity,
     LoadResult,
-    load_checkpoint,
+    load_verified_checkpoint,
+    prepare_checkpoint_load,
     save_checkpoint,
-    verify_checkpoint,
 )
 
 
@@ -29,7 +29,8 @@ def _trainer_state_as_mapping(state: Any) -> Mapping[str, Any]:
     if isinstance(state, Mapping):
         return dict(state)
     raise TypeError(
-        "trainer.state_dict() must return a dataclass instance or mapping for data-only serialization"
+        "trainer.state_dict() must return a dataclass instance or mapping "
+        "for data-only serialization"
     )
 
 
@@ -107,11 +108,7 @@ def save_trainer_checkpoint(
     identity: CheckpointIdentity,
     overwrite: bool = False,
 ) -> dict[str, Any]:
-    """Save model + trainer-owned optimizer/scheduler/scaler/counter state.
-
-    The trainer must expose state_dict(). Its state is serialized as data only;
-    no trainer class/module identity is imported into the checkpoint format.
-    """
+    """Save model + trainer-owned optimizer/scheduler/scaler/counter state."""
 
     if not hasattr(trainer, "state_dict"):
         raise TypeError("trainer must provide state_dict()")
@@ -146,21 +143,19 @@ def load_trainer_checkpoint(
     expected_environment_lock_hash: str | None = None,
     expected_seed: int | None = None,
 ) -> LoadResult:
-    """Verify the complete canonical identity, then restore a fresh D02 trainer.
+    """Verify one exact byte snapshot, bind it, then restore fresh D02 targets.
 
-    The preflight is intentionally redundant with :func:`load_checkpoint`: the
-    first verification checks canonical nested run-binding fields before any target
-    object can be mutated, while the second verification closes a possible file
-    change between preflight and load. Trainer state is applied only after the
-    model checkpoint has passed both checks.
+    The canonical nested identity checks and the actual load consume the same
+    verified byte snapshot. The source directory is never re-opened between
+    run-binding verification and model mutation.
     """
 
     if not hasattr(trainer, "load_state_dict"):
         raise TypeError("trainer must provide load_state_dict()")
 
-    verified_manifest = verify_checkpoint(directory)
+    verified = prepare_checkpoint_load(directory)
     _assert_bound_metadata(
-        verified_manifest,
+        verified.manifest,
         expected_init_spec_hash=expected_init_spec_hash,
         expected_split_identity=expected_split_identity,
         expected_packing_hash=expected_packing_hash,
@@ -170,8 +165,8 @@ def load_trainer_checkpoint(
         expected_seed=expected_seed,
     )
 
-    result = load_checkpoint(
-        directory,
+    result = load_verified_checkpoint(
+        verified,
         model=model,
         strict_model=strict_model,
         restore_rng=restore_rng,
