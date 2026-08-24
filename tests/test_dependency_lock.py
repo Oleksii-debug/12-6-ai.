@@ -84,12 +84,12 @@ def test_lock_text_rejects_floating_or_unhashed_requirements(tmp_path: Path) -> 
     verifier = _load_verifier()
     floating = tmp_path / "floating.lock.txt"
     floating.write_text("numpy>=2\n", encoding="utf-8")
-    with pytest.raises(DependencyLockError, match="non-exact or unhashed"):
+    with pytest.raises(verifier.LOCK.DependencyLockError, match="non-exact or unhashed"):
         verifier._validate_lock_text(floating, 1)
 
     unhashed = tmp_path / "unhashed.lock.txt"
     unhashed.write_text("numpy==2.4.6\n", encoding="utf-8")
-    with pytest.raises(DependencyLockError, match="non-exact or unhashed"):
+    with pytest.raises(verifier.LOCK.DependencyLockError, match="non-exact or unhashed"):
         verifier._validate_lock_text(unhashed, 1)
 
 
@@ -102,5 +102,5 @@ def test_lock_text_rejects_duplicate_distribution(tmp_path: Path) -> None:
         f"NumPy==2.4.6 --hash=sha256:{digest}\n",
         encoding="utf-8",
     )
-    with pytest.raises(DependencyLockError, match="duplicate locked distribution"):
+    with pytest.raises(verifier.LOCK.DependencyLockError, match="duplicate locked distribution"):
         verifier._validate_lock_text(path, 2)
