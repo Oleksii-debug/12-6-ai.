@@ -11,8 +11,12 @@ _GITHUB_ACTION = re.compile(
 )
 _DOCKER_DIGEST = re.compile(r"^docker://[^\s@]+@sha256:[0-9a-f]{64}$")
 _USES_LINE = re.compile(r"^\s*(?:-\s*)?uses:\s*(?P<value>.+?)\s*$")
+_PIP_INSTALL = re.compile(r"(?:^|\s)(?:python\s+-m\s+)?pip\s+install(?:\s|$)")
 _PIP_UPGRADE = re.compile(
     r"(?:^|\s)(?:python\s+-m\s+)?pip\s+install\s+(?:--upgrade|-U)\s+pip(?:\s|$)"
+)
+_LOCAL_PROJECT_INSTALL = re.compile(
+    r"(?:^|\s)(?:(?:-e|--editable)\s+)?\.(?:\[[^\]]+\])?(?:\s|$)"
 )
 _EXACT_PYTHON = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
 _TIMEOUT = re.compile(r"^[1-9][0-9]?$|^1[0-1][0-9]$|^120$")
@@ -55,6 +59,20 @@ def _next_non_comment_lines(lines: tuple[str, ...], start: int, limit: int = 14)
             continue
         selected.append(stripped)
     return tuple(selected)
+
+
+def _continued_shell_command(lines: tuple[str, ...], index: int) -> str:
+    """Return one shell command, joining explicit backslash continuations only."""
+
+    parts = [lines[index].strip()]
+    cursor = index
+    while parts[-1].endswith("\\") and cursor + 1 < len(lines):
+        cursor += 1
+        candidate = lines[cursor].strip()
+        if not candidate or candidate.startswith("#"):
+            continue
+        parts.append(candidate)
+    return " ".join(part.removesuffix("\\").strip() for part in parts)
 
 
 def _workflow_name(lines: tuple[str, ...]) -> str:
@@ -119,6 +137,15 @@ def validate_workflow_text(path: str, text: str) -> tuple[WorkflowViolation, ...
         stripped = line.strip()
         if stripped.startswith("runs-on:"):
             job_count += 1
+            runner = _strip_yaml_scalar(stripped.split(":", 1)[1])
+            if "latest" in runner.lower():
+                violations.append(
+                    WorkflowViolation(
+                        path,
+                        line_number,
+                        "runs-on must not use a mutable latest runner label",
+                    )
+                )
         if stripped.startswith("timeout-minutes:"):
             timeout_count += 1
             value = _strip_yaml_scalar(stripped.split(":", 1)[1])
@@ -215,6 +242,19 @@ def validate_workflow_text(path: str, text: str) -> tuple[WorkflowViolation, ...
                     "workflow must not float pip via pip install --upgrade/-U pip",
                 )
             )
+        elif _PIP_INSTALL.search(line):
+            command = _continued_shell_command(lines, index)
+            hash_locked = "--require-hashes" in command and "requirements/locks/" in command
+            local_no_deps = "--no-deps" in command and _LOCAL_PROJECT_INSTALL.search(command) is not None
+            if not hash_locked and not local_no_deps:
+                violations.append(
+                    WorkflowViolation(
+                        path,
+                        line_number,
+                        "direct pip install must use requirements/locks with --require-hashes "
+                        "or install the local project with --no-deps",
+                    )
+                )
 
     if job_count == 0:
         violations.append(WorkflowViolation(path, 1, "workflow must define at least one job"))
