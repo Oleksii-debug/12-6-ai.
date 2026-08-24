@@ -6,7 +6,8 @@ import hashlib
 import json
 import math
 import re
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any
 
 SCHEMA_VERSION = "12-6.s0-real-training-evidence.v2"
 REPOSITORY = "Oleksii-debug/12-6-ai."
@@ -42,8 +43,16 @@ def _require(condition: bool, message: str) -> None:
         raise S0EvidenceContractError(message)
 
 
+def _mapping(value: Any, field: str) -> Mapping[str, Any]:
+    _require(isinstance(value, Mapping), f"{field} block missing")
+    return value
+
+
 def _finite_number(value: Any, field: str, *, nonnegative: bool = False) -> float:
-    _require(isinstance(value, (int, float)) and not isinstance(value, bool), f"{field} must be numeric")
+    _require(
+        isinstance(value, (int, float)) and not isinstance(value, bool),
+        f"{field} must be numeric",
+    )
     number = float(value)
     _require(math.isfinite(number), f"{field} must be finite")
     if nonnegative:
@@ -55,37 +64,59 @@ def validate_locked_environment_evidence(
     evidence: Mapping[str, Any], *, source_sha: str
 ) -> dict[str, str]:
     """Validate D08 locked-environment evidence and return the binding payload."""
-    _require(_GIT_SHA.fullmatch(source_sha) is not None, "source_sha must be full lowercase Git SHA")
-    _require(evidence.get("schema_version") == "12-6.locked-environment-evidence.v1", "wrong locked environment schema")
+    _require(
+        _GIT_SHA.fullmatch(source_sha) is not None,
+        "source_sha must be full lowercase Git SHA",
+    )
+    _require(
+        evidence.get("schema_version") == "12-6.locked-environment-evidence.v1",
+        "wrong locked environment schema",
+    )
     _require(evidence.get("source_sha") == source_sha, "locked environment source SHA mismatch")
     _require(evidence.get("profile_id") == LOCK_PROFILE_ID, "wrong locked environment profile")
 
-    python = evidence.get("python")
-    _require(isinstance(python, Mapping), "locked environment python block missing")
+    python = _mapping(evidence.get("python"), "locked environment python")
     _require(python.get("version") == PYTHON_VERSION, "locked Python version mismatch")
 
-    lock_index = evidence.get("lock_index")
-    _require(isinstance(lock_index, Mapping), "locked environment index block missing")
+    lock_index = _mapping(evidence.get("lock_index"), "locked environment index")
     _require(lock_index.get("path") == LOCK_INDEX_PATH, "lock index path mismatch")
-    _require(lock_index.get("file_sha256") == LOCK_INDEX_FILE_SHA256, "lock index file SHA mismatch")
-    _require(lock_index.get("index_sha256") == LOCK_INDEX_SEMANTIC_SHA256, "lock index semantic SHA mismatch")
+    _require(
+        lock_index.get("file_sha256") == LOCK_INDEX_FILE_SHA256,
+        "lock index file SHA mismatch",
+    )
+    _require(
+        lock_index.get("index_sha256") == LOCK_INDEX_SEMANTIC_SHA256,
+        "lock index semantic SHA mismatch",
+    )
 
-    profile = evidence.get("lock_profile")
-    _require(isinstance(profile, Mapping), "lock profile block missing")
-    _require(profile.get("manifest_sha256") == LOCK_PROFILE_MANIFEST_SHA256, "lock profile semantic SHA mismatch")
-    _require(profile.get("file_sha256") == LOCK_PROFILE_FILE_SHA256, "lock profile file SHA mismatch")
+    profile = _mapping(evidence.get("lock_profile"), "lock profile")
+    _require(
+        profile.get("manifest_sha256") == LOCK_PROFILE_MANIFEST_SHA256,
+        "lock profile semantic SHA mismatch",
+    )
+    _require(
+        profile.get("file_sha256") == LOCK_PROFILE_FILE_SHA256,
+        "lock profile file SHA mismatch",
+    )
 
-    verification = evidence.get("verification")
-    _require(isinstance(verification, Mapping), "locked environment verification block missing")
-    for key in ("committed_lock_validation", "editable_install_import_cli", "wheel_install_import_cli", "repo_checks"):
+    verification = _mapping(evidence.get("verification"), "locked environment verification")
+    required_pass = (
+        "committed_lock_validation",
+        "editable_install_import_cli",
+        "wheel_install_import_cli",
+        "repo_checks",
+    )
+    for key in required_pass:
         _require(verification.get(key) == "PASS", f"locked environment {key} is not PASS")
 
     claimed_hash = evidence.get("evidence_sha256")
     _require(isinstance(claimed_hash, str), "locked environment evidence hash missing")
     unhashed = dict(evidence)
     unhashed.pop("evidence_sha256", None)
-    _require(_canonical_hash(unhashed) == claimed_hash, "locked environment evidence self-hash mismatch")
-
+    _require(
+        _canonical_hash(unhashed) == claimed_hash,
+        "locked environment evidence self-hash mismatch",
+    )
     return {
         "profile_id": LOCK_PROFILE_ID,
         "python_version": PYTHON_VERSION,
@@ -102,55 +133,92 @@ def validate_s0_training_evidence(
 ) -> None:
     """Validate machine evidence for D05/D06/C01/D10 consumption."""
     _require(evidence.get("schema_version") == SCHEMA_VERSION, "wrong S0 training evidence schema")
-    _require(evidence.get("authority") == "LOCAL_FREE_OR_FREE_HOSTED_CPU_EVIDENCE_NOT_PROMOTION", "wrong evidence authority")
+    _require(
+        evidence.get("authority") == "LOCAL_FREE_OR_FREE_HOSTED_CPU_EVIDENCE_NOT_PROMOTION",
+        "wrong evidence authority",
+    )
 
-    identity = evidence.get("identity")
-    _require(isinstance(identity, Mapping), "identity block missing")
+    identity = _mapping(evidence.get("identity"), "identity")
     _require(identity.get("repository") == REPOSITORY, "repository identity mismatch")
     source_sha = identity.get("source_sha")
-    _require(isinstance(source_sha, str) and _GIT_SHA.fullmatch(source_sha) is not None, "source SHA must be full lowercase Git SHA")
-    _require(identity.get("stage") == "S0", "stage must be S0")
-    _require(identity.get("modelspec_sha256") == MODEL_SPEC_SHA256, "ModelSpec identity mismatch")
-    _require(identity.get("initspec_sha256") == INIT_SPEC_SHA256, "InitSpec identity mismatch")
-    _require(identity.get("parameter_count") == PARAMETER_COUNT, "parameter count mismatch")
-    _require(identity.get("dataset_manifest_sha256") == DATASET_MANIFEST_SHA256, "dataset manifest mismatch")
-    _require(identity.get("dataset_identity_sha256") == DATASET_IDENTITY_SHA256, "dataset identity mismatch")
-    _require(identity.get("tokenizer_config_sha256") == TOKENIZER_CONFIG_SHA256, "tokenizer config mismatch")
-    _require(identity.get("tokenizer_vocab_sha256") == TOKENIZER_VOCAB_SHA256, "tokenizer vocab mismatch")
-    _require(identity.get("packing_config_sha256") == PACKING_CONFIG_SHA256, "packing identity mismatch")
+    _require(
+        isinstance(source_sha, str) and _GIT_SHA.fullmatch(source_sha) is not None,
+        "source SHA must be full lowercase Git SHA",
+    )
+    expected_identity = {
+        "stage": "S0",
+        "modelspec_sha256": MODEL_SPEC_SHA256,
+        "initspec_sha256": INIT_SPEC_SHA256,
+        "parameter_count": PARAMETER_COUNT,
+        "dataset_manifest_sha256": DATASET_MANIFEST_SHA256,
+        "dataset_identity_sha256": DATASET_IDENTITY_SHA256,
+        "tokenizer_config_sha256": TOKENIZER_CONFIG_SHA256,
+        "tokenizer_vocab_sha256": TOKENIZER_VOCAB_SHA256,
+        "packing_config_sha256": PACKING_CONFIG_SHA256,
+    }
+    for key, expected in expected_identity.items():
+        _require(identity.get(key) == expected, f"{key} identity mismatch")
 
     claimed_identity_hash = evidence.get("identity_sha256")
-    _require(isinstance(claimed_identity_hash, str) and _canonical_hash(identity) == claimed_identity_hash, "identity self-hash mismatch")
+    _require(
+        isinstance(claimed_identity_hash, str) and _canonical_hash(identity) == claimed_identity_hash,
+        "identity self-hash mismatch",
+    )
 
-    environment = identity.get("environment")
     if require_locked_environment:
-        _require(isinstance(environment, Mapping), "locked environment binding missing")
-        _require(environment.get("profile_id") == LOCK_PROFILE_ID, "training environment profile mismatch")
-        _require(environment.get("python_version") == PYTHON_VERSION, "training environment Python mismatch")
-        _require(environment.get("lock_index_file_sha256") == LOCK_INDEX_FILE_SHA256, "training lock file mismatch")
-        _require(environment.get("lock_index_sha256") == LOCK_INDEX_SEMANTIC_SHA256, "training lock semantic mismatch")
-        _require(environment.get("lock_profile_manifest_sha256") == LOCK_PROFILE_MANIFEST_SHA256, "training lock profile semantic mismatch")
-        _require(environment.get("lock_profile_file_sha256") == LOCK_PROFILE_FILE_SHA256, "training lock profile file mismatch")
-        _require(isinstance(environment.get("environment_evidence_sha256"), str), "environment evidence hash missing")
+        environment = _mapping(identity.get("environment"), "locked environment binding")
+        expected_environment = {
+            "profile_id": LOCK_PROFILE_ID,
+            "python_version": PYTHON_VERSION,
+            "lock_index_file_sha256": LOCK_INDEX_FILE_SHA256,
+            "lock_index_sha256": LOCK_INDEX_SEMANTIC_SHA256,
+            "lock_profile_manifest_sha256": LOCK_PROFILE_MANIFEST_SHA256,
+            "lock_profile_file_sha256": LOCK_PROFILE_FILE_SHA256,
+        }
+        for key, expected in expected_environment.items():
+            _require(environment.get(key) == expected, f"training {key} mismatch")
+        _require(
+            isinstance(environment.get("environment_evidence_sha256"), str),
+            "environment evidence hash missing",
+        )
 
-    seed_ordering = evidence.get("seed_ordering")
-    _require(isinstance(seed_ordering, Mapping), "seed ordering block missing")
-    _require(seed_ordering.get("seed_applied_before_model_construction") is True, "model construction seed ordering not proven")
-    _require(seed_ordering.get("trainer_reapplies_training_rng_seed") is True, "trainer seed ordering not proven")
-    _require(seed_ordering.get("resume_policy") == "restore_rng_from_verified_checkpoint_not_reseed", "resume RNG policy mismatch")
+    seed_ordering = _mapping(evidence.get("seed_ordering"), "seed ordering")
+    _require(
+        seed_ordering.get("seed_applied_before_model_construction") is True,
+        "model construction seed ordering not proven",
+    )
+    _require(
+        seed_ordering.get("trainer_reapplies_training_rng_seed") is True,
+        "trainer seed ordering not proven",
+    )
+    _require(
+        seed_ordering.get("resume_policy") == "restore_rng_from_verified_checkpoint_not_reseed",
+        "resume RNG policy mismatch",
+    )
 
-    split = evidence.get("split_isolation")
-    _require(isinstance(split, Mapping), "split isolation block missing")
+    split = _mapping(evidence.get("split_isolation"), "split isolation")
     _require(split.get("optimized_split") == "train", "only train split may be optimized")
     _require(split.get("record_id_overlap") == [], "train/validation overlap detected")
     _require(split.get("validation_optimized_tokens") == 0, "validation tokens were optimized")
-    _require(split.get("validation_optimizer_step_before_final_eval") == split.get("validation_optimizer_step_after_final_eval"), "held-out evaluation mutated optimizer step")
+    _require(
+        split.get("validation_optimizer_step_before_final_eval")
+        == split.get("validation_optimizer_step_after_final_eval"),
+        "held-out evaluation mutated optimizer step",
+    )
 
-    training = evidence.get("training")
-    _require(isinstance(training, Mapping), "training block missing")
-    _require(isinstance(training.get("optimizer_steps"), int) and training["optimizer_steps"] > 0, "optimizer step count invalid")
-    _require(isinstance(training.get("optimized_tokens"), int) and training["optimized_tokens"] > 0, "optimized token count invalid")
-    _require(training.get("optimized_tokens") == training.get("trainer_tokens_seen"), "optimized token accounting mismatch")
+    training = _mapping(evidence.get("training"), "training")
+    _require(
+        isinstance(training.get("optimizer_steps"), int) and training["optimizer_steps"] > 0,
+        "optimizer step count invalid",
+    )
+    _require(
+        isinstance(training.get("optimized_tokens"), int) and training["optimized_tokens"] > 0,
+        "optimized token count invalid",
+    )
+    _require(
+        training.get("optimized_tokens") == training.get("trainer_tokens_seen"),
+        "optimized token accounting mismatch",
+    )
     initial_train = _finite_number(training.get("initial_train_loss"), "initial_train_loss")
     final_train = _finite_number(training.get("final_train_loss"), "final_train_loss")
     _require(final_train < initial_train, "full-train loss did not decrease")
@@ -160,33 +228,43 @@ def validate_s0_training_evidence(
     grad_max = _finite_number(training.get("gradient_norm_max"), "gradient_norm_max", nonnegative=True)
     _require(grad_max >= grad_min, "gradient norm range is inverted")
 
-    delta = training.get("weight_delta")
-    _require(isinstance(delta, Mapping), "weight delta block missing")
-    _require(isinstance(delta.get("changed_parameter_elements"), int) and delta["changed_parameter_elements"] > 0, "no trainable parameter changed")
-    _require(delta.get("trainable_parameter_elements") == PARAMETER_COUNT, "weight delta parameter cardinality mismatch")
+    delta = _mapping(training.get("weight_delta"), "weight delta")
+    _require(
+        isinstance(delta.get("changed_parameter_elements"), int)
+        and delta["changed_parameter_elements"] > 0,
+        "no trainable parameter changed",
+    )
+    _require(
+        delta.get("trainable_parameter_elements") == PARAMETER_COUNT,
+        "weight delta parameter cardinality mismatch",
+    )
     _finite_number(delta.get("l2"), "weight_delta.l2", nonnegative=True)
     _finite_number(delta.get("max_abs"), "weight_delta.max_abs", nonnegative=True)
 
-    failure = evidence.get("failure_semantics")
-    _require(isinstance(failure, Mapping), "failure semantics block missing")
-    _require(failure.get("nan_fail_closed_and_fresh_recovery") is True, "NaN recovery contract not proven")
-    _require(failure.get("inf_fail_closed_and_fresh_recovery") is True, "Inf recovery contract not proven")
+    failure = _mapping(evidence.get("failure_semantics"), "failure semantics")
+    _require(
+        failure.get("nan_fail_closed_and_fresh_recovery") is True,
+        "NaN recovery contract not proven",
+    )
+    _require(
+        failure.get("inf_fail_closed_and_fresh_recovery") is True,
+        "Inf recovery contract not proven",
+    )
 
-    runtime = evidence.get("runtime")
-    _require(isinstance(runtime, Mapping), "runtime block missing")
+    runtime = _mapping(evidence.get("runtime"), "runtime")
     _finite_number(runtime.get("wall_seconds"), "wall_seconds", nonnegative=True)
     _finite_number(runtime.get("process_cpu_seconds"), "process_cpu_seconds", nonnegative=True)
     _require(runtime.get("python") == PYTHON_VERSION, "observed training Python version mismatch")
     _require(runtime.get("device") == "cpu", "S0 LOCAL_FREE evidence must use CPU")
 
-    claims = evidence.get("claims")
-    _require(isinstance(claims, Mapping), "claims block missing")
-    for key in (
+    claims = _mapping(evidence.get("claims"), "claims")
+    forbidden_true = (
         "foreign_pretrained_weights_used",
         "instruction_or_alignment_training",
         "paid_compute_authorized_or_used",
         "candidate_or_stable_promotion",
-    ):
+    )
+    for key in forbidden_true:
         _require(claims.get(key) is False, f"forbidden claim/input flag set: {key}")
 
     claimed_hash = evidence.get("evidence_sha256")
