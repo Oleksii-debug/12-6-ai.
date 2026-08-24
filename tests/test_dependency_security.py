@@ -16,7 +16,7 @@ from twelve_six.integration.dependency_security import (
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE_SHA = "1" * 40
 GENERATED_AT = "2026-08-24T12:00:00Z"
-NOW = datetime(2026, 8, 24, 13, 0, tzinfo=UTC)
+NOW = datetime(2026, 8, 24, 13, 0, 1, tzinfo=UTC)
 
 
 def _scan_records(sbom, *, unresolved: str | None = None, vulnerable: str | None = None):
