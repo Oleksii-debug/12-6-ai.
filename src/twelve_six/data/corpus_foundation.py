@@ -8,7 +8,7 @@ import sqlite3
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Self
 from urllib.parse import urlsplit
 
 CORPUS_PLAN_SCHEMA = "12-6.corpus-streaming-plan.v1"
@@ -179,7 +179,7 @@ class SQLiteExactDedupIndex:
             "CREATE TABLE IF NOT EXISTS fingerprints (sha256 TEXT PRIMARY KEY) WITHOUT ROWID"
         )
 
-    def __enter__(self) -> SQLiteExactDedupIndex:
+    def __enter__(self) -> Self:
         return self
 
     def __exit__(self, exc_type, exc, traceback) -> None:
@@ -238,9 +238,7 @@ class StreamingShardPlan:
 
     def assign(self, record_id: str) -> int:
         identifier = _require_text(record_id, "record_id")
-        digest = hashlib.sha256(
-            f"{self.partition_salt}\0{identifier}".encode("utf-8")
-        ).digest()
+        digest = hashlib.sha256(f"{self.partition_salt}\0{identifier}".encode()).digest()
         return int.from_bytes(digest[:8], "big") % self.shard_count
 
 
