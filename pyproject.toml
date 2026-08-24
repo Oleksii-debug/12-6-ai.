@@ -11,6 +11,7 @@ dependencies = ["numpy>=1.26", "safetensors>=0.5", "torch>=2.5"]
 
 [project.scripts]
 twelve-six-generate = "twelve_six.inference.cli:main"
+twelve-six-evaluate-s0 = "twelve_six.s0_candidate_evaluation:main"
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "ruff>=0.12"]
