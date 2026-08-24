@@ -100,7 +100,11 @@ def declared_requirements(pyproject_path: str | Path) -> dict[str, list[str]]:
     runtime = project.get("dependencies", []) or []
     optional = project.get("optional-dependencies", {}) or {}
     build_requires = build_system.get("requires", []) or []
-    if not isinstance(runtime, list) or not isinstance(optional, dict) or not isinstance(build_requires, list):
+    if (
+        not isinstance(runtime, list)
+        or not isinstance(optional, dict)
+        or not isinstance(build_requires, list)
+    ):
         raise EnvironmentInventoryError("pyproject dependency declarations are malformed")
     result: dict[str, list[str]] = {
         "build-system": sorted(str(item) for item in build_requires),
@@ -113,27 +117,85 @@ def declared_requirements(pyproject_path: str | Path) -> dict[str, list[str]]:
     return result
 
 
+def _installation_evidence(value: Mapping[str, Any], name: str) -> dict[str, Any]:
+    record_hash = value.get("record_sha256")
+    if record_hash is not None and _SHA256.fullmatch(str(record_hash)) is None:
+        raise EnvironmentInventoryError(f"distribution {name!r} has invalid RECORD SHA-256")
+    provenance = value.get("provenance", {})
+    if not isinstance(provenance, Mapping):
+        raise EnvironmentInventoryError(f"distribution {name!r} provenance must be an object")
+    return {
+        "record_sha256": record_hash,
+        "provenance": dict(provenance),
+    }
+
+
+def _normalize_package(package: Mapping[str, Any]) -> dict[str, Any]:
+    item = dict(package)
+    name = canonical_distribution_name(str(item.get("name", "")))
+    version = str(item.get("version", "")).strip()
+    if not version:
+        raise EnvironmentInventoryError(f"distribution {name!r} has an empty version")
+    item["name"] = name
+    item["version"] = version
+
+    existing_installations = item.pop("installations", None)
+    if existing_installations is None:
+        installation = _installation_evidence(
+            {
+                "record_sha256": item.pop("record_sha256", None),
+                "provenance": item.pop("provenance", {}),
+            },
+            name,
+        )
+        installations = [installation]
+    else:
+        if "record_sha256" in item or "provenance" in item:
+            raise EnvironmentInventoryError(
+                f"distribution {name!r} mixes normalized and raw installation evidence"
+            )
+        if not isinstance(existing_installations, list) or not existing_installations:
+            raise EnvironmentInventoryError(f"distribution {name!r} installations must be non-empty")
+        installations = []
+        for evidence in existing_installations:
+            if not isinstance(evidence, Mapping):
+                raise EnvironmentInventoryError(
+                    f"distribution {name!r} installation evidence must be an object"
+                )
+            installations.append(_installation_evidence(evidence, name))
+
+    unique_installations = {
+        canonical_json_bytes(evidence): evidence for evidence in installations
+    }
+    item["installations"] = sorted(
+        unique_installations.values(), key=lambda evidence: canonical_json_bytes(evidence)
+    )
+    return item
+
+
+def _package_core(package: Mapping[str, Any]) -> dict[str, Any]:
+    return {key: value for key, value in package.items() if key != "installations"}
+
+
 def _validate_packages(packages: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
     by_name: dict[str, dict[str, Any]] = {}
     for package in packages:
-        item = dict(package)
-        name = canonical_distribution_name(str(item.get("name", "")))
-        version = str(item.get("version", "")).strip()
-        if not version:
-            raise EnvironmentInventoryError(f"distribution {name!r} has an empty version")
-        item["name"] = name
-        item["version"] = version
-        record_hash = item.get("record_sha256")
-        if record_hash is not None and _SHA256.fullmatch(str(record_hash)) is None:
-            raise EnvironmentInventoryError(f"distribution {name!r} has invalid RECORD SHA-256")
-
+        item = _normalize_package(package)
+        name = item["name"]
         previous = by_name.get(name)
         if previous is not None:
-            if canonical_json_bytes(previous) == canonical_json_bytes(item):
-                continue
-            raise EnvironmentInventoryError(
-                f"ambiguous installed distribution {name!r}: conflicting installation evidence"
+            if canonical_json_bytes(_package_core(previous)) != canonical_json_bytes(
+                _package_core(item)
+            ):
+                raise EnvironmentInventoryError(
+                    f"ambiguous installed distribution {name!r}: conflicting package metadata"
+                )
+            combined = [*previous["installations"], *item["installations"]]
+            unique = {canonical_json_bytes(evidence): evidence for evidence in combined}
+            previous["installations"] = sorted(
+                unique.values(), key=lambda evidence: canonical_json_bytes(evidence)
             )
+            continue
         by_name[name] = item
     return sorted(by_name.values(), key=lambda item: (item["name"], item["version"]))
 
