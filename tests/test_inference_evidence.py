@@ -82,6 +82,11 @@ def _rehash(payload: dict[str, object]) -> None:
     payload["evidence_sha256"] = _sha256(payload)
 
 
+def _rehash_probe(probe: dict[str, object]) -> None:
+    probe.pop("record_sha256", None)
+    probe["record_sha256"] = _sha256(probe)
+
+
 def test_evidence_is_deterministic_self_hashed_and_replayable() -> None:
     backend = DeterministicBackend()
     first = build_evidence(backend, _probes())
@@ -146,9 +151,44 @@ def test_validate_rejects_unknown_generation_config_field_even_if_rehashed() -> 
     tampered = copy.deepcopy(payload)
     probe = tampered["probes"][0]
     probe["config"]["system_prompt"] = "forbidden"
-    probe.pop("record_sha256")
-    probe["record_sha256"] = _sha256(probe)
+    _rehash_probe(probe)
     _rehash(tampered)
 
     with pytest.raises(ValueError, match="missing or unknown fields"):
+        validate_evidence(tampered)
+
+
+def test_validate_rejects_rehashed_out_of_vocab_generated_token() -> None:
+    payload = build_evidence(DeterministicBackend(), _probes())
+    tampered = copy.deepcopy(payload)
+    probe = tampered["probes"][0]
+    probe["generated_token_ids"][0] = 256
+    probe["generated_token_ids_sha256"] = _sha256(probe["generated_token_ids"])
+    _rehash_probe(probe)
+    _rehash(tampered)
+
+    with pytest.raises(ValueError, match="in-vocab"):
+        validate_evidence(tampered)
+
+
+def test_validate_rejects_rehashed_logit_count_drift() -> None:
+    payload = build_evidence(DeterministicBackend(), _probes())
+    tampered = copy.deepcopy(payload)
+    probe = tampered["probes"][0]
+    probe["step_trace"][0]["logit_count"] = 255
+    probe["step_trace_sha256"] = _sha256(probe["step_trace"])
+    _rehash_probe(probe)
+    _rehash(tampered)
+
+    with pytest.raises(ValueError, match="logit count"):
+        validate_evidence(tampered)
+
+
+def test_validate_rejects_rehashed_unknown_top_level_field() -> None:
+    payload = build_evidence(DeterministicBackend(), _probes())
+    tampered = copy.deepcopy(payload)
+    tampered["chat_template"] = "forbidden"
+    _rehash(tampered)
+
+    with pytest.raises(ValueError, match="top-level"):
         validate_evidence(tampered)
