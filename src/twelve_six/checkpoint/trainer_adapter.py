@@ -45,15 +45,34 @@ def _assert_bound_metadata(
 ) -> None:
     """Check canonical run-binding fields after verification and before mutation."""
 
+    expectations = (
+        expected_init_spec_hash,
+        expected_split_identity,
+        expected_packing_hash,
+        expected_packing_version,
+        expected_training_config_hash,
+        expected_environment_lock_hash,
+        expected_seed,
+    )
+    if all(value is None for value in expectations):
+        return
+
     identity = manifest.get("identity")
     if not isinstance(identity, Mapping):
         raise CheckpointCompatibilityError("verified checkpoint identity is missing")
     training_config = identity.get("training_config")
     if not isinstance(training_config, Mapping):
         raise CheckpointCompatibilityError("verified checkpoint training_config is missing")
+
+    need_data = any(
+        value is not None
+        for value in (expected_split_identity, expected_packing_hash, expected_packing_version)
+    )
     data = training_config.get("data")
-    if not isinstance(data, Mapping):
+    if need_data and not isinstance(data, Mapping):
         raise CheckpointCompatibilityError("verified checkpoint bound data identity is missing")
+    if not isinstance(data, Mapping):
+        data = {}
 
     checks = {
         "init_spec_hash": (expected_init_spec_hash, training_config.get("init_spec_sha256")),
