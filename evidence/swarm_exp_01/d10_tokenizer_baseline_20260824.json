@@ -1,5 +1,5 @@
 {
-  "schema": "12-6.d10-tokenizer-controlled-baseline.v1",
+  "schema": "12-6.d10-tokenizer-controlled-baseline.v2",
   "run": "12-6-AI-SWARM-EXP-01",
   "base_source_sha": "3d5d2332577d1ccb2b6ecbb5197b1d95a4baba6f",
   "canonical_s0_unchanged": true,
@@ -27,8 +27,51 @@
     "s1_current_tied_v512_d48": 24576
   },
   "experimental_backends": {
-    "bpe": {"library": "tokenizers", "status": "HARNESS_READY_RUNTIME_NOT_LOCKED"},
-    "unigram": {"library": "sentencepiece", "status": "HARNESS_READY_RUNTIME_NOT_LOCKED"}
+    "bpe": {
+      "library": "tokenizers",
+      "coverage_strategy": "bytelevel-alphabet",
+      "status": "HARNESS_READY_RUNTIME_NOT_LOCKED"
+    },
+    "unigram": {
+      "library": "sentencepiece",
+      "coverage_strategy": "byte-fallback",
+      "status": "HARNESS_READY_RUNTIME_NOT_LOCKED"
+    }
+  },
+  "identity_contract": {
+    "training_manifest_binds": [
+      "ordered_logical_corpus_sha256",
+      "stage",
+      "algorithm",
+      "backend_library",
+      "backend_version",
+      "requested_vocab_size",
+      "coverage_strategy",
+      "training_config_sha256"
+    ],
+    "artifact_binds": [
+      "training_manifest_sha256",
+      "model_sha256",
+      "ordered_dense_vocab_sha256",
+      "actual_vocab_size",
+      "tokenizer_version"
+    ]
+  },
+  "packing_scale_contract": {
+    "mixture": "integer-weight sha256 global-sample addressing",
+    "sharding": "content-addressed record assignment bound to dataset manifest and split",
+    "restart_binds": [
+      "mixture_plan_sha256",
+      "shard_plan_sha256",
+      "dataset_manifest_sha256",
+      "tokenizer_config_sha256",
+      "tokenizer_vocab_sha256",
+      "packing_config_sha256",
+      "split",
+      "stream_offsets",
+      "rank_world_size"
+    ],
+    "isolated_accounting_invariant": "loss_tokens == attended_tokens - 1 per packed example"
   },
   "claims": {
     "trained_bpe_quality": "NOT_TESTED",
