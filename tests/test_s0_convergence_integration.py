@@ -193,7 +193,7 @@ def test_s0_train_checkpoint_reload_and_inference_roundtrip(tmp_path: Path) -> N
         expected_dataset_manifest_hash=DATASET_MANIFEST_SHA256,
     )
 
-    assert loaded.identity.git_sha == identity.git_sha
+    assert loaded.manifest["identity"]["git_sha"] == identity.git_sha
     assert restored_trainer.micro_step == trainer.micro_step == 1
     assert restored_trainer.optimizer_step == trainer.optimizer_step == 1
     assert restored_trainer.tokens_seen == trainer.tokens_seen
