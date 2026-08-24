@@ -1,0 +1,108 @@
+name: D06 Evaluation Stage Gates
+
+on:
+  pull_request:
+    paths:
+      - "src/twelve_six/**"
+      - "data/s0/**"
+      - "configs/stages/**"
+      - "tests/test_evaluation_stage_gates.py"
+      - "tests/test_integrated_stage_gates.py"
+      - "tests/test_s0_candidate_evaluation.py"
+      - "tests/fixtures/s0_complete_evidence.json"
+      - "docs/EVALUATION_AND_STAGE_GATES.md"
+      - "docs/S0_EVALUATION_RUNBOOK.md"
+      - "pyproject.toml"
+      - ".github/workflows/d06-evaluation.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  evaluation-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - run: python -m pip --version
+      - run: python -m pip install --disable-pip-version-check -e .[dev]
+      - run: ruff check src tests tools
+      - name: Focused D06 contract and candidate tests
+        run: >-
+          pytest -q
+          tests/test_evaluation_stage_gates.py
+          tests/test_integrated_stage_gates.py
+          tests/test_s0_candidate_evaluation.py
+      - name: Produce machine-readable synthetic evaluator contract result
+        run: |
+          python -m twelve_six.stage_gates \
+            tests/fixtures/s0_complete_evidence.json \
+            --policy configs/stages/s0_eval_gate.json \
+            --output "$RUNNER_TEMP/s0_synthetic_gate_result.json" \
+            --fail-on-incomplete
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          result = json.loads(
+              (Path(os.environ["RUNNER_TEMP"]) / "s0_synthetic_gate_result.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          assert result["schema_version"] == "12-6.integrated-stage-gate-result.v2"
+          assert result["summary"]["evaluation_complete"] is True
+          assert result["summary"]["promotion_eligible"] is False
+          assert result["summary"]["promotion_authority_status"] == "NOT_TESTED"
+          assert result["summary"]["counts"] == {"FAIL": 0, "NOT_TESTED": 0, "PASS": 15}
+          PY
+      - name: Run real LOCAL_FREE exact-candidate S0 evaluation
+        run: |
+          python -m twelve_six.s0_candidate_evaluation \
+            --repo-root . \
+            --candidate-sha "$CANDIDATE_SHA" \
+            --output-dir "$RUNNER_TEMP/s0-real-evaluation" \
+            --train-steps 40
+      - name: Validate real report mechanics and non-promotion boundary
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path(os.environ["RUNNER_TEMP"]) / "s0-real-evaluation"
+          evidence = json.loads((root / "candidate_evidence.json").read_text(encoding="utf-8"))
+          gate = json.loads((root / "stage_gate_report.json").read_text(encoding="utf-8"))
+          promotion = json.loads((root / "promotion_eligibility.json").read_text(encoding="utf-8"))
+          candidate_sha = os.environ["CANDIDATE_SHA"]
+
+          assert evidence["candidate"]["sha"] == candidate_sha
+          assert evidence["candidate"]["integrated"] is False
+          assert gate["candidate"]["sha"] == candidate_sha
+          assert gate["summary"]["overall_status"] in {"PASS", "FAIL", "NOT_TESTED"}
+          assert gate["summary"]["promotion_eligible"] is False
+          assert gate["summary"]["promotion_authority_status"] == "NOT_TESTED"
+          assert promotion["candidate_sha"] == candidate_sha
+          assert promotion["promotion_eligible"] is False
+          assert promotion["promotion_authority_status"] == "NOT_TESTED"
+          PY
+      - name: Upload exact-candidate evaluation evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: s0-d06-evaluation-${{ env.CANDIDATE_SHA }}
+          path: |
+            ${{ runner.temp }}/s0-real-evaluation/*.json
+            ${{ runner.temp }}/s0_synthetic_gate_result.json
+          if-no-files-found: warn
+          retention-days: 14
