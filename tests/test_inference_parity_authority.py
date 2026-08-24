@@ -33,6 +33,12 @@ class _Backend:
         return self.logits
 
 
+class _BadDecodeBackend(_Backend):
+    def decode(self, token_ids):
+        del token_ids
+        return 123
+
+
 def test_identical_backends_require_and_record_real_logit_steps() -> None:
     reference = _Backend()
     candidate = _Backend()
@@ -118,6 +124,46 @@ def test_empty_logit_vectors_fail_before_greedy_selection() -> None:
     assert report.steps_compared == 1
     assert report.failures[0].kind == "logit_mismatch"
     assert "must not be empty" in report.failures[0].detail
+
+
+@pytest.mark.parametrize("logits", [[0.1, True], ["0.1", 0.2], None])
+def test_matching_malformed_logits_cannot_create_parity_pass(logits: object) -> None:
+    report = compare_backends(
+        _Backend(logits=logits),
+        _Backend(logits=logits),
+        ["probe"],
+        max_new_tokens=1,
+    )
+
+    assert report.passed is False
+    assert report.steps_compared == 0
+    assert report.failures[0].kind == "invalid_reference_logits"
+
+
+def test_candidate_malformed_logits_are_attributed_to_candidate() -> None:
+    report = compare_backends(
+        _Backend(),
+        _Backend(logits=[0.1, "0.2"]),
+        ["probe"],
+        max_new_tokens=1,
+    )
+
+    assert report.passed is False
+    assert report.steps_compared == 0
+    assert report.failures[0].kind == "invalid_candidate_logits"
+
+
+def test_matching_non_string_decode_cannot_create_parity_pass() -> None:
+    report = compare_backends(
+        _BadDecodeBackend(),
+        _BadDecodeBackend(),
+        ["probe"],
+        max_new_tokens=1,
+    )
+
+    assert report.passed is False
+    assert report.steps_compared == 1
+    assert report.failures[0].kind == "invalid_reference_decode"
 
 
 def test_eos_outside_runtime_vocab_fails_closed() -> None:
