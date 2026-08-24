@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from enum import Enum
 from pathlib import PurePosixPath
-from typing import Any, Mapping
+from typing import Any
 
 from .rank_layout import RankLayout
 
@@ -54,7 +55,7 @@ class D05CheckpointRef:
             raise ValueError("expected a verified D05 12-6-checkpoint v1 manifest")
         identity = manifest.get("identity")
         if not isinstance(identity, Mapping):
-            raise ValueError("D05 manifest identity must be a mapping")
+            raise TypeError("D05 manifest identity must be a mapping")
         checkpoint_id = _require_sha256(str(manifest.get("checkpoint_id")), "checkpoint_id")
         manifest_hash = _require_sha256(manifest_sha256, "manifest_sha256")
         identity_hash = _hash_json(identity)
@@ -142,7 +143,7 @@ class DistributedCheckpointEnvelope:
         _require_sha256(self.save_layout_sha256, "save_layout_sha256")
         _require_sha256(self.state_dict_schema_sha256, "state_dict_schema_sha256")
         if not isinstance(self.save_world_size, int) or isinstance(self.save_world_size, bool):
-            raise ValueError("save_world_size must be an integer")
+            raise TypeError("save_world_size must be an integer")
         if self.save_world_size < 1:
             raise ValueError("save_world_size must be >= 1")
         if not isinstance(self.backend, str) or not self.backend.strip():
