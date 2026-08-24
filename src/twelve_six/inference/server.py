@@ -17,7 +17,23 @@ from .openai_compat import completion_response
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8000
 DEFAULT_MAX_REQUEST_BYTES = 1_048_576
-_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1", "localhost"})
+_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost"})
+_ALLOWED_COMPLETION_FIELDS = frozenset(
+    {
+        "prompt",
+        "messages",
+        "model",
+        "max_tokens",
+        "temperature",
+        "top_p",
+        "seed",
+        "stop",
+        "n",
+        "stream",
+        "echo",
+        "logprobs",
+    }
+)
 
 
 class CompletionHTTPServer(HTTPServer):
@@ -31,7 +47,11 @@ class CompletionHTTPServer(HTTPServer):
         model_name: str,
         max_request_bytes: int = DEFAULT_MAX_REQUEST_BYTES,
     ) -> None:
-        if max_request_bytes < 1:
+        if (
+            not isinstance(max_request_bytes, int)
+            or isinstance(max_request_bytes, bool)
+            or max_request_bytes < 1
+        ):
             raise ValueError("max_request_bytes must be a positive integer")
         self.backend = backend
         self.model_name = model_name
@@ -172,6 +192,23 @@ class CompletionRequestHandler(BaseHTTPRequestHandler):
             self._error(
                 HTTPStatus.BAD_REQUEST,
                 "request JSON must be an object",
+                "invalid_request_error",
+            )
+            return
+
+        unsupported = sorted(set(payload) - _ALLOWED_COMPLETION_FIELDS)
+        if unsupported:
+            self._error(
+                HTTPStatus.BAD_REQUEST,
+                f"unsupported request field(s): {', '.join(unsupported)}",
+                "invalid_request_error",
+            )
+            return
+        requested_model = payload.get("model")
+        if requested_model is not None and requested_model != self.server.model_name:
+            self._error(
+                HTTPStatus.BAD_REQUEST,
+                f"requested model must equal {self.server.model_name!r}",
                 "invalid_request_error",
             )
             return
