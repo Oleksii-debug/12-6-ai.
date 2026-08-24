@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import ctypes
+import errno
 import json
 import os
 import shutil
 import stat
+import sys
 import tempfile
 from collections.abc import Callable, Mapping
 from pathlib import Path
@@ -14,7 +17,10 @@ from typing import Any
 from .core import (
     FORMAT_NAME,
     FORMAT_VERSION,
+    MANIFEST_CHECKSUM_NAME,
     MANIFEST_NAME,
+    STATE_TENSORS_NAME,
+    STATE_TREE_NAME,
     WEIGHTS_NAME,
     CheckpointCompatibilityError,
     CheckpointIntegrityError,
@@ -115,6 +121,24 @@ def _json_object(data: bytes, *, artifact: str) -> dict[str, Any]:
     return value
 
 
+def _validate_source_manifest_identity(identity: dict[str, Any]) -> None:
+    hash_pairs = (
+        ("model_spec", "model_spec_hash"),
+        ("training_config", "training_config_hash"),
+        ("optimizer", "optimizer_hash"),
+        ("scheduler", "scheduler_hash"),
+        ("environment", "environment_hash"),
+    )
+    for payload_key, hash_key in hash_pairs:
+        value = identity.get(hash_key)
+        if not isinstance(value, str) or len(value) != 64 or value != value.lower():
+            raise CheckpointIntegrityError(f"exported source manifest has invalid {hash_key}")
+        if hash_json(identity.get(payload_key)) != value:
+            raise CheckpointIntegrityError(
+                f"exported source manifest {hash_key} does not match {payload_key}"
+            )
+
+
 def verify_hf_directory(directory: str | Path) -> dict[str, Any]:
     """Verify one exact HF-style export directory without trusting path metadata."""
 
@@ -145,6 +169,7 @@ def verify_hf_directory(directory: str | Path) -> dict[str, Any]:
         raise CheckpointIntegrityError(
             "exported source manifest is missing identity/files mappings"
         )
+    _validate_source_manifest_identity(identity)
     checkpoint_id = hash_json({"identity": identity, "files": files})
     if source_manifest.get("checkpoint_id") != checkpoint_id:
         raise CheckpointIntegrityError(
@@ -154,6 +179,7 @@ def verify_hf_directory(directory: str | Path) -> dict[str, Any]:
     if not isinstance(weights_record, dict):
         raise CheckpointIntegrityError("source manifest is missing canonical weights record")
 
+    _json_object(payloads[EXPORTED_CONFIG_NAME], artifact=EXPORTED_CONFIG_NAME)
     weights_sha = sha256_bytes(payloads[EXPORTED_WEIGHTS_NAME])
     config_sha = sha256_bytes(payloads[EXPORTED_CONFIG_NAME])
     source_manifest_sha = sha256_bytes(payloads[EXPORTED_SOURCE_MANIFEST_NAME])
@@ -214,6 +240,66 @@ def verify_hf_directory(directory: str | Path) -> dict[str, Any]:
     return attestation
 
 
+def _materialize_verified_reference(verified: Any, parent: Path, name: str) -> Path:
+    reference = Path(tempfile.mkdtemp(prefix=f".{name}.reference-", dir=parent))
+    try:
+        manifest_bytes = verified._manifest_bytes
+        (reference / MANIFEST_NAME).write_bytes(manifest_bytes)
+        (reference / MANIFEST_CHECKSUM_NAME).write_text(
+            f"{sha256_bytes(manifest_bytes)}  {MANIFEST_NAME}\n",
+            encoding="ascii",
+        )
+        for artifact in (WEIGHTS_NAME, STATE_TENSORS_NAME, STATE_TREE_NAME):
+            (reference / artifact).write_bytes(verified._artifacts[artifact])
+        prepare_checkpoint_load(reference)
+        return reference
+    except Exception:
+        shutil.rmtree(reference, ignore_errors=True)
+        raise
+
+
+def _publish_directory_noreplace(staging: Path, destination: Path) -> None:
+    """Atomically publish a directory without replacing a concurrent destination."""
+
+    if os.name == "nt":
+        try:
+            os.rename(staging, destination)
+        except FileExistsError:
+            raise FileExistsError(
+                f"export destination appeared during publish: {destination}"
+            ) from None
+        return
+
+    if sys.platform.startswith("linux"):
+        libc = ctypes.CDLL(None, use_errno=True)
+        renameat2 = getattr(libc, "renameat2", None)
+        if renameat2 is None:
+            raise RuntimeError("atomic no-replace directory publish requires libc renameat2")
+        renameat2.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint]
+        renameat2.restype = ctypes.c_int
+        at_fdcwd = -100
+        rename_noreplace = 1
+        result = renameat2(
+            at_fdcwd,
+            os.fsencode(staging),
+            at_fdcwd,
+            os.fsencode(destination),
+            rename_noreplace,
+        )
+        if result == 0:
+            return
+        error_number = ctypes.get_errno()
+        if error_number == errno.EEXIST:
+            raise FileExistsError(
+                f"export destination appeared during publish: {destination}"
+            )
+        raise OSError(error_number, os.strerror(error_number), destination)
+
+    raise RuntimeError(
+        "atomic no-replace HF-style export publication is unsupported on this platform"
+    )
+
+
 def export_hf_directory(
     checkpoint_dir: str | Path,
     output_dir: str | Path,
@@ -227,7 +313,7 @@ def export_hf_directory(
     Source checkpoint bytes are snapshotted and verified once through D05's
     transactional loader, then the export is built from that exact in-memory
     snapshot. The complete export is verified in a sibling staging directory
-    before a same-filesystem rename publishes it.
+    before an atomic no-replace publish.
 
     Existing destinations are immutable. ``overwrite=True`` is retained only for
     API compatibility and still fails closed rather than deleting prior evidence.
@@ -244,7 +330,7 @@ def export_hf_directory(
     source_weights_bytes = verified._artifacts[WEIGHTS_NAME]
 
     destination = Path(output_dir)
-    if destination.exists():
+    if destination.exists() or destination.is_symlink():
         suffix = " (overwrite=True does not permit destructive replacement)" if overwrite else ""
         raise FileExistsError(f"export destination already exists: {destination}{suffix}")
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -255,6 +341,7 @@ def export_hf_directory(
             dir=destination.parent,
         )
     )
+    reference: Path | None = None
     try:
         config_bytes = canonical_json_bytes(dict(hf_config)) + b"\n"
         (staging / EXPORTED_WEIGHTS_NAME).write_bytes(source_weights_bytes)
@@ -275,7 +362,12 @@ def export_hf_directory(
             "hook_result": None,
         }
         if parity_hook is not None:
-            result = parity_hook(source, staging)
+            reference = _materialize_verified_reference(
+                verified,
+                destination.parent,
+                destination.name,
+            )
+            result = parity_hook(reference, staging)
             if not isinstance(result, Mapping):
                 raise TypeError("parity_hook must return a mapping")
             parity_request["hook_result"] = dict(result)
@@ -300,13 +392,10 @@ def export_hf_directory(
         )
 
         verify_hf_directory(staging)
-        if destination.exists():
-            raise FileExistsError(
-                f"export destination appeared during publish: {destination}"
-            )
-        os.rename(staging, destination)
+        _publish_directory_noreplace(staging, destination)
         return destination
-    except Exception:
+    finally:
+        if reference is not None and reference.exists():
+            shutil.rmtree(reference, ignore_errors=True)
         if staging.exists():
             shutil.rmtree(staging, ignore_errors=True)
-        raise
