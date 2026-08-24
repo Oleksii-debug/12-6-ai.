@@ -1,0 +1,227 @@
+{
+  "schema_version": "12-6.c01.s0-run-queue.v3",
+  "generated_at_utc": "2026-08-24T15:50:00Z",
+  "repository": "Oleksii-debug/12-6-ai.",
+  "primary_candidate": {
+    "sha": "403831cf623120da18f0f4c62e830a352afcef91",
+    "branch": "d02/s0-real-training-evidence-20260824",
+    "pr": 60,
+    "ci_run": 32745954583,
+    "real_training_run": 32745954611,
+    "real_training_job": 97491395143,
+    "exact_head_green": true
+  },
+  "authorization": {
+    "local_free": true,
+    "materially_paid_compute": false,
+    "paid_default_state": "PREPARED_NOT_LAUNCHED",
+    "promotion_allowed": false,
+    "audit_a": "CHANGES_REQUIRED",
+    "audit_b": "CHANGES_REQUIRED"
+  },
+  "measured_s0": {
+    "source_sha": "403831cf623120da18f0f4c62e830a352afcef91",
+    "evidence_sha256": "000de6556c08c94604e6c26a364ff11079a3800fb8d153fcdaf07523d1d32c50",
+    "identity_sha256": "bb72519a11f10acc7e34a59f888e0373adf55de471e8634e491abbf05b6620e7",
+    "device": "cpu",
+    "parameters": 10140,
+    "optimizer_steps": 40,
+    "optimized_tokens": 10833,
+    "wall_seconds": 0.16651288200000636,
+    "optimized_tokens_per_wall_second": 65058.02956434077,
+    "initial_train_loss": 5.557927955757261,
+    "final_train_loss": 2.7985758682820183,
+    "initial_validation_loss": 5.559258974424683,
+    "final_validation_loss": 2.7907250027845403,
+    "validation_optimized_tokens": 0,
+    "note": "Tiny hosted-CPU S0 measurement only; never linearly extrapolate to larger stages."
+  },
+  "external_exact_green_evidence": [
+    {
+      "kind": "resume_reproducibility",
+      "pr": 61,
+      "sha": "fa5e8365ae56c22da761e2183a4c71a0212a2aef",
+      "ci_run": 32745892911,
+      "state": "EVIDENCE_AVAILABLE_NOT_COMPOSED",
+      "facts": [
+        "real interrupted-vs-uninterrupted S0 resume exact",
+        "checkpoint identity includes ModelSpec/InitSpec/data/tokenizer/vocab/packing/run/training/environment",
+        "repo-wide 197 passed on exact head"
+      ]
+    },
+    {
+      "kind": "real_s0_evaluation",
+      "pr": 65,
+      "sha": "cc1a7aa27b431326766b0172460b015b0e20e135",
+      "ci_run": 32746626964,
+      "evaluation_run": 32746627421,
+      "artifact_id": 9527354511,
+      "artifact_zip_sha256": "806ebd31f50bc3e0b8975ae16c79dc96e75b89b4a36e556ec4a63b39d67f8d5d",
+      "state": "EVIDENCE_AVAILABLE_NOT_COMPOSED",
+      "facts": [
+        "15/15 evaluation gates PASS",
+        "evaluation_complete=true",
+        "promotion_eligible=false",
+        "promotion_authority_status=NOT_TESTED",
+        "real save/load and exact resume verified",
+        "train loss 5.562200927734375 -> 2.8990442752838135",
+        "validation loss 5.554580926895142 -> 2.8529162406921387"
+      ]
+    },
+    {
+      "kind": "first_party_inference",
+      "pr": 63,
+      "sha": "9a1a6f8494b5d5dd9346afb644fc84de2e39d5e0",
+      "ci_run": 32745879308,
+      "state": "EVIDENCE_AVAILABLE_NOT_COMPOSED",
+      "facts": [
+        "first-party S0 checkpoint loader and inference parity",
+        "repo-wide 171 passed on exact head"
+      ]
+    }
+  ],
+  "identity_refresh_policy": {
+    "no_implicit_latest": true,
+    "on_primary_candidate_change": "all launchable jobs become STALE_REFERENCE until exact SHA, ModelSpec, InitSpec, data, tokenizer, vocab, packing, training config, artifacts and CI IDs are rebound",
+    "external_evidence_rule": "green evidence on another SHA is dependency evidence only; it is not launch authority until selectively composed and revalidated on one exact candidate"
+  },
+  "jobs": [
+    {
+      "run_id": "S0-E00-STATIC-403831",
+      "phase": "engineering_validation",
+      "compute_class": "LOCAL_FREE",
+      "state": "READY_LOCAL_FREE",
+      "candidate_sha": "403831cf623120da18f0f4c62e830a352afcef91",
+      "command": "ruff check src tests tools && pytest -q",
+      "artifacts": "artifacts/runs/S0-E00-STATIC-403831/{manifest.json,hardware.json,logs/,metrics.jsonl,checkpoints/,eval/}",
+      "cancellation_conditions": ["candidate SHA drift", "paid compute required"],
+      "failure_criteria": ["non-zero exit", "identity/hash mismatch"],
+      "retry": "max 2; same identity only for confirmed transient infrastructure failure"
+    },
+    {
+      "run_id": "S0-E01-REAL-TRAIN-403831",
+      "phase": "engineering_validation",
+      "compute_class": "FREE_HOSTED",
+      "state": "COMPLETED_EVIDENCE",
+      "candidate_sha": "403831cf623120da18f0f4c62e830a352afcef91",
+      "command": "python tools/run_s0_real_training.py --source-sha 403831cf623120da18f0f4c62e830a352afcef91 --output artifacts/runs/S0-E01-REAL-TRAIN-403831/evidence.json --seed 1337 --max-steps 40 --batch-size 3",
+      "artifacts": "artifacts/runs/S0-E01-REAL-TRAIN-403831/{manifest.json,hardware.json,logs/,metrics.jsonl,checkpoints/,eval/}",
+      "cancellation_conditions": ["candidate SHA drift", "NaN/Inf", "split leakage", "paid compute required"],
+      "failure_criteria": ["non-zero exit", "identity/hash mismatch", "non-finite numerics"],
+      "retry": "max 2; product changes require new identity",
+      "evidence": {"ci_run": 32745954583, "training_run": 32745954611, "job": 97491395143}
+    },
+    {
+      "run_id": "S0-E02-TRAIN-REPEAT-403831",
+      "phase": "engineering_validation",
+      "compute_class": "LOCAL_FREE",
+      "state": "READY_LOCAL_FREE",
+      "candidate_sha": "403831cf623120da18f0f4c62e830a352afcef91",
+      "command": "python tools/run_s0_real_training.py --source-sha 403831cf623120da18f0f4c62e830a352afcef91 --output artifacts/runs/S0-E02-TRAIN-REPEAT-403831/evidence.json --seed 1337 --max-steps 40 --batch-size 3",
+      "artifacts": "artifacts/runs/S0-E02-TRAIN-REPEAT-403831/{manifest.json,hardware.json,logs/,metrics.jsonl,checkpoints/,eval/}",
+      "cancellation_conditions": ["candidate SHA drift", "NaN/Inf", "split leakage", "paid compute required"],
+      "failure_criteria": ["non-zero exit", "evidence identity differs from exact source"],
+      "retry": "max 2; deterministic mismatch requires new SHA/config"
+    },
+    {
+      "run_id": "S0-E03-CKPT-RELOAD-INFER-403831",
+      "phase": "engineering_validation",
+      "compute_class": "LOCAL_FREE",
+      "state": "READY_LOCAL_FREE",
+      "candidate_sha": "403831cf623120da18f0f4c62e830a352afcef91",
+      "command": "pytest -q tests/test_s0_convergence_integration.py::test_s0_train_checkpoint_reload_and_inference_roundtrip",
+      "artifacts": "artifacts/runs/S0-E03-CKPT-RELOAD-INFER-403831/{manifest.json,hardware.json,logs/,metrics.jsonl,checkpoints/,eval/}",
+      "cancellation_conditions": ["candidate SHA drift", "checkpoint identity mismatch", "paid compute required"],
+      "failure_criteria": ["save/load mismatch", "generation parity mismatch", "non-zero exit"],
+      "retry": "max 2; deterministic mismatch requires new SHA/config"
+    },
+    {
+      "run_id": "S0-E04-RESUME-CONTRACT-403831",
+      "phase": "engineering_validation",
+      "compute_class": "LOCAL_FREE",
+      "state": "READY_LOCAL_FREE",
+      "candidate_sha": "403831cf623120da18f0f4c62e830a352afcef91",
+      "command": "pytest -q tests/test_checkpointing.py tests/test_checkpoint_run_binding.py",
+      "artifacts": "artifacts/runs/S0-E04-RESUME-CONTRACT-403831/{manifest.json,hardware.json,logs/,metrics.jsonl,checkpoints/,eval/}",
+      "cancellation_conditions": ["candidate SHA drift", "checkpoint identity mismatch", "paid compute required"],
+      "failure_criteria": ["resume state mismatch", "tamper accepted", "non-zero exit"],
+      "retry": "max 2; deterministic product failure requires new SHA/config"
+    },
+    {
+      "run_id": "S0-E05-REAL-RESUME-COMPOSE",
+      "phase": "engineering_validation",
+      "compute_class": "LOCAL_FREE",
+      "state": "PREPARED_BLOCKED",
+      "candidate_sha": null,
+      "command": "<compose PR61 exact-green resume surface into next exact integration candidate, then run its focused real-resume proof>",
+      "artifacts": "artifacts/runs/S0-E05-REAL-RESUME-COMPOSE/{manifest.json,hardware.json,logs/,metrics.jsonl,checkpoints/,eval/}",
+      "cancellation_conditions": ["no exact composed SHA", "PR61 evidence becomes stale/red", "paid compute required"],
+      "failure_criteria": ["resume mismatch", "identity mismatch", "new composed CI not success"],
+      "retry": "no blind retry; compose/rebind then rerun exact-head",
+      "blocker": "PR61@fa5e8365... is exact-green evidence but is not in the PR60 primary-candidate ancestry."
+    },
+    {
+      "run_id": "S0-E06-HELDOUT-EVAL-403831",
+      "phase": "engineering_validation",
+      "compute_class": "LOCAL_FREE",
+      "state": "READY_LOCAL_FREE",
+      "candidate_sha": "403831cf623120da18f0f4c62e830a352afcef91",
+      "command": "python tools/run_s0_real_training.py --source-sha 403831cf623120da18f0f4c62e830a352afcef91 --output artifacts/runs/S0-E06-HELDOUT-EVAL-403831/evidence.json --seed 1337 --max-steps 40 --batch-size 3",
+      "artifacts": "artifacts/runs/S0-E06-HELDOUT-EVAL-403831/{manifest.json,hardware.json,logs/,metrics.jsonl,checkpoints/,eval/}",
+      "cancellation_conditions": ["candidate SHA drift", "validation enters optimizer", "paid compute required"],
+      "failure_criteria": ["validation_optimized_tokens != 0", "split overlap", "non-finite loss"],
+      "retry": "max 2; semantic failure requires new SHA/config"
+    },
+    {
+      "run_id": "S0-E07-D06-COMPOSE",
+      "phase": "engineering_validation",
+      "compute_class": "LOCAL_FREE",
+      "state": "PREPARED_BLOCKED",
+      "candidate_sha": null,
+      "command": "<compose PR65@cc1a7aa exact-green D06 evaluation surface into one integration candidate and rerun twelve-six-evaluate-s0 on that exact SHA>",
+      "artifacts": "artifacts/runs/S0-E07-D06-COMPOSE/{manifest.json,hardware.json,logs/,metrics.jsonl,checkpoints/,eval/}",
+      "cancellation_conditions": ["no exact composed SHA", "candidate CI not success", "paid compute required"],
+      "failure_criteria": ["any required gate FAIL/NOT_TESTED", "candidate/evidence SHA mismatch"],
+      "retry": "no blind retry; fix/compose/rebind and rerun exact-head",
+      "blocker": "PR65 has real 15/15 PASS evaluation evidence but candidate.integrated=false and promotion authority NOT_TESTED."
+    },
+    {
+      "run_id": "S0-E08-INFERENCE-403831",
+      "phase": "engineering_validation",
+      "compute_class": "LOCAL_FREE",
+      "state": "READY_LOCAL_FREE",
+      "candidate_sha": "403831cf623120da18f0f4c62e830a352afcef91",
+      "command": "pytest -q tests/test_s0_convergence_integration.py::test_s0_accepted_contracts_execute_model_data_tokenizer_train_and_inference tests/test_s0_convergence_integration.py::test_s0_train_checkpoint_reload_and_inference_roundtrip",
+      "artifacts": "artifacts/runs/S0-E08-INFERENCE-403831/{manifest.json,hardware.json,logs/,metrics.jsonl,checkpoints/,eval/}",
+      "cancellation_conditions": ["candidate SHA drift", "checkpoint/tokenizer mismatch", "paid compute required"],
+      "failure_criteria": ["invalid token ID", "generation mismatch after reload", "non-zero exit"],
+      "retry": "max 2; deterministic mismatch requires new SHA/config"
+    },
+    {
+      "run_id": "S0-X01-LOCAL-GPU-PROFILE",
+      "phase": "scale_experiment",
+      "compute_class": "LOCAL_FREE",
+      "state": "PREPARED_BLOCKED",
+      "candidate_sha": "403831cf623120da18f0f4c62e830a352afcef91",
+      "command": "<run exact training config only after detecting a genuinely local/unmetered GPU and recording hardware.json>",
+      "artifacts": "artifacts/runs/S0-X01-LOCAL-GPU-PROFILE/{manifest.json,hardware.json,logs/,metrics.jsonl,checkpoints/,eval/}",
+      "cancellation_conditions": ["metered/paid device", "candidate SHA drift", "thermal/OOM/non-finite failure"],
+      "failure_criteria": ["hardware identity missing", "OOM", "non-finite numerics"],
+      "retry": "max 1 after hardware/config diagnosis",
+      "blocker": "No local/unmetered GPU is established by current evidence."
+    },
+    {
+      "run_id": "S1-PROD-TRAIN",
+      "phase": "production_like_training",
+      "compute_class": "PAID_OR_MATERIAL",
+      "state": "PREPARED_NOT_LAUNCHED",
+      "candidate_sha": null,
+      "command": "<generate only after S0 stage/audit pass, frozen S1 identities, provider quote and explicit compute authorization>",
+      "artifacts": "artifacts/runs/S1-PROD-TRAIN/{manifest.json,hardware.json,logs/,metrics.jsonl,checkpoints/,eval/}",
+      "cancellation_conditions": ["authorization absent/revoked", "identity drift", "cost ceiling reached", "NaN/Inf", "data leakage"],
+      "failure_criteria": ["any identity/hash mismatch", "non-finite numerics", "checkpoint failure", "unapproved spend"],
+      "retry": "never automatic after paid/material failure; new explicit launch decision required",
+      "blocker": "Materially paid compute is not authorized. S0 audit PASS and frozen S1 run identity are absent."
+    }
+  ]
+}
