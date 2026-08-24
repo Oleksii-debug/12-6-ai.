@@ -1,0 +1,115 @@
+name: D05 S0 Retained Generation Artifact
+
+on:
+  pull_request:
+    paths:
+      - "src/twelve_six/inference/**"
+      - "src/twelve_six/checkpoint/**"
+      - "src/twelve_six/s0_candidate_evaluation.py"
+      - "src/twelve_six/model.py"
+      - "src/twelve_six/training/**"
+      - "src/twelve_six/tokenization/**"
+      - "src/twelve_six/packing/**"
+      - "data/s0/**"
+      - "configs/stages/**"
+      - "requirements/locks/**"
+      - "tests/test_s0_generation_artifact.py"
+      - "docs/S0_RETAINED_GENERATION_ARTIFACT.md"
+      - ".github/workflows/d05-s0-generation-artifact.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  retained-generation-artifact:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Prove exact source checkout
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Verify D08 lock and repository checks
+        run: >-
+          python tools/verify_locked_environment.py
+          --profile linux-x86_64
+          --source-sha "$SOURCE_SHA"
+          --evidence-out "$RUNNER_TEMP/locked-environment-linux-x86_64.json"
+          --run-repo-checks
+      - name: Create exact locked execution environment
+        run: |
+          python -m venv .d05-generation-locked
+          .d05-generation-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .d05-generation-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .d05-generation-locked/bin/python -m pip install --no-deps --no-build-isolation -e .
+      - name: Focused retained-artifact and fail-closed tests
+        run: .d05-generation-locked/bin/python -m pytest -q tests/test_s0_generation_artifact.py
+      - name: Full repository regression suite
+        run: .d05-generation-locked/bin/python -m pytest -q
+      - name: Build real trained and reloaded S0 generation artifact
+        run: |
+          .d05-generation-locked/bin/python -m twelve_six.inference.s0_artifact build \
+            --repo-root . \
+            --candidate-sha "$SOURCE_SHA" \
+            --checkpoint-out "$RUNNER_TEMP/s0-retained-checkpoint" \
+            --evidence-out "$RUNNER_TEMP/s0-generation-evidence.json" \
+            --train-steps 40 \
+            --seed 20260824
+      - name: Independently validate retained checkpoint bytes and evidence
+        run: |
+          .d05-generation-locked/bin/python -m twelve_six.inference.s0_artifact validate \
+            --checkpoint "$RUNNER_TEMP/s0-retained-checkpoint" \
+            --evidence "$RUNNER_TEMP/s0-generation-evidence.json"
+      - name: Exercise plain stdin and JSON CLI on retained checkpoint
+        run: |
+          printf '12-6' | .d05-generation-locked/bin/twelve-six-generate \
+            --checkpoint "$RUNNER_TEMP/s0-retained-checkpoint" \
+            --greedy --max-new-tokens 8 \
+            > "$RUNNER_TEMP/cli-stdin.txt" \
+            2> "$RUNNER_TEMP/cli-stdin-diagnostics.txt"
+          .d05-generation-locked/bin/twelve-six-generate \
+            --checkpoint "$RUNNER_TEMP/s0-retained-checkpoint" \
+            --prompt '12-6' --sample --seed 20260841 \
+            --temperature 0.8 --top-k 20 --top-p 0.95 --max-new-tokens 8 --json \
+            > "$RUNNER_TEMP/cli-json.json" \
+            2> "$RUNNER_TEMP/cli-json-diagnostics.txt"
+      - name: Bind CLI diagnostics to retained checkpoint identity
+        run: |
+          .d05-generation-locked/bin/python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path(os.environ["RUNNER_TEMP"])
+          evidence = json.loads((root / "s0-generation-evidence.json").read_text(encoding="utf-8"))
+          cli = json.loads((root / "cli-json.json").read_text(encoding="utf-8"))
+          assert cli["backend"]["checkpoint_id"] == evidence["checkpoint"]["checkpoint_id"]
+          assert cli["backend"]["git_sha"] == os.environ["SOURCE_SHA"]
+          assert cli["backend"]["model_spec_sha256"] == evidence["checkpoint"]["model_spec_sha256"]
+          assert cli["backend"]["tokenizer_config_sha256"] == evidence["checkpoint"]["tokenizer_config_sha256"]
+          assert cli["mode"] == "sample"
+          assert cli["seed"] == 20260841
+          PY
+      - name: Upload retained checkpoint, generation evidence, and CLI diagnostics
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: d05-s0-retained-generation-${{ env.SOURCE_SHA }}
+          path: |
+            ${{ runner.temp }}/s0-retained-checkpoint/**
+            ${{ runner.temp }}/s0-generation-evidence.json
+            ${{ runner.temp }}/locked-environment-linux-x86_64.json
+            ${{ runner.temp }}/cli-stdin.txt
+            ${{ runner.temp }}/cli-stdin-diagnostics.txt
+            ${{ runner.temp }}/cli-json.json
+            ${{ runner.temp }}/cli-json-diagnostics.txt
+          if-no-files-found: error
+          retention-days: 30
