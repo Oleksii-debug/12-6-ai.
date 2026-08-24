@@ -49,6 +49,19 @@ def test_inventory_is_order_stable_and_self_validating() -> None:
 def test_byte_identical_duplicate_metadata_is_deduplicated() -> None:
     inventory = _inventory([_package("Example_Pkg", "1.0"), _package("example-pkg", "1.0")])
     assert inventory["summary"]["package_count"] == 1
+    assert len(inventory["packages"][0]["installations"]) == 1
+
+
+def test_same_version_distinct_installation_evidence_is_preserved() -> None:
+    first = _package("Example_Pkg", "1.0")
+    second = _package("example-pkg", "1.0")
+    second["record_sha256"] = "c" * 64
+
+    inventory = _inventory([first, second])
+
+    assert inventory["summary"]["package_count"] == 1
+    assert len(inventory["packages"][0]["installations"]) == 2
+    validate_environment_inventory(inventory)
 
 
 def test_inventory_hash_rejects_tampering() -> None:
