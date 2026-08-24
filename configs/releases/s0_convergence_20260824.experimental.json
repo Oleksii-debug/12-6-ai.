@@ -113,10 +113,31 @@
       "ci_conclusion": "success"
     }
   ],
+  "accepted_package_reconciliation": {
+    "dependencies": ["torch>=2.5"],
+    "scripts": {
+      "twelve-six-generate": "twelve_six.inference.cli:main"
+    },
+    "provenance": "D02 stronger torch floor plus accepted D07 CLI; integration-only reconciliation in PR #52"
+  },
+  "pending_package_reconciliation": [
+    {
+      "lane": "D05",
+      "when_green": "union dependencies with convergence package contract",
+      "required_dependencies": ["numpy>=1.26", "safetensors>=0.5"],
+      "must_preserve": ["torch>=2.5", "twelve-six-generate script"]
+    },
+    {
+      "lane": "D06",
+      "when_green": "review and preserve evaluation-specific Ruff compatibility settings",
+      "required_config": "[tool.ruff.lint.per-file-ignores] src/twelve_six/evaluation.py = UP035, UP037, TRY004",
+      "must_preserve": ["accepted dependencies", "accepted scripts"]
+    }
+  ],
   "stale_or_duplicate_intake": [
     {
       "surface": "PR #51 / direct D02 intake",
-      "disposition": "superseded",
+      "disposition": "superseded_by_ancestry_reconciliation",
       "replacement": "PR #52 ancestry-preserving pyproject reconciliation"
     },
     {
