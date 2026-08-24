@@ -8,6 +8,7 @@ import math
 import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from typing import Any
 
 from .contracts import InferenceBackend
 from .loader import load_backend
@@ -55,19 +56,49 @@ class ParityReport:
 
 
 def _validated_tolerance(atol: float, rtol: float) -> tuple[float, float]:
-    atol = float(atol)
-    rtol = float(rtol)
-    if not math.isfinite(atol) or atol < 0:
-        raise ValueError("atol must be finite and >= 0")
-    if not math.isfinite(rtol) or rtol < 0:
-        raise ValueError("rtol must be finite and >= 0")
-    return atol, rtol
+    values: list[float] = []
+    for name, value in (("atol", atol), ("rtol", rtol)):
+        if not isinstance(value, (int, float)) or isinstance(value, bool):
+            raise TypeError(f"{name} must be a real number")
+        number = float(value)
+        if not math.isfinite(number) or number < 0:
+            raise ValueError(f"{name} must be finite and >= 0")
+        values.append(number)
+    return values[0], values[1]
 
 
-def _contract_failure(
+def _validated_max_new_tokens(value: int) -> int:
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise TypeError("max_new_tokens must be an integer")
+    if value < 0:
+        raise ValueError("max_new_tokens must be >= 0")
+    return value
+
+
+def _backend_contract_failure(
     reference: InferenceBackend,
     candidate: InferenceBackend,
 ) -> ParityFailure | None:
+    for side, backend in (("reference", reference), ("candidate", candidate)):
+        context = backend.max_context_tokens
+        if not isinstance(context, int) or isinstance(context, bool) or context < 1:
+            return ParityFailure(
+                -1,
+                None,
+                f"invalid_{side}_context_window",
+                f"{side} max_context_tokens must be a positive integer",
+            )
+        eos = backend.eos_token_id
+        if eos is not None and (
+            not isinstance(eos, int) or isinstance(eos, bool) or eos < 0
+        ):
+            return ParityFailure(
+                -1,
+                None,
+                f"invalid_{side}_eos_token",
+                f"{side} eos_token_id must be a non-negative integer or None",
+            )
+
     if reference.max_context_tokens != candidate.max_context_tokens:
         detail = (
             f"reference={reference.max_context_tokens} "
@@ -78,6 +109,103 @@ def _contract_failure(
         detail = f"reference={reference.eos_token_id} candidate={candidate.eos_token_id}"
         return ParityFailure(-1, None, "eos_token_mismatch", detail)
     return None
+
+
+def _validated_prompt_tokens(
+    value: Any,
+    *,
+    side: str,
+    prompt_index: int,
+) -> tuple[list[int] | None, ParityFailure | None]:
+    if not isinstance(value, list):
+        return None, ParityFailure(
+            prompt_index,
+            None,
+            f"invalid_{side}_prompt_tokens",
+            f"{side} encode must return list[int]",
+        )
+    if not value:
+        return None, ParityFailure(
+            prompt_index,
+            None,
+            f"empty_{side}_prompt",
+            f"{side} prompt encoded to zero tokens",
+        )
+    if any(
+        not isinstance(token_id, int) or isinstance(token_id, bool) or token_id < 0
+        for token_id in value
+    ):
+        return None, ParityFailure(
+            prompt_index,
+            None,
+            f"invalid_{side}_prompt_tokens",
+            f"{side} encode returned a non-integer or negative token ID",
+        )
+    return value, None
+
+
+def _validated_logits(
+    raw_logits: Any,
+    *,
+    side: str,
+    prompt_index: int,
+    step_index: int,
+) -> tuple[list[float] | None, ParityFailure | None]:
+    try:
+        raw_values = list(raw_logits)
+    except (TypeError, ValueError, OverflowError):
+        return None, ParityFailure(
+            prompt_index,
+            step_index,
+            f"invalid_{side}_logits",
+            f"{side} logits are not an iterable numeric sequence",
+        )
+    if not raw_values:
+        return None, ParityFailure(
+            prompt_index,
+            step_index,
+            f"invalid_{side}_logits",
+            f"{side} logits must not be empty",
+        )
+
+    values: list[float] = []
+    finite_count = 0
+    for index, value in enumerate(raw_values):
+        if not isinstance(value, (int, float)) or isinstance(value, bool):
+            return None, ParityFailure(
+                prompt_index,
+                step_index,
+                f"invalid_{side}_logits",
+                f"{side} logit at index {index} is not a real number",
+            )
+        try:
+            number = float(value)
+        except (TypeError, ValueError, OverflowError):
+            return None, ParityFailure(
+                prompt_index,
+                step_index,
+                f"invalid_{side}_logits",
+                f"{side} logit at index {index} cannot be represented as float",
+            )
+        if math.isnan(number) or number == math.inf:
+            return None, ParityFailure(
+                prompt_index,
+                step_index,
+                f"invalid_{side}_logits",
+                f"{side} logit at index {index} is NaN or +inf",
+            )
+        if math.isfinite(number):
+            finite_count += 1
+        values.append(number)
+
+    if finite_count == 0:
+        return None, ParityFailure(
+            prompt_index,
+            step_index,
+            f"invalid_{side}_logits",
+            f"{side} logits contain no finite candidate",
+        )
+    return values, None
 
 
 def _compare_logits(
@@ -99,8 +227,8 @@ def _compare_logits(
     for index, (reference_value, candidate_value) in enumerate(
         zip(reference_logits, candidate_logits, strict=True)
     ):
-        if math.isnan(reference_value) or math.isnan(candidate_value):
-            return False, max_abs_error, max_rel_error, f"NaN logit at index {index}"
+        # +inf and NaN are rejected before this helper; matching -inf is the
+        # only non-finite equality allowed and represents a masked candidate.
         if reference_value == candidate_value:
             continue
         if not math.isfinite(reference_value) or not math.isfinite(candidate_value):
@@ -118,6 +246,24 @@ def _compare_logits(
     return True, max_abs_error, max_rel_error, None
 
 
+def _backend_call_failure(
+    *,
+    side: str,
+    operation: str,
+    prompt_index: int,
+    step_index: int | None,
+    exc: Exception,
+) -> ParityFailure:
+    # Exception messages can echo prompts or filesystem paths. Evidence keeps
+    # only the exception class, which is enough to fail closed without leaking input.
+    return ParityFailure(
+        prompt_index,
+        step_index,
+        f"{side}_{operation}_error",
+        f"{side} {operation} raised {type(exc).__name__}",
+    )
+
+
 def compare_backends(
     reference: InferenceBackend,
     candidate: InferenceBackend,
@@ -127,13 +273,14 @@ def compare_backends(
     atol: float = 1e-6,
     rtol: float = 1e-5,
 ) -> ParityReport:
-    if not prompts:
+    if not isinstance(prompts, (list, tuple)) or not prompts:
         raise ValueError("at least one prompt is required")
-    if max_new_tokens < 0:
-        raise ValueError("max_new_tokens must be >= 0")
+    if any(not isinstance(prompt, str) for prompt in prompts):
+        raise TypeError("prompts must contain only strings")
+    max_new_tokens = _validated_max_new_tokens(max_new_tokens)
     atol, rtol = _validated_tolerance(atol, rtol)
 
-    contract_failure = _contract_failure(reference, candidate)
+    contract_failure = _backend_contract_failure(reference, candidate)
     if contract_failure is not None:
         return ParityReport(
             prompts_compared=0,
@@ -152,8 +299,51 @@ def compare_backends(
     max_rel_error = 0.0
 
     for prompt_index, prompt in enumerate(prompts):
-        reference_prompt = reference.encode(prompt)
-        candidate_prompt = candidate.encode(prompt)
+        try:
+            raw_reference_prompt = reference.encode(prompt)
+        except Exception as exc:  # noqa: BLE001 - a backend exception is parity failure evidence
+            failures.append(
+                _backend_call_failure(
+                    side="reference",
+                    operation="encode",
+                    prompt_index=prompt_index,
+                    step_index=None,
+                    exc=exc,
+                )
+            )
+            continue
+        try:
+            raw_candidate_prompt = candidate.encode(prompt)
+        except Exception as exc:  # noqa: BLE001 - a backend exception is parity failure evidence
+            failures.append(
+                _backend_call_failure(
+                    side="candidate",
+                    operation="encode",
+                    prompt_index=prompt_index,
+                    step_index=None,
+                    exc=exc,
+                )
+            )
+            continue
+
+        reference_prompt, prompt_failure = _validated_prompt_tokens(
+            raw_reference_prompt,
+            side="reference",
+            prompt_index=prompt_index,
+        )
+        if prompt_failure is not None:
+            failures.append(prompt_failure)
+            continue
+        candidate_prompt, prompt_failure = _validated_prompt_tokens(
+            raw_candidate_prompt,
+            side="candidate",
+            prompt_index=prompt_index,
+        )
+        if prompt_failure is not None:
+            failures.append(prompt_failure)
+            continue
+        assert reference_prompt is not None and candidate_prompt is not None
+
         if reference_prompt != candidate_prompt:
             failures.append(
                 ParityFailure(
@@ -162,11 +352,6 @@ def compare_backends(
                     "encoded_prompt_mismatch",
                     "reference and candidate token IDs differ",
                 )
-            )
-            continue
-        if not reference_prompt:
-            failures.append(
-                ParityFailure(prompt_index, None, "empty_prompt", "prompt encoded to zero tokens")
             )
             continue
         if len(reference_prompt) > reference.max_context_tokens:
@@ -184,8 +369,98 @@ def compare_backends(
             if len(input_ids) >= reference.max_context_tokens:
                 break
 
-            reference_logits = [float(value) for value in reference.next_token_logits(input_ids)]
-            candidate_logits = [float(value) for value in candidate.next_token_logits(input_ids)]
+            try:
+                raw_reference_logits = reference.next_token_logits(input_ids)
+            except Exception as exc:  # noqa: BLE001 - backend failure must not become parity PASS
+                failures.append(
+                    _backend_call_failure(
+                        side="reference",
+                        operation="next_token_logits",
+                        prompt_index=prompt_index,
+                        step_index=step_index,
+                        exc=exc,
+                    )
+                )
+                prompt_failed = True
+                break
+            try:
+                raw_candidate_logits = candidate.next_token_logits(input_ids)
+            except Exception as exc:  # noqa: BLE001 - backend failure must not become parity PASS
+                failures.append(
+                    _backend_call_failure(
+                        side="candidate",
+                        operation="next_token_logits",
+                        prompt_index=prompt_index,
+                        step_index=step_index,
+                        exc=exc,
+                    )
+                )
+                prompt_failed = True
+                break
+
+            reference_logits, logit_failure = _validated_logits(
+                raw_reference_logits,
+                side="reference",
+                prompt_index=prompt_index,
+                step_index=step_index,
+            )
+            if logit_failure is not None:
+                failures.append(logit_failure)
+                prompt_failed = True
+                break
+            candidate_logits, logit_failure = _validated_logits(
+                raw_candidate_logits,
+                side="candidate",
+                prompt_index=prompt_index,
+                step_index=step_index,
+            )
+            if logit_failure is not None:
+                failures.append(logit_failure)
+                prompt_failed = True
+                break
+            assert reference_logits is not None and candidate_logits is not None
+
+            if len(reference_logits) != len(candidate_logits):
+                failures.append(
+                    ParityFailure(
+                        prompt_index,
+                        step_index,
+                        "logit_mismatch",
+                        (
+                            "logit size mismatch: "
+                            f"reference={len(reference_logits)} candidate={len(candidate_logits)}"
+                        ),
+                    )
+                )
+                prompt_failed = True
+                break
+
+            vocab_size = len(reference_logits)
+            invalid_input = next((token_id for token_id in input_ids if token_id >= vocab_size), None)
+            if invalid_input is not None:
+                failures.append(
+                    ParityFailure(
+                        prompt_index,
+                        step_index,
+                        "input_token_out_of_range",
+                        f"input token ID {invalid_input} is outside logit vocabulary {vocab_size}",
+                    )
+                )
+                prompt_failed = True
+                break
+            eos = reference.eos_token_id
+            if eos is not None and eos >= vocab_size:
+                failures.append(
+                    ParityFailure(
+                        prompt_index,
+                        step_index,
+                        "eos_token_out_of_range",
+                        f"eos token ID {eos} is outside logit vocabulary {vocab_size}",
+                    )
+                )
+                prompt_failed = True
+                break
+
             steps_compared += 1
             ok, step_abs, step_rel, detail = _compare_logits(
                 reference_logits,
@@ -218,12 +493,48 @@ def compare_backends(
                 break
 
             generated.append(reference_token)
-            if reference.eos_token_id is not None and reference_token == reference.eos_token_id:
+            if eos is not None and reference_token == eos:
                 break
 
         if prompt_failed:
             continue
-        if reference.decode(generated) != candidate.decode(generated):
+        try:
+            reference_text = reference.decode(generated)
+        except Exception as exc:  # noqa: BLE001 - backend failure must not become parity PASS
+            failures.append(
+                _backend_call_failure(
+                    side="reference",
+                    operation="decode",
+                    prompt_index=prompt_index,
+                    step_index=None,
+                    exc=exc,
+                )
+            )
+            continue
+        try:
+            candidate_text = candidate.decode(generated)
+        except Exception as exc:  # noqa: BLE001 - backend failure must not become parity PASS
+            failures.append(
+                _backend_call_failure(
+                    side="candidate",
+                    operation="decode",
+                    prompt_index=prompt_index,
+                    step_index=None,
+                    exc=exc,
+                )
+            )
+            continue
+        if not isinstance(reference_text, str) or not isinstance(candidate_text, str):
+            failures.append(
+                ParityFailure(
+                    prompt_index,
+                    None,
+                    "invalid_decoded_text",
+                    "reference and candidate decode outputs must both be strings",
+                )
+            )
+            continue
+        if reference_text != candidate_text:
             failures.append(
                 ParityFailure(
                     prompt_index,
