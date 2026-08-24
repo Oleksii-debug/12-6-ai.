@@ -38,7 +38,7 @@ class ParityReport:
 
     @property
     def passed(self) -> bool:
-        return not self.failures
+        return self.prompts_compared > 0 and self.steps_compared > 0 and not self.failures
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -70,8 +70,8 @@ def _validated_tolerance(atol: float, rtol: float) -> tuple[float, float]:
 def _validated_max_new_tokens(value: int) -> int:
     if not isinstance(value, int) or isinstance(value, bool):
         raise TypeError("max_new_tokens must be an integer")
-    if value < 0:
-        raise ValueError("max_new_tokens must be >= 0")
+    if value <= 0:
+        raise ValueError("max_new_tokens must be > 0 for numerical parity evidence")
     return value
 
 
@@ -364,6 +364,7 @@ def compare_backends(
 
         generated: list[int] = []
         prompt_failed = False
+        prompt_steps_before = steps_compared
         for step_index in range(max_new_tokens):
             input_ids = (*reference_prompt, *generated)
             if len(input_ids) >= reference.max_context_tokens:
@@ -497,6 +498,16 @@ def compare_backends(
                 break
 
         if prompt_failed:
+            continue
+        if steps_compared == prompt_steps_before:
+            failures.append(
+                ParityFailure(
+                    prompt_index,
+                    None,
+                    "no_logit_steps",
+                    "prompt left no room for a numerical logit parity step",
+                )
+            )
             continue
         try:
             reference_text = reference.decode(generated)
