@@ -5,7 +5,8 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any
 
 from .s0_evidence_contract import (
     SCHEMA_VERSION,
