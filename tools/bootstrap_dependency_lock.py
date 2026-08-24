@@ -12,7 +12,10 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
-from twelve_six.integration.dependency_lock import (
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "src"))
+
+from twelve_six.integration.dependency_lock import (  # noqa: E402
     EXACT_PYTHON_VERSION,
     PROJECT_DISTRIBUTION,
     assert_exact_python,
@@ -22,7 +25,6 @@ from twelve_six.integration.dependency_lock import (
     write_manifest,
 )
 
-ROOT = Path(__file__).resolve().parents[1]
 LOCK_ROOT = Path("requirements/locks")
 
 
@@ -113,8 +115,6 @@ def _declared_toolchain() -> list[str]:
     requires = build.get("requires", []) if isinstance(build, dict) else []
     if not isinstance(requires, list):
         raise RuntimeError("build-system.requires must be a list")
-    # setup-python currently supplies pip 26.2.1 for the exact 3.11.16 runtime. Pin it
-    # into the toolchain lock so clean venvs converge to the same installer before builds.
     return ["pip==26.2.1", *[str(item) for item in requires]]
 
 
