@@ -8,8 +8,8 @@ from typing import Any
 
 from twelve_six.checkpoint import (
     CheckpointCompatibilityError,
-    load_checkpoint,
-    verify_checkpoint,
+    load_verified_checkpoint,
+    prepare_checkpoint_load,
 )
 from twelve_six.integration.s0_runtime import S0TorchInferenceBackend
 from twelve_six.model import ModelSpec, TwelveSixDecoder
@@ -124,30 +124,38 @@ def _require_byte_tokenizer(manifest: Mapping[str, Any], spec: ModelSpec) -> Byt
 
 
 def load_first_party_backend(checkpoint: Path) -> FirstPartyInferenceBackend:
-    """Verify a canonical checkpoint, reconstruct D01, bind D04, and expose D07.
+    """Load one immutable verified checkpoint snapshot into the canonical backend.
 
-    Verification runs before any checkpoint weights are applied. RNG state is
-    intentionally not restored for inference.
+    The same D05 ``VerifiedCheckpoint`` byte snapshot is the authority for
+    ModelSpec/tokenizer validation, model weight restoration, and diagnostics.
+    The source path is never reopened during this operation, so a concurrent
+    filesystem replacement cannot split loaded weights from reported lineage.
+    RNG state is intentionally not restored for inference.
     """
 
     checkpoint = Path(checkpoint)
-    manifest = verify_checkpoint(checkpoint)
+    verified = prepare_checkpoint_load(checkpoint)
+    manifest = verified.manifest
     spec = _checkpoint_spec(manifest)
     tokenizer = _require_byte_tokenizer(manifest, spec)
+    identity = manifest["identity"]
 
     model = TwelveSixDecoder(spec)
-    load_checkpoint(
-        checkpoint,
+    result = load_verified_checkpoint(
+        verified,
         model=model,
         restore_rng=False,
+        expected_git_sha=identity["git_sha"],
         expected_model_spec_hash=spec.identity_sha256(),
         expected_tokenizer_hash=tokenizer.identity.config_sha256,
         expected_tokenizer_vocab_hash=tokenizer.identity.vocab_sha256,
+        expected_dataset_manifest_hash=identity["dataset_manifest_hash"],
+        expected_run_manifest_hash=identity["run_manifest_hash"],
     )
     model.eval()
     return FirstPartyInferenceBackend(
         model,
         tokenizer,
-        manifest=manifest,
+        manifest=result.manifest,
         checkpoint_path=checkpoint,
     )
