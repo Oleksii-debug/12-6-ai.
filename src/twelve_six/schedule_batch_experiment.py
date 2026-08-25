@@ -172,7 +172,6 @@ def _warmup_run(
     initial_val, validation_tokens = _validation_loss(model, validation_records, tokenizer)
     trace: list[dict[str, Any]] = []
     validations: list[dict[str, Any]] = []
-    total_started = time.perf_counter()
     first_recovery_tokens: int | None = None
     for update in range(WARMUP_UPDATES):
         batch = _make_batch(
@@ -210,11 +209,11 @@ def _warmup_run(
             )
             if first_recovery_tokens is None and val_loss <= initial_val:
                 first_recovery_tokens = trainer.tokens_seen
-    elapsed = time.perf_counter() - total_started
     early = trace[:16]
     early_vals = [v for v in validations if int(v["optimizer_step"]) <= 16]
     first_loss = float(early[0]["update_loss"])
     final_val, _ = _validation_loss(model, validation_records, tokenizer)
+    measured_wall = sum(float(p["step_wall_seconds"]) for p in trace)
     return {
         "parameters": spec.parameter_count(),
         "model_identity_sha256": spec.identity_sha256(),
@@ -236,8 +235,8 @@ def _warmup_run(
         "early_validation_spike_above_initial": max(
             [0.0] + [float(v["validation_loss"]) - initial_val for v in early_vals]
         ),
-        "mean_step_wall_seconds": sum(float(p["step_wall_seconds"]) for p in trace) / len(trace),
-        "tokens_per_second": trainer.tokens_seen / elapsed,
+        "mean_step_wall_seconds": measured_wall / len(trace),
+        "tokens_per_second": trainer.tokens_seen / measured_wall,
         "rss_current_bytes": _rss_bytes(),
         "trace": trace,
         "validations": validations,
@@ -322,7 +321,6 @@ def _microbatch_run(
     initial_val, _ = _validation_loss(model, validation_records, tokenizer)
     trace: list[dict[str, Any]] = []
     rss_samples = [_rss_bytes()]
-    start = time.perf_counter()
     for update in range(MICROBATCH_UPDATES):
         effective = _make_batch(
             train_stream,
@@ -351,8 +349,8 @@ def _microbatch_run(
                 "step_wall_seconds": wall,
             }
         )
-    elapsed = time.perf_counter() - start
     final_val, _ = _validation_loss(model, validation_records, tokenizer)
+    measured_wall = sum(float(p["step_wall_seconds"]) for p in trace)
     return {
         "parameters": spec.parameter_count(),
         "microbatch_size": microbatch_size,
@@ -365,8 +363,8 @@ def _microbatch_run(
         "final_validation_loss": final_val,
         "mean_grad_norm": sum(float(p["grad_norm"]) for p in trace) / len(trace),
         "mean_update_ratio": sum(float(p["update_ratio"]) for p in trace) / len(trace),
-        "mean_step_wall_seconds": sum(float(p["step_wall_seconds"]) for p in trace) / len(trace),
-        "tokens_per_second": trainer.tokens_seen / elapsed,
+        "mean_step_wall_seconds": measured_wall / len(trace),
+        "tokens_per_second": trainer.tokens_seen / measured_wall,
         "rss_before_run_bytes": rss_before,
         "rss_max_sampled_bytes": max(rss_samples),
         "rss_end_bytes": _rss_bytes(),
