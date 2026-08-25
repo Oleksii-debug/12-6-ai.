@@ -18,7 +18,7 @@ import random
 import shutil
 import subprocess
 import sys
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from pathlib import Path
 from statistics import mean
 from typing import Any, Iterable, Mapping, Sequence
@@ -820,10 +820,14 @@ def _incompatibility_probe(
     rid_a: Mapping[str, Any],
     rid_b: Mapping[str, Any],
 ) -> dict[str, Any]:
+    # rid_a/rid_b are retained in the function contract so callers prove these
+    # checkpoints came from the matched experiment identities.
+    if not rid_a or not rid_b:
+        raise RuntimeError("matched run identities are required for incompatibility proof")
     probes = []
-    for source_path, target_candidate, target_plan, target_rid in (
-        (checkpoint_a, "B", plan_b, rid_b),
-        (checkpoint_b, "A", plan_a, rid_a),
+    for source_path, target_candidate, target_plan in (
+        (checkpoint_a, "B", plan_b),
+        (checkpoint_b, "A", plan_a),
     ):
         model, _, _ = build_model("268k", target_candidate)
         trainer = Trainer(model, trainer_config(len(target_plan.batches)), device="cpu")
@@ -1024,7 +1028,7 @@ def _substantial_context(out: Path):
 
 
 def phase_start(out: Path, source_sha: str) -> None:
-    matched, selection, candidate, built_manifest, plan, train_panel, val_panel = _substantial_context(out)
+    _, _, candidate, built_manifest, plan, train_panel, val_panel = _substantial_context(out)
     model, spec, init = build_model("1m", candidate)
     config = trainer_config(len(plan.batches))
     trainer = Trainer(model, config, device="cpu")
@@ -1130,7 +1134,7 @@ def _final_eos_decision(matched: Mapping[str, Any], final_candidate: str, final_
 
 
 def phase_resume(out: Path, source_sha: str) -> None:
-    matched, selection, candidate, built_manifest, plan, train_panel, val_panel = _substantial_context(out)
+    matched, _, candidate, built_manifest, plan, train_panel, val_panel = _substantial_context(out)
     start = _json(out / "substantial-start.json")
     if start["source_sha"] != source_sha or start["candidate"] != candidate:
         raise RuntimeError("substantial start identity mismatch")
