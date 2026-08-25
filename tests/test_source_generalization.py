@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import math
 
 import pytest
 
 from twelve_six.packing import TextRecord
+from twelve_six.training import s0_evidence_contract as s0_contract
 from twelve_six.training.source_generalization import (
     CHUNK_TARGET_UTF8_BYTES,
     DATA105_BRANCH,
@@ -14,6 +17,7 @@ from twelve_six.training.source_generalization import (
     PARAMETER_COUNT,
     SOURCE_FAMILIES,
     SourceGeneralizationError,
+    _validate_eval_locked_environment,
     chunk_source_text,
     fixed_500k_model_spec,
     split_family_pool,
@@ -112,6 +116,57 @@ def test_training_trace_cycles_only_when_pool_is_smaller_than_budget() -> None:
     assert len(trace) == 256
     assert set(trace) == set(range(8))
     assert trace[:8] == trace[8:16]
+
+
+def _locked_evidence(source_sha: str, repo_checks: str) -> dict[str, object]:
+    evidence: dict[str, object] = {
+        "schema_version": "12-6.locked-environment-evidence.v1",
+        "source_sha": source_sha,
+        "profile_id": s0_contract.LOCK_PROFILE_ID,
+        "python": {"version": s0_contract.PYTHON_VERSION},
+        "lock_index": {
+            "path": s0_contract.LOCK_INDEX_PATH,
+            "file_sha256": s0_contract.LOCK_INDEX_FILE_SHA256,
+            "index_sha256": s0_contract.LOCK_INDEX_SEMANTIC_SHA256,
+        },
+        "lock_profile": {
+            "manifest_sha256": s0_contract.LOCK_PROFILE_MANIFEST_SHA256,
+            "file_sha256": s0_contract.LOCK_PROFILE_FILE_SHA256,
+        },
+        "verification": {
+            "committed_lock_validation": "PASS",
+            "editable_install_import_cli": "PASS",
+            "wheel_install_import_cli": "PASS",
+            "repo_checks": repo_checks,
+        },
+    }
+    raw = json.dumps(
+        evidence,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+    ).encode()
+    evidence["evidence_sha256"] = hashlib.sha256(raw).hexdigest()
+    return evidence
+
+
+def test_eval_lock_contract_accepts_exact_install_smoke_without_s0_repo_gate() -> None:
+    source_sha = "a" * 40
+    result = _validate_eval_locked_environment(
+        _locked_evidence(source_sha, "NOT_RUN"),
+        source_sha=source_sha,
+    )
+    assert result["repo_checks"] == "NOT_RUN"
+    assert result["python_version"] == "3.11.16"
+
+
+def test_eval_lock_contract_rejects_claim_that_s0_repo_gate_ran() -> None:
+    source_sha = "b" * 40
+    with pytest.raises(SourceGeneralizationError, match="must not claim"):
+        _validate_eval_locked_environment(
+            _locked_evidence(source_sha, "PASS"),
+            source_sha=source_sha,
+        )
 
 
 def test_data105_candidate_exists_but_activation_is_blocked() -> None:
