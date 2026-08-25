@@ -14,6 +14,10 @@ on:
       - ".github/workflows/train55-numeric-forensics.yml"
   workflow_dispatch:
 
+concurrency:
+  group: train55-numeric-forensics-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
