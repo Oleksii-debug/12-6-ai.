@@ -1,0 +1,98 @@
+name: TRAIN-53 Batch Noise
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  fixed-268k-batch-noise:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Prove exact source checkout
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Verify exact locked environment and repository checks
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: >-
+          python tools/verify_locked_environment.py
+          --profile linux-x86_64
+          --source-sha "$SOURCE_SHA"
+          --evidence-out locked-environment-linux-x86_64.json
+          --run-repo-checks
+      - name: Create exact locked TRAIN-53 environment
+        run: |
+          python -m venv .train53-locked
+          .train53-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .train53-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          .train53-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/dev.lock.txt
+          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .train53-locked/bin/python -m pip install --no-deps --no-build-isolation -e .
+      - name: Exercise intake, batch-noise and incumbent observability contracts
+        run: >-
+          .train53-locked/bin/python -m pytest -q
+          tests/test_external_source_intake_ua_en.py
+          tests/test_batch_noise.py
+          tests/test_training_observability.py
+      - name: Execute fixed 267912-parameter real external-source experiment
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          .train53-locked/bin/python tools/run_batch_noise_probe.py \
+            --source-sha "$SOURCE_SHA" \
+            --locked-environment-evidence locked-environment-linux-x86_64.json \
+            --output train53-batch-noise.json \
+            --seed 1337 \
+            --torch-threads 2
+          .train53-locked/bin/python tools/validate_batch_noise_probe.py \
+            train53-batch-noise.json \
+            --locked-environment-evidence locked-environment-linux-x86_64.json
+      - name: Print decision-relevant summary
+        run: |
+          .train53-locked/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path("train53-batch-noise.json").read_text())
+          print(json.dumps({
+              "parameter_count": report["identity"]["parameter_count"],
+              "real_data": {
+                  "dataset_identity_sha256": report["data"]["dataset_identity_sha256"],
+                  "accepted_records": report["data"]["accepted_records"],
+                  "byte_counts": report["data"]["byte_counts"],
+                  "source_scope_warning": report["data"]["source_scope_warning"],
+              },
+              "gradient_diagnostics": [
+                  {
+                      "optimized_tokens": point["checkpoint_optimized_tokens"],
+                      "noise_scale_microbatches_proxy": point["diagnostic"]["statistics"]["noise_scale_microbatches_proxy"],
+                      "noise_scale_loss_tokens_proxy": point["local_noise_scale_loss_tokens_proxy"],
+                      "probe_wall_seconds": point["diagnostic"]["probe_wall_seconds"],
+                      "retained_gradient_sample_bytes": point["diagnostic"]["memory_overhead"]["retained_gradient_sample_bytes"],
+                  }
+                  for point in report["gradient_diagnostics"]
+              ],
+              "candidate_final_comparison": report["recommendation"]["candidate_final_comparison"],
+              "recommendation": report["recommendation"],
+          }, indent=2, sort_keys=True))
+          PY
+      - name: Upload TRAIN-53 evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: train53-batch-noise
+          path: |
+            locked-environment-linux-x86_64.json
+            train53-batch-noise.json
+          if-no-files-found: error
+          retention-days: 30
