@@ -206,6 +206,11 @@ def _local_parameter_update_l1(
     for parameter, old in zip(parameters, before, strict=True):
         local = getattr(parameter, "to_local", None)
         current = local() if callable(local) else parameter
+        if current.shape != old.shape:
+            raise RuntimeError(
+                "local FSDP shard shape changed across optimizer step: "
+                f"before={tuple(old.shape)}, after={tuple(current.shape)}"
+            )
         total += (current.detach().to(torch.float64) - old.to(torch.float64)).abs().sum()
     return float(total.item())
 
@@ -235,6 +240,7 @@ def _exercise_fsdp_error_recovery(model: TwelveSixDecoder, device: Any) -> bool:
         output = model(valid)
     if output.logits.shape != (1, 2, model.spec.vocab_size):
         raise RuntimeError("FSDP2 model did not recover after reset_iter_state")
+    reset()
     return True
 
 
@@ -293,7 +299,7 @@ def run_initialized_fsdp2_rank(
     full_mesh = mesh_spec.create_device_mesh(device_type)
     fsdp_kwargs = mesh_spec.fsdp2_kwargs(
         full_mesh,
-        reshard_after_forward=device_type == "cuda",
+        reshard_after_forward=True,
     )
     model = apply_fsdp2(model, **fsdp_kwargs)
 
