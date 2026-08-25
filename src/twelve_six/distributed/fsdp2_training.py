@@ -144,7 +144,7 @@ def apply_fsdp2(
         fully_shard(block, **kwargs)
     fully_shard(model, **kwargs)
     if not isinstance(model, FSDPModule):
-        raise RuntimeError("fully_shard did not convert the root model to FSDPModule")
+        raise TypeError("fully_shard did not convert the root model to FSDPModule")
     return model
 
 
@@ -179,7 +179,7 @@ def _exercise_fsdp_error_recovery(model: TwelveSixDecoder, device: Any) -> bool:
 
     reset = getattr(model, "reset_iter_state", None)
     if not callable(reset):
-        raise RuntimeError("current FSDPModule.reset_iter_state API is unavailable")
+        raise TypeError("current FSDPModule.reset_iter_state API is unavailable")
     invalid = torch.zeros(
         (1, model.spec.max_seq_len + 1),
         dtype=torch.long,
@@ -537,7 +537,6 @@ def run_torchrun_fsdp2(
     import torch.distributed as dist
 
     rank = int(os.environ["RANK"])
-    world_size = int(os.environ["WORLD_SIZE"])
     local_rank = int(os.environ.get("LOCAL_RANK", rank))
     if device_type == "cuda":
         if not torch.cuda.is_available():
