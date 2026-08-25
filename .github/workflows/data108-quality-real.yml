@@ -18,6 +18,8 @@ on:
       - "configs/data/document_quality_current_corpus_v1.json"
       - "configs/data/corpus_v01.json"
       - "src/twelve_six/data/corpus_v01.py"
+      - "docs/DOCUMENT_QUALITY_DATA108_REAL.md"
+      - "reports/d03/data108/**"
   pull_request:
     paths:
       - ".github/workflows/data108-quality-real.yml"
@@ -32,6 +34,8 @@ on:
       - "configs/data/document_quality_current_corpus_v1.json"
       - "configs/data/corpus_v01.json"
       - "src/twelve_six/data/corpus_v01.py"
+      - "docs/DOCUMENT_QUALITY_DATA108_REAL.md"
+      - "reports/d03/data108/**"
 
 concurrency:
   group: data108-quality-real
