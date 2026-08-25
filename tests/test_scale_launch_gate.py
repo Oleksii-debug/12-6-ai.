@@ -13,8 +13,11 @@ def _plan() -> dict[str, object]:
     return {
         "source_sha": "a" * 40,
         "tokenizer_identity": "tokenizer-sha",
+        "tokenizer_status": "FROZEN",
         "corpus_manifest_sha256": "corpus-sha",
+        "corpus_status": "FROZEN",
         "architecture_identity": "architecture-sha",
+        "architecture_status": "FROZEN",
         "precision": "bf16",
         "gpu_class": "H100_SXM_80GB",
         "gpu_count": 1,
@@ -24,6 +27,8 @@ def _plan() -> dict[str, object]:
         "reserve_fraction": 0.20,
         "minimum_global_tokens_per_second": 8_000.0,
         "maximum_peak_hbm_fraction": 0.90,
+        "maximum_data_wait_fraction": 0.10,
+        "maximum_checkpoint_overhead_fraction": 0.05,
         "minimum_qualification_tokens": 134_217_728,
     }
 
@@ -39,6 +44,8 @@ def _evidence() -> dict[str, object]:
         "gpu_class": "H100_SXM_80GB",
         "global_tokens_per_second": 12_000.0,
         "peak_hbm_fraction": 0.82,
+        "data_wait_fraction": 0.04,
+        "checkpoint_overhead_fraction": 0.02,
         "qualification_tokens": 134_217_728,
         "loss_decreased": True,
         "non_finite_steps": 0,
@@ -86,12 +93,23 @@ def test_cpu_throughput_is_never_accepted_for_paid_cost_projection() -> None:
     assert any("GPU" in reason for reason in report.reasons)
 
 
-def test_unfrozen_tokenizer_or_corpus_fails_closed() -> None:
+def test_unfrozen_tokenizer_identity_fails_closed() -> None:
     plan = _plan()
     plan["tokenizer_identity"] = "NOT_FROZEN"
 
     with pytest.raises(ScaleLaunchGateError, match="tokenizer_identity"):
         evaluate_launch_gate(plan, _evidence())
+
+
+def test_exact_architecture_hash_is_insufficient_without_frozen_status() -> None:
+    plan = _plan()
+    plan["architecture_status"] = "engineering_candidate_not_frozen"
+
+    report = evaluate_launch_gate(plan, _evidence(), authorization="COMPUTE_AUTHORIZED")
+
+    assert report.technical_qualified is False
+    assert report.launch_allowed is False
+    assert any("architecture_status" in reason for reason in report.reasons)
 
 
 def test_multi_gpu_plan_requires_real_distributed_training_evidence() -> None:
@@ -102,6 +120,19 @@ def test_multi_gpu_plan_requires_real_distributed_training_evidence() -> None:
     assert report.technical_qualified is False
     assert report.launch_allowed is False
     assert any("multi-GPU" in reason for reason in report.reasons)
+
+
+def test_data_or_checkpoint_bottleneck_blocks_launch() -> None:
+    evidence = _evidence()
+    evidence["data_wait_fraction"] = 0.20
+    evidence["checkpoint_overhead_fraction"] = 0.08
+
+    report = evaluate_launch_gate(_plan(), evidence, authorization="COMPUTE_AUTHORIZED")
+
+    assert report.technical_qualified is False
+    assert report.launch_allowed is False
+    assert any("data-input" in reason for reason in report.reasons)
+    assert any("checkpoint overhead" in reason for reason in report.reasons)
 
 
 def test_cost_projection_respects_budget_reserve() -> None:
