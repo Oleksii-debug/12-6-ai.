@@ -1,0 +1,91 @@
+name: EVAL133 English Raw LM Diagnostic
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  eval133-en-raw-cpu:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Prove exact source checkout
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Verify exact locked LOCAL_FREE environment
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: >-
+          python tools/verify_locked_environment.py
+          --profile linux-x86_64
+          --source-sha "$SOURCE_SHA"
+          --evidence-out eval133-locked-environment.json
+      - name: Create locked LOCAL_FREE execution environment
+        run: |
+          python -m venv .eval133-locked
+          .eval133-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .eval133-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .eval133-locked/bin/python -m pip install --no-deps --no-build-isolation -e .
+      - name: Test immutable suite reservation scorer and contamination checks
+        run: |
+          .eval133-locked/bin/python -m pytest -q tests/test_en_raw_diagnostic.py
+          .eval133-locked/bin/ruff check \
+            src/twelve_six/cloze.py \
+            src/twelve_six/eval_reservations.py \
+            src/twelve_six/en_raw_diagnostic.py \
+            tests/test_en_raw_diagnostic.py
+      - name: Evaluate random-init and learned 100K 500K 1M controls
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          .eval133-locked/bin/python -m twelve_six.en_raw_diagnostic run \
+            --repo-root . \
+            --source-sha "$SOURCE_SHA" \
+            --output eval133-results.json \
+            --work-dir eval133-work \
+            --requested-train-tokens 65536 \
+            --torch-threads 2
+          .eval133-locked/bin/python -m twelve_six.en_raw_diagnostic validate \
+            eval133-results.json \
+            --expected-source-sha "$SOURCE_SHA"
+      - name: Print compact mechanistic result table
+        run: |
+          .eval133-locked/bin/python - <<'PY'
+          import json
+
+          report = json.load(open("eval133-results.json", encoding="utf-8"))
+          for row in report["model_results"]:
+              learned = row["learned"]
+              random_init = row["random_init"]
+              print(
+                  row["parameters"],
+                  "random_acc=", random_init["accuracy"],
+                  "learned_acc=", learned["accuracy"],
+                  "learned_margin=", learned["mean_log_likelihood_margin"],
+                  "learned_context_bpb=", learned["context_bpb"]["aggregate"],
+                  "length_flips=",
+                  learned["length_diagnostics"]["raw_vs_token_normalized_choice_flips"],
+              )
+          print("report_sha256=", report["report_sha256"])
+          PY
+      - name: Upload EVAL-133 machine evidence and learned checkpoints
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: eval133-en-raw-evidence
+          path: |
+            eval133-locked-environment.json
+            eval133-results.json
+            eval133-work/checkpoints/*.pt
+          if-no-files-found: error
+          retention-days: 30
