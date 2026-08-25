@@ -1,0 +1,98 @@
+{
+  "audits": {
+    "AUDIT-A": {
+      "exact_candidate_retest_requested": "1caa729c8efafc84e7a5c4b1f7295eb8dcdb5a8d",
+      "issue": 13,
+      "last_verdict": "CHANGES_REQUIRED",
+      "new_exact_candidate_verdict": "NOT_ISSUED"
+    },
+    "AUDIT-B": {
+      "exact_candidate_retest_requested": "1caa729c8efafc84e7a5c4b1f7295eb8dcdb5a8d",
+      "issue": 14,
+      "last_verdict": "CHANGES_REQUIRED",
+      "new_exact_candidate_verdict": "NOT_ISSUED"
+    }
+  },
+  "blocking_reasons": [
+    "main is unprotected and required status-check enforcement is off",
+    "trusted main carries bootstrap CI rather than the exact hardened promotion workflow",
+    "AUDIT-A has not issued a new exact-candidate verdict for PR #81",
+    "AUDIT-B has not issued a new exact-candidate verdict for PR #81",
+    "supply-chain release preflight retains unresolved vulnerability/license adjudication"
+  ],
+  "captured_date": "2026-08-24",
+  "exact_green_evidence_layers": {
+    "control_wrapper": {
+      "ci_run": 32767263320,
+      "conclusion": "success",
+      "pr": 83,
+      "real_s0_training_run": 32767263239,
+      "role": "control_wrapper_not_product_candidate",
+      "sha": "4d8f077d8f83dfd94ff1c6ec10a089a1943439b8"
+    },
+    "integrated_product": {
+      "ci_run": 32761570313,
+      "conclusion": "success",
+      "pr": 81,
+      "real_s0_training_run": 32761570314,
+      "sha": "1caa729c8efafc84e7a5c4b1f7295eb8dcdb5a8d",
+      "status": "experimental"
+    },
+    "live_authority": {
+      "ci_run": 32759639025,
+      "conclusion": "success",
+      "pr": 80,
+      "sha": "3a50212a91c34bf1e2fefdd55ef11d8bbf4fc924"
+    },
+    "release_attestation": {
+      "ci_run": 32747059609,
+      "conclusion": "success",
+      "pr": 69,
+      "sha": "1a76689d99898052449aec9feadece0f0a04dafd"
+    },
+    "supply_chain_successor": {
+      "ci_run": 32759964771,
+      "conclusion": "success",
+      "fast_ci_run": 32759964785,
+      "pr": 79,
+      "release_preflight": "BLOCKED_UNKNOWN_VULNERABILITY_AND_LICENSE_ADJUDICATION",
+      "secret_history_run": 32759964667,
+      "sha": "84f57b17f2488b0b4ed692fcea348d6c2c825f82"
+    }
+  },
+  "main": {
+    "branch": "main",
+    "protected": false,
+    "required_status_checks_enforcement": "off",
+    "role": "bootstrap_only_not_s0_composition_authority",
+    "sha": "f2e94c7212888cdb960bb66154d56d210e9b27ab",
+    "workflow_blob_sha": "a027eb0df3a3a243a45617f9d55db6f1cc783161",
+    "workflow_path": ".github/workflows/ci.yml"
+  },
+  "promotion_granted": false,
+  "repository": "Oleksii-debug/12-6-ai.",
+  "required_promotion_root": {
+    "admin_enforcement": true,
+    "candidate_ci_attempt_policy": "first_attempt_only_v1",
+    "candidate_workflow_must_equal_trusted_main_blob": true,
+    "conversation_resolution": true,
+    "deletions": false,
+    "dismiss_stale_reviews": true,
+    "force_pushes": false,
+    "minimum_approving_reviews": 1,
+    "protected_main": true,
+    "stable_requires_exact_main_push_ci": true,
+    "strict_required_status_checks": true
+  },
+  "run_id": "12-6-AI-SWARM-EXP-01",
+  "schema_version": "12-6.release-governance-snapshot.v1",
+  "snapshot_sha256": "e02e3958cdb316cc3afdd7f4496e8eb383740750e7474c4ca789b5a66de216ae",
+  "state": "BLOCKED_GOVERNANCE_ROOT",
+  "truth_boundary": {
+    "audit_verdict_issued_by_d10": false,
+    "behavioral_d09_base_weights_allowed": false,
+    "foreign_pretrained_base_allowed": false,
+    "paid_compute_authorized": false,
+    "stable_authorized": false
+  }
+}

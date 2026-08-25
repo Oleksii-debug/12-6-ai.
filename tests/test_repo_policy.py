@@ -38,11 +38,15 @@ def test_regular_small_source_file_is_allowed(tmp_path: Path) -> None:
         "bundle.tar.gz",
         "artifacts/run/metrics.json",
         "checkpoints/s0/manifest.json",
+        "private-data/customer.jsonl",
+        "private_data/customer.jsonl",
+        "secrets/token.txt",
+        ".env",
+        "credentials.json",
+        "service-account.json",
     ],
 )
-def test_model_archive_and_runtime_artifact_paths_are_rejected(
-    tmp_path: Path, relative: str
-) -> None:
+def test_model_archive_runtime_and_private_paths_are_rejected(tmp_path: Path, relative: str) -> None:
     _write(tmp_path, relative)
     with pytest.raises(RepositoryPolicyError):
         validate_tracked_paths(tmp_path, (relative,))

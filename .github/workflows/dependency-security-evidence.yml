@@ -1,0 +1,81 @@
+name: Dependency Security Evidence
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dependency-security-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      PYTHONPATH: src
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Collect lock-bound SBOM, OSV and PyPI evidence
+        run: >-
+          python tools/collect_dependency_security_evidence.py
+          --source-sha "${{ github.event.pull_request.head.sha || github.sha }}"
+          --sbom-out dependency-sbom.json
+          --evidence-out dependency-security-evidence.json
+          --adjudication-dir dependency-adjudications
+      - name: Verify retained evidence offline
+        run: >-
+          python tools/verify_dependency_security_evidence.py
+          --source-sha "${{ github.event.pull_request.head.sha || github.sha }}"
+          --evidence dependency-security-evidence.json
+          --max-age-hours 24
+      - name: Bind scanner result into existing supply-chain contract
+        run: |
+          set -eu
+          SOURCE_SHA="${{ github.event.pull_request.head.sha || github.sha }}"
+          for profile in linux-x86_64 linux-aarch64; do
+            python tools/generate_supply_chain_evidence.py \
+              --profile "${profile}" \
+              --source-sha "${SOURCE_SHA}" \
+              --sbom-out "supply-chain-${profile}.cdx.json" \
+              --evidence-out "supply-chain-${profile}.json" \
+              --vulnerability-adjudication "dependency-adjudications/${profile}-vulnerability.json" \
+              --license-adjudication "dependency-adjudications/${profile}-license.json"
+          done
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          for profile in ("linux-x86_64", "linux-aarch64"):
+              evidence = json.loads(Path(f"supply-chain-{profile}.json").read_text(encoding="utf-8"))
+              vulnerability = evidence["vulnerability"]["status"]
+              license_status = evidence["license"]["status"]
+              if vulnerability not in {"PASS", "FAIL"}:
+                  raise SystemExit(f"{profile}: vulnerability adjudication was not resolved")
+              if license_status != "UNKNOWN":
+                  raise SystemExit(f"{profile}: license must remain UNKNOWN pending human review")
+              print(f"{profile}: vulnerability={vulnerability} license={license_status}")
+          PY
+      - name: Upload dependency security evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: dependency-security-evidence
+          path: |
+            dependency-sbom.json
+            dependency-security-evidence.json
+            dependency-adjudications/
+            supply-chain-linux-x86_64.cdx.json
+            supply-chain-linux-x86_64.json
+            supply-chain-linux-aarch64.cdx.json
+            supply-chain-linux-aarch64.json
+          if-no-files-found: error
+          retention-days: 30

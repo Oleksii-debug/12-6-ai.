@@ -1,4 +1,4 @@
-"""Validate tracked repository content against D10 release-hygiene policy."""
+"""Validate every repository workflow against CI supply-chain policy."""
 
 from __future__ import annotations
 
@@ -7,16 +7,16 @@ from pathlib import Path
 from _integration_bootstrap import load_integration_module
 
 ROOT = Path(__file__).resolve().parents[1]
-_REPO_POLICY = load_integration_module(ROOT, "repo_policy")
+_WORKFLOW_POLICY = load_integration_module(ROOT, "workflow_policy")
 
 
 def main() -> int:
     try:
-        _REPO_POLICY.validate_repository_policy(ROOT)
-    except _REPO_POLICY.RepositoryPolicyError as exc:
+        _WORKFLOW_POLICY.validate_repository_workflows(ROOT)
+    except _WORKFLOW_POLICY.WorkflowPolicyError as exc:
         print(str(exc))
         return 1
-    print("repository_policy=pass")
+    print("workflow_policy=pass")
     return 0
 
 
