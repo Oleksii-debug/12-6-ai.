@@ -14,7 +14,7 @@ from twelve_six.inference.transformers_llama import llama_config_dict
 from twelve_six.model import TwelveSixDecoder, load_stage_config
 
 transformers = pytest.importorskip("transformers")
-from transformers import LlamaForCausalLM  # noqa: E402
+from transformers import LlamaForCausalLM
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -70,7 +70,7 @@ def test_standard_llama_runtime_export_loads_via_from_pretrained(tmp_path: Path)
     ).eval()
     for ids in (
         list(b"Hello"),
-        list("Привіт".encode("utf-8")),
+        list("Привіт".encode()),
         list(b"def f(x): return x + 1"),
     ):
         tokens = torch.tensor([ids], dtype=torch.long)
