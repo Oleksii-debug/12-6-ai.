@@ -21,6 +21,15 @@ def _positive_finite(value: Any, field: str) -> float:
     return number
 
 
+def _nonnegative_finite(value: Any, field: str) -> float:
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        raise ValueError(f"{field} must be numeric")
+    number = float(value)
+    if not math.isfinite(number) or number < 0.0:
+        raise ValueError(f"{field} must be finite and non-negative")
+    return number
+
+
 def target_hardware_paid_compute_decision_support(
     local_summary: Mapping[str, Any],
     *,
@@ -56,8 +65,8 @@ def target_hardware_paid_compute_decision_support(
         "step_timing_mode": timing_mode,
         "telemetry_alone_authorizes_spend": False,
         "cost_projection_formula": (
-            "projected_cost_eur = target_training_tokens / measured_global_tokens_per_second "
-            "/ 3600 * measured_or_quoted_eur_per_gpu_hour * gpu_count"
+            "projected_cost_eur = projected_total_seconds / 3600 "
+            "* measured_or_quoted_eur_per_gpu_hour * gpu_count"
         ),
     }
 
@@ -141,4 +150,131 @@ def target_hardware_paid_compute_decision_support(
             "synchronized full-rank throughput is cost-usable; budget, provider price, "
             "memory headroom, checkpoint overhead, and stability remain external gates"
         ),
+    }
+
+
+def project_measured_topology_run_cost(
+    local_summary: Mapping[str, Any],
+    *,
+    target_training_tokens: int,
+    euro_per_gpu_hour: float,
+    gpu_count: int,
+    distributed_aggregate: Mapping[str, Any] | None = None,
+    checkpoint_interval_tokens: int | None = None,
+    checkpoint_seconds_per_event: float = 0.0,
+    evaluation_interval_tokens: int | None = None,
+    evaluation_seconds_per_event: float = 0.0,
+) -> dict[str, Any]:
+    """Project cost only on an already measured, cost-usable topology.
+
+    Checkpoint/evaluation overhead is amortized by token cadence rather than by the
+    incidental event density of a short engineering probe. Counts use ``ceil`` so
+    partial final intervals are conservatively charged one event.
+    """
+    if not isinstance(target_training_tokens, int) or isinstance(target_training_tokens, bool):
+        raise ValueError("target_training_tokens must be an integer")
+    if target_training_tokens <= 0:
+        raise ValueError("target_training_tokens must be positive")
+    if not isinstance(gpu_count, int) or isinstance(gpu_count, bool) or gpu_count <= 0:
+        raise ValueError("gpu_count must be a positive integer")
+    price = _positive_finite(euro_per_gpu_hour, "euro_per_gpu_hour")
+    checkpoint_seconds = _nonnegative_finite(
+        checkpoint_seconds_per_event,
+        "checkpoint_seconds_per_event",
+    )
+    evaluation_seconds = _nonnegative_finite(
+        evaluation_seconds_per_event,
+        "evaluation_seconds_per_event",
+    )
+
+    decision = target_hardware_paid_compute_decision_support(
+        local_summary,
+        distributed_aggregate=distributed_aggregate,
+    )
+    measured_tps = decision.get("measured_global_tokens_per_second")
+    if measured_tps is None:
+        raise ValueError(
+            "observability is not cost-usable on this topology: "
+            f"{decision.get('reason', 'missing measured throughput')}"
+        )
+    global_tps = _positive_finite(measured_tps, "measured_global_tokens_per_second")
+
+    checkpoint_events = _projected_event_count(
+        target_training_tokens,
+        checkpoint_interval_tokens,
+        field="checkpoint_interval_tokens",
+    )
+    evaluation_events = _projected_event_count(
+        target_training_tokens,
+        evaluation_interval_tokens,
+        field="evaluation_interval_tokens",
+    )
+    base_training_seconds = target_training_tokens / global_tps
+    projected_checkpoint_seconds = checkpoint_events * checkpoint_seconds
+    projected_evaluation_seconds = evaluation_events * evaluation_seconds
+    projected_total_seconds = (
+        base_training_seconds
+        + projected_checkpoint_seconds
+        + projected_evaluation_seconds
+    )
+    projected_cost_eur = projected_total_seconds / 3600.0 * price * gpu_count
+    overhead_seconds = projected_checkpoint_seconds + projected_evaluation_seconds
+    overhead_fraction = overhead_seconds / projected_total_seconds
+
+    return {
+        "run_identity_sha256": decision["run_identity_sha256"],
+        "projection_scope": "MEASURED_TOPOLOGY_ONLY_NO_SCALING_EXTRAPOLATION",
+        "throughput_source": decision["throughput_source"],
+        "measured_global_tokens_per_second": global_tps,
+        "target_training_tokens": target_training_tokens,
+        "gpu_count": gpu_count,
+        "euro_per_gpu_hour": price,
+        "base_training_seconds": base_training_seconds,
+        "checkpoint_interval_tokens": checkpoint_interval_tokens,
+        "checkpoint_events_projected": checkpoint_events,
+        "checkpoint_seconds_per_event": checkpoint_seconds,
+        "projected_checkpoint_seconds": projected_checkpoint_seconds,
+        "evaluation_interval_tokens": evaluation_interval_tokens,
+        "evaluation_events_projected": evaluation_events,
+        "evaluation_seconds_per_event": evaluation_seconds,
+        "projected_evaluation_seconds": projected_evaluation_seconds,
+        "projected_overhead_fraction": overhead_fraction,
+        "projected_total_seconds": projected_total_seconds,
+        "projected_gpu_hours": projected_total_seconds / 3600.0 * gpu_count,
+        "projected_cost_eur": projected_cost_eur,
+        "euro_2000_projection": _budget_projection(projected_cost_eur, 2000.0),
+        "euro_10000_projection": _budget_projection(projected_cost_eur, 10000.0),
+        "projection_authorizes_spend": False,
+        "required_external_gates": [
+            "provider_price_and_quota_confirmed",
+            "target_token_budget_scientifically_justified",
+            "peak_memory_headroom_measured",
+            "checkpoint_storage_and_recovery_validated",
+            "loss_and_gradient_stability_validated",
+        ],
+    }
+
+
+def _projected_event_count(
+    target_training_tokens: int,
+    interval_tokens: int | None,
+    *,
+    field: str,
+) -> int:
+    if interval_tokens is None:
+        return 0
+    if not isinstance(interval_tokens, int) or isinstance(interval_tokens, bool):
+        raise ValueError(f"{field} must be an integer or None")
+    if interval_tokens <= 0:
+        raise ValueError(f"{field} must be positive when provided")
+    return math.ceil(target_training_tokens / interval_tokens)
+
+
+def _budget_projection(projected_cost_eur: float, budget_eur: float) -> dict[str, Any]:
+    headroom = budget_eur - projected_cost_eur
+    return {
+        "budget_eur": budget_eur,
+        "status": "WITHIN_PROJECTION" if headroom >= 0.0 else "EXCEEDS_PROJECTION",
+        "headroom_eur": headroom,
+        "cost_fraction_of_budget": projected_cost_eur / budget_eur,
     }
