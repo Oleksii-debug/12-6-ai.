@@ -1,0 +1,117 @@
+name: D08 Windows Lock Bootstrap
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/d08-windows-lock-bootstrap.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bootstrap-windows-x86-64:
+    runs-on: windows-2025
+    timeout-minutes: 20
+    env:
+      PYTHONUTF8: "1"
+      PYTHONIOENCODING: utf-8
+    steps:
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.9"
+      - name: Resolve candidate Windows wheels outside repository workspace
+        shell: pwsh
+        working-directory: ${{ runner.temp }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $root = Join-Path $env:RUNNER_TEMP "twelve-six-windows-lock-bootstrap"
+          $runtime = Join-Path $root "runtime"
+          $toolchain = Join-Path $root "toolchain"
+          $dev = Join-Path $root "dev"
+          New-Item -ItemType Directory -Force -Path $runtime,$toolchain,$dev | Out-Null
+
+          python -m pip download --disable-pip-version-check --only-binary=:all: --dest $runtime `
+            "numpy==2.4.6" "safetensors==0.8.0" "torch==2.13.0"
+          if ($LASTEXITCODE -ne 0) { throw "runtime bootstrap resolution failed" }
+
+          python -m pip download --disable-pip-version-check --only-binary=:all: --dest $toolchain `
+            "packaging==26.3" "pip==26.2.1" "setuptools==84.0.0" "wheel==0.48.0"
+          if ($LASTEXITCODE -ne 0) { throw "toolchain bootstrap resolution failed" }
+
+          python -m pip download --disable-pip-version-check --only-binary=:all: --dest $dev `
+            "iniconfig==2.3.0" "packaging==26.3" "pluggy==1.6.0" `
+            "pygments==2.21.0" "pytest==9.1.1" "ruff==0.16.4"
+          if ($LASTEXITCODE -ne 0) { throw "dev bootstrap resolution failed" }
+
+          $env:BOOTSTRAP_ROOT = $root
+          @'
+          import hashlib
+          import json
+          import os
+          import re
+          import sys
+          import zipfile
+          from pathlib import Path
+
+          root = Path(os.environ["BOOTSTRAP_ROOT"])
+          normalized = re.compile(r"[-_.]+")
+          groups = {}
+          inventory = {}
+
+          for group in ("toolchain", "runtime", "dev"):
+              directory = root / group
+              rows = []
+              wheels = []
+              for path in sorted(directory.glob("*.whl")):
+                  digest = hashlib.sha256(path.read_bytes()).hexdigest()
+                  with zipfile.ZipFile(path) as archive:
+                      metadata_names = [name for name in archive.namelist() if name.endswith(".dist-info/METADATA")]
+                      if len(metadata_names) != 1:
+                          raise RuntimeError(f"expected one METADATA in {path.name}")
+                      text = archive.read(metadata_names[0]).decode("utf-8", errors="strict")
+                  name = next(line[6:].strip() for line in text.splitlines() if line.startswith("Name: "))
+                  version = next(line[9:].strip() for line in text.splitlines() if line.startswith("Version: "))
+                  canonical = normalized.sub("-", name).lower()
+                  rows.append((canonical, version, digest))
+                  wheels.append({"name": canonical, "version": version, "filename": path.name, "sha256": digest})
+              if len({name for name, _, _ in rows}) != len(rows):
+                  raise RuntimeError(f"duplicate distribution in {group} wheel set")
+              rows.sort()
+              lock = "# 12-6 AI Windows x86-64 candidate lock; BOOTSTRAP_PROVENANCE_ONLY.\n"
+              lock += "# Generated on Windows Server 2025 with CPython 3.11.9.\n"
+              lock += "".join(f"{name}=={version} --hash=sha256:{digest}\n" for name, version, digest in rows)
+              lock_path = root / f"{group}.lock.txt"
+              lock_path.write_text(lock, encoding="utf-8", newline="\n")
+              groups[group] = {
+                  "package_count": len(rows),
+                  "lock_sha256": hashlib.sha256(lock_path.read_bytes()).hexdigest(),
+              }
+              inventory[group] = wheels
+
+          evidence = {
+              "schema": "12-6.windows-lock-bootstrap.v1",
+              "authority": "BOOTSTRAP_PROVENANCE_ONLY_NOT_RUNTIME_PASS",
+              "python": {
+                  "implementation": sys.implementation.name,
+                  "version": ".".join(str(item) for item in sys.version_info[:3]),
+              },
+              "platform": {"system": "Windows", "machine": os.environ.get("PROCESSOR_ARCHITECTURE", "")},
+              "groups": groups,
+              "wheels": inventory,
+          }
+          canonical = json.dumps(evidence, sort_keys=True, separators=(",", ":")).encode("utf-8")
+          evidence["evidence_sha256"] = hashlib.sha256(canonical).hexdigest()
+          (root / "bootstrap-evidence.json").write_text(
+              json.dumps(evidence, sort_keys=True, indent=2) + "\n", encoding="utf-8", newline="\n"
+          )
+          print(json.dumps(evidence, sort_keys=True))
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { throw "bootstrap evidence generation failed" }
+      - name: Upload non-authoritative lock candidates
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: d08-windows-x86-64-lock-bootstrap
+          path: ${{ runner.temp }}/twelve-six-windows-lock-bootstrap
+          if-no-files-found: error
+          retention-days: 7
