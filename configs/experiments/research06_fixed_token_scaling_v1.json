@@ -1,0 +1,39 @@
+{
+  "schema": "12-6.fixed-token-scaling-plan.v1",
+  "authority": "LOCAL_FREE_RESEARCH_ONLY",
+  "research41_exact_green_sha": "9ff78ea31c34fd434015d5bc512596ce5dac766a",
+  "candidate_labels": [
+    "P100K_MHA",
+    "P250K_MHA",
+    "P500K_MHA",
+    "P1M_MHA"
+  ],
+  "token_budgets": [4096, 16384, 65536],
+  "resume_budget": 16384,
+  "batch_size": 4,
+  "sequence_length": 64,
+  "seed": 1337,
+  "primary_vehicle_max_relative_loss_gap": 0.05,
+  "optimizer": {
+    "name": "AdamW",
+    "learning_rate": 0.0003,
+    "weight_decay": 0.0,
+    "betas": [0.9, 0.95],
+    "eps": 1e-8,
+    "warmup_steps": 0,
+    "scheduler": "constant",
+    "gradient_clip_norm": 1.0,
+    "precision": "fp32"
+  },
+  "frozen_controls": {
+    "tokenizer": "s0-byte-v1",
+    "vocab_size": 256,
+    "model_max_seq_len": 256,
+    "corpus_train": "data/s0/packaged/train.jsonl",
+    "corpus_validation": "data/s0/packaged/validation.jsonl",
+    "packing_base": "research41-byte-stream-cyclic-v1",
+    "exact_budget_masking": "research06-exact-valid-causal-targets-v1",
+    "init_family": "normal(std=0.02,residual=sqrt_2_layers)"
+  },
+  "truth_boundary": "The S0 fixture is tiny and recycled; this plan supports only controlled local held-out comparisons, not broad-corpus scaling claims."
+}
