@@ -1,0 +1,187 @@
+{
+  "D_status": "NOT_RUN_PREREQUISITE_FAILED",
+  "aggregate_optimized_tokens": 290304,
+  "authority": "LOCAL_FREE_EXPERIMENTAL_OPTIMIZER_EVIDENCE_NOT_CANONICAL_PROMOTION",
+  "branch": "train130/param-group-lr-20260826",
+  "canonical_optimizer_change": "NONE",
+  "canonical_representative_corpus_gate": "FAIL_NOT_PROMOTED",
+  "corpus": {
+    "identity_sha256": "e8c373f9f87388a45273e678d525d2faf4500d44721c0c56d98b1f675dfdf743",
+    "manifest": {
+      "authority": "EXPERIMENTAL_BOUNDED_REAL_SOURCES_NOT_CANONICAL_CORPUS_FREEZE",
+      "schema": "12-6.train130-bounded-real-corpus.v1",
+      "sources": [
+        {
+          "approved_for_training": true,
+          "license": "CC0-1.0",
+          "source_file_train": "8-typography.rst",
+          "source_file_validation": "9-metadata.rst",
+          "source_id": "en.standardebooks.manual",
+          "version": "git:d1143a9b459b5e6f9cdda93a7c1e04676bff4f6b"
+        },
+        {
+          "approved_for_training": true,
+          "license": "RADA-OPEN-DATA-REUSE / official acts",
+          "source_id": "ua.rada.open-data.laws-texts",
+          "url": "https://data.rada.gov.ua/ogd/zak/perv/text/d23314.htm",
+          "version": "laws-texts/bounded-2026-08-25"
+        }
+      ]
+    },
+    "same_corpus_for_all_variants": true,
+    "train_bytes": 5885,
+    "train_jsonl_sha256": "695ddbfc96fec101c6fa7cde19a92e807b6422e1e45dc6a56fbead81ac623a7b",
+    "validation_bytes": 6006,
+    "validation_jsonl_sha256": "592b06d2059a1617c83ac96749f350a141b784feb8fdd953314ad7f75575cad2"
+  },
+  "decision": {
+    "B_embedding_lr": "REJECT",
+    "C_norm_lr": "REJECT",
+    "canonical_recipe": "A_GLOBAL_LR_CONTROL_RETAINED",
+    "reason": "D only runs if both individual reductions improve held-out BPB at both scales. Reduced tied embedding/output LR slows lexical learning and worsens held-out BPB; reduced norm LR does not produce repeatable held-out improvement.",
+    "run_D": false
+  },
+  "frozen_base_sha": "b9bc147e0a08181b91798c2515cac7a79c66791c",
+  "protocol": {
+    "base_lr": 0.0003,
+    "batch_size": 4,
+    "betas": [0.9, 0.95],
+    "clip": 1.0,
+    "eps": 1e-08,
+    "reduced_multiplier": 0.5,
+    "schedule": "constant",
+    "seeds": [1337, 1338],
+    "sequence_length": 64,
+    "steps": 96,
+    "tokens_per_step": 252,
+    "variants": ["A", "B", "C"],
+    "weight_decay": 0.0
+  },
+  "repository": "Oleksii-debug/12-6-ai.",
+  "results": {
+    "500k": {
+      "A": {
+        "parameters": 467808,
+        "initial_bpb": 8.018886790048548,
+        "final_bpb_mean": 4.772663139156805,
+        "final_bpb_by_seed": [4.813112763834411, 4.732213514479199],
+        "final_lexical_bpb_mean": 4.818798437869562,
+        "first32_train_loss_mean": 4.939859353005886,
+        "last32_train_loss_mean": 3.5436879619956017,
+        "tokens_per_second_mean": 12266.306267350818,
+        "clip_fraction": 1.0,
+        "groups": {
+          "base": {"mean_grad_l2": 1.1536499100955688, "mean_update_weight_ratio": 0.006593071929292967, "weight_l2_initial": 11.378681392003765, "weight_l2_final": 11.980695758271757},
+          "tied_embedding_output": {"mean_grad_l2": 2.442759224487558, "mean_update_weight_ratio": 0.010004108812434378, "weight_l2_initial": 3.1290191964362064, "weight_l2_final": 4.401626545719272},
+          "norm": {"mean_grad_l2": 0.1354010209201817, "mean_update_weight_ratio": 0.00015817589076911898, "weight_l2_initial": 29.393876913398138, "weight_l2_final": 29.526119496497152}
+        }
+      },
+      "B": {
+        "parameters": 467808,
+        "initial_bpb": 8.018886790048548,
+        "final_bpb_mean": 5.649560014011346,
+        "final_bpb_by_seed": [5.6978996402436275, 5.601220387779065],
+        "final_lexical_bpb_mean": 5.684848639883864,
+        "first32_train_loss_mean": 5.060073658823967,
+        "last32_train_loss_mean": 4.129411049187183,
+        "relative_bpb_improvement_vs_A": -0.1837332426963333,
+        "relative_lexical_bpb_improvement_vs_A": -0.17972326777734887,
+        "tokens_per_second_mean": 11418.119429613156,
+        "clip_fraction": 1.0,
+        "groups": {
+          "base": {"mean_grad_l2": 1.195469677614636, "mean_update_weight_ratio": 0.006592505288341589, "weight_l2_initial": 11.378681392003765, "weight_l2_final": 12.031784821781162},
+          "tied_embedding_output": {"mean_grad_l2": 2.741942640919813, "mean_update_weight_ratio": 0.005504308361971344, "weight_l2_initial": 3.1290191964362064, "weight_l2_final": 3.508330341176345},
+          "norm": {"mean_grad_l2": 0.12582276465727982, "mean_update_weight_ratio": 0.00015852592211063944, "weight_l2_initial": 29.393876913398138, "weight_l2_final": 29.533756134606627}
+        }
+      },
+      "C": {
+        "parameters": 467808,
+        "initial_bpb": 8.018886790048548,
+        "final_bpb_mean": 4.792434966494621,
+        "final_bpb_by_seed": [4.832390791170624, 4.752479141818618],
+        "final_lexical_bpb_mean": 4.8385406662456925,
+        "first32_train_loss_mean": 4.940824940800667,
+        "last32_train_loss_mean": 3.5550279431045055,
+        "relative_bpb_improvement_vs_A": -0.004142724252964894,
+        "relative_lexical_bpb_improvement_vs_A": -0.004096919311042736,
+        "tokens_per_second_mean": 10538.962450794857,
+        "clip_fraction": 1.0,
+        "groups": {
+          "base": {"mean_grad_l2": 1.1492405759044018, "mean_update_weight_ratio": 0.006582824414387062, "weight_l2_initial": 11.378681392003765, "weight_l2_final": 11.981303033841513},
+          "tied_embedding_output": {"mean_grad_l2": 2.4380993863865026, "mean_update_weight_ratio": 0.010011808841676299, "weight_l2_initial": 3.1290191964362064, "weight_l2_final": 4.4037914447752335},
+          "norm": {"mean_grad_l2": 0.136140477204385, "mean_update_weight_ratio": 7.91235413996485e-05, "weight_l2_initial": 29.393876913398138, "weight_l2_final": 29.459961408436964}
+        }
+      }
+    },
+    "1m": {
+      "A": {
+        "parameters": 1037696,
+        "initial_bpb": 7.988268127145538,
+        "final_bpb_mean": 4.192805963448581,
+        "final_bpb_by_seed": [4.266642132880172, 4.118969794016992],
+        "final_lexical_bpb_mean": 4.244027396721382,
+        "first32_train_loss_mean": 4.734674647450447,
+        "last32_train_loss_mean": 3.177617959678173,
+        "tokens_per_second_mean": 5779.493624492791,
+        "clip_fraction": 1.0,
+        "groups": {
+          "base": {"mean_grad_l2": 2.004457175691803, "mean_update_weight_ratio": 0.006677160197902935, "weight_l2_initial": 17.05690916735518, "weight_l2_final": 17.810198830371036},
+          "tied_embedding_output": {"mean_grad_l2": 2.718033989720875, "mean_update_weight_ratio": 0.00926273440649866, "weight_l2_initial": 3.627233800890399, "weight_l2_final": 4.816621619323593},
+          "norm": {"mean_grad_l2": 0.13722293368482996, "mean_update_weight_ratio": 0.000149888435303971, "weight_l2_initial": 37.52332607858744, "weight_l2_final": 37.63642287852812}
+        }
+      },
+      "B": {
+        "parameters": 1037696,
+        "initial_bpb": 7.988268127145538,
+        "final_bpb_mean": 4.95461147436366,
+        "final_bpb_by_seed": [4.935542892220311, 4.97368005650701],
+        "final_lexical_bpb_mean": 4.976276875019424,
+        "first32_train_loss_mean": 4.86736199259758,
+        "last32_train_loss_mean": 3.698328774422407,
+        "relative_bpb_improvement_vs_A": -0.18169348106166455,
+        "relative_lexical_bpb_improvement_vs_A": -0.17253646356376579,
+        "tokens_per_second_mean": 6949.489610583909,
+        "clip_fraction": 1.0,
+        "groups": {
+          "base": {"mean_grad_l2": 1.6427513955350423, "mean_update_weight_ratio": 0.0065556155438035585, "weight_l2_initial": 17.05690916735518, "weight_l2_final": 17.853150468390304},
+          "tied_embedding_output": {"mean_grad_l2": 3.0752354949456415, "mean_update_weight_ratio": 0.0051513372539601365, "weight_l2_initial": 3.627233800890399, "weight_l2_final": 4.000705123297401},
+          "norm": {"mean_grad_l2": 0.1379725519787505, "mean_update_weight_ratio": 0.00014943817526697254, "weight_l2_initial": 37.52332607858744, "weight_l2_final": 37.65023427493976}
+        }
+      },
+      "C": {
+        "parameters": 1037696,
+        "initial_bpb": 7.988268127145538,
+        "final_bpb_mean": 4.213420742724408,
+        "final_bpb_by_seed": [4.28702495339147, 4.139816532057346],
+        "final_lexical_bpb_mean": 4.266202493296346,
+        "first32_train_loss_mean": 4.7358913123607635,
+        "last32_train_loss_mean": 3.1866173185408115,
+        "relative_bpb_improvement_vs_A": -0.004916702431626829,
+        "relative_lexical_bpb_improvement_vs_A": -0.005225012588772325,
+        "tokens_per_second_mean": 5428.065839570315,
+        "clip_fraction": 1.0,
+        "groups": {
+          "base": {"mean_grad_l2": 1.9910454408501863, "mean_update_weight_ratio": 0.0066629734365573744, "weight_l2_initial": 17.05690916735518, "weight_l2_final": 17.81143371345367},
+          "tied_embedding_output": {"mean_grad_l2": 2.706567815355636, "mean_update_weight_ratio": 0.009279326075400381, "weight_l2_initial": 3.627233800890399, "weight_l2_final": 4.821146057289639},
+          "norm": {"mean_grad_l2": 0.13792331906989652, "mean_update_weight_ratio": 7.499211466339497e-05, "weight_l2_initial": 37.52332607858744, "weight_l2_final": 37.579835501963124}
+        }
+      }
+    }
+  },
+  "resume_exactness": [
+    {"scale":"500k","variant":"A","split_step":24,"replay_steps":4,"losses_exact":true,"model_state_exact":true,"optimizer_signature_exact":true,"passed":true},
+    {"scale":"1m","variant":"A","split_step":24,"replay_steps":4,"losses_exact":true,"model_state_exact":true,"optimizer_signature_exact":true,"passed":true},
+    {"scale":"500k","variant":"B","split_step":24,"replay_steps":4,"losses_exact":true,"model_state_exact":true,"optimizer_signature_exact":true,"passed":true},
+    {"scale":"1m","variant":"B","split_step":24,"replay_steps":4,"losses_exact":true,"model_state_exact":true,"optimizer_signature_exact":true,"passed":true},
+    {"scale":"500k","variant":"C","split_step":24,"replay_steps":4,"losses_exact":true,"model_state_exact":true,"optimizer_signature_exact":true,"passed":true},
+    {"scale":"1m","variant":"C","split_step":24,"replay_steps":4,"losses_exact":true,"model_state_exact":true,"optimizer_signature_exact":true,"passed":true}
+  ],
+  "runtime": {
+    "cuda_available": false,
+    "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
+    "python": "3.13.5",
+    "torch": "2.10.0+cpu",
+    "torch_threads": 2
+  },
+  "schema": "12-6.train130-param-group-lr.evidence.v1"
+}
