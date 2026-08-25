@@ -65,6 +65,14 @@ def _write_jsonl(path: Path, rows: Iterable[Mapping[str, Any]]) -> None:
             handle.write(json.dumps(dict(row), ensure_ascii=False, sort_keys=True) + "\n")
 
 
+def _write_json(path: Path, value: Mapping[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(dict(value), ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+
 def _require_config(config: Mapping[str, Any]) -> dict[str, Any]:
     if config.get("schema_version") != CONFIG_SCHEMA:
         raise ValueError("unsupported DATA-31 config schema")
@@ -263,6 +271,8 @@ def run(config: Mapping[str, Any], *, repo_root: Path, work_dir: Path) -> dict[s
         current_benchmark_registry_sha256=d06_manifest["manifest_sha256"],
         output_files={"train.jsonl": _file_sha(final_path)},
     )
+    publication_manifest_path = final_path.parent / "manifest.json"
+    _write_json(publication_manifest_path, publication)
 
     core = {
         "schema_version": RUN_SCHEMA,
@@ -279,6 +289,7 @@ def run(config: Mapping[str, Any], *, repo_root: Path, work_dir: Path) -> dict[s
         "runtime": runtime,
         "decontamination_report": report,
         "publication_manifest": publication,
+        "publication_manifest_path": str(publication_manifest_path),
         "counts": {
             "candidate_input": len(candidates),
             "heldout_references": len(references),
@@ -315,10 +326,7 @@ def main() -> int:
         with tempfile.TemporaryDirectory(prefix="data31-decontam-") as temporary:
             result = run(config, repo_root=args.repo_root, work_dir=Path(temporary))
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(
-        json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
+    _write_json(args.output, result)
     print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
     return 0
 
