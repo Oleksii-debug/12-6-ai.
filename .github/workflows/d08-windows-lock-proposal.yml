@@ -1,0 +1,77 @@
+name: D08 Windows Lock Proposal
+on:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  source-bundle:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      source_sha: ${{ steps.bundle.outputs.source_sha }}
+      source_zip_sha256: ${{ steps.bundle.outputs.source_zip_sha256 }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - id: bundle
+        name: Build exact Windows-safe source ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_sha="${{ github.event.pull_request.head.sha }}"
+          test "$(git rev-parse HEAD)" = "$source_sha"
+          git archive --format=zip --output=d08-windows-source.zip "$source_sha"
+          digest="$(sha256sum d08-windows-source.zip | cut -d' ' -f1)"
+          echo "source_sha=$source_sha" >> "$GITHUB_OUTPUT"
+          echo "source_zip_sha256=$digest" >> "$GITHUB_OUTPUT"
+      - name: Upload exact source ZIP
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: d08-windows-lock-source
+          path: d08-windows-source.zip
+          if-no-files-found: error
+          retention-days: 7
+
+  windows-lock-proposal:
+    needs: source-bundle
+    runs-on: windows-2025
+    timeout-minutes: 25
+    steps:
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.9"
+      - name: Download exact source artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: d08-windows-lock-source
+          path: ${{ runner.temp }}\d08-source-artifact
+      - name: Resolve Windows lock proposal under safe path
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $zip = Join-Path $env:RUNNER_TEMP 'd08-source-artifact\d08-windows-source.zip'
+          $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $zip).Hash.ToLowerInvariant()
+          $expected = '${{ needs.source-bundle.outputs.source_zip_sha256 }}'
+          if ($actual -ne $expected) { throw "source ZIP SHA-256 mismatch" }
+          $root = Join-Path $env:RUNNER_TEMP '12-6 Windows Lock Україна'
+          New-Item -ItemType Directory -Path $root | Out-Null
+          Expand-Archive -LiteralPath $zip -DestinationPath $root
+          Set-Location -LiteralPath $root
+          $head = '${{ needs.source-bundle.outputs.source_sha }}'
+          if ($head -notmatch '^[0-9a-f]{40}$') { throw "invalid exact source SHA" }
+          python tools/bootstrap_windows_lock_proposal.py `
+            --output (Join-Path $env:RUNNER_TEMP 'windows-x86_64')
+          Get-Content -LiteralPath (Join-Path $env:RUNNER_TEMP 'windows-x86_64\proposal.json')
+          Get-Content -LiteralPath (Join-Path $env:RUNNER_TEMP 'windows-x86_64\runtime.lock.txt')
+          Get-Content -LiteralPath (Join-Path $env:RUNNER_TEMP 'windows-x86_64\toolchain.lock.txt')
+          Get-Content -LiteralPath (Join-Path $env:RUNNER_TEMP 'windows-x86_64\dev.lock.txt')
+      - name: Upload Windows lock proposal
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: d08-windows-x86_64-lock-proposal
+          path: ${{ runner.temp }}\windows-x86_64
+          if-no-files-found: error
+          retention-days: 7
