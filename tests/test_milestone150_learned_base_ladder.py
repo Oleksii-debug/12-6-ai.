@@ -8,6 +8,7 @@ from twelve_six.milestone150_learned_base_ladder import (
     init_spec,
     model_spec,
 )
+from twelve_six.scaling_experiment import controlled_specs
 from twelve_six.tokenization import ByteTokenizer
 
 
@@ -26,6 +27,16 @@ def test_milestone150_scale_family_is_exact_and_byte_native() -> None:
         assert spec.max_seq_len == 256
         assert spec.parameter_count() == parameters
         assert spec.identity_sha256() == identity
+
+
+def test_milestone150_rungs_are_exact_members_of_inherited_controlled_family() -> None:
+    family = controlled_specs()
+    by_parameters = {spec.parameter_count(): spec for spec in family}
+    for scale in SCALE_ORDER:
+        retained = model_spec(scale)
+        inherited = by_parameters[retained.parameter_count()]
+        assert retained.to_dict() == inherited.to_dict()
+        assert retained.identity_sha256() == inherited.identity_sha256()
 
 
 def test_milestone150_init_and_common_evaluation_identity_are_frozen() -> None:
