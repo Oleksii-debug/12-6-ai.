@@ -51,7 +51,6 @@ jobs:
           import os
           import re
           import sys
-          import zipfile
           from pathlib import Path
 
           root = Path(os.environ["BOOTSTRAP_ROOT"])
@@ -64,21 +63,15 @@ jobs:
               rows = []
               wheels = []
               for path in sorted(directory.glob("*.whl")):
+                  parts = path.name.split("-")
+                  if len(parts) < 5:
+                      raise RuntimeError(f"malformed wheel filename: {path.name}")
+                  canonical = normalized.sub("-", parts[0]).lower()
+                  version = parts[1]
                   digest = hashlib.sha256(path.read_bytes()).hexdigest()
-                  with zipfile.ZipFile(path) as archive:
-                      metadata_names = [
-                          name
-                          for name in archive.namelist()
-                          if name.count("/") == 1 and name.endswith(".dist-info/METADATA")
-                      ]
-                      if len(metadata_names) != 1:
-                          raise RuntimeError(f"expected one top-level METADATA in {path.name}")
-                      text = archive.read(metadata_names[0]).decode("utf-8", errors="strict")
-                  name = next(line[6:].strip() for line in text.splitlines() if line.startswith("Name: "))
-                  version = next(line[9:].strip() for line in text.splitlines() if line.startswith("Version: "))
-                  canonical = normalized.sub("-", name).lower()
                   rows.append((canonical, version, digest))
                   wheels.append({"name": canonical, "version": version, "filename": path.name, "sha256": digest})
+                  print(f"wheel {group} {path.name} sha256={digest}")
               if len({name for name, _, _ in rows}) != len(rows):
                   raise RuntimeError(f"duplicate distribution in {group} wheel set")
               rows.sort()
