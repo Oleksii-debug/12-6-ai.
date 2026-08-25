@@ -1,0 +1,79 @@
+{
+  "authority": "ENGINEERING_PLANNING_NOT_CORPUS_FREEZE",
+  "canonical_tokenizer_frozen": false,
+  "processing_yield_assumption": 0.7,
+  "schema_version": "12-6.pretraining-token-targets.v1",
+  "stages": [
+    {
+      "clean_training_tokens": {
+        "mechanics_gate": 2000000,
+        "scratch_baseline": 20000000,
+        "serious_ablation": 10000000
+      },
+      "parameter_count_reference": 1000000,
+      "raw_candidate_tokens_at_70pct_processing_yield": {
+        "mechanics_gate": 2857143,
+        "scratch_baseline": 28571429,
+        "serious_ablation": 14285715
+      },
+      "stage": "1M"
+    },
+    {
+      "clean_training_tokens": {
+        "mechanics_gate": 20000000,
+        "scratch_baseline": 200000000,
+        "serious_ablation": 100000000
+      },
+      "parameter_count_reference": 10000000,
+      "raw_candidate_tokens_at_70pct_processing_yield": {
+        "mechanics_gate": 28571429,
+        "scratch_baseline": 285714286,
+        "serious_ablation": 142857143
+      },
+      "stage": "10M"
+    },
+    {
+      "clean_training_tokens": {
+        "mechanics_gate": 200000000,
+        "scratch_baseline": 2000000000,
+        "serious_ablation": 1000000000
+      },
+      "parameter_count_reference": 100000000,
+      "raw_candidate_tokens_at_70pct_processing_yield": {
+        "mechanics_gate": 285714286,
+        "scratch_baseline": 2857142858,
+        "serious_ablation": 1428571429
+      },
+      "stage": "100M"
+    },
+    {
+      "clean_training_tokens": {
+        "mechanics_gate": 800000000,
+        "scratch_baseline": 8000000000,
+        "serious_ablation": 4000000000
+      },
+      "parameter_count_reference": 400000000,
+      "raw_candidate_tokens_at_70pct_processing_yield": {
+        "mechanics_gate": 1142857143,
+        "scratch_baseline": 11428571429,
+        "serious_ablation": 5714285715
+      },
+      "stage": "400M"
+    }
+  ],
+  "tiers": {
+    "mechanics_gate": {
+      "purpose": "pipeline/runtime mechanics only",
+      "tokens_per_parameter": 2
+    },
+    "scratch_baseline": {
+      "purpose": "baseline planning target, not a universal compute-optimality claim",
+      "tokens_per_parameter": 20
+    },
+    "serious_ablation": {
+      "purpose": "first meaningful architecture/data ablations",
+      "tokens_per_parameter": 10
+    }
+  },
+  "yield_truth_boundary": "Planning assumption only; replace with measured retained-token yield on the selected reviewed corpus and future experiment tokenizer."
+}

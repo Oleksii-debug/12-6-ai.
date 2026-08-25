@@ -1,0 +1,64 @@
+{
+  "authority": "OWNER_REVIEW_BACKLOG_NOT_SOURCE_APPROVAL",
+  "auto_ingest": false,
+  "candidates": [
+    {
+      "auto_ingest": false,
+      "candidate_id": "wikimedia-enwiki-dated-pages-articles",
+      "candidate_material": "dated English Wikipedia pages-articles text dump",
+      "language": "en",
+      "observed_license_summary": "Wikimedia dump guidance states original text is generally available under CC BY-SA 4.0 and GFDL, with project/import exceptions and attribution/share-alike obligations.",
+      "official_rights_reference": "https://dumps.wikimedia.org/legal.html",
+      "official_terms_reference": "https://foundation.wikimedia.org/wiki/ToU",
+      "owner_review_required": [
+        "select exact dated dump/version and immutable snapshot",
+        "decide attribution/share-alike compliance for model-training/corpus artifacts",
+        "review imported-text and infringement caveats",
+        "record durable policy_ref/reviewer_ref/reviewed_at before registry admission"
+      ],
+      "provider": "Wikimedia Foundation",
+      "rights_status": "REVIEW_REQUIRED",
+      "training_eligible": false
+    },
+    {
+      "auto_ingest": false,
+      "candidate_id": "wikimedia-ukwiki-dated-pages-articles",
+      "candidate_material": "dated Ukrainian Wikipedia pages-articles text dump",
+      "language": "uk",
+      "observed_license_summary": "Same Wikimedia text licensing framework; per-project/imported-content obligations must still be reviewed for the exact selected dump.",
+      "official_rights_reference": "https://dumps.wikimedia.org/legal.html",
+      "official_terms_reference": "https://foundation.wikimedia.org/wiki/ToU",
+      "owner_review_required": [
+        "select exact dated dump/version and immutable snapshot",
+        "confirm Ukrainian-project licensing/attribution requirements",
+        "review imported-text and infringement caveats",
+        "record durable rights decision before registry admission"
+      ],
+      "provider": "Wikimedia Foundation",
+      "rights_status": "REVIEW_REQUIRED",
+      "training_eligible": false
+    },
+    {
+      "auto_ingest": false,
+      "candidate_id": "project-gutenberg-unrestricted-item-slice",
+      "candidate_material": "item-level texts verified unrestricted under U.S. copyright law, not the corpus wholesale",
+      "language": "en",
+      "observed_license_summary": "Project Gutenberg says the vast majority of items are unrestricted under U.S. copyright law, but some items are copyrighted; outside the U.S. local law must be checked and trademark/license conditions matter.",
+      "official_rights_reference": "https://www.gutenberg.org/policy/permission",
+      "official_terms_reference": "https://www.gutenberg.org/policy/license",
+      "owner_review_required": [
+        "approve only exact item IDs whose embedded notice confirms unrestricted status",
+        "check applicable non-U.S. copyright law for project operations",
+        "decide handling/removal of Project Gutenberg trademark/license material",
+        "record item-level immutable hashes and durable rights review before registry admission"
+      ],
+      "provider": "Project Gutenberg Literary Archive Foundation",
+      "rights_status": "REVIEW_REQUIRED",
+      "training_eligible": false
+    }
+  ],
+  "explicit_non_action": "Do not add any candidate to data/external/external_sources.json and do not retrieve it for training until a separate durable rights decision marks the exact source version APPROVED_FOR_TRAINING.",
+  "generated_at": "2026-08-25",
+  "schema_version": "12-6.source-candidate-owner-review.v1",
+  "training_eligible_sources": 0
+}
