@@ -1,0 +1,128 @@
+{
+  "schema": "12-6.learn02.local-source-equivalent-diagnostic.v1",
+  "authority": "LOCAL_SOURCE_EQUIVALENT_DIAGNOSTIC_NOT_EXACT_HEAD_LOCKED_RUNTIME",
+  "incumbent_pr": 162,
+  "incumbent_head_at_fork": "90c134720760fcf207525d5c111fa2583bbfff3f",
+  "runtime": {
+    "python": "3.13.5",
+    "torch": "2.10.0+cpu",
+    "device": "cpu",
+    "torch_threads": 2,
+    "paid_compute": false,
+    "foreign_weights": false
+  },
+  "controls": {
+    "tokenizer": "s0-byte-v1 source-equivalent UTF-8 bytes",
+    "vocab_size": 256,
+    "model_max_seq_len": 256,
+    "training_sequence_length": 64,
+    "batch_size": 4,
+    "tokens_per_optimizer_step": 252,
+    "seed": 1337,
+    "optimizer": "AdamW",
+    "learning_rate": 0.0003,
+    "betas": [0.9, 0.95],
+    "weight_decay": 0.0,
+    "gradient_clip_norm": 1.0,
+    "precision": "fp32",
+    "packing": "research41-byte-stream-cyclic-v1",
+    "requested_token_budgets": [4096, 16384, 65536, 131072, 262144]
+  },
+  "data": {
+    "train_records": 10,
+    "validation_records": 2,
+    "project_authored_synthetic_fixture": true,
+    "repeated_fixture": true
+  },
+  "equal_token_checkpoints": [
+    {
+      "requested_tokens": 4096,
+      "optimized_tokens": 4284,
+      "validation_loss_95568": 5.1198964449,
+      "validation_loss_267912": 4.8113742111,
+      "relative_loss_reduction_267912_vs_95568": 0.0602594676,
+      "grad_norm_95568": 2.0035942974,
+      "grad_norm_267912": 2.1651219494,
+      "update_weight_ratio_95568": 0.0025244846,
+      "update_weight_ratio_267912": 0.0023509356,
+      "winner": 267912
+    },
+    {
+      "requested_tokens": 16384,
+      "optimized_tokens": 16632,
+      "validation_loss_95568": 4.4353708796,
+      "validation_loss_267912": 3.8426816345,
+      "relative_loss_reduction_267912_vs_95568": 0.1336278884,
+      "grad_norm_95568": 2.4966867972,
+      "grad_norm_267912": 2.8257918654,
+      "update_weight_ratio_95568": 0.0017751535,
+      "update_weight_ratio_267912": 0.0019022256,
+      "winner": 267912
+    },
+    {
+      "requested_tokens": 65536,
+      "optimized_tokens": 65772,
+      "validation_loss_95568": 2.6863702689,
+      "validation_loss_267912": 2.2846746870,
+      "bits_per_byte_95568": 3.8756130649,
+      "bits_per_byte_267912": 3.2960888409,
+      "relative_loss_reduction_267912_vs_95568": 0.1495309811,
+      "grad_norm_95568": 1.4288600678,
+      "grad_norm_267912": 1.1871959094,
+      "update_weight_ratio_95568": 0.0014768170,
+      "update_weight_ratio_267912": 0.0014508948,
+      "winner": 267912
+    },
+    {
+      "requested_tokens": 131072,
+      "optimized_tokens": 131292,
+      "validation_loss_95568": 2.1830928396,
+      "validation_loss_267912": 2.0855692448,
+      "bits_per_byte_95568": 3.1495372136,
+      "bits_per_byte_267912": 3.0088404069,
+      "relative_loss_reduction_267912_vs_95568": 0.0446722160,
+      "grad_norm_95568": 1.6067509351,
+      "grad_norm_267912": 2.4922988231,
+      "update_weight_ratio_95568": 0.0009871087,
+      "update_weight_ratio_267912": 0.0011506821,
+      "winner": 267912
+    },
+    {
+      "requested_tokens": 262144,
+      "optimized_tokens": 262332,
+      "train_loss_95568": 1.9337465763,
+      "train_loss_267912": 0.9285429120,
+      "validation_loss_95568": 2.1090933922,
+      "validation_loss_267912": 2.4788615538,
+      "bits_per_byte_95568": 3.0427785778,
+      "bits_per_byte_267912": 3.5762412708,
+      "relative_loss_reduction_267912_vs_95568": -0.1753209047,
+      "grad_norm_95568": 2.3747510493,
+      "grad_norm_267912": 4.6357859938,
+      "update_weight_ratio_95568": 0.0008686725,
+      "update_weight_ratio_267912": 0.0009955682,
+      "winner": 95568
+    }
+  ],
+  "resource_snapshot_at_262k": {
+    "peak_rss_kib_95568": 385108,
+    "peak_rss_kib_267912": 397292,
+    "optimizer_state_bytes_95568": 764660,
+    "optimizer_state_bytes_267912": 2143448,
+    "checkpoint_bytes_95568": 1183769,
+    "checkpoint_bytes_267912": 3262277,
+    "reload_max_abs_diff_both": 0.0,
+    "elapsed_seconds_95568": 11.621852799,
+    "elapsed_seconds_267912": 20.790927513
+  },
+  "decision": {
+    "larger_model_improves_through_131k": true,
+    "larger_model_improves_at_262k": false,
+    "overfit_reversal_observed": true,
+    "best_observed_267912_requested_tokens": 131072,
+    "best_observed_267912_optimized_tokens": 131292,
+    "best_observed_267912_validation_loss": 2.0855692448
+  },
+  "unabridged_local_report_sha256": "6bee50349d34deaf56e2e3d6723301c5589b990c87be179708e55d7346155bcb",
+  "truth_boundary": "The interactive runtime could not DNS-clone GitHub. This is a source-equivalent diagnostic reconstructed from the visible PR #162 model/training semantics. The PR workflow is exact-head authority. The tiny project-authored fixture is repeatedly cycled, so these numbers do not establish broad language capability or a general scaling law."
+}
