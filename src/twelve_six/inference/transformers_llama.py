@@ -1,13 +1,8 @@
-"""Fail-closed 12-6 -> Transformers Llama interoperability planning.
+"""Fail-closed 12-6 -> Transformers Llama interoperability planning and conversion.
 
-This module is intentionally filesystem- and Transformers-dependency-free. It
-proves whether a canonical :class:`ModelSpec` is representable by the maintained
-Transformers Llama architecture, emits the exact target config/tensor mapping,
-and performs the only required weight-basis conversion for current S0: the Q/K
-RoPE coordinate permutation.
-
-Actual Transformers runtime parity remains a separate D07 acceptance step under
-an exact D08-owned dependency lock.
+The planning/conversion surface is dependency-light so canonical 12-6 environments do
+not need Transformers installed. Runtime execution lives in transformers_llama_runtime
+and consumes this exact mapping under the dedicated locked Transformers overlay.
 """
 
 from __future__ import annotations
@@ -23,9 +18,9 @@ from torch import Tensor
 
 from twelve_six.model import ModelSpec
 
-_SCHEMA = "12-6.transformers-llama-interop-plan.v1"
+_SCHEMA = "12-6.transformers-llama-interop-plan.v2"
 _TARGET_ARCHITECTURE = "LlamaForCausalLM"
-_RUNTIME_STATUS = "NOT_TESTED_REQUIRES_HASH_LOCKED_TRANSFORMERS"
+_RUNTIME_STATUS = "LOCKED_RUNTIME_REQUIRED"
 _ROPE_TRANSFORM = "PAIRWISE_INTERLEAVED_TO_LLAMA_HALF_SPLIT"
 
 
@@ -64,22 +59,23 @@ def _require_llama_representable(spec: ModelSpec) -> None:
             "q_dim must equal d_model so hidden_size is divisible by num_attention_heads"
         )
     if spec.attention_bias:
-        errors.append("attention projection bias is not accepted by bridge v1")
+        errors.append("attention projection bias is not accepted by bridge v2")
     if spec.mlp_bias:
-        errors.append("MLP bias is not accepted by bridge v1")
+        errors.append("MLP bias is not accepted by bridge v2")
     if spec.lm_head_bias:
-        errors.append("LlamaForCausalLM has no compatible lm_head bias in bridge v1")
+        errors.append("LlamaForCausalLM has no compatible lm_head bias in bridge v2")
     if not spec.final_norm:
-        errors.append("final RMSNorm is required by bridge v1")
+        errors.append("final RMSNorm is required by bridge v2")
     if errors:
         raise TransformersInteropError("; ".join(errors))
 
 
 def llama_config_dict(spec: ModelSpec) -> dict[str, object]:
-    """Return a raw-Base-safe Transformers ``LlamaConfig`` payload.
+    """Return the exact raw-Base-safe Transformers 5.15 LlamaConfig payload.
 
-    Special-token IDs are explicit ``None`` values: this bridge must not invent
-    BOS/EOS/PAD semantics for the canonical raw-byte Base tokenizer.
+    Transformers 5.15 moved Llama's serialized RoPE parameters under
+    ``rope_parameters``. Special-token IDs remain explicit ``None`` values so the
+    bridge does not invent BOS/EOS/PAD or chat semantics for the raw-byte Base model.
     """
 
     _require_llama_representable(spec)
@@ -96,7 +92,10 @@ def llama_config_dict(spec: ModelSpec) -> dict[str, object]:
         "hidden_act": "silu",
         "max_position_embeddings": spec.max_seq_len,
         "rms_norm_eps": spec.norm_eps,
-        "rope_theta": spec.rope_theta,
+        "rope_parameters": {
+            "rope_type": "default",
+            "rope_theta": spec.rope_theta,
+        },
         "attention_bias": False,
         "attention_dropout": spec.attention_dropout,
         "mlp_bias": False,
@@ -194,13 +193,7 @@ def convert_state_dict_to_llama(
     spec: ModelSpec,
     source_state: Mapping[str, Tensor],
 ) -> dict[str, Tensor]:
-    """Convert a canonical 12-6 state dict into Transformers Llama tensor names.
-
-    The function is pure with respect to caller tensors. Q and K rows are
-    permuted per head because 12-6 uses adjacent-pair RoPE coordinates while
-    Transformers Llama uses the half-split rotary basis. Other supported S0
-    tensors are copied exactly.
-    """
+    """Convert canonical 12-6 tensors to Transformers Llama names and RoPE basis."""
 
     _require_llama_representable(spec)
     expected_shapes = _source_tensor_shapes(spec)
@@ -263,7 +256,7 @@ class LlamaInteropPlan:
 
 
 def build_llama_interop_plan(spec: ModelSpec) -> LlamaInteropPlan:
-    """Build a deterministic non-promoting interoperability plan."""
+    """Build deterministic Llama conversion metadata for the runtime acceptance gate."""
 
     _require_llama_representable(spec)
     tensor_map = []
