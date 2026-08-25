@@ -1,0 +1,57 @@
+{
+  "schema": "12-6.model16-weight-tying-config.v1",
+  "authority": "RESEARCH_ONLY_NOT_CANONICAL",
+  "target_scale": "~250K",
+  "controls": {
+    "dataset": "data/s0/packaged",
+    "tokenizer": "byte-v1",
+    "packing": "research41-byte-stream-cyclic-v1",
+    "model_max_seq_len": 256,
+    "training_sequence_length": 64,
+    "batch_size": 4,
+    "optimizer_steps": 130,
+    "optimized_tokens": 32760,
+    "optimizer": {
+      "name": "AdamW",
+      "learning_rate": 0.0003,
+      "weight_decay": 0.0,
+      "betas": [0.9, 0.95],
+      "eps": 1e-8,
+      "scheduler": "constant",
+      "warmup_steps": 0,
+      "gradient_clip_norm": 1.0,
+      "precision": "fp32"
+    },
+    "seed": 1337
+  },
+  "candidates": {
+    "tied": {
+      "vocab_size": 256,
+      "d_model": 72,
+      "n_layers": 4,
+      "n_heads": 6,
+      "n_kv_heads": 6,
+      "head_dim": 12,
+      "d_ff": 192,
+      "tie_word_embeddings": true,
+      "expected_parameters": 267912
+    },
+    "untied": {
+      "vocab_size": 256,
+      "d_model": 72,
+      "n_layers": 4,
+      "n_heads": 6,
+      "n_kv_heads": 6,
+      "head_dim": 12,
+      "d_ff": 171,
+      "tie_word_embeddings": false,
+      "expected_parameters": 268200
+    }
+  },
+  "matching": {
+    "absolute_parameter_delta": 288,
+    "relative_parameter_delta": 0.001075,
+    "attention_geometry_identical": true,
+    "only_capacity_reallocation": "independent output embedding paid for by FFN reduction"
+  }
+}
