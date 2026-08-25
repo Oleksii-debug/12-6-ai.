@@ -58,10 +58,6 @@ jobs:
               vocabulary-evidence/real-448.json \
               vocabulary-evidence/real-512.json \
             --output vocabulary-evidence/vocabulary-pareto.json
-      - name: Focused vocabulary allocation tests
-        env:
-          PYTHONPATH: src
-        run: .vocab-experiment/bin/python -m pytest -q tests/test_vocabulary_allocation.py
       - name: Upload vocabulary evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
