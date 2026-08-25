@@ -1,0 +1,46 @@
+name: DATA-36 split robustness
+on:
+  pull_request:
+    paths:
+      - "src/twelve_six/split_robustness.py"
+      - "tools/run_split_robustness_experiment.py"
+      - "tests/test_split_robustness.py"
+      - ".github/workflows/data36-split-robustness.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  local-free-cpu:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Install exact locked LOCAL_FREE runtime
+        run: |
+          python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/dev.lock.txt
+          python -m pip install --no-deps --no-build-isolation -e .
+      - name: Focused split contract tests
+        run: python -m pytest -q tests/test_split_robustness.py
+      - name: Execute ~100K split sensitivity experiment
+        run: >-
+          python tools/run_split_robustness_experiment.py
+          --output reports/data36/split_sensitivity_local_free.json
+          --split-family-output reports/data36/split_family_local_free.json
+          --max-steps 16
+          --batch-size 3
+      - name: Upload immutable split evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: data36-split-robustness-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            reports/data36/split_sensitivity_local_free.json
+            reports/data36/split_family_local_free.json
+          if-no-files-found: error
+          retention-days: 30

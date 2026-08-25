@@ -1,0 +1,124 @@
+{
+  "schema_version": "12-6.split-robustness-local-mirror.v1",
+  "authority": "LOCAL_FREE_REFERENCE_MIRROR_PENDING_EXACT_HEAD_CI_CONFIRMATION",
+  "generated_utc_date": "2026-08-25",
+  "repository": "Oleksii-debug/12-6-ai.",
+  "branch": "data36/split-robustness-20260825",
+  "implementation_head_before_retained_report": "6d5b373c23e2cd4617b1f4611db7843703019e04",
+  "base_sha": "4c2bb89b780d56dbd040edb55f54136f3b66f378",
+  "runtime": {
+    "device": "cpu",
+    "python": "3.13.5",
+    "torch": "2.10.0+cpu",
+    "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
+    "paid_compute_used": false
+  },
+  "truth_boundary": {
+    "exact_branch_runner_executed_in_this_record": false,
+    "purpose": "independent local mirror of incumbent Model/packing/D02 AdamW semantics while GitHub exact-head workflow is queued",
+    "production_corpus_quality_claim": false,
+    "external_corpus_claim": false,
+    "benchmark_or_test_records": 0,
+    "must_be_superseded_for_exact_head_pass_claim_by": "DATA-36 split robustness GitHub Actions artifact"
+  },
+  "corpus": {
+    "authority": "PROJECT_AUTHORED_SYNTHETIC_MECHANICS_ONLY",
+    "documents": 180,
+    "near_duplicate_clusters": 90,
+    "documents_per_cluster": 2,
+    "modalities": {
+      "uk": 60,
+      "en": 60,
+      "code": 60
+    },
+    "eligible_corpus_sha256": "0487998df7890d0ee40ed13f753a1885faf89036b2fd61b917ac3283b033648d",
+    "dedup_relations_sha256": "c3e80d2b753667b102d5db8e0f679c71761db396e27703a09aff76da3dc43a0e"
+  },
+  "split_family": {
+    "split_family_identity_sha256": "4cd022354da7914e92132bb14669a5822528a890b9f94865beecf4a24d4cc3eb",
+    "variant_split_identities": [
+      "3817efd86c92e46dd7195e07efcdf89ba3ab1e4455db025db80a5961bc23ce6d",
+      "7297b0ee0f81790002972d2900833b4256bc187145f8885d04c5b62bf5327d55",
+      "719dcd076c122fa6f062e6e842c7046d6014c585f36fe7e39c84f0a29ebc6079",
+      "8d8a97fa8c2fcb1115e17ba89268be26c93b4ed95edef763982b51c067a0a466"
+    ],
+    "variant_validation_documents": [18, 18, 18, 18],
+    "shared_train_documents": 118,
+    "validation_union_documents": 62,
+    "cluster_straddles_cluster_aware": 0,
+    "record_hash_reference_cluster_straddles": [13, 19, 16, 13],
+    "training_policy": "optimize_shared_train_core_only_excluding_validation_union"
+  },
+  "training_protocol": {
+    "seed": 1337,
+    "tokenizer": "s0-byte-v1",
+    "tokenizer_config_sha256": "b04055c1061dd641dcab7cb9d62a931f09b8d1a070140a926ceb4e91d73ca8e1",
+    "sequence_length": 128,
+    "batch_size_examples": 3,
+    "optimizer": "AdamW",
+    "learning_rate": 0.03,
+    "betas": [0.9, 0.95],
+    "eps": 1e-8,
+    "weight_decay": 0.0,
+    "scheduler": "constant",
+    "gradient_clip_norm": 1.0,
+    "precision": "fp32",
+    "max_steps": 16,
+    "optimized_tokens_each_candidate": 4950,
+    "training_protocol_sha256": "60c7fdba1a280c1c41243df53258dd9df0348a8152c661d435230e85bcb3c1e6"
+  },
+  "candidates": [
+    {
+      "candidate_id": "base_10k",
+      "parameter_count": 10140,
+      "initial_shared_train_loss": 5.536421401188889,
+      "final_shared_train_loss": 3.1141505636071747,
+      "validation": [
+        {"variant_id": "v01", "loss_nats_per_byte_token": 3.169611271305588, "bits_per_byte": 4.572782462658335, "scoreable_tokens": 4014},
+        {"variant_id": "v02", "loss_nats_per_byte_token": 3.1321160788949767, "bits_per_byte": 4.518688334510368, "scoreable_tokens": 4380},
+        {"variant_id": "v03", "loss_nats_per_byte_token": 3.153629474627697, "bits_per_byte": 4.549725603846646, "scoreable_tokens": 3910},
+        {"variant_id": "v04", "loss_nats_per_byte_token": 3.1215343864990284, "bits_per_byte": 4.503422179366521, "scoreable_tokens": 4326}
+      ],
+      "bpb_sensitivity": {
+        "mean": 4.5361546450954675,
+        "population_stdev": 0.026936287137413216,
+        "min": 4.503422179366521,
+        "max": 4.572782462658335,
+        "range": 0.06936028329181365,
+        "relative_range": 0.015290546447045547
+      }
+    },
+    {
+      "candidate_id": "base_96k",
+      "parameter_count": 95568,
+      "initial_shared_train_loss": 5.533394860166824,
+      "final_shared_train_loss": 3.143901018955664,
+      "validation": [
+        {"variant_id": "v01", "loss_nats_per_byte_token": 3.199463263696025, "bits_per_byte": 4.615849784040673, "scoreable_tokens": 4014},
+        {"variant_id": "v02", "loss_nats_per_byte_token": 3.140639244911333, "bits_per_byte": 4.530984663854839, "scoreable_tokens": 4380},
+        {"variant_id": "v03", "loss_nats_per_byte_token": 3.2297683516426767, "bits_per_byte": 4.659570784135012, "scoreable_tokens": 3910},
+        {"variant_id": "v04", "loss_nats_per_byte_token": 3.154012207515362, "bits_per_byte": 4.550277770685665, "scoreable_tokens": 4326}
+      ],
+      "bpb_sensitivity": {
+        "mean": 4.589170750679047,
+        "population_stdev": 0.051396060462820504,
+        "min": 4.530984663854839,
+        "max": 4.659570784135012,
+        "range": 0.1285861202801728,
+        "relative_range": 0.028019467408386636
+      }
+    }
+  ],
+  "ranking_stability": {
+    "pair": ["base_10k", "base_96k"],
+    "variant_preferences": ["base_10k", "base_10k", "base_10k", "base_10k"],
+    "rank_reversal_count": 0,
+    "rank_consistency_fraction": 1.0
+  },
+  "interpretation": {
+    "split_artifact_detected_for_pairwise_ranking": false,
+    "single_split_should_be_used_for_decision_critical_claims": false,
+    "larger_model_quality_claim": "NOT_SUPPORTED: equal short optimizer-step budget favors faster-converging small control; this run measures split stability, not asymptotic model-size quality",
+    "canonical_policy_recommendation": "Freeze one cluster-aware canonical split identity for ordinary iteration. For decision-critical small-model comparisons, predeclare at least four cluster-aware validation variants, train only on the validation-union-excluded shared core, report dispersion and rank reversals, and never choose the best-looking split."
+  }
+}
