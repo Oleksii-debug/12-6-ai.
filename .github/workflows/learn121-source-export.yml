@@ -21,12 +21,12 @@ jobs:
         run: |
           git rev-parse HEAD > LEARN121_SOURCE_SHA.txt
           git status --porcelain=v1
-      - name: Package exact checkout including git identity
-        run: tar -czf ../learn121-source.tgz .
+      - name: Package exact committed source
+        run: git archive --format=tar.gz --output=learn121-source.tgz HEAD
       - name: Upload exact source package
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: learn121-exact-source
-          path: ../learn121-source.tgz
+          path: learn121-source.tgz
           if-no-files-found: error
           retention-days: 7
