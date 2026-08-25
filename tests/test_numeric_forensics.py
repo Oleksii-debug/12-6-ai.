@@ -14,6 +14,7 @@ from twelve_six.training import (
     TrainingStateInvalidError,
     batch_identity_sha256,
 )
+from twelve_six.training.numeric_forensics import nonfinite_gradient_parameters
 
 
 class ToyBigramLM(nn.Module):
@@ -64,6 +65,25 @@ def test_batch_identity_hash_ignores_non_tensor_metadata_and_raw_text() -> None:
     assert first_hash == second_hash
     assert len(first_hash) == 64
     assert "private" not in first_hash
+
+
+def test_affected_parameter_names_are_bounded_to_sixteen() -> None:
+    class ManyParameters(nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.values = nn.ParameterList(nn.Parameter(torch.ones(())) for _ in range(20))
+
+    model = ManyParameters()
+    for parameter in model.parameters():
+        parameter.grad = torch.tensor(float("inf"))
+
+    affected = nonfinite_gradient_parameters(model)
+
+    assert affected.total_count == 20
+    assert len(affected.names) == 16
+    assert affected.truncated is True
+    assert affected.names[0] == "values.0"
+    assert affected.names[-1] == "values.15"
 
 
 def test_nonfinite_gradient_captures_bounded_parameter_identity() -> None:
