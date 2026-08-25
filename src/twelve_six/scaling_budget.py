@@ -136,7 +136,7 @@ def _tensor_bytes(value: Any) -> int:
 def _assert_exact_state(left: Any, right: Any, *, path: str = "state") -> None:
     if isinstance(left, torch.Tensor) or isinstance(right, torch.Tensor):
         if not isinstance(left, torch.Tensor) or not isinstance(right, torch.Tensor):
-            raise RuntimeError(f"resume state type drift at {path}")
+            raise TypeError(f"resume state type drift at {path}")
         if left.dtype != right.dtype or left.shape != right.shape or not torch.equal(left, right):
             raise RuntimeError(f"resume tensor drift at {path}")
         return
@@ -152,7 +152,7 @@ def _assert_exact_state(left: Any, right: Any, *, path: str = "state") -> None:
         return
     if isinstance(left, Mapping) or isinstance(right, Mapping):
         if not isinstance(left, Mapping) or not isinstance(right, Mapping):
-            raise RuntimeError(f"resume mapping type drift at {path}")
+            raise TypeError(f"resume mapping type drift at {path}")
         if set(left) != set(right):
             raise RuntimeError(f"resume mapping-key drift at {path}")
         for key in left:
