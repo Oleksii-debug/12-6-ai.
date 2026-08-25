@@ -60,6 +60,8 @@ jobs:
           python -m pip install "$wheel" \
             --extra-index-url https://download.pytorch.org/whl/cpu
           python -m pip install -e . --no-deps
+          python -m pip install --disable-pip-version-check --require-hashes --no-deps \
+            -r requirements/locks/linux-x86_64/dev.lock.txt
 
       - name: Configure documented CPU preload libraries
         shell: bash
