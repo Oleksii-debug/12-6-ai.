@@ -1,0 +1,103 @@
+{
+  "schema": "12-6.data34-mixture-experiment.v1",
+  "status": "EXPERIMENTAL_CONTROLLED_NOT_FROZEN",
+  "authority": "LOCAL_FREE_CONTROLLED_MIXTURE_EVIDENCE",
+  "controls": {
+    "model_family": "research41-fixed-vocab-context",
+    "controlled_spec_index": 1,
+    "expected_trainable_parameters": 267912,
+    "tokenizer": "s0-byte-v1",
+    "requested_loss_tokens": 65536,
+    "batch_size": 4,
+    "sequence_length": 64,
+    "seed": 1337,
+    "torch_threads": 2,
+    "optimizer": {
+      "learning_rate": 0.0003,
+      "weight_decay": 0.0,
+      "betas": [0.9, 0.95],
+      "eps": 1e-8,
+      "warmup_steps": 0,
+      "scheduler": "constant",
+      "gradient_accumulation_steps": 1,
+      "gradient_clip_norm": 1.0,
+      "precision": "fp32"
+    }
+  },
+  "data": {
+    "training_path": "data/synthetic/data10/uk-en-code-train.txt",
+    "authority": "PROJECT_AUTHORED_SYNTHETIC_MECHANICS_NOT_REPRESENTATIVE_CORPUS",
+    "strata": {
+      "uk": {"line_range_1based_inclusive": [1, 3]},
+      "en": {"line_range_1based_inclusive": [4, 6]},
+      "code": {"line_range_1based_inclusive": [7, 17]}
+    },
+    "selection_validation": {
+      "uk": [
+        "Наукова стаття описує українську морфологію, узгодження прикметників і відмінювання іменників у зв’язному тексті.",
+        "Дослідниця перевіряє, чи модель передбачає нові речення про освіту, культуру, технології та суспільство."
+      ],
+      "en": [
+        "A controlled language model experiment measures generalization on English sentences that were never used for optimization.",
+        "The validation split contains ordinary prose about research methods, reproducibility, data quality, and scientific evidence."
+      ],
+      "code": [
+        "function normalize(items) {\n  return items.map((item) => item.trim()).filter(Boolean);\n}\n",
+        "{\n  \"split\": \"validation\",\n  \"deterministic\": true,\n  \"count\": 17\n}\n"
+      ]
+    },
+    "final_test": {
+      "uk": [
+        "Університетська бібліотека зберігає тексти різних жанрів, а дослідники порівнюють мовні закономірності на незалежній вибірці.",
+        "Українська орфографія містить апостроф, літери ґ, ї, є та складні форми слів, яких модель не бачила під час навчання."
+      ],
+      "en": [
+        "Independent test material should remain outside model selection even when every candidate is evaluated with the same tokenizer.",
+        "Small controlled experiments can expose tradeoffs, but they cannot substitute for representative corpus evidence."
+      ],
+      "code": [
+        "def checksum(parts: list[bytes]) -> str:\n    digest = hashlib.sha256()\n    for part in parts:\n        digest.update(part)\n    return digest.hexdigest()\n",
+        "records:\n  - id: test-1\n    enabled: true\n  - id: test-2\n    enabled: false\n"
+      ]
+    }
+  },
+  "mixtures": [
+    {
+      "id": "incumbent_45_35_20",
+      "role": "incumbent",
+      "weights": {"uk": 45, "en": 35, "code": 20}
+    },
+    {
+      "id": "uk_heavy_60_25_15",
+      "role": "ukrainian-heavy",
+      "weights": {"uk": 60, "en": 25, "code": 15}
+    },
+    {
+      "id": "balanced_40_40_20",
+      "role": "natural-language-balanced",
+      "weights": {"uk": 40, "en": 40, "code": 20}
+    },
+    {
+      "id": "code_heavy_40_30_30",
+      "role": "code-heavier-control",
+      "weights": {"uk": 40, "en": 30, "code": 30}
+    }
+  ],
+  "selection": {
+    "selection_split": "selection_validation",
+    "primary_metric": "macro_bpb",
+    "incumbent_id": "incumbent_45_35_20",
+    "severe_regression_relative_threshold": 0.05,
+    "minimum_macro_improvement_relative": 0.005,
+    "test_used_for_selection": false,
+    "tie_policy": "retain-incumbent-unless-candidate-clears-improvement-and-regression-guards"
+  },
+  "truth_boundary": {
+    "representative_corpus": false,
+    "external_training_sources_approved_by_this_experiment": 0,
+    "mixture_freeze_authority": false,
+    "promotion_authority": false,
+    "paid_compute": false,
+    "rerun_required_on_representative_corpus": true
+  }
+}
