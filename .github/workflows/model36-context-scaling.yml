@@ -1,0 +1,121 @@
+name: MODEL-36 Context Scaling Mechanics
+
+on:
+  pull_request:
+    paths:
+      - "configs/context/**"
+      - "configs/stages/s0_10k.json"
+      - "configs/stages/s1_100k.json"
+      - "configs/stages/s2_1m.json"
+      - "configs/stages/s3_10m.json"
+      - "src/twelve_six/context_scaling.py"
+      - "src/twelve_six/distributed/memory.py"
+      - "src/twelve_six/model.py"
+      - "src/twelve_six/packing/**"
+      - "tests/test_context_scaling.py"
+      - "tests/test_context_candidate_configs.py"
+      - "tools/run_context_scaling_probe.py"
+      - "docs/CONTEXT_LENGTH_READINESS_MODEL36.md"
+      - ".github/workflows/model36-context-scaling.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  locked-context-mechanics:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Prove exact source checkout
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Create exact locked context execution environment
+        run: |
+          python -m venv .model36-context-locked
+          .model36-context-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .model36-context-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          .model36-context-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/dev.lock.txt
+          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .model36-context-locked/bin/python -m pip install --no-deps --no-build-isolation -e .
+
+      - name: Focused context regressions
+        run: >-
+          .model36-context-locked/bin/python -m pytest -q
+          tests/test_context_scaling.py
+          tests/test_context_candidate_configs.py
+          tests/test_distributed_planning.py
+
+      - name: Collect exact-head S0-S2 context mechanics evidence
+        run: |
+          .model36-context-locked/bin/python tools/run_context_scaling_probe.py \
+            --mode quick \
+            --device cpu \
+            --threads 1 \
+            --seed 126 \
+            --source-sha "$SOURCE_SHA" \
+            --output model36-context-scaling-quick.json
+          cat model36-context-scaling-quick.json
+
+      - name: Validate mechanics-only evidence boundary
+        run: |
+          .model36-context-locked/bin/python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          report = json.loads(
+              Path("model36-context-scaling-quick.json").read_text(encoding="utf-8")
+          )
+          assert report["schema_version"] == 1
+          assert report["source_sha"] == os.environ["SOURCE_SHA"]
+          assert report["mode"] == "quick"
+          assert report["device"] == "cpu"
+          assert report["torch_threads"] == 1
+          assert report["claim_boundary"] == (
+              "mechanical context-scaling evidence only; "
+              "not trained/evaluated long-context capability"
+          )
+          records = report["records"]
+          assert len(records) == 6
+          observed = {(row["stage"], row["probe_max_seq_len"]) for row in records}
+          assert observed == {
+              ("S0", 128),
+              ("S0", 256),
+              ("S1", 256),
+              ("S1", 512),
+              ("S2", 512),
+              ("S2", 1024),
+          }
+          for row in records:
+              assert row["kv_final_sequence_length"] == row["probe_max_seq_len"]
+              assert row["kv_cache_bytes_actual"] == row["context_cost"]["kv_cache_bytes"]
+              assert row["context_cost"]["attention_score_equivalent_bytes"] > 0
+              if row["probe_max_seq_len"] == row["canonical_max_seq_len"]:
+                  assert row["probe_model_identity_sha256"] == row[
+                      "canonical_model_identity_sha256"
+                  ]
+              else:
+                  assert row["probe_model_identity_sha256"] != row[
+                      "canonical_model_identity_sha256"
+                  ]
+          PY
+
+      - name: Upload exact-head MODEL-36 evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: model36-context-scaling-${{ env.SOURCE_SHA }}
+          path: model36-context-scaling-quick.json
+          if-no-files-found: error
+          retention-days: 30
