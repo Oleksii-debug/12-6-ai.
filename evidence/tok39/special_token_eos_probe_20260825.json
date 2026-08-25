@@ -1,0 +1,108 @@
+{
+  "schema": "12-6.tok39-special-token-probe.v1",
+  "worker_id": "TOK-39-SPECIAL-TOKENS",
+  "status": "DIRECTIONAL_MICROPROBE_NOT_PROMOTION_EVIDENCE",
+  "source_branch": "d07/transformers-llama-interop-plan-20260825",
+  "source_commit": "83e39695813ccb4987aa4ea011b3d4077eb6fafb",
+  "dataset": {
+    "train": "data/s0/packaged/train.jsonl",
+    "validation": "data/s0/packaged/validation.jsonl",
+    "train_documents": 10,
+    "validation_documents": 2,
+    "test_data_used": false,
+    "synthetic_fixture": true
+  },
+  "contracts": {
+    "baseline": {
+      "tokenizer_version": "s0-byte-v1",
+      "vocab_size": 256,
+      "special_tokens": {},
+      "packing": "isolated"
+    },
+    "eos": {
+      "tokenizer_version": "exp-byte-eos-v1",
+      "vocab_size": 257,
+      "special_tokens": {"eos": 256},
+      "packing": "cross_document_with_explicit_eos"
+    }
+  },
+  "packing_probe": {
+    "sequence_length": 128,
+    "baseline": {
+      "sequences": 21,
+      "actual_positions_including_overlap": 1931,
+      "loss_pairs": 1910,
+      "masked_fill_positions": 757,
+      "position_utilization": 0.7183779761904762
+    },
+    "eos": {
+      "sequences": 16,
+      "stream_tokens_before_window_overlap": 1930,
+      "actual_positions_including_overlap": 1945,
+      "loss_pairs": 1929,
+      "masked_fill_positions": 103,
+      "position_utilization": 0.94970703125
+    },
+    "delta": {
+      "utilization_percentage_points": 23.132905505952383,
+      "sequence_count_reduction_percent": 23.809523809523814,
+      "additional_objective_pairs": 19,
+      "additional_pairs_explanation": "10 content-to-EOS targets plus 9 EOS-to-next-document-first-byte targets"
+    }
+  },
+  "training_probe": {
+    "model": "tiny single-layer GRU causal LM",
+    "canonical_12_6_architecture": false,
+    "purpose": "directional check for obvious content-loss regression after EOS objective change",
+    "embedding_dim": 16,
+    "hidden_dim": 32,
+    "optimizer": "AdamW",
+    "learning_rate": 0.01,
+    "weight_decay": 0.0,
+    "steps": 160,
+    "batch_size": 4,
+    "seeds": [11, 23, 37],
+    "held_out_metric": "content-byte next-token NLL excluding EOS targets",
+    "runs": [
+      {
+        "seed": 11,
+        "baseline_validation_nll": 1.9249108947149598,
+        "eos_validation_nll": 1.908352313655438,
+        "eos_total_validation_nll_including_boundary_targets": 1.9010527662455743,
+        "first_byte_after_eos_nll": 4.782090187072754
+      },
+      {
+        "seed": 23,
+        "baseline_validation_nll": 1.9656356962600556,
+        "eos_validation_nll": 1.9780333112962176,
+        "eos_total_validation_nll_including_boundary_targets": 1.970757846174569,
+        "first_byte_after_eos_nll": 4.608594655990601
+      },
+      {
+        "seed": 37,
+        "baseline_validation_nll": 1.9859626694480972,
+        "eos_validation_nll": 1.9124816290222773,
+        "eos_total_validation_nll_including_boundary_targets": 1.9055577170085438,
+        "first_byte_after_eos_nll": 5.194057941436768
+      }
+    ],
+    "aggregate": {
+      "baseline_mean_validation_nll": 1.9588364201410375,
+      "eos_mean_validation_nll": 1.9329557513246443,
+      "baseline_mean_content_bpb": 2.826003589250165,
+      "eos_mean_content_bpb": 2.788665676693865,
+      "eos_minus_baseline_nll": -0.025880668816393282,
+      "relative_nll_change_percent": -1.3212266501829606
+    },
+    "interpretation": "No obvious held-out content regression was observed. This probe is deliberately too small and non-canonical to authorize promotion."
+  },
+  "semantic_decision": {
+    "bos": "NO_V1",
+    "eos": "YES_EXPERIMENTAL_ID_256",
+    "pad": "NO_SEMANTIC_PAD_MASKED_FILL_ONLY",
+    "unk": "NO_BYTE_COVERAGE_IS_COMPLETE",
+    "chat_or_instruction_tokens": "FORBIDDEN",
+    "empty_context": "FAIL_CLOSED_NO_TRAINED_BOS",
+    "promotion_allowed": false
+  }
+}
