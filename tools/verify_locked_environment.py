@@ -76,14 +76,14 @@ def _validate_lock_text(path: Path, expected_count: int) -> None:
 
 
 def validate_committed_profile(profile_id: str | None = None) -> tuple[dict[str, Any], dict[str, Any]]:
-    LOCK.assert_exact_python()
-    index = LOCK.validate_lock_index(root=ROOT, index_path=INDEX_PATH)
     current = LOCK.current_profile_id()
     expected = profile_id or current
     if expected != current:
         raise LOCK.DependencyLockError(
             f"requested profile {expected!r} does not match current platform {current!r}"
         )
+    LOCK.assert_exact_python(expected)
+    index = LOCK.validate_lock_index(root=ROOT, index_path=INDEX_PATH)
     record = index["profiles"][expected]
     profile_path = _safe_relative_path(record["path"])
     profile = LOCK.validate_profile_manifest(
@@ -105,10 +105,19 @@ def validate_committed_profile(profile_id: str | None = None) -> tuple[dict[str,
 
 
 def _venv_python(directory: Path) -> Path:
-    path = directory / "bin" / "python"
+    if os.name == "nt":
+        path = directory / "Scripts" / "python.exe"
+    else:
+        path = directory / "bin" / "python"
     if not path.exists():
         raise RuntimeError(f"virtualenv Python missing: {path}")
     return path
+
+
+def _venv_script(directory: Path, name: str) -> Path:
+    if os.name == "nt":
+        return directory / "Scripts" / f"{name}.exe"
+    return directory / "bin" / name
 
 
 def _run(command: list[str | Path], *, cwd: Path = ROOT, env: dict[str, str] | None = None) -> None:
@@ -174,7 +183,7 @@ def _smoke(python: Path, environment: Path) -> None:
             ),
         ]
     )
-    command = environment / "bin" / "twelve-six-generate"
+    command = _venv_script(environment, "twelve-six-generate")
     if not command.exists():
         raise RuntimeError("console script twelve-six-generate was not installed")
     completed = subprocess.run(
