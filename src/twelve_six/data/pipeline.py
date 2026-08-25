@@ -5,10 +5,17 @@ import hashlib
 import json
 import re
 import unicodedata
+from collections import Counter
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+from twelve_six.data.ukrainian_normalization import (
+    NORMALIZATION_SCHEMA,
+    NormalizationError,
+    normalize_document,
+)
 
 EMAIL_RE = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE)
 PHONE_RE = re.compile(r"(?<!\w)(?:\+?\d[\d ()-]{7,}\d)(?!\w)")
@@ -55,12 +62,14 @@ def _read_json(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def normalize_text(text: str) -> str:
+def normalize_text(text: str, *, modality: str = "natural") -> str:
+    """D03 compatibility wrapper over the DATA-27 modality-aware normalizer."""
     if not isinstance(text, str):
         raise DataContractError("document text must be a string")
-    text = unicodedata.normalize("NFKC", text.replace("\r\n", "\n").replace("\r", "\n"))
-    lines = [" ".join(line.split()) for line in text.split("\n")]
-    return "\n".join(line for line in lines if line).strip()
+    try:
+        return normalize_document(text, modality=modality).text  # type: ignore[arg-type]
+    except (NormalizationError, TypeError) as exc:
+        raise DataContractError(str(exc)) from exc
 
 
 def language_id(text: str) -> str:
@@ -171,12 +180,18 @@ def build_dataset(
     )
 
     accepted: list[dict[str, Any]] = []
+    normalization_reasons: Counter[str] = Counter()
     stats = {
         "input_documents": 0,
         "quality_rejected": 0,
         "contamination_rejected": 0,
         "exact_duplicates_removed": 0,
         "near_duplicates_removed": 0,
+        "normalization_changed_documents": 0,
+        "normalization_raw_codepoints": 0,
+        "normalization_output_codepoints": 0,
+        "normalization_raw_byte_tokens": 0,
+        "normalization_output_byte_tokens": 0,
     }
 
     for source in sorted(sources, key=lambda item: item["source_id"]):
@@ -191,6 +206,9 @@ def build_dataset(
         if _sha256_bytes(raw_bytes) != source.get("content_sha256"):
             raise DataContractError(f"{source['source_id']}: immutable source hash mismatch")
         provenance = source["provenance"]
+        source_version = str(
+            source.get("source_version") or source.get("version") or source["source_id"]
+        )
         for line_number, line in enumerate(raw_bytes.decode("utf-8").splitlines(), start=1):
             if not line.strip():
                 continue
@@ -199,7 +217,30 @@ def build_dataset(
             doc_id = record.get("document_id")
             if not isinstance(doc_id, str) or not doc_id:
                 raise DataContractError(f"{source['source_id']}:{line_number}: document_id is required")
-            normalized = normalize_text(record.get("text"))
+            modality = record.get("modality", "natural")
+            try:
+                normalization = normalize_document(
+                    record.get("text"),
+                    modality=modality,
+                    source_id=source["source_id"],
+                    source_version=source_version,
+                    raw_document_id=doc_id,
+                    raw_source_sha256=source.get("content_sha256"),
+                )
+            except (NormalizationError, TypeError) as exc:
+                raise DataContractError(
+                    f"{source['source_id']}:{doc_id}: normalization failed: {exc}"
+                ) from exc
+            normalized = normalization.text
+            trace = normalization.trace
+            normalization_reasons.update(trace.reason_counts)
+            stats["normalization_raw_codepoints"] += trace.raw_codepoints
+            stats["normalization_output_codepoints"] += trace.normalized_codepoints
+            stats["normalization_raw_byte_tokens"] += trace.raw_utf8_bytes
+            stats["normalization_output_byte_tokens"] += trace.normalized_utf8_bytes
+            if trace.raw_text_sha256 != trace.normalized_text_sha256:
+                stats["normalization_changed_documents"] += 1
+
             reason = _quality_reason(normalized, config)
             if reason is not None:
                 stats["quality_rejected"] += 1
@@ -210,7 +251,7 @@ def build_dataset(
                 raise DataContractError(
                     f"{source['source_id']}:{doc_id}: language mismatch hint={hint} detected={detected_language}"
                 )
-            content_sha = _sha256_bytes(normalized.encode("utf-8"))
+            content_sha = trace.normalized_text_sha256
             if content_sha in forbidden_hashes:
                 stats["contamination_rejected"] += 1
                 continue
@@ -221,10 +262,20 @@ def build_dataset(
                     "language": detected_language if detected_language != "und" else hint or "und",
                     "source_id": source["source_id"],
                     "content_sha256": content_sha,
+                    "raw_text_sha256": trace.raw_text_sha256,
+                    "normalization": trace.as_dict(),
                     "synthetic": provenance["synthetic"],
                     "synthetic_kind": provenance.get("synthetic_kind"),
                 }
             )
+
+    stats["normalization_codepoint_delta"] = (
+        stats["normalization_output_codepoints"] - stats["normalization_raw_codepoints"]
+    )
+    stats["normalization_byte_token_delta"] = (
+        stats["normalization_output_byte_tokens"] - stats["normalization_raw_byte_tokens"]
+    )
+    stats["normalization_reason_counts"] = dict(sorted(normalization_reasons.items()))
 
     exact_seen: set[str] = set()
     exact_deduped: list[dict[str, Any]] = []
@@ -281,12 +332,14 @@ def build_dataset(
     identity_core = {
         "schema_version": 1,
         "dataset_id": source_registry["dataset_id"],
+        "normalization_schema": NORMALIZATION_SCHEMA,
         "source_registry_sha256": _sha256_bytes(registry_bytes),
         "contamination_registry_sha256": _sha256_bytes(contamination_bytes),
         "pipeline_config": config.as_dict(),
         "document_assignments": [
             {
                 "id": item["id"],
+                "raw_text_sha256": item["raw_text_sha256"],
                 "content_sha256": item["content_sha256"],
                 "split": "validation" if item["id"] in validation_ids else "train",
             }

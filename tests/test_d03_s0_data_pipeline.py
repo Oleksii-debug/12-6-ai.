@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from twelve_six.data import pipeline
+from twelve_six.data.ukrainian_normalization import NORMALIZATION_SCHEMA
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE_REGISTRY = ROOT / "data/s0/source_registry.json"
@@ -18,25 +19,44 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def test_committed_s0_package_rebuild_is_byte_deterministic(tmp_path: Path) -> None:
-    manifest = pipeline.build_dataset(SOURCE_REGISTRY, CONTAMINATION_REGISTRY, tmp_path)
-    assert manifest["stats"]["input_documents"] == 12
-    assert manifest["stats"]["train_documents"] == 10
-    assert manifest["stats"]["validation_documents"] == 2
-    assert manifest["stats"]["quality_rejected"] == 0
-    assert manifest["stats"]["contamination_rejected"] == 0
-    assert manifest["stats"]["exact_duplicates_removed"] == 0
-    assert manifest["stats"]["near_duplicates_removed"] == 0
+def test_current_s0_pipeline_rebuild_is_byte_deterministic(tmp_path: Path) -> None:
+    first_dir = tmp_path / "first"
+    second_dir = tmp_path / "second"
+    first = pipeline.build_dataset(SOURCE_REGISTRY, CONTAMINATION_REGISTRY, first_dir)
+    second = pipeline.build_dataset(SOURCE_REGISTRY, CONTAMINATION_REGISTRY, second_dir)
+
+    assert first["dataset_identity_sha256"] == second["dataset_identity_sha256"]
+    assert first["normalization_schema"] == NORMALIZATION_SCHEMA
+    assert first["stats"]["input_documents"] == 12
+    assert first["stats"]["train_documents"] == 10
+    assert first["stats"]["validation_documents"] == 2
+    assert first["stats"]["quality_rejected"] == 0
+    assert first["stats"]["contamination_rejected"] == 0
+    assert first["stats"]["exact_duplicates_removed"] == 0
+    assert first["stats"]["near_duplicates_removed"] == 0
+    assert first["stats"]["normalization_changed_documents"] == 0
+    assert first["stats"]["normalization_codepoint_delta"] == 0
+    assert first["stats"]["normalization_byte_token_delta"] == 0
 
     for name in ("train.jsonl", "validation.jsonl", "manifest.json"):
-        assert (tmp_path / name).read_bytes() == (PACKAGED / name).read_bytes()
+        assert (first_dir / name).read_bytes() == (second_dir / name).read_bytes()
+
+    records = [
+        json.loads(line)
+        for name in ("train.jsonl", "validation.jsonl")
+        for line in (first_dir / name).read_text(encoding="utf-8").splitlines()
+    ]
+    assert len(records) == 12
+    assert all(record["normalization"]["schema"] == NORMALIZATION_SCHEMA for record in records)
+    assert all(record["raw_text_sha256"] == record["content_sha256"] for record in records)
 
 
-def test_manifest_output_hashes_match_committed_files() -> None:
+def test_legacy_committed_manifest_output_hashes_match_legacy_files() -> None:
     manifest = json.loads((PACKAGED / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["outputs"]["train.jsonl"] == _sha256(PACKAGED / "train.jsonl")
     assert manifest["outputs"]["validation.jsonl"] == _sha256(PACKAGED / "validation.jsonl")
     assert manifest["contamination_state"]["claim"].startswith("controlled S0 sources only")
+    assert "normalization_schema" not in manifest
 
 
 def test_source_registry_hash_mismatch_fails_closed(tmp_path: Path) -> None:

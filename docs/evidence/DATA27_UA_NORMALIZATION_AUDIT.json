@@ -1,0 +1,27 @@
+{
+  "worker_id": "DATA-27-UA-NORMALIZATION",
+  "normalization_schema": "12-6.ua-normalization-v1",
+  "audit_date": "2026-08-25",
+  "sample": {
+    "path": "data/s0/raw/project_authored.jsonl",
+    "source_id": "project-authored-s0-fixture-v1",
+    "selection": "language_hint == uk",
+    "documents": 6,
+    "raw_codepoints": 811,
+    "normalized_codepoints": 811,
+    "codepoint_delta": 0,
+    "raw_byte_tokens": 1515,
+    "normalized_byte_tokens": 1515,
+    "byte_token_delta": 0,
+    "changed_documents": 0,
+    "reason_counts": {}
+  },
+  "token_metric": "Current ByteTokenizer baseline: one token per UTF-8 byte; this is not a claim about future BPE/Unigram token counts.",
+  "truth_boundary": [
+    "The audited S0 Ukrainian sample is project-authored fixture data, not an external Ukrainian corpus.",
+    "Zero drift on this clean sample does not imply zero drift on external corpora.",
+    "Regression fixtures intentionally exercise dirty Unicode/HTML/whitespace cases separately.",
+    "Natural text uses NFC, never NFKC; common apostrophe, quote, dash, ґ/г, і/ї/й distinctions are preserved.",
+    "Code receives newline canonicalization only and bypasses natural-text whitespace, HTML, NFC, NBSP, and soft-hyphen cleanup."
+  ]
+}
