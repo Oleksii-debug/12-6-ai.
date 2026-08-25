@@ -29,7 +29,7 @@ The hard ceiling is EUR 2,000, not a spend target:
 - EUR 100 storage/recovery;
 - EUR 500 restart/price-variance reserve that cannot be consumed automatically.
 
-The pricing snapshot is an assumption, not a quote. On 2026-08-25 the planning file records Runpod Secure Cloud A100 PCIe 80 GB at USD 1.39/GPU-hour and H100 SXM 80 GB at USD 3.29/GPU-hour. Using the ECB 2026-08-24 reference of USD 1.1664 per EUR gives approximately EUR 1.1917/hour and EUR 2.8206/hour respectively. VAT, storage, egress, capacity premiums and future price movement are excluded, so pricing must be refreshed before authorization.
+The pricing snapshot is an assumption, not a quote. Runpod's official guide lists Secure Cloud rates verified 10 August 2026 of USD 1.39/GPU-hour for A100 PCIe 80 GB and USD 2.99/GPU-hour for H100 SXM 80 GB. Using the ECB 24 August 2026 reference of USD 1.1664 per EUR gives approximately EUR 1.1917/hour and EUR 2.5634/hour respectively. VAT, storage, egress, capacity premiums and future price movement are excluded, so pricing must be refreshed before authorization.
 
 ## Strategy comparison
 
@@ -90,11 +90,11 @@ Using A100 dense BF16 Tensor-Core peak 312 TFLOP/s:
 - at 2%: about 134 hours and EUR 160;
 - at 5%: about 53.6 hours and EUR 64.
 
-Using H100 SXM dense BF16 peak about 989 TFLOP/s:
+Using H100 SXM dense BF16 peak approximately 989.5 TFLOP/s (half of NVIDIA's sparsity-marked 1,979 TFLOP/s figure):
 
-- at 1% effective utilization: about 84.6 GPU-hours and EUR 239;
-- at 2%: about 42.3 hours and EUR 119;
-- at 5%: about 16.9 hours and EUR 48.
+- at 1% effective utilization: about 84.6 GPU-hours and about EUR 217 at the planning rate;
+- at 2%: about 42.3 hours and EUR 108;
+- at 5%: about 16.9 hours and EUR 43.
 
 A 100M model can realize very low accelerator utilization because launch/kernel/input overheads matter. This is exactly why the EUR 10 same-geometry smoke and measured pilot are mandatory. The program chooses GPU based on measured EUR per completed token, not theoretical peak.
 
