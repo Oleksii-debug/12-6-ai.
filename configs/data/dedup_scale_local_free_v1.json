@@ -16,7 +16,7 @@
   "minhash": {
     "hash_precision": 64,
     "hashes_per_bucket": 8,
-    "n_grams": 5,
+    "n_grams": 9,
     "num_buckets": 14,
     "seed": 1
   },
