@@ -1,0 +1,92 @@
+name: LEARN-01 Real 100K Base Training
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  real-100k-local-free:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up exact Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact source head
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+
+      - name: Install hash-locked runtime
+        run: |
+          python -m venv .learn01
+          .learn01/bin/python -m pip install \
+            --disable-pip-version-check --no-deps --require-hashes \
+            -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .learn01/bin/python -m pip install \
+            --disable-pip-version-check --no-deps --require-hashes \
+            -r requirements/locks/linux-x86_64/runtime.lock.txt
+          .learn01/bin/python -m pip install \
+            --disable-pip-version-check --no-deps --require-hashes --only-binary=:all: \
+            -r requirements/experiments/tokenizers-linux-x86_64.lock.txt
+
+      - name: Lint LEARN-01 surface
+        env:
+          PYTHONPATH: src
+        run: |
+          .learn01/bin/ruff check \
+            src/twelve_six/real_100k_training.py \
+            tools/run_learn01_real_100k.py \
+            tests/test_real_100k_training.py
+
+      - name: Test LEARN-01 contracts
+        env:
+          PYTHONPATH: src
+        run: .learn01/bin/pytest -q tests/test_real_100k_training.py
+
+      - name: Train random-init real ~100K Base
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          PYTHONPATH: src
+          PYTHONHASHSEED: "1337"
+        run: |
+          .learn01/bin/python tools/run_learn01_real_100k.py \
+            --repo-root . \
+            --source-sha "$EXPECTED_SOURCE_SHA" \
+            --output-dir learn01-real-100k-evidence \
+            --max-steps 1000 \
+            --batch-size 8 \
+            --sequence-length 64 \
+            --eval-every 50 \
+            --seed 1337 \
+            --learning-rate 3e-4 \
+            --torch-threads 2
+
+      - name: Revalidate retained report
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          PYTHONPATH: src
+        run: |
+          .learn01/bin/python -m twelve_six.real_100k_training validate \
+            learn01-real-100k-evidence/report.json \
+            --expected-source-sha "$EXPECTED_SOURCE_SHA"
+
+      - name: Upload exact training evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: learn01-real-100k-evidence
+          path: learn01-real-100k-evidence/
+          if-no-files-found: error
+          retention-days: 30
