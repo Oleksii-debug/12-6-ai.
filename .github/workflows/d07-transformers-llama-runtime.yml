@@ -9,7 +9,7 @@ permissions:
 jobs:
   locked-transformers-runtime:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -36,23 +36,43 @@ jobs:
           python -m venv .d07-transformers-locked
           .d07-transformers-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
           .d07-transformers-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          .d07-transformers-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/dev.lock.txt
           .d07-transformers-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/transformers-linux-x86_64/runtime.lock.txt
           PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .d07-transformers-locked/bin/python -m pip install --no-deps --no-build-isolation -e .
+          .d07-transformers-locked/bin/python -m pip check
           .d07-transformers-locked/bin/python - <<'PY'
           import transformers
           import torch
           import twelve_six
           assert transformers.__version__ == "5.15.0", transformers.__version__
+          assert torch.__version__ == "2.13.0", torch.__version__
           print("transformers", transformers.__version__)
           print("torch", torch.__version__)
           print("twelve_six", twelve_six.__version__)
           PY
-      - name: Execute actual LlamaForCausalLM parity and standard-directory load
+      - name: Execute actual exported-byte Llama parity and standard-directory load
+        env:
+          HF_HUB_OFFLINE: "1"
+          TRANSFORMERS_OFFLINE: "1"
+          HF_HOME: ${{ runner.temp }}/d07-transformers-hf-home
+          RUNTIME24_SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          .d07-transformers-locked/bin/python -m pytest -q \
+          set -euo pipefail
+          PY=.d07-transformers-locked/bin/python
+          "$PY" -m ruff check \
+            src/twelve_six/inference/transformers_llama.py \
+            src/twelve_six/inference/transformers_llama_runtime.py \
+            src/twelve_six/inference/llama_runtime_export.py \
             tests/test_transformers_llama_interop.py \
+            tests/test_transformers_llama_runtime.py \
             tests/test_transformers_llama_runtime_locked.py \
             tests/test_llama_runtime_export_locked.py
+          "$PY" -m pytest -s -q \
+            tests/test_transformers_llama_interop.py \
+            tests/test_transformers_llama_runtime.py \
+            tests/test_transformers_llama_runtime_locked.py \
+            tests/test_llama_runtime_export_locked.py \
+            | tee runtime24-transformers-evidence.log
       - name: Record runtime identity
         env:
           SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
@@ -76,7 +96,7 @@ jobs:
               "torch": torch.__version__,
               "transformers": transformers.__version__,
               "transformers_overlay_lock_sha256": hashlib.sha256(overlay).hexdigest(),
-              "actual_llama_runtime_tests": "PASS",
+              "actual_exported_byte_runtime_tests": "PASS",
               "standard_llama_directory_from_pretrained": "PASS",
               "foreign_pretrained_weights": False,
               "model_downloaded": False,
@@ -99,5 +119,6 @@ jobs:
           path: |
             locked-environment-linux-x86_64.json
             transformers-llama-runtime-evidence.json
+            runtime24-transformers-evidence.log
           if-no-files-found: error
           retention-days: 30
