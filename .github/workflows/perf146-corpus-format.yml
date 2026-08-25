@@ -67,7 +67,8 @@ jobs:
           --scale-records 12000
           --scale-text-bytes 4096
           --scale-input-parts 12
-          --trainer-steps 3
+          --trainer-steps 5
+          --loader-workers 2
       - name: Emit retained benchmark evidence to log
         run: cat perf146-corpus-format-benchmark.json
       - name: Upload exact benchmark evidence
