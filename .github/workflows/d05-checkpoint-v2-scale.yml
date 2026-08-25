@@ -1,0 +1,163 @@
+name: D05 Checkpoint V2 Scale Evidence
+
+on:
+  pull_request:
+    paths:
+      - "src/twelve_six/checkpoint/v2.py"
+      - "tests/test_checkpoint_v2.py"
+      - "tools/run_checkpoint_v2_scale_probe.py"
+      - "tools/run_checkpoint_v2_distributed_smoke.py"
+      - "docs/CHECKPOINT_V2_SCALE_ARCHITECTURE.md"
+      - ".github/workflows/d05-checkpoint-v2-scale.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  locked-checkpoint-v2-scale:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Prove exact source checkout
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Verify D08 locked environment and repository checks
+        run: >-
+          python tools/verify_locked_environment.py
+          --profile linux-x86_64
+          --source-sha "$SOURCE_SHA"
+          --evidence-out locked-environment-linux-x86_64.json
+          --run-repo-checks
+
+      - name: Create exact locked execution environment
+        run: |
+          python -m venv .checkpoint-v2-locked
+          .checkpoint-v2-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .checkpoint-v2-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          .checkpoint-v2-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/dev.lock.txt
+          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .checkpoint-v2-locked/bin/python -m pip install --no-deps --no-build-isolation -e .
+
+      - name: Focused checkpoint-v2 invariant tests
+        run: .checkpoint-v2-locked/bin/python -m pytest -q tests/test_checkpoint_v2.py
+
+      - name: Execute exact S2 1M checkpoint-v2 probe
+        run: |
+          .checkpoint-v2-locked/bin/python tools/run_checkpoint_v2_scale_probe.py \
+            --repo-root . \
+            --stage-config configs/stages/s2_1m.json \
+            --source-sha "$SOURCE_SHA" \
+            --output checkpoint-v2-s2-1m.json \
+            --repetitions 3 \
+            --cpu-threads 2
+
+      - name: Execute exact S3 10M checkpoint-v2 probe
+        run: |
+          .checkpoint-v2-locked/bin/python tools/run_checkpoint_v2_scale_probe.py \
+            --repo-root . \
+            --stage-config configs/stages/s3_10m.json \
+            --source-sha "$SOURCE_SHA" \
+            --output checkpoint-v2-s3-10m.json \
+            --repetitions 3 \
+            --cpu-threads 2
+
+      - name: Execute two-rank distributed writer and restore smoke
+        run: |
+          .checkpoint-v2-locked/bin/python -m torch.distributed.run \
+            --standalone \
+            --nproc-per-node=2 \
+            tools/run_checkpoint_v2_distributed_smoke.py \
+            --checkpoint .checkpoint-v2-two-rank \
+            --output checkpoint-v2-two-rank.json \
+            --source-sha "$SOURCE_SHA"
+
+      - name: Validate exact-head evidence truth boundary
+        run: |
+          .checkpoint-v2-locked/bin/python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          def verify_self_hash(path: str) -> dict:
+              report = json.loads(Path(path).read_text(encoding="utf-8"))
+              expected = report.pop("report_sha256")
+              encoded = json.dumps(
+                  report,
+                  sort_keys=True,
+                  separators=(",", ":"),
+                  ensure_ascii=False,
+              ).encode("utf-8")
+              assert hashlib.sha256(encoded).hexdigest() == expected
+              return report
+
+          expected_stages = {
+              "checkpoint-v2-s2-1m.json": ("S2", 1_066_112),
+              "checkpoint-v2-s3-10m.json": ("S3", 10_059_840),
+          }
+          for path, (stage, parameters) in expected_stages.items():
+              report = verify_self_hash(path)
+              assert report["schema"] == "12-6.checkpoint-v2-scale-probe.v1"
+              assert report["source_sha"] == os.environ["SOURCE_SHA"]
+              assert report["stage"] == stage
+              assert report["parameters"] == parameters
+              assert report["expected_parameters"] == parameters
+              assert report["repetitions"] == 3
+              assert report["summary"]["checkpoint_total_bytes_median"] > 0
+              assert report["summary"]["checkpoint_payload_bytes_median"] > 0
+              assert report["summary"]["dcp_bytes_median"] > 0
+              assert report["summary"]["save_seconds_median"] > 0
+              assert report["summary"]["load_seconds_median"] > 0
+              assert report["summary"]["all_model_round_trips_exact"] is True
+              assert report["summary"]["all_optimizer_states_populated"] is True
+              assert report["truth_boundary"]["training_executed"] is False
+              assert report["truth_boundary"]["quality_or_capability_evidence"] is False
+              assert report["truth_boundary"]["paid_compute"] is False
+              for sample in report["samples"]:
+                  assert sample["model_fingerprint_exact"] is True
+                  assert sample["optimizer_state_populated"] is True
+                  assert sample["trainer_state_restored"] is True
+
+          distributed = verify_self_hash("checkpoint-v2-two-rank.json")
+          assert distributed["schema"] == "12-6.checkpoint-v2-distributed-writer-smoke.v1"
+          assert distributed["source_sha"] == os.environ["SOURCE_SHA"]
+          assert distributed["world_size"] == 2
+          assert len(distributed["writers"]) == 2
+          assert len(distributed["dcp_files"]) >= 2
+          assert distributed["all_rank_round_trip_pass"] is True
+          assert distributed["truth_boundary"]["replicated_model"] is True
+          assert distributed["truth_boundary"]["fsdp_or_dtensor_sharding"] == "NOT_TESTED"
+          assert distributed["truth_boundary"]["topology_change_reshard"] == "NOT_TESTED"
+          assert distributed["truth_boundary"]["paid_compute"] is False
+          PY
+          rm -rf .checkpoint-v2-two-rank
+
+      - name: Show measured evidence
+        run: |
+          cat checkpoint-v2-s2-1m.json
+          cat checkpoint-v2-s3-10m.json
+          cat checkpoint-v2-two-rank.json
+
+      - name: Upload exact-head checkpoint-v2 evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: d05-checkpoint-v2-scale-${{ env.SOURCE_SHA }}
+          path: |
+            locked-environment-linux-x86_64.json
+            checkpoint-v2-s2-1m.json
+            checkpoint-v2-s3-10m.json
+            checkpoint-v2-two-rank.json
+          if-no-files-found: error
+          retention-days: 30
