@@ -1,0 +1,20 @@
+{
+  "schema": "12-6.gradient-stochasticity-config.v1",
+  "family": "research41-fixed-byte-context-v1",
+  "optimizer_contract": "reuse_research41_trainer_config",
+  "runtime": {
+    "device": "cpu",
+    "torch_threads": 2,
+    "paid_compute": false
+  },
+  "training": {
+    "checkpoints": [0, 4, 16, 48],
+    "batch_size": 4,
+    "sequence_length": 64
+  },
+  "probe": {
+    "repeat_microbatches": 8,
+    "virtual_batch_multipliers": [1, 2, 4],
+    "batch_trace_offset": 4096
+  }
+}
