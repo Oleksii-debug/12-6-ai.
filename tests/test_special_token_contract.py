@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from itertools import pairwise
+from pathlib import Path
 
 import pytest
 
@@ -57,6 +59,20 @@ def test_contract_has_exact_hashes_and_preserves_frozen_s0_identity() -> None:
     assert hashlib.sha256(vocab_artifact_bytes()).hexdigest() == EXPERIMENTAL_VOCAB_SHA256
     assert tokenizer.identity.special_tokens == {"eos": 256}
     assert s0.identity.special_tokens == {}
+
+
+def test_repository_contract_file_matches_runtime_identity() -> None:
+    path = Path(__file__).parents[1] / "configs" / "tokenizers" / "experimental_byte_eos_v1.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    assert payload == contract_payload()
+    canonical = json.dumps(
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
+    assert hashlib.sha256(canonical).hexdigest() == EXPERIMENTAL_CONFIG_SHA256
 
 
 @pytest.mark.parametrize(
