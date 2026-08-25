@@ -1,0 +1,207 @@
+name: MILESTONE-150 Learned Base Ladder V1
+
+on:
+  pull_request:
+    branches:
+      - milestone100/first-learned-base-20260826
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  learned-base-ladder-v1:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      PYTHONPATH: src
+      OMP_NUM_THREADS: "2"
+      MKL_NUM_THREADS: "2"
+    steps:
+      - name: Checkout exact milestone head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up exact Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact source
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+
+      - name: Install hash-locked CPU runtime
+        run: |
+          set -euo pipefail
+          python -m venv .m150
+          .m150/bin/python -m pip install \
+            --disable-pip-version-check --no-deps --require-hashes \
+            -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .m150/bin/python -m pip install \
+            --disable-pip-version-check --no-deps --require-hashes \
+            -r requirements/locks/linux-x86_64/runtime.lock.txt
+
+      - name: Compile and test convergence contracts
+        run: |
+          set -euo pipefail
+          .m150/bin/python -m compileall -q src/twelve_six
+          .m150/bin/python -m pytest -q \
+            tests/test_data25_corpus_v01.py \
+            tests/test_milestone100_first_learned.py \
+            tests/test_milestone150_learned_base_ladder.py
+
+      - name: Prepare one corpus tokenizer evaluation truth
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          .m150/bin/python -m twelve_six.milestone150_learned_base_ladder \
+            prepare \
+            --repo-root . \
+            --source-sha "$EXPECTED_SOURCE_SHA" \
+            --output-dir milestone150-evidence
+
+      - name: Execute comparable learned 100K rung
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          .m150/bin/python -m twelve_six.milestone150_learned_base_ladder phase1 \
+            --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" \
+            --output-dir milestone150-evidence --scale 100k
+          .m150/bin/python -m twelve_six.milestone150_learned_base_ladder resume \
+            --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" \
+            --output-dir milestone150-evidence --scale 100k
+          .m150/bin/python -m twelve_six.milestone150_learned_base_ladder verify-scale \
+            --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" \
+            --output-dir milestone150-evidence --scale 100k
+
+      - name: Execute comparable learned 500K rung
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          .m150/bin/python -m twelve_six.milestone150_learned_base_ladder phase1 \
+            --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" \
+            --output-dir milestone150-evidence --scale 500k
+          .m150/bin/python -m twelve_six.milestone150_learned_base_ladder resume \
+            --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" \
+            --output-dir milestone150-evidence --scale 500k
+          .m150/bin/python -m twelve_six.milestone150_learned_base_ladder verify-scale \
+            --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" \
+            --output-dir milestone150-evidence --scale 500k
+
+      - name: Execute comparable learned 1M rung
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          .m150/bin/python -m twelve_six.milestone150_learned_base_ladder phase1 \
+            --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" \
+            --output-dir milestone150-evidence --scale 1m
+          .m150/bin/python -m twelve_six.milestone150_learned_base_ladder resume \
+            --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" \
+            --output-dir milestone150-evidence --scale 1m
+          .m150/bin/python -m twelve_six.milestone150_learned_base_ladder verify-scale \
+            --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" \
+            --output-dir milestone150-evidence --scale 1m
+
+      - name: Assemble and validate machine-readable ladder
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          .m150/bin/python -m twelve_six.milestone150_learned_base_ladder finalize \
+            --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" \
+            --output-dir milestone150-evidence
+          .m150/bin/python -m twelve_six.milestone150_learned_base_ladder validate \
+            milestone150-evidence/ladder-report.json \
+            --expected-source-sha "$EXPECTED_SOURCE_SHA"
+          .m150/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+          r = json.loads(Path("milestone150-evidence/ladder-report.json").read_text(encoding="utf-8"))
+          print(json.dumps({
+              "source_sha": r["source"]["git_sha"],
+              "truth_identity": r["truth_model"]["identity_sha256"],
+              "evaluation_identity": r["truth_model"]["evaluation_identity"]["identity_sha256"],
+              "quality_rank": r["rankings"]["quality"],
+              "efficiency_rank": r["rankings"]["efficiency"],
+              "scaling_improvement": r["rankings"]["scaling_improvement"],
+              "ten_million": r["ten_million"]["status"],
+              "report_sha256": r["report_sha256"],
+          }, ensure_ascii=False, indent=2, sort_keys=True))
+          PY
+
+      - name: Publish exact-head ladder evidence to PR
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          .m150/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+          r = json.loads(Path("milestone150-evidence/ladder-report.json").read_text(encoding="utf-8"))
+          lines = [
+              "### MILESTONE-150 exact-head LEARNED BASE LADDER V1 evidence",
+              "",
+              f"- source SHA: `{r['source']['git_sha']}`",
+              f"- corpus identity: `{r['truth_model']['corpus_identity_sha256']}`",
+              f"- evaluation identity: `{r['truth_model']['evaluation_identity']['identity_sha256']}`",
+              f"- tokenizer: `{r['truth_model']['tokenizer']['version']}` / `{r['truth_model']['tokenizer']['config_sha256']}`",
+              "- retained comparable rungs: `100k`, `500k`, `1m`",
+              f"- 10M: `{r['ten_million']['status']}`",
+              f"- report SHA-256: `{r['report_sha256']}`",
+              "",
+              "| scale | params | best step | best BPB | final BPB | optimized tokens | fresh verify |",
+              "|---|---:|---:|---:|---:|---:|---|",
+          ]
+          for scale in ("100k", "500k", "1m"):
+              s = r["scales"][scale]
+              lines.append(
+                  f"| {scale} | {s['model']['parameter_count']} | {s['evaluation']['best_step']} | "
+                  f"{s['evaluation']['best_bits_per_byte']:.6f} | {s['evaluation']['final_bits_per_byte']:.6f} | "
+                  f"{s['training']['optimized_tokens']} | {s['fresh_verification']['status']} |"
+              )
+          lines += [
+              "",
+              "Truth boundary: learned scratch Base checkpoints only; no foreign pretrained weights, SFT, RLHF, DPO or paid compute. No intelligence, production-readiness, alignment or instruction-following claim is made. DATA-25 remains project-authored and is not claimed to be externally representative.",
+          ]
+          Path("milestone150-evidence/pr-comment.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+          PY
+          gh pr comment "$PR_NUMBER" --repo "$GH_REPO" --body-file milestone150-evidence/pr-comment.md
+
+      - name: Upload learned ladder evidence and retained checkpoints
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: milestone150-learned-base-ladder-v1
+          path: |
+            milestone150-evidence/ladder-truth.json
+            milestone150-evidence/ladder-report.json
+            milestone150-evidence/corpus-manifest.json
+            milestone150-evidence/machine-prepare.json
+            milestone150-evidence/100k/run-manifest.json
+            milestone150-evidence/100k/report.json
+            milestone150-evidence/100k/train-curve.jsonl
+            milestone150-evidence/100k/checkpoint-*/
+            milestone150-evidence/500k/run-manifest.json
+            milestone150-evidence/500k/report.json
+            milestone150-evidence/500k/train-curve.jsonl
+            milestone150-evidence/500k/checkpoint-*/
+            milestone150-evidence/1m/run-manifest.json
+            milestone150-evidence/1m/report.json
+            milestone150-evidence/1m/train-curve.jsonl
+            milestone150-evidence/1m/checkpoint-*/
+          if-no-files-found: error
+          retention-days: 30
