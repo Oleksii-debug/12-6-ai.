@@ -316,7 +316,7 @@ def build_s0_generation_artifact(
             "matches_strict_d04_final_checkpoint_id": True,
             "git_sha": verified["identity"]["git_sha"],
             "model_spec_sha256": verified["identity"]["model_spec_hash"],
-            "init_spec_sha256": verified["identity"]["init_spec_hash"],
+            "init_spec_sha256": stage.expected_init_identity_sha256,
             "tokenizer_config_sha256": verified["identity"]["tokenizer_hash"],
             "tokenizer_vocab_sha256": verified["identity"]["tokenizer_vocab_hash"],
             "dataset_manifest_sha256": verified["identity"]["dataset_manifest_hash"],
