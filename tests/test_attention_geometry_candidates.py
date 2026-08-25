@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from twelve_six.model import load_stage_config
+import torch
+import torch.nn.functional as F
+
+from twelve_six.model import TwelveSixDecoder, load_stage_config
 
 ROOT = Path(__file__).resolve().parents[1]
 STAGES = ROOT / "configs" / "stages"
@@ -102,3 +105,39 @@ def test_candidate_attention_parameter_savings_are_reallocated_to_mlp() -> None:
     assert s3_gqa4["mlp_per_layer"] > s3_mha["mlp_per_layer"]
     assert s3_gqa2["attention_per_layer"] < s3_gqa4["attention_per_layer"]
     assert s3_gqa2["mlp_per_layer"] > s3_gqa4["mlp_per_layer"]
+
+
+def test_native_gqa_routing_is_cuda_only_and_mha_never_requests_it() -> None:
+    gqa_model = TwelveSixDecoder(_load("s2_1m_gqa2.candidate.json").model)
+    mha_model = TwelveSixDecoder(_load("s2_1m.json").model)
+    gqa_attention = gqa_model.blocks[0].attn
+    mha_attention = mha_model.blocks[0].attn
+
+    assert gqa_attention._native_gqa_enabled_for_device(torch.device("cuda")) is True
+    assert gqa_attention._native_gqa_enabled_for_device(torch.device("cpu")) is False
+    assert mha_attention._native_gqa_enabled_for_device(torch.device("cuda")) is False
+
+
+def test_cpu_gqa_preserves_explicit_repeat_reference_path(monkeypatch) -> None:
+    stage = _load("s2_1m_gqa2.candidate.json")
+    model = TwelveSixDecoder(stage.model, stage.init).eval()
+    attention = model.blocks[0].attn
+    original_sdpa = F.scaled_dot_product_attention
+    calls: list[tuple[int, int, int, dict[str, object]]] = []
+
+    def spy_sdpa(q, k, v, **kwargs):
+        calls.append((q.shape[1], k.shape[1], v.shape[1], dict(kwargs)))
+        return original_sdpa(q, k, v, **kwargs)
+
+    monkeypatch.setattr(F, "scaled_dot_product_attention", spy_sdpa)
+    x = torch.randn(1, 8, stage.model.d_model)
+    with torch.no_grad():
+        output = attention(x)
+
+    assert output.shape == (1, 8, stage.model.d_model)
+    assert len(calls) == 1
+    q_heads, k_heads, v_heads, kwargs = calls[0]
+    assert q_heads == stage.model.n_heads
+    assert k_heads == stage.model.n_heads
+    assert v_heads == stage.model.n_heads
+    assert "enable_gqa" not in kwargs
