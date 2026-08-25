@@ -18,6 +18,7 @@
     "git_sha": null,
     "branch_or_tag": null,
     "modelspec_sha256": null,
+    "initspec_sha256": null,
     "parameter_count": null
   },
   "data": {
@@ -25,7 +26,9 @@
     "tokenizer_sha256": null,
     "tokenizer_vocab_sha256": null,
     "tokenizer_version": null,
-    "split_identity": null
+    "split_identity": null,
+    "packing_sha256": null,
+    "packing_version": null
   },
   "training": {
     "seed": null,
@@ -38,6 +41,9 @@
     "target_steps": null,
     "target_tokens": null,
     "checkpoint_interval_steps": null
+  },
+  "environment": {
+    "lock_sha256": null
   },
   "hardware": {
     "profile_id": "local_cpu_unresolved",
@@ -68,22 +74,26 @@
       "candidate.git_sha",
       "candidate.branch_or_tag",
       "candidate.modelspec_sha256",
+      "candidate.initspec_sha256",
       "candidate.parameter_count",
       "data.dataset_manifest_sha256",
       "data.tokenizer_sha256",
       "data.tokenizer_vocab_sha256",
       "data.tokenizer_version",
       "data.split_identity",
+      "data.packing_sha256",
+      "data.packing_version",
       "training.seed",
       "training.optimizer",
       "training.scheduler",
       "training.context_length",
       "training.global_batch_tokens",
+      "environment.lock_sha256",
       "destinations.run_root",
       "destinations.checkpoint_dir",
       "destinations.metrics_path",
       "destinations.eval_dir"
     ],
-    "notes": "This example is intentionally not launch-ready. Resolve every required identity from the integrated candidate before execution."
+    "notes": "This example is intentionally not launch-ready. Resolve every required identity from the exact integrated candidate before execution."
   }
 }
