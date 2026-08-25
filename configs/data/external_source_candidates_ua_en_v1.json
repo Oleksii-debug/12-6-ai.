@@ -1,0 +1,248 @@
+{
+  "authority_boundary": "CANDIDATE_DISCOVERY_AND_RIGHTS_REVIEW_NOT_CANONICAL_CORPUS_APPROVAL",
+  "generated_at": "2026-08-25",
+  "registry_identity_sha256": "678d250ac9910f58ab1b9113cf713a2fea52a6a21e7a8434e6434d95a8045214",
+  "schema_version": "12-6.external-source-candidates.v1",
+  "sources": [
+    {
+      "acquisition_urls": [
+        "https://data.rada.gov.ua/ogd/zak/perv/text/d23314.htm"
+      ],
+      "adapter": "html_text",
+      "block_reason": null,
+      "eligibility_status": "ELIGIBLE",
+      "expected_language": "uk",
+      "language": "uk",
+      "provider": "Апарат Верховної Ради України",
+      "purpose": "pretraining",
+      "rights": {
+        "allows_commercial_use": true,
+        "allows_derivatives": true,
+        "allows_model_training": true,
+        "allows_redistribution": true,
+        "basis": [
+          "RADA_OPEN_DATA_TERMS_FREE_USE_REUSE_REDISTRIBUTION_COMMERCIAL",
+          "UA_2811_IX_ART8_1_3_OFFICIAL_ACTS_NOT_COPYRIGHT_PROTECTED"
+        ],
+        "license_id": "RADA-OPEN-DATA-REUSE",
+        "policy_ref": "DATA-21-UA-SOURCES/rights-review/2026-08-25",
+        "reviewed_at": "2026-08-25",
+        "reviewer_ref": "DATA-21-UA-SOURCES",
+        "status": "APPROVED_FOR_TRAINING",
+        "terms_url": "https://data.rada.gov.ua/open/data/laws-texts"
+      },
+      "source_id": "ua.rada.open-data.laws-texts",
+      "source_kind": "official_legislation_open_data",
+      "source_url": "https://data.rada.gov.ua/open/data/laws-texts",
+      "source_version": "laws-texts/bounded-2026-08-25"
+    },
+    {
+      "acquisition_urls": [],
+      "adapter": null,
+      "block_reason": "CC-BY-SA source; project has no approved ShareAlike compliance policy for training artifacts/model outputs.",
+      "eligibility_status": "BLOCKED_BY_RIGHTS",
+      "expected_language": "uk",
+      "language": "uk",
+      "provider": "Wikimedia Foundation / contributors",
+      "purpose": "pretraining",
+      "rights": {
+        "allows_commercial_use": true,
+        "allows_derivatives": true,
+        "allows_model_training": false,
+        "allows_redistribution": true,
+        "basis": [
+          "SHAREALIKE_MODEL_AND_OUTPUT_COMPLIANCE_NOT_REVIEWED"
+        ],
+        "license_id": "CC-BY-SA-4.0",
+        "policy_ref": "DATA-21-UA-SOURCES/rights-review/2026-08-25",
+        "reviewed_at": "2026-08-25",
+        "reviewer_ref": "DATA-21-UA-SOURCES",
+        "status": "REVIEW_REQUIRED",
+        "terms_url": "https://foundation.wikimedia.org/wiki/Policy:Terms_of_Use"
+      },
+      "source_id": "ua.wikipedia.ukwiki",
+      "source_kind": "encyclopedia",
+      "source_url": "https://uk.wikipedia.org/",
+      "source_version": "discovery-2026-08-25"
+    },
+    {
+      "acquisition_urls": [],
+      "adapter": null,
+      "block_reason": "Per-work copyright/translation status is heterogeneous and has not been resolved to immutable eligible works.",
+      "eligibility_status": "BLOCKED_BY_RIGHTS",
+      "expected_language": "uk",
+      "language": "uk",
+      "provider": "Wikimedia Foundation / contributors",
+      "purpose": "pretraining",
+      "rights": {
+        "allows_commercial_use": false,
+        "allows_derivatives": false,
+        "allows_model_training": false,
+        "allows_redistribution": false,
+        "basis": [
+          "PER_WORK_COPYRIGHT_AND_TRANSLATION_STATUS_NOT_RESOLVED"
+        ],
+        "license_id": "MIXED_PER_WORK",
+        "policy_ref": "DATA-21-UA-SOURCES/rights-review/2026-08-25",
+        "reviewed_at": "2026-08-25",
+        "reviewer_ref": "DATA-21-UA-SOURCES",
+        "status": "REVIEW_REQUIRED",
+        "terms_url": "https://foundation.wikimedia.org/wiki/Policy:Terms_of_Use"
+      },
+      "source_id": "ua.wikisource.uk",
+      "source_kind": "digital_library",
+      "source_url": "https://uk.wikisource.org/",
+      "source_version": "discovery-2026-08-25"
+    },
+    {
+      "acquisition_urls": [],
+      "adapter": null,
+      "block_reason": "Public crawl availability is not a source-level training-rights grant.",
+      "eligibility_status": "BLOCKED_BY_RIGHTS",
+      "expected_language": "uk",
+      "language": "uk",
+      "provider": "Common Crawl / mC4 derivative",
+      "purpose": "pretraining",
+      "rights": {
+        "allows_commercial_use": false,
+        "allows_derivatives": false,
+        "allows_model_training": false,
+        "allows_redistribution": false,
+        "basis": [
+          "CRAWL_AVAILABILITY_DOES_NOT_RESOLVE_PAGE_LEVEL_TRAINING_RIGHTS"
+        ],
+        "license_id": "NOASSERTION",
+        "policy_ref": "DATA-21-UA-SOURCES/rights-review/2026-08-25",
+        "reviewed_at": "2026-08-25",
+        "reviewer_ref": "DATA-21-UA-SOURCES",
+        "status": "REVIEW_REQUIRED",
+        "terms_url": "https://commoncrawl.org/terms-of-use"
+      },
+      "source_id": "ua.mc4.uk",
+      "source_kind": "web_crawl_derivative",
+      "source_url": "https://commoncrawl.org/",
+      "source_version": "discovery-2026-08-25"
+    },
+    {
+      "acquisition_urls": [
+        "https://raw.githubusercontent.com/standardebooks/manual/d1143a9b459b5e6f9cdda93a7c1e04676bff4f6b/8-typography.rst",
+        "https://raw.githubusercontent.com/standardebooks/manual/d1143a9b459b5e6f9cdda93a7c1e04676bff4f6b/9-metadata.rst"
+      ],
+      "adapter": "plain_text",
+      "block_reason": null,
+      "eligibility_status": "ELIGIBLE",
+      "expected_language": "en",
+      "language": "en",
+      "provider": "Standard Ebooks contributors",
+      "purpose": "pretraining",
+      "rights": {
+        "allows_commercial_use": true,
+        "allows_derivatives": true,
+        "allows_model_training": true,
+        "allows_redistribution": true,
+        "basis": [
+          "REPOSITORY_CONTENTS_CC0_EXCEPT_BUILD_MANUAL_PY",
+          "CC0_WORLDWIDE_WAIVER_AND_FALLBACK_LICENSE"
+        ],
+        "license_id": "CC0-1.0",
+        "policy_ref": "DATA-22-EN-SOURCES/rights-review/2026-08-25",
+        "reviewed_at": "2026-08-25",
+        "reviewer_ref": "DATA-22-EN-SOURCES",
+        "status": "APPROVED_FOR_TRAINING",
+        "terms_url": "https://raw.githubusercontent.com/standardebooks/manual/d1143a9b459b5e6f9cdda93a7c1e04676bff4f6b/LICENSE.md"
+      },
+      "source_id": "en.standardebooks.manual",
+      "source_kind": "technical_style_manual",
+      "source_url": "https://github.com/standardebooks/manual",
+      "source_version": "git:d1143a9b459b5e6f9cdda93a7c1e04676bff4f6b"
+    },
+    {
+      "acquisition_urls": [],
+      "adapter": null,
+      "block_reason": "Provider explicitly prohibits use for training or ingestion into LLM/generative-AI offerings without permission.",
+      "eligibility_status": "BLOCKED_BY_RIGHTS",
+      "expected_language": "en",
+      "language": "en",
+      "provider": "OpenStax",
+      "purpose": "pretraining",
+      "rights": {
+        "allows_commercial_use": false,
+        "allows_derivatives": false,
+        "allows_model_training": false,
+        "allows_redistribution": false,
+        "basis": [
+          "PROVIDER_EXPLICIT_LLM_TRAINING_PROHIBITION"
+        ],
+        "license_id": "CC-BY-NC-SA-4.0+PROVIDER_AI_RESTRICTION",
+        "policy_ref": "DATA-22-EN-SOURCES/rights-review/2026-08-25",
+        "reviewed_at": "2026-08-25",
+        "reviewer_ref": "DATA-22-EN-SOURCES",
+        "status": "REJECTED",
+        "terms_url": "https://openstax.org/books/psychology-2e/pages/preface"
+      },
+      "source_id": "en.openstax.psychology-2e",
+      "source_kind": "textbook",
+      "source_url": "https://openstax.org/books/psychology-2e/pages/preface",
+      "source_version": "discovery-2026-08-25"
+    },
+    {
+      "acquisition_urls": [],
+      "adapter": null,
+      "block_reason": "U.S.-public-domain status is not by itself a reviewed worldwide training-rights decision; third-party material may be present.",
+      "eligibility_status": "BLOCKED_BY_RIGHTS",
+      "expected_language": "en",
+      "language": "en",
+      "provider": "U.S. Government Publishing Office",
+      "purpose": "pretraining",
+      "rights": {
+        "allows_commercial_use": false,
+        "allows_derivatives": false,
+        "allows_model_training": false,
+        "allows_redistribution": false,
+        "basis": [
+          "US_GOVERNMENT_WORKS_GENERALLY_NOT_US_COPYRIGHTED",
+          "THIRD_PARTY_MATERIAL_AND_FOREIGN_JURISDICTION_SCOPE_NOT_RESOLVED"
+        ],
+        "license_id": "17-USC-105-US-PUBLIC-DOMAIN",
+        "policy_ref": "DATA-22-EN-SOURCES/rights-review/2026-08-25",
+        "reviewed_at": "2026-08-25",
+        "reviewer_ref": "DATA-22-EN-SOURCES",
+        "status": "REVIEW_REQUIRED",
+        "terms_url": "https://www.govinfo.gov/about/policies"
+      },
+      "source_id": "en.govinfo.uscode-2023-title17",
+      "source_kind": "official_legal_text",
+      "source_url": "https://www.govinfo.gov/",
+      "source_version": "discovery-2026-08-25"
+    },
+    {
+      "acquisition_urls": [],
+      "adapter": null,
+      "block_reason": "CC-BY-SA source; project has no approved ShareAlike compliance policy for training artifacts/model outputs.",
+      "eligibility_status": "BLOCKED_BY_RIGHTS",
+      "expected_language": "en",
+      "language": "en",
+      "provider": "Wikimedia Foundation / contributors",
+      "purpose": "pretraining",
+      "rights": {
+        "allows_commercial_use": true,
+        "allows_derivatives": true,
+        "allows_model_training": false,
+        "allows_redistribution": true,
+        "basis": [
+          "SHAREALIKE_MODEL_AND_OUTPUT_COMPLIANCE_NOT_REVIEWED"
+        ],
+        "license_id": "CC-BY-SA-4.0",
+        "policy_ref": "DATA-22-EN-SOURCES/rights-review/2026-08-25",
+        "reviewed_at": "2026-08-25",
+        "reviewer_ref": "DATA-22-EN-SOURCES",
+        "status": "REVIEW_REQUIRED",
+        "terms_url": "https://foundation.wikimedia.org/wiki/Policy:Terms_of_Use"
+      },
+      "source_id": "en.wikipedia.enwiki",
+      "source_kind": "encyclopedia",
+      "source_url": "https://en.wikipedia.org/",
+      "source_version": "discovery-2026-08-25"
+    }
+  ]
+}
