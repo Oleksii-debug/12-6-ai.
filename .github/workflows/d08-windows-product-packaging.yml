@@ -1,0 +1,275 @@
+name: D08 Windows Product Packaging
+
+on:
+  pull_request:
+    paths:
+      - "pyproject.toml"
+      - "src/**"
+      - "tools/verify_locked_environment.py"
+      - "tools/bootstrap_dependency_lock.py"
+      - "requirements/locks/**"
+      - "packaging/windows/**"
+      - "tests/test_dependency_lock.py"
+      - ".github/workflows/d08-windows-product-packaging.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source-and-app:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    outputs:
+      source_sha: ${{ steps.identity.outputs.source_sha }}
+      source_zip_sha256: ${{ steps.identity.outputs.source_zip_sha256 }}
+      app_artifact_id: ${{ steps.upload_app.outputs.artifact-id }}
+      app_artifact_digest: ${{ steps.upload_app.outputs.artifact-digest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Validate D08 index and Linux authority profile
+        run: python tools/verify_locked_environment.py --profile linux-x86_64 --validate-only
+      - name: Build exact source ZIP and application wheel
+        id: identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_sha="${{ github.event.pull_request.head.sha || github.sha }}"
+          test "$(git rev-parse HEAD)" = "$source_sha"
+          git archive --format=zip --output="$RUNNER_TEMP/d08-windows-source.zip" "$source_sha"
+          source_zip_sha256="$(sha256sum "$RUNNER_TEMP/d08-windows-source.zip" | cut -d' ' -f1)"
+          echo "source_sha=$source_sha" >> "$GITHUB_OUTPUT"
+          echo "source_zip_sha256=$source_zip_sha256" >> "$GITHUB_OUTPUT"
+
+          python -m venv "$RUNNER_TEMP/app-build"
+          "$RUNNER_TEMP/app-build/bin/python" -m pip install \
+            --disable-pip-version-check --require-hashes --no-deps \
+            -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 \
+            "$RUNNER_TEMP/app-build/bin/python" -m pip wheel \
+            --no-deps --no-build-isolation --wheel-dir "$RUNNER_TEMP/app-dist" .
+          test "$(find "$RUNNER_TEMP/app-dist" -maxdepth 1 -name 'twelve_six_ai-*.whl' | wc -l)" -eq 1
+
+          mkdir -p "$RUNNER_TEMP/app-bundle"
+          cp "$RUNNER_TEMP"/app-dist/twelve_six_ai-*.whl "$RUNNER_TEMP/app-bundle/"
+          cp packaging/windows/launcher.py "$RUNNER_TEMP/app-bundle/launcher.py"
+          cp packaging/windows/12-6.cmd "$RUNNER_TEMP/app-bundle/12-6.cmd"
+          cp packaging/windows/artifact_manifest.py "$RUNNER_TEMP/app-bundle/artifact_manifest.py"
+          python packaging/windows/artifact_manifest.py application \
+            --root "$RUNNER_TEMP/app-bundle" --source-sha "$source_sha"
+
+          mkdir -p "$RUNNER_TEMP/lock-input"
+          cp requirements/locks/windows-x86_64/*.lock.txt "$RUNNER_TEMP/lock-input/"
+          cp requirements/locks/windows-x86_64/profile.json "$RUNNER_TEMP/lock-input/profile.json"
+          cp packaging/windows/artifact_manifest.py "$RUNNER_TEMP/lock-input/artifact_manifest.py"
+      - name: Upload exact source ZIP
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: d08-windows-exact-source
+          path: ${{ runner.temp }}/d08-windows-source.zip
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload application artifact
+        id: upload_app
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: 12-6-application-windows
+          path: ${{ runner.temp }}/app-bundle
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload Windows lock input
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: d08-windows-lock-input
+          path: ${{ runner.temp }}/lock-input
+          if-no-files-found: error
+          retention-days: 30
+
+  windows-locked-profile:
+    needs: source-and-app
+    runs-on: windows-2025
+    timeout-minutes: 35
+    steps:
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.9"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: d08-windows-exact-source
+          path: ${{ runner.temp }}\source-artifact
+      - name: Verify exact source and execute D08 Windows lock
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $zip = Join-Path $env:RUNNER_TEMP 'source-artifact\d08-windows-source.zip'
+          $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $zip).Hash.ToLowerInvariant()
+          if ($actual -ne '${{ needs.source-and-app.outputs.source_zip_sha256 }}') {
+            throw 'exact source ZIP SHA-256 mismatch'
+          }
+          $root = Join-Path $env:RUNNER_TEMP '12-6 Locked Windows Україна'
+          New-Item -ItemType Directory -Path $root | Out-Null
+          Expand-Archive -LiteralPath $zip -DestinationPath $root
+          Set-Location -LiteralPath $root
+          python tools/verify_locked_environment.py `
+            --profile windows-x86_64 `
+            --source-sha '${{ needs.source-and-app.outputs.source_sha }}' `
+            --evidence-out (Join-Path $env:RUNNER_TEMP 'locked-environment-windows-x86_64.json')
+      - name: Upload exact Windows lock evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: locked-environment-windows-x86_64
+          path: ${{ runner.temp }}\locked-environment-windows-x86_64.json
+          if-no-files-found: error
+          retention-days: 30
+
+  windows-runtime-bundle:
+    needs: [source-and-app, windows-locked-profile]
+    runs-on: windows-2025
+    timeout-minutes: 25
+    outputs:
+      runtime_artifact_id: ${{ steps.upload_runtime.outputs.artifact-id }}
+      runtime_artifact_digest: ${{ steps.upload_runtime.outputs.artifact-digest }}
+    steps:
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.9"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: d08-windows-lock-input
+          path: ${{ runner.temp }}\lock-input
+      - name: Build exact Windows runtime wheelhouse
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $input = Join-Path $env:RUNNER_TEMP 'lock-input'
+          $bundle = Join-Path $env:RUNNER_TEMP 'runtime-bundle'
+          $wheelhouse = Join-Path $bundle 'wheelhouse'
+          $lockOut = Join-Path $bundle '12-6-lock'
+          New-Item -ItemType Directory -Path $wheelhouse -Force | Out-Null
+          New-Item -ItemType Directory -Path $lockOut -Force | Out-Null
+          python -m pip download --disable-pip-version-check --require-hashes --no-deps `
+            -r (Join-Path $input 'toolchain.lock.txt') -d $wheelhouse
+          python -m pip download --disable-pip-version-check --require-hashes --no-deps `
+            -r (Join-Path $input 'runtime.lock.txt') -d $wheelhouse
+          Copy-Item -LiteralPath (Join-Path $input 'toolchain.lock.txt') -Destination $lockOut
+          Copy-Item -LiteralPath (Join-Path $input 'runtime.lock.txt') -Destination $lockOut
+          Copy-Item -LiteralPath (Join-Path $input 'dev.lock.txt') -Destination $lockOut
+          Copy-Item -LiteralPath (Join-Path $input 'profile.json') -Destination $lockOut
+          python (Join-Path $input 'artifact_manifest.py') runtime --root $bundle
+      - name: Upload runtime artifact
+        id: upload_runtime
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: 12-6-runtime-windows-x86_64
+          path: ${{ runner.temp }}\runtime-bundle
+          if-no-files-found: error
+          retention-days: 30
+
+  windows-artifact-install:
+    needs: [source-and-app, windows-runtime-bundle]
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.9"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: 12-6-application-windows
+          path: ${{ runner.temp }}\application
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: 12-6-runtime-windows-x86_64
+          path: ${{ runner.temp }}\runtime-artifact
+      - name: Install offline under Unicode and space-containing path
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $install = Join-Path $env:RUNNER_TEMP '12-6 AI Українська збірка'
+          $runtime = Join-Path $install 'runtime'
+          $runtimeArtifact = Join-Path $env:RUNNER_TEMP 'runtime-artifact'
+          $wheelhouse = Join-Path $runtimeArtifact 'wheelhouse'
+          $locks = Join-Path $runtimeArtifact '12-6-lock'
+          $app = Join-Path $env:RUNNER_TEMP 'application'
+          python -m venv $runtime
+          $py = Join-Path $runtime 'Scripts\python.exe'
+          $env:PIP_NO_INDEX = '1'
+          $env:PIP_DISABLE_PIP_VERSION_CHECK = '1'
+          $env:PYTHONUTF8 = '1'
+          $env:PYTHONIOENCODING = 'utf-8'
+          & $py -m pip install --no-index --find-links $wheelhouse --require-hashes --no-deps `
+            -r (Join-Path $locks 'toolchain.lock.txt')
+          & $py -m pip install --no-index --find-links $wheelhouse --require-hashes --no-deps `
+            -r (Join-Path $locks 'runtime.lock.txt')
+          $wheel = @(Get-ChildItem -LiteralPath $app -Filter 'twelve_six_ai-*.whl')
+          if ($wheel.Count -ne 1) { throw 'expected exactly one application wheel' }
+          & $py -m pip install --no-index --no-deps $wheel[0].FullName
+          Copy-Item -Recurse -LiteralPath $locks -Destination (Join-Path $runtime '12-6-lock')
+          Copy-Item -LiteralPath (Join-Path $app 'launcher.py') -Destination $install
+          Copy-Item -LiteralPath (Join-Path $app '12-6.cmd') -Destination $install
+
+          $cmd = Join-Path $install '12-6.cmd'
+          $statusPath = Join-Path $env:RUNNER_TEMP 'windows-product-status.json'
+          & $cmd status --json > $statusPath
+          if ($LASTEXITCODE -ne 0) { throw "status returned $LASTEXITCODE" }
+          $status = Get-Content -Raw -Encoding UTF8 -LiteralPath $statusPath | ConvertFrom-Json
+          if (-not $status.ready) { throw 'installed status is not ready' }
+          if ($status.runtime.python_actual -ne '3.11.9') { throw 'wrong installed Python version' }
+          if ($status.runtime.profile_id -ne 'windows-x86_64') { throw 'wrong installed profile' }
+
+          $missing = Join-Path $env:RUNNER_TEMP 'Моделі з пробілами\майбутній чекпойнт'
+          $missingStatus = Join-Path $env:RUNNER_TEMP 'windows-missing-checkpoint.json'
+          & $cmd status --checkpoint $missing --json > $missingStatus
+          $missingCode = $LASTEXITCODE
+          if ($missingCode -ne 20) { throw "missing checkpoint returned $missingCode instead of 20" }
+
+          $help = Join-Path $env:RUNNER_TEMP 'generate-help.txt'
+          & $cmd generate --help > $help
+          if ($LASTEXITCODE -ne 0) { throw 'installed generate route failed' }
+          $serveHelp = Join-Path $env:RUNNER_TEMP 'serve-help.txt'
+          & $cmd serve --help > $serveHelp
+          if ($LASTEXITCODE -ne 0) { throw 'installed local API route failed' }
+
+          $stdinOut = Join-Path $env:RUNNER_TEMP 'stdin-output.txt'
+          $stdinErr = Join-Path $env:RUNNER_TEMP 'stdin-error.txt'
+          'Український stdin без GUI' | & $cmd generate --checkpoint $missing --max-new-tokens 1 `
+            1> $stdinOut 2> $stdinErr
+          $stdinCode = $LASTEXITCODE
+          if ($stdinCode -ne 2) { throw "missing-checkpoint generation returned $stdinCode instead of 2" }
+          $stderrText = Get-Content -Raw -Encoding UTF8 -LiteralPath $stdinErr
+          if ($stderrText -notmatch '^error:') { throw 'generation failure lacks clear error prefix' }
+          if ($stdertText -match 'Український stdin без GUI') { throw 'prompt leaked into stderr' }
+
+          & $py (Join-Path $app 'artifact_manifest.py') evidence `
+            --output (Join-Path $env:RUNNER_TEMP 'windows-product-packaging-evidence.json') `
+            --source-sha '${{ needs.source-and-app.outputs.source_sha }}' `
+            --install-root $install `
+            --status $statusPath `
+            --missing-status $missingStatus `
+            --app-manifest (Join-Path $app 'app-manifest.json') `
+            --runtime-manifest (Join-Path $runtimeArtifact 'runtime-manifest.json') `
+            --app-artifact-id '${{ needs.source-and-app.outputs.app_artifact_id }}' `
+            --app-artifact-digest '${{ needs.source-and-app.outputs.app_artifact_digest }}' `
+            --runtime-artifact-id '${{ needs.windows-runtime-bundle.outputs.runtime_artifact_id }}' `
+            --runtime-artifact-digest '${{ needs.windows-runtime-bundle.outputs.runtime_artifact_digest }}'
+      - name: Upload product packaging evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: d08-windows-product-packaging-evidence
+          path: |
+            ${{ runner.temp }}\windows-product-status.json
+            ${{ runner.temp }}\windows-missing-checkpoint.json
+            ${{ runner.temp }}\windows-product-packaging-evidence.json
+            ${{ runner.temp }}\generate-help.txt
+            ${{ runner.temp }}\serve-help.txt
+            ${{ runner.temp }}\stdin-output.txt
+            ${{ runner.temp }}\stdin-error.txt
+          if-no-files-found: error
+          retention-days: 30
