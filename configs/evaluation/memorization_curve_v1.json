@@ -1,0 +1,27 @@
+{
+  "schema_version": "12-6.memorization-run-config.v1",
+  "worker_id": "EVAL-136-MEMORIZATION-CURVE",
+  "seed": 20260826,
+  "exposures_per_cycle": [0, 1, 2, 4, 8, 16],
+  "replicas_per_exposure": 3,
+  "continuation_chars": 6,
+  "profiles": {
+    "smoke": {
+      "checkpoint_tokens": [0, 2048, 8192],
+      "learning_rate": 0.003,
+      "alternative_count": 7,
+      "passage_sample_count": 4
+    },
+    "local_full": {
+      "checkpoint_tokens": [0, 8192, 32768, 131072],
+      "learning_rate": 0.003,
+      "alternative_count": 15,
+      "passage_sample_count": 8
+    }
+  },
+  "claims": {
+    "privacy_leakage": false,
+    "broad_memorization_threshold": false,
+    "scope": "small project-owned synthetic canaries plus hashed aggregate train-passage diagnostics"
+  }
+}
