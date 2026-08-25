@@ -26,6 +26,7 @@ jobs:
         run: |
           test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
           test "$(sha256sum requirements/locks/linux-x86_64/profile.json | cut -d' ' -f1)" = "0dbd74f05d2824082d378aa9031141c864f6a092f950d63ccfae0ade4d76e121"
+          test "$(sha256sum requirements/profiles/linux-x86_64-tokenizer-experiment/profile.json | cut -d' ' -f1)" = "abd6da3e497561d57e079ad425a3a4e3d6e2525fd2841ae3706eed246d9cb248"
           test "$(sha256sum requirements/profiles/linux-x86_64-tokenizer-experiment/overlay.lock.txt | cut -d' ' -f1)" = "11f27613ee7c15585796af39accde71b1e7c2791c24ff98d74c395262ee68544"
       - name: Install exact purpose-specific tokenizer environment
         run: |
