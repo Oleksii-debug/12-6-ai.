@@ -1,0 +1,71 @@
+name: D04 Tokenizer Real Experiments
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  controlled-tokenizer-preflight:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Bind exact source head
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+      - name: Install canonical locked runtime plus hash-locked experiment backend
+        run: |
+          python -m venv .tokenizer-experiment
+          .tokenizer-experiment/bin/python -m pip install \
+            --disable-pip-version-check --no-deps --require-hashes \
+            -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .tokenizer-experiment/bin/python -m pip install \
+            --disable-pip-version-check --no-deps --require-hashes \
+            -r requirements/locks/linux-x86_64/runtime.lock.txt
+          .tokenizer-experiment/bin/python -m pip install \
+            --disable-pip-version-check --no-deps --require-hashes --only-binary=:all: \
+            -r requirements/experiments/tokenizers-linux-x86_64.lock.txt
+      - name: Run real BPE and Unigram evidence
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          PYTHONPATH: src
+        run: |
+          .tokenizer-experiment/bin/python -m twelve_six.tokenization.real_experiments \
+            run --source-sha "$EXPECTED_SOURCE_SHA" \
+            --output tokenizer-real-experiments.json --vocab-size 512
+          .tokenizer-experiment/bin/python -m twelve_six.tokenization.real_experiments \
+            validate --input tokenizer-real-experiments.json \
+            --source-sha "$EXPECTED_SOURCE_SHA"
+      - name: Run locked Unigram reproducibility audit
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          PYTHONPATH: src
+        run: |
+          .tokenizer-experiment/bin/python -m twelve_six.tokenization.unigram_repro \
+            run --source-sha "$EXPECTED_SOURCE_SHA" \
+            --output tokenizer-unigram-repro.json
+          .tokenizer-experiment/bin/python -m twelve_six.tokenization.unigram_repro \
+            validate --input tokenizer-unigram-repro.json \
+            --source-sha "$EXPECTED_SOURCE_SHA"
+      - name: Upload tokenizer experiment evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: d04-tokenizer-real-experiments
+          path: |
+            tokenizer-real-experiments.json
+            tokenizer-unigram-repro.json
+            requirements/experiments/tokenizers-linux-x86_64.lock.txt
+            requirements/locks/linux-x86_64/profile.json
+          if-no-files-found: error
+          retention-days: 30
