@@ -1,0 +1,204 @@
+{
+  "schema": "12-6.perf148-local-cpu-preflight.v1",
+  "swarm_worker_id": "PERF-148-10M-PROFILER",
+  "date": "2026-08-26",
+  "authority": "SOURCE_SHAPED_LOCAL_CPU_PREFLIGHT_NOT_EXACT_HEAD_CI",
+  "paid_compute": false,
+  "source_binding": {
+    "repository": "Oleksii-debug/12-6-ai.",
+    "integration_base_sha": "fb9c6d9b73ce436d637077892d73edf136fcaeac",
+    "candidate_id": "S3-SCALE02-BYTE-GQA-v1",
+    "parameters": 10000640,
+    "model_identity_sha256": "61caa5469123e23b9b72fc2024140bfca84c4c480dcb0a7e712ba800a4f22998",
+    "shape": [1, 256],
+    "context": 1024,
+    "note": "The local container could not clone the repository. The measured model/trainer path was reconstructed from the inspected incumbent source and exact live S3 geometry. Exact-head execution remains delegated to the additive GitHub workflow."
+  },
+  "runtime": {
+    "device": "cpu",
+    "cpu_model": "AMD EPYC 9V74 80-Core Processor",
+    "visible_logical_cpus": 5,
+    "torch_intraop_threads": 2,
+    "torch_interop_threads": 2,
+    "python": "3.13.5",
+    "torch": "2.10.0+cpu",
+    "cuda_available": false
+  },
+  "profile": {
+    "batch_size": 1,
+    "sequence_length": 256,
+    "precision": "fp32",
+    "activities": ["CPU"],
+    "record_shapes": true,
+    "profile_memory": true,
+    "region_cpu_total_ms": {
+      "backward": 204.058992,
+      "forward_and_loss": 123.026073,
+      "forward_mlp": 73.539982,
+      "gradient_normalize_and_norm": 38.145148,
+      "forward_attention": 37.657551,
+      "optimizer_step": 24.301403,
+      "gradient_clip": 17.010168,
+      "forward_rmsnorm": 7.806684,
+      "loss": 0.281395
+    },
+    "region_cpu_memory_bytes": {
+      "forward_and_loss": 76144648,
+      "forward_mlp": 45613056,
+      "forward_attention": 16613376,
+      "forward_rmsnorm": 13132800,
+      "loss": 261128
+    },
+    "region_call_counts": {
+      "forward_mlp": 12,
+      "forward_attention": 12,
+      "forward_rmsnorm": 25,
+      "loss": 1,
+      "gradient_normalize_and_norm": 1,
+      "gradient_clip": 1,
+      "optimizer_step": 1
+    },
+    "top_operator_self_cpu": [
+      {
+        "operator": "aten::mm",
+        "self_cpu_ms": 75.173602,
+        "calls": 48,
+        "representative_shapes": [[256, 256], [256, 864]],
+        "cpu_memory_bytes": 42467328
+      },
+      {
+        "operator": "aten::mm",
+        "self_cpu_ms": 63.071441,
+        "calls": 36,
+        "representative_shapes": [[256, 864], [864, 256]],
+        "cpu_memory_bytes": 9437184
+      },
+      {
+        "operator": "aten::_scaled_dot_product_flash_attention_for_cpu_backward",
+        "self_cpu_ms": 33.728246,
+        "cpu_total_ms": 34.433694,
+        "calls": 12,
+        "representative_qkv_shape": [1, 8, 256, 32],
+        "cpu_memory_bytes": 9437184
+      },
+      {
+        "operator": "aten::mm",
+        "self_cpu_ms": 26.016636,
+        "calls": 75,
+        "representative_shapes": [[256, 256], [256, 256]],
+        "cpu_memory_bytes": 19660800
+      },
+      {
+        "operator": "aten::mm",
+        "self_cpu_ms": 23.624144,
+        "calls": 24,
+        "representative_shapes": [[864, 256], [256, 256]],
+        "cpu_memory_bytes": 21233664
+      },
+      {
+        "operator": "aten::silu_backward",
+        "self_cpu_ms": 20.676262,
+        "calls": 12,
+        "representative_shape": [1, 256, 864],
+        "cpu_memory_bytes": 10616832
+      },
+      {
+        "operator": "aten::_scaled_dot_product_flash_attention_for_cpu",
+        "self_cpu_ms": 11.125295,
+        "cpu_total_ms": 11.534135,
+        "calls": 12,
+        "representative_qkv_shape": [1, 8, 256, 32],
+        "cpu_memory_bytes": 3244032
+      }
+    ],
+    "data_wait": {
+      "source": "deterministic in-memory synthetic batch generation",
+      "samples": 100,
+      "median_ms": 0.006725,
+      "max_ms": 1.987,
+      "conclusion": "NEGLIGIBLE_FOR_THIS_SYNTHETIC_PROFILE"
+    },
+    "checkpoint": {
+      "status": "NOT_MEASURED_IN_LOCAL_PREFLIGHT",
+      "reason": "The local container did not contain an exact repository checkout and therefore did not execute the real D05 checkpoint package. The exact-head profiler workflow instruments save_trainer_checkpoint directly. No 10M checkpoint timing is extrapolated from smaller stages."
+    }
+  },
+  "bottleneck_decision": [
+    {
+      "rank": 1,
+      "area": "backward",
+      "evidence": "204.058992 ms profiler CPU total; dominated by matrix multiplication and CPU SDPA backward",
+      "action": "MEASURED_BOTTLENECK_NO_SPECULATIVE_KERNEL_REWRITE"
+    },
+    {
+      "rank": 2,
+      "area": "mlp_matmul",
+      "evidence": "73.539982 ms forward MLP CPU total and 45,613,056 B profiler CPU memory; leading aten::mm groups are the largest self-time operators",
+      "action": "MEASURED_BOTTLENECK_EXISTING_COMPILE_WORK_MAY_FUSE_AROUND_IT"
+    },
+    {
+      "rank": 3,
+      "area": "optimizer_update_housekeeping",
+      "evidence": "gradient normalize/norm 38.145148 ms + clipping 17.010168 ms + optimizer step 24.301403 ms in the instrumented update path",
+      "action": "LOW_RISK_CANDIDATES_TESTED_BUT_NOT_ACCEPTED"
+    }
+  ],
+  "candidate_results": [
+    {
+      "candidate": "reuse_clip_grad_norm_return_and_remove_manual_total_norm_reduction",
+      "api": "torch.nn.utils.clip_grad_norm_",
+      "numerical_equivalence": {
+        "final_model_parameter_hash_equal": true,
+        "optimizer_state_hash_equal": true,
+        "max_relative_reported_grad_norm_delta": 4.586467993e-7
+      },
+      "short_trials": {
+        "baseline_median_of_trial_medians_seconds": 0.196287383,
+        "candidate_median_of_trial_medians_seconds": 0.194306178,
+        "apparent_speedup_percent": 1.0196,
+        "assessment": "NOISY"
+      },
+      "longer_trials": {
+        "paired_trials": 5,
+        "measured_steps_per_trial": 10,
+        "baseline_trial_median_seconds": [0.1992084365, 0.1941439205, 0.219690399, 0.219408547, 0.240972787],
+        "candidate_trial_median_seconds": [0.1903158875, 0.252850891, 0.2346184235, 0.2279378275, 0.2336317245],
+        "median_of_trial_medians_speedup_percent": -6.0879,
+        "median_of_trial_mean_speedup_percent": -8.3878
+      },
+      "decision": "REJECT_NO_REPEATABLE_END_TO_END_SPEEDUP"
+    },
+    {
+      "candidate": "adamw_foreach_true",
+      "api": "torch.optim.AdamW(foreach=True)",
+      "baseline_median_step_seconds": 0.209240267,
+      "candidate_median_step_seconds": 0.234619373,
+      "speedup_percent": -10.81714,
+      "state_hash_equal": true,
+      "decision": "REJECT_SLOWER_ON_THIS_CPU"
+    },
+    {
+      "candidate": "replace_custom_rmsnorm_with_nn_rmsnorm",
+      "api": "torch.nn.RMSNorm",
+      "fp32_isolated_microbenchmark_us": {
+        "custom": 36.82,
+        "nn_rmsnorm": 32.50
+      },
+      "bf16_isolated_microbenchmark_us": {
+        "custom": 88.42,
+        "nn_rmsnorm": 81.91
+      },
+      "bf16_max_abs_output_delta": 0.015625,
+      "decision": "REJECT_GLOBAL_SUBSTITUTION_NOT_NUMERICALLY_EQUIVALENT_ACROSS_SUPPORTED_PRECISIONS"
+    }
+  ],
+  "non_duplication": {
+    "perf59_torch_compile": "EXISTING_OPT_IN_COMPILE_WORK_NOT_REIMPLEMENTED",
+    "perf94_native_gqa": "EXISTING_NATIVE_GQA_WORK_OWNS_REPEAT_INTERLEAVE_REMOVAL_NOT_REIMPLEMENTED"
+  },
+  "final_engineering_decision": {
+    "accepted_production_optimization_count": 0,
+    "reason": "No newly tested low-risk candidate produced a repeatable end-to-end speedup while satisfying the numerical-equivalence requirement on the available CPU. The correct PERF-148 output is profiler instrumentation plus a rejection record, not an unproven Trainer change.",
+    "production_training_semantics_changed": false
+  }
+}
