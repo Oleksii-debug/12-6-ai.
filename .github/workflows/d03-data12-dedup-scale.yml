@@ -1,0 +1,94 @@
+name: D03 DATA-12 Dedup Scale
+
+on:
+  pull_request:
+    paths:
+      - "src/twelve_six/data/dedup_scale.py"
+      - "tools/run_dedup_scale_experiment.py"
+      - "tests/test_dedup_scale.py"
+      - "configs/data/dedup_scale_local_free_v1.json"
+      - "docs/D03_DEDUP_SCALE.md"
+      - ".github/workflows/d03-data12-dedup-scale.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  local-free-scale-experiment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install repo test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .[dev]
+      - name: Verify and install exact DataTrove package
+        shell: bash
+        run: |
+          mkdir -p /tmp/datatrove-wheel
+          pip download --no-deps datatrove==0.10.0 -d /tmp/datatrove-wheel
+          WHEEL="$(find /tmp/datatrove-wheel -name 'datatrove-0.10.0-*.whl' -print -quit)"
+          test -n "$WHEEL"
+          ACTUAL="$(sha256sum "$WHEEL" | awk '{print $1}')"
+          EXPECTED="c7bb75deed2c3e88fb5138f8ea075a170ee98d6c94fc263829609091ea9c2b5d"
+          echo "DataTrove wheel SHA256: $ACTUAL"
+          test "$ACTUAL" = "$EXPECTED"
+          pip install "$WHEEL" orjson regex
+      - name: Static and contract tests
+        run: |
+          ruff check src/twelve_six/data/dedup_scale.py tests/test_dedup_scale.py tools/run_dedup_scale_experiment.py
+          pytest -q tests/test_corpus_foundation.py tests/test_dedup_scale.py
+      - name: Run 50k LOCAL_FREE injection experiment
+        shell: bash
+        run: |
+          mkdir -p reports/data12
+          /usr/bin/time -v \
+            env PYTHONPATH=src \
+            python tools/run_dedup_scale_experiment.py \
+              --config configs/data/dedup_scale_local_free_v1.json \
+              --output reports/data12/dedup_scale_report.json \
+            2> reports/data12/usr_bin_time.txt
+      - name: Validate report truth boundaries
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path("reports/data12/dedup_scale_report.json").read_text())
+          assert report["schema_version"] == "12-6.dedup-scale-experiment.v1"
+          assert report["execution_class"] == "LOCAL_FREE_SYNTHETIC"
+          assert report["paid_cost_usd"] == 0
+          assert report["runtime"]["datatrove_version"] == "0.10.0"
+          assert report["metrics"]["restart"]["verified"] is True
+          assert report["metrics"]["experiment_acceptance_pass"] is True
+          assert report["eligibility"]["training_eligible"] is False
+          assert report["truth_boundary"]["semantic_universal_cleanliness_claimed"] is False
+          print(json.dumps({
+              "report_sha256": report["report_sha256"],
+              "input_records": report["config"]["record_count"],
+              "final_survivors": report["output_manifest"]["final_survivors"],
+              "reduction_ratio": report["output_manifest"]["reduction_ratio"],
+              "exact_records_per_second": report["metrics"]["exact"]["records_per_second"],
+              "datatrove_input_records_per_second": report["metrics"]["datatrove_input_records_per_second"],
+              "internal_near_recall": report["metrics"]["minhash"]["internal_near_recall"],
+              "benchmark_lexical_recall": report["metrics"]["minhash"]["benchmark_lexical_recall"],
+              "benchmark_translation_detection_rate": report["metrics"]["minhash"]["benchmark_translation_detection_rate"],
+              "unexpected_removal_rate": report["metrics"]["minhash"]["unexpected_removal_rate"],
+              "peak_rss_self_kib": report["memory"]["peak_rss_self_kib"],
+              "peak_rss_children_kib": report["memory"]["peak_rss_children_kib"],
+          }, sort_keys=True))
+          PY
+      - name: Upload exact experiment evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: d03-data12-dedup-scale-${{ github.sha }}
+          path: |
+            reports/data12/dedup_scale_report.json
+            reports/data12/usr_bin_time.txt
+          if-no-files-found: error
+          retention-days: 30
