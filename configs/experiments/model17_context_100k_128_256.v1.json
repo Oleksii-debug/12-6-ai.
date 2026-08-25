@@ -1,0 +1,38 @@
+{
+  "schema": "12-6.model17-context-100k-experiment.v1",
+  "status": "EXPERIMENTAL_NOT_S0_IDENTITY_CHANGE",
+  "derived_model": "configs/stages/s1_100k.json",
+  "contexts": [128, 256],
+  "controls": {
+    "tokenizer": "s0-byte-v1",
+    "corpus": "data/s0/packaged",
+    "seed": 1337,
+    "optimized_tokens": 16128,
+    "batch_size": 1,
+    "optimizer": {
+      "name": "AdamW",
+      "learning_rate": 0.0003,
+      "betas": [0.9, 0.95],
+      "eps": 1e-8,
+      "weight_decay": 0.0,
+      "gradient_clip_norm": 1.0,
+      "scheduler": "constant",
+      "precision": "fp32",
+      "max_steps_guard": 10000
+    }
+  },
+  "packing": {
+    "contract": "context-candidate-isolated-v1",
+    "document_boundary_policy": "isolate",
+    "cross_document_packing": false,
+    "add_bos": false,
+    "add_eos": false,
+    "window_overlap_tokens": 1
+  },
+  "truth_boundary": {
+    "canonical_s0_context_remains": 128,
+    "canonical_s0_packing_remains": "s0-byte-pack-v1",
+    "representative_intended_s1_corpus_available": false,
+    "paid_compute": false
+  }
+}
