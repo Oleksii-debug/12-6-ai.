@@ -1,0 +1,18 @@
+{
+  "schema_version": "12-6.document-quality-current-corpus-view.v1",
+  "authority": "CURRENT_COMMITTED_PROJECT_AUTHORED_MECHANICS_CORPUS_NOT_REPRESENTATIVE_100K_1M",
+  "source_path": "data/synthetic/data10/uk-en-code-train.txt",
+  "source_sha256": "059f04e01d6fc6b8224b373b08efbb37f09d546de35ed510afdb4587ebdb6012",
+  "source_bytes": 1454,
+  "records": [
+    {"id": "data10-uk-001", "mode": "uk", "line_start": 1, "line_end": 1},
+    {"id": "data10-uk-002", "mode": "uk", "line_start": 2, "line_end": 2},
+    {"id": "data10-uk-003", "mode": "uk", "line_start": 3, "line_end": 3},
+    {"id": "data10-en-001", "mode": "en", "line_start": 4, "line_end": 4},
+    {"id": "data10-en-002", "mode": "en", "line_start": 5, "line_end": 5},
+    {"id": "data10-en-003", "mode": "en", "line_start": 6, "line_end": 6},
+    {"id": "data10-code-001", "mode": "code", "line_start": 7, "line_end": 8},
+    {"id": "data10-code-002", "mode": "code", "line_start": 9, "line_end": 14},
+    {"id": "data10-code-003", "mode": "code", "line_start": 15, "line_end": 17}
+  ]
+}
