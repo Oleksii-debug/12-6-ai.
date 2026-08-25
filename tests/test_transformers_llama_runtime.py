@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import re
 from pathlib import Path
 
 import torch
@@ -15,6 +17,7 @@ from twelve_six.tokenization import ByteTokenizer
 from twelve_six.training import Trainer, TrainerConfig
 
 ROOT = Path(__file__).resolve().parents[1]
+_GIT_SHA = re.compile(r"^[0-9a-f]{40}$")
 
 
 def _trained_s0_export(tmp_path: Path) -> tuple[Path, Path]:
@@ -41,8 +44,11 @@ def _trained_s0_export(tmp_path: Path) -> tuple[Path, Path]:
         metrics = trainer.train_microbatch({"input_ids": batch, "labels": batch})
         assert metrics.optimizer_stepped is True
 
+    source_sha = os.environ.get("RUNTIME24_SOURCE_SHA", "a" * 40)
+    if _GIT_SHA.fullmatch(source_sha) is None:
+        raise ValueError("RUNTIME24_SOURCE_SHA must be a lowercase 40-character Git SHA")
     identity = CheckpointIdentity(
-        git_sha="a" * 40,
+        git_sha=source_sha,
         model_spec=stage.model.to_dict(),
         parameter_count=stage.expected_parameters,
         tokenizer_hash=tokenizer.identity.config_sha256,
@@ -82,6 +88,7 @@ def test_real_trained_export_executes_in_transformers_with_full_parity(tmp_path:
     assert evidence["passed"] is True
     assert evidence["transformers_version"] == TRANSFORMERS_VERSION
     assert evidence["architecture"] == "LlamaForCausalLM"
+    assert evidence["source_git_sha"] == os.environ.get("RUNTIME24_SOURCE_SHA", "a" * 40)
     assert evidence["tensor_mapping"]["strict_load"] == "PASS"
     assert evidence["rope"]["exact"] is True
     assert evidence["rope"]["max_abs_error"] == 0.0
@@ -98,6 +105,9 @@ def test_real_trained_export_executes_in_transformers_with_full_parity(tmp_path:
     assert evidence["context"]["over_context_transformers_rejected"] is True
     assert evidence["truth_boundary"]["pretrained_weights_used"] is False
     assert evidence["truth_boundary"]["pretrained_model_api_used"] is False
+    print(f"RUNTIME24_EVIDENCE_SHA={evidence['evidence_sha256']}")
+    print(f"RUNTIME24_WEIGHTS_SHA={evidence['executed_weights_sha256']}")
+    print(f"RUNTIME24_CONFIG_SHA={evidence['executed_config_sha256']}")
     print(f"RUNTIME24_MAX_ABS={evidence['logits']['max_abs_error']:.12g}")
     print(f"RUNTIME24_MAX_REL={evidence['logits']['max_rel_error']:.12g}")
 
