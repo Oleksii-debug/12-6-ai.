@@ -131,7 +131,7 @@ def _model_spec(geometry: Mapping[str, int]) -> ModelSpec:
 
 
 def controlled_family() -> tuple[ModelSpec, ...]:
-    """Return the already-established RESEARCH41 100K-500K fixed-control family."""
+    """Return the established RESEARCH41 100K-500K fixed-control family."""
     specs = tuple(_model_spec(geometry) for geometry in _GEOMETRIES)
     counts = tuple(spec.parameter_count() for spec in specs)
     _require(counts == _EXPECTED_COUNTS, f"controlled family drift: {counts!r}")
@@ -145,7 +145,7 @@ def load_plan(path: Path) -> dict[str, Any]:
     _require(isinstance(raw, dict), "plan root must be an object")
     _require(raw.get("schema_version") == PLAN_SCHEMA, "wrong plan schema")
     rates = raw.get("learning_rates")
-    _require(isinstance(rates, list) and len(rates) == 4, "exactly four LR points required")
+    _require(isinstance(rates, list) and 4 <= len(rates) <= 6, "LR grid must contain 4-6 points")
     learning_rates = tuple(float(value) for value in rates)
     _require(all(math.isfinite(value) and value > 0 for value in learning_rates), "invalid LR")
     _require(tuple(sorted(learning_rates)) == learning_rates, "LRs must be increasing")
@@ -154,7 +154,7 @@ def load_plan(path: Path) -> dict[str, Any]:
     _require(default_lr in learning_rates, "current default LR must be included")
     log_gaps = [
         math.log10(right) - math.log10(left)
-        for left, right in zip(learning_rates, learning_rates[1:], strict=True)
+        for left, right in zip(learning_rates, learning_rates[1:])
     ]
     _require(max(log_gaps) - min(log_gaps) < 0.08, "LR points are not approximately log-spaced")
     execution = raw.get("execution")
@@ -223,17 +223,15 @@ def _run_candidate(
     model = TwelveSixDecoder(spec, init_spec)
     initial_model_sha256 = _model_fingerprint(model)
     initial_validation_loss = _evaluate(model, validation_batches)
-    model.train()
     optimizer = _build_experiment_optimizer(model, config, recipe)
     trainer = Trainer(model, config, device="cpu", optimizer=optimizer)
+    batch_list = list(train_batches)
+    _require(bool(batch_list), "training batch trace is empty")
+
     progression: list[dict[str, Any]] = []
     held_out: list[dict[str, Any]] = [{"step": 0, "loss": initial_validation_loss}]
     failure: dict[str, Any] | None = None
     started = time.perf_counter()
-    batches = iter(train_batches)
-    batch_list = list(train_batches)
-    _require(bool(batch_list), "training batch trace is empty")
-    del batches
     for step in range(1, execution_steps + 1):
         batch = batch_list[(step - 1) % len(batch_list)]
         before = _snapshot(model)
@@ -241,7 +239,11 @@ def _run_candidate(
         try:
             metrics = trainer.train_microbatch(batch)
         except (FloatingPointError, RuntimeError, ValueError) as exc:
-            failure = {"step": step, "exception_type": type(exc).__name__, "message": str(exc)[:300]}
+            failure = {
+                "step": step,
+                "exception_type": type(exc).__name__,
+                "message": str(exc)[:300],
+            }
             break
         update = _update_metrics(model, before, parameter_l2_before=parameter_l2_before)
         finite = _stable_model(model) and math.isfinite(float(metrics.loss))
@@ -271,7 +273,7 @@ def _run_candidate(
             _require(trainer.tokens_seen == tokens_before, "evaluation changed optimized-token count")
             _require(trainer.optimizer_step == optimizer_step_before, "evaluation changed optimizer step")
             held_out.append({"step": step, "loss": validation_loss})
-            model.train()
+
     elapsed = time.perf_counter() - started
     final_validation_loss = held_out[-1]["loss"] if held_out[-1]["step"] == execution_steps else None
     gradients = [float(item["gradient_norm"]) for item in progression if item["gradient_norm"] is not None]
@@ -370,9 +372,9 @@ def _aggregate_summary(model_runs: Sequence[Mapping[str, Any]], default_lr: floa
         else:
             consensus[f"{rate:.12g}"] = "mixed"
     default_healthy = consensus.get(f"{default_lr:.12g}") == "healthy"
-    transfer_lr = default_lr if default_healthy else min(
-        rate for rate in rates if consensus[f"{rate:.12g}"] == "healthy"
-    )
+    healthy_rates = [rate for rate in rates if consensus[f"{rate:.12g}"] == "healthy"]
+    _require(bool(healthy_rates), "no family-wide healthy LR candidate")
+    transfer_lr = default_lr if default_healthy else min(healthy_rates)
     return {
         "consensus_by_learning_rate": consensus,
         "provisional_1m_learning_rate": transfer_lr,
@@ -489,7 +491,10 @@ def run_lr_range(
     report["report_sha256"] = _canonical_hash(report)
     validate_report(report, expected_source_sha=source_sha)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+    output_path.write_text(
+        json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+    )
     return report
 
 
@@ -505,9 +510,13 @@ def validate_report(report: Mapping[str, Any], *, expected_source_sha: str | Non
     model_runs = report.get("model_runs")
     _require(isinstance(model_runs, list) and len(model_runs) == 3, "expected three model runs")
     _require(tuple(int(run["parameter_count"]) for run in model_runs) == _EXPECTED_COUNTS, "model family drift")
+    plan = report.get("plan")
+    _require(isinstance(plan, Mapping), "plan missing")
+    learning_rates = plan.get("learning_rates")
+    _require(isinstance(learning_rates, list) and 4 <= len(learning_rates) <= 6, "bad LR grid")
     for run in model_runs:
         results = run.get("results")
-        _require(isinstance(results, list) and len(results) == 4, "expected four LR results")
+        _require(isinstance(results, list) and len(results) == len(learning_rates), "LR result count drift")
         _require(len({result["initial_model_sha256"] for result in results}) == 1, "init drift")
         _require(len({result["batch_trace_sha256"] for result in results}) == 1, "batch trace drift")
         for result in results:
