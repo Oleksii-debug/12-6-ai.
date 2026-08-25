@@ -100,7 +100,7 @@ def nonfinite_gradient_parameters(model: nn.Module) -> AffectedParameters:
 
 
 def nonfinite_update_parameters(model: nn.Module, optimizer: Optimizer) -> AffectedParameters:
-    """Find parameters whose value or optimizer-owned tensor state is non-finite."""
+    """Find parameters made non-finite by an update, then enrich from optimizer state."""
 
     parameter_names = {id(parameter): name for name, parameter in model.named_parameters()}
     affected: set[str] = set()
@@ -108,6 +108,12 @@ def nonfinite_update_parameters(model: nn.Module, optimizer: Optimizer) -> Affec
     for name, parameter in model.named_parameters():
         if not torch.isfinite(parameter.detach()).all().item():
             affected.add(name)
+
+    # Keep the healthy path to one parameter-finiteness pass. Adam moment/state
+    # tensors are inspected only after a non-finite parameter has already proved
+    # the attempted update poisoned the in-memory state.
+    if not affected:
+        return AffectedParameters((), 0)
 
     for parameter, state in optimizer.state.items():
         name = parameter_names.get(id(parameter))
