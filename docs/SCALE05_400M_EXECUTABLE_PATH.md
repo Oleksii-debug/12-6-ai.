@@ -2,372 +2,375 @@
 
 Status: engineering candidate, not frozen, no compute authorization.
 
-This package is stacked on the exact-green S0 Product head from PR #89. It does not
-replace the D01 architecture solver, D02 Trainer, D05 checkpoint formats, D07 serving,
-D12 distributed contracts, or DIST-19 framework-adoption work. It adds the missing
-400M execution seam and a revalidated architecture candidate.
+## Final live ownership reconstruction
 
-## Live-state reconstruction
+This package remains one SCALE-05 Product vertical stacked on exact-green S0 PR #89.
+The repository changed while SCALE-05 was running, so the final design consumes the
+new incumbents instead of freezing the earlier snapshot:
 
-As polled on 2026-08-25:
+- S0: #89 is the exact-green integrated 10,140-parameter Product base.
+- S1 / ~100K: #106 owns numerical preflight; #130 owns S1 checkpoint mechanics.
+- S2 / ~1M: #144 owns the current executable byte-compatible stage.
+- S3 / ~10M: #143 owns the current executable byte-compatible stage.
+- S4 / ~100M: #152 is now the active SCALE-04 Product readiness package. It binds the
+  currently integrated `s0-byte-v1` tokenizer (vocab 256), 4K context and an exact
+  99,897,600-parameter candidate.
+- S5 historical hypothesis: #37 proposed 400,598,016 parameters with vocab 32,768,
+  D=1024, L=20, 16Q/4KV, head_dim=64 and FFN=5120. It remains useful algebra, not the
+  current executable tokenizer-bound choice.
+- Attention: #138 owns model-native KV cache; #163 now owns the native-SDPA-GQA seam
+  and proves the current manual K/V repeat is a real S5 performance/memory issue.
+- Distributed: #71/#74/#76 own distributed contracts and token-correct DP semantics;
+  #151 owns the native tensor-parallel seam. S5 16Q/4KV supports head-aligned TP2/TP4,
+  but TP is not required merely to fit 400M.
+- Checkpoint/recovery: #168 now owns the real `torch.distributed.checkpoint` save/load
+  and topology-changing reshard successor. SCALE-05 consumes that lane rather than
+  inventing another sharded format.
+- Framework choice: #147/#154 keep PyTorch-native FSDP2/DCP as the incumbent through
+  first dense 400M/1B work; Megatron remains a measured escape hatch, not a default.
+- Data: #75 owns verified acquisition/factory work and currently plans ~8B retained
+  experiment-tokenizer tokens for a ~400M scratch-baseline point, with a 70% retained
+  assumption implying ~11.43B raw candidate tokens. Rights/data approval remains a
+  separate gate.
 
-- S0: PR #89 is the strongest exact-green integrated 10,140-parameter Product base.
-- S1 / ~100K: PR #106 owns the current numerical preflight; PR #130 owns generic
-  checkpoint mechanics without prematurely freezing a tokenizer.
-- S2 / ~1M: PR #144 owns the current executable byte-compatible 992,896-parameter
-  mechanics candidate. It explicitly leaves the future tokenizer/geometry unfrozen.
-- S3 / ~10M: PR #143 owns the executable 9,999,680-parameter runtime probe and does
-  not take D11 architecture ownership away from PR #67.
-- S4 / ~100M: no new SCALE-04 Product PR was found at the last poll. Historical D01
-  PR #37 has the 100,384,512 candidate; D11 PR #67 has a ~99.8M GQA/4K alternative;
-  PR #143 carries S4 readiness algebra only.
-- S5 / ~400M hypothesis: D01 PR #37 proposed 400,598,016 parameters with vocab 32768,
-  D=1024, L=20, Q/KV heads 16/4, head_dim 64, FFN 5120, context 4096.
-- Distributed/framework: PRs #71/#74/#76 own topology/runtime contracts. PR #147
-  now owns the TorchTitan-adoption seam and concludes that the current project should
-  remain PyTorch-native until a direct integration is justified.
-- Serving: PR #138 owns the active first-party KV-cache change in model.py. SCALE-05
-  does not compete for that file.
+## Primary executable candidate
 
-## Revalidated architecture
+The primary SCALE-05 config must be consumable by the current tokenizer, not merely by
+a future tokenizer. Therefore the final candidate is:
 
-The SCALE-05 candidate is 401,273,856 trainable parameters:
-
-- vocab: 32,768, tied token embedding/output;
-- context: 4,096;
-- width: 1,024;
-- blocks: 30;
-- query heads: 16;
-- KV heads: 4 (4:1 GQA);
-- head dimension: 64;
-- SwiGLU hidden dimension: 3,136;
+- exact trainable parameters: **400,421,888** (+0.105472% vs 400M);
+- current tokenizer vocabulary: **256**, tied embedding/output;
+- context: **4096 byte tokens**;
+- width: **1024**;
+- blocks: **30**;
+- query/KV heads: **16/4** (4:1 GQA);
+- head dimension: **64**;
+- SwiGLU hidden dimension: **3488**;
 - pre-RMSNorm, RoPE theta 10,000, rotary_dim 64;
-- no attention/MLP/output bias; no attention dropout.
+- no attention/MLP/output bias and no attention dropout.
 
 ModelSpec identity:
-`ef44d5eac5bdf90a39e644076d43decd4e20d5d9eeb11f93af9985776f124310`.
+`9e6e59bbd7bece16a367fe2b4649079b5a2b6c92b44a99d7db892cc8db3684d2`.
 
-The old 400M hypothesis is not rejected because its parameter count was wrong; its
-shape is simply too FFN-heavy for the current execution target. At 20 blocks and
-FFN=5120, 85.7% of each block's trainable parameters are in the MLP. The SCALE-05
-shape moves the same total parameter budget into 30 blocks and FFN=3136, reducing the
-MLP share to 78.6% while preserving the clean D=1024 / 16x64 attention geometry and
-4:1 GQA. This gives more depth without inflating width, KV cache, or embedding cost.
+Exact algebra:
 
-### Exact parameter algebra
-
-- tied token embedding: 32,768 x 1,024 = 33,554,432;
-- attention weights per block: 2,621,440;
-- SwiGLU weights per block: 9,633,792;
-- RMSNorm weights per block: 2,048;
-- total per block: 12,257,280;
-- 30 blocks: 367,718,400;
+- tied embedding: 256 x 1024 = 262,144;
+- attention per block: 2,621,440;
+- SwiGLU per block: 10,715,136;
+- RMSNorm per block: 2,048;
+- block total: 13,338,624;
+- 30 blocks: 400,158,720;
 - final RMSNorm: 1,024;
-- total: 401,273,856.
+- total: 400,421,888.
 
-The embedding is 8.36% of the model. A 64K vocabulary would approximately double that
-fixed embedding tax, so 32K remains the preferred geometry budget until tokenizer
-fertility/coverage experiments justify a larger vocabulary. The 32K number is not a
-tokenizer freeze: a versioned tokenizer artifact and held-out fertility evidence are
-launch gates.
+The historical 20-layer/FFN5120 S5 is not reused blindly. It puts about 85.7% of each
+block's parameters in the MLP. This 30-layer candidate puts about 80.3% there and moves
+capacity into depth without increasing width, query-head width or KV-cache geometry.
 
-## Runtime engineering added by SCALE-05
+## Tokenizer/vocabulary decision
 
-`src/twelve_six/training/scale_runtime.py` adds:
+Vocab 256 is an **execution compatibility decision**, not a statement that byte tokens
+are the final production tokenizer for 400M. A byte vocabulary makes the embedding tax
+only 262,144 parameters (~0.065% of the model), but 4096 byte tokens cover much less
+natural-language text than 4096 subword tokens and raw token-count scaling laws are not
+comparable.
 
-1. Allocation-safe real-model construction on the PyTorch `meta` device. The full
-   401M ModelSpec can therefore be structurally instantiated and parameter-counted
-   without reserving 1.6+ GB just for fp32 weights.
-2. A post-`to_empty` canonical initialization helper. This closes the gap between the
-   current eager constructor and the FSDP2 meta-init sequence.
-3. Bottom-up FSDP2 preparation: meta build -> `fully_shard` each decoder block ->
-   `fully_shard` root -> local materialization -> canonical random initialization.
-   It fails closed unless `torch.distributed` is initialized and the target is CUDA.
-4. `ExternallyPlacedTrainer`, retaining existing D02 accumulation, numerical-safety,
-   checkpoint-boundary and resume behavior without calling `model.to(device)` over a
-   pre-sharded model. Optimizer construction therefore happens after FSDP2 sharding,
-   as required for DTensor parameters.
-5. State-dict-compatible blockwise activation checkpointing using non-reentrant
-   `torch.utils.checkpoint`.
-6. Fail-closed SDPA backend selection. Accelerator runs can require Flash SDPA rather
-   than silently falling back to the quadratic math path.
-7. Analytical persistent-state, checkpoint, KV-cache, activation and FLOP estimates.
+A future 32K tokenizer remains a plausible production alternative. For reference, a
+32,768-vocab D1024/L30/16Q:4KV/FFN3136 shape is 401,273,856 parameters, but it must not
+become primary until a versioned tokenizer artifact is selected and fertility,
+coverage, byte fallback, bits-per-byte and held-out loss are measured. Training a 32K
+output head on only current byte IDs would waste almost all classes and is explicitly
+rejected.
 
-`tools/validate_scale_400m_runtime.py` executes the allocation-safe architecture and
-resource checks directly from the stage config.
+For this reason:
 
-## Attention backend and current GQA caveat
+- byte-v1 is valid for current mechanics/accelerator qualification;
+- a paid long 400M campaign requires an explicit keep-byte-v1 vs future-tokenizer
+  decision;
+- if byte-v1 is retained, report bits-per-byte and language/domain fertility, not only
+  perplexity or tokens/parameter.
 
-The current canonical attention code manually expands K/V from 4 KV heads to 16 query
-heads with `repeat_interleave()` before calling SDPA. Current PyTorch exposes native
-GQA in `scaled_dot_product_attention(enable_gqa=True)` and supports it with fused CUDA
-attention backends. Because PR #138 actively owns `model.py`, SCALE-05 does not create
-a competing model implementation. A review note was left on #138 requesting a native
-GQA benchmark/change there.
+## Runtime engineering delivered by SCALE-05
 
-Until that is integrated, the resource estimator deliberately budgets the current
-expanded Q/K/V training intermediates. The serving KV-cache estimate remains based on
-unexpanded 4-head K/V, matching the intended GQA cache geometry.
+`src/twelve_six/training/scale_runtime.py` adds the missing scale execution seam:
+
+1. Full real decoder construction on PyTorch `meta`, so all 400,421,888 parameters are
+   structurally instantiated and counted without allocating their storage.
+2. Post-`to_empty` canonical random initialization, including residual-output scaling
+   and tied embedding/output restoration.
+3. Bottom-up FSDP2 preparation: meta model -> `fully_shard` blocks -> `fully_shard`
+   root -> local shard materialization -> canonical initialization. Optimizer creation
+   happens after sharding and therefore owns DTensor parameters.
+4. `ExternallyPlacedTrainer`, which preserves D02 training/checkpoint-boundary/resume
+   behavior without the base Trainer's unconditional wholesale `model.to(device)`.
+5. DTensor-safe gradient normalization. A real local FSDP2 probe exposed that the base
+   Trainer's local `Tensor += DTensor` norm accumulation fails. SCALE-05 normalizes
+   gradients and uses PyTorch's DTensor-aware `clip_grad_norm_` for the global norm.
+6. State-dict-compatible blockwise non-reentrant activation checkpointing.
+7. Fail-closed SDPA backend selection for scale runs.
+8. Analytical persistent-state, activation, KV-cache, checkpoint and FLOP accounting.
+
+`tools/validate_scale_400m_runtime.py` is the allocation-safe checkout-local validator.
+`tests/test_scale_400m_runtime.py` covers exact meta construction, resource algebra,
+checkpointed-vs-plain forward/backward equivalence, meta materialization, no-wholesale-
+move Trainer behavior, gradient accumulation, and a real one-rank Gloo/FSDP2 DTensor
+optimizer-step regression.
+
+## Remaining distributed correctness boundary
+
+D12 #71 found an important global-token objective issue for distributed training when
+ranks contain unequal valid-target counts. SCALE-05 does not fork that ownership.
+Until the D12 token-correct scaling is composed with the FSDP2 path, the launch profile
+requires equal valid-target counts per rank/microbatch (fixed packed sequences with the
+same microbatch size). Variable padding/ignore counts are a fail-closed launch gate,
+not something to assume is harmless.
+
+FSDP2 gradient accumulation is mathematically usable with equal target counts, but the
+first multi-GPU optimization pass should also use FSDP2's
+`set_requires_gradient_sync(False)` on non-boundary microbatches to remove unnecessary
+communication. That is a throughput optimization after objective correctness, not a
+reason to fork D12 now.
+
+## Attention backend / GQA
+
+The current canonical model still expands 4 KV heads to 16 query heads before SDPA.
+PR #163 now provides the native `enable_gqa=True` seam and controlled evidence. SCALE-05
+therefore treats native GQA intake from #163/#138 as a **paid-400M gate** instead of
+modifying `model.py` in parallel.
+
+The final CUDA smoke must prove:
+
+- locked PyTorch/CUDA build;
+- BF16 support on target hardware;
+- native GQA path;
+- automatic/fused SDPA selection, with forced backend only for diagnostics;
+- finite forward/loss/backward/update;
+- measured peak allocated/reserved VRAM and tokens/s.
+
+No GPU/NCCL/Flash result is claimed by this branch.
 
 ## Precision and optimizer
 
-Preferred compute precision: bf16 autocast.
+Initial baseline:
 
-The current Trainer semantics keep trainable parameters in fp32 and use autocast for
-compute. AdamW moments are also fp32. For the first real 400M run this is preferable to
-adding an 8-bit optimizer dependency before the baseline is stable.
-
-Recommended optimizer starting point:
-
-- AdamW;
-- beta1=0.9, beta2=0.95;
-- eps=1e-8;
-- weight decay 0.1 for pretraining experiments unless controlled evidence supports a
-  different value;
-- peak LR approximately 3e-4 as an initial sweep center, not a frozen value;
+- BF16 compute through FSDP2 mixed precision or the current autocast semantics;
+- FP32 persistent sharded parameters and optimizer state;
+- AdamW, beta1=0.9, beta2=0.95, eps=1e-8;
+- weight decay 0.1 as a sweep starting point, not a frozen optimum;
+- peak learning-rate sweep centered around roughly 3e-4;
 - warmup 1-2% of optimizer steps;
 - cosine decay;
-- global gradient clip 1.0.
+- gradient clip 1.0.
 
-The current D02 Trainer already has token-weighted gradient accumulation, accumulation
-boundary safety, gradient clipping and committed-step checkpoint hooks. No competing
-implementation was added.
+Do not add an 8-bit optimizer to make memory arithmetic look better before the baseline
+is measured. At 400M the current FP32-persistent AdamW state is already tractable.
 
-## Global batch / accumulation
+## Gradient accumulation / global batch
 
-Use 65,536 target tokens per optimizer update for the first throughput/learning-rate
-baseline:
+First clean baseline: 65,536 target tokens per optimizer update.
 
-- 1 GPU, microbatch 1 x 4096: accumulation 16;
-- 2 GPUs, microbatch 1 x 4096 per rank: accumulation 8;
-- 4 GPUs, microbatch 1 x 4096 per rank: accumulation 4.
+For equal packed 4096-token sequences:
 
-After memory/throughput profiling, 131,072 tokens/update is the next clean sweep point.
-Do not increase sequence length and global batch simultaneously during the first
-accelerator bring-up.
+- 1 GPU, microbatch 1: accumulation 16;
+- 2 GPUs, microbatch 1/rank: accumulation 8;
+- 4 GPUs, microbatch 1/rank: accumulation 4.
+
+After memory and throughput evidence, 131,072 target tokens/update is the next sweep
+point. For byte-v1 these are byte-token counts; do not interpret them as subword-token
+batch sizes without fertility conversion.
 
 ## Memory budget
 
-For 401,273,856 parameters under current fp32-persistent AdamW semantics:
+For 400,421,888 parameters under FP32 persistent AdamW semantics:
 
-- fp32 parameters: 1,605,095,424 bytes (1.495 GiB);
-- fp32 gradients: 1,605,095,424 bytes (1.495 GiB);
-- two fp32 Adam moments: 3,210,190,848 bytes (2.990 GiB);
-- persistent single-rank total: 6,420,381,696 bytes (5.979 GiB);
-- four-rank FSDP2 persistent total per rank: 1,605,095,424 bytes (1.495 GiB).
+- parameters: 1,601,687,552 bytes = 1.492 GiB;
+- gradients: 1,601,687,552 bytes = 1.492 GiB;
+- two Adam moments: 3,203,375,104 bytes = 2.983 GiB;
+- persistent single-rank total: 6,406,750,208 bytes = **5.967 GiB**;
+- four-rank FSDP2 persistent estimate: 1,601,687,552 bytes = **1.492 GiB/rank**.
 
-At sequence 4096, microbatch 1, blockwise activation checkpointing, the analytical
-saved-activation + one-block recompute + logits lower bound is 630,194,176 bytes
-(0.587 GiB). Without checkpointing the corresponding lower bound is about 3.33 GiB.
-These are not CUDA peak claims: allocator fragmentation, kernel workspaces, optimizer
-step temporaries, collectives and dataloader staging must be measured on the target
-GPU.
+At sequence 4096, microbatch 1, blockwise checkpointing, the estimator's current
+lower-bound activation model is 369,623,040 bytes = **0.344 GiB**. This includes saved
+block boundaries, one block's recompute intermediates, current expanded GQA Q/K/V and
+the 256-way logits. It is not a CUDA peak claim; allocator fragmentation, kernel
+workspaces, collectives, optimizer temporaries and dataloader staging must be measured.
 
-Therefore:
+Minimum planning topology remains **1 x 24 GB CUDA GPU**. A 16 GB result may happen to
+fit, but is not accepted as the launch minimum because it leaves poor headroom for
+profiling, optimizer transients and backend variation.
 
-- 16 GB is not accepted as a planning minimum even if a synthetic step happens to fit;
-- 24 GB is the minimum credible single-GPU topology for a controlled 4K microbatch-1
-  run with Flash SDPA and activation checkpointing;
-- 48/80 GB GPUs provide enough margin for profiling, larger microbatches and recovery
-  work without immediately forcing sharding.
+## FLOPs and expected throughput
 
-## FLOP and throughput model
+With blockwise checkpoint recomputation at sequence 4096:
 
-With blockwise checkpointing, the estimator includes one recomputed forward pass:
+- approximate parameterized work: 8 x P per token;
+- causal QK/AV score term: approximately 16 x L x S x q_dim per token;
+- total planning estimate: **5,216,641,024 FLOPs/token**.
 
-- parameterized work: approximately 8 x P per token;
-- 4K causal QK/AV score work: approximately 16 x L x S x q_dim per token;
-- total: 5,223,456,768 training FLOPs/token at sequence 4096.
+Approximate token throughput at aggregate sustained effective compute:
 
-This means aggregate sustained effective compute maps to approximate token throughput:
+- 100 TFLOP/s -> 19.2K tokens/s;
+- 200 TFLOP/s -> 38.3K tokens/s;
+- 400 TFLOP/s -> 76.7K tokens/s;
+- 800 TFLOP/s -> 153K tokens/s;
+- 1 PFLOP/s -> 192K tokens/s.
 
-- 100 TFLOP/s effective -> ~19.1K tokens/s;
-- 200 TFLOP/s -> ~38.3K tokens/s;
-- 400 TFLOP/s -> ~76.6K tokens/s;
-- 800 TFLOP/s -> ~153K tokens/s;
-- 1 PFLOP/s -> ~191K tokens/s.
+These are compute-model estimates, not measured 12-6 throughput. Report actual GPU,
+world size, precision, SDPA backend, GQA mode, sequence, microbatch, accumulation,
+checkpointing, data-loader state, tokens/s and peak VRAM together.
 
-These are compute-model estimates, not measured 12-6 throughput. Real throughput must
-be reported together with GPU model, PyTorch/CUDA build, SDPA backend, world size,
-sequence length, microbatch, accumulation, activation checkpointing and dataloader
-state.
-
-A reasonable pre-measurement expectation is:
-
-- 1 x 24 GB consumer-class accelerator: roughly 60-100 effective TFLOP/s for this
-  workload after kernels are healthy -> about 11.5K-19K tokens/s;
-- 4 x L40S-class: roughly 200-400 aggregate effective TFLOP/s -> about 38K-77K
-  tokens/s;
-- 4 x H100-class: roughly 600-1000 aggregate effective TFLOP/s -> about 115K-191K
-  tokens/s.
-
-Treat these as launch-planning ranges only. If the measured result misses the lower
-bound materially, profile attention backend selection, GQA expansion, dataloader
-stalls and collective time before buying more GPUs.
-
-## Minimum and recommended topology
+## GPU topology
 
 ### Minimum viable
 
-1 x 24 GB CUDA GPU, bf16 autocast, sequence 4096, microbatch 1, accumulation 16,
-blockwise activation checkpointing, Flash SDPA required, ordinary AdamW.
-
-This topology proves the model can learn and gives a clean single-rank baseline. It is
-not the recommended topology for a full 8B-token campaign because wall time and
-failure recovery become inconvenient.
+1 x 24 GB CUDA GPU, BF16 if positively supported, sequence 4096, microbatch 1,
+accumulation 16, activation checkpointing and native/fused SDPA. This is for the first
+real 400M learning/checkpoint smoke, not the preferred full campaign.
 
 ### Recommended engineering topology
 
-4 GPUs in one node, preferably 48 GB L40S-class for cost-oriented work or 80 GB
-H100-class for fast iteration. Use FSDP2 full sharding for the distributed stack
-qualification even though the 400M model can fit replicated on each large GPU; this
-exercises the same meta-init, DTensor optimizer and sharded-checkpoint path needed by
-later stages.
+One node, **4 x 48 GB L40S-class** for cost-oriented work or **4 x 80 GB H100-class**
+for fast iteration. Use FSDP2 even though 400M can fit replicated on a large card so the
+project qualifies the meta/DTensor/DCP path required by later scales.
 
-Avoid multi-node for the first 400M campaign. At this size, multi-node coordination
-adds more failure and network surface than useful model capacity.
+Avoid multi-node for the first 400M campaign. TP2/TP4 is geometrically available via
+#151, but parameter capacity does not require it at 400M. Introduce TP only after a
+measured throughput or memory reason.
 
-## Token targets and expected progress
+## Token/data gates and expected progress
 
-Use token count, not epochs, as the primary scale variable:
+There are two distinct token regimes.
 
-- 10-50M tokens: accelerator/kernel/checkpoint smoke only;
-- 250M tokens: first learning-curve and data-pipeline validation;
-- 1B tokens: meaningful optimizer/tokenizer/data comparison, still strongly
-  undertrained;
-- 2B tokens: 5 tokens/parameter, serious pilot;
-- 4B tokens: 10 tokens/parameter, useful architecture/data decision point;
-- 8B tokens: 20 tokens/parameter, primary compute-balanced baseline target;
-- 12B tokens: 30 tokens/parameter, data-richer extension if validation loss still
-  improves and data quality remains acceptable.
+Current byte-v1 mechanics:
 
-Do not authorize an 8B run until the 250M and 1B curves show stable loss, finite
-numerics, useful held-out improvement, restart parity and expected tokens/s.
+- 10-50M byte tokens: accelerator/kernel/checkpoint smoke;
+- ~250M byte tokens: first learning curve, data-pipeline and restart validation;
+- up to ~1B byte tokens: serious runtime/optimizer/data comparison if byte-v1 remains
+  under evaluation.
 
-## Data and storage
+Production-tokenizer campaign after explicit tokenizer selection:
 
-At uint32 token IDs, 8B packed tokens are approximately 32 GB before shard/index
-metadata. Reserve at least 50 GB for the packed training set and substantially more
-for source/canonicalized text, tokenizer experiments and immutable manifests.
+- 1B selected-tokenizer tokens: meaningful but strongly undertrained comparison;
+- 2B: ~5 tokens/parameter;
+- 4B: ~10 tokens/parameter;
+- 8B: ~20 tokens/parameter primary scratch baseline planning point;
+- 12B: ~30 tokens/parameter extension only if held-out loss and data quality justify it.
 
-Evaluation must include:
+If byte-v1 is retained for the production campaign, do **not** mechanically call 8B
+bytes equivalent to 8B BPE tokens. Recalculate the training target from measured
+fertility, bits-per-byte, validation scaling and actual corpus yield.
 
-- held-out causal loss/perplexity on immutable data;
-- contamination/dedup audit against training manifests;
-- tokenizer fertility/byte-fallback/coverage by language/domain;
-- long-context slices up to the trained 4K boundary;
-- exact resume equivalence at controlled scale;
-- numerical finite-rate/gradient-norm monitoring;
-- first-party generation smoke and interop parity where applicable.
+At uint32 IDs, 8B packed tokens are ~32 GB before indexes/metadata. #75's current 70%
+retained planning assumption implies ~11.43B raw candidate tokens for an 8B retained
+point; that assumption must be replaced by measured yield from legally approved data.
 
-## Checkpoint and recovery strategy
+Evaluation gates:
 
-Analytical unsharded sizes under current fp32-persistent training semantics:
+- immutable held-out causal loss plus bits-per-byte for byte-v1;
+- tokenizer fertility/coverage by language/domain;
+- contamination/dedup audit;
+- long-context slices up to 4096 trained tokens;
+- finite numerics/gradient telemetry;
+- exact controlled resume/reload evidence;
+- first-party generation and interop parity where applicable.
 
-- weight-only fp32 state: 1,605,095,424 bytes (1.495 GiB);
-- model + two Adam moments: 4,815,286,272 bytes (4.484 GiB), excluding metadata and
-  scalar optimizer overhead.
+## Checkpoint / recovery
 
-For single-GPU bring-up, the existing D05 committed-step hook can remain the durable
-boundary. For FSDP2 paid runs, use PyTorch Distributed Checkpoint (DCP) sharded state,
-not a gather-to-rank-0 full optimizer checkpoint. Persist the existing project semantic
-identities (ModelSpec, InitSpec, tokenizer/data identities, TrainerConfig, tokens_seen,
-optimizer step, topology identity) alongside DCP storage.
+First-order state sizes:
 
-Recovery policy:
+- FP32 weight-only state: 1,601,687,552 bytes = 1.492 GiB;
+- model + two Adam moments: 4,805,062,656 bytes = 4.475 GiB before small metadata.
 
-1. checkpoint only after a committed optimizer/scheduler step;
-2. target <=30 minutes of lost compute between durable checkpoints during early paid
-   runs, relaxing only after recovery is repeatedly proven;
-3. keep at least last two checkpoints plus one known-good earlier milestone;
-4. write to a temporary/new checkpoint generation, fsync/complete it, then publish the
-   manifest pointer atomically;
-5. on resume, fail closed on ModelSpec/InitSpec/tokenizer/data/trainer/topology mismatch;
-6. run an immediate held-out loss and deterministic controlled-batch check after
-   restore before resuming expensive training.
+The old gather/full-in-memory checkpoint route is not the 400M multi-GPU design.
+PR #168 now provides the real DCP model+optimizer save/load and reshard successor; it is
+the correct intake path once its exact-head evidence is green and composition with the
+SCALE-05 ModelSpec is proven.
 
-DCP storage integration remains a merge dependency on the active D05/D12/DIST-19
-lineage. SCALE-05 deliberately does not open a competing checkpoint-format surface.
+Recovery contract for paid runs:
+
+1. checkpoint only on a committed optimizer/scheduler boundary;
+2. DCP sharded state, no rank-0 full optimizer gather;
+3. bind ModelSpec, InitSpec, tokenizer, data manifest, packing, Trainer config, step,
+   tokens, environment and topology identities;
+4. target <=30 minutes lost compute between early durable checkpoints;
+5. retain at least two latest generations plus one earlier known-good milestone;
+6. publish a generation only after all shards/manifest/integrity checks complete;
+7. fail closed on semantic identity mismatch;
+8. after restore, run a controlled batch and held-out loss check before resuming paid
+   training.
 
 ## Serving implications
 
-The 4:1 GQA geometry is serving-friendly:
+The 16Q/4KV geometry remains serving-friendly:
 
-- bf16/fp16 weights after export: about 0.80 GB;
-- fp32 weights: about 1.61 GB;
-- KV cache at bf16/fp16: 30,720 bytes per cached token per sequence;
-- one 4096-token sequence: 125,829,120 bytes = 120 MiB KV cache;
-- batch 8 at 4096 tokens: about 960 MiB KV cache.
+- BF16/FP16 exported weights: ~0.801 GB decimal (~0.746 GiB);
+- FP32 weights: ~1.602 GB decimal (~1.492 GiB);
+- BF16/FP16 K/V cache: 30,720 bytes per cached token per sequence;
+- 4096-token sequence: 120 MiB K/V cache;
+- batch 8 at full 4096 context: ~960 MiB K/V cache.
 
-PR #138's unexpanded cache design is therefore important. First-party generation can
-remain the correctness reference; interop/export paths can own production serving.
-No quantized serving claim is made by SCALE-05.
+Consume #138's unexpanded cache semantics and #163's native GQA attention path. The
+known `torch.cat` one-token cache-growth allocator issue in #138 is a serving
+optimization, not a reason to change the training geometry here.
 
-## Budget scenarios (planning only, not authorization)
+## Budget scenarios — planning only
 
-Rate-card snapshot checked 2026-08-25:
+No `COMPUTE_AUTHORIZED` exists. Nothing below authorizes spending.
 
-- RunPod Secure Cloud: L40S $0.99/GPU-hour, H100 SXM $2.99/GPU-hour, RTX 4090
-  $0.69/GPU-hour (RunPod published rates verified 2026-08-10);
-- USD/EUR reference used for planning: 1 USD = 0.857284 EUR on 2026-08-25.
+Rate snapshot checked 2026-08-25: RunPod Secure Cloud published L40S at $0.99/GPU-hour
+and H100 SXM at $2.99/GPU-hour (rates verified by RunPod on 2026-08-10). Using the
+2026-08-25 planning reference 1 USD ~= 0.857284 EUR gives roughly EUR 3.39/hour for
+4 x L40S and EUR 10.25/hour for 4 x H100 SXM, before tax/storage/availability. Recheck
+at purchase time.
 
-That implies approximately EUR 3.39/hour for 4 x L40S and EUR 10.25/hour for 4 x H100
-before taxes, storage and availability effects. Re-check rates immediately before any
-purchase. These figures do not constitute COMPUTE_AUTHORIZED.
+### EUR 2,000 envelope
 
-### EUR 2,000 experiment envelope
+Recommended caps, not commitments:
 
-Do not spend the envelope as one long blind run. A sensible cap allocation is:
+- <=EUR 100: CUDA/native-GQA/FSDP2/DCP bring-up and 10-50M-token smoke;
+- <=EUR 250: 250M-token runtime/data/optimizer pilot(s);
+- <=EUR 400: tokenizer or LR/weight-decay comparison up to roughly 1-2B tokens;
+- <=EUR 400: one longer baseline only after preceding gates are green;
+- remainder: reruns, storage, evaluation and provider/availability margin.
 
-- <=EUR 100: accelerator bring-up, 10-50M token smoke, checkpoint/restart tests;
-- <=EUR 250: 250M-token optimizer/tokenizer/data pilot(s);
-- <=EUR 400: 1-2B-token LR/weight-decay or tokenizer comparison;
-- <=EUR 400: one 8B-token baseline if preceding gates pass;
-- remainder: reruns, evaluation, storage/data staging and provider availability margin.
+At the compute model above, 8B selected-tokenizer tokens would be roughly 29-58 hours
+at 200-400 effective aggregate TFLOP/s or 12-19 hours at 600-1000 TFLOP/s. These are
+planning ranges, not measured utilization.
 
-At the compute-model ranges above, an 8B run is roughly 29-58 hours on a 4xL40S
-aggregate sustaining 200-400 TFLOP/s, or roughly 12-19 hours on 4xH100 sustaining
-600-1000 TFLOP/s. Current rate cards put raw GPU rental for that single run well below
-EUR 400; the large reserve is deliberate because measured utilization and failures,
-not theoretical FLOPs, determine real cost.
+### EUR 10,000 envelope
 
-### EUR 10,000 experiment envelope
+Use the larger budget for replication and evidence, not one blind run:
 
-This budget should fund evidence breadth rather than one oversized run:
+- at least two independent 1-2B-token optimizer/tokenizer/data pilots;
+- at least two 8B-token full campaigns after tokenizer/data freeze;
+- optional 12B extension only if held-out curves justify it;
+- checkpoint/failure/recovery drills;
+- long-context and held-out evaluation;
+- reserve for provider change or H100-class rerun if cost-oriented throughput is poor.
 
-- two independent 1-2B-token architecture/tokenizer/optimizer pilots;
-- at least two 8B-token full runs (seed or data-mixture replication);
-- one 12B-token extension if held-out loss remains improving;
-- explicit failure/recovery drills;
-- held-out and long-context evaluation;
-- enough reserve for a second provider or faster H100-class rerun if throughput on the
-  cost-oriented topology is poor.
+## Credible executable path from current repository to 400M
 
-A 400M model is small enough that EUR 10k is not a reason to overtrain a weak data or
-runtime configuration. Data quality, tokenizer evidence and recovery reliability are
-the limiting gates once the accelerator path is healthy.
+1. Keep #164 as the single SCALE-05 package; do not create a second 400M PR.
+2. Require exact-head repo CI for the current byte-compatible candidate and FSDP2
+   regression tests.
+3. Compose SCALE-04 #152 evidence rather than duplicating its S4 preflight.
+4. Consume native GQA from #163/#138; prove locked CUDA BF16/fused SDPA.
+5. Consume DCP/res hardening from #168; prove save/load/restart with the exact S5
+   ModelSpec and Trainer identities.
+6. Compose D12 #71 global-token objective semantics; before that, multi-rank SCALE-05
+   runs require equal valid-target counts per rank.
+7. Run a LOCAL_FREE/free CUDA smoke if such hardware is available. Otherwise prepare
+   the exact launch spec only; do not purchase compute.
+8. After explicit compute authorization: 10-50M smoke -> 250M curve -> <=1B serious
+   pilot. Record loss, held-out loss, grad norms, peak VRAM, tokens/s, checkpoint time
+   and restore parity.
+9. Freeze the production tokenizer only from fertility/coverage/BPB evidence. Re-solve
+   S5 if vocabulary changes.
+10. Only after those gates request/consume authorization for the 2-4B pilot and the
+    ~20-token/parameter selected-tokenizer baseline.
 
-## Executable path from present state
-
-1. Run the allocation-safe validator on the exact branch head:
-   `python tools/validate_scale_400m_runtime.py`.
-2. Require repo CI/ruff/pytest terminal success.
-3. Merge/stack the active model-owned native-GQA improvement rather than forking
-   `model.py` from PR #138.
-4. Resolve the exact D08 PyTorch/CUDA lock and prove Flash SDPA on the intended GPU.
-5. On one free/local CUDA GPU if available, run the small equivalence probe and a
-   10-50M-token 400M smoke; otherwise prepare the exact launch command only.
-6. Before multi-GPU paid compute, integrate the active D12/DIST-19 runtime and DCP
-   sharded checkpoint path, then prove a 2-rank free/local Gloo/CUDA/NCCL analogue as
-   available.
-7. Run 250M tokens and verify loss curve, held-out improvement, checkpoint/restart,
-   tokens/s and peak memory.
-8. Run 1B tokens and freeze only the runtime knobs that have evidence.
-9. Request explicit COMPUTE_AUTHORIZED for the selected provider/topology/budget.
-10. Only then launch the 2-4B pilot and 8B baseline.
-
-The current true blocker is no longer parameter algebra. It is the accelerator
-execution seam: allocation-safe construction/materialization, placement ownership,
-activation checkpointing, fused attention enforcement and sharded recovery. SCALE-05
-implements the first four and leaves DCP format/storage integration with the existing
-D05/D12 ownership rather than creating a competing checkpoint system.
+The 400M blocker is no longer parameter algebra. The remaining critical path is exact
+composition of scale-safe placement/DTensor training, native GQA, token-correct
+multi-rank objective semantics, DCP recovery, tokenizer/data selection and real CUDA
+measurements. SCALE-05 contributes the placement/meta/checkpointing/DTensor Trainer
+seam and leaves the active model/distributed/checkpoint owners intact.
