@@ -1,0 +1,117 @@
+name: RESEARCH06 MODEL08 Fixed Token Research
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  fixed-token-cpu:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Prove exact source checkout
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Verify exact locked environment inputs
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: >-
+          python tools/verify_locked_environment.py
+          --profile linux-x86_64
+          --source-sha "$SOURCE_SHA"
+          --evidence-out research06-model08-locked-environment.json
+      - name: Create locked LOCAL_FREE execution environment
+        run: |
+          python -m venv .research06-locked
+          .research06-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .research06-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          .research06-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/dev.lock.txt
+          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .research06-locked/bin/python -m pip install --no-deps --no-build-isolation -e .
+      - name: Focused fixed-token and geometry tests
+        run: >-
+          .research06-locked/bin/python -m pytest -q
+          tests/test_fixed_token_research.py
+          tests/test_model08_depth_width.py
+      - name: Prove generated MODEL08 config equals committed identities
+        run: |
+          .research06-locked/bin/python -m twelve_six.fixed_token_research write-depth-width-config --output generated-model08.json
+          cmp generated-model08.json configs/experiments/model08_depth_width_100k.v1.json
+      - name: Execute exact-token 100K to 1M scaling matrix
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          mkdir -p evidence/scaling checkpoints/scaling
+          for CANDIDATE in scale_0095568 scale_0267912 scale_0467808 scale_1037696; do
+            .research06-locked/bin/python -m twelve_six.fixed_token_research run-candidate \
+              --repo-root . \
+              --source-sha "$SOURCE_SHA" \
+              --family scaling \
+              --candidate-id "$CANDIDATE" \
+              --token-budgets 16384 65536 \
+              --torch-threads 2 \
+              --checkpoint-dir checkpoints/scaling \
+              --output "evidence/scaling/candidate-${CANDIDATE}.json"
+          done
+          .research06-locked/bin/python -m twelve_six.fixed_token_research collect \
+            --family scaling \
+            --expected-source-sha "$SOURCE_SHA" \
+            --output research06-fixed-token-scaling-matrix.json \
+            evidence/scaling/candidate-*.json
+          .research06-locked/bin/python -m twelve_six.fixed_token_research validate \
+            research06-fixed-token-scaling-matrix.json --expected-source-sha "$SOURCE_SHA"
+      - name: Execute exact-token iso-parameter 100K depth-width matrix
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          mkdir -p evidence/depth-width checkpoints/depth-width
+          for CANDIDATE in wide_shallow_d64_l2 balanced_d48_l3 deeper_d40_l4 deep_d32_l6 very_deep_narrow_d28_l8; do
+            .research06-locked/bin/python -m twelve_six.model08_depth_width \
+              --repo-root . \
+              --source-sha "$SOURCE_SHA" \
+              --candidate-id "$CANDIDATE" \
+              --token-budgets 16384 65536 \
+              --torch-threads 2 \
+              --checkpoint-dir checkpoints/depth-width \
+              --output "evidence/depth-width/candidate-${CANDIDATE}.json"
+          done
+          .research06-locked/bin/python -m twelve_six.fixed_token_research collect \
+            --family depth_width_100k \
+            --expected-source-sha "$SOURCE_SHA" \
+            --output model08-depth-width-100k-matrix.json \
+            evidence/depth-width/candidate-*.json
+          .research06-locked/bin/python -m twelve_six.fixed_token_research validate \
+            model08-depth-width-100k-matrix.json --expected-source-sha "$SOURCE_SHA"
+      - name: Print retained decision surfaces
+        run: |
+          .research06-locked/bin/python - <<'PY'
+          import json
+          for path in ("research06-fixed-token-scaling-matrix.json", "model08-depth-width-100k-matrix.json"):
+              report = json.load(open(path, encoding="utf-8"))
+              print(path)
+              print(json.dumps({"source_sha":report["source_sha"],"fixed_token_budget":report["fixed_token_budget"],"rankings":report["rankings"],"recommended":report["recommended_best_validation_non_rejected"],"report_sha256":report["report_sha256"]}, indent=2, sort_keys=True))
+          PY
+      - name: Upload exact-token retained evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: research06-model08-fixed-token-evidence
+          path: |
+            research06-model08-locked-environment.json
+            research06-fixed-token-scaling-matrix.json
+            model08-depth-width-100k-matrix.json
+            evidence/scaling/*.json
+            evidence/depth-width/*.json
+            checkpoints/scaling/*.pt
+            checkpoints/depth-width/*.pt
+          if-no-files-found: error
+          retention-days: 30

@@ -1,0 +1,48 @@
+{
+  "authority": "EXPERIMENTAL_RESEARCH_CONFIG_NOT_CANONICAL_S0",
+  "candidates": [
+    {
+      "candidate_id": "wide_shallow_d64_l2",
+      "model_identity_sha256": "8ff79ab5a9bb7b4db063b1cf66a757ef12214d3a9b4bd71742e823606095a38b",
+      "model_spec": {"activation":"swiglu","attention_bias":false,"attention_dropout":0.0,"d_ff":132,"d_model":64,"final_norm":true,"head_dim":16,"lm_head_bias":false,"max_seq_len":256,"mlp_bias":false,"n_heads":4,"n_kv_heads":4,"n_layers":2,"norm_eps":1e-05,"norm_kind":"rmsnorm","norm_placement":"pre","position_embedding":"rope","rope_rotary_dim":16,"rope_theta":10000.0,"schema_version":1,"tie_word_embeddings":true,"vocab_size":256},
+      "parameters": 100160
+    },
+    {
+      "candidate_id": "balanced_d48_l3",
+      "model_identity_sha256": "132af19baedd8c2d1ef1c5ac84703a9994994a383d7a506dfa74b0a4015d2761",
+      "model_spec": {"activation":"swiglu","attention_bias":false,"attention_dropout":0.0,"d_ff":138,"d_model":48,"final_norm":true,"head_dim":12,"lm_head_bias":false,"max_seq_len":256,"mlp_bias":false,"n_heads":4,"n_kv_heads":4,"n_layers":3,"norm_eps":1e-05,"norm_kind":"rmsnorm","norm_placement":"pre","position_embedding":"rope","rope_rotary_dim":12,"rope_theta":10000.0,"schema_version":1,"tie_word_embeddings":true,"vocab_size":256},
+      "parameters": 99888
+    },
+    {
+      "candidate_id": "deeper_d40_l4",
+      "model_identity_sha256": "466a081277ad0007e57bcd4e2e28757e51916bbd9aef8c016d3d593751d3d117",
+      "model_spec": {"activation":"swiglu","attention_bias":false,"attention_dropout":0.0,"d_ff":132,"d_model":40,"final_norm":true,"head_dim":10,"lm_head_bias":false,"max_seq_len":256,"mlp_bias":false,"n_heads":4,"n_kv_heads":4,"n_layers":4,"norm_eps":1e-05,"norm_kind":"rmsnorm","norm_placement":"pre","position_embedding":"rope","rope_rotary_dim":10,"rope_theta":10000.0,"schema_version":1,"tie_word_embeddings":true,"vocab_size":256},
+      "parameters": 99560
+    },
+    {
+      "candidate_id": "deep_d32_l6",
+      "model_identity_sha256": "3c973ef75f5212ee4c15c43c13a0a16d1ceaed8d2bc1cf3c7c0e1bb94e4471cc",
+      "model_spec": {"activation":"swiglu","attention_bias":false,"attention_dropout":0.0,"d_ff":116,"d_model":32,"final_norm":true,"head_dim":8,"lm_head_bias":false,"max_seq_len":256,"mlp_bias":false,"n_heads":4,"n_kv_heads":4,"n_layers":6,"norm_eps":1e-05,"norm_kind":"rmsnorm","norm_placement":"pre","position_embedding":"rope","rope_rotary_dim":8,"rope_theta":10000.0,"schema_version":1,"tie_word_embeddings":true,"vocab_size":256},
+      "parameters": 100000
+    },
+    {
+      "candidate_id": "very_deep_narrow_d28_l8",
+      "model_identity_sha256": "a93b00cf3218f356009c4460f541bb239afeb1864199b032a33a3ee6e48202db",
+      "model_spec": {"activation":"swiglu","attention_bias":false,"attention_dropout":0.0,"d_ff":100,"d_model":28,"final_norm":true,"head_dim":14,"lm_head_bias":false,"max_seq_len":256,"mlp_bias":false,"n_heads":2,"n_kv_heads":2,"n_layers":8,"norm_eps":1e-05,"norm_kind":"rmsnorm","norm_placement":"pre","position_embedding":"rope","rope_rotary_dim":14,"rope_theta":10000.0,"schema_version":1,"tie_word_embeddings":true,"vocab_size":256},
+      "parameters": 99932
+    }
+  ],
+  "fixed_controls": {
+    "batch_size": 4,
+    "init_identity_sha256": "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5",
+    "init_spec": {"family":"normal","residual_branch_scale":"sqrt_2_layers","schema_version":1,"std":0.02},
+    "max_seq_len": 256,
+    "optimizer": {"betas":[0.9,0.95],"eps":1e-08,"gradient_clip_norm":1.0,"learning_rate":0.0003,"name":"AdamW","precision":"fp32","scheduler":"constant","seed":1337,"warmup_steps":0,"weight_decay":0.0},
+    "research41_parent_packing": "research41-byte-stream-cyclic-v1",
+    "sequence_length": 64,
+    "tokenizer": "s0-byte-v1",
+    "trace_protocol": "research06-research41-batch-trace-exact-loss-mask-v1",
+    "vocab_size": 256
+  },
+  "schema": "12-6.model08-depth-width-config.v1"
+}
