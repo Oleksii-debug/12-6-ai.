@@ -1,0 +1,178 @@
+name: CHECKPOINT-145 Async DCP
+on:
+  pull_request:
+    paths:
+      - "src/twelve_six/distributed/async_dcp_checkpoint.py"
+      - "tests/test_async_dcp_checkpoint.py"
+      - "tools/run_async_dcp_benchmark.py"
+      - "configs/stages/alternatives/s3_10m_scale03_byte_gqa.execution.json"
+      - ".github/workflows/checkpoint145-async-dcp.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  local-free-cpu-gloo:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Verify exact locked runtime
+        run: >-
+          python tools/verify_locked_environment.py
+          --profile linux-x86_64
+          --source-sha "${{ github.event.pull_request.head.sha || github.sha }}"
+          --evidence-out checkpoint145-locked-environment.json
+      - name: Materialize exact locked test environment
+        run: |
+          python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/dev.lock.txt
+          PIP_NO_INDEX=1 python -m pip install --no-deps --no-build-isolation -e .
+      - name: Record hardware and async API surface
+        run: |
+          python - <<'PY'
+          import inspect
+          import json
+          import os
+          import platform
+          import torch
+          import torch.distributed.checkpoint as dcp
+          payload = {
+              "torch_version": torch.__version__,
+              "python_version": platform.python_version(),
+              "platform": platform.platform(),
+              "cpu_count": os.cpu_count(),
+              "cuda_available": torch.cuda.is_available(),
+              "cuda_device_count": torch.cuda.device_count(),
+              "torch_cuda_version": torch.version.cuda,
+              "async_save_present": hasattr(dcp, "async_save"),
+              "async_save_signature": str(inspect.signature(dcp.async_save)),
+          }
+          with open("checkpoint145-runtime.json", "w", encoding="utf-8") as handle:
+              json.dump(payload, handle, indent=2, sort_keys=True)
+              handle.write("\n")
+          print(json.dumps(payload, sort_keys=True))
+          PY
+      - name: Focused lint
+        run: >-
+          python -m ruff check
+          src/twelve_six/distributed/async_dcp_checkpoint.py
+          tests/test_async_dcp_checkpoint.py
+          tools/run_async_dcp_benchmark.py
+      - name: Two-rank correctness, exact continuation, and failure semantics
+        env:
+          GITHUB_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: >-
+          python -m pytest -q
+          tests/test_async_dcp_checkpoint.py
+          tests/test_scale_fsdp2_dcp_integration.py
+      - name: 10M synchronous incumbent benchmark
+        env:
+          GITHUB_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          OMP_NUM_THREADS: "1"
+          MKL_NUM_THREADS: "1"
+        run: >-
+          torchrun --standalone --nproc-per-node=2 tools/run_async_dcp_benchmark.py
+          --mode sync
+          --stage configs/stages/alternatives/s3_10m_scale03_byte_gqa.execution.json
+          --work-dir .checkpoint145-sync-work
+          --output checkpoint145-sync-10m.json
+      - name: 10M asynchronous DCP benchmark
+        env:
+          GITHUB_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          OMP_NUM_THREADS: "1"
+          MKL_NUM_THREADS: "1"
+        run: >-
+          torchrun --standalone --nproc-per-node=2 tools/run_async_dcp_benchmark.py
+          --mode async
+          --stage configs/stages/alternatives/s3_10m_scale03_byte_gqa.execution.json
+          --work-dir .checkpoint145-async-work
+          --output checkpoint145-async-10m.json
+      - name: Build comparison and fail closed on correctness
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          sync = json.loads(Path("checkpoint145-sync-10m.json").read_text(encoding="utf-8"))
+          async_ = json.loads(Path("checkpoint145-async-10m.json").read_text(encoding="utf-8"))
+          if sync["parameter_count"] != async_["parameter_count"]:
+              raise SystemExit("parameter-count mismatch")
+          if sync["model_spec_sha256"] != async_["model_spec_sha256"]:
+              raise SystemExit("ModelSpec mismatch")
+          if not sync["state_exact_after_fresh_load"] or not async_["state_exact_after_fresh_load"]:
+              raise SystemExit("fresh-load model/optimizer mismatch")
+          if not sync["trainer_state_exact_after_fresh_load"] or not async_["trainer_state_exact_after_fresh_load"]:
+              raise SystemExit("fresh-load Trainer mismatch")
+          sync_digests = [row["boundary_state_digest"] for row in sync["per_rank_save"]]
+          async_digests = [row["boundary_state_digest"] for row in async_["per_rank_save"]]
+          if sync_digests != async_digests:
+              raise SystemExit("sync/async checkpoint-boundary state differs")
+
+          sync_stall = sync["foreground_training_stall_seconds"]
+          async_stall = async_["foreground_training_stall_seconds"]
+          comparison = {
+              "schema": "12-6.checkpoint145-async-dcp-comparison.v1",
+              "worker": "CHECKPOINT-145-ASYNC-DCP",
+              "authority": "LOCAL_FREE_CPU_GLOO_NOT_GPU_OR_PROMOTION",
+              "parameter_count": sync["parameter_count"],
+              "world_size": 2,
+              "backend": "gloo",
+              "torch_version": sync["torch_version"],
+              "cuda_available": sync["cuda_available"],
+              "sync": sync,
+              "async": async_,
+              "foreground_stall_reduction_fraction": (
+                  None if sync_stall <= 0 else 1.0 - async_stall / sync_stall
+              ),
+              "total_completion_ratio_async_over_sync": (
+                  None
+                  if sync["total_checkpoint_completion_seconds"] <= 0
+                  else async_["total_checkpoint_completion_seconds"]
+                  / sync["total_checkpoint_completion_seconds"]
+              ),
+              "peak_extra_rss_ratio_async_over_sync": (
+                  None
+                  if sync["peak_extra_rss_bytes_max_rank"] <= 0
+                  else async_["peak_extra_rss_bytes_max_rank"]
+                  / sync["peak_extra_rss_bytes_max_rank"]
+              ),
+              "storage_ratio_async_over_sync": (
+                  None
+                  if not sync["storage_bytes"]
+                  else async_["storage_bytes"] / sync["storage_bytes"]
+              ),
+              "correctness_verdict": "PASS_EXACT_LOGICAL_STATE_AND_TRAINER_STATE",
+              "api_maturity": "PYTORCH_2_13_ASYNC_SAVE_DOCUMENTED_EXPERIMENTAL",
+              "engineering_default": "REJECT_AS_DEFAULT_PENDING_NON_EXPERIMENTAL_API_AND_TARGET_ACCELERATOR_EVIDENCE",
+              "limitations": [
+                  "CPU/Gloo is correctness and local-I/O evidence only; no multi-node or NCCL inference",
+                  "10M is executed; 100M runtime is not claimed",
+                  "standard async_save staging is tested; fully asynchronous custom staging is out of scope",
+              ],
+          }
+          Path("checkpoint145-comparison.json").write_text(
+              json.dumps(comparison, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(comparison, sort_keys=True))
+          PY
+      - name: Upload evidence only
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: checkpoint145-async-dcp-local-free-evidence
+          path: |
+            checkpoint145-locked-environment.json
+            checkpoint145-runtime.json
+            checkpoint145-sync-10m.json
+            checkpoint145-async-10m.json
+            checkpoint145-comparison.json
+          if-no-files-found: error
+          retention-days: 30
