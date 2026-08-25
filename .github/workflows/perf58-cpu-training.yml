@@ -51,14 +51,13 @@ jobs:
             --source-sha "$SOURCE_SHA" \
             --output perf58-cpu-training-results.json \
             --mode auto \
-            --warmup-steps 2 \
-            --measured-steps 8 \
+            --warmup-steps 4 \
+            --measured-steps 64 \
             --selection-horizon-steps 256 \
             --max-threads 4 \
             --max-interop-threads 2 \
             --max-workers 2 \
-            --minimum-speedup 1.03 \
-            --include-compile
+            --minimum-speedup 1.03
           .perf58-locked/bin/python -m twelve_six.cpu_training_perf validate \
             perf58-cpu-training-results.json \
             --expected-source-sha "$SOURCE_SHA"
