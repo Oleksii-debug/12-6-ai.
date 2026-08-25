@@ -1,0 +1,75 @@
+name: DATA-35 Simple Curriculum Evidence
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  curriculum-local-free:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Bind exact source checkout
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Verify exact locked environment inputs
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: >-
+          python tools/verify_locked_environment.py
+          --profile linux-x86_64
+          --source-sha "$SOURCE_SHA"
+          --evidence-out data35-locked-environment.json
+
+      - name: Create locked LOCAL_FREE environment
+        run: |
+          python -m venv .data35-locked
+          .data35-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .data35-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          .data35-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/dev.lock.txt
+          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .data35-locked/bin/python -m pip install --no-deps --no-build-isolation -e .
+
+      - name: Focused curriculum contracts
+        run: |
+          .data35-locked/bin/ruff check src/twelve_six/curriculum_experiment.py tests/test_curriculum_experiment.py
+          .data35-locked/bin/pytest -q tests/test_curriculum_experiment.py
+
+      - name: Execute paired fixed-token curriculum matrix
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          .data35-locked/bin/python -m twelve_six.curriculum_experiment run \
+            --repo-root . \
+            --source-sha "$SOURCE_SHA" \
+            --config configs/experiments/data35_curriculum_v1.json \
+            --output data35-curriculum-evidence.json \
+            --torch-threads 2
+          .data35-locked/bin/python -m twelve_six.curriculum_experiment validate \
+            --input data35-curriculum-evidence.json \
+            --expected-source-sha "$SOURCE_SHA"
+
+      - name: Upload retained curriculum evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: data35-curriculum-evidence
+          path: |
+            data35-locked-environment.json
+            data35-curriculum-evidence.json
+            configs/experiments/data35_curriculum_v1.json
+          if-no-files-found: error
+          retention-days: 30
