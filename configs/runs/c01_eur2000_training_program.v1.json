@@ -1,0 +1,329 @@
+{
+  "schema_version": "12-6.c01.eur2000-training-program.v1",
+  "generated_at_utc": "2026-08-25T10:25:00Z",
+  "repository": "Oleksii-debug/12-6-ai.",
+  "status": "PREPARED_NOT_AUTHORIZED_BLOCKED_ON_SCALE_DATA_TOKENIZER_AND_GPU_PILOT",
+  "authority": {
+    "materially_paid_compute_authorized": false,
+    "owner_authorization_required": true,
+    "promotion_authority": false,
+    "planning_only_until_all_launch_prerequisites_are_green": true
+  },
+  "source_bindings": {
+    "c01_incumbent_pr": 70,
+    "c01_incumbent_head_sha": "2fc09a66b9a3442cb77df997505e2753e7e22ae5",
+    "latest_converged_s0_pr": 132,
+    "latest_converged_s0_head_sha": "86dbcc0b804da988a34367ff74c49ee00bc05818",
+    "s0_profile_pr": 142,
+    "s1_numerical_preflight_pr": 106,
+    "s1_checkpoint_preflight_pr": 130,
+    "future_tokenizer_mixture_pr": 73,
+    "distributed_contract_prs": [71, 74, 76],
+    "s4_candidate_pr": 37
+  },
+  "observed_state": {
+    "s0": {
+      "parameters": 10140,
+      "tokenizer": "s0-byte-v1",
+      "tokenizer_vocab_size": 256,
+      "context_length": 128,
+      "real_training_steps": 40,
+      "real_optimized_tokens": 10833,
+      "observed_local_cpu_tokens_per_second": 62238.35,
+      "observed_local_cpu_scope": "ONE_GITHUB_HOSTED_LOCAL_FREE_CPU_OBSERVATION_NOT_GPU_CAPACITY"
+    },
+    "next_scale": {
+      "s1_parameters": 107856,
+      "s1_vocab_size": 512,
+      "s1_context_length": 256,
+      "s2_parameters": 1066112,
+      "s2_vocab_size": 2048,
+      "s2_context_length": 512,
+      "s3_parameters": 10059840,
+      "s3_vocab_size": 8192,
+      "s3_context_length": 1024,
+      "s4_candidate_parameters": 100384512,
+      "s4_candidate_vocab_size": 32768,
+      "s4_candidate_context_length": 2048,
+      "s4_candidate_frozen": false
+    },
+    "truth_boundary": {
+      "gpu_training_throughput_measured": false,
+      "gpu_peak_memory_measured_for_s1_or_larger": false,
+      "scale_tokenizer_frozen": false,
+      "scale_corpus_frozen": false,
+      "gpu_distributed_training_executed": false
+    }
+  },
+  "pricing_assumptions": {
+    "snapshot_date": "2026-08-25",
+    "provider": "Runpod Secure Cloud",
+    "a100_pcie_80gb_usd_per_gpu_hour": 1.39,
+    "h100_sxm_80gb_usd_per_gpu_hour": 3.29,
+    "eur_usd_reference_rate_date": "2026-08-24",
+    "usd_per_eur": 1.1664,
+    "a100_pcie_80gb_eur_per_gpu_hour_derived": 1.1917,
+    "h100_sxm_80gb_eur_per_gpu_hour_derived": 2.8206,
+    "vat_storage_egress_and_capacity_premiums_included": false,
+    "price_is_authoritative_quote": false,
+    "launch_rule": "Refresh provider SKU price and EUR conversion immediately before owner authorization."
+  },
+  "budget": {
+    "ceiling_eur": 2000.0,
+    "systems_smoke_and_gpu_calibration_cap_eur": 50.0,
+    "pilot_and_recipe_selection_cap_eur": 150.0,
+    "main_training_cap_eur": 1200.0,
+    "storage_and_recovery_cap_eur": 100.0,
+    "restart_and_price_variance_reserve_eur": 500.0,
+    "budget_is_ceiling_not_spend_target": true,
+    "automatic_overrun_allowed": false
+  },
+  "launch_prerequisites": [
+    {
+      "id": "P01_SCALE_DATA_IDENTITY",
+      "ready": false,
+      "requirement": "Freeze a scale train/validation corpus manifest with file hashes, source/license/provenance records, contamination controls, token counts and restart-safe sharding identity."
+    },
+    {
+      "id": "P02_SCALE_TOKENIZER_IDENTITY",
+      "ready": false,
+      "requirement": "Freeze one tokenizer artifact whose exact vocabulary size and token IDs match the selected ModelSpec; bind tokenizer JSON/config/vocabulary hashes and packing identity."
+    },
+    {
+      "id": "P03_GPU_RUNTIME_EXACT_LOCK",
+      "ready": false,
+      "requirement": "Bind exact GPU runtime/dependency lock and source SHA on the launch host; no floating pip installs."
+    },
+    {
+      "id": "P04_SAME_GEOMETRY_GPU_SMOKE",
+      "ready": false,
+      "requirement": "Execute the selected main geometry on the intended GPU class and record forward/backward/update success, peak HBM, step time, tokens/sec and checkpoint save/load."
+    },
+    {
+      "id": "P05_RESUME_AND_HELDOUT_EVAL",
+      "ready": false,
+      "requirement": "Prove interruption/reload/resume and held-out evaluation on the same scale recipe without optimizing validation tokens."
+    },
+    {
+      "id": "P06_OWNER_PAID_COMPUTE_AUTHORIZATION",
+      "ready": false,
+      "requirement": "Owner explicitly approves strategy, exact provider/SKU, current quote, hard EUR cap, exact git SHA, data/tokenizer identities and pilot evidence hash."
+    }
+  ],
+  "common_training_contract": {
+    "canonical_base": "random_init",
+    "precision": "bf16",
+    "optimizer": "AdamW",
+    "betas": [0.9, 0.95],
+    "eps": 1e-8,
+    "weight_decay": 0.1,
+    "scheduler": "cosine",
+    "gradient_clip_norm": 1.0,
+    "deterministic_algorithms": true,
+    "device_count": 1,
+    "distributed_required": false,
+    "microbatch_examples": "PILOT_RESOLVED",
+    "gradient_accumulation_steps": "PILOT_RESOLVED_TO_TARGET_GLOBAL_TOKENS",
+    "learning_rate": "PILOT_SELECTED_FROM_0.0003_0.0006_0.0010",
+    "warmup_fraction": 0.01,
+    "notes": "These are provisional recipe assumptions, not measured optimal hyperparameters. TrainerConfig already supports bf16, AdamW inputs, warmup/cosine scheduling and gradient accumulation; exact GPU behavior still requires P04."
+  },
+  "strategies": [
+    {
+      "id": "A_S3_SMALLER_MORE_TOKENS",
+      "research_intent": "Maximize token exposure and recipe learning at low systems risk.",
+      "stage": "S3",
+      "stage_status": "CURRENT_ENGINEERING_MODELSPEC_NOT_PROMOTION_AUTHORITY",
+      "parameters": 10059840,
+      "training_tokens": 1000000000,
+      "tokens_per_parameter": 99.4052,
+      "sequence_length": 1024,
+      "target_global_batch_tokens": 131072,
+      "target_global_batch_sequences": 128,
+      "precision": "bf16",
+      "optimizer": "AdamW",
+      "gpu_class_primary": "A100_PCIE_80GB",
+      "gpu_count": 1,
+      "planning_train_flops_6n_per_token": 60359040000000000,
+      "bf16_weight_bytes": 20119680,
+      "full_adam_state_planning_bytes": 160957440,
+      "wall_time": "MEASURE_FROM_P04_TOKENS_PER_SECOND; DO_NOT SUBSTITUTE S0_CPU_THROUGHPUT",
+      "checkpoint_interval_tokens": 50000000,
+      "heldout_eval_interval_tokens": 100000000
+    },
+    {
+      "id": "B_S4_LARGER_FEWER_TOKENS",
+      "research_intent": "Probe parameter scaling with a smaller token/parameter ratio and higher architecture risk.",
+      "stage": "S4",
+      "stage_status": "ENGINEERING_CANDIDATE_NOT_FROZEN_REQUIRES_PRECEDING_STAGE_PASS",
+      "parameters": 100384512,
+      "training_tokens": 2000000000,
+      "tokens_per_parameter": 19.9234,
+      "sequence_length": 2048,
+      "target_global_batch_tokens": 262144,
+      "target_global_batch_sequences": 128,
+      "precision": "bf16",
+      "optimizer": "AdamW",
+      "gpu_class_primary": "A100_PCIE_80GB",
+      "gpu_count": 1,
+      "planning_train_flops_6n_per_token": 1204614144000000000,
+      "bf16_weight_bytes": 200769024,
+      "full_adam_state_planning_bytes": 1606152192,
+      "wall_time": "MEASURE_FROM_P04_TOKENS_PER_SECOND; DO_NOT SUBSTITUTE S0_CPU_THROUGHPUT",
+      "checkpoint_interval_tokens": 100000000,
+      "heldout_eval_interval_tokens": 250000000
+    },
+    {
+      "id": "C_PILOTS_THEN_S4_BALANCED_MAIN",
+      "recommended": true,
+      "research_intent": "Buy information before scale: validate tokenizer/data/recipe and scaling trend, then run one meaningful S4 main only if evidence is healthy.",
+      "pilot_runs": [
+        {
+          "stage": "S1",
+          "parameters": 107856,
+          "training_tokens": 10000000,
+          "sequence_length": 256,
+          "target_global_batch_tokens": 16384,
+          "planning_train_flops_6n_per_token": 6471360000000
+        },
+        {
+          "stage": "S2",
+          "parameters": 1066112,
+          "training_tokens": 50000000,
+          "sequence_length": 512,
+          "target_global_batch_tokens": 32768,
+          "planning_train_flops_6n_per_token": 319833600000000
+        },
+        {
+          "stage": "S3",
+          "parameters": 10059840,
+          "training_tokens": 200000000,
+          "sequence_length": 1024,
+          "target_global_batch_tokens": 131072,
+          "planning_train_flops_6n_per_token": 12071808000000000
+        }
+      ],
+      "main_run": {
+        "stage": "S4",
+        "stage_status": "ENGINEERING_CANDIDATE_NOT_FROZEN_REQUIRES_PRECEDING_STAGE_PASS",
+        "parameters": 100384512,
+        "training_tokens": 5000000000,
+        "tokens_per_parameter": 49.8085,
+        "sequence_length": 2048,
+        "target_global_batch_tokens": 262144,
+        "target_global_batch_sequences": 128,
+        "precision": "bf16",
+        "optimizer": "AdamW",
+        "gpu_class_primary": "A100_PCIE_80GB",
+        "gpu_class_fast_fallback": "H100_SXM_80GB",
+        "gpu_count": 1,
+        "planning_train_flops_6n_per_token": 3011535360000000000,
+        "bf16_weight_bytes": 200769024,
+        "full_adam_state_planning_bytes": 1606152192,
+        "checkpoint_interval_tokens": 100000000,
+        "heldout_eval_interval_tokens": 250000000,
+        "wall_time_formula": "training_tokens / observed_same_geometry_pilot_tokens_per_second",
+        "compute_cost_formula": "wall_hours * refreshed_provider_eur_per_gpu_hour * gpu_count"
+      }
+    }
+  ],
+  "smoke_and_pilot": {
+    "same_geometry_system_smoke": {
+      "selected_geometry": "RECOMMENDED_MAIN_S4",
+      "max_optimized_tokens": 2000000,
+      "max_gpu_hours": 0.5,
+      "hard_cost_cap_eur": 10.0,
+      "must_checkpoint_reload_and_resume": true,
+      "must_run_heldout_eval": true,
+      "quality_claim_allowed": false
+    },
+    "required_observations": [
+      "tokens_per_second",
+      "step_time_seconds",
+      "data_wait_seconds",
+      "forward_backward_update_time_where_instrumented",
+      "loss",
+      "learning_rate",
+      "gradient_norm",
+      "peak_gpu_memory_bytes",
+      "checkpoint_time_seconds",
+      "evaluation_time_seconds",
+      "gpu_model_and_runtime_identity"
+    ],
+    "promotion_to_main_conditions": [
+      "all launch prerequisites P01-P05 green",
+      "finite loss and gradients",
+      "no OOM at selected microbatch",
+      "resume succeeds from retained checkpoint",
+      "held-out evaluation consumes zero optimized validation tokens",
+      "measured tokens/sec is positive and stable enough to project main wall time",
+      "projected main compute plus retained reserve stays within hard EUR budget",
+      "owner authorization P06 recorded after reviewing pilot evidence"
+    ]
+  },
+  "checkpoint_recovery": {
+    "main_checkpoint_interval_tokens": 100000000,
+    "retain_last_n": 2,
+    "retain_milestones_at_fraction": [0.1, 0.25, 0.5, 0.75, 1.0],
+    "s4_conservative_state_payload_bytes_per_retained_checkpoint": 1606152192,
+    "s4_max_retained_checkpoint_count": 7,
+    "s4_conservative_retained_payload_bytes": 11243065344,
+    "off_instance_replica_required": true,
+    "recovery_point_objective_tokens": 100000000,
+    "blind_retry": false,
+    "resume_must_rebind_git_model_data_tokenizer_packing_and_optimizer_identity": true
+  },
+  "validation_evaluation": {
+    "train_validation_split_identity_must_be_frozen_before_launch": true,
+    "validation_never_optimized": true,
+    "heldout_loss_required": true,
+    "fixed_generation_probes_required": true,
+    "english_ukrainian_and_code_probe_sets_required": true,
+    "comparison_outputs": [
+      "train_loss_curve",
+      "heldout_loss_curve",
+      "tokens_per_second",
+      "peak_gpu_memory",
+      "checkpoint_recovery",
+      "fixed_prompt_generation",
+      "cross_scale_loss_vs_compute"
+    ]
+  },
+  "stop_criteria": {
+    "immediate_abort": [
+      "NaN_or_Inf_loss",
+      "NaN_or_Inf_gradient_norm",
+      "checkpoint_identity_or_checksum_failure",
+      "data_or_tokenizer_identity_drift",
+      "validation_tokens_reach_optimizer",
+      "OOM_after_pilot_resolved_microbatch",
+      "provider_or_runtime_identity_differs_from_authorized_manifest"
+    ],
+    "investigate_then_abort_if_persistent": [
+      "throughput_below_50_percent_of_same_geometry_pilot_for_10_minutes",
+      "data_wait_exceeds_20_percent_of_step_time_for_10_minutes",
+      "loss_fails_to_improve_over_predeclared_evaluation_window",
+      "gradient_norm_exceeds_10x_running_median_for_20_consecutive_steps"
+    ],
+    "budget_abort": "Stop before accumulated metered cost exceeds the run-specific hard cap; never consume restart reserve automatically."
+  },
+  "owner_authorization_record_required_fields": [
+    "approved_strategy_id",
+    "approved_eur_cap",
+    "provider",
+    "gpu_sku",
+    "refreshed_eur_per_gpu_hour",
+    "quote_timestamp_utc",
+    "git_sha",
+    "modelspec_sha256",
+    "initspec_sha256",
+    "dataset_identity_sha256",
+    "tokenizer_identity_sha256",
+    "packing_identity_sha256",
+    "gpu_runtime_lock_sha256",
+    "pilot_evidence_sha256",
+    "projected_wall_hours_from_measured_pilot",
+    "projected_compute_cost_eur",
+    "owner_authorized_paid_compute"
+  ]
+}
