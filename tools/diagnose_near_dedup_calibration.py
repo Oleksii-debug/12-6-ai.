@@ -32,15 +32,21 @@ def _diagnostic_candidates() -> dict[str, tuple[NearDedupPolicy, ...]]:
             NearDedupPolicy("diag_natural_5g_12x9", "natural", 5, 12, 9),
             NearDedupPolicy("diag_natural_5g_14x8", "natural", 5, 14, 8),
             NearDedupPolicy("diag_natural_5g_16x7", "natural", 5, 16, 7),
+            NearDedupPolicy("diag_natural_5g_20x5", "natural", 5, 20, 5),
+            NearDedupPolicy("diag_natural_5g_28x4", "natural", 5, 28, 4),
         ),
         "code": (
             *incumbent["code"],
             NearDedupPolicy("diag_code_4g_10x10", "code", 4, 10, 10),
             NearDedupPolicy("diag_code_4g_12x9", "code", 4, 12, 9),
             NearDedupPolicy("diag_code_4g_14x8", "code", 4, 14, 8),
+            NearDedupPolicy("diag_code_4g_20x5", "code", 4, 20, 5),
+            NearDedupPolicy("diag_code_4g_28x4", "code", 4, 28, 4),
             NearDedupPolicy("diag_code_3g_10x10", "code", 3, 10, 10),
             NearDedupPolicy("diag_code_3g_12x9", "code", 3, 12, 9),
             NearDedupPolicy("diag_code_3g_14x8", "code", 3, 14, 8),
+            NearDedupPolicy("diag_code_3g_20x5", "code", 3, 20, 5),
+            NearDedupPolicy("diag_code_3g_28x4", "code", 3, 28, 4),
         ),
     }
 
