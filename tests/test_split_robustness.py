@@ -110,7 +110,9 @@ def test_split_family_rejects_tampering_and_dedup_relation_drift() -> None:
         near_duplicate_cluster_id="different-cluster",
     )
     _, clean_family = _family()
-    with pytest.raises(SplitRobustnessError, match="dedup relation"):
+    # The corpus identity transitively binds the cluster relation, so this drift
+    # fails even before the separately retained dedup-relations identity check.
+    with pytest.raises(SplitRobustnessError, match="eligible corpus"):
         verify_split_family_manifest(altered, clean_family)
 
 
@@ -135,7 +137,12 @@ def test_run_and_checkpoint_binding_require_exact_split_family_sha256() -> None:
     }
     assert assert_checkpoint_split_binding(checkpoint, family) == identity
 
-    bad_run = {"data": {"split_identity": "human-readable-v1", "eligible_corpus_sha256": corpus}}
+    bad_run = {
+        "data": {
+            "split_identity": "human-readable-v1",
+            "eligible_corpus_sha256": corpus,
+        }
+    }
     with pytest.raises(SplitRobustnessError, match="SHA-256"):
         assert_run_split_binding(bad_run, family)
 
