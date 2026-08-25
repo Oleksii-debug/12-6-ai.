@@ -1,0 +1,38 @@
+{
+  "schema_version": "12-6.train50-schedule-plan.v1",
+  "authority": "LOCAL_FREE_467808_SCHEDULE_COMPARISON_NOT_PROMOTION_OR_PAID_COMPUTE_AUTHORIZATION",
+  "purpose": "Compare constant-with-warmup against cosine-with-warmup on one exact 467,808-parameter fixed-control Base setup while holding every non-schedule control fixed.",
+  "model": {
+    "parameter_count": 467808,
+    "vocab_size": 256,
+    "max_seq_len": 256
+  },
+  "batch_size": 4,
+  "sequence_length": 64,
+  "tokens_per_optimizer_step": 252,
+  "planned_optimizer_steps": 1040,
+  "planned_optimized_tokens": 262080,
+  "warmup_steps": 52,
+  "validation_every_steps": 52,
+  "seeds": [1337, 1338],
+  "optimizer": {
+    "name": "AdamW",
+    "peak_learning_rate": 0.0003,
+    "betas": [0.9, 0.95],
+    "eps": 1e-8,
+    "weight_decay": 0.0,
+    "gradient_clip_norm": 1.0,
+    "precision": "fp32"
+  },
+  "schedules": [
+    "constant_with_warmup",
+    "cosine_with_warmup"
+  ],
+  "time_to_quality_fractions": [0.25, 0.5, 0.75, 1.0],
+  "truth_boundary": {
+    "project_authored_tiny_repeated_fixture": true,
+    "representative_corpus_quality_claim": false,
+    "campaign_default_is_provisional": true,
+    "paid_compute": false
+  }
+}
