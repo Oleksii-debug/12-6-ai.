@@ -1,0 +1,132 @@
+name: D07 Transformers Llama Runtime
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: d07-transformers-llama-runtime-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  locked-transformers-runtime:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Prove exact source checkout
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Verify canonical D08 locked environment
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: >-
+          python tools/verify_locked_environment.py
+          --profile linux-x86_64
+          --source-sha "$SOURCE_SHA"
+          --evidence-out locked-environment-linux-x86_64.json
+      - name: Create exact Transformers 5.15 runtime
+        run: |
+          python -m venv .d07-transformers-locked
+          .d07-transformers-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .d07-transformers-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          .d07-transformers-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/dev.lock.txt
+          .d07-transformers-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/transformers-linux-x86_64/runtime.lock.txt
+          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .d07-transformers-locked/bin/python -m pip install --no-deps --no-build-isolation -e .
+          .d07-transformers-locked/bin/python -m pip check
+          .d07-transformers-locked/bin/python - <<'PY'
+          import transformers
+          import torch
+          import twelve_six
+          assert transformers.__version__ == "5.15.0", transformers.__version__
+          # PyTorch CUDA wheels expose a PEP 440 local build suffix (for example
+          # 2.13.0+cu130) even though the exact locked distribution version is
+          # torch==2.13.0. Validate the locked public version without rejecting
+          # the truthful CUDA build identity retained in runtime evidence below.
+          assert torch.__version__.split("+", 1)[0] == "2.13.0", torch.__version__
+          print("transformers", transformers.__version__)
+          print("torch", torch.__version__)
+          print("twelve_six", twelve_six.__version__)
+          PY
+      - name: Execute actual exported-byte Llama parity and standard-directory load
+        env:
+          HF_HUB_OFFLINE: "1"
+          TRANSFORMERS_OFFLINE: "1"
+          HF_HOME: ${{ runner.temp }}/d07-transformers-hf-home
+          RUNTIME24_SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          PY=.d07-transformers-locked/bin/python
+          "$PY" -m ruff check \
+            src/twelve_six/inference/transformers_llama.py \
+            src/twelve_six/inference/transformers_llama_runtime.py \
+            src/twelve_six/inference/llama_runtime_export.py \
+            tests/test_transformers_llama_interop.py \
+            tests/test_transformers_llama_runtime.py \
+            tests/test_transformers_llama_runtime_locked.py \
+            tests/test_llama_runtime_export_locked.py
+          "$PY" -m pytest -s -q \
+            tests/test_transformers_llama_interop.py \
+            tests/test_transformers_llama_runtime.py \
+            tests/test_transformers_llama_runtime_locked.py \
+            tests/test_llama_runtime_export_locked.py \
+            | tee runtime24-transformers-evidence.log
+      - name: Record runtime identity
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          .d07-transformers-locked/bin/python - <<'PY'
+          import hashlib
+          import json
+          import os
+          import platform
+          from pathlib import Path
+          import torch
+          import transformers
+
+          overlay = Path("requirements/locks/transformers-linux-x86_64/runtime.lock.txt").read_bytes()
+          payload = {
+              "schema": "12-6.transformers-llama-runtime-execution.v1",
+              "authority": "LOCAL_FREE_LOCKED_TRANSFORMERS_RUNTIME_NOT_PROMOTION",
+              "source_sha": os.environ["SOURCE_SHA"],
+              "platform": platform.platform(),
+              "python": platform.python_version(),
+              "torch": torch.__version__,
+              "transformers": transformers.__version__,
+              "transformers_overlay_lock_sha256": hashlib.sha256(overlay).hexdigest(),
+              "actual_exported_byte_runtime_tests": "PASS",
+              "standard_llama_directory_from_pretrained": "PASS",
+              "foreign_pretrained_weights": False,
+              "model_downloaded": False,
+              "raw_base_only": True,
+              "paid_compute": False,
+              "promotion_authority": False,
+          }
+          canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+          payload["evidence_sha256"] = hashlib.sha256(canonical).hexdigest()
+          Path("transformers-llama-runtime-evidence.json").write_text(
+              json.dumps(payload, sort_keys=True, indent=2, ensure_ascii=False) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          cat transformers-llama-runtime-evidence.json
+      - name: Upload runtime evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: d07-transformers-llama-runtime-${{ github.event.pull_request.head.sha }}
+          path: |
+            locked-environment-linux-x86_64.json
+            transformers-llama-runtime-evidence.json
+            runtime24-transformers-evidence.log
+          if-no-files-found: error
+          retention-days: 30

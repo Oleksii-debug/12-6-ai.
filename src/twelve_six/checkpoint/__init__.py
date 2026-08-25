@@ -20,7 +20,7 @@ from .core import (
     sha256_file,
     verify_checkpoint,
 )
-from .hf_export import export_hf_directory
+from .hf_export import export_hf_directory, verify_hf_directory
 from .run_binding import bind_checkpoint_identity
 from .trainer_adapter import load_trainer_checkpoint, save_trainer_checkpoint
 
@@ -47,4 +47,5 @@ __all__ = [
     "save_trainer_checkpoint",
     "sha256_file",
     "verify_checkpoint",
+    "verify_hf_directory",
 ]
