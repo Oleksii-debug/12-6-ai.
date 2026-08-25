@@ -1,0 +1,111 @@
+{
+  "schema_version": "12-6.train128-local-source-equivalent.v1",
+  "authority": "LOCAL_FREE_SOURCE_EQUIVALENT_DIAGNOSTIC_NOT_LOCKED_HEAD_AUTHORITY",
+  "branch": "train128/batch-transfer-500k-1m-20260826",
+  "base_train53_sha": "67dd276068c30d434d89497a306f69e1c50faa1b",
+  "exact_rerun_code_sha_before_evidence": "62a80a7637a78ae049dfe8c343586d1e81107a8a",
+  "rejected_incumbent_execution": {
+    "workflow_run_id": 32862639045,
+    "status": "FAILED_BEFORE_EXPERIMENT",
+    "reason": "repository-wide Ruff checks failed; TRAIN-53 experiment step did not execute",
+    "accepted_as_batch_result": false
+  },
+  "runtime": {
+    "python": "3.13.5",
+    "torch": "2.10.0+cpu",
+    "platform": "Linux 6.18.35 x86_64",
+    "cuda_available": false,
+    "torch_threads": 2,
+    "paid_compute": false
+  },
+  "local_harness": {
+    "sha256": "66efb280368e353a27606d75e167298d0ea97221e8c5e7ae3389ab26d1728eca",
+    "microbatch_control_sha256": "41190d7ed483ff2779e13ef3ea3b754f3e1611567780fa784d0e4f2d0831c01c",
+    "note": "Temporary source-equivalent harness reproducing the established model/optimizer/accumulation semantics; repository rerun code composes incumbents directly."
+  },
+  "corpus": {
+    "bounded_snapshot_identity_sha256": "5d65482c251eea09745a7f01b3b36290058c7ee45ee0d0f0f3fa4dfcbbb307f2",
+    "train_utf8_bytes": 7342,
+    "validation_utf8_bytes": 2196,
+    "tokenizer": "s0-byte-v1",
+    "vocab_size": 256,
+    "real_external_source_bytes": true,
+    "representative_broad_pretraining_corpus": false,
+    "train_sources": [
+      "Verkhovna Rada law d23314 bounded excerpt",
+      "Standard Ebooks manual 8-typography.rst at d1143a9b459b5e6f9cdda93a7c1e04676bff4f6b"
+    ],
+    "validation_source": "Standard Ebooks manual 9-metadata.rst at d1143a9b459b5e6f9cdda93a7c1e04676bff4f6b"
+  },
+  "fixed_controls": {
+    "microbatch_examples": 4,
+    "sequence_length": 64,
+    "microbatch_loss_tokens": 252,
+    "main_optimized_loss_tokens": 32256,
+    "effective_loss_tokens_per_update": [252, 504, 1008, 2016],
+    "optimizer": "AdamW",
+    "learning_rate": 0.0003,
+    "betas": [0.9, 0.95],
+    "eps": 1e-8,
+    "weight_decay": 0.0,
+    "schedule": "constant",
+    "warmup_steps": 0,
+    "clip_norm": 1.0,
+    "precision": "fp32",
+    "seed": 1337
+  },
+  "main_matrix": [
+    {"model":"500k","parameters":467808,"effective_loss_tokens":252,"optimizer_steps":128,"initial_bpb":7.9800243517400675,"final_bpb":5.485319559656145,"clip_rate":1.0,"median_update_weight_ratio":0.0021442098077386618,"wall_seconds":2.9201964519999706,"tokens_per_second":11045.832200059232,"peak_rss_bytes":423063552,"report_sha256":"2bac49f649c2d9b93f803f80327e544e27cb1aa2b7dc9a6ba00829c4de42f43a"},
+    {"model":"500k","parameters":467808,"effective_loss_tokens":504,"optimizer_steps":64,"initial_bpb":7.9800243517400675,"final_bpb":6.297740247175526,"clip_rate":1.0,"median_update_weight_ratio":0.0025035811122506857,"wall_seconds":4.7165674519999925,"tokens_per_second":6838.871770257904,"peak_rss_bytes":411774976,"report_sha256":"ee8361d56c1d1d476fd4e40cfcc975048e82b077e3a0511262bb415dfc94b5b9"},
+    {"model":"500k","parameters":467808,"effective_loss_tokens":1008,"optimizer_steps":32,"initial_bpb":7.9800243517400675,"final_bpb":6.784905008603018,"clip_rate":1.0,"median_update_weight_ratio":0.002697678981348872,"wall_seconds":2.7438117709999688,"tokens_per_second":11755.908455864834,"peak_rss_bytes":421003264,"report_sha256":"17f666482fa6ec50f91bc7cc15e22f1c4353c7f28e3386d2a3f2e2631580d061"},
+    {"model":"500k","parameters":467808,"effective_loss_tokens":2016,"optimizer_steps":16,"initial_bpb":7.9800243517400675,"final_bpb":7.091792685284223,"clip_rate":1.0,"median_update_weight_ratio":0.0033054130617529154,"wall_seconds":17.095164278000027,"tokens_per_second":1886.8493730423309,"peak_rss_bytes":412397568,"report_sha256":"20f57a8d4a5bf4cd7452080adbb968b6ed7b2e02f40a01d7b3c94be760cf5e34"},
+    {"model":"1m","parameters":1037696,"effective_loss_tokens":252,"optimizer_steps":128,"initial_bpb":8.022765545649694,"final_bpb":5.721156278556365,"clip_rate":0.96875,"median_update_weight_ratio":0.0023900901433080435,"wall_seconds":3.74028268699999,"tokens_per_second":8623.947091515676,"peak_rss_bytes":451629056,"report_sha256":"9e6106b4dcbc90b2c96606d1c24060ddf29ca66a94b6fd523ed0a0c7440992d3"},
+    {"model":"1m","parameters":1037696,"effective_loss_tokens":504,"optimizer_steps":64,"initial_bpb":8.022765545649694,"final_bpb":6.2394247411851,"clip_rate":1.0,"median_update_weight_ratio":0.002475498942658305,"wall_seconds":4.100579874000005,"tokens_per_second":7866.204534758921,"peak_rss_bytes":432758784,"report_sha256":"314e780f7b41f5769605f0ade14043f119c951708aea478e2fa908baa8d78ce2"},
+    {"model":"1m","parameters":1037696,"effective_loss_tokens":1008,"optimizer_steps":32,"initial_bpb":8.022765545649694,"final_bpb":6.498706178729072,"clip_rate":1.0,"median_update_weight_ratio":0.0028598455246537924,"wall_seconds":4.348638187999995,"tokens_per_second":7417.494536337828,"peak_rss_bytes":452947968,"report_sha256":"41c4645e2dd14c3882fa03d1ba8f123175f729e4d4c3e53fd071d6da3fef61d8"},
+    {"model":"1m","parameters":1037696,"effective_loss_tokens":2016,"optimizer_steps":16,"initial_bpb":8.022765545649694,"final_bpb":6.872495608894446,"clip_rate":1.0,"median_update_weight_ratio":0.0032723199110478163,"wall_seconds":3.6285012990000496,"tokens_per_second":8889.620629015395,"peak_rss_bytes":434208768,"report_sha256":"314afa6a4fc94ebbae7d7638731b0835e611048fc78584534c82cfdb8037dd07"}
+  ],
+  "gradient_diagnostics": [
+    {"model":"500k","trajectory_effective_loss_tokens":252,"checkpoint":"initial","noise_scale_loss_tokens_proxy":189.6697903305584,"signal_norm_sq":20.47628402709961,"covariance_trace_unbiased":15.411636897495814,"model_fingerprint_preserved":true},
+    {"model":"500k","trajectory_effective_loss_tokens":252,"checkpoint":"final","noise_scale_loss_tokens_proxy":350.7708103134714,"signal_norm_sq":0.9149833917617798,"covariance_trace_unbiased":1.273608991077968,"model_fingerprint_preserved":true},
+    {"model":"500k","trajectory_effective_loss_tokens":1008,"checkpoint":"initial","noise_scale_loss_tokens_proxy":189.6697903305584,"signal_norm_sq":20.47628402709961,"covariance_trace_unbiased":15.411636897495814,"model_fingerprint_preserved":true},
+    {"model":"500k","trajectory_effective_loss_tokens":1008,"checkpoint":"final","noise_scale_loss_tokens_proxy":173.4005470354508,"signal_norm_sq":5.89217472076416,"covariance_trace_unbiased":4.054390157972064,"model_fingerprint_preserved":true},
+    {"model":"1m","trajectory_effective_loss_tokens":252,"checkpoint":"initial","noise_scale_loss_tokens_proxy":220.77124790615088,"signal_norm_sq":45.10466766357422,"covariance_trace_unbiased":39.51513399396624,"model_fingerprint_preserved":true},
+    {"model":"1m","trajectory_effective_loss_tokens":252,"checkpoint":"final","noise_scale_loss_tokens_proxy":914.9785397731807,"signal_norm_sq":4.158138275146484,"covariance_trace_unbiased":15.097647964954376,"model_fingerprint_preserved":true},
+    {"model":"1m","trajectory_effective_loss_tokens":1008,"checkpoint":"initial","noise_scale_loss_tokens_proxy":220.77124790615088,"signal_norm_sq":45.10466766357422,"covariance_trace_unbiased":39.51513399396624,"model_fingerprint_preserved":true},
+    {"model":"1m","trajectory_effective_loss_tokens":1008,"checkpoint":"final","noise_scale_loss_tokens_proxy":167.96679877902076,"signal_norm_sq":6.451197147369385,"covariance_trace_unbiased":4.299948147365025,"model_fingerprint_preserved":true}
+  ],
+  "microbatch_hardware_control": {
+    "model_parameters": 467808,
+    "effective_loss_tokens": 1008,
+    "optimized_loss_tokens": 32256,
+    "reference": {"microbatch":"4x64","accumulation":4,"final_bpb":6.784905008603018,"median_update_weight_ratio":0.002697678981348872,"tokens_per_second":11755.908455864834},
+    "control": {"microbatch":"8x64","accumulation":2,"final_bpb":6.784905008603018,"median_update_weight_ratio":0.002697679214179516,"tokens_per_second":15420.144739886115,"peak_rss_bytes":424669184,"report_sha256":"a9e86cfc35faee951b30112d87b8101dea8d342e0df9dcc95d8521a282595251"},
+    "interpretation": "Same effective batch reproduces identical held-out BPB while microbatch shape changes measured throughput."
+  },
+  "heuristic": {
+    "measured_500k_selected_loss_tokens_per_update": 252,
+    "measured_1m_selected_loss_tokens_per_update": 252,
+    "measured_loglog_alpha_500k_to_1m": 0.0,
+    "practical_rule_500k_to_1m": "252 loss tokens/update under the fixed optimizer recipe",
+    "bounded_transfer_guide": "252*sqrt(max(P,1M)/1M), quantized to {252,504,1008} and capped at 1008 pending reprobe",
+    "exact_theoretical_critical_batch_claim": false
+  },
+  "ten_million_validation": {
+    "model": {"parameters":10000640,"vocab":256,"context":1024,"d_model":256,"layers":12,"query_heads":8,"kv_heads":2,"head_dim":32,"d_ff":864},
+    "optimized_loss_tokens": 16128,
+    "candidates": [
+      {"effective_loss_tokens":504,"optimizer_steps":32,"initial_bpb":8.08352829378493,"final_bpb":7.6637701177092055,"clip_rate":1.0,"median_update_weight_ratio":0.003615942783653736,"wall_seconds":14.344133395999961,"tokens_per_second":1124.362103638655,"peak_rss_bytes":735256576,"report_sha256":"63f64569cf6894b62224fb53657affcb8aa972d1e801fa8d4ba1cbe57c20264d"},
+      {"effective_loss_tokens":1008,"optimizer_steps":16,"initial_bpb":8.08352829378493,"final_bpb":7.444924629542227,"clip_rate":1.0,"median_update_weight_ratio":0.0038338080048561096,"wall_seconds":26.239462427000035,"tokens_per_second":614.6467384714604,"peak_rss_bytes":742031360,"report_sha256":"18cf25f3952d007f02334dc1f577b0102b9683ba28dfd49a5ff3788fb727fb9e"}
+    ],
+    "provisional_starting_batch_loss_tokens": 1008,
+    "matched_main_budget": false,
+    "exact_critical_batch_claim": false
+  },
+  "decision": {
+    "500k_to_1m": "USE_252_LOSS_TOKENS_PER_UPDATE_FIXED_RECIPE",
+    "10m": "START_AT_1008_WITH_504_CONTROL_AND_REPROBE_BEFORE_LARGER_BATCH",
+    "canonical_default_changed": false,
+    "milestone_100_complete": false,
+    "milestone_blocker": "Current rights-approved real corpus is bounded and non-representative; TRAIN-128 is not a representative-corpus learned checkpoint/resume/generation proof."
+  }
+}
