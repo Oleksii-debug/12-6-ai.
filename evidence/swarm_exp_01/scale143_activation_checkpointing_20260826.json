@@ -1,0 +1,308 @@
+{
+  "schema_version": "12-6.scale143-activation-checkpointing-evidence.v1",
+  "worker_id": "SCALE-143-ACTIVATION-CHECKPOINTING",
+  "date": "2026-08-26",
+  "authority": "LOCAL_FREE_ENGINEERING_EVIDENCE_NOT_PROMOTION_AUTHORITY",
+  "source_basis": {
+    "repository": "Oleksii-debug/12-6-ai.",
+    "base_branch": "integration/scale-fsdp2-dcp-20260825",
+    "base_sha": "c5212411d09d6ce4189dfbd4d3c182b52840cd7c",
+    "worker_branch": "scale-143/activation-checkpointing-20260826",
+    "benchmark_implementation_commit": "2e6cd1a0d3444b767111f0b51f20e6104d508aa9",
+    "measurement_note": "Performance calibration was executed in the LOCAL_FREE tool container against an exact architectural reproduction of the fetched canonical ModelSpec/model forward and PyTorch checkpoint-wrapper policy because the container had no network route to clone GitHub. The committed benchmark imports the canonical repo implementation directly. Functional parity and FSDP2/DCP compatibility are separately covered by repository tests."
+  },
+  "hardware": {
+    "device_type": "cpu",
+    "logical_cpus": 5,
+    "cgroup_memory_limit_bytes": 4294967296,
+    "swap_available": false,
+    "cuda_available": false,
+    "cuda_allocated_reserved_metrics": null
+  },
+  "runtime": {
+    "python": "3.13.5",
+    "torch": "2.10.0+cpu",
+    "note": "Performance container is not the repo's Python 3.11 dependency-locked promotion environment; measurements are engineering calibration only."
+  },
+  "checkpointing": {
+    "library": "torch.distributed.algorithms._checkpoint.checkpoint_wrapper",
+    "implementation": "CheckpointImpl.NO_REENTRANT",
+    "preserve_rng_state": true,
+    "strategies": [
+      "none",
+      "every_other_block",
+      "per_block"
+    ],
+    "custom_recomputation": false
+  },
+  "models": {
+    "S3_10M": {
+      "parameter_count": 10059840,
+      "model_spec_sha256": "3b6fc1b397e6fea69c2f249ce8ab8eedaad8ca1b13b88b8d2328a6abcf34791a",
+      "max_seq_len": 1024
+    },
+    "S4_100M_candidate": {
+      "parameter_count": 99897600,
+      "model_spec_sha256": "6103d0d457e25206c11871f09aef1f2e23860329c060379c9f956b3851740170",
+      "max_seq_len": 4096,
+      "status": "engineering_candidate_not_frozen"
+    }
+  },
+  "numerical_parity": {
+    "S3_fp32_seq64": {
+      "none": {
+        "max_abs_logit_delta_vs_none": 0.0,
+        "max_abs_gradient_delta_vs_none": 0.0,
+        "loss": 9.038150787353516
+      },
+      "every_other_block": {
+        "max_abs_logit_delta_vs_none": 0.0,
+        "max_abs_gradient_delta_vs_none": 0.0,
+        "loss": 9.038150787353516
+      },
+      "per_block": {
+        "max_abs_logit_delta_vs_none": 0.0,
+        "max_abs_gradient_delta_vs_none": 0.0,
+        "loss": 9.038150787353516
+      }
+    },
+    "S4_bf16_seq64": {
+      "none": {
+        "max_abs_logit_delta_vs_none": 0.0,
+        "max_abs_gradient_delta_vs_none": 0.0,
+        "loss": 5.65625
+      },
+      "every_other_block": {
+        "max_abs_logit_delta_vs_none": 0.0,
+        "max_abs_gradient_delta_vs_none": 0.0,
+        "loss": 5.65625
+      },
+      "per_block": {
+        "max_abs_logit_delta_vs_none": 0.0,
+        "max_abs_gradient_delta_vs_none": 0.0,
+        "loss": 5.65625
+      }
+    }
+  },
+  "measurements": {
+    "S3_10M_fp32_batch1": [
+      {
+        "sequence_length": 256,
+        "policy": "none",
+        "repeats": 3,
+        "peak_pre_optimizer_rss_bytes_median": 640503808,
+        "activation_delta_rss_bytes_median": 88981504,
+        "forward_seconds_median": 0.0494255265,
+        "backward_seconds_median": 0.08518739,
+        "optimizer_seconds_median": 0.0232115415,
+        "step_seconds_median": 0.159931657,
+        "tokens_per_second_median": 1655.9174
+      },
+      {
+        "sequence_length": 256,
+        "policy": "every_other_block",
+        "repeats": 3,
+        "peak_pre_optimizer_rss_bytes_median": 620630016,
+        "activation_delta_rss_bytes_median": 65044480,
+        "forward_seconds_median": 0.048962997,
+        "backward_seconds_median": 0.105441219,
+        "optimizer_seconds_median": 0.02680825,
+        "step_seconds_median": 0.182452336,
+        "tokens_per_second_median": 1449.2748
+      },
+      {
+        "sequence_length": 256,
+        "policy": "per_block",
+        "repeats": 3,
+        "peak_pre_optimizer_rss_bytes_median": 614318080,
+        "activation_delta_rss_bytes_median": 58789888,
+        "forward_seconds_median": 0.062250394,
+        "backward_seconds_median": 0.155015557,
+        "optimizer_seconds_median": 0.0260122525,
+        "step_seconds_median": 0.2335408475,
+        "tokens_per_second_median": 1144.8894
+      },
+      {
+        "sequence_length": 512,
+        "policy": "none",
+        "repeats": 2,
+        "peak_pre_optimizer_rss_bytes_median": 710629376,
+        "activation_delta_rss_bytes_median": 159051776,
+        "forward_seconds_median": 0.1602230135,
+        "backward_seconds_median": 0.375224211,
+        "optimizer_seconds_median": 0.047679316,
+        "step_seconds_median": 0.5831265405,
+        "tokens_per_second_median": 1116.7983
+      },
+      {
+        "sequence_length": 512,
+        "policy": "every_other_block",
+        "repeats": 2,
+        "peak_pre_optimizer_rss_bytes_median": 667899904,
+        "activation_delta_rss_bytes_median": 112252928,
+        "forward_seconds_median": 0.106838899,
+        "backward_seconds_median": 0.2834058035,
+        "optimizer_seconds_median": 0.0288128425,
+        "step_seconds_median": 0.419057545,
+        "tokens_per_second_median": 1297.3158
+      },
+      {
+        "sequence_length": 512,
+        "policy": "per_block",
+        "repeats": 2,
+        "peak_pre_optimizer_rss_bytes_median": 641497088,
+        "activation_delta_rss_bytes_median": 86083584,
+        "forward_seconds_median": 0.077033462,
+        "backward_seconds_median": 0.260611468,
+        "optimizer_seconds_median": 0.0317286595,
+        "step_seconds_median": 0.3693735895,
+        "tokens_per_second_median": 1393.8859
+      },
+      {
+        "sequence_length": 1024,
+        "policy": "none",
+        "repeats": 1,
+        "peak_pre_optimizer_rss_bytes_median": 897302528,
+        "activation_delta_rss_bytes_median": 346013696,
+        "forward_seconds_median": 0.296829073,
+        "backward_seconds_median": 0.493804562,
+        "optimizer_seconds_median": 0.03707478,
+        "step_seconds_median": 0.827708415,
+        "tokens_per_second_median": 1235.9425
+      },
+      {
+        "sequence_length": 1024,
+        "policy": "every_other_block",
+        "repeats": 1,
+        "peak_pre_optimizer_rss_bytes_median": 802856960,
+        "activation_delta_rss_bytes_median": 247300096,
+        "forward_seconds_median": 0.294406565,
+        "backward_seconds_median": 0.594668996,
+        "optimizer_seconds_median": 0.024138197,
+        "step_seconds_median": 0.913213758,
+        "tokens_per_second_median": 1120.2197
+      },
+      {
+        "sequence_length": 1024,
+        "policy": "per_block",
+        "repeats": 1,
+        "peak_pre_optimizer_rss_bytes_median": 741662720,
+        "activation_delta_rss_bytes_median": 186073088,
+        "forward_seconds_median": 0.176799959,
+        "backward_seconds_median": 0.496908446,
+        "optimizer_seconds_median": 0.025026163,
+        "step_seconds_median": 0.698734568,
+        "tokens_per_second_median": 1464.0753
+      }
+    ],
+    "S4_100M_fp32_batch1_real_execution": [
+      {
+        "sequence_length": 512,
+        "policy": "none",
+        "repeats": 1,
+        "peak_pre_optimizer_rss_bytes": 2424733696,
+        "activation_delta_rss_bytes": 836870144,
+        "forward_seconds": 0.795881752,
+        "backward_seconds": 1.481766737,
+        "optimizer_seconds": 0.425328636,
+        "step_seconds": 2.702977125,
+        "tokens_per_second": 189.0508
+      },
+      {
+        "sequence_length": 512,
+        "policy": "every_other_block",
+        "repeats": 1,
+        "peak_pre_optimizer_rss_bytes": 2292920320,
+        "activation_delta_rss_bytes": 700071936,
+        "forward_seconds": 0.592691891,
+        "backward_seconds": 1.80020759,
+        "optimizer_seconds": 0.455560368,
+        "step_seconds": 2.848459849,
+        "tokens_per_second": 179.3952
+      },
+      {
+        "sequence_length": 512,
+        "policy": "per_block",
+        "repeats": 1,
+        "peak_pre_optimizer_rss_bytes": 2138222592,
+        "activation_delta_rss_bytes": 546779136,
+        "forward_seconds": 0.550711837,
+        "backward_seconds": 2.06371844,
+        "optimizer_seconds": 0.451961032,
+        "step_seconds": 3.066391309,
+        "tokens_per_second": 166.6454
+      },
+      {
+        "sequence_length": 1024,
+        "policy": "none",
+        "repeats": 1,
+        "peak_pre_optimizer_rss_bytes": 2775674880,
+        "activation_delta_rss_bytes": 1186963456,
+        "forward_seconds": 1.755984652,
+        "backward_seconds": 2.12891084,
+        "optimizer_seconds": 0.249680843,
+        "step_seconds": 4.134576335,
+        "tokens_per_second": 247.4256
+      },
+      {
+        "sequence_length": 1024,
+        "policy": "per_block",
+        "repeats": 1,
+        "peak_pre_optimizer_rss_bytes": 2238636032,
+        "activation_delta_rss_bytes": 647000064,
+        "forward_seconds": 1.284051725,
+        "backward_seconds": 5.624425437,
+        "optimizer_seconds": 0.300047547,
+        "step_seconds": 7.208524709,
+        "tokens_per_second": 141.9153
+      }
+    ],
+    "S4_100M_bf16_batch1_real_execution": [
+      {
+        "sequence_length": 512,
+        "policy": "none",
+        "repeats": 1,
+        "peak_pre_optimizer_rss_bytes": 1423265792,
+        "activation_delta_rss_bytes": 228843520,
+        "step_seconds": 15.268266647,
+        "tokens_per_second": 33.4681,
+        "timing_reliability": "LOW_CPU_BF16_KERNEL_WARMUP_NOISE"
+      },
+      {
+        "sequence_length": 512,
+        "policy": "per_block",
+        "repeats": 1,
+        "peak_pre_optimizer_rss_bytes": 1287081984,
+        "activation_delta_rss_bytes": 89010176,
+        "step_seconds": 3.613852287,
+        "tokens_per_second": 141.4004,
+        "timing_reliability": "LOW_CPU_BF16_KERNEL_WARMUP_NOISE"
+      }
+    ]
+  },
+  "resource_planning": {
+    "S4_4096_fp32": {
+      "method": "linear planning extrapolation from real S4 512 and 1024 pre-optimizer RSS; not runtime evidence",
+      "none_peak_rss_mib_approx": 4657,
+      "per_block_peak_rss_mib_approx": 2711,
+      "local_cgroup_limit_mib": 4096,
+      "interpretation": "No-checkpoint 4096 is projected above the local hard limit; per-block is projected to retain material headroom. This is planning evidence only until a target accelerator run is executed."
+    }
+  },
+  "decision": {
+    "S3_10M_default": "none",
+    "S3_10M_reason": "At the canonical 1024 context and batch 1, no-checkpoint peak RSS stayed below 0.9 GiB on this host. Per-block saves about 148 MiB but is unnecessary unless batch/context growth or a much tighter memory budget makes headroom binding.",
+    "S4_100M_512_1024_local_default": "none_when_headroom_is_sufficient",
+    "S4_100M_4096_planning_default": "per_block",
+    "partial_strategy": "every_other_block is optional only for a narrow intermediate memory target; it is not the default because it saves less memory and does not establish a robust compute advantage.",
+    "trigger_rule": "Use no activation checkpointing while measured or calibrated uncheckpointed peak memory is <=80% of the usable device budget. Switch directly to per-block checkpointing when uncheckpointed peak is >80%, OOMs, or checkpointing is required to preserve the desired batch/context. Re-measure on the target accelerator and precision; do not transfer CPU timing penalties to GPU claims."
+  },
+  "claim_boundaries": {
+    "S4_100M_runtime_measured_at_512": true,
+    "S4_100M_runtime_measured_at_1024": true,
+    "S4_100M_runtime_measured_at_4096": false,
+    "cuda_runtime_measured": false,
+    "fsdp2_dcp_checkpointed_path_test_added": true,
+    "fsdp2_dcp_checkpointed_path_result": "REQUIRES_REPOSITORY_CI_OR_LOCKED_PYTHON311_EXECUTION"
+  }
+}
