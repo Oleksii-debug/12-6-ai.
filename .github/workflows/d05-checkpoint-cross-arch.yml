@@ -1,0 +1,119 @@
+name: D05 Checkpoint Cross-Architecture Portability
+on:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  produce-x86-64:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Prove exact source checkout
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Verify exact x86-64 locked environment
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: >-
+          python tools/verify_locked_environment.py
+          --profile linux-x86_64
+          --source-sha "$SOURCE_SHA"
+          --evidence-out locked-environment-linux-x86_64.json
+      - name: Create exact locked producer environment
+        run: |
+          python -m venv .d05-portability-x86
+          .d05-portability-x86/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .d05-portability-x86/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .d05-portability-x86/bin/python -m pip install --no-deps --no-build-isolation -e .
+      - name: Produce exact x86-64 checkpoint bundle
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: >-
+          .d05-portability-x86/bin/python tools/checkpoint_portability.py produce
+          --source-sha "$SOURCE_SHA"
+          --output-dir d05-checkpoint-portability
+          --require-architecture x86_64
+      - name: Revalidate producer report
+        run: >-
+          .d05-portability-x86/bin/python tools/checkpoint_portability.py
+          validate-producer d05-checkpoint-portability/producer.json
+      - name: Upload exact checkpoint producer bundle
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: d05-checkpoint-portability-x86-source
+          path: |
+            d05-checkpoint-portability/
+            locked-environment-linux-x86_64.json
+          if-no-files-found: error
+          retention-days: 30
+
+  consume-aarch64:
+    needs: produce-x86-64
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Prove exact source checkout
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Verify exact aarch64 locked environment
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: >-
+          python tools/verify_locked_environment.py
+          --profile linux-aarch64
+          --source-sha "$SOURCE_SHA"
+          --evidence-out locked-environment-linux-aarch64.json
+      - name: Create exact locked consumer environment
+        run: |
+          python -m venv .d05-portability-arm
+          .d05-portability-arm/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-aarch64/toolchain.lock.txt
+          .d05-portability-arm/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-aarch64/runtime.lock.txt
+          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .d05-portability-arm/bin/python -m pip install --no-deps --no-build-isolation -e .
+      - name: Download exact x86-64 producer bundle
+        uses: actions/download-artifact@0d2ec9d4cbcefe257d822f108de2a1f15f8da9f6 # v7.0.0
+        with:
+          name: d05-checkpoint-portability-x86-source
+          path: downloaded-portability
+      - name: Consume exact producer bytes on aarch64
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: >-
+          .d05-portability-arm/bin/python tools/checkpoint_portability.py consume
+          --source-sha "$SOURCE_SHA"
+          --bundle-dir downloaded-portability/d05-checkpoint-portability
+          --output d05-checkpoint-portability-consumer.json
+          --require-architecture aarch64
+      - name: Revalidate cross-architecture evidence
+        run: >-
+          .d05-portability-arm/bin/python tools/checkpoint_portability.py
+          validate-consumer
+          --producer downloaded-portability/d05-checkpoint-portability/producer.json
+          --consumer d05-checkpoint-portability-consumer.json
+      - name: Upload cross-architecture consumer evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: d05-checkpoint-cross-arch-evidence
+          path: |
+            downloaded-portability/d05-checkpoint-portability/producer.json
+            d05-checkpoint-portability-consumer.json
+            locked-environment-linux-aarch64.json
+          if-no-files-found: error
+          retention-days: 30
