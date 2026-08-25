@@ -1,0 +1,214 @@
+name: DATA-110 Corpus V1 RC and Learned Base
+
+on:
+  pull_request:
+    branches:
+      - integration/s1-transition-20260825
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  corpus-v1-rc-learned-base:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      PYTHONPATH: src
+      OMP_NUM_THREADS: "2"
+      MKL_NUM_THREADS: "2"
+    steps:
+      - name: Checkout exact DATA-110 head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up exact Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact source head
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+
+      - name: Install hash-locked Product runtime
+        run: |
+          set -euo pipefail
+          python -m venv .d110
+          .d110/bin/python -m pip install \
+            --disable-pip-version-check --no-deps --require-hashes \
+            -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .d110/bin/python -m pip install \
+            --disable-pip-version-check --no-deps --require-hashes \
+            -r requirements/locks/linux-x86_64/runtime.lock.txt
+          .d110/bin/python -m pip install \
+            --disable-pip-version-check --no-deps --require-hashes \
+            -r requirements/locks/linux-x86_64/dev.lock.txt
+
+      - name: Install exact DATA-31 DataTrove experiment runtime
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/datatrove-wheel /tmp/tokenizers-wheel
+          .d110/bin/python -m pip download --no-deps datatrove==0.10.0 -d /tmp/datatrove-wheel
+          WHEEL="$(find /tmp/datatrove-wheel -name 'datatrove-0.10.0-*.whl' -print -quit)"
+          test -n "$WHEEL"
+          test "$(sha256sum "$WHEEL" | awk '{print $1}')" = "c7bb75deed2c3e88fb5138f8ea075a170ee98d6c94fc263829609091ea9c2b5d"
+          .d110/bin/python -m pip download --no-deps tokenizers==0.23.1 -d /tmp/tokenizers-wheel
+          TOKENIZERS_WHEEL="$(find /tmp/tokenizers-wheel -name 'tokenizers-0.23.1-*.whl' -print -quit)"
+          test -n "$TOKENIZERS_WHEEL"
+          test "$(sha256sum "$TOKENIZERS_WHEEL" | awk '{print $1}')" = "5075b405006415ea148a992d093699c66eb01952bf59f4d5727089a98bda45a4"
+          .d110/bin/python -m pip install "$WHEEL" orjson regex "xxhash==3.8.1"
+          .d110/bin/python -m pip install --no-deps "$TOKENIZERS_WHEEL"
+
+      - name: Compile and revalidate composed incumbents
+        run: |
+          set -euo pipefail
+          .d110/bin/python -m compileall -q src/twelve_six
+          .d110/bin/python -m ruff check \
+            src/twelve_six/data110_release_candidate.py \
+            src/twelve_six/data/document_quality.py \
+            src/twelve_six/data/privacy_filter.py \
+            src/twelve_six/data/benchmark_decontamination.py \
+            src/twelve_six/data/dedup_scale.py \
+            src/twelve_six/split_robustness.py \
+            tests/test_data110_release_candidate.py \
+            tests/test_document_quality.py \
+            tests/test_privacy_filter.py \
+            tests/test_benchmark_decontamination.py \
+            tests/test_split_robustness.py
+          .d110/bin/python -m pytest -q \
+            tests/test_data110_release_candidate.py \
+            tests/test_document_quality.py \
+            tests/test_privacy_filter.py \
+            tests/test_benchmark_decontamination.py \
+            tests/test_split_robustness.py \
+            tests/test_data25_corpus_v01.py \
+            tests/test_milestone100_first_learned.py
+
+      - name: Reacquire bounded real rights-approved UK and EN inputs
+        run: |
+          set -euo pipefail
+          .d110/bin/python tools/run_external_source_intake.py \
+            --output data110-external-intake \
+            --max-download-bytes 2000000 \
+            --max-normalized-chars 50000 \
+            | tee data110-external-intake.stdout.json
+
+      - name: Build Corpus V1 RC twice through one composed path
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          .d110/bin/python -m twelve_six.data110_release_candidate build \
+            --repo-root . \
+            --source-sha "$EXPECTED_SOURCE_SHA" \
+            --external-intake data110-external-intake \
+            --output-dir data110-evidence
+
+      - name: Assert release-candidate truth boundary
+        run: |
+          set -euo pipefail
+          .d110/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+          r = json.loads(Path("data110-evidence/release-manifest.json").read_text())
+          m = r["candidate_manifest"]
+          assert r["two_build_deterministic_identity"] is True
+          assert r["two_build_shards_exact"] is True
+          assert m["external_intake"]["all_admitted_external_sources_explicit_training_eligible"] is True
+          assert m["external_records_surviving_all_gates"] >= 2
+          assert m["dedup_decontamination"]["d06_benchmark_registry_sha256"] == "10f7454f77eb2dc3871eeafa5055b1969eab42954eb8e19e61565f217c67df31"
+          assert m["dedup_decontamination"]["semantic_universal_cleanliness_claimed"] is False
+          assert m["split"]["cluster_straddles_across_variants"] == 0
+          assert r["classification"]["status"] == "RETEST_REQUIRED"
+          PY
+
+      - name: Execute phase 1 from random initialization
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          .d110/bin/python -m twelve_six.data110_release_candidate phase1 \
+            --repo-root . \
+            --source-sha "$EXPECTED_SOURCE_SHA" \
+            --output-dir data110-evidence
+
+      - name: Execute fresh-process resume to step 512
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          .d110/bin/python -m twelve_six.data110_release_candidate resume \
+            --repo-root . \
+            --source-sha "$EXPECTED_SOURCE_SHA" \
+            --output-dir data110-evidence
+
+      - name: Validate retained machine report
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          .d110/bin/python -m twelve_six.data110_release_candidate validate \
+            data110-evidence/report.json \
+            --expected-source-sha "$EXPECTED_SOURCE_SHA"
+          .d110/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+          r = json.loads(Path("data110-evidence/report.json").read_text())
+          print(json.dumps({
+              "source_sha": r["source"]["git_sha"],
+              "classification": r["classification"]["status"],
+              "corpus_identity_sha256": r["release"]["corpus_identity_sha256"],
+              "two_build": r["release"]["two_build_deterministic_identity"],
+              "external_real_bytes": r["release"]["candidate_manifest"]["external_intake"]["admitted_real_normalized_bytes"],
+              "external_survivors": r["release"]["candidate_manifest"]["external_records_surviving_all_gates"],
+              "parameter_count": r["model"]["parameter_count"],
+              "optimized_tokens": r["training"]["optimized_tokens"],
+              "first64_mean_loss": r["training"]["first64_mean_loss"],
+              "last64_mean_loss": r["training"]["last64_mean_loss"],
+              "initial_bpb": r["evaluation"]["initial_bits_per_byte"],
+              "final_bpb": r["evaluation"]["final_bits_per_byte"],
+              "relative_heldout_loss_improvement": r["evaluation"]["relative_heldout_loss_improvement"],
+              "fresh_process_resume": r["runtime"]["fresh_process_resume"],
+              "retained_checkpoint_id": r["checkpoints"]["retained_checkpoint_id"],
+              "report_sha256": r["report_sha256"],
+          }, ensure_ascii=False, indent=2, sort_keys=True))
+          PY
+
+      - name: Upload Corpus V1 RC and learned-base evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: data110-corpus-v1-rc-learned-base
+          path: |
+            data110-external-intake/manifest.json
+            data110-external-intake/records.jsonl
+            data110-external-intake/accepted_text/*.txt
+            data110-external-intake.stdout.json
+            data110-evidence/release-manifest.json
+            data110-evidence/build-a/manifest.json
+            data110-evidence/build-a/source-registry.json
+            data110-evidence/build-a/split-family.json
+            data110-evidence/build-a/shards/
+            data110-evidence/build-a/policy/quality-decisions.jsonl
+            data110-evidence/build-a/policy/privacy-manifest.json
+            data110-evidence/build-b/manifest.json
+            data110-evidence/report.json
+            data110-evidence/phase1.json
+            data110-evidence/run-manifest.json
+            data110-evidence/machine-manifest-phase1.json
+            data110-evidence/machine-manifest-resume.json
+            data110-evidence/train-curve.jsonl
+            data110-evidence/checkpoint-0000/
+            data110-evidence/checkpoint-0128/
+            data110-evidence/checkpoint-0256/
+            data110-evidence/checkpoint-0384/
+            data110-evidence/checkpoint-0512/
+          if-no-files-found: warn
+          retention-days: 30
