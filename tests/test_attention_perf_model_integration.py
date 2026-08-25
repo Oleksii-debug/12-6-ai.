@@ -89,8 +89,8 @@ def test_gqa_production_gradients_match_expanded_reference() -> None:
     native_grads = dict(native.named_parameters())
     reference_grads = dict(reference.named_parameters())
     assert native_grads.keys() == reference_grads.keys()
-    for name in native_grads:
-        native_grad = native_grads[name].grad
+    for name, native_parameter in native_grads.items():
+        native_grad = native_parameter.grad
         reference_grad = reference_grads[name].grad
         assert native_grad is not None, name
         assert reference_grad is not None, name
