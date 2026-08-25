@@ -22,7 +22,7 @@ from twelve_six.tokenization.experiments import (
     vocabulary_parameter_cost,
 )
 
-SCHEMA = "12-6.tokenizer-real-comparison.v1"
+SCHEMA = "12-6.tokenizer-real-comparison.v2"
 AUTHORITY = "CONTROLLED_S0_TRAIN_SPLIT_MECHANICS_ONLY_NOT_S1_CORPUS_OR_FREEZE"
 TOKENIZERS_VERSION = "0.23.1"
 TOKENIZERS_WHEEL_SHA256 = (
@@ -291,18 +291,33 @@ def _run_algorithm(
     second = train_hf_tokenizer(manifest, train_texts)
     first_artifact = _artifact_to_dict(first)
     second_artifact = _artifact_to_dict(second)
-    if first_artifact != second_artifact:
-        raise TokenizerEvidenceError(f"{algorithm} repeated build identity drifted")
+    identity_equal = first_artifact == second_artifact
+    drift_fields = sorted(
+        field
+        for field in first_artifact
+        if first_artifact[field] != second_artifact[field]
+    )
 
     probes = _held_out_probes(dataset)
-    results = [measure_probe(first, probe, unknown_token_id=first.unk_id) for probe in probes]
-    if not all(result.round_trip_exact for result in results):
+    first_results = [
+        measure_probe(first, probe, unknown_token_id=first.unk_id) for probe in probes
+    ]
+    second_results = [
+        measure_probe(second, probe, unknown_token_id=second.unk_id) for probe in probes
+    ]
+    all_results = first_results + second_results
+    if not all(result.round_trip_exact for result in all_results):
         raise TokenizerEvidenceError(f"{algorithm} failed held-out strict round trip")
-    if any(result.unknown_tokens for result in results):
+    if any(result.unknown_tokens for result in all_results):
         raise TokenizerEvidenceError(f"{algorithm} emitted unknown tokens on held-out probes")
 
+    first_probe_ids = [first.encode(probe.text) for probe in probes]
+    second_probe_ids = [second.encode(probe.text) for probe in probes]
+    probe_encoding_equal = first_probe_ids == second_probe_ids
+
     byte_baseline = sum(len(probe.text.encode("utf-8")) for probe in probes)
-    learned_tokens = sum(result.tokens for result in results)
+    first_tokens = sum(result.tokens for result in first_results)
+    second_tokens = sum(result.tokens for result in second_results)
     cost = vocabulary_parameter_cost(
         vocab_size=first.vocab_size,
         d_model=48,
@@ -321,17 +336,26 @@ def _run_algorithm(
         },
         "artifact": first_artifact,
         "repeat_build_artifact": second_artifact,
-        "repeated_build_identity_equal": True,
+        "repeated_build_identity_equal": identity_equal,
+        "repeatability_status": "PASS" if identity_equal else "FAIL",
+        "artifact_drift_fields": drift_fields,
+        "held_out_probe_encoding_equal": probe_encoding_equal,
         "held_out": {
-            "probes": [_probe_to_dict(result) for result in results],
-            "language_summary": summarize_by_language(results),
+            "probes": [_probe_to_dict(result) for result in first_results],
+            "repeat_build_probes": [_probe_to_dict(result) for result in second_results],
             "strict_round_trip_all": True,
             "unknown_tokens": 0,
-            "tokens": learned_tokens,
+            "tokens": first_tokens,
+            "repeat_build_tokens": second_tokens,
             "byte_baseline_tokens": byte_baseline,
             "token_reduction_vs_bytes": (
-                (byte_baseline - learned_tokens) / byte_baseline if byte_baseline else 0.0
+                (byte_baseline - first_tokens) / byte_baseline if byte_baseline else 0.0
             ),
+            "repeat_build_token_reduction_vs_bytes": (
+                (byte_baseline - second_tokens) / byte_baseline if byte_baseline else 0.0
+            ),
+            "language_summary": summarize_by_language(first_results),
+            "repeat_build_language_summary": summarize_by_language(second_results),
         },
         "non_frozen_s1_parameter_cost": {
             "d_model": 48,
@@ -361,6 +385,28 @@ def build_report(*, source_sha: str, vocab_size: int = 512) -> dict[str, Any]:
     unigram = _run_algorithm("unigram", dataset, vocab_size=vocab_size)
     if bpe["training_input"]["record_ids"] != unigram["training_input"]["record_ids"]:
         raise TokenizerEvidenceError("BPE and Unigram did not use the same train records")
+
+    repeatable = (
+        bpe["repeated_build_identity_equal"] is True
+        and unigram["repeated_build_identity_equal"] is True
+    )
+    repeatability_gate = "PASS" if repeatable else "FAIL"
+    decision_status = (
+        "NO_FREEZE_CONTROLLED_MECHANICS_ONLY"
+        if repeatable
+        else "NO_FREEZE_REPEATABILITY_BLOCKED"
+    )
+    if repeatable:
+        decision_reason = (
+            "real maintained-library mechanics are exercised only on the controlled S0 train "
+            "fixture; representative S1 corpus and rights/decontamination evidence are absent"
+        )
+    else:
+        decision_reason = (
+            "at least one maintained-library algorithm produced different exact artifact "
+            "identity across identical repeated builds; tokenizer freeze is blocked even before "
+            "representative S1 corpus and model-quality comparisons"
+        )
 
     report: dict[str, Any] = {
         "schema": SCHEMA,
@@ -399,7 +445,9 @@ def build_report(*, source_sha: str, vocab_size: int = 512) -> dict[str, Any]:
             "train_validation_separation": "PASS",
             "real_bpe_execution": "PASS",
             "real_unigram_execution": "PASS",
-            "repeatable_artifact_identity": "PASS",
+            "bpe_repeatable_artifact_identity": bpe["repeatability_status"],
+            "unigram_repeatable_artifact_identity": unigram["repeatability_status"],
+            "repeatable_artifact_identity": repeatability_gate,
             "held_out_strict_round_trip": "PASS",
             "held_out_zero_unknown_tokens": "PASS",
             "representative_s1_corpus": "NOT_TESTED",
@@ -408,12 +456,9 @@ def build_report(*, source_sha: str, vocab_size: int = 512) -> dict[str, Any]:
             "model_quality": "NOT_TESTED",
         },
         "decision": {
-            "status": "NO_FREEZE_CONTROLLED_MECHANICS_ONLY",
+            "status": decision_status,
             "winner": None,
-            "reason": (
-                "real maintained-library mechanics are exercised only on the controlled S0 train "
-                "fixture; representative S1 corpus and rights/decontamination evidence are absent"
-            ),
+            "reason": decision_reason,
         },
         "truth_boundary": {
             "canonical_s0_tokenizer_unchanged": True,
@@ -469,7 +514,9 @@ def validate_report(
     if dataset.get("train_validation_record_overlap") != []:
         raise TokenizerEvidenceError("train/validation record overlap must be empty")
     if dataset.get("representative_s1_corpus") is not False:
-        raise TokenizerEvidenceError("controlled fixture cannot be labeled representative S1 corpus")
+        raise TokenizerEvidenceError(
+            "controlled fixture cannot be labeled representative S1 corpus"
+        )
     if dataset.get("external_sources_training_approved") is not False:
         raise TokenizerEvidenceError("this evidence cannot approve external training sources")
 
@@ -477,6 +524,7 @@ def validate_report(
     if not isinstance(algorithms, dict) or set(algorithms) != {"bpe", "unigram"}:
         raise TokenizerEvidenceError("evidence must contain exactly BPE and Unigram results")
     training_ids: list[list[str]] = []
+    repeatability: dict[str, bool] = {}
     for name in ("bpe", "unigram"):
         algorithm = algorithms[name]
         if not isinstance(algorithm, dict) or algorithm.get("status") != "PASS":
@@ -492,8 +540,24 @@ def validate_report(
         if not isinstance(ids, list) or not all(isinstance(item, str) for item in ids):
             raise TokenizerEvidenceError(f"{name} training record ids must be strings")
         training_ids.append(ids)
-        if algorithm.get("repeated_build_identity_equal") is not True:
-            raise TokenizerEvidenceError(f"{name} repeated build identity must match")
+
+        identity_equal = algorithm.get("repeated_build_identity_equal")
+        if not isinstance(identity_equal, bool):
+            raise TokenizerEvidenceError(f"{name} repeatability must be boolean")
+        expected_repeatability = "PASS" if identity_equal else "FAIL"
+        if algorithm.get("repeatability_status") != expected_repeatability:
+            raise TokenizerEvidenceError(f"{name} repeatability status is inconsistent")
+        drift_fields = algorithm.get("artifact_drift_fields")
+        if not isinstance(drift_fields, list) or not all(
+            isinstance(field, str) for field in drift_fields
+        ):
+            raise TokenizerEvidenceError(f"{name} artifact drift fields must be strings")
+        if identity_equal and drift_fields:
+            raise TokenizerEvidenceError(f"{name} repeatable artifact cannot report drift fields")
+        if not identity_equal and not drift_fields:
+            raise TokenizerEvidenceError(f"{name} drift must identify changed artifact fields")
+        repeatability[name] = identity_equal
+
         held_out = algorithm.get("held_out")
         if not isinstance(held_out, dict):
             raise TokenizerEvidenceError(f"{name} held-out evidence must be an object")
@@ -513,11 +577,17 @@ def validate_report(
         "train_validation_separation",
         "real_bpe_execution",
         "real_unigram_execution",
-        "repeatable_artifact_identity",
         "held_out_strict_round_trip",
         "held_out_zero_unknown_tokens",
     ):
         _require_gate(report, gate, "PASS")
+
+    for name in ("bpe", "unigram"):
+        expected = "PASS" if repeatability[name] else "FAIL"
+        _require_gate(report, f"{name}_repeatable_artifact_identity", expected)
+    expected_global_repeat = "PASS" if all(repeatability.values()) else "FAIL"
+    _require_gate(report, "repeatable_artifact_identity", expected_global_repeat)
+
     for gate in (
         "representative_s1_corpus",
         "external_source_rights_approval",
@@ -529,10 +599,17 @@ def validate_report(
     decision = report.get("decision")
     if not isinstance(decision, dict):
         raise TokenizerEvidenceError("decision must be an object")
-    if decision.get("status") != "NO_FREEZE_CONTROLLED_MECHANICS_ONLY":
-        raise TokenizerEvidenceError("decision status cannot exceed controlled mechanics authority")
+    expected_decision = (
+        "NO_FREEZE_CONTROLLED_MECHANICS_ONLY"
+        if all(repeatability.values())
+        else "NO_FREEZE_REPEATABILITY_BLOCKED"
+    )
+    if decision.get("status") != expected_decision:
+        raise TokenizerEvidenceError("decision status does not match observed repeatability")
     if decision.get("winner") is not None:
-        raise TokenizerEvidenceError("controlled mechanics evidence cannot choose a tokenizer winner")
+        raise TokenizerEvidenceError(
+            "controlled mechanics evidence cannot choose a tokenizer winner"
+        )
 
     boundary = report.get("truth_boundary")
     if not isinstance(boundary, dict):
@@ -570,7 +647,10 @@ def _command_run(args: argparse.Namespace) -> int:
 def _command_validate(args: argparse.Namespace) -> int:
     report = _load_json(args.input)
     validate_report(report, expected_source_sha=args.source_sha)
-    print(f"tokenizer_evidence=pass sha256={report['evidence_sha256']}")
+    print(
+        "tokenizer_evidence=pass "
+        f"decision={report['decision']['status']} sha256={report['evidence_sha256']}"
+    )
     return 0
 
 

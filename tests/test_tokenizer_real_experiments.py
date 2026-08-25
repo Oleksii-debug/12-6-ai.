@@ -14,24 +14,37 @@ def _rehash(report: dict[str, object]) -> None:
     report["evidence_sha256"] = real._sha256_bytes(real._canonical_json(report).encode())
 
 
-def _truthful_report() -> dict[str, object]:
+def _truthful_report(*, unigram_repeatable: bool = True) -> dict[str, object]:
     source_sha = "a" * 40
     train_ids = [f"train-{index}" for index in range(10)]
-    algorithm = {
-        "status": "PASS",
-        "training_input": {
-            "split": "train",
-            "records": 10,
-            "record_ids": train_ids,
-            "validation_used_for_training": False,
-        },
-        "repeated_build_identity_equal": True,
-        "held_out": {
-            "strict_round_trip_all": True,
-            "unknown_tokens": 0,
-        },
-        "locked_for_s1": False,
-    }
+
+    def algorithm(repeatable: bool) -> dict[str, object]:
+        return {
+            "status": "PASS",
+            "training_input": {
+                "split": "train",
+                "records": 10,
+                "record_ids": train_ids,
+                "validation_used_for_training": False,
+            },
+            "repeated_build_identity_equal": repeatable,
+            "repeatability_status": "PASS" if repeatable else "FAIL",
+            "artifact_drift_fields": [] if repeatable else ["tokenizer_json_sha256"],
+            "held_out": {
+                "strict_round_trip_all": True,
+                "unknown_tokens": 0,
+            },
+            "locked_for_s1": False,
+        }
+
+    bpe = algorithm(True)
+    unigram = algorithm(unigram_repeatable)
+    repeatability_gate = "PASS" if unigram_repeatable else "FAIL"
+    decision = (
+        "NO_FREEZE_CONTROLLED_MECHANICS_ONLY"
+        if unigram_repeatable
+        else "NO_FREEZE_REPEATABILITY_BLOCKED"
+    )
     report: dict[str, object] = {
         "schema": real.SCHEMA,
         "authority": real.AUTHORITY,
@@ -46,8 +59,8 @@ def _truthful_report() -> dict[str, object]:
             "external_sources_training_approved": False,
         },
         "algorithms": {
-            "bpe": copy.deepcopy(algorithm),
-            "unigram": copy.deepcopy(algorithm),
+            "bpe": copy.deepcopy(bpe),
+            "unigram": copy.deepcopy(unigram),
         },
         "gates": {
             "exact_source_binding": "PASS",
@@ -56,7 +69,9 @@ def _truthful_report() -> dict[str, object]:
             "train_validation_separation": "PASS",
             "real_bpe_execution": "PASS",
             "real_unigram_execution": "PASS",
-            "repeatable_artifact_identity": "PASS",
+            "bpe_repeatable_artifact_identity": "PASS",
+            "unigram_repeatable_artifact_identity": repeatability_gate,
+            "repeatable_artifact_identity": repeatability_gate,
             "held_out_strict_round_trip": "PASS",
             "held_out_zero_unknown_tokens": "PASS",
             "representative_s1_corpus": "NOT_TESTED",
@@ -65,7 +80,7 @@ def _truthful_report() -> dict[str, object]:
             "model_quality": "NOT_TESTED",
         },
         "decision": {
-            "status": "NO_FREEZE_CONTROLLED_MECHANICS_ONLY",
+            "status": decision,
             "winner": None,
         },
         "truth_boundary": {
@@ -120,6 +135,15 @@ def test_truthful_controlled_mechanics_report_validates() -> None:
     assert real.validate_report(report, expected_source_sha="a" * 40) is report
 
 
+def test_truthful_unigram_repeatability_failure_is_retained_not_hidden() -> None:
+    report = _truthful_report(unigram_repeatable=False)
+    validated = real.validate_report(report, expected_source_sha="a" * 40)
+    assert validated["gates"]["unigram_repeatable_artifact_identity"] == "FAIL"
+    assert validated["gates"]["repeatable_artifact_identity"] == "FAIL"
+    assert validated["decision"]["status"] == "NO_FREEZE_REPEATABILITY_BLOCKED"
+    assert validated["decision"]["winner"] is None
+
+
 @pytest.mark.parametrize(
     "mutator",
     [
@@ -140,6 +164,23 @@ def test_validator_rejects_overclaim_even_after_rehash(mutator: object) -> None:
     mutator(report)
     _rehash(report)
     with pytest.raises(real.TokenizerEvidenceError):
+        real.validate_report(report)
+
+
+def test_validator_rejects_repeatability_gate_that_hides_observed_drift() -> None:
+    report = _truthful_report(unigram_repeatable=False)
+    report["gates"]["unigram_repeatable_artifact_identity"] = "PASS"
+    report["gates"]["repeatable_artifact_identity"] = "PASS"
+    _rehash(report)
+    with pytest.raises(real.TokenizerEvidenceError, match="unigram_repeatable"):
+        real.validate_report(report)
+
+
+def test_validator_rejects_drift_without_identified_fields() -> None:
+    report = _truthful_report(unigram_repeatable=False)
+    report["algorithms"]["unigram"]["artifact_drift_fields"] = []
+    _rehash(report)
+    with pytest.raises(real.TokenizerEvidenceError, match="drift must identify"):
         real.validate_report(report)
 
 
@@ -171,7 +212,7 @@ def test_floating_or_wrong_hash_experiment_lock_is_rejected(tmp_path: Path) -> N
 
 
 def test_evidence_json_round_trip_keeps_validator_authority(tmp_path: Path) -> None:
-    report = _truthful_report()
+    report = _truthful_report(unigram_repeatable=False)
     path = tmp_path / "evidence.json"
     path.write_text(json.dumps(report, sort_keys=True), encoding="utf-8")
     loaded = json.loads(path.read_text(encoding="utf-8"))

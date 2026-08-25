@@ -38,44 +38,71 @@ are held out from tokenizer training and used only as probes. Project-authored c
 mixed-Unicode probes are also evaluation-only. The runner verifies split IDs, committed
 hashes and D03 manifest assignments before training.
 
-The D03 fixture is purpose-written project data. It is useful for deterministic mechanics
+The D03 fixture is purpose-written project data. It is useful for controlled mechanics
 but is not representative S1 training data and is not a universal license/benchmark-clean
 claim.
 
-## Comparison contract
+## Comparison and repeatability contract
 
 BPE and Unigram receive the exact same ordered train texts, exact dataset identity and
-requested vocabulary size (512 by default). Each algorithm is rebuilt twice. Evidence
-fails closed unless both rebuilds have identical tokenizer JSON identity, ordered
-token-ID vocabulary identity and runtime config identity.
+requested vocabulary size (512 by default). Each algorithm is rebuilt twice. Both builds
+must independently preserve strict held-out round trip and emit zero unknown tokens.
 
-Held-out probes must have exact round trip and zero unknown tokens. The report records
-token counts, fertility and vocabulary parameter cost, but no algorithm is declared the
-winner.
+Exact artifact repeatability is an **observed gate**, not an assumption. The report compares
+the complete tokenizer artifact identity from both builds and records changed identity
+fields when they drift. A deterministic repeat reports `PASS`; a differing exact artifact
+reports `FAIL`. The validator rejects any report that relabels observed drift as PASS.
 
-A successful report has authority:
+The first real maintained-library run on exact head
+`c3a3fe4672faea1a9b94dc328f2761bce407e5d8` showed that BPE reached the repeatability check
+but Unigram produced different exact artifact identity across identical repeated builds.
+That head therefore failed before an evidence artifact was retained. This is treated as a
+scientific blocker, not hidden as an infrastructure error. The v2 runner retains such a
+truthful result with decision `NO_FREEZE_REPEATABILITY_BLOCKED` so later evidence can state
+exactly which fields drifted while still proving that real execution occurred.
+
+The public `UnigramTrainer` interface used by the pinned backend exposes training controls
+such as vocabulary size, alphabet, shrinking factor and EM sub-iterations, but no explicit
+random-seed control. The project therefore does not invent a seed guarantee that the
+maintained backend does not expose. A future version/backend change must be separately
+locked and compared rather than silently accepted.
+
+Held-out probes record token counts, fertility and vocabulary parameter cost for both
+repeated builds. No algorithm is declared the winner.
+
+A retained report has authority:
 
 `CONTROLLED_S0_TRAIN_SPLIT_MECHANICS_ONLY_NOT_S1_CORPUS_OR_FREEZE`
 
 It must still report `NOT_TESTED` for representative S1 corpus suitability, external
 source rights approval, S1 tokenizer freeze and model quality.
 
-## What a green run does not authorize
+## What a green evidence-capture run does not authorize
 
-A green run does not:
+A green workflow means the evidence runner completed and the report validated its own
+claims. It does **not** mean every scientific gate passed. In particular a report may
+truthfully contain `repeatable_artifact_identity=FAIL` and still be retained for audit.
+
+A green evidence-capture run does not:
 
 - approve any public or external source for Base training;
 - admit validation or benchmark/test material into tokenizer training;
 - select BPE or Unigram for S1;
 - freeze vocabulary size or ModelSpec;
+- turn a validator-mechanics PASS into model-quality PASS;
 - grant AUDIT PASS, CANDIDATE or STABLE;
 - authorize paid compute or foreign pretrained weights.
 
 ## Next stage gate
 
-The next meaningful tokenizer decision requires a reviewed representative corpus with
-immutable retrieval/source identities, explicit rights state, exact/near dedup and
-benchmark decontamination. BPE and Unigram must then be rerun on that same accepted
-train-only corpus under an exact runtime lock, followed by parameter-budget and controlled
-model-loss comparisons. Until then the winner remains `null` and canonical S0 remains
-the byte tokenizer.
+The next meaningful tokenizer decision requires two independent closures:
+
+1. Resolve or explicitly exclude any algorithm/runtime whose exact repeated artifact
+   identity is unstable under the locked experiment contract.
+2. Build a reviewed representative corpus with immutable retrieval/source identities,
+   explicit rights state, exact/near dedup and benchmark decontamination, then rerun all
+   eligible tokenizer algorithms on the same accepted train-only corpus.
+
+Only after those gates should parameter-budget and controlled model-loss comparisons be
+used for an S1 tokenizer decision. Until then the winner remains `null` and canonical S0
+remains the byte tokenizer.
