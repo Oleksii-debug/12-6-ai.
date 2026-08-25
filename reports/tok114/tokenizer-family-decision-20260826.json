@@ -1,0 +1,68 @@
+{
+  "schema": "12-6.tok114-family-decision.v1",
+  "authority": "LOCAL_FREE_EVIDENCE_REVIEW_NOT_TOKENIZER_PROMOTION",
+  "repository": "Oleksii-debug/12-6-ai.",
+  "base_sha": "015593b22a600184fb4c8001fe3d70893bfc51d5",
+  "decision": "KEEP_BYTE_CONTROL",
+  "special_token_policy_frozen": false,
+  "families": {
+    "byte": {
+      "status": "CONTROL_RETAINED",
+      "version": "s0-byte-v1",
+      "vocab_size": 256,
+      "config_sha256": "b04055c1061dd641dcab7cb9d62a931f09b8d1a070140a926ceb4e91d73ca8e1",
+      "vocab_sha256": "905ed40bb42cc4d550e228ff5f24158d504b38e8ed5974dfa3077bd5867ad571",
+      "exact_reproducibility": true,
+      "exact_round_trip": true
+    },
+    "bpe": {
+      "status": "ELIGIBLE_EXPERIMENTAL_CHALLENGER_NOT_SELECTED",
+      "evidence_sha": "25cf4798202c41dda4b5413052f5efc6ebbbbf2a",
+      "tokenizers_version": "0.23.1",
+      "requested_vocab_size": 512,
+      "actual_vocab_size": 437,
+      "tokenizer_json_sha256": "51fca82e40c48dfe3c9374e949f26b99968b0e8fa92964e2522df58e65435179",
+      "serialized_tokenizer_json_bytes": 7436,
+      "exact_repeat_artifact_identity": true,
+      "exact_round_trip": true,
+      "heldout_utf8_bytes": 638,
+      "heldout_tokens": 417,
+      "token_reduction_vs_byte_fraction": 0.3463949843260188,
+      "embedding_tax": {
+        "d_model_48": 8688,
+        "d_model_128": 23168
+      },
+      "same_harness_throughput": "NOT_RETAINED",
+      "matched_100k_bpb": "MECHANICS_ONLY_SINGLE_SEED_32_STEPS_NOT_PROMOTION_EVIDENCE",
+      "matched_1m_bpb": "MISSING",
+      "representative_corpus_evidence": false
+    },
+    "unigram": {
+      "status": "INELIGIBLE_REPRODUCIBILITY",
+      "evidence_sha": "e925109473822bcd11ceef71f98f1441a6816f62",
+      "tokenizers_version": "0.23.1",
+      "supported_trainer_seed": false,
+      "fresh_process_artifact_identity": false,
+      "fresh_process_heldout_encoding_identity": false
+    }
+  },
+  "current_corpus": {
+    "version": "v0.1",
+    "identity_sha256": "422f545da93526ceba2c0ff738e0b9deac65f35bfb31d87d2aab068cda091fc8",
+    "train_byte_tokens": 20000775,
+    "validation_byte_tokens": 1410473,
+    "external_training_eligible_sources": 0,
+    "real_world_external_representative": false
+  },
+  "real_corpus_gate": "BLOCKED_NO_REAL_TRAINING_ELIGIBLE_UK_EN_CODE_CORPUS",
+  "selection_reason": "Unigram fails exact artifact reproducibility. BPE is deterministic and reduces token count on controlled mechanics probes, but lacks same-corpus representative 100K/1M parameter-matched BPB and same-harness throughput evidence required to displace the byte control.",
+  "bpe_reentry_requires": [
+    "deterministic exact artifact on the selected corpus manifest",
+    "same-harness tokenizer throughput",
+    "parameter-matched ~100K byte-vs-BPE BPB",
+    "parameter-matched ~1M byte-vs-BPE BPB",
+    "multiple seeds where affordable",
+    "held-out BPB normalized per original UTF-8 byte",
+    "capacity-rebalance accounting"
+  ]
+}
