@@ -1,7 +1,7 @@
 """Bounded, privacy-safe diagnostics for poisoned numerical training states.
 
-This module deliberately owns only failure-path inspection. It never logs raw
-training text, installs hooks, or changes model forward semantics.
+Failure details live here so Trainer only owns poisoning and transition points. The
+module never logs raw training text, installs hooks, or changes model forward semantics.
 """
 
 from __future__ import annotations
@@ -86,6 +86,17 @@ def _bounded_parameter_names(names: list[str], total_count: int) -> AffectedPara
     return AffectedParameters(tuple(names[:_MAX_AFFECTED_NAMES]), total_count)
 
 
+def model_parameters_are_finite(model: nn.Module) -> bool:
+    """Check all model parameters with at most one host synchronization per device."""
+
+    finite_by_device: dict[torch.device, Tensor] = {}
+    for parameter in model.parameters():
+        finite = torch.isfinite(parameter.detach()).all()
+        previous = finite_by_device.get(parameter.device)
+        finite_by_device[parameter.device] = finite if previous is None else previous & finite
+    return all(bool(finite.item()) for finite in finite_by_device.values())
+
+
 def nonfinite_gradient_parameters(model: nn.Module) -> AffectedParameters:
     names: list[str] = []
     total = 0
@@ -100,7 +111,7 @@ def nonfinite_gradient_parameters(model: nn.Module) -> AffectedParameters:
 
 
 def nonfinite_update_parameters(model: nn.Module, optimizer: Optimizer) -> AffectedParameters:
-    """Find parameters made non-finite by an update, then enrich from optimizer state."""
+    """Name poisoned parameters and enrich them from optimizer tensor state."""
 
     parameter_names = {id(parameter): name for name, parameter in model.named_parameters()}
     affected: set[str] = set()
@@ -108,12 +119,6 @@ def nonfinite_update_parameters(model: nn.Module, optimizer: Optimizer) -> Affec
     for name, parameter in model.named_parameters():
         if not torch.isfinite(parameter.detach()).all().item():
             affected.add(name)
-
-    # Keep the healthy path to one parameter-finiteness pass. Adam moment/state
-    # tensors are inspected only after a non-finite parameter has already proved
-    # the attempted update poisoned the in-memory state.
-    if not affected:
-        return AffectedParameters((), 0)
 
     for parameter, state in optimizer.state.items():
         name = parameter_names.get(id(parameter))
