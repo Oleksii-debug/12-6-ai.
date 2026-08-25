@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from twelve_six.model import load_stage_config
+from twelve_six import load_stage_config
 from twelve_six.training import gpu_launch_preflight as preflight
 
 
