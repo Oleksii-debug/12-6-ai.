@@ -13,14 +13,20 @@ import math
 import platform
 import re
 import time
+from collections.abc import Mapping
 from itertools import cycle, islice
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 import torch
 
 from twelve_six.model import TwelveSixDecoder, load_stage_config
-from twelve_six.packing import batch_examples, collate_rows, iter_packed_examples, load_jsonl_records
+from twelve_six.packing import (
+    batch_examples,
+    collate_rows,
+    iter_packed_examples,
+    load_jsonl_records,
+)
 from twelve_six.tokenization import ByteTokenizer
 
 from .config import TrainerConfig
