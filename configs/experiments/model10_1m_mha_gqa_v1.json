@@ -1,0 +1,22 @@
+{
+  "schema": "12-6.model10-gqa1m-plan.v1",
+  "authority": "LOCAL_FREE_RESEARCH_ONLY",
+  "model35_exact_green_sha": "75a885e221fdf16f647289df25a7150ef46e7528",
+  "mha_control_label": "P1M_MHA",
+  "gqa_candidate_label": "P1M_GQA4",
+  "expected_parameters": 1038336,
+  "max_parameter_relative_gap": 0.001,
+  "quality_relative_loss_guardrail": 0.01,
+  "gqa_geometry": {
+    "d_model": 128,
+    "n_layers": 5,
+    "n_heads": 8,
+    "n_kv_heads": 4,
+    "head_dim": 16,
+    "d_ff": 395
+  },
+  "parameter_reallocation": "K/V projection savings are reallocated into SwiGLU d_ff; tokenizer, context, depth, width, Q-head geometry, initialization, data trace and optimizer remain fixed.",
+  "cpu_execution_boundary": "MODEL-35 CPU/non-CUDA grouped attention explicitly expands K/V as a reference fallback. CPU step timing is not GPU GQA speed evidence.",
+  "canonical_s0_changed": false,
+  "promotion_allowed": false
+}
