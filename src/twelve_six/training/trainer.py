@@ -17,6 +17,14 @@ from torch.optim.lr_scheduler import LambdaLR, LRScheduler
 
 from .config import TrainerConfig
 from .loss import causal_lm_loss, causal_pair_loss
+from .numeric_forensics import (
+    ActivationHealthProvider,
+    AffectedParameters,
+    NumericFailureDiagnostics,
+    build_numeric_failure_diagnostics,
+    nonfinite_gradient_parameters,
+    nonfinite_update_parameters,
+)
 from .precision import (
     PrecisionRuntime,
     autocast_dtype,
@@ -28,7 +36,15 @@ Batch = Mapping[str, Tensor]
 
 
 class NonFiniteTrainingError(FloatingPointError):
-    """Raised before an unsafe optimizer update when training becomes non-finite."""
+    """Raised when a non-finite transition poisons the current Trainer state."""
+
+    def __init__(
+        self,
+        message: str,
+        diagnostics: NumericFailureDiagnostics | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.diagnostics = diagnostics
 
 
 class TrainingStateInvalidError(RuntimeError):
@@ -151,6 +167,7 @@ class Trainer:
         device: str | torch.device = "cpu",
         optimizer: Optimizer | None = None,
         scheduler: LRScheduler | None = None,
+        activation_health_provider: ActivationHealthProvider | None = None,
     ) -> None:
         self.model = model
         self.config = config
@@ -176,6 +193,8 @@ class Trainer:
         self._pending_loss_sum = 0.0
         self._update_incomplete = False
         self._failure_reason: str | None = None
+        self._failure_diagnostics: NumericFailureDiagnostics | None = None
+        self._activation_health_provider = activation_health_provider
         self.optimizer.zero_grad(set_to_none=True)
 
     @staticmethod
@@ -203,10 +222,56 @@ class Trainer:
             dtype=autocast_dtype(self.precision_runtime),
         )
 
-    def _mark_failed(self, reason: str) -> None:
+    @property
+    def failure_diagnostics(self) -> NumericFailureDiagnostics | None:
+        """Return the first bounded forensic record for the current poisoned state."""
+        return self._failure_diagnostics
+
+    def _mark_failed(
+        self,
+        reason: str,
+        diagnostics: NumericFailureDiagnostics | None = None,
+    ) -> None:
         if self._failure_reason is None:
             self._failure_reason = reason
+            self._failure_diagnostics = diagnostics
         self.optimizer.zero_grad(set_to_none=True)
+
+    def _diagnostics(
+        self,
+        *,
+        kind: str,
+        batch: Batch,
+        batch_tokens: int,
+        gradient_norm: float | None,
+        gradient_norm_finite: bool | None,
+        affected: AffectedParameters,
+        attempted_micro_step: int | None = None,
+    ) -> NumericFailureDiagnostics:
+        return build_numeric_failure_diagnostics(
+            kind=kind,  # type: ignore[arg-type]
+            micro_step=self.micro_step if attempted_micro_step is None else attempted_micro_step,
+            optimizer_step=self.optimizer_step,
+            tokens_seen=self.tokens_seen,
+            batch_tokens=batch_tokens,
+            pending_tokens=self._pending_tokens,
+            precision=str(self.config.precision),
+            device_type=self.precision_runtime.device_type,
+            learning_rate=float(self.optimizer.param_groups[0]["lr"]),
+            gradient_norm=gradient_norm,
+            gradient_norm_finite=gradient_norm_finite,
+            affected=affected,
+            batch=batch,
+            activation_health_provider=self._activation_health_provider,
+        )
+
+    def _raise_nonfinite(
+        self,
+        reason: str,
+        diagnostics: NumericFailureDiagnostics,
+    ) -> None:
+        self._mark_failed(reason, diagnostics)
+        raise NonFiniteTrainingError(reason, diagnostics)
 
     def _assert_trainable(self) -> None:
         if self._failure_reason is not None:
@@ -257,16 +322,10 @@ class Trainer:
         with self._autocast_context():
             logits = _extract_logits(self.model(input_ids))
             if aligned_targets:
-                loss = causal_pair_loss(logits, targets, loss_mask=loss_mask)
-            else:
-                loss = causal_lm_loss(logits, targets)
-        if not torch.isfinite(loss).item():
-            reason = f"non-finite loss at micro_step={self.micro_step + 1}"
-            self._mark_failed(reason)
-            raise NonFiniteTrainingError(reason)
-        return loss
+                return causal_pair_loss(logits, targets, loss_mask=loss_mask)
+            return causal_lm_loss(logits, targets)
 
-    def _normalize_gradients_and_norm(self, token_count: int) -> Tensor:
+    def _normalize_gradients_and_norm(self, token_count: int) -> Tensor | None:
         if token_count <= 0:
             raise RuntimeError("optimizer update requires at least one valid target token")
         squared_norm = torch.zeros((), device=self.device)
@@ -277,9 +336,7 @@ class Trainer:
             found = True
             grad = parameter.grad.detach()
             if not torch.isfinite(grad).all().item():
-                reason = f"non-finite gradient at micro_step={self.micro_step}"
-                self._mark_failed(reason)
-                raise NonFiniteTrainingError(reason)
+                return None
             grad.div_(token_count)
             squared_norm += torch.sum(grad.float() * grad.float())
         if not found:
@@ -307,6 +364,21 @@ class Trainer:
             loss_mask=loss_mask,
             aligned_targets=aligned_targets,
         )
+        if not torch.isfinite(loss).item():
+            attempted_micro_step = self.micro_step + 1
+            diagnostics = self._diagnostics(
+                kind="loss",
+                batch=batch,
+                batch_tokens=tokens,
+                gradient_norm=None,
+                gradient_norm_finite=None,
+                affected=nonfinite_update_parameters(self.model, self.optimizer),
+                attempted_micro_step=attempted_micro_step,
+            )
+            self._raise_nonfinite(
+                f"non-finite loss at micro_step={attempted_micro_step}", diagnostics
+            )
+
         try:
             self.scaler.scale(loss * tokens).backward()
         except RuntimeError:
@@ -328,6 +400,20 @@ class Trainer:
             try:
                 self.scaler.unscale_(self.optimizer)
                 raw_grad_norm = self._normalize_gradients_and_norm(self._pending_tokens)
+                if raw_grad_norm is None or not torch.isfinite(raw_grad_norm).item():
+                    affected = nonfinite_gradient_parameters(self.model)
+                    diagnostics = self._diagnostics(
+                        kind="gradient",
+                        batch=batch,
+                        batch_tokens=tokens,
+                        gradient_norm=None,
+                        gradient_norm_finite=False,
+                        affected=affected,
+                    )
+                    self._raise_nonfinite(
+                        f"non-finite gradient at micro_step={self.micro_step}", diagnostics
+                    )
+
                 grad_norm_value = float(raw_grad_norm.item())
                 update_loss = self._pending_loss_sum / self._pending_tokens
 
@@ -339,6 +425,20 @@ class Trainer:
                     )
 
                 self.scaler.step(self.optimizer)
+                affected_update = nonfinite_update_parameters(self.model, self.optimizer)
+                if affected_update.total_count:
+                    diagnostics = self._diagnostics(
+                        kind="update",
+                        batch=batch,
+                        batch_tokens=tokens,
+                        gradient_norm=grad_norm_value,
+                        gradient_norm_finite=True,
+                        affected=affected_update,
+                    )
+                    self._raise_nonfinite(
+                        f"non-finite update at micro_step={self.micro_step}", diagnostics
+                    )
+
                 self.optimizer_step += 1
                 self.scaler.update()
                 self.optimizer.zero_grad(set_to_none=True)
@@ -513,4 +613,5 @@ class Trainer:
         self._pending_loss_sum = 0.0
         self._update_incomplete = False
         self._failure_reason = None
+        self._failure_diagnostics = None
         self.optimizer.zero_grad(set_to_none=True)
