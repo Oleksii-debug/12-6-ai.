@@ -1,0 +1,175 @@
+{
+  "candidates": [
+    {
+      "allows_model_training": true,
+      "auto_ingest": true,
+      "benchmark_material": false,
+      "decision_reason": "Published dataset documentation identifies PluG as copyright-free historical Ukrainian material, CC BY 4.0, and explicitly suitable for language-model pretraining/fine-tuning. Bounded normalized PluG files only; PluG2 historical-extension bytes are not part of this admission.",
+      "disposition": "ACCEPTED",
+      "language": "uk",
+      "license_id": "CC-BY-4.0",
+      "provenance_evidence_urls": [
+        "https://uacorpus.org/poshuk-u-graku/korpus-dlya-zavantazhennya-plug",
+        "https://github.com/Dandelliony/pluperfect_grac/tree/27e503ecc2b553d52bfc121b8320144bb25294d8/PluG_texts"
+      ],
+      "provider": "PluG / GRAC team",
+      "repository_slug": "Dandelliony/pluperfect_grac",
+      "rights_evidence_urls": [
+        "https://doi.org/10.5334/johd.552",
+        "https://github.com/Dandelliony/pluperfect_grac/blob/27e503ecc2b553d52bfc121b8320144bb25294d8/README.md"
+      ],
+      "sample_objects": [
+        {
+          "path": "PluG_texts/A/Agatangel_Krymskij/Agatangel_Krymskij_Chudovyj_krai.txt",
+          "raw_sha256": "d702291145dbf05719f06e478991de45f8ad586825c01f9c7dd431d39695f26e",
+          "raw_size_bytes": 7444,
+          "upstream_git_blob_sha1": "f31f95a543ed498be9535ab780b5eca3f8a13c53"
+        },
+        {
+          "path": "PluG_texts/A/Agatangel_Krymskij/Agatangel_Krymskij_Carivna.txt",
+          "raw_sha256": "430a0408564fcc2ce7058b1ecce89b73450cc14cf011eaabf66ae7bf87af6f45",
+          "raw_size_bytes": 10293,
+          "upstream_git_blob_sha1": "7c89d8289940fc66383c7b490502cd657a91ba2d"
+        }
+      ],
+      "source_id": "plug-uk-2026-bounded-v1",
+      "source_url": "https://github.com/Dandelliony/pluperfect_grac",
+      "training_rights_established": true,
+      "upstream_version": "git:27e503ecc2b553d52bfc121b8320144bb25294d8"
+    },
+    {
+      "allows_model_training": null,
+      "auto_ingest": false,
+      "benchmark_material": false,
+      "decision_reason": "Dataset card applies CC0 to packaging/metadata/annotations but explicitly says the publisher does not own the extracted underlying web text. Underlying document training rights are therefore not established by the dataset-level CC0 declaration.",
+      "disposition": "BLOCKED_BY_RIGHTS",
+      "language": "uk",
+      "license_id": "NOASSERTION",
+      "provenance_evidence_urls": [
+        "https://huggingface.co/datasets/Goader/kobza"
+      ],
+      "provider": "Goader/Kobza",
+      "repository_slug": null,
+      "rights_evidence_urls": [
+        "https://huggingface.co/datasets/Goader/kobza"
+      ],
+      "sample_objects": [],
+      "source_id": "kobza-uk-web",
+      "source_url": "https://huggingface.co/datasets/Goader/kobza",
+      "training_rights_established": false,
+      "upstream_version": "hf-main-reviewed-2026-08-25"
+    },
+    {
+      "allows_model_training": null,
+      "auto_ingest": false,
+      "benchmark_material": false,
+      "decision_reason": "Provider states that some periodical licenses prohibit unchanged publication and distributes shuffled sentences on a Fair Use condition for statistical/scientific analysis. Project policy has no approval mapping this statement to Base-model pretraining rights.",
+      "disposition": "BLOCKED_BY_RIGHTS",
+      "language": "uk",
+      "license_id": "NOASSERTION",
+      "provenance_evidence_urls": [
+        "https://www.lang.org.ua/en/produkty/korpusi/ubertext-corpus/"
+      ],
+      "provider": "lang-uk",
+      "repository_slug": null,
+      "rights_evidence_urls": [
+        "https://www.lang.org.ua/en/produkty/korpusi/ubertext-corpus/"
+      ],
+      "sample_objects": [],
+      "source_id": "ubertext-uk",
+      "source_url": "https://www.lang.org.ua/en/produkty/korpusi/ubertext-corpus/",
+      "training_rights_established": false,
+      "upstream_version": "website-reviewed-2026-08-25"
+    },
+    {
+      "allows_model_training": null,
+      "auto_ingest": false,
+      "benchmark_material": false,
+      "decision_reason": "The corpus is CC BY-NC-SA 4.0. Compatibility of NonCommercial/ShareAlike obligations with the project model-training and downstream distribution policy has not been approved; fail closed rather than infer permission.",
+      "disposition": "BLOCKED_BY_RIGHTS",
+      "language": "uk",
+      "license_id": "CC-BY-NC-SA-4.0",
+      "provenance_evidence_urls": [
+        "https://github.com/brown-uk/corpus"
+      ],
+      "provider": "brown-uk",
+      "repository_slug": null,
+      "rights_evidence_urls": [
+        "https://github.com/brown-uk/corpus"
+      ],
+      "sample_objects": [],
+      "source_id": "brown-uk-corpus",
+      "source_url": "https://github.com/brown-uk/corpus",
+      "training_rights_established": false,
+      "upstream_version": "main-reviewed-2026-08-25"
+    },
+    {
+      "allows_model_training": true,
+      "auto_ingest": false,
+      "benchmark_material": true,
+      "decision_reason": "Rights are permissive, but UA-GEC is an explicitly partitioned GEC development/evaluation corpus with a held-out test set and shared-task use. Keep it reserved from Base pretraining to avoid evaluation contamination.",
+      "disposition": "REJECTED",
+      "language": "uk",
+      "license_id": "CC-BY-4.0",
+      "provenance_evidence_urls": [
+        "https://github.com/grammarly/ua-gec"
+      ],
+      "provider": "Grammarly",
+      "repository_slug": null,
+      "rights_evidence_urls": [
+        "https://github.com/grammarly/ua-gec"
+      ],
+      "sample_objects": [],
+      "source_id": "ua-gec",
+      "source_url": "https://github.com/grammarly/ua-gec",
+      "training_rights_established": true,
+      "upstream_version": "main-reviewed-2026-08-25"
+    },
+    {
+      "allows_model_training": null,
+      "auto_ingest": false,
+      "benchmark_material": true,
+      "decision_reason": "Gold-standard UD treebank with explicit train/dev/test artifacts is reserved evaluation material for 12-6 Base. Its NC/SA model-training compatibility is also unresolved, but benchmark reservation alone is sufficient for rejection.",
+      "disposition": "REJECTED",
+      "language": "uk",
+      "license_id": "CC-BY-NC-SA-4.0",
+      "provenance_evidence_urls": [
+        "https://github.com/UniversalDependencies/UD_Ukrainian-IU"
+      ],
+      "provider": "Universal Dependencies / Institute for Ukrainian",
+      "repository_slug": null,
+      "rights_evidence_urls": [
+        "https://github.com/UniversalDependencies/UD_Ukrainian-IU"
+      ],
+      "sample_objects": [],
+      "source_id": "ud-ukrainian-iu",
+      "source_url": "https://github.com/UniversalDependencies/UD_Ukrainian-IU",
+      "training_rights_established": false,
+      "upstream_version": "main-reviewed-2026-08-25"
+    },
+    {
+      "allows_model_training": true,
+      "auto_ingest": false,
+      "benchmark_material": true,
+      "decision_reason": "CC0 rights are clear, but this is a scripted-speech ASR corpus rather than a Base-text source and is routinely evaluation-bearing. Preserve it for speech/evaluation workflows rather than pretraining.",
+      "disposition": "REJECTED",
+      "language": "uk",
+      "license_id": "CC0-1.0",
+      "provenance_evidence_urls": [
+        "https://commonvoice.mozilla.org/en/datasets"
+      ],
+      "provider": "Mozilla Data Collective",
+      "repository_slug": null,
+      "rights_evidence_urls": [
+        "https://commonvoice.mozilla.org/en/datasets"
+      ],
+      "sample_objects": [],
+      "source_id": "common-voice-uk-25",
+      "source_url": "https://commonvoice.mozilla.org/en/datasets",
+      "training_rights_established": true,
+      "upstream_version": "Common Voice Scripted Speech 25.0 Ukrainian"
+    }
+  ],
+  "registry_identity_sha256": "9e7782ec7dc6b839eba465227e6226b04bd86b785b3a8aff222e9cc4246c8655",
+  "schema_version": "12-6.ukrainian-source-candidates.v1"
+}
