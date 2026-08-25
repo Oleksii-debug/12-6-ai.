@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Validate D02 S1 numerical preflight evidence without promotion authority."""
 
 from __future__ import annotations
