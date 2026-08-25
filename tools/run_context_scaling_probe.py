@@ -46,6 +46,14 @@ def _grad_norm(model: torch.nn.Module) -> float:
     return math.sqrt(float(squared))
 
 
+def _validate_source_sha(value: str) -> str:
+    if value == "UNBOUND_LOCAL":
+        return value
+    if len(value) != 40 or any(character not in "0123456789abcdef" for character in value):
+        raise ValueError("source_sha must be a full lowercase Git SHA or UNBOUND_LOCAL")
+    return value
+
+
 def run_probe(
     *,
     stage_config: Path,
@@ -189,9 +197,15 @@ def main() -> int:
     parser.add_argument("--mode", choices=("quick", "full"), default="quick")
     parser.add_argument("--seed", type=int, default=126)
     parser.add_argument("--device", default="cpu")
+    parser.add_argument("--threads", type=int, default=1)
+    parser.add_argument("--source-sha", default="UNBOUND_LOCAL")
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
 
+    if args.threads <= 0:
+        raise ValueError("threads must be a positive integer")
+    source_sha = _validate_source_sha(args.source_sha)
+    torch.set_num_threads(args.threads)
     device = torch.device(args.device)
     records: list[dict[str, Any]] = []
     for stage_path, contexts in _default_matrix(args.mode):
@@ -210,9 +224,11 @@ def main() -> int:
         "claim_boundary": (
             "mechanical context-scaling evidence only; not trained/evaluated long-context capability"
         ),
+        "source_sha": source_sha,
         "mode": args.mode,
         "seed": args.seed,
         "device": str(device),
+        "torch_threads": torch.get_num_threads(),
         "torch_version": torch.__version__,
         "python_platform": platform.platform(),
         "records": records,
