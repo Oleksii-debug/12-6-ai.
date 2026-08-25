@@ -1,0 +1,127 @@
+{
+  "schema": "12-6.tok113-code-diagnostics-summary.v1",
+  "status": "DIAGNOSTICS_COMPLETE_TRAINING_PROBES_BLOCKED_RIGHTS_GATE",
+  "diagnostic_set_sha256": "d23861ed8a90dce2cfc7823a755f04812db2612d2f60a8268b77c5cce7ec58d9",
+  "artifact_evaluator_parity": {
+    "bpe-r257-a257": true,
+    "bpe-r320-a320": true,
+    "bpe-r384-a384": true,
+    "bpe-r512-a437": true
+  },
+  "real_code": {
+    "bytes": 4998,
+    "project_families": ["pallets/itsdangerous", "pytest-dev/pluggy"],
+    "programming_languages": ["python"],
+    "training_eligible": false,
+    "rights_state": "REVIEW_REQUIRED_NOT_MODEL_TRAINING_APPROVED",
+    "multi_programming_language_requirement": "NOT_SATISFIED"
+  },
+  "tokenizers": {
+    "byte256": {
+      "actual_vocab_size": 256,
+      "tokens": 4998,
+      "tokens_per_source_byte": 1.0,
+      "tokens_per_non_whitespace_character": 1.3253778838504375,
+      "identifier_mean_tokens": 6.934362934362935,
+      "identifier_split_fraction_gt1": 0.9498069498069498,
+      "operator_mean_tokens": 1.9473684210526316,
+      "unicode_identifier_mean_tokens": 11.875,
+      "layout": {"four_spaces_tokens": 4, "newline_four_spaces_tokens": 5},
+      "long_line_tokens_per_byte": {"80": 1.0, "256": 1.0, "1024": 1.0, "4096": 1.0}
+    },
+    "bpe-r320-a320": {
+      "actual_vocab_size": 320,
+      "tokens": 4045,
+      "tokens_per_source_byte": 0.8093237294917968,
+      "tokens_per_non_whitespace_character": 1.0726597719437816,
+      "token_reduction_vs_byte": 0.1906762705082032,
+      "identifier_mean_tokens": 5.72972972972973,
+      "identifier_split_fraction_gt1": 0.9498069498069498,
+      "operator_mean_tokens": 1.9473684210526316,
+      "unicode_identifier_mean_tokens": 8.875,
+      "layout": {"four_spaces_tokens": 2, "newline_four_spaces_tokens": 2},
+      "long_line_tokens_per_byte": {"80": 0.75, "256": 0.734375, "1024": 0.7412109375, "4096": 0.74169921875},
+      "learned_entries": 63,
+      "learned_entries_activated_by_real_code": 32,
+      "learned_entry_activation_fraction": 0.5079365079365079,
+      "tok37_fixture_bpb": {"code": 6.240265588934118, "en": 6.557136544676672, "uk": 5.01773110251187, "unicode": 7.797962362277711, "aggregate": 6.0155317427299035}
+    },
+    "bpe-r384-a384": {
+      "actual_vocab_size": 384,
+      "tokens": 3569,
+      "tokens_per_source_byte": 0.7140856342537015,
+      "tokens_per_non_whitespace_character": 0.9464333068151684,
+      "token_reduction_vs_byte": 0.2859143657462985,
+      "identifier_mean_tokens": 5.281853281853282,
+      "identifier_split_fraction_gt1": 0.8687258687258688,
+      "operator_mean_tokens": 1.9473684210526316,
+      "unicode_identifier_mean_tokens": 8.25,
+      "layout": {"four_spaces_tokens": 2, "newline_four_spaces_tokens": 2},
+      "long_line_tokens_per_byte": {"80": 0.75, "256": 0.734375, "1024": 0.7412109375, "4096": 0.74169921875},
+      "learned_entries": 127,
+      "learned_entries_activated_by_real_code": 62,
+      "learned_entry_activation_fraction": 0.4881889763779528,
+      "tok37_fixture_bpb": {"code": 5.390678020104411, "en": 6.245196951102527, "uk": 4.580245060610715, "unicode": 8.038563217200613, "aggregate": 5.713437891409569}
+    },
+    "bpe-r512-a437": {
+      "requested_vocab_size": 512,
+      "actual_vocab_size": 437,
+      "tokens": 3415,
+      "tokens_per_source_byte": 0.6832733093237295,
+      "tokens_per_non_whitespace_character": 0.90559533280297,
+      "token_reduction_vs_byte": 0.3167266906762705,
+      "identifier_mean_tokens": 5.154440154440154,
+      "identifier_split_fraction_gt1": 0.8687258687258688,
+      "operator_mean_tokens": 1.9473684210526316,
+      "unicode_identifier_mean_tokens": 8.0,
+      "layout": {"four_spaces_tokens": 2, "newline_four_spaces_tokens": 2},
+      "long_line_tokens_per_byte": {"80": 0.75, "256": 0.734375, "1024": 0.7412109375, "4096": 0.74169921875},
+      "learned_entries": 180,
+      "learned_entries_activated_by_real_code": 73,
+      "learned_entry_activation_fraction": 0.40555555555555556,
+      "tok37_fixture_bpb": {"code": 5.359335901811172, "en": 5.714240096796213, "uk": 4.431111569523365, "unicode": 8.024010994454676, "aggregate": 5.5684350593356555}
+    }
+  },
+  "vocab_saturation": {
+    "requested": [512, 768, 1024],
+    "actual_vocab_size": 437,
+    "identical_vocab_and_merge_semantics": true,
+    "tokenizer_json_sha256": "51fca82e40c48dfe3c9374e949f26b99968b0e8fa92964e2522df58e65435179"
+  },
+  "rejected": {
+    "unigram_actual_497": {
+      "reason": "REPEAT_ARTIFACT_IDENTITY_DRIFT",
+      "drift_fields": ["config_sha256", "tokenizer_json_sha256", "vocab_sha256"]
+    }
+  },
+  "parameter_matched_probe_specs": {
+    "250K": [
+      {"vocab": 256, "d_model": 64, "layers": 4, "d_ff": 216, "parameters": 248384},
+      {"vocab": 320, "d_model": 64, "layers": 4, "d_ff": 216, "parameters": 252480},
+      {"vocab": 384, "d_model": 64, "layers": 4, "d_ff": 208, "parameters": 250432},
+      {"vocab": 437, "d_model": 64, "layers": 4, "d_ff": 200, "parameters": 247680},
+      {"vocab": 472, "d_model": 64, "layers": 4, "d_ff": 200, "parameters": 249920}
+    ],
+    "500K": [
+      {"vocab": 256, "d_model": 96, "layers": 4, "d_ff": 280, "parameters": 495456},
+      {"vocab": 320, "d_model": 96, "layers": 4, "d_ff": 280, "parameters": 501600},
+      {"vocab": 384, "d_model": 96, "layers": 4, "d_ff": 272, "parameters": 498528},
+      {"vocab": 437, "d_model": 96, "layers": 4, "d_ff": 272, "parameters": 503616},
+      {"vocab": 472, "d_model": 96, "layers": 4, "d_ff": 264, "parameters": 497760}
+    ]
+  },
+  "training_probe_execution": {
+    "250K": "NOT_RUN_RIGHTS_GATE_NO_TRAINING_ELIGIBLE_REAL_CODE_SOURCE",
+    "500K": "NOT_RUN_RIGHTS_GATE_NO_TRAINING_ELIGIBLE_REAL_CODE_SOURCE",
+    "code_bpb": "NOT_RUN",
+    "training_throughput_per_source_byte": "NOT_RUN",
+    "heldout_project_family_generalization": "NOT_RUN"
+  },
+  "recommendation": {
+    "promotion": "NO_PROMOTION",
+    "next_authorized_candidate": "bpe-r512-a437",
+    "lower_vocab_challenger": "bpe-r384-a384",
+    "canonical_control": "byte256",
+    "reason": "437 has best current real-code compression and no synthetic UK/EN BPB regression, but marginal gains beyond 384 are small and representative rights-approved model evidence is absent"
+  }
+}
