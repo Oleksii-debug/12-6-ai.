@@ -65,6 +65,19 @@ def test_checked_in_rebalanced_candidate_hashes_match_modelspec() -> None:
         assert spec.identity_sha256() == item["model_identity_sha256"]
 
 
+def test_parameter_cost_matrix_uses_exact_tied_and_untied_formula() -> None:
+    payload = json.loads(
+        (ROOT / "configs/vocabulary/parameter_cost_matrix.v1.json").read_text()
+    )
+    for stage in payload["stages"]:
+        for choice in stage["choices"]:
+            tied = choice["vocab_size"] * stage["d_model"]
+            assert choice["tied_parameters"] == tied
+            assert choice["untied_parameters"] == 2 * tied
+            assert choice["tied_share_of_target"] == tied / stage["target_parameters"]
+            assert choice["untied_share_of_target"] == 2 * tied / stage["target_parameters"]
+
+
 def _point(*, algorithm: str, vocab: int, tokens: int, repeatable: bool) -> TokenizerTradeoffPoint:
     return TokenizerTradeoffPoint(
         algorithm=algorithm,
