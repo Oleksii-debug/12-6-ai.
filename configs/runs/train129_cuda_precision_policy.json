@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "run_kind": "train129_cuda_precision_qualification",
+  "repository": "Oleksii-debug/12-6-ai.",
+  "base_learned_head": "b9bc147e0a08181b91798c2515cac7a79c66791c",
+  "incumbents": {
+    "single_gpu": {
+      "branch": "train15/single-gpu-pilot-20260825",
+      "head": "d6b71a7a18a6ac8cf9ec47fa181264b9df55b7eb"
+    },
+    "precision": {
+      "branch": "train60/precision-learned-20260825",
+      "head": "30c2f56a86177ce9fa3f25167389c86fa396d9a8",
+      "precision_blob": "63b35f695ab4b7d4bf35a777c884d0233f9cc24e",
+      "trainer_blob": "0ec579154521a9f11b2167f9f2611a2a05064c52"
+    },
+    "substantial_learned_base": {
+      "branch": "milestone100/first-learned-base-20260826",
+      "head": "b9bc147e0a08181b91798c2515cac7a79c66791c",
+      "parameters": 95568,
+      "precision": "fp32",
+      "max_steps": 1000,
+      "checkpoint_steps": [0, 250, 500, 750, 1000],
+      "status": "LEARNED_BASE_EVIDENCE_BELOW_REQUESTED_CUDA_SCALE"
+    }
+  },
+  "requested_device_experiment": {
+    "scale": "learned_~1M_or_~10M",
+    "precisions": [
+      "fp32_reference",
+      "native_bf16_if_positive_device_probe",
+      "fp16_plus_gradscaler_if_positive_device_probe"
+    ],
+    "cross_precision_bit_identity_required": false
+  },
+  "acceptance": {
+    "all_states_finite": true,
+    "final_train_bpb_abs_delta_vs_fp32_max": 0.08,
+    "final_validation_bpb_abs_delta_vs_fp32_max": 0.08,
+    "max_validation_curve_bpb_abs_delta_vs_fp32_max": 0.12,
+    "gradient_norm_median_relative_delta_max": 0.10,
+    "gradient_norm_p95_relative_delta_max": 0.25,
+    "update_norm_median_relative_delta_max": 0.10,
+    "update_norm_p95_relative_delta_max": 0.25,
+    "same_precision_reload_logits_max_abs": 0.000001,
+    "checkpoint_reload_required": true,
+    "post_reload_inference_required": true,
+    "synchronized_throughput_required": true,
+    "peak_allocated_and_reserved_vram_required": true,
+    "fp16_gradscaler_required": true,
+    "bf16_gradscaler_forbidden": true,
+    "promotion_by_speed_alone_forbidden": true
+  },
+  "authorization": {
+    "provision_compute": false,
+    "paid_compute_launch": false,
+    "preprovisioned_free_or_already_authorized_only": true,
+    "operator_attestation_required": "AUTHORIZED_PREPROVISIONED_FREE"
+  },
+  "current_fail_closed_state": {
+    "cuda_device_visible_in_local_free_probe": false,
+    "cuda_pass": false,
+    "train60_integrated_on_base_learned_head": false,
+    "qualified_learned_1m_or_10m_checkpoint_present": false,
+    "status": "NOT_RUN_NO_CUDA_PASS"
+  }
+}
