@@ -47,6 +47,7 @@ def test_successor_manifest_is_fail_closed_and_ancestry_complete() -> None:
         84: "c23b14c7fc23f089309926e2870d6c32d0cd7f02",
         85: "e9ecbccafaf2e9191e946b819319caf191f31353",
         86: "11755855fd136709599ff13e514c9cc8256df011",
+        89: "c631c024e641dac102036fafee6d78ba31c067cd",
     }
     assert set(payload["required_git_ancestry"]) == set(accepted.values())
 
@@ -57,12 +58,24 @@ def test_successor_manifest_is_fail_closed_and_ancestry_complete() -> None:
             check=True,
         )
 
+    repeatability = payload["repeatability_evidence"]
+    assert repeatability["source_sha"] == accepted[89]
+    assert repeatability["same_seed_exact_equivalence"] is True
+    assert repeatability["different_seed_initialization_diverges"] is True
+    assert repeatability["different_seed_training_diverges"] is True
+    assert repeatability["validation_optimized_tokens"] == 0
+    assert repeatability["cross_hardware_bitwise_reproducibility_claimed"] is False
+    assert repeatability["distributed_reproducibility_claimed"] is False
+    assert repeatability["gpu_reproducibility_claimed"] is False
+    assert repeatability["promotion_claimed"] is False
+
     required_surfaces = [
         "src/twelve_six/model.py",
         "src/twelve_six/tokenization/byte.py",
         "data/s0/packaged/manifest.json",
         "src/twelve_six/training/trainer.py",
         "src/twelve_six/training/s0_evidence_contract.py",
+        "src/twelve_six/training/s0_repeatability.py",
         "src/twelve_six/checkpoint/core.py",
         "src/twelve_six/s0_candidate_evaluation.py",
         "src/twelve_six/inference/first_party.py",

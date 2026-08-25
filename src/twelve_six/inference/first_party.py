@@ -8,8 +8,8 @@ from typing import Any
 
 from twelve_six.checkpoint import (
     CheckpointCompatibilityError,
-    load_checkpoint,
-    verify_checkpoint,
+    load_verified_checkpoint,
+    prepare_checkpoint_load,
 )
 from twelve_six.integration.s0_runtime import S0TorchInferenceBackend
 from twelve_six.model import ModelSpec, TwelveSixDecoder
@@ -124,20 +124,24 @@ def _require_byte_tokenizer(manifest: Mapping[str, Any], spec: ModelSpec) -> Byt
 
 
 def load_first_party_backend(checkpoint: Path) -> FirstPartyInferenceBackend:
-    """Verify a canonical checkpoint, reconstruct D01, bind D04, and expose D07.
+    """Verify one checkpoint snapshot, bind D01/D04 identities, and expose D07.
 
-    Verification runs before any checkpoint weights are applied. RNG state is
+    The checkpoint directory is read exactly once into D05's immutable
+    ``VerifiedCheckpoint`` snapshot. ModelSpec/tokenizer validation, applied
+    weights, and backend diagnostics are therefore derived from the same bytes
+    even if the source path changes after verification. RNG state is
     intentionally not restored for inference.
     """
 
     checkpoint = Path(checkpoint)
-    manifest = verify_checkpoint(checkpoint)
+    verified = prepare_checkpoint_load(checkpoint)
+    manifest = verified.manifest
     spec = _checkpoint_spec(manifest)
     tokenizer = _require_byte_tokenizer(manifest, spec)
 
     model = TwelveSixDecoder(spec)
-    load_checkpoint(
-        checkpoint,
+    loaded = load_verified_checkpoint(
+        verified,
         model=model,
         restore_rng=False,
         expected_model_spec_hash=spec.identity_sha256(),
@@ -148,6 +152,6 @@ def load_first_party_backend(checkpoint: Path) -> FirstPartyInferenceBackend:
     return FirstPartyInferenceBackend(
         model,
         tokenizer,
-        manifest=manifest,
+        manifest=loaded.manifest,
         checkpoint_path=checkpoint,
     )
