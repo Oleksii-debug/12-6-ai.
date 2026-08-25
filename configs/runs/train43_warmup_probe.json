@@ -1,0 +1,59 @@
+{
+  "schema_version": "12-6.train43-warmup-probe-config.v1",
+  "worker_id": "TRAIN-43-WARMUP",
+  "purpose": "controlled warmup stability experiment, not capability or corpus-quality evidence",
+  "authorization": {
+    "compute_class": "LOCAL_FREE",
+    "paid_compute_authorized": false
+  },
+  "incumbent_optimizer": {
+    "name": "AdamW",
+    "learning_rate": 0.01,
+    "learning_rate_source": "configs/runs/s1_100k.d02_numerical_preflight.json",
+    "betas": [0.9, 0.95],
+    "eps": 1e-8,
+    "weight_decay": 0.0,
+    "gradient_clip_norm": 1.0
+  },
+  "models": [
+    {
+      "name": "S1_100K",
+      "stage_config": "configs/stages/s1_100k.json",
+      "expected_parameters": 107856
+    },
+    {
+      "name": "S2_1M",
+      "stage_config": "configs/stages/s2_1m.json",
+      "expected_parameters": 1066112
+    }
+  ],
+  "treatments": {
+    "warmup_steps": [0, 5, 10, 20],
+    "experiment_steps": 200,
+    "schedule_horizon_steps": 2000,
+    "scheduler": "linear_warmup_then_cosine_fixed_horizon"
+  },
+  "controlled_trace": {
+    "seed": 1337,
+    "batch_trace_seed": 2337,
+    "validation_trace_seed": 3337,
+    "batch_size": 4,
+    "sequence_length": 32,
+    "optimized_tokens_per_step": 124,
+    "same_initialization_per_scale": true,
+    "same_batch_trace_per_scale": true,
+    "validation_never_optimized": true
+  },
+  "required_metrics": [
+    "early_loss_spike_vs_frozen_same_batch",
+    "early_grad_norm_max",
+    "early_clip_frequency",
+    "clip_frequency",
+    "early_update_ratio_max",
+    "median_update_ratio",
+    "initial_validation_loss",
+    "final_validation_loss",
+    "tokens_to_validation_below_initial",
+    "finite_state_failure"
+  ]
+}
