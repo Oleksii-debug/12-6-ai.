@@ -48,7 +48,7 @@ def test_curricula_are_permutations_of_one_incumbent_trace() -> None:
         assert Counter(entry.source for entry in ordered) == baseline_counts
 
 
-def test_quality_first_improves_training_only_prefix_proxy() -> None:
+def test_quality_first_improves_proxy_without_modality_order_confound() -> None:
     _config, _capacity, trace, prefix_steps = _fixture()
     baseline = order_trace(trace, candidate="fully_mixed", prefix_steps=prefix_steps)
     quality = order_trace(
@@ -56,8 +56,13 @@ def test_quality_first_improves_training_only_prefix_proxy() -> None:
         candidate="quality_first_then_mixed",
         prefix_steps=prefix_steps,
     )
-    baseline_mean = sum(entry.quality_score for entry in baseline[:prefix_steps]) / prefix_steps
-    quality_mean = sum(entry.quality_score for entry in quality[:prefix_steps]) / prefix_steps
+    baseline_prefix = baseline[:prefix_steps]
+    quality_prefix = quality[:prefix_steps]
+    assert tuple(entry.source for entry in quality_prefix) == tuple(
+        entry.source for entry in baseline_prefix
+    )
+    baseline_mean = sum(entry.quality_score for entry in baseline_prefix) / prefix_steps
+    quality_mean = sum(entry.quality_score for entry in quality_prefix) / prefix_steps
     assert quality_mean >= baseline_mean
 
 
