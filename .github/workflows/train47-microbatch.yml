@@ -1,0 +1,88 @@
+name: TRAIN47 Microbatch Geometry Evidence
+
+on:
+  pull_request:
+    paths:
+      - "src/twelve_six/microbatch_experiment.py"
+      - "tests/test_microbatch_experiment.py"
+      - ".github/workflows/train47-microbatch.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  microbatch-cpu:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Prove exact source checkout
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Verify exact locked environment inputs
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: >-
+          python tools/verify_locked_environment.py
+          --profile linux-x86_64
+          --source-sha "$SOURCE_SHA"
+          --evidence-out train47-locked-environment.json
+      - name: Create locked LOCAL_FREE execution environment
+        run: |
+          python -m venv .train47-locked
+          .train47-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .train47-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          .train47-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/dev.lock.txt
+          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .train47-locked/bin/python -m pip install --no-deps --no-build-isolation -e .
+      - name: Focused TRAIN-47 regression
+        run: |
+          .train47-locked/bin/ruff check src/twelve_six/microbatch_experiment.py tests/test_microbatch_experiment.py
+          .train47-locked/bin/pytest -q tests/test_microbatch_experiment.py
+      - name: Execute fixed-effective-batch matrix
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          .train47-locked/bin/python -m twelve_six.microbatch_experiment run \
+            --repo-root . \
+            --source-sha "$SOURCE_SHA" \
+            --output train47-microbatch-results.json
+          .train47-locked/bin/python -m twelve_six.microbatch_experiment validate \
+            train47-microbatch-results.json \
+            --expected-source-sha "$SOURCE_SHA"
+          .train47-locked/bin/python - <<'PY'
+          import json
+          with open("train47-microbatch-results.json", encoding="utf-8") as handle:
+              report = json.load(handle)
+          print("TRAIN-47 DECISION")
+          print(json.dumps(report["decision"], indent=2, sort_keys=True))
+          for run in report["runs"]:
+              print(json.dumps({
+                  "microbatch_size": run["microbatch_size"],
+                  "gradient_accumulation_steps": run["gradient_accumulation_steps"],
+                  "final_validation_loss": run["final_validation_loss"],
+                  "mean_gradient_norm": run["mean_gradient_norm"],
+                  "mean_update_to_weight_ratio": run["mean_update_to_weight_ratio"],
+                  "mean_step_wall_seconds": run["mean_step_wall_seconds"],
+                  "tokens_per_second": run["tokens_per_second"],
+                  "rss_max_sampled_bytes": run["rss_max_sampled_bytes"],
+                  "equivalence": run["equivalence_vs_microbatch_8"],
+              }, sort_keys=True))
+          print("REPORT SHA256", report["report_sha256"])
+          PY
+      - name: Upload TRAIN-47 evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: train47-microbatch-evidence
+          path: |
+            train47-locked-environment.json
+            train47-microbatch-results.json
+          if-no-files-found: error
+          retention-days: 30
