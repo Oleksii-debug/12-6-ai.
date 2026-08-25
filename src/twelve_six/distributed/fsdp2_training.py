@@ -76,13 +76,26 @@ class FSDP2Trainer(Trainer):
     def _normalize_gradients_and_norm(self, token_count: int):
         if token_count <= 0:
             raise RuntimeError("optimizer update requires at least one valid target token")
+        import torch
+        import torch.distributed as dist
+
+        global_tokens = token_count
+        dp_world_size = 1
+        if dist.is_available() and dist.is_initialized():
+            token_tensor = torch.tensor(token_count, dtype=torch.int64, device=self.device)
+            dist.all_reduce(token_tensor, op=dist.ReduceOp.SUM)
+            global_tokens = int(token_tensor.item())
+            dp_world_size = dist.get_world_size()
+        if global_tokens <= 0:
+            raise RuntimeError("distributed optimizer update requires positive global tokens")
+
         found = False
+        gradient_scale = dp_world_size / global_tokens
         for parameter in self.model.parameters():
             if parameter.grad is None:
                 continue
             found = True
-            parameter.grad.div_(token_count)
-        import torch
+            parameter.grad.mul_(gradient_scale)
 
         if not found:
             return torch.zeros((), device=self.device)
@@ -484,7 +497,9 @@ def run_local_cpu_fsdp2(
     flattened = tuple(index for indices in sampler_indices for index in indices)
     expected = tuple(range(world_size * samples_per_rank))
     if tuple(sorted(flattened)) != expected or len(set(flattened)) != len(flattened):
-        raise RuntimeError("DistributedSampler did not partition the synthetic dataset exactly once")
+        raise RuntimeError(
+            "DistributedSampler did not partition the synthetic dataset exactly once"
+        )
 
     return FSDP2ExecutionResult(
         world_size=world_size,
