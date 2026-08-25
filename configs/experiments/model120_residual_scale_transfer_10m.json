@@ -1,0 +1,65 @@
+{
+  "schema_version": "12-6.model120-residual-scale-transfer.v1",
+  "question": "Does the incumbent InitSpec v1 residual scaling transfer cleanly to the current deeper ~10M byte-GQA geometry?",
+  "source_base_head": "b9bc147e0a08181b91798c2515cac7a79c66791c",
+  "model_identity_sha256": "61caa5469123e23b9b72fc2024140bfca84c4c480dcb0a7e712ba800a4f22998",
+  "init_identity_sha256": "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5",
+  "geometry": {
+    "parameters": 10000640,
+    "vocab_size": 256,
+    "max_seq_len": 1024,
+    "d_model": 256,
+    "n_layers": 12,
+    "n_heads": 8,
+    "n_kv_heads": 2,
+    "head_dim": 32,
+    "d_ff": 864
+  },
+  "candidates": [
+    {
+      "name": "incumbent",
+      "base_std": 0.02,
+      "residual_output_std": "0.02/sqrt(2*n_layers)"
+    },
+    {
+      "name": "width_reference",
+      "base_std": "0.02*sqrt(48/d_model)",
+      "residual_output_std": "base_std/sqrt(2*n_layers)",
+      "status": "previously-justified alternative only"
+    },
+    {
+      "name": "unscaled_residual_bad_control",
+      "base_std": 0.02,
+      "residual_output_std": 0.02,
+      "status": "diagnostic initialization-only control"
+    }
+  ],
+  "initialization_seeds": [1337, 1338, 1339],
+  "trajectory": {
+    "seeds": [1337, 1338, 1339],
+    "steps": 32,
+    "batch_size": 2,
+    "sequence_length": 128,
+    "optimizer": "AdamW",
+    "learning_rate": 0.0003,
+    "betas": [0.9, 0.95],
+    "eps": 1e-8,
+    "weight_decay": 0.0,
+    "gradient_clip_norm": 1.0,
+    "precision": "fp32",
+    "deterministic_algorithms": true
+  },
+  "metrics": [
+    "depthwise_residual_rms",
+    "attention_output_rms",
+    "mlp_output_rms",
+    "per_layer_gradient_norm",
+    "clip_fraction",
+    "early_loss_spike",
+    "update_ratio",
+    "heldout_bpb",
+    "evaluation_non_mutation",
+    "fresh_process_resume"
+  ],
+  "compute_policy": "LOCAL_FREE_CPU_ONLY_NO_PAID_COMPUTE"
+}
