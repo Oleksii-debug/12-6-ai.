@@ -7,8 +7,8 @@ import platform
 import statistics
 import subprocess
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 import torch
 
