@@ -2,7 +2,7 @@
 
 Worker: `MODEL-36-CONTEXT`
 
-Base architecture audited: `bd11d6a51234027dc82ef55cc09a7128ecf3a074` (`d07/kv-cache-incremental-generation-20260825`).
+Initial architecture audit: `bd11d6a51234027dc82ef55cc09a7128ecf3a074`. Final stacked base: current incumbent #138 head `8f20b5c81c83796492353de3b68e2679b54fc980` (`d07/kv-cache-incremental-generation-20260825`). Relevant RoPE/model/packing and distributed-memory inputs were rechecked after #138 advanced; the newer upstream delta adds serving lifecycle, cache accounting and benchmark evidence rather than changing the context semantics audited here.
 
 ## Claim boundary
 
@@ -48,7 +48,7 @@ The incumbent #138 implementation stores **unexpanded** K/V tensors per layer wi
 
 `[batch, n_kv_heads, sequence, head_dim]`.
 
-Exact cache bytes are therefore:
+Exact logical cache payload bytes are therefore:
 
 `2 * batch * layers * n_kv_heads * sequence * head_dim * element_bytes`.
 
@@ -60,6 +60,8 @@ The high-level generation path already:
 - stops with `context_limit` at the model boundary;
 - binds the cache to `ModelSpec` identity;
 - rejects decode when the cache is already at `max_seq_len`.
+
+The current first-party Python cache still grows contiguous K/V tensors with `torch.cat` on each decode append. Therefore the logical cache payload is linear in sequence length, but allocator traffic and prefix-copy work are a separate scaling cost; over a long decode, repeated growth can accumulate much more work than the final payload size suggests. For 2K/4K serving qualification, cache-growth allocation/copy behavior must be profiled on the target accelerator or replaced by a bounded static/preallocated/runtime-managed cache before any high-concurrency memory claim.
 
 MODEL-36 does not introduce a parallel decoder or cache implementation. The repository-native probe now prefills `S-1` tokens and decodes the final token at absolute RoPE position `S-1`, so the boundary path is exercised on the incumbent cache implementation.
 
@@ -116,7 +118,7 @@ For batch 1 and bf16/fp16-like 2-byte elements, representative model-native KV c
 | S3 | 2K | 15 MiB | 384 MiB |
 | S3 | 4K | 30 MiB | 1.5 GiB |
 
-The dense score equivalent is a planning diagnostic, not measured fused-SDPA peak memory. It demonstrates why a compute plan must not extrapolate context cost using only linear activation coefficients.
+The dense score equivalent is a planning diagnostic, not measured fused-SDPA peak memory. It demonstrates why a compute plan must not extrapolate context cost using only linear activation coefficients. Likewise, the KV number is logical tensor payload, not a complete serving allocator or bandwidth model.
 
 ## Executed local mechanics probes
 
@@ -197,18 +199,17 @@ Canonical 1K is sensible as the first context at this scale. The next candidate 
 
 Its status is intentionally `RESEARCH_ONLY_UNQUALIFIED`.
 
-### 100M+ / future S4+
+### S4 / ~100M
 
-4K is a candidate, not a default. Do not select beyond 4K until 4K itself passes all of:
+Preserve the existing D01 planning direction of 2K as the engineering candidate. Do **not** inherit 4K automatically from a later stage. S4 2K still requires intended-corpus packing evidence, target-GPU SDPA/HBM measurements, stable training and context-sensitive evaluation before promotion.
 
-1. intended-corpus document-length and packing-utilization measurement;
-2. target-GPU SDPA backend identification and peak-HBM measurement at intended microbatch;
-3. stable training at 4K;
-4. held-out loss stratified by document length;
-5. a long-document or distance-sensitive evaluation that actually requires the added context;
-6. inference prefill/decode/cache measurements at the same ModelSpec identity.
+### S5 / ~400M
 
-Only then should RoPE theta/scaling variants or >4K contexts be considered. A new RoPE scaling method must be versioned in `ModelSpec`; it is not a JSON-only increase to `max_seq_len`.
+The existing D01 planning direction uses 4K and GQA. Treat 4K as a qualification candidate, not a capability claim. It must pass its own data, training-memory, cache-growth, evaluation and generation-boundary gates; S4 success at 2K is not sufficient evidence by itself.
+
+### Beyond 4K
+
+Do not establish a default >4K progression until 4K itself has passed all gates at the stage where it is proposed. Only then should RoPE theta/scaling variants or larger contexts be considered. A new RoPE scaling method must be versioned in `ModelSpec`; it is not a JSON-only increase to `max_seq_len`.
 
 ## Integration with memory/compute planning
 
@@ -217,7 +218,7 @@ Any future compute plan should consume both layers of context accounting:
 - `estimate_training_memory()` for model state, linear activations and the conservative dense score-equivalent term;
 - `estimate_context_cost()` for exact ModelSpec-derived KV-cache bytes and attention score-equivalent bytes.
 
-Before a paid run, replace conservative planning coefficients with profiler evidence from the exact target GPU, precision, SDPA backend, context, microbatch, gradient/checkpointing policy and parallel topology. Context parallelism can reduce per-rank activation pressure at larger contexts, but it should be introduced only after single-device/fused-attention evidence shows it is needed; it is not free compute.
+Before a paid run, replace conservative planning coefficients with profiler evidence from the exact target GPU, precision, SDPA backend, context, microbatch, gradient/checkpointing policy and parallel topology. For 2K+ serving, also record cache-growth allocation/copy behavior because the current `torch.cat` path is not represented by logical KV payload alone. Context parallelism can reduce per-rank activation pressure at larger contexts, but it should be introduced only after single-device/fused-attention evidence shows it is needed; it is not free compute.
 
 ## Code added or changed
 
