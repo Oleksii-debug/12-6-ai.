@@ -157,7 +157,7 @@ def assess_torchtitan_fit(
     """Report only concrete blockers to direct TorchTitan model registration."""
 
     probe = probe_torchtitan()
-    blockers: list[str] = []
+    blockers: list[str] = ["torchtitan_training_driver_adapter_not_implemented"]
     if not probe.installed:
         blockers.append("torchtitan_not_installed")
     if probe.missing_components:
