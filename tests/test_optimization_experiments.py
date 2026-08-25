@@ -25,7 +25,7 @@ def test_plan_is_small_explicit_and_transfer_is_unexecuted() -> None:
         "adamw_wd01_constant",
         "adamw_wd01_warmup_constant",
         "adamw_wd01_warmup_cosine",
-        "adamw_wd01_warmup_cosine_beta999",
+        "adamw_wd01_warmup_cosine_no_embed_decay",
         "adamw_wd01_warmup_cosine_no_clip",
         "adamw_wd01_warmup_cosine_lr1e3",
     }
@@ -57,7 +57,7 @@ def test_plan_rejects_unapproved_muon_without_composite_contract(tmp_path: Path)
 
 def test_real_s1_probe_measures_updates_gradients_time_and_optimizer_memory() -> None:
     plan = load_experiment_plan(PLAN)
-    recipe = plan["recipes"]["adamw_wd01_warmup_cosine"]
+    recipe = plan["recipes"]["adamw_wd01_warmup_cosine_no_embed_decay"]
     tokenizer = ByteTokenizer()
     train_batches, _, _, _ = _tensor_batches(
         ROOT,
@@ -89,5 +89,6 @@ def test_real_s1_probe_measures_updates_gradients_time_and_optimizer_memory() ->
     assert summary["relative_update_l2_median"] > 0.0
     assert summary["step_wall_seconds_median"] > 0.0
     assert math.isfinite(summary["gradient_norm_max"])
+    assert summary["optimizer_group_weight_decays"] == [0.1, 0.0]
     assert len(result["progression"]) == 2
     assert all(item["model_parameters_finite"] for item in result["progression"])
