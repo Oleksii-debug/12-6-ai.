@@ -6,8 +6,9 @@ import argparse
 import hashlib
 import json
 import tempfile
+from collections.abc import Iterable, Mapping
 from pathlib import Path
-from typing import Any, Iterable, Mapping
+from typing import Any
 
 from twelve_six.data.benchmark_decontamination import (
     ReferenceRecord,
@@ -133,6 +134,8 @@ def _semantic_rows(
         reference = references_by_id.get(reference_id)
         if candidate is None or reference is None:
             raise ValueError("registered semantic exclusion identity not present in frozen inputs")
+        if exclusion.get("decision") != "REJECT_FROM_TRAINING":
+            raise ValueError("known semantic exclusion must fail closed to REJECT_FROM_TRAINING")
         rows.append(
             {
                 "match_type": str(exclusion["match_type"]),
@@ -164,6 +167,11 @@ def run(config: Mapping[str, Any], *, repo_root: Path, work_dir: Path) -> dict[s
 
     candidates = _read_jsonl(candidate_path)
     references = _read_jsonl(reference_path)
+    expected_references = int(reference_cfg["expected_documents"])
+    if len(references) != expected_references:
+        raise ValueError(
+            "held-out reference count changed; freeze a fresh reference bundle and rerun decontamination"
+        )
     source_registry = json.loads(source_registry_path.read_text(encoding="utf-8"))
     _verify_project_authored_local_check(source_registry=source_registry, references=references)
 
@@ -192,6 +200,8 @@ def run(config: Mapping[str, Any], *, repo_root: Path, work_dir: Path) -> dict[s
     nonexact = [item for item in candidates if str(item["id"]) not in exact_ids]
     nonexact_path = work_dir / "candidate_nonexact" / "00000.jsonl"
     _write_jsonl(nonexact_path, nonexact)
+    reference_input_path = work_dir / "reference_input" / "00000.jsonl"
+    _write_jsonl(reference_input_path, references)
 
     minhash = config["minhash"]
     plan = DataTroveMinhashExecutionPlan(
@@ -206,11 +216,12 @@ def run(config: Mapping[str, Any], *, repo_root: Path, work_dir: Path) -> dict[s
         hashes_per_bucket=int(minhash["hashes_per_bucket"]),
         minhash_seed=int(minhash["seed"]),
         hash_precision=int(minhash["hash_precision"]),
+        datatrove_version=str(minhash["datatrove_version"]),
     )
     runtime = validate_datatrove_runtime(plan)
     reference_index = run_datatrove_reference_index(
         plan,
-        reference_input=reference_path,
+        reference_input=reference_input_path.parent,
         workspace=work_dir / "datatrove",
         index_name="data31-s0-heldout-validation",
     )
@@ -304,7 +315,10 @@ def main() -> int:
         with tempfile.TemporaryDirectory(prefix="data31-decontam-") as temporary:
             result = run(config, repo_root=args.repo_root, work_dir=Path(temporary))
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    args.output.write_text(
+        json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
     print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
     return 0
 
