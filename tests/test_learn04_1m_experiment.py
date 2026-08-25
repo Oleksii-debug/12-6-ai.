@@ -5,7 +5,11 @@ from pathlib import Path
 
 import torch
 
-from twelve_six.learn04_1m_experiment import (
+from twelve_six.learn04_1m_entrypoint import bind_data10_normalized_records
+
+bind_data10_normalized_records()
+
+from twelve_six.learn04_1m_experiment import (  # noqa: E402
     DATA10_CORPUS_SHA256,
     DEFAULT_TOKEN_BUDGETS,
     PACKING_VERSION,
@@ -20,7 +24,7 @@ from twelve_six.learn04_1m_experiment import (
     _verify_data_boundary,
     controlled_specs,
 )
-from twelve_six.packing.scale_contracts import MixturePlan, MixtureSource
+from twelve_six.packing.scale_contracts import MixturePlan, MixtureSource  # noqa: E402
 
 
 def test_data10_exact_training_bytes_and_split_boundary() -> None:
