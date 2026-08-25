@@ -54,8 +54,8 @@ jobs:
             --source-sha "$SOURCE_SHA" \
             --output perf148-10m-profiler.json \
             --trace-output perf148-10m-profiler-trace.json \
-            --device auto \
-            --precision auto \
+            --device cpu \
+            --precision fp32 \
             --batch-size 1 \
             --sequence-length 256 \
             --warmup-steps 1 \
@@ -75,6 +75,8 @@ jobs:
           assert report["paid_compute"] is False
           assert report["candidate"]["parameters"] == 10_000_640
           assert report["candidate"]["profile_shape"] == [1, 256]
+          assert report["execution"]["device"] == "cpu"
+          assert report["execution"]["precision"] == "fp32"
           assert report["execution"]["optimizer_steps"] == 2
           assert report["profiler"]["record_shapes"] is True
           assert report["profiler"]["profile_memory"] is True
@@ -84,11 +86,10 @@ jobs:
           assert report["cross_reference"]["perf59_torch_compile"].startswith("EXISTING_")
           assert report["cross_reference"]["native_gqa"].startswith("EXISTING_")
           assert report["truth_boundary"]["cuda_claimed_without_cuda"] is False
+          assert report["truth_boundary"]["cpu_evidence_is_cpu_only"] is True
           assert report["truth_boundary"]["model_semantics_changed"] is False
           assert report["truth_boundary"]["training_objective_changed"] is False
           assert report["truth_boundary"]["paid_compute_used"] is False
-          if report["execution"]["device"] == "cpu":
-              assert report["truth_boundary"]["cpu_evidence_is_cpu_only"] is True
           PY
 
       - name: Show measured bottlenecks
