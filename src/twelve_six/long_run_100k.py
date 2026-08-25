@@ -21,9 +21,10 @@ import platform
 import random
 import statistics
 import time
+from collections.abc import Iterable
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 import torch
 
@@ -39,6 +40,7 @@ from .fixed_token_efficiency import (
     _directory_bytes,
     _evaluate_checked,
     _load_control_data,
+    _make_pair_batch,
     _parameter_bytes,
     _parameter_snapshot,
     _peak_rss_bytes,
@@ -46,7 +48,6 @@ from .fixed_token_efficiency import (
     _relative_update_ratio,
     _tensor_tree_bytes,
     _write_hashed_json,
-    _make_pair_batch,
 )
 from .inference.contracts import GenerationConfig
 from .inference.generation import generate
