@@ -301,6 +301,45 @@ def _assert_same_trace_multiset(
         raise RuntimeError("curriculum changed incumbent source/offset envelope multiset")
 
 
+def _quality_prefix_with_fixed_source_slots(
+    trace: tuple[TraceEntry, ...], prefix_steps: int
+) -> tuple[TraceEntry, ...]:
+    """Improve training-only quality while preserving the baseline prefix modality sequence."""
+    source_slots = tuple(entry.source for entry in trace[:prefix_steps])
+    quotas = Counter(source_slots)
+    selected_by_source: dict[str, list[TraceEntry]] = {}
+    selected_counts: Counter[tuple[str, int, str, str]] = Counter()
+    for source in MODALITIES:
+        ranked = sorted(
+            (entry for entry in trace if entry.source == source),
+            key=lambda item: (-item.quality_score, item.sample_index),
+        )
+        selected = ranked[: quotas[source]]
+        if len(selected) != quotas[source]:
+            raise RuntimeError(f"insufficient {source} envelopes for quality prefix")
+        selected_by_source[source] = selected
+        selected_counts.update(entry.identity() for entry in selected)
+
+    next_index = Counter()
+    prefix: list[TraceEntry] = []
+    for source in source_slots:
+        index = next_index[source]
+        prefix.append(selected_by_source[source][index])
+        next_index[source] += 1
+
+    tail: list[TraceEntry] = []
+    for entry in trace:
+        identity = entry.identity()
+        if selected_counts[identity]:
+            selected_counts[identity] -= 1
+        else:
+            tail.append(entry)
+    ordered = tuple(prefix) + tuple(tail)
+    if tuple(entry.source for entry in ordered[:prefix_steps]) != source_slots:
+        raise RuntimeError("quality curriculum changed baseline prefix modality sequence")
+    return ordered
+
+
 def order_trace(
     trace: tuple[TraceEntry, ...],
     *,
@@ -313,24 +352,13 @@ def order_trace(
     if candidate == "fully_mixed":
         ordered = trace
     elif candidate == "quality_first_then_mixed":
-        prefix = tuple(
-            sorted(trace, key=lambda item: (-item.quality_score, item.sample_index))[:prefix_steps]
-        )
-        selected = Counter(entry.identity() for entry in prefix)
-        tail: list[TraceEntry] = []
-        for entry in trace:
-            identity = entry.identity()
-            if selected[identity]:
-                selected[identity] -= 1
-            else:
-                tail.append(entry)
-        ordered = prefix + tuple(tail)
+        ordered = _quality_prefix_with_fixed_source_slots(trace, prefix_steps)
     elif candidate == "ukrainian_first_then_mixed":
         prefix = tuple(entry for entry in trace if entry.source == "uk")[:prefix_steps]
         if len(prefix) != prefix_steps:
             raise RuntimeError("incumbent trace has too few Ukrainian envelopes for prefix")
         selected = Counter(entry.identity() for entry in prefix)
-        tail = []
+        tail: list[TraceEntry] = []
         for entry in trace:
             identity = entry.identity()
             if selected[identity]:
@@ -683,6 +711,10 @@ def run_experiment(
     for order in orders.values():
         if Counter(entry.identity() for entry in order) != reference_multiset:
             raise RuntimeError("candidate changed exact training-envelope multiset")
+    if tuple(entry.source for entry in orders["quality_first_then_mixed"][:prefix_steps]) != tuple(
+        entry.source for entry in trace[:prefix_steps]
+    ):
+        raise RuntimeError("quality curriculum introduced a modality-ordering confound")
 
     schedule_summaries: dict[str, Any] = {}
     for candidate, order in orders.items():
