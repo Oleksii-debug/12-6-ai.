@@ -4,9 +4,9 @@ on:
 permissions:
   contents: read
 jobs:
-  tokenizer-runtime:
+  linux-purpose-runtimes:
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -20,83 +20,30 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.11.16"
-      - name: Verify clean tokenizer experiment runtime
+      - name: Verify three independent clean purpose environments
         env:
           SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
-        run: >-
-          python tools/verify_purpose_environment.py
-          --profile linux-x86_64-tokenizer-experiment
-          --source-sha "$SOURCE_SHA"
-          --evidence-out d08-tokenizer-environment.json
-      - name: Upload tokenizer environment evidence
+        run: |
+          python tools/verify_purpose_environment.py \
+            --profile linux-x86_64-tokenizer-experiment \
+            --source-sha "$SOURCE_SHA" \
+            --evidence-out d08-tokenizer-environment.json
+          python tools/verify_purpose_environment.py \
+            --profile linux-x86_64-transformers-interop \
+            --source-sha "$SOURCE_SHA" \
+            --evidence-out d08-transformers-environment.json
+          python tools/verify_purpose_environment.py \
+            --profile linux-x86_64-cuda-training \
+            --source-sha "$SOURCE_SHA" \
+            --evidence-out d08-cuda-training-environment.json
+      - name: Upload Linux purpose-environment evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: d08-tokenizer-environment
-          path: d08-tokenizer-environment.json
-          if-no-files-found: error
-          retention-days: 30
-
-  transformers-runtime:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 1
-          persist-credentials: false
-      - name: Prove exact source checkout
-        env:
-          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
-        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: "3.11.16"
-      - name: Verify clean Transformers interoperability runtime
-        env:
-          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
-        run: >-
-          python tools/verify_purpose_environment.py
-          --profile linux-x86_64-transformers-interop
-          --source-sha "$SOURCE_SHA"
-          --evidence-out d08-transformers-environment.json
-      - name: Upload Transformers environment evidence
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: d08-transformers-environment
-          path: d08-transformers-environment.json
-          if-no-files-found: error
-          retention-days: 30
-
-  cuda-training-runtime:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 1
-          persist-credentials: false
-      - name: Prove exact source checkout
-        env:
-          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
-        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: "3.11.16"
-      - name: Verify clean CUDA training role install
-        env:
-          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
-        run: >-
-          python tools/verify_purpose_environment.py
-          --profile linux-x86_64-cuda-training
-          --source-sha "$SOURCE_SHA"
-          --evidence-out d08-cuda-training-environment.json
-      - name: Upload CUDA-role environment evidence
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: d08-cuda-training-environment
-          path: d08-cuda-training-environment.json
+          name: d08-linux-purpose-environments
+          path: |
+            d08-tokenizer-environment.json
+            d08-transformers-environment.json
+            d08-cuda-training-environment.json
           if-no-files-found: error
           retention-days: 30
 
@@ -164,15 +111,19 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.11.9"
-      - name: Verify exact transported source identity
+      - name: Verify exact transported source and wheel identity
         shell: pwsh
         working-directory: ${{ runner.temp }}\d08-windows-runtime
         env:
           EXPECTED_SOURCE_SHA: ${{ needs.windows-bundle-producer.outputs.source_sha }}
         run: |
-          $actual = (Get-Content source-sha.txt -Raw).Trim()
-          if ($actual -ne $env:EXPECTED_SOURCE_SHA) { throw "transported source SHA mismatch" }
-          Get-Content project-wheel.sha256
+          $actualSource = (Get-Content source-sha.txt -Raw).Trim()
+          if ($actualSource -ne $env:EXPECTED_SOURCE_SHA) { throw "transported source SHA mismatch" }
+          $wheels = @(Get-ChildItem -Path dist -Filter 'twelve_six_ai-*.whl' -File)
+          if ($wheels.Count -ne 1) { throw "expected exactly one transported project wheel" }
+          $expectedWheelSha = ((Get-Content project-wheel.sha256 -Raw).Trim() -split '\s+')[0].ToLowerInvariant()
+          $actualWheelSha = (Get-FileHash -Algorithm SHA256 $wheels[0].FullName).Hash.ToLowerInvariant()
+          if ($actualWheelSha -ne $expectedWheelSha) { throw "transported project wheel SHA-256 mismatch" }
       - name: Verify clean Windows x86_64 runtime
         shell: pwsh
         working-directory: ${{ runner.temp }}\d08-windows-runtime
