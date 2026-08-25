@@ -47,6 +47,7 @@ class RunPhase(StrEnum):
     RUNNING = "RUNNING"
     CHECKPOINTING = "CHECKPOINTING"
     PREEMPTED = "PREEMPTED"
+    PAUSED = "PAUSED"
     RECOVERING = "RECOVERING"
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
@@ -138,6 +139,7 @@ class StopLatch:
 
     def __init__(self) -> None:
         self._reason: str | None = None
+        self._failure_class = FailureClass.USER_SHUTDOWN
 
     @property
     def requested(self) -> bool:
@@ -147,11 +149,25 @@ class StopLatch:
     def reason(self) -> str | None:
         return self._reason
 
-    def request(self, reason: str) -> None:
+    @property
+    def failure_class(self) -> FailureClass:
+        return self._failure_class
+
+    def request(
+        self,
+        reason: str,
+        *,
+        failure_class: FailureClass = FailureClass.USER_SHUTDOWN,
+    ) -> None:
         if not isinstance(reason, str) or not reason.strip():
             raise ValueError("stop reason must be non-empty text")
+        if not isinstance(failure_class, FailureClass):
+            raise TypeError("failure_class must be FailureClass")
+        if failure_class not in {FailureClass.PREEMPTION, FailureClass.USER_SHUTDOWN}:
+            raise ValueError("stop latch supports only preemption or user shutdown")
         if self._reason is None:
             self._reason = reason.strip()
+            self._failure_class = failure_class
 
 
 @contextmanager
@@ -166,7 +182,7 @@ def install_preemption_handlers(latch: StopLatch):
             name = signal.Signals(signum).name
         except ValueError:
             name = str(signum)
-        latch.request(f"signal:{name}")
+        latch.request(f"signal:{name}", failure_class=FailureClass.PREEMPTION)
 
     try:
         for item in handled:
@@ -574,11 +590,13 @@ class RecoveryStore:
             phase = terminal
         elif failure_count > state.get("failure_count", 0):
             latest_failure = failures[-1]
-            phase = (
-                RunPhase.PREEMPTED
-                if latest_failure.get("failure_class") == FailureClass.PREEMPTION.value
-                else RunPhase.RECOVERING
-            )
+            latest_class = latest_failure.get("failure_class")
+            if latest_class == FailureClass.PREEMPTION.value:
+                phase = RunPhase.PREEMPTED
+            elif latest_class == FailureClass.USER_SHUTDOWN.value:
+                phase = RunPhase.PAUSED
+            else:
+                phase = RunPhase.RECOVERING
         elif attempt_count > state.get("attempt", 0):
             phase = RunPhase.RECOVERING
         if restart_count > self.policy.max_restarts or preemptions > self.policy.max_preemptions:
@@ -688,9 +706,15 @@ class RecoveryStore:
         preemptions = state["preemptions_seen"]
         if RunPhase(state["phase"]) is RunPhase.FAILED:
             return state
+        if failure_class is FailureClass.PREEMPTION:
+            phase = RunPhase.PREEMPTED
+        elif failure_class is FailureClass.USER_SHUTDOWN:
+            phase = RunPhase.PAUSED
+        else:
+            phase = RunPhase.RECOVERING
         state.update(
             {
-                "phase": RunPhase.RECOVERING.value,
+                "phase": phase.value,
                 "preemptions_seen": preemptions,
                 "failure_count": sequence,
             }
@@ -749,15 +773,18 @@ class RecoveryStore:
         return record
 
     def mark_preempted(self, *, optimizer_step: int, reason_code: str) -> dict[str, Any]:
-        state = self.record_failure(
+        return self.record_failure(
             FailureClass.PREEMPTION,
             optimizer_step=optimizer_step,
             detail_code=reason_code,
         )
-        if RunPhase(state["phase"]) is not RunPhase.FAILED:
-            state["phase"] = RunPhase.PREEMPTED.value
-            state = self._persist(state)
-        return state
+
+    def mark_clean_shutdown(self, *, optimizer_step: int, reason_code: str) -> dict[str, Any]:
+        return self.record_failure(
+            FailureClass.USER_SHUTDOWN,
+            optimizer_step=optimizer_step,
+            detail_code=reason_code,
+        )
 
     def mark_completed(self) -> dict[str, Any]:
         state = self.open()
@@ -805,12 +832,23 @@ def run_resilient_training(
             if last_good is None or last_good.optimizer_step != trainer.optimizer_step:
                 last_good = store.commit_checkpoint(trainer, save_checkpoint)
             reason = stop_latch.reason or "cooperative-stop"
-            store.mark_preempted(
-                optimizer_step=trainer.optimizer_step,
-                reason_code=reason,
-            )
+            failure_class = stop_latch.failure_class
+            if failure_class is FailureClass.PREEMPTION:
+                phase = RunPhase.PREEMPTED
+                store.mark_preempted(
+                    optimizer_step=trainer.optimizer_step,
+                    reason_code=reason,
+                )
+            elif failure_class is FailureClass.USER_SHUTDOWN:
+                phase = RunPhase.PAUSED
+                store.mark_clean_shutdown(
+                    optimizer_step=trainer.optimizer_step,
+                    reason_code=reason,
+                )
+            else:
+                raise RecoveryStateError("unsupported cooperative stop class")
             return AttemptResult(
-                status=RunPhase.PREEMPTED.value,
+                status=phase.value,
                 optimizer_step=trainer.optimizer_step,
                 tokens_seen=trainer.tokens_seen,
                 checkpoint_id=last_good.checkpoint_id,
