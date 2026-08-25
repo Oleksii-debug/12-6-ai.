@@ -28,8 +28,20 @@ def _pilot(*, measured_100m: bool = False) -> dict[str, object]:
         "source_sha": SOURCE,
         "hourly_cost_eur": 2.0,
         "report_sha256": "b" * 64,
+        "candidate": {
+            "analytic_parameters": S4_D11_EXPECTED_PARAMETERS,
+            "instantiated_trainable_parameters": S4_D11_EXPECTED_PARAMETERS,
+        },
+        "runtime": {
+            "device": "cuda:0",
+            "precision": "bf16_autocast_fp32_parameters",
+        },
         "measurement": {
+            "optimized_tokens": 100_000,
+            "elapsed_training_and_checkpoint_seconds": 1.0,
             "measured_end_to_end_optimized_tokens_per_second": 100_000.0,
+            "peak_cuda_memory_allocated_bytes": 1_000_000,
+            "peak_cuda_memory_reserved_bytes": 2_000_000,
             "checkpoint_payload_bytes": 123,
             "checkpoint_id": "checkpoint-test",
             "restored_checkpoint_id": "checkpoint-test",
@@ -37,6 +49,8 @@ def _pilot(*, measured_100m: bool = False) -> dict[str, object]:
         "truth_boundary": {
             "100m_throughput_measured": measured_100m,
             "projection_requires_100m_pilot_recalibration": not measured_100m,
+            "distributed_execution": False,
+            "main_launch": False,
         },
     }
 
@@ -211,5 +225,14 @@ def test_evaluation_freeze_is_part_of_main_launch_authority() -> None:
     evidence["evaluation"]["training_use"] = True
     report = _qualify(evidence, authorized=True)
     assert report["checks"]["evaluation_registry_frozen"] is False
+    assert report["technical_ready"] is False
+    assert report["main_launch_ready"] is False
+
+
+def test_100m_gpu_checkpoint_and_memory_measurement_is_mandatory() -> None:
+    evidence = _qualification_inputs()
+    evidence["pilot"]["measurement"]["checkpoint_payload_bytes"] = 0
+    report = _qualify(evidence, authorized=True)
+    assert report["checks"]["s4_gpu_checkpoint_memory_measured"] is False
     assert report["technical_ready"] is False
     assert report["main_launch_ready"] is False

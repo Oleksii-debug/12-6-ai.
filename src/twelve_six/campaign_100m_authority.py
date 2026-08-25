@@ -1,4 +1,4 @@
-"""Final CAMPAIGN-47 launch authority composition, including evaluation freeze identity."""
+"""Final CAMPAIGN-47 launch authority composition, including evaluation and GPU evidence."""
 
 from __future__ import annotations
 
@@ -7,7 +7,11 @@ import json
 from collections.abc import Mapping
 from typing import Any
 
-from twelve_six.campaign_100m import qualify_main_launch
+from twelve_six.campaign_100m import (
+    GPU_PILOT_SCHEMA,
+    S4_D11_EXPECTED_PARAMETERS,
+    qualify_main_launch,
+)
 
 
 def _seal(report: dict[str, Any]) -> dict[str, Any]:
@@ -47,6 +51,36 @@ def _evaluation_freeze_passes(
     )
 
 
+def _s4_gpu_pilot_passes(*, source_sha: str, gpu_pilot: Mapping[str, Any]) -> bool:
+    candidate = gpu_pilot.get("candidate")
+    runtime = gpu_pilot.get("runtime")
+    measurement = gpu_pilot.get("measurement")
+    truth = gpu_pilot.get("truth_boundary")
+    if not all(isinstance(value, Mapping) for value in (candidate, runtime, measurement, truth)):
+        return False
+    checkpoint_id = measurement.get("checkpoint_id")
+    return (
+        gpu_pilot.get("schema") == GPU_PILOT_SCHEMA
+        and gpu_pilot.get("source_sha") == source_sha
+        and candidate.get("analytic_parameters") == S4_D11_EXPECTED_PARAMETERS
+        and candidate.get("instantiated_trainable_parameters") == S4_D11_EXPECTED_PARAMETERS
+        and str(runtime.get("device", "")).startswith("cuda")
+        and str(runtime.get("precision", "")).startswith("bf16")
+        and int(measurement.get("optimized_tokens", 0)) > 0
+        and float(measurement.get("elapsed_training_and_checkpoint_seconds", 0.0)) > 0.0
+        and float(measurement.get("measured_end_to_end_optimized_tokens_per_second", 0.0)) > 0.0
+        and int(measurement.get("peak_cuda_memory_allocated_bytes", 0)) > 0
+        and int(measurement.get("peak_cuda_memory_reserved_bytes", 0)) > 0
+        and int(measurement.get("checkpoint_payload_bytes", 0)) > 0
+        and bool(checkpoint_id)
+        and measurement.get("restored_checkpoint_id") == checkpoint_id
+        and truth.get("100m_throughput_measured") is True
+        and truth.get("projection_requires_100m_pilot_recalibration") is False
+        and truth.get("distributed_execution") is False
+        and truth.get("main_launch") is False
+    )
+
+
 def qualify_campaign_main_launch(
     *,
     source_sha: str,
@@ -74,6 +108,10 @@ def qualify_campaign_main_launch(
         paid_compute_authorized=paid_compute_authorized,
     )
     checks = report["checks"]
+    checks["s4_gpu_checkpoint_memory_measured"] = _s4_gpu_pilot_passes(
+        source_sha=source_sha,
+        gpu_pilot=gpu_pilot,
+    )
     checks["evaluation_registry_frozen"] = _evaluation_freeze_passes(
         source_sha=source_sha,
         evaluation_freeze=evaluation_freeze,
