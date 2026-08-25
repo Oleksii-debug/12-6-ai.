@@ -1,0 +1,85 @@
+name: TRAIN-55 Numeric Forensics
+
+on:
+  pull_request:
+    paths:
+      - "src/twelve_six/training/numeric_forensics.py"
+      - "src/twelve_six/training/trainer.py"
+      - "src/twelve_six/training/__init__.py"
+      - "tests/test_numeric_forensics.py"
+      - "tests/test_training_engine.py"
+      - "tests/test_trainer_checkpoint_adapter.py"
+      - "tools/run_numeric_failure_forensics.py"
+      - "requirements/locks/**"
+      - ".github/workflows/train55-numeric-forensics.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: train55-numeric-forensics-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  locked-numeric-failure-probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Prove exact source checkout
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Verify exact D08 locked environment and repository checks
+        run: >-
+          python tools/verify_locked_environment.py
+          --profile linux-x86_64
+          --source-sha "$SOURCE_SHA"
+          --evidence-out locked-environment-linux-x86_64.json
+          --run-repo-checks
+      - name: Create exact locked execution environment
+        run: |
+          python -m venv .train55-locked
+          .train55-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .train55-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .train55-locked/bin/python -m pip install --no-deps --no-build-isolation -e .
+      - name: Run focused Trainer and checkpoint regressions
+        run: >-
+          .train55-locked/bin/python -m pytest -q
+          tests/test_numeric_forensics.py
+          tests/test_training_engine.py
+          tests/test_trainer_checkpoint_adapter.py
+      - name: Execute real S1 100K NaN update probe
+        run: |
+          .train55-locked/bin/python tools/run_numeric_failure_forensics.py \
+            --source-sha "$SOURCE_SHA" \
+            --stage-config configs/stages/s1_100k.json \
+            --poison nan \
+            --output train55-s1-100k-nan.json
+          cat train55-s1-100k-nan.json
+      - name: Execute real S1 100K Inf update probe
+        run: |
+          .train55-locked/bin/python tools/run_numeric_failure_forensics.py \
+            --source-sha "$SOURCE_SHA" \
+            --stage-config configs/stages/s1_100k.json \
+            --poison inf \
+            --output train55-s1-100k-inf.json
+          cat train55-s1-100k-inf.json
+      - name: Upload numeric forensic evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: train55-numeric-forensics-evidence
+          path: |
+            locked-environment-linux-x86_64.json
+            train55-s1-100k-nan.json
+            train55-s1-100k-inf.json
+          if-no-files-found: error
+          retention-days: 30
