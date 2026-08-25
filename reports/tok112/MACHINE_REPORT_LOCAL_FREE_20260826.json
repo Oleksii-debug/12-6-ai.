@@ -1,0 +1,97 @@
+{
+  "schema_version": "12-6.tok112-milestone100-machine-summary.v1",
+  "worker_ids": ["MILESTONE-100-FIRST-LEARNED-BASE", "TOK-112-UA-DIAGNOSTICS"],
+  "run_class": "LOCAL_FREE",
+  "local_full_report_sha256": "89e80ca2a772aa5189a50c2bef32d56acd00feb67fa5cb65ffb1e93753e1f4af",
+  "source_heads": {
+    "product_runtime": "fb9c6d9b73ce436d637077892d73edf136fcaeac",
+    "data25": "8af17afa7baf3d75c2328caf8b08af2400a95e09",
+    "data107_streaming_packing": "f9b4783b936055a4165f8bedd00b27f34332d67e",
+    "tok37": "25cf4798202c41dda4b5413052f5efc6ebbbbf2a",
+    "tok111": "c252a5c0f4bc365b89a07e0882718752ed59336e"
+  },
+  "tok37_artifact": {
+    "artifact_id": 9576009309,
+    "digest": "sha256:f3fedb2799fc4d16fae637e0cfd96861f7f528deb45145af51ef4726f270e75e",
+    "fixed_probe_reproduction_exact": {"bpe257": true, "bpe320": true, "bpe384": true, "bpe437": true}
+  },
+  "tok111": {
+    "decision": "ACCEPT_ADJUDICATION_NO_TOKENIZER_ARTIFACT",
+    "sweep_started": false,
+    "bpe_candidates_trained": 0,
+    "reason": "No runnable canonical real-source-backed corpus exists at the TOK-111 head."
+  },
+  "diagnostic_corpus": {
+    "path": "data/diagnostics/ua_tokenization_v1.jsonl",
+    "sha256": "b86d645bf0c1d58988de5fce5978da5d73bd037709f1e5e719bfaab36e04b4c1",
+    "records": 24,
+    "used_for_tokenizer_training": false,
+    "used_for_model_training": false
+  },
+  "tokenizer_diagnostics": [
+    {"tokenizer": "byte256", "vocab_size": 256, "tokens_per_word": 14.5115384615, "tokens_per_codepoint": 1.771, "single_codepoint_fragment_frequency": 0.135, "invalid_utf8_fragment_frequency": 0.865, "high_byte_single_fragment_frequency": 0.865},
+    {"tokenizer": "bpe257", "vocab_size": 257, "tokens_per_word": 14.5115384615, "tokens_per_codepoint": 1.771, "single_codepoint_fragment_frequency": 0.135, "invalid_utf8_fragment_frequency": 0.865, "high_byte_single_fragment_frequency": 0.865, "unknown_tokens": 0, "cyrillic_vocab_tokens": 0},
+    {"tokenizer": "bpe320", "vocab_size": 320, "tokens_per_word": 8.7692307692, "tokens_per_codepoint": 1.070, "single_codepoint_fragment_frequency": 0.529, "invalid_utf8_fragment_frequency": 0.409, "high_byte_single_fragment_frequency": 0.328, "unknown_tokens": 0, "cyrillic_vocab_tokens": 23, "uk_specific_vocab_tokens": 3},
+    {"tokenizer": "bpe384", "vocab_size": 384, "tokens_per_word": 7.9846153846, "tokens_per_codepoint": 0.974, "single_codepoint_fragment_frequency": 0.544, "invalid_utf8_fragment_frequency": 0.351, "high_byte_single_fragment_frequency": 0.256, "unknown_tokens": 0, "cyrillic_vocab_tokens": 40, "uk_specific_vocab_tokens": 8},
+    {"tokenizer": "bpe437", "vocab_size": 437, "tokens_per_word": 7.5269230769, "tokens_per_codepoint": 0.918, "single_codepoint_fragment_frequency": 0.499, "invalid_utf8_fragment_frequency": 0.361, "high_byte_single_fragment_frequency": 0.267, "unknown_tokens": 0, "cyrillic_vocab_tokens": 66, "uk_specific_vocab_tokens": 11}
+  ],
+  "matched_ua_bpb_probes": [
+    {"scale": "100K", "tokenizer": "byte256", "parameters": 99888, "initial_bpb": 7.9200, "final_bpb": 7.3599},
+    {"scale": "100K", "tokenizer": "bpe257", "parameters": 99936, "initial_bpb": 7.9623, "final_bpb": 7.4509},
+    {"scale": "100K", "tokenizer": "bpe320", "parameters": 99936, "initial_bpb": 5.0098, "final_bpb": 4.8739},
+    {"scale": "100K", "tokenizer": "bpe384", "parameters": 99984, "initial_bpb": 4.6840, "final_bpb": 4.5717},
+    {"scale": "100K", "tokenizer": "bpe437", "parameters": 99936, "initial_bpb": 4.5182, "final_bpb": 4.4706},
+    {"scale": "500K", "tokenizer": "byte256", "parameters": 500064, "initial_bpb": 8.0175, "final_bpb": 6.6451},
+    {"scale": "500K", "tokenizer": "bpe257", "parameters": 500160, "initial_bpb": 8.0413, "final_bpb": 6.8475},
+    {"scale": "500K", "tokenizer": "bpe320", "parameters": 500448, "initial_bpb": 4.9944, "final_bpb": 4.6528},
+    {"scale": "500K", "tokenizer": "bpe384", "parameters": 499680, "initial_bpb": 4.6946, "final_bpb": 4.3882},
+    {"scale": "500K", "tokenizer": "bpe437", "parameters": 500160, "initial_bpb": 4.5288, "final_bpb": 4.2880}
+  ],
+  "correlation_tokens_per_word_vs_final_ua_bpb": {"100K": 0.9992792089685775, "500K": 0.9981332638434568},
+  "tokenizer_recommendation": {
+    "current_complete_base": "s0-byte-v1",
+    "best_provisional_ua_candidate": "bpe437",
+    "retest_also": "bpe384",
+    "ukrainian_specific_tokenizer_needed": false,
+    "reason_not_frozen": "TOK-37 was fitted on DATA-10 (1,454 project-authored bytes); TOK-111 real-corpus gate is not satisfied; first-party D07 currently fail-closes on non-canonical tokenizer metadata."
+  },
+  "final_learned_base": {
+    "random_initialization": true,
+    "seed": 1337,
+    "parameters": 467808,
+    "tokenizer": "s0-byte-v1",
+    "optimizer_steps": 800,
+    "optimized_tokens": 201600,
+    "train_loss_first32": 4.7828210443,
+    "train_loss_last32": 0.8260695599,
+    "heldout_bpb_initial": {"uk": 7.9652, "en": 8.0226, "code": 7.5486, "ua_diagnostic": 7.9843},
+    "heldout_bpb_step400": {"uk": 2.4273, "en": 2.1651, "code": 2.2442, "ua_diagnostic": 3.3355},
+    "heldout_bpb_final": {"uk": 1.8727, "en": 0.5555, "code": 0.7855, "ua_diagnostic": 4.4361},
+    "ua_diagnostic_late_overfit_signal": true,
+    "fresh_process_resume": {"from_step": 400, "phase1_pid": 898, "phase2_pid": 929, "passed": true},
+    "evaluation_non_mutation": true,
+    "generation_before": "Українська мовна модель                                                 ",
+    "generation_after": "Українська мовна модель нннрні нні, the 11111111 рннрннр",
+    "checkpoint_sha256": {
+      "step200": "c389c5c109d27309ccfbc85b84c8aab086b46749904dee959b781e7c67c9ed49",
+      "step400": "ddb4d05c0fcbacbf9b7f4fa545c3bc4f90b8b2781d035c938237ace305b087f2",
+      "step600": "76ceee70003178cbf1dc4ab83d32f3feed45338e9d5c20237286991deeccf8b4",
+      "step800": "3c271edaa4f89312d00771566920bedbf69011329d38d332bb9dad12b7f1a065",
+      "retained_final": "bdfa27015aa559166fc5dd1fd3d06f1b670a68516a9860d451df25da3f228c76"
+    }
+  },
+  "machine": {"python": "3.13.5", "torch": "2.10.0+cpu", "architecture": "x86_64", "torch_threads": 2, "cuda_available": false},
+  "verdict": {
+    "genuinely_learned_local_base": "PASS",
+    "strict_real_representative_corpus_gate": "FAIL_UNMET",
+    "overall": "PARTIAL_SUCCESS_STRONGEST_DEFENSIBLE_CURRENT_LOCAL_ARTIFACT"
+  },
+  "truth_boundary": [
+    "No foreign pretrained weights.",
+    "No instruction tuning.",
+    "No paid compute.",
+    "No broad intelligence claim.",
+    "DATA-25 has zero external training-eligible sources and cannot satisfy the real-world representative-corpus requirement.",
+    "Local execution source-reconstructed incumbent semantics because the connected runtime had no mounted Git checkout."
+  ]
+}
