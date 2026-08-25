@@ -1,0 +1,88 @@
+name: COMPUTE-99 GPU Launch Preflight
+
+on:
+  pull_request:
+    paths:
+      - "src/twelve_six/training/gpu_launch_preflight.py"
+      - "tools/run_gpu_launch_preflight.py"
+      - "tests/test_gpu_launch_preflight.py"
+      - "configs/compute/gpu_launch_preflight.current.json"
+      - "docs/GPU_LAUNCH_PREFLIGHT_COMPUTE99.md"
+      - "evidence/compute99/**"
+      - ".github/workflows/compute99-gpu-preflight.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fail-closed-preflight:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Prove exact source checkout
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Verify locked CPU environment and repository checks
+        run: >-
+          python tools/verify_locked_environment.py
+          --profile linux-x86_64
+          --source-sha "$SOURCE_SHA"
+          --evidence-out compute99-locked-environment.json
+          --run-repo-checks
+
+      - name: Create exact locked execution environment
+        run: |
+          python -m venv .compute99-locked
+          .compute99-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .compute99-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          .compute99-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/dev.lock.txt
+          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .compute99-locked/bin/python -m pip install --no-deps --no-build-isolation -e .
+
+      - name: Focused lint and tests
+        run: |
+          .compute99-locked/bin/python -m ruff check src/twelve_six/training/gpu_launch_preflight.py tools/run_gpu_launch_preflight.py tests/test_gpu_launch_preflight.py
+          .compute99-locked/bin/python -m pytest -q tests/test_gpu_launch_preflight.py
+
+      - name: Execute current preflight without provisioning compute
+        run: |
+          .compute99-locked/bin/python tools/run_gpu_launch_preflight.py \
+            --output compute99-gpu-preflight.json
+
+      - name: Validate fail-closed truth boundary
+        run: |
+          .compute99-locked/bin/python - <<'PY'
+          import json
+          import torch
+
+          report = json.load(open("compute99-gpu-preflight.json", encoding="utf-8"))
+          assert report["schema_version"] == "12-6.gpu-launch-preflight.v1"
+          assert report["launch_ready"] is False
+          assert report["status"] == "BLOCKED"
+          assert "campaign.current_product_binding" in report["blockers"]
+          assert "10m.precision_incumbent_composed" in report["blockers"]
+          assert "100m.precision_incumbent_composed" in report["blockers"]
+          assert "10m.authorization" in report["blockers"]
+          assert "100m.authorization" in report["blockers"]
+          if torch.cuda.is_available():
+              assert report["smoke_10m"]["status"] == "PASS"
+              assert report["smoke_10m"]["tokens_per_second"] is not None
+              assert report["smoke_10m"]["cuda_peak_allocated_bytes"] is not None
+          else:
+              assert report["smoke_10m"]["status"] == "NOT_RUN_NO_GPU"
+              assert report["smoke_10m"]["tokens_per_second"] is None
+              assert report["smoke_10m"]["cuda_peak_allocated_bytes"] is None
+          assert "CPU throughput" in report["cost_truth_boundary"]
+          PY
