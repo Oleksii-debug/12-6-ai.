@@ -20,6 +20,9 @@
   "parallelism": "single_gpu",
   "fsdp": false,
   "torch_compile": false,
-  "purpose": "pipeline/throughput/loss/checkpoint/eval smoke only; not a capability run",
+  "data_mode": "synthetic_or_controlled_mechanics_only",
+  "data_quality_claim_allowed": false,
+  "launch_state": "ready_when_preprovisioned_bf16_gpu_is_available",
+  "purpose": "allocator/throughput/loss/checkpoint/resume/eval mechanics smoke only; not a corpus, quality, or capability run",
   "compute_authorized": false
 }
