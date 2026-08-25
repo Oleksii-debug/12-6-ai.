@@ -44,7 +44,7 @@ jobs:
           echo "$EXPECTED_RUNNER_SHA256  src/twelve_six/learn122_real_500k_long.py" | sha256sum --check --strict
           git diff -- src/twelve_six/learn122_real_500k_long.py || true
 
-      - name: Install hash-locked CPU runtime
+      - name: Install hash-locked CPU runtime and test tooling
         run: |
           set -euo pipefail
           python -m venv .learn122
@@ -54,6 +54,9 @@ jobs:
           .learn122/bin/python -m pip install \
             --disable-pip-version-check --no-deps --require-hashes \
             -r requirements/locks/linux-x86_64/runtime.lock.txt
+          .learn122/bin/python -m pip install \
+            --disable-pip-version-check --no-deps --require-hashes \
+            -r requirements/locks/linux-x86_64/dev.lock.txt
 
       - name: Compile and preflight exact protocol
         env:
