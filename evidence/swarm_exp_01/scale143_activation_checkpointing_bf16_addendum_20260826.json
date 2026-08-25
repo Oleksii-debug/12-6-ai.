@@ -1,0 +1,63 @@
+{
+  "schema_version": "12-6.scale143-bf16-addendum.v1",
+  "worker_id": "SCALE-143-ACTIVATION-CHECKPOINTING",
+  "authority": "LOCAL_FREE_ENGINEERING_CALIBRATION_ONLY",
+  "model": {
+    "stage": "S4",
+    "parameter_count": 99897600,
+    "model_spec_sha256": "6103d0d457e25206c11871f09aef1f2e23860329c060379c9f956b3851740170",
+    "preferred_runtime_precision": "bf16"
+  },
+  "runtime": {
+    "device": "cpu",
+    "torch": "2.10.0+cpu",
+    "cuda_available": false,
+    "cgroup_memory_limit_bytes": 4294967296,
+    "timing_reliability": "LOW_FOR_CPU_BF16; USE_MEMORY_ONLY_FOR_POLICY_CALIBRATION"
+  },
+  "real_execution": [
+    {
+      "sequence_length": 512,
+      "policy": "none",
+      "peak_pre_optimizer_rss_bytes": 1423265792,
+      "activation_delta_rss_bytes": 228843520,
+      "step_seconds": 15.268266647,
+      "tokens_per_second": 33.4681
+    },
+    {
+      "sequence_length": 512,
+      "policy": "per_block",
+      "peak_pre_optimizer_rss_bytes": 1287081984,
+      "activation_delta_rss_bytes": 89010176,
+      "step_seconds": 3.613852287,
+      "tokens_per_second": 141.4004
+    },
+    {
+      "sequence_length": 1024,
+      "policy": "none",
+      "peak_pre_optimizer_rss_bytes": 1667629056,
+      "activation_delta_rss_bytes": 473100288,
+      "step_seconds": 18.714443554,
+      "tokens_per_second": 54.6637
+    },
+    {
+      "sequence_length": 1024,
+      "policy": "per_block",
+      "peak_pre_optimizer_rss_bytes": 1324584960,
+      "activation_delta_rss_bytes": 126775296,
+      "step_seconds": 7.384137482,
+      "tokens_per_second": 138.5402
+    }
+  ],
+  "resource_planning": {
+    "sequence_length": 4096,
+    "method": "linear RSS extrapolation from real S4 bf16 512 and 1024 points; planning only",
+    "none_peak_rss_mib_approx": 2990,
+    "per_block_peak_rss_mib_approx": 1478,
+    "interpretation": "At batch 1 and preferred bf16, the simple local projection no longer makes per-block checkpointing automatically necessary on a 4 GiB usable budget. No-checkpoint is plausible but must be measured at 4096 on the target accelerator because attention scaling, allocator behavior, and CUDA kernels can invalidate linear CPU projection."
+  },
+  "decision_correction": {
+    "S4_4096_unconditional_per_block": false,
+    "rule": "Select from measured target-hardware headroom, not parameter count alone. Use none when uncheckpointed peak is <=80% of usable memory; use per_block above 80%, on OOM, or when checkpointing is needed to retain the intended batch/context."
+  }
+}
