@@ -1,0 +1,128 @@
+name: TOK-115 EOS Real Corpus
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  local-free-eos-boundary:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      OMP_NUM_THREADS: "2"
+      MKL_NUM_THREADS: "2"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Prove exact source checkout
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Verify exact D08 locked environment and repository checks
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: >-
+          python tools/verify_locked_environment.py
+          --profile linux-x86_64
+          --source-sha "$SOURCE_SHA"
+          --evidence-out tok115-locked-environment.json
+          --run-repo-checks
+      - name: Create exact locked TOK-115 environment
+        run: |
+          python -m venv .tok115-locked
+          .tok115-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .tok115-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          .tok115-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/dev.lock.txt
+          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .tok115-locked/bin/python -m pip install --no-deps --no-build-isolation -e .
+      - name: Compile TOK-115 orchestrator
+        run: .tok115-locked/bin/python -m py_compile tools/run_tok115_eos_real_corpus.py
+      - name: Execute matched A B C matrix at 268K and 1M
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: >-
+          .tok115-locked/bin/python tools/run_tok115_eos_real_corpus.py
+          --phase matched
+          --output-dir evidence/tok115
+          --source-sha "$SOURCE_SHA"
+          --torch-threads 2
+      - name: Start substantial selected 1M scratch run and retain quarter midpoint checkpoints
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: >-
+          .tok115-locked/bin/python tools/run_tok115_eos_real_corpus.py
+          --phase start
+          --output-dir evidence/tok115
+          --source-sha "$SOURCE_SHA"
+          --torch-threads 2
+      - name: Fresh-process midpoint resume and exact final reload
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: >-
+          .tok115-locked/bin/python tools/run_tok115_eos_real_corpus.py
+          --phase resume
+          --output-dir evidence/tok115
+          --source-sha "$SOURCE_SHA"
+          --torch-threads 2
+      - name: Fail-closed validate milestone evidence
+        run: |
+          .tok115-locked/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path("evidence/tok115/final-report.json").read_text(encoding="utf-8"))
+          matched = report["matched_experiment"]
+          assert len(matched["results"]) == 6
+          assert {(r["scale"], r["candidate"]) for r in matched["results"]} == {
+              (s, c) for s in ("268k", "1m") for c in ("A", "B", "C")
+          }
+          assert all(r["heldout"]["decrease"] > 0 for r in matched["results"])
+          assert all(r["train_panel"]["decrease"] > 0 for r in matched["results"])
+          assert report["learning_proof"]["heldout_bpb_decrease"] > 0
+          assert report["learning_proof"]["train_panel_bpb_decrease"] > 0
+          assert report["learning_proof"]["evaluation_non_mutating"] is True
+          assert report["fresh_process_resume"]["different_process"] is True
+          assert report["checkpoints"]["final"]["step"] == report["training"]["final_step"]
+          assert report["checkpoints"]["final_fresh_reload"]["matches_in_memory_final_state"] is True
+          assert matched["checkpoint_identity_rejection"]["status"] == "PASS"
+          assert all(p["rejected_before_model_mutation"] for p in matched["checkpoint_identity_rejection"]["probes"])
+          assert all(p["target_model_state_unchanged"] for p in matched["checkpoint_identity_rejection"]["probes"])
+          assert matched["parameter_tax"]["268k"]["extra_parameters_for_eos"] == 72
+          assert matched["parameter_tax"]["1m"]["extra_parameters_for_eos"] == 128
+          assert report["truth_boundary"]["paid_compute"] is False
+          assert report["truth_boundary"]["instruction_tuning"] is False
+          assert report["model"]["foreign_pretrained_weights"] is False
+          for name in ("quarter", "midpoint", "final"):
+              checkpoint = Path(report["checkpoints"][name]["path"])
+              assert (checkpoint / "manifest.json").is_file()
+              assert (checkpoint / "weights.safetensors").is_file()
+          print(json.dumps({
+              "source_sha": report["source_sha"],
+              "selected_candidate": report["selected_candidate"],
+              "parameter_count": report["model"]["parameter_count"],
+              "initial_heldout_bpb": report["learning_proof"]["initial_heldout_bpb"],
+              "final_heldout_bpb": report["learning_proof"]["final_heldout_bpb"],
+              "heldout_bpb_decrease": report["learning_proof"]["heldout_bpb_decrease"],
+              "initial_train_panel_bpb": report["learning_proof"]["initial_train_panel_bpb"],
+              "final_train_panel_bpb": report["learning_proof"]["final_train_panel_bpb"],
+              "final_checkpoint_id": report["checkpoints"]["final"]["checkpoint_id"],
+              "eos_decision": report["eos_decision"]["decision"],
+          }, indent=2, sort_keys=True))
+          PY
+      - name: Upload TOK-115 learned Base evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: tok115-eos-real-corpus
+          path: |
+            tok115-locked-environment.json
+            evidence/tok115
+          if-no-files-found: warn
+          retention-days: 30
