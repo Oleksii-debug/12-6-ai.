@@ -187,13 +187,15 @@ def iter_packed_examples(
 ) -> Iterator[PackedCausalExample]:
     """Tokenize and pack one explicit split with no dropped within-document LM pairs.
 
-    S0 defaults to isolated documents because the 256-ID raw-byte tokenizer has
-    no semantic EOS token. Cross-document packing is permitted only when an EOS
-    token exists and is explicitly added, avoiding invented boundary semantics.
+    S0 remains document-isolated because the 256-ID raw-byte tokenizer has no semantic
+    EOS token. A semantic EOS alone is not sufficient to make cross-document rows safe:
+    the consuming model must also enforce block-causal attention boundaries. This legacy
+    API cannot express those segment boundaries, so cross-document use fails closed and
+    the scale path must use the segment-aware streaming packer instead.
 
-    Blocks overlap by one actual token. With D02's shifted-label objective this
-    makes every adjacent token pair within each document appear exactly once.
-    Final partial blocks are masked rather than silently dropped.
+    Blocks overlap by one actual token. With D02's shifted-label objective this makes
+    every adjacent token pair within each document appear exactly once. Final partial
+    blocks are masked rather than silently dropped.
     """
     _validate_packing_identity()
     if not expected_split:
@@ -207,29 +209,11 @@ def iter_packed_examples(
 
     if cross_document and (tokenizer.eos_id is None or not add_eos):
         raise ValueError("cross-document packing requires an explicit EOS token")
-
     if cross_document:
-        token_carry: list[int] = []
-        provenance_carry: list[str] = []
-        for record in records:
-            if record.split != expected_split:
-                raise SplitMixError(
-                    f"record {record.record_id!r} has split {record.split!r}; "
-                    f"expected {expected_split!r}"
-                )
-            encoded = tokenizer.encode(record.text, add_bos=add_bos, add_eos=add_eos)
-            token_carry.extend(encoded)
-            provenance_carry.extend([record.record_id] * len(encoded))
-
-        yield from _iter_token_stream_blocks(
-            token_carry,
-            provenance_carry,
-            split=expected_split,
-            sequence_length=sequence_length,
-            fill_token_id=fill_token_id,
-            ignore_index=ignore_index,
+        raise ValueError(
+            "legacy PackedCausalExample cannot carry block-causal document boundaries; "
+            "use the segment-aware streaming EOS packer and a model that consumes segment_ids"
         )
-        return
 
     for record in records:
         if record.split != expected_split:
