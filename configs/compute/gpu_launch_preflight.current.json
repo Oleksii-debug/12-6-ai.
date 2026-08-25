@@ -71,6 +71,7 @@
         "status": "NOT_APPROVED_FOR_100M_CAMPAIGN"
       },
       "run_config": "configs/runs/s4_100m_serious.json",
+      "run_manifest_sha256": "8b5103470e3e59ef30fd127032c8c95be58fab57db5dcd4f27fea2ffe7076d73",
       "stage_config": "configs/stages/s4_100m_accelerator.candidate.json"
     },
     "10m": {
@@ -124,6 +125,7 @@
         "truth_boundary": "Midpoint/final fresh-object restore exists; a campaign LKG/restart authority is not yet composed."
       },
       "run_config": "configs/runs/s3_10m.single_gpu_pilot.experimental.json",
+      "run_manifest_sha256": "6d2ab7f946858a0184f531e00cb8f6b6405552a737bcbb9976c9ec70a0c16c20",
       "stage_config": "configs/stages/alternatives/s3_10m_scale03_byte_gqa.execution.json"
     }
   },
