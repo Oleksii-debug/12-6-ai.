@@ -1,0 +1,124 @@
+name: DATA-101 Real Corpus V0.2
+
+on:
+  pull_request:
+    paths:
+      - "configs/data/corpus_v02.json"
+      - "src/twelve_six/data/corpus_v02.py"
+      - "src/twelve_six/data/document_quality.py"
+      - "src/twelve_six/data/privacy_filter.py"
+      - "src/twelve_six/data/near_dedup.py"
+      - "src/twelve_six/data/dedup_scale.py"
+      - "src/twelve_six/data/benchmark_decontamination.py"
+      - "src/twelve_six/tokenization/experiments.py"
+      - "tests/test_data101_corpus_v02.py"
+      - ".github/workflows/data101-corpus-v02.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  corpus-v02-release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Bind exact source head
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+      - name: Install repository runtime and tests
+        run: |
+          python -m pip install --disable-pip-version-check -e .[dev]
+      - name: Verify and install exact DataTrove and tokenizer incumbents
+        shell: bash
+        run: |
+          mkdir -p /tmp/datatrove-wheel /tmp/tokenizers-wheel
+          python -m pip download --disable-pip-version-check --no-deps datatrove==0.10.0 -d /tmp/datatrove-wheel
+          WHEEL="$(find /tmp/datatrove-wheel -name 'datatrove-0.10.0-*.whl' -print -quit)"
+          test -n "$WHEEL"
+          test "$(sha256sum "$WHEEL" | awk '{print $1}')" = "c7bb75deed2c3e88fb5138f8ea075a170ee98d6c94fc263829609091ea9c2b5d"
+          python -m pip download --disable-pip-version-check --no-deps tokenizers==0.23.1 -d /tmp/tokenizers-wheel
+          TOKENIZERS_WHEEL="$(find /tmp/tokenizers-wheel -name 'tokenizers-0.23.1-*.whl' -print -quit)"
+          test -n "$TOKENIZERS_WHEEL"
+          test "$(sha256sum "$TOKENIZERS_WHEEL" | awk '{print $1}')" = "5075b405006415ea148a992d093699c66eb01952bf59f4d5727089a98bda45a4"
+          python -m pip install --disable-pip-version-check "$WHEEL" orjson regex "xxhash==3.8.1"
+          python -m pip install --disable-pip-version-check --no-deps "$TOKENIZERS_WHEEL"
+      - name: Static and focused contract tests
+        env:
+          PYTHONPATH: src
+        run: |
+          ruff check src/twelve_six/data/corpus_v02.py tests/test_data101_corpus_v02.py
+          pytest -q tests/test_data101_corpus_v02.py tests/test_external_source_intake_ua_en.py
+      - name: Execute two clean full V0.2 rebuilds
+        env:
+          PYTHONPATH: src
+        run: |
+          mkdir -p reports/data101
+          /usr/bin/time -v python -m twelve_six.data.corpus_v02 \
+            configs/data/corpus_v02.json \
+            --output-dir /tmp/data101-v02 \
+            --verify-rebuild \
+            > reports/data101/rebuild.stdout.json \
+            2> reports/data101/rebuild.time.txt
+      - name: Retain immutable release and machine evidence
+        env:
+          PYTHONPATH: src
+        run: |
+          rm -rf data/corpus/v0.2
+          cp -a /tmp/data101-v02/rebuild-a data/corpus/v0.2
+          python - <<'PY'
+          import hashlib, json, platform, sys
+          from pathlib import Path
+          import torch
+          manifest_path = Path('data/corpus/v0.2/manifest.json')
+          manifest = json.loads(manifest_path.read_text())
+          assert manifest['train_validation_normalized_content_overlap'] == 0
+          assert manifest['truth_boundary']['contains_real_external_training_data'] is True
+          assert manifest['truth_boundary']['project_authored_never_relabeled_external'] is True
+          assert manifest['tokenizer']['repeat_build_identity_equal'] is True
+          assert manifest['counts']['real_external_source_identities'] >= 2
+          assert manifest['optimized_token_supply']['real_external_train_tokenizer_tokens'] > 0
+          assert manifest['counts']['real_external_code_documents'] == 0
+          report = {
+              'schema_version': '12-6.data101-executed-release.v1',
+              'git_sha': __import__('subprocess').check_output(['git','rev-parse','HEAD'], text=True).strip(),
+              'corpus_identity_sha256': manifest['corpus_identity_sha256'],
+              'manifest_file_sha256': hashlib.sha256(manifest_path.read_bytes()).hexdigest(),
+              'shard_hashes': {x['path']: x['sha256'] for x in manifest['shards']},
+              'tokenizer_config_sha256': manifest['tokenizer']['config_sha256'],
+              'tokenizer_vocab_sha256': manifest['tokenizer']['vocab_sha256'],
+              'real_external_share': manifest['optimized_token_supply']['real_external_share'],
+              'machine': {
+                  'python': sys.version.split()[0],
+                  'platform': platform.platform(),
+                  'torch': torch.__version__,
+                  'cuda_available': torch.cuda.is_available(),
+              },
+              'paid_compute': False,
+              'execution_class': 'LOCAL_FREE_GITHUB_HOSTED_PUBLIC_REPO',
+          }
+          Path('reports/data101/executed_release.json').write_text(json.dumps(report, indent=2, sort_keys=True)+'\n')
+          print(json.dumps(report, indent=2, sort_keys=True))
+          PY
+      - name: Upload DATA-101 release evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: data101-corpus-v02-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            data/corpus/v0.2/manifest.json
+            data/corpus/v0.2/shards/*.jsonl
+            data/corpus/v0.2/tokenizer/*
+            data/corpus/v0.2/*report.json
+            reports/data101/*
+          if-no-files-found: warn
+          retention-days: 30
