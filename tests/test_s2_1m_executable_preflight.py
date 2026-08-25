@@ -10,7 +10,11 @@ from twelve_six.training.s2_preflight import (
 )
 from twelve_six.training.s3_smoke import (
     CANDIDATE_PATH as S3_CANDIDATE_PATH,
+)
+from twelve_six.training.s3_smoke import (
     MODEL_SPEC_SHA256 as S3_MODEL_SPEC_SHA256,
+)
+from twelve_six.training.s3_smoke import (
     PARAMETER_COUNT as S3_PARAMETER_COUNT,
 )
 
