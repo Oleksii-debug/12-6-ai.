@@ -68,8 +68,8 @@ def test_400m_resource_budget_accounts_for_optimizer_attention_and_kv_cache() ->
     assert estimate.full_training_checkpoint_bytes == 4_815_286_272
     assert estimate.weight_only_checkpoint_bytes == 1_605_095_424
     assert estimate.kv_cache_bytes_per_token_per_sequence == 30_720
-    assert estimate.estimated_activation_bytes_per_microbatch == 617_611_264
-    assert estimate.estimated_training_flops_per_token == 3_917_592_576
+    assert estimate.estimated_activation_bytes_per_microbatch == 630_194_176
+    assert estimate.estimated_training_flops_per_token == 5_223_456_768
 
     sharded = estimate_scale_resources(
         spec,
