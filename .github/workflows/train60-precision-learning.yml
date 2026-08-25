@@ -1,0 +1,138 @@
+name: TRAIN-60 Precision Learning Curves
+
+on:
+  pull_request:
+    paths:
+      - "src/twelve_six/training/precision_learning.py"
+      - "src/twelve_six/training/precision.py"
+      - "src/twelve_six/training/trainer.py"
+      - "src/twelve_six/checkpoint/**"
+      - "configs/stages/s1_100k.json"
+      - "data/s0/packaged/**"
+      - "tests/test_precision_learning.py"
+      - "tools/run_precision_learning_curve.py"
+      - "requirements/locks/**"
+      - ".github/workflows/train60-precision-learning.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  paired-cpu-learning:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Prove exact source checkout
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Verify exact locked environment and repository checks
+        run: >-
+          python tools/verify_locked_environment.py
+          --profile linux-x86_64
+          --source-sha "$SOURCE_SHA"
+          --evidence-out locked-environment-linux-x86_64.json
+          --run-repo-checks
+      - name: Create exact locked TRAIN-60 execution environment
+        run: |
+          python -m venv .train60-locked
+          .train60-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .train60-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .train60-locked/bin/python -m pip install --no-deps --no-build-isolation -e .
+      - name: Run focused precision tests
+        run: |
+          .train60-locked/bin/python -m pytest -q \
+            tests/test_precision_learning.py \
+            tests/test_training_precision_runtime.py \
+            tests/test_trainer_checkpoint_adapter.py
+      - name: Prove native CPU bf16 ISA or fail closed
+        run: |
+          .train60-locked/bin/python - <<'PY'
+          import json
+          import platform
+          from pathlib import Path
+
+          machine = platform.machine().lower()
+          system = platform.system().lower()
+          flags = set()
+          cpuinfo = Path("/proc/cpuinfo")
+          if cpuinfo.exists():
+              for line in cpuinfo.read_text(encoding="utf-8", errors="replace").splitlines():
+                  if line.lower().startswith("flags") and ":" in line:
+                      flags.update(line.split(":", 1)[1].strip().lower().split())
+
+          accepted = sorted(flags & {"avx512_bf16", "amx_bf16"})
+          supported = system == "linux" and machine in {"x86_64", "amd64"} and bool(accepted)
+          evidence = {
+              "schema_version": "12-6.train60-native-cpu-bf16.v1",
+              "system": system,
+              "machine": machine,
+              "accepted_native_flags": accepted,
+              "supported": supported,
+              "policy": "FAIL_CLOSED_NO_SOFTWARE_ONLY_BF16_SIMULATION",
+          }
+          Path("train60-native-bf16-capability.json").write_text(
+              json.dumps(evidence, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(evidence, sort_keys=True))
+          if not supported:
+              raise SystemExit("native CPU bf16 ISA was not proven; TRAIN-60 fails closed")
+          PY
+      - name: Upload native CPU bf16 capability evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: train60-native-cpu-bf16-capability
+          path: train60-native-bf16-capability.json
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Execute paired 100K-token CPU learning curves
+        run: |
+          .train60-locked/bin/python tools/run_precision_learning_curve.py \
+            --source-sha "$SOURCE_SHA" \
+            --locked-environment-evidence locked-environment-linux-x86_64.json \
+            --target-tokens 100000 \
+            --seed 1337 \
+            --batch-size 3 \
+            --output train60-precision-learning.json
+      - name: Print compact evidence summary
+        run: |
+          .train60-locked/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+
+          evidence = json.loads(Path("train60-precision-learning.json").read_text())
+          for name in ("fp32", "bf16"):
+              profile = evidence["profiles"][name]
+              final = profile["curve"][-1]
+              print(
+                  name,
+                  "tokens=", profile["optimized_tokens"],
+                  "train_bpb=", final["train"]["bpb"],
+                  "validation_bpb=", final["validation"]["bpb"],
+                  "tokens_per_step_second=",
+                  profile["timing"]["optimized_tokens_per_trainer_step_second"],
+              )
+          print("comparison=", json.dumps(evidence["comparison"], sort_keys=True))
+          print("recommendation=", evidence["recommendation"]["decision"])
+          PY
+      - name: Upload TRAIN-60 evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: train60-precision-learning-evidence
+          path: |
+            locked-environment-linux-x86_64.json
+            train60-native-bf16-capability.json
+            train60-precision-learning.json
+          if-no-files-found: error
+          retention-days: 30
