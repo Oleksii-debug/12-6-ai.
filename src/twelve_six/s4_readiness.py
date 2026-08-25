@@ -56,14 +56,17 @@ class S4RunProfile:
 @dataclass(frozen=True, slots=True)
 class S4ResourceEvidence:
     exact_parameters: int
-    parameter_gib_bf16: float
-    gradient_gib_bf16: float
+    parameter_gib_fp32: float
+    gradient_gib_fp32: float
     adam_moments_gib_fp32: float
-    master_weights_gib_fp32: float
     activation_gib_estimate: float
     total_training_gib_estimate: float
-    inference_weight_gib_bf16: float
-    training_checkpoint_gib_estimate: float
+    model_checkpoint_gib_fp32: float
+    optimizer_checkpoint_gib_fp32: float
+    checkpoint_payload_gib_estimate: float
+    checkpoint_load_transient_host_gib_estimate: float
+    inference_weight_gib_fp32: float
+    inference_weight_gib_bf16_if_cast: float
     tokens_per_optimizer_step: int
     scheduled_tokens: int
 
@@ -156,13 +159,21 @@ def estimate_s4_resources(
     *,
     activation_multiplier: float = 8.0,
 ) -> S4ResourceEvidence:
-    """Return conservative single-rank BF16 + AdamW resource evidence."""
+    """Model current Trainer AMP semantics and conservative checkpoint transients.
+
+    Trainer precision='bf16' uses autocast but does not cast parameter storage, so
+    parameters, gradients, and Adam moments remain FP32 today. Activations are
+    estimated at BF16 width. Checkpoint-v1 snapshots complete payload bytes before
+    decoding; the transient host-RAM field intentionally budgets two payload copies
+    on top of the live CPU materialization and should be treated as a floor, not a
+    measured peak.
+    """
 
     config = validate_s4_candidate(path)
     if profile.sequence_length > config.model.max_seq_len:
         raise ValueError("run sequence length exceeds ModelSpec max_seq_len")
     if profile.precision != "bf16":
-        raise ValueError("S4 accelerator profiles are BF16-only by default")
+        raise ValueError("S4 accelerator profiles are BF16-autocast only by default")
     scale = ModelScaleSpec(
         total_parameters=config.expected_parameters,
         hidden_size=config.model.d_model,
@@ -174,25 +185,34 @@ def estimate_s4_resources(
     estimate: MemoryEstimate = estimate_training_memory(
         scale,
         ParallelPlan(),
-        parameter_bytes=2,
-        gradient_bytes=2,
+        parameter_bytes=4,
+        gradient_bytes=4,
         optimizer_bytes_per_parameter=8,
-        master_weight_bytes=4,
+        master_weight_bytes=0,
         activation_bytes=2,
         activation_multiplier=activation_multiplier,
     )
     params = config.expected_parameters
-    training_checkpoint_bytes = params * (2 + 8 + 4)
+    model_checkpoint_bytes = params * 4
+    optimizer_checkpoint_bytes = params * 8
+    checkpoint_payload_bytes = model_checkpoint_bytes + optimizer_checkpoint_bytes
+    # v1 verification holds payload bytes, then decode/materialize creates more
+    # arrays/tensors. 2x payload is a conservative preflight floor for transient
+    # host memory above the live target model/optimizer; real peak must be profiled.
+    checkpoint_transient_bytes = checkpoint_payload_bytes * 2
     return S4ResourceEvidence(
         exact_parameters=params,
-        parameter_gib_bf16=estimate.parameter_bytes_per_rank / GIB,
-        gradient_gib_bf16=estimate.gradient_bytes_per_rank / GIB,
+        parameter_gib_fp32=estimate.parameter_bytes_per_rank / GIB,
+        gradient_gib_fp32=estimate.gradient_bytes_per_rank / GIB,
         adam_moments_gib_fp32=estimate.optimizer_bytes_per_rank / GIB,
-        master_weights_gib_fp32=estimate.master_weight_bytes_per_rank / GIB,
         activation_gib_estimate=estimate.activation_bytes_per_rank / GIB,
         total_training_gib_estimate=estimate.total_gib_per_rank,
-        inference_weight_gib_bf16=(params * 2) / GIB,
-        training_checkpoint_gib_estimate=training_checkpoint_bytes / GIB,
+        model_checkpoint_gib_fp32=model_checkpoint_bytes / GIB,
+        optimizer_checkpoint_gib_fp32=optimizer_checkpoint_bytes / GIB,
+        checkpoint_payload_gib_estimate=checkpoint_payload_bytes / GIB,
+        checkpoint_load_transient_host_gib_estimate=checkpoint_transient_bytes / GIB,
+        inference_weight_gib_fp32=model_checkpoint_bytes / GIB,
+        inference_weight_gib_bf16_if_cast=(params * 2) / GIB,
         tokens_per_optimizer_step=profile.tokens_per_optimizer_step,
         scheduled_tokens=profile.scheduled_tokens,
     )
