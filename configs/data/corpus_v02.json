@@ -1,0 +1,55 @@
+{
+  "schema_version": "12-6.corpus-build-config.v2",
+  "corpus_version": "0.2.0",
+  "external_candidate_registry": "configs/data/external_source_candidates_ua_en_v1.json",
+  "output_dir": "data/build/corpus_v02",
+  "target_pre_filter_byte_tokens": {
+    "uk": 9000000,
+    "en": 7000000,
+    "code": 4000000
+  },
+  "validation_basis_points": 500,
+  "split_salt": "data101-corpus-v02-20260826",
+  "shard_target_bytes": 1048576,
+  "project_authored": {
+    "enabled": true,
+    "source_version": "0.1.0",
+    "max_candidates_per_stratum": 200000,
+    "declaration": "PROJECT_AUTHORED_V01_MATERIAL_RETAINED_AS_A_SEPARATE_ORIGIN_CLASS"
+  },
+  "near_dedup": {
+    "natural": {
+      "name": "natural_calibrated_5g_20x5",
+      "n_grams": 5,
+      "num_buckets": 20,
+      "hashes_per_bucket": 5
+    },
+    "code": {
+      "name": "code_calibrated_4g_16x6",
+      "n_grams": 4,
+      "num_buckets": 16,
+      "hashes_per_bucket": 6
+    },
+    "seed": 1,
+    "hash_precision": 64
+  },
+  "decontamination": {
+    "benchmark_registry": {
+      "schema_version": "12-6.benchmark-registry.v1",
+      "benchmarks": [],
+      "manifest_sha256": "10f7454f77eb2dc3871eeafa5055b1969eab42954eb8e19e61565f217c67df31"
+    },
+    "n_grams": 5,
+    "num_buckets": 14,
+    "hashes_per_bucket": 8,
+    "seed": 1,
+    "hash_precision": 64
+  },
+  "tokenizer": {
+    "algorithm": "bpe",
+    "library": "tokenizers",
+    "version": "0.23.1",
+    "vocab_size": 512,
+    "min_frequency": 2
+  }
+}
