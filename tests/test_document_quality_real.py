@@ -22,7 +22,7 @@ def test_real_extension_reuses_incumbent_and_fixed_candidates() -> None:
     assert candidates[0].manifest()["policy_sha256"] == default_quality_policy().manifest()["policy_sha256"]
     assert [candidate.policy_id for candidate in candidates] == [
         "d03-lightweight-uk-en-code-v1",
-        "data108-real-balanced-v2",
+        "data108-real-balanced-v3",
         "data108-real-preserve-v2",
         "data108-real-strict-v2",
     ]
