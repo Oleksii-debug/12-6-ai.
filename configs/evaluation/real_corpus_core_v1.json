@@ -1,0 +1,60 @@
+{
+  "schema_version": "12-6.real-corpus-evaluation-config.v1",
+  "suite_id": "EVAL-131-REAL-CORPUS-CORE",
+  "quality_authority": "FIRST_PARTY_HELDOUT_ONLY",
+  "compute_policy": "LOCAL_FREE_ONLY",
+  "modalities": ["ua", "en", "code"],
+  "source_family_breakdown_required": true,
+  "heldout_source_kind_required": "EXTERNAL_REAL",
+  "metrics": [
+    "cross_entropy_nats_per_token",
+    "perplexity_when_meaningful",
+    "bits_per_source_byte",
+    "tokens_per_source_byte"
+  ],
+  "bootstrap": {
+    "method": "DETERMINISTIC_DOCUMENT_BOOTSTRAP_SPLITMIX64_PERCENTILE_V1",
+    "replicates": 512,
+    "confidence": 0.95
+  },
+  "evaluation_contract": {
+    "torch_no_grad_required": true,
+    "model_mode_toggle_forbidden": true,
+    "model_state_mutation_forbidden": true,
+    "trainer_state_mutation_forbidden": true,
+    "optimized_tokens_delta_required": 0,
+    "same_model_random_init_baseline_required_for_each_learned_model_spec": true,
+    "train_loss_quality_evidence_forbidden": true,
+    "external_benchmark_required": false
+  },
+  "split_contract": {
+    "holdout_excluded_before_model_training": true,
+    "holdout_excluded_before_learned_tokenizer_fit": true,
+    "fixed_tokenizer_fit_status": "NOT_APPLICABLE_FIXED_TOKENIZER_NO_FIT_CORPUS",
+    "exact_record_id_overlap_allowed": false,
+    "exact_content_sha256_overlap_allowed": false
+  },
+  "incumbent_authorities": {
+    "d06": {
+      "pr": 28,
+      "head_sha": "914973502ab92a925a5cc29d72e4b3cce0e81c80",
+      "benchmark_registry_snapshot_sha256": "10f7454f77eb2dc3871eeafa5055b1969eab42954eb8e19e61565f217c67df31"
+    },
+    "data31_decontamination": {
+      "pr": 230,
+      "head_sha": "6b1c7f3418357e0ea1cfc6ab5ceda6a740dc5921",
+      "report_schema": "12-6.benchmark-decontamination-report.v1"
+    },
+    "data25_corpus_mechanics": {
+      "pr": 210,
+      "head_sha": "8af17afa7baf3d75c2328caf8b08af2400a95e09",
+      "corpus_identity_sha256": "422f545da93526ceba2c0ff738e0b9deac65f35bfb31d87d2aab068cda091fc8",
+      "real_corpus_quality_authority": false
+    },
+    "milestone100_learned_checkpoint_path": {
+      "pr": 267,
+      "head_sha": "015593b22a600184fb4c8001fe3d70893bfc51d5",
+      "real_corpus_quality_authority": false
+    }
+  }
+}
