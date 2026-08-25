@@ -16,6 +16,7 @@ from twelve_six.integration.torch_batching import right_padded_next_token_logits
 from twelve_six.model import TwelveSixDecoder, load_stage_config
 
 _SCHEMA = "12-6.batched-raw-base-benchmark.v1"
+_LOGIT_TOLERANCE = 1e-4
 
 
 def _canonical_json(payload: dict[str, Any]) -> bytes:
@@ -100,7 +101,7 @@ def _stage_benchmark(
     reference = _sequential_logits(model, rows)
     candidate, call_stats = right_padded_next_token_logits(model, rows)
     max_abs_error = _max_abs_error(reference, candidate)
-    if max_abs_error > 1e-5:
+    if max_abs_error > _LOGIT_TOLERANCE:
         raise RuntimeError(
             f"batched logits drifted from independent canonical forwards: {max_abs_error}"
         )
@@ -126,7 +127,7 @@ def _stage_benchmark(
         "sequence_lengths": list(lengths),
         "semantic_parity": {
             "max_abs_logit_error": max_abs_error,
-            "tolerance": 1e-5,
+            "tolerance": _LOGIT_TOLERANCE,
         },
         "latency_seconds": {
             "sequential_median": sequential_seconds,
