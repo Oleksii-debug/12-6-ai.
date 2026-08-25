@@ -46,7 +46,7 @@ jobs:
           EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           PYTHONPATH: src
         run: |
-          .tok37/bin/python -m twelve_six.tokenization.bpe_sweep \
+          .tok37/bin/python -m twelve_six.tokenization.tok37_manifested_runner \
             --source-sha "$EXPECTED_SOURCE_SHA" \
             --output tok37-bpe-sweep.json \
             --artifact-dir tok37-artifacts
