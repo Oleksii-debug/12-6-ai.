@@ -12,9 +12,10 @@ import subprocess
 import sys
 import tempfile
 import time
+from collections.abc import Callable, Mapping
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import torch
 
@@ -25,7 +26,7 @@ from twelve_six.checkpoint.core import (
     save_checkpoint,
     verify_checkpoint,
 )
-from twelve_six.model import InitSpec, ModelSpec, TwelveSixDecoder, load_stage_config
+from twelve_six.model import ModelSpec, TwelveSixDecoder, load_stage_config
 from twelve_six.training import Trainer, TrainerConfig
 
 SCHEMA_VERSION = "12-6.scale-profile-matrix.v1"
@@ -89,7 +90,7 @@ def _rss_high_water_bytes() -> int | None:
 def _tensor_bytes(value: Any) -> int:
     if isinstance(value, torch.Tensor):
         return value.numel() * value.element_size()
-    if isinstance(value, dict):
+    if isinstance(value, Mapping):
         return sum(_tensor_bytes(item) for item in value.values())
     if isinstance(value, (list, tuple)):
         return sum(_tensor_bytes(item) for item in value)
@@ -113,7 +114,12 @@ def _summarize(samples: list[float]) -> dict[str, Any]:
     }
 
 
-def _measure(operation: Callable[[], Any], *, repetitions: int, warmups: int = 0) -> dict[str, Any]:
+def _measure(
+    operation: Callable[[], Any],
+    *,
+    repetitions: int,
+    warmups: int = 0,
+) -> dict[str, Any]:
     if repetitions < 1 or warmups < 0:
         raise ValueError("repetitions must be >= 1 and warmups must be >= 0")
     for _ in range(warmups):
@@ -168,7 +174,6 @@ def _checkpoint_identity(
         "eps": config.eps,
         "weight_decay": config.weight_decay,
     }
-    training_config = asdict(config)
     run_manifest = {
         "schema": "12-6.scale-profile-run.v1",
         "stage": stage,
@@ -186,7 +191,7 @@ def _checkpoint_identity(
         tokenizer_vocab_hash=_synthetic_hash(stage, "tokenizer_vocab", spec.vocab_size),
         dataset_manifest_hash=_synthetic_hash(stage, "dataset", sequence_length),
         run_manifest_hash=hash_json(run_manifest),
-        training_config=training_config,
+        training_config=asdict(config),
         seed=config.seed,
         precision=config.precision,
         step=trainer.optimizer_step,
@@ -209,6 +214,16 @@ def _stage_config_record(stage: str) -> tuple[Any, dict[str, Any]]:
         "modelspec_sha256": config.model.identity_sha256(),
         "initspec_sha256": config.init.identity_sha256(),
     }
+
+
+def _common_sequence_length(requested: int) -> int:
+    if requested < 2:
+        raise ValueError("sequence_length must be >= 2")
+    native_limits = [
+        load_stage_config(_root() / relative).model.max_seq_len
+        for relative in OBSERVED_STAGES.values()
+    ]
+    return min(requested, min(native_limits))
 
 
 def _fixed_inputs(spec: ModelSpec, sequence_length: int) -> torch.Tensor:
@@ -238,9 +253,8 @@ def _profile_stage(
     config, config_identity = _stage_config_record(stage)
     spec = config.model
     init_spec = config.init
-    effective_sequence = min(sequence_length, spec.max_seq_len)
-    if effective_sequence < 2:
-        raise ValueError("effective sequence length must be >= 2")
+    if sequence_length < 2 or sequence_length > spec.max_seq_len:
+        raise ValueError("stage sequence_length must fit the native context and be >= 2")
     if generation_new_tokens < 1:
         raise ValueError("generation_new_tokens must be >= 1")
 
@@ -256,7 +270,7 @@ def _profile_stage(
 
     torch.manual_seed(seed)
     model = TwelveSixDecoder(spec, init_spec)
-    input_ids = _fixed_inputs(spec, effective_sequence)
+    input_ids = _fixed_inputs(spec, sequence_length)
     batch = {"input_ids": input_ids, "labels": input_ids.clone()}
 
     model.eval()
@@ -266,8 +280,9 @@ def _profile_stage(
             repetitions=repetitions,
             warmups=1,
         )
-    forward_median = forward["seconds"]["median"]
-    forward_tokens_per_second = effective_sequence / forward_median
+    forward["input_tokens_per_second"] = (
+        sequence_length / forward["seconds"]["median"]
+    )
 
     trainer_config = _trainer_config(seed=seed, max_steps=train_repetitions + 2)
     trainer = Trainer(model, trainer_config, device="cpu")
@@ -278,12 +293,14 @@ def _profile_stage(
     for _ in range(train_repetitions):
         start = time.perf_counter_ns()
         metrics = trainer.train_microbatch(batch)
-        elapsed = (time.perf_counter_ns() - start) / 1_000_000_000
-        train_samples.append(elapsed)
+        train_samples.append((time.perf_counter_ns() - start) / 1_000_000_000)
         train_tokens += metrics.tokens
         train_metrics.append(asdict(metrics))
     train = _summarize(train_samples)
-    train_tokens_per_second = train_tokens / sum(train_samples)
+    train["optimized_tokens_per_second"] = train_tokens / sum(train_samples)
+    train["first_timed_metrics"] = train_metrics[0]
+    train["last_timed_metrics"] = train_metrics[-1]
+    train["phase_decomposition"] = "NOT_EXPOSED_BY_PUBLIC_TRAINER_SEAM"
 
     parameter_bytes = sum(
         parameter.numel() * parameter.element_size() for parameter in model.parameters()
@@ -301,7 +318,7 @@ def _profile_stage(
             spec=spec,
             trainer=trainer,
             config=trainer_config,
-            sequence_length=effective_sequence,
+            sequence_length=sequence_length,
         )
         for index in range(checkpoint_repetitions):
             destination = temp_root / f"checkpoint-{index}"
@@ -343,7 +360,9 @@ def _profile_stage(
         repetitions=generation_repetitions,
         warmups=1,
     )
-    generation_tokens_per_second = generation_new_tokens / generation["seconds"]["median"]
+    generation["generated_tokens_per_second"] = (
+        generation_new_tokens / generation["seconds"]["median"]
+    )
 
     rss_after = _rss_high_water_bytes()
     return {
@@ -366,8 +385,8 @@ def _profile_stage(
         },
         "workload": {
             "batch_size": 1,
-            "sequence_length": effective_sequence,
-            "optimized_tokens_per_step": effective_sequence - 1,
+            "sequence_length": sequence_length,
+            "optimized_tokens_per_step": sequence_length - 1,
             "generation_prompt_tokens": prompt_length,
             "generation_new_tokens": generation_new_tokens,
             "precision": "fp32",
@@ -384,23 +403,11 @@ def _profile_stage(
         },
         "measurements": {
             "construction": construction,
-            "forward": {
-                **forward,
-                "input_tokens_per_second": forward_tokens_per_second,
-            },
-            "canonical_train_microbatch_forward_backward_update": {
-                **train,
-                "optimized_tokens_per_second": train_tokens_per_second,
-                "first_timed_metrics": train_metrics[0],
-                "last_timed_metrics": train_metrics[-1],
-                "phase_decomposition": "NOT_EXPOSED_BY_PUBLIC_TRAINER_SEAM",
-            },
+            "forward": forward,
+            "canonical_train_microbatch_forward_backward_update": train,
             "checkpoint_save": checkpoint,
             "checkpoint_verify": checkpoint_verify,
-            "greedy_generation_stateless": {
-                **generation,
-                "generated_tokens_per_second": generation_tokens_per_second,
-            },
+            "greedy_generation_stateless": generation,
             "parameter_bytes": parameter_bytes,
             "optimizer_tensor_bytes": optimizer_tensor_bytes,
             "peak_rss_before_bytes": rss_before,
@@ -625,6 +632,9 @@ def _cpu_boundary(rows: list[dict[str, Any]], meta: dict[str, Any]) -> dict[str,
 def _build_report(source_sha: str, rows: list[dict[str, Any]]) -> dict[str, Any]:
     if [row["stage"] for row in rows] != ["S1", "S2", "S3"]:
         raise ValueError("rows must be ordered S1, S2, S3")
+    sequence_lengths = {row["workload"]["sequence_length"] for row in rows}
+    if len(sequence_lengths) != 1:
+        raise ValueError("observed rows must use one common sequence length")
     meta = _meta_row(rows)
     report: dict[str, Any] = {
         "schema": SCHEMA_VERSION,
@@ -669,6 +679,9 @@ def validate_report(report: dict[str, Any], *, source_sha: str) -> None:
         raise ValueError("observed scale rows must be exactly S1/S2/S3")
     if not isinstance(extrapolated, list) or len(extrapolated) != 1:
         raise ValueError("exactly one analytical row is required")
+    sequence_lengths = {row["workload"]["sequence_length"] for row in observed}
+    if len(sequence_lengths) != 1:
+        raise ValueError("observed rows must retain one common sequence length")
     expected_counts = {"S1": 107856, "S2": 1066112, "S3": 10059840}
     for row in observed:
         if row.get("origin") != "OBSERVED":
@@ -706,6 +719,7 @@ def validate_report(report: dict[str, Any], *, source_sha: str) -> None:
 
 def _run_matrix(args: argparse.Namespace) -> None:
     _require_exact_checkout(args.source_sha)
+    common_sequence = _common_sequence_length(args.sequence_length)
     rows: list[dict[str, Any]] = []
     with tempfile.TemporaryDirectory(prefix="twelve-six-scale-matrix-") as temp:
         temp_root = Path(temp)
@@ -723,7 +737,7 @@ def _run_matrix(args: argparse.Namespace) -> None:
                 "--output",
                 str(output),
                 "--sequence-length",
-                str(args.sequence_length),
+                str(common_sequence),
                 "--repetitions",
                 str(args.repetitions),
                 "--train-repetitions",
