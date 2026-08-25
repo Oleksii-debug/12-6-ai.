@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Run the D11 S3 ~10M candidate through the integrated runtime stack."""
 
 from __future__ import annotations
@@ -8,7 +7,6 @@ import gc
 import hashlib
 import json
 import math
-import os
 import platform
 import subprocess
 import tempfile
@@ -20,8 +18,15 @@ from typing import Any
 
 import torch
 
-from twelve_six.checkpoint.core import CheckpointIdentity, prepare_checkpoint_load, verify_checkpoint
-from twelve_six.checkpoint.trainer_adapter import load_trainer_checkpoint, save_trainer_checkpoint
+from twelve_six.checkpoint.core import (
+    CheckpointIdentity,
+    prepare_checkpoint_load,
+    verify_checkpoint,
+)
+from twelve_six.checkpoint.trainer_adapter import (
+    load_trainer_checkpoint,
+    save_trainer_checkpoint,
+)
 from twelve_six.inference.contracts import GenerationConfig
 from twelve_six.inference.generation import generate
 from twelve_six.integration.s0_runtime import S0TorchInferenceBackend
@@ -270,7 +275,14 @@ def run_probe(args: argparse.Namespace) -> dict[str, Any]:
     model_parameter_bytes = _model_parameter_bytes(model)
 
     device = torch.device(args.device)
+    if device.type == "cuda":
+        if not torch.cuda.is_available():
+            raise RuntimeError("CUDA pilot requested but CUDA is unavailable")
+        if args.precision == "bf16" and not torch.cuda.is_bf16_supported():
+            raise RuntimeError("bf16 pilot requested but CUDA bf16 is unsupported")
+        torch.cuda.reset_peak_memory_stats(device)
     model.to(device)
+
     batch = _make_batch(
         batch_size=args.batch_size,
         sequence_length=args.sequence_length,
@@ -413,6 +425,10 @@ def run_probe(args: argparse.Namespace) -> dict[str, Any]:
     if len(generation.generated_token_ids) != 2:
         raise RuntimeError("first-party stateless generation did not produce two tokens")
 
+    cuda_peak_allocated_bytes = None
+    if device.type == "cuda":
+        cuda_peak_allocated_bytes = int(torch.cuda.max_memory_allocated(device))
+
     if temp_context is not None:
         temp_context.cleanup()
 
@@ -467,6 +483,7 @@ def run_probe(args: argparse.Namespace) -> dict[str, Any]:
             "optimizer_tensor_bytes": optimizer_state_bytes,
             "verified_snapshot_payload_bytes": snapshot_payload_bytes,
             "snapshot_is_full_payload_in_memory": True,
+            "cuda_peak_allocated_bytes": cuda_peak_allocated_bytes,
             "s3_bf16_kv_cache_bytes_batch1_full_context": kv_cache_bytes(
                 spec,
                 batch_size=1,
