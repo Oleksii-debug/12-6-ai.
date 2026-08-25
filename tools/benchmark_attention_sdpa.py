@@ -4,9 +4,9 @@ import argparse
 import json
 import statistics
 import time
+from collections.abc import Callable
 from contextlib import nullcontext
 from dataclasses import asdict, dataclass
-from typing import Callable
 
 import torch
 from torch import Tensor
@@ -192,7 +192,7 @@ def _compile_probe(q: Tensor, k: Tensor, v: Tensor) -> dict[str, object]:
             actual = compiled(q, k, v)
         error = float((actual.float() - expected.float()).abs().max().item())
         return {"status": "PASS", "max_abs_error": error}
-    except Exception as exc:  # benchmark diagnostic: retain exception type, not user data
+    except (RuntimeError, TypeError, ValueError) as exc:
         return {"status": "FAIL", "exception_type": type(exc).__name__}
 
 
