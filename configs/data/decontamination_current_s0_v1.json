@@ -33,6 +33,13 @@
       "reference_document_id": "project-authored-s0-fixture-v1::doc-007",
       "evidence_ref": "Controlled S0 fixture pair: EN and UK texts express the same small-language-model/next-symbol validation proposition.",
       "decision": "REJECT_FROM_TRAINING"
+    },
+    {
+      "match_type": "registered_cross_language_semantic_overlap",
+      "candidate_document_id": "project-authored-s0-fixture-v1::doc-011",
+      "reference_document_id": "project-authored-s0-fixture-v1::doc-005",
+      "evidence_ref": "Controlled S0 fixture pair: UK and EN texts express the same validation-examples-must-remain-outside-training proposition.",
+      "decision": "REJECT_FROM_TRAINING"
     }
   ],
   "minhash": {
