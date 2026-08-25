@@ -1,14 +1,13 @@
 """DATA-35 simple pretraining-curriculum experiment.
 
-The incumbent :class:`MixturePlan` + :class:`RestartCursor` remains the only
-source scheduler.  DATA-35 materializes one finite incumbent source/offset trace
-and compares deterministic *permutations* of that exact envelope multiset.  It
-therefore changes ordering only: model, tokenizer, optimizer recipe, optimized
-loss-token budget, final modality counts, and exact training batch multiset stay
-fixed across candidates.
+The incumbent MixturePlan + RestartCursor remains the only source scheduler.
+DATA-35 materializes one finite incumbent source/offset trace and compares
+permutations of that exact envelope multiset. Ordering changes; model, tokenizer,
+optimizer recipe, optimized-token budget, final modality counts, and the exact
+training-batch multiset do not.
 
 This is LOCAL_FREE mechanics evidence on the tiny project-authored DATA-10
-fixture.  It is not representative-corpus evidence or a promotion authority.
+fixture, not representative-corpus evidence or promotion authority.
 """
 
 from __future__ import annotations
@@ -48,8 +47,10 @@ Candidate = Literal[
     "ukrainian_first_then_mixed",
 ]
 
-# These are the current DATA-10 project-authored training records and held-out
-# tokenizer probes.  Held-out strings are never read by schedule construction.
+# Exact record reconstruction of the manifested 1,454-byte DATA-10 train file.
+# The historical DATA-10 helper literals add terminal newlines to code records;
+# those separators are not present in the manifested file, so DATA-35 binds to
+# the file identity rather than reproducing that helper-literal inconsistency.
 _TRAIN: tuple[tuple[str, str, str], ...] = (
     (
         "uk-1",
@@ -91,7 +92,7 @@ _TRAIN: tuple[tuple[str, str, str], ...] = (
         "code-1",
         "code",
         "def stable_hash(value: str) -> str:\n"
-        "    return hashlib.sha256(value.encode('utf-8')).hexdigest()\n",
+        "    return hashlib.sha256(value.encode('utf-8')).hexdigest()",
     ),
     (
         "code-2",
@@ -101,17 +102,18 @@ _TRAIN: tuple[tuple[str, str, str], ...] = (
         "        self.value = 0\n"
         "    def increment(self):\n"
         "        self.value += 1\n"
-        "        return self.value\n",
+        "        return self.value",
     ),
     (
         "code-3",
         "code",
         "SELECT source_id, COUNT(*) FROM records\n"
         "WHERE split = 'train'\n"
-        "GROUP BY source_id ORDER BY source_id;\n",
+        "GROUP BY source_id ORDER BY source_id;",
     ),
 )
 
+# Existing DATA-10 held-out probes. They are never read by schedule construction.
 _HELDOUT: dict[str, tuple[str, ...]] = {
     "uk": (
         "книга книги книзі книгу книгою; учень учня учневі учнем",
@@ -140,16 +142,6 @@ class TraceEntry:
 
     def identity(self) -> tuple[str, int, str, str]:
         return self.source, self.source_offset, self.record_id, self.record_sha256
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "sample_index": self.sample_index,
-            "source": self.source,
-            "source_offset": self.source_offset,
-            "record_id": self.record_id,
-            "record_sha256": self.record_sha256,
-            "quality_score": self.quality_score,
-        }
 
 
 def _sha_text(text: str) -> str:
@@ -190,7 +182,7 @@ def _assert_current_train_snapshot(repo_root: Path) -> str:
         )
     expected_text = "\n".join(text for _record_id, _modality, text in _TRAIN) + "\n"
     if path.read_text(encoding="utf-8") != expected_text:
-        raise RuntimeError("DATA-10 train record reconstruction does not match manifested fixture")
+        raise RuntimeError("DATA-10 record reconstruction does not match manifested fixture")
     train_hashes = {_sha_text(text) for _record_id, _modality, text in _TRAIN}
     heldout_hashes = {_sha_text(text) for texts in _HELDOUT.values() for text in texts}
     overlap = sorted(train_hashes & heldout_hashes)
@@ -200,13 +192,12 @@ def _assert_current_train_snapshot(repo_root: Path) -> str:
 
 
 def mechanics_quality_score(modality: str, text: str) -> float:
-    """Training-only interpretable ordering proxy; never an eligibility decision."""
+    """Training-only interpretable ordering proxy, never an eligibility decision."""
     encoded = text.encode("utf-8")
     nonspace = [char for char in text if not char.isspace()]
     length_term = min(len(encoded) / 180.0, 1.0)
     if modality in {"uk", "en"}:
-        alphabetic = sum(char.isalpha() for char in nonspace)
-        alphabetic_density = alphabetic / max(len(nonspace), 1)
+        alphabetic_density = sum(char.isalpha() for char in nonspace) / max(len(nonspace), 1)
         words = [word.casefold() for word in _WORD_RE.findall(text)]
         type_ratio = len(set(words)) / max(len(words), 1)
         return 0.45 * alphabetic_density + 0.35 * type_ratio + 0.20 * length_term
@@ -227,7 +218,7 @@ def mechanics_quality_score(modality: str, text: str) -> float:
 def build_incumbent_plan(config: dict[str, Any]) -> MixturePlan:
     records = _records_by_modality()
     weights = config["data"]["mixture_weight_units"]
-    sources = []
+    sources: list[MixtureSource] = []
     for name in MODALITIES:
         manifest = hash_json(
             {
@@ -292,9 +283,9 @@ def materialize_incumbent_trace(
             emitted_loss_tokens=tokens_per_step,
         )
     if cursor.emitted_sequences != steps:
-        raise RuntimeError("MixturePlan trace sequence ledger drift")
+        raise RuntimeError("MixturePlan sequence ledger drift")
     if cursor.emitted_loss_tokens != steps * tokens_per_step:
-        raise RuntimeError("MixturePlan trace optimized-token ledger drift")
+        raise RuntimeError("MixturePlan optimized-token ledger drift")
     return tuple(result)
 
 
@@ -322,14 +313,14 @@ def order_trace(
     if candidate == "fully_mixed":
         ordered = trace
     elif candidate == "quality_first_then_mixed":
-        ranked = sorted(trace, key=lambda item: (-item.quality_score, item.sample_index))
-        prefix_ids = {entry.identity() for entry in ranked[:prefix_steps]}
-        prefix = tuple(entry for entry in ranked if entry.identity() in prefix_ids)[:prefix_steps]
+        prefix = tuple(
+            sorted(trace, key=lambda item: (-item.quality_score, item.sample_index))[:prefix_steps]
+        )
         selected = Counter(entry.identity() for entry in prefix)
         tail: list[TraceEntry] = []
         for entry in trace:
             identity = entry.identity()
-            if selected[identity] > 0:
+            if selected[identity]:
                 selected[identity] -= 1
             else:
                 tail.append(entry)
@@ -342,7 +333,7 @@ def order_trace(
         tail = []
         for entry in trace:
             identity = entry.identity()
-            if selected[identity] > 0:
+            if selected[identity]:
                 selected[identity] -= 1
             else:
                 tail.append(entry)
@@ -356,28 +347,14 @@ def order_trace(
 def _order_identity(order: tuple[TraceEntry, ...]) -> str:
     return hash_json(
         [
-            {
-                "source": entry.source,
-                "source_offset": entry.source_offset,
-                "record_id": entry.record_id,
-                "record_sha256": entry.record_sha256,
-            }
+            (entry.source, entry.source_offset, entry.record_id, entry.record_sha256)
             for entry in order
         ]
     )
 
 
 def _trace_multiset_identity(trace: tuple[TraceEntry, ...]) -> str:
-    rows = sorted(
-        (
-            entry.source,
-            entry.source_offset,
-            entry.record_id,
-            entry.record_sha256,
-        )
-        for entry in trace
-    )
-    return hash_json(rows)
+    return hash_json(sorted(entry.identity() for entry in trace))
 
 
 def _texts_for_modality(modality: str) -> tuple[str, ...]:
@@ -442,8 +419,7 @@ def _evaluate_modalities(
 
 
 def _observed_interval_bpb(
-    nll_sum: dict[str, float],
-    token_count: dict[str, int],
+    nll_sum: dict[str, float], token_count: dict[str, int]
 ) -> dict[str, Any]:
     result: dict[str, Any] = {}
     total_nll = 0.0
@@ -489,14 +465,13 @@ def _entry_batch(
     batch_size: int,
     sequence_length: int,
 ) -> dict[str, torch.Tensor]:
-    records = dict((record_id, text) for record_id, _modality, text in _TRAIN)
+    records = {record_id: text for record_id, _modality, text in _TRAIN}
     text = records[entry.record_id]
     if _sha_text(text) != entry.record_sha256:
         raise RuntimeError("trace record content drift")
-    stream = bytes(tokenizer.encode(text))
     capacity = batch_size * sequence_length
     return _make_pair_batch(
-        stream,
+        bytes(tokenizer.encode(text)),
         causal_offset=entry.source_offset * capacity,
         batch_size=batch_size,
         sequence_length=sequence_length,
@@ -545,8 +520,8 @@ def run_candidate(
     ]
     interval_nll: dict[str, float] = defaultdict(float)
     interval_tokens: dict[str, int] = defaultdict(int)
-    checkpoint_set = set(checkpoint_tokens)
     source_tokens: Counter[str] = Counter()
+    checkpoint_set = set(checkpoint_tokens)
 
     for entry in order:
         before = trainer.tokens_seen
@@ -592,10 +567,6 @@ def run_candidate(
     }
 
 
-def _final_heldout(run: dict[str, Any]) -> dict[str, Any]:
-    return run["checkpoints"][-1]["heldout"]
-
-
 def _mean(values: Iterable[float]) -> float:
     materialized = list(values)
     if not materialized:
@@ -603,9 +574,12 @@ def _mean(values: Iterable[float]) -> float:
     return statistics.fmean(materialized)
 
 
+def _final_heldout(run: dict[str, Any]) -> dict[str, Any]:
+    return run["checkpoints"][-1]["heldout"]
+
+
 def _decision(
-    runs: dict[str, list[dict[str, Any]]],
-    config: dict[str, Any],
+    runs: dict[str, list[dict[str, Any]]], config: dict[str, Any]
 ) -> dict[str, Any]:
     baseline = runs["fully_mixed"]
     rules = config["decision_rule"]
@@ -613,7 +587,7 @@ def _decision(
     accepted: list[str] = []
     for candidate in ("quality_first_then_mixed", "ukrainian_first_then_mixed"):
         candidate_runs = runs[candidate]
-        deltas = []
+        deltas: list[float] = []
         modality_deltas: dict[str, list[float]] = {name: [] for name in MODALITIES}
         for baseline_run, candidate_run in zip(baseline, candidate_runs, strict=True):
             baseline_final = _final_heldout(baseline_run)
@@ -695,11 +669,7 @@ def run_experiment(
         raise RuntimeError("final checkpoint must equal final optimized-token budget")
 
     plan = build_incumbent_plan(config)
-    trace = materialize_incumbent_trace(
-        plan,
-        steps=steps,
-        tokens_per_step=capacity,
-    )
+    trace = materialize_incumbent_trace(plan, steps=steps, tokens_per_step=capacity)
     candidates: tuple[Candidate, ...] = (
         "fully_mixed",
         "quality_first_then_mixed",
@@ -714,7 +684,7 @@ def run_experiment(
         if Counter(entry.identity() for entry in order) != reference_multiset:
             raise RuntimeError("candidate changed exact training-envelope multiset")
 
-    schedule_summaries = {}
+    schedule_summaries: dict[str, Any] = {}
     for candidate, order in orders.items():
         prefix = order[:prefix_steps]
         schedule_summaries[candidate] = {
@@ -728,7 +698,6 @@ def run_experiment(
             "mean_prefix_quality_score": _mean(e.quality_score for e in prefix),
             "mean_full_quality_score": _mean(e.quality_score for e in order),
         }
-
     fixed_counts = {
         tuple(sorted(summary["full_modality_optimized_tokens"].items()))
         for summary in schedule_summaries.values()
@@ -750,8 +719,7 @@ def run_experiment(
                 )
             )
 
-    first_run = runs["fully_mixed"][0]
-    modality_counts = first_run["modality_optimized_tokens"]
+    modality_counts = runs["fully_mixed"][0]["modality_optimized_tokens"]
     for candidate_runs in runs.values():
         for candidate_run in candidate_runs:
             if candidate_run["modality_optimized_tokens"] != modality_counts:
@@ -759,12 +727,6 @@ def run_experiment(
             if candidate_run["optimized_tokens"] != final_tokens:
                 raise RuntimeError("executed total optimized-token budget drift")
 
-    heldout_registry_hash = hash_json(
-        {
-            "data10_source_sha": DATA10_SOURCE_SHA,
-            "heldout": _HELDOUT,
-        }
-    )
     spec = controlled_specs()[1]
     payload: dict[str, Any] = {
         "schema": SCHEMA,
@@ -774,7 +736,9 @@ def run_experiment(
         "config_path": config_path.as_posix(),
         "config_sha256": sha256_file(config_path),
         "train_fixture_sha256": train_sha,
-        "heldout_registry_sha256": heldout_registry_hash,
+        "heldout_registry_sha256": hash_json(
+            {"data10_source_sha": DATA10_SOURCE_SHA, "heldout": _HELDOUT}
+        ),
         "heldout_used_for_schedule_selection": False,
         "model": {
             "parameters": spec.parameter_count(),
@@ -816,10 +780,9 @@ def validate_report(payload: dict[str, Any], *, expected_source_sha: str | None 
         raise RuntimeError("DATA-35 report source SHA mismatch")
     if payload.get("paid_compute_used") is not False:
         raise RuntimeError("DATA-35 LOCAL_FREE truth boundary drift")
-    summaries = payload["schedule_summaries"]
     final_counts = {
         tuple(sorted(summary["full_modality_optimized_tokens"].items()))
-        for summary in summaries.values()
+        for summary in payload["schedule_summaries"].values()
     }
     if len(final_counts) != 1:
         raise RuntimeError("DATA-35 report has unequal final modality token counts")
@@ -836,7 +799,6 @@ def _write_report(path: Path, payload: dict[str, Any]) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(dest="command", required=True)
-
     run_parser = subparsers.add_parser("run")
     run_parser.add_argument("--repo-root", type=Path, default=Path("."))
     run_parser.add_argument("--source-sha", required=True)
@@ -847,12 +809,11 @@ def main() -> int:
     )
     run_parser.add_argument("--output", type=Path, required=True)
     run_parser.add_argument("--torch-threads", type=int, default=2)
-
     validate_parser = subparsers.add_parser("validate")
     validate_parser.add_argument("--input", type=Path, required=True)
     validate_parser.add_argument("--expected-source-sha")
-
     args = parser.parse_args()
+
     if args.command == "run":
         payload = run_experiment(
             repo_root=args.repo_root,
@@ -881,10 +842,7 @@ def main() -> int:
     validate_report(payload, expected_source_sha=args.expected_source_sha)
     print(
         json.dumps(
-            {
-                "report_sha256": payload["report_sha256"],
-                "decision": payload["decision"],
-            },
+            {"report_sha256": payload["report_sha256"], "decision": payload["decision"]},
             sort_keys=True,
         )
     )
