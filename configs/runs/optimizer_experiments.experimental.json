@@ -12,6 +12,7 @@
       "scheduler": "constant",
       "warmup_fraction": 0.0,
       "gradient_clip_norm": 1.0,
+      "decay_embeddings": true,
       "precision": "fp32"
     },
     "adamw_wd01_constant": {
@@ -23,6 +24,7 @@
       "scheduler": "constant",
       "warmup_fraction": 0.0,
       "gradient_clip_norm": 1.0,
+      "decay_embeddings": true,
       "precision": "fp32"
     },
     "adamw_wd01_warmup_constant": {
@@ -34,6 +36,7 @@
       "scheduler": "linear_warmup",
       "warmup_fraction": 0.05,
       "gradient_clip_norm": 1.0,
+      "decay_embeddings": true,
       "precision": "fp32"
     },
     "adamw_wd01_warmup_cosine": {
@@ -45,17 +48,19 @@
       "scheduler": "cosine",
       "warmup_fraction": 0.05,
       "gradient_clip_norm": 1.0,
+      "decay_embeddings": true,
       "precision": "fp32"
     },
-    "adamw_wd01_warmup_cosine_beta999": {
+    "adamw_wd01_warmup_cosine_no_embed_decay": {
       "optimizer": "adamw",
       "learning_rate": 0.0003,
       "weight_decay": 0.1,
-      "betas": [0.9, 0.999],
+      "betas": [0.9, 0.95],
       "eps": 1e-8,
       "scheduler": "cosine",
       "warmup_fraction": 0.05,
       "gradient_clip_norm": 1.0,
+      "decay_embeddings": false,
       "precision": "fp32"
     },
     "adamw_wd01_warmup_cosine_no_clip": {
@@ -67,6 +72,7 @@
       "scheduler": "cosine",
       "warmup_fraction": 0.05,
       "gradient_clip_norm": null,
+      "decay_embeddings": true,
       "precision": "fp32"
     },
     "adamw_wd01_warmup_cosine_lr1e3": {
@@ -78,6 +84,7 @@
       "scheduler": "cosine",
       "warmup_fraction": 0.05,
       "gradient_clip_norm": 1.0,
+      "decay_embeddings": true,
       "precision": "fp32"
     }
   },
@@ -93,7 +100,7 @@
         "adamw_wd01_constant",
         "adamw_wd01_warmup_constant",
         "adamw_wd01_warmup_cosine",
-        "adamw_wd01_warmup_cosine_beta999",
+        "adamw_wd01_warmup_cosine_no_embed_decay",
         "adamw_wd01_warmup_cosine_no_clip",
         "adamw_wd01_warmup_cosine_lr1e3"
       ],
@@ -109,6 +116,7 @@
         "adamw_baseline_constant",
         "adamw_wd01_warmup_constant",
         "adamw_wd01_warmup_cosine",
+        "adamw_wd01_warmup_cosine_no_embed_decay",
         "adamw_wd01_warmup_cosine_lr1e3"
       ],
       "interpretation": "transfer_check_on_1m_candidate_not_quality_ranking"
@@ -121,7 +129,7 @@
       "sequence_length": 128,
       "recipes": [
         "adamw_baseline_constant",
-        "adamw_wd01_warmup_cosine"
+        "adamw_wd01_warmup_cosine_no_embed_decay"
       ],
       "interpretation": "10m_resource_and_update_scale_probe_only"
     }
@@ -134,7 +142,7 @@
       "modelspec_sha256": "dc9fd9e605cbc007aa20ad29f2220c7ebade875564d68016e93d1dc2489cd693",
       "source_pr": 37,
       "executed": false,
-      "provisional_transfer_recipe": "adamw_wd01_warmup_cosine"
+      "provisional_transfer_recipe": "adamw_wd01_warmup_cosine_no_embed_decay"
     },
     {
       "stage": "S4",
@@ -143,7 +151,7 @@
       "modelspec_sha256": "d6ce8b0f44d5601c56fa0b39bfe77cc8863203d3c6ee32701cf897b5a80ab979",
       "source_pr": 67,
       "executed": false,
-      "provisional_transfer_recipe": "adamw_wd01_warmup_cosine"
+      "provisional_transfer_recipe": "adamw_wd01_warmup_cosine_no_embed_decay"
     }
   ]
 }
