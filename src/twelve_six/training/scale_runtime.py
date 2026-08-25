@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Iterator, Literal
+from typing import Literal
 
 import torch
 from torch import Tensor, nn
@@ -210,9 +211,11 @@ def _autocast_and_attention(
     attention_policy: AttentionPolicy,
     device: torch.device,
 ) -> Iterator[None]:
-    with autocast_context:  # type: ignore[attr-defined]
-        with attention_backend_context(attention_policy, device=device):
-            yield
+    with (
+        autocast_context,  # type: ignore[attr-defined]
+        attention_backend_context(attention_policy, device=device),
+    ):
+        yield
 
 
 class ActivationCheckpointedDecoder(TwelveSixDecoder):
