@@ -5,6 +5,7 @@ on:
     paths:
       - ".github/workflows/runtime25-vllm-cpu-probe.yml"
       - "src/twelve_six/inference/vllm_native_llama.py"
+      - "src/twelve_six/inference/llama_runtime_export.py"
       - "src/twelve_six/inference/transformers_llama.py"
       - "src/twelve_six/inference/parity.py"
       - "src/twelve_six/checkpoint/**"
@@ -120,7 +121,7 @@ jobs:
           name: runtime25-vllm-cpu-import-config
           path: |
             artifacts/runtime25-vllm-cpu/fixture.json
-            artifacts/runtime25-vllm-cpu/vllm-model/12-6-vllm-runtime.json
+            artifacts/runtime25-vllm-cpu/vllm-model/12-6-runtime-provenance.json
             artifacts/runtime25-vllm-cpu/vllm-import-config.json
             runtime25-installed-versions.json
             runtime25-vllm-wheel.sha256
