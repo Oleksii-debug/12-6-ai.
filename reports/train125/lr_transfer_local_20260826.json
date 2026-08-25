@@ -1,0 +1,65 @@
+{
+  "schema": "12-6.train125-lr-transfer-local-evidence.v1",
+  "authority": "LOCAL_FREE_BOUNDED_REAL_CORPUS_LR_TRANSFER_NOT_STAGE_PROMOTION",
+  "repository": "Oleksii-debug/12-6-ai.",
+  "branch_base_sha": "015593b22a600184fb4c8001fe3d70893bfc51d5",
+  "source_evidence": {
+    "optimizer_dynamics_head": "6606823177e66f437278b2f22c44479c72d8d6b5",
+    "data21_22_head": "dcc7dfc39299487bca5bdbfe5e6c70eaa6706278",
+    "data21_22_workflow_run": 32899048502,
+    "data21_22_artifact_sha256": "3b4ef6c0d42725f7b660935f70ef1f8b41b90eb9d5d73c83455401a434233122",
+    "train42_status": "REJECTED_AS_INCUMBENT_EVIDENCE_WORKFLOWS_FAILED_BEFORE_SWEEP",
+    "train42_failed_runs": [32861276967, 32861157588]
+  },
+  "fixed_protocol": {
+    "tokenizer_version": "s0-byte-v1",
+    "batch_size": 4,
+    "sequence_length": 64,
+    "candidate_steps": 128,
+    "optimized_tokens_per_candidate": 32256,
+    "optimizer": "AdamW betas=(0.9,0.95) eps=1e-8 weight_decay=0 warmup=0 constant clip=1 fp32 seed=1337",
+    "train": ["ua.rada.open-data.laws-texts", "en.standardebooks.manual/8-typography.rst"],
+    "heldout": ["en.standardebooks.manual/9-metadata.rst"],
+    "corpus_boundary": "REAL_RIGHTS_APPROVED_BOUNDED_TWO_FAMILY_SAMPLE_NOT_BROAD_REPRESENTATIVE"
+  },
+  "best_measured": [
+    {"parameters": 95568, "lr": 0.0018, "heldout_bpb": 4.754378495200591},
+    {"parameters": 267912, "lr": 0.0012, "heldout_bpb": 4.6029945963959324},
+    {"parameters": 467808, "lr": 0.0009, "heldout_bpb": 4.577117183926181},
+    {"parameters": 1037696, "lr": 0.0006, "heldout_bpb": 4.508763903641124}
+  ],
+  "fit": {
+    "form": "lr_best = A * (parameters / 100000)^b",
+    "A": 0.0018126471043504123,
+    "b": -0.4614142226617872,
+    "leave_one_scale_out_max_abs_relative_error": 0.12871032865205523,
+    "leave_one_scale_out_plusminus_15pct_pass": true
+  },
+  "preregister_10m": {
+    "point_prediction": 0.00021651341809441474,
+    "descriptive_fit_95pct_mean_ci": [0.00015139885577661352, 0.0003096328566980363],
+    "candidate_lrs": [0.00016, 0.00022, 0.00030],
+    "status": "PREREGISTERED_UNPROVEN_UNTIL_REAL_10M_RUN"
+  },
+  "local_milestone": {
+    "parameters": 1037696,
+    "optimized_tokens": 252000,
+    "train_first100_mean_loss": 3.769664661884308,
+    "train_last100_mean_loss": 1.8024317908287049,
+    "heldout_bpb_initial": 7.9203025378398815,
+    "heldout_bpb_final": 3.7704484138850067,
+    "fresh_process_resume": "step500 -> step501 PASS",
+    "evaluation_non_mutation": true,
+    "retained_checkpoint_sha256": "7ebf22fe24fab8c94ac313dcdb5cd81e435b8b5afe63ca0992d12180c886d671",
+    "local_report_sha256": "aaed14a7f956b5b262ec23d0d7f22cee240e7269f81b0e9e489f5a530af3b6c3"
+  },
+  "truth_boundary": {
+    "foreign_pretrained_weights": false,
+    "instruction_tuning": false,
+    "paid_compute": false,
+    "broad_intelligence_claim": false,
+    "full_real_representative_corpus_gate": "PARTIAL_FAIL_CLOSED",
+    "exact_head_execution_note": "The network-isolated local runtime used a source-equivalent mirror for the selected architecture/AdamW and local checkpoint envelope. The branch base composes incumbent Trainer/D05/inference, but its hosted exact-head MILESTONE-100 run was queued at evidence time; no queued PASS is claimed."
+  },
+  "full_local_transfer_report_sha256": "6b4c6fcd426e6bbd6498a523ad33975ec175e6e90d171b02c6e600151b9d82bf"
+}
