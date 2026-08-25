@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Run the current S1 engineering-candidate numerical preflight."""
 
 from __future__ import annotations
