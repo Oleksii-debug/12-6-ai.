@@ -20,10 +20,34 @@
     "scratch_weight_state_changed_after_adamw_step": true,
     "foreign_weights_loaded": false
   },
+  "meta_materialization_mechanics": {
+    "constructor_on_meta_succeeds": true,
+    "to_empty_cpu_succeeds": true,
+    "post_to_empty_state_is_canonical_initialized": false,
+    "required_seam": "post_materialization_initialization_contract"
+  },
   "current_model_torchtitan_protocol_markers": {
-    "nested_Config": false,
-    "init_states": false,
-    "parallelize": false
+    "stable_0_2_init_weights": false,
+    "current_main_nested_Config": false,
+    "current_main_init_states": false,
+    "current_main_parallelize": false
+  },
+  "future_100m_planning_only": {
+    "parameter_count": 100092672,
+    "vocab_size": 32000,
+    "d_model": 768,
+    "n_layers": 12,
+    "n_heads": 12,
+    "n_kv_heads": 4,
+    "d_ff": 2048,
+    "parallel_plan": {
+      "data_parallel": 4,
+      "tensor_parallel": 2,
+      "pipeline_parallel": 1,
+      "context_parallel": 1,
+      "fsdp2": true
+    },
+    "execution_claim": false
   },
   "installed_pytorch_native_capabilities": {
     "fully_shard": true,
@@ -32,10 +56,15 @@
     "distributed_checkpoint_save": true,
     "distributed_checkpoint_load": true
   },
+  "repository_lock_observation": {
+    "d08_linux_x86_64_torch": "2.13.0",
+    "torchtitan_dependency_added": false
+  },
   "truth_boundary": [
     "The local execution environment did not contain the repository checkout, so the current S1 model source inspected at the D12 head was reconstructed exactly for the CPU transition probe.",
     "The committed tools/run_scale_framework_probe.py executes the repository classes directly when run from a checkout.",
     "TorchTitan could not be executed locally because it is not installed in this environment.",
+    "The 100,092,672-parameter model is a planning-only ModelSpec test and was not materialized or trained.",
     "No GPU, NCCL, multi-process, throughput, convergence, or 100M-scale performance claim is made."
   ]
 }
