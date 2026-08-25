@@ -13,7 +13,7 @@ from twelve_six.distributed.framework_adapter import (
     probe_torchtitan,
     step_metrics_event,
 )
-from twelve_six.model import load_stage_config
+from twelve_six.model import InitSpec, ModelSpec, load_stage_config
 from twelve_six.training.config import TrainerConfig
 from twelve_six.training.trainer import StepMetrics
 
@@ -57,15 +57,56 @@ def test_scale_plan_preserves_project_identities_and_maps_runtime() -> None:
     assert plan.checkpoint.scale_storage == "torch.distributed.checkpoint"
 
 
+def test_future_100m_planning_uses_same_identity_preserving_seam() -> None:
+    model = ModelSpec(
+        schema_version=1,
+        vocab_size=32_000,
+        max_seq_len=2_048,
+        d_model=768,
+        n_layers=12,
+        n_heads=12,
+        n_kv_heads=4,
+        head_dim=64,
+        d_ff=2_048,
+        rope_rotary_dim=64,
+    )
+    init = InitSpec()
+    parallel = ParallelPlan(
+        data_parallel=4,
+        tensor_parallel=2,
+        pipeline_parallel=1,
+        context_parallel=1,
+        shard_model_state_across_data_parallel=True,
+    )
+
+    plan = build_scale_framework_plan(
+        model,
+        init,
+        TrainerConfig(max_steps=1),
+        parallel,
+    )
+
+    assert model.parameter_count() == 100_092_672
+    assert plan.model.parameter_count == 100_092_672
+    assert plan.model.model_spec_identity_sha256 == model.identity_sha256()
+    assert plan.model.init_spec_identity_sha256 == init.identity_sha256()
+    assert plan.model.weight_origin == "scratch_random_init_only"
+    assert plan.selected_backend == "pytorch_native"
+    assert plan.distributed.physical_mesh_shape == (1, 4, 1, 2)
+    assert plan.distributed.use_fsdp2 is True
+    assert plan.distributed.use_tensor_parallel is True
+
+
 def test_current_model_fails_closed_for_direct_torchtitan_registration() -> None:
     stage = _stage("s1_100k.json")
     fit = assess_torchtitan_fit()
 
     assert fit.direct_adoption_ready is False
+    assert "torchtitan_training_driver_adapter_not_implemented" in fit.blockers
     assert "model_missing_torchtitan_nested_config" in fit.blockers
     assert "model_missing_torchtitan_init_states_protocol" in fit.blockers
     assert "model_missing_torchtitan_parallelize_protocol" in fit.blockers
-    assert "eager_initialization_not_meta_device_ready" in fit.blockers
+    assert "post_materialization_initialization_contract_missing" in fit.blockers
 
     with pytest.raises(RuntimeError, match="direct TorchTitan adoption is blocked"):
         build_scale_framework_plan(
