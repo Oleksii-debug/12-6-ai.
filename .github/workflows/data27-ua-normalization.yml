@@ -24,7 +24,7 @@ jobs:
         env:
           EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
-      - name: Install locked runtime
+      - name: Install locked runtime and test tooling
         run: |
           python -m venv .data27
           .data27/bin/python -m pip install \
@@ -33,6 +33,9 @@ jobs:
           .data27/bin/python -m pip install \
             --disable-pip-version-check --no-deps --require-hashes \
             -r requirements/locks/linux-x86_64/runtime.lock.txt
+          .data27/bin/python -m pip install \
+            --disable-pip-version-check --no-deps --require-hashes \
+            -r requirements/locks/linux-x86_64/dev.lock.txt
       - name: Run normalization and integration regression tests
         env:
           PYTHONPATH: src
@@ -70,6 +73,7 @@ jobs:
           name: data27-ua-normalization-evidence
           path: |
             docs/evidence/DATA27_UA_NORMALIZATION_AUDIT.json
+            docs/evidence/DATA27_UA_REAL_SAMPLE_AUDIT.json
             tests/fixtures/ukrainian_normalization_regression_v1.jsonl
             data27-normalization-audit.json
           if-no-files-found: error
