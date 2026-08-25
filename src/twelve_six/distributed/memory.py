@@ -1,9 +1,8 @@
 """Transparent first-order memory estimates for scale planning.
 
-Defaults follow the storage actually used by the current Trainer on its default fp32 path:
-fp32 model parameters, fp32 gradients, and two fp32 AdamW moments with no duplicate master
-weight tensor. Runtime RSS remains a separate allocator/process measurement and is deliberately
-not folded into this analytical estimate.
+Defaults follow the persistent storage actually used by the current Trainer: fp32 model
+parameters, fp32 gradients, and two fp32 AdamW moments with no duplicate master-weight tensor.
+Runtime RSS remains separate allocator/process telemetry and is not folded into this estimate.
 """
 
 from __future__ import annotations
@@ -37,20 +36,21 @@ def estimate_training_memory(
     gradient_bytes: int = 4,
     optimizer_bytes_per_parameter: int = 8,
     master_weight_bytes: int = 0,
-    activation_bytes: int = 4,
+    activation_bytes: int = 2,
     activation_multiplier: float = 8.0,
 ) -> MemoryEstimate:
     """Estimate per-rank memory using an explicit dense AdamW-like state model.
 
-    The defaults are bound to TRAIN-57 observations of the live Trainer: model parameters and
-    gradients are fp32 (4 bytes each), AdamW materializes two fp32 moment tensors after the first
-    optimizer update (8 bytes per parameter total), and the Trainer does not maintain a separate
-    fp32 master-weight copy. Its bf16 mode is autocast, so persistent model/gradient/Adam storage
-    remains fp32 there as well.
+    Persistent-state defaults are bound to TRAIN-57 observations of the live Trainer: model
+    parameters and gradients are fp32 (4 bytes each), AdamW materializes two fp32 moment tensors
+    after the first optimizer update (8 bytes per parameter total), and the Trainer does not
+    maintain a separate fp32 master-weight copy. Its bf16 mode is autocast, so persistent
+    model/gradient/Adam storage remains fp32 there as well.
 
-    Activation memory is still a coarse ``B*S*H*L`` coefficient rather than allocator telemetry.
-    Callers planning a different parameter-storage or activation precision must override the
-    explicit coefficients instead of relying on these Trainer-bound defaults.
+    Activation memory is still the pre-existing coarse ``B*S*H*L`` estimate. TRAIN-57 did not
+    profile retained activation tensors, so its 2-byte coefficient is deliberately left unchanged
+    rather than turning process RSS into an activation claim. Callers can override every
+    coefficient explicitly for a different storage/precision plan.
 
     EP>1 fails closed because total_parameters alone cannot distinguish replicated dense weights
     from expert-only weights. A future MoE-aware estimator must receive that decomposition.
