@@ -1,0 +1,38 @@
+name: TRAIN-56 checkpoint cadence
+
+on:
+  push:
+    branches:
+      - train56/checkpoint-cadence-20260825
+  workflow_dispatch:
+
+jobs:
+  checkpoint-cadence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install project
+        run: python -m pip install -e '.[dev]'
+
+      - name: Run cadence unit tests
+        run: python -m pytest -q tests/test_checkpoint_cadence.py tests/test_trainer_checkpoint_adapter.py tests/test_checkpointing.py
+
+      - name: Run measured checkpoint cadence experiment
+        run: python tools/run_checkpoint_cadence_experiment.py
+
+      - name: Upload machine report
+        uses: actions/upload-artifact@v4
+        with:
+          name: train56-checkpoint-cadence-report
+          path: reports/train56/checkpoint_cadence_runtime.json
+          if-no-files-found: error
+          retention-days: 30
