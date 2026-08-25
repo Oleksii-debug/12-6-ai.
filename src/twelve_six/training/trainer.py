@@ -22,6 +22,7 @@ from .numeric_forensics import (
     AffectedParameters,
     NumericFailureDiagnostics,
     build_numeric_failure_diagnostics,
+    model_parameters_are_finite,
     nonfinite_gradient_parameters,
     nonfinite_update_parameters,
 )
@@ -425,8 +426,8 @@ class Trainer:
                     )
 
                 self.scaler.step(self.optimizer)
-                affected_update = nonfinite_update_parameters(self.model, self.optimizer)
-                if affected_update.total_count:
+                if not model_parameters_are_finite(self.model):
+                    affected_update = nonfinite_update_parameters(self.model, self.optimizer)
                     diagnostics = self._diagnostics(
                         kind="update",
                         batch=batch,
