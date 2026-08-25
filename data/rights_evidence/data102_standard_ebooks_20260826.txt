@@ -1,0 +1,18 @@
+DATA-102 immutable rights capture
+source_id: en.standard-ebooks.manual-of-style
+captured_at: 2026-08-26
+license_url: https://raw.githubusercontent.com/standardebooks/manual-of-style/d1143a9b459b5e6f9cdda93a7c1e04676bff4f6b/LICENSE.md
+source_revision: d1143a9b459b5e6f9cdda93a7c1e04676bff4f6b
+decision_basis: DATA-21/22 recorded the repository Manual of Style content under CC0-1.0 at this exact revision, excluding the separately noted build-manual.py exception.
+public_accessibility_is_not_training_eligibility: true
+
+DATA-102 policy decision
+source_id: en.standard-ebooks.manual-of-style
+source_version: git:d1143a9b459b5e6f9cdda93a7c1e04676bff4f6b
+policy_ref: policy://12-6/data/explicit-model-training-evidence-v1
+acquisition: ALLOWED
+storage: ALLOWED
+analysis: ALLOWED
+model_training: ALLOWED
+redistribution: ALLOWED
+reason: accepted only for the two exact DATA-21/22 text objects at the pinned revision with retained raw hashes; any byte drift fails closed.

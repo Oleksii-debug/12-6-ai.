@@ -1,0 +1,162 @@
+name: MILESTONE100 First Learned Base
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  learned-base-cpu:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Bind exact experimental head
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          git status --short
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Verify exact locked environment inputs
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: >-
+          python tools/verify_locked_environment.py
+          --profile linux-x86_64
+          --source-sha "$SOURCE_SHA"
+          --evidence-out evidence-m100-locked-environment.json
+      - name: Create locked LOCAL_FREE environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m venv .m100-locked
+          .m100-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .m100-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          .m100-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/dev.lock.txt
+          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .m100-locked/bin/python -m pip install --no-deps --no-build-isolation -e .
+      - name: Focused incumbent composition preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          .m100-locked/bin/python -m py_compile \
+            src/twelve_six/data/external_sources.py \
+            src/twelve_six/data/source_intake.py \
+            src/twelve_six/data/document_quality.py \
+            src/twelve_six/data/privacy_filter.py \
+            src/twelve_six/scaling_experiment.py \
+            src/twelve_six/scaling_500k_evidence.py \
+            tools/materialize_milestone100_real_corpus.py \
+            tools/run_milestone100_materializer_exact.py \
+            tools/prove_milestone100_fresh_resume.py \
+            tools/finalize_milestone100_evidence.py \
+            tools/finalize_milestone100_evidence_v2.py
+          .m100-locked/bin/python - <<'PY'
+          from twelve_six.data.external_sources import EligibilityResolver
+          from twelve_six.data.document_quality import assess_document
+          from twelve_six.data.privacy_filter import scan_record
+          from twelve_six.scaling_500k_evidence import _target_spec
+          assert _target_spec().parameter_count() == 467_808
+          print("M100 focused incumbent preflight: PASS")
+          PY
+      - name: Materialize rights-approved real UK EN code corpus
+        run: .m100-locked/bin/python tools/run_milestone100_materializer_exact.py
+      - name: Reproduce current-head controlled baseline on materialized corpus
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          .m100-locked/bin/python -m twelve_six.scaling_experiment run \
+            --repo-root . \
+            --source-sha "$SOURCE_SHA" \
+            --output evidence/milestone100/research41_real_corpus_baseline.json \
+            --torch-threads 2
+          .m100-locked/bin/python -m twelve_six.scaling_experiment validate \
+            evidence/milestone100/research41_real_corpus_baseline.json \
+            --expected-source-sha "$SOURCE_SHA"
+      - name: Train two random-init 467808-parameter Base seeds
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          .m100-locked/bin/python -m twelve_six.scaling_500k_evidence run \
+            --repo-root . \
+            --source-sha "$SOURCE_SHA" \
+            --baseline evidence/milestone100/research41_real_corpus_baseline.json \
+            --output evidence/milestone100/learned_468k_real_corpus.json \
+            --checkpoint-root artifacts/milestone100/checkpoints \
+            --seeds 1337 1338 \
+            --token-budgets 4096 16384 65536 \
+            --torch-threads 2
+          .m100-locked/bin/python -m twelve_six.scaling_500k_evidence validate \
+            evidence/milestone100/learned_468k_real_corpus.json \
+            --expected-source-sha "$SOURCE_SHA"
+      - name: Prove fresh-process resume and evaluation non-mutation
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: >-
+          .m100-locked/bin/python tools/prove_milestone100_fresh_resume.py
+          --repo-root .
+          --source-sha "$SOURCE_SHA"
+          --report evidence/milestone100/learned_468k_real_corpus.json
+          --output evidence/milestone100/fresh_process_resume.json
+          --seed 1337
+          --resume-budget 16384
+          --final-budget 65536
+      - name: Fail-closed convergence verdict
+        env:
+          RUNNER_ENVIRONMENT: github-hosted
+        run: .m100-locked/bin/python tools/finalize_milestone100_evidence_v2.py
+      - name: Print compact milestone verdict
+        run: |
+          .m100-locked/bin/python - <<'PY'
+          import json
+          p = json.load(open("evidence/milestone100/milestone100_summary.json", encoding="utf-8"))
+          print(json.dumps({
+              "status": p["status"],
+              "exact_git_head": p["exact_git_head"],
+              "parameters": p["model"]["parameters"],
+              "tokenizer": p["tokenizer"]["actual_training_tokenizer_id"],
+              "corpus": p["corpus"],
+              "learning_proof": [{
+                  "seed": s["seed"],
+                  "initial_validation_bpb": s["initial_validation_bpb"],
+                  "final_validation_bpb": s["final_validation_bpb"],
+                  "optimized_tokens": s["optimized_tokens"],
+                  "checkpoint_count": s["checkpoint_count"],
+              } for s in p["learning_proof"]],
+              "data102": p["data102"],
+              "retained_checkpoint": p["retained_exact_checkpoint"],
+              "summary_sha256": p["summary_sha256"],
+          }, ensure_ascii=False, indent=2, sort_keys=True))
+          PY
+      - name: Upload exact milestone evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: milestone100-first-learned-base-${{ steps.source.outputs.sha }}
+          path: |
+            evidence-m100-locked-environment.json
+            evidence/milestone100/
+            artifacts/milestone100/source_intake/
+            artifacts/milestone100/checkpoints/
+            data/s0/packaged/manifest.json
+            data/s0/packaged/train.jsonl
+            data/s0/packaged/validation.jsonl
+            configs/data/data102_ua_candidate_inventory_v1.json
+            configs/data/milestone100_real_source_pins_v1.json
+            data/rights_evidence/data102_rada_laws_20260826.txt
+            data/rights_evidence/data102_standard_ebooks_20260826.txt
+          if-no-files-found: warn
+          retention-days: 30
