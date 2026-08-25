@@ -1,0 +1,68 @@
+name: MODEL-15 Embedding Tax
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  local-free-embedding-tax:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Bind exact source head
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - name: Install canonical runtime and exact tokenizer backend
+        run: |
+          python -m venv .model15
+          .model15/bin/python -m pip install --disable-pip-version-check --no-deps --require-hashes -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .model15/bin/python -m pip install --disable-pip-version-check --no-deps --require-hashes -r requirements/locks/linux-x86_64/runtime.lock.txt
+          .model15/bin/python -m pip install --disable-pip-version-check --no-deps --require-hashes -r requirements/locks/linux-x86_64/dev.lock.txt
+          .model15/bin/python -m pip install --disable-pip-version-check --no-deps --require-hashes --only-binary=:all: -r requirements/experiments/tokenizers-linux-x86_64.lock.txt
+          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .model15/bin/python -m pip install --no-deps --no-build-isolation -e .
+      - name: Run allocation contract tests
+        run: .model15/bin/python -m pytest -q tests/test_embedding_tax.py tests/test_vocabulary_allocation.py
+      - name: Regenerate live real tokenizer artifacts
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          .model15/bin/python -m twelve_six.tokenization.real_experiments \
+            run --source-sha "$SOURCE_SHA" \
+            --output model15-tokenizer-real-report.json --vocab-size 512
+          .model15/bin/python -m twelve_six.tokenization.real_experiments \
+            validate --input model15-tokenizer-real-report.json \
+            --source-sha "$SOURCE_SHA"
+      - name: Execute cross-scale allocation and BPE-472 training
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          .model15/bin/python -m twelve_six.training.embedding_tax \
+            --repo-root . \
+            --source-sha "$SOURCE_SHA" \
+            --tokenizer-report model15-tokenizer-real-report.json \
+            --steps 4 \
+            --sequence-length 96 \
+            --seed 20260825 \
+            --output model15-embedding-tax.json
+          cat model15-embedding-tax.json
+      - name: Upload live tokenizer and Pareto evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: model15-embedding-tax-evidence
+          path: |
+            model15-tokenizer-real-report.json
+            model15-embedding-tax.json
+            requirements/experiments/tokenizers-linux-x86_64.lock.txt
+          if-no-files-found: error
+          retention-days: 30
