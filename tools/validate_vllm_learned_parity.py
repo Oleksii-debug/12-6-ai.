@@ -153,9 +153,9 @@ def collect(args: argparse.Namespace) -> dict[str, Any]:
         rtol=args.rtol,
     )
 
-    raw_trace: list[dict[str, Any]] = []
-    if report.passed:
-        raw_trace = _collect_raw_trace(reference, candidate, prompts, args.max_new_tokens)
+    # Retain exact raw vectors even when numerical parity fails. A mismatch is
+    # evidence that must remain diagnosable, not a reason to discard the trace.
+    raw_trace = _collect_raw_trace(reference, candidate, prompts, args.max_new_tokens)
 
     trace_passed = bool(raw_trace) and all(
         trace["reference_greedy_token_sequence"] == trace["vllm_greedy_token_sequence"]
