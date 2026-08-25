@@ -3,12 +3,42 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from threading import RLock
 from typing import Self
 
 import torch
 
-from twelve_six.model import DecoderKVCache, TwelveSixDecoder
+from twelve_six.model import DecoderKVCache, ModelSpec, TwelveSixDecoder
 from twelve_six.tokenization import ByteTokenizer
+
+
+def kv_cache_payload_bytes(
+    spec: ModelSpec,
+    sequence_length: int,
+    *,
+    batch_size: int = 1,
+    element_size_bytes: int = 2,
+) -> int:
+    """Return logical unexpanded K/V payload bytes for one decoder cache."""
+    integer_fields = {
+        "sequence_length": sequence_length,
+        "batch_size": batch_size,
+        "element_size_bytes": element_size_bytes,
+    }
+    for name, value in integer_fields.items():
+        if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+            raise ValueError(f"{name} must be a positive integer")
+    if sequence_length > spec.max_seq_len:
+        raise ValueError("sequence_length exceeds ModelSpec max_seq_len")
+    return (
+        2
+        * spec.n_layers
+        * spec.n_kv_heads
+        * spec.head_dim
+        * sequence_length
+        * batch_size
+        * element_size_bytes
+    )
 
 
 class S0TorchGenerationSession:
@@ -27,13 +57,12 @@ class S0TorchGenerationSession:
 
         self._backend = backend
         self._model = backend.model
-        self._was_training = self._model.training
         self._closed = False
         self.tokens_processed = len(input_ids)
         self._cache: DecoderKVCache
         self._logits: list[float]
 
-        self._model.eval()
+        self._backend._acquire_generation_session()
         tensor = torch.tensor(
             [list(input_ids)],
             dtype=torch.long,
@@ -43,7 +72,7 @@ class S0TorchGenerationSession:
             output, self._cache = self._model.prefill_kv_cache(tensor)
             self._logits = output.logits[0, -1].detach().float().cpu().tolist()
         except (RuntimeError, TypeError, ValueError):
-            self._model.train(self._was_training)
+            self._backend._release_generation_session()
             raise
 
     @property
@@ -84,7 +113,7 @@ class S0TorchGenerationSession:
     def close(self) -> None:
         if self._closed:
             return
-        self._model.train(self._was_training)
+        self._backend._release_generation_session()
         self._closed = True
 
     def __enter__(self) -> Self:
@@ -109,6 +138,45 @@ class S0TorchInferenceBackend:
         self.model = model
         self.tokenizer = tokenizer
         self.max_context_tokens = model.spec.max_seq_len
+        self._generation_lock = RLock()
+        self._active_generation_sessions = 0
+        self._generation_restore_training: bool | None = None
+
+    @property
+    def active_generation_sessions(self) -> int:
+        with self._generation_lock:
+            return self._active_generation_sessions
+
+    def estimate_cache_bytes(self, sequence_length: int, *, batch_size: int = 1) -> int:
+        """Estimate current-dtype logical K/V payload bytes without allocating a cache."""
+        element_size = next(self.model.parameters()).element_size()
+        return kv_cache_payload_bytes(
+            self.model.spec,
+            sequence_length,
+            batch_size=batch_size,
+            element_size_bytes=element_size,
+        )
+
+    def _acquire_generation_session(self) -> None:
+        with self._generation_lock:
+            if self._active_generation_sessions == 0:
+                self._generation_restore_training = self.model.training
+                self.model.eval()
+            elif self.model.training:
+                raise RuntimeError("model training mode changed while generation sessions are active")
+            self._active_generation_sessions += 1
+
+    def _release_generation_session(self) -> None:
+        with self._generation_lock:
+            if self._active_generation_sessions <= 0:
+                raise RuntimeError("generation session lifecycle underflow")
+            self._active_generation_sessions -= 1
+            if self._active_generation_sessions == 0:
+                restore_training = self._generation_restore_training
+                self._generation_restore_training = None
+                if restore_training is None:
+                    raise RuntimeError("generation session lifecycle restore state is missing")
+                self.model.train(restore_training)
 
     def encode(self, text: str) -> list[int]:
         return self.tokenizer.encode(text)
