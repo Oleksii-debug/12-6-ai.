@@ -51,9 +51,18 @@ def _require_sha256(value: Any, field: str) -> str:
     return text
 
 
+def _record_value(record: Mapping[str, Any], key: str) -> Any:
+    if key in record:
+        return record[key]
+    metadata = record.get("metadata")
+    if isinstance(metadata, Mapping):
+        return metadata.get(key)
+    return None
+
+
 def _require_record_id(record: Mapping[str, Any], prefix: str) -> tuple[str, str]:
-    source_id = _require_text(record.get("source_id"), f"{prefix}.source_id")
-    document_id = _require_text(record.get("id"), f"{prefix}.id")
+    source_id = _require_text(_record_value(record, "source_id"), f"{prefix}.source_id")
+    document_id = _require_text(_record_value(record, "id"), f"{prefix}.id")
     return source_id, document_id
 
 
@@ -171,7 +180,9 @@ def near_match_records(
     rows: list[dict[str, Any]] = []
     for record in removed_records:
         source_id, document_id = _require_record_id(record, "near_removed")
-        digest = _require_sha256(record.get("content_sha256"), "near_removed.content_sha256")
+        digest = _require_sha256(
+            _record_value(record, "content_sha256"), "near_removed.content_sha256"
+        )
         rows.append(
             {
                 "match_type": "datatrove_minhash_reference_index",
