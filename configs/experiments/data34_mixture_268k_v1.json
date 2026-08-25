@@ -7,7 +7,7 @@
     "controlled_spec_index": 1,
     "expected_trainable_parameters": 267912,
     "tokenizer": "s0-byte-v1",
-    "requested_loss_tokens": 65536,
+    "requested_loss_tokens": 131072,
     "batch_size": 4,
     "sequence_length": 64,
     "seed": 1337,
