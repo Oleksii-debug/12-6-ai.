@@ -1,0 +1,293 @@
+{
+  "schema_version": "12-6.compute32.eur10k-campaign.v1",
+  "worker_id": "COMPUTE-32-EUR10000",
+  "status": "PLANNING_ONLY_NOT_COMPUTE_AUTHORIZATION",
+  "paid_execution": "FORBIDDEN_UNLESS_EXTERNAL_COMPUTE_AUTHORIZED",
+  "source_baseline": {
+    "repository": "Oleksii-debug/12-6-ai.",
+    "product_convergence_pr": 132,
+    "product_convergence_sha": "86dbcc0b804da988a34367ff74c49ee00bc05818",
+    "launch_source_sha": "NOT_FROZEN"
+  },
+  "budget": {
+    "currency": "EUR",
+    "ceiling_eur": 10000.0,
+    "main_run_reserve_fraction": 0.20,
+    "main_run_compute_spend_ceiling_eur": 8000.0,
+    "price_assumption": {
+      "provider": "RunPod Secure Cloud",
+      "gpu": "H100 SXM 80GB",
+      "usd_per_gpu_hour": 3.29,
+      "usd_to_eur": 0.857284,
+      "eur_per_gpu_hour_rounded_up_for_gate": 2.83,
+      "quote_observed_utc": "2026-08-25T08:55:00Z",
+      "status": "ASSUMPTION_REQUOTE_BEFORE_AUTHORIZATION",
+      "excludes": [
+        "tax",
+        "persistent_storage",
+        "egress",
+        "provider_availability_risk"
+      ]
+    }
+  },
+  "strategy": "STAGED_CAMPAIGN_NOT_SINGLE_LARGEST_RUN",
+  "research_unit": {
+    "tokenizer_pilots_compare_on": "identical raw UTF-8 bytes and held-out bits-per-byte",
+    "main_training_budget_unit": "tokens after tokenizer freeze",
+    "reason": "token counts are tokenizer-dependent; pilot selection must not reward compression artifacts"
+  },
+  "corpus_proposal": {
+    "status": "NOT_FROZEN",
+    "manifest_sha256": "NOT_FROZEN",
+    "target_unique_post_filter_tokens": 24000000000,
+    "mixture": [
+      {
+        "source": "HuggingFaceFW/fineweb-edu",
+        "weight_units": 75,
+        "language": "en",
+        "license": "ODC-By-1.0",
+        "revision": "TO_BE_PINNED_AND_HASHED"
+      },
+      {
+        "source": "HuggingFaceFW/fineweb-2:ukr_Cyrl",
+        "weight_units": 25,
+        "language": "uk",
+        "license": "ODC-By-1.0",
+        "revision": "TO_BE_PINNED_AND_HASHED"
+      }
+    ],
+    "required_build_controls": [
+      "source revision and file SHA-256 manifest",
+      "license and attribution registry",
+      "document-level deterministic train-validation-test split",
+      "exact and near-duplicate removal before split",
+      "benchmark contamination registry",
+      "stable record IDs",
+      "restart-safe deterministic mixture cursor",
+      "pre-tokenization byte counts and post-tokenization token counts"
+    ]
+  },
+  "tokenizer_selection": {
+    "status": "NOT_FROZEN",
+    "required_vocab_size": 32768,
+    "candidates": [
+      "ByteLevel BPE",
+      "Unigram with byte fallback"
+    ],
+    "training_sample_utf8_bytes": 8589934592,
+    "selection_metrics": [
+      "held-out bits-per-byte overall",
+      "held-out bits-per-byte en",
+      "held-out bits-per-byte uk",
+      "UTF-8 round-trip rate",
+      "OOV rate",
+      "bytes-per-token en",
+      "bytes-per-token uk",
+      "tokenizer artifact size and identity"
+    ],
+    "hard_gates": {
+      "utf8_roundtrip_rate": 1.0,
+      "oov_rate": 0.0,
+      "vocab_size_exact": 32768
+    },
+    "winner_rule": "lowest validation bits-per-byte; if delta is below 0.5%, prefer simpler/faster tokenizer with lower measured end-to-end training cost"
+  },
+  "architecture_pilots": [
+    {
+      "name": "S4_ISOFLOP_PILOT",
+      "parameters": 100384512,
+      "architecture_identity": "dc9fd9e605cbc007aa20ad29f2220c7ebade875564d68016e93d1dc2489cd693",
+      "architecture_status": "engineering_candidate_not_frozen",
+      "context": 2048,
+      "target_tokens": 2097152000,
+      "target_tokens_per_parameter": 20.891208,
+      "precision": "bf16",
+      "gpu_count": 1,
+      "gpu_class": "H100_SXM_80GB",
+      "evaluation_checkpoints_fraction": [0.125, 0.25, 0.5, 0.75, 1.0]
+    },
+    {
+      "name": "S5_ISOFLOP_PILOT",
+      "parameters": 400598016,
+      "architecture_identity": "9abfb6d1ac2e9c28fac20aff4ae804ad54b4102ce6f1bdeeadddf5a56027f28c",
+      "architecture_status": "engineering_candidate_not_frozen",
+      "context": 4096,
+      "target_tokens": 8388608000,
+      "target_tokens_per_parameter": 20.940222,
+      "precision": "bf16",
+      "gpu_count": 1,
+      "gpu_class": "H100_SXM_80GB",
+      "evaluation_checkpoints_fraction": [0.125, 0.25, 0.5, 0.75, 1.0]
+    }
+  ],
+  "qualification_experiment": {
+    "name": "S6_EUR10K_QUALIFICATION",
+    "paid_execution": "REQUIRES_SEPARATE_COMPUTE_AUTHORIZED_EVEN_THOUGH_CHEAP",
+    "parameters": 999106560,
+    "architecture_identity": "cc64cbe94a461c364f063652098e55bdcf640d4be756ee1e743a23dda3de7261",
+    "context": 4096,
+    "precision": "bf16",
+    "gpu_count": 1,
+    "gpu_class": "H100_SXM_80GB",
+    "target_tokens": 134217728,
+    "global_batch_tokens": 1048576,
+    "optimizer_steps": 128,
+    "microbatch_sequences": 1,
+    "gradient_accumulation_steps": 256,
+    "forced_checkpoint_after_step": 64,
+    "forced_fresh_process_resume": true,
+    "gates": {
+      "minimum_global_tokens_per_second": 8000.0,
+      "maximum_peak_hbm_fraction": 0.90,
+      "maximum_data_wait_fraction": 0.10,
+      "maximum_checkpoint_overhead_fraction": 0.05,
+      "loss_must_decrease": true,
+      "non_finite_steps": 0,
+      "checkpoint_roundtrip_passed": true,
+      "resume_continuity_passed": true,
+      "data_cursor_resume_passed": true
+    }
+  },
+  "main_run": {
+    "name": "S6_1B_20K_UPDATES",
+    "architecture_status": "engineering_candidate_not_frozen",
+    "parameters": 999106560,
+    "architecture_identity": "cc64cbe94a461c364f063652098e55bdcf640d4be756ee1e743a23dda3de7261",
+    "model": {
+      "vocab_size": 32768,
+      "max_seq_len": 4096,
+      "d_model": 2048,
+      "n_layers": 18,
+      "n_heads": 32,
+      "n_kv_heads": 8,
+      "head_dim": 64,
+      "d_ff": 6720,
+      "activation": "swiglu",
+      "norm_kind": "rmsnorm",
+      "norm_placement": "pre",
+      "position_embedding": "rope",
+      "rope_theta": 10000.0,
+      "tie_word_embeddings": true
+    },
+    "target_tokens": 20971520000,
+    "target_tokens_per_parameter": 20.990276,
+    "context": 4096,
+    "global_batch_sequences": 256,
+    "global_batch_tokens": 1048576,
+    "optimizer_steps": 20000,
+    "microbatch_sequences": 1,
+    "gradient_accumulation_steps": 256,
+    "optimizer": {
+      "name": "AdamW",
+      "learning_rate": 0.0003,
+      "betas": [0.9, 0.95],
+      "eps": 1e-8,
+      "weight_decay": 0.1,
+      "gradient_clip_norm": 1.0
+    },
+    "schedule": {
+      "kind": "cosine",
+      "warmup_steps": 400,
+      "max_steps": 20000
+    },
+    "precision": "bf16",
+    "gpu_count": 1,
+    "gpu_class": "H100_SXM_80GB",
+    "parallelism": {
+      "data_parallel": 1,
+      "tensor_parallel": 1,
+      "pipeline_parallel": 1,
+      "context_parallel": 1,
+      "expert_parallel": 1,
+      "reason": "single-GPU primary plan avoids relying on currently unproven canonical NCCL/FSDP execution"
+    },
+    "checkpointing": {
+      "every_optimizer_steps": 250,
+      "rolling_checkpoints": 3,
+      "milestone_steps": [2000, 5000, 10000, 15000, 20000],
+      "require_self_hash": true,
+      "require_fresh_trainer_restore": true,
+      "require_rng_restore": true,
+      "require_data_cursor_restore": true,
+      "estimated_full_adam_state_bytes": 15985704960,
+      "estimated_retained_payload_bytes_upper_bound": 127885639680
+    },
+    "cost_gate": {
+      "source_sha": "NOT_FROZEN",
+      "tokenizer_identity": "NOT_FROZEN",
+      "tokenizer_status": "NOT_FROZEN",
+      "corpus_manifest_sha256": "NOT_FROZEN",
+      "corpus_status": "NOT_FROZEN",
+      "architecture_identity": "cc64cbe94a461c364f063652098e55bdcf640d4be756ee1e743a23dda3de7261",
+      "architecture_status": "engineering_candidate_not_frozen",
+      "precision": "bf16",
+      "gpu_class": "H100_SXM_80GB",
+      "gpu_count": 1,
+      "target_tokens": 20971520000,
+      "eur_per_gpu_hour": 2.83,
+      "budget_eur": 10000.0,
+      "reserve_fraction": 0.20,
+      "minimum_global_tokens_per_second": 8000.0,
+      "maximum_peak_hbm_fraction": 0.90,
+      "maximum_data_wait_fraction": 0.10,
+      "maximum_checkpoint_overhead_fraction": 0.05,
+      "minimum_qualification_tokens": 134217728
+    }
+  },
+  "evaluation": {
+    "primary_metric": "held-out bits-per-byte",
+    "required_slices": [
+      "overall",
+      "en",
+      "uk"
+    ],
+    "secondary_metrics": [
+      "token NLL",
+      "perplexity within the frozen tokenizer only",
+      "training loss",
+      "gradient norm",
+      "tokens/sec",
+      "step time",
+      "data wait fraction",
+      "checkpoint time",
+      "peak HBM"
+    ],
+    "external_capability_suite": [
+      "HellaSwag",
+      "PIQA",
+      "ARC-Easy",
+      "ARC-Challenge",
+      "WinoGrande",
+      "LAMBADA",
+      "frozen Ukrainian held-out completion set"
+    ],
+    "contamination_rule": "any benchmark overlap with training corpus invalidates that benchmark for promotion evidence"
+  },
+  "decision_thresholds": {
+    "tokenizer_freeze": "all hard tokenizer gates pass and winner is selected by held-out bits-per-byte on identical raw bytes",
+    "s4_to_s5": "S4 stable, no non-finite events, checkpoint/resume passes, and validation BPB improves through final checkpoint",
+    "s5_to_s6": "S5 stable and local checkpoint-curve fit predicts at least 0.5% BPB improvement for S6 at <=8000 EUR projected main compute",
+    "full_budget_authorization": "S6 qualification passes every gate using exact frozen source/tokenizer/corpus/model identities and GPU_MEASURED evidence",
+    "stop_main_run": [
+      "non-finite loss or gradients",
+      "repeated OOM after one predeclared microbatch fallback",
+      "validation BPB worsens at two consecutive scheduled evaluations after warmup",
+      "data wait fraction exceeds 0.10 for three consecutive windows",
+      "checkpoint overhead exceeds 0.05 for three consecutive intervals",
+      "measured cost projection exceeds 8000 EUR",
+      "identity drift in source/tokenizer/corpus/model/data cursor"
+    ]
+  },
+  "scale_upward_gate": {
+    "candidate": "S7 2,998,029,312 parameters / 8K context / 32K vocab",
+    "requires": [
+      "S6 held-out BPB and capability gains exceed pre-registered predictions",
+      "at least two S6 seeds show directionally consistent gains",
+      "real multi-GPU NCCL training evidence on canonical model",
+      "same-topology checkpoint/recovery and reshard policy evidence",
+      "measured scaling efficiency >= 0.70 from 1 GPU to planned GPU count",
+      "frozen corpus contains enough unique effective data for >=20 tokens/parameter without excessive repetition",
+      "projected all-in spend remains within a separately authorized budget"
+    ]
+  }
+}
