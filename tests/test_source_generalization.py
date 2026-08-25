@@ -16,6 +16,7 @@ from twelve_six.training.source_generalization import (
     fixed_500k_model_spec,
     split_family_pool,
     split_seen_family,
+    training_trace,
 )
 
 
@@ -43,9 +44,15 @@ def test_chunking_is_deterministic_utf8_safe_and_provenance_bound() -> None:
     second = chunk_source_text(source_id=SOURCE_FAMILIES[0], record_id="record-a", text=text)
     assert first == second
     assert len(first) >= 5
-    assert all(record.record_id.startswith(f"{SOURCE_FAMILIES[0]}::record-a::") for record in first)
+    assert all(
+        record.record_id.startswith(f"{SOURCE_FAMILIES[0]}::record-a::")
+        for record in first
+    )
     assert all(record.split == "family_pool" for record in first)
-    assert all(len(record.text.encode("utf-8")) <= CHUNK_TARGET_UTF8_BYTES for record in first)
+    assert all(
+        len(record.text.encode("utf-8")) <= CHUNK_TARGET_UTF8_BYTES
+        for record in first
+    )
 
 
 def test_family_partition_is_fixed_disjoint_80_20_index_rule() -> None:
@@ -72,14 +79,37 @@ def test_legacy_seen_split_uses_exact_same_reserved_record_ids() -> None:
     train, evaluation = split_family_pool(records)
     legacy_train, validation = split_seen_family(records)
     assert legacy_train == train
-    assert [record.record_id for record in validation] == [record.record_id for record in evaluation]
+    assert [record.record_id for record in validation] == [
+        record.record_id for record in evaluation
+    ]
     assert all(record.split == "validation" for record in validation)
 
 
 def test_family_partition_rejects_too_small_family() -> None:
-    records = [TextRecord(record_id=f"r-{i}", text="x", split="family_pool") for i in range(4)]
+    records = [
+        TextRecord(record_id=f"r-{i}", text="x", split="family_pool")
+        for i in range(4)
+    ]
     with pytest.raises(SourceGeneralizationError, match="fewer than five"):
         split_family_pool(records)
+
+
+def test_training_trace_is_seeded_whole_pool_permutation() -> None:
+    first = training_trace(1024, seed=1337)
+    second = training_trace(1024, seed=1337)
+    assert first == second
+    assert len(first) == 256
+    assert len(set(first)) == 256
+    assert first != list(range(256))
+    assert min(first) >= 0
+    assert max(first) < 1024
+
+
+def test_training_trace_cycles_only_when_pool_is_smaller_than_budget() -> None:
+    trace = training_trace(8, seed=1337)
+    assert len(trace) == 256
+    assert set(trace) == set(range(8))
+    assert trace[:8] == trace[8:16]
 
 
 def test_data105_is_explicitly_absent_not_synthesized() -> None:
