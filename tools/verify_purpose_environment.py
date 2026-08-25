@@ -321,7 +321,7 @@ def _offline_env() -> dict[str, str]:
             "PIP_NO_INDEX": "1",
             "PIP_DISABLE_PIP_VERSION_CHECK": "1",
             "PYTHONUTF8": "1",
-            "SOURCE_DATE_EPOCH": "0",
+            "SOURCE_DATE_EPOCH": "315532800",
         }
     )
     return env
@@ -528,7 +528,7 @@ def verify_install(
                 "exact_hash_install": "PASS",
                 "project_wheel_install": "PASS",
                 "runtime_probe": "PASS",
-                "floating_resolution_in_authority_path": false,
+                "floating_resolution_in_authority_path": False,
             },
         }
         evidence["evidence_sha256"] = _sha256_bytes(_canonical_bytes(evidence))
