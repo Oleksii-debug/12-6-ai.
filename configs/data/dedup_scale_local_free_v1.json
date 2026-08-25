@@ -1,0 +1,33 @@
+{
+  "base_words": 160,
+  "candidate_shards": 8,
+  "injections": {
+    "benchmark_exact": 100,
+    "benchmark_near_en": 250,
+    "benchmark_near_uk": 250,
+    "benchmark_source_id": 50,
+    "benchmark_translation": 250,
+    "boilerplate_negative": 500,
+    "code_copy": 300,
+    "exact_duplicate": 500,
+    "near_en": 500,
+    "near_uk": 500
+  },
+  "minhash": {
+    "hash_precision": 64,
+    "hashes_per_bucket": 8,
+    "n_grams": 5,
+    "num_buckets": 14,
+    "seed": 1
+  },
+  "record_count": 50000,
+  "reserved_records": 128,
+  "schema_version": "12-6.dedup-scale-experiment-config.v1",
+  "seed": 126012,
+  "thresholds": {
+    "benchmark_lexical_recall_min": 0.95,
+    "internal_near_recall_min": 0.9,
+    "unexpected_removal_rate_max": 0.005
+  },
+  "workers": 2
+}
