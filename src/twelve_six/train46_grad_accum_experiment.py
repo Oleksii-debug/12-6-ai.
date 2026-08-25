@@ -184,15 +184,17 @@ def _worker(
     trainer = Trainer(model, _config(accumulation=accumulation), device="cpu")
     expected_tokens = 0
     trace: list[dict[str, Any]] = []
-    started = time.perf_counter()
+    measured_wall = 0.0
     for update in range(EQUIVALENCE_UPDATES):
         effective = _aligned_effective_batch(train_stream, update=update)
         expected_tokens += int(effective["loss_mask"].sum().item())
         final_metrics = None
+        started = time.perf_counter()
         for offset in range(0, EFFECTIVE_BATCH_SIZE, microbatch_size):
             final_metrics = trainer.train_microbatch(
                 _slice_batch(effective, offset, offset + microbatch_size)
             )
+        measured_wall += time.perf_counter() - started
         if final_metrics is None or not final_metrics.optimizer_stepped:
             raise RuntimeError("effective update did not commit exactly once")
         trace.append(
@@ -203,7 +205,6 @@ def _worker(
                 "grad_norm": float(final_metrics.grad_norm),
             }
         )
-    elapsed = time.perf_counter() - started
     if trainer.optimizer_step != EQUIVALENCE_UPDATES:
         raise RuntimeError("optimizer-step count drift")
     if trainer.tokens_seen != expected_tokens:
@@ -229,8 +230,8 @@ def _worker(
         "optimizer_steps": trainer.optimizer_step,
         "valid_causal_tokens": trainer.tokens_seen,
         "expected_valid_causal_tokens": expected_tokens,
-        "training_wall_seconds": elapsed,
-        "tokens_per_second": trainer.tokens_seen / elapsed,
+        "measured_training_wall_seconds": measured_wall,
+        "tokens_per_second": trainer.tokens_seen / measured_wall,
         "peak_rss_bytes": _peak_rss_bytes(),
         "trace": trace,
     }
@@ -342,7 +343,7 @@ def _checkpoint_boundary_probe(repo_root: Path) -> dict[str, Any]:
         "partial_publish_error": partial_error,
         "parameters_unchanged_before_commit": precommit_max_abs == 0.0,
         "committed_state_publish_succeeded": True,
-        "committed_optimizer_step": int(committed_trainer_state["optimizer_step"]),
+        "committed_optimizer_step": committed_trainer_state.optimizer_step,
         "committed_valid_causal_tokens": committed_tokens,
         "resumed_optimizer_step_after_next_update": resumed_trainer.optimizer_step,
         "resumed_valid_causal_tokens_after_next_update": resumed_trainer.tokens_seen,
@@ -471,6 +472,8 @@ def run_experiment(
             "warmup_steps": 0,
             "effective_batch_size": EFFECTIVE_BATCH_SIZE,
             "sequence_length": SEQUENCE_LENGTH,
+            "valid_tokens_per_row": [63, 62, 61, 60],
+            "valid_tokens_per_effective_batch": 246,
             "equivalence_updates": EQUIVALENCE_UPDATES,
             "aligned_targets": True,
             "variable_valid_tokens_per_microbatch": True,
@@ -497,6 +500,7 @@ def run_experiment(
         },
         "resource_comparison": {
             "measurement_process_isolated": True,
+            "timing_scope": "optimizer_work_only_excludes_batch_construction_and_state_serialization",
             "full_microbatch_tokens_per_second": full_metadata["tokens_per_second"],
             "accumulated_tokens_per_second": accumulated_metadata["tokens_per_second"],
             "throughput_ratio_accum_vs_full": (
