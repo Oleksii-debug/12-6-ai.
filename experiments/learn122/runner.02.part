@@ -1,0 +1,158 @@
+
+def _checkpoint_at(state: dict[str, Any], milestone: int) -> dict[str, Any]:
+    if milestone == 0:
+        return state['checkpoints'][0]
+    for item in state['evaluations']:
+        if int(item['milestone_requested_tokens']) == milestone:
+            return {'path': item['checkpoint'], 'checkpoint_id': item['checkpoint_id'], 'actual_optimized_tokens': item['actual_optimized_tokens'], 'optimizer_step': item['optimizer_step'], 'compute_proxy': item['compute_proxy']}
+    raise Learn122Error(f'missing checkpoint at milestone {milestone}')
+
+def _curve(run_dir: Path) -> list[dict[str, Any]]:
+    return [json.loads(line) for line in (run_dir / 'train-curve.jsonl').read_text(encoding='utf-8').splitlines() if line.strip()]
+
+def _loss_windows(curve: list[dict[str, Any]], common_step: int) -> dict[str, float]:
+    common = [row for row in curve if int(row['optimizer_step']) <= common_step]
+    if len(common) < 200:
+        raise Learn122Error('insufficient common-budget curve for 100-step loss windows')
+    first = common[:100]
+    last = common[-100:]
+    return {'first100_mean_loss': sum((float(row['loss']) for row in first)) / 100, 'common_last100_mean_loss': sum((float(row['loss']) for row in last)) / 100}
+
+def _efficiency_record(root: Path, seed: int, state500: dict[str, Any], state1m: dict[str, Any]) -> dict[str, Any]:
+    initial500 = float(_eval_at(state500, 0)['bits_per_byte'])
+    common500 = float(_eval_at(state500, COMMON_TOKENS)['bits_per_byte'])
+    initial1m = float(_eval_at(state1m, 0)['bits_per_byte'])
+    common1m = float(_eval_at(state1m, COMMON_TOKENS)['bits_per_byte'])
+    matched1m = float(_eval_at(state1m, COMPUTE_MATCH_1M_TOKENS)['bits_per_byte'])
+    cp500 = int(_checkpoint_at(state500, COMMON_TOKENS)['compute_proxy'])
+    cp1m = int(_checkpoint_at(state1m, COMMON_TOKENS)['compute_proxy'])
+    cpmatched1m = int(_checkpoint_at(state1m, COMPUTE_MATCH_1M_TOKENS)['compute_proxy'])
+    reduction500 = initial500 - common500
+    reduction1m = initial1m - common1m
+    rec = {'seed': seed, 'common_budget': {'500k_bpb': common500, '1m_bpb': common1m, 'absolute_quality_winner': '500k' if common500 < common1m else '1m', '500k_compute_proxy': cp500, '1m_compute_proxy': cp1m}, 'quality_per_parameter': {'metric': 'initial-to-common BPB reduction per million parameters', '500k': reduction500 / (MODEL_EXPECTED_PARAMS['500k'] / 1000000), '1m': reduction1m / (MODEL_EXPECTED_PARAMS['1m'] / 1000000)}, 'quality_per_compute': {'reduction_metric': 'initial-to-common BPB reduction per 1e12 compute-proxy units', '500k_reduction_per_1e12': reduction500 / (cp500 / 1000000000000.0), '1m_reduction_per_1e12': reduction1m / (cp1m / 1000000000000.0), 'near_compute_matched_bpb': {'500k_at_common': common500, '500k_compute_proxy': cp500, '1m_at_450815_target': matched1m, '1m_compute_proxy': cpmatched1m, 'proxy_relative_difference': abs(cp500 - cpmatched1m) / ((cp500 + cpmatched1m) / 2), 'winner': '500k' if common500 < matched1m else '1m'}}}
+    rec['quality_per_parameter']['winner'] = '500k' if rec['quality_per_parameter']['500k'] > rec['quality_per_parameter']['1m'] else '1m'
+    rec['quality_per_compute']['reduction_winner'] = '500k' if rec['quality_per_compute']['500k_reduction_per_1e12'] > rec['quality_per_compute']['1m_reduction_per_1e12'] else '1m'
+    return rec
+
+def _aggregate_update_behavior(curve: list[dict[str, Any]]) -> dict[str, Any]:
+    grad = [float(row['grad_norm']) for row in curve if row.get('grad_norm') is not None]
+    ratios = [float(row['update_to_parameter_ratio']) for row in curve if row.get('update_to_parameter_ratio') is not None]
+    return {'gradient_samples': len(grad), 'grad_norm_mean': sum(grad) / len(grad) if grad else None, 'grad_norm_max': max(grad) if grad else None, 'grad_norm_above_clip_fraction': sum((1 for value in grad if value > 1.0)) / len(grad) if grad else None, 'update_ratio_samples': len(ratios), 'update_to_parameter_ratio_mean': sum(ratios) / len(ratios) if ratios else None, 'update_to_parameter_ratio_max': max(ratios) if ratios else None}
+
+def aggregate(repo: Path, source_sha: str, root: Path) -> dict[str, Any]:
+    manifest, tok, locks, protocol = _common(repo, source_sha, root)
+    states: dict[tuple[str, int], dict[str, Any]] = {}
+    for label in ('500k', '1m'):
+        for seed in SEEDS:
+            run_dir = _run_dir(root, label, seed)
+            state = _read_json(run_dir / 'state.json')
+            if int(state['latest_optimized_tokens']) < COMMON_TOKENS:
+                raise Learn122Error(f'{label}/seed{seed} did not reach common budget')
+            states[label, seed] = state
+    efficiency = [_efficiency_record(root, seed, states['500k', seed], states['1m', seed]) for seed in SEEDS]
+    parameter_winners = [item['quality_per_parameter']['winner'] for item in efficiency]
+    compute_winners = [item['quality_per_compute']['near_compute_matched_bpb']['winner'] for item in efficiency]
+    reduction_compute_winners = [item['quality_per_compute']['reduction_winner'] for item in efficiency]
+    runs: dict[str, Any] = {}
+    all_evaluations_non_mutating = True
+    all_train_loss_decreased = True
+    all_common_bpb_decreased = True
+    for label in ('500k', '1m'):
+        for seed in SEEDS:
+            key = f'{label}-seed-{seed}'
+            state = states[label, seed]
+            common_checkpoint = _checkpoint_at(state, COMMON_TOKENS)
+            curve = _curve(_run_dir(root, label, seed))
+            windows = _loss_windows(curve, int(common_checkpoint['optimizer_step']))
+            initial_bpb = float(_eval_at(state, 0)['bits_per_byte'])
+            common_eval = _eval_at(state, COMMON_TOKENS)
+            common_bpb = float(common_eval['bits_per_byte'])
+            train_down = windows['common_last100_mean_loss'] < windows['first100_mean_loss']
+            bpb_down = common_bpb < initial_bpb
+            all_train_loss_decreased = all_train_loss_decreased and train_down
+            all_common_bpb_decreased = all_common_bpb_decreased and bpb_down
+            for evaluation in [state['initial_evaluation'], *[x['evaluation'] for x in state['evaluations']]]:
+                all_evaluations_non_mutating = all_evaluations_non_mutating and bool(evaluation['non_mutation_passed'])
+            for checkpoint in state['checkpoints']:
+                verify_checkpoint(_run_dir(root, label, seed) / checkpoint['path'])
+            runs[key] = {'parameter_count': state['parameter_count'], 'random_initialization': state['random_initialization'], 'random_init_state_sha256': state['random_init_state_sha256'], 'initial_bpb': initial_bpb, 'common_bpb': common_bpb, 'common_by_stratum': common_eval['by_stratum'], 'common_actual_optimized_tokens': common_checkpoint['actual_optimized_tokens'], 'common_optimizer_step': common_checkpoint['optimizer_step'], 'common_compute_proxy': common_checkpoint['compute_proxy'], 'loss_windows': windows, 'train_loss_decreased': train_down, 'heldout_bpb_decreased': bpb_down, 'wall_seconds_total': sum((float(p['wall_seconds']) for p in state['phases'])), 'peak_rss_bytes_max': max((int(p['peak_rss_bytes']) for p in state['phases'])), 'memory_phases': [{'peak_rss_bytes': p['peak_rss_bytes'], 'model_parameter_bytes': p['model_parameter_bytes'], 'gradient_capacity_bytes_fp32': p['gradient_capacity_bytes_fp32'], 'optimizer_state_tensor_bytes': p['optimizer_state_tensor_bytes']} for p in state['phases']], 'gradient_update_behavior': _aggregate_update_behavior(curve), 'fresh_process_resumes': state['fresh_process_resumes'], 'checkpoint_count': len(state['checkpoints'])}
+    primary500 = states['500k', PRIMARY_SEED]
+    trajectory500 = [{'milestone_requested_tokens': 0, 'actual_optimized_tokens': 0, 'bits_per_byte': float(primary500['initial_evaluation']['bits_per_byte']), 'by_stratum': primary500['initial_evaluation']['by_stratum'], 'checkpoint': primary500['checkpoints'][0]['path'], 'checkpoint_id': primary500['checkpoints'][0]['checkpoint_id']}]
+    for item in primary500['evaluations']:
+        trajectory500.append({'milestone_requested_tokens': item['milestone_requested_tokens'], 'actual_optimized_tokens': item['actual_optimized_tokens'], 'bits_per_byte': float(item['evaluation']['bits_per_byte']), 'by_stratum': item['evaluation']['by_stratum'], 'checkpoint': item['checkpoint'], 'checkpoint_id': item['checkpoint_id']})
+    trajectory500.sort(key=lambda row: int(row['milestone_requested_tokens']))
+    best = min(trajectory500, key=lambda row: float(row['bits_per_byte']))
+    best_so_far = float('inf')
+    overfit_onset = None
+    for row in trajectory500:
+        bpb = float(row['bits_per_byte'])
+        if bpb < best_so_far:
+            best_so_far = bpb
+        elif overfit_onset is None and int(row['milestone_requested_tokens']) > 0:
+            overfit_onset = {'definition': 'first evaluated token milestone with strict BPB regression above the previous best', 'milestone_requested_tokens': row['milestone_requested_tokens'], 'bits_per_byte': bpb, 'previous_best_bits_per_byte': best_so_far}
+    generation_progression = sorted(primary500['generations'], key=lambda item: int(item['milestone_requested_tokens']))
+    report: dict[str, Any] = {'schema': SCHEMA, 'authority': AUTHORITY, 'source': {'repository': REPOSITORY, 'git_sha': source_sha, 'branch': BRANCH}, 'comparison_protocol': protocol, 'corpus': {'identity_sha256': manifest['corpus_identity_sha256'], 'truth_boundary': manifest['truth_boundary']}, 'tokenizer': {'version': tok.identity.version, 'config_sha256': tok.identity.config_sha256, 'vocab_sha256': tok.identity.vocab_sha256}, 'runs': runs, 'efficiency_by_seed': efficiency, '500k_primary_long_trajectory': trajectory500, '500k_best_checkpoint': best, '500k_overfit_onset': overfit_onset, '500k_generation_progression': generation_progression, 'decision': {'absolute_common_budget_winner_by_seed': [item['common_budget']['absolute_quality_winner'] for item in efficiency], 'quality_per_parameter_winner_by_seed': parameter_winners, 'near_compute_matched_quality_winner_by_seed': compute_winners, 'bpb_reduction_per_compute_winner_by_seed': reduction_compute_winners, '500k_better_quality_per_parameter': all((winner == '500k' for winner in parameter_winners)), '500k_better_near_compute_matched_quality': all((winner == '500k' for winner in compute_winners)), '500k_better_bpb_reduction_per_compute': all((winner == '500k' for winner in reduction_compute_winners)), 'two_seed_consistency_required_for_boolean_true': True}, 'proof': {'random_initialization_all_runs': all((bool(state['random_initialization']) for state in states.values())), 'exact_parameter_counts': MODEL_EXPECTED_PARAMS, 'versioned_tokenizer': tok.identity.version, 'train_loss_decreased_all_runs': all_train_loss_decreased, 'heldout_bpb_decreased_all_runs': all_common_bpb_decreased, 'evaluation_non_mutation_all': all_evaluations_non_mutating, 'multiple_checkpoints_all_runs': all((len(state['checkpoints']) >= 3 for state in states.values())), 'fresh_process_resume_500k_primary': len(primary500['fresh_process_resumes']) >= 2, 'fresh_process_resume_1m_primary': len(states['1m', PRIMARY_SEED]['fresh_process_resumes']) >= 1, 'two_seeds_completed': list(SEEDS), 'foreign_pretrained_weights': False, 'instruction_tuning': False, 'paid_compute': False}, 'truth_boundary': {'genuinely_learned_base_artifacts': all_train_loss_decreased and all_common_bpb_decreased, 'real_world_representative_corpus_gate': False, 'overall_milestone100_real_representative_requirement': 'PARTIAL_FAIL_CLOSED', 'reason': 'DATA-25 has zero external training-eligible sources; this run is scientifically useful for internal UA/EN/code scaling but cannot be labeled a representative real-world pretraining corpus run.'}, 'reproduction': {'python': '3.11.16', 'commands': [f'.learn122/bin/python -m twelve_six.learn122_real_500k_long prepare --repo-root . --source-sha {source_sha} --output-dir learn122-evidence', f'.learn122/bin/python -m twelve_six.learn122_real_500k_long train --repo-root . --source-sha {source_sha} --output-dir learn122-evidence --model 500k --seed 1337 --target-tokens 500000', f'.learn122/bin/python -m twelve_six.learn122_real_500k_long train --repo-root . --source-sha {source_sha} --output-dir learn122-evidence --model 500k --seed 1337 --target-tokens 1000000 --resume', f'.learn122/bin/python -m twelve_six.learn122_real_500k_long train --repo-root . --source-sha {source_sha} --output-dir learn122-evidence --model 500k --seed 1337 --target-tokens 2000000 --resume', f'.learn122/bin/python -m twelve_six.learn122_real_500k_long train --repo-root . --source-sha {source_sha} --output-dir learn122-evidence --model 1m --seed 1337 --target-tokens 450815', f'.learn122/bin/python -m twelve_six.learn122_real_500k_long train --repo-root . --source-sha {source_sha} --output-dir learn122-evidence --model 1m --seed 1337 --target-tokens 1000000 --resume', f'.learn122/bin/python -m twelve_six.learn122_real_500k_long train --repo-root . --source-sha {source_sha} --output-dir learn122-evidence --model 500k --seed 2027 --target-tokens 1000000', f'.learn122/bin/python -m twelve_six.learn122_real_500k_long train --repo-root . --source-sha {source_sha} --output-dir learn122-evidence --model 1m --seed 2027 --target-tokens 1000000', f'.learn122/bin/python -m twelve_six.learn122_real_500k_long aggregate --repo-root . --source-sha {source_sha} --output-dir learn122-evidence', f'.learn122/bin/python -m twelve_six.learn122_real_500k_long validate learn122-evidence/report.json --expected-source-sha {source_sha}']}, 'environment_locks': locks}
+    report['report_sha256'] = hash_json(report)
+    _write_json(root / 'report.json', report)
+    return report
+
+def validate(report_path: Path, expected_source_sha: str) -> None:
+    report = _read_json(report_path)
+    if report.get('schema') != SCHEMA:
+        raise Learn122Error('report schema mismatch')
+    if report['source']['git_sha'] != expected_source_sha:
+        raise Learn122Error('report source SHA mismatch')
+    proof = report['proof']
+    required = ('random_initialization_all_runs', 'train_loss_decreased_all_runs', 'heldout_bpb_decreased_all_runs', 'evaluation_non_mutation_all', 'multiple_checkpoints_all_runs', 'fresh_process_resume_500k_primary', 'fresh_process_resume_1m_primary')
+    failed = [name for name in required if not proof.get(name)]
+    if failed:
+        raise Learn122Error(f'required learned-run proof failed: {failed}')
+    expected = report.get('report_sha256')
+    unsigned = dict(report)
+    unsigned.pop('report_sha256', None)
+    if hash_json(unsigned) != expected:
+        raise Learn122Error('report hash mismatch')
+
+def preflight(repo: Path, source_sha: str) -> dict[str, Any]:
+    _require_head(repo, source_sha)
+    result = {'schema': '12-6.learn122-preflight.v1', 'source_sha': source_sha, 'models': {label: {'parameters': _spec(label).parameter_count(), 'spec': _spec(label).to_dict()} for label in ('500k', '1m')}, 'common_tokens': COMMON_TOKENS, 'long_500k_tokens': LONG_500K_TOKENS, 'compute_match_1m_tokens': COMPUTE_MATCH_1M_TOKENS, 'seeds': list(SEEDS), 'sequence_length': SEQ, 'batch_size': BATCH, 'mixture': list(MIXTURE)}
+    return result
+
+def main(argv: list[str] | None=None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    sub = parser.add_subparsers(dest='command', required=True)
+    for name in ('preflight', 'prepare', 'aggregate'):
+        p = sub.add_parser(name)
+        p.add_argument('--repo-root', type=Path, default=Path('.'))
+        p.add_argument('--source-sha', required=True)
+        if name != 'preflight':
+            p.add_argument('--output-dir', type=Path, required=True)
+    train = sub.add_parser('train')
+    train.add_argument('--repo-root', type=Path, default=Path('.'))
+    train.add_argument('--source-sha', required=True)
+    train.add_argument('--output-dir', type=Path, required=True)
+    train.add_argument('--model', choices=('500k', '1m'), required=True)
+    train.add_argument('--seed', type=int, required=True)
+    train.add_argument('--target-tokens', type=int, required=True)
+    train.add_argument('--resume', action='store_true')
+    check = sub.add_parser('validate')
+    check.add_argument('report', type=Path)
+    check.add_argument('--expected-source-sha', required=True)
+    args = parser.parse_args(argv)
+    if args.command == 'preflight':
+        print(json.dumps(preflight(args.repo_root, args.source_sha), ensure_ascii=False, indent=2, sort_keys=True))
+    elif args.command == 'prepare':
+        result = prepare(args.repo_root, args.source_sha, args.output_dir)
+        print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
+    elif args.command == 'train':
+        state = train_phase(args.repo_root, args.source_sha, args.output_dir, args.model, args.seed, args.target_tokens, args.resume)
+        print(json.dumps({'model': args.model, 'seed': args.seed, 'target_tokens': args.target_tokens, 'actual_tokens': state['latest_optimized_tokens'], 'optimizer_step': state['latest_optimizer_step'], 'latest_checkpoint': state['latest_checkpoint']}, indent=2, sort_keys=True))
+    elif args.command == 'aggregate':
+        report = aggregate(args.repo_root, args.source_sha, args.output_dir)
+        print(json.dumps({'report_sha256': report['report_sha256'], 'decision': report['decision'], 'best_500k': report['500k_best_checkpoint'], 'overfit_onset': report['500k_overfit_onset'], 'truth_boundary': report['truth_boundary']}, ensure_ascii=False, indent=2, sort_keys=True))
+    else:
+        validate(args.report, args.expected_source_sha)
+        print(f'{SCHEMA}: PASS')
+    return 0
+if __name__ == '__main__':
+    raise SystemExit(main())
