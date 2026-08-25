@@ -341,7 +341,7 @@ def run_s0_cpu_profile(
         tokenizer=tokenizer,
         batch_size=3,
     )
-    validation_batches, validation_loss_tokens, _ = _tensor_batches(
+    _, validation_loss_tokens, _ = _tensor_batches(
         root,
         split="validation",
         tokenizer=tokenizer,
@@ -357,7 +357,7 @@ def run_s0_cpu_profile(
     def prepare_forward() -> Callable[[], Any]:
         def operation() -> None:
             with torch.no_grad():
-                forward_model(input_ids).logits
+                _ = forward_model(input_ids).logits
 
         return operation
 
@@ -638,7 +638,7 @@ def validate_s0_cpu_profile(
         raise ValueError("unexpected repository identity")
     source_sha = payload.get("source_sha")
     if not isinstance(source_sha, str):
-        raise ValueError("source_sha is missing")
+        raise TypeError("source_sha is missing")
     _validate_source_sha(source_sha)
     if expected_source_sha is not None and source_sha != expected_source_sha:
         raise ValueError("profile source_sha does not match expected exact head")
@@ -664,7 +664,7 @@ def validate_s0_cpu_profile(
         for clock in ("wall_seconds", "process_cpu_seconds"):
             values = phase.get(clock)
             if not isinstance(values, dict):
-                raise ValueError(f"phase {name} is missing {clock}")
+                raise TypeError(f"phase {name} is missing {clock}")
             triple = [values.get(item) for item in ("min", "median", "max")]
             if not all(isinstance(value, (int, float)) for value in triple):
                 raise ValueError(f"phase {name} has non-numeric {clock}")
@@ -679,7 +679,7 @@ def validate_s0_cpu_profile(
 
     full_training = payload.get("full_training")
     if not isinstance(full_training, dict):
-        raise ValueError("full_training evidence is missing")
+        raise TypeError("full_training evidence is missing")
     if int(full_training.get("steps", 0)) < 1:
         raise ValueError("full_training steps must be positive")
     if int(full_training.get("optimized_tokens", 0)) <= 0:
@@ -697,7 +697,7 @@ def validate_s0_cpu_profile(
 
     truth = payload.get("truth_boundary")
     if not isinstance(truth, dict):
-        raise ValueError("truth_boundary is missing")
+        raise TypeError("truth_boundary is missing")
     forbidden_true = {
         "paid_compute_authorized_or_used",
         "foreign_pretrained_weights_used",
@@ -714,7 +714,7 @@ def validate_s0_cpu_profile(
 
     claimed_hash = payload.get("evidence_sha256")
     if not isinstance(claimed_hash, str):
-        raise ValueError("evidence_sha256 is missing")
+        raise TypeError("evidence_sha256 is missing")
     unhashed = dict(payload)
     unhashed.pop("evidence_sha256", None)
     if claimed_hash != _canonical_hash(unhashed):
@@ -774,7 +774,7 @@ def main(argv: list[str] | None = None) -> int:
 
     payload = json.loads(args.report.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
-        raise ValueError("profile report must be a JSON object")
+        raise TypeError("profile report must be a JSON object")
     validate_s0_cpu_profile(payload, expected_source_sha=args.source_sha)
     print(json.dumps({"valid": True, "evidence_sha256": payload["evidence_sha256"]}))
     return 0
