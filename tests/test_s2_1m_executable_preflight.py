@@ -8,6 +8,11 @@ from twelve_six.training.s2_preflight import (
     PARAMETER_COUNT,
     collect_s2_1m_preflight,
 )
+from twelve_six.training.s3_smoke import (
+    CANDIDATE_PATH as S3_CANDIDATE_PATH,
+    MODEL_SPEC_SHA256 as S3_MODEL_SPEC_SHA256,
+    PARAMETER_COUNT as S3_PARAMETER_COUNT,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -58,3 +63,20 @@ def test_s2_real_trainer_checkpoint_resume_and_first_party_inference(tmp_path: P
     assert len(evidence["first_party_inference"]["generated_token_ids"]) == 2
     assert evidence["blockers"]["meaningful_s2_training_experiment_ready"] is False
     assert evidence["claims"]["s2_corpus_or_tokenizer_frozen"] is False
+
+
+def test_s3_10m_byte_gqa_geometry_is_exact_and_instantiable() -> None:
+    stage = load_stage_config(ROOT / S3_CANDIDATE_PATH)
+    model = TwelveSixDecoder(stage.model, stage.init)
+
+    assert stage.stage == "S3"
+    assert stage.model.identity_sha256() == S3_MODEL_SPEC_SHA256
+    assert stage.expected_parameters == S3_PARAMETER_COUNT == 10_000_640
+    assert sum(parameter.numel() for parameter in model.parameters()) == S3_PARAMETER_COUNT
+    assert stage.model.vocab_size == 256
+    assert stage.model.max_seq_len == 1024
+    assert stage.model.d_model == 256
+    assert stage.model.n_layers == 12
+    assert stage.model.n_heads == 8
+    assert stage.model.n_kv_heads == 2
+    assert stage.model.d_ff == 864
