@@ -1,0 +1,39 @@
+{
+  "schema_version": "12-6.embedding-weight-decay-plan.v1",
+  "authority": "LOCAL_FREE_ENGINEERING_EMBEDDING_WEIGHT_DECAY_PLAN_PROVISIONAL",
+  "purpose": "Compare AdamW weight decay on all parameters versus excluding only the tied token embedding/output matrix.",
+  "learning_rate": 0.0003,
+  "optimizer": {
+    "kind": "adamw",
+    "weight_decay": 0.1,
+    "betas": [0.9, 0.95],
+    "eps": 1e-8,
+    "scheduler": "constant",
+    "gradient_clip_norm": 1.0,
+    "precision": "fp32"
+  },
+  "conditions": [
+    "all_parameters_decayed",
+    "embedding_excluded"
+  ],
+  "model_source": "RESEARCH41 fixed-control approximately 500K member",
+  "parameter_count": 467808,
+  "vocab_size": 256,
+  "max_seq_len": 256,
+  "execution_steps": 768,
+  "checkpoint_step": 384,
+  "evaluation_interval_steps": 64,
+  "batch_size": 3,
+  "sequence_length": 128,
+  "seed": 1337,
+  "torch_threads": 2,
+  "selection": {
+    "prefer_embedding_exclusion_when_validation_bpb_within_fraction": 0.005,
+    "require_exact_parameter_group_resume": true
+  },
+  "truth_boundary": {
+    "canonical_model_configs_modified": false,
+    "representative_corpus_claim": false,
+    "paid_compute": false
+  }
+}
