@@ -11,8 +11,9 @@ The LOCAL_FREE execution target is the committed S1-shaped `configs/stages/s1_10
 1. Canonical 12-6 parameters are plain `Tensor` objects before FSDP2. The previous runtime passed the full five-dimensional mesh plus `DataParallelMeshDims`, a PyTorch path intended for parameters that are already DTensors on a full SPMD mesh. The canonical path now slices the existing mesh to the 1D FSDP or 2D HSDP data-parallel submesh. A separate `fsdp2_spmd_kwargs()` method retains the pre-existing-DTensor case.
 2. The D02 Trainer computes and normalizes gradients by iterating ordinary local tensors. FSDP2 exposes sharded parameter gradients as DTensors. `FSDP2Trainer` is a D12-only adapter that keeps the D02 loop but uses PyTorch's DTensor-aware `torch.nn.utils.clip_grad_norm_` for the global norm after the existing token normalization.
 3. Canonical 12-6 ties `token_embedding.weight` to `lm_head.weight`. A real two-rank probe exposed that treating this shared parameter as an implicit root-owned weight can break FSDP2 backward. The adapter now follows PyTorch's weight-tied module-group pattern: token embedding plus LM head are explicitly `fully_shard`ed together first, then each `TransformerBlock`, then the root `TwelveSixDecoder`.
-4. The optimizer is created only after `fully_shard`, so AdamW owns the DTensor parameters.
-5. A failed FSDP forward can leave per-iteration sharding state undefined. The execution path exercises `FSDPModule.reset_iter_state()` with an over-context forward and proves that a valid forward succeeds afterward.
+4. A second real CPU probe exposed an older FSDP2 `reshard_after_forward=True` backward-storage failure on the available PyTorch 2.10 runtime, even without tied weights. LOCAL_FREE CPU/Gloo therefore uses `reshard_after_forward=False`: parameters remain unsharded only between forward and backward and are sharded again after backward. The CUDA/NCCL pilot keeps `reshard_after_forward=True`, where memory pressure matters and the locked/current PyTorch path must be validated directly.
+5. The optimizer is created only after `fully_shard`, so AdamW owns the DTensor parameters.
+6. A failed FSDP forward can leave per-iteration sharding state undefined. The locked/current PyTorch integration test exercises `FSDPModule.reset_iter_state()` with an over-context forward and requires a valid forward afterward. The ad-hoc PyTorch 2.10 container does not expose that API and is not used as evidence for this contract.
 
 ## LOCAL_FREE execution
 
@@ -30,9 +31,11 @@ The integration test and CLI are built to execute all of the following on two lo
 - finite global gradient norm;
 - AdamW optimizer update and non-zero sharded parameter delta;
 - reduced mean loss and global token count;
-- FSDP iteration-state recovery after an aborted forward;
+- FSDP iteration-state recovery after an aborted forward on the locked/current runtime;
 - explicit post-step rank failure propagation;
 - bounded join/timeout handling and `destroy_process_group()` in `finally`.
+
+A diagnostic execution in the available container used PyTorch `2.10.0+cpu`, not the repository lock. With CPU `reshard_after_forward=False`, the canonical tied S1 model completed one real two-rank optimizer step with ModelSpec hash `2f0aa97a5d19e98c4e292fd5f1b454ada45ec4d2c7324e14ab7e48af19908ce6`, 107,856 parameters, exact sampler partition `rank0=[0]`, `rank1=[1]`, 14 global target tokens, reduced loss `6.246819972991943`, global gradient norm `3.338578462600708`, and aggregate sharded parameter L1 update `107.79924024188858`. Both ranks destroyed their process groups cleanly. An injected post-step failure on rank 1 propagated to the parent without timeout. These numbers are diagnostic LOCAL_FREE evidence only; exact-head locked PyTorch 2.13 Actions remain the acceptance authority.
 
 Run from an installed locked environment:
 
@@ -60,7 +63,7 @@ torchrun --standalone --nproc-per-node=2 \
   --sequence-length 128
 ```
 
-The process-local CUDA device is selected from `LOCAL_RANK` before DeviceMesh creation. The same native FSDP2/ModelSpec/Trainer adapter then runs under NCCL. This command is launch-ready but is **NOT TESTED ON CUDA** in this lane until an authorized GPU run is actually recorded.
+The process-local CUDA device is selected from `LOCAL_RANK` before DeviceMesh creation. The same native FSDP2/ModelSpec/Trainer adapter then runs under NCCL with `reshard_after_forward=True`. This command is launch-ready but is **NOT TESTED ON CUDA** in this lane until an authorized GPU run is actually recorded.
 
 For the cheapest first GPU proof, `configs/stages/s1_100k.json` and `--sequence-length 32` may be substituted before advancing to the 10M stage. That cheaper check validates transport/device wiring but does not meaningfully test FSDP memory scaling.
 
