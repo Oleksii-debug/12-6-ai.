@@ -1,4 +1,4 @@
-"""Fail-closed validation for D01 late-wave S0 intake snapshots."""
+"""Fail-closed validation for D01/W1 late-wave S0 intake snapshots."""
 
 from __future__ import annotations
 
@@ -11,14 +11,17 @@ from pathlib import Path
 from typing import Any
 
 _FULL_SHA = re.compile(r"^[0-9a-f]{40}$")
-_ALLOWED_DISPOSITIONS = {
-    "PENDING_EXACT_HEAD_CI",
-    "RECHECK_NEW_HEAD_AFTER_HISTORICAL_RED",
-    "PENDING_AND_COLLIDES_WITH_PR95",
-    "EXCLUDE_FROM_S0_COMPOSITION",
-    "HELD_D10_OWNED",
-    "PENDING_AND_OVERLAPS_EVIDENCE_GROUP",
+_ALLOWED_CLASSIFICATIONS = {
+    "INCUMBENT",
+    "GREEN",
+    "RED",
+    "QUEUED",
+    "SUPERSEDED",
+    "DUPLICATE",
+    "COMPOSABLE",
+    "HOLD",
 }
+_BLOCKING_CLASSIFICATIONS = {"RED", "QUEUED", "SUPERSEDED", "DUPLICATE", "HOLD"}
 
 
 class LateWaveIntakeError(ValueError):
@@ -43,18 +46,64 @@ def _full_sha(value: Any, field: str) -> str:
     return value
 
 
-def _workflow_success(workflow: Mapping[str, Any], field: str) -> None:
-    if workflow.get("state") != "completed" or workflow.get("conclusion") != "success":
-        raise LateWaveIntakeError(f"{field} is not terminal success")
-    run_id = workflow.get("run_id")
-    if not isinstance(run_id, int) or run_id <= 0:
-        raise LateWaveIntakeError(f"{field}.run_id must be a positive integer")
+def _workflow_evidence(
+    raw: Any,
+    field: str,
+) -> dict[str, Mapping[str, Any]]:
+    workflows = _mapping(raw, field)
+    validated: dict[str, Mapping[str, Any]] = {}
+    for name, raw_workflow in workflows.items():
+        if not isinstance(name, str) or not name:
+            raise LateWaveIntakeError(f"{field} workflow names must be non-empty strings")
+        workflow = _mapping(raw_workflow, f"{field}.{name}")
+        run_id = workflow.get("run_id")
+        if not isinstance(run_id, int) or run_id <= 0:
+            raise LateWaveIntakeError(f"{field}.{name}.run_id must be a positive integer")
+        state = workflow.get("state")
+        if state not in {"queued", "in_progress", "completed"}:
+            raise LateWaveIntakeError(f"{field}.{name}.state is unsupported")
+        conclusion = workflow.get("conclusion")
+        if state == "completed" and conclusion not in {
+            "success",
+            "failure",
+            "cancelled",
+            "timed_out",
+            "action_required",
+            "neutral",
+            "skipped",
+            "stale",
+        }:
+            raise LateWaveIntakeError(f"{field}.{name}.conclusion is unsupported")
+        if state != "completed" and conclusion is not None:
+            raise LateWaveIntakeError(
+                f"{field}.{name}.conclusion must be null before terminal completion"
+            )
+        validated[name] = workflow
+    return validated
+
+
+def _all_success(workflows: Mapping[str, Mapping[str, Any]]) -> bool:
+    return bool(workflows) and all(
+        workflow.get("state") == "completed" and workflow.get("conclusion") == "success"
+        for workflow in workflows.values()
+    )
+
+
+def _has_terminal_failure(workflows: Mapping[str, Mapping[str, Any]]) -> bool:
+    return any(
+        workflow.get("state") == "completed" and workflow.get("conclusion") != "success"
+        for workflow in workflows.values()
+    )
+
+
+def _has_pending(workflows: Mapping[str, Mapping[str, Any]]) -> bool:
+    return any(workflow.get("state") in {"queued", "in_progress"} for workflow in workflows.values())
 
 
 def validate_late_wave_snapshot(document: Mapping[str, Any]) -> dict[str, Any]:
-    """Validate a point-in-time D01 intake registry without accepting pending work."""
+    """Validate a live-cutoff W1 intake registry without granting promotion authority."""
 
-    if document.get("schema") != "12-6.s0-late-wave-intake.v1":
+    if document.get("schema") != "12-6.s0-late-wave-intake.v2":
         raise LateWaveIntakeError("unsupported schema")
     if document.get("run_id") != "12-6-AI-SWARM-EXP-01":
         raise LateWaveIntakeError("unexpected swarm run_id")
@@ -67,17 +116,15 @@ def validate_late_wave_snapshot(document: Mapping[str, Any]) -> dict[str, Any]:
     if base.get("pr") != 89 or base.get("status") != "EXACT_GREEN":
         raise LateWaveIntakeError("base must be exact-green PR #89")
     base_sha = _full_sha(base.get("sha"), "base.sha")
-    workflows = _mapping(base.get("required_workflows"), "base.required_workflows")
+    base_workflows = _workflow_evidence(base.get("required_workflows"), "base.required_workflows")
     required_base_workflows = {
         "CI",
         "D02 Real S0 Training",
         "D02 S0 Determinism Repeatability",
         "D04 Strict S0 Exact-Candidate Evaluation",
     }
-    if set(workflows) != required_base_workflows:
-        raise LateWaveIntakeError("base exact-green workflow set is incomplete")
-    for name in sorted(workflows):
-        _workflow_success(_mapping(workflows[name], f"base workflow {name}"), f"base workflow {name}")
+    if set(base_workflows) != required_base_workflows or not _all_success(base_workflows):
+        raise LateWaveIntakeError("base exact-green workflow set is incomplete or non-green")
 
     truth = _mapping(document.get("truth_boundary"), "truth_boundary")
     if truth.get("canonical_base") != "random_init_pretraining_only":
@@ -97,10 +144,10 @@ def validate_late_wave_snapshot(document: Mapping[str, Any]) -> dict[str, Any]:
         raise LateWaveIntakeError("historical independent audit authority must be preserved")
 
     collision_groups = _sequence(document.get("collision_groups"), "collision_groups")
-    group_members: dict[int, str] = {}
-    group_owners: dict[str, int] = {}
-    for index, raw in enumerate(collision_groups):
-        group = _mapping(raw, f"collision_groups[{index}]")
+    collision_owners: dict[str, int] = {}
+    group_membership: dict[int, str] = {}
+    for index, raw_group in enumerate(collision_groups):
+        group = _mapping(raw_group, f"collision_groups[{index}]")
         group_id = group.get("id")
         if not isinstance(group_id, str) or not group_id:
             raise LateWaveIntakeError("collision group id must be non-empty")
@@ -110,45 +157,74 @@ def validate_late_wave_snapshot(document: Mapping[str, Any]) -> dict[str, Any]:
         owner = group.get("owner_pr")
         if owner is not None and owner not in members:
             raise LateWaveIntakeError(f"collision group {group_id} owner must be a member")
-        if owner is not None:
-            group_owners[group_id] = owner
+        if isinstance(owner, int):
+            collision_owners[group_id] = owner
         for member in members:
             if not isinstance(member, int) or member <= 0:
                 raise LateWaveIntakeError("collision group PR numbers must be positive integers")
-            previous = group_members.get(member)
+            previous = group_membership.get(member)
             if previous is not None and previous != group_id:
                 raise LateWaveIntakeError(f"PR #{member} appears in multiple collision groups")
-            group_members[member] = group_id
+            group_membership[member] = group_id
 
     items_raw = _sequence(document.get("items"), "items")
     items: dict[int, Mapping[str, Any]] = {}
-    by_disposition: defaultdict[str, list[int]] = defaultdict(list)
-    for index, raw in enumerate(items_raw):
-        item = _mapping(raw, f"items[{index}]")
+    item_classes: dict[int, frozenset[str]] = {}
+    by_classification: defaultdict[str, list[int]] = defaultdict(list)
+    for index, raw_item in enumerate(items_raw):
+        item = _mapping(raw_item, f"items[{index}]")
         pr = item.get("pr")
         if not isinstance(pr, int) or pr <= 0 or pr in items:
             raise LateWaveIntakeError("item PR numbers must be unique positive integers")
         _full_sha(item.get("head"), f"PR #{pr}.head")
-        disposition = item.get("disposition")
-        if disposition not in _ALLOWED_DISPOSITIONS:
-            raise LateWaveIntakeError(f"PR #{pr} has unsupported disposition")
-        if item.get("required_for_next_composition") not in {True, False}:
+        classifications_raw = _sequence(item.get("classifications"), f"PR #{pr}.classifications")
+        classifications = frozenset(classifications_raw)
+        if not classifications or len(classifications) != len(classifications_raw):
+            raise LateWaveIntakeError(f"PR #{pr} classifications must be unique and non-empty")
+        if not classifications <= _ALLOWED_CLASSIFICATIONS:
+            raise LateWaveIntakeError(f"PR #{pr} has unsupported classification")
+        if "GREEN" in classifications and "RED" in classifications:
+            raise LateWaveIntakeError(f"PR #{pr} cannot be both GREEN and RED")
+        if "COMPOSABLE" in classifications and classifications & _BLOCKING_CLASSIFICATIONS:
+            raise LateWaveIntakeError(f"PR #{pr} COMPOSABLE conflicts with blocking classification")
+        required = item.get("required_for_next_composition")
+        if required not in {True, False}:
             raise LateWaveIntakeError(f"PR #{pr}.required_for_next_composition must be boolean")
-        if item.get("lane") == "D02" and item.get("kind") == "s1_numerical_preflight":
-            if disposition != "EXCLUDE_FROM_S0_COMPOSITION":
-                raise LateWaveIntakeError("S1 numerical preflight must not enter S0 composition")
-        if item.get("lane") == "D10" and disposition != "HELD_D10_OWNED":
-            raise LateWaveIntakeError("D10 governance work must remain separately owned")
-        if disposition.startswith("PENDING") and item.get("required_for_next_composition") is True:
-            workflow_state = item.get("workflow_state")
-            if workflow_state is not None:
-                states = _mapping(workflow_state, f"PR #{pr}.workflow_state")
-                if states and all(state == "success" for state in states.values()):
-                    raise LateWaveIntakeError(
-                        f"PR #{pr} is marked pending even though recorded workflows are all success; refresh snapshot"
-                    )
+
+        raw_workflows = item.get("workflow_evidence", {})
+        workflows = _workflow_evidence(raw_workflows, f"PR #{pr}.workflow_evidence")
+        if classifications & {"GREEN", "COMPOSABLE"} and not _all_success(workflows):
+            raise LateWaveIntakeError(f"PR #{pr} green/composable claim lacks terminal-success evidence")
+        if "RED" in classifications and not _has_terminal_failure(workflows):
+            raise LateWaveIntakeError(f"PR #{pr} RED claim lacks terminal failure evidence")
+        if "QUEUED" in classifications and not _has_pending(workflows):
+            raise LateWaveIntakeError(f"PR #{pr} QUEUED claim lacks queued/in-progress evidence")
+        if required and "COMPOSABLE" not in classifications:
+            raise LateWaveIntakeError(f"required PR #{pr} must be COMPOSABLE")
+        if item.get("stage_scope") == "S1" and "HOLD" not in classifications:
+            raise LateWaveIntakeError("S1 work must remain HOLD for S0 composition")
+        if item.get("lane") == "D10" and "HOLD" not in classifications:
+            raise LateWaveIntakeError("D10 governance work must remain HOLD for W1 S0 Product intake")
+
         items[pr] = item
-        by_disposition[disposition].append(pr)
+        item_classes[pr] = classifications
+        for classification in classifications:
+            by_classification[classification].append(pr)
+
+    for group_id, owner in collision_owners.items():
+        if owner in item_classes and "INCUMBENT" not in item_classes[owner]:
+            raise LateWaveIntakeError(f"collision owner PR #{owner} must be classified INCUMBENT")
+        if owner not in group_membership:
+            raise LateWaveIntakeError(f"collision owner for {group_id} has no membership")
+
+    pruning = _mapping(document.get("pruning_decisions"), "pruning_decisions")
+    duplicate_prs = tuple(_sequence(pruning.get("duplicate_closed_unmerged"), "duplicate_closed_unmerged"))
+    superseded_prs = tuple(_sequence(pruning.get("superseded_closed_unmerged"), "superseded_closed_unmerged"))
+    if len(set(duplicate_prs + superseded_prs)) != len(duplicate_prs) + len(superseded_prs):
+        raise LateWaveIntakeError("pruning decisions must not classify one PR twice")
+    for pr in duplicate_prs + superseded_prs:
+        if not isinstance(pr, int) or pr <= 0:
+            raise LateWaveIntakeError("pruning PR numbers must be positive integers")
 
     policy = _mapping(document.get("next_composition_policy"), "next_composition_policy")
     minimum = tuple(_sequence(policy.get("minimum_required"), "policy.minimum_required"))
@@ -156,8 +232,8 @@ def validate_late_wave_snapshot(document: Mapping[str, Any]) -> dict[str, Any]:
         raise LateWaveIntakeError("minimum late-wave composition set drifted")
     if any(pr not in items for pr in minimum):
         raise LateWaveIntakeError("minimum composition PR missing from registry")
-    if any(items[pr]["disposition"] != "PENDING_EXACT_HEAD_CI" for pr in minimum):
-        raise LateWaveIntakeError("minimum composition PRs must remain pending at this cutoff")
+    if any("COMPOSABLE" not in item_classes[pr] for pr in minimum):
+        raise LateWaveIntakeError("minimum composition PR is not currently COMPOSABLE")
     if policy.get("never_accept_queued_or_red") is not True:
         raise LateWaveIntakeError("queued/red intake must fail closed")
     if policy.get("preserve_real_git_ancestry") is not True:
@@ -167,22 +243,19 @@ def validate_late_wave_snapshot(document: Mapping[str, Any]) -> dict[str, Any]:
     if policy.get("request_both_independent_audits_on_final_exact_head") is not True:
         raise LateWaveIntakeError("both independent audit handoffs are mandatory")
 
-    choose_one = _sequence(policy.get("competing_choose_one"), "policy.competing_choose_one")
-    for group in choose_one:
-        members = tuple(_sequence(group, "competing choose-one group"))
-        if len(members) < 2 or len(set(members)) != len(members):
-            raise LateWaveIntakeError("choose-one group must contain unique competitors")
-        if any(pr not in items for pr in members):
-            raise LateWaveIntakeError("choose-one competitor missing from registry")
-
     return {
         "base_sha": base_sha,
         "registered_prs": tuple(sorted(items)),
         "minimum_required": minimum,
-        "collision_group_owners": group_owners,
-        "pending_prs": tuple(sorted(pr for disposition, prs in by_disposition.items() if disposition.startswith("PENDING") for pr in prs)),
-        "excluded_from_s0": tuple(sorted(by_disposition["EXCLUDE_FROM_S0_COMPOSITION"])),
-        "governance_held": tuple(sorted(by_disposition["HELD_D10_OWNED"])),
+        "composition_ready": True,
+        "collision_group_owners": collision_owners,
+        "green_prs": tuple(sorted(by_classification["GREEN"])),
+        "red_prs": tuple(sorted(by_classification["RED"])),
+        "queued_prs": tuple(sorted(by_classification["QUEUED"])),
+        "composable_prs": tuple(sorted(by_classification["COMPOSABLE"])),
+        "held_prs": tuple(sorted(by_classification["HOLD"])),
+        "duplicate_closed_unmerged": tuple(sorted(duplicate_prs)),
+        "superseded_closed_unmerged": tuple(sorted(superseded_prs)),
         "promotion_eligible": False,
     }
 
@@ -194,7 +267,11 @@ def verify_base_ancestry(document: Mapping[str, Any], repo_root: str | Path) -> 
     root = Path(repo_root)
     head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
     _full_sha(head, "git HEAD")
-    subprocess.run(["git", "merge-base", "--is-ancestor", facts["base_sha"], head], cwd=root, check=True)
+    subprocess.run(
+        ["git", "merge-base", "--is-ancestor", facts["base_sha"], head],
+        cwd=root,
+        check=True,
+    )
     return {"head_sha": head, "base_sha": facts["base_sha"]}
 
 
