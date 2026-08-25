@@ -142,7 +142,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         return int(args.func(args))
-    except Exception as exc:
+    except (ImportError, KeyError, OSError, RuntimeError, TypeError, ValueError) as exc:
         print(f"{type(exc).__name__}: {exc}", file=sys.stderr)
         return 2
 
