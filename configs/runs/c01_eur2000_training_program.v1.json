@@ -73,12 +73,13 @@
   "pricing_assumptions": {
     "snapshot_date": "2026-08-25",
     "provider": "Runpod Secure Cloud",
+    "provider_price_source_note": "Runpod official guide, Secure Cloud rates verified 2026-08-10; refresh at authorization time.",
     "a100_pcie_80gb_usd_per_gpu_hour": 1.39,
-    "h100_sxm_80gb_usd_per_gpu_hour": 3.29,
+    "h100_sxm_80gb_usd_per_gpu_hour": 2.99,
     "eur_usd_reference_rate_date": "2026-08-24",
     "usd_per_eur": 1.1664,
     "a100_pcie_80gb_eur_per_gpu_hour_derived": 1.1917,
-    "h100_sxm_80gb_eur_per_gpu_hour_derived": 2.8206,
+    "h100_sxm_80gb_eur_per_gpu_hour_derived": 2.5634,
     "vat_storage_egress_and_capacity_premiums_included": false,
     "price_is_authoritative_quote": false,
     "launch_rule": "Refresh provider SKU price and EUR conversion immediately before owner authorization."
@@ -189,7 +190,7 @@
       "planning_train_flops_6n_per_token": 1204614144000000000,
       "bf16_weight_bytes": 200769024,
       "full_adam_state_planning_bytes": 1606152192,
-      "wall_time": "MEASURE_FROM_P04_TOKENS_PER_SECOND; DO NOT SUBSTITUTE S0_CPU_THROUGHPUT",
+      "wall_time": "MEASURE_FROM_P04_TOKENS_PER_SECOND; DO_NOT SUBSTITUTE S0_CPU_THROUGHPUT",
       "checkpoint_interval_tokens": 100000000,
       "heldout_eval_interval_tokens": 250000000
     },
