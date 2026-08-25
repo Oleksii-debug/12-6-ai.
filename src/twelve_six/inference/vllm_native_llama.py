@@ -480,6 +480,13 @@ def collect_vllm_runtime_parity(
     if not prompts:
         raise ValueError("at least one parity prompt is required")
     reference = load_first_party_backend(Path(checkpoint_dir))
+    prompt_token_lengths = [len(reference.encode(prompt)) for prompt in prompts]
+    near_limit = reference.max_context_tokens - 1
+    if near_limit > 0 and near_limit not in prompt_token_lengths:
+        raise ValueError(
+            "runtime parity requires one prompt of exactly max_context_tokens - 1 "
+            "tokens to prove near-limit context behavior"
+        )
     provenance = verify_vllm_llama_directory(model_dir)
     if provenance.get("checkpoint_id") != reference.manifest.get("checkpoint_id"):
         raise VllmRuntimeError("vLLM materialization checkpoint_id does not match oracle")
@@ -513,6 +520,12 @@ def collect_vllm_runtime_parity(
         "prompt_sha256": [
             hashlib.sha256(prompt.encode("utf-8")).hexdigest() for prompt in prompts
         ],
+        "context_behavior": {
+            "max_context_tokens": reference.max_context_tokens,
+            "near_limit_probe_tokens": near_limit,
+            "near_limit_probe_executed": near_limit in prompt_token_lengths,
+            "over_context_rejected_before_vllm": True,
+        },
         "parity": report.to_dict(),
         "tolerance_basis": (
             "Q/K basis conversion is exact; nonzero runtime tolerance covers "
