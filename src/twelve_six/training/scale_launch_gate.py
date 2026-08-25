@@ -1,6 +1,6 @@
 """Fail-closed qualification and cost gate for materially paid scale training.
 
-This module does not launch compute.  It consumes a planned run plus measured
+This module does not launch compute. It consumes a planned run plus measured
 qualification evidence and reports whether the technical prerequisites are met.
 Owner authorization remains a separate, explicit gate.
 """
@@ -39,6 +39,17 @@ def _require_identity(name: str, value: Any) -> str:
     if not isinstance(value, str) or value.strip().upper() in _UNFROZEN_IDENTITIES:
         raise ScaleLaunchGateError(f"{name} must be a frozen non-placeholder identity")
     return value.strip()
+
+
+def _require_fraction(name: str, value: Any, *, allow_zero: bool) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ScaleLaunchGateError(f"{name} must be a finite fraction")
+    result = float(value)
+    lower_bound_ok = result >= 0 if allow_zero else result > 0
+    if not math.isfinite(result) or not lower_bound_ok or result > 1:
+        interval = "[0, 1]" if allow_zero else "(0, 1]"
+        raise ScaleLaunchGateError(f"{name} must be in {interval}")
+    return result
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,15 +96,11 @@ def project_cost(plan: Mapping[str, Any], evidence: Mapping[str, Any]) -> CostPr
         "plan.eur_per_gpu_hour", plan.get("eur_per_gpu_hour")
     )
     budget_eur = _require_positive_number("plan.budget_eur", plan.get("budget_eur"))
-    reserve_fraction = plan.get("reserve_fraction")
-    if (
-        isinstance(reserve_fraction, bool)
-        or not isinstance(reserve_fraction, (int, float))
-        or not math.isfinite(float(reserve_fraction))
-        or not 0 <= float(reserve_fraction) < 1
-    ):
+    reserve_fraction = _require_fraction(
+        "plan.reserve_fraction", plan.get("reserve_fraction"), allow_zero=True
+    )
+    if reserve_fraction >= 1:
         raise ScaleLaunchGateError("plan.reserve_fraction must be in [0, 1)")
-    reserve_fraction = float(reserve_fraction)
 
     wall_hours = target_tokens / tps / 3600.0
     compute_eur = wall_hours * gpu_count * eur_per_gpu_hour
@@ -136,6 +143,10 @@ def evaluate_launch_gate(
         "plan.architecture_identity", plan.get("architecture_identity")
     )
 
+    for status_name in ("architecture_status", "tokenizer_status", "corpus_status"):
+        if plan.get(status_name) != "FROZEN":
+            reasons.append(f"{status_name} must be FROZEN before paid launch")
+
     if evidence.get("measurement_kind") != GPU_MEASUREMENT_KIND:
         reasons.append("qualification throughput must be measured on GPU, not CPU/extrapolated")
     if evidence.get("source_sha") != expected_source:
@@ -164,22 +175,40 @@ def evaluate_launch_gate(
             f"{minimum_tps:.3f} tok/s"
         )
 
-    peak_hbm_fraction = evidence.get("peak_hbm_fraction")
-    maximum_hbm_fraction = plan.get("maximum_peak_hbm_fraction")
-    if (
-        isinstance(peak_hbm_fraction, bool)
-        or not isinstance(peak_hbm_fraction, (int, float))
-        or not 0 < float(peak_hbm_fraction) <= 1
-    ):
-        raise ScaleLaunchGateError("evidence.peak_hbm_fraction must be in (0, 1]")
-    if (
-        isinstance(maximum_hbm_fraction, bool)
-        or not isinstance(maximum_hbm_fraction, (int, float))
-        or not 0 < float(maximum_hbm_fraction) <= 1
-    ):
-        raise ScaleLaunchGateError("plan.maximum_peak_hbm_fraction must be in (0, 1]")
-    if float(peak_hbm_fraction) > float(maximum_hbm_fraction):
+    peak_hbm_fraction = _require_fraction(
+        "evidence.peak_hbm_fraction", evidence.get("peak_hbm_fraction"), allow_zero=False
+    )
+    maximum_hbm_fraction = _require_fraction(
+        "plan.maximum_peak_hbm_fraction",
+        plan.get("maximum_peak_hbm_fraction"),
+        allow_zero=False,
+    )
+    if peak_hbm_fraction > maximum_hbm_fraction:
         reasons.append("qualification exceeds the peak-HBM safety threshold")
+
+    data_wait_fraction = _require_fraction(
+        "evidence.data_wait_fraction", evidence.get("data_wait_fraction"), allow_zero=True
+    )
+    maximum_data_wait_fraction = _require_fraction(
+        "plan.maximum_data_wait_fraction",
+        plan.get("maximum_data_wait_fraction"),
+        allow_zero=True,
+    )
+    if data_wait_fraction > maximum_data_wait_fraction:
+        reasons.append("qualification is data-input bound beyond the accepted threshold")
+
+    checkpoint_overhead_fraction = _require_fraction(
+        "evidence.checkpoint_overhead_fraction",
+        evidence.get("checkpoint_overhead_fraction"),
+        allow_zero=True,
+    )
+    maximum_checkpoint_overhead_fraction = _require_fraction(
+        "plan.maximum_checkpoint_overhead_fraction",
+        plan.get("maximum_checkpoint_overhead_fraction"),
+        allow_zero=True,
+    )
+    if checkpoint_overhead_fraction > maximum_checkpoint_overhead_fraction:
+        reasons.append("checkpoint overhead exceeds the accepted training-time fraction")
 
     qualification_tokens = _require_nonnegative_int(
         "evidence.qualification_tokens", evidence.get("qualification_tokens")
