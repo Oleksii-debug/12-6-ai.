@@ -56,8 +56,10 @@ jobs:
             src/twelve_six/scaling_experiment.py \
             src/twelve_six/scaling_500k_evidence.py \
             tools/materialize_milestone100_real_corpus.py \
+            tools/run_milestone100_materializer_exact.py \
             tools/prove_milestone100_fresh_resume.py \
-            tools/finalize_milestone100_evidence.py
+            tools/finalize_milestone100_evidence.py \
+            tools/finalize_milestone100_evidence_v2.py
           .m100-locked/bin/python - <<'PY'
           from twelve_six.data.external_sources import EligibilityResolver
           from twelve_six.data.document_quality import assess_document
@@ -67,7 +69,7 @@ jobs:
           print("M100 focused incumbent preflight: PASS")
           PY
       - name: Materialize rights-approved real UK EN code corpus
-        run: .m100-locked/bin/python tools/materialize_milestone100_real_corpus.py
+        run: .m100-locked/bin/python tools/run_milestone100_materializer_exact.py
       - name: Reproduce current-head controlled baseline on materialized corpus
         env:
           SOURCE_SHA: ${{ steps.source.outputs.sha }}
@@ -115,7 +117,7 @@ jobs:
       - name: Fail-closed convergence verdict
         env:
           RUNNER_ENVIRONMENT: github-hosted
-        run: .m100-locked/bin/python tools/finalize_milestone100_evidence.py
+        run: .m100-locked/bin/python tools/finalize_milestone100_evidence_v2.py
       - name: Print compact milestone verdict
         run: |
           .m100-locked/bin/python - <<'PY'
