@@ -1,0 +1,110 @@
+{
+  "schema_version": "12-6.tok111-live-reconstruction.v1",
+  "worker_id": "TOK-111-REAL-BPE-SWEEP",
+  "recorded_at_utc": "2026-08-25T21:31:00Z",
+  "repository": "Oleksii-debug/12-6-ai.",
+  "experimental_branch": "tok111/real-bpe-sweep-20260826",
+  "branch_base": "25cf4798202c41dda4b5413052f5efc6ebbbbf2a",
+  "run_class": "LOCAL_FREE",
+  "paid_compute_used": false,
+  "incumbents": {
+    "tokenizer_sweep": {
+      "branch": "tok37/bpe-vocab-sweep-20260825",
+      "head": "25cf4798202c41dda4b5413052f5efc6ebbbbf2a",
+      "status": "ACCEPT_IMPLEMENTATION_REJECT_OLD_CORPUS_CONCLUSION",
+      "evidence": "Dedicated bpe-vocab-sweep check passed at the exact head. TOK-37 already enforces duplicate training, serialized byte identity, strict round-trip/UNK checks, fertility, parameter-matched model probes and BPB-based selection, but its DATA-10 mechanics corpus is stale for TOK-111."
+    },
+    "purpose_environment": {
+      "branch": "d08/purpose-runtime-profiles-20260825",
+      "head": "10da7d4c1d2fe5a229659143877ad82d3739bed9",
+      "profile_id": "linux-x86_64-tokenizer-experiment",
+      "python": "3.11.16",
+      "tokenizers": "0.23.1",
+      "status": "ACCEPT"
+    }
+  },
+  "corpus_adjudication": [
+    {
+      "ref": "eac3e55c2aa7d5072f2afcf678af5cc109a67312",
+      "component": "DATA-24 canonical training eligibility inventory",
+      "decision": "REJECT_FOR_TOK111_FIT",
+      "reason": "Canonical registry contains zero candidate sources and zero model-training-allowed sources; DATA-10 is explicitly BLOCKED_UNREGISTERED."
+    },
+    {
+      "ref": "8af17afa7baf3d75c2328caf8b08af2400a95e09",
+      "component": "DATA-25 corpus V0.1",
+      "decision": "REJECT_AS_REAL_SOURCE_BACKED",
+      "reason": "Manifest records external_training_eligible_sources=0 and contains_external_training_data=false; all UK/EN/code source mass is project-authored."
+    },
+    {
+      "ref": "038cd238d3159390dd5cda54c26b60c27e42f79e",
+      "component": "DATA-21/22 UA/EN external source candidates",
+      "decision": "ACCEPT_RIGHTS_EVIDENCE_ONLY",
+      "reason": "Rada Ukrainian source and Standard Ebooks English source are marked APPROVED_FOR_TRAINING, but the artifact authority says CANDIDATE_DISCOVERY_AND_RIGHTS_REVIEW_NOT_CANONICAL_CORPUS_APPROVAL."
+    },
+    {
+      "ref": "5f223f9ef77762a042e966372fdf9f064b3cc9fe",
+      "component": "DATA-23 code source pilot",
+      "decision": "REJECT_FOR_TOK111_FIT",
+      "reason": "Real code snapshots exist, but source rights remain REVIEW_REQUIRED and the artifact authority is discovery/mechanical pilot, not D03 training approval."
+    },
+    {
+      "ref": "a80c4b6dc22c8dd0a756fe288e22a570956c1ca2",
+      "component": "DATA-101 corpus V0.2",
+      "decision": "CANDIDATE_NOT_YET_RUNNABLE",
+      "reason": "The new live head adds only configs/data/corpus_v02.json. No V0.2 build manifest, retained/reconstructable fitted corpus, held-out corpus, shard hashes, or successful corpus build evidence is present at this head. Its tokenizer.vocab_size=512 is a corpus-config input and must not be mistaken for model-informed tokenizer evidence."
+    }
+  ],
+  "local_execution_preflight": {
+    "host_os": "Linux",
+    "host_arch": "x86_64",
+    "host_python": "3.13.5",
+    "host_torch": "2.10.0+cpu",
+    "cuda_available": false,
+    "host_tokenizers": null,
+    "required_python": "3.11.16",
+    "required_tokenizers": "0.23.1",
+    "status": "FAIL_CLOSED",
+    "first_blocker": "NO_RUNNABLE_CANONICAL_REAL_SOURCE_BACKED_CORPUS_AT_LIVE_HEAD",
+    "secondary_blocker": "CURRENT_SANDBOX_IS_NOT_THE_EXACT_D08_PURPOSE_ENVIRONMENT"
+  },
+  "execution": {
+    "sweep_started": false,
+    "bpe_candidates_trained": 0,
+    "model_probes_run": 0,
+    "tokenizer_selected": null,
+    "tokenizer_frozen": false,
+    "reason": "Starting TOK-37 on DATA-10 or DATA-25 would directly violate the TOK-111 requirement to rerun on the newest real-source-backed corpus. Starting on DATA-101 V0.2 before a built corpus manifest exists would fabricate corpus evidence."
+  },
+  "planned_experiment_when_gate_passes": {
+    "control": "canonical byte tokenizer",
+    "bpe_requested_vocab_grid": [320, 512, 768, 1024, 1536, 2048],
+    "embedding_tax_scales": [100000, 500000, 1000000, 10000000],
+    "bpe_training_repetitions": 2,
+    "artifact_byte_identity_required": true,
+    "strict_round_trip_required": true,
+    "unknown_token_incidence_required": 0,
+    "required_domain_metrics": ["uk", "en", "code"],
+    "required_fragmentation_probes": ["long_ukrainian_words", "code_identifiers", "code_punctuation"],
+    "pareto_probe_limit": 3,
+    "model_selection_metric": "held_out_bits_per_byte",
+    "token_cross_entropy_selection_across_tokenizers_forbidden": true
+  },
+  "retest_conditions": [
+    "DATA-101 V0.2 or a successor must produce a deterministic corpus manifest with immutable corpus identity and retained or exactly reconstructable source bytes.",
+    "The manifest must prove training-eligible provenance for every fitted external source and must not promote REVIEW_REQUIRED code sources by repository presence alone.",
+    "Train and held-out partitions must each contain nonzero UK, EN and code material with zero content overlap and benchmark/test material excluded from tokenizer fitting.",
+    "The corpus identity must remain unchanged for the full tokenizer sweep; any identity change invalidates all tokenizer artifacts and model probes and forces a full retest.",
+    "The exact D08 linux-x86_64-tokenizer-experiment environment must be active: CPython 3.11.16 and tokenizers 0.23.1 under the pinned profile/locks.",
+    "Only after those gates pass may TOK-37 be adapted at the corpus-binding/diagnostic seams; the ByteLevel BPE trainer itself remains the incumbent and must not be replaced.",
+    "A provisional tokenizer selection requires parameter-matched byte-control plus Pareto BPE model probes on the real held-out corpus and an aggregate/per-domain BPB decision; compression alone is insufficient.",
+    "No tokenizer freeze is permitted while corpus V1/V0.2 remains unstable."
+  ],
+  "truth_boundary": {
+    "claim": "TOK-111 reconstructed and preserved the strongest valid incumbent path but did not execute a scientifically invalid sweep. No real-corpus tokenizer winner is claimed.",
+    "no_foreign_pretrained_weights": true,
+    "no_instruction_tuning": true,
+    "no_paid_compute": true,
+    "no_broad_intelligence_claim": true
+  }
+}
