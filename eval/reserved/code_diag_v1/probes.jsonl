@@ -1,0 +1,15 @@
+{"category":"balanced_delimiters","completion":")","distractors":["]"],"id":"code-v1-balanced-py-001","language":"python","prefix":"qzv_call_731(qzv_arg_409"}
+{"category":"balanced_delimiters","completion":"]","distractors":[")"],"id":"code-v1-balanced-py-002","language":"python","prefix":"[qzv_a_101, qzv_b_202"}
+{"category":"balanced_delimiters","completion":")","distractors":["]"],"id":"code-v1-balanced-sql-001","language":"sql","prefix":"SELECT COUNT(qzv_col_817"}
+{"category":"balanced_delimiters","completion":"]}","distractors":[")}"],"id":"code-v1-balanced-json-001","language":"json","prefix":"{\"qzv_k_613\": [7711, 7723"}
+{"category":"indentation_sensitive_continuation","completion":"    qzv_out_551 = 7817\n","distractors":["qzv_out_551 = 7817\n"],"id":"code-v1-indent-py-001","language":"python","prefix":"if qzv_flag_821:\n"}
+{"category":"indentation_sensitive_continuation","completion":"    return qzv_x_443\n","distractors":["return qzv_x_443\n"],"id":"code-v1-indent-py-002","language":"python","prefix":"def qzv_fn_337(qzv_x_443):\n"}
+{"category":"indentation_sensitive_continuation","completion":"        qzv_mark_651 = 7829\n","distractors":["    qzv_mark_651 = 7829\n"],"id":"code-v1-indent-py-003","language":"python","prefix":"if qzv_outer_631:\n    if qzv_inner_641:\n"}
+{"category":"indentation_sensitive_continuation","completion":"    qzv_sum_681 += qzv_item_661\n","distractors":["qzv_sum_681 += qzv_item_661\n"],"id":"code-v1-indent-py-004","language":"python","prefix":"for qzv_item_661 in qzv_seq_671:\n"}
+{"category":"operator_type_syntax","completion":"+= 7831\n","distractors":["=+ 7831\n"],"id":"code-v1-op-py-001","language":"python","prefix":"qzv_total_319 "}
+{"category":"operator_type_syntax","completion":">= 7841","distractors":["=> 7841"],"id":"code-v1-op-sql-001","language":"sql","prefix":"WHERE qzv_score_317 "}
+{"category":"operator_type_syntax","completion":"-> str:\n","distractors":["=> str:\n"],"id":"code-v1-op-py-002","language":"python","prefix":"def qzv_cast_503(qzv_x_701: str) "}
+{"category":"operator_type_syntax","completion":"<> 7867","distractors":[">< 7867"],"id":"code-v1-op-sql-002","language":"sql","prefix":"WHERE qzv_id_919 "}
+{"category":"simple_function_call_structure","completion":")\n","distractors":["]\n"],"id":"code-v1-call-py-001","language":"python","prefix":"qzv_res_211 = qzv_fn_913(qzv_x_313, qzv_y_317"}
+{"category":"simple_function_call_structure","completion":"7901)\n","distractors":["7901]\n"],"id":"code-v1-call-py-002","language":"python","prefix":"qzv_fn_313(qzv_x_421="}
+{"category":"simple_function_call_structure","completion":") FROM qzv_tab_359;","distractors":[]}
