@@ -152,6 +152,16 @@ def _execute_checks(repo_root: Path) -> dict[str, object]:
         fixture_dir = temporary_root / "fixture module"
         fixture_dir.mkdir()
         (fixture_dir / "smoke_backend.py").write_text(_BACKEND_SOURCE, encoding="utf-8")
+        package_shim = fixture_dir / "twelve_six"
+        package_shim.mkdir()
+        (package_shim / "__init__.py").write_text(
+            "from pkgutil import extend_path\n\n__path__ = extend_path(__path__, __name__)\n",
+            encoding="utf-8",
+        )
+        (fixture_dir / "torch.py").write_text(
+            "raise ImportError('torch import is forbidden in transport-only smoke')\n",
+            encoding="utf-8",
+        )
 
         checkpoint_dir = temporary_root / "доступність checkpoint path"
         checkpoint_dir.mkdir()
@@ -314,6 +324,7 @@ def _execute_checks(repo_root: Path) -> dict[str, object]:
         "seeded_sampling_repeatability": "PASS",
         "over_context_fail_closed": "PASS",
         "ansi_free_transport": "PASS",
+        "package_root_torch_isolation": "PASS",
     }
 
 
@@ -329,7 +340,14 @@ def main(argv: list[str] | None = None) -> int:
         if not (repo_root / "src" / "twelve_six" / "inference" / "cli.py").is_file():
             raise RuntimeError("repository source root is incomplete")
         checks = _execute_checks(repo_root)
-    except (AssertionError, OSError, RuntimeError, TypeError, ValueError, json.JSONDecodeError) as exc:
+    except (
+        AssertionError,
+        OSError,
+        RuntimeError,
+        TypeError,
+        ValueError,
+        json.JSONDecodeError,
+    ) as exc:
         print(f"D05 Windows inference accessibility smoke: FAIL: {exc}", file=sys.stderr)
         return 1
 
