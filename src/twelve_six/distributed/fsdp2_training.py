@@ -115,7 +115,7 @@ def apply_fsdp2(
     *,
     reshard_after_forward: bool = True,
 ) -> TwelveSixDecoder:
-    """Apply FSDP2 bottom-up to transformer blocks and then the root module."""
+    """Apply FSDP2 bottom-up, grouping shared embedding/head weights explicitly."""
 
     from torch.distributed.fsdp import FSDPModule, fully_shard
 
@@ -123,6 +123,10 @@ def apply_fsdp2(
         "mesh": mesh,
         "reshard_after_forward": reshard_after_forward,
     }
+    if model.spec.tie_word_embeddings:
+        if model.token_embedding.weight is not model.lm_head.weight:
+            raise RuntimeError("ModelSpec requires tied embeddings but modules do not share weight")
+        fully_shard([model.token_embedding, model.lm_head], **kwargs)
     for block in model.blocks:
         fully_shard(block, **kwargs)
     fully_shard(model, **kwargs)
