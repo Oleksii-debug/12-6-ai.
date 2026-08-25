@@ -2,7 +2,7 @@
   "schema_version": "12-6.c01.eur2000-training-program.v1",
   "generated_at_utc": "2026-08-25T10:25:00Z",
   "repository": "Oleksii-debug/12-6-ai.",
-  "status": "PREPARED_NOT_AUTHORIZED_BLOCKED_ON_SCALE_DATA_TOKENIZER_AND_GPU_PILOT",
+  "status": "PREPARED_NOT_AUTHORIZED_BLOCKED_ON_STAGE_FREEZE_SCALE_DATA_TOKENIZER_AND_GPU_PILOT",
   "authority": {
     "materially_paid_compute_authorized": false,
     "owner_authorization_required": true,
@@ -46,7 +46,8 @@
       "s4_candidate_parameters": 100384512,
       "s4_candidate_vocab_size": 32768,
       "s4_candidate_context_length": 2048,
-      "s4_candidate_frozen": false
+      "s4_candidate_frozen": false,
+      "s4_requires_preceding_stage_pass": true
     },
     "tokenizer_experiment": {
       "runtime": "CPython 3.11.16 + tokenizers==0.23.1 exact hashed wheel",
@@ -63,6 +64,7 @@
     "truth_boundary": {
       "gpu_training_throughput_measured": false,
       "gpu_peak_memory_measured_for_s1_or_larger": false,
+      "selected_main_modelspec_frozen": false,
       "scale_tokenizer_frozen": false,
       "scale_corpus_frozen": false,
       "gpu_distributed_training_executed": false
@@ -92,6 +94,11 @@
     "automatic_overrun_allowed": false
   },
   "launch_prerequisites": [
+    {
+      "id": "P00_STAGE_MODELSPEC_FREEZE",
+      "ready": false,
+      "requirement": "Freeze the selected main ModelSpec under stage governance. S4 cannot become the main recipe until its required preceding-stage PASS is satisfied and the chosen S4 architecture is explicitly frozen."
+    },
     {
       "id": "P01_SCALE_DATA_IDENTITY",
       "ready": false,
@@ -189,7 +196,7 @@
     {
       "id": "C_PILOTS_THEN_S4_BALANCED_MAIN",
       "recommended": true,
-      "research_intent": "Buy information before scale: validate tokenizer/data/recipe and scaling trend, then run one meaningful S4 main only if evidence is healthy.",
+      "research_intent": "Buy information before scale: validate tokenizer/data/recipe and scaling trend, then run one meaningful S4 main only if evidence is healthy and S4 is governance-frozen.",
       "pilot_runs": [
         {
           "stage": "S1",
@@ -264,7 +271,8 @@
       "gpu_model_and_runtime_identity"
     ],
     "promotion_to_main_conditions": [
-      "all launch prerequisites P01-P05 green",
+      "all launch prerequisites P00-P05 green",
+      "selected S4 ModelSpec explicitly frozen after required preceding-stage PASS",
       "finite loss and gradients",
       "no OOM at selected microbatch",
       "resume succeeds from retained checkpoint",
