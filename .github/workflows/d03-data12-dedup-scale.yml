@@ -54,12 +54,17 @@ jobs:
         shell: bash
         run: |
           mkdir -p reports/data12
+          set +e
           /usr/bin/time -v \
             env PYTHONPATH=src \
             python tools/run_dedup_scale_experiment.py \
               --config configs/data/dedup_scale_local_free_v1.json \
               --output reports/data12/dedup_scale_report.json \
             2> reports/data12/usr_bin_time.txt
+          STATUS=$?
+          set -e
+          cat reports/data12/usr_bin_time.txt >&2
+          exit "$STATUS"
       - name: Validate report truth boundaries
         run: |
           python - <<'PY'
@@ -91,11 +96,12 @@ jobs:
           }, sort_keys=True))
           PY
       - name: Upload exact experiment evidence
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: d03-data12-dedup-scale-${{ github.sha }}
           path: |
             reports/data12/dedup_scale_report.json
             reports/data12/usr_bin_time.txt
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 30
