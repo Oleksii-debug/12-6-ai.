@@ -39,7 +39,10 @@ jobs:
           .research06-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/dev.lock.txt
           PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .research06-locked/bin/python -m pip install --no-deps --no-build-isolation -e .
       - name: Focused fixed-token and geometry tests
-        run: .research06-locked/bin/python -m pytest -q tests/test_fixed_token_research.py
+        run: >-
+          .research06-locked/bin/python -m pytest -q
+          tests/test_fixed_token_research.py
+          tests/test_model08_depth_width.py
       - name: Prove generated MODEL08 config equals committed identities
         run: |
           .research06-locked/bin/python -m twelve_six.fixed_token_research write-depth-width-config --output generated-model08.json
@@ -73,10 +76,9 @@ jobs:
         run: |
           mkdir -p evidence/depth-width checkpoints/depth-width
           for CANDIDATE in wide_shallow_d64_l2 balanced_d48_l3 deeper_d40_l4 deep_d32_l6 very_deep_narrow_d28_l8; do
-            .research06-locked/bin/python -m twelve_six.fixed_token_research run-candidate \
+            .research06-locked/bin/python -m twelve_six.model08_depth_width \
               --repo-root . \
               --source-sha "$SOURCE_SHA" \
-              --family depth_width_100k \
               --candidate-id "$CANDIDATE" \
               --token-budgets 16384 65536 \
               --torch-threads 2 \
