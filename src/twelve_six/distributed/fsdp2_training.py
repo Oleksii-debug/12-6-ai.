@@ -23,7 +23,7 @@ from twelve_six.distributed.contracts import ParallelPlan
 from twelve_six.distributed.runtime import build_torch_mesh_spec
 from twelve_six.model import TwelveSixDecoder, load_stage_config
 from twelve_six.training.config import TrainerConfig
-from twelve_six.training.trainer import Trainer, build_optimizer
+from twelve_six.training.trainer import Trainer, build_optimizer, build_scheduler
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,7 +71,43 @@ class FSDP2ExecutionResult:
 
 
 class FSDP2Trainer(Trainer):
-    """D12 adapter that makes D02 gradient accounting safe for DTensor gradients."""
+    """D12 Trainer adapter for a model already placed and sharded by FSDP2."""
+
+    def __init__(
+        self,
+        model: Any,
+        config: TrainerConfig,
+        *,
+        device: Any,
+        optimizer: Any | None = None,
+        scheduler: Any | None = None,
+    ) -> None:
+        import torch
+
+        self.model = model
+        self.config = config
+        self.device = torch.device(device)
+        if any(parameter.device.type == "meta" for parameter in model.parameters()):
+            raise ValueError("FSDP2Trainer requires materialized sharded parameters")
+
+        # Placement is owned by fully_shard. Calling the base Trainer constructor
+        # would run model.to(device) after optimizer construction and can replace
+        # DTensor parameter objects, leaving the optimizer attached to stale tensors.
+        self._configure_determinism(config)
+        self.optimizer = optimizer or build_optimizer(model, config)
+        self.scheduler = (
+            scheduler if scheduler is not None else build_scheduler(self.optimizer, config)
+        )
+        self.scaler = self._build_scaler()
+
+        self.micro_step = 0
+        self.optimizer_step = 0
+        self.tokens_seen = 0
+        self._pending_tokens = 0
+        self._pending_loss_sum = 0.0
+        self._update_incomplete = False
+        self._failure_reason: str | None = None
+        self.optimizer.zero_grad(set_to_none=True)
 
     def _normalize_gradients_and_norm(self, token_count: int):
         if token_count <= 0:
