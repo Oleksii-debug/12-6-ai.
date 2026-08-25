@@ -1,0 +1,79 @@
+name: D02 Precision Scale Probe
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  locked-s3-cpu-precision-probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Prove exact source checkout
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Verify exact D08 locked environment
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: >-
+          python tools/verify_locked_environment.py
+          --profile linux-x86_64
+          --source-sha "$SOURCE_SHA"
+          --evidence-out locked-environment-linux-x86_64.json
+      - name: Create exact locked D02 execution environment
+        run: |
+          python -m venv .d02-precision-locked
+          .d02-precision-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .d02-precision-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .d02-precision-locked/bin/python -m pip install --no-deps --no-build-isolation -e .
+      - name: Execute real S3 10M fp32 CPU probe
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          .d02-precision-locked/bin/python tools/run_precision_scale_probe.py \
+            --source-sha "$SOURCE_SHA" \
+            --locked-environment-evidence locked-environment-linux-x86_64.json \
+            --stage-config configs/stages/s3_10m.json \
+            --precision fp32 \
+            --device cpu \
+            --steps 2 \
+            --batch-size 1 \
+            --sequence-length 64 \
+            --output precision-s3-10m-fp32-cpu.json
+          cat precision-s3-10m-fp32-cpu.json
+      - name: Execute real S3 10M bf16 CPU probe
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          .d02-precision-locked/bin/python tools/run_precision_scale_probe.py \
+            --source-sha "$SOURCE_SHA" \
+            --locked-environment-evidence locked-environment-linux-x86_64.json \
+            --stage-config configs/stages/s3_10m.json \
+            --precision bf16 \
+            --device cpu \
+            --steps 2 \
+            --batch-size 1 \
+            --sequence-length 64 \
+            --output precision-s3-10m-bf16-cpu.json
+          cat precision-s3-10m-bf16-cpu.json
+      - name: Upload precision scale evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: d02-precision-s3-10m-cpu-evidence
+          path: |
+            locked-environment-linux-x86_64.json
+            precision-s3-10m-fp32-cpu.json
+            precision-s3-10m-bf16-cpu.json
+          if-no-files-found: error
+          retention-days: 30

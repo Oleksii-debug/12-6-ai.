@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 
 import torch
+from torch import nn
 
 from .config import PrecisionMode
 
@@ -14,18 +15,33 @@ class PrecisionRuntime:
     """Resolved runtime behavior for one requested training precision mode.
 
     The requested config value alone is not evidence that the current device can
-    execute that mode.  This contract is resolved before Trainer performs any
-    model/device, RNG, optimizer, scheduler, or scaler mutation.
+    execute that mode. This contract is resolved before Trainer performs model/device,
+    RNG, optimizer, scheduler, or scaler mutation. Mixed-precision modes intentionally
+    keep FP32 model parameters as optimizer master weights and lower only eligible
+    compute through autocast.
     """
 
     requested: PrecisionMode
     device_type: str
+    parameter_dtype: str
+    optimizer_master_dtype: str
     autocast_enabled: bool
     autocast_dtype: str | None
     grad_scaler_enabled: bool
+    grad_scaler_device: str | None
 
     def to_dict(self) -> dict[str, str | bool | None]:
         return asdict(self)
+
+
+def _require_supported_device(precision: PrecisionMode, device: torch.device) -> None:
+    if device.type not in {"cpu", "cuda"}:
+        raise ValueError(
+            f"{precision} training is not verified for device type {device.type!r}; "
+            "use an explicitly proven CPU or CUDA runtime"
+        )
+    if device.type == "cuda" and not torch.cuda.is_available():
+        raise ValueError(f"{precision} CUDA training requires an available CUDA device")
 
 
 def resolve_precision_runtime(
@@ -34,26 +50,33 @@ def resolve_precision_runtime(
 ) -> PrecisionRuntime:
     """Resolve a requested precision to a proven runtime policy or fail closed."""
     resolved_device = torch.device(device)
+    _require_supported_device(precision, resolved_device)
     device_type = resolved_device.type
 
     if precision == "fp32":
         return PrecisionRuntime(
             requested=precision,
             device_type=device_type,
+            parameter_dtype="float32",
+            optimizer_master_dtype="float32",
             autocast_enabled=False,
             autocast_dtype=None,
             grad_scaler_enabled=False,
+            grad_scaler_device=None,
         )
 
     if precision == "fp16":
-        if device_type != "cuda" or not torch.cuda.is_available():
+        if device_type != "cuda":
             raise ValueError("fp16 training requires an available CUDA device")
         return PrecisionRuntime(
             requested=precision,
             device_type=device_type,
+            parameter_dtype="float32",
+            optimizer_master_dtype="float32",
             autocast_enabled=True,
             autocast_dtype="float16",
             grad_scaler_enabled=True,
+            grad_scaler_device="cuda",
         )
 
     if precision == "bf16":
@@ -61,34 +84,56 @@ def resolve_precision_runtime(
             return PrecisionRuntime(
                 requested=precision,
                 device_type=device_type,
+                parameter_dtype="float32",
+                optimizer_master_dtype="float32",
                 autocast_enabled=True,
                 autocast_dtype="bfloat16",
                 grad_scaler_enabled=False,
+                grad_scaler_device=None,
             )
-        if device_type == "cuda":
-            if not torch.cuda.is_available():
-                raise ValueError("bf16 CUDA training requires an available CUDA device")
-            probe = getattr(torch.cuda, "is_bf16_supported", None)
-            if probe is None:
-                raise RuntimeError(
-                    "cannot prove CUDA bf16 support with this PyTorch runtime; "
-                    "precision resolution fails closed"
-                )
-            if not probe():
-                raise ValueError("current CUDA device does not report bf16 support")
-            return PrecisionRuntime(
-                requested=precision,
-                device_type=device_type,
-                autocast_enabled=True,
-                autocast_dtype="bfloat16",
-                grad_scaler_enabled=False,
+        probe = getattr(torch.cuda, "is_bf16_supported", None)
+        if probe is None:
+            raise RuntimeError(
+                "cannot prove CUDA bf16 support with this PyTorch runtime; "
+                "precision resolution fails closed"
             )
-        raise ValueError(
-            f"bf16 training is not verified for device type {device_type!r}; "
-            "use fp32 or a proven CPU/CUDA bf16 runtime"
+        if not probe():
+            raise ValueError("current CUDA device does not report bf16 support")
+        return PrecisionRuntime(
+            requested=precision,
+            device_type=device_type,
+            parameter_dtype="float32",
+            optimizer_master_dtype="float32",
+            autocast_enabled=True,
+            autocast_dtype="bfloat16",
+            grad_scaler_enabled=False,
+            grad_scaler_device=None,
         )
 
     raise ValueError(f"unsupported precision: {precision!r}")
+
+
+def validate_master_weight_semantics(model: nn.Module, runtime: PrecisionRuntime) -> None:
+    """Require FP32 model parameters so AdamW updates true FP32 master weights.
+
+    The Trainer uses native autocast rather than converting the module to bf16/fp16.
+    Accepting an already down-cast model would silently change optimizer semantics and
+    checkpoint precision identity, so that combination fails before device transfer or
+    optimizer construction.
+    """
+    expected = torch.float32
+    invalid = [
+        f"{name}={parameter.dtype}"
+        for name, parameter in model.named_parameters()
+        if parameter.is_floating_point() and parameter.dtype != expected
+    ]
+    if invalid:
+        preview = ", ".join(invalid[:3])
+        suffix = "" if len(invalid) <= 3 else f", ... ({len(invalid)} parameters total)"
+        raise ValueError(
+            f"{runtime.requested} training requires FP32 model parameters as optimizer "
+            f"master weights before autocast; found {preview}{suffix}"
+        )
 
 
 def autocast_dtype(runtime: PrecisionRuntime) -> torch.dtype:

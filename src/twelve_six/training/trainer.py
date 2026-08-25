@@ -17,7 +17,12 @@ from torch.optim.lr_scheduler import LambdaLR, LRScheduler
 
 from .config import TrainerConfig
 from .loss import causal_lm_loss, causal_pair_loss
-from .precision import PrecisionRuntime, autocast_dtype, resolve_precision_runtime
+from .precision import (
+    PrecisionRuntime,
+    autocast_dtype,
+    resolve_precision_runtime,
+    validate_master_weight_semantics,
+)
 
 Batch = Mapping[str, Tensor]
 
@@ -154,6 +159,7 @@ class Trainer:
             config.precision,
             self.device,
         )
+        validate_master_weight_semantics(self.model, self.precision_runtime)
 
         self.model.to(self.device)
         self._configure_determinism(config)
