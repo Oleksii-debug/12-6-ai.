@@ -13,23 +13,40 @@ activation checkpointing, compile, distributed checkpointing including async sav
 checkpointable distributed data loading, and distributed metrics/profiling.
 
 The blocker is not weight provenance. 12-6 can keep scratch initialization and its own
-ModelSpec/InitSpec identities. The blocker is the current model protocol boundary.
+ModelSpec/InitSpec identities. The blocker is the current model/runtime protocol boundary.
+
+## Stable 0.2.2 versus current upstream main
+
+The latest PyPI stable release inspected on 2026-08-25 is TorchTitan 0.2.2, released on
+2026-02-20. That release uses `TrainSpec`, `BaseModelArgs`, and `ModelProtocol`. Its Trainer
+constructs the model on the meta device, applies a model-specific `parallelize_fn`, then
+calls `init_weights()` after `to_empty()`.
+
+Current upstream `main` has already moved to a different `BaseModel`/`Module`/nested
+`Config` protocol with recursive `init_states()` and `parallelize()`. Its current
+`ModelSpec` source also contains a TODO to deprecate that abstraction. TorchTitan documents
+extension points as subject to change.
+
+A 0.2.2-only adapter would therefore target an API generation already replaced upstream.
+It would also still require 12-6-specific `init_weights` and `parallelize_fn` code, including
+the same module-aware TP/FSDP composition currently owned by active D16/D17/D12 work. That
+would be throwaway duplication rather than a reduction in custom complexity.
 
 ## Concrete current mismatch
 
 Current `TwelveSixDecoder` is a normal `torch.nn.Module` tree. Construction eagerly creates
-and initializes parameters and the RoPE buffer. It has no TorchTitan nested `Config`,
-`init_states`, or recursive `parallelize` protocol.
+and initializes parameters and the RoPE buffer. It has no TorchTitan 0.2.2 `init_weights`
+contract and no current-main nested `Config`, `init_states`, or recursive `parallelize`
+protocol.
 
-Current TorchTitan model integration expects its `BaseModel`/`Module` configuration and
-state-initialization protocol. Converting 12-6 directly is therefore a model-structure
-refactor rather than a thin registration adapter. That refactor should not be mixed into
-S0 or into the active D12 FSDP2/TP/checkpoint work.
+Converting 12-6 directly to current-main TorchTitan is therefore a model-structure refactor
+rather than a thin registration adapter. Building against stable 0.2.2 instead would avoid
+part of that refactor but would require a model-specific parallelization implementation
+against the older TrainSpec API. Neither path should be mixed into S0 or the active D12
+FSDP2/TP/checkpoint work.
 
-TorchTitan also documents its extension points as subject to change, and its current
-`ModelSpec` implementation contains an upstream TODO to deprecate that abstraction. 12-6
-must not rename or replace its stable semantic `ModelSpec` around that moving framework
-surface.
+The project `ModelSpec` remains the semantic source of truth and must not be renamed or
+replaced around TorchTitan's changing framework `ModelSpec` surface.
 
 ## Implemented seam
 
@@ -50,8 +67,10 @@ The seam maps:
 - logging: existing D02 `StepMetrics` maps to a stable structured event and can later feed
   TorchTitan MetricsProcessor.
 
-`backend="auto"` stays PyTorch-native until the direct TorchTitan adoption gate passes.
-`backend="torchtitan"` fails closed while the concrete model-protocol blockers remain.
+`backend="auto"` stays PyTorch-native. `backend="torchtitan"` fails closed because this PR
+does not claim to implement a TorchTitan training driver. The explicit
+`torchtitan_training_driver_adapter_not_implemented` blocker must be removed only by a
+future package that actually builds and executes the chosen TorchTitan API generation.
 
 ## TorchTitan complexity worth adopting later
 
@@ -94,13 +113,14 @@ Move from PyTorch-native to TorchTitan only when all of these are true:
 
 1. a 100M+ stage needs at least two TorchTitan-owned services beyond what the D12 native
    runner already proves in real execution;
-2. the 12-6 model has a dedicated TorchTitan-compatible construction/init/parallelization
-   adapter without changing ModelSpec/InitSpec or importing foreign weights;
-3. exact scratch initialization and single-rank logits are verified against the canonical
+2. an exact TorchTitan API generation is selected and locked by D08 rather than coding to
+   both the 0.2.2 TrainSpec API and current-main protocol simultaneously;
+3. the 12-6 model has a dedicated compatible construction/init/parallelization adapter
+   without changing ModelSpec/InitSpec or importing foreign weights;
+4. exact scratch initialization and single-rank logits are verified against the canonical
    12-6 model before distributed execution;
-4. D05/D18 semantic checkpoint identity wraps the framework checkpoint bytes/state;
-5. D03/D04 data/tokenizer/packing identity remains externally bound;
-6. an exact hash-locked TorchTitan + PyTorch environment is owned by D08;
+5. D05/D18 semantic checkpoint identity wraps the framework checkpoint bytes/state;
+6. D03/D04 data/tokenizer/packing identity remains externally bound;
 7. real GPU evidence is run only after explicit compute authorization.
 
 Until then, TorchTitan is a future orchestration backend, not the canonical 12-6 semantic
