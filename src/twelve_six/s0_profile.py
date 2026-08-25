@@ -17,7 +17,6 @@ import tempfile
 import time
 import tracemalloc
 from collections.abc import Callable
-from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
@@ -257,7 +256,7 @@ def _checkpoint_identity(
         run_manifest=run_manifest,
         model_spec=stage.model.to_dict(),
         init_spec=stage.init.to_dict(),
-        tokenizer_identity=asdict(tokenizer.identity),
+        tokenizer_identity=tokenizer.identity.to_dict(),
         packing_identity={
             "version": PACKING_VERSION,
             "config_sha256": PACKING_CONFIG_HASH,
