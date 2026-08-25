@@ -16,7 +16,8 @@ There is no custom recomputation implementation. Checkpoint wrappers are applied
 FSDP2 `fully_shard`.
 
 The exact S3 model is 10,059,840 parameters with maximum context 1024. The S4 engineering
-candidate is 99,897,600 parameters with maximum context 4096. S4 remains unfrozen.
+candidate is 99,897,600 parameters with maximum context 4096 and preferred bf16 runtime.
+S4 remains unfrozen.
 
 ## LOCAL_FREE environment and claim boundary
 
@@ -30,18 +31,15 @@ benchmark imports the canonical repository model directly. Consequently these ti
 are engineering calibration rather than dependency-locked promotion evidence.
 
 The ~100M model was actually executed. This report does **not** infer ~100M runtime from a
-10M run. Real ~100M fp32 training steps were completed at contexts 512 and 1024. Context
-4096 is planning-only because a no-checkpoint probe is projected beyond the local hard
-memory limit and was not used as an OOM experiment.
+10M run. Real ~100M training steps were completed at contexts 512 and 1024 in fp32 and
+bf16. Context 4096 is planning-only and was not executed.
 
 ## Numerical equivalence
 
 A deterministic fp32 S3 parity probe at sequence 64 produced bitwise-equal logits and
 parameter gradients for both checkpointed policies versus `none`: maximum absolute logit
 and gradient deltas were 0.0. A bf16 S4 parity probe at sequence 64 also produced 0.0
-maximum deltas in this CPU environment. The repository test uses exact fp32 equality for
-the small canonical stage, while the benchmark reports precision-appropriate tolerances
-for lower-precision target runs.
+maximum deltas in this CPU environment.
 
 Checkpoint wrappers preserve ordinary `state_dict()` keys. A dedicated two-rank CPU/Gloo
 test applies per-block activation checkpointing before FSDP2, performs an optimizer step,
@@ -79,46 +77,63 @@ S4 ~100M fp32, batch 1, real execution:
 | 1024 | none | 2647.1 | 1132.0 | 1.756 | 2.129 | 4.135 | 247.4 |
 | 1024 | per block | 2134.9 | 617.0 | 1.284 | 5.624 | 7.209 | 141.9 |
 
-At S4/512, per-block saves about 273 MiB (11.8% of peak) for a 13.4% step-time penalty in
-this CPU run. At S4/1024 it saves about 512 MiB (19.3% of peak), while the CPU recompute
-penalty is much larger. These CPU timing penalties must not be projected onto a CUDA
-accelerator; the target accelerator must be measured separately.
+At S4/512 fp32, per-block saves about 273 MiB (11.8% of peak) for a 13.4% step-time
+penalty in this CPU run. At S4/1024 it saves about 512 MiB (19.3% of peak), while the CPU
+recompute penalty is much larger. These CPU timing penalties must not be projected onto a
+CUDA accelerator.
 
 The partial `every_other_block` strategy is retained only as an intermediate knob. At
 S4/512 it saved about 126 MiB (5.4%) with about 5.4% step-time overhead. It does not show
 a robust advantage over choosing either full throughput (`none`) or materially lower
 memory (`per_block`).
 
-## ~100M context-4096 planning
+## Preferred-bf16 100M calibration
 
-A simple linear planning extrapolation from the *real S4 512 and 1024 points* gives an
-approximate fp32 pre-optimizer peak near 4.55 GiB without checkpointing versus about
-2.65 GiB with per-block checkpointing at 4096. This is a local resource estimate, not
-runtime evidence, and attention/memory scaling need not stay linear.
+Because S4's runtime contract prefers bf16, additional real CPU memory points were run.
+CPU bf16 timing was highly kernel-warmup dependent and is intentionally not used to rank
+policies; only RSS informs the planning correction.
 
-The important conclusion is narrower: on a 4 GiB-class usable budget, the no-checkpoint
-4096 configuration does not have credible headroom, while per-block does. A real target
-accelerator run remains required before making CUDA throughput or allocator claims.
+| Context | Policy | Peak RSS MiB | Activation delta MiB |
+| ---: | --- | ---: | ---: |
+| 512 | none | 1357.3 | 218.2 |
+| 512 | per block | 1227.5 | 84.9 |
+| 1024 | none | 1590.4 | 451.2 |
+| 1024 | per block | 1263.2 | 120.9 |
+
+A simple linear RSS extrapolation from these *real S4 bf16 512/1024 points* gives a
+planning estimate near 2.9 GiB without checkpointing and about 1.4 GiB with per-block at
+4096. This is **not** 4096 runtime evidence. Attention scaling, allocator behavior, and
+CUDA kernels can invalidate the CPU-linear estimate.
+
+This bf16 evidence changes the planning conclusion: per-block checkpointing is **not** an
+unconditional requirement for ~100M/4096. On a 4 GiB-class usable budget, batch 1 bf16
+without checkpointing is plausible and should be tried first if the target-hardware
+calibration retains at least 20% headroom. In fp32 on the same 4 GiB-class budget, the
+linear projection is above the hard limit, so per-block is the appropriate plan.
 
 ## Policy
 
 1. **~10M / canonical context <=1024:** default to `none`. On this LOCAL_FREE host the
    full-context S3 step stayed below 0.9 GiB, so recomputation is unnecessary. Enable
    checkpointing only when larger batch/context or a smaller device makes memory binding.
-2. **~100M at short/moderate context:** use `none` while the measured or calibrated
-   uncheckpointed peak is at most 80% of usable device memory. Do not pay recomputation
-   cost merely because checkpointing exists.
-3. **Memory pressure trigger:** switch directly to `per_block` when no-checkpoint peak is
-   above 80% of usable memory, OOMs, or prevents the intended batch/context. Retain at
-   least 20% headroom for allocator fragmentation, framework state, and transient peaks.
-4. **`every_other_block`:** use only when a small intermediate saving is specifically
+2. **~100M:** do not select checkpointing from parameter count alone. Start from the
+   actual target precision, context, batch size, and usable device-memory budget.
+3. **Headroom rule:** use `none` while measured or calibrated uncheckpointed peak memory
+   is at most 80% of usable device memory. This retains about 20% for allocator
+   fragmentation, framework state, and transient peaks.
+4. **Memory-pressure trigger:** switch directly to `per_block` when the no-checkpoint
+   peak is above 80%, OOMs, or prevents the intended batch/context.
+5. **`every_other_block`:** use only when a small intermediate saving is specifically
    sufficient and target-hardware measurement shows its throughput tradeoff is better.
    It is not the default policy.
-5. **~100M / context 4096 on a ~4 GiB usable budget:** plan for `per_block`, but label it
-   planning until measured at 4096 on the target hardware/precision.
-6. Re-run the benchmark on CUDA. Record `torch.cuda.max_memory_allocated`,
-   `max_memory_reserved`, CPU RSS, forward/backward/step time, and tokens/s. CPU timing
-   results are not a substitute for CUDA evidence.
+6. **~100M / context 4096:** in preferred bf16, `none` is the provisional first attempt
+   on a >=4 GiB usable budget, with immediate fallback to `per_block` if the 80% rule is
+   violated. In fp32 on a ~4 GiB usable budget, plan `per_block`.
+7. Re-run on CUDA before any accelerator claim. Record
+   `torch.cuda.max_memory_allocated`, `torch.cuda.max_memory_reserved`, CPU RSS,
+   forward/backward/step time, and tokens/s. CPU timing is not a substitute for CUDA.
 
-Machine-readable evidence is in
-`evidence/swarm_exp_01/scale143_activation_checkpointing_20260826.json`.
+Machine-readable evidence:
+
+- `evidence/swarm_exp_01/scale143_activation_checkpointing_20260826.json`
+- `evidence/swarm_exp_01/scale143_activation_checkpointing_bf16_addendum_20260826.json`
