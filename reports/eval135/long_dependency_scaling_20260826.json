@@ -1,0 +1,94 @@
+{
+  "authority": "LOCAL_FREE_RECONSTRUCTED_MODEL17_BEHAVIORAL_REPRODUCTION",
+  "contexts": [
+    {
+      "context": 128,
+      "model17_reproduction": {
+        "expected": {"last_train_nll": 2.9823954105377197, "mean_train_nll": 3.7159632962575415, "native_bpb": 3.7485607964784173, "native_nll": 2.598304347236558},
+        "max_absolute_difference": 4.76837158203125e-07,
+        "observed": {"last_train_nll": 2.9823949337005615, "mean_train_nll": 3.7159633175106137, "native_bpb": 3.7485609735694636, "native_nll": 2.5983044699867173}
+      },
+      "random_init": {
+        "by_distance": [
+          {"distance": 16, "full_nll": 5.55160745285934, "full_pair_margin_nats": -0.003943756077205762, "full_pairwise_accuracy": 0.53125, "role": "short_control", "shuffled_margin_gain": 0.0030796772553003393, "shuffled_nll_gain": 0.0011294313805700895, "truncated_margin_gain": 0.005432975543953944, "truncated_nll_gain": 0.002230922950811731},
+          {"distance": 32, "full_nll": 5.56223455261745, "full_pair_margin_nats": 0.02225504875241313, "full_pairwise_accuracy": 0.5416666666666666, "role": "long_dependency", "shuffled_margin_gain": 0.0019104110057620964, "shuffled_nll_gain": 0.0009511561105028932, "truncated_margin_gain": -0.004144551276112907, "truncated_nll_gain": -0.0021410163748765143},
+          {"distance": 64, "full_nll": 5.580846089940663, "full_pair_margin_nats": -0.018019433386749977, "full_pairwise_accuracy": 0.4375, "role": "long_dependency", "shuffled_margin_gain": 0.0004983554984695111, "shuffled_nll_gain": 0.0004463418711946332, "truncated_margin_gain": -0.002046109946301538, "truncated_nll_gain": 0.0005941025815872081},
+          {"distance": 128, "full_nll": 5.56105827384022, "full_pair_margin_nats": -0.014150856433237399, "full_pairwise_accuracy": 0.4166666666666667, "role": "long_dependency", "shuffled_margin_gain": 0.00014136011244166372, "shuffled_nll_gain": 0.00015077029555676802, "truncated_margin_gain": -0.0009535841933635929, "truncated_nll_gain": -0.0008745831206713461}
+        ],
+        "interpretation": {"note": "Long-distance failures are not isolated context failures because the model does not reliably solve the matched short control.", "short_control_pairwise_accuracy": 0.53125, "status": "probe_format_not_resolved_at_short_control", "usable_long_dependency_claim": false},
+        "unsupported": {"256": 48, "512": 48}
+      },
+      "trained": {
+        "by_distance": [
+          {"distance": 16, "full_nll": 5.762576987914111, "full_pair_margin_nats": 0.010731521080742823, "full_pairwise_accuracy": 0.53125, "role": "short_control", "shuffled_margin_gain": -0.006056603142496897, "shuffled_nll_gain": -0.005226820783542863, "truncated_margin_gain": -0.004422902577061905, "truncated_nll_gain": -0.08146996993534916},
+          {"distance": 32, "full_nll": 6.037332783123432, "full_pair_margin_nats": 0.007243822377252703, "full_pairwise_accuracy": 0.5, "role": "long_dependency", "shuffled_margin_gain": -0.002567471732618288, "shuffled_nll_gain": 0.00183626383998714, "truncated_margin_gain": -0.00782783091805565, "truncated_nll_gain": 0.018303400612796672},
+          {"distance": 64, "full_nll": 6.049506027099906, "full_pair_margin_nats": -0.0012225086490313213, "full_pairwise_accuracy": 0.4583333333333333, "role": "long_dependency", "shuffled_margin_gain": -0.0017638243734836578, "shuffled_nll_gain": -0.0017906266788738634, "truncated_margin_gain": 0.00111167940000693, "truncated_nll_gain": 0.008163514146413142},
+          {"distance": 128, "full_nll": 6.055647890848324, "full_pair_margin_nats": 0.0031579133744041124, "full_pairwise_accuracy": 0.5, "role": "long_dependency", "shuffled_margin_gain": -0.0013172133476473395, "shuffled_nll_gain": -0.0009440874212245376, "truncated_margin_gain": -0.0009554776673515639, "truncated_nll_gain": 0.04299491478358952}
+        ],
+        "interpretation": {"note": "Long-distance failures are not isolated context failures because the model does not reliably solve the matched short control.", "short_control_pairwise_accuracy": 0.53125, "status": "probe_format_not_resolved_at_short_control", "usable_long_dependency_claim": false},
+        "unsupported": {"256": 48, "512": 48}
+      },
+      "training": {"last_train_nll": 2.9823949337005615, "mean_train_nll": 3.7159633175106137, "steps": 362, "tokens": 32768, "wall_seconds": 2.4783930760000317}
+    },
+    {
+      "context": 256,
+      "model17_reproduction": {
+        "expected": {"last_train_nll": 3.2640819549560547, "mean_train_nll": 4.2695013949414715, "native_bpb": 4.760073358742174, "native_nll": 3.2994314278706467},
+        "max_absolute_difference": 4.76837158203125e-07,
+        "observed": {"last_train_nll": 3.2640814781188965, "mean_train_nll": 4.2695013256015955, "native_bpb": 4.760073031804858, "native_nll": 3.2994312012549676}
+      },
+      "random_init": {
+        "by_distance": [
+          {"distance": 16, "full_nll": 5.55160745285934, "full_pair_margin_nats": -0.003943756077205762, "full_pairwise_accuracy": 0.53125, "role": "short_control", "shuffled_margin_gain": 0.0030796772553003393, "shuffled_nll_gain": 0.0011294313805700895, "truncated_margin_gain": 0.005432975543953944, "truncated_nll_gain": 0.002230922950811731},
+          {"distance": 32, "full_nll": 5.56223455261745, "full_pair_margin_nats": 0.02225504875241313, "full_pairwise_accuracy": 0.5416666666666666, "role": "long_dependency", "shuffled_margin_gain": 0.0019104110057620964, "shuffled_nll_gain": 0.0009511561105028932, "truncated_margin_gain": -0.004144551276112907, "truncated_nll_gain": -0.0021410163748765143},
+          {"distance": 64, "full_nll": 5.580846089940663, "full_pair_margin_nats": -0.018019433386749977, "full_pairwise_accuracy": 0.4375, "role": "long_dependency", "shuffled_margin_gain": 0.0004983554984695111, "shuffled_nll_gain": 0.0004463418711946332, "truncated_margin_gain": -0.002046109946301538, "truncated_nll_gain": 0.0005941025815872081},
+          {"distance": 128, "full_nll": 5.56105827384022, "full_pair_margin_nats": -0.014150856433237399, "full_pairwise_accuracy": 0.4166666666666667, "role": "long_dependency", "shuffled_margin_gain": 0.00014136011244166372, "shuffled_nll_gain": 0.00015077029555676802, "truncated_margin_gain": -0.0009535841933635929, "truncated_nll_gain": -0.0008745831206713461},
+          {"distance": 256, "full_nll": 5.57796682146321, "full_pair_margin_nats": -0.0037882721080677584, "full_pairwise_accuracy": 0.4583333333333333, "role": "long_dependency", "shuffled_margin_gain": 0.0001220031020541983, "shuffled_nll_gain": 0.0001291985845961463, "truncated_margin_gain": -0.00045714006409980357, "truncated_nll_gain": 0.00034639427734006745}
+        ],
+        "interpretation": {"note": "Long-distance failures are not isolated context failures because the model does not reliably solve the matched short control.", "short_control_pairwise_accuracy": 0.53125, "status": "probe_format_not_resolved_at_short_control", "usable_long_dependency_claim": false},
+        "unsupported": {"512": 48}
+      },
+      "trained": {
+        "by_distance": [
+          {"distance": 16, "full_nll": 5.519942389891877, "full_pair_margin_nats": 0.017282942309975624, "full_pairwise_accuracy": 0.59375, "role": "short_control", "shuffled_margin_gain": -0.004507482051849365, "shuffled_nll_gain": -0.0011826218710435654, "truncated_margin_gain": -0.010371649637818336, "truncated_nll_gain": 0.07271666789741804},
+          {"distance": 32, "full_nll": 5.878647834565698, "full_pair_margin_nats": 0.008872009813785553, "full_pairwise_accuracy": 0.5, "role": "long_dependency", "shuffled_margin_gain": -0.0014416302243868504, "shuffled_nll_gain": -0.0010772968352315004, "truncated_margin_gain": -0.004911360641320547, "truncated_nll_gain": 0.009586492205189145},
+          {"distance": 64, "full_nll": 5.955624321859294, "full_pair_margin_nats": 0.001533279816309611, "full_pairwise_accuracy": 0.5, "role": "long_dependency", "shuffled_margin_gain": -0.0010957693060239155, "shuffled_nll_gain": -0.000669100440664927, "truncated_margin_gain": -0.0023275762796401978, "truncated_nll_gain": -0.015765603704025466},
+          {"distance": 128, "full_nll": 5.850911279153174, "full_pair_margin_nats": 0.007353434960047404, "full_pairwise_accuracy": 0.5416666666666666, "role": "long_dependency", "shuffled_margin_gain": -0.0007760276397069292, "shuffled_nll_gain": -0.0003402323696679588, "truncated_margin_gain": 0.0006034051378568019, "truncated_nll_gain": -0.00808045278294589},
+          {"distance": 256, "full_nll": 5.900717049231162, "full_pair_margin_nats": 0.012141632537047068, "full_pairwise_accuracy": 0.4583333333333333, "role": "long_dependency", "shuffled_margin_gain": -0.0004618043700853995, "shuffled_nll_gain": -0.00032515803157195933, "truncated_margin_gain": 0.002423519889513651, "truncated_nll_gain": -0.016663016322614688}
+        ],
+        "interpretation": {"positive_signal_distances_tokens": [], "short_control_pairwise_accuracy": 0.59375, "status": "interpretable", "usable_long_dependency_claim": false},
+        "unsupported": {"512": 48}
+      },
+      "training": {"last_train_nll": 3.2640814781188965, "mean_train_nll": 4.2695013256015955, "steps": 207, "tokens": 32768, "wall_seconds": 2.5038333299999636}
+    }
+  ],
+  "decision": {
+    "claim_boundary": "Specific tiny-S0 MODEL-17-era decision only; no general long-context ceiling and no beyond-trained-context extrapolation.",
+    "context_128_boundary": "Short control pairwise accuracy 0.53125, so 128 long-distance failures are not isolated context failures.",
+    "context_512": "NOT_EVALUATED_ON_A_TRAINED_512_CONTEXT_MODEL",
+    "model17_128_to_256_context_increase": "REJECT",
+    "reason": "The 256-trained reproduction resolved the short control (0.59375) but had no supported primary distance where full context beat both truncation and shuffled-source controls; MODEL-17 also had substantially worse native held-out BPB at 256."
+  },
+  "model17_prior": {
+    "native_bpb_128": 3.7485607964784173,
+    "native_bpb_256": 4.760073358742174,
+    "native_bpb_256_minus_128": 1.0115125622637566,
+    "primary_research_context": "128",
+    "within_256_bpb_gain_from_history_beyond_128": -0.00015351750367553763
+  },
+  "provenance": {
+    "model17_artifact_digest": "sha256:a61f8eb1063dbb2b8462ada542963446edb98ca6e445ce408f7c28c2f38a594d",
+    "model17_artifact_id": 9570839701,
+    "model17_source_sha": "ce0b8eb8501677363007d4f3c8c6c9fcf95a772d",
+    "original_trained_checkpoints_retained": false,
+    "probe_training_performed": false,
+    "reconstruction": "Exact source-semantics re-execution of MODEL-17 architecture/init/packing/AdamW/32768-token budget; held-out metrics reproduced to about 1e-6.",
+    "repository": "Oleksii-debug/12-6-ai."
+  },
+  "report_sha256": "561a465714c0cda96ac64687da22df27d14936f0d2a196dc68e119600783bbf0",
+  "runtime": {"device": "cpu", "paid_compute": false, "python": "3.13.5", "torch": "2.10.0+cpu"},
+  "schema": "12-6.eval135-long-dependency-scaling.v1",
+  "suite_id": "EVAL-135-LONG-DEPENDENCY-v1",
+  "suite_identity_sha256": "24f6de8520e598b471a7ec572dc7a4f54d385c8f174fa71c39cdee8f3474ce03",
+  "worker_id": "EVAL-135-LONG-DEPENDENCY"
+}

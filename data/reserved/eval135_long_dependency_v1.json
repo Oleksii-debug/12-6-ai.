@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "suite_id": "EVAL-135-LONG-DEPENDENCY-v1",
+  "suite_identity_sha256": "24f6de8520e598b471a7ec572dc7a4f54d385c8f174fa71c39cdee8f3474ce03",
+  "source_purpose": "evaluation_test",
+  "training_allowed": false,
+  "instruction_following": false,
+  "generator_version": "eval135-token-conditioned-v1",
+  "primary_distances_tokens": [32, 64, 128, 256, 512],
+  "short_control_distance_tokens": 16,
+  "families": [
+    "delayed_symbol",
+    "key_value_recurrence",
+    "natural_reference"
+  ],
+  "conditions": ["full", "truncated", "shuffled"],
+  "materialization": "Generated deterministically at evaluation time against the model tokenizer/backend so dependency distances are exact in model tokens.",
+  "reservation": "This suite and every deterministic materialization derived from it are project-owned reserved evaluation material. They must not enter tokenizer fitting, corpus packaging, pretraining, fine-tuning, or data augmentation.",
+  "decontamination_binding": "source_purpose=evaluation_test is already forbidden by data/s0/contamination_registry.json",
+  "truth_boundary": "In-range conditional next-token dependency diagnostic only. No instruction-following, intelligence, or beyond-context extrapolation claim."
+}
