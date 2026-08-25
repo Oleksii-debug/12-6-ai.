@@ -69,6 +69,9 @@ jobs:
           from pathlib import Path
 
           report = json.loads(Path("reports/data31/current_s0_decontamination.json").read_text())
+          physical_manifest = json.loads(
+              Path("reports/data31/work/published_candidate/manifest.json").read_text()
+          )
           expected_registry = "10f7454f77eb2dc3871eeafa5055b1969eab42954eb8e19e61565f217c67df31"
           assert report["schema_version"] == "12-6.data31-decontamination-run.v1"
           assert report["d06_authority"]["registry_sha256"] == expected_registry
@@ -80,6 +83,8 @@ jobs:
           assert report["decontamination_report"]["semantic_universal_cleanliness_claimed"] is False
           assert report["publication_manifest"]["benchmark_registry_sha256"] == expected_registry
           assert report["publication_manifest"]["semantic_universal_cleanliness_claimed"] is False
+          assert physical_manifest == report["publication_manifest"]
+          assert physical_manifest["benchmark_registry_sha256"] == expected_registry
           assert report["truth_boundary"]["real_d06_registered_benchmarks_in_snapshot"] == 0
           assert report["truth_boundary"]["real_hashed_generation_probes_locally_available"] == 0
           assert "project-authored-s0-fixture-v1::doc-001" not in report["surviving_document_ids"]
@@ -104,5 +109,6 @@ jobs:
           path: |
             reports/data31/current_s0_decontamination.json
             reports/data31/work/published_candidate/train.jsonl
+            reports/data31/work/published_candidate/manifest.json
           if-no-files-found: warn
           retention-days: 30
