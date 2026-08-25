@@ -36,7 +36,7 @@ def _fake_result(*, clip: float | None, final_validation_loss: float, grad_norm:
             {
                 "step": 2,
                 "loss": 4.9,
-                "grad_norm": grad_norm / 2,
+                "grad_norm": grad_norm / 4,
                 "relative_update_l2": 0.005,
             },
         ],
