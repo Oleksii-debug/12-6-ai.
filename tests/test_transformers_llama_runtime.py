@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import importlib.util
 import os
 import re
 from pathlib import Path
 
+import pytest
 import torch
 
 from twelve_six.checkpoint import CheckpointIdentity, export_hf_directory, save_checkpoint
@@ -18,6 +20,10 @@ from twelve_six.training import Trainer, TrainerConfig
 
 ROOT = Path(__file__).resolve().parents[1]
 _GIT_SHA = re.compile(r"^[0-9a-f]{40}$")
+pytestmark = pytest.mark.skipif(
+    importlib.util.find_spec("transformers") is None,
+    reason="dedicated hash-locked Transformers runtime is not installed",
+)
 
 
 def _trained_s0_export(tmp_path: Path) -> tuple[Path, Path]:
