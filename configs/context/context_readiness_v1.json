@@ -1,0 +1,121 @@
+{
+  "schema_version": 1,
+  "policy_id": "12-6-context-readiness-v1",
+  "claim_boundary": "Engineering readiness only. A configured or mechanically executable context length is not a trained or evaluated long-context capability claim.",
+  "qualification_thresholds_are_engineering_heuristics": true,
+  "canonical_stages_unchanged": true,
+  "rope_policy": {
+    "current_position_embedding": "rope",
+    "current_theta": 10000.0,
+    "current_stage_rotary_fraction": 1.0,
+    "absolute_position_offset_required_for_incremental_decode": true,
+    "theta_or_scaling_change_requires_new_model_identity": true,
+    "partial_rotary_change_requires_new_model_identity": true,
+    "no_extrapolation_capability_claim_beyond_trained_context": true
+  },
+  "packing_policy": {
+    "preserve_s0_packing_identity": true,
+    "s0_sequence_length": 128,
+    "future_candidate_contract": "context-candidate-isolated-v1",
+    "cross_document_packing_without_semantic_eos_forbidden": true,
+    "candidate_measurements_required": [
+      "token_length_p50",
+      "token_length_p90",
+      "token_length_p95",
+      "token_length_max",
+      "causal_pair_utilization"
+    ]
+  },
+  "promotion_gates": {
+    "data": {
+      "require_candidate_packing_measurement_on_intended_training_corpus": true,
+      "suggested_minimum_causal_pair_utilization": 0.70,
+      "suggested_minimum_fraction_of_training_documents_longer_than_previous_context": 0.10,
+      "notes": "The numeric thresholds are qualification heuristics, not universal scaling laws. A lower-utilization choice requires an explicit data/quality rationale."
+    },
+    "training_memory": {
+      "require_target_hardware_measurement": true,
+      "require_sdpa_backend_recorded": true,
+      "suggested_maximum_peak_hbm_fraction": 0.80,
+      "require_intended_microbatch_without_oom": true,
+      "require_attention_score_equivalent_in_planning": true,
+      "notes": "The score-equivalent term exposes O(S^2) risk. Fused SDPA/FlashAttention may avoid materializing the full matrix, so actual HBM peak must be measured."
+    },
+    "inference": {
+      "require_model_native_kv_cache": true,
+      "require_cache_bytes_match_model_geometry": true,
+      "logical_payload_is_not_allocator_peak": true,
+      "require_prefill_and_decode_at_candidate_boundary": true,
+      "require_context_limit_stop_semantics": true,
+      "require_cache_growth_allocation_copy_profile_for_2k_plus": true,
+      "notes": "The incumbent Python cache stores unexpanded K/V but grows contiguous tensors with torch.cat. Logical payload scales linearly with context; allocator traffic and cumulative copy work do not automatically do so."
+    },
+    "evaluation": {
+      "require_training_at_candidate_context_before_capability_claim": true,
+      "require_heldout_loss_stratified_by_document_length": true,
+      "require_long_document_or_distance_sensitive_evaluation": true,
+      "no_claim_from_random_init_or_short_mechanical_probe": true
+    }
+  },
+  "stage_recommendations": [
+    {
+      "stage": "S0",
+      "parameters": 10140,
+      "canonical_context": 128,
+      "recommendation": "PRESERVE",
+      "next_mechanical_probe": 256,
+      "promotion_candidate": null,
+      "reason": "The controlled S0 fixture has 110-269 byte-token documents and isolated-packing causal-pair utilization falls from about 0.701 at 128 to about 0.605 at 256, 0.377 at 512 and 0.189 at 1024. Longer S0 context is mechanically testable but data-inefficient."
+    },
+    {
+      "stage": "S1",
+      "parameters": 107856,
+      "canonical_context": 256,
+      "recommendation": "QUALIFY_512_BEFORE_PROMOTION",
+      "next_mechanical_probe": 512,
+      "promotion_candidate": 512,
+      "defer_until_data_and_hardware_evidence": [1024, 2048, 4096]
+    },
+    {
+      "stage": "S2",
+      "parameters": 1066112,
+      "canonical_context": 512,
+      "recommendation": "QUALIFY_1K",
+      "next_mechanical_probe": 1024,
+      "promotion_candidate": 1024,
+      "research_candidates_after_1k_passes": [2048, 4096]
+    },
+    {
+      "stage": "S3",
+      "parameters": 10059840,
+      "canonical_context": 1024,
+      "recommendation": "QUALIFY_2K_ON_TARGET_GPU",
+      "next_mechanical_probe": 2048,
+      "promotion_candidate": 2048,
+      "research_candidate": 4096,
+      "research_candidate_status": "UNQUALIFIED"
+    },
+    {
+      "stage": "S4_APPROX_100M",
+      "canonical_context": null,
+      "existing_d01_planning_candidate_context": 2048,
+      "recommendation": "QUALIFY_2K_NOT_4K_BY_DEFAULT",
+      "promotion_candidate": 2048,
+      "notes": "Preserve the existing D01 planning direction. A 4K S4 choice would require independent evidence rather than inheriting the S5 target."
+    },
+    {
+      "stage": "S5_APPROX_400M",
+      "canonical_context": null,
+      "existing_d01_planning_candidate_context": 4096,
+      "recommendation": "QUALIFY_4K_AFTER_OWN_DATA_MEMORY_AND_EVAL_GATES",
+      "promotion_candidate": 4096,
+      "beyond_4k": "NO_DEFAULT_UNTIL_4K_PASSES_ALL_GATES"
+    },
+    {
+      "stage": "S6_PLUS",
+      "canonical_context": null,
+      "recommendation": "NO_AUTOMATIC_CONTEXT_DOUBLING",
+      "beyond_4k": "REQUIRES_NEW_DATA_HARDWARE_TRAINING_EVALUATION_AND_ROPE_EVIDENCE"
+    }
+  ]
+}

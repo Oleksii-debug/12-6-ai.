@@ -1,0 +1,43 @@
+{
+  "stage": "S3-CONTEXT-2048-EXPERIMENTAL",
+  "target_parameters": 10000000,
+  "expected_parameters": 10059840,
+  "canonical_base": "random_init",
+  "expected_model_identity_sha256": "23496c7b0236e16d857299bb1e825e31fe0aa3dcda8b27e6a432a03596eed5be",
+  "expected_init_identity_sha256": "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5",
+  "experimental_context_candidate": true,
+  "derived_from": "configs/stages/s3_10m.json",
+  "status": "TARGET_GPU_QUALIFICATION_REQUIRED",
+  "capability_claim": "none",
+  "promotion_policy": "configs/context/context_readiness_v1.json",
+  "model": {
+    "schema_version": 1,
+    "vocab_size": 8192,
+    "max_seq_len": 2048,
+    "d_model": 320,
+    "n_layers": 6,
+    "n_heads": 8,
+    "n_kv_heads": 8,
+    "head_dim": 40,
+    "d_ff": 864,
+    "activation": "swiglu",
+    "norm_kind": "rmsnorm",
+    "norm_placement": "pre",
+    "norm_eps": 1e-5,
+    "position_embedding": "rope",
+    "rope_theta": 10000.0,
+    "rope_rotary_dim": 40,
+    "attention_bias": false,
+    "mlp_bias": false,
+    "attention_dropout": 0.0,
+    "final_norm": true,
+    "tie_word_embeddings": true,
+    "lm_head_bias": false
+  },
+  "init": {
+    "schema_version": 1,
+    "family": "normal",
+    "std": 0.02,
+    "residual_branch_scale": "sqrt_2_layers"
+  }
+}
