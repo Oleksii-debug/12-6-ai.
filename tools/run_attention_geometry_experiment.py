@@ -168,6 +168,7 @@ def _native_gqa_probe(
     seq_len: int = 32,
     repeats: int = 8,
 ) -> dict[str, Any]:
+    """Compare the portable CPU repeat path with direct native-GQA as a diagnostic."""
     spec = model.spec
     if spec.n_kv_heads == spec.n_heads:
         return {"status": "NOT_APPLICABLE_MHA"}
@@ -176,7 +177,7 @@ def _native_gqa_probe(
     attention = model.blocks[0].attn
     x = torch.randn(1, seq_len, spec.d_model)
     q, k, v = attention._project_qkv(x, position_offset=0)
-    repeat_output = attention._attend(q, k, v, is_causal=True)
+    reference_output = attention._attend(q, k, v, is_causal=True)
 
     try:
         F.scaled_dot_product_attention(
@@ -191,6 +192,7 @@ def _native_gqa_probe(
         return {
             "status": "NOT_AVAILABLE",
             "exception_type": type(exc).__name__,
+            "scope": "CPU_DIAGNOSTIC_ONLY",
         }
 
     def native_attend() -> torch.Tensor:
@@ -206,7 +208,7 @@ def _native_gqa_probe(
         return attention.out_proj(attended)
 
     native_output = native_attend()
-    max_abs_error = float((repeat_output - native_output).abs().max().item())
+    max_abs_error = float((reference_output - native_output).abs().max().item())
 
     for _ in range(2):
         attention._attend(q, k, v, is_causal=True)
@@ -215,7 +217,7 @@ def _native_gqa_probe(
     start = time.perf_counter()
     for _ in range(repeats):
         attention._attend(q, k, v, is_causal=True)
-    repeat_seconds = time.perf_counter() - start
+    reference_seconds = time.perf_counter() - start
 
     start = time.perf_counter()
     for _ in range(repeats):
@@ -225,13 +227,14 @@ def _native_gqa_probe(
     return {
         "status": "AVAILABLE",
         "max_abs_output_error": max_abs_error,
-        "repeat_expand_median_proxy_ms": 1000.0 * repeat_seconds / repeats,
-        "native_gqa_median_proxy_ms": 1000.0 * native_seconds / repeats,
-        "repeat_over_native_time_ratio": repeat_seconds / native_seconds,
+        "cpu_reference_repeat_proxy_ms": 1000.0 * reference_seconds / repeats,
+        "cpu_direct_native_gqa_proxy_ms": 1000.0 * native_seconds / repeats,
+        "reference_over_native_time_ratio": reference_seconds / native_seconds,
         "stored_kv_heads": spec.n_kv_heads,
-        "temporary_repeat_heads": spec.n_heads,
-        "current_path_materializes_repeated_kv": True,
-        "timing_scope": "HOST_SPECIFIC_MICROBENCH_NOT_RUNTIME_CLAIM",
+        "cpu_reference_temporary_repeat_heads": spec.n_heads,
+        "cpu_reference_materializes_repeated_kv": True,
+        "product_cuda_path_uses_native_gqa": True,
+        "timing_scope": "CPU_DIAGNOSTIC_ONLY_NOT_RUNTIME_CLAIM",
     }
 
 
@@ -314,6 +317,7 @@ def _aggregate(
         "bf16_bytes": _full_context_cache_bytes(spec, bytes_per_element=2),
         "fp32_bytes": _full_context_cache_bytes(spec, bytes_per_element=4),
     }
+    is_grouped = spec.n_kv_heads != spec.n_heads
     return {
         "label": label,
         "config_path": str(config_path.relative_to(repo_root)),
@@ -333,11 +337,13 @@ def _aggregate(
         "inference_work": {
             "attention_score_heads": spec.n_heads,
             "kv_projection_width": spec.kv_dim,
-            "current_repeat_expand_temporary_head_multiplier": spec.n_heads / spec.n_kv_heads,
+            "cpu_reference_repeat_head_multiplier": spec.n_heads / spec.n_kv_heads,
+            "cuda_native_gqa_passes_unexpanded_kv": is_grouped,
+            "cuda_native_gqa_kv_head_count": spec.n_kv_heads,
             "note": (
-                "GQA does not reduce query-head score count at fixed Hq; it reduces K/V "
-                "projection and cache width. The current Product path repeat-expands K/V "
-                "before SDPA."
+                "GQA does not reduce query-head score count at fixed Hq. It reduces K/V "
+                "projection and cache width. CPU retains explicit-repeat reference semantics; "
+                "CUDA grouped geometries pass unexpanded K/V to SDPA enable_gqa=True."
             ),
         },
         "seed_runs": seed_runs,
