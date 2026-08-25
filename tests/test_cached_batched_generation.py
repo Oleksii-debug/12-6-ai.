@@ -63,6 +63,42 @@ def test_real_torch_cached_batch_matches_independent_greedy_and_restores_mode() 
     assert actual.stats.peak_cache_bytes > 0
 
 
+def test_real_torch_cached_batch_matches_independent_seeded_sampling() -> None:
+    backend = S0TorchBatchedInferenceBackend(_tiny_model(), ByteTokenizer())
+    requests = (
+        BatchGenerationRequest(
+            "alpha",
+            GenerationConfig(
+                max_new_tokens=5,
+                sample=True,
+                seed=13,
+                temperature=0.85,
+                top_k=8,
+                top_p=0.95,
+            ),
+        ),
+        BatchGenerationRequest(
+            "bravo",
+            GenerationConfig(
+                max_new_tokens=2,
+                sample=True,
+                seed=29,
+                temperature=1.1,
+                top_k=12,
+                top_p=0.9,
+            ),
+        ),
+    )
+
+    expected = tuple(generate(backend, request.prompt, request.config) for request in requests)
+    actual = generate_batch_cached(backend, requests, max_batch_size=2)
+
+    assert actual.results == expected
+    assert actual.stats.prefill_batch_calls == 1
+    assert actual.stats.retired_row_decode_positions > 0
+    assert backend.active_generation_sessions == 0
+
+
 def test_torch_batched_session_cache_bytes_and_ragged_prefill_fail_closed() -> None:
     backend = S0TorchBatchedInferenceBackend(_tiny_model(), ByteTokenizer())
 
