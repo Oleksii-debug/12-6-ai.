@@ -1,0 +1,17 @@
+{
+  "schema": "12-6.transformers-runtime-lock-profile.v1",
+  "platform": "linux-x86_64",
+  "python": "3.11.16",
+  "parent_profile": "linux-x86_64",
+  "parent_runtime": "requirements/locks/linux-x86_64/runtime.lock.txt",
+  "parent_toolchain": "requirements/locks/linux-x86_64/toolchain.lock.txt",
+  "overlay_runtime": "requirements/locks/transformers-linux-x86_64/runtime.lock.txt",
+  "transformers_version": "5.15.0",
+  "resolution": {
+    "os": "Ubuntu 24.04",
+    "binary_wheels_only": true,
+    "canonical_constraints_applied": true
+  },
+  "scope": "D07_TRANSFORMERS_LLAMA_INTEROP_ONLY",
+  "canonical_d08_profiles_modified": false
+}
