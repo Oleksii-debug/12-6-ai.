@@ -1,7 +1,13 @@
-"""Training, optimization, and numerical-safety primitives for 12-6 AI."""
+"""Training, optimization, numerical-safety, and observability primitives."""
 
 from .config import PrecisionMode, SchedulerKind, TrainerConfig
 from .loss import causal_lm_loss, causal_pair_loss
+from .observability import (
+    TrainingObserver,
+    UpdateMagnitude,
+    UpdateObservation,
+    summarize_parameter_update,
+)
 from .trainer import (
     CheckpointHookError,
     NonFiniteTrainingError,
@@ -25,8 +31,12 @@ __all__ = [
     "TrainerState",
     "TrainingRunResult",
     "TrainingStateInvalidError",
+    "TrainingObserver",
+    "UpdateMagnitude",
+    "UpdateObservation",
     "build_optimizer",
     "build_scheduler",
     "causal_lm_loss",
     "causal_pair_loss",
+    "summarize_parameter_update",
 ]
