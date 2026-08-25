@@ -1,6 +1,6 @@
 # C01 EUR2000 training program
 
-Status: `PREPARED_NOT_AUTHORIZED_BLOCKED_ON_SCALE_DATA_TOKENIZER_AND_GPU_PILOT`.
+Status: `PREPARED_NOT_AUTHORIZED_BLOCKED_ON_STAGE_FREEZE_SCALE_DATA_TOKENIZER_AND_GPU_PILOT`.
 
 This package does not launch or authorize paid compute. It converts the current project state into a bounded decision program and adds a fail-closed launch-control prerequisite without modifying the incumbent C01 files from PR #70.
 
@@ -13,11 +13,11 @@ Observed, not extrapolated:
 - Current engineering ModelSpecs are S1 107,856 parameters / vocab 512 / context 256, S2 1,066,112 / vocab 2,048 / context 512, and S3 10,059,840 / vocab 8,192 / context 1,024.
 - D01 S4 is 100,384,512 parameters / vocab 32,768 / context 2,048, but remains `engineering_candidate_not_frozen` and requires preceding-stage PASS.
 - S1 numerical and checkpoint mechanics have bounded CPU evidence, but PR #130 correctly rejects the S0 256-token vocabulary as canonical input for S1's 512-row vocabulary.
-- PR #73 has restart-safe future tokenizer/mixture contracts, but no trained/frozen BPE or Unigram artifact. The exact D08 lock used by that work does not yet include its optional tokenizer runtime.
-- The repository lineage inspected here contains only the controlled S0 corpus bytes. No S1+ corpus/tokenizer identity is frozen.
+- PR #73 now has real locked tokenizer experiments on `tokenizers==0.23.1`. Controlled ByteLevel BPE requested vocab 512 but realized 472 tokens and repeated exactly; Unigram realized 497 but did not repeat exactly. The retained decision is correctly `NO_FREEZE_REPEATABILITY_BLOCKED`, and the ten-record controlled corpus is not representative scale-corpus evidence.
+- The product lineage inspected here still contains only controlled S0 corpus bytes; no representative S1+ train/validation corpus identity is frozen.
 - D12 has topology/reshard contracts and bounded CPU/Gloo evidence, but no GPU/NCCL/multi-node canonical-model training. This is not a blocker for the recommended <=100M single-GPU program.
 
-Therefore the current bottleneck is not HBM capacity. It is the absence of a frozen scale data/tokenizer identity plus same-geometry GPU evidence.
+Therefore the current bottleneck is not HBM capacity. It is stage/model selection, representative scale data/tokenizer identity, and same-geometry GPU evidence.
 
 ## Budget architecture
 
@@ -45,7 +45,7 @@ The pricing snapshot is an assumption, not a quote. On 2026-08-25 the planning f
 - raw BF16 weights: 20,119,680 bytes;
 - conservative full-Adam planning state: 160,957,440 bytes.
 
-This is the lowest systems-risk path and gives the most token exposure per parameter. It is useful if the eventual corpus is not large enough to justify S4.
+This is the lowest systems-risk path and gives the most token exposure per parameter. It is useful if the eventual corpus is not large enough or S4 governance is not ready.
 
 ### B — S4 larger model, fewer tokens
 
@@ -59,16 +59,18 @@ This is the lowest systems-risk path and gives the most token exposure per param
 - raw BF16 weights: 200,769,024 bytes;
 - conservative full-Adam planning state: 1,606,152,192 bytes.
 
-This buys an earlier parameter-scale signal but has more architecture/tokenizer risk and a low token/parameter ratio.
+This buys an earlier parameter-scale signal but has more architecture/tokenizer risk and a low token/parameter ratio. It cannot be a legitimate main run while the S4 ModelSpec remains non-frozen.
 
 ### C — pilots, then balanced S4 main — recommended
 
-Pilots use the same frozen corpus/tokenizer family and recipe semantics:
+Pilot sequence:
 
 1. S1: 107,856 parameters, 10M tokens, context 256.
 2. S2: 1,066,112 parameters, 50M tokens, context 512.
 3. S3: 10,059,840 parameters, 200M tokens, context 1,024.
-4. Main only after the pilots are healthy: S4 100,384,512 parameters, 5B tokens, context 2,048.
+4. Main only after healthy evidence, governing preceding-stage PASS, and explicit S4 freeze: S4 100,384,512 parameters, 5B tokens, context 2,048.
+
+Each stage must use a tokenizer artifact whose actual vocabulary cardinality equals that selected ModelSpec; requested vocabulary size is not accepted as a substitute for realized vocabulary size. The pilots should share one frozen corpus lineage, split/provenance policy and comparable recipe/evaluation semantics so that cross-scale evidence remains interpretable.
 
 The three pilots together are only about `1.24e16` planning FLOPs, less than one half of one percent of the S4 main's `3.01153536e18` planning FLOPs. They therefore buy disproportionate information about data, tokenizer, loss dynamics, batch sizing and throughput before the expensive run.
 
@@ -98,15 +100,17 @@ A 100M model can realize very low accelerator utilization because launch/kernel/
 
 ## Launch sequence
 
-1. Freeze scale corpus identity, source/license/provenance, train/validation split, contamination controls, token counts and restart-safe sharding.
-2. Freeze one tokenizer whose exact token IDs and vocabulary size match the selected ModelSpec; bind tokenizer and packing hashes.
-3. Bind the exact GPU dependency/runtime lock and exact source SHA. Floating installation is prohibited.
-4. Run the same-geometry systems smoke with at most 2M optimized tokens, 0.5 GPU-hour and EUR 10 hard cap. It must perform forward/backward/update, checkpoint/reload/resume and held-out evaluation.
-5. Record tokens/sec, step time, data wait, loss, LR, gradient norm, peak HBM, checkpoint/eval time and exact GPU/runtime identity.
-6. Run S1/S2/S3 pilots under the EUR 150 pilot cap. Select learning rate from the predeclared `3e-4`, `6e-4`, `1e-3` set using held-out evidence rather than train loss alone.
-7. Project S4 wall time from measured same-geometry GPU tokens/sec and refresh provider price.
-8. Owner explicitly authorizes one strategy, one provider/SKU, one git SHA, exact model/data/tokenizer/packing/runtime identities and one EUR cap.
-9. Launch main only if the projected compute cost plus protected recovery reserve remains inside the EUR 2,000 ceiling.
+1. Complete governing preceding-stage evidence and explicitly freeze the selected main ModelSpec. S4 is not launchable merely because a candidate file exists.
+2. Freeze scale corpus identity, source/license/provenance, train/validation split, contamination controls, token counts and restart-safe sharding.
+3. Freeze a representative-corpus tokenizer whose actual token IDs and actual vocabulary cardinality match the selected ModelSpec; bind tokenizer and packing hashes.
+4. Bind the exact GPU dependency/runtime lock and exact source SHA. Floating installation is prohibited.
+5. Integrate the current model-agnostic Trainer/data/tokenizer/checkpoint seams into a general scale runner rather than cloning a second Trainer implementation.
+6. Run the same-geometry systems smoke with at most 2M optimized tokens, 0.5 GPU-hour and EUR 10 hard cap. It must perform forward/backward/update, checkpoint/reload/resume and held-out evaluation.
+7. Record tokens/sec, step time, data wait, loss, LR, gradient norm, peak HBM, checkpoint/eval time and exact GPU/runtime identity.
+8. Run S1/S2/S3 pilots under the EUR 150 pilot cap. Select learning rate from the predeclared `3e-4`, `6e-4`, `1e-3` set using held-out evidence rather than train loss alone.
+9. Project S4 wall time from measured same-geometry GPU tokens/sec and refresh provider price.
+10. Owner explicitly authorizes one strategy, one provider/SKU, one git SHA, exact model/data/tokenizer/packing/runtime identities and one EUR cap.
+11. Launch main only if the projected compute cost plus protected recovery reserve remains inside the EUR 2,000 ceiling.
 
 ## Stop and recovery policy
 
@@ -118,15 +122,17 @@ Recovery point objective is 100M optimized tokens. Blind retry is prohibited. Re
 
 ## What remains genuinely unready
 
-The largest scientific blocker is P01/P02: there is no frozen S1+ corpus/tokenizer artifact in the live evidence. This package does not invent either one.
+P00 is real: S4 remains an engineering candidate, not a frozen stage ModelSpec, and its own governance requires the preceding stage PASS.
 
-The largest systems blocker is P04: there is no same-geometry GPU training measurement. S0 CPU throughput is explicitly barred from the GPU cost equation.
+P01/P02 are the largest scientific blockers. The tokenizer lane has real executable evidence now, but no representative scale corpus/tokenizer is frozen. The controlled BPE result is 472 actual tokens, not S1's current 512 rows; it cannot simply be declared canonical. The larger S2/S3/S4 requested vocabularies also need representative-corpus sweeps and exact ModelSpec re-binding.
 
-The current first-party executable evidence CLI is S0-specific. A general scale runner must be integrated by the training/data owners against the frozen tokenizer/corpus seam before P04 can become green. The model-agnostic Trainer already exposes AdamW, BF16/FP16/FP32 configuration, constant/linear-warmup/cosine scheduling, gradient accumulation and clipping, so a second training implementation should not be created.
+P04 is the largest compute-estimation blocker: there is no same-geometry GPU training measurement. S0 CPU throughput is explicitly barred from the GPU cost equation.
+
+The current first-party executable evidence CLI is S0-specific. A general scale runner still has to compose the existing model-agnostic Trainer, data/packing, selected tokenizer and checkpoint seams before the same-geometry smoke. That work belongs at the existing training/data integration seam; it should not create a second Trainer. The existing Trainer already exposes AdamW, BF16/FP16/FP32 configuration, constant/linear-warmup/cosine scheduling, gradient accumulation and clipping.
 
 ## Owner decision
 
-The recommended authorization, when P01-P05 are green, is:
+The recommended authorization, when P00-P05 are green, is:
 
 `AUTHORIZE C_PILOTS_THEN_S4_BALANCED_MAIN WITH HARD TOTAL CAP EUR 2000, MAIN CAP EUR 1200, SINGLE GPU, NO AUTOMATIC OVERRUN, NO DISTRIBUTED SCALE-UP WITHOUT A NEW AUTHORIZATION.`
 
