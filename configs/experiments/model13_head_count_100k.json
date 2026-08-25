@@ -1,0 +1,43 @@
+{
+  "schema_version": "12-6.model13-head-count-100k.v1",
+  "authority": "LOCAL_FREE_ENGINEERING_EXPERIMENT_NOT_STAGE_OR_QUALITY_EVIDENCE",
+  "worker_id": "MODEL-13-HEAD-COUNT-100K",
+  "source": {
+    "repository": "Oleksii-debug/12-6-ai.",
+    "base_ref": "d02/s1-numerical-preflight-20260825",
+    "base_sha": "8894b44eb8627971b50a734fecd36e74293c1093",
+    "incumbent_pr": 106,
+    "incumbent_model_identity_sha256": "2f0aa97a5d19e98c4e292fd5f1b454ada45ec4d2c7324e14ab7e48af19908ce6"
+  },
+  "fixed_controls": {
+    "tokenizer": "s0-byte-v1",
+    "train_data": "data/s0/packaged/train.jsonl",
+    "validation_data": "data/s0/packaged/validation.jsonl",
+    "fixture_authority": "COMPATIBILITY_ONLY_NOT_S1_QUALITY_EVIDENCE",
+    "max_seq_len": 256,
+    "executed_sequence_length": 128,
+    "n_layers": 3,
+    "d_model": 48,
+    "d_ff": 128,
+    "attention_family": "MHA",
+    "position_embedding": "rope",
+    "rope_theta": 10000.0,
+    "init": {"family": "normal", "std": 0.02, "residual_branch_scale": "sqrt_2_layers"},
+    "optimizer": {"name": "AdamW", "learning_rate": 0.01, "betas": [0.9, 0.95], "eps": 1e-8, "weight_decay": 0.0, "gradient_clip_norm": 1.0},
+    "precision": "fp32",
+    "seeds": [20260825, 1337, 20260826],
+    "optimizer_steps_per_seed": 24
+  },
+  "selection_policy": {
+    "architecture_freeze_allowed": false,
+    "fixture_loss_role": "numerical/generalization sanity signal only; not a production quality claim",
+    "provisional_decision_basis": "multi-seed stability plus steady-state LOCAL_FREE CPU latency"
+  },
+  "candidates": [
+    {"candidate_id": "mha_h2_hd24", "n_heads": 2, "n_kv_heads": 2, "head_dim": 24, "rope_rotary_dim": 24, "expected_parameters": 107856, "model_identity_sha256": "8336a9d35df4d53e633eeac1cd66e8c77a4874157ae29204bbbf53e141e0a754", "control": false},
+    {"candidate_id": "mha_h3_hd16", "n_heads": 3, "n_kv_heads": 3, "head_dim": 16, "rope_rotary_dim": 16, "expected_parameters": 107856, "model_identity_sha256": "4c128d03df1f6d8037e1fb4d4ee211a1b4278e40154ad48167475b27a45a25e2", "control": false},
+    {"candidate_id": "mha_h4_hd12_CONTROL", "n_heads": 4, "n_kv_heads": 4, "head_dim": 12, "rope_rotary_dim": 12, "expected_parameters": 107856, "model_identity_sha256": "2f0aa97a5d19e98c4e292fd5f1b454ada45ec4d2c7324e14ab7e48af19908ce6", "control": true},
+    {"candidate_id": "mha_h6_hd8", "n_heads": 6, "n_kv_heads": 6, "head_dim": 8, "rope_rotary_dim": 8, "expected_parameters": 107856, "model_identity_sha256": "2c8e14492ef1086f090edd1314814648d6d1e335a474f99bf9ef85dd8aea15de", "control": false},
+    {"candidate_id": "mha_h8_hd6", "n_heads": 8, "n_kv_heads": 8, "head_dim": 6, "rope_rotary_dim": 6, "expected_parameters": 107856, "model_identity_sha256": "7be887123e6bd54c67cf559a99d407891933d6cbe1383cf4e42ead6aeb1ec685", "control": false}
+  ]
+}
