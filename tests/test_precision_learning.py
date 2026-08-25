@@ -57,7 +57,12 @@ def test_compare_precision_profiles_accepts_bounded_non_bitwise_differences() ->
 
     assert comparison["within_tolerance"] is True
     assert comparison["cross_precision_bitwise_equality_required"] is False
-    assert comparison["metrics"]["final_validation_bpb_abs"] == 0.02
+    assert math.isclose(
+        comparison["metrics"]["final_validation_bpb_abs"],
+        0.02,
+        rel_tol=0.0,
+        abs_tol=1e-12,
+    )
 
 
 def test_compare_precision_profiles_surfaces_learning_divergence() -> None:
