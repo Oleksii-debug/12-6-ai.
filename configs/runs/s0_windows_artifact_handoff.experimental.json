@@ -1,0 +1,31 @@
+{
+  "schema_version": "12-6.s0-windows-artifact-handoff.v1",
+  "status": "BLOCKED_BY_MISSING_HASH_LOCKED_WINDOWS_RUNTIME",
+  "parent_exact_green_sha": "c631c024e641dac102036fafee6d78ba31c067cd",
+  "repository": "Oleksii-debug/12-6-ai.",
+  "stage": "S0",
+  "artifact_schema": "12-6.s0-retained-inference-artifact.v1",
+  "validation_schema": "12-6.s0-portable-inference-validation.v1",
+  "execution_mode": "artifact_only_no_repository_checkout",
+  "windows_runner_target": "windows-2025",
+  "required_python": "3.11.16",
+  "required_dependency_profile": "windows-x86_64",
+  "hash_locked_windows_profile_available": false,
+  "current_lock_profiles": [
+    "linux-x86_64",
+    "linux-aarch64"
+  ],
+  "required_runtime_checks": [
+    "portable_bundle_validation",
+    "wheel_install_without_dependency_resolution_drift",
+    "verified_checkpoint_load",
+    "plain_prompt_cli",
+    "stdin_json_cli",
+    "no_ansi_or_tui_dependency"
+  ],
+  "windows_runtime_pass": false,
+  "nvda_live_pass": false,
+  "paid_compute_authorized": false,
+  "promotion_allowed": false,
+  "next_owner": "D08 for exact Windows lock, then D05/D07 for artifact-only runtime execution"
+}
