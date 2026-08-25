@@ -53,7 +53,7 @@ def test_right_trim_preserves_incumbent_example_order_and_targets() -> None:
     assert sum(value != -100 for row in trimmed["labels"] for value in row[1:]) == 7
 
 
-def test_right_trim_leaves_causal_prefix_logits_unchanged() -> None:
+def test_right_trim_preserves_causal_prefix_logits_within_fp_tolerance() -> None:
     torch.manual_seed(7)
     spec = ModelSpec(
         schema_version=1,
@@ -84,4 +84,7 @@ def test_right_trim_leaves_causal_prefix_logits_unchanged() -> None:
     with torch.no_grad():
         fixed_logits = model(fixed).logits[:, : trimmed.shape[1], :]
         trimmed_logits = model(trimmed).logits
-    torch.testing.assert_close(fixed_logits, trimmed_logits, rtol=0.0, atol=0.0)
+    # Batch shape may select a different maintained PyTorch kernel/reduction path.
+    # Source positions and valid causal pairs are checked bit-exactly in the tests above;
+    # here we require only precision-appropriate numerical equivalence.
+    torch.testing.assert_close(fixed_logits, trimmed_logits, rtol=1e-6, atol=1e-6)
