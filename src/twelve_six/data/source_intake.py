@@ -39,6 +39,7 @@ BLOCKED_BY_RIGHTS = "BLOCKED_BY_RIGHTS"
 _ALLOWED_ELIGIBILITY = frozenset({ELIGIBLE, BLOCKED_BY_RIGHTS})
 _ALLOWED_ADAPTERS = frozenset({"html_text", "plain_text"})
 _ALLOWED_LANGUAGES = frozenset({"uk", "en"})
+_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _CHARSET_RE = re.compile(
     br"""charset\s*=\s*["']?\s*([A-Za-z0-9._-]+)""", re.IGNORECASE
 )
@@ -111,6 +112,7 @@ class CandidateSource:
                 raise SourceIntakeError(
                     f"{self.source_id}: ELIGIBLE requires explicit model-training approval"
                 )
+            self.rights.__post_init__()
         else:
             if self.acquisition_urls:
                 raise SourceIntakeError(
@@ -154,10 +156,34 @@ Fetcher = Callable[[str, int], DownloadedBytes]
 class _TextHTMLParser(HTMLParser):
     _BLOCKS = frozenset(
         {
-            "address", "article", "aside", "blockquote", "br", "dd", "div", "dl",
-            "dt", "figcaption", "footer", "h1", "h2", "h3", "h4", "h5", "h6",
-            "header", "li", "main", "nav", "p", "pre", "section", "table", "td",
-            "th", "tr",
+            "address",
+            "article",
+            "aside",
+            "blockquote",
+            "br",
+            "dd",
+            "div",
+            "dl",
+            "dt",
+            "figcaption",
+            "footer",
+            "h1",
+            "h2",
+            "h3",
+            "h4",
+            "h5",
+            "h6",
+            "header",
+            "li",
+            "main",
+            "nav",
+            "p",
+            "pre",
+            "section",
+            "table",
+            "td",
+            "th",
+            "tr",
         }
     )
     _SKIP = frozenset({"script", "style", "noscript", "svg"})
@@ -266,7 +292,9 @@ def validate_candidate_registry(registry: Mapping[str, Any]) -> tuple[CandidateS
     ):
         raise SourceIntakeError("candidate registry authority boundary changed")
     raw_sources = _require_list(registry.get("sources"), "sources")
-    sources = tuple(_candidate_from_mapping(_require_mapping(item, "source")) for item in raw_sources)
+    sources = tuple(
+        _candidate_from_mapping(_require_mapping(item, "source")) for item in raw_sources
+    )
     keys = [(item.source_id, item.source_version) for item in sources]
     if len(keys) != len(set(keys)):
         raise SourceIntakeError("duplicate source_id/source_version")
@@ -279,7 +307,9 @@ def validate_candidate_registry(registry: Mapping[str, Any]) -> tuple[CandidateS
     return sources
 
 
-def load_candidate_registry(path: str | Path) -> tuple[Mapping[str, Any], tuple[CandidateSource, ...]]:
+def load_candidate_registry(
+    path: str | Path,
+) -> tuple[Mapping[str, Any], tuple[CandidateSource, ...]]:
     registry = json.loads(Path(path).read_text(encoding="utf-8"))
     if not isinstance(registry, Mapping):
         raise SourceIntakeError("candidate registry root must be an object")
@@ -422,6 +452,7 @@ def run_bounded_intake(
         for source in sources:
             if source.eligibility_status != ELIGIBLE:
                 continue
+            source.rights.__post_init__()
             if source.rights.status != RIGHTS_APPROVED or not source.rights.allows_model_training:
                 raise SourceIntakeError(
                     f"{source.source_id}: fail-closed rights gate changed after validation"
