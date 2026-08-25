@@ -68,12 +68,13 @@ jobs:
               "optimized_token_budget_per_arm": report["identity"]["optimized_token_budget_per_arm"],
               "data": report["data"],
               "data105": report["data105"],
+              "comparisons": report["comparisons"],
               "arms": [
                   {
                       "arm_id": arm["arm_id"],
                       "optimized_tokens": arm["optimized_tokens"],
-                      "ordinary_validation_bpb": arm["final"]["ordinary_mixed_or_seen_validation"]["bpb"],
-                      "unseen_source_families": arm["final"]["unseen_source_families"],
+                      "ordinary_validation_bpb": arm["final"]["ordinary_validation"]["bpb"],
+                      "family_evaluation": arm["final"]["family_evaluation"],
                       "project_controls": arm["final"]["project_authored_same_domain_controls"],
                   }
                   for arm in report["arms"]
