@@ -36,7 +36,7 @@ jobs:
           .streaming-bench/bin/python -m pip install \
             --disable-pip-version-check --no-deps --require-hashes \
             -r requirements/locks/linux-x86_64/dev.lock.txt
-      - name: Run focused streaming, mixture, physical-shard and Trainer integration tests
+      - name: Run focused streaming, restart, physical-shard and Trainer integration tests
         env:
           PYTHONPATH: src
         run: >-
@@ -44,6 +44,7 @@ jobs:
           tests/test_streaming_packing_dataloader.py
           tests/test_streaming_mixture_runtime.py
           tests/test_sharded_storage.py
+          tests/test_cursor_codec.py
       - name: Run materially larger synthetic streaming benchmark
         env:
           PYTHONPATH: src
