@@ -1,0 +1,60 @@
+name: W5 S0 CPU Phase Profile
+on:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  exact-s0-cpu-profile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Prove exact source checkout
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Verify exact D08 locked environment and repository checks
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: >-
+          python tools/verify_locked_environment.py
+          --profile linux-x86_64
+          --source-sha "$SOURCE_SHA"
+          --evidence-out locked-environment-linux-x86_64.json
+          --run-repo-checks
+      - name: Create exact locked W5 execution environment
+        run: |
+          python -m venv .w5-profile
+          .w5-profile/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .w5-profile/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .w5-profile/bin/python -m pip install --no-deps --no-build-isolation -e .
+          .w5-profile/bin/python -c "import torch,twelve_six; assert torch.__version__; print(twelve_six.__version__)"
+      - name: Execute exact-head bounded S0 CPU phase profile
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          .w5-profile/bin/python -m twelve_six.s0_profile run \
+            --source-sha "$SOURCE_SHA" \
+            --output s0-cpu-profile.json \
+            --training-steps 40 \
+            --repetitions 5
+          .w5-profile/bin/python -m twelve_six.s0_profile validate \
+            s0-cpu-profile.json \
+            --source-sha "$SOURCE_SHA"
+          cat s0-cpu-profile.json
+      - name: Upload exact S0 profiling evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: w5-s0-cpu-profile-evidence
+          path: |
+            locked-environment-linux-x86_64.json
+            s0-cpu-profile.json
+          if-no-files-found: error
+          retention-days: 30
