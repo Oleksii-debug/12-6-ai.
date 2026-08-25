@@ -34,7 +34,7 @@ def _run(mixture_id: str, uk: float, en: float, code: float, test_macro: float =
 def test_config_prespecifies_four_fixed_control_mixtures() -> None:
     config = load_config(CONFIG_PATH)
     assert config["controls"]["expected_trainable_parameters"] == 267_912
-    assert config["controls"]["requested_loss_tokens"] == 65_536
+    assert config["controls"]["requested_loss_tokens"] == 131_072
     assert config["controls"]["tokenizer"] == "s0-byte-v1"
     assert len(config["mixtures"]) == 4
     assert {item["id"] for item in config["mixtures"]} == {
@@ -72,8 +72,8 @@ def test_all_mixtures_have_identical_optimized_token_budget() -> None:
         assert first == second
         assert sum(first["loss_tokens_by_modality"].values()) == first["actual_loss_tokens"]
         previews.append(first)
-    assert {preview["actual_loss_tokens"] for preview in previews} == {65_772}
-    assert {preview["optimizer_steps"] for preview in previews} == {261}
+    assert {preview["actual_loss_tokens"] for preview in previews} == {131_292}
+    assert {preview["optimizer_steps"] for preview in previews} == {521}
 
 
 def test_selection_uses_validation_only_and_respects_regression_guard() -> None:
