@@ -1,0 +1,92 @@
+{
+  "schema_version": "12-6.tok111-real-bpe-sweep-contract.v1",
+  "worker_id": "TOK-111-REAL-BPE-SWEEP",
+  "authority": "EXPERIMENTAL_RETEST_CONTRACT_NOT_TOKENIZER_FREEZE",
+  "run_class": "LOCAL_FREE",
+  "paid_compute_allowed": false,
+  "incumbent": {
+    "implementation_branch": "tok37/bpe-vocab-sweep-20260825",
+    "implementation_head": "25cf4798202c41dda4b5413052f5efc6ebbbbf2a",
+    "runner": "src/twelve_six/tokenization/tok37_manifested_runner.py",
+    "trainer": "src/twelve_six/tokenization/bpe_sweep.py",
+    "reuse_rule": "Reuse TOK-37 ByteLevel BPE training implementation; do not introduce another BPE trainer."
+  },
+  "purpose_environment": {
+    "profile_id": "linux-x86_64-tokenizer-experiment",
+    "d08_head": "10da7d4c1d2fe5a229659143877ad82d3739bed9",
+    "python": "3.11.16",
+    "tokenizers": "0.23.1",
+    "profile_semantic_sha256": "e368fa4c9fb2fc924482de32d5057837959111e958649663813cb46dddf6b5e4",
+    "overlay_lock_sha256": "11f27613ee7c15585796af39accde71b1e7c2791c24ff98d74c395262ee68544"
+  },
+  "tokenizers": {
+    "control": "canonical_byte_tokenizer",
+    "bpe_requested_vocab_grid": [320, 512, 768, 1024, 1536, 2048],
+    "grid_rationale": "Six logarithmically-spaced small-model-relevant ByteLevel BPE capacities above the byte-alphabet floor, retaining the byte tokenizer as the zero-merge control and extending TOK-37 far enough to expose embedding-tax/compression saturation on a genuinely larger real corpus.",
+    "training_repetitions_per_candidate": 2,
+    "same_exact_training_manifest_required": true,
+    "byte_identical_serialized_artifact_required": true,
+    "strict_round_trip_required": true,
+    "unknown_token_incidence_required": 0
+  },
+  "required_diagnostics": [
+    "requested_vocab",
+    "actual_vocab",
+    "artifact_sha256_a",
+    "artifact_sha256_b",
+    "artifact_byte_identity",
+    "strict_encode_decode_round_trip",
+    "unknown_token_incidence",
+    "ua_fertility_tokens_per_codepoint",
+    "en_fertility_tokens_per_codepoint",
+    "code_fertility_tokens_per_codepoint",
+    "ua_bytes_per_token",
+    "en_bytes_per_token",
+    "code_bytes_per_token",
+    "ua_codepoints_per_token",
+    "en_codepoints_per_token",
+    "code_codepoints_per_token",
+    "long_ukrainian_word_fragmentation",
+    "code_identifier_fragmentation",
+    "code_punctuation_fragmentation"
+  ],
+  "embedding_tax_model_scales": [100000, 500000, 1000000, 10000000],
+  "pareto": {
+    "max_bpe_candidates_for_model_probe": 3,
+    "axes": [
+      "held_out_bytes_per_token_higher_is_better",
+      "worst_domain_fertility_lower_is_better",
+      "embedding_tax_at_100k_lower_is_better"
+    ]
+  },
+  "model_probe": {
+    "parameter_matched": true,
+    "same_model_tokenizer_optimizer_settings_except_vocab_compensation": true,
+    "selection_metric": "held_out_bits_per_byte",
+    "token_cross_entropy_must_not_be_used_as_cross_tokenizer_selection_metric": true,
+    "report_aggregate_bpb": true,
+    "report_per_domain_bpb": ["uk", "en", "code"],
+    "byte_control_must_be_included": true
+  },
+  "fit_exclusions": {
+    "benchmark_or_test_material": "FORBIDDEN",
+    "held_out_material": "FORBIDDEN",
+    "foreign_pretrained_weights": "FORBIDDEN",
+    "instruction_tuning": "FORBIDDEN"
+  },
+  "corpus_preconditions": {
+    "canonical_manifest_required": true,
+    "reconstructable_or_retained_source_bytes_with_hashes_required": true,
+    "training_eligible_provenance_required": true,
+    "nonzero_train_strata": ["uk", "en", "code"],
+    "nonzero_held_out_strata": ["uk", "en", "code"],
+    "train_held_out_content_overlap_must_equal": 0,
+    "real_external_training_data_must_be_true": true,
+    "corpus_identity_must_remain_constant_for_entire_sweep": true
+  },
+  "freeze_policy": {
+    "freeze_allowed": false,
+    "reason": "Corpus V1 is not yet a stable canonical real-source-backed training corpus. A winner may only become a provisional experimental selection after all corpus and environment preconditions pass and model-probe BPB evidence exists.",
+    "retest_on_any_corpus_identity_change": true
+  }
+}
