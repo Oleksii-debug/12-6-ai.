@@ -1,0 +1,40 @@
+{
+  "schema_version": "12-6.scale143-fsdp2-dcp-local-probe.v1",
+  "worker_id": "SCALE-143-ACTIVATION-CHECKPOINTING",
+  "authority": "LOCAL_FREE_PYTORCH_INTEROP_PROBE_NOT_REPO_DCP_PROMOTION_EVIDENCE",
+  "runtime": {
+    "torch": "2.10.0+cpu",
+    "device": "cpu",
+    "backend": "gloo",
+    "world_size": 2,
+    "cuda_available": false
+  },
+  "model": {
+    "architecture_basis": "exact S3 10M architectural reproduction",
+    "parameter_count": 10059840,
+    "sequence_length": 16
+  },
+  "checkpointing": {
+    "policy": "per_block",
+    "implementation": "torch.distributed.algorithms._checkpoint.checkpoint_wrapper / CheckpointImpl.NO_REENTRANT",
+    "application_order": "checkpoint wrappers before FSDP2 fully_shard"
+  },
+  "state_path": {
+    "fsdp": "torch.distributed.fsdp.fully_shard",
+    "dcp": "torch.distributed.checkpoint.save/load",
+    "state_dict": "torch.distributed.checkpoint.state_dict.get_state_dict/set_state_dict",
+    "includes_optimizer": true
+  },
+  "results": {
+    "rank_exitcodes": [0, 0],
+    "step1_loss_rank0": 8.991559028625488,
+    "step1_loss_rank1": 8.991559028625488,
+    "resumed_step2_loss_rank0": 9.0042085647583,
+    "resumed_step2_loss_rank1": 9.0042085647583,
+    "checkpoint_local_shards_exact_after_restore": true,
+    "resumed_step2_loss_exact_vs_uninterrupted": true,
+    "final_local_shards_exact_vs_uninterrupted": true,
+    "status": "PASS"
+  },
+  "claim_boundary": "This proves maintained PyTorch checkpoint wrappers interoperate with FSDP2 and native DCP on LOCAL_FREE CPU. The repository-specific dcp_checkpoint wrapper remains covered by tests/test_activation_checkpointing_fsdp2_dcp.py and locked Python 3.11 CI."
+}
