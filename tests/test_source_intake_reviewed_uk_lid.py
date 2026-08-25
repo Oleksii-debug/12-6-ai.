@@ -38,9 +38,9 @@ def _fixture_registry() -> dict:
 
 def _english_fixture() -> bytes:
     return (
-        "This manual contains stable English language data for the model and "
-        "provides enough words for deterministic source-intake validation."
-    ).encode("utf-8")
+        b"This manual contains stable English language data for the model and "
+        b"provides enough words for deterministic source-intake validation."
+    )
 
 
 def test_reviewed_uk_source_accepts_dominant_cyrillic_with_latin_identifiers(
@@ -55,7 +55,7 @@ def test_reviewed_uk_source_accepts_dominant_cyrillic_with_latin_identifiers(
     ) * 8 + " Amendment identifiers: VIII IX X XI XII XIII XIV XV XVI XVII XVIII XIX XX ABCDEF."
     payloads = {
         "https://example.invalid/uk": DownloadedBytes(
-            ukrainian.encode("utf-8"), "text/plain; charset=utf-8"
+            ukrainian.encode(), "text/plain; charset=utf-8"
         ),
         "https://example.invalid/en": DownloadedBytes(
             _english_fixture(), "text/plain; charset=utf-8"
@@ -95,7 +95,7 @@ def test_balanced_mixed_text_remains_rejected_for_reviewed_uk_source(
     ) * 4
     payloads = {
         "https://example.invalid/uk": DownloadedBytes(
-            (ukrainian + english).encode("utf-8"), "text/plain; charset=utf-8"
+            (ukrainian + english).encode(), "text/plain; charset=utf-8"
         ),
         "https://example.invalid/en": DownloadedBytes(
             _english_fixture(), "text/plain; charset=utf-8"
