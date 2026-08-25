@@ -49,22 +49,10 @@ jobs:
       - name: Install exact locked evaluation environment
         run: |
           set -euo pipefail
-          for lock in \
-            requirements/locks/linux-x86_64/toolchain.lock.txt \
-            requirements/locks/linux-x86_64/runtime.lock.txt \
-            requirements/locks/linux-x86_64/dev.lock.txt
-          do
-            python -m pip install \
-              --disable-pip-version-check \
-              --require-hashes \
-              --no-deps \
-              -r "$lock"
-          done
-          PIP_NO_INDEX=1 python -m pip install \
-            --disable-pip-version-check \
-            --no-deps \
-            --no-build-isolation \
-            -e .
+          python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/dev.lock.txt
+          PIP_NO_INDEX=1 python -m pip install --disable-pip-version-check --no-deps --no-build-isolation -e .
       - run: python tools/check_repo_policy.py
       - run: ruff check src tests tools
       - name: Focused strict collector and fail-closed negatives
