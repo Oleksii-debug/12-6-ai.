@@ -21,6 +21,7 @@ from twelve_six.model_rebalance import (
 ROOT = Path(__file__).resolve().parents[1]
 IDENTITY_PATH = ROOT / "configs/vocabulary/measured_bpe_472_tokenizer_identity.v1.json"
 PROFILES_PATH = ROOT / "configs/vocabulary/model_rebalance_profiles.v1.json"
+CANDIDATES_PATH = ROOT / "configs/vocabulary/model_rebalance_stage_candidates.v1.json"
 
 
 def _measured_bpe() -> TokenizerArtifactIdentity:
@@ -141,6 +142,49 @@ def test_stage_table_covers_required_parameter_targets() -> None:
     assert winners["10M"]["parameter_count"] == 9_997_568
     assert all(winner["head_valid"] for winner in winners.values())
     assert all(winner["embedding_fraction"] <= 0.30 for winner in winners.values())
+
+
+def test_checked_in_stage_candidate_table_matches_live_solver() -> None:
+    generated = build_stage_candidate_table(
+        profiles_path=PROFILES_PATH,
+        tokenizer=_measured_bpe(),
+        repo_root=ROOT,
+    )
+    checked_in = json.loads(CANDIDATES_PATH.read_text(encoding="utf-8"))
+    assert checked_in["tokenizer_artifact_identity_sha256"] == generated[
+        "tokenizer_artifact_identity_sha256"
+    ]
+    assert checked_in["tokenizer_json_sha256"] == _measured_bpe().tokenizer_json_sha256
+    assert checked_in["actual_vocab_size"] == _measured_bpe().vocab_size
+    generated_by_stage = {stage["stage"]: stage for stage in generated["stages"]}
+    for retained_stage in checked_in["stages"]:
+        live = generated_by_stage[retained_stage["stage"]]
+        assert retained_stage["target_parameters"] == live["target_parameters"]
+        assert len(retained_stage["candidates"]) == len(live["candidates"])
+        for retained, current in zip(
+            retained_stage["candidates"], live["candidates"], strict=True
+        ):
+            for field in (
+                "parameter_count",
+                "target_delta",
+                "embedding_parameters",
+                "embedding_fraction",
+                "block_parameters",
+                "block_fraction",
+                "head_valid",
+                "model_spec_identity_sha256",
+                "bound_modelspec_identity_sha256",
+            ):
+                assert retained[field] == current[field]
+            for field in (
+                "d_model",
+                "d_ff",
+                "n_layers",
+                "n_heads",
+                "n_kv_heads",
+                "head_dim",
+            ):
+                assert retained[field] == current["model"][field]
 
 
 def test_representative_real_models_construct_and_train_one_step() -> None:
