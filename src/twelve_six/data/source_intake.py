@@ -26,6 +26,7 @@ from twelve_six.data.external_sources import (
     RightsDecision,
 )
 from twelve_six.data.multilingual_pretraining import (
+    LanguageEvidence,
     MultilingualDataError,
     detect_language,
     strict_normalize_utf8,
@@ -43,6 +44,9 @@ _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _CHARSET_RE = re.compile(
     br"""charset\s*=\s*["']?\s*([A-Za-z0-9._-]+)""", re.IGNORECASE
 )
+_UK_REVIEWED_MIN_CYRILLIC_RATIO = 0.85
+_UK_REVIEWED_MIN_LEXICAL_HITS = 2
+_UK_REVIEWED_MIN_SPECIFIC_LETTERS = 2
 
 
 class SourceIntakeError(ValueError):
@@ -398,6 +402,60 @@ def _record_id(source: CandidateSource, acquisition_url: str) -> str:
     return "ext-" + hashlib.sha256(identity).hexdigest()[:32]
 
 
+def _validated_source_language(text: str, source: CandidateSource) -> LanguageEvidence:
+    """Validate source LID, with one conservative reviewed-source Ukrainian override.
+
+    The global multilingual detector intentionally treats any sizeable Latin+Cyrillic
+    mixture as ``mixed``. Long official Ukrainian legal text can cross the absolute
+    Latin threshold through Roman amendment identifiers while remaining overwhelmingly
+    Ukrainian. Only an already rights-approved, explicitly Ukrainian intake source may
+    reinterpret that result, and only with dominant Cyrillic plus independent Ukrainian
+    lexical and orthographic evidence. Balanced mixed text remains rejected.
+    """
+
+    evidence = detect_language(text, modality="natural", language_hint=None)
+    if evidence.label == source.expected_language:
+        return evidence
+
+    if source.expected_language == "uk" and evidence.label == "mixed":
+        alpha = max(evidence.script.alphabetic_letters, 1)
+        cyrillic_ratio = evidence.script.cyrillic_letters / alpha
+        reviewed_uk = (
+            source.eligibility_status == ELIGIBLE
+            and source.rights.status == RIGHTS_APPROVED
+            and source.rights.allows_model_training is True
+        )
+        strong_uk_evidence = (
+            evidence.ukrainian_lexical_hits >= _UK_REVIEWED_MIN_LEXICAL_HITS
+            and evidence.script.ukrainian_specific_letters
+            >= _UK_REVIEWED_MIN_SPECIFIC_LETTERS
+        )
+        if (
+            reviewed_uk
+            and cyrillic_ratio >= _UK_REVIEWED_MIN_CYRILLIC_RATIO
+            and strong_uk_evidence
+        ):
+            confidence = min(
+                1.0,
+                0.55
+                + 0.35 * cyrillic_ratio
+                + 0.05 * min(evidence.script.ukrainian_specific_letters, 2)
+                + 0.025 * min(evidence.ukrainian_lexical_hits, 2),
+            )
+            return LanguageEvidence(
+                "uk",
+                confidence,
+                evidence.script,
+                evidence.ukrainian_lexical_hits,
+                evidence.english_lexical_hits,
+                "uk-reviewed-source-dominant-cyrillic",
+            )
+
+    raise MultilingualDataError(
+        f"expected {source.expected_language}, detected {evidence.label}"
+    )
+
+
 def run_bounded_intake(
     registry: Mapping[str, Any],
     output_dir: str | Path,
@@ -468,15 +526,7 @@ def run_bounded_intake(
                     extracted, encoding = extract_text(downloaded, source.adapter or "")
                     bounded = extracted[:max_normalized_chars]
                     normalized, _profile = strict_normalize_utf8(bounded)
-                    evidence = detect_language(
-                        normalized,
-                        modality="natural",
-                        language_hint=source.expected_language,
-                    )
-                    if evidence.label != source.expected_language:
-                        raise MultilingualDataError(
-                            f"expected {source.expected_language}, detected {evidence.label}"
-                        )
+                    evidence = _validated_source_language(normalized, source)
                     normalized_sha = _sha256_bytes(normalized.encode("utf-8"))
                     if dedup.seen_or_add(normalized_sha):
                         duplicates += 1
