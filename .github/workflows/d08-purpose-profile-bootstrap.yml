@@ -1,0 +1,105 @@
+name: D08 Purpose Profile Bootstrap
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - d08/purpose-runtime-profiles-20260825
+permissions:
+  contents: read
+jobs:
+  linux-profiles:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Generate Linux overlay and CUDA-role profiles
+        run: python tools/bootstrap_runtime_profiles.py --mode linux --repo-root . --output-root generated
+      - name: Upload generated Linux profiles
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: d08-generated-linux-purpose-profiles
+          path: generated/requirements/profiles
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload Windows bootstrap input
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: d08-windows-bootstrap-input
+          path: |
+            tools/bootstrap_runtime_profiles.py
+            requirements/profiles/specs.json
+            requirements/locks/index.json
+            requirements/locks/linux-x86_64/profile.json
+            requirements/locks/linux-x86_64/runtime.lock.txt
+            requirements/locks/linux-x86_64/toolchain.lock.txt
+          if-no-files-found: error
+          retention-days: 7
+
+  windows-profile:
+    needs: linux-profiles
+    runs-on: windows-2025
+    timeout-minutes: 35
+    steps:
+      - name: Download artifact-only bootstrap input
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: d08-windows-bootstrap-input
+          path: ${{ runner.temp }}\d08-bootstrap
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.9"
+      - name: Generate Windows x86_64 runtime profile without repository checkout
+        shell: pwsh
+        working-directory: ${{ runner.temp }}\d08-bootstrap
+        run: python tools/bootstrap_runtime_profiles.py --mode windows --repo-root . --output-root generated
+      - name: Upload generated Windows profile
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: d08-generated-windows-purpose-profile
+          path: ${{ runner.temp }}\d08-bootstrap\generated\requirements\profiles
+          if-no-files-found: error
+          retention-days: 7
+
+  combined-profile-set:
+    needs:
+      - linux-profiles
+      - windows-profile
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: d08-generated-linux-purpose-profiles
+          path: linux-profiles
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: d08-generated-windows-purpose-profile
+          path: windows-profiles
+      - name: Build exact combined purpose-profile index
+        run: |
+          mkdir -p merged-profiles
+          cp -R linux-profiles/. merged-profiles/
+          cp -R windows-profiles/. merged-profiles/
+          python tools/bootstrap_runtime_profiles.py --mode index --repo-root . --profile-root "$PWD/merged-profiles"
+      - name: Upload complete generated purpose-profile set
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: d08-generated-purpose-profiles
+          path: merged-profiles
+          if-no-files-found: error
+          retention-days: 7
