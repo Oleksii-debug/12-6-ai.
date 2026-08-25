@@ -20,6 +20,15 @@
   "parallelism": "single_gpu",
   "fsdp": false,
   "torch_compile": false,
-  "purpose": "first full S4 systems/data/evaluation run under current tokenizer; quality interpretation must account for byte-token fertility",
+  "data_mode": "production_scaled_corpus_required",
+  "required_training_byte_tokens": 2000027648,
+  "data_quality_claim_allowed": false,
+  "launch_state": "blocked_pending_d03_scaled_corpus",
+  "launch_blockers": [
+    "D03 external source registry currently approves zero training sources",
+    "current integrated S0 near-dedup path fails closed above 5000 documents",
+    "DataTrove/Parquet scale seam exists but has not produced a reviewed frozen corpus"
+  ],
+  "purpose": "serious S4 run specification after D03 scaled-corpus gate; quality interpretation must account for byte-token fertility",
   "compute_authorized": false
 }
