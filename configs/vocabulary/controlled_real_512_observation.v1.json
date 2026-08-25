@@ -1,0 +1,62 @@
+{
+  "algorithms": {
+    "bpe": {
+      "actual_vocab_size": 472,
+      "held_out_tokens": 286,
+      "language_summary": {
+        "code": {"codepoints": 49, "fertility_tokens_per_codepoint": 0.7959183673469388, "probes": 1, "round_trip_exact": true, "tokens": 39, "tokens_per_utf8_byte": 0.7959183673469388, "unknown_tokens": 0, "utf8_bytes": 49},
+        "en": {"codepoints": 143, "fertility_tokens_per_codepoint": 0.5874125874125874, "probes": 1, "round_trip_exact": true, "tokens": 84, "tokens_per_utf8_byte": 0.5874125874125874, "unknown_tokens": 0, "utf8_bytes": 143},
+        "multi": {"codepoints": 38, "fertility_tokens_per_codepoint": 1.5, "probes": 1, "round_trip_exact": true, "tokens": 57, "tokens_per_utf8_byte": 0.8769230769230769, "unknown_tokens": 0, "utf8_bytes": 65},
+        "uk": {"codepoints": 141, "fertility_tokens_per_codepoint": 0.75177304964539, "probes": 1, "round_trip_exact": true, "tokens": 106, "tokens_per_utf8_byte": 0.40304182509505704, "unknown_tokens": 0, "utf8_bytes": 263}
+      },
+      "repeatability_status": "PASS",
+      "s1_tied_vocabulary_parameters": 22656,
+      "strict_round_trip_all": true,
+      "token_reduction_vs_bytes": 0.45,
+      "unknown_tokens": 0
+    },
+    "unigram": {
+      "actual_vocab_size": 497,
+      "held_out_tokens": 284,
+      "language_summary": {
+        "code": {"codepoints": 49, "fertility_tokens_per_codepoint": 0.7959183673469388, "probes": 1, "round_trip_exact": true, "tokens": 39, "tokens_per_utf8_byte": 0.7959183673469388, "unknown_tokens": 0, "utf8_bytes": 49},
+        "en": {"codepoints": 143, "fertility_tokens_per_codepoint": 0.5944055944055944, "probes": 1, "round_trip_exact": true, "tokens": 85, "tokens_per_utf8_byte": 0.5944055944055944, "unknown_tokens": 0, "utf8_bytes": 143},
+        "multi": {"codepoints": 38, "fertility_tokens_per_codepoint": 1.4473684210526316, "probes": 1, "round_trip_exact": true, "tokens": 55, "tokens_per_utf8_byte": 0.8461538461538461, "unknown_tokens": 0, "utf8_bytes": 65},
+        "uk": {"codepoints": 141, "fertility_tokens_per_codepoint": 0.7446808510638298, "probes": 1, "round_trip_exact": true, "tokens": 105, "tokens_per_utf8_byte": 0.39923954372623577, "unknown_tokens": 0, "utf8_bytes": 263}
+      },
+      "repeatability_status": "FAIL",
+      "s1_tied_vocabulary_parameters": 23856,
+      "strict_round_trip_all": true,
+      "token_reduction_vs_bytes": 0.45384615384615384,
+      "unknown_tokens": 0
+    }
+  },
+  "byte_baseline_tokens": 520,
+  "dataset": {
+    "dataset_id": "s0-tiny-controlled-v1",
+    "dataset_identity_sha256": "bab60119d49e93303c972b77900fcb5553817f754cbc5d9a58019228cfa0ca89",
+    "dataset_manifest_sha256": "b085a7ab56510575a11a80824fcff3a95a17f237d46d1be820e59d1289f220c2",
+    "external_sources_training_approved": false,
+    "representative_s1_corpus": false,
+    "train_path": "data/s0/packaged/train.jsonl",
+    "train_records": 10,
+    "train_sha256": "61d24b7138df56527d201cea405d11c9f607684b4a9593dfa20c599cc2ee6998",
+    "train_validation_record_overlap": [],
+    "validation_path": "data/s0/packaged/validation.jsonl",
+    "validation_records": 2,
+    "validation_sha256": "57f18a846dcca75955a82612382d4635ba9583965aa6628e77626cd2a3eb19c5"
+  },
+  "decision": {"reason": "at least one maintained-library algorithm produced different exact artifact identity across identical repeated builds; tokenizer freeze is blocked even before representative S1 corpus and model-quality comparisons", "status": "NO_FREEZE_REPEATABILITY_BLOCKED", "winner": null},
+  "requested_vocab_size": 512,
+  "schema": "12-6.vocabulary-controlled-observation.v1",
+  "source": {
+    "artifact_digest_sha256": "e36adc1170f615e6de71a09b4fb45a957b0c207e11282a87c9026435fbb3c880",
+    "artifact_id": 9556900421,
+    "report_evidence_sha256": "3307daec835e96a63fd5a7d14543de3d9f0781ec3f7d4d0cc98d992bf0f8bae6",
+    "repository": "Oleksii-debug/12-6-ai.",
+    "source_sha": "3527bf50d5d6cd7d4cbf9e477863430a31873baa",
+    "workflow_run_id": 32831382339
+  },
+  "status": "MEASURED_CONTROLLED_MECHANICS_NOT_TOKENIZER_FREEZE",
+  "truth_boundary": {"audit_pass_claimed": false, "candidate_or_stable_claimed": false, "canonical_s0_tokenizer_unchanged": true, "external_sources_training_approved": false, "foreign_pretrained_weights_used": false, "model_quality_claimed": false, "paid_compute_used": false, "representative_corpus_claimed": false, "s1_tokenizer_frozen": false}
+}
