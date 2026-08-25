@@ -12,7 +12,7 @@ At the observed D06 PR #28 head `914973502ab92a925a5cc29d72e4b3cce0e81c80`, the 
 
 The current D03 S0 corpus has two locally available held-out validation documents in `data/s0/packaged/validation.jsonl`. Their source is the project-authored controlled S0 fixture according to `data/s0/source_registry.json`, so they are admitted only for local contamination checking. No conclusion about external-dataset licensing is made. The D06 live pre-integration report records no real hashed S0 generation probe; DATA-31 therefore invents no probe or benchmark identity.
 
-The current S0 fixture also contains one registered cross-language semantic overlap: training document `project-authored-s0-fixture-v1::doc-001` and held-out Ukrainian document `project-authored-s0-fixture-v1::doc-007` express the same small-language-model/next-symbol validation proposition with different lexical surfaces. That candidate document is explicitly rejected from the publication candidate rather than being treated as a MinHash success.
+The current S0 fixture contains two registered cross-language semantic overlaps that lexical MinHash must not be credited with finding: training document `project-authored-s0-fixture-v1::doc-001` corresponds semantically to held-out Ukrainian document `project-authored-s0-fixture-v1::doc-007`, and training Ukrainian document `project-authored-s0-fixture-v1::doc-011` corresponds semantically to held-out English document `project-authored-s0-fixture-v1::doc-005`. Both candidate documents are explicitly rejected from the publication candidate.
 
 ## Exact index and decisions
 
