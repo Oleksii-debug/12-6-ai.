@@ -1,4 +1,4 @@
-name: RUNTIME-25 vLLM CPU Import Config
+name: RUNTIME-25/98 vLLM CPU Learned Import Config
 
 on:
   pull_request:
@@ -10,18 +10,32 @@ on:
       - "src/twelve_six/inference/parity.py"
       - "src/twelve_six/checkpoint/**"
       - "tools/build_vllm_s0_smoke_fixture.py"
+      - "tools/prepare_vllm_learned_checkpoint.py"
       - "tools/validate_vllm_native_llama.py"
+      - "tools/validate_vllm_learned_parity.py"
       - "tests/test_vllm_native_llama.py"
+      - "tests/test_vllm_learned_runtime.py"
       - "requirements/locks/transformers-linux-x86_64/**"
   workflow_dispatch:
 
 permissions:
+  actions: read
   contents: read
+
+env:
+  RUNTIME98_SOURCE_ARTIFACT_ID: "9569471346"
+  RUNTIME98_SOURCE_ARTIFACT_NAME: "learn03-real-500k-evidence"
+  RUNTIME98_SOURCE_ARTIFACT_DIGEST: "sha256:a73c2cb4ae28748455aeed457ecb6d4f41ad4de7fd50d7924d8c55be96abf831"
+  RUNTIME98_SOURCE_HEAD_SHA: "d2a9d2a2acb2ad899a8b6ee59b193751c4a81b8e"
+  RUNTIME98_CHECKPOINT_ID: "4d73bff00e44d8d42d015b2e2bf57f91bd66cbe89d559ab2223ae85a0c0ab494"
+  RUNTIME98_MODEL_SPEC_SHA256: "208ac8ca113388e76f280d0154cae815785bee7705546f4d854d9447b9dd1f4a"
+  RUNTIME98_TOKENIZER_CONFIG_SHA256: "b04055c1061dd641dcab7cb9d62a931f09b8d1a070140a926ceb4e91d73ca8e1"
+  RUNTIME98_TOKENIZER_VOCAB_SHA256: "905ed40bb42cc4d550e228ff5f24158d504b38e8ed5974dfa3077bd5867ad571"
 
 jobs:
   vllm-cpu-import-config:
     runs-on: ubuntu-24.04
-    timeout-minutes: 40
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -40,9 +54,9 @@ jobs:
           expected="${{ github.event.pull_request.head.sha || github.sha }}"
           actual="$(git rev-parse HEAD)"
           test "$actual" = "$expected"
-          printf 'RUNTIME25_SOURCE_SHA=%s\n' "$actual"
+          printf 'RUNTIME98_SOURCE_SHA=%s\n' "$actual"
 
-      - name: Install vLLM 0.27.1 CPU release
+      - name: Install latest stable vLLM CPU release used by incumbent
         shell: bash
         run: |
           set -euo pipefail
@@ -56,7 +70,7 @@ jobs:
           printf '%s  %s\n' \
             '36f0e7b2031233ff09e521716723b0e05ab62054c9a9a05d873af43052140f33' \
             "$wheel" | sha256sum --check --strict
-          sha256sum "$wheel" | tee runtime25-vllm-wheel.sha256
+          sha256sum "$wheel" | tee runtime98-vllm-wheel.sha256
           python -m pip install "$wheel" \
             --extra-index-url https://download.pytorch.org/whl/cpu
           python -m pip install -e . --no-deps
@@ -89,51 +103,130 @@ jobs:
               name: metadata.version(name)
               for name in ("vllm", "torch", "transformers", "safetensors")
           }
-          # The official vLLM CPU release uses a PEP 440 local version suffix.
           assert versions["vllm"] == "0.27.1+cpu", versions
           assert versions["torch"] == "2.13.0+cpu", versions
-          # D08 purpose-runtime incumbent #177 binds Transformers interop to 5.15.1.
           assert versions["transformers"] == "5.15.1", versions
           assert versions["safetensors"] == "0.8.0", versions
-          with open("runtime25-installed-versions.json", "w", encoding="utf-8") as handle:
+          with open("runtime98-installed-versions.json", "w", encoding="utf-8") as handle:
               json.dump(versions, handle, sort_keys=True, indent=2)
               handle.write("\n")
           print(json.dumps(versions, sort_keys=True))
           PY
 
-      - name: Run vLLM-independent adapter regressions
+      - name: Run incumbent regressions and learned-evidence tests
         shell: bash
         run: |
           set -euo pipefail
-          python -m pytest -q tests/test_vllm_native_llama.py
+          python -m pytest -q \
+            tests/test_vllm_native_llama.py \
+            tests/test_vllm_learned_runtime.py
+          python -m py_compile \
+            tools/prepare_vllm_learned_checkpoint.py \
+            tools/validate_vllm_learned_parity.py
 
-      - name: Build real random-init 12-6 export and vLLM Llama payload
+      - name: Download and bind retained LEARN03 learned checkpoint artifact
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          python tools/build_vllm_s0_smoke_fixture.py \
-            --output-root artifacts/runtime25-vllm-cpu
+          mkdir -p artifacts/runtime98-source
+          gh api \
+            "repos/${GITHUB_REPOSITORY}/actions/artifacts/${RUNTIME98_SOURCE_ARTIFACT_ID}" \
+            > artifacts/runtime98-source/source-artifact.json
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
 
-      - name: Execute actual vLLM import, registry and ModelConfig probe
+          metadata = json.loads(
+              Path("artifacts/runtime98-source/source-artifact.json").read_text(encoding="utf-8")
+          )
+          assert str(metadata["id"]) == os.environ["RUNTIME98_SOURCE_ARTIFACT_ID"]
+          assert metadata["name"] == os.environ["RUNTIME98_SOURCE_ARTIFACT_NAME"]
+          assert metadata["digest"] == os.environ["RUNTIME98_SOURCE_ARTIFACT_DIGEST"]
+          assert metadata["expired"] is False
+          run = metadata["workflow_run"]
+          assert run["head_sha"] == os.environ["RUNTIME98_SOURCE_HEAD_SHA"]
+          PY
+          curl --fail --location --retry 3 \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${RUNTIME98_SOURCE_ARTIFACT_ID}/zip" \
+            --output artifacts/runtime98-source/source-artifact.zip
+          printf '%s  %s\n' \
+            "${RUNTIME98_SOURCE_ARTIFACT_DIGEST#sha256:}" \
+            artifacts/runtime98-source/source-artifact.zip \
+            | sha256sum --check --strict
+          mkdir -p artifacts/runtime98-source/unpacked
+          unzip -q artifacts/runtime98-source/source-artifact.zip \
+            -d artifacts/runtime98-source/unpacked
+          test -f \
+            artifacts/runtime98-source/unpacked/learn03-checkpoints/seed-1337/tokens-65536/manifest.json
+
+      - name: Convert learned checkpoint through verified D05 and standard-Llama export
         shell: bash
         run: |
           set -euo pipefail
-          # Package metadata above proves the exact 0.27.1+cpu wheel. The vLLM
-          # runtime module intentionally exposes the public release version 0.27.1.
+          python tools/prepare_vllm_learned_checkpoint.py \
+            --checkpoint artifacts/runtime98-source/unpacked/learn03-checkpoints/seed-1337/tokens-65536 \
+            --output-root artifacts/runtime98-vllm-learned \
+            --expected-checkpoint-id "$RUNTIME98_CHECKPOINT_ID" \
+            --expected-model-spec-sha256 "$RUNTIME98_MODEL_SPEC_SHA256" \
+            --expected-tokenizer-config-sha256 "$RUNTIME98_TOKENIZER_CONFIG_SHA256" \
+            --expected-tokenizer-vocab-sha256 "$RUNTIME98_TOKENIZER_VOCAB_SHA256" \
+            --source-repository "$GITHUB_REPOSITORY" \
+            --source-artifact-id "$RUNTIME98_SOURCE_ARTIFACT_ID" \
+            --source-artifact-name "$RUNTIME98_SOURCE_ARTIFACT_NAME" \
+            --source-artifact-digest "$RUNTIME98_SOURCE_ARTIFACT_DIGEST" \
+            --source-artifact-head-sha "$RUNTIME98_SOURCE_HEAD_SHA"
+
+      - name: Execute actual vLLM import registry and ModelConfig probe on learned bytes
+        shell: bash
+        run: |
+          set -euo pipefail
           python tools/validate_vllm_native_llama.py probe \
-            --model-dir artifacts/runtime25-vllm-cpu/vllm-model \
+            --model-dir artifacts/runtime98-vllm-learned/vllm-model \
             --expected-vllm-version 0.27.1 \
-            --output artifacts/runtime25-vllm-cpu/vllm-import-config.json
+            --output artifacts/runtime98-vllm-learned/vllm-import-config.json
 
-      - name: Upload vLLM CPU probe evidence
+      - name: Verify launch-ready learned evidence is self-consistent
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path("artifacts/runtime98-vllm-learned")
+          prepared = json.loads((root / "prepared.json").read_text(encoding="utf-8"))
+          assert prepared["learned_checkpoint"]["checkpoint_id"] == os.environ["RUNTIME98_CHECKPOINT_ID"]
+          assert prepared["learned_checkpoint"]["step"] == 261
+          assert prepared["learned_checkpoint"]["tokens_seen"] == 65772
+          assert prepared["learned_checkpoint"]["parameter_count"] == 467808
+          assert prepared["learned_checkpoint"]["model_spec"]["head_dim"] == 16
+          assert prepared["tokenizer"]["owner"] == "12-6_CANONICAL_OUTSIDE_VLLM"
+          assert prepared["tokenizer"]["chat_template_used"] is False
+          assert prepared["standard_llama_export"]["qk_rope_basis_conversion"] == "INCUMBENT_D07_EXACT"
+          assert prepared["pretrained_foreign_weights_used"] is False
+          assert "validate_vllm_learned_parity.py" in prepared["gpu_parity_command"]
+          probe = json.loads((root / "vllm-import-config.json").read_text(encoding="utf-8"))
+          assert probe["vllm_version"] == "0.27.1"
+          assert probe["llama_registered"] is True
+          assert probe["architecture"] == "LlamaForCausalLM"
+          assert probe["max_model_len"] == 256
+          assert probe["skip_tokenizer_init"] is True
+          PY
+
+      - name: Upload learned vLLM CPU launch-ready evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: runtime25-vllm-cpu-import-config
+          name: runtime98-vllm-learned-cpu-ready
           path: |
-            artifacts/runtime25-vllm-cpu/fixture.json
-            artifacts/runtime25-vllm-cpu/vllm-model/12-6-runtime-provenance.json
-            artifacts/runtime25-vllm-cpu/vllm-import-config.json
-            runtime25-installed-versions.json
-            runtime25-vllm-wheel.sha256
+            artifacts/runtime98-vllm-learned/**
+            artifacts/runtime98-source/source-artifact.json
+            runtime98-installed-versions.json
+            runtime98-vllm-wheel.sha256
           if-no-files-found: error
           retention-days: 30
