@@ -28,13 +28,10 @@ from twelve_six.model import InitSpec, ModelSpec, TwelveSixDecoder
 from twelve_six.packing import TextRecord, batch_examples, collate_rows, iter_packed_examples
 from twelve_six.tokenization import ByteTokenizer
 
+from . import s0_evidence_contract as s0_contract
 from .config import TrainerConfig
 from .loss import causal_lm_loss
-from .s0_evidence_contract import (
-    TOKENIZER_CONFIG_SHA256,
-    TOKENIZER_VOCAB_SHA256,
-    validate_locked_environment_evidence,
-)
+from .s0_evidence_contract import TOKENIZER_CONFIG_SHA256, TOKENIZER_VOCAB_SHA256
 from .s1_preflight import REPOSITORY
 from .trainer import Trainer
 
@@ -95,6 +92,77 @@ class SourceGeneralizationError(ValueError):
 def _require(condition: bool, message: str) -> None:
     if not condition:
         raise SourceGeneralizationError(message)
+
+
+def _mapping(value: Any, field: str) -> Mapping[str, Any]:
+    _require(isinstance(value, Mapping), f"{field} block missing")
+    return value
+
+
+def _validate_eval_locked_environment(
+    evidence: Mapping[str, Any], *, source_sha: str
+) -> dict[str, str]:
+    """Bind exact locks/install smoke without inheriting the S0 promotion repo-check gate."""
+    _require(_GIT_SHA.fullmatch(source_sha) is not None, "source SHA must be full lowercase Git SHA")
+    _require(
+        evidence.get("schema_version") == "12-6.locked-environment-evidence.v1",
+        "wrong locked environment schema",
+    )
+    _require(evidence.get("source_sha") == source_sha, "locked environment source SHA mismatch")
+    _require(evidence.get("profile_id") == s0_contract.LOCK_PROFILE_ID, "wrong lock profile")
+
+    python = _mapping(evidence.get("python"), "locked environment python")
+    _require(python.get("version") == s0_contract.PYTHON_VERSION, "locked Python version mismatch")
+
+    lock_index = _mapping(evidence.get("lock_index"), "locked environment index")
+    _require(lock_index.get("path") == s0_contract.LOCK_INDEX_PATH, "lock index path mismatch")
+    _require(
+        lock_index.get("file_sha256") == s0_contract.LOCK_INDEX_FILE_SHA256,
+        "lock index file SHA mismatch",
+    )
+    _require(
+        lock_index.get("index_sha256") == s0_contract.LOCK_INDEX_SEMANTIC_SHA256,
+        "lock index semantic SHA mismatch",
+    )
+
+    profile = _mapping(evidence.get("lock_profile"), "lock profile")
+    _require(
+        profile.get("manifest_sha256") == s0_contract.LOCK_PROFILE_MANIFEST_SHA256,
+        "lock profile semantic SHA mismatch",
+    )
+    _require(
+        profile.get("file_sha256") == s0_contract.LOCK_PROFILE_FILE_SHA256,
+        "lock profile file SHA mismatch",
+    )
+
+    verification = _mapping(evidence.get("verification"), "locked environment verification")
+    for key in (
+        "committed_lock_validation",
+        "editable_install_import_cli",
+        "wheel_install_import_cli",
+    ):
+        _require(verification.get(key) == "PASS", f"locked environment {key} is not PASS")
+    _require(
+        verification.get("repo_checks") == "NOT_RUN",
+        "EVAL-137 environment evidence must not claim the inherited S0 repo-check gate ran",
+    )
+
+    claimed_hash = evidence.get("evidence_sha256")
+    _require(isinstance(claimed_hash, str), "locked environment evidence hash missing")
+    unhashed = dict(evidence)
+    unhashed.pop("evidence_sha256", None)
+    raw = json.dumps(unhashed, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()
+    _require(hashlib.sha256(raw).hexdigest() == claimed_hash, "environment evidence hash mismatch")
+    return {
+        "profile_id": s0_contract.LOCK_PROFILE_ID,
+        "python_version": s0_contract.PYTHON_VERSION,
+        "lock_index_file_sha256": s0_contract.LOCK_INDEX_FILE_SHA256,
+        "lock_index_sha256": s0_contract.LOCK_INDEX_SEMANTIC_SHA256,
+        "lock_profile_manifest_sha256": s0_contract.LOCK_PROFILE_MANIFEST_SHA256,
+        "lock_profile_file_sha256": s0_contract.LOCK_PROFILE_FILE_SHA256,
+        "repo_checks": "NOT_RUN",
+        "environment_evidence_sha256": claimed_hash,
+    }
 
 
 def fixed_500k_model_spec() -> ModelSpec:
@@ -670,7 +738,7 @@ def run_source_generalization(
     )
     _require(torch_threads > 0, "torch_threads must be positive")
     root = Path(root).resolve()
-    environment = validate_locked_environment_evidence(
+    environment = _validate_eval_locked_environment(
         locked_environment_evidence,
         source_sha=source_sha,
     )
