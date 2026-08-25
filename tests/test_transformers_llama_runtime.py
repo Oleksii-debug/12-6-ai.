@@ -119,7 +119,7 @@ def test_real_trained_export_executes_in_transformers_with_full_parity(tmp_path:
 
 
 def test_transformers_mapping_is_not_s0_shape_specific() -> None:
-    from transformers import LlamaConfig, LlamaForCausalLM  # noqa: PLC0415
+    from transformers import LlamaConfig, LlamaForCausalLM
 
     spec = ModelSpec(
         schema_version=1,
