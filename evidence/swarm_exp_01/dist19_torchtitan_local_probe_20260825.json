@@ -1,0 +1,41 @@
+{
+  "schema": "12-6.dist19-torchtitan-local-probe.v1",
+  "date": "2026-08-25",
+  "authority": "LOCAL_FREE_CPU_MECHANICS_ONLY_NOT_SCALE_PERFORMANCE",
+  "base_head": "b76fbc616cf7a6df3d0499168fc3678cbe78ce7f",
+  "environment": {
+    "torch": "2.10.0+cpu",
+    "torchtitan_installed": false,
+    "paid_compute": false,
+    "gpu_executed": false,
+    "distributed_initialized_after_probe": false
+  },
+  "canonical_source_reconstruction": {
+    "stage": "S1",
+    "parameter_count": 107856,
+    "model_spec_identity_sha256": "2f0aa97a5d19e98c4e292fd5f1b454ada45ec4d2c7324e14ab7e48af19908ce6",
+    "init_spec_identity_sha256": "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5",
+    "sequence_length": 8,
+    "loss": 6.174101829528809,
+    "scratch_weight_state_changed_after_adamw_step": true,
+    "foreign_weights_loaded": false
+  },
+  "current_model_torchtitan_protocol_markers": {
+    "nested_Config": false,
+    "init_states": false,
+    "parallelize": false
+  },
+  "installed_pytorch_native_capabilities": {
+    "fully_shard": true,
+    "DTensor": true,
+    "parallelize_module": true,
+    "distributed_checkpoint_save": true,
+    "distributed_checkpoint_load": true
+  },
+  "truth_boundary": [
+    "The local execution environment did not contain the repository checkout, so the current S1 model source inspected at the D12 head was reconstructed exactly for the CPU transition probe.",
+    "The committed tools/run_scale_framework_probe.py executes the repository classes directly when run from a checkout.",
+    "TorchTitan could not be executed locally because it is not installed in this environment.",
+    "No GPU, NCCL, multi-process, throughput, convergence, or 100M-scale performance claim is made."
+  ]
+}
