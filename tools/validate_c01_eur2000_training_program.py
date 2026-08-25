@@ -142,12 +142,21 @@ def validate_program(program: dict[str, Any]) -> None:
     _require(observed["s0"]["real_optimized_tokens"] == 10833, "S0 token drift")
     truth = observed["truth_boundary"]
     _require(not truth["gpu_training_throughput_measured"], "fabricated GPU throughput")
+    _require(not truth["selected_main_modelspec_frozen"], "S4 freeze falsely claimed")
     _require(not truth["scale_tokenizer_frozen"], "scale tokenizer incorrectly frozen")
     _require(not truth["scale_corpus_frozen"], "scale corpus incorrectly frozen")
+
+    tokenizer = observed["tokenizer_experiment"]
+    _require(tokenizer["real_experiment_ci_success"], "real tokenizer experiment lost")
+    _require(tokenizer["bytelevel_bpe_actual_vocab_size"] == 472, "BPE evidence drift")
+    _require(tokenizer["bytelevel_bpe_exact_repeat_identity"], "BPE repeatability drift")
+    _require(not tokenizer["unigram_exact_repeat_identity"], "Unigram repeatability overclaim")
+    _require(tokenizer["decision"] == "NO_FREEZE_REPEATABILITY_BLOCKED", "tokenizer freeze drift")
 
     prerequisites = program["launch_prerequisites"]
     ids = [item["id"] for item in prerequisites]
     expected_ids = [
+        "P00_STAGE_MODELSPEC_FREEZE",
         "P01_SCALE_DATA_IDENTITY",
         "P02_SCALE_TOKENIZER_IDENTITY",
         "P03_GPU_RUNTIME_EXACT_LOCK",
@@ -174,6 +183,8 @@ def validate_program(program: dict[str, Any]) -> None:
     _require(smoke["must_checkpoint_reload_and_resume"], "smoke omits resume")
     _require(smoke["must_run_heldout_eval"], "smoke omits held-out evaluation")
     _require(not smoke["quality_claim_allowed"], "systems smoke implies model quality")
+    conditions = program["smoke_and_pilot"]["promotion_to_main_conditions"]
+    _require(any("S4 ModelSpec" in item for item in conditions), "S4 freeze gate missing")
 
     recovery = program["checkpoint_recovery"]
     one = int(recovery["s4_conservative_state_payload_bytes_per_retained_checkpoint"])
