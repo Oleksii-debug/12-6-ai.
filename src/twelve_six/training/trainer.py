@@ -17,6 +17,12 @@ from torch.optim.lr_scheduler import LambdaLR, LRScheduler
 
 from .config import TrainerConfig
 from .loss import causal_lm_loss, causal_pair_loss
+from .precision import (
+    PrecisionRuntime,
+    autocast_dtype,
+    resolve_precision_runtime,
+    validate_master_weight_semantics,
+)
 
 Batch = Mapping[str, Tensor]
 
@@ -149,8 +155,13 @@ class Trainer:
         self.model = model
         self.config = config
         self.device = torch.device(device)
-        self.model.to(self.device)
+        self.precision_runtime: PrecisionRuntime = resolve_precision_runtime(
+            config.precision,
+            self.device,
+        )
+        validate_master_weight_semantics(self.model, self.precision_runtime)
 
+        self.model.to(self.device)
         self._configure_determinism(config)
         self.optimizer = optimizer or build_optimizer(model, config)
         self.scheduler = (
@@ -179,18 +190,18 @@ class Trainer:
         )
 
     def _build_scaler(self):
-        enabled = self.config.precision == "fp16" and self.device.type == "cuda"
-        if self.config.precision == "fp16" and self.device.type != "cuda":
-            raise ValueError("fp16 training requires a CUDA device; use fp32 or bf16 on CPU")
+        enabled = self.precision_runtime.grad_scaler_enabled
         if hasattr(torch, "amp") and hasattr(torch.amp, "GradScaler"):
             return torch.amp.GradScaler("cuda", enabled=enabled)
         return torch.cuda.amp.GradScaler(enabled=enabled)
 
     def _autocast_context(self):
-        if self.config.precision == "fp32":
+        if not self.precision_runtime.autocast_enabled:
             return nullcontext()
-        dtype = torch.bfloat16 if self.config.precision == "bf16" else torch.float16
-        return torch.autocast(device_type=self.device.type, dtype=dtype)
+        return torch.autocast(
+            device_type=self.precision_runtime.device_type,
+            dtype=autocast_dtype(self.precision_runtime),
+        )
 
     def _mark_failed(self, reason: str) -> None:
         if self._failure_reason is None:
