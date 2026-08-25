@@ -133,16 +133,17 @@ class S0TorchBatchedGenerationSession:
         self._logits: list[list[float]]
 
         self._backend._acquire_generation_session()
-        tensor = torch.tensor(
-            rows,
-            dtype=torch.long,
-            device=next(self._model.parameters()).device,
-        )
         try:
+            tensor = torch.tensor(
+                rows,
+                dtype=torch.long,
+                device=next(self._model.parameters()).device,
+            )
             output, self._cache = self._model.prefill_kv_cache(tensor)
             self._logits = output.logits[:, -1].detach().float().cpu().tolist()
-        except (RuntimeError, TypeError, ValueError):
+        except Exception:
             self._backend._release_generation_session()
+            self._closed = True
             raise
 
     @property
