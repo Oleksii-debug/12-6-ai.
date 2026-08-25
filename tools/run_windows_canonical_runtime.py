@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import importlib.metadata as metadata
 import json
 import os
 import platform
@@ -297,7 +296,7 @@ def execute(root: Path, source_sha: str) -> dict[str, Any]:
             "system": platform.system(),
             "machine": platform.machine(),
             "installed_distributions": installed,
-            "torch_distribution_version": metadata.version("torch"),
+            "torch_distribution_version": installed["torch"],
             "torch_runtime": torch_runtime,
             "offline_install": True,
             "pip_no_index": True,
