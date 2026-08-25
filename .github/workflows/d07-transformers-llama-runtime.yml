@@ -47,9 +47,12 @@ jobs:
           print("torch", torch.__version__)
           print("twelve_six", twelve_six.__version__)
           PY
-      - name: Execute actual LlamaForCausalLM parity
+      - name: Execute actual LlamaForCausalLM parity and standard-directory load
         run: |
-          .d07-transformers-locked/bin/python -m pytest -q tests/test_transformers_llama_interop.py tests/test_transformers_llama_runtime_locked.py
+          .d07-transformers-locked/bin/python -m pytest -q \
+            tests/test_transformers_llama_interop.py \
+            tests/test_transformers_llama_runtime_locked.py \
+            tests/test_llama_runtime_export_locked.py
       - name: Record runtime identity
         env:
           SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
@@ -74,6 +77,7 @@ jobs:
               "transformers": transformers.__version__,
               "transformers_overlay_lock_sha256": hashlib.sha256(overlay).hexdigest(),
               "actual_llama_runtime_tests": "PASS",
+              "standard_llama_directory_from_pretrained": "PASS",
               "foreign_pretrained_weights": False,
               "model_downloaded": False,
               "raw_base_only": True,
