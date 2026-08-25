@@ -1,0 +1,89 @@
+{
+  "schema": "12-6.research138.machine-prediction.v1",
+  "authority": "LOCAL_FREE_EMPIRICAL_FIT_NOT_PROMOTION_OR_COMPUTE_AUTHORIZATION",
+  "full_generated_report_sha256": "05c17878b770a1c621101986c4e66c3265967df647e7bc087e43e3752e53162a",
+  "input_payload_sha256": "af831fd461861ab1dc35b9fd8e4347d70071b071216fa36ee8536e5dcc5af66c",
+  "source_provenance": {
+    "research41": {"workflow_run_id": 32860229005, "git_sha": "9ff78ea31c34fd434015d5bc512596ce5dac766a", "artifact_id": 9567991815, "artifact_digest": "sha256:6e65db931f567459d692342eb9d8393087f478168dc34f2bd2cb9f927535df3b", "report_sha256": "c00d8d6330b701bec83a5e7dbe75cd54f54e7d94951a5000f2c3ba74c7c391a5"},
+    "fixed_budget": {"workflow_run_id": 32861403161, "git_sha": "5ac986a323992610124c7988428a52f39c482fc9", "artifact_id": 9569500665, "artifact_digest": "sha256:970b860471a745aa6ccee7bfdeff308b83804a33c557302b950d24c115615abf", "report_sha256": "76f9e354587b2b39a8ae5365bd10f89c5a2b78f44d892e87bee67aa4508da618"},
+    "learn03": {"workflow_run_id": 32861195699, "git_sha": "d2a9d2a2acb2ad899a8b6ee59b193751c4a81b8e", "artifact_id": 9569471346, "artifact_digest": "sha256:a73c2cb4ae28748455aeed457ecb6d4f41ad4de7fd50d7924d8c55be96abf831", "report_sha256": "5cd4a262431d00881751420dd8d3bc9cee8d5b40933e29ae5fbe51343fcb5c00"}
+  },
+  "shared_identity": {
+    "tokenizer_id": "s0-byte-v1",
+    "tokenizer_config_sha256": "b04055c1061dd641dcab7cb9d62a931f09b8d1a070140a926ceb4e91d73ca8e1",
+    "tokenizer_vocab_sha256": "905ed40bb42cc4d550e228ff5f24158d504b38e8ed5974dfa3077bd5867ad571",
+    "corpus_dataset_id": "s0-tiny-controlled-v1",
+    "corpus_dataset_identity_sha256": "bab60119d49e93303c972b77900fcb5553817f754cbc5d9a58019228cfa0ca89",
+    "corpus_manifest_sha256": "b085a7ab56510575a11a80824fcff3a95a17f237d46d1be820e59d1289f220c2",
+    "train_jsonl_sha256": "61d24b7138df56527d201cea405d11c9f607684b4a9593dfa20c599cc2ee6998",
+    "evaluation_jsonl_sha256": "57f18a846dcca75955a82612382d4635ba9583965aa6628e77626cd2a3eb19c5",
+    "context": 256,
+    "packing_id": "research41-byte-stream-cyclic-v1",
+    "init_identity_sha256": "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5",
+    "optimizer_recipe": "adamw-lr3e-4-betas0.9_0.95-wd0-clip1-constant-fp32"
+  },
+  "fit_population": {
+    "rows": 12,
+    "parameter_scales": [95568, 267912, 467808, 1037696],
+    "optimized_token_budgets": [4284, 16632, 65772],
+    "seed": 1337,
+    "selection_rule": "balanced RESEARCH41 core only; fixed-token exact replications deduplicated; fixed-compute and longer two-seed points reserved for stress diagnostics"
+  },
+  "candidate_models": {
+    "linear_log": {"loso_rmse_nats": 0.16450905065133065, "largest_scale_holdout_rmse_nats": 0.1391912586600978, "loso_max_abs_residual_nats": 0.40173911307688126, "extrapolation_admissible": false, "reason": "becomes non-positive on requested target grid"},
+    "log_power": {"loso_rmse_nats": 0.2667296885618765, "largest_scale_holdout_rmse_nats": 0.07342862815812956, "loso_max_abs_residual_nats": 0.5655946333203303, "extrapolation_admissible": true, "coefficients": [1.2204377537331623, -0.11797847077904858, -0.2668976014889022]},
+    "inverse_quarter": {"loso_rmse_nats": 0.229780067724915, "largest_scale_holdout_rmse_nats": 0.0816750064434969, "extrapolation_admissible": false, "reason": "negative fitted asymptotic floor"},
+    "inverse_sqrt": {"loso_rmse_nats": 0.34016060299881945, "largest_scale_holdout_rmse_nats": 0.16359219397872324, "extrapolation_admissible": true},
+    "linear_log_t2": {"loso_rmse_nats": 0.17771444640631495, "largest_scale_holdout_rmse_nats": 0.24330287994440314, "extrapolation_admissible": false},
+    "log_power_t2": {"loso_rmse_nats": 0.19513512304157776, "largest_scale_holdout_rmse_nats": 0.21042026945066714, "extrapolation_admissible": true},
+    "compute_log": {"loso_rmse_nats": 0.6614960157469905, "largest_scale_holdout_rmse_nats": 0.6015559306925747, "extrapolation_admissible": true}
+  },
+  "model_selection": {
+    "best_average_loso_interpolator": "linear_log",
+    "selected_extrapolator": "log_power",
+    "selection_reason": "lowest largest-parameter-scale holdout RMSE among extrapolation-admissible forms; average LOSO winner is reported separately"
+  },
+  "stress_summary": {
+    "beyond_core_max_abs_residual_nats": 1.2249793734506396,
+    "max_seed_delta_nats": 0.1539686930061568,
+    "interpretation": "long-horizon structural miss dominates observed seed noise"
+  },
+  "prediction_target": {
+    "parameters": 10000640,
+    "conditional_context": 256,
+    "conditional_tokenizer": "s0-byte-v1",
+    "target_is_existing_s3_geometry": false,
+    "applicability_to_current_s3_gqa_context1024": false
+  },
+  "predictions": [
+    {"optimized_tokens": 16632, "compute_proxy": 997983866880, "central_bpb": 3.278916409128985, "stress_band_bpb": [1.6877638341996015, 4.870068984058369], "central_loss_nats": 2.272771664279496, "coverage_guarantee": false, "structural_penalty_nats": 0.0},
+    {"optimized_tokens": 65772, "compute_proxy": 3946572564480, "central_bpb": 2.2717822516125614, "stress_band_bpb": [0.6806296766831779, 3.862934826541945], "central_loss_nats": 1.5746794625513711, "coverage_guarantee": false, "structural_penalty_nats": 0.0},
+    {"optimized_tokens": 131292, "compute_proxy": 7878024161280, "central_bpb": 1.8890557948563973, "stress_band_bpb": [0.0, 4.246715006838971], "central_loss_nats": 1.3093936981251382, "coverage_guarantee": false, "structural_penalty_nats": 0.25218310224591134},
+    {"optimized_tokens": 262332, "compute_proxy": 15740927354880, "central_bpb": 1.5704058160937926, "stress_band_bpb": [0.0, 5.734754449737762], "central_loss_nats": 1.0885223637603523, "coverage_guarantee": false, "structural_penalty_nats": 1.2249793734506396}
+  ],
+  "interval_method": "held-out-scale maximum residual widened by log-distance outside the observed N/T box and by observed same-identity long-horizon structural miss; labeled stress bands, not calibrated coverage intervals",
+  "next_experiment": {
+    "ideal_parameters": 3221432,
+    "geometry_requirement": "nearest feasible fixed-control MHA/context-256 continuation",
+    "seed": 1337,
+    "heldout_checkpoints": [16632, 65772, 131292],
+    "final_optimized_tokens": 131292,
+    "compute_proxy": 2537689500864,
+    "purpose": "halve the log-parameter extrapolation gap and test token-curvature onset before a 10M jump"
+  },
+  "truth_boundary": {
+    "leave_one_scale_out_used": true,
+    "prediction_intervals_are_formal_coverage_intervals": false,
+    "ten_million_parameter_prediction_is_extrapolation": true,
+    "actual_current_10m_geometry_is_same_family": false,
+    "repeated_fixture": true,
+    "train_record_count": 10,
+    "validation_record_count": 2,
+    "unique_train_stream_bytes": 1930,
+    "broad_corpus_claim": false,
+    "universal_scaling_law_claim": false,
+    "fit_called_chinchilla_or_universal_law": false,
+    "paid_compute": false,
+    "no_test_source_tuning": true
+  }
+}
