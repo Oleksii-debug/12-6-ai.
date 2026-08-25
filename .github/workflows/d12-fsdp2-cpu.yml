@@ -1,0 +1,43 @@
+name: D12 FSDP2 CPU Evidence
+on:
+  pull_request:
+    paths:
+      - "src/twelve_six/distributed/**"
+      - "tests/test_fsdp2_model_execution.py"
+      - "tools/run_fsdp2_model_execution.py"
+      - ".github/workflows/d12-fsdp2-cpu.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  local-free-fsdp2:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Locked checks plus real two-rank FSDP2 execution
+        env:
+          TWELVE_SIX_FSDP2_EVIDENCE_OUT: ${{ github.workspace }}/fsdp2-local-cpu-evidence.json
+          TWELVE_SIX_FSDP2_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: >-
+          python tools/verify_locked_environment.py
+          --profile linux-x86_64
+          --source-sha "${{ github.event.pull_request.head.sha || github.sha }}"
+          --evidence-out locked-environment-fsdp2-linux-x86_64.json
+          --run-repo-checks
+      - name: Upload FSDP2 engineering evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: d12-fsdp2-local-free-evidence
+          path: |
+            fsdp2-local-cpu-evidence.json
+            locked-environment-fsdp2-linux-x86_64.json
+          if-no-files-found: error
+          retention-days: 30
