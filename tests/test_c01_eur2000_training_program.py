@@ -22,6 +22,7 @@ def test_program_is_valid_planning_but_not_launch_ready() -> None:
     program = _program()
     MODULE.validate_program(program)
     blockers = MODULE.launch_blockers(program)
+    assert "P00_STAGE_MODELSPEC_FREEZE" in blockers
     assert "P01_SCALE_DATA_IDENTITY" in blockers
     assert "P02_SCALE_TOKENIZER_IDENTITY" in blockers
     assert "P04_SAME_GEOMETRY_GPU_SMOKE" in blockers
@@ -47,6 +48,13 @@ def test_validator_rejects_budget_overallocation() -> None:
     program = copy.deepcopy(_program())
     program["budget"]["main_training_cap_eur"] += 1.0
     with pytest.raises(MODULE.ProgramValidationError, match="allocation must equal"):
+        MODULE.validate_program(program)
+
+
+def test_validator_rejects_tokenizer_freeze_overclaim() -> None:
+    program = copy.deepcopy(_program())
+    program["observed_state"]["tokenizer_experiment"]["decision"] = "BPE_FROZEN"
+    with pytest.raises(MODULE.ProgramValidationError, match="tokenizer freeze drift"):
         MODULE.validate_program(program)
 
 
