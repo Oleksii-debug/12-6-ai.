@@ -1,52 +1,41 @@
-"""Native vLLM Llama execution adapter for verified 12-6 exports.
+"""Native vLLM execution adapter over the incumbent standard-Llama export.
 
-This module deliberately does not implement a vLLM model class. Representable
-12-6 ModelSpecs are converted into the standard Llama weight/config contract so
-vLLM can use its maintained Llama implementation, scheduler, attention kernels,
-and KV cache. The canonical 12-6 tokenizer remains authoritative.
+RUNTIME-25 deliberately owns no second tensor converter or vLLM model class. The
+incumbent D07 runtime export materializes exact standard Llama bytes; this module
+verifies that payload, binds it back to a 12-6 ModelSpec, and lets vLLM use its
+maintained Llama implementation, scheduler, attention kernels and KV cache.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
-import shutil
-import tempfile
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-from safetensors.torch import load as load_safetensors_bytes
-from safetensors.torch import save as save_safetensors_bytes
-
-from twelve_six.checkpoint import verify_hf_directory
 from twelve_six.model import ModelSpec
 from twelve_six.tokenization import ByteTokenizer
 
 from .first_party import load_first_party_backend
+from .llama_runtime_export import (
+    RUNTIME_CONFIG_NAME,
+    RUNTIME_PROVENANCE_NAME,
+    materialize_standard_llama_directory,
+    verify_standard_llama_directory,
+)
 from .parity import compare_backends
 from .sampling import greedy_token
-from .transformers_llama import (
-    build_llama_interop_plan,
-    convert_state_dict_to_llama,
-    llama_config_dict,
-)
+from .transformers_llama import llama_config_dict
 
-MATERIALIZATION_SCHEMA = "12-6.vllm-native-llama-materialization.v1"
 EVIDENCE_SCHEMA = "12-6.vllm-native-llama-runtime-parity.v1"
-PROVENANCE_NAME = "12-6-vllm-runtime.json"
-CONFIG_NAME = "config.json"
-WEIGHTS_NAME = "model.safetensors"
-SOURCE_MANIFEST_NAME = "12-6-checkpoint-manifest.json"
 TARGET_ARCHITECTURE = "LlamaForCausalLM"
 TARGET_MODEL_TYPE = "llama"
 
-_TARGET_INVENTORY = frozenset({CONFIG_NAME, WEIGHTS_NAME, PROVENANCE_NAME})
-
 
 class VllmRuntimeError(ValueError):
-    """Raised when vLLM materialization or runtime evidence is invalid."""
+    """Raised when standard-Llama/vLLM runtime evidence is invalid."""
 
 
 def _canonical_json_bytes(value: object) -> bytes:
@@ -63,14 +52,6 @@ def _sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def _sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for block in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(block)
-    return digest.hexdigest()
-
-
 def _load_json_object(path: Path) -> dict[str, Any]:
     if path.is_symlink() or not path.is_file():
         raise VllmRuntimeError(f"required JSON is not a regular file: {path.name}")
@@ -83,193 +64,114 @@ def _load_json_object(path: Path) -> dict[str, Any]:
     return value
 
 
-def _source_spec(source_manifest: Mapping[str, Any]) -> ModelSpec:
-    identity = source_manifest.get("identity")
-    if not isinstance(identity, Mapping):
-        raise VllmRuntimeError("source checkpoint identity is missing")
-    raw_spec = identity.get("model_spec")
-    if not isinstance(raw_spec, Mapping):
-        raise VllmRuntimeError("source checkpoint ModelSpec is missing")
-    try:
-        spec = ModelSpec.from_dict(dict(raw_spec))
-    except (TypeError, ValueError) as exc:
-        raise VllmRuntimeError(f"source checkpoint ModelSpec is invalid: {exc}") from exc
-    if spec.identity_sha256() != identity.get("model_spec_hash"):
-        raise VllmRuntimeError("source checkpoint ModelSpec hash mismatch")
-    if spec.parameter_count() != identity.get("parameter_count"):
-        raise VllmRuntimeError("source checkpoint parameter count mismatch")
+def _required_int(config: Mapping[str, Any], name: str) -> int:
+    value = config.get(name)
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise VllmRuntimeError(f"standard Llama config requires integer {name}")
+    return value
+
+
+def _required_float(config: Mapping[str, Any], name: str) -> float:
+    value = config.get(name)
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        raise VllmRuntimeError(f"standard Llama config requires numeric {name}")
+    return float(value)
+
+
+def _spec_from_standard_llama(
+    config: Mapping[str, Any],
+    provenance: Mapping[str, Any],
+) -> ModelSpec:
+    if config.get("model_type") != TARGET_MODEL_TYPE:
+        raise VllmRuntimeError("standard Llama config model_type mismatch")
+    if config.get("architectures") != [TARGET_ARCHITECTURE]:
+        raise VllmRuntimeError("standard Llama config architecture mismatch")
+
+    rope_parameters = config.get("rope_parameters")
+    if not isinstance(rope_parameters, Mapping):
+        raise VllmRuntimeError("standard Llama config is missing rope_parameters")
+    if rope_parameters.get("rope_type") != "default":
+        raise VllmRuntimeError("vLLM adapter accepts only default RoPE")
+    rope_theta = rope_parameters.get("rope_theta")
+    if not isinstance(rope_theta, (int, float)) or isinstance(rope_theta, bool):
+        raise VllmRuntimeError("standard Llama config has invalid rope_theta")
+
+    spec = ModelSpec(
+        schema_version=1,
+        vocab_size=_required_int(config, "vocab_size"),
+        max_seq_len=_required_int(config, "max_position_embeddings"),
+        d_model=_required_int(config, "hidden_size"),
+        n_layers=_required_int(config, "num_hidden_layers"),
+        n_heads=_required_int(config, "num_attention_heads"),
+        n_kv_heads=_required_int(config, "num_key_value_heads"),
+        head_dim=_required_int(config, "head_dim"),
+        d_ff=_required_int(config, "intermediate_size"),
+        norm_eps=_required_float(config, "rms_norm_eps"),
+        rope_theta=float(rope_theta),
+        rope_rotary_dim=_required_int(config, "head_dim"),
+        attention_bias=bool(config.get("attention_bias", False)),
+        mlp_bias=bool(config.get("mlp_bias", False)),
+        attention_dropout=_required_float(config, "attention_dropout"),
+        final_norm=True,
+        tie_word_embeddings=bool(config.get("tie_word_embeddings", False)),
+        lm_head_bias=False,
+    )
+    if dict(config) != llama_config_dict(spec):
+        raise VllmRuntimeError(
+            "standard Llama config cannot be reconstructed as the exact D07 ModelSpec mapping"
+        )
+    if spec.identity_sha256() != provenance.get("model_spec_sha256"):
+        raise VllmRuntimeError("standard Llama provenance ModelSpec hash mismatch")
+    if spec.parameter_count() != provenance.get("parameter_count"):
+        raise VllmRuntimeError("standard Llama provenance parameter count mismatch")
     return spec
 
 
-def _verified_source_snapshot(
-    export_dir: str | Path,
-) -> tuple[dict[str, Any], dict[str, Any], bytes, ModelSpec]:
-    export = Path(export_dir)
-    attestation = verify_hf_directory(export)
-
-    source_manifest_path = export / SOURCE_MANIFEST_NAME
-    weights_path = export / WEIGHTS_NAME
-    source_manifest_bytes = source_manifest_path.read_bytes()
-    weights_bytes = weights_path.read_bytes()
-
-    expected_manifest_sha = attestation.get("source_manifest_sha256")
-    if _sha256_bytes(source_manifest_bytes) != expected_manifest_sha:
-        raise VllmRuntimeError("consumed source manifest changed after export verification")
-    expected_weights_sha = attestation.get("model_safetensors_sha256")
-    if _sha256_bytes(weights_bytes) != expected_weights_sha:
-        raise VllmRuntimeError("consumed source weights changed after export verification")
-
-    try:
-        source_manifest = json.loads(source_manifest_bytes.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise VllmRuntimeError("verified source manifest cannot be decoded") from exc
-    if not isinstance(source_manifest, dict):
-        raise VllmRuntimeError("verified source manifest root must be an object")
-    if source_manifest.get("checkpoint_id") != attestation.get("checkpoint_id"):
-        raise VllmRuntimeError("source manifest checkpoint_id does not match export")
-
-    return attestation, source_manifest, weights_bytes, _source_spec(source_manifest)
-
-
 def materialize_vllm_llama_directory(
-    export_dir: str | Path,
+    source_export_dir: str | Path,
     output_dir: str | Path,
 ) -> Path:
-    """Convert a verified 12-6 HF-style export into standard Llama runtime bytes.
+    """Delegate runtime-byte ownership to the incumbent D07 Llama exporter."""
 
-    The input is the exact transactional D05 export. No pretrained or external
-    model weights are consulted. Q/K rows are converted only through the D07
-    Transformers Llama bridge; all other supported tensors are copied.
-    """
+    return materialize_standard_llama_directory(source_export_dir, output_dir)
 
-    source = Path(export_dir)
-    output = Path(output_dir)
-    if output.exists():
-        raise FileExistsError(f"vLLM runtime directory already exists: {output}")
 
-    attestation, source_manifest, source_weights_bytes, spec = _verified_source_snapshot(source)
+def verify_vllm_llama_directory(model_dir: str | Path) -> dict[str, Any]:
+    """Verify incumbent runtime bytes and expose the vLLM execution binding."""
+
+    root = Path(model_dir)
     try:
-        source_state = load_safetensors_bytes(source_weights_bytes)
-    except Exception as exc:
-        raise VllmRuntimeError("verified source model.safetensors cannot be decoded") from exc
+        runtime_provenance = verify_standard_llama_directory(root)
+    except (OSError, ValueError) as exc:
+        raise VllmRuntimeError(f"invalid standard Llama runtime export: {exc}") from exc
+    config = _load_json_object(root / RUNTIME_CONFIG_NAME)
+    spec = _spec_from_standard_llama(config, runtime_provenance)
 
-    plan = build_llama_interop_plan(spec)
-    target_state = convert_state_dict_to_llama(spec, source_state)
-    target_weights_bytes = save_safetensors_bytes(target_state)
-    target_config = llama_config_dict(spec)
-    target_config_bytes = _canonical_json_bytes(target_config) + b"\n"
-
-    identity = source_manifest["identity"]
-    provenance: dict[str, Any] = {
-        "schema": MATERIALIZATION_SCHEMA,
-        "checkpoint_id": attestation["checkpoint_id"],
-        "source_export": {
-            "source_manifest_sha256": attestation["source_manifest_sha256"],
-            "source_weights_sha256": attestation["model_safetensors_sha256"],
-            "source_config_sha256": attestation["config_sha256"],
-        },
+    return {
+        "schema": "12-6.vllm-native-llama-binding.v1",
+        "checkpoint_id": runtime_provenance["source_checkpoint_id"],
         "source_model_spec": spec.to_dict(),
         "model_spec_sha256": spec.identity_sha256(),
         "parameter_count": spec.parameter_count(),
-        "tokenizer_config_sha256": identity.get("tokenizer_hash"),
-        "tokenizer_vocab_sha256": identity.get("tokenizer_vocab_hash"),
-        "interop_plan_sha256": plan.identity_sha256(),
+        "source_export": {
+            "source_manifest_sha256": runtime_provenance["source_manifest_sha256"],
+            "source_weights_sha256": runtime_provenance["source_weights_sha256"],
+            "source_config_sha256": runtime_provenance["source_config_sha256"],
+        },
         "target": {
             "architecture": TARGET_ARCHITECTURE,
             "model_type": TARGET_MODEL_TYPE,
-            "config_sha256": _sha256_bytes(target_config_bytes),
-            "weights_sha256": _sha256_bytes(target_weights_bytes),
+            "config_sha256": runtime_provenance["runtime_config_sha256"],
+            "weights_sha256": runtime_provenance["runtime_weights_sha256"],
         },
+        "runtime_provenance_file": RUNTIME_PROVENANCE_NAME,
         "execution_contract": {
             "vllm_implementation": "BUILTIN_LLAMA",
             "skip_tokenizer_init": True,
             "prompt_input": "TOKEN_IDS",
-            "tokenizer_owner": "12-6.s0-byte-v1",
-            "bos_token_id": None,
-            "eos_token_id": None,
-            "pad_token_id": None,
+            "trust_remote_code": False,
         },
     }
-    provenance_bytes = _canonical_json_bytes(provenance) + b"\n"
-
-    output.parent.mkdir(parents=True, exist_ok=True)
-    staging = Path(
-        tempfile.mkdtemp(prefix=f".{output.name}.staging-", dir=str(output.parent))
-    )
-    try:
-        (staging / CONFIG_NAME).write_bytes(target_config_bytes)
-        (staging / WEIGHTS_NAME).write_bytes(target_weights_bytes)
-        (staging / PROVENANCE_NAME).write_bytes(provenance_bytes)
-        verify_vllm_llama_directory(staging)
-        if output.exists():
-            raise FileExistsError(f"vLLM runtime directory already exists: {output}")
-        staging.rename(output)
-    except Exception:
-        shutil.rmtree(staging, ignore_errors=True)
-        raise
-    return output
-
-
-def verify_vllm_llama_directory(model_dir: str | Path) -> dict[str, Any]:
-    """Verify the exact standard-Llama materialization and return provenance."""
-
-    root = Path(model_dir)
-    if root.is_symlink() or not root.is_dir():
-        raise VllmRuntimeError("vLLM model directory must be a regular directory")
-    inventory = {entry.name for entry in root.iterdir()}
-    if inventory != _TARGET_INVENTORY:
-        raise VllmRuntimeError(
-            f"vLLM model directory inventory mismatch: expected={sorted(_TARGET_INVENTORY)} "
-            f"actual={sorted(inventory)}"
-        )
-    for name in _TARGET_INVENTORY:
-        path = root / name
-        if path.is_symlink() or not path.is_file():
-            raise VllmRuntimeError(f"vLLM runtime payload is not a regular file: {name}")
-
-    provenance = _load_json_object(root / PROVENANCE_NAME)
-    if provenance.get("schema") != MATERIALIZATION_SCHEMA:
-        raise VllmRuntimeError("unsupported vLLM materialization schema")
-
-    target = provenance.get("target")
-    if not isinstance(target, Mapping):
-        raise VllmRuntimeError("vLLM materialization target metadata is missing")
-    if target.get("architecture") != TARGET_ARCHITECTURE:
-        raise VllmRuntimeError("unexpected vLLM target architecture")
-    if target.get("model_type") != TARGET_MODEL_TYPE:
-        raise VllmRuntimeError("unexpected vLLM target model_type")
-    if target.get("config_sha256") != _sha256_file(root / CONFIG_NAME):
-        raise VllmRuntimeError("vLLM config hash mismatch")
-    if target.get("weights_sha256") != _sha256_file(root / WEIGHTS_NAME):
-        raise VllmRuntimeError("vLLM weights hash mismatch")
-
-    raw_spec = provenance.get("source_model_spec")
-    if not isinstance(raw_spec, Mapping):
-        raise VllmRuntimeError("source ModelSpec missing from vLLM provenance")
-    try:
-        spec = ModelSpec.from_dict(dict(raw_spec))
-    except (TypeError, ValueError) as exc:
-        raise VllmRuntimeError(f"invalid source ModelSpec in vLLM provenance: {exc}") from exc
-    if spec.identity_sha256() != provenance.get("model_spec_sha256"):
-        raise VllmRuntimeError("vLLM provenance ModelSpec hash mismatch")
-    if spec.parameter_count() != provenance.get("parameter_count"):
-        raise VllmRuntimeError("vLLM provenance parameter count mismatch")
-
-    config = _load_json_object(root / CONFIG_NAME)
-    if config != llama_config_dict(spec):
-        raise VllmRuntimeError("vLLM config does not exactly match D07 Llama bridge")
-
-    weights_bytes = (root / WEIGHTS_NAME).read_bytes()
-    try:
-        state = load_safetensors_bytes(weights_bytes)
-    except Exception as exc:
-        raise VllmRuntimeError("vLLM model.safetensors cannot be decoded") from exc
-    expected_targets = {
-        row["target"] for row in build_llama_interop_plan(spec).tensor_map
-    }
-    if set(state) != expected_targets:
-        raise VllmRuntimeError("vLLM Llama tensor inventory mismatch")
-    return provenance
 
 
 @dataclass(frozen=True, slots=True)
@@ -290,14 +192,10 @@ def probe_vllm_import_and_config(
     *,
     expected_vllm_version: str | None = None,
 ) -> VllmImportProbe:
-    """Import vLLM, prove built-in Llama registration, and construct ModelConfig.
+    """Import vLLM, prove built-in Llama registration, and construct ModelConfig."""
 
-    This is a real installed-runtime probe but intentionally does not initialize
-    a device or claim logits/generation parity.
-    """
-
-    provenance = verify_vllm_llama_directory(model_dir)
-    spec = ModelSpec.from_dict(dict(provenance["source_model_spec"]))
+    binding = verify_vllm_llama_directory(model_dir)
+    spec = ModelSpec.from_dict(dict(binding["source_model_spec"]))
 
     try:
         import vllm
@@ -355,25 +253,29 @@ class VllmNativeLlamaBackend:
         self,
         model_dir: str | Path,
         *,
+        tokenizer: Any | None = None,
         dtype: str = "float32",
         tensor_parallel_size: int = 1,
         gpu_memory_utilization: float = 0.5,
         enforce_eager: bool = True,
     ) -> None:
-        provenance = verify_vllm_llama_directory(model_dir)
-        self.spec = ModelSpec.from_dict(dict(provenance["source_model_spec"]))
-        self.tokenizer = ByteTokenizer()
+        binding = verify_vllm_llama_directory(model_dir)
+        self.spec = ModelSpec.from_dict(dict(binding["source_model_spec"]))
         self.max_context_tokens = self.spec.max_seq_len
-        if self.tokenizer.vocab_size != self.spec.vocab_size:
+
+        if tokenizer is None:
+            if self.spec.vocab_size != 256:
+                raise VllmRuntimeError(
+                    "non-byte-vocabulary vLLM execution requires the canonical tokenizer explicitly"
+                )
+            tokenizer = ByteTokenizer()
+        if getattr(tokenizer, "vocab_size", None) != self.spec.vocab_size:
             raise VllmRuntimeError("canonical tokenizer vocabulary does not match ModelSpec")
-        if self.tokenizer.identity.config_sha256 != provenance.get(
-            "tokenizer_config_sha256"
+        if not callable(getattr(tokenizer, "encode", None)) or not callable(
+            getattr(tokenizer, "decode", None)
         ):
-            raise VllmRuntimeError("canonical tokenizer config identity mismatch")
-        if self.tokenizer.identity.vocab_sha256 != provenance.get(
-            "tokenizer_vocab_sha256"
-        ):
-            raise VllmRuntimeError("canonical tokenizer vocabulary identity mismatch")
+            raise VllmRuntimeError("canonical tokenizer must provide encode/decode")
+        self.tokenizer = tokenizer
 
         try:
             import vllm
@@ -401,7 +303,7 @@ class VllmNativeLlamaBackend:
         )
 
     def encode(self, text: str) -> list[int]:
-        return self.tokenizer.encode(text)
+        return list(self.tokenizer.encode(text))
 
     def decode(self, token_ids: Sequence[int]) -> str:
         return self.tokenizer.decode(token_ids, errors="replace")
@@ -457,7 +359,7 @@ class VllmNativeLlamaBackend:
         expected = greedy_token(logits)
         if sampled != expected:
             raise VllmRuntimeError(
-                f"vLLM greedy sample disagrees with returned raw logits: "
+                "vLLM greedy sample disagrees with returned raw logits: "
                 f"sampled={sampled} argmax={expected}"
             )
         return logits
@@ -475,7 +377,7 @@ def collect_vllm_runtime_parity(
     tensor_parallel_size: int = 1,
     gpu_memory_utilization: float = 0.5,
 ) -> dict[str, Any]:
-    """Execute first-party-vs-vLLM logits/token/decode parity."""
+    """Execute first-party-vs-vLLM raw-logit/token/decode/context parity."""
 
     if not prompts:
         raise ValueError("at least one parity prompt is required")
@@ -487,12 +389,16 @@ def collect_vllm_runtime_parity(
             "runtime parity requires one prompt of exactly max_context_tokens - 1 "
             "tokens to prove near-limit context behavior"
         )
-    provenance = verify_vllm_llama_directory(model_dir)
-    if provenance.get("checkpoint_id") != reference.manifest.get("checkpoint_id"):
-        raise VllmRuntimeError("vLLM materialization checkpoint_id does not match oracle")
+
+    binding = verify_vllm_llama_directory(model_dir)
+    if binding.get("checkpoint_id") != reference.manifest.get("checkpoint_id"):
+        raise VllmRuntimeError("standard Llama export checkpoint_id does not match oracle")
+    if binding.get("model_spec_sha256") != reference.manifest["identity"]["model_spec_hash"]:
+        raise VllmRuntimeError("standard Llama export ModelSpec does not match oracle")
 
     candidate = VllmNativeLlamaBackend(
         model_dir,
+        tokenizer=reference.tokenizer,
         dtype=dtype,
         tensor_parallel_size=tensor_parallel_size,
         gpu_memory_utilization=gpu_memory_utilization,
@@ -511,9 +417,11 @@ def collect_vllm_runtime_parity(
         "checkpoint_id": reference.manifest["checkpoint_id"],
         "source_git_sha": reference.manifest["identity"]["git_sha"],
         "model_spec_sha256": reference.manifest["identity"]["model_spec_hash"],
-        "vllm_model_config_sha256": provenance["target"]["config_sha256"],
-        "vllm_model_weights_sha256": provenance["target"]["weights_sha256"],
-        "interop_plan_sha256": provenance["interop_plan_sha256"],
+        "tokenizer_config_sha256": reference.tokenizer.identity.config_sha256,
+        "tokenizer_vocab_sha256": reference.tokenizer.identity.vocab_sha256,
+        "vllm_model_config_sha256": binding["target"]["config_sha256"],
+        "vllm_model_weights_sha256": binding["target"]["weights_sha256"],
+        "source_export": binding["source_export"],
         "vllm_version": candidate.vllm_version,
         "dtype": dtype,
         "tensor_parallel_size": tensor_parallel_size,
@@ -528,8 +436,8 @@ def collect_vllm_runtime_parity(
         },
         "parity": report.to_dict(),
         "tolerance_basis": (
-            "Q/K basis conversion is exact; nonzero runtime tolerance covers "
-            "different maintained attention/matmul kernel reduction order."
+            "The incumbent Q/K basis conversion is exact; nonzero runtime tolerance "
+            "covers different maintained attention/matmul kernel reduction order."
         ),
     }
     payload["evidence_sha256"] = _sha256_bytes(_canonical_json_bytes(payload))
