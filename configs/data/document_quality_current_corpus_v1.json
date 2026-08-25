@@ -1,0 +1,15 @@
+{
+  "schema_version": "12-6.document-quality-current-corpus-view.v1",
+  "authority": "DATA25_CORPUS_V01_PROJECT_AUTHORED_MODALITY_REPRESENTATIVE",
+  "data25_head_sha": "8af17afa7baf3d75c2328caf8b08af2400a95e09",
+  "builder_config_path": "configs/data/corpus_v01.json",
+  "corpus_manifest_path": "data/corpus/v0.1/manifest.json",
+  "corpus_identity_sha256": "422f545da93526ceba2c0ff738e0b9deac65f35bfb31d87d2aab068cda091fc8",
+  "expected_documents": 46207,
+  "expected_byte_tokens": 21411248,
+  "expected_shards": 36,
+  "external_training_eligible_sources": 0,
+  "contains_project_authored_data": true,
+  "contains_external_training_data": false,
+  "truth_boundary": "Representative across intended UK/EN/code modalities for local 100K-1M small-model mechanics. It is project-authored only at this identity and is not evidence of representative external real-world source diversity."
+}

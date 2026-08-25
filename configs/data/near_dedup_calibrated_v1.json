@@ -1,0 +1,46 @@
+{
+  "schema_version": "12-6.near-dedup-config.v1",
+  "worker_id": "DATA-30-NEAR-DEDUP",
+  "incumbent": {
+    "engine": "DataTrove MinHash",
+    "datatrove_version": "0.10.0",
+    "data12_pr": 170,
+    "data12_exact_green_sha": "3cf64203caec61a8424bb8638b599c208ca758f5",
+    "data10_composition_sha": "077205ef2b1662a5029bc77b8fc762078cabeb17"
+  },
+  "calibration": {
+    "path": "data/calibration/near_dedup_v1.json",
+    "minimum_recall": 0.75,
+    "maximum_false_removal_risk": 0.25,
+    "candidate_policies": {
+      "natural": [
+        {"name": "natural_conservative_9g_12x9", "n_grams": 9, "num_buckets": 12, "hashes_per_bucket": 9, "lsh_similarity_at_50pct_detection": 0.726135991779095},
+        {"name": "natural_incumbent_9g_14x8", "n_grams": 9, "num_buckets": 14, "hashes_per_bucket": 8, "lsh_similarity_at_50pct_detection": 0.6846976524441254},
+        {"name": "natural_recall_9g_16x7", "n_grams": 9, "num_buckets": 16, "hashes_per_bucket": 7, "lsh_similarity_at_50pct_detection": 0.6366556643943512},
+        {"name": "natural_calibrated_5g_20x5", "n_grams": 5, "num_buckets": 20, "hashes_per_bucket": 5, "lsh_similarity_at_50pct_detection": 0.5086959618338943}
+      ],
+      "code": [
+        {"name": "code_strict_5g_10x10", "n_grams": 5, "num_buckets": 10, "hashes_per_bucket": 10, "lsh_similarity_at_50pct_detection": 0.7631081465177699},
+        {"name": "code_middle_5g_12x9", "n_grams": 5, "num_buckets": 12, "hashes_per_bucket": 9, "lsh_similarity_at_50pct_detection": 0.726135991779095},
+        {"name": "code_incumbent_band_5g_14x8", "n_grams": 5, "num_buckets": 14, "hashes_per_bucket": 8, "lsh_similarity_at_50pct_detection": 0.6846976524441254},
+        {"name": "code_calibrated_4g_16x6", "n_grams": 4, "num_buckets": 16, "hashes_per_bucket": 6, "lsh_similarity_at_50pct_detection": 0.5905029097317561}
+      ]
+    },
+    "preferred_if_safe": {
+      "natural": "natural_calibrated_5g_20x5",
+      "code": "code_calibrated_4g_16x6"
+    }
+  },
+  "current_committed_corpus": {
+    "path": "data/synthetic/data10/uk-en-code-train.txt",
+    "authority": "PROJECT_AUTHORED_SYNTHETIC_ONLY",
+    "representative_external_corpus": false,
+    "real_corpus_completion_allowed": false
+  },
+  "truth_boundary": {
+    "lexical_minhash_only": true,
+    "semantic_deduplication_claimed": false,
+    "model_training_required": false,
+    "fail_closed_if_no_real_training_eligible_corpus": true
+  }
+}
