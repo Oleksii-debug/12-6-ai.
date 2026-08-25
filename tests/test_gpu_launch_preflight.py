@@ -6,7 +6,6 @@ from pathlib import Path
 from twelve_six import load_stage_config
 from twelve_six.training import gpu_launch_preflight as preflight
 
-
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / "configs/compute/gpu_launch_preflight.current.json"
 
