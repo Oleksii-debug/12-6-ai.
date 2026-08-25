@@ -1,0 +1,11 @@
+{
+  "candidates": [
+    {"id":"mha-h2-d24","n_heads":2,"head_dim":24,"model_identity_sha256":"8336a9d35df4d53e633eeac1cd66e8c77a4874157ae29204bbbf53e141e0a754"},
+    {"id":"mha-h3-d16","n_heads":3,"head_dim":16,"model_identity_sha256":"4c128d03df1f6d8037e1fb4d4ee211a1b4278e40154ad48167475b27a45a25e2"},
+    {"id":"control-mha-h4-d12","n_heads":4,"head_dim":12,"model_identity_sha256":"2f0aa97a5d19e98c4e292fd5f1b454ada45ec4d2c7324e14ab7e48af19908ce6"},
+    {"id":"mha-h6-d8","n_heads":6,"head_dim":8,"model_identity_sha256":"2c8e14492ef1086f090edd1314814648d6d1e335a474f99bf9ef85dd8aea15de"},
+    {"id":"mha-h8-d6","n_heads":8,"head_dim":6,"model_identity_sha256":"7be887123e6bd54c67cf559a99d407891933d6cbe1383cf4e42ead6aeb1ec685"}
+  ],
+  "control_id":"control-mha-h4-d12",
+  "schema":"12-6.model13-head-count-100k-plan.v1"
+}

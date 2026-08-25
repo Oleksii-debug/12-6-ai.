@@ -1,0 +1,63 @@
+name: MODEL-13 Head Count 100K
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  local-free-head-count:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Prove exact source checkout
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Verify repository lock identity
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: >-
+          python tools/verify_locked_environment.py
+          --profile linux-x86_64
+          --source-sha "$SOURCE_SHA"
+          --evidence-out model13-locked-environment.json
+      - name: Create exact LOCAL_FREE environment
+        run: |
+          python -m venv .model13
+          .model13/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .model13/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          .model13/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/dev.lock.txt
+          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .model13/bin/python -m pip install --no-deps --no-build-isolation -e .
+      - name: Run geometry tests
+        run: .model13/bin/python -m pytest -q tests/test_head_count_100k.py
+      - name: Execute real MHA head-count training
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          .model13/bin/python -m twelve_six.training.head_count_100k \
+            --repo-root . \
+            --source-sha "$SOURCE_SHA" \
+            --steps 10 \
+            --sequence-length 128 \
+            --seed 20260825 \
+            --output model13-head-count-100k.json
+          cat model13-head-count-100k.json
+      - name: Upload machine-readable evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: model13-head-count-100k-evidence
+          path: |
+            model13-locked-environment.json
+            model13-head-count-100k.json
+          if-no-files-found: error
+          retention-days: 30
