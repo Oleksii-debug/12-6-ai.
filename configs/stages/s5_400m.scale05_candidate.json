@@ -1,20 +1,20 @@
 {
   "stage": "S5_400M_SCALE05_CANDIDATE",
   "target_parameters": 400000000,
-  "expected_parameters": 401273856,
+  "expected_parameters": 400421888,
   "canonical_base": "random_init",
-  "expected_model_identity_sha256": "ef44d5eac5bdf90a39e644076d43decd4e20d5d9eeb11f93af9985776f124310",
+  "expected_model_identity_sha256": "9e6e59bbd7bece16a367fe2b4649079b5a2b6c92b44a99d7db892cc8db3684d2",
   "expected_init_identity_sha256": "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5",
   "model": {
     "schema_version": 1,
-    "vocab_size": 32768,
+    "vocab_size": 256,
     "max_seq_len": 4096,
     "d_model": 1024,
     "n_layers": 30,
     "n_heads": 16,
     "n_kv_heads": 4,
     "head_dim": 64,
-    "d_ff": 3136,
+    "d_ff": 3488,
     "activation": "swiglu",
     "norm_kind": "rmsnorm",
     "norm_placement": "pre",
@@ -39,14 +39,14 @@
     "status": "engineering_candidate_not_frozen",
     "promotion_allowed": false,
     "compute_authorized": false,
-    "tokenizer_requirement": "versioned tokenizer artifact; 32768 is a geometry budget pending fertility/coverage evidence",
+    "tokenizer_requirement": "current executable mechanics bind s0-byte-v1 vocab 256; production 400M training requires an explicit keep-byte-v1 versus future-tokenizer decision with fertility and bits-per-byte evidence",
     "preferred_precision": "bf16_autocast_fp32_persistent_state",
     "training_context": 4096,
-    "attention_backend": "pytorch_sdpa_flash_required_on_cuda",
+    "attention_backend": "pytorch_sdpa_native_gqa_required_before_paid_400m",
     "activation_checkpointing": "blockwise_non_reentrant",
     "optimizer": "adamw_fp32_moments",
     "distributed_strategy": "single_gpu_first_or_fsdp2_full_shard",
-    "checkpoint_strategy": "dcp_sharded_for_fsdp2; durable committed-step cadence",
-    "serving": "first_party_kv_cache_or_interop; preserve_4_kv_heads"
+    "checkpoint_strategy": "consume_d18_dcp_sharded_successor_for_fsdp2; durable committed-step cadence",
+    "serving": "consume_d07_kv_cache_successor; preserve_4_kv_heads"
   }
 }
