@@ -1,0 +1,164 @@
+name: MILESTONE-100 First Learned Base
+
+on:
+  pull_request:
+    branches:
+      - integration/s1-transition-20260825
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  first-learned-base:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      PYTHONPATH: src
+      OMP_NUM_THREADS: "2"
+      MKL_NUM_THREADS: "2"
+    steps:
+      - name: Checkout exact milestone head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up exact Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact source
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+
+      - name: Install hash-locked CPU runtime
+        run: |
+          set -euo pipefail
+          python -m venv .m100
+          .m100/bin/python -m pip install \
+            --disable-pip-version-check --no-deps --require-hashes \
+            -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .m100/bin/python -m pip install \
+            --disable-pip-version-check --no-deps --require-hashes \
+            -r requirements/locks/linux-x86_64/runtime.lock.txt
+
+      - name: Compile and test selected incumbents
+        run: |
+          set -euo pipefail
+          .m100/bin/python -m compileall -q src/twelve_six
+          .m100/bin/python -m pytest -q \
+            tests/test_data25_corpus_v01.py \
+            tests/test_milestone100_first_learned.py
+
+      - name: Execute phase 1 from random initialization
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          .m100/bin/python -m twelve_six.milestone100_first_learned \
+            phase1 \
+            --repo-root . \
+            --source-sha "$EXPECTED_SOURCE_SHA" \
+            --output-dir milestone100-evidence
+
+      - name: Execute fresh-process resume to step 1000
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          .m100/bin/python -m twelve_six.milestone100_first_learned \
+            resume \
+            --repo-root . \
+            --source-sha "$EXPECTED_SOURCE_SHA" \
+            --output-dir milestone100-evidence
+
+      - name: Validate retained machine report
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          .m100/bin/python -m twelve_six.milestone100_first_learned \
+            validate milestone100-evidence/report.json \
+            --expected-source-sha "$EXPECTED_SOURCE_SHA"
+          .m100/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+          r = json.loads(Path("milestone100-evidence/report.json").read_text(encoding="utf-8"))
+          print(json.dumps({
+              "source_sha": r["source"]["git_sha"],
+              "parameter_count": r["model"]["parameter_count"],
+              "optimized_tokens": r["training"]["optimized_tokens"],
+              "first100_mean_loss": r["training"]["first100_mean_loss"],
+              "last100_mean_loss": r["training"]["last100_mean_loss"],
+              "initial_bpb": r["evaluation"]["initial_bits_per_byte"],
+              "final_bpb": r["evaluation"]["final_bits_per_byte"],
+              "relative_heldout_loss_improvement": r["evaluation"]["relative_heldout_loss_improvement"],
+              "fresh_process_resume": r["runtime"]["fresh_process_resume"],
+              "retained_checkpoint_id": r["checkpoints"]["retained_checkpoint_id"],
+              "report_sha256": r["report_sha256"],
+              "real_representative_corpus_gate": r["success"]["real_representative_corpus_gate"],
+              "overall": r["success"]["overall_requested_milestone"],
+          }, ensure_ascii=False, indent=2, sort_keys=True))
+          PY
+
+      - name: Publish compact exact-head evidence to PR
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          .m100/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+          r = json.loads(Path("milestone100-evidence/report.json").read_text(encoding="utf-8"))
+          f = r["runtime"]["fresh_process_resume"]
+          lines = [
+              "### MILESTONE-100 exact-head execution evidence",
+              "",
+              f"- source SHA: `{r['source']['git_sha']}`",
+              f"- model: `{r['model']['parameter_count']}` parameters, random-init Base",
+              f"- optimized tokens: `{r['training']['optimized_tokens']}`",
+              f"- train loss mean first100 → last100: `{r['training']['first100_mean_loss']:.6f}` → `{r['training']['last100_mean_loss']:.6f}`",
+              f"- held-out BPB init → final: `{r['evaluation']['initial_bits_per_byte']:.6f}` → `{r['evaluation']['final_bits_per_byte']:.6f}`",
+              f"- held-out relative loss improvement: `{r['evaluation']['relative_heldout_loss_improvement']:.6%}`",
+              f"- fresh-process resume: step `{f['checkpoint_loaded_step']}` → first resumed step `{f['first_resumed_optimizer_step']}` (`PASS`)",
+              f"- evaluation non-mutation: `{r['evaluation']['evaluation_non_mutation']}`",
+              f"- retained checkpoint id: `{r['checkpoints']['retained_checkpoint_id']}`",
+              f"- report SHA-256: `{r['report_sha256']}`",
+              f"- real representative corpus gate: `{'PASS' if r['success']['real_representative_corpus_gate'] else 'FAIL'}`",
+              f"- overall requested milestone: `{r['success']['overall_requested_milestone']}`",
+              "",
+              "Truth boundary: DATA-25 is versioned UK/EN/code project-authored corpus evidence with zero external training-eligible sources. The learned artifact may pass while the requested real-world representative-corpus gate remains fail-closed.",
+          ]
+          Path("milestone100-evidence/pr-comment.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+          PY
+          gh pr comment "$PR_NUMBER" --repo "$GH_REPO" --body-file milestone100-evidence/pr-comment.md
+
+      - name: Upload retained learned artifact evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: milestone100-first-learned-base
+          path: |
+            milestone100-evidence/report.json
+            milestone100-evidence/phase1.json
+            milestone100-evidence/corpus-manifest.json
+            milestone100-evidence/run-manifest.json
+            milestone100-evidence/machine-manifest-phase1.json
+            milestone100-evidence/machine-manifest-resume.json
+            milestone100-evidence/train-curve.jsonl
+            milestone100-evidence/checkpoint-0000/
+            milestone100-evidence/checkpoint-0250/
+            milestone100-evidence/checkpoint-0500/
+            milestone100-evidence/checkpoint-0750/
+            milestone100-evidence/checkpoint-1000/
+          if-no-files-found: error
+          retention-days: 30
