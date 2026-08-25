@@ -365,15 +365,30 @@ class CausalSelfAttention(nn.Module):
         repeats = self.n_heads // self.n_kv_heads
         return k.repeat_interleave(repeats, dim=1), v.repeat_interleave(repeats, dim=1)
 
+    def _native_gqa_enabled_for_device(self, device: torch.device) -> bool:
+        """Use native GQA only on the backend documented by PyTorch to support it."""
+        return self.n_kv_heads != self.n_heads and device.type == "cuda"
+
     def _attend(self, q: Tensor, k: Tensor, v: Tensor, *, is_causal: bool) -> Tensor:
-        expanded_k, expanded_v = self._expand_kv(k, v)
-        attended = F.scaled_dot_product_attention(
-            q,
-            expanded_k,
-            expanded_v,
-            dropout_p=self.dropout if self.training else 0.0,
-            is_causal=is_causal,
-        )
+        dropout_p = self.dropout if self.training else 0.0
+        if self._native_gqa_enabled_for_device(q.device):
+            attended = F.scaled_dot_product_attention(
+                q,
+                k,
+                v,
+                dropout_p=dropout_p,
+                is_causal=is_causal,
+                enable_gqa=True,
+            )
+        else:
+            expanded_k, expanded_v = self._expand_kv(k, v)
+            attended = F.scaled_dot_product_attention(
+                q,
+                expanded_k,
+                expanded_v,
+                dropout_p=dropout_p,
+                is_causal=is_causal,
+            )
         batch = q.shape[0]
         seq_len = q.shape[2]
         attended = attended.transpose(1, 2).contiguous().view(batch, seq_len, self.q_dim)
