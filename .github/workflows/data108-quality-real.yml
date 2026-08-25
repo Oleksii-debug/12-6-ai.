@@ -1,0 +1,88 @@
+name: DATA-108 Real Corpus Quality Calibration
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - data108/quality-real-calibration-20260826
+    paths:
+      - ".github/workflows/data108-quality-real.yml"
+      - "src/twelve_six/data/document_quality.py"
+      - "src/twelve_six/data/document_quality_real.py"
+      - "data/quality/calibration_real_sources_v1.jsonl"
+      - "data/quality/holdout_real_sources_v1.jsonl"
+      - "tests/test_document_quality.py"
+      - "tests/test_document_quality_real.py"
+      - "tools/run_document_quality.py"
+      - "tools/run_document_quality_real.py"
+      - "configs/data/document_quality_current_corpus_v1.json"
+      - "configs/data/corpus_v01.json"
+      - "src/twelve_six/data/corpus_v01.py"
+  pull_request:
+    paths:
+      - ".github/workflows/data108-quality-real.yml"
+      - "src/twelve_six/data/document_quality.py"
+      - "src/twelve_six/data/document_quality_real.py"
+      - "data/quality/calibration_real_sources_v1.jsonl"
+      - "data/quality/holdout_real_sources_v1.jsonl"
+      - "tests/test_document_quality.py"
+      - "tests/test_document_quality_real.py"
+      - "tools/run_document_quality.py"
+      - "tools/run_document_quality_real.py"
+      - "configs/data/document_quality_current_corpus_v1.json"
+      - "configs/data/corpus_v01.json"
+      - "src/twelve_six/data/corpus_v01.py"
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  calibrate-real-quality:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+          check-latest: false
+
+      - name: Install test-only dependency
+        run: python -m pip install --disable-pip-version-check pytest==9.1.1
+
+      - name: Fetch exact terminal-success DATA-21-22 artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          curl --fail --silent --show-error --location \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header "Accept: application/vnd.github+json" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/9582408431/zip" \
+            --output data21-22-external-source-intake.zip
+          echo "3b4ef6c0d42725f7b660935f70ef1f8b41b90eb9d5d73c83455401a434233122  data21-22-external-source-intake.zip" | sha256sum --check --strict
+
+      - name: Run DATA-32 and DATA-108 focused tests
+        env:
+          PYTHONPATH: src
+        run: python -m pytest -q tests/test_document_quality.py tests/test_document_quality_real.py
+
+      - name: Execute calibration holdout and complete-corpus effects
+        env:
+          PYTHONPATH: src
+        run: |
+          python tools/run_document_quality_real.py \
+            --data21-artifact data21-22-external-source-intake.zip \
+            --output-dir reports/d03/data108
+
+      - name: Upload DATA-108 evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: data108-real-quality-evidence
+          path: reports/d03/data108/*.json
+          if-no-files-found: error
+          retention-days: 30
