@@ -1,9 +1,9 @@
 """EVAL-137 source-family generalization study on the bounded real corpus.
 
 This experiment reuses DATA-21/22 rights-gated intake, the RESEARCH41 ~500K
-geometry, the byte tokenizer, and the incumbent Trainer.  Each source family has
+geometry, the byte tokenizer, and the incumbent Trainer. Each source family has
 one fixed evaluation partition that is never optimized in any arm, so mixed and
-leave-family-out models are compared on identical records.  Test-family results
+leave-family-out models are compared on identical records. Test-family results
 never select or retune a training policy.
 """
 
@@ -63,7 +63,7 @@ HOLDOUT_ARM_BY_FAMILY = {
 DATA105_STATUS = "NOT_FOUND_IN_LIVE_REPOSITORY_AS_OF_2026-08-26"
 _GIT_SHA = re.compile(r"^[0-9a-f]{40}$")
 
-# Authored for EVAL-137 and evaluation-only.  These controls mimic broad
+# Authored for EVAL-137 and evaluation-only. These controls mimic broad
 # register/domain rather than source wording or factual content.
 _PROJECT_CONTROLS: dict[str, tuple[str, ...]] = {
     "ua.rada.open-data.laws-texts": (
@@ -204,12 +204,16 @@ def split_family_pool(records: Sequence[TextRecord]) -> tuple[list[TextRecord], 
     evaluation: list[TextRecord] = []
     for index, record in enumerate(records):
         if index % FAMILY_EVAL_MODULUS == 0:
-            evaluation.append(TextRecord(record_id=record.record_id, text=record.text, split="evaluation"))
+            evaluation.append(
+                TextRecord(record_id=record.record_id, text=record.text, split="evaluation")
+            )
         else:
             train.append(TextRecord(record_id=record.record_id, text=record.text, split="train"))
     _require(bool(train) and bool(evaluation), "family split must have train and evaluation records")
     _require(
-        {record.record_id for record in train}.isdisjoint(record.record_id for record in evaluation),
+        {record.record_id for record in train}.isdisjoint(
+            record.record_id for record in evaluation
+        ),
         "family train/evaluation overlap",
     )
     return train, evaluation
@@ -229,12 +233,20 @@ def _as_split(records: Sequence[TextRecord], split: str) -> list[TextRecord]:
     return [TextRecord(record_id=record.record_id, text=record.text, split=split) for record in records]
 
 
-def _load_real_family_pools(root: Path, intake_output: Path) -> tuple[dict[str, list[TextRecord]], dict[str, Any]]:
+def _load_real_family_pools(
+    root: Path, intake_output: Path
+) -> tuple[dict[str, list[TextRecord]], dict[str, Any]]:
     registry_path = root / REAL_SOURCE_REGISTRY
     registry, sources = load_candidate_registry(registry_path)
     eligible = [source for source in sources if source.eligibility_status == ELIGIBLE]
-    _require(tuple(source.source_id for source in eligible) == SOURCE_FAMILIES, "eligible source-family set drift")
-    _require(all(source.rights.allows_model_training is True for source in eligible), "training rights drift")
+    _require(
+        tuple(source.source_id for source in eligible) == SOURCE_FAMILIES,
+        "eligible source-family set drift",
+    )
+    _require(
+        all(source.rights.allows_model_training is True for source in eligible),
+        "training rights drift",
+    )
     expected_objects = sum(len(source.acquisition_urls) for source in eligible)
     _require(expected_objects == 3, "EVAL-137 expects exactly three bounded acquisition objects")
 
@@ -288,7 +300,8 @@ def _load_real_family_pools(root: Path, intake_output: Path) -> tuple[dict[str, 
         "family_eval_modulus": FAMILY_EVAL_MODULUS,
         "accepted_objects": provenance,
         "family_chunk_ids": {
-            family: [record.record_id for record in records] for family, records in families.items()
+            family: [record.record_id for record in records]
+            for family, records in families.items()
         },
     }
     return families, {
@@ -307,6 +320,7 @@ def _load_real_family_pools(root: Path, intake_output: Path) -> tuple[dict[str, 
         "representative_broad_pretraining_corpus": False,
         "limitation": (
             "Only two rights-approved real source families are currently fetch-eligible, represented by three bounded objects. "
+            "The two families also differ in language and domain/register, so the experiment cannot separately identify source-style, language, and domain effects. "
             "This supports two informative leave-family-out arms, not a broad leave-one-source-out corpus study."
         ),
     }
@@ -316,7 +330,12 @@ def _tensor_batches(
     records: Sequence[TextRecord], *, split: str, tokenizer: ByteTokenizer, full_only: bool
 ) -> list[dict[str, torch.Tensor]]:
     examples = tuple(
-        iter_packed_examples(records, tokenizer, expected_split=split, sequence_length=SEQUENCE_LENGTH)
+        iter_packed_examples(
+            records,
+            tokenizer,
+            expected_split=split,
+            sequence_length=SEQUENCE_LENGTH,
+        )
     )
     _require(bool(examples), f"{split} produced no packed examples")
     batches: list[dict[str, torch.Tensor]] = []
@@ -332,8 +351,18 @@ def _tensor_batches(
     return batches
 
 
+def training_trace(batch_count: int, *, seed: int) -> list[int]:
+    """Seeded whole-pool permutation; cycle only when the budget exceeds the pool."""
+    _require(batch_count > 0, "training batch count must be positive")
+    order = list(range(batch_count))
+    random.Random(seed).shuffle(order)
+    return [order[index % batch_count] for index in range(OPTIMIZER_STEPS)]
+
+
 @torch.no_grad()
-def _evaluate_bpb(model: TwelveSixDecoder, batches: Sequence[Mapping[str, torch.Tensor]]) -> dict[str, Any]:
+def _evaluate_bpb(
+    model: TwelveSixDecoder, batches: Sequence[Mapping[str, torch.Tensor]]
+) -> dict[str, Any]:
     was_training = model.training
     model.eval()
     weighted_loss = 0.0
@@ -358,9 +387,15 @@ def _evaluate_bpb(model: TwelveSixDecoder, batches: Sequence[Mapping[str, torch.
     }
 
 
-def _project_control_batches(family: str, tokenizer: ByteTokenizer) -> list[dict[str, torch.Tensor]]:
+def _project_control_batches(
+    family: str, tokenizer: ByteTokenizer
+) -> list[dict[str, torch.Tensor]]:
     controls = [
-        TextRecord(record_id=f"eval137-control::{family}::{index:02d}", text=text, split="control")
+        TextRecord(
+            record_id=f"eval137-control::{family}::{index:02d}",
+            text=text,
+            split="control",
+        )
         for index, text in enumerate(_PROJECT_CONTROLS[family])
     ]
     return _tensor_batches(controls, split="control", tokenizer=tokenizer, full_only=False)
@@ -378,15 +413,31 @@ def _run_arm(
     init_spec: InitSpec,
     seed: int,
 ) -> dict[str, Any]:
-    train_batches = _tensor_batches(train_records, split="train", tokenizer=tokenizer, full_only=True)
+    train_batches = _tensor_batches(
+        train_records,
+        split="train",
+        tokenizer=tokenizer,
+        full_only=True,
+    )
     validation_batches = _tensor_batches(
-        ordinary_validation_records, split="validation", tokenizer=tokenizer, full_only=False
+        ordinary_validation_records,
+        split="validation",
+        tokenizer=tokenizer,
+        full_only=False,
     )
     family_batches = {
-        family: _tensor_batches(records, split="evaluation", tokenizer=tokenizer, full_only=False)
+        family: _tensor_batches(
+            records,
+            split="evaluation",
+            tokenizer=tokenizer,
+            full_only=False,
+        )
         for family, records in family_evaluation_records.items()
     }
-    control_batches = {family: _project_control_batches(family, tokenizer) for family in SOURCE_FAMILIES}
+    control_batches = {
+        family: _project_control_batches(family, tokenizer)
+        for family in SOURCE_FAMILIES
+    }
 
     random.seed(seed)
     torch.manual_seed(seed)
@@ -398,43 +449,64 @@ def _run_arm(
             "ordinary_validation": _evaluate_bpb(model, validation_batches),
             "family_evaluation": {
                 family: {
-                    "source_family_seen_in_training": bool(family_seen_during_training[family]),
+                    "source_family_seen_in_training": bool(
+                        family_seen_during_training[family]
+                    ),
                     **_evaluate_bpb(model, batches),
                 }
                 for family, batches in family_batches.items()
             },
             "project_authored_same_domain_controls": {
-                family: _evaluate_bpb(model, batches) for family, batches in control_batches.items()
+                family: _evaluate_bpb(model, batches)
+                for family, batches in control_batches.items()
             },
         }
 
     initial = evaluate_all()
-    _require(trainer.tokens_seen == 0 and trainer.optimizer_step == 0, "initial evaluation mutated Trainer state")
+    _require(
+        trainer.tokens_seen == 0 and trainer.optimizer_step == 0,
+        "initial evaluation mutated Trainer state",
+    )
 
-    trace = [index % len(train_batches) for index in range(OPTIMIZER_STEPS)]
+    trace = training_trace(len(train_batches), seed=seed)
     train_losses: list[float] = []
     for batch_index in trace:
         metrics = trainer.train_microbatch(train_batches[batch_index])
         train_losses.append(float(metrics.loss))
     trainer.assert_checkpoint_safe()
-    _require(trainer.optimizer_step == OPTIMIZER_STEPS, f"{arm_id}: optimizer-step budget drift")
-    _require(trainer.tokens_seen == OPTIMIZED_TOKEN_BUDGET, f"{arm_id}: optimized-token budget drift")
+    _require(
+        trainer.optimizer_step == OPTIMIZER_STEPS,
+        f"{arm_id}: optimizer-step budget drift",
+    )
+    _require(
+        trainer.tokens_seen == OPTIMIZED_TOKEN_BUDGET,
+        f"{arm_id}: optimized-token budget drift",
+    )
 
     before_eval_tokens = trainer.tokens_seen
     before_eval_steps = trainer.optimizer_step
     final = evaluate_all()
-    _require(trainer.tokens_seen == before_eval_tokens, f"{arm_id}: evaluation mutated optimized tokens")
-    _require(trainer.optimizer_step == before_eval_steps, f"{arm_id}: evaluation mutated optimizer steps")
+    _require(
+        trainer.tokens_seen == before_eval_tokens,
+        f"{arm_id}: evaluation mutated optimized tokens",
+    )
+    _require(
+        trainer.optimizer_step == before_eval_steps,
+        f"{arm_id}: evaluation mutated optimizer steps",
+    )
 
     return {
         "arm_id": arm_id,
         "train_record_count": len(train_records),
         "ordinary_validation_record_count": len(ordinary_validation_records),
         "family_evaluation_record_counts": {
-            family: len(records) for family, records in family_evaluation_records.items()
+            family: len(records)
+            for family, records in family_evaluation_records.items()
         },
         "family_seen_during_training": dict(family_seen_during_training),
         "train_batch_count": len(train_batches),
+        "unique_train_batches_consumed": len(set(trace)),
+        "training_batch_reuse_factor": OPTIMIZER_STEPS / len(train_batches),
         "training_trace_sha256": hash_json({"batch_indices": trace}),
         "optimized_tokens": trainer.tokens_seen,
         "optimizer_steps": trainer.optimizer_step,
@@ -460,7 +532,9 @@ def _comparisons(arms: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
             "unseen_family_improvement_from_random_init_bpb": (
                 heldout_initial["bpb"] - heldout_final["bpb"]
             ),
-            "direct_family_exposure_advantage_bpb": heldout_final["bpb"] - mixed_metric["bpb"],
+            "direct_family_exposure_advantage_bpb": (
+                heldout_final["bpb"] - mixed_metric["bpb"]
+            ),
             "leave_family_out_project_control_bpb": control["bpb"],
             "evaluation_record_count": heldout["family_evaluation_record_counts"][family],
             "same_evaluation_records_used_in_mixed_and_holdout": True,
@@ -471,7 +545,12 @@ def _comparisons(arms: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
 def _report_sha(report: Mapping[str, Any]) -> str:
     payload = dict(report)
     payload.pop("report_sha256", None)
-    raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    raw = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
     return hashlib.sha256(raw).hexdigest()
 
 
@@ -481,9 +560,15 @@ def validate_source_generalization_report(report: Mapping[str, Any]) -> None:
     identity = report.get("identity")
     _require(isinstance(identity, Mapping), "report identity missing")
     _require(identity.get("parameter_count") == PARAMETER_COUNT, "parameter count drift")
-    _require(identity.get("optimized_token_budget_per_arm") == OPTIMIZED_TOKEN_BUDGET, "budget identity drift")
+    _require(
+        identity.get("optimized_token_budget_per_arm") == OPTIMIZED_TOKEN_BUDGET,
+        "budget identity drift",
+    )
     arms = report.get("arms")
-    _require(isinstance(arms, list) and len(arms) == 3, "expected exactly three preregistered arms")
+    _require(
+        isinstance(arms, list) and len(arms) == 3,
+        "expected exactly three preregistered arms",
+    )
     _require(
         [arm.get("arm_id") for arm in arms]
         == ["mixed_real_baseline", "holdout_rada", "holdout_standardebooks"],
@@ -503,16 +588,32 @@ def validate_source_generalization_report(report: Mapping[str, Any]) -> None:
     family_counts: dict[str, int] | None = None
     for arm in arms:
         arm_id = str(arm.get("arm_id"))
-        _require(arm.get("optimized_tokens") == OPTIMIZED_TOKEN_BUDGET, "matched token budget violated")
-        _require(arm.get("optimizer_steps") == OPTIMIZER_STEPS, "matched optimizer-step budget violated")
-        _require(arm.get("family_seen_during_training") == expected_flags[arm_id], "family exposure flag drift")
+        _require(
+            arm.get("optimized_tokens") == OPTIMIZED_TOKEN_BUDGET,
+            "matched token budget violated",
+        )
+        _require(
+            arm.get("optimizer_steps") == OPTIMIZER_STEPS,
+            "matched optimizer-step budget violated",
+        )
+        _require(
+            arm.get("family_seen_during_training") == expected_flags[arm_id],
+            "family exposure flag drift",
+        )
+        _require(
+            0 < int(arm.get("unique_train_batches_consumed", 0)) <= OPTIMIZER_STEPS,
+            "invalid unique training batch count",
+        )
         counts = arm.get("family_evaluation_record_counts")
         _require(isinstance(counts, Mapping), "family evaluation counts missing")
         normalized_counts = {str(key): int(value) for key, value in counts.items()}
         if family_counts is None:
             family_counts = normalized_counts
         else:
-            _require(normalized_counts == family_counts, "family evaluation records differ across arms")
+            _require(
+                normalized_counts == family_counts,
+                "family evaluation records differ across arms",
+            )
         final = arm.get("final")
         _require(isinstance(final, Mapping), "final metrics missing")
         ordinary = final.get("ordinary_validation")
@@ -523,16 +624,28 @@ def validate_source_generalization_report(report: Mapping[str, Any]) -> None:
         for family in SOURCE_FAMILIES:
             metric = family_metrics.get(family)
             _require(isinstance(metric, Mapping), f"missing family metric: {family}")
-            _require(math.isfinite(float(metric["bpb"])), f"family BPB non-finite: {family}")
+            _require(
+                math.isfinite(float(metric["bpb"])),
+                f"family BPB non-finite: {family}",
+            )
         controls = final.get("project_authored_same_domain_controls")
         _require(isinstance(controls, Mapping), "project controls missing")
         for metric in controls.values():
-            _require(math.isfinite(float(metric["bpb"])), "project-control BPB non-finite")
-    _require(report.get("data105", {}).get("status") == DATA105_STATUS, "DATA-105 status drift")
+            _require(
+                math.isfinite(float(metric["bpb"])),
+                "project-control BPB non-finite",
+            )
+    _require(
+        report.get("data105", {}).get("status") == DATA105_STATUS,
+        "DATA-105 status drift",
+    )
     comparisons = report.get("comparisons")
     _require(isinstance(comparisons, Mapping), "comparisons missing")
     _require(set(comparisons) == set(SOURCE_FAMILIES), "comparison family set drift")
-    _require(report.get("report_sha256") == _report_sha(report), "report self-hash mismatch")
+    _require(
+        report.get("report_sha256") == _report_sha(report),
+        "report self-hash mismatch",
+    )
 
 
 def run_source_generalization(
@@ -544,10 +657,16 @@ def run_source_generalization(
     torch_threads: int = 2,
 ) -> dict[str, Any]:
     """Execute the complete predeclared LOCAL_FREE EVAL-137 study."""
-    _require(_GIT_SHA.fullmatch(source_sha) is not None, "source SHA must be full lowercase Git SHA")
+    _require(
+        _GIT_SHA.fullmatch(source_sha) is not None,
+        "source SHA must be full lowercase Git SHA",
+    )
     _require(torch_threads > 0, "torch_threads must be positive")
     root = Path(root).resolve()
-    environment = validate_locked_environment_evidence(locked_environment_evidence, source_sha=source_sha)
+    environment = validate_locked_environment_evidence(
+        locked_environment_evidence,
+        source_sha=source_sha,
+    )
     torch.set_num_threads(torch_threads)
     torch.use_deterministic_algorithms(True)
     tokenizer = ByteTokenizer()
@@ -557,13 +676,21 @@ def run_source_generalization(
 
     with tempfile.TemporaryDirectory(prefix="eval137-real-intake-") as temp_dir:
         family_pools, data = _load_real_family_pools(root, Path(temp_dir))
-        partitions = {family: split_family_pool(family_pools[family]) for family in SOURCE_FAMILIES}
-        family_eval = {family: partitions[family][1] for family in SOURCE_FAMILIES}
+        partitions = {
+            family: split_family_pool(family_pools[family])
+            for family in SOURCE_FAMILIES
+        }
+        family_eval = {
+            family: partitions[family][1]
+            for family in SOURCE_FAMILIES
+        }
         data["family_train_chunk_counts"] = {
-            family: len(partitions[family][0]) for family in SOURCE_FAMILIES
+            family: len(partitions[family][0])
+            for family in SOURCE_FAMILIES
         }
         data["family_evaluation_chunk_counts"] = {
-            family: len(partitions[family][1]) for family in SOURCE_FAMILIES
+            family: len(partitions[family][1])
+            for family in SOURCE_FAMILIES
         }
         data["family_evaluation_identity_sha256"] = hash_json(
             {
@@ -572,15 +699,25 @@ def run_source_generalization(
             }
         )
 
-        mixed_train = partitions[SOURCE_FAMILIES[0]][0] + partitions[SOURCE_FAMILIES[1]][0]
+        mixed_train = (
+            partitions[SOURCE_FAMILIES[0]][0]
+            + partitions[SOURCE_FAMILIES[1]][0]
+        )
         mixed_validation = _as_split(
-            partitions[SOURCE_FAMILIES[0]][1] + partitions[SOURCE_FAMILIES[1]][1],
+            partitions[SOURCE_FAMILIES[0]][1]
+            + partitions[SOURCE_FAMILIES[1]][1],
             "validation",
         )
         rada_train = partitions["en.standardebooks.manual"][0]
-        rada_validation = _as_split(partitions["en.standardebooks.manual"][1], "validation")
+        rada_validation = _as_split(
+            partitions["en.standardebooks.manual"][1],
+            "validation",
+        )
         se_train = partitions["ua.rada.open-data.laws-texts"][0]
-        se_validation = _as_split(partitions["ua.rada.open-data.laws-texts"][1], "validation")
+        se_validation = _as_split(
+            partitions["ua.rada.open-data.laws-texts"][1],
+            "validation",
+        )
 
         arms = [
             _run_arm(
@@ -641,6 +778,9 @@ def run_source_generalization(
             "loss_tokens_per_step": LOSS_TOKENS_PER_STEP,
             "optimizer_steps_per_arm": OPTIMIZER_STEPS,
             "optimized_token_budget_per_arm": OPTIMIZED_TOKEN_BUDGET,
+            "training_batch_order": (
+                "seeded permutation of all packed batches; repeat only if the pool has fewer than 256 batches"
+            ),
             "same_initialization_seed_for_all_arms": seed,
             "environment": dict(environment),
         },
@@ -652,8 +792,11 @@ def run_source_generalization(
             "family_evaluation_rule": "chunk_index_mod_5_equals_0",
             "family_evaluation_records_never_optimized_in_any_arm": True,
             "held_out_family_rule": "no record from held-out source_id enters optimization",
+            "training_batch_order_rule": "seeded whole-pool permutation before applying the matched step budget",
             "selection_or_retuning_from_test_source": False,
-            "project_control_source": "EVAL-137 project-authored evaluation-only strings committed before execution",
+            "project_control_source": (
+                "EVAL-137 project-authored evaluation-only strings committed before execution"
+            ),
             "matched_optimized_tokens": True,
         },
         "data105": {
@@ -668,18 +811,26 @@ def run_source_generalization(
         "comparisons": _comparisons(arms),
         "interpretation_boundary": {
             "source_family_count": len(SOURCE_FAMILIES),
+            "language_domain_source_confounding": True,
+            "language_domain_source_confounding_note": (
+                "Rada is Ukrainian legal text while Standard Ebooks is English technical/editorial text. With no third eligible real family, leave-family-out effects cannot be uniquely attributed to source style rather than language or domain."
+            ),
             "broad_leave_one_source_out_claim": False,
             "representative_corpus_claim": False,
             "general_language_capability_claim": False,
             "metric_signs": {
-                "unseen_family_improvement_from_random_init_bpb": "positive means training on the other family improved the held-out family BPB",
-                "direct_family_exposure_advantage_bpb": "positive means mixed training with direct family exposure achieved lower BPB than leave-family-out",
+                "unseen_family_improvement_from_random_init_bpb": (
+                    "positive means training on the other family improved the held-out family BPB"
+                ),
+                "direct_family_exposure_advantage_bpb": (
+                    "positive means mixed training with direct family exposure achieved lower BPB than leave-family-out"
+                ),
             },
             "conclusion_rule": (
                 "Cross-source transfer is evidenced only by improvement from random initialization on the fixed held-out family records "
                 "when that entire family is absent from optimization. The gap to the mixed model quantifies additional benefit from direct "
-                "family exposure and may reflect source/style-specific learning. Project-authored controls provide a register-level check. "
-                "No threshold is selected after observing test-family results."
+                "family exposure and may reflect source/style, language, or domain-specific learning. Project-authored controls provide a "
+                "register-level check but do not eliminate those confounds. No threshold is selected after observing test-family results."
             ),
         },
     }
