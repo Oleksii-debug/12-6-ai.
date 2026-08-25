@@ -1,0 +1,44 @@
+{
+  "schema_version": "12-6.lr-range-plan.v1",
+  "authority": "LOCAL_FREE_ENGINEERING_LR_RANGE_PLAN_PROVISIONAL",
+  "purpose": "Sweep only learning rate on the existing fixed-control approximately 100K-500K Base family while holding model family, initialization, data, tokenizer, AdamW recipe and batch trace fixed.",
+  "learning_rates": [0.0001, 0.0003, 0.001, 0.003, 0.01],
+  "current_default_learning_rate": 0.0003,
+  "optimizer": {
+    "kind": "adamw",
+    "weight_decay": 0.1,
+    "betas": [0.9, 0.95],
+    "eps": 1e-8,
+    "scheduler": "cosine",
+    "warmup_fraction": 0.05,
+    "gradient_clip_norm": 1.0,
+    "decay_embeddings": false,
+    "precision": "fp32"
+  },
+  "execution": {
+    "execution_steps": 128,
+    "schedule_horizon_steps": 384,
+    "evaluation_interval_steps": 32,
+    "batch_size": 3,
+    "sequence_length": 128,
+    "seed": 1337,
+    "torch_threads": 2
+  },
+  "model_family": {
+    "source": "RESEARCH41 fixed-control family",
+    "parameter_counts": [95568, 267912, 467808],
+    "vocab_size": 256,
+    "max_seq_len": 256,
+    "canonical_stage_configs_modified": false
+  },
+  "classification": {
+    "unstable_validation_regression_fraction": 0.02,
+    "unstable_relative_update_l2_max": 0.05,
+    "too_slow_fraction_of_default_validation_improvement": 0.6
+  },
+  "transfer_boundary": {
+    "target": "approximately 1M",
+    "aggressive_lr_promotion_from_controlled_fixture_allowed": false,
+    "prefer_current_default_when_healthy_across_family": true
+  }
+}
