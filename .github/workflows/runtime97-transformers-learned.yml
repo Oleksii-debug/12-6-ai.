@@ -119,6 +119,7 @@ jobs:
           repository: ${{ github.repository }}
           run-id: ${{ env.LEARNED_RUN_ID }}
           path: runtime97-source
+          merge-multiple: true
 
       - name: Execute learned LlamaForCausalLM parity
         env:
