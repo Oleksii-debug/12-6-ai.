@@ -1,0 +1,105 @@
+name: LEARN-04 Real 1M Learned Base
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  learned-base-fixed-control:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact source and locked environment
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          python tools/verify_locked_environment.py \
+            --profile linux-x86_64 \
+            --source-sha "$SOURCE_SHA" \
+            --evidence-out learn04-locked-environment.json
+
+      - name: Install locked runtime plus exact experimental tokenizer backend
+        run: |
+          python -m venv .learn04
+          .learn04/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps \
+            -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .learn04/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps \
+            -r requirements/locks/linux-x86_64/runtime.lock.txt
+          .learn04/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps --only-binary=:all: \
+            -r requirements/experiments/tokenizers-linux-x86_64.lock.txt
+          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 \
+            .learn04/bin/python -m pip install --no-deps --no-build-isolation -e .
+
+      - name: Verify LEARN-04 contracts before optimization
+        run: |
+          .learn04/bin/python -m py_compile \
+            src/twelve_six/learn04_1m_experiment.py \
+            src/twelve_six/learn04_1m_entrypoint.py \
+            src/twelve_six/tokenization/experiments.py \
+            src/twelve_six/packing/scale_contracts.py
+          .learn04/bin/python -m pytest -q tests/test_learn04_1m_experiment.py
+
+      - name: Train matched controls and save 1M resume checkpoint
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          .learn04/bin/python -m twelve_six.learn04_1m_entrypoint stage1 \
+            --repo-root . \
+            --source-sha "$SOURCE_SHA" \
+            --output-dir learn04-real-1m-evidence \
+            --torch-threads 2
+
+      - name: Fresh-process reload and continue 1M trajectory
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          .learn04/bin/python -m twelve_six.learn04_1m_entrypoint stage2 \
+            --repo-root . \
+            --source-sha "$SOURCE_SHA" \
+            --output-dir learn04-real-1m-evidence \
+            --torch-threads 2
+
+      - name: Validate retained evidence
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          .learn04/bin/python -m twelve_six.learn04_1m_entrypoint validate \
+            learn04-real-1m-evidence/learn04-real-1m-report.json \
+            --expected-source-sha "$SOURCE_SHA"
+          .learn04/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path("learn04-real-1m-evidence/learn04-real-1m-report.json").read_text())
+          print(json.dumps({
+              "one_million_summary": report["one_million_summary"],
+              "matched_checkpoint_comparison": report["matched_checkpoint_comparison"],
+              "truth_boundary": report["truth_boundary"],
+          }, ensure_ascii=False, sort_keys=True))
+          PY
+
+      - name: Upload exact LEARN-04 evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: learn04-real-1m-evidence
+          path: |
+            learn04-locked-environment.json
+            learn04-real-1m-evidence/stage1.json
+            learn04-real-1m-evidence/learn04-real-1m-report.json
+            learn04-real-1m-evidence/resume-checkpoint
+            learn04-real-1m-evidence/final-checkpoint
+          if-no-files-found: error
+          retention-days: 30
