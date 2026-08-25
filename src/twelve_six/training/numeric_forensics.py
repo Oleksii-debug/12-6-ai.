@@ -144,10 +144,11 @@ def _sanitize_activation_health(
         return None
 
     safe: dict[str, bool | int | float | str] = {}
-    for key in sorted(payload):
+    string_keys = sorted(key for key in payload if isinstance(key, str))
+    for key in string_keys:
         if len(safe) >= _MAX_ACTIVATION_HEALTH_ITEMS:
             break
-        if not isinstance(key, str) or len(key) > 128:
+        if len(key) > 128:
             continue
         value = payload[key]
         if isinstance(value, bool):
