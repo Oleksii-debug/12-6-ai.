@@ -70,10 +70,38 @@ class TorchMeshSpec:
             raise RuntimeError("PyTorch DeviceMesh is unavailable in this environment") from exc
         return init_device_mesh(device_type, self.shape, mesh_dim_names=self.dim_names)
 
+    def fsdp2_data_parallel_mesh(self, device_mesh: Any) -> Any:
+        """Return the 1D FSDP or 2D HSDP submesh for plain Tensor parameters.
+
+        Canonical 12-6 model parameters are ordinary Tensors before ``fully_shard``.
+        PyTorch's ``dp_mesh_dims`` path is for parameters that are already DTensors on
+        a full SPMD mesh, so the plain-model path must pass only the data-parallel mesh.
+        """
+
+        if not self.fsdp2_enabled:
+            raise ValueError("FSDP2 is disabled because data_parallel degree is 1")
+        if self.expert_parallel_degree > 1:
+            raise ValueError(
+                "generic FSDP2 binding refuses EP>1; expert parameters need backend-specific groups"
+            )
+        if self.fsdp_replicate_degree > 1:
+            return device_mesh[("dp_replicate", "dp_shard")]
+        return device_mesh["dp_shard"]
+
     def fsdp2_kwargs(
         self, device_mesh: Any, *, reshard_after_forward: bool = True
     ) -> dict[str, Any]:
-        """Return kwargs for torch.distributed.fsdp.fully_shard without applying it."""
+        """Return ``fully_shard`` kwargs for canonical plain-Tensor 12-6 modules."""
+
+        return {
+            "mesh": self.fsdp2_data_parallel_mesh(device_mesh),
+            "reshard_after_forward": reshard_after_forward,
+        }
+
+    def fsdp2_spmd_kwargs(
+        self, device_mesh: Any, *, reshard_after_forward: bool = True
+    ) -> dict[str, Any]:
+        """Return full-SPMD kwargs only for parameters already represented as DTensors."""
 
         if not self.fsdp2_enabled:
             raise ValueError("FSDP2 is disabled because data_parallel degree is 1")
