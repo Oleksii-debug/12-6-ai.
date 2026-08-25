@@ -1,0 +1,27 @@
+{
+  "schema_version": "12-6.compute99.environment-probe.v1",
+  "observed_at_utc": "2026-08-25T21:11:41+00:00",
+  "source_product_base_sha": "fb9c6d9b73ce436d637077892d73edf136fcaeac",
+  "worker_environment": {
+    "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
+    "python": "3.13.5",
+    "torch": "2.10.0+cpu",
+    "cuda_available": false,
+    "cuda_device_count": 0,
+    "nvidia_smi_available": false
+  },
+  "smoke_10m": {
+    "status": "NOT_RUN_NO_GPU",
+    "model_spec_sha256": "61caa5469123e23b9b72fc2024140bfca84c4c480dcb0a7e712ba800a4f22998",
+    "parameter_count": 10000640,
+    "tokens_per_second": null,
+    "cuda_peak_allocated_bytes": null,
+    "cuda_peak_reserved_bytes": null
+  },
+  "truth_boundary": {
+    "paid_compute_launched": false,
+    "cuda_execution_claimed": false,
+    "gpu_cost_from_cpu_throughput": false,
+    "note": "The connected worker has CPU-only PyTorch and no nvidia-smi. No accelerator result is fabricated."
+  }
+}
