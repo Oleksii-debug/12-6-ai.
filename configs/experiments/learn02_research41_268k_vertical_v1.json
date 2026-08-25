@@ -1,0 +1,12 @@
+{
+  "schema": "12-6.learn02.fixed-control-268k-config.v1",
+  "incumbent_framework": "RESEARCH41 PR #162",
+  "model_parameters": [95568, 267912],
+  "token_budgets": [4096, 16384, 65536, 131072, 262144],
+  "batch_size": 4,
+  "sequence_length": 64,
+  "seed": 1337,
+  "torch_threads": 2,
+  "checkpoint_at_every_evaluation": true,
+  "changed_variable": "model_geometry_only"
+}
