@@ -1,0 +1,36 @@
+{
+  "authority": "LOCAL_FREE_RESEARCH_ONLY",
+  "contexts": [
+    128,
+    256
+  ],
+  "controls": {
+    "canonical_s0_packing_unchanged": true,
+    "paid_compute": false,
+    "same_corpus": true,
+    "same_model_parameters": true,
+    "same_optimized_tokens": true,
+    "same_optimizer": true,
+    "same_tokenizer": true,
+    "same_tokens_per_update": true
+  },
+  "experiment_id": "MODEL-17-CONTEXT-100K-128-vs-256-v1",
+  "schema": "12-6.context-100k-experiment.v1",
+  "stage_config": "configs/stages/s1_100k.json",
+  "training": {
+    "betas": [
+      0.9,
+      0.95
+    ],
+    "eps": 1e-08,
+    "gradient_clip_norm": 1.0,
+    "learning_rate": 0.0003,
+    "optimized_token_budget": 16128,
+    "optimized_tokens_per_update": 252,
+    "precision": "fp32",
+    "scheduler": "constant",
+    "seed": 1337,
+    "torch_threads": 2,
+    "weight_decay": 0.0
+  }
+}
