@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+from dataclasses import replace
 from pathlib import Path
 
 from twelve_six.model import load_stage_config
@@ -43,6 +45,24 @@ def test_s2_1024_anchor_reallocates_budget_to_ffn() -> None:
     assert candidate.model.d_ff == 392
     assert candidate.parameter_count == 996_480
     assert candidate.vocabulary_parameters == 131_072
+
+
+def test_checked_in_rebalanced_candidate_hashes_match_modelspec() -> None:
+    payload = json.loads(
+        (ROOT / "configs/vocabulary/s1_s2_rebalanced_candidates.v1.json").read_text()
+    )
+    bases = {
+        "S1": load_stage_config(ROOT / "configs/stages/s1_100k.json").model,
+        "S2": load_stage_config(ROOT / "configs/stages/s2_1m.json").model,
+    }
+    for item in payload["candidates"]:
+        spec = replace(
+            bases[item["stage"]],
+            vocab_size=item["vocab_size"],
+            d_ff=item["d_ff"],
+        )
+        assert spec.parameter_count() == item["expected_parameters"]
+        assert spec.identity_sha256() == item["model_identity_sha256"]
 
 
 def _point(*, algorithm: str, vocab: int, tokens: int, repeatable: bool) -> TokenizerTradeoffPoint:
