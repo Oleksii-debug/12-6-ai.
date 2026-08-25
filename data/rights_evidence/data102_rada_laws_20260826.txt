@@ -1,0 +1,18 @@
+DATA-102 immutable rights capture
+source_id: ua.rada.open-data.laws-texts
+captured_at: 2026-08-26
+official_terms_url: https://data.rada.gov.ua/open/data/laws-texts
+official_portal_url: https://data.rada.gov.ua/
+decision_basis: official Verkhovna Rada open-data terms permit free use, reuse and redistribution, including commercial use, subject to source attribution; official acts are outside copyright protection under the cited Ukrainian-law basis recorded by DATA-21/22.
+public_accessibility_is_not_training_eligibility: true
+
+DATA-102 policy decision
+source_id: ua.rada.open-data.laws-texts
+source_version: laws-texts/bounded-2026-08-25
+policy_ref: policy://12-6/data/explicit-model-training-evidence-v1
+acquisition: ALLOWED
+storage: ALLOWED
+analysis: ALLOWED
+model_training: ALLOWED
+redistribution: ALLOWED
+reason: accepted only because exact DATA-21/22 object bytes were previously captured and hashed and the official reuse grant is explicit; any byte drift fails closed.
