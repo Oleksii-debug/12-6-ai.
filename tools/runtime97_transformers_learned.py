@@ -11,9 +11,11 @@ import argparse
 import hashlib
 import importlib.metadata
 import json
+import platform
 import subprocess
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 
 import torch
 from transformers import LlamaForCausalLM
@@ -247,7 +249,9 @@ def collect_evidence(
     if runtime_provenance.get("rope_transform") != (
         "PAIRWISE_INTERLEAVED_TO_LLAMA_HALF_SPLIT"
     ):
-        raise RuntimeError("standard Llama export did not apply the incumbent Q/K RoPE basis conversion")
+        raise RuntimeError(
+            "standard Llama export did not apply the incumbent Q/K RoPE basis conversion"
+        )
     if runtime_provenance.get("source_checkpoint_id") != diagnostics["checkpoint_id"]:
         raise RuntimeError("standard Llama export is not bound to consumed learned checkpoint")
     if runtime_provenance.get("parameter_count") != EXPECTED_PARAMETER_COUNT:
@@ -349,7 +353,7 @@ def collect_evidence(
             "source_sha": d08_source_sha,
             "profile_sha256": d08_profile_sha256,
             "overlay_lock_sha256": d08_overlay_sha256,
-            "python": importlib.metadata.version("pip") and __import__("platform").python_version(),
+            "python": platform.python_version(),
             "torch": torch.__version__,
             "transformers": importlib.metadata.version("transformers"),
             "device": "cpu",
