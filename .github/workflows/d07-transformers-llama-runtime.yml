@@ -143,9 +143,6 @@ jobs:
       D08_SOURCE_SHA: "10da7d4c1d2fe5a229659143877ad82d3739bed9"
       D08_PROFILE_SHA256: "d54843c76befcd0e8a1703f8d34c822fdbf3085351d1d357661b91265148a039"
       D08_OVERLAY_SHA256: "68f73eaac9e3a9418e85e54a3170d1378c51af0161138d0f4f8667c595deb0b0"
-      HF_HUB_OFFLINE: "1"
-      TRANSFORMERS_OFFLINE: "1"
-      HF_HOME: ${{ runner.temp }}/runtime97-hf-home
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -160,7 +157,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: Oleksii-debug/12-6-ai.
-          ref: ${{ env.D08_SOURCE_SHA }}
+          ref: 10da7d4c1d2fe5a229659143877ad82d3739bed9
           path: .runtime97-d08
           fetch-depth: 1
           persist-credentials: false
@@ -226,15 +223,18 @@ jobs:
       - name: Download exact learned ~1M checkpoint artifact
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          artifact-ids: ${{ env.LEARNED_ARTIFACT_ID }}
+          artifact-ids: "9558539580"
           github-token: ${{ github.token }}
-          repository: ${{ github.repository }}
-          run-id: ${{ env.LEARNED_RUN_ID }}
+          repository: Oleksii-debug/12-6-ai.
+          run-id: "32835548366"
           path: runtime97-source
           merge-multiple: true
       - name: Execute learned LlamaForCausalLM parity
         env:
           BRIDGE_SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+          HF_HUB_OFFLINE: "1"
+          TRANSFORMERS_OFFLINE: "1"
+          HF_HOME: ${{ runner.temp }}/runtime97-hf-home
         run: |
           set -euo pipefail
           PY=.runtime97/bin/python
