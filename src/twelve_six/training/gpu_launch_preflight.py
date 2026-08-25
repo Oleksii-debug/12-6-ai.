@@ -12,7 +12,8 @@ from typing import Any
 
 import torch
 
-from twelve_six.model import canonical_json_sha256, load_stage_config
+from twelve_six.checkpoint import hash_json
+from twelve_six.model import load_stage_config
 
 SCHEMA = "12-6.gpu-launch-preflight.v1"
 FROZEN = "FROZEN"
@@ -455,7 +456,7 @@ def evaluate_preflight(
 
         run_path = repo_root / str(scale.get("run_config", ""))
         run_payload = _load_json(run_path) if run_path.is_file() else {}
-        actual_run_hash = canonical_json_sha256(run_payload) if run_payload else None
+        actual_run_hash = hash_json(run_payload) if run_payload else None
         run_ok = (
             str(run_payload.get("stage_config")) == str(scale.get("stage_config"))
             and actual_run_hash == scale.get("run_manifest_sha256")
