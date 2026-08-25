@@ -108,7 +108,7 @@ def validate_s4_candidate(path: str | Path):
 
     tokenizer = payload.get("tokenizer_contract")
     if not isinstance(tokenizer, dict):
-        raise ValueError("S4 candidate must bind an explicit tokenizer_contract")
+        raise TypeError("S4 candidate must bind an explicit tokenizer_contract")
     expected_tokenizer = {
         "version": BYTE_TOKENIZER_VERSION,
         "vocab_size": ByteTokenizer.vocab_size,
@@ -123,7 +123,7 @@ def validate_s4_candidate(path: str | Path):
 
     runtime = payload.get("runtime_contract")
     if not isinstance(runtime, dict):
-        raise ValueError("S4 candidate must bind an explicit runtime_contract")
+        raise TypeError("S4 candidate must bind an explicit runtime_contract")
     if runtime.get("preferred_precision") != "bf16":
         raise ValueError("S4 accelerator precision must prefer bf16")
     if runtime.get("parallelism") != "single_gpu":
