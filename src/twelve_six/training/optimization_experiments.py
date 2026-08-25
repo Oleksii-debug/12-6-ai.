@@ -121,6 +121,7 @@ class OptimizationRecipe:
     scheduler: SchedulerKind
     warmup_fraction: float
     gradient_clip_norm: float | None
+    decay_embeddings: bool
     precision: Literal["fp32"] = "fp32"
 
     def __post_init__(self) -> None:
@@ -149,6 +150,7 @@ class OptimizationRecipe:
         )
         if self.gradient_clip_norm is not None:
             _finite_number("gradient_clip_norm", self.gradient_clip_norm, positive=True)
+        _require(isinstance(self.decay_embeddings, bool), "decay_embeddings must be boolean")
         _require(self.precision == "fp32", "this controlled experiment is fp32 only")
 
     def materialize(
@@ -207,6 +209,7 @@ def _parse_recipe(name: str, raw: Mapping[str, Any]) -> OptimizationRecipe:
         scheduler=str(raw.get("scheduler")),  # type: ignore[arg-type]
         warmup_fraction=float(raw.get("warmup_fraction")),
         gradient_clip_norm=None if clip is None else float(clip),
+        decay_embeddings=raw.get("decay_embeddings"),
         precision=str(raw.get("precision", "fp32")),  # type: ignore[arg-type]
     )
 
@@ -406,6 +409,30 @@ def _stable_model(model: TwelveSixDecoder) -> bool:
     return all(torch.isfinite(parameter).all().item() for parameter in model.parameters())
 
 
+def _build_experiment_optimizer(
+    model: TwelveSixDecoder,
+    config: TrainerConfig,
+    recipe: OptimizationRecipe,
+):
+    if recipe.decay_embeddings or recipe.weight_decay == 0.0:
+        return None
+    embedding = model.token_embedding.weight
+    decay_parameters = [
+        parameter for parameter in model.parameters() if parameter is not embedding
+    ]
+    _require(bool(decay_parameters), "no non-embedding parameters available for AdamW")
+    return torch.optim.AdamW(
+        [
+            {"params": decay_parameters, "weight_decay": config.weight_decay},
+            {"params": [embedding], "weight_decay": 0.0},
+        ],
+        lr=config.learning_rate,
+        betas=config.betas,
+        eps=config.eps,
+        weight_decay=config.weight_decay,
+    )
+
+
 def _run_recipe(
     stage_path: Path,
     *,
@@ -425,7 +452,8 @@ def _run_recipe(
     model = TwelveSixDecoder(stage.model, stage.init)
     initial_model_sha256 = _model_fingerprint(model)
     initial_validation_loss = _evaluate(model, validation_batches)
-    trainer = Trainer(model, config, device="cpu")
+    optimizer = _build_experiment_optimizer(model, config, recipe)
+    trainer = Trainer(model, config, device="cpu", optimizer=optimizer)
     model_bytes = _model_parameter_bytes(model)
 
     progression: list[dict[str, Any]] = []
@@ -520,6 +548,9 @@ def _run_recipe(
             optimizer_bytes[-1] / stage.expected_parameters if optimizer_bytes else 0.0
         ),
         "model_parameter_bytes": model_bytes,
+        "optimizer_group_weight_decays": [
+            float(group["weight_decay"]) for group in trainer.optimizer.param_groups
+        ],
         "wall_seconds": wall_seconds,
         "process_cpu_seconds": process_cpu_seconds,
     }
