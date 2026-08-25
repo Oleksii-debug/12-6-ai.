@@ -1,0 +1,117 @@
+name: RESEARCH06 Exact Fixed-Token Efficiency
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  fixed-token-cpu:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Prove exact source checkout
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Verify exact locked environment inputs
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: >-
+          python tools/verify_locked_environment.py
+          --profile linux-x86_64
+          --source-sha "$SOURCE_SHA"
+          --evidence-out research06-locked-environment.json
+
+      - name: Create locked LOCAL_FREE execution environment
+        run: |
+          python -m venv .research06-locked
+          .research06-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .research06-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          .research06-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/dev.lock.txt
+          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .research06-locked/bin/python -m pip install --no-deps --no-build-isolation -e .
+
+      - name: Focused fixed-token contracts
+        run: |
+          .research06-locked/bin/ruff check src/twelve_six/fixed_token_efficiency.py tests/test_fixed_token_efficiency.py
+          .research06-locked/bin/pytest -q tests/test_fixed_token_efficiency.py
+
+      - name: Execute four exact-token trajectories with fresh-process D05 resume
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p research06/checkpoints
+          for MODEL_INDEX in 0 1 2 3; do
+            PARTIAL="research06/model-${MODEL_INDEX}.partial.json"
+            CHECKPOINT="research06/checkpoints/model-${MODEL_INDEX}-tokens-16384"
+            RESULT="research06/model-${MODEL_INDEX}.json"
+            .research06-locked/bin/python -m twelve_six.fixed_token_efficiency start \
+              --repo-root . \
+              --source-sha "$SOURCE_SHA" \
+              --model-index "$MODEL_INDEX" \
+              --stop-tokens 16384 \
+              --final-tokens 65536 \
+              --partial "$PARTIAL" \
+              --checkpoint-dir "$CHECKPOINT" \
+              --torch-threads 2
+            .research06-locked/bin/python -m twelve_six.fixed_token_efficiency resume \
+              --repo-root . \
+              --source-sha "$SOURCE_SHA" \
+              --partial "$PARTIAL" \
+              --checkpoint-dir "$CHECKPOINT" \
+              --output "$RESULT" \
+              --torch-threads 2
+            .research06-locked/bin/python -m twelve_six.fixed_token_efficiency validate \
+              "$RESULT" \
+              --expected-source-sha "$SOURCE_SHA"
+          done
+
+          .research06-locked/bin/python -m twelve_six.fixed_token_efficiency aggregate \
+            --inputs \
+              research06/model-0.json \
+              research06/model-1.json \
+              research06/model-2.json \
+              research06/model-3.json \
+            --output research06/fixed-token-efficiency.json \
+            --expected-source-sha "$SOURCE_SHA"
+          .research06-locked/bin/python -m twelve_six.fixed_token_efficiency validate \
+            research06/fixed-token-efficiency.json \
+            --expected-source-sha "$SOURCE_SHA"
+
+      - name: Print executed recommendation
+        run: |
+          .research06-locked/bin/python - <<'PY'
+          import json
+          report = json.load(open("research06/fixed-token-efficiency.json", encoding="utf-8"))
+          print(json.dumps({
+              "matrix": report["matrix"],
+              "rankings": report["rankings"],
+              "recommendation": report["recommendation"],
+              "report_sha256": report["report_sha256"],
+          }, indent=2, sort_keys=True))
+          PY
+
+      - name: Upload retained fixed-token evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: research06-fixed-token-efficiency-evidence
+          path: |
+            research06-locked-environment.json
+            research06/*.json
+            research06/checkpoints/**/manifest.json
+            research06/checkpoints/**/MANIFEST.sha256
+          if-no-files-found: error
+          retention-days: 30
