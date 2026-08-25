@@ -14,7 +14,10 @@ from twelve_six.training import (
     TrainingStateInvalidError,
     batch_identity_sha256,
 )
-from twelve_six.training.numeric_forensics import nonfinite_gradient_parameters
+from twelve_six.training.numeric_forensics import (
+    model_parameters_are_finite,
+    nonfinite_gradient_parameters,
+)
 
 
 class ToyBigramLM(nn.Module):
@@ -65,6 +68,16 @@ def test_batch_identity_hash_ignores_non_tensor_metadata_and_raw_text() -> None:
     assert first_hash == second_hash
     assert len(first_hash) == 64
     assert "private" not in first_hash
+
+
+def test_model_parameter_finite_guard_detects_poison() -> None:
+    model = ToyBigramLM()
+    assert model_parameters_are_finite(model) is True
+
+    with torch.no_grad():
+        model.table.weight[0, 0] = float("nan")
+
+    assert model_parameters_are_finite(model) is False
 
 
 def test_affected_parameter_names_are_bounded_to_sixteen() -> None:
