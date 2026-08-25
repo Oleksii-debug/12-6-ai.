@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import torch
 
-from twelve_six.checkpoint import CheckpointIdentity, load_trainer_checkpoint, save_trainer_checkpoint
+from twelve_six.checkpoint import (
+    CheckpointIdentity,
+    load_trainer_checkpoint,
+    save_trainer_checkpoint,
+)
 from twelve_six.model import TwelveSixDecoder, load_stage_config
 from twelve_six.training.config import TrainerConfig
 from twelve_six.training.single_gpu import (
