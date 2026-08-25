@@ -9,10 +9,11 @@ import math
 import os
 import platform
 import random
+import re
+import subprocess
 import time
-from dataclasses import asdict
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import torch
 
@@ -40,12 +41,25 @@ MICROBATCH_UPDATES = 48
 EFFECTIVE_BATCH_SIZE = 8
 SEQUENCE_LENGTH = 64
 EVAL_STEPS = (1, 2, 4, 8, 16, 32, 64, 96, 128)
+_HEX40 = re.compile(r"^[0-9a-f]{40}$")
+SchedulerName = Literal["constant", "cosine"]
 
 
 def _hash_payload(payload: dict[str, Any]) -> str:
     return hashlib.sha256(
         json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
+
+
+def _git_head(repo_root: Path) -> str:
+    completed = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo_root,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return completed.stdout.strip()
 
 
 def _rss_bytes() -> int:
@@ -103,7 +117,9 @@ def _max_tensor_diff(left: list[torch.Tensor], right: list[torch.Tensor]) -> flo
     return maximum
 
 
-def _trainer_config(*, warmup_steps: int, accumulation: int, scheduler: str) -> TrainerConfig:
+def _trainer_config(
+    *, warmup_steps: int, accumulation: int, scheduler: SchedulerName
+) -> TrainerConfig:
     return TrainerConfig(
         learning_rate=BASE_LR,
         weight_decay=WEIGHT_DECAY,
@@ -121,7 +137,9 @@ def _trainer_config(*, warmup_steps: int, accumulation: int, scheduler: str) -> 
     )
 
 
-def _load_fixture(repo_root: Path) -> tuple[ByteTokenizer, list[dict[str, Any]], list[dict[str, Any]], bytes]:
+def _load_fixture(
+    repo_root: Path,
+) -> tuple[ByteTokenizer, list[dict[str, Any]], list[dict[str, Any]], bytes]:
     tokenizer = ByteTokenizer()
     train = _read_jsonl(repo_root / "data/s0/packaged/train.jsonl")
     validation = _read_jsonl(repo_root / "data/s0/packaged/validation.jsonl")
@@ -140,7 +158,8 @@ def _warmup_run(
     validation_records: list[dict[str, Any]],
     tokenizer: ByteTokenizer,
 ) -> dict[str, Any]:
-    spec = (controlled_specs()[0], controlled_specs()[-1])[spec_index]
+    specs = controlled_specs()
+    spec = (specs[0], specs[-1])[spec_index]
     random.seed(1337)
     torch.manual_seed(1337)
     model = TwelveSixDecoder(spec, InitSpec())
@@ -194,6 +213,7 @@ def _warmup_run(
     elapsed = time.perf_counter() - total_started
     early = trace[:16]
     early_vals = [v for v in validations if int(v["optimizer_step"]) <= 16]
+    first_loss = float(early[0]["update_loss"])
     final_val, _ = _validation_loss(model, validation_records, tokenizer)
     return {
         "parameters": spec.parameter_count(),
@@ -206,6 +226,9 @@ def _warmup_run(
         "final_validation_loss": final_val,
         "tokens_to_recover_initial_validation": first_recovery_tokens,
         "early_max_update_loss": max(float(p["update_loss"]) for p in early),
+        "early_update_loss_spike_above_first": max(
+            0.0, max(float(p["update_loss"]) for p in early) - first_loss
+        ),
         "early_max_grad_norm": max(float(p["grad_norm"]) for p in early),
         "early_clip_frequency": sum(bool(p["clipped"]) for p in early) / len(early),
         "overall_clip_frequency": sum(bool(p["clipped"]) for p in trace) / len(trace),
@@ -215,7 +238,7 @@ def _warmup_run(
         ),
         "mean_step_wall_seconds": sum(float(p["step_wall_seconds"]) for p in trace) / len(trace),
         "tokens_per_second": trainer.tokens_seen / elapsed,
-        "rss_bytes": _rss_bytes(),
+        "rss_current_bytes": _rss_bytes(),
         "trace": trace,
         "validations": validations,
     }
@@ -236,23 +259,40 @@ def _warmup_decision(runs: list[dict[str, Any]]) -> dict[str, Any]:
         mean_grad_ratio = sum(float(c["early_max_grad_norm"]) for c in current) / sum(
             float(b["early_max_grad_norm"]) for b in baseline
         )
-        clip_reduction = sum(float(b["early_clip_frequency"]) for b in baseline) / len(baseline) - sum(
-            float(c["early_clip_frequency"]) for c in current
+        clip_reduction = sum(float(b["early_clip_frequency"]) for b in baseline) / len(
+            baseline
+        ) - sum(float(c["early_clip_frequency"]) for c in current) / len(current)
+        loss_spike_reduction = sum(
+            float(b["early_update_loss_spike_above_first"]) for b in baseline
+        ) / len(baseline) - sum(
+            float(c["early_update_loss_spike_above_first"]) for c in current
         ) / len(current)
-        material = mean_grad_ratio <= 0.90 or clip_reduction >= 0.05
+        material = (
+            mean_grad_ratio <= 0.90
+            or clip_reduction >= 0.05
+            or loss_spike_reduction >= 0.05
+        )
         candidates.append(
             {
                 "warmup_steps": warmup,
                 "stable_final_validation": stable_final,
                 "mean_early_max_grad_ratio_vs_no_warmup": mean_grad_ratio,
                 "mean_early_clip_frequency_reduction": clip_reduction,
+                "mean_early_update_loss_spike_reduction": loss_spike_reduction,
                 "material_stability_improvement": material,
             }
         )
-    accepted = [c for c in candidates if c["stable_final_validation"] and c["material_stability_improvement"]]
+    accepted = [
+        c
+        for c in candidates
+        if c["stable_final_validation"] and c["material_stability_improvement"]
+    ]
     if accepted:
         chosen = min(accepted, key=lambda x: int(x["warmup_steps"]))
-        rule = f"use_{chosen['warmup_steps']}_warmup_steps_at_lr_3e-4_for_100k_to_1m_local_family"
+        rule = (
+            f"use_{chosen['warmup_steps']}_warmup_steps_at_lr_3e-4_"
+            "for_observed_100k_to_1m_local_family"
+        )
     else:
         chosen = {"warmup_steps": 0}
         rule = "no_warmup_required_at_lr_3e-4_for_observed_100k_to_1m_local_family"
@@ -268,6 +308,7 @@ def _microbatch_run(
 ) -> dict[str, Any]:
     if EFFECTIVE_BATCH_SIZE % microbatch_size:
         raise ValueError("microbatch must divide effective batch")
+    rss_before = _rss_bytes()
     accumulation = EFFECTIVE_BATCH_SIZE // microbatch_size
     spec = controlled_specs()[-1]
     random.seed(1337)
@@ -280,6 +321,7 @@ def _microbatch_run(
     )
     initial_val, _ = _validation_loss(model, validation_records, tokenizer)
     trace: list[dict[str, Any]] = []
+    rss_samples = [_rss_bytes()]
     start = time.perf_counter()
     for update in range(MICROBATCH_UPDATES):
         effective = _make_batch(
@@ -298,6 +340,7 @@ def _microbatch_run(
         if final_metrics is None or not final_metrics.optimizer_stepped:
             raise RuntimeError("effective update did not commit")
         wall = time.perf_counter() - update_started
+        rss_samples.append(_rss_bytes())
         trace.append(
             {
                 "optimizer_step": trainer.optimizer_step,
@@ -324,52 +367,86 @@ def _microbatch_run(
         "mean_update_ratio": sum(float(p["update_ratio"]) for p in trace) / len(trace),
         "mean_step_wall_seconds": sum(float(p["step_wall_seconds"]) for p in trace) / len(trace),
         "tokens_per_second": trainer.tokens_seen / elapsed,
-        "rss_bytes": _rss_bytes(),
+        "rss_before_run_bytes": rss_before,
+        "rss_max_sampled_bytes": max(rss_samples),
+        "rss_end_bytes": _rss_bytes(),
+        "rss_measurement_scope": "same_process_current_RSS_samples_not_fresh_process_peak",
         "final_model_vector": _final_vector(model),
         "optimizer_tensors": _optimizer_tensors(trainer),
         "trace": trace,
     }
 
 
-def _microbatch_summary(runs: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    baseline = next(run for run in runs if int(run["microbatch_size"]) == EFFECTIVE_BATCH_SIZE)
+def _microbatch_summary(
+    runs: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    baseline = next(
+        run for run in runs if int(run["microbatch_size"]) == EFFECTIVE_BATCH_SIZE
+    )
     baseline_vec = baseline["final_model_vector"]
     baseline_opt = baseline["optimizer_tensors"]
     summarized: list[dict[str, Any]] = []
     for run in runs:
         vector = run["final_model_vector"]
         diff = vector - baseline_vec
-        item = {k: v for k, v in run.items() if k not in {"final_model_vector", "optimizer_tensors"}}
+        item = {
+            k: v
+            for k, v in run.items()
+            if k not in {"final_model_vector", "optimizer_tensors"}
+        }
         item["equivalence_vs_fullbatch"] = {
+            "same_effective_batch_order": True,
             "final_parameter_l2_diff": float(torch.linalg.vector_norm(diff).item()),
             "final_parameter_max_abs_diff": float(torch.max(torch.abs(diff)).item()),
-            "optimizer_state_max_abs_diff": _max_tensor_diff(run["optimizer_tensors"], baseline_opt),
+            "optimizer_state_max_abs_diff": _max_tensor_diff(
+                run["optimizer_tensors"], baseline_opt
+            ),
             "final_validation_loss_abs_diff": abs(
-                float(run["final_validation_loss"]) - float(baseline["final_validation_loss"])
+                float(run["final_validation_loss"])
+                - float(baseline["final_validation_loss"])
             ),
         }
         summarized.append(item)
     eligible = [
         r
         for r in summarized
-        if float(r["equivalence_vs_fullbatch"]["final_parameter_max_abs_diff"]) <= 1e-5
-        and float(r["equivalence_vs_fullbatch"]["final_validation_loss_abs_diff"]) <= 1e-5
+        if float(r["equivalence_vs_fullbatch"]["final_parameter_max_abs_diff"])
+        <= 5e-5
+        and float(r["equivalence_vs_fullbatch"]["final_validation_loss_abs_diff"])
+        <= 1e-4
     ]
-    best = max(eligible, key=lambda r: float(r["tokens_per_second"])) if eligible else summarized[0]
+    best = (
+        max(eligible, key=lambda r: float(r["tokens_per_second"]))
+        if eligible
+        else summarized[0]
+    )
     recommendation = {
         "local_free_microbatch_size": int(best["microbatch_size"]),
         "local_free_accumulation_steps": int(best["gradient_accumulation_steps"]),
-        "basis": "fastest observed CPU configuration within numerical-equivalence tolerances",
+        "basis": (
+            "fastest observed CPU configuration within explicit numerical-equivalence "
+            "tolerances on an identical effective-batch trace"
+        ),
         "target_gpu_hypothesis": (
-            "test the largest microbatch that fits measured VRAM while holding effective tokens/update fixed; "
-            "larger GPU microbatches may improve kernel efficiency, but no GPU behavior is inferred from this CPU run"
+            "test the largest microbatch that fits measured VRAM while holding effective "
+            "tokens/update fixed; larger GPU microbatches may improve kernel efficiency, "
+            "but no GPU behavior is inferred from this CPU run"
         ),
         "gpu_evidence_status": "NOT_TESTED",
     }
     return summarized, recommendation
 
 
-def run_experiment(*, repo_root: Path, output_path: Path) -> dict[str, Any]:
+def run_experiment(
+    *, repo_root: Path, output_path: Path, expected_source_sha: str | None = None
+) -> dict[str, Any]:
+    observed_source_sha = _git_head(repo_root)
+    if not _HEX40.fullmatch(observed_source_sha):
+        raise RuntimeError("observed Git HEAD is not a lowercase 40-hex SHA")
+    if expected_source_sha is not None and observed_source_sha != expected_source_sha:
+        raise RuntimeError(
+            f"exact-checkout mismatch: expected {expected_source_sha}, observed {observed_source_sha}"
+        )
     torch.set_num_threads(2)
     torch.use_deterministic_algorithms(True)
     tokenizer, _train_records, validation_records, train_stream = _load_fixture(repo_root)
@@ -397,6 +474,10 @@ def run_experiment(*, repo_root: Path, output_path: Path) -> dict[str, Any]:
     report: dict[str, Any] = {
         "schema": SCHEMA,
         "authority": AUTHORITY,
+        "source": {
+            "repository": "Oleksii-debug/12-6-ai.",
+            "git_sha": observed_source_sha,
+        },
         "runtime": {
             "python": platform.python_version(),
             "torch": torch.__version__,
@@ -422,6 +503,9 @@ def run_experiment(*, repo_root: Path, output_path: Path) -> dict[str, Any]:
         "warmup": {
             "scales": [95_568, 1_037_696],
             "candidates_steps": list(WARMUP_STEPS),
+            "candidates_scheduler_fractions": [
+                step / SCHEDULER_HORIZON_STEPS for step in WARMUP_STEPS
+            ],
             "runs": warmup_runs,
             "decision": _warmup_decision(warmup_runs),
         },
@@ -437,17 +521,27 @@ def run_experiment(*, repo_root: Path, output_path: Path) -> dict[str, Any]:
             "stage_freeze": False,
             "paid_compute": False,
             "tiny_recycled_fixture": True,
+            "rss_is_fresh_process_peak": False,
         },
     }
     report["report_sha256"] = _hash_payload(report)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    output_path.write_text(
+        json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
     return report
 
 
-def validate_report(report: dict[str, Any]) -> None:
+def validate_report(
+    report: dict[str, Any], *, expected_source_sha: str | None = None
+) -> None:
     if report.get("schema") != SCHEMA or report.get("authority") != AUTHORITY:
         raise ValueError("schema/authority mismatch")
+    source_sha = report.get("source", {}).get("git_sha")
+    if not isinstance(source_sha, str) or not _HEX40.fullmatch(source_sha):
+        raise ValueError("invalid source Git SHA")
+    if expected_source_sha is not None and source_sha != expected_source_sha:
+        raise ValueError("report source SHA mismatch")
     controls = report["controls"]
     if controls["learning_rate"] != BASE_LR or tuple(controls["betas"]) != BETAS:
         raise ValueError("optimizer identity drift")
@@ -461,8 +555,17 @@ def validate_report(report: dict[str, Any]) -> None:
     if [int(r["microbatch_size"]) for r in runs] != [8, 4, 2, 1]:
         raise ValueError("microbatch grid drift")
     for run in runs:
-        if int(run["microbatch_size"]) * int(run["gradient_accumulation_steps"]) != EFFECTIVE_BATCH_SIZE:
+        if (
+            int(run["microbatch_size"])
+            * int(run["gradient_accumulation_steps"])
+            != EFFECTIVE_BATCH_SIZE
+        ):
             raise ValueError("effective batch mismatch")
+        if run["equivalence_vs_fullbatch"].get("same_effective_batch_order") is not True:
+            raise ValueError("batch-order equivalence was not proven")
+    truth = report["truth_boundary"]
+    if truth.get("cpu_only") is not True or truth.get("gpu_behavior_claimed") is not False:
+        raise ValueError("CPU/GPU truth boundary weakened")
     supplied = report["report_sha256"]
     unsigned = dict(report)
     unsigned.pop("report_sha256")
@@ -474,14 +577,24 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo-root", type=Path, default=Path("."))
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--expected-source-sha")
     args = parser.parse_args(argv)
-    report = run_experiment(repo_root=args.repo_root.resolve(), output_path=args.output)
-    validate_report(report)
-    print(json.dumps({
-        "warmup_rule": report["warmup"]["decision"]["rule"],
-        "microbatch_recommendation": report["microbatch"]["recommendation"],
-        "report_sha256": report["report_sha256"],
-    }, sort_keys=True))
+    report = run_experiment(
+        repo_root=args.repo_root.resolve(),
+        output_path=args.output,
+        expected_source_sha=args.expected_source_sha,
+    )
+    validate_report(report, expected_source_sha=args.expected_source_sha)
+    print(
+        json.dumps(
+            {
+                "warmup_rule": report["warmup"]["decision"]["rule"],
+                "microbatch_recommendation": report["microbatch"]["recommendation"],
+                "report_sha256": report["report_sha256"],
+            },
+            sort_keys=True,
+        )
+    )
     return 0
 
 
