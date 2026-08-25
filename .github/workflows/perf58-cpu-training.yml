@@ -1,0 +1,91 @@
+name: PERF-58 CPU Training Performance
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  cpu-training-profile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Prove exact source checkout
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Verify exact locked environment inputs
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: >-
+          python tools/verify_locked_environment.py
+          --profile linux-x86_64
+          --source-sha "$SOURCE_SHA"
+          --evidence-out perf58-locked-environment.json
+      - name: Create locked LOCAL_FREE execution environment
+        run: |
+          python -m venv .perf58-locked
+          .perf58-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .perf58-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          .perf58-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/dev.lock.txt
+          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .perf58-locked/bin/python -m pip install --no-deps --no-build-isolation -e .
+      - name: Run focused static and parity-contract tests
+        run: |
+          .perf58-locked/bin/ruff check src/twelve_six/cpu_training_perf.py tests/test_cpu_training_perf.py
+          .perf58-locked/bin/pytest -q tests/test_cpu_training_perf.py tests/test_scaling_experiment.py
+      - name: Execute exact-parity 100K 500K 1M CPU profile
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          .perf58-locked/bin/python -m twelve_six.cpu_training_perf run \
+            --repo-root . \
+            --source-sha "$SOURCE_SHA" \
+            --output perf58-cpu-training-results.json \
+            --mode auto \
+            --warmup-steps 0 \
+            --measured-steps 64 \
+            --selection-horizon-steps 256 \
+            --max-threads 4 \
+            --max-interop-threads 2 \
+            --max-workers 2 \
+            --minimum-speedup 1.03
+          .perf58-locked/bin/python -m twelve_six.cpu_training_perf validate \
+            perf58-cpu-training-results.json \
+            --expected-source-sha "$SOURCE_SHA"
+          .perf58-locked/bin/python - <<'PY'
+          import json
+          report = json.load(open("perf58-cpu-training-results.json", encoding="utf-8"))
+          print(json.dumps({
+              "hardware": report["hardware"],
+              "scales": [
+                  {
+                      "scale": item["scale"],
+                      "parameters": item["parameters"],
+                      "selected_profile": item["selected_profile"],
+                      "speedup_x": item["speedup_x"],
+                      "exact_parity": item["exact_parity"],
+                  }
+                  for item in report["scales"]
+              ],
+              "compile_candidates_measured": report["execution"]["compile_candidates_measured"],
+              "report_sha256": report["report_sha256"],
+          }, indent=2, sort_keys=True))
+          PY
+      - name: Upload PERF-58 machine evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: perf58-cpu-training-evidence
+          path: |
+            perf58-locked-environment.json
+            perf58-cpu-training-results.json
+          if-no-files-found: error
+          retention-days: 30
