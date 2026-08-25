@@ -49,22 +49,41 @@ jobs:
           .research41-locked/bin/python -m twelve_six.scaling_experiment validate \
             research41-scaling-results.json \
             --expected-source-sha "$SOURCE_SHA"
+      - name: Execute TRAIN-43 warmup and TRAIN-48 beta2 matrix
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          .research41-locked/bin/python -m twelve_six.optimizer_dynamics_experiment run \
+            --repo-root . \
+            --source-sha "$SOURCE_SHA" \
+            --output optimizer-dynamics-results.json
+          .research41-locked/bin/python -m twelve_six.optimizer_dynamics_experiment validate \
+            optimizer-dynamics-results.json \
+            --expected-source-sha "$SOURCE_SHA"
           .research41-locked/bin/python - <<'PY'
           import json
-          report = json.load(open("research41-scaling-results.json", encoding="utf-8"))
+          report = json.load(open("optimizer-dynamics-results.json", encoding="utf-8"))
           print(json.dumps({
-              "source": report["source"],
-              "fit": report["fit"],
-              "decision_signals": report["decision_signals"],
+              "source_sha": report["source_sha"],
+              "controls": report["controls"],
+              "warmup": {
+                  scale: {candidate: run["summary"] for candidate, run in runs.items()}
+                  for scale, runs in report["warmup_runs"].items()
+              },
+              "beta2": {
+                  scale: {candidate: run["summary"] for candidate, run in runs.items()}
+                  for scale, runs in report["beta2_runs"].items()
+              },
               "report_sha256": report["report_sha256"],
           }, indent=2, sort_keys=True))
           PY
-      - name: Upload machine-readable scaling evidence
+      - name: Upload machine-readable scaling and optimizer evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: research41-scaling-evidence
+          name: research41-scaling-and-optimizer-evidence
           path: |
             research41-locked-environment.json
             research41-scaling-results.json
+            optimizer-dynamics-results.json
           if-no-files-found: error
           retention-days: 30
