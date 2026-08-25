@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from twelve_six.integration.s0_runtime import S0TorchInferenceBackend
-from twelve_six.model import TwelveSixDecoder, count_trainable_parameters
+from twelve_six.model import TwelveSixDecoder, count_trainable_parameters, load_stage_config
 from twelve_six.s3_engineering import (
     S3_CURRENT_EXPECTED_PARAMETERS,
     S3_CURRENT_MODEL_SHA256,
@@ -43,9 +45,18 @@ def test_s3_current_exact_algebra_real_construction_and_byte_backend() -> None:
     assert backend.max_context_tokens == 1024
 
 
-def test_s3_d11_future_tokenizer_alternative_still_fails_current_byte_binding() -> None:
-    model = TwelveSixDecoder(s3_d11_model_spec(), s3_init_spec())
+def test_repository_stage_and_d11_are_not_current_byte_bound() -> None:
     tokenizer = ByteTokenizer()
+    repository_stage = load_stage_config(Path("configs/stages/s3_10m.json"))
+    assert repository_stage.expected_parameters == 10_059_840
+    assert (
+        repository_stage.model.identity_sha256()
+        == "3b6fc1b397e6fea69c2f249ce8ab8eedaad8ca1b13b88b8d2328a6abcf34791a"
+    )
+    assert repository_stage.model.vocab_size == 8192
+    assert repository_stage.model.vocab_size != tokenizer.vocab_size
+
+    model = TwelveSixDecoder(s3_d11_model_spec(), s3_init_spec())
     assert model.spec.parameter_count() == S3_D11_EXPECTED_PARAMETERS
     with pytest.raises(ValueError, match="vocabulary mismatch"):
         S0TorchInferenceBackend(model, tokenizer)
