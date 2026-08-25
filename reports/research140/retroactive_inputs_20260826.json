@@ -1,0 +1,181 @@
+{
+  "schema": "12-6.research140-retroactive-inputs.v1",
+  "policy": {
+    "minimum_paired_repeats_for_promotion": 3,
+    "small_n_interval": "exact empirical paired bootstrap for n<=5",
+    "default_interpretation": "practical repeatability, not null-hypothesis significance",
+    "materiality_policy": "comparison-specific and preregistered; never infer a winner from a numerically nonzero delta alone",
+    "repeat_planning": "variance-proportional with an exploratory cap of 7 repeats"
+  },
+  "comparisons": [
+    {
+      "comparison_id": "model13_h2_vs_h4_supporting_pair",
+      "candidate": "mha_h2_hd24",
+      "baseline": "mha_h4_hd12_control",
+      "metric_name": "held_out_validation_loss",
+      "metric_purpose": "selection_validation",
+      "direction": "lower_is_better",
+      "materiality": 0.005,
+      "configured_repeats": 3,
+      "pairs": [
+        {"run_id": "seed-101", "oriented_delta": 0.000011},
+        {"run_id": "seed-202", "oriented_delta": 0.000045},
+        {"run_id": "seed-303", "oriented_delta": 0.000167}
+      ],
+      "source": {
+        "branch": "model13/head-count-100k-20260825",
+        "path": "evidence/swarm_exp_01/model13_head_count_data10_local_20260825.json",
+        "authority": "supporting-only source-reconstructed LOCAL_FREE evidence"
+      },
+      "evidence_notes": [
+        "The source stores explicit paired h2-minus-h4 deltas for seeds 101/202/303.",
+        "All three numerical wins are far below the 0.005 practical-loss floor, so win count alone cannot promote h2."
+      ]
+    },
+    {
+      "comparison_id": "train43_warmup5_vs_zero_1m",
+      "candidate": "warmup_5_steps",
+      "baseline": "warmup_0_steps",
+      "metric_name": "final_held_out_validation_loss",
+      "metric_purpose": "selection_validation",
+      "direction": "lower_is_better",
+      "materiality": 0.005,
+      "configured_repeats": 1,
+      "pairs": [
+        {"run_id": "seed-1337", "baseline": 4.183122516, "candidate": 4.180566669}
+      ],
+      "source": {
+        "branch": "train43/warmup-20260825",
+        "path": "reports/train43/warmup_summary.json",
+        "authority": "executed LOCAL_FREE CPU fp32"
+      },
+      "evidence_notes": [
+        "The observed validation delta is small and comes from one initialization/batch-trace seed.",
+        "The stability reduction in early update/weight ratio remains useful diagnostic evidence but is not substituted for repeatable validation evidence."
+      ]
+    },
+    {
+      "comparison_id": "train43_warmup5_vs_zero_100k",
+      "candidate": "warmup_5_steps",
+      "baseline": "warmup_0_steps",
+      "metric_name": "final_held_out_validation_loss",
+      "metric_purpose": "selection_validation",
+      "direction": "lower_is_better",
+      "materiality": 0.005,
+      "configured_repeats": 1,
+      "pairs": [
+        {"run_id": "seed-1337", "baseline": 3.7047318816, "candidate": 4.180574894}
+      ],
+      "source": {
+        "branch": "train43/warmup-20260825",
+        "path": "reports/train43/warmup_summary.json",
+        "authority": "executed LOCAL_FREE CPU fp32"
+      },
+      "evidence_notes": [
+        "The one observed seed strongly favors no warmup, but a single seed cannot become a research promotion under RESEARCH-140."
+      ]
+    },
+    {
+      "comparison_id": "train48_beta2_099_vs_095_95k",
+      "candidate": "adamw_beta2_0.99",
+      "baseline": "adamw_beta2_0.95",
+      "metric_name": "held_out_validation_loss_step128",
+      "metric_purpose": "selection_validation",
+      "direction": "lower_is_better",
+      "materiality": 0.01854275,
+      "configured_repeats": 1,
+      "pairs": [
+        {"run_id": "source-equivalent-seed-1", "baseline": 3.70855, "candidate": 3.66741}
+      ],
+      "source": {
+        "pull_request": 208,
+        "authority": "provisional source-equivalent LOCAL_FREE execution described in PR; exact-head runner was not counted"
+      },
+      "evidence_notes": [
+        "Retroactive materiality uses the repository's existing 0.5% validation-loss scale from TRAIN-49 as a conservative practical floor applied to the beta2=0.95 baseline.",
+        "The 95K and 468K model scales are not treated as seed repeats of one another."
+      ]
+    },
+    {
+      "comparison_id": "train48_beta2_099_vs_095_468k",
+      "candidate": "adamw_beta2_0.99",
+      "baseline": "adamw_beta2_0.95",
+      "metric_name": "held_out_validation_loss_step128",
+      "metric_purpose": "selection_validation",
+      "direction": "lower_is_better",
+      "materiality": 0.01293925,
+      "configured_repeats": 1,
+      "pairs": [
+        {"run_id": "source-equivalent-seed-1", "baseline": 2.58785, "candidate": 2.55283}
+      ],
+      "source": {
+        "pull_request": 208,
+        "authority": "provisional source-equivalent LOCAL_FREE execution described in PR; exact-head runner was not counted"
+      },
+      "evidence_notes": [
+        "Retroactive materiality is 0.5% of the beta2=0.95 baseline, reusing the repository's precommitted TRAIN-49 practical validation-loss scale rather than deriving a threshold from this result.",
+        "A cross-scale replication is evidence of robustness across scale, not a substitute for run-to-run seed replication."
+      ]
+    },
+    {
+      "comparison_id": "train50_constant_vs_cosine_468k",
+      "candidate": "cosine_with_warmup",
+      "baseline": "constant_with_warmup",
+      "metric_name": "final_held_out_validation_bpb",
+      "metric_purpose": "selection_validation",
+      "direction": "lower_is_better",
+      "materiality": 0.005,
+      "configured_repeats": 2,
+      "pairs": [],
+      "source": {
+        "pull_request": 234,
+        "branch": "train50/schedule-500k-v2-20260825",
+        "authority": "two-seed protocol declared; retained results not present in inspected branch/PR evidence"
+      },
+      "evidence_notes": [
+        "Finish the two planned seeds for exploration; if a promotion is proposed, add one paired seed rather than escalating directly to ten."
+      ]
+    },
+    {
+      "comparison_id": "model09_depth_width_500k",
+      "candidate": "best_noncontrol_geometry",
+      "baseline": "balanced_control_geometry",
+      "metric_name": "final_held_out_validation_loss_at_65536_tokens",
+      "metric_purpose": "selection_validation",
+      "direction": "lower_is_better",
+      "materiality": 0.005,
+      "configured_repeats": 1,
+      "pairs": [],
+      "source": {
+        "pull_request": 242,
+        "branch": "model09/depth-width-500k-20260825",
+        "path": "configs/experiments/model09_depth_width_500k.v1.json",
+        "authority": "predeclared protocol/config; no committed result artifact inspected"
+      },
+      "evidence_notes": [
+        "The config fixes seed 1337, so the historical lowest-loss selector was structurally single-seed even if its Actions run completed elsewhere.",
+        "RESEARCH-140 requires paired repeat evidence before architecture promotion."
+      ]
+    },
+    {
+      "comparison_id": "tok37_model_informed_bpe_selection",
+      "candidate": "provisional_bpe_candidate",
+      "baseline": "byte_tokenizer_control",
+      "metric_name": "aggregate_held_out_model_bpb",
+      "metric_purpose": "selection_validation",
+      "direction": "lower_is_better",
+      "materiality": 0.005,
+      "configured_repeats": 1,
+      "pairs": [],
+      "source": {
+        "pull_request": 241,
+        "branch": "tok37/bpe-vocab-sweep-20260825",
+        "authority": "deterministic tokenizer mechanics plus one random-init model probe seed 126"
+      },
+      "evidence_notes": [
+        "Deterministic compression/fertility facts remain valid without seed repeats.",
+        "The stochastic model-informed quality winner is not promotable from one model seed under RESEARCH-140."
+      ]
+    }
+  ]
+}
