@@ -1,0 +1,42 @@
+{
+  "stage": "S4-GQA4",
+  "target_parameters": 100000000,
+  "expected_parameters": 100376832,
+  "canonical_base": "random_init",
+  "status": "engineering_candidate_not_frozen",
+  "promotion_allowed": false,
+  "requires_preceding_stage_pass": true,
+  "selection_basis": "Near-matched S4 GQA engineering candidate for 100M-scale qualification",
+  "expected_model_identity_sha256": "b8277c26b745acfa18a84895c4a487e3015cd77189f4c1ba89acb03e1df0f362",
+  "expected_init_identity_sha256": "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5",
+  "model": {
+    "schema_version": 1,
+    "activation": "swiglu",
+    "norm_kind": "rmsnorm",
+    "norm_placement": "pre",
+    "norm_eps": 1e-05,
+    "position_embedding": "rope",
+    "rope_theta": 10000.0,
+    "attention_bias": false,
+    "mlp_bias": false,
+    "attention_dropout": 0.0,
+    "final_norm": true,
+    "tie_word_embeddings": true,
+    "lm_head_bias": false,
+    "vocab_size": 32768,
+    "max_seq_len": 2048,
+    "d_model": 768,
+    "n_layers": 10,
+    "n_heads": 12,
+    "n_kv_heads": 4,
+    "head_dim": 64,
+    "d_ff": 2581,
+    "rope_rotary_dim": 64
+  },
+  "init": {
+    "schema_version": 1,
+    "family": "normal",
+    "std": 0.02,
+    "residual_branch_scale": "sqrt_2_layers"
+  }
+}
