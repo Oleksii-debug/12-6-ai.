@@ -1,0 +1,97 @@
+name: PERF-147 Real Packing
+
+on:
+  pull_request:
+    branches:
+      - milestone100/first-learned-base-20260826
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  real-packing:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      PYTHONPATH: src
+      OMP_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+    steps:
+      - name: Checkout exact PERF-147 head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up exact Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact source
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+
+      - name: Install hash-locked CPU runtime
+        run: |
+          set -euo pipefail
+          python -m venv .perf147
+          .perf147/bin/python -m pip install --disable-pip-version-check --no-deps --require-hashes -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .perf147/bin/python -m pip install --disable-pip-version-check --no-deps --require-hashes -r requirements/locks/linux-x86_64/runtime.lock.txt
+
+      - name: Test packing invariants
+        run: |
+          set -euo pipefail
+          .perf147/bin/python -m pytest -q tests/test_packing.py tests/test_packing_performance.py tests/test_data25_corpus_v01.py
+
+      - name: Measure full real corpus utilization
+        run: .perf147/bin/python tools/perf147_packing_static.py --output artifacts/perf147-static
+
+      - name: Measure real Trainer at 500K and 1M
+        run: .perf147/bin/python tools/perf147_trainer.py --steps 8 --output artifacts/perf147-trainer.json
+
+      - name: Validate objective boundary and restart
+        run: |
+          set -euo pipefail
+          .perf147/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+          s=json.loads(Path('artifacts/perf147-static/report.json').read_text())
+          t=json.loads(Path('artifacts/perf147-trainer.json').read_text())
+          assert s['packing_identity_unchanged'] is True
+          assert s['document_boundary_policy']=='isolate'
+          for c in ('128','256','512','1024'):
+              row=s['contexts'][c]
+              assert row['optimized_loss_tokens']==19957537
+              assert row['distinct_documents_per_block']==1.0
+              assert s['mappings'][c]['restart_exact'] is True
+          assert s['contexts']['128']['right_trim_same_order']['tensor_token_reduction_pct']==0.0
+          assert s['contexts']['256']['right_trim_same_order']['tensor_token_reduction_pct']==0.0
+          assert s['contexts']['512']['right_trim_same_order']['tensor_token_reduction_pct']>10.0
+          assert s['contexts']['1024']['right_trim_same_order']['tensor_token_reduction_pct']>40.0
+          for case in t['runs']:
+              a,b=case['fixed'],case['right_trim']
+              assert a['batch_trace_sha256']==b['batch_trace_sha256']
+              assert a['optimized_tokens']==b['optimized_tokens']
+              assert a['data_restart_exact'] and b['data_restart_exact']
+              assert case['max_loss_abs_delta'] < 1e-4
+          print(json.dumps({'static':s['contexts'],'trainer':t['runs']},sort_keys=True))
+          PY
+
+      - name: Upload PERF-147 evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: perf147-real-packing-evidence
+          path: |
+            artifacts/perf147-static/report.json
+            artifacts/perf147-static/record-table.jsonl
+            artifacts/perf147-static/mapping-128.jsonl
+            artifacts/perf147-static/mapping-256.jsonl
+            artifacts/perf147-static/mapping-512.jsonl
+            artifacts/perf147-static/mapping-1024.jsonl
+            artifacts/perf147-trainer.json
+          if-no-files-found: error
+          retention-days: 30
