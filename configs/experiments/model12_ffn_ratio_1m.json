@@ -41,5 +41,6 @@
     {"candidate_id": "ffn_r2.50_hd24", "head_dim": 24, "rope_rotary_dim": 24, "d_ff": 320, "ffn_expansion_ratio": 2.5, "expected_parameters": 992896, "model_identity_sha256": "2ae3c59828f10a7b55b5a393db2679183b14baef203bd24780ac67533ab8f79f", "control": false},
     {"candidate_id": "ffn_r2.75_hd16", "head_dim": 16, "rope_rotary_dim": 16, "d_ff": 352, "ffn_expansion_ratio": 2.75, "expected_parameters": 992896, "model_identity_sha256": "e35166a7b54f1fbd48665827d76f786be470671f296480fe77c2bfe1b3b85bbf", "control": false},
     {"candidate_id": "ffn_r3.00_hd8", "head_dim": 8, "rope_rotary_dim": 8, "d_ff": 384, "ffn_expansion_ratio": 3.0, "expected_parameters": 992896, "model_identity_sha256": "98ab9bd409e0be3790f82a731e31cb2bc0951ef1fd4b90df57ffcbf9e903d7f9", "control": false}
-  ]
+  ],
+  "config_identity_sha256": "0235e0c391645cc05ad684db21a8cf9357cd2eba58b2511084a4fc65c700782e"
 }
