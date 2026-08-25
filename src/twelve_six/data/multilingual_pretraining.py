@@ -15,7 +15,12 @@ from dataclasses import asdict, dataclass
 from typing import Literal, cast
 
 from twelve_six.data.external_sources import RIGHTS_APPROVED
-from twelve_six.data.pipeline import normalize_text
+from twelve_six.data.ukrainian_normalization import (
+    NORMALIZATION_SCHEMA,
+    NormalizationError,
+    NormalizationTrace,
+    normalize_document,
+)
 from twelve_six.packing.scale_contracts import MixturePlan, MixtureSource, RestartCursor
 
 MULTILINGUAL_SCHEMA = "12-6.multilingual-pretraining-v1"
@@ -121,6 +126,7 @@ class AdmittedRecord:
     normalized_text: str
     normalized_sha256: str
     language_evidence: LanguageEvidence
+    normalization_trace: NormalizationTrace
 
 
 @dataclass(frozen=True)
@@ -155,36 +161,22 @@ def _require_sha256(value: str, field: str) -> None:
         raise MultilingualDataError(f"{field} must be lowercase SHA-256")
 
 
-def _normalize_code_layout(text: str) -> str:
-    """Keep indentation/newlines while retaining the incumbent NFKC policy."""
-    normalized = unicodedata.normalize(
-        "NFKC", text.replace("\r\n", "\n").replace("\r", "\n")
-    )
-    return normalized.strip("\n")
-
-
 def strict_normalize_utf8(
     text: str,
     *,
     preserve_layout: bool = False,
 ) -> tuple[str, ScriptProfile]:
-    """Validate Unicode scalars and normalize without corrupting code indentation."""
-    if not isinstance(text, str):
-        raise TypeError("text must be str")
-    if "\ufffd" in text:
-        raise MultilingualDataError("replacement character U+FFFD is forbidden")
-    if any(0xD800 <= ord(char) <= 0xDFFF for char in text):
-        raise MultilingualDataError("surrogate code points are forbidden")
+    """Validate/normalize through the DATA-27 modality-aware contract."""
     try:
-        text.encode("utf-8", errors="strict")
-    except UnicodeEncodeError as exc:
-        raise MultilingualDataError("text is not strict UTF-8 encodable") from exc
-
-    normalized = _normalize_code_layout(text) if preserve_layout else normalize_text(text)
-    if not normalized:
+        result = normalize_document(
+            text,
+            modality="code" if preserve_layout else "natural",
+        )
+    except NormalizationError as exc:
+        raise MultilingualDataError(str(exc)) from exc
+    if not result.text:
         raise MultilingualDataError("normalized text is empty")
-    normalized.encode("utf-8", errors="strict")
-    return normalized, script_profile(normalized)
+    return result.text, script_profile(result.text)
 
 
 def script_profile(text: str) -> ScriptProfile:
@@ -293,10 +285,20 @@ def admit_for_pretraining(
             "non-external records require explicit project-authored provenance"
         )
 
-    normalized, _ = strict_normalize_utf8(
-        record.text, preserve_layout=record.modality == "code"
-    )
-    fingerprint = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+    try:
+        normalization = normalize_document(
+            record.text,
+            modality=record.modality,
+            source_id=record.source_id,
+            source_version=record.source_version,
+            raw_document_id=record.record_id,
+        )
+    except NormalizationError as exc:
+        raise MultilingualDataError(str(exc)) from exc
+    normalized = normalization.text
+    if not normalized:
+        raise MultilingualDataError("normalized text is empty")
+    fingerprint = normalization.trace.normalized_text_sha256
     if fingerprint in reserved_normalized_sha256:
         raise MultilingualDataError(
             "record overlaps a reserved validation/evaluation fingerprint"
@@ -323,6 +325,7 @@ def admit_for_pretraining(
         normalized,
         fingerprint,
         evidence,
+        normalization.trace,
     )
 
 
@@ -448,6 +451,7 @@ def manifest_payload(
     language_counts = Counter(record.language for record in admitted)
     payload: dict[str, object] = {
         "schema": MULTILINGUAL_SCHEMA,
+        "normalization_schema": NORMALIZATION_SCHEMA,
         "base_pretraining_only": True,
         "instruction_tuning": False,
         "canonical_s0_mutated": False,
@@ -455,6 +459,10 @@ def manifest_payload(
         "mixture_plan_sha256": mixture_plan.sha256,
         "tokenizer_costs": [asdict(cost) for cost in tokenizer_costs],
         "corpus_requirements": corpus_requirements(),
+        "normalization_traces": [
+            record.normalization_trace.as_dict()
+            for record in sorted(admitted, key=lambda item: item.record_id)
+        ],
     }
     payload["manifest_sha256"] = hashlib.sha256(
         json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
