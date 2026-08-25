@@ -154,7 +154,7 @@ def checkpoint_scale_policy(
         distributed=distributed,
         training_resume_format=training_format,
         checkpoint_v1_status=v1_status,
-        d18_status="INCUMBENT_DCP_DATA_PLANE",
+        d18_status="D18_INCUMBENT_DCP_DATA_PLANE",
         async_status="BLOCKED_PENDING_D18_ASYNC_STAGING_AND_OVERLAP_EVIDENCE",
         object_storage_status="BLOCKED_PENDING_STORAGE_ADAPTER_AND_COMMIT_PROTOCOL",
         rationale=rationale,
