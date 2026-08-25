@@ -1,0 +1,149 @@
+{
+  "schema_version": "12-6.train43-local-reconstructed-diagnostic.v1",
+  "authority": "LOCAL_CONTAINER_RECONSTRUCTED_DIAGNOSTIC_PROVISIONAL_NOT_LOCKED",
+  "executed": true,
+  "executed_at_date": "2026-08-25",
+  "repository": "Oleksii-debug/12-6-ai.",
+  "incumbent_optimizer_base_sha": "d0b3913e478048c02b371b294cb86b991c4051ea",
+  "train43_branch_pre_evidence_sha": "8751058eeb65a7761a330bd056fbb82a001efc3d",
+  "runtime": {
+    "python": "3.13.5",
+    "torch": "2.10.0+cpu",
+    "device": "cpu",
+    "torch_threads": 2,
+    "paid_compute": false,
+    "wall_seconds_for_combined_train43_train44_diagnostic": 58.58119487762451
+  },
+  "reconstruction_scope": {
+    "model_semantics": "Reconstructed from live TwelveSixDecoder/RMSNorm/RoPE/attention/SwiGLU/init semantics on the incumbent branch.",
+    "tokenizer": "Exact raw UTF-8 byte tokenization 0..255.",
+    "packing": "Exact isolated-document 128-token windows with one-token overlap, zero fill and -100 tail labels.",
+    "loss": "Exact shifted causal cross entropy.",
+    "optimizer_step": "AdamW with token-normalized gradients, pre-clip gradient norm, clip=1.0, optimizer step then scheduler step.",
+    "data": "Exact current data/s0/packaged train and validation text payloads.",
+    "locked_environment_checkout": false
+  },
+  "fixed_recipe": {
+    "learning_rate": 0.0003,
+    "weight_decay": 0.0,
+    "betas": [0.9, 0.95],
+    "eps": 1e-8,
+    "scheduler": "linear_warmup",
+    "gradient_clip_norm": 1.0,
+    "precision": "fp32",
+    "schedule_horizon_steps": 400,
+    "warmup_fractions": [0.0, 0.02, 0.05],
+    "warmup_steps": [0, 8, 20],
+    "seed": 1337
+  },
+  "results": {
+    "S1": {
+      "parameter_count": 107856,
+      "execution_steps": 96,
+      "optimized_tokens_per_candidate": 26113,
+      "candidates": [
+        {
+          "warmup_fraction": 0.0,
+          "warmup_steps": 0,
+          "initial_validation_loss": 6.248439130216542,
+          "final_validation_loss": 4.546371562646167,
+          "early_train_loss_spike_nats": 0.01715030670166051,
+          "early_validation_loss_spike_nats": 0.0,
+          "early_gradient_norm_max": 2.8175465342476826,
+          "early_clip_frequency": 1.0,
+          "early_relative_update_l2_max": 0.005113401775446956,
+          "relative_update_l2_median": 0.0023720711217294025,
+          "recovery_tokens_from_initial_validation": 267
+        },
+        {
+          "warmup_fraction": 0.02,
+          "warmup_steps": 8,
+          "initial_validation_loss": 6.248439130216542,
+          "final_validation_loss": 4.567784822813355,
+          "final_validation_regression_vs_no_warmup_fraction": 0.0047099670302188645,
+          "early_train_loss_spike_nats": 0.01715030670166051,
+          "early_validation_loss_spike_nats": 0.0,
+          "early_gradient_norm_max": 2.8592918954951543,
+          "early_clip_frequency": 1.0,
+          "early_relative_update_l2_max": 0.003149079916507649,
+          "relative_update_l2_median": 0.0023598155909546788,
+          "recovery_tokens_from_initial_validation": 267
+        },
+        {
+          "warmup_fraction": 0.05,
+          "warmup_steps": 20,
+          "initial_validation_loss": 6.248439130216542,
+          "final_validation_loss": 4.632434173385696,
+          "final_validation_regression_vs_no_warmup_fraction": 0.01892995536190556,
+          "early_train_loss_spike_nats": 0.01715030670166051,
+          "early_validation_loss_spike_nats": 0.0,
+          "early_gradient_norm_max": 2.814486778164452,
+          "early_clip_frequency": 1.0,
+          "early_relative_update_l2_max": 0.0030338491598517338,
+          "relative_update_l2_median": 0.0023300217397405846,
+          "recovery_tokens_from_initial_validation": 267
+        }
+      ]
+    },
+    "S2": {
+      "parameter_count": 1066112,
+      "execution_steps": 64,
+      "optimized_tokens_per_candidate": 11196,
+      "candidates": [
+        {
+          "warmup_fraction": 0.0,
+          "warmup_steps": 0,
+          "initial_validation_loss": 7.67049494120154,
+          "final_validation_loss": 4.345533578702719,
+          "early_train_loss_spike_nats": 0.0219214626631814,
+          "early_validation_loss_spike_nats": 0.0,
+          "early_gradient_norm_max": 10.821274855158158,
+          "early_clip_frequency": 1.0,
+          "early_relative_update_l2_max": 0.008005897749415729,
+          "relative_update_l2_median": 0.003517487891634928,
+          "recovery_tokens_from_initial_validation": 140
+        },
+        {
+          "warmup_fraction": 0.02,
+          "warmup_steps": 8,
+          "initial_validation_loss": 7.67049494120154,
+          "final_validation_loss": 4.386806986119487,
+          "final_validation_regression_vs_no_warmup_fraction": 0.009497891724746355,
+          "early_train_loss_spike_nats": 0.0219214626631814,
+          "early_validation_loss_spike_nats": 0.0,
+          "early_gradient_norm_max": 12.068215368834466,
+          "early_clip_frequency": 1.0,
+          "early_relative_update_l2_max": 0.004304879711902611,
+          "relative_update_l2_median": 0.0035107618182959564,
+          "recovery_tokens_from_initial_validation": 140
+        },
+        {
+          "warmup_fraction": 0.05,
+          "warmup_steps": 20,
+          "initial_validation_loss": 7.67049494120154,
+          "final_validation_loss": 4.560849704364739,
+          "final_validation_regression_vs_no_warmup_fraction": 0.0495488348582267,
+          "early_train_loss_spike_nats": 0.0219214626631814,
+          "early_validation_loss_spike_nats": 0.0,
+          "early_gradient_norm_max": 12.193969340555396,
+          "early_clip_frequency": 1.0,
+          "early_relative_update_l2_max": 0.0037096132149193935,
+          "relative_update_l2_median": 0.003548694606780606,
+          "recovery_tokens_from_initial_validation": 140
+        }
+      ]
+    }
+  },
+  "provisional_warmup_rule": {
+    "selected_warmup_fraction": 0.0,
+    "material_improvement_found": false,
+    "reason": "Warmup reduced early update magnitude, but did not reduce early loss spikes, pre-clip gradient maxima, clip frequency, or recovery tokens on both scales. No-warmup also produced the best final held-out loss at both S1 and S2.",
+    "rule": "At AdamW LR 3e-4 with betas 0.9/0.95, weight decay 0 and clip=1.0, use no warmup provisionally for the controlled approximately 100K-1M family. Re-open warmup when peak LR, batch geometry, precision or scale materially changes."
+  },
+  "truth_boundary": {
+    "locked_train43_workflow_terminal": false,
+    "representative_corpus_claim": false,
+    "quality_or_capability_claim": false,
+    "final_hyperparameter_freeze": false
+  }
+}
