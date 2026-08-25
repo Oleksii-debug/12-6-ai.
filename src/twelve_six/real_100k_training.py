@@ -24,7 +24,6 @@ import torch.nn.functional as F
 
 from twelve_six.checkpoint import (
     CheckpointIdentity,
-    hash_json,
     load_trainer_checkpoint,
     save_trainer_checkpoint,
     sha256_file,
@@ -104,7 +103,9 @@ def _read_recipe(repo_root: Path) -> dict[str, Any]:
     if local.get("sha256") != EXPECTED_CORPUS_SHA256:
         raise Learn01Error("DATA-10 recipe corpus identity drifted")
     if source_admission.get("external_sources_training_approved_at_recipe_creation") != 0:
-        raise Learn01Error("external-source truth boundary changed; re-audit before this experiment")
+        raise Learn01Error(
+            "external-source truth boundary changed; re-audit before this experiment"
+        )
     if source_admission.get("project_authored_synthetic_allowed") is not True:
         raise Learn01Error("DATA-10 does not permit project-authored synthetic training data")
     return recipe
@@ -852,7 +853,9 @@ def run_experiment(
             "best_optimized_tokens": best_tokens,
             "final_loss": float(final_validation["loss"]),
             "final_bits_per_byte": float(final_validation["bits_per_byte"]),
-            "absolute_best_loss_improvement": float(initial_validation["loss"]) - best_validation_loss,
+            "absolute_best_loss_improvement": (
+                float(initial_validation["loss"]) - best_validation_loss
+            ),
             "relative_best_loss_improvement": (
                 float(initial_validation["loss"]) - best_validation_loss
             ) / float(initial_validation["loss"]),
