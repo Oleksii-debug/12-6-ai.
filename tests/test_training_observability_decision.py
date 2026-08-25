@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from twelve_six.training.observability_decision import (
+    project_measured_topology_run_cost,
     target_hardware_paid_compute_decision_support,
 )
 
@@ -122,4 +123,66 @@ def test_distributed_aggregate_must_match_exact_run_identity() -> None:
         target_hardware_paid_compute_decision_support(
             local,
             distributed_aggregate=aggregate,
+        )
+
+
+def test_cost_projection_amortizes_checkpoint_and_evaluation_by_token_cadence() -> None:
+    summary = _summary(
+        device_type="cuda",
+        timing_mode="CUDA_SYNCHRONIZED_WALL",
+        tokens_per_second=1000.0,
+    )
+
+    projection = project_measured_topology_run_cost(
+        summary,
+        target_training_tokens=3_600_000,
+        euro_per_gpu_hour=2.0,
+        gpu_count=1,
+        checkpoint_interval_tokens=1_800_000,
+        checkpoint_seconds_per_event=10.0,
+        evaluation_interval_tokens=1_200_000,
+        evaluation_seconds_per_event=5.0,
+    )
+
+    assert projection["base_training_seconds"] == pytest.approx(3600.0)
+    assert projection["checkpoint_events_projected"] == 2
+    assert projection["projected_checkpoint_seconds"] == pytest.approx(20.0)
+    assert projection["evaluation_events_projected"] == 3
+    assert projection["projected_evaluation_seconds"] == pytest.approx(15.0)
+    assert projection["projected_total_seconds"] == pytest.approx(3635.0)
+    assert projection["projected_cost_eur"] == pytest.approx(3635.0 / 3600.0 * 2.0)
+    assert projection["euro_2000_projection"]["status"] == "WITHIN_PROJECTION"
+    assert projection["projection_authorizes_spend"] is False
+
+
+def test_cost_projection_refuses_unsynchronized_cuda_throughput() -> None:
+    summary = _summary(
+        device_type="cuda",
+        timing_mode="CUDA_HOST_ENQUEUE_WALL",
+        tokens_per_second=1_000_000.0,
+    )
+
+    with pytest.raises(ValueError, match="not cost-usable"):
+        project_measured_topology_run_cost(
+            summary,
+            target_training_tokens=1_000_000,
+            euro_per_gpu_hour=2.0,
+            gpu_count=1,
+        )
+
+
+def test_multi_rank_cost_projection_requires_full_rank_aggregate() -> None:
+    summary = _summary(
+        device_type="cuda",
+        timing_mode="CUDA_SYNCHRONIZED_WALL",
+        world_size=2,
+        tokens_per_second=900.0,
+    )
+
+    with pytest.raises(ValueError, match="not cost-usable"):
+        project_measured_topology_run_cost(
+            summary,
+            target_training_tokens=1_000_000,
+            euro_per_gpu_hour=2.0,
+            gpu_count=2,
         )
