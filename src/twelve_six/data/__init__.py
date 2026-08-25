@@ -1,5 +1,16 @@
 """Data acquisition, provenance, filtering, deduplication, and corpus packaging."""
 
+from .code_normalization import (
+    CODE_NORMALIZATION_POLICY,
+    CODE_NORMALIZATION_SCHEMA,
+    CodeNormalizationError,
+    CodeNormalizationEvidence,
+    CodeStructure,
+    MarkdownFencedCodeBlock,
+    decode_code_bytes,
+    extract_markdown_fenced_code,
+    normalize_code_text,
+)
 from .external_sources import (
     RIGHTS_APPROVED,
     RIGHTS_REJECTED,
@@ -25,14 +36,20 @@ from .scalable_ingestion import (
 )
 
 __all__ = [
+    "CODE_NORMALIZATION_POLICY",
+    "CODE_NORMALIZATION_SCHEMA",
     "DATATROVE_VERSION",
     "RIGHTS_APPROVED",
     "RIGHTS_REJECTED",
     "RIGHTS_REVIEW_REQUIRED",
+    "CodeNormalizationError",
+    "CodeNormalizationEvidence",
+    "CodeStructure",
     "DataContractError",
     "DataTroveParquetPlan",
     "ExternalDataContractError",
     "ExternalSourceSpec",
+    "MarkdownFencedCodeBlock",
     "PipelineConfig",
     "ReservedSetSpec",
     "RightsDecision",
@@ -43,7 +60,10 @@ __all__ = [
     "build_external_source_registry",
     "build_reserved_fingerprint_registry",
     "contamination_report",
+    "decode_code_bytes",
+    "extract_markdown_fenced_code",
     "language_id",
+    "normalize_code_text",
     "normalize_text",
     "validate_external_source_registry",
     "validate_reserved_fingerprint_registry",

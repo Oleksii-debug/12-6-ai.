@@ -14,11 +14,17 @@ from collections import Counter
 from dataclasses import asdict, dataclass
 from typing import Literal, cast
 
+from twelve_six.data.code_normalization import (
+    CODE_NORMALIZATION_POLICY,
+    CodeNormalizationError,
+    normalize_code_text,
+)
 from twelve_six.data.external_sources import RIGHTS_APPROVED
 from twelve_six.data.pipeline import normalize_text
 from twelve_six.packing.scale_contracts import MixturePlan, MixtureSource, RestartCursor
 
 MULTILINGUAL_SCHEMA = "12-6.multilingual-pretraining-v1"
+NATURAL_NORMALIZATION_POLICY = "D03_NFKC_WHITESPACE_V1"
 _SELECTION_WEIGHTS = {"uk": 45, "en": 35, "code": 20}
 _FORBIDDEN_TRAIN_SPLITS = frozenset(
     {"validation", "val", "evaluation", "eval", "test", "heldout", "benchmark"}
@@ -29,16 +35,55 @@ _FORBIDDEN_SOURCE_PURPOSES = frozenset(
 _UK_SPECIFIC = frozenset("іїєґІЇЄҐ")
 _UK_LEXICAL = frozenset(
     {
-        "і", "й", "та", "але", "або", "що", "щоб", "для", "від", "до",
-        "після", "перед", "цей", "ця", "це", "ці", "який", "яка", "яке",
-        "які", "україна", "український", "мови", "мова", "дані", "модель",
+        "і",
+        "й",
+        "та",
+        "але",
+        "або",
+        "що",
+        "щоб",
+        "для",
+        "від",
+        "до",
+        "після",
+        "перед",
+        "цей",
+        "ця",
+        "це",
+        "ці",
+        "який",
+        "яка",
+        "яке",
+        "які",
+        "україна",
+        "український",
+        "мови",
+        "мова",
+        "дані",
+        "модель",
     }
 )
 _EN_LEXICAL = frozenset(
     {
-        "the", "and", "or", "but", "for", "from", "with", "this", "that",
-        "these", "those", "is", "are", "was", "were", "data", "model",
-        "language", "training",
+        "the",
+        "and",
+        "or",
+        "but",
+        "for",
+        "from",
+        "with",
+        "this",
+        "that",
+        "these",
+        "those",
+        "is",
+        "are",
+        "was",
+        "were",
+        "data",
+        "model",
+        "language",
+        "training",
     }
 )
 _WORD_RE = re.compile(r"[^\W\d_]+(?:['’ʼ-][^\W\d_]+)*", re.UNICODE)
@@ -93,7 +138,13 @@ class PretrainingRecord:
     project_authored_synthetic: bool = False
 
     def __post_init__(self) -> None:
-        fields = ("record_id", "source_id", "source_version", "split", "source_purpose")
+        fields = (
+            "record_id",
+            "source_id",
+            "source_version",
+            "split",
+            "source_purpose",
+        )
         for field_name in fields:
             value = getattr(self, field_name)
             if not isinstance(value, str) or not value.strip():
@@ -121,6 +172,9 @@ class AdmittedRecord:
     normalized_text: str
     normalized_sha256: str
     language_evidence: LanguageEvidence
+    source_sha256: str
+    normalization_policy: str
+    normalization_reasons: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -156,11 +210,14 @@ def _require_sha256(value: str, field: str) -> None:
 
 
 def _normalize_code_layout(text: str) -> str:
-    """Keep indentation/newlines while retaining the incumbent NFKC policy."""
-    normalized = unicodedata.normalize(
-        "NFKC", text.replace("\r\n", "\n").replace("\r", "\n")
-    )
-    return normalized.strip("\n")
+    """Preserve accepted source code exactly; never apply natural-text NFKC."""
+    try:
+        normalized, _evidence = normalize_code_text(text)
+    except CodeNormalizationError as exc:
+        raise MultilingualDataError(
+            f"code normalization rejected input: {exc.reason}"
+        ) from exc
+    return normalized
 
 
 def strict_normalize_utf8(
@@ -168,7 +225,7 @@ def strict_normalize_utf8(
     *,
     preserve_layout: bool = False,
 ) -> tuple[str, ScriptProfile]:
-    """Validate Unicode scalars and normalize without corrupting code indentation."""
+    """Validate Unicode scalars and normalize according to the source modality."""
     if not isinstance(text, str):
         raise TypeError("text must be str")
     if "\ufffd" in text:
@@ -210,8 +267,16 @@ def script_profile(text: str) -> ScriptProfile:
         else:
             other += 1
     return ScriptProfile(
-        len(text), len(text.encode("utf-8")), latin, cyrillic, uk_specific,
-        digits, whitespace, punctuation, other, replacements,
+        len(text),
+        len(text.encode("utf-8")),
+        latin,
+        cyrillic,
+        uk_specific,
+        digits,
+        whitespace,
+        punctuation,
+        other,
+        replacements,
     )
 
 
@@ -225,7 +290,9 @@ def detect_language(
         text, preserve_layout=modality == "code"
     )
     if modality == "code":
-        return LanguageEvidence("code", 1.0, profile, 0, 0, "explicit-source-modality")
+        return LanguageEvidence(
+            "code", 1.0, profile, 0, 0, "explicit-source-modality"
+        )
 
     words = [
         word.casefold().replace("’", "'").replace("ʼ", "'")
@@ -255,7 +322,9 @@ def detect_language(
             "uk", confidence, profile, uk_hits, en_hits, "uk-script-lexical"
         )
     elif profile.latin_letters >= 20 and latin_ratio >= 0.9 and en_hits >= 1:
-        confidence = min(1.0, 0.6 + 0.3 * latin_ratio + 0.025 * min(en_hits, 4))
+        confidence = min(
+            1.0, 0.6 + 0.3 * latin_ratio + 0.025 * min(en_hits, 4)
+        )
         evidence = LanguageEvidence(
             "en", confidence, profile, uk_hits, en_hits, "en-script-lexical"
         )
@@ -264,7 +333,10 @@ def detect_language(
             "und", 0.0, profile, uk_hits, en_hits, "insufficient-evidence"
         )
 
-    if language_hint in {"uk", "en"} and evidence.label not in {language_hint, "und"}:
+    if language_hint in {"uk", "en"} and evidence.label not in {
+        language_hint,
+        "und",
+    }:
         raise MultilingualDataError(
             f"language hint {language_hint!r} conflicts with detected {evidence.label!r}"
         )
@@ -280,11 +352,18 @@ def admit_for_pretraining(
     split = record.split.casefold()
     purpose = record.source_purpose.casefold()
     if split in _FORBIDDEN_TRAIN_SPLITS:
-        raise MultilingualDataError(f"split {record.split!r} cannot enter pretraining")
+        raise MultilingualDataError(
+            f"split {record.split!r} cannot enter pretraining"
+        )
     if purpose in _FORBIDDEN_SOURCE_PURPOSES:
-        raise MultilingualDataError(f"source purpose {record.source_purpose!r} is held out")
+        raise MultilingualDataError(
+            f"source purpose {record.source_purpose!r} is held out"
+        )
     if record.external:
-        if record.rights_status != RIGHTS_APPROVED or record.allows_model_training is not True:
+        if (
+            record.rights_status != RIGHTS_APPROVED
+            or record.allows_model_training is not True
+        ):
             raise MultilingualDataError(
                 "external source is not explicitly approved for model training"
             )
@@ -293,9 +372,24 @@ def admit_for_pretraining(
             "non-external records require explicit project-authored provenance"
         )
 
-    normalized, _ = strict_normalize_utf8(
-        record.text, preserve_layout=record.modality == "code"
-    )
+    if record.modality == "code":
+        try:
+            normalized, normalization_evidence = normalize_code_text(
+                record.text,
+                language=record.language_hint or "unknown",
+            )
+        except CodeNormalizationError as exc:
+            raise MultilingualDataError(
+                f"code normalization rejected input: {exc.reason}"
+            ) from exc
+        normalization_policy = normalization_evidence.policy
+        normalization_reasons = normalization_evidence.reasons
+    else:
+        normalized, _ = strict_normalize_utf8(record.text)
+        normalization_policy = NATURAL_NORMALIZATION_POLICY
+        normalization_reasons = ("d03_natural_text_normalization",)
+
+    source_fingerprint = hashlib.sha256(record.text.encode("utf-8")).hexdigest()
     fingerprint = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
     if fingerprint in reserved_normalized_sha256:
         raise MultilingualDataError(
@@ -303,26 +397,41 @@ def admit_for_pretraining(
         )
 
     evidence = detect_language(
-        normalized, modality=record.modality, language_hint=record.language_hint
+        normalized,
+        modality=record.modality,
+        language_hint=record.language_hint,
     )
     if record.modality == "natural" and evidence.label not in {"uk", "en"}:
         raise MultilingualDataError(
             f"natural-language record is not confidently uk/en: {evidence.label}"
         )
     if len(normalized) < 20:
-        raise MultilingualDataError("record is too short for multilingual pretraining admission")
+        raise MultilingualDataError(
+            "record is too short for multilingual pretraining admission"
+        )
+
+    if record.modality == "code":
+        if source_fingerprint != fingerprint:
+            raise MultilingualDataError(
+                "code normalization violated source-byte identity"
+            )
+        if normalization_policy != CODE_NORMALIZATION_POLICY:
+            raise MultilingualDataError("unexpected code normalization policy")
 
     return AdmittedRecord(
-        record.record_id,
-        record.source_id,
-        record.source_version,
-        record.source_manifest_sha256,
-        record.split,
-        record.modality,
-        evidence.label,
-        normalized,
-        fingerprint,
-        evidence,
+        record_id=record.record_id,
+        source_id=record.source_id,
+        source_version=record.source_version,
+        source_manifest_sha256=record.source_manifest_sha256,
+        split=record.split,
+        modality=record.modality,
+        language=evidence.label,
+        normalized_text=normalized,
+        normalized_sha256=fingerprint,
+        language_evidence=evidence,
+        source_sha256=source_fingerprint,
+        normalization_policy=normalization_policy,
+        normalization_reasons=normalization_reasons,
     )
 
 
@@ -351,14 +460,18 @@ def build_token_budget_mixture(
 ) -> MixturePlan:
     """Build the incumbent D10 deterministic mixture plan from multilingual strata."""
     if {stratum.name for stratum in strata} != {"uk", "en", "code"}:
-        raise MultilingualDataError("mixture requires exactly uk, en and code strata")
+        raise MultilingualDataError(
+            "mixture requires exactly uk, en and code strata"
+        )
     return MixturePlan(
         plan_id="uk-en-code-token-budget-v1",
         tokenizer_config_sha256=tokenizer_config_sha256,
         tokenizer_vocab_sha256=tokenizer_vocab_sha256,
         packing_config_sha256=packing_config_sha256,
         sources=tuple(
-            MixtureSource(stratum.name, stratum.manifest_sha256, stratum.weight_units)
+            MixtureSource(
+                stratum.name, stratum.manifest_sha256, stratum.weight_units
+            )
             for stratum in strata
         ),
         seed=seed,
@@ -370,7 +483,9 @@ def default_token_budget_strata(
     manifest_by_name: dict[str, str],
 ) -> tuple[MixtureStratum, ...]:
     if set(manifest_by_name) != set(_SELECTION_WEIGHTS):
-        raise MultilingualDataError("manifest_by_name must contain exactly uk, en and code")
+        raise MultilingualDataError(
+            "manifest_by_name must contain exactly uk, en and code"
+        )
     result = []
     for raw_name, weight in _SELECTION_WEIGHTS.items():
         name = cast(Literal["uk", "en", "code"], raw_name)
@@ -393,7 +508,10 @@ def replay_schedule(
         source, _offset = current.next_source_and_offset(plan)
         counts[source] += 1
         current = current.advance(
-            plan, source_name=source, emitted_sequences=1, emitted_loss_tokens=1
+            plan,
+            source_name=source,
+            emitted_sequences=1,
+            emitted_loss_tokens=1,
         )
     return counts, current
 
@@ -421,7 +539,9 @@ def tokenizer_cost(
     )
 
 
-def corpus_requirements(tokens_per_parameter: int = 20) -> dict[str, dict[str, int]]:
+def corpus_requirements(
+    tokens_per_parameter: int = 20,
+) -> dict[str, dict[str, int]]:
     """Planning floors, not quality guarantees: training tokens per model parameter."""
     if tokens_per_parameter <= 0:
         raise MultilingualDataError("tokens_per_parameter must be positive")
@@ -446,6 +566,17 @@ def manifest_payload(
     tokenizer_costs: tuple[TokenizerCost, ...],
 ) -> dict[str, object]:
     language_counts = Counter(record.language for record in admitted)
+    normalization_records = [
+        {
+            "record_id": record.record_id,
+            "modality": record.modality,
+            "source_sha256": record.source_sha256,
+            "normalized_sha256": record.normalized_sha256,
+            "policy": record.normalization_policy,
+            "reasons": record.normalization_reasons,
+        }
+        for record in sorted(admitted, key=lambda item: item.record_id)
+    ]
     payload: dict[str, object] = {
         "schema": MULTILINGUAL_SCHEMA,
         "base_pretraining_only": True,
@@ -455,8 +586,14 @@ def manifest_payload(
         "mixture_plan_sha256": mixture_plan.sha256,
         "tokenizer_costs": [asdict(cost) for cost in tokenizer_costs],
         "corpus_requirements": corpus_requirements(),
+        "normalization_records": normalization_records,
     }
     payload["manifest_sha256"] = hashlib.sha256(
-        json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+        json.dumps(
+            payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode()
     ).hexdigest()
     return payload
