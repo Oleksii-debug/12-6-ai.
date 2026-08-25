@@ -17,8 +17,8 @@ from twelve_six.tokenization import BYTE_TOKENIZER_HASH, BYTE_VOCAB_HASH, ByteTo
 
 from .core import PACKING_CONFIG_HASH
 from .scale_contracts import MixturePlan, MixtureSource
+from .sharded_storage import LogicalShardFile, build_physical_shard_dataset
 from .streaming import (
-    CursorAwareIterableDataset,
     build_dataloader,
     iter_jsonl_stream,
     iter_packed_stream,
@@ -26,7 +26,7 @@ from .streaming import (
     prefetch_bounded,
 )
 
-BENCHMARK_SCHEMA = "12-6.streaming-packing-benchmark.v1"
+BENCHMARK_SCHEMA = "12-6.streaming-packing-benchmark.v2"
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,7 +34,9 @@ class SyntheticCorpus:
     documents: int
     utf8_bytes: int
     expected_loss_tokens: int
-    file_bytes: int
+    unsharded_file_bytes: int
+    physical_shard_file_bytes: int
+    physical_shard_files: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,14 +49,7 @@ class Measurement:
     examples_per_second: float
     source_mib_per_second: float
     peak_tracemalloc_bytes: int
-
-
-@dataclass(frozen=True, slots=True)
-class _JsonlFactory:
-    path: str
-
-    def __call__(self):
-        return iter_jsonl_stream(self.path, split="train")
+    memory_scope: str
 
 
 def _make_plan() -> MixturePlan:
@@ -80,31 +75,62 @@ def _synthetic_text(index: int) -> str:
     return base * units
 
 
-def write_synthetic_jsonl(path: Path, *, documents: int) -> SyntheticCorpus:
+def write_synthetic_sources(
+    unsharded_path: Path,
+    physical_dir: Path,
+    *,
+    documents: int,
+    plan: MixturePlan,
+) -> tuple[SyntheticCorpus, tuple[LogicalShardFile, ...]]:
+    """Write identical logical content as one JSONL file and stable physical shards."""
     if documents <= 0:
         raise ValueError("documents must be positive")
+    physical_dir.mkdir(parents=True, exist_ok=True)
+    handles: dict[int, object] = {}
+    paths: dict[int, Path] = {}
     utf8_bytes = 0
     expected_loss_tokens = 0
-    with path.open("w", encoding="utf-8", newline="\n") as handle:
-        for index in range(documents):
-            text = _synthetic_text(index)
-            text_bytes = len(text.encode("utf-8"))
-            utf8_bytes += text_bytes
-            expected_loss_tokens += max(text_bytes - 1, 0)
-            handle.write(
-                json.dumps(
-                    {"id": f"synthetic-{index:08d}", "text": text},
-                    ensure_ascii=False,
-                    separators=(",", ":"),
+    try:
+        with unsharded_path.open("w", encoding="utf-8", newline="\n") as unsharded:
+            for index in range(documents):
+                record_id = f"synthetic-{index:08d}"
+                text = _synthetic_text(index)
+                text_bytes = len(text.encode("utf-8"))
+                utf8_bytes += text_bytes
+                expected_loss_tokens += max(text_bytes - 1, 0)
+                line = (
+                    json.dumps(
+                        {"id": record_id, "text": text},
+                        ensure_ascii=False,
+                        separators=(",", ":"),
+                    )
+                    + "\n"
                 )
-                + "\n"
-            )
-    return SyntheticCorpus(
+                unsharded.write(line)
+                logical_shard = plan.shard_for_record(record_id)
+                if logical_shard not in handles:
+                    path = physical_dir / f"part-{logical_shard:05d}.jsonl"
+                    paths[logical_shard] = path
+                    handles[logical_shard] = path.open("w", encoding="utf-8", newline="\n")
+                handles[logical_shard].write(line)
+    finally:
+        for handle in handles.values():
+            handle.close()
+    files = tuple(
+        LogicalShardFile(shard, str(paths[shard]), "jsonl") for shard in sorted(paths)
+    )
+    physical_bytes = sum(Path(file.path).stat().st_size for file in files)
+    corpus = SyntheticCorpus(
         documents=documents,
         utf8_bytes=utf8_bytes,
         expected_loss_tokens=expected_loss_tokens,
-        file_bytes=path.stat().st_size,
+        unsharded_file_bytes=unsharded_path.stat().st_size,
+        physical_shard_file_bytes=physical_bytes,
+        physical_shard_files=len(files),
     )
+    if corpus.unsharded_file_bytes != corpus.physical_shard_file_bytes:
+        raise RuntimeError("physical-shard packaging changed corpus JSONL byte membership")
+    return corpus, files
 
 
 def _measurement(
@@ -115,6 +141,7 @@ def _measurement(
     loss_tokens: int,
     source_bytes: int,
     peak_bytes: int,
+    memory_scope: str,
 ) -> Measurement:
     wall = time.perf_counter() - start
     return Measurement(
@@ -126,12 +153,18 @@ def _measurement(
         examples_per_second=examples / wall,
         source_mib_per_second=(source_bytes / (1024 * 1024)) / wall,
         peak_tracemalloc_bytes=peak_bytes,
+        memory_scope=memory_scope,
     )
 
 
-def measure_direct(path: Path, corpus: SyntheticCorpus, *, prefetch_items: int) -> Measurement:
+def measure_direct(
+    path: Path,
+    corpus: SyntheticCorpus,
+    plan: MixturePlan,
+    *,
+    prefetch_items: int,
+) -> Measurement:
     tokenizer = ByteTokenizer()
-    plan = _make_plan()
     records = prefetch_bounded(
         iter_jsonl_stream(path, split="train"),
         max_items=prefetch_items,
@@ -160,22 +193,28 @@ def measure_direct(path: Path, corpus: SyntheticCorpus, *, prefetch_items: int) 
             f"{corpus.expected_loss_tokens}"
         )
     return _measurement(
-        mode=f"direct-prefetch-{prefetch_items}",
+        mode=f"direct-unsharded-prefetch-{prefetch_items}",
         start=start,
         examples=examples,
         loss_tokens=loss_tokens,
-        source_bytes=corpus.file_bytes,
+        source_bytes=corpus.unsharded_file_bytes,
         peak_bytes=peak,
+        memory_scope="main_process_python_allocations_only",
     )
 
 
-def measure_dataloader(path: Path, corpus: SyntheticCorpus, *, workers: int) -> Measurement:
+def measure_physical_dataloader(
+    files: tuple[LogicalShardFile, ...],
+    corpus: SyntheticCorpus,
+    plan: MixturePlan,
+    *,
+    workers: int,
+) -> Measurement:
     tokenizer = ByteTokenizer()
-    plan = _make_plan()
-    dataset = CursorAwareIterableDataset(
-        _JsonlFactory(str(path)),
-        tokenizer,
+    dataset = build_physical_shard_dataset(
         plan,
+        tokenizer,
+        files,
         source_name="synthetic",
         split="train",
         sequence_length=128,
@@ -197,25 +236,38 @@ def measure_dataloader(path: Path, corpus: SyntheticCorpus, *, workers: int) -> 
     tracemalloc.stop()
     if loss_tokens != corpus.expected_loss_tokens:
         raise RuntimeError(
-            f"DataLoader exact loss-token accounting drifted: {loss_tokens} != "
+            f"physical DataLoader exact loss-token accounting drifted: {loss_tokens} != "
             f"{corpus.expected_loss_tokens}"
         )
     return _measurement(
-        mode=f"torch-dataloader-workers-{workers}",
+        mode=f"physical-logical-shards-torch-workers-{workers}",
         start=start,
         examples=examples,
         loss_tokens=loss_tokens,
-        source_bytes=corpus.file_bytes,
+        source_bytes=corpus.physical_shard_file_bytes,
         peak_bytes=peak,
+        memory_scope="main_process_python_allocations_only_workers_excluded",
     )
 
 
 def run_benchmark(*, documents: int, output: Path) -> dict[str, object]:
+    plan = _make_plan()
     with tempfile.TemporaryDirectory(prefix="twelve-six-streaming-") as directory:
-        source = Path(directory) / "synthetic.jsonl"
-        corpus = write_synthetic_jsonl(source, documents=documents)
-        direct = measure_direct(source, corpus, prefetch_items=32)
-        dataloader = measure_dataloader(source, corpus, workers=2)
+        root = Path(directory)
+        source = root / "synthetic.jsonl"
+        corpus, physical_files = write_synthetic_sources(
+            source,
+            root / "physical-shards",
+            documents=documents,
+            plan=plan,
+        )
+        direct = measure_direct(source, corpus, plan, prefetch_items=32)
+        dataloader = measure_physical_dataloader(
+            physical_files,
+            corpus,
+            plan,
+            workers=2,
+        )
     report = {
         "schema": BENCHMARK_SCHEMA,
         "authority": "LOCAL_FREE_SYNTHETIC_DATA_DELIVERY_EVIDENCE_NOT_GPU_CAPACITY",
@@ -230,9 +282,13 @@ def run_benchmark(*, documents: int, output: Path) -> dict[str, object]:
         "invariants": {
             "exact_loss_token_accounting": True,
             "document_isolated_training_path": True,
-            "logical_shards": 256,
+            "logical_shards": plan.num_shards,
+            "physical_shards_opened_by_owner_only": True,
             "world_size_change_requires_merged_logical_shard_cursor": True,
+            "bounded_thread_prefetch_items": 32,
+            "dataloader_prefetch_factor": 2,
             "gpu_capacity_claim": False,
+            "tracemalloc_worker_memory_included": False,
             "parquet_backend": "IMPLEMENTED_OPTIONAL_PYARROW_RUNTIME_NOT_CLAIMED_BY_THIS_BENCHMARK",
         },
     }
