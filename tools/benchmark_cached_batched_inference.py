@@ -6,7 +6,7 @@ import json
 import platform
 import statistics
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -21,9 +21,24 @@ from twelve_six.inference.contracts import GenerationConfig, GenerationResult
 from twelve_six.inference.generation import generate
 from twelve_six.integration.torch_batching import S0TorchBatchedInferenceBackend
 from twelve_six.model import TwelveSixDecoder, load_stage_config
-from twelve_six.tokenization import ByteTokenizer
 
 _SCHEMA = "12-6.cached-batched-inference-benchmark.v1"
+
+
+class _SyntheticTokenizer:
+    """Deterministic model-compatible tokenizer used only by the benchmark harness."""
+
+    def __init__(self, vocab_size: int) -> None:
+        if vocab_size <= 1:
+            raise ValueError("benchmark tokenizer requires vocab_size > 1")
+        self.vocab_size = vocab_size
+
+    def encode(self, text: str) -> list[int]:
+        return [1 + (ord(character) % (self.vocab_size - 1)) for character in text]
+
+    def decode(self, token_ids: Sequence[int], *, errors: str = "strict") -> str:
+        del errors
+        return ",".join(str(token_id) for token_id in token_ids)
 
 
 def _canonical_json(payload: dict[str, Any]) -> bytes:
@@ -109,7 +124,8 @@ def _stage_benchmark(
     config = load_stage_config(repo_root / "configs" / "stages" / config_name)
     torch.manual_seed(seed)
     model = TwelveSixDecoder(config.model, config.init)
-    backend = S0TorchBatchedInferenceBackend(model, ByteTokenizer())
+    tokenizer = _SyntheticTokenizer(config.model.vocab_size)
+    backend = S0TorchBatchedInferenceBackend(model, tokenizer)  # type: ignore[arg-type]
     requests = _requests(prompt_length)
 
     independent = _independent_generate(backend, requests)
