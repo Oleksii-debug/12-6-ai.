@@ -4,7 +4,7 @@
   "authority": "SMALL_MODEL_CURRICULUM_RESEARCH_NOT_PROMOTION",
   "base_control": {
     "parent_pr": 183,
-    "parent_sha": "0e6392574b56f4da4ed0368fdd0c0dffbcdd04da",
+    "parent_sha": "832130e36e251f776287b9832be3e5879859b285",
     "model_index": 1,
     "expected_parameters": 267912,
     "tokenizer": "s0-byte-v1",
