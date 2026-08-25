@@ -1,0 +1,138 @@
+{
+  "schema_version": "12-6.swarm-m100-data109-convergence.v1",
+  "generated_at_utc": "2026-08-25T21:33:00Z",
+  "workers": [
+    "MILESTONE-100-FIRST-LEARNED-BASE",
+    "DATA-109-CROSS-SOURCE-DEDUP"
+  ],
+  "repository": "Oleksii-debug/12-6-ai.",
+  "frozen_branch": "swarm/m100-data109-convergence-20260826",
+  "frozen_base_sha": "015593b22a600184fb4c8001fe3d70893bfc51d5",
+  "milestone100": {
+    "status": "PARTIAL_FAIL_CLOSED",
+    "accepted_incumbents": {
+      "model": {
+        "owner": "src/twelve_six/milestone100_one_m.py + RESEARCH41 controlled_specs()[-1]",
+        "parameter_count": 1037696,
+        "random_init": true,
+        "vocab_size": 256,
+        "max_seq_len": 256,
+        "geometry_source_sha": "9775a3432795dde9c96b3e84f6de143b2033a08c",
+        "geometry_source_blob": "04b5c3173f2af139e9228e422cc1245a533a6c5d"
+      },
+      "tokenizer": {
+        "version": "s0-byte-v1",
+        "vocab_size": 256,
+        "config_sha256": "b04055c1061dd641dcab7cb9d62a931f09b8d1a070140a926ceb4e91d73ca8e1",
+        "vocab_sha256": "905ed40bb42cc4d550e228ff5f24158d504b38e8ed5974dfa3077bd5867ad571",
+        "reason": "current packing and first-party inference are byte-tokenizer-bound"
+      },
+      "packing": "twelve_six.packing iter_packed_examples / PACKING_VERSION, sequence_length=128, cross_document=false",
+      "trainer_optimizer": "twelve_six.training.Trainer + AdamW via TrainerConfig, fp32 deterministic",
+      "observability": "twelve_six.training.observability.TrainingObserver",
+      "checkpoint_resume": "twelve_six.checkpoint save_trainer_checkpoint/load_trainer_checkpoint/verify_checkpoint",
+      "heldout_evaluation": "milestone100_first_learned._evaluate with model-state non-mutation check and BPB",
+      "first_party_inference": "twelve_six.inference.first_party + inference.generation.generate"
+    },
+    "rejected_or_blocked": {
+      "experimental_bpe": {
+        "experiment_result": "BPE itself had repeatability PASS at tokenizers 0.23.1 with actual vocab 472",
+        "final_vertical_status": "REJECTED_STALE_FOR_FINAL_VERTICAL",
+        "reason": "selected on DATA-10 while current packing and first-party inference are byte-tokenizer-bound; do not splice it into the exact-head vertical"
+      },
+      "learn04_real_1m_branch": {
+        "status": "REJECTED_STALE_INCOMPLETE",
+        "reason": "historical test imports learn04_1m_experiment but that source is absent at the examined head/parent; its corpus evidence also declared representative_corpus=false"
+      },
+      "real_representative_corpus": {
+        "status": "FAIL",
+        "canonical_corpus_identity_sha256": "422f545da93526ceba2c0ff738e0b9deac65f35bfb31d87d2aab068cda091fc8",
+        "canonical_authority": "DATA25 project-authored UK/EN/code mechanics corpus",
+        "external_training_eligible_sources": 0,
+        "contains_external_training_data": false,
+        "reason": "DATA-21/22 retained real-source bytes are bounded sample evidence, not a canonical D03 immutable source snapshot/corpus promotion"
+      }
+    },
+    "exact_head_workflow": {
+      "workflow": "MILESTONE-100 First Learned ~1M Base",
+      "run_id": 32901140565,
+      "status_when_frozen": "queued",
+      "claim_policy": "no current-head learned artifact PASS until this exact-head run completes successfully and retained evidence is inspected"
+    },
+    "local_bounded_real_smoke": {
+      "authority": "ASSISTANT_LOCAL_BOUNDED_REAL_SMOKE_NOT_CANONICAL_MILESTONE_EXECUTION",
+      "important_limitation": "repo package could not be installed/cloned in the sandbox; this harness mirrors the executable 95,568-parameter byte-bound geometry and AdamW semantics but is not claimed as execution of the repository Trainer package",
+      "real_sample_source": "DATA-21/22 successful retained workflow artifact 9582408431",
+      "documents": 3,
+      "train_bytes": 136570,
+      "validation_bytes": 36792,
+      "parameter_count": 95568,
+      "tokenizer_version": "s0-byte-v1",
+      "optimizer_steps": 240,
+      "fresh_process_resume_step": 120,
+      "train_loss_first": 5.557423114776611,
+      "train_loss_phase1_last": 2.8645687103271484,
+      "train_loss_resume_last": 2.3673930168151855,
+      "heldout_bpb_before": 7.973644707259405,
+      "heldout_bpb_after": 4.625598455901934,
+      "evaluation_non_mutation_before": true,
+      "evaluation_non_mutation_after": true,
+      "generation_changed": true,
+      "checkpoint_steps": [40, 80, 120, 240],
+      "final_checkpoint_sha256": "b3ebe90d944382f881428857f290d422d6f5af10ca50514cd5d79c740881c76a",
+      "report_sha256": "a3e8b133458daafbafb9bde82c0bfd61907d1a7c81a9c381b973b19a42f0c3eb"
+    }
+  },
+  "data109": {
+    "status": "BLOCKED_FAIL_CLOSED",
+    "near_dedup_engine": {
+      "required": "DATA-30 / DataTrove MinHash only",
+      "version": "0.10.0",
+      "specialized_calibration_workflow_sha": "9abbf096b683e62b10e13592fe12a827449610a6",
+      "specialized_workflow_run_id": 32900053455,
+      "specialized_workflow_conclusion": "success",
+      "same_sha_general_ci_conclusion": "failure",
+      "selected_natural_policy": "natural_calibrated_5g_20x5",
+      "selected_code_policy": "code_calibrated_4g_16x6",
+      "semantic_deduplication_claimed": false
+    },
+    "current_canonical_corpus_gate": {
+      "external_training_eligible_sources": 0,
+      "canonical_external_registry_sources": 0,
+      "status": "BLOCKED_NO_CANONICAL_REAL_TRAINING_ELIGIBLE_MULTI_SOURCE_CORPUS"
+    },
+    "bounded_real_sample_exact_dedup": {
+      "artifact_id": 9582408431,
+      "accepted_records": 3,
+      "same_source_exact_duplicates": 0,
+      "cross_source_exact_duplicates": 0,
+      "removed_records": 0,
+      "token_or_byte_fraction_removed": 0.0,
+      "near_dedup_status_in_source_artifact": "NOT_RUN_BOUNDED_SAMPLE"
+    },
+    "local_runtime": {
+      "datatrove_available": false,
+      "tokenizers_available": false,
+      "cuda_available": false,
+      "policy": "no substitute MinHash implementation and no semantic-duplicate claims"
+    },
+    "not_claimed": {
+      "near_duplicate_clusters_across_real_sources": "NOT_EXECUTED",
+      "translation_like_families": "NOT_EXECUTED",
+      "legal_template_boilerplate_clusters": "NOT_EXECUTED",
+      "code_fork_clusters": "NOT_EXECUTED_NO_TRAINING_ELIGIBLE_CODE_SOURCE",
+      "legitimate_high_similarity_preservation_decisions": "NOT_EXECUTED",
+      "cluster_aware_train_validation_no_split_proof": "NOT_PROVABLE_WITHOUT_REAL DATATROVE CLUSTER RUN",
+      "small_model_dedup_ab": "NOT_RUN_REMOVED_FRACTION_FROM_EXECUTED_EXACT_PASS_IS_ZERO"
+    },
+    "required_reentry": [
+      "promote rights-approved external source bytes into immutable D03 snapshots and canonical training registry",
+      "include at least two independently sourced training-eligible families and an approved code source if UK/EN/code is required",
+      "run DATA-30 DataTrove 0.10.0 exact + selected natural/code MinHash policies jointly over all admitted records",
+      "persist source_id, document_id, cluster_id, similarity evidence, representative and removal decisions",
+      "assign entire near-duplicate clusters atomically to train or validation and verify zero cluster splits",
+      "run fixed small-model A/B only if the removed token fraction is material"
+    ]
+  },
+  "overall_verdict": "A genuinely learned bounded-real local smoke exists, and the exact-head repository has a ~1.04M learned-Base execution path, but the requested complete milestone and DATA-109 corpus-scale proof remain fail-closed because no canonical real representative multi-source corpus has been promoted and the exact current MILESTONE workflow had not yet completed at freeze time."
+}
