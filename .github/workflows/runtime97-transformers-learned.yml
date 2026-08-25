@@ -1,0 +1,161 @@
+name: RUNTIME-97 Transformers Learned Parity
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: runtime97-transformers-learned-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  learned-llama-parity:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      LEARNED_ARTIFACT_ID: "9558539580"
+      LEARNED_ARTIFACT_DIGEST: "sha256:aa57a7ebd96929fa8fd7eb28b7232de84f00c1062e9550b1237bd931eb60068a"
+      LEARNED_RUN_ID: "32835548366"
+      LEARNED_SOURCE_SHA: "003e268655b672df9df00afb8a32dbec4db5d2e1"
+      D08_SOURCE_SHA: "10da7d4c1d2fe5a229659143877ad82d3739bed9"
+      D08_PROFILE_SHA256: "d54843c76befcd0e8a1703f8d34c822fdbf3085351d1d357661b91265148a039"
+      D08_OVERLAY_SHA256: "68f73eaac9e3a9418e85e54a3170d1378c51af0161138d0f4f8667c595deb0b0"
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
+      HF_HOME: ${{ runner.temp }}/runtime97-hf-home
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Prove exact bridge successor checkout
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+
+      - name: Checkout exact D08 purpose-runtime authority
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Oleksii-debug/12-6-ai.
+          ref: ${{ env.D08_SOURCE_SHA }}
+          path: .runtime97-d08
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Validate exact D08 Transformers purpose profile
+        run: |
+          set -euo pipefail
+          test "$(git -C .runtime97-d08 rev-parse HEAD)" = "$D08_SOURCE_SHA"
+          python .runtime97-d08/tools/verify_purpose_environment.py \
+            --root .runtime97-d08 \
+            --profile linux-x86_64-transformers-interop \
+            --validate-only
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path('.runtime97-d08')
+          profile_path = root / 'requirements/profiles/linux-x86_64-transformers-interop/profile.json'
+          profile = json.loads(profile_path.read_text(encoding='utf-8'))
+          overlay_path = root / profile['locks']['overlay']['path']
+          assert profile['profile_sha256'] == os.environ['D08_PROFILE_SHA256']
+          assert hashlib.sha256(overlay_path.read_bytes()).hexdigest() == os.environ['D08_OVERLAY_SHA256']
+          assert profile['python']['version'] == '3.11.16'
+          assert profile['direct_requirements'] == ['transformers==5.15.1']
+          PY
+
+      - name: Create exact D08 Transformers execution environment
+        run: |
+          set -euo pipefail
+          python -m venv .runtime97
+          PY=.runtime97/bin/python
+          "$PY" -m pip install --disable-pip-version-check --require-hashes --no-deps -r .runtime97-d08/requirements/locks/linux-x86_64/toolchain.lock.txt
+          "$PY" -m pip install --disable-pip-version-check --require-hashes --no-deps -r .runtime97-d08/requirements/locks/linux-x86_64/runtime.lock.txt
+          "$PY" -m pip install --disable-pip-version-check --require-hashes --no-deps -r .runtime97-d08/requirements/locks/linux-x86_64/dev.lock.txt
+          "$PY" -m pip install --disable-pip-version-check --require-hashes --no-deps -r .runtime97-d08/requirements/profiles/linux-x86_64-transformers-interop/overlay.lock.txt
+          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 "$PY" -m pip install --no-deps --no-build-isolation -e .
+          "$PY" -m pip check
+          "$PY" - <<'PY'
+          import platform
+          import torch
+          import transformers
+          assert platform.python_version() == '3.11.16', platform.python_version()
+          assert torch.__version__.split('+', 1)[0] == '2.13.0', torch.__version__
+          assert transformers.__version__ == '5.15.1', transformers.__version__
+          print('python', platform.python_version())
+          print('torch', torch.__version__)
+          print('transformers', transformers.__version__)
+          PY
+
+      - name: Verify retained learned artifact identity
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api "repos/${{ github.repository }}/actions/artifacts/$LEARNED_ARTIFACT_ID" > runtime97-source-artifact.json
+          test "$(jq -r .id runtime97-source-artifact.json)" = "$LEARNED_ARTIFACT_ID"
+          test "$(jq -r .digest runtime97-source-artifact.json)" = "$LEARNED_ARTIFACT_DIGEST"
+          test "$(jq -r .workflow_run.id runtime97-source-artifact.json)" = "$LEARNED_RUN_ID"
+          test "$(jq -r .workflow_run.head_sha runtime97-source-artifact.json)" = "$LEARNED_SOURCE_SHA"
+          test "$(jq -r .expired runtime97-source-artifact.json)" = "false"
+
+      - name: Download exact learned ~1M checkpoint artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          artifact-ids: ${{ env.LEARNED_ARTIFACT_ID }}
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.LEARNED_RUN_ID }}
+          path: runtime97-source
+
+      - name: Execute learned LlamaForCausalLM parity
+        env:
+          BRIDGE_SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          PY=.runtime97/bin/python
+          find runtime97-source -maxdepth 4 -type f -print | sort
+          test -d runtime97-source/scale02-s2-1m-evidence/checkpoint
+          test -f runtime97-source/scale02-s2-1m-evidence/s2-1m-executable-preflight.json
+          "$PY" -m ruff check tools/runtime97_transformers_learned.py
+          "$PY" tools/runtime97_transformers_learned.py \
+            --repo-root . \
+            --checkpoint-dir runtime97-source/scale02-s2-1m-evidence/checkpoint \
+            --training-evidence runtime97-source/scale02-s2-1m-evidence/s2-1m-executable-preflight.json \
+            --output-dir runtime97-evidence \
+            --bridge-source-sha "$BRIDGE_SOURCE_SHA" \
+            --source-artifact-id "$LEARNED_ARTIFACT_ID" \
+            --source-artifact-digest "$LEARNED_ARTIFACT_DIGEST" \
+            --d08-source-sha "$D08_SOURCE_SHA" \
+            --d08-profile-sha256 "$D08_PROFILE_SHA256" \
+            --d08-overlay-sha256 "$D08_OVERLAY_SHA256" \
+            --max-new-tokens 8 \
+            | tee runtime97-execution.log
+          cat runtime97-evidence/runtime97-transformers-learned-parity.json
+
+      - name: Upload exact learned parity evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: runtime97-transformers-learned-${{ github.event.pull_request.head.sha }}
+          path: |
+            runtime97-source-artifact.json
+            runtime97-source/locked-environment-linux-x86_64.json
+            runtime97-source/scale02-s2-1m-evidence/s2-1m-executable-preflight.json
+            runtime97-evidence/runtime97-transformers-learned-parity.json
+            runtime97-evidence/canonical-hf-export
+            runtime97-evidence/llama-runtime
+            runtime97-execution.log
+          if-no-files-found: error
+          retention-days: 30
