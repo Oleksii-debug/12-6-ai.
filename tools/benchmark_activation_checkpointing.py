@@ -134,7 +134,13 @@ def benchmark(
 
     # Materialize lazy Adam state with the minimum legal context so the measured
     # memory peak is not dominated by first-use optimizer-state allocation.
-    warm_ids = _make_ids(stage, batch_size=batch_size, sequence_length=2, seed=seed + 1, device=device)
+    warm_ids = _make_ids(
+        stage,
+        batch_size=batch_size,
+        sequence_length=2,
+        seed=seed + 1,
+        device=device,
+    )
     optimizer.zero_grad(set_to_none=True)
     warm_loss = causal_lm_loss(model(warm_ids).logits, warm_ids)
     warm_loss.backward()
@@ -200,17 +206,26 @@ def benchmark(
         "checkpoint_implementation": plan.implementation,
         "device": str(device),
         "dtype": dtype_name,
+        "logical_cpu_count": os.cpu_count(),
         "batch_size": batch_size,
         "sequence_length": sequence_length,
         "valid_tokens_per_step": batch_size * (sequence_length - 1),
         "measured_steps": measured_steps,
         "baseline_cpu_rss_bytes": baseline_rss,
         "peak_cpu_rss_bytes": max(int(row["peak_cpu_rss_bytes"]) for row in rows),
-        "median_forward_seconds": statistics.median(float(row["forward_seconds"]) for row in rows),
-        "median_backward_seconds": statistics.median(float(row["backward_seconds"]) for row in rows),
-        "median_optimizer_seconds": statistics.median(float(row["optimizer_seconds"]) for row in rows),
+        "median_forward_seconds": statistics.median(
+            float(row["forward_seconds"]) for row in rows
+        ),
+        "median_backward_seconds": statistics.median(
+            float(row["backward_seconds"]) for row in rows
+        ),
+        "median_optimizer_seconds": statistics.median(
+            float(row["optimizer_seconds"]) for row in rows
+        ),
         "median_step_seconds": statistics.median(float(row["step_seconds"]) for row in rows),
-        "median_tokens_per_second": statistics.median(float(row["tokens_per_second"]) for row in rows),
+        "median_tokens_per_second": statistics.median(
+            float(row["tokens_per_second"]) for row in rows
+        ),
         "cuda_available": bool(torch.cuda.is_available()),
     }
     if device.type == "cuda":
@@ -307,7 +322,11 @@ def parity(
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--stage-config", type=Path, required=True)
-    parser.add_argument("--policy", choices=("none", "every_other_block", "per_block"), default="none")
+    parser.add_argument(
+        "--policy",
+        choices=("none", "every_other_block", "per_block"),
+        default="none",
+    )
     parser.add_argument("--sequence-length", type=int, default=512)
     parser.add_argument("--batch-size", type=int, default=1)
     parser.add_argument("--measured-steps", type=int, default=3)
