@@ -1,0 +1,158 @@
+"""LEARN-122 modern DATA-25 500K versus 1M long-run comparison.
+
+This module is orchestration only. It deliberately reuses the incumbent MILESTONE-100
+corpus, packing, Trainer, observability, checkpoint, evaluation, and first-party
+inference implementations instead of replacing them.
+"""
+from __future__ import annotations
+import argparse
+import json
+import math
+import os
+import platform
+import resource
+import sys
+import time
+from dataclasses import asdict
+from pathlib import Path
+from typing import Any
+import torch
+from twelve_six.checkpoint import hash_json, load_trainer_checkpoint, save_trainer_checkpoint, verify_checkpoint
+from twelve_six.milestone100_first_learned import BATCH, EXPECTED_CORPUS_ID, MIXTURE, REPOSITORY, SEQ, _append, _batches, _build_corpus, _evaluate, _generation, _identity, _locks, _machine, _read_json, _require_head, _state_hash, _train_iters, _write_json
+from twelve_six.model import InitSpec, ModelSpec, TwelveSixDecoder
+from twelve_six.packing import PACKING_VERSION
+from twelve_six.tokenization import ByteTokenizer
+from twelve_six.training import Trainer, TrainerConfig
+from twelve_six.training.observability import TrainingObserver
+SCHEMA = '12-6.learn122-real-500k-long.v1'
+PROTOCOL_SCHEMA = '12-6.learn122-comparison-protocol.v1'
+RUN_SCHEMA = '12-6.learn122-run-manifest.v1'
+AUTHORITY = 'LOCAL_FREE_DATA25_SCALING_EVIDENCE_NOT_STAGE_PROMOTION'
+BRANCH = 'learn122/real-500k-long-20260826'
+COMMON_TOKENS = 1000000
+LONG_500K_TOKENS = 2000000
+COMPUTE_MATCH_1M_TOKENS = 450815
+SEEDS = (1337, 2027)
+PRIMARY_SEED = 1337
+LR = 0.0003
+MAX_STEPS_GUARD = 5000
+UPDATE_SAMPLE_EVERY = 25
+MODEL_EXPECTED_PARAMS = {'500k': 467808, '1m': 1037696}
+MODEL_GEOMETRY = {'500k': {'d_model': 96, 'n_layers': 4, 'n_heads': 6, 'n_kv_heads': 6, 'head_dim': 16, 'd_ff': 256}, '1m': {'d_model': 128, 'n_layers': 5, 'n_heads': 8, 'n_kv_heads': 8, 'head_dim': 16, 'd_ff': 352}}
+
+class Learn122Error(RuntimeError):
+    pass
+
+def _spec(label: str) -> ModelSpec:
+    if label not in MODEL_GEOMETRY:
+        raise Learn122Error(f'unknown model label: {label}')
+    payload: dict[str, Any] = {'schema_version': 1, 'vocab_size': 256, 'max_seq_len': 256, 'd_model': 0, 'n_layers': 0, 'n_heads': 0, 'n_kv_heads': 0, 'head_dim': 0, 'd_ff': 0, 'activation': 'swiglu', 'norm_kind': 'rmsnorm', 'norm_placement': 'pre', 'norm_eps': 1e-05, 'position_embedding': 'rope', 'rope_theta': 10000.0, 'rope_rotary_dim': MODEL_GEOMETRY[label]['head_dim'], 'attention_bias': False, 'attention_dropout': 0.0, 'mlp_bias': False, 'final_norm': True, 'tie_word_embeddings': True, 'lm_head_bias': False}
+    payload.update(MODEL_GEOMETRY[label])
+    spec = ModelSpec.from_dict(payload)
+    expected = MODEL_EXPECTED_PARAMS[label]
+    if spec.parameter_count() != expected:
+        raise Learn122Error(f'{label} expected {expected} parameters, got {spec.parameter_count()}')
+    return spec
+
+def _trainer_config(seed: int) -> TrainerConfig:
+    return TrainerConfig(learning_rate=LR, weight_decay=0.0, betas=(0.9, 0.95), eps=1e-08, max_steps=MAX_STEPS_GUARD, warmup_steps=0, scheduler='constant', gradient_accumulation_steps=1, gradient_clip_norm=1.0, precision='fp32', seed=seed, deterministic_algorithms=True, deterministic_warn_only=False)
+
+def _rss_bytes() -> int:
+    status = Path('/proc/self/status')
+    if status.exists():
+        for line in status.read_text(encoding='utf-8').splitlines():
+            if line.startswith('VmRSS:'):
+                return int(line.split()[1]) * 1024
+    return 0
+
+def _peak_rss_bytes() -> int:
+    value = int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
+    return value * 1024 if platform.system() == 'Linux' else value
+
+def _tensor_bytes(value: Any) -> int:
+    if isinstance(value, torch.Tensor):
+        return value.numel() * value.element_size()
+    if isinstance(value, dict):
+        return sum((_tensor_bytes(item) for item in value.values()))
+    if isinstance(value, (tuple, list)):
+        return sum((_tensor_bytes(item) for item in value))
+    return 0
+
+def _generation_preserving_rng(checkpoint: Path) -> dict[str, Any]:
+    cpu_rng = torch.get_rng_state()
+    cuda_rng = torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None
+    try:
+        return _generation(checkpoint)
+    finally:
+        torch.set_rng_state(cpu_rng)
+        if cuda_rng is not None:
+            torch.cuda.set_rng_state_all(cuda_rng)
+
+def _optimizer_state_bytes(trainer: Trainer) -> int:
+    optimizer = getattr(trainer, 'optimizer', None)
+    if optimizer is None:
+        return 0
+    return _tensor_bytes(optimizer.state)
+
+def _protocol(source_sha: str, tok: ByteTokenizer, manifest: dict[str, Any], locks: dict[str, Any]) -> dict[str, Any]:
+    models = {}
+    for label in ('500k', '1m'):
+        spec = _spec(label)
+        models[label] = {'model_spec': spec.to_dict(), 'model_spec_sha256': spec.identity_sha256(), 'parameter_count': spec.parameter_count(), 'architecture_evidence': 'RESEARCH-41 terminal-green controlled scaling family'}
+    value: dict[str, Any] = {'schema': PROTOCOL_SCHEMA, 'source': {'repository': REPOSITORY, 'git_sha': source_sha, 'branch': BRANCH}, 'models': models, 'only_common_comparison_variable': 'model_size_geometry', 'tokenizer': {'version': tok.identity.version, 'config_sha256': tok.identity.config_sha256, 'vocab_sha256': tok.identity.vocab_sha256, 'vocab_size': tok.identity.vocab_size}, 'corpus': {'identity_sha256': manifest['corpus_identity_sha256'], 'train_byte_tokens': manifest['by_split']['train']['byte_tokens'], 'validation_byte_tokens': manifest['by_split']['validation']['byte_tokens'], 'truth_boundary': manifest['truth_boundary']}, 'packing': {'version': PACKING_VERSION, 'sequence_length': SEQ, 'cross_document': False, 'batch_size': BATCH}, 'mixture_pattern': list(MIXTURE), 'mixture_steps_per_cycle': {s: list(MIXTURE).count(s) for s in ('uk', 'en', 'code')}, 'optimizer_family': 'AdamW', 'optimizer': {'learning_rate': LR, 'weight_decay': 0.0, 'betas': [0.9, 0.95], 'eps': 1e-08, 'scheduler': 'constant', 'warmup_steps': 0, 'gradient_accumulation_steps': 1, 'gradient_clip_norm': 1.0, 'precision': 'fp32', 'deterministic_algorithms': True}, 'seed_family': list(SEEDS), 'common_optimized_token_target': COMMON_TOKENS, 'size_specific_500k_extension_target': LONG_500K_TOKENS, 'compute_matched_1m_probe_target': COMPUTE_MATCH_1M_TOKENS, 'compute_proxy_definition': '6 * trainable_parameters * actual_optimized_tokens', 'evaluation': 'full DATA-25 validation NLL/BPB with UA/EN/code breakdown and model-state non-mutation hash', 'generation': 'D07 first-party checkpoint backend, greedy decoding', 'environment_lock_sha256': locks['combined_sha256'], 'foreign_pretrained_weights': False, 'instruction_tuning': False, 'paid_compute': False, 'broad_intelligence_claim': False, 'truth_boundary': {'data25_external_training_data': manifest['truth_boundary']['contains_external_training_data'], 'real_world_source_diversity_gate': False, 'reason': 'DATA-25 is deterministic project-authored UA/EN/code evidence and is not an externally diverse real-world pretraining corpus.'}}
+    value['identity_sha256'] = hash_json(value)
+    return value
+
+def _planned_final_target(label: str, seed: int) -> int:
+    if label == '500k' and seed == PRIMARY_SEED:
+        return LONG_500K_TOKENS
+    return COMMON_TOKENS
+
+def _run_manifest(source_sha: str, label: str, seed: int, spec: ModelSpec, init: InitSpec, tok: ByteTokenizer, manifest: dict[str, Any], cfg: TrainerConfig, locks: dict[str, Any], protocol: dict[str, Any]) -> dict[str, Any]:
+    value: dict[str, Any] = {'schema': RUN_SCHEMA, 'source_sha': source_sha, 'model_label': label, 'model_spec': spec.to_dict(), 'model_spec_sha256': spec.identity_sha256(), 'parameter_count': spec.parameter_count(), 'init_spec': init.to_dict(), 'init_spec_sha256': init.identity_sha256(), 'random_initialization': True, 'tokenizer': {'version': tok.identity.version, 'config_sha256': tok.identity.config_sha256, 'vocab_sha256': tok.identity.vocab_sha256, 'vocab_size': tok.identity.vocab_size}, 'corpus_identity_sha256': manifest['corpus_identity_sha256'], 'packing': {'version': PACKING_VERSION, 'sequence_length': SEQ, 'cross_document': False}, 'trainer_config': asdict(cfg), 'batch_size': BATCH, 'mixture_pattern': list(MIXTURE), 'seed': seed, 'common_target_tokens': COMMON_TOKENS, 'planned_final_target_tokens': _planned_final_target(label, seed), 'comparison_protocol_sha256': protocol['identity_sha256'], 'environment_lock_sha256': locks['combined_sha256'], 'foreign_pretrained_weights': False, 'instruction_tuning': False, 'paid_compute': False}
+    value['identity_sha256'] = hash_json(value)
+    return value
+
+def _run_dir(root: Path, label: str, seed: int) -> Path:
+    return root / 'runs' / f'{label}-seed-{seed}'
+
+def _milestones(label: str, seed: int) -> tuple[int, ...]:
+    if label == '500k':
+        if seed == PRIMARY_SEED:
+            return (500000, COMMON_TOKENS, 1500000, LONG_500K_TOKENS)
+        return (500000, COMMON_TOKENS)
+    return (COMPUTE_MATCH_1M_TOKENS, COMMON_TOKENS)
+
+def _checkpoint_name(tag: str, trainer: Trainer) -> str:
+    return f'{tag}-step{trainer.optimizer_step:06d}-tok{trainer.tokens_seen:09d}'
+
+def _save_checkpoint(run_dir: Path, tag: str, source_sha: str, spec: ModelSpec, tok: ByteTokenizer, manifest: dict[str, Any], run: dict[str, Any], cfg: TrainerConfig, trainer: Trainer, locks: dict[str, Any]) -> dict[str, Any]:
+    name = _checkpoint_name(tag, trainer)
+    path = run_dir / 'checkpoints' / name
+    save_trainer_checkpoint(path, model=trainer.model, trainer=trainer, identity=_identity(source_sha, spec, tok, manifest, run, cfg, trainer, locks), overwrite=True)
+    checked = verify_checkpoint(path)
+    return {'tag': tag, 'path': str(Path('checkpoints') / name), 'optimizer_step': trainer.optimizer_step, 'actual_optimized_tokens': trainer.tokens_seen, 'checkpoint_id': checked['checkpoint_id'], 'compute_proxy': 6 * spec.parameter_count() * trainer.tokens_seen}
+
+def _machine_manifest(source_sha: str, locks: dict[str, Any], process_marker: str) -> dict[str, Any]:
+    value = _machine(source_sha, locks)
+    value.update({'schema': '12-6.learn122-machine-manifest.v1', 'process_marker': process_marker, 'rss_bytes_at_start': _rss_bytes(), 'peak_rss_bytes_at_start': _peak_rss_bytes(), 'torch_num_interop_threads': torch.get_num_interop_threads()})
+    return value
+
+def _common(repo: Path, source_sha: str, root: Path):
+    _require_head(repo, source_sha)
+    torch.set_num_threads(2)
+    torch.use_deterministic_algorithms(True)
+    manifest = _read_json(root / 'corpus-manifest.json')
+    if manifest['corpus_identity_sha256'] != EXPECTED_CORPUS_ID:
+        raise Learn122Error('persisted DATA-25 corpus identity drift')
+    tok = ByteTokenizer()
+    locks = _locks(repo)
+    protocol = _protocol(source_sha, tok, manifest, locks)
+    if _read_json(root / 'comparison-protocol.json') != protocol:
+        raise Learn122Error('comparison protocol changed between processes')
+    return (manifest, tok, locks, protocol)
+
+def prepare(repo: Path, source_sha: str, root: Path) -> dict[str, Any]:
+    _require_head(repo, source_sha)
+    torch.set_num_threads(2)
+    torch.use_deterministic_algorithms(True)
