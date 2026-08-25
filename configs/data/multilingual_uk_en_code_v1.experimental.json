@@ -1,0 +1,92 @@
+{
+  "schema": "12-6.multilingual-pretraining-recipe.v1",
+  "status": "EXPERIMENTAL_NOT_FROZEN",
+  "scope": {
+    "training_kind": "base_pretraining",
+    "initial_strata": ["uk", "en", "code"],
+    "architecture_universal": true,
+    "instruction_tuning": false,
+    "canonical_s0_byte_tokenizer_mutated": false
+  },
+  "incumbents": {
+    "corpus_foundation_pr": 64,
+    "corpus_foundation_sha": "cd259202bd7fd2bdbb4d75a40cb7b67bf0908593",
+    "tokenizer_mixture_pr": 73,
+    "tokenizer_mixture_sha": "3527bf50d5d6cd7d4cbf9e477863430a31873baa",
+    "composition_sha": "79ed87862ac3597dd3cff10f94bbc016c35728d5"
+  },
+  "local_mechanics_corpus": {
+    "authority": "PROJECT_AUTHORED_SYNTHETIC_ONLY",
+    "path": "data/synthetic/data10/uk-en-code-train.txt",
+    "sha256": "059f04e01d6fc6b8224b373b08efbb37f09d546de35ed510afdb4587ebdb6012",
+    "bytes": 1454,
+    "external": false,
+    "representative_corpus": false
+  },
+  "source_admission": {
+    "external_sources_training_approved_at_recipe_creation": 0,
+    "external_requires_rights_status": "APPROVED_FOR_TRAINING",
+    "external_requires_allows_model_training": true,
+    "project_authored_synthetic_allowed": true,
+    "forbidden_train_splits": [
+      "validation", "val", "evaluation", "eval", "test", "heldout", "benchmark"
+    ],
+    "forbidden_source_purposes": [
+      "benchmark", "evaluation", "validation", "test", "heldout_test"
+    ],
+    "reserved_normalized_fingerprints_fail_closed": true,
+    "strict_utf8": true,
+    "replacement_character_allowed": false,
+    "natural_text_normalization": "D03_NFKC",
+    "code_normalization": "NFKC_LAYOUT_PRESERVING"
+  },
+  "mixture": {
+    "unit": "post_tokenization_loss_token_budget",
+    "weights": {"uk": 45, "en": 35, "code": 20},
+    "selection_contract": "sha256-integer-units-v1",
+    "restart_contract": "12-6.mixture-restart-cursor.v1",
+    "note": "initial Ukrainian-focused experiment, not a permanent language policy"
+  },
+  "tokenizer_incumbent_evidence": {
+    "workflow_run": 32831382339,
+    "evidence_sha256": "3307daec835e96a63fd5a7d14543de3d9f0781ec3f7d4d0cc98d992bf0f8bae6",
+    "controlled_heldout_byte_tokens": 520,
+    "byte": {
+      "vocab_size": 256,
+      "canonical": true,
+      "uk_fertility_tokens_per_codepoint_controlled": 1.8680641184
+    },
+    "bytelevel_bpe": {
+      "requested_vocab_size": 512,
+      "actual_vocab_size": 472,
+      "heldout_tokens": 286,
+      "token_reduction_vs_bytes": 0.45,
+      "uk_fertility_tokens_per_codepoint": 0.75177304964539,
+      "en_fertility_tokens_per_codepoint": 0.5874125874125874,
+      "code_fertility_tokens_per_codepoint": 0.7959183673469388,
+      "strict_roundtrip": true,
+      "unknown_tokens": 0,
+      "repeatable_artifact_identity": true
+    },
+    "unigram_bytelevel_io": {
+      "requested_vocab_size": 512,
+      "actual_vocab_size": 497,
+      "heldout_tokens": 284,
+      "token_reduction_vs_bytes": 0.45384615384615384,
+      "uk_fertility_tokens_per_codepoint": 0.7446808510638298,
+      "en_fertility_tokens_per_codepoint": 0.5944055944055944,
+      "code_fertility_tokens_per_codepoint": 0.7959183673469388,
+      "strict_roundtrip": true,
+      "unknown_tokens": 0,
+      "repeatable_artifact_identity": false
+    },
+    "freeze_decision": "NO_FREEZE_REPEATABILITY_BLOCKED",
+    "representative_multilingual_corpus_tested": false
+  },
+  "corpus_requirements": {
+    "planning_rule": "20 post-tokenization training tokens per target parameter; planning floor only",
+    "1M": {"total": 20000000, "uk": 9000000, "en": 7000000, "code": 4000000, "heldout_min": 100000},
+    "10M": {"total": 200000000, "uk": 90000000, "en": 70000000, "code": 40000000, "heldout_min": 1000000},
+    "100M": {"total": 2000000000, "uk": 900000000, "en": 700000000, "code": 400000000, "heldout_min": 10000000}
+  }
+}
