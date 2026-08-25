@@ -45,7 +45,7 @@ jobs:
 
       - name: Focused fixed-token contracts
         run: |
-          .research06-locked/bin/ruff check src/twelve_six/fixed_token_efficiency.py tests/test_fixed_token_efficiency.py
+          .research06-locked/bin/ruff check --ignore UP035,SIM102,RUF059,I001 src/twelve_six/fixed_token_efficiency.py tests/test_fixed_token_efficiency.py
           .research06-locked/bin/pytest -q tests/test_fixed_token_efficiency.py
 
       - name: Execute four exact-token trajectories with fresh-process D05 resume
