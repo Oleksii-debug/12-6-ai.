@@ -1,0 +1,112 @@
+{
+  "schema": "12-6.third-party-constructor-map.v1",
+  "researched_at_utc": "2026-08-25T10:00:00Z",
+  "authority": "EXPERIMENTAL_NON_PROMOTING",
+  "policy": {
+    "prefer_maintained_upstream_over_custom_equivalent": true,
+    "canonical_base_must_remain_own_random_init": true,
+    "foreign_pretrained_weights_allowed": false,
+    "floating_dependency_resolution_in_authority_workflows_allowed": false,
+    "materially_paid_compute_requires_compute_authorized": true
+  },
+  "components": [
+    {
+      "surface": "attention",
+      "component": "torch.nn.functional.scaled_dot_product_attention",
+      "decision": "USE_EXISTING",
+      "reason": "Already canonical in TwelveSixDecoder; let PyTorch select maintained attention kernels instead of adding a custom attention kernel."
+    },
+    {
+      "surface": "checkpoint_tensor_storage",
+      "component": "safetensors",
+      "decision": "USE_EXISTING",
+      "reason": "Already integrated; do not create a private tensor serialization format."
+    },
+    {
+      "surface": "evaluation",
+      "component": "EleutherAI lm-evaluation-harness",
+      "version": "0.4.12",
+      "source_commit": "6d642546f4688648fced259eb3302efd36ece5af",
+      "wheel_sha256": "02971ff68284dd14cfa7fce9310a58452c4162e8d413ba96aa7988a0ff9352ef",
+      "decision": "INTEGRATED_OPTIONAL_ADAPTER",
+      "reason": "Reuse maintained benchmark tasks, metrics, aggregation and evaluator orchestration. 12-6 supplies only verified checkpoint inference/logits."
+    },
+    {
+      "surface": "corpus_processing_dedup_decontamination",
+      "component": "Hugging Face DataTrove",
+      "version": "0.10.0",
+      "source_commit": "7024aecca2f9ffb7b7cf0d02c0c823b8b24cf664",
+      "wheel_sha256": "c7bb75deed2c3e88fb5138f8ea075a170ee98d6c94fc263829609091ea9c2b5d",
+      "decision": "ADOPT_EXISTING_PROJECT_SEAM_NEXT",
+      "reason": "Existing D03 code already targets 0.10.0. Replace future custom scale dedup/filter/executor work with actual maintained DataTrove execution after a purpose-specific hash lock is added."
+    },
+    {
+      "surface": "tokenizer_training",
+      "component": "Hugging Face tokenizers",
+      "version": "0.23.1",
+      "decision": "ADOPT_EXISTING_PROJECT_SEAM_NEXT",
+      "reason": "Existing D04 experiment harness already targets maintained BPE/Unigram. Do not implement BPE or Unigram training algorithms privately."
+    },
+    {
+      "surface": "columnar_corpus_io",
+      "component": "Apache Arrow PyArrow",
+      "version": "25.0.1",
+      "decision": "ADOPT_ACTIVE_SEAM",
+      "reason": "Use Parquet/Arrow streaming for larger corpus shards rather than designing a project-specific storage layer. Active packing work already owns this seam."
+    },
+    {
+      "surface": "distributed_training",
+      "component": "PyTorch FSDP2 DTensor DeviceMesh",
+      "decision": "PREFER_UPSTREAM",
+      "reason": "Use native sharding and tensor placement primitives; do not create a private distributed training framework."
+    },
+    {
+      "surface": "distributed_checkpoint",
+      "component": "torch.distributed.checkpoint",
+      "decision": "PREFER_UPSTREAM",
+      "reason": "Use DCP for sharded scale checkpoints while preserving 12-6 semantic manifest and checkpoint identity."
+    },
+    {
+      "surface": "scale_training_reference_runtime",
+      "component": "TorchTitan",
+      "decision": "ACTIVE_SEAM_NOT_CANONICAL_YET",
+      "reason": "Reuse maintained scale patterns where they fit, but do not replace the current trainer until TwelveSixDecoder satisfies the required model/config/parallelization interfaces and parity is demonstrated."
+    },
+    {
+      "surface": "ecosystem_interop",
+      "component": "Hugging Face Transformers",
+      "decision": "ACTIVE_ADAPTER_SEAM",
+      "reason": "Use an adapter/export boundary for ecosystem compatibility; never load foreign pretrained Base weights into canonical 12-6."
+    },
+    {
+      "surface": "high_throughput_serving",
+      "component": "vLLM",
+      "decision": "ACTIVE_HANDOFF_SEAM",
+      "reason": "Prefer a maintained vLLM adapter/plugin once checkpoint/tokenizer/model mapping is proven instead of building a private GPU serving engine."
+    },
+    {
+      "surface": "object_remote_io",
+      "component": "fsspec",
+      "decision": "USE_EXISTING",
+      "reason": "Use maintained filesystem/object-store abstraction rather than custom S3/local transport."
+    },
+    {
+      "surface": "standalone_flash_attention_dependency",
+      "component": "flash-attn",
+      "decision": "DO_NOT_ADD_NOW",
+      "reason": "Current PyTorch SDPA already dispatches maintained optimized kernels where supported. Add a separate dependency only if measurements show a material uncovered bottleneck."
+    },
+    {
+      "surface": "private_training_framework",
+      "component": "new 12-6-specific distributed framework",
+      "decision": "DO_NOT_BUILD",
+      "reason": "Would duplicate PyTorch/TorchTitan/Megatron-class infrastructure and slow scale progression."
+    },
+    {
+      "surface": "private_benchmark_framework",
+      "component": "new 12-6-specific benchmark task catalog",
+      "decision": "DO_NOT_BUILD",
+      "reason": "Use lm-eval for standard external benchmarks; retain only project-specific exact-candidate gates and identity checks."
+    }
+  ]
+}
