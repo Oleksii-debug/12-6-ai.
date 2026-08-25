@@ -1,0 +1,37 @@
+{
+  "schema": "12-6.vocabulary-rebalanced-candidates.v1",
+  "status": "ENGINEERING_CANDIDATES_NOT_FROZEN",
+  "selection_rule": "retarget vocabulary then choose d_ff aligned to 8 that minimizes absolute parameter-target error; tied head retained",
+  "candidates": [
+    {
+      "stage": "S1", "label": "byte-control", "vocab_size": 256, "d_ff": 136,
+      "expected_parameters": 99024, "target_parameters": 100000,
+      "model_identity_sha256": "68b6100f0683dd69c56e84eac1e72884a913f081787dc6ef3c202152c8bf752e",
+      "tokenizer_evidence": "canonical S0 byte mechanics control only"
+    },
+    {
+      "stage": "S1", "label": "real-bpe-472-mechanics-anchor", "vocab_size": 472,
+      "d_ff": 112, "expected_parameters": 99024, "target_parameters": 100000,
+      "model_identity_sha256": "d787e858831a38f53661fb073d6ef2229c91934a1592c31dba9e80500a87195a",
+      "tokenizer_evidence": "real BPE requested 512, actual 472, repeatability PASS on controlled D03 fixture; not representative S1 corpus"
+    },
+    {
+      "stage": "S2", "label": "1024-parameter-rebalanced-anchor", "vocab_size": 1024,
+      "d_ff": 392, "expected_parameters": 996480, "target_parameters": 1000000,
+      "model_identity_sha256": "f2e7bda20700708bbf67c4afadfd8fac67e7f01d168011a32cd5499b84eb5e87",
+      "tokenizer_evidence": "not yet measured on representative S2 corpus; search anchor only"
+    },
+    {
+      "stage": "S2", "label": "1536-upper-search-anchor", "vocab_size": 1536,
+      "d_ff": 352, "expected_parameters": 1000576, "target_parameters": 1000000,
+      "model_identity_sha256": "7acad6fe7e90b9e80d035189c1b29fc72389556fe81e4696cb3f8c9178271451",
+      "tokenizer_evidence": "not yet measured on representative S2 corpus; upper search anchor only"
+    }
+  ],
+  "truth_boundary": {
+    "existing_stage_configs_modified": false,
+    "canonical_s0_unchanged": true,
+    "tokenizer_frozen": false,
+    "stage_promoted": false
+  }
+}
