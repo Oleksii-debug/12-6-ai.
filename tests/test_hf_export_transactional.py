@@ -6,11 +6,11 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-import twelve_six.checkpoint.hf_export as hf_export
 from twelve_six.checkpoint import (
     CheckpointIdentity,
     CheckpointIntegrityError,
     export_hf_directory,
+    hf_export,
     save_checkpoint,
     verify_checkpoint,
     verify_hf_directory,
