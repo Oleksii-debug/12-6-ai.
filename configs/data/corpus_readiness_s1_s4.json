@@ -1,0 +1,60 @@
+{
+  "schema_version": "12-6.corpus-readiness-backlog.v1",
+  "authority_boundary": "BACKLOG_NOT_APPROVAL",
+  "base_stage_constraint": "pretraining_only_random_initialized_base",
+  "stages": [
+    {
+      "stage": "S1",
+      "status": "NOT_READY",
+      "objective": "First externally sourced pretraining corpus slice with exact provenance and fail-closed eligibility.",
+      "acceptance": [
+        "Every admitted source has immutable source_id/source_version, snapshot URI, byte size, SHA-256 and retrieval metadata.",
+        "Every admitted source has a durable rights decision explicitly allowing model training; NOASSERTION and REVIEW_REQUIRED remain ineligible.",
+        "D06 benchmark registry is translated into the D03 reserved registry with exact manifest identity and contamination injection tests pass.",
+        "Quality, language, PII and copyright hooks emit versioned evidence; non-PASS hook states remain ineligible.",
+        "Deterministic shard and resume manifests rebuild byte-identically from the same identities and inputs.",
+        "AUDIT-B reviews the exact corpus manifest; this backlog cannot self-promote the corpus."
+      ],
+      "evidence_now": [
+        "PR #38 exact head ff39bf9285a1c59458a848a4e52d13135d76248b has completed CI success run 32646727768.",
+        "Current external source and reserved registries are intentionally empty; zero external source is approved."
+      ]
+    },
+    {
+      "stage": "S2",
+      "status": "NOT_READY",
+      "objective": "Scalable Parquet/fsspec ingestion and exact/near dedup execution on reviewed sources.",
+      "acceptance": [
+        "DataTrove runtime version is hash/version locked by the execution environment and matches the validated plan.",
+        "Parquet staging uses deterministic partition identity and task-completion/resume evidence.",
+        "Exact dedup is content-fingerprint based; near dedup uses a maintained MinHash implementation with recorded thresholds/configuration.",
+        "A synthetic or approved-source scale test records throughput, peak memory, shard skew and restart behavior without overclaiming production capacity.",
+        "Remote fsspec/object-store reads and writes are verified against immutable snapshot hashes."
+      ]
+    },
+    {
+      "stage": "S3",
+      "status": "NOT_READY",
+      "objective": "Multilingual quality and policy calibration with decontamination evidence beyond exact overlap.",
+      "acceptance": [
+        "Language-identification quality is measured on a labeled multilingual fixture and error rates are recorded by language/script.",
+        "Quality filters have versioned calibration evidence and rejection samples; thresholds are not changed silently.",
+        "PII and copyright-policy hooks have explicit review/escalation states and retained evidence hashes.",
+        "Near-duplicate contamination evaluation includes injected benchmark paraphrase/overlap fixtures and records false-positive/false-negative behavior.",
+        "Train/validation/test identities remain isolated across source IDs, exact content fingerprints and configured near-duplicate policy."
+      ]
+    },
+    {
+      "stage": "S4",
+      "status": "NOT_READY",
+      "objective": "Auditable corpus freeze candidate for larger Base pretraining.",
+      "acceptance": [
+        "Corpus manifest binds every source version, snapshot hash, policy-evidence hash, dedup/decontamination plan, shard artifact hash and tokenizer handoff identity.",
+        "A clean rebuild from immutable snapshots reproduces manifest/shard identities or differences are fully explained and versioned.",
+        "D04 consumes the exact frozen corpus identity without silently reshuffling held-out material.",
+        "D06 contamination registry and evaluation identities are bound to the same freeze cutoff.",
+        "D10 release/candidate evidence references the exact corpus manifest and AUDIT-B independently adjudicates it."
+      ]
+    }
+  ]
+}
