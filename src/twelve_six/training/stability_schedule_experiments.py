@@ -1,14 +1,12 @@
 """TRAIN-43/45 controlled warmup and gradient-clipping experiments.
 
-This module deliberately reuses the incumbent TRAIN-33 optimization harness so model,
-initialization, packing, tokenization, AdamW execution, scheduler semantics, update
-measurement, and finite-gradient checks stay identical. Only warmup or clipping is
-varied at a time.
+Reuse the incumbent TRAIN-33 optimization harness so model, initialization, packing,
+tokenization, AdamW execution, scheduler semantics, update measurement, and numerical
+safety stay identical. Only warmup or clipping is varied at a time.
 """
 
 from __future__ import annotations
 
-import hashlib
 import json
 import math
 import platform
@@ -69,6 +67,7 @@ def _load_plan(path: Path) -> dict[str, Any]:
     raw = json.loads(path.read_text(encoding="utf-8"))
     _require(isinstance(raw, dict), "plan root must be an object")
     _require(raw.get("schema_version") == PLAN_SCHEMA_VERSION, "wrong plan schema")
+
     incumbent = raw.get("incumbent")
     _require(isinstance(incumbent, dict), "incumbent recipe missing")
     _require(incumbent.get("optimizer") == "adamw", "only AdamW is authorized")
@@ -95,10 +94,10 @@ def _load_plan(path: Path) -> dict[str, Any]:
         all(0.0 <= float(value) < 1.0 for value in fractions),
         "warmup fractions must be in [0,1)",
     )
-    _require(len(set(float(value) for value in fractions)) == len(fractions), "duplicate warmup")
+    _require(len({float(value) for value in fractions}) == len(fractions), "duplicate warmup")
     _require(
         isinstance(warmup.get("early_window_steps"), int)
-        and int(warmup["early_window_steps"]) > 0,
+        and int(warmup["early_window_steps"]) > 1,
         "early_window_steps invalid",
     )
 
@@ -106,7 +105,7 @@ def _load_plan(path: Path) -> dict[str, Any]:
     _require(isinstance(clipping, dict), "clipping plan missing")
     thresholds = clipping.get("thresholds")
     _require(isinstance(thresholds, list) and 2 <= len(thresholds) <= 6, "invalid clip set")
-    _require(thresholds.count(None) == 1, "clip sweep must contain exactly one no-clip control")
+    _require(thresholds.count(None) == 1, "clip sweep must contain one no-clip control")
     for threshold in thresholds:
         if threshold is not None:
             _require(
@@ -127,8 +126,7 @@ def _load_plan(path: Path) -> dict[str, Any]:
             int(item["execution_steps"]) < int(item["schedule_horizon_steps"]),
             f"{item['stage']}: scheduler horizon must exceed shortened execution",
         )
-    seed = raw.get("seed")
-    _require(isinstance(seed, int) and seed >= 0, "seed invalid")
+    _require(isinstance(raw.get("seed"), int) and int(raw["seed"]) >= 0, "seed invalid")
     return {"raw": raw, "file_sha256": _sha256_file(path)}
 
 
@@ -155,8 +153,7 @@ def _recipe(
 
 
 def _batch_scoreable_tokens(batch: Mapping[str, Tensor]) -> int:
-    labels = batch["labels"]
-    return int(labels[:, 1:].ne(-100).sum().item())
+    return int(batch["labels"][:, 1:].ne(-100).sum().item())
 
 
 def _augment_result(
@@ -173,42 +170,47 @@ def _augment_result(
         _batch_scoreable_tokens(batch)
         for batch in islice(cycle(train_batches), execution_steps)
     ]
+
     cumulative = 0
-    reference = float(result["summary"]["initial_validation_loss"])
-    recovery_tokens: int | None = None
-    first_loss = float(progression[0]["loss"]) if progression else None
-    recovery_needed = first_loss is not None and first_loss > reference
     clip_factors: list[float] = []
     for item, tokens in zip(progression, batch_tokens, strict=False):
         cumulative += tokens
         grad_norm = item.get("grad_norm")
-        if gradient_clip_norm is None or grad_norm is None:
-            factor = 1.0
-        else:
+        factor = 1.0
+        if gradient_clip_norm is not None and grad_norm is not None:
             factor = min(1.0, gradient_clip_norm / (float(grad_norm) + 1e-6))
         item["scoreable_tokens"] = tokens
         item["cumulative_training_tokens"] = cumulative
         item["post_clip_factor"] = factor
         clip_factors.append(factor)
-        if recovery_needed and recovery_tokens is None and float(item["loss"]) <= reference:
-            recovery_tokens = cumulative
-    if not recovery_needed:
-        recovery_tokens = 0
 
     early = progression[: min(early_window_steps, len(progression))]
     early_losses = [float(item["loss"]) for item in early]
+    reference = early_losses[0] if early_losses else None
+    spike_index = max(range(len(early_losses)), key=early_losses.__getitem__) if early_losses else 0
+    spike_loss = early_losses[spike_index] if early_losses else None
+    spike_abs = None
+    spike_ratio = None
+    recovery_tokens: int | None = None
+    recovery_needed = False
+    if reference is not None and spike_loss is not None:
+        spike_abs = max(0.0, spike_loss - reference)
+        spike_ratio = max(0.0, spike_loss / reference - 1.0) if reference > 0.0 else None
+        recovery_needed = spike_index > 0 and spike_loss > reference
+        if not recovery_needed:
+            recovery_tokens = 0
+        else:
+            for item in progression[spike_index + 1 :]:
+                if float(item["loss"]) <= reference:
+                    recovery_tokens = int(item["cumulative_training_tokens"])
+                    break
+
     grad_norms = [
         float(item["grad_norm"])
         for item in progression
         if item.get("grad_norm") is not None
     ]
     updates = [float(item["relative_update_l2"]) for item in progression]
-    spike_abs = max(0.0, max(early_losses) - reference) if early_losses else None
-    spike_ratio = (
-        max(0.0, max(early_losses) / reference - 1.0)
-        if early_losses and reference > 0.0
-        else None
-    )
     summary = dict(result["summary"])
     summary.update(
         {
@@ -216,7 +218,7 @@ def _augment_result(
             "initialization_recovery_needed": recovery_needed,
             "initialization_recovery_tokens": recovery_tokens,
             "early_window_steps": len(early),
-            "early_loss_max": max(early_losses) if early_losses else None,
+            "early_loss_max": spike_loss,
             "early_loss_spike_absolute": spike_abs,
             "early_loss_spike_ratio": spike_ratio,
             "gradient_norm_p95": _percentile(grad_norms, 0.95),
@@ -300,7 +302,11 @@ def _select_clip(results: Mapping[str, Mapping[str, Any]]) -> str:
 
 def _warmup_rule(stage_outputs: Mapping[str, Any]) -> dict[str, Any]:
     selections = {
-        stage: float(output["warmup"]["results"][output["warmup"]["selected"]]["recipe"]["warmup_fraction"])
+        stage: float(
+            output["warmup"]["results"][output["warmup"]["selected"]]["recipe"][
+                "warmup_fraction"
+            ]
+        )
         for stage, output in stage_outputs.items()
     }
     unique = set(selections.values())
@@ -312,13 +318,71 @@ def _warmup_rule(stage_outputs: Mapping[str, Any]) -> dict[str, Any]:
 
 def _clip_rule(stage_outputs: Mapping[str, Any]) -> dict[str, Any]:
     selections = {
-        stage: output["clipping"]["results"][output["clipping"]["selected"]]["recipe"]["gradient_clip_norm"]
+        stage: output["clipping"]["results"][output["clipping"]["selected"]]["recipe"][
+            "gradient_clip_norm"
+        ]
         for stage, output in stage_outputs.items()
     }
     unique = set(selections.values())
     if len(unique) == 1:
-        return {"kind": "shared_threshold", "gradient_clip_norm": next(iter(unique)), "by_stage": selections}
+        return {
+            "kind": "shared_threshold",
+            "gradient_clip_norm": next(iter(unique)),
+            "by_stage": selections,
+        }
     return {"kind": "scale_aware_threshold", "by_stage": selections}
+
+
+def _run_phase(
+    stage_path: Path,
+    *,
+    incumbent: Mapping[str, Any],
+    values: Sequence[float | None],
+    warmup_fraction: float | None,
+    execution_steps: int,
+    schedule_horizon: int,
+    train_batches: list[dict[str, Tensor]],
+    validation_batches: list[dict[str, Tensor]],
+    early_window: int,
+    seed: int,
+) -> dict[str, Any]:
+    results: dict[str, Any] = {}
+    for value in values:
+        is_warmup = warmup_fraction is None
+        fraction = float(value) if is_warmup else float(warmup_fraction)
+        threshold = None if is_warmup or value is None else float(value)
+        name = f"warmup_{fraction:g}" if is_warmup else f"clip_{'none' if value is None else f'{value:g}'}"
+        recipe = _recipe(
+            name,
+            incumbent,
+            warmup_fraction=fraction,
+            gradient_clip_norm=threshold,
+        )
+        result = _run_recipe(
+            stage_path,
+            recipe=recipe,
+            execution_steps=execution_steps,
+            schedule_horizon_steps=schedule_horizon,
+            train_batches=train_batches,
+            validation_batches=validation_batches,
+            seed=seed,
+        )
+        results[name] = _augment_result(
+            result,
+            train_batches=train_batches,
+            execution_steps=execution_steps,
+            early_window_steps=early_window,
+            gradient_clip_norm=threshold,
+        )
+    _require(
+        len({result["initial_model_sha256"] for result in results.values()}) == 1,
+        "phase candidates do not share initialization",
+    )
+    _require(
+        len({result["batch_trace_sha256"] for result in results.values()}) == 1,
+        "phase candidates do not share batch trace",
+    )
+    return results
 
 
 def run_stability_schedule_experiments(
@@ -359,7 +423,9 @@ def run_stability_schedule_experiments(
             "packing_config_sha256": PACKING_CONFIG_SHA256,
             "tokenizer_vocab_size": tokenizer.vocab_size,
         },
-        "finite_gradient_guard": "incumbent Trainer._normalize_gradients_and_norm before clip_grad_norm_",
+        "finite_gradient_guard": (
+            "incumbent Trainer._normalize_gradients_and_norm before clip_grad_norm_"
+        ),
     }
 
     stages: dict[str, Any] = {}
@@ -389,79 +455,41 @@ def run_stability_schedule_experiments(
         )
         execution_steps = int(stage_plan["execution_steps"])
         schedule_horizon = int(stage_plan["schedule_horizon_steps"])
+        expected_trace = _batch_trace_sha256(train_batches, execution_steps)
 
-        warmup_results: dict[str, Any] = {}
-        for fraction_raw in raw["warmup"]["fractions"]:
-            fraction = float(fraction_raw)
-            name = f"warmup_{fraction:g}"
-            recipe = _recipe(
-                name,
-                incumbent,
-                warmup_fraction=fraction,
-                gradient_clip_norm=None,
-            )
-            result = _run_recipe(
-                stage_path,
-                recipe=recipe,
-                execution_steps=execution_steps,
-                schedule_horizon_steps=schedule_horizon,
-                train_batches=train_batches,
-                validation_batches=validation_batches,
-                seed=seed,
-            )
-            warmup_results[name] = _augment_result(
-                result,
-                train_batches=train_batches,
-                execution_steps=execution_steps,
-                early_window_steps=early_window,
-                gradient_clip_norm=None,
-            )
-        _require(
-            len({result["initial_model_sha256"] for result in warmup_results.values()}) == 1,
-            f"{stage_name}: warmup candidates do not share initialization",
-        )
-        _require(
-            len({result["batch_trace_sha256"] for result in warmup_results.values()}) == 1,
-            f"{stage_name}: warmup candidates do not share batch trace",
+        warmup_results = _run_phase(
+            stage_path,
+            incumbent=incumbent,
+            values=[float(value) for value in raw["warmup"]["fractions"]],
+            warmup_fraction=None,
+            execution_steps=execution_steps,
+            schedule_horizon=schedule_horizon,
+            train_batches=train_batches,
+            validation_batches=validation_batches,
+            early_window=early_window,
+            seed=seed,
         )
         selected_warmup = _select_warmup(warmup_results)
         selected_fraction = float(warmup_results[selected_warmup]["recipe"]["warmup_fraction"])
 
-        clip_results: dict[str, Any] = {}
-        for threshold_raw in raw["clipping"]["thresholds"]:
-            threshold = None if threshold_raw is None else float(threshold_raw)
-            suffix = "none" if threshold is None else f"{threshold:g}"
-            name = f"clip_{suffix}"
-            recipe = _recipe(
-                name,
-                incumbent,
-                warmup_fraction=selected_fraction,
-                gradient_clip_norm=threshold,
-            )
-            result = _run_recipe(
-                stage_path,
-                recipe=recipe,
-                execution_steps=execution_steps,
-                schedule_horizon_steps=schedule_horizon,
-                train_batches=train_batches,
-                validation_batches=validation_batches,
-                seed=seed,
-            )
-            clip_results[name] = _augment_result(
-                result,
-                train_batches=train_batches,
-                execution_steps=execution_steps,
-                early_window_steps=early_window,
-                gradient_clip_norm=threshold,
-            )
-        expected_trace = _batch_trace_sha256(train_batches, execution_steps)
+        clip_values = [
+            None if value is None else float(value) for value in raw["clipping"]["thresholds"]
+        ]
+        clip_results = _run_phase(
+            stage_path,
+            incumbent=incumbent,
+            values=clip_values,
+            warmup_fraction=selected_fraction,
+            execution_steps=execution_steps,
+            schedule_horizon=schedule_horizon,
+            train_batches=train_batches,
+            validation_batches=validation_batches,
+            early_window=early_window,
+            seed=seed,
+        )
         _require(
             all(result["batch_trace_sha256"] == expected_trace for result in clip_results.values()),
             f"{stage_name}: clipping batch trace drift",
-        )
-        _require(
-            len({result["initial_model_sha256"] for result in clip_results.values()}) == 1,
-            f"{stage_name}: clipping candidates do not share initialization",
         )
         _require(
             next(iter(warmup_results.values()))["initial_model_sha256"]
@@ -539,11 +567,13 @@ def run_stability_schedule_experiments(
                 "schedule_horizon_steps": output["experiment"]["schedule_horizon_steps"],
                 "warmup_selected": output["warmup"]["selected"],
                 "warmup": {
-                    name: result["summary"] for name, result in output["warmup"]["results"].items()
+                    name: result["summary"]
+                    for name, result in output["warmup"]["results"].items()
                 },
                 "clip_selected": output["clipping"]["selected"],
                 "clipping": {
-                    name: result["summary"] for name, result in output["clipping"]["results"].items()
+                    name: result["summary"]
+                    for name, result in output["clipping"]["results"].items()
                 },
             }
             for stage, output in stages.items()
@@ -580,7 +610,10 @@ def validate_stability_evidence(evidence: Mapping[str, Any]) -> None:
                 _require("gradient_norm_p95" in summary, f"{stage_name}/{name}: grad p95 missing")
                 _require("relative_update_l2_p95" in summary, f"{stage_name}/{name}: update missing")
                 _require("clip_frequency" in summary, f"{stage_name}/{name}: clip frequency missing")
-                _require("initialization_recovery_tokens" in summary, f"{stage_name}/{name}: recovery missing")
+                _require(
+                    "initialization_recovery_tokens" in summary,
+                    f"{stage_name}/{name}: recovery missing",
+                )
                 _require(
                     summary.get("finite_gradient_guard")
                     == "Trainer rejects non-finite gradients before clip_grad_norm_",
