@@ -1,0 +1,101 @@
+name: D07 Batched Raw Base Inference
+
+on:
+  pull_request:
+    paths:
+      - "src/twelve_six/inference/batching.py"
+      - "src/twelve_six/integration/torch_batching.py"
+      - "tests/test_batched_generation.py"
+      - "tools/benchmark_batched_inference.py"
+      - "docs/D07_BATCHED_RAW_BASE_INFERENCE.md"
+      - ".github/workflows/d07-batched-inference.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  locked-cpu-batching:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Prove exact source checkout
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Verify exact D08 locked environment and repository checks
+        run: >-
+          python tools/verify_locked_environment.py
+          --profile linux-x86_64
+          --source-sha "$SOURCE_SHA"
+          --evidence-out locked-environment-linux-x86_64.json
+          --run-repo-checks
+
+      - name: Create exact locked D07 execution environment
+        run: |
+          python -m venv .d07-batch-locked
+          .d07-batch-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .d07-batch-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          .d07-batch-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/dev.lock.txt
+          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .d07-batch-locked/bin/python -m pip install --no-deps --no-build-isolation -e .
+
+      - name: Focused batched inference regressions
+        run: .d07-batch-locked/bin/python -m pytest -q tests/test_batched_generation.py
+
+      - name: Measure S0 and S3 CPU batching
+        run: |
+          .d07-batch-locked/bin/python tools/benchmark_batched_inference.py \
+            --repo-root . \
+            --source-sha "$SOURCE_SHA" \
+            --threads 2 \
+            --s0-repeats 20 \
+            --s3-repeats 3 \
+            --output batched-raw-base-benchmark.json
+          cat batched-raw-base-benchmark.json
+
+      - name: Validate benchmark truth boundary
+        run: |
+          .d07-batch-locked/bin/python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          report = json.loads(Path("batched-raw-base-benchmark.json").read_text(encoding="utf-8"))
+          assert report["schema"] == "12-6.batched-raw-base-benchmark.v1"
+          assert report["source_sha"] == os.environ["SOURCE_SHA"]
+          stages = {stage["stage"]: stage for stage in report["stages"]}
+          assert stages["S0"]["parameter_count"] == 10140
+          assert stages["S3"]["parameter_count"] == 10059840
+          for stage in stages.values():
+              parity = stage["semantic_parity"]
+              assert parity["max_abs_logit_error"] <= parity["tolerance"]
+              assert stage["batch_memory_accounting"]["right_padding_positions"] >= 0
+          boundary = report["truth_boundary"]
+          assert boundary["local_free_cpu_measurement"] is True
+          assert boundary["gpu_benchmark"] is False
+          assert boundary["public_server_throughput_or_sla"] is False
+          assert boundary["kv_cache_used"] is False
+          assert boundary["paged_attention_used"] is False
+          assert boundary["promotion_authority"] is False
+          PY
+
+      - name: Upload exact-head batching evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: d07-batched-raw-base-${{ env.SOURCE_SHA }}
+          path: |
+            locked-environment-linux-x86_64.json
+            batched-raw-base-benchmark.json
+          if-no-files-found: error
+          retention-days: 30
