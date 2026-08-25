@@ -1,0 +1,112 @@
+{
+  "authority": "LOCAL_FREE_RESEARCH_NOT_ARCHITECTURE_PROMOTION",
+  "decision": {
+    "canonical_promotion": false,
+    "reasons": [
+      "held-out BPB improved at ~1M in all three seeds",
+      "clip frequency remained 1.0 for both variants",
+      "mean gradient norm was slightly worse at ~1M; max gradient norm only modestly lower",
+      "QK norm increased attention-logit RMS and reduced entropy rather than suppressing logits",
+      "robust paired training-speed median ratio was 0.9224 (7.76% slowdown), exceeding the predeclared 5% material-cost gate",
+      "cache/stateless reference parity passed"
+    ],
+    "status": "REJECT_QK_NORM_CANDIDATE"
+  },
+  "implementation": {
+    "candidate_parameter_delta": 0,
+    "canonical_model_py_modified": false,
+    "eps": 1e-06,
+    "kind": "parameter-free per-head RMS Q/K normalization after RoPE",
+    "parameter_count_10m": 9916480,
+    "parameter_count_1m": 1037696,
+    "research_adapter_equivalence_max_abs_error": 0.0
+  },
+  "one_m": {
+    "control": {
+      "cache_parity_max_abs_error": 1.6689300537109375e-06,
+      "clip_frequency": 1.0,
+      "final_attention": {
+        "attention_logit_max_abs_max_mean": 1.110710044701894,
+        "attention_logit_rms_mean": 0.1433653657635053,
+        "last_block_output_rms_mean": 0.19804859658082327,
+        "softmax_entropy_mean": 3.1983572800954185
+      },
+      "final_bpb": 3.9739780931960826,
+      "gradient_norm_max": 12.375279590517234,
+      "gradient_norm_mean": 3.041598010183811,
+      "initial_attention": {
+        "attention_logit_max_abs_max_mean": 0.27448393901189166,
+        "attention_logit_rms_mean": 0.04934874946872393,
+        "last_block_output_rms_mean": 0.032887392987807594,
+        "softmax_entropy_mean": 3.2048457304636635
+      },
+      "train_loss_delta": -1.9839418878157933,
+      "update_ratio_mean": 0.0033497970996962
+    },
+    "paired_final_bpb_qk_minus_control": [
+      -0.12573344765691719,
+      -0.15573209935897125,
+      -0.12304888765313882
+    ],
+    "params": 1037696,
+    "qk_norm": {
+      "cache_parity_max_abs_error": 1.6689300537109375e-06,
+      "clip_frequency": 1.0,
+      "final_attention": {
+        "attention_logit_max_abs_max_mean": 3.7453461488087973,
+        "attention_logit_rms_mean": 1.1977421522140503,
+        "last_block_output_rms_mean": 0.19629482428232828,
+        "softmax_entropy_mean": 2.7528059482574463
+      },
+      "final_bpb": 3.839139948306407,
+      "gradient_norm_max": 11.903113622999363,
+      "gradient_norm_mean": 3.116333914235646,
+      "initial_attention": {
+        "attention_logit_max_abs_max_mean": 3.5983678499857583,
+        "attention_logit_rms_mean": 0.9980723818143208,
+        "last_block_output_rms_mean": 0.032836402455965676,
+        "softmax_entropy_mean": 2.8726056575775147
+      },
+      "train_loss_delta": -2.0476523488759995,
+      "update_ratio_mean": 0.0033113128357335543
+    },
+    "seeds": [1337, 2027, 4099],
+    "steps": 96
+  },
+  "schema": "12-6.model119-qk-norm.local-free-summary.v1",
+  "source": {
+    "base_sha": "b9bc147e0a08181b91798c2515cac7a79c66791c",
+    "repository": "Oleksii-debug/12-6-ai.",
+    "research_branch": "model119/qk-norm-20260826"
+  },
+  "speed": {
+    "material_cost_gate": 0.05,
+    "median_slowdown_fraction": 0.07761663620760428,
+    "paired_training_ratio_mean": 0.8959791987816934,
+    "paired_training_ratio_median": 0.9223833637923957
+  },
+  "summary_sha256": "c52bbbe665bf3c8d4ed1cacfdca38c5d0505d9e9d739114bad1385b62ea00408",
+  "ten_m_probe": {
+    "cache_parity_max_abs_error": 4.76837158203125e-07,
+    "control_attention_logit_rms_final": 0.1644980510075887,
+    "control_clip_frequency": 1.0,
+    "control_final_bpb": 6.213605797555089,
+    "control_gradient_norm_mean": 18.9831555971206,
+    "params": 9916480,
+    "qk_attention_logit_rms_final": 1.170971542596817,
+    "qk_clip_frequency": 1.0,
+    "qk_final_bpb": 6.199931808347392,
+    "qk_gradient_norm_mean": 17.739335213728392,
+    "quality_authority": false,
+    "steps": 8
+  },
+  "truth_boundary": {
+    "broad_intelligence_claim": false,
+    "exact_full_git_checkout": false,
+    "instruction_tuning": false,
+    "local_free": true,
+    "no_foreign_pretrained_weights": true,
+    "note": "Container could not DNS-clone GitHub. Live code was reconstructed from connector-fetched incumbent blobs; research-adapter math was verified against the executed conditional implementation with max absolute logit error 0.0.",
+    "paid_compute": false
+  }
+}
