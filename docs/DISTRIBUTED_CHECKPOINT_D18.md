@@ -6,11 +6,11 @@ Status: **EXPERIMENTAL / LOCAL_FREE**. This is the scale checkpoint path for fut
 
 D05 `checkpoint-v1` remains the correct S0 format. PR #85 explicitly documents that its verified load snapshot retains serialized payload bytes in memory and that this is not the final distributed checkpoint design. Current D05 follow-ons own atomic-path, fsync/crash-durability, schema, portability, retained-artifact, and export work. D18 therefore does not edit checkpoint-v1 core or add another S0 filesystem wrapper.
 
-D12 PR #71 is the first terminal-green distributed authority candidate (`b76fbc616cf7a6df3d0499168fc3678cbe78ce7f`, CI `32747001147` SUCCESS). It provides `ParallelPlan`, logical rank identity, D05-vs-layout identity separation, shard checksum contracts, and direct-vs-reshard planning. PR #74/#76 add useful exact-topology/RNG semantics, but #74 explicitly says #71 should remain the first green authority and that their overlapping runtime surfaces must not be merged wholesale. D18 is stacked directly on #71 and adds only the real maintained DCP data plane, one focused multiprocess test, and this document.
+D12 PR #71 is the incumbent distributed authority. Its first terminal-green distributed contract head is `b76fbc616cf7a6df3d0499168fc3678cbe78ce7f` (CI `32747001147` SUCCESS); the live parent consumed by D18 is the later #71 head `9d13a837e48e8d5090a295266a814dd4ca9e73cd`. #71 provides `ParallelPlan`, logical rank identity, D05-vs-layout identity separation, shard checksum contracts, direct-vs-reshard planning, and the newer canonical CPU/Gloo DDP execution seam. PR #74/#76 add useful exact-topology/RNG semantics, but #74 explicitly says #71 should remain the first green authority and that their overlapping runtime surfaces must not be merged wholesale. D18 is stacked directly on live #71 and adds only the real maintained DCP data plane, one focused multiprocess test, and this document.
 
 ## Why PyTorch Distributed Checkpoint
 
-The repository lock is PyTorch 2.13. Current PyTorch documentation states that `torch.distributed.checkpoint` saves/loads from multiple ranks in parallel and performs load-time resharding between cluster topologies. `torch.distributed.checkpoint.state_dict.get_state_dict()` / `set_state_dict()` are the maintained model+optimizer state seam and handle PyTorch FSDP/`fully_shard`, DDP/replicate, tensor parallel, and combinations while preserving canonical FQN mappings.
+The repository targets current PyTorch through its committed dependency locks. Current PyTorch documentation states that `torch.distributed.checkpoint` saves/loads from multiple ranks in parallel and performs load-time resharding between cluster topologies. `torch.distributed.checkpoint.state_dict.get_state_dict()` / `set_state_dict()` are the maintained model+optimizer state seam and handle PyTorch FSDP/`fully_shard`, DDP/replicate, tensor parallel, and combinations while preserving canonical FQN mappings.
 
 Primary references:
 - https://docs.pytorch.org/docs/main/distributed.checkpoint.html
@@ -41,10 +41,12 @@ The implemented LOCAL_FREE backend is local filesystem only:
 1. rank 0 creates a unique same-parent staging generation;
 2. all ranks write optional caller-owned rank state;
 3. all ranks call `dcp.save()` for model+optimizer state;
-4. only after DCP returns and a collective barrier completes does rank 0 stream-hash the complete payload inventory;
-5. rank 0 writes the manifest, manifest hash, and `COMMITTED` marker;
+4. only after DCP returns and a collective barrier completes does rank 0 enumerate the exact payload inventory; participating ranks deterministically split that inventory, stream-hash their assigned artifacts, and all-gather records/errors;
+5. rank 0 writes the manifest, manifest hash, and `COMMITTED` marker only after the distributed integrity pass covers the exact inventory;
 6. rank 0 publishes the generation with same-parent `os.rename()`;
 7. all ranks observe publication through the control-plane broadcast and final barrier.
+
+Normal distributed load applies the same deterministic rank-partitioned streaming integrity pass before `dcp.load()`. The standalone `verify_scale_checkpoint()` path is intentionally a serial diagnostic verifier, not the normal multi-rank scale path. Large shard payloads are never retained as one Python byte snapshot.
 
 This gives an atomic **namespace publication** contract only under a cooperative single-writer, same-filesystem local-directory precondition. It deliberately does not claim:
 
@@ -88,7 +90,7 @@ The focused test `tests/test_distributed_dcp_checkpoint.py` executes the real ma
 - topology-changing 2-rank -> 1-rank DCP load with exact model weights and optimizer steps for this controlled fixture;
 - explicit rejection of a one-byte physical `.distcp` corruption through streaming SHA-256.
 
-Local execution environment for this worker: Torch `2.10.0+cpu`; result: **1 passed in 14.57 s** for the repository-shaped focused test. A separate direct probe produced the same 2->2 and 2->1 result. This is engineering evidence only. The repository's locked PyTorch 2.13 GitHub Actions on the exact D18 head are the authority for integration.
+Local execution environment for this worker: Torch `2.10.0+cpu`; latest focused result after the distributed integrity-pass refactor: **1 passed in 11.30 s**. A separate direct probe produced the same 2->2 and 2->1 result. This is engineering evidence only; exact-head repository CI remains the integration authority.
 
 No CUDA/NCCL, FSDP2-wrapped canonical D01 model, TP-sharded model, multi-node process group, rank kill injection, or remote object store was executed here.
 
@@ -104,7 +106,7 @@ D01 engineering candidates are S4 `100,384,512`, S5 `400,598,016`, and S6 `999,1
 
 The 12 B/parameter column is the useful baseline for a full AdamW resume when the live parameter representation is FP32. If the training stack retains a separate FP32 master copy in addition to BF16 model weights, use the 14 B/parameter column until the exact optimizer/precision implementation is measured.
 
-Approximate write time for the 12 B/parameter payload at sustained aggregate storage bandwidth:
+Approximate raw DCP write time for the 12 B/parameter payload at sustained aggregate storage bandwidth:
 
 | Candidate | 0.5 GB/s | 1.0 GB/s | 2.0 GB/s |
 | --- | ---: | ---: | ---: |
@@ -112,9 +114,11 @@ Approximate write time for the 12 B/parameter payload at sustained aggregate sto
 | S5 ~400M | 9.61 s | 4.81 s | 2.40 s |
 | S6 ~1B | 23.98 s | 11.99 s | 5.99 s |
 
-Formula: `checkpoint_seconds ~= payload_bytes / sustained_aggregate_write_bytes_per_second + metadata/collective latency`.
+Raw-write formula: `payload_bytes / sustained_aggregate_write_bytes_per_second + DCP collective/metadata latency`.
 
-These are not performance claims. Before a paid 400M/1B run, measure sustained DCP throughput on the exact storage path, topology, precision, optimizer, and shard count. Async DCP may later reduce exposed training stall, but the synchronous path should remain the correctness baseline first.
+The integrity contract adds one full streaming read pass over the physical payload before publication (and before normal distributed load). Because that pass is partitioned across ranks, its first-order additional time is approximately `payload_bytes / sustained_aggregate_read_bytes_per_second`, subject to page cache, storage contention, shard count, and collective overhead. Therefore the table is **not** an end-to-end checkpoint-latency claim.
+
+Before a paid 400M/1B run, measure DCP write throughput, integrity-read throughput, exposed pause time, and restart load time on the exact storage path, topology, precision, optimizer, and shard count. Async DCP may later reduce exposed training stall, but the synchronous path should remain the correctness baseline first.
 
 ## Next integration boundary
 
