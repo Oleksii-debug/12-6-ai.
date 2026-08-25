@@ -78,7 +78,7 @@ No KV-cache bytes are reported by this path because it does not use KV caching.
 - canonical S0, 10,140 parameters;
 - canonical S3, 10,059,840 parameters.
 
-The benchmark first requires logits parity within `1e-5`, then records median latency, requests/second, observed speedup, padding cost and tensor memory. It does not require speedup to be greater than one: CPU results are recorded as observed, not converted into a serving-throughput claim.
+The benchmark first requires max-absolute logits agreement within `1e-4`, then records median latency, requests/second, observed speedup, padding cost and tensor memory. The tolerance covers normal floating-point kernel-dispatch drift between batch-1 and batch-N GEMM/attention execution; token-selection and stopping parity remain separately regression-tested. The benchmark does not require speedup to be greater than one: CPU results are recorded as observed, not converted into a serving-throughput claim.
 
 The S3 result is the first measured step toward the requested 10M scale. A 100M-class accelerator benchmark remains future evidence because no free GPU execution is claimed here and CPU batching behavior should not be presented as GPU-serving capacity.
 
