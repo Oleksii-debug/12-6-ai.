@@ -38,7 +38,7 @@
     },
     {
       "id": "quality_first_then_mixed",
-      "semantics": "stable-partition the highest training-only mechanics-quality envelopes into the fixed prefix, then retain incumbent relative order"
+      "semantics": "preserve the fully-mixed prefix modality sequence exactly, fill each modality slot with the highest training-only mechanics-quality envelopes available for that modality, then retain incumbent relative order for the remaining envelopes"
     },
     {
       "id": "ukrainian_first_then_mixed",
@@ -49,9 +49,11 @@
   "quality_proxy": {
     "scope": "ordering_only_not_training_eligibility",
     "uses_heldout": false,
+    "cross_modality_score_comparison_used": false,
     "natural": "0.45*alphabetic_density + 0.35*word_type_ratio + 0.20*min(utf8_bytes/180,1)",
     "code": "0.40*structure + 0.35*nonspace_character_type_ratio + 0.25*min(utf8_bytes/180,1)",
-    "structure": "mean(has_multiple_lines, has_indentation_or_sql_clause_break)"
+    "structure": "mean(has_multiple_lines, has_indentation_or_sql_clause_break)",
+    "confound_control": "quality-first preserves the fully-mixed prefix source sequence exactly so quality ordering is not a hidden modality curriculum"
   },
   "decision_rule": {
     "primary_metric": "paired final aggregate heldout BPB delta versus fully_mixed",
@@ -63,6 +65,7 @@
   "truth_boundary": [
     "Same model architecture, InitSpec family, tokenizer, optimizer recipe, precision, total optimized-token budget and incumbent MixturePlan trace multiset are used for every candidate.",
     "Candidate schedules are deterministic permutations of the incumbent source/offset envelopes, not a second source scheduler.",
+    "Quality-first preserves the fully-mixed prefix modality sequence and reorders envelopes only within modality, isolating quality ordering from the separate Ukrainian-first modality hypothesis.",
     "Final modality token counts and exact training batch multiset must be identical across candidates.",
     "The current multilingual fixture is tiny, project-authored and recycled; results are mechanics evidence, not representative-corpus evidence.",
     "No held-out probe may influence candidate construction, quality scoring or the predeclared decision rule.",
