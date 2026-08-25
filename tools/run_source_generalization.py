@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Run or validate the EVAL-137 source-family generalization report."""
 
 from __future__ import annotations
