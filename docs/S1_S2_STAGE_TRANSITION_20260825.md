@@ -26,15 +26,22 @@ Their changed-path sets are disjoint from each other and from the transition's S
 
 The transition branch currently preserves `86db...` plus #106/#130 ancestry. It must absorb the live `d073...` S0 successor only after that exact S0 head is terminal-green; the transition must then rerun its own exact-head workflows. This prevents queued/in-progress S0 evidence from being laundered into a next-stage lineage.
 
-## Concrete S2 boundary
+## Concrete S2 execution already composed
 
-Current `configs/stages/s2_1m.json` describes an engineering S2 geometry with 1,066,112 trainable parameters, 2,048 vocabulary slots, context 512 and random-init Base.
+A synthetic S2-only probe was initially drafted on this transition branch, then removed because PR #144 already contained materially stronger, exact-green real S2 execution. The transition now preserves the exact S2-only SCALE-02 head `003e268655b672df9df00afb8a32dbec4db5d2e1` as real Git ancestry instead of maintaining a duplicate implementation.
 
-`collect_s2_transition_preflight()` performs only a bounded synthetic-token forward/backward mechanics check against that exact config. It requires finite loss, finite gradients and at least one nonzero gradient while performing zero optimizer steps.
+That source adds four bounded S2 paths on top of #106:
 
-Its authority is `ENGINEERING_S2_MECHANICS_PREFLIGHT_ONLY_NOT_STAGE_EVIDENCE`.
+- `.github/workflows/scale02-s2-1m-executable.yml`;
+- `configs/stages/alternatives/s2_1m_byte_gqa.candidate.json`;
+- `src/twelve_six/training/s2_preflight.py`;
+- `tests/test_s2_1m_executable_preflight.py`.
 
-The S2 preflight explicitly does not select S2 data or tokenizer, freeze architecture, claim quality/capability, authorize paid compute, or grant candidate/promotion authority. The 2,048-vocabulary geometry remains provisional and should be revisited using current vocabulary-allocation, tokenizer-fertility, context, attention-geometry and scaling experiments before any S2 freeze.
+The exact S2 source head is terminal-green for CI `32835548233`, SCALE-02 S2 1M Executable Preflight `32835548366`, and D04 Strict S0 Exact-Candidate Evaluation `32835548316`.
+
+Its byte-compatible engineering candidate has 992,896 trainable parameters, context 512, D128, six layers, four query heads/two KV heads and SwiGLU FFN 288. The exact-green run executed the real model and D02 Trainer for four CPU fp32 optimizer steps, moved all 992,896 trainable elements, reduced fixed-batch loss from 5.63400411605835 to 4.52123498916626, completed a finite full-512-token forward, saved a real checkpoint at step 2, reloaded/resumed to the exact uninterrupted final model and Trainer/optimizer state, and generated through the first-party inference loader.
+
+The controlled S0 fixture and byte tokenizer used by this proof are compatibility inputs only. They are not an S2 data/tokenizer freeze, and this composition does not claim quality/capability, authorize paid compute, or grant stage/promotion authority. The later ~10M continuation on #144 is deliberately not composed here while its own exact-head evidence remains separate.
 
 ## Work that may continue while S0 administration is pending
 
