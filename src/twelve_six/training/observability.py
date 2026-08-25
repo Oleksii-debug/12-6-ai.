@@ -71,10 +71,10 @@ class TrainingObserver(_v2.TrainingObserver):
         overhead = summary["overhead"]
         snapshot = int(overhead["temporary_snapshot_peak_bytes"])
         overhead["conservative_peak_extra_tensor_bytes_upper_bound"] = (
-            snapshot + 3 * self._largest_parameter_float32_bytes if snapshot else 0
+            snapshot + 4 * self._largest_parameter_float32_bytes if snapshot else 0
         )
         overhead["workspace_bound_semantics"] = (
-            "SNAPSHOT_PLUS_THREE_LARGEST_PARAMETER_FP32_BUFFERS; "
+            "SNAPSHOT_PLUS_FOUR_LARGEST_PARAMETER_FP32_BUFFERS; "
             "EXCLUDES_FRAMEWORK_ALLOCATOR_METADATA"
         )
         overhead["probe_seconds_semantics"] = (
