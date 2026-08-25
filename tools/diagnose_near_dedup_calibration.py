@@ -12,12 +12,37 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from twelve_six.data.near_dedup import (
+    NearDedupPolicy,
     calibration_records,
     load_calibration,
     policy_candidates,
     run_datatrove_policy,
     score_calibration,
 )
+
+
+def _diagnostic_candidates() -> dict[str, tuple[NearDedupPolicy, ...]]:
+    incumbent = policy_candidates()
+    return {
+        "natural": (
+            *incumbent["natural"],
+            NearDedupPolicy("diag_natural_7g_12x9", "natural", 7, 12, 9),
+            NearDedupPolicy("diag_natural_7g_14x8", "natural", 7, 14, 8),
+            NearDedupPolicy("diag_natural_7g_16x7", "natural", 7, 16, 7),
+            NearDedupPolicy("diag_natural_5g_12x9", "natural", 5, 12, 9),
+            NearDedupPolicy("diag_natural_5g_14x8", "natural", 5, 14, 8),
+            NearDedupPolicy("diag_natural_5g_16x7", "natural", 5, 16, 7),
+        ),
+        "code": (
+            *incumbent["code"],
+            NearDedupPolicy("diag_code_4g_10x10", "code", 4, 10, 10),
+            NearDedupPolicy("diag_code_4g_12x9", "code", 4, 12, 9),
+            NearDedupPolicy("diag_code_4g_14x8", "code", 4, 14, 8),
+            NearDedupPolicy("diag_code_3g_10x10", "code", 3, 10, 10),
+            NearDedupPolicy("diag_code_3g_12x9", "code", 3, 12, 9),
+            NearDedupPolicy("diag_code_3g_14x8", "code", 3, 14, 8),
+        ),
+    }
 
 
 def main() -> int:
@@ -38,14 +63,16 @@ def main() -> int:
         "schema_version": "12-6.near-dedup-calibration-diagnostics.v1",
         "authority": "DIAGNOSTIC_ONLY_NOT_POLICY_SELECTION",
         "gates": {"min_recall": 0.75, "max_false_removal_risk": 0.25},
+        "exploratory_grid_changes_policy_selection": False,
         "modalities": {},
     }
 
+    candidates = _diagnostic_candidates()
     modalities: dict[str, object] = {}
     for modality in ("natural", "code"):
         records = calibration_records(calibration, modality)
         rows = []
-        for policy in policy_candidates()[modality]:
+        for policy in candidates[modality]:
             execution = run_datatrove_policy(
                 records,
                 policy=policy,
@@ -58,6 +85,7 @@ def main() -> int:
             rows.append(
                 {
                     "policy": policy.manifest(),
+                    "incumbent_candidate": policy in policy_candidates()[modality],
                     "recall": metrics["recall"],
                     "false_removal_risk": metrics["false_removal_risk"],
                     "true_positive_pairs": metrics["true_positive_pairs"],
