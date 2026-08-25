@@ -1,0 +1,113 @@
+{
+  "schema": "12-6.model117-rope-base-evidence.v1",
+  "authority": "LOCAL_FREE_PROVISIONAL_POSITIONAL_ENCODING_RESEARCH_NOT_PROMOTION",
+  "execution_date_utc": "2026-08-25",
+  "source": {
+    "repository": "Oleksii-debug/12-6-ai.",
+    "context_incumbent_branch": "model17/context-100k-128-vs-256-20260825",
+    "context_incumbent_head": "ce0b8eb8501677363007d4f3c8c6c9fcf95a772d",
+    "model_core_blob": "2259ee1d90d191436cce6af20d6dbf6f53da02ab",
+    "model09_controls_branch": "model09/depth-width-500k-20260825",
+    "model09_controls_blob": "c6ddeab5bed8fda212c27748e5994fa3df819665",
+    "tokenizer_config_blob": "cb3e6a305807e8653c27021f013d27be8124a320",
+    "train_blob": "b77ceabfce6464b5511cb9db94596ed1c6625f02",
+    "validation_blob": "aaeddabc2df9b8c00175f592cf60c861b490ed58"
+  },
+  "machine": {
+    "python": "3.13.5",
+    "torch": "2.10.0+cpu",
+    "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
+    "logical_cpu_count": 5,
+    "torch_threads": 2,
+    "cuda": false,
+    "paid_compute": false
+  },
+  "experiment": {
+    "trainable_parameters": 495456,
+    "max_seq_len": 512,
+    "training_sequence_length": 512,
+    "batch_size": 1,
+    "optimizer_steps": 64,
+    "optimized_valid_causal_tokens": 32704,
+    "seed": 1337,
+    "optimizer": "AdamW lr=3e-4 betas=(0.9,0.95) eps=1e-8 weight_decay=0 clip=1 fp32 constant",
+    "theta_candidates": [5000.0, 10000.0, 20000.0],
+    "same_trainable_initialization": true,
+    "trainable_init_state_sha256": "2ae3ee69d8ab58200dab977e5c49630d3275f1b4e8fba7dfe00c6e5e075bf569"
+  },
+  "results": [
+    {
+      "theta": 5000.0,
+      "model_identity_sha256": "512f1b521019b0dcfb4c67c9a2a5c7ac59e2e081f537b999f07fbf0634ca8a8b",
+      "train_loss_first8_mean": 5.23803573846817,
+      "train_loss_last8_mean": 3.441761165857315,
+      "heldout_bpb_after": {"128": 4.840112, "256": 4.858382, "512": 5.608463},
+      "short_context_delta_vs_10000_percent": -0.005040907530673433,
+      "grad_norm_median": 2.9784011840820312,
+      "grad_norm_max": 7.404582500457764,
+      "attention_score_max_abs": 0.9085462689399719,
+      "logit_max_abs": 3.0283615589141846,
+      "cache_parity_max_abs_logit_diff": 8.344650268554688e-7,
+      "synthetic_recurrence_gain_bpb": {"64": 0.0460, "128": 0.0083, "256": 0.0032, "384": 0.0183},
+      "checkpoint_sha256": "ef549f8d9bd13596ef65402031f42e37b9880cd1b4d7e6ceb809c69c737dc378"
+    },
+    {
+      "theta": 10000.0,
+      "model_identity_sha256": "280fd2f36e6b7ac7b132e15ded346938384e6f946bcd1f5484d32fb854cb6cc7",
+      "train_loss_first8_mean": 5.237994074821472,
+      "train_loss_last8_mean": 3.441761463880539,
+      "heldout_bpb_after": {"128": 4.840256, "256": 4.858727, "512": 5.608240},
+      "short_context_delta_vs_10000_percent": 0.0,
+      "grad_norm_median": 2.9787486791610718,
+      "grad_norm_max": 7.402237415313721,
+      "attention_score_max_abs": 0.894656777381897,
+      "logit_max_abs": 3.0282979011535645,
+      "cache_parity_max_abs_logit_diff": 9.5367431640625e-7,
+      "synthetic_recurrence_gain_bpb": {"64": 0.0460, "128": 0.0082, "256": 0.0031, "384": 0.0184},
+      "checkpoint_sha256": "b16bc55bba0ea046fbcca05247dcfd6f27e275c1ad1042015fbff941ce82248f"
+    },
+    {
+      "theta": 20000.0,
+      "model_identity_sha256": "152fd894336a4981bcd9d3505acf92bacf7cbf6f57d90f755822d6413bb8bca0",
+      "train_loss_first8_mean": 5.237877786159515,
+      "train_loss_last8_mean": 3.4417704939842224,
+      "heldout_bpb_after": {"128": 4.840460, "256": 4.859102, "512": 5.607966},
+      "short_context_delta_vs_10000_percent": 0.005968024458224974,
+      "grad_norm_median": 2.979069232940674,
+      "grad_norm_max": 7.401971340179443,
+      "attention_score_max_abs": 0.8632691502571106,
+      "logit_max_abs": 3.027010440826416,
+      "cache_parity_max_abs_logit_diff": 1.1920928955078125e-6,
+      "synthetic_recurrence_gain_bpb": {"64": 0.0460, "128": 0.0081, "256": 0.0031, "384": 0.0185},
+      "checkpoint_sha256": "0ad1aab70ca3118d43ba45e39b8631902af63540f5b59384e59fca15d305a9b5"
+    }
+  ],
+  "position_loss_bpb_64_token_bins": {
+    "theta_5000": [5.9496, 5.4775, 5.5428, 5.7017, 5.5683, 5.5123, 5.5393, 5.5174],
+    "theta_10000": [5.9487, 5.4777, 5.5427, 5.7016, 5.5680, 5.5122, 5.5391, 5.5172],
+    "theta_20000": [5.9476, 5.4775, 5.5426, 5.7015, 5.5679, 5.5120, 5.5390, 5.5170]
+  },
+  "fresh_process_verification_theta_10000": {
+    "evaluation_non_mutating": true,
+    "model_state_sha256_before_eval": "10f66909f8d3e7c5608ef05887e16e8d5972998779d945e339b732e5fe97a23b",
+    "model_state_sha256_after_eval": "10f66909f8d3e7c5608ef05887e16e8d5972998779d945e339b732e5fe97a23b",
+    "bpb": {"128": 4.840256213640876, "256": 4.858726947618247, "512": 5.60823980466672},
+    "cache_parity_max_abs_logit_diff": 8.344650268554688e-7
+  },
+  "decision": {
+    "provisional_rule": "Retain standard RoPE theta=10000 for 12-6 contexts through 512. Do not switch theta for numerically negligible short/full-context differences or marginal synthetic recurrence changes. For 1024, inherit theta=10000 only as the existing provisional incumbent and require a dedicated 1K training/evaluation repeat before treating the base as empirically qualified there.",
+    "theta_change": false,
+    "reason": "All candidates are effectively tied. 5K is lower by only about 0.005 percent on mean short-context BPB; 20K is lower by only 0.000274 BPB at 512. Synthetic recurrence, gradients, attention/logit ranges, and cache parity are also effectively indistinguishable. There is no defensible gain large enough to pay the model-identity and regression cost of changing the incumbent."
+  },
+  "local_artifact_hashes": {
+    "execution_script_sha256": "55c52d9f33f2c0621b784123b88fa35f8c62b6b0ecda866050ea5352777be1ba",
+    "raw_report_sha256": "83385916289f15fc64c0eb43cc6e12be9f31fb8b479e7ed6483850f12d968c6c",
+    "fresh_process_verification_sha256": "bce3f9c91a68b1b471714831f5c07c0a265e777aa73a52918369efd94903e9c2"
+  },
+  "limitations": [
+    "The incumbent S0 training corpus is a tiny project-authored synthetic fixture that is cyclically packed. This run does not satisfy the separate milestone requirement for a real representative pretraining corpus.",
+    "Canonical S0 validation documents are shorter than 512 bytes, so the 512 position-dependent normal-text diagnostic uses a reserved project evaluation document.",
+    "Reserved synthetic recurrence probes are diagnostics only, not capability claims.",
+    "This task does not implement or evaluate NTK scaling, YaRN, RoPE interpolation, or extrapolation beyond trained context."
+  ]
+}
