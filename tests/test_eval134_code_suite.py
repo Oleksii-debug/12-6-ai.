@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from pathlib import Path
 
 import torch
 from torch import nn
 
-from tools.eval134_code_suite import verify_reservation
+from tools.eval134_code_suite import training_documents, verify_reservation
 from twelve_six.code_diagnostic import load_suite, score_probe, suite_file_sha256, summarize
+from twelve_six.data.pipeline import normalize_text
 from twelve_six.tokenization.byte import ByteTokenizer
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -74,6 +76,32 @@ def test_reservation_and_training_overlap_gate() -> None:
     assert evidence["normalized_registry_hashes_verified"] == 60
     assert evidence["training_overlap_count"] == 0
     assert evidence["synthetic_identifier_namespace_absent_from_training"] is True
+
+
+def test_normalized_candidates_are_active_incumbent_forbidden_hashes() -> None:
+    import json
+
+    probes = load_suite(SUITE)
+    registry = json.loads((ROOT / "data/s0/contamination_registry.json").read_text(encoding="utf-8"))
+    forbidden = set(registry["forbidden_normalized_sha256"])
+    candidate_hashes = {
+        hashlib.sha256(normalize_text(probe.prefix + choice).encode("utf-8")).hexdigest()
+        for probe in probes
+        for choice in probe.choices
+    }
+    assert len(candidate_hashes) == 60
+    assert candidate_hashes <= forbidden
+
+
+def test_synthetic_literals_are_unseen_in_current_training_inputs() -> None:
+    probes = load_suite(SUITE)
+    candidate_text = "\n".join(
+        probe.prefix + choice for probe in probes for choice in probe.choices
+    )
+    literals = set(re.findall(r"\b[78]\d{3}\b", candidate_text))
+    assert literals
+    training = "\n".join(text for _, text in training_documents(ROOT))
+    assert all(literal not in training for literal in literals)
 
 
 def test_scoring_is_nonmutating_and_byte_normalized() -> None:
