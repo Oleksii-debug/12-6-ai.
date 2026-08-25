@@ -107,6 +107,7 @@ class DataTroveMinhashExecutionPlan:
     hashes_per_bucket: int = 8
     minhash_seed: int = 1
     hash_precision: int = 64
+    normalize_numbers: bool = False
     datatrove_version: str = DATATROVE_VERSION
     datatrove_wheel_sha256: str = DATATROVE_WHEEL_SHA256
 
@@ -129,6 +130,8 @@ class DataTroveMinhashExecutionPlan:
             "hash_precision",
         ):
             _require_positive_int(getattr(self, field), field)
+        if type(self.normalize_numbers) is not bool:
+            raise CorpusFoundationError("normalize_numbers must be exact boolean")
         if self.workers > max(self.candidate_shards, self.num_buckets):
             raise CorpusFoundationError("workers exceed every MinHash stage task count")
         if self.hash_precision not in {32, 64}:
@@ -191,6 +194,7 @@ def validate_datatrove_runtime(plan: DataTroveMinhashExecutionPlan) -> dict[str,
         from datatrove.pipeline.readers import JsonlReader  # noqa: F401
         from datatrove.pipeline.writers.jsonl import JsonlWriter  # noqa: F401
         from datatrove.utils.hashing import HashConfig  # noqa: F401
+        from datatrove.utils.text import TextNormConfig  # noqa: F401
     except ImportError as exc:
         raise CorpusFoundationError("DataTrove 0.10.0 MinHash API is incomplete") from exc
 
@@ -207,12 +211,14 @@ def datatrove_minhash_config(plan: DataTroveMinhashExecutionPlan):
     validate_datatrove_runtime(plan)
     from datatrove.pipeline.dedup.minhash import MinhashConfig
     from datatrove.utils.hashing import HashConfig
+    from datatrove.utils.text import TextNormConfig
 
     return MinhashConfig(
         n_grams=plan.n_grams,
         num_buckets=plan.num_buckets,
         hashes_per_bucket=plan.hashes_per_bucket,
         seed=plan.minhash_seed,
+        norm_config=TextNormConfig(norm_numbers=plan.normalize_numbers),
         hash_config=HashConfig(precision=plan.hash_precision),
     )
 
