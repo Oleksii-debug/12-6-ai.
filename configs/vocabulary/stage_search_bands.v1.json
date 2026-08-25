@@ -1,0 +1,82 @@
+{
+  "schema": "12-6.vocabulary-stage-search-bands.v1",
+  "status": "ENGINEERING_SEARCH_BANDS_NOT_TOKENIZER_FREEZE",
+  "policy": {
+    "default_tied_lm_head": true,
+    "untied_head_default": false,
+    "reason": "untied output weights double the dominant vocabulary matrix before optional bias; benchmark only when model scale and quality evidence justify it",
+    "representative_corpus_required_before_freeze": true,
+    "model_quality_required_before_freeze": true
+  },
+  "stages": [
+    {
+      "stage": "S1", "target_parameters": 100000, "current_parameters": 107856,
+      "d_model": 48, "current_vocab_size": 512,
+      "current_tied_vocab_parameters": 24576,
+      "current_tied_vocab_share_of_current_model": 0.22785936804628393,
+      "current_untied_vocab_parameters": 49152,
+      "current_untied_vocab_share_of_current_model": 0.45571873609256786,
+      "search_vocab_sizes": [256, 320, 384, 448, 512],
+      "recommended_search_range": [256, 512],
+      "measured_mechanics_anchor_vocab": 472,
+      "decision": "replace one-size 512 assumption with byte control plus learned-tokenizer Pareto search; actual tokenizer vocab must bind ModelSpec before training",
+      "source": "configs/stages/s1_100k.json"
+    },
+    {
+      "stage": "S2", "target_parameters": 1000000, "current_parameters": 1066112,
+      "d_model": 128, "current_vocab_size": 2048,
+      "current_tied_vocab_parameters": 262144,
+      "current_tied_vocab_share_of_current_model": 0.2458878616880778,
+      "current_untied_vocab_parameters": 524288,
+      "current_untied_vocab_share_of_current_model": 0.4917757233761556,
+      "search_vocab_sizes": [512, 768, 1024, 1280, 1536],
+      "recommended_search_range": [512, 1536],
+      "parameter_rebalanced_anchor_vocab": 1024,
+      "decision": "2048 remains an upper stress control, not the default; qualify 1024-class vocab before spending roughly one quarter of S2 on embeddings",
+      "source": "configs/stages/s2_1m.json"
+    },
+    {
+      "stage": "S3", "target_parameters": 10000000, "current_parameters": 10059840,
+      "d_model": 320, "current_vocab_size": 8192,
+      "current_tied_vocab_parameters": 2621440,
+      "current_tied_vocab_share_of_current_model": 0.26058466138626457,
+      "current_untied_vocab_parameters": 5242880,
+      "current_untied_vocab_share_of_current_model": 0.5211693227725291,
+      "search_vocab_sizes": [2048, 3072, 4096, 6144],
+      "recommended_search_range": [2048, 6144],
+      "parameter_rebalanced_anchor_vocab": 4096,
+      "decision": "8192 is not rejected, but it requires representative fertility/quality evidence because its tied matrix alone is about 26 percent of the current candidate",
+      "source": "configs/stages/s3_10m.json"
+    },
+    {
+      "stage": "S4", "target_parameters": 100000000, "current_parameters": 100384512,
+      "d_model": 768, "current_vocab_size": 32768,
+      "current_tied_vocab_parameters": 25165824,
+      "current_tied_vocab_share_of_current_model": 0.2506942903702117,
+      "current_untied_vocab_parameters": 50331648,
+      "current_untied_vocab_share_of_current_model": 0.5013885807404234,
+      "search_vocab_sizes": [8192, 12288, 16384, 24576, 32768],
+      "recommended_search_range": [8192, 24576], "stress_control_vocab": 32768,
+      "decision": "32K stays a comparison point rather than a default; test 16K-class candidates first unless corpus fertility shows a material gain",
+      "source": "PR#37@cab1138871a30f49f4888111dd7150bb23bad674:configs/stages/s4_100m.candidate.json"
+    },
+    {
+      "stage": "S5", "target_parameters": 400000000, "current_parameters": 400598016,
+      "d_model": 1024, "current_vocab_size": 32768,
+      "current_tied_vocab_parameters": 33554432,
+      "current_tied_vocab_share_of_current_model": 0.08376085417257782,
+      "current_untied_vocab_parameters": 67108864,
+      "current_untied_vocab_share_of_current_model": 0.16752170834515565,
+      "search_vocab_sizes": [24576, 32768, 49152, 65536],
+      "recommended_search_range": [24576, 65536], "parameter_baseline_vocab": 32768,
+      "decision": "32K is parameter-reasonable at 400M; larger vocabularies may enter the search only on representative multilingual fertility and quality evidence",
+      "source": "PR#37@cab1138871a30f49f4888111dd7150bb23bad674:configs/stages/s5_400m.candidate.json"
+    }
+  ],
+  "truth_boundary": {
+    "canonical_s0_unchanged": true,
+    "tokenizer_frozen": false,
+    "s1_or_s2_promoted": false,
+    "ranges_are_training_or_quality_claims": false
+  }
+}
