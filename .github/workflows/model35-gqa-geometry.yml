@@ -1,0 +1,123 @@
+name: MODEL-35 GQA Geometry Research
+
+on:
+  pull_request:
+    paths:
+      - "configs/stages/s2_1m_gqa2.candidate.json"
+      - "configs/stages/s2_1m_mqa1.candidate.json"
+      - "configs/stages/s3_10m_gqa4.candidate.json"
+      - "configs/stages/s3_10m_gqa2.candidate.json"
+      - "configs/stages/s3_10m_mqa1.candidate.json"
+      - "configs/stages/s4_100m_gqa4.candidate.json"
+      - "tools/run_attention_geometry_experiment.py"
+      - "tests/test_attention_geometry_candidates.py"
+      - "docs/ATTENTION_GEOMETRY_GQA_MODEL35.md"
+      - ".github/workflows/model35-gqa-geometry.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  locked-cpu-gqa-geometry:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Prove exact source checkout
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Verify D08 locked environment and repository checks
+        run: >-
+          python tools/verify_locked_environment.py
+          --profile linux-x86_64
+          --source-sha "$SOURCE_SHA"
+          --evidence-out locked-environment-linux-x86_64.json
+          --run-repo-checks
+
+      - name: Create exact locked experiment environment
+        run: |
+          python -m venv .model35-locked
+          .model35-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .model35-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          .model35-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/dev.lock.txt
+          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .model35-locked/bin/python -m pip install --no-deps --no-build-isolation -e .
+
+      - name: Validate executable candidate ModelSpecs
+        run: >-
+          .model35-locked/bin/python -m pytest -q
+          tests/test_attention_geometry_candidates.py
+
+      - name: Run controlled S2 and S3 mechanics experiment
+        run: |
+          .model35-locked/bin/python tools/run_attention_geometry_experiment.py \
+            --repo-root . \
+            --source-sha "$SOURCE_SHA" \
+            --seeds 101 202 \
+            --s2-steps 5 \
+            --s3-steps 3 \
+            --generation-steps 6 \
+            --output model35-gqa-geometry-evidence.json
+          cat model35-gqa-geometry-evidence.json
+
+      - name: Validate evidence truth boundary
+        run: |
+          .model35-locked/bin/python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          path = Path("model35-gqa-geometry-evidence.json")
+          report = json.loads(path.read_text(encoding="utf-8"))
+          assert report["schema"] == "12-6.attention-geometry-experiment.v1"
+          assert report["source_sha"] == os.environ["SOURCE_SHA"]
+          assert report["torch_version"].startswith("2.13.")
+          assert report["device"] == "cpu"
+          boundary = report["recommendation_boundary"]
+          assert boundary["s0_changed"] is False
+          assert boundary["capability_claim"] is False
+          assert boundary["quality_claim"] is False
+          assert boundary["gpu_performance_claim"] is False
+          assert boundary["promotion_authority"] is False
+          assert boundary["paid_compute"] is False
+          labels = {item["label"] for item in report["results"]}
+          assert labels == {
+              "S2-MHA4",
+              "S2-GQA2",
+              "S2-MQA1",
+              "S3-MHA8",
+              "S3-GQA4",
+              "S3-GQA2",
+              "S3-MQA1",
+          }
+          claimed_hash = report.pop("report_sha256")
+          encoded = json.dumps(
+              report,
+              sort_keys=True,
+              separators=(",", ":"),
+              ensure_ascii=False,
+          ).encode("utf-8")
+          assert claimed_hash == hashlib.sha256(encoded).hexdigest()
+          PY
+
+      - name: Upload exact-head MODEL-35 evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: model35-gqa-geometry-${{ env.SOURCE_SHA }}
+          path: |
+            locked-environment-linux-x86_64.json
+            model35-gqa-geometry-evidence.json
+          if-no-files-found: error
+          retention-days: 30
