@@ -2,51 +2,46 @@
 
 ## Scope
 
-TRAIN-53 estimates whether the incumbent fixed-control effective batch is noise-limited or already unnecessarily large. It extends TRAIN-29 by using `TrainingObserver` for bounded trajectory telemetry; it does not create another training logger or modify `Trainer` semantics.
+TRAIN-53 estimates whether the incumbent fixed-control effective batch is noise-limited or unnecessarily large. It extends TRAIN-29 `TrainingObserver`; it does not create another logger or change `Trainer` update semantics.
 
-The experiment fixes the established RESEARCH41 267,912-parameter member: byte vocabulary 256, context ceiling 256, `d_model=72`, four layers, six attention heads, `d_ff=192`, tied embeddings, random `InitSpec`, fp32 AdamW at `3e-4`, betas `(0.9, 0.95)`, epsilon `1e-8`, zero weight decay, constant LR, gradient clipping at 1.0, seed 1337.
+The fixed control is the established RESEARCH41 267,912-parameter member: byte vocabulary 256, context ceiling 256, `d_model=72`, four layers, six heads, `d_ff=192`, tied embeddings, fp32 AdamW at `3e-4`, betas `(0.9, 0.95)`, epsilon `1e-8`, zero weight decay, constant LR, clip 1.0, seed 1337.
 
-## Data truth boundary
+## Real-corpus truth boundary
 
-Training and validation are loaded from the project-owned packaged S0 JSONL text records and passed through the existing deterministic packer and byte tokenizer. These are real text records rather than random token tensors. They are also small and repeatedly sampled. Therefore this experiment is controlled local evidence, not a representative external-corpus measurement.
+TRAIN-53 consumes DATA-21/22 through its existing `run_bounded_intake()` implementation. It does not use the packaged S0 fixture because those records are explicitly synthetic.
 
-Train and validation remain document-disjoint. No test set is optimized.
+DATA-21/22 currently exposes three bounded real external objects from two sources whose experimental registry marks model training approved: one Ukrainian Verkhovna Rada open-data law object and two English Standard Ebooks Manual of Style objects pinned to git revision `d1143a9b459b5e6f9cdda93a7c1e04676bff4f6b`. The intake must accept all three objects or TRAIN-53 fails closed.
+
+The split is fixed before measurement. The Standard Ebooks `9-metadata.rst` object is validation-only; the Rada object plus `8-typography.rst` are train-only. Packing remains document-isolated. No test data is optimized.
+
+This is real-source evidence but not a canonical D03 corpus freeze. The Rada input is a bounded dated intake rather than a stored immutable snapshot, there are only three source objects, and validation is one English document. The report therefore marks corpus representativeness false and transfer to 100K–1M provisional.
 
 ## Batch comparison
 
-The base microbatch is four examples of length 64, giving 252 valid causal loss tokens for a full microbatch. Four accumulated effective batches are compared:
+A base microbatch is four 64-token examples, giving 252 valid causal loss tokens. Four accumulated effective batches are measured: 252, 504, 1,008 and 2,016 loss tokens/update via accumulation 1, 2, 4 and 8.
 
-- accumulation 1: 252 loss tokens/update;
-- accumulation 2: 504 loss tokens/update;
-- accumulation 4: 1,008 loss tokens/update;
-- accumulation 8: 2,016 loss tokens/update.
+Every candidate consumes the exact same deterministic 256-microbatch trace and therefore the same 64,512 optimized loss-token budget. Validation is measured at 0, 16,128, 32,256 and 64,512 optimized tokens. LR is deliberately not batch-scaled, so this answers the practical fixed-recipe question rather than jointly retuning LR and batch size.
 
-Every candidate consumes the same deterministic 64-microbatch trace, exactly 16,128 loss tokens total. Validation is measured at 0, 4,032, 8,064, and 16,128 optimized tokens. LR is deliberately not scaled with batch size, so the experiment answers the practical question "with the incumbent optimizer recipe and a fixed token budget, is a different effective batch better?" It does not answer a joint LR/batch retuning question.
-
-Training wall time is measured through the incumbent observer around real `Trainer.train_microbatch()` transitions. The trace is pre-materialized, so these timings compare forward/backward/update work and optimizer-step overhead; they do not model production data-loader wait or GPU kernel efficiency.
+Wall time is measured by TRAIN-29 around real `Trainer.train_microbatch()` transitions. The data trace is pre-materialized, so CPU timing compares model compute and optimizer-step overhead; it is not a GPU efficiency claim.
 
 ## Gradient signal/variance estimator
 
-On the accumulation-1 trajectory, diagnostics run at 0, 4,032, 8,064, and 16,128 optimized tokens. Each checkpoint draws 16 microbatches with replacement using an isolated deterministic PRNG. For microbatch mean gradients `g_i`:
+On the accumulation-1 trajectory, diagnostics run at 0, 16,128, 32,256 and 64,512 optimized tokens. Each checkpoint uses 16 independently drawn with-replacement training microbatches from an isolated deterministic PRNG.
 
-- signal squared proxy: `||mean(g_i)||^2`;
-- gradient second moment: `mean(||g_i||^2)`;
-- variance proxy: unbiased `mean squared distance from mean`, i.e. trace of sample covariance;
-- local noise-scale proxy: `trace(covariance) / ||mean(g_i)||^2` in units of the base microbatch;
-- accumulated-gradient proxies: empirical grouped gradient covariance, relative deviation from the all-sample mean, cosine to the all-sample mean, and the `1/k` iid variance prediction for accumulation `k`.
+For microbatch gradients `g_i`, TRAIN-53 records `||mean(g_i)||^2`, the gradient second moment, unbiased trace of sample covariance, and `trace(covariance)/||mean(g_i)||^2`. The latter is a local noise-scale proxy in units of the 252-loss-token base microbatch; the report also converts it to a loss-token proxy. For accumulation 1/2/4/8 it records grouped-gradient covariance, relative deviation and cosine to the all-sample mean plus the iid `1/k` variance prediction.
 
-The ratio is useful as a local signal/variance diagnostic. It is not called a theoretically exact critical batch size because the corpus is finite/recycled, document-level independence is not established, and gradients are only stationary at the local checkpoint by construction.
+The estimator is not labeled a theoretically exact critical batch size. The real bounded corpus is tiny, document-level iid independence is not established, and gradient stationarity is only local to a checkpoint.
 
-## Probe state preservation
+## Optimizer-state preservation
 
-Each diagnostic requires a checkpoint-safe Trainer boundary. Before gradient sampling it snapshots/fingerprints model state and full Trainer state, including optimizer/scheduler/scaler/counters, plus Python/Torch/CUDA RNG state and existing parameter gradients. The probe runs direct forward/backward passes only; it never calls optimizer or scheduler step. It then restores gradients, RNG and model mode and requires model and Trainer fingerprints to match exactly.
+Each probe runs only at a checkpoint-safe accumulation boundary. Before sampling it fingerprints the model and full Trainer state, including optimizer, scheduler, scaler and counters, and saves Python/Torch/CUDA RNG, train/eval mode and pre-existing parameter gradients. It performs direct forward/backward passes only and never calls optimizer or scheduler step. Everything is restored, then model and Trainer hashes must match exactly.
 
-The unit contract additionally compares a training trajectory with a diagnostic inserted between two optimizer steps against an unprobed control and requires the next fp32 optimizer update to be bit-identical.
+A focused unit test additionally inserts a probe between two real fp32 optimizer steps and requires the next parameter update to be bit-identical to an unprobed control.
 
-No duplicate model is retained. For the real 267,912-parameter probe, each diagnostic retains 16 float64 CPU gradient vectors during analysis. The evidence records exact bytes per vector and total retained gradient-sample bytes, and the vectors are released on return.
+No duplicate model is retained. For 267,912 parameters, one fp64 CPU gradient vector is 2,143,296 bytes; 16 samples retain 34,292,736 bytes (about 32.7 MiB) only during one diagnostic call, then release them.
 
 ## Recommendation rule
 
-At the final common token budget, candidates within 0.5% of the best held-out validation loss are considered quality-equivalent. Among them, the fastest measured training wall is preferred; if another acceptable candidate is within 5% of that wall, the smaller accumulation is chosen to avoid gratuitously large batches. The local gradient-noise proxy is reported as supporting evidence, not as an overriding theoretical optimum.
+At the common final token budget, candidates within 0.5% of best held-out validation loss are treated as quality-equivalent. Among those, the fastest measured training wall time is preferred; if another acceptable candidate is within 5% of that wall time, the smaller accumulation is chosen to avoid gratuitous batching.
 
-The resulting batch is only a provisional starting point for the 100K-1M campaign family. A representative-corpus and target-hardware recheck is required before treating it as a broad default, and batch sizes beyond the measured 2,016 loss tokens/update are not justified by this experiment.
+The selected batch is a provisional starting point for 100K–1M campaigns. If the largest measured batch wins, TRAIN-53 explicitly reports that the grid edge was reached rather than calling 2,016 tokens/update an optimum. No extrapolation above the measured grid is justified without another probe on a representative corpus and target hardware.
