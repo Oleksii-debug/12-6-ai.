@@ -29,7 +29,7 @@ jobs:
           EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
 
-      - name: Install hash-locked runtime
+      - name: Install hash-locked runtime and test tools
         run: |
           python -m venv .learn01
           .learn01/bin/python -m pip install \
@@ -38,6 +38,9 @@ jobs:
           .learn01/bin/python -m pip install \
             --disable-pip-version-check --no-deps --require-hashes \
             -r requirements/locks/linux-x86_64/runtime.lock.txt
+          .learn01/bin/python -m pip install \
+            --disable-pip-version-check --no-deps --require-hashes \
+            -r requirements/locks/linux-x86_64/dev.lock.txt
           .learn01/bin/python -m pip install \
             --disable-pip-version-check --no-deps --require-hashes --only-binary=:all: \
             -r requirements/experiments/tokenizers-linux-x86_64.lock.txt
