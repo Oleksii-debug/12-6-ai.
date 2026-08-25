@@ -16,18 +16,36 @@
     "composition_sha": "79ed87862ac3597dd3cff10f94bbc016c35728d5"
   },
   "local_mechanics_corpus": {
-    "authority": "PROJECT_AUTHORED_SYNTHETIC_ONLY",
+    "authority": "PROJECT_AUTHORED_SYNTHETIC_MECHANICS_ONLY",
     "path": "data/synthetic/data10/uk-en-code-train.txt",
     "sha256": "059f04e01d6fc6b8224b373b08efbb37f09d546de35ed510afdb4587ebdb6012",
     "bytes": 1454,
     "external": false,
-    "representative_corpus": false
+    "representative_corpus": false,
+    "canonical_training_eligibility": "BLOCKED_UNREGISTERED"
   },
   "source_admission": {
-    "external_sources_training_approved_at_recipe_creation": 0,
-    "external_requires_rights_status": "APPROVED_FOR_TRAINING",
-    "external_requires_allows_model_training": true,
-    "project_authored_synthetic_allowed": true,
+    "registry_path": "data/external/external_sources.json",
+    "registry_schema": "12-6.external-source-registry.v2",
+    "registry_identity_sha256": "b617b656de52012069ca5c8887e8c5243985f716c36dd7f881856b82a0954962",
+    "eligibility_policy_ref": "policy://12-6/data/explicit-model-training-evidence-v1",
+    "eligibility_resolver_required": true,
+    "exact_source_id_and_version_required": true,
+    "source_manifest_sha256_required": true,
+    "immutable_rights_evidence_required": true,
+    "evidence_source_version_binding_required": true,
+    "required_pipeline_use_states": {
+      "acquisition": "ALLOWED",
+      "storage": "ALLOWED",
+      "analysis": "ALLOWED",
+      "model_training": "ALLOWED"
+    },
+    "redistribution_state_required_but_not_required_to_equal_allowed_for_training": true,
+    "unknown_or_review_required_model_training_fails_closed": true,
+    "public_access_never_implies_model_training": true,
+    "record_local_legacy_rights_fields_authoritative": false,
+    "project_authored_synthetic_requires_registry_entry_and_evidence": true,
+    "registered_sources_training_approved_at_recipe_update": 0,
     "forbidden_train_splits": [
       "validation", "val", "evaluation", "eval", "test", "heldout", "benchmark"
     ],
