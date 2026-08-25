@@ -54,6 +54,48 @@ jobs:
             tests/test_precision_learning.py \
             tests/test_training_precision_runtime.py \
             tests/test_trainer_checkpoint_adapter.py
+      - name: Prove native CPU bf16 ISA or fail closed
+        run: |
+          .train60-locked/bin/python - <<'PY'
+          import json
+          import platform
+          from pathlib import Path
+
+          machine = platform.machine().lower()
+          system = platform.system().lower()
+          flags = set()
+          cpuinfo = Path("/proc/cpuinfo")
+          if cpuinfo.exists():
+              for line in cpuinfo.read_text(encoding="utf-8", errors="replace").splitlines():
+                  if line.lower().startswith("flags") and ":" in line:
+                      flags.update(line.split(":", 1)[1].strip().lower().split())
+
+          accepted = sorted(flags & {"avx512_bf16", "amx_bf16"})
+          supported = system == "linux" and machine in {"x86_64", "amd64"} and bool(accepted)
+          evidence = {
+              "schema_version": "12-6.train60-native-cpu-bf16.v1",
+              "system": system,
+              "machine": machine,
+              "accepted_native_flags": accepted,
+              "supported": supported,
+              "policy": "FAIL_CLOSED_NO_SOFTWARE_ONLY_BF16_SIMULATION",
+          }
+          Path("train60-native-bf16-capability.json").write_text(
+              json.dumps(evidence, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(evidence, sort_keys=True))
+          if not supported:
+              raise SystemExit("native CPU bf16 ISA was not proven; TRAIN-60 fails closed")
+          PY
+      - name: Upload native CPU bf16 capability evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: train60-native-cpu-bf16-capability
+          path: train60-native-bf16-capability.json
+          if-no-files-found: warn
+          retention-days: 30
       - name: Execute paired 100K-token CPU learning curves
         run: |
           .train60-locked/bin/python tools/run_precision_learning_curve.py \
@@ -90,6 +132,7 @@ jobs:
           name: train60-precision-learning-evidence
           path: |
             locked-environment-linux-x86_64.json
+            train60-native-bf16-capability.json
             train60-precision-learning.json
           if-no-files-found: error
           retention-days: 30
