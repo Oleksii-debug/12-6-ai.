@@ -1,0 +1,149 @@
+{
+  "schema_version": "12-6.optimization-experiment-plan.v1",
+  "authority": "LOCAL_FREE_ENGINEERING_OPTIMIZATION_PLAN_PROVISIONAL",
+  "purpose": "Compare a deliberately small AdamW recipe set on exact S1/S2/S3 candidates without treating the controlled S0 fixture as later-stage data.",
+  "recipes": {
+    "adamw_baseline_constant": {
+      "optimizer": "adamw",
+      "learning_rate": 0.0003,
+      "weight_decay": 0.0,
+      "betas": [0.9, 0.95],
+      "eps": 1e-8,
+      "scheduler": "constant",
+      "warmup_fraction": 0.0,
+      "gradient_clip_norm": 1.0,
+      "precision": "fp32"
+    },
+    "adamw_wd01_constant": {
+      "optimizer": "adamw",
+      "learning_rate": 0.0003,
+      "weight_decay": 0.1,
+      "betas": [0.9, 0.95],
+      "eps": 1e-8,
+      "scheduler": "constant",
+      "warmup_fraction": 0.0,
+      "gradient_clip_norm": 1.0,
+      "precision": "fp32"
+    },
+    "adamw_wd01_warmup_constant": {
+      "optimizer": "adamw",
+      "learning_rate": 0.0003,
+      "weight_decay": 0.1,
+      "betas": [0.9, 0.95],
+      "eps": 1e-8,
+      "scheduler": "linear_warmup",
+      "warmup_fraction": 0.05,
+      "gradient_clip_norm": 1.0,
+      "precision": "fp32"
+    },
+    "adamw_wd01_warmup_cosine": {
+      "optimizer": "adamw",
+      "learning_rate": 0.0003,
+      "weight_decay": 0.1,
+      "betas": [0.9, 0.95],
+      "eps": 1e-8,
+      "scheduler": "cosine",
+      "warmup_fraction": 0.05,
+      "gradient_clip_norm": 1.0,
+      "precision": "fp32"
+    },
+    "adamw_wd01_warmup_cosine_beta999": {
+      "optimizer": "adamw",
+      "learning_rate": 0.0003,
+      "weight_decay": 0.1,
+      "betas": [0.9, 0.999],
+      "eps": 1e-8,
+      "scheduler": "cosine",
+      "warmup_fraction": 0.05,
+      "gradient_clip_norm": 1.0,
+      "precision": "fp32"
+    },
+    "adamw_wd01_warmup_cosine_no_clip": {
+      "optimizer": "adamw",
+      "learning_rate": 0.0003,
+      "weight_decay": 0.1,
+      "betas": [0.9, 0.95],
+      "eps": 1e-8,
+      "scheduler": "cosine",
+      "warmup_fraction": 0.05,
+      "gradient_clip_norm": null,
+      "precision": "fp32"
+    },
+    "adamw_wd01_warmup_cosine_lr1e3": {
+      "optimizer": "adamw",
+      "learning_rate": 0.001,
+      "weight_decay": 0.1,
+      "betas": [0.9, 0.95],
+      "eps": 1e-8,
+      "scheduler": "cosine",
+      "warmup_fraction": 0.05,
+      "gradient_clip_norm": 1.0,
+      "precision": "fp32"
+    }
+  },
+  "stages": [
+    {
+      "stage": "S1",
+      "execution_steps": 48,
+      "schedule_horizon_steps": 96,
+      "batch_size": 3,
+      "sequence_length": 128,
+      "recipes": [
+        "adamw_baseline_constant",
+        "adamw_wd01_constant",
+        "adamw_wd01_warmup_constant",
+        "adamw_wd01_warmup_cosine",
+        "adamw_wd01_warmup_cosine_beta999",
+        "adamw_wd01_warmup_cosine_no_clip",
+        "adamw_wd01_warmup_cosine_lr1e3"
+      ],
+      "interpretation": "mechanics_and_stability_comparison_not_hyperparameter_selection"
+    },
+    {
+      "stage": "S2",
+      "execution_steps": 20,
+      "schedule_horizon_steps": 80,
+      "batch_size": 2,
+      "sequence_length": 128,
+      "recipes": [
+        "adamw_baseline_constant",
+        "adamw_wd01_warmup_constant",
+        "adamw_wd01_warmup_cosine",
+        "adamw_wd01_warmup_cosine_lr1e3"
+      ],
+      "interpretation": "transfer_check_on_1m_candidate_not_quality_ranking"
+    },
+    {
+      "stage": "S3",
+      "execution_steps": 4,
+      "schedule_horizon_steps": 40,
+      "batch_size": 1,
+      "sequence_length": 128,
+      "recipes": [
+        "adamw_baseline_constant",
+        "adamw_wd01_warmup_cosine"
+      ],
+      "interpretation": "10m_resource_and_update_scale_probe_only"
+    }
+  ],
+  "unexecuted_transfer_targets": [
+    {
+      "stage": "S4",
+      "candidate": "primary_dense_planning_candidate",
+      "parameter_count": 100384512,
+      "modelspec_sha256": "dc9fd9e605cbc007aa20ad29f2220c7ebade875564d68016e93d1dc2489cd693",
+      "source_pr": 37,
+      "executed": false,
+      "provisional_transfer_recipe": "adamw_wd01_warmup_cosine"
+    },
+    {
+      "stage": "S4",
+      "candidate": "d11_gqa_alternative",
+      "parameter_count": 99797760,
+      "modelspec_sha256": "d6ce8b0f44d5601c56fa0b39bfe77cc8863203d3c6ee32701cf897b5a80ab979",
+      "source_pr": 67,
+      "executed": false,
+      "provisional_transfer_recipe": "adamw_wd01_warmup_cosine"
+    }
+  ]
+}
