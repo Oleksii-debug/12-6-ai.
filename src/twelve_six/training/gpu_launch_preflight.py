@@ -38,8 +38,7 @@ def _git(repo_root: Path, *args: str) -> subprocess.CompletedProcess[str]:
         ["git", *args],
         cwd=repo_root,
         text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
         check=False,
     )
 
@@ -325,8 +324,7 @@ def _run_10m_smoke(
         command,
         cwd=repo_root,
         text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
         check=False,
     )
     if process.returncode != 0:
@@ -438,7 +436,7 @@ def evaluate_preflight(
                 f"model={stage.model.identity_sha256()} params={stage.model.parameter_count()} "
                 f"init={stage.init.identity_sha256()}"
             )
-        except Exception as exc:
+        except (OSError, TypeError, ValueError, KeyError) as exc:
             model_ok = False
             model_detail = f"{type(exc).__name__}: {exc}"
         _add(gates, blockers, f"{scale_name}.exact_model_spec", model_ok, model_detail)
