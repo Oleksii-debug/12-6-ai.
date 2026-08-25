@@ -60,7 +60,10 @@ HOLDOUT_ARM_BY_FAMILY = {
     "ua.rada.open-data.laws-texts": "holdout_rada",
     "en.standardebooks.manual": "holdout_standardebooks",
 }
-DATA105_STATUS = "NOT_FOUND_IN_LIVE_REPOSITORY_AS_OF_2026-08-26"
+DATA105_STATUS = "CANDIDATE_POLICY_PRESENT_ACTIVATION_GATE_BLOCKED"
+DATA105_BRANCH = "data105/source-domain-balance-20260826"
+DATA105_HEAD_SHA = "562ce949902c2b12a55186911e15d87795ebe1a6"
+DATA105_POLICY_BLOB_SHA = "7f19faa62184ceeff970310f0bdd60a361da445d"
 _GIT_SHA = re.compile(r"^[0-9a-f]{40}$")
 
 # Authored for EVAL-137 and evaluation-only. These controls mimic broad
@@ -635,10 +638,14 @@ def validate_source_generalization_report(report: Mapping[str, Any]) -> None:
                 math.isfinite(float(metric["bpb"])),
                 "project-control BPB non-finite",
             )
-    _require(
-        report.get("data105", {}).get("status") == DATA105_STATUS,
-        "DATA-105 status drift",
-    )
+    data105 = report.get("data105")
+    _require(isinstance(data105, Mapping), "DATA-105 evidence missing")
+    _require(data105.get("status") == DATA105_STATUS, "DATA-105 status drift")
+    _require(data105.get("branch") == DATA105_BRANCH, "DATA-105 branch drift")
+    _require(data105.get("head_sha") == DATA105_HEAD_SHA, "DATA-105 head drift")
+    _require(data105.get("selected_policy") == "raw_proportional", "DATA-105 policy drift")
+    _require(data105.get("activation_gate_passed") is False, "DATA-105 gate unexpectedly passed")
+    _require(data105.get("balancing_arm_executed") is False, "blocked DATA-105 arm executed")
     comparisons = report.get("comparisons")
     _require(isinstance(comparisons, Mapping), "comparisons missing")
     _require(set(comparisons) == set(SOURCE_FAMILIES), "comparison family set drift")
@@ -801,10 +808,30 @@ def run_source_generalization(
         },
         "data105": {
             "status": DATA105_STATUS,
+            "branch": DATA105_BRANCH,
+            "head_sha": DATA105_HEAD_SHA,
+            "policy_blob_sha": DATA105_POLICY_BLOB_SHA,
+            "selected_policy": "raw_proportional",
+            "candidate_policies": [
+                "raw_proportional",
+                "bounded_source_cap_35_percent",
+                "tempered_source_sqrt",
+            ],
+            "activation_gate_passed": False,
+            "activation_gate_requirements": {
+                "requires_real_external_training_data": True,
+                "requires_at_least_two_sources_per_stratum": True,
+                "requires_equal_budget_experiment": True,
+                "requires_minority_domain_guard_pass": True,
+            },
+            "eval137_gate_observation": (
+                "EVAL-137 has real external bytes, but only one source family in the Ukrainian stratum and one source family in the English stratum. "
+                "A within-stratum source cap or tempering policy therefore has no identified intervention, while forcing cross-language 50/50 sampling would replace the incumbent top-level mixture rather than test DATA-105 source balancing."
+            ),
             "balancing_arm_executed": False,
             "reason": (
-                "No live DATA-105 PR, branch, or candidate policy was found during pre-execution repository reconstruction; "
-                "EVAL-137 therefore does not fabricate or post-hoc tune a balancing policy."
+                "DATA-105 explicitly leaves promotion BLOCKED and selects raw_proportional until real multi-source strata exist. "
+                "EVAL-137 honors that fail-closed activation gate rather than inventing a post-hoc balancing policy."
             ),
         },
         "arms": arms,
@@ -814,6 +841,10 @@ def run_source_generalization(
             "language_domain_source_confounding": True,
             "language_domain_source_confounding_note": (
                 "Rada is Ukrainian legal text while Standard Ebooks is English technical/editorial text. With no third eligible real family, leave-family-out effects cannot be uniquely attributed to source style rather than language or domain."
+            ),
+            "data105_balance_transfer_identified": False,
+            "data105_balance_transfer_note": (
+                "Each leave-family-out arm leaves exactly one source family in training, so DATA-105 within-stratum source balancing cannot change that arm's sampling distribution."
             ),
             "broad_leave_one_source_out_claim": False,
             "representative_corpus_claim": False,
