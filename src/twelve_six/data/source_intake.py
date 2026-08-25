@@ -396,9 +396,7 @@ def extract_text(downloaded: DownloadedBytes, adapter: str) -> tuple[str, str]:
 
 
 def _record_id(source: CandidateSource, acquisition_url: str) -> str:
-    identity = (
-        f"{source.source_id}\0{source.source_version}\0{acquisition_url}".encode("utf-8")
-    )
+    identity = f"{source.source_id}\0{source.source_version}\0{acquisition_url}".encode()
     return "ext-" + hashlib.sha256(identity).hexdigest()[:32]
 
 
@@ -574,7 +572,7 @@ def run_bounded_intake(
                     accepted_utf8_bytes += len(normalized_bytes)
                     accepted_by_language[evidence.label] += 1
                     accepted_bytes_by_language[evidence.label] += len(normalized_bytes)
-                except Exception as exc:
+                except (OSError, ValueError) as exc:
                     rejected += 1
                     record_results.append(
                         {
