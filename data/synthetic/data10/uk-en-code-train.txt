@@ -1,0 +1,17 @@
+Українська мова має відмінки, дієвідмінювання і словотвір. Ці дані потрібні для базового передтренування моделі.
+Дослідники працюють із текстами різних жанрів, щоб модель бачила слова у називному, родовому, давальному, знахідному та орудному відмінках.
+Київ, Львів і Ужгород мають різні мовні контексти; ґрунтовний корпус повинен містити літери ґ, ї, є, і та природні апострофи.
+The training corpus contains English prose with varied syntax and vocabulary so the base model learns next-token statistics rather than instructions.
+These records test deterministic data selection, source provenance, deduplication, and restart behavior for a universal language model.
+Data quality includes valid encoding, stable normalization, explicit source rights, and strict separation from held-out evaluation material.
+def stable_hash(value: str) -> str:
+    return hashlib.sha256(value.encode('utf-8')).hexdigest()
+class Counter:
+    def __init__(self):
+        self.value = 0
+    def increment(self):
+        self.value += 1
+        return self.value
+SELECT source_id, COUNT(*) FROM records
+WHERE split = 'train'
+GROUP BY source_id ORDER BY source_id;
