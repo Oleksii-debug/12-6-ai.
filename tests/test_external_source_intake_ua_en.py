@@ -50,8 +50,8 @@ def test_candidate_registry_exact_counts_and_fail_closed_fetch_surface() -> None
 
 def test_candidate_registry_tamper_rejected() -> None:
     registry = _load()
-    registry["sources"][0]["rights"]["allows_model_training"] = False
-    with pytest.raises(SourceIntakeError, match="ELIGIBLE requires"):
+    registry["sources"][0]["provider"] = "tampered provider"
+    with pytest.raises(SourceIntakeError, match="identity mismatch"):
         validate_candidate_registry(registry)
 
 
