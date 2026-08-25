@@ -359,5 +359,5 @@ def parallelize_decoder_tp(
         block.attn.q_dim //= resolved.tp_degree
         block.attn.kv_dim //= resolved.tp_degree
 
-    setattr(model, "_twelve_six_tp_plan_sha256", resolved.identity_sha256)
+    model._twelve_six_tp_plan_sha256 = resolved.identity_sha256
     return resolved
