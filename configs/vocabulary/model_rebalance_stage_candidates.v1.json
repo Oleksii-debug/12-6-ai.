@@ -1,0 +1,61 @@
+{
+  "schema": "12-6.model-rebalance-stage-candidates.v1",
+  "status": "EXPERIMENTAL_NOT_CANONICAL_PROMOTION",
+  "tokenizer_artifact_identity_sha256": "cf44fb576e37c9bcd0bb80b3a26793c4976035875248900b9c3b4d14fe37db74",
+  "tokenizer_json_sha256": "006c84fc0d05d3bedb5b0bceb587aab1631dd0295cc2063e97823c2121e08be0",
+  "actual_vocab_size": 472,
+  "ranking": "absolute_parameter_delta_then_under_target_then_block_fraction_then_geometry",
+  "stages": [
+    {
+      "stage": "100K",
+      "target_parameters": 100000,
+      "candidates": [
+        {"d_model": 48, "d_ff": 112, "n_layers": 3, "n_heads": 4, "n_kv_heads": 4, "head_dim": 12, "parameter_count": 99024, "target_delta": -976, "embedding_parameters": 22656, "embedding_fraction": 0.22879301987396994, "block_parameters": 76320, "block_fraction": 0.7707222491517208, "head_valid": true, "model_spec_identity_sha256": "d787e858831a38f53661fb073d6ef2229c91934a1592c31dba9e80500a87195a", "bound_modelspec_identity_sha256": "94da36b85730325f97b0cdd5ec2248dffd1112e9e01b31901b9c927cf47c3ba6"}
+      ]
+    },
+    {
+      "stage": "250K",
+      "target_parameters": 250000,
+      "candidates": [
+        {"d_model": 64, "d_ff": 200, "n_layers": 4, "n_heads": 4, "n_kv_heads": 4, "head_dim": 16, "parameter_count": 249920, "target_delta": -80, "embedding_parameters": 30208, "embedding_fraction": 0.12087067861715749, "block_parameters": 219648, "block_fraction": 0.8788732394366198, "head_valid": true, "model_spec_identity_sha256": "6099f6d2661917a3d74951ca91fd6d9d79d9897ce3c35f351ba5bd2a1b5cef68", "bound_modelspec_identity_sha256": "e3d986c233a087a2ad1c70ca4b41c1f9aeaf833a7e47e4748641d82dc363032d"},
+        {"d_model": 64, "d_ff": 144, "n_layers": 5, "n_heads": 4, "n_kv_heads": 4, "head_dim": 16, "parameter_count": 251072, "target_delta": 1072, "embedding_parameters": 30208, "embedding_fraction": 0.12031608462911038, "block_parameters": 220800, "block_fraction": 0.8794290084119296, "head_valid": true, "model_spec_identity_sha256": "7006767f22d1ba6c563c31d369b5ace28bda43f2b8e9a97dd00a5b8b30f7e1cc", "bound_modelspec_identity_sha256": "c82d1408a280fa48bb86365f69ce6bfa751197201db8586b02b3da23cf01abdd"},
+        {"d_model": 80, "d_ff": 184, "n_layers": 3, "n_heads": 4, "n_kv_heads": 4, "head_dim": 20, "parameter_count": 247600, "target_delta": -2400, "embedding_parameters": 37760, "embedding_fraction": 0.15250403877221325, "block_parameters": 209760, "block_fraction": 0.847172859450727, "head_valid": true, "model_spec_identity_sha256": "a7ce4cce0f8f2729e98b63aea157b5ba65683eaaddd531f4e9a9b82b64ed5b50", "bound_modelspec_identity_sha256": "66596cbd9f08fa0faed0dbc30e5436ac50a2e5c9710c251c452774ef7053cc72"}
+      ]
+    },
+    {
+      "stage": "500K",
+      "target_parameters": 500000,
+      "candidates": [
+        {"d_model": 96, "d_ff": 264, "n_layers": 4, "n_heads": 4, "n_kv_heads": 4, "head_dim": 24, "parameter_count": 497760, "target_delta": -2240, "embedding_parameters": 45312, "embedding_fraction": 0.09103182256509161, "block_parameters": 452352, "block_fraction": 0.9087753134040502, "head_valid": true, "model_spec_identity_sha256": "83d437af2eefabf3ba1944e82a1cc5f495981b150e45a1e2c978e3023d91dba5", "bound_modelspec_identity_sha256": "7584a12be20c2ba165c95a9254f5c5b607813acbba3143f3c04174c245a145ab"},
+        {"d_model": 80, "d_ff": 280, "n_layers": 5, "n_heads": 4, "n_kv_heads": 4, "head_dim": 20, "parameter_count": 502640, "target_delta": 2640, "embedding_parameters": 37760, "embedding_fraction": 0.07512334871876492, "block_parameters": 464800, "block_fraction": 0.9247174916441191, "head_valid": true, "model_spec_identity_sha256": "3112451ef0ac6f83ffd63fe5bb362e47e60155471e31a9f587d08925ec70fd7d", "bound_modelspec_identity_sha256": "e520f6dc010b7a60908214bf817064f2d80df3421f8303f2f4ca54e925885fae"},
+        {"d_model": 80, "d_ff": 216, "n_layers": 6, "n_heads": 4, "n_kv_heads": 4, "head_dim": 20, "parameter_count": 503440, "target_delta": 3440, "embedding_parameters": 37760, "embedding_fraction": 0.07500397266804386, "block_parameters": 465600, "block_fraction": 0.9248371206102018, "head_valid": true, "model_spec_identity_sha256": "d77ad57d8ac357547c28acb4893f8dfdaa31e025a209769953edfed271bb6d50", "bound_modelspec_identity_sha256": "8ed7c3339f4711cd5510bb03adce2bf00179eaafd6a7ae089e29b6ff8328a262"}
+      ]
+    },
+    {
+      "stage": "1M",
+      "target_parameters": 1000000,
+      "candidates": [
+        {"d_model": 128, "d_ff": 440, "n_layers": 4, "n_heads": 4, "n_kv_heads": 4, "head_dim": 32, "parameter_count": 999552, "target_delta": -448, "embedding_parameters": 60416, "embedding_fraction": 0.06044307849916763, "block_parameters": 939008, "block_fraction": 0.9394288641311307, "head_valid": true, "model_spec_identity_sha256": "18903088a30c5b279959325f4cbe24fafc6839c353ebb15c29d36808d1146e1e", "bound_modelspec_identity_sha256": "fa4c29beef43fd4ce7c72091bac05d3d970ec92f682ba5ef04d16a4672cd6e29"},
+        {"d_model": 128, "d_ff": 440, "n_layers": 4, "n_heads": 8, "n_kv_heads": 8, "head_dim": 16, "parameter_count": 999552, "target_delta": -448, "embedding_parameters": 60416, "embedding_fraction": 0.06044307849916763, "block_parameters": 939008, "block_fraction": 0.9394288641311307, "head_valid": true, "model_spec_identity_sha256": "29e0cc1e30311418c772437442a50f9ac3985591ff57bfd9add16083a06713cc", "bound_modelspec_identity_sha256": "d968938950581e3f5ed099442370348a98b1c43e5b97b30a476f9b35bfc09ffd"},
+        {"d_model": 96, "d_ff": 288, "n_layers": 8, "n_heads": 4, "n_kv_heads": 4, "head_dim": 24, "parameter_count": 1005408, "target_delta": 5408, "embedding_parameters": 45312, "embedding_fraction": 0.04506827079155925, "block_parameters": 960000, "block_fraction": 0.9548362455838824, "head_valid": true, "model_spec_identity_sha256": "392d3b198c462ef0f217bc59363af3e769255def43a1564e25ab4c11fa53cf96", "bound_modelspec_identity_sha256": "6e9d7514d6313ef3cea86b61836ef1d1c2386ed5628237ce3048e4b6b2bb3aa2"}
+      ]
+    },
+    {
+      "stage": "10M",
+      "target_parameters": 10000000,
+      "candidates": [
+        {"d_model": 256, "d_ff": 944, "n_layers": 10, "n_heads": 8, "n_kv_heads": 8, "head_dim": 32, "parameter_count": 9997568, "target_delta": -2432, "embedding_parameters": 120832, "embedding_fraction": 0.012086139349089699, "block_parameters": 9876480, "block_fraction": 0.9878882544234758, "head_valid": true, "model_spec_identity_sha256": "de643bb03e5615ac7ab89836bbb1c7ff069881ed95cd05f5890619fa0435ac9e", "bound_modelspec_identity_sha256": "f2c9948faf8e5b31326e827870ea1dd20464325580876e7cc0c2000610d9562a"},
+        {"d_model": 320, "d_ff": 856, "n_layers": 8, "n_heads": 8, "n_kv_heads": 8, "head_dim": 40, "parameter_count": 10007360, "target_delta": 7360, "embedding_parameters": 151040, "embedding_fraction": 0.015092891631759026, "block_parameters": 9856000, "block_fraction": 0.9848751319029194, "head_valid": true, "model_spec_identity_sha256": "ead5d090681a72ffdfd62e059d0c07e8610f1af14459b6550e764eb7984ef40e", "bound_modelspec_identity_sha256": "6df17982735ac60bd8f0ef8f8584d8731b77e1dc0ef1ba3a786413c83869c333"},
+        {"d_model": 320, "d_ff": 1280, "n_layers": 6, "n_heads": 8, "n_kv_heads": 8, "head_dim": 40, "parameter_count": 9985600, "target_delta": -14400, "embedding_parameters": 151040, "embedding_fraction": 0.015125781124819741, "block_parameters": 9834240, "block_fraction": 0.9848421727287293, "head_valid": true, "model_spec_identity_sha256": "9e516fd62a6b5c14264f17bee6a222c0bc06ada6ac470efa3f9de9d49a0b348b", "bound_modelspec_identity_sha256": "4d0db5c83d63a3ffe3c6a3bbb24cd208b9ce8145e9cc735b9f54e031e62545f1"},
+        {"d_model": 384, "d_ff": 904, "n_layers": 6, "n_heads": 8, "n_kv_heads": 8, "head_dim": 48, "parameter_count": 9973632, "target_delta": -26368, "embedding_parameters": 181248, "embedding_fraction": 0.01817271782235398, "block_parameters": 9792000, "block_fraction": 0.981788780656836, "head_valid": true, "model_spec_identity_sha256": "d04dcc80872039274ce069fdbe185c10187f76d95c002a7df84b90b7b73e7e6b", "bound_modelspec_identity_sha256": "211d00995913b0c69c3361431523a48855492e8e02f5115bd7e18bb3296c7d46"}
+      ]
+    }
+  ],
+  "policy": {
+    "max_embedding_fraction": 0.30,
+    "d_ff_ratio_min": 2.0,
+    "d_ff_ratio_max": 4.0,
+    "mha_preserved_unless_kv_head_constraints_are_explicit": true,
+    "canonical_stage_configs_changed": false
+  }
+}
