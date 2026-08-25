@@ -1,4 +1,4 @@
-"""Run the D11 S3 ~10M candidate through the integrated runtime stack."""
+"""Run the live byte-compatible S3 ~10M candidate through the integrated stack."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ import platform
 import subprocess
 import tempfile
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
 from typing import Any
@@ -28,23 +28,30 @@ from twelve_six.checkpoint.trainer_adapter import (
     save_trainer_checkpoint,
 )
 from twelve_six.inference.contracts import GenerationConfig
+from twelve_six.inference.first_party import load_first_party_backend
 from twelve_six.inference.generation import generate
-from twelve_six.integration.s0_runtime import S0TorchInferenceBackend
 from twelve_six.model import TwelveSixDecoder, count_trainable_parameters
 from twelve_six.s3_engineering import (
+    S3_CURRENT_CANDIDATE_ID,
+    S3_CURRENT_EXPECTED_PARAMETERS,
+    S3_CURRENT_MODEL_SHA256,
+    S3_CURRENT_SOURCE_PR,
+    S3_CURRENT_SOURCE_SHA,
     S3_D11_CANDIDATE_ID,
     S3_D11_EXPECTED_PARAMETERS,
     S3_D11_MODEL_SHA256,
     S3_D11_SOURCE_PR,
     S3_D11_SOURCE_SHA,
     kv_cache_bytes,
-    s3_d11_init_spec,
+    s3_current_model_spec,
     s3_d11_model_spec,
+    s3_init_spec,
     s4_d11_model_spec,
 )
+from twelve_six.tokenization import ByteTokenizer
 from twelve_six.training import Trainer, TrainerConfig
 
-_SCHEMA = "12-6.s3-10m-engineering-evidence.v1"
+_SCHEMA = "12-6.s3-10m-engineering-evidence.v2"
 
 
 def _canonical_bytes(value: Any) -> bytes:
@@ -118,34 +125,6 @@ def _lock_identity(repo_root: Path) -> str:
     return digest.hexdigest()
 
 
-class _EngineeringVocabTokenizer:
-    """Mechanical 8192-row tokenizer seam; never a tokenizer selection claim."""
-
-    vocab_size = 8192
-
-    def encode(self, text: str) -> list[int]:
-        encoded = list(text.encode("utf-8"))
-        return encoded or [0]
-
-    def decode(self, token_ids: Sequence[int], errors: str = "replace") -> str:
-        del errors
-        pieces: list[str] = []
-        byte_buffer = bytearray()
-        for token_id in token_ids:
-            if not 0 <= int(token_id) < self.vocab_size:
-                raise ValueError("token id outside engineering vocabulary")
-            if int(token_id) < 256:
-                byte_buffer.append(int(token_id))
-                continue
-            if byte_buffer:
-                pieces.append(bytes(byte_buffer).decode("utf-8", errors="replace"))
-                byte_buffer.clear()
-            pieces.append(f"<tok:{int(token_id)}>")
-        if byte_buffer:
-            pieces.append(bytes(byte_buffer).decode("utf-8", errors="replace"))
-        return "".join(pieces)
-
-
 def _checkpoint_identity(
     *,
     source_sha: str,
@@ -154,14 +133,15 @@ def _checkpoint_identity(
     tokens_seen: int,
     environment_lock_hash: str,
 ) -> CheckpointIdentity:
+    tokenizer = ByteTokenizer()
     return CheckpointIdentity(
         git_sha=source_sha,
-        model_spec=s3_d11_model_spec().to_dict(),
-        parameter_count=S3_D11_EXPECTED_PARAMETERS,
-        tokenizer_hash=_sha256_label("S3-D11-engineering-tokenizer-interface-v1"),
-        tokenizer_vocab_hash=_sha256_label("S3-D11-engineering-vocab-8192-v1"),
-        dataset_manifest_hash=_sha256_label("S3-D11-controlled-synthetic-probe-data-v1"),
-        run_manifest_hash=_sha256_label("SCALE-03-S3-10M-engineering-probe-v1"),
+        model_spec=s3_current_model_spec().to_dict(),
+        parameter_count=S3_CURRENT_EXPECTED_PARAMETERS,
+        tokenizer_hash=tokenizer.identity.config_sha256,
+        tokenizer_vocab_hash=tokenizer.identity.vocab_sha256,
+        dataset_manifest_hash=_sha256_label("S3-controlled-synthetic-byte-mechanics-v1"),
+        run_manifest_hash=_sha256_label("SCALE-03-S3-10M-engineering-probe-v2"),
         training_config=dict(training_config),
         seed=int(training_config["trainer"]["seed"]),
         precision=str(training_config["trainer"]["precision"]),
@@ -246,8 +226,13 @@ def run_probe(args: argparse.Namespace) -> dict[str, Any]:
     repo_root = args.repo_root.resolve()
     if _git_head(repo_root) != args.source_sha:
         raise RuntimeError("source SHA does not match exact checkout")
-    if args.sequence_length > 2048:
-        raise ValueError("sequence length exceeds S3 context")
+
+    spec = s3_current_model_spec()
+    init_spec = s3_init_spec()
+    future_spec = s3_d11_model_spec()
+    s4_spec = s4_d11_model_spec()
+    if args.sequence_length > spec.max_seq_len:
+        raise ValueError("sequence length exceeds current S3 context")
     if args.optimizer_steps < 1:
         raise ValueError("optimizer steps must be positive")
     if args.gradient_accumulation_steps < 1:
@@ -258,10 +243,10 @@ def run_probe(args: argparse.Namespace) -> dict[str, Any]:
     if args.cpu_threads is not None:
         torch.set_num_threads(args.cpu_threads)
 
-    spec = s3_d11_model_spec()
-    init_spec = s3_d11_init_spec()
-    s4_spec = s4_d11_model_spec()
     environment_lock_hash = _lock_identity(repo_root)
+    tokenizer = ByteTokenizer()
+    if tokenizer.vocab_size != spec.vocab_size:
+        raise RuntimeError("current S3 candidate lost canonical byte-tokenizer compatibility")
     baseline_memory = _memory_kib()
 
     torch.manual_seed(args.seed)
@@ -269,8 +254,8 @@ def run_probe(args: argparse.Namespace) -> dict[str, Any]:
     model = TwelveSixDecoder(spec, init_spec)
     construct_seconds = time.perf_counter() - construct_started
     actual_parameters = count_trainable_parameters(model)
-    if actual_parameters != S3_D11_EXPECTED_PARAMETERS:
-        raise RuntimeError("instantiated S3 parameter count differs from D11 algebra")
+    if actual_parameters != S3_CURRENT_EXPECTED_PARAMETERS:
+        raise RuntimeError("instantiated S3 parameter count differs from live algebra")
     model_memory = _memory_kib()
     model_parameter_bytes = _model_parameter_bytes(model)
 
@@ -283,13 +268,13 @@ def run_probe(args: argparse.Namespace) -> dict[str, Any]:
         torch.cuda.reset_peak_memory_stats(device)
     model.to(device)
 
-    batch = _make_batch(
+    forward_batch = _make_batch(
         batch_size=args.batch_size,
         sequence_length=args.sequence_length,
         vocab_size=spec.vocab_size,
         seed=args.seed + 1,
     )
-    forward_input = batch["input_ids"].to(device)
+    forward_input = forward_batch["input_ids"].to(device)
     model.eval()
     forward_started = time.perf_counter()
     with torch.no_grad():
@@ -298,18 +283,21 @@ def run_probe(args: argparse.Namespace) -> dict[str, Any]:
     if device.type == "cuda":
         torch.cuda.synchronize(device)
     forward_seconds = time.perf_counter() - forward_started
-    del forward_logits, forward_input
+    del forward_logits, forward_input, forward_batch
 
     trainer_config = _training_config(args)
     trainer = Trainer(model, trainer_config, device=device)
     bound_training_config: dict[str, Any] = {
-        "schema": "12-6.s3-10m-training-mechanics.v1",
-        "model_spec_sha256": S3_D11_MODEL_SHA256,
+        "schema": "12-6.s3-10m-training-mechanics.v2",
+        "model_spec_sha256": S3_CURRENT_MODEL_SHA256,
         "init_spec_sha256": init_spec.identity_sha256(),
         "trainer": asdict(trainer_config),
         "data": {
-            "kind": "controlled_synthetic_full_vocab",
-            "tokenizer_status": "ENGINEERING_INTERFACE_NOT_FROZEN",
+            "kind": "controlled_synthetic_canonical_byte_vocabulary",
+            "scope": "MECHANICS_ONLY_NOT_S3_CORPUS_FREEZE",
+            "tokenizer_version": tokenizer.identity.version,
+            "tokenizer_config_sha256": tokenizer.identity.config_sha256,
+            "tokenizer_vocab_sha256": tokenizer.identity.vocab_sha256,
             "sequence_length": args.sequence_length,
             "batch_size": args.batch_size,
         },
@@ -398,9 +386,9 @@ def run_probe(args: argparse.Namespace) -> dict[str, Any]:
         model=restored_model,
         trainer=restored_trainer,
         expected_git_sha=args.source_sha,
-        expected_model_spec_hash=S3_D11_MODEL_SHA256,
-        expected_tokenizer_hash=verified_manifest["identity"]["tokenizer_hash"],
-        expected_tokenizer_vocab_hash=verified_manifest["identity"]["tokenizer_vocab_hash"],
+        expected_model_spec_hash=S3_CURRENT_MODEL_SHA256,
+        expected_tokenizer_hash=tokenizer.identity.config_sha256,
+        expected_tokenizer_vocab_hash=tokenizer.identity.vocab_sha256,
         expected_dataset_manifest_hash=verified_manifest["identity"]["dataset_manifest_hash"],
         expected_run_manifest_hash=verified_manifest["identity"]["run_manifest_hash"],
         expected_environment_lock_hash=environment_lock_hash,
@@ -413,17 +401,21 @@ def run_probe(args: argparse.Namespace) -> dict[str, Any]:
         raise RuntimeError("restored model weights differ from saved model")
     after_reload_memory = _memory_kib()
 
-    tokenizer = _EngineeringVocabTokenizer()
-    backend = S0TorchInferenceBackend(restored_model, tokenizer)  # type: ignore[arg-type]
-    inference_started = time.perf_counter()
+    first_party_started = time.perf_counter()
+    backend = load_first_party_backend(final_checkpoint)
+    backend_diagnostics = backend.diagnostics()
     generation = generate(
         backend,
         "12-6 scale probe",
         GenerationConfig(max_new_tokens=2, sample=False, seed=args.seed),
     )
-    inference_seconds = time.perf_counter() - inference_started
+    inference_seconds = time.perf_counter() - first_party_started
     if len(generation.generated_token_ids) != 2:
-        raise RuntimeError("first-party stateless generation did not produce two tokens")
+        raise RuntimeError("first-party generation did not produce two tokens")
+    if backend_diagnostics["parameter_count"] != S3_CURRENT_EXPECTED_PARAMETERS:
+        raise RuntimeError("first-party backend reconstructed the wrong parameter count")
+    if backend_diagnostics["model_spec_sha256"] != S3_CURRENT_MODEL_SHA256:
+        raise RuntimeError("first-party backend reconstructed the wrong ModelSpec")
 
     cuda_peak_allocated_bytes = None
     if device.type == "cuda":
@@ -439,15 +431,25 @@ def run_probe(args: argparse.Namespace) -> dict[str, Any]:
         "promotion_authority": False,
         "paid_compute": False,
         "candidate": {
-            "id": S3_D11_CANDIDATE_ID,
-            "source_pr": S3_D11_SOURCE_PR,
-            "source_sha": S3_D11_SOURCE_SHA,
-            "model_spec_sha256": S3_D11_MODEL_SHA256,
-            "expected_parameters": S3_D11_EXPECTED_PARAMETERS,
+            "id": S3_CURRENT_CANDIDATE_ID,
+            "source_pr": S3_CURRENT_SOURCE_PR,
+            "source_sha": S3_CURRENT_SOURCE_SHA,
+            "selection": "CURRENT_EXECUTABLE_BYTE_COMPATIBLE_GEOMETRY",
+            "model_spec_sha256": S3_CURRENT_MODEL_SHA256,
+            "expected_parameters": S3_CURRENT_EXPECTED_PARAMETERS,
             "analytic_parameters": spec.parameter_count(),
             "instantiated_trainable_parameters": actual_parameters,
             "parameter_breakdown": spec.parameter_breakdown(),
             "geometry": spec.to_dict(),
+        },
+        "future_tokenizer_alternative": {
+            "id": S3_D11_CANDIDATE_ID,
+            "source_pr": S3_D11_SOURCE_PR,
+            "source_sha": S3_D11_SOURCE_SHA,
+            "model_spec_sha256": S3_D11_MODEL_SHA256,
+            "parameters": S3_D11_EXPECTED_PARAMETERS,
+            "geometry": future_spec.to_dict(),
+            "current_byte_tokenizer_compatible": False,
         },
         "runtime": {
             "python": platform.python_version(),
@@ -484,11 +486,21 @@ def run_probe(args: argparse.Namespace) -> dict[str, Any]:
             "verified_snapshot_payload_bytes": snapshot_payload_bytes,
             "snapshot_is_full_payload_in_memory": True,
             "cuda_peak_allocated_bytes": cuda_peak_allocated_bytes,
-            "s3_bf16_kv_cache_bytes_batch1_full_context": kv_cache_bytes(
+            "s3_bf16_native_gqa_kv_bytes_batch1_full_context": kv_cache_bytes(
                 spec,
                 batch_size=1,
                 sequence_length=spec.max_seq_len,
                 bytes_per_element=2,
+            ),
+            "s3_bf16_current_expanded_kv_bytes_batch1_full_context": (
+                kv_cache_bytes(
+                    spec,
+                    batch_size=1,
+                    sequence_length=spec.max_seq_len,
+                    bytes_per_element=2,
+                )
+                * spec.n_heads
+                // spec.n_kv_heads
             ),
         },
         "checkpoint": {
@@ -502,20 +514,31 @@ def run_probe(args: argparse.Namespace) -> dict[str, Any]:
             "restored_tokens_seen": restored_trainer.tokens_seen,
             "scale_boundary": (
                 "checkpoint-v1 verifies by retaining all serialized payload bytes in memory; "
-                "measured here, acceptable for S3 pilot but not a final large-scale design"
+                "acceptable to measure at S3 but not a final larger-scale design"
             ),
         },
         "inference": {
-            "stateless_first_party_generation": "PASS_MECHANICS_ONLY",
+            "first_party_checkpoint_to_generation": "PASS_MECHANICS_ONLY",
             "generated_token_count": len(generation.generated_token_ids),
             "inference_seconds": inference_seconds,
-            "tokenizer_contract": "ENGINEERING_8192_INTERFACE_NOT_FROZEN",
-            "canonical_s0_byte_tokenizer_vocab": 256,
+            "backend_diagnostics": backend_diagnostics,
+            "runtime_tokenizer": tokenizer.identity.version,
+            "runtime_tokenizer_config_sha256": tokenizer.identity.config_sha256,
+            "runtime_tokenizer_vocab_sha256": tokenizer.identity.vocab_sha256,
             "candidate_vocab": spec.vocab_size,
-            "canonical_tokenizer_bound_stage_inference": "BLOCKED_UNTIL_S3_TOKENIZER_FREEZE",
+            "runtime_tokenizer_compatible": True,
+            "s3_stage_tokenizer_frozen": False,
             "kv_cache": "NOT_ON_EXACT_GREEN_BASE__PR_138_CURRENT_HEAD_RED",
         },
+        "architecture_runtime_boundary": {
+            "gqa_parameter_savings_realized": True,
+            "native_kv_cache_shape_algebra_valid": True,
+            "training_attention_kv_is_currently_expanded_before_sdpa": True,
+            "gqa_training_activation_memory_savings_realized": False,
+            "note": "current attention repeats K/V to query-head count before SDPA",
+        },
         "s4_readiness": {
+            "owner": "SCALE-04_ACTIVE_CLAIM__HANDOFF_ONLY",
             "current_d11_candidate_parameters": s4_spec.parameter_count(),
             "model_spec_sha256": s4_spec.identity_sha256(),
             "geometry": s4_spec.to_dict(),
@@ -526,11 +549,12 @@ def run_probe(args: argparse.Namespace) -> dict[str, Any]:
                 sequence_length=s4_spec.max_seq_len,
                 bytes_per_element=2,
             ),
-            "status": "READINESS_ALGEBRA_ONLY_NOT_INSTANTIATED",
+            "status": "HANDOFF_ALGEBRA_ONLY_NOT_INSTANTIATED",
         },
         "truth_boundary": {
             "training_data": "controlled synthetic mechanics only",
-            "tokenizer_selected": False,
+            "runtime_tokenizer_is_canonical_byte_v1": True,
+            "s3_corpus_or_tokenizer_frozen": False,
             "capability_evidence": False,
             "gpu_execution": device.type == "cuda",
             "distributed_execution": False,
