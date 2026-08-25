@@ -44,7 +44,9 @@ def test_serious_profile_fits_single_gpu_first_order_budget() -> None:
         ),
     )
     assert 3.0 < evidence.total_training_gib_estimate < 5.0
-    assert 1.0 < evidence.training_checkpoint_gib_estimate < 1.5
+    assert 1.0 < evidence.checkpoint_payload_gib_estimate < 1.2
+    assert 2.0 < evidence.checkpoint_load_transient_host_gib_estimate < 2.4
+    assert evidence.parameter_gib_fp32 > evidence.inference_weight_gib_bf16_if_cast
     assert evidence.tokens_per_optimizer_step == 131_072
     assert evidence.scheduled_tokens == 2_000_027_648
 
