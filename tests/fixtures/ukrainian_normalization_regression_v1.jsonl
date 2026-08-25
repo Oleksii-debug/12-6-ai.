@@ -1,0 +1,16 @@
+{"case_id":"apostrophe_ascii_preserved","modality":"natural","input":"п'ять об'єктів","expected":"п'ять об'єктів"}
+{"case_id":"apostrophe_right_preserved","modality":"natural","input":"п’ять об’єктів","expected":"п’ять об’єктів"}
+{"case_id":"apostrophe_modifier_preserved","modality":"natural","input":"пʼять обʼєктів","expected":"пʼять обʼєктів"}
+{"case_id":"g_he_distinction_preserved","modality":"natural","input":"Ґанок, ґрунт, герой і гірка.","expected":"Ґанок, ґрунт, герой і гірка."}
+{"case_id":"i_yi_y_distinction_preserved","modality":"natural","input":"і ї й І Ї Й","expected":"і ї й І Ї Й"}
+{"case_id":"combining_yi_composed","modality":"natural","input":"їжак","expected":"їжак","reason_counts":{"unicode_nfc":1}}
+{"case_id":"combining_y_composed","modality":"natural","input":"ийти","expected":"ийти","reason_counts":{"unicode_nfc":1}}
+{"case_id":"nbsp_to_space","modality":"natural","input":"українська мова","expected":"українська мова","reason_counts":{"nbsp_to_space":1}}
+{"case_id":"narrow_nbsp_to_space","modality":"natural","input":"число 10","expected":"число 10","reason_counts":{"narrow_nbsp_to_space":1}}
+{"case_id":"quotes_dashes_preserved","modality":"natural","input":"«Текст» — “цитата” – риска - дефіс.","expected":"«Текст» — “цитата” – риска - дефіс."}
+{"case_id":"soft_hyphen_removed","modality":"natural","input":"пере­вірка","expected":"перевірка","reason_counts":{"soft_hyphen_removed":1}}
+{"case_id":"crlf_to_lf","modality":"natural","input":"Перший рядок\r\nДругий рядок","expected":"Перший рядок\nДругий рядок","reason_counts":{"crlf_to_lf":1}}
+{"case_id":"html_residue","modality":"natural","input":"<p>Текст&nbsp;тут</p><br>Далі","expected":"Текст тут\n\nДалі","reason_counts":{"html_entities_unescaped":1,"html_block_breaks_to_lf":2,"html_tags_removed":1,"nbsp_to_space":1}}
+{"case_id":"outer_blank_and_trailing_space","modality":"natural","input":"\n\nРядок  \n\n","expected":"Рядок","reason_counts":{"outer_blank_lines_removed":1,"trailing_horizontal_space_removed":1}}
+{"case_id":"compatibility_character_preserved","modality":"natural","input":"Версія ① не перетворюється на цифру 1.","expected":"Версія ① не перетворюється на цифру 1."}
+{"case_id":"code_only_newlines","modality":"code","input":"def f():\r\n\tvalue = ' ­①'\r\n\treturn value\r\n","expected":"def f():\n\tvalue = ' ­①'\n\treturn value\n","reason_counts":{"crlf_to_lf":3}}
