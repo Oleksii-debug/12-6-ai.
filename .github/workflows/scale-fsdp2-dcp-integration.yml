@@ -29,6 +29,12 @@ jobs:
           --profile linux-x86_64
           --source-sha "${{ github.event.pull_request.head.sha || github.sha }}"
           --evidence-out locked-environment-scale-fsdp2-dcp.json
+      - name: Materialize exact locked test environment
+        run: |
+          python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/dev.lock.txt
+          PIP_NO_INDEX=1 python -m pip install --no-deps --no-build-isolation -e .
       - name: Focused lint
         run: python -m ruff check tests/test_scale_fsdp2_dcp_integration.py
       - name: Real two-rank FSDP2 DCP save-reload-continue proof
