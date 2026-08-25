@@ -39,12 +39,13 @@ jobs:
           .train53-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
           .train53-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/dev.lock.txt
           PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .train53-locked/bin/python -m pip install --no-deps --no-build-isolation -e .
-      - name: Exercise batch-noise and incumbent observability contracts
+      - name: Exercise intake, batch-noise and incumbent observability contracts
         run: >-
           .train53-locked/bin/python -m pytest -q
+          tests/test_external_source_intake_ua_en.py
           tests/test_batch_noise.py
           tests/test_training_observability.py
-      - name: Execute fixed 267912-parameter real-text batch experiment
+      - name: Execute fixed 267912-parameter real external-source experiment
         env:
           SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
@@ -66,11 +67,17 @@ jobs:
           report = json.loads(Path("train53-batch-noise.json").read_text())
           print(json.dumps({
               "parameter_count": report["identity"]["parameter_count"],
-              "data_scope": report["data"]["scope_warning"],
+              "real_data": {
+                  "dataset_identity_sha256": report["data"]["dataset_identity_sha256"],
+                  "accepted_records": report["data"]["accepted_records"],
+                  "byte_counts": report["data"]["byte_counts"],
+                  "source_scope_warning": report["data"]["source_scope_warning"],
+              },
               "gradient_diagnostics": [
                   {
                       "optimized_tokens": point["checkpoint_optimized_tokens"],
                       "noise_scale_microbatches_proxy": point["diagnostic"]["statistics"]["noise_scale_microbatches_proxy"],
+                      "noise_scale_loss_tokens_proxy": point["local_noise_scale_loss_tokens_proxy"],
                       "probe_wall_seconds": point["diagnostic"]["probe_wall_seconds"],
                       "retained_gradient_sample_bytes": point["diagnostic"]["memory_overhead"]["retained_gradient_sample_bytes"],
                   }
