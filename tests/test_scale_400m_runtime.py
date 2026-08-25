@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 import torch
 from torch.optim import AdamW
 
@@ -165,3 +166,50 @@ def test_externally_placed_trainer_does_not_move_model_and_can_update() -> None:
     assert second.optimizer_stepped
     assert trainer.optimizer_step == 1
     trainer.assert_checkpoint_safe()
+
+
+def test_externally_placed_trainer_handles_fsdp2_dtensor_gradient_norm(tmp_path: Path) -> None:
+    if not torch.distributed.is_available():
+        pytest.skip("torch.distributed is unavailable")
+    if torch.distributed.is_initialized():
+        pytest.skip("test requires ownership of the process group")
+
+    try:
+        from torch.distributed.fsdp import fully_shard
+    except (ImportError, AttributeError):
+        pytest.skip("FSDP2 fully_shard is unavailable")
+
+    store = tmp_path / "fsdp2-store"
+    torch.distributed.init_process_group(
+        "gloo",
+        init_method=f"file://{store}",
+        rank=0,
+        world_size=1,
+    )
+    try:
+        model = ActivationCheckpointedDecoder(_small_spec(), InitSpec())
+        for block in model.blocks:
+            fully_shard(block)
+        fully_shard(model)
+
+        config = TrainerConfig(
+            learning_rate=1e-3,
+            max_steps=1,
+            gradient_accumulation_steps=1,
+            gradient_clip_norm=1.0,
+            precision="fp32",
+            seed=29,
+        )
+        trainer = ExternallyPlacedTrainer(model, config, device="cpu")
+        batch = {
+            "input_ids": torch.tensor([[1, 2, 3, 4, 5, 6, 7, 8]], dtype=torch.long)
+        }
+        metrics = trainer.train_microbatch(batch)
+
+        assert metrics.optimizer_stepped
+        assert metrics.grad_norm is not None
+        assert metrics.grad_norm > 0.0
+        assert torch.isfinite(torch.tensor(metrics.grad_norm))
+        trainer.assert_checkpoint_safe()
+    finally:
+        torch.distributed.destroy_process_group()
