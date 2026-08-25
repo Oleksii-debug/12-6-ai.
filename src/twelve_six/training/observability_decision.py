@@ -14,7 +14,7 @@ from typing import Any
 
 def _positive_finite(value: Any, field: str) -> float:
     if not isinstance(value, (int, float)) or isinstance(value, bool):
-        raise ValueError(f"{field} must be numeric")
+        raise TypeError(f"{field} must be numeric")
     number = float(value)
     if not math.isfinite(number) or number <= 0.0:
         raise ValueError(f"{field} must be finite and positive")
@@ -23,7 +23,7 @@ def _positive_finite(value: Any, field: str) -> float:
 
 def _nonnegative_finite(value: Any, field: str) -> float:
     if not isinstance(value, (int, float)) or isinstance(value, bool):
-        raise ValueError(f"{field} must be numeric")
+        raise TypeError(f"{field} must be numeric")
     number = float(value)
     if not math.isfinite(number) or number < 0.0:
         raise ValueError(f"{field} must be finite and non-negative")
@@ -46,11 +46,11 @@ def target_hardware_paid_compute_decision_support(
     throughput = local_summary.get("throughput")
     identity_sha256 = local_summary.get("run_identity_sha256")
     if not isinstance(rank, Mapping) or not isinstance(device, Mapping):
-        raise ValueError("summary missing rank/device metadata")
+        raise TypeError("summary missing rank/device metadata")
     if not isinstance(throughput, Mapping):
-        raise ValueError("summary missing throughput metadata")
+        raise TypeError("summary missing throughput metadata")
     if not isinstance(identity_sha256, str) or not identity_sha256:
-        raise ValueError("summary missing run identity SHA-256")
+        raise TypeError("summary missing run identity SHA-256")
 
     device_type = str(device.get("type"))
     timing_mode = str(device.get("step_timing_mode"))
@@ -172,10 +172,12 @@ def project_measured_topology_run_cost(
     partial final intervals are conservatively charged one event.
     """
     if not isinstance(target_training_tokens, int) or isinstance(target_training_tokens, bool):
-        raise ValueError("target_training_tokens must be an integer")
+        raise TypeError("target_training_tokens must be an integer")
     if target_training_tokens <= 0:
         raise ValueError("target_training_tokens must be positive")
-    if not isinstance(gpu_count, int) or isinstance(gpu_count, bool) or gpu_count <= 0:
+    if not isinstance(gpu_count, int) or isinstance(gpu_count, bool):
+        raise TypeError("gpu_count must be an integer")
+    if gpu_count <= 0:
         raise ValueError("gpu_count must be a positive integer")
     price = _positive_finite(euro_per_gpu_hour, "euro_per_gpu_hour")
     checkpoint_seconds = _nonnegative_finite(
@@ -264,7 +266,7 @@ def _projected_event_count(
     if interval_tokens is None:
         return 0
     if not isinstance(interval_tokens, int) or isinstance(interval_tokens, bool):
-        raise ValueError(f"{field} must be an integer or None")
+        raise TypeError(f"{field} must be an integer or None")
     if interval_tokens <= 0:
         raise ValueError(f"{field} must be positive when provided")
     return math.ceil(target_training_tokens / interval_tokens)
