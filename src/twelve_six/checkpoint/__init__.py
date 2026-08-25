@@ -20,12 +20,18 @@ from .core import (
     sha256_file,
     verify_checkpoint,
 )
+from .durability import (
+    CheckpointDurabilityError,
+    confirm_checkpoint_durability,
+    save_durable_checkpoint,
+)
 from .hf_export import export_hf_directory
 from .run_binding import bind_checkpoint_identity
 from .trainer_adapter import load_trainer_checkpoint, save_trainer_checkpoint
 
 __all__ = [
     "CheckpointCompatibilityError",
+    "CheckpointDurabilityError",
     "CheckpointError",
     "CheckpointIdentity",
     "CheckpointIntegrityError",
@@ -34,6 +40,7 @@ __all__ = [
     "assert_identity",
     "bind_checkpoint_identity",
     "capture_rng_state",
+    "confirm_checkpoint_durability",
     "detect_git_sha",
     "environment_snapshot",
     "export_hf_directory",
@@ -44,6 +51,7 @@ __all__ = [
     "prepare_checkpoint_load",
     "restore_rng_state",
     "save_checkpoint",
+    "save_durable_checkpoint",
     "save_trainer_checkpoint",
     "sha256_file",
     "verify_checkpoint",
