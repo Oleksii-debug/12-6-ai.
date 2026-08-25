@@ -363,10 +363,27 @@ def _rank(values: list[tuple[int, float]]) -> dict[int, int]:
     return {requested: rank + 1 for rank, (requested, _) in enumerate(ordered)}
 
 
+def _unique_artifacts(results: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
+    by_vocab_hash: dict[str, dict[str, Any]] = {}
+    for result in results:
+        if result["status"] != "PASS":
+            continue
+        vocab_hash = str(result["artifact"]["vocab_sha256"])
+        incumbent = by_vocab_hash.get(vocab_hash)
+        if incumbent is None or int(result["requested_vocab_size"]) < int(
+            incumbent["requested_vocab_size"]
+        ):
+            by_vocab_hash[vocab_hash] = result
+    return sorted(by_vocab_hash.values(), key=lambda result: int(result["requested_vocab_size"]))
+
+
 def _prefilter_selection(results: list[dict[str, Any]], limit: int = 3) -> list[int]:
-    eligible = [result for result in results if result["status"] == "PASS"]
+    eligible = _unique_artifacts(results)
     token_ranks = _rank(
-        [(int(result["requested_vocab_size"]), float(result["held_out"]["tokens"])) for result in eligible]
+        [
+            (int(result["requested_vocab_size"]), float(result["held_out"]["tokens"]))
+            for result in eligible
+        ]
     )
     vocab_ranks = _rank(
         [
@@ -399,7 +416,7 @@ def _pareto(
     *,
     include_model_bpb: bool,
 ) -> list[int]:
-    eligible = [result for result in results if result["status"] == "PASS"]
+    eligible = _unique_artifacts(results)
     frontier: list[int] = []
     for candidate in eligible:
         cvocab = int(candidate["artifact"]["actual_vocab_size"])
