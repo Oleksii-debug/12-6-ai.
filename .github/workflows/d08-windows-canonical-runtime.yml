@@ -1,0 +1,348 @@
+name: D08 Windows Canonical Runtime
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  prepare-canonical-windows-input:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Install exact Linux D08 producer runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          python -m pip install --disable-pip-version-check --require-hashes --no-deps \
+            -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          python -m pip install --disable-pip-version-check --require-hashes --no-deps \
+            -r requirements/locks/linux-x86_64/runtime.lock.txt
+      - name: Build exact package wheel and canonical retained checkpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          bundle="$RUNNER_TEMP/windows-canonical-input"
+          mkdir -p "$bundle/project" "$bundle/source-metadata" "$bundle/tools"
+          python -m pip wheel --disable-pip-version-check --no-deps --no-build-isolation \
+            --wheel-dir "$bundle/project" .
+          project_wheel="$(find "$bundle/project" -maxdepth 1 -name 'twelve_six_ai-*.whl' -print -quit)"
+          test -n "$project_wheel"
+          python -m pip install --disable-pip-version-check --no-index --no-deps "$project_wheel"
+          python -m twelve_six.inference.s0_artifact build \
+            --repo-root . \
+            --candidate-sha "$SOURCE_SHA" \
+            --checkpoint-out "$bundle/checkpoint" \
+            --evidence-out "$bundle/checkpoint-evidence.json" \
+            --train-steps 40 \
+            --seed 20260824
+          cp pyproject.toml "$bundle/source-metadata/pyproject.toml"
+          cp tools/run_windows_canonical_runtime.py "$bundle/tools/run_windows_canonical_runtime.py"
+          mkdir -p "$bundle/requirements/locks"
+          cp -R requirements/locks/windows-x86_64 "$bundle/requirements/locks/windows-x86_64"
+      - name: Build Windows wheelhouse strictly from committed hashes
+        shell: bash
+        run: |
+          set -euo pipefail
+          bundle="$RUNNER_TEMP/windows-canonical-input"
+          mkdir -p "$bundle/wheelhouse/toolchain" "$bundle/wheelhouse/runtime"
+          python -m pip download --disable-pip-version-check --only-binary=:all: \
+            --platform win_amd64 --python-version 3.11 --implementation cp \
+            --require-hashes --no-deps \
+            --dest "$bundle/wheelhouse/toolchain" \
+            -r requirements/locks/windows-x86_64/toolchain.lock.txt
+          python -m pip download --disable-pip-version-check --only-binary=:all: \
+            --platform win_amd64 --python-version 3.11 --implementation cp \
+            --require-hashes --no-deps \
+            --dest "$bundle/wheelhouse/runtime" \
+            -r requirements/locks/windows-x86_64/runtime.lock.txt
+      - name: Seal wheelhouse, package, checkpoint, and profile identities
+        shell: bash
+        run: |
+          set -euo pipefail
+          export BUNDLE_ROOT="$RUNNER_TEMP/windows-canonical-input"
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          root = Path(os.environ["BUNDLE_ROOT"])
+          source_sha = os.environ["SOURCE_SHA"]
+          normalizer = re.compile(r"[-_.]+")
+
+          def sha(path: Path) -> str:
+              return hashlib.sha256(path.read_bytes()).hexdigest()
+
+          def lock_entries(path: Path) -> dict[tuple[str, str], str]:
+              entries = {}
+              for raw in path.read_text(encoding="utf-8").splitlines():
+                  line = raw.strip()
+                  if not line or line.startswith("#"):
+                      continue
+                  requirement, digest = line.split(" --hash=sha256:", 1)
+                  name, version = requirement.split("==", 1)
+                  key = (normalizer.sub("-", name).lower(), version)
+                  if key in entries:
+                      raise RuntimeError(f"duplicate locked distribution: {key}")
+                  entries[key] = digest
+              return entries
+
+          profile_root = root / "requirements/locks/windows-x86_64"
+          for group in ("toolchain", "runtime"):
+              expected = lock_entries(profile_root / f"{group}.lock.txt")
+              found = {}
+              for wheel in sorted((root / "wheelhouse" / group).glob("*.whl")):
+                  parts = wheel.name.split("-")
+                  if len(parts) < 5:
+                      raise RuntimeError(f"malformed wheel filename: {wheel.name}")
+                  key = (normalizer.sub("-", parts[0]).lower(), parts[1])
+                  found[key] = sha(wheel)
+              if found != expected:
+                  raise RuntimeError(f"{group} wheelhouse differs from committed lock")
+
+          profile_path = profile_root / "profile.json"
+          profile = json.loads(profile_path.read_text(encoding="utf-8"))
+          profile_hash = profile.pop("manifest_sha256")
+          if hashlib.sha256(
+              json.dumps(profile, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()
+          ).hexdigest() != profile_hash:
+              raise RuntimeError("Windows D08 profile self-hash mismatch")
+
+          evidence = json.loads((root / "checkpoint-evidence.json").read_text(encoding="utf-8"))
+          project_wheels = sorted((root / "project").glob("twelve_six_ai-*.whl"))
+          if len(project_wheels) != 1:
+              raise RuntimeError("expected exactly one project wheel")
+
+          files = {}
+          for path in sorted(root.rglob("*")):
+              if path.is_file() and path.name != "artifact-manifest.json":
+                  files[path.relative_to(root).as_posix()] = {
+                      "sha256": sha(path),
+                      "size": path.stat().st_size,
+                  }
+
+          manifest = {
+              "schema_version": "12-6.windows-canonical-runtime-input.v1",
+              "authority": "FREE_HOSTED_CANONICAL_WINDOWS_EXECUTION_INPUT",
+              "source_sha": source_sha,
+              "repository": "Oleksii-debug/12-6-ai.",
+              "physical_repository_trailing_dot_blocker": True,
+              "windows_repository_checkout_required": False,
+              "windows_python": "3.11.9",
+              "windows_profile": {
+                  "file_sha256": sha(profile_path),
+                  "manifest_sha256": profile_hash,
+              },
+              "project_wheel": {
+                  "filename": project_wheels[0].name,
+                  "sha256": sha(project_wheels[0]),
+              },
+              "checkpoint": {
+                  "checkpoint_id": evidence["checkpoint"]["checkpoint_id"],
+                  "evidence_sha256": evidence["evidence_sha256"],
+              },
+              "files": files,
+          }
+          manifest["manifest_sha256"] = hashlib.sha256(
+              json.dumps(manifest, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()
+          ).hexdigest()
+          (root / "artifact-manifest.json").write_text(
+              json.dumps(manifest, sort_keys=True, indent=2) + "\n",
+              encoding="utf-8",
+              newline="\n",
+          )
+          print(json.dumps({
+              "checkpoint_id": manifest["checkpoint"]["checkpoint_id"],
+              "manifest_sha256": manifest["manifest_sha256"],
+              "project_wheel_sha256": manifest["project_wheel"]["sha256"],
+              "windows_profile_sha256": manifest["windows_profile"]["file_sha256"],
+          }, sort_keys=True))
+          PY
+      - name: Upload canonical Windows execution input
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: d08-windows-canonical-runtime-input
+          path: ${{ runner.temp }}/windows-canonical-input
+          if-no-files-found: error
+          retention-days: 30
+
+  windows-canonical-checkpoint:
+    needs: prepare-canonical-windows-input
+    runs-on: windows-2025
+    timeout-minutes: 25
+    env:
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      GH_TOKEN: ${{ github.token }}
+      PYTHONUTF8: "1"
+      PYTHONIOENCODING: utf-8
+    steps:
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.9"
+      - name: Download same-run artifact outside invalid repository workspace
+        shell: pwsh
+        working-directory: ${{ runner.temp }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $headers = @{
+            Authorization = "Bearer $env:GH_TOKEN"
+            Accept = "application/vnd.github+json"
+            "X-GitHub-Api-Version" = "2022-11-28"
+          }
+          $listUri = "https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID/artifacts?per_page=100"
+          $response = Invoke-RestMethod -Uri $listUri -Headers $headers
+          $artifact = $response.artifacts | Where-Object { $_.name -eq "d08-windows-canonical-runtime-input" } | Select-Object -First 1
+          if ($null -eq $artifact) { throw "canonical Windows input artifact not found" }
+          $outerZip = Join-Path $env:RUNNER_TEMP "windows-canonical-input.zip"
+          Invoke-WebRequest -Uri $artifact.archive_download_url -Headers $headers -OutFile $outerZip
+          $downloadRoot = Join-Path $env:RUNNER_TEMP "downloaded-windows-input"
+          Expand-Archive -LiteralPath $outerZip -DestinationPath $downloadRoot -Force
+          $manifest = Get-ChildItem -LiteralPath $downloadRoot -Filter artifact-manifest.json -Recurse | Select-Object -First 1
+          if ($null -eq $manifest) { throw "artifact-manifest.json missing" }
+          $sourceRoot = $manifest.Directory.FullName
+          $safeRoot = Join-Path $env:RUNNER_TEMP "12-6 Windows Україна Path With Spaces"
+          New-Item -ItemType Directory -Force -Path $safeRoot | Out-Null
+          Get-ChildItem -LiteralPath $sourceRoot -Force | Copy-Item -Destination $safeRoot -Recurse -Force
+          "SAFE_ROOT=$safeRoot" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Verify sealed artifact before executing any bundled code
+        shell: pwsh
+        working-directory: ${{ runner.temp }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          @'
+          import hashlib
+          import json
+          import os
+          import platform
+          import re
+          import sys
+          from pathlib import Path
+
+          root = Path(os.environ["SAFE_ROOT"])
+          source_sha = os.environ["SOURCE_SHA"]
+          normalizer = re.compile(r"[-_.]+")
+
+          if sys.implementation.name != "cpython" or platform.python_version() != "3.11.9":
+              raise RuntimeError(f"expected CPython 3.11.9; got {sys.implementation.name} {platform.python_version()}")
+          if platform.system() != "Windows" or platform.machine().lower() not in {"amd64", "x86_64"}:
+              raise RuntimeError(f"unexpected platform: {platform.system()} {platform.machine()}")
+          if " " not in str(root) or not any(ord(ch) > 127 for ch in str(root)):
+              raise RuntimeError("safe Windows root must contain spaces and Unicode")
+
+          def sha(path: Path) -> str:
+              return hashlib.sha256(path.read_bytes()).hexdigest()
+
+          manifest = json.loads((root / "artifact-manifest.json").read_text(encoding="utf-8"))
+          manifest_hash = manifest.pop("manifest_sha256")
+          actual_manifest_hash = hashlib.sha256(
+              json.dumps(manifest, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()
+          ).hexdigest()
+          if actual_manifest_hash != manifest_hash:
+              raise RuntimeError("artifact manifest self-hash mismatch")
+          manifest["manifest_sha256"] = manifest_hash
+          if manifest["source_sha"] != source_sha:
+              raise RuntimeError("source SHA mismatch")
+          if manifest["repository"] != "Oleksii-debug/12-6-ai.":
+              raise RuntimeError("physical repository identity mismatch")
+          if manifest["physical_repository_trailing_dot_blocker"] is not True:
+              raise RuntimeError("trailing-dot blocker was hidden")
+          if manifest["windows_repository_checkout_required"] is not False:
+              raise RuntimeError("Windows execution unexpectedly requires checkout")
+
+          for relative, record in manifest["files"].items():
+              path = root / Path(relative)
+              if not path.is_file() or path.stat().st_size != record["size"] or sha(path) != record["sha256"]:
+                  raise RuntimeError(f"sealed input mismatch: {relative}")
+
+          profile_root = root / "requirements/locks/windows-x86_64"
+          profile_path = profile_root / "profile.json"
+          if sha(profile_path) != manifest["windows_profile"]["file_sha256"]:
+              raise RuntimeError("Windows profile file SHA mismatch")
+          profile = json.loads(profile_path.read_text(encoding="utf-8"))
+          profile_hash = profile.pop("manifest_sha256")
+          actual_profile_hash = hashlib.sha256(
+              json.dumps(profile, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()
+          ).hexdigest()
+          if actual_profile_hash != profile_hash or profile_hash != manifest["windows_profile"]["manifest_sha256"]:
+              raise RuntimeError("Windows profile semantic hash mismatch")
+          if profile["profile_id"] != "windows-x86_64" or profile["python"]["version"] != "3.11.9":
+              raise RuntimeError("Windows profile identity mismatch")
+          if profile["platform"] != {"machine": "AMD64", "system": "Windows"}:
+              raise RuntimeError("Windows profile platform mismatch")
+          if sha(root / "source-metadata/pyproject.toml") != profile["pyproject_sha256"]:
+              raise RuntimeError("Windows profile pyproject binding mismatch")
+
+          def lock_entries(path: Path) -> dict[tuple[str, str], str]:
+              entries = {}
+              for raw in path.read_text(encoding="utf-8").splitlines():
+                  line = raw.strip()
+                  if not line or line.startswith("#"):
+                      continue
+                  requirement, digest = line.split(" --hash=sha256:", 1)
+                  name, version = requirement.split("==", 1)
+                  entries[(normalizer.sub("-", name).lower(), version)] = digest
+              return entries
+
+          for group, record in profile["locks"].items():
+              lock_path = root / Path(record["path"])
+              if sha(lock_path) != record["sha256"]:
+                  raise RuntimeError(f"{group} lock file SHA mismatch")
+              count = sum(
+                  1 for line in lock_path.read_text(encoding="utf-8").splitlines()
+                  if line.strip() and not line.strip().startswith("#")
+              )
+              if count != record["package_count"]:
+                  raise RuntimeError(f"{group} lock package count mismatch")
+
+          for group in ("toolchain", "runtime"):
+              expected = lock_entries(profile_root / f"{group}.lock.txt")
+              found = {}
+              for wheel in sorted((root / "wheelhouse" / group).glob("*.whl")):
+                  parts = wheel.name.split("-")
+                  key = (normalizer.sub("-", parts[0]).lower(), parts[1])
+                  found[key] = sha(wheel)
+              if found != expected:
+                  raise RuntimeError(f"{group} artifact wheelhouse does not match lock")
+
+          print(json.dumps({
+              "input_manifest_sha256": manifest_hash,
+              "profile_manifest_sha256": profile_hash,
+              "python": platform.python_version(),
+              "repository_checkout_used": False,
+              "safe_path_has_spaces": True,
+              "safe_path_has_unicode": True,
+          }, sort_keys=True))
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { throw "sealed Windows artifact verification failed" }
+      - name: Install exact artifact runtime and execute first-party checkpoint
+        shell: pwsh
+        working-directory: ${{ runner.temp }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $runner = Join-Path $env:SAFE_ROOT "tools\run_windows_canonical_runtime.py"
+          python $runner --root $env:SAFE_ROOT --source-sha $env:SOURCE_SHA
+          if ($LASTEXITCODE -ne 0) { throw "canonical Windows checkpoint execution failed" }
+          Get-Content -LiteralPath (Join-Path $env:SAFE_ROOT "windows-results\windows-canonical-evidence.json") -Raw -Encoding UTF8
+      - name: Upload canonical Windows execution evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: d08-windows-canonical-runtime-evidence
+          path: ${{ env.SAFE_ROOT }}/windows-results
+          if-no-files-found: error
+          retention-days: 30
