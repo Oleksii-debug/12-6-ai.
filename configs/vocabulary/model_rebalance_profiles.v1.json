@@ -1,0 +1,91 @@
+{
+  "schema": "12-6.model-rebalance-profiles.v1",
+  "status": "EXPERIMENTAL_SEARCH_ENVELOPE_NOT_CANONICAL_CONFIG",
+  "profiles": [
+    {
+      "stage": "100K",
+      "target_parameters": 100000,
+      "base_stage_config": "configs/stages/s1_100k.json",
+      "constraints": {
+        "n_layers": [2, 3, 4],
+        "n_heads": [2, 4],
+        "head_dims": [8, 12, 16],
+        "d_ff_alignment": 8,
+        "min_d_ff_ratio": 2.0,
+        "max_d_ff_ratio": 4.0,
+        "max_embedding_fraction": 0.30,
+        "max_target_delta_fraction": 0.03,
+        "max_candidates": 5
+      }
+    },
+    {
+      "stage": "250K",
+      "target_parameters": 250000,
+      "base_stage_config": "configs/stages/s1_100k.json",
+      "constraints": {
+        "n_layers": [3, 4, 5, 6],
+        "n_heads": [4],
+        "head_dims": [16, 20, 24],
+        "d_ff_alignment": 8,
+        "min_d_ff_ratio": 2.0,
+        "max_d_ff_ratio": 4.0,
+        "max_embedding_fraction": 0.30,
+        "max_target_delta_fraction": 0.03,
+        "max_candidates": 5
+      }
+    },
+    {
+      "stage": "500K",
+      "target_parameters": 500000,
+      "base_stage_config": "configs/stages/s1_100k.json",
+      "constraints": {
+        "n_layers": [4, 5, 6],
+        "n_heads": [4],
+        "head_dims": [20, 24, 28, 32],
+        "d_ff_alignment": 8,
+        "min_d_ff_ratio": 2.0,
+        "max_d_ff_ratio": 4.0,
+        "max_embedding_fraction": 0.30,
+        "max_target_delta_fraction": 0.03,
+        "max_candidates": 5
+      }
+    },
+    {
+      "stage": "1M",
+      "target_parameters": 1000000,
+      "base_stage_config": "configs/stages/s2_1m.json",
+      "constraints": {
+        "n_layers": [4, 6, 8],
+        "n_heads": [4, 8],
+        "head_dims": [16, 24, 32],
+        "d_ff_alignment": 8,
+        "min_d_ff_ratio": 2.0,
+        "max_d_ff_ratio": 4.0,
+        "max_embedding_fraction": 0.30,
+        "max_target_delta_fraction": 0.03,
+        "max_candidates": 5
+      }
+    },
+    {
+      "stage": "10M",
+      "target_parameters": 10000000,
+      "base_stage_config": "configs/stages/s3_10m.json",
+      "constraints": {
+        "n_layers": [6, 8, 10],
+        "n_heads": [8],
+        "head_dims": [32, 40, 48],
+        "d_ff_alignment": 8,
+        "min_d_ff_ratio": 2.0,
+        "max_d_ff_ratio": 4.0,
+        "max_embedding_fraction": 0.30,
+        "max_target_delta_fraction": 0.03,
+        "max_candidates": 5
+      }
+    }
+  ],
+  "policy": {
+    "default_attention_family": "preserve_MHA_by_using_n_kv_heads_equal_to_n_heads_when_unspecified",
+    "embedding_fraction_hard_ceiling": 0.30,
+    "canonical_stage_configs_are_inputs_only": true
+  }
+}
