@@ -1,0 +1,46 @@
+{
+  "schema_version": "12-6.train43-45-stability-plan.v1",
+  "authority": "LOCAL_FREE_ENGINEERING_STABILITY_EVIDENCE_PROVISIONAL",
+  "purpose": "Isolate warmup and gradient-clipping effects at exact S1 (~100K) and S2 (~1M) model scales using one incumbent AdamW/LR recipe, identical initialization, and identical batch traces.",
+  "incumbent": {
+    "optimizer": "adamw",
+    "learning_rate": 0.0003,
+    "weight_decay": 0.1,
+    "betas": [0.9, 0.95],
+    "eps": 1e-8,
+    "decay_embeddings": false,
+    "precision": "fp32",
+    "lr_basis": "TRAIN-33 incumbent diagnostics: 3e-4 remained finite while 1e-3 produced about 2.7-3x larger relative updates; no LR retuning is authorized here."
+  },
+  "warmup": {
+    "scheduler": "linear_warmup",
+    "gradient_clip_norm": null,
+    "fractions": [0.0, 0.01, 0.05, 0.10],
+    "early_window_steps": 8,
+    "selection_rule": "Among PASS candidates within 1% of the best final validation loss, minimize early loss-spike ratio, then gradient-norm p95, then initialization-recovery tokens, then warmup steps."
+  },
+  "clipping": {
+    "thresholds": [null, 1.0, 3.0, 10.0],
+    "threshold_basis": "TRAIN-33 observed pre-clip norms were about 2.8 at S1 and 10.8-18.1 at S2; 1.0 clipped every observed step, so 3.0 and 10.0 are needed to test occasional-safety behavior.",
+    "warmup_source": "selected independently per stage by the warmup selection rule",
+    "selection_rule": "Prefer PASS candidates within 1% of the best final validation loss whose clip frequency is <=10%; among those choose the smallest finite threshold, otherwise prefer no clipping over clipping every step."
+  },
+  "stages": [
+    {
+      "stage": "S1",
+      "execution_steps": 64,
+      "schedule_horizon_steps": 200,
+      "batch_size": 3,
+      "sequence_length": 128
+    },
+    {
+      "stage": "S2",
+      "execution_steps": 32,
+      "schedule_horizon_steps": 160,
+      "batch_size": 2,
+      "sequence_length": 128
+    }
+  ],
+  "seed": 1337,
+  "interpretation": "Engineering stability evidence only. The controlled S0 fixture is not S1/S2 corpus evidence and cannot support quality/capability claims."
+}
