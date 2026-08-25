@@ -1,0 +1,195 @@
+name: LEARN-122 Real 500K Long
+
+on:
+  push:
+    branches:
+      - learn122/real-500k-long-20260826
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  real-500k-long:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      PYTHONPATH: src
+      OMP_NUM_THREADS: "2"
+      MKL_NUM_THREADS: "2"
+      EXPECTED_RUNNER_SHA256: e3406fc28c687562299b9ed99fb2dd845f260b3689150a23c15d15f16fe98c61
+    steps:
+      - name: Checkout exact experiment head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up exact Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind source and assemble frozen runner
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+          cat experiments/learn122/runner.00.part \
+              experiments/learn122/runner.01.part \
+              experiments/learn122/runner.02.part \
+              > src/twelve_six/learn122_real_500k_long.py
+          echo "$EXPECTED_RUNNER_SHA256  src/twelve_six/learn122_real_500k_long.py" | sha256sum --check --strict
+          git diff -- src/twelve_six/learn122_real_500k_long.py || true
+
+      - name: Install hash-locked CPU runtime
+        run: |
+          set -euo pipefail
+          python -m venv .learn122
+          .learn122/bin/python -m pip install \
+            --disable-pip-version-check --no-deps --require-hashes \
+            -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .learn122/bin/python -m pip install \
+            --disable-pip-version-check --no-deps --require-hashes \
+            -r requirements/locks/linux-x86_64/runtime.lock.txt
+
+      - name: Compile and preflight exact protocol
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          .learn122/bin/python -m py_compile src/twelve_six/learn122_real_500k_long.py
+          .learn122/bin/python -m pytest -q \
+            tests/test_data25_corpus_v01.py \
+            tests/test_milestone100_first_learned.py
+          .learn122/bin/python -m twelve_six.learn122_real_500k_long \
+            preflight --repo-root . --source-sha "$EXPECTED_SOURCE_SHA"
+
+      - name: Rebuild and freeze DATA-25 protocol
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          .learn122/bin/python -m twelve_six.learn122_real_500k_long \
+            prepare --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" \
+            --output-dir learn122-evidence
+
+      - name: Primary 500K fresh to 500K tokens
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          .learn122/bin/python -m twelve_six.learn122_real_500k_long \
+            train --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" \
+            --output-dir learn122-evidence --model 500k --seed 1337 \
+            --target-tokens 500000
+
+      - name: Primary 500K fresh-process resume to common 1M
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          .learn122/bin/python -m twelve_six.learn122_real_500k_long \
+            train --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" \
+            --output-dir learn122-evidence --model 500k --seed 1337 \
+            --target-tokens 1000000 --resume
+
+      - name: Primary 1M fresh to compute-matched probe
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          .learn122/bin/python -m twelve_six.learn122_real_500k_long \
+            train --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" \
+            --output-dir learn122-evidence --model 1m --seed 1337 \
+            --target-tokens 450815
+
+      - name: Primary 1M fresh-process resume to common 1M
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          .learn122/bin/python -m twelve_six.learn122_real_500k_long \
+            train --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" \
+            --output-dir learn122-evidence --model 1m --seed 1337 \
+            --target-tokens 1000000 --resume
+
+      - name: Secondary seed 500K through common budget
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          .learn122/bin/python -m twelve_six.learn122_real_500k_long \
+            train --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" \
+            --output-dir learn122-evidence --model 500k --seed 2027 \
+            --target-tokens 1000000
+
+      - name: Secondary seed 1M through common budget
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          .learn122/bin/python -m twelve_six.learn122_real_500k_long \
+            train --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" \
+            --output-dir learn122-evidence --model 1m --seed 2027 \
+            --target-tokens 1000000
+
+      - name: Primary 500K long fresh-process extension to 2M
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          .learn122/bin/python -m twelve_six.learn122_real_500k_long \
+            train --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" \
+            --output-dir learn122-evidence --model 500k --seed 1337 \
+            --target-tokens 2000000 --resume
+
+      - name: Aggregate and validate scientific comparison
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          .learn122/bin/python -m twelve_six.learn122_real_500k_long \
+            aggregate --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" \
+            --output-dir learn122-evidence
+          .learn122/bin/python -m twelve_six.learn122_real_500k_long \
+            validate learn122-evidence/report.json \
+            --expected-source-sha "$EXPECTED_SOURCE_SHA"
+
+      - name: Print compact retained evidence
+        run: |
+          set -euo pipefail
+          .learn122/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+          r=json.loads(Path('learn122-evidence/report.json').read_text(encoding='utf-8'))
+          compact={
+              'source':r['source'],
+              'report_sha256':r['report_sha256'],
+              'tokenizer':r['tokenizer'],
+              'corpus':r['corpus'],
+              'runs':r['runs'],
+              'efficiency_by_seed':r['efficiency_by_seed'],
+              '500k_primary_long_trajectory':r['500k_primary_long_trajectory'],
+              '500k_best_checkpoint':r['500k_best_checkpoint'],
+              '500k_overfit_onset':r['500k_overfit_onset'],
+              'decision':r['decision'],
+              'proof':r['proof'],
+              'truth_boundary':r['truth_boundary'],
+              'reproduction':r['reproduction'],
+          }
+          print('LEARN122_FINAL_REPORT_BEGIN')
+          print(json.dumps(compact, ensure_ascii=False, indent=2, sort_keys=True))
+          print('LEARN122_FINAL_REPORT_END')
+          PY
+
+      - name: Upload retained manifests curves checkpoints and generations
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: learn122-real-500k-long
+          path: learn122-evidence/
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 1
