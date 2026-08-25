@@ -1,0 +1,65 @@
+name: TRAIN-46 Gradient Accumulation Correctness
+
+on:
+  pull_request:
+    paths:
+      - "src/twelve_six/train46_grad_accum_experiment.py"
+      - "tests/test_train46_grad_accum_experiment.py"
+      - "src/twelve_six/training/**"
+      - ".github/workflows/train46-grad-accum-correctness.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  local-free-cpu-correctness:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - name: Checkout exact source head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Prove exact source checkout
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+
+      - name: Set up locked Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+          check-latest: false
+
+      - name: Create purpose-locked experiment environment
+        run: |
+          python -m venv .train46-locked
+          .train46-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .train46-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          .train46-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/dev.lock.txt
+          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .train46-locked/bin/python -m pip install --no-deps --no-build-isolation -e .
+          .train46-locked/bin/python -c "import torch,twelve_six; print(torch.__version__, twelve_six.__version__)"
+
+      - name: Run focused lint and semantics tests
+        run: |
+          .train46-locked/bin/python -m ruff check src/twelve_six/train46_grad_accum_experiment.py tests/test_train46_grad_accum_experiment.py
+          .train46-locked/bin/python -m pytest -q tests/test_train46_grad_accum_experiment.py tests/test_training_engine.py -k "train46 or gradient_accumulation or variable_token_accumulation or partial_accumulation"
+
+      - name: Execute real 1M accumulation comparison and checkpoint probe
+        run: |
+          .train46-locked/bin/python -m twelve_six.train46_grad_accum_experiment \
+            --repo-root . \
+            --expected-source-sha "$SOURCE_SHA" \
+            --output train46-grad-accum-evidence.json
+
+      - name: Upload retained evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: train46-grad-accum-correctness-evidence
+          path: train46-grad-accum-evidence.json
+          if-no-files-found: error
+          retention-days: 30
