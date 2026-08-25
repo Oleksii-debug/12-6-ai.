@@ -1,0 +1,326 @@
+{
+  "schema": "12-6.integrate149-research-decision-registry.v1",
+  "worker_id": "INTEGRATE-149-RESEARCH-CONVERGENCE",
+  "captured_utc": "2026-08-25T21:22:00Z",
+  "repository": "Oleksii-debug/12-6-ai.",
+  "canonical_main": {
+    "ref": "main",
+    "sha": "f2e94c7212888cdb960bb66154d56d210e9b27ab",
+    "modified_by_integrate149": false
+  },
+  "product_base": {
+    "ref": "integration/s1-transition-20260825",
+    "sha": "fb9c6d9b73ce436d637077892d73edf136fcaeac"
+  },
+  "integration": {
+    "ref": "integrate149/research-convergence-20260826",
+    "selective_merge_sha": "648cb35ca0e60df63a54934acc195cd274fdedd5",
+    "first_parent": "fb9c6d9b73ce436d637077892d73edf136fcaeac",
+    "accepted_source_parent": "e77cf610443f08fcd2b10bf445b956e35bd2b3a8",
+    "composition": "two-parent ancestry-preserving selective merge",
+    "broad_source_merge_rejected": true,
+    "broad_source_merge_pr": 280
+  },
+  "classification_enum": [
+    "INCUMBENT",
+    "ACCEPT_SUCCESSOR",
+    "PRACTICAL_TIE",
+    "RETEST_REAL_CORPUS",
+    "BLOCKED",
+    "SUPERSEDED"
+  ],
+  "decisions": {
+    "corpus": {
+      "classification": "RETEST_REAL_CORPUS",
+      "selected_for_next_campaign": "No corpus freeze. DATA-25 V0.1 may be used only as deterministic mechanics data until representative rights-approved external training sources pass ingestion/quality gates.",
+      "evidence": [
+        {
+          "pr": 210,
+          "head": "8af17afa7baf3d75c2328caf8b08af2400a95e09",
+          "finding": "20M-byte deterministic UK/EN/code project-authored corpus mechanics artifact; source registry has zero eligible external sources",
+          "authority": "executed_local_mechanics_not_representative_corpus"
+        },
+        {
+          "pr": 229,
+          "head": "67dd276068c30d434d89497a306f69e1c50faa1b",
+          "workflow": "DATA-21-22 External Source Intake",
+          "run_id": 32862639037,
+          "conclusion": "failure"
+        }
+      ]
+    },
+    "tokenizer": {
+      "classification": "RETEST_REAL_CORPUS",
+      "selected_for_next_campaign": "Byte tokenizer, vocab 256, remains the temporary campaign reference. Do not freeze BPE vocabulary size.",
+      "evidence": [
+        {
+          "pr": 241,
+          "head": "25cf4798202c41dda4b5413052f5efc6ebbbbf2a",
+          "finding": "TOK-37 explicitly declares its corpus non-representative and its result PROVISIONAL_DATA10_MECHANICS_ONLY_RETEST_ON_REPRESENTATIVE_CORPUS"
+        }
+      ]
+    },
+    "special_tokens": {
+      "classification": "INCUMBENT",
+      "selected_for_next_campaign": "No new special-token semantics; preserve byte IDs 0..255 and current no-special-token training contract.",
+      "evidence": [
+        {
+          "pr": 233,
+          "head": "03ca7997cee01099a195d42fb264a3e35af0b751",
+          "finding": "TOK-39 proposed EOD/EOS id 256 only, but no clean exact-head terminal PASS was established; observed CI was terminal failure"
+        }
+      ]
+    },
+    "geometry_100k_500k_1m": {
+      "classification": "INCUMBENT",
+      "selected_for_next_campaign": "Retain current controlled stage family; treat ~500K as a research midpoint rather than a newly frozen canonical stage.",
+      "evidence": [
+        {
+          "pr": 176,
+          "source_head": "003e268b5f4cf582b1a80ca62f874bd9af3e7c78",
+          "workflow": "SCALE-02 S2 1M Executable Preflight",
+          "run_id": 32835548366,
+          "conclusion": "success",
+          "finding": "executed ~1M mechanics on the incumbent family"
+        },
+        {
+          "pr": 236,
+          "head": "4a5da915ea7c9ebcdd5d04c04e7a3dca8e1919f4",
+          "workflow": "RESEARCH41 Controlled Scaling Experiment",
+          "run_id": 32861779847,
+          "conclusion": "success"
+        }
+      ]
+    },
+    "geometry_10m": {
+      "classification": "RETEST_REAL_CORPUS",
+      "selected_for_next_campaign": "Use the current Product S3 execution profile only as an executable mechanics candidate; do not claim GQA/MHA/FFN architectural superiority or architecture freeze.",
+      "evidence": [
+        {
+          "pr": 144,
+          "head": "0c9ff1c9b9a1818e711d7229dc140b4b8bbccb94",
+          "workflow": "SCALE-02 S2/S3 Executable Preflight",
+          "run_id": 32840521820,
+          "conclusion": "success",
+          "finding": "~10M mechanical execution proven; quality comparison not proven"
+        }
+      ]
+    },
+    "context": {
+      "classification": "RETEST_REAL_CORPUS",
+      "selected_for_next_campaign": "Retain current contexts S0=128, S1=256, S2=512, S3=1024 until the larger-context hypotheses are repeated on the real campaign corpus.",
+      "evidence": [
+        {
+          "pr": 178,
+          "head": "887296d4c9b42822f048d2d28bcaaae2d9f1ccf9",
+          "workflow": "RESEARCH06 Context Sweep",
+          "run_id": 32842938762,
+          "conclusion": "success",
+          "finding": "mechanics supports larger qualification candidates but does not establish real-corpus quality gain"
+        }
+      ]
+    },
+    "InitSpec": {
+      "classification": "INCUMBENT",
+      "selected_for_next_campaign": "InitSpec v1: Normal(0,0.02) with residual-output scaling 0.02/sqrt(2L).",
+      "evidence": [
+        {
+          "pr": 169,
+          "head": "4a53f9ab068df21e7e1da39c2de4f5f562049680",
+          "finding": "MODEL-34 preserves incumbent and rejects unscaled residual control"
+        },
+        {
+          "pr": 238,
+          "head": "5f468e1e12444f82460fab5623b6d394440f0811",
+          "workflow": "MODEL-34 Init Stability",
+          "run_id": 32861891695,
+          "conclusion": "success"
+        },
+        {
+          "pr": 238,
+          "workflow": "MODEL-19 Init Seeds",
+          "run_id": 32861891720,
+          "conclusion": "failure",
+          "finding": "no successor InitSpec promotion"
+        }
+      ]
+    },
+    "LR": {
+      "classification": "INCUMBENT",
+      "selected_for_next_campaign": 0.0003,
+      "evidence": [
+        {
+          "pr": 165,
+          "head": "fd30ad78e37a2938571d9bd96f4ab32da8cb3b5b",
+          "finding": "TRAIN-42 current execution is not PASS; action_required/absent retained result is not accepted evidence"
+        }
+      ]
+    },
+    "warmup": {
+      "classification": "RETEST_REAL_CORPUS",
+      "selected_for_next_campaign": "Keep incumbent warmup_steps=0 for the composed reference. The small local hypothesis of short warmup near ~1M is not campaign-authoritative.",
+      "evidence": [
+        {
+          "pr": 228,
+          "head": "89fa4c731b05638740706ba5e1e48946fa988cbd",
+          "finding": "local controlled fixture suggested 0 near 100K and short warmup near 1M under a different LR; exact-head gates did not establish a clean successor"
+        },
+        {
+          "pr": 203,
+          "head": "4a398c1b476e35b72091e77f17de33da8a3f742d",
+          "workflow": "TRAIN-43-45 Stability Study",
+          "run_id": 32862114585,
+          "conclusion": "failure"
+        }
+      ]
+    },
+    "beta2": {
+      "classification": "RETEST_REAL_CORPUS",
+      "selected_for_next_campaign": 0.95,
+      "evidence": [
+        {
+          "pr": 208,
+          "head": "6606823177e66f437278b2f22c44479c72d8d6b5",
+          "finding": "local controlled fixture favored beta2=0.99 by ~1.1-1.35%, but clipping was saturated and the experiment explicitly did not authorize a canonical change"
+        }
+      ]
+    },
+    "epsilon": {
+      "classification": "INCUMBENT",
+      "selected_for_next_campaign": 1e-08,
+      "evidence": [
+        {
+          "pr": 202,
+          "head": "9960cf2c3b565ea8c2d2c44d7f991315e5357dae",
+          "workflow": "TRAIN-49 AdamW Epsilon Ablation",
+          "run_id": 32861305314,
+          "conclusion": "failure"
+        }
+      ]
+    },
+    "weight_decay": {
+      "classification": "INCUMBENT",
+      "selected_for_next_campaign": 0.0,
+      "evidence": [
+        {
+          "pr": 248,
+          "head": "a67d9163031a0978c34cdce00233cbe3c5f85d74",
+          "workflow": "TRAIN-44 Embedding Weight Decay",
+          "run_id": 32862341879,
+          "conclusion": "failure"
+        }
+      ]
+    },
+    "clipping": {
+      "classification": "INCUMBENT",
+      "selected_for_next_campaign": 1.0,
+      "evidence": [
+        {
+          "pr": 203,
+          "head": "4a398c1b476e35b72091e77f17de33da8a3f742d",
+          "workflow": "TRAIN-43-45 Stability Study",
+          "run_id": 32862114585,
+          "conclusion": "failure"
+        }
+      ]
+    },
+    "batch": {
+      "classification": "PRACTICAL_TIE",
+      "selected_for_next_campaign": "Treat fixed-effective-batch microbatch/accumulation decompositions as numerically equivalent within the executed mechanics tolerances; retain the incumbent effective-batch target and choose microbatch by actual target-device memory/throughput. No real-corpus effective-batch optimum is accepted.",
+      "evidence": [
+        {
+          "pr": 236,
+          "head": "4a5da915ea7c9ebcdd5d04c04e7a3dca8e1919f4",
+          "workflow": "TRAIN47 Microbatch Geometry Evidence",
+          "run_id": 32861779819,
+          "conclusion": "success",
+          "artifact_digest": "sha256:be1fb0d85a36f9de18abc83487a3668925a648cf77aae7817e0eade1992ef70a"
+        },
+        {
+          "pr": 229,
+          "head": "67dd276068c30d434d89497a306f69e1c50faa1b",
+          "workflow": "TRAIN-53 Batch Noise",
+          "run_id": 32862639045,
+          "conclusion": "failure",
+          "finding": "no real-corpus effective-batch promotion"
+        }
+      ]
+    },
+    "precision": {
+      "classification": "ACCEPT_SUCCESSOR",
+      "selected_for_next_campaign": "Adopt the exact-green fail-closed runtime capability contract; keep FP32 as the correctness/reference mode. CUDA bf16/fp16 remains device-bound and unproven until real target-GPU evidence exists.",
+      "source": {
+        "pr": 118,
+        "head": "e77cf610443f08fcd2b10bf445b956e35bd2b3a8",
+        "terminal_success_runs": [
+          {"workflow": "CI", "run_id": 32836946760},
+          {"workflow": "D02 Real S0 Training", "run_id": 32836946808},
+          {"workflow": "D02 S0 Determinism Repeatability", "run_id": 32836946813},
+          {"workflow": "D04 Strict S0 Exact-Candidate Evaluation", "run_id": 32836946769},
+          {"workflow": "D02 Precision Scale Probe", "run_id": 32836946790}
+        ]
+      },
+      "composed_in": "648cb35ca0e60df63a54934acc195cd274fdedd5"
+    },
+    "packing": {
+      "classification": "INCUMBENT",
+      "selected_for_next_campaign": "Retain current D04 packing semantics. Streaming implementation evidence may be reused only after clean composition/regression; it does not authorize objective changes.",
+      "evidence": [
+        {
+          "pr": 149,
+          "head": "f426eb85dfeaa933fe08fabc617af4cdd3342ef6",
+          "workflow": "D04 Streaming Packing Benchmark",
+          "run_id": 32841598638,
+          "conclusion": "success",
+          "finding": "bounded-memory streaming mechanics only; branch is divergent and full CI was not green"
+        }
+      ]
+    },
+    "checkpoint_cadence": {
+      "classification": "ACCEPT_SUCCESSOR",
+      "selected_for_next_campaign": "For ~100K/~1M local runs, target a ~5-second lost-work envelope: measured recommendations 438 and 139 optimizer steps respectively. Remeasure at ~10M/~100M; do not linearly extrapolate.",
+      "evidence": [
+        {
+          "pr": 243,
+          "head": "27d70307853098fb297ea5f139258baf974dd53c",
+          "workflow": "TRAIN-56 checkpoint cadence",
+          "run_id": 32862115987,
+          "conclusion": "success",
+          "finding": "execution-only marker; never merge this PR"
+        }
+      ]
+    }
+  },
+  "collisions_and_duplicates": [
+    {"items": [213, 240, 243], "resolution": "TRAIN-56 has duplicated planning/execution surfaces; #243 is execution-only evidence and must never be merged."},
+    {"items": [220, 236], "resolution": "Older TRAIN-43/47 combined lane is SUPERSEDED by #236 for fixed-effective-batch microbatch mechanics."},
+    {"items": [228, 239, 203], "resolution": "Overlapping warmup/stability implementations; no canonical successor accepted."},
+    {"items": [196, 218, 226], "resolution": "Context-study duplication; #196 is superseded and no larger-context candidate is frozen."},
+    {"items": [188, 232], "resolution": "MODEL-12 duplicate/combined geometry studies; no duplicate implementation intake."},
+    {"items": [197, 232], "resolution": "MODEL-13 duplicate/combined head-count studies; no duplicate implementation intake."},
+    {"items": [189, 194, 206], "resolution": "Tied-embedding study duplication; no duplicate implementation intake."},
+    {"items": [200, 162], "resolution": "LEARN-04 is SUPERSEDED by RESEARCH41."},
+    {"items": [183, 212], "resolution": "Older RESEARCH06 lineage is superseded by its later composed research lane."},
+    {"items": [245, 252], "resolution": "#245 is a duplicate/empty TRAIN-57 surface; #252 owns the active lane."},
+    {"items": [264], "resolution": "Broad DATA-101 merge was divergent/non-mergeable; consume only semantically accepted pieces."},
+    {"items": [118, 235], "resolution": "#235 precision-learning-curve evidence does not replace the #118 runtime contract."},
+    {"items": [280], "resolution": "Broad precision merge onto INTEGRATE-149 was non-mergeable; replaced by selective two-parent merge 648cb35ca0e60df63a54934acc195cd274fdedd5."}
+  ],
+  "validation": {
+    "status": "PENDING_COMPOSED_HEAD_EXECUTION",
+    "required": ["focused regression", "real ~1M training smoke"],
+    "rule": "Only terminal SUCCESS counts as PASS; queued, action_required, cancelled, skipped, neutral, or failure do not count."
+  },
+  "truth_boundary": {
+    "provisional_decisions_only": true,
+    "architecture_frozen": false,
+    "corpus_frozen": false,
+    "tokenizer_frozen": false,
+    "main_merged": false,
+    "paid_compute_used": false,
+    "gpu_precision_performance_claimed": false,
+    "10m_quality_claimed_from_mechanics": false,
+    "100m_runtime_claimed_from_small_scale": false,
+    "queued_ci_counts_as_pass": false
+  }
+}
