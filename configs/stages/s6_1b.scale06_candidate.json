@@ -1,0 +1,49 @@
+{
+  "stage": "S6",
+  "target_parameters": 1000000000,
+  "expected_parameters": 999106560,
+  "canonical_base": "random_init",
+  "status": "engineering_candidate_not_frozen",
+  "promotion_allowed": false,
+  "requires_preceding_stage_pass": true,
+  "selection_basis": "Selective intake of D01 PR #37 S6 geometry onto SCALE-05 runtime lineage; no architecture or tokenizer freeze",
+  "expected_model_identity_sha256": "cc64cbe94a461c364f063652098e55bdcf640d4be756ee1e743a23dda3de7261",
+  "expected_init_identity_sha256": "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5",
+  "model": {
+    "schema_version": 1,
+    "vocab_size": 32768,
+    "max_seq_len": 4096,
+    "d_model": 2048,
+    "n_layers": 18,
+    "n_heads": 32,
+    "n_kv_heads": 8,
+    "head_dim": 64,
+    "d_ff": 6720,
+    "activation": "swiglu",
+    "norm_kind": "rmsnorm",
+    "norm_placement": "pre",
+    "norm_eps": 1e-5,
+    "position_embedding": "rope",
+    "rope_theta": 10000.0,
+    "rope_rotary_dim": 64,
+    "attention_bias": false,
+    "mlp_bias": false,
+    "attention_dropout": 0.0,
+    "final_norm": true,
+    "tie_word_embeddings": true,
+    "lm_head_bias": false
+  },
+  "init": {
+    "schema_version": 1,
+    "family": "normal",
+    "std": 0.02,
+    "residual_branch_scale": "sqrt_2_layers"
+  },
+  "scale06_readiness": {
+    "compute_authorized": false,
+    "tokenizer_vocab_is_geometry_budget_only": true,
+    "real_scale_data_tokenizer_frozen": false,
+    "dcp_sharded_checkpoint_integration_required": true,
+    "accelerator_execution_required_before_launch_claim": true
+  }
+}
