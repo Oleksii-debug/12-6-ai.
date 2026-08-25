@@ -145,6 +145,44 @@ jobs:
           }, ensure_ascii=False, indent=2, sort_keys=True))
           PY
 
+      - name: Stage only freshly verified retained checkpoints
+        run: |
+          set -euo pipefail
+          .m150/bin/python - <<'PY'
+          import json
+          import shutil
+          from pathlib import Path
+
+          evidence = Path("milestone150-evidence")
+          retained = evidence / "retained"
+          retained.mkdir(parents=True, exist_ok=True)
+          index = {"schema": "12-6.learned-base-ladder-retained-checkpoints.v1", "scales": {}}
+          for scale in ("100k", "500k", "1m"):
+              report = json.loads((evidence / scale / "report.json").read_text(encoding="utf-8"))
+              if report["fresh_verification"]["status"] != "PASS":
+                  raise SystemExit(f"{scale}: refusing retention without fresh verification PASS")
+              roles = {
+                  "best": report["checkpoints"]["best_checkpoint"],
+                  "final": report["checkpoints"]["final_checkpoint"],
+              }
+              index["scales"][scale] = {}
+              for role, directory in roles.items():
+                  source = evidence / scale / directory
+                  destination = retained / scale / role
+                  if destination.exists():
+                      shutil.rmtree(destination)
+                  shutil.copytree(source, destination)
+                  index["scales"][scale][role] = {
+                      "source_directory": directory,
+                      "checkpoint_id": report["checkpoints"][f"{role}_checkpoint_id"],
+                      "fresh_verification": "PASS",
+                  }
+          (retained / "index.json").write_text(
+              json.dumps(index, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
       - name: Publish exact-head ladder evidence to PR
         if: github.event_name == 'pull_request'
         env:
@@ -186,7 +224,7 @@ jobs:
           PY
           gh pr comment "$PR_NUMBER" --repo "$GH_REPO" --body-file milestone150-evidence/pr-comment.md
 
-      - name: Upload learned ladder evidence and retained checkpoints
+      - name: Upload learned ladder evidence and freshly verified retained checkpoints
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: milestone150-learned-base-ladder-v1
@@ -195,17 +233,24 @@ jobs:
             milestone150-evidence/ladder-report.json
             milestone150-evidence/corpus-manifest.json
             milestone150-evidence/machine-prepare.json
+            milestone150-evidence/retained/
             milestone150-evidence/100k/run-manifest.json
+            milestone150-evidence/100k/phase1.json
+            milestone150-evidence/100k/report.preverify.json
             milestone150-evidence/100k/report.json
+            milestone150-evidence/100k/machine-*.json
             milestone150-evidence/100k/train-curve.jsonl
-            milestone150-evidence/100k/checkpoint-*/
             milestone150-evidence/500k/run-manifest.json
+            milestone150-evidence/500k/phase1.json
+            milestone150-evidence/500k/report.preverify.json
             milestone150-evidence/500k/report.json
+            milestone150-evidence/500k/machine-*.json
             milestone150-evidence/500k/train-curve.jsonl
-            milestone150-evidence/500k/checkpoint-*/
             milestone150-evidence/1m/run-manifest.json
+            milestone150-evidence/1m/phase1.json
+            milestone150-evidence/1m/report.preverify.json
             milestone150-evidence/1m/report.json
+            milestone150-evidence/1m/machine-*.json
             milestone150-evidence/1m/train-curve.jsonl
-            milestone150-evidence/1m/checkpoint-*/
           if-no-files-found: error
           retention-days: 30
