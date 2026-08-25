@@ -1,0 +1,31 @@
+{
+  "schema_version": "12-6.train126.wd-transfer-evidence.v1",
+  "authority": "LOCAL_FREE_BOUNDED_REAL_CORPUS_OPTIMIZER_TRANSFER",
+  "base_commit": "dcc7dfc39299487bca5bdbfe5e6c70eaa6706278",
+  "adapter_sha256": "637c618d7ef54029aefa7b8db5962711b0b04c0069e27eb8d3e788b6fd8f6054",
+  "full_local_summary_sha256": "22160fa234ec61914c878ce3daac88e1d0a1c22fae5dde6841610ebd7229fff3",
+  "data_manifest_sha256": "9d50c0baf98247c1babc5fca8dead5b1fa87264ad92ea62527c34e342a7dd735",
+  "data_trace_sha256": "648a2414cf4cbeab51b59301a852e0c38874d8b7055bbfd6f61662db0b134969",
+  "grid": [0.0, 0.01, 0.1],
+  "steps": 1024,
+  "resume_step": 512,
+  "evaluation_steps": [0, 256, 512, 768, 1024],
+  "results": [
+    {"scale":"500k","parameters":467808,"weight_decay":0.0,"train_bpb":2.796260,"held_out_bpb":2.845061,"generalization_gap_bpb":0.048801,"embedding_l2":16.7433,"block_l2":16.0506,"final_embedding_interval_update_ratio":0.207055,"final_block_interval_update_ratio":0.199650,"train_continuation_token_match":0.5000,"validation_continuation_token_match":0.21875,"time_to_bpb_le_3_step":1024,"status":"ACCEPT"},
+    {"scale":"500k","parameters":467808,"weight_decay":0.01,"train_bpb":2.798659,"held_out_bpb":2.847379,"generalization_gap_bpb":0.048720,"embedding_l2":16.7661,"block_l2":16.0251,"final_embedding_interval_update_ratio":0.207803,"final_block_interval_update_ratio":0.199890,"train_continuation_token_match":0.5000,"validation_continuation_token_match":0.21875,"time_to_bpb_le_3_step":1024,"status":"REJECT_NO_HELD_OUT_GAIN"},
+    {"scale":"500k","parameters":467808,"weight_decay":0.1,"train_bpb":2.820711,"held_out_bpb":2.868088,"generalization_gap_bpb":0.047377,"embedding_l2":16.9659,"block_l2":15.8014,"final_embedding_interval_update_ratio":0.214265,"final_block_interval_update_ratio":0.202258,"train_continuation_token_match":0.46875,"validation_continuation_token_match":0.3125,"time_to_bpb_le_3_step":1024,"status":"REJECT_REGULARIZATION_TAX"},
+    {"scale":"1m","parameters":992896,"weight_decay":0.0,"train_bpb":2.505092,"held_out_bpb":2.572581,"generalization_gap_bpb":0.067490,"embedding_l2":16.8553,"block_l2":21.3119,"final_embedding_interval_update_ratio":0.208346,"final_block_interval_update_ratio":0.188052,"train_continuation_token_match":0.59375,"validation_continuation_token_match":0.3750,"time_to_bpb_le_3_step":768,"status":"ACCEPT"},
+    {"scale":"1m","parameters":992896,"weight_decay":0.01,"train_bpb":2.512942,"held_out_bpb":2.573797,"generalization_gap_bpb":0.060855,"embedding_l2":16.8537,"block_l2":21.2691,"final_embedding_interval_update_ratio":0.208708,"final_block_interval_update_ratio":0.188227,"train_continuation_token_match":0.5000,"validation_continuation_token_match":0.3750,"time_to_bpb_le_3_step":768,"status":"REJECT_NO_HELD_OUT_GAIN"},
+    {"scale":"1m","parameters":992896,"weight_decay":0.1,"train_bpb":2.503476,"held_out_bpb":2.587760,"generalization_gap_bpb":0.084285,"embedding_l2":16.8766,"block_l2":20.9201,"final_embedding_interval_update_ratio":0.203424,"final_block_interval_update_ratio":0.190068,"train_continuation_token_match":0.5000,"validation_continuation_token_match":0.40625,"time_to_bpb_le_3_step":768,"status":"REJECT_HELD_OUT_REGRESSION"}
+  ],
+  "retained_winners": [
+    {"scale":"500k","checkpoint":"500k-wd0-step1024.pt","sha256":"a3225fa7daba6ddd937aaff7d6e360e0616b61027b77e17c6d7dd3397f38213c","bytes":5661563},
+    {"scale":"1m","checkpoint":"1m-wd0-step1024.pt","sha256":"7ced0f35ddfc8b8a1b4d438c9badf2c435f36c6b1b253bc7ee4abd3f92a6cdf1","bytes":11983919}
+  ],
+  "resume": {"all_six_conditions_fresh_process": true, "all_six_phase_pids_differ": true},
+  "evaluation_non_mutation": true,
+  "paid_compute": false,
+  "cuda_available": false,
+  "decision": {"500k_weight_decay":0.0,"1m_weight_decay":0.0,"10m_default_hypothesis":0.0,"10m_challenger":0.01,"weight_decay_0_1":"DO_NOT_CARRY_FORWARD_WITHOUT_NEW_EVIDENCE"},
+  "milestone100_status": "NOT_PROMOTED_BROAD_CORPUS_REQUIREMENT_UNSATISFIED"
+}
