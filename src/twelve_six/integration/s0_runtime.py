@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import Self
 
 import torch
 
@@ -86,7 +87,7 @@ class S0TorchGenerationSession:
         self._model.train(self._was_training)
         self._closed = True
 
-    def __enter__(self) -> S0TorchGenerationSession:
+    def __enter__(self) -> Self:
         self._require_open()
         return self
 
