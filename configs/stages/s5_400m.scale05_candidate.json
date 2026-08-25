@@ -1,0 +1,52 @@
+{
+  "stage": "S5_400M_SCALE05_CANDIDATE",
+  "target_parameters": 400000000,
+  "expected_parameters": 401273856,
+  "canonical_base": "random_init",
+  "expected_model_identity_sha256": "ef44d5eac5bdf90a39e644076d43decd4e20d5d9eeb11f93af9985776f124310",
+  "expected_init_identity_sha256": "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5",
+  "model": {
+    "schema_version": 1,
+    "vocab_size": 32768,
+    "max_seq_len": 4096,
+    "d_model": 1024,
+    "n_layers": 30,
+    "n_heads": 16,
+    "n_kv_heads": 4,
+    "head_dim": 64,
+    "d_ff": 3136,
+    "activation": "swiglu",
+    "norm_kind": "rmsnorm",
+    "norm_placement": "pre",
+    "norm_eps": 1e-5,
+    "position_embedding": "rope",
+    "rope_theta": 10000.0,
+    "rope_rotary_dim": 64,
+    "attention_bias": false,
+    "mlp_bias": false,
+    "attention_dropout": 0.0,
+    "final_norm": true,
+    "tie_word_embeddings": true,
+    "lm_head_bias": false
+  },
+  "init": {
+    "schema_version": 1,
+    "family": "normal",
+    "std": 0.02,
+    "residual_branch_scale": "sqrt_2_layers"
+  },
+  "scale05_execution": {
+    "status": "engineering_candidate_not_frozen",
+    "promotion_allowed": false,
+    "compute_authorized": false,
+    "tokenizer_requirement": "versioned tokenizer artifact; 32768 is a geometry budget pending fertility/coverage evidence",
+    "preferred_precision": "bf16_autocast_fp32_persistent_state",
+    "training_context": 4096,
+    "attention_backend": "pytorch_sdpa_flash_required_on_cuda",
+    "activation_checkpointing": "blockwise_non_reentrant",
+    "optimizer": "adamw_fp32_moments",
+    "distributed_strategy": "single_gpu_first_or_fsdp2_full_shard",
+    "checkpoint_strategy": "dcp_sharded_for_fsdp2; durable committed-step cadence",
+    "serving": "first_party_kv_cache_or_interop; preserve_4_kv_heads"
+  }
+}
