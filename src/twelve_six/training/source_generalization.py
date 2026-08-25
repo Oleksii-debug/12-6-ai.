@@ -1,8 +1,10 @@
 """EVAL-137 source-family generalization study on the bounded real corpus.
 
-The experiment is deliberately small and fail-closed.  It reuses DATA-21/22
-rights-gated intake, the RESEARCH41 ~500K geometry, the byte tokenizer, and the
-incumbent Trainer.  Test-family results never select or retune a training policy.
+This experiment reuses DATA-21/22 rights-gated intake, the RESEARCH41 ~500K
+geometry, the byte tokenizer, and the incumbent Trainer.  Each source family has
+one fixed evaluation partition that is never optimized in any arm, so mixed and
+leave-family-out models are compared on identical records.  Test-family results
+never select or retune a training policy.
 """
 
 from __future__ import annotations
@@ -49,16 +51,20 @@ LOSS_TOKENS_PER_STEP = BATCH_SIZE * (SEQUENCE_LENGTH - 1)
 OPTIMIZER_STEPS = 256
 OPTIMIZED_TOKEN_BUDGET = OPTIMIZER_STEPS * LOSS_TOKENS_PER_STEP
 CHUNK_TARGET_UTF8_BYTES = 4096
-SEEN_VALIDATION_MODULUS = 5
+FAMILY_EVAL_MODULUS = 5
 SOURCE_FAMILIES = (
     "ua.rada.open-data.laws-texts",
     "en.standardebooks.manual",
 )
+HOLDOUT_ARM_BY_FAMILY = {
+    "ua.rada.open-data.laws-texts": "holdout_rada",
+    "en.standardebooks.manual": "holdout_standardebooks",
+}
 DATA105_STATUS = "NOT_FOUND_IN_LIVE_REPOSITORY_AS_OF_2026-08-26"
 _GIT_SHA = re.compile(r"^[0-9a-f]{40}$")
 
-# Authored for EVAL-137 and evaluation-only.  These controls deliberately mimic
-# broad domain/register rather than any source text or factual proposition.
+# Authored for EVAL-137 and evaluation-only.  These controls mimic broad
+# register/domain rather than source wording or factual content.
 _PROJECT_CONTROLS: dict[str, tuple[str, ...]] = {
     "ua.rada.open-data.laws-texts": (
         "Навчальний нормативний приклад визначає порядок подання умовного документа та не описує реальний правовий акт.",
@@ -156,7 +162,7 @@ def _split_oversize_line(line: str, target_bytes: int) -> list[str]:
 
 
 def chunk_source_text(*, source_id: str, record_id: str, text: str) -> list[TextRecord]:
-    """Create deterministic provenance-preserving records without cross-family mixing."""
+    """Create deterministic provenance-preserving chunks without family mixing."""
     _require(source_id in SOURCE_FAMILIES, f"unsupported source family: {source_id}")
     _require(bool(text.strip()), f"empty source text: {record_id}")
     logical_lines: list[str] = []
@@ -191,20 +197,31 @@ def chunk_source_text(*, source_id: str, record_id: str, text: str) -> list[Text
     ]
 
 
-def split_seen_family(records: Sequence[TextRecord]) -> tuple[list[TextRecord], list[TextRecord]]:
-    """Fixed 80/20 index split declared before results; no test-source tuning."""
+def split_family_pool(records: Sequence[TextRecord]) -> tuple[list[TextRecord], list[TextRecord]]:
+    """Fixed 80/20 train/evaluation partition declared before any result."""
     _require(len(records) >= 5, "source family yields fewer than five chunks")
     train: list[TextRecord] = []
-    validation: list[TextRecord] = []
+    evaluation: list[TextRecord] = []
     for index, record in enumerate(records):
-        target = validation if index % SEEN_VALIDATION_MODULUS == 0 else train
-        split = "validation" if target is validation else "train"
-        target.append(TextRecord(record_id=record.record_id, text=record.text, split=split))
-    _require(bool(train) and bool(validation), "seen-family split must have train and validation")
+        if index % FAMILY_EVAL_MODULUS == 0:
+            evaluation.append(TextRecord(record_id=record.record_id, text=record.text, split="evaluation"))
+        else:
+            train.append(TextRecord(record_id=record.record_id, text=record.text, split="train"))
+    _require(bool(train) and bool(evaluation), "family split must have train and evaluation records")
     _require(
-        {record.record_id for record in train}.isdisjoint(record.record_id for record in validation),
-        "seen-family train/validation overlap",
+        {record.record_id for record in train}.isdisjoint(record.record_id for record in evaluation),
+        "family train/evaluation overlap",
     )
+    return train, evaluation
+
+
+# Backward-compatible name retained only for the focused contract test.
+def split_seen_family(records: Sequence[TextRecord]) -> tuple[list[TextRecord], list[TextRecord]]:
+    train, evaluation = split_family_pool(records)
+    validation = [
+        TextRecord(record_id=record.record_id, text=record.text, split="validation")
+        for record in evaluation
+    ]
     return train, validation
 
 
@@ -229,7 +246,8 @@ def _load_real_family_pools(root: Path, intake_output: Path) -> tuple[dict[str, 
     _require(counts.get("rejected") == 0, "real-source intake rejected an object")
 
     accepted = [
-        record for record in manifest.get("records", [])
+        record
+        for record in manifest.get("records", [])
         if isinstance(record, Mapping) and record.get("status") == "ACCEPTED"
     ]
     _require(len(accepted) == expected_objects, "accepted intake record count drift")
@@ -261,13 +279,13 @@ def _load_real_family_pools(root: Path, intake_output: Path) -> tuple[dict[str, 
         )
 
     for family, records in families.items():
-        _require(len(records) >= 5, f"{family} is too small for the predeclared chunk split")
+        _require(len(records) >= 5, f"{family} is too small for the predeclared family split")
     data_identity = {
         "candidate_registry_identity_sha256": registry["registry_identity_sha256"],
         "intake_manifest_sha256": manifest["manifest_sha256"],
         "family_order": list(SOURCE_FAMILIES),
         "chunk_target_utf8_bytes": CHUNK_TARGET_UTF8_BYTES,
-        "seen_validation_modulus": SEEN_VALIDATION_MODULUS,
+        "family_eval_modulus": FAMILY_EVAL_MODULUS,
         "accepted_objects": provenance,
         "family_chunk_ids": {
             family: [record.record_id for record in records] for family, records in families.items()
@@ -353,7 +371,8 @@ def _run_arm(
     arm_id: str,
     train_records: Sequence[TextRecord],
     ordinary_validation_records: Sequence[TextRecord],
-    unseen_family_records: Mapping[str, Sequence[TextRecord]],
+    family_evaluation_records: Mapping[str, Sequence[TextRecord]],
+    family_seen_during_training: Mapping[str, bool],
     tokenizer: ByteTokenizer,
     spec: ModelSpec,
     init_spec: InitSpec,
@@ -363,31 +382,34 @@ def _run_arm(
     validation_batches = _tensor_batches(
         ordinary_validation_records, split="validation", tokenizer=tokenizer, full_only=False
     )
-    unseen_batches = {
-        family: _tensor_batches(records, split="unseen", tokenizer=tokenizer, full_only=False)
-        for family, records in unseen_family_records.items()
+    family_batches = {
+        family: _tensor_batches(records, split="evaluation", tokenizer=tokenizer, full_only=False)
+        for family, records in family_evaluation_records.items()
     }
-    control_batches = {
-        family: _project_control_batches(family, tokenizer) for family in SOURCE_FAMILIES
-    }
+    control_batches = {family: _project_control_batches(family, tokenizer) for family in SOURCE_FAMILIES}
 
     random.seed(seed)
     torch.manual_seed(seed)
     model = TwelveSixDecoder(spec, init_spec)
-    config = _trainer_config(seed=seed)
-    trainer = Trainer(model, config, device="cpu")
+    trainer = Trainer(model, _trainer_config(seed=seed), device="cpu")
 
-    initial = {
-        "ordinary_mixed_or_seen_validation": _evaluate_bpb(model, validation_batches),
-        "unseen_source_families": {
-            family: _evaluate_bpb(model, batches) for family, batches in unseen_batches.items()
-        },
-        "project_authored_same_domain_controls": {
-            family: _evaluate_bpb(model, batches) for family, batches in control_batches.items()
-        },
-    }
-    initial_tokens = trainer.tokens_seen
-    initial_steps = trainer.optimizer_step
+    def evaluate_all() -> dict[str, Any]:
+        return {
+            "ordinary_validation": _evaluate_bpb(model, validation_batches),
+            "family_evaluation": {
+                family: {
+                    "source_family_seen_in_training": bool(family_seen_during_training[family]),
+                    **_evaluate_bpb(model, batches),
+                }
+                for family, batches in family_batches.items()
+            },
+            "project_authored_same_domain_controls": {
+                family: _evaluate_bpb(model, batches) for family, batches in control_batches.items()
+            },
+        }
+
+    initial = evaluate_all()
+    _require(trainer.tokens_seen == 0 and trainer.optimizer_step == 0, "initial evaluation mutated Trainer state")
 
     trace = [index % len(train_batches) for index in range(OPTIMIZER_STEPS)]
     train_losses: list[float] = []
@@ -400,26 +422,18 @@ def _run_arm(
 
     before_eval_tokens = trainer.tokens_seen
     before_eval_steps = trainer.optimizer_step
-    final = {
-        "ordinary_mixed_or_seen_validation": _evaluate_bpb(model, validation_batches),
-        "unseen_source_families": {
-            family: _evaluate_bpb(model, batches) for family, batches in unseen_batches.items()
-        },
-        "project_authored_same_domain_controls": {
-            family: _evaluate_bpb(model, batches) for family, batches in control_batches.items()
-        },
-    }
+    final = evaluate_all()
     _require(trainer.tokens_seen == before_eval_tokens, f"{arm_id}: evaluation mutated optimized tokens")
     _require(trainer.optimizer_step == before_eval_steps, f"{arm_id}: evaluation mutated optimizer steps")
-    _require(initial_tokens == 0 and initial_steps == 0, "initial evaluation mutated Trainer state")
 
     return {
         "arm_id": arm_id,
         "train_record_count": len(train_records),
         "ordinary_validation_record_count": len(ordinary_validation_records),
-        "unseen_family_record_counts": {
-            family: len(records) for family, records in unseen_family_records.items()
+        "family_evaluation_record_counts": {
+            family: len(records) for family, records in family_evaluation_records.items()
         },
+        "family_seen_during_training": dict(family_seen_during_training),
         "train_batch_count": len(train_batches),
         "training_trace_sha256": hash_json({"batch_indices": trace}),
         "optimized_tokens": trainer.tokens_seen,
@@ -430,22 +444,28 @@ def _run_arm(
     }
 
 
-def _arm_records(
-    family_pools: Mapping[str, Sequence[TextRecord]], held_out_family: str | None
-) -> tuple[list[TextRecord], list[TextRecord], dict[str, list[TextRecord]]]:
-    train: list[TextRecord] = []
-    validation: list[TextRecord] = []
-    unseen: dict[str, list[TextRecord]] = {}
+def _comparisons(arms: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    by_id = {str(arm["arm_id"]): arm for arm in arms}
+    mixed = by_id["mixed_real_baseline"]
+    result: dict[str, Any] = {}
     for family in SOURCE_FAMILIES:
-        pool = list(family_pools[family])
-        if family == held_out_family:
-            unseen[family] = _as_split(pool, "unseen")
-            continue
-        family_train, family_validation = split_seen_family(pool)
-        train.extend(family_train)
-        validation.extend(family_validation)
-    _require(bool(train) and bool(validation), "arm lacks seen-source train or validation records")
-    return train, validation, unseen
+        heldout = by_id[HOLDOUT_ARM_BY_FAMILY[family]]
+        mixed_metric = mixed["final"]["family_evaluation"][family]
+        heldout_initial = heldout["initial"]["family_evaluation"][family]
+        heldout_final = heldout["final"]["family_evaluation"][family]
+        control = heldout["final"]["project_authored_same_domain_controls"][family]
+        result[family] = {
+            "mixed_seen_family_bpb": mixed_metric["bpb"],
+            "leave_family_out_unseen_bpb": heldout_final["bpb"],
+            "unseen_family_improvement_from_random_init_bpb": (
+                heldout_initial["bpb"] - heldout_final["bpb"]
+            ),
+            "direct_family_exposure_advantage_bpb": heldout_final["bpb"] - mixed_metric["bpb"],
+            "leave_family_out_project_control_bpb": control["bpb"],
+            "evaluation_record_count": heldout["family_evaluation_record_counts"][family],
+            "same_evaluation_records_used_in_mixed_and_holdout": True,
+        }
+    return result
 
 
 def _report_sha(report: Mapping[str, Any]) -> str:
@@ -469,20 +489,49 @@ def validate_source_generalization_report(report: Mapping[str, Any]) -> None:
         == ["mixed_real_baseline", "holdout_rada", "holdout_standardebooks"],
         "arm order or identity drift",
     )
+    expected_flags = {
+        "mixed_real_baseline": {family: True for family in SOURCE_FAMILIES},
+        "holdout_rada": {
+            "ua.rada.open-data.laws-texts": False,
+            "en.standardebooks.manual": True,
+        },
+        "holdout_standardebooks": {
+            "ua.rada.open-data.laws-texts": True,
+            "en.standardebooks.manual": False,
+        },
+    }
+    family_counts: dict[str, int] | None = None
     for arm in arms:
+        arm_id = str(arm.get("arm_id"))
         _require(arm.get("optimized_tokens") == OPTIMIZED_TOKEN_BUDGET, "matched token budget violated")
         _require(arm.get("optimizer_steps") == OPTIMIZER_STEPS, "matched optimizer-step budget violated")
+        _require(arm.get("family_seen_during_training") == expected_flags[arm_id], "family exposure flag drift")
+        counts = arm.get("family_evaluation_record_counts")
+        _require(isinstance(counts, Mapping), "family evaluation counts missing")
+        normalized_counts = {str(key): int(value) for key, value in counts.items()}
+        if family_counts is None:
+            family_counts = normalized_counts
+        else:
+            _require(normalized_counts == family_counts, "family evaluation records differ across arms")
         final = arm.get("final")
         _require(isinstance(final, Mapping), "final metrics missing")
-        ordinary = final.get("ordinary_mixed_or_seen_validation")
+        ordinary = final.get("ordinary_validation")
         _require(isinstance(ordinary, Mapping), "ordinary validation missing")
         _require(math.isfinite(float(ordinary["bpb"])), "ordinary BPB non-finite")
-        for group in ("unseen_source_families", "project_authored_same_domain_controls"):
-            values = final.get(group)
-            _require(isinstance(values, Mapping), f"{group} missing")
-            for metric in values.values():
-                _require(math.isfinite(float(metric["bpb"])), f"{group} BPB non-finite")
+        family_metrics = final.get("family_evaluation")
+        _require(isinstance(family_metrics, Mapping), "family evaluation missing")
+        for family in SOURCE_FAMILIES:
+            metric = family_metrics.get(family)
+            _require(isinstance(metric, Mapping), f"missing family metric: {family}")
+            _require(math.isfinite(float(metric["bpb"])), f"family BPB non-finite: {family}")
+        controls = final.get("project_authored_same_domain_controls")
+        _require(isinstance(controls, Mapping), "project controls missing")
+        for metric in controls.values():
+            _require(math.isfinite(float(metric["bpb"])), "project-control BPB non-finite")
     _require(report.get("data105", {}).get("status") == DATA105_STATUS, "DATA-105 status drift")
+    comparisons = report.get("comparisons")
+    _require(isinstance(comparisons, Mapping), "comparisons missing")
+    _require(set(comparisons) == set(SOURCE_FAMILIES), "comparison family set drift")
     _require(report.get("report_sha256") == _report_sha(report), "report self-hash mismatch")
 
 
@@ -508,19 +557,38 @@ def run_source_generalization(
 
     with tempfile.TemporaryDirectory(prefix="eval137-real-intake-") as temp_dir:
         family_pools, data = _load_real_family_pools(root, Path(temp_dir))
-        mixed_train, mixed_val, mixed_unseen = _arm_records(family_pools, None)
-        rada_train, rada_val, rada_unseen = _arm_records(
-            family_pools, "ua.rada.open-data.laws-texts"
+        partitions = {family: split_family_pool(family_pools[family]) for family in SOURCE_FAMILIES}
+        family_eval = {family: partitions[family][1] for family in SOURCE_FAMILIES}
+        data["family_train_chunk_counts"] = {
+            family: len(partitions[family][0]) for family in SOURCE_FAMILIES
+        }
+        data["family_evaluation_chunk_counts"] = {
+            family: len(partitions[family][1]) for family in SOURCE_FAMILIES
+        }
+        data["family_evaluation_identity_sha256"] = hash_json(
+            {
+                family: [record.record_id for record in partitions[family][1]]
+                for family in SOURCE_FAMILIES
+            }
         )
-        se_train, se_val, se_unseen = _arm_records(
-            family_pools, "en.standardebooks.manual"
+
+        mixed_train = partitions[SOURCE_FAMILIES[0]][0] + partitions[SOURCE_FAMILIES[1]][0]
+        mixed_validation = _as_split(
+            partitions[SOURCE_FAMILIES[0]][1] + partitions[SOURCE_FAMILIES[1]][1],
+            "validation",
         )
+        rada_train = partitions["en.standardebooks.manual"][0]
+        rada_validation = _as_split(partitions["en.standardebooks.manual"][1], "validation")
+        se_train = partitions["ua.rada.open-data.laws-texts"][0]
+        se_validation = _as_split(partitions["ua.rada.open-data.laws-texts"][1], "validation")
+
         arms = [
             _run_arm(
                 arm_id="mixed_real_baseline",
                 train_records=mixed_train,
-                ordinary_validation_records=mixed_val,
-                unseen_family_records=mixed_unseen,
+                ordinary_validation_records=mixed_validation,
+                family_evaluation_records=family_eval,
+                family_seen_during_training={family: True for family in SOURCE_FAMILIES},
                 tokenizer=tokenizer,
                 spec=spec,
                 init_spec=init_spec,
@@ -529,8 +597,12 @@ def run_source_generalization(
             _run_arm(
                 arm_id="holdout_rada",
                 train_records=rada_train,
-                ordinary_validation_records=rada_val,
-                unseen_family_records=rada_unseen,
+                ordinary_validation_records=rada_validation,
+                family_evaluation_records=family_eval,
+                family_seen_during_training={
+                    "ua.rada.open-data.laws-texts": False,
+                    "en.standardebooks.manual": True,
+                },
                 tokenizer=tokenizer,
                 spec=spec,
                 init_spec=init_spec,
@@ -539,8 +611,12 @@ def run_source_generalization(
             _run_arm(
                 arm_id="holdout_standardebooks",
                 train_records=se_train,
-                ordinary_validation_records=se_val,
-                unseen_family_records=se_unseen,
+                ordinary_validation_records=se_validation,
+                family_evaluation_records=family_eval,
+                family_seen_during_training={
+                    "ua.rada.open-data.laws-texts": True,
+                    "en.standardebooks.manual": False,
+                },
                 tokenizer=tokenizer,
                 spec=spec,
                 init_spec=init_spec,
@@ -573,8 +649,9 @@ def run_source_generalization(
             "source_families": list(SOURCE_FAMILIES),
             "family_definition": "rights-approved DATA-21/22 source_id/provider family",
             "chunk_target_utf8_bytes": CHUNK_TARGET_UTF8_BYTES,
-            "seen_family_validation_rule": "chunk_index_mod_5_equals_0",
-            "held_out_family_rule": "all records from held-out source_id excluded from optimization",
+            "family_evaluation_rule": "chunk_index_mod_5_equals_0",
+            "family_evaluation_records_never_optimized_in_any_arm": True,
+            "held_out_family_rule": "no record from held-out source_id enters optimization",
             "selection_or_retuning_from_test_source": False,
             "project_control_source": "EVAL-137 project-authored evaluation-only strings committed before execution",
             "matched_optimized_tokens": True,
@@ -588,16 +665,21 @@ def run_source_generalization(
             ),
         },
         "arms": arms,
+        "comparisons": _comparisons(arms),
         "interpretation_boundary": {
             "source_family_count": len(SOURCE_FAMILIES),
             "broad_leave_one_source_out_claim": False,
             "representative_corpus_claim": False,
             "general_language_capability_claim": False,
+            "metric_signs": {
+                "unseen_family_improvement_from_random_init_bpb": "positive means training on the other family improved the held-out family BPB",
+                "direct_family_exposure_advantage_bpb": "positive means mixed training with direct family exposure achieved lower BPB than leave-family-out",
+            },
             "conclusion_rule": (
-                "Compare unseen-family BPB from each leave-family-out arm against its project-authored same-domain control and "
-                "the corresponding family performance under the mixed-real baseline. Lower mixed-baseline family BPB is evidence "
-                "consistent with cross-source transfer only when the family was excluded in the leave-family-out arm; no threshold "
-                "is tuned after observing test-family results."
+                "Cross-source transfer is evidenced only by improvement from random initialization on the fixed held-out family records "
+                "when that entire family is absent from optimization. The gap to the mixed model quantifies additional benefit from direct "
+                "family exposure and may reflect source/style-specific learning. Project-authored controls provide a register-level check. "
+                "No threshold is selected after observing test-family results."
             ),
         },
     }
