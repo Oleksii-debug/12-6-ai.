@@ -43,6 +43,7 @@ jobs:
           python -m venv .model34-locked
           .model34-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
           .model34-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          .model34-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/dev.lock.txt
           PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .model34-locked/bin/python -m pip install --no-deps --no-build-isolation -e .
       - name: Run targeted initialization contract tests
         run: .model34-locked/bin/python -m pytest -q tests/test_init_stability.py
