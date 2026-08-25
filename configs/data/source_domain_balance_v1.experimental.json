@@ -1,0 +1,92 @@
+{
+  "candidates": {
+    "bounded_source_cap": {
+      "cap_basis_points": 3500
+    },
+    "raw_proportional": {},
+    "tempered_source_sqrt": {
+      "temper_exponent": "1/2"
+    }
+  },
+  "corpus_binding": {
+    "base_branch": "data25/corpus-v01-20260825",
+    "base_sha": "8af17afa7baf3d75c2328caf8b08af2400a95e09",
+    "corpus_identity_sha256": "422f545da93526ceba2c0ff738e0b9deac65f35bfb31d87d2aab068cda091fc8",
+    "external_training_eligible_sources": 0,
+    "truth_boundary": "PROJECT_AUTHORED_SYNTHETIC_MECHANICS_NOT_REAL_CORPUS_DIVERSITY"
+  },
+  "current_selection": {
+    "activation_gate": {
+      "requires_at_least_two_sources_per_stratum": true,
+      "requires_equal_budget_experiment": true,
+      "requires_minority_domain_guard_pass": true,
+      "requires_real_external_training_data": true
+    },
+    "policy": "raw_proportional",
+    "promotion_state": "BLOCKED",
+    "reason": "CURRENT_CORPUS_HAS_ZERO_REAL_EXTERNAL_TRAINING_SOURCES_AND_ONE_SOURCE_PER_STRATUM"
+  },
+  "experiment": {
+    "batch_size": 4,
+    "material_domain_regression_bpb": 0.03,
+    "minority_domain_share_threshold": 0.25,
+    "model_geometry": {
+      "d_ff": 192,
+      "d_model": 72,
+      "head_dim": 12,
+      "max_seq_len": 256,
+      "n_heads": 6,
+      "n_kv_heads": 6,
+      "n_layers": 4,
+      "vocab_size": 256
+    },
+    "model_parameters": 267912,
+    "optimized_tokens_per_policy": 24576,
+    "optimizer": {
+      "betas": [
+        0.9,
+        0.95
+      ],
+      "eps": 1e-08,
+      "gradient_clip_norm": 1.0,
+      "learning_rate": 0.0003,
+      "name": "AdamW",
+      "weight_decay": 0.0
+    },
+    "optimizer_steps": 96,
+    "sequence_targets": 64
+  },
+  "sampling": {
+    "materialize_duplicate_documents": false,
+    "replacement_scope": "sampling_trace_only",
+    "with_replacement": true
+  },
+  "schema_version": "12-6.data105-source-balance-config.v1",
+  "taxonomy": {
+    "derivation": "provenance_metadata_only",
+    "family_priority": [
+      "source_family_id",
+      "repository_url_or_source_url_host_and_forge_owner",
+      "project_authored_source_id_stratum",
+      "source_id"
+    ],
+    "labels_from_model": false,
+    "length_buckets_byte_tokens": [
+      "000080-000255",
+      "000256-001023",
+      "001024-004095",
+      "004096-016383",
+      "016384-plus"
+    ]
+  },
+  "top_level_mixture": {
+    "owner": "incumbent MixturePlan",
+    "replace": false,
+    "weight_units": {
+      "code": 20,
+      "en": 35,
+      "uk": 45
+    }
+  },
+  "worker_id": "DATA-105-DOMAIN-BALANCE"
+}
