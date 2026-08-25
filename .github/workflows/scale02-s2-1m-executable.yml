@@ -1,0 +1,75 @@
+name: SCALE-02 S2/S3 Executable Preflight
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  locked-next-scale-cpu-preflight:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Prove exact source checkout
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Verify locked environment and repository checks
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: >-
+          python tools/verify_locked_environment.py
+          --profile linux-x86_64
+          --source-sha "$SOURCE_SHA"
+          --evidence-out locked-environment-linux-x86_64.json
+          --run-repo-checks
+      - name: Create exact locked next-scale execution environment
+        run: |
+          python -m venv .scale02-locked
+          .scale02-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .scale02-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .scale02-locked/bin/python -m pip install --no-deps --no-build-isolation -e .
+      - name: Execute S2 ~1M trainer checkpoint inference vertical
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          .scale02-locked/bin/python -m twelve_six.training.s2_preflight \
+            --repo-root . \
+            --candidate-sha "$SOURCE_SHA" \
+            --output-dir scale02-s2-1m-evidence \
+            --total-steps 4 \
+            --split-step 2 \
+            --seed 20260825 \
+            --sequence-length 128
+          cat scale02-s2-1m-evidence/s2-1m-executable-preflight.json
+      - name: Execute bounded S3 ~10M trainer checkpoint inference smoke
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          .scale02-locked/bin/python -m twelve_six.training.s3_smoke \
+            --repo-root . \
+            --candidate-sha "$SOURCE_SHA" \
+            --output-dir scale02-s3-10m-evidence \
+            --seed 20260825 \
+            --sequence-length 32
+          cat scale02-s3-10m-evidence/s3-10m-executable-smoke.json
+      - name: Upload exact next-scale evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: scale02-next-scale-executable-evidence
+          path: |
+            locked-environment-linux-x86_64.json
+            scale02-s2-1m-evidence/s2-1m-executable-preflight.json
+            scale02-s2-1m-evidence/checkpoint
+            scale02-s3-10m-evidence/s3-10m-executable-smoke.json
+          if-no-files-found: error
+          retention-days: 30
