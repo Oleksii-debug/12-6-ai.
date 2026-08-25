@@ -1,0 +1,76 @@
+name: DATA-21-22 External Source Intake
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  rights-aware-bounded-intake:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Bind exact source head
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+      - name: Install locked runtime and test tooling
+        run: |
+          python -m venv .data2122
+          .data2122/bin/python -m pip install \
+            --disable-pip-version-check --no-deps --require-hashes \
+            -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .data2122/bin/python -m pip install \
+            --disable-pip-version-check --no-deps --require-hashes \
+            -r requirements/locks/linux-x86_64/runtime.lock.txt
+          .data2122/bin/python -m pip install \
+            --disable-pip-version-check --no-deps --require-hashes \
+            -r requirements/locks/linux-x86_64/dev.lock.txt
+      - name: Test intake contracts
+        env:
+          PYTHONPATH: src
+        run: .data2122/bin/python -m pytest -q tests/test_external_source_intake_ua_en.py
+      - name: Run bounded real UA and EN intake
+        env:
+          PYTHONPATH: src
+        run: |
+          .data2122/bin/python tools/run_external_source_intake.py \
+            --output external-source-intake-evidence \
+            --max-download-bytes 2000000 \
+            --max-normalized-chars 50000 \
+            | tee external-source-intake-manifest.stdout.json
+      - name: Assert real accepted bytes exist in both languages
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          manifest = json.loads(Path('external-source-intake-evidence/manifest.json').read_text())
+          assert manifest['source_counts']['candidate'] == 8
+          assert manifest['source_counts']['blocked_by_rights'] == 6
+          assert manifest['accepted_records_by_language']['uk'] >= 1
+          assert manifest['accepted_records_by_language']['en'] >= 1
+          assert manifest['byte_counts']['accepted_normalized_utf8_bytes_by_language']['uk'] > 0
+          assert manifest['byte_counts']['accepted_normalized_utf8_bytes_by_language']['en'] > 0
+          PY
+      - name: Upload exact manifested sample evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: data21-22-external-source-intake
+          path: |
+            configs/data/external_source_candidates_ua_en_v1.json
+            external-source-intake-evidence/manifest.json
+            external-source-intake-evidence/records.jsonl
+            external-source-intake-evidence/accepted_text/*.txt
+            external-source-intake-manifest.stdout.json
+          if-no-files-found: error
+          retention-days: 30
