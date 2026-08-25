@@ -118,9 +118,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Package metadata above proves the exact 0.27.1+cpu wheel. The vLLM
+          # runtime module intentionally exposes the public release version 0.27.1.
           python tools/validate_vllm_native_llama.py probe \
             --model-dir artifacts/runtime25-vllm-cpu/vllm-model \
-            --expected-vllm-version 0.27.1+cpu \
+            --expected-vllm-version 0.27.1 \
             --output artifacts/runtime25-vllm-cpu/vllm-import-config.json
 
       - name: Upload vLLM CPU probe evidence
