@@ -1,0 +1,54 @@
+{
+  "contamination": {
+    "allowed_uses": [
+      "evaluation"
+    ],
+    "authority_note": "D06 BenchmarkRegistry is benchmark authority; DATA-31 remains decontamination authority. Exact normalized variants are reserved before future training; unknown paraphrase/semantic overlap remains a stated residual risk.",
+    "d06_benchmark_registry_path": "data/evaluation/benchmark_registry.json",
+    "d06_benchmark_registry_sha256": "9033007a7323c64ed9b27c3930de916a41cd5c7efd1dfb673871ca7886a47a31",
+    "future_training_allowed": false,
+    "held_out": true,
+    "reserved_registry_identity_sha256": "f37e6d8a3d37f091287b03f8baf8dd1dcc66bef2a9b4b93b47538f3d65134685",
+    "reserved_registry_path": "data/external/reserved_fingerprints.json",
+    "reserved_variant_count": 432,
+    "semantic_universal_cleanliness_claimed": false
+  },
+  "dataset_id": "eval132-ua-raw-base-v1",
+  "dataset_sha256": "ca8d9c9d97c854127e0209871e8929f19e06ec91f3f19902bc8fda33481691ff",
+  "interpretation": {
+    "common_word_order": "Measures preference for common/unmarked order; contrast can be grammatical but marked.",
+    "proficiency_claim_authorized": false
+  },
+  "item_count": 216,
+  "items_per_phenomenon": 24,
+  "language": "uk",
+  "phenomena": [
+    "case_agreement",
+    "gender_number_agreement",
+    "verb_agreement",
+    "common_word_order",
+    "negation",
+    "prepositions_case",
+    "apostrophe_orthography",
+    "morphological_continuations",
+    "semantic_coherence"
+  ],
+  "schema_version": "12-6.ua-raw-base-diagnostic.v1",
+  "source": {
+    "copyright_benchmark_copying": false,
+    "factual_external_lookup_required": false,
+    "generator_id": "eval132-template-generator-v1",
+    "kind": "project_authored"
+  },
+  "task": {
+    "chance_pair_accuracy": 0.5,
+    "instruction_following": false,
+    "kind": "raw_base_conditional_likelihood",
+    "neutral_margin_nats_per_source_byte": 0.0,
+    "primary_pair_score": "mean conditional log-likelihood per UTF-8 source byte",
+    "secondary_metrics": [
+      "raw joint conditional log-likelihood",
+      "conditional BPB"
+    ]
+  }
+}
