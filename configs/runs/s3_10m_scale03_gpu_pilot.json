@@ -1,14 +1,17 @@
 {
-  "schema": "12-6.s3-10m-gpu-pilot.v1",
+  "schema": "12-6.s3-10m-gpu-pilot.v2",
   "status": "PREPARED_NOT_LAUNCHED",
   "paid_compute_authorized": false,
   "canonical_base": "random_init",
   "candidate": {
-    "id": "S3-D11-EXPLICIT-Q-GQA-v1",
-    "source_pr": 67,
-    "source_sha": "2728b762cd998ca99403e84c6e4b33e6ae8ed29b",
-    "model_spec_sha256": "ebf3a73851c273211ff9f5f242d28afe22b109e22aacb998e5c0e86d5ff09a55",
-    "expected_parameters": 9999680
+    "id": "S3-SCALE02-BYTE-GQA-v1",
+    "source_pr": 144,
+    "source_sha": "0721728cc40cf736205ae11a998ca177cc1e5ed9",
+    "model_spec_sha256": "61caa5469123e23b9b72fc2024140bfca84c4c480dcb0a7e712ba800a4f22998",
+    "expected_parameters": 10000640,
+    "runtime_tokenizer": "s0-byte-v1",
+    "runtime_tokenizer_compatible": true,
+    "s3_tokenizer_or_corpus_frozen": false
   },
   "hardware": {
     "nodes": 1,
@@ -40,11 +43,17 @@
     "resume_from_last_verified_committed_step": true
   },
   "runtime_estimate": {
-    "training_flops_first_order_6N_tokens": 502808869601280,
+    "training_flops_first_order_6N_tokens": 502857140797440,
     "assumed_effective_tflops_range": [1.0, 5.0],
-    "compute_only_seconds_range": [100.6, 502.8],
+    "compute_only_seconds_range": [100.6, 502.9],
     "wall_clock_planning_range_minutes_including_checkpoint_overhead": [3, 15],
     "status": "ESTIMATE_NOT_MEASURED_ON_GPU"
+  },
+  "architecture_runtime_boundary": {
+    "gqa_parameter_savings_realized": true,
+    "current_attention_repeats_kv_to_query_heads_before_sdpa": true,
+    "gqa_training_activation_memory_savings_realized": false,
+    "native_gqa_kv_cache_requires_green_cache_incumbent": true
   },
   "launch": {
     "working_directory": "repository root",
@@ -57,8 +66,9 @@
     "bf16_unavailable": "do not silently downgrade; stop and explicitly select fp32 or a supported accelerator"
   },
   "truth_boundary": {
-    "data": "controlled mechanics only until a reviewed S3 corpus/tokenizer is frozen",
-    "tokenizer_frozen": false,
+    "data": "controlled mechanics only until a reviewed S3 corpus/tokenizer decision is frozen",
+    "canonical_byte_runtime_compatible": true,
+    "s3_tokenizer_frozen": false,
     "capability_training": false,
     "promotion_authority": false,
     "audit_authority": false
