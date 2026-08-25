@@ -24,13 +24,15 @@ def test_train56_measured_cadence_and_resume_equivalence(tmp_path: Path) -> None
 
     report = json.loads(report_path.read_text(encoding="utf-8"))
     assert report["checkpoint_format"] == "incumbent 12-6-checkpoint v1"
-    assert [stage["stage"] for stage in report["stages"]] == ["S1", "S2"]
+    assert [stage["label"] for stage in report["stages"]] == ["~100K", "~1M"]
+    assert [stage["actual_parameters"] for stage in report["stages"]] == [95_568, 1_037_696]
     for stage in report["stages"]:
         assert stage["optimizer_step_median_s"] > 0.0
         assert stage["checkpoint_save_verify_median_s"] > 0.0
         assert stage["checkpoint_explicit_verify_median_s"] > 0.0
         assert stage["fresh_load_median_s"] > 0.0
         assert stage["checkpoint_bytes"] > 0
+        assert stage["valid_causal_tokens_per_step"] == 256
         assert len(stage["cadence_targets"]) >= 3
         assert stage["selected_cadence"]["interval_steps"] >= 1
         assert stage["selected_cadence"]["lost_work_seconds"] > 0.0
