@@ -6,6 +6,7 @@ import json
 import os
 import tempfile
 from collections.abc import Mapping, Sequence
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -144,11 +145,6 @@ def _identity(stage, trainer: FSDP2Trainer) -> ScaleCheckpointIdentity:
     )
 
 
-def _destroy_stack(*objects: Any) -> None:
-    del objects
-    gc.collect()
-
-
 def _load_boundary(stage_path: str, checkpoint: str, identity_sha: str):
     stage, model, optimizer, trainer, plan = _build_stack(stage_path)
 
@@ -170,13 +166,7 @@ def _load_boundary(stage_path: str, checkpoint: str, identity_sha: str):
     return stage, model, optimizer, trainer, plan
 
 
-def _worker(
-    rank: int,
-    init_file: str,
-    stage_path: str,
-    root: str,
-    result_dir: str,
-) -> None:
+def _worker(rank: int, init_file: str, stage_path: str, root: str, result_dir: str) -> None:
     dist.init_process_group(
         "gloo",
         init_method=f"file://{init_file}",
@@ -207,7 +197,8 @@ def _worker(
         second = trainer.train_microbatch(_batch(stage, 1))
         sync_final_digest = _state_digest(model, optimizer)
         sync_final_loss = second.loss
-        _destroy_stack(trainer, optimizer, model)
+        del trainer, optimizer, model
+        gc.collect()
         dist.barrier()
 
         stage_a, model_a, optimizer_a, trainer_a, plan_a = _build_stack(stage_path)
@@ -233,20 +224,17 @@ def _worker(
 
         # Standard async_save must have staged a training-safe copy before return.
         second_a = trainer_a.train_microbatch(_batch(stage_a, 1))
-        async_live_final_digest = _state_digest(model_a, optimizer_a)
         assert second_a.loss == pytest.approx(sync_final_loss, rel=0.0, abs=0.0)
-        assert async_live_final_digest == sync_final_digest
-
+        assert _state_digest(model_a, optimizer_a) == sync_final_digest
         async_manifest = pending.close()
         assert pending.requires_wait_before_exit is False
         assert pending.published is True
-        assert async_path.is_dir()
-        assert (async_path / COMMITTED).is_file()
+        assert async_path.is_dir() and (async_path / COMMITTED).is_file()
         assert async_manifest["identity_sha256"] == identity.sha256
-        _destroy_stack(trainer_a, optimizer_a, model_a)
+        del trainer_a, optimizer_a, model_a
+        gc.collect()
         dist.barrier()
 
-        # Fresh objects from the synchronous control checkpoint.
         stage_s, model_s, optimizer_s, trainer_s, _ = _load_boundary(
             stage_path, str(sync_path), identity.sha256
         )
@@ -256,10 +244,10 @@ def _worker(
         resumed_sync_digest = _state_digest(model_s, optimizer_s)
         assert resumed_s.loss == pytest.approx(sync_final_loss, rel=0.0, abs=0.0)
         assert resumed_sync_digest == sync_final_digest
-        _destroy_stack(trainer_s, optimizer_s, model_s)
+        del trainer_s, optimizer_s, model_s
+        gc.collect()
         dist.barrier()
 
-        # Fresh objects from the async checkpoint must be byte-exact at the logical state level.
         stage_b, model_b, optimizer_b, trainer_b, plan_b = _load_boundary(
             stage_path, str(async_path), identity.sha256
         )
@@ -270,8 +258,8 @@ def _worker(
         assert resumed_a.loss == pytest.approx(sync_final_loss, rel=0.0, abs=0.0)
         assert resumed_async_digest == resumed_sync_digest == sync_final_digest
 
-        # Inject an async I/O failure before publication. The hidden generation may remain,
-        # but it must never become a visible committed checkpoint and prior checkpoints survive.
+        # Inject a storage failure before publication. The hidden generation may remain,
+        # but it must never gain COMMITTED or replace either prior committed generation.
         real_async_save = dcp.async_save
 
         class _InjectedFailure:
@@ -284,12 +272,10 @@ def _worker(
 
         dcp.async_save = injected_async_save
         try:
-            failed_identity = ScaleCheckpointIdentity(
-                **{
-                    **identity.__dict__,
-                    "step": trainer_b.optimizer_step,
-                    "tokens_seen": trainer_b.tokens_seen,
-                }
+            failed_identity = replace(
+                identity,
+                step=trainer_b.optimizer_step,
+                tokens_seen=trainer_b.tokens_seen,
             )
             failed = begin_async_scale_checkpoint(
                 failed_path,
@@ -319,12 +305,10 @@ def _worker(
             verify_scale_checkpoint(sync_path)
             verify_scale_checkpoint(async_path)
         dist.barrier()
-
         Path(result_dir, f"rank-{rank}.json").write_text(
             json.dumps(
                 {
                     "rank": rank,
-                    "boundary_state_digest": boundary_digest,
                     "sync_final_state_digest": sync_final_digest,
                     "async_final_state_digest": resumed_async_digest,
                     "trainer_state_exact": True,
