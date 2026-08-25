@@ -119,7 +119,7 @@ def test_real_trained_export_executes_in_transformers_with_full_parity(tmp_path:
 
 
 def test_transformers_mapping_is_not_s0_shape_specific() -> None:
-    from transformers import LlamaConfig, LlamaForCausalLM
+    from transformers import LlamaConfig, LlamaForCausalLM  # noqa: PLC0415
 
     spec = ModelSpec(
         schema_version=1,
@@ -134,9 +134,9 @@ def test_transformers_mapping_is_not_s0_shape_specific() -> None:
         rope_rotary_dim=32,
     )
     torch.manual_seed(99)
-    source = TwelveSixDecoder(spec)
+    source = TwelveSixDecoder(spec).eval()
     converted = convert_state_dict_to_llama(spec, source.state_dict())
-    target = LlamaForCausalLM(LlamaConfig.from_dict(llama_config_dict(spec)))
+    target = LlamaForCausalLM(LlamaConfig.from_dict(llama_config_dict(spec))).eval()
     incompatible = target.load_state_dict(converted, strict=True)
 
     assert incompatible.missing_keys == []
@@ -145,3 +145,11 @@ def test_transformers_mapping_is_not_s0_shape_specific() -> None:
     assert target.config.num_attention_heads == 4
     assert target.config.num_key_value_heads == 2
     assert sum(parameter.numel() for parameter in target.parameters()) == spec.parameter_count()
+
+    ids = torch.tensor([[index * 17 % spec.vocab_size for index in range(31)]], dtype=torch.long)
+    with torch.no_grad():
+        reference = source(ids).logits
+        candidate = target(input_ids=ids, use_cache=False, return_dict=True).logits
+    torch.testing.assert_close(reference, candidate, atol=1e-5, rtol=1e-5)
+    assert torch.equal(reference[:, -1].argmax(dim=-1), candidate[:, -1].argmax(dim=-1))
+    print(f"RUNTIME24_GQA_MAX_ABS={(reference - candidate).abs().max().item():.12g}")
