@@ -1,0 +1,174 @@
+name: SCALE-141 10M Learned Continuation
+
+on:
+  pull_request:
+    branches:
+      - milestone100/first-learned-base-20260826
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  learned-10m-fallback:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    env:
+      PYTHONPATH: src
+      OMP_NUM_THREADS: "2"
+      MKL_NUM_THREADS: "2"
+    steps:
+      - name: Checkout exact SCALE-141 head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up exact Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact source
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+
+      - name: Install hash-locked CPU runtime
+        run: |
+          set -euo pipefail
+          python -m venv .scale141
+          .scale141/bin/python -m pip install \
+            --disable-pip-version-check --no-deps --require-hashes \
+            -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .scale141/bin/python -m pip install \
+            --disable-pip-version-check --no-deps --require-hashes \
+            -r requirements/locks/linux-x86_64/runtime.lock.txt
+
+      - name: Compile and test SCALE-141 contracts
+        run: |
+          set -euo pipefail
+          .scale141/bin/python -m compileall -q src/twelve_six
+          .scale141/bin/python -m pytest -q \
+            tests/test_data25_corpus_v01.py \
+            tests/test_checkpointing.py \
+            tests/test_scale141_10m_continuation.py \
+            tests/test_scale141_10m_runtime_v2.py \
+            tests/test_scale141_10m_runtime_v3.py \
+            tests/test_scale141_memorization.py
+
+      - name: Execute learned 10M fallback phase 1
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          .scale141/bin/python -m twelve_six.scale141_10m_runtime_v3 \
+            phase1 \
+            --repo-root . \
+            --source-sha "$EXPECTED_SOURCE_SHA" \
+            --output-dir scale141-evidence
+
+      - name: Execute mandatory fresh-process resume
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          .scale141/bin/python -m twelve_six.scale141_10m_runtime_v3 \
+            resume \
+            --repo-root . \
+            --source-sha "$EXPECTED_SOURCE_SHA" \
+            --output-dir scale141-evidence
+
+      - name: Validate scientific report
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          .scale141/bin/python -m twelve_six.scale141_10m_runtime_v3 \
+            validate scale141-evidence/report.json \
+            --expected-source-sha "$EXPECTED_SOURCE_SHA"
+          .scale141/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+          r = json.loads(Path("scale141-evidence/report.json").read_text(encoding="utf-8"))
+          points = r["scheduled"]
+          print(json.dumps({
+              "source_sha": r["source_sha"],
+              "decision": r["incumbent_search_decision"],
+              "parameter_count": r["model"]["parameter_count"],
+              "executed_sequence_length": r["model"]["executed_sequence_length"],
+              "optimized_tokens": r["corpus"]["optimized_tokens"],
+              "optimized_tokens_by_modality": r["corpus"]["optimized_tokens_by_modality"],
+              "corpus_fraction": r["corpus"]["fraction_of_one_train_corpus"],
+              "heldout_bpb_by_token_target": {k: v["heldout"]["bits_per_byte"] for k, v in points.items()},
+              "memorization_exact_rate_by_token_target": {k: v["memorization"]["hash_only_training_passage_probe"]["exact_short_continuation_rate"] for k, v in points.items()},
+              "clip_rate_by_token_target": {k: v["training_interval"].get("clip_rate") for k, v in points.items()},
+              "fresh_process_resume": r["fresh_process_resume"],
+              "cadence": r["cadence"],
+              "final_checkpoint_id": r["checkpoint_integrity"]["final_checkpoint_id"],
+              "report_sha256": r["report_sha256"],
+          }, ensure_ascii=False, indent=2, sort_keys=True))
+          PY
+
+      - name: Publish compact evidence to PR
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          .scale141/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+          r = json.loads(Path("scale141-evidence/report.json").read_text(encoding="utf-8"))
+          s0 = r["scheduled"]["0"]
+          sf = r["scheduled"]["2000000"]
+          f = r["fresh_process_resume"]
+          c = r["cadence"]
+          mem = sf["memorization"]["hash_only_training_passage_probe"]
+          lines = [
+              "### SCALE-141 exact-head learned-10M evidence",
+              "",
+              f"- incumbent search: `{r['incumbent_search_decision']}` (no mechanics artifact was promoted to learned status)",
+              f"- source SHA: `{r['source_sha']}`",
+              f"- model: `{r['model']['parameter_count']}` parameters, exact S3 ModelSpec; executed seq `{r['model']['executed_sequence_length']}` within max `{r['model']['max_sequence_length']}`",
+              f"- actual optimized bytes: `{r['corpus']['optimized_tokens']}` = `{r['corpus']['fraction_of_one_train_corpus']:.2%}` of one DATA-25 train corpus; replay=`{r['corpus']['corpus_replay']}`",
+              f"- modality optimized bytes UK/EN/code: `{r['corpus']['optimized_tokens_by_modality']['uk']}` / `{r['corpus']['optimized_tokens_by_modality']['en']}` / `{r['corpus']['optimized_tokens_by_modality']['code']}`",
+              f"- held-out fixed-suite BPB token 0 → 2M: `{s0['heldout']['bits_per_byte']:.6f}` → `{sf['heldout']['bits_per_byte']:.6f}`",
+              f"- held-out modality BPB final UK/EN/code: `{sf['heldout']['by_modality']['uk']['bits_per_byte']:.6f}` / `{sf['heldout']['by_modality']['en']['bits_per_byte']:.6f}` / `{sf['heldout']['by_modality']['code']['bits_per_byte']:.6f}`",
+              f"- hash-only training-passage memorization probe final exact short-continuation rate: `{mem['exact_short_continuation_rate']:.4%}`; mean BPB `{mem['mean_bits_per_byte']:.6f}`",
+              f"- final interval clip rate: `{sf['training_interval']['clip_rate']:.4%}`",
+              f"- final interval throughput: `{sf['training_interval']['train_tokens_per_second_mean']:.2f}` optimized byte targets/s",
+              f"- fresh-process resume: checkpoint step `{f['loaded_step']}` at `{f['loaded_optimized_tokens']}` optimized bytes → first resumed step `{f['first_resumed_step']}`; held-out reload check=`{f['metric_recheck_passed']}`",
+              f"- measured recovery cadence: every `{c['checkpoint_every_optimizer_steps']}` optimizer steps; joint 5s/5% feasibility=`{c['five_second_and_overhead_constraints_jointly_feasible']}`",
+              f"- final checkpoint id: `{r['checkpoint_integrity']['final_checkpoint_id']}`",
+              f"- report SHA-256: `{r['report_sha256']}`",
+              "",
+              "Pre-execution audit rejected nominal padded-token accounting and switched the authority to Trainer.tokens_seen; evaluation is streamed one window at a time; tuple-valued config is normalized before cross-process manifest hashing. Memorization output contains hashes/metrics only and makes no privacy-leakage claim. Scaling-law values remain explicitly out-of-domain diagnostics, not success gates. DATA-25 is project-authored UK/EN/code evidence, not an external-corpus representativeness claim.",
+          ]
+          Path("scale141-evidence/pr-comment.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+          PY
+          gh pr comment "$PR_NUMBER" --repo "$GH_REPO" --body-file scale141-evidence/pr-comment.md
+
+      - name: Upload retained SCALE-141 evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: scale141-10m-learned-fallback
+          path: |
+            scale141-evidence/report.json
+            scale141-evidence/phase1.json
+            scale141-evidence/corpus-manifest.json
+            scale141-evidence/run-manifest.json
+            scale141-evidence/cadence-runtime.json
+            scale141-evidence/machine-phase1.json
+            scale141-evidence/machine-resume.json
+            scale141-evidence/train-curve.jsonl
+            scale141-evidence/checkpoint-token-1000000/
+            scale141-evidence/checkpoint-token-2000000/
+          if-no-files-found: error
+          retention-days: 14
