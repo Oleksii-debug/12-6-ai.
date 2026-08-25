@@ -1,6 +1,6 @@
 """Controlled LOCAL_FREE empirical scaling experiments for 12-6 AI.
 
-This module intentionally studies a compact, fixed-tokenizer/fixed-data family. It is
+This module studies a compact fixed-tokenizer/fixed-data family. The output is
 research evidence, not a stage freeze, promotion gate, or paid-compute authorization.
 """
 
@@ -23,12 +23,18 @@ from typing import Any
 import torch
 import torch.nn.functional as F
 
-from .model import InitSpec, ModelSpec, TwelveSixDecoder, canonical_json_sha256
+from .model import InitSpec, ModelSpec, TwelveSixDecoder
+from .tokenization import (
+    BYTE_TOKENIZER_HASH,
+    BYTE_TOKENIZER_VERSION,
+    BYTE_VOCAB_HASH,
+    ByteTokenizer,
+)
 from .training import Trainer, TrainerConfig
 
 SCHEMA = "12-6.scaling-experiment.v1"
 AUTHORITY = "LOCAL_FREE_EMPIRICAL_SCALING_EVIDENCE_NOT_PROMOTION_OR_BUDGET_AUTHORIZATION"
-TOKENIZER_ID = "s0-byte-v1-controlled-research-use"
+TOKENIZER_ID = BYTE_TOKENIZER_VERSION
 PACKING_ID = "research41-byte-stream-cyclic-v1"
 COMPUTE_PROXY = "6 * trainable_parameters * optimized_tokens"
 _HEX40 = re.compile(r"^[0-9a-f]{40}$")
@@ -121,8 +127,9 @@ def _read_jsonl(path: Path) -> list[dict[str, Any]]:
     return records
 
 
-def _byte_stream(records: list[dict[str, Any]]) -> bytes:
-    return b"\n".join(str(record["text"]).encode("utf-8") for record in records) + b"\n"
+def _byte_stream(records: list[dict[str, Any]], tokenizer: ByteTokenizer) -> bytes:
+    encoded = [bytes(tokenizer.encode(str(record["text"]))) for record in records]
+    return b"\n".join(encoded) + b"\n"
 
 
 def _make_batch(
@@ -171,7 +178,7 @@ def _model_spec(geometry: dict[str, int]) -> ModelSpec:
 
 
 def controlled_specs() -> tuple[ModelSpec, ...]:
-    """Return the fixed-vocab/context family used by research41."""
+    """Return the fixed-vocabulary/context family used by RESEARCH41."""
     specs = tuple(_model_spec(geometry) for geometry in _DEFAULT_GEOMETRIES)
     counts = tuple(spec.parameter_count() for spec in specs)
     expected = (95_568, 267_912, 467_808, 1_037_696)
@@ -184,10 +191,29 @@ def controlled_specs() -> tuple[ModelSpec, ...]:
     return specs
 
 
+def _trainer_config(*, max_steps: int, seed: int) -> TrainerConfig:
+    return TrainerConfig(
+        learning_rate=3e-4,
+        weight_decay=0.0,
+        betas=(0.9, 0.95),
+        eps=1e-8,
+        max_steps=max_steps,
+        warmup_steps=0,
+        scheduler="constant",
+        gradient_accumulation_steps=1,
+        gradient_clip_norm=1.0,
+        precision="fp32",
+        seed=seed,
+        deterministic_algorithms=True,
+        deterministic_warn_only=False,
+    )
+
+
 @torch.no_grad()
 def _validation_loss(
     model: TwelveSixDecoder,
     records: list[dict[str, Any]],
+    tokenizer: ByteTokenizer,
 ) -> tuple[float, int]:
     was_training = model.training
     model.eval()
@@ -195,13 +221,13 @@ def _validation_loss(
     total_tokens = 0
     max_seq_len = model.spec.max_seq_len
     for record in records:
-        raw = str(record["text"]).encode("utf-8")
+        token_ids = tokenizer.encode(str(record["text"]))
         start = 0
-        while start < len(raw) - 1:
-            chunk = raw[start : start + max_seq_len]
+        while start < len(token_ids) - 1:
+            chunk = token_ids[start : start + max_seq_len]
             if len(chunk) < 2:
                 break
-            input_ids = torch.tensor(list(chunk), dtype=torch.long).unsqueeze(0)
+            input_ids = torch.tensor(chunk, dtype=torch.long).unsqueeze(0)
             logits = model(input_ids).logits
             loss = F.cross_entropy(
                 logits[:, :-1, :].reshape(-1, model.spec.vocab_size),
@@ -224,8 +250,8 @@ def _fit_log_plane(points: list[dict[str, Any]]) -> dict[str, Any]:
     """Fit log(loss) = b0 + bN*log(N) + bT*log(T) inside the measured box only."""
     if len(points) < 6:
         raise ValueError("at least six observations are required for the empirical fit")
-    rows = []
-    target = []
+    rows: list[list[float]] = []
+    target: list[float] = []
     for point in points:
         parameters = int(point["parameters"])
         tokens = int(point["optimized_tokens"])
@@ -336,6 +362,7 @@ def run_scaling_experiment(
 
     torch.set_num_threads(torch_threads)
     torch.use_deterministic_algorithms(True)
+    tokenizer = ByteTokenizer()
     train_path = repo_root / "data/s0/packaged/train.jsonl"
     validation_path = repo_root / "data/s0/packaged/validation.jsonl"
     manifest_path = repo_root / "data/s0/packaged/manifest.json"
@@ -346,10 +373,11 @@ def run_scaling_experiment(
     overlap = sorted(train_ids & validation_ids)
     if overlap:
         raise RuntimeError(f"train/validation record overlap: {overlap!r}")
-    train_stream = _byte_stream(train_records)
+    train_stream = _byte_stream(train_records, tokenizer)
     tokens_per_step = batch_size * (sequence_length - 1)
     max_steps = math.ceil(token_budgets[-1] / tokens_per_step)
     init_spec = InitSpec()
+    trainer_config = _trainer_config(max_steps=max_steps, seed=seed)
 
     model_runs: list[dict[str, Any]] = []
     observations: list[dict[str, Any]] = []
@@ -357,23 +385,12 @@ def run_scaling_experiment(
         random.seed(seed)
         torch.manual_seed(seed)
         model = TwelveSixDecoder(spec, init_spec)
-        config = TrainerConfig(
-            learning_rate=3e-4,
-            weight_decay=0.0,
-            betas=(0.9, 0.95),
-            eps=1e-8,
-            max_steps=max_steps,
-            warmup_steps=0,
-            scheduler="constant",
-            gradient_accumulation_steps=1,
-            gradient_clip_norm=1.0,
-            precision="fp32",
-            seed=seed,
-            deterministic_algorithms=True,
-            deterministic_warn_only=False,
+        trainer = Trainer(model, trainer_config, device="cpu")
+        initial_loss, validation_tokens = _validation_loss(
+            model,
+            validation_records,
+            tokenizer,
         )
-        trainer = Trainer(model, config, device="cpu")
-        initial_validation_loss, validation_tokens = _validation_loss(model, validation_records)
         checkpoints: list[dict[str, Any]] = []
         next_budget_index = 0
         started = time.perf_counter()
@@ -389,11 +406,12 @@ def run_scaling_experiment(
                 next_budget_index < len(token_budgets)
                 and trainer.tokens_seen >= token_budgets[next_budget_index]
             ):
-                validation_loss, checked_validation_tokens = _validation_loss(
+                validation_loss, checked_tokens = _validation_loss(
                     model,
                     validation_records,
+                    tokenizer,
                 )
-                if checked_validation_tokens != validation_tokens:
+                if checked_tokens != validation_tokens:
                     raise RuntimeError("validation token count drifted during run")
                 requested_budget = token_budgets[next_budget_index]
                 point = {
@@ -417,7 +435,7 @@ def run_scaling_experiment(
                 "model_spec": spec.to_dict(),
                 "model_identity_sha256": spec.identity_sha256(),
                 "parameters": spec.parameter_count(),
-                "initial_validation_loss": initial_validation_loss,
+                "initial_validation_loss": initial_loss,
                 "validation_tokens": validation_tokens,
                 "wall_seconds": elapsed,
                 "optimized_tokens_per_wall_second": trainer.tokens_seen / elapsed,
@@ -425,6 +443,7 @@ def run_scaling_experiment(
             }
         )
 
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     fit = _fit_log_plane(observations)
     report: dict[str, Any] = {
         "schema": SCHEMA,
@@ -444,32 +463,22 @@ def run_scaling_experiment(
         "controls": {
             "canonical_base": "random_init",
             "tokenizer_id": TOKENIZER_ID,
-            "vocab_size": 256,
+            "tokenizer_config_sha256": BYTE_TOKENIZER_HASH,
+            "tokenizer_vocab_sha256": BYTE_VOCAB_HASH,
+            "vocab_size": tokenizer.vocab_size,
             "model_max_seq_len": 256,
             "training_sequence_length": sequence_length,
             "batch_size": batch_size,
             "tokens_per_optimizer_step": tokens_per_step,
             "seed": seed,
-            "optimizer": asdict(TrainerConfig(
-                learning_rate=3e-4,
-                weight_decay=0.0,
-                betas=(0.9, 0.95),
-                eps=1e-8,
-                max_steps=max_steps,
-                warmup_steps=0,
-                scheduler="constant",
-                gradient_accumulation_steps=1,
-                gradient_clip_norm=1.0,
-                precision="fp32",
-                seed=seed,
-                deterministic_algorithms=True,
-                deterministic_warn_only=False,
-            )),
+            "optimizer": asdict(trainer_config),
             "packing_id": PACKING_ID,
             "token_budgets": list(token_budgets),
             "compute_proxy_definition": COMPUTE_PROXY,
         },
         "data": {
+            "dataset_id": manifest.get("dataset_id"),
+            "dataset_identity_sha256": manifest.get("dataset_identity_sha256"),
             "manifest_sha256": _file_sha256(manifest_path),
             "train_jsonl_sha256": _file_sha256(train_path),
             "validation_jsonl_sha256": _file_sha256(validation_path),
@@ -541,6 +550,12 @@ def validate_report(report: dict[str, Any], *, expected_source_sha: str | None =
     controls = report["controls"]
     if controls.get("tokenizer_id") != TOKENIZER_ID or controls.get("vocab_size") != 256:
         raise ValueError("controlled tokenizer/vocabulary drift")
+    config_hash = controls.get("tokenizer_config_sha256")
+    if config_hash is not None and config_hash != BYTE_TOKENIZER_HASH:
+        raise ValueError("controlled tokenizer config identity drift")
+    vocab_hash = controls.get("tokenizer_vocab_sha256")
+    if vocab_hash is not None and vocab_hash != BYTE_VOCAB_HASH:
+        raise ValueError("controlled tokenizer vocabulary identity drift")
     if controls.get("model_max_seq_len") != 256:
         raise ValueError("controlled context drift")
     if report["data"].get("train_validation_record_overlap") != []:
