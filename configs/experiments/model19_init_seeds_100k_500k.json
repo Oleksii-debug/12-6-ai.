@@ -1,0 +1,111 @@
+{
+  "authority": "LOCAL_FREE_RESEARCH_ONLY",
+  "base_init": {
+    "family": "normal",
+    "residual_branch_scale": "sqrt_2_layers",
+    "schema_version": 1,
+    "std": 0.02
+  },
+  "candidates": [
+    "stage_default",
+    "s1_width_reference_control",
+    "unscaled_residual_control"
+  ],
+  "decision": {
+    "min_relative_heldout_improvement_for_v2": 0.01
+  },
+  "expected_base_init_identity_sha256": "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5",
+  "experiment_id": "MODEL-19-INIT-SEEDS-100K-500K-v1",
+  "rejection_gates": {
+    "clip_fraction_threshold": 0.5,
+    "max_final_residual_rms_ratio_to_default": 1.5,
+    "max_initial_grad_ratio_to_default": 3.0
+  },
+  "scales": [
+    {
+      "expected_model_identity_sha256": "4f1aaa6821360f0d22033356e011843646c8c14a6b4d20a3ad5b2ad125867470",
+      "expected_parameters": 95568,
+      "label": "research_100k",
+      "model": {
+        "activation": "swiglu",
+        "attention_bias": false,
+        "attention_dropout": 0.0,
+        "d_ff": 128,
+        "d_model": 48,
+        "final_norm": true,
+        "head_dim": 12,
+        "lm_head_bias": false,
+        "max_seq_len": 256,
+        "mlp_bias": false,
+        "n_heads": 4,
+        "n_kv_heads": 4,
+        "n_layers": 3,
+        "norm_eps": 1e-05,
+        "norm_kind": "rmsnorm",
+        "norm_placement": "pre",
+        "position_embedding": "rope",
+        "rope_rotary_dim": 12,
+        "rope_theta": 10000.0,
+        "schema_version": 1,
+        "tie_word_embeddings": true,
+        "vocab_size": 256
+      }
+    },
+    {
+      "expected_model_identity_sha256": "208ac8ca113388e76f280d0154cae815785bee7705546f4d854d9447b9dd1f4a",
+      "expected_parameters": 467808,
+      "label": "research_500k",
+      "model": {
+        "activation": "swiglu",
+        "attention_bias": false,
+        "attention_dropout": 0.0,
+        "d_ff": 256,
+        "d_model": 96,
+        "final_norm": true,
+        "head_dim": 16,
+        "lm_head_bias": false,
+        "max_seq_len": 256,
+        "mlp_bias": false,
+        "n_heads": 6,
+        "n_kv_heads": 6,
+        "n_layers": 4,
+        "norm_eps": 1e-05,
+        "norm_kind": "rmsnorm",
+        "norm_placement": "pre",
+        "position_embedding": "rope",
+        "rope_rotary_dim": 16,
+        "rope_theta": 10000.0,
+        "schema_version": 1,
+        "tie_word_embeddings": true,
+        "vocab_size": 256
+      }
+    }
+  ],
+  "schema": "12-6.init-seeds-experiment.v1",
+  "training": {
+    "batch_size": 4,
+    "betas": [
+      0.9,
+      0.95
+    ],
+    "eps": 1e-08,
+    "gradient_clip_norm": 1.0,
+    "learning_rate": 0.0003,
+    "optimized_token_budget": 8064,
+    "precision": "fp32",
+    "scheduler": "constant",
+    "seeds": [
+      1337,
+      1338,
+      1339
+    ],
+    "sequence_length": 64,
+    "torch_threads": 2,
+    "weight_decay": 0.0
+  },
+  "truth_boundary": {
+    "canonical_initspec_change_authorized": false,
+    "paid_compute": false
+  },
+  "width_reference": 48
+}
