@@ -1,0 +1,28 @@
+{
+  "schema": "12-6.torch-compile-training.v1",
+  "status": "EXPERIMENTAL_OPT_IN_DISABLED_BY_DEFAULT",
+  "enabled": false,
+  "backend": "inductor",
+  "fullgraph": true,
+  "dynamic": false,
+  "mode": null,
+  "scope": {
+    "compiled_region": "model_forward_only_via_nn.Module.compile",
+    "canonical_trainer_semantics_replaced": false,
+    "canonical_model_state_dict_replaced": false,
+    "optimizer_scheduler_checkpoint_semantics_replaced": false
+  },
+  "activation_policy": {
+    "global_default_authorized": false,
+    "requires_local_parity_evidence": true,
+    "requires_local_timing_evidence": true,
+    "hardware_specific_results_must_not_be_promoted_globally": true
+  },
+  "evidence_profile": {
+    "fp32_atol": 0.00002,
+    "fp32_rtol": 0.00002,
+    "parity_scales_parameters": [467808, 1037696],
+    "timing_scales_parameters": [467808, 1037696, 10059840],
+    "paid_compute": false
+  }
+}
