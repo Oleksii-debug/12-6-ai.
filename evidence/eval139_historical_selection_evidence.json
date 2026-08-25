@@ -1,0 +1,170 @@
+{
+  "evidence_sha256": "c754dac7411fd175fae67196e16dded09bace889c0688bce2065b3b202272820",
+  "executed_evidence": [
+    {
+      "absolute_posthoc_best_validation": {
+        "checkpoint_id": "4d73bff00e44d8d42d015b2e2bf57f91bd66cbe89d559ab2223ae85a0c0ab494",
+        "optimized_tokens": 65772,
+        "optimizer_step": 261,
+        "validation_bpb": 3.057124995889164
+      },
+      "all_checkpoint_ids_retained": [
+        "effb6f1dc3b8731617fdc00ada7e2969ff3afe3fdecc43948ba396a06d115047",
+        "ce70768b7e99bf22e4c85eaaca6a4b5fb73aa29eb74f2bb4075b0bf19213cfc6",
+        "4d73bff00e44d8d42d015b2e2bf57f91bd66cbe89d559ab2223ae85a0c0ab494",
+        "46627fa96b54ee17d89c0a490f4ed6ff68fa5ed41170bf2973711c98ed04df53",
+        "21ccf005e17b80497bafc2f66187efdf71b15e903cb902f1e7d91dc3670e5753"
+      ],
+      "approximate_parameters": 467808,
+      "final": {
+        "checkpoint_id": "21ccf005e17b80497bafc2f66187efdf71b15e903cb902f1e7d91dc3670e5753",
+        "optimized_tokens": 262332,
+        "optimizer_step": 1041,
+        "validation_bpb": 3.798958326850685
+      },
+      "seed": 1337,
+      "selection": {
+        "checkpoint_id": "46627fa96b54ee17d89c0a490f4ed6ff68fa5ed41170bf2973711c98ed04df53",
+        "optimized_tokens": 131292,
+        "optimizer_step": 521,
+        "validation_bpb": 3.0749602234134934
+      },
+      "selection_decision_sha256": "badc214f7bc007d732ebfef414f9325e4567ff6c5aa2b11508467e255b3a0b75",
+      "status": "EXECUTED_LONG_TRAJECTORY",
+      "trajectory_id": "learn03-real-500k-seed-1337"
+    },
+    {
+      "absolute_posthoc_best_validation": {
+        "checkpoint_id": "09b7822fd5b659f2f65a0eda74eb12902c04a3c814b9573dde8cbcdd95689d16",
+        "optimized_tokens": 131292,
+        "optimizer_step": 521,
+        "validation_bpb": 3.0579617919507247
+      },
+      "all_checkpoint_ids_retained": [
+        "86aebf9ff4dff9f955daf7830261d4c2145f7f3abdfec25f2e8e0d019f616369",
+        "07791e2415435de8ab31b9f3360485921da25047b04df82afe9a888274fd10e3",
+        "839dbad934f7b597f07af4df8b7165bc151e78db9a426de8b49d95aff612c8a9",
+        "09b7822fd5b659f2f65a0eda74eb12902c04a3c814b9573dde8cbcdd95689d16",
+        "16467eb8a97ef3d292f99229716b9414b9146e68930948828ef086fb5970bbea"
+      ],
+      "approximate_parameters": 467808,
+      "final": {
+        "checkpoint_id": "16467eb8a97ef3d292f99229716b9414b9146e68930948828ef086fb5970bbea",
+        "optimized_tokens": 262332,
+        "optimizer_step": 1041,
+        "validation_bpb": 4.021088196702823
+      },
+      "seed": 1338,
+      "selection": {
+        "checkpoint_id": "09b7822fd5b659f2f65a0eda74eb12902c04a3c814b9573dde8cbcdd95689d16",
+        "optimized_tokens": 131292,
+        "optimizer_step": 521,
+        "validation_bpb": 3.0579617919507247
+      },
+      "selection_decision_sha256": "2877f2eb8cbd365aa03a9c5e9e35cdee0825796d35e5f5532aeb5699901c9b51",
+      "status": "EXECUTED_LONG_TRAJECTORY",
+      "trajectory_id": "learn03-real-500k-seed-1338"
+    },
+    {
+      "absolute_posthoc_best_validation": {
+        "checkpoint_id": "historical-logical-cbb62f570ca32e9afc20b12245210c8827f39955e0247599d44616e2827a1c67",
+        "optimized_tokens": 65772,
+        "optimizer_step": 261,
+        "physical_checkpoint_artifact_retained": false,
+        "validation_bpb": 3.875612846985032
+      },
+      "approximate_parameters": 95568,
+      "final": {
+        "checkpoint_id": "historical-logical-cbb62f570ca32e9afc20b12245210c8827f39955e0247599d44616e2827a1c67",
+        "optimized_tokens": 65772,
+        "optimizer_step": 261,
+        "physical_checkpoint_artifact_retained": false,
+        "validation_bpb": 3.875612846985032
+      },
+      "seed": 1337,
+      "selection": {
+        "checkpoint_id": "historical-logical-cbb62f570ca32e9afc20b12245210c8827f39955e0247599d44616e2827a1c67",
+        "optimized_tokens": 65772,
+        "optimizer_step": 261,
+        "physical_checkpoint_artifact_retained": false,
+        "validation_bpb": 3.875612846985032
+      },
+      "selection_decision_sha256": "5600001a1ea6e348e668e03312a809c157f8cf7c3ebf6fa592ae6e8cd90f636c",
+      "status": "EXECUTED_PREFIX_NOT_LONG_TRAJECTORY",
+      "trajectory_id": "research41-executed-prefix-95568",
+      "warning": "This is only the retained ~64K optimized-token prefix from the earlier controlled matrix; do not report it as the requested long 100K/1M campaign."
+    },
+    {
+      "absolute_posthoc_best_validation": {
+        "checkpoint_id": "historical-logical-553ca55b30649b334fbdcf07b31831feb6dc5110f504f28327168fe84419c81e",
+        "optimized_tokens": 65772,
+        "optimizer_step": 261,
+        "physical_checkpoint_artifact_retained": false,
+        "validation_bpb": 2.94530582679074
+      },
+      "approximate_parameters": 1037696,
+      "final": {
+        "checkpoint_id": "historical-logical-553ca55b30649b334fbdcf07b31831feb6dc5110f504f28327168fe84419c81e",
+        "optimized_tokens": 65772,
+        "optimizer_step": 261,
+        "physical_checkpoint_artifact_retained": false,
+        "validation_bpb": 2.94530582679074
+      },
+      "seed": 1337,
+      "selection": {
+        "checkpoint_id": "historical-logical-553ca55b30649b334fbdcf07b31831feb6dc5110f504f28327168fe84419c81e",
+        "optimized_tokens": 65772,
+        "optimizer_step": 261,
+        "physical_checkpoint_artifact_retained": false,
+        "validation_bpb": 2.94530582679074
+      },
+      "selection_decision_sha256": "89afdd6510ea2e622eda09151e85561b943953202cbb54effb87ebfa5e01181e",
+      "status": "EXECUTED_PREFIX_NOT_LONG_TRAJECTORY",
+      "trajectory_id": "research41-executed-prefix-1037696",
+      "warning": "This is only the retained ~64K optimized-token prefix from the earlier controlled matrix; do not report it as the requested long 100K/1M campaign."
+    }
+  ],
+  "historical_final_test_limitation": "These historical runs predate EVAL-139 and expose held-out validation, not a physically distinct final-test suite. EVAL-139 therefore tests checkpoint selection retrospectively but does not invent final-test measurements.",
+  "local_free_only": true,
+  "requested_long_trajectory_status": {
+    "approximately_100k": {
+      "artifact_available": false,
+      "blocked_before_training_at_step": "Verify exact locked environment inputs",
+      "status": "NOT_EXECUTED_AT_AVAILABLE_EXACT_HEAD",
+      "workflow": "TRAIN-41 Long 100K Base",
+      "workflow_run_id": 32862102098
+    },
+    "approximately_1m": {
+      "blocked_before_matrix_at_step": "Run focused learned-scaling control tests",
+      "machine_scaling_artifact_available": false,
+      "status": "NOT_EXECUTED_AS_LONG_TRAJECTORY_AT_AVAILABLE_EXACT_HEAD",
+      "workflow": "RESEARCH41 Learned-Base Scaling Experiment",
+      "workflow_run_id": 32861604025
+    },
+    "approximately_500k": {
+      "artifact_id": 9569471346,
+      "report_sha256": "5cd4a262431d00881751420dd8d3bc9cee8d5b40933e29ae5fbe51343fcb5c00",
+      "source_git_sha": "d2a9d2a2acb2ad899a8b6ee59b193751c4a81b8e",
+      "status": "EXECUTED",
+      "workflow": "LEARN03 Real 500K Fixed-Control Evidence",
+      "workflow_run_id": 32861195699
+    }
+  },
+  "schema": "12-6.eval139-historical-selection-evidence.v1",
+  "selection_rule": {
+    "direction": "minimize",
+    "metric_name": "bpb",
+    "minimum_improvement": 0.01,
+    "rule_identity_sha256": "268c2ea71be99a77eb11f4874a70e56e07100d8eaec0e8cda21814c3a5e235e1",
+    "schema": "12-6.checkpoint-selection-rule.v1",
+    "smoother": "trailing_median",
+    "smoothing_window": 3
+  },
+  "source_data_identities": {
+    "learn03_dataset_manifest_sha256": "b085a7ab56510575a11a80824fcff3a95a17f237d46d1be820e59d1289f220c2",
+    "learn03_train_jsonl_sha256": "61d24b7138df56527d201cea405d11c9f607684b4a9593dfa20c599cc2ee6998",
+    "learn03_validation_jsonl_sha256": "57f18a846dcca75955a82612382d4635ba9583965aa6628e77626cd2a3eb19c5",
+    "research41_prefix_report_sha256": "d78eb785377c6442c9e58a9de50c8852917956ae97e1258ea799b9df949de034"
+  },
+  "worker_id": "EVAL-139-CHECKPOINT-SELECTION"
+}

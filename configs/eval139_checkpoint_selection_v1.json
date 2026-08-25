@@ -1,0 +1,44 @@
+{
+  "checkpoint_contract": {
+    "checkpoint_id_required": true,
+    "chronological_registry_required": true,
+    "delete_later_checkpoints_when_earlier_wins": false,
+    "optimized_tokens_required": true,
+    "optimizer_step_required": true,
+    "preserve_all_registered_checkpoints": true
+  },
+  "local_free_only": true,
+  "policy_id": "eval139-canonical-checkpoint-selection-v1",
+  "policy_sha256": "58d1683111ce7df9024b4d50399bb1b6062381697ad136d69ebdae7c5e1915dd",
+  "purpose_contract": {
+    "final_test_only_after_selection_freeze": true,
+    "final_test_only_on_selected_checkpoint": true,
+    "required_one_or_more": [
+      "diagnostic_only"
+    ],
+    "required_singletons": [
+      "training_metrics",
+      "selection_validation",
+      "final_test"
+    ],
+    "selection_eligible_purpose": "selection_validation",
+    "suite_identities_must_be_distinct": true,
+    "suite_identity_hash": "sha256"
+  },
+  "reporting_contract": {
+    "compare_selected_to_absolute_posthoc_best_validation": true,
+    "compare_selected_to_final_checkpoint": true,
+    "final_checkpoint_is_selection_ineligible_unless_selected_by_rule": true,
+    "posthoc_best_is_selection_ineligible": true,
+    "selection_decision_hash_excludes_final_test_values": true
+  },
+  "schema": "12-6.checkpoint-selection-policy.v1",
+  "selector": {
+    "direction": "minimize",
+    "metric_name": "bpb",
+    "minimum_improvement": 0.01,
+    "smoother": "trailing_median",
+    "smoothing_window": 3
+  },
+  "status": "FROZEN_BY_EVAL_139"
+}
