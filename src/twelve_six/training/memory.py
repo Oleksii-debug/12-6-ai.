@@ -11,7 +11,6 @@ import os
 from dataclasses import dataclass
 from typing import Any
 
-import torch
 from torch import Tensor, nn
 from torch.optim import Optimizer
 
