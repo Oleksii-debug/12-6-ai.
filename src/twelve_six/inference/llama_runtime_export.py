@@ -60,7 +60,7 @@ def _json_object(data: bytes, *, artifact: str) -> dict[str, Any]:
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ValueError(f"{artifact} is not valid UTF-8 JSON") from exc
     if not isinstance(value, dict):
-        raise ValueError(f"{artifact} must contain a JSON object")
+        raise TypeError(f"{artifact} must contain a JSON object")
     return value
 
 
@@ -108,7 +108,7 @@ def materialize_standard_llama_directory(
     )
     identity = source_manifest.get("identity")
     if not isinstance(identity, dict) or not isinstance(identity.get("model_spec"), dict):
-        raise ValueError("source export manifest is missing ModelSpec")
+        raise TypeError("source export manifest is missing ModelSpec")
     spec = ModelSpec.from_dict(identity["model_spec"])
     if spec.identity_sha256() != identity.get("model_spec_hash"):
         raise ValueError("source export ModelSpec hash mismatch")

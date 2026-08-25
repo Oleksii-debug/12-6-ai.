@@ -5,9 +5,10 @@ from __future__ import annotations
 import hashlib
 import importlib.metadata
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 
 import torch
 from safetensors.torch import load as load_safetensors_bytes
@@ -59,7 +60,7 @@ def _json_object(data: bytes, *, artifact: str) -> dict[str, Any]:
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ValueError(f"{artifact} is not valid UTF-8 JSON") from exc
     if not isinstance(value, dict):
-        raise ValueError(f"{artifact} must contain a JSON object")
+        raise TypeError(f"{artifact} must contain a JSON object")
     return value
 
 
@@ -69,8 +70,8 @@ def _transformers_types():
         raise RuntimeError(
             f"Transformers runtime version mismatch: expected {TRANSFORMERS_VERSION}, got {version}"
         )
-    from transformers import LlamaConfig, LlamaForCausalLM  # noqa: PLC0415
-    from transformers.models.llama.modeling_llama import apply_rotary_pos_emb  # noqa: PLC0415
+    from transformers import LlamaConfig, LlamaForCausalLM
+    from transformers.models.llama.modeling_llama import apply_rotary_pos_emb
 
     return LlamaConfig, LlamaForCausalLM, apply_rotary_pos_emb
 
@@ -168,7 +169,7 @@ def load_transformers_llama_runtime(
         raise ValueError("exported source manifest differs from verified checkpoint manifest")
     identity = source_manifest.get("identity")
     if not isinstance(identity, dict) or not isinstance(identity.get("model_spec"), dict):
-        raise ValueError("exported source manifest is missing ModelSpec")
+        raise TypeError("exported source manifest is missing ModelSpec")
     spec = ModelSpec.from_dict(identity["model_spec"])
     if spec.identity_sha256() != identity.get("model_spec_hash"):
         raise ValueError("exported ModelSpec identity mismatch")

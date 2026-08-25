@@ -6,6 +6,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: d07-transformers-llama-runtime-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   locked-transformers-runtime:
     runs-on: ubuntu-24.04
@@ -45,7 +49,11 @@ jobs:
           import torch
           import twelve_six
           assert transformers.__version__ == "5.15.0", transformers.__version__
-          assert torch.__version__ == "2.13.0", torch.__version__
+          # PyTorch CUDA wheels expose a PEP 440 local build suffix (for example
+          # 2.13.0+cu130) even though the exact locked distribution version is
+          # torch==2.13.0. Validate the locked public version without rejecting
+          # the truthful CUDA build identity retained in runtime evidence below.
+          assert torch.__version__.split("+", 1)[0] == "2.13.0", torch.__version__
           print("transformers", transformers.__version__)
           print("torch", torch.__version__)
           print("twelve_six", twelve_six.__version__)
