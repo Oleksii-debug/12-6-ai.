@@ -1,0 +1,92 @@
+name: DATA-107 Shard Scale Evidence
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: data107-shard-scale-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  local-free-scale:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Bind exact source head
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+      - name: Install exact locked x86-64 runtime
+        run: |
+          python -m venv .data107
+          .data107/bin/python -m pip install \
+            --disable-pip-version-check --no-deps --require-hashes \
+            -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .data107/bin/python -m pip install \
+            --disable-pip-version-check --no-deps --require-hashes \
+            -r requirements/locks/linux-x86_64/runtime.lock.txt
+          .data107/bin/python -m pip install \
+            --disable-pip-version-check --no-deps --require-hashes \
+            -r requirements/locks/linux-x86_64/dev.lock.txt
+      - name: Lint DATA-107 paths
+        run: >-
+          .data107/bin/python -m ruff check
+          src/twelve_six/data/shard_scale.py
+          tools/run_data107_shard_scale.py
+          tests/test_data107_shard_scale.py
+      - name: Run deterministic storage and incumbent D04 regressions
+        env:
+          PYTHONPATH: src
+        run: >-
+          .data107/bin/python -m pytest -q
+          tests/test_data107_shard_scale.py
+          tests/test_sharded_storage.py
+          tests/test_streaming_packing_dataloader.py
+          tests/test_cursor_codec.py
+      - name: Execute 256 MiB-byte-token scale proof and real Trainer feed
+        env:
+          PYTHONPATH: src
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          .data107/bin/python tools/run_data107_shard_scale.py \
+            --repo-root . \
+            --source-sha "$EXPECTED_SOURCE_SHA" \
+            --work-dir data107-scale-work \
+            --output data107-scale-evidence.json
+      - name: Fail closed on incomplete evidence
+        run: |
+          .data107/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path("data107-scale-evidence.json").read_text())
+          assert report["paid_compute"] is False
+          assert report["stress_fixture"]["training_eligible"] is False
+          assert report["stress_fixture"]["byte_tokens"] >= 200_000_000
+          assert report["stress_fixture"]["identical_global_identity"] is True
+          assert report["stress_fixture"]["identical_shard_content_and_manifest_hashes"] is True
+          assert report["stress_fixture"]["resumed_complete_shards"] >= 7
+          assert report["data25_repackage"]["identical_global_identity"] is True
+          assert report["data25_repackage"]["identical_shard_content_and_manifest_hashes"] is True
+          assert report["d04_trainer_stream"]["delivered_loss_tokens"] == report["d04_trainer_stream"]["trainer_tokens_seen"]
+          PY
+      - name: Upload compact exact-head evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: data107-shard-scale-evidence
+          path: |
+            data107-scale-evidence.json
+            data107-scale-work/retained-manifests/*.json
+          if-no-files-found: error
+          retention-days: 30
