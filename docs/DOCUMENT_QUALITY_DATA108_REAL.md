@@ -32,25 +32,33 @@ Calibration and holdout source ranges are non-overlapping. The holdout is never 
 DATA-108 evaluates a small predeclared set of threshold variants while retaining DATA-32's exact feature extractor and decision logic:
 
 1. incumbent DATA-32 policy;
-2. `data108-real-balanced-v2`;
+2. `data108-real-balanced-v3`;
 3. `data108-real-preserve-v2`;
 4. `data108-real-strict-v2`.
 
+The first balanced candidate exposed a real calibration failure: a legitimate Rada amendment register had zero repeated-line density but a distinct-token ratio of `0.1120689655` and a dominant-token ratio of `0.3275862069`, so DATA-32-style natural-language diversity gates incorrectly rejected it. Using the calibration partition only, the balanced candidate was revised to natural-language `min_distinct_token_ratio=0.10` and `max_dominant_token_ratio=0.34`. The frozen holdout was not consulted during that change.
+
 Selection uses only calibration labels. The deterministic objective is, in order: minimize the maximum number of errors in any source family; minimize total classification errors; minimize false rejects; minimize false accepts; then prefer the earlier candidate. This makes false-removal avoidance explicit without allowing aggregate accuracy to hide a source-family failure.
 
-Reports include false-accept and false-reject counts and conditional rates by source family and modality as well as overall.
+The selected policy identity from the deterministic local replay is `data108-real-balanced-v3`, SHA-256 `64ee3abbb3e349314d945f6a8914a5c5331cda37ef7424614584ccbe8583acd5`.
+
+The local replay classified all 20 calibration examples correctly: 0 false accepts and 0 false rejects. After policy selection was frozen, the separate 14-example holdout also produced 0 false accepts and 0 false rejects. Reports are broken down by source family and modality; the retained summary is `reports/d03/data108/local_replay_summary.json`.
 
 ## Complete-current-corpus effect
 
 The execution runner rebuilds and verifies the exact DATA-25 V0.1 project corpus through the incumbent builder, then appends the exact three accepted DATA-21/22 normalized external records. The selected policy is run over that complete current evidence scope.
 
-For each rejected document the report retains record id, source family, modality, UTF-8 bytes, byte-token count, and rejection reasons. Aggregate removed documents, bytes/tokens, modality effects, and source-family effects are reported exactly.
+The local deterministic replay reproduced the retained DATA-25 key counts exactly: 46,207 documents and 21,411,248 byte-tokens. It then evaluated the exact three retained DATA-21/22 real records, adding 173,358 byte-tokens. The complete current scope therefore contains 46,210 documents and 21,584,606 byte-tokens.
 
-A controlled training A/B is required only if the selected policy removes at least 0.5% of current byte-token mass or at least 1.0% of current documents. Below both thresholds, DATA-108 records `NOT_REQUIRED_NO_MATERIAL_COMPOSITION_CHANGE`; training on effectively unchanged composition would not be a meaningful quality-filter A/B.
+`data108-real-balanced-v3` removed 0 documents, 0 UTF-8 bytes and 0 byte-tokens from that scope. The exact removed-document list is therefore empty.
+
+A controlled training A/B is required only if the selected policy removes at least 0.5% of current byte-token mass or at least 1.0% of current documents. Both observed fractions are exactly 0.0, so DATA-108 records `NOT_REQUIRED_NO_MATERIAL_COMPOSITION_CHANGE`. A ~250K training A/B would compare identical corpus composition and is therefore not executed.
 
 Model loss is not used to define the quality labels or choose the policy.
 
 ## LOCAL_FREE reproduction
+
+The retained local replay ran on Python 3.13.5, Linux x86-64 under KVM, with 5 visible Intel Xeon Platinum 8573C CPUs. It reconstructed the exact retained DATA-25 generation/split/accounting logic and reproduced its document and byte-token totals before applying the unchanged DATA-32 feature/decision semantics plus the selected threshold policy. The exact DATA-21/22 artifact was read locally and hash-verified.
 
 The dedicated GitHub Actions workflow uses only the repository's existing hosted evidence path, Python 3.11, pytest, the exact retained DATA-21/22 artifact, and the existing corpus builder. It does not launch paid accelerators or paid compute.
 
@@ -60,4 +68,4 @@ The runner command is:
 PYTHONPATH=src python tools/run_document_quality_real.py --data21-artifact data21-22-external-source-intake.zip --output-dir reports/d03/data108
 ```
 
-The authoritative execution outputs are `calibration.json`, `holdout.json`, `complete_current_corpus_effects.json`, and `recommendation.json`. Claims must be taken from a terminal-success exact-head run, not from queued or stale workflows.
+The authoritative hosted execution outputs are `calibration.json`, `holdout.json`, `complete_current_corpus_effects.json`, and `recommendation.json`. A queued hosted run is not represented as PASS; when terminal-success evidence exists, its outputs supersede the local replay summary for hosted-run claims.
