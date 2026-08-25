@@ -28,6 +28,10 @@ class TokenizerIdentity:
             "special_tokens": dict(self.special_tokens),
         }
 
+    def as_dict(self) -> dict[str, object]:
+        """Compatibility alias for orchestration code; identity semantics are unchanged."""
+        return self.to_dict()
+
 
 class TokenizerProtocol(Protocol):
     pad_id: int | None
