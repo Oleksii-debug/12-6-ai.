@@ -32,12 +32,12 @@ def test_s0_llama_plan_is_exact_and_raw_base_safe() -> None:
     plan = build_llama_interop_plan(stage.model)
     config = plan.target_config
 
-    assert plan.schema == "12-6.transformers-llama-interop-plan.v1"
+    assert plan.schema == "12-6.transformers-llama-interop-plan.v2"
     assert plan.source_model_spec_sha256 == stage.expected_model_identity_sha256
     assert plan.source_parameter_count == 10_140
     assert plan.target_architecture == "LlamaForCausalLM"
     assert plan.rope_transform == "PAIRWISE_INTERLEAVED_TO_LLAMA_HALF_SPLIT"
-    assert plan.runtime_status == "NOT_TESTED_REQUIRES_HASH_LOCKED_TRANSFORMERS"
+    assert plan.runtime_status == "LOCKED_RUNTIME_REQUIRED"
     assert plan.runtime_parity_required is True
     assert len(plan.identity_sha256()) == 64
 
@@ -52,7 +52,8 @@ def test_s0_llama_plan_is_exact_and_raw_base_safe() -> None:
     assert config["max_position_embeddings"] == 128
     assert config["hidden_act"] == "silu"
     assert config["rms_norm_eps"] == 1e-5
-    assert config["rope_theta"] == 10_000.0
+    assert config["rope_parameters"] == {"rope_type": "default", "rope_theta": 10_000.0}
+    assert "rope_theta" not in config
     assert config["bos_token_id"] is None
     assert config["eos_token_id"] is None
     assert config["pad_token_id"] is None
@@ -63,7 +64,7 @@ def test_s0_llama_plan_is_exact_and_raw_base_safe() -> None:
     assert all(row["transform"] == plan.rope_transform for row in q_rows + k_rows)
 
 
-def test_rope_permutation_proves_pairwise_to_llama_basis_equivalence() -> None:
+def test_rope_permutation_proves_pairwise_to_llama_basis_equivalence_exactly() -> None:
     stage = _s0()
     spec = stage.model
     torch.manual_seed(17)
@@ -82,7 +83,7 @@ def test_rope_permutation_proves_pairwise_to_llama_basis_equivalence() -> None:
     llama_rotated = llama_basis * llama_cos + _llama_rotate_half(llama_basis) * llama_sin
 
     expected = source_rotated.index_select(-1, per_head)
-    torch.testing.assert_close(llama_rotated, expected, atol=1e-6, rtol=1e-6)
+    assert torch.equal(llama_rotated, expected)
 
 
 def test_state_dict_conversion_is_complete_and_non_mutating() -> None:
