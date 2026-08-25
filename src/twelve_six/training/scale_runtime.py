@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Iterator, Literal
@@ -15,7 +16,7 @@ from torch.utils.checkpoint import checkpoint
 from twelve_six.model import CausalLMOutput, InitSpec, ModelSpec, TwelveSixDecoder
 
 from .config import TrainerConfig
-from .trainer import Trainer, build_optimizer, build_scheduler
+from .trainer import NonFiniteTrainingError, Trainer, build_optimizer, build_scheduler
 
 AttentionPolicy = Literal["auto", "flash_required", "math"]
 PersistentStateMode = Literal["replicated_fp32_adamw", "fsdp2_fp32_adamw"]
@@ -119,33 +120,23 @@ def estimate_scale_resources(
     weight_only_bytes = parameters * 4
 
     # K + V, before GQA expansion, fp16/bf16 cache.
-    kv_cache_bytes_per_token = (
-        2 * spec.n_layers * spec.n_kv_heads * spec.head_dim * 2
-    )
+    kv_cache_bytes_per_token = 2 * spec.n_layers * spec.n_kv_heads * spec.head_dim * 2
 
     tokens_per_microbatch = sequence_length * microbatch_size
     if activation_checkpointing:
         # Checkpoint boundaries retain one hidden-state-sized tensor per block.
-        saved_activation_elements = (
-            tokens_per_microbatch * spec.n_layers * spec.d_model
-        )
+        saved_activation_elements = tokens_per_microbatch * spec.n_layers * spec.d_model
         # Peak recomputation holds one block's intermediates. The current decoder
         # repeats K/V to query-head count before SDPA, so budget expanded Q/K/V.
         peak_block_elements = tokens_per_microbatch * (
-            4 * spec.d_model
-            + 3 * spec.q_dim
-            + 2 * spec.d_ff
+            4 * spec.d_model + 3 * spec.q_dim + 2 * spec.d_ff
         )
         # The dense LM head is material at 32K vocab and must not be omitted.
         logits_elements = tokens_per_microbatch * spec.vocab_size
-        activation_elements = (
-            saved_activation_elements + peak_block_elements + logits_elements
-        )
+        activation_elements = saved_activation_elements + peak_block_elements + logits_elements
     else:
         per_layer_elements = tokens_per_microbatch * (
-            4 * spec.d_model
-            + 3 * spec.q_dim
-            + 2 * spec.d_ff
+            4 * spec.d_model + 3 * spec.q_dim + 2 * spec.d_ff
         )
         logits_elements = tokens_per_microbatch * spec.vocab_size
         activation_elements = spec.n_layers * per_layer_elements + logits_elements
@@ -159,14 +150,10 @@ def estimate_scale_resources(
     # 8*P and 16x the causal score term instead of 6*P and 12x.
     if activation_checkpointing:
         parameterized_flops_per_token = 8 * parameters
-        attention_score_flops_per_token = (
-            16 * spec.n_layers * sequence_length * spec.q_dim
-        )
+        attention_score_flops_per_token = 16 * spec.n_layers * sequence_length * spec.q_dim
     else:
         parameterized_flops_per_token = 6 * parameters
-        attention_score_flops_per_token = (
-            12 * spec.n_layers * sequence_length * spec.q_dim
-        )
+        attention_score_flops_per_token = 12 * spec.n_layers * sequence_length * spec.q_dim
 
     return ScaleResourceEstimate(
         parameters=parameters,
@@ -175,16 +162,13 @@ def estimate_scale_resources(
         persistent_parameter_bytes_per_rank=parameter_bytes,
         persistent_gradient_bytes_per_rank=gradient_bytes,
         persistent_optimizer_bytes_per_rank=optimizer_bytes,
-        persistent_total_bytes_per_rank=(
-            parameter_bytes + gradient_bytes + optimizer_bytes
-        ),
+        persistent_total_bytes_per_rank=parameter_bytes + gradient_bytes + optimizer_bytes,
         full_training_checkpoint_bytes=full_checkpoint_bytes,
         weight_only_checkpoint_bytes=weight_only_bytes,
         kv_cache_bytes_per_token_per_sequence=kv_cache_bytes_per_token,
         estimated_activation_bytes_per_microbatch=activation_bytes,
-        estimated_training_flops_per_token=(
-            parameterized_flops_per_token + attention_score_flops_per_token
-        ),
+        estimated_training_flops_per_token=parameterized_flops_per_token
+        + attention_score_flops_per_token,
     )
 
 
@@ -268,11 +252,7 @@ def build_meta_decoder(
     activation_checkpointing: bool = True,
 ) -> TwelveSixDecoder:
     """Instantiate the real decoder architecture on meta without parameter storage."""
-    decoder_cls = (
-        ActivationCheckpointedDecoder
-        if activation_checkpointing
-        else TwelveSixDecoder
-    )
+    decoder_cls = ActivationCheckpointedDecoder if activation_checkpointing else TwelveSixDecoder
     with torch.device("meta"):
         model = decoder_cls(spec, init_spec)
     if any(parameter.device.type != "meta" for parameter in model.parameters()):
@@ -302,9 +282,7 @@ def reset_materialized_decoder_parameters_(model: TwelveSixDecoder) -> None:
         model.lm_head.weight = model.token_embedding.weight
 
     actual = sum(
-        parameter.numel()
-        for parameter in model.parameters()
-        if parameter.requires_grad
+        parameter.numel() for parameter in model.parameters() if parameter.requires_grad
     )
     if actual != model.spec.parameter_count():
         raise RuntimeError(
@@ -365,6 +343,8 @@ class ExternallyPlacedTrainer(Trainer):
     unsafe for FSDP2: fully_shard must run before optimizer creation and a sharded
     model must not be moved wholesale afterward. This variant keeps all Trainer
     safety/accumulation/resume behavior while making placement ownership explicit.
+    DTensor-safe gradient norm computation is required because the D02 base
+    implementation accumulates into a local Tensor, which cannot accept DTensor sums.
     """
 
     def __init__(
@@ -407,3 +387,31 @@ class ExternallyPlacedTrainer(Trainer):
             attention_policy=self.attention_policy,
             device=self.device,
         )
+
+    def _normalize_gradients_and_norm(self, token_count: int) -> Tensor:
+        """Normalize gradients and compute norm for both Tensor and DTensor params."""
+        if token_count <= 0:
+            raise RuntimeError("optimizer update requires at least one valid target token")
+
+        found = False
+        for parameter in self.model.parameters():
+            if parameter.grad is None:
+                continue
+            found = True
+            parameter.grad.detach().div_(token_count)
+
+        if not found:
+            return torch.zeros((), device=self.device)
+
+        try:
+            # PyTorch documents clip_grad_norm_ as DTensor-aware for FSDP2. An
+            # infinite threshold computes the global norm without changing gradients.
+            return torch.nn.utils.clip_grad_norm_(
+                self.model.parameters(),
+                max_norm=math.inf,
+                error_if_nonfinite=True,
+            )
+        except RuntimeError as exc:
+            reason = f"non-finite gradient at micro_step={self.micro_step}"
+            self._mark_failed(reason)
+            raise NonFiniteTrainingError(reason) from exc
