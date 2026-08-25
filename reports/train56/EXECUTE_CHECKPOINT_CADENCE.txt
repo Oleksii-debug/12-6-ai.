@@ -1,0 +1,2 @@
+TRAIN-56 execution trigger for measured checkpoint cadence evidence.
+This branch is not intended for merge; the base workflow uploads the machine report.
