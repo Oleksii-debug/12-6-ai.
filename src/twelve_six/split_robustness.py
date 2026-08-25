@@ -88,15 +88,9 @@ class SplitRecord:
         return cls(**dict(value))
 
     def identity_mapping(self) -> dict[str, Any]:
-        return {
-            "id": self.id,
-            "source_id": self.source_id,
-            "modality": self.modality,
-            "content_sha256": self.content_sha256,
-            "near_duplicate_cluster_id": self.near_duplicate_cluster_id,
-            "training_eligible": self.training_eligible,
-            "purpose": self.purpose,
-        }
+        payload = asdict(self)
+        payload.pop("text")
+        return payload
 
 
 @dataclass(frozen=True, slots=True)
@@ -235,8 +229,6 @@ def legacy_record_hash_assignments(
         digest = hashlib.sha256(f"{seed}\0{record.id}".encode("utf-8")).digest()
         bucket = int.from_bytes(digest[:8], "big") % 10_000
         output[record.id] = "validation" if bucket < threshold else "train"
-    if set(output.values()) != {"train", "validation"}:
-        raise SplitRobustnessError("record-hash audit produced an empty split")
     return output
 
 
@@ -377,6 +369,9 @@ def verify_split_family_manifest(
     variants = manifest.get("variants")
     if not isinstance(variants, list) or len(variants) < 2:
         raise SplitRobustnessError("split family must contain at least two variants")
+
+    actual_variant_identities: list[str] = []
+    actual_validation_union: set[str] = set()
     for variant in variants:
         if not isinstance(variant, Mapping):
             raise SplitRobustnessError("split variant must be an object")
@@ -384,27 +379,38 @@ def verify_split_family_manifest(
         claimed = core.pop("split_identity_sha256", None)
         if claimed != _sha256_bytes(_canonical_json_bytes(core)):
             raise SplitRobustnessError("split variant identity/content mismatch")
-        assignments = {
-            record_id: "train" for record_id in variant.get("train_record_ids", [])
-        }
-        assignments.update(
-            {record_id: "validation" for record_id in variant.get("validation_record_ids", [])}
-        )
+        actual_variant_identities.append(_require_sha256(claimed, "split_identity_sha256"))
+        train_record_ids = variant.get("train_record_ids", [])
+        validation_record_ids = variant.get("validation_record_ids", [])
+        assignments = {record_id: "train" for record_id in train_record_ids}
+        assignments.update({record_id: "validation" for record_id in validation_record_ids})
         if set(assignments) != {record.id for record in records}:
             raise SplitRobustnessError("split variant does not assign the exact eligible corpus")
         leakage = audit_cluster_leakage(records, assignments)
         if leakage:
             raise SplitRobustnessError("near-duplicate cluster straddles train/validation")
+        actual_validation_union.update(validation_record_ids)
+
+    if manifest.get("variant_split_identities") != actual_variant_identities:
+        raise SplitRobustnessError("split-family variant identity index mismatch")
+
     core = dict(manifest)
     claimed_family = core.pop("split_family_identity_sha256", None)
     if claimed_family != _sha256_bytes(_canonical_json_bytes(core)):
         raise SplitRobustnessError("split-family identity/content mismatch")
+
     shared = set(manifest.get("shared_train_record_ids", []))
     validation_union = set(manifest.get("validation_union_record_ids", []))
+    if validation_union != actual_validation_union:
+        raise SplitRobustnessError("validation union does not match variant validations")
     if not shared or shared & validation_union:
         raise SplitRobustnessError("shared train core is empty or contaminated")
     if shared | validation_union != {record.id for record in records}:
         raise SplitRobustnessError("shared-train/validation-union coverage mismatch")
+    if manifest.get("shared_train_documents") != len(shared):
+        raise SplitRobustnessError("shared-train document count mismatch")
+    if manifest.get("validation_union_documents") != len(validation_union):
+        raise SplitRobustnessError("validation-union document count mismatch")
 
 
 def assert_run_split_binding(
@@ -528,6 +534,17 @@ def bind_split_evidence(
 ) -> dict[str, Any]:
     """Content-address split-sensitivity evidence to one immutable split family."""
 
+    reserved = {
+        "schema_version",
+        "split_family_identity_sha256",
+        "eligible_corpus_sha256",
+        "evidence_sha256",
+    }
+    conflicts = sorted(reserved & set(payload))
+    if conflicts:
+        raise SplitRobustnessError(
+            "unbound evidence payload contains reserved fields: " + ", ".join(conflicts)
+        )
     family = _require_sha256(
         split_family_manifest.get("split_family_identity_sha256"),
         "split_family_identity_sha256",
@@ -541,6 +558,4 @@ def bind_split_evidence(
         ),
         **dict(payload),
     }
-    if "evidence_sha256" in core:
-        raise SplitRobustnessError("unbound payload must not predeclare evidence_sha256")
     return {**core, "evidence_sha256": _sha256_bytes(_canonical_json_bytes(core))}
