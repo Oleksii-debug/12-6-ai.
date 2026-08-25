@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Run the DATA-21/22 bounded real external-source intake."""
 
 from __future__ import annotations
