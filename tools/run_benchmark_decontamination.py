@@ -97,16 +97,16 @@ def _verify_project_authored_local_check(
 ) -> None:
     sources = source_registry.get("sources")
     if not isinstance(sources, list):
-        raise ValueError("source registry sources must be an array")
+        raise TypeError("source registry sources must be an array")
     by_id = {item.get("source_id"): item for item in sources if isinstance(item, Mapping)}
     for record in references:
         source_id = record.get("source_id")
         source = by_id.get(source_id)
         if not isinstance(source, Mapping):
-            raise ValueError(f"reference source missing from source registry: {source_id}")
+            raise TypeError(f"reference source missing from source registry: {source_id}")
         provenance = source.get("provenance")
         if not isinstance(provenance, Mapping):
-            raise ValueError(f"reference source lacks provenance: {source_id}")
+            raise TypeError(f"reference source lacks provenance: {source_id}")
         if provenance.get("external_source") is not False:
             raise ValueError(f"reference source is not proven project-controlled: {source_id}")
         if provenance.get("origin_type") != "project_authored_fixture":
