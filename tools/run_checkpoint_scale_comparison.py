@@ -7,6 +7,7 @@ import json
 import shutil
 import statistics
 import time
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
@@ -324,7 +325,7 @@ def build_report(
         "parameters": stage.model.parameter_count(),
         "expected_parameters": stage.expected_parameters,
         "repetitions": repetitions,
-        "policy": checkpoint_scale_policy(stage.model.parameter_count()).__dict__,
+        "policy": asdict(checkpoint_scale_policy(stage.model.parameter_count())),
         "samples": samples,
         "summary": {
             "v1_checkpoint_total_bytes_median": v1_total,
