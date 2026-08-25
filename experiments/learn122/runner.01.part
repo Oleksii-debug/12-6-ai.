@@ -1,0 +1,158 @@
+    root.mkdir(parents=True, exist_ok=True)
+    manifest = _build_corpus(repo, root)
+    tok = ByteTokenizer()
+    locks = _locks(repo)
+    protocol = _protocol(source_sha, tok, manifest, locks)
+    _write_json(root / 'comparison-protocol.json', protocol)
+    _write_json(root / 'machine-manifest-prepare.json', _machine_manifest(source_sha, locks, f'prepare:{os.getpid()}:{time.time_ns()}'))
+    return protocol
+
+def _state_template(label: str, seed: int, spec: ModelSpec, init: InitSpec, run: dict[str, Any], random_hash: str, initial_eval: dict[str, Any], initial_checkpoint: dict[str, Any], initial_generation: dict[str, Any], process_marker: str) -> dict[str, Any]:
+    return {'schema': '12-6.learn122-run-state.v1', 'model_label': label, 'seed': seed, 'parameter_count': spec.parameter_count(), 'model_spec_sha256': spec.identity_sha256(), 'init_spec_sha256': init.identity_sha256(), 'random_initialization': True, 'random_init_state_sha256': random_hash, 'run_manifest_sha256': run['identity_sha256'], 'initial_evaluation': initial_eval, 'evaluations': [], 'checkpoints': [initial_checkpoint], 'generations': [{'milestone_requested_tokens': 0, 'checkpoint': initial_checkpoint['path'], 'generation': initial_generation}], 'phases': [], 'fresh_process_resumes': [], 'latest_checkpoint': initial_checkpoint['path'], 'latest_optimizer_step': 0, 'latest_optimized_tokens': 0, 'last_process_marker': process_marker}
+
+def _snapshot_parameters(model: TwelveSixDecoder) -> list[torch.Tensor]:
+    return [p.detach().clone() for p in model.parameters()]
+
+def _update_stats(model: TwelveSixDecoder, before: list[torch.Tensor]) -> tuple[float, float, float]:
+    delta_sq = 0.0
+    param_sq = 0.0
+    for old, new in zip(before, model.parameters(), strict=True):
+        current = new.detach()
+        delta_sq += float(torch.sum((current - old) ** 2).item())
+        param_sq += float(torch.sum(current ** 2).item())
+    update_l2 = math.sqrt(delta_sq)
+    parameter_l2 = math.sqrt(param_sq)
+    ratio = update_l2 / parameter_l2 if parameter_l2 > 0 else 0.0
+    return (update_l2, parameter_l2, ratio)
+
+def _load_resume(run_dir: Path, source_sha: str, spec: ModelSpec, init: InitSpec, tok: ByteTokenizer, manifest: dict[str, Any], run: dict[str, Any], cfg: TrainerConfig) -> tuple[TwelveSixDecoder, Trainer, dict[str, Any]]:
+    state = _read_json(run_dir / 'state.json')
+    if state['run_manifest_sha256'] != run['identity_sha256']:
+        raise Learn122Error('resume run manifest identity mismatch')
+    model = TwelveSixDecoder(spec, init)
+    trainer = Trainer(model, cfg, device='cpu')
+    checkpoint = run_dir / state['latest_checkpoint']
+    loaded = load_trainer_checkpoint(checkpoint, model=model, trainer=trainer, strict_model=True, restore_rng=True, expected_git_sha=source_sha, expected_model_spec_hash=spec.identity_sha256(), expected_tokenizer_hash=tok.identity.config_sha256, expected_dataset_manifest_hash=manifest['corpus_identity_sha256'])
+    if loaded.manifest['identity']['run_manifest_hash'] != run['identity_sha256']:
+        raise Learn122Error('checkpoint run-manifest binding mismatch')
+    if trainer.optimizer_step != int(state['latest_optimizer_step']):
+        raise Learn122Error('resume optimizer step mismatch')
+    if trainer.tokens_seen != int(state['latest_optimized_tokens']):
+        raise Learn122Error('resume optimized-token mismatch')
+    return (model, trainer, state)
+
+def train_phase(repo: Path, source_sha: str, root: Path, label: str, seed: int, target_tokens: int, resume: bool) -> dict[str, Any]:
+    if seed not in SEEDS:
+        raise Learn122Error(f'seed {seed} is outside frozen seed family {SEEDS}')
+    if target_tokens not in _milestones(label, seed):
+        raise Learn122Error(f'target {target_tokens} is not a frozen milestone for {label}/seed{seed}')
+    if target_tokens > _planned_final_target(label, seed):
+        raise Learn122Error('target exceeds planned budget')
+    manifest, tok, locks, protocol = _common(repo, source_sha, root)
+    spec = _spec(label)
+    init = InitSpec()
+    cfg = _trainer_config(seed)
+    run = _run_manifest(source_sha, label, seed, spec, init, tok, manifest, cfg, locks, protocol)
+    run_dir = _run_dir(root, label, seed)
+    run_dir.mkdir(parents=True, exist_ok=True)
+    if (run_dir / 'run-manifest.json').exists():
+        if _read_json(run_dir / 'run-manifest.json') != run:
+            raise Learn122Error('run manifest drift')
+    else:
+        _write_json(run_dir / 'run-manifest.json', run)
+    process_marker = f'{label}:seed{seed}:{os.getpid()}:{time.time_ns()}'
+    _write_json(run_dir / f"machine-{process_marker.replace(':', '-')}.json", _machine_manifest(source_sha, locks, process_marker))
+    phase_start = time.perf_counter()
+    rss_start = _rss_bytes()
+    if resume:
+        model, trainer, state = _load_resume(run_dir, source_sha, spec, init, tok, manifest, run, cfg)
+        previous_marker = str(state['last_process_marker'])
+        if previous_marker == process_marker:
+            raise Learn122Error('fresh-process resume marker did not change')
+        resume_record: dict[str, Any] = {'loaded_checkpoint': state['latest_checkpoint'], 'loaded_optimizer_step': trainer.optimizer_step, 'loaded_optimized_tokens': trainer.tokens_seen, 'previous_process_marker': previous_marker, 'resume_process_marker': process_marker, 'first_resumed_optimizer_step': None}
+        state['fresh_process_resumes'].append(resume_record)
+    else:
+        if (run_dir / 'state.json').exists():
+            raise Learn122Error('fresh run refused because state already exists')
+        torch.manual_seed(seed)
+        model = TwelveSixDecoder(spec, init)
+        runtime_params = sum((p.numel() for p in model.parameters()))
+        if runtime_params != spec.parameter_count():
+            raise Learn122Error('runtime parameter count mismatch')
+        random_hash = _state_hash(model)
+        trainer = Trainer(model, cfg, device='cpu')
+        initial_eval = _evaluate(model, root / 'corpus-a', manifest, tok)
+        initial_checkpoint = _save_checkpoint(run_dir, 'init', source_sha, spec, tok, manifest, run, cfg, trainer, locks)
+        initial_generation = _generation_preserving_rng(run_dir / initial_checkpoint['path'])
+        state = _state_template(label, seed, spec, init, run, random_hash, initial_eval, initial_checkpoint, initial_generation, process_marker)
+        _write_json(run_dir / 'state.json', state)
+        curve = run_dir / 'train-curve.jsonl'
+        if curve.exists():
+            curve.unlink()
+    start_step = trainer.optimizer_step
+    start_tokens = trainer.tokens_seen
+    if start_tokens >= target_tokens:
+        raise Learn122Error(f'target {target_tokens} is not ahead of restored tokens {start_tokens}')
+    observer = TrainingObserver(run, device='cpu', max_step_samples=MAX_STEPS_GUARD)
+    its = _train_iters(root / 'corpus-a', manifest, tok, start_step)
+    batches = {s: _batches(it) for s, it in its.items()}
+    curve_path = run_dir / 'train-curve.jsonl'
+    completed_milestones = {int(item['milestone_requested_tokens']) for item in state['evaluations']}
+    pending_milestones = [m for m in _milestones(label, seed) if m <= target_tokens and m not in completed_milestones and (m > start_tokens)]
+    first_resumed_step: int | None = None
+    phase_grad_norms: list[float] = []
+    phase_update_ratios: list[float] = []
+    while trainer.tokens_seen < target_tokens:
+        if trainer.optimizer_step >= MAX_STEPS_GUARD:
+            raise Learn122Error('max-step safety guard reached before token target')
+        stratum = MIXTURE[trainer.optimizer_step % len(MIXTURE)]
+        batch, wait = observer.measure_next(batches[stratum])
+        next_step = trainer.optimizer_step + 1
+        sample_update = next_step == start_step + 1 or next_step % UPDATE_SAMPLE_EVERY == 0
+        before = _snapshot_parameters(model) if sample_update else []
+        metrics = observer.train_microbatch(trainer, batch, data_wait_seconds=wait)
+        if resume and first_resumed_step is None:
+            first_resumed_step = metrics.optimizer_step
+            state['fresh_process_resumes'][-1]['first_resumed_optimizer_step'] = first_resumed_step
+            if first_resumed_step != start_step + 1:
+                raise Learn122Error('fresh-process resume did not continue at next optimizer step')
+        grad_norm = float(metrics.grad_norm) if metrics.grad_norm is not None else None
+        if grad_norm is not None:
+            phase_grad_norms.append(grad_norm)
+        update_l2 = parameter_l2 = update_ratio = None
+        if sample_update:
+            update_l2, parameter_l2, update_ratio = _update_stats(model, before)
+            phase_update_ratios.append(update_ratio)
+        _append(curve_path, {'optimizer_step': metrics.optimizer_step, 'tokens_seen': trainer.tokens_seen, 'stratum': stratum, 'tokens': metrics.tokens, 'loss': metrics.update_loss if metrics.update_loss is not None else metrics.loss, 'grad_norm': grad_norm, 'learning_rate': metrics.learning_rate, 'update_l2': update_l2, 'parameter_l2': parameter_l2, 'update_to_parameter_ratio': update_ratio})
+        while pending_milestones and trainer.tokens_seen >= pending_milestones[0]:
+            milestone = pending_milestones.pop(0)
+            tag = f'milestone-{milestone}'
+            checkpoint = _save_checkpoint(run_dir, tag, source_sha, spec, tok, manifest, run, cfg, trainer, locks)
+            evaluation = _evaluate(model, root / 'corpus-a', manifest, tok)
+            state['checkpoints'].append(checkpoint)
+            state['evaluations'].append({'milestone_requested_tokens': milestone, 'optimizer_step': trainer.optimizer_step, 'actual_optimized_tokens': trainer.tokens_seen, 'compute_proxy': checkpoint['compute_proxy'], 'checkpoint': checkpoint['path'], 'checkpoint_id': checkpoint['checkpoint_id'], 'evaluation': evaluation})
+            state['latest_checkpoint'] = checkpoint['path']
+            state['latest_optimizer_step'] = trainer.optimizer_step
+            state['latest_optimized_tokens'] = trainer.tokens_seen
+            state['last_process_marker'] = process_marker
+            _write_json(run_dir / 'state.json', state)
+    target_eval = next((item for item in state['evaluations'] if int(item['milestone_requested_tokens']) == target_tokens))
+    generation = _generation_preserving_rng(run_dir / target_eval['checkpoint'])
+    state['generations'].append({'milestone_requested_tokens': target_tokens, 'checkpoint': target_eval['checkpoint'], 'generation': generation})
+    phase_wall = time.perf_counter() - phase_start
+    phase = {'process_marker': process_marker, 'resume': resume, 'start_optimizer_step': start_step, 'end_optimizer_step': trainer.optimizer_step, 'start_optimized_tokens': start_tokens, 'end_optimized_tokens': trainer.tokens_seen, 'target_requested_tokens': target_tokens, 'wall_seconds': phase_wall, 'rss_bytes_start': rss_start, 'rss_bytes_end': _rss_bytes(), 'peak_rss_bytes': _peak_rss_bytes(), 'model_parameter_bytes': sum((p.numel() * p.element_size() for p in model.parameters())), 'gradient_capacity_bytes_fp32': spec.parameter_count() * 4, 'optimizer_state_tensor_bytes': _optimizer_state_bytes(trainer), 'mean_grad_norm': sum(phase_grad_norms) / len(phase_grad_norms) if phase_grad_norms else None, 'max_grad_norm': max(phase_grad_norms) if phase_grad_norms else None, 'clip_threshold': cfg.gradient_clip_norm, 'grad_norm_samples_above_clip': sum((1 for x in phase_grad_norms if x > cfg.gradient_clip_norm)), 'update_ratio_sample_count': len(phase_update_ratios), 'mean_update_to_parameter_ratio': sum(phase_update_ratios) / len(phase_update_ratios) if phase_update_ratios else None, 'max_update_to_parameter_ratio': max(phase_update_ratios) if phase_update_ratios else None, 'observer': observer.summary()}
+    state['phases'].append(phase)
+    state['last_process_marker'] = process_marker
+    state['latest_optimizer_step'] = trainer.optimizer_step
+    state['latest_optimized_tokens'] = trainer.tokens_seen
+    state['latest_checkpoint'] = target_eval['checkpoint']
+    _write_json(run_dir / 'state.json', state)
+    return state
+
+def _eval_at(state: dict[str, Any], milestone: int) -> dict[str, Any]:
+    if milestone == 0:
+        return state['initial_evaluation']
+    for item in state['evaluations']:
+        if int(item['milestone_requested_tokens']) == milestone:
+            return item['evaluation']
+    raise Learn122Error(f'missing evaluation at milestone {milestone}')
