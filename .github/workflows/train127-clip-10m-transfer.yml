@@ -1,0 +1,102 @@
+name: TRAIN-127 Clip 10M Transfer
+
+on:
+  push:
+    branches:
+      - train127/clip-10m-transfer-20260826-run
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  local-free-10m-clipping-transfer:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Prove exact source checkout
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Verify exact locked environment and repository checks
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+        run: >-
+          python tools/verify_locked_environment.py
+          --profile linux-x86_64
+          --source-sha "$SOURCE_SHA"
+          --evidence-out locked-environment-linux-x86_64.json
+          --run-repo-checks
+      - name: Create exact locked TRAIN-127 environment
+        run: |
+          python -m venv .train127-locked
+          .train127-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .train127-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          .train127-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/dev.lock.txt
+          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .train127-locked/bin/python -m pip install --no-deps --no-build-isolation -e .
+      - name: Exercise composed incumbent contracts and TRAIN-127 rules
+        run: >-
+          .train127-locked/bin/python -m pytest -q
+          tests/test_clip_10m_transfer.py
+          tests/test_layer_health.py
+          tests/test_batch_noise.py
+          tests/test_external_source_intake_ua_en.py
+          tests/test_training_observability.py
+      - name: Execute exact 10000640-parameter LOCAL_FREE transfer
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          .train127-locked/bin/python tools/run_clip_10m_transfer.py \
+            --source-sha "$SOURCE_SHA" \
+            --locked-environment-evidence locked-environment-linux-x86_64.json \
+            --preregistration-output train127-clip-preregistration.json \
+            --output train127-clip-10m-transfer.json \
+            --seed 1515 \
+            --torch-threads 2
+      - name: Print decision-relevant summary
+        run: |
+          .train127-locked/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path("train127-clip-10m-transfer.json").read_text())
+          print(json.dumps({
+              "identity": report["identity"],
+              "data_scope_warning": report["data"]["source_scope_warning"],
+              "diagnostic": report["preregistration"]["diagnostic_global_norm_distribution"],
+              "thresholds": report["preregistration"]["thresholds"],
+              "candidates": [
+                  {
+                      "label": item["label"],
+                      "clip": item["gradient_clip_norm"],
+                      "clip_frequency": item["summary"]["clip_frequency"],
+                      "initial_bpb": item["summary"]["initial_bpb"],
+                      "final_bpb": item["summary"]["final_bpb"],
+                      "loss_spikes": item["summary"]["loss_spikes"],
+                      "update_ratio": item["summary"]["global_relative_update_l2_distribution"],
+                      "time_to_quality": item["summary"]["time_to_quality"],
+                  }
+                  for item in report["candidates"]
+              ],
+              "selection": report["selection"],
+              "truth_boundary": report["truth_boundary"],
+          }, indent=2, sort_keys=True))
+          PY
+      - name: Upload TRAIN-127 evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: train127-clip-10m-transfer
+          path: |
+            locked-environment-linux-x86_64.json
+            train127-clip-preregistration.json
+            train127-clip-10m-transfer.json
+            train127-real-source-intake/
+          if-no-files-found: error
+          retention-days: 30
