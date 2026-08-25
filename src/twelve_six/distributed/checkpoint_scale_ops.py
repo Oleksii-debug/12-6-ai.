@@ -28,7 +28,7 @@ from twelve_six.checkpoint.core import (
 from .contracts import ParallelPlan
 from .dcp_checkpoint import (
     COMMITTED,
-    LoadResult as DcpLoadResult,
+    LoadResult,
     ResumeMode,
     ScaleCheckpointIdentity,
     load_scale_checkpoint,
@@ -63,7 +63,7 @@ class AsyncCheckpointGate:
 
 @dataclass(frozen=True, slots=True)
 class TrainerScaleLoadResult:
-    dcp: DcpLoadResult
+    dcp: LoadResult
     trainer_control_restored: bool
     rng_restored: bool
     exact_training_continuation_claim_allowed: bool
@@ -535,7 +535,7 @@ def plan_scale_checkpoint_retention(
         manifest = verify_scale_checkpoint(path)
         identity = manifest.get("identity")
         if not isinstance(identity, Mapping):
-            raise ValueError(f"committed checkpoint lacks identity: {path}")
+            raise TypeError(f"committed checkpoint lacks identity: {path}")
         step = identity.get("step")
         tokens_seen = identity.get("tokens_seen")
         aggregate = manifest.get("aggregate_checkpoint_sha256")
