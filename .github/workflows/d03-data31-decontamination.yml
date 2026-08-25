@@ -74,7 +74,8 @@ jobs:
           assert report["d06_authority"]["registry_sha256"] == expected_registry
           assert report["counts"]["candidate_input"] == 10
           assert report["counts"]["heldout_references"] == 2
-          assert report["counts"]["registered_semantic_matches"] == 1
+          assert report["counts"]["registered_semantic_matches"] == 2
+          assert report["counts"]["surviving_documents"] <= 8
           assert report["decontamination_report"]["publication_eligible"] is True
           assert report["decontamination_report"]["semantic_universal_cleanliness_claimed"] is False
           assert report["publication_manifest"]["benchmark_registry_sha256"] == expected_registry
@@ -82,6 +83,7 @@ jobs:
           assert report["truth_boundary"]["real_d06_registered_benchmarks_in_snapshot"] == 0
           assert report["truth_boundary"]["real_hashed_generation_probes_locally_available"] == 0
           assert "project-authored-s0-fixture-v1::doc-001" not in report["surviving_document_ids"]
+          assert "project-authored-s0-fixture-v1::doc-011" not in report["surviving_document_ids"]
           print(json.dumps({
               "run_sha256": report["run_sha256"],
               "benchmark_registry_sha256": report["d06_authority"]["registry_sha256"],
