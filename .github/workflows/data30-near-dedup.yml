@@ -6,6 +6,7 @@ on:
       - "src/twelve_six/data/dedup_scale.py"
       - "src/twelve_six/data/near_dedup.py"
       - "tools/run_near_dedup_real_corpus.py"
+      - "tools/diagnose_near_dedup_calibration.py"
       - "tests/test_near_dedup.py"
       - "configs/data/near_dedup_calibrated_v1.json"
       - "data/calibration/near_dedup_v1.json"
@@ -55,12 +56,19 @@ jobs:
           pip install --no-deps "$TOKENIZERS_WHEEL"
       - name: Static and contract tests
         run: |
-          ruff check src/twelve_six/data/near_dedup.py tests/test_near_dedup.py tools/run_near_dedup_real_corpus.py
+          ruff check src/twelve_six/data/near_dedup.py tests/test_near_dedup.py tools/run_near_dedup_real_corpus.py tools/diagnose_near_dedup_calibration.py
           pytest -q tests/test_corpus_foundation.py tests/test_near_dedup.py
-      - name: Execute calibration and bounded current-corpus pass
+      - name: Retain candidate calibration diagnostics
         shell: bash
         run: |
           mkdir -p reports/data30
+          PYTHONPATH=src python tools/diagnose_near_dedup_calibration.py \
+            --calibration data/calibration/near_dedup_v1.json \
+            --workspace /tmp/data30-calibration-diagnostics \
+            --output reports/data30/calibration_diagnostics.json
+      - name: Execute calibration and bounded current-corpus pass
+        shell: bash
+        run: |
           /usr/bin/time -v \
             env PYTHONPATH=src \
             python tools/run_near_dedup_real_corpus.py \
@@ -112,6 +120,7 @@ jobs:
         with:
           name: data30-near-dedup-${{ github.sha }}
           path: |
+            reports/data30/calibration_diagnostics.json
             reports/data30/near_dedup_report.json
             reports/data30/usr_bin_time.txt
           if-no-files-found: warn
