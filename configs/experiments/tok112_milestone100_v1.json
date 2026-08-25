@@ -1,0 +1,42 @@
+{
+  "schema_version": "12-6.tok112-milestone100-experiment.v1",
+  "worker_ids": ["MILESTONE-100-FIRST-LEARNED-BASE", "TOK-112-UA-DIAGNOSTICS"],
+  "run_class": "LOCAL_FREE",
+  "composition_base": {"branch": "integration/s1-transition-20260825", "sha": "fb9c6d9b73ce436d637077892d73edf136fcaeac"},
+  "incumbent_bindings": {
+    "product_runtime": "fb9c6d9b73ce436d637077892d73edf136fcaeac",
+    "data25": "8af17afa7baf3d75c2328caf8b08af2400a95e09",
+    "data107_streaming_packing": "f9b4783b936055a4165f8bedd00b27f34332d67e",
+    "tok37": "25cf4798202c41dda4b5413052f5efc6ebbbbf2a",
+    "tok111_adjudication": "c252a5c0f4bc365b89a07e0882718752ed59336e"
+  },
+  "tok37_artifact": {
+    "artifact_id": 9576009309,
+    "digest": "sha256:f3fedb2799fc4d16fae637e0cfd96861f7f528deb45145af51ef4726f270e75e",
+    "candidate_actual_vocab_sizes": [257, 320, 384, 437]
+  },
+  "reserved_ua_diagnostic": {
+    "path": "data/diagnostics/ua_tokenization_v1.jsonl",
+    "sha256": "b86d645bf0c1d58988de5fce5978da5d73bd037709f1e5e719bfaab36e04b4c1",
+    "records": 24,
+    "may_train_tokenizer": false,
+    "may_train_language_model": false
+  },
+  "final_base": {
+    "tokenizer_id": "s0-byte-v1",
+    "model": {"vocab_size": 256, "max_seq_len": 256, "d_model": 96, "n_layers": 4, "n_heads": 4, "n_kv_heads": 4, "head_dim": 24, "d_ff": 256, "parameters": 467808},
+    "random_init_seed": 1337,
+    "optimizer": {"type": "AdamW", "learning_rate": 0.0003, "betas": [0.9, 0.95], "eps": 1e-8, "weight_decay": 0.0, "gradient_clip_norm": 1.0, "precision": "fp32"},
+    "optimizer_steps": 800,
+    "optimized_tokens": 201600,
+    "checkpoint_steps": [200, 400, 600, 800]
+  },
+  "decision_gates": {
+    "no_foreign_pretrained_weights": true,
+    "no_instruction_tuning": true,
+    "no_paid_compute": true,
+    "external_real_world_corpus_representative": false,
+    "bpe_allowed_for_complete_first_party_inference": false,
+    "ukrainian_specific_tokenizer_required": false
+  }
+}
