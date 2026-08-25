@@ -66,10 +66,10 @@ API entry points:
 - `build_stage_candidate_table(...)`
 - `one_training_step_smoke(candidate, ...)`
 
-Installed CLI:
+Lock-safe module CLI:
 
 ```text
-twelve-six-rebalance search \
+python -m twelve_six.model_rebalance search \
   --stage-config configs/stages/s1_100k.json \
   --tokenizer-artifact path/to/tokenizer.json \
   --target-parameters 100000 \
@@ -82,11 +82,13 @@ twelve-six-rebalance search \
 The five-target table can be regenerated from the retained exact tokenizer identity:
 
 ```text
-twelve-six-rebalance stage-table \
+python -m twelve_six.model_rebalance stage-table \
   --profiles configs/vocabulary/model_rebalance_profiles.v1.json \
   --tokenizer-identity configs/vocabulary/measured_bpe_472_tokenizer_identity.v1.json \
   --output model-rebalance-stage-table.json
 ```
+
+No new console-script entry is added because the repository's dependency-lock contract binds console-script metadata. The module CLI avoids unrelated lock churn.
 
 ## Executable evidence
 
