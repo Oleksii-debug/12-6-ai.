@@ -261,8 +261,22 @@ class RotaryEmbedding(nn.Module):
         *,
         device: torch.device,
         dtype: torch.dtype,
+        position_offset: int = 0,
     ) -> tuple[Tensor, Tensor]:
-        positions = torch.arange(seq_len, device=device, dtype=torch.float32)
+        if not isinstance(seq_len, int) or isinstance(seq_len, bool) or seq_len <= 0:
+            raise ValueError("seq_len must be a positive integer")
+        if (
+            not isinstance(position_offset, int)
+            or isinstance(position_offset, bool)
+            or position_offset < 0
+        ):
+            raise ValueError("position_offset must be a non-negative integer")
+        positions = torch.arange(
+            position_offset,
+            position_offset + seq_len,
+            device=device,
+            dtype=torch.float32,
+        )
         freqs = torch.outer(positions, self.inv_freq.to(device=device))
         angles = torch.repeat_interleave(freqs, 2, dim=-1)
         return angles.cos().to(dtype=dtype), angles.sin().to(dtype=dtype)
@@ -284,6 +298,30 @@ def apply_rope(x: Tensor, cos: Tensor, sin: Tensor, rotary_dim: int) -> Tensor:
     return torch.cat((rotated, x[..., rotary_dim:]), dim=-1)
 
 
+@dataclass(frozen=True, slots=True)
+class AttentionKVCache:
+    """Ephemeral unexpanded K/V tensors for one decoder attention layer."""
+
+    key: Tensor
+    value: Tensor
+
+    @property
+    def sequence_length(self) -> int:
+        if self.key.ndim != 4:
+            raise ValueError("cached key must have shape [batch, kv_heads, sequence, head_dim]")
+        return int(self.key.shape[2])
+
+
+@dataclass(frozen=True, slots=True)
+class DecoderKVCache:
+    """Ephemeral inference-only cache bound to one ModelSpec identity."""
+
+    model_spec_sha256: str
+    sequence_length: int
+    batch_size: int
+    layers: tuple[AttentionKVCache, ...]
+
+
 class CausalSelfAttention(nn.Module):
     def __init__(self, spec: ModelSpec) -> None:
         super().__init__()
@@ -301,30 +339,88 @@ class CausalSelfAttention(nn.Module):
         self.out_proj = nn.Linear(spec.q_dim, spec.d_model, bias=spec.attention_bias)
         self.rope = RotaryEmbedding(spec.rope_rotary_dim, spec.rope_theta)
 
-    def forward(self, x: Tensor) -> Tensor:
+    def _project_qkv(
+        self,
+        x: Tensor,
+        *,
+        position_offset: int,
+    ) -> tuple[Tensor, Tensor, Tensor]:
         batch, seq_len, _ = x.shape
         q = self.q_proj(x).view(batch, seq_len, self.n_heads, self.head_dim).transpose(1, 2)
         k = self.k_proj(x).view(batch, seq_len, self.n_kv_heads, self.head_dim).transpose(1, 2)
         v = self.v_proj(x).view(batch, seq_len, self.n_kv_heads, self.head_dim).transpose(1, 2)
-
-        cos, sin = self.rope.cos_sin(seq_len, device=x.device, dtype=q.dtype)
+        cos, sin = self.rope.cos_sin(
+            seq_len,
+            device=x.device,
+            dtype=q.dtype,
+            position_offset=position_offset,
+        )
         q = apply_rope(q, cos, sin, self.rotary_dim)
         k = apply_rope(k, cos, sin, self.rotary_dim)
+        return q, k, v
 
-        if self.n_kv_heads != self.n_heads:
-            repeats = self.n_heads // self.n_kv_heads
-            k = k.repeat_interleave(repeats, dim=1)
-            v = v.repeat_interleave(repeats, dim=1)
+    def _expand_kv(self, k: Tensor, v: Tensor) -> tuple[Tensor, Tensor]:
+        if self.n_kv_heads == self.n_heads:
+            return k, v
+        repeats = self.n_heads // self.n_kv_heads
+        return k.repeat_interleave(repeats, dim=1), v.repeat_interleave(repeats, dim=1)
 
+    def _attend(self, q: Tensor, k: Tensor, v: Tensor, *, is_causal: bool) -> Tensor:
+        expanded_k, expanded_v = self._expand_kv(k, v)
         attended = F.scaled_dot_product_attention(
             q,
-            k,
-            v,
+            expanded_k,
+            expanded_v,
             dropout_p=self.dropout if self.training else 0.0,
-            is_causal=True,
+            is_causal=is_causal,
         )
+        batch = q.shape[0]
+        seq_len = q.shape[2]
         attended = attended.transpose(1, 2).contiguous().view(batch, seq_len, self.q_dim)
         return self.out_proj(attended)
+
+    def _validate_cache(self, cache: AttentionKVCache, x: Tensor) -> int:
+        if not isinstance(cache, AttentionKVCache):
+            raise TypeError("attention cache must be an AttentionKVCache")
+        key = cache.key
+        value = cache.value
+        expected_prefix = (x.shape[0], self.n_kv_heads)
+        if key.ndim != 4 or value.ndim != 4 or key.shape != value.shape:
+            raise ValueError("cached K/V tensors must have identical rank-4 shapes")
+        if tuple(key.shape[:2]) != expected_prefix or key.shape[3] != self.head_dim:
+            raise ValueError("cached K/V tensor geometry is incompatible with attention")
+        if key.shape[2] <= 0:
+            raise ValueError("cached K/V sequence must be non-empty")
+        if key.device != x.device or value.device != x.device:
+            raise ValueError("cached K/V tensors must be on the same device as input")
+        if key.dtype != x.dtype or value.dtype != x.dtype:
+            raise ValueError("cached K/V tensors must use the same dtype as attention input")
+        return int(key.shape[2])
+
+    def forward(self, x: Tensor) -> Tensor:
+        q, k, v = self._project_qkv(x, position_offset=0)
+        return self._attend(q, k, v, is_causal=True)
+
+    def prefill(self, x: Tensor) -> tuple[Tensor, AttentionKVCache]:
+        """Run a normal causal prompt pass while retaining unexpanded K/V state."""
+        q, k, v = self._project_qkv(x, position_offset=0)
+        output = self._attend(q, k, v, is_causal=True)
+        return output, AttentionKVCache(key=k, value=v)
+
+    def decode_one(
+        self,
+        x: Tensor,
+        cache: AttentionKVCache,
+    ) -> tuple[Tensor, AttentionKVCache]:
+        """Append exactly one position and attend to all cached prior positions."""
+        if x.ndim != 3 or x.shape[1] != 1:
+            raise ValueError("cached attention decode requires exactly one input position")
+        position_offset = self._validate_cache(cache, x)
+        q, new_k, new_v = self._project_qkv(x, position_offset=position_offset)
+        key = torch.cat((cache.key, new_k), dim=2)
+        value = torch.cat((cache.value, new_v), dim=2)
+        output = self._attend(q, key, value, is_causal=False)
+        return output, AttentionKVCache(key=key, value=value)
 
 
 class SwiGLU(nn.Module):
@@ -350,6 +446,22 @@ class TransformerBlock(nn.Module):
         x = x + self.attn(self.attn_norm(x))
         x = x + self.mlp(self.mlp_norm(x))
         return x
+
+    def prefill(self, x: Tensor) -> tuple[Tensor, AttentionKVCache]:
+        attention, cache = self.attn.prefill(self.attn_norm(x))
+        x = x + attention
+        x = x + self.mlp(self.mlp_norm(x))
+        return x, cache
+
+    def decode_one(
+        self,
+        x: Tensor,
+        cache: AttentionKVCache,
+    ) -> tuple[Tensor, AttentionKVCache]:
+        attention, next_cache = self.attn.decode_one(self.attn_norm(x), cache)
+        x = x + attention
+        x = x + self.mlp(self.mlp_norm(x))
+        return x, next_cache
 
 
 @dataclass(slots=True)
@@ -410,6 +522,72 @@ class TwelveSixDecoder(nn.Module):
         return CausalLMOutput(logits=self.lm_head(x))
 
     @torch.no_grad()
+    def prefill_kv_cache(self, input_ids: Tensor) -> tuple[CausalLMOutput, DecoderKVCache]:
+        """Run an inference prompt once and return its per-layer K/V cache."""
+        if self.training:
+            raise RuntimeError("KV-cache inference requires model.eval()")
+        if input_ids.ndim != 2:
+            raise ValueError("input_ids must have shape [batch, sequence]")
+        if input_ids.shape[1] <= 0:
+            raise ValueError("input_ids sequence must be non-empty")
+        if input_ids.shape[1] > self.spec.max_seq_len:
+            raise ValueError(
+                f"sequence length {input_ids.shape[1]} exceeds max_seq_len {self.spec.max_seq_len}"
+            )
+        x = self.token_embedding(input_ids)
+        layer_caches: list[AttentionKVCache] = []
+        for block in self.blocks:
+            x, layer_cache = block.prefill(x)
+            layer_caches.append(layer_cache)
+        x = self.final_norm(x)
+        cache = DecoderKVCache(
+            model_spec_sha256=self.spec.identity_sha256(),
+            sequence_length=int(input_ids.shape[1]),
+            batch_size=int(input_ids.shape[0]),
+            layers=tuple(layer_caches),
+        )
+        return CausalLMOutput(logits=self.lm_head(x)), cache
+
+    @torch.no_grad()
+    def decode_one_with_kv_cache(
+        self,
+        input_ids: Tensor,
+        cache: DecoderKVCache,
+    ) -> tuple[CausalLMOutput, DecoderKVCache]:
+        """Decode exactly one new token from an existing inference cache."""
+        if self.training:
+            raise RuntimeError("KV-cache inference requires model.eval()")
+        if input_ids.ndim != 2 or input_ids.shape[1] != 1:
+            raise ValueError("cached decoder input_ids must have shape [batch, 1]")
+        if not isinstance(cache, DecoderKVCache):
+            raise TypeError("cache must be a DecoderKVCache")
+        if cache.model_spec_sha256 != self.spec.identity_sha256():
+            raise ValueError("KV cache ModelSpec identity does not match decoder")
+        if cache.batch_size != input_ids.shape[0]:
+            raise ValueError("KV cache batch size does not match decoder input")
+        if cache.sequence_length <= 0:
+            raise ValueError("KV cache sequence length must be positive")
+        if cache.sequence_length >= self.spec.max_seq_len:
+            raise ValueError("KV cache is already at model max_seq_len")
+        if len(cache.layers) != len(self.blocks):
+            raise ValueError("KV cache layer count does not match decoder")
+        if any(layer.sequence_length != cache.sequence_length for layer in cache.layers):
+            raise ValueError("KV cache layer sequence lengths are inconsistent")
+        x = self.token_embedding(input_ids)
+        next_layers: list[AttentionKVCache] = []
+        for block, layer_cache in zip(self.blocks, cache.layers, strict=True):
+            x, next_cache = block.decode_one(x, layer_cache)
+            next_layers.append(next_cache)
+        x = self.final_norm(x)
+        next_decoder_cache = DecoderKVCache(
+            model_spec_sha256=cache.model_spec_sha256,
+            sequence_length=cache.sequence_length + 1,
+            batch_size=cache.batch_size,
+            layers=tuple(next_layers),
+        )
+        return CausalLMOutput(logits=self.lm_head(x)), next_decoder_cache
+
+    @torch.no_grad()
     def generate(
         self,
         input_ids: Tensor,
@@ -430,7 +608,6 @@ class TwelveSixDecoder(nn.Module):
             raise ValueError("temperature must be positive when sampling")
         if top_k is not None and top_k <= 0:
             raise ValueError("top_k must be positive")
-
         generated = input_ids
         steps = min(max_new_tokens, self.spec.max_seq_len - input_ids.shape[1])
         for _ in range(steps):
