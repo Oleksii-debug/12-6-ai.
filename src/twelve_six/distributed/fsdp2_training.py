@@ -242,7 +242,10 @@ def run_initialized_fsdp2_rank(
     )
     mesh_spec = build_torch_mesh_spec(plan, fsdp_shard_degree=world_size)
     full_mesh = mesh_spec.create_device_mesh(device_type)
-    fsdp_kwargs = mesh_spec.fsdp2_kwargs(full_mesh)
+    fsdp_kwargs = mesh_spec.fsdp2_kwargs(
+        full_mesh,
+        reshard_after_forward=device_type == "cuda",
+    )
     model = apply_fsdp2(model, **fsdp_kwargs)
 
     parameters_are_dtensor = all(isinstance(parameter, DTensor) for parameter in model.parameters())
