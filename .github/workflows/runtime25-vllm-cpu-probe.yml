@@ -53,6 +53,9 @@ jobs:
           curl --fail --location --retry 3 \
             "https://github.com/vllm-project/vllm/releases/download/v0.27.1/$wheel" \
             --output "$wheel"
+          printf '%s  %s\n' \
+            '36f0e7b2031233ff09e521716723b0e05ab62054c9a9a05d873af43052140f33' \
+            "$wheel" | sha256sum --check --strict
           sha256sum "$wheel" | tee runtime25-vllm-wheel.sha256
           python -m pip install "$wheel" \
             --extra-index-url https://download.pytorch.org/whl/cpu
@@ -84,9 +87,12 @@ jobs:
               name: metadata.version(name)
               for name in ("vllm", "torch", "transformers", "safetensors")
           }
-          assert versions["vllm"] == "0.27.1", versions
-          assert versions["torch"].startswith("2.13.0"), versions
-          assert versions["transformers"] == "5.15.0", versions
+          # The official vLLM CPU release uses a PEP 440 local version suffix.
+          assert versions["vllm"] == "0.27.1+cpu", versions
+          assert versions["torch"] == "2.13.0+cpu", versions
+          # D08 purpose-runtime incumbent #177 binds Transformers interop to 5.15.1.
+          assert versions["transformers"] == "5.15.1", versions
+          assert versions["safetensors"] == "0.8.0", versions
           with open("runtime25-installed-versions.json", "w", encoding="utf-8") as handle:
               json.dump(versions, handle, sort_keys=True, indent=2)
               handle.write("\n")
@@ -112,7 +118,7 @@ jobs:
           set -euo pipefail
           python tools/validate_vllm_native_llama.py probe \
             --model-dir artifacts/runtime25-vllm-cpu/vllm-model \
-            --expected-vllm-version 0.27.1 \
+            --expected-vllm-version 0.27.1+cpu \
             --output artifacts/runtime25-vllm-cpu/vllm-import-config.json
 
       - name: Upload vLLM CPU probe evidence
