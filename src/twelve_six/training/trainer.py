@@ -255,6 +255,25 @@ class Trainer:
             raise NonFiniteTrainingError(reason)
         return loss
 
+    def _normalize_gradients_for_clipping(self, token_count: int) -> None:
+        """Normalize gradients and preserve the incumbent per-gradient finite guard.
+
+        When clipping is configured, ``clip_grad_norm_`` already computes the total
+        pre-clip norm. Avoiding a separate full norm reduction here leaves gradient
+        values and the clipping operation unchanged while removing redundant work.
+        """
+        if token_count <= 0:
+            raise RuntimeError("optimizer update requires at least one valid target token")
+        for parameter in self.model.parameters():
+            if parameter.grad is None:
+                continue
+            grad = parameter.grad.detach()
+            if not torch.isfinite(grad).all().item():
+                reason = f"non-finite gradient at micro_step={self.micro_step}"
+                self._mark_failed(reason)
+                raise NonFiniteTrainingError(reason)
+            grad.div_(token_count)
+
     def _normalize_gradients_and_norm(self, token_count: int) -> Tensor:
         if token_count <= 0:
             raise RuntimeError("optimizer update requires at least one valid target token")
@@ -316,16 +335,17 @@ class Trainer:
             self._update_incomplete = True
             try:
                 self.scaler.unscale_(self.optimizer)
-                raw_grad_norm = self._normalize_gradients_and_norm(self._pending_tokens)
-                grad_norm_value = float(raw_grad_norm.item())
-                update_loss = self._pending_loss_sum / self._pending_tokens
-
-                if self.config.gradient_clip_norm is not None:
-                    torch.nn.utils.clip_grad_norm_(
+                if self.config.gradient_clip_norm is None:
+                    raw_grad_norm = self._normalize_gradients_and_norm(self._pending_tokens)
+                else:
+                    self._normalize_gradients_for_clipping(self._pending_tokens)
+                    raw_grad_norm = torch.nn.utils.clip_grad_norm_(
                         self.model.parameters(),
                         self.config.gradient_clip_norm,
                         error_if_nonfinite=True,
                     )
+                grad_norm_value = float(raw_grad_norm.item())
+                update_loss = self._pending_loss_sum / self._pending_tokens
 
                 self.scaler.step(self.optimizer)
                 self.optimizer_step += 1
