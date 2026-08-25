@@ -175,6 +175,65 @@ def test_update_telemetry_retention_and_future_probe_cadence_are_bounded() -> No
     assert update_summary["pathology_candidates"]["record_limit"] == 32
 
 
+def test_streaming_extrema_and_alerts_survive_detail_thinning() -> None:
+    from twelve_six.training import UpdateMagnitude, UpdateObservation
+
+    safe = UpdateMagnitude(
+        parameter_tensors=1,
+        parameter_elements=4,
+        parameter_norm=10.0,
+        update_norm=0.1,
+        update_weight_ratio=0.01,
+        max_update_magnitude=0.05,
+    )
+    pathological = UpdateMagnitude(
+        parameter_tensors=1,
+        parameter_elements=4,
+        parameter_norm=10.0,
+        update_norm=2.0,
+        update_weight_ratio=0.2,
+        max_update_magnitude=0.9,
+    )
+    observer = TrainingObserver(_identity(2), max_update_samples=1, max_update_alerts=2)
+    observer._retain_update_sample(
+        UpdateObservation(
+            optimizer_step=1,
+            global_metrics=safe,
+            per_block={"blocks.0": safe},
+            temporary_snapshot_bytes=16,
+            largest_parameter_bytes=16,
+            probe_seconds=0.0,
+        )
+    )
+    observer._retain_update_sample(
+        UpdateObservation(
+            optimizer_step=2,
+            global_metrics=pathological,
+            per_block={"blocks.0": pathological},
+            temporary_snapshot_bytes=16,
+            largest_parameter_bytes=16,
+            probe_seconds=0.0,
+        )
+    )
+
+    assert [sample.optimizer_step for sample in observer.update_samples] == [1]
+    summary = observer.summary()["update_magnitude"]
+    assert summary["global_update_weight_ratio_max"] == pytest.approx(0.2)
+    assert summary["global_update_weight_ratio_max_optimizer_step"] == 2
+    assert summary["global_max_update_magnitude"] == pytest.approx(0.9)
+    assert summary["per_block_extrema_all_probed_updates"]["blocks.0"][
+        "max_update_weight_ratio_optimizer_step"
+    ] == 2
+    assert summary["pathology_candidates"]["status"] == "CANDIDATES"
+    assert any(
+        record["optimizer_step"] == 2
+        for record in summary["pathology_candidates"]["records"]
+    )
+    assert summary["pathology_candidates"]["coverage"] == (
+        "ALL_PROBED_UPDATES_BEFORE_DETAIL_RETENTION_THINNING"
+    )
+
+
 def test_manual_record_step_remains_valid_without_attaching_a_model() -> None:
     from twelve_six.training.trainer import StepMetrics
 
