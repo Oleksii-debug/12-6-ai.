@@ -1,5 +1,5 @@
 {
-  "schema_version": "12-6.scale143-activation-checkpointing-evidence.v1",
+  "schema_version": "12-6.scale143-activation-checkpointing-evidence.v2",
   "worker_id": "SCALE-143-ACTIVATION-CHECKPOINTING",
   "date": "2026-08-26",
   "authority": "LOCAL_FREE_ENGINEERING_EVIDENCE_NOT_PROMOTION_AUTHORITY",
@@ -8,8 +8,7 @@
     "base_branch": "integration/scale-fsdp2-dcp-20260825",
     "base_sha": "c5212411d09d6ce4189dfbd4d3c182b52840cd7c",
     "worker_branch": "scale-143/activation-checkpointing-20260826",
-    "benchmark_implementation_commit": "2e6cd1a0d3444b767111f0b51f20e6104d508aa9",
-    "measurement_note": "Performance calibration was executed in the LOCAL_FREE tool container against an exact architectural reproduction of the fetched canonical ModelSpec/model forward and PyTorch checkpoint-wrapper policy because the container had no network route to clone GitHub. The committed benchmark imports the canonical repo implementation directly. Functional parity and FSDP2/DCP compatibility are separately covered by repository tests."
+    "measurement_note": "Performance calibration ran in the LOCAL_FREE CPU container against an exact reproduction of the fetched canonical model path because the container could not clone GitHub. The committed benchmark imports the repo implementation directly. Functional parity and FSDP2/DCP compatibility are covered by repo tests."
   },
   "hardware": {
     "device_type": "cpu",
@@ -22,18 +21,15 @@
   "runtime": {
     "python": "3.13.5",
     "torch": "2.10.0+cpu",
-    "note": "Performance container is not the repo's Python 3.11 dependency-locked promotion environment; measurements are engineering calibration only."
+    "promotion_environment_match": false
   },
   "checkpointing": {
     "library": "torch.distributed.algorithms._checkpoint.checkpoint_wrapper",
     "implementation": "CheckpointImpl.NO_REENTRANT",
     "preserve_rng_state": true,
-    "strategies": [
-      "none",
-      "every_other_block",
-      "per_block"
-    ],
-    "custom_recomputation": false
+    "strategies": ["none", "every_other_block", "per_block"],
+    "custom_recomputation": false,
+    "application_order": "checkpoint_wrapper_before_fsdp2_fully_shard"
   },
   "models": {
     "S3_10M": {
@@ -45,264 +41,84 @@
       "parameter_count": 99897600,
       "model_spec_sha256": "6103d0d457e25206c11871f09aef1f2e23860329c060379c9f956b3851740170",
       "max_seq_len": 4096,
+      "preferred_precision": "bf16",
       "status": "engineering_candidate_not_frozen"
     }
   },
   "numerical_parity": {
     "S3_fp32_seq64": {
-      "none": {
-        "max_abs_logit_delta_vs_none": 0.0,
-        "max_abs_gradient_delta_vs_none": 0.0,
-        "loss": 9.038150787353516
-      },
-      "every_other_block": {
-        "max_abs_logit_delta_vs_none": 0.0,
-        "max_abs_gradient_delta_vs_none": 0.0,
-        "loss": 9.038150787353516
-      },
-      "per_block": {
-        "max_abs_logit_delta_vs_none": 0.0,
-        "max_abs_gradient_delta_vs_none": 0.0,
-        "loss": 9.038150787353516
-      }
+      "every_other_block_max_abs_logit_delta": 0.0,
+      "every_other_block_max_abs_gradient_delta": 0.0,
+      "per_block_max_abs_logit_delta": 0.0,
+      "per_block_max_abs_gradient_delta": 0.0
     },
     "S4_bf16_seq64": {
-      "none": {
-        "max_abs_logit_delta_vs_none": 0.0,
-        "max_abs_gradient_delta_vs_none": 0.0,
-        "loss": 5.65625
-      },
-      "every_other_block": {
-        "max_abs_logit_delta_vs_none": 0.0,
-        "max_abs_gradient_delta_vs_none": 0.0,
-        "loss": 5.65625
-      },
-      "per_block": {
-        "max_abs_logit_delta_vs_none": 0.0,
-        "max_abs_gradient_delta_vs_none": 0.0,
-        "loss": 5.65625
-      }
+      "every_other_block_max_abs_logit_delta": 0.0,
+      "every_other_block_max_abs_gradient_delta": 0.0,
+      "per_block_max_abs_logit_delta": 0.0,
+      "per_block_max_abs_gradient_delta": 0.0
     }
   },
   "measurements": {
     "S3_10M_fp32_batch1": [
-      {
-        "sequence_length": 256,
-        "policy": "none",
-        "repeats": 3,
-        "peak_pre_optimizer_rss_bytes_median": 640503808,
-        "activation_delta_rss_bytes_median": 88981504,
-        "forward_seconds_median": 0.0494255265,
-        "backward_seconds_median": 0.08518739,
-        "optimizer_seconds_median": 0.0232115415,
-        "step_seconds_median": 0.159931657,
-        "tokens_per_second_median": 1655.9174
-      },
-      {
-        "sequence_length": 256,
-        "policy": "every_other_block",
-        "repeats": 3,
-        "peak_pre_optimizer_rss_bytes_median": 620630016,
-        "activation_delta_rss_bytes_median": 65044480,
-        "forward_seconds_median": 0.048962997,
-        "backward_seconds_median": 0.105441219,
-        "optimizer_seconds_median": 0.02680825,
-        "step_seconds_median": 0.182452336,
-        "tokens_per_second_median": 1449.2748
-      },
-      {
-        "sequence_length": 256,
-        "policy": "per_block",
-        "repeats": 3,
-        "peak_pre_optimizer_rss_bytes_median": 614318080,
-        "activation_delta_rss_bytes_median": 58789888,
-        "forward_seconds_median": 0.062250394,
-        "backward_seconds_median": 0.155015557,
-        "optimizer_seconds_median": 0.0260122525,
-        "step_seconds_median": 0.2335408475,
-        "tokens_per_second_median": 1144.8894
-      },
-      {
-        "sequence_length": 512,
-        "policy": "none",
-        "repeats": 2,
-        "peak_pre_optimizer_rss_bytes_median": 710629376,
-        "activation_delta_rss_bytes_median": 159051776,
-        "forward_seconds_median": 0.1602230135,
-        "backward_seconds_median": 0.375224211,
-        "optimizer_seconds_median": 0.047679316,
-        "step_seconds_median": 0.5831265405,
-        "tokens_per_second_median": 1116.7983
-      },
-      {
-        "sequence_length": 512,
-        "policy": "every_other_block",
-        "repeats": 2,
-        "peak_pre_optimizer_rss_bytes_median": 667899904,
-        "activation_delta_rss_bytes_median": 112252928,
-        "forward_seconds_median": 0.106838899,
-        "backward_seconds_median": 0.2834058035,
-        "optimizer_seconds_median": 0.0288128425,
-        "step_seconds_median": 0.419057545,
-        "tokens_per_second_median": 1297.3158
-      },
-      {
-        "sequence_length": 512,
-        "policy": "per_block",
-        "repeats": 2,
-        "peak_pre_optimizer_rss_bytes_median": 641497088,
-        "activation_delta_rss_bytes_median": 86083584,
-        "forward_seconds_median": 0.077033462,
-        "backward_seconds_median": 0.260611468,
-        "optimizer_seconds_median": 0.0317286595,
-        "step_seconds_median": 0.3693735895,
-        "tokens_per_second_median": 1393.8859
-      },
-      {
-        "sequence_length": 1024,
-        "policy": "none",
-        "repeats": 1,
-        "peak_pre_optimizer_rss_bytes_median": 897302528,
-        "activation_delta_rss_bytes_median": 346013696,
-        "forward_seconds_median": 0.296829073,
-        "backward_seconds_median": 0.493804562,
-        "optimizer_seconds_median": 0.03707478,
-        "step_seconds_median": 0.827708415,
-        "tokens_per_second_median": 1235.9425
-      },
-      {
-        "sequence_length": 1024,
-        "policy": "every_other_block",
-        "repeats": 1,
-        "peak_pre_optimizer_rss_bytes_median": 802856960,
-        "activation_delta_rss_bytes_median": 247300096,
-        "forward_seconds_median": 0.294406565,
-        "backward_seconds_median": 0.594668996,
-        "optimizer_seconds_median": 0.024138197,
-        "step_seconds_median": 0.913213758,
-        "tokens_per_second_median": 1120.2197
-      },
-      {
-        "sequence_length": 1024,
-        "policy": "per_block",
-        "repeats": 1,
-        "peak_pre_optimizer_rss_bytes_median": 741662720,
-        "activation_delta_rss_bytes_median": 186073088,
-        "forward_seconds_median": 0.176799959,
-        "backward_seconds_median": 0.496908446,
-        "optimizer_seconds_median": 0.025026163,
-        "step_seconds_median": 0.698734568,
-        "tokens_per_second_median": 1464.0753
-      }
+      {"sequence_length": 256, "policy": "none", "repeats": 3, "peak_rss_bytes": 640503808, "activation_delta_rss_bytes": 88981504, "forward_seconds": 0.0494255265, "backward_seconds": 0.08518739, "step_seconds": 0.159931657, "tokens_per_second": 1655.9174},
+      {"sequence_length": 256, "policy": "every_other_block", "repeats": 3, "peak_rss_bytes": 620630016, "activation_delta_rss_bytes": 65044480, "forward_seconds": 0.048962997, "backward_seconds": 0.105441219, "step_seconds": 0.182452336, "tokens_per_second": 1449.2748},
+      {"sequence_length": 256, "policy": "per_block", "repeats": 3, "peak_rss_bytes": 614318080, "activation_delta_rss_bytes": 58789888, "forward_seconds": 0.062250394, "backward_seconds": 0.155015557, "step_seconds": 0.2335408475, "tokens_per_second": 1144.8894},
+      {"sequence_length": 512, "policy": "none", "repeats": 2, "peak_rss_bytes": 710629376, "activation_delta_rss_bytes": 159051776, "forward_seconds": 0.1602230135, "backward_seconds": 0.375224211, "step_seconds": 0.5831265405, "tokens_per_second": 1116.7983},
+      {"sequence_length": 512, "policy": "every_other_block", "repeats": 2, "peak_rss_bytes": 667899904, "activation_delta_rss_bytes": 112252928, "forward_seconds": 0.106838899, "backward_seconds": 0.2834058035, "step_seconds": 0.419057545, "tokens_per_second": 1297.3158},
+      {"sequence_length": 512, "policy": "per_block", "repeats": 2, "peak_rss_bytes": 641497088, "activation_delta_rss_bytes": 86083584, "forward_seconds": 0.077033462, "backward_seconds": 0.260611468, "step_seconds": 0.3693735895, "tokens_per_second": 1393.8859},
+      {"sequence_length": 1024, "policy": "none", "repeats": 1, "peak_rss_bytes": 897302528, "activation_delta_rss_bytes": 346013696, "forward_seconds": 0.296829073, "backward_seconds": 0.493804562, "step_seconds": 0.827708415, "tokens_per_second": 1235.9425},
+      {"sequence_length": 1024, "policy": "every_other_block", "repeats": 1, "peak_rss_bytes": 802856960, "activation_delta_rss_bytes": 247300096, "forward_seconds": 0.294406565, "backward_seconds": 0.594668996, "step_seconds": 0.913213758, "tokens_per_second": 1120.2197},
+      {"sequence_length": 1024, "policy": "per_block", "repeats": 1, "peak_rss_bytes": 741662720, "activation_delta_rss_bytes": 186073088, "forward_seconds": 0.176799959, "backward_seconds": 0.496908446, "step_seconds": 0.698734568, "tokens_per_second": 1464.0753}
     ],
-    "S4_100M_fp32_batch1_real_execution": [
-      {
-        "sequence_length": 512,
-        "policy": "none",
-        "repeats": 1,
-        "peak_pre_optimizer_rss_bytes": 2424733696,
-        "activation_delta_rss_bytes": 836870144,
-        "forward_seconds": 0.795881752,
-        "backward_seconds": 1.481766737,
-        "optimizer_seconds": 0.425328636,
-        "step_seconds": 2.702977125,
-        "tokens_per_second": 189.0508
-      },
-      {
-        "sequence_length": 512,
-        "policy": "every_other_block",
-        "repeats": 1,
-        "peak_pre_optimizer_rss_bytes": 2292920320,
-        "activation_delta_rss_bytes": 700071936,
-        "forward_seconds": 0.592691891,
-        "backward_seconds": 1.80020759,
-        "optimizer_seconds": 0.455560368,
-        "step_seconds": 2.848459849,
-        "tokens_per_second": 179.3952
-      },
-      {
-        "sequence_length": 512,
-        "policy": "per_block",
-        "repeats": 1,
-        "peak_pre_optimizer_rss_bytes": 2138222592,
-        "activation_delta_rss_bytes": 546779136,
-        "forward_seconds": 0.550711837,
-        "backward_seconds": 2.06371844,
-        "optimizer_seconds": 0.451961032,
-        "step_seconds": 3.066391309,
-        "tokens_per_second": 166.6454
-      },
-      {
-        "sequence_length": 1024,
-        "policy": "none",
-        "repeats": 1,
-        "peak_pre_optimizer_rss_bytes": 2775674880,
-        "activation_delta_rss_bytes": 1186963456,
-        "forward_seconds": 1.755984652,
-        "backward_seconds": 2.12891084,
-        "optimizer_seconds": 0.249680843,
-        "step_seconds": 4.134576335,
-        "tokens_per_second": 247.4256
-      },
-      {
-        "sequence_length": 1024,
-        "policy": "per_block",
-        "repeats": 1,
-        "peak_pre_optimizer_rss_bytes": 2238636032,
-        "activation_delta_rss_bytes": 647000064,
-        "forward_seconds": 1.284051725,
-        "backward_seconds": 5.624425437,
-        "optimizer_seconds": 0.300047547,
-        "step_seconds": 7.208524709,
-        "tokens_per_second": 141.9153
-      }
+    "S4_100M_fp32_batch1_real": [
+      {"sequence_length": 512, "policy": "none", "peak_rss_bytes": 2424733696, "activation_delta_rss_bytes": 836870144, "forward_seconds": 0.795881752, "backward_seconds": 1.481766737, "step_seconds": 2.702977125, "tokens_per_second": 189.0508},
+      {"sequence_length": 512, "policy": "every_other_block", "peak_rss_bytes": 2292920320, "activation_delta_rss_bytes": 700071936, "forward_seconds": 0.592691891, "backward_seconds": 1.80020759, "step_seconds": 2.848459849, "tokens_per_second": 179.3952},
+      {"sequence_length": 512, "policy": "per_block", "peak_rss_bytes": 2138222592, "activation_delta_rss_bytes": 546779136, "forward_seconds": 0.550711837, "backward_seconds": 2.06371844, "step_seconds": 3.066391309, "tokens_per_second": 166.6454},
+      {"sequence_length": 1024, "policy": "none", "peak_rss_bytes": 2775674880, "activation_delta_rss_bytes": 1186963456, "forward_seconds": 1.755984652, "backward_seconds": 2.12891084, "step_seconds": 4.134576335, "tokens_per_second": 247.4256},
+      {"sequence_length": 1024, "policy": "per_block", "peak_rss_bytes": 2238636032, "activation_delta_rss_bytes": 647000064, "forward_seconds": 1.284051725, "backward_seconds": 5.624425437, "step_seconds": 7.208524709, "tokens_per_second": 141.9153}
     ],
-    "S4_100M_bf16_batch1_real_execution": [
-      {
-        "sequence_length": 512,
-        "policy": "none",
-        "repeats": 1,
-        "peak_pre_optimizer_rss_bytes": 1423265792,
-        "activation_delta_rss_bytes": 228843520,
-        "step_seconds": 15.268266647,
-        "tokens_per_second": 33.4681,
-        "timing_reliability": "LOW_CPU_BF16_KERNEL_WARMUP_NOISE"
-      },
-      {
-        "sequence_length": 512,
-        "policy": "per_block",
-        "repeats": 1,
-        "peak_pre_optimizer_rss_bytes": 1287081984,
-        "activation_delta_rss_bytes": 89010176,
-        "step_seconds": 3.613852287,
-        "tokens_per_second": 141.4004,
-        "timing_reliability": "LOW_CPU_BF16_KERNEL_WARMUP_NOISE"
-      }
+    "S4_100M_bf16_batch1_real": [
+      {"sequence_length": 512, "policy": "none", "peak_rss_bytes": 1423265792, "activation_delta_rss_bytes": 228843520, "step_seconds": 15.268266647, "tokens_per_second": 33.4681},
+      {"sequence_length": 512, "policy": "per_block", "peak_rss_bytes": 1287081984, "activation_delta_rss_bytes": 89010176, "step_seconds": 3.613852287, "tokens_per_second": 141.4004},
+      {"sequence_length": 1024, "policy": "none", "peak_rss_bytes": 1667629056, "activation_delta_rss_bytes": 473100288, "step_seconds": 18.714443554, "tokens_per_second": 54.6637},
+      {"sequence_length": 1024, "policy": "per_block", "peak_rss_bytes": 1324584960, "activation_delta_rss_bytes": 126775296, "step_seconds": 7.384137482, "tokens_per_second": 138.5402}
     ]
   },
-  "resource_planning": {
-    "S4_4096_fp32": {
-      "method": "linear planning extrapolation from real S4 512 and 1024 pre-optimizer RSS; not runtime evidence",
+  "timing_interpretation": {
+    "S3": "CPU timing is noisy enough that apparent checkpoint speedups are not treated as causal benefits.",
+    "S4_fp32": "Real CPU recomputation cost is visible; do not transfer its magnitude to CUDA.",
+    "S4_bf16": "CPU bf16 timing is strongly kernel-warmup dependent and is not used for policy selection; RSS only."
+  },
+  "resource_planning_4096": {
+    "fp32_4GiB_local": {
       "none_peak_rss_mib_approx": 4657,
       "per_block_peak_rss_mib_approx": 2711,
-      "local_cgroup_limit_mib": 4096,
-      "interpretation": "No-checkpoint 4096 is projected above the local hard limit; per-block is projected to retain material headroom. This is planning evidence only until a target accelerator run is executed."
+      "recommendation": "per_block",
+      "evidence_kind": "linear planning extrapolation from real S4 512/1024; not runtime"
+    },
+    "bf16_4GiB_local": {
+      "none_peak_rss_mib_approx": 2990,
+      "per_block_peak_rss_mib_approx": 1478,
+      "recommendation": "try_none_then_apply_80_percent_rule",
+      "evidence_kind": "linear planning extrapolation from real S4 512/1024; not runtime"
     }
   },
   "decision": {
     "S3_10M_default": "none",
-    "S3_10M_reason": "At the canonical 1024 context and batch 1, no-checkpoint peak RSS stayed below 0.9 GiB on this host. Per-block saves about 148 MiB but is unnecessary unless batch/context growth or a much tighter memory budget makes headroom binding.",
-    "S4_100M_512_1024_local_default": "none_when_headroom_is_sufficient",
-    "S4_100M_4096_planning_default": "per_block",
-    "partial_strategy": "every_other_block is optional only for a narrow intermediate memory target; it is not the default because it saves less memory and does not establish a robust compute advantage.",
-    "trigger_rule": "Use no activation checkpointing while measured or calibrated uncheckpointed peak memory is <=80% of the usable device budget. Switch directly to per-block checkpointing when uncheckpointed peak is >80%, OOMs, or checkpointing is required to preserve the desired batch/context. Re-measure on the target accelerator and precision; do not transfer CPU timing penalties to GPU claims."
+    "S4_100M_unconditional_default": "none_if_headroom_rule_passes",
+    "S4_100M_bf16_4096_4GiB_provisional": "none_first_attempt",
+    "S4_100M_fp32_4096_4GiB_provisional": "per_block",
+    "partial_strategy": "every_other_block is optional only for a narrow intermediate memory target; not default",
+    "headroom_rule": "Use none while measured or target-calibrated uncheckpointed peak memory is <=80% of usable device memory. Switch directly to per_block above 80%, on OOM, or when checkpointing is required to retain the intended batch/context."
   },
   "claim_boundaries": {
     "S4_100M_runtime_measured_at_512": true,
     "S4_100M_runtime_measured_at_1024": true,
     "S4_100M_runtime_measured_at_4096": false,
     "cuda_runtime_measured": false,
+    "cuda_allocated_reserved_measured": false,
     "fsdp2_dcp_checkpointed_path_test_added": true,
-    "fsdp2_dcp_checkpointed_path_result": "REQUIRES_REPOSITORY_CI_OR_LOCKED_PYTHON311_EXECUTION"
+    "fsdp2_dcp_checkpointed_path_ci_result": "PENDING_LOCKED_PYTHON311_CI_AT_EVIDENCE_WRITE_TIME"
   }
 }
