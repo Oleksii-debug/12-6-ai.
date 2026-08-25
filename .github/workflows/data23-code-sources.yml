@@ -1,0 +1,58 @@
+name: DATA-23 Code Source Intake
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  code-source-pilot:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Install locked DATA-23 test environment
+        run: |
+          python -m venv .data23
+          .data23/bin/python -m pip install \
+            --disable-pip-version-check --no-deps --require-hashes \
+            -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .data23/bin/python -m pip install \
+            --disable-pip-version-check --no-deps --require-hashes \
+            -r requirements/locks/linux-x86_64/dev.lock.txt
+          PIP_NO_INDEX=1 .data23/bin/python -m pip install \
+            --disable-pip-version-check --no-deps --no-build-isolation -e .
+      - name: Focused DATA-23 checks
+        run: |
+          .data23/bin/python -m ruff check \
+            src/twelve_six/data/code_sources.py \
+            tests/test_code_sources.py \
+            tools/run_code_source_pilot.py
+          .data23/bin/python -m pytest -q tests/test_code_sources.py
+      - name: Rebuild real pilot evidence
+        run: |
+          PYTHONPATH=src .data23/bin/python tools/run_code_source_pilot.py \
+            --output code-source-pilot.json \
+            --sample-manifest code-source-manifest.json
+      - name: Verify committed pilot is reproducible
+        run: |
+          cmp code-source-pilot.json reports/d03/code_source_pilot_20260825.json
+          cmp code-source-manifest.json data/samples/data23/manifest.json
+      - name: Upload evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: data23-code-source-pilot
+          path: |
+            code-source-pilot.json
+            code-source-manifest.json
+            configs/data/code_source_candidates.v1.json
+          if-no-files-found: error
+          retention-days: 30
