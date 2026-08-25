@@ -87,6 +87,8 @@ jobs:
           assert report["candidate"]["source_pr"] == 144
           assert report["candidate"]["analytic_parameters"] == 10_000_640
           assert report["candidate"]["instantiated_trainable_parameters"] == 10_000_640
+          assert report["repository_stage_candidate"]["parameters"] == 10_059_840
+          assert report["repository_stage_candidate"]["current_byte_tokenizer_compatible"] is False
           assert report["future_tokenizer_alternative"]["source_pr"] == 67
           assert report["future_tokenizer_alternative"]["parameters"] == 9_999_680
           assert report["future_tokenizer_alternative"]["current_byte_tokenizer_compatible"] is False
@@ -100,7 +102,7 @@ jobs:
           assert report["inference"]["first_party_checkpoint_to_generation"] == "PASS_MECHANICS_ONLY"
           assert report["inference"]["runtime_tokenizer_compatible"] is True
           assert report["inference"]["s3_stage_tokenizer_frozen"] is False
-          assert report["inference"]["kv_cache"] == "NOT_ON_EXACT_GREEN_BASE__PR_138_CURRENT_HEAD_RED"
+          assert report["inference"]["kv_cache"] == "ACTIVE_INCUMBENT_138_REPAIRED_HEAD_PENDING_EXACT_HEAD_TERMINAL_RESULT"
           assert report["architecture_runtime_boundary"]["gqa_parameter_savings_realized"] is True
           assert report["architecture_runtime_boundary"]["gqa_training_activation_memory_savings_realized"] is False
           assert report["s4_readiness"]["owner"] == "SCALE-04_ACTIVE_CLAIM__HANDOFF_ONLY"
