@@ -1,0 +1,114 @@
+name: D03 DATA-31 Benchmark Decontamination
+
+on:
+  pull_request:
+    paths:
+      - "src/twelve_six/data/benchmark_decontamination.py"
+      - "tools/run_benchmark_decontamination.py"
+      - "tests/test_benchmark_decontamination.py"
+      - "configs/data/decontamination_current_s0_v1.json"
+      - "docs/D03_BENCHMARK_DECONTAMINATION.md"
+      - ".github/workflows/d03-data31-decontamination.yml"
+      - "data/s0/packaged/train.jsonl"
+      - "data/s0/packaged/validation.jsonl"
+      - "data/s0/packaged/manifest.json"
+      - "data/s0/source_registry.json"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  data31-decontamination:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install repo test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .[dev]
+      - name: Verify and install incumbent DataTrove runtime
+        shell: bash
+        run: |
+          mkdir -p /tmp/datatrove-wheel /tmp/tokenizers-wheel
+          pip download --no-deps datatrove==0.10.0 -d /tmp/datatrove-wheel
+          WHEEL="$(find /tmp/datatrove-wheel -name 'datatrove-0.10.0-*.whl' -print -quit)"
+          test -n "$WHEEL"
+          ACTUAL="$(sha256sum "$WHEEL" | awk '{print $1}')"
+          EXPECTED="c7bb75deed2c3e88fb5138f8ea075a170ee98d6c94fc263829609091ea9c2b5d"
+          test "$ACTUAL" = "$EXPECTED"
+
+          pip download --no-deps tokenizers==0.23.1 -d /tmp/tokenizers-wheel
+          TOKENIZERS_WHEEL="$(find /tmp/tokenizers-wheel -name 'tokenizers-0.23.1-*.whl' -print -quit)"
+          test -n "$TOKENIZERS_WHEEL"
+          TOKENIZERS_ACTUAL="$(sha256sum "$TOKENIZERS_WHEEL" | awk '{print $1}')"
+          TOKENIZERS_EXPECTED="5075b405006415ea148a992d093699c66eb01952bf59f4d5727089a98bda45a4"
+          test "$TOKENIZERS_ACTUAL" = "$TOKENIZERS_EXPECTED"
+
+          pip install "$WHEEL" orjson regex "xxhash==3.8.1"
+          pip install --no-deps "$TOKENIZERS_WHEEL"
+      - name: Contract and injected contamination tests
+        run: |
+          ruff check src/twelve_six/data/benchmark_decontamination.py tools/run_benchmark_decontamination.py tests/test_benchmark_decontamination.py
+          pytest -q tests/test_benchmark_decontamination.py
+      - name: Run current S0 publication decontamination pass
+        run: |
+          mkdir -p reports/data31/work
+          PYTHONPATH=src python tools/run_benchmark_decontamination.py \
+            --config configs/data/decontamination_current_s0_v1.json \
+            --output reports/data31/current_s0_decontamination.json \
+            --work-dir reports/data31/work
+      - name: Validate manifest and truth boundary
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path("reports/data31/current_s0_decontamination.json").read_text())
+          physical_manifest = json.loads(
+              Path("reports/data31/work/published_candidate/manifest.json").read_text()
+          )
+          expected_registry = "10f7454f77eb2dc3871eeafa5055b1969eab42954eb8e19e61565f217c67df31"
+          assert report["schema_version"] == "12-6.data31-decontamination-run.v1"
+          assert report["d06_authority"]["registry_sha256"] == expected_registry
+          assert report["counts"]["candidate_input"] == 10
+          assert report["counts"]["heldout_references"] == 2
+          assert report["counts"]["registered_semantic_matches"] == 2
+          assert report["counts"]["surviving_documents"] <= 8
+          assert report["decontamination_report"]["publication_eligible"] is True
+          assert report["decontamination_report"]["semantic_universal_cleanliness_claimed"] is False
+          assert report["publication_manifest"]["benchmark_registry_sha256"] == expected_registry
+          assert report["publication_manifest"]["semantic_universal_cleanliness_claimed"] is False
+          assert physical_manifest == report["publication_manifest"]
+          assert physical_manifest["benchmark_registry_sha256"] == expected_registry
+          assert report["truth_boundary"]["real_d06_registered_benchmarks_in_snapshot"] == 0
+          assert report["truth_boundary"]["real_hashed_generation_probes_locally_available"] == 0
+          assert "project-authored-s0-fixture-v1::doc-001" not in report["surviving_document_ids"]
+          assert "project-authored-s0-fixture-v1::doc-011" not in report["surviving_document_ids"]
+          print(json.dumps({
+              "run_sha256": report["run_sha256"],
+              "benchmark_registry_sha256": report["d06_authority"]["registry_sha256"],
+              "reference_bundle_sha256": report["reference_bundle"]["reference_bundle_sha256"],
+              "exact_matches": report["counts"]["exact_matches"],
+              "near_matches": report["counts"]["near_matches"],
+              "registered_semantic_matches": report["counts"]["registered_semantic_matches"],
+              "rejected_unique_documents": report["counts"]["rejected_unique_documents"],
+              "surviving_documents": report["counts"]["surviving_documents"],
+              "publication_manifest_sha256": report["publication_manifest"]["publication_manifest_sha256"],
+          }, sort_keys=True))
+          PY
+      - name: Upload DATA-31 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: d03-data31-decontamination-${{ github.sha }}
+          path: |
+            reports/data31/current_s0_decontamination.json
+            reports/data31/work/published_candidate/train.jsonl
+            reports/data31/work/published_candidate/manifest.json
+          if-no-files-found: warn
+          retention-days: 30

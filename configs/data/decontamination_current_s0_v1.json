@@ -1,0 +1,61 @@
+{
+  "schema_version": "12-6.data31-decontamination-config.v1",
+  "benchmark_registry_snapshot": {
+    "snapshot_state": "D06_IMPLEMENTATION_CURRENTLY_HAS_NO_PERSISTED_POPULATED_PRODUCTION_REGISTRY",
+    "authority_evidence_ref": "D06 PR #28 head 914973502ab92a925a5cc29d72e4b3cce0e81c80; src/twelve_six/evaluation.py BenchmarkRegistry.manifest",
+    "manifest": {
+      "schema_version": "12-6.benchmark-registry.v1",
+      "benchmarks": [],
+      "manifest_sha256": "10f7454f77eb2dc3871eeafa5055b1969eab42954eb8e19e61565f217c67df31"
+    }
+  },
+  "candidate": {
+    "input_jsonl": "data/s0/packaged/train.jsonl",
+    "corpus_manifest": "data/s0/packaged/manifest.json"
+  },
+  "references": {
+    "input_jsonl": "data/s0/packaged/validation.jsonl",
+    "source_id": "project-authored-s0-fixture-v1",
+    "version": "s0-tiny-controlled-v1",
+    "category": "heldout_validation",
+    "expected_documents": 2,
+    "unavailable_probe_count": 0,
+    "probe_evidence_note": "D06 live pre-integration report records no hashed real S0 generation probe."
+  },
+  "rights_evidence": {
+    "source_registry": "data/s0/source_registry.json",
+    "scope": "Local checking only; project-authored fixture provenance. No external-license conclusion."
+  },
+  "known_semantic_exclusions": [
+    {
+      "match_type": "registered_cross_language_semantic_overlap",
+      "candidate_document_id": "project-authored-s0-fixture-v1::doc-001",
+      "reference_document_id": "project-authored-s0-fixture-v1::doc-007",
+      "evidence_ref": "Controlled S0 fixture pair: EN and UK texts express the same small-language-model/next-symbol validation proposition.",
+      "decision": "REJECT_FROM_TRAINING"
+    },
+    {
+      "match_type": "registered_cross_language_semantic_overlap",
+      "candidate_document_id": "project-authored-s0-fixture-v1::doc-011",
+      "reference_document_id": "project-authored-s0-fixture-v1::doc-005",
+      "evidence_ref": "Controlled S0 fixture pair: UK and EN texts express the same validation-examples-must-remain-outside-training proposition.",
+      "decision": "REJECT_FROM_TRAINING"
+    }
+  ],
+  "minhash": {
+    "candidate_shards": 1,
+    "workers": 1,
+    "n_grams": 5,
+    "num_buckets": 14,
+    "hashes_per_bucket": 8,
+    "seed": 1,
+    "hash_precision": 64,
+    "datatrove_version": "0.10.0"
+  },
+  "truth_boundary": {
+    "semantic_universal_cleanliness_claimed": false,
+    "d06_registered_benchmark_count_in_snapshot": 0,
+    "supplemental_local_heldout_validation_count": 2,
+    "external_dataset_rights_claimed": false
+  }
+}
