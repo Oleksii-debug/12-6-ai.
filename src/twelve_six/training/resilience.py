@@ -12,6 +12,7 @@ import json
 import math
 import os
 import re
+import shutil
 import signal
 import uuid
 from collections.abc import Callable, Mapping, Sequence
@@ -511,6 +512,11 @@ class RecoveryStore:
         valid.sort(key=lambda item: (item.optimizer_step, item.attempt, item.checkpoint_id))
         return valid, invalid
 
+    def _prune_verified_retention(self) -> None:
+        checkpoints, _invalid = self.discover_checkpoints()
+        for record in checkpoints[:-self.policy.retain_last]:
+            shutil.rmtree(self.checkpoints_dir / record.directory)
+
     def _rebuild_state(self, *, journal_reconstructed: bool) -> dict[str, Any]:
         attempts = self._read_markers(self.attempts_dir, "attempt")
         failures = self._read_markers(self.failures_dir, "failure")
@@ -551,16 +557,46 @@ class RecoveryStore:
         except (OSError, json.JSONDecodeError, RecoveryStateError):
             return self._rebuild_state(journal_reconstructed=True)
 
+        attempts = self._read_markers(self.attempts_dir, "attempt")
+        failures = self._read_markers(self.failures_dir, "failure")
         checkpoints, invalid = self.discover_checkpoints()
+        terminal = self._read_terminal()
         latest = asdict(checkpoints[-1]) if checkpoints else None
-        if (
-            state.get("last_known_good") != latest
-            or state.get("checkpoint_count") != len(checkpoints)
-            or state.get("invalid_checkpoint_directories") != invalid
-        ):
-            state["last_known_good"] = latest
-            state["checkpoint_count"] = len(checkpoints)
-            state["invalid_checkpoint_directories"] = invalid
+        attempt_count = len(attempts)
+        restart_count = max(0, attempt_count - 1)
+        preemptions = sum(
+            marker.get("failure_class") == FailureClass.PREEMPTION.value
+            for marker in failures
+        )
+        failure_count = len(failures)
+        phase = RunPhase(state["phase"])
+        if terminal is not None:
+            phase = terminal
+        elif failure_count > state.get("failure_count", 0):
+            latest_failure = failures[-1]
+            phase = (
+                RunPhase.PREEMPTED
+                if latest_failure.get("failure_class") == FailureClass.PREEMPTION.value
+                else RunPhase.RECOVERING
+            )
+        elif attempt_count > state.get("attempt", 0):
+            phase = RunPhase.RECOVERING
+        if restart_count > self.policy.max_restarts or preemptions > self.policy.max_preemptions:
+            phase = RunPhase.FAILED
+            self._write_terminal(RunPhase.FAILED)
+
+        reconciled = {
+            "phase": phase.value,
+            "attempt": attempt_count,
+            "restarts_used": restart_count,
+            "preemptions_seen": preemptions,
+            "last_known_good": latest,
+            "checkpoint_count": len(checkpoints),
+            "invalid_checkpoint_directories": invalid,
+            "failure_count": failure_count,
+        }
+        if any(state.get(key) != value for key, value in reconciled.items()):
+            state.update(reconciled)
             state = self._persist(state)
         return state
 
@@ -650,15 +686,11 @@ class RecoveryStore:
         _atomic_write_json(marker_path, marker)
         state = self.open()
         preemptions = state["preemptions_seen"]
-        if failure_class is FailureClass.PREEMPTION:
-            preemptions += 1
-        phase = RunPhase.RECOVERING
-        if preemptions > self.policy.max_preemptions:
-            phase = RunPhase.FAILED
-            self._write_terminal(RunPhase.FAILED)
+        if RunPhase(state["phase"]) is RunPhase.FAILED:
+            return state
         state.update(
             {
-                "phase": phase.value,
+                "phase": RunPhase.RECOVERING.value,
                 "preemptions_seen": preemptions,
                 "failure_count": sequence,
             }
@@ -712,6 +744,8 @@ class RecoveryStore:
             }
         )
         self._persist(state)
+        self._prune_verified_retention()
+        self.open()
         return record
 
     def mark_preempted(self, *, optimizer_step: int, reason_code: str) -> dict[str, Any]:
@@ -753,6 +787,7 @@ def run_resilient_training(
         raise ValueError("batches must be non-empty")
     store.begin_attempt()
     trainer.assert_checkpoint_safe()
+    last_good = store.last_known_good()
 
     while trainer.optimizer_step < trainer.config.max_steps:
         batch_index = trainer.micro_step % len(batches)
@@ -762,7 +797,6 @@ def run_resilient_training(
         if not metrics.optimizer_stepped:
             continue
 
-        last_good = store.last_known_good()
         due = metrics.optimizer_step % store.policy.checkpoint_every_steps == 0
         if due:
             last_good = store.commit_checkpoint(trainer, save_checkpoint)
@@ -783,7 +817,6 @@ def run_resilient_training(
                 stop_reason=reason,
             )
 
-    last_good = store.last_known_good()
     if last_good is None or last_good.optimizer_step != trainer.optimizer_step:
         last_good = store.commit_checkpoint(trainer, save_checkpoint)
     store.mark_completed()
