@@ -1,0 +1,74 @@
+{
+  "base_commit": "9b150a226146457c705050f9af8b1ca5487fd876",
+  "candidates": [
+    {
+      "candidate": "ffn275_attn050",
+      "d_ff": 352,
+      "ffn_ratio": 2.75,
+      "head_dim": 16,
+      "model_identity_sha256": "e35166a7b54f1fbd48665827d76f786be470671f296480fe77c2bfe1b3b85bbf",
+      "parameters": 992896
+    },
+    {
+      "candidate": "ffn250_attn075",
+      "d_ff": 320,
+      "ffn_ratio": 2.5,
+      "head_dim": 24,
+      "model_identity_sha256": "2ae3c59828f10a7b55b5a393db2679183b14baef203bd24780ac67533ab8f79f",
+      "parameters": 992896
+    },
+    {
+      "candidate": "control_ffn225",
+      "d_ff": 288,
+      "ffn_ratio": 2.25,
+      "head_dim": 32,
+      "model_identity_sha256": "18284b303eb31cef5191ddb3ed4ddba5ce51789aadf4b14cc90d4226c5c527b5",
+      "parameters": 992896
+    },
+    {
+      "candidate": "ffn200_attn125",
+      "d_ff": 256,
+      "ffn_ratio": 2.0,
+      "head_dim": 40,
+      "model_identity_sha256": "eb03aeb9598f77eee2f78d4e9bd91c5c230c1fae4d9d429bb21f54edc7aeb129",
+      "parameters": 992896
+    },
+    {
+      "candidate": "ffn175_attn150",
+      "d_ff": 224,
+      "ffn_ratio": 1.75,
+      "head_dim": 48,
+      "model_identity_sha256": "4b81bbc2665fe395354210564fa1028e904fe6221bb1a7aedc44f5a68fa20b0a",
+      "parameters": 992896
+    }
+  ],
+  "config_identity_sha256": "7341eadc6050aaa1ea02c79619324f52e9a8198da5c18ec9321ffd5294919a2f",
+  "fixed": {
+    "activation": "swiglu",
+    "batch_size": 4,
+    "d_model": 128,
+    "data_trace": "structured-byte-v1 deterministic identical across candidates",
+    "max_seq_len": 512,
+    "n_heads": 4,
+    "n_kv_heads": 2,
+    "n_layers": 6,
+    "optimizer": {
+      "betas": [0.9, 0.95],
+      "eps": 1e-08,
+      "gradient_clip_norm": 1.0,
+      "learning_rate": 0.0003,
+      "name": "AdamW",
+      "precision": "fp32",
+      "weight_decay": 0.0
+    },
+    "seeds": [101, 202],
+    "sequence_length": 64,
+    "steps": 32,
+    "tokenizer": "s0-byte-v1 compatibility identity only",
+    "vocab_size": 256
+  },
+  "incumbent_source_commit": "003e268655b672df9df00afb8a32dbec4db5d2e1",
+  "promotion_allowed": false,
+  "schema": "12-6.model12-ffn-ratio-1m.experiment.v1",
+  "status": "experimental_not_frozen"
+}
