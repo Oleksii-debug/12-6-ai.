@@ -33,10 +33,10 @@
       },
       "freeze": {
         "corpus": {
-          "detail": "Current serious S4 run explicitly blocks on D03 scaled-corpus production.",
-          "identity_sha256": null,
+          "detail": "DATA-25 V0.1 exists as an open, unmerged project-authored 20,000,775-byte-token train corpus. S4 serious requires 2,000,027,648 byte tokens, so it is neither integrated freeze authority nor sufficient serious-run scale.",
+          "identity_sha256": "422f545da93526ceba2c0ff738e0b9deac65f35bfb31d87d2aab068cda091fc8",
           "required_training_byte_tokens": 2000027648,
-          "status": "BLOCKED_D03_SCALED_CORPUS_NOT_FROZEN"
+          "status": "DATA25_V01_UNMERGED_UNDERSIZED_NOT_FROZEN"
         },
         "eval": {
           "identity_sha256": null,
@@ -72,6 +72,7 @@
       },
       "run_config": "configs/runs/s4_100m_serious.json",
       "run_manifest_sha256": "8b5103470e3e59ef30fd127032c8c95be58fab57db5dcd4f27fea2ffe7076d73",
+      "run_manifest_status": "BLOCKED_PENDING_D03_SCALED_CORPUS",
       "stage_config": "configs/stages/s4_100m_accelerator.candidate.json"
     },
     "10m": {
@@ -90,9 +91,9 @@
       },
       "freeze": {
         "corpus": {
-          "detail": "No real corpus is bound by the current 10M single-GPU pilot.",
-          "identity_sha256": null,
-          "status": "CONTROLLED_SYNTHETIC_MECHANICS_ONLY"
+          "detail": "DATA-25 V0.1 provides a real deterministic project-authored corpus candidate, but it is open/unmerged and the current TRAIN-15 run does not bind it.",
+          "identity_sha256": "422f545da93526ceba2c0ff738e0b9deac65f35bfb31d87d2aab068cda091fc8",
+          "status": "DATA25_V01_UNMERGED_NOT_BOUND_NOT_FROZEN"
         },
         "eval": {
           "identity_sha256": null,
@@ -126,6 +127,7 @@
       },
       "run_config": "configs/runs/s3_10m.single_gpu_pilot.experimental.json",
       "run_manifest_sha256": "6d2ab7f946858a0184f531e00cb8f6b6405552a737bcbb9976c9ec70a0c16c20",
+      "run_manifest_status": "MECHANICS_ONLY_NOT_CAMPAIGN",
       "stage_config": "configs/stages/alternatives/s3_10m_scale03_byte_gqa.execution.json"
     }
   },
@@ -135,6 +137,15 @@
       "checkpoint": {
         "core_git_blob_sha": "4c4929503c825f2bf347079d7495af6f60a29e49",
         "format": "12-6-checkpoint-v1"
+      },
+      "data": {
+        "corpus_identity_sha256": "422f545da93526ceba2c0ff738e0b9deac65f35bfb31d87d2aab068cda091fc8",
+        "external_training_eligible_sources": 0,
+        "head_sha": "8af17afa7baf3d75c2328caf8b08af2400a95e09",
+        "pr": 210,
+        "status": "OPEN_UNMERGED_PROJECT_AUTHORED_V01_NOT_CAMPAIGN_FREEZE",
+        "train_byte_tokens": 20000775,
+        "validation_byte_tokens": 1410473
       },
       "observability": {
         "composition_status": "PRESENT_ON_REQUIRED_PRODUCT_BASE",
