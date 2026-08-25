@@ -11,6 +11,18 @@ from .generation import generate
 from .loader import load_backend
 
 DEFAULT_BACKEND_LOADER = "twelve_six.inference.first_party:load_first_party_backend"
+DEFAULT_MAX_PROMPT_CHARS = 1_048_576
+PROMPT_READ_CHUNK_CHARS = 65_536
+
+
+def _positive_int(value: str) -> int:
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be a positive integer") from exc
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("must be a positive integer")
+    return parsed
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -29,6 +41,16 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument("--prompt", help="prompt text; when omitted, read all prompt text from stdin")
+    parser.add_argument(
+        "--max-prompt-chars",
+        type=_positive_int,
+        default=DEFAULT_MAX_PROMPT_CHARS,
+        metavar="N",
+        help=(
+            "maximum prompt characters accepted from --prompt or stdin; "
+            f"default: {DEFAULT_MAX_PROMPT_CHARS}"
+        ),
+    )
     parser.add_argument("--max-new-tokens", type=int, default=64)
     parser.add_argument("--seed", type=int, default=0)
 
@@ -57,12 +79,50 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _read_prompt(parser: argparse.ArgumentParser, prompt: str | None) -> str:
+def _read_bounded_stdin(max_prompt_chars: int) -> str:
+    """Read stdin through a strict character ceiling without silent truncation."""
+
+    remaining = max_prompt_chars + 1
+    chunks: list[str] = []
+    while remaining > 0:
+        chunk = sys.stdin.read(min(PROMPT_READ_CHUNK_CHARS, remaining))
+        if chunk == "":
+            break
+        if not isinstance(chunk, str):
+            raise TypeError("stdin text stream must return strings")
+        chunks.append(chunk)
+        remaining -= len(chunk)
+    return "".join(chunks)
+
+
+def _read_prompt(
+    parser: argparse.ArgumentParser,
+    prompt: str | None,
+    *,
+    max_prompt_chars: int,
+) -> str:
+    if not isinstance(max_prompt_chars, int) or isinstance(max_prompt_chars, bool):
+        raise TypeError("max_prompt_chars must be a positive integer")
+    if max_prompt_chars <= 0:
+        raise ValueError("max_prompt_chars must be a positive integer")
+
     if prompt is not None:
+        if len(prompt) > max_prompt_chars:
+            parser.error(
+                "--prompt exceeds --max-prompt-chars "
+                f"({len(prompt)} > {max_prompt_chars})"
+            )
         return prompt
     if sys.stdin.isatty():
         parser.error("provide --prompt or pipe prompt text on stdin")
-    return sys.stdin.read()
+
+    stdin_prompt = _read_bounded_stdin(max_prompt_chars)
+    if len(stdin_prompt) > max_prompt_chars:
+        parser.error(
+            "stdin prompt exceeds --max-prompt-chars "
+            f"(limit={max_prompt_chars})"
+        )
+    return stdin_prompt
 
 
 def _backend_diagnostics(backend: object) -> dict[str, object] | None:
@@ -80,7 +140,11 @@ def _backend_diagnostics(backend: object) -> dict[str, object] | None:
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    prompt = _read_prompt(parser, args.prompt)
+    prompt = _read_prompt(
+        parser,
+        args.prompt,
+        max_prompt_chars=args.max_prompt_chars,
+    )
 
     try:
         config = GenerationConfig(
