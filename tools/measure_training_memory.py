@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Measure live Trainer/AdamW state in isolated LOCAL_FREE CPU processes."""
 
 from __future__ import annotations
