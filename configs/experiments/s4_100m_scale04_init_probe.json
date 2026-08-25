@@ -1,0 +1,45 @@
+{
+  "_probe_snapshot": {
+    "captured_utc": "2026-08-25T10:03:51Z",
+    "purpose": "MODEL-34 initialization probe only; not a canonical S4 stage config",
+    "source_branch": "scale-04/100m-accelerator-readiness-20260825",
+    "source_candidate_id": "S4-SCALE04-BYTE-MHA-v1",
+    "source_status": "engineering_candidate_not_frozen"
+  },
+  "canonical_base": "random_init",
+  "expected_init_identity_sha256": "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5",
+  "expected_model_identity_sha256": "6103d0d457e25206c11871f09aef1f2e23860329c060379c9f956b3851740170",
+  "expected_parameters": 99897600,
+  "init": {
+    "family": "normal",
+    "residual_branch_scale": "sqrt_2_layers",
+    "schema_version": 1,
+    "std": 0.02
+  },
+  "model": {
+    "activation": "swiglu",
+    "attention_bias": false,
+    "attention_dropout": 0.0,
+    "d_ff": 2304,
+    "d_model": 768,
+    "final_norm": true,
+    "head_dim": 64,
+    "lm_head_bias": false,
+    "max_seq_len": 4096,
+    "mlp_bias": false,
+    "n_heads": 12,
+    "n_kv_heads": 12,
+    "n_layers": 13,
+    "norm_eps": 1e-05,
+    "norm_kind": "rmsnorm",
+    "norm_placement": "pre",
+    "position_embedding": "rope",
+    "rope_rotary_dim": 64,
+    "rope_theta": 10000.0,
+    "schema_version": 1,
+    "tie_word_embeddings": true,
+    "vocab_size": 256
+  },
+  "stage": "S4",
+  "target_parameters": 100000000
+}

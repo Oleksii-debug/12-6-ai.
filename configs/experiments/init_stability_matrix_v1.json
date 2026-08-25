@@ -1,0 +1,57 @@
+{
+  "authority": "LOCAL_FREE_ENGINEERING_INIT_PREFLIGHT_NOT_STAGE_EVIDENCE",
+  "candidates": [
+    "stage_default",
+    "unscaled_residual_control",
+    "s1_width_reference_control"
+  ],
+  "purpose": "Compare canonical residual-scaled initialization against two controlled counterfactuals without changing stage identity.",
+  "schema": "12-6.init-stability-experiment.v1",
+  "stages": [
+    {
+      "batch_size": 2,
+      "data_seed": 424242,
+      "label": "S1_100K",
+      "seeds": [1337, 1338, 1339],
+      "sequence_length": 64,
+      "stage_config": "configs/stages/s1_100k.json",
+      "steps": 6,
+      "width_reference": 48
+    },
+    {
+      "batch_size": 2,
+      "data_seed": 424242,
+      "label": "S2_1M",
+      "seeds": [1337, 1338, 1339],
+      "sequence_length": 64,
+      "stage_config": "configs/stages/s2_1m.json",
+      "steps": 6,
+      "width_reference": 48
+    },
+    {
+      "batch_size": 1,
+      "data_seed": 424242,
+      "label": "S3_10M",
+      "seeds": [1337, 1338, 1339],
+      "sequence_length": 32,
+      "stage_config": "configs/stages/s3_10m.json",
+      "steps": 4,
+      "width_reference": 48
+    },
+    {
+      "batch_size": 1,
+      "data_seed": 424242,
+      "label": "S4_100M_SCALE04_SNAPSHOT",
+      "seeds": [1337, 1338],
+      "sequence_length": 8,
+      "stage_config": "configs/experiments/s4_100m_scale04_init_probe.json",
+      "steps": 1,
+      "width_reference": 48
+    }
+  ],
+  "truth_boundary": {
+    "canonical_init_changed": false,
+    "paid_compute_used": false,
+    "stage_promotion_granted": false
+  }
+}

@@ -1,0 +1,66 @@
+name: MODEL-34 Init Stability
+on:
+  pull_request:
+    paths:
+      - "src/twelve_six/model.py"
+      - "src/twelve_six/training/init_stability.py"
+      - "src/twelve_six/checkpoint/run_binding.py"
+      - "tools/run_init_stability_matrix.py"
+      - "configs/stages/**"
+      - "configs/experiments/**"
+      - "tests/test_init_stability.py"
+      - ".github/workflows/model34-init-stability.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  locked-init-stability:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Prove exact source checkout
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Verify exact D08 locked environment
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: >-
+          python tools/verify_locked_environment.py
+          --profile linux-x86_64
+          --source-sha "$SOURCE_SHA"
+          --evidence-out locked-environment-linux-x86_64.json
+      - name: Create exact locked MODEL-34 environment
+        run: |
+          python -m venv .model34-locked
+          .model34-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .model34-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          .model34-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/dev.lock.txt
+          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .model34-locked/bin/python -m pip install --no-deps --no-build-isolation -e .
+      - name: Run targeted initialization contract tests
+        run: .model34-locked/bin/python -m pytest -q tests/test_init_stability.py
+      - name: Run exact-head S1-S4 initialization matrix
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          .model34-locked/bin/python tools/run_init_stability_matrix.py \
+            --source-sha "$SOURCE_SHA" \
+            --output-dir init-stability-evidence
+          cat init-stability-evidence/index.json
+      - name: Upload MODEL-34 evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: model34-init-stability-evidence
+          path: |
+            locked-environment-linux-x86_64.json
+            init-stability-evidence/
+          if-no-files-found: error
+          retention-days: 30
