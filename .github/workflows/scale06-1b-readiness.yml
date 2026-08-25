@@ -1,0 +1,65 @@
+name: SCALE-06 S6 1B Readiness
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/scale06-1b-readiness.yml"
+      - "configs/stages/s6_1b.scale06_candidate.json"
+      - "configs/runs/s6_1b.scale06_launch.json"
+      - "src/twelve_six/model.py"
+      - "src/twelve_six/training/scale_runtime.py"
+      - "src/twelve_six/training/s6_readiness.py"
+      - "tests/test_scale_1b_readiness.py"
+      - "tools/validate_scale_1b_readiness.py"
+
+permissions:
+  contents: read
+
+jobs:
+  locked-local-free-readiness:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Prove exact source checkout
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Verify D08 locked environment and repository checks
+        run: >-
+          python tools/verify_locked_environment.py
+          --profile linux-x86_64
+          --source-sha "$SOURCE_SHA"
+          --evidence-out locked-environment-linux-x86_64.json
+          --run-repo-checks
+      - name: Create exact locked readiness environment
+        run: |
+          python -m venv .scale06-locked
+          .scale06-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .scale06-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          .scale06-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/dev.lock.txt
+          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .scale06-locked/bin/python -m pip install --no-deps --no-build-isolation -e .
+      - name: Focused S6 readiness tests
+        run: .scale06-locked/bin/python -m pytest -q tests/test_scale_1b_readiness.py
+      - name: Execute full 1B meta readiness and bounded real training analogue
+        run: |
+          .scale06-locked/bin/python tools/validate_scale_1b_readiness.py \
+            --source-sha "$SOURCE_SHA" \
+            --output s6-1b-readiness-evidence.json
+          cat s6-1b-readiness-evidence.json
+      - name: Upload exact-head S6 readiness evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: scale06-s6-1b-readiness-${{ env.SOURCE_SHA }}
+          path: |
+            locked-environment-linux-x86_64.json
+            s6-1b-readiness-evidence.json
+          if-no-files-found: error
+          retention-days: 30
