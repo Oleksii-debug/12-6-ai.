@@ -1,0 +1,83 @@
+name: PERF-30 Scale Profile Matrix
+
+on:
+  pull_request:
+    paths:
+      - "src/twelve_six/scale_profile.py"
+      - "tests/test_scale_profile.py"
+      - "docs/PERF_SCALE_PROFILE_MATRIX.md"
+      - ".github/workflows/perf-scale-profile.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  scale-profile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Prove exact source checkout
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Verify exact D08 locked environment
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: >-
+          python tools/verify_locked_environment.py
+          --profile linux-x86_64
+          --source-sha "$SOURCE_SHA"
+          --evidence-out locked-environment-linux-x86_64.json
+
+      - name: Create exact locked profiling environment
+        run: |
+          python -m venv .perf-scale
+          .perf-scale/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .perf-scale/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          .perf-scale/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/dev.lock.txt
+          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .perf-scale/bin/python -m pip install --no-deps --no-build-isolation -e .
+
+      - name: Focused static and contract tests
+        run: |
+          .perf-scale/bin/ruff check src/twelve_six/scale_profile.py tests/test_scale_profile.py
+          .perf-scale/bin/pytest -q tests/test_scale_profile.py
+
+      - name: Execute exact-head S1-S3 CPU scale matrix
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          .perf-scale/bin/python -m twelve_six.scale_profile run \
+            --source-sha "$SOURCE_SHA" \
+            --output scale-profile-matrix.json \
+            --sequence-length 128 \
+            --repetitions 3 \
+            --train-repetitions 3 \
+            --checkpoint-repetitions 1 \
+            --generation-repetitions 2 \
+            --generation-new-tokens 4 \
+            --torch-threads 2
+          .perf-scale/bin/python -m twelve_six.scale_profile validate \
+            scale-profile-matrix.json \
+            --source-sha "$SOURCE_SHA"
+          cat scale-profile-matrix.json
+
+      - name: Upload exact scale profiling evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: perf-30-scale-profile-evidence
+          path: |
+            locked-environment-linux-x86_64.json
+            scale-profile-matrix.json
+          if-no-files-found: error
+          retention-days: 30
