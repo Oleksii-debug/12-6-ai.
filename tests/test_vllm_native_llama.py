@@ -102,7 +102,7 @@ def test_vllm_materialization_is_exact_incumbent_standard_llama_export(tmp_path:
         "trust_remote_code": False,
     }
     assert binding["runtime_provenance_file"] == RUNTIME_PROVENANCE_NAME
-    assert set(path.name for path in target.iterdir()) == {
+    assert {path.name for path in target.iterdir()} == {
         RUNTIME_CONFIG_NAME,
         RUNTIME_WEIGHTS_NAME,
         RUNTIME_PROVENANCE_NAME,
