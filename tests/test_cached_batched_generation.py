@@ -80,6 +80,24 @@ def test_torch_batched_session_cache_bytes_and_ragged_prefill_fail_closed() -> N
     assert backend.active_generation_sessions == 0
 
 
+def test_torch_batched_session_setup_failure_releases_backend_lifecycle(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    backend = S0TorchBatchedInferenceBackend(_tiny_model(), ByteTokenizer())
+    backend.model.train()
+
+    def fail_prefill(_: torch.Tensor) -> object:
+        raise RuntimeError("injected prefill failure")
+
+    monkeypatch.setattr(backend.model, "prefill_kv_cache", fail_prefill)
+
+    with pytest.raises(RuntimeError, match="injected prefill failure"):
+        backend.begin_generation_batch(((1, 2), (3, 4)))
+
+    assert backend.active_generation_sessions == 0
+    assert backend.model.training is True
+
+
 class _FakeCachedSession:
     def __init__(
         self,
