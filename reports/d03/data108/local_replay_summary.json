@@ -1,0 +1,203 @@
+{
+  "schema_version": "12-6.data108-local-replay-summary.v1",
+  "replayed_source_head": "ebfe7ea3cea9e432d9310a31768bf37e46a87311",
+  "execution_class": "LOCAL_FREE_DETERMINISTIC_REPLAY",
+  "selected_policy": {
+    "policy_id": "data108-real-balanced-v3",
+    "policy_sha256": "64ee3abbb3e349314d945f6a8914a5c5331cda37ef7424614584ccbe8583acd5",
+    "calibration_only_changes": {
+      "uk.min_distinct_token_ratio": 0.10,
+      "uk.max_dominant_token_ratio": 0.34,
+      "en.min_distinct_token_ratio": 0.10,
+      "en.max_dominant_token_ratio": 0.34
+    }
+  },
+  "calibration": {
+    "partition": "CALIBRATION_THRESHOLD_SELECTION_ONLY",
+    "samples": 20,
+    "accept_labels": 15,
+    "reject_labels": 5,
+    "false_accepts": 0,
+    "false_rejects": 0,
+    "by_source_family": {
+      "PROJECT_AUTHORED_CONTROL": {
+        "samples": 8,
+        "accept_labels": 3,
+        "reject_labels": 5,
+        "false_accepts": 0,
+        "false_rejects": 0
+      },
+      "en.standardebooks.manual": {
+        "samples": 7,
+        "accept_labels": 7,
+        "reject_labels": 0,
+        "false_accepts": 0,
+        "false_rejects": 0
+      },
+      "ua.rada.open-data.laws-texts": {
+        "samples": 5,
+        "accept_labels": 5,
+        "reject_labels": 0,
+        "false_accepts": 0,
+        "false_rejects": 0
+      }
+    },
+    "by_mode": {
+      "code": {
+        "samples": 7,
+        "accept_labels": 6,
+        "reject_labels": 1,
+        "false_accepts": 0,
+        "false_rejects": 0
+      },
+      "en": {
+        "samples": 6,
+        "accept_labels": 4,
+        "reject_labels": 2,
+        "false_accepts": 0,
+        "false_rejects": 0
+      },
+      "uk": {
+        "samples": 7,
+        "accept_labels": 5,
+        "reject_labels": 2,
+        "false_accepts": 0,
+        "false_rejects": 0
+      }
+    }
+  },
+  "holdout": {
+    "partition": "FROZEN_HOLDOUT_NOT_USED_FOR_THRESHOLD_SELECTION",
+    "samples": 14,
+    "accept_labels": 11,
+    "reject_labels": 3,
+    "false_accepts": 0,
+    "false_rejects": 0,
+    "by_source_family": {
+      "PROJECT_AUTHORED_CONTROL": {
+        "samples": 5,
+        "accept_labels": 2,
+        "reject_labels": 3,
+        "false_accepts": 0,
+        "false_rejects": 0
+      },
+      "en.standardebooks.manual": {
+        "samples": 6,
+        "accept_labels": 6,
+        "reject_labels": 0,
+        "false_accepts": 0,
+        "false_rejects": 0
+      },
+      "ua.rada.open-data.laws-texts": {
+        "samples": 3,
+        "accept_labels": 3,
+        "reject_labels": 0,
+        "false_accepts": 0,
+        "false_rejects": 0
+      }
+    },
+    "by_mode": {
+      "code": {
+        "samples": 5,
+        "accept_labels": 5,
+        "reject_labels": 0,
+        "false_accepts": 0,
+        "false_rejects": 0
+      },
+      "en": {
+        "samples": 4,
+        "accept_labels": 2,
+        "reject_labels": 2,
+        "false_accepts": 0,
+        "false_rejects": 0
+      },
+      "uk": {
+        "samples": 5,
+        "accept_labels": 4,
+        "reject_labels": 1,
+        "false_accepts": 0,
+        "false_rejects": 0
+      }
+    }
+  },
+  "complete_current_corpus_effect": {
+    "scope": "DATA25_V0.1_PROJECT_CORPUS_PLUS_EXACT_TERMINAL_SUCCESS_DATA21_22_BOUNDED_REAL_INTAKE",
+    "input": {
+      "documents": 46210,
+      "utf8_bytes": 21584606,
+      "byte_tokens": 21584606
+    },
+    "removed": {
+      "documents": 0,
+      "utf8_bytes": 0,
+      "byte_tokens": 0
+    },
+    "removed_document_fraction": 0.0,
+    "removed_byte_token_fraction": 0.0,
+    "by_source_family": {
+      "PROJECT_AUTHORED_DATA25": {
+        "input_documents": 46207,
+        "input_byte_tokens": 21411248,
+        "removed_documents": 0,
+        "removed_byte_tokens": 0
+      },
+      "en.standardebooks.manual": {
+        "input_documents": 2,
+        "input_byte_tokens": 84793,
+        "removed_documents": 0,
+        "removed_byte_tokens": 0
+      },
+      "ua.rada.open-data.laws-texts": {
+        "input_documents": 1,
+        "input_byte_tokens": 88565,
+        "removed_documents": 0,
+        "removed_byte_tokens": 0
+      }
+    },
+    "by_mode": {
+      "code": {
+        "input_documents": 12215,
+        "input_byte_tokens": 4351873,
+        "removed_documents": 0,
+        "removed_byte_tokens": 0
+      },
+      "en": {
+        "input_documents": 20095,
+        "input_byte_tokens": 7444849,
+        "removed_documents": 0,
+        "removed_byte_tokens": 0
+      },
+      "uk": {
+        "input_documents": 13900,
+        "input_byte_tokens": 9787884,
+        "removed_documents": 0,
+        "removed_byte_tokens": 0
+      }
+    }
+  },
+  "materiality": {
+    "rule": "A/B required when removed byte-token fraction >= 0.5% OR removed document fraction >= 1.0%",
+    "ab_training_required": false,
+    "ab_status": "NOT_REQUIRED_NO_MATERIAL_COMPOSITION_CHANGE"
+  },
+  "evidence_bindings": {
+    "data25_corpus_identity_sha256": "422f545da93526ceba2c0ff738e0b9deac65f35bfb31d87d2aab068cda091fc8",
+    "data25_expected_documents": 46207,
+    "data25_expected_byte_tokens": 21411248,
+    "data21_artifact_sha256": "3b4ef6c0d42725f7b660935f70ef1f8b41b90eb9d5d73c83455401a434233122",
+    "data21_manifest_identity_sha256": "9d50c0baf98247c1babc5fca8dead5b1fa87264ad92ea62527c34e342a7dd735",
+    "data21_registry_identity_sha256": "678d250ac9910f58ab1b9113cf713a2fea52a6a21e7a8434e6434d95a8045214",
+    "data21_real_records": 3,
+    "data21_real_byte_tokens": 173358
+  },
+  "machine_manifest": {
+    "python": "3.13.5",
+    "os": "Linux 6.18.35 x86_64",
+    "cpu": "Intel Xeon Platinum 8573C",
+    "visible_cpus": 5,
+    "virtualization": "KVM"
+  },
+  "quality_definition": "Manual human-interpretable labels plus deterministic DATA-32 features. Model loss is not used as the quality definition.",
+  "truth_boundary": "The replay covers the currently retained DATA-25 project-authored corpus and the exact retained bounded DATA-21/22 Rada plus Standard Ebooks intake. It does not establish a universal web-quality classifier, an independent real code source family, or any source-rights/PII/copyright authority.",
+  "hosted_confirmation_at_replay_time": "QUEUED_NOT_PASS"
+}
