@@ -61,15 +61,15 @@ def candidate_quality_policies() -> tuple[QualityPolicy, ...]:
     """Small predeclared threshold set; selection is calibration-only."""
     incumbent = default_quality_policy()
     balanced = QualityPolicy(
-        policy_id="data108-real-balanced-v2",
+        policy_id="data108-real-balanced-v3",
         uk=_natural(
             min_chars=24,
             max_symbol_ratio=0.60,
             max_repeated_line_ratio=0.55,
             max_template_line_ratio=0.40,
             max_boilerplate_line_ratio=0.40,
-            min_distinct_token_ratio=0.16,
-            max_dominant_token_ratio=0.28,
+            min_distinct_token_ratio=0.10,
+            max_dominant_token_ratio=0.34,
             max_other_script_letter_ratio=0.60,
         ),
         en=_natural(
@@ -78,8 +78,8 @@ def candidate_quality_policies() -> tuple[QualityPolicy, ...]:
             max_repeated_line_ratio=0.55,
             max_template_line_ratio=0.40,
             max_boilerplate_line_ratio=0.40,
-            min_distinct_token_ratio=0.16,
-            max_dominant_token_ratio=0.28,
+            min_distinct_token_ratio=0.10,
+            max_dominant_token_ratio=0.34,
             max_other_script_letter_ratio=0.60,
         ),
         code=_code(
@@ -246,5 +246,7 @@ def select_policy_on_calibration(rows: Sequence[Mapping[str, Any]]) -> tuple[Qua
             rank,
         )
         results.append({**report, "selection_objective": list(objective)})
-    winner_index = min(range(len(results)), key=lambda index: tuple(results[index]["selection_objective"]))
+    winner_index = min(
+        range(len(results)), key=lambda index: tuple(results[index]["selection_objective"])
+    )
     return candidates[winner_index], results
