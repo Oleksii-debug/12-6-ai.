@@ -1,0 +1,31 @@
+{
+  "canonical_lock": {
+    "file_sha256": "61fa31fbb5da7a4289cccce5abfcebde943664f5318b0ce3d69ae9bb3db852ac",
+    "index_sha256": "5de40d40012123ccf654b3e29d9cd47df814978e4155ca9dde232b61e9cd6341",
+    "path": "requirements/locks/index.json"
+  },
+  "index_sha256": "561f070c1792ddde5cf7a6b8df6beacfe93622b201d791939bf77b5c0b3f29c0",
+  "profiles": {
+    "linux-x86_64-cuda-training": {
+      "path": "requirements/profiles/linux-x86_64-cuda-training/profile.json",
+      "profile_sha256": "e2880fb2c9dbd56f84b558d8705d5248cbf079401da4ba83cc6d382e5a6cdbd6",
+      "sha256": "d2598da73301c8bbb995bb97894223bf4a65f053dd98b958d63a08b074591822"
+    },
+    "linux-x86_64-tokenizer-experiment": {
+      "path": "requirements/profiles/linux-x86_64-tokenizer-experiment/profile.json",
+      "profile_sha256": "e368fa4c9fb2fc924482de32d5057837959111e958649663813cb46dddf6b5e4",
+      "sha256": "abd6da3e497561d57e079ad425a3a4e3d6e2525fd2841ae3706eed246d9cb248"
+    },
+    "linux-x86_64-transformers-interop": {
+      "path": "requirements/profiles/linux-x86_64-transformers-interop/profile.json",
+      "profile_sha256": "d54843c76befcd0e8a1703f8d34c822fdbf3085351d1d357661b91265148a039",
+      "sha256": "0ee513f1f67380504e804e8162ddf2a3184e87b5f3225db82687b9312c2588cc"
+    },
+    "windows-x86_64-runtime": {
+      "path": "requirements/profiles/windows-x86_64-runtime/profile.json",
+      "profile_sha256": "9b76f1b1acf086bc4ad2f177f5354dc8cfbf6ab18f1cec5027734564dd45fb7c",
+      "sha256": "40d58d34d5e408c95a6cbdfe095b81300c2ad7b5340ee9aa47261f9ca8747141"
+    }
+  },
+  "schema_version": "12-6.purpose-environment-index.v1"
+}

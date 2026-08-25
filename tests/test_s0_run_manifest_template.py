@@ -33,18 +33,35 @@ def test_s0_local_cpu_example_cannot_be_mistaken_for_launch_ready():
             unresolved.append(dotted_path)
 
     assert unresolved, "example manifest must retain unresolved launch identities"
-    assert "candidate.git_sha" in unresolved
-    assert "candidate.modelspec_sha256" in unresolved
-    assert "data.dataset_manifest_sha256" in unresolved
-    assert "data.tokenizer_sha256" in unresolved
-    assert "data.tokenizer_vocab_sha256" in unresolved
+    for required_identity in (
+        "candidate.git_sha",
+        "candidate.modelspec_sha256",
+        "candidate.initspec_sha256",
+        "data.dataset_manifest_sha256",
+        "data.tokenizer_sha256",
+        "data.tokenizer_vocab_sha256",
+        "data.split_identity",
+        "data.packing_sha256",
+        "data.packing_version",
+        "environment.lock_sha256",
+    ):
+        assert required_identity in unresolved
 
 
-def test_tokenizer_config_and_vocabulary_identities_are_separate_launch_gates():
+def test_checkpoint_lineage_dimensions_are_independent_launch_gates():
     manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
     required = manifest["launch_gate"]["required_non_null"]
 
-    assert "tokenizer_sha256" in manifest["data"]
-    assert "tokenizer_vocab_sha256" in manifest["data"]
-    assert required.count("data.tokenizer_sha256") == 1
-    assert required.count("data.tokenizer_vocab_sha256") == 1
+    expected = (
+        "candidate.modelspec_sha256",
+        "candidate.initspec_sha256",
+        "data.tokenizer_sha256",
+        "data.tokenizer_vocab_sha256",
+        "data.dataset_manifest_sha256",
+        "data.split_identity",
+        "data.packing_sha256",
+        "data.packing_version",
+        "environment.lock_sha256",
+    )
+    for dotted_path in expected:
+        assert required.count(dotted_path) == 1
