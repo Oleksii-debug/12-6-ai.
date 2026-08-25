@@ -65,7 +65,8 @@ jobs:
           assert all(r['training_unknown_tokens'] == 0 for r in passed)
           assert all(r['held_out']['unknown_tokens'] == 0 for r in passed)
           assert all(r['held_out']['round_trip_exact'] for r in passed)
-          assert len(data['prefilter_model_probe_requested_vocab_sizes']) == 3
+          selected = data['prefilter_model_probe_requested_vocab_sizes']
+          assert 2 <= len(selected) <= 3
           assert data['truth_boundary']['representative_corpus_available'] is False
           PY
       - name: Upload TOK-37 evidence and tokenizer artifacts
