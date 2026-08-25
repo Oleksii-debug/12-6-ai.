@@ -1,0 +1,41 @@
+{
+  "schema_version": "12-6.train39-resilience-config.v1",
+  "stage": "S0",
+  "run_kind": "local_failure_recovery_evidence",
+  "authorization": {
+    "class": "LOCAL_FREE",
+    "paid_compute_authorized": false
+  },
+  "candidate": {
+    "git_sha": "RUNTIME_REQUIRED_FULL_HEAD_SHA"
+  },
+  "training": {
+    "seed": 20260825,
+    "max_steps": 8,
+    "precision": "fp32",
+    "device": "cpu"
+  },
+  "recovery": {
+    "checkpoint_every_steps": 2,
+    "failure_injection_cadence_is_stress_only": true,
+    "retain_last": 3,
+    "max_restarts": 4,
+    "max_preemptions": 4,
+    "target_checkpoint_overhead_fraction": 0.05,
+    "max_recovery_window_seconds": 30.0,
+    "require_exact_topology_resume": true,
+    "topology": {
+      "backend": "single-process-cpu",
+      "world_size": 1,
+      "rank_count": 1,
+      "resume_policy": "exact_topology"
+    },
+    "distributed_rank_loss_recovery": "NOT_IMPLEMENTED_ABORT_ALL_RANKS_AND_RESTART"
+  },
+  "failure_scenarios": [
+    "hard_process_exit_between_checkpoints",
+    "corrupt_latest_checkpoint_fallback",
+    "sigterm_safe_boundary_preemption"
+  ],
+  "evidence_command": "python tools/run_s0_resilience_evidence.py --source-sha <FULL_HEAD_SHA> --output s0-train39-resilience-evidence.json --workspace .train39-resilience-work --max-steps 8 --checkpoint-every-steps 2"
+}
