@@ -1,0 +1,100 @@
+{
+  "schema": "12-6.model142-local-reconstruction.v1",
+  "authority": "LOCAL_FREE_RECONSTRUCTION_NOT_EXACT_HEAD_ACTIONS_AUTHORITY",
+  "source_model_semantics_sha": "fb9c6d9b73ce436d637077892d73edf136fcaeac",
+  "runtime": {
+    "python": "3.13.5",
+    "torch": "2.10.0+cpu",
+    "device": "cpu",
+    "cuda_available": false,
+    "paid_compute": false
+  },
+  "controls": {
+    "dataset_id": "s0-tiny-controlled-v1",
+    "dataset_identity_sha256": "bab60119d49e93303c972b77900fcb5553817f754cbc5d9a58019228cfa0ca89",
+    "tokenizer": "s0-byte-v1",
+    "batch_size": 4,
+    "sequence_length": 64,
+    "optimizer_steps": 32,
+    "optimized_causal_tokens": 8064,
+    "seeds": [1515, 1516, 1517],
+    "optimizer": {
+      "name": "AdamW",
+      "learning_rate": 0.0003,
+      "betas": [0.9, 0.95],
+      "eps": 1e-8,
+      "weight_decay": 0.0,
+      "gradient_clip_norm": 1.0,
+      "scheduler": "constant",
+      "warmup_steps": 0,
+      "precision": "fp32"
+    }
+  },
+  "candidates": {
+    "incumbent_gqa_8q2kv": {
+      "parameters": 10000640,
+      "n_kv_heads": 2,
+      "d_ff": 864,
+      "bf16_full_context_kv_bytes": 3145728,
+      "fp32_model_tensor_bytes": 40002560,
+      "adam_state_tensor_bytes_seed1515": 80005560,
+      "runs": [
+        {"seed":1515,"initial_heldout_bpb":7.981044904736682,"final_heldout_bpb":4.5199609284262685,"final_train_bpb":4.9898884657643485,"optimization_wall_s":8.259707997000021,"mean_preclip_grad_norm":6.631396345794201,"clip_rate":1.0},
+        {"seed":1516,"initial_heldout_bpb":7.9998204789063765,"final_heldout_bpb":4.727935127649696,"final_train_bpb":6.1846839300813405,"optimization_wall_s":6.103454745000022,"mean_preclip_grad_norm":8.229692790657282,"clip_rate":1.0},
+        {"seed":1517,"initial_heldout_bpb":8.069149498492335,"final_heldout_bpb":4.647438365248804,"final_train_bpb":5.350295996843054,"optimization_wall_s":5.689269967999962,"mean_preclip_grad_norm":7.828478533774614,"clip_rate":1.0}
+      ],
+      "aggregate": {"mean_final_heldout_bpb":4.63177814044159,"sd_final_heldout_bpb":0.10486776848210234,"mean_final_train_bpb":5.508289464229581,"mean_optimization_wall_s":6.684144236666668,"effective_tokens_per_s":1206.4371615088687},
+      "seed1515_layer_health": {"global_final_grad_finite_fraction":1.0,"global_final_grad_nonzero_fraction":1.0,"global_changed_fraction":0.9999999000063996,"global_update_over_initial_weight":0.0712067201773063,"min_layer_changed_fraction":0.9999987921304886,"layer_grad_norm_min":0.029485039322740866,"layer_grad_norm_max":0.0660632811181617,"attn_activation_rms_min":0.06308072060346603,"attn_activation_rms_max":0.24099253118038177,"mlp_activation_rms_min":0.06727166473865509,"mlp_activation_rms_max":0.12965936958789825,"rss_hwm_bytes":781668352}
+    },
+    "transfer_gqa_8q4kv": {
+      "parameters": 9997568,
+      "parameter_delta_vs_incumbent": -3072,
+      "n_kv_heads": 4,
+      "d_ff": 821,
+      "bf16_full_context_kv_bytes": 6291456,
+      "fp32_model_tensor_bytes": 39990272,
+      "adam_state_tensor_bytes_seed1515": 79980984,
+      "runs": [
+        {"seed":1515,"initial_heldout_bpb":8.200979124872006,"final_heldout_bpb":4.497616070593328,"final_train_bpb":5.1650276862010935,"optimization_wall_s":6.563108703000012,"mean_preclip_grad_norm":8.847588956356049,"clip_rate":1.0},
+        {"seed":1516,"initial_heldout_bpb":8.175610750736151,"final_heldout_bpb":4.510927432413392,"final_train_bpb":5.057687122422183,"optimization_wall_s":5.873971215999973,"mean_preclip_grad_norm":5.676668673753738,"clip_rate":1.0},
+        {"seed":1517,"initial_heldout_bpb":7.871732541134845,"final_heldout_bpb":4.465485978877792,"final_train_bpb":4.947442115635503,"optimization_wall_s":6.164395998999964,"mean_preclip_grad_norm":6.011709474027157,"clip_rate":1.0}
+      ],
+      "aggregate": {"mean_final_heldout_bpb":4.491343160628171,"sd_final_heldout_bpb":0.023361153105748936,"mean_final_train_bpb":5.056718974752926,"mean_optimization_wall_s":6.20049197266665,"effective_tokens_per_s":1300.5419627262108},
+      "seed1515_layer_health": {"global_final_grad_finite_fraction":1.0,"global_final_grad_nonzero_fraction":1.0,"global_changed_fraction":0.9999992998297186,"global_update_over_initial_weight":0.07653546427457202,"min_layer_changed_fraction":0.9999975835137643,"layer_grad_norm_min":0.035400508656591945,"layer_grad_norm_max":0.06848226029633957,"attn_activation_rms_min":0.02964361198246479,"attn_activation_rms_max":0.14967797696590424,"mlp_activation_rms_min":0.05598653852939606,"mlp_activation_rms_max":0.13945019245147705,"rss_hwm_bytes":777609216}
+    },
+    "mha_8q8kv": {
+      "parameters": 10000640,
+      "n_kv_heads": 8,
+      "d_ff": 736,
+      "bf16_full_context_kv_bytes": 12582912,
+      "fp32_model_tensor_bytes": 40002560,
+      "adam_state_tensor_bytes_seed1515": 80005560,
+      "runs": [
+        {"seed":1515,"initial_heldout_bpb":8.096162367330143,"final_heldout_bpb":4.5913848533572,"final_train_bpb":5.126001383067305,"optimization_wall_s":6.217713500000002,"mean_preclip_grad_norm":6.8596791960299015,"clip_rate":1.0},
+        {"seed":1516,"initial_heldout_bpb":8.056373224080263,"final_heldout_bpb":4.617764880529386,"final_train_bpb":5.33452828344665,"optimization_wall_s":5.5761182210000015,"mean_preclip_grad_norm":5.971255928277969,"clip_rate":1.0},
+        {"seed":1517,"initial_heldout_bpb":8.0002114959369,"final_heldout_bpb":4.627478842076987,"final_train_bpb":5.362921931173497,"optimization_wall_s":5.804130841000017,"mean_preclip_grad_norm":6.4333109855651855,"clip_rate":1.0}
+      ],
+      "aggregate": {"mean_final_heldout_bpb":4.612209525321191,"sd_final_heldout_bpb":0.01867727185760659,"mean_final_train_bpb":5.274483865895817,"mean_optimization_wall_s":5.865987520666674,"effective_tokens_per_s":1374.7045951921016},
+      "seed1515_layer_health": {"global_final_grad_finite_fraction":1.0,"global_final_grad_nonzero_fraction":1.0,"global_changed_fraction":0.9999998000127992,"global_update_over_initial_weight":0.0701078192701938,"min_layer_changed_fraction":0.9999987921304886,"layer_grad_norm_min":0.04232857639820066,"layer_grad_norm_max":0.17066750654942123,"attn_activation_rms_min":0.05187669396400452,"attn_activation_rms_max":0.2313576340675354,"mlp_activation_rms_min":0.04585212841629982,"mlp_activation_rms_max":0.10642306506633759,"rss_hwm_bytes":764624896}
+    }
+  },
+  "paired_final_heldout_bpb_deltas": {
+    "transfer_minus_incumbent": [-0.022344857832940157,-0.2170076952363038,-0.18195238637101152],
+    "transfer_minus_mha": [-0.09376878276387135,-0.10683744811599372,-0.16199286319919448],
+    "incumbent_minus_mha": [-0.07142392493093119,0.1101702471203101,0.01995952317181704]
+  },
+  "decision": {
+    "transfer_signal": "SUPPORTED_IN_BOUNDED_RECONSTRUCTION",
+    "preferred_next_10m_transfer_candidate": "transfer_gqa_8q4kv",
+    "canonical_10m_incumbent_changed": false,
+    "reason": "8Q/4KV wins held-out BPB against both controls in all three paired seeds and shows no layer-health divergence, but every update clips and the tiny repeated S0 fixture is not representative enough for architecture promotion."
+  },
+  "truth_boundary": {
+    "exact_head_actions_authority": false,
+    "representative_corpus_quality_claim": false,
+    "architecture_freeze": false,
+    "stage_promotion": false,
+    "paid_compute": false,
+    "foreign_pretrained_weights": false
+  }
+}

@@ -1,0 +1,178 @@
+{
+  "schema_version": 1,
+  "experiment_id": "MODEL-142-10M-TRANSFER-MATRIX-v1",
+  "authority": "LOCAL_FREE_CONTROLLED_TRANSFER_EVIDENCE_NOT_ARCHITECTURE_FREEZE",
+  "source_base_sha": "fb9c6d9b73ce436d637077892d73edf136fcaeac",
+  "incumbent_stage_config": "configs/stages/alternatives/s3_10m_scale03_byte_gqa.execution.json",
+  "selection_question": "Does the strongest executed small-scale attention-geometry signal transfer to the current approximately 10M architecture under matched parameters and identical training controls?",
+  "controls": {
+    "dataset_id": "s0-tiny-controlled-v1",
+    "dataset_identity_sha256": "bab60119d49e93303c972b77900fcb5553817f754cbc5d9a58019228cfa0ca89",
+    "train_path": "data/s0/packaged/train.jsonl",
+    "validation_path": "data/s0/packaged/validation.jsonl",
+    "tokenizer": "s0-byte-v1",
+    "vocab_size": 256,
+    "context_length": 1024,
+    "training_sequence_length": 64,
+    "batch_size": 4,
+    "optimizer_steps": 32,
+    "optimized_causal_tokens": 8064,
+    "seeds": [1515, 1516, 1517],
+    "optimizer": {
+      "name": "AdamW",
+      "learning_rate": 0.0003,
+      "weight_decay": 0.0,
+      "betas": [0.9, 0.95],
+      "eps": 1e-8,
+      "gradient_clip_norm": 1.0,
+      "scheduler": "constant",
+      "warmup_steps": 0,
+      "precision": "fp32"
+    },
+    "init": {
+      "schema_version": 1,
+      "family": "normal",
+      "std": 0.02,
+      "residual_branch_scale": "sqrt_2_layers",
+      "expected_identity_sha256": "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5"
+    }
+  },
+  "evidence_intake": {
+    "depth_width": {
+      "source_pr": 242,
+      "status": "NOT_TRANSFERRED",
+      "reason": "The 500K exact-token depth-width workflow failed focused tests before candidate training, so it cannot supply a scientific winner."
+    },
+    "ffn_ratio": {
+      "source_pr": 232,
+      "status": "NOT_TRANSFERRED_AS_WINNER",
+      "reason": "The executed approximately 1M sweep explicitly forbids a quality winner on the tiny fixture; ratios 2.50-3.00 were only carry-forward candidates."
+    },
+    "head_count": {
+      "source_pr": 232,
+      "status": "NOT_TRANSFERRED_AS_QUALITY_WINNER",
+      "reason": "3 heads x 16 dim was a provisional CPU latency choice; its mean final held-out loss was worse than the 4-head control."
+    },
+    "gqa_mha": {
+      "source_pr": 172,
+      "status": "TRANSFER_AXIS",
+      "reason": "MODEL-35 predeclared approximately 10M as the first GQA qualification stage and observed its strongest short-run S3 result at 8Q/4KV while retaining MHA as control."
+    },
+    "tokenizer_allocation": {
+      "source_pr": 167,
+      "status": "HELD_FIXED",
+      "reason": "BPE-472 mechanics are promising but no tokenizer is frozen; varying vocabulary here would confound architecture transfer and break the exact current 10M control."
+    },
+    "initialization": {
+      "source_pr": 169,
+      "status": "HELD_FIXED",
+      "reason": "MODEL-34 retained InitSpec v1; the later decisive seed experiment did not produce a completed replacement result."
+    }
+  },
+  "candidates": [
+    {
+      "id": "incumbent_gqa_8q2kv",
+      "role": "CURRENT_10M_INCUMBENT_CONTROL",
+      "expected_parameters": 10000640,
+      "model": {
+        "schema_version": 1,
+        "vocab_size": 256,
+        "max_seq_len": 1024,
+        "d_model": 256,
+        "n_layers": 12,
+        "n_heads": 8,
+        "n_kv_heads": 2,
+        "head_dim": 32,
+        "d_ff": 864,
+        "activation": "swiglu",
+        "norm_kind": "rmsnorm",
+        "norm_placement": "pre",
+        "norm_eps": 1e-5,
+        "position_embedding": "rope",
+        "rope_theta": 10000.0,
+        "rope_rotary_dim": 32,
+        "attention_bias": false,
+        "mlp_bias": false,
+        "attention_dropout": 0.0,
+        "final_norm": true,
+        "tie_word_embeddings": true,
+        "lm_head_bias": false
+      }
+    },
+    {
+      "id": "transfer_gqa_8q4kv",
+      "role": "STRONGEST_SMALL_SCALE_TRANSFER_CANDIDATE",
+      "expected_parameters": 9997568,
+      "parameter_delta_vs_incumbent": -3072,
+      "model": {
+        "schema_version": 1,
+        "vocab_size": 256,
+        "max_seq_len": 1024,
+        "d_model": 256,
+        "n_layers": 12,
+        "n_heads": 8,
+        "n_kv_heads": 4,
+        "head_dim": 32,
+        "d_ff": 821,
+        "activation": "swiglu",
+        "norm_kind": "rmsnorm",
+        "norm_placement": "pre",
+        "norm_eps": 1e-5,
+        "position_embedding": "rope",
+        "rope_theta": 10000.0,
+        "rope_rotary_dim": 32,
+        "attention_bias": false,
+        "mlp_bias": false,
+        "attention_dropout": 0.0,
+        "final_norm": true,
+        "tie_word_embeddings": true,
+        "lm_head_bias": false
+      }
+    },
+    {
+      "id": "mha_8q8kv",
+      "role": "PARTIAL_TRANSFER_ISOLATION_CONTROL",
+      "expected_parameters": 10000640,
+      "parameter_delta_vs_incumbent": 0,
+      "model": {
+        "schema_version": 1,
+        "vocab_size": 256,
+        "max_seq_len": 1024,
+        "d_model": 256,
+        "n_layers": 12,
+        "n_heads": 8,
+        "n_kv_heads": 8,
+        "head_dim": 32,
+        "d_ff": 736,
+        "activation": "swiglu",
+        "norm_kind": "rmsnorm",
+        "norm_placement": "pre",
+        "norm_eps": 1e-5,
+        "position_embedding": "rope",
+        "rope_theta": 10000.0,
+        "rope_rotary_dim": 32,
+        "attention_bias": false,
+        "mlp_bias": false,
+        "attention_dropout": 0.0,
+        "final_norm": true,
+        "tie_word_embeddings": true,
+        "lm_head_bias": false
+      }
+    }
+  ],
+  "decision_rule": {
+    "primary_metric": "mean_final_heldout_bpb",
+    "paired_seed_requirement": 3,
+    "win_requirement": "candidate must beat incumbent on held-out BPB in all paired seeds to be called TRANSFER_SUPPORTED in this bounded fixture",
+    "health_requirement": "finite run, complete parameter-gradient/update utilization, no pathological per-layer activation or gradient divergence",
+    "performance_metrics_are_secondary": true,
+    "fallback": "KEEP_10M_INCUMBENT"
+  },
+  "truth_boundary": {
+    "architecture_freeze": false,
+    "stage_promotion": false,
+    "representative_corpus_quality_claim": false,
+    "paid_compute": false,
+    "foreign_pretrained_weights": false
+  }
+}
