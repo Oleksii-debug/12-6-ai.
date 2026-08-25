@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 from pathlib import Path
 
 import pytest
 
 from twelve_six.model import ModelSpec
+from twelve_six.scaling import DenseScalingTemplate, solve_dense_scaling_candidates
 from twelve_six.training.architecture_sweeps import (
     FFN_SCHEMA,
     HEAD_SCHEMA,
@@ -21,6 +23,15 @@ def _load(name: str) -> dict:
     return json.loads((ROOT / "configs" / "experiments" / name).read_text(encoding="utf-8"))
 
 
+def test_model12_exact_config_identity() -> None:
+    config = _load("model12_ffn_ratio_1m.json")
+    observed = config.pop("config_identity_sha256")
+    encoded = json.dumps(
+        config, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
+    assert hashlib.sha256(encoded).hexdigest() == observed
+
+
 def test_model12_exact_iso_parameter_family_and_incumbent_control() -> None:
     config = _load("model12_ffn_ratio_1m.json")
     assert config["schema_version"] == FFN_SCHEMA
@@ -30,6 +41,39 @@ def test_model12_exact_iso_parameter_family_and_incumbent_control() -> None:
     control = next(candidate for candidate in config["candidates"] if candidate["control"])
     assert control["model_identity_sha256"] == "18284b303eb31cef5191ddb3ed4ddba5ce51789aadf4b14cc90d4226c5c527b5"
     assert {4 * spec.head_dim + spec.d_ff for spec in specs} == {416}
+
+
+def test_model12_live_d11_solver_reproduces_configured_family() -> None:
+    config = _load("model12_ffn_ratio_1m.json")
+    fixed = config["fixed_controls"]
+    for candidate in config["candidates"]:
+        template = DenseScalingTemplate(
+            vocab_size=256,
+            max_seq_len=int(fixed["max_seq_len"]),
+            d_model=int(fixed["d_model"]),
+            n_layers=int(fixed["n_layers"]),
+            n_heads=int(fixed["n_heads"]),
+            n_kv_heads=int(fixed["n_kv_heads"]),
+            head_dim=int(candidate["head_dim"]),
+            d_ff_multiple=32,
+            rope_theta=float(fixed["rope_theta"]),
+            rope_rotary_dim=int(candidate["rope_rotary_dim"]),
+            attention_bias=False,
+            mlp_bias=False,
+            final_norm=True,
+            tie_word_embeddings=True,
+            lm_head_bias=False,
+        )
+        solved = solve_dense_scaling_candidates(
+            992_896,
+            (template,),
+            max_results=4,
+            max_relative_error=0.001,
+        )
+        exact = [item for item in solved if item.exact_parameters == 992_896]
+        assert len(exact) == 1
+        assert exact[0].spec.d_ff == int(candidate["d_ff"])
+        assert exact[0].model_identity_sha256 == candidate["model_identity_sha256"]
 
 
 def test_model13_is_pure_mha_head_granularity_at_exact_parameter_count() -> None:
