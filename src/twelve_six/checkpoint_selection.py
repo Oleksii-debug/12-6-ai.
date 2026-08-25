@@ -70,8 +70,14 @@ class EvaluationPurpose:
             or any(ch not in "0123456789abcdef" for ch in self.suite_identity_sha256)
         ):
             raise ValueError("suite_identity_sha256 must be exact lowercase sha256")
-        if not self.metric_names or any(not name.strip() for name in self.metric_names):
-            raise ValueError("metric_names must be non-empty")
+        if isinstance(self.metric_names, (str, bytes)):
+            raise TypeError("metric_names must be a sequence of metric names")
+        normalized_metric_names = tuple(self.metric_names)
+        object.__setattr__(self, "metric_names", normalized_metric_names)
+        if not self.metric_names or any(
+            not isinstance(name, str) or not name.strip() for name in self.metric_names
+        ):
+            raise ValueError("metric_names must be non-empty strings")
         if len(set(self.metric_names)) != len(self.metric_names):
             raise ValueError("metric_names must be unique")
         expected = self.purpose == "selection_validation"
@@ -385,6 +391,26 @@ def select_checkpoint(
     )
 
 
+def _validate_selection_decision(decision: SelectionDecision) -> None:
+    recomputed = select_checkpoint(
+        decision.checkpoint_registry,
+        decision.selection_observations,
+        selection_purpose=decision.selection_purpose,
+        rule=decision.rule,
+    )
+    if recomputed.decision_identity_sha256 != decision.decision_identity_sha256:
+        raise ValueError("selection decision identity does not match canonical recomputation")
+    if recomputed.selected_checkpoint_id != decision.selected_checkpoint_id:
+        raise ValueError("selected checkpoint does not match canonical recomputation")
+    if (
+        recomputed.absolute_posthoc_best_validation_checkpoint_id
+        != decision.absolute_posthoc_best_validation_checkpoint_id
+    ):
+        raise ValueError("post-hoc validation comparison does not match canonical recomputation")
+    if recomputed.final_checkpoint_id != decision.final_checkpoint_id:
+        raise ValueError("final checkpoint comparison does not match canonical recomputation")
+
+
 def build_experiment_selection_report(
     *,
     experiment_id: str,
@@ -397,6 +423,7 @@ def build_experiment_selection_report(
 
     if not experiment_id.strip():
         raise ValueError("experiment_id is required")
+    _validate_selection_decision(decision)
     purposes = tuple(evaluation_purposes)
     purpose_by_hash = {item.identity_sha256: item for item in purposes}
     if len(purpose_by_hash) != len(purposes):
@@ -443,7 +470,11 @@ def build_experiment_selection_report(
         "experiment_id": experiment_id,
         "selection": decision.to_dict(),
         "evaluation_purposes": [
-            {**item.identity_payload(), "purpose_identity_sha256": item.identity_sha256}
+            {
+                **item.identity_payload(),
+                "purpose_identity_sha256": item.identity_sha256,
+                "notes": item.notes,
+            }
             for item in purposes
         ],
         "nonselection_observations": retained_nonselection,
