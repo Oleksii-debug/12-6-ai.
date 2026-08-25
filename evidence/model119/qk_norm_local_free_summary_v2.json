@@ -1,0 +1,151 @@
+{
+  "authority": "LOCAL_FREE_RESEARCH_NOT_ARCHITECTURE_PROMOTION",
+  "data_trace": {
+    "base_corpus_identity_sha256": "422f545da93526ceba2c0ff738e0b9deac65f35bfb31d87d2aab068cda091fc8",
+    "bytes": {
+      "train": {"code": 1695569, "en": 1747552, "uk": 3315334},
+      "validation": {"code": 89233, "en": 85091, "uk": 176024}
+    },
+    "packing": "cyclic-contiguous-byte-stream-per-stratum; research-only",
+    "source": "DATA25 authored_text/split semantics",
+    "subset_candidates_per_stratum": 5000,
+    "trace_identity_sha256": "e779e87044eb3c7e8ac1822a071aeb1f19a9e805c7ad9943d5e004e67d0c350e",
+    "train_sha256": {
+      "code": "42f9571252f795de1353eec325b57aa2f0d4993a4b96d34ac9cf801814f31c7a",
+      "en": "bbeea8764ec1b09e24c79b9891f8e731587b48b68388b05cd53af8769d9ef4d3",
+      "uk": "3e0cbb2e2c19ab35c05e7544fa13409768dc7b5db0c93c3e5c41c763b953abcb"
+    },
+    "validation_sha256": {
+      "code": "44362354cdb6198ffcf9a1d19d6d4e44778884a8714058718c4a3ecfab14891f",
+      "en": "ce2dc3bee28ce25d83d8f6d21f92947c9b76a3fec40fc77e3b584ca07d371d96",
+      "uk": "7e6042bdbae20fb23b28f0b8b0b2e422948093321a0cf452786aec72cbdc82d6"
+    }
+  },
+  "decision": {
+    "canonical_promotion": false,
+    "material_runtime_cost_gate_fraction": 0.05,
+    "reasons": [
+      "held-out BPB improved at ~1M in all three corrected Data25-derived seeds",
+      "clip frequency remained 1.0 for both variants",
+      "mean gradient norm did not materially improve at ~1M",
+      "QK norm increased attention-logit RMS and lowered entropy rather than suppressing logits",
+      "paired single-thread training speed median slowdown exceeded 5% material-cost gate",
+      "short ~10M probe did not improve final held-out BPB",
+      "cache/stateless reference parity passed"
+    ],
+    "status": "REJECT_QK_NORM_CANDIDATE"
+  },
+  "implementation": {
+    "candidate_parameter_delta": 0,
+    "canonical_model_py_modified": false,
+    "eps": 1e-06,
+    "kind": "parameter-free per-head RMS Q/K normalization after RoPE",
+    "parameter_count_10m": 9916480,
+    "parameter_count_1m": 1037696,
+    "research_adapter_equivalence_max_abs_error": 0.0
+  },
+  "one_m": {
+    "batch_size": 4,
+    "control": {
+      "cache_parity_max_abs_error_max": 1.6689300537109375e-06,
+      "clip_frequency_mean": 1.0,
+      "evaluation_non_mutation_all": true,
+      "final_attention_logit_max_abs_mean": 1.4133563836415608,
+      "final_attention_logit_rms_mean": 0.17151784896850586,
+      "final_bpb_mean": 3.9779978985956865,
+      "final_last_block_output_rms_mean": 0.18902738392353058,
+      "final_softmax_entropy_mean": 3.1953676382700604,
+      "gradient_norm_max_mean": 13.30085257741505,
+      "gradient_norm_mean": 3.088560711617348,
+      "initial_attention_logit_max_abs_mean": 0.2672406882047653,
+      "initial_attention_logit_rms_mean": 0.049366332093874615,
+      "initial_bpb_mean": 7.854696178925006,
+      "initial_last_block_output_rms_mean": 0.031779140854875244,
+      "initial_softmax_entropy_mean": 3.204821729660034,
+      "train_loss_delta_mean": -1.9728836963574092,
+      "update_ratio_mean": 0.003374186365856931
+    },
+    "paired_final_bpb_qk_minus_control": [-0.1183906147097682, -0.14995298727113404, -0.14548269045519646],
+    "qk_norm": {
+      "cache_parity_max_abs_error_max": 1.430511474609375e-06,
+      "clip_frequency_mean": 1.0,
+      "evaluation_non_mutation_all": true,
+      "final_attention_logit_max_abs_mean": 3.7469011147816977,
+      "final_attention_logit_rms_mean": 1.2106537183125814,
+      "final_bpb_mean": 3.840055801116987,
+      "final_last_block_output_rms_mean": 0.19195211430390677,
+      "final_softmax_entropy_mean": 2.754489008585612,
+      "gradient_norm_max_mean": 11.903113622999363,
+      "gradient_norm_mean": 3.126353846683696,
+      "initial_attention_logit_max_abs_mean": 3.582071304321289,
+      "initial_attention_logit_rms_mean": 0.9955390453338623,
+      "initial_bpb_mean": 7.8633330056974025,
+      "initial_last_block_output_rms_mean": 0.031957206626733146,
+      "initial_softmax_entropy_mean": 2.865917857487996,
+      "train_loss_delta_mean": -2.0501891871293387,
+      "update_ratio_mean": 0.003312899717338516
+    },
+    "seeds": [1337, 2027, 4099],
+    "sequence_length": 64,
+    "steps": 96
+  },
+  "schema": "12-6.model119-qk-norm.local-free-summary.v2",
+  "source": {
+    "base_sha": "b9bc147e0a08181b91798c2515cac7a79c66791c",
+    "repository": "Oleksii-debug/12-6-ai.",
+    "research_branch": "model119/qk-norm-20260826"
+  },
+  "speed": {
+    "batch_size": 2,
+    "ratio_mean": 0.9359516975888902,
+    "ratio_median": 0.9384728460299688,
+    "rows": [
+      {"control_tps": 3751.066747419402, "qk_tps": 3649.3109635908577, "ratio": 0.9728728410661984, "rep": 0},
+      {"control_tps": 3721.741179393575, "qk_tps": 3549.0454003787886, "ratio": 0.9535981223060424, "rep": 1},
+      {"control_tps": 3583.3808115237216, "qk_tps": 3326.341601734983, "ratio": 0.9282690779159918, "rep": 2},
+      {"control_tps": 3337.4199382560982, "qk_tps": 2958.7749637032734, "ratio": 0.8865456006262495, "rep": 3},
+      {"control_tps": 3564.476295854004, "qk_tps": 3345.1642139764685, "ratio": 0.9384728460299688, "rep": 4}
+    ],
+    "seq": 32,
+    "slowdown_mean": 0.06404830241110981,
+    "slowdown_median": 0.06152715397003117,
+    "threads": 1,
+    "timed_steps": 30,
+    "trace_identity_sha256": "e779e87044eb3c7e8ac1822a071aeb1f19a9e805c7ad9943d5e004e67d0c350e",
+    "warmup_steps": 3
+  },
+  "summary_sha256": "8c94dd7a3f001eb1a9b7ef719a8d4a6435819a6d9e44017f27ebb93b9c59bb74",
+  "supersession": {
+    "reason": "v1 local trace used source_version 0.1 instead of exact repository source_version 0.1.0 in deterministic record IDs; v2 reran all matched cells with corrected split semantics",
+    "v1_evidence_status": "REJECTED_SUPERSEDED"
+  },
+  "ten_m_probe": {
+    "batch_size": 1,
+    "cache_parity_max_abs_error": 2.6226043701171875e-06,
+    "control_clip_frequency": 1.0,
+    "control_final_attention_logit_rms": 0.19720732420682907,
+    "control_final_bpb": 5.886803787411526,
+    "control_gradient_norm_mean": 22.25048220077635,
+    "control_initial_bpb": 7.850788179841045,
+    "final_bpb_qk_minus_control": 0.010065742352185936,
+    "parameter_count": 9916480,
+    "qk_clip_frequency": 1.0,
+    "qk_final_attention_logit_rms": 1.2501369218031566,
+    "qk_final_bpb": 5.896869529763712,
+    "qk_gradient_norm_mean": 22.200750698261366,
+    "qk_initial_bpb": 7.838658296253436,
+    "quality_authority": false,
+    "sequence_length": 32,
+    "steps": 8
+  },
+  "truth_boundary": {
+    "broad_intelligence_claim": false,
+    "exact_full_git_checkout": false,
+    "instruction_tuning": false,
+    "local_free": true,
+    "no_foreign_pretrained_weights": true,
+    "note": "Container could not DNS-clone GitHub. Live incumbent code was reconstructed from connector-fetched blobs; corrected Data25-derived trace uses exact source_version 0.1.0 record-id/split semantics. Full 20M physical shards were not locally materialized from Git.",
+    "paid_compute": false,
+    "representative_external_corpus_claim": false
+  }
+}
