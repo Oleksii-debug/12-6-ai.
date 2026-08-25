@@ -1,0 +1,97 @@
+name: EVAL-137 Source Generalization
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  fixed-500k-source-generalization:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Prove exact source checkout
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Verify exact locked environment
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: >-
+          python tools/verify_locked_environment.py
+          --profile linux-x86_64
+          --source-sha "$SOURCE_SHA"
+          --evidence-out locked-environment-linux-x86_64.json
+      - name: Create exact locked EVAL-137 environment
+        run: |
+          python -m venv .eval137-locked
+          .eval137-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .eval137-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          .eval137-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/dev.lock.txt
+          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .eval137-locked/bin/python -m pip install --no-deps --no-build-isolation -e .
+      - name: Compile EVAL-137 implementation surface
+        run: >-
+          .eval137-locked/bin/python -m compileall -q
+          src/twelve_six/training/source_generalization.py
+          tools/run_source_generalization.py
+          tests/test_source_generalization.py
+      - name: Exercise intake and source-generalization contracts
+        run: >-
+          .eval137-locked/bin/python -m pytest -q
+          tests/test_external_source_intake_ua_en.py
+          tests/test_source_generalization.py
+      - name: Execute fixed 467808-parameter source-generalization study
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          .eval137-locked/bin/python tools/run_source_generalization.py \
+            --source-sha "$SOURCE_SHA" \
+            --locked-environment-evidence locked-environment-linux-x86_64.json \
+            --output eval137-source-generalization.json \
+            --seed 1337 \
+            --torch-threads 2
+          .eval137-locked/bin/python tools/run_source_generalization.py \
+            --validate eval137-source-generalization.json
+      - name: Print decision-relevant metrics
+        run: |
+          .eval137-locked/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path("eval137-source-generalization.json").read_text())
+          print(json.dumps({
+              "parameter_count": report["identity"]["parameter_count"],
+              "optimized_token_budget_per_arm": report["identity"]["optimized_token_budget_per_arm"],
+              "data": report["data"],
+              "data105": report["data105"],
+              "comparisons": report["comparisons"],
+              "arms": [
+                  {
+                      "arm_id": arm["arm_id"],
+                      "optimized_tokens": arm["optimized_tokens"],
+                      "ordinary_validation_bpb": arm["final"]["ordinary_validation"]["bpb"],
+                      "family_evaluation": arm["final"]["family_evaluation"],
+                      "project_controls": arm["final"]["project_authored_same_domain_controls"],
+                  }
+                  for arm in report["arms"]
+              ],
+          }, indent=2, sort_keys=True))
+          PY
+      - name: Upload EVAL-137 evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: eval137-source-generalization
+          path: |
+            locked-environment-linux-x86_64.json
+            eval137-source-generalization.json
+          if-no-files-found: error
+          retention-days: 30
