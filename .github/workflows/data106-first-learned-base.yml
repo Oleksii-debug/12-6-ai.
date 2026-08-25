@@ -1,0 +1,97 @@
+name: DATA106 First Learned Base Boundary Evidence
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  data106-learned-base-cpu:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Prove exact source checkout
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Verify locked environment inputs
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: >-
+          python tools/verify_locked_environment.py
+          --profile linux-x86_64
+          --source-sha "$SOURCE_SHA"
+          --evidence-out data106-locked-environment.json
+      - name: Create locked LOCAL_FREE environment
+        run: |
+          python -m venv .data106-locked
+          .data106-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .data106-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          .data106-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/dev.lock.txt
+          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .data106-locked/bin/python -m pip install --no-deps --no-build-isolation -e .
+      - name: Focused static and contract preflight
+        run: |
+          .data106-locked/bin/python -m ruff check src/twelve_six/document_boundary_experiment.py src/twelve_six/tokenization/special_tokens.py
+          .data106-locked/bin/python -m py_compile src/twelve_six/document_boundary_experiment.py src/twelve_six/tokenization/special_tokens.py
+          .data106-locked/bin/python - <<'PY'
+          from twelve_six.model import ModelSpec
+          from twelve_six.tokenization.special_tokens import ExperimentalByteEosTokenizer
+          tok = ExperimentalByteEosTokenizer()
+          assert tok.vocab_size == 257 and tok.eos_id == 256
+          spec = ModelSpec(schema_version=1, vocab_size=257, max_seq_len=256, d_model=96, n_layers=4, n_heads=6, n_kv_heads=6, head_dim=16, d_ff=256, rope_rotary_dim=16)
+          assert spec.parameter_count() == 467_904
+          PY
+      - name: Execute A/B/C document-boundary comparison
+        run: >-
+          .data106-locked/bin/python -m twelve_six.document_boundary_experiment compare
+          --repo-root . --output artifacts/data106
+      - name: Execute substantial scratch phase with checkpoints
+        run: >-
+          .data106-locked/bin/python -m twelve_six.document_boundary_experiment phase1
+          --repo-root . --output artifacts/data106
+      - name: Fresh-process resume to 131072 optimized valid tokens
+        run: >-
+          .data106-locked/bin/python -m twelve_six.document_boundary_experiment resume
+          --repo-root . --output artifacts/data106
+      - name: Validate retained end-to-end evidence
+        run: >-
+          .data106-locked/bin/python -m twelve_six.document_boundary_experiment validate
+          --repo-root . --output artifacts/data106
+      - name: Print compact result
+        run: |
+          .data106-locked/bin/python - <<'PY'
+          import json
+          comparison = json.load(open("artifacts/data106/comparison.json", encoding="utf-8"))
+          milestone = json.load(open("artifacts/data106/milestone100.json", encoding="utf-8"))
+          print(json.dumps({
+              "source_sha": milestone["source_sha"],
+              "selected_arm": milestone["selected_arm"],
+              "parameters": milestone["exact_parameter_count"],
+              "optimized_valid_tokens": milestone["optimized_valid_tokens_total"],
+              "initial_held_out_bpb": milestone["initial_held_out_bpb"],
+              "final_held_out_bpb": milestone["final_held_out_bpb"],
+              "train_loss_decreased": milestone["train_loss_decreased"],
+              "held_out_bpb_decreased": milestone["held_out_bpb_decreased"],
+              "recommendation": comparison["recommendation"],
+              "representative_corpus_requirement_met": milestone["representative_corpus_requirement_met"],
+              "milestone_report_sha256": milestone["milestone_report_sha256"],
+          }, indent=2, sort_keys=True))
+          PY
+      - name: Upload retained DATA106 and MILESTONE100 evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: data106-first-learned-base-evidence
+          path: |
+            data106-locked-environment.json
+            artifacts/data106/
+          if-no-files-found: error
+          retention-days: 30
