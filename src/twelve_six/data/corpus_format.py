@@ -207,7 +207,9 @@ def iter_layout_rows(
     manifest: Mapping[str, Any],
     *,
     batch_rows: int = 4096,
+    verify_file_hashes: bool = False,
 ) -> Iterator[dict[str, Any]]:
+    """Stream logical rows; timed consumers should verify the layout before entering this path."""
     root = Path(layout_root)
     physical_format = manifest.get("physical_format")
     if physical_format not in {"jsonl", "parquet"}:
@@ -219,9 +221,10 @@ def iter_layout_rows(
     for entry in _layout_entries(manifest):
         relative_path = _entry_relative_path(entry)
         path = root / relative_path
-        expected = _entry_expected_hash(entry)
-        if expected is not None and sha256_file(path) != expected:
-            raise CorpusFormatError(f"physical shard hash mismatch: {relative_path}")
+        if verify_file_hashes:
+            expected = _entry_expected_hash(entry)
+            if expected is not None and sha256_file(path) != expected:
+                raise CorpusFormatError(f"physical shard hash mismatch: {relative_path}")
         if physical_format == "jsonl":
             yield from iter_jsonl_rows(path)
             continue
@@ -441,7 +444,6 @@ def materialize_layout(
                 compression=compression,
                 row_group_rows=row_group_rows,
             )
-        # Fold per-shard trace into a corpus trace by replaying source rows exactly once.
         for row in iter_jsonl_rows(source_path):
             aggregate_source.update(row)
         output_entries.append(
