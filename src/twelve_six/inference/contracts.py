@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Literal, Protocol, runtime_checkable
@@ -32,16 +33,43 @@ class GenerationConfig:
     strip_stop_strings: bool = True
 
     def __post_init__(self) -> None:
+        if not isinstance(self.max_new_tokens, int) or isinstance(
+            self.max_new_tokens, bool
+        ):
+            raise TypeError("max_new_tokens must be an integer")
         if self.max_new_tokens < 0:
             raise ValueError("max_new_tokens must be >= 0")
-        if self.temperature <= 0:
-            raise ValueError("temperature must be > 0")
-        if self.top_k is not None and self.top_k <= 0:
-            raise ValueError("top_k must be > 0 when set")
-        if not 0 < self.top_p <= 1:
-            raise ValueError("top_p must be in (0, 1]")
-        if any(not stop for stop in self.stop_strings):
-            raise ValueError("stop strings must not be empty")
+        if not isinstance(self.sample, bool):
+            raise TypeError("sample must be a boolean")
+        if not isinstance(self.temperature, (int, float)) or isinstance(
+            self.temperature, bool
+        ):
+            raise TypeError("temperature must be a real number")
+        if not math.isfinite(float(self.temperature)) or self.temperature <= 0:
+            raise ValueError("temperature must be finite and > 0")
+        if self.top_k is not None:
+            if not isinstance(self.top_k, int) or isinstance(self.top_k, bool):
+                raise TypeError("top_k must be an integer when set")
+            if self.top_k <= 0:
+                raise ValueError("top_k must be > 0 when set")
+        if not isinstance(self.top_p, (int, float)) or isinstance(self.top_p, bool):
+            raise TypeError("top_p must be a real number")
+        if not math.isfinite(float(self.top_p)) or not 0 < self.top_p <= 1:
+            raise ValueError("top_p must be finite and in (0, 1]")
+        if not isinstance(self.seed, int) or isinstance(self.seed, bool):
+            raise TypeError("seed must be an integer")
+        for token_id in self.stop_token_ids:
+            if not isinstance(token_id, int) or isinstance(token_id, bool):
+                raise TypeError("stop_token_ids must contain integers")
+            if token_id < 0:
+                raise ValueError("stop_token_ids must be non-negative")
+        for stop in self.stop_strings:
+            if not isinstance(stop, str):
+                raise TypeError("stop_strings must contain strings")
+            if not stop:
+                raise ValueError("stop strings must not be empty")
+        if not isinstance(self.strip_stop_strings, bool):
+            raise TypeError("strip_stop_strings must be a boolean")
 
 
 StopReason = Literal[
