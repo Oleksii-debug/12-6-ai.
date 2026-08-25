@@ -51,7 +51,7 @@ jobs:
             --source-sha "$SOURCE_SHA" \
             --output perf58-cpu-training-results.json \
             --mode auto \
-            --warmup-steps 4 \
+            --warmup-steps 0 \
             --measured-steps 64 \
             --selection-horizon-steps 256 \
             --max-threads 4 \
