@@ -1,0 +1,119 @@
+name: TRAIN-41 Long 100K Base
+
+on:
+  pull_request:
+    paths:
+      - "src/twelve_six/long_run_100k.py"
+      - "tests/test_long_run_100k.py"
+      - ".github/workflows/train41-long-100k.yml"
+      - "docs/TRAIN41_LONG_100K.md"
+
+permissions:
+  contents: read
+
+jobs:
+  long-100k-cpu:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Prove exact source checkout
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Verify exact locked environment inputs
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: >-
+          python tools/verify_locked_environment.py
+          --profile linux-x86_64
+          --source-sha "$SOURCE_SHA"
+          --evidence-out train41-locked-environment.json
+
+      - name: Create locked LOCAL_FREE execution environment
+        run: |
+          python -m venv .train41-locked
+          .train41-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .train41-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          .train41-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/dev.lock.txt
+          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .train41-locked/bin/python -m pip install --no-deps --no-build-isolation -e .
+
+      - name: Focused TRAIN-41 contracts
+        run: |
+          .train41-locked/bin/ruff check src/twelve_six/long_run_100k.py tests/test_long_run_100k.py
+          .train41-locked/bin/pytest -q tests/test_long_run_100k.py
+
+      - name: Execute first half and retain mandatory resume checkpoint
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p train41
+          .train41-locked/bin/python -m twelve_six.long_run_100k start \
+            --repo-root . \
+            --source-sha "$SOURCE_SHA" \
+            --partial train41/partial.json \
+            --checkpoint-root train41/checkpoints \
+            --torch-threads 2
+
+      - name: Resume in fresh process and finish or hit defined early-stop rule
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          .train41-locked/bin/python -m twelve_six.long_run_100k resume \
+            --repo-root . \
+            --source-sha "$SOURCE_SHA" \
+            --partial train41/partial.json \
+            --checkpoint-root train41/checkpoints \
+            --output train41/long-100k.json \
+            --torch-threads 2
+          .train41-locked/bin/python -m twelve_six.long_run_100k validate \
+            train41/long-100k.json \
+            --expected-source-sha "$SOURCE_SHA"
+
+      - name: Print scientific summary
+        run: |
+          .train41-locked/bin/python - <<'PY'
+          import json
+          report = json.load(open("train41/long-100k.json", encoding="utf-8"))
+          print(json.dumps({
+              "source": report["source"],
+              "model": report["model"],
+              "planned": report["planned"],
+              "observed": report["observed"],
+              "gradient": report["gradient"],
+              "learning_rate": report["learning_rate"],
+              "update_ratio": {
+                  "samples": report["update_ratio"]["samples"],
+                  "mean_relative_l2_update": report["update_ratio"]["mean_relative_l2_update"],
+                  "max_relative_l2_update": report["update_ratio"]["max_relative_l2_update"],
+              },
+              "throughput": report["throughput"],
+              "checkpoint_overhead": report["checkpoint_overhead"],
+              "resume": report["resume"],
+              "report_sha256": report["report_sha256"],
+          }, indent=2, sort_keys=True, ensure_ascii=False))
+          PY
+
+      - name: Upload retained long-run evidence and checkpoints
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: train41-long-100k-evidence
+          path: |
+            train41-locked-environment.json
+            train41/partial.json
+            train41/long-100k.json
+            train41/checkpoints/**
+          if-no-files-found: error
+          retention-days: 30
