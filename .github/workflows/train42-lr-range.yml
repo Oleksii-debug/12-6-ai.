@@ -1,0 +1,110 @@
+name: TRAIN42 Learning Rate Range
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/train42-lr-range.yml"
+      - "configs/runs/train42_lr_range.experimental.json"
+      - "src/twelve_six/training/lr_range_experiment.py"
+      - "src/twelve_six/training/optimization_experiments.py"
+      - "tests/test_lr_range_experiment.py"
+
+permissions:
+  contents: write
+
+jobs:
+  locked-local-free-lr-range:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Prove event head before repair
+        env:
+          EVENT_SHA: ${{ github.event.pull_request.head.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EVENT_SHA"
+      - name: Repair incumbent lint and bootstrap typo
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          incumbent = Path("src/twelve_six/training/optimization_experiments.py")
+          text = incumbent.read_text(encoding="utf-8")
+          old = "warmup_steps = int(round(schedule_horizon_steps * self.warmup_fraction))"
+          new = "warmup_steps = round(schedule_horizon_steps * self.warmup_fraction)"
+          if old in text:
+              text = text.replace(old, new, 1)
+              incumbent.write_text(text, encoding="utf-8")
+
+          lr_range = Path("src/twelve_six/training/lr_range_experiment.py")
+          text = lr_range.read_text(encoding="utf-8")
+          text = text.replace(
+              "zip(learning_rates, learning_rates[1:], strict=True)",
+              "zip(learning_rates, learning_rates[1:])",
+          )
+          lr_range.write_text(text, encoding="utf-8")
+          PY
+          if ! git diff --quiet; then
+            git config user.name "12-6 TRAIN42 bot"
+            git config user.email "actions@users.noreply.github.com"
+            git add src/twelve_six/training/optimization_experiments.py src/twelve_six/training/lr_range_experiment.py
+            git commit -m "TRAIN42: repair optimizer harness lint and LR bootstrap"
+            git push origin HEAD:${{ github.event.pull_request.head.ref }}
+          fi
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Verify exact D08 environment and repository checks
+        run: >-
+          python tools/verify_locked_environment.py
+          --profile linux-x86_64
+          --source-sha "$SOURCE_SHA"
+          --evidence-out train42-locked-environment.json
+          --run-repo-checks
+      - name: Create exact locked experiment environment
+        run: |
+          python -m venv .train42-locked
+          .train42-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .train42-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          .train42-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/dev.lock.txt
+          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .train42-locked/bin/python -m pip install --no-deps --no-build-isolation -e .
+      - name: Run focused optimizer and LR-range tests
+        run: |
+          .train42-locked/bin/python -m pytest -q tests/test_optimization_experiments.py tests/test_lr_range_experiment.py
+      - name: Execute 100K-500K LR range
+        run: |
+          .train42-locked/bin/python -m twelve_six.training.lr_range_experiment run \
+            --repo-root . \
+            --source-sha "$SOURCE_SHA" \
+            --plan configs/runs/train42_lr_range.experimental.json \
+            --output train42-lr-range-evidence.json \
+            --summary-output train42-lr-range-summary.json
+          .train42-locked/bin/python -m twelve_six.training.lr_range_experiment validate \
+            train42-lr-range-evidence.json \
+            --expected-source-sha "$SOURCE_SHA"
+          cat train42-lr-range-summary.json
+      - name: Retain compact summary in repository
+        run: |
+          mkdir -p evidence/swarm_exp_01
+          cp train42-lr-range-summary.json evidence/swarm_exp_01/train42_lr_range_summary_20260825.json
+          git add evidence/swarm_exp_01/train42_lr_range_summary_20260825.json
+          if ! git diff --cached --quiet; then
+            git config user.name "12-6 TRAIN42 bot"
+            git config user.email "actions@users.noreply.github.com"
+            git commit -m "TRAIN42: retain exact LR range summary"
+            git push origin HEAD:${{ github.event.pull_request.head.ref }}
+          fi
+      - name: Upload full TRAIN42 evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: train42-lr-range-evidence
+          path: |
+            train42-locked-environment.json
+            train42-lr-range-evidence.json
+            train42-lr-range-summary.json
+          if-no-files-found: error
+          retention-days: 30
