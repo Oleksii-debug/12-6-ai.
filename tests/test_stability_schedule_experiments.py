@@ -29,15 +29,21 @@ def _fake_result(*, clip: float | None, final_validation_loss: float, grad_norm:
         "progression": [
             {
                 "step": 1,
-                "loss": 5.5,
+                "loss": 5.0,
                 "grad_norm": grad_norm,
                 "relative_update_l2": 0.01,
             },
             {
                 "step": 2,
-                "loss": 4.9,
+                "loss": 5.5,
                 "grad_norm": grad_norm / 4,
                 "relative_update_l2": 0.005,
+            },
+            {
+                "step": 3,
+                "loss": 4.9,
+                "grad_norm": grad_norm / 8,
+                "relative_update_l2": 0.004,
             },
         ],
     }
@@ -79,20 +85,21 @@ def test_augmentation_records_recovery_tokens_and_clip_factor() -> None:
     augmented = _augment_result(
         result,
         train_batches=[batch],
-        execution_steps=2,
-        early_window_steps=2,
+        execution_steps=3,
+        early_window_steps=3,
         gradient_clip_norm=1.0,
     )
     summary = augmented["summary"]
+    assert summary["initialization_loss_reference"] == pytest.approx(5.0)
     assert summary["initialization_recovery_needed"] is True
-    assert summary["initialization_recovery_tokens"] == 6
+    assert summary["initialization_recovery_tokens"] == 9
     assert summary["early_loss_spike_absolute"] == pytest.approx(0.5)
-    assert summary["clip_frequency"] == 0.5
+    assert summary["clip_frequency"] == pytest.approx(1 / 3)
     assert augmented["progression"][0]["post_clip_factor"] == pytest.approx(0.5, rel=1e-5)
     assert augmented["progression"][1]["post_clip_factor"] == pytest.approx(1.0, rel=1e-5)
 
 
-def test_clip_selection_rejects_every_step_clip_when_no_clip_is_quality_equivalent() -> None:
+def test_clip_selection_rejects_every_step_clip_when_quality_equivalent() -> None:
     labels = torch.tensor([[0, 1, 2, 3]], dtype=torch.long)
     batch = {"input_ids": labels.clone(), "labels": labels}
     results = {}
@@ -105,8 +112,8 @@ def test_clip_selection_rejects_every_step_clip_when_no_clip_is_quality_equivale
         results[name] = _augment_result(
             _fake_result(clip=clip, final_validation_loss=val, grad_norm=grad),
             train_batches=[batch],
-            execution_steps=2,
-            early_window_steps=2,
+            execution_steps=3,
+            early_window_steps=3,
             gradient_clip_norm=clip,
         )
     assert _select_clip(results) == "clip_10"
