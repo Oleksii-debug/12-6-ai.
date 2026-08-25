@@ -1,0 +1,32 @@
+{
+  "schema_version": "12-6.training-eligibility-inventory-run.v1",
+  "policy_ref": "policy://12-6/data/explicit-model-training-evidence-v1",
+  "source_registry_path": "data/external/external_sources.json",
+  "source_registry_identity_sha256": "b617b656de52012069ca5c8887e8c5243985f716c36dd7f881856b82a0954962",
+  "registered_inventory": {
+    "schema_version": "12-6.training-eligibility-inventory.v1",
+    "policy_ref": "policy://12-6/data/explicit-model-training-evidence-v1",
+    "registry_identity_sha256": "b617b656de52012069ca5c8887e8c5243985f716c36dd7f881856b82a0954962",
+    "candidate_sources": 0,
+    "model_training_allowed": 0,
+    "model_training_blocked": 0,
+    "unknown_or_review_required": 0,
+    "sources": [],
+    "inventory_sha256": "5fefe47bc4b985e9c619ed99dfb10eba1cdb1c73d1c5aafc6b084c029122f8c3"
+  },
+  "unregistered_training_artifacts": [
+    {
+      "path": "data/synthetic/data10/uk-en-code-train.txt",
+      "git_blob_sha": "ed01457bc98697e5a254d05410452b16787566e9",
+      "status": "BLOCKED_UNREGISTERED",
+      "reason": "Artifact is not present in the canonical source registry; no rights conclusion is inferred from repository presence or project-authored labeling."
+    }
+  ],
+  "counts": {
+    "registered_candidate_sources": 0,
+    "registered_model_training_allowed": 0,
+    "registered_model_training_blocked": 0,
+    "unregistered_training_artifacts": 1,
+    "unregistered_training_artifacts_blocked": 1
+  }
+}
