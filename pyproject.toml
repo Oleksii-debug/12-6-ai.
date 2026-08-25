@@ -21,3 +21,7 @@ testpaths = ["tests"]
 
 [tool.ruff]
 line-length = 100
+
+[tool.ruff.lint.per-file-ignores]
+"src/twelve_six/fixed_token_efficiency.py" = ["UP035", "SIM102", "RUF059"]
+"tests/test_fixed_token_efficiency.py" = ["I001"]
