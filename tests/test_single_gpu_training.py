@@ -8,6 +8,11 @@ from twelve_six.checkpoint import (
     save_trainer_checkpoint,
 )
 from twelve_six.model import TwelveSixDecoder, load_stage_config
+from twelve_six.s3_engineering import (
+    S3_CURRENT_EXPECTED_PARAMETERS,
+    S3_CURRENT_MODEL_SHA256,
+    s3_current_model_spec,
+)
 from twelve_six.training.config import TrainerConfig
 from twelve_six.training.single_gpu import (
     SingleDeviceOOMError,
@@ -25,6 +30,19 @@ from twelve_six.training.trainer import Trainer
 
 def _hex(char: str, length: int = 64) -> str:
     return char * length
+
+
+def test_scale03_single_gpu_execution_binding_matches_live_product_s3() -> None:
+    stage = load_stage_config(
+        "configs/stages/alternatives/s3_10m_scale03_byte_gqa.execution.json"
+    )
+    live = s3_current_model_spec()
+
+    assert stage.stage == "S3"
+    assert stage.expected_parameters == S3_CURRENT_EXPECTED_PARAMETERS == 10_000_640
+    assert stage.model.parameter_count() == S3_CURRENT_EXPECTED_PARAMETERS
+    assert stage.model.identity_sha256() == S3_CURRENT_MODEL_SHA256
+    assert stage.model.to_dict() == live.to_dict()
 
 
 def test_explicit_cuda_request_fails_closed_when_cuda_is_unavailable() -> None:
