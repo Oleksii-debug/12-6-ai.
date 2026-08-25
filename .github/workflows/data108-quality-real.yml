@@ -33,6 +33,10 @@ on:
       - "configs/data/corpus_v01.json"
       - "src/twelve_six/data/corpus_v01.py"
 
+concurrency:
+  group: data108-quality-real
+  cancel-in-progress: true
+
 permissions:
   contents: read
   actions: read
