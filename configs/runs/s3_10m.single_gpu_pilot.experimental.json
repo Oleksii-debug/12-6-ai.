@@ -3,7 +3,7 @@
   "run_kind": "single_gpu_mechanics_pilot",
   "state": "PREPARED_NOT_LAUNCHED",
   "data_authority": "CONTROLLED_SYNTHETIC_MECHANICS_ONLY",
-  "stage_config": "configs/stages/s3_10m.json",
+  "stage_config": "configs/stages/alternatives/s3_10m_scale03_byte_gqa.execution.json",
   "device": "cuda:0",
   "output_root": "runs/train15-single-gpu",
   "authorization": {
@@ -36,7 +36,8 @@
     "inference_new_tokens": 4
   },
   "truth_boundary": {
-    "purpose": "single-GPU execution, AMP, transfer, optimizer, checkpoint/resume, metrics and post-training inference mechanics",
+    "purpose": "single-GPU execution, AMP, transfer, optimizer, checkpoint/resume, metrics and post-training inference mechanics on the exact-green SCALE-03 byte-compatible S3 geometry",
+    "model_binding": "S3-SCALE02-BYTE-GQA-v1 / 10,000,640 parameters / vocab 256 / context 1024 / ModelSpec 61caa5469123e23b9b72fc2024140bfca84c4c480dcb0a7e712ba800a4f22998",
     "not_evidence_for": [
       "corpus quality",
       "tokenizer selection",
