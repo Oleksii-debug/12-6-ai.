@@ -12,7 +12,7 @@
 {"category":"operator_type_syntax","completion":"<> 7867","distractors":[">< 7867"],"id":"code-v1-op-sql-002","language":"sql","prefix":"WHERE qzv_id_919 "}
 {"category":"simple_function_call_structure","completion":")\n","distractors":["]\n"],"id":"code-v1-call-py-001","language":"python","prefix":"qzv_res_211 = qzv_fn_913(qzv_x_313, qzv_y_317"}
 {"category":"simple_function_call_structure","completion":"7901)\n","distractors":["7901]\n"],"id":"code-v1-call-py-002","language":"python","prefix":"qzv_fn_313(qzv_x_421="}
-{"category":"simple_function_call_structure","completion":") FROM qzv_tab_359;","distractors":[]}
+{"category":"simple_function_call_structure","completion":") FROM qzv_tab_359;","distractors":["] FROM qzv_tab_359;"],"id":"code-v1-call-sql-001","language":"sql","prefix":"SELECT MAX(qzv_metric_347"}
 {"category":"simple_function_call_structure","completion":"))\n","distractors":[")]\n"],"id":"code-v1-call-py-003","language":"python","prefix":"qzv_wrap_367(qzv_inner_373(qzv_val_379"}
 {"category":"variable_reuse","completion":"qzv_buf_413","distractors":["qzv_buf_417"],"id":"code-v1-reuse-py-001","language":"python","prefix":"qzv_buf_413 = 7919\n"}
 {"category":"variable_reuse","completion":"qzv_item_523)","distractors":["qzv_item_527)"],"id":"code-v1-reuse-py-002","language":"python","prefix":"qzv_item_523 = 7927\nqzv_emit_127("}
