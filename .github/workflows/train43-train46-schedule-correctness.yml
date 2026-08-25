@@ -5,6 +5,7 @@ on:
     paths:
       - "src/twelve_six/schedule_batch_experiment.py"
       - "tools/run_train46_grad_accum_evidence.py"
+      - "tests/test_schedule_batch_experiment.py"
       - "src/twelve_six/training/**"
       - ".github/workflows/train43-train46-schedule-correctness.yml"
   workflow_dispatch:
@@ -46,8 +47,8 @@ jobs:
 
       - name: Run focused trainer semantics and lint
         run: |
-          .train-schedule-locked/bin/python -m ruff check src/twelve_six/schedule_batch_experiment.py tools/run_train46_grad_accum_evidence.py
-          .train-schedule-locked/bin/python -m pytest -q tests/test_training_engine.py -k "gradient_accumulation or variable_token_accumulation or partial_accumulation"
+          .train-schedule-locked/bin/python -m ruff check src/twelve_six/schedule_batch_experiment.py tools/run_train46_grad_accum_evidence.py tests/test_schedule_batch_experiment.py
+          .train-schedule-locked/bin/python -m pytest -q tests/test_schedule_batch_experiment.py tests/test_training_engine.py -k "schedule_batch or gradient_accumulation or variable_token_accumulation or partial_accumulation"
 
       - name: Execute TRAIN-43 warmup matrix
         run: |
@@ -60,6 +61,49 @@ jobs:
           .train-schedule-locked/bin/python tools/run_train46_grad_accum_evidence.py \
             --repo-root . \
             --output train46-grad-accum-evidence.json
+
+      - name: Print compact executed evidence summary
+        run: |
+          .train-schedule-locked/bin/python - <<'PY'
+          import json
+
+          warmup = json.load(open("train43-warmup-evidence.json", encoding="utf-8"))
+          accum = json.load(open("train46-grad-accum-evidence.json", encoding="utf-8"))
+          warmup_keys = (
+              "parameters",
+              "warmup_steps",
+              "warmup_fraction_of_scheduler_horizon",
+              "initial_validation_loss",
+              "final_validation_loss",
+              "tokens_to_recover_initial_validation",
+              "early_max_update_loss",
+              "early_max_grad_norm",
+              "early_clip_frequency",
+              "overall_clip_frequency",
+              "early_max_update_ratio",
+              "early_validation_spike_above_initial",
+          )
+          summary = {
+              "train43": {
+                  "controls": warmup["controls"],
+                  "decision": warmup["warmup"]["decision"],
+                  "runs": [
+                      {key: run[key] for key in warmup_keys}
+                      for run in warmup["warmup"]["runs"]
+                  ],
+                  "report_sha256": warmup["report_sha256"],
+              },
+              "train46": {
+                  "controls": accum["controls"],
+                  "equivalence": accum["equivalence"],
+                  "resource_comparison": accum["resource_comparison"],
+                  "checkpoint_boundary": accum["checkpoint_boundary"],
+                  "decision": accum["decision"],
+                  "report_sha256": accum["report_sha256"],
+              },
+          }
+          print("EXECUTED_EVIDENCE_SUMMARY=" + json.dumps(summary, sort_keys=True))
+          PY
 
       - name: Upload retained evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
