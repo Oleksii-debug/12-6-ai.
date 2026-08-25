@@ -160,7 +160,7 @@ class OptimizationRecipe:
         seed: int,
     ) -> tuple[TrainerConfig, dict[str, Any]]:
         _require(schedule_horizon_steps > 0, "schedule_horizon_steps must be positive")
-        warmup_steps = int(round(schedule_horizon_steps * self.warmup_fraction))
+        warmup_steps = round(schedule_horizon_steps * self.warmup_fraction)
         if self.warmup_fraction > 0.0:
             warmup_steps = max(1, warmup_steps)
         warmup_steps = min(warmup_steps, schedule_horizon_steps - 1)
