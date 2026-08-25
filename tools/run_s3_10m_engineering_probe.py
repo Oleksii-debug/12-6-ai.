@@ -12,7 +12,7 @@ import subprocess
 import tempfile
 import time
 from collections.abc import Mapping
-from dataclasses import asdict, is_dataclass
+from dataclasses import asdict, fields, is_dataclass
 from pathlib import Path
 from typing import Any
 
@@ -30,7 +30,7 @@ from twelve_six.checkpoint.trainer_adapter import (
 from twelve_six.inference.contracts import GenerationConfig
 from twelve_six.inference.first_party import load_first_party_backend
 from twelve_six.inference.generation import generate
-from twelve_six.model import TwelveSixDecoder, count_trainable_parameters
+from twelve_six.model import TwelveSixDecoder, count_trainable_parameters, load_stage_config
 from twelve_six.s3_engineering import (
     S3_CURRENT_CANDIDATE_ID,
     S3_CURRENT_EXPECTED_PARAMETERS,
@@ -52,6 +52,8 @@ from twelve_six.tokenization import ByteTokenizer
 from twelve_six.training import Trainer, TrainerConfig
 
 _SCHEMA = "12-6.s3-10m-engineering-evidence.v2"
+_REPOSITORY_S3_EXPECTED_PARAMETERS = 10_059_840
+_REPOSITORY_S3_MODEL_SHA256 = "3b6fc1b397e6fea69c2f249ce8ab8eedaad8ca1b13b88b8d2328a6abcf34791a"
 
 
 def _canonical_bytes(value: Any) -> bytes:
@@ -93,7 +95,7 @@ def _tensor_tree_bytes(value: Any) -> int:
     if isinstance(value, torch.Tensor):
         return value.numel() * value.element_size()
     if is_dataclass(value) and not isinstance(value, type):
-        return _tensor_tree_bytes(asdict(value))
+        return sum(_tensor_tree_bytes(getattr(value, item.name)) for item in fields(value))
     if isinstance(value, Mapping):
         return sum(_tensor_tree_bytes(item) for item in value.values())
     if isinstance(value, (list, tuple)):
@@ -230,6 +232,11 @@ def run_probe(args: argparse.Namespace) -> dict[str, Any]:
     spec = s3_current_model_spec()
     init_spec = s3_init_spec()
     future_spec = s3_d11_model_spec()
+    repository_stage = load_stage_config(repo_root / "configs/stages/s3_10m.json")
+    if repository_stage.expected_parameters != _REPOSITORY_S3_EXPECTED_PARAMETERS:
+        raise RuntimeError("repository S3 expected parameter count drifted")
+    if repository_stage.model.identity_sha256() != _REPOSITORY_S3_MODEL_SHA256:
+        raise RuntimeError("repository S3 ModelSpec identity drifted")
     s4_spec = s4_d11_model_spec()
     if args.sequence_length > spec.max_seq_len:
         raise ValueError("sequence length exceeds current S3 context")
@@ -442,6 +449,18 @@ def run_probe(args: argparse.Namespace) -> dict[str, Any]:
             "parameter_breakdown": spec.parameter_breakdown(),
             "geometry": spec.to_dict(),
         },
+        "repository_stage_candidate": {
+            "path": "configs/stages/s3_10m.json",
+            "parameters": repository_stage.expected_parameters,
+            "model_spec_sha256": repository_stage.model.identity_sha256(),
+            "geometry": repository_stage.model.to_dict(),
+            "attention_kind": "MHA",
+            "current_byte_tokenizer_compatible": repository_stage.model.vocab_size
+            == tokenizer.vocab_size,
+            "selection_reason_not_current_vertical": (
+                "existing repository stage shape uses vocab 8192 and cannot bind canonical s0-byte-v1"
+            ),
+        },
         "future_tokenizer_alternative": {
             "id": S3_D11_CANDIDATE_ID,
             "source_pr": S3_D11_SOURCE_PR,
@@ -528,14 +547,14 @@ def run_probe(args: argparse.Namespace) -> dict[str, Any]:
             "candidate_vocab": spec.vocab_size,
             "runtime_tokenizer_compatible": True,
             "s3_stage_tokenizer_frozen": False,
-            "kv_cache": "NOT_ON_EXACT_GREEN_BASE__PR_138_CURRENT_HEAD_RED",
+            "kv_cache": "ACTIVE_INCUMBENT_138_REPAIRED_HEAD_PENDING_EXACT_HEAD_TERMINAL_RESULT",
         },
         "architecture_runtime_boundary": {
             "gqa_parameter_savings_realized": True,
             "native_kv_cache_shape_algebra_valid": True,
             "training_attention_kv_is_currently_expanded_before_sdpa": True,
             "gqa_training_activation_memory_savings_realized": False,
-            "note": "current attention repeats K/V to query-head count before SDPA",
+            "note": "#89 attention repeats K/V to query-head count before SDPA; #138 owns cache successor",
         },
         "s4_readiness": {
             "owner": "SCALE-04_ACTIVE_CLAIM__HANDOFF_ONLY",
