@@ -91,12 +91,12 @@ def test_bounded_intake_reuses_lid_and_exact_dedup_and_never_fetches_blocked(
         "людей, а також те, що держава і суспільство мають робити для громадян. "
         "Ці дані потрібні для перевірки українського тексту."
         "</article></body></html>"
-    ).encode("utf-8")
+    ).encode()
     en_text = (
-        "This manual explains the language and typography for a book. "
-        "The data and the model are not the topic; this text is a stable English "
-        "fixture for testing extraction and exact duplicate staging."
-    ).encode("utf-8")
+        b"This manual explains the language and typography for a book. "
+        b"The data and the model are not the topic; this text is a stable English "
+        b"fixture for testing extraction and exact duplicate staging."
+    )
     payloads = {
         "https://example.invalid/ua": DownloadedBytes(ua_html, "text/html; charset=utf-8"),
         "https://example.invalid/en-a": DownloadedBytes(en_text, "text/plain; charset=utf-8"),
