@@ -227,7 +227,7 @@ def _sample_gpu_utilization(device: torch.device) -> tuple[float | None, str]:
         return None, "UNAVAILABLE_API"
     try:
         value = float(utilization(cuda_device))
-    except Exception:  # optional NVML/provider failures must not stop training telemetry
+    except Exception:  # noqa: BLE001 - optional provider failures must not stop telemetry
         return None, "UNAVAILABLE_RUNTIME"
     if not math.isfinite(value) or not 0.0 <= value <= 100.0:
         return None, "UNAVAILABLE_INVALID_SAMPLE"
@@ -770,9 +770,9 @@ def aggregate_rank_summaries(summaries: Sequence[Mapping[str, Any]]) -> dict[str
         counters = summary.get("counters")
         timing = summary.get("timing")
         if not isinstance(rank, Mapping) or not isinstance(counters, Mapping):
-            raise ValueError("rank summary missing rank/counters mapping")
+            raise TypeError("rank summary missing rank/counters mapping")
         if not isinstance(timing, Mapping):
-            raise ValueError("rank summary missing timing mapping")
+            raise TypeError("rank summary missing timing mapping")
         ranks.append(int(rank["rank"]))
         declared_world_sizes.add(int(rank["world_size"]))
         tokens.append(int(counters["optimized_tokens"]))
@@ -833,9 +833,9 @@ def paid_compute_decision_support(summary: Mapping[str, Any]) -> dict[str, Any]:
     device = summary.get("device")
     throughput = summary.get("throughput")
     if not isinstance(rank, Mapping) or not isinstance(device, Mapping):
-        raise ValueError("summary missing rank/device metadata")
+        raise TypeError("summary missing rank/device metadata")
     if not isinstance(throughput, Mapping):
-        raise ValueError("summary missing throughput metadata")
+        raise TypeError("summary missing throughput metadata")
 
     device_type = str(device.get("type"))
     world_size = int(rank.get("world_size", 1))
