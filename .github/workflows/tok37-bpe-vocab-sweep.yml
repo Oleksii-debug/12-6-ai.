@@ -50,6 +50,54 @@ jobs:
             --source-sha "$EXPECTED_SOURCE_SHA" \
             --output tok37-bpe-sweep.json \
             --artifact-dir tok37-artifacts
+      - name: Print compact TOK-37 evidence
+        run: |
+          .tok37/bin/python - <<'PY'
+          import json
+          report = json.load(open('tok37-bpe-sweep.json', encoding='utf-8'))
+          rows = []
+          for result in report['results']:
+              row = {
+                  'requested': result['requested_vocab_size'],
+                  'status': result['status'],
+              }
+              if result['status'] == 'PASS':
+                  row.update({
+                      'actual': result['artifact']['actual_vocab_size'],
+                      'config_sha256': result['artifact']['config_sha256'],
+                      'vocab_sha256': result['artifact']['vocab_sha256'],
+                      'tokenizer_json_sha256': result['artifact']['tokenizer_json_sha256'],
+                      'heldout_tokens': result['held_out']['tokens'],
+                      'fertility': {
+                          name: result['held_out']['by_group'][name]['fertility_tokens_per_codepoint']
+                          for name in ('uk', 'en', 'code', 'unicode')
+                      },
+                      'embedding_tax_vs_byte': {
+                          name: result['parameter_tax'][name]['incremental_parameters_vs_byte_vocab']
+                          for name in ('100K', '250K', '500K', '1M')
+                      },
+                  })
+                  if 'model_probe' in result:
+                      row['model_probe'] = {
+                          'parameters': result['model_probe']['parameters'],
+                          'aggregate_bpb': result['model_probe']['aggregate_bpb'],
+                          'bpb': {
+                              name: result['model_probe']['by_group'][name]['bpb']
+                              for name in ('uk', 'en', 'code', 'unicode')
+                          },
+                      }
+              rows.append(row)
+          print(json.dumps({
+              'source_sha': report['source_sha'],
+              'grid': rows,
+              'model_probe_requested': report['prefilter_model_probe_requested_vocab_sizes'],
+              'tokenizer_parameter_pareto': report['tokenizer_parameter_pareto_requested_vocab_sizes'],
+              'model_informed_pareto': report['model_informed_pareto_requested_vocab_sizes'],
+              'provisional_candidate': report['provisional_candidate'],
+              'evidence_sha256': report['evidence_sha256'],
+              'truth_boundary': report['truth_boundary'],
+          }, ensure_ascii=False, indent=2, sort_keys=True))
+          PY
       - name: Validate retained evidence self-hash and gates
         run: |
           .tok37/bin/python - <<'PY'
