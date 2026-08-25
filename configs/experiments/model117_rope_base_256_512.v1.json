@@ -1,0 +1,52 @@
+{
+  "schema": "12-6.model117-rope-base-config.v1",
+  "authority": "LOCAL_FREE_POSITIONAL_ENCODING_RESEARCH_NOT_PROMOTION",
+  "base_branch": "model17/context-100k-128-vs-256-20260825",
+  "base_commit": "ce0b8eb8501677363007d4f3c8c6c9fcf95a772d",
+  "model_core_blob": "2259ee1d90d191436cce6af20d6dbf6f53da02ab",
+  "hypothesis": "The incumbent theta=10000 should be retained for the supported 256/512 regime unless a nearby log-spaced candidate improves full-context held-out behavior without measurable short-context harm.",
+  "candidate_thetas": [5000.0, 10000.0, 20000.0],
+  "candidate_rationale": "One octave below and above the incumbent on a logarithmic scale; no scaling, interpolation, extrapolation, NTK, YaRN, or formulation change.",
+  "model": {
+    "source_geometry": "MODEL09 balanced ~500K candidate",
+    "vocab_size": 256,
+    "max_seq_len": 512,
+    "d_model": 96,
+    "n_layers": 4,
+    "n_heads": 4,
+    "n_kv_heads": 4,
+    "head_dim": 24,
+    "d_ff": 280,
+    "rope_rotary_dim": 24,
+    "trainable_parameters": 495456,
+    "tie_word_embeddings": true
+  },
+  "fixed_controls": {
+    "tokenizer": "s0-byte-v1",
+    "tokenizer_config_blob": "cb3e6a305807e8653c27021f013d27be8124a320",
+    "train_blob": "b77ceabfce6464b5511cb9db94596ed1c6625f02",
+    "validation_blob": "aaeddabc2df9b8c00175f592cf60c861b490ed58",
+    "long_heldout_blob": "01435079b1995bbda61fd19429bca1dc32b3d246",
+    "seed": 1337,
+    "initialization": {"family": "normal", "std": 0.02, "residual_branch_scale": "sqrt_2_layers"},
+    "optimizer": {"name": "AdamW", "learning_rate": 0.0003, "betas": [0.9, 0.95], "eps": 1e-8, "weight_decay": 0.0, "gradient_clip_norm": 1.0, "scheduler": "constant", "warmup_steps": 0, "precision": "fp32"},
+    "batch_size": 1,
+    "training_sequence_length": 512,
+    "optimizer_steps": 64,
+    "optimized_valid_causal_tokens": 32704,
+    "torch_threads": 2
+  },
+  "required_evaluation": [
+    "heldout_bpb_128",
+    "heldout_bpb_256",
+    "heldout_bpb_512",
+    "position_loss_bins_64",
+    "reserved_repeat_dependency_distances_64_128_256_384",
+    "attention_score_and_logit_finiteness",
+    "gradient_norms",
+    "fresh_process_checkpoint_reload",
+    "evaluation_non_mutation",
+    "kv_cache_full_prefix_parity"
+  ],
+  "fail_closed_rule": "Reject non-finite candidates, cache parity failures above 1e-5 max absolute logit difference, or >0.5 percent mean 128/256 BPB regression versus theta=10000. Do not replace theta=10000 for marginal synthetic-only gains or numerically negligible normal-modeling differences."
+}
