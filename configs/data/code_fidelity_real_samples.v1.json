@@ -1,0 +1,62 @@
+{
+  "schema_version": "12-6.code-fidelity-real-samples.v1",
+  "authority_boundary": "FIDELITY_EVIDENCE_ONLY_NOT_TRAINING_ELIGIBILITY",
+  "notes": "These pinned public files are used only to test normalization fidelity. Repository license metadata is evidence, not a project training-rights decision.",
+  "samples": [
+    {
+      "sample_id": "click-globals-python",
+      "repository": "pallets/click",
+      "commit": "68e7ea7228ca144c52e4d1d282cc09da59f7771f",
+      "path": "src/click/globals.py",
+      "git_blob_sha1": "a2f91723d21cefdf658be327174e1f8ccdc20fcd",
+      "language": "python",
+      "license_spdx_evidence": "BSD-3-Clause",
+      "license_evidence_kind": "github_repository_metadata",
+      "parser": "python_ast"
+    },
+    {
+      "sample_id": "click-precommit-yaml",
+      "repository": "pallets/click",
+      "commit": "68e7ea7228ca144c52e4d1d282cc09da59f7771f",
+      "path": ".pre-commit-config.yaml",
+      "git_blob_sha1": "4a24c9d14c0f48885f6fe2b31c60d46ea3530ea6",
+      "language": "yaml",
+      "license_spdx_evidence": "BSD-3-Clause",
+      "license_evidence_kind": "github_repository_metadata",
+      "parser": "optional_pyyaml"
+    },
+    {
+      "sample_id": "typescript-scanner",
+      "repository": "microsoft/TypeScript",
+      "commit": "7e133bea121ac13e6f11ddc69a4fd25c6797ffbf",
+      "path": "src/compiler/scanner.ts",
+      "git_blob_sha1": "343df39ad9cbceed326bd56c0758c80474197e66",
+      "language": "typescript",
+      "license_spdx_evidence": "Apache-2.0",
+      "license_evidence_kind": "github_repository_metadata",
+      "parser": "not_run_requires_repository_module_graph"
+    },
+    {
+      "sample_id": "typescript-package-json",
+      "repository": "microsoft/TypeScript",
+      "commit": "7e133bea121ac13e6f11ddc69a4fd25c6797ffbf",
+      "path": "package.json",
+      "git_blob_sha1": "f7f35370bc8ad447e488e01cd10acbc606549cd8",
+      "language": "json",
+      "license_spdx_evidence": "Apache-2.0",
+      "license_evidence_kind": "file_declared_and_github_repository_metadata",
+      "parser": "json"
+    },
+    {
+      "sample_id": "libexpat-elements-c",
+      "repository": "libexpat/libexpat",
+      "commit": "d09a69258cb5169f320d34c0acaa0b407c074414",
+      "path": "expat/examples/elements.c",
+      "git_blob_sha1": "ef7baeae56466ada65afe265002d249f3a2437eb",
+      "language": "c",
+      "license_spdx_evidence": "MIT",
+      "license_evidence_kind": "file_spdx_header_and_github_repository_metadata",
+      "parser": "not_run_requires_project_headers"
+    }
+  ]
+}
