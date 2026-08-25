@@ -9,6 +9,7 @@ import json
 import os
 import platform
 import random
+import re
 import subprocess
 import sys
 from collections.abc import Sequence
@@ -21,7 +22,9 @@ from twelve_six.tokenization.experiments import measure_probe, train_hf_tokenize
 SCHEMA = "12-6.tokenizer-unigram-repro.v1"
 DECISION_REJECT = "REJECT_UNIGRAM_CANONICAL_TOKENIZERS_0_23_1"
 UPSTREAM_TRAINER_BLOB_SHA = "ff5ca9428ab7c7ca9b96065046f32b42246dc234"
+UPSTREAM_PYTHON_BINDING_BLOB_SHA = "df0b11ec57ef129515008f44dfae7c539f45ff46"
 AHASH_VERSION = "0.8.11"
+_EXACT_SEED_RE = re.compile(r"(?<![0-9A-Za-z_])seed(?![0-9A-Za-z_])")
 
 
 class UnigramReproError(ValueError):
@@ -66,18 +69,18 @@ def _ordered_training_texts(dataset: dict[str, Any], order: str) -> tuple[str, .
 
 
 def _trainer_seed_probe(tokenizers: Any) -> dict[str, object]:
-    try:
-        tokenizers.trainers.UnigramTrainer(seed=0)
-    except TypeError as exc:
-        return {
-            "public_seed_argument_supported": False,
-            "probe": "UnigramTrainer(seed=0)",
-            "exception_type": type(exc).__name__,
-        }
+    """Inspect the advertised API without passing an ignored **kwargs seed option."""
+    trainer_type = tokenizers.trainers.UnigramTrainer
+    text_signature = getattr(trainer_type, "__text_signature__", None)
+    doc = getattr(trainer_type, "__doc__", "") or ""
+    advertised = "\n".join(part for part in (text_signature, doc) if isinstance(part, str))
+    supported = _EXACT_SEED_RE.search(advertised) is not None
     return {
-        "public_seed_argument_supported": True,
-        "probe": "UnigramTrainer(seed=0)",
-        "exception_type": None,
+        "public_seed_argument_supported": supported,
+        "probe": "advertised UnigramTrainer public signature/documentation",
+        "text_signature": text_signature,
+        "exact_seed_argument_advertised": supported,
+        "unknown_kwargs_policy": "unknown kwargs are printed-and-ignored by pinned Python binding",
     }
 
 
@@ -255,7 +258,7 @@ def build_report(source_sha: str) -> dict[str, object]:
             "serialization itself drifted; root-cause classification is ambiguous"
         )
     if seed_supported:
-        raise UnigramReproError("runtime unexpectedly accepted a public UnigramTrainer seed")
+        raise UnigramReproError("runtime unexpectedly advertises a public UnigramTrainer seed")
 
     report: dict[str, object] = {
         "schema": SCHEMA,
@@ -281,28 +284,33 @@ def build_report(source_sha: str) -> dict[str, object]:
             "serial_manifest_order": serial,
             "serial_reversed_input_order": reversed_serial,
             "parallel_manifest_order": parallel,
+            "manifest_vs_reversed_first_artifact_equal": (
+                serial_manifest[0]["artifact"] == serial_reversed[0]["artifact"]
+            ),
         },
         "root_cause": {
-            "status": "CONFIRMED_BACKEND_TRAINING_ORDER_NONDETERMINISM",
+            "status": "CONFIRMED_BACKEND_HASH_ORDER_NONDETERMINISM",
             "supported_seed_control": False,
             "seed_probe": first["seed_probe"],
+            "fixed_manifest_input_order_still_drifts": serial_drift,
             "threading_eliminated_as_sufficient_fix": serial_drift,
             "serialization_metadata_eliminated_as_primary_cause": serialization_stable,
-            "input_order_is_not_a_sufficient_control": not bool(
-                reversed_serial["exact_artifact_identity_equal"]
-            ),
+            "input_order_is_not_a_sufficient_control": serial_drift,
             "floating_reduction_may_be_secondary": True,
             "upstream_source": {
                 "package": "tokenizers",
                 "version": real.TOKENIZERS_VERSION,
                 "trainer_path": "tokenizers/src/models/unigram/trainer.rs",
                 "trainer_blob_sha": UPSTREAM_TRAINER_BLOB_SHA,
+                "python_binding_path": "bindings/python/src/trainers.rs",
+                "python_binding_blob_sha": UPSTREAM_PYTHON_BINDING_BLOB_SHA,
                 "ahash_version": AHASH_VERSION,
                 "mechanism": (
-                    "UnigramTrainer feed/train uses AHashMap/AHashSet iteration; ahash RandomState "
-                    "is uniquely randomized per map. Trainer also has parallel floating "
-                    "reductions, but drift persists with TOKENIZERS_PARALLELISM=false and "
-                    "RAYON_NUM_THREADS=1."
+                    "UnigramTrainer feed/train uses randomized AHashMap/AHashSet iteration before "
+                    "EM training. The Python binding exposes no seed control and ignores unknown "
+                    "kwargs such as seed. Parallel floating reductions are an additional possible "
+                    "source, but exact drift persists with tokenizer parallelism disabled and one "
+                    "Rayon thread."
                 ),
             },
         },
