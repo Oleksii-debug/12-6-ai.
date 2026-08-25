@@ -192,7 +192,6 @@ def main() -> None:
         "policy_manifest": policy_manifest,
         "data25_head_sha": view["data25_head_sha"],
         "corpus_identity_sha256": retained["corpus_identity_sha256"],
-        "corpus_manifest_file_sha256": _sha256(manifest_path),
         "corpus_version": retained["corpus_version"],
         "external_training_eligible_sources": retained["external_training_eligible_sources"],
         "truth_boundary": retained["truth_boundary"],
