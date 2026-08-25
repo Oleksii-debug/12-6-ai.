@@ -1,0 +1,114 @@
+name: PERF-148 10M PyTorch Profiler
+
+on:
+  pull_request:
+    paths:
+      - "tools/profile_perf148_10m.py"
+      - ".github/workflows/perf148-10m-profiler.yml"
+      - "docs/PERF148_10M_PROFILER.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  profile-local-free:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Prove exact source checkout
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Verify locked LOCAL_FREE environment
+        run: >-
+          python tools/verify_locked_environment.py
+          --profile linux-x86_64
+          --source-sha "$SOURCE_SHA"
+          --evidence-out perf148-locked-environment.json
+
+      - name: Create exact locked execution environment
+        run: |
+          python -m venv .perf148-locked
+          .perf148-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .perf148-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          .perf148-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/dev.lock.txt
+          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .perf148-locked/bin/python -m pip install --no-deps --no-build-isolation -e .
+
+      - name: Profile exact incumbent 10M trace
+        run: |
+          .perf148-locked/bin/python tools/profile_perf148_10m.py \
+            --repo-root . \
+            --source-sha "$SOURCE_SHA" \
+            --output perf148-10m-profiler.json \
+            --trace-output perf148-10m-profiler-trace.json \
+            --device cpu \
+            --precision fp32 \
+            --batch-size 1 \
+            --sequence-length 256 \
+            --warmup-steps 1 \
+            --profile-steps 3 \
+            --cpu-threads 2
+
+      - name: Validate profiler evidence boundary
+        run: |
+          .perf148-locked/bin/python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          report = json.loads(Path("perf148-10m-profiler.json").read_text(encoding="utf-8"))
+          assert report["schema"] == "12-6.perf148-10m-profiler.v1"
+          assert report["source_sha"] == os.environ["SOURCE_SHA"]
+          assert report["paid_compute"] is False
+          assert report["candidate"]["parameters"] == 10_000_640
+          assert report["candidate"]["profile_shape"] == [1, 256]
+          assert report["execution"]["device"] == "cpu"
+          assert report["execution"]["precision"] == "fp32"
+          assert report["execution"]["optimizer_steps"] == 4
+          assert report["profiler"]["record_shapes"] is True
+          assert report["profiler"]["profile_memory"] is True
+          assert report["profiler"]["short_explicit_window"] is True
+          assert len(report["regions"]) >= 8
+          assert len(report["top_operators_by_self_time"]) > 0
+          assert report["truth_boundary"]["cpu_evidence_is_cpu_only"] is True
+          assert report["truth_boundary"]["cuda_claimed_without_cuda"] is False
+          assert report["truth_boundary"]["model_semantics_changed"] is False
+          assert report["truth_boundary"]["training_objective_changed"] is False
+          assert report["truth_boundary"]["paid_compute_used"] is False
+          PY
+
+      - name: Show measured bottlenecks
+        run: |
+          .perf148-locked/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path("perf148-10m-profiler.json").read_text(encoding="utf-8"))
+          print(json.dumps({
+              "runtime": report["runtime"],
+              "execution": report["execution"],
+              "top_bottlenecks": report["top_bottlenecks"],
+              "top_operators": report["top_operators_by_self_time"][:20],
+          }, indent=2, sort_keys=True))
+          PY
+
+      - name: Upload profiler machine evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: perf148-10m-profiler-${{ env.SOURCE_SHA }}
+          path: |
+            perf148-locked-environment.json
+            perf148-10m-profiler.json
+            perf148-10m-profiler-trace.json
+          if-no-files-found: error
+          retention-days: 30
