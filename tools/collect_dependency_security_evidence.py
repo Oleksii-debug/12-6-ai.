@@ -19,6 +19,7 @@ LOCK, SECURITY = load_dependency_contracts()
 OSV_BATCH_URL = "https://api.osv.dev/v1/querybatch"
 PYPI_BASE_URL = "https://pypi.org/pypi"
 USER_AGENT = "12-6-ai-dependency-evidence/1"
+ADJUDICATION_SCHEMA_VERSION = "12-6.dependency-adjudication.v1"
 
 
 class EvidenceCollectionError(RuntimeError):
@@ -128,12 +129,98 @@ def _collect_pypi(components: list[dict[str, Any]]) -> tuple[dict[str, dict[str,
     return records, hashlib.sha256("".join(sorted(response_hashes)).encode()).hexdigest()
 
 
+def _write_adjudications(
+    *,
+    sbom: dict[str, Any],
+    evidence: dict[str, Any],
+    output_dir: Path,
+    evidence_ref: str,
+) -> None:
+    """Bridge exact scanner evidence into the existing D10 adjudication schema.
+
+    Vulnerability status is a technical scanner result only. License status is intentionally
+    never auto-promoted to PASS because package metadata collection is not legal review.
+    """
+    output_dir.mkdir(parents=True, exist_ok=True)
+    vulnerability_findings: list[tuple[str, str]] = []
+    unresolved_licenses: list[str] = []
+    for component in evidence["components"]:
+        key = component["key"]
+        for vulnerability in component["advisories"]["vulnerabilities"]:
+            vulnerability_findings.append((key, vulnerability["id"]))
+        if component["license"]["status"] == "UNRESOLVED":
+            unresolved_licenses.append(key)
+
+    vulnerability_findings.sort()
+    unresolved_licenses.sort()
+    vulnerability_status = "FAIL" if vulnerability_findings else "PASS"
+    vulnerability_reason = (
+        "OSV_EXACT_VERSION_FINDINGS_PRESENT"
+        if vulnerability_findings
+        else "OSV_EXACT_VERSION_QUERY_COMPLETE_ZERO_FINDINGS"
+    )
+    license_reason = (
+        f"PYPI_EXACT_VERSION_LICENSE_METADATA_UNRESOLVED_{len(unresolved_licenses)}_COMPONENTS"
+        if unresolved_licenses
+        else "PYPI_LICENSE_METADATA_COMPLETE_LEGAL_REVIEW_NOT_PERFORMED"
+    )
+
+    for profile_id in sorted(sbom["profiles"]):
+        common = {
+            "schema_version": ADJUDICATION_SCHEMA_VERSION,
+            "source_sha": evidence["source_sha"],
+            "profile_id": profile_id,
+            "lock_index_sha256": evidence["lock_index"]["semantic_sha256"],
+        }
+        vulnerability_document = {
+            **common,
+            "kind": "vulnerability",
+            "status": vulnerability_status,
+            "reason": vulnerability_reason,
+            "tool": {"name": "OSV querybatch", "version": "v1"},
+            "evidence_ref": evidence_ref,
+            "finding_count": len(vulnerability_findings),
+            "findings": [
+                {"component": component, "id": vulnerability_id}
+                for component, vulnerability_id in vulnerability_findings
+            ],
+            "truth_boundary": {
+                "known_advisory_scan_only": True,
+                "risk_acceptance": False,
+                "audit_verdict": False,
+            },
+        }
+        license_document = {
+            **common,
+            "kind": "license",
+            "status": "UNKNOWN",
+            "reason": license_reason,
+            "tool": {"name": "PyPI JSON metadata", "version": "v1"},
+            "evidence_ref": evidence_ref,
+            "declared_component_count": len(evidence["components"]) - len(unresolved_licenses),
+            "unresolved_component_count": len(unresolved_licenses),
+            "unresolved_components": unresolved_licenses,
+            "truth_boundary": {
+                "metadata_evidence_only": True,
+                "legal_approval": False,
+                "audit_verdict": False,
+            },
+        }
+        for kind, document in (
+            ("vulnerability", vulnerability_document),
+            ("license", license_document),
+        ):
+            path = output_dir / f"{profile_id}-{kind}.json"
+            path.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--root", type=Path, default=Path.cwd())
     parser.add_argument("--source-sha", required=True)
     parser.add_argument("--sbom-out", type=Path, required=True)
     parser.add_argument("--evidence-out", type=Path, required=True)
+    parser.add_argument("--adjudication-dir", type=Path)
     parser.add_argument("--fail-on-review-required", action="store_true")
     args = parser.parse_args()
 
@@ -164,6 +251,13 @@ def main() -> int:
     )
     SECURITY.write_json(args.sbom_out, sbom)
     SECURITY.write_json(args.evidence_out, evidence)
+    if args.adjudication_dir is not None:
+        _write_adjudications(
+            sbom=sbom,
+            evidence=evidence,
+            output_dir=args.adjudication_dir,
+            evidence_ref=args.evidence_out.name,
+        )
     print(f"sbom_sha256={sbom['sbom_sha256']}")
     print(f"evidence_sha256={evidence['evidence_sha256']}")
     print(f"status={evidence['status']}")
