@@ -1,0 +1,31 @@
+{
+  "base_ref": "data10/multilingual-pretraining-20260825",
+  "branch": "data25/corpus-v01-20260825",
+  "builder_sha256": "e409224e26d914b2037e18f90ba52b3721a68462fd405f6eb39640642330ff95",
+  "by_modality": {
+    "code": {"byte_tokens": 4351873, "bytes": 4351873, "documents": 12215},
+    "natural": {"byte_tokens": 17059375, "bytes": 17059375, "documents": 33992}
+  },
+  "corpus_identity_sha256": "422f545da93526ceba2c0ff738e0b9deac65f35bfb31d87d2aab068cda091fc8",
+  "external_training_eligible_sources": 0,
+  "full_rebuilds": 2,
+  "identical_corpus_identity": true,
+  "identical_shard_hashes": true,
+  "physical_shards": 36,
+  "schema_version": "12-6.data25-local-build-report.v1",
+  "tests": {"command": "pytest -q tests/test_data25_corpus_v01.py", "failed": 0, "passed": 4},
+  "train": {"byte_tokens": 20000775, "bytes": 20000775, "documents": 43238},
+  "train_by_stratum": {
+    "code": {"byte_tokens": 4000220, "bytes": 4000220, "documents": 11229},
+    "en": {"byte_tokens": 7000137, "bytes": 7000137, "documents": 19111},
+    "uk": {"byte_tokens": 9000418, "bytes": 9000418, "documents": 12898}
+  },
+  "truth_boundary": {
+    "claim": "Representative across intended UK/EN/code modalities for local small-model mechanics; not evidence of real-world external corpus representativeness when external_training_eligible_sources is zero.",
+    "contains_external_training_data": false,
+    "contains_project_authored_data": true,
+    "external_source_diversity_representative": false
+  },
+  "validation": {"byte_tokens": 1410473, "bytes": 1410473, "documents": 2969},
+  "worker_id": "DATA-25-CORPUS-V01"
+}
