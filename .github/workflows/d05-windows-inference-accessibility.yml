@@ -1,0 +1,136 @@
+name: D05 Windows Inference Accessibility
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  prepare-source:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Build exact-source Windows-safe bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          import zipfile
+          from pathlib import Path
+
+          source_sha = os.environ["SOURCE_SHA"]
+          root = Path.cwd()
+          archive = root / "d05-windows-source.zip"
+          selected = [root / "pyproject.toml", root / "tools/run_windows_inference_accessibility_smoke.py"]
+          selected.extend(sorted((root / "src").rglob("*.py")))
+          with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as bundle:
+              for path in sorted(selected, key=lambda item: item.as_posix()):
+                  bundle.write(path, path.relative_to(root).as_posix())
+          digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+          manifest = {
+              "schema": "12-6.windows-source-bundle.v1",
+              "source_sha": source_sha,
+              "bundle": archive.name,
+              "bundle_sha256": digest,
+              "files": len(selected),
+          }
+          Path("d05-windows-source-manifest.json").write_text(
+              json.dumps(manifest, sort_keys=True, indent=2) + "\n",
+              encoding="utf-8",
+              newline="\n",
+          )
+          print(json.dumps(manifest, sort_keys=True))
+          PY
+      - name: Upload Windows-safe source bundle
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: d05-windows-source
+          path: |
+            d05-windows-source.zip
+            d05-windows-source-manifest.json
+          if-no-files-found: error
+          retention-days: 30
+
+  windows-cli-accessibility:
+    needs: prepare-source
+    runs-on: windows-2025
+    timeout-minutes: 15
+    env:
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      GH_TOKEN: ${{ github.token }}
+      PYTHONUTF8: "1"
+      PYTHONIOENCODING: utf-8
+    steps:
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.9"
+      - name: Download exact source artifact outside invalid repository workspace
+        shell: pwsh
+        working-directory: ${{ runner.temp }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $headers = @{
+            Authorization = "Bearer $env:GH_TOKEN"
+            Accept = "application/vnd.github+json"
+            "X-GitHub-Api-Version" = "2022-11-28"
+          }
+          $listUri = "https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID/artifacts?per_page=100"
+          $response = Invoke-RestMethod -Uri $listUri -Headers $headers
+          $artifact = $response.artifacts | Where-Object { $_.name -eq "d05-windows-source" } | Select-Object -First 1
+          if ($null -eq $artifact) {
+            throw "d05-windows-source artifact was not found for this workflow run"
+          }
+          $outerZip = Join-Path $env:RUNNER_TEMP "d05-windows-source-artifact.zip"
+          Invoke-WebRequest -Uri $artifact.archive_download_url -Headers $headers -OutFile $outerZip
+          $artifactRoot = Join-Path $env:RUNNER_TEMP "d05-windows-source-artifact"
+          Expand-Archive -LiteralPath $outerZip -DestinationPath $artifactRoot -Force
+          "ARTIFACT_ROOT=$artifactRoot" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Verify bundle identity and run real CLI transport smoke
+        shell: pwsh
+        working-directory: ${{ runner.temp }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+          $manifestPath = Join-Path $env:ARTIFACT_ROOT "d05-windows-source-manifest.json"
+          $bundlePath = Join-Path $env:ARTIFACT_ROOT "d05-windows-source.zip"
+          $manifest = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
+          if ($manifest.source_sha -ne $env:SOURCE_SHA) {
+            throw "source SHA mismatch: manifest=$($manifest.source_sha) expected=$env:SOURCE_SHA"
+          }
+          $bundleSha = (Get-FileHash -LiteralPath $bundlePath -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($bundleSha -ne $manifest.bundle_sha256) {
+            throw "source bundle SHA-256 mismatch"
+          }
+          $sourceRoot = Join-Path $env:RUNNER_TEMP "twelve-six-safe-source"
+          Expand-Archive -LiteralPath $bundlePath -DestinationPath $sourceRoot -Force
+          $tool = Join-Path $sourceRoot "tools/run_windows_inference_accessibility_smoke.py"
+          $report = Join-Path $env:RUNNER_TEMP "windows-inference-accessibility.json"
+          & python $tool --source-sha $env:SOURCE_SHA --bundle-sha256 $bundleSha --report $report --require-windows
+          if ($LASTEXITCODE -ne 0) {
+            throw "Windows inference accessibility smoke failed with exit code $LASTEXITCODE"
+          }
+          Get-Content -LiteralPath $report -Raw -Encoding UTF8
+      - name: Upload Windows accessibility evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: d05-windows-inference-accessibility
+          path: ${{ runner.temp }}/windows-inference-accessibility.json
+          if-no-files-found: error
+          retention-days: 30
