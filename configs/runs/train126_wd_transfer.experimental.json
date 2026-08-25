@@ -1,0 +1,73 @@
+{
+  "schema_version": "12-6.train126.wd-transfer-plan.v1",
+  "authority": "LOCAL_FREE_BOUNDED_REAL_CORPUS_OPTIMIZER_TRANSFER",
+  "base_commit": "dcc7dfc39299487bca5bdbfe5e6c70eaa6706278",
+  "tokenizer": {
+    "id": "s0-byte-v1",
+    "config_blob_sha": "cb3e6a305807e8653c27021f013d27be8124a320",
+    "vocab_size": 256
+  },
+  "data": {
+    "manifest_sha256": "9d50c0baf98247c1babc5fca8dead5b1fa87264ad92ea62527c34e342a7dd735",
+    "authority_boundary": "REAL_BOUNDED_SAMPLE_NOT_CANONICAL_CORPUS_FREEZE_OR_SOURCE_SNAPSHOT_PROMOTION",
+    "accepted_normalized_utf8_bytes": 173358,
+    "languages": ["uk", "en"],
+    "data_trace_sha256": "648a2414cf4cbeab51b59301a852e0c38874d8b7055bbfd6f61662db0b134969"
+  },
+  "models": {
+    "500k": {
+      "expected_parameters": 467808,
+      "vocab_size": 256,
+      "max_seq_len": 256,
+      "d_model": 96,
+      "n_layers": 4,
+      "n_heads": 6,
+      "n_kv_heads": 6,
+      "head_dim": 16,
+      "d_ff": 256
+    },
+    "1m": {
+      "candidate_id": "S2-SCALE02-BYTE-GQA-v1",
+      "expected_parameters": 992896,
+      "vocab_size": 256,
+      "max_seq_len": 512,
+      "d_model": 128,
+      "n_layers": 6,
+      "n_heads": 4,
+      "n_kv_heads": 2,
+      "head_dim": 32,
+      "d_ff": 288
+    }
+  },
+  "optimizer": {
+    "type": "adamw",
+    "learning_rate": 0.0003,
+    "betas": [0.9, 0.95],
+    "eps": 1e-8,
+    "gradient_clip_norm": 1.0,
+    "weight_decay_grid": [0.0, 0.01, 0.1],
+    "grouping": "TRAIN44_embedding_excluded_all_non_embedding_decayed",
+    "embedding_weight_decay": 0.0
+  },
+  "execution": {
+    "precision": "fp32",
+    "batch_size": 4,
+    "sequence_length": 64,
+    "optimizer_steps": 1024,
+    "tokens_per_step": 252,
+    "evaluation_steps": [0, 256, 512, 768, 1024],
+    "fresh_process_resume_step": 512,
+    "seed": 1337,
+    "trace_seed": 20260826,
+    "paid_compute": false
+  },
+  "result": {
+    "500k_weight_decay": 0.0,
+    "1m_weight_decay": 0.0,
+    "10m_hypothesis": {
+      "default": 0.0,
+      "challenger": 0.01,
+      "weight_decay_0_1_status": "REJECT_FROM_NEXT_NARROW_GRID"
+    }
+  }
+}
