@@ -12,7 +12,7 @@ from typing import Any
 
 import torch
 
-from twelve_six.model import load_stage_config
+from twelve_six.model import canonical_json_sha256, load_stage_config
 
 SCHEMA = "12-6.gpu-launch-preflight.v1"
 FROZEN = "FROZEN"
@@ -133,18 +133,28 @@ def _native_bf16_supported() -> bool:
 
 def _check_precision(
     repo_root: Path,
+    source: dict[str, Any],
     scale_name: str,
     precision: str,
     gates: list[Gate],
     blockers: list[str],
 ) -> dict[str, Any]:
-    composed = (repo_root / "src/twelve_six/training/precision.py").is_file()
+    incumbents = source.get("incumbents")
+    incumbents = incumbents if isinstance(incumbents, dict) else {}
+    incumbent = incumbents.get("precision")
+    incumbent = incumbent if isinstance(incumbent, dict) else {}
+    required_head = incumbent.get("head_sha")
+    composed = (
+        _hex64(required_head)
+        and _is_ancestor(repo_root, required_head)
+        and (repo_root / "src/twelve_six/training/precision.py").is_file()
+    )
     _add(
         gates,
         blockers,
         f"{scale_name}.precision_incumbent_composed",
         composed,
-        "hardened D02 precision runtime must be on the launch source tree",
+        f"required D02 precision ancestry={required_head}; hardened runtime path must exist",
     )
     cuda = bool(torch.cuda.is_available())
     visible = int(torch.cuda.device_count()) if cuda else 0
@@ -171,6 +181,8 @@ def _check_precision(
     )
     return {
         "requested": precision,
+        "incumbent_head_sha": required_head,
+        "incumbent_composed": composed,
         "cuda_available": cuda,
         "visible_cuda_devices": visible,
         "native_bf16_supported": native_bf16,
@@ -443,19 +455,24 @@ def evaluate_preflight(
 
         run_path = repo_root / str(scale.get("run_config", ""))
         run_payload = _load_json(run_path) if run_path.is_file() else {}
-        run_ok = str(run_payload.get("stage_config")) == str(scale.get("stage_config"))
+        actual_run_hash = canonical_json_sha256(run_payload) if run_payload else None
+        run_ok = (
+            str(run_payload.get("stage_config")) == str(scale.get("stage_config"))
+            and actual_run_hash == scale.get("run_manifest_sha256")
+        )
         _add(
             gates,
             blockers,
             f"{scale_name}.run_manifest_binding",
             run_ok,
-            f"run={scale.get('run_config')} stage={scale.get('stage_config')}",
+            f"run={scale.get('run_config')} sha256={actual_run_hash} stage={scale.get('stage_config')}",
         )
 
         _check_freeze(scale_name, scale, gates, blockers)
         precision = str(scale.get("precision", run_payload.get("precision", "fp32")))
         precision_report = _check_precision(
             repo_root,
+            source,
             scale_name,
             precision,
             gates,
@@ -466,6 +483,7 @@ def evaluate_preflight(
         scale_reports[scale_name] = {
             "stage_config": scale.get("stage_config"),
             "run_config": scale.get("run_config"),
+            "run_manifest_sha256": actual_run_hash,
             "parameter_count": scale.get("parameter_count"),
             "model_spec_sha256": scale.get("model_spec_sha256"),
             "init_spec_sha256": scale.get("init_spec_sha256"),
