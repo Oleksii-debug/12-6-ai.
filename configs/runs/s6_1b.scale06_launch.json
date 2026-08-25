@@ -1,0 +1,49 @@
+{
+  "schema_version": "12-6.s6-scale06-launch.v1",
+  "status": "PREPARED_NOT_LAUNCHED",
+  "canonical_base": "random_init",
+  "candidate_path": "configs/stages/s6_1b.scale06_candidate.json",
+  "candidate_model_identity_sha256": "cc64cbe94a461c364f063652098e55bdcf640d4be756ee1e743a23dda3de7261",
+  "expected_parameters": 999106560,
+  "topology": {
+    "nodes": 1,
+    "gpus_per_node": 8,
+    "world_size": 8,
+    "minimum_cuda_memory_gib_per_gpu": 24,
+    "distributed_strategy": "fsdp2_full_shard",
+    "tensor_parallel_degree": 1,
+    "tensor_parallel_dependency": "PR_151_OPTIONAL_FOLLOW_ON_NOT_COMPOSED_HERE"
+  },
+  "training": {
+    "precision": "bf16_autocast_fp32_persistent_state",
+    "sequence_length": 4096,
+    "microbatch_size": 1,
+    "gradient_accumulation_steps": 16,
+    "optimizer_steps_pilot": 64,
+    "optimized_tokens_per_step": 65536,
+    "optimized_tokens_pilot": 4194304,
+    "activation_checkpointing": "blockwise_non_reentrant",
+    "attention_policy": "flash_required",
+    "optimizer": "adamw_fp32_moments"
+  },
+  "checkpoint": {
+    "strategy": "torch_distributed_checkpoint_sharded_required",
+    "committed_step_semantics_required": true,
+    "single_process_checkpoint_v1_allowed_for_paid_fsdp2_launch": false
+  },
+  "data_tokenizer": {
+    "status": "BLOCKED_REAL_SCALE_ARTIFACTS_NOT_FROZEN",
+    "vocab_size_geometry_budget": 32768,
+    "s0_byte_fixture_allowed_for_capability_training": false,
+    "versioned_tokenizer_artifact_required": true,
+    "versioned_corpus_manifest_required": true,
+    "held_out_zero_optimization_split_required": true
+  },
+  "launch_gates": {
+    "preceding_s5_stage_pass": false,
+    "real_scale_data_tokenizer_ready": false,
+    "dcp_sharded_checkpoint_validated": false,
+    "cuda_nccl_fsdp2_smoke_validated": false,
+    "compute_authorized": false
+  }
+}
