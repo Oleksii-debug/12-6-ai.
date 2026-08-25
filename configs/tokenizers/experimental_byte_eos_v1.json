@@ -1,0 +1,55 @@
+{
+  "absent_special_tokens": [
+    "bos",
+    "pad",
+    "unk"
+  ],
+  "base_tokenizer": {
+    "config_sha256": "b04055c1061dd641dcab7cb9d62a931f09b8d1a070140a926ceb4e91d73ca8e1",
+    "version": "s0-byte-v1",
+    "vocab_sha256": "905ed40bb42cc4d550e228ff5f24158d504b38e8ed5974dfa3077bd5867ad571",
+    "vocab_size": 256
+  },
+  "byte_token_ids": {
+    "end": 255,
+    "mapping": "identity",
+    "start": 0
+  },
+  "defaults": {
+    "add_bos": false,
+    "add_eos": false
+  },
+  "empty_context": {
+    "reason": "no trained BOS token",
+    "supported": false
+  },
+  "encoding": "utf-8",
+  "hf_bridge": {
+    "bos_token_id": null,
+    "chat_template": null,
+    "eos_token_id": 256,
+    "pad_token_id": null,
+    "unk_token_id": null
+  },
+  "instruction_tokens": [],
+  "normalization": "none",
+  "padding": {
+    "masked_fill_token_id": 0,
+    "requires_attention_mask": true,
+    "requires_ignored_labels": true,
+    "semantic_pad_id": null
+  },
+  "promotion_allowed": false,
+  "schema": "12-6.experimental-special-token-contract.v1",
+  "special_tokens": {
+    "eos": {
+      "id": 256,
+      "surface": "<|end_of_document|>",
+      "trained": true
+    }
+  },
+  "status": "EXPERIMENTAL_NOT_CANONICAL",
+  "system_tokens": [],
+  "tokenizer_version": "exp-byte-eos-v1",
+  "vocab_size": 257
+}
