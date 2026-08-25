@@ -12,7 +12,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from twelve_six.data.near_dedup import (  # noqa: E402
+from twelve_six.data.near_dedup import (
     REPORT_SCHEMA,
     calibration_records,
     canonical_json_bytes,
