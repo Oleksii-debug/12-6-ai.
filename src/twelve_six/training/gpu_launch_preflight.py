@@ -468,6 +468,14 @@ def evaluate_preflight(
             run_ok,
             f"run={scale.get('run_config')} sha256={actual_run_hash} stage={scale.get('stage_config')}",
         )
+        run_campaign_status = scale.get("run_manifest_status")
+        _add(
+            gates,
+            blockers,
+            f"{scale_name}.run_manifest_campaign_status",
+            run_campaign_status == "APPROVED_CAMPAIGN",
+            f"status={run_campaign_status}; APPROVED_CAMPAIGN required",
+        )
 
         _check_freeze(scale_name, scale, gates, blockers)
         precision = str(scale.get("precision", run_payload.get("precision", "fp32")))
@@ -485,6 +493,7 @@ def evaluate_preflight(
             "stage_config": scale.get("stage_config"),
             "run_config": scale.get("run_config"),
             "run_manifest_sha256": actual_run_hash,
+            "run_manifest_status": run_campaign_status,
             "parameter_count": scale.get("parameter_count"),
             "model_spec_sha256": scale.get("model_spec_sha256"),
             "init_spec_sha256": scale.get("init_spec_sha256"),
