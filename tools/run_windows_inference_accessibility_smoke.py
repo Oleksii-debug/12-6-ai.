@@ -206,7 +206,7 @@ def _execute_checks(repo_root: Path) -> dict[str, object]:
             raise AssertionError("JSON generation metadata drifted")
         backend_payload = payload.get("backend")
         if not isinstance(backend_payload, dict):
-            raise AssertionError("JSON backend diagnostics are missing")
+            raise TypeError("JSON backend diagnostics are missing")
         if backend_payload.get("backend") != "windows_accessibility_smoke":
             raise AssertionError("JSON backend identity drifted")
 
@@ -329,7 +329,7 @@ def main(argv: list[str] | None = None) -> int:
         if not (repo_root / "src" / "twelve_six" / "inference" / "cli.py").is_file():
             raise RuntimeError("repository source root is incomplete")
         checks = _execute_checks(repo_root)
-    except (AssertionError, OSError, RuntimeError, ValueError, json.JSONDecodeError) as exc:
+    except (AssertionError, OSError, RuntimeError, TypeError, ValueError, json.JSONDecodeError) as exc:
         print(f"D05 Windows inference accessibility smoke: FAIL: {exc}", file=sys.stderr)
         return 1
 
