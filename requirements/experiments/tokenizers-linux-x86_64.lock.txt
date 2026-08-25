@@ -1,0 +1,3 @@
+# Experiment-only W3 lock; this does not modify the canonical D08 runtime.
+# PyPI tokenizers 0.23.1 CPython 3.10+ abi3 manylinux x86_64 wheel.
+tokenizers==0.23.1 --hash=sha256:5075b405006415ea148a992d093699c66eb01952bf59f4d5727089a98bda45a4
