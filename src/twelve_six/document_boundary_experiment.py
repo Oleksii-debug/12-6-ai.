@@ -37,7 +37,6 @@ from twelve_six.inference.generation import generate
 from twelve_six.integration.s0_runtime import S0TorchInferenceBackend
 from twelve_six.model import InitSpec, ModelSpec, TwelveSixDecoder
 from twelve_six.packing import (
-    PackedCausalExample,
     TextRecord,
     batch_examples,
     collate_rows,
