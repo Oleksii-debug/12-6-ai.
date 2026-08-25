@@ -13,11 +13,12 @@
     "c01_incumbent_pr": 70,
     "c01_incumbent_head_sha": "2fc09a66b9a3442cb77df997505e2753e7e22ae5",
     "latest_converged_s0_pr": 132,
-    "latest_converged_s0_head_sha": "86dbcc0b804da988a34367ff74c49ee00bc05818",
+    "latest_converged_s0_head_sha_at_reconstruction_cut": "d07393f6f62b99c8106c0b72e6dd6ee53430e4dd",
     "s0_profile_pr": 142,
     "s1_numerical_preflight_pr": 106,
     "s1_checkpoint_preflight_pr": 130,
     "future_tokenizer_mixture_pr": 73,
+    "future_tokenizer_mixture_head_sha": "3527bf50d5d6cd7d4cbf9e477863430a31873baa",
     "distributed_contract_prs": [71, 74, 76],
     "s4_candidate_pr": 37
   },
@@ -46,6 +47,18 @@
       "s4_candidate_vocab_size": 32768,
       "s4_candidate_context_length": 2048,
       "s4_candidate_frozen": false
+    },
+    "tokenizer_experiment": {
+      "runtime": "CPython 3.11.16 + tokenizers==0.23.1 exact hashed wheel",
+      "real_experiment_ci_success": true,
+      "controlled_train_records": 10,
+      "requested_vocab_size": 512,
+      "bytelevel_bpe_actual_vocab_size": 472,
+      "bytelevel_bpe_exact_repeat_identity": true,
+      "unigram_actual_vocab_size": 497,
+      "unigram_exact_repeat_identity": false,
+      "decision": "NO_FREEZE_REPEATABILITY_BLOCKED",
+      "representative_scale_corpus_evidence": false
     },
     "truth_boundary": {
       "gpu_training_throughput_measured": false,
@@ -87,7 +100,7 @@
     {
       "id": "P02_SCALE_TOKENIZER_IDENTITY",
       "ready": false,
-      "requirement": "Freeze one tokenizer artifact whose exact vocabulary size and token IDs match the selected ModelSpec; bind tokenizer JSON/config/vocabulary hashes and packing identity."
+      "requirement": "Freeze one representative-corpus tokenizer artifact whose actual vocabulary cardinality and token IDs match the selected ModelSpec; bind tokenizer JSON/config/vocabulary hashes and packing identity."
     },
     {
       "id": "P03_GPU_RUNTIME_EXACT_LOCK",
@@ -169,7 +182,7 @@
       "planning_train_flops_6n_per_token": 1204614144000000000,
       "bf16_weight_bytes": 200769024,
       "full_adam_state_planning_bytes": 1606152192,
-      "wall_time": "MEASURE_FROM_P04_TOKENS_PER_SECOND; DO_NOT SUBSTITUTE S0_CPU_THROUGHPUT",
+      "wall_time": "MEASURE_FROM_P04_TOKENS_PER_SECOND; DO NOT SUBSTITUTE S0_CPU_THROUGHPUT",
       "checkpoint_interval_tokens": 100000000,
       "heldout_eval_interval_tokens": 250000000
     },
