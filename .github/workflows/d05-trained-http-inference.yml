@@ -1,0 +1,88 @@
+name: D05 Trained S0 HTTP Inference Evidence
+
+on:
+  pull_request:
+    paths:
+      - "src/twelve_six/inference/http_evidence.py"
+      - "tests/test_trained_http_inference_evidence.py"
+      - "docs/D05_TRAINED_HTTP_INFERENCE_EVIDENCE.md"
+      - ".github/workflows/d05-trained-http-inference.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  locked-trained-http-inference:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Prove exact source checkout
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Verify exact D08 locked environment and repository checks
+        run: >-
+          python tools/verify_locked_environment.py
+          --profile linux-x86_64
+          --source-sha "$SOURCE_SHA"
+          --evidence-out locked-environment-linux-x86_64.json
+          --run-repo-checks
+      - name: Create exact locked D05 execution environment
+        run: |
+          python -m venv .d05-http-locked
+          .d05-http-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .d05-http-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          .d05-http-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/dev.lock.txt
+          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .d05-http-locked/bin/python -m pip install --no-deps --no-build-isolation -e .
+          .d05-http-locked/bin/python -c "import pytest,torch,twelve_six; assert torch.__version__; print(twelve_six.__version__)"
+      - name: Focused trained HTTP conformance tests
+        run: .d05-http-locked/bin/python -m pytest -q tests/test_trained_http_inference_evidence.py
+      - name: Run exact 40-step trained checkpoint over real loopback HTTP
+        run: >-
+          .d05-http-locked/bin/python -m twelve_six.inference.http_evidence
+          --repo-root .
+          --source-sha "$SOURCE_SHA"
+          --output-dir "$RUNNER_TEMP/d05-trained-http"
+          --train-steps 40
+          --seed 1337
+          --max-tokens 8
+      - name: Validate retained evidence against exact head
+        run: |
+          .d05-http-locked/bin/python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          from twelve_six.inference.http_evidence import validate_trained_http_inference_evidence
+
+          path = Path(os.environ["RUNNER_TEMP"]) / "d05-trained-http/s0-trained-http-inference-evidence.json"
+          payload = json.loads(path.read_text(encoding="utf-8"))
+          validate_trained_http_inference_evidence(payload, expected_source_sha=os.environ["SOURCE_SHA"])
+          assert payload["training"]["optimizer_steps"] == 40
+          assert payload["training"]["validation_optimized_tokens"] == 0
+          assert payload["parity"]["passed"] is True
+          assert payload["http"]["greedy"]["matches_direct_completion"] is True
+          assert payload["http"]["seeded_sampling"]["same_seed_repeatable"] is True
+          assert payload["http"]["context"]["over_limit_rejected"] is True
+          assert payload["claims"]["candidate_or_stable_promotion"] is False
+          print(payload["evidence_sha256"])
+          PY
+      - name: Full repository regression suite in exact locked environment
+        run: .d05-http-locked/bin/python -m pytest -q
+      - name: Upload trained checkpoint and HTTP evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: d05-trained-http-inference-${{ env.SOURCE_SHA }}
+          path: |
+            locked-environment-linux-x86_64.json
+            ${{ runner.temp }}/d05-trained-http/
+          if-no-files-found: error
+          retention-days: 30
