@@ -9,9 +9,10 @@ claim.
 
 ## Runtime identity
 
-The dedicated workflow runs on Ubuntu 24.04 with CPython 3.11.16 and installs only the
-experiment dependency `tokenizers==0.23.1` from a one-line hash-locked requirement using
-`pip --require-hashes --only-binary=:all: --no-deps`.
+The dedicated workflow runs on Ubuntu 24.04 with CPython 3.11.16. Its isolated venv first
+installs the committed canonical x86-64 toolchain/runtime lock groups with `--require-hashes`
+and `--no-deps`, then adds only the experiment backend `tokenizers==0.23.1` from a one-line
+hash-locked requirement using `--require-hashes --only-binary=:all: --no-deps`.
 
 The admitted x86-64 wheel SHA-256 is:
 
