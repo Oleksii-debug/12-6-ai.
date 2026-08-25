@@ -30,6 +30,7 @@ from .trainer import Trainer
 
 SCHEMA_VERSION = "12-6.train52-update-ratio-probe.v1"
 AUTHORITY = "LOCAL_FREE_OPTIMIZATION_OBSERVABILITY_NOT_STAGE_PROMOTION"
+UPDATE_SAMPLE_RETENTION_LIMIT = 64
 
 
 def _git_head(root: Path) -> str:
@@ -234,11 +235,11 @@ def _run_once(
     observer = TrainingObserver(
         run_identity,
         device="cpu",
-        max_step_samples=max(32, steps),
+        max_step_samples=UPDATE_SAMPLE_RETENTION_LIMIT,
         gpu_sample_every_steps=max(steps + 1, 2),
         enable_update_magnitude=enable_update_magnitude,
         update_sample_every_steps=1,
-        max_update_samples=max(32, steps),
+        max_update_samples=UPDATE_SAMPLE_RETENTION_LIMIT,
     )
     losses: list[float] = []
     started = time.perf_counter()
@@ -401,6 +402,7 @@ def run_probe(
                 "worst_observed_update": _worst_updates(enabled["update_samples"]),
                 "pathology_candidates": update_summary["pathology_candidates"],
                 "update_summary": update_summary,
+                "update_samples": enabled["update_samples"],
             }
         )
 
@@ -425,6 +427,7 @@ def run_probe(
             "betas": [0.9, 0.95],
             "weight_decay": 0.0,
             "gradient_clip_norm": 1.0,
+            "update_sample_retention_limit": UPDATE_SAMPLE_RETENTION_LIMIT,
             "telemetry_enters_run_identity_or_training_state": False,
         },
         "scales": scale_results,
@@ -465,6 +468,11 @@ def validate_probe(report: dict[str, Any], *, expected_source_sha: str | None = 
             raise ValueError(f"TRAIN-52 update telemetry missing at {item.get('scale')}")
         if int(update_summary.get("probe_samples_total", 0)) <= 0:
             raise ValueError(f"TRAIN-52 has no update samples at {item.get('scale')}")
+        samples = item.get("update_samples")
+        if not isinstance(samples, list) or not samples:
+            raise ValueError(f"TRAIN-52 retained update samples missing at {item.get('scale')}")
+        if len(samples) > UPDATE_SAMPLE_RETENTION_LIMIT:
+            raise ValueError(f"TRAIN-52 update retention exceeded bound at {item.get('scale')}")
         overhead = item.get("overhead", {})
         if int(overhead.get("temporary_snapshot_peak_bytes", 0)) <= 0:
             raise ValueError(f"TRAIN-52 snapshot overhead missing at {item.get('scale')}")
