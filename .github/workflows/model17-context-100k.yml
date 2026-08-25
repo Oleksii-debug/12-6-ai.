@@ -1,0 +1,71 @@
+name: MODEL17 Context 100K 128 vs 256
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  equal-token-context:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Bind exact source head
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+      - name: Install exact runtime
+        run: |
+          python -m venv .model17
+          .model17/bin/python -m pip install \
+            --disable-pip-version-check --no-deps --require-hashes \
+            -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .model17/bin/python -m pip install \
+            --disable-pip-version-check --no-deps --require-hashes \
+            -r requirements/locks/linux-x86_64/runtime.lock.txt
+      - name: Execute context 128 condition
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          PYTHONPATH: src
+        run: |
+          mkdir -p model17-evidence
+          .model17/bin/python -m twelve_six.context_length_experiment condition \
+            --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" --context 128 \
+            --output model17-evidence/context-128.json
+      - name: Execute context 256 condition
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          PYTHONPATH: src
+        run: |
+          .model17/bin/python -m twelve_six.context_length_experiment condition \
+            --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" --context 256 \
+            --output model17-evidence/context-256.json
+      - name: Compare and validate equal-token evidence
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          PYTHONPATH: src
+        run: |
+          .model17/bin/python -m twelve_six.context_length_experiment compare \
+            --context-128 model17-evidence/context-128.json \
+            --context-256 model17-evidence/context-256.json \
+            --output model17-evidence/comparison.json \
+            --expected-source-sha "$EXPECTED_SOURCE_SHA"
+          .model17/bin/python -m twelve_six.context_length_experiment validate \
+            model17-evidence/comparison.json --expected-source-sha "$EXPECTED_SOURCE_SHA"
+      - name: Upload MODEL-17 evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: model17-context-100k-evidence
+          path: model17-evidence
+          if-no-files-found: error
+          retention-days: 30
