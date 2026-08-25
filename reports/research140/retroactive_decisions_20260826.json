@@ -1,0 +1,388 @@
+{
+  "comparisons": [
+    {
+      "baseline": "mha_h4_hd12_control",
+      "baseline_wins": 0,
+      "candidate": "mha_h2_hd24",
+      "candidate_wins": 3,
+      "comparison_id": "model13_h2_vs_h4_supporting_pair",
+      "configured_repeats": 3,
+      "decision": "PRACTICAL_TIE",
+      "direction": "lower_is_better",
+      "effect_size_status": "paired_mean_over_run_to_run_sd",
+      "effect_size_vs_run_noise": 0.9061447689246576,
+      "evidence_notes": [
+        "The source stores explicit paired h2-minus-h4 deltas for seeds 101/202/303.",
+        "All three numerical wins are far below the 0.005 practical-loss floor, so win count alone cannot promote h2."
+      ],
+      "evidence_strength": "small_n_repeatability_not_significance",
+      "inferential_claim": "practical paired-repeat decision only; no p-value or asymptotic significance claim",
+      "materiality_threshold": 0.005,
+      "mean_delta": 7.433333333333333e-05,
+      "median_delta": 4.5e-05,
+      "metric_name": "held_out_validation_loss",
+      "metric_purpose": "selection_validation",
+      "numeric_ties": 0,
+      "oriented_delta_definition": "positive means candidate is better; baseline-candidate for lower-is-better metrics",
+      "reason_codes": [
+        "entire_descriptive_interval_inside_materiality_band"
+      ],
+      "repeat_ids": [
+        "seed-101",
+        "seed-202",
+        "seed-303"
+      ],
+      "repeat_recommendation": {
+        "additional_repeats": 0,
+        "capped": false,
+        "current_repeats": 3,
+        "rationale": "observed repeats already resolve the practical decision under the preregistered rule",
+        "target_repeats": 3
+      },
+      "repeats": 3,
+      "sample_sd": 8.203251387915241e-05,
+      "sample_variance": 6.729333333333333e-09,
+      "schema": "12-6.research-decision.v1",
+      "source": {
+        "authority": "supporting-only source-reconstructed LOCAL_FREE evidence",
+        "branch": "model13/head-count-100k-20260825",
+        "path": "evidence/swarm_exp_01/model13_head_count_data10_local_20260825.json"
+      },
+      "uncertainty_interval": {
+        "confidence": 0.9,
+        "interpretation": "descriptive empirical bootstrap interval; with small n it is not an asymptotic significance statement",
+        "lower": 2.2333333333333335e-05,
+        "method": "exact_paired_bootstrap_percentile",
+        "upper": 0.00012633333333333333
+      },
+      "winner": null
+    },
+    {
+      "baseline": "warmup_0_steps",
+      "baseline_wins": 0,
+      "candidate": "warmup_5_steps",
+      "candidate_wins": 1,
+      "comparison_id": "train43_warmup5_vs_zero_1m",
+      "configured_repeats": 1,
+      "decision": "INSUFFICIENT_REPEATS",
+      "direction": "lower_is_better",
+      "effect_size_status": "undefined_fewer_than_two_repeats",
+      "effect_size_vs_run_noise": null,
+      "evidence_notes": [
+        "The observed validation delta is small and comes from one initialization/batch-trace seed.",
+        "The stability reduction in early update/weight ratio remains useful diagnostic evidence but is not substituted for repeatable validation evidence."
+      ],
+      "evidence_strength": "single_repeat_descriptive",
+      "inferential_claim": "practical paired-repeat decision only; no p-value or asymptotic significance claim",
+      "materiality_threshold": 0.005,
+      "mean_delta": 0.002555847,
+      "median_delta": 0.002555847,
+      "metric_name": "final_held_out_validation_loss",
+      "metric_purpose": "selection_validation",
+      "numeric_ties": 0,
+      "oriented_delta_definition": "positive means candidate is better; baseline-candidate for lower-is-better metrics",
+      "reason_codes": ["fewer_than_three_paired_repeats"],
+      "repeat_ids": ["seed-1337"],
+      "repeat_recommendation": {
+        "additional_repeats": 2,
+        "capped": false,
+        "current_repeats": 1,
+        "rationale": "reach the minimum three paired repeats before promoting a research winner",
+        "target_repeats": 3
+      },
+      "repeats": 1,
+      "sample_sd": null,
+      "sample_variance": null,
+      "schema": "12-6.research-decision.v1",
+      "source": {
+        "authority": "executed LOCAL_FREE CPU fp32",
+        "branch": "train43/warmup-20260825",
+        "path": "reports/train43/warmup_summary.json"
+      },
+      "uncertainty_interval": null,
+      "winner": null
+    },
+    {
+      "baseline": "warmup_0_steps",
+      "baseline_wins": 1,
+      "candidate": "warmup_5_steps",
+      "candidate_wins": 0,
+      "comparison_id": "train43_warmup5_vs_zero_100k",
+      "configured_repeats": 1,
+      "decision": "INSUFFICIENT_REPEATS",
+      "direction": "lower_is_better",
+      "effect_size_status": "undefined_fewer_than_two_repeats",
+      "effect_size_vs_run_noise": null,
+      "evidence_notes": [
+        "The one observed seed strongly favors no warmup, but a single seed cannot become a research promotion under RESEARCH-140."
+      ],
+      "evidence_strength": "single_repeat_descriptive",
+      "inferential_claim": "practical paired-repeat decision only; no p-value or asymptotic significance claim",
+      "materiality_threshold": 0.005,
+      "mean_delta": -0.4758430124000004,
+      "median_delta": -0.4758430124000004,
+      "metric_name": "final_held_out_validation_loss",
+      "metric_purpose": "selection_validation",
+      "numeric_ties": 0,
+      "oriented_delta_definition": "positive means candidate is better; baseline-candidate for lower-is-better metrics",
+      "reason_codes": ["fewer_than_three_paired_repeats"],
+      "repeat_ids": ["seed-1337"],
+      "repeat_recommendation": {
+        "additional_repeats": 2,
+        "capped": false,
+        "current_repeats": 1,
+        "rationale": "reach the minimum three paired repeats before promoting a research winner",
+        "target_repeats": 3
+      },
+      "repeats": 1,
+      "sample_sd": null,
+      "sample_variance": null,
+      "schema": "12-6.research-decision.v1",
+      "source": {
+        "authority": "executed LOCAL_FREE CPU fp32",
+        "branch": "train43/warmup-20260825",
+        "path": "reports/train43/warmup_summary.json"
+      },
+      "uncertainty_interval": null,
+      "winner": null
+    },
+    {
+      "baseline": "adamw_beta2_0.95",
+      "baseline_wins": 0,
+      "candidate": "adamw_beta2_0.99",
+      "candidate_wins": 1,
+      "comparison_id": "train48_beta2_099_vs_095_95k",
+      "configured_repeats": 1,
+      "decision": "INSUFFICIENT_REPEATS",
+      "direction": "lower_is_better",
+      "effect_size_status": "undefined_fewer_than_two_repeats",
+      "effect_size_vs_run_noise": null,
+      "evidence_notes": [
+        "Retroactive materiality uses the repository's existing 0.5% validation-loss scale from TRAIN-49 as a conservative practical floor applied to the beta2=0.95 baseline.",
+        "The 95K and 468K model scales are not treated as seed repeats of one another."
+      ],
+      "evidence_strength": "single_repeat_descriptive",
+      "inferential_claim": "practical paired-repeat decision only; no p-value or asymptotic significance claim",
+      "materiality_threshold": 0.01854275,
+      "mean_delta": 0.041139999999999954,
+      "median_delta": 0.041139999999999954,
+      "metric_name": "held_out_validation_loss_step128",
+      "metric_purpose": "selection_validation",
+      "numeric_ties": 0,
+      "oriented_delta_definition": "positive means candidate is better; baseline-candidate for lower-is-better metrics",
+      "reason_codes": ["fewer_than_three_paired_repeats"],
+      "repeat_ids": ["source-equivalent-seed-1"],
+      "repeat_recommendation": {
+        "additional_repeats": 2,
+        "capped": false,
+        "current_repeats": 1,
+        "rationale": "reach the minimum three paired repeats before promoting a research winner",
+        "target_repeats": 3
+      },
+      "repeats": 1,
+      "sample_sd": null,
+      "sample_variance": null,
+      "schema": "12-6.research-decision.v1",
+      "source": {
+        "authority": "provisional source-equivalent LOCAL_FREE execution described in PR; exact-head runner was not counted",
+        "pull_request": 208
+      },
+      "uncertainty_interval": null,
+      "winner": null
+    },
+    {
+      "baseline": "adamw_beta2_0.95",
+      "baseline_wins": 0,
+      "candidate": "adamw_beta2_0.99",
+      "candidate_wins": 1,
+      "comparison_id": "train48_beta2_099_vs_095_468k",
+      "configured_repeats": 1,
+      "decision": "INSUFFICIENT_REPEATS",
+      "direction": "lower_is_better",
+      "effect_size_status": "undefined_fewer_than_two_repeats",
+      "effect_size_vs_run_noise": null,
+      "evidence_notes": [
+        "Retroactive materiality is 0.5% of the beta2=0.95 baseline, reusing the repository's precommitted TRAIN-49 practical validation-loss scale rather than deriving a threshold from this result.",
+        "A cross-scale replication is evidence of robustness across scale, not a substitute for run-to-run seed replication."
+      ],
+      "evidence_strength": "single_repeat_descriptive",
+      "inferential_claim": "practical paired-repeat decision only; no p-value or asymptotic significance claim",
+      "materiality_threshold": 0.01293925,
+      "mean_delta": 0.03501999999999983,
+      "median_delta": 0.03501999999999983,
+      "metric_name": "held_out_validation_loss_step128",
+      "metric_purpose": "selection_validation",
+      "numeric_ties": 0,
+      "oriented_delta_definition": "positive means candidate is better; baseline-candidate for lower-is-better metrics",
+      "reason_codes": ["fewer_than_three_paired_repeats"],
+      "repeat_ids": ["source-equivalent-seed-1"],
+      "repeat_recommendation": {
+        "additional_repeats": 2,
+        "capped": false,
+        "current_repeats": 1,
+        "rationale": "reach the minimum three paired repeats before promoting a research winner",
+        "target_repeats": 3
+      },
+      "repeats": 1,
+      "sample_sd": null,
+      "sample_variance": null,
+      "schema": "12-6.research-decision.v1",
+      "source": {
+        "authority": "provisional source-equivalent LOCAL_FREE execution described in PR; exact-head runner was not counted",
+        "pull_request": 208
+      },
+      "uncertainty_interval": null,
+      "winner": null
+    },
+    {
+      "baseline": "constant_with_warmup",
+      "baseline_wins": 0,
+      "candidate": "cosine_with_warmup",
+      "candidate_wins": 0,
+      "comparison_id": "train50_constant_vs_cosine_468k",
+      "configured_repeats": 2,
+      "decision": "INSUFFICIENT_REPEATS",
+      "direction": "lower_is_better",
+      "effect_size_status": "undefined_fewer_than_two_repeats",
+      "effect_size_vs_run_noise": null,
+      "evidence_notes": [
+        "Finish the two planned seeds for exploration; if a promotion is proposed, add one paired seed rather than escalating directly to ten."
+      ],
+      "evidence_strength": "none",
+      "inferential_claim": "practical paired-repeat decision only; no p-value or asymptotic significance claim",
+      "materiality_threshold": 0.005,
+      "mean_delta": null,
+      "median_delta": null,
+      "metric_name": "final_held_out_validation_bpb",
+      "metric_purpose": "selection_validation",
+      "numeric_ties": 0,
+      "oriented_delta_definition": "positive means candidate is better; baseline-candidate for lower-is-better metrics",
+      "reason_codes": ["fewer_than_three_paired_repeats"],
+      "repeat_ids": [],
+      "repeat_recommendation": {
+        "additional_repeats": 3,
+        "capped": false,
+        "current_repeats": 0,
+        "rationale": "reach the minimum three paired repeats before promoting a research winner",
+        "target_repeats": 3
+      },
+      "repeats": 0,
+      "sample_sd": null,
+      "sample_variance": null,
+      "schema": "12-6.research-decision.v1",
+      "source": {
+        "authority": "two-seed protocol declared; retained results not present in inspected branch/PR evidence",
+        "branch": "train50/schedule-500k-v2-20260825",
+        "pull_request": 234
+      },
+      "uncertainty_interval": null,
+      "winner": null
+    },
+    {
+      "baseline": "balanced_control_geometry",
+      "baseline_wins": 0,
+      "candidate": "best_noncontrol_geometry",
+      "candidate_wins": 0,
+      "comparison_id": "model09_depth_width_500k",
+      "configured_repeats": 1,
+      "decision": "INSUFFICIENT_REPEATS",
+      "direction": "lower_is_better",
+      "effect_size_status": "undefined_fewer_than_two_repeats",
+      "effect_size_vs_run_noise": null,
+      "evidence_notes": [
+        "The config fixes seed 1337, so the historical lowest-loss selector was structurally single-seed even if its Actions run completed elsewhere.",
+        "RESEARCH-140 requires paired repeat evidence before architecture promotion."
+      ],
+      "evidence_strength": "none",
+      "inferential_claim": "practical paired-repeat decision only; no p-value or asymptotic significance claim",
+      "materiality_threshold": 0.005,
+      "mean_delta": null,
+      "median_delta": null,
+      "metric_name": "final_held_out_validation_loss_at_65536_tokens",
+      "metric_purpose": "selection_validation",
+      "numeric_ties": 0,
+      "oriented_delta_definition": "positive means candidate is better; baseline-candidate for lower-is-better metrics",
+      "reason_codes": ["fewer_than_three_paired_repeats"],
+      "repeat_ids": [],
+      "repeat_recommendation": {
+        "additional_repeats": 3,
+        "capped": false,
+        "current_repeats": 0,
+        "rationale": "reach the minimum three paired repeats before promoting a research winner",
+        "target_repeats": 3
+      },
+      "repeats": 0,
+      "sample_sd": null,
+      "sample_variance": null,
+      "schema": "12-6.research-decision.v1",
+      "source": {
+        "authority": "predeclared protocol/config; no committed result artifact inspected",
+        "branch": "model09/depth-width-500k-20260825",
+        "path": "configs/experiments/model09_depth_width_500k.v1.json",
+        "pull_request": 242
+      },
+      "uncertainty_interval": null,
+      "winner": null
+    },
+    {
+      "baseline": "byte_tokenizer_control",
+      "baseline_wins": 0,
+      "candidate": "provisional_bpe_candidate",
+      "candidate_wins": 0,
+      "comparison_id": "tok37_model_informed_bpe_selection",
+      "configured_repeats": 1,
+      "decision": "INSUFFICIENT_REPEATS",
+      "direction": "lower_is_better",
+      "effect_size_status": "undefined_fewer_than_two_repeats",
+      "effect_size_vs_run_noise": null,
+      "evidence_notes": [
+        "Deterministic compression/fertility facts remain valid without seed repeats.",
+        "The stochastic model-informed quality winner is not promotable from one model seed under RESEARCH-140."
+      ],
+      "evidence_strength": "none",
+      "inferential_claim": "practical paired-repeat decision only; no p-value or asymptotic significance claim",
+      "materiality_threshold": 0.005,
+      "mean_delta": null,
+      "median_delta": null,
+      "metric_name": "aggregate_held_out_model_bpb",
+      "metric_purpose": "selection_validation",
+      "numeric_ties": 0,
+      "oriented_delta_definition": "positive means candidate is better; baseline-candidate for lower-is-better metrics",
+      "reason_codes": ["fewer_than_three_paired_repeats"],
+      "repeat_ids": [],
+      "repeat_recommendation": {
+        "additional_repeats": 3,
+        "capped": false,
+        "current_repeats": 0,
+        "rationale": "reach the minimum three paired repeats before promoting a research winner",
+        "target_repeats": 3
+      },
+      "repeats": 0,
+      "sample_sd": null,
+      "sample_variance": null,
+      "schema": "12-6.research-decision.v1",
+      "source": {
+        "authority": "deterministic tokenizer mechanics plus one random-init model probe seed 126",
+        "branch": "tok37/bpe-vocab-sweep-20260825",
+        "pull_request": 241
+      },
+      "uncertainty_interval": null,
+      "winner": null
+    }
+  ],
+  "execution_class": "LOCAL_FREE",
+  "policy": {
+    "default_interpretation": "practical repeatability, not null-hypothesis significance",
+    "materiality_policy": "comparison-specific and preregistered; never infer a winner from a numerically nonzero delta alone",
+    "minimum_paired_repeats_for_promotion": 3,
+    "repeat_planning": "variance-proportional with an exploratory cap of 7 repeats",
+    "small_n_interval": "exact empirical paired bootstrap for n<=5"
+  },
+  "schema": "12-6.research140-retroactive-decisions.v1",
+  "selection_metric_boundary": {
+    "allowed_purpose": "selection_validation",
+    "diagnostic_only_visible_to_selector": false,
+    "final_test_visible_to_selector": false
+  },
+  "worker_id": "RESEARCH-140-DECISION-RULES"
+}
