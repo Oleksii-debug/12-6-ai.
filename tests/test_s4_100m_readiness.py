@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from twelve_six.s4_readiness import (
@@ -13,6 +14,8 @@ from twelve_six.s4_readiness import (
 
 ROOT = Path(__file__).resolve().parents[1]
 S4_CONFIG = ROOT / "configs" / "stages" / "s4_100m_accelerator.candidate.json"
+PILOT_RUN = ROOT / "configs" / "runs" / "s4_100m_pilot.json"
+SERIOUS_RUN = ROOT / "configs" / "runs" / "s4_100m_serious.json"
 
 
 def test_s4_candidate_binds_current_tokenizer_and_exact_count() -> None:
@@ -49,6 +52,18 @@ def test_serious_profile_fits_single_gpu_first_order_budget() -> None:
     assert evidence.parameter_gib_fp32 > evidence.inference_weight_gib_bf16_if_cast
     assert evidence.tokens_per_optimizer_step == 131_072
     assert evidence.scheduled_tokens == 2_000_027_648
+
+
+def test_run_profiles_fail_closed_on_spend_and_serious_data_readiness() -> None:
+    pilot = json.loads(PILOT_RUN.read_text(encoding="utf-8"))
+    serious = json.loads(SERIOUS_RUN.read_text(encoding="utf-8"))
+    assert pilot["compute_authorized"] is False
+    assert serious["compute_authorized"] is False
+    assert pilot["data_quality_claim_allowed"] is False
+    assert serious["data_quality_claim_allowed"] is False
+    assert serious["launch_state"] == "blocked_pending_d03_scaled_corpus"
+    assert serious["required_training_byte_tokens"] == serious["scheduled_tokens"]
+    assert len(serious["launch_blockers"]) >= 3
 
 
 def test_scaled_analogue_executes_real_forward_backward_update() -> None:
