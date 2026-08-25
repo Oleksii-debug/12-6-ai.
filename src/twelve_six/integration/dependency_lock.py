@@ -13,13 +13,19 @@ from pathlib import Path
 from typing import Any
 
 SCHEMA_VERSION = "12-6.dependency-lock-profile.v1"
-INDEX_SCHEMA_VERSION = "12-6.dependency-lock-index.v1"
-EXACT_PYTHON_VERSION = "3.11.16"
+INDEX_SCHEMA_VERSION = "12-6.dependency-lock-index.v2"
 PYTHON_IMPLEMENTATION = "cpython"
 SUPPORTED_REQUIRES_PYTHON = ">=3.11,<3.12"
 PROJECT_DISTRIBUTION = "twelve-six-ai"
 CONSOLE_SCRIPTS = {"twelve-six-generate": "twelve_six.inference.cli:main"}
-SUPPORTED_PROFILES = {"linux-x86_64", "linux-aarch64"}
+PROFILE_PYTHON_VERSIONS = {
+    "linux-aarch64": "3.11.16",
+    "linux-x86_64": "3.11.16",
+    "windows-x86_64": "3.11.9",
+}
+SUPPORTED_PROFILES = frozenset(PROFILE_PYTHON_VERSIONS)
+# Backwards-compatible alias for Linux callers that imported the original constant.
+EXACT_PYTHON_VERSION = PROFILE_PYTHON_VERSIONS["linux-x86_64"]
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _NAME_NORMALIZER = re.compile(r"[-_.]+")
 
@@ -60,13 +66,24 @@ def current_profile_id() -> str:
     return profile_id
 
 
-def assert_exact_python() -> None:
+def exact_python_version(profile_id: str | None = None) -> str:
+    profile = profile_id or current_profile_id()
+    try:
+        return PROFILE_PYTHON_VERSIONS[profile]
+    except KeyError as exc:
+        raise DependencyLockError(f"unsupported profile id: {profile}") from exc
+
+
+def assert_exact_python(profile_id: str | None = None) -> None:
+    profile = profile_id or current_profile_id()
+    expected = exact_python_version(profile)
     actual = platform.python_version()
     implementation = sys.implementation.name.lower()
-    if implementation != PYTHON_IMPLEMENTATION or actual != EXACT_PYTHON_VERSION:
+    if implementation != PYTHON_IMPLEMENTATION or actual != expected:
         raise DependencyLockError(
             "dependency lock requires "
-            f"{PYTHON_IMPLEMENTATION} {EXACT_PYTHON_VERSION}; got {implementation} {actual}"
+            f"{PYTHON_IMPLEMENTATION} {expected} for {profile}; "
+            f"got {implementation} {actual}"
         )
 
 
@@ -124,7 +141,7 @@ def build_profile_manifest(
         "project": PROJECT_DISTRIBUTION,
         "python": {
             "implementation": PYTHON_IMPLEMENTATION,
-            "version": EXACT_PYTHON_VERSION,
+            "version": exact_python_version(profile_id),
             "requires_python": SUPPORTED_REQUIRES_PYTHON,
         },
         "platform": {
@@ -171,11 +188,12 @@ def validate_profile_manifest(
         raise DependencyLockError("profile manifest self-hash mismatch")
     if manifest.get("project") != PROJECT_DISTRIBUTION:
         raise DependencyLockError("profile project identity mismatch")
-    if manifest.get("profile_id") not in SUPPORTED_PROFILES:
+    profile_id = manifest.get("profile_id")
+    if profile_id not in SUPPORTED_PROFILES:
         raise DependencyLockError("unsupported profile identity")
     expected_python = {
         "implementation": PYTHON_IMPLEMENTATION,
-        "version": EXACT_PYTHON_VERSION,
+        "version": exact_python_version(str(profile_id)),
         "requires_python": SUPPORTED_REQUIRES_PYTHON,
     }
     if manifest.get("python") != expected_python:
@@ -187,7 +205,7 @@ def validate_profile_manifest(
         raise DependencyLockError("profile declared dependency union mismatch")
     if manifest.get("console_scripts") != CONSOLE_SCRIPTS:
         raise DependencyLockError("profile console-script binding mismatch")
-    if enforce_current_platform and manifest.get("profile_id") != current_profile_id():
+    if enforce_current_platform and profile_id != current_profile_id():
         raise DependencyLockError("profile does not match current platform")
     locks = manifest.get("locks")
     if not isinstance(locks, dict) or set(locks) != {"toolchain", "runtime", "dev"}:
@@ -205,7 +223,7 @@ def validate_profile_manifest(
         if sha256_file(lock_path) != digest:
             raise DependencyLockError(f"{group} lock hash mismatch")
         count = record.get("package_count")
-        if not isinstance(count, int) or count < 0:
+        if not isinstance(count, int) or isinstance(count, bool) or count < 0:
             raise DependencyLockError(f"invalid package count for {group} lock")
     return manifest
 
@@ -229,7 +247,7 @@ def build_lock_index(*, root: str | Path, manifests: Mapping[str, str | Path]) -
     payload: dict[str, Any] = {
         "schema_version": INDEX_SCHEMA_VERSION,
         "project": PROJECT_DISTRIBUTION,
-        "python_version": EXACT_PYTHON_VERSION,
+        "python_versions": dict(sorted(PROFILE_PYTHON_VERSIONS.items())),
         "profiles": profiles,
     }
     payload["index_sha256"] = sha256_bytes(canonical_json_bytes(payload))
@@ -250,8 +268,8 @@ def validate_lock_index(*, root: str | Path, index_path: str | Path) -> dict[str
         raise DependencyLockError("dependency-lock index self-hash mismatch")
     if index.get("project") != PROJECT_DISTRIBUTION:
         raise DependencyLockError("dependency-lock index project mismatch")
-    if index.get("python_version") != EXACT_PYTHON_VERSION:
-        raise DependencyLockError("dependency-lock index Python mismatch")
+    if index.get("python_versions") != dict(sorted(PROFILE_PYTHON_VERSIONS.items())):
+        raise DependencyLockError("dependency-lock index Python map mismatch")
     profiles = index.get("profiles")
     if not isinstance(profiles, dict) or set(profiles) != SUPPORTED_PROFILES:
         raise DependencyLockError("dependency-lock index profile set mismatch")
