@@ -1,0 +1,57 @@
+{
+  "schema_version": "12-6.milestone100-real-source-pins.v1",
+  "captured_at": "2026-08-26",
+  "authority": "DATA21_22_EXACT_HEAD_ARTIFACT_PLUS_DATA24_FAIL_CLOSED_RESOLUTION",
+  "sources": [
+    {
+      "source_id": "ua.rada.open-data.laws-texts",
+      "source_version": "laws-texts/bounded-2026-08-25",
+      "provider": "Verkhovna Rada of Ukraine",
+      "source_url": "https://data.rada.gov.ua/ogd/zak/perv/text/d23314.htm",
+      "source_kind": "legislation_public_record",
+      "license_id": "RADA-OPEN-DATA-REUSE",
+      "terms_url": "https://data.rada.gov.ua/open/data/laws-texts",
+      "rights_evidence_uri": "file:data/rights_evidence/data102_rada_laws_20260826.txt",
+      "rights_evidence_sha256": "5c6a79e23bc874a9bb334451d8f2e94711fb35f2f46e08449a0aa622a0b3b43f",
+      "objects": [
+        {
+          "url": "https://data.rada.gov.ua/ogd/zak/perv/text/d23314.htm",
+          "raw_sha256": "36eae31c3b0676ea7c02236fa05bd695c240c9a8eade5febc00457b8103ee1a4",
+          "raw_bytes": 332400,
+          "normalized_sha256_data21": "72c301db0b2539f3f7a73c9c15e2e425700a6b758a1114f1a861e2d60c704c50",
+          "language": "uk",
+          "family": "legislation_public_records"
+        }
+      ]
+    },
+    {
+      "source_id": "en.standard-ebooks.manual-of-style",
+      "source_version": "git:d1143a9b459b5e6f9cdda93a7c1e04676bff4f6b",
+      "provider": "Standard Ebooks",
+      "source_url": "https://github.com/standardebooks/manual-of-style",
+      "source_kind": "reference_documentation",
+      "license_id": "CC0-1.0",
+      "terms_url": "https://raw.githubusercontent.com/standardebooks/manual-of-style/d1143a9b459b5e6f9cdda93a7c1e04676bff4f6b/LICENSE.md",
+      "rights_evidence_uri": "file:data/rights_evidence/data102_standard_ebooks_20260826.txt",
+      "rights_evidence_sha256": "a18c4acebf818abeed941b02c171f675639b619bb50c76ce64f5cfc4a3a4232c",
+      "objects": [
+        {
+          "url": "https://raw.githubusercontent.com/standardebooks/manual-of-style/d1143a9b459b5e6f9cdda93a7c1e04676bff4f6b/8-typography.rst",
+          "raw_sha256": "21582c7f0e4ad39f2b0ed97bbc2c082d275e898b7a63c28e6d9badb8ee0f7860",
+          "raw_bytes": 68812,
+          "normalized_sha256_data21": "154fb4034929714087e75150d678bf65049ddac32e79dcdf97162c8972c2be83",
+          "language": "en",
+          "family": "reference_documentation"
+        },
+        {
+          "url": "https://raw.githubusercontent.com/standardebooks/manual-of-style/d1143a9b459b5e6f9cdda93a7c1e04676bff4f6b/9-metadata.rst",
+          "raw_sha256": "7ac53dfb4bf6f73f178560e09f33160d0250c69fb679802f3254dc0eb4c9f509",
+          "raw_bytes": 37299,
+          "normalized_sha256_data21": "94eb2f529922d125b3bd40691778886f4d5d80b128b925d0274fb3d94646ec5a",
+          "language": "en",
+          "family": "reference_documentation"
+        }
+      ]
+    }
+  ]
+}
