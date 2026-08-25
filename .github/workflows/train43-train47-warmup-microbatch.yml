@@ -1,0 +1,100 @@
+name: TRAIN43 TRAIN47 Warmup Microbatch Evidence
+
+on:
+  pull_request:
+    paths:
+      - "src/twelve_six/schedule_batch_experiment.py"
+      - "tests/test_schedule_batch_experiment.py"
+      - ".github/workflows/train43-train47-warmup-microbatch.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  warmup-microbatch-cpu:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Prove exact source checkout
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Verify exact locked environment inputs
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: >-
+          python tools/verify_locked_environment.py
+          --profile linux-x86_64
+          --source-sha "$SOURCE_SHA"
+          --evidence-out train43-train47-locked-environment.json
+      - name: Create locked LOCAL_FREE execution environment
+        run: |
+          python -m venv .train43-train47-locked
+          .train43-train47-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .train43-train47-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          .train43-train47-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/dev.lock.txt
+          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .train43-train47-locked/bin/python -m pip install --no-deps --no-build-isolation -e .
+      - name: Focused contract regression
+        run: |
+          .train43-train47-locked/bin/ruff check src/twelve_six/schedule_batch_experiment.py tests/test_schedule_batch_experiment.py
+          .train43-train47-locked/bin/pytest -q tests/test_schedule_batch_experiment.py
+      - name: Execute warmup and microbatch comparisons
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          .train43-train47-locked/bin/python -m twelve_six.schedule_batch_experiment \
+            --repo-root . \
+            --expected-source-sha "$SOURCE_SHA" \
+            --output train43-train47-results.json
+          .train43-train47-locked/bin/python - <<'PY'
+          import json
+          from twelve_six.schedule_batch_experiment import validate_report
+
+          with open("train43-train47-results.json", encoding="utf-8") as handle:
+              report = json.load(handle)
+          validate_report(report, expected_source_sha=report["source"]["git_sha"])
+          print("WARMUP DECISION")
+          print(json.dumps(report["warmup"]["decision"], indent=2, sort_keys=True))
+          print("MICROBATCH RECOMMENDATION")
+          print(json.dumps(report["microbatch"]["recommendation"], indent=2, sort_keys=True))
+          print("WARMUP RUN SUMMARY")
+          for run in report["warmup"]["runs"]:
+              print({
+                  "parameters": run["parameters"],
+                  "warmup_steps": run["warmup_steps"],
+                  "early_max_grad_norm": run["early_max_grad_norm"],
+                  "early_clip_frequency": run["early_clip_frequency"],
+                  "early_update_loss_spike_above_first": run["early_update_loss_spike_above_first"],
+                  "final_validation_loss": run["final_validation_loss"],
+                  "tokens_to_recover_initial_validation": run["tokens_to_recover_initial_validation"],
+              })
+          print("MICROBATCH RUN SUMMARY")
+          for run in report["microbatch"]["runs"]:
+              print({
+                  "microbatch_size": run["microbatch_size"],
+                  "gradient_accumulation_steps": run["gradient_accumulation_steps"],
+                  "tokens_per_second": run["tokens_per_second"],
+                  "mean_step_wall_seconds": run["mean_step_wall_seconds"],
+                  "rss_max_sampled_bytes": run["rss_max_sampled_bytes"],
+                  "final_validation_loss": run["final_validation_loss"],
+                  "equivalence_vs_fullbatch": run["equivalence_vs_fullbatch"],
+              })
+          print("REPORT SHA256", report["report_sha256"])
+          PY
+      - name: Upload machine-readable experiment evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: train43-train47-warmup-microbatch-evidence
+          path: |
+            train43-train47-locked-environment.json
+            train43-train47-results.json
+          if-no-files-found: error
+          retention-days: 30
