@@ -1,0 +1,166 @@
+{
+  "campaign_incumbent": {
+    "100m_model_spec_sha256": null,
+    "10m_model_spec_sha256": null,
+    "head_sha": "d113dfb3de0b37b8c99deb7c72af2b9d531b7c64",
+    "pr": 179,
+    "reason": "The incumbent campaign binds an older ~100M 32K-tokenizer geometry and must be regenerated against the current Product 10M/100M identities.",
+    "status": "STALE_NOT_LAUNCH_AUTHORITY"
+  },
+  "runtime_lock": {
+    "canonical_lock_file_sha256": "61fa31fbb5da7a4289cccce5abfcebde943664f5318b0ce3d69ae9bb3db852ac",
+    "canonical_lock_index_sha256": "5de40d40012123ccf654b3e29d9cd47df814978e4155ca9dde232b61e9cd6341",
+    "index_path": "requirements/profiles/index.json",
+    "profile": "linux-x86_64-cuda-training",
+    "profile_sha256": "e2880fb2c9dbd56f84b558d8705d5248cbf079401da4ba83cc6d382e5a6cdbd6",
+    "purpose_index_sha256": "561f070c1792ddde5cf7a6b8df6beacfe93622b201d791939bf77b5c0b3f29c0",
+    "resolved_sha256": "d2598da73301c8bbb995bb97894223bf4a65f053dd98b958d63a08b074591822"
+  },
+  "scales": {
+    "100m": {
+      "authorization": {
+        "authorization_id": "",
+        "compute_authorized": false,
+        "field": "COMPUTE_AUTHORIZED",
+        "paid_compute_launch": false,
+        "preprovisioned_free_smoke_allowed": false
+      },
+      "checkpoint": {
+        "durability_status": "NOT_SELECTED",
+        "format": "12-6-checkpoint-v1 or approved scale checkpoint path after explicit selection",
+        "fresh_object_restore_required": true,
+        "path": null
+      },
+      "freeze": {
+        "corpus": {
+          "detail": "Current serious S4 run explicitly blocks on D03 scaled-corpus production.",
+          "identity_sha256": null,
+          "required_training_byte_tokens": 2000027648,
+          "status": "BLOCKED_D03_SCALED_CORPUS_NOT_FROZEN"
+        },
+        "eval": {
+          "identity_sha256": null,
+          "status": "NOT_FROZEN_FOR_100M_CAMPAIGN"
+        },
+        "tokenizer": {
+          "config_sha256": "b04055c1061dd641dcab7cb9d62a931f09b8d1a070140a926ceb4e91d73ca8e1",
+          "identity_sha256": "b04055c1061dd641dcab7cb9d62a931f09b8d1a070140a926ceb4e91d73ca8e1",
+          "status": "ENGINEERING_CONTRACT_NOT_PRODUCTION_FREEZE",
+          "version": "s0-byte-v1",
+          "vocab_sha256": "905ed40bb42cc4d550e228ff5f24158d504b38e8ed5974dfa3077bd5867ad571",
+          "vocab_size": 256
+        }
+      },
+      "init_spec_sha256": "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5",
+      "memory_estimate": {
+        "estimate_complete": true,
+        "estimated_bytes": 4215510401,
+        "estimated_gib": 3.926,
+        "method": "SCALE-04 first-order BF16-autocast serious-profile estimate",
+        "required_headroom_factor": 1.25,
+        "truth_boundary": "Estimator evidence only; no measured 100M CUDA VRAM exists."
+      },
+      "model_spec_sha256": "6103d0d457e25206c11871f09aef1f2e23860329c060379c9f956b3851740170",
+      "parameter_count": 99897600,
+      "precision": "bf16",
+      "purpose": "future serious accelerator campaign",
+      "recovery_policy": {
+        "restore_last_verified_checkpoint": true,
+        "retain_verified_generations": 2,
+        "retry_same_in_memory_state_after_oom": false,
+        "status": "NOT_APPROVED_FOR_100M_CAMPAIGN"
+      },
+      "run_config": "configs/runs/s4_100m_serious.json",
+      "stage_config": "configs/stages/s4_100m_accelerator.candidate.json"
+    },
+    "10m": {
+      "authorization": {
+        "authorization_id": "",
+        "compute_authorized": false,
+        "field": "COMPUTE_AUTHORIZED",
+        "paid_compute_launch": false,
+        "preprovisioned_free_smoke_allowed": true
+      },
+      "checkpoint": {
+        "durability_status": "LOCAL_MECHANICS_OUTPUT_NOT_APPROVED_CAMPAIGN_DURABILITY",
+        "format": "12-6-checkpoint-v1",
+        "fresh_object_restore_required": true,
+        "path": "runs/train15-single-gpu"
+      },
+      "freeze": {
+        "corpus": {
+          "detail": "No real corpus is bound by the current 10M single-GPU pilot.",
+          "identity_sha256": null,
+          "status": "CONTROLLED_SYNTHETIC_MECHANICS_ONLY"
+        },
+        "eval": {
+          "identity_sha256": null,
+          "status": "NOT_FROZEN_FOR_10M_CAMPAIGN"
+        },
+        "tokenizer": {
+          "detail": "TRAIN-15 explicitly uses synthetic integer IDs, not a frozen tokenizer.",
+          "identity_sha256": null,
+          "status": "NOT_A_TOKENIZER_CONTROLLED_INTEGER_ID_SPACE"
+        }
+      },
+      "init_spec_sha256": "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5",
+      "memory_estimate": {
+        "estimate_complete": false,
+        "estimated_bytes": 160010240,
+        "estimated_gib": 0.14902114868164062,
+        "method": "FP32 params + gradients + two Adam moments persistent storage floor; activations/allocator excluded",
+        "required_headroom_factor": 1.25,
+        "truth_boundary": "This is a lower bound only, not a VRAM capacity claim."
+      },
+      "model_spec_sha256": "61caa5469123e23b9b72fc2024140bfca84c4c480dcb0a7e712ba800a4f22998",
+      "parameter_count": 10000640,
+      "precision": "fp16",
+      "purpose": "free/preprovisioned CUDA mechanics smoke then future campaign qualification",
+      "recovery_policy": {
+        "restore_last_verified_checkpoint": true,
+        "retain_verified_generations": 2,
+        "retry_same_in_memory_state_after_oom": false,
+        "status": "MECHANICS_ONLY",
+        "truth_boundary": "Midpoint/final fresh-object restore exists; a campaign LKG/restart authority is not yet composed."
+      },
+      "run_config": "configs/runs/s3_10m.single_gpu_pilot.experimental.json",
+      "stage_config": "configs/stages/alternatives/s3_10m_scale03_byte_gqa.execution.json"
+    }
+  },
+  "schema_version": "12-6.gpu-launch-preflight.v1",
+  "source": {
+    "incumbents": {
+      "checkpoint": {
+        "core_git_blob_sha": "4c4929503c825f2bf347079d7495af6f60a29e49",
+        "format": "12-6-checkpoint-v1"
+      },
+      "observability": {
+        "composition_status": "PRESENT_ON_REQUIRED_PRODUCT_BASE",
+        "pr": 159,
+        "source_head_sha": "7c38bc65d90e9b3368b11c582fba15ab71b6519c"
+      },
+      "precision": {
+        "composition_status": "NOT_COMPOSED_ON_REQUIRED_PRODUCT_BASE",
+        "head_sha": "e77cf610443f08fcd2b10bf445b956e35bd2b3a8",
+        "pr": 118
+      },
+      "recovery": {
+        "composition_status": "NOT_ESTABLISHED_AS_CURRENT_PRODUCT_CAMPAIGN_RECOVERY",
+        "pr": 174
+      },
+      "single_gpu": {
+        "intake_merge_sha": "fb9c6d9b73ce436d637077892d73edf136fcaeac",
+        "intake_pr": 260,
+        "source_pr": 153
+      }
+    },
+    "required_paths": [
+      "src/twelve_six/training/observability.py",
+      "src/twelve_six/checkpoint/core.py",
+      "src/twelve_six/training/single_gpu.py",
+      "tools/run_single_gpu_pilot.py",
+      "requirements/profiles/index.json"
+    ],
+    "required_product_base_sha": "fb9c6d9b73ce436d637077892d73edf136fcaeac"
+  }
+}
