@@ -1,0 +1,3 @@
+# PERF-146 experimental PyArrow overlay for CPython 3.11 / manylinux x86-64.
+# This is not part of canonical D08 runtime authority.
+pyarrow==25.0.1 --hash=sha256:25f8720bf6387d5dc2ebd2622112de630760419e4b66134405dd24110d15f37e
