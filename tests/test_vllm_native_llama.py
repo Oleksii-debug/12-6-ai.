@@ -6,13 +6,16 @@ from types import SimpleNamespace
 
 import pytest
 import torch
-from safetensors.torch import load as load_safetensors_bytes
 
 from twelve_six.checkpoint import CheckpointIdentity, export_hf_directory, save_checkpoint
-from twelve_six.inference.transformers_llama import (
-    convert_state_dict_to_llama,
-    llama_config_dict,
+from twelve_six.inference.llama_runtime_export import (
+    RUNTIME_CONFIG_NAME,
+    RUNTIME_PROVENANCE_NAME,
+    RUNTIME_WEIGHTS_NAME,
+    materialize_standard_llama_directory,
+    verify_standard_llama_directory,
 )
+from twelve_six.inference.transformers_llama import llama_config_dict
 from twelve_six.inference.vllm_native_llama import (
     VllmNativeLlamaBackend,
     VllmRuntimeError,
@@ -74,7 +77,7 @@ def _materialized_fixture(tmp_path: Path):
     source_export = export_hf_directory(
         checkpoint,
         tmp_path / "hf-source",
-        hf_config={"model_type": "twelve_six"},
+        hf_config=llama_config_dict(spec),
     )
     target = materialize_vllm_llama_directory(
         source_export,
@@ -83,56 +86,44 @@ def _materialized_fixture(tmp_path: Path):
     return spec, checkpoint, source_export, target
 
 
-def test_materializes_exact_verified_export_bytes_into_standard_llama(tmp_path: Path):
+def test_vllm_materialization_is_exact_incumbent_standard_llama_export(tmp_path: Path):
     spec, _checkpoint, source_export, target = _materialized_fixture(tmp_path)
 
-    provenance = verify_vllm_llama_directory(target)
-    assert provenance["source_model_spec"] == spec.to_dict()
-    assert provenance["execution_contract"] == {
+    binding = verify_vllm_llama_directory(target)
+    runtime = verify_standard_llama_directory(target)
+    assert binding["checkpoint_id"] == runtime["source_checkpoint_id"]
+    assert binding["source_model_spec"] == spec.to_dict()
+    assert binding["model_spec_sha256"] == spec.identity_sha256()
+    assert binding["parameter_count"] == spec.parameter_count()
+    assert binding["execution_contract"] == {
         "vllm_implementation": "BUILTIN_LLAMA",
         "skip_tokenizer_init": True,
         "prompt_input": "TOKEN_IDS",
-        "tokenizer_owner": "12-6.s0-byte-v1",
-        "bos_token_id": None,
-        "eos_token_id": None,
-        "pad_token_id": None,
+        "trust_remote_code": False,
     }
-    config = json.loads((target / "config.json").read_text(encoding="utf-8"))
+    assert binding["runtime_provenance_file"] == RUNTIME_PROVENANCE_NAME
+    assert set(path.name for path in target.iterdir()) == {
+        RUNTIME_CONFIG_NAME,
+        RUNTIME_WEIGHTS_NAME,
+        RUNTIME_PROVENANCE_NAME,
+    }
+    config = json.loads((target / RUNTIME_CONFIG_NAME).read_text(encoding="utf-8"))
     assert config == llama_config_dict(spec)
-    assert config["architectures"] == ["LlamaForCausalLM"]
-    assert config["model_type"] == "llama"
 
-    source_state = load_safetensors_bytes((source_export / "model.safetensors").read_bytes())
-    expected = convert_state_dict_to_llama(spec, source_state)
-    actual = load_safetensors_bytes((target / "model.safetensors").read_bytes())
-    assert set(actual) == set(expected)
-    for name in expected:
-        assert torch.equal(actual[name], expected[name]), name
-
-    assert not torch.equal(
-        source_state["blocks.0.attn.q_proj.weight"],
-        actual["model.layers.0.self_attn.q_proj.weight"],
+    direct = materialize_standard_llama_directory(
+        source_export,
+        tmp_path / "incumbent-direct",
     )
-    assert torch.equal(
-        source_state["blocks.0.attn.v_proj.weight"],
-        actual["model.layers.0.self_attn.v_proj.weight"],
-    )
+    for name in (RUNTIME_CONFIG_NAME, RUNTIME_WEIGHTS_NAME, RUNTIME_PROVENANCE_NAME):
+        assert (target / name).read_bytes() == (direct / name).read_bytes()
 
 
-def test_materialization_is_deterministic_for_same_verified_export(tmp_path: Path):
-    _spec_value, _checkpoint, source_export, target = _materialized_fixture(tmp_path)
-    second = materialize_vllm_llama_directory(source_export, tmp_path / "vllm-llama-2")
-
-    for name in ("config.json", "model.safetensors", "12-6-vllm-runtime.json"):
-        assert (target / name).read_bytes() == (second / name).read_bytes()
-
-
-def test_verifier_rejects_target_weight_tamper(tmp_path: Path):
+def test_verifier_rejects_incumbent_runtime_weight_tamper(tmp_path: Path):
     _spec_value, _checkpoint, _source_export, target = _materialized_fixture(tmp_path)
-    weights = target / "model.safetensors"
+    weights = target / RUNTIME_WEIGHTS_NAME
     weights.write_bytes(weights.read_bytes() + b"tamper")
 
-    with pytest.raises(VllmRuntimeError, match="weights hash mismatch"):
+    with pytest.raises(VllmRuntimeError, match="runtime export weights hash mismatch"):
         verify_vllm_llama_directory(target)
 
 
