@@ -169,7 +169,7 @@ def assess_torchtitan_fit(
     if not hasattr(model_class, "parallelize"):
         blockers.append("model_missing_torchtitan_parallelize_protocol")
     if eager_project_initialization:
-        blockers.append("eager_initialization_not_meta_device_ready")
+        blockers.append("post_materialization_initialization_contract_missing")
 
     if probe.installed:
         try:
