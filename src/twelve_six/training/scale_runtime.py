@@ -129,11 +129,11 @@ def estimate_scale_resources(
         saved_activation_elements = (
             tokens_per_microbatch * spec.n_layers * spec.d_model
         )
-        # Peak recomputation must still hold one block's major intermediates.
+        # Peak recomputation holds one block's intermediates. The current decoder
+        # repeats K/V to query-head count before SDPA, so budget expanded Q/K/V.
         peak_block_elements = tokens_per_microbatch * (
             4 * spec.d_model
-            + spec.q_dim
-            + 2 * spec.kv_dim
+            + 3 * spec.q_dim
             + 2 * spec.d_ff
         )
         # The dense LM head is material at 32K vocab and must not be omitted.
@@ -144,8 +144,7 @@ def estimate_scale_resources(
     else:
         per_layer_elements = tokens_per_microbatch * (
             4 * spec.d_model
-            + spec.q_dim
-            + 2 * spec.kv_dim
+            + 3 * spec.q_dim
             + 2 * spec.d_ff
         )
         logits_elements = tokens_per_microbatch * spec.vocab_size
@@ -155,12 +154,19 @@ def estimate_scale_resources(
     # so this is a lower-bound planning estimate rather than a peak-memory claim.
     activation_bytes = activation_elements * 2
 
-    # 6*P covers parameterized forward/backward matrix work. The extra term covers
-    # causal QK^T and AV score/value work, which becomes important at 4K context.
-    parameterized_flops_per_token = 6 * parameters
-    attention_score_flops_per_token = (
-        12 * spec.n_layers * sequence_length * spec.q_dim
-    )
+    # Standard forward+backward is approximately 6*P plus attention-score work.
+    # Blockwise activation checkpointing recomputes one forward, making this about
+    # 8*P and 16x the causal score term instead of 6*P and 12x.
+    if activation_checkpointing:
+        parameterized_flops_per_token = 8 * parameters
+        attention_score_flops_per_token = (
+            16 * spec.n_layers * sequence_length * spec.q_dim
+        )
+    else:
+        parameterized_flops_per_token = 6 * parameters
+        attention_score_flops_per_token = (
+            12 * spec.n_layers * sequence_length * spec.q_dim
+        )
 
     return ScaleResourceEstimate(
         parameters=parameters,
