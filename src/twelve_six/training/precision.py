@@ -40,8 +40,40 @@ def _require_supported_device(precision: PrecisionMode, device: torch.device) ->
             f"{precision} training is not verified for device type {device.type!r}; "
             "use an explicitly proven CPU or CUDA runtime"
         )
-    if device.type == "cuda" and not torch.cuda.is_available():
+    if device.type != "cuda":
+        return
+    if not torch.cuda.is_available():
         raise ValueError(f"{precision} CUDA training requires an available CUDA device")
+    if device.index is not None:
+        visible_devices = torch.cuda.device_count()
+        if device.index >= visible_devices:
+            raise ValueError(
+                f"{precision} CUDA device {device} is not visible; "
+                f"runtime reports {visible_devices} visible CUDA device(s)"
+            )
+
+
+def _cuda_native_bf16_supported(device: torch.device) -> bool:
+    """Probe native BF16 on the requested CUDA device, excluding emulation when possible."""
+    probe = getattr(torch.cuda, "is_bf16_supported", None)
+    if probe is None:
+        raise RuntimeError(
+            "cannot prove CUDA bf16 support with this PyTorch runtime; "
+            "precision resolution fails closed"
+        )
+
+    def _probe_current_device() -> bool:
+        try:
+            return bool(probe(including_emulation=False))
+        except TypeError:
+            # Older PyTorch releases exposed only the native-support form with no
+            # including_emulation keyword.
+            return bool(probe())
+
+    if device.index is None:
+        return _probe_current_device()
+    with torch.cuda.device(device):
+        return _probe_current_device()
 
 
 def resolve_precision_runtime(
@@ -91,14 +123,8 @@ def resolve_precision_runtime(
                 grad_scaler_enabled=False,
                 grad_scaler_device=None,
             )
-        probe = getattr(torch.cuda, "is_bf16_supported", None)
-        if probe is None:
-            raise RuntimeError(
-                "cannot prove CUDA bf16 support with this PyTorch runtime; "
-                "precision resolution fails closed"
-            )
-        if not probe():
-            raise ValueError("current CUDA device does not report bf16 support")
+        if not _cuda_native_bf16_supported(resolved_device):
+            raise ValueError("current CUDA device does not report native bf16 support")
         return PrecisionRuntime(
             requested=precision,
             device_type=device_type,

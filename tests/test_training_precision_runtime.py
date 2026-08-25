@@ -52,6 +52,19 @@ def test_cuda_fp32_unavailable_rejected_before_trainer_side_effects(
     assert model.to_called is False
 
 
+def test_explicit_cuda_index_must_be_visible_before_trainer_side_effects(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(torch.cuda, "device_count", lambda: 1)
+    model = SideEffectProbe()
+
+    with pytest.raises(ValueError, match="cuda:1 is not visible"):
+        Trainer(model, TrainerConfig(max_steps=1, precision="fp32"), device="cuda:1")
+
+    assert model.to_called is False
+
+
 def test_precision_runtime_contract_is_machine_readable() -> None:
     fp32 = resolve_precision_runtime("fp32", "cpu")
     bf16 = resolve_precision_runtime("bf16", "cpu")
@@ -96,8 +109,26 @@ def test_cuda_bf16_capability_failure_is_explicit(monkeypatch: pytest.MonkeyPatc
     monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
     monkeypatch.setattr(torch.cuda, "is_bf16_supported", lambda: False)
 
-    with pytest.raises(ValueError, match="does not report bf16 support"):
+    with pytest.raises(ValueError, match="native bf16 support"):
         resolve_precision_runtime("bf16", "cuda")
+
+
+def test_cuda_bf16_probe_excludes_emulation_when_runtime_supports_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[bool] = []
+
+    def probe(*, including_emulation: bool = True) -> bool:
+        calls.append(including_emulation)
+        return True
+
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(torch.cuda, "is_bf16_supported", probe)
+
+    runtime = resolve_precision_runtime("bf16", "cuda")
+
+    assert runtime.autocast_dtype == "bfloat16"
+    assert calls == [False]
 
 
 def test_mixed_precision_rejects_downcast_master_weights_before_device_move() -> None:
