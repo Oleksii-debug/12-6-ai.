@@ -520,13 +520,12 @@ def generate_batch_cached(
                 future_rows: set[int] = set()
                 for row_index in active_rows:
                     state = microbatch[row_index]
-                    if state.done:
-                        continue
-                    if len(state.generated) >= state.config.max_new_tokens:
-                        continue
-                    if len(state.prefix) >= max_context_tokens:
-                        continue
-                    future_rows.add(row_index)
+                    _mark_non_model_completion(
+                        state,
+                        max_context_tokens=max_context_tokens,
+                    )
+                    if not state.done:
+                        future_rows.add(row_index)
 
                 if not future_rows:
                     break
