@@ -184,6 +184,10 @@ class _StoppingCachedBackend(_FakeCachedBackend):
         return logits
 
 
+class _ContextLimitedCachedBackend(_FakeCachedBackend):
+    max_context_tokens = 4
+
+
 def test_cached_sampling_rng_is_request_local_after_neighbor_retires() -> None:
     sequential_backend = _FakeCachedBackend()
     batched_backend = _FakeCachedBackend()
@@ -264,6 +268,30 @@ def test_cached_stop_semantics_and_completed_rows_are_independent() -> None:
     )
     assert actual.results[2].text == ""
     assert actual.stats.retired_row_decode_positions > 0
+
+
+def test_cached_context_limit_parity_when_entire_bucket_retires_together() -> None:
+    sequential_backend = _ContextLimitedCachedBackend()
+    batched_backend = _ContextLimitedCachedBackend()
+    requests = (
+        BatchGenerationRequest("abc", GenerationConfig(max_new_tokens=5)),
+        BatchGenerationRequest("def", GenerationConfig(max_new_tokens=5)),
+    )
+
+    expected = tuple(
+        generate(sequential_backend, request.prompt, request.config) for request in requests
+    )
+    actual = generate_batch_cached(batched_backend, requests, max_batch_size=2)
+
+    assert actual.results == expected
+    assert tuple(result.stop_reason for result in actual.results) == (
+        "context_limit",
+        "context_limit",
+    )
+    assert all(len(result.generated_token_ids) == 1 for result in actual.results)
+    assert actual.stats.prefill_batch_calls == 1
+    assert actual.stats.decode_batch_calls == 0
+    assert actual.stats.logical_decode_positions == 0
 
 
 def test_cached_scheduler_uses_exact_prompt_length_buckets_only() -> None:
