@@ -1,0 +1,85 @@
+{
+  "schema": "12-6.model16-weight-tying-experiment.v1",
+  "status": "EXPERIMENTAL_NOT_CANONICAL_ARCHITECTURE",
+  "controls": {
+    "tokenizer": "s0-byte-v1",
+    "data": "data/s0/packaged train+validation",
+    "model_max_seq_len": 256,
+    "training_sequence_length": 64,
+    "batch_size": 4,
+    "optimized_tokens_per_seed": 16128,
+    "seeds": [1337, 2026],
+    "optimizer": {
+      "name": "AdamW",
+      "learning_rate": 0.0003,
+      "betas": [0.9, 0.95],
+      "eps": 1e-8,
+      "weight_decay": 0.0,
+      "gradient_clip_norm": 1.0,
+      "scheduler": "constant",
+      "precision": "fp32"
+    }
+  },
+  "candidates": {
+    "A_tied": {
+      "expected_parameters": 267912,
+      "model": {
+        "schema_version": 1,
+        "vocab_size": 256,
+        "max_seq_len": 256,
+        "d_model": 72,
+        "n_layers": 4,
+        "n_heads": 6,
+        "n_kv_heads": 6,
+        "head_dim": 12,
+        "d_ff": 192,
+        "activation": "swiglu",
+        "norm_kind": "rmsnorm",
+        "norm_placement": "pre",
+        "norm_eps": 1e-5,
+        "position_embedding": "rope",
+        "rope_theta": 10000.0,
+        "rope_rotary_dim": 12,
+        "attention_bias": false,
+        "mlp_bias": false,
+        "attention_dropout": 0.0,
+        "final_norm": true,
+        "tie_word_embeddings": true,
+        "lm_head_bias": false
+      }
+    },
+    "B_untied": {
+      "expected_parameters": 267336,
+      "model": {
+        "schema_version": 1,
+        "vocab_size": 256,
+        "max_seq_len": 256,
+        "d_model": 72,
+        "n_layers": 4,
+        "n_heads": 6,
+        "n_kv_heads": 6,
+        "head_dim": 12,
+        "d_ff": 170,
+        "activation": "swiglu",
+        "norm_kind": "rmsnorm",
+        "norm_placement": "pre",
+        "norm_eps": 1e-5,
+        "position_embedding": "rope",
+        "rope_theta": 10000.0,
+        "rope_rotary_dim": 12,
+        "attention_bias": false,
+        "mlp_bias": false,
+        "attention_dropout": 0.0,
+        "final_norm": true,
+        "tie_word_embeddings": false,
+        "lm_head_bias": false
+      }
+    }
+  },
+  "acceptance": {
+    "max_parameter_delta_fraction": 0.01,
+    "same_data_tokenizer_context_optimizer": true,
+    "canonical_architecture_unchanged": true,
+    "checkpoint_identity_must_reject_cross_semantics": true
+  }
+}
