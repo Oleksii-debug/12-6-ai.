@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from twelve_six.data.corpus_v01 import authored_text, norm
 from twelve_six.data.document_quality import (
     DocumentQualityError,
     assess_document,
@@ -101,32 +102,43 @@ def test_quality_hook_uses_incumbent_d03_seam_only() -> None:
     assert not hasattr(hook, "rights_status")
 
 
-def test_current_view_source_identity_and_expected_counts() -> None:
-    view_path = Path("configs/data/document_quality_current_corpus_v1.json")
-    view = json.loads(view_path.read_text(encoding="utf-8"))
-    source = Path(view["source_path"])
-    assert hashlib.sha256(source.read_bytes()).hexdigest() == view["source_sha256"]
-    assert source.stat().st_size == view["source_bytes"]
-    lines = source.read_text(encoding="utf-8").splitlines()
-    records = [
-        {
-            "id": row["id"],
-            "mode": row["mode"],
-            "text": "\n".join(lines[row["line_start"] - 1 : row["line_end"]]),
-        }
-        for row in view["records"]
-    ]
-    result = run_quality_filter(
-        records,
-        input_manifest_sha256=hashlib.sha256(view_path.read_bytes()).hexdigest(),
+def test_data25_authored_modalities_pass_without_python_only_assumption() -> None:
+    for mode in ("uk", "en", "code"):
+        for index in (0, 1, 17, 3384, 14311):
+            text = norm(authored_text(mode, index), mode == "code")
+            decision = assess_document(f"{mode}-{index}", text, mode)
+            assert decision.accepted, (mode, index, decision.reasons)
+
+
+def test_retained_full_corpus_report_is_bound_to_data25_manifest() -> None:
+    view = json.loads(
+        Path("configs/data/document_quality_current_corpus_v1.json").read_text(
+            encoding="utf-8"
+        )
     )
-    assert result["input_documents"] == 9
-    assert result["accepted_documents"] == 9
-    assert result["rejected_documents"] == 0
-    assert result["by_mode"] == {
-        "uk": {"input": 3, "accepted": 3, "rejected": 0},
-        "en": {"input": 3, "accepted": 3, "rejected": 0},
-        "code": {"input": 3, "accepted": 3, "rejected": 0},
+    manifest = json.loads(
+        Path("data/corpus/v0.1/manifest.json").read_text(encoding="utf-8")
+    )
+    report = json.loads(
+        Path("reports/d03/document_quality_current_corpus_20260825.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert view["corpus_identity_sha256"] == manifest["corpus_identity_sha256"]
+    assert report["input_manifest_sha256"] == manifest["corpus_identity_sha256"]
+    assert report["corpus_identity_sha256"] == manifest["corpus_identity_sha256"]
+    assert report["input_documents"] == 46207
+    assert report["accepted_documents"] == 46207
+    assert report["rejected_documents"] == 0
+    assert report["reproduced_shards"] == 36
+    assert report["reproduced_byte_tokens"] == 21411248
+    assert report["ordered_shard_hashes_match"] is True
+    assert report["rebuild_verified"] is True
+    assert report["external_training_eligible_sources"] == 0
+    assert report["by_mode"] == {
+        "uk": {"input": 13899, "accepted": 13899, "rejected": 0},
+        "en": {"input": 20093, "accepted": 20093, "rejected": 0},
+        "code": {"input": 12215, "accepted": 12215, "rejected": 0},
     }
 
 
