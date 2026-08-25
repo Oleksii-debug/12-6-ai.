@@ -67,24 +67,31 @@ def test_transposed_projection_layout_is_accepted_without_forced_contiguous_copy
     torch.testing.assert_close(actual, expected, rtol=1e-6, atol=1e-7)
 
 
-def test_s5_400m_gqa_avoids_four_x_kv_materialization() -> None:
-    native = kv_tensor_bytes(
-        batch_size=1,
-        kv_heads=4,
-        sequence_length=4096,
-        head_dim=64,
-        dtype=torch.bfloat16,
-    )
-    expanded = expanded_kv_tensor_bytes(
-        batch_size=1,
-        query_heads=16,
-        sequence_length=4096,
-        head_dim=64,
-        dtype=torch.bfloat16,
-    )
-    assert native == 4 * 1024 * 1024
-    assert expanded == 16 * 1024 * 1024
-    assert expanded == 4 * native
+def test_10m_100m_400m_materialized_kv_bytes_are_honest() -> None:
+    geometries = {
+        "10m": (8, 8, 1024, 40, 1_310_720, 1_310_720),
+        "100m": (12, 12, 2048, 64, 6_291_456, 6_291_456),
+        "400m": (16, 4, 4096, 64, 4_194_304, 16_777_216),
+    }
+    for stage, (q_heads, kv_heads, seq, dim, expected_native, expected_expanded) in geometries.items():
+        native = kv_tensor_bytes(
+            batch_size=1,
+            kv_heads=kv_heads,
+            sequence_length=seq,
+            head_dim=dim,
+            dtype=torch.bfloat16,
+        )
+        expanded = expanded_kv_tensor_bytes(
+            batch_size=1,
+            query_heads=q_heads,
+            sequence_length=seq,
+            head_dim=dim,
+            dtype=torch.bfloat16,
+        )
+        assert native == expected_native, stage
+        assert expanded == expected_expanded, stage
+
+    assert geometries["400m"][5] == 4 * geometries["400m"][4]
 
 
 def test_geometry_validation_fails_closed() -> None:
