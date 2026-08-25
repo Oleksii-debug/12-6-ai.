@@ -7,7 +7,20 @@
     "evaluation_test",
     "heldout_test"
   ],
-  "note": "D06/D03 must expand this registry before ingesting any external corpus or benchmark-adjacent material.",
-  "registry_state": "S0_CONTROLLED_SENTINEL_ONLY",
+  "note": "D06/D03 must expand this registry before ingesting any external corpus or benchmark-adjacent material. EVAL-134 additionally binds a project-owned reserved code suite; its verifier must pass before later corpus builds.",
+  "registry_state": "S0_CONTROLLED_SENTINEL_PLUS_RESERVED_EVAL134",
+  "reserved_evaluation_suites": [
+    {
+      "candidate_exact_sha256_root": "18bfda81d087b0f8db44793c0e224ec48f001058795f473ecf943bda3ddb9740",
+      "candidate_normalized_sha256_root": "633662dcfb4d5d713567b37935e912fb50ccd7d893b650fe711bbfdd84c44c70",
+      "data_path": "eval/reserved/code_diag_v1/probes.jsonl",
+      "data_sha256": "87e8085ef7bd9bb6b9755e5e88b2db040226bfd0bffd6696a3ca5f2afb0fe865",
+      "registered_date": "2026-08-26",
+      "required_pretraining_gate": "python tools/eval134_code_suite.py verify --repo-root .",
+      "status": "RESERVED_EVALUATION_ONLY",
+      "suite_id": "eval134-code-diagnostic-v1",
+      "suite_identity_sha256": "df18192f6190cc5d8be9492103a15097daaaf31afdd1cd45b2f4c21af5721105"
+    }
+  ],
   "schema_version": 1
 }
