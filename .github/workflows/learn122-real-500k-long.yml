@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: learn122-real-500k-long
+  cancel-in-progress: true
+
 jobs:
   real-500k-long:
     runs-on: ubuntu-24.04
