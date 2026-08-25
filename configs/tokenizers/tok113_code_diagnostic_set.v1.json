@@ -1,0 +1,135 @@
+{
+  "schema": "12-6.tok113-frozen-code-diagnostic-set.v1",
+  "worker_id": "TOK-113-CODE-DIAGNOSTICS",
+  "status": "FROZEN_DIAGNOSTIC_ONLY_NOT_TRAINING_DATA",
+  "frozen_identity_sha256": "d23861ed8a90dce2cfc7823a755f04812db2612d2f60a8268b77c5cce7ec58d9",
+  "source_authority": {
+    "repo": "Oleksii-debug/12-6-ai.",
+    "source_branch": "data23/code-sources-20260825",
+    "source_commit": "5f223f9ef77762a042e966372fdf9f064b3cc9fe",
+    "rights_state": "REVIEW_REQUIRED_NOT_MODEL_TRAINING_APPROVED",
+    "data23_workflow_run_id": 32861475416,
+    "data23_workflow_conclusion": "failure",
+    "data23_workflow_artifacts": 0,
+    "model_training_allowed": false,
+    "diagnostic_use_only": true
+  },
+  "coverage": {
+    "real_source_bytes": 4998,
+    "real_project_families": ["pallets/itsdangerous", "pytest-dev/pluggy"],
+    "real_programming_languages": ["python"],
+    "natural_languages_in_frozen_edge_probes": ["en", "uk"],
+    "multi_programming_language_requirement": "NOT_SATISFIED_REAL_RETAINED_SOURCE_ONLY_PYTHON"
+  },
+  "source_files": {
+    "itsdangerous/encoding.py": {
+      "repo_path": "data/samples/data23/itsdangerous/src/itsdangerous/encoding.py",
+      "git_blob_sha": "f5ca80f905c9bb29b993c437a89174e668704658",
+      "content_sha256": "c304f3e6aff7ccb71a01dba793afef4a84adc06a9859edf4ed997f53ceda4453",
+      "bytes": 1409,
+      "family": "pallets/itsdangerous",
+      "language": "python"
+    },
+    "itsdangerous/_json.py": {
+      "repo_path": "data/samples/data23/itsdangerous/src/itsdangerous/_json.py",
+      "git_blob_sha": "fc23feaaff690c477901dc50cc52dd18086051c5",
+      "content_sha256": "c0f4069a07b6c99f77dbc107285ea069d19ec866022502b1b54fa22ca13a5270",
+      "bytes": 473,
+      "family": "pallets/itsdangerous",
+      "language": "python"
+    },
+    "pluggy/_result.py": {
+      "repo_path": "data/samples/data23/pluggy/src/pluggy/_result.py",
+      "git_blob_sha": "d9d5dbe8f83c3e9fa7b5afec6ebde7631a4a5fc8",
+      "content_sha256": "f2668b485954c9e3f74a995bc4710d9f0390d012ac48a889a266864151aa5d4c",
+      "bytes": 3116,
+      "family": "pytest-dev/pluggy",
+      "language": "python"
+    }
+  },
+  "project_authored_edge_cases": [
+    {
+      "name": "identifiers_ascii",
+      "category": "identifiers",
+      "text": "snake_case_identifier camelCaseIdentifier HTTP2Parser _private_value parseURL2JSON",
+      "utf8_bytes": 82,
+      "sha256": "1d7d65bfce235cacfaa7452e8b964b6241dffc644b34f96c85e4ca56f7b31c1d"
+    },
+    {
+      "name": "unicode_identifiers",
+      "category": "unicode-identifiers",
+      "text": "дані = 1\nпоказник_1 = дані + 2\nΔvalue = показник_1\ncafé = Δvalue\n变量 = café\n",
+      "utf8_bytes": 107,
+      "sha256": "6a0e07eee53b32e9f3676d3ce61765bf15f1bd79e95977dca475501474c4ccad"
+    },
+    {
+      "name": "indentation_nested",
+      "category": "indentation-newline",
+      "text": "def outer(items):\n    for item in items:\n        if item is not None:\n            value = item * 2\n            print(value)\n        else:\n            continue\n    return items\n",
+      "utf8_bytes": 176,
+      "sha256": "a0f7db6aa77d251a12a4cf3233cb7715e6882ec3e1c3aa0ff8af01195b2ebf76"
+    },
+    {
+      "name": "operators",
+      "category": "operators",
+      "text": "a==b != c <= d >= e; x += y; z //= 2; q **= 3; walrus := value; arrow -> result; ellipsis ...\n",
+      "utf8_bytes": 94,
+      "sha256": "97fc793bfbc84a4a0603ecd956dbfb35c20a2d94cfb9d2d09df1e7a1354e97ad"
+    },
+    {
+      "name": "strings",
+      "category": "strings",
+      "text": "plain = \"hello\\nworld\"\nraw = r\"C:\\\\tmp\\\\file\"\nf = f\"value={42:04d}\"\ntriple = \"\"\"line one\\nline two\"\"\"\n",
+      "utf8_bytes": 102,
+      "sha256": "e99ec58f32a8f40b5dc85177f6331286dfbba180457a3a3999c954bb9b80984e"
+    },
+    {
+      "name": "comments_bilingual",
+      "category": "comments-en-uk",
+      "text": "# English comment about parser state\n# Український коментар про стан парсера\nvalue = 7  # inline comment\n",
+      "utf8_bytes": 138,
+      "sha256": "58ea4c98c0897f168499fd9d0392480e947e4ab64c779af2117f2e3b85aa8694"
+    },
+    {
+      "name": "numeric_literals",
+      "category": "numeric-literals",
+      "text": "zero=0; dec=1_000_000; hexv=0xDEADBEEF; binv=0b101010; octv=0o755; pi=3.1415926535; avogadro=6.022e23\n",
+      "utf8_bytes": 102,
+      "sha256": "60b9fd29a9bb475ba95923e713c3d61ddd1b44dcc549e63ee5582e73f0e19ac8"
+    },
+    {
+      "name": "tabs_and_spaces",
+      "category": "indentation-newline",
+      "text": "if ready:\n\tprint(\"tab\")\n    print(\"four\")\n        print(\"eight\")\n",
+      "utf8_bytes": 65,
+      "sha256": "2cb72ae6a7fa32eb0c222a8f7c7e7bdc8ae372a1ae3c63309bab27d3204c7f04"
+    }
+  ],
+  "long_line_generator": {
+    "policy": "ASCII pattern repeated/truncated to N-1 bytes followed by LF",
+    "pattern": "value_name_123 += other_value * 0x2f  # repeated-code-comment ",
+    "lengths_bytes": [80, 256, 1024, 4096],
+    "sha256": {
+      "80": "f7031d18596bb8d301a1b876be8e66b66f0760cf4dd6137022be79ff3c282b61",
+      "256": "915f825ddc743c303ad6ab02d97fd08d197e018bd291e41bc788b54e00c5755d",
+      "1024": "91571c5ed061d252e9db07cd096a4f7baad340074f65b6a076822ab3cd6a79f3",
+      "4096": "24d7e2853315c0184a4052546bbb78ccafb215e2c24e44c07c43b0e4ab763fcf"
+    }
+  },
+  "tokenizer_candidates": [
+    {"label": "byte256", "actual_vocab_size": 256, "version": "s0-byte-v1", "authority": "CANONICAL_MILESTONE_CONTROL"},
+    {"label": "bpe-r257-a257", "requested_vocab_size": 257, "actual_vocab_size": 257, "algorithm": "ByteLevel BPE", "tokenizers_version": "0.23.1", "config_sha256": "3f0b068a0bee4ff4afe374841ac4719cd448a79844ecde432aa8df6e49eed0ff", "tokenizer_json_sha256": "fb1c6fb701696fcec7e2b8e4424af9fc9532d4c468d12589c69dd34421433501", "vocab_sha256": "851c79ee20a80e73a2a499f1dc8156215700029cd42fd1eb53ebabe8b3bd8f76", "training_manifest_sha256": "c93638b496a36c896745321ebf4693e5b3f60b87894f72eea18f79162349f888", "repeat_training_identity_exact": true, "workflow_run_id": 32881557815, "workflow_artifact_name": "tok37-bpe-vocab-sweep", "serialized_path": {"path": "tok37-artifacts/tokenizers/bpe-r257-actual257-a.json", "sha256": "fb1c6fb701696fcec7e2b8e4424af9fc9532d4c468d12589c69dd34421433501"}, "authority": "TOK37_DATA10_SYNTHETIC_MECHANICS_ONLY"},
+    {"label": "bpe-r320-a320", "requested_vocab_size": 320, "actual_vocab_size": 320, "algorithm": "ByteLevel BPE", "tokenizers_version": "0.23.1", "config_sha256": "6ca2271373668f57b088c871bdde3b80c38a90fe346129afecec9ef2fb72f41f", "tokenizer_json_sha256": "619b9af9df54e52d24741d070f30375dfea73c9ec4cb7f3fed9a57ac7248607c", "vocab_sha256": "5c80d0ca0687a5c5b3dde4fe6eb98b4d9fcc3687337e16752dcc615dac241fd7", "training_manifest_sha256": "992ad1501e616bab2f8f022822f8f12c6066cda1d662454681975dcdb268fd47", "repeat_training_identity_exact": true, "workflow_run_id": 32881557815, "workflow_artifact_name": "tok37-bpe-vocab-sweep", "serialized_path": {"path": "tok37-artifacts/tokenizers/bpe-r320-actual320-a.json", "sha256": "619b9af9df54e52d24741d070f30375dfea73c9ec4cb7f3fed9a57ac7248607c"}, "authority": "TOK37_DATA10_SYNTHETIC_MECHANICS_ONLY"},
+    {"label": "bpe-r384-a384", "requested_vocab_size": 384, "actual_vocab_size": 384, "algorithm": "ByteLevel BPE", "tokenizers_version": "0.23.1", "config_sha256": "2e289e2abaf12b9d9fb9ea072916a82ea4523fb3a10664b09bfa404ffe0829a4", "tokenizer_json_sha256": "7e5026aec438a40235d0157f2361497c1703491896bda90c23c108b1691611a3", "vocab_sha256": "b5fc704b183781d6a829e1ab84cbd201ca83a468be0b97aa1d133a69fc51e60d", "training_manifest_sha256": "602beadee85247d2d0bec2774a647630de9e522442112a296ebb087ca7cd55f1", "repeat_training_identity_exact": true, "workflow_run_id": 32881557815, "workflow_artifact_name": "tok37-bpe-vocab-sweep", "serialized_path": {"path": "tok37-artifacts/tokenizers/bpe-r384-actual384-a.json", "sha256": "7e5026aec438a40235d0157f2361497c1703491896bda90c23c108b1691611a3"}, "authority": "TOK37_DATA10_SYNTHETIC_MECHANICS_ONLY"},
+    {"label": "bpe-r512-a437", "requested_vocab_size": 512, "actual_vocab_size": 437, "algorithm": "ByteLevel BPE", "tokenizers_version": "0.23.1", "config_sha256": "df195ad5c13566f92279e7140df9acc01c46b2b81d5bbe28908c384976c4a571", "tokenizer_json_sha256": "51fca82e40c48dfe3c9374e949f26b99968b0e8fa92964e2522df58e65435179", "vocab_sha256": "e48d234c54813044a8b3ddf65626ef91f2838eb87a788232db081d28f4730e0a", "training_manifest_sha256": "487a97d966d9766b9602a13d6b4d68d0f048372fb3add4a92d9b4558e607cc22", "repeat_training_identity_exact": true, "workflow_run_id": 32881557815, "workflow_artifact_name": "tok37-bpe-vocab-sweep", "serialized_path": {"path": "tok37-artifacts/tokenizers/bpe-r512-actual437-a.json", "sha256": "51fca82e40c48dfe3c9374e949f26b99968b0e8fa92964e2522df58e65435179"}, "authority": "TOK37_DATA10_SYNTHETIC_MECHANICS_ONLY"}
+  ],
+  "rejected_tokenizer_candidates": [
+    {"algorithm": "unigram", "actual_vocab_size": 497, "reason": "REPEAT_ARTIFACT_IDENTITY_DRIFT", "drift_fields": ["config_sha256", "tokenizer_json_sha256", "vocab_sha256"], "selection_eligible": false}
+  ],
+  "prohibitions": {
+    "use_as_tokenizer_training_data": false,
+    "use_as_model_training_data": false,
+    "use_for_hyperparameter_fit": false,
+    "mutation_after_freeze": false
+  }
+}
