@@ -30,7 +30,7 @@ def test_current_registry_is_state_aware_and_composition_ready() -> None:
     assert facts["minimum_required"] == (90, 91, 100)
     assert facts["composition_ready"] is True
     assert facts["composable_prs"] == (90, 91, 100)
-    assert facts["green_prs"] == (90, 91, 92, 100)
+    assert facts["green_prs"] == (90, 91, 92, 100, 134)
     assert facts["red_prs"] == (95, 113)
     assert facts["held_prs"] == (95, 106, 113)
     assert facts["promotion_eligible"] is False
