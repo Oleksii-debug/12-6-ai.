@@ -48,8 +48,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends libtcmalloc-minimal4
           python -m pip install --upgrade pip
-          python -m pip install \
-            "https://github.com/vllm-project/vllm/releases/download/v0.27.1/vllm-0.27.1+cpu-cp38-abi3-manylinux_2_34_x86_64.whl" \
+          wheel="vllm-0.27.1+cpu-cp38-abi3-manylinux_2_34_x86_64.whl"
+          curl --fail --location --retry 3 \
+            "https://github.com/vllm-project/vllm/releases/download/v0.27.1/$wheel" \
+            --output "$wheel"
+          sha256sum "$wheel" | tee runtime25-vllm-wheel.sha256
+          python -m pip install "$wheel" \
             --extra-index-url https://download.pytorch.org/whl/cpu
           python -m pip install -e . --no-deps
 
@@ -116,8 +120,9 @@ jobs:
           name: runtime25-vllm-cpu-import-config
           path: |
             artifacts/runtime25-vllm-cpu/fixture.json
-            artifacts/runtime25-vllm-cpu/12-6-vllm-runtime.json
+            artifacts/runtime25-vllm-cpu/vllm-model/12-6-vllm-runtime.json
             artifacts/runtime25-vllm-cpu/vllm-import-config.json
             runtime25-installed-versions.json
+            runtime25-vllm-wheel.sha256
           if-no-files-found: error
           retention-days: 30
