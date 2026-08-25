@@ -1,0 +1,50 @@
+{
+  "schema": "12-6.model17-context-config.v1",
+  "authority": "RESEARCH_ONLY_NOT_CANONICAL",
+  "research_vehicle": {
+    "vocab_size": 256,
+    "d_model": 48,
+    "n_layers": 3,
+    "n_heads": 4,
+    "n_kv_heads": 4,
+    "head_dim": 12,
+    "d_ff": 128,
+    "tie_word_embeddings": true,
+    "expected_parameters": 95568
+  },
+  "conditions": [
+    {
+      "name": "context_128",
+      "max_seq_len": 128,
+      "packing_version": "context-candidate-isolated-v1"
+    },
+    {
+      "name": "context_256",
+      "max_seq_len": 256,
+      "packing_version": "context-candidate-isolated-v1"
+    }
+  ],
+  "controls": {
+    "dataset": "data/s0/packaged",
+    "tokenizer": "byte-v1",
+    "optimized_causal_tokens_per_condition": 32768,
+    "optimizer": {
+      "name": "AdamW",
+      "learning_rate": 0.0003,
+      "weight_decay": 0.0,
+      "betas": [0.9, 0.95],
+      "eps": 1e-8,
+      "scheduler": "constant",
+      "warmup_steps": 0,
+      "gradient_accumulation_steps": 1,
+      "gradient_clip_norm": 1.0,
+      "precision": "fp32"
+    },
+    "seed": 1337,
+    "document_boundary_policy": "isolate",
+    "window_overlap_tokens": 1,
+    "cross_document_packing": false,
+    "canonical_s0_packing_identity_modified": false
+  },
+  "selection_rule": "Prefer 256 only when equal-token native held-out BPB improves and the same 256-trained model gains from evaluation history beyond 128; otherwise preserve 128."
+}

@@ -1,0 +1,79 @@
+name: MODEL-17 Context 100K LOCAL_FREE
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  context-128-vs-256-cpu:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Prove exact source checkout
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Verify exact locked environment inputs
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: >-
+          python tools/verify_locked_environment.py
+          --profile linux-x86_64
+          --source-sha "$SOURCE_SHA"
+          --evidence-out model17-locked-environment.json
+      - name: Create locked LOCAL_FREE environment
+        run: |
+          python -m venv .model17-locked
+          .model17-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .model17-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          .model17-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/dev.lock.txt
+          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .model17-locked/bin/python -m pip install --no-deps --no-build-isolation -e .
+      - name: Verify MODEL-17 identities and controls
+        run: .model17-locked/bin/python -m pytest -q tests/test_context_100k_experiment.py tests/test_context_scaling.py
+      - name: Train context 128 at exact token budget
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: >-
+          .model17-locked/bin/python -m twelve_six.context_100k_candidate
+          --repo-root . --source-sha "$SOURCE_SHA" --context 128
+          --output model17-context-128.json
+      - name: Train context 256 at exact token budget
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: >-
+          .model17-locked/bin/python -m twelve_six.context_100k_candidate
+          --repo-root . --source-sha "$SOURCE_SHA" --context 256
+          --output model17-context-256.json
+      - name: Separate effects and select primary research context
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          .model17-locked/bin/python -m twelve_six.context_100k_compare combine \
+            --repo-root . --source-sha "$SOURCE_SHA" \
+            --context-128 model17-context-128.json \
+            --context-256 model17-context-256.json \
+            --output model17-context-results.json
+          .model17-locked/bin/python -m twelve_six.context_100k_compare validate \
+            model17-context-results.json --expected-source-sha "$SOURCE_SHA"
+      - name: Upload executed context evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: model17-context-100k-evidence
+          path: |
+            model17-locked-environment.json
+            model17-context-128.json
+            model17-context-256.json
+            model17-context-results.json
+            configs/context/model17_100k_128_vs_256.experimental.json
+          if-no-files-found: error
+          retention-days: 30
