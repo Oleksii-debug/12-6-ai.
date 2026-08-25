@@ -7,6 +7,8 @@ import pytest
 from twelve_six.packing import TextRecord
 from twelve_six.training.source_generalization import (
     CHUNK_TARGET_UTF8_BYTES,
+    DATA105_BRANCH,
+    DATA105_HEAD_SHA,
     DATA105_STATUS,
     OPTIMIZED_TOKEN_BUDGET,
     PARAMETER_COUNT,
@@ -112,8 +114,10 @@ def test_training_trace_cycles_only_when_pool_is_smaller_than_budget() -> None:
     assert trace[:8] == trace[8:16]
 
 
-def test_data105_is_explicitly_absent_not_synthesized() -> None:
-    assert DATA105_STATUS == "NOT_FOUND_IN_LIVE_REPOSITORY_AS_OF_2026-08-26"
+def test_data105_candidate_exists_but_activation_is_blocked() -> None:
+    assert DATA105_STATUS == "CANDIDATE_POLICY_PRESENT_ACTIVATION_GATE_BLOCKED"
+    assert DATA105_BRANCH == "data105/source-domain-balance-20260826"
+    assert DATA105_HEAD_SHA == "562ce949902c2b12a55186911e15d87795ebe1a6"
 
 
 def test_bpb_conversion_identity() -> None:
