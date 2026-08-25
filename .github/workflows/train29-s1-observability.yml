@@ -37,9 +37,13 @@ jobs:
           python -m venv .train29-locked
           .train29-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
           .train29-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          .train29-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/dev.lock.txt
           PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .train29-locked/bin/python -m pip install --no-deps --no-build-isolation -e .
-      - name: Exercise reusable observability unit contract
-        run: .train29-locked/bin/python -m pytest -q tests/test_training_observability.py
+      - name: Exercise reusable observability unit contracts
+        run: >-
+          .train29-locked/bin/python -m pytest -q
+          tests/test_training_observability.py
+          tests/test_training_observability_decision.py
       - name: Execute real 107856-parameter S1 observability probe
         env:
           SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
