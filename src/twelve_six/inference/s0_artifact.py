@@ -12,8 +12,9 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 from twelve_six.checkpoint import hash_json, save_trainer_checkpoint, sha256_file, verify_checkpoint
 from twelve_six.integration import S0TorchInferenceBackend
