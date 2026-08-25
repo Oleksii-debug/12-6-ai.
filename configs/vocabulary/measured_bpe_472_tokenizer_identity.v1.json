@@ -1,0 +1,24 @@
+{
+  "schema": "12-6.tokenizer-artifact-identity.v1",
+  "status": "MEASURED_CONTROLLED_ARTIFACT_IDENTITY_NOT_TOKENIZER_FREEZE",
+  "vocab_size": 472,
+  "tokenizer_json_sha256": "006c84fc0d05d3bedb5b0bceb587aab1631dd0295cc2063e97823c2121e08be0",
+  "source_kind": "reported_exact_tokenizer_json_sha256",
+  "source_evidence_sha256": "3307daec835e96a63fd5a7d14543de3d9f0781ec3f7d4d0cc98d992bf0f8bae6",
+  "provenance": {
+    "repository": "Oleksii-debug/12-6-ai.",
+    "source_sha": "3527bf50d5d6cd7d4cbf9e477863430a31873baa",
+    "workflow_run_id": 32831382339,
+    "workflow_artifact_id": 9556900421,
+    "algorithm": "bpe",
+    "tokenizers_version": "0.23.1",
+    "training_manifest_sha256": "5612fbff21c49d6a2215d031413d24f96078151a9de1a5d9b21976bb6cb8a23b",
+    "vocab_sha256": "b7c695b64993c468449d6143f289952f42c2bea8bc06265503a482d13ed78f6e"
+  },
+  "truth_boundary": {
+    "canonical_s0_tokenizer_unchanged": true,
+    "tokenizer_frozen": false,
+    "representative_s1_corpus_claimed": false,
+    "model_quality_claimed": false
+  }
+}
