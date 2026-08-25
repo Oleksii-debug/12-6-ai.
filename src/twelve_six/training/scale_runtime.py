@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Literal
+from typing import Iterator, Literal
 
 import torch
 from torch import Tensor, nn
@@ -181,6 +182,49 @@ def estimate_scale_resources(
     )
 
 
+@contextmanager
+def attention_backend_context(
+    policy: AttentionPolicy,
+    *,
+    device: torch.device,
+) -> Iterator[None]:
+    """Fail closed when a run requires Flash SDPA but the backend is unavailable."""
+    if policy == "auto":
+        yield
+        return
+
+    try:
+        from torch.nn.attention import SDPBackend, sdpa_kernel
+    except (ImportError, AttributeError) as exc:
+        raise RuntimeError(
+            "explicit SDPA backend selection is unavailable in this PyTorch build"
+        ) from exc
+
+    if policy == "flash_required":
+        if device.type != "cuda" or not torch.cuda.is_available():
+            raise RuntimeError("flash_required attention needs an available CUDA device")
+        backend = SDPBackend.FLASH_ATTENTION
+    elif policy == "math":
+        backend = SDPBackend.MATH
+    else:
+        raise ValueError(f"unsupported attention policy: {policy!r}")
+
+    with sdpa_kernel(backends=[backend]):
+        yield
+
+
+@contextmanager
+def _autocast_and_attention(
+    autocast_context: object,
+    *,
+    attention_policy: AttentionPolicy,
+    device: torch.device,
+) -> Iterator[None]:
+    with autocast_context:  # type: ignore[attr-defined]
+        with attention_backend_context(attention_policy, device=device):
+            yield
+
+
 class ActivationCheckpointedDecoder(TwelveSixDecoder):
     """State-dict-compatible decoder with blockwise non-reentrant checkpointing."""
 
@@ -263,6 +307,51 @@ def reset_materialized_decoder_parameters_(model: TwelveSixDecoder) -> None:
         )
 
 
+def prepare_fsdp2_decoder(
+    spec: ModelSpec,
+    init_spec: InitSpec | None = None,
+    *,
+    device: str | torch.device,
+    activation_checkpointing: bool = True,
+) -> TwelveSixDecoder:
+    """Meta-build, bottom-up fully-shard, materialize, and initialize a decoder.
+
+    The caller must initialize torch.distributed and select the local CUDA device
+    before calling this function. The optimizer must be created only after this
+    function returns, so that it owns DTensor/sharded parameters.
+    """
+    if not torch.distributed.is_available() or not torch.distributed.is_initialized():
+        raise RuntimeError("prepare_fsdp2_decoder requires initialized torch.distributed")
+
+    target_device = torch.device(device)
+    if target_device.type != "cuda":
+        raise ValueError("FSDP2 scale execution currently requires a CUDA device")
+
+    try:
+        from torch.distributed.fsdp import MixedPrecisionPolicy, fully_shard
+    except (ImportError, AttributeError) as exc:
+        raise RuntimeError("this PyTorch build does not expose FSDP2 fully_shard") from exc
+
+    model = build_meta_decoder(
+        spec,
+        init_spec,
+        activation_checkpointing=activation_checkpointing,
+    )
+    mp_policy = MixedPrecisionPolicy(
+        param_dtype=torch.bfloat16,
+        reduce_dtype=torch.float32,
+    )
+    for block in model.blocks:
+        fully_shard(block, mp_policy=mp_policy)
+    fully_shard(model, mp_policy=mp_policy)
+
+    # FSDP2 preserves meta tensors through sharding; materialize only the local
+    # shards, then apply the canonical scratch initializer.
+    model.to_empty(device=target_device)
+    reset_materialized_decoder_parameters_(model)
+    return model
+
+
 class ExternallyPlacedTrainer(Trainer):
     """Trainer variant for pre-placed or pre-sharded models.
 
@@ -280,10 +369,12 @@ class ExternallyPlacedTrainer(Trainer):
         device: str | torch.device,
         optimizer: Optimizer | None = None,
         scheduler: LRScheduler | None = None,
+        attention_policy: AttentionPolicy = "auto",
     ) -> None:
         self.model = model
         self.config = config
         self.device = torch.device(device)
+        self.attention_policy = attention_policy
 
         if any(parameter.device.type == "meta" for parameter in model.parameters()):
             raise ValueError("ExternallyPlacedTrainer requires materialized parameters")
@@ -303,3 +394,10 @@ class ExternallyPlacedTrainer(Trainer):
         self._update_incomplete = False
         self._failure_reason: str | None = None
         self.optimizer.zero_grad(set_to_none=True)
+
+    def _autocast_context(self):
+        return _autocast_and_attention(
+            super()._autocast_context(),
+            attention_policy=self.attention_policy,
+            device=self.device,
+        )
