@@ -2,7 +2,7 @@
   "schema_version": "12-6.lr-range-plan.v1",
   "authority": "LOCAL_FREE_ENGINEERING_LR_RANGE_PLAN_PROVISIONAL",
   "purpose": "Sweep only learning rate on the existing fixed-control approximately 100K-500K Base family while holding model family, initialization, data, tokenizer, AdamW recipe and batch trace fixed.",
-  "learning_rates": [0.0001, 0.0003, 0.001, 0.003],
+  "learning_rates": [0.0001, 0.0003, 0.001, 0.003, 0.01],
   "current_default_learning_rate": 0.0003,
   "optimizer": {
     "kind": "adamw",
