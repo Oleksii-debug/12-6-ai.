@@ -1,0 +1,29 @@
+{
+  "worker_id": "DATA-27-UA-NORMALIZATION",
+  "normalization_schema": "12-6.ua-normalization-v1",
+  "audit_date": "2026-08-25",
+  "sample_class": "READ_ONLY_REAL_SOURCE_EXCERPT_AUDIT_NOT_CANONICAL_CORPUS_PROMOTION",
+  "source": {
+    "source_id": "ua.rada.open-data.laws-texts",
+    "source_version_reference": "DATA-21 bounded source candidate 2026-08-25",
+    "url": "https://data.rada.gov.ua/ogd/zak/perv/text/d23314.htm",
+    "retrieved_sections": [89, 94, 96, 108, 109, 111],
+    "segments": 6
+  },
+  "sample_sha256": "6768cdc528b5948bf6451488c557840ebcb3309105baea4d3a7e333351861d72",
+  "raw_codepoints": 1502,
+  "normalized_codepoints": 1502,
+  "codepoint_delta": 0,
+  "raw_byte_tokens": 2788,
+  "normalized_byte_tokens": 2788,
+  "byte_token_delta": 0,
+  "changed": false,
+  "reason_counts": {},
+  "token_metric": "Current ByteTokenizer baseline: one token per UTF-8 byte.",
+  "truth_boundary": [
+    "This is a read-only audit over six real Ukrainian text segments, not a full-source corpus intake or canonical D03 snapshot.",
+    "DATA-27 does not independently promote or restate DATA-21 legal eligibility decisions.",
+    "The sample is intentionally small and cannot characterize the distribution of all Rada or Ukrainian corpus bytes.",
+    "The sample confirms preservation of Ukrainian case, Cyrillic orthography, punctuation, and U+2019 apostrophe usage on observed real text."
+  ]
+}
