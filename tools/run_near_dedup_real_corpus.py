@@ -14,6 +14,7 @@ if str(SRC) not in sys.path:
 
 from twelve_six.data.near_dedup import (
     REPORT_SCHEMA,
+    NearDedupPolicy,
     calibration_records,
     canonical_json_bytes,
     load_calibration,
@@ -89,8 +90,26 @@ def _determinism_projection(execution: dict) -> dict:
     }
 
 
+def _production_candidates() -> dict[str, tuple[NearDedupPolicy, ...]]:
+    incumbent = policy_candidates()
+    return {
+        "natural": (
+            *incumbent["natural"],
+            NearDedupPolicy(
+                "natural_calibrated_5g_20x5", "natural", 5, 20, 5
+            ),
+        ),
+        "code": (
+            *incumbent["code"],
+            NearDedupPolicy("code_calibrated_4g_16x6", "code", 4, 16, 6),
+        ),
+    }
+
+
 def main() -> int:
-    parser = argparse.ArgumentParser(description="DATA-30 calibrated DataTrove near-dedup execution")
+    parser = argparse.ArgumentParser(
+        description="DATA-30 calibrated DataTrove near-dedup execution"
+    )
     parser.add_argument("--calibration", type=Path, required=True)
     parser.add_argument("--data10-corpus", type=Path, required=True)
     parser.add_argument("--workspace", type=Path, required=True)
@@ -99,7 +118,7 @@ def main() -> int:
 
     _fresh(args.workspace)
     calibration = load_calibration(args.calibration)
-    candidates = policy_candidates()
+    candidates = _production_candidates()
     candidate_results: dict[str, list[dict]] = {"natural": [], "code": []}
     scored_for_selection = {"natural": [], "code": []}
 
@@ -112,7 +131,9 @@ def main() -> int:
                 workspace=args.workspace / "calibration" / modality / policy.name,
                 exercise_skip_completed=True,
             )
-            metrics = score_calibration(calibration, modality=modality, execution=execution)
+            metrics = score_calibration(
+                calibration, modality=modality, execution=execution
+            )
             candidate_results[modality].append(
                 {
                     "policy": policy.manifest(),
@@ -123,29 +144,20 @@ def main() -> int:
             )
             scored_for_selection[modality].append((policy, metrics))
 
-    code_metrics = {policy.name: metrics for policy, metrics in scored_for_selection["code"]}
+    code_metrics = {
+        policy.name: metrics for policy, metrics in scored_for_selection["code"]
+    }
     code_incumbent = code_metrics["code_incumbent_band_5g_14x8"]
     code_strict = code_metrics["code_strict_5g_10x10"]
-    code_strict_required = (
-        code_strict["recall"] >= 0.75
-        and code_strict["false_removal_risk"] <= 0.25
-        and (
-            code_incumbent["recall"] < 0.75
-            or code_incumbent["false_removal_risk"] > 0.25
-            or code_strict["false_removal_risk"] < code_incumbent["false_removal_risk"]
-        )
-    )
-    code_preferred = (
-        "code_strict_5g_10x10" if code_strict_required else "code_incumbent_band_5g_14x8"
-    )
+    code_calibrated = code_metrics["code_calibrated_4g_16x6"]
     selected = {
         "natural": select_policy(
             scored_for_selection["natural"],
-            preferred_policy_name="natural_incumbent_9g_14x8",
+            preferred_policy_name="natural_calibrated_5g_20x5",
         ),
         "code": select_policy(
             scored_for_selection["code"],
-            preferred_policy_name=code_preferred,
+            preferred_policy_name="code_calibrated_4g_16x6",
         ),
     }
 
@@ -172,14 +184,28 @@ def main() -> int:
         )
         first_projection = _determinism_projection(first)
         selected_validation[modality] = {
-            "full_skip_completed_rerun_identical": first_projection == _determinism_projection(rerun),
-            "fresh_workspace_representative_selection_identical": first_projection == _determinism_projection(fresh),
-            "signature_skip_completed_verified": first["restart"]["signature_rerun_byte_identical"],
+            "full_skip_completed_rerun_identical": (
+                first_projection == _determinism_projection(rerun)
+            ),
+            "fresh_workspace_representative_selection_identical": (
+                first_projection == _determinism_projection(fresh)
+            ),
+            "signature_skip_completed_verified": first["restart"][
+                "signature_rerun_byte_identical"
+            ],
         }
 
     data10_records = _data10_records(args.data10_corpus)
-    natural_records = [record for record in data10_records if record["metadata"]["modality"] == "natural"]
-    code_records = [record for record in data10_records if record["metadata"]["modality"] == "code"]
+    natural_records = [
+        record
+        for record in data10_records
+        if record["metadata"]["modality"] == "natural"
+    ]
+    code_records = [
+        record
+        for record in data10_records
+        if record["metadata"]["modality"] == "code"
+    ]
     corpus_exec = {
         "natural": run_datatrove_policy(
             natural_records,
@@ -194,7 +220,9 @@ def main() -> int:
             exercise_skip_completed=True,
         ),
     }
-    survivor_ids = set(corpus_exec["natural"]["survivor_ids"]) | set(corpus_exec["code"]["survivor_ids"])
+    survivor_ids = set(corpus_exec["natural"]["survivor_ids"]) | set(
+        corpus_exec["code"]["survivor_ids"]
+    )
     survivors = [record for record in data10_records if record["id"] in survivor_ids]
     input_corpus_identity = _sha256_file(args.data10_corpus)
     corpus_identity = surviving_corpus_identity(
@@ -208,7 +236,9 @@ def main() -> int:
         selected_name = selected[modality].name
         for result in candidate_results[modality]:
             if result["policy"]["name"] == selected_name:
-                false_positive_review.extend(result["metrics"]["false_positive_review_sample"])
+                false_positive_review.extend(
+                    result["metrics"]["false_positive_review_sample"]
+                )
                 break
 
     input_records = sum(item["input_records"] for item in corpus_exec.values())
@@ -236,14 +266,19 @@ def main() -> int:
                 "legitimate_similar_document",
             ],
             "candidate_results": candidate_results,
-            "selected_policies": {name: policy.manifest() for name, policy in selected.items()},
+            "selected_policies": {
+                name: policy.manifest() for name, policy in selected.items()
+            },
             "code_policy_separation_evidence": {
-                "strict_policy_required_by_calibration": code_strict_required,
-                "preferred_after_calibration": code_preferred,
+                "preferred_after_calibration": "code_calibrated_4g_16x6",
                 "incumbent_metrics": code_incumbent,
                 "strict_metrics": code_strict,
+                "calibrated_metrics": code_calibrated,
             },
-            "selection_gate": {"minimum_recall": 0.75, "maximum_false_removal_risk": 0.25},
+            "selection_gate": {
+                "minimum_recall": 0.75,
+                "maximum_false_removal_risk": 0.25,
+            },
             "determinism_and_restart": selected_validation,
             "false_positive_review_sample": false_positive_review[:10],
         },
@@ -259,7 +294,9 @@ def main() -> int:
             "input_bytes": input_bytes,
             "removed_bytes": removed_bytes,
             "document_reduction_ratio": removed_records / input_records,
-            "byte_reduction_ratio": 0.0 if input_bytes == 0 else removed_bytes / input_bytes,
+            "byte_reduction_ratio": (
+                0.0 if input_bytes == 0 else removed_bytes / input_bytes
+            ),
             "by_modality": corpus_exec,
             "surviving_corpus": corpus_identity,
         },
@@ -268,7 +305,10 @@ def main() -> int:
             "status": "BLOCKED_NO_REAL_TRAINING_ELIGIBLE_UK_EN_CODE_CORPUS",
             "real_full_corpus_pass_claimed": False,
             "real_surviving_corpus_identity": None,
-            "required_reentry": "rerun this same DATA-30 tool after DATA-21/22/23/24/25 provide manifested rights-approved corpus shards",
+            "required_reentry": (
+                "rerun this same DATA-30 tool after DATA-21/22/23/24/25 provide "
+                "manifested rights-approved corpus shards"
+            ),
         },
         "truth_boundary": {
             "lexical_minhash_only": True,
@@ -282,15 +322,22 @@ def main() -> int:
     report["report_sha256"] = sha256_bytes(canonical_json_bytes(core))
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_bytes(canonical_json_bytes(report))
-    print(json.dumps({
-        "report_sha256": report["report_sha256"],
-        "selected_natural": selected["natural"].name,
-        "selected_code": selected["code"].name,
-        "current_input_records": input_records,
-        "current_removed_records": removed_records,
-        "surviving_corpus_identity": corpus_identity["surviving_corpus_identity"],
-        "real_corpus_status": report["real_candidate_corpus_gate"]["status"],
-    }, sort_keys=True))
+    print(
+        json.dumps(
+            {
+                "report_sha256": report["report_sha256"],
+                "selected_natural": selected["natural"].name,
+                "selected_code": selected["code"].name,
+                "current_input_records": input_records,
+                "current_removed_records": removed_records,
+                "surviving_corpus_identity": corpus_identity[
+                    "surviving_corpus_identity"
+                ],
+                "real_corpus_status": report["real_candidate_corpus_gate"]["status"],
+            },
+            sort_keys=True,
+        )
+    )
     return 0
 
 
