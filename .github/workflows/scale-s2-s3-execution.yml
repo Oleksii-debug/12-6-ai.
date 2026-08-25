@@ -1,0 +1,138 @@
+name: SCALE S2-S3 Execution
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/scale-s2-s3-execution.yml"
+      - "configs/runs/s2_s3.scale_execution.json"
+      - "configs/stages/s2_1m.json"
+      - "configs/stages/s3_10m.json"
+      - "data/s0/packaged/**"
+      - "requirements/locks/**"
+      - "src/twelve_six/model.py"
+      - "src/twelve_six/packing.py"
+      - "src/twelve_six/tokenization.py"
+      - "src/twelve_six/training/**"
+      - "tests/test_s2_s3_scale_execution.py"
+      - "tools/run_s2_s3_scale_execution.py"
+      - "tools/validate_s2_s3_scale_execution.py"
+
+permissions:
+  contents: read
+
+jobs:
+  s2-1m-local-free-cpu:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Prove exact source checkout
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Verify D08 lock and repository
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: >-
+          python tools/verify_locked_environment.py
+          --profile linux-x86_64
+          --source-sha "$SOURCE_SHA"
+          --evidence-out locked-environment-linux-x86_64.json
+          --run-repo-checks
+      - name: Create exact locked scale environment
+        run: |
+          python -m venv .scale-locked
+          .scale-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .scale-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .scale-locked/bin/python -m pip install --no-deps --no-build-isolation -e .
+      - name: Run focused contract tests
+        run: .scale-locked/bin/python -m pytest -q tests/test_s2_s3_scale_execution.py
+      - name: Execute canonical S2 1M mechanics
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          .scale-locked/bin/python tools/run_s2_s3_scale_execution.py \
+            --stage S2 \
+            --source-sha "$SOURCE_SHA" \
+            --locked-environment-evidence locked-environment-linux-x86_64.json \
+            --output s2-scale-execution.json
+          .scale-locked/bin/python tools/validate_s2_s3_scale_execution.py \
+            s2-scale-execution.json \
+            --expected-stage S2 \
+            --locked-environment-evidence locked-environment-linux-x86_64.json
+          cat s2-scale-execution.json
+      - name: Upload S2 evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: scale-s2-execution-evidence
+          path: |
+            locked-environment-linux-x86_64.json
+            s2-scale-execution.json
+          if-no-files-found: error
+          retention-days: 30
+
+  s3-10m-local-free-cpu:
+    needs: s2-1m-local-free-cpu
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Prove exact source checkout
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Create exact locked scale environment
+        run: |
+          python -m venv .scale-locked
+          .scale-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .scale-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .scale-locked/bin/python -m pip install --no-deps --no-build-isolation -e .
+      - name: Download S2 dependency evidence
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: scale-s2-execution-evidence
+          path: s2-evidence
+      - name: Revalidate S2 exact-head dependency
+        run: |
+          .scale-locked/bin/python tools/validate_s2_s3_scale_execution.py \
+            s2-evidence/s2-scale-execution.json \
+            --expected-stage S2 \
+            --locked-environment-evidence s2-evidence/locked-environment-linux-x86_64.json
+      - name: Execute canonical S3 10M mechanics
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          .scale-locked/bin/python tools/run_s2_s3_scale_execution.py \
+            --stage S3 \
+            --source-sha "$SOURCE_SHA" \
+            --locked-environment-evidence s2-evidence/locked-environment-linux-x86_64.json \
+            --output s3-scale-execution.json
+          .scale-locked/bin/python tools/validate_s2_s3_scale_execution.py \
+            s3-scale-execution.json \
+            --expected-stage S3 \
+            --locked-environment-evidence s2-evidence/locked-environment-linux-x86_64.json
+          cat s3-scale-execution.json
+      - name: Upload S2-S3 scale evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: scale-s2-s3-execution-evidence
+          path: |
+            s2-evidence/locked-environment-linux-x86_64.json
+            s2-evidence/s2-scale-execution.json
+            s3-scale-execution.json
+          if-no-files-found: error
+          retention-days: 30
