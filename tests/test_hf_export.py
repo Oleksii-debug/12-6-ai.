@@ -3,7 +3,13 @@ from pathlib import Path
 
 import numpy as np
 
-from twelve_six.checkpoint import CheckpointIdentity, export_hf_directory, save_checkpoint
+from twelve_six.checkpoint import (
+    CheckpointIdentity,
+    export_hf_directory,
+    save_checkpoint,
+    verify_checkpoint,
+    verify_hf_directory,
+)
 
 
 class Model:
@@ -53,8 +59,10 @@ def test_hf_export_preserves_verified_weights_and_disclaims_runtime_compatibilit
     ).read_bytes()
     assert (output / "config.json").is_file()
     assert (output / "12-6-checkpoint-manifest.json").is_file()
+    assert (output / "12-6-export.sha256").is_file()
 
-    attestation = json.loads((output / "12-6-export.json").read_text(encoding="utf-8"))
+    attestation = verify_hf_directory(output)
+    assert attestation["schema"] == "12-6.hf-style-export.v2"
     assert attestation["compatibility"] == {
         "layout": "HF_STYLE_SAFETENSORS_DIRECTORY",
         "runtime_logit_generation_parity": "NOT_TESTED",
@@ -63,6 +71,7 @@ def test_hf_export_preserves_verified_weights_and_disclaims_runtime_compatibilit
     }
 
     parity = json.loads((output / "12-6-parity-request.json").read_text(encoding="utf-8"))
+    assert parity["schema"] == "12-6.export-parity-request.v2"
     assert parity["status"] == "NOT_TESTED"
     assert parity["hook_result"] is None
     assert parity["reference_weights_sha256"] == parity["candidate_weights_sha256"]
@@ -73,13 +82,24 @@ def test_hf_export_preserves_verified_weights_and_disclaims_runtime_compatibilit
     ]
 
 
-def test_hf_export_invokes_external_parity_hook_without_overclaiming(tmp_path: Path):
+def test_hf_export_invokes_external_parity_hook_on_verified_reference_snapshot(
+    tmp_path: Path,
+):
     checkpoint = tmp_path / "checkpoint"
-    save_checkpoint(checkpoint, model=Model(), identity=checkpoint_identity())
+    checkpoint_manifest = save_checkpoint(
+        checkpoint,
+        model=Model(),
+        identity=checkpoint_identity(),
+    )
     calls = []
 
-    def parity_hook(source: Path, destination: Path):
-        calls.append((source, destination))
+    def parity_hook(reference: Path, destination: Path):
+        assert reference != checkpoint
+        assert reference.name.startswith(".hf.reference-")
+        assert destination.name.startswith(".hf.staging-")
+        assert verify_checkpoint(reference)["checkpoint_id"] == checkpoint_manifest["checkpoint_id"]
+        assert (destination / "model.safetensors").is_file()
+        calls.append((reference.name, destination.name))
         return {"status": "PASS", "evidence_ref": "test-only-d07-parity"}
 
     output = export_hf_directory(
@@ -89,13 +109,14 @@ def test_hf_export_invokes_external_parity_hook_without_overclaiming(tmp_path: P
         parity_hook=parity_hook,
     )
 
-    assert calls == [(checkpoint, output)]
+    assert len(calls) == 1
+    assert not list(tmp_path.glob(".hf.reference-*"))
     parity = json.loads((output / "12-6-parity-request.json").read_text(encoding="utf-8"))
     assert parity["status"] == "EXTERNAL_EVIDENCE_ATTACHED"
     assert parity["hook_result"] == {
         "status": "PASS",
         "evidence_ref": "test-only-d07-parity",
     }
-    attestation = json.loads((output / "12-6-export.json").read_text(encoding="utf-8"))
+    attestation = verify_hf_directory(output)
     assert attestation["compatibility"]["transformers_architecture"] == "NOT_CLAIMED"
     assert attestation["compatibility"]["runtime_logit_generation_parity"] == "NOT_TESTED"
