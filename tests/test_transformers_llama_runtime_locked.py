@@ -22,7 +22,7 @@ def _build_pair():
     stage = load_stage_config(ROOT / "configs/stages/s0_10k.json")
     torch.manual_seed(1337)
     source = TwelveSixDecoder(stage.model, stage.init).eval()
-    config = LlamaConfig(**llama_config_dict(stage.model))
+    config = LlamaConfig.from_dict(llama_config_dict(stage.model))
     target = LlamaForCausalLM(config).eval()
     incompatible = target.load_state_dict(
         convert_state_dict_to_llama(stage.model, source.state_dict()),
