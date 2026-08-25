@@ -1,0 +1,52 @@
+{
+  "authored_for_repository": true,
+  "categories": [
+    "balanced_delimiters",
+    "indentation_sensitive_continuation",
+    "json_like_structure",
+    "language_specific_syntax",
+    "operator_type_syntax",
+    "simple_function_call_structure",
+    "string_comment_termination",
+    "variable_reuse"
+  ],
+  "claim_boundary": "mechanistic code-modelling diagnostic only; no code-generation capability claim",
+  "created_date": "2026-08-26",
+  "data_path": "eval/reserved/code_diag_v1/probes.jsonl",
+  "data_sha256": "87e8085ef7bd9bb6b9755e5e88b2db040226bfd0bffd6696a3ca5f2afb0fe865",
+  "item_count": 32,
+  "language_specific_corpus_syntax": [
+    "python",
+    "sql"
+  ],
+  "languages": [
+    "json",
+    "python",
+    "sql"
+  ],
+  "license": "project-authored-evaluation-material",
+  "memorization_controls": {
+    "full_application_generation": false,
+    "instruction_following": false,
+    "synthetic_identifier_prefix": "qzv_",
+    "unseen_literal_floor": 7000
+  },
+  "repository": "Oleksii-debug/12-6-ai.",
+  "reservation": {
+    "exact_candidate_sha256_count": 64,
+    "normalized_candidate_sha256_count": 60,
+    "registered_before_future_corpus_build": true
+  },
+  "schema": "12-6.code-diagnostic-suite.v1",
+  "scoring": [
+    "exact conditional log-likelihood",
+    "short continuation log-likelihood",
+    "source-byte-normalized NLL",
+    "bits per source byte",
+    "contrastive accuracy"
+  ],
+  "status": "RESERVED_EVALUATION_ONLY",
+  "suite_id": "eval134-code-diagnostic-v1",
+  "suite_identity_sha256": "df18192f6190cc5d8be9492103a15097daaaf31afdd1cd45b2f4c21af5721105",
+  "version": 1
+}
