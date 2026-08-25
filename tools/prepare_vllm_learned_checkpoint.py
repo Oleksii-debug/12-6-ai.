@@ -75,7 +75,8 @@ def prepare(args: argparse.Namespace) -> dict[str, Any]:
         args.expected_tokenizer_vocab_sha256,
     )
 
-    output_root = args.output_root.resolve()
+    logical_output_root = args.output_root
+    output_root = logical_output_root.resolve()
     if output_root.exists():
         raise FileExistsError(f"output root already exists: {output_root}")
     output_root.mkdir(parents=True)
@@ -96,27 +97,37 @@ def prepare(args: argparse.Namespace) -> dict[str, Any]:
     if binding["source_model_spec"] != spec.to_dict():
         raise ValueError("runtime ModelSpec payload differs from learned checkpoint")
 
+    logical_checkpoint = logical_output_root / "source-checkpoint"
+    logical_hf_export = logical_output_root / "hf-export"
+    logical_model_dir = logical_output_root / "vllm-model"
+    logical_gpu_output = logical_output_root / "gpu-parity.json"
     parity_command = [
         "python",
         "tools/validate_vllm_learned_parity.py",
         "--checkpoint",
-        str(checkpoint),
+        str(logical_checkpoint),
         "--model-dir",
-        str(model_dir),
+        str(logical_model_dir),
         "--source-artifact-id",
         str(args.source_artifact_id),
         "--source-artifact-digest",
         args.source_artifact_digest,
         "--source-artifact-head-sha",
         args.source_artifact_head_sha,
+        "--max-new-tokens",
+        "8",
         "--atol",
         "1e-5",
         "--rtol",
         "1e-5",
         "--dtype",
         "float32",
+        "--tensor-parallel-size",
+        "1",
+        "--gpu-memory-utilization",
+        "0.5",
         "--output",
-        str(output_root / "gpu-parity.json"),
+        str(logical_gpu_output),
     ]
 
     payload: dict[str, Any] = {
@@ -151,9 +162,9 @@ def prepare(args: argparse.Namespace) -> dict[str, Any]:
         },
         "execution_contract": binding["execution_contract"],
         "paths": {
-            "checkpoint": str(checkpoint),
-            "hf_export": str(hf_export),
-            "vllm_model": str(model_dir),
+            "checkpoint": str(logical_checkpoint),
+            "hf_export": str(logical_hf_export),
+            "vllm_model": str(logical_model_dir),
         },
         "gpu_parity_command": shlex.join(parity_command),
         "pretrained_foreign_weights_used": False,
