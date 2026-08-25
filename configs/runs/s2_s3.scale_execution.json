@@ -1,0 +1,36 @@
+{
+  "schema_version": "12-6.s2-s3-scale-execution-config.v1",
+  "authority": "ENGINEERING_SCALE_EXECUTION_ONLY_NOT_STAGE_EVIDENCE",
+  "device": "cpu",
+  "precision": "fp32",
+  "sequence_length": 128,
+  "train_batch_limit": 2,
+  "validation_batch_limit": 1,
+  "fixture": "S0_CONTROLLED_FIXTURE_COMPATIBILITY_ONLY",
+  "stages": {
+    "S2": {
+      "stage_config_path": "configs/stages/s2_1m.json",
+      "parameter_count": 1066112,
+      "model_vocab_size": 2048,
+      "max_seq_len": 512,
+      "optimizer_steps": 4,
+      "batch_size": 2,
+      "learning_rate": 0.001
+    },
+    "S3": {
+      "stage_config_path": "configs/stages/s3_10m.json",
+      "parameter_count": 10059840,
+      "model_vocab_size": 8192,
+      "max_seq_len": 1024,
+      "optimizer_steps": 2,
+      "batch_size": 1,
+      "learning_rate": 0.001
+    }
+  },
+  "claims": {
+    "stage_architecture_frozen": false,
+    "stage_corpus_or_tokenizer_frozen": false,
+    "stage_quality_or_capability_evidence": false,
+    "paid_compute_authorized_or_used": false
+  }
+}
