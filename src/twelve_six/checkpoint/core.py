@@ -43,6 +43,44 @@ STATE_TREE_NAME = "state.json"
 _PAYLOAD_NAMES = frozenset({WEIGHTS_NAME, STATE_TENSORS_NAME, STATE_TREE_NAME})
 _DIRECTORY_NAMES = frozenset({MANIFEST_NAME, MANIFEST_CHECKSUM_NAME, *_PAYLOAD_NAMES})
 _HEX = frozenset("0123456789abcdef")
+_MANIFEST_KEYS = frozenset(
+    {
+        "format",
+        "format_version",
+        "created_at_utc",
+        "checkpoint_id",
+        "identity",
+        "files",
+        "serialization",
+    }
+)
+_IDENTITY_KEYS = frozenset(
+    {
+        "git_sha",
+        "model_spec",
+        "model_spec_hash",
+        "parameter_count",
+        "tokenizer_hash",
+        "tokenizer_vocab_hash",
+        "dataset_manifest_hash",
+        "run_manifest_hash",
+        "training_config",
+        "training_config_hash",
+        "seed",
+        "optimizer",
+        "optimizer_hash",
+        "scheduler",
+        "scheduler_hash",
+        "precision",
+        "step",
+        "tokens_seen",
+        "environment",
+        "environment_hash",
+        "environment_lock_hash",
+    }
+)
+_FILE_RECORD_KEYS = frozenset({"sha256", "bytes"})
+_SERIALIZATION_KEYS = frozenset({"weights", "state_tensors", "state_tree", "pickle"})
 
 
 class CheckpointError(RuntimeError):
@@ -575,6 +613,21 @@ def _read_regular_bytes(root: Path, name: str) -> bytes:
         os.close(fd)
 
 
+def _require_exact_mapping_keys(
+    value: Any, expected: frozenset[str], *, field: str
+) -> Mapping[str, Any]:
+    if not isinstance(value, Mapping):
+        raise CheckpointIntegrityError(f"{field} must be a mapping")
+    actual = set(value)
+    if actual != expected:
+        missing = sorted(expected - actual)
+        unexpected = sorted(actual - expected)
+        raise CheckpointIntegrityError(
+            f"{field} keys mismatch: missing={missing}, unexpected={unexpected}"
+        )
+    return value
+
+
 def _parse_manifest_bytes(manifest_bytes: bytes, checksum_bytes: bytes) -> dict[str, Any]:
     try:
         checksum_line = checksum_bytes.decode("ascii").strip().split()
@@ -589,36 +642,59 @@ def _parse_manifest_bytes(manifest_bytes: bytes, checksum_bytes: bytes) -> dict[
         manifest = json.loads(manifest_bytes.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise CheckpointIntegrityError("manifest is not valid UTF-8 JSON") from exc
-    if manifest.get("format") != FORMAT_NAME or manifest.get("format_version") != FORMAT_VERSION:
+    if not isinstance(manifest, dict):
+        raise CheckpointIntegrityError("checkpoint manifest must be a JSON object")
+    if manifest.get("format") != FORMAT_NAME:
         raise CheckpointCompatibilityError(
             "unsupported checkpoint format: "
             f"{manifest.get('format')!r} v{manifest.get('format_version')!r}"
+        )
+    version = manifest.get("format_version")
+    if not isinstance(version, int) or isinstance(version, bool):
+        raise CheckpointIntegrityError("manifest format_version must be an integer")
+    if version != FORMAT_VERSION:
+        raise CheckpointCompatibilityError(
+            "unsupported checkpoint format: "
+            f"{manifest.get('format')!r} v{version!r}"
         )
     return manifest
 
 
 def _validate_manifest_identity(identity: Any) -> None:
-    if not isinstance(identity, Mapping):
-        raise CheckpointIntegrityError("manifest identity must be a mapping")
+    identity = _require_exact_mapping_keys(identity, _IDENTITY_KEYS, field="manifest identity")
     try:
-        _require_exact_hex(identity.get("git_sha"), field="identity.git_sha", lengths={40, 64})
+        reconstructed = CheckpointIdentity(
+            git_sha=identity["git_sha"],
+            model_spec=identity["model_spec"],
+            parameter_count=identity["parameter_count"],
+            tokenizer_hash=identity["tokenizer_hash"],
+            tokenizer_vocab_hash=identity["tokenizer_vocab_hash"],
+            dataset_manifest_hash=identity["dataset_manifest_hash"],
+            run_manifest_hash=identity["run_manifest_hash"],
+            training_config=identity["training_config"],
+            seed=identity["seed"],
+            precision=identity["precision"],
+            step=identity["step"],
+            tokens_seen=identity["tokens_seen"],
+            optimizer=identity["optimizer"],
+            scheduler=identity["scheduler"],
+            environment_lock_hash=identity["environment_lock_hash"],
+        )
+        reconstructed.validate()
         for field in (
             "model_spec_hash",
-            "tokenizer_hash",
-            "tokenizer_vocab_hash",
-            "dataset_manifest_hash",
-            "run_manifest_hash",
             "training_config_hash",
             "optimizer_hash",
             "scheduler_hash",
             "environment_hash",
         ):
-            _require_exact_hex(identity.get(field), field=f"identity.{field}", lengths={64})
-        lock_hash = identity.get("environment_lock_hash")
-        if lock_hash is not None:
-            _require_exact_hex(lock_hash, field="identity.environment_lock_hash", lengths={64})
-    except ValueError as exc:
-        raise CheckpointIntegrityError(str(exc)) from exc
+            _require_exact_hex(identity[field], field=f"identity.{field}", lengths={64})
+    except (KeyError, TypeError, ValueError) as exc:
+        raise CheckpointIntegrityError(f"invalid manifest identity: {exc}") from exc
+
+    environment = identity["environment"]
+    if not isinstance(environment, Mapping) or not environment:
+        raise CheckpointIntegrityError("identity.environment must be a non-empty mapping")
 
     hash_pairs = (
         ("model_spec", "model_spec_hash"),
@@ -628,8 +704,78 @@ def _validate_manifest_identity(identity: Any) -> None:
         ("environment", "environment_hash"),
     )
     for payload_key, hash_key in hash_pairs:
-        if hash_json(identity.get(payload_key)) != identity.get(hash_key):
+        if hash_json(identity[payload_key]) != identity[hash_key]:
             raise CheckpointIntegrityError(f"{hash_key} does not match {payload_key}")
+
+
+def _validate_manifest_contract(manifest: Mapping[str, Any]) -> None:
+    """Enforce the closed-world checkpoint-v1 schema before any payload decode.
+
+    Version 1 is intentionally non-extensible in place: fields with new semantic
+    meaning require a new format version rather than being silently ignored by an
+    older reader. This turns checksum-consistent schema drift into a fail-closed
+    compatibility boundary.
+    """
+
+    manifest = _require_exact_mapping_keys(manifest, _MANIFEST_KEYS, field="manifest")
+    if manifest["format"] != FORMAT_NAME:
+        raise CheckpointCompatibilityError(f"unsupported checkpoint format: {manifest['format']!r}")
+    version = manifest["format_version"]
+    if not isinstance(version, int) or isinstance(version, bool):
+        raise CheckpointIntegrityError("manifest format_version must be an integer")
+    if version != FORMAT_VERSION:
+        raise CheckpointCompatibilityError(f"unsupported checkpoint format version: {version!r}")
+
+    created_at = manifest["created_at_utc"]
+    if not isinstance(created_at, str) or not created_at.endswith("Z"):
+        raise CheckpointIntegrityError(
+            "manifest created_at_utc must be an ISO-8601 UTC Z timestamp"
+        )
+    try:
+        parsed_created_at = datetime.fromisoformat(created_at[:-1] + "+00:00")
+    except ValueError as exc:
+        raise CheckpointIntegrityError(
+            "manifest created_at_utc must be an ISO-8601 UTC Z timestamp"
+        ) from exc
+    if parsed_created_at.tzinfo != UTC:
+        raise CheckpointIntegrityError("manifest created_at_utc must be UTC")
+
+    try:
+        _require_exact_hex(manifest["checkpoint_id"], field="checkpoint_id", lengths={64})
+    except ValueError as exc:
+        raise CheckpointIntegrityError(str(exc)) from exc
+
+    _validate_manifest_identity(manifest["identity"])
+
+    serialization = _require_exact_mapping_keys(
+        manifest["serialization"], _SERIALIZATION_KEYS, field="manifest serialization"
+    )
+    if (
+        serialization["weights"] != "safetensors"
+        or serialization["state_tensors"] != "safetensors"
+        or serialization["state_tree"] != "canonical-json"
+        or serialization["pickle"] is not False
+    ):
+        raise CheckpointIntegrityError(
+            "manifest serialization contract does not match checkpoint-v1"
+        )
+
+    files = _require_exact_mapping_keys(
+        manifest["files"], _PAYLOAD_NAMES, field="manifest files"
+    )
+    for name in sorted(_PAYLOAD_NAMES):
+        record = _require_exact_mapping_keys(
+            files[name], _FILE_RECORD_KEYS, field=f"manifest file record {name}"
+        )
+        try:
+            _require_exact_hex(
+                record["sha256"], field=f"files.{name}.sha256", lengths={64}
+            )
+        except ValueError as exc:
+            raise CheckpointIntegrityError(str(exc)) from exc
+        byte_count = record["bytes"]
+        if not isinstance(byte_count, int) or isinstance(byte_count, bool) or byte_count < 0:
+            raise CheckpointIntegrityError(f"invalid byte length for {name}")
 
 
 def prepare_checkpoint_load(directory: str | Path) -> VerifiedCheckpoint:
@@ -645,32 +791,14 @@ def prepare_checkpoint_load(directory: str | Path) -> VerifiedCheckpoint:
     manifest_bytes = _read_regular_bytes(root, MANIFEST_NAME)
     checksum_bytes = _read_regular_bytes(root, MANIFEST_CHECKSUM_NAME)
     manifest = _parse_manifest_bytes(manifest_bytes, checksum_bytes)
-    _validate_manifest_identity(manifest.get("identity"))
+    _validate_manifest_contract(manifest)
 
-    files = manifest.get("files")
-    if not isinstance(files, dict) or set(files) != _PAYLOAD_NAMES:
-        raise CheckpointIntegrityError(
-            f"manifest file inventory must be exactly {sorted(_PAYLOAD_NAMES)}"
-        )
-
+    files = manifest["files"]
     payloads: dict[str, bytes] = {}
     for name in sorted(_PAYLOAD_NAMES):
-        record = files.get(name)
-        if not isinstance(record, Mapping):
-            raise CheckpointIntegrityError(f"invalid file record for {name}")
-        try:
-            expected_hash = _require_exact_hex(
-                record.get("sha256"), field=f"files.{name}.sha256", lengths={64}
-            )
-        except ValueError as exc:
-            raise CheckpointIntegrityError(str(exc)) from exc
-        expected_bytes = record.get("bytes")
-        if (
-            not isinstance(expected_bytes, int)
-            or isinstance(expected_bytes, bool)
-            or expected_bytes < 0
-        ):
-            raise CheckpointIntegrityError(f"invalid byte length for {name}")
+        record = files[name]
+        expected_hash = record["sha256"]
+        expected_bytes = record["bytes"]
         data = _read_regular_bytes(root, name)
         if len(data) != expected_bytes:
             raise CheckpointIntegrityError(f"size mismatch for {name}")
@@ -679,7 +807,7 @@ def prepare_checkpoint_load(directory: str | Path) -> VerifiedCheckpoint:
         payloads[name] = data
 
     expected_id = hash_json({"identity": manifest["identity"], "files": manifest["files"]})
-    if expected_id != manifest.get("checkpoint_id"):
+    if expected_id != manifest["checkpoint_id"]:
         raise CheckpointIntegrityError("checkpoint_id does not match identity and artifact records")
     return VerifiedCheckpoint(
         _manifest_bytes=manifest_bytes,
@@ -688,7 +816,7 @@ def prepare_checkpoint_load(directory: str | Path) -> VerifiedCheckpoint:
 
 
 def verify_checkpoint(directory: str | Path) -> dict[str, Any]:
-    """Verify exact inventory, lineage identities, and every payload checksum."""
+    """Verify exact v1 schema, inventory, lineage identities, and payload checksums."""
 
     return prepare_checkpoint_load(directory).manifest
 
