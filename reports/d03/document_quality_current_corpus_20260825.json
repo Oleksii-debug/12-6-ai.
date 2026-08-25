@@ -1,0 +1,46 @@
+{
+  "acceptance_rate": 1.0,
+  "accepted_documents": 9,
+  "by_mode": {
+    "code": {"accepted": 3, "input": 3, "rejected": 0},
+    "en": {"accepted": 3, "input": 3, "rejected": 0},
+    "uk": {"accepted": 3, "input": 3, "rejected": 0}
+  },
+  "current_view_authority": "CURRENT_COMMITTED_PROJECT_AUTHORED_MECHANICS_CORPUS_NOT_REPRESENTATIVE_100K_1M",
+  "current_view_sha256": "7ecfe6a72640d1956d6b0c1ee1675c4226f020c10fdcbfae63835da56feaf799",
+  "decisions_sha256": "b74b9404d47463ca51c20d8bec1913df00e9b3e38ed80e2589a3150cccf1d011",
+  "edge_samples": {
+    "accepted_near_boundary": [
+      {"accepted": true, "edge_margin": 0.716756, "excerpt": "def stable_hash(value: str) -> str: return hashlib.sha256(value.encode('utf-8')).hexdigest()", "id": "data10-code-001", "mode": "code", "reasons": [], "score": 100, "warnings": []},
+      {"accepted": true, "edge_margin": 0.760496, "excerpt": "class Counter: def __init__(self): self.value = 0 def increment(self): self.value += 1 return self.value", "id": "data10-code-002", "mode": "code", "reasons": [], "score": 100, "warnings": []},
+      {"accepted": true, "edge_margin": 0.836017, "excerpt": "SELECT source_id, COUNT(*) FROM records WHERE split = 'train' GROUP BY source_id ORDER BY source_id;", "id": "data10-code-003", "mode": "code", "reasons": [], "score": 100, "warnings": []}
+    ],
+    "rejected_near_boundary": []
+  },
+  "input_documents": 9,
+  "input_manifest_sha256": "7ecfe6a72640d1956d6b0c1ee1675c4226f020c10fdcbfae63835da56feaf799",
+  "policy_manifest": {
+    "code": {"diversity_min_tokens": 20, "max_boilerplate_line_ratio": 0.7, "max_chars": 400000, "max_dominant_token_ratio": 0.38, "max_other_script_letter_ratio": 1.0, "max_repeated_line_ratio": 0.75, "max_symbol_ratio": 0.78, "max_template_line_ratio": 0.7, "max_url_char_ratio": 0.45, "min_chars": 30, "min_code_structure_score": 2, "min_distinct_token_ratio": 0.1},
+    "en": {"diversity_min_tokens": 30, "max_boilerplate_line_ratio": 0.5, "max_chars": 250000, "max_dominant_token_ratio": 0.22, "max_other_script_letter_ratio": 0.2, "max_repeated_line_ratio": 0.6, "max_symbol_ratio": 0.4, "max_template_line_ratio": 0.5, "max_url_char_ratio": 0.25, "min_chars": 60, "min_code_structure_score": 0, "min_distinct_token_ratio": 0.2},
+    "policy_id": "d03-lightweight-uk-en-code-v1",
+    "policy_sha256": "97b9fe1452b22c6275a27f85524f670253a7f4012377361c4cb007004aeccd1d",
+    "reject_disallowed_controls": true,
+    "reject_replacement_character": true,
+    "reject_surrogates": true,
+    "schema_version": "12-6.document-quality-policy.v1",
+    "score_weights_version": "interpretable-penalty-v1",
+    "uk": {"diversity_min_tokens": 30, "max_boilerplate_line_ratio": 0.5, "max_chars": 250000, "max_dominant_token_ratio": 0.22, "max_other_script_letter_ratio": 0.2, "max_repeated_line_ratio": 0.6, "max_symbol_ratio": 0.4, "max_template_line_ratio": 0.5, "max_url_char_ratio": 0.25, "min_chars": 60, "min_code_structure_score": 0, "min_distinct_token_ratio": 0.2}
+  },
+  "quality_policy_id": "d03-lightweight-uk-en-code-v1",
+  "quality_policy_sha256": "97b9fe1452b22c6275a27f85524f670253a7f4012377361c4cb007004aeccd1d",
+  "quality_scope": "DOCUMENT_QUALITY_ONLY_NO_RIGHTS_PII_COPYRIGHT_OR_LID_AUTHORITY",
+  "rejected_documents": 0,
+  "rejection_reasons": {},
+  "representative_100k_1m_corpus_executed": false,
+  "run_sha256": "a032772427d7a0fdcfe6eadf68973556ddb4112421eef8e978bee5408954f140",
+  "schema_version": "12-6.document-quality-run.v1",
+  "source_bytes": 1454,
+  "source_path": "data/synthetic/data10/uk-en-code-train.txt",
+  "source_sha256": "059f04e01d6fc6b8224b373b08efbb37f09d546de35ed510afdb4587ebdb6012",
+  "truth_boundary": "At this source head the current committed UK/EN/code data is a project-authored mechanics corpus, not the requested representative 100K-1M corpus. These counts are current-corpus mechanics evidence only."
+}
