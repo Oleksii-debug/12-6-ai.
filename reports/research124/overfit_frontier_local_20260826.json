@@ -1,0 +1,191 @@
+{
+  "schema": "12-6.research124-overfit-frontier.v1",
+  "authority": "LOCAL_FREE_DIAGNOSTIC_NOT_PROMOTION",
+  "repository": "Oleksii-debug/12-6-ai.",
+  "base_branch": "learn03/real-500k-20260825",
+  "base_commit": "d2a9d2a2acb2ad899a8b6ee59b193751c4a81b8e",
+  "execution_note": "The LOCAL_FREE run was executed in a CPU sandbox from source identities reconstructed from the live GitHub base. The sandbox could not clone github.com, so this report commit itself was not the checkout used for execution.",
+  "fixed_control": {
+    "tokenizer": {
+      "version": "s0-byte-v1",
+      "config_sha256": "b04055c1061dd641dcab7cb9d62a931f09b8d1a070140a926ceb4e91d73ca8e1",
+      "vocab_sha256": "905ed40bb42cc4d550e228ff5f24158d504b38e8ed5974dfa3077bd5867ad571",
+      "vocab_size": 256,
+      "frozen": true
+    },
+    "corpus": {
+      "train_path": "data/s0/packaged/train.jsonl",
+      "train_git_blob_sha1": "b77ceabfce6464b5511cb9db94596ed1c6625f02",
+      "validation_path": "data/s0/packaged/validation.jsonl",
+      "validation_git_blob_sha1": "aaeddabc2df9b8c00175f592cf60c861b490ed58",
+      "train_records": 10,
+      "validation_records": 2,
+      "training_stream_byte_tokens": 1930,
+      "altered": false,
+      "representative": false,
+      "synthetic_project_fixture": true
+    },
+    "packing": "research41-byte-stream-cyclic-v1",
+    "batch_size": 4,
+    "sequence_length": 64,
+    "input_source_token_exposures_per_step": 256,
+    "optimized_target_tokens_per_step": 252,
+    "optimizer": "AdamW(lr=3e-4, betas=(0.9,0.95), eps=1e-8, weight_decay=0, clip_norm=1.0)",
+    "precision": "fp32",
+    "seed": 1337,
+    "model_source_blob": "c3879fe0ba9193d5a8176c284e1942f058ef7885",
+    "trainer_source_blob": "8fb5e9ce4c5417986ad1f086ebc16cd7538a151e",
+    "tokenizer_source_blob": "ee21cc40ba07d6e3bc82b20a8642658284f74959",
+    "scaling_source_blob": "04b5c3173f2af139e9228e422cc1245a533a6c5d"
+  },
+  "machine": {
+    "cpu": "INTEL(R) XEON(R) PLATINUM 8573C",
+    "logical_cpus": 5,
+    "python": "3.13.5",
+    "torch": "2.10.0+cpu",
+    "cuda_available": false,
+    "kernel": "Linux 6.18.35 x86_64",
+    "compute_class": "LOCAL_FREE_CPU"
+  },
+  "models": [
+    {
+      "parameters": 95568,
+      "best_measured": {
+        "optimizer_step": 844,
+        "optimized_target_tokens": 212688,
+        "input_source_token_exposures": 216064,
+        "corpus_input_epochs": 111.9502590673575,
+        "train_bpb": 2.7074962399448186,
+        "heldout_bpb": 2.9693358065885307,
+        "heldout_bpb_en": 3.76883229458327,
+        "heldout_bpb_uk": 2.534628590682646,
+        "generalization_gap_bpb": 0.2618395666437121,
+        "validation_entropy_bits": 3.1329654750257436,
+        "source_token_visit_min": 111,
+        "source_token_visit_max": 112,
+        "exact_continuation_full_fraction": 0.0,
+        "exact_continuation_mean_fraction": 0.00625,
+        "canary_full_fraction": 0.0,
+        "canary_mean_exact_fraction": 0.006944444444444444,
+        "generation_max_train_copy_run_bytes": 7
+      },
+      "first_measured_negative_return": {
+        "optimizer_step": 905,
+        "corpus_input_epochs": 120.04145077720207,
+        "train_bpb": 2.685768967249046,
+        "heldout_bpb": 2.978854759958437
+      },
+      "late_memorization_probe": {
+        "corpus_input_epochs": 256.0,
+        "train_bpb": 2.213153306543097,
+        "heldout_bpb": 3.582439750978041,
+        "generalization_gap_bpb": 1.3692864444349442,
+        "validation_entropy_bits": 2.203842852375295,
+        "exact_continuation_full_fraction": 0.0,
+        "exact_continuation_mean_fraction": 0.04375,
+        "canary_mean_exact_fraction": 0.020833333333333332,
+        "generation_max_train_copy_run_bytes": 8
+      }
+    },
+    {
+      "parameters": 467808,
+      "best_measured": {
+        "optimizer_step": 392,
+        "optimized_target_tokens": 98784,
+        "input_source_token_exposures": 100352,
+        "corpus_input_epochs": 51.99585492227979,
+        "train_bpb": 2.5686048472518244,
+        "heldout_bpb": 2.9894047959165513,
+        "heldout_bpb_en": 3.7136343593587258,
+        "heldout_bpb_uk": 2.5956221815734684,
+        "generalization_gap_bpb": 0.4207999486647269,
+        "validation_entropy_bits": 3.1832044950806266,
+        "source_token_visit_min": 51,
+        "source_token_visit_max": 52,
+        "exact_continuation_full_fraction": 0.0,
+        "exact_continuation_mean_fraction": 0.008333333333333333,
+        "canary_full_fraction": 0.0,
+        "canary_mean_exact_fraction": 0.006944444444444444,
+        "generation_max_train_copy_run_bytes": 6
+      },
+      "first_measured_negative_return": {
+        "optimizer_step": 422,
+        "corpus_input_epochs": 55.97512953367875,
+        "train_bpb": 2.4895580895381797,
+        "heldout_bpb": 3.013157311355162
+      },
+      "late_memorization_probe": {
+        "corpus_input_epochs": 128.0,
+        "train_bpb": 1.0841176459911497,
+        "heldout_bpb": 3.7752913832954493,
+        "generalization_gap_bpb": 2.6911737373042994,
+        "validation_entropy_bits": 1.9683526907816973,
+        "exact_continuation_full_fraction": 0.2,
+        "exact_continuation_mean_fraction": 0.50625,
+        "canary_mean_exact_fraction": 0.34027777777777773,
+        "generation_max_train_copy_run_bytes": 48
+      }
+    },
+    {
+      "parameters": 1037696,
+      "best_measured": {
+        "optimizer_step": 332,
+        "optimized_target_tokens": 83664,
+        "input_source_token_exposures": 84992,
+        "corpus_input_epochs": 44.03730569948186,
+        "train_bpb": 2.3694019583418258,
+        "heldout_bpb": 2.8763567057494352,
+        "heldout_bpb_en": 3.598069099334501,
+        "heldout_bpb_uk": 2.48394274269748,
+        "generalization_gap_bpb": 0.5069547474076095,
+        "validation_entropy_bits": 2.9718038256805723,
+        "source_token_visit_min": 44,
+        "source_token_visit_max": 45,
+        "exact_continuation_full_fraction": 0.0,
+        "exact_continuation_mean_fraction": 0.0125,
+        "canary_full_fraction": 0.0,
+        "canary_mean_exact_fraction": 0.006944444444444444,
+        "generation_max_train_copy_run_bytes": 8
+      },
+      "first_measured_negative_return": {
+        "optimizer_step": 362,
+        "corpus_input_epochs": 48.016580310880826,
+        "train_bpb": 2.311642274771641,
+        "heldout_bpb": 2.9492232505815053
+      },
+      "late_memorization_probe": {
+        "corpus_input_epochs": 128.0,
+        "train_bpb": 0.9255934999796905,
+        "heldout_bpb": 4.6222881474860715,
+        "generalization_gap_bpb": 3.696694647506381,
+        "validation_entropy_bits": 1.0653080963852382,
+        "exact_continuation_full_fraction": 0.3,
+        "exact_continuation_mean_fraction": 0.6625,
+        "canary_full_fraction": 0.3333333333333333,
+        "canary_mean_exact_fraction": 0.7222222222222222,
+        "generation_max_train_copy_run_bytes": 48
+      }
+    }
+  ],
+  "resume_evidence": {
+    "fresh_process": true,
+    "467808_step362_model_state_sha256": "6a4064fa11e03fce8e8f06a5b7dfae1c3b51c503f43d87433321a6e2a705f011",
+    "1037696_step362_model_state_sha256": "a4df2d4d335901dc4378e6e38c8a2e12016eefb3a150b7bb84e493d14c43d782",
+    "independent_resume_reproduced_identical_model_state": true
+  },
+  "evaluation_nonmutation": "asserted by pre/post model-state SHA-256 at every reported evaluation",
+  "conclusion": {
+    "larger_models_overfit_earlier_in_corpus_epochs": true,
+    "frontier_order": [
+      "1037696 params: best ~44.0 passes, first measured negative return ~48.0",
+      "467808 params: best ~52.0 passes, first measured negative return ~56.0",
+      "95568 params: best ~112.0 passes, first measured negative return ~120.0"
+    ],
+    "stop_policy": "For this exact finite corpus, stop at the best held-out checkpoint, never by shuffled-epoch count alone. Use a conservative pre-frontier cap of 40 corpus-input passes for ~1M, 48 for ~500K, and 104 for ~100K; evaluate every <=4 passes near the frontier. Stop immediately if held-out BPB rises at two consecutive evaluations while train BPB falls, or if generalization gap widens by >=0.10 BPB from the current best without a new held-out minimum. Treat every repeated source token as reuse, not new data."
+  },
+  "rejections": [
+    "The experimental BPE candidate was not used because tokenizers==0.23.1 was absent locally and network installation was unavailable; no substitute tokenizer was silently introduced.",
+    "The S0 corpus is a synthetic project-authored fixture, not a real representative pretraining corpus, so this experiment does not qualify MILESTONE-100 as a representative learned Base artifact.",
+    "milestone100/first-learned-base-20260826 contains a placeholder milestone module rather than executable orchestrator evidence and is not accepted as proof."
+  ]
+}
