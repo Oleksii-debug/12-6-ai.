@@ -1,0 +1,128 @@
+name: RUNTIME-25 vLLM CPU Import Config
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/runtime25-vllm-cpu-probe.yml"
+      - "src/twelve_six/inference/vllm_native_llama.py"
+      - "src/twelve_six/inference/transformers_llama.py"
+      - "src/twelve_six/inference/parity.py"
+      - "src/twelve_six/checkpoint/**"
+      - "tools/build_vllm_s0_smoke_fixture.py"
+      - "tools/validate_vllm_native_llama.py"
+      - "tests/test_vllm_native_llama.py"
+      - "requirements/locks/transformers-linux-x86_64/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  vllm-cpu-import-config:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Prove exact source checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected="${{ github.event.pull_request.head.sha || github.sha }}"
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$expected"
+          printf 'RUNTIME25_SOURCE_SHA=%s\n' "$actual"
+
+      - name: Install vLLM 0.27.1 CPU release
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libtcmalloc-minimal4
+          python -m pip install --upgrade pip
+          wheel="vllm-0.27.1+cpu-cp38-abi3-manylinux_2_34_x86_64.whl"
+          curl --fail --location --retry 3 \
+            "https://github.com/vllm-project/vllm/releases/download/v0.27.1/$wheel" \
+            --output "$wheel"
+          sha256sum "$wheel" | tee runtime25-vllm-wheel.sha256
+          python -m pip install "$wheel" \
+            --extra-index-url https://download.pytorch.org/whl/cpu
+          python -m pip install -e . --no-deps
+
+      - name: Configure documented CPU preload libraries
+        shell: bash
+        run: |
+          set -euo pipefail
+          site="$(python -c 'import site; print(site.getsitepackages()[0])')"
+          iomp="$(find "$site" -name libiomp5.so -print -quit || true)"
+          tcmalloc="$(ldconfig -p | awk '/libtcmalloc_minimal.so.4/{print $NF; exit}')"
+          preload="$tcmalloc"
+          if [ -n "$iomp" ]; then
+            preload="${preload:+$preload:}$iomp"
+          fi
+          test -n "$preload"
+          printf 'LD_PRELOAD=%s\n' "$preload" >> "$GITHUB_ENV"
+
+      - name: Verify installed runtime versions
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import importlib.metadata as metadata
+          import json
+
+          versions = {
+              name: metadata.version(name)
+              for name in ("vllm", "torch", "transformers", "safetensors")
+          }
+          assert versions["vllm"] == "0.27.1", versions
+          assert versions["torch"].startswith("2.13.0"), versions
+          assert versions["transformers"] == "5.15.0", versions
+          with open("runtime25-installed-versions.json", "w", encoding="utf-8") as handle:
+              json.dump(versions, handle, sort_keys=True, indent=2)
+              handle.write("\n")
+          print(json.dumps(versions, sort_keys=True))
+          PY
+
+      - name: Run vLLM-independent adapter regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pytest -q tests/test_vllm_native_llama.py
+
+      - name: Build real random-init 12-6 export and vLLM Llama payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/build_vllm_s0_smoke_fixture.py \
+            --output-root artifacts/runtime25-vllm-cpu
+
+      - name: Execute actual vLLM import, registry and ModelConfig probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/validate_vllm_native_llama.py probe \
+            --model-dir artifacts/runtime25-vllm-cpu/vllm-model \
+            --expected-vllm-version 0.27.1 \
+            --output artifacts/runtime25-vllm-cpu/vllm-import-config.json
+
+      - name: Upload vLLM CPU probe evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: runtime25-vllm-cpu-import-config
+          path: |
+            artifacts/runtime25-vllm-cpu/fixture.json
+            artifacts/runtime25-vllm-cpu/vllm-model/12-6-vllm-runtime.json
+            artifacts/runtime25-vllm-cpu/vllm-import-config.json
+            runtime25-installed-versions.json
+            runtime25-vllm-wheel.sha256
+          if-no-files-found: error
+          retention-days: 30
