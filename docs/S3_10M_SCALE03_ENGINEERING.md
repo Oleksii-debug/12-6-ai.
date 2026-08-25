@@ -2,51 +2,80 @@
 
 Status: engineering execution package only; no stage freeze, promotion, audit verdict, capability claim, or paid compute authorization.
 
-## Live geometry decision
+## Live 10M candidate audit and decision
 
-The repository changed while SCALE-03 was running. PR #144 introduced a newer current-execution S3 candidate, `S3-SCALE02-BYTE-GQA-v1`, without executing it. SCALE-03 therefore pivoted rather than freezing the older D11 shape.
+Three relevant ~10M geometries exist in the live repository/worktree lineage.
 
-Current executable S3 geometry, owned by PR #144 exact source `0721728cc40cf736205ae11a998ca177cc1e5ed9`:
+### Selected CURRENT execution geometry — PR #144
+
+`S3-SCALE02-BYTE-GQA-v1`, owned by PR #144 exact source `0721728cc40cf736205ae11a998ca177cc1e5ed9`:
 
 - 10,000,640 trainable parameters;
-- canonical runtime vocab 256, context 1,024;
+- vocab 256, context 1,024;
 - D=256, L=12;
 - 8 query heads / 2 KV heads, head width 32;
 - SwiGLU F=864;
 - tied embedding/output;
 - ModelSpec `61caa5469123e23b9b72fc2024140bfca84c4c480dcb0a7e712ba800a4f22998`.
 
-Exact algebra is embedding 65,536 + 12 x (attention 163,840 + SwiGLU 663,552 + norms 512) + final norm 256 = 10,000,640. The workflow also constructs the real PyTorch object and requires the actual trainable count to equal this algebra.
+Exact algebra is embedding 65,536 + 12 x (attention 163,840 + SwiGLU 663,552 + norms 512) + final norm 256 = 10,000,640. This is selected for the CURRENT vertical because it is the only ~10M shape among the three that directly matches the accepted `s0-byte-v1` runtime vocabulary and can therefore execute the real canonical checkpoint-to-first-party-inference path today. It is not an S3 tokenizer/corpus freeze; a future tokenizer selection must reopen vocabulary/geometry tradeoffs.
 
-D11 PR #67 remains a relevant future-tokenizer alternative: 9,999,680 parameters, V8192, ctx2048, D320, L8, GQA 6/2, Dh48, F704, ModelSpec `ebf3a73851c273211ff9f5f242d28afe22b109e22aacb998e5c0e86d5ff09a55`. It is not selected for the CURRENT execution vertical because the accepted runtime tokenizer is `s0-byte-v1` with vocab 256 and the first-party loader correctly rejects an 8192-row ModelSpec against it.
+### Existing repository S3 stage config
 
-SCALE-03 does not edit #144 or #67 canonical candidate config paths. It only binds their exact identities in additive SCALE-03 execution code.
+`configs/stages/s3_10m.json` on the exact-green #89 base:
+
+- 10,059,840 parameters;
+- vocab 8,192, context 1,024;
+- D=320, L=6;
+- MHA 8/8, head width 40;
+- SwiGLU F=864;
+- ModelSpec `3b6fc1b397e6fea69c2f249ce8ab8eedaad8ca1b13b88b8d2328a6abcf34791a`.
+
+This is a valid existing synthetic/model benchmark shape and the repaired KV-cache incumbent #138 now uses it for an S3 CPU cache benchmark. It is not selected for the integrated SCALE-03 vertical because vocab 8,192 cannot bind the current canonical ByteTokenizer.
+
+### D11 future-tokenizer alternative — PR #67
+
+`S3-D11-EXPLICIT-Q-GQA-v1`:
+
+- 9,999,680 parameters;
+- vocab 8,192, context 2,048;
+- D=320, L=8;
+- GQA 6/2, head width 48;
+- SwiGLU F=704;
+- ModelSpec `ebf3a73851c273211ff9f5f242d28afe22b109e22aacb998e5c0e86d5ff09a55`.
+
+It is an attractive future-tokenizer geometry because it lands almost exactly on budget and doubles context, but it currently has the same tokenizer/inference mismatch as the repository stage config. SCALE-03 keeps it as a future-tokenizer alternative rather than pretending an 8,192-row tokenizer is already selected.
+
+SCALE-03 edits none of the three source config files. It binds exact source identities in additive execution-only code.
 
 ## Live base and collision boundary
 
-Execution remains stacked on terminal-green PR #89 head `c631c024e641dac102036fafee6d78ba31c067cd`. #106/#130 own S1 mechanics, #70 owns compute planning, active D05 PRs own checkpoint core, #138 owns KV-cache implementation, and SCALE-04 has an active ~100M accelerator-readiness claim. Those surfaces are not edited here.
+Execution is stacked on terminal-green PR #89 head `c631c024e641dac102036fafee6d78ba31c067cd`. #106/#130 own S1 mechanics, #70 owns compute planning, active D05 PRs own checkpoint core, #138 owns KV-cache implementation, and SCALE-04 has an active ~100M accelerator-readiness claim. Those surfaces are not edited here.
 
 ## What the machine probe executes
 
 `tools/run_s3_10m_engineering_probe.py` runs on an exact checkout under the D08 hash-locked Linux x86-64 environment and:
 
-1. instantiates the real random-init 10,000,640-parameter model;
-2. records construction time, `/proc` RSS/high-water values and exact parameter bytes;
-3. executes deterministic controlled-byte-vocabulary no-grad forward;
-4. executes the real D02 `Trainer.train_microbatch()` forward/loss/backward/gradient-normalization+clip/AdamW update path;
-5. requires finite loss and an actual parameter delta;
-6. saves checkpoint-v1 through the D05 trainer adapter;
-7. verifies it, measures the full verified in-memory byte snapshot, reloads into fresh model+Trainer objects, and checks weights/counters;
-8. reconstructs the checkpoint through canonical `load_first_party_backend`, binds real `s0-byte-v1`, and performs two-token first-party generation;
-9. records current GQA runtime/cache algebra and a handoff-only S4 summary.
+1. validates all three live 10M candidate identities/counts;
+2. instantiates the real random-init selected 10,000,640-parameter model;
+3. records construction time, `/proc` RSS/high-water values and exact parameter bytes;
+4. executes deterministic controlled-byte-vocabulary no-grad forward;
+5. executes the real D02 `Trainer.train_microbatch()` forward/loss/backward/gradient-normalization+clip/AdamW update path;
+6. requires finite loss and an actual parameter delta;
+7. saves checkpoint-v1 through the D05 trainer adapter;
+8. verifies it, measures the full verified in-memory byte snapshot, reloads into fresh model+Trainer objects, and checks weights/counters;
+9. reconstructs the checkpoint through canonical `load_first_party_backend`, binds real `s0-byte-v1`, and performs two-token first-party generation;
+10. records current GQA runtime/cache algebra and a handoff-only S4 summary.
 
 The controlled synthetic byte-vocabulary stream is mechanics data only. ByteTokenizer compatibility is a current runtime fact, not an S3 corpus/tokenizer freeze or quality claim.
 
 ## GQA runtime reality
 
-The live ModelSpec uses GQA and therefore reduces K/V projection parameters. However the current attention implementation repeats K/V to query-head count before SDPA. As a result, the intended GQA training activation-memory reduction is not currently realized even though parameter savings are real.
+The selected ModelSpec uses 8/2 GQA and therefore reduces K/V projection parameters. On the #89 model implementation, however, K/V are repeated to query-head count before SDPA. The intended GQA training activation-memory reduction is therefore not realized on this base even though parameter savings are real.
 
-For the selected S3 candidate, native/unexpanded bf16 K/V payload at batch 1 and full 1,024 context is 3,145,728 bytes. The current repeated-to-eight-head equivalent is 12,582,912 bytes. A real model-native cache remains owned by PR #138; its observed exact head `9669ee5c39690e1c8861c13485d722025c0f784e` was red, so SCALE-03 does not inherit or duplicate it.
+For the selected S3 candidate, native/unexpanded bf16 K/V payload at batch 1 and full 1,024 context is 3,145,728 bytes. The #89 repeated-to-eight-head equivalent is 12,582,912 bytes.
+
+PR #138 is still the single cache incumbent. Its original head `9669ee5c39690e1c8861c13485d722025c0f784e` was red on a Ruff `Self` defect. The incumbent has since been repaired in place and advanced to `8f20b5c81c83796492353de3b68e2679b54fc980`, with model-native unexpanded cache, canonical incremental generation and an S3 CPU cache benchmark. Its exact-head terminal workflows are separate authority; SCALE-03 does not stack on or duplicate that cache code.
 
 ## Checkpoint scale boundary
 
@@ -54,7 +83,7 @@ Checkpoint-v1 closes TOCTOU by retaining every serialized payload byte in `Verif
 
 ## Prepared GPU mechanics pilot — not launched
 
-`configs/runs/s3_10m_scale03_gpu_pilot.json` is bound to the current 10,000,640-param byte-compatible candidate:
+`configs/runs/s3_10m_scale03_gpu_pilot.json` is bound to the selected 10,000,640-param byte-compatible candidate:
 
 - one CUDA GPU, planning floor 12 GiB;
 - bf16 only when `torch.cuda.is_bf16_supported()` passes;
