@@ -14,6 +14,7 @@ from twelve_six.model_rebalance import (
     bound_modelspec_identity_sha256,
     build_stage_candidate_table,
     infer_tokenizer_vocab_size,
+    main,
     one_training_step_smoke,
     search_model_geometry,
 )
@@ -185,6 +186,35 @@ def test_checked_in_stage_candidate_table_matches_live_solver() -> None:
                 "head_dim",
             ):
                 assert retained[field] == current["model"][field]
+
+
+def test_module_cli_search_emits_tokenizer_bound_candidate(tmp_path: Path) -> None:
+    output = tmp_path / "search.json"
+    result = main(
+        [
+            "search",
+            "--stage-config",
+            str(ROOT / "configs/stages/s1_100k.json"),
+            "--tokenizer-identity",
+            str(IDENTITY_PATH),
+            "--target-parameters",
+            "100000",
+            "--layers",
+            "2,3,4",
+            "--heads",
+            "2,4",
+            "--head-dims",
+            "8,12,16",
+            "--output",
+            str(output),
+        ]
+    )
+    assert result == 0
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["schema"] == "12-6.model-geometry-search.v1"
+    assert payload["tokenizer"]["vocab_size"] == 472
+    assert payload["candidates"][0]["parameter_count"] == 99_024
+    assert payload["candidates"][0]["bound_modelspec_identity_sha256"]
 
 
 def test_representative_real_models_construct_and_train_one_step() -> None:
