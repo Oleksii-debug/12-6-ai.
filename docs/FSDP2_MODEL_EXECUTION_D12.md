@@ -10,17 +10,19 @@ The LOCAL_FREE execution target is the committed S1-shaped `configs/stages/s1_10
 
 1. Canonical 12-6 parameters are plain `Tensor` objects before FSDP2. The previous runtime passed the full five-dimensional mesh plus `DataParallelMeshDims`, a PyTorch path intended for parameters that are already DTensors on a full SPMD mesh. The canonical path now slices the existing mesh to the 1D FSDP or 2D HSDP data-parallel submesh. A separate `fsdp2_spmd_kwargs()` method retains the pre-existing-DTensor case.
 2. The D02 Trainer computes and normalizes gradients by iterating ordinary local tensors. FSDP2 exposes sharded parameter gradients as DTensors. `FSDP2Trainer` is a D12-only adapter that keeps the D02 loop but uses PyTorch's DTensor-aware `torch.nn.utils.clip_grad_norm_` for the global norm after the existing token normalization.
-3. FSDP2 is applied bottom-up to every `TransformerBlock` and then to the root `TwelveSixDecoder`. The optimizer is created only after `fully_shard`, so AdamW owns the DTensor parameters.
-4. A failed FSDP forward can leave per-iteration sharding state undefined. The execution path exercises `FSDPModule.reset_iter_state()` with an over-context forward and proves that a valid forward succeeds afterward.
+3. Canonical 12-6 ties `token_embedding.weight` to `lm_head.weight`. A real two-rank probe exposed that treating this shared parameter as an implicit root-owned weight can break FSDP2 backward. The adapter now follows PyTorch's weight-tied module-group pattern: token embedding plus LM head are explicitly `fully_shard`ed together first, then each `TransformerBlock`, then the root `TwelveSixDecoder`.
+4. The optimizer is created only after `fully_shard`, so AdamW owns the DTensor parameters.
+5. A failed FSDP forward can leave per-iteration sharding state undefined. The execution path exercises `FSDPModule.reset_iter_state()` with an over-context forward and proves that a valid forward succeeds afterward.
 
 ## LOCAL_FREE execution
 
-The integration test and CLI execute all of the following on two local CPU processes with Gloo:
+The integration test and CLI are built to execute all of the following on two local CPU processes with Gloo:
 
 - default process group initialization;
 - the existing D12 `ParallelPlan` and five-dimensional `DeviceMesh`;
 - slicing to the FSDP data-parallel submesh;
-- `fully_shard` on real 12-6 transformer blocks and the root model;
+- explicit tied embedding/LM-head FSDP2 module grouping;
+- bottom-up `fully_shard` on real 12-6 transformer blocks and the root model;
 - DTensor parameter verification;
 - deterministic synthetic token data;
 - `DistributedSampler` with exact rank partition accounting;
