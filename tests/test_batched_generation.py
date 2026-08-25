@@ -216,7 +216,7 @@ def test_zero_padding_budget_buckets_only_equal_lengths() -> None:
         max_padding_tokens=0,
     )
 
-    assert sorted(backend.calls) == [(1,), (2, 2)]
+    assert sorted(backend.calls) == [(1, 1), (2,)]
     assert output.stats.right_padding_positions_scheduled == 0
     assert output.stats.model_batch_calls == 2
 
