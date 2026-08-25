@@ -1,0 +1,15 @@
+{
+  "schema": "12-6.corpus-freeze.v1",
+  "status": "NOT_FROZEN",
+  "source_sha": "REPLACE_WITH_EXACT_CAMPAIGN_SHA",
+  "manifest_sha256": null,
+  "eligible_train_tokens": 0,
+  "rights_review_complete": false,
+  "contamination_gate_pass": false,
+  "reproducible_build_pass": false,
+  "tokenizer_artifact_sha256": null,
+  "train_manifest_sha256": null,
+  "validation_manifest_sha256": null,
+  "test_manifest_sha256": null,
+  "notes": "Template is fail-closed. Engineering source metadata is not a rights decision; current corpus foundation approves zero external sources."
+}

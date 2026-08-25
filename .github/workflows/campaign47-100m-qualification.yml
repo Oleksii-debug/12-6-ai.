@@ -1,0 +1,110 @@
+name: CAMPAIGN-47 100M Qualification
+
+on:
+  pull_request:
+    paths:
+      - "src/twelve_six/campaign_100m.py"
+      - "src/twelve_six/campaign_100m_authority.py"
+      - "tools/run_100m_campaign.py"
+      - "tests/test_campaign_100m.py"
+      - "configs/campaigns/**"
+      - "docs/CAMPAIGN_47_100M.md"
+      - ".github/workflows/campaign47-100m-qualification.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  locked-cpu-qualification:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Prove exact source checkout
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Verify canonical hash-locked environment
+        run: >-
+          python tools/verify_locked_environment.py
+          --profile linux-x86_64
+          --source-sha "$SOURCE_SHA"
+          --evidence-out campaign47-locked-environment.json
+          --run-repo-checks
+
+      - name: Create exact locked execution environment
+        run: |
+          python -m venv .campaign47-locked
+          .campaign47-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .campaign47-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          .campaign47-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/dev.lock.txt
+          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .campaign47-locked/bin/python -m pip install --no-deps --no-build-isolation -e .
+
+      - name: Campaign contract tests
+        run: >-
+          .campaign47-locked/bin/python -m pytest -q
+          tests/test_campaign_100m.py
+          tests/test_s3_10m_engineering.py
+
+      - name: Real S2 approximately 1M Trainer update
+        run: |
+          .campaign47-locked/bin/python tools/run_100m_campaign.py s2-probe \
+            --repo-root . \
+            --source-sha "$SOURCE_SHA" \
+            --sequence-length 256 \
+            --seed 20260825 \
+            --output campaign47-s2-1m-evidence.json
+
+      - name: Real S4 approximately 100M construction and memory preflight
+        run: |
+          .campaign47-locked/bin/python tools/run_100m_campaign.py s4-preflight \
+            --repo-root . \
+            --source-sha "$SOURCE_SHA" \
+            --seed 20260825 \
+            --output campaign47-s4-100m-preflight.json
+
+      - name: Validate measured qualification evidence
+        run: |
+          .campaign47-locked/bin/python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          source = os.environ["SOURCE_SHA"]
+          s2 = json.loads(Path("campaign47-s2-1m-evidence.json").read_text())
+          s4 = json.loads(Path("campaign47-s4-100m-preflight.json").read_text())
+          assert s2["schema"] == "12-6.campaign47-s2-1m-evidence.v1"
+          assert s2["source_sha"] == source
+          assert s2["candidate"]["instantiated_trainable_parameters"] == 995552
+          assert s2["execution"]["optimizer_steps"] == 1
+          assert s2["execution"]["parameter_changed"] is True
+          assert s2["truth_boundary"]["representative_of_gpu_throughput"] is False
+          assert s4["schema"] == "12-6.campaign47-s4-100m-preflight.v1"
+          assert s4["source_sha"] == source
+          assert s4["candidate"]["instantiated_trainable_parameters"] == 99797760
+          assert s4["construction"]["measured_parameter_tensor_bytes"] == 399191040
+          assert s4["truth_boundary"]["gpu_memory_measured"] is False
+          assert s4["truth_boundary"]["distributed_execution"] is False
+          PY
+
+      - name: Upload exact-head qualification evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: campaign47-100m-qualification-${{ env.SOURCE_SHA }}
+          path: |
+            campaign47-locked-environment.json
+            campaign47-s2-1m-evidence.json
+            campaign47-s4-100m-preflight.json
+          if-no-files-found: error
+          retention-days: 30
