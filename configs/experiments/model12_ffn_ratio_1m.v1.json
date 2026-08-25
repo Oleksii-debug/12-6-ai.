@@ -1,18 +1,18 @@
 {
   "candidates": [
     {
+      "d_ff": 352,
+      "ffn_expansion_ratio": 2.75,
+      "head_dim": 16,
+      "id": "ffn-r2.75-hd16",
+      "model_identity_sha256": "e35166a7b54f1fbd48665827d76f786be470671f296480fe77c2bfe1b3b85bbf"
+    },
+    {
       "d_ff": 320,
       "ffn_expansion_ratio": 2.5,
       "head_dim": 24,
       "id": "ffn-r2.50-hd24",
       "model_identity_sha256": "2ae3c59828f10a7b55b5a393db2679183b14baef203bd24780ac67533ab8f79f"
-    },
-    {
-      "d_ff": 304,
-      "ffn_expansion_ratio": 2.375,
-      "head_dim": 28,
-      "id": "ffn-r2.375-hd28",
-      "model_identity_sha256": "4cb12aec01a02fb9b987182db84f2c7cd982d07341f43cc309fb3d09d112c1dd"
     },
     {
       "d_ff": 288,
@@ -22,26 +22,29 @@
       "model_identity_sha256": "18284b303eb31cef5191ddb3ed4ddba5ce51789aadf4b14cc90d4226c5c527b5"
     },
     {
-      "d_ff": 272,
-      "ffn_expansion_ratio": 2.125,
-      "head_dim": 36,
-      "id": "ffn-r2.125-hd36",
-      "model_identity_sha256": "c4ed4d844ae9764670cc7bf6b60449869bb28bf7d5d895991d8a48210ee4ea03"
-    },
-    {
       "d_ff": 256,
       "ffn_expansion_ratio": 2.0,
       "head_dim": 40,
       "id": "ffn-r2.00-hd40",
       "model_identity_sha256": "eb03aeb9598f77eee2f78d4e9bd91c5c230c1fae4d9d429bb21f54edc7aeb129"
+    },
+    {
+      "d_ff": 224,
+      "ffn_expansion_ratio": 1.75,
+      "head_dim": 48,
+      "id": "ffn-r1.75-hd48",
+      "model_identity_sha256": "4b81bbc2665fe395354210564fa1028e904fe6221bb1a7aedc44f5a68fa20b0a"
     }
   ],
+  "config_identity_sha256": "763c67832f25720b05a4c3ab34e353d320e86fda5671a8f0a68948b03eaba515",
   "control_id": "control-hd32-ff288-r2.25",
   "evaluation_every_steps": 2,
-  "schema": "12-6.model12-ffn-ratio-1m-plan.v1",
+  "incumbent_source_commit": "003e268655b672df9df00afb8a32dbec4db5d2e1",
+  "schema": "12-6.model12-ffn-ratio-1m-plan.v2",
   "truth_boundary": {
     "architecture_frozen": false,
     "paid_compute": false,
+    "recommendation": "experimental_only",
     "s0_loss_selection_allowed": false
   }
 }
