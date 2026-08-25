@@ -12,7 +12,7 @@ language-model quality evidence.
 The experiment is stacked on the D07 model-native KV-cache implementation rather than
 creating a second decoder or cache path.
 
-## Current implementation audit
+## Implementation audit and scaling fix
 
 `ModelSpec` already represents MHA, GQA and MQA through `n_heads` and `n_kv_heads`.
 K/V projection widths and parameter accounting scale with `n_kv_heads`. The D07 cache
@@ -20,29 +20,33 @@ also stores unexpanded K/V as:
 
 `[batch, n_kv_heads, sequence, head_dim]`
 
-That part has the correct GQA memory geometry.
+That part already had the correct GQA memory geometry.
 
-The remaining scaling defect is inside `CausalSelfAttention._attend()`: for GQA/MQA it
-calls `_expand_kv()` and `repeat_interleave()` to materialize K/V back to query-head
-width before `scaled_dot_product_attention()`. Therefore current Product semantics gain:
+The D07 incumbent path exposed a scaling defect inside `CausalSelfAttention._attend()`:
+for GQA/MQA it called `_expand_kv()` and `repeat_interleave()` to materialize K/V back
+to query-head width before `scaled_dot_product_attention()`. The persistent cache was
+correct, but CUDA attention would still lose grouped K/V geometry at the kernel boundary.
 
-- fewer K/V projection parameters;
-- fewer stored KV-cache bytes;
+MODEL-35 fixes that defect conservatively. For GQA/MQA tensors on CUDA, `_attend()` now
+passes the unexpanded K/V tensors directly to PyTorch SDPA with `enable_gqa=True`. MHA
+is unchanged. CPU and other non-CUDA backends retain the established explicit-repeat
+reference path instead of relying on an undocumented native-GQA backend contract.
 
-but do not preserve grouped K/V geometry inside the attention kernel. This is a
-performance/scaling defect, not a semantic correctness defect.
-
-The exact locked x86 runtime is Torch 2.13.0. Its SDPA API exposes `enable_gqa=True`.
-MODEL-35 therefore measures native-GQA parity and host-specific timing against the
-existing repeat-expansion path. A Product kernel change must remain conditional on exact
-locked-runtime evidence; CPU results are not a CUDA fused-kernel claim.
+This routing is deliberate. The exact locked runtime is Torch 2.13.0, whose SDPA API
+exposes `enable_gqa=True`, but PyTorch documents GQA as experimental and documents
+support for FlashAttention, cuDNN attention, math attention on CUDA tensors, and
+memory-efficient attention on NVIDIA CUDA. Therefore the patch removes the known CUDA
+materialization defect without pretending that every backend has the same native-GQA
+support. CPU tests verify the fallback and device-routing contract; target-GPU evidence
+is still required before any throughput or memory-performance claim.
 
 Primary background:
 - Ainslie et al., "GQA: Training Generalized Multi-Query Transformer Models from
   Multi-Head Checkpoints", arXiv:2305.13245.
 - PyTorch 2.13 `torch.nn.functional.scaled_dot_product_attention`, `enable_gqa=True`.
 
-These sources motivate the experiment only. They do not decide 12-6 geometry.
+These sources motivate and constrain the implementation. They do not decide 12-6 model
+quality or stage geometry.
 
 ## Matched parameter candidates
 
@@ -62,6 +66,20 @@ projection savings into SwiGLU `d_ff` instead of simply making the GQA model sma
 
 S4 is analytical/engineering extrapolation only. The recorded D01 S4 MHA candidate is
 12Q/12KV, D=768, L=10, Dh=64, d_ff=2240, context 2048.
+
+## Parameter allocation
+
+At S3 the near-matched comparison reallocates capacity rather than discarding it:
+
+| Geometry | Attention total across 6 layers | MLP total across 6 layers |
+| --- | ---: | ---: |
+| 8Q / 8KV | 2,457,600 | 4,976,640 |
+| 8Q / 4KV | 1,843,200 | 5,592,960 |
+| 8Q / 2KV | 1,536,000 | 5,898,240 |
+| 8Q / 1KV | 1,382,400 | 6,053,760 |
+
+This matters for interpretation: a GQA loss result is not being bought simply by reducing
+the whole model parameter count.
 
 ## KV-cache scaling
 
@@ -86,6 +104,11 @@ At bf16:
 The savings multiply directly with batch/concurrent sequences. At S4, batch 8 is
 approximately 480 MiB vs 160 MiB of bf16 KV cache before allocator/runtime overhead.
 That is large enough to affect serving design; S2's absolute saving is much smaller.
+
+GQA does not reduce the number of query-head attention scores at fixed `n_heads`.
+Its direct inference benefits here are narrower K/V projections, smaller persistent cache,
+less K/V bandwidth, and on the CUDA-native path no explicit replication of K/V from
+`n_kv_heads` to `n_heads` before SDPA.
 
 ## Supporting LOCAL_FREE experiment
 
@@ -118,10 +141,12 @@ The fixture is too small and artificial to rank language-model quality. It does 
 8/4 GQA has normal initialization, finite gradients and short-run optimization while
 halving cache. Stronger sharing did not produce a better mechanics signal in this probe.
 
-In the supporting environment, PyTorch native `enable_gqa=True` matched the explicit
-repeat path with maximum tested logit error 0.0. Attention microprobes were faster for
-native GQA, but those host-specific CPU timings are not recorded as Product performance
-claims. Exact Torch 2.13 workflow evidence is required.
+In the supporting local environment, direct PyTorch `enable_gqa=True` matched the
+explicit-repeat output with maximum tested logit error 0.0. Host-specific CPU native-GQA
+microprobe timings are retained only as diagnostics because PyTorch's documented GQA
+support boundary is CUDA and the project CPU reference path intentionally remains the
+explicit-repeat implementation. Exact Torch 2.13 workflow evidence and target-GPU
+measurements are required before runtime performance claims.
 
 ## Stage-triggered recommendation
 
@@ -131,8 +156,8 @@ claims. Exact Torch 2.13 workflow evidence is required.
    justify introducing more sharing.
 3. **S3 approximately 10M: first GQA qualification trigger.** Prefer 8Q/4KV
    (two query heads per KV head) as the primary GQA candidate, with current 8/8 MHA kept
-   as the control. Do not freeze GQA until a longer real-corpus run and exact runtime
-   kernel evidence pass.
+   as the control. Do not freeze GQA until a longer real-corpus run and target-runtime
+   evidence pass.
 4. **S4 approximately 100M+: GQA becomes the default engineering candidate.** Use
    12Q/4KV, d_ff=2581, 100,376,832 parameters for qualification unless S3 evidence
    rejects GQA. Keep a matched MHA control for the first S4 pilot.
@@ -151,7 +176,7 @@ A GQA stage candidate must pass all of the following before freeze:
 - finite multi-seed training on the intended tokenizer/corpus;
 - no material validation-loss regression against near-matched MHA;
 - exact cached-vs-stateless generation parity within the established numerical tolerance;
-- exact-lock native/fused GQA kernel support, or an explicitly measured fallback;
+- exact-lock CUDA native-GQA execution on target hardware, with safe CPU fallback retained;
 - measured KV-cache bytes equal the configured `n_kv_heads` geometry;
 - generation/throughput evidence on the target hardware before any performance claim;
 - checkpoint manifests continue to bind the exact ModelSpec and InitSpec;
