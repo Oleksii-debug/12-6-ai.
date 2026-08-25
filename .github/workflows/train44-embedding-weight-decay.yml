@@ -1,0 +1,77 @@
+name: TRAIN-44 Embedding Weight Decay
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/train44-embedding-weight-decay.yml"
+      - "configs/runs/train44_embedding_weight_decay.experimental.json"
+      - "src/twelve_six/training/embedding_weight_decay.py"
+      - "tests/test_embedding_weight_decay.py"
+      - "src/twelve_six/training/optimization_experiments.py"
+      - "src/twelve_six/training/lr_range_experiment.py"
+      - "src/twelve_six/training/trainer.py"
+
+permissions:
+  contents: read
+
+jobs:
+  locked-local-free-embedding-wd:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Prove exact source checkout
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Bind exact D08 environment without inheriting unrelated branch lint blockers
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: >-
+          python tools/verify_locked_environment.py
+          --profile linux-x86_64
+          --source-sha "$SOURCE_SHA"
+          --evidence-out train44-locked-environment.json
+      - name: Create exact locked experiment environment
+        run: |
+          python -m venv .train44-locked
+          .train44-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .train44-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          .train44-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/dev.lock.txt
+          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .train44-locked/bin/python -m pip install --no-deps --no-build-isolation -e .
+      - name: Run focused static and checkpoint-resume checks
+        run: |
+          .train44-locked/bin/ruff check src/twelve_six/training/embedding_weight_decay.py tests/test_embedding_weight_decay.py
+          .train44-locked/bin/ruff format --check src/twelve_six/training/embedding_weight_decay.py tests/test_embedding_weight_decay.py
+          .train44-locked/bin/python -m pytest -q tests/test_embedding_weight_decay.py
+      - name: Execute fixed 468K embedding decay comparison
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          .train44-locked/bin/python -m twelve_six.training.embedding_weight_decay run \
+            --repo-root . \
+            --source-sha "$SOURCE_SHA" \
+            --plan configs/runs/train44_embedding_weight_decay.experimental.json \
+            --output train44-embedding-weight-decay-evidence.json \
+            --summary-output train44-embedding-weight-decay-summary.json
+          .train44-locked/bin/python -m twelve_six.training.embedding_weight_decay validate \
+            train44-embedding-weight-decay-evidence.json \
+            --expected-source-sha "$SOURCE_SHA"
+          cat train44-embedding-weight-decay-summary.json
+      - name: Upload TRAIN-44 evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: train44-embedding-weight-decay-evidence
+          path: |
+            train44-locked-environment.json
+            train44-embedding-weight-decay-evidence.json
+            train44-embedding-weight-decay-summary.json
+          if-no-files-found: error
+          retention-days: 30
