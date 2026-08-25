@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "run_kind": "single_gpu_mechanics_pilot",
+  "state": "PREPARED_NOT_LAUNCHED",
+  "data_authority": "CONTROLLED_SYNTHETIC_MECHANICS_ONLY",
+  "stage_config": "configs/stages/s3_10m.json",
+  "device": "cuda:0",
+  "output_root": "runs/train15-single-gpu",
+  "authorization": {
+    "provision_compute": false,
+    "preprovisioned_accelerator_only": true,
+    "paid_compute_launch": false,
+    "notes": "This runner consumes only a GPU already attached to the process. It contains no cloud provisioning or purchase path."
+  },
+  "trainer": {
+    "learning_rate": 0.0003,
+    "weight_decay": 0.0,
+    "betas": [0.9, 0.95],
+    "eps": 1e-8,
+    "max_steps": 4,
+    "warmup_steps": 0,
+    "scheduler": "constant",
+    "gradient_accumulation_steps": 1,
+    "gradient_clip_norm": 1.0,
+    "precision": "fp16",
+    "seed": 1515,
+    "deterministic_algorithms": false,
+    "deterministic_warn_only": false
+  },
+  "pilot": {
+    "steps": 4,
+    "resume_after_step": 2,
+    "microbatch_size": 1,
+    "sequence_length": 256,
+    "data_seed": 9000,
+    "inference_new_tokens": 4
+  },
+  "truth_boundary": {
+    "purpose": "single-GPU execution, AMP, transfer, optimizer, checkpoint/resume, metrics and post-training inference mechanics",
+    "not_evidence_for": [
+      "corpus quality",
+      "tokenizer selection",
+      "stage promotion",
+      "model quality",
+      "cross-precision equality",
+      "cross-hardware bitwise reproducibility"
+    ],
+    "bf16": "Use --precision bf16 only on CUDA devices positively accepted by the incumbent D02 precision resolver.",
+    "fp16": "Default pilot mode uses CUDA autocast float16 plus GradScaler while model and AdamW master-weight storage remain fp32."
+  }
+}
