@@ -207,23 +207,28 @@ def _file_hash(path: Path) -> tuple[str, int]:
     return digest.hexdigest(), size
 
 
-def _artifacts(root: Path) -> tuple[ArtifactRecord, ...]:
-    records: list[ArtifactRecord] = []
+def _payload_paths(root: Path) -> tuple[str, ...]:
+    paths: list[str] = []
     for path in sorted(root.rglob("*")):
         if path.is_symlink():
             raise ValueError(f"checkpoint payload must not be symlink: {path.relative_to(root)}")
-        if not path.is_file():
-            continue
-        relative = path.relative_to(root).as_posix()
-        if relative in _CONTROL:
-            continue
-        digest, size = _file_hash(path)
-        record = ArtifactRecord(relative, digest, size)
-        record.validate()
-        records.append(record)
-    if not records:
+        if path.is_file():
+            relative = path.relative_to(root).as_posix()
+            if relative not in _CONTROL:
+                paths.append(relative)
+    if not paths:
         raise ValueError("checkpoint contains no DCP payload artifacts")
-    return tuple(records)
+    return tuple(paths)
+
+
+def _artifact_record(root: Path, relative: str) -> ArtifactRecord:
+    path = root / relative
+    if path.is_symlink() or not path.is_file():
+        raise ValueError(f"missing/non-regular artifact: {relative}")
+    digest, size = _file_hash(path)
+    record = ArtifactRecord(relative, digest, size)
+    record.validate()
+    return record
 
 
 def _artifact_set(records: Sequence[ArtifactRecord]) -> str:
@@ -270,6 +275,63 @@ def _agree(dist: Any, value: str, field: str) -> None:
         raise RuntimeError(f"ranks disagree on {field}")
 
 
+def _parallel_artifacts(dist: Any, root: Path) -> tuple[ArtifactRecord, ...]:
+    paths = _rank0(dist, lambda: list(_payload_paths(root)), "payload enumeration")
+    if not isinstance(paths, list) or not all(isinstance(item, str) for item in paths):
+        raise RuntimeError("payload enumeration returned invalid path list")
+    rank = dist.get_rank()
+    world_size = dist.get_world_size()
+    local: list[dict[str, Any]] = []
+    local_error: str | None = None
+    try:
+        for index, relative in enumerate(paths):
+            if index % world_size == rank:
+                local.append(asdict(_artifact_record(root, relative)))
+    except Exception as exc:
+        local_error = f"rank={rank} {type(exc).__name__}: {exc}"
+    gathered: list[dict[str, Any] | None] = [None] * world_size
+    dist.all_gather_object(gathered, {"error": local_error, "records": local})
+    failures = [
+        item["error"]
+        for item in gathered
+        if isinstance(item, Mapping) and item.get("error") is not None
+    ]
+    if failures:
+        raise ValueError("distributed artifact hashing failed: " + "; ".join(failures))
+    records = [
+        ArtifactRecord(**row)
+        for partition in gathered
+        if isinstance(partition, Mapping)
+        for row in partition.get("records", [])
+    ]
+    records.sort(key=lambda item: item.path)
+    if [item.path for item in records] != sorted(paths):
+        raise RuntimeError("parallel integrity pass did not cover exact payload inventory")
+    return tuple(records)
+
+
+def _parallel_verify_records(
+    dist: Any, root: Path, records: Sequence[ArtifactRecord]
+) -> None:
+    rank = dist.get_rank()
+    world_size = dist.get_world_size()
+    local_error: str | None = None
+    try:
+        for index, record in enumerate(records):
+            if index % world_size != rank:
+                continue
+            actual = _artifact_record(root, record.path)
+            if actual.sha256 != record.sha256 or actual.size_bytes != record.size_bytes:
+                raise ValueError(f"artifact integrity mismatch: {record.path}")
+    except Exception as exc:
+        local_error = f"rank={rank} {type(exc).__name__}: {exc}"
+    errors: list[str | None] = [None] * world_size
+    dist.all_gather_object(errors, local_error)
+    failures = [item for item in errors if item is not None]
+    if failures:
+        raise ValueError("distributed artifact verification failed: " + "; ".join(failures))
+
+
 def _write_json(path: Path, value: Any) -> None:
     path.write_bytes(_json_bytes(value) + b"\n")
 
@@ -299,8 +361,9 @@ def _manifest_identity(raw: Mapping[str, Any]) -> ScaleCheckpointIdentity:
     return result
 
 
-def verify_scale_checkpoint(checkpoint_dir: str | os.PathLike[str]) -> dict[str, Any]:
-    """Stream-verify one committed local-filesystem generation without reading shards whole."""
+def _read_manifest(
+    checkpoint_dir: str | os.PathLike[str],
+) -> tuple[dict[str, Any], tuple[ArtifactRecord, ...]]:
     root = Path(checkpoint_dir)
     if root.is_symlink() or not root.is_dir():
         raise ValueError("checkpoint root must be real directory")
@@ -347,11 +410,6 @@ def verify_scale_checkpoint(checkpoint_dir: str | os.PathLike[str]) -> dict[str,
     }
     if actual != set(paths):
         raise ValueError("payload inventory differs from manifest")
-    for record in records:
-        path = root / record.path
-        digest, size = _file_hash(path)
-        if path.is_symlink() or digest != record.sha256 or size != record.size_bytes:
-            raise ValueError(f"artifact integrity mismatch: {record.path}")
     artifact_hash = _artifact_set(records)
     if artifact_hash != _sha(raw.get("artifact_set_sha256"), "artifact_set_sha256"):
         raise ValueError("artifact_set_sha256 mismatch")
@@ -363,7 +421,18 @@ def verify_scale_checkpoint(checkpoint_dir: str | os.PathLike[str]) -> dict[str,
         raise ValueError("aggregate checkpoint identity mismatch")
     if not isinstance(raw.get("rank_state_present"), bool):
         raise TypeError("rank_state_present must be bool")
-    return dict(raw)
+    return dict(raw), records
+
+
+def verify_scale_checkpoint(checkpoint_dir: str | os.PathLike[str]) -> dict[str, Any]:
+    """Standalone stream verifier; distributed load parallelizes the shard integrity pass."""
+    root = Path(checkpoint_dir)
+    raw, records = _read_manifest(root)
+    for record in records:
+        actual = _artifact_record(root, record.path)
+        if actual.sha256 != record.sha256 or actual.size_bytes != record.size_bytes:
+            raise ValueError(f"artifact integrity mismatch: {record.path}")
+    return raw
 
 
 def save_scale_checkpoint(
@@ -427,9 +496,9 @@ def save_scale_checkpoint(
 
     dcp.save(state_dict=state, checkpoint_id=staging)
     dist.barrier()
+    records = _parallel_artifacts(dist, staging)
 
     def publish() -> dict[str, Any]:
-        records = _artifacts(staging)
         artifacts_hash = _artifact_set(records)
         saved_topology = _topology(plan)
         topology_hash = _hash(saved_topology)
@@ -484,9 +553,14 @@ def load_scale_checkpoint(
     mode = ResumeMode(mode)
     raw = _rank0(
         dist,
-        lambda: verify_scale_checkpoint(checkpoint_dir),
-        "checkpoint verification",
+        lambda: _read_manifest(checkpoint_dir)[0],
+        "checkpoint manifest verification",
     )
+    artifact_rows = raw.get("artifacts")
+    if not isinstance(artifact_rows, list):
+        raise TypeError("artifacts must be list")
+    records = tuple(ArtifactRecord(**item) for item in artifact_rows)
+    _parallel_verify_records(dist, Path(checkpoint_dir), records)
     identity = _manifest_identity(raw)
     if expected_identity_sha256 is not None:
         _sha(expected_identity_sha256, "expected_identity_sha256")
