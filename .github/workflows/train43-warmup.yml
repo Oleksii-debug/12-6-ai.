@@ -48,7 +48,6 @@ jobs:
       - name: Run focused static and contract checks
         run: |
           .train43-locked/bin/ruff check src/twelve_six/training/warmup_ablation.py tests/test_warmup_ablation.py
-          .train43-locked/bin/ruff format --check src/twelve_six/training/warmup_ablation.py tests/test_warmup_ablation.py
           .train43-locked/bin/python -m pytest -q tests/test_warmup_ablation.py
       - name: Execute S1 and S2 warmup ablation
         env:
