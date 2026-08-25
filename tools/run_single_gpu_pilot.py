@@ -38,7 +38,7 @@ def _load_json(path: Path) -> dict[str, Any]:
     with path.open("r", encoding="utf-8") as handle:
         value = json.load(handle)
     if not isinstance(value, dict):
-        raise ValueError(f"{path} must contain a JSON object")
+        raise TypeError(f"{path} must contain a JSON object")
     return value
 
 
@@ -58,7 +58,7 @@ def _validate_config(payload: dict[str, Any]) -> None:
         raise ValueError("pilot must remain explicitly non-corpus synthetic mechanics evidence")
     authorization = payload.get("authorization")
     if not isinstance(authorization, dict):
-        raise ValueError("authorization mapping is required")
+        raise TypeError("authorization mapping is required")
     if authorization.get("provision_compute") is not False:
         raise ValueError("pilot runner must not provision compute")
     if authorization.get("preprovisioned_accelerator_only") is not True:
@@ -66,7 +66,7 @@ def _validate_config(payload: dict[str, Any]) -> None:
 
     pilot = payload.get("pilot")
     if not isinstance(pilot, dict):
-        raise ValueError("pilot mapping is required")
+        raise TypeError("pilot mapping is required")
     steps = _require_int(pilot, "steps", 2)
     resume_after = _require_int(pilot, "resume_after_step", 1)
     if resume_after >= steps:
@@ -79,7 +79,7 @@ def _validate_config(payload: dict[str, Any]) -> None:
 def _trainer_config(payload: dict[str, Any], precision_override: str | None) -> TrainerConfig:
     raw = payload.get("trainer")
     if not isinstance(raw, dict):
-        raise ValueError("trainer mapping is required")
+        raise TypeError("trainer mapping is required")
     values = dict(raw)
     if precision_override is not None:
         values["precision"] = precision_override
@@ -256,7 +256,7 @@ def _run(payload: dict[str, Any], args: argparse.Namespace) -> dict[str, Any]:
     resume_after = int(pilot["resume_after_step"])
     checkpoint_dirs: list[Path] = []
 
-    def run_one_step(step_index: int) -> None:
+    def run_one_step(active_runner: SingleDeviceStepRunner, step_index: int) -> None:
         batch = build_synthetic_lm_batch(
             vocab_size=stage.model.vocab_size,
             batch_size=int(pilot["microbatch_size"]),
@@ -264,12 +264,12 @@ def _run(payload: dict[str, Any], args: argparse.Namespace) -> dict[str, Any]:
             seed=int(pilot["data_seed"]) + step_index,
             pin_memory=device.type == "cuda",
         )
-        measured = runner.train_microbatch(batch)
+        measured = active_runner.train_microbatch(batch)
         step_metrics.append(measured)
         _append_metric(metrics_path, measured)
 
     for step_index in range(1, resume_after + 1):
-        run_one_step(step_index)
+        run_one_step(runner, step_index)
 
     midpoint = output_dir / f"checkpoint-step-{trainer.optimizer_step:06d}"
     identity = _checkpoint_identity(
@@ -312,7 +312,7 @@ def _run(payload: dict[str, Any], args: argparse.Namespace) -> dict[str, Any]:
         synchronize_for_metrics=True,
     )
     for step_index in range(resume_after + 1, config.max_steps + 1):
-        run_one_step(step_index)
+        run_one_step(runner, step_index)
 
     final_checkpoint = output_dir / f"checkpoint-step-{trainer.optimizer_step:06d}"
     final_identity = _checkpoint_identity(
