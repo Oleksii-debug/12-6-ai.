@@ -256,7 +256,7 @@ def _rank0(dist: Any, operation: Callable[[], Any], phase: str) -> Any:
     if dist.get_rank() == 0:
         try:
             status = {"ok": True, "value": operation()}
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - serialize any rank-0 failure to all ranks
             status = {"ok": False, "type": type(exc).__name__, "error": str(exc)}
     else:
         status = None
@@ -287,7 +287,7 @@ def _parallel_artifacts(dist: Any, root: Path) -> tuple[ArtifactRecord, ...]:
         for index, relative in enumerate(paths):
             if index % world_size == rank:
                 local.append(asdict(_artifact_record(root, relative)))
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - every rank must report hashing failures collectively
         local_error = f"rank={rank} {type(exc).__name__}: {exc}"
     gathered: list[dict[str, Any] | None] = [None] * world_size
     dist.all_gather_object(gathered, {"error": local_error, "records": local})
@@ -323,7 +323,7 @@ def _parallel_verify_records(
             actual = _artifact_record(root, record.path)
             if actual.sha256 != record.sha256 or actual.size_bytes != record.size_bytes:
                 raise ValueError(f"artifact integrity mismatch: {record.path}")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - every rank must report verification failures collectively
         local_error = f"rank={rank} {type(exc).__name__}: {exc}"
     errors: list[str | None] = [None] * world_size
     dist.all_gather_object(errors, local_error)
