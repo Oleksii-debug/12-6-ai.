@@ -1,0 +1,48 @@
+{
+  "schema_version": "12-6.adam-epsilon-plan.v1",
+  "authority": "LOCAL_FREE_ADAM_EPSILON_PLAN_PROVISIONAL",
+  "purpose": "Isolate AdamW epsilon on the established fixed-vocabulary approximately 500K research-family model under otherwise identical training.",
+  "model": {
+    "family": "RESEARCH41_FIXED_VOCAB_CONTEXT",
+    "source_pr": 162,
+    "parameter_count": 467808,
+    "vocab_size": 256,
+    "max_seq_len": 256,
+    "d_model": 96,
+    "n_layers": 4,
+    "n_heads": 6,
+    "n_kv_heads": 6,
+    "head_dim": 16,
+    "d_ff": 256
+  },
+  "controls": {
+    "learning_rate": 0.0003,
+    "weight_decay": 0.0,
+    "betas": [0.9, 0.95],
+    "scheduler": "constant",
+    "warmup_steps": 0,
+    "gradient_clip_norm": 1.0,
+    "gradient_accumulation_steps": 1,
+    "batch_size": 2,
+    "sequence_length": 128,
+    "execution_steps": 32,
+    "schedule_horizon_steps": 64,
+    "seed": 1337
+  },
+  "epsilon_values": [1e-8, 1e-6, 1e-4],
+  "precisions": ["fp32", "bf16"],
+  "validation_precision": "fp32",
+  "materiality_thresholds": {
+    "final_validation_loss_relative": 0.005,
+    "training_loss_last_relative": 0.005,
+    "median_relative_update_l2_relative": 0.05,
+    "gradient_norm_median_relative": 0.05,
+    "max_step_loss_relative": 0.01
+  },
+  "decision_policy": {
+    "baseline_epsilon": 1e-8,
+    "stop_retuning_only_if_all_supported_precisions_and_all_tested_epsilons_are_nonmaterial": true,
+    "bf16_autocast_runtime_probe_required": true,
+    "representative_corpus_quality_claimed": false
+  }
+}
