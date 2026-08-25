@@ -1,0 +1,66 @@
+{
+  "schema": "12-6.s3-10m-gpu-pilot.v1",
+  "status": "PREPARED_NOT_LAUNCHED",
+  "paid_compute_authorized": false,
+  "canonical_base": "random_init",
+  "candidate": {
+    "id": "S3-D11-EXPLICIT-Q-GQA-v1",
+    "source_pr": 67,
+    "source_sha": "2728b762cd998ca99403e84c6e4b33e6ae8ed29b",
+    "model_spec_sha256": "ebf3a73851c273211ff9f5f242d28afe22b109e22aacb998e5c0e86d5ff09a55",
+    "expected_parameters": 9999680
+  },
+  "hardware": {
+    "nodes": 1,
+    "gpus_per_node": 1,
+    "minimum_cuda_memory_gib_for_initial_pilot": 12,
+    "distributed": false
+  },
+  "training": {
+    "precision": "bf16",
+    "require_cuda_bf16_support": true,
+    "sequence_length": 1024,
+    "micro_batch_size": 4,
+    "gradient_accumulation_steps": 8,
+    "optimizer_steps": 256,
+    "optimized_tokens": 8380416,
+    "optimizer": "AdamW",
+    "learning_rate": 0.0003,
+    "betas": [0.9, 0.95],
+    "eps": 1e-8,
+    "weight_decay": 0.1,
+    "gradient_clip_norm": 1.0,
+    "scheduler": "constant_mechanics_pilot",
+    "seed": 20260825
+  },
+  "checkpoint": {
+    "format": "12-6-checkpoint-v1",
+    "every_optimizer_steps": 32,
+    "fresh_trainer_recovery_required": true,
+    "resume_from_last_verified_committed_step": true
+  },
+  "runtime_estimate": {
+    "training_flops_first_order_6N_tokens": 502808869601280,
+    "assumed_effective_tflops_range": [1.0, 5.0],
+    "compute_only_seconds_range": [100.6, 502.8],
+    "wall_clock_planning_range_minutes_including_checkpoint_overhead": [3, 15],
+    "status": "ESTIMATE_NOT_MEASURED_ON_GPU"
+  },
+  "launch": {
+    "working_directory": "repository root",
+    "command": "python tools/run_s3_10m_engineering_probe.py --repo-root . --source-sha $(git rev-parse HEAD) --output evidence/s3-10m-gpu-pilot.json --checkpoint-root artifacts/s3-10m-gpu-pilot/checkpoints --device cuda --precision bf16 --batch-size 4 --sequence-length 1024 --optimizer-steps 256 --gradient-accumulation-steps 8 --checkpoint-every 32 --learning-rate 0.0003 --weight-decay 0.1 --seed 20260825 --cpu-threads 2"
+  },
+  "failure_recovery": {
+    "non_finite_or_ambiguous_update": "stop; do not continue the poisoned Trainer; restore the latest verified checkpoint into a fresh model and fresh Trainer",
+    "checkpoint_failure_after_committed_step": "do not blindly replay the committed step; inspect artifact failure and resume from the latest prior verified checkpoint",
+    "oom": "restart from latest verified checkpoint with micro_batch_size halved; preserve sequence length and raise gradient accumulation to keep effective token batch approximately constant",
+    "bf16_unavailable": "do not silently downgrade; stop and explicitly select fp32 or a supported accelerator"
+  },
+  "truth_boundary": {
+    "data": "controlled mechanics only until a reviewed S3 corpus/tokenizer is frozen",
+    "tokenizer_frozen": false,
+    "capability_training": false,
+    "promotion_authority": false,
+    "audit_authority": false
+  }
+}

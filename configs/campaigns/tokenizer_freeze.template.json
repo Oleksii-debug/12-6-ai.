@@ -1,0 +1,16 @@
+{
+  "schema": "12-6.tokenizer-freeze.v1",
+  "status": "NOT_FROZEN",
+  "source_sha": "REPLACE_WITH_EXACT_CAMPAIGN_SHA",
+  "algorithm": "bytelevel_bpe",
+  "vocab_size": 32768,
+  "artifact_sha256": null,
+  "ordered_vocab_sha256": null,
+  "training_manifest_sha256": null,
+  "corpus_manifest_sha256": null,
+  "runtime_version": "tokenizers==0.23.1",
+  "round_trip_pass": false,
+  "repeatability_pass": false,
+  "heldout_fertility_measured": false,
+  "notes": "Template is fail-closed. FROZEN is valid only after real corpus-bound training, repeatability, round-trip and held-out fertility evidence."
+}

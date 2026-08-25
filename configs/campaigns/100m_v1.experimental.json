@@ -1,0 +1,153 @@
+{
+  "schema": "12-6.campaign47-100m.v1",
+  "status": "QUALIFICATION_PROGRAM_NOT_MAIN_LAUNCH",
+  "canonical_base": "random_init_pretraining_only",
+  "paid_compute_authorized": false,
+  "promotion_authority": false,
+  "architecture": {
+    "candidate_id": "S4-D11-GQA-LONGCTX-v1",
+    "source_pr": 67,
+    "source_sha": "2728b762cd998ca99403e84c6e4b33e6ae8ed29b",
+    "model_spec_sha256": "d6ce8b0f44d5601c56fa0b39bfe77cc8863203d3c6ee32701cf897b5a80ab979",
+    "expected_parameters": 99797760,
+    "vocab_size": 32768,
+    "max_context": 4096,
+    "d_model": 768,
+    "layers": 12,
+    "query_heads": 12,
+    "kv_heads": 4,
+    "head_dim": 64,
+    "d_ff": 2016,
+    "tied_embeddings": true,
+    "selection": "campaign provisional; exact-head construction and GPU pilot required before main launch"
+  },
+  "tokenizer": {
+    "selected_family": "bytelevel_bpe",
+    "required_vocab_size": 32768,
+    "runtime_source_pr": 73,
+    "runtime_source_sha": "3527bf50d5d6cd7d4cbf9e477863430a31873baa",
+    "runtime": "tokenizers==0.23.1 isolated hash-locked experiment profile",
+    "current_status": "RUNTIME_PROVEN__32K_CORPUS_BOUND_ARTIFACT_NOT_FROZEN",
+    "freeze_template": "configs/campaigns/tokenizer_freeze.template.json"
+  },
+  "corpus": {
+    "foundation_source_pr": 64,
+    "foundation_source_sha": "cd259202bd7fd2bdbb4d75a40cb7b67bf0908593",
+    "current_status": "NOT_READY_ZERO_EXTERNAL_SOURCES_APPROVED",
+    "freeze_template": "configs/campaigns/corpus_freeze.template.json",
+    "heldout_validation_min_tokens": 10000000,
+    "heldout_test_min_tokens": 10000000
+  },
+  "training": {
+    "precision": "bf16_autocast_with_fp32_parameters",
+    "optimizer": "AdamW",
+    "learning_rate": 0.0003,
+    "betas": [0.9, 0.95],
+    "eps": 1e-8,
+    "weight_decay": 0.1,
+    "gradient_clip_norm": 1.0,
+    "scheduler": "cosine_with_warmup",
+    "warmup_fraction_main_run": 0.01,
+    "training_sequence_length": 2048,
+    "micro_batch_size_initial": 2,
+    "gradient_accumulation_steps_initial": 64,
+    "input_tokens_per_optimizer_step_initial": 262144,
+    "oom_policy": "halve micro batch and increase accumulation to preserve approximately the same token batch",
+    "precision_policy": "bf16 must be explicitly supported; no silent fp16/fp32 substitution"
+  },
+  "hardware": {
+    "minimum_campaign_topology": {
+      "nodes": 1,
+      "gpus_per_node": 1,
+      "distributed": false,
+      "preferred_device_memory_gib": 48,
+      "note": "48 GiB is a conservative pilot selection threshold, not a measured requirement"
+    },
+    "multi_gpu": {
+      "enabled": false,
+      "reason": "real NCCL canonical-model training is not yet campaign evidence and is unnecessary for the minimum ~100M campaign"
+    }
+  },
+  "checkpoint": {
+    "format": "12-6-checkpoint-v1",
+    "initial_main_cadence_optimizer_steps": 250,
+    "fresh_process_reload_required": true,
+    "100m_acceptance": "GPU pilot must measure save+verify, reload, payload bytes and peak CUDA memory; main throughput projection includes checkpoint overhead"
+  },
+  "evaluation": {
+    "freeze_template": "configs/campaigns/evaluation_freeze.template.json",
+    "required_before_main_launch": true,
+    "pretraining_metrics": [
+      "held-out validation loss/perplexity",
+      "random-init control delta",
+      "train-vs-heldout memorization gap",
+      "generation smoke samples with exact checkpoint/tokenizer identity",
+      "contamination and reserved-set checks",
+      "tokenizer fertility by language/script",
+      "small internally controlled generalization probes"
+    ]
+  },
+  "qualification_gates": [
+    {
+      "id": "G0_SMALL_DRY_RUN",
+      "mechanism": "existing D02 Real S0 Training workflow runs on every PR",
+      "acceptance": "exact campaign SHA; locked environment; real 40-step train evidence; no parent-head inheritance",
+      "current_status": "CAMPAIGN_HEAD_CI_REQUIRED"
+    },
+    {
+      "id": "G1_S2_1M_REPRESENTATIVE",
+      "acceptance": "995552-param exact D11 S2 model; real Trainer forward/backward/AdamW update; finite metrics; parameter change",
+      "command": "python tools/run_100m_campaign.py s2-probe --repo-root . --source-sha $(git rev-parse HEAD) --output evidence/campaign47-s2.json",
+      "current_status": "CAMPAIGN_HEAD_CI_REQUIRED"
+    },
+    {
+      "id": "G2_S3_10M_REPRESENTATIVE",
+      "acceptance": "9999680-param exact D11 S3 model; real update; D05 checkpoint save/verify/reload; exact campaign SHA",
+      "command": "python tools/run_s3_10m_engineering_probe.py --repo-root . --source-sha $(git rev-parse HEAD) --output evidence/campaign47-s3.json --device cpu --precision fp32 --batch-size 1 --sequence-length 256 --optimizer-steps 1 --gradient-accumulation-steps 1 --checkpoint-every 1",
+      "current_status": "CAMPAIGN_HEAD_RERUN_REQUIRED"
+    },
+    {
+      "id": "G3_S4_100M_CONSTRUCTION",
+      "acceptance": "exact 99797760-param construction and measured fp32 parameter tensor bytes",
+      "command": "python tools/run_100m_campaign.py s4-preflight --repo-root . --source-sha $(git rev-parse HEAD) --output evidence/campaign47-s4-preflight.json",
+      "current_status": "CAMPAIGN_HEAD_CI_REQUIRED"
+    },
+    {
+      "id": "G4A_S3_GPU_PILOT",
+      "acceptance": "real CUDA evidence provides preliminary end-to-end tokens/s including checkpoint work; cannot authorize main budget",
+      "current_status": "NOT_RUN_ON_CAMPAIGN_HEAD"
+    },
+    {
+      "id": "G4B_S4_100M_GPU_PILOT",
+      "acceptance": "real CUDA bf16 100M Trainer update; peak VRAM; checkpoint save/verify/reload; measured end-to-end tokens/s",
+      "command": "python tools/run_100m_campaign.py s4-gpu-pilot --repo-root . --source-sha $(git rev-parse HEAD) --provider-label PROVIDER --hardware-label GPU --hourly-cost-eur CURRENT_RATE --rate-evidence RATE_SOURCE --compute-class local_free --output evidence/campaign47-s4-gpu-pilot.json",
+      "paid_variant_rule": "change compute-class to paid only with explicit --authorize-paid-compute",
+      "current_status": "NOT_RUN"
+    },
+    {
+      "id": "G5_MAIN_LAUNCH",
+      "acceptance": "all exact-head gates PASS; 32K BPE/corpus/evaluation identities frozen; 100M measured budget within cap; explicit paid authorization",
+      "command": "python tools/run_100m_campaign.py qualify --source-sha $(git rev-parse HEAD) --variant eur_2k --s2 EVIDENCE_S2 --s3 EVIDENCE_S3 --s4 EVIDENCE_S4 --pilot EVIDENCE_100M_GPU --tokenizer TOKENIZER_FREEZE --corpus CORPUS_FREEZE --evaluation EVALUATION_FREEZE --output qualification.json",
+      "current_status": "BLOCKED_NO_PAYMENT_LAUNCH"
+    }
+  ],
+  "budget_variants": {
+    "eur_2k": {
+      "campaign_budget_eur": 2000,
+      "accelerator_compute_cap_eur": 1600,
+      "non_compute_reserve_eur": 400,
+      "tokens_per_seed": 2000000000,
+      "seeds": [20260825],
+      "intent": "minimum serious approximately 20 optimized tokens per parameter run"
+    },
+    "eur_10k": {
+      "campaign_budget_eur": 10000,
+      "accelerator_compute_cap_eur": 8000,
+      "non_compute_reserve_eur": 2000,
+      "tokens_per_seed": 3000000000,
+      "seeds": [20260825, 20260826, 20260827],
+      "intent": "three independent approximately 30 optimized tokens per parameter replicas rather than unproven multi-GPU scale-out"
+    }
+  },
+  "budget_truth": "No GPU throughput is prefilled. A 10M CUDA measurement is preliminary only. The main budget becomes authoritative only after the exact 100M CUDA pilot records end-to-end optimized tokens/s and current hourly rate evidence."
+}
