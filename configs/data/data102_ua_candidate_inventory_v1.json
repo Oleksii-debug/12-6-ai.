@@ -1,0 +1,108 @@
+{
+  "schema_version": "12-6.data102-ua-candidate-inventory.v1",
+  "captured_at": "2026-08-26",
+  "policy_ref": "policy://12-6/data/explicit-model-training-evidence-v1",
+  "public_accessibility_never_implies_training_eligibility": true,
+  "candidates": [
+    {
+      "candidate_id": "rada-laws-bounded-existing",
+      "family": "legislation_public_records",
+      "source": "Verkhovna Rada of Ukraine open-data laws text",
+      "source_version": "laws-texts/bounded-2026-08-25",
+      "status": "ELIGIBLE_EXISTING_PINNED_OBJECT_ONLY",
+      "training_eligible": true,
+      "reason": "Exact DATA-21/22 raw object SHA-256 and size are retained and official reuse rights are explicit. Any byte drift is rejected.",
+      "rights_evidence_path": "data/rights_evidence/data102_rada_laws_20260826.txt"
+    },
+    {
+      "candidate_id": "rada-trees-parliamentary-transcripts",
+      "family": "parliamentary_transcripts_public_records",
+      "source": "uacorpus/Rada_Trees",
+      "source_version": "visible repository revision 1b994a5 (full immutable content identity not yet retained)",
+      "status": "BLOCKED_NO_IMMUTABLE_CONTENT_SNAPSHOT",
+      "training_eligible": false,
+      "reason": "Dataset describes 1990-2024 parliamentary transcripts and CC BY 4.0, but DATA-24 requires an exact immutable source/version/content binding before acquisition."
+    },
+    {
+      "candidate_id": "perestoroha-ocr",
+      "family": "cultural_literary_historical",
+      "source": "lang-uk/perestoroha-ocr",
+      "source_version": "git:c7af19760e731a130e963eae29f3290c21296f3f",
+      "status": "BLOCKED_NO_IMMUTABLE_CONTENT_SNAPSHOT",
+      "training_eligible": false,
+      "reason": "Strong rights candidate: source work is described as public domain and dataset as CC BY 4.0, but exact parquet object hash/size is not retained in D03/DATA-24 yet."
+    },
+    {
+      "candidate_id": "verba-proverbs",
+      "family": "cultural_reference_paremiology",
+      "source": "dmytro-yemelianov/verba",
+      "source_version": "v1.0.2; visible repository revision efdd4b2",
+      "status": "BLOCKED_UNDERLYING_WORK_RIGHTS_AND_SNAPSHOT_REVIEW",
+      "training_eligible": false,
+      "reason": "Dataset metadata advertises CC BY 4.0, but DATA-102 does not infer that all underlying proverb-source works were relicensable; exact content snapshot is also not retained."
+    },
+    {
+      "candidate_id": "uinp-institutional-publications",
+      "family": "institutional_historical_reference",
+      "source": "Ukrainian Institute of National Memory website publications",
+      "source_version": "site terms observed 2026-08-26",
+      "status": "BLOCKED_PAGE_LEVEL_RIGHTS_AND_SNAPSHOT_REVIEW",
+      "training_eligible": false,
+      "reason": "Site footer states CC BY 4.0 unless otherwise indicated; exact pages must be checked for exceptions and content-addressed before DATA-24 can allow acquisition."
+    },
+    {
+      "candidate_id": "mon-institutional-educational-publications",
+      "family": "educational_institutional_reference",
+      "source": "Ministry of Education and Science of Ukraine publications",
+      "source_version": "site terms observed 2026-08-26",
+      "status": "BLOCKED_WORK_LEVEL_RIGHTS_AND_SNAPSHOT_REVIEW",
+      "training_eligible": false,
+      "reason": "The ministry site generally exposes CC BY 4.0 material, but linked textbooks and third-party works can have separate rights. Only individually licensed, content-addressed works may advance."
+    },
+    {
+      "candidate_id": "rukopys",
+      "family": "speech_archival_cultural",
+      "source": "UkrainianCatholicUniversity/rukopys",
+      "source_version": "relicense commit 84a800817a8bcb83b474cd9ae2a844a477f72190",
+      "status": "BLOCKED_MIXED_SUBSOURCE_RIGHTS",
+      "training_eligible": false,
+      "reason": "Top-level CC BY 4.0 relicense conflicts with README descriptions of some National Dictation/State Archive media under academic data-sharing terms. No global eligibility inference is permitted."
+    },
+    {
+      "candidate_id": "lapa-pretraining-high-quality",
+      "family": "mixed_web_pretraining",
+      "source": "lapa-llm/pretraining-high-quality",
+      "source_version": "observed 2026-08-26",
+      "status": "BLOCKED_LICENSE_CONFLICT_AND_UPSTREAM_RIGHTS",
+      "training_eligible": false,
+      "reason": "Dataset surfaces conflicting CC-BY-SA-4.0 versus CC-BY-4.0 metadata and aggregates web-derived upstreams whose source-level model-training rights are not resolved."
+    },
+    {
+      "candidate_id": "kobza-cleaned-ua",
+      "family": "web_crawl",
+      "source": "podarok/kobza-cleaned-ua",
+      "source_version": "observed 2026-08-26",
+      "status": "BLOCKED_UPSTREAM_PAGE_RIGHTS",
+      "training_eligible": false,
+      "reason": "Dataset-level CC-BY-4.0 metadata is not treated as proof that crawled underlying pages granted model-training/redistribution rights."
+    },
+    {
+      "candidate_id": "ukrainian-culturalheritage-books",
+      "family": "digitized_books_cultural_literary",
+      "source": "PleIAs/Ukrainian-CulturalHeritage-Books",
+      "source_version": "observed 2026-08-26",
+      "status": "BLOCKED_ITEM_LEVEL_PUBLIC_DOMAIN_REVIEW",
+      "training_eligible": false,
+      "reason": "Collection says most files are public domain and applies a date heuristic; DATA-102 requires item-level rights and immutable content identities rather than jurisdictional inference."
+    },
+    {
+      "candidate_id": "eu-acts-uk-to-langs",
+      "family": "legislation_translation",
+      "source": "lapa-llm/EU-acts-uk-to-langs",
+      "source_version": "observed 2026-08-26",
+      "status": "BLOCKED_NO_IMMUTABLE_CONTENT_SNAPSHOT",
+      "training_eligible": false,
+      "reason": "Promising official-law translation family with CC BY 4.0 redistribution metadata, but exact source object identity has not yet passed DATA-24 snapshot binding."
+    }
+  ]
+}
