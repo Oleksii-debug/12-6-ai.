@@ -1,0 +1,71 @@
+{
+  "schema": "12-6.data35-curriculum-config.v1",
+  "status": "EXPERIMENTAL_LOCAL_FREE",
+  "authority": "SMALL_MODEL_CURRICULUM_RESEARCH_NOT_PROMOTION",
+  "base_control": {
+    "parent_pr": 183,
+    "parent_sha": "0e6392574b56f4da4ed0368fdd0c0dffbcdd04da",
+    "model_index": 1,
+    "expected_parameters": 267912,
+    "tokenizer": "s0-byte-v1",
+    "optimizer_recipe": "research41-fixed-control-adamw-v1",
+    "precision": "fp32",
+    "batch_size": 4,
+    "sequence_length": 64
+  },
+  "data": {
+    "train_fixture": "data/synthetic/data10/uk-en-code-train.txt",
+    "train_authority": "PROJECT_AUTHORED_SYNTHETIC_MECHANICS_ONLY",
+    "heldout_source": "DATA-10 tokenizer probes at 077205ef2b1662a5029bc77b8fc762078cabeb17",
+    "heldout_used_for_schedule_selection": false,
+    "mixture_weight_units": {
+      "uk": 45,
+      "en": 35,
+      "code": 20
+    },
+    "mixture_plan_seed": 126
+  },
+  "budget": {
+    "optimized_loss_tokens": 65536,
+    "curriculum_prefix_tokens": 16384,
+    "checkpoints": [4096, 16384, 32768, 49152, 65536]
+  },
+  "paired_model_seeds": [1337, 7331, 20260825],
+  "candidates": [
+    {
+      "id": "fully_mixed",
+      "semantics": "incumbent MixturePlan/RestartCursor trace unchanged"
+    },
+    {
+      "id": "quality_first_then_mixed",
+      "semantics": "stable-partition the highest training-only mechanics-quality envelopes into the fixed prefix, then retain incumbent relative order"
+    },
+    {
+      "id": "ukrainian_first_then_mixed",
+      "semantics": "move the first available Ukrainian envelopes into the fixed prefix, then retain incumbent relative order",
+      "hypothesis": "the incumbent byte tokenizer costs about 1.868 tokens per Ukrainian codepoint on current controlled evidence, so an early Ukrainian prefix may help the byte-expensive modality before returning to the same mixed token multiset"
+    }
+  ],
+  "quality_proxy": {
+    "scope": "ordering_only_not_training_eligibility",
+    "uses_heldout": false,
+    "natural": "0.45*alphabetic_density + 0.35*word_type_ratio + 0.20*min(utf8_bytes/180,1)",
+    "code": "0.40*structure + 0.35*nonspace_character_type_ratio + 0.25*min(utf8_bytes/180,1)",
+    "structure": "mean(has_multiple_lines, has_indentation_or_sql_clause_break)"
+  },
+  "decision_rule": {
+    "primary_metric": "paired final aggregate heldout BPB delta versus fully_mixed",
+    "accept_if_mean_delta_bpb_at_most": -0.01,
+    "minimum_seed_wins_out_of_3": 2,
+    "maximum_allowed_mean_modality_regression_bpb": 0.02,
+    "otherwise": "REJECT_CURRICULUM_FOR_NEXT_SMALL_MODEL_CAMPAIGN"
+  },
+  "truth_boundary": [
+    "Same model architecture, InitSpec family, tokenizer, optimizer recipe, precision, total optimized-token budget and incumbent MixturePlan trace multiset are used for every candidate.",
+    "Candidate schedules are deterministic permutations of the incumbent source/offset envelopes, not a second source scheduler.",
+    "Final modality token counts and exact training batch multiset must be identical across candidates.",
+    "The current multilingual fixture is tiny, project-authored and recycled; results are mechanics evidence, not representative-corpus evidence.",
+    "No held-out probe may influence candidate construction, quality scoring or the predeclared decision rule.",
+    "No paid compute is authorized."
+  ]
+}
