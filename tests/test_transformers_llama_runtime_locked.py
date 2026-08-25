@@ -12,7 +12,7 @@ from twelve_six.inference.transformers_llama import (
 from twelve_six.model import TwelveSixDecoder, load_stage_config
 
 transformers = pytest.importorskip("transformers")
-from transformers import LlamaConfig, LlamaForCausalLM  # noqa: E402
+from transformers import LlamaConfig, LlamaForCausalLM
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -60,7 +60,7 @@ def test_locked_transformers_515_executes_12_6_weights_with_logit_parity() -> No
 
     probes = [
         list(b"Hello"),
-        list("Привіт".encode("utf-8")),
+        list("Привіт".encode()),
         list(b"def add(a, b):\n    return a + b\n"),
         [index % 256 for index in range(stage.model.max_seq_len)],
     ]
@@ -70,7 +70,7 @@ def test_locked_transformers_515_executes_12_6_weights_with_logit_parity() -> No
 
 def test_locked_transformers_greedy_generation_matches_first_party() -> None:
     stage, source, target = _build_pair()
-    prompt = list("Україна".encode("utf-8"))
+    prompt = list("Україна".encode())
     source_ids = list(prompt)
     target_ids = list(prompt)
 
