@@ -18,6 +18,10 @@ Normal training remains authoritative for clipping and updates. The existing Tra
 
 Each probe fingerprints the complete checkpoint-safe Trainer state, model state, optimizer state, existing parameter `.grad` buffers, model train/eval mode, Trainer counters, Python RNG, and Torch RNG before evaluation. RNG state is restored after the probe. Any mismatch is a hard failure. Focused tests populate real AdamW state and non-empty sentinel gradients before probing to prove the diagnostic preserves both.
 
+## Exact-head evidence
+
+The LOCAL_FREE workflow checks out the pull request head SHA explicitly, verifies `git rev-parse HEAD` against that SHA, and writes the same source SHA into the machine-readable diagnostic report before validation. Results from an older branch head are not treated as final evidence.
+
 ## Decision use
 
 Batch-size decisions should use the measured proxy together with the 1x/2x/4x empirical reduction at each scale and checkpoint. Clipping decisions should use actual Trainer clip frequency, not only probe norms. Learning-rate transfer should be qualified using update/weight ratios under the identical learning rate; scale-dependent growth is a reason to test a lower LR, while shrinkage alone is not authority to increase LR.
