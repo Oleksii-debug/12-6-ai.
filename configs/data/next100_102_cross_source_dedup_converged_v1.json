@@ -1,0 +1,43 @@
+{
+  "schema_version": "12-6.next100-102-cross-source-dedup-converged.v1",
+  "worker_id": "NEXT100-102-GLOBAL-CROSS-SOURCE-DEDUP-CONVERGED",
+  "local_free_only": true,
+  "model_training_executed": false,
+  "tokenizer_fit_executed": false,
+  "paid_compute_used": false,
+  "final_test_payload_read": false,
+  "convergence_authority": {
+    "head_sha": "5356d60c8c8af46d6fc34debfd3cb36731045338",
+    "path": "configs/data/next100_063_source_registry_convergence_v1.json",
+    "git_blob_sha1": "d5b640b386219290f69d02a7f2e30a338c883009",
+    "expected_numeric_capacity_bytes": {"uk": 100856, "en": 150643, "code": 69133, "total": 320632},
+    "expected_independent_family_counts": {"uk": 4, "en": 3, "code": 4, "total": 11},
+    "expected_numeric_source_object_count": 22
+  },
+  "base_inventory": {
+    "head_sha": "efc278cec0e4773eb4ff405bf4b4d24ee63b5d13",
+    "path": "configs/data/next100_065_cross_source_dedup_v3.json",
+    "git_blob_sha1": "c1e05f09490e25f6fed765dfb70d900717528f4d"
+  },
+  "late_authority_bindings": [
+    {"kind":"kmu_v1","worker_id":"NEXT100-026-DATA-UA-CABINET-MINISTRY","head_sha":"40950a950b60921fd856af2719e1ae2486d9e892","workflow_run":32997970539,"path":"configs/data/next100_026_kmu_source_audit_v1.json","git_blob_sha1":"6f0a60dc161c0bb2d7600c3c062ae78e624b240e","identity_key":"manifest_identity_sha256","identity_value":"1f068e6cc5ce3fc4a51d8477acee31fab5a0178e15f49225b57de94c5178f7d9"},
+    {"kind":"nist_v2","worker_id":"NEXT100-034-DATA-EN-NIST","head_sha":"b7491745b34ac8679baaf69cb96cd609dcbe0a16","workflow_run":32998703545,"path":"configs/data/next100_034_nist_terminal_authority_v2.json","git_blob_sha1":"8cef5ae316a45ad6265b732be86bd54a977405a1","identity_key":"terminal_payload_sha256","identity_value":"3ffba0fcd08ab42e940b2db12ffafb6f7234ad0bae6f7fe523071497485b9d1c"},
+    {"kind":"mdn_v1","worker_id":"NEXT100-038-DATA-EN-MDN","head_sha":"902eccc0b3efff09a38dc89cda789180b6c6e754","workflow_run":32998544359,"path":"evidence/next100_038/mdn_source_authority.v1.json","git_blob_sha1":"5b55a5b041381d3f9aa810b0a305f65d58e401bd","identity_key":"authority_identity_sha256","identity_value":"0f5dbd5313f8196811e2a99f77eb8698c6bc69f69648d76a7e240ee9757ecc47"},
+    {"kind":"verba_v1","worker_id":"NEXT100-027-DATA-UA-PUBLIC-DOMAIN-LIT","head_sha":"d75edd497c7fb1054e86d892c9462f059c1f4aa9","workflow_run":32998503672,"path":"configs/data/next100_027_ua_public_domain_lit_v1.json","git_blob_sha1":"c09b8951aeaaa9d42da40ffcc180750fba4258c3","identity_key":"authority_identity_sha256","identity_value":"85f596e79b0ec6479d2ef815e2a6a9bdbfaa55993c797309c1ea4d93b1d9b0e7"}
+  ],
+  "materialization": {
+    "nist_policy": "NEXT100_034_NIST_PDF_BODY_NFKC_BOUNDED_V1",
+    "nist_pdftotext_version_prefix": "24.02",
+    "nist_max_normalized_utf8_bytes": 20000,
+    "mdn_policy": "MDN_PROSE_ONLY_MARKDOWN_V1"
+  },
+  "terminal_claim_policy": {
+    "exact_head_ci_required": true,
+    "all_payloads_must_materialize": true,
+    "all_source_raw_or_materialized_hashes_must_match": true,
+    "dedup_engine": "NEXT100-065 V3 lineage-aware exact/normalized/near/fragment/code-skeleton engine",
+    "pre_dedup_family_minimum_is_not_post_dedup_pass": true,
+    "corpus_identity_inferred": false,
+    "training_authorization_inferred": false
+  }
+}
