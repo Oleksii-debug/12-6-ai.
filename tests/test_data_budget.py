@@ -89,6 +89,23 @@ def test_invalid_inputs_fail_closed(
         )
 
 
+@pytest.mark.parametrize("nonfinite", [float("nan"), float("inf"), float("-inf")])
+def test_nonfinite_planning_numbers_fail_closed(nonfinite: float) -> None:
+    with pytest.raises(ValueError, match="finite positive number"):
+        evaluate_data_budget(
+            parameter_count=20_613_440,
+            unique_loss_tokens=0,
+            tokens_per_parameter=nonfinite,
+        )
+    with pytest.raises(ValueError, match="finite positive number"):
+        evaluate_data_budget(
+            parameter_count=20_613_440,
+            unique_loss_tokens=0,
+            tokens_per_parameter=20.0,
+            dense_training_flops_per_parameter_token=nonfinite,
+        )
+
+
 def test_policy_is_self_consistent_and_keeps_compute_unauthorized() -> None:
     cli = _load_cli_module()
     policy = cli.load_policy(POLICY)
