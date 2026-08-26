@@ -2,7 +2,7 @@
 
 Status: `QUALITY_PRIVACY_FILTERED_CANDIDATE_ONLY / ZERO_TRAINING_AUTHORIZATION`
 
-This successor is stacked exactly on PR #641 head `59f3c452dde1d529fcc1544fa9be2528a039f200`. PR #641 deterministically converts the pinned Verkhovna Rada bulk HTML inventory into normalized visible-text records. This layer fills the next missing seam: deterministic chunking plus bounded quality/privacy filtering.
+This successor is stacked exactly on PR #641 head `7802e94b4115db39e6ff59f1a4cff872c40c6347`. PR #641 deterministically converts the pinned Verkhovna Rada bulk HTML inventory into normalized visible-text records and now independently recomputes the parent probe inventory identity before binding provenance. This layer fills the next missing seam: deterministic chunking plus bounded quality/privacy filtering.
 
 It is not a corpus release, source-capacity promotion, tokenizer-fit authorization, or training campaign.
 
@@ -22,6 +22,7 @@ The bounded DATA-228/D03 quality/privacy predicate is then applied to each chunk
 The filter refuses to run unless all of the following remain true:
 
 - parent manifest schema and worker identity match PR #641;
+- the branch contract binds exact hardened parent head `7802e94b4115db39e6ff59f1a4cff872c40c6347`;
 - parent manifest self-hash is valid;
 - parent JSONL SHA-256 matches the manifest;
 - every JSONL record has exactly the expected normalization fields;
@@ -30,7 +31,7 @@ The filter refuses to run unless all of the following remain true:
 - parent normalization is `PASS` while quality/privacy/dedup/decontamination remain unexecuted;
 - parent training/capacity/tokenizer/compute claims remain zero or false.
 
-The branch contract separately binds the exact PR #641 head. A moving or rebased parent requires an explicit successor rebind rather than silent inheritance.
+A moving or rebased parent requires an explicit successor rebind rather than silent inheritance.
 
 ## Bounded quality/privacy predicates
 
