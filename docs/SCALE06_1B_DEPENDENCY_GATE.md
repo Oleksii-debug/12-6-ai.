@@ -9,7 +9,7 @@ The repository already contains an S6 engineering candidate at 999,761,920 rando
 The report separates engineering/scientific readiness from compute authorization:
 
 - `ready_for_authorization_request` becomes true only after all required system and scientific dependencies carry syntactically immutable authority references;
-- `ready_for_material_compute` additionally requires an explicit authorization reference beginning with `COMPUTE_AUTHORIZED:` or `TRAINING_AUTHORIZED:`.
+- `ready_for_material_compute` additionally requires an explicit authorization prefix plus a durable GitHub/artifact authority reference.
 
 No stage promotion or compute authority is created by this module. The coordinator must still verify that each referenced authority is the live terminal authority before composing it.
 
@@ -39,7 +39,7 @@ Engineering/scientific gates accept only one of these forms:
 
 This is structural hardening, not remote verification. The coordinator must still check that a GitHub head is terminal and that an artifact hash belongs to the intended evidence object. A queued, running, stale, closed-unmerged or superseded authority must not be composed simply because its string matches the grammar.
 
-Compute authorization is separate. It must carry a non-empty explicit owner reference prefixed by `COMPUTE_AUTHORIZED:` or `TRAINING_AUTHORIZED:`. Green CI alone cannot create it.
+Compute authorization is separate and uses the same immutable reference discipline. It must begin with `COMPUTE_AUTHORIZED:` or `TRAINING_AUTHORIZED:` and the suffix must itself be one of the GitHub/artifact authority forms above. For example, `COMPUTE_AUTHORIZED:artifact:owner-compute-approval@<64hex>` is structurally acceptable, while `COMPUTE_AUTHORIZED:yes`, `COMPUTE_AUTHORIZED:owner-message-id:test`, and a `github:...:queued` suffix are rejected. Green CI alone cannot create owner authorization; the coordinator must verify that the referenced terminal object is actually the intended approval authority.
 
 ## Required positive evidence
 
@@ -52,7 +52,7 @@ Compute authorization is separate. It must carry a non-empty explicit owner refe
 7. `training_recipe_authority`: scale-qualified optimizer/LR/schedule/warmup/precision/gradient policy, initialization assumptions, seeds, training budget, checkpoint/evaluation cadence and stopping rule. A successful 20M recipe is not automatically transferable to 1B.
 8. `evaluation_firewall_authority`: preregistered selection-validation/final-test identities plus training-data exclusion and decontamination authority before optimizer step 1.
 9. `accelerator_runtime_authority`: exact CUDA/PyTorch/NCCL topology with finite forward/backward/update, measured memory/throughput and no silent distributed-objective drift.
-10. `compute_authorization`: explicit owner authorization for materially paid compute.
+10. `compute_authorization`: explicit owner authorization for materially paid compute, bound to an immutable authority object.
 
 The first nine are prerequisites for even requesting a material-compute authorization. The tenth is the separate authorization gate.
 
@@ -101,7 +101,7 @@ python tools/assess_scale_1b_dependencies.py \
   --evaluation-firewall-authority github:eval-1b-firewall@<40hex>:qualified
 ```
 
-These flags alone are not sufficient; all other engineering authorities must also be supplied. Compute remains blocked unless `--compute-authorization` contains a separately granted owner reference with the required prefix.
+These flags alone are not sufficient; all other engineering authorities must also be supplied. Compute remains blocked unless `--compute-authorization` contains a separately granted, immutable owner authority with the required prefix, for example `COMPUTE_AUTHORIZED:artifact:owner-compute-approval@<64hex>`.
 
 The CLI records the supplied authority map in its JSON output so a later reviewer can see exactly what evidence was used to clear each gate.
 
