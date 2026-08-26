@@ -6,9 +6,11 @@ on:
       - "src/twelve_six/s0_candidate_evaluation.py"
       - "src/twelve_six/evaluation.py"
       - "src/twelve_six/stage_gates.py"
-      - "src/twelve_six/checkpoint/**"
+      - "src/twelve_six/model.py"
       - "src/twelve_six/inference/**"
-      - "src/twelve_six/training/**"
+      - "src/twelve_six/integration/**"
+      - "src/twelve_six/packing/**"
+      - "src/twelve_six/tokenization/**"
       - "data/s0/**"
       - "configs/stages/**"
       - "requirements/locks/**"
@@ -17,6 +19,10 @@ on:
       - "docs/S0_EXACT_CANDIDATE_EVALUATION.md"
       - ".github/workflows/d04-strict-s0-evaluation.yml"
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
