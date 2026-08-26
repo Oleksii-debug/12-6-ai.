@@ -1,0 +1,79 @@
+{
+  "schema": "12-6.scale191.optimizer-transfer.v1",
+  "authority": "LOCAL_FREE_RESEARCH_ONLY_NOT_PROMOTION",
+  "parent_evidence": {
+    "pr": 352,
+    "head_sha": "2f1ce640aa8a881f77aba7722d3bed8a00d633b7",
+    "observed_problem": "SCALE-190 late held-out BPB reversal after 65,772 tokens with >94% gradient clipping in both seeds"
+  },
+  "hypotheses": {
+    "h_lr": "late reversal is sensitive to AdamW learning-rate transfer",
+    "h_clip": "clip norm 1.0 materially constrains the 3.2M trajectory",
+    "h_interaction": "learning rate and clip norm interact at fixed model/data"
+  },
+  "fixed_identity": {
+    "model_identity_sha256": "37b7fdd44b35280c121f9300022bfd69b23efbf0abbcfe62fbb0eb465470b693",
+    "parameter_count": 3221184,
+    "init_identity_sha256": "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5",
+    "tokenizer_id": "s0-byte-v1",
+    "tokenizer_config_sha256": "b04055c1061dd641dcab7cb9d62a931f09b8d1a070140a926ceb4e91d73ca8e1",
+    "tokenizer_vocab_sha256": "905ed40bb42cc4d550e228ff5f24158d504b38e8ed5974dfa3077bd5867ad571",
+    "corpus_dataset_id": "s0-tiny-controlled-v1",
+    "corpus_identity_sha256": "bab60119d49e93303c972b77900fcb5553817f754cbc5d9a58019228cfa0ca89",
+    "corpus_manifest_sha256": "b085a7ab56510575a11a80824fcff3a95a17f237d46d1be820e59d1289f220c2",
+    "train_jsonl_sha256": "61d24b7138df56527d201cea405d11c9f607684b4a9593dfa20c599cc2ee6998",
+    "evaluation_jsonl_sha256": "57f18a846dcca75955a82612382d4635ba9583965aa6628e77626cd2a3eb19c5",
+    "packing_id": "research41-byte-stream-cyclic-v1",
+    "context": 256,
+    "batch_size": 4,
+    "sequence_length": 64,
+    "causal_tokens_per_update": 252,
+    "optimizer": "AdamW",
+    "betas": [0.9, 0.95],
+    "eps": 1e-8,
+    "weight_decay": 0.0,
+    "scheduler": "constant",
+    "precision": "fp32",
+    "deterministic_algorithms": true
+  },
+  "varied_only": ["learning_rate", "gradient_clip_norm"],
+  "grid_rule": "symmetric log2 factors 0.5x/1x/2x around SCALE-190 baseline",
+  "trials": [
+    {"trial_id": "lr-0.5x_clip-0.5x", "lr_factor": 0.5, "clip_factor": 0.5, "learning_rate": 0.00015, "gradient_clip_norm": 0.5, "is_scale190_baseline": false},
+    {"trial_id": "lr-0.5x_clip-1x", "lr_factor": 0.5, "clip_factor": 1.0, "learning_rate": 0.00015, "gradient_clip_norm": 1.0, "is_scale190_baseline": false},
+    {"trial_id": "lr-0.5x_clip-2x", "lr_factor": 0.5, "clip_factor": 2.0, "learning_rate": 0.00015, "gradient_clip_norm": 2.0, "is_scale190_baseline": false},
+    {"trial_id": "lr-1x_clip-0.5x", "lr_factor": 1.0, "clip_factor": 0.5, "learning_rate": 0.0003, "gradient_clip_norm": 0.5, "is_scale190_baseline": false},
+    {"trial_id": "lr-1x_clip-1x", "lr_factor": 1.0, "clip_factor": 1.0, "learning_rate": 0.0003, "gradient_clip_norm": 1.0, "is_scale190_baseline": true},
+    {"trial_id": "lr-1x_clip-2x", "lr_factor": 1.0, "clip_factor": 2.0, "learning_rate": 0.0003, "gradient_clip_norm": 2.0, "is_scale190_baseline": false},
+    {"trial_id": "lr-2x_clip-0.5x", "lr_factor": 2.0, "clip_factor": 0.5, "learning_rate": 0.0006, "gradient_clip_norm": 0.5, "is_scale190_baseline": false},
+    {"trial_id": "lr-2x_clip-1x", "lr_factor": 2.0, "clip_factor": 1.0, "learning_rate": 0.0006, "gradient_clip_norm": 1.0, "is_scale190_baseline": false},
+    {"trial_id": "lr-2x_clip-2x", "lr_factor": 2.0, "clip_factor": 2.0, "learning_rate": 0.0006, "gradient_clip_norm": 2.0, "is_scale190_baseline": false}
+  ],
+  "seeds": [1337, 1338],
+  "optimized_token_checkpoints": [16632, 65772, 131292],
+  "optimizer_steps": [66, 261, 521],
+  "primary_metric": "two-seed mean heldout_bpb at 131292 optimized tokens",
+  "secondary_metrics": [
+    "two-seed mean late_delta_bpb_65772_to_131292",
+    "two-seed mean clip_fraction",
+    "raw_gradient_norm",
+    "train_loss"
+  ],
+  "selection_rule": "Require complete finite trajectories for both preregistered seeds; rank lower mean final BPB first, then lower mean late BPB delta, then lower mean clip fraction. Treat the ranking as repeated-tiny-fixture research evidence only.",
+  "baseline_parity": {
+    "required_before_interpreting_grid": true,
+    "absolute_bpb_tolerance": 1e-6,
+    "expected_by_seed": {
+      "1337": [3.63065595487007, 2.8779210625587925, 3.6269801849983665],
+      "1338": [3.6899818981527384, 2.9178113452297696, 4.0184479394803585]
+    }
+  },
+  "truth_boundary": {
+    "repeated_tiny_fixture": true,
+    "broad_corpus_claim": false,
+    "universal_optimizer_transfer_claim": false,
+    "model341_20m_training_authorized": false,
+    "stage_promotion": false,
+    "paid_compute": false
+  }
+}
