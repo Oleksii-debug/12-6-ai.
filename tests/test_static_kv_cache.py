@@ -231,28 +231,30 @@ def test_static_batched_generation_matches_dynamic_cache_and_keeps_storage_fixed
     backend = S0TorchBatchedInferenceBackend(_tiny_gqa_model(), ByteTokenizer())
     rows = ((1, 2, 3), (4, 5, 6))
 
-    with backend.begin_generation_batch(rows) as static_session:
-        with backend.begin_dynamic_generation_batch(rows) as dynamic_session:
-            torch.testing.assert_close(
-                torch.tensor(static_session.next_token_logits_batch()),
-                torch.tensor(dynamic_session.next_token_logits_batch()),
-                rtol=1e-6,
-                atol=1e-6,
-            )
-            storage = static_session.cache_storage_signature
-            allocated = static_session.cache_bytes
-            dynamic_before = dynamic_session.cache_bytes
-            static_session.append_batch((7, 8))
-            dynamic_session.append_batch((7, 8))
-            torch.testing.assert_close(
-                torch.tensor(static_session.next_token_logits_batch()),
-                torch.tensor(dynamic_session.next_token_logits_batch()),
-                rtol=1e-6,
-                atol=1e-6,
-            )
-            assert static_session.cache_storage_signature == storage
-            assert static_session.cache_bytes == allocated
-            assert dynamic_session.cache_bytes > dynamic_before
+    with (
+        backend.begin_generation_batch(rows) as static_session,
+        backend.begin_dynamic_generation_batch(rows) as dynamic_session,
+    ):
+        torch.testing.assert_close(
+            torch.tensor(static_session.next_token_logits_batch()),
+            torch.tensor(dynamic_session.next_token_logits_batch()),
+            rtol=1e-6,
+            atol=1e-6,
+        )
+        storage = static_session.cache_storage_signature
+        allocated = static_session.cache_bytes
+        dynamic_before = dynamic_session.cache_bytes
+        static_session.append_batch((7, 8))
+        dynamic_session.append_batch((7, 8))
+        torch.testing.assert_close(
+            torch.tensor(static_session.next_token_logits_batch()),
+            torch.tensor(dynamic_session.next_token_logits_batch()),
+            rtol=1e-6,
+            atol=1e-6,
+        )
+        assert static_session.cache_storage_signature == storage
+        assert static_session.cache_bytes == allocated
+        assert dynamic_session.cache_bytes > dynamic_before
 
     requests = (
         BatchGenerationRequest("aa", GenerationConfig(max_new_tokens=5)),
