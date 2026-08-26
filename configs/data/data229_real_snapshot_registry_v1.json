@@ -12,7 +12,7 @@
       "artifact_zip_sha256": "927e10ccb83f919d57a8b78e3ea9cae72f9d4e0232401043234a35eec150074d",
       "artifact_manifest_identity_sha256": "0c07662cb279635382f49b99d80945c602dfde9f507e74086583ca3524d8ce85",
       "promotion_report_identity_sha256": "6fc791cf0c6d3501535bfd935c847d8e2c1cff8508a4de78255ec1daf9384fd7",
-      "promotion_report_artifact_file_sha256": "5c3ee7848b03006cfe2183e2238695981ea708db0c1861340b70cda9dc7f8969",
+      "promotion_report_file_sha256": "5c3ee7848b03006cfe2183e2238695981ea708db0c1861340b70cda9dc7f8969",
       "d03_dataset_identity_sha256": "8d5b2269755c8cb9c7bb619a7cdbd09e762826a698f30cf6db08ecc98339f9e9",
       "d03_source_registry_sha256": "4499acd7146a35964563d97601000b6e9917132c682d548f93ea3081963b2030",
       "d03_contamination_registry_sha256": "2ecd6ae4dba16c667cdcef15be88bb05352936578e557e45211feb6ba0166664"
