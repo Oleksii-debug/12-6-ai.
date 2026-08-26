@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass, is_dataclass
 from enum import Enum
-from typing import Any, Mapping, Protocol, Sequence
+from typing import Any, Protocol
 
 WORKER_ID = "POSTBASE-259-TEACHER-STUDENT-DATA-FACTORY-V1"
 CONVERGENCE_WORKER_ID = "POSTBASE-359-TEACHER-FACTORY-CONVERGENCE"
