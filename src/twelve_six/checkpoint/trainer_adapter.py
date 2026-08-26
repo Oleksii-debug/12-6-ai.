@@ -18,10 +18,15 @@ from .core import (
     CheckpointCompatibilityError,
     CheckpointIdentity,
     LoadResult,
+    VerifiedCheckpoint,
+    _apply_model_weights,
     _decode_verified_state,
     _preflight_optimizer_state,
-    load_verified_checkpoint,
+    _preflight_rng_state,
+    _prepare_model_weights,
+    assert_identity,
     prepare_checkpoint_load,
+    restore_rng_state,
     save_checkpoint,
 )
 
@@ -101,6 +106,49 @@ def _assert_bound_metadata(
     }
     if mismatches:
         raise CheckpointCompatibilityError(f"checkpoint canonical binding mismatch: {mismatches}")
+
+
+def _apply_decoded_trainer_checkpoint(
+    verified: VerifiedCheckpoint,
+    *,
+    arrays: Mapping[str, Any],
+    combined_state: Mapping[str, Any],
+    model: Any,
+    strict_model: bool,
+    restore_rng: bool,
+    expected_git_sha: str | None,
+    expected_model_spec_hash: str | None,
+    expected_tokenizer_hash: str | None,
+    expected_tokenizer_vocab_hash: str | None,
+    expected_dataset_manifest_hash: str | None,
+    expected_run_manifest_hash: str | None,
+) -> LoadResult:
+    """Apply an already-decoded verified snapshot without decoding it a second time."""
+
+    manifest = verified.manifest
+    assert_identity(
+        manifest,
+        git_sha=expected_git_sha,
+        model_spec_hash=expected_model_spec_hash,
+        tokenizer_hash=expected_tokenizer_hash,
+        tokenizer_vocab_hash=expected_tokenizer_vocab_hash,
+        dataset_manifest_hash=expected_dataset_manifest_hash,
+        run_manifest_hash=expected_run_manifest_hash,
+    )
+    materialized = _prepare_model_weights(model, arrays, strict_model)
+    if restore_rng:
+        _preflight_rng_state(combined_state["rng"])
+
+    # The exact verified bytes were decoded once by load_trainer_checkpoint.
+    # Every compatibility check completes before the first target mutation.
+    _apply_model_weights(model, materialized, strict_model)
+    if restore_rng:
+        restore_rng_state(combined_state["rng"])
+    return LoadResult(
+        manifest=copy.deepcopy(manifest),
+        trainer_state=combined_state.get("trainer", {}),
+        rng_state=combined_state["rng"],
+    )
 
 
 def _validate_state_schema(expected: Any, actual: Any, *, path: str) -> None:
@@ -383,11 +431,11 @@ def load_trainer_checkpoint(
     expected_environment_lock_hash: str | None = None,
     expected_seed: int | None = None,
 ) -> LoadResult:
-    """Verify one exact byte snapshot, bind it, then restore fresh D02 targets.
+    """Verify and decode one exact byte snapshot, then restore fresh D02 targets.
 
     The canonical nested identity checks, trainer-state preflight, and actual load
-    consume the same verified byte snapshot. The source directory is never
-    re-opened between run-binding verification and model mutation.
+    consume one decoded verified snapshot. The source directory is never reopened
+    and SafeTensors/state-tree payloads are not decoded twice before mutation.
     """
 
     if not hasattr(trainer, "load_state_dict"):
@@ -406,19 +454,17 @@ def load_trainer_checkpoint(
         expected_seed=expected_seed,
     )
 
-    # The trainer owns optimizer/scheduler/counter state, so validate that exact
-    # decoded snapshot before load_verified_checkpoint is allowed to touch model
-    # weights. This closes the same deferred optimizer-failure class for the
-    # production Trainer adapter path used by long-running campaigns.
-    _, combined_state = _decode_verified_state(verified)
+    arrays, combined_state = _decode_verified_state(verified)
     _preflight_trainer_state(
         trainer,
         combined_state.get("trainer"),
         manifest=manifest,
     )
 
-    result = load_verified_checkpoint(
+    result = _apply_decoded_trainer_checkpoint(
         verified,
+        arrays=arrays,
+        combined_state=combined_state,
         model=model,
         strict_model=strict_model,
         restore_rng=restore_rng,
