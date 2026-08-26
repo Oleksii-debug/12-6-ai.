@@ -47,7 +47,7 @@ jobs:
           capabilities: runtime,tests
           venv: .train344b
           manifest: evidence/train344b/environment.json
-          command: python -c "import torch; print(torch.__version__)"
+          command: python -c 'import torch; print(torch.__version__)'
       - name: Validate exact identity and focused regressions
         run: |
           set -euo pipefail
@@ -99,7 +99,7 @@ jobs:
           capabilities: runtime
           venv: .train344b
           manifest: evidence/train344b/probe-environment.json
-          command: python -c "import torch; print(torch.__version__)"
+          command: python -c 'import torch; print(torch.__version__)'
       - name: Run frozen three-by-thirty-two mechanics probe
         run: |
           set -euo pipefail
