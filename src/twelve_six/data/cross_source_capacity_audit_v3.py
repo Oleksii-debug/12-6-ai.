@@ -1,6 +1,9 @@
 """NEXT100-065 lineage-aware cross-source deduplication red-team."""
 from __future__ import annotations
 
+import html
+import re
+import unicodedata
 from collections import Counter, defaultdict
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -12,6 +15,7 @@ SCHEMA = "12-6.next100-065-cross-source-dedup-report.v3"
 INVENTORY_SCHEMA = "12-6.next100-065-cross-source-dedup.v3"
 ALGORITHM = "data232-byte-near-copy-plus-lineage-connected-components-v3"
 TERMINAL_STATUSES = {"REGISTRY_TERMINAL", "DEDICATED_TERMINAL"}
+RUST_BOOK_PROSE_POLICY = "RUST_BOOK_SOURCE_MARKDOWN_PROSE_ONLY_V1"
 RELATION_MATCH_TYPES = {
     "mirror": "lineage_mirror",
     "same_origin_alias": "lineage_same_origin_alias",
@@ -61,6 +65,18 @@ def _validate_inventory(inventory: Mapping[str, Any]) -> tuple[list[dict[str, An
         for key in ("stable_origin_id", "stable_object_id"):
             if not isinstance(row.get(key), str) or not row[key]:
                 raise CrossSourceV3Error(f"{source_id}: missing {key}")
+        comparison_policy = row.get("comparison_normalization")
+        if comparison_policy is not None:
+            if comparison_policy != RUST_BOOK_PROSE_POLICY:
+                raise CrossSourceV3Error(
+                    f"{source_id}: unsupported comparison normalization {comparison_policy}"
+                )
+            expected_bytes = row.get("expected_comparison_bytes")
+            expected_sha = row.get("expected_comparison_sha256")
+            if not isinstance(expected_bytes, int) or expected_bytes <= 0:
+                raise CrossSourceV3Error(f"{source_id}: missing expected_comparison_bytes")
+            if not isinstance(expected_sha, str) or not re.fullmatch(r"[0-9a-f]{64}", expected_sha):
+                raise CrossSourceV3Error(f"{source_id}: invalid expected_comparison_sha256")
         normalized_rows.append(row)
 
     edges_raw = inventory.get("lineage_edges", [])
@@ -95,6 +111,127 @@ def _as_v1_inventory(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
         "schema_version": "12-6.data298-cross-source-inventory.v1",
         "local_free_only": True,
         "sources": [dict(row) for row in rows],
+    }
+
+
+def _strip_fenced_code(text: str) -> str:
+    out: list[str] = []
+    fence_char: str | None = None
+    fence_len = 0
+    for line in text.splitlines():
+        if fence_char is None:
+            match = re.match(r"^\s*(`{3,}|~{3,})", line)
+            if match:
+                marker = match.group(1)
+                fence_char = marker[0]
+                fence_len = len(marker)
+                continue
+            out.append(line)
+            continue
+        if re.match(rf"^\s*{re.escape(fence_char)}{{{fence_len},}}\s*$", line):
+            fence_char = None
+            fence_len = 0
+    if fence_char is not None:
+        raise CrossSourceV3Error("unterminated Rust Book fenced code block")
+    return "\n".join(out)
+
+
+def _rust_book_prose_payload(raw: bytes) -> bytes:
+    try:
+        text = raw.decode("utf-8", errors="strict")
+    except UnicodeDecodeError as exc:
+        raise CrossSourceV3Error("Rust Book source is not strict UTF-8") from exc
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    text = unicodedata.normalize("NFKC", html.unescape(text))
+    text = re.sub(r"<!--.*?-->", "", text, flags=re.S)
+    text = _strip_fenced_code(text)
+
+    prose_lines: list[str] = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if re.search(r"\{\{#[^{}]+\}\}", line):
+            continue
+        if re.match(r"^\s*\[[^\]]+\]:\s+\S+", line):
+            continue
+        if stripped.startswith("!["):
+            continue
+        line = re.sub(r"`+[^`\n]+`+", " ", line)
+        line = re.sub(r"!\[[^\]]*\]\([^)]*\)", " ", line)
+        line = re.sub(r"\[([^\]]+)\]\[[^\]]+\]", r"\1", line)
+        line = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", line)
+        line = re.sub(r"\[([^\]]+)\]", r"\1", line)
+        line = re.sub(r"<[^>]+>", " ", line)
+        line = re.sub(r"^\s{0,3}#{1,6}\s+", "", line)
+        line = re.sub(r"^\s*(?:[-*+]\s+|\d+[.)]\s+)", "", line)
+        line = re.sub(r"^\s*>\s?", "", line)
+        line = line.replace("**", "").replace("__", "").replace("~~", "")
+        line = re.sub(r"\\([\\`*_[\]{}()#+\-.!>])", r"\1", line)
+        line = re.sub(r"[ \t]+", " ", line).strip()
+        prose_lines.append(line)
+
+    normalized_lines: list[str] = []
+    previous_blank = True
+    for line in prose_lines:
+        blank = not line
+        if blank and previous_blank:
+            continue
+        normalized_lines.append(line)
+        previous_blank = blank
+    while normalized_lines and not normalized_lines[-1]:
+        normalized_lines.pop()
+    return ("\n".join(normalized_lines) + "\n").encode("utf-8")
+
+
+def _comparison_payload(row: Mapping[str, Any], raw: bytes) -> bytes | None:
+    policy = row.get("comparison_normalization")
+    if policy is None:
+        return None
+    if policy == RUST_BOOK_PROSE_POLICY:
+        payload = _rust_book_prose_payload(raw)
+    else:  # defensive even though inventory validation rejects unknown policies
+        raise CrossSourceV3Error(f"unsupported comparison normalization: {policy}")
+    if len(payload) != row["expected_comparison_bytes"]:
+        raise CrossSourceV3Error(f"{row['source_id']}: comparison byte count changed")
+    if v1._sha256(payload) != row["expected_comparison_sha256"]:
+        raise CrossSourceV3Error(f"{row['source_id']}: comparison SHA-256 changed")
+    return payload
+
+
+def _fingerprint(row: Mapping[str, Any], raw: bytes) -> dict[str, Any]:
+    comparison = _comparison_payload(row, raw)
+    if comparison is None:
+        item = v1._fingerprint(row, raw)
+        item["comparison_policy"] = "DATA232_GENERIC_FROM_RAW"
+        item["comparison_payload_sha256"] = item["raw_sha256"]
+        item["comparison_payload_bytes"] = item["raw_bytes"]
+        return item
+
+    v1._verify_payload(row, raw)
+    text = comparison.decode("utf-8", errors="strict")
+    modality = str(row["modality"])
+    normalized = v1.normalize_for_contamination(text, modality)
+    tokens = tuple(v1.TOKEN_RE.findall(normalized))
+    is_code = modality == "code"
+    width_key = "code_shingle_tokens" if is_code else "natural_shingle_tokens"
+    skeleton = v1.code_skeleton_tokens(text) if is_code else ()
+    normalized_bytes = normalized.encode()
+    return {
+        "row": dict(row),
+        "text": text,
+        "raw_sha256": v1._sha256(raw),
+        "raw_bytes": len(raw),
+        "normalized_sha256": v1._sha256(normalized_bytes),
+        "normalized_utf8_bytes": len(normalized_bytes),
+        "tokens": tokens,
+        "shingles": v1._shingles(tokens, int(v1.DEFAULT_THRESHOLDS[width_key])),
+        "skeleton": skeleton,
+        "skeleton_shingles": v1._shingles(
+            skeleton,
+            int(v1.DEFAULT_THRESHOLDS["code_shingle_tokens"]),
+        ),
+        "comparison_policy": str(row["comparison_normalization"]),
+        "comparison_payload_sha256": v1._sha256(comparison),
+        "comparison_payload_bytes": len(comparison),
     }
 
 
@@ -212,7 +349,7 @@ def audit_payloads(inventory: Mapping[str, Any], payloads: Mapping[str, bytes]) 
 
     v1_inventory = _as_v1_inventory(rows)
     validated_rows = v1._validate_inventory(v1_inventory)
-    fingerprints = [v1._fingerprint(row, payloads[row["source_id"]]) for row in validated_rows]
+    fingerprints = [_fingerprint(row, payloads[row["source_id"]]) for row in validated_rows]
     matches = [
         match
         for index, left in enumerate(fingerprints)
@@ -252,6 +389,9 @@ def audit_payloads(inventory: Mapping[str, Any], payloads: Mapping[str, bytes]) 
             "declared_capacity_bytes": item["row"]["declared_capacity_bytes"],
             "verified_raw_bytes": item["raw_bytes"],
             "verified_raw_sha256": item["raw_sha256"],
+            "comparison_policy": item["comparison_policy"],
+            "comparison_payload_bytes": item["comparison_payload_bytes"],
+            "comparison_payload_sha256": item["comparison_payload_sha256"],
             "normalized_sha256": item["normalized_sha256"],
         }
         for item in fingerprints
@@ -265,7 +405,7 @@ def audit_payloads(inventory: Mapping[str, Any], payloads: Mapping[str, bytes]) 
         "model_training_executed": False,
         "source_admission_authority": False,
         "source_count": len(fingerprints),
-        "matching_authority": "DATA-232 / DATA-298 exact, normalized, near, fragment and code-skeleton semantics plus NEXT100-065 explicit lineage graph",
+        "matching_authority": "DATA-232 / DATA-298 exact, normalized, near, fragment and code-skeleton semantics plus exact source-authority comparison normalization and NEXT100-065 lineage graph",
         "thresholds": dict(v1.DEFAULT_THRESHOLDS),
         "sources": sources,
         "matches": matches,
@@ -279,6 +419,7 @@ def audit_payloads(inventory: Mapping[str, Any], payloads: Mapping[str, bytes]) 
             "stable_object_rule": "identical stable_object_id collapses capacity even when acquisition URLs or wrapper bytes differ",
             "origin_rule": "stable_origin_id and explicit lineage edges determine independence accounting",
             "sibling_rule": "same-origin sibling files collapse independence but retain capacity unless byte/copy/derivative evidence creates a capacity-collapsing edge",
+            "normalization_rule": "when a terminal authority defines an exact training-text normalization, verify its output hash/size before the common contamination normalization and matching pass",
         },
         "raw_text_emitted": False,
     }
