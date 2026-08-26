@@ -1,0 +1,50 @@
+name: SCALE FSDP2 DCP Integration
+on:
+  pull_request:
+    paths:
+      - "src/twelve_six/distributed/**"
+      - "src/twelve_six/training/scale_runtime.py"
+      - "configs/stages/s1_100k.json"
+      - "tests/test_scale_fsdp2_dcp_integration.py"
+      - ".github/workflows/scale-fsdp2-dcp-integration.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  local-free-fsdp2-dcp:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Verify exact locked runtime
+        run: >-
+          python tools/verify_locked_environment.py
+          --profile linux-x86_64
+          --source-sha "${{ github.event.pull_request.head.sha || github.sha }}"
+          --evidence-out locked-environment-scale-fsdp2-dcp.json
+      - name: Materialize exact locked test environment
+        run: |
+          python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/dev.lock.txt
+          PIP_NO_INDEX=1 python -m pip install --no-deps --no-build-isolation -e .
+      - name: Focused lint
+        run: python -m ruff check tests/test_scale_fsdp2_dcp_integration.py
+      - name: Real two-rank FSDP2 DCP save-reload-continue proof
+        env:
+          GITHUB_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: python -m pytest -q tests/test_scale_fsdp2_dcp_integration.py
+      - name: Upload locked-environment evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: scale-fsdp2-dcp-local-free-evidence
+          path: locked-environment-scale-fsdp2-dcp.json
+          if-no-files-found: error
+          retention-days: 30

@@ -1,0 +1,160 @@
+name: ENV-151 Universal Execution Bootstrap
+on:
+  pull_request:
+    branches: [milestone150/learned-base-ladder-v1-20260826]
+  workflow_dispatch:
+concurrency:
+  group: env151-bootstrap-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+permissions: {contents: read}
+jobs:
+  cpu-training-tests:
+    runs-on: ubuntu-24.04
+    env:
+      PYTHONPATH: src
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with: {ref: "${{ github.event.pull_request.head.sha || github.sha }}", persist-credentials: false}
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with: {python-version: "3.11.16"}
+      - name: Bootstrap exact CPU runtime and tests
+        uses: ./.github/actions/execution-bootstrap
+        with:
+          capabilities: runtime,tests
+          venv: .env151-cpu
+          command: python -m pytest -q tests/test_execution_bootstrap.py
+          manifest: env151-evidence/cpu-training-tests.json
+      - name: Prove bootstrap PASS boundary and exact CPU payload
+        run: |
+          set -euo pipefail
+          test -x .env151-cpu/bin/pytest
+          .env151-cpu/bin/python - <<'PY'
+          import importlib.metadata as metadata
+          import json
+          import re
+          from pathlib import Path
+          import torch
+
+          manifest = json.loads(Path('env151-evidence/cpu-training-tests.json').read_text())
+          assert manifest['preflight']['status'] == 'PASS'
+          assert manifest['plan']['capabilities'] == ['runtime', 'tests']
+          assert manifest['plan']['cuda_packages_present'] is False
+          assert torch.__version__ == '2.13.0+cpu'
+          assert torch.version.cuda is None
+          assert torch.cuda.is_available() is False
+          canonical = lambda value: re.sub(r'[-_.]+', '-', value).lower()
+          packages = {canonical(dist.metadata['Name']) for dist in metadata.distributions()}
+          forbidden = sorted(
+              name for name in packages
+              if name.startswith('nvidia-') or name.startswith('cuda-') or name == 'triton'
+          )
+          assert not forbidden, forbidden
+          print(json.dumps({'bootstrap': 'PASS', 'downstream': 'NOT_RUN'}, sort_keys=True))
+          PY
+      - name: Run downstream CPU training and focused regression tests
+        run: >-
+          .env151-cpu/bin/python -m pytest -q
+          tests/test_execution_bootstrap.py
+          tests/test_milestone150_learned_base_ladder.py
+      - name: Classify failure boundary
+        if: failure()
+        run: |
+          if [[ -f env151-evidence/cpu-training-tests.json ]]; then
+            echo '{"bootstrap":"PASS","downstream":"FAIL"}'
+          else
+            echo '{"bootstrap":"FAIL","downstream":"NOT_RUN"}'
+          fi
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: ${{ always() && hashFiles('env151-evidence/cpu-training-tests.json') != '' }}
+        with: {name: env151-cpu-training-tests, path: env151-evidence/cpu-training-tests.json, if-no-files-found: error}
+
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with: {ref: "${{ github.event.pull_request.head.sha || github.sha }}", persist-credentials: false}
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with: {python-version: "3.11.16"}
+      - name: Bootstrap exact lint capability
+        uses: ./.github/actions/execution-bootstrap
+        with:
+          capabilities: lint
+          venv: .env151-lint
+          command: ruff check tools/execution_bootstrap.py tests/test_execution_bootstrap.py
+          manifest: env151-evidence/lint.json
+      - name: Execute Ruff from target venv
+        run: |
+          set -euo pipefail
+          test -x .env151-lint/bin/ruff
+          .env151-lint/bin/ruff check tools/execution_bootstrap.py tests/test_execution_bootstrap.py
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with: {name: env151-lint, path: env151-evidence/lint.json, if-no-files-found: error}
+
+  tokenizer-experiment:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with: {ref: "${{ github.event.pull_request.head.sha || github.sha }}", persist-credentials: false}
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with: {python-version: "3.11.16"}
+      - name: Bootstrap exact tokenizer capability
+        uses: ./.github/actions/execution-bootstrap
+        with: {capabilities: tokenizer, venv: .env151-tokenizer, manifest: env151-evidence/tokenizer-experiment.json}
+      - name: Verify tokenizer purpose environment
+        run: |
+          .env151-tokenizer/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+          import tokenizers
+          assert tokenizers.__version__ == '0.23.1'
+          manifest=json.loads(Path('env151-evidence/tokenizer-experiment.json').read_text())
+          assert manifest['preflight']['status'] == 'PASS'
+          assert manifest['plan']['cuda_packages_present'] is False
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with: {name: env151-tokenizer-experiment, path: env151-evidence/tokenizer-experiment.json, if-no-files-found: error}
+
+  transformers-interop:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with: {ref: "${{ github.event.pull_request.head.sha || github.sha }}", persist-credentials: false}
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with: {python-version: "3.11.16"}
+      - name: Bootstrap exact transformers capability
+        uses: ./.github/actions/execution-bootstrap
+        with: {capabilities: transformers, venv: .env151-transformers, manifest: env151-evidence/transformers.json}
+      - name: Verify transformers purpose environment
+        run: |
+          .env151-transformers/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+          import transformers
+          assert transformers.__version__ == '5.15.1'
+          manifest=json.loads(Path('env151-evidence/transformers.json').read_text())
+          assert manifest['preflight']['status'] == 'PASS'
+          assert manifest['plan']['cuda_packages_present'] is False
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with: {name: env151-transformers, path: env151-evidence/transformers.json, if-no-files-found: error}
+
+  cuda-training-no-gpu:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with: {ref: "${{ github.event.pull_request.head.sha || github.sha }}", persist-credentials: false}
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with: {python-version: "3.11.16"}
+      - name: Bootstrap exact CUDA software capability without GPU claim
+        uses: ./.github/actions/execution-bootstrap
+        with: {capabilities: "runtime,cuda", venv: .env151-cuda, manifest: env151-evidence/cuda-no-gpu.json, allow-no-gpu: "true"}
+      - name: Verify CUDA no-GPU classification
+        run: |
+          .env151-cuda/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+          c=json.loads(Path('env151-evidence/cuda-no-gpu.json').read_text())['preflight']['cuda']
+          assert c == {'software_capability_declared': True, 'hardware_visible': False, 'hardware_claim': False, 'no_gpu_preflight': True}
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with: {name: env151-cuda-no-gpu, path: env151-evidence/cuda-no-gpu.json, if-no-files-found: error}

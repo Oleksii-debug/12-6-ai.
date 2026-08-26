@@ -1,0 +1,38 @@
+{
+  "stage": "S3",
+  "target_parameters": 10000000,
+  "expected_parameters": 10059840,
+  "canonical_base": "random_init",
+  "expected_model_identity_sha256": "3b6fc1b397e6fea69c2f249ce8ab8eedaad8ca1b13b88b8d2328a6abcf34791a",
+  "expected_init_identity_sha256": "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5",
+  "model": {
+    "schema_version": 1,
+    "vocab_size": 8192,
+    "max_seq_len": 1024,
+    "d_model": 320,
+    "n_layers": 6,
+    "n_heads": 8,
+    "n_kv_heads": 8,
+    "head_dim": 40,
+    "d_ff": 864,
+    "activation": "swiglu",
+    "norm_kind": "rmsnorm",
+    "norm_placement": "pre",
+    "norm_eps": 1e-5,
+    "position_embedding": "rope",
+    "rope_theta": 10000.0,
+    "rope_rotary_dim": 40,
+    "attention_bias": false,
+    "mlp_bias": false,
+    "attention_dropout": 0.0,
+    "final_norm": true,
+    "tie_word_embeddings": true,
+    "lm_head_bias": false
+  },
+  "init": {
+    "schema_version": 1,
+    "family": "normal",
+    "std": 0.02,
+    "residual_branch_scale": "sqrt_2_layers"
+  }
+}

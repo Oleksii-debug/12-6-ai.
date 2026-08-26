@@ -1,0 +1,141 @@
+{
+  "cases": [
+    {
+      "diagnostics": {
+        "codes": [
+          "HISTORICAL_STEP_FAILURE",
+          "PYTHON_MODULE_MISSING:pytest",
+          "TRAINING_STEP_SKIPPED"
+        ],
+        "command_sha256": null,
+        "environment_retained": false,
+        "executable": null,
+        "raw_output_retained": false,
+        "stderr": {},
+        "stdout": {},
+        "summary": "Runtime-only lock omitted pytest; contract-test step failed before phase1 and all training/resume/report steps were skipped."
+      },
+      "experiment_started": false,
+      "failure_class": "BOOTSTRAP_DEPENDENCY_MISSING",
+      "historical": true,
+      "optimizer_steps_completed": 0,
+      "outcome": "failure",
+      "phase": "focused_test",
+      "report_sha256": "fc86f6f2b30a9d09fac3622be0f069a8b0dd588d451364d508ac7eae8d608443",
+      "return_code": 1,
+      "schema": "12-6.experiment-failure-report.v1",
+      "source": {
+        "git_sha": "015593b22a600184fb4c8001fe3d70893bfc51d5",
+        "run_id": "32901140565",
+        "workflow": "MILESTONE-100 First Learned ~1M Base"
+      },
+      "taxonomy_version": "ci161.v1"
+    },
+    {
+      "diagnostics": {
+        "codes": [
+          "HISTORICAL_STEP_FAILURE",
+          "PYTHON_MODULE_MISSING:pytest",
+          "TRAINING_STEP_SKIPPED"
+        ],
+        "command_sha256": null,
+        "environment_retained": false,
+        "executable": null,
+        "raw_output_retained": false,
+        "stderr": {},
+        "stdout": {},
+        "summary": "Toolchain plus runtime locks omitted pytest; contract-test step failed and the 10M phase1, resume and evaluation steps never ran."
+      },
+      "experiment_started": false,
+      "failure_class": "BOOTSTRAP_DEPENDENCY_MISSING",
+      "historical": true,
+      "optimizer_steps_completed": 0,
+      "outcome": "failure",
+      "phase": "focused_test",
+      "report_sha256": "ebadb4c82d0d70034d55917d5c86b3fd59ef8e5d3e0d6b71ed8b2c094e9f16c5",
+      "return_code": 1,
+      "schema": "12-6.experiment-failure-report.v1",
+      "source": {
+        "git_sha": "020bf4f01a56ae6e4defaec6db00034385910f38",
+        "run_id": "32902872519",
+        "workflow": "SCALE-141 10M Learned Continuation"
+      },
+      "taxonomy_version": "ci161.v1"
+    },
+    {
+      "diagnostics": {
+        "codes": [
+          "HISTORICAL_PRETRAINING_GATE_FAILED",
+          "TRAINING_STEP_SKIPPED",
+          "RAW_LOG_NOT_RETAINED_IN_RETRO_REPORT"
+        ],
+        "command_sha256": null,
+        "environment_retained": false,
+        "executable": null,
+        "raw_output_retained": false,
+        "stderr": {},
+        "stdout": {},
+        "summary": "Locked-environment/repository gate failed; the D02 execution environment and 40-step training step were skipped, so no model failure is evidenced."
+      },
+      "experiment_started": false,
+      "failure_class": "EXPERIMENT_NOT_STARTED",
+      "historical": true,
+      "optimizer_steps_completed": 0,
+      "outcome": "failure",
+      "phase": "prepare",
+      "report_sha256": "2623646eda41d29f856dc647bee2d689574bd4e56b64a13af97dcad40323be83",
+      "return_code": 1,
+      "schema": "12-6.experiment-failure-report.v1",
+      "source": {
+        "git_sha": "020bf4f01a56ae6e4defaec6db00034385910f38",
+        "run_id": "32902872602",
+        "workflow": "D02 Real S0 Training"
+      },
+      "taxonomy_version": "ci161.v1"
+    },
+    {
+      "diagnostics": {
+        "codes": [
+          "HISTORICAL_AGGREGATED_CHECK_STEP_FAILED",
+          "NO_EXPERIMENT_PHASE",
+          "RAW_LOG_NOT_RETAINED_IN_RETRO_REPORT"
+        ],
+        "command_sha256": null,
+        "environment_retained": false,
+        "executable": null,
+        "raw_output_retained": false,
+        "stderr": {},
+        "stdout": {},
+        "summary": "x86 locked clean-install/package-smoke/full-check aggregate failed while the ARM job passed; no experiment phase was present in this CI workflow."
+      },
+      "experiment_started": false,
+      "failure_class": "STATIC_CHECK_FAILED",
+      "historical": true,
+      "optimizer_steps_completed": 0,
+      "outcome": "failure",
+      "phase": "static_check",
+      "report_sha256": "4715801e390bd9d63842be5d2f44cf0c5727e65c0f3a4b4981a9b9903748a4a6",
+      "return_code": 1,
+      "schema": "12-6.experiment-failure-report.v1",
+      "source": {
+        "git_sha": "020bf4f01a56ae6e4defaec6db00034385910f38",
+        "run_id": "32902872600",
+        "workflow": "CI / locked-x86-64"
+      },
+      "taxonomy_version": "ci161.v1"
+    }
+  ],
+  "evidence_policy": {
+    "classification_uses": [
+      "GitHub Actions run/job/step conclusions",
+      "workflow command structure",
+      "committed exact dependency locks"
+    ],
+    "historical_uncertainty_is_not_upgraded_to_model_failure": true,
+    "raw_logs_retained": false,
+    "secrets_retained": false
+  },
+  "report_sha256": "c59cb3693fd45ab932abd42a61c080676c17a52edf19792d96dd4311658cf76f",
+  "schema": "12-6.historical-failure-classification-sample.v1",
+  "taxonomy_version": "ci161.v1"
+}

@@ -1,0 +1,93 @@
+name: D02 S0 Determinism Repeatability
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/d02-s0-repeatability.yml"
+      - "tools/run_s0_determinism_probe.py"
+      - "tools/collect_s0_repeatability_evidence.py"
+      - "tools/validate_s0_repeatability_evidence.py"
+      - "configs/runs/s0_10k.d02_repeatability.json"
+      - "tests/test_s0_repeatability*.py"
+
+concurrency:
+  group: d02-repeat-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+jobs:
+  locked-cpu-repeatability:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Prove exact source checkout
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Dependency and tool preflight before tests
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: python tools/ci_dependency_preflight.py --profile linux-x86_64 --source-sha "$SOURCE_SHA"
+      - name: Verify exact D08 locked environment and repository checks
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: >-
+          python tools/verify_locked_environment.py
+          --profile linux-x86_64
+          --source-sha "$SOURCE_SHA"
+          --evidence-out locked-environment-linux-x86_64.json
+          --run-repo-checks
+      - name: Create exact locked D02 execution environment
+        run: |
+          python -m venv .d02-repeatability-locked
+          .d02-repeatability-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .d02-repeatability-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .d02-repeatability-locked/bin/python -m pip install --no-deps --no-build-isolation -e .
+          .d02-repeatability-locked/bin/python -c "import torch,twelve_six; assert torch.__version__; print(twelve_six.__version__)"
+      - name: Execute two fresh same-seed S0 probes
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          .d02-repeatability-locked/bin/python tools/run_s0_determinism_probe.py --source-sha "$SOURCE_SHA" --output s0-determinism-same-a.json --seed 1337 --max-steps 40 --batch-size 3
+          .d02-repeatability-locked/bin/python tools/run_s0_determinism_probe.py --source-sha "$SOURCE_SHA" --output s0-determinism-same-b.json --seed 1337 --max-steps 40 --batch-size 3
+      - name: Execute fresh different-seed causality probe
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: >-
+          .d02-repeatability-locked/bin/python tools/run_s0_determinism_probe.py
+          --source-sha "$SOURCE_SHA"
+          --output s0-determinism-different.json
+          --seed 1338
+          --max-steps 40
+          --batch-size 3
+      - name: Bind and validate repeatability evidence
+        run: |
+          .d02-repeatability-locked/bin/python tools/collect_s0_repeatability_evidence.py \
+            --same-seed-a s0-determinism-same-a.json \
+            --same-seed-b s0-determinism-same-b.json \
+            --different-seed s0-determinism-different.json \
+            --locked-environment-evidence locked-environment-linux-x86_64.json \
+            --output s0-repeatability-evidence.json
+          .d02-repeatability-locked/bin/python tools/validate_s0_repeatability_evidence.py s0-repeatability-evidence.json
+          cat s0-repeatability-evidence.json
+      - name: Upload exact candidate repeatability evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: d02-s0-repeatability-evidence
+          path: |
+            locked-environment-linux-x86_64.json
+            s0-determinism-same-a.json
+            s0-determinism-same-b.json
+            s0-determinism-different.json
+            s0-repeatability-evidence.json
+          if-no-files-found: error
+          retention-days: 30

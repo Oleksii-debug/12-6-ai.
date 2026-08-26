@@ -1,0 +1,108 @@
+name: TRAIN-29 S1 Training Observability
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/train29-s1-observability.yml"
+      - "src/twelve_six/training/observability.py"
+      - "tools/run_s1_observability_probe.py"
+      - "tools/validate_s1_observability_probe.py"
+      - "tests/test_training_observability*.py"
+
+concurrency:
+  group: train29-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  locked-s1-observability:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Prove exact source checkout
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Dependency and tool preflight before tests
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: python tools/ci_dependency_preflight.py --profile linux-x86_64 --source-sha "$SOURCE_SHA"
+      - name: Verify exact D08 locked environment and repository checks
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: >-
+          python tools/verify_locked_environment.py
+          --profile linux-x86_64
+          --source-sha "$SOURCE_SHA"
+          --evidence-out locked-environment-linux-x86_64.json
+          --run-repo-checks
+      - name: Create exact locked TRAIN-29 execution environment
+        run: |
+          python -m venv .train29-locked
+          .train29-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .train29-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          .train29-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/dev.lock.txt
+          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .train29-locked/bin/python -m pip install --no-deps --no-build-isolation -e .
+      - name: Exercise reusable observability unit contracts
+        run: >-
+          .train29-locked/bin/python -m pytest -q
+          tests/test_training_observability.py
+          tests/test_training_observability_decision.py
+      - name: Execute real 107856-parameter S1 observability probe
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          .train29-locked/bin/python tools/run_s1_observability_probe.py \
+            --source-sha "$SOURCE_SHA" \
+            --locked-environment-evidence locked-environment-linux-x86_64.json \
+            --output s1-training-observability.json \
+            --jsonl-output s1-training-observability.jsonl \
+            --seed 1337 \
+            --max-steps 12 \
+            --batch-size 3
+          .train29-locked/bin/python tools/validate_s1_observability_probe.py \
+            s1-training-observability.json \
+            --locked-environment-evidence locked-environment-linux-x86_64.json
+      - name: Print decision-relevant summary
+        run: |
+          .train29-locked/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+
+          evidence = json.loads(Path("s1-training-observability.json").read_text())
+          summary = evidence["telemetry"]["summary"]
+          print(json.dumps({
+              "identity_sha256": evidence["identity_sha256"],
+              "parameter_count": evidence["identity"]["parameter_count"],
+              "tokens_per_second": summary["throughput"]["train_tokens_per_second"],
+              "step_p50_seconds": summary["timing"]["step_seconds_p50"],
+              "step_p95_seconds": summary["timing"]["step_seconds_p95"],
+              "data_wait_fraction": summary["bottleneck"].get("data_wait_fraction_of_training"),
+              "checkpoint_fraction": summary["bottleneck"].get("checkpoint_fraction_of_observed_total"),
+              "bottleneck": summary["bottleneck"]["classification"],
+              "memory_peak": summary["memory_peak"],
+              "euro_2000_gate": evidence["paid_compute_decision_support"]["euro_2000_gate"],
+              "euro_10000_gate": evidence["paid_compute_decision_support"]["euro_10000_gate"],
+          }, indent=2, sort_keys=True))
+          PY
+      - name: Upload TRAIN-29 observability evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: train29-s1-training-observability
+          path: |
+            locked-environment-linux-x86_64.json
+            s1-training-observability.json
+            s1-training-observability.jsonl
+          if-no-files-found: error
+          retention-days: 30

@@ -1,0 +1,131 @@
+name: INTEGRATE-222 Learned Execution Spine
+
+on:
+  push:
+    branches:
+      - integrate222/learned-execution-spine-20260826
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  composed-head-proof:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - name: Checkout composed head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up exact Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11.16"
+
+      - name: Create evidence directory
+        run: mkdir -p integrate222-proof external/m150 external/learn191
+
+      - name: Universal execution bootstrap
+        uses: ./.github/actions/execution-bootstrap
+        with:
+          capabilities: runtime,tests,lint
+          venv: .venv-integrate222
+          manifest: integrate222-proof/bootstrap.json
+
+      - name: Prove accepted ancestry
+        shell: bash
+        run: |
+          set -euo pipefail
+          for sha in \
+            5838cd16869dcfcf762368d8673eddf52d51b7e3 \
+            e700acaed7963d641ecabc7d4f0e1017be272300 \
+            7c58eca3dad0c30f2f5593da43902645086c79e3 \
+            c245e929bca796166377a647f1eb3a558d2e4ad6 \
+            9d0c65fd4810f4abd0eabfab517ace9d8b4f946d \
+            349e6db94d4aca81c2d1a0ccc3368a98b6058392 \
+            a75920cef8bde37a8c590e34095be83c97b75f1d \
+            82e837c1053d6a77c4d1eb86cfaa7dfb521e2e63 \
+            de19adf253c19ba077a6b3af7c88c291249ed7aa \
+            4cb4767ba7002383c9ec6f31f1fcea1014105259
+          do
+            git merge-base --is-ancestor "$sha" HEAD
+          done
+          git rev-parse HEAD > integrate222-proof/head-sha.txt
+          git log --graph --oneline --decorate -40 > integrate222-proof/ancestry.txt
+
+      - name: Focused convergence tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          .venv-integrate222/bin/python -m pytest -q \
+            tests/test_execution_bootstrap.py \
+            tests/test_training_engine.py \
+            tests/test_training_precision_runtime.py \
+            tests/test_trainer_checkpoint_adapter.py \
+            tests/test_checkpointing.py \
+            tests/test_checkpoint_transactional_safety.py \
+            tests/test_ci161_failure_classification.py \
+            tests/test_evidence_finalizer_ci162.py \
+            tests/test_ci165_launch_gate.py \
+            tests/test_scale141_recovery.py
+
+      - name: Lint selectively composed surfaces
+        shell: bash
+        run: |
+          set -euo pipefail
+          .venv-integrate222/bin/ruff check \
+            src/twelve_six/training/precision.py \
+            src/twelve_six/training/trainer.py \
+            src/twelve_six/experiment_failure.py \
+            src/twelve_six/launch_gate.py \
+            src/twelve_six/scale141_recovery.py \
+            src/twelve_six/evaluation_ua_v1.py \
+            src/twelve_six/en_raw_diagnostic.py \
+            src/twelve_six/code_diagnostic.py \
+            tools/evidence_finalizer.py \
+            tools/run_classified_phase.py \
+            tools/run_checkpoint211_recovery_proof.py \
+            tools/run_integrate222_spine_proof.py
+
+      - name: Download exact terminal M150 artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh run download 32937411703 \
+            --repo "$GITHUB_REPOSITORY" \
+            --name milestone150-learned-base-ladder-v1 \
+            --dir external/m150
+
+      - name: Download exact terminal LEARN-191 3M artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh run download 32940842372 \
+            --repo "$GITHUB_REPOSITORY" \
+            --name learn191-real-3m-a75920cef8bde37a8c590e34095be83c97b75f1d \
+            --dir external/learn191
+
+      - name: D05 learned-artifact and evaluator proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          .venv-integrate222/bin/python tools/run_integrate222_spine_proof.py \
+            --m150-root external/m150 \
+            --learn191-root external/learn191 \
+            --output integrate222-proof
+
+      - name: Retain composed-head proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integrate222-composed-head-proof-${{ github.sha }}
+          path: integrate222-proof/
+          if-no-files-found: error
+          retention-days: 30
