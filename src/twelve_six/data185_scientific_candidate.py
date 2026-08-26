@@ -1,8 +1,8 @@
 """DATA-185 provisional scientific corpus qualification.
 
-Convergence layer over DATA-110. It reuses the accepted rights, quality,
-privacy, deduplication, decontamination, split, sharding, packing, Trainer,
-checkpoint and evaluation paths rather than creating parallel subsystems.
+Convergence layer over DATA-110. It reuses accepted rights, quality, privacy,
+deduplication, decontamination, split, sharding, packing, Trainer, checkpoint
+and evaluation paths. Unsupported scientific claims remain absent or null.
 """
 
 from __future__ import annotations
@@ -85,7 +85,9 @@ def _require_head(repo: Path, source_sha: str) -> None:
         raise Data185Error(f"exact-head mismatch: {actual} != {source_sha}")
 
 
-def _candidate_rows(root: Path, manifest: Mapping[str, Any]) -> Iterator[dict[str, Any]]:
+def _candidate_rows(
+    root: Path, manifest: Mapping[str, Any]
+) -> Iterator[dict[str, Any]]:
     for shard in manifest["physical"]["shards"]:
         path = root / str(shard["path"])
         if sha256_file(path) != shard["sha256"]:
@@ -138,12 +140,24 @@ def _cycling_data25(
 
 
 def _family_name(row: Mapping[str, Any]) -> str:
-    # DATA-110 binds source_id provenance, but no broader semantic family taxonomy.
-    # Keep the family definition exact rather than inventing domain groupings.
-    return str(row["source_id"])
+    source_id = row.get("source_id")
+    if source_id is None or not str(source_id).strip():
+        return "UNBOUND_SOURCE_ID"
+    return str(source_id)
 
 
-def _eval_examples(model: TwelveSixDecoder, examples: Sequence[Any]) -> tuple[float, int]:
+def _row_hash(row: Mapping[str, Any]) -> str:
+    supplied = row.get("content_sha256")
+    if isinstance(supplied, str) and len(supplied) == 64:
+        return supplied
+    import hashlib
+
+    return hashlib.sha256(str(row["text"]).encode("utf-8")).hexdigest()
+
+
+def _eval_examples(
+    model: TwelveSixDecoder, examples: Sequence[Any]
+) -> tuple[float, int]:
     ids = torch.tensor([x.input_ids for x in examples], dtype=torch.long)
     labels = torch.tensor([x.labels for x in examples], dtype=torch.long)
     logits = model(ids).logits[:, :-1, :].contiguous()
@@ -158,35 +172,128 @@ def _eval_examples(model: TwelveSixDecoder, examples: Sequence[Any]) -> tuple[fl
     return float(nll.item()), tokens
 
 
+def _state_snapshot(model: TwelveSixDecoder) -> dict[str, torch.Tensor]:
+    return {name: value.detach().cpu().clone() for name, value in model.state_dict().items()}
+
+
+def _state_unchanged(
+    before: Mapping[str, torch.Tensor], model: TwelveSixDecoder
+) -> bool:
+    after = model.state_dict()
+    return set(before) == set(after) and all(
+        torch.equal(before[name], after[name].detach().cpu()) for name in before
+    )
+
+
 @torch.no_grad()
-def _evaluate_families(
+def _evaluate_data25_validation(
     model: TwelveSixDecoder,
     root: Path,
     manifest: Mapping[str, Any],
     tok: ByteTokenizer,
 ) -> dict[str, Any]:
-    groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for row in _candidate_rows(root, manifest):
-        if row.get("split") == "validation":
-            groups[_family_name(row)].append(row)
+    """Evaluate on the original DATA-25 validation split.
 
+    DATA-110 selects project-authored material only from DATA-25 *train*, so the
+    original DATA-25 validation split is the leakage-safe common comparison set
+    for candidate-vs-previous trajectories. A separate explicit content-hash
+    exclusion check is still required before this metric can be authoritative.
+    """
+
+    training = model.training
+    before = _state_snapshot(model)
+    model.eval()
+    by_stratum: dict[str, Any] = {}
+    total_nll = 0.0
+    total_tokens = 0
+    try:
+        for stratum in ("uk", "en", "code"):
+            pending: list[Any] = []
+            nll_sum = 0.0
+            tokens = 0
+            examples = 0
+            for example in _finite_data25(
+                root, manifest, tok, "validation", stratum
+            ):
+                pending.append(example)
+                examples += 1
+                if len(pending) == 32:
+                    nll, count = _eval_examples(model, pending)
+                    nll_sum += nll
+                    tokens += count
+                    pending = []
+            if pending:
+                nll, count = _eval_examples(model, pending)
+                nll_sum += nll
+                tokens += count
+            by_stratum[stratum] = {
+                "packed_examples": examples,
+                "predicted_byte_tokens": tokens,
+                "bits_per_byte": (
+                    nll_sum / math.log(2.0) / tokens if tokens > 0 else None
+                ),
+                "status": "EVALUATED" if tokens > 0 else "NO_PACKED_TARGETS",
+            }
+            total_nll += nll_sum
+            total_tokens += tokens
+    finally:
+        model.train(training)
+    return {
+        "bits_per_byte": (
+            total_nll / math.log(2.0) / total_tokens if total_tokens > 0 else None
+        ),
+        "predicted_byte_tokens": total_tokens,
+        "by_stratum": by_stratum,
+        "non_mutation_passed": _state_unchanged(before, model),
+    }
+
+
+def _family_eval(
+    model: TwelveSixDecoder,
+    rows: Sequence[Mapping[str, Any]],
+    tok: ByteTokenizer,
+    *,
+    expected_split: str,
+    record_id_key: str,
+    include_families: Sequence[str] | None = None,
+) -> dict[str, Any]:
+    groups: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
+    strata_by_family: dict[str, set[str]] = defaultdict(set)
+    for row in rows:
+        family = _family_name(row)
+        strata_by_family[family].add(str(row["stratum"]))
+        if row.get("split") == expected_split:
+            groups[family].append(row)
+    families = set(include_families or ()) | set(strata_by_family)
     output: dict[str, Any] = {}
     training = model.training
+    before = _state_snapshot(model)
     model.eval()
     try:
-        for family in sorted(groups):
-            rows = groups[family]
+        for family in sorted(families):
+            family_rows = groups.get(family, [])
+            if not family_rows:
+                output[family] = {
+                    "strata": sorted(strata_by_family.get(family, set())),
+                    "validation_documents": 0,
+                    "predicted_byte_tokens": 0,
+                    "bits_per_byte": None,
+                    "status": "NO_VALIDATION_EXAMPLES",
+                }
+                continue
             records = (
-                TextRecord(str(row["record_id"]), str(row["text"]), "validation")
-                for row in rows
+                TextRecord(
+                    str(row[record_id_key]), str(row["text"]), expected_split
+                )
+                for row in family_rows
             )
-            pending = []
+            pending: list[Any] = []
             nll_sum = 0.0
             tokens = 0
             for example in iter_packed_examples(
                 records,
                 tok,
-                expected_split="validation",
+                expected_split=expected_split,
                 sequence_length=SEQ,
                 cross_document=False,
             ):
@@ -201,8 +308,8 @@ def _evaluate_families(
                 nll_sum += nll
                 tokens += count
             output[family] = {
-                "strata": sorted({str(row["stratum"]) for row in rows}),
-                "validation_documents": len(rows),
+                "strata": sorted(strata_by_family.get(family, set())),
+                "validation_documents": len(family_rows),
                 "predicted_byte_tokens": tokens,
                 "bits_per_byte": (
                     nll_sum / math.log(2.0) / tokens if tokens > 0 else None
@@ -211,7 +318,28 @@ def _evaluate_families(
             }
     finally:
         model.train(training)
+    if not _state_unchanged(before, model):
+        raise Data185Error("source-family evaluation mutated model parameters")
     return output
+
+
+@torch.no_grad()
+def _evaluate_candidate_families(
+    model: TwelveSixDecoder,
+    root: Path,
+    manifest: Mapping[str, Any],
+    tok: ByteTokenizer,
+) -> dict[str, Any]:
+    rows = list(_candidate_rows(root, manifest))
+    families = sorted({_family_name(row) for row in rows})
+    return _family_eval(
+        model,
+        rows,
+        tok,
+        expected_split="validation",
+        record_id_key="record_id",
+        include_families=families,
+    )
 
 
 def _load_candidate_model(
@@ -244,9 +372,9 @@ def _load_candidate_model(
 
 def _build_stats(root: Path, manifest: Mapping[str, Any]) -> dict[str, Any]:
     rows = list(_candidate_rows(root, manifest))
-    by_origin = Counter()
-    by_stratum_origin = Counter()
-    by_family = Counter()
+    by_origin: Counter[str] = Counter()
+    by_stratum_origin: Counter[str] = Counter()
+    by_family: Counter[str] = Counter()
     train_bytes = 0
     train_docs = 0
     for row in rows:
@@ -298,8 +426,50 @@ def _build_stats(root: Path, manifest: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _data25_validation_rows(
+    root: Path, manifest: Mapping[str, Any]
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for stratum in ("uk", "en", "code"):
+        rows.extend(_data25_rows(root, manifest, "validation", stratum))
+    return rows
+
+
+def _comparison_exclusion(
+    candidate_root: Path,
+    candidate_manifest: Mapping[str, Any],
+    data25_root: Path,
+    data25_manifest: Mapping[str, Any],
+) -> dict[str, Any]:
+    candidate_train = {
+        _row_hash(row)
+        for row in _candidate_rows(candidate_root, candidate_manifest)
+        if row.get("split") == "train"
+    }
+    data25_validation_rows = _data25_validation_rows(data25_root, data25_manifest)
+    validation = {_row_hash(row) for row in data25_validation_rows}
+    overlap = sorted(candidate_train & validation)
+    return {
+        "common_eval_dataset_identity_sha256": DATA25_EXPECTED_ID,
+        "common_eval_split": "validation",
+        "candidate_train_unique_content_hashes": len(candidate_train),
+        "data25_validation_unique_content_hashes": len(validation),
+        "exact_content_overlap_count": len(overlap),
+        "overlap_sha256": hash_json(overlap),
+        "passed": len(overlap) == 0,
+        "near_duplicate_exclusion_claim": False,
+        "note": (
+            "DATA-110 project rows originate from DATA-25 train only; this extra "
+            "exact-content check binds the original DATA-25 validation split as "
+            "the common comparison identity without asserting semantic/near-dup "
+            "cleanliness beyond the incumbent corpus guarantees."
+        ),
+    }
+
+
 def _run_previous_arm(
     repo: Path,
+    candidate_model: TwelveSixDecoder,
     candidate_root: Path,
     candidate_manifest: Mapping[str, Any],
     out: Path,
@@ -315,10 +485,25 @@ def _run_previous_arm(
     if data25 != retained or data25["corpus_identity_sha256"] != DATA25_EXPECTED_ID:
         raise Data185Error("previous DATA-25 identity did not rebuild exactly")
 
+    exclusion = _comparison_exclusion(
+        candidate_root, candidate_manifest, build_a, data25
+    )
+    candidate_common = _evaluate_data25_validation(
+        candidate_model, build_a, data25, tok
+    )
+    data25_validation_rows = _data25_validation_rows(build_a, data25)
+    candidate_common_families = _family_eval(
+        candidate_model,
+        data25_validation_rows,
+        tok,
+        expected_split="validation",
+        record_id_key="record_id",
+    )
+
     torch.manual_seed(SEED)
     model = TwelveSixDecoder(spec, init)
     trainer = Trainer(model, cfg, device="cpu")
-    initial = _evaluate(model, candidate_root, candidate_manifest, tok)
+    initial = _evaluate_data25_validation(model, build_a, data25, tok)
     iterators = {
         stratum: _cycling_data25(build_a, data25, tok, stratum)
         for stratum in ("uk", "en", "code")
@@ -333,8 +518,28 @@ def _run_previous_arm(
             float(metrics.update_loss if metrics.update_loss is not None else metrics.loss)
         )
     elapsed = time.perf_counter() - started
-    final = _evaluate(model, candidate_root, candidate_manifest, tok)
-    families = _evaluate_families(model, candidate_root, candidate_manifest, tok)
+    final = _evaluate_data25_validation(model, build_a, data25, tok)
+    previous_common_families = _family_eval(
+        model,
+        data25_validation_rows,
+        tok,
+        expected_split="validation",
+        record_id_key="record_id",
+    )
+    diagnostic_candidate_validation = _evaluate(
+        model, candidate_root, candidate_manifest, tok
+    )
+    diagnostic_candidate_families = _evaluate_candidate_families(
+        model, candidate_root, candidate_manifest, tok
+    )
+    common_identity_core = {
+        "dataset_identity_sha256": DATA25_EXPECTED_ID,
+        "split": "validation",
+        "packing_sequence_length": SEQ,
+        "cross_document": False,
+        "tokenizer_config_sha256": tok.identity.config_sha256,
+        "tokenizer_vocab_sha256": tok.identity.vocab_sha256,
+    }
     return {
         "dataset_identity_sha256": DATA25_EXPECTED_ID,
         "dataset_version": data25["corpus_version"],
@@ -352,9 +557,25 @@ def _run_previous_arm(
         "sequence_length": SEQ,
         "steps": trainer.optimizer_step,
         "optimized_tokens": trainer.tokens_seen,
+        "common_evaluation_identity": {
+            **common_identity_core,
+            "identity_sha256": hash_json(common_identity_core),
+        },
+        "common_evaluation_training_exclusion": exclusion,
+        "candidate_model_common_eval": candidate_common,
+        "candidate_model_common_source_family_bpb": candidate_common_families,
         "initial_common_eval": initial,
         "final_common_eval": final,
-        "source_family_bpb": families,
+        "previous_model_common_source_family_bpb": previous_common_families,
+        "candidate_validation_diagnostic": {
+            "aggregate_and_stratum_bpb": diagnostic_candidate_validation,
+            "source_family_bpb": diagnostic_candidate_families,
+            "selection_metric": False,
+            "caveat": (
+                "not used for candidate-vs-previous selection because DATA-110 "
+                "re-splits material originating from DATA-25 train"
+            ),
+        },
         "first64_mean_loss": sum(losses[:64]) / 64,
         "last64_mean_loss": sum(losses[-64:]) / 64,
         "wall_seconds_training_only": elapsed,
@@ -365,12 +586,12 @@ def _run_previous_arm(
     }
 
 
-def _research140_single_pair(baseline_bpb: float, candidate_bpb: float) -> dict[str, Any]:
-    # RESEARCH-140 requires at least three paired repeats for winner selection.
-    # DATA-185's mandated single fixed trajectory is therefore descriptive only.
+def _research140_single_pair(
+    baseline_bpb: float, candidate_bpb: float
+) -> dict[str, Any]:
     return {
         "methodology_upstream_head": RESEARCH140_HEAD,
-        "metric": "common_selection_validation_bits_per_byte",
+        "metric": "common_data25_validation_bits_per_byte",
         "direction": "lower_is_better",
         "materiality_threshold_bpb": QUALITY_MATERIALITY_BPB,
         "paired_repeats": 1,
@@ -382,6 +603,24 @@ def _research140_single_pair(baseline_bpb: float, candidate_bpb: float) -> dict[
             "single paired trajectory is descriptive only; no p-value or "
             "asymptotic significance claim"
         ),
+    }
+
+
+def _truth_boundary() -> dict[str, Any]:
+    return {
+        "freeze_scope_if_passed": (
+            "controlled comparable research identity only; not production or "
+            "capability status"
+        ),
+        "production_ready_claim": False,
+        "intelligence_claim": False,
+        "alignment_claim": False,
+        "instruction_following_claim": False,
+        "representative_population_claim": False,
+        "foreign_pretrained_weights": False,
+        "sft_rlhf_dpo": False,
+        "paid_compute": False,
+        "local_free": True,
     }
 
 
@@ -405,19 +644,22 @@ def qualify(repo: Path, source_sha: str, evidence: Path, out: Path) -> dict[str,
     candidate_model, candidate_trainer, tok = _load_candidate_model(
         repo, source_sha, evidence, report
     )
-    candidate_common = _evaluate(candidate_model, candidate_root, manifest, tok)
+    candidate_own_eval = _evaluate(candidate_model, candidate_root, manifest, tok)
     expected_bpb = float(report["evaluation"]["final_bits_per_byte"])
-    if abs(float(candidate_common["bits_per_byte"]) - expected_bpb) > 1e-10:
-        raise Data185Error("candidate checkpoint common-eval reproduction mismatch")
-    candidate_families = _evaluate_families(
+    if abs(float(candidate_own_eval["bits_per_byte"]) - expected_bpb) > 1e-10:
+        raise Data185Error("candidate checkpoint own-heldout reproduction mismatch")
+    candidate_own_families = _evaluate_candidate_families(
         candidate_model, candidate_root, manifest, tok
     )
 
-    previous = _run_previous_arm(repo, candidate_root, manifest, out)
+    previous = _run_previous_arm(
+        repo, candidate_model, candidate_root, manifest, out
+    )
     previous_bpb = float(previous["final_common_eval"]["bits_per_byte"])
-    candidate_bpb = float(candidate_common["bits_per_byte"])
+    candidate_bpb = float(previous["candidate_model_common_eval"]["bits_per_byte"])
     research = _research140_single_pair(previous_bpb, candidate_bpb)
     real_families = stats["real_source_families_by_stratum"]
+    exclusion = previous["common_evaluation_training_exclusion"]
 
     gates = {
         "nontrivial_real_source_share": {
@@ -483,8 +725,17 @@ def qualify(repo: Path, source_sha: str, evidence: Path, out: Path) -> dict[str,
             "passed": report["training"]["optimized_tokens"] >= 400_000
             and report["runtime"]["fresh_process_resume"]["passed"] is True,
         },
+        "common_eval_training_exclusion": exclusion,
         "common_eval_non_mutation": {
-            "passed": bool(candidate_common["non_mutation_passed"])
+            "candidate_passed": previous["candidate_model_common_eval"][
+                "non_mutation_passed"
+            ],
+            "previous_passed": previous["final_common_eval"][
+                "non_mutation_passed"
+            ],
+            "passed": bool(
+                previous["candidate_model_common_eval"]["non_mutation_passed"]
+            )
             and bool(previous["final_common_eval"]["non_mutation_passed"]),
         },
         "single_pair_quality_non_regression": {
@@ -532,6 +783,11 @@ def qualify(repo: Path, source_sha: str, evidence: Path, out: Path) -> dict[str,
             "data110_report_sha256": report["report_sha256"],
             "data110_release_manifest_sha256": release["release_manifest_sha256"],
             "stats": stats,
+            "own_validation": {
+                "aggregate_and_stratum_bpb": candidate_own_eval,
+                "source_family_bpb": candidate_own_families,
+                "selection_metric": False,
+            },
         },
         "requirements": gates,
         "fixed_approx_1m_comparison": {
@@ -542,39 +798,20 @@ def qualify(repo: Path, source_sha: str, evidence: Path, out: Path) -> dict[str,
             "same_init_seed": SEED,
             "same_optimizer_steps": MAX_STEPS,
             "same_mixture_pattern": list(MIXTURE),
-            "common_evaluation_identity": {
-                "candidate_validation_split_family_identity_sha256": manifest[
-                    "split"
-                ]["split_family_identity_sha256"],
-                "candidate_validation_corpus_identity_sha256": manifest[
-                    "corpus_identity_sha256"
-                ],
-                "packing_sequence_length": SEQ,
-                "tokenizer_config_sha256": tok.identity.config_sha256,
-            },
+            "common_evaluation_identity": previous["common_evaluation_identity"],
             "candidate": {
                 "optimized_tokens": candidate_trainer.tokens_seen,
-                "aggregate_and_stratum_bpb": candidate_common,
-                "source_family_bpb": candidate_families,
+                "aggregate_and_stratum_bpb": previous[
+                    "candidate_model_common_eval"
+                ],
+                "source_family_bpb": previous[
+                    "candidate_model_common_source_family_bpb"
+                ],
             },
             "previous_data25": previous,
             "research140_decision": research,
         },
-        "truth_boundary": {
-            "freeze_scope_if_passed": (
-                "controlled comparable research identity only; not production "
-                "or capability status"
-            ),
-            "production_ready_claim": False,
-            "intelligence_claim": False,
-            "alignment_claim": False,
-            "instruction_following_claim": False,
-            "representative_population_claim": False,
-            "foreign_pretrained_weights": False,
-            "sft_rlhf_dpo": False,
-            "paid_compute": False,
-            "local_free": True,
-        },
+        "truth_boundary": _truth_boundary(),
         "runtime": {
             "python": platform.python_version(),
             "torch": torch.__version__,
@@ -585,6 +822,35 @@ def qualify(repo: Path, source_sha: str, evidence: Path, out: Path) -> dict[str,
     }
     result["report_sha256"] = hash_json(result)
     _write_json(out / "data185-scientific-candidate.json", result)
+    return result
+
+
+def _blocked_report(source_sha: str, exc: Exception) -> dict[str, Any]:
+    result = {
+        "schema": SCHEMA,
+        "authority": AUTHORITY,
+        "source": {
+            "repository": REPOSITORY,
+            "git_sha": source_sha,
+            "branch": "data185/corpus-v1-scientific-candidate-20260826",
+        },
+        "status": "BLOCKED",
+        "machine_reasons": [
+            {
+                "code": "QUALIFICATION_EXECUTION_BLOCKED",
+                "blocking_freeze": True,
+                "exception_type": type(exc).__name__,
+                "detail": str(exc),
+            }
+        ],
+        "truth_boundary": _truth_boundary(),
+        "unsupported_sections_absent": [
+            "candidate",
+            "requirements",
+            "fixed_approx_1m_comparison",
+        ],
+    }
+    result["report_sha256"] = hash_json(result)
     return result
 
 
@@ -604,15 +870,19 @@ def validate(path: Path, expected_source_sha: str | None = None) -> dict[str, An
         raise Data185Error("invalid qualification status")
     if expected_source_sha and report["source"]["git_sha"] != expected_source_sha:
         raise Data185Error("source SHA mismatch")
+    if report["truth_boundary"]["local_free"] is not True:
+        raise Data185Error("LOCAL_FREE truth boundary weakened")
+    if report["truth_boundary"]["foreign_pretrained_weights"] is not False:
+        raise Data185Error("foreign-weight truth boundary weakened")
+    if report["status"] == "BLOCKED":
+        if "fixed_approx_1m_comparison" in report:
+            raise Data185Error("BLOCKED report must not fabricate comparison evidence")
+        return report
     if (
         report["fixed_approx_1m_comparison"]["previous_dataset_identity_sha256"]
         != DATA25_EXPECTED_ID
     ):
         raise Data185Error("previous dataset identity drift")
-    if report["truth_boundary"]["local_free"] is not True:
-        raise Data185Error("LOCAL_FREE truth boundary weakened")
-    if report["truth_boundary"]["foreign_pretrained_weights"] is not False:
-        raise Data185Error("foreign-weight truth boundary weakened")
     return report
 
 
@@ -629,12 +899,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     v.add_argument("--expected-source-sha")
     args = parser.parse_args(argv)
     if args.cmd == "qualify":
-        result = qualify(
-            args.repo_root.resolve(),
-            args.source_sha,
-            args.data110_evidence.resolve(),
-            args.output_dir.resolve(),
-        )
+        try:
+            result = qualify(
+                args.repo_root.resolve(),
+                args.source_sha,
+                args.data110_evidence.resolve(),
+                args.output_dir.resolve(),
+            )
+        except Exception as exc:  # fail closed into the required machine status
+            result = _blocked_report(args.source_sha, exc)
+            _write_json(
+                args.output_dir.resolve() / "data185-scientific-candidate.json",
+                result,
+            )
         print(
             json.dumps(
                 {
