@@ -1,0 +1,138 @@
+name: NEXT100-041 CPython Code Admission
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  admit-cpython-code:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact source head
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+
+      - name: Bootstrap universal exact LOCAL_FREE environment
+        uses: ./.github/actions/execution-bootstrap
+        with:
+          capabilities: runtime,tests,lint
+          venv: .next100-041
+          command: python -m pytest
+          manifest: next100-041-execution-environment.json
+
+      - name: Focused static and contract tests
+        env:
+          PYTHONPATH: src
+        run: |
+          .next100-041/bin/python -m compileall -q src/twelve_six/next100_041_cpython_code_admission.py
+          .next100-041/bin/ruff check --select E4,E9,F src/twelve_six/next100_041_cpython_code_admission.py tests/test_next100_041_cpython_code_admission.py
+          .next100-041/bin/python -m pytest -q tests/test_next100_041_cpython_code_admission.py tests/test_data24_rights_gate.py
+
+      - name: Acquire exact CPython blobs and produce D03 authority
+        env:
+          PYTHONPATH: src
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          mkdir -p next100-041-evidence
+          .next100-041/bin/python -m twelve_six.next100_041_cpython_code_admission run \
+            --repo-root . \
+            --output-dir next100-041-evidence \
+            --source-sha "$EXPECTED_SOURCE_SHA" \
+            | tee next100-041-evidence/stdout.json
+
+      - name: Validate terminal authority and immutable source identities
+        env:
+          PYTHONPATH: src
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          .next100-041/bin/python -m twelve_six.next100_041_cpython_code_admission validate \
+            next100-041-evidence/next100-041-cpython-code-admission.json \
+            --expected-source-sha "$EXPECTED_SOURCE_SHA"
+          .next100-041/bin/python - <<'PY'
+          import hashlib
+          import json
+          import subprocess
+          from pathlib import Path
+
+          report_path = Path("next100-041-evidence/next100-041-cpython-code-admission.json")
+          report = json.loads(report_path.read_text(encoding="utf-8"))
+          assert report["terminal_verdict"] == "ADMIT"
+          assert report["scope"]["files"] == 3
+          assert report["scope"]["raw_bytes"] <= 100000
+          assert report["scope"]["docs_included"] is False
+          assert report["scope"]["tests_included"] is False
+          assert report["scope"]["evaluation_objects_included"] is False
+          assert report["upstream"]["canonical_family_id"] == "github:python/cpython"
+          assert len({o["git_blob_sha1"] for o in report["objects"]}) == 3
+          assert len({o["raw_sha256"] for o in report["objects"]}) == 3
+          assert all(o["raw_sha256"] == o["normalized_sha256"] for o in report["objects"])
+          assert all(o["parse_validity"]["passed"] for o in report["objects"])
+          assert all(o["privacy_secret_scan"]["passed"] for o in report["objects"])
+          assert all(o["training_purpose_decision"] == "ALLOWED" for o in report["objects"])
+          assert all(o["redistribution_decision"] == "ALLOWED" for o in report["objects"])
+          assert all(o["reserved_for_evaluation"] is False for o in report["objects"])
+          assert report["deduplication"]["passed"] is True
+          assert report["eligibility_inventory"]["model_training_allowed"] == 3
+          assert report["eligibility_inventory"]["model_training_blocked"] == 0
+          assert hashlib.sha256(report_path.read_bytes()).hexdigest()
+
+          for source in report["d03_registry"]["sources"]:
+              uri = source["snapshot"]["uri"]
+              assert uri.startswith("file:data/external/snapshots/sha256/")
+              path = Path(uri.removeprefix("file:"))
+              payload = path.read_bytes()
+              assert len(payload) == source["snapshot"]["size_bytes"]
+              assert hashlib.sha256(payload).hexdigest() == source["snapshot"]["sha256"]
+              tracked = subprocess.run(
+                  ["git", "ls-files", "--error-unmatch", "--", path.as_posix()],
+                  stdout=subprocess.PIPE,
+                  stderr=subprocess.PIPE,
+                  text=True,
+              )
+              assert tracked.returncode != 0
+
+          print(json.dumps({
+              "authority_identity_sha256": report["authority_identity_sha256"],
+              "report_file_sha256": hashlib.sha256(report_path.read_bytes()).hexdigest(),
+              "raw_bytes": report["scope"]["raw_bytes"],
+              "objects": [
+                  {
+                      "source_id": o["source_id"],
+                      "path": o["path"],
+                      "git_blob_sha1": o["git_blob_sha1"],
+                      "raw_sha256": o["raw_sha256"],
+                      "raw_bytes": o["raw_bytes"],
+                  }
+                  for o in report["objects"]
+              ],
+          }, sort_keys=True))
+          PY
+
+      - name: Upload NEXT100-041 terminal authority artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: next100-041-cpython-code-admission-${{ github.event.pull_request.head.sha || github.sha }}
+          if-no-files-found: error
+          retention-days: 90
+          path: |
+            configs/data/next100_041_cpython_code_rights_policy_v1.json
+            next100-041-execution-environment.json
+            next100-041-evidence/
+            data/external/snapshots/sha256/*/payload

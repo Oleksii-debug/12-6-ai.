@@ -1,0 +1,126 @@
+{
+  "schema_version": "12-6.next100-041-cpython-code-rights-policy.v1",
+  "worker_id": "NEXT100-041-CODE-CPYTHON",
+  "reviewed_at": "2026-08-26",
+  "reviewer_ref": "NEXT100-041-CODE-CPYTHON",
+  "policy_ref": "policy://12-6/data/explicit-model-training-evidence-v1",
+  "decision_rule": "Approve only the enumerated CPython source-code Git blobs at the exact pinned upstream commit after exact license-blob verification, code-only path enforcement, privacy/secret scan, Python parse validation, current-training-registry deduplication, and evaluation-reservation exclusion. Public availability alone never authorizes training.",
+  "upstream": {
+    "repository": "https://github.com/python/cpython",
+    "commit": "9036982ed73d17848d45b60b7550f097371214e4",
+    "tree": "7f5306034060b3526319b6f4d5832dbbd70a82bb",
+    "canonical_family_id": "github:python/cpython",
+    "family_scope": "upstream_repository",
+    "modality_partition": "code",
+    "fork": false,
+    "mirror": false
+  },
+  "license": {
+    "license_id": "PSF-2.0",
+    "path": "LICENSE",
+    "blob_sha1": "20cf39097c68baa17cc566b64e76d34ebf034044",
+    "url": "https://raw.githubusercontent.com/python/cpython/9036982ed73d17848d45b60b7550f097371214e4/LICENSE",
+    "scope_note": "The exact CPython LICENSE states that Python software and documentation are licensed under Python Software Foundation License Version 2 and that some incorporated software may carry different licenses. This admission is therefore restricted to the enumerated first-party Lib/*.py objects and fails closed on file-local alternate-license markers.",
+    "redistribution_conditions": "Retain the PSF License Agreement and PSF copyright notice in Python or derivative versions; if a derivative work incorporating Python is made available to others, include a brief summary of changes. No trademark endorsement permission is granted. Preserve any applicable incorporated historical notices in the exact LICENSE file when redistributing the admitted snapshot bundle."
+  },
+  "training_purpose_authority": {
+    "decision": "ALLOWED",
+    "basis": "The reviewed PSF-2.0 grant expressly permits reproduce, analyze, test, prepare derivative works, distribute, and otherwise use Python. Under the project explicit-model-training policy, the enumerated exact source-code objects are approved for pretraining use subject to the license conditions; this decision is not inferred from public accessibility.",
+    "evaluation": "NOT_ADMITTED",
+    "reserved_for_evaluation": false
+  },
+  "inventory": [
+    {
+      "source_id": "code.python.cpython.graphlib",
+      "path": "Lib/graphlib.py",
+      "blob_sha1": "af5245ccbcd3a826d0dd49f7541e92bff98c0d0d",
+      "raw_url": "https://raw.githubusercontent.com/python/cpython/9036982ed73d17848d45b60b7550f097371214e4/Lib/graphlib.py",
+      "language": "python",
+      "source_kind": "source_code",
+      "purpose": "pretraining"
+    },
+    {
+      "source_id": "code.python.cpython.fnmatch",
+      "path": "Lib/fnmatch.py",
+      "blob_sha1": "10e1c936688d8f84c87977ed592c4beaf88e4336",
+      "raw_url": "https://raw.githubusercontent.com/python/cpython/9036982ed73d17848d45b60b7550f097371214e4/Lib/fnmatch.py",
+      "language": "python",
+      "source_kind": "source_code",
+      "purpose": "pretraining"
+    },
+    {
+      "source_id": "code.python.cpython.bisect",
+      "path": "Lib/bisect.py",
+      "blob_sha1": "ca6ca7240840bbee58c1bbc79b56998c5ae2dbbd",
+      "raw_url": "https://raw.githubusercontent.com/python/cpython/9036982ed73d17848d45b60b7550f097371214e4/Lib/bisect.py",
+      "language": "python",
+      "source_kind": "source_code",
+      "purpose": "pretraining"
+    }
+  ],
+  "explicit_exclusions": {
+    "documentation": ["Doc/", "*.rst", "*.md", "documentation examples/recipes"],
+    "tests": ["Lib/test/"],
+    "generated_or_vendored": ["Modules/_decimal/libmpdec/", "Modules/expat/", "Modules/_ctypes/libffi*", "Modules/_sqlite/", "Modules/zlib/", "Modules/bzip2/", "Modules/lzma/", "Modules/_hacl/", "PCbuild/", "externals/", "vendor/", "third_party/", "generated/"],
+    "non_python": ["*.c", "*.h", "*.S", "*.asm", "binary artifacts"],
+    "evaluation": "Any object marked benchmark/held-out/reserved or otherwise present in a current evaluation reservation authority is excluded. This worker grants no evaluation use."
+  },
+  "current_registry_binding": {
+    "authority": "DATA-287-EXTERNAL-SNAPSHOT-REGISTRY-V2",
+    "producer_head": "b0523ccbc4b957615aac849d476cfa851be87578",
+    "registry_path": "data/registry/external_snapshots.v2.json",
+    "registry_identity_sha256": "917e9bc31b2fa040d25e807ae3c01aa2cce32420752a891caacfb6c830e6632c",
+    "source_count": 5,
+    "independent_source_family_count": 4,
+    "existing_raw_sha256": [
+      "21582c7f0e4ad39f2b0ed97bbc2c082d275e898b7a63c28e6d9badb8ee0f7860",
+      "7ac53dfb4bf6f73f178560e09f33160d0250c69fb679802f3254dc0eb4c9f509",
+      "36eae31c3b0676ea7c02236fa05bd695c240c9a8eade5febc00457b8103ee1a4",
+      "2c61b3ac94d1dcebcde0c6f519554d2d7917247fbaa0a97002db4ef69e70ff28",
+      "4c7d8d132c9898fc7d715e473f3ac74785ddc4ab96d2c9240f87835dc6d981ff"
+    ],
+    "existing_code_objects": [
+      {
+        "source_id": "code.encode.httpx._content",
+        "raw_url": "https://raw.githubusercontent.com/encode/httpx/b5addb64f0161ff6bfe94c124ef76f6a1fba5254/httpx/_content.py",
+        "raw_sha256": "2c61b3ac94d1dcebcde0c6f519554d2d7917247fbaa0a97002db4ef69e70ff28"
+      },
+      {
+        "source_id": "code.psf.requests._internal_utils",
+        "raw_url": "https://raw.githubusercontent.com/psf/requests/5460f467b02e49471c0fd6cfc9ca0adab6351f98/src/requests/_internal_utils.py",
+        "raw_sha256": "4c7d8d132c9898fc7d715e473f3ac74785ddc4ab96d2c9240f87835dc6d981ff"
+      }
+    ]
+  },
+  "family_lineage_concurrency": {
+    "canonical_upstream_family_id": "github:python/cpython",
+    "bound_registry_contains_cpython": false,
+    "bound_registry_family_credit_if_admitted": 1,
+    "observed_sibling_candidate": {
+      "worker_id": "NEXT100-037-DATA-EN-PYTHON-DOCS",
+      "pull_request": 467,
+      "head": "5a6a495a24bce449334cbc5126d0114f61a9f57c",
+      "source_family_label": "python.cpython.documentation",
+      "authority_identity_sha256": "46a00dc70db690ae2b3c4495a75283e7e752bdccb1047d4318c2ebadfa392f0d",
+      "terminal_state_at_review": "NONTERMINAL_WORKFLOW_QUEUED"
+    },
+    "composition_rule": "CPython code and CPython documentation are modality partitions of the same canonical upstream repository family for independent-family accounting. If NEXT100-037 or another CPython sibling becomes terminal before composition, this code authority adds zero additional independent-family credit even though its exact code objects remain separately admitted.",
+    "additional_family_credit_if_sibling_cpython_terminal": 0
+  },
+  "evaluation_boundary": {
+    "eval233_head": "b5512b4648cb09dd052b08884dc53f291e1ce935",
+    "data232_reserved_authorities_identity": "d169a9ca3bd561729227a222cdea47b8296b753bee0cd7f0ffea02621ac74b2a",
+    "data232_final_test_identity": "86d51eb106524cd8e4d0f94d4ff6e2e3426c6321e0698279877dfc4d5fce3116",
+    "code_evaluation_state": "BLOCKED_DATA227_TRAINING_ONLY_NO_EVALUATION_RESERVATION",
+    "cp_python_inventory_reserved": false,
+    "basis": "At review cutoff EVAL-233 preserves 16 UA/EN final-test records and reports zero code evaluation records; DATA-227 code is training-only. Repository-wide identity/path searches found none of the enumerated CPython Lib/*.py objects in evaluation authorities."
+  },
+  "limits": {
+    "max_files": 3,
+    "max_bytes_per_file": 100000,
+    "max_total_raw_bytes": 100000,
+    "normalization": "STRICT_UTF8_IDENTITY_PRESERVE_V1",
+    "near_duplicate_token_shingle_size": 5,
+    "near_duplicate_jaccard_threshold": 0.85
+  }
+}
