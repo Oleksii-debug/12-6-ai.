@@ -1,0 +1,69 @@
+name: DATA-526 Pre-decontamination Candidate
+
+on:
+  push:
+    branches:
+      - "data526/predecontam-candidate-records-sol-20260826"
+    paths:
+      - "configs/data/data526_predecontam_source_records_v1.json"
+      - "evidence/data526/predecontam_candidate_v1.json"
+      - "tools/build_predecontam_candidate_identity.py"
+      - "tools/validate_data526_predecontam_candidate.py"
+      - "tests/test_data526_predecontam_candidate.py"
+      - "docs/DATA526_PREDECONTAM_CANDIDATE.md"
+      - ".github/workflows/data526-predecontam-candidate.yml"
+  pull_request:
+    paths:
+      - "configs/data/data526_predecontam_source_records_v1.json"
+      - "evidence/data526/predecontam_candidate_v1.json"
+      - "tools/build_predecontam_candidate_identity.py"
+      - "tools/validate_data526_predecontam_candidate.py"
+      - "tests/test_data526_predecontam_candidate.py"
+      - "docs/DATA526_PREDECONTAM_CANDIDATE.md"
+      - ".github/workflows/data526-predecontam-candidate.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: data526-predecontam-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  exact-candidate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Compile focused code
+        run: |
+          python3 -m py_compile \
+            tools/build_predecontam_candidate_identity.py \
+            tools/validate_data526_predecontam_candidate.py \
+            tests/test_data526_predecontam_candidate.py
+
+      - name: Rebuild frozen identity to temporary output
+        run: |
+          python3 tools/build_predecontam_candidate_identity.py \
+            --inventory configs/data/data526_predecontam_source_records_v1.json \
+            --output /tmp/data526-rebuilt.json
+          cmp -s /tmp/data526-rebuilt.json evidence/data526/predecontam_candidate_v1.json || \
+            python3 - <<'PY'
+          import json
+          from pathlib import Path
+          a=json.loads(Path('/tmp/data526-rebuilt.json').read_text())
+          b=json.loads(Path('evidence/data526/predecontam_candidate_v1.json').read_text())
+          if a != b:
+              raise SystemExit('deterministic rebuild differs from frozen candidate')
+          PY
+
+      - name: Validate fail-closed candidate
+        run: python3 tools/validate_data526_predecontam_candidate.py
+
+      - name: Run adversarial tests
+        run: python3 -m unittest tests.test_data526_predecontam_candidate -v
