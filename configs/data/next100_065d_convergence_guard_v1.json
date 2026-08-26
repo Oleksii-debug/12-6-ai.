@@ -44,14 +44,27 @@
       "record_count": 3,
       "exact_eligible_capacity_bytes": 1672110,
       "evaluation": "NOT_AUTHORIZED"
+    },
+    "attrs": {
+      "pr": 474,
+      "head_sha": "cda0232d5574ef91eae0d7e0b7fa5efddcbe218b",
+      "dedicated_workflow_run": 33006080831,
+      "dedicated_workflow_conclusion": "success",
+      "authority_identity_sha256": "151e593c3b67ae4c7686323983e6c45306a870b732573ee4820c0c017b65a7d4",
+      "artifact_id": 9621650719,
+      "artifact_digest": "sha256:a8176b50a2254fcb50a6f80ca82b63459ba8e9cfddba904b16e5ac79f9c55ff2",
+      "source_family": "github:python-attrs/attrs",
+      "source_object_count": 4,
+      "exact_eligible_capacity_bytes": 170435,
+      "evaluation": "NOT_SEPARATELY_ADMITTED"
     }
   },
   "expected_composed_vector_before_successor_global_dedup": {
-    "source_object_count": 31,
-    "source_family_counts": {"uk": 4, "en": 5, "code": 5},
-    "capacity_bytes": {"uk": 100856, "en": 1838293, "code": 106031, "total": 2045180},
+    "source_object_count": 35,
+    "source_family_counts": {"uk": 4, "en": 5, "code": 6},
+    "capacity_bytes": {"uk": 100856, "en": 1838293, "code": 276466, "total": 2215615},
     "research_corpus_v1_acquisition_target_bytes": 20000000,
-    "planning_gap_bytes": 17954820,
+    "planning_gap_bytes": 17784385,
     "authorized_balanced_no_replay_loss_positions": 0
   },
   "claim_boundary": {
