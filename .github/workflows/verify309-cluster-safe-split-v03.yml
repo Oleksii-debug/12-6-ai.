@@ -1,0 +1,26 @@
+name: VERIFY-309 cluster-safe split v03
+
+on:
+  push:
+    branches:
+      - "verify309/**"
+    paths:
+      - "src/twelve_six/verification/cluster_safe_split_v03.py"
+      - "src/twelve_six/verification/__init__.py"
+      - "tests/test_verify309_cluster_safe_split_v03.py"
+      - ".github/workflows/verify309-cluster-safe-split-v03.yml"
+  workflow_dispatch:
+
+jobs:
+  verify309:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -e ".[dev]"
+      - run: ruff check src/twelve_six/verification/cluster_safe_split_v03.py tests/test_verify309_cluster_safe_split_v03.py
+      - run: pytest -q tests/test_verify309_cluster_safe_split_v03.py
+      - run: python -m twelve_six.verification.cluster_safe_split_v03 --self-test-only
