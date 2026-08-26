@@ -110,6 +110,6 @@ jobs:
             evidence/scale202/universal-bootstrap.json
             evidence/scale202/result.json
             evidence/scale202/work/run-manifest.json
-            evidence/scale202/work/checkpoint-step-0001/MANIFEST.json
+            evidence/scale202/work/checkpoint-step-0001/manifest.json
             evidence/scale202/work/checkpoint-step-0001/MANIFEST.sha256
           if-no-files-found: ignore
