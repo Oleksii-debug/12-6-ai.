@@ -1,0 +1,140 @@
+{
+  "authority": "LOCAL_FREE_RESEARCH_ONLY_NOT_PROMOTION",
+  "base_research_sha": "c98569f1df3159f44790eca147f45111f0992649",
+  "comparison_rule": "report observed-minus-frozen-predicted loss_nats and BPB at each checkpoint; do not refit or retune RESEARCH138 prediction using SCALE190 observations",
+  "frozen_predictions": [
+    {
+      "optimized_tokens": 16632,
+      "predicted_bpb": 3.747806838193501,
+      "predicted_loss_nats": 2.597781743177108
+    },
+    {
+      "optimized_tokens": 65772,
+      "predicted_bpb": 2.5966508428746153,
+      "predicted_loss_nats": 1.7998612106371452
+    },
+    {
+      "optimized_tokens": 131292,
+      "predicted_bpb": 2.1591938745314203,
+      "predicted_loss_nats": 1.4966391464137583
+    }
+  ],
+  "model": {
+    "actual_parameters": 3221184,
+    "delta_parameters": -248,
+    "init": {
+      "family": "normal",
+      "residual_branch_scale": "sqrt_2_layers",
+      "schema_version": 1,
+      "std": 0.02
+    },
+    "init_identity_sha256": "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5",
+    "model_identity_sha256": "37b7fdd44b35280c121f9300022bfd69b23efbf0abbcfe62fbb0eb465470b693",
+    "relative_delta": -7.69844001028734e-05,
+    "selection_rule": "nearest continuity-first fixed-control MHA geometry: preserve q_dim=d_model, MHA, context/tokenizer/semantics; choose ladder-like width/depth then solve d_ff for nearest count",
+    "spec": {
+      "activation": "swiglu",
+      "attention_bias": false,
+      "attention_dropout": 0.0,
+      "d_ff": 530,
+      "d_model": 192,
+      "final_norm": true,
+      "head_dim": 24,
+      "lm_head_bias": false,
+      "max_seq_len": 256,
+      "mlp_bias": false,
+      "n_heads": 8,
+      "n_kv_heads": 8,
+      "n_layers": 7,
+      "norm_eps": 1e-05,
+      "norm_kind": "rmsnorm",
+      "norm_placement": "pre",
+      "position_embedding": "rope",
+      "rope_rotary_dim": 24,
+      "rope_theta": 10000.0,
+      "schema_version": 1,
+      "tie_word_embeddings": true,
+      "vocab_size": 256
+    },
+    "target_parameters": 3221432
+  },
+  "prediction_source": {
+    "coefficients": [
+      1.2204377537331623,
+      -0.11797847077904858,
+      -0.2668976014889022
+    ],
+    "frozen_before_observation": true,
+    "input_payload_sha256": "af831fd461861ab1dc35b9fd8e4347d70071b071216fa36ee8536e5dcc5af66c",
+    "n0": 333895.53593930375,
+    "report_sha256": "05c17878b770a1c621101986c4e66c3265967df647e7bc087e43e3752e53162a",
+    "schema": "12-6.research138.machine-prediction.v1",
+    "selected_model": "log_power",
+    "t0": 16734.4584362899
+  },
+  "run_plan": {
+    "checkpoint_retention": "local artifact; commit only manifests/checksums, not weight binaries",
+    "final_optimized_tokens": 131292,
+    "fresh_process_resume_from_optimized_tokens": 65772,
+    "measure": [
+      "heldout_bpb",
+      "compute_proxy",
+      "layer_health",
+      "raw_gradient_norm",
+      "clip_fraction",
+      "update_to_weight_l2_ratio",
+      "peak_rss",
+      "parameter_bytes",
+      "optimizer_state_bytes",
+      "throughput"
+    ],
+    "optimized_token_checkpoints": [
+      16632,
+      65772,
+      131292
+    ],
+    "optimizer_steps": [
+      66,
+      261,
+      521
+    ],
+    "primary_seed": 1337,
+    "secondary_seed": 1338,
+    "secondary_seed_condition": "run if LOCAL_FREE wall/memory remains feasible after primary"
+  },
+  "schema": "12-6.scale190.preregistration.v1",
+  "shared_identity": {
+    "batch_size": 4,
+    "betas": [
+      0.9,
+      0.95
+    ],
+    "causal_tokens_per_update": 252,
+    "context": 256,
+    "corpus_dataset_id": "s0-tiny-controlled-v1",
+    "corpus_dataset_identity_sha256": "bab60119d49e93303c972b77900fcb5553817f754cbc5d9a58019228cfa0ca89",
+    "corpus_manifest_sha256": "b085a7ab56510575a11a80824fcff3a95a17f237d46d1be820e59d1289f220c2",
+    "deterministic_algorithms": true,
+    "eps": 1e-08,
+    "evaluation_jsonl_sha256": "57f18a846dcca75955a82612382d4635ba9583965aa6628e77626cd2a3eb19c5",
+    "gradient_clip_norm": 1.0,
+    "learning_rate": 0.0003,
+    "optimizer": "AdamW",
+    "packing_id": "research41-byte-stream-cyclic-v1",
+    "precision": "fp32",
+    "scheduler": "constant",
+    "sequence_length": 64,
+    "tokenizer_config_sha256": "b04055c1061dd641dcab7cb9d62a931f09b8d1a070140a926ceb4e91d73ca8e1",
+    "tokenizer_id": "s0-byte-v1",
+    "tokenizer_vocab_sha256": "905ed40bb42cc4d550e228ff5f24158d504b38e8ed5974dfa3077bd5867ad571",
+    "train_jsonl_sha256": "61d24b7138df56527d201cea405d11c9f607684b4a9593dfa20c599cc2ee6998",
+    "weight_decay": 0.0
+  },
+  "truth_boundary": {
+    "broad_corpus_claim": false,
+    "paid_compute": false,
+    "repeated_tiny_fixture": true,
+    "stage_promotion": false
+  },
+  "worker_id": "SCALE-190-THREE-MILLION-BRIDGE"
+}
