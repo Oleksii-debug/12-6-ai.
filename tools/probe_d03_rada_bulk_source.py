@@ -41,6 +41,7 @@ EXPECTED_PARENT = {
 }
 EXPECTED_SOURCE = {
     "dataset_id": "laws-texts",
+    "title": "Тексти первинних законів бази даних \"Законодавство України\"",
     "publisher": "Апарат Верховної Ради України",
     "page_url": "https://data.rada.gov.ua/open/data/en/laws-texts",
     "archive_url": "https://data.rada.gov.ua/ogd/zak/perv/text/texts.zip",
@@ -48,6 +49,25 @@ EXPECTED_SOURCE = {
     "language": "uk",
     "modality": "text",
     "upstream_mutability": "FREQUENTLY_UPDATED_REQUIRES_EXACT_ARCHIVE_REPIN",
+}
+EXPECTED_DISCOVERY = {
+    "observed_on_utc": "2026-08-26",
+    "portal_publication_date": "2026-08-07T16:58:14+03:00",
+    "portal_file_count": 5926,
+    "archive_bytes": 46682933,
+    "archive_md5": "06f239fd182e580ce22ab00dce867e31",
+    "status": "DISCOVERY_ONLY_REVALIDATE_AT_PROBE",
+}
+EXPECTED_RIGHTS = {
+    "portal_terms": "OPEN_DATA_REUSE_INCLUDING_COMMERCIAL_WITH_SOURCE_ATTRIBUTION",
+    "portal_default_license": "CC-BY-4.0_UNLESS_OTHERWISE_SPECIFIED",
+    "existing_project_family_training_authority": (
+        "DATA-287 existing bounded Rada snapshot is ALLOWED for model training"
+    ),
+    "bulk_extension_status": "NOT_ADMITTED_BY_THIS_PROBE",
+    "evaluation": "NOT_SEPARATELY_ADMITTED",
+    "final_test": "PROHIBITED",
+    "redistribution": "REQUIRES_SOURCE_ATTRIBUTION_AND_SUCCESSOR_RIGHTS_RECHECK",
 }
 EXPECTED_POLICY = {
     "canonical_entry_regex": r"d[0-9]+\.htm",
@@ -59,6 +79,27 @@ EXPECTED_POLICY = {
     "reject_path_traversal": True,
     "reject_symlinks": True,
     "require_unique_canonical_basenames": True,
+}
+EXPECTED_DOWNSTREAM = [
+    "EXACT_ARCHIVE_SHA256_PIN_AND_SOURCE_MANIFEST",
+    "CANONICAL_HTML_EXTRACTION_AND_NORMALIZATION",
+    "QUALITY_FILTER",
+    "PRIVACY_PII_FILTER",
+    "GLOBAL_CROSS_SOURCE_EXACT_NEAR_DEDUP",
+    "EVALUATION_DECONTAMINATION",
+    "BALANCE_DIVERSITY_AND_FAMILY_CAP_RETEST",
+    "DETERMINISTIC_SPLIT_SHARD_PACK",
+    "UNIQUE_CAUSAL_LOSS_LEDGER",
+    "TOKENIZER_FIT_AUTHORIZATION",
+    "LEARNED_20M_COMPUTE_AUTHORIZATION",
+]
+EXPECTED_CLAIM = {
+    "bulk_source_admitted": False,
+    "normalized_capacity_claimed": False,
+    "training_exposure_authorized": False,
+    "research_corpus_v1_released": False,
+    "learned_20m_claimed": False,
+    "safe_result": "PROBE_ONLY",
 }
 
 
@@ -165,33 +206,13 @@ def _validate_config(raw: dict[str, Any]) -> None:
 
     _require_exact_mapping(raw, "parent_authority", EXPECTED_PARENT)
     _require_exact_mapping(raw, "source", EXPECTED_SOURCE)
+    _require_exact_mapping(raw, "discovery_observation", EXPECTED_DISCOVERY)
+    _require_exact_mapping(raw, "rights_boundary", EXPECTED_RIGHTS)
     _require_exact_mapping(raw, "probe_policy", EXPECTED_POLICY)
 
-    rights = raw.get("rights_boundary")
-    if not isinstance(rights, dict):
-        raise ProbeError("rights_boundary must be an object")
-    if rights.get("bulk_extension_status") != "NOT_ADMITTED_BY_THIS_PROBE":
-        raise ProbeError("bulk extension must remain not admitted by this probe")
-    if rights.get("evaluation") != "NOT_SEPARATELY_ADMITTED":
-        raise ProbeError("evaluation purpose must remain separately gated")
-    if rights.get("final_test") != "PROHIBITED":
-        raise ProbeError("final-test use must remain prohibited")
-
-    claim = raw.get("claim_boundary")
-    if not isinstance(claim, dict):
-        raise ProbeError("claim_boundary must be an object")
-    required_false = (
-        "bulk_source_admitted",
-        "normalized_capacity_claimed",
-        "training_exposure_authorized",
-        "research_corpus_v1_released",
-        "learned_20m_claimed",
-    )
-    for field in required_false:
-        if claim.get(field) is not False:
-            raise ProbeError(f"claim_boundary.{field} must remain false")
-    if claim.get("safe_result") != "PROBE_ONLY":
-        raise ProbeError("claim_boundary.safe_result must remain PROBE_ONLY")
+    if raw.get("downstream_required") != EXPECTED_DOWNSTREAM:
+        raise ProbeError("downstream_required drifted from the pinned v1 authority")
+    _require_exact_mapping(raw, "claim_boundary", EXPECTED_CLAIM)
 
 
 def _load_config(path: Path) -> dict[str, Any]:
@@ -306,7 +327,9 @@ def inventory_archive(
         identity.update(b"\n")
 
     canonical_raw_bytes = sum(int(row["raw_bytes"]) for row in rows)
-    identity_gate = "PASS_PINNED_DISCOVERY_REVALIDATED" if strict_revalidation else "OBSERVED_UNPINNED"
+    identity_gate = (
+        "PASS_PINNED_DISCOVERY_REVALIDATED" if strict_revalidation else "OBSERVED_UNPINNED"
+    )
     safe_result = (
         "PINNED_BULK_ARCHIVE_INVENTORIED_DOWNSTREAM_GATES_REQUIRED"
         if strict_revalidation
