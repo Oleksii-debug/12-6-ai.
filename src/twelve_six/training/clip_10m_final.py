@@ -9,7 +9,6 @@ optimizer, learning rate, betas, tokenizer, corpus acquisition, or model semanti
 from __future__ import annotations
 
 import json
-import math
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
