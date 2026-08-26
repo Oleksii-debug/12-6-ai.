@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from types import MappingProxyType
 from typing import Mapping, Sequence
 
 from .contracts import (
@@ -11,6 +12,8 @@ from .contracts import (
     VerificationRequest,
     VerificationResponse,
     VerificationStatus,
+    sha256_json,
+    verification_subject_sha256,
 )
 
 
@@ -105,26 +108,40 @@ class ExactMatchVerifier:
     adapter_id = "mock-deterministic-exact-match-verifier-v1"
 
     def __init__(self, expected_by_task: Mapping[str, str]) -> None:
-        self.expected_by_task = dict(expected_by_task)
+        frozen = dict(expected_by_task)
+        self.expected_by_task = MappingProxyType(frozen)
+        self.evidence_revision = sha256_json(
+            {
+                "adapter_id": self.adapter_id,
+                "expected_by_task": tuple(sorted(frozen.items())),
+            }
+        )
 
     def verify(self, request: VerificationRequest) -> VerificationResponse:
         expected = self.expected_by_task.get(request.task_id)
-        source = f"local-fixture:exact-match:{request.task_id}"
+        source = f"local-fixture:exact-match:{request.task_id}:{self.evidence_revision}"
+        subject_sha256 = verification_subject_sha256(request)
         if expected is None:
             return VerificationResponse(
                 VerificationStatus.INCONCLUSIVE,
                 "No deterministic expected value is registered for this task.",
                 source,
+                self.evidence_revision,
+                subject_sha256,
             )
         if request.proposal.proposed_answer == expected:
             return VerificationResponse(
                 VerificationStatus.SUPPORTED,
                 f"Exact deterministic match to registered value {expected!r}.",
                 source,
+                self.evidence_revision,
+                subject_sha256,
             )
         return VerificationResponse(
             VerificationStatus.CONTRADICTED,
             f"Registered deterministic value is {expected!r}, not "
             f"{request.proposal.proposed_answer!r}.",
             source,
+            self.evidence_revision,
+            subject_sha256,
         )
