@@ -42,7 +42,9 @@
       "seed_count": 0,
       "config_sha256": null,
       "stopping_policy_sha256": null,
-      "requested_unique_loss_positions": 0
+      "requested_unique_loss_positions": 0,
+      "requested_total_training_exposures": 0,
+      "max_exposures_per_unique_position": 0
     },
     "bounded_pilot": {
       "authority": null,
@@ -68,6 +70,9 @@
     "alignment_or_posttraining_mixed_into_base": false,
     "final_test_payload_consumed": false,
     "model_training_executed_by_this_package": false,
-    "paid_compute_executed_by_this_package": false
+    "paid_compute_executed_by_this_package": false,
+    "source_bytes_are_not_loss_positions": true,
+    "training_exposure_is_not_unique_data": true,
+    "replay_cannot_inflate_unique_loss_ledger": true
   }
 }
