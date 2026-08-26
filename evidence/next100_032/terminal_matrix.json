@@ -1,0 +1,66 @@
+{
+  "bounded_authority": {
+    "evaluation": "NOT_SEPARATELY_ADMITTED",
+    "index_revision_id": 13271826,
+    "normalized_sha256": "1c4ec6e66b425e517a17fb865dabaf3aeddfb1a16cb7e40bca2984be56dce0e7",
+    "page_revision_ids": [
+      8450353,
+      8450364,
+      6931309
+    ],
+    "primary_evidence_identity_sha256": "d16a5e53ad3940778278532ee0be0602d7b9bbca3b27e53ad51e2287b1fa32e9",
+    "primary_evidence_path": "evidence/next100_032/en_wikisource_qualification.json",
+    "source_id": "en.wikisource.varieties-1902.pages20-22",
+    "work_revision_id": 14857116
+  },
+  "concurrent_wikimedia_authorities_observed": [
+    {
+      "lineage_effect": "Confirms that Wikisource hosting alone is not an independent-family criterion; shared editions/mirrors collapse.",
+      "pr": 455,
+      "registry_mutated": false,
+      "state": "ADMIT_BOUNDED_PD_EDITION_SNAPSHOT",
+      "worker": "NEXT100-022-DATA-UA-WIKISOURCE"
+    },
+    {
+      "lineage_effect": "A sibling Wikimedia project exists but does not authorize automatic independent-family credit for this English Wikisource source.",
+      "pr": 450,
+      "registry_mutated": false,
+      "state": "RETEST",
+      "worker": "NEXT100-021-DATA-UA-WIKIPEDIA"
+    }
+  ],
+  "family_seal": {
+    "automatic_independent_family_credit": false,
+    "current_diversity_credit": 0,
+    "family_credit_terminal_state": "RETEST",
+    "required_successor_action": "Resolve Wikimedia hosting ecosystem plus underlying work/edition lineage in the next canonical registry convergence; then rerun cross-source near-copy/mirror dedup before assigning diversity credit."
+  },
+  "live_registry_refresh": {
+    "head_unchanged_at_final_refresh": true,
+    "independent_source_family_count": 4,
+    "registry_authority_pr": 404,
+    "registry_head_sha": "b0523ccbc4b957615aac849d476cfa851be87578",
+    "registry_identity_sha256": "917e9bc31b2fa040d25e807ae3c01aa2cce32420752a891caacfb6c830e6632c",
+    "registry_path": "data/registry/external_snapshots.v2.json",
+    "source_count": 5
+  },
+  "local_free_only": true,
+  "matrix_identity_sha256": "fd01b8903bcc1cc897cadc53b2970d04e8b3c4f207afdfbcc348130c4d88cda5",
+  "schema_version": "12-6.source-qualification-terminal-matrix.next100-032.v1",
+  "sealed_utc": "2026-08-26T18:12:00Z",
+  "source_platform": "English Wikisource",
+  "terminal_matrix": {
+    "bounded_scan_backed_pd_transcription": "ADMIT",
+    "independent_family_credit_vs_other_wikimedia_projects": "RETEST",
+    "whole_english_wikisource_project_or_dump": "REJECT"
+  },
+  "truth_boundary": [
+    "No claim that English Wikisource is rights-uniform.",
+    "No whole-project ingestion authority.",
+    "No evaluation authority.",
+    "No broad English representativeness claim.",
+    "No model-weight license conclusion.",
+    "No final corpus freeze or training execution."
+  ],
+  "worker_id": "NEXT100-032-DATA-EN-WIKISOURCE"
+}
