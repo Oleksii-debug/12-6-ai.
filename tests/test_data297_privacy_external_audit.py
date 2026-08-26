@@ -44,6 +44,15 @@ class Data297PrivacyExternalAuditTests(unittest.TestCase):
             config["inventory_authorities"]["DATA-228"]["status"],
             "NONTERMINAL_EXCLUDED_FROM_TRAINING_INVENTORY",
         )
+        hashes = {item["source_id"]: item["expected_input_sha256"] for item in config["admitted_inventory"]}
+        self.assertEqual(
+            hashes["code.encode.httpx._content"],
+            "2c61b3ac94d1dcebcde0c6f519554d2d7917247fbaa0a97002db4ef69e70ff28",
+        )
+        self.assertEqual(
+            hashes["code.psf.requests._internal_utils"],
+            "4c7d8d132c9898fc7d715e473f3ac74785ddc4ab96d2c9240f87835dc6d981ff",
+        )
 
     def test_fixture_confusion_matrix_measures_current_gaps(self) -> None:
         metrics = audit_labeled_fixtures()
@@ -93,12 +102,13 @@ class Data297PrivacyExternalAuditTests(unittest.TestCase):
             (root / "normalized" / "fixture.txt").write_bytes(encoded + b"\n")
             self.assertEqual(_resolve_data229_text(root, expected), payload)
 
-    def test_data227_resolver_binds_report_sha_and_off_git_payload(self) -> None:
+    def test_data227_resolver_binds_report_registry_and_off_git_payload(self) -> None:
         payload = b"print('fixture')\n"
         digest = hashlib.sha256(payload).hexdigest()
         expected = {
             "source_id": "code.fixture.repo.file",
             "expected_input_utf8_bytes": len(payload),
+            "expected_input_sha256": digest,
         }
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -112,9 +122,19 @@ class Data297PrivacyExternalAuditTests(unittest.TestCase):
                                 "source_id": expected["source_id"],
                                 "raw_sha256": digest,
                                 "normalization_sha256": digest,
-                                "raw_bytes": len(payload),
                             }
-                        ]
+                        ],
+                        "registry": {
+                            "sources": [
+                                {
+                                    "source_id": expected["source_id"],
+                                    "snapshot": {
+                                        "sha256": digest,
+                                        "size_bytes": len(payload),
+                                    },
+                                }
+                            ]
+                        },
                     }
                 ),
                 encoding="utf-8",
