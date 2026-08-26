@@ -1,0 +1,354 @@
+name: RUNTIME-209 Transformers Learned 10M
+
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      source_artifact_id:
+        description: "Terminal-green SCALE-141 learned-10M artifact id"
+        required: true
+        type: string
+      source_artifact_digest:
+        description: "Exact SCALE-141 artifact sha256:... digest"
+        required: true
+        type: string
+      source_run_id:
+        description: "Terminal-green SCALE-141 workflow run id"
+        required: true
+        type: string
+      source_sha:
+        description: "Exact SCALE-141 source commit SHA"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: runtime209-transformers-learned-10m-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  D08_SOURCE_SHA: "10da7d4c1d2fe5a229659143877ad82d3739bed9"
+  D08_PROFILE_SHA256: "d54843c76befcd0e8a1703f8d34c822fdbf3085351d1d357661b91265148a039"
+  D08_OVERLAY_SHA256: "68f73eaac9e3a9418e85e54a3170d1378c51af0161138d0f4f8667c595deb0b0"
+  BOOTSTRAP_SOURCE_SHA: "c127216ecf9722bea1964c7488cb7ff0f8cdebe4"
+  MODEL_SPEC_SHA256: "61caa5469123e23b9b72fc2024140bfca84c4c480dcb0a7e712ba800a4f22998"
+  TOKENIZER_CONFIG_SHA256: "b04055c1061dd641dcab7cb9d62a931f09b8d1a070140a926ceb4e91d73ca8e1"
+  TOKENIZER_VOCAB_SHA256: "905ed40bb42cc4d550e228ff5f24158d504b38e8ed5974dfa3077bd5867ad571"
+  CORPUS_SHA256: "422f545da93526ceba2c0ff738e0b9deac65f35bfb31d87d2aab068cda091fc8"
+
+jobs:
+  exact-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact RUNTIME-209 bridge head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Bind exact bridge source
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+
+      - name: Checkout exact D08 Transformers purpose authority
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Oleksii-debug/12-6-ai.
+          ref: ${{ env.D08_SOURCE_SHA }}
+          path: .runtime209-d08
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Checkout exact universal bootstrap authority
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Oleksii-debug/12-6-ai.
+          ref: ${{ env.BOOTSTRAP_SOURCE_SHA }}
+          path: .runtime209-bootstrap
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Validate exact D08 Transformers purpose profile
+        run: |
+          set -euo pipefail
+          test "$(git -C .runtime209-d08 rev-parse HEAD)" = "$D08_SOURCE_SHA"
+          python .runtime209-d08/tools/verify_purpose_environment.py \
+            --root .runtime209-d08 \
+            --profile linux-x86_64-transformers-interop \
+            --validate-only
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path('.runtime209-d08')
+          profile = json.loads((root / 'requirements/profiles/linux-x86_64-transformers-interop/profile.json').read_text())
+          overlay = root / profile['locks']['overlay']['path']
+          assert profile['profile_sha256'] == os.environ['D08_PROFILE_SHA256']
+          assert hashlib.sha256(overlay.read_bytes()).hexdigest() == os.environ['D08_OVERLAY_SHA256']
+          assert profile['python']['version'] == '3.11.16'
+          assert profile['direct_requirements'] == ['transformers==5.15.1']
+          PY
+
+      - name: Bootstrap exact CPU Transformers tests and lint runtime
+        run: |
+          set -euo pipefail
+          test "$(git -C .runtime209-bootstrap rev-parse HEAD)" = "$BOOTSTRAP_SOURCE_SHA"
+          python .runtime209-bootstrap/tools/execution_bootstrap.py bootstrap \
+            --repo-root .runtime209-bootstrap \
+            --capabilities runtime,tests,lint,transformers \
+            --command "python -m pytest -q tests/test_runtime209_transformers_learned_10m.py" \
+            --command "python -m ruff check tools/runtime209_transformers_learned_10m.py" \
+            --venv "$GITHUB_WORKSPACE/.runtime209" \
+            --manifest "$GITHUB_WORKSPACE/runtime209-bootstrap-manifest.json"
+          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 \
+            .runtime209/bin/python -m pip install --no-deps --no-build-isolation -e .
+          .runtime209/bin/python -m pip check
+          .runtime209/bin/python - <<'PY'
+          import platform
+          import torch
+          import transformers
+          assert platform.python_version() == '3.11.16'
+          assert torch.__version__.split('+', 1)[0] == '2.13.0'
+          assert transformers.__version__ == '5.15.1'
+          PY
+
+      - name: Execute bridge and exact-10M contract tests
+        run: |
+          set -euo pipefail
+          PY=.runtime209/bin/python
+          "$PY" -m ruff check \
+            tools/runtime209_transformers_learned_10m.py \
+            tests/test_runtime209_transformers_learned_10m.py \
+            src/twelve_six/inference/transformers_llama.py \
+            src/twelve_six/inference/llama_runtime_export.py
+          "$PY" -m pytest -q \
+            tests/test_transformers_llama_interop.py \
+            tests/test_transformers_llama_runtime.py \
+            tests/test_transformers_llama_runtime_locked.py \
+            tests/test_llama_runtime_export_locked.py \
+            tests/test_runtime209_transformers_learned_10m.py
+
+      - name: Record prepared exact contract
+        env:
+          BRIDGE_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          .runtime209/bin/python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import torch
+          import transformers
+
+          bootstrap = json.loads(Path('runtime209-bootstrap-manifest.json').read_text())
+          payload = {
+              'schema': '12-6.runtime209-transformers-learned-10m-prepared.v1',
+              'status': 'PREPARED_REQUIRES_TERMINAL_GREEN_SCALE141_ARTIFACT',
+              'bridge_source_sha': os.environ['BRIDGE_SOURCE_SHA'],
+              'model_spec_sha256': os.environ['MODEL_SPEC_SHA256'],
+              'parameter_count': 10_000_640,
+              'tokenizer': {
+                  'version': 's0-byte-v1',
+                  'config_sha256': os.environ['TOKENIZER_CONFIG_SHA256'],
+                  'vocab_sha256': os.environ['TOKENIZER_VOCAB_SHA256'],
+              },
+              'corpus_identity_sha256': os.environ['CORPUS_SHA256'],
+              'target_architecture': 'LlamaForCausalLM',
+              'qk_rope_basis_conversion': 'PAIRWISE_INTERLEAVED_TO_LLAMA_HALF_SPLIT',
+              'd08': {
+                  'source_sha': os.environ['D08_SOURCE_SHA'],
+                  'profile_sha256': os.environ['D08_PROFILE_SHA256'],
+                  'overlay_sha256': os.environ['D08_OVERLAY_SHA256'],
+              },
+              'universal_bootstrap': {
+                  'source_sha': os.environ['BOOTSTRAP_SOURCE_SHA'],
+                  'manifest_identity_sha256': bootstrap['identity_sha256'],
+                  'manifest_file_sha256': hashlib.sha256(Path('runtime209-bootstrap-manifest.json').read_bytes()).hexdigest(),
+                  'capabilities': bootstrap['plan']['capabilities'],
+              },
+              'runtime': {
+                  'python': __import__('platform').python_version(),
+                  'torch': torch.__version__,
+                  'transformers': transformers.__version__,
+                  'device': 'cpu',
+              },
+              'contract_tests': 'PASS',
+              'learned_parity_executed': False,
+              'source_substitution_allowed': False,
+              'foreign_pretrained_weights': False,
+              'paid_compute': False,
+              'promotion_authority': False,
+          }
+          canonical = json.dumps(payload, sort_keys=True, separators=(',', ':'), ensure_ascii=False).encode()
+          payload['evidence_sha256'] = hashlib.sha256(canonical).hexdigest()
+          out = Path('runtime209-prepared.json')
+          out.write_text(json.dumps(payload, sort_keys=True, indent=2, ensure_ascii=False) + '\n')
+          print(out.read_text())
+          PY
+
+      - name: Upload prepared RUNTIME-209 contract evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: runtime209-transformers-learned-10m-prepared-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            runtime209-bootstrap-manifest.json
+            runtime209-prepared.json
+          if-no-files-found: error
+          retention-days: 30
+
+  learned-parity:
+    if: github.event_name == 'workflow_dispatch'
+    needs: exact-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
+      HF_HOME: ${{ runner.temp }}/runtime209-hf-home
+    steps:
+      - name: Checkout exact RUNTIME-209 bridge head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Checkout exact D08 Transformers purpose authority
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Oleksii-debug/12-6-ai.
+          ref: ${{ env.D08_SOURCE_SHA }}
+          path: .runtime209-d08
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Checkout exact universal bootstrap authority
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Oleksii-debug/12-6-ai.
+          ref: ${{ env.BOOTSTRAP_SOURCE_SHA }}
+          path: .runtime209-bootstrap
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Recreate exact purpose runtime through universal bootstrap
+        run: |
+          set -euo pipefail
+          python .runtime209-d08/tools/verify_purpose_environment.py \
+            --root .runtime209-d08 \
+            --profile linux-x86_64-transformers-interop \
+            --validate-only
+          python .runtime209-bootstrap/tools/execution_bootstrap.py bootstrap \
+            --repo-root .runtime209-bootstrap \
+            --capabilities runtime,tests,lint,transformers \
+            --command "python -m pytest -q tests/test_runtime209_transformers_learned_10m.py" \
+            --command "python -m ruff check tools/runtime209_transformers_learned_10m.py" \
+            --venv "$GITHUB_WORKSPACE/.runtime209" \
+            --manifest "$GITHUB_WORKSPACE/runtime209-bootstrap-manifest.json"
+          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 \
+            .runtime209/bin/python -m pip install --no-deps --no-build-isolation -e .
+          .runtime209/bin/python -m pip check
+
+      - name: Verify exact terminal-green SCALE-141 artifact identity
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_ARTIFACT_ID: ${{ inputs.source_artifact_id }}
+          SOURCE_ARTIFACT_DIGEST: ${{ inputs.source_artifact_digest }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          set -euo pipefail
+          gh api "repos/${{ github.repository }}/actions/artifacts/$SOURCE_ARTIFACT_ID" > runtime209-source-artifact.json
+          gh api "repos/${{ github.repository }}/actions/runs/$SOURCE_RUN_ID" > runtime209-source-run.json
+          test "$(jq -r .id runtime209-source-artifact.json)" = "$SOURCE_ARTIFACT_ID"
+          test "$(jq -r .name runtime209-source-artifact.json)" = "scale141-10m-learned-fallback"
+          test "$(jq -r .digest runtime209-source-artifact.json)" = "$SOURCE_ARTIFACT_DIGEST"
+          test "$(jq -r .workflow_run.id runtime209-source-artifact.json)" = "$SOURCE_RUN_ID"
+          test "$(jq -r .workflow_run.head_sha runtime209-source-artifact.json)" = "$SOURCE_SHA"
+          test "$(jq -r .expired runtime209-source-artifact.json)" = "false"
+          test "$(jq -r .id runtime209-source-run.json)" = "$SOURCE_RUN_ID"
+          test "$(jq -r .head_sha runtime209-source-run.json)" = "$SOURCE_SHA"
+          test "$(jq -r .status runtime209-source-run.json)" = "completed"
+          test "$(jq -r .conclusion runtime209-source-run.json)" = "success"
+
+      - name: Download exact retained learned 10M artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          artifact-ids: ${{ inputs.source_artifact_id }}
+          github-token: ${{ github.token }}
+          repository: Oleksii-debug/12-6-ai.
+          run-id: ${{ inputs.source_run_id }}
+          path: runtime209-source
+          merge-multiple: true
+
+      - name: Execute exact learned 10M first-party vs Transformers parity
+        env:
+          BRIDGE_SOURCE_SHA: ${{ github.sha }}
+          SOURCE_ARTIFACT_ID: ${{ inputs.source_artifact_id }}
+          SOURCE_ARTIFACT_DIGEST: ${{ inputs.source_artifact_digest }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          set -euo pipefail
+          FRESH="$(find runtime209-source -type f -name fresh-verification.json -print -quit)"
+          test -n "$FRESH"
+          ROOT="$(dirname "$FRESH")"
+          CHECKPOINT="$ROOT/retained/best"
+          INDEX="$ROOT/retained/index.json"
+          test -d "$CHECKPOINT"
+          test -f "$INDEX"
+          .runtime209/bin/python -m ruff check tools/runtime209_transformers_learned_10m.py tests/test_runtime209_transformers_learned_10m.py
+          .runtime209/bin/python -m pytest -q tests/test_runtime209_transformers_learned_10m.py
+          .runtime209/bin/python tools/runtime209_transformers_learned_10m.py \
+            --repo-root . \
+            --checkpoint-dir "$CHECKPOINT" \
+            --fresh-verification "$FRESH" \
+            --retained-index "$INDEX" \
+            --artifact-metadata runtime209-source-artifact.json \
+            --run-metadata runtime209-source-run.json \
+            --bootstrap-manifest runtime209-bootstrap-manifest.json \
+            --output-dir runtime209-evidence \
+            --bridge-source-sha "$BRIDGE_SOURCE_SHA" \
+            --source-artifact-id "$SOURCE_ARTIFACT_ID" \
+            --source-artifact-digest "$SOURCE_ARTIFACT_DIGEST" \
+            --source-run-id "$SOURCE_RUN_ID" \
+            --source-sha "$SOURCE_SHA" \
+            --d08-source-sha "$D08_SOURCE_SHA" \
+            --d08-profile-sha256 "$D08_PROFILE_SHA256" \
+            --d08-overlay-sha256 "$D08_OVERLAY_SHA256" \
+            --bootstrap-source-sha "$BOOTSTRAP_SOURCE_SHA" \
+            --max-new-tokens 8 \
+            | tee runtime209-execution.log
+          cat runtime209-evidence/runtime209-transformers-learned-10m-parity.json
+
+      - name: Upload exact learned 10M Transformers evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: runtime209-transformers-learned-10m-${{ github.sha }}
+          path: |
+            runtime209-source-artifact.json
+            runtime209-source-run.json
+            runtime209-bootstrap-manifest.json
+            runtime209-evidence/runtime209-transformers-learned-10m-parity.json
+            runtime209-evidence/canonical-hf-export/
+            runtime209-evidence/standard-llama/
+            runtime209-execution.log
+          if-no-files-found: error
+          retention-days: 30
