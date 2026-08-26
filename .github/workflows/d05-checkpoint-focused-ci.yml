@@ -1,0 +1,116 @@
+name: D05 Checkpoint Focused CI
+
+on:
+  pull_request:
+    paths:
+      - "src/twelve_six/checkpoint/**"
+      - "tests/test_checkpoint*.py"
+      - "tests/test_s1_checkpoint_preflight.py"
+      - "configs/stages/s1_100k.json"
+      - "requirements/locks/**"
+      - ".github/workflows/d05-checkpoint-focused-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: d05-focused-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checkpoint-focused:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Prove exact source checkout
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Create exact locked D05 environment
+        run: |
+          python -m venv .d05-focused-locked
+          .d05-focused-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .d05-focused-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          .d05-focused-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/dev.lock.txt
+          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .d05-focused-locked/bin/python -m pip install --no-deps --no-build-isolation -e .
+      - name: Discover checkpoint regression scope
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          tests = sorted(
+              path.as_posix()
+              for path in Path("tests").glob("test_checkpoint*.py")
+              if path.is_file()
+          )
+          s1 = Path("tests/test_s1_checkpoint_preflight.py")
+          if s1.is_file() and s1.as_posix() not in tests:
+              tests.append(s1.as_posix())
+          if not tests:
+              raise SystemExit("no checkpoint regression tests discovered")
+          Path(".d05-focused-tests.txt").write_text("\n".join(tests) + "\n", encoding="utf-8")
+          print("\n".join(tests))
+          PY
+      - name: Focused D05 lint
+        run: |
+          mapfile -t TESTS < .d05-focused-tests.txt
+          .d05-focused-locked/bin/python -m ruff check src/twelve_six/checkpoint "${TESTS[@]}"
+      - name: Focused D05 checkpoint regression
+        run: |
+          mapfile -t TESTS < .d05-focused-tests.txt
+          .d05-focused-locked/bin/python -m pytest -q "${TESTS[@]}"
+      - name: Execute real S1-shaped checkpoint/resume preflight
+        run: |
+          .d05-focused-locked/bin/python -m twelve_six.checkpoint.s1_preflight \
+            --repo-root . \
+            --candidate-sha "$SOURCE_SHA" \
+            --output-dir "$RUNNER_TEMP/d05-focused-preflight" \
+            --total-steps 4 \
+            --split-step 2 \
+            --seed 20260825
+      - name: Validate exact resume truth boundary
+        run: |
+          .d05-focused-locked/bin/python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          from twelve_six.checkpoint.s1_preflight import validate_s1_checkpoint_preflight
+
+          root = Path(os.environ["RUNNER_TEMP"]) / "d05-focused-preflight"
+          payload = json.loads(
+              (root / "s1-checkpoint-preflight.json").read_text(encoding="utf-8")
+          )
+          validate_s1_checkpoint_preflight(
+              payload,
+              expected_candidate_sha=os.environ["SOURCE_SHA"],
+          )
+          assert payload["canonical_binding"]["accepted"] is False
+          assert payload["canonical_binding"]["rejected_as_expected"] is True
+          assert payload["resume"]["model_state_exact"] is True
+          assert payload["resume"]["trainer_state_exact"] is True
+          assert payload["s1_tokenizer_selected"] is False
+          assert payload["s1_data_selected"] is False
+          assert payload["constraints"]["promotion_claimed"] is False
+          assert payload["constraints"]["s1_quality_claimed"] is False
+          PY
+      - name: Upload focused D05 evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: d05-checkpoint-focused-${{ env.SOURCE_SHA }}
+          path: |
+            .d05-focused-tests.txt
+            ${{ runner.temp }}/d05-focused-preflight/s1-checkpoint-preflight.json
+            ${{ runner.temp }}/d05-focused-preflight/checkpoint/
+          if-no-files-found: warn
+          retention-days: 30
