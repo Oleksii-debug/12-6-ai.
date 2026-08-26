@@ -5,6 +5,7 @@ from collections.abc import Sequence
 import pytest
 import torch
 
+import twelve_six.integration.torch_batching as torch_batching
 from twelve_six.inference.batching import (
     BatchGenerationRequest,
     generate_batch_cached,
@@ -106,12 +107,17 @@ def test_torch_batched_session_cache_bytes_and_ragged_prefill_fail_closed() -> N
         backend.begin_generation_batch(((1,), (2, 3)))
 
     with backend.begin_generation_batch(((1, 2), (3, 4))) as session:
+        allocated_bytes = backend.estimate_static_cache_bytes(batch_size=2)
         assert session.batch_size == 2
         assert session.sequence_length == 2
-        assert session.cache_bytes == backend.estimate_cache_bytes(2, batch_size=2)
+        assert session.cache_bytes == allocated_bytes
+        assert session.logical_cache_bytes == backend.estimate_cache_bytes(2, batch_size=2)
+        storage = session.cache_storage_signature
         session.append_batch((5, 6))
         assert session.sequence_length == 3
-        assert session.cache_bytes == backend.estimate_cache_bytes(3, batch_size=2)
+        assert session.cache_bytes == allocated_bytes
+        assert session.logical_cache_bytes == backend.estimate_cache_bytes(3, batch_size=2)
+        assert session.cache_storage_signature == storage
 
     assert backend.active_generation_sessions == 0
 
@@ -122,10 +128,10 @@ def test_torch_batched_session_setup_failure_releases_backend_lifecycle(
     backend = S0TorchBatchedInferenceBackend(_tiny_model(), ByteTokenizer())
     backend.model.train()
 
-    def fail_prefill(_: torch.Tensor) -> object:
+    def fail_prefill(*_: object) -> object:
         raise RuntimeError("injected prefill failure")
 
-    monkeypatch.setattr(backend.model, "prefill_kv_cache", fail_prefill)
+    monkeypatch.setattr(torch_batching, "prefill_static_kv_cache", fail_prefill)
 
     with pytest.raises(RuntimeError, match="injected prefill failure"):
         backend.begin_generation_batch(((1, 2), (3, 4)))
