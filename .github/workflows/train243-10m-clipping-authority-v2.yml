@@ -1,0 +1,331 @@
+name: TRAIN-243 10M Clipping Authority V2
+
+on:
+  pull_request:
+    branches: [learn217/terminal-10m-base-20260826]
+    paths:
+      - ".github/workflows/train243-10m-clipping-authority-v2.yml"
+      - ".github/actions/execution-bootstrap/**"
+      - "requirements/execution/**"
+      - "src/twelve_six/**"
+      - "configs/stages/alternatives/s3_10m_scale03_byte_gqa.execution.json"
+      - "configs/runs/s3_10m_scale03_gpu_pilot.json"
+      - "configs/data/corpus_v01.json"
+      - "data/corpus/v0.1/**"
+  workflow_dispatch:
+
+concurrency:
+  group: train243-10m-clipping-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  clipping-authority:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      PYTHONPATH: ${{ github.workspace }}/src
+      OMP_NUM_THREADS: "2"
+      MKL_NUM_THREADS: "2"
+      GH_TOKEN: ${{ github.token }}
+      LEARN217_RUN_ID: "32952787070"
+      LEARN217_ARTIFACT_NAME: learn217-terminal-10m-learned-base
+      EXPECTED_LEARN217_SHA: c02c8aa38e691521ae2ab6a4ff3ea1d643efd6ef
+
+    steps:
+      - name: Checkout exact TRAIN-243 candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set exact CPython 3.11.16
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact source
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+
+      - name: Universal exact execution bootstrap
+        uses: ./.github/actions/execution-bootstrap
+        with:
+          capabilities: runtime,tests,lint
+          venv: .train243
+          manifest: train243-evidence/environment.json
+          command: python -m pytest tests/test_training_engine.py tests/test_scale141_10m_runtime_v2.py
+
+      - name: Download executed terminal LEARN-217 telemetry
+        run: |
+          set -euo pipefail
+          rm -rf incumbent-learn217
+          mkdir -p incumbent-learn217
+          gh run download "$LEARN217_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --name "$LEARN217_ARTIFACT_NAME" --dir incumbent-learn217
+          test -f incumbent-learn217/scale141-evidence/train-curve.jsonl
+          test -f incumbent-learn217/scale141-evidence/report.json
+
+      - name: Execute TRAIN-243 matched clipping authority
+        run: |
+          set -euo pipefail
+          .train243/bin/python - <<'PY'
+          from __future__ import annotations
+          import hashlib, json, math, os, random, statistics, time
+          from dataclasses import asdict
+          from pathlib import Path
+          import torch
+          from torch import nn
+          from twelve_six import scale141_10m_continuation as core
+          from twelve_six import scale141_10m_runtime_v2 as v2
+          from twelve_six.checkpoint import hash_json, sha256_file
+          from twelve_six.model import TwelveSixDecoder
+          from twelve_six.tokenization import ByteTokenizer
+          from twelve_six.training import NonFiniteTrainingError, Trainer, TrainerConfig
+
+          OUT = Path('train243-evidence')
+          OUT.mkdir(parents=True, exist_ok=True)
+          SOURCE_SHA = os.environ['EXPECTED_SOURCE_SHA']
+          LEARN_SHA = os.environ['EXPECTED_LEARN217_SHA']
+          CURVE = Path('incumbent-learn217/scale141-evidence/train-curve.jsonl')
+          INC_REPORT = Path('incumbent-learn217/scale141-evidence/report.json')
+          SEEDS = (20260825, 20260826, 20260827)
+          TARGET = 131_072
+          MAX_STEPS = 4096
+          DIAG_STEPS = 256
+          UPDATE_EVERY = 16
+          BOOT_N = 20_000
+          BOOT_SEED = 2432026
+          Q_BPB_MEAN = 0.01
+          Q_BPB_UPPER = 0.02
+          MAX_CLIP_FREQ = 0.15
+          MIN_CLIP_FREQ = 0.005
+          SPIKE_RELAX = len(SEEDS)
+          UPDATE_RELAX = 0.10
+
+          def req(ok, msg):
+              if not ok: raise RuntimeError(msg)
+
+          def pct(xs, q):
+              xs = sorted(float(x) for x in xs); req(xs, 'empty percentile')
+              return xs[max(0, min(len(xs)-1, math.ceil(q*len(xs))-1))]
+
+          def profile(xs):
+              xs = [float(x) for x in xs]; req(xs, 'empty profile')
+              return {'count':len(xs),'min':min(xs),'mean':statistics.fmean(xs),
+                      'p50':pct(xs,.50),'p90':pct(xs,.90),'p95':pct(xs,.95),
+                      'p99':pct(xs,.99),'max':max(xs)}
+
+          def roundup2(x):
+              e = math.floor(math.log10(x))-1; q = 10.0**e
+              return float(math.ceil(x/q-1e-12)*q)
+
+          def state_hash(model):
+              h=hashlib.sha256()
+              for name,t in sorted(model.state_dict().items()):
+                  v=t.detach().cpu().contiguous(); h.update(name.encode()); h.update(v.numpy().tobytes())
+              return h.hexdigest()
+
+          def grad_norm(params):
+              s=0.0
+              for p in params:
+                  if p.grad is None: continue
+                  g=p.grad.detach().double(); req(bool(torch.isfinite(g).all().item()),'nonfinite reached clip')
+                  s += float(g.square().sum().item())
+              return math.sqrt(s)
+
+          def snapshot(model): return {n:p.detach().clone() for n,p in model.named_parameters() if p.requires_grad}
+
+          def update_ratio(model,before):
+              b=d=0.0
+              for n,p in model.named_parameters():
+                  old=before[n].double(); new=p.detach().double()
+                  b += float(old.square().sum().item()); d += float((new-old).square().sum().item())
+              return math.sqrt(d)/max(math.sqrt(b),1e-30)
+
+          def spikes(losses):
+              c=0; mx=0.0; prev=None
+              for loss in losses:
+                  if prev is not None and prev>0:
+                      r=loss/prev-1.0; mx=max(mx,r); c += int(r>0.25)
+                  prev=loss
+              return {'count':c,'maximum_step_over_step_increase':mx}
+
+          def boot_mean(xs, seed):
+              xs=[float(x) for x in xs]; rng=random.Random(seed); n=len(xs); vals=[]
+              for _ in range(BOOT_N): vals.append(statistics.fmean(xs[rng.randrange(n)] for _ in range(n)))
+              vals.sort(); return {'estimate':statistics.fmean(xs),'ci95_low':vals[int(.025*(BOOT_N-1))],
+                                   'ci95_high':vals[int(.975*(BOOT_N-1))],'replicates':BOOT_N}
+
+          def off(label): return int(hashlib.sha256(label.encode()).hexdigest()[:8],16)%10000
+
+          core._require_head(Path('.').resolve(), SOURCE_SHA)
+          torch.set_num_threads(2); torch.use_deterministic_algorithms(True); v2._install_runtime_contract()
+
+          inc=json.loads(INC_REPORT.read_text())
+          req(inc['source_sha']==LEARN_SHA,'LEARN-217 source drift')
+          req(inc['model']['parameter_count']==core.EXPECTED_PARAMETERS,'parameter drift')
+          req(inc['model']['model_spec_sha256']==core.EXPECTED_MODEL_SHA,'model identity drift')
+          req(inc['corpus']['identity_sha256']==core.EXPECTED_CORPUS_ID,'corpus drift')
+          req(inc['optimizer']['gradient_clip_norm']==1.0,'incumbent clip drift')
+          curve=[json.loads(x) for x in CURVE.read_text().splitlines() if x.strip()]
+          norms=[float(x['grad_norm']) for x in curve]; clips=[bool(x['clipped']) for x in curve]
+          p=profile(norms); q95=roundup2(p['p95']); q90=roundup2(p['p90'])
+          early={}
+          for n in (32,64,128,256,512,1000):
+              s=curve[:n]; early[str(n)]={'steps':len(s),'clip_frequency':sum(bool(x['clipped']) for x in s)/len(s),
+                                         'preclip_global_norm':profile([x['grad_norm'] for x in s])}
+          candidates=[('unclipped',None),('incumbent_clip_1p0',1.0),('clip_q95',q95)]
+          if q90!=q95: candidates.append(('clip_q90',q90))
+
+          plan={'schema':'12-6.train243-prereg.v2','source_sha':SOURCE_SHA,
+                'consumed_learn217':{'run_id':int(os.environ['LEARN217_RUN_ID']),'source_sha':LEARN_SHA,
+                                     'report_sha256':inc['report_sha256'],'curve_sha256':sha256_file(CURVE)},
+                'incumbent':{'clip_norm':1.0,'global_preclip_profile':p,
+                             'whole_run_clip_frequency':sum(clips)/len(clips),'early_windows':early},
+                'thresholds':{'q95_raw':p['p95'],'q95':q95,'q90_raw':p['p90'],'q90':q90,
+                              'candidate_plan':[{'label':a,'gradient_clip_norm':b} for a,b in candidates]},
+                'fixed':{'model_sha':core.EXPECTED_MODEL_SHA,'parameters':core.EXPECTED_PARAMETERS,
+                         'corpus_id':core.EXPECTED_CORPUS_ID,'tokenizer':'s0-byte-v1','seq':v2.SEQ,'batch':v2.BATCH,
+                         'lr':core.LR,'betas':[.9,.95],'eps':1e-8,'weight_decay':core.WEIGHT_DECAY,
+                         'token_budget':TARGET,'seeds':list(SEEDS)},
+                'bootstrap':{'method':'deterministic paired percentile bootstrap over seed-level statistics',
+                             'replicates':BOOT_N,'seed':BOOT_SEED},
+                'selection':'unclipped if stable; otherwise highest stable q95/q90 threshold; otherwise retain clip=1.0'}
+          plan['identity_sha256']=hash_json(plan)
+          (OUT/'preregistration.json').write_text(json.dumps(plan,sort_keys=True,indent=2)+'\n')
+
+          class NaNModel(nn.Module):
+              def __init__(self):
+                  super().__init__(); self.w=nn.Parameter(torch.zeros(4)); self.w.register_hook(lambda g: torch.full_like(g,float('nan')))
+              def forward(self,x): return self.w.view(1,1,4).expand(x.shape[0],x.shape[1],4)
+          original=torch.nn.utils.clip_grad_norm_; nonlocal_called=[False]
+          def forbidden(*a,**k):
+              nonlocal_called[0]=True; raise AssertionError('clip called after nonfinite')
+          torch.nn.utils.clip_grad_norm_=forbidden
+          t=Trainer(NaNModel(),TrainerConfig(learning_rate=core.LR,weight_decay=core.WEIGHT_DECAY,betas=(.9,.95),eps=1e-8,
+                    max_steps=1,warmup_steps=0,scheduler='constant',gradient_accumulation_steps=1,gradient_clip_norm=1.0,
+                    precision='fp32',seed=1,deterministic_algorithms=True,deterministic_warn_only=False),device='cpu')
+          try:
+              try: t.train_microbatch({'input_ids':torch.tensor([[0,1,2]],dtype=torch.long)})
+              except NonFiniteTrainingError: pass
+              else: raise RuntimeError('nonfinite gradient did not fail')
+          finally: torch.nn.utils.clip_grad_norm_=original
+          req(not nonlocal_called[0],'clipping ran before nonfinite failure')
+
+          build=OUT/'data-build'; build.mkdir(exist_ok=True); manifest=core._build_corpus(Path('.').resolve(),build)
+          corpus=build/'corpus-a'; req(manifest['corpus_identity_sha256']==core.EXPECTED_CORPUS_ID,'DATA-25 drift')
+          tok=ByteTokenizer(); spec,init_spec,prepared=core._model(Path('.').resolve())
+          req(prepared['training']['weight_decay']==core.WEIGHT_DECAY,'weight decay drift')
+
+          def config(clip,seed):
+              return TrainerConfig(learning_rate=core.LR,weight_decay=core.WEIGHT_DECAY,betas=(.9,.95),eps=1e-8,max_steps=MAX_STEPS,
+                     warmup_steps=0,scheduler='constant',gradient_accumulation_steps=1,gradient_clip_norm=clip,precision='fp32',seed=seed,
+                     deterministic_algorithms=True,deterministic_warn_only=False)
+
+          def run_arm(label,clip,seed,diag=False):
+              random.seed(seed); torch.manual_seed(seed); model=TwelveSixDecoder(spec,init_spec); trainer=Trainer(model,config(clip,seed),device='cpu')
+              initial=state_hash(model); its=core._train_iters(corpus,manifest,tok,0); rows=[]; failures=[]; started=time.perf_counter(); orig=torch.nn.utils.clip_grad_norm_
+              while trainer.tokens_seen<TARGET:
+                  if diag and trainer.optimizer_step>=DIAG_STEPS: break
+                  req(trainer.optimizer_step<MAX_STEPS,'step ceiling')
+                  step=trainer.optimizer_step+1; stratum=core.MIXTURE[trainer.optimizer_step%len(core.MIXTURE)]; batch=core._next_batch(its[stratum])
+                  before=snapshot(model) if step==1 or step%UPDATE_EVERY==0 else None; measured={}
+                  def measured_clip(params,max_norm,*a,**k):
+                      ps=tuple(params); measured['pre']=grad_norm(ps); r=orig(ps,max_norm,*a,**k); measured['post']=grad_norm(ps); return r
+                  if clip is not None: torch.nn.utils.clip_grad_norm_=measured_clip
+                  try:
+                      try: m=trainer.train_microbatch(batch)
+                      except NonFiniteTrainingError as e: failures.append(str(e)); break
+                  finally: torch.nn.utils.clip_grad_norm_=orig
+                  pre=float(m.grad_norm); post=pre if clip is None else measured['post']; loss=float(m.update_loss if m.update_loss is not None else m.loss)
+                  rows.append({'loss':loss,'pre':pre,'post':post,'ratio':post/pre if pre>0 else 1.0,'clipped':clip is not None and pre>clip,
+                               'update':update_ratio(model,before) if before is not None else None,'tokens':trainer.tokens_seen})
+              held=None
+              if not diag:
+                  held=v2._fixed_eval_streaming(model,corpus,manifest,tok,split='validation',windows=core.HELDOUT_WINDOWS_PER_MODALITY)
+              return {'label':label,'seed':seed,'clip':clip,'initial':initial,'optimized_tokens':trainer.tokens_seen,'steps':trainer.optimizer_step,
+                      'seconds':time.perf_counter()-started,'preclip':profile([x['pre'] for x in rows]),'postclip':profile([x['post'] for x in rows]),
+                      'post_pre':profile([x['ratio'] for x in rows]),'clip_frequency':sum(x['clipped'] for x in rows)/len(rows),
+                      'update_p95':pct([x['update'] for x in rows if x['update'] is not None],.95),'spikes':spikes([x['loss'] for x in rows]),
+                      'nonfinite':failures,'heldout':held}
+
+          diagnostic=run_arm('fresh_unclipped_diagnostic',None,SEEDS[0],True)
+          groups={label:[run_arm(label,clip,seed) for seed in SEEDS] for label,clip in candidates}
+          exposures={r['optimized_tokens'] for g in groups.values() for r in g}; req(len(exposures)==1,'unequal token exposure')
+          for seed in SEEDS: req(len({r['initial'] for g in groups.values() for r in g if r['seed']==seed})==1,'paired init mismatch')
+          incumbent=groups['incumbent_clip_1p0']; inc_bpb=[r['heldout']['bits_per_byte'] for r in incumbent]
+
+          summaries={}
+          for label,g in groups.items():
+              bpb=[r['heldout']['bits_per_byte'] for r in g]; freq=[r['clip_frequency'] for r in g]; upd=[r['update_p95'] for r in g]
+              delta=[a-b for a,b in zip(bpb,inc_bpb,strict=True)]
+              summaries[label]={'gradient_clip_norm':g[0]['clip'],'heldout_bpb_by_seed':bpb,'heldout_bpb_bootstrap':boot_mean(bpb,BOOT_SEED+off(label)),
+                                'paired_bpb_delta_vs_incumbent_bootstrap':boot_mean(delta,BOOT_SEED+10000+off(label)),
+                                'clip_frequency_by_seed':freq,'clip_frequency_bootstrap':boot_mean(freq,BOOT_SEED+20000+off(label)),
+                                'loss_spike_count_by_seed':[r['spikes']['count'] for r in g],'total_loss_spikes':sum(r['spikes']['count'] for r in g),
+                                'update_weight_ratio_p95_by_seed':upd,'update_weight_ratio_p95_bootstrap':boot_mean(upd,BOOT_SEED+30000+off(label)),
+                                'post_pre_norm_ratio':profile([r['post_pre']['p50'] for r in g]),'nonfinite_events':[x for r in g for x in r['nonfinite']]}
+
+          incs=summaries['incumbent_clip_1p0']; inc_mean=incs['heldout_bpb_bootstrap']['estimate']; inc_spikes=incs['total_loss_spikes']; inc_upd=incs['update_weight_ratio_p95_bootstrap']['estimate']
+          evaluated=[]
+          for label in ('unclipped','clip_q95','clip_q90'):
+              if label not in summaries: continue
+              s=summaries[label]; clip=s['gradient_clip_norm']; freq=s['clip_frequency_bootstrap']['estimate']
+              finite=not s['nonfinite_events']; quality=s['heldout_bpb_bootstrap']['estimate']<=inc_mean+Q_BPB_MEAN and s['paired_bpb_delta_vs_incumbent_bootstrap']['ci95_high']<=Q_BPB_UPPER
+              spike_ok=s['total_loss_spikes']<=inc_spikes+SPIKE_RELAX; update_ok=s['update_weight_ratio_p95_bootstrap']['estimate']<=inc_upd*(1+UPDATE_RELAX)
+              tail_ok=True if clip is None else MIN_CLIP_FREQ<=freq<=MAX_CLIP_FREQ; stable=finite and quality and spike_ok and update_ok and tail_ok
+              evaluated.append({'label':label,'gradient_clip_norm':clip,'stable':stable,'finite':finite,'quality':quality,'spikes_ok':spike_ok,'update_ok':update_ok,'tail_frequency_ok':tail_ok})
+          stable=[x for x in evaluated if x['stable']]
+          if any(x['gradient_clip_norm'] is None for x in stable): decision={'verdict':'SELECT_NO_CLIPPING','selected_gradient_clip_norm':None}
+          elif stable:
+              x=max(stable,key=lambda z:float(z['gradient_clip_norm'])); decision={'verdict':'SELECT_LEAST_INTRUSIVE_CLIPPING_THRESHOLD','selected_gradient_clip_norm':x['gradient_clip_norm'],'selected_label':x['label']}
+          else: decision={'verdict':'RETAIN_INCUMBENT_CLIP_1P0_NO_LESS_INTRUSIVE_STABLE_ARM','selected_gradient_clip_norm':1.0}
+          decision['evaluated']=evaluated
+
+          report={'schema':'12-6.train243-10m-clipping-authority.v2','authority':'LOCAL_FREE_TERMINAL_10M_CLIPPING_AUTHORITY_FOR_TESTED_IDENTITY_ONLY',
+                  'source_sha':SOURCE_SHA,'preregistration_identity_sha256':plan['identity_sha256'],'terminal_incumbent':plan['incumbent'],
+                  'thresholds':plan['thresholds'],'fresh_unclipped_diagnostic':diagnostic,'summaries':summaries,'decision':decision,
+                  'equal_token_exposure':{'passed':True,'actual_optimized_tokens':next(iter(exposures)),'target':TARGET},
+                  'numerical_contract':{'nan_inf_failed_before_clipping':True},
+                  'truth_boundary':{'model_data_lr_beta_weight_decay_batch_token_budget_fixed':True,'lr_tuned_simultaneously':False,'paid_compute':False,'foreign_weights':False,'sft_rlhf_dpo':False}}
+          report['report_sha256']=hash_json(report)
+          (OUT/'report.json').write_text(json.dumps(report,sort_keys=True,indent=2)+'\n')
+          summary={'status':'TRAIN_243_TERMINAL','incumbent_preclip_profile':p,'incumbent_whole_run_clip_frequency':plan['incumbent']['whole_run_clip_frequency'],
+                   'incumbent_first_128_clip_frequency':early['128']['clip_frequency'],'thresholds':plan['thresholds'],'fresh_unclipped_diagnostic':diagnostic,
+                   'summaries':summaries,'decision':decision,'report_sha256':report['report_sha256'],'paid_compute':False}
+          (OUT/'summary.json').write_text(json.dumps(summary,sort_keys=True,indent=2)+'\n')
+          print(json.dumps({'decision':decision,'thresholds':plan['thresholds'],'report_sha256':report['report_sha256']},sort_keys=True,indent=2))
+          PY
+
+      - name: Validate report integrity
+        run: |
+          set -euo pipefail
+          .train243/bin/python - <<'PY'
+          import json, os
+          from pathlib import Path
+          from twelve_six.checkpoint import hash_json
+          p=Path('train243-evidence/report.json'); r=json.loads(p.read_text()); h=r.pop('report_sha256')
+          assert h==hash_json(r); assert r['source_sha']==os.environ['EXPECTED_SOURCE_SHA']; assert r['equal_token_exposure']['passed'] is True
+          assert r['numerical_contract']['nan_inf_failed_before_clipping'] is True; assert r['truth_boundary']['lr_tuned_simultaneously'] is False
+          Path('train243-evidence/validation.json').write_text(json.dumps({'status':'PASS','report_sha256':h},sort_keys=True,indent=2)+'\n')
+          PY
+
+      - name: Upload TRAIN-243 evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: train243-10m-clipping-authority-v2
+          if-no-files-found: error
+          retention-days: 30
+          path: |
+            train243-evidence/environment.json
+            train243-evidence/preregistration.json
+            train243-evidence/report.json
+            train243-evidence/summary.json
+            train243-evidence/validation.json
