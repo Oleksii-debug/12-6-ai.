@@ -1,0 +1,103 @@
+{
+  "compute_authorized": false,
+  "current_decision": {
+    "100m_training_ready": false,
+    "1b_training_ready": false,
+    "20m_architecture_ready_for_pilot_after_blockers": true,
+    "20m_quality_baseline_data_budget_ready": false,
+    "reason": "The current 20M-target plan is about 0.97 unique targets per parameter and only about 4.85% of the 20-tokens-per-parameter planning reference. Treat it as a pilot, not the final trained 20M quality baseline."
+  },
+  "evidence_identity_sha256": "c0a74ca105e4d89351765c8c1dbaa8ec01b78f16d9faf62f48ca337df80789fe",
+  "execution_profile": "LOCAL_FREE",
+  "paid_compute_used": false,
+  "policy": {
+    "checkpoint_integrity_must_be_terminal": true,
+    "compute_optimal_reference_tokens_per_parameter": 20,
+    "corpus_identity_must_be_bound": true,
+    "count_only_training_authorized_loss_positions": true,
+    "no_replay_for_budget_credit": true,
+    "pilot_semantics": "A short unique-target campaign may qualify trainer/data/checkpoint mechanics and produce a first learned checkpoint, but must not be promoted as the science-complete quality baseline when below the reference token budget.",
+    "reference_semantics": "Planning reference derived from Chinchilla-style compute-optimal scaling. It is not a universal theorem or a guarantee of quality; departures require an explicit preregistered scientific rationale.",
+    "tokenizer_identity_must_be_bound": true
+  },
+  "promotion_rules": {
+    "first_learned_checkpoint": {
+      "minimum_unique_targets": "campaign_preregistered_value",
+      "purpose": "mechanics and early learning-signal qualification",
+      "quality_claim_allowed": false
+    },
+    "larger_model_scale_up": {
+      "requires_compute_budget": true,
+      "requires_data_budget": true,
+      "requires_previous_stage_learned": true,
+      "requires_scaling_curve": true,
+      "requires_terminal_checkpoint_integrity": true
+    },
+    "science_complete_size_baseline": {
+      "minimum_reference_ratio": 1.0,
+      "override": "allowed only by explicit preregistered scaling experiment with rationale and evaluation plan",
+      "quality_claim_allowed": true
+    }
+  },
+  "references": [
+    {
+      "name": "Hoffmann et al. 2022 / Chinchilla",
+      "observed_model_parameters": 70000000000,
+      "observed_tokens_per_parameter": 18.571429,
+      "observed_training_tokens": 1300000000000,
+      "url": "https://deepmind.google/discover/blog/an-empirical-analysis-of-compute-optimal-large-language-model-training/",
+      "use": "compute-optimal planning reference"
+    },
+    {
+      "name": "SmolLM2-135M",
+      "observed_model_parameters": 135000000,
+      "observed_tokens_per_parameter": 14814.814815,
+      "observed_training_tokens": 2000000000000,
+      "url": "https://huggingface.co/HuggingFaceTB/SmolLM2-135M",
+      "use": "example that modern small models may be deliberately trained far beyond compute-optimal ratios"
+    },
+    {
+      "name": "TinyLlama-1.1B",
+      "observed_model_parameters": 1100000000,
+      "observed_tokens_per_parameter": 2727.272727,
+      "observed_training_tokens": 3000000000000,
+      "url": "https://github.com/jzhang38/TinyLlama",
+      "use": "example of deliberate small-model overtraining"
+    }
+  ],
+  "repository": "Oleksii-debug/12-6-ai.",
+  "schema": "12-6.pretraining-token-budget.v1",
+  "stages": [
+    {
+      "compute_optimal_reference_tokens": 412268800,
+      "current_preregistered_unique_target_request": 20000000,
+      "current_request_classification": "PIPELINE_PILOT_NOT_SCIENCE_COMPLETE_20M_BASELINE",
+      "current_request_fraction_of_reference": 0.048512,
+      "current_request_tokens_per_parameter": 0.970241,
+      "name": "MODEL-341-20M",
+      "parameter_count": 20613440,
+      "reference_deficit_tokens": 392268800,
+      "required_next_classes": [
+        "FIRST_LEARNED_CHECKPOINT_PILOT",
+        "SCIENCE_BASELINE_AT_OR_ABOVE_REFERENCE_OR_EXPLICIT_PREREGISTERED_OVERRIDE",
+        "OPTIONAL_OVERTRAINING_SWEEP_IF_MARGINAL_RETURNS_JUSTIFY_COMPUTE"
+      ]
+    },
+    {
+      "compute_optimal_reference_tokens": 2000000000,
+      "name": "100M",
+      "parameter_count": 100000000,
+      "promotion_requires": "20M learned scaling evidence plus data and compute plan",
+      "status": "FUTURE_SCALE_STAGE"
+    },
+    {
+      "compute_optimal_reference_tokens": 20000000000,
+      "name": "1B",
+      "parameter_count": 1000000000,
+      "promotion_requires": "100M learned scaling evidence plus distributed training and data plan",
+      "status": "FUTURE_SCALE_STAGE"
+    }
+  ],
+  "training_executed": false,
+  "worker_id": "AUTONOMOUS-SCALING-TOKEN-BUDGET-20260826"
+}
