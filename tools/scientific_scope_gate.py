@@ -220,7 +220,7 @@ def run_gate(
         if not (root / path).exists():
             raise RuntimeError(f"declared consumed path does not exist: {path}")
 
-    surface = sorted(set(consumed + declared + [p for p in changed if p.startswith("src/twelve_six/")]))
+    surface = sorted(set(consumed + declared + changed))
     tests, hits = owned_tests(surface, ownership)
     tests = sorted(set(tests + list(manifest.get("additional_tests", []))))
     for test in tests:
@@ -291,6 +291,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     root = Path(args.repo_root).resolve()
+
     def rooted(value: str) -> Path:
         path = Path(value)
         return path if path.is_absolute() else root / path
