@@ -17,10 +17,9 @@ from .core import (
     CheckpointCompatibilityError,
     CheckpointIdentity,
     LoadResult,
-    load_verified_checkpoint,
-    prepare_checkpoint_load,
     save_checkpoint,
 )
+from .hardening import load_verified_checkpoint, prepare_checkpoint_load
 
 
 def _trainer_state_as_mapping(state: Any) -> Mapping[str, Any]:
