@@ -1,0 +1,121 @@
+{
+  "schema_version": "12-6.next100-065-cross-source-dedup-v4-intake.v1",
+  "worker_id": "NEXT100-065-CROSSSOURCE-DEDUP-V4-INTAKE",
+  "issue": 546,
+  "local_free_only": true,
+  "model_training_executed": false,
+  "tokenizer_fit_executed": false,
+  "paid_compute_used": false,
+  "final_test_payload_read": false,
+  "upstream_source_convergence": {
+    "schema_version": "12-6.next100-063-source-registry-convergence.v1",
+    "path": "configs/data/next100_063_source_registry_convergence_v1.json",
+    "pr": 527,
+    "issue": 521,
+    "head_sha": "5356d60c8c8af46d6fc34debfd3cb36731045338",
+    "workflow_run": 33005956076,
+    "workflow_name": "CI",
+    "workflow_status": "queued",
+    "workflow_conclusion": null
+  },
+  "expected_pre_dedup_vector": {
+    "numeric_capacity_bytes": {"uk": 100856, "en": 150643, "code": 69133, "total": 320632},
+    "independent_family_counts": {"uk": 4, "en": 3, "code": 4, "total": 11}
+  },
+  "required_positive_credit_late_authorities": [
+    {
+      "worker_id": "NEXT100-026-DATA-UA-CABINET-MINISTRY",
+      "authority_identity": "1f068e6cc5ce3fc4a51d8477acee31fab5a0178e15f49225b57de94c5178f7d9",
+      "family_id": "ua.kmu.portal.secretariat-news",
+      "stratum": "uk",
+      "numeric_capacity_bytes": 9153,
+      "capacity_object_count": 6
+    },
+    {
+      "worker_id": "NEXT100-034-DATA-EN-NIST",
+      "authority_identity": "3ffba0fcd08ab42e940b2db12ffafb6f7234ad0bae6f7fe523071497485b9d1c",
+      "family_id": "en.usgov.nist.technical-series",
+      "stratum": "en",
+      "numeric_capacity_bytes": 59358,
+      "capacity_object_count": 3
+    },
+    {
+      "worker_id": "NEXT100-038-DATA-EN-MDN",
+      "authority_identity": "0f5dbd5313f8196811e2a99f77eb8698c6bc69f69648d76a7e240ee9757ecc47",
+      "family_id": "en.mdn.webdocs.prose",
+      "stratum": "en",
+      "numeric_capacity_bytes": 6492,
+      "capacity_object_count": 1
+    },
+    {
+      "worker_id": "NEXT100-027-DATA-UA-PUBLIC-DOMAIN-LIT",
+      "authority_identity": "85f596e79b0ec6479d2ef815e2a6a9bdbfaa55993c797309c1ea4d93b1d9b0e7",
+      "family_id": "ua.verba.public-domain.nomis1864",
+      "stratum": "uk",
+      "numeric_capacity_bytes": 1659,
+      "capacity_object_count": 1
+    }
+  ],
+  "zero_credit_late_authorities": [
+    {
+      "worker_id": "NEXT100-037-DATA-EN-PYTHON-DOCS",
+      "family_id": "python.cpython.documentation",
+      "numeric_capacity_bytes": 0,
+      "independent_family_credit": 0,
+      "reason": "BLOCKED_ACCEPTED_CHUNK_BYTE_LEDGER_NOT_MATERIALIZED"
+    }
+  ],
+  "object_manifests": [
+    {
+      "worker_id": "NEXT100-026-DATA-UA-CABINET-MINISTRY",
+      "authority_identity": "1f068e6cc5ce3fc4a51d8477acee31fab5a0178e15f49225b57de94c5178f7d9",
+      "source_objects": [
+        {"source_id":"ua.kmu.secretariat.kmu-secretariat-2026-07-16-prime-minister-appointment","source_family":"ua.kmu.portal.secretariat-news","stable_origin_id":"publisher:kmu.gov.ua:secretariat-news","stable_object_id":"sha256:5597ee6700b170c0ed93fa9e6c318097634ce1ae00657a5592090373b0169874","origin_key":"kmu:kmu-secretariat-2026-07-16-prime-minister-appointment","modality":"uk","declared_capacity_bytes":2806,"expected_raw_sha256":"3caa6832e6b40cc8c5c57ed8e3080fa046dc9c351591399aad6fe8e90b9bdd66","comparison_normalization":"NEXT100_026_KMU_AUTHORITY_NORMALIZED_V1","expected_comparison_bytes":2806,"expected_comparison_sha256":"5597ee6700b170c0ed93fa9e6c318097634ce1ae00657a5592090373b0169874"},
+        {"source_id":"ua.kmu.secretariat.kmu-secretariat-2026-08-05-resilience-audit","source_family":"ua.kmu.portal.secretariat-news","stable_origin_id":"publisher:kmu.gov.ua:secretariat-news","stable_object_id":"sha256:6e1e1f134f9cf8e11d92891acbf014f0ee30ec9219f179a862d706b74dd877eb","origin_key":"kmu:kmu-secretariat-2026-08-05-resilience-audit","modality":"uk","declared_capacity_bytes":1890,"expected_raw_sha256":"f6ce7360e6fff650b09c065889157ac021685a8bba24a03fad8bd5644f974f9b","comparison_normalization":"NEXT100_026_KMU_AUTHORITY_NORMALIZED_V1","expected_comparison_bytes":1890,"expected_comparison_sha256":"6e1e1f134f9cf8e11d92891acbf014f0ee30ec9219f179a862d706b74dd877eb"},
+        {"source_id":"ua.kmu.secretariat.kmu-secretariat-2026-07-23-budget-2027","source_family":"ua.kmu.portal.secretariat-news","stable_origin_id":"publisher:kmu.gov.ua:secretariat-news","stable_object_id":"sha256:2338bdb3adf3c70b70f77b8df0bef0c9e81b098697e32703ab2205475cb2ab85","origin_key":"kmu:kmu-secretariat-2026-07-23-budget-2027","modality":"uk","declared_capacity_bytes":949,"expected_raw_sha256":"13c5665e9ebbc5213feb4d3ad54e017b2ac3a40659c327b01df3877f25de71d1","comparison_normalization":"NEXT100_026_KMU_AUTHORITY_NORMALIZED_V1","expected_comparison_bytes":949,"expected_comparison_sha256":"2338bdb3adf3c70b70f77b8df0bef0c9e81b098697e32703ab2205475cb2ab85"},
+        {"source_id":"ua.kmu.secretariat.kmu-secretariat-2026-08-18-resilience-funding","source_family":"ua.kmu.portal.secretariat-news","stable_origin_id":"publisher:kmu.gov.ua:secretariat-news","stable_object_id":"sha256:e7393c379a383c7fd27e1105411cd0b3717f87b7c848bbfbda7ea54a6bd5ea27","origin_key":"kmu:kmu-secretariat-2026-08-18-resilience-funding","modality":"uk","declared_capacity_bytes":1281,"expected_raw_sha256":"4b1071c5bfc55072bfab530216d994a719dfb9f1dc22a7ccbc58e799b0c5ca37","comparison_normalization":"NEXT100_026_KMU_AUTHORITY_NORMALIZED_V1","expected_comparison_bytes":1281,"expected_comparison_sha256":"e7393c379a383c7fd27e1105411cd0b3717f87b7c848bbfbda7ea54a6bd5ea27"},
+        {"source_id":"ua.kmu.secretariat.kmu-secretariat-2026-08-13-frontline-communities","source_family":"ua.kmu.portal.secretariat-news","stable_origin_id":"publisher:kmu.gov.ua:secretariat-news","stable_object_id":"sha256:c3d3b823e03da0e8dcf09939b654a1038404fd5eae834789b6ad7c484eb7a346","origin_key":"kmu:kmu-secretariat-2026-08-13-frontline-communities","modality":"uk","declared_capacity_bytes":951,"expected_raw_sha256":"4c3d9ccf517b611019c42e8a36665cdb7ed3ce4e1e94b07afc246fab4a7df021","comparison_normalization":"NEXT100_026_KMU_AUTHORITY_NORMALIZED_V1","expected_comparison_bytes":951,"expected_comparison_sha256":"c3d3b823e03da0e8dcf09939b654a1038404fd5eae834789b6ad7c484eb7a346"},
+        {"source_id":"ua.kmu.secretariat.kmu-secretariat-2026-08-19-eib-community-recovery","source_family":"ua.kmu.portal.secretariat-news","stable_origin_id":"publisher:kmu.gov.ua:secretariat-news","stable_object_id":"sha256:6a5cf6b19feed67794caad09622a308e434c2997f01ddcadf2faa0ba35e61a6b","origin_key":"kmu:kmu-secretariat-2026-08-19-eib-community-recovery","modality":"uk","declared_capacity_bytes":1276,"expected_raw_sha256":"5705acebf5e5bf87a0d1ae5ede798819ab2757e6bb8c165341d2d3fb63d909a4","comparison_normalization":"NEXT100_026_KMU_AUTHORITY_NORMALIZED_V1","expected_comparison_bytes":1276,"expected_comparison_sha256":"6a5cf6b19feed67794caad09622a308e434c2997f01ddcadf2faa0ba35e61a6b"}
+      ]
+    },
+    {
+      "worker_id": "NEXT100-034-DATA-EN-NIST",
+      "authority_identity": "3ffba0fcd08ab42e940b2db12ffafb6f7234ad0bae6f7fe523071497485b9d1c",
+      "source_objects": [
+        {"source_id":"en.nist.technical-series.NIST.SP.800-204","source_family":"en.usgov.nist.technical-series","stable_origin_id":"publisher:nist.gov:technical-series","stable_object_id":"sha256:570e8d75b6dc6aefee1f089818b46765c0dd1965e06947bcc2fff0169d22274e","origin_key":"nist:NIST.SP.800-204","modality":"en","declared_capacity_bytes":19668,"expected_raw_sha256":"25412c860165e5ee1cfbf26ed47c56f4d213b1996a73365f5561be6403cf7588","comparison_normalization":"NEXT100_034_NIST_PDF_BODY_NFKC_BOUNDED_V1","expected_comparison_bytes":19668,"expected_comparison_sha256":"570e8d75b6dc6aefee1f089818b46765c0dd1965e06947bcc2fff0169d22274e"},
+        {"source_id":"en.nist.technical-series.NIST.SP.800-204C","source_family":"en.usgov.nist.technical-series","stable_origin_id":"publisher:nist.gov:technical-series","stable_object_id":"sha256:558da6a0886036a01a5139d635b1352b5cf5d74655d919c66a04e84f2d49c0fe","origin_key":"nist:NIST.SP.800-204C","modality":"en","declared_capacity_bytes":19736,"expected_raw_sha256":"d51133dc55a804990d80ba4b9c35e3fbb2d5acdf7b330b66edeaae59fc63d69b","comparison_normalization":"NEXT100_034_NIST_PDF_BODY_NFKC_BOUNDED_V1","expected_comparison_bytes":19736,"expected_comparison_sha256":"558da6a0886036a01a5139d635b1352b5cf5d74655d919c66a04e84f2d49c0fe"},
+        {"source_id":"en.nist.technical-series.NIST.SP.800-215","source_family":"en.usgov.nist.technical-series","stable_origin_id":"publisher:nist.gov:technical-series","stable_object_id":"sha256:6c99c3b14ee3ea7fe915940e38c080dbf2a785f1abcee2fd73e7fd731424770d","origin_key":"nist:NIST.SP.800-215","modality":"en","declared_capacity_bytes":19954,"expected_raw_sha256":"159e17820a0a337c4a7e9c7ee8b966823e81dc72f5c6229e7d7244c40b0b1645","comparison_normalization":"NEXT100_034_NIST_PDF_BODY_NFKC_BOUNDED_V1","expected_comparison_bytes":19954,"expected_comparison_sha256":"6c99c3b14ee3ea7fe915940e38c080dbf2a785f1abcee2fd73e7fd731424770d"}
+      ]
+    },
+    {
+      "worker_id": "NEXT100-038-DATA-EN-MDN",
+      "authority_identity": "0f5dbd5313f8196811e2a99f77eb8698c6bc69f69648d76a7e240ee9757ecc47",
+      "source_objects": [
+        {"source_id":"en.mdn.webdocs.prose.http-guides-compression","source_family":"en.mdn.webdocs.prose","stable_origin_id":"github:mdn/content:41ace2122a86ea89fee604ec0970c2328f8077f6","stable_object_id":"git-sha1:528fb9e09861897eca0661cb03178dd47afee5ef","origin_key":"github:mdn/content:41ace2122a86ea89fee604ec0970c2328f8077f6:files/en-us/web/http/guides/compression/index.md","modality":"en","declared_capacity_bytes":6492,"expected_raw_sha256":"8bde46ef0fc270baf85ca8fb55a5b5662b49ef7f6d1c948825ded9377e019638","expected_git_blob_sha1":"528fb9e09861897eca0661cb03178dd47afee5ef","comparison_normalization":"MDN_PROSE_ONLY_MARKDOWN_V1","expected_comparison_bytes":6492,"expected_comparison_sha256":"10855740b0ed5588d133f421318c637be99d9e9f4921675af9f6dc8a5663507b"}
+      ]
+    },
+    {
+      "worker_id": "NEXT100-027-DATA-UA-PUBLIC-DOMAIN-LIT",
+      "authority_identity": "85f596e79b0ec6479d2ef815e2a6a9bdbfaa55993c797309c1ea4d93b1d9b0e7",
+      "source_objects": [
+        {"source_id":"ua.verba.public-domain.nomis1864.bounded24","source_family":"ua.verba.public-domain.nomis1864","stable_origin_id":"github:dmytro-yemelianov/verbacorpus:34a2c10ac35e1febad6c270a88fc8b83790407da","stable_object_id":"sha256:1eb91dbd631898c6a2efe274b700a5be0deaca243c0a9d5d30994ddadcf43598","origin_key":"verba:Nomis1864:bounded24:d75edd497c7fb1054e86d892c9462f059c1f4aa9","modality":"uk","declared_capacity_bytes":1659,"expected_raw_sha256":"492d985fd5c364fecc76a4ef387bdcbda936ebf47769e6fff011f113411d9b3b","comparison_normalization":"NEXT100_027_VERBA_NOMIS1864_NORMALIZED_V1","expected_comparison_bytes":1659,"expected_comparison_sha256":"1eb91dbd631898c6a2efe274b700a5be0deaca243c0a9d5d30994ddadcf43598"}
+      ]
+    }
+  ],
+  "object_record_contract": {
+    "required_content_identity": "expected_raw_sha256_or_expected_git_blob_sha1",
+    "aggregate_bytes_must_equal_object_sum": true,
+    "aggregate_object_count_must_equal_object_rows": true,
+    "source_ids_and_stable_object_ids_must_be_globally_unique": true,
+    "all_positive_credit_late_authorities_must_be_explicitly_bound": true
+  },
+  "claim_boundary": {
+    "object_level_handoff_materialized": true,
+    "post_dedup_capacity_claimed": false,
+    "balance_diversity_pass_claimed": false,
+    "research_corpus_v1_released": false,
+    "tokenizer_fit_authorized": false,
+    "learned_20m_checkpoint_claimed": false,
+    "safe_result": "BLOCKED_UPSTREAM_SOURCE_CONVERGENCE_NONTERMINAL"
+  }
+}
