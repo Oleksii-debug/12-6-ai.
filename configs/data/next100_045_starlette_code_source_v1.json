@@ -1,0 +1,94 @@
+{
+  "schema": "next100.external_code_source_admission.v1",
+  "worker_id": "NEXT100-045-CODE-STARLETTE",
+  "purpose": "training",
+  "local_free_only": true,
+  "upstream": {
+    "repository": "Kludex/starlette",
+    "repository_id": 138597372,
+    "historical_aliases": ["encode/starlette"],
+    "release": "1.6.0",
+    "commit": "4f250d6b814587e20c5365f0a5f0c4d42bcb929f"
+  },
+  "family": {
+    "id": "github:Kludex/starlette",
+    "stable_repository_id": 138597372,
+    "lineage_rule": "repository transfer aliases collapse; dependency relationships alone do not collapse independent upstream lineages",
+    "fastapi_relationship": "FastAPI depends on Starlette, but Starlette is not a FastAPI fork, mirror, vendored subtree, generated derivative, or sibling path in the same canonical upstream repository"
+  },
+  "license": {
+    "spdx": "BSD-3-Clause",
+    "path": "LICENSE.md",
+    "git_blob_sha1": "d16a60ec5b9963ef86b35a52ac92227014618e6c",
+    "raw_sha256": "dcb95677a02240243187e964f941847d19b17821cf99e5afae684fab328c19bf",
+    "training_decision": "ALLOW",
+    "redistribution_decision": "ALLOW_WITH_NOTICE",
+    "obligations": [
+      "retain copyright notice, conditions, and disclaimer in source redistributions",
+      "reproduce notice, conditions, and disclaimer in documentation or other materials for binary redistributions",
+      "do not use copyright-holder or contributor names for endorsement without prior written permission"
+    ]
+  },
+  "selected_files": [
+    {
+      "path": "starlette/_utils.py",
+      "git_blob_sha1": "b9b8639b2106fd552db7526c3f12aa429b430252",
+      "raw_sha256": "7cb67fa5195ca7ec0fe33122c9e5ce225edfa3297fcc82f9026e84f9c56583cb",
+      "bytes": 2970
+    },
+    {
+      "path": "starlette/convertors.py",
+      "git_blob_sha1": "72b1cf9fdfb6d7f5be61f648a9ae016deb45012b",
+      "raw_sha256": "175aec7b701a70df6bb1f2674deb839e36cde75affa2e1dcdd62f26248e45ffa",
+      "bytes": 2304
+    }
+  ],
+  "selection_exclusions": [
+    "docs/**",
+    "tests/**",
+    "benchmarks/**",
+    ".github/**",
+    "generated/build/minified/binary assets",
+    "evaluation-reserved objects"
+  ],
+  "terminal_registry_code_objects": [
+    {
+      "family": "github:encode/httpx",
+      "repository": "encode/httpx",
+      "commit": "b5addb64f0161ff6bfe94c124ef76f6a1fba5254",
+      "path": "httpx/_content.py",
+      "git_blob_sha1": "6f479a0885f723b7395843d41164a87041820776",
+      "raw_sha256": "2c61b3ac94d1dcebcde0c6f519554d2d7917247fbaa0a97002db4ef69e70ff28"
+    },
+    {
+      "family": "github:psf/requests",
+      "repository": "psf/requests",
+      "commit": "5460f467b02e49471c0fd6cfc9ca0adab6351f98",
+      "path": "src/requests/_internal_utils.py",
+      "git_blob_sha1": "0466a7d347db4ed34a37db51b75fc8e80bc06055",
+      "raw_sha256": "4c7d8d132c9898fc7d715e473f3ac74785ddc4ab96d2c9240f87835dc6d981ff"
+    }
+  ],
+  "known_evaluation_reservations": [
+    {
+      "repository": "encode/httpx",
+      "commit": "b5addb64f0161ff6bfe94c124ef76f6a1fba5254",
+      "path": "docs/advanced/timeouts.md",
+      "git_blob_sha1": "aedcfb627f5139901638ebf8de30216c2640591e"
+    },
+    {
+      "repository": "psf/requests",
+      "commit": "5460f467b02e49471c0fd6cfc9ca0adab6351f98",
+      "path": "docs/user/authentication.rst",
+      "git_blob_sha1": "76be9cccafc0ce28a698672a128eac9d1f9bbe15"
+    }
+  ],
+  "dedup_policy": {
+    "raw_exact": "reject",
+    "normalized_exact": "reject",
+    "python_skeleton_5gram_jaccard_reject_at_or_above": 0.85,
+    "python_skeleton_5gram_containment_reject_at_or_above": 0.90
+  },
+  "admission_scope": "these two exact implementation blobs only; no tag-wide or repository-wide training authority",
+  "evaluation_use": "NOT_AUTHORIZED_BY_THIS_AUTHORITY"
+}
