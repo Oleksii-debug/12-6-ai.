@@ -1,0 +1,164 @@
+{
+  "schema_version": "12-6.next100-063-terminal-source-registry.v1",
+  "worker_id": "NEXT100-063-TERMINAL-SOURCE-REGISTRY-CONVERGENCE",
+  "local_free_only": true,
+  "model_training_executed": false,
+  "registry_identity_sha256": "7ae84e41e5b44770d357a17d33b3dbb2c5245afa6f2d1ce0ff3796f568793851",
+  "base_authority": {
+    "name": "NEXT100-065-CROSSSOURCE-DEDUP-V3",
+    "head_sha": "efc278cec0e4773eb4ff405bf4b4d24ee63b5d13",
+    "dedicated_workflow_run": 32999969398,
+    "status": "SUCCESS",
+    "source_level_capacity_bytes_at_cut": 243970
+  },
+  "authority_policy": {
+    "included_only_if_current_exact_head_dedicated_workflow_success": true,
+    "generic_ci_is_not_component_authority": true,
+    "pr_text_is_not_terminal_authority": true,
+    "failed_queued_in_progress_retest_capacity_credit": 0
+  },
+  "included_authorities": [
+    {
+      "worker": "DATA-287",
+      "pr": 404,
+      "head_sha": "b0523ccbc4b957615aac849d476cfa851be87578",
+      "dedicated_workflow_run": 32968622282,
+      "dedicated_workflow_name": "DATA-287 External Snapshot Registry V2",
+      "status": "SUCCESS",
+      "contributions": {
+        "uk": {"source_objects": 1, "normalized_bytes": 88565, "family_ids": ["ua.rada.open-data.laws-texts"]},
+        "en": {"source_objects": 2, "normalized_bytes": 84793, "family_ids": ["en.standardebooks.manual"]},
+        "code": {"source_objects": 2, "normalized_bytes": 9703, "family_ids": ["github:encode/httpx", "github:psf/requests"]}
+      }
+    },
+    {
+      "worker": "NEXT100-022-DATA-UA-WIKISOURCE",
+      "pr": 455,
+      "head_sha": "84c51e42b6daa51796fd20d793b5ef1ff01cc9d2",
+      "dedicated_workflow_run": 32998002424,
+      "dedicated_workflow_name": "NEXT100-022 Ukrainian Wikisource Source Admission",
+      "status": "SUCCESS",
+      "contributions": {
+        "uk": {"source_objects": 1, "normalized_bytes": 1479, "family_ids": ["ua.literature.lesia-ukrainka.na-krylah-pisen.1892-lviv"]}
+      }
+    },
+    {
+      "worker": "NEXT100-042-CODE-DJANGO",
+      "pr": 456,
+      "head_sha": "7d83f8d4f21f51ad0b59dca4ac80f80aba20fc13",
+      "dedicated_workflow_run": 32998037233,
+      "dedicated_workflow_name": "NEXT100-042 Django Code Source Admission",
+      "status": "SUCCESS",
+      "contributions": {
+        "code": {"source_objects": 3, "normalized_bytes": 54156, "family_ids": ["github:django/django"]}
+      }
+    },
+    {
+      "worker": "NEXT100-045-CODE-STARLETTE",
+      "pr": 458,
+      "head_sha": "c6756b5ebb6eb1d3bf3de2499167833d99d99a72",
+      "dedicated_workflow_run": 32998101312,
+      "dedicated_workflow_name": "NEXT100-045 Starlette Code Source Admission",
+      "status": "SUCCESS",
+      "contributions": {
+        "code": {"source_objects": 2, "normalized_bytes": 5274, "family_ids": ["github:Kludex/starlette"]}
+      }
+    },
+    {
+      "worker": "NEXT100-026-DATA-UA-CABINET-MINISTRY",
+      "pr": 449,
+      "head_sha": "40950a950b60921fd856af2719e1ae2486d9e892",
+      "dedicated_workflow_run": 32997970539,
+      "dedicated_workflow_name": "NEXT100-026 KMu Source Rights Audit",
+      "status": "SUCCESS",
+      "contributions": {
+        "uk": {"source_objects": 6, "normalized_bytes": 9153, "family_ids": ["ua.kmu.portal.secretariat-news"]}
+      }
+    },
+    {
+      "worker": "NEXT100-034-DATA-EN-NIST",
+      "pr": 472,
+      "head_sha": "b7491745b34ac8679baaf69cb96cd609dcbe0a16",
+      "dedicated_workflow_run": 32998703545,
+      "dedicated_workflow_name": "NEXT100-034 NIST authority",
+      "status": "SUCCESS",
+      "contributions": {
+        "en": {"source_objects": 3, "normalized_bytes": 59358, "family_ids": ["en.usgov.nist.technical-series"]}
+      }
+    },
+    {
+      "worker": "NEXT100-037-DATA-EN-PYTHON-DOCS",
+      "pr": 467,
+      "head_sha": "5a6a495a24bce449334cbc5126d0114f61a9f57c",
+      "dedicated_workflow_run": 32998356906,
+      "dedicated_workflow_name": "NEXT100-037 Python Docs Source Authority",
+      "status": "SUCCESS",
+      "contributions": {
+        "en": {"source_objects": 1, "normalized_bytes": 17901, "family_ids": ["python.cpython.documentation"]}
+      }
+    },
+    {
+      "worker": "NEXT100-038-DATA-EN-MDN",
+      "pr": 445,
+      "head_sha": "902eccc0b3efff09a38dc89cda789180b6c6e754",
+      "dedicated_workflow_run": 32998544359,
+      "dedicated_workflow_name": "NEXT100-038 MDN Source Authority",
+      "status": "SUCCESS",
+      "contributions": {
+        "en": {"source_objects": 1, "normalized_bytes": 6492, "family_ids": ["en.mdn.webdocs.prose"]}
+      }
+    }
+  ],
+  "excluded_nonterminal_or_failed": [
+    {
+      "worker": "NEXT100-048-CODE-PYDANTIC",
+      "pr": 465,
+      "head_sha": "ca1755886f052d272029d6d68b2f1b7f02187936",
+      "dedicated_workflow_run": 32999061340,
+      "status": "FAILURE",
+      "capacity_credit_bytes": 0
+    },
+    {
+      "worker": "NEXT100-051-CODE-RICH",
+      "pr": 475,
+      "head_sha": "78cada1d69b3f0c438012c4e6cf79143aae2f603",
+      "dedicated_workflow_run": 32999511493,
+      "status": "FAILURE",
+      "capacity_credit_bytes": 0
+    }
+  ],
+  "aggregate": {
+    "source_objects": 22,
+    "independent_source_families": 11,
+    "source_level_normalized_bytes": 336874,
+    "by_stratum": {
+      "uk": {"source_objects": 8, "independent_source_families": 3, "normalized_bytes": 99197},
+      "en": {"source_objects": 7, "independent_source_families": 4, "normalized_bytes": 168544},
+      "code": {"source_objects": 7, "independent_source_families": 4, "normalized_bytes": 69133}
+    }
+  },
+  "source_diversity_gate": {
+    "minimum_independent_families_per_stratum": 2,
+    "status": "PASS_SOURCE_AUTHORITY_LEVEL",
+    "does_not_authorize_corpus_release": true
+  },
+  "truth_boundary": {
+    "canonical_base_training_eligibility": false,
+    "source_level_capacity_only": true,
+    "global_cross_source_dedup_complete_for_this_vector": false,
+    "global_decontamination_complete_for_this_vector": false,
+    "selection_reservations_applied": false,
+    "final_split_and_packing_materialized": false,
+    "unique_loss_positions_materialized": false,
+    "training_authorized_exposure": 0,
+    "research_corpus_v1_terminal": false
+  },
+  "required_successors": [
+    "global cross-source dedup on this exact authority vector",
+    "quality/privacy re-evaluation at final record granularity",
+    "selection/final-test reservations and decontamination",
+    "immutable split and packing materialization",
+    "post-pack unique-loss ledger",
+    "20M campaign activation authority"
+  ]
+}
