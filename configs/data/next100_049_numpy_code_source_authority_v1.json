@@ -1,0 +1,138 @@
+{
+  "schema_version": "12-6.external-real-code-source-authority.v1",
+  "worker_id": "NEXT100-049-CODE-NUMPY",
+  "verdict": "ADMIT_IF_EXACT_HEAD_VALIDATION_SUCCEEDS",
+  "origin_class": "EXTERNAL_REAL",
+  "modality": "code",
+  "language": "python",
+  "local_free_only": true,
+  "training_executed": false,
+  "canonical_registry_mutated": false,
+  "registry_consumption_required": true,
+  "registry_comparison": {
+    "authority_worker": "DATA-287",
+    "source_head": "b0523ccbc4b957615aac849d476cfa851be87578",
+    "path": "data/registry/external_snapshots.v2.json",
+    "registry_identity_sha256": "917e9bc31b2fa040d25e807ae3c01aa2cce32420752a891caacfb6c830e6632c"
+  },
+  "upstream": {
+    "canonical_repository": "https://github.com/numpy/numpy",
+    "repository_family": "github:numpy/numpy",
+    "commit": "4f94a9ac128175d05992ce9946e5b066603c0d9d",
+    "license": {
+      "path": "LICENSE.txt",
+      "git_blob_sha1": "f37a12cc4cccf83af4517809791777e71c1df2a9",
+      "raw_bytes": 1543,
+      "spdx": "BSD-3-Clause",
+      "scope": "NumPy first-party source files selected by this authority"
+    }
+  },
+  "selected_files": [
+    {
+      "path": "numpy/_core/_asarray.py",
+      "git_blob_sha1": "edaff5222f6936779ddb6704087ececc46480a2b",
+      "raw_bytes": 3894,
+      "role": "array-requirement conversion implementation"
+    },
+    {
+      "path": "numpy/_core/_dtype.py",
+      "git_blob_sha1": "6062fd89784e5bc1ce118ecaabd0167c7af53342",
+      "raw_bytes": 10374,
+      "role": "dtype representation and layout implementation"
+    },
+    {
+      "path": "numpy/_core/_exceptions.py",
+      "git_blob_sha1": "73b07d25ef1f2b4b7a3c81ead115a3b8382b0730",
+      "raw_bytes": 5159,
+      "role": "ufunc and allocation exception implementation"
+    },
+    {
+      "path": "numpy/_core/_methods.py",
+      "git_blob_sha1": "1c29831bca209e63dc7e06a2d0f83fa986fc3f98",
+      "raw_bytes": 9393,
+      "role": "array reduction and method implementation"
+    },
+    {
+      "path": "numpy/_core/overrides.py",
+      "git_blob_sha1": "16db04e73da6bae520ede9b93870b8c606dcc45d",
+      "raw_bytes": 8078,
+      "role": "array-function override dispatch implementation"
+    }
+  ],
+  "selection_contract": {
+    "file_count": 5,
+    "unique_training_capacity_bytes": 36898,
+    "normalization_policy": "STRICT_UTF8_IDENTITY_PRESERVE_V1",
+    "human_authored_source_required": true,
+    "allowed_suffixes": [".py"],
+    "excluded_path_classes": [
+      "tests",
+      "benchmarks",
+      "docs",
+      "examples",
+      "vendored",
+      "third_party",
+      "code_generators",
+      "generated_output",
+      "binary_artifacts",
+      "cython_generated_c",
+      "evaluation_reserved"
+    ],
+    "generated_capacity_bytes": 0,
+    "binary_capacity_bytes": 0,
+    "evaluation_capacity_bytes": 0
+  },
+  "rights": {
+    "acquisition": "ALLOWED",
+    "storage": "ALLOWED",
+    "analysis": "ALLOWED",
+    "model_training": "ALLOWED",
+    "redistribution": "ALLOWED_WITH_BSD_3_CLAUSE_CONDITIONS",
+    "evaluation": "NOT_SEPARATELY_ADMITTED",
+    "evaluation_authority_inferred": false,
+    "redistribution_conditions": "Retain the NumPy copyright notice, BSD-3-Clause conditions and disclaimer in source/binary redistributions; do not use copyright-holder or contributor names to endorse/promote derived products without permission.",
+    "reasoning": "The exact BSD-3-Clause license grants use, copy, modification and redistribution rights. Model training is admitted as a permitted use under this project source policy; evaluation remains a separate purpose and is not inferred."
+  },
+  "privacy_and_secrets": {
+    "high_confidence_secret_scan_required": true,
+    "email_phone_ssn_scan_required": true,
+    "private_endpoint_credential_scan_required": true,
+    "admit_on_match": false
+  },
+  "static_validity": {
+    "strict_utf8_required": true,
+    "nul_bytes_forbidden": true,
+    "python_ast_parse_required": true,
+    "substantive_logic_required": true,
+    "generated_marker_forbidden": true
+  },
+  "dedup": {
+    "raw_sha256_exact_within_subset": "MUST_BE_UNIQUE",
+    "raw_sha256_exact_against_live_registry": "MUST_NOT_COLLIDE",
+    "git_blob_exact_against_live_registry": "MUST_NOT_COLLIDE",
+    "token_5_shingle_jaccard_threshold": 0.8,
+    "compare_against_incumbent_code_sources": true,
+    "mirrors_or_forks_add_family_credit": false
+  },
+  "family_accounting": {
+    "family_id": "github:numpy/numpy",
+    "independent_source_family_credit": 1,
+    "selected_file_count_does_not_multiply_family_credit": true,
+    "generated_files_add_capacity": false,
+    "representative_corpus_claimed": false
+  },
+  "evaluation_separation": {
+    "selected_tests": false,
+    "selected_benchmarks": false,
+    "selected_eval_fixtures": false,
+    "evaluation_reservation_scan_required": true,
+    "final_test_material_consumed": false,
+    "future_evaluation_requires_separate_authority": true
+  },
+  "terminal_condition": {
+    "required_workflow": "NEXT100-049 NumPy Code Source Authority",
+    "exact_head_success_required": true,
+    "deterministic_double_materialization_required": true,
+    "late_live_registry_refresh_required": true
+  }
+}
