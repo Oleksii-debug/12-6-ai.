@@ -14,14 +14,28 @@
     "revision": "25f3dcbed7429ebe20174ccc7000428d0f0aedda",
     "license_path": "LICENSE",
     "expected_license_git_blob_sha1": "da6ab6cc8f333d7e89a99812866df8f24374d47c",
-    "live_refresh_main_sha_observed_2026_08_26": "65be3d5113725bf3cb73135e9b327cc71a183ccb",
-    "live_refresh_source_blob_unchanged": true
+    "live_refresh_main_sha_observed_2026_08_26": "65be3d5113725bf3cb73135e9b327cc71a183ccb"
   },
   "file_set": [
     {
-      "source_id": "uk.kubernetes.docs.concepts-index",
-      "path": "content/uk/docs/concepts/_index.md",
-      "expected_git_blob_sha1": "ab9d757e99679b3db48a3230bf6eb07a997eec9c"
+      "source_id": "uk.kubernetes.docs.what-is-kubernetes",
+      "path": "content/uk/docs/concepts/overview/what-is-kubernetes.md",
+      "expected_git_blob_sha1": "b3c52cab3be6a8efbc33e91893c653df5972a794"
+    }
+  ],
+  "reservations": [
+    {
+      "authority": "EVAL-290-UA-SELECTION-VALIDATION-V1",
+      "head_sha": "029514654829cebc149cff6fc1fea2a8ba4fa566",
+      "workflow_run_id": 32968339064,
+      "artifact_id": 9606656857,
+      "artifact_digest_sha256": "0c5f9f8d938284a1358bfb77284814b1f0569b2d6d13938f415ba31db64a6c3b",
+      "reservation_commit_sha": "8a393d98d37b2090d1ae3fe8be8d4e58f651159e",
+      "reserved_source_raw_sha256": [
+        "50a790e0ece091f13fe039b5e36a23431680dec0357379f29b0029502f9b3a31",
+        "e44c27b6151a1fea68eeef1e73e4460391f82e0501571d8aa4d5a792fc448b12"
+      ],
+      "note": "The original DATA-228 Kubernetes _index.md object is reserved for EVAL-290 selection-validation. DATA-324 therefore uses a different exact Kubernetes Ukrainian document from the same canonical family and fails closed if actual acquired raw bytes collide with any reserved source object."
     }
   ],
   "license": {
@@ -30,9 +44,9 @@
       "model_training": "ALLOWED_WITH_ATTRIBUTION_RETAINED_IN_PROVENANCE",
       "redistribution": "ALLOWED_WITH_CC_BY_4_0_ATTRIBUTION_LICENSE_LINK_AND_MODIFICATION_NOTICE",
       "derivatives": "ALLOWED",
-      "evaluation": "NOT_SEPARATELY_ADMITTED"
+      "evaluation": "NOT_GRANTED_BY_DATA324"
     },
-    "basis": "Exact pinned CC BY 4.0 license grants reproduction, sharing and adapted-material rights subject to attribution and related Section 3 conditions. Project policy separately admits this bounded technical-text use for model training; public availability alone is not the basis."
+    "basis": "Exact pinned CC BY 4.0 license grants reproduction, sharing and adapted-material rights subject to attribution and related Section 3 conditions. Project policy admits only the non-reserved bounded technical-text object selected by this recovery; public availability alone is not the basis."
   },
   "family_identity": {
     "source_family": "kubernetes.website.docs",
@@ -79,8 +93,8 @@
     }
   },
   "outputs": {
-    "raw_snapshot": "data/external/snapshots/data324-kubernetes-ua-v1/raw/concepts-index.md",
-    "normalized_snapshot": "data/external/snapshots/data324-kubernetes-ua-v1/normalized/concepts-index.uk.txt",
+    "raw_snapshot": "data/external/snapshots/data324-kubernetes-ua-v1/raw/what-is-kubernetes.md",
+    "normalized_snapshot": "data/external/snapshots/data324-kubernetes-ua-v1/normalized/what-is-kubernetes.uk.txt",
     "license_evidence": "data/external/rights-evidence/data324/kubernetes-website-cc-by-4.0-25f3dcb.txt",
     "attribution": "data/external/snapshots/data324-kubernetes-ua-v1/ATTRIBUTION.txt",
     "manifest": "data/external/snapshots/data324-kubernetes-ua-v1/manifest.json",
