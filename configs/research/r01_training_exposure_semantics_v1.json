@@ -1,0 +1,104 @@
+{
+  "schema_version": 1,
+  "contract_id": "R01-TRAINING-EXPOSURE-SEMANTICS-V1",
+  "status": "CANDIDATE_PLANNING_ONLY",
+  "base_r01": {
+    "path": "configs/research/r01_20m_to_100m_scaling_campaign_v1.json",
+    "git_blob_sha1": "c50154db609d41eceb2ffc97912360df567bcc04",
+    "model_parameters": 20613440,
+    "planned_tokens_per_parameter": [
+      10,
+      20,
+      40
+    ]
+  },
+  "definitions": {
+    "unique_loss_positions": "exact distinct non-ignored causal targets in the immutable post-pack training corpus after reservations, decontamination, quality/privacy, dedup, split and packing",
+    "total_training_exposures": "all non-ignored causal targets actually consumed by optimizer updates, including repeated passes over previously seen unique positions",
+    "repeat_exposures": "total_training_exposures minus unique_loss_positions consumed at least once; repeats never increase unique_loss_positions",
+    "effective_data_epochs": "total_training_exposures divided by unique_loss_positions when unique_loss_positions is positive"
+  },
+  "hard_rules": {
+    "source_bytes_are_not_loss_positions": true,
+    "repeat_exposures_are_not_unique": true,
+    "padding_is_not_loss_position": true,
+    "masked_or_ignored_targets_are_not_loss_positions": true,
+    "planned_tokens_per_parameter_is_not_unique_data_claim": true,
+    "repeat_training_requires_explicit_preregistered_cap": true,
+    "repeat_training_is_not_authorized_by_this_contract": true,
+    "long_training_authorized": false,
+    "paid_compute_authorized": false
+  },
+  "research_reference": {
+    "repeat_epoch_reference": 4,
+    "meaning": "bounded research reference only; not automatic authorization or a universal optimum",
+    "basis": "Muennighoff et al. 2023 reports negligible loss change versus unique data for up to roughly four repeated epochs in the studied data-constrained regime, with diminishing value from further repetition",
+    "compute_optimal_note": "Hoffmann et al. 2022 motivates joint model/data scaling; its token/parameter relation is a planning reference, not a requirement that all planned exposure be unique"
+  },
+  "model341_planning": {
+    "parameter_count": 20613440,
+    "arms": [
+      {
+        "tokens_per_parameter": 10,
+        "total_training_exposures": 206134400
+      },
+      {
+        "tokens_per_parameter": 20,
+        "total_training_exposures": 412268800
+      },
+      {
+        "tokens_per_parameter": 40,
+        "total_training_exposures": 824537600
+      }
+    ],
+    "illustrative_unique_floor_positions": 20000000,
+    "illustrative_floor_is_authority": false,
+    "effective_epochs_at_illustrative_floor": [
+      {
+        "tokens_per_parameter": 10,
+        "numerator": 64417,
+        "denominator": 6250,
+        "decimal": "10.30672"
+      },
+      {
+        "tokens_per_parameter": 20,
+        "numerator": 64417,
+        "denominator": 3125,
+        "decimal": "20.61344"
+      },
+      {
+        "tokens_per_parameter": 40,
+        "numerator": 128834,
+        "denominator": 3125,
+        "decimal": "41.22688"
+      }
+    ],
+    "four_epoch_reference_capacity_at_illustrative_floor": 80000000,
+    "interpretation": "a 20M-position corpus is a pilot-scale data floor, not sufficient unique data for the 10x/20x/40x exposure arms; any repeated-data campaign requires an explicit preregistered repeat cap and remains separately compute-authorized"
+  },
+  "launch_handoff": {
+    "required_inputs": [
+      "terminal_unique_post_pack_loss_ledger",
+      "requested_total_training_exposures",
+      "explicit_repeat_policy_if_requested_exposure_exceeds_unique_positions",
+      "training_recipe_authority",
+      "evaluation_firewall_authority",
+      "checkpoint_integrity_authority",
+      "explicit_material_compute_authorization_if_applicable"
+    ],
+    "decision_rule": "requested exposure above the unique ledger must fail closed unless a separately preregistered repeat policy supplies an explicit maximum effective epoch cap; passing this exposure check alone never authorizes training"
+  },
+  "truth_boundary": {
+    "model_training_executed": false,
+    "optimizer_updates": 0,
+    "tokenizer_fit_executed": false,
+    "corpus_mutated": false,
+    "final_test_accessed": false,
+    "gpu_or_cloud_provisioned": false,
+    "paid_compute_used": false,
+    "learned_20m_claimed": false,
+    "learned_100m_claimed": false,
+    "learned_1b_claimed": false
+  },
+  "contract_sha256": "c8d43c08ec851e8756dfb2502bdf13d551d2155885a37840da2cf9db01d37b02"
+}
