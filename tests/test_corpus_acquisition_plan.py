@@ -18,12 +18,20 @@ def _plan() -> dict:
     return json.loads(PLAN_PATH.read_text(encoding="utf-8"))
 
 
-def test_current_plan_is_valid_and_authorizes_zero_training_bytes() -> None:
+def test_current_plan_is_valid_but_stale_and_authorizes_zero_training_bytes() -> None:
     summary = validate_acquisition_plan(_plan())
-    assert summary["status"] == "VALID_PLANNING_ARTIFACT_CAPACITY_ZERO"
+    assert summary["status"] == "VALID_PLANNING_ARTIFACT_STALE_BASELINE_CAPACITY_ZERO"
+    assert summary["baseline_refresh_required"] is True
+    assert summary["execution_ready"] is False
+    assert summary["blocking_reason"] == "PR527_CLOSED_UNMERGED_REBIND_TO_SURVIVING_NEXT100_063"
     assert summary["training_authorized_bytes"] == 0
     assert summary["long_training_authorized"] is False
     assert summary["planning_gap_bytes"]["total"] == 19_685_860
+    assert summary["family_planning_caps"] == {
+        "ua": 5_000_000,
+        "en": 4_200_000,
+        "code": 2_400_000,
+    }
     assert summary["candidate_family_counts"]["ua"] >= 3
     assert summary["candidate_family_counts"]["en"] >= 3
     assert summary["candidate_family_counts"]["code"] >= 3
@@ -78,4 +86,86 @@ def test_candidate_status_cannot_be_promoted_to_pass() -> None:
     plan = copy.deepcopy(_plan())
     plan["candidate_streams"][0]["status"] = "PASS"
     with pytest.raises(CorpusAcquisitionPlanError, match="unsupported nonterminal status"):
+        validate_acquisition_plan(plan)
+
+
+def test_source_convergence_pr_and_head_are_hard_bound() -> None:
+    plan = _plan()
+    plan["baseline"]["source_convergence_pr"] = 538
+    with pytest.raises(CorpusAcquisitionPlanError, match="PR binding changed"):
+        validate_acquisition_plan(plan)
+
+    plan = _plan()
+    plan["baseline"]["source_convergence_head"] = "0" * 40
+    with pytest.raises(CorpusAcquisitionPlanError, match="head binding changed"):
+        validate_acquisition_plan(plan)
+
+
+def test_baseline_status_cannot_be_silently_promoted() -> None:
+    plan = _plan()
+    plan["baseline"]["status"] = "TERMINAL"
+    with pytest.raises(CorpusAcquisitionPlanError, match="baseline status changed"):
+        validate_acquisition_plan(plan)
+
+
+def test_observed_authority_vectors_are_hard_bound() -> None:
+    plan = _plan()
+    plan["baseline"]["observed_pre_dedup_bytes"]["en"] += 1
+    plan["baseline"]["observed_pre_dedup_bytes"]["total"] += 1
+    with pytest.raises(CorpusAcquisitionPlanError, match="authority vector changed"):
+        validate_acquisition_plan(plan)
+
+    plan = _plan()
+    plan["baseline"]["observed_independent_families"]["en"] += 1
+    plan["baseline"]["observed_independent_families"]["total"] += 1
+    with pytest.raises(CorpusAcquisitionPlanError, match="family vector changed"):
+        validate_acquisition_plan(plan)
+
+
+def test_data295_policy_and_20m_target_are_hard_bound() -> None:
+    plan = _plan()
+    plan["target"]["policy"] = "UNREGISTERED_TARGET"
+    with pytest.raises(CorpusAcquisitionPlanError, match="target policy changed"):
+        validate_acquisition_plan(plan)
+
+    plan = _plan()
+    plan["target"]["bytes"]["ua"] -= 1_000_000
+    plan["target"]["bytes"]["total"] -= 1_000_000
+    plan["target"]["planning_gap_from_observed_pre_dedup"]["ua"] -= 1_000_000
+    plan["target"]["planning_gap_from_observed_pre_dedup"]["total"] -= 1_000_000
+    with pytest.raises(CorpusAcquisitionPlanError, match="20 MB target vector changed"):
+        validate_acquisition_plan(plan)
+
+
+def test_single_family_planning_budget_cannot_exceed_data295_cap() -> None:
+    plan = _plan()
+    row = next(
+        item
+        for item in plan["candidate_streams"]
+        if item["family_candidate"] == "ua.rada.official-acts"
+    )
+    row["planning_request_bytes"] = 5_000_001
+    with pytest.raises(CorpusAcquisitionPlanError, match="exceeds ua family cap"):
+        validate_acquisition_plan(plan)
+
+
+def test_same_family_cannot_cross_strata() -> None:
+    plan = _plan()
+    code_row = next(item for item in plan["candidate_streams"] if item["stratum"] == "code")
+    code_row["family_candidate"] = "ua.rada.official-acts"
+    with pytest.raises(CorpusAcquisitionPlanError, match="multiple strata"):
+        validate_acquisition_plan(plan)
+
+
+def test_capacity_credit_status_cannot_be_weakened() -> None:
+    plan = _plan()
+    plan["capacity_firewall"]["minimum_status_for_capacity_credit"] = "SOURCE_URL_FOUND"
+    with pytest.raises(CorpusAcquisitionPlanError, match="capacity-credit status changed"):
+        validate_acquisition_plan(plan)
+
+
+def test_stale_execution_marker_requires_intentional_rebind_audit() -> None:
+    plan = _plan()
+    plan["next_execution_order"][0] = "execute_source_batches_now"
+    with pytest.raises(CorpusAcquisitionPlanError, match="stale baseline execution marker"):
         validate_acquisition_plan(plan)
