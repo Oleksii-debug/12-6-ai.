@@ -39,14 +39,23 @@ jobs:
 
       - name: Static and unit gates
         run: |
-          .next100-053/bin/python -m py_compile tools/validate_next100_053_attrs_code_source.py tests/test_next100_053_attrs_code_source.py
-          .next100-053/bin/ruff check --select E4,E9,F tools/validate_next100_053_attrs_code_source.py tests/test_next100_053_attrs_code_source.py
+          .next100-053/bin/python -m py_compile tools/validate_next100_053_attrs_code_source.py tools/validate_next100_053_live_registry.py tests/test_next100_053_attrs_code_source.py
+          .next100-053/bin/ruff check --select E4,E9,F tools/validate_next100_053_attrs_code_source.py tools/validate_next100_053_live_registry.py tests/test_next100_053_attrs_code_source.py
           .next100-053/bin/python -m pytest -q tests/test_next100_053_attrs_code_source.py
 
-      - name: Acquire and qualify exact upstream snapshot
+      - name: Seal live DATA-287 registry
         run: |
           rm -rf next100-053-evidence
           mkdir -p next100-053-evidence
+          .next100-053/bin/python tools/validate_next100_053_live_registry.py run \
+            --repo . \
+            --output next100-053-evidence/live-registry-seal.json \
+            | tee next100-053-evidence/live-registry-stdout.json
+          .next100-053/bin/python tools/validate_next100_053_live_registry.py validate \
+            --report next100-053-evidence/live-registry-seal.json
+
+      - name: Acquire and qualify exact upstream snapshot
+        run: |
           .next100-053/bin/python tools/validate_next100_053_attrs_code_source.py run \
             --repo . \
             --output-dir next100-053-evidence \
@@ -61,6 +70,7 @@ jobs:
           from pathlib import Path
 
           report = json.loads(Path("next100-053-evidence/next100-053-attrs-code-admission.json").read_text())
+          seal = json.loads(Path("next100-053-evidence/live-registry-seal.json").read_text())
           assert report["verdict"] == "ADMIT"
           assert report["source_family"] == "github:python-attrs/attrs"
           assert report["release_tag"] == "26.1.0"
@@ -80,6 +90,12 @@ jobs:
           assert report["dedup"]["exact_duplicates"] == []
           assert report["dedup"]["near_duplicate_pairs"] == []
           assert report["evaluation_reservation"]["selected_objects_are_training_only_not_evaluation_authority"] is True
+          assert seal["verdict"] == "PASS_LIVE_REGISTRY"
+          assert seal["registry_identity_sha256"] == "917e9bc31b2fa040d25e807ae3c01aa2cce32420752a891caacfb6c830e6632c"
+          assert seal["live_registry_bytes_equal_pinned"] is True
+          assert seal["evaluation_authorized_source_count"] == 0
+          assert seal["selected_blob_overlap"] == []
+          assert seal["attrs_family_already_registered"] is False
           PY
 
       - name: Upload immutable evidence
