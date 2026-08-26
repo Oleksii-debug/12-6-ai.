@@ -12,11 +12,13 @@ The requested target is the exact primary ~20M model. The qualification must use
 
 ## Hard dependency failure
 
-At provenance cutoff `2026-08-26T14:49:00Z`, the repository has no published `RESEARCH-339` primary-architecture authority and no published `MODEL-341-20M-CANDIDATE-A` mechanically qualified primary ModelSpec. Searches also return no code authority for `20M ModelSpec parameters primary candidate` or `20000000 ModelSpec`.
+At provenance cutoff `2026-08-26T14:57:00Z`, no repository authority publishes the `RESEARCH-339` primary selection and no branch or PR publishes `MODEL-341-20M-CANDIDATE-A`, the mechanically qualified primary ModelSpec. Searches also return no code authority for `20M ModelSpec parameters primary candidate` or `20000000 ModelSpec`.
 
-The latest observed repository PR at the cutoff is #421, created `2026-08-26T14:26:59Z`. Therefore the exact requested model identity, parameter count, constructor/configuration binding, and mechanically qualified random-init target are unavailable.
+MODEL-342 appeared during this worker and is recorded rather than ignored: PR #425, exact head `51e640d00cd9900e70e63f8a867f19bc9d7d0565`, explicitly qualifies the **alternate/depth-control** geometry `D256 L24 8Q 2KV head32 F864`, exact `19,935,488` parameters. It references RESEARCH-339 but is not the primary candidate and is not substitutable for MODEL-341.
 
-Substituting the learned 10M incumbent, scaling its dimensions by guesswork, or inventing an interpolated ~20M geometry would produce false CHECKPOINT-346 evidence. This worker fails closed instead.
+The latest observed repository PR at the refreshed cutoff is #427, created `2026-08-26T14:56:40Z`. Therefore the exact requested primary model identity, parameter count, constructor/configuration binding, and mechanically qualified random-init primary target remain unavailable.
+
+Substituting the learned 10M incumbent, substituting MODEL-342 control B, scaling dimensions by guesswork, or inventing an interpolated ~20M geometry would produce false CHECKPOINT-346 evidence. This worker fails closed instead.
 
 ## Incumbent recovery contract retained
 
@@ -62,4 +64,4 @@ No learned corpus and no final-test material is needed or permitted for this mec
 
 Identity SHA-256:
 
-`cfb42e2f5f7dd08b6c1556abeeb97399c9a9e110a2cfe151b5f98e96466e1557`
+`c198d2a01603f83060a2ec3a2f3ea213fbd187ecf9f2b405bb35675c5ca13a1e`
