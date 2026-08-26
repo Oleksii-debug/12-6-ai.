@@ -40,7 +40,7 @@ class Next100035NasaTests(unittest.TestCase):
         record = {
             "authorAffiliations": [
                 {
-                    "userType": "CONTRACTOR",
+                    "userType": "CONTRACTOR_GRANTEE",
                     "meta": {"organization": {"name": "Example Aerospace LLC"}},
                 }
             ]
@@ -60,10 +60,10 @@ class Next100035NasaTests(unittest.TestCase):
         self.assertEqual(mod.jaccard(left, right), mod.jaccard(right, left))
         self.assertLess(mod.jaccard(left, right), 1.0)
 
-    def test_qualify_rejects_unresolved_third_party_metadata(self) -> None:
+    def _qualify(self, copyright_data: dict[str, object]) -> dict[str, object]:
         config = {
             "required_distribution": "PUBLIC",
-            "copyright_determinations_allowed": ["GOV_PUBLIC_USE_PERMITTED", "PUBLIC_USE_PERMITTED"],
+            "copyright_determinations_allowed": ["GOV_PUBLIC_USE_PERMITTED"],
             "required_license_type": "NO",
             "minimum_words_per_record": 1,
             "normalization_policy": "NASA_NTRS_TITLE_ABSTRACT_NFKC_WS_V1",
@@ -72,28 +72,63 @@ class Next100035NasaTests(unittest.TestCase):
             "id": 123,
             "distribution": "PUBLIC",
             "status": "CURATED",
-            "copyright": {
-                "determinationType": "GOV_PUBLIC_USE_PERMITTED",
-                "licenseType": "NO",
-                "containsThirdPartyMaterial": None,
-                "belongsToContractor": False,
-                "belongsToPublisher": False,
-            },
+            "copyright": copyright_data,
             "authorAffiliations": [{"userType": "CIVIL", "meta": {}}],
             "title": "A technical title",
             "abstract": "A sufficiently technical abstract for this isolated gate test.",
             "exportControl": {"ear": "NO", "itar": "NO"},
-            "sensitiveInformation": None,
+            "sensitiveInformation": 2,
         }
         old_fetch = mod.fetch_record
         try:
             mod.fetch_record = lambda document_id: (b"{}", record)
             with tempfile.TemporaryDirectory() as tmp:
-                result = mod.qualify_one(config, 123, Path(tmp))
+                return mod.qualify_one(config, 123, Path(tmp))
         finally:
             mod.fetch_record = old_fetch
+
+    def test_positive_third_party_flag_rejects_retained_metadata(self) -> None:
+        result = self._qualify(
+            {
+                "determinationType": "GOV_PUBLIC_USE_PERMITTED",
+                "licenseType": "NO",
+                "containsThirdPartyMaterial": True,
+                "belongsToContractor": False,
+                "belongsToPublisher": False,
+            }
+        )
         self.assertEqual(result["decision"], "REJECT")
-        self.assertIn("THIRD_PARTY_CONTENT_NOT_EXPLICITLY_FALSE", result["reasons"])
+        self.assertIn("THIRD_PARTY_CONTENT_POSITIVE", result["reasons"])
+
+    def test_missing_false_booleans_never_admit_full_document_body(self) -> None:
+        result = self._qualify(
+            {
+                "determinationType": "GOV_PUBLIC_USE_PERMITTED",
+                "licenseType": "NO",
+                "thirdPartyContentCondition": "NOT_SET",
+            }
+        )
+        self.assertEqual(result["decision"], "ADMIT")
+        self.assertEqual(
+            result["full_document_body_rights"],
+            "NOT_ADMITTED_THIRD_PARTY_EXCLUSIONS_NOT_EXPLICIT",
+        )
+
+    def test_explicit_false_body_flags_still_do_not_expand_payload_scope(self) -> None:
+        result = self._qualify(
+            {
+                "determinationType": "GOV_PUBLIC_USE_PERMITTED",
+                "licenseType": "NO",
+                "containsThirdPartyMaterial": False,
+                "belongsToContractor": False,
+                "belongsToPublisher": False,
+            }
+        )
+        self.assertEqual(result["decision"], "ADMIT")
+        self.assertEqual(
+            result["full_document_body_rights"],
+            "EXPLICIT_THIRD_PARTY_EXCLUSIONS_PRESENT_BUT_BODY_STILL_OUT_OF_SCOPE",
+        )
 
 
 if __name__ == "__main__":
