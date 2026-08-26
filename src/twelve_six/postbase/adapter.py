@@ -2,9 +2,9 @@
 
 This module deliberately owns no model weights, trainer, checkpoint writer, remote
 client, or chat/tool policy.  It turns the existing verified first-party Base
-inference backend into a small generation port that deliberation and tool
-controllers can call while keeping Base provenance and post-Base execution
-evidence in distinct typed records.
+inference backend into a small generation port that deliberation, hypothesis,
+and tool controllers can call while keeping Base provenance and post-Base
+execution evidence in distinct typed records.
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ from twelve_six.model import ModelSpec, canonical_json_sha256
 from twelve_six.tokenization import ByteTokenizer
 
 ADAPTER_VERSION = "12-6.postbase-model-adapter.v1"
-ControllerKind = Literal["deliberation", "tool"]
+ControllerKind = Literal["deliberation", "hypothesis", "tool"]
 
 
 class PostBaseCompatibilityError(ValueError):
@@ -124,8 +124,10 @@ class ControllerGenerationRequest:
     config: GenerationConfig = field(default_factory=GenerationConfig)
 
     def __post_init__(self) -> None:
-        if self.controller not in {"deliberation", "tool"}:
-            raise ValueError("controller must be 'deliberation' or 'tool'")
+        if self.controller not in {"deliberation", "hypothesis", "tool"}:
+            raise ValueError(
+                "controller must be 'deliberation', 'hypothesis', or 'tool'"
+            )
         if not isinstance(self.prompt, str):
             raise TypeError("prompt must be a string")
 
@@ -160,7 +162,7 @@ class ControllerGenerationResponse:
 
 @runtime_checkable
 class ControllerGenerationPort(Protocol):
-    """Minimal surface consumed by deliberation or tool controllers."""
+    """Minimal surface consumed by deliberation, hypothesis, or tool controllers."""
 
     def generate(self, request: ControllerGenerationRequest) -> ControllerGenerationResponse: ...
 
