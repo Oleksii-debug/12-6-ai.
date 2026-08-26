@@ -4,7 +4,7 @@
   "local_free_only": true,
   "parent_probe": {
     "pr": 618,
-    "head_sha": "c51fc1aba804185833b35137431fe40d782cd16f",
+    "head_sha": "77f07aec1e9d3a14cae7e417ba2a5f2690a82ec7",
     "probe_report_schema": "12-6.d03-rada-bulk-source-probe-report.v1",
     "source_family": "ua.rada.open-data.laws-texts",
     "source_family_identity_sha256": "b8f1d2f99a3db71d894a3233e9417d6283d11768c41b1634bc8b096ab77aba4e"
