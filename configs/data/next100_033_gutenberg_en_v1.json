@@ -1,0 +1,134 @@
+{
+  "authority_boundary": {
+    "evaluation": "NOT_AUTHORIZED",
+    "global_public_domain": "NOT_CLAIMED",
+    "production_corpus_freeze": "NOT_CLAIMED",
+    "redistribution": "RIGHTS_CLEARED_JURISDICTIONS_ONLY",
+    "representativeness": "NOT_CLAIMED",
+    "training": "ADMIT_IF_EXACT_HEAD_REALIZATION_PASSES"
+  },
+  "base_registry": {
+    "head_sha_at_preregistration": "b0523ccbc4b957615aac849d476cfa851be87578",
+    "note": "This source authority is stacked on the live DATA-287 registry head and does not itself rewrite the converged registry.",
+    "pr": 404,
+    "registry_path": "data/registry/external_snapshots.v2.json"
+  },
+  "dedup_gate": {
+    "exact_normalized_sha256_must_be_unique_within_candidate": true,
+    "exact_normalized_sha256_must_not_match_live_registry": true,
+    "family_accounting": "Three books remain one Project Gutenberg family.",
+    "max_pairwise_jaccard": 0.05,
+    "token_shingle_width": 8
+  },
+  "evaluation_reservation_gate": {
+    "candidate_ebook_ids": [
+      37177,
+      37985,
+      40652
+    ],
+    "claim": "No universal semantic decontamination claim. Exact training-source exclusion is enforced here; downstream DATA-299-style content-hash decontamination remains mandatory.",
+    "scan_repository_eval_and_reserved_paths_for_exact_ebook_ids": true,
+    "selection_validation_material_must_not_be_consumed": true,
+    "training_only": true
+  },
+  "local_free_only": true,
+  "normalization": {
+    "explicit_non_rules": [
+      "No regex deletion of arbitrary boilerplate inside the body.",
+      "No chapter heuristics.",
+      "No spell correction, dehyphenation, modernization, OCR repair, HTML parsing, or semantic cleanup.",
+      "No random sampling."
+    ],
+    "normalizer_id": "NEXT100_033_PG_BODY_NFC_LF_V1",
+    "preregistered_before_materialization": true,
+    "rules": [
+      "Decode using the source-specific encoding declared below.",
+      "Canonicalize CRLF and CR to LF.",
+      "Require exactly one line whose stripped text starts with '*** START OF ' and contains 'PROJECT GUTENBERG EBOOK' and ends with '***'.",
+      "Require exactly one later line whose stripped text starts with '*** END OF ' and contains 'PROJECT GUTENBERG EBOOK' and ends with '***'.",
+      "Discard the start marker and every decoded character before it.",
+      "Discard the end marker and every decoded character after it.",
+      "Retain all material inside the markers, including title pages, producer credits, transcriber notes, illustrations-as-text, footnotes, and edition matter.",
+      "Remove U+FEFF only if it is the first retained character.",
+      "Normalize retained body to Unicode NFC.",
+      "Remove only leading and trailing blank lines; preserve all interior whitespace and content.",
+      "Encode UTF-8 with LF line endings and exactly one final LF."
+    ]
+  },
+  "quality_gate": {
+    "max_nul_chars": 0,
+    "max_replacement_chars": 0,
+    "min_ascii_letter_fraction_of_letters": 0.75,
+    "min_english_stopword_fraction_of_words": 0.08,
+    "min_normalized_utf8_bytes_per_work": 50000
+  },
+  "rights_evidence": {
+    "path": "data/external/rights-evidence/next100_033/project_gutenberg_rights_20260826.json",
+    "sha256": "81e3b6351b284af3b3ad622532288d62ebce427d62b5c2b2586100b9df0659b5"
+  },
+  "schema_version": "12-6.next100-033.project-gutenberg-en-source-qualification.v1",
+  "source_family": {
+    "family_credit": 1,
+    "family_id": "en.project-gutenberg.public-domain-books",
+    "family_identity_sha256": "5798a9625d3b7f111de28851f7ef57d2a4f60d7b508987d24ce5905f0093fa12",
+    "independence_rule": "ALL_INCLUDED_BOOKS_COUNT_AS_ONE_FAMILY",
+    "publisher_lineage": "Project Gutenberg",
+    "transport": "GITenberg immutable GitHub mirror"
+  },
+  "sources": [
+    {
+      "author": "Simon Christian Hammer",
+      "ebook_id": 37177,
+      "encoding": "ascii",
+      "expected_git_blob_sha1": "cc35bab195c6d55b14568cd3da8fecfd0499f868",
+      "expected_raw_bytes": 87742,
+      "gitenberg_commit": "6ba1ee491cfba2aa56729967b48886bf71b20ac7",
+      "gitenberg_path": "37177.txt",
+      "gitenberg_repo": "GITenberg/Ludvig-Holberg-The-Founder-of-Norwegian-Literature-and-an-Oxford-Student_37177",
+      "language": "en",
+      "pg_catalog_status": "Public domain in the USA.",
+      "pg_release_date": "2011-08-23",
+      "source_id": "en.project-gutenberg.37177",
+      "title": "Ludvig Holberg, The Founder of Norwegian Literature and an Oxford Student",
+      "url": "https://raw.githubusercontent.com/GITenberg/Ludvig-Holberg-The-Founder-of-Norwegian-Literature-and-an-Oxford-Student_37177/6ba1ee491cfba2aa56729967b48886bf71b20ac7/37177.txt"
+    },
+    {
+      "author": "Reynold Alleyne Nicholson",
+      "ebook_id": 37985,
+      "encoding": "utf-8-sig",
+      "expected_git_blob_sha1": "cd62e73adf6d502823c4b59de304212cc3d63361",
+      "expected_raw_bytes": 1203657,
+      "gitenberg_commit": "b8477090720ab89858bfed937f799760cb4f23e3",
+      "gitenberg_path": "37985-0.txt",
+      "gitenberg_repo": "GITenberg/A-Literary-History-of-the-Arabs_37985",
+      "language": "en",
+      "pg_catalog_status": "Public domain in the USA.",
+      "pg_release_date": "2011-11-11",
+      "source_id": "en.project-gutenberg.37985",
+      "title": "A Literary History of the Arabs",
+      "url": "https://raw.githubusercontent.com/GITenberg/A-Literary-History-of-the-Arabs_37985/b8477090720ab89858bfed937f799760cb4f23e3/37985-0.txt"
+    },
+    {
+      "author": "Ebenezer Cobham Brewer",
+      "ebook_id": 40652,
+      "encoding": "latin-1",
+      "expected_git_blob_sha1": "52c517db02e5e5a7f5bfef806cf98dd8c92e06e1",
+      "expected_raw_bytes": 482371,
+      "gitenberg_commit": "4d69c9e1daad0951f2baecbae2709e72d8d7d53f",
+      "gitenberg_path": "40652-8.txt",
+      "gitenberg_repo": "GITenberg/A-Guide-to-the-Scientific-Knowledge-of-Things-Familiar_40652",
+      "language": "en",
+      "pg_catalog_status": "Public domain in the USA.",
+      "pg_release_date": "2012-09-03",
+      "source_id": "en.project-gutenberg.40652",
+      "title": "A Guide to the Scientific Knowledge of Things Familiar",
+      "url": "https://raw.githubusercontent.com/GITenberg/A-Guide-to-the-Scientific-Knowledge-of-Things-Familiar_40652/4d69c9e1daad0951f2baecbae2709e72d8d7d53f/40652-8.txt"
+    }
+  ],
+  "terminal_states": [
+    "ADMIT",
+    "REJECT",
+    "RETEST"
+  ],
+  "worker_id": "NEXT100-033-DATA-EN-GUTENBERG"
+}
