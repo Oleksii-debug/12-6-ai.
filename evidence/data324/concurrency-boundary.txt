@@ -1,0 +1,14 @@
+DATA-324 concurrency boundary
+worker=NEXT100-024-DATA-UA-KUBERNETES-RECOVERY
+prior_data228_rights_rejection=false
+terminal_eval_authority=EVAL-290-UA-SELECTION-VALIDATION-V1
+eval_head=029514654829cebc149cff6fc1fea2a8ba4fa566
+eval_run=32968339064
+eval_artifact=9606656857
+eval_artifact_digest=sha256:0c5f9f8d938284a1358bfb77284814b1f0569b2d6d13938f415ba31db64a6c3b
+reserved_kubernetes_raw_sha256=50a790e0ece091f13fe039b5e36a23431680dec0357379f29b0029502f9b3a31
+reserved_kubernetes_path=content/uk/docs/concepts/_index.md
+training_candidate_path=content/uk/docs/concepts/overview/what-is-kubernetes.md
+training_candidate_git_blob=b3c52cab3be6a8efbc33e91893c653df5972a794
+canonical_family=kubernetes.website.docs
+local_free_only=true
