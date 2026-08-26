@@ -8,6 +8,7 @@ on:
     paths:
       - 'evidence/next100_032/**'
       - 'tools/validate_next100_032_en_wikisource.py'
+      - 'tools/validate_next100_032_terminal_matrix.py'
       - 'tests/test_next100_032_en_wikisource.py'
       - 'docs/NEXT100_032_EN_WIKISOURCE.md'
       - 'data/registry/external_snapshots.v2.json'
@@ -24,5 +25,7 @@ jobs:
           python-version: '3.11'
       - name: Validate sealed authority
         run: python tools/validate_next100_032_en_wikisource.py --repo .
+      - name: Validate terminal concurrency matrix
+        run: python tools/validate_next100_032_terminal_matrix.py
       - name: Focused test
         run: python -m pytest -q tests/test_next100_032_en_wikisource.py
