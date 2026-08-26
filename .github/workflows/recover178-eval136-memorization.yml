@@ -1,0 +1,136 @@
+name: RECOVER-178 EVAL-136 Memorization Authority
+
+on:
+  pull_request:
+    branches:
+      - milestone150/learned-base-ladder-v1-20260826
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  exact-head-memorization:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    env:
+      PYTHONPATH: src
+      OMP_NUM_THREADS: "2"
+      MKL_NUM_THREADS: "2"
+    steps:
+      - name: Checkout exact recovery head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up exact Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact source before execution
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+
+      - name: Universal hash-locked environment bootstrap including dev dependencies
+        run: |
+          set -euo pipefail
+          python tools/bootstrap_universal_environment.py \
+            --venv .recover178 \
+            --lock requirements/locks/linux-x86_64/toolchain.lock.txt \
+            --lock requirements/locks/linux-x86_64/runtime.lock.txt \
+            --lock requirements/locks/linux-x86_64/dev.lock.txt \
+            --evidence-out recover178-bootstrap.json
+
+      - name: Tests only after exact dev environment exists
+        run: |
+          set -euo pipefail
+          .recover178/bin/python -m compileall -q src/twelve_six tools/run_recover178_memorization.py tools/run_recover178_memorization_entrypoint.py
+          .recover178/bin/python -m pytest -q \
+            tests/test_memorization_curve.py \
+            tests/test_milestone150_learned_base_ladder.py \
+            tests/test_recover178_memorization.py
+
+      - name: Prepare one DATA-25 tokenizer evaluation truth
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          .recover178/bin/python tools/run_recover178_memorization_entrypoint.py prepare \
+            --repo-root . \
+            --source-sha "$EXPECTED_SOURCE_SHA" \
+            --output-dir recover178-evidence
+
+      - name: Execute exact 100K memorization trajectory
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          .recover178/bin/python tools/run_recover178_memorization_entrypoint.py run-scale \
+            --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" \
+            --output-dir recover178-evidence --scale 100k
+
+      - name: Execute exact 500K memorization trajectory
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          .recover178/bin/python tools/run_recover178_memorization_entrypoint.py run-scale \
+            --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" \
+            --output-dir recover178-evidence --scale 500k
+
+      - name: Execute exact 1M memorization trajectory
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          .recover178/bin/python tools/run_recover178_memorization_entrypoint.py run-scale \
+            --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" \
+            --output-dir recover178-evidence --scale 1m
+
+      - name: Finalize and validate safe authoritative report
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          .recover178/bin/python tools/run_recover178_memorization_entrypoint.py finalize \
+            --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" \
+            --output-dir recover178-evidence
+          .recover178/bin/python tools/run_recover178_memorization_entrypoint.py validate \
+            recover178-evidence/memorization-report.json \
+            --expected-source-sha "$EXPECTED_SOURCE_SHA"
+          .recover178/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path('recover178-evidence/memorization-report.json').read_text())
+          print(json.dumps({
+              'source_sha': report['source_sha'],
+              'corpus_identity_sha256': report['corpus_identity_sha256'],
+              'evaluation_identity_sha256': report['evaluation_identity_sha256'],
+              'scale_order': report['scale_order'],
+              'ten_million': report['ten_million'],
+              'identity_sha256': report['identity_sha256'],
+          }, sort_keys=True, indent=2))
+          PY
+
+      - name: Upload hash-only memorization authority evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: recover178-eval136-memorization-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            recover178-bootstrap.json
+            recover178-evidence/recover178-truth.json
+            recover178-evidence/100k/threshold-binding.json
+            recover178-evidence/100k/report.json
+            recover178-evidence/500k/threshold-binding.json
+            recover178-evidence/500k/report.json
+            recover178-evidence/1m/threshold-binding.json
+            recover178-evidence/1m/report.json
+            recover178-evidence/memorization-report.json
+          if-no-files-found: error
+          retention-days: 30

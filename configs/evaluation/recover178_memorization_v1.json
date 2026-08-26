@@ -1,0 +1,40 @@
+{
+  "schema_version": "12-6.recover178-memorization-config.v1",
+  "worker_id": "RECOVER-178-EVAL136-MEMORIZATION",
+  "execution_class": "LOCAL_FREE_CPU",
+  "eval136_source_sha": "73b8c811d0ecb1ff424e73f6c689ad290d142ea5",
+  "recovery_start_ladder_source_sha": "d4758d0ce7f8821ef10e4eee666648b51cc0247c",
+  "runtime_source_binding": "exact checked-out RECOVER-178 head stacked on current MILESTONE-150 base",
+  "seed": 20260826,
+  "scales": ["100k", "500k", "1m"],
+  "checkpoint_optimizer_steps": [0, 250, 500, 750, 1000],
+  "exposure_cycle_optimizer_steps": 100,
+  "exposures_per_cycle": [0, 1, 2, 4, 8, 16],
+  "replicas_per_exposure": 3,
+  "continuation_chars": 6,
+  "alternative_count": 15,
+  "canary_replacement_rows_per_event": 1,
+  "stop_policy": {
+    "methodology_id": "eval136-small-experiment-stop-diagnostic-v1",
+    "binding_checkpoint": "random_init_before_any_optimizer_update",
+    "threshold_source": "random_init_control_curve",
+    "minimum_nll_advantage_nats_per_token": 0.25,
+    "control_mad_multiplier": 3.0,
+    "rank_percentile_delta": 0.25,
+    "top_rank_fraction": 0.10,
+    "minimum_exact_recovery_lift": 0.25,
+    "control_exact_stderr_multiplier": 3.0,
+    "required_signal_count": 2,
+    "validation_improvement_required": true
+  },
+  "safety_boundary": {
+    "emit_canary_text": false,
+    "emit_source_text": false,
+    "privacy_leakage_claim": false,
+    "broad_memorization_threshold_claim": false,
+    "production_readiness_claim": false,
+    "intelligence_claim": false,
+    "alignment_claim": false,
+    "instruction_following_claim": false
+  }
+}
