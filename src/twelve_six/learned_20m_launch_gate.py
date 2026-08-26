@@ -19,7 +19,8 @@ EXPECTED_AUTHORITY = {
     "model341_sha": "e4ff486fd90802fc123bebf60eed4e59196a98df",
     "modelspec_sha256": "fbff24d561a2818453554d58ca23fc6ace3303b078f1935a8576c4565bd92441",
     "parameter_count": 20_613_440,
-    "base_lineage": "random_init_pretraining_only",
+    "canonical_base": "random_init",
+    "base_lineage": "PRETRAINING_ONLY",
 }
 
 _ROOT_KEYS = {
@@ -34,6 +35,7 @@ _ROOT_KEYS = {
 }
 _ARTIFACT_KEYS = {
     "code_sha",
+    "run_config_sha256",
     "tokenizer_sha256",
     "corpus_sha256",
     "split_sha256",
@@ -171,6 +173,7 @@ def assess_learned_20m_launch(packet: Mapping[str, Any]) -> dict[str, Any]:
             label="artifacts_code_sha",
         )
         for key in (
+            "run_config_sha256",
             "tokenizer_sha256",
             "corpus_sha256",
             "split_sha256",

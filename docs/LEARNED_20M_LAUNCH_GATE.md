@@ -31,16 +31,18 @@ The v1 gate binds:
 - ModelSpec SHA-256:
   `fbff24d561a2818453554d58ca23fc6ace3303b078f1935a8576c4565bd92441`;
 - exact model size: 20,613,440 parameters;
-- Base lineage: random-init pretraining only.
+- R01 `canonical_base`: `random_init`;
+- R01 `base_lineage`: `PRETRAINING_ONLY`.
 
 A future revision must intentionally update these bindings rather than silently
 accepting moving authorities.
 
 ## Required launch evidence
 
-The packet requires exact identities for launch code, tokenizer, corpus, split,
-packing, and the unique post-pack causal-loss ledger. The unique authorized position
-count must be positive, and the requested training exposure may not exceed it.
+The packet requires exact identities for launch code, the complete run configuration,
+tokenizer, corpus, split, packing, and the unique post-pack causal-loss ledger. The
+unique authorized position count must be positive, and the requested training exposure
+may not exceed it.
 
 The following gates must also be terminal: no-replay accounting, evaluation
 decontamination, D05 checkpoint integrity, independent learned-3M verification, and
@@ -54,9 +56,9 @@ cost ceiling, output destination, and cancellation rule.
 ## Current project decision
 
 The example packet deliberately evaluates to `BLOCKED`. It contains no corpus,
-tokenizer, packing, unique-loss, terminal D05/evaluation/learned-ladder evidence, or
-compute/training authorization. Filling planning fields does not change that unless
-all machine gates are satisfied.
+tokenizer, run-config, packing, unique-loss, terminal D05/evaluation/learned-ladder
+evidence, or compute/training authorization. Filling planning fields does not change
+that unless all machine gates are satisfied.
 
 This package is LOCAL_FREE control-plane engineering. It launches no GPU job, changes
 no model weights, performs no tokenizer fit, reads no final-test payload, and grants no

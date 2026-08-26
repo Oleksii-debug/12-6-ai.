@@ -18,6 +18,7 @@ def _ready_packet() -> dict:
         "authority": dict(EXPECTED_AUTHORITY),
         "artifacts": {
             "code_sha": "1" * 40,
+            "run_config_sha256": "7" * 64,
             "tokenizer_sha256": "2" * 64,
             "corpus_sha256": "3" * 64,
             "split_sha256": "4" * 64,
@@ -97,6 +98,14 @@ def test_parameter_count_does_not_bypass_data_gates() -> None:
     assert expected in result["blockers"]
 
 
+def test_exact_run_config_identity_is_required() -> None:
+    packet = _ready_packet()
+    packet["artifacts"]["run_config_sha256"] = None
+    result = assess_learned_20m_launch(packet)
+    assert result["state"] == BLOCKED
+    assert "artifacts_run_config_sha256_must_be_lowercase_hex_64" in result["blockers"]
+
+
 def test_hidden_replay_budget_is_blocked() -> None:
     packet = _ready_packet()
     packet["artifacts"]["unique_post_pack_causal_loss_positions"] = 100
@@ -163,6 +172,14 @@ def test_authority_drift_fails_closed() -> None:
     result = assess_learned_20m_launch(packet)
     assert result["state"] == BLOCKED
     assert "authority_model341_sha_mismatch" in result["blockers"]
+
+
+def test_canonical_lineage_drift_fails_closed() -> None:
+    packet = _ready_packet()
+    packet["authority"]["canonical_base"] = "foreign_pretrained"
+    result = assess_learned_20m_launch(packet)
+    assert result["state"] == BLOCKED
+    assert "authority_canonical_base_mismatch" in result["blockers"]
 
 
 def test_assessment_does_not_mutate_input() -> None:

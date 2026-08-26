@@ -9,10 +9,12 @@
     "model341_sha": "e4ff486fd90802fc123bebf60eed4e59196a98df",
     "modelspec_sha256": "fbff24d561a2818453554d58ca23fc6ace3303b078f1935a8576c4565bd92441",
     "parameter_count": 20613440,
-    "base_lineage": "random_init_pretraining_only"
+    "canonical_base": "random_init",
+    "base_lineage": "PRETRAINING_ONLY"
   },
   "artifacts": {
     "code_sha": null,
+    "run_config_sha256": null,
     "tokenizer_sha256": null,
     "corpus_sha256": null,
     "split_sha256": null,
