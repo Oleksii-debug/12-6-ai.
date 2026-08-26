@@ -10,8 +10,6 @@ from pathlib import Path
 
 import research123_data25_adapter as adapter
 
-CURRENT_MILESTONE150_PARENT_SHA = "1037439f65c48529904be170064bf69d0c75d18b"
-
 # The MILESTONE-150 ancestry intentionally does not carry TRAIN-53's old
 # batch_noise_probe module. Install only the two compatibility symbols that the
 # frozen RESEARCH-123 file imports, then configure the DATA-25 recovery contract.
@@ -114,7 +112,10 @@ def main() -> int:
         output_dir=args.output_dir,
         torch_threads=args.torch_threads,
     )
-    report["source"]["milestone150_parent_sha"] = CURRENT_MILESTONE150_PARENT_SHA
+    report["source"].pop("milestone150_parent_sha", None)
+    report["source"]["milestone150_compatibility_basis"] = (
+        "exact DATA-25/tokenizer/ModelSpec/packing identities proven at this source SHA"
+    )
     report.pop("report_sha256", None)
     report["report_sha256"] = experiment.hash_json(report)
     experiment.validate_report(report)
