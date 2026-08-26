@@ -1,0 +1,230 @@
+name: VERIFY-218 Independent Learned 10M
+
+on:
+  push:
+    branches:
+      - verify218/independent-learned-10m-20260826
+  pull_request:
+    branches:
+      - learn217/terminal-10m-base-20260826
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: verify218-learned-10m-${{ github.event.pull_request.head.sha || github.sha }}
+  cancel-in-progress: true
+
+env:
+  PYTHONPATH: ${{ github.workspace }}/src
+  OMP_NUM_THREADS: "2"
+  MKL_NUM_THREADS: "2"
+  SOURCE_ARTIFACT_ID: "9602907196"
+  SOURCE_ARTIFACT_NAME: "scale141-10m-learned-fallback"
+  SOURCE_ARTIFACT_DIGEST: "sha256:d2abd029f64207567a1d6b4ce9943ff15bfd211acdd05e9ff84156ce66607218"
+  SOURCE_WORKFLOW_RUN_ID: "32952786715"
+  SOURCE_SHA: "c02c8aa38e691521ae2ab6a4ff3ea1d643efd6ef"
+  RUNTIME225_CONTRACT_SHA: "0eb3c017a778eab30fd44ec23b84785ea5866e9d"
+
+jobs:
+  independent-scientific-verification:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout exact VERIFY-218 candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Bind exact verifier source
+        env:
+          VERIFY_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$VERIFY_SOURCE_SHA"
+          printf '%s\n' "$VERIFY_SOURCE_SHA" > verify218-head.sha
+
+      - name: Set exact CPython 3.11.16
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Universal exact execution bootstrap
+        uses: ./.github/actions/execution-bootstrap
+        with:
+          capabilities: runtime,tests,lint
+          venv: .verify218
+          manifest: verify218-evidence/environment.json
+          command: >-
+            python -m pytest -q
+            tests/test_checkpointing.py
+            tests/test_data25_corpus_v01.py
+
+      - name: Compile and lint verifier surface
+        run: |
+          set -euo pipefail
+          .verify218/bin/python -m compileall -q tools/verify218_learned_10m_independent.py
+          .verify218/bin/ruff check tools/verify218_learned_10m_independent.py
+
+      - name: Authenticate exact source run and artifact transport
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p verify218-source verify218-evidence
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_WORKFLOW_RUN_ID}" \
+            > verify218-evidence/source-run.json
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${SOURCE_ARTIFACT_ID}" \
+            > verify218-evidence/source-artifact.json
+          .verify218/bin/python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          run = json.loads(Path('verify218-evidence/source-run.json').read_text())
+          artifact = json.loads(Path('verify218-evidence/source-artifact.json').read_text())
+          assert run['id'] == int(os.environ['SOURCE_WORKFLOW_RUN_ID'])
+          assert run['head_sha'] == os.environ['SOURCE_SHA']
+          assert run['status'] == 'completed'
+          assert run['conclusion'] == 'success'
+          assert artifact['id'] == int(os.environ['SOURCE_ARTIFACT_ID'])
+          assert artifact['name'] == os.environ['SOURCE_ARTIFACT_NAME']
+          assert artifact['digest'] == os.environ['SOURCE_ARTIFACT_DIGEST']
+          assert artifact['expired'] is False
+          assert artifact['workflow_run']['id'] == int(os.environ['SOURCE_WORKFLOW_RUN_ID'])
+          assert artifact['workflow_run']['head_sha'] == os.environ['SOURCE_SHA']
+          PY
+
+      - name: Download and digest-verify exact learned source artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${SOURCE_ARTIFACT_ID}/zip" \
+            > verify218-source/source.zip
+          DIGEST_HEX="${SOURCE_ARTIFACT_DIGEST#sha256:}"
+          printf '%s  %s\n' "$DIGEST_HEX" verify218-source/source.zip | sha256sum -c -
+          mkdir -p verify218-source/extracted
+          unzip -q verify218-source/source.zip -d verify218-source/extracted
+          test -f verify218-source/extracted/report.json
+          test -f verify218-source/extracted/fresh-verification.json
+          test -d verify218-source/extracted/retained/best
+          test -d verify218-source/extracted/retained/final
+
+      - name: Execute independent learned-10M scientific verifier
+        env:
+          VERIFY_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          .verify218/bin/python tools/verify218_learned_10m_independent.py \
+            --repo-root . \
+            --artifact-root verify218-source/extracted \
+            --work-dir verify218-work \
+            --output verify218-evidence/authority.json \
+            --verifier-source-sha "$VERIFY_SOURCE_SHA" \
+            --source-artifact-id "$SOURCE_ARTIFACT_ID" \
+            --source-artifact-name "$SOURCE_ARTIFACT_NAME" \
+            --source-artifact-digest "$SOURCE_ARTIFACT_DIGEST" \
+            --source-workflow-run-id "$SOURCE_WORKFLOW_RUN_ID" \
+            --source-sha "$SOURCE_SHA"
+
+      - name: Validate exact RUNTIME-225 consumer compatibility
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Oleksii-debug/12-6-ai.
+          ref: ${{ env.RUNTIME225_CONTRACT_SHA }}
+          path: .runtime225-contract
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Exercise RUNTIME-225 fail-closed authority parser
+        env:
+          VERIFY_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          .verify218/bin/python - <<'PY'
+          import importlib.util
+          import json
+          import os
+          from pathlib import Path
+
+          module_path = Path('.runtime225-contract/src/twelve_six/inference/verify218_authority.py')
+          spec = importlib.util.spec_from_file_location('runtime225_verify218_contract', module_path)
+          assert spec is not None and spec.loader is not None
+          module = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(module)
+
+          manifest = json.loads(Path('verify218-evidence/authority.json').read_text())
+          fake_digest = 'sha256:' + ('f' * 64)
+          fake_artifact = {
+              'id': 1,
+              'digest': fake_digest,
+              'expired': False,
+              'workflow_run': {'id': 1, 'head_sha': os.environ['VERIFY_SOURCE_SHA']},
+          }
+          fake_run = {
+              'id': 1,
+              'head_sha': os.environ['VERIFY_SOURCE_SHA'],
+              'status': 'completed',
+              'conclusion': 'success',
+          }
+          gate = module.validate_verify218_authority(
+              manifest,
+              fake_artifact,
+              fake_run,
+              verifier_artifact_id=1,
+              verifier_artifact_digest=fake_digest,
+              verifier_run_id=1,
+              verifier_source_sha=os.environ['VERIFY_SOURCE_SHA'],
+          )
+          assert gate['status'] == 'PASS'
+          learned = gate['learned_source']
+          assert learned['artifact_id'] == int(os.environ['SOURCE_ARTIFACT_ID'])
+          assert learned['artifact_name'] == os.environ['SOURCE_ARTIFACT_NAME']
+          assert learned['artifact_digest'] == os.environ['SOURCE_ARTIFACT_DIGEST']
+          assert learned['workflow_run_id'] == int(os.environ['SOURCE_WORKFLOW_RUN_ID'])
+          assert learned['source_sha'] == os.environ['SOURCE_SHA']
+          Path('verify218-evidence/runtime225-consumer-gate.json').write_text(
+              json.dumps(gate, sort_keys=True, indent=2) + '\n',
+              encoding='utf-8',
+          )
+          PY
+
+      - name: Fail closed unless terminal authority is exact
+        run: |
+          set -euo pipefail
+          .verify218/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+
+          authority = json.loads(Path('verify218-evidence/authority.json').read_text())
+          assert authority['worker_id'] == 'VERIFY-218-LEARNED-10M-INDEPENDENT'
+          assert authority['status'] == 'VERIFIED_LEARNED_10M'
+          assert authority['verified_learned_10m'] is True
+          assert authority['foreign_pretrained_weights'] is False
+          assert authority['mechanics_only_checkpoint'] is False
+          assert authority['one_step_smoke'] is False
+          assert authority['paid_compute'] is False
+          assert authority['training_performed_by_verifier'] is False
+          assert all(authority['gates'].values())
+          assert len(authority['identity_sha256']) == 64
+          PY
+
+      - name: Upload terminal VERIFY-218 authority
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: verify218-learned-10m-independent
+          if-no-files-found: error
+          retention-days: 30
+          path: |
+            verify218-evidence/authority.json
+            verify218-evidence/runtime225-consumer-gate.json
+            verify218-evidence/environment.json
+            verify218-evidence/source-run.json
+            verify218-evidence/source-artifact.json
+            verify218-head.sha
