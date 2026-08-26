@@ -1,0 +1,65 @@
+{
+  "decision_rule": "Approve only exact pinned source objects whose upstream license grant is reviewed for the project uses below; public accessibility or SPDX metadata alone is never sufficient.",
+  "decisions": [
+    {
+      "blob_sha1": "6f479a0885f723b7395843d41164a87041820776",
+      "captured_at": "2026-08-26T09:47:59Z",
+      "commit": "b5addb64f0161ff6bfe94c124ef76f6a1fba5254",
+      "language": "python",
+      "license_blob_sha1": "ab79d16a3f4c6c894c028d1f7431811e8711b42b",
+      "license_id": "BSD-3-Clause",
+      "license_path": "LICENSE.md",
+      "license_url": "https://raw.githubusercontent.com/encode/httpx/b5addb64f0161ff6bfe94c124ef76f6a1fba5254/LICENSE.md",
+      "path": "httpx/_content.py",
+      "provider": "Encode OSS Ltd and contributors",
+      "raw_url": "https://raw.githubusercontent.com/encode/httpx/b5addb64f0161ff6bfe94c124ef76f6a1fba5254/httpx/_content.py",
+      "redistribution_conditions": "Retain copyright notice, license conditions and disclaimer; no endorsement using copyright-holder/contributor names.",
+      "repository_url": "https://github.com/encode/httpx",
+      "reviewed_at": "2026-08-26",
+      "reviewer_ref": "DATA-227-REAL-CODE-SOURCE-ADMISSION-V2",
+      "rights_basis": "Reviewed BSD-3-Clause text permits redistribution and use in source and binary forms, with or without modification, subject to its notice/non-endorsement conditions. Under the project policy this exact pinned object is approved for model-training use; the decision does not derive from public availability.",
+      "size_bytes": 8161,
+      "source_family": "github:encode/httpx",
+      "source_id": "code.encode.httpx._content",
+      "uses": {
+        "acquisition": "ALLOWED",
+        "analysis": "ALLOWED",
+        "model_training": "ALLOWED",
+        "redistribution": "ALLOWED",
+        "storage": "ALLOWED"
+      }
+    },
+    {
+      "blob_sha1": "0466a7d347db4ed34a37db51b75fc8e80bc06055",
+      "captured_at": "2026-08-26T09:47:59Z",
+      "commit": "5460f467b02e49471c0fd6cfc9ca0adab6351f98",
+      "language": "python",
+      "license_blob_sha1": "67db8588217f266eb561f75fae738656325deac9",
+      "license_id": "Apache-2.0",
+      "license_path": "LICENSE",
+      "license_url": "https://raw.githubusercontent.com/psf/requests/5460f467b02e49471c0fd6cfc9ca0adab6351f98/LICENSE",
+      "path": "src/requests/_internal_utils.py",
+      "provider": "Python Software Foundation / Requests contributors",
+      "raw_url": "https://raw.githubusercontent.com/psf/requests/5460f467b02e49471c0fd6cfc9ca0adab6351f98/src/requests/_internal_utils.py",
+      "redistribution_conditions": "Comply with Apache-2.0 section 4, including license delivery and applicable attribution/NOTICE obligations.",
+      "repository_url": "https://github.com/psf/requests",
+      "reviewed_at": "2026-08-26",
+      "reviewer_ref": "DATA-227-REAL-CODE-SOURCE-ADMISSION-V2",
+      "rights_basis": "Reviewed Apache-2.0 text grants perpetual worldwide copyright rights to reproduce, prepare derivative works, display, perform, sublicense and distribute, plus applicable patent rights, subject to license/notice conditions. Under the project policy this exact pinned object is approved for model-training use; the decision does not derive from public availability.",
+      "size_bytes": 1542,
+      "source_family": "github:psf/requests",
+      "source_id": "code.psf.requests._internal_utils",
+      "uses": {
+        "acquisition": "ALLOWED",
+        "analysis": "ALLOWED",
+        "model_training": "ALLOWED",
+        "redistribution": "ALLOWED",
+        "storage": "ALLOWED"
+      }
+    }
+  ],
+  "policy_ref": "policy://12-6/data/explicit-model-training-evidence-v1",
+  "reviewed_at": "2026-08-26",
+  "reviewer_ref": "DATA-227-REAL-CODE-SOURCE-ADMISSION-V2",
+  "schema_version": "12-6.data227-code-rights-policy.v1"
+}
