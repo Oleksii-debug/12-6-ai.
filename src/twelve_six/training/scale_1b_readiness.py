@@ -71,8 +71,16 @@ def _validate_compute_authorization(value: str | None) -> None:
             "compute_authorization must begin with COMPUTE_AUTHORIZED: or "
             "TRAINING_AUTHORIZED:"
         )
-    if not value[len(prefix) :].strip():
+    authority_reference = value[len(prefix) :]
+    if not authority_reference:
         raise ValueError("compute_authorization must include a non-empty authority reference")
+    try:
+        _validate_engineering_authority("compute_authorization authority", authority_reference)
+    except ValueError as exc:
+        raise ValueError(
+            "compute_authorization must bind a durable github/artifact authority after "
+            "the authorization prefix"
+        ) from exc
 
 
 @dataclass(frozen=True, slots=True)
