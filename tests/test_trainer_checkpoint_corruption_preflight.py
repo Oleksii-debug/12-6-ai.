@@ -47,9 +47,17 @@ def _trainer_and_state():
     return torch, trainer, state
 
 
+def _manifest(*, step: int = 1, tokens_seen: int = 7):
+    return {"identity": {"step": step, "tokens_seen": tokens_seen}}
+
+
 def test_valid_trainer_owned_state_passes_preflight() -> None:
     _torch, trainer, state = _trainer_and_state()
-    trainer_adapter._preflight_trainer_state(trainer, state)
+    trainer_adapter._preflight_trainer_state(
+        trainer,
+        state,
+        manifest=_manifest(),
+    )
 
 
 def test_wrong_shaped_nested_momentum_is_rejected() -> None:
@@ -61,7 +69,11 @@ def test_wrong_shaped_nested_momentum_is_rejected() -> None:
         CheckpointCompatibilityError,
         match="optimizer state shape mismatch",
     ):
-        trainer_adapter._preflight_trainer_state(trainer, state)
+        trainer_adapter._preflight_trainer_state(
+            trainer,
+            state,
+            manifest=_manifest(),
+        )
 
 
 def test_invalid_nested_counters_are_rejected() -> None:
@@ -72,7 +84,11 @@ def test_invalid_nested_counters_are_rejected() -> None:
         CheckpointCompatibilityError,
         match="optimizer_step must be a non-negative integer",
     ):
-        trainer_adapter._preflight_trainer_state(trainer, state)
+        trainer_adapter._preflight_trainer_state(
+            trainer,
+            state,
+            manifest=_manifest(),
+        )
 
 
 def test_accumulation_boundary_is_rejected_before_resume() -> None:
@@ -83,7 +99,29 @@ def test_accumulation_boundary_is_rejected_before_resume() -> None:
         CheckpointCompatibilityError,
         match="complete committed accumulation boundary",
     ):
-        trainer_adapter._preflight_trainer_state(trainer, state)
+        trainer_adapter._preflight_trainer_state(
+            trainer,
+            state,
+            manifest=_manifest(),
+        )
+
+
+@pytest.mark.parametrize(
+    ("manifest", "message"),
+    [
+        (_manifest(step=2), "optimizer_step disagrees"),
+        (_manifest(tokens_seen=8), "tokens_seen disagrees"),
+    ],
+)
+def test_trainer_progress_must_match_checkpoint_identity(manifest, message: str) -> None:
+    _torch, trainer, state = _trainer_and_state()
+
+    with pytest.raises(CheckpointCompatibilityError, match=message):
+        trainer_adapter._preflight_trainer_state(
+            trainer,
+            state,
+            manifest=manifest,
+        )
 
 
 def test_public_trainer_load_rejects_corruption_before_model_loader(monkeypatch) -> None:
@@ -91,7 +129,7 @@ def test_public_trainer_load_rejects_corruption_before_model_loader(monkeypatch)
     parameter_id = next(iter(state["optimizer"]["state"]))
     state["optimizer"]["state"][parameter_id]["momentum_buffer"] = torch.zeros(1)
 
-    verified = SimpleNamespace(manifest={})
+    verified = SimpleNamespace(manifest=_manifest())
     called = {"model_loader": False, "trainer_loader": False}
 
     monkeypatch.setattr(
