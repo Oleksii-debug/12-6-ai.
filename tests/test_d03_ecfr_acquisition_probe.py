@@ -29,6 +29,8 @@ def _rehash(config: dict) -> dict:
 def test_canonical_probe_validates() -> None:
     result = MODULE.validate_probe(_load())
     assert result["valid"] is True
+    assert result["titles_metadata_date"] == "2026-08-06"
+    assert result["reserved_titles"] == [35]
     assert result["canonical_capacity_credit_bytes"] == 0
     assert result["authorized_unique_loss_positions"] == 0
     assert result["training_authorized"] is False
@@ -41,6 +43,8 @@ def test_canonical_probe_validates() -> None:
         (("materialization", "executed"), True),
         (("materialization", "canonical_capacity_credit_bytes"), 1),
         (("materialization", "family_credit"), 1),
+        (("materialization", "request_date_must_not_exceed_titles_metadata_date"), False),
+        (("materialization", "reserved_titles_must_be_rejected"), False),
         (("source", "title_or_agency_multiplication_allowed"), True),
         (("source", "point_in_time_required"), False),
         (("rights", "public_availability_is_rights_authority"), True),
@@ -60,6 +64,38 @@ def test_fail_closed_mutations(path: tuple[str, str], value: object) -> None:
     candidate[path[0]][path[1]] = value
     _rehash(candidate)
     with pytest.raises(MODULE.ProbeValidationError):
+        MODULE.validate_probe(candidate)
+
+
+def test_official_titles_endpoint_is_hard_bound() -> None:
+    candidate = copy.deepcopy(_load())
+    candidate["source"]["titles_endpoint"] = "https://www.ecfr.gov/api/versioner-import/v1/titles"
+    _rehash(candidate)
+    with pytest.raises(MODULE.ProbeValidationError, match="titles endpoint drift"):
+        MODULE.validate_probe(candidate)
+
+
+def test_official_api_documentation_is_hard_bound() -> None:
+    candidate = copy.deepcopy(_load())
+    candidate["source"]["api_documentation"] = "https://example.invalid/api"
+    _rehash(candidate)
+    with pytest.raises(MODULE.ProbeValidationError, match="API documentation drift"):
+        MODULE.validate_probe(candidate)
+
+
+def test_titles_metadata_date_is_hard_bound() -> None:
+    candidate = copy.deepcopy(_load())
+    candidate["discovery_observation"]["titles_metadata_date"] = "2026-07-31"
+    _rehash(candidate)
+    with pytest.raises(MODULE.ProbeValidationError, match="titles metadata date drift"):
+        MODULE.validate_probe(candidate)
+
+
+def test_reserved_title_vector_is_hard_bound() -> None:
+    candidate = copy.deepcopy(_load())
+    candidate["discovery_observation"]["title_numbers"]["reserved"] = []
+    _rehash(candidate)
+    with pytest.raises(MODULE.ProbeValidationError, match="title vector drift"):
         MODULE.validate_probe(candidate)
 
 
