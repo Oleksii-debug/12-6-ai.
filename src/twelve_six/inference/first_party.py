@@ -123,20 +123,34 @@ def _require_byte_tokenizer(manifest: Mapping[str, Any], spec: ModelSpec) -> Byt
     return tokenizer
 
 
-def load_first_party_backend(checkpoint: Path) -> FirstPartyInferenceBackend:
+def load_first_party_backend(
+    checkpoint: Path,
+    *,
+    expected_model_spec_sha256: str | None = None,
+) -> FirstPartyInferenceBackend:
     """Verify one checkpoint snapshot, bind D01/D04 identities, and expose D07.
 
     The checkpoint directory is read exactly once into D05's immutable
     ``VerifiedCheckpoint`` snapshot. ModelSpec/tokenizer validation, applied
     weights, and backend diagnostics are therefore derived from the same bytes
-    even if the source path changes after verification. RNG state is
-    intentionally not restored for inference.
+    even if the source path changes after verification. When an expected ModelSpec
+    identity is supplied by an independent verifier, the loader binds that external
+    expectation before allocating model weights. RNG state is intentionally not
+    restored for inference.
     """
 
     checkpoint = Path(checkpoint)
     verified = prepare_checkpoint_load(checkpoint)
     manifest = verified.manifest
     spec = _checkpoint_spec(manifest)
+    spec_sha256 = spec.identity_sha256()
+    if (
+        expected_model_spec_sha256 is not None
+        and spec_sha256 != expected_model_spec_sha256
+    ):
+        raise CheckpointCompatibilityError(
+            "checkpoint ModelSpec does not match externally expected identity"
+        )
     tokenizer = _require_byte_tokenizer(manifest, spec)
 
     model = TwelveSixDecoder(spec)
@@ -144,7 +158,7 @@ def load_first_party_backend(checkpoint: Path) -> FirstPartyInferenceBackend:
         verified,
         model=model,
         restore_rng=False,
-        expected_model_spec_hash=spec.identity_sha256(),
+        expected_model_spec_hash=spec_sha256,
         expected_tokenizer_hash=tokenizer.identity.config_sha256,
         expected_tokenizer_vocab_hash=tokenizer.identity.vocab_sha256,
     )
