@@ -1,0 +1,22 @@
+{
+  "d06_registry_sha256": "10f7454f77eb2dc3871eeafa5055b1969eab42954eb8e19e61565f217c67df31",
+  "data110_current_candidate_head_sha": "fd60b362c7089e20b3c0e1fb37dc839ae5a17c5c",
+  "data31_head_sha": "6b1c7f3418357e0ea1cfc6ab5ceda6a740dc5921",
+  "decontamination_report_sha256": "0c9e0c577cd4928d2ef4e983811d51a9bc9a5dc663fc70199749c04bcaec401c",
+  "eval131_head_sha": "de210fc83a74ee02ad679aeb2de7bbd1283fd06e",
+  "final_test_manifest_sha256": "ce1d75f1b69156a23b39b198d08912b98d3dab96f7e26856dcab5243838b809a",
+  "local_free_only": true,
+  "release_identity_sha256": "3bd9439508515c08a34f8f6d2b5a0f67685bd9f2975be7b1ed7445200cb98839",
+  "reserved_registry_sha256": "c39fd11f20189282338212d99721534c735115735684e2bf09a8792df74135d6",
+  "rights_registry_sha256": "fd9cc5901a2f298777cbd96f8811dd61fc96ed52de8521c7288fb64f0cddc7de",
+  "schema_version": "12-6.eval186-real-holdout-authority-release.v1",
+  "selection_validation_manifest_sha256": "9ec53ae869a859b4461a9a3b43f17c6eacfd96a69979c449ca02fd548ad179b6",
+  "status": "HOLDOUTS_IMMUTABLY_RESERVED_DATA31_NEAR_MATCH_AUTHORITY_BLOCKED",
+  "universal_bootstrap_authority": {
+    "branch": "env151/universal-execution-bootstrap-20260826",
+    "datatrove_capability": "UNAVAILABLE_FAIL_CLOSED",
+    "tool_blob_sha1": "3f611ac3de7a35e5952cd6caeab518009b44fa98"
+  },
+  "universal_bootstrap_required": true,
+  "worker_id": "EVAL-186-REAL-HOLDOUT-AUTHORITY"
+}
