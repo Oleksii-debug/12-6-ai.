@@ -45,6 +45,15 @@ from .scalable_ingestion import (
     ScalableIngestionError,
     build_datatrove_executor,
 )
+from .wikimedia_ingestion import (
+    WikipediaDumpPlan,
+    WikimediaIngestionError,
+    WikimediaMaterializationResult,
+    iter_wikimedia_revision_records,
+    materialize_wikimedia_jsonl,
+    sha256_file,
+    verify_dump_snapshot,
+)
 
 __all__ = [
     "DATATROVE_VERSION",
@@ -72,6 +81,9 @@ __all__ = [
     "ScalableIngestionError",
     "SnapshotSpec",
     "UsePermissions",
+    "WikipediaDumpPlan",
+    "WikimediaIngestionError",
+    "WikimediaMaterializationResult",
     "build_dataset",
     "build_datatrove_executor",
     "build_eligibility_inventory",
@@ -79,15 +91,19 @@ __all__ = [
     "build_real_snapshot_registry",
     "build_reserved_fingerprint_registry",
     "contamination_report",
+    "iter_wikimedia_revision_records",
     "language_id",
     "load_real_snapshot_registry",
+    "materialize_wikimedia_jsonl",
     "normalize_text",
+    "sha256_file",
     "sources_for_corpus",
     "sources_for_holdout",
     "sources_for_redistribution",
     "validate_external_source_registry",
     "validate_real_snapshot_registry",
     "validate_reserved_fingerprint_registry",
+    "verify_dump_snapshot",
     "verify_local_snapshot",
     "verify_source_payload",
 ]
