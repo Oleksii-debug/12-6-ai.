@@ -1,5 +1,7 @@
 """Post-Base reasoning components that do not alter canonical Base semantics."""
 
+from ..postbase_hypothesis import Hypothesis, HypothesisSearch, VerifierEvidence
+from .hypothesis_verifier import HypothesisVerificationResult, HypothesisVerifierController
 from .verification import (
     CandidateFact,
     Claim,
@@ -38,6 +40,10 @@ __all__ = [
     "ExactAnswerFixtureVerifier",
     "FinalAnswerController",
     "FinalAnswerPlan",
+    "Hypothesis",
+    "HypothesisSearch",
+    "HypothesisVerificationResult",
+    "HypothesisVerifierController",
     "ModelJudge",
     "NumericCalculatorVerifier",
     "NumericCheck",
@@ -52,6 +58,7 @@ __all__ = [
     "VerificationStatus",
     "Verifier",
     "VerifierEnsemble",
+    "VerifierEvidence",
     "VerifierResult",
     "safe_calculate",
 ]
