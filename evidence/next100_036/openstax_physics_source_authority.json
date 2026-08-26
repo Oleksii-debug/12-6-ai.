@@ -1,0 +1,149 @@
+{
+  "authority_date_utc": "2026-08-26",
+  "authority_identity_sha256": "ca8cef5b261619e521ab840da7babf1ee510f8c9cd31a137de71e9460453504a",
+  "bound_registry": {
+    "authority_worker": "DATA-287",
+    "english_independent_family_count": 1,
+    "independent_source_family_count": 4,
+    "pull_request": 404,
+    "registry_identity_sha256": "917e9bc31b2fa040d25e807ae3c01aa2cce32420752a891caacfb6c830e6632c",
+    "registry_path": "data/registry/external_snapshots.v2.json",
+    "representative_corpus_claimed": false,
+    "source_branch": "data287/external-snapshot-registry-v2-20260826",
+    "source_count": 5,
+    "source_sha": "b0523ccbc4b957615aac849d476cfa851be87578",
+    "unique_normalized_bytes": 183061
+  },
+  "candidate": {
+    "authors": [
+      "Paul Peter Urone",
+      "Roger Hinrichs"
+    ],
+    "bounded_object": {
+      "content_id": "m54467",
+      "git_blob_sha1": "a1b45a7c27067e950a112a3746b911c5a620c01c",
+      "path": "modules/m54467/index.cnxml",
+      "source_locator_identity_sha256": "bf79459b52cf90ab50abb8dba70385bfaa8fbe36463a1ad079174b8bec623817",
+      "title": "Motors, Generators, and Transformers"
+    },
+    "edition_identity": "Physics|published=2020-03-26|source_revision=dfdfd7a5356ecdd42e504de3df50d9153e33ea49",
+    "edition_label": "Physics publication release dated 2020-03-26; no numeric edition label asserted",
+    "family_identity_sha256": "fc9e09155fc316c2199bc51d403791bc791ba8271b7aa419d0c043d819e3fe4a",
+    "language": "en",
+    "license_blob_sha1": "409b0eada6569b9844b8ab1958c7e2f6d1359e3f",
+    "media_assets_in_scope": false,
+    "pinned_git_commit_sha1": "dfdfd7a5356ecdd42e504de3df50d9153e33ea49",
+    "pinned_git_tree_sha1": "b99750d59120e03f65f15da8ae012c5d5bdcfaa7",
+    "provider": "OpenStax",
+    "publication_date": "2020-03-26",
+    "publisher_context": "OpenStax, Rice University",
+    "source_family_id": "en.openstax.physics",
+    "source_kind": "textbook",
+    "source_repo": "openstax/osbooks-physics",
+    "source_repo_license_spdx": "CC-BY-4.0",
+    "title": "Physics"
+  },
+  "claim_boundary": {
+    "capacity_added_bytes": 0,
+    "family_credit_added": 0,
+    "redistribution_of_training_snapshot_admitted": false,
+    "representative_by_itself": false,
+    "representative_claimed": false,
+    "training_admitted": false
+  },
+  "dedup": {
+    "admitted_capacity_delta_bytes": 0,
+    "exact_normalized_dedup_sha256": null,
+    "exact_raw_dedup_sha256": null,
+    "near_duplicate_check": "NOT_RUN",
+    "registry_family_count_delta": 0,
+    "registry_source_count_delta": 0,
+    "status": "NOT_RUN_NO_ADMITTED_PAYLOAD"
+  },
+  "family": {
+    "family_id": "en.openstax.physics",
+    "family_identity_sha256": "fc9e09155fc316c2199bc51d403791bc791ba8271b7aa419d0c043d819e3fe4a",
+    "independent_family_credit_if_rejected": 0,
+    "lineage": "OpenStax Physics / TEA-origin textbook lineage",
+    "must_not_be_counted_as_representative_by_itself": true
+  },
+  "license": {
+    "attribution_obligations": [
+      "Credit the creator/licensor and any designated attribution parties.",
+      "Retain supplied copyright, license, warranty/disclaimer, and source-URI notices where reasonably practicable.",
+      "Include a link or reference to the CC BY 4.0 license.",
+      "Indicate modifications and retain supplied indications of previous modifications.",
+      "For Physics, attribute Texas Education Agency (TEA), identify the Texas Gateway original, and disclose that OpenStax made changes.",
+      "For redistributed print or digital pages, preserve the OpenStax access-for-free attribution required by the title page."
+    ],
+    "license_evidence": {
+      "provider_page": "https://openstax.org/books/physics/pages/preface",
+      "repo_license_blob_sha1": "409b0eada6569b9844b8ab1958c7e2f6d1359e3f"
+    },
+    "license_id": "CC-BY-4.0",
+    "license_version": "4.0 International",
+    "no_derivatives_restriction": false,
+    "noncommercial_restriction": false,
+    "sharealike_restriction": false,
+    "third_party_exclusion": "All images, media, iframe content, and separately permissioned art are excluded from the bounded language-corpus candidate."
+  },
+  "local_free_only": true,
+  "normalization": {
+    "normalized_bytes": 0,
+    "normalized_sha256": null,
+    "policy_id": "OPENSTAX_CNXML_TEXT_ONLY_V1_PREREGISTERED",
+    "policy_if_retested": [
+      "Parse pinned CNXML as UTF-8 XML without network expansion.",
+      "Select only textual descendants of content after deterministic element-order traversal.",
+      "Drop figure, media, image, iframe, and other external-asset nodes completely.",
+      "Preserve paragraph/list/heading order; emit MathML text tokens in document order without rendering.",
+      "Normalize CRLF/CR to LF, Unicode NFC, trim trailing horizontal whitespace, collapse runs of more than two blank lines to two, and end with exactly one LF.",
+      "No semantic rewriting, paraphrasing, OCR, translation, or generated text."
+    ],
+    "status": "NOT_RUN_RIGHTS_REJECT"
+  },
+  "privacy": {
+    "privacy_clean_claimed": false,
+    "reason": "No training payload was admitted or normalized; privacy admission is therefore not asserted.",
+    "status": "NOT_RUN_NO_CORPUS_MATERIALIZATION"
+  },
+  "quality": {
+    "admission_quality_claimed": false,
+    "prequalification_observation": "The bounded object contains substantial English explanatory prose, but no training-quality pass is credited because rights fail first.",
+    "status": "NOT_RUN_RIGHTS_REJECT"
+  },
+  "retest_gate": "Only retest for model training after immutable evidence of OpenStax permission covering this exact title/revision and intended training/redistribution use is available, or after an authoritative terms change is separately reviewed.",
+  "rights": {
+    "evaluation": {
+      "status": "NOT_SEPARATELY_ADMITTED"
+    },
+    "model_training": {
+      "basis": "Current OpenStax Physics provider page requires OpenStax permission for LLM/generative-AI training or ingestion; no separate permission is evidenced.",
+      "provider_terms_url": "https://openstax.org/books/physics/pages/preface",
+      "repo_fail_closed_precedent": "DATA-21/22 previously blocked an OpenStax candidate on the same provider-AI permission boundary.",
+      "separate_openstax_permission_evidenced": false,
+      "status": "REJECT_NO_OPENSTAX_PERMISSION"
+    },
+    "redistribution": {
+      "scope": "Bounded CC BY 4.0 text only; third-party images/media and separately permissioned art excluded.",
+      "status": "ALLOWED_WITH_ATTRIBUTION_FOR_CC_BY_TEXT",
+      "training_snapshot_redistribution_decision": "NOT_APPLICABLE_NO_TRAINING_SNAPSHOT"
+    }
+  },
+  "schema_version": "12-6.next100-open-educational-english-source-authority.v1",
+  "source_hashes": {
+    "bounded_object_git_blob_sha1": "a1b45a7c27067e950a112a3746b911c5a620c01c",
+    "git_commit_sha1": "dfdfd7a5356ecdd42e504de3df50d9153e33ea49",
+    "git_tree_sha1": "b99750d59120e03f65f15da8ae012c5d5bdcfaa7",
+    "license_git_blob_sha1": "409b0eada6569b9844b8ab1958c7e2f6d1359e3f",
+    "raw_payload_sha256": null,
+    "raw_payload_sha256_status": "NOT_COMPUTED_NO_CORPUS_MATERIALIZATION",
+    "source_locator_identity_sha256": "bf79459b52cf90ab50abb8dba70385bfaa8fbe36463a1ad079174b8bec623817"
+  },
+  "terminal_reason_codes": [
+    "PROVIDER_EXPLICIT_LLM_PERMISSION_REQUIRED",
+    "SEPARATE_OPENSTAX_PERMISSION_NOT_EVIDENCED"
+  ],
+  "terminal_verdict": "REJECT",
+  "worker_id": "NEXT100-036-DATA-EN-OPENSTAX"
+}
