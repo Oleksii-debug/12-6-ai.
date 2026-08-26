@@ -21,6 +21,7 @@ on:
       - "configs/stages/s4_100m_accelerator.candidate.json"
       - "configs/data/corpus_v01.json"
       - "data/corpus/v0.1/**"
+      - "evidence/scale202/**"
       - "tests/test_scale202_100m_qualification.py"
   workflow_dispatch:
 
@@ -107,6 +108,7 @@ jobs:
         with:
           name: scale202-100m-real-qualification
           path: |
+            evidence/scale202/current_no_gpu_blocker_20260826.json
             evidence/scale202/universal-bootstrap.json
             evidence/scale202/result.json
             evidence/scale202/work/run-manifest.json
