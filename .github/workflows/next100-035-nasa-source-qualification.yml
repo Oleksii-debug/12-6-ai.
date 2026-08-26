@@ -61,6 +61,7 @@ jobs:
           assert report['scope']['pdf_body_admitted'] is False
           assert report['scope']['full_text_download_admitted'] is False
           assert report['scope']['images_tables_figures_admitted'] is False
+          assert report['rights']['full_document_body'] == 'NOT_ADMITTED_BY_THIS_AUTHORITY'
           assert report['rights']['evaluation'] == 'NOT_SEPARATELY_ADMITTED'
           assert report['family']['independent_family_credit'] == 1
           assert report['totals']['admitted_records'] >= 2
@@ -68,9 +69,10 @@ jobs:
           for row in report['candidates']:
               if row['decision'] == 'ADMIT':
                   c=row['copyright']
-                  assert c['containsThirdPartyMaterial'] is False
-                  assert c['belongsToContractor'] is False
-                  assert c['belongsToPublisher'] is False
+                  assert c['determinationType'] == 'GOV_PUBLIC_USE_PERMITTED'
+                  assert c.get('containsThirdPartyMaterial') is not True
+                  assert c.get('belongsToContractor') is not True
+                  assert c.get('belongsToPublisher') is not True
                   assert row['all_authors_nasa_affiliated'] is True
                   assert row['privacy_training_text'] == 'PASS_NO_EMAIL_PHONE_SSN_PATTERNS'
           PY
