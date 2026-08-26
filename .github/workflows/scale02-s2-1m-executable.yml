@@ -25,36 +25,79 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
+
+      - name: Bootstrap durable evidence contract
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          python3 tools/evidence_finalizer.py bootstrap \
+            --output scale02-s2-1m-evidence/ci-diagnostics/bootstrap.json \
+            --source-sha "$SOURCE_SHA" \
+            --label scale02-s2-1m-executable
+          python3 tools/evidence_finalizer.py mark-phase \
+            --state scale02-s2-1m-evidence/.ci162-phase.json \
+            --source-sha "$SOURCE_SHA" \
+            --phase source_binding
+
       - name: Prove exact source checkout
         env:
           SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.11.16"
+
       - name: Dependency and tool preflight before tests
         env:
           SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: python tools/ci_dependency_preflight.py --profile linux-x86_64 --source-sha "$SOURCE_SHA"
+        run: |
+          set -euo pipefail
+          python3 tools/evidence_finalizer.py mark-phase \
+            --state scale02-s2-1m-evidence/.ci162-phase.json \
+            --source-sha "$SOURCE_SHA" \
+            --phase dependency_preflight
+          python tools/ci_dependency_preflight.py --profile linux-x86_64 --source-sha "$SOURCE_SHA"
+
       - name: Verify locked environment and repository checks
         env:
           SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: >-
-          python tools/verify_locked_environment.py
-          --profile linux-x86_64
-          --source-sha "$SOURCE_SHA"
-          --evidence-out locked-environment-linux-x86_64.json
-          --run-repo-checks
-      - name: Create exact locked S2 execution environment
         run: |
+          set -euo pipefail
+          python3 tools/evidence_finalizer.py mark-phase \
+            --state scale02-s2-1m-evidence/.ci162-phase.json \
+            --source-sha "$SOURCE_SHA" \
+            --phase locked_repository_checks
+          python tools/verify_locked_environment.py \
+            --profile linux-x86_64 \
+            --source-sha "$SOURCE_SHA" \
+            --evidence-out scale02-s2-1m-evidence/locked-environment-linux-x86_64.json \
+            --run-repo-checks
+
+      - name: Create exact locked S2 execution environment
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          python3 tools/evidence_finalizer.py mark-phase \
+            --state scale02-s2-1m-evidence/.ci162-phase.json \
+            --source-sha "$SOURCE_SHA" \
+            --phase environment_install
           python -m venv .scale02-s2-locked
           .scale02-s2-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
           .scale02-s2-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
           PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .scale02-s2-locked/bin/python -m pip install --no-deps --no-build-isolation -e .
+
       - name: Execute S2 ~1M trainer checkpoint inference vertical
         env:
           SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
+          set -euo pipefail
+          python3 tools/evidence_finalizer.py mark-phase \
+            --state scale02-s2-1m-evidence/.ci162-phase.json \
+            --source-sha "$SOURCE_SHA" \
+            --phase training_vertical
           .scale02-s2-locked/bin/python -m twelve_six.training.s2_preflight \
             --repo-root . \
             --candidate-sha "$SOURCE_SHA" \
@@ -64,13 +107,40 @@ jobs:
             --seed 20260825 \
             --sequence-length 128
           cat scale02-s2-1m-evidence/s2-1m-executable-preflight.json
-      - name: Upload exact S2 evidence and checkpoint
+
+      - name: Mark experiment completion
+        if: success()
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          python3 tools/evidence_finalizer.py mark-phase \
+            --state scale02-s2-1m-evidence/.ci162-phase.json \
+            --source-sha "$SOURCE_SHA" \
+            --phase complete
+
+      - name: Finalize fail-closed SCALE-02 evidence
+        id: evidence_finalizer
+        if: always()
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          PRIOR_JOB_STATUS: ${{ job.status }}
+        run: |
+          set -euo pipefail
+          python3 tools/evidence_finalizer.py finalize \
+            --workspace scale02-s2-1m-evidence \
+            --artifact-dir scale02-s2-1m-durable-artifact \
+            --phase-file scale02-s2-1m-evidence/.ci162-phase.json \
+            --source-sha "$SOURCE_SHA" \
+            --verifier-python .scale02-s2-locked/bin/python \
+            --repo-root . \
+            --job-status "$PRIOR_JOB_STATUS" \
+            --retention-days 30
+
+      - name: Upload durable SCALE-02 evidence
+        if: always() && steps.evidence_finalizer.outcome == 'success'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: scale02-s2-1m-executable-evidence
-          path: |
-            locked-environment-linux-x86_64.json
-            scale02-s2-1m-evidence/s2-1m-executable-preflight.json
-            scale02-s2-1m-evidence/checkpoint
+          path: scale02-s2-1m-durable-artifact/
           if-no-files-found: error
           retention-days: 30

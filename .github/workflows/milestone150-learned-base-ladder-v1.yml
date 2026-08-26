@@ -19,6 +19,7 @@ on:
       - "configs/data/corpus_v01.json"
       - "requirements/locks/linux-x86_64/**"
       - "tools/ci_dependency_preflight.py"
+      - "tools/evidence_finalizer.py"
       - "tests/test_milestone100*.py"
       - "tests/test_milestone150*.py"
       - "tests/test_data25_corpus_v01.py"
@@ -48,6 +49,20 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Bootstrap durable ladder evidence contract
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          python3 tools/evidence_finalizer.py bootstrap \
+            --output milestone150-evidence/ci-diagnostics/bootstrap.json \
+            --source-sha "$EXPECTED_SOURCE_SHA" \
+            --label milestone150-learned-base-ladder-v1
+          python3 tools/evidence_finalizer.py mark-phase \
+            --state milestone150-evidence/.ci162-phase.json \
+            --source-sha "$EXPECTED_SOURCE_SHA" \
+            --phase source_binding
+
       - name: Set up exact Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
@@ -63,15 +78,26 @@ jobs:
       - name: Dependency and tool preflight before tests or runtime install
         env:
           EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: >-
-          python tools/ci_dependency_preflight.py
-          --profile linux-x86_64
-          --source-sha "$EXPECTED_SOURCE_SHA"
-          --output milestone150-ci-preflight.json
-
-      - name: Install hash-locked CPU runtime and test tooling
         run: |
           set -euo pipefail
+          python3 tools/evidence_finalizer.py mark-phase \
+            --state milestone150-evidence/.ci162-phase.json \
+            --source-sha "$EXPECTED_SOURCE_SHA" \
+            --phase dependency_preflight
+          python tools/ci_dependency_preflight.py \
+            --profile linux-x86_64 \
+            --source-sha "$EXPECTED_SOURCE_SHA" \
+            --output milestone150-evidence/machine-ci-preflight.json
+
+      - name: Install hash-locked CPU runtime and test tooling
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          python3 tools/evidence_finalizer.py mark-phase \
+            --state milestone150-evidence/.ci162-phase.json \
+            --source-sha "$EXPECTED_SOURCE_SHA" \
+            --phase environment_install
           python -m venv .m150
           .m150/bin/python -m pip install \
             --disable-pip-version-check --no-deps --require-hashes \
@@ -84,20 +110,41 @@ jobs:
             -r requirements/locks/linux-x86_64/dev.lock.txt
 
       - name: Compile and test convergence contracts
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
-          set -euo pipefail
-          .m150/bin/python -m compileall -q src/twelve_six
-          .m150/bin/python -m pytest -q \
-            tests/test_data25_corpus_v01.py \
-            tests/test_milestone100_first_learned.py \
-            tests/test_milestone100_one_m.py \
-            tests/test_milestone150_learned_base_ladder.py
+          set -uo pipefail
+          mkdir -p milestone150-evidence/ci-diagnostics
+          python3 tools/evidence_finalizer.py mark-phase \
+            --state milestone150-evidence/.ci162-phase.json \
+            --source-sha "$EXPECTED_SOURCE_SHA" \
+            --phase focused_tests
+          test_code=0
+          .m150/bin/python -m compileall -q src/twelve_six || test_code=$?
+          if [ "$test_code" -eq 0 ]; then
+            .m150/bin/python -m pytest -q \
+              tests/test_data25_corpus_v01.py \
+              tests/test_milestone100_first_learned.py \
+              tests/test_milestone100_one_m.py \
+              tests/test_milestone150_learned_base_ladder.py \
+              --junitxml=milestone150-evidence/ci-diagnostics/focused-tests.xml || test_code=$?
+          fi
+          python3 tools/evidence_finalizer.py test-status \
+            --output milestone150-evidence/ci-diagnostics/focused-test-status.json \
+            --source-sha "$EXPECTED_SOURCE_SHA" \
+            --exit-code "$test_code" \
+            --label milestone150-convergence-contracts
+          exit "$test_code"
 
       - name: Prepare one corpus tokenizer evaluation truth
         env:
           EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
+          python3 tools/evidence_finalizer.py mark-phase \
+            --state milestone150-evidence/.ci162-phase.json \
+            --source-sha "$EXPECTED_SOURCE_SHA" \
+            --phase truth_prepare
           .m150/bin/python -m twelve_six.milestone150_entrypoint \
             prepare \
             --repo-root . \
@@ -109,12 +156,15 @@ jobs:
           EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
+          python3 tools/evidence_finalizer.py mark-phase --state milestone150-evidence/.ci162-phase.json --source-sha "$EXPECTED_SOURCE_SHA" --phase 100k_phase1
           .m150/bin/python -m twelve_six.milestone150_entrypoint phase1 \
             --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" \
             --output-dir milestone150-evidence --scale 100k
+          python3 tools/evidence_finalizer.py mark-phase --state milestone150-evidence/.ci162-phase.json --source-sha "$EXPECTED_SOURCE_SHA" --phase 100k_resume
           .m150/bin/python -m twelve_six.milestone150_entrypoint resume \
             --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" \
             --output-dir milestone150-evidence --scale 100k
+          python3 tools/evidence_finalizer.py mark-phase --state milestone150-evidence/.ci162-phase.json --source-sha "$EXPECTED_SOURCE_SHA" --phase 100k_verify
           .m150/bin/python -m twelve_six.milestone150_entrypoint verify-scale \
             --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" \
             --output-dir milestone150-evidence --scale 100k
@@ -124,12 +174,15 @@ jobs:
           EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
+          python3 tools/evidence_finalizer.py mark-phase --state milestone150-evidence/.ci162-phase.json --source-sha "$EXPECTED_SOURCE_SHA" --phase 500k_phase1
           .m150/bin/python -m twelve_six.milestone150_entrypoint phase1 \
             --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" \
             --output-dir milestone150-evidence --scale 500k
+          python3 tools/evidence_finalizer.py mark-phase --state milestone150-evidence/.ci162-phase.json --source-sha "$EXPECTED_SOURCE_SHA" --phase 500k_resume
           .m150/bin/python -m twelve_six.milestone150_entrypoint resume \
             --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" \
             --output-dir milestone150-evidence --scale 500k
+          python3 tools/evidence_finalizer.py mark-phase --state milestone150-evidence/.ci162-phase.json --source-sha "$EXPECTED_SOURCE_SHA" --phase 500k_verify
           .m150/bin/python -m twelve_six.milestone150_entrypoint verify-scale \
             --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" \
             --output-dir milestone150-evidence --scale 500k
@@ -139,12 +192,15 @@ jobs:
           EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
+          python3 tools/evidence_finalizer.py mark-phase --state milestone150-evidence/.ci162-phase.json --source-sha "$EXPECTED_SOURCE_SHA" --phase 1m_phase1
           .m150/bin/python -m twelve_six.milestone150_entrypoint phase1 \
             --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" \
             --output-dir milestone150-evidence --scale 1m
+          python3 tools/evidence_finalizer.py mark-phase --state milestone150-evidence/.ci162-phase.json --source-sha "$EXPECTED_SOURCE_SHA" --phase 1m_resume
           .m150/bin/python -m twelve_six.milestone150_entrypoint resume \
             --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" \
             --output-dir milestone150-evidence --scale 1m
+          python3 tools/evidence_finalizer.py mark-phase --state milestone150-evidence/.ci162-phase.json --source-sha "$EXPECTED_SOURCE_SHA" --phase 1m_verify
           .m150/bin/python -m twelve_six.milestone150_entrypoint verify-scale \
             --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" \
             --output-dir milestone150-evidence --scale 1m
@@ -154,9 +210,11 @@ jobs:
           EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
+          python3 tools/evidence_finalizer.py mark-phase --state milestone150-evidence/.ci162-phase.json --source-sha "$EXPECTED_SOURCE_SHA" --phase ladder_finalize
           .m150/bin/python -m twelve_six.milestone150_entrypoint finalize \
             --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" \
             --output-dir milestone150-evidence
+          python3 tools/evidence_finalizer.py mark-phase --state milestone150-evidence/.ci162-phase.json --source-sha "$EXPECTED_SOURCE_SHA" --phase ladder_validate
           .m150/bin/python -m twelve_six.milestone150_entrypoint validate \
             milestone150-evidence/ladder-report.json \
             --expected-source-sha "$EXPECTED_SOURCE_SHA"
@@ -176,52 +234,16 @@ jobs:
           }, ensure_ascii=False, indent=2, sort_keys=True))
           PY
 
-      - name: Stage only freshly verified retained checkpoints
-        run: |
-          set -euo pipefail
-          .m150/bin/python - <<'PY'
-          import json
-          import shutil
-          from pathlib import Path
-
-          evidence = Path("milestone150-evidence")
-          retained = evidence / "retained"
-          retained.mkdir(parents=True, exist_ok=True)
-          index = {"schema": "12-6.learned-base-ladder-retained-checkpoints.v1", "scales": {}}
-          for scale in ("100k", "500k", "1m"):
-              report = json.loads((evidence / scale / "report.json").read_text(encoding="utf-8"))
-              if report["fresh_verification"]["status"] != "PASS":
-                  raise SystemExit(f"{scale}: refusing retention without fresh verification PASS")
-              roles = {
-                  "best": report["checkpoints"]["best_checkpoint"],
-                  "final": report["checkpoints"]["final_checkpoint"],
-              }
-              index["scales"][scale] = {}
-              for role, directory in roles.items():
-                  source = evidence / scale / directory
-                  destination = retained / scale / role
-                  if destination.exists():
-                      shutil.rmtree(destination)
-                  shutil.copytree(source, destination)
-                  index["scales"][scale][role] = {
-                      "source_directory": directory,
-                      "checkpoint_id": report["checkpoints"][f"{role}_checkpoint_id"],
-                      "fresh_verification": "PASS",
-                  }
-          (retained / "index.json").write_text(
-              json.dumps(index, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
-              encoding="utf-8",
-          )
-          PY
-
       - name: Publish exact-head ladder evidence to PR
         if: github.event_name == 'pull_request'
         env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
+          python3 tools/evidence_finalizer.py mark-phase --state milestone150-evidence/.ci162-phase.json --source-sha "$EXPECTED_SOURCE_SHA" --phase pr_publish
           .m150/bin/python - <<'PY'
           import json
           from pathlib import Path
@@ -255,34 +277,39 @@ jobs:
           PY
           gh pr comment "$PR_NUMBER" --repo "$GH_REPO" --body-file milestone150-evidence/pr-comment.md
 
-      - name: Upload learned ladder evidence and freshly verified retained checkpoints
+      - name: Mark ladder workflow completion
+        if: success()
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          python3 tools/evidence_finalizer.py mark-phase \
+            --state milestone150-evidence/.ci162-phase.json \
+            --source-sha "$EXPECTED_SOURCE_SHA" \
+            --phase complete
+
+      - name: Finalize fail-closed ladder evidence bundle
+        id: evidence_finalizer
+        if: always()
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          PRIOR_JOB_STATUS: ${{ job.status }}
+        run: |
+          set -euo pipefail
+          python3 tools/evidence_finalizer.py finalize \
+            --workspace milestone150-evidence \
+            --artifact-dir milestone150-durable-artifact \
+            --phase-file milestone150-evidence/.ci162-phase.json \
+            --source-sha "$EXPECTED_SOURCE_SHA" \
+            --verifier-python .m150/bin/python \
+            --repo-root . \
+            --job-status "$PRIOR_JOB_STATUS" \
+            --retention-days 30
+
+      - name: Upload durable learned ladder evidence
+        if: always() && steps.evidence_finalizer.outcome == 'success'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: milestone150-learned-base-ladder-v1
-          path: |
-            milestone150-ci-preflight.json
-            milestone150-evidence/ladder-truth.json
-            milestone150-evidence/ladder-report.json
-            milestone150-evidence/corpus-manifest.json
-            milestone150-evidence/machine-prepare.json
-            milestone150-evidence/retained/
-            milestone150-evidence/100k/run-manifest.json
-            milestone150-evidence/100k/phase1.json
-            milestone150-evidence/100k/report.preverify.json
-            milestone150-evidence/100k/report.json
-            milestone150-evidence/100k/machine-*.json
-            milestone150-evidence/100k/train-curve.jsonl
-            milestone150-evidence/500k/run-manifest.json
-            milestone150-evidence/500k/phase1.json
-            milestone150-evidence/500k/report.preverify.json
-            milestone150-evidence/500k/report.json
-            milestone150-evidence/500k/machine-*.json
-            milestone150-evidence/500k/train-curve.jsonl
-            milestone150-evidence/1m/run-manifest.json
-            milestone150-evidence/1m/phase1.json
-            milestone150-evidence/1m/report.preverify.json
-            milestone150-evidence/1m/report.json
-            milestone150-evidence/1m/machine-*.json
-            milestone150-evidence/1m/train-curve.jsonl
+          path: milestone150-durable-artifact/
           if-no-files-found: error
           retention-days: 30
