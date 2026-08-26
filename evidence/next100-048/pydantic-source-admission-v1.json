@@ -1,0 +1,161 @@
+{
+  "authority": "EXTERNAL_REAL_CODE_SOURCE_TERMINAL_LOCAL_FREE",
+  "authority_identity_sha256": "98722ca45eb787d13d63c956fcd5fe8495a4ecf723f0a3abe8b4108cf6dc5462",
+  "evaluation_boundary": {
+    "active_reserved_objects_at_checked_authority": 0,
+    "eval289_head_sha": "1c870e5e02bf48891ca599b0b3f3bfe6e84425bc",
+    "selected_objects_overlap_active_reservation": false
+  },
+  "excluded_capacity": {
+    "compatibility_reexport_stubs": "excluded",
+    "docs_tests_examples": "excluded",
+    "generated_material": "SEPARATE_BUCKET_NOT_COUNTED",
+    "legacy_compatibility_subtree": "pydantic/v1/** excluded from this bounded snapshot",
+    "pydantic_core_dependency": "separate upstream source family; excluded"
+  },
+  "execution": {
+    "class": "LOCAL_FREE",
+    "model_training_executed": false,
+    "paid_compute_used": false,
+    "qualification_only": true
+  },
+  "license": {
+    "git_blob_sha1": "488c6260c10f2e88fa1fae58a63fccec8d600cd1",
+    "license_id": "MIT",
+    "path": "LICENSE",
+    "rights_basis": "Reviewed MIT grant permits dealing in the Software without restriction, including use, copy, modification, publication, distribution, sublicensing and sale. Under the project purpose-specific rights policy this exact pinned source is approved for model-training and derivative processing. Redistribution must retain the copyright and permission notices.",
+    "sha256": "a9e186f3ca16b5eef84318e7a701721351a00cb7b8ae3a4394b67b49e3529ef3",
+    "uses": {
+      "acquisition": "ALLOWED",
+      "analysis": "ALLOWED",
+      "derivatives": "ALLOWED",
+      "model_training": "ALLOWED",
+      "redistribution": "ALLOWED_WITH_MIT_NOTICE",
+      "storage": "ALLOWED"
+    }
+  },
+  "predecessor_code_authority": {
+    "data227_head_sha": "8ebdb2e132ed7bae5245e9d4c140752640ab9885",
+    "near_duplicate_policy": {
+      "reject_at_or_above_jaccard": 0.85,
+      "shingle_tokens": 5
+    },
+    "rights_policy_git_blob_sha1": "0ce5223a1cade10031899bf27348a1a65121d4c6",
+    "source_families": [
+      "github:encode/httpx",
+      "github:psf/requests"
+    ],
+    "source_family_count": 2
+  },
+  "qualification_input_commit_sha": "cda43492f5dc040d8c6d0f578541e9ec238a5b91",
+  "schema_version": "12-6.next100-048-pydantic-source-admission.v1",
+  "selected_implementation_objects": [
+    {
+      "authorship_class": "UPSTREAM_AUTHORED_IMPLEMENTATION",
+      "capacity_counted": true,
+      "generated_material": false,
+      "git_blob_sha1": "2ed62e5f3eded5d1e6b0052130e8d5f8627a60c6",
+      "normalized_sha256": "35b842cfe92ef300e060b40c062ef93afee1cb075cf0b7b0037a1434867c2554",
+      "parse_validity": "PASS_PY311_GRAMMAR",
+      "path": "pydantic/main.py",
+      "privacy_credential_scan": "PASS",
+      "raw_sha256": "35b842cfe92ef300e060b40c062ef93afee1cb075cf0b7b0037a1434867c2554",
+      "secret_scan": "PASS_DATA227_PATTERNS",
+      "size_bytes": 85334,
+      "source_family": "github:pydantic/pydantic",
+      "source_id": "code.pydantic.pydantic.main"
+    },
+    {
+      "authorship_class": "UPSTREAM_AUTHORED_IMPLEMENTATION",
+      "capacity_counted": true,
+      "generated_material": false,
+      "git_blob_sha1": "ede966fa8010c070fede69d8f048b618a1b38f17",
+      "normalized_sha256": "6bc66125f23c143e934030fbf9c58c9b5657950bdad3031d4f6132e55bd57be3",
+      "parse_validity": "PASS_PY311_GRAMMAR",
+      "path": "pydantic/fields.py",
+      "privacy_credential_scan": "PASS",
+      "raw_sha256": "6bc66125f23c143e934030fbf9c58c9b5657950bdad3031d4f6132e55bd57be3",
+      "secret_scan": "PASS_DATA227_PATTERNS",
+      "size_bytes": 82023,
+      "source_family": "github:pydantic/pydantic",
+      "source_id": "code.pydantic.pydantic.fields"
+    },
+    {
+      "authorship_class": "UPSTREAM_AUTHORED_IMPLEMENTATION",
+      "capacity_counted": true,
+      "generated_material": false,
+      "git_blob_sha1": "d962305f2c923a6046b8234a334bdca0e644b159",
+      "normalized_sha256": "4f4e60f1641ccc1b1553fdf945d2b1823222ed8ecb222a7aee9177348ed7e061",
+      "parse_validity": "PASS_PY311_GRAMMAR",
+      "path": "pydantic/type_adapter.py",
+      "privacy_credential_scan": "PASS",
+      "raw_sha256": "4f4e60f1641ccc1b1553fdf945d2b1823222ed8ecb222a7aee9177348ed7e061",
+      "secret_scan": "PASS_DATA227_PATTERNS",
+      "size_bytes": 36123,
+      "source_family": "github:pydantic/pydantic",
+      "source_id": "code.pydantic.pydantic.type_adapter"
+    },
+    {
+      "authorship_class": "UPSTREAM_AUTHORED_IMPLEMENTATION",
+      "capacity_counted": true,
+      "generated_material": false,
+      "git_blob_sha1": "558e99c1e7a09e3c894d769c96cb28e25dc537ca",
+      "normalized_sha256": "ee9fb88ef3ffffd8d9caf71d5e289d7b9a406bf26533b7c9d41824a9b8f14963",
+      "parse_validity": "PASS_PY311_GRAMMAR",
+      "path": "pydantic/functional_validators.py",
+      "privacy_credential_scan": "PASS",
+      "raw_sha256": "ee9fb88ef3ffffd8d9caf71d5e289d7b9a406bf26533b7c9d41824a9b8f14963",
+      "secret_scan": "PASS_DATA227_PATTERNS",
+      "size_bytes": 31724,
+      "source_family": "github:pydantic/pydantic",
+      "source_id": "code.pydantic.pydantic.functional_validators"
+    }
+  ],
+  "source_family_accounting": {
+    "branch_local_resulting_family_count": 3,
+    "generated_capacity_bytes": 0,
+    "generated_capacity_objects": 0,
+    "independent_new_family_count": 1,
+    "new_source_family": "github:pydantic/pydantic",
+    "predecessor_canonical_family_count": 2,
+    "selected_authored_capacity_bytes": 235204,
+    "selected_implementation_object_count": 4
+  },
+  "status": "ADMIT",
+  "terminal_decision": "ADMIT the exact four-object Pydantic v2.13.4 authored implementation snapshot for training-source registration. Generated material, pydantic/v1 compatibility code, stubs, docs/tests/examples, and pydantic-core do not inflate this family capacity.",
+  "upstream": {
+    "commit": "cf67d4b3193c3fe43ede18612ed62785eee11382",
+    "identity_rule": "Exact commit plus per-file Git blob identities are authoritative; unsigned tag is disclosed and is not substituted for blob identity.",
+    "repository": "https://github.com/pydantic/pydantic",
+    "stable_release": "v2.13.4",
+    "tag_object_sha1": "07b73712023f052c7c008c4a9c5121b4894e44ec",
+    "tag_signature_status": "UNSIGNED"
+  },
+  "verification": {
+    "byte_identity": "PASS_4_OF_4_GIT_BLOBS",
+    "exact_duplicate_sha256": [],
+    "generated_selected_bytes": 0,
+    "generated_selected_count": 0,
+    "license_byte_identity": "PASS_EXACT_GIT_BLOB",
+    "local_byte_source": "Installed pydantic 2.13.4 files and license were accepted only after reproducing the exact upstream Git blob SHA-1s and sizes. Canonical HTTPX bytes reproduced the DATA-227 blob locally; canonical Requests bytes were reconstructed from the exact GitHub connector fetch and reproduced DATA-227 blob 0466a7d347db4ed34a37db51b75fc8e80bc06055.",
+    "max_observed_jaccard": 0.07706586003024886,
+    "max_observed_pair": [
+      "code.pydantic.pydantic.main",
+      "code.pydantic.pydantic.type_adapter"
+    ],
+    "near_duplicate_comparison_scope": [
+      "code.pydantic.pydantic.main",
+      "code.pydantic.pydantic.fields",
+      "code.pydantic.pydantic.type_adapter",
+      "code.pydantic.pydantic.functional_validators",
+      "code.encode.httpx._content",
+      "code.psf.requests._internal_utils"
+    ],
+    "near_duplicate_pairs": [],
+    "near_duplicate_threshold": 0.85,
+    "parse_validity": "PASS_4_OF_4",
+    "secret_privacy": "PASS_4_OF_4",
+    "strict_utf8_identity_normalization": "PASS_4_OF_4"
+  },
+  "worker_id": "NEXT100-048-CODE-PYDANTIC"
+}
