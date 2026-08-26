@@ -31,6 +31,9 @@ _ENGINEERING_AUTHORITY_FIELDS = (
     "native_gqa_authority",
     "distributed_checkpoint_authority",
     "data_pipeline_authority",
+    "stage_data_budget_authority",
+    "training_recipe_authority",
+    "evaluation_firewall_authority",
     "accelerator_runtime_authority",
 )
 
@@ -68,8 +71,16 @@ def _validate_compute_authorization(value: str | None) -> None:
             "compute_authorization must begin with COMPUTE_AUTHORIZED: or "
             "TRAINING_AUTHORIZED:"
         )
-    if not value[len(prefix) :].strip():
+    authority_reference = value[len(prefix) :]
+    if not authority_reference:
         raise ValueError("compute_authorization must include a non-empty authority reference")
+    try:
+        _validate_engineering_authority("compute_authorization authority", authority_reference)
+    except ValueError as exc:
+        raise ValueError(
+            "compute_authorization must bind a durable github/artifact authority after "
+            "the authorization prefix"
+        ) from exc
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,6 +90,11 @@ class Scale1BDependencies:
     A gate is qualified only when its owning lane supplies a durable authority
     reference. Bare booleans and free-form strings are intentionally rejected so a
     caller cannot clear readiness without binding the decision to terminal evidence.
+
+    Data-pipeline mechanics are deliberately distinct from stage data sufficiency.
+    Likewise, a preceding-stage pass does not prove that optimizer/scheduler/precision
+    settings transfer safely to ~1B or that selection/final-test boundaries were
+    preregistered for the new campaign.
     """
 
     preceding_stage_authority: str | None = None
@@ -86,6 +102,9 @@ class Scale1BDependencies:
     native_gqa_authority: str | None = None
     distributed_checkpoint_authority: str | None = None
     data_pipeline_authority: str | None = None
+    stage_data_budget_authority: str | None = None
+    training_recipe_authority: str | None = None
+    evaluation_firewall_authority: str | None = None
     accelerator_runtime_authority: str | None = None
     compute_authorization: str | None = None
 
@@ -244,6 +263,12 @@ def assess_scale_1b_readiness(
         engineering_blockers.append("distributed_checkpoint_not_qualified")
     if deps.data_pipeline_authority is None:
         engineering_blockers.append("data_pipeline_not_qualified")
+    if deps.stage_data_budget_authority is None:
+        engineering_blockers.append("stage_data_budget_not_qualified")
+    if deps.training_recipe_authority is None:
+        engineering_blockers.append("training_recipe_not_qualified")
+    if deps.evaluation_firewall_authority is None:
+        engineering_blockers.append("evaluation_firewall_not_qualified")
     if deps.accelerator_runtime_authority is None:
         engineering_blockers.append("accelerator_runtime_not_qualified")
 
