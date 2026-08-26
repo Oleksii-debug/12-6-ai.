@@ -117,6 +117,7 @@ def _verify_text_source(spec: Mapping[str, Any], base_source: Mapping[str, Any])
         "language": base_source.get("language"),
         "modality": base_source.get("modality"),
         "license_id": profile.get("license_id"),
+        "source_manifest_sha256": raw.get("source_manifest_sha256"),
     }
     for field, value in expected.items():
         if spec.get(field) != value:
@@ -128,6 +129,10 @@ def _verify_text_source(spec: Mapping[str, Any], base_source: Mapping[str, Any])
         if not isinstance(decision, Mapping) or decision.get("status") != spec["rights"][purpose]:
             raise ExternalSnapshotRegistryV2Error(
                 f"{spec['source_id']}: DATA-229 {purpose} rights drift"
+            )
+        if purpose != "evaluation" and decision.get("authority") != spec.get("rights_authority"):
+            raise ExternalSnapshotRegistryV2Error(
+                f"{spec['source_id']}: DATA-229 {purpose} authority drift"
             )
 
 
@@ -146,7 +151,11 @@ def _purpose_rights(spec: Mapping[str, Any], eval_policy: str) -> dict[str, Any]
     result: dict[str, Any] = {}
     for purpose in PURPOSES:
         status = str(rights[purpose])
-        authority = eval_policy if purpose == "evaluation" else str(spec["producer"])
+        authority = (
+            eval_policy
+            if purpose == "evaluation"
+            else str(spec.get("rights_authority"))
+        )
         result[purpose] = {
             "status": status,
             "authority": authority,
@@ -223,6 +232,11 @@ def _source_entry(spec: Mapping[str, Any], eval_policy: str) -> dict[str, Any]:
             "path": spec.get("path"),
             "git_blob_sha1": spec.get("git_blob_sha1"),
             "source_manifest_sha256": spec.get("source_manifest_sha256"),
+        },
+        "producer_evidence_binding": {
+            "registry_identity_sha256": spec.get("producer_registry_identity_sha256"),
+            "report_identity_sha256": spec.get("producer_report_identity_sha256"),
+            "rights_policy_sha256": spec.get("producer_rights_policy_sha256"),
         },
         "license": {
             "license_id": spec["license_id"],
@@ -338,7 +352,8 @@ def build_external_snapshot_registry_v2(
         raise ExternalSnapshotRegistryV2Error("source inventory duplicate/malformed")
     eval_policy = str(inputs.get("evaluation_rights_policy"))
     sources: list[dict[str, Any]] = []
-    for spec in sorted(specs, key=lambda item: str(item["source_id"])):
+    for raw_spec in sorted(specs, key=lambda item: str(item["source_id"])):
+        spec = dict(raw_spec)
         producer = str(spec.get("producer"))
         if authorities.get(producer, {}).get("status") != "TERMINAL_SUCCESS":
             raise ExternalSnapshotRegistryV2Error(
@@ -351,9 +366,21 @@ def build_external_snapshot_registry_v2(
                     f"{spec['source_id']}: missing from DATA-229 base registry"
                 )
             _verify_text_source(spec, base_source)
+            spec["producer_registry_identity_sha256"] = base_spec["registry_identity_sha256"]
         elif producer == "DATA-227":
             if spec.get("modality") != "code":
                 raise ExternalSnapshotRegistryV2Error("DATA-227 may contribute code only")
+            if spec.get("rights_authority") != "policy://12-6/data/explicit-model-training-evidence-v1":
+                raise ExternalSnapshotRegistryV2Error("DATA-227 rights authority drift")
+            spec["producer_registry_identity_sha256"] = authorities["DATA-227"][
+                "producer_registry_identity_sha256"
+            ]
+            spec["producer_report_identity_sha256"] = authorities["DATA-227"][
+                "report_identity_sha256"
+            ]
+            spec["producer_rights_policy_sha256"] = authorities["DATA-227"][
+                "policy_sha256"
+            ]
         else:
             raise ExternalSnapshotRegistryV2Error(f"unsupported producer: {producer}")
         sources.append(_source_entry(spec, eval_policy))
