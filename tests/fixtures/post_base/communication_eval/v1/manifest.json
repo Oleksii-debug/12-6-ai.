@@ -1,0 +1,31 @@
+{
+  "case_count": 12,
+  "cases_file": "cases.jsonl",
+  "cases_sha256": "65e2d28ef4adb442d636ec286e34ce7b43b21d7d2612325d1ca96e310863be8f",
+  "category_counts": {
+    "context_handling": 3,
+    "dialogue_consistency": 2,
+    "formatting": 2,
+    "instruction_adherence": 2,
+    "unavailable_tool_results": 3
+  },
+  "claims": {
+    "broad_intelligence_claim_authorized": false,
+    "scope": "fixture_behavior_only"
+  },
+  "provenance": {
+    "foreign_model_output": false,
+    "origin": "PROJECT_AUTHORED"
+  },
+  "purpose": "post_base_communication_behavior_evaluation",
+  "schema": "12-6.post-base.communication-eval-suite.v1",
+  "separation": {
+    "base_evidence_namespace": "evidence/base",
+    "base_raw_lm_diagnostics": false,
+    "post_base_evidence_namespace": "evidence/post_base/eval354",
+    "training_eligible": false
+  },
+  "suite_id": "eval354-communication-suite-v1",
+  "suite_identity_sha256": "7a94f1c2dd9cb31a571dd8383ed1994936abc6e6003b0b53829778ae19ba2ba7",
+  "version": 1
+}
