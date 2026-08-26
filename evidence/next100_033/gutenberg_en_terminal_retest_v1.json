@@ -1,0 +1,88 @@
+{
+  "schema_version": "12-6.next100-033.gutenberg-en-terminal-retest.v1",
+  "worker_id": "NEXT100-033-DATA-EN-GUTENBERG",
+  "terminal_decision": "RETEST",
+  "decision_reason": "RIGHTS_PROVENANCE_AND_NORMALIZATION_POLICY_QUALIFIED_BUT_EXACT_HEAD_MATERIALIZATION_NOT_EXECUTED_BECAUSE_GITHUB_HOSTED_RUNNERS_REMAINED_QUEUED",
+  "local_free_only": true,
+  "candidate_authority_head_before_terminal_seal": "0f2401e20f5c188db66e13140bb1e371c75b7c75",
+  "base_authority": {
+    "pr": 404,
+    "branch": "data287/external-snapshot-registry-v2-20260826",
+    "head_sha": "b0523ccbc4b957615aac849d476cfa851be87578",
+    "registry_path": "data/registry/external_snapshots.v2.json"
+  },
+  "candidate_pr": 470,
+  "family": {
+    "family_id": "en.project-gutenberg.public-domain-books",
+    "independent_family_credit_if_admitted": 1,
+    "all_three_books_same_family": true,
+    "gitenberg_transport_is_not_independent_family": true
+  },
+  "bounded_sources": [
+    {
+      "ebook_id": 37177,
+      "title": "Ludvig Holberg, The Founder of Norwegian Literature and an Oxford Student",
+      "transport_repo": "GITenberg/Ludvig-Holberg-The-Founder-of-Norwegian-Literature-and-an-Oxford-Student_37177",
+      "transport_commit": "6ba1ee491cfba2aa56729967b48886bf71b20ac7",
+      "transport_path": "37177.txt",
+      "transport_git_blob_sha1": "cc35bab195c6d55b14568cd3da8fecfd0499f868",
+      "transport_bytes": 87742
+    },
+    {
+      "ebook_id": 37985,
+      "title": "A Literary History of the Arabs",
+      "transport_repo": "GITenberg/A-Literary-History-of-the-Arabs_37985",
+      "transport_commit": "b8477090720ab89858bfed937f799760cb4f23e3",
+      "transport_path": "37985-0.txt",
+      "transport_git_blob_sha1": "cd62e73adf6d502823c4b59de304212cc3d63361",
+      "transport_bytes": 1203657
+    },
+    {
+      "ebook_id": 40652,
+      "title": "A Guide to the Scientific Knowledge of Things Familiar",
+      "transport_repo": "GITenberg/A-Guide-to-the-Scientific-Knowledge-of-Things-Familiar_40652",
+      "transport_commit": "4d69c9e1daad0951f2baecbae2709e72d8d7d53f",
+      "transport_path": "40652-8.txt",
+      "transport_git_blob_sha1": "52c517db02e5e5a7f5bfef806cf98dd8c92e06e1",
+      "transport_bytes": 482371
+    }
+  ],
+  "qualified_preconditions": {
+    "source_specific_project_gutenberg_catalog_status": "PASS_PUBLIC_DOMAIN_IN_USA_FOR_ALL_THREE",
+    "permission_only_or_copyrighted_pg_items": "EXCLUDED",
+    "training_rights": "QUALIFIED_FOR_EXACT_RIGHTS_CLEARED_NORMALIZED_BODIES_SUBJECT_TO_MACHINE_GATES",
+    "redistribution": "RIGHTS_CLEARED_JURISDICTIONS_ONLY",
+    "worldwide_public_domain": "NOT_CLAIMED",
+    "project_gutenberg_trademark": "NO_DOWNSTREAM_BRANDING_RIGHT_ASSERTED; PG_ENVELOPE_REMOVED_BY_PREREGISTERED_BOUNDARY_RULE",
+    "evaluation_use": "NOT_AUTHORIZED",
+    "representativeness": "NOT_CLAIMED",
+    "normalizer_id": "NEXT100_033_PG_BODY_NFC_LF_V1",
+    "normalization_policy_preregistered": true
+  },
+  "unresolved_machine_gates": [
+    "exact raw SHA-256 for each pinned transport object",
+    "exact normalized SHA-256 for each body",
+    "two-build deterministic byte equality",
+    "English and quality thresholds",
+    "exact normalized dedup against live DATA-287 registry",
+    "pairwise 8-token shingle near-dedup threshold",
+    "exact candidate ebook-ID scan against evaluation/reserved/selection/validation paths",
+    "terminal corpus identity SHA-256"
+  ],
+  "runner_evidence": {
+    "pull_request_workflow_run_id": 32998448493,
+    "push_workflow_run_id": 32998419287,
+    "workflow_name": "NEXT100-033 Gutenberg EN qualification",
+    "observed_state_before_terminal_seal": "queued",
+    "interpretation": "Execution availability failure only; not a rights rejection and not an admission."
+  },
+  "retest_condition": "Run tools/qualify_next100_033_gutenberg_en.py on the exact current head using the dedicated LOCAL_FREE workflow; require successful immutable transport checks, quality, dedup, evaluation firewall, two-build identity, then commit the generated ADMIT report and require a fresh exact-head report diff to pass.",
+  "forbidden_inferences": [
+    "Do not count this candidate in training capacity while terminal_decision is RETEST.",
+    "Do not count more than one independent family if later admitted.",
+    "Do not treat GITenberg as a second family.",
+    "Do not use these works for evaluation under this authority.",
+    "Do not infer that all Project Gutenberg works are rights-clear for training.",
+    "Do not infer universal worldwide public-domain status."
+  ]
+}

@@ -1,0 +1,69 @@
+name: NEXT100-033 Gutenberg EN qualification
+
+on:
+  push:
+    branches:
+      - next100/033-data-en-gutenberg-20260826
+    paths:
+      - "configs/data/next100_033_gutenberg_en_v1.json"
+      - "data/external/rights-evidence/next100_033/**"
+      - "tools/qualify_next100_033_gutenberg_en.py"
+      - ".github/workflows/next100_033_gutenberg_en.yml"
+      - "docs/data/NEXT100_033_GUTENBERG_EN_SOURCE_QUALIFICATION_V1.md"
+      - "evidence/next100_033/**"
+  pull_request:
+    paths:
+      - "configs/data/next100_033_gutenberg_en_v1.json"
+      - "data/external/rights-evidence/next100_033/**"
+      - "tools/qualify_next100_033_gutenberg_en.py"
+      - ".github/workflows/next100_033_gutenberg_en.yml"
+      - "docs/data/NEXT100_033_GUTENBERG_EN_SOURCE_QUALIFICATION_V1.md"
+      - "evidence/next100_033/**"
+
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@v4
+
+      - name: Syntax check
+        run: python3 -m py_compile tools/qualify_next100_033_gutenberg_en.py
+
+      - name: Materialize bounded corpus A
+        run: |
+          python3 tools/qualify_next100_033_gutenberg_en.py \
+            --config configs/data/next100_033_gutenberg_en_v1.json \
+            --out /tmp/next100-033-a
+
+      - name: Materialize bounded corpus B
+        run: |
+          python3 tools/qualify_next100_033_gutenberg_en.py \
+            --config configs/data/next100_033_gutenberg_en_v1.json \
+            --out /tmp/next100-033-b
+
+      - name: Prove deterministic byte identity
+        run: diff -r /tmp/next100-033-a /tmp/next100-033-b
+
+      - name: Verify committed terminal report when present
+        run: |
+          if [ -f evidence/next100_033/gutenberg_en_terminal_evidence_v1.json ]; then
+            diff -u evidence/next100_033/gutenberg_en_terminal_evidence_v1.json /tmp/next100-033-a/report.json
+          else
+            echo "No committed terminal report yet; qualification report will be retained as workflow evidence."
+          fi
+
+      - name: Print terminal report
+        run: cat /tmp/next100-033-a/report.json
+
+      - name: Upload immutable realization evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: next100-033-gutenberg-en-terminal-evidence
+          path: /tmp/next100-033-a
+          if-no-files-found: error
+          retention-days: 90
