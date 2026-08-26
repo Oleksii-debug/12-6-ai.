@@ -13,6 +13,7 @@ from tools.normalize_d03_rada_bulk_html import (
     NormalizationError,
     materialize_normalized_records,
     normalize_html_bytes,
+    normalize_html_bytes_with_encoding,
 )
 from tools.probe_d03_rada_bulk_source import inventory_archive
 
@@ -109,6 +110,10 @@ def test_production_contract_binds_hardened_probe_authority() -> None:
         parent["probe_config_identity_sha256"]
         == "c2f198120cae00ba247c4eaad36d2a357770a47c7fa9a7608cc5ec182971b82b"
     )
+    assert CONFIG["normalization"]["decode"] == (
+        "STRICT_UTF8_THEN_WINDOWS_1251_FALLBACK"
+    )
+    assert CONFIG["normalization"]["legacy_fallback_encoding"] == "windows-1251"
 
 
 def test_visible_text_extraction_is_nfkc_and_hides_noncontent() -> None:
@@ -123,6 +128,13 @@ def test_visible_text_extraction_is_nfkc_and_hides_noncontent() -> None:
     assert "hidden title" not in text
     assert "secret" not in text
     assert "display" not in text
+
+
+def test_windows_1251_legacy_html_falls_back_deterministically() -> None:
+    html = "<html><body><p>Старий закон України</p></body></html>".encode("cp1251")
+    text, source_encoding = normalize_html_bytes_with_encoding(html, CONFIG)
+    assert text == "Старий закон України"
+    assert source_encoding == "windows-1251"
 
 
 def test_self_closing_hidden_and_block_tags_do_not_corrupt_parser_state() -> None:
@@ -147,6 +159,7 @@ def test_two_clean_materializations_are_byte_identical_and_zero_credit() -> None
     assert jsonl_a == jsonl_b
     assert manifest_a == manifest_b
     assert manifest_a["normalization"]["record_count"] == 2
+    assert manifest_a["normalization"]["source_encoding_counts"] == {"utf-8": 2}
     assert manifest_a["training_authorized_bytes"] == 0
     assert manifest_a["normalized_capacity_credited"] == 0
     assert manifest_a["tokenizer_fit_authorized"] is False
@@ -160,6 +173,30 @@ def test_two_clean_materializations_are_byte_identical_and_zero_credit() -> None
         "ua.rada.open-data.laws-texts.d2",
     ]
     assert rows[0]["text"] == "Перший\nТекст акта"
+    assert all(row["source_encoding"] == "utf-8" for row in rows)
+
+
+def test_mixed_utf8_and_windows_1251_archive_records_decode_authority() -> None:
+    archive = _archive(
+        {
+            "d1.htm": "<p>Новий акт</p>".encode("utf-8"),
+            "d2.htm": "<p>Старий акт</p>".encode("cp1251"),
+        }
+    )
+    report = _strict_probe(archive, 2)
+    jsonl, manifest = _materialize(archive, report)
+    rows = [json.loads(line) for line in jsonl.decode().splitlines()]
+
+    assert [row["text"] for row in rows] == ["Новий акт", "Старий акт"]
+    assert [row["source_encoding"] for row in rows] == [
+        "utf-8",
+        "windows-1251",
+    ]
+    assert manifest["normalization"]["source_encoding_counts"] == {
+        "utf-8": 1,
+        "windows-1251": 1,
+    }
+    assert manifest["training_authorized_bytes"] == 0
 
 
 def test_unpinned_observation_mode_is_rejected() -> None:
@@ -187,7 +224,10 @@ def test_archive_bytes_must_match_exact_probe() -> None:
     archive = _archive({"d1.htm": b"<p>one</p>"})
     report = _strict_probe(archive, 1)
     tampered = _archive({"d1.htm": b"<p>changed</p>"})
-    with pytest.raises(NormalizationError, match="archive byte count does not match probe|archive SHA-256 does not match probe"):
+    with pytest.raises(
+        NormalizationError,
+        match="archive byte count does not match probe|archive SHA-256 does not match probe",
+    ):
         _materialize(tampered, report)
 
 
@@ -196,7 +236,7 @@ def test_entry_hash_must_match_probe_even_if_report_is_mutated() -> None:
     report = _strict_probe(archive, 1)
     broken = copy.deepcopy(report)
     broken["inventory"]["entries"][0]["raw_sha256"] = "0" * 64
-    with pytest.raises(NormalizationError, match="raw SHA-256 drift"):
+    with pytest.raises(NormalizationError, match="probe entry-identity SHA-256 drift"):
         _materialize(archive, broken)
 
 
@@ -206,15 +246,32 @@ def test_probe_cannot_hide_a_canonical_archive_entry() -> None:
     broken = copy.deepcopy(report)
     broken["inventory"]["entries"] = broken["inventory"]["entries"][:1]
     broken["inventory"]["canonical_entry_count"] = 1
-    with pytest.raises(NormalizationError, match="absent from probe"):
+    with pytest.raises(NormalizationError, match="probe entry-identity SHA-256 drift"):
         _materialize(archive, broken)
 
 
-def test_invalid_utf8_fails_closed_at_normalization() -> None:
-    archive = _archive({"d1.htm": b"<p>bad:\xff</p>"})
+def test_bytes_invalid_in_utf8_and_cp1251_fail_closed_at_normalization() -> None:
+    archive = _archive({"d1.htm": b"<p>bad:\x98</p>"})
     report = _strict_probe(archive, 1)
-    with pytest.raises(NormalizationError, match="not strict UTF-8"):
+    with pytest.raises(
+        NormalizationError,
+        match="neither strict UTF-8 nor windows-1251",
+    ):
         _materialize(archive, report)
+
+
+def test_decode_policy_mutation_is_rejected() -> None:
+    archive = _archive({"d1.htm": b"<p>one</p>"})
+    report = _strict_probe(archive, 1)
+    config = _normalizer_config_for_report(report)
+    config["normalization"]["decode"] = "BEST_EFFORT"
+    with pytest.raises(NormalizationError, match="decode policy drift"):
+        materialize_normalized_records(
+            archive,
+            report,
+            config,
+            probe_report_sha256=_report_sha(report),
+        )
 
 
 def test_empty_visible_document_is_retained_for_later_quality_rejection() -> None:
