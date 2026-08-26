@@ -1,0 +1,28 @@
+name: TRAIN-325 10M Clipping Final V3
+
+on:
+  pull_request:
+    paths:
+      - "evidence/train325/**"
+      - "docs/TRAIN325_10M_CLIPPING_FINAL_V3.md"
+      - "tools/validate_train325_clipping_final_v3.py"
+      - ".github/workflows/train325-10m-clipping-final-v3.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  final-authority:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Set CPython 3.11.16
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+      - name: Validate frozen TRAIN-325 authority
+        run: |
+          python tools/validate_train325_clipping_final_v3.py
