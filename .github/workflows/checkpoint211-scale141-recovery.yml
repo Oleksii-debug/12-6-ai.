@@ -1,0 +1,143 @@
+name: CHECKPOINT-211 SCALE-141 Recovery Immutability
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/checkpoint211-scale141-recovery.yml"
+      - ".github/actions/execution-bootstrap/**"
+      - "src/twelve_six/scale141_10m_runtime_v3.py"
+      - "src/twelve_six/scale141_recovery.py"
+      - "tests/test_scale141_recovery.py"
+      - "tools/run_checkpoint211_recovery_proof.py"
+      - "tools/execution_bootstrap.py"
+      - "requirements/execution/**"
+      - "configs/launch/scale141-10m.json"
+      - "src/twelve_six/launch_gate.py"
+      - "src/twelve_six/checkpoint/**"
+      - "src/twelve_six/training/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checkpoint211-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  bounded-recovery-proof:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      PYTHONPATH: ${{ github.workspace }}/src
+
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Set exact CPython 3.11.16
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact source
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+
+      - name: Universal exact execution bootstrap
+        uses: ./.github/actions/execution-bootstrap
+        with:
+          capabilities: runtime,tests,lint
+          venv: .scale141
+          manifest: checkpoint211-evidence/environment.json
+          command: python -m pytest tests/test_scale141_recovery.py
+
+      - name: Compile lint and focused contracts
+        run: |
+          set -euo pipefail
+          .scale141/bin/python -m compileall -q src/twelve_six tools/run_checkpoint211_recovery_proof.py
+          .scale141/bin/ruff check \
+            src/twelve_six/scale141_recovery.py \
+            src/twelve_six/scale141_10m_runtime_v3.py \
+            tests/test_scale141_recovery.py \
+            tools/run_checkpoint211_recovery_proof.py
+          .scale141/bin/python -m pytest -q \
+            tests/test_scale141_recovery.py \
+            tests/test_scale141_10m_runtime_v3.py \
+            tests/test_checkpointing.py
+
+      - name: Materialize deterministic DATA-25 identity for launch gate
+        run: |
+          set -euo pipefail
+          .scale141/bin/python - <<'PY'
+          from pathlib import Path
+          from twelve_six.milestone100_first_learned import EXPECTED_CORPUS_ID, _build_corpus
+
+          repo = Path(".").resolve()
+          out = Path("scale141-evidence").resolve()
+          out.mkdir(parents=True, exist_ok=True)
+          manifest = _build_corpus(repo, out)
+          if manifest["corpus_identity_sha256"] != EXPECTED_CORPUS_ID:
+              raise SystemExit("DATA-25 corpus identity mismatch during CHECKPOINT-211 gate")
+          print(manifest["corpus_identity_sha256"])
+          PY
+
+      - name: Create and verify existing SCALE-141 launch envelope
+        run: |
+          set -euo pipefail
+          .scale141/bin/python -m twelve_six.launch_gate create \
+            --repo-root . \
+            --request configs/launch/scale141-10m.json \
+            --output checkpoint211-evidence/launch-10m.json
+          .scale141/bin/python -m twelve_six.launch_gate verify \
+            --repo-root . \
+            --request configs/launch/scale141-10m.json \
+            --envelope checkpoint211-evidence/launch-10m.json
+
+      - name: Execute bounded immutable-generation recovery proof
+        run: |
+          set -euo pipefail
+          .scale141/bin/python tools/run_checkpoint211_recovery_proof.py \
+            --source-sha "$EXPECTED_SOURCE_SHA" \
+            --environment-manifest checkpoint211-evidence/environment.json \
+            --output checkpoint211-evidence
+
+      - name: Validate proof is bounded and fail-closed
+        run: |
+          set -euo pipefail
+          .scale141/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+          from twelve_six.checkpoint import hash_json
+
+          path = Path("checkpoint211-evidence/recovery-proof.json")
+          report = json.loads(path.read_text(encoding="utf-8"))
+          supplied = report.pop("identity_sha256")
+          assert supplied == hash_json(report)
+          assert report["historical_failure"]["reproduced"] is True
+          assert report["generation_proof"]["older_generation_bytes_unchanged"] is True
+          assert report["generation_proof"]["interrupted_generation"]["pointer_remained_generation"] == 2
+          assert report["generation_proof"]["incomplete_newer_generation"]["pointer_fallback_generation"] == 2
+          assert report["fresh_load"]["optimizer_state_restored"] is True
+          assert report["fresh_load"]["rng_restored"] is True
+          assert report["corrupt_current_generation_fail_closed"] is True
+          assert report["cleanup"]["retained_generation_count"] == 1
+          assert report["full_10m_retraining_performed"] is False
+          assert report["paid_compute"] is False
+          print(supplied)
+          PY
+
+      - name: Upload exact recovery evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: checkpoint211-scale141-recovery
+          if-no-files-found: error
+          path: |
+            checkpoint211-evidence/environment.json
+            checkpoint211-evidence/launch-10m.json
+            checkpoint211-evidence/recovery-proof.json
