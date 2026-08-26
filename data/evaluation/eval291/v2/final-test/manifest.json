@@ -6,17 +6,12 @@
   "outcomes_exposed": false,
   "builder_may_resolve_payload": false,
   "selection_procedure_may_read_payload": false,
-  "members": [
-    {
-      "membership_id": "pytest-capture-doc:5de89bc0e3fbd1a3",
-      "source_family": "github:pytest-dev/pytest",
-      "source_revision": "28549a5f6b82bc916bb2ec5cb9fbfffe9b79fc66",
-      "source_path": "doc/en/how-to/capture-stdout-stderr.rst",
-      "git_blob_sha1": "5de89bc0e3fbd1a35f5805a06d89c2b3c17eb937",
-      "license_id": "MIT",
-      "payload_present": false,
-      "outcomes_read": false
-    }
-  ],
-  "retrieval_policy": "A separately authorized final-test executor may resolve the exact upstream blob after model/selection lock; EVAL-291 V2 builder and selection code may not."
+  "members": [],
+  "v2_action": "NO_FINAL_TEST_MEMBER_ADDED",
+  "rejected_candidate": {
+    "membership_id": "pytest-capture-doc:5de89bc0e3fbd1a3",
+    "terminal_member": false,
+    "reason": "FAIL_CLOSED_AFTER_BUILDER_RIGHTS_VERIFICATION_RESOLVED_SOURCE_PAYLOAD"
+  },
+  "retrieval_policy": "EVAL-291 V2 does not add or expose a final-test payload. Any future final-test object requires a separate blind reservation and executor authority."
 }
