@@ -68,7 +68,10 @@
   "current_registry_binding": {
     "authority": "DATA-287-EXTERNAL-SNAPSHOT-REGISTRY-V2",
     "producer_head": "b0523ccbc4b957615aac849d476cfa851be87578",
-    "registry_identity_sha256": "50f68b1cee3b1dc5335b8655e0df8d130be22495f9237fefca04b93b30fba4cb",
+    "registry_path": "data/registry/external_snapshots.v2.json",
+    "registry_identity_sha256": "917e9bc31b2fa040d25e807ae3c01aa2cce32420752a891caacfb6c830e6632c",
+    "source_count": 5,
+    "independent_source_family_count": 4,
     "existing_raw_sha256": [
       "21582c7f0e4ad39f2b0ed97bbc2c082d275e898b7a63c28e6d9badb8ee0f7860",
       "7ac53dfb4bf6f73f178560e09f33160d0250c69fb679802f3254dc0eb4c9f509",
@@ -88,6 +91,21 @@
         "raw_sha256": "4c7d8d132c9898fc7d715e473f3ac74785ddc4ab96d2c9240f87835dc6d981ff"
       }
     ]
+  },
+  "family_lineage_concurrency": {
+    "canonical_upstream_family_id": "github:python/cpython",
+    "bound_registry_contains_cpython": false,
+    "bound_registry_family_credit_if_admitted": 1,
+    "observed_sibling_candidate": {
+      "worker_id": "NEXT100-037-DATA-EN-PYTHON-DOCS",
+      "pull_request": 467,
+      "head": "5a6a495a24bce449334cbc5126d0114f61a9f57c",
+      "source_family_label": "python.cpython.documentation",
+      "authority_identity_sha256": "46a00dc70db690ae2b3c4495a75283e7e752bdccb1047d4318c2ebadfa392f0d",
+      "terminal_state_at_review": "NONTERMINAL_WORKFLOW_QUEUED"
+    },
+    "composition_rule": "CPython code and CPython documentation are modality partitions of the same canonical upstream repository family for independent-family accounting. If NEXT100-037 or another CPython sibling becomes terminal before composition, this code authority adds zero additional independent-family credit even though its exact code objects remain separately admitted.",
+    "additional_family_credit_if_sibling_cpython_terminal": 0
   },
   "evaluation_boundary": {
     "eval233_head": "b5512b4648cb09dd052b08884dc53f291e1ce935",
