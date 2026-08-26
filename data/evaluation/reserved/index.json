@@ -1,0 +1,14 @@
+{
+  "entries": [
+    {
+      "path": "data/evaluation/reserved/eval133_en_raw_v1.reservation.json",
+      "reservation_id": "eval133-en-raw-v1-reservation",
+      "reservation_sha256": "850e0c34fd6ab35d0829b3f78ff5e81fbcb8c1ee900f3e7f1b967ea23a8f2e40",
+      "suite_id": "eval133-en-raw-v1",
+      "suite_sha256": "f9e713ff336e6189f7aa0ddbb21303431ab2041b6700ed38243eaf65865805cb"
+    }
+  ],
+  "registry_sha256": "7c7ee6d7513b84eff5a5d6e16fcbd66cf290cc7cafc228ced81b3449fe87454f",
+  "registry_state": "ACTIVE_RESERVED_BEFORE_FUTURE_CORPUS_BUILDS",
+  "schema_version": "12-6.reserved-evaluation-index.v1"
+}

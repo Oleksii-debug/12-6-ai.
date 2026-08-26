@@ -1,0 +1,205 @@
+name: RECOVER-176 EVAL-133 English on M150 ladder
+
+on:
+  pull_request:
+    branches:
+      - milestone150/learned-base-ladder-v1-20260826
+  workflow_dispatch:
+
+concurrency:
+  group: recover176-eval133-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: write
+
+jobs:
+  eval133-m150-ladder:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      PYTHONPATH: src
+      OMP_NUM_THREADS: "2"
+      MKL_NUM_THREADS: "2"
+      M150_SOURCE_SHA: "5838cd16869dcfcf762368d8673eddf52d51b7e3"
+      M150_RUN_ID: "32937411703"
+      M150_ARTIFACT_ID: "9595677772"
+      M150_ARTIFACT_DIGEST: "sha256:c00b7e9006320f8916c739a3311e8cc47ad0d0b16957f8ebd7d19233fd9f1c71"
+      M150_ARTIFACT_NAME: milestone150-learned-base-ladder-v1
+    steps:
+      - name: Checkout exact RECOVER-176 head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up exact Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact evaluator source and frozen EVAL-133 blobs
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+          test "$(git rev-parse HEAD:data/evaluation/eval133_en_raw_v1.jsonl)" = "49bb7fc41b56f70063c4819e3ab4eaefbae333a9"
+          test "$(git rev-parse HEAD:data/evaluation/reserved/eval133_en_raw_v1.reservation.json)" = "0408b1287b2ee03fe2b8461f46dd571dc1b798f4"
+          test "$(git rev-parse HEAD:data/evaluation/reserved/index.json)" = "f6542f1675f48b5675df940b791770dbe37e2e64"
+          test "$(git rev-parse HEAD:src/twelve_six/cloze.py)" = "a5cdc860ece213242ddedaf17ea8d8b111e7e843"
+          test "$(git rev-parse HEAD:src/twelve_six/en_raw_diagnostic.py)" = "60bba5e50acca81e99ef498b344acd727f4862ec"
+          test "$(git rev-parse HEAD:src/twelve_six/eval_reservations.py)" = "b6336fe40154559ca283175cba3f321454952bdc"
+          test "$(git rev-parse HEAD:tests/test_en_raw_diagnostic.py)" = "32d4ecdc25fa63182938c1a98543d03d7d533979"
+
+      - name: Universal hash-locked execution bootstrap
+        run: |
+          set -euo pipefail
+          python -m venv .recover176
+          .recover176/bin/python -m pip install \
+            --disable-pip-version-check --no-deps --require-hashes \
+            -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .recover176/bin/python -m pip install \
+            --disable-pip-version-check --no-deps --require-hashes \
+            -r requirements/locks/linux-x86_64/runtime.lock.txt
+          .recover176/bin/python -m pip install \
+            --disable-pip-version-check --no-deps --require-hashes \
+            -r requirements/locks/linux-x86_64/dev.lock.txt
+          .recover176/bin/python -m pip check
+
+      - name: Compile and run frozen suite plus recovery regressions
+        run: |
+          set -euo pipefail
+          .recover176/bin/python -m compileall -q \
+            src/twelve_six/en_raw_diagnostic.py \
+            src/twelve_six/recover176_eval133_ladder.py
+          .recover176/bin/python -m pytest -q \
+            tests/test_en_raw_diagnostic.py \
+            tests/test_recover176_eval133_ladder.py \
+            tests/test_milestone150_learned_base_ladder.py
+
+      - name: Require frozen M150 evidence incumbent
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          read -r status conclusion head_sha < <(
+            gh api "repos/$GH_REPO/actions/runs/$M150_RUN_ID" \
+              --jq '[.status, (.conclusion // ""), .head_sha] | @tsv'
+          )
+          test "$status" = "completed"
+          test "$conclusion" = "success"
+          test "$head_sha" = "$M150_SOURCE_SHA"
+
+      - name: Download exact M150 retained artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          artifact_id=$(gh api "repos/$GH_REPO/actions/runs/$M150_RUN_ID/artifacts" \
+            --jq ".artifacts[] | select(.name == \"$M150_ARTIFACT_NAME\") | .id")
+          artifact_digest=$(gh api "repos/$GH_REPO/actions/runs/$M150_RUN_ID/artifacts" \
+            --jq ".artifacts[] | select(.name == \"$M150_ARTIFACT_NAME\") | (.digest // \"\")")
+          test "$artifact_id" = "$M150_ARTIFACT_ID"
+          test "$artifact_digest" = "$M150_ARTIFACT_DIGEST"
+          printf '%s\n' "$artifact_id" > .m150-artifact-id
+          printf '%s\n' "$artifact_digest" > .m150-artifact-digest
+          gh run download "$M150_RUN_ID" --repo "$GH_REPO" \
+            --name "$M150_ARTIFACT_NAME" --dir producer-artifact
+
+      - name: Verify D06 exclusion and evaluate random and learned checkpoints
+        run: |
+          set -euo pipefail
+          .recover176/bin/python -m twelve_six.recover176_eval133_ladder run \
+            --repo-root . \
+            --producer-dir producer-artifact \
+            --producer-sha "$M150_SOURCE_SHA" \
+            --producer-run-id "$M150_RUN_ID" \
+            --producer-artifact-id "$(cat .m150-artifact-id)" \
+            --producer-artifact-digest "$(cat .m150-artifact-digest)" \
+            --output recover176-evidence/learned-base-ladder-v1-eval133.json \
+            | tee recover176-evidence-summary.json
+
+      - name: Validate machine report on exact evaluator head
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          .recover176/bin/python -m twelve_six.recover176_eval133_ladder validate \
+            recover176-evidence/learned-base-ladder-v1-eval133.json \
+            --expected-evaluator-sha "$EXPECTED_SOURCE_SHA"
+          .recover176/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+          r = json.loads(Path("recover176-evidence/learned-base-ladder-v1-eval133.json").read_text())
+          compact = {
+              "producer_sha": r["producer"]["git_sha"],
+              "producer_run_id": r["producer"]["workflow_run_id"],
+              "suite_sha256": r["eval133"]["identity"]["suite_sha256"],
+              "d06_exclusion": r["eval133"]["d06_reservation_and_exclusion"]["status"],
+              "learned_vs_random": r["eval133"]["learned_vs_random"],
+              "scale_trend": r["eval133"]["learned_scale_trend"],
+              "ten_million": r["ten_million"],
+              "report_sha256": r["report_sha256"],
+          }
+          print(json.dumps(compact, indent=2, sort_keys=True))
+          PY
+
+      - name: Publish exact-head RECOVER-176 evidence to PR
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          .recover176/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+          r = json.loads(Path("recover176-evidence/learned-base-ladder-v1-eval133.json").read_text())
+          e = r["eval133"]
+          lines = [
+              "### EVAL-216 / RECOVER-176 terminal English raw-LM evidence",
+              "",
+              f"- producer: `{r['producer']['git_sha']}` / run `{r['producer']['workflow_run_id']}` / artifact `{r['producer']['artifact_id']}`",
+              f"- M150 ladder: `{r['producer']['ladder_report_sha256']}`",
+              f"- frozen EVAL-133: `{e['identity']['suite_sha256']}` / reservation `{e['identity']['reservation_sha256']}`",
+              f"- D06 reservation/exclusion: `{e['d06_reservation_and_exclusion']['status']}`",
+              f"- 10M: `{r['ten_million']['status']}`",
+              f"- report: `{r['report_sha256']}`",
+              "",
+              "| scale | random acc | learned acc | learned raw margin | learned byte margin | learned preferred BPB |",
+              "|---|---:|---:|---:|---:|---:|",
+          ]
+          for scale in ("100k", "500k", "1m"):
+              random = e["evaluations"][f"{scale}_random_init"]["metrics"]
+              learned = e["evaluations"][f"{scale}_learned_best"]["metrics"]
+              lines.append(
+                  f"| {scale} | {random['accuracy']:.6f} | {learned['accuracy']:.6f} | "
+                  f"{learned['mean_log_likelihood_margin']:.6f} | "
+                  f"{learned['mean_normalized_margin_nats_per_utf8_byte']:.9f} | "
+                  f"{learned['completion_bpb']['preferred_conditional_bpb']:.6f} |"
+              )
+          lines += [
+              "",
+              "Frozen EVAL-133 examples and scoring rules are unchanged. The repaired defect was the RECOVER-176 consumer reading `model.model_spec_sha256`; the M150 scale-report contract is `model.spec_sha256`. Random-init states are deterministically reconstructed and hash-matched to producer phase1; learned states are the exact retained best checkpoints. Every scoring pass proves model/Trainer non-mutation and optimized-token delta zero.",
+          ]
+          Path("recover176-evidence/pr-comment.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+          PY
+          gh pr comment "$PR_NUMBER" --repo "$GH_REPO" --body-file recover176-evidence/pr-comment.md
+
+      - name: Upload RECOVER-176 machine evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: recover176-eval133-en-learned-base-ladder-v2
+          path: |
+            recover176-evidence/learned-base-ladder-v1-eval133.json
+            recover176-evidence-summary.json
+            recover176-evidence/pr-comment.md
+          if-no-files-found: error
+          retention-days: 30
