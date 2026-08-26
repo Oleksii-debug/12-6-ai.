@@ -1,18 +1,13 @@
-"""DATA-298 cross-source deduplication and conservative capacity accounting.
-
-This module audits already-declared source objects.  It does not grant rights,
-admit sources, or replace the DATA-230 corpus authority.  Matching thresholds and
-normalization semantics are inherited from DATA-232 so capacity accounting cannot
-silently use a weaker duplicate definition.
-"""
+"""DATA-298 cross-source deduplication and conservative capacity accounting."""
 from __future__ import annotations
 
 import hashlib
 import json
 import re
 from collections import defaultdict
+from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any
 from urllib.request import Request, urlopen
 
 from twelve_six.data._data232_decontamination_matching import (
@@ -45,7 +40,8 @@ class CapacityAuditError(RuntimeError):
 
 
 def _canonical_bytes(value: Any) -> bytes:
-    return (json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8")
+    rendered = json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":"))
+    return f"{rendered}\n".encode()
 
 
 def _sha256(payload: bytes) -> str:
@@ -62,7 +58,10 @@ def _shingles(tokens: Sequence[str], width: int) -> frozenset[str]:
         return frozenset()
     if len(tokens) < width:
         return frozenset({"\x1f".join(tokens)})
-    return frozenset("\x1f".join(tokens[i : i + width]) for i in range(len(tokens) - width + 1))
+    return frozenset(
+        "\x1f".join(tokens[index : index + width])
+        for index in range(len(tokens) - width + 1)
+    )
 
 
 def _jaccard(left: frozenset[str], right: frozenset[str]) -> float:
@@ -81,27 +80,27 @@ def _validate_inventory(inventory: Mapping[str, Any]) -> list[dict[str, Any]]:
     rows = inventory.get("sources")
     if not isinstance(rows, list) or not rows:
         raise CapacityAuditError("inventory requires sources")
+    allowed_status = set().union(*STATUS_SCOPES.values())
     seen_ids: set[str] = set()
     result: list[dict[str, Any]] = []
-    allowed_status = set().union(*STATUS_SCOPES.values())
     for raw in rows:
         if not isinstance(raw, Mapping):
             raise CapacityAuditError("source entry must be an object")
         row = dict(raw)
-        required_strings = (
+        for key in (
             "source_id",
             "source_family",
             "modality",
             "evidence_status",
             "acquisition_url",
             "origin_key",
-        )
-        for key in required_strings:
+        ):
             if not isinstance(row.get(key), str) or not row[key]:
                 raise CapacityAuditError(f"source missing {key}")
-        if row["source_id"] in seen_ids:
-            raise CapacityAuditError(f"duplicate source_id: {row['source_id']}")
-        seen_ids.add(row["source_id"])
+        source_id = row["source_id"]
+        if source_id in seen_ids:
+            raise CapacityAuditError(f"duplicate source_id: {source_id}")
+        seen_ids.add(source_id)
         if row["evidence_status"] not in allowed_status:
             raise CapacityAuditError(f"unsupported evidence_status: {row['evidence_status']}")
         if row["modality"] not in {"en", "uk", "ua", "text", "code"}:
@@ -138,9 +137,7 @@ def fetch_exact_source(url: str) -> bytes:
 
 def _verify_payload(row: Mapping[str, Any], payload: bytes) -> None:
     if len(payload) != row["expected_raw_bytes"]:
-        raise CapacityAuditError(
-            f"{row['source_id']}: raw size changed: {len(payload)} != {row['expected_raw_bytes']}"
-        )
+        raise CapacityAuditError(f"{row['source_id']}: raw size changed")
     expected_sha = row.get("expected_raw_sha256")
     if expected_sha is not None and _sha256(payload) != expected_sha:
         raise CapacityAuditError(f"{row['source_id']}: raw SHA-256 mismatch")
@@ -152,43 +149,44 @@ def _verify_payload(row: Mapping[str, Any], payload: bytes) -> None:
 def _fingerprint(row: Mapping[str, Any], payload: bytes) -> dict[str, Any]:
     _verify_payload(row, payload)
     try:
-        text = payload.decode("utf-8", errors="strict")
+        text = payload.decode(errors="strict")
     except UnicodeDecodeError as exc:
         raise CapacityAuditError(f"{row['source_id']}: source is not strict UTF-8") from exc
     modality = str(row["modality"])
     normalized = normalize_for_contamination(text, modality)
     tokens = tuple(TOKEN_RE.findall(normalized))
     is_code = modality == "code"
-    width = int(DEFAULT_THRESHOLDS["code_shingle_tokens"] if is_code else DEFAULT_THRESHOLDS["natural_shingle_tokens"])
+    width_key = "code_shingle_tokens" if is_code else "natural_shingle_tokens"
     skeleton = code_skeleton_tokens(text) if is_code else ()
+    normalized_bytes = normalized.encode()
     return {
         "row": dict(row),
         "text": text,
         "raw_sha256": _sha256(payload),
         "raw_bytes": len(payload),
-        "normalized_sha256": _sha256(normalized.encode("utf-8")),
-        "normalized_utf8_bytes": len(normalized.encode("utf-8")),
+        "normalized_sha256": _sha256(normalized_bytes),
+        "normalized_utf8_bytes": len(normalized_bytes),
         "tokens": tokens,
-        "shingles": _shingles(tokens, width),
+        "shingles": _shingles(tokens, int(DEFAULT_THRESHOLDS[width_key])),
         "skeleton": skeleton,
-        "skeleton_shingles": _shingles(skeleton, int(DEFAULT_THRESHOLDS["code_shingle_tokens"])),
+        "skeleton_shingles": _shingles(
+            skeleton,
+            int(DEFAULT_THRESHOLDS["code_shingle_tokens"]),
+        ),
     }
 
 
-def _edge_lines(text: str) -> frozenset[str]:
-    raw_lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
-    candidates = raw_lines[:10] + raw_lines[-10:]
-    lines: set[str] = set()
-    for line in candidates:
-        value = normalize_for_contamination(line, "text")
-        if 32 <= len(value) <= 320:
-            lines.add(value)
-    return frozenset(lines)
-
-
 def _publisher_boilerplate(left: dict[str, Any], right: dict[str, Any]) -> dict[str, Any] | None:
-    shared = _edge_lines(left["text"]) & _edge_lines(right["text"])
-    shared_chars = sum(len(line) for line in shared)
+    def edge_lines(text: str) -> frozenset[str]:
+        lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+        values = {
+            normalize_for_contamination(line, "text")
+            for line in lines[:10] + lines[-10:]
+        }
+        return frozenset(value for value in values if 32 <= len(value) <= 320)
+
+    shared = edge_lines(left["text"]) & edge_lines(right["text"])
+    shared_chars = sum(map(len, shared))
     if shared_chars < 80:
         return None
     return {
@@ -201,8 +199,7 @@ def _publisher_boilerplate(left: dict[str, Any], right: dict[str, Any]) -> dict[
 
 
 def _pair_matches(left: dict[str, Any], right: dict[str, Any]) -> list[dict[str, Any]]:
-    a = left["row"]
-    b = right["row"]
+    a, b = left["row"], right["row"]
     matches: list[dict[str, Any]] = []
 
     def add(kind: str, score: float, *, collapsing: bool = True) -> None:
@@ -223,35 +220,39 @@ def _pair_matches(left: dict[str, Any], right: dict[str, Any]) -> list[dict[str,
         add("origin_alias", 1.0)
     if left["raw_sha256"] == right["raw_sha256"]:
         add("raw_exact", 1.0)
-    if left["normalized_sha256"] == right["normalized_sha256"] and left["raw_sha256"] != right["raw_sha256"]:
+    normalized_exact = left["normalized_sha256"] == right["normalized_sha256"]
+    if normalized_exact and left["raw_sha256"] != right["raw_sha256"]:
         add("normalized_exact", 1.0)
 
     same_code = a["modality"] == b["modality"] == "code"
     both_natural = a["modality"] != "code" and b["modality"] != "code"
     if same_code or both_natural:
+        prefix = "code" if same_code else "natural"
         near = _jaccard(left["shingles"], right["shingles"])
-        near_limit = float(
-            DEFAULT_THRESHOLDS["code_near_jaccard"] if same_code else DEFAULT_THRESHOLDS["natural_near_jaccard"]
-        )
-        if near >= near_limit and left["normalized_sha256"] != right["normalized_sha256"]:
+        if near >= float(DEFAULT_THRESHOLDS[f"{prefix}_near_jaccard"]) and not normalized_exact:
             add("near_match", near)
-
-        min_tokens = int(
-            DEFAULT_THRESHOLDS["code_fragment_min_tokens"] if same_code else DEFAULT_THRESHOLDS["natural_fragment_min_tokens"]
+        containment = _containment(left["shingles"], right["shingles"])
+        enough_tokens = min(len(left["tokens"]), len(right["tokens"])) >= int(
+            DEFAULT_THRESHOLDS[f"{prefix}_fragment_min_tokens"]
         )
-        frag_limit = float(
-            DEFAULT_THRESHOLDS["code_fragment_containment"] if same_code else DEFAULT_THRESHOLDS["natural_fragment_containment"]
+        exact_seen = any(
+            match["match_type"] in {"raw_exact", "normalized_exact"}
+            for match in matches
         )
-        frag = _containment(left["shingles"], right["shingles"])
-        if min(len(left["tokens"]), len(right["tokens"])) >= min_tokens and frag >= frag_limit:
-            if not any(x["match_type"] in {"raw_exact", "normalized_exact"} for x in matches):
-                add("document_fragment", frag)
+        if (
+            enough_tokens
+            and containment >= float(DEFAULT_THRESHOLDS[f"{prefix}_fragment_containment"])
+            and not exact_seen
+        ):
+            add("document_fragment", containment)
 
     if same_code:
-        copy = _jaccard(left["skeleton_shingles"], right["skeleton_shingles"])
-        if min(len(left["skeleton"]), len(right["skeleton"])) >= int(DEFAULT_THRESHOLDS["code_copy_min_tokens"]):
-            if copy >= float(DEFAULT_THRESHOLDS["code_copy_jaccard"]):
-                add("code_fork_copy", copy)
+        copy_score = _jaccard(left["skeleton_shingles"], right["skeleton_shingles"])
+        enough_skeleton = min(len(left["skeleton"]), len(right["skeleton"])) >= int(
+            DEFAULT_THRESHOLDS["code_copy_min_tokens"]
+        )
+        if enough_skeleton and copy_score >= float(DEFAULT_THRESHOLDS["code_copy_jaccard"]):
+            add("code_fork_copy", copy_score)
 
     boilerplate = _publisher_boilerplate(left, right)
     if boilerplate is not None:
@@ -268,31 +269,24 @@ def _pair_matches(left: dict[str, Any], right: dict[str, Any]) -> list[dict[str,
     return matches
 
 
-def _components(source_ids: Sequence[str], collapse_pairs: Sequence[tuple[str, str]]) -> list[list[str]]:
-    parent = {source_id: source_id for source_id in source_ids}
+def _components(ids: Sequence[str], pairs: Sequence[tuple[str, str]]) -> list[list[str]]:
+    parent = {value: value for value in ids}
 
     def find(value: str) -> str:
-        root = value
-        while parent[root] != root:
-            root = parent[root]
         while parent[value] != value:
-            nxt = parent[value]
-            parent[value] = root
-            value = nxt
-        return root
+            parent[value] = parent[parent[value]]
+            value = parent[value]
+        return value
 
-    def union(left: str, right: str) -> None:
+    for left, right in pairs:
         a, b = find(left), find(right)
         if a != b:
             if a > b:
                 a, b = b, a
             parent[b] = a
-
-    for left, right in collapse_pairs:
-        union(left, right)
     groups: dict[str, list[str]] = defaultdict(list)
-    for source_id in source_ids:
-        groups[find(source_id)].append(source_id)
+    for value in ids:
+        groups[find(value)].append(value)
     return [sorted(group) for _, group in sorted(groups.items())]
 
 
@@ -301,60 +295,56 @@ def _scope_summary(
     matches: Sequence[dict[str, Any]],
     statuses: set[str],
 ) -> dict[str, Any]:
-    selected = [fp for fp in fingerprints if fp["row"]["evidence_status"] in statuses]
-    ids = {fp["row"]["source_id"] for fp in selected}
-    by_id = {fp["row"]["source_id"]: fp for fp in selected}
-    collapse_pairs = [
-        (m["left_source_id"], m["right_source_id"])
-        for m in matches
-        if m["capacity_collapsing"]
-        and m["match_type"] in COLLAPSE_MATCH_TYPES
-        and m["left_source_id"] in ids
-        and m["right_source_id"] in ids
+    selected = [item for item in fingerprints if item["row"]["evidence_status"] in statuses]
+    ids = {item["row"]["source_id"] for item in selected}
+    by_id = {item["row"]["source_id"]: item for item in selected}
+    collapse = [
+        (match["left_source_id"], match["right_source_id"])
+        for match in matches
+        if match["capacity_collapsing"]
+        and match["match_type"] in COLLAPSE_MATCH_TYPES
+        and match["left_source_id"] in ids
+        and match["right_source_id"] in ids
     ]
-    components = _components(sorted(ids), collapse_pairs)
-    duplicate_components = [component for component in components if len(component) > 1]
-
-    declared_before = sum(fp["row"]["declared_capacity_bytes"] for fp in selected)
-    conservative_after = sum(
+    components = _components(sorted(ids), collapse)
+    duplicates = [component for component in components if len(component) > 1]
+    before = sum(item["row"]["declared_capacity_bytes"] for item in selected)
+    after = sum(
         max(by_id[source_id]["row"]["declared_capacity_bytes"] for source_id in component)
         for component in components
     )
-    raw_before = sum(fp["raw_bytes"] for fp in selected)
     raw_groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for fp in selected:
-        raw_groups[fp["raw_sha256"]].append(fp)
-    raw_exact_after = sum(max(fp["raw_bytes"] for fp in group) for group in raw_groups.values())
-
-    families = sorted({fp["row"]["source_family"] for fp in selected})
+    for item in selected:
+        raw_groups[item["raw_sha256"]].append(item)
+    families = sorted({item["row"]["source_family"] for item in selected})
     family_pairs = sorted(
         {
-            tuple(sorted((m["left_source_family"], m["right_source_family"])))
-            for m in matches
-            if m["capacity_collapsing"]
-            and m["match_type"] in COLLAPSE_MATCH_TYPES
-            and m["cross_source_family"]
-            and m["left_source_id"] in ids
-            and m["right_source_id"] in ids
+            tuple(sorted((match["left_source_family"], match["right_source_family"])))
+            for match in matches
+            if match["capacity_collapsing"]
+            and match["match_type"] in COLLAPSE_MATCH_TYPES
+            and match["cross_source_family"]
+            and match["left_source_id"] in ids
+            and match["right_source_id"] in ids
         }
     )
-    effective_family_components = _components(families, family_pairs)
-
+    family_components = _components(families, family_pairs)
+    discount = before - after
     return {
         "source_count": len(selected),
         "declared_family_count": len(families),
-        "effective_independent_family_count": len(effective_family_components),
-        "raw_bytes_before": raw_before,
-        "raw_exact_unique_bytes_after": raw_exact_after,
-        "declared_capacity_bytes_before": declared_before,
-        "conservative_unique_capacity_bytes_after": conservative_after,
-        "duplicate_discount_bytes": declared_before - conservative_after,
-        "duplicate_discount_fraction": round((declared_before - conservative_after) / declared_before, 12)
-        if declared_before
-        else 0.0,
-        "duplicate_cluster_count": len(duplicate_components),
-        "duplicate_clusters": duplicate_components,
-        "family_clusters": effective_family_components,
+        "effective_independent_family_count": len(family_components),
+        "raw_bytes_before": sum(item["raw_bytes"] for item in selected),
+        "raw_exact_unique_bytes_after": sum(
+            max(item["raw_bytes"] for item in group) for group in raw_groups.values()
+        ),
+        "declared_capacity_bytes_before": before,
+        "conservative_unique_capacity_bytes_after": after,
+        "duplicate_discount_bytes": discount,
+        "duplicate_discount_fraction": round(discount / before, 12) if before else 0.0,
+        "duplicate_cluster_count": len(duplicates),
+        "duplicate_clusters": duplicates,
+        "family_clusters": family_components,
     }
 
 
@@ -366,29 +356,29 @@ def audit_payloads(inventory: Mapping[str, Any], payloads: Mapping[str, bytes]) 
         extra = sorted(set(payloads) - expected_ids)
         raise CapacityAuditError(f"payload coverage mismatch missing={missing} extra={extra}")
     fingerprints = [_fingerprint(row, payloads[row["source_id"]]) for row in rows]
-    pair_matches: list[dict[str, Any]] = []
-    for i, left in enumerate(fingerprints):
-        for right in fingerprints[i + 1 :]:
-            pair_matches.extend(_pair_matches(left, right))
-    pair_matches.sort(key=lambda x: (x["left_source_id"], x["right_source_id"], x["match_type"]))
-
-    public_sources = [
-        {
-            "source_id": fp["row"]["source_id"],
-            "source_family": fp["row"]["source_family"],
-            "modality": fp["row"]["modality"],
-            "evidence_status": fp["row"]["evidence_status"],
-            "declared_capacity_bytes": fp["row"]["declared_capacity_bytes"],
-            "verified_raw_bytes": fp["raw_bytes"],
-            "verified_raw_sha256": fp["raw_sha256"],
-            "normalized_utf8_bytes": fp["normalized_utf8_bytes"],
-            "normalized_sha256": fp["normalized_sha256"],
-            "origin_key_sha256": _sha256(fp["row"]["origin_key"].encode("utf-8")),
-        }
-        for fp in fingerprints
+    matches = [
+        match
+        for index, left in enumerate(fingerprints)
+        for right in fingerprints[index + 1 :]
+        for match in _pair_matches(left, right)
     ]
-    public_sources.sort(key=lambda x: x["source_id"])
-
+    matches.sort(key=lambda item: (item["left_source_id"], item["right_source_id"], item["match_type"]))
+    sources = [
+        {
+            "source_id": item["row"]["source_id"],
+            "source_family": item["row"]["source_family"],
+            "modality": item["row"]["modality"],
+            "evidence_status": item["row"]["evidence_status"],
+            "declared_capacity_bytes": item["row"]["declared_capacity_bytes"],
+            "verified_raw_bytes": item["raw_bytes"],
+            "verified_raw_sha256": item["raw_sha256"],
+            "normalized_utf8_bytes": item["normalized_utf8_bytes"],
+            "normalized_sha256": item["normalized_sha256"],
+            "origin_key_sha256": _sha256(item["row"]["origin_key"].encode()),
+        }
+        for item in fingerprints
+    ]
+    sources.sort(key=lambda item: item["source_id"])
     core = {
         "schema_version": SCHEMA,
         "algorithm": ALGORITHM,
@@ -398,10 +388,10 @@ def audit_payloads(inventory: Mapping[str, Any], payloads: Mapping[str, bytes]) 
         "matching_authority": "DATA-232 deterministic overlap and code-copy semantics",
         "thresholds": dict(DEFAULT_THRESHOLDS),
         "source_count": len(fingerprints),
-        "sources": public_sources,
-        "matches": pair_matches,
+        "sources": sources,
+        "matches": matches,
         "scopes": {
-            name: _scope_summary(fingerprints, pair_matches, statuses)
+            name: _scope_summary(fingerprints, matches, statuses)
             for name, statuses in STATUS_SCOPES.items()
         },
         "capacity_policy": {
@@ -441,4 +431,5 @@ def verify_report(report: Mapping[str, Any]) -> None:
 def write_report(report: Mapping[str, Any], path: str | Path) -> None:
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8", newline="\n")
+    rendered = json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2)
+    target.write_text(f"{rendered}\n", encoding="utf-8", newline="\n")
