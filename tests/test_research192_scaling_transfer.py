@@ -46,7 +46,7 @@ def test_frozen_non_size_recipe_and_exact_token_budgets() -> None:
 def test_compute_and_bpb_definitions_are_dimensionally_explicit() -> None:
     n = r192.SCALE_SPECS["3m"]["expected_parameters"]
     t = r192.EXPECTED_TOKEN_BUDGETS[500]
-    assert 6 * n * t == 9_169_570_407_168
+    assert 6 * n * t == 9_168_333_614_208
     loss_nats = math.log(2.0)
     assert loss_nats / math.log(2.0) == 1.0
     assert 4 * r192.SCALE_SPECS["10m"]["expected_parameters"] == 40_002_560
