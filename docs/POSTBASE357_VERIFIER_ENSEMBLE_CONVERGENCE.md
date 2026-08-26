@@ -4,6 +4,8 @@ Worker: `POSTBASE-357-VERIFIER-ENSEMBLE-CONVERGENCE`
 
 Execution profile: `LOCAL_FREE` only.
 
+Convergence PR: `#423`.
+
 ## Scope
 
 This worker independently verifies the current POSTBASE-257 verifier-ensemble candidate without modifying its production implementation.
