@@ -12,14 +12,12 @@ from .core import (
     detect_git_sha,
     environment_snapshot,
     hash_json,
-    load_checkpoint,
-    load_verified_checkpoint,
     prepare_checkpoint_load,
     restore_rng_state,
     save_checkpoint,
     sha256_file,
-    verify_checkpoint,
 )
+from .hardening import load_checkpoint, load_verified_checkpoint, verify_checkpoint
 from .hf_export import export_hf_directory
 from .run_binding import bind_checkpoint_identity
 from .trainer_adapter import load_trainer_checkpoint, save_trainer_checkpoint
