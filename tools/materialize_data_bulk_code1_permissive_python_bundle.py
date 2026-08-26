@@ -6,7 +6,6 @@ import ast
 import hashlib
 import json
 import re
-import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -176,12 +175,13 @@ def _eligible_file_record(repo_dir: Path, root: Path, path: Path, policy: dict[s
     excluded_parts = set(policy["exclude_directory_components"])
     if any(part.lower() in excluded_parts for part in root_rel.parts[:-1]):
         return None, {"path": rel, "reason": "excluded_directory_component"}
-    if path.is_symlink():
-        if policy["reject_symlinks"]:
-            return None, {"path": rel, "reason": "symlink"}
+    if path.is_symlink() and policy["reject_symlinks"]:
+        return None, {"path": rel, "reason": "symlink"}
     if path.suffix not in policy["extensions"]:
         return None, {"path": rel, "reason": "extension"}
     raw = path.read_bytes()
+    if not raw:
+        return None, {"path": rel, "reason": "empty"}
     if len(raw) > int(policy["max_file_bytes"]):
         return None, {"path": rel, "reason": "oversized", "utf8_bytes": len(raw)}
     try:
@@ -220,7 +220,13 @@ def materialize(config: dict[str, Any], workspace: Path) -> dict[str, Any]:
         for path in sorted(root.rglob("*.py"), key=lambda p: p.as_posix()):
             record, exclusion = _eligible_file_record(repo_dir, root, path, policy)
             if record is not None:
-                _require(record["sha256"] not in all_hashes, f"exact duplicate file hash across bundle: {record['path']}")
+                if record["sha256"] in all_hashes:
+                    exclusions.append({
+                        "path": record["path"],
+                        "reason": "exact_duplicate_in_bundle",
+                        "sha256": record["sha256"],
+                    })
+                    continue
                 all_hashes.add(record["sha256"])
                 files.append(record)
             elif exclusion is not None:
@@ -299,7 +305,7 @@ def validate_report(config: dict[str, Any], report: dict[str, Any]) -> None:
         _require(source["eligible_utf8_bytes"] == sum(row["utf8_bytes"] for row in source["files"]), "family byte count mismatch")
         for row in source["files"]:
             _require(re.fullmatch(r"[0-9a-f]{64}", row["sha256"]) is not None, "invalid file hash")
-            _require(row["sha256"] not in hashes, "duplicate file hash")
+            _require(row["sha256"] not in hashes, "duplicate credited file hash")
             hashes.add(row["sha256"])
             _require(row["utf8_bytes"] > 0, "nonpositive file bytes")
         file_sum += source["eligible_file_count"]
