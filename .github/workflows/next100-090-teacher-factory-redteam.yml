@@ -70,5 +70,5 @@ jobs:
           ! grep -R -n -E \
             'OPENAI_API_KEY|ANTHROPIC_API_KEY|GEMINI_API_KEY|api[_-]?key|https?://|import openai|from openai|import anthropic|from anthropic' \
             src/twelve_six/postbase tests/test_next100_090_teacher_factory_redteam.py
-          grep -q 'canonical_base_training_eligible=False' \
+          grep -q 'canonical_base_training_eligible is False' \
             tests/test_next100_090_teacher_factory_redteam.py
