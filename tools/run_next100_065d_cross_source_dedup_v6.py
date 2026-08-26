@@ -12,6 +12,7 @@ from twelve_six.data.cross_source_capacity_audit_v6 import (
     verify_report,
     write_report,
 )
+from twelve_six.data.cross_source_capacity_guard_v6 import verify_exact_terminal_vector
 
 
 def _load(path: str) -> dict[str, object]:
@@ -19,6 +20,11 @@ def _load(path: str) -> dict[str, object]:
     if not isinstance(value, dict):
         raise SystemExit(f"{path}: JSON root must be an object")
     return value
+
+
+def _verify(report: dict[str, object]) -> None:
+    verify_report(report)
+    verify_exact_terminal_vector(report)
 
 
 def main() -> int:
@@ -44,11 +50,11 @@ def main() -> int:
             args.v6_config,
         )
         report = audit_live(base, v4_extension, v5_config, v6_config)
-        verify_report(report)
+        _verify(report)
         write_report(report, args.report)
         return 0
 
-    verify_report(_load(args.report))
+    _verify(_load(args.report))
     return 0
 
 
