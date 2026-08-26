@@ -1,0 +1,128 @@
+{
+  "authority": "LOCAL_FREE_CPU_SPECIFIC_BATCH_SCALING_NOT_GPU_THROUGHPUT_AUTHORITY",
+  "base_trace_identity": {
+    "loss_tokens_per_microbatch": 252,
+    "microbatch_examples": 4,
+    "microbatches": 256,
+    "mixture_pattern": [
+      "uk",
+      "en",
+      "uk",
+      "code",
+      "en",
+      "uk",
+      "en",
+      "uk",
+      "code",
+      "uk",
+      "en",
+      "uk",
+      "en",
+      "code",
+      "uk",
+      "en",
+      "uk",
+      "code",
+      "en",
+      "uk"
+    ],
+    "optimized_loss_tokens": 64512,
+    "sequence_length": 64,
+    "sha256": "4af9a94fe89fa3043fede5e57742224a4c84f350dfd02bd3023cc5acbc22ec1d",
+    "strata_sequence_sha256": "55bbba816e7be455528715c834303e5f0c9972bf0e8c421632931d320f8433bd"
+  },
+  "decision_rule": "paired final held-out BPB first; candidates within 0.5% of best median with no paired seed >1% worse are practical ties; choose the smaller batch among ties; largest-grid winner remains provisional",
+  "fixed_controls": {
+    "base_microbatch": "4x64 -> 252 causal loss tokens",
+    "corpus_identity_sha256": "422f545da93526ceba2c0ff738e0b9deac65f35bfb31d87d2aab068cda091fc8",
+    "model": {
+      "init_sha256": "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5",
+      "model_sha256": "61caa5469123e23b9b72fc2024140bfca84c4c480dcb0a7e712ba800a4f22998",
+      "parameters": 10000640,
+      "path": "configs/stages/alternatives/s3_10m_scale03_byte_gqa.execution.json",
+      "sha256": "09d5af75b69e11875f9098aea305af6dd62644748a7f1cb48a5c641e742896ca"
+    },
+    "optimizer": {
+      "betas": [
+        0.9,
+        0.95
+      ],
+      "eps": 1e-08,
+      "gradient_clip_norm": 1.0,
+      "learning_rate": 0.0003,
+      "name": "AdamW",
+      "precision": "fp32",
+      "scheduler": "constant",
+      "warmup_steps": 0,
+      "weight_decay": 0.0
+    },
+    "sequence_length": 64,
+    "tokenizer": "s0-byte-v1 / vocab 256 / no special tokens",
+    "total_optimized_loss_tokens": 64512
+  },
+  "gpu_retest_preregistration": {
+    "compare": "at least two GPU-feasible microbatch/accumulation decompositions with identical grouped examples",
+    "precision": "use the accepted GPU precision only after universal-bootstrap CUDA capability and hardware preflight; do not silently downgrade",
+    "preserve": "selected effective loss-token batch, model, corpus trace, LR/betas/eps/WD/clipping/schedule, total optimized tokens and paired seeds",
+    "required": true,
+    "trigger": "before using TRAIN-196 timing/memory to choose a GPU microbatch implementation"
+  },
+  "hardware_boundary": "microbatch shape is evaluated only at fixed 1008 effective loss tokens; CPU throughput is never used to infer GPU throughput",
+  "identity_sha256": "c7f3abadc5bc3550a5df7d760b8a996442469f607a2ce87653b2e4c9a06c2d75",
+  "measures": [
+    "held-out BPB overall and uk/en/code",
+    "gradient noise proxy",
+    "pre-clip gradient norm and clip rate",
+    "global update/weight L2 ratio",
+    "optimizer updates",
+    "training-call wall time and valid loss-token throughput",
+    "peak RSS and optimizer/model memory"
+  ],
+  "microbatch_hardware_control": [
+    {
+      "accumulation": 2,
+      "effective_loss_tokens": 1008,
+      "label": "hardware-1008-micro8",
+      "microbatch_examples": 8,
+      "role": "hardware_control"
+    }
+  ],
+  "paid_compute": false,
+  "paired_seeds": [
+    1515,
+    1616,
+    1717
+  ],
+  "schema": "12-6.train196-10m-batch-preregistration.v1",
+  "source_sha": "e1b4ba8c5bb65367ac941069216237b40b1bc9f9",
+  "statistical_candidates": [
+    {
+      "accumulation": 2,
+      "effective_loss_tokens": 504,
+      "label": "batch-504",
+      "microbatch_examples": 4,
+      "role": "statistical"
+    },
+    {
+      "accumulation": 4,
+      "effective_loss_tokens": 1008,
+      "label": "batch-1008",
+      "microbatch_examples": 4,
+      "role": "statistical"
+    },
+    {
+      "accumulation": 8,
+      "effective_loss_tokens": 2016,
+      "label": "batch-2016",
+      "microbatch_examples": 4,
+      "role": "statistical"
+    }
+  ],
+  "validation_trace_identity": {
+    "full_examples_per_stratum": 32,
+    "scoreable_loss_tokens": 6048,
+    "sequence_length": 64,
+    "sha256": "7a902afe5b99875aa5609e92cdd7e5b0ba74153ca87b547013eb8cad909b36ef",
+    "split": "validation"
+  }
+}

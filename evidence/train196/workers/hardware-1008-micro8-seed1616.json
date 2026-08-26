@@ -1,0 +1,200 @@
+{
+  "authority": "LOCAL_FREE_CPU_SPECIFIC_BATCH_SCALING_NOT_GPU_THROUGHPUT_AUTHORITY",
+  "candidate": {
+    "accumulation": 2,
+    "effective_loss_tokens": 1008,
+    "label": "hardware-1008-micro8",
+    "microbatch_examples": 8,
+    "role": "hardware_control"
+  },
+  "data": {
+    "base_trace": {
+      "loss_tokens_per_microbatch": 252,
+      "microbatch_examples": 4,
+      "microbatches": 256,
+      "mixture_pattern": [
+        "uk",
+        "en",
+        "uk",
+        "code",
+        "en",
+        "uk",
+        "en",
+        "uk",
+        "code",
+        "uk",
+        "en",
+        "uk",
+        "en",
+        "code",
+        "uk",
+        "en",
+        "uk",
+        "code",
+        "en",
+        "uk"
+      ],
+      "optimized_loss_tokens": 64512,
+      "sequence_length": 64,
+      "sha256": "4af9a94fe89fa3043fede5e57742224a4c84f350dfd02bd3023cc5acbc22ec1d",
+      "strata_sequence_sha256": "55bbba816e7be455528715c834303e5f0c9972bf0e8c421632931d320f8433bd"
+    },
+    "corpus_identity_sha256": "422f545da93526ceba2c0ff738e0b9deac65f35bfb31d87d2aab068cda091fc8",
+    "cross_document": false,
+    "full_windows_only": true,
+    "packing_version": "s0-byte-pack-v1",
+    "validation_trace": {
+      "full_examples_per_stratum": 32,
+      "scoreable_loss_tokens": 6048,
+      "sequence_length": 64,
+      "sha256": "7a902afe5b99875aa5609e92cdd7e5b0ba74153ca87b547013eb8cad909b36ef",
+      "split": "validation"
+    }
+  },
+  "final_heldout": {
+    "bpb": 2.172734568147896,
+    "by_stratum": {
+      "code": {
+        "bpb": 1.9228052596101306,
+        "loss_nats": 1.3327870444645957,
+        "tokens": 2016
+      },
+      "en": {
+        "bpb": 2.0561873599459535,
+        "loss_nats": 1.425240471249535,
+        "tokens": 2016
+      },
+      "uk": {
+        "bpb": 2.539211084887604,
+        "loss_nats": 1.7600470043364025,
+        "tokens": 2016
+      }
+    },
+    "loss_nats": 1.5060248400168443,
+    "non_mutating": true,
+    "state_sha256_after": "a5a373a51a9748e7831d52dd329d4323f517b8cc4a03f922376b24c29a1cacee",
+    "state_sha256_before": "a5a373a51a9748e7831d52dd329d4323f517b8cc4a03f922376b24c29a1cacee",
+    "tokens": 6048
+  },
+  "final_state_sha256": "a5a373a51a9748e7831d52dd329d4323f517b8cc4a03f922376b24c29a1cacee",
+  "gradient_noise": {
+    "final": {
+      "gradient_second_moment": 31.96547102944937,
+      "loss_token_noise_proxy": 1456.8463827135056,
+      "mean_gradient_signal_squared": 5.276141067596209,
+      "mean_loss": 1.610848680138588,
+      "mean_microbatch_loss_tokens": 252.0,
+      "non_mutating": true,
+      "samples": 8,
+      "state_sha256_after": "a5a373a51a9748e7831d52dd329d4323f517b8cc4a03f922376b24c29a1cacee",
+      "state_sha256_before": "a5a373a51a9748e7831d52dd329d4323f517b8cc4a03f922376b24c29a1cacee",
+      "trace_cov_over_mean_gradient_squared": 5.781136439339308,
+      "unbiased_covariance_trace": 30.502091384975042
+    },
+    "initial": {
+      "gradient_second_moment": 871.7963137941372,
+      "loss_token_noise_proxy": 473.8415190592476,
+      "mean_gradient_signal_squared": 329.5663626770458,
+      "mean_loss": 5.506251037120819,
+      "mean_microbatch_loss_tokens": 252.0,
+      "non_mutating": true,
+      "samples": 8,
+      "state_sha256_after": "abc5e7e201d7f282c558210b9ec8dcc3b2c559bbb01f1e2fd29d321ad4c1d09a",
+      "state_sha256_before": "abc5e7e201d7f282c558210b9ec8dcc3b2c559bbb01f1e2fd29d321ad4c1d09a",
+      "trace_cov_over_mean_gradient_squared": 1.8803234883303477,
+      "unbiased_covariance_trace": 619.6913727052472
+    }
+  },
+  "initial_heldout": {
+    "bpb": 7.833526960004937,
+    "by_stratum": {
+      "code": {
+        "bpb": 7.561778967819933,
+        "loss_nats": 5.24142577156188,
+        "tokens": 2016
+      },
+      "en": {
+        "bpb": 8.021010514565422,
+        "loss_nats": 5.559740823412699,
+        "tokens": 2016
+      },
+      "uk": {
+        "bpb": 7.917791397629456,
+        "loss_nats": 5.4881947835286455,
+        "tokens": 2016
+      }
+    },
+    "loss_nats": 5.429787126167741,
+    "non_mutating": true,
+    "state_sha256_after": "abc5e7e201d7f282c558210b9ec8dcc3b2c559bbb01f1e2fd29d321ad4c1d09a",
+    "state_sha256_before": "abc5e7e201d7f282c558210b9ec8dcc3b2c559bbb01f1e2fd29d321ad4c1d09a",
+    "tokens": 6048
+  },
+  "initial_state_sha256": "abc5e7e201d7f282c558210b9ec8dcc3b2c559bbb01f1e2fd29d321ad4c1d09a",
+  "machine": {
+    "cpu_count": 4,
+    "cuda_available": false,
+    "device": "cpu",
+    "github_actions": true,
+    "paid_compute": false,
+    "platform": "Linux-6.17.0-1022-azure-x86_64-with-glibc2.39",
+    "python": "3.11.16",
+    "torch": "2.13.0+cpu",
+    "torch_threads": 2
+  },
+  "model": {
+    "init_sha256": "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5",
+    "model_sha256": "61caa5469123e23b9b72fc2024140bfca84c4c480dcb0a7e712ba800a4f22998",
+    "parameters": 10000640,
+    "path": "configs/stages/alternatives/s3_10m_scale03_byte_gqa.execution.json",
+    "sha256": "09d5af75b69e11875f9098aea305af6dd62644748a7f1cb48a5c641e742896ca"
+  },
+  "optimizer": {
+    "betas": [
+      0.9,
+      0.95
+    ],
+    "eps": 1e-08,
+    "gradient_accumulation_steps": 2,
+    "gradient_clip_norm": 1.0,
+    "learning_rate": 0.0003,
+    "name": "AdamW",
+    "precision": "fp32",
+    "scheduler": "constant",
+    "warmup_steps": 0,
+    "weight_decay": 0.0
+  },
+  "report_sha256": "c1b686a75323c782c5063d319e8f9eee97a107618bce2cc2d349f05e136a4502",
+  "schema": "12-6.train196-10m-batch-worker.v1",
+  "seed": 1616,
+  "source_sha": "e1b4ba8c5bb65367ac941069216237b40b1bc9f9",
+  "training": {
+    "clip_count": 64,
+    "clip_rate": 1.0,
+    "global_update_to_weight_l2": {
+      "max": 0.009910765141892517,
+      "mean": 0.003280751568882359,
+      "median": 0.003059640655985375,
+      "min": 0.002372913392388894,
+      "p90": 0.0037257346850729563,
+      "p95": 0.004800266986968001
+    },
+    "loss_tokens_per_update": 1008,
+    "microbatches": 128,
+    "model_parameter_bytes": 40002560,
+    "optimized_loss_tokens": 64512,
+    "optimizer_state_bytes": 80005560,
+    "optimizer_updates": 64,
+    "peak_rss_bytes": 732254208,
+    "preclip_gradient_norm": {
+      "max": 19.376972198486328,
+      "mean": 3.1525176521390676,
+      "median": 2.2444376945495605,
+      "min": 1.2815477848052979,
+      "p90": 4.948201656341553,
+      "p95": 8.234121322631836
+    },
+    "throughput_loss_tokens_per_second": 2002.7481202934382,
+    "train_call_wall_seconds": 32.21173913300083
+  }
+}

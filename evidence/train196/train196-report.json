@@ -1,0 +1,449 @@
+{
+  "authority": "LOCAL_FREE_CPU_SPECIFIC_BATCH_SCALING_NOT_GPU_THROUGHPUT_AUTHORITY",
+  "data": {
+    "base_trace": {
+      "loss_tokens_per_microbatch": 252,
+      "microbatch_examples": 4,
+      "microbatches": 256,
+      "mixture_pattern": [
+        "uk",
+        "en",
+        "uk",
+        "code",
+        "en",
+        "uk",
+        "en",
+        "uk",
+        "code",
+        "uk",
+        "en",
+        "uk",
+        "en",
+        "code",
+        "uk",
+        "en",
+        "uk",
+        "code",
+        "en",
+        "uk"
+      ],
+      "optimized_loss_tokens": 64512,
+      "sequence_length": 64,
+      "sha256": "4af9a94fe89fa3043fede5e57742224a4c84f350dfd02bd3023cc5acbc22ec1d",
+      "strata_sequence_sha256": "55bbba816e7be455528715c834303e5f0c9972bf0e8c421632931d320f8433bd"
+    },
+    "corpus_identity_sha256": "422f545da93526ceba2c0ff738e0b9deac65f35bfb31d87d2aab068cda091fc8",
+    "total_optimized_loss_tokens": 64512,
+    "validation_trace": {
+      "full_examples_per_stratum": 32,
+      "scoreable_loss_tokens": 6048,
+      "sequence_length": 64,
+      "sha256": "7a902afe5b99875aa5609e92cdd7e5b0ba74153ca87b547013eb8cad909b36ef",
+      "split": "validation"
+    }
+  },
+  "fixed_optimizer": {
+    "betas": [
+      0.9,
+      0.95
+    ],
+    "eps": 1e-08,
+    "gradient_clip_norm": 1.0,
+    "learning_rate": 0.0003,
+    "name": "AdamW",
+    "precision": "fp32",
+    "scheduler": "constant",
+    "warmup_steps": 0,
+    "weight_decay": 0.0
+  },
+  "gpu_retest_preregistration": {
+    "compare": "at least two GPU-feasible microbatch/accumulation decompositions with identical grouped examples",
+    "precision": "use the accepted GPU precision only after universal-bootstrap CUDA capability and hardware preflight; do not silently downgrade",
+    "preserve": "selected effective loss-token batch, model, corpus trace, LR/betas/eps/WD/clipping/schedule, total optimized tokens and paired seeds",
+    "required": true,
+    "trigger": "before using TRAIN-196 timing/memory to choose a GPU microbatch implementation"
+  },
+  "machine_scope": {
+    "cpu_specific_timing_and_memory": true,
+    "cuda_available": false,
+    "device": "cpu",
+    "paid_compute": false,
+    "torch_threads": 2
+  },
+  "microbatch_hardware_efficiency": {
+    "authority": "CPU_SPECIFIC_MICROBATCH_IMPLEMENTATION_ONLY",
+    "challenger": "8x64 examples with accumulation 2",
+    "effective_loss_tokens": 1008,
+    "max_abs_final_bpb_difference": 0.0039510366048882695,
+    "median_throughput_ratio": 1.1586737746422553,
+    "paired_final_bpb_difference_challenger_minus_reference": [
+      -0.0039510366048882695,
+      -0.0036079011877001577,
+      -5.6781573620767745e-06
+    ],
+    "paired_throughput_ratio_challenger_over_reference": [
+      1.1560835250459787,
+      1.165096162148885,
+      1.1586737746422553
+    ],
+    "quality_equivalence_tolerance_bpb": 0.0001,
+    "quality_equivalent": false,
+    "reference": "4x64 examples with accumulation 4"
+  },
+  "model": {
+    "init_sha256": "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5",
+    "model_sha256": "61caa5469123e23b9b72fc2024140bfca84c4c480dcb0a7e712ba800a4f22998",
+    "parameters": 10000640,
+    "path": "configs/stages/alternatives/s3_10m_scale03_byte_gqa.execution.json",
+    "sha256": "09d5af75b69e11875f9098aea305af6dd62644748a7f1cb48a5c641e742896ca"
+  },
+  "paired_seeds": [
+    1515,
+    1616,
+    1717
+  ],
+  "preregistration_identity_sha256": "c7f3abadc5bc3550a5df7d760b8a996442469f607a2ce87653b2e4c9a06c2d75",
+  "report_sha256": "851d53fb0493d372887f640ce0f052fc74238f6ea6408cfed39641d092901770",
+  "repository": "Oleksii-debug/12-6-ai.",
+  "schema": "12-6.train196-10m-batch-scaling.v1",
+  "selection": {
+    "best_raw_median_bpb": "batch-504",
+    "grid_edge": false,
+    "paired_comparisons": {
+      "batch-1008": {
+        "bpb_minus_best_by_seed": [
+          0.8857616097659422,
+          0.7064439880200242,
+          0.7668297065064364
+        ],
+        "paired_bootstrap_mean_bpb_difference": {
+          "ci95_high": 0.8857616097659422,
+          "ci95_low": 0.7064439880200242,
+          "mean": 0.7863451014308009,
+          "replicates": 10000
+        },
+        "relative_minus_best_by_seed": [
+          0.6555426792639704,
+          0.48060733241097753,
+          0.5600895213795579
+        ]
+      },
+      "batch-2016": {
+        "bpb_minus_best_by_seed": [
+          2.1836651521037997,
+          2.040084542449168,
+          2.2281514330426244
+        ],
+        "paired_bootstrap_mean_bpb_difference": {
+          "ci95_high": 2.2281514330426244,
+          "ci95_low": 2.040084542449168,
+          "mean": 2.1506337091985306,
+          "replicates": 10000
+        },
+        "relative_minus_best_by_seed": [
+          1.6161071880319502,
+          1.3879084633268512,
+          1.6274333911495964
+        ]
+      },
+      "batch-504": {
+        "bpb_minus_best_by_seed": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "paired_bootstrap_mean_bpb_difference": {
+          "ci95_high": 0.0,
+          "ci95_low": 0.0,
+          "mean": 0.0,
+          "replicates": 10000
+        },
+        "relative_minus_best_by_seed": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    "practical_tie_rule": "within 0.5% of best median BPB and no paired seed worse than best by >1%; choose smaller effective batch among ties",
+    "primary_metric": "paired final held-out BPB",
+    "quality_equivalent_candidates": [
+      "batch-504"
+    ],
+    "selected": "batch-504",
+    "selected_effective_loss_tokens": 504,
+    "status": "SELECTED_WITHIN_TESTED_GRID"
+  },
+  "source_sha": "e1b4ba8c5bb65367ac941069216237b40b1bc9f9",
+  "statistical_candidates": {
+    "batch-1008": {
+      "clip_rate": {
+        "median": 1.0,
+        "values": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "final_bpb": {
+        "mean": 2.1830806658799786,
+        "median": 2.176342469335596,
+        "values": [
+          2.236949927146676,
+          2.176342469335596,
+          2.1359496011576633
+        ]
+      },
+      "final_gradient_noise_loss_token_proxy": {
+        "median": 738.3834273761424,
+        "values": [
+          738.3834273761424,
+          1346.7685126416307,
+          624.0067126541298
+        ]
+      },
+      "optimized_loss_tokens": 64512,
+      "optimizer_updates": 64,
+      "peak_rss_bytes": {
+        "median": 642277376,
+        "values": [
+          644009984,
+          642277376,
+          641474560
+        ]
+      },
+      "seeds": [
+        1515,
+        1616,
+        1717
+      ],
+      "throughput_loss_tokens_per_second": {
+        "median": 1718.9552119025107,
+        "values": [
+          1721.662941811964,
+          1718.9552119025107,
+          1710.7046870543522
+        ]
+      },
+      "train_wall_seconds": {
+        "median": 37.529773640000315,
+        "values": [
+          37.47074902599945,
+          37.529773640000315,
+          37.71077526600027
+        ]
+      },
+      "update_ratio_median": {
+        "median": 0.003058672801617543,
+        "values": [
+          0.003048196706515652,
+          0.003058672801617543,
+          0.00309499041359521
+        ]
+      }
+    },
+    "batch-2016": {
+      "clip_rate": {
+        "median": 1.0,
+        "values": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "final_bpb": {
+        "mean": 3.5473692736477083,
+        "median": 3.5348534694845335,
+        "values": [
+          3.5348534694845335,
+          3.50998302376474,
+          3.5972713276938513
+        ]
+      },
+      "final_gradient_noise_loss_token_proxy": {
+        "median": 623.9959226683375,
+        "values": [
+          633.1589911846453,
+          601.6765644173206,
+          623.9959226683375
+        ]
+      },
+      "optimized_loss_tokens": 64512,
+      "optimizer_updates": 32,
+      "peak_rss_bytes": {
+        "median": 641298432,
+        "values": [
+          639696896,
+          641298432,
+          641474560
+        ]
+      },
+      "seeds": [
+        1515,
+        1616,
+        1717
+      ],
+      "throughput_loss_tokens_per_second": {
+        "median": 1768.4990155629844,
+        "values": [
+          1768.4990155629844,
+          1754.57281790114,
+          1780.0523993510317
+        ]
+      },
+      "train_wall_seconds": {
+        "median": 36.47839180699981,
+        "values": [
+          36.47839180699981,
+          36.76792398799995,
+          36.241629754000314
+        ]
+      },
+      "update_ratio_median": {
+        "median": 0.0034122410394784555,
+        "values": [
+          0.003397028016983915,
+          0.0034122410394784555,
+          0.003440917253604567
+        ]
+      }
+    },
+    "batch-504": {
+      "clip_rate": {
+        "median": 1.0,
+        "values": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "final_bpb": {
+        "mean": 1.3967355644491775,
+        "median": 1.3691198946512269,
+        "values": [
+          1.3511883173807337,
+          1.469898481315572,
+          1.3691198946512269
+        ]
+      },
+      "final_gradient_noise_loss_token_proxy": {
+        "median": 591.0430800451782,
+        "values": [
+          854.4218845192797,
+          591.0430800451782,
+          486.79196872543946
+        ]
+      },
+      "optimized_loss_tokens": 64512,
+      "optimizer_updates": 128,
+      "peak_rss_bytes": {
+        "median": 642215936,
+        "values": [
+          641073152,
+          642891776,
+          642215936
+        ]
+      },
+      "seeds": [
+        1515,
+        1616,
+        1717
+      ],
+      "throughput_loss_tokens_per_second": {
+        "median": 1653.9255232620678,
+        "values": [
+          1653.9255232620678,
+          1652.3630382261053,
+          1671.8415405856908
+        ]
+      },
+      "train_wall_seconds": {
+        "median": 39.00538391399982,
+        "values": [
+          39.00538391399982,
+          39.04226765399986,
+          38.58738907600042
+        ]
+      },
+      "update_ratio_median": {
+        "median": 0.0024189953554229196,
+        "values": [
+          0.0024189953554229196,
+          0.0024470883120711094,
+          0.002390082589571195
+        ]
+      }
+    }
+  },
+  "truth_boundary": {
+    "batch_choice_authority": "held-out quality under the frozen CPU fp32 recipe and exact diagnostic data trace",
+    "broad_corpus_stage_promotion": false,
+    "cpu_throughput_authority": "this CPU implementation only",
+    "gpu_throughput_authority": false,
+    "largest_grid_winner_requires_followup": false,
+    "model_retuning": false,
+    "optimizer_retuning": false
+  },
+  "worker_reports": [
+    {
+      "candidate": "batch-504",
+      "report_sha256": "701fcc243fc16233511066212ba018f23d8aad59494bedaf652c054fb78f34c6",
+      "seed": 1515
+    },
+    {
+      "candidate": "batch-504",
+      "report_sha256": "5f7d3e944f1c69a4d49dead8abb054725432d7bd334d3847224f8f7c4e973a65",
+      "seed": 1616
+    },
+    {
+      "candidate": "batch-504",
+      "report_sha256": "6409e0c38ba0658f8f3822b69197079d2599e98d6bd6b7245e2b511f5f9ba197",
+      "seed": 1717
+    },
+    {
+      "candidate": "batch-1008",
+      "report_sha256": "c2da8902c1a14c0bb689b5078ff34c0722708b229d09b1b23f78d868bc87240d",
+      "seed": 1515
+    },
+    {
+      "candidate": "batch-1008",
+      "report_sha256": "91ebc10e21e0327b08f5c9b76073ad53017b37de031c1552895aba14c12a6f4b",
+      "seed": 1616
+    },
+    {
+      "candidate": "batch-1008",
+      "report_sha256": "98f4a876952fb80691cb2825c673975525ffb85e2d077f39f2f13600baaf7e7d",
+      "seed": 1717
+    },
+    {
+      "candidate": "batch-2016",
+      "report_sha256": "2ba8b76d93b0b020ceeeaf46187f51cae52543657015eab086335d32b9c13ea5",
+      "seed": 1515
+    },
+    {
+      "candidate": "batch-2016",
+      "report_sha256": "2777de13720c504e02edfc68118f38fb6a2380f67f5f20d19e89be65e964f62b",
+      "seed": 1616
+    },
+    {
+      "candidate": "batch-2016",
+      "report_sha256": "c6540aae7d75237082c995c76934c96442e55b11e41a43da178c048e79c165a2",
+      "seed": 1717
+    },
+    {
+      "candidate": "hardware-1008-micro8",
+      "report_sha256": "b2d953265fd42ae8625d23a76756c112a39c47405d57787fa29c210987e77f65",
+      "seed": 1515
+    },
+    {
+      "candidate": "hardware-1008-micro8",
+      "report_sha256": "c1b686a75323c782c5063d319e8f9eee97a107618bce2cc2d349f05e136a4502",
+      "seed": 1616
+    },
+    {
+      "candidate": "hardware-1008-micro8",
+      "report_sha256": "a7d604a3ccbdd52bfc2ecf718544a143554401b9e0de1c3befc38c9a6fc93fa3",
+      "seed": 1717
+    }
+  ]
+}
