@@ -1,5 +1,5 @@
 {
-  "authority_identity": "sha256:01b235cd9ad546e78df16e74e357f09620a4ebe96ba2c995d129c6803e4e0526",
+  "authority_identity": "sha256:3fd072078ea1c9e073f462b014bad37be35f324336b2de0f03f48fa9b9d2ffe3",
   "compute_budget_comparison": {
     "integrated_milestone_status": "NOT_RUN_BLOCKED_WITH_FIXTURE",
     "terminal_component_evidence": {
@@ -64,12 +64,12 @@
       "state": "NONTERMINAL_FAILED_EXACT_HEAD_COMPONENT_RUN",
       "successor_candidate": {
         "authority": "POSTBASE-355",
-        "head_sha": "85879e50487a56eb19dd4e0edab43ac405d75fd8",
+        "head_sha": "09a0c8c15a7c9fc381605444af57298234bf3a22",
         "pr": 435,
         "state": "NONTERMINAL_QUEUED_GENERIC_CI_ONLY",
         "terminal": false,
         "workflow_conclusion": null,
-        "workflow_run": 32999368108,
+        "workflow_run": 32999837439,
         "workflow_status": "queued"
       },
       "terminal": false,
@@ -169,7 +169,9 @@
   },
   "schema": "next100097.milestone-deliberative-v0.blocked-authority.v1",
   "seal": {
-    "final_live_refresh_required_after_publication": true,
+    "drift": "POSTBASE-355 moved 85879e50487a56eb19dd4e0edab43ac405d75fd8 -> 09a0c8c15a7c9fc381605444af57298234bf3a22; replacement CI 32999837439 queued",
+    "final_live_refresh_required_after_update": true,
+    "live_refresh_drift_observed": true,
     "prepared_at_utc": "2026-08-26T18:26:20Z"
   },
   "terminal_policy": {
