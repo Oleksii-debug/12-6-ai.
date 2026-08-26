@@ -1,0 +1,113 @@
+name: CI-285 Ruff Convergence Repair
+
+on:
+  push:
+    branches:
+      - ci285/post282-release-gate-20260826
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: ${{ !contains(github.event.head_commit.message, '[ci285-repaired]') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: true
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Install exact Ruff
+        run: python -m pip install --disable-pip-version-check ruff==0.16.4
+
+      - name: Apply safe Ruff fixes
+        shell: bash
+        run: |
+          set +e
+          python -m ruff check src tests tools --fix
+          status=$?
+          set -e
+          if [ "$status" -ne 0 ] && [ "$status" -ne 1 ]; then
+            exit "$status"
+          fi
+
+      - name: Apply reviewed non-autofix repairs
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              target = Path(path)
+              text = target.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected one match, found {count}: {old!r}")
+              target.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          replace_once(
+              "src/twelve_six/experiment_failure.py",
+              'raise ValueError("experiment_started must be bool")',
+              'raise TypeError("experiment_started must be bool")',
+          )
+          replace_once(
+              "src/twelve_six/experiment_failure.py",
+              'raise ValueError("diagnostics must be an object")',
+              'raise TypeError("diagnostics must be an object")',
+          )
+
+          ladder = Path("src/twelve_six/milestone150_learned_base_ladder.py")
+          text = ladder.read_text(encoding="utf-8")
+          old_loop = "zip(SCALE_ORDER, SCALE_ORDER[1:])"
+          if text.count(old_loop) != 1:
+              raise SystemExit(f"ladder pairwise pattern count={text.count(old_loop)}")
+          text = text.replace(old_loop, "pairwise(SCALE_ORDER)", 1)
+          if "from itertools import pairwise\n" not in text:
+              marker = "from pathlib import Path\n"
+              if text.count(marker) != 1:
+                  raise SystemExit("ladder pathlib import marker not unique")
+              text = text.replace(marker, "from itertools import pairwise\nfrom pathlib import Path\n", 1)
+          ladder.write_text(text, encoding="utf-8")
+
+          finalizer = Path("tools/evidence_finalizer.py")
+          text = finalizer.read_text(encoding="utf-8")
+          broad = "except Exception as exc:"
+          if text.count(broad) != 3:
+              raise SystemExit(f"evidence_finalizer broad catch count={text.count(broad)}")
+          text = text.replace(
+              broad,
+              "except (OSError, ValueError, subprocess.SubprocessError) as exc:",
+          )
+          finalizer.write_text(text, encoding="utf-8")
+          PY
+
+          chmod +x \
+            tools/build_ci161_historical_report.py \
+            tools/evidence_finalizer.py \
+            tools/run_classified_phase.py
+
+      - name: Require zero Ruff findings
+        run: python -m ruff check src tests tools --fix
+
+      - name: Target changed semantic tests
+        run: |
+          python -m pip install --disable-pip-version-check -e . pytest==9.0.2
+          python -m pytest -q \
+            tests/test_evidence_finalizer_ci162.py \
+            tests/test_milestone150_learned_base_ladder.py
+
+      - name: Persist repair and remove bootstrap
+        shell: bash
+        run: |
+          rm .github/workflows/ci285-ruff-convergence-repair.yml
+          git config user.name "CI-285 Release Gate"
+          git config user.email "ci285@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "CI-285 fix shared repository Ruff blockers [ci285-repaired]"
+          git push origin HEAD:ci285/post282-release-gate-20260826
