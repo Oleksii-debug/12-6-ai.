@@ -1,0 +1,74 @@
+{
+  "schema_version": "12-6.next100-047-terminal-authority.v1",
+  "worker_id": "NEXT100-047-CODE-JINJA",
+  "execution_profile": "LOCAL_FREE",
+  "authority_type": "EXTERNAL_REAL_CODE_SOURCE_ADMISSION",
+  "verdict": "RETEST",
+  "verdict_reason": "DEDICATED_EXACT_HEAD_EXECUTION_NOT_TERMINAL",
+  "candidate_head": "bf7555ccea92d902c1fd27811031100d47ea0a62",
+  "candidate_pr": 460,
+  "dedicated_workflow": {
+    "name": "NEXT100-047 Jinja Code Source Admission",
+    "run_id": 32998137421,
+    "job_id": 98272634694,
+    "observed_status_at_terminal_cutoff": "queued",
+    "observed_conclusion_at_terminal_cutoff": null,
+    "runner_id_at_terminal_cutoff": 0,
+    "required_for_admit": "terminal success on the exact source-bearing head"
+  },
+  "source_candidate": {
+    "source_family": "github:pallets/jinja",
+    "upstream_repository": "https://github.com/pallets/jinja",
+    "upstream_commit": "5ef70112a1ff19c05324ff889dd30405b1002044",
+    "license_spdx": "BSD-3-Clause",
+    "license_git_blob_sha1": "c37cae49ec77ad6ebb25568c1605f1fee5313cfb",
+    "training_purpose_decision": "ALLOWED_IF_EXECUTION_GATES_PASS",
+    "redistribution_decision": "ALLOWED_WITH_LICENSE_CONDITIONS_IF_EXECUTION_GATES_PASS",
+    "selected_object_count": 5,
+    "candidate_capacity_bytes": 238695,
+    "independent_family_credit_if_admitted": 1
+  },
+  "selected_git_blobs": [
+    "e35cd471e98f516221759ef4345867d71d28230a",
+    "3ae857ebe2a937c1362c44f38e5c436bfd3c84b0",
+    "84cd513028021b327715400bfa89d28f4e3120cd",
+    "acaaffb5946c7a4f8973db47a317a286d496ada1",
+    "667c0416dd6a524dbee6853df7efec67a463d667"
+  ],
+  "live_registry_recheck": {
+    "performed_immediately_before_terminal_cutoff": true,
+    "same_family_collision_found": false,
+    "same_selected_blob_collision_found": false,
+    "jinja_evaluation_reservation_found": false,
+    "current_code_evaluation_reserved_object_count": 0,
+    "concurrent_non_jinja_code_candidates_observed": [
+      "github:python/cpython",
+      "github:django/django",
+      "github:Kludex/starlette",
+      "github:pandas-dev/pandas"
+    ],
+    "effect": "NO_JINJA_EXCLUSION_REQUIRED_AT_THIS_CUTOFF"
+  },
+  "gates_with_static_or_metadata_evidence": {
+    "exact_upstream_revision_bound": true,
+    "exact_license_blob_bound": true,
+    "exact_selected_git_blobs_bound": true,
+    "rights_decision_bound": true,
+    "generated_docs_tests_vendored_capacity_excluded": true,
+    "source_family_identity_bound": true,
+    "evaluation_firewall_bound": true
+  },
+  "gates_not_terminally_proven_without_dedicated_execution": [
+    "execution-time raw SHA-256 materialization",
+    "strict UTF-8 byte-identity normalization",
+    "Python AST parse and compile over all exact fetched objects",
+    "privacy and secret scan over all exact fetched objects",
+    "substantive implementation quality thresholds",
+    "executed exact and near dedup over the selected materialized bytes",
+    "retained self-hashed ADMIT report and exact source/license artifact"
+  ],
+  "retest_rule": "Re-run the dedicated LOCAL_FREE exact-head qualification. ADMIT is permitted only if it reaches terminal success and a fresh live registry/evaluation-reservation check remains collision-free. Any failed hard gate yields REJECT or a narrower RETEST according to the exact failure.",
+  "training_executed": false,
+  "paid_compute_used": false,
+  "claim_boundary": "This is a terminal RETEST authority for the current evidence cutoff, not an ADMIT. It does not authorize Jinja bytes for training until the exact-head executable qualification is terminal-success."
+}

@@ -1,0 +1,119 @@
+{
+  "schema_version": "12-6.next100-047-jinja-code-source.v1",
+  "worker_id": "NEXT100-047-CODE-JINJA",
+  "execution_profile": "LOCAL_FREE",
+  "source_id": "code.pallets.jinja.core-v1",
+  "source_family": "github:pallets/jinja",
+  "provider": "Pallets",
+  "repository_url": "https://github.com/pallets/jinja",
+  "upstream_commit": "5ef70112a1ff19c05324ff889dd30405b1002044",
+  "captured_at": "2026-08-26T18:02:00Z",
+  "purpose": "base_pretraining_source_code",
+  "normalization_policy": "STRICT_UTF8_IDENTITY_PRESERVE_V1",
+  "license": {
+    "spdx": "BSD-3-Clause",
+    "path": "LICENSE.txt",
+    "git_blob_sha1": "c37cae49ec77ad6ebb25568c1605f1fee5313cfb",
+    "size_bytes": 1475,
+    "raw_url": "https://raw.githubusercontent.com/pallets/jinja/5ef70112a1ff19c05324ff889dd30405b1002044/LICENSE.txt",
+    "training_use_decision": "ALLOWED",
+    "redistribution_decision": "ALLOWED_WITH_LICENSE_CONDITIONS",
+    "conditions": [
+      "retain copyright notice, conditions, and disclaimer in source redistribution",
+      "reproduce copyright notice, conditions, and disclaimer in binary redistribution materials",
+      "do not use copyright-holder or contributor names for endorsement without permission"
+    ],
+    "decision_basis": "Exact pinned BSD-3-Clause license grants redistribution and use in source and binary forms, with or without modification. Project policy therefore approves this exact bounded source snapshot for model-training use subject to the license conditions; approval is not inferred from public availability."
+  },
+  "files": [
+    {
+      "path": "src/jinja2/lexer.py",
+      "git_blob_sha1": "e35cd471e98f516221759ef4345867d71d28230a",
+      "size_bytes": 29687,
+      "language": "python",
+      "role": "template lexer"
+    },
+    {
+      "path": "src/jinja2/parser.py",
+      "git_blob_sha1": "3ae857ebe2a937c1362c44f38e5c436bfd3c84b0",
+      "size_bytes": 40095,
+      "language": "python",
+      "role": "template parser"
+    },
+    {
+      "path": "src/jinja2/compiler.py",
+      "git_blob_sha1": "84cd513028021b327715400bfa89d28f4e3120cd",
+      "size_bytes": 73918,
+      "language": "python",
+      "role": "template compiler"
+    },
+    {
+      "path": "src/jinja2/environment.py",
+      "git_blob_sha1": "acaaffb5946c7a4f8973db47a317a286d496ada1",
+      "size_bytes": 60847,
+      "language": "python",
+      "role": "environment and template API implementation"
+    },
+    {
+      "path": "src/jinja2/runtime.py",
+      "git_blob_sha1": "667c0416dd6a524dbee6853df7efec67a463d667",
+      "size_bytes": 34148,
+      "language": "python",
+      "role": "template runtime"
+    }
+  ],
+  "capacity_bytes": 238695,
+  "capacity_rule": "Count only the five selected substantive implementation files after all gates pass; docs, tests, examples, generated files, packaging metadata, vendored copies, and license text do not count as code capacity.",
+  "explicit_exclusions": [
+    "docs/**",
+    "tests/**",
+    "examples/**",
+    "scripts/**",
+    "src/jinja2/_identifier.py",
+    "src/jinja2/py.typed",
+    "pyproject.toml",
+    "uv.lock",
+    "README.md",
+    "CHANGES.rst",
+    "LICENSE.txt as capacity"
+  ],
+  "evaluation_boundary": {
+    "training_files_must_not_be_currently_reserved_for_evaluation": true,
+    "current_jinja_reservations_observed_at_initial_check": 0,
+    "future_reservation_rule": "Any exact path/blob identity reserved by a later evaluation authority before final sealing is excluded and capacity is recomputed."
+  },
+  "incumbent_code_families_for_dedup": [
+    {
+      "source_family": "github:encode/httpx",
+      "path": "httpx/_content.py",
+      "commit": "b5addb64f0161ff6bfe94c124ef76f6a1fba5254",
+      "git_blob_sha1": "6f479a0885f723b7395843d41164a87041820776"
+    },
+    {
+      "source_family": "github:psf/requests",
+      "path": "src/requests/_internal_utils.py",
+      "commit": "5460f467b02e49471c0fd6cfc9ca0adab6351f98",
+      "git_blob_sha1": "0466a7d347db4ed34a37db51b75fc8e80bc06055"
+    }
+  ],
+  "dedup": {
+    "exact_identity": "Git blob SHA-1 and raw SHA-256 at execution",
+    "near_method": "lowercased 5-token shingle Jaccard",
+    "near_threshold": 0.85,
+    "family_rule": "pallets/jinja is one independent upstream family; five files increase byte capacity but count as one family"
+  },
+  "required_gates": [
+    "canonical upstream repository is not a fork or mirror",
+    "exact upstream commit remains fetchable",
+    "license bytes match pinned Git blob identity",
+    "every selected file byte size and Git blob identity match",
+    "strict UTF-8 identity normalization",
+    "Python AST parse and compile succeed",
+    "secret/private-key/token scan passes",
+    "privacy-like email and private-IP scan passes",
+    "generated/vendored/build/minified path and marker checks pass",
+    "substantive implementation quality thresholds pass",
+    "no exact or >=0.85 near duplicate against selected files or incumbent admitted code objects",
+    "no selected path/blob is evaluation-reserved at final live-registry check"
+  ]
+}
