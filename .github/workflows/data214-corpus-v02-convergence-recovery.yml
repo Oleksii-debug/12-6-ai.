@@ -96,6 +96,40 @@ jobs:
           .data214/bin/python -m pip install --no-deps "$TOKENIZERS_WHEEL"
           .data214/bin/python -m pip check
 
+      - name: Materialize retained DATA-32 and DATA-33 evidence by immutable identity
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p reports/d03 data214-evidence
+          git show b1c9449ca839ed10c872f444010f74fd225acae1:reports/d03/document_quality_current_corpus_20260825.json \
+            > reports/d03/document_quality_current_corpus_20260825.json
+          git show 290b82fd0f7d1cc3a1840deae4378b9c500f1c15:reports/d03/pii_secrets_scan_s0_project_authored_20260825.json \
+            > reports/d03/pii_secrets_scan_s0_project_authored_20260825.json
+          test "$(git hash-object reports/d03/document_quality_current_corpus_20260825.json)" = \
+            "ed11a4d605d57fbb7102ab58da7614a4c476cf85"
+          test "$(git hash-object reports/d03/pii_secrets_scan_s0_project_authored_20260825.json)" = \
+            "d670568437c555dc6e8f1228a6205007dbc1ffb8"
+          .data214/bin/python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          payload = {
+              "schema": "12-6.data214-retained-policy-evidence-binding.v1",
+              "source_sha": os.environ["EXPECTED_SOURCE_SHA"],
+              "data32_commit": "b1c9449ca839ed10c872f444010f74fd225acae1",
+              "document_quality_report_blob": "ed11a4d605d57fbb7102ab58da7614a4c476cf85",
+              "data33_commit": "290b82fd0f7d1cc3a1840deae4378b9c500f1c15",
+              "privacy_report_blob": "d670568437c555dc6e8f1228a6205007dbc1ffb8",
+              "materialization": "git-show-immutable-producer-commit",
+          }
+          Path("data214-evidence/retained-policy-evidence-binding.json").write_text(
+              json.dumps(payload, sort_keys=True, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
       - name: Bind universal bootstrap evidence to exact source
         env:
           EXPECTED_SOURCE_SHA: ${{ github.sha }}
@@ -188,8 +222,10 @@ jobs:
           scope = json.loads(Path("data214-evidence/scoped-convergence.json").read_text())
           prereq = json.loads(Path("data214-evidence/data213-prerequisite.json").read_text())
           small = json.loads(Path("data214-evidence/small-build/small-build-report.json").read_text())
+          retained = json.loads(Path("data214-evidence/retained-policy-evidence-binding.json").read_text())
           assert scope["scope_status"] == "PASS"
           assert scope["whole_repository_health_claimed"] is False
+          assert retained["materialization"] == "git-show-immutable-producer-commit"
           assert prereq["terminal_snapshot_authority_consumed"] is False
           assert prereq["promoted_source_identities_invented"] is False
           assert small["authority"] == "TEST_FIXTURE_ONLY_NOT_SOURCE_SNAPSHOT_OR_CORPUS_PROMOTION"
