@@ -6,9 +6,9 @@ Status: post-Base communication-data contract and seed materialization only. No 
 
 ## Authority consumed
 
-This contract is stacked directly on terminal POSTBASE-253 head `f6463424b5f53152fce6e6053b705f94e03f9f06`. It reuses POSTBASE-253 `TokenizerCompatibility` and keeps the canonical Base/post-Base evidence and artifact boundaries intact.
+This contract is stacked directly on terminal POSTBASE-253 head `f6463424b5f53152fce6e6053b705f94e03f9f06`. It reuses POSTBASE-253 `TokenizerCompatibility` and keeps the canonical Base/post-Base evidence and artifact boundaries intact. POSTBASE-253 exact-head CI run `32960956930` completed successfully.
 
-The newer POSTBASE-351 adapter head was checked during convergence. It was not treated as terminal authority because its exact-head GitHub workflows had no terminal PASS at the time of recovery. The communication-data contract therefore does not invent or silently bind an unverified adapter dependency. A later terminal adapter may consume this dataset only through the preserved POSTBASE-253 tokenizer/Base boundary.
+The newer POSTBASE-351 adapter was rechecked during final convergence at head `8e0814fca2aead96d266868b921b0c19167be571`. It is not a terminal authority: exact-head LOCAL_FREE proof run `32997312319` failed at its Ruff surface step, and CI run `32997314085` also failed. Therefore POSTBASE-352 does not consume or invent an adapter dependency. A later terminal adapter may consume this dataset only through the preserved post-Base boundary.
 
 ## Scope and seed
 
@@ -118,7 +118,7 @@ Recovery does not modify the 20 seed rows or manifest, so their identities remai
 
 The original PR CI run `32984343041` ended as GitHub Actions `startup_failure` before a runner executed test steps; that result is not treated as a contract failure or as a PASS. Recovery keeps the normal `ubuntu-latest` CI contract unchanged and adds deterministic tests for the strengthened gates rather than weakening checks to work around runner startup.
 
-Terminal status requires the repository CI on the recovered exact head to execute Ruff and pytest successfully.
+Recovery head `eb926a49160765e03c37da2b86656dcbc1ba4d89` completed CI run `32997436281` successfully, including dependency installation, `ruff check src tests`, and `pytest -q`. Any later documentation-only convergence commit must independently retain an exact-head CI success before it becomes terminal authority.
 
 No optimizer update, gradient, SFT, preference optimization, RL, checkpoint mutation, Base-data admission, foreign model inference, network data generation or paid compute occurs here.
 
