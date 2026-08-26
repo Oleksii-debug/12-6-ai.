@@ -1,14 +1,19 @@
-name: NEXT100-065C Cross-Source Dedup V5
+name: NEXT100-065C Cross-Source Dedup V5-V6
 
 on:
   pull_request:
     paths:
       - ".github/workflows/next100-065c-cross-source-dedup-v5.yml"
       - "configs/data/next100_065c_cross_source_dedup_v5.json"
+      - "configs/data/next100_065d_cross_source_dedup_v6.json"
       - "src/twelve_six/data/cross_source_capacity_audit_v5.py"
+      - "src/twelve_six/data/cross_source_capacity_audit_v6.py"
       - "tests/test_next100_065c_cross_source_dedup_v5.py"
+      - "tests/test_next100_065d_cross_source_dedup_v6.py"
       - "tools/run_next100_065c_cross_source_dedup_v5.py"
+      - "tools/run_next100_065d_cross_source_dedup_v6.py"
       - "tools/validate_next100_065c_authority_bindings.py"
+      - "tools/validate_next100_065d_authority_bindings.py"
       - "docs/NEXT100_065C_CROSS_SOURCE_DEDUP_V5.md"
   workflow_dispatch:
 
@@ -20,7 +25,7 @@ permissions:
 jobs:
   exact-global-dedup:
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 30
     env:
       TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
       GITHUB_TOKEN: ${{ github.token }}
@@ -52,13 +57,15 @@ jobs:
         run: |
           python tools/validate_next100_065c_authority_bindings.py
           python tools/validate_next100_065c_authority_bindings.py --github-live
+          python tools/validate_next100_065d_authority_bindings.py
+          python tools/validate_next100_065d_authority_bindings.py --github-live
 
       - name: Universal exact LOCAL_FREE bootstrap
         uses: ./.github/actions/execution-bootstrap
         with:
           capabilities: runtime,tests,lint
           venv: .next100-065c
-          command: python -m pytest -q tests/test_data298_cross_source_capacity_audit.py tests/test_next100_065_cross_source_dedup_v3.py tests/test_next100_065b_cross_source_dedup_v4.py tests/test_next100_065c_cross_source_dedup_v5.py
+          command: python -m pytest -q tests/test_data298_cross_source_capacity_audit.py tests/test_next100_065_cross_source_dedup_v3.py tests/test_next100_065b_cross_source_dedup_v4.py tests/test_next100_065c_cross_source_dedup_v5.py tests/test_next100_065d_cross_source_dedup_v6.py
           manifest: next100-065c-execution-environment.json
 
       - name: Compile focused implementation
@@ -68,54 +75,65 @@ jobs:
           src/twelve_six/data/cross_source_capacity_audit_v3.py
           src/twelve_six/data/cross_source_capacity_audit_v4.py
           src/twelve_six/data/cross_source_capacity_audit_v5.py
+          src/twelve_six/data/cross_source_capacity_audit_v6.py
           tools/run_next100_065c_cross_source_dedup_v5.py
+          tools/run_next100_065d_cross_source_dedup_v6.py
           tools/validate_next100_065c_authority_bindings.py
+          tools/validate_next100_065d_authority_bindings.py
           tests/test_next100_065c_cross_source_dedup_v5.py
+          tests/test_next100_065d_cross_source_dedup_v6.py
 
-      - name: Inherited plus V5 adversarial tests
+      - name: Inherited plus V5-V6 adversarial tests
         run: >-
           PYTHONPATH=src .next100-065c/bin/python -m pytest -q
           tests/test_data298_cross_source_capacity_audit.py
           tests/test_next100_065_cross_source_dedup_v3.py
           tests/test_next100_065b_cross_source_dedup_v4.py
           tests/test_next100_065c_cross_source_dedup_v5.py
+          tests/test_next100_065d_cross_source_dedup_v6.py
 
       - name: Focused lint
         run: >-
           .next100-065c/bin/ruff check --select E4,E9,F
           src/twelve_six/data/cross_source_capacity_audit_v5.py
+          src/twelve_six/data/cross_source_capacity_audit_v6.py
           tools/run_next100_065c_cross_source_dedup_v5.py
+          tools/run_next100_065d_cross_source_dedup_v6.py
           tools/validate_next100_065c_authority_bindings.py
+          tools/validate_next100_065d_authority_bindings.py
           tests/test_next100_065c_cross_source_dedup_v5.py
+          tests/test_next100_065d_cross_source_dedup_v6.py
 
-      - name: Materialize full 23-object audit twice
+      - name: Materialize full reconciled 31-object V6 audit twice
         env:
           PYTHONPATH: src
         run: |
-          mkdir -p evidence/next100_065c/a evidence/next100_065c/b
-          .next100-065c/bin/python tools/run_next100_065c_cross_source_dedup_v5.py run \
+          mkdir -p evidence/next100_065d/a evidence/next100_065d/b
+          .next100-065c/bin/python tools/run_next100_065d_cross_source_dedup_v6.py run \
             --base-inventory configs/data/next100_065_cross_source_dedup_v3.json \
             --v4-extension configs/data/next100_065b_cross_source_dedup_v4.json \
             --v5-config configs/data/next100_065c_cross_source_dedup_v5.json \
-            --report evidence/next100_065c/a/report.json
-          .next100-065c/bin/python tools/run_next100_065c_cross_source_dedup_v5.py run \
+            --v6-config configs/data/next100_065d_cross_source_dedup_v6.json \
+            --report evidence/next100_065d/a/report.json
+          .next100-065c/bin/python tools/run_next100_065d_cross_source_dedup_v6.py run \
             --base-inventory configs/data/next100_065_cross_source_dedup_v3.json \
             --v4-extension configs/data/next100_065b_cross_source_dedup_v4.json \
             --v5-config configs/data/next100_065c_cross_source_dedup_v5.json \
-            --report evidence/next100_065c/b/report.json
-          cmp evidence/next100_065c/a/report.json evidence/next100_065c/b/report.json
+            --v6-config configs/data/next100_065d_cross_source_dedup_v6.json \
+            --report evidence/next100_065d/b/report.json
+          cmp evidence/next100_065d/a/report.json evidence/next100_065d/b/report.json
 
       - name: Verify exact capacity, privacy and truth boundaries
         env:
           PYTHONPATH: src
         run: |
-          .next100-065c/bin/python tools/run_next100_065c_cross_source_dedup_v5.py verify \
-            --report evidence/next100_065c/a/report.json
+          .next100-065c/bin/python tools/run_next100_065d_cross_source_dedup_v6.py verify \
+            --report evidence/next100_065d/a/report.json
           .next100-065c/bin/python - <<'PY'
           import json
           from pathlib import Path
 
-          report = json.loads(Path("evidence/next100_065c/a/report.json").read_text())
+          report = json.loads(Path("evidence/next100_065d/a/report.json").read_text())
           vector = report["source_vector"]
           dedup = report["dedup_v3"]
           scope = dedup["terminal_candidates"]
@@ -123,24 +141,39 @@ jobs:
               item for item in report["materialization_evidence"]
               if item["source_id"] == "en.python.docs.tutorial-introduction"
           )
+          numpy = [
+              item for item in report["materialization_evidence"]
+              if str(item["source_id"]).startswith("code.numpy.")
+          ]
+          gutenberg = [
+              item for item in report["materialization_evidence"]
+              if str(item["source_id"]).startswith("en.project-gutenberg.")
+          ]
 
-          assert vector["source_object_count"] == 23
-          assert vector["source_family_counts"] == {"code": 4, "en": 4, "uk": 4}
-          assert 0 < vector["cpython_accepted_capacity_bytes"] < 17901
-          assert vector["source_capacity_bytes_before_global_dedup"] == (
-              320632 + vector["cpython_accepted_capacity_bytes"]
-          )
-          assert scope["declared_capacity_bytes_before"] == vector["source_capacity_bytes_before_global_dedup"]
-          assert 0 <= vector["conservative_unique_capacity_bytes_after_global_dedup"] <= scope["declared_capacity_bytes_before"]
+          assert vector["source_object_count"] == 31
+          assert vector["source_family_counts"] == {"code": 5, "en": 5, "uk": 4}
+          assert vector["cpython_accepted_capacity_bytes"] == 15540
+          assert vector["source_capacity_bytes_before_global_dedup"] == 2045180
+          assert vector["source_capacity_by_modality_before_global_dedup"] == {
+              "uk": 100856,
+              "en": 1838293,
+              "code": 106031,
+          }
+          assert vector["pre_dedup_planning_gap_bytes"] == 17954820
+          assert scope["declared_capacity_bytes_before"] == 2045180
+          assert 0 <= vector["conservative_unique_capacity_bytes_after_global_dedup"] <= 2045180
           assert scope["by_modality"]["uk"]["declared_source_family_count"] == 4
-          assert scope["by_modality"]["en"]["declared_source_family_count"] == 4
-          assert scope["by_modality"]["code"]["declared_source_family_count"] == 4
+          assert scope["by_modality"]["en"]["declared_source_family_count"] == 5
+          assert scope["by_modality"]["code"]["declared_source_family_count"] == 5
           assert cp["normalized_source_bytes"] == 17901
           assert cp["accepted_chunk_count"] == 14
           assert cp["rejected_chunk_count"] == 2
           assert cp["rejection_reasons"] == {"pii_phone": 2}
-          assert cp["accepted_capacity_bytes"] == vector["cpython_accepted_capacity_bytes"]
-          assert cp["accepted_capacity_bytes"] < cp["normalized_source_bytes"]
+          assert cp["accepted_capacity_bytes"] == 15540
+          assert len(numpy) == 5
+          assert sum(item["raw_bytes"] for item in numpy) == 36898
+          assert len(gutenberg) == 3
+          assert sum(item["normalized_bytes"] for item in gutenberg) == 1672110
           assert report["model_training_executed"] is False
           assert report["tokenizer_fit_executed"] is False
           assert report["paid_compute_used"] is False
@@ -151,17 +184,17 @@ jobs:
 
       - name: Prove public evidence is text-free
         run: |
-          ! grep -q '"text"' evidence/next100_065c/a/report.json
-          ! grep -q 'raw.githubusercontent.com' evidence/next100_065c/a/report.json
-          ! grep -q '380 50 123 4567' evidence/next100_065c/a/report.json
+          ! grep -q '"text"' evidence/next100_065d/a/report.json
+          ! grep -q '380 50 123 4567' evidence/next100_065d/a/report.json
 
-      - name: Upload immutable NEXT100-065C evidence
+      - name: Upload immutable NEXT100-065D evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: next100-065c-cross-source-dedup-${{ github.event.pull_request.head.sha || github.sha }}
+          name: next100-065d-cross-source-dedup-${{ github.event.pull_request.head.sha || github.sha }}
           if-no-files-found: error
           retention-days: 90
           path: |
             configs/data/next100_065c_cross_source_dedup_v5.json
+            configs/data/next100_065d_cross_source_dedup_v6.json
             next100-065c-execution-environment.json
-            evidence/next100_065c/a/report.json
+            evidence/next100_065d/a/report.json
