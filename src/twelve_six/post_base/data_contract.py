@@ -62,9 +62,16 @@ class SyntheticDataAuthority:
         _text(self.authority_id, "authority_id")
         _sha(self.authority_sha256, "authority_sha256")
         if self.purpose != "post_base_communication_data" or not self.owner_approved:
-            raise CommunicationDataError("synthetic authority must be owner-approved for communication data")
+            raise CommunicationDataError(
+                "synthetic authority must be owner-approved for communication data"
+            )
         if not self.allowed_source_ids:
             raise CommunicationDataError("synthetic authority must name allowed source IDs")
+        checked = tuple(
+            _text(source_id, "allowed_source_ids[]") for source_id in self.allowed_source_ids
+        )
+        if len(set(checked)) != len(checked):
+            raise CommunicationDataError("synthetic authority source IDs must be unique")
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,13 +105,23 @@ def _text(value: object, field: str) -> str:
 
 
 def _parse_record(row: Mapping[str, object]) -> CommunicationRecord:
-    keys = {"record_id", "family_id", "split", "language", "skill", "messages", "provenance", "quality"}
+    keys = {
+        "record_id",
+        "family_id",
+        "split",
+        "language",
+        "skill",
+        "messages",
+        "provenance",
+        "quality",
+    }
     if set(row) != keys:
         raise CommunicationDataError("record keys do not exactly match v1")
     try:
         split = CommunicationSplit(str(row["split"]))
     except ValueError as exc:
         raise CommunicationDataError("split must be train, selection, or final") from exc
+
     raw_messages = row["messages"]
     if not isinstance(raw_messages, Sequence) or isinstance(raw_messages, (str, bytes)):
         raise CommunicationDataError("messages must be a sequence")
@@ -125,9 +142,15 @@ def _parse_record(row: Mapping[str, object]) -> CommunicationRecord:
             raise CommunicationDataError("roles must alternate user/assistant")
 
     provenance = row["provenance"]
-    if not isinstance(provenance, Mapping) or set(provenance) != {
-        "origin_kind", "source_id", "rights", "foreign_model_output", "synthetic_authority_id", "content_sha256"
-    }:
+    provenance_keys = {
+        "origin_kind",
+        "source_id",
+        "rights",
+        "foreign_model_output",
+        "synthetic_authority_id",
+        "content_sha256",
+    }
+    if not isinstance(provenance, Mapping) or set(provenance) != provenance_keys:
         raise CommunicationDataError("provenance keys do not exactly match v1")
     foreign = provenance["foreign_model_output"]
     if not isinstance(foreign, bool):
@@ -146,13 +169,26 @@ def _parse_record(row: Mapping[str, object]) -> CommunicationRecord:
         raise CommunicationDataError("content_sha256 does not match messages")
 
     quality = row["quality"]
-    if not isinstance(quality, Mapping) or set(quality) != {
-        "answer_verified", "relevance_review", "language_review", "pii_review", "secret_review", "copyright_review", "no_hidden_reasoning"
-    }:
+    quality_keys = {
+        "answer_verified",
+        "relevance_review",
+        "language_review",
+        "pii_review",
+        "secret_review",
+        "copyright_review",
+        "no_hidden_reasoning",
+    }
+    if not isinstance(quality, Mapping) or set(quality) != quality_keys:
         raise CommunicationDataError("quality keys do not exactly match v1")
     if quality["answer_verified"] is not True or quality["no_hidden_reasoning"] is not True:
         raise CommunicationDataError("answer verification and no-hidden-reasoning gates must pass")
-    for name in ("relevance_review", "language_review", "pii_review", "secret_review", "copyright_review"):
+    for name in (
+        "relevance_review",
+        "language_review",
+        "pii_review",
+        "secret_review",
+        "copyright_review",
+    ):
         if quality[name] != "pass":
             raise CommunicationDataError(f"quality.{name} must be pass")
 
@@ -171,14 +207,28 @@ def _parse_record(row: Mapping[str, object]) -> CommunicationRecord:
     )
 
 
-def _validate_provenance(record: CommunicationRecord, authority: SyntheticDataAuthority | None) -> None:
+def _validate_provenance(
+    record: CommunicationRecord,
+    authority: SyntheticDataAuthority | None,
+) -> None:
     if not record.foreign_model_output:
-        if record.source_id != SOURCE_REGISTRY_ID or record.rights != "project_owned" or record.synthetic_authority_id:
+        if (
+            record.source_id != SOURCE_REGISTRY_ID
+            or record.rights != "project_owned"
+            or record.synthetic_authority_id
+        ):
             raise CommunicationDataError("project-authored rows require project-owned provenance")
         return
+    if record.rights != "authority_bound":
+        raise CommunicationDataError("foreign model output rights must be authority_bound")
     if not record.synthetic_authority_id or authority is None:
-        raise CommunicationDataError("foreign model output requires explicit later synthetic-data authority")
-    if record.synthetic_authority_id != authority.authority_id or record.source_id not in authority.allowed_source_ids:
+        raise CommunicationDataError(
+            "foreign model output requires explicit later synthetic-data authority"
+        )
+    if (
+        record.synthetic_authority_id != authority.authority_id
+        or record.source_id not in authority.allowed_source_ids
+    ):
         raise CommunicationDataError("foreign model output is outside the active synthetic authority")
 
 
@@ -195,11 +245,17 @@ def format_sft_turns(record: CommunicationRecord) -> tuple[tuple[str, str], ...]
 
 
 def require_logical_tokenizer_compatibility(tokenizer: TokenizerCompatibility) -> None:
-    if tokenizer.tokenizer_id != BYTE_TOKENIZER_ID or tokenizer.vocab_size != BYTE_TOKENIZER_VOCAB_SIZE:
+    if (
+        tokenizer.tokenizer_id != BYTE_TOKENIZER_ID
+        or tokenizer.vocab_size != BYTE_TOKENIZER_VOCAB_SIZE
+    ):
         raise CommunicationDataError("v1 requires the s0-byte-v1 256-byte tokenizer profile")
 
 
-def require_exact_base_tokenizer(expected: TokenizerCompatibility, candidate: TokenizerCompatibility) -> None:
+def require_exact_base_tokenizer(
+    expected: TokenizerCompatibility,
+    candidate: TokenizerCompatibility,
+) -> None:
     require_logical_tokenizer_compatibility(expected)
     expected.require_exact_match(candidate)
 
@@ -208,15 +264,32 @@ def to_posttraining_records(
     record: CommunicationRecord,
     *,
     for_training: bool = False,
+    for_selection: bool = False,
     synthetic_authority: SyntheticDataAuthority | None = None,
 ) -> tuple[DatasetRecord, ...]:
+    """Convert a validated communication row for one explicit post-Base use.
+
+    `for_training` admits train only. `for_selection` admits selection only. Final rows are
+    reporting/test material and can never enter either path.
+    """
     _validate_provenance(record, synthetic_authority)
+    if for_training and for_selection:
+        raise CommunicationDataError("training and selection use are mutually exclusive")
     if for_training and record.split is not CommunicationSplit.TRAIN:
         raise CommunicationDataError("only train split may be converted for training")
-    split_map = {CommunicationSplit.TRAIN: Split.TRAIN, CommunicationSplit.SELECTION: Split.VALIDATION, CommunicationSplit.FINAL: Split.TEST}
+    if for_selection and record.split is not CommunicationSplit.SELECTION:
+        raise CommunicationDataError("only selection split may be converted for selection")
+
+    split_map = {
+        CommunicationSplit.TRAIN: Split.TRAIN,
+        CommunicationSplit.SELECTION: Split.VALIDATION,
+        CommunicationSplit.FINAL: Split.TEST,
+    }
     rows: list[DatasetRecord] = []
     for turn, (prompt, completion) in enumerate(format_sft_turns(record), 1):
-        digest = hashlib.sha256(_canon({"prompt": prompt, "completion": completion}).encode()).hexdigest()
+        digest = hashlib.sha256(
+            _canon({"prompt": prompt, "completion": completion}).encode()
+        ).hexdigest()
         provenance = SyntheticProvenance(
             source_id=record.source_id,
             content_sha256=digest,
@@ -225,13 +298,32 @@ def to_posttraining_records(
             external_generator=record.foreign_model_output,
             owner_policy_ref=record.synthetic_authority_id,
             parent_sha256=(record.content_sha256,),
-            metadata={"classification": DATASET_CLASSIFICATION, "family_id": record.family_id, "language": record.language, "skill": record.skill, "formatter_id": FORMATTER_ID, "base_corpus_evidence": "false", "canonical_base_training_eligible": "false"},
+            metadata={
+                "classification": DATASET_CLASSIFICATION,
+                "family_id": record.family_id,
+                "language": record.language,
+                "skill": record.skill,
+                "formatter_id": FORMATTER_ID,
+                "base_corpus_evidence": "false",
+                "canonical_base_training_eligible": "false",
+            },
         )
-        rows.append(DatasetRecord(record_id=f"{record.record_id}.turn-{turn}", kind=RecordKind.PROMPT_COMPLETION, split=split_map[record.split], payload={"prompt": prompt, "completion": completion}, provenance=provenance))
+        rows.append(
+            DatasetRecord(
+                record_id=f"{record.record_id}.turn-{turn}",
+                kind=RecordKind.PROMPT_COMPLETION,
+                split=split_map[record.split],
+                payload={"prompt": prompt, "completion": completion},
+                provenance=provenance,
+            )
+        )
     return tuple(rows)
 
 
-def _load_jsonl(path: Path, expected_split: CommunicationSplit) -> tuple[CommunicationRecord, ...]:
+def _load_jsonl(
+    path: Path,
+    expected_split: CommunicationSplit,
+) -> tuple[CommunicationRecord, ...]:
     raw = path.read_bytes()
     try:
         text = raw.decode("utf-8")
@@ -256,14 +348,26 @@ def _load_jsonl(path: Path, expected_split: CommunicationSplit) -> tuple[Communi
 
 
 def _normalized(record: CommunicationRecord) -> str:
-    return " ".join(" ".join(f"{role} {content}" for role, content in record.messages).casefold().split())
+    return " ".join(
+        " ".join(f"{role} {content}" for role, content in record.messages)
+        .casefold()
+        .split()
+    )
 
 
 def _shingles(text: str, width: int = 5) -> set[str]:
-    return {text} if len(text) <= width else {text[i:i + width] for i in range(len(text) - width + 1)}
+    return (
+        {text}
+        if len(text) <= width
+        else {text[i : i + width] for i in range(len(text) - width + 1)}
+    )
 
 
-def _validate_split_isolation(records: Sequence[CommunicationRecord], threshold: float) -> None:
+def _validate_split_isolation(
+    records: Sequence[CommunicationRecord],
+    threshold: float,
+) -> None:
+    """Reject duplicate families across splits and duplicates/near-duplicates globally."""
     ids: set[str] = set()
     families: dict[str, CommunicationSplit] = {}
     exact: dict[str, str] = {}
@@ -278,59 +382,141 @@ def _validate_split_isolation(records: Sequence[CommunicationRecord], threshold:
         if digest in exact:
             raise CommunicationDataError("exact normalized duplicate")
         exact[digest] = record.record_id
+
     for index, left in enumerate(records):
         left_set = _shingles(_normalized(left))
-        for right in records[index + 1:]:
-            if left.split is right.split:
-                continue
+        for right in records[index + 1 :]:
             right_set = _shingles(_normalized(right))
             score = len(left_set & right_set) / len(left_set | right_set)
             if score >= threshold:
-                raise CommunicationDataError("cross-split near duplicate")
+                raise CommunicationDataError("near duplicate")
 
 
-def validate_dataset(root: Path, manifest_path: Path, *, base_tokenizer: TokenizerCompatibility | None = None, synthetic_authority: SyntheticDataAuthority | None = None) -> DatasetAudit:
+def _require_split_manifest_maps(manifest: Mapping[str, object]) -> None:
+    expected_files = {split.value: f"{split.value}.jsonl" for split in CommunicationSplit}
+    if manifest["split_files"] != expected_files:
+        raise CommunicationDataError(
+            "v1 train/selection/final files must remain physically separate canonical files"
+        )
+    for key in ("split_sha256", "record_counts"):
+        value = manifest[key]
+        if not isinstance(value, Mapping) or set(value) != set(expected_files):
+            raise CommunicationDataError(f"manifest.{key} must bind exactly all three splits")
+
+
+def validate_dataset(
+    root: Path,
+    manifest_path: Path,
+    *,
+    base_tokenizer: TokenizerCompatibility | None = None,
+    synthetic_authority: SyntheticDataAuthority | None = None,
+) -> DatasetAudit:
     manifest_bytes = manifest_path.read_bytes()
     manifest = json.loads(manifest_bytes.decode("utf-8"))
-    if not isinstance(manifest, Mapping) or manifest_bytes != (_canon(manifest) + "\n").encode():
+    if not isinstance(manifest, Mapping) or manifest_bytes != (
+        _canon(manifest) + "\n"
+    ).encode():
         raise CommunicationDataError("manifest must be canonical UTF-8 JSON plus final LF")
-    required = {"schema", "dataset_id", "classification", "base_corpus_evidence", "canonical_base_training_eligible", "training_authorized", "source_registry_id", "foreign_model_records", "synthetic_data_authority", "tokenizer_profile", "formatter", "split_files", "split_sha256", "record_counts", "required_train_skills", "required_languages", "near_duplicate_threshold", "max_sft_example_bytes", "selection_for_training", "final_for_training", "final_for_selection"}
+
+    required = {
+        "schema",
+        "dataset_id",
+        "classification",
+        "base_corpus_evidence",
+        "canonical_base_training_eligible",
+        "training_authorized",
+        "source_registry_id",
+        "foreign_model_records",
+        "synthetic_data_authority",
+        "tokenizer_profile",
+        "formatter",
+        "split_files",
+        "split_sha256",
+        "record_counts",
+        "required_train_skills",
+        "required_languages",
+        "near_duplicate_threshold",
+        "max_sft_example_bytes",
+        "selection_for_training",
+        "final_for_training",
+        "final_for_selection",
+    }
     if set(manifest) != required or manifest["schema"] != DATASET_SCHEMA:
         raise CommunicationDataError("manifest schema/keys drift")
-    if manifest["classification"] != DATASET_CLASSIFICATION or manifest["source_registry_id"] != SOURCE_REGISTRY_ID:
+    if (
+        manifest["classification"] != DATASET_CLASSIFICATION
+        or manifest["source_registry_id"] != SOURCE_REGISTRY_ID
+    ):
         raise CommunicationDataError("post-Base classification/provenance drift")
-    for name in ("base_corpus_evidence", "canonical_base_training_eligible", "training_authorized", "selection_for_training", "final_for_training", "final_for_selection"):
+    for name in (
+        "base_corpus_evidence",
+        "canonical_base_training_eligible",
+        "training_authorized",
+        "selection_for_training",
+        "final_for_training",
+        "final_for_selection",
+    ):
         if manifest[name] is not False:
             raise CommunicationDataError(f"manifest.{name} must remain false")
     if manifest["synthetic_data_authority"] is not None:
         raise CommunicationDataError("seed manifest carries no synthetic-data authority")
-    expected_profile = {"tokenizer_id": BYTE_TOKENIZER_ID, "vocab_size": 256, "encoding": "utf-8-bytes", "adds_special_tokens": False, "installs_base_chat_template": False, "exact_base_hash_binding_required_before_training": True}
+
+    expected_profile = {
+        "tokenizer_id": BYTE_TOKENIZER_ID,
+        "vocab_size": BYTE_TOKENIZER_VOCAB_SIZE,
+        "encoding": "utf-8-bytes",
+        "adds_special_tokens": False,
+        "installs_base_chat_template": False,
+        "exact_base_hash_binding_required_before_training": True,
+    }
     if manifest["tokenizer_profile"] != expected_profile:
         raise CommunicationDataError("tokenizer profile drift")
-    if manifest["formatter"] != {"formatter_id": FORMATTER_ID, "roles": ["user", "assistant"], "special_tokens": []}:
+    if manifest["formatter"] != {
+        "formatter_id": FORMATTER_ID,
+        "roles": ["user", "assistant"],
+        "special_tokens": [],
+    }:
         raise CommunicationDataError("formatter drift")
     if base_tokenizer is not None:
         require_logical_tokenizer_compatibility(base_tokenizer)
+
+    _require_split_manifest_maps(manifest)
+    root = root.resolve()
+    split_paths = {
+        split: (root / f"{split.value}.jsonl").resolve() for split in CommunicationSplit
+    }
+    if len(set(split_paths.values())) != len(split_paths):
+        raise CommunicationDataError("split paths must be distinct")
+    for path in split_paths.values():
+        if root not in path.parents or path.is_symlink() or not path.is_file():
+            raise CommunicationDataError("split files must be distinct regular files under dataset root")
 
     all_records: list[CommunicationRecord] = []
     split_hashes: dict[str, str] = {}
     counts: dict[str, int] = {}
     max_observed = 0
     max_bytes = manifest["max_sft_example_bytes"]
-    threshold = float(manifest["near_duplicate_threshold"])
-    if not isinstance(max_bytes, int) or max_bytes <= 0 or not 0 < threshold <= 1:
-        raise CommunicationDataError("invalid byte/near-duplicate gate")
+    threshold_raw = manifest["near_duplicate_threshold"]
+    if isinstance(threshold_raw, bool) or not isinstance(threshold_raw, (int, float)):
+        raise CommunicationDataError("near_duplicate_threshold must be numeric")
+    threshold = float(threshold_raw)
+    if not isinstance(max_bytes, int) or isinstance(max_bytes, bool) or max_bytes <= 0:
+        raise CommunicationDataError("max_sft_example_bytes must be a positive integer")
+    if not 0 < threshold <= 1:
+        raise CommunicationDataError("invalid near-duplicate gate")
+
     for split in CommunicationSplit:
-        relative = manifest["split_files"].get(split.value)
-        path = (root / relative).resolve() if isinstance(relative, str) else root
-        if root.resolve() not in path.parents:
-            raise CommunicationDataError("split path escapes dataset root")
+        path = split_paths[split]
         payload = path.read_bytes()
         digest = hashlib.sha256(payload).hexdigest()
-        if digest != manifest["split_sha256"].get(split.value):
+        split_sha256 = manifest["split_sha256"]
+        assert isinstance(split_sha256, Mapping)
+        if digest != split_sha256[split.value]:
             raise CommunicationDataError("split SHA-256 mismatch")
         records = _load_jsonl(path, split)
-        if len(records) != manifest["record_counts"].get(split.value):
+        record_counts = manifest["record_counts"]
+        assert isinstance(record_counts, Mapping)
+        if len(records) != record_counts[split.value]:
             raise CommunicationDataError("split record count mismatch")
         split_hashes[split.value] = digest
         counts[split.value] = len(records)
@@ -340,18 +526,40 @@ def validate_dataset(root: Path, manifest_path: Path, *, base_tokenizer: Tokeniz
                 observed = len((prompt + completion).encode("utf-8"))
                 max_observed = max(max_observed, observed)
                 if observed > max_bytes:
-                    raise CommunicationDataError("SFT example exceeds byte-tokenizer/context contract")
+                    raise CommunicationDataError(
+                        "SFT example exceeds byte-tokenizer/context contract"
+                    )
         all_records.extend(records)
+
     _validate_split_isolation(all_records, threshold)
 
+    required_skills = manifest["required_train_skills"]
+    required_languages = manifest["required_languages"]
+    if not isinstance(required_skills, Sequence) or isinstance(required_skills, (str, bytes)):
+        raise CommunicationDataError("required_train_skills must be a sequence")
+    if not isinstance(required_languages, Sequence) or isinstance(
+        required_languages, (str, bytes)
+    ):
+        raise CommunicationDataError("required_languages must be a sequence")
     train_skills = {r.skill for r in all_records if r.split is CommunicationSplit.TRAIN}
-    if set(manifest["required_train_skills"]) - train_skills:
+    if set(required_skills) - train_skills:
         raise CommunicationDataError("required train skill coverage is incomplete")
     for split in CommunicationSplit:
         languages = {r.language for r in all_records if r.split is split}
-        if set(manifest["required_languages"]) - languages:
+        if set(required_languages) - languages:
             raise CommunicationDataError("required language coverage is incomplete")
+
     foreign_count = sum(r.foreign_model_output for r in all_records)
-    if foreign_count != manifest["foreign_model_records"] or (foreign_count and synthetic_authority is None):
+    if foreign_count != manifest["foreign_model_records"] or (
+        foreign_count and synthetic_authority is None
+    ):
         raise CommunicationDataError("foreign-model provenance gate failed")
-    return DatasetAudit(_text(manifest["dataset_id"], "dataset_id"), hashlib.sha256(manifest_bytes).hexdigest(), split_hashes, counts, foreign_count, max_observed)
+
+    return DatasetAudit(
+        _text(manifest["dataset_id"], "dataset_id"),
+        hashlib.sha256(manifest_bytes).hexdigest(),
+        split_hashes,
+        counts,
+        foreign_count,
+        max_observed,
+    )

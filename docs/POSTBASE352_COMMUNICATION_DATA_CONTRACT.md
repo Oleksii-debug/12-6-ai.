@@ -1,20 +1,30 @@
 # POSTBASE-352 communication data contract v1
 
-Worker: `POSTBASE-352-COMMUNICATION-DATA-CONTRACT`
+Workers: `POSTBASE-352-COMMUNICATION-DATA-CONTRACT`, recovered by `NEXT100-012-POSTBASE352-RECOVERY`.
 
-Status: contract and seed materialization only. No training is authorized or executed.
+Status: post-Base communication-data contract and seed materialization only. No training is authorized or executed.
 
-## Scope
+## Authority consumed
 
-This worker defines the first concrete user/assistant communication dataset contract for a future small post-Base assistant. It stacks on POSTBASE-253's immutable Base-consumption boundary and D09's generic post-training records rather than creating another training framework.
+This contract is stacked directly on terminal POSTBASE-253 head `f6463424b5f53152fce6e6053b705f94e03f9f06`. It reuses POSTBASE-253 `TokenizerCompatibility` and keeps the canonical Base/post-Base evidence and artifact boundaries intact.
 
-The committed 20-record seed is deliberately small. It proves the schema, provenance, split firewall, formatting and validation mechanics. It is not a claim that 20 examples are enough to train a useful assistant or that any behavioral capability has been learned.
+The newer POSTBASE-351 adapter head was checked during convergence. It was not treated as terminal authority because its exact-head GitHub workflows had no terminal PASS at the time of recovery. The communication-data contract therefore does not invent or silently bind an unverified adapter dependency. A later terminal adapter may consume this dataset only through the preserved POSTBASE-253 tokenizer/Base boundary.
+
+## Scope and seed
+
+The committed seed has 20 project-authored user/assistant dialogues under `data/post_base/communication_v1/`:
+
+- train: 12;
+- selection: 4;
+- final: 4.
+
+English (`en`) and Ukrainian (`uk`) are required in every split. Train covers direct answers, transformation, summarization, structured response, clarification, exact reasoning and multi-turn context carryover.
+
+The seed proves schema, provenance, split separation, formatting and validation mechanics. It is not evidence that 20 examples are sufficient to train a useful assistant.
 
 ## Canonical Base firewall
 
-All communication material lives under `data/post_base/communication_v1/` and is classified `POSTBASE_COMMUNICATION_ONLY`.
-
-The manifest hard-codes all of the following to false:
+The manifest is classified `POSTBASE_COMMUNICATION_ONLY` and hard-binds all of the following to `false`:
 
 - `base_corpus_evidence`;
 - `canonical_base_training_eligible`;
@@ -23,38 +33,56 @@ The manifest hard-codes all of the following to false:
 - `final_for_training`;
 - `final_for_selection`.
 
-No file in this worker is admitted to canonical Base pretraining, Base evidence, tokenizer fitting or Base checkpoint construction. The worker modifies no Base dataset, ModelSpec, checkpoint, optimizer or trainer.
+No communication row is eligible for canonical Base pretraining, tokenizer fitting, Base scientific evidence or Base checkpoint construction. POSTBASE-352 modifies no Base weights, optimizer state, ModelSpec or checkpoint.
 
-## Record contract
+## Physical split firewall
+
+V1 requires three distinct canonical files with fixed names:
+
+- `train.jsonl`;
+- `selection.jsonl`;
+- `final.jsonl`.
+
+The manifest must bind exactly those files, all three SHA-256 identities and all three record counts. Renaming, aliasing, path escape, symlink substitution, byte drift or row/file split mismatch fails closed.
+
+`to_posttraining_records(..., for_training=True)` admits train only. `to_posttraining_records(..., for_selection=True)` admits selection only. Training and selection use are mutually exclusive. Final rows map to D09 `TEST` and are operationally ineligible for both training and selection.
+
+## Record and quality contract
 
 Each canonical UTF-8 JSONL row contains exactly:
 
 - stable `record_id` and `family_id`;
-- immutable split: `train`, `selection` or `final`;
-- language and skill labels;
+- split, language and skill labels;
 - an alternating dialogue that starts with `user`, ends with `assistant`, and permits only those two roles;
 - provenance;
 - quality-gate results.
 
-Text must be Unicode NFC, LF-only, free of NUL and forbidden control characters. Every row carries a SHA-256 over the canonical message payload.
+Text must be Unicode NFC, LF-only, free of NUL and forbidden control characters. Every row carries SHA-256 over the canonical message payload.
 
-The post-training adapter emits ordinary `PROMPT_COMPLETION` records. Selection maps to D09 `VALIDATION`; final maps to D09 `TEST`. `for_training=True` fails closed for both.
+Every admitted row must pass:
 
-## Seed split
+- answer verification;
+- relevance review;
+- language review;
+- PII review;
+- secret review;
+- copyright review;
+- `no_hidden_reasoning = true`, meaning no hidden chain-of-thought/private-reasoning target is stored;
+- canonical JSON and content-hash verification;
+- split/family isolation;
+- duplicate and near-duplicate rejection;
+- required language and train-skill coverage;
+- tokenizer/context representability.
 
-The v1 seed has:
+## Duplicate and leakage gate
 
-- train: 12 dialogues;
-- selection: 4 dialogues;
-- final: 4 dialogues.
+`record_id` must be unique. A `family_id` may exist in only one split. Normalized exact duplicates are rejected globally.
 
-English and Ukrainian occur in every split. Train covers direct answers, transformation, summarization, structured response, clarification, exact reasoning and multi-turn context carryover.
+Recovery strengthens the v1 near-duplicate rule: character-5-gram Jaccard at the frozen threshold `0.85` is rejected globally, including within the same split. Cross-split near duplicates therefore remain rejected, while same-split near-copy amplification can no longer bypass the contract.
 
-`family_id` may occur in exactly one split. Normalized exact duplicates are rejected. Cross-split near duplicates are rejected at the frozen character-5-gram Jaccard threshold of `0.85`. This is a leakage gate, not a universal semantic-contamination detector; a larger future corpus should add stronger scalable decontamination while preserving the same fail-closed split law.
+This deterministic gate is not claimed to detect all semantic contamination; future larger corpora may add stronger scalable decontamination without weakening these v1 laws.
 
-Selection is for post-Base model/checkpoint/configuration choice only. Final is reserved for terminal post-Base reporting and is prohibited from both training and selection.
-
-## Provenance and foreign-model gate
+## Provenance and foreign-model fail-close
 
 Every committed seed row is project-authored with:
 
@@ -63,47 +91,35 @@ Every committed seed row is project-authored with:
 - `foreign_model_output = false`;
 - `synthetic_authority_id = null`.
 
-The manifest therefore binds `foreign_model_records = 0` and `synthetic_data_authority = null`.
+The seed manifest therefore binds `foreign_model_records = 0` and `synthetic_data_authority = null`.
 
-A future foreign-model or teacher-generated row is rejected unless a separate, explicit later `SyntheticDataAuthority` is supplied. That authority must be owner-approved for `post_base_communication_data`, carry its own SHA-256 identity, name the allowed source IDs, and exactly match each admitted foreign row's authority ID. This class is only a fail-closed interface for future authorization; POSTBASE-352 itself creates no synthetic-data authority and calls no external model.
+A future foreign-model/teacher-generated row is rejected unless a separate later `SyntheticDataAuthority` is supplied. The authority must be owner-approved specifically for `post_base_communication_data`, carry a valid SHA-256 identity, name unique allowed source IDs and exactly match the row authority ID/source. A foreign row must also carry `rights = authority_bound`.
 
-## Quality gates
-
-Every admitted row must pass all of these checks:
-
-- answer independently marked verified;
-- relevance review;
-- language review;
-- PII review;
-- secret review;
-- copyright review;
-- no hidden chain-of-thought or private reasoning stored as a target;
-- canonical JSON and content-hash verification;
-- split-family, exact-duplicate and near-duplicate isolation;
-- required language and train-skill coverage;
-- tokenizer/context representability.
-
-The initial examples are short on purpose: each formatted supervised example must be at most 256 UTF-8 bytes under v1.
+POSTBASE-352 creates no synthetic-data authority, calls no external model and does not admit foreign-model output merely because a row claims to be synthetic.
 
 ## Tokenizer compatibility
 
-The logical v1 profile is the existing `s0-byte-v1` tokenizer family with 256 byte values. Dialogue formatting uses ordinary text prefixes (`User:` and `Assistant:`), adds no special tokens and installs no chat template into canonical Base.
+The logical v1 tokenizer profile remains `s0-byte-v1`, vocabulary size 256, UTF-8 byte encoding. Dialogue formatting uses ordinary `User:` / `Assistant:` text prefixes, adds no special tokens and installs no chat template into canonical Base.
 
-This worker intentionally does not invent canonical Base tokenizer config or vocabulary hashes. Before any future training, the dataset's logical profile must be paired with the exact retained Base `TokenizerCompatibility` from POSTBASE-253 and `require_exact_base_tokenizer()` must pass. A different tokenizer ID, vocabulary size, config SHA-256 or vocabulary SHA-256 fails closed.
+Before any later training authority exists, a consumer must bind the exact retained Base `TokenizerCompatibility` from POSTBASE-253. `require_exact_base_tokenizer()` rejects tokenizer ID, vocabulary size, config SHA-256 or vocabulary SHA-256 drift. POSTBASE-352 invents no Base tokenizer hashes.
+
+The v1 formatted example ceiling remains 256 UTF-8 bytes.
 
 ## Immutable seed identities
+
+Recovery does not modify the 20 seed rows or manifest, so their identities remain:
 
 - train JSONL SHA-256: `ddafe61ce3255dd30d207ec1ee811efa59a2da37288368a9bbc3fa0602cb2ba7`;
 - selection JSONL SHA-256: `e36f7c560c44fd2812935b5382dd628fabbd7af0e79c080c295d1332de13309f`;
 - final JSONL SHA-256: `f50262994089f276fb7d3f4c644180d0854273b51d7f7920aca1d2048031d039`;
 - manifest SHA-256: `51a927c40b4274f8b8f992b8dd83b4dbddac1e925a45834832a79ee6be18d3d6`.
 
-The manifest binds the three split hashes and record counts; any byte drift fails validation.
-
 ## Verification and truth boundary
 
-Focused contract validation before publication used a contract-compatible local stub of the already published POSTBASE-253/D09 interfaces: 6 tests passed. Repository CI remains the authority for the actual stacked branch after publication.
+The original PR CI run `32984343041` ended as GitHub Actions `startup_failure` before a runner executed test steps; that result is not treated as a contract failure or as a PASS. Recovery keeps the normal `ubuntu-latest` CI contract unchanged and adds deterministic tests for the strengthened gates rather than weakening checks to work around runner startup.
 
-No optimizer update, gradient, SFT, preference optimization, RL, checkpoint mutation, Base-data admission, foreign model inference, network data generation or paid compute occurs in this worker.
+Terminal status requires the repository CI on the recovered exact head to execute Ruff and pytest successfully.
+
+No optimizer update, gradient, SFT, preference optimization, RL, checkpoint mutation, Base-data admission, foreign model inference, network data generation or paid compute occurs here.
 
 Execution profile: `LOCAL_FREE`.
