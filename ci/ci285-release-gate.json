@@ -1,12 +1,12 @@
 {
   "schema_version": 1,
   "worker_id": "CI-285-RELEASE-GATE-POST217",
-  "tested_base_sha": "d84b6fdc26d041ceaac9569323b0e804e602dd50",
+  "tested_base_sha": "8dcb9370f51259f9126128325920729351782a64",
   "policy": "LOCAL_FREE",
   "purpose": "Trigger and bind generic repository release checks on the exact post-217/post-250 integration spine without changing model math or retriggering long learned campaigns.",
   "source_heads": {
     "learn217": "c02c8aa38e691521ae2ab6a4ff3ea1d643efd6ef",
     "perf250": "66f9be0c86a17568316e791dbf1890b238f114af",
-    "integrate282": "d84b6fdc26d041ceaac9569323b0e804e602dd50"
+    "integrate282": "8dcb9370f51259f9126128325920729351782a64"
   }
 }

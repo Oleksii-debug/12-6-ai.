@@ -1,0 +1,93 @@
+{
+  "schema": "12-6.integrate282-convergence-manifest.v1",
+  "worker_id": "INTEGRATE-282-POST217-LEARNED-SPINE",
+  "repository": "Oleksii-debug/12-6-ai.",
+  "branch": "integrate282/post217-learned-spine-20260826",
+  "policy": {
+    "local_free_only": true,
+    "mechanical_scientific_merges": false,
+    "new_model_math": false,
+    "classification_semantics": {
+      "ABSORB": "selected accepted code/evidence is intentionally incorporated and provenance-preserved",
+      "ALREADY_PRESENT": "required result is already transitively present in the selected spine baseline/ancestry",
+      "SUPERSEDED": "a later accepted line replaces this branch for convergence authority",
+      "HOLD": "valid work retained outside this learned-Base convergence scope or awaiting separate scientific decision",
+      "REJECT": "must not enter the convergence spine"
+    }
+  },
+  "accepted_provenance": {
+    "integrate222": "6afaf5889f9898037b53e8b0bc2b731d77782111",
+    "checkpoint211": "349e6db94d4aca81c2d1a0ccc3368a98b6058392",
+    "learn217": "c02c8aa38e691521ae2ab6a4ff3ea1d643efd6ef",
+    "perf250": "66f9be0c86a17568316e791dbf1890b238f114af",
+    "eval233": "b5512b4648cb09dd052b08884dc53f291e1ce935"
+  },
+  "terminal_artifacts": {
+    "learned_1m": {
+      "artifact_id": 9595677772,
+      "zip_sha256": "c00b7e9006320f8916c739a3311e8cc47ad0d0b16957f8ebd7d19233fd9f1c71"
+    },
+    "learned_3m": {
+      "producer_sha": "a75920cef8bde37a8c590e34095be83c97b75f1d",
+      "artifact_id": 9597788382,
+      "zip_sha256": "f57bf36113a68fffd4bfcf877bf08762393479b9c09e6fd0fd613fbb91f044ee"
+    },
+    "learned_10m": {
+      "producer_sha": "c02c8aa38e691521ae2ab6a4ff3ea1d643efd6ef",
+      "workflow_run_id": 32952787070,
+      "artifact_id": 9602650341,
+      "artifact_digest": "sha256:8631e90417e40365b3fc0d6bc98ee6adda5a4ed24530e675d9a91c93219537ee",
+      "parameter_count": 10000640,
+      "optimized_targets": 2000060
+    }
+  },
+  "independent_verification": {
+    "prior_verify218_authority_present": false,
+    "producer_self_check_is_not_relabelled_independent": true,
+    "integrate282_role": "fresh independent consumer verifier of immutable learned 1M/3M/10M artifacts"
+  },
+  "live_branches_211_281": [
+    {"branch": "checkpoint211/scale141-recovery-immutability-20260826", "status": "ALREADY_PRESENT", "reason": "checkpoint recovery is already in accepted ancestry through the learned core"},
+    {"branch": "data214/corpus-v02-convergence-recovery-20260826", "status": "HOLD", "reason": "data/corpus recovery work is outside this post-217 learned-runtime convergence"},
+    {"branch": "learn217/terminal-10m-base-20260826", "status": "ABSORB", "reason": "terminal learned 10M producer/artifact authority consumed without retraining"},
+    {"branch": "research220/one-three-ten-million-v2-20260826", "status": "HOLD", "reason": "scientific scaling experiment; no mechanical merge"},
+    {"branch": "milestone221/learned-base-ladder-v3-20260826", "status": "SUPERSEDED", "reason": "pre-terminal ladder left 3M/10M admission incomplete and is replaced by current consumer evidence"},
+    {"branch": "integrate222/learned-execution-spine-20260826", "status": "SUPERSEDED", "reason": "core first parent retained, authority superseded by INTEGRATE-282"},
+    {"branch": "ci223/repository-release-gate-convergence-20260826", "status": "SUPERSEDED", "reason": "superseded by later CI-223 revisions"},
+    {"branch": "ci223/repository-release-gate-convergence-v2-20260826", "status": "SUPERSEDED", "reason": "superseded by final CI-223 revision"},
+    {"branch": "ci223/repository-release-gate-convergence-final-20260826", "status": "HOLD", "reason": "release-gate convergence is valid but not mechanically merged into learned scientific spine"},
+    {"branch": "runtime225/transformers-learned-10m-v2-20260826", "status": "HOLD", "reason": "Transformers interop remains a separate runtime surface; prior VERIFY-218 gate was only prepared"},
+    {"branch": "perf226/static-kv-cache-v1-20260826", "status": "SUPERSEDED", "reason": "accepted static-KV line is superseded by PERF-250 convergence"},
+    {"branch": "data227/real-code-source-admission-v2-20260826", "status": "HOLD", "reason": "external-real data admission is a separate scientific/data decision"},
+    {"branch": "data228/probe-exec-base", "status": "REJECT", "reason": "probe-only execution ref is not a convergence input"},
+    {"branch": "data228/probe-exec-trigger", "status": "REJECT", "reason": "trigger/probe-only ref is not a convergence input"},
+    {"branch": "data228/real-ua-en-diversity-v2", "status": "HOLD", "reason": "external-real diversity experiment is not merged into learned Base"},
+    {"branch": "data229/real-snapshot-registry-20260826", "status": "HOLD", "reason": "data registry work retained outside this runtime/checkpoint convergence"},
+    {"branch": "data230/corpus-v03-external-real-20260826", "status": "HOLD", "reason": "new corpus generation is not required to verify existing learned checkpoints"},
+    {"branch": "data232/decontamination-authority-v2-20260826", "status": "HOLD", "reason": "evaluation/data authority remains separate from this learned checkpoint spine"},
+    {"branch": "eval233/real-holdout-v2-20260826", "status": "ABSORB", "reason": "selected holdout materializer/test consumed without trainer/model changes"},
+    {"branch": "learn234/external-real-500k-20260826", "status": "HOLD", "reason": "scientific external-real learned run is not a convergence prerequisite"},
+    {"branch": "learn235/external-real-1m-blocked-20260826", "status": "REJECT", "reason": "branch is explicitly blocked and cannot provide accepted learned authority"},
+    {"branch": "research236/corpus-origin-ablation-20260826", "status": "HOLD", "reason": "scientific ablation; no mechanical merge"},
+    {"branch": "eval237/source-family-generalization-v2-20260826", "status": "HOLD", "reason": "scientific generalization evaluation remains separate from core smoke"},
+    {"branch": "tok239/bpe-research-corpus-v1-20260826", "status": "HOLD", "reason": "tokenizer research branch would alter experimental conditions"},
+    {"branch": "tok240/unigram-reproducibility-final-20260826", "status": "HOLD", "reason": "tokenizer research branch would alter experimental conditions"},
+    {"branch": "tok242/document-boundary-v2-20260826", "status": "HOLD", "reason": "tokenization/data-boundary experiment remains out of spine"},
+    {"branch": "train243/10m-clipping-authority-v2-20260826", "status": "HOLD", "reason": "training hyperparameter experiment; no mechanical merge"},
+    {"branch": "train244/10m-lr-beta-v2-20260826", "status": "HOLD", "reason": "training hyperparameter experiment; no mechanical merge"},
+    {"branch": "train245/10m-effective-batch-v2-20260826", "status": "HOLD", "reason": "training hyperparameter experiment; no mechanical merge"},
+    {"branch": "model246/10m-context-v2-20260826", "status": "HOLD", "reason": "model/scientific experiment; no model-math merge"},
+    {"branch": "model247/rope-theta-gate-v2-20260826", "status": "HOLD", "reason": "model/scientific experiment; no model-math merge"},
+    {"branch": "model248/10m-gqa-transfer-v2-20260826", "status": "HOLD", "reason": "scientific GQA transfer branch is not the accepted PERF-250 runtime convergence"},
+    {"branch": "perf250/gqa-static-kv-convergence-v2-20260826", "status": "ABSORB", "reason": "accepted native-GQA/static-KV implementation and parity tests are overlaid byte-for-byte"},
+    {"branch": "research251/data-capacity-scale-gate-20260826", "status": "HOLD", "reason": "scientific scale gate; no mechanical merge"},
+    {"branch": "compute252/gpu-campaign-orchestrator-20260826", "status": "HOLD", "reason": "GPU campaign orchestration is outside LOCAL_FREE CPU proof"},
+    {"branch": "postbase253/communication-layer-contract-20260826", "status": "HOLD", "reason": "post-Base feature line is intentionally outside learned-Base convergence"},
+    {"branch": "postbase254/tool-use-protocol-20260826", "status": "HOLD", "reason": "post-Base feature line is intentionally outside learned-Base convergence"},
+    {"branch": "postbase255/deliberation-controller-v1-20260826", "status": "HOLD", "reason": "post-Base feature line is intentionally outside learned-Base convergence"},
+    {"branch": "postbase257/verifier-ensemble-v1-20260826", "status": "HOLD", "reason": "post-Base feature line is intentionally outside learned-Base convergence"},
+    {"branch": "postbase258/memory-rag-v1-20260826", "status": "HOLD", "reason": "post-Base feature line is intentionally outside learned-Base convergence"},
+    {"branch": "postbase259/teacher-student-data-factory-v1-20260826", "status": "HOLD", "reason": "post-Base feature line is intentionally outside learned-Base convergence"}
+  ],
+  "no_live_ref_ids_observed": [212, 213, 215, 216, 218, 219, 224, 231, 238, 241, 249, 256, 260, 261, 262, 263, 264, 265, 266, 267, 268, 269, 270, 271, 272, 273, 274, 275, 276, 277, 278, 279, 280, 281]
+}
