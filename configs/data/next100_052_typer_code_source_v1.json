@@ -57,11 +57,13 @@
     {
       "family": "github:pallets/click",
       "repository": "pallets/click",
-      "release": "8.4.2",
+      "release": "8.4.2 / NEXT100-046 live authority",
       "commit": "b2e30a175449cfda909ee4fbf4a29a6a071cad53",
       "near_paths": [
         "src/click/core.py",
         "src/click/decorators.py",
+        "src/click/formatting.py",
+        "src/click/shell_completion.py",
         "src/click/types.py",
         "src/click/utils.py"
       ]
@@ -69,13 +71,13 @@
     {
       "family": "github:fastapi/fastapi",
       "repository": "fastapi/fastapi",
-      "release": "0.141.1",
-      "commit": "95f8322ee1dcda7ceace7b1c4f6c9915b36d748f",
+      "release": "NEXT100-044 live authority snapshot",
+      "commit": "49033471594ea5d99a80abdf1043231b7791ee49",
       "near_paths": [
-        "fastapi/dependencies/utils.py",
-        "fastapi/utils.py",
-        "fastapi/params.py",
-        "fastapi/routing.py"
+        "fastapi/sse.py",
+        "fastapi/exceptions.py",
+        "fastapi/datastructures.py",
+        "fastapi/utils.py"
       ]
     }
   ],
@@ -93,6 +95,60 @@
       "commit": "5460f467b02e49471c0fd6cfc9ca0adab6351f98",
       "path": "src/requests/_internal_utils.py",
       "git_blob_sha1": "0466a7d347db4ed34a37db51b75fc8e80bc06055"
+    },
+    {
+      "family": "github:pallets/click",
+      "repository": "pallets/click",
+      "commit": "b2e30a175449cfda909ee4fbf4a29a6a071cad53",
+      "path": "src/click/decorators.py",
+      "git_blob_sha1": "db6a45ebbaedfdcde339397bbfe936c9440de180"
+    },
+    {
+      "family": "github:pallets/click",
+      "repository": "pallets/click",
+      "commit": "b2e30a175449cfda909ee4fbf4a29a6a071cad53",
+      "path": "src/click/formatting.py",
+      "git_blob_sha1": "c4aa2de571a1eb17bfeb1853e315d28bc968e74c"
+    },
+    {
+      "family": "github:pallets/click",
+      "repository": "pallets/click",
+      "commit": "b2e30a175449cfda909ee4fbf4a29a6a071cad53",
+      "path": "src/click/shell_completion.py",
+      "git_blob_sha1": "468ee7720d934396d0a309067d800ea819af7da2"
+    },
+    {
+      "family": "github:fastapi/fastapi",
+      "repository": "fastapi/fastapi",
+      "commit": "49033471594ea5d99a80abdf1043231b7791ee49",
+      "path": "fastapi/sse.py",
+      "git_blob_sha1": "c31334835032570d8244526a623ac249ffc77284"
+    },
+    {
+      "family": "github:fastapi/fastapi",
+      "repository": "fastapi/fastapi",
+      "commit": "49033471594ea5d99a80abdf1043231b7791ee49",
+      "path": "fastapi/exceptions.py",
+      "git_blob_sha1": "d7065c52fe20220e12b7d20db4da7cbeadaf171a"
+    },
+    {
+      "family": "github:fastapi/fastapi",
+      "repository": "fastapi/fastapi",
+      "commit": "49033471594ea5d99a80abdf1043231b7791ee49",
+      "path": "fastapi/datastructures.py",
+      "git_blob_sha1": "1da784cf0927ed55ec6abeb051d89a6ce1e90630"
+    }
+  ],
+  "live_authority_bindings": [
+    {
+      "worker_id": "NEXT100-046-CODE-CLICK",
+      "branch": "next100-046/click-code-source-admission-20260826",
+      "authority_head_at_refresh": "5d7bd3d869e38f5f13ce8a82ad6fa19e3865a6df"
+    },
+    {
+      "worker_id": "NEXT100-044-CODE-FASTAPI",
+      "branch": "next100/044-fastapi-code-admission-20260826",
+      "authority_head_at_refresh": "ae2499b6d4ec2f0ef87880865aaf66ceb357dcc4"
     }
   ],
   "known_evaluation_reservations": [
@@ -115,7 +171,7 @@
     "python_skeleton_5gram_jaccard_reject_at_or_above": 0.85,
     "python_skeleton_5gram_containment_reject_at_or_above": 0.90,
     "lineage_exact_blob_scan": "scan selected blob identity across complete pinned Click and FastAPI trees",
-    "lineage_near_scan": "scan selected object against pinned analogous Click and FastAPI implementation files"
+    "lineage_near_scan": "scan selected object against pinned analogous and live-authority-selected Click and FastAPI implementation files"
   },
   "admission_scope": "typer/utils.py at the exact pinned commit only; no repository-wide or release-wide authority",
   "evaluation_use": "NOT_AUTHORIZED_BY_THIS_AUTHORITY",
