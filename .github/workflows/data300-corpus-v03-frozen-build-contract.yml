@@ -1,0 +1,54 @@
+name: DATA-300 Corpus V03 Frozen Build Contract
+
+on:
+  pull_request:
+    paths:
+      - "configs/data/data300_corpus_v03_frozen_build_contract_v1.json"
+      - "configs/data/data300_corpus_v03_frozen_build_contract_v2.json"
+      - "tools/validate_data300_corpus_v03_build_contract.py"
+      - "tools/validate_data300_corpus_v03_build_contract_v2.py"
+      - "tests/test_data300_corpus_v03_build_contract.py"
+      - "tests/test_data300_corpus_v03_build_contract_v2.py"
+      - "docs/DATA300_CORPUS_V03_FROZEN_BUILD_CONTRACT.md"
+      - "docs/DATA300_CORPUS_V03_FROZEN_BUILD_CONTRACT_V2.md"
+      - ".github/workflows/data300-corpus-v03-frozen-build-contract.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Compile self-contained contract surfaces
+        run: |
+          python -m py_compile \
+            tools/validate_data300_corpus_v03_build_contract.py \
+            tools/validate_data300_corpus_v03_build_contract_v2.py \
+            tests/test_data300_corpus_v03_build_contract.py \
+            tests/test_data300_corpus_v03_build_contract_v2.py
+
+      - name: Validate frozen v1 contract identity and gates
+        run: |
+          python tools/validate_data300_corpus_v03_build_contract.py validate-contract
+
+      - name: Validate frozen v2 successor contract identity and gates
+        run: |
+          python tools/validate_data300_corpus_v03_build_contract_v2.py validate-contract
+
+      - name: Run focused standard-library tests
+        run: |
+          python tests/test_data300_corpus_v03_build_contract.py
+          python tests/test_data300_corpus_v03_build_contract_v2.py

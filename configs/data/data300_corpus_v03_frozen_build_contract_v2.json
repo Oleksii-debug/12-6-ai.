@@ -1,0 +1,464 @@
+{
+  "artificial_repetition": {
+    "document_replication": false,
+    "padding_counts_as_data": false,
+    "recycle_to_hit_budget": false,
+    "repeat_optimized_loss_positions": false,
+    "sampling_with_replacement": false,
+    "source_aliases_count_as_new_capacity": false
+  },
+  "build_determinism": {
+    "canonical_json": {
+      "separators": [
+        ",",
+        ":"
+      ],
+      "sort_keys": true,
+      "trailing_newline": true,
+      "utf8": true
+    },
+    "clean_build_count": 2,
+    "complete_tree_byte_identity_required": true,
+    "forbidden_identity_inputs": [
+      "wall_clock_time",
+      "host_name",
+      "absolute_workspace_path",
+      "random_uuid",
+      "filesystem_iteration_order",
+      "network_response_order"
+    ],
+    "shared_mutable_cache_allowed": false
+  },
+  "contract_identity_sha256": "07d7beaaff4616e839450de6af3d407855c832bf75a24a959d1a12de5d9364e5",
+  "contract_state": "FROZEN_EXECUTABLE_CONTRACT",
+  "corpus_state": "NOT_BUILT_NOT_FROZEN_NOT_TERMINAL",
+  "current_candidate_status": {
+    "blocking_gates": {
+      "G05_QUALITY": "No passing exact Wave-3 quality rerun; DATA-296 successor is red and excluded.",
+      "G06_PRIVACY": "No passing exact Wave-3 privacy rerun; DATA-297 successor is red and excluded.",
+      "G09_BALANCE_DIVERSITY": "Current family counts uk=1,en=1,code=2 violate DATA-295 minimum two independent families per stratum; no replay may repair this.",
+      "G10_SELECTION_VALIDATION": "Terminal EVAL-291 and EVAL-292 authorities contain zero records; EVAL-290 is red/excluded, so terminal nonempty selection-validation count is zero.",
+      "G12_UNIQUE_LOSS": "DATA-294 ledger is terminal only for the 3-object DATA-229 text scope; a full five-source Wave-3 ledger does not exist.",
+      "G14_TWO_CLEAN_BUILDS": "No Wave-3 corpus product has been built twice yet."
+    },
+    "corpus_freeze_authorized": false,
+    "release_ready": false,
+    "terminal_corpus_claim_authorized": false,
+    "unblock_rule": "A source-inventory change needed to satisfy DATA-295 requires a successor DATA-300 contract; it may not be injected into this frozen contract version."
+  },
+  "evidence_cutoff": {
+    "kind": "EXACT_HEAD_VECTOR",
+    "rule": "Only exact heads explicitly listed as CONSUMED_TERMINAL may authorize the contract. Published, red, in-progress, or headless successors are excluded even if newer.",
+    "source_successor_observed": {
+      "DATA-287": {
+        "head_sha": "cb78e3ec3c5385aa98f18eec3157dfa962282660",
+        "status": "EXCLUDED_NO_CHECK_RUNS_AT_FREEZE"
+      },
+      "DATA-288": {
+        "conclusion": "failure",
+        "dedicated_check": "audit",
+        "head_sha": "4c9eda07f0593f3a66ef3bc37abf1970b3f27dc0",
+        "run": 32967529484,
+        "status": "EXCLUDED_NONTERMINAL"
+      },
+      "DATA-296": {
+        "conclusion": "failure",
+        "dedicated_check": "external-quality-audit",
+        "head_sha": "3d671c2eff173bb5caed7dd6031d71f4147b0297",
+        "run": 32967434872,
+        "status": "EXCLUDED_NONTERMINAL"
+      },
+      "DATA-297": {
+        "conclusion": "failure",
+        "dedicated_check": "privacy-external-audit",
+        "head_sha": "537e831c5f659dd4acf8d826877c05a1c7340983",
+        "run": 32967486707,
+        "status": "EXCLUDED_NONTERMINAL"
+      },
+      "EVAL-290": {
+        "conclusion": "failure",
+        "dedicated_check": "immutable-ua-selection-validation",
+        "head_sha": "1db52994ba775812d18d2f7b06c13dc945fb092d",
+        "run": 32967574655,
+        "status": "EXCLUDED_NONTERMINAL"
+      }
+    }
+  },
+  "exact_training_candidate_inventory": {
+    "admitted_source_bytes": 183061,
+    "by_stratum_bytes": {
+      "code": 9703,
+      "en": 84793,
+      "uk": 88565
+    },
+    "by_stratum_families": {
+      "code": 2,
+      "en": 1,
+      "uk": 1
+    },
+    "independent_family_count": 4,
+    "inventory_mode": "EXACT_IMMUTABLE_FOR_THIS_CONTRACT_VERSION",
+    "mutation_rule": "Any source addition, removal, revision change, content-hash change, family reassignment or rights-purpose change requires a successor DATA-300 contract identity before build.",
+    "source_count": 5,
+    "sources": [
+      {
+        "evaluation_rights": "NOT_SEPARATELY_ADMITTED",
+        "family": "en.standardebooks.manual",
+        "language": "en",
+        "modality": "text",
+        "normalized_bytes": 48002,
+        "normalized_sha256": "154fb4034929714087e75150d678bf65049ddac32e79dcdf97162c8972c2be83",
+        "raw_sha256": "21582c7f0e4ad39f2b0ed97bbc2c082d275e898b7a63c28e6d9badb8ee0f7860",
+        "source_id": "external-real:en.standardebooks.manual.8-typography",
+        "training_rights": "ALLOWED",
+        "upstream_revision": "d1143a9b459b5e6f9cdda93a7c1e04676bff4f6b"
+      },
+      {
+        "evaluation_rights": "NOT_SEPARATELY_ADMITTED",
+        "family": "en.standardebooks.manual",
+        "language": "en",
+        "modality": "text",
+        "normalized_bytes": 36791,
+        "normalized_sha256": "94eb2f529922d125b3bd40691778886f4d5d80b128b925d0274fb3d94646ec5a",
+        "raw_sha256": "7ac53dfb4bf6f73f178560e09f33160d0250c69fb679802f3254dc0eb4c9f509",
+        "source_id": "external-real:en.standardebooks.manual.9-metadata",
+        "training_rights": "ALLOWED",
+        "upstream_revision": "d1143a9b459b5e6f9cdda93a7c1e04676bff4f6b"
+      },
+      {
+        "evaluation_rights": "NOT_SEPARATELY_ADMITTED",
+        "family": "ua.rada.open-data.laws-texts",
+        "language": "uk",
+        "modality": "text",
+        "normalized_bytes": 88565,
+        "normalized_sha256": "72c301db0b2539f3f7a73c9c15e2e425700a6b758a1114f1a861e2d60c704c50",
+        "raw_sha256": "36eae31c3b0676ea7c02236fa05bd695c240c9a8eade5febc00457b8103ee1a4",
+        "redistribution_condition": "ATTRIBUTION_REQUIRED",
+        "source_id": "external-real:ua.rada.open-data.laws-texts.d23314",
+        "training_rights": "ALLOWED"
+      },
+      {
+        "evaluation_rights": "NOT_SEPARATELY_ADMITTED",
+        "family": "github:encode/httpx",
+        "git_blob_sha1": "6f479a0885f723b7395843d41164a87041820776",
+        "language": "code",
+        "license": "BSD-3-Clause",
+        "modality": "code",
+        "normalized_bytes": 8161,
+        "path": "httpx/_content.py",
+        "raw_sha256": "2c61b3ac94d1dcebcde0c6f519554d2d7917247fbaa0a97002db4ef69e70ff28",
+        "source_id": "external-real:code.encode.httpx._content",
+        "training_rights": "ALLOWED",
+        "upstream_revision": "b5addb64f0161ff6bfe94c124ef76f6a1fba5254"
+      },
+      {
+        "evaluation_rights": "NOT_SEPARATELY_ADMITTED",
+        "family": "github:psf/requests",
+        "git_blob_sha1": "0466a7d347db4ed34a37db51b75fc8e80bc06055",
+        "language": "code",
+        "license": "Apache-2.0",
+        "modality": "code",
+        "normalized_bytes": 1542,
+        "path": "src/requests/_internal_utils.py",
+        "raw_sha256": "4c7d8d132c9898fc7d715e473f3ac74785ddc4ab96d2c9240f87835dc6d981ff",
+        "redistribution_condition": "LICENSE_AND_NOTICE_OBLIGATIONS",
+        "source_id": "external-real:code.psf.requests._internal_utils",
+        "training_rights": "ALLOWED",
+        "upstream_revision": "5460f467b02e49471c0fd6cfc9ca0adab6351f98"
+      }
+    ]
+  },
+  "execution_profile": "LOCAL_FREE",
+  "release_gates": [
+    {
+      "id": "G01_CONTRACT_IDENTITY",
+      "requirement": "v2 self-hash, repository identity and exact evidence vector match.",
+      "severity": "HARD"
+    },
+    {
+      "id": "G02_COMPONENT_TERMINALITY",
+      "requirement": "every consumed component exact head has the listed dedicated success; excluded red/unpublished successors remain non-authoritative.",
+      "severity": "HARD"
+    },
+    {
+      "id": "G03_SOURCE_INVENTORY",
+      "requirement": "exact five source IDs, revisions, hashes, families and byte counts match; no silent additions or removals.",
+      "severity": "HARD"
+    },
+    {
+      "id": "G04_RIGHTS",
+      "requirement": "DATA-293 purpose-specific training decisions and redistribution obligations pass for every training object.",
+      "severity": "HARD"
+    },
+    {
+      "id": "G05_QUALITY",
+      "requirement": "incumbent DATA-32 quality authority is rerun on every exact Wave-3 candidate record; complete coverage and PASS required.",
+      "severity": "HARD"
+    },
+    {
+      "id": "G06_PRIVACY",
+      "requirement": "incumbent DATA-33 privacy/secret authority is rerun on every exact Wave-3 candidate record; complete coverage, PASS and zero retained secret-like findings required.",
+      "severity": "HARD"
+    },
+    {
+      "id": "G07_DEDUP",
+      "requirement": "exact/normalized/near-copy, mirror, fork and copied-fragment clustering reruns on the exact materialization; cluster-safe split required.",
+      "severity": "HARD"
+    },
+    {
+      "id": "G08_RESERVED_DECONTAMINATION",
+      "requirement": "exact training inventory is scanned against all terminal reserved evaluation authorities; no reserved record/content/cluster enters training.",
+      "severity": "HARD"
+    },
+    {
+      "id": "G09_BALANCE_DIVERSITY",
+      "requirement": "DATA-295 45/35/20 policy and family caps pass without duplication or replay; at least two independent families per stratum.",
+      "severity": "HARD"
+    },
+    {
+      "id": "G10_SELECTION_VALIDATION",
+      "requirement": "at least one nonempty terminal immutable selection-validation authority is bound before tokenizer/model/hyperparameter selection; no final-test bytes or outcomes are used.",
+      "severity": "HARD"
+    },
+    {
+      "id": "G11_FINAL_TEST_ISOLATION",
+      "requirement": "EVAL-233 final-test reservation remains immutable and unread until selection lock; never enters tokenizer fit, training or selection.",
+      "severity": "HARD"
+    },
+    {
+      "id": "G12_UNIQUE_LOSS",
+      "requirement": "post-split/post-dedup full five-source ledger proves every optimized causal loss position is unique, authorized and used at most once; padding is excluded.",
+      "severity": "HARD"
+    },
+    {
+      "id": "G13_NO_ARTIFICIAL_REPETITION",
+      "requirement": "no document replication, sampling with replacement, replay, alias inflation or padding-as-data.",
+      "severity": "HARD"
+    },
+    {
+      "id": "G14_TWO_CLEAN_BUILDS",
+      "requirement": "two independently clean build roots with no shared mutable cache have identical relative paths and byte-identical contents.",
+      "severity": "HARD"
+    },
+    {
+      "id": "G15_RELEASE_TRUTH",
+      "requirement": "contract validation never by itself emits CORPUS_FROZEN, TERMINAL_CORPUS or PRODUCTION_READY; corpus status changes only after all Wave-3 gates pass.",
+      "severity": "HARD"
+    }
+  ],
+  "repository": "Oleksii-debug/12-6-ai.",
+  "schema_version": "12-6.data300-corpus-v03-frozen-build-contract.v2",
+  "split_contract": {
+    "final_test": {
+      "may_be_read_before_selection_lock": false,
+      "may_fit_tokenizer": false,
+      "may_report_final_test_after_selection_lock_only": true,
+      "may_select_checkpoint": false,
+      "may_select_hyperparameters": false,
+      "may_update_model": false,
+      "must_be_terminal_immutable_and_prebound": true
+    },
+    "global": {
+      "dedup_cluster_straddling_allowed": false,
+      "exact_content_overlap_allowed": false,
+      "record_identity_reuse_allowed": false
+    },
+    "selection_validation": {
+      "may_fit_tokenizer": false,
+      "may_report_final_test": false,
+      "may_select_checkpoint": true,
+      "may_select_hyperparameters": true,
+      "may_update_model": false,
+      "must_be_terminal_immutable_and_nonempty_before_any_selection": true
+    },
+    "train": {
+      "may_fit_tokenizer": true,
+      "may_report_final_test": false,
+      "may_select_checkpoint": false,
+      "may_select_hyperparameters": false,
+      "may_update_model": true
+    }
+  },
+  "supersedes_within_data300": {
+    "reason": "Wave-2 authorities became terminal after the v1 evidence vector; v2 freezes a later exact-head vector without promoting corpus state.",
+    "schema_version": "12-6.data300-corpus-v03-frozen-build-contract.v1"
+  },
+  "terminal_component_lock": {
+    "balance": {
+      "config_git_blob_sha1": "a3195511fd85805ab57b481f19e86ddc8e951ce0",
+      "current_activation_state": "BLOCKED_SOURCE_FAMILY_DIVERSITY",
+      "current_family_constrained_no_replay_budget": 0,
+      "current_family_counts": {
+        "code": 2,
+        "en": 1,
+        "uk": 1
+      },
+      "dedicated_check": "validate-balance-policy",
+      "dedicated_workflow_conclusion": "success",
+      "dedicated_workflow_run": 32966862418,
+      "head_sha": "9498e78da5a9fa239e39f5c145d6fd986ebed7b4",
+      "maximum_family_share_total": 0.25,
+      "maximum_family_share_within_stratum": 0.6,
+      "minimum_independent_families_per_stratum": 2,
+      "rule": "No retuning of mixture to model outcomes or current scarcity; overflow is subsampled or new independently authorized families require a successor contract.",
+      "stratum_fraction": {
+        "code": 0.2,
+        "en": 0.35,
+        "uk": 0.45
+      },
+      "target_source_bytes": 20000000,
+      "worker": "DATA-295"
+    },
+    "code_evaluation_reservation": {
+      "authority_identity_sha256": "de52b38690230bee8a912fc1265ad34b80a3abde46bd23401f15395749a4813c",
+      "dedicated_check": "rights-reservation",
+      "dedicated_workflow_conclusion": "success",
+      "dedicated_workflow_run": 32967081511,
+      "eligible_pristine_families": 0,
+      "head_sha": "1c870e5e02bf48891ca599b0b3f3bfe6e84425bc",
+      "reserved_objects": 0,
+      "verdict": "BLOCKED_NO_PRISTINE_CODE_OBJECTS_WITH_EXPLICIT_EVALUATION_AUTHORITY",
+      "worker": "EVAL-289"
+    },
+    "code_selection_validation": {
+      "authority_identity_sha256": "9a9848a82c34588753c9dca1379b8fae49cd7f366017507fc412de0c38cad46f",
+      "dedicated_check": "immutable-code-selection-validation",
+      "dedicated_workflow_conclusion": "success",
+      "dedicated_workflow_run": 32967204390,
+      "head_sha": "2cbe2f2d9c74984baa69e49e520e2280fc76421b",
+      "records": 0,
+      "selection_set_identity_sha256": "9fd52e879c388f06f0b103afa02d68678388867c81cfb0f27ddbf0ca18867054",
+      "verdict": "BLOCKED",
+      "worker": "EVAL-292"
+    },
+    "dedup": {
+      "artifact_digest_sha256": "f144ac95fe10e8cfbfe25c2af4463bd5548f33f3a01e093d17dc25a173c6d322",
+      "dedicated_check": "cross-source-audit",
+      "dedicated_workflow_conclusion": "success",
+      "dedicated_workflow_run": 32967161591,
+      "duplicate_discount_bytes": 0,
+      "head_sha": "74b792a8b28a4ba9244385d608ad348a5a9efcf3",
+      "observed_duplicate_matches": 0,
+      "report_identity_sha256": "274ce5aafdbbf9e64a393d66bd8aa98e49001aae79408fb30a7a3ec38b1f0305",
+      "rule": "This is prebuild evidence only; exact and near-copy dedup plus reserved decontamination must rerun on the exact Wave-3 materialization.",
+      "terminal_evidence_bytes_after": 183061,
+      "terminal_evidence_bytes_before": 183061,
+      "worker": "DATA-298"
+    },
+    "en_selection_validation": {
+      "authority_identity_sha256": "23dc4bb52ff887a299d1cdad32cff352f2909e6a2cebcf4b2388a60337bf4460",
+      "dedicated_workflow_conclusion": "success",
+      "dedicated_workflow_run": 32966972004,
+      "head_sha": "27f4f731ad7197853a702879ba4c337cddc3a25c",
+      "records": 0,
+      "verdict": "BLOCKED_NO_TERMINAL_EN_EVALUATION_RESERVATION",
+      "worker": "EVAL-291"
+    },
+    "final_test_reservation": {
+      "authority_identity_sha256": "37473834df31c69faf39f5c1152e9fe1f7d4aeb1487fcf7489059e8ec444d4a7",
+      "dedicated_workflow_conclusion": "success",
+      "dedicated_workflow_run": 32957254139,
+      "documents": 16,
+      "head_sha": "b5512b4648cb09dd052b08884dc53f291e1ce935",
+      "model_update_eligible": false,
+      "selection_eligible": false,
+      "tokenizer_fit_eligible": false,
+      "worker": "EVAL-233"
+    },
+    "privacy_policy": {
+      "binding_commit": "6d994e2aece6c44e28c1a2c344ac98b5a8fd5e08",
+      "producer_commit": "290b82fd0f7d1cc3a1840deae4378b9c500f1c15",
+      "retained_report_git_blob_sha1": "d670568437c555dc6e8f1228a6205007dbc1ffb8",
+      "scope": "INCUMBENT_POLICY_ONLY_REAPPLY_TO_EXACT_WAVE3_RECORDS",
+      "successor_data297_terminal": false,
+      "worker": "DATA-33"
+    },
+    "quality_policy": {
+      "binding_commit": "6d994e2aece6c44e28c1a2c344ac98b5a8fd5e08",
+      "producer_commit": "b1c9449ca839ed10c872f444010f74fd225acae1",
+      "retained_report_git_blob_sha1": "ed11a4d605d57fbb7102ab58da7614a4c476cf85",
+      "scope": "INCUMBENT_POLICY_ONLY_REAPPLY_TO_EXACT_WAVE3_RECORDS",
+      "successor_data296_terminal": false,
+      "worker": "DATA-32"
+    },
+    "rights": {
+      "config_git_blob_sha1": "413a2049a5d8ec72ff616e3116904550dd50fe52",
+      "dedicated_check": "validate-rights-recertification",
+      "dedicated_workflow_conclusion": "success",
+      "dedicated_workflow_run": 32967466790,
+      "evaluation_authorized_objects": 0,
+      "head_sha": "2665a4cd86186ba44024334719d30dcc35d222d8",
+      "independent_families": 4,
+      "rules": [
+        "purpose-specific rights are separate",
+        "public access or license label alone is not evaluation authorization",
+        "Rada redistribution requires attribution",
+        "HTTPX redistribution retains BSD obligations",
+        "Requests redistribution retains Apache-2.0 and NOTICE obligations"
+      ],
+      "training_admitted_objects": 5,
+      "worker": "DATA-293"
+    },
+    "source_registry_code": {
+      "artifact_digest_sha256": "080f073327020cb3bbb05c7348f658223804684d23012d9b66ab9b798c4fed5d",
+      "artifact_id": 9602093542,
+      "dedicated_workflow_conclusion": "success",
+      "dedicated_workflow_run": 32956209865,
+      "head_sha": "8ebdb2e132ed7bae5245e9d4c140752640ab9885",
+      "report_identity_sha256": "234ace1497b00495716d00a1502c323fc06b88458c49ec3d6aa58bc2cdd52294",
+      "scope": "2 code objects / 2 independent repositories",
+      "worker": "DATA-227"
+    },
+    "source_registry_text": {
+      "dedicated_workflow_conclusion": "success",
+      "dedicated_workflow_run": 32957147036,
+      "head_sha": "90bc0b7f8b696ec35202532b13edf6ab29a662fe",
+      "registry_identity_sha256": "1357a343eb4ea973950d8991913109cbea53fe4fa891f0be9745ab497eb59486",
+      "scope": "3 text objects / 2 families",
+      "worker": "DATA-229"
+    },
+    "unique_loss": {
+      "by_language": {
+        "code": 0,
+        "en": 84791,
+        "uk": 88564
+      },
+      "dedicated_check": "verify-unique-loss-position-accounting",
+      "dedicated_workflow_conclusion": "success",
+      "dedicated_workflow_run": 32966991021,
+      "head_sha": "2214db4a4a4eb77de8ff80dc68c93159dd697aae",
+      "ledger_identity_sha256": "9a1cd57c52459bdc6e4bb2d46047a47713e10d9a5be7b0a4b86f041ba6f62bd0",
+      "ledger_scope": "DATA-229_TEXT_ONLY_3_OBJECTS",
+      "normalized_bytes": 173358,
+      "one_pass_unique_optimized_targets": 173355,
+      "rule": "Accounting method is terminal; this ledger does not authorize code or a five-source Wave-3 run. Wave 3 must rebuild the ledger after split, reservation and dedup.",
+      "worker": "DATA-294"
+    }
+  },
+  "wave3_expected_artifact_structure": {
+    "clean_roots": [
+      "wave3-clean-a/corpus-v03",
+      "wave3-clean-b/corpus-v03"
+    ],
+    "final_test_payload_rule": "Final-test payload bytes are not part of either pre-selection build tree; only immutable reservation identities/hashes may appear before selection lock.",
+    "required_relative_files": [
+      "lock/component-lock.json",
+      "manifests/source-inventory.jsonl",
+      "manifests/train.jsonl",
+      "manifests/selection-validation.jsonl",
+      "manifests/final-test-reservation.jsonl",
+      "evidence/rights.json",
+      "evidence/quality.json",
+      "evidence/privacy.json",
+      "evidence/dedup.json",
+      "evidence/reserved-decontamination.json",
+      "evidence/balance.json",
+      "evidence/selection-authority.json",
+      "evidence/unique-loss-summary.json",
+      "ledgers/train-unique-loss.jsonl",
+      "release/gates.json",
+      "release/tree-sha256.json"
+    ]
+  },
+  "worker_id": "DATA-300-CORPUS-V03-FROZEN-BUILD-CONTRACT"
+}
