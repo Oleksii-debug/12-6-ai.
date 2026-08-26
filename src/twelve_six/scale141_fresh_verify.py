@@ -100,7 +100,10 @@ def _compare_heldout(recorded: dict[str, Any], fresh: dict[str, Any]) -> None:
 def verify(repo: Path, source_sha: str, out: Path) -> dict[str, Any]:
     # Install the exact authoritative runtime contract, including JSON-stable
     # manifest construction and streamed evaluation, but perform no training.
+    # Order matters: v3 replaces v2's builder, then v2 binds that builder into
+    # the shared core runtime while also applying seq-256/actual-token semantics.
     v3._install()
+    v2._install_runtime_contract()
     report = v3.validate(out / "report.json", source_sha)
     manifest, tok, spec, _init, _cfg, _locks, run = core._common(
         repo, source_sha, out, False
