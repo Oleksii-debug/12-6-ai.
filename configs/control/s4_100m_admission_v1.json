@@ -109,13 +109,26 @@
     "authorized_unique_no_replay_loss_positions": 0,
     "rule": "No learned S4 campaign is runnable until exact corpus/shard identities, terminal decontamination, deterministic rebuild evidence, and a preregistered unique-loss budget exist."
   },
+  "token_budget_authority": {
+    "path": "configs/control/pretraining_token_budget_v1.json",
+    "source_branch": "coord/20m-readiness-controller-20260826",
+    "source_head_sha": "7b172c5361eaf1447459bb674196ae2eeed3d769",
+    "blob_sha": "4b2371fd20c9a0b96bf26902dc2c29d195ea96f4",
+    "schema": "12-6.pretraining-token-budget.v1",
+    "compute_optimal_reference_tokens_per_parameter": 20,
+    "predecessor_20m_reference_tokens": 412268800,
+    "canonical_100m_reference_tokens": 2000000000,
+    "canonical_1b_reference_tokens": 20000000000,
+    "current_20m_request_classification": "PIPELINE_PILOT_NOT_SCIENCE_COMPLETE_20M_BASELINE",
+    "policy_owner": "UPSTREAM_TOKEN_BUDGET_CONTROLLER"
+  },
   "training_budget_research_reference": {
     "fixed_campaign_tokens": null,
     "reference_only_tokens_per_parameter": 20.0,
     "predecessor_20m_reference_tokens": 412268800,
     "s4_gqa_exactish_reference_tokens": 2000010240,
     "s4_gqa_aligned_reference_tokens": 2017704960,
-    "rule": "The 20 tokens/parameter figure is a scaling-law reference, not a campaign requirement or compute authorization. The actual token budget must be preregistered after corpus, tokenizer, loss-curve, and budget evidence are available."
+    "rule": "All token-budget policy authority belongs to pretraining_token_budget_v1. Candidate-specific values here are arithmetic projections only and never compute authorization."
   },
   "runtime_gate": {
     "preferred_precision": "bf16_with_fp32_sensitive_state",
@@ -140,6 +153,9 @@
   },
   "ordered_next_actions": [
     "FINISH_20M_DATA_AND_D05_GATES_WITHOUT_LONG_TRAINING",
+    "RUN_FIRST_LEARNED_20M_PIPELINE_PILOT_ONLY_AFTER_ITS_OWN_GATES_AND_AUTHORIZATION",
+    "DO_NOT_CALL_THE_20M_PILOT_A_SCIENCE_COMPLETE_QUALITY_BASELINE",
+    "BUILD_A_20M_SCALING_CURVE_AND_DATA_BUDGET_BEFORE_100M_PROMOTION",
     "RUN_TOKENIZER_COMPARISON_ON_TERMINAL_TRAIN_ONLY_CORPUS",
     "REGENERATE_S4_MODELSPEC_IF_TOKENIZER_VOCAB_CHANGES",
     "COMPARE_INCUMBENT_MHA_WITH_GQA_CONTROL_CANDIDATES_LOCALLY",
@@ -162,7 +178,7 @@
   "paid_compute_used": false,
   "terminal_decision": {
     "status": "BLOCK_S4_LONG_TRAINING_CONTINUE_LOCAL_FREE_RESEARCH_AND_ENGINEERING",
-    "primary_reason": "S4 architecture, tokenizer, data, recovery, optimizer, evaluation, and compute gates are not frozen.",
+    "primary_reason": "S4 architecture, tokenizer, data, recovery, optimizer, evaluation, learned predecessor evidence, and compute gates are not frozen.",
     "safe_parallel_work": "Local ModelSpec/GQA/tokenizer/runtime qualification that does not mutate the active DATA or D05 ownership surfaces."
   }
 }
