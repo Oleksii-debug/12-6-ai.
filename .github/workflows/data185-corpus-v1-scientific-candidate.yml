@@ -75,10 +75,13 @@ jobs:
           .data185/bin/python -m compileall -q src/twelve_six
           .data185/bin/python -m ruff check --select E4,E7,E9,F \
             src/twelve_six/data185_scientific_candidate.py \
-            tests/test_data185_scientific_candidate.py
+            src/twelve_six/data110_entrypoint.py \
+            tests/test_data185_scientific_candidate.py \
+            tests/test_data110_entrypoint.py
           .data185/bin/python -m pytest -q \
             tests/test_data185_scientific_candidate.py \
             tests/test_data110_release_candidate.py \
+            tests/test_data110_entrypoint.py \
             tests/test_data25_corpus_v01.py \
             tests/test_document_quality.py \
             tests/test_privacy_filter.py \
@@ -99,7 +102,7 @@ jobs:
           EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
-          .data185/bin/python -m twelve_six.data110_release_candidate build \
+          .data185/bin/python -m twelve_six.data110_entrypoint build \
             --repo-root . \
             --source-sha "$EXPECTED_SOURCE_SHA" \
             --external-intake data110-external-intake \
@@ -110,7 +113,7 @@ jobs:
           EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
-          .data185/bin/python -m twelve_six.data110_release_candidate phase1 \
+          .data185/bin/python -m twelve_six.data110_entrypoint phase1 \
             --repo-root . \
             --source-sha "$EXPECTED_SOURCE_SHA" \
             --output-dir data110-evidence
@@ -120,11 +123,11 @@ jobs:
           EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
-          .data185/bin/python -m twelve_six.data110_release_candidate resume \
+          .data185/bin/python -m twelve_six.data110_entrypoint resume \
             --repo-root . \
             --source-sha "$EXPECTED_SOURCE_SHA" \
             --output-dir data110-evidence
-          .data185/bin/python -m twelve_six.data110_release_candidate validate \
+          .data185/bin/python -m twelve_six.data110_entrypoint validate \
             data110-evidence/report.json \
             --expected-source-sha "$EXPECTED_SOURCE_SHA"
 
