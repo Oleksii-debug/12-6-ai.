@@ -12,7 +12,7 @@ if os.environ.get("POSTBASE258_STDLIB_ISOLATED") == "1":
     package.__path__ = [str(pathlib.Path(__file__).parents[1] / "src" / "twelve_six")]
     sys.modules["twelve_six"] = package
 
-from twelve_six.memory_rag import (
+from twelve_six.memory_rag import (  # noqa: E402
     EvidenceObject,
     LexicalRetriever,
     MemoryDatabase,
