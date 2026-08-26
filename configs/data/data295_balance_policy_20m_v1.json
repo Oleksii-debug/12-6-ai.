@@ -1,0 +1,166 @@
+{
+  "schema_version": "12-6.data295-balance-policy-20m.v1",
+  "worker_id": "DATA-295-BALANCE-POLICY-20M-V1",
+  "execution_profile": "LOCAL_FREE",
+  "evidence_cutoff_utc": "2026-08-26T11:52:10Z",
+  "purpose": "Preregister the next external-real research-corpus UA/EN/code and source-family mixture before any model-result tuning.",
+  "truth_boundary": {
+    "model_result_tuning_permitted": false,
+    "document_duplication_permitted": false,
+    "sampling_replay_to_fill_quota_permitted": false,
+    "public_access_self_authorizes_training": false,
+    "byte_counts_are_proven_optimized_loss_targets": false,
+    "current_terminal_external_real_research_corpus_exists": false
+  },
+  "authority_bindings": {
+    "data229_text_registry": {
+      "head_sha": "90bc0b7f8b696ec35202532b13edf6ab29a662fe",
+      "dedicated_workflow_run": 32957147036,
+      "dedicated_workflow_conclusion": "success",
+      "registry_identity_sha256": "1357a343eb4ea973950d8991913109cbea53fe4fa891f0be9745ab497eb59486",
+      "normalized_utf8_bytes": 173358,
+      "source_count": 3,
+      "source_family_count": 2,
+      "code_source_count": 0
+    },
+    "data227_code_admission": {
+      "head_sha": "8ebdb2e132ed7bae5245e9d4c140752640ab9885",
+      "dedicated_workflow_run": 32956209865,
+      "dedicated_workflow_conclusion": "success",
+      "artifact_id": 9602093542,
+      "artifact_digest_sha256": "080f073327020cb3bbb05c7348f658223804684d23012d9b66ab9b798c4fed5d",
+      "report_sha256": "234ace1497b00495716d00a1502c323fc06b88458c49ec3d6aa58bc2cdd52294",
+      "identity_preserved_training_eligible_bytes": 9703,
+      "source_count": 2,
+      "source_family_count": 2
+    },
+    "data228_diversity_probe": {
+      "head_sha": "46a70c990dab6ff72bb84ddb54cff1156b491b40",
+      "dedicated_workflow_run": 32957120454,
+      "dedicated_workflow_conclusion": "failure",
+      "consumed_as_training_authority": false
+    },
+    "data230_research_corpus": {
+      "terminal_authority_found": false,
+      "consumed": false
+    },
+    "data278_english_large_expansion": {
+      "durable_terminal_authority_found_at_cutoff": false,
+      "consumed": false
+    }
+  },
+  "current_cross_authority_inventory": {
+    "status": "POLICY_INPUT_ONLY_NOT_A_CONVERGED_CORPUS_IDENTITY",
+    "unit": "unique_training_eligible_source_bytes",
+    "total": 183061,
+    "strata": {
+      "uk": 88565,
+      "en": 84793,
+      "code": 9703
+    },
+    "families": [
+      {
+        "family_id": "ua.rada.open-data.laws-texts",
+        "stratum": "uk",
+        "unique_bytes": 88565,
+        "authority": "DATA-229"
+      },
+      {
+        "family_id": "en.standardebooks.manual",
+        "stratum": "en",
+        "unique_bytes": 84793,
+        "authority": "DATA-229"
+      },
+      {
+        "family_id": "github:encode/httpx",
+        "stratum": "code",
+        "unique_bytes": 8161,
+        "authority": "DATA-227"
+      },
+      {
+        "family_id": "github:psf/requests",
+        "stratum": "code",
+        "unique_bytes": 1542,
+        "authority": "DATA-227"
+      }
+    ]
+  },
+  "candidate_policies": [
+    {
+      "policy_id": "continuity_45_35_20",
+      "weights_percent": {"uk": 45, "en": 35, "code": 20},
+      "current_modality_only_max_no_replay_source_byte_budget": 48500,
+      "current_modality_only_allocation": {"uk": 21825, "en": 16975, "code": 9700},
+      "target_20m_allocation": {"uk": 9000000, "en": 7000000, "code": 4000000},
+      "selected": true
+    },
+    {
+      "policy_id": "symmetric_text_40_40_20",
+      "weights_percent": {"uk": 40, "en": 40, "code": 20},
+      "current_modality_only_max_no_replay_source_byte_budget": 48500,
+      "current_modality_only_allocation": {"uk": 19400, "en": 19400, "code": 9700},
+      "target_20m_allocation": {"uk": 8000000, "en": 8000000, "code": 4000000},
+      "selected": false
+    },
+    {
+      "policy_id": "balanced_45_40_15",
+      "weights_percent": {"uk": 45, "en": 40, "code": 15},
+      "current_modality_only_max_no_replay_source_byte_budget": 64600,
+      "current_modality_only_allocation": {"uk": 29070, "en": 25840, "code": 9690},
+      "target_20m_allocation": {"uk": 9000000, "en": 8000000, "code": 3000000},
+      "selected": false
+    },
+    {
+      "policy_id": "text_equal_45_45_10",
+      "weights_percent": {"uk": 45, "en": 45, "code": 10},
+      "current_modality_only_max_no_replay_source_byte_budget": 97000,
+      "current_modality_only_allocation": {"uk": 43650, "en": 43650, "code": 9700},
+      "target_20m_allocation": {"uk": 9000000, "en": 9000000, "code": 2000000},
+      "selected": false
+    },
+    {
+      "policy_id": "scarcity_relief_47_5_47_5_5",
+      "weights_percent": {"uk": 47.5, "en": 47.5, "code": 5},
+      "current_modality_only_max_no_replay_source_byte_budget": 178400,
+      "current_modality_only_allocation": {"uk": 84740, "en": 84740, "code": 8920},
+      "target_20m_allocation": {"uk": 9500000, "en": 9500000, "code": 1000000},
+      "selected": false
+    }
+  ],
+  "selected_policy": {
+    "policy_id": "continuity_45_35_20",
+    "selection_basis": "PREEXISTING_PREREGISTERED_TOP_LEVEL_MIXTURE_CONTINUITY_NOT_MODEL_OUTCOMES",
+    "target_total_source_byte_tokens": 20000000,
+    "weights_percent": {"uk": 45, "en": 35, "code": 20},
+    "target_unique_source_byte_tokens": {"uk": 9000000, "en": 7000000, "code": 4000000},
+    "current_unique_source_byte_shortfall": {"uk": 8911435, "en": 6915207, "code": 3990297}
+  },
+  "source_family_policy": {
+    "family_identity_rule": "Independent upstream publisher/project lineage; mirrors, forks, vendored copies, generated derivatives, and duplicated documents do not create new families.",
+    "minimum_independent_families_per_stratum": {"uk": 2, "en": 2, "code": 2},
+    "maximum_family_share_of_total_percent": 25,
+    "maximum_family_share_within_its_stratum_percent": 60,
+    "family_caps_are_hard": true,
+    "silent_family_overflow_permitted": false,
+    "family_overflow_action": "SUBSAMPLE_THAT_FAMILY_OR_ACQUIRE_ANOTHER_INDEPENDENT_FAMILY_NEVER_REPLAY_OTHER_DOCUMENTS"
+  },
+  "rights_quality_and_privacy_gates": {
+    "requires_exact_immutable_revision": true,
+    "requires_explicit_training_rights_authority": true,
+    "requires_existing_D03_admission": true,
+    "exclude_mirrors_and_forks_as_independent_families": true,
+    "exclude_generated_vendor_build_minified_material": true,
+    "exclude_privacy_sensitive_material": true,
+    "exclude_ambiguous_license_sources": true,
+    "exact_duplicate_rejection": true,
+    "near_duplicate_rejection_required": true
+  },
+  "activation_state": {
+    "selected_policy_20m_ready": false,
+    "current_full_family_constrained_no_replay_budget": 0,
+    "reason": "CURRENT_TERMINAL_INPUT_HAS_ONLY_ONE_UK_AND_ONE_EN_FAMILY; HARD TWO-FAMILY-PER-STRATUM GATE FAILS",
+    "modality_only_source_byte_ceiling_before_family_gate": 48500,
+    "optimized_loss_target_budget": "UNPUBLISHED_REQUIRES_EXACT_POST_SPLIT_TOKEN_POSITION_LEDGER",
+    "next_unblock": "ADMIT_AT_LEAST_ONE ADDITIONAL INDEPENDENT TRAINING-ELIGIBLE UK FAMILY AND ONE EN FAMILY, THEN RECOMPUTE UNIQUE BYTES AFTER DEDUP AND FAMILY CAPS"
+  }
+}
