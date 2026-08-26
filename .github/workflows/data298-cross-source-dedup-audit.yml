@@ -39,7 +39,7 @@ jobs:
       - name: Universal exact LOCAL_FREE bootstrap
         uses: ./.github/actions/execution-bootstrap
         with:
-          capabilities: tests,lint
+          capabilities: runtime,tests,lint
           venv: .data298
           command: python -m pytest -q tests/test_data298_cross_source_capacity_audit.py
           manifest: data298-execution-environment.json
