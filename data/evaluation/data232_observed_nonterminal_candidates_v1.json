@@ -1,0 +1,18 @@
+{
+  "candidates": [
+    {
+      "candidate_id": "EVAL-233-REAL-HOLDOUT-V2",
+      "candidate_authority_identity_sha256": "2de35f27b31b9a783b248db5bbf6f575e1ce568d810348d750b9f1b4bc4618c3",
+      "head_sha": "84d6d630b281746c6a0dc364c27c2065a873bf76",
+      "pr": 365,
+      "terminal_authority_admitted": false,
+      "selection_validation_set_identity_sha256": null,
+      "final_test_set_identity_sha256": null,
+      "reason": "Exact-head immutable-holdout workflow failed at Focused contracts; materialization and set-manifest publication were skipped.",
+      "workflow_run_id": 32955984987
+    }
+  ],
+  "policy": "Nonterminal or failed candidates are observed for dependency tracking but are excluded from accepted authority composites.",
+  "schema": "12-6.data232-observed-nonterminal-evaluation-candidates.v1",
+  "worker_id": "DATA-232-DECONTAMINATION-AUTHORITY-V2"
+}
