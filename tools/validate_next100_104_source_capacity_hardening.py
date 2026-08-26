@@ -9,8 +9,12 @@ import json
 from pathlib import Path
 from typing import Any
 
-EXPECTED_PARENT_IDENTITY = "77fb69c558df8c59fdae00583c955c62ad088cda98fd16b335eedb26fb2d7526"
-EXPECTED_CPYTHON_AUTHORITY = "46a00dc70db690ae2b3c4495a75283e7e752bdccb1047d4318c2ebadfa392f0d"
+EXPECTED_PARENT_IDENTITY = (
+    "77fb69c558df8c59fdae00583c955c62ad088cda98fd16b335eedb26fb2d7526"
+)
+EXPECTED_CPYTHON_AUTHORITY = (
+    "46a00dc70db690ae2b3c4495a75283e7e752bdccb1047d4318c2ebadfa392f0d"
+)
 EXPECTED_KNOWN_BYTES = 547_842
 EXPECTED_STRATA = {"uk": 100_856, "en": 150_643, "code": 296_343}
 
@@ -33,7 +37,10 @@ def _identity(document: dict[str, Any]) -> str:
 
 
 def validate(document: dict[str, Any]) -> None:
-    if document.get("schema_version") != "12-6.next100-104-source-capacity-hardening.v1":
+    if (
+        document.get("schema_version")
+        != "12-6.next100-104-source-capacity-hardening.v1"
+    ):
         _fail("schema mismatch")
     if document.get("local_free_only") is not True:
         _fail("LOCAL_FREE boundary removed")
@@ -67,7 +74,10 @@ def validate(document: dict[str, Any]) -> None:
     corrected = document.get("corrected_fail_closed_accounting")
     if not isinstance(corrected, dict):
         _fail("corrected accounting missing")
-    if corrected.get("known_exact_training_eligible_bytes_lower_bound") != EXPECTED_KNOWN_BYTES:
+    if (
+        corrected.get("known_exact_training_eligible_bytes_lower_bound")
+        != EXPECTED_KNOWN_BYTES
+    ):
         _fail("known-byte lower bound mismatch")
     if corrected.get("by_stratum_known_exact_bytes_lower_bound") != EXPECTED_STRATA:
         _fail("stratum lower-bound vector mismatch")
