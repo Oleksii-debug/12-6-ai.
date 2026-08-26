@@ -1,0 +1,195 @@
+{
+  "authority_identity_sha256": "85f596e79b0ec6479d2ef815e2a6a9bdbfaa55993c797309c1ea4d93b1d9b0e7",
+  "dedup": {
+    "evaluation_reserved_authorities_checked": [
+      "EVAL-233-REAL-HOLDOUT-V2@b5512b4648cb09dd052b08884dc53f291e1ce935",
+      "EVAL-303-SELECTION-VALIDATION-COMPOSITE@5e5a1de3b594cee5612e63d3d4c2a70499740ac7"
+    ],
+    "evaluation_reserved_family_overlap": [],
+    "final_test_payload_read": false,
+    "live_training_family_overlap": [],
+    "live_training_object_hash_equalities": [],
+    "near_copy_claim": "NOT_CLAIMED; downstream corpus build must rerun project G07/G08 decontamination on the exact composed corpus.",
+    "selection_validation_payload_read": false,
+    "within_snapshot_exact_duplicate_ids": 0,
+    "within_snapshot_exact_duplicate_normalized_texts": 0
+  },
+  "digital_edition": {
+    "scan": {
+      "commons_rights_mark": "Public Domain Mark 1.0 / PD-old-70; faithful photographic reproduction",
+      "edition_source": "Internet Archive item nomis1864; faithful scan also mirrored on Wikimedia Commons",
+      "internet_archive_url": "https://archive.org/details/nomis1864",
+      "reusable": true,
+      "wikimedia_commons_url": "https://commons.wikimedia.org/wiki/File:%D0%A3%D0%BA%D1%80%D0%B0%D1%97%D0%BD%D1%81%D1%8C%D0%BA%D1%96_%D0%BF%D1%80%D0%B8%D0%BA%D0%B0%D0%B7%D0%BA%D0%B8,_%D0%BF%D1%80%D0%B8%D1%81%D0%BB%D1%96%D0%B2%27%D1%8F_%D1%96_%D1%82%D0%B0%D0%BA%D0%B5_%D1%96%D0%BD%D1%88%D0%B5_(1864).pdf"
+    },
+    "transcription_compilation": {
+      "attribution": "Yemelianov, Dmytro (2026). verba — Ukrainian Proverbs Corpus (v1.0.2). https://verbacorpus.org",
+      "attribution_required": true,
+      "license": "CC-BY-4.0 for compilation + enrichment; historical Nomis1864 text marked public domain",
+      "license_grants": "share and adapt for any purpose, including commercial, subject to attribution",
+      "license_url": "https://creativecommons.org/licenses/by/4.0/",
+      "project": "verba — Ukrainian Proverbs Corpus",
+      "publisher": "Dmytro Yemelianov",
+      "reusable": true,
+      "upstream_commit": "34a2c10ac35e1febad6c270a88fc8b83790407da",
+      "upstream_data_object_git_blob_sha1": "a8e31fd41bd3dbbde7d43ec3c04f56e5beb37d1b",
+      "upstream_data_object_path": "app/public/data/landing.json",
+      "upstream_datacard_git_blob_sha1": "3c880b7b6f891c4b0b6aa8ced367bbd5f7280fe3",
+      "upstream_datacard_path": "DATACARD.md",
+      "upstream_repo": "dmytro-yemelianov/verbacorpus",
+      "upstream_sources_git_blob_sha1": "6d1ec72fb41f580557adf91152f6b0c9d08937b5",
+      "upstream_sources_path": "sources.csv",
+      "version": "1.0.2"
+    }
+  },
+  "execution_profile": "LOCAL_FREE",
+  "family": {
+    "independent_from_live_training_families": [
+      "ua.rada.open-data.laws-texts",
+      "en.standardebooks.manual",
+      "github:encode/httpx",
+      "github:psf/requests"
+    ],
+    "lineage": "Verba corpus Nomis1864 transcription derived from the 1864 public-domain printed edition",
+    "not_claimed_independent_subfamily_of": "dmytro-yemelianov/verbacorpus",
+    "source_family": "ua.verba.public-domain.nomis1864"
+  },
+  "language": {
+    "alphabetic_codepoint_count": 711,
+    "cyrillic_alphabetic_codepoint_count": 711,
+    "cyrillic_ratio": 1.0,
+    "declared": "uk",
+    "ukrainian_specific_letter_occurrences": 31,
+    "upstream_declared": "uk (Ukrainian)",
+    "verification": "PASS"
+  },
+  "privacy": {
+    "biographical_metadata_in_training_payload": false,
+    "contact_data_fields_included": false,
+    "modern_personal_records_included": false,
+    "status": "PASS_LOW_RISK_HISTORICAL_FOLK_TEXT"
+  },
+  "quality": {
+    "bounded_snapshot_checks": {
+      "modern_text_llm_artifacts_included": false,
+      "nonempty_records": 24,
+      "truncated_empty_records": 0,
+      "unique_ids": 24,
+      "unique_normalized_records": 24
+    },
+    "full_source_warning": "Verba documents Nomis1864 OCR at roughly 75–80% character fidelity; this authority does not admit the full 9,785-row Nomis source.",
+    "status": "PASS_BOUNDED_SNAPSHOT_ONLY"
+  },
+  "registry_late_check": {
+    "baseline_rights_authority": "DATA-293-INDEPENDENT-RIGHTS-RECERTIFICATION@2665a4cd86186ba44024334719d30dcc35d222d8",
+    "baseline_training_families": [
+      "ua.rada.open-data.laws-texts",
+      "en.standardebooks.manual",
+      "github:encode/httpx",
+      "github:psf/requests"
+    ],
+    "candidate_already_counted": false,
+    "requires_successor_corpus_contract": true
+  },
+  "rights_evidence": {
+    "cc_by_4_0": "https://creativecommons.org/licenses/by/4.0/",
+    "commons_pd_scan": "https://commons.wikimedia.org/wiki/File:%D0%A3%D0%BA%D1%80%D0%B0%D1%97%D0%BD%D1%81%D1%8C%D0%BA%D1%96_%D0%BF%D1%80%D0%B8%D0%BA%D0%B0%D0%B7%D0%BA%D0%B8,_%D0%BF%D1%80%D0%B8%D1%81%D0%BB%D1%96%D0%B2%27%D1%8F_%D1%96_%D1%82%D0%B0%D0%BA%D0%B5_%D1%96%D0%BD%D1%88%D0%B5_(1864).pdf",
+    "fail_closed": true,
+    "nomys_biography": "https://esu.com.ua/article-73452",
+    "redistribution_permission": "APPROVED_WITH_ATTRIBUTION_FOR_VERBA_DIGITAL_LAYER",
+    "training_permission": "APPROVED",
+    "ukraine_law": "https://data.rada.gov.ua/ogd/zak/perv/text/d521966.htm",
+    "verba_datacard": "https://github.com/dmytro-yemelianov/verbacorpus/blob/34a2c10ac35e1febad6c270a88fc8b83790407da/DATACARD.md",
+    "verba_sources": "https://github.com/dmytro-yemelianov/verbacorpus/blob/34a2c10ac35e1febad6c270a88fc8b83790407da/sources.csv"
+  },
+  "schema_version": "12-6.next100-027-ua-public-domain-lit.v1",
+  "scope": {
+    "admitted_object": "bounded 24-record deterministic Nomis1864-only snapshot",
+    "evaluation_admitted": false,
+    "final_test_admitted": false,
+    "full_upstream_corpus_admitted": false,
+    "redistribution_admitted": true,
+    "selection_validation_admitted": false,
+    "tokenizer_fit_admitted": true,
+    "training_admitted": true
+  },
+  "selection": {
+    "deterministic": true,
+    "excluded_fields": [
+      "modern_text",
+      "category",
+      "explanation",
+      "variant_group",
+      "normalized_text"
+    ],
+    "limit": 24,
+    "policy": "Traverse pinned landing.json array in encounter order; select the first 24 records whose sources field equals exactly [\"Nomis1864\"].",
+    "selected_ids": [
+      "p000326",
+      "p003958",
+      "p007848",
+      "p010341",
+      "p010974",
+      "p011271",
+      "p013276",
+      "p014621",
+      "p016260",
+      "p018484",
+      "p019135",
+      "p019468",
+      "p021100",
+      "p022108",
+      "p024928",
+      "p025225",
+      "p026115",
+      "p027010",
+      "p030682",
+      "p031016",
+      "p031689",
+      "p032032",
+      "p032706",
+      "p034018"
+    ],
+    "source_filter_exact": [
+      "Nomis1864"
+    ]
+  },
+  "snapshot": {
+    "normalization": "For each text only: Unicode NFC, strip leading/trailing whitespace, preserve case/punctuation/historical orthography; one LF-terminated record per line.",
+    "normalized_bytes": 1659,
+    "normalized_path": "data/external/snapshots/next100_027_verba_nomis1864_normalized.txt",
+    "normalized_sha256": "1eb91dbd631898c6a2efe274b700a5be0deaca243c0a9d5d30994ddadcf43598",
+    "raw_bytes": 2859,
+    "raw_format": "UTF-8 compact JSONL; key order id,text,sources; LF terminator",
+    "raw_path": "data/external/snapshots/next100_027_verba_nomis1864_raw.jsonl",
+    "raw_sha256": "492d985fd5c364fecc76a4ef387bdcbda936ebf47769e6fff011f113411d9b3b",
+    "records": 24
+  },
+  "truth_boundary": {
+    "admission_applies_only_to_committed_bounded_snapshot": true,
+    "evaluation_use_claimed": false,
+    "full_verba_corpus_admitted": false,
+    "model_training_executed": false,
+    "modern_protected_collections_admitted": false,
+    "repo_release_green_claimed": false
+  },
+  "verdict": "ADMIT",
+  "work": {
+    "compiler": "Матвій Номис (Матвій Терентійович Симонов)",
+    "nature": "historical collection of Ukrainian folk proverbs/adages",
+    "publication_place": "Санкт-Петербург",
+    "publication_year": 1864,
+    "publisher": "Друкарня Тиблена і Ко (К. Куліша)",
+    "rights_reasoning": {
+      "anonymous_folk_material": "1864 publication is also far beyond the 70-year publication term applicable to anonymous/pseudonymous works",
+      "expiry_latest_for_compiler": "1972-01-01",
+      "nomys_death_date": "1901-01-08",
+      "public_domain_confirmed": true,
+      "ukraine_current_term": "70 years from 1 January following author's death"
+    },
+    "source_key": "Nomis1864",
+    "title": "Українські приказки, прислів'я і таке інше",
+    "underlying_rights": "PUBLIC_DOMAIN"
+  },
+  "worker_id": "NEXT100-027-DATA-UA-PUBLIC-DOMAIN-LIT"
+}
