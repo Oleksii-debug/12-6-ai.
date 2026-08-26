@@ -52,3 +52,13 @@ Successful branch materialization writes:
 - recovery report with rights, language, privacy, dedup, evaluation and training-executed decisions.
 
 The workflow materializes twice independently and byte-compares every generated object before committing or accepting PR state. `training_executed=false` is part of the report and manifest.
+
+Materialized V1 identities:
+
+- raw SHA-256: `50a790e0ece091f13fe039b5e36a23431680dec0357379f29b0029502f9b3a31`;
+- normalized SHA-256: `32fccd0a0d2aa8a755a60e768443bdca1a743566b9482954031754a24a1f7bd5`;
+- license SHA-256: `9ba9550ad48438d0836ddab3da480b3b69ffa0aac7b7878b5a0039e7ab429411`;
+- manifest identity: `e41dc8b677760b1d6ac25c982baf9ed47388afac4cb29872e919aa1f02faa32a`;
+- recovery report identity: `a3f67f96042cdcec4b2e043efcdb159a09196f58cef435f15577da52c0b5ac73`.
+
+The materialization producer run is not by itself the terminal exact-head authority because it creates the materialization commit. A subsequent exact-head push run must pass with zero generated diff before the final `ADMIT` is sealed.
