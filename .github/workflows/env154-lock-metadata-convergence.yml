@@ -63,7 +63,8 @@ jobs:
           for profile in \
             linux-x86_64-tokenizer-experiment \
             linux-x86_64-transformers-interop \
-            linux-x86_64-cuda-training; do
+            linux-x86_64-cuda-training \
+            windows-x86_64-runtime; do
             .env154/bin/python tools/verify_purpose_environment.py \
               --profile "$profile" --root . --validate-only
           done
@@ -85,7 +86,7 @@ jobs:
             tests/test_dependency_lock.py \
             tests/test_env154_lock_metadata_convergence.py
 
-      - name: Prove deterministic regeneration is byte-idempotent
+      - name: Prove deterministic regeneration and global verification
         run: |
           set -euo pipefail
           before="$(git status --porcelain requirements/locks requirements/profiles)"
@@ -96,5 +97,14 @@ jobs:
           from pathlib import Path
           from twelve_six.integration.dependency_lock import validate_global_lock_index
           validate_global_lock_index(root=Path('.'), index_path='requirements/locks/index.json')
-          print('global release lock verification PASS')
+          print('global canonical lock verification PASS')
           PY
+          for profile in \
+            linux-x86_64-tokenizer-experiment \
+            linux-x86_64-transformers-interop \
+            linux-x86_64-cuda-training \
+            windows-x86_64-runtime; do
+            .env154/bin/python tools/verify_purpose_environment.py \
+              --profile "$profile" --root . --validate-only
+          done
+          echo "global canonical + all-purpose metadata verification PASS"
