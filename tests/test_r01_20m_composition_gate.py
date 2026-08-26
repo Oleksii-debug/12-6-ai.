@@ -34,7 +34,9 @@ def test_committed_manifest_is_structurally_valid_and_blocked() -> None:
     assert validator.validate_manifest(data) == []
     assessment = validator.assess_composition(data)
     assert assessment["decision"] == "BLOCKED_MISSING_AUTHORITIES"
-    assert assessment["ready"] is False
+    assert assessment["composition_ancestry_verified"] is False
+    assert assessment["exact_candidate_head_ci_verified"] is False
+    assert assessment["training_authorized"] is False
 
 
 def test_required_role_cannot_be_removed() -> None:
@@ -72,18 +74,22 @@ def test_component_green_without_candidate_ancestry_fails_closed() -> None:
 
     assert assessment["decision"] == "BLOCKED_COMPONENT_NOT_ANCESTOR"
     assert assessment["non_ancestor_roles"] == [first_role]
-    assert assessment["ready"] is False
+    assert assessment["composition_ancestry_verified"] is False
+    assert assessment["training_authorized"] is False
 
 
-def test_all_required_authorities_on_one_candidate_can_pass_runtime_check() -> None:
+def test_all_authorities_on_one_candidate_prove_ancestry_but_not_ci_or_training() -> None:
     data = _fully_bound()
     assessment = validator.assess_composition(
         data,
         commit_exists=lambda _sha: True,
         is_ancestor=lambda _component, _candidate: True,
     )
-    assert assessment["decision"] == "PASS_SINGLE_COMPOSED_CANDIDATE"
-    assert assessment["ready"] is True
+    assert assessment["decision"] == "PASS_COMPOSITION_ANCESTRY_ONLY"
+    assert assessment["composition_ancestry_verified"] is True
+    assert assessment["exact_candidate_head_ci_verified"] is False
+    assert assessment["exact_candidate_head_ci_required"] is True
+    assert assessment["training_authorized"] is False
 
 
 def test_committed_manifest_cannot_self_assert_pass() -> None:
