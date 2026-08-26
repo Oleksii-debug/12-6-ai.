@@ -1,0 +1,111 @@
+{
+  "canonical_modalities": [
+    "ua",
+    "en"
+  ],
+  "code_gate": {
+    "eval289_authority_identity_sha256": "de52b38690230bee8a912fc1265ad34b80a3abde46bd23401f15395749a4813c",
+    "eval289_verdict": "BLOCKED_NO_PRISTINE_CODE_OBJECTS_WITH_EXPLICIT_EVALUATION_AUTHORITY",
+    "eval292_authority_identity_sha256": "9a9848a82c34588753c9dca1379b8fae49cd7f366017507fc412de0c38cad46f",
+    "final_test_records": 0,
+    "required_unblock": "new pristine code objects with explicit evaluation-use authorization and pre-training reservation",
+    "selection_records": 0,
+    "verdict": "BLOCKED"
+  },
+  "complete_ua_en_code": false,
+  "evidence_identity_method": "sha256(canonical-json-without-evidence_identity_sha256)",
+  "evidence_identity_sha256": "43a666702feacd94af63b8e1be13bb5d35ca90a8bc6555b41911e77e8fbe556c",
+  "execution_class": "LOCAL_FREE",
+  "final_test": {
+    "allowed_purpose": "final_test_only_after_selection_freeze",
+    "authority": "EVAL-304-REAL-FINAL-TEST-V3",
+    "authority_identity_sha256": "07a1de2bc33d5c8d70d5f88ae09ab208bc42e1148a1d154d2b44b17b5493fa4a",
+    "branch": "eval304/real-final-test-v3-20260826",
+    "code_included": false,
+    "documents_total": 16,
+    "head_sha": "c49a16f501fb5c24612088ec39570696aba66f9a",
+    "modalities": [
+      "ua",
+      "en"
+    ],
+    "outcomes_read_by_eval322": false,
+    "payload_read_by_eval322": false,
+    "preserved_authority": "EVAL-233-REAL-HOLDOUT-V2",
+    "preserved_authority_identity_sha256": "37473834df31c69faf39f5c1152e9fe1f7d4aeb1487fcf7489059e8ec444d4a7",
+    "preserved_set_identity_sha256": "6b012efc4d627b113b8adc2166e6ab50d9001284083f7a429c665b7752ca18d7",
+    "prohibited_uses": [
+      "tokenizer_fit",
+      "model_update",
+      "training",
+      "selection",
+      "hyperparameter_selection"
+    ]
+  },
+  "purpose": "canonical external-real evaluator authority",
+  "purpose_separation": {
+    "final_test_bytes_may_move_to_selection_validation": false,
+    "final_test_may_fit_tokenizer": false,
+    "final_test_may_select": false,
+    "final_test_may_train": false,
+    "final_test_outcomes_must_remain_unread_until_selection_freeze": true,
+    "selection_validation_may_fit_tokenizer": false,
+    "selection_validation_may_select_checkpoints_models_hyperparameters": true,
+    "selection_validation_may_train": false
+  },
+  "schema_version": "12-6.eval322-external-real-evaluator.v1",
+  "selection_validation": {
+    "allowed_purpose": "selection_validation_only",
+    "authority": "EVAL-303-SELECTION-VALIDATION-COMPOSITE",
+    "branch": "eval303/selection-validation-composite-20260826",
+    "component_identities": {
+      "code_eval292_set_identity_sha256": "9fd52e879c388f06f0b103afa02d68678388867c81cfb0f27ddbf0ca18867054",
+      "code_records": 0,
+      "en_eval291_authority_identity_sha256": "727f229c091f86748a4eee9ea5aec72bb65347b68d6b687fabbf33166b0eca1e",
+      "ua_eval290_set_identity_sha256": "c32320a706a283049e35eb537eb20a1e7f5865b86c24397c8b73d1e3d2014164"
+    },
+    "composite_identity_sha256": "7b97a9ab04469236dc5bc17fc80155cb43430b01c443bb6209fac090557258fd",
+    "documents_by_modality": {
+      "code": 0,
+      "en": 2,
+      "ua": 8
+    },
+    "documents_total": 10,
+    "exact_data300_exclusion_proof_identity_sha256": "ac9a0e2c3beab26c0d664b0006b11ec9fd155fa78be9f46d56ecb3ed336f2621",
+    "head_sha": "5e5a1de3b594cee5612e63d3d4c2a70499740ac7",
+    "membership_sha256": "e4bb39dd7aa6a20c7ed34e093f563b5f4896ac16828151c6b375a83cd8a068c6",
+    "near_match_exclusion_terminal": false,
+    "prohibited_uses": [
+      "tokenizer_fit",
+      "model_update",
+      "training",
+      "final_test_reporting"
+    ]
+  },
+  "status": "CANONICAL_AUTHORITY_DEFINED_EXECUTION_BLOCKED_PARTIAL_UA_EN_NO_CODE",
+  "training_contamination_firewall": {
+    "canonical_evaluator_execution_authorized": false,
+    "data300_contract_identity_sha256": "07d7beaaff4616e839450de6af3d407855c832bf75a24a959d1a12de5d9364e5",
+    "data305_evidence_identity_sha256": "05997b4be4589271c44588dd75985c71b9fd71cdaebafabfbde72d02f64780d9",
+    "data305_pass_verdict_emitted": false,
+    "data305_requested_matchers_executed": false,
+    "data305_status": "BLOCKED_NO_EXACT_CORPUS_IDENTITY",
+    "eval304_exact_source_hash_intersection_count": 6,
+    "eval304_exclusion_verified": false,
+    "reason": "The final training corpus identity is null and full exact/normalized/fragment/near/mirror/code-copy decontamination has not executed against the exact materialized corpus."
+  },
+  "truth_boundary": {
+    "complete_ua_en_code_publishable": false,
+    "release_ready": false,
+    "required_unblock": [
+      "Produce a non-null terminal DATA-301 training corpus identity and exact record inventory.",
+      "Run DATA-305/DATA-232 raw exact, normalized exact, fragment, near-match, mirror and code-copy scans on that exact corpus and resolve all forbidden connected clusters.",
+      "Bind the resulting PASS_CLEAN or PASS_WITH_EXCLUSIONS evidence to this evaluator authority.",
+      "Create separate pristine code selection-validation and final-test authorities with explicit evaluation rights and pre-training reservation."
+    ],
+    "strongest_publishable_status": "PARTIAL_UA_EN_NO_CODE"
+  },
+  "unavailable_modalities": [
+    "code"
+  ],
+  "worker_id": "EVAL-322-REAL-UA-EN-CODE-AUTHORITY"
+}
