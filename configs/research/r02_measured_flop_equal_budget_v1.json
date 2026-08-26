@@ -1,0 +1,102 @@
+{
+  "schema": "12-6.r02-measured-flop-equal-budget.v1",
+  "campaign_id": "R02-MEASURED-FLOP-EQUAL-BUDGET-V1",
+  "status": "MEASUREMENT_CONTRACT_READY_DATA_BLOCKED",
+  "parent": {
+    "pr": 706,
+    "head_sha": "17949f5a4d65d8275c99687df3e9b3b43a5d3c77",
+    "unit_firewall_path": "configs/research/r01_byte_token_unit_firewall_v1.json",
+    "unit_firewall_git_blob_sha1": "8c9ea85e376999acb65ff6243059edc8f42fcd27",
+    "required_cross_tokenizer_metric": "BITS_PER_BYTE",
+    "required_flop_calibration": "flop_normalized_byte_vs_subword_ablation"
+  },
+  "model_geometry": {
+    "model341_sha": "e4ff486fd90802fc123bebf60eed4e59196a98df",
+    "baseline_vocab_size": 256,
+    "d_model": 320,
+    "baseline_total_parameters": 20613440,
+    "baseline_tied_embedding_parameters": 81920,
+    "nonembedding_parameters": 20531520,
+    "tied_embeddings_required": true
+  },
+  "candidates": [
+    {"id": "byte-v256", "kind": "byte", "vocab_size": 256, "expected_total_parameters": 20613440},
+    {"id": "subword-v320", "kind": "subword", "vocab_size": 320, "expected_total_parameters": 20633920},
+    {"id": "subword-v384", "kind": "subword", "vocab_size": 384, "expected_total_parameters": 20654400},
+    {"id": "subword-v437", "kind": "subword", "vocab_size": 437, "expected_total_parameters": 20671360},
+    {"id": "subword-v512", "kind": "subword", "vocab_size": 512, "expected_total_parameters": 20695360}
+  ],
+  "measurement_contract": {
+    "required_strata": ["UA", "EN", "CODE"],
+    "minimum_repeats_per_candidate": 2,
+    "same_exact_calibration_slice_identity_across_candidates": true,
+    "same_exact_utf8_bytes_per_stratum_across_candidates": true,
+    "same_transformer_body_identity_across_candidates": true,
+    "same_nonembedding_parameter_count_across_candidates": true,
+    "same_loss_mask_identity_across_candidates": true,
+    "same_context_window_loss_positions_across_candidates": true,
+    "total_parameter_count_may_vary_only_by_tied_embedding_vocab_term": true,
+    "bits_per_byte_must_come_from_external_d06_authority": true,
+    "measured_flops_must_not_be_formula_only_for_final_ranking": true,
+    "optimizer_step_forbidden_during_calibration": true,
+    "required_top_level_fields": [
+      "tokenizer_id",
+      "tokenizer_identity",
+      "research_corpus_identity",
+      "calibration_slice_identity",
+      "model_body_identity",
+      "loss_mask_identity",
+      "bpb_metric_authority_identity",
+      "flop_counter_identity",
+      "context_window_loss_positions",
+      "model_total_parameters",
+      "model_nonembedding_parameters",
+      "peak_memory_bytes",
+      "repeat_id",
+      "optimizer_steps",
+      "strata"
+    ],
+    "required_per_stratum_fields": [
+      "utf8_bytes",
+      "nonignored_loss_positions",
+      "bits_per_byte",
+      "bpb_result_identity",
+      "measured_training_flops",
+      "wall_seconds"
+    ]
+  },
+  "derived_metrics": [
+    "loss_positions_per_utf8_byte",
+    "utf8_bytes_per_loss_position",
+    "measured_training_flops_per_utf8_byte",
+    "measured_training_flops_per_loss_position",
+    "semantic_context_span_utf8_bytes",
+    "utf8_bytes_per_second",
+    "loss_positions_per_second",
+    "equal_flop_projected_loss_positions",
+    "equal_flop_projected_utf8_bytes"
+  ],
+  "reference_compute_envelope": {
+    "source": "R01_ENGINEERING_EARLY_LEARNING_PILOT_ONLY",
+    "byte_baseline_loss_positions": 20000000,
+    "is_science_complete_budget": false
+  },
+  "completion_rule": {
+    "complete_measurements_status": "TOKENIZER_FLOP_CALIBRATION_READY_REQUIRES_HELDOUT_LEARNING_CURVES",
+    "science_complete_20m_budget_after_measurements": "UNDEFINED_PENDING_HELDOUT_LEARNING_CURVES_AND_COMPUTE_AUTHORIZATION",
+    "training_authorized": false,
+    "paid_compute_authorized": false,
+    "promotion_to_100m_authorized": false
+  },
+  "truth_boundary": {
+    "corpus_payload_read_by_analyzer": false,
+    "tokenizer_fit_executed_by_analyzer": false,
+    "model_training_executed_by_analyzer": false,
+    "optimizer_updates": 0,
+    "selection_validation_consumed": false,
+    "final_test_consumed": false,
+    "training_authorized": false,
+    "paid_compute_authorized": false,
+    "promotion_to_100m_authorized": false
+  }
+}
