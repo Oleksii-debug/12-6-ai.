@@ -1,0 +1,134 @@
+{
+  "schema_version": "12-6.next100-063b-fail-closed-source-registry.v1",
+  "worker_id": "NEXT100-063B-FAIL-CLOSED-SOURCE-REGISTRY",
+  "local_free_only": true,
+  "model_training_executed": false,
+  "tokenizer_fit_executed": false,
+  "paid_compute_used": false,
+  "final_test_payload_read": false,
+  "decision": "CONSERVATIVE_TERMINAL_SOURCE_VECTOR_PRE_SUCCESSOR_GLOBAL_DEDUP",
+  "base_dedup_authority": {
+    "worker_id": "NEXT100-065-CROSSSOURCE-DEDUP-V3",
+    "head_sha": "efc278cec0e4773eb4ff405bf4b4d24ee63b5d13",
+    "inventory_path": "configs/data/next100_065_cross_source_dedup_v3.json",
+    "inventory_blob_sha1": "c1e05f09490e25f6fed765dfb70d900717528f4b",
+    "dedicated_workflow_run": 32999969398,
+    "dedicated_workflow_conclusion": "success",
+    "source_object_count": 11,
+    "capacity_bytes": {"uk": 90044, "en": 84793, "code": 69133, "total": 243970},
+    "family_counts": {"uk": 2, "en": 1, "code": 4, "total": 7}
+  },
+  "credited_late_terminal_authorities": [
+    {
+      "pr": 449,
+      "worker": "NEXT100-026-DATA-UA-CABINET-MINISTRY",
+      "head_sha": "40950a950b60921fd856af2719e1ae2486d9e892",
+      "authority_identity": "1f068e6cc5ce3fc4a51d8477acee31fab5a0178e15f49225b57de94c5178f7d9",
+      "dedicated_workflow_run": 32997970539,
+      "dedicated_workflow_conclusion": "success",
+      "family": "ua.kmu.portal.secretariat-news",
+      "stratum": "uk",
+      "eligible_capacity_bytes": 9153,
+      "family_credit": 1
+    },
+    {
+      "pr": 462,
+      "worker": "NEXT100-027-DATA-UA-PUBLIC-DOMAIN-LIT",
+      "head_sha": "d75edd497c7fb1054e86d892c9462f059c1f4aa9",
+      "authority_identity": "85f596e79b0ec6479d2ef815e2a6a9bdbfaa55993c797309c1ea4d93b1d9b0e7",
+      "dedicated_workflow_run": 32998503672,
+      "dedicated_workflow_conclusion": "success",
+      "family": "ua.verba.public-domain.nomis1864",
+      "stratum": "uk",
+      "eligible_capacity_bytes": 1659,
+      "family_credit": 1
+    },
+    {
+      "pr": 472,
+      "worker": "NEXT100-034-DATA-EN-NIST",
+      "head_sha": "b7491745b34ac8679baaf69cb96cd609dcbe0a16",
+      "authority_identity": "3ffba0fcd08ab42e940b2db12ffafb6f7234ad0bae6f7fe523071497485b9d1c",
+      "dedicated_workflow_run": 32998703545,
+      "dedicated_workflow_conclusion": "success",
+      "family": "en.usgov.nist.technical-series",
+      "stratum": "en",
+      "eligible_capacity_bytes": 59358,
+      "family_credit": 1
+    },
+    {
+      "pr": 445,
+      "worker": "NEXT100-038-DATA-EN-MDN",
+      "head_sha": "902eccc0b3efff09a38dc89cda789180b6c6e754",
+      "authority_identity": "0f5dbd5313f8196811e2a99f77eb8698c6bc69f69648d76a7e240ee9757ecc47",
+      "dedicated_workflow_run": 32998544359,
+      "dedicated_workflow_conclusion": "success",
+      "family": "en.mdn.webdocs.prose",
+      "stratum": "en",
+      "eligible_capacity_bytes": 6492,
+      "family_credit": 1
+    }
+  ],
+  "zero_credit_authorities": [
+    {
+      "pr": 467,
+      "worker": "NEXT100-037-DATA-EN-PYTHON-DOCS",
+      "head_sha": "5a6a495a24bce449334cbc5126d0114f61a9f57c",
+      "family": "python.cpython.documentation",
+      "reason": "SOURCE_NORMALIZED_BYTES_NOT_ELIGIBLE_CAPACITY; 14/16 chunks accepted, 2 rejected by pii_phone, exact accepted-chunk byte ledger not materialized",
+      "dedicated_workflow_run": 32998356906,
+      "dedicated_workflow_conclusion": "success",
+      "eligible_capacity_bytes": 0,
+      "family_credit": 0
+    },
+    {
+      "pr": 465,
+      "worker": "NEXT100-048-CODE-PYDANTIC",
+      "head_sha": "ca1755886f052d272029d6d68b2f1b7f02187936",
+      "family": "github:pydantic/pydantic",
+      "reason": "DEDICATED_EXACT_HEAD_ADMISSION_WORKFLOW_FAILED",
+      "dedicated_workflow_run": 32999061340,
+      "dedicated_workflow_conclusion": "failure",
+      "eligible_capacity_bytes": 0,
+      "family_credit": 0
+    },
+    {
+      "pr": 475,
+      "worker": "NEXT100-051-CODE-RICH",
+      "head_sha": "78cada1d69b3f0c438012c4e6cf79143aae2f603",
+      "family": "github:Textualize/rich",
+      "reason": "DEDICATED_EXACT_HEAD_ADMISSION_WORKFLOW_FAILED",
+      "dedicated_workflow_run": 32999511493,
+      "dedicated_workflow_conclusion": "failure",
+      "eligible_capacity_bytes": 0,
+      "family_credit": 0
+    }
+  ],
+  "conservative_pre_successor_dedup_vector": {
+    "capacity_bytes": {"uk": 100856, "en": 150643, "code": 69133, "total": 320632},
+    "family_counts": {"uk": 4, "en": 3, "code": 4, "total": 11},
+    "minimum_independent_families_per_stratum": 2,
+    "family_minimum_status": "PASS_PRE_SUCCESSOR_GLOBAL_DEDUP",
+    "research_corpus_v1_target_normalized_bytes": 20000000,
+    "target_gap_normalized_bytes": 19679368,
+    "target_fraction": 0.0160316
+  },
+  "downstream_gates": {
+    "successor_global_cross_source_dedup": "REQUIRED_NEXT",
+    "balance_diversity_retest": "REQUIRED_AFTER_DEDUP",
+    "immutable_corpus_materialization": "BLOCKED",
+    "evaluation_decontamination": "BLOCKED_NO_EXACT_CORPUS_IDENTITY",
+    "unique_loss_ledger": "BLOCKED_NO_POST_PACK_CORPUS",
+    "tokenizer_fit": "BLOCKED",
+    "long_training": "BLOCKED",
+    "paid_compute": "NOT_AUTHORIZED",
+    "authorized_training_exposure": 0
+  },
+  "claim_boundary": {
+    "globally_exhaustive_live_source_sweep_claimed": false,
+    "post_successor_dedup_capacity_claimed": false,
+    "research_corpus_v1_released": false,
+    "learned_20m_checkpoint_claimed": false,
+    "training_authorized": false
+  },
+  "registry_identity_sha256": "d7c67df78325bc2640db27def5dd30695a93f97766141fca1a968b79fcad0eec"
+}
