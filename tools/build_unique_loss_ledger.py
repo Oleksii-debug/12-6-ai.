@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Build or verify the DATA-294 unique causal-loss exposure ledger."""
 from __future__ import annotations
 
