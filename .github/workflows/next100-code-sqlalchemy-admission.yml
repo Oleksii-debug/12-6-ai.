@@ -1,0 +1,60 @@
+name: NEXT100 SQLAlchemy code admission
+
+on:
+  push:
+    branches:
+      - next100-055/code-sqlalchemy-admission-20260826
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact source head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Compile admission verifier
+        run: python -m py_compile src/twelve_six/next100_055_sqlalchemy_admission.py
+      - name: Run bounded SQLAlchemy admission
+        run: |
+          python src/twelve_six/next100_055_sqlalchemy_admission.py \
+            --repo-root . \
+            --output-dir evidence/next100-055 \
+            --source-sha "$GITHUB_SHA"
+      - name: Validate terminal report shape
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path('evidence/next100-055/next100-055-sqlalchemy-code-admission.json')
+          r = json.loads(p.read_text(encoding='utf-8'))
+          assert r['terminal'] is True
+          assert r['verdict'] == 'ADMIT_TRAINING_ONLY'
+          assert r['selection']['object_count'] == 6
+          assert r['selection']['raw_bytes'] == 831341
+          assert r['selection']['generated_artifact_unique_capacity_credit'] == 0
+          assert r['deduplication']['status'] == 'PASS'
+          assert r['evaluation_boundary']['selected_blob_intersection_count'] == 0
+          assert r['privacy_secret_parse']['python_ast_parse_all'] is True
+          print(json.dumps({
+              'verdict': r['verdict'],
+              'report_identity_sha256': r['report_identity_sha256'],
+              'snapshot_identity_sha256': r['snapshot_manifest']['identity_sha256'],
+          }, sort_keys=True))
+          PY
+      - name: Upload immutable admission evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: next100-055-sqlalchemy-code-admission
+          path: evidence/next100-055/
+          if-no-files-found: error
+          retention-days: 90
