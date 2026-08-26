@@ -17,7 +17,9 @@ The source contract binds:
 - GovInfo developer hub: `https://www.govinfo.gov/developers`;
 - GovInfo eCFR XML user guide: `https://www.govinfo.gov/bulkdata/ECFR/resources/ECFR-XML-User-Guide.pdf`.
 
-The eCFR is updated as regulatory changes are incorporated. Therefore a mutable/current endpoint is discovery material, not a corpus identity. A successor must use an exact historical date and title, then freeze the returned bytes with exact hashes and byte counts.
+At the 2026-08-26 probe cutoff, the official titles endpoint reports metadata `date = 2026-08-06`; Title 35 is marked `reserved = true`. The v1 contract freezes those facts. It therefore refuses a successor request later than 2026-08-06 and refuses Title 35 instead of letting a syntactically valid but unavailable/reserved request masquerade as an exact snapshot request.
+
+The eCFR is updated as regulatory changes are incorporated. Therefore a mutable/current endpoint is discovery material, not a corpus identity. A successor must use an exact historical date and non-reserved title, then freeze the returned bytes with exact hashes and byte counts.
 
 ## Rights and provenance boundary
 
@@ -44,16 +46,16 @@ python tools/validate_d03_ecfr_versioned_probe.py
 Build a deterministic successor request envelope for one historical title without performing network access:
 
 ```bash
-python tools/validate_d03_ecfr_versioned_probe.py --date 2026-08-25 --title 12
+python tools/validate_d03_ecfr_versioned_probe.py --date 2026-08-05 --title 12
 ```
 
-The request envelope contains the exact historical URL plus the frozen source-contract identity. It still has `family_credit = 0`, `training_authorized_bytes = 0`, and all downstream scientific gates set to `NOT_RUN`.
+The request envelope contains the exact historical URL plus the frozen source-contract identity and proves that the title is not reserved in the frozen metadata. It still has `family_credit = 0`, `training_authorized_bytes = 0`, and all downstream scientific gates set to `NOT_RUN`.
 
 ## Required successor materialization
 
 A later acquisition worker may only move beyond the probe after all of the following are satisfied:
 
-1. select an exact historical date and non-reserved title;
+1. select an exact historical date no later than the frozen metadata date and a non-reserved title;
 2. acquire the exact request twice independently and require byte-identical results;
 3. record raw SHA-256, exact byte count, media type, request URL/date/title, and acquisition evidence;
 4. parse XML with DTD/external-entity/network resolution disabled and bounded input sizes;
