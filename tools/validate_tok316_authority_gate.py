@@ -11,9 +11,12 @@ from typing import Any
 
 EXPECTED_SCHEMA = "12-6.tok316-bpe-reproducibility-v03-gate.v1"
 EXPECTED_WORKER = "TOK-316-BPE-REPRODUCIBILITY-V03"
-EXPECTED_STATUS = "BLOCKED_NO_TERMINAL_TOKENIZER_FIT_CORPUS"
+EXPECTED_STATUS = "BLOCKED_TOKENIZER_FIT_NOT_YET_PERMITTED"
 EXPECTED_BASE_SHA = "8ea7f830e50a23754d189dd4134f4afad76a7ee9"
 EXPECTED_CONTRACT_ID = "07d7beaaff4616e839450de6af3d407855c832bf75a24a959d1a12de5d9364e5"
+EXPECTED_DATA301_EVIDENCE = "939065abeefff8aed924415589608ff3fc721fe4b0a57fc200146a4b6a137e81"
+EXPECTED_TOK315_EVIDENCE = "18c671ab50e99b79b96e5f030400b381c964ef9fc01924795de44af9cadb56f6"
+EXPECTED_TOK315_INVENTORY = "945afd3dbd144f81c8441adf92e7784259de3f21a4dd547e95893243dec6e90d"
 EXPECTED_GRID = [320, 384, 437, 512]
 EXPECTED_LIBRARY_VERSION = "0.23.1"
 
@@ -65,18 +68,35 @@ def validate_gate(value: dict[str, Any]) -> None:
         raise Tok316GateError("prerequisite scan missing")
     if prereq.get("data301_branch_found") is not True:
         raise Tok316GateError("DATA-301 observed-state drift")
-    if prereq.get("data301_head_sha") != EXPECTED_BASE_SHA:
-        raise Tok316GateError("DATA-301 cutoff head drift")
-    if prereq.get("data301_commits_ahead_of_data300") != 0:
-        raise Tok316GateError("evidence cutoff no longer describes zero-ahead DATA-301")
+    if prereq.get("data301_verdict") != "TERMINAL_BLOCKED":
+        raise Tok316GateError("DATA-301 terminal verdict drift")
+    if prereq.get("data301_evidence_identity_sha256") != EXPECTED_DATA301_EVIDENCE:
+        raise Tok316GateError("DATA-301 evidence identity drift")
     if prereq.get("data301_terminal_corpus_identity_found") is not False:
-        raise Tok316GateError("terminal DATA-301 identity may not be invented")
-    if prereq.get("tok315_branch_found") is not False:
-        raise Tok316GateError("TOK-315 branch state may not be invented")
-    if prereq.get("tok315_tokenizer_fit_inventory_identity_found") is not False:
-        raise Tok316GateError("TOK-315 inventory identity may not be invented")
-    if prereq.get("eligible_tokenizer_fit_manifest_found") is not False:
-        raise Tok316GateError("eligible tokenizer-fit manifest may not be invented")
+        raise Tok316GateError("terminal DATA-301 corpus identity may not be invented")
+    if prereq.get("data301_shard_identity_found") is not False:
+        raise Tok316GateError("DATA-301 shard identity may not be invented")
+
+    if prereq.get("tok315_branch_found") is not True:
+        raise Tok316GateError("TOK-315 observed-state drift")
+    if prereq.get("tok315_evidence_sha256") != EXPECTED_TOK315_EVIDENCE:
+        raise Tok316GateError("TOK-315 evidence identity drift")
+    if prereq.get("tok315_status") != "BLOCKED_PENDING_MATERIALIZED_RESERVED_DECONTAMINATION":
+        raise Tok316GateError("TOK-315 status drift")
+    if prereq.get("tok315_fit_may_start_now") is not False:
+        raise Tok316GateError("TOK-315 may not be relabelled fit-eligible")
+    if prereq.get("tok315_required_inventory_sha256") != EXPECTED_TOK315_INVENTORY:
+        raise Tok316GateError("TOK-315 inventory identity drift")
+    if prereq.get("tok315_source_count") != 5:
+        raise Tok316GateError("TOK-315 source-count drift")
+    if prereq.get("tok315_admitted_source_bytes") != 183061:
+        raise Tok316GateError("TOK-315 admitted-byte drift")
+    if prereq.get("tok315_final_test_ingress_count") != 0:
+        raise Tok316GateError("final-test ingress must remain zero")
+    if prereq.get("tok315_selection_validation_ingress_count") != 0:
+        raise Tok316GateError("selection-validation ingress must remain zero")
+    if prereq.get("eligible_materialized_tokenizer_fit_manifest_found") is not False:
+        raise Tok316GateError("eligible materialized tokenizer-fit manifest may not be invented")
 
     maintained = value.get("maintained_bpe")
     if not isinstance(maintained, dict):
@@ -110,7 +130,7 @@ def validate_gate(value: dict[str, Any]) -> None:
     if protocol.get("fertility_strata") != ["ua", "en", "code"]:
         raise Tok316GateError("fertility strata drift")
     if protocol.get("metric_surface") != (
-        "eligible tokenizer-fit train corpus only; no selection-validation or final-test bytes"
+        "eligible materialized tokenizer-fit train corpus only; no selection-validation or final-test bytes"
     ):
         raise Tok316GateError("metric surface drift")
     if protocol.get("winner_selection_permitted") is not False:
