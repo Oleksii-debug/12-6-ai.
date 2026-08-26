@@ -7,6 +7,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: data21-22-external-source-intake-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   rights-aware-bounded-intake:
     runs-on: ubuntu-24.04
