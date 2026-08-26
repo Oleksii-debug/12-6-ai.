@@ -11,6 +11,8 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
 
+from .attention_perf import sdpa_native_gqa
+
 
 def canonical_json_sha256(payload: dict[str, Any]) -> str:
     encoded = json.dumps(
@@ -359,21 +361,24 @@ class CausalSelfAttention(nn.Module):
         k = apply_rope(k, cos, sin, self.rotary_dim)
         return q, k, v
 
-    def _expand_kv(self, k: Tensor, v: Tensor) -> tuple[Tensor, Tensor]:
-        if self.n_kv_heads == self.n_heads:
-            return k, v
-        repeats = self.n_heads // self.n_kv_heads
-        return k.repeat_interleave(repeats, dim=1), v.repeat_interleave(repeats, dim=1)
-
     def _attend(self, q: Tensor, k: Tensor, v: Tensor, *, is_causal: bool) -> Tensor:
-        expanded_k, expanded_v = self._expand_kv(k, v)
-        attended = F.scaled_dot_product_attention(
-            q,
-            expanded_k,
-            expanded_v,
-            dropout_p=self.dropout if self.training else 0.0,
-            is_causal=is_causal,
-        )
+        dropout_p = self.dropout if self.training else 0.0
+        if self.n_kv_heads == self.n_heads:
+            attended = F.scaled_dot_product_attention(
+                q,
+                k,
+                v,
+                dropout_p=dropout_p,
+                is_causal=is_causal,
+            )
+        else:
+            attended = sdpa_native_gqa(
+                q,
+                k,
+                v,
+                dropout_p=dropout_p,
+                is_causal=is_causal,
+            )
         batch = q.shape[0]
         seq_len = q.shape[2]
         attended = attended.transpose(1, 2).contiguous().view(batch, seq_len, self.q_dim)

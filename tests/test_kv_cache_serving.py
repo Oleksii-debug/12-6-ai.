@@ -75,7 +75,8 @@ def test_cache_memory_estimator_matches_payload_and_gqa_geometry() -> None:
 
     session = backend.begin_generation(prompt_ids)
     try:
-        assert session.cache_bytes == backend.estimate_cache_bytes(len(prompt_ids))
+        assert session.logical_cache_bytes == backend.estimate_cache_bytes(len(prompt_ids))
+        assert session.cache_bytes == backend.estimate_static_cache_bytes()
     finally:
         session.close()
 
