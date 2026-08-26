@@ -13,7 +13,7 @@ import hashlib
 import json
 import sys
 from collections.abc import Mapping
-from datetime import date, datetime
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -34,6 +34,8 @@ GOVINFO_XML_USER_GUIDE = (
     "https://www.govinfo.gov/bulkdata/ECFR/resources/ECFR-XML-User-Guide.pdf"
 )
 RIGHTS_REFERENCE = "https://www.copyright.gov/title17/92chap1.html"
+TITLES_METADATA_AS_OF = "2026-08-06"
+RESERVED_TITLES = (35,)
 
 REQUIRED_SUCCESSORS = (
     "EXACT_POINT_IN_TIME_TITLE_REQUEST",
@@ -145,8 +147,10 @@ def validate_probe_contract(config: Mapping[str, Any]) -> dict[str, Any]:
         "govinfo_xml_user_guide": GOVINFO_XML_USER_GUIDE,
         "modality": "structured_regulatory_xml",
         "language": "en",
+        "titles_metadata_as_of": TITLES_METADATA_AS_OF,
         "title_min": 1,
         "title_max": 50,
+        "reserved_titles_at_observation": list(RESERVED_TITLES),
         "reserved_titles_must_be_skipped": True,
     }
     for key, expected in expected_source.items():
@@ -157,6 +161,7 @@ def validate_probe_contract(config: Mapping[str, Any]) -> dict[str, Any]:
         "mutable_current_endpoint_allowed_for_capacity": False,
         "point_in_time_date_required": True,
         "exact_title_required": True,
+        "request_date_must_not_exceed_titles_metadata_as_of": True,
         "two_byte_identical_acquisitions_required": True,
         "sha256_required": True,
         "byte_count_required": True,
@@ -211,6 +216,8 @@ def validate_probe_contract(config: Mapping[str, Any]) -> dict[str, Any]:
         "source_id": SOURCE_ID,
         "family_id": FAMILY_ID,
         "config_sha256": sha256_json(config),
+        "titles_metadata_as_of": TITLES_METADATA_AS_OF,
+        "reserved_titles": list(RESERVED_TITLES),
         "family_credit": 0,
         "training_authorized_bytes": 0,
         "training_authorized_loss_positions": 0,
@@ -234,10 +241,14 @@ def build_successor_request(
     except ValueError as exc:
         raise ProbeValidationError("request date must be an exact YYYY-MM-DD date") from exc
 
-    observed = datetime.fromisoformat(OBSERVED_AT_UTC.replace("Z", "+00:00")).date()
-    _require(parsed_date <= observed, "request date is newer than the frozen probe observation")
+    metadata_as_of = date.fromisoformat(TITLES_METADATA_AS_OF)
+    _require(
+        parsed_date <= metadata_as_of,
+        "request date is newer than the frozen eCFR titles metadata",
+    )
     _require(isinstance(title, int) and not isinstance(title, bool), "title must be an integer")
     _require(1 <= title <= 50, "title must be between 1 and 50")
+    _require(title not in RESERVED_TITLES, f"title {title} is reserved in frozen metadata")
 
     url = HISTORICAL_TEMPLATE.format(date=request_date, title=title)
     request = {
@@ -247,6 +258,7 @@ def build_successor_request(
         "source_id": SOURCE_ID,
         "family_id": FAMILY_ID,
         "stratum": "en",
+        "titles_metadata_as_of": TITLES_METADATA_AS_OF,
         "date": request_date,
         "title": title,
         "url": url,
@@ -254,7 +266,7 @@ def build_successor_request(
         "two_byte_identical_acquisitions_required": True,
         "raw_sha256_required": True,
         "raw_byte_count_required": True,
-        "reserved_title_check_required": True,
+        "reserved_title_check_passed": True,
         "rights_and_provenance_status": "NOT_RUN",
         "normalization_status": "NOT_RUN",
         "global_dedup_status": "NOT_RUN",
