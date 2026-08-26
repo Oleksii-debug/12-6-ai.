@@ -132,6 +132,13 @@ def _verify_active_pointer(
     return manifest_sha256
 
 
+def _publication_manifest_hashes(receipt: SFTMechanicsReceipt) -> dict[int, str]:
+    published = {0: receipt.baseline_checkpoint.manifest_sha256}
+    for step in receipt.steps:
+        published[step.checkpoint.generation] = step.checkpoint.manifest_sha256
+    return published
+
+
 def _verify_generation_chain(
     *,
     store: SFTCheckpointStore,
@@ -143,6 +150,9 @@ def _verify_generation_chain(
     manifest_hashes: list[str] = []
     expected_base = _expected_base_payload(plan)
     expected_generations = tuple(range(receipt.training_steps + 1))
+    published_hashes = _publication_manifest_hashes(receipt)
+    if tuple(sorted(published_hashes)) != expected_generations:
+        raise RuntimeError("checkpoint publication receipt sequence drift")
     actual_generations = tuple(
         sorted(
             int(path.name.removeprefix("generation_"))
@@ -156,6 +166,9 @@ def _verify_generation_chain(
     for generation in expected_generations:
         manifest_path = store.generation_path(generation) / "manifest.json"
         manifest = _read_json(manifest_path)
+        manifest_sha256 = _sha256_bytes(_canonical_bytes(manifest))
+        if manifest_sha256 != published_hashes[generation]:
+            raise RuntimeError("checkpoint manifest publication digest drift")
         expected_parent = None if generation == 0 else generation - 1
         if manifest.get("schema") != SFT_MECHANICS_SCHEMA:
             raise RuntimeError("checkpoint manifest schema drift")
@@ -174,9 +187,8 @@ def _verify_generation_chain(
         if manifest.get("base_checkpoint") != expected_base:
             raise RuntimeError("checkpoint Base binding drift")
 
-        # Existing POSTBASE-353 load_state is the byte-tamper gate for backend state.
         store.load_state(backend, generation)
-        manifest_hashes.append(_sha256_bytes(_canonical_bytes(manifest)))
+        manifest_hashes.append(manifest_sha256)
 
     return tuple(manifest_hashes)
 
@@ -270,7 +282,6 @@ def _prove_rollback_pointer(
     if before != after:
         raise RuntimeError("rollback pointer rewrote an immutable checkpoint generation")
 
-    # Restore the final active pointer without changing any generation bytes.
     store._activate(final_generation, reason="terminal_rollback_proof_restore")
     _verify_active_pointer(store, expected_generation=final_generation)
 
