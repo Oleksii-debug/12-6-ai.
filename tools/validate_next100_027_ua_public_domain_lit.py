@@ -11,6 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = ROOT / "configs/data/next100_027_ua_public_domain_lit_v1.json"
+CONCURRENCY = ROOT / "configs/data/next100_027_concurrency_refresh_v1.json"
 
 def sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
@@ -80,8 +81,6 @@ def main() -> int:
 
     ids = []
     rebuilt_norm = []
-    raw_line_hashes = []
-    norm_line_hashes = []
     for line in raw_lines:
         obj = json.loads(line)
         if list(obj.keys()) != ["id", "text", "sources"]:
@@ -94,10 +93,7 @@ def main() -> int:
         if canonical_line != line:
             fail(f"non-canonical JSONL line: {obj['id']}")
         ids.append(obj["id"])
-        normalized = unicodedata.normalize("NFC", obj["text"].strip())
-        rebuilt_norm.append(normalized)
-        raw_line_hashes.append(sha256_bytes((line + "\n").encode("utf-8")))
-        norm_line_hashes.append(sha256_bytes((normalized + "\n").encode("utf-8")))
+        rebuilt_norm.append(unicodedata.normalize("NFC", obj["text"].strip()))
 
     if ids != cfg["selection"]["selected_ids"]:
         fail("deterministic selection id order drift")
@@ -131,16 +127,39 @@ def main() -> int:
         fail("privacy gate drift")
 
     dedup = cfg["dedup"]
-    for key in (
-        "within_snapshot_exact_duplicate_ids",
-        "within_snapshot_exact_duplicate_normalized_texts",
-    ):
+    for key in ("within_snapshot_exact_duplicate_ids", "within_snapshot_exact_duplicate_normalized_texts"):
         if dedup[key] != 0:
             fail(f"dedup regression: {key}")
     if dedup["live_training_family_overlap"] or dedup["evaluation_reserved_family_overlap"]:
         fail("source-family overlap with training/evaluation authority")
     if dedup["final_test_payload_read"] or dedup["selection_validation_payload_read"]:
         fail("evaluation firewall violated")
+
+    refresh = json.loads(CONCURRENCY.read_text(encoding="utf-8"))
+    expected_refresh_identity = refresh.pop("concurrency_identity_sha256", None)
+    if sha256_bytes(canonical(refresh)) != expected_refresh_identity:
+        fail("concurrency refresh identity mismatch")
+    refresh["concurrency_identity_sha256"] = expected_refresh_identity
+    live = refresh["checked_live_registry"]
+    if live["authority"] != "DATA-287-EXTERNAL-SNAPSHOT-REGISTRY-V2":
+        fail("live registry authority drift")
+    if live["head_sha"] != "b0523ccbc4b957615aac849d476cfa851be87578":
+        fail("live registry head drift")
+    if live["registry_identity_sha256"] != "917e9bc31b2fa040d25e807ae3c01aa2cce32420752a891caacfb6c830e6632c":
+        fail("live registry identity drift")
+    if live["source_count"] != 5 or live["independent_source_family_count"] != 4:
+        fail("live registry cardinality drift")
+    if family in set(live["families"]):
+        fail("candidate family already present in live registry")
+    candidate = refresh["candidate"]
+    if candidate["source_family"] != family:
+        fail("concurrency candidate family mismatch")
+    if candidate["already_counted_in_live_registry"] or candidate["exact_family_overlap"] or candidate["source_hash_overlap_with_live_registry"]:
+        fail("late duplicate-family/hash check failed")
+    if candidate["raw_sha256"] != cfg["snapshot"]["raw_sha256"] or candidate["normalized_sha256"] != cfg["snapshot"]["normalized_sha256"]:
+        fail("concurrency snapshot hash binding drift")
+    if refresh["conclusion"]["status"] != "PASS_NO_DUPLICATE_FAMILY_AT_FINAL_REFRESH" or refresh["conclusion"]["duplicate_family_count"] != 0:
+        fail("final concurrency verdict failed")
 
     truth = cfg["truth_boundary"]
     if not truth["admission_applies_only_to_committed_bounded_snapshot"]:
@@ -150,7 +169,7 @@ def main() -> int:
 
     print(
         "NEXT100-027 PASS "
-        f"authority={expected_identity} "
+        f"authority={expected_identity} concurrency={expected_refresh_identity} "
         f"records={len(ids)} raw_sha256={sha256_bytes(raw)} "
         f"normalized_sha256={sha256_bytes(norm)} family={family}"
     )
