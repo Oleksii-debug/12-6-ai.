@@ -17,6 +17,16 @@ EXPECTED_AUTHORITY = {
     "canonical_base": "random_init",
 }
 
+EXPECTED_READINESS = {
+    "model_mechanics": "QUALIFIED_EXACT_AUTHORITY",
+    "research_corpus_v1_identity": None,
+    "tokenizer_fit_identity": None,
+    "checkpoint_integrity_terminal_retest": False,
+    "selection_validation_terminal": False,
+    "compute_authorization": "NOT_AUTHORIZED",
+    "long_training_decision": "BLOCKED",
+}
+
 EXPECTED_BASELINE = {
     "vocab_size": 256,
     "max_seq_len": 1024,
@@ -30,6 +40,15 @@ EXPECTED_BASELINE = {
     "norm": "rmsnorm_pre",
     "position": "rope",
     "tie_word_embeddings": True,
+}
+
+EXPECTED_OPTIMIZER_RESEARCH = {
+    "optimizer_family": "AdamW",
+    "learning_rate_policy": "sweep_around_measured_incumbent_not_fixed_by_parameter_count",
+    "beta2_candidates_for_small_scale_ablation": [0.95, 0.98, 0.999],
+    "scheduler_policy": "compare_incumbent_against_evidence_backed_alternatives_on_bounded_pilots",
+    "gradient_clipping_required": True,
+    "nan_inf_fail_closed": True,
 }
 
 REQUIRED_PROMOTION_GATES = {
@@ -66,6 +85,10 @@ REQUIRED_METRICS = {
     "deterministic_rebuild_or_seed_evidence",
 }
 
+EXPECTED_EVALUATION_FIREWALL = (
+    "training_must_not_consume_selection_validation_or_final_test_records"
+)
+
 EXPECTED_SOURCE_URLS = {
     "https://arxiv.org/abs/2203.15556",
     "https://arxiv.org/abs/2402.14905",
@@ -78,32 +101,48 @@ def _expect(errors: list[str], condition: bool, message: str) -> None:
         errors.append(message)
 
 
+def _matches_expected(actual: Any, expected: Any) -> bool:
+    """Compare frozen contract values without bool/int coercion."""
+    if expected is None:
+        return actual is None
+    return type(actual) is type(expected) and actual == expected
+
+
+def _validate_frozen_map(
+    errors: list[str],
+    actual: Any,
+    expected: dict[str, Any],
+    prefix: str,
+) -> None:
+    _expect(errors, isinstance(actual, dict), f"{prefix} must be an object")
+    if not isinstance(actual, dict):
+        return
+    for key, value in expected.items():
+        _expect(
+            errors,
+            _matches_expected(actual.get(key), value),
+            f"{prefix}.{key} mismatch",
+        )
+
+
 def validate_campaign(data: dict[str, Any]) -> list[str]:
     errors: list[str] = []
 
-    _expect(errors, data.get("schema_version") == 1, "schema_version must be 1")
+    _expect(errors, _matches_expected(data.get("schema_version"), 1), "schema_version must be 1")
     _expect(
         errors,
-        data.get("campaign_id") == "R01-20M-TO-100M-SCALING-V1",
+        _matches_expected(data.get("campaign_id"), "R01-20M-TO-100M-SCALING-V1"),
         "campaign_id mismatch",
     )
     _expect(
         errors,
-        data.get("status") == "CANDIDATE_PLANNING_ONLY",
+        _matches_expected(data.get("status"), "CANDIDATE_PLANNING_ONLY"),
         "campaign must remain planning-only",
     )
 
-    authority = data.get("authority")
-    _expect(errors, isinstance(authority, dict), "authority must be an object")
-    if isinstance(authority, dict):
-        for key, value in EXPECTED_AUTHORITY.items():
-            _expect(errors, authority.get(key) == value, f"authority.{key} mismatch")
-
-    baseline = data.get("baseline_model")
-    _expect(errors, isinstance(baseline, dict), "baseline_model must be an object")
-    if isinstance(baseline, dict):
-        for key, value in EXPECTED_BASELINE.items():
-            _expect(errors, baseline.get(key) == value, f"baseline_model.{key} mismatch")
+    _validate_frozen_map(errors, data.get("authority"), EXPECTED_AUTHORITY, "authority")
+    _validate_frozen_map(errors, data.get("current_readiness"), EXPECTED_READINESS, "current_readiness")
+    _validate_frozen_map(errors, data.get("baseline_model"), EXPECTED_BASELINE, "baseline_model")
 
     boundaries = data.get("hard_boundaries")
     _expect(errors, isinstance(boundaries, dict), "hard_boundaries must be an object")
@@ -120,24 +159,6 @@ def validate_campaign(data: dict[str, Any]) -> list[str]:
         ):
             _expect(errors, boundaries.get(key) is False, f"hard_boundaries.{key} must be false")
 
-    readiness = data.get("current_readiness")
-    _expect(errors, isinstance(readiness, dict), "current_readiness must be an object")
-    if isinstance(readiness, dict):
-        _expect(errors, readiness.get("research_corpus_v1_identity") is None, "v1 snapshot must not fabricate corpus identity")
-        _expect(errors, readiness.get("tokenizer_fit_identity") is None, "v1 snapshot must not fabricate tokenizer identity")
-        _expect(
-            errors,
-            readiness.get("checkpoint_integrity_terminal_retest") is False,
-            "v1 snapshot must not fabricate checkpoint-integrity terminality",
-        )
-        _expect(
-            errors,
-            readiness.get("selection_validation_terminal") is False,
-            "v1 snapshot must not fabricate selection-validation terminality",
-        )
-        _expect(errors, readiness.get("compute_authorization") == "NOT_AUTHORIZED", "compute authorization drift")
-        _expect(errors, readiness.get("long_training_decision") == "BLOCKED", "long training must remain blocked")
-
     principles = data.get("scientific_principles")
     _expect(errors, isinstance(principles, dict), "scientific_principles must be an object")
     if isinstance(principles, dict):
@@ -149,6 +170,23 @@ def validate_campaign(data: dict[str, Any]) -> list[str]:
         ):
             _expect(errors, principles.get(key) is True, f"scientific_principles.{key} must be true")
         _expect(errors, principles.get("cross_tokenizer_primary_metric") == "bits_per_byte", "cross-tokenizer primary metric must be BPB")
+        _expect(
+            errors,
+            principles.get("same_tokenizer_secondary_metrics") == ["validation_nll", "perplexity"],
+            "same-tokenizer secondary metric contract drift",
+        )
+        _expect(
+            errors,
+            principles.get("architecture_bias_below_1b")
+            == ["deep_thin", "grouped_query_attention", "tied_embeddings"],
+            "sub-1B architecture-bias contract drift",
+        )
+        _expect(
+            errors,
+            principles.get("distributed_bias_at_or_below_100m")
+            == "prefer_single_device_or_data_parallel_before_tensor_pipeline_context_parallelism",
+            "sub-100M distributed-bias contract drift",
+        )
 
     matrix = data.get("experiment_matrix")
     _expect(errors, isinstance(matrix, list), "experiment_matrix must be an array")
@@ -169,18 +207,41 @@ def validate_campaign(data: dict[str, Any]) -> list[str]:
                         entry.get(gate) is True,
                         f"{entry_id}.{gate} must remain true for long training",
                     )
+            if entry_id != "R01-E00":
+                _expect(
+                    errors,
+                    entry.get("authorized_now") is False,
+                    f"{entry_id} cannot be authorized in the current blocked snapshot",
+                )
+            if entry_id in {"R01-E00", "R01-E10", "R01-E20"}:
+                _expect(
+                    errors,
+                    _matches_expected(entry.get("parameters"), 20613440),
+                    f"{entry_id} must bind exact MODEL-341 parameter count",
+                )
             if entry_id == "R01-E00":
-                _expect(errors, entry.get("parameters") == 20613440, "R01-E00 must bind exact MODEL-341 parameter count")
+                _expect(errors, entry.get("requires_corpus_identity") is False, "R01-E00 corpus gate drift")
+                _expect(errors, entry.get("requires_tokenizer_fit_identity") is False, "R01-E00 tokenizer gate drift")
+                _expect(errors, entry.get("long_training") is False, "R01-E00 must remain mechanics-only")
                 _expect(errors, entry.get("authorized_now") is True, "R01-E00 local mechanics control should remain executable")
             if entry_id == "R01-E10":
                 _expect(errors, entry.get("tokenizer_candidate_vocab_sizes") == [320, 384, 437, 512], "R01-E10 tokenizer grid drift")
                 _expect(errors, entry.get("requires_corpus_identity") is True, "R01-E10 must remain corpus-bound")
+                _expect(errors, entry.get("requires_tokenizer_fit_identity") is False, "R01-E10 must remain pre-fit calibration")
+                _expect(errors, entry.get("long_training") is False, "R01-E10 must remain bounded calibration")
             if entry_id in {"R01-E20", "R01-E30"}:
                 _expect(errors, entry.get("planned_tokens_per_parameter") == [10, 20, 40], f"{entry_id} token sweep drift")
         e30 = next((entry for entry in matrix if isinstance(entry, dict) and entry.get("id") == "R01-E30"), {})
         _expect(errors, e30.get("parameter_targets") == [20000000, 50000000, 100000000], "R01-E30 target ladder drift")
         _expect(errors, e30.get("freeze_100m_modelspec_now") is False, "100M ModelSpec must not be frozen before measured evidence")
         _expect(errors, e30.get("requires_20m_learned_evidence") is True, "R01-E30 must require terminal learned-20M evidence")
+
+    _validate_frozen_map(
+        errors,
+        data.get("optimizer_research"),
+        EXPECTED_OPTIMIZER_RESEARCH,
+        "optimizer_research",
+    )
 
     gates = data.get("promotion_gates")
     _expect(errors, isinstance(gates, list), "promotion_gates must be an array")
@@ -199,6 +260,11 @@ def validate_campaign(data: dict[str, Any]) -> list[str]:
             metrics.get("tokenizer_comparison_rule")
             == "do_not_compare_token_level_perplexity_across_different_tokenizer_identities_as_primary_quality_evidence",
             "tokenizer comparison firewall drift",
+        )
+        _expect(
+            errors,
+            metrics.get("evaluation_firewall") == EXPECTED_EVALUATION_FIREWALL,
+            "evaluation firewall drift",
         )
 
     sources = data.get("research_sources")
