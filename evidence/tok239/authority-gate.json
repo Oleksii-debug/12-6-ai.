@@ -1,0 +1,83 @@
+{
+  "authority_scan": {
+    "data229_admitted_code_sources_at_cutoff": 0,
+    "data229_external_real_text_snapshots": 3,
+    "data229_observed_head": "90bc0b7f8b696ec35202532b13edf6ab29a662fe",
+    "data229_pr": 369,
+    "data230_branch": "data230/corpus-v03-external-real-20260826",
+    "data230_branch_observed": true,
+    "data230_observed_head": "6d994e2aece6c44e28c1a2c344ac98b5a8fd5e08",
+    "data230_observed_head_subject": "DATA-214 restore retained quality and privacy evidence",
+    "data230_terminal_corpus_identity_found": false,
+    "eval233_observed_head": "b5512b4648cb09dd052b08884dc53f291e1ce935",
+    "eval233_pr": 365,
+    "eval233_selection_validation_records": 0,
+    "eval233_selection_validation_status": "BLOCKED_NO_IMMUTABLE_SELECTION_VALIDATION_AUTHORITY",
+    "milestone_238_terminal_authority_found": false
+  },
+  "gate_sha256": "30e8f3aa590323451b7184febc05325ecca98e5d90b906de8a04625f5b8a3c4e",
+  "incumbent_bpe": {
+    "implementation": "src/twelve_six/tokenization/experiments.py::train_hf_tokenizer",
+    "library": "HF Tokenizers",
+    "new_bpe_library_implemented": false,
+    "runner": "src/twelve_six/tok187_bpe_real.py",
+    "source_head": "289b3b8d3e0b348bc699b88359542b9cb695c024",
+    "source_pr": 342,
+    "source_worker": "TOK-187-BPE-REAL-V1",
+    "tokenizers_version": "0.23.1"
+  },
+  "local_free_only": true,
+  "non_substitutions": {
+    "data183_as_research_corpus_v1": false,
+    "data25_as_research_corpus_v1": false,
+    "final_test_as_selection_validation": false
+  },
+  "numerical_execution_permitted": false,
+  "optimizer_updates": 0,
+  "preregistered_protocol": {
+    "byte_identical_artifact_identity_required": true,
+    "embedding_parameter_tax_required": true,
+    "evaluation_split": "selection-validation",
+    "fertility_strata": [
+      "ua",
+      "en",
+      "code"
+    ],
+    "final_test_exposure_prohibited": true,
+    "independent_tokenizer_trainings_per_candidate": 2,
+    "model_probe_scale": "approximately_500K",
+    "optimized_token_budget": 16384,
+    "paired_model_seeds": [
+      1337,
+      7331,
+      18701
+    ],
+    "parameter_matching": "rebalance non-embedding capacity so compared tokenizers target equal total model capacity",
+    "primary_rank_metric": "paired held-out selection-validation aggregate BPB",
+    "promotion_requires_multiple_paired_model_seeds": true,
+    "requested_vocab_grid": [
+      320,
+      384,
+      437,
+      512
+    ],
+    "roundtrip_required": true,
+    "secondary_rank_metric": "compression/fertility after BPB",
+    "target_total_model_parameters": 467808,
+    "tokenizer_throughput_required": true,
+    "unknown_token_behavior": "zero unintended unknown tokens on train and immutable selection-validation",
+    "worst_modality_fertility_required": true
+  },
+  "schema": "12-6.tok239-bpe-research-corpus-v1-gate.v1",
+  "status": "BLOCKED_NO_TERMINAL_EXTERNAL_REAL_RESEARCH_CORPUS",
+  "training_started": false,
+  "unblock_requirements": [
+    "terminal MILESTONE-238 decision or an exact later superseding research-corpus authority",
+    "terminal deterministic external-real research corpus identity and immutable train inventory",
+    "non-empty immutable selection-validation identity eligible for tokenizer/model selection",
+    "UA/EN/code selection-validation strata required by the TOK-239 evaluation contract",
+    "exact source/corpus/split hashes bound before tokenizer fit or optimizer step 1"
+  ],
+  "v1_evidence_permitted": false,
+  "worker_id": "TOK-239-BPE-RESEARCH-CORPUS-V1"
+}
