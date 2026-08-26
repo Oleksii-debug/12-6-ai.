@@ -19,6 +19,10 @@ def _load() -> dict:
     return json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
 
 
+def _experiment(data: dict, experiment_id: str) -> dict:
+    return next(item for item in data["experiment_matrix"] if item["id"] == experiment_id)
+
+
 def test_frozen_campaign_is_valid() -> None:
     assert validator.validate_campaign(_load()) == []
 
@@ -32,8 +36,7 @@ def test_paid_compute_cannot_be_silently_authorized() -> None:
 
 def test_long_training_experiment_cannot_be_authorized_now() -> None:
     data = _load()
-    experiment = next(item for item in data["experiment_matrix"] if item["id"] == "R01-E20")
-    experiment["authorized_now"] = True
+    _experiment(data, "R01-E20")["authorized_now"] = True
     errors = validator.validate_campaign(data)
     assert any("R01-E20" in error for error in errors)
 
@@ -50,14 +53,13 @@ def test_long_training_prerequisite_cannot_be_relaxed() -> None:
     for experiment_id in ("R01-E20", "R01-E30"):
         for field in required:
             data = _load()
-            experiment = next(
-                item for item in data["experiment_matrix"] if item["id"] == experiment_id
-            )
-            experiment[field] = False
+            _experiment(data, experiment_id)[field] = False
             errors = validator.validate_campaign(data)
-            assert any(
-                f"{experiment_id}.{field}" in error for error in errors
-            ), (experiment_id, field, errors)
+            assert any(f"{experiment_id}.{field}" in error for error in errors), (
+                experiment_id,
+                field,
+                errors,
+            )
 
 
 def test_readiness_cannot_fabricate_checkpoint_or_selection_terminality() -> None:
@@ -68,23 +70,43 @@ def test_readiness_cannot_fabricate_checkpoint_or_selection_terminality() -> Non
         data = _load()
         data["current_readiness"][field] = True
         errors = validator.validate_campaign(data)
-        assert any(field.replace("_", "-") in error or "terminality" in error for error in errors)
+        assert any(field in error for error in errors)
+
+
+def test_model_mechanics_readiness_cannot_be_relabelled() -> None:
+    data = _load()
+    data["current_readiness"]["model_mechanics"] = "LEARNED_TERMINAL"
+    errors = validator.validate_campaign(data)
+    assert any("current_readiness.model_mechanics" in error for error in errors)
 
 
 def test_100m_modelspec_cannot_be_frozen_before_evidence() -> None:
     data = _load()
-    experiment = next(item for item in data["experiment_matrix"] if item["id"] == "R01-E30")
-    experiment["freeze_100m_modelspec_now"] = True
+    _experiment(data, "R01-E30")["freeze_100m_modelspec_now"] = True
     errors = validator.validate_campaign(data)
     assert any("100M ModelSpec" in error for error in errors)
 
 
 def test_100m_sweep_requires_learned_20m_evidence() -> None:
     data = _load()
-    experiment = next(item for item in data["experiment_matrix"] if item["id"] == "R01-E30")
-    experiment["requires_20m_learned_evidence"] = False
+    _experiment(data, "R01-E30")["requires_20m_learned_evidence"] = False
     errors = validator.validate_campaign(data)
     assert any("learned-20M" in error for error in errors)
+
+
+def test_tokenizer_calibration_cannot_be_authorized_while_blocked() -> None:
+    data = _load()
+    _experiment(data, "R01-E10")["authorized_now"] = True
+    errors = validator.validate_campaign(data)
+    assert any("R01-E10" in error and "authorized" in error for error in errors)
+
+
+def test_20m_experiment_rows_bind_model341_parameter_count() -> None:
+    for experiment_id in ("R01-E00", "R01-E10", "R01-E20"):
+        data = _load()
+        _experiment(data, experiment_id)["parameters"] = 20000000
+        errors = validator.validate_campaign(data)
+        assert any(experiment_id in error and "parameter count" in error for error in errors)
 
 
 def test_model341_authority_drift_fails_closed() -> None:
@@ -101,11 +123,53 @@ def test_cross_tokenizer_metric_cannot_drop_bpb() -> None:
     assert any("cross-tokenizer primary metric" in error for error in errors)
 
 
+def test_architecture_policy_cannot_silently_drift() -> None:
+    data = _load()
+    data["scientific_principles"]["architecture_bias_below_1b"] = ["wide_shallow"]
+    errors = validator.validate_campaign(data)
+    assert any("architecture-bias" in error for error in errors)
+
+
 def test_required_promotion_gate_cannot_be_removed() -> None:
     data = _load()
     data["promotion_gates"].remove("reserved_evaluation_decontamination")
     errors = validator.validate_campaign(data)
     assert any("promotion gate set" in error for error in errors)
+
+
+def test_evaluation_firewall_cannot_be_relaxed() -> None:
+    data = _load()
+    data["metric_contract"]["evaluation_firewall"] = "training_may_consume_selection_validation"
+    errors = validator.validate_campaign(data)
+    assert any("evaluation firewall" in error for error in errors)
+
+
+def test_optimizer_nan_inf_policy_cannot_be_disabled() -> None:
+    data = _load()
+    data["optimizer_research"]["nan_inf_fail_closed"] = False
+    errors = validator.validate_campaign(data)
+    assert any("optimizer_research.nan_inf_fail_closed" in error for error in errors)
+
+
+def test_gradient_clipping_requirement_cannot_be_disabled() -> None:
+    data = _load()
+    data["optimizer_research"]["gradient_clipping_required"] = False
+    errors = validator.validate_campaign(data)
+    assert any("optimizer_research.gradient_clipping_required" in error for error in errors)
+
+
+def test_schema_version_rejects_boolean_alias() -> None:
+    data = _load()
+    data["schema_version"] = True
+    errors = validator.validate_campaign(data)
+    assert any("schema_version" in error for error in errors)
+
+
+def test_baseline_boolean_rejects_integer_alias() -> None:
+    data = _load()
+    data["baseline_model"]["tie_word_embeddings"] = 1
+    errors = validator.validate_campaign(data)
+    assert any("baseline_model.tie_word_embeddings" in error for error in errors)
 
 
 def test_mutating_copy_does_not_change_control() -> None:
