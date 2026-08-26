@@ -5,20 +5,23 @@
   "model_training_executed": false,
   "created_utc": "2026-08-26",
   "baseline": {
-    "source_convergence_pr": 527,
-    "source_convergence_head": "9ad8f74b12a2e991b7934356a88dd9a1f6ff3f41",
+    "source_convergence_pr": 538,
+    "source_convergence_head": "226cbc26710a75af4a864576220b270089e7c52b",
+    "source_registry_path": "configs/data/next100_063_terminal_source_registry_v4.json",
+    "source_registry_schema": "12-6.next100-063-terminal-source-registry.v4",
+    "source_registry_identity_sha256": "9fc400a3144b46c481e45d043b0a3365eb2129c83bbacde6f9e7af8a41fadc58",
     "status": "CANDIDATE_ONLY_PENDING_EXACT_HEAD_CI_AND_SUCCESSOR_GLOBAL_DEDUP",
     "observed_pre_dedup_bytes": {
       "ua": 100856,
-      "en": 144151,
-      "code": 69133,
-      "total": 314140
+      "en": 1838293,
+      "code": 106031,
+      "total": 2045180
     },
     "observed_independent_families": {
       "ua": 4,
-      "en": 2,
-      "code": 4,
-      "total": 10
+      "en": 5,
+      "code": 5,
+      "total": 14
     },
     "training_authorized_bytes": 0
   },
@@ -32,9 +35,9 @@
     },
     "planning_gap_from_observed_pre_dedup": {
       "ua": 8899144,
-      "en": 6855849,
-      "code": 3930867,
-      "total": 19685860
+      "en": 5161707,
+      "code": 3893969,
+      "total": 17954820
     },
     "warning": "PLANNING_GAP_ONLY_NOT_TRAINING_CAPACITY; GLOBAL_DEDUP_CAN_ONLY_REDUCE_CREDIT"
   },
@@ -296,15 +299,17 @@
     "long_training_authorized": false
   },
   "next_execution_order": [
-    "finish_pr527_exact_head_ci",
-    "materialize_late_terminal_source_bytes_under_pinned_normalizers",
-    "run_successor_global_exact_near_dedup",
-    "retest_data295_balance_and_family_caps",
+    "finish_pr538_v4_exact_head_ci",
+    "finish_pr632_successor_global_exact_near_fragment_lineage_dedup",
+    "freeze_exact_record_level_pre_decontamination_identity",
+    "run_reserved_evaluation_decontamination",
+    "run_post_composition_quality_privacy_balance_and_family_caps",
     "execute_high_yield_ua_official_act_admission_batches",
     "execute_code_repository_expansion_batches",
     "execute_nist_and_other_en_government_work_batches",
     "freeze_research_corpus_v1_candidate_only_after_real_unique_bytes_meet_target",
-    "run_eval_decontamination_and_two_clean_builds",
-    "recompute_no_replay_capacity_and_only_then_reconsider_20m_training"
+    "run_cluster_safe_split_pack_and_two_clean_builds",
+    "publish_exact_unique_nonignored_causal_position_ledger",
+    "only_then_reconsider_tokenizer_fit_and_20m_training"
   ]
 }
