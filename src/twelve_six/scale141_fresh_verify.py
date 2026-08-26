@@ -1,7 +1,10 @@
 """Fresh-process verification for retained SCALE-141 learned 10M checkpoints.
 
 This is verification/retention only. It does not define a second training runtime.
-The authoritative campaign remains scale141_10m_runtime_v3.
+The authoritative campaign remains scale141_10m_runtime_v3. Retained ``best`` is
+selected on the exact MILESTONE-150 common DATA-25 / s0-byte-v1 / seq-128 held-out
+evaluation identity so a genuine learned 10M artifact can later join the ladder
+without changing its training provenance.
 """
 from __future__ import annotations
 
@@ -14,6 +17,7 @@ import struct
 from pathlib import Path
 from typing import Any
 
+from twelve_six import milestone100_first_learned as m100
 from twelve_six import scale141_10m_continuation as core
 from twelve_six import scale141_10m_runtime_v2 as v2
 from twelve_six import scale141_10m_runtime_v3 as v3
@@ -21,7 +25,9 @@ from twelve_six.checkpoint import hash_json, verify_checkpoint
 from twelve_six.inference.first_party import load_first_party_backend
 
 TRAINED_TARGETS = (500_000, 1_000_000, 1_500_000, 2_000_000)
+COMMON_EVAL_TARGETS = (0,) + TRAINED_TARGETS
 VERIFY_TOL = 1e-7
+LADDER_EVAL_SCHEMA = "12-6.learned-base-ladder-evaluation-identity.v1"
 
 
 class Scale141VerificationError(RuntimeError):
@@ -43,7 +49,7 @@ def _write_json(path: Path, value: object) -> None:
     )
 
 
-def _best_target(report: dict[str, Any]) -> int:
+def _campaign_best_target(report: dict[str, Any]) -> int:
     scheduled = report["scheduled"]
     missing = [target for target in TRAINED_TARGETS if str(target) not in scheduled]
     if missing:
@@ -55,6 +61,33 @@ def _best_target(report: dict[str, Any]) -> int:
             target,
         ),
     )
+
+
+def _ladder_evaluation_identity(tok, manifest: dict[str, Any]) -> dict[str, Any]:
+    value = {
+        "schema": LADDER_EVAL_SCHEMA,
+        "corpus_identity_sha256": manifest["corpus_identity_sha256"],
+        "split": "validation",
+        "strata_order": ["uk", "en", "code"],
+        "metric": "autoregressive_cross_entropy_nats_and_bits_per_raw_utf8_byte",
+        "target_mask": "labels[:,1:] != -100",
+        "tokenizer": {
+            "version": tok.identity.version,
+            "config_sha256": tok.identity.config_sha256,
+            "vocab_sha256": tok.identity.vocab_sha256,
+            "vocab_size": tok.identity.vocab_size,
+            "normalization": tok.identity.normalization,
+            "encoding": tok.identity.encoding,
+            "special_tokens": dict(tok.identity.special_tokens),
+        },
+        "packing": {
+            "version": m100.PACKING_VERSION,
+            "sequence_length": m100.SEQ,
+            "cross_document": False,
+        },
+    }
+    value["identity_sha256"] = hash_json(value)
+    return value
 
 
 def _logits_snapshot(checkpoint: Path) -> dict[str, Any]:
@@ -97,53 +130,115 @@ def _compare_heldout(recorded: dict[str, Any], fresh: dict[str, Any]) -> None:
             )
 
 
+def _assert_checkpoint_identity(
+    *,
+    checked: dict[str, Any],
+    source_sha: str,
+    spec,
+    tok,
+    manifest: dict[str, Any],
+    run: dict[str, Any],
+    expected_point: dict[str, Any],
+) -> None:
+    identity = checked["identity"]
+    if identity["git_sha"] != source_sha:
+        raise Scale141VerificationError("checkpoint source SHA mismatch")
+    if identity["model_spec_hash"] != spec.identity_sha256():
+        raise Scale141VerificationError("checkpoint ModelSpec identity mismatch")
+    if int(identity["parameter_count"]) != spec.parameter_count():
+        raise Scale141VerificationError("checkpoint parameter count mismatch")
+    if identity["tokenizer_hash"] != tok.identity.config_sha256:
+        raise Scale141VerificationError("checkpoint tokenizer identity mismatch")
+    if identity["tokenizer_vocab_hash"] != tok.identity.vocab_sha256:
+        raise Scale141VerificationError("checkpoint tokenizer vocab identity mismatch")
+    if identity["dataset_manifest_hash"] != manifest["corpus_identity_sha256"]:
+        raise Scale141VerificationError("checkpoint corpus identity mismatch")
+    if identity["run_manifest_hash"] != run["identity_sha256"]:
+        raise Scale141VerificationError("checkpoint run-manifest identity mismatch")
+    if int(identity["step"]) != int(expected_point["optimizer_step"]):
+        raise Scale141VerificationError("checkpoint optimizer-step identity mismatch")
+    if int(identity["tokens_seen"]) != int(expected_point["optimized_tokens"]):
+        raise Scale141VerificationError("checkpoint optimized-token identity mismatch")
+
+
 def verify(repo: Path, source_sha: str, out: Path) -> dict[str, Any]:
-    # Install the exact authoritative runtime contract, including JSON-stable
-    # manifest construction and streamed evaluation, but perform no training.
+    # Order matters: v3 replaces v2's builder, then v2 binds that builder into
+    # the shared core runtime while applying seq-256/actual-token semantics.
+    # This performs no training.
     v3._install()
+    v2._install_runtime_contract()
     report = v3.validate(out / "report.json", source_sha)
     manifest, tok, spec, _init, _cfg, _locks, run = core._common(
         repo, source_sha, out, False
     )
+    corpus = out / "corpus-a"
 
-    best_target = _best_target(report)
+    campaign_best_target = _campaign_best_target(report)
     final_target = v2.TARGET_OPTIMIZED_TOKENS
     if final_target != 2_000_000:
         raise Scale141VerificationError("unexpected final optimized-token target")
 
-    initial_bpb = float(report["scheduled"]["0"]["heldout"]["bits_per_byte"])
-    best_bpb = float(
-        report["scheduled"][str(best_target)]["heldout"]["bits_per_byte"]
+    common_eval_identity = _ladder_evaluation_identity(tok, manifest)
+    common_evaluations: dict[str, Any] = {}
+    checked_by_target: dict[int, dict[str, Any]] = {}
+
+    # All scheduled checkpoints still exist inside this job. Evaluate them on the
+    # exact M150 common held-out identity before retaining only best/final.
+    for target in COMMON_EVAL_TARGETS:
+        checkpoint = out / f"checkpoint-token-{target:07d}"
+        checked = verify_checkpoint(checkpoint)
+        expected_point = report["scheduled"][str(target)]
+        _assert_checkpoint_identity(
+            checked=checked,
+            source_sha=source_sha,
+            spec=spec,
+            tok=tok,
+            manifest=manifest,
+            run=run,
+            expected_point=expected_point,
+        )
+        backend = load_first_party_backend(checkpoint)
+        before_mode = bool(backend.model.training)
+        evaluation = m100._evaluate(backend.model, corpus, manifest, tok)
+        if not evaluation["non_mutation_passed"]:
+            raise Scale141VerificationError("M150 common evaluation mutated model state")
+        if bool(backend.model.training) != before_mode:
+            raise Scale141VerificationError("M150 common evaluation changed model mode")
+        checked_by_target[target] = checked
+        common_evaluations[str(target)] = {
+            "checkpoint_id": checked["checkpoint_id"],
+            "evaluation": evaluation,
+        }
+
+    best_target = min(
+        TRAINED_TARGETS,
+        key=lambda target: (
+            float(common_evaluations[str(target)]["evaluation"]["bits_per_byte"]),
+            target,
+        ),
     )
-    final_bpb = float(
+
+    common_initial_bpb = float(common_evaluations["0"]["evaluation"]["bits_per_byte"])
+    common_best_bpb = float(
+        common_evaluations[str(best_target)]["evaluation"]["bits_per_byte"]
+    )
+    common_final_bpb = float(
+        common_evaluations[str(final_target)]["evaluation"]["bits_per_byte"]
+    )
+    campaign_initial_bpb = float(report["scheduled"]["0"]["heldout"]["bits_per_byte"])
+    campaign_best_bpb = float(
+        report["scheduled"][str(campaign_best_target)]["heldout"]["bits_per_byte"]
+    )
+    campaign_final_bpb = float(
         report["scheduled"][str(final_target)]["heldout"]["bits_per_byte"]
     )
 
     fresh: dict[str, Any] = {}
     for role, target in (("best", best_target), ("final", final_target)):
         checkpoint = out / f"checkpoint-token-{target:07d}"
-        checked = verify_checkpoint(checkpoint)
+        checked = checked_by_target[target]
         identity = checked["identity"]
         expected_point = report["scheduled"][str(target)]
-
-        if identity["git_sha"] != source_sha:
-            raise Scale141VerificationError("checkpoint source SHA mismatch")
-        if identity["model_spec_hash"] != spec.identity_sha256():
-            raise Scale141VerificationError("checkpoint ModelSpec identity mismatch")
-        if int(identity["parameter_count"]) != spec.parameter_count():
-            raise Scale141VerificationError("checkpoint parameter count mismatch")
-        if identity["tokenizer_hash"] != tok.identity.config_sha256:
-            raise Scale141VerificationError("checkpoint tokenizer identity mismatch")
-        if identity["tokenizer_vocab_hash"] != tok.identity.vocab_sha256:
-            raise Scale141VerificationError("checkpoint tokenizer vocab identity mismatch")
-        if identity["dataset_manifest_hash"] != manifest["corpus_identity_sha256"]:
-            raise Scale141VerificationError("checkpoint corpus identity mismatch")
-        if identity["run_manifest_hash"] != run["identity_sha256"]:
-            raise Scale141VerificationError("checkpoint run-manifest identity mismatch")
-        if int(identity["step"]) != int(expected_point["optimizer_step"]):
-            raise Scale141VerificationError("checkpoint optimizer-step identity mismatch")
-        if int(identity["tokens_seen"]) != int(expected_point["optimized_tokens"]):
-            raise Scale141VerificationError("checkpoint optimized-token identity mismatch")
 
         logits1 = _logits_snapshot(checkpoint)
         logits2 = _logits_snapshot(checkpoint)
@@ -154,16 +249,16 @@ def verify(repo: Path, source_sha: str, out: Path) -> dict[str, Any]:
         before_mode = bool(backend.model.training)
         fresh_eval = core._fixed_eval(
             backend.model,
-            out / "corpus-a",
+            corpus,
             manifest,
             tok,
             split="validation",
             windows=core.HELDOUT_WINDOWS_PER_MODALITY,
         )
         if not fresh_eval["non_mutation_passed"]:
-            raise Scale141VerificationError("fresh evaluation mutated model state")
+            raise Scale141VerificationError("fresh campaign evaluation mutated model state")
         if bool(backend.model.training) != before_mode:
-            raise Scale141VerificationError("fresh evaluation changed model mode")
+            raise Scale141VerificationError("fresh campaign evaluation changed model mode")
         _compare_heldout(expected_point["heldout"], fresh_eval)
 
         generation = core._generation(checkpoint)
@@ -176,24 +271,44 @@ def verify(repo: Path, source_sha: str, out: Path) -> dict[str, Any]:
             "checkpoint_id": checked["checkpoint_id"],
             "checkpoint_identity": identity,
             "first_party_logits": logits1,
-            "evaluation": fresh_eval,
+            "campaign_evaluation": fresh_eval,
+            "ladder_common_evaluation": common_evaluations[str(target)]["evaluation"],
             "generation": generation,
         }
 
     result = {
-        "schema": "12-6.scale141-fresh-verification.v1",
+        "schema": "12-6.scale141-fresh-verification.v2",
         "source_sha": source_sha,
         "process_pid": os.getpid(),
         "run_manifest_identity_sha256": run["identity_sha256"],
         "corpus_identity_sha256": manifest["corpus_identity_sha256"],
         "tokenizer": report["tokenizer"],
         "model": report["model"],
+        "campaign_evaluation": {
+            "packing_sequence_length": v2.SEQ,
+            "scheduled_windows_per_modality": core.HELDOUT_WINDOWS_PER_MODALITY,
+            "initial_bits_per_byte": campaign_initial_bpb,
+            "best_target_optimized_tokens": campaign_best_target,
+            "best_bits_per_byte": campaign_best_bpb,
+            "final_bits_per_byte": campaign_final_bpb,
+        },
+        "ladder_common_evaluation": {
+            "identity": common_eval_identity,
+            "all_scheduled": common_evaluations,
+            "initial_bits_per_byte": common_initial_bpb,
+            "best_target_optimized_tokens": best_target,
+            "best_bits_per_byte": common_best_bpb,
+            "final_bits_per_byte": common_final_bpb,
+            "best_improved_vs_random_init": common_best_bpb < common_initial_bpb,
+        },
+        # Compatibility keys consumed by the existing retention workflow. They
+        # deliberately name the M150-common best checkpoint.
         "best_target_optimized_tokens": best_target,
         "final_target_optimized_tokens": final_target,
-        "initial_heldout_bits_per_byte": initial_bpb,
-        "best_heldout_bits_per_byte": best_bpb,
-        "final_heldout_bits_per_byte": final_bpb,
-        "heldout_improved_vs_random_init": best_bpb < initial_bpb,
+        "initial_heldout_bits_per_byte": common_initial_bpb,
+        "best_heldout_bits_per_byte": common_best_bpb,
+        "final_heldout_bits_per_byte": common_final_bpb,
+        "heldout_improved_vs_random_init": common_best_bpb < common_initial_bpb,
         "fresh_verification": {
             "status": "PASS",
             "checkpoint_load": True,
@@ -202,6 +317,7 @@ def verify(repo: Path, source_sha: str, out: Path) -> dict[str, Any]:
             "checkpoint_identity": True,
             "generation": True,
             "reproducibility_manifest_validation": True,
+            "m150_common_evaluation_identity": True,
             "best_and_final_retained": True,
         },
         "evidence": fresh,
@@ -230,6 +346,12 @@ def main() -> int:
                 "heldout_improved_vs_random_init": result[
                     "heldout_improved_vs_random_init"
                 ],
+                "campaign_best_target_optimized_tokens": result[
+                    "campaign_evaluation"
+                ]["best_target_optimized_tokens"],
+                "ladder_evaluation_identity": result["ladder_common_evaluation"][
+                    "identity"
+                ]["identity_sha256"],
                 "identity_sha256": result["identity_sha256"],
             },
             ensure_ascii=False,

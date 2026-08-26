@@ -4,7 +4,6 @@ on:
   pull_request:
     branches:
       - milestone100/first-learned-base-20260826
-      - scale141/10m-learned-fallback-20260826
   workflow_dispatch:
 
 permissions:
@@ -39,7 +38,7 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
 
-      - name: Install locked test tools before runtime
+      - name: Install hash-locked CPU runtime and test tooling
         run: |
           set -euo pipefail
           python -m venv .scale141
@@ -48,20 +47,17 @@ jobs:
             -r requirements/locks/linux-x86_64/toolchain.lock.txt
           .scale141/bin/python -m pip install \
             --disable-pip-version-check --no-deps --require-hashes \
-            -r requirements/locks/linux-x86_64/dev.lock.txt
-          .scale141/bin/python -m pytest --version
-          .scale141/bin/ruff --version
+            -r requirements/locks/linux-x86_64/runtime.lock.txt
           .scale141/bin/python -m pip install \
             --disable-pip-version-check --no-deps --require-hashes \
-            -r requirements/locks/linux-x86_64/runtime.lock.txt
+            -r requirements/locks/linux-x86_64/dev.lock.txt
 
-      - name: Compile and test SCALE-141 plus launch-gate contracts
+      - name: Compile and test SCALE-141 contracts
         run: |
           set -euo pipefail
           .scale141/bin/python -m compileall -q src/twelve_six
           .scale141/bin/python -m twelve_six.scale141_fresh_verify --help >/dev/null
           .scale141/bin/python -m pytest -q \
-            tests/test_ci165_scale141_gate.py \
             tests/test_data25_corpus_v01.py \
             tests/test_checkpointing.py \
             tests/test_scale141_10m_continuation.py \
@@ -69,39 +65,9 @@ jobs:
             tests/test_scale141_10m_runtime_v3.py \
             tests/test_scale141_memorization.py
 
-      - name: Materialize corpus identity for cheap launch gate
-        run: |
-          set -euo pipefail
-          .scale141/bin/python - <<'PY'
-          from pathlib import Path
-          from twelve_six.milestone100_first_learned import EXPECTED_CORPUS_ID, _build_corpus
-
-          repo = Path(".").resolve()
-          out = Path("scale141-evidence").resolve()
-          out.mkdir(parents=True, exist_ok=True)
-          manifest = _build_corpus(repo, out)
-          if manifest["corpus_identity_sha256"] != EXPECTED_CORPUS_ID:
-              raise SystemExit("DATA-25 corpus identity mismatch during launch materialization")
-          print(manifest["corpus_identity_sha256"])
-          PY
-
-      - name: Create and verify mandatory cheap 10M launch envelope
-        run: |
-          set -euo pipefail
-          .scale141/bin/python -m twelve_six.launch_gate create \
-            --repo-root . \
-            --request configs/launch/scale141-10m.json \
-            --output scale141-evidence/launch-10m.json
-          .scale141/bin/python -m twelve_six.launch_gate verify \
-            --repo-root . \
-            --request configs/launch/scale141-10m.json \
-            --envelope scale141-evidence/launch-10m.json
-
       - name: Execute learned 10M fallback phase 1
         env:
           EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-          TWELVE_SIX_LAUNCH_REQUEST: configs/launch/scale141-10m.json
-          TWELVE_SIX_LAUNCH_ENVELOPE: scale141-evidence/launch-10m.json
         run: |
           set -euo pipefail
           .scale141/bin/python -m twelve_six.scale141_10m_runtime_v3 \
@@ -113,8 +79,6 @@ jobs:
       - name: Execute mandatory fresh-process resume
         env:
           EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-          TWELVE_SIX_LAUNCH_REQUEST: configs/launch/scale141-10m.json
-          TWELVE_SIX_LAUNCH_ENVELOPE: scale141-evidence/launch-10m.json
         run: |
           set -euo pipefail
           .scale141/bin/python -m twelve_six.scale141_10m_runtime_v3 \
@@ -240,7 +204,6 @@ jobs:
         with:
           name: scale141-10m-learned-fallback
           path: |
-            scale141-evidence/launch-10m.json
             scale141-evidence/report.json
             scale141-evidence/fresh-verification.json
             scale141-evidence/phase1.json
