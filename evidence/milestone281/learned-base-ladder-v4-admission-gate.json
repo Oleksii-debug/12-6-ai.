@@ -1,0 +1,172 @@
+{
+  "schema": "12-6.milestone281-learned-base-ladder-v4-admission-gate.v1",
+  "worker_id": "MILESTONE-281-LEARNED-BASE-LADDER-V4",
+  "generated_at_utc": "2026-08-26T12:00:00Z",
+  "local_free_only": true,
+  "paid_compute_authorized": false,
+  "status": "BLOCKED_MISSING_INDEPENDENT_VERIFY_218_AND_VERIFY_219",
+  "canonical_v4_ladder_published": false,
+  "requested_admission_condition": "independently verified 3M and independently verified LEARN-217 10M",
+  "decision": "FAIL_CLOSED_DO_NOT_ADMIT_3M_OR_10M_YET",
+  "reason": "Terminal producer and first-party runtime evidence exist for 3M and LEARN-217 10M, but the repository does not publish the independent scientific verifier authorities required by the incumbent MILESTONE-221/RUNTIME-225 admission contracts: VERIFY-219 for 3M and VERIFY-218-LEARNED-10M-INDEPENDENT for 10M.",
+  "lineage": {
+    "base_milestone": "MILESTONE-221-LEARNED-LADDER-V3",
+    "base_pr": 358,
+    "base_head_sha": "66b6c432f78042565bc09aaca5b3d4a95a3f358d",
+    "base_status": "TERMINAL_EQUAL_BUDGET_LADDER_100K_500K_1M__3M_PRODUCER_PENDING_VERIFY219__10M_NOT_ADMITTED"
+  },
+  "shared_identities": {
+    "corpus": {
+      "name": "DATA-25 corpus V0.1",
+      "identity_sha256": "422f545da93526ceba2c0ff738e0b9deac65f35bfb31d87d2aab068cda091fc8",
+      "origin": "PROJECT_AUTHORED",
+      "train_byte_tokens": 20000775,
+      "validation_byte_tokens": 1410473,
+      "external_real": false
+    },
+    "tokenizer": {
+      "name": "s0-byte-v1",
+      "vocab_size": 256,
+      "special_tokens": [],
+      "config_sha256": "b04055c1061dd641dcab7cb9d62a931f09b8d1a070140a926ceb4e91d73ca8e1",
+      "vocab_sha256": "905ed40bb42cc4d550e228ff5f24158d504b38e8ed5974dfa3077bd5867ad571"
+    },
+    "init_spec_sha256": "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5",
+    "m150_common_evaluation_identity_sha256": "7189e6df053574beb686727c94e684cdbaf08a34ef33aa953eff7cdae0320113"
+  },
+  "comparison_firewall": {
+    "direct_equal_token_ranking_scope": ["100K", "500K", "1M"],
+    "direct_equal_token_budget_optimized_targets": 948504,
+    "direct_rank": ["1M", "500K", "100K"],
+    "different_budget_evidence_scope": ["3M_LEARN191", "10M_LEARN217"],
+    "different_budget_direct_ranking_forbidden": true,
+    "explicit_rule": "Do not directly rank 3M or 10M against M150 100K/500K/1M because their optimized-token budgets differ; LEARN-217 also changes recipe geometry, sequence/batch controls, weight decay and seed. Do not directly rank 3M against 10M from these runs."
+  },
+  "equal_token_ladder": [
+    {
+      "rung": "100K",
+      "admission": "ADMITTED_EQUAL_TOKEN_M150",
+      "parameters": 95568,
+      "model_spec": {"vocab_size": 256, "d_model": 48, "n_layers": 3, "n_heads": 4, "n_kv_heads": 4, "head_dim": 12, "d_ff": 128, "max_seq_len": 256},
+      "model_spec_sha256": "4f1aaa6821360f0d22033356e011843646c8c14a6b4d20a3ad5b2ad125867470",
+      "optimized_tokens": 948504,
+      "best_checkpoint": {"step": 1000, "checkpoint_id": "a8b5b2d2106a63a10a85e6ebba0b1bd5ea77fc9faf3836fb3319fac0ad0a6cbb"},
+      "final_checkpoint": {"step": 1000, "checkpoint_id": "a8b5b2d2106a63a10a85e6ebba0b1bd5ea77fc9faf3836fb3319fac0ad0a6cbb"},
+      "heldout_bpb": {"aggregate": 1.8529853170496395, "ua": 2.0254259767376777, "en": 1.685492693074772, "code": 1.6812353764375643},
+      "first_party_inference": {"verified": true, "evaluation_non_mutation": true, "logits_sha256": {"ua": "e8e567", "en": "3d8f9a", "code": "30947d"}},
+      "memorization": {"authority": "RECOVER-178-EVAL136-MEMORIZATION", "type": "separate controlled canary-injection diagnostic", "exact_recovery_lift": 0.0, "nll_advantage": 1.3758201599, "rank_percentile_delta": 0.6875, "disproportionate_memorization": true, "privacy_claim": "NONE"}
+    },
+    {
+      "rung": "500K",
+      "admission": "ADMITTED_EQUAL_TOKEN_M150",
+      "parameters": 467808,
+      "model_spec": {"vocab_size": 256, "d_model": 96, "n_layers": 4, "n_heads": 6, "n_kv_heads": 6, "head_dim": 16, "d_ff": 256, "max_seq_len": 256},
+      "model_spec_sha256": "208ac8ca113388e76f280d0154cae815785bee7705546f4d854d9447b9dd1f4a",
+      "optimized_tokens": 948504,
+      "best_checkpoint": {"step": 1000, "checkpoint_id": "8d13262139f3fcb89c7efb141c7a449e4faba9048166d0dd2f49eba4288b4524"},
+      "final_checkpoint": {"step": 1000, "checkpoint_id": "8d13262139f3fcb89c7efb141c7a449e4faba9048166d0dd2f49eba4288b4524"},
+      "heldout_bpb": {"aggregate": 0.2645455968814711, "ua": 0.37933297833635227, "en": 0.12579645499499625, "code": 0.1781162699814322},
+      "first_party_inference": {"verified": true, "evaluation_non_mutation": true, "logits_sha256": {"ua": "e790fe", "en": "a78238", "code": "73d175"}},
+      "memorization": {"authority": "RECOVER-178-EVAL136-MEMORIZATION", "type": "separate controlled canary-injection diagnostic", "exact_recovery_lift": 1.0, "nll_advantage": 4.9395995637, "rank_percentile_delta": 0.5625, "privacy_claim": "NONE"}
+    },
+    {
+      "rung": "1M",
+      "admission": "ADMITTED_EQUAL_TOKEN_M150",
+      "parameters": 1037696,
+      "model_spec": {"vocab_size": 256, "d_model": 128, "n_layers": 5, "n_heads": 8, "n_kv_heads": 8, "head_dim": 16, "d_ff": 352, "max_seq_len": 256},
+      "model_spec_sha256": "ff3cee542a1f75bb4e1eff8d7d24d72533af8f4f3d82bd064fb1cbfeba8c8d07",
+      "optimized_tokens": 948504,
+      "best_checkpoint": {"step": 1000, "checkpoint_id": "2292b43f0114479965d71e910185396af989738da0776a59bf6badb86990bf98"},
+      "final_checkpoint": {"step": 1000, "checkpoint_id": "2292b43f0114479965d71e910185396af989738da0776a59bf6badb86990bf98"},
+      "heldout_bpb": {"aggregate": 0.12651757096387536, "ua": 0.12946803024656128, "en": 0.10200510512203087, "code": 0.1457361042689415},
+      "first_party_inference": {"verified": true, "evaluation_non_mutation": true, "logits_sha256": {"ua": "a14262", "en": "851f02", "code": "6b6c35"}},
+      "memorization": {"authority": "RECOVER-178-EVAL136-MEMORIZATION", "type": "separate controlled canary-injection diagnostic", "exact_recovery_lift": 1.0, "nll_advantage": 6.5055185705, "rank_percentile_delta": 0.625, "privacy_claim": "NONE"}
+    }
+  ],
+  "different_budget_evidence": [
+    {
+      "rung": "3M_LEARN191",
+      "admission": "NOT_ADMITTED_PENDING_VERIFY219",
+      "producer_terminal": true,
+      "independent_runtime_inference_evidence": true,
+      "independent_scientific_verifier_terminal": false,
+      "missing_authority": "VERIFY-219",
+      "parameters": 3213120,
+      "model_spec": {"vocab_size": 256, "d_model": 192, "n_layers": 7, "n_heads": 12, "n_kv_heads": 12, "head_dim": 16, "d_ff": 528, "max_seq_len": 256},
+      "model_spec_sha256": "462c85da80a3c0d7d6a4f1a570b87d208b1847d8a57b12a4d9be7e36846b65dc",
+      "optimized_tokens": 131938,
+      "best_checkpoint": {"step": 139, "optimized_tokens": 131938, "checkpoint_id": "920283a052c6c7fbd2b66f8ce5f775e4747c3d459e539b3625e4bebf1b9a7a59"},
+      "final_checkpoint": {"step": 139, "optimized_tokens": 131938, "checkpoint_id": "920283a052c6c7fbd2b66f8ce5f775e4747c3d459e539b3625e4bebf1b9a7a59"},
+      "heldout_bpb": {"aggregate": 2.2859499700392583, "ua": 2.4833089811651017, "en": 2.184148268823763, "code": 2.0560070470884018},
+      "producer": {"source_sha": "a75920cef8bde37a8c590e34095be83c97b75f1d", "workflow_run": 32940842372, "artifact_id": 9597788382, "artifact_sha256": "f57bf36113a68fffd4bfcf877bf08762393479b9c09e6fd0fd613fbb91f044ee", "fresh_load_generation_proof_sha256": "df0e01cc70c0033bf0049cb91ff100e5f02483356b71ae6d9cb6a45c227d3b31"},
+      "first_party_inference": {"producer_fresh_process_generation": "PASS", "independent_perf250_static_dynamic_logits_max_abs": 0.0},
+      "memorization": {"type": "producer train-probe minus validation diagnostic", "final_bpb_delta_approx": 0.003871, "comparable_to_recover178_canary": false, "privacy_claim": "NONE"}
+    },
+    {
+      "rung": "10M_LEARN217",
+      "admission": "NOT_ADMITTED_PENDING_VERIFY218",
+      "producer_terminal": true,
+      "producer_fresh_verification": true,
+      "independent_runtime_inference_evidence": true,
+      "independent_scientific_verifier_terminal": false,
+      "missing_authority": "VERIFY-218-LEARNED-10M-INDEPENDENT",
+      "parameters": 10000640,
+      "model_name": "S3-SCALE02-BYTE-GQA-v1",
+      "model_spec": {"vocab_size": 256, "d_model": 256, "n_layers": 12, "n_heads": 8, "n_kv_heads": 2, "head_dim": 32, "d_ff": 864, "max_seq_len": 1024, "norm": "pre-RMSNorm", "norm_eps": 0.00001, "rope_dim": 32, "rope_theta": 10000, "tied_embeddings": true, "attention_bias": false, "mlp_bias": false, "lm_head_bias": false, "final_norm": true},
+      "model_spec_sha256": "61caa5469123e23b9b72fc2024140bfca84c4c480dcb0a7e712ba800a4f22998",
+      "training_recipe": {"precision": "fp32", "sequence_length": 256, "batch_size": 1, "document_isolation": true, "cross_document": false, "optimizer": "AdamW", "lr": 0.0003, "betas": [0.9, 0.95], "eps": 1e-8, "weight_decay": 0.1, "schedule": "constant", "warmup": 0, "gradient_accumulation": 1, "gradient_clip": 1.0, "seed": 20260825, "deterministic": true},
+      "optimized_tokens": 2000060,
+      "campaign_best_final_heldout": {"optimized_tokens": 2000060, "aggregate": 0.08580920473294919, "ua": 0.05292658247480186, "en": 0.08778129281435168, "code": 0.12695620479250153},
+      "m150_common_evaluation": {
+        "best_checkpoint": {"step": 4903, "tokens_seen": 1000133, "checkpoint_id": "12f9edd88bf5e596ae6f985564a5dcff96033922100ba91678ef9a76c0df3156", "aggregate_bpb": 1.0887240159225926, "ua": 1.3172103996872508, "en": 0.7003634888854138, "code": 1.0315082393134132},
+        "final_checkpoint": {"tokens_seen": 2000060, "checkpoint_id": "20fbb9ffe0e0ecb2b0098dd6f7c18e23cd6cfcc0a0e48cb25c73c26d2f50926d", "aggregate_bpb": 1.1211587610622862, "ua": 1.3514475318658177, "en": 0.6710572177202625, "code": 1.123552954182173}
+      },
+      "producer": {"source_sha": "c02c8aa38e691521ae2ab6a4ff3ea1d643efd6ef", "workflow_run": 32952787070, "artifact_id": 9602650341, "artifact_sha256": "8631e90417e40365b3fc0d6bc98ee6adda5a4ed24530e675d9a91c93219537ee", "fresh_verification_identity_sha256": "d3e4eb168b786811219103c5753323eaceebc45681fb75109b40fc6b17f98a27", "run_manifest_identity_sha256": "776c47d1435ae3d49328aaa42b3e64d6e569f5d33cc894de54295ef025e9035e"},
+      "first_party_inference": {
+        "producer_fresh_verification": "PASS",
+        "evaluation_non_mutation": true,
+        "best_logits_sha256": {"ua": "9afaa25d4ad4e1e3a5ed11ef84e2e9a075e21710daefa71a7fdb49d77265ac9c", "en": "b7f628c57385d86fe7317e101b310fa8915c9e238061c530c99dfb6c186cb6a8", "code": "167d939513d62eeeabdccba5d341af739fa03ac628f60b0e4b670be1f117236d"},
+        "final_logits_sha256": {"ua": "4e8bb61946d6636e85e099770cc1b3ca631823cb48d9ae030cbc58bb83a4a61d", "en": "ccd63bac0eabfc3a83c67dbb414b6dfaacdbe103a1621e7e1db5f9f4c626dd5c", "code": "8623ba033461ad651db9f94757d8ab0f1238b505d25d8ce652d9bb997c4f80c2"},
+        "independent_perf250_checkpoint": "12f9edd88bf5e596ae6f985564a5dcff96033922100ba91678ef9a76c0df3156",
+        "independent_perf250_static_dynamic_logits_max_abs": 0.0,
+        "independent_perf250_scope": "runtime/inference parity on retained best/common checkpoint, not full heldout scientific verification and not final-2M checkpoint verification"
+      },
+      "memorization": {"type": "hash-only deterministic project-owned training-passage short-continuation/NLL probe", "canary_injection": false, "exact_short_continuation_rate": 1.0, "mean_bpb": 0.0005126062283045843, "ua_bpb": 0.0009979685938654424, "en_bpb": 0.0003576893157223005, "code_bpb": 0.00018216077532601054, "comparable_to_recover178_canary": false, "privacy_claim": "NONE"}
+    }
+  ],
+  "first_party_runtime_corroboration": {
+    "authority": "PERF-250",
+    "source_sha": "66f9be0c86a17568316e791dbf1890b238f114af",
+    "workflow_run": 32961371483,
+    "artifact_id": 9604015370,
+    "artifact_sha256": "019c9a561023bf7c061ff9938869f59e0076bbaf7b57a50101676f2892bac883",
+    "paid_compute": false,
+    "device": "cpu",
+    "scope": "independent first-party static/dynamic runtime parity and exact artifact/model/corpus/tokenizer/checkpoint binding; not a substitute for VERIFY-218/VERIFY-219 scientific admission"
+  },
+  "external_real_partial_evaluation": {
+    "authority": "EVAL-233",
+    "source_sha": "b5512b4648cb09dd052b08884dc53f291e1ce935",
+    "workflow_run": 32957254139,
+    "artifact_id": 9602456151,
+    "artifact_sha256": "c4631d10bbf373878eec3b47578cb61cd89c5b006f315be4ed6750c6db5ff3c2",
+    "final_test_identity_sha256": "86d51eb106524cd8e4d0f94d4ff6e2e3426c6321e0698279877dfc4d5fce3116",
+    "records": {"ua": 8, "en": 8, "code": 0, "total": 16},
+    "utf8_bytes": 34644,
+    "evaluation_release_allowed": false,
+    "scored": false,
+    "training_use": false,
+    "truth_boundary": "Immutable partial UA/EN external-real final-test material exists, but it is not released/scored and contains no code stratum. It is evaluation-only and is not evidence of external-real training."
+  },
+  "admission_requirements_remaining": [
+    {
+      "rung": "3M_LEARN191",
+      "required": "terminal independent VERIFY-219 authority binding exact LEARN-191 producer artifact/checkpoint, heldout metrics, fresh load, first-party inference and non-mutation"
+    },
+    {
+      "rung": "10M_LEARN217",
+      "required": "terminal VERIFY-218-LEARNED-10M-INDEPENDENT authority with state VERIFIED_LEARNED_10M binding exact LEARN-217 producer, best/final roles, checkpoint integrity, fresh resume/load, heldout BPB, first-party logits/generation and evaluation non-mutation"
+    }
+  ],
+  "publication_rule": "A successor may publish the requested V4 ladder only after both remaining independent verifier authorities are present and terminal-success. Until then this gate is not itself a frozen/canonical learned ladder and does not promote 3M or 10M."
+}
