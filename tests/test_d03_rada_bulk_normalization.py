@@ -39,6 +39,10 @@ def _probe_config(min_entries: int) -> dict:
         "local_free_only": True,
         "model_training_executed": False,
         "training_authorized_bytes": 0,
+        "parent_authority": {
+            "head_sha": "f" * 40,
+            "registry_identity_sha256": "e" * 64,
+        },
         "source": {
             "family_id": "ua.rada.open-data.laws-texts",
             "dataset_id": "laws-texts",
