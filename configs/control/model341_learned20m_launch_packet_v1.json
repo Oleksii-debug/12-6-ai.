@@ -8,6 +8,7 @@
     "model341_branch": "model341/20m-candidate-a-20260826",
     "model341_sha": "e4ff486fd90802fc123bebf60eed4e59196a98df",
     "modelspec_sha256": "fbff24d561a2818453554d58ca23fc6ace3303b078f1935a8576c4565bd92441",
+    "initspec_sha256": "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5",
     "parameter_count": 20613440,
     "base_lineage": "RANDOM_INIT_PRETRAINING_ONLY"
   },
