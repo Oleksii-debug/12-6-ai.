@@ -13,11 +13,11 @@ EXPECTED_DATA300_ID = "07d7beaaff4616e839450de6af3d407855c832bf75a24a959d1a12de5
 EXPECTED_DATA301_HEAD = "8820ba1b255f6bb95c7db0531fd846078a1aae01"
 EXPECTED_DATA301_ID = "939065abeefff8aed924415589608ff3fc721fe4b0a57fc200146a4b6a137e81"
 EXPECTED_SOURCE_PR = 538
-EXPECTED_SOURCE_HEAD = "226cbc26710a75af4a864576220b270089e7c52b"
+EXPECTED_SOURCE_HEAD = "1bcd1a57a7b2699294808b47888a255bf37a50aa"
 EXPECTED_SOURCE_ID = "9fc400a3144b46c481e45d043b0a3365eb2129c83bbacde6f9e7af8a41fadc58"
 EXPECTED_DEDUP_PR = 632
-EXPECTED_DEDUP_HEAD = "8181b247fc305f96f4be02d8630ce18cdcf63eae"
-EXPECTED_DEDUP_RUN = 33008762043
+EXPECTED_DEDUP_HEAD = "938f0076f06fca653681774ce1a9585bd2f57380"
+EXPECTED_DEDUP_RUN = 33009534757
 EXPECTED_TOTAL = 2_045_180
 EXPECTED_ENVELOPE = 2_047_541
 EXPECTED_UNCREDITED = 2_361
@@ -166,8 +166,8 @@ def validate_doc(doc: dict[str, Any]) -> None:
     )
     _require(dedup.get("dedicated_workflow_run") == EXPECTED_DEDUP_RUN, "dedup run drift")
     _require(
-        dedup.get("exact_head_ci_state") == "PENDING_NONTERMINAL",
-        "dedup pending/nonterminal truth weakened",
+        dedup.get("exact_head_ci_state") == "QUEUED_NONTERMINAL",
+        "dedup queue/nonterminal truth weakened",
     )
     _require(
         dedup.get("terminal_authority_consumed") is False,
