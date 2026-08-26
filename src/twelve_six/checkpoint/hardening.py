@@ -60,7 +60,7 @@ def _validate_manifest_identity(identity: Any) -> None:
 
 def _torch_target_storage_dtype(target: Any) -> np.dtype[Any]:
     torch = importlib.import_module("torch")
-    if str(target.dtype) == "torch.bfloat16":
+    if target.dtype == torch.bfloat16:
         return np.dtype(np.uint16)
     try:
         return target.detach().cpu().contiguous().numpy().dtype
@@ -92,7 +92,8 @@ def _materialize_for_target(array: np.ndarray, target: Any) -> Any:
         if np.dtype(array.dtype) != expected_storage_dtype:
             raise _core.CheckpointCompatibilityError(
                 "dtype mismatch: checkpoint storage "
-                f"{array.dtype} vs target {target.dtype} (expected storage {expected_storage_dtype})"
+                f"{array.dtype} vs target {target.dtype} "
+                f"(expected storage {expected_storage_dtype})"
             )
         torch = importlib.import_module("torch")
         tensor = torch.from_numpy(array.copy())
@@ -104,7 +105,8 @@ def _materialize_for_target(array: np.ndarray, target: Any) -> Any:
             )
         if tensor.dtype != target.dtype:
             raise _core.CheckpointCompatibilityError(
-                f"dtype mismatch after materialization: checkpoint {tensor.dtype} vs target {target.dtype}"
+                "dtype mismatch after materialization: checkpoint "
+                f"{tensor.dtype} vs target {target.dtype}"
             )
         return tensor.to(device=target.device)
 
@@ -196,7 +198,8 @@ def _preflight_optimizer_state(optimizer: Any, state: Any) -> None:
     unknown_state_ids = set(checkpoint_state) - set(parameter_map)
     if unknown_state_ids:
         raise _core.CheckpointCompatibilityError(
-            f"optimizer state references unknown parameter ids: {sorted(map(str, unknown_state_ids))}"
+            "optimizer state references unknown parameter ids: "
+            f"{sorted(map(str, unknown_state_ids))}"
         )
 
     for checkpoint_param_id, param_state in checkpoint_state.items():
