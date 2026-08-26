@@ -1,0 +1,117 @@
+{
+  "blocking_reason": {
+    "missing_exact_fields": [
+      "primary 20M ModelSpec identity",
+      "exact parameter count",
+      "model constructor/configuration binding",
+      "mechanically qualified random-init primary-model authority"
+    ],
+    "why_hard_block": "Without the selected primary ModelSpec, a bounded optimizer/D05 run cannot prove exact restore for the requested target. Substituting the 10M incumbent or inventing/interpolating a 20M geometry would create false evidence."
+  },
+  "execution_accounting": {
+    "final_test_outcomes_read": false,
+    "foreign_weights_used": false,
+    "long_campaign_executed": false,
+    "model_training_started": false,
+    "optimizer_updates": 0,
+    "paid_compute": false,
+    "recovery_injections_executed_on_20m": 0
+  },
+  "execution_profile": "LOCAL_FREE",
+  "identity_sha256": "c198d2a01603f83060a2ec3a2f3ea213fbd187ecf9f2b405bb35675c5ca13a1e",
+  "incumbent_recovery_authority": {
+    "actions_run": 32951984562,
+    "already_proven_at_prior_scale": [
+      "fresh immutable D05 generation per recovery save",
+      "atomic self-hashed current.json publication",
+      "interruption preserves previous pointed generation",
+      "unreferenced corrupt/incomplete newer generation ignored",
+      "pointed-generation corruption fails closed",
+      "fresh-process optimizer and RNG and counter restore"
+    ],
+    "contract_reusable_for_20m": true,
+    "head_sha": "349e6db94d4aca81c2d1a0ccc3368a98b6058392",
+    "job": 98125209213,
+    "not_a_20m_qualification": true,
+    "pr": 354,
+    "proof_identity_sha256": "9e002d07e85624da5b9799a08a006f589472769055df6609e17b17e698a8da5b",
+    "worker_id": "CHECKPOINT-211-SCALE141-RECOVERY-IMMUTABILITY"
+  },
+  "provenance_cutoff_utc": "2026-08-26T14:57:00Z",
+  "repository_observation": {
+    "latest_observed_pr": {
+      "created_at": "2026-08-26T14:56:40Z",
+      "number": 427,
+      "title": "POSTBASE-359: converge provider-neutral teacher data factory"
+    },
+    "observed_alternate_control": {
+      "exact_parameters": 19935488,
+      "geometry": "D256 L24 8Q 2KV head32 F864",
+      "head_sha": "51e640d00cd9900e70e63f8a867f19bc9d7d0565",
+      "not_substitutable_for_primary": true,
+      "pr": 425,
+      "role": "strongest alternate / depth-control geometry",
+      "worker_id": "MODEL-342-20M-CONTROL-B"
+    },
+    "searches": {
+      "20000000_ModelSpec": "NO_CODE_RESULT_FOUND",
+      "20M_ModelSpec_parameters_primary_candidate": "NO_CODE_RESULT_FOUND",
+      "MODEL-341": "NO_BRANCH_OR_PR_AUTHORITY_FOUND",
+      "RESEARCH-339": "REFERENCED_BY_MODEL_342_BUT_NO_DISCOVERABLE_PRIMARY_SELECTION_AUTHORITY"
+    }
+  },
+  "requested_scope": {
+    "checkpoint_format": "D05 checkpoint-v1",
+    "long_campaign_allowed": false,
+    "recovery_lifecycle": "immutable generations plus atomic current.json pointer",
+    "required_cases": [
+      "interruption after verified generation commit before pointer replacement",
+      "pointer corruption or invalid pointer binding",
+      "unreferenced newer corrupt/incomplete generation",
+      "corruption of pointed generation"
+    ],
+    "required_exact_restore": [
+      "model",
+      "optimizer",
+      "rng",
+      "counters"
+    ],
+    "target": "primary ~20M model"
+  },
+  "required_predecessors": {
+    "model341": {
+      "repository_authority_found": false,
+      "role": "build and mechanically qualify the primary ~20M ModelSpec selected from RESEARCH-339",
+      "worker_id": "MODEL-341-20M-CANDIDATE-A"
+    },
+    "research339": {
+      "repository_authority_found": false,
+      "role": "select the primary ~20M architecture/model candidate",
+      "worker_id": "RESEARCH-339"
+    }
+  },
+  "schema": "12-6.checkpoint346-20m-recovery-qualification-gate.v1",
+  "unblock_rule": {
+    "requirements": [
+      "publish terminal RESEARCH-339 primary ~20M selection authority",
+      "publish MODEL-341 exact mechanically qualified primary ~20M ModelSpec/constructor authority",
+      "stack CHECKPOINT-346 on a source head containing CHECKPOINT-211 recovery lifecycle plus that exact MODEL-341 target"
+    ],
+    "then_execute": {
+      "cpu_only": true,
+      "maximum_optimizer_steps": 3,
+      "required_exact_assertions": [
+        "model tensor equality after fresh restore",
+        "optimizer nested state equality after fresh restore",
+        "Python and torch CPU RNG equality after fresh restore",
+        "all persisted Trainer counters equality after fresh restore",
+        "same-next-step continuation equality against uninterrupted control",
+        "older committed generation tree remains byte-identical",
+        "pointer/interruption/corruption cases fail or recover exactly as preregistered"
+      ],
+      "synthetic_fixture_only": true
+    }
+  },
+  "verdict": "BLOCKED_MISSING_PRIMARY_20M_MODELSPEC",
+  "worker_id": "CHECKPOINT-346-20M-RECOVERY-QUALIFICATION"
+}
