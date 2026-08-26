@@ -179,7 +179,7 @@ def test_torch_sgd_momentum_shape_corruption_is_rejected_before_any_live_mutatio
     before_model = {name: tensor.detach().clone() for name, tensor in target.state_dict().items()}
     before_optimizer = copy.deepcopy(target_optimizer.state_dict())
 
-    with pytest.raises(CheckpointCompatibilityError, match="optimizer.*momentum_buffer.*shape"):
+    with pytest.raises(CheckpointCompatibilityError, match="optimizer state tensor shape mismatch"):
         load_checkpoint(
             checkpoint,
             model=target,
