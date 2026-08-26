@@ -7,7 +7,11 @@
     "config_path": "configs/research/r01_20m_to_100m_scaling_campaign_v1.json",
     "config_git_blob_sha1": "c50154db609d41eceb2ffc97912360df567bcc04",
     "model341_sha": "e4ff486fd90802fc123bebf60eed4e59196a98df",
-    "model_parameter_count": 20613440
+    "baseline_total_parameter_count": 20613440,
+    "baseline_vocab_size": 256,
+    "d_model": 320,
+    "tied_embedding_parameter_count": 81920,
+    "nonembedding_parameter_count": 20531520
   },
   "hard_boundaries": {
     "local_free_only": true,
@@ -34,15 +38,16 @@
   "calibration_scope": {
     "required_strata": ["uk", "en", "code"],
     "required_tokenizer_candidates": [
-      {"id": "byte-v256", "kind": "byte", "vocab_size": 256},
-      {"id": "subword-v320", "kind": "subword", "vocab_size": 320},
-      {"id": "subword-v384", "kind": "subword", "vocab_size": 384},
-      {"id": "subword-v437", "kind": "subword", "vocab_size": 437},
-      {"id": "subword-v512", "kind": "subword", "vocab_size": 512}
+      {"id": "byte-v256", "kind": "byte", "vocab_size": 256, "expected_total_parameters": 20613440},
+      {"id": "subword-v320", "kind": "subword", "vocab_size": 320, "expected_total_parameters": 20633920},
+      {"id": "subword-v384", "kind": "subword", "vocab_size": 384, "expected_total_parameters": 20654400},
+      {"id": "subword-v437", "kind": "subword", "vocab_size": 437, "expected_total_parameters": 20671360},
+      {"id": "subword-v512", "kind": "subword", "vocab_size": 512, "expected_total_parameters": 20695360}
     ],
     "same_exact_calibration_bytes_required_across_tokenizers": true,
-    "same_model_parameter_count_required": true,
-    "same_model_architecture_except_vocab_dependent_terms_required": true,
+    "same_nonembedding_parameter_count_required": true,
+    "same_transformer_body_identity_required": true,
+    "total_parameter_count_may_vary_only_by_tied_embedding_vocab_term": true,
     "same_loss_mask_semantics_required": true,
     "same_calibration_slice_identity_required": true,
     "minimum_repeats_per_candidate": 2,
@@ -58,8 +63,9 @@
       "tokenizer_identity",
       "research_corpus_identity",
       "calibration_slice_identity",
-      "model_parameter_count",
-      "model_architecture_identity",
+      "model_total_parameter_count",
+      "model_nonembedding_parameter_count",
+      "model_body_identity",
       "loss_mask_identity",
       "context_window_loss_positions",
       "repeat_id",
