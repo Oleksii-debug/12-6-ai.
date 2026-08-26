@@ -11,7 +11,9 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
+import tempfile
 import urllib.request
 from collections.abc import Callable, Mapping
 from pathlib import Path, PurePosixPath
@@ -54,6 +56,15 @@ def _validated_repo_path(value: object) -> str:
     return value
 
 
+def _validated_https_url(value: object) -> str:
+    if not isinstance(value, str) or not value:
+        raise PinnedSourceMaterializationError("https_exact provider requires HTTPS URL")
+    parsed = urlparse(value)
+    if parsed.scheme != "https" or not parsed.netloc or parsed.username or parsed.password:
+        raise PinnedSourceMaterializationError("https_exact provider requires public HTTPS URL")
+    return value
+
+
 def _read_git_object(repo_root: Path, commit: str, git_path: str) -> bytes:
     if not COMMIT_RE.fullmatch(commit):
         raise PinnedSourceMaterializationError(
@@ -75,9 +86,7 @@ def _read_git_object(repo_root: Path, commit: str, git_path: str) -> bytes:
 
 
 def _download_https_exact(url: str, expected_bytes: int) -> tuple[bytes, str]:
-    parsed = urlparse(url)
-    if parsed.scheme != "https" or not parsed.netloc:
-        raise PinnedSourceMaterializationError("https_exact provider requires HTTPS URL")
+    _validated_https_url(url)
     request = urllib.request.Request(
         url,
         headers={"User-Agent": "12-6-ai-pinned-payload-materializer/1.0"},
@@ -131,7 +140,11 @@ def _validate_config(config: Mapping[str, Any]) -> list[dict[str, Any]]:
             )
         expected_bytes = row.get("expected_raw_bytes")
         expected_sha = row.get("expected_raw_sha256")
-        if not isinstance(expected_bytes, int) or isinstance(expected_bytes, bool) or expected_bytes <= 0:
+        if (
+            not isinstance(expected_bytes, int)
+            or isinstance(expected_bytes, bool)
+            or expected_bytes <= 0
+        ):
             raise PinnedSourceMaterializationError(
                 f"{source_id}: expected_raw_bytes must be a positive integer"
             )
@@ -156,9 +169,7 @@ def _validate_config(config: Mapping[str, Any]) -> list[dict[str, Any]]:
                 )
             _validated_repo_path(row.get("git_path"))
         else:
-            url = row.get("url")
-            if not isinstance(url, str) or urlparse(url).scheme != "https" or not urlparse(url).netloc:
-                raise PinnedSourceMaterializationError(f"{source_id}: invalid HTTPS URL")
+            _validated_https_url(row.get("url"))
 
         normalized_bytes = row.get("authority_normalized_bytes")
         normalized_sha = row.get("authority_normalized_sha256")
@@ -190,7 +201,7 @@ def materialize_pinned_sources(
     output_dir: Path,
     https_downloader: Callable[[str, int], tuple[bytes, str]] | None = None,
 ) -> dict[str, Any]:
-    """Materialize exact raw bytes and return a deterministic identity manifest.
+    """Materialize exact raw bytes and atomically publish an identity manifest.
 
     The caller is responsible for making pinned git commits reachable in the local
     repository before using ``git_object``. HTTPS payloads are accepted only when
@@ -201,71 +212,79 @@ def materialize_pinned_sources(
     downloader = https_downloader or _download_https_exact
     repo_root = Path(repo_root).resolve()
     output_dir = Path(output_dir).resolve()
-    output_dir.mkdir(parents=True, exist_ok=True)
+    if output_dir.exists():
+        raise PinnedSourceMaterializationError(
+            f"output_dir already exists; refusing stale/partial reuse: {output_dir}"
+        )
+    output_dir.parent.mkdir(parents=True, exist_ok=True)
+    staging = Path(
+        tempfile.mkdtemp(prefix=f".{output_dir.name}.staging-", dir=output_dir.parent)
+    )
 
-    manifest_rows: list[dict[str, Any]] = []
-    for row in sorted(rows, key=lambda item: item["source_id"]):
-        source_id = row["source_id"]
-        provider = row["provider"]
-        if provider == "git_object":
-            payload = _read_git_object(repo_root, row["git_commit"], row["git_path"])
-            resolved_locator = f"git:{row['git_commit']}:{row['git_path']}"
-        else:
-            payload, final_url = downloader(row["url"], row["expected_raw_bytes"])
-            if urlparse(final_url).scheme != "https":
+    try:
+        manifest_rows: list[dict[str, Any]] = []
+        for row in sorted(rows, key=lambda item: item["source_id"]):
+            source_id = row["source_id"]
+            provider = row["provider"]
+            if provider == "git_object":
+                payload = _read_git_object(repo_root, row["git_commit"], row["git_path"])
+                source_locator = f"git:{row['git_commit']}:{row['git_path']}"
+            else:
+                payload, final_url = downloader(row["url"], row["expected_raw_bytes"])
+                if urlparse(final_url).scheme != "https":
+                    raise PinnedSourceMaterializationError(
+                        f"{source_id}: downloader resolved to non-HTTPS URL"
+                    )
+                source_locator = row["url"]
+
+            actual_bytes = len(payload)
+            actual_sha = _sha256(payload)
+            if actual_bytes != row["expected_raw_bytes"]:
                 raise PinnedSourceMaterializationError(
-                    f"{source_id}: downloader resolved to non-HTTPS URL"
+                    f"{source_id}: raw byte count drift: expected {row['expected_raw_bytes']}, "
+                    f"got {actual_bytes}"
                 )
-            resolved_locator = final_url
+            if actual_sha != row["expected_raw_sha256"]:
+                raise PinnedSourceMaterializationError(
+                    f"{source_id}: raw SHA-256 drift: expected {row['expected_raw_sha256']}, "
+                    f"got {actual_sha}"
+                )
 
-        actual_bytes = len(payload)
-        actual_sha = _sha256(payload)
-        if actual_bytes != row["expected_raw_bytes"]:
-            raise PinnedSourceMaterializationError(
-                f"{source_id}: raw byte count drift: expected {row['expected_raw_bytes']}, "
-                f"got {actual_bytes}"
-            )
-        if actual_sha != row["expected_raw_sha256"]:
-            raise PinnedSourceMaterializationError(
-                f"{source_id}: raw SHA-256 drift: expected {row['expected_raw_sha256']}, "
-                f"got {actual_sha}"
-            )
+            output_name = f"{source_id}.raw"
+            (staging / output_name).write_bytes(payload)
+            item: dict[str, Any] = {
+                "source_id": source_id,
+                "source_family": row["source_family"],
+                "stratum": row["stratum"],
+                "provider": provider,
+                "authority_id": row["authority_id"],
+                "authority_identity_sha256": row["authority_identity_sha256"],
+                "source_locator": source_locator,
+                "transport_final_https_verified": provider != "https_exact" or True,
+                "raw_bytes": actual_bytes,
+                "raw_sha256": actual_sha,
+                "output_file": output_name,
+                "normalization_verification_status": "NOT_EXECUTED_BY_THIS_TOOL",
+            }
+            if row.get("authority_normalized_bytes") is not None:
+                item["authority_normalized_bytes"] = row["authority_normalized_bytes"]
+                item["authority_normalized_sha256"] = row["authority_normalized_sha256"]
+            manifest_rows.append(item)
 
-        output_name = f"{source_id}.raw"
-        destination = output_dir / output_name
-        temporary = output_dir / f".{output_name}.tmp"
-        temporary.write_bytes(payload)
-        os.replace(temporary, destination)
-
-        item: dict[str, Any] = {
-            "source_id": source_id,
-            "source_family": row["source_family"],
-            "stratum": row["stratum"],
-            "provider": provider,
-            "authority_id": row["authority_id"],
-            "authority_identity_sha256": row["authority_identity_sha256"],
-            "resolved_locator": resolved_locator,
-            "raw_bytes": actual_bytes,
-            "raw_sha256": actual_sha,
-            "output_file": output_name,
-            "normalization_verification_status": "NOT_EXECUTED_BY_THIS_TOOL",
+        manifest_base: dict[str, Any] = {
+            "schema_version": MANIFEST_SCHEMA,
+            "local_free_only": True,
+            "model_training_executed": False,
+            "source_count": len(manifest_rows),
+            "total_raw_bytes": sum(item["raw_bytes"] for item in manifest_rows),
+            "sources": manifest_rows,
         }
-        if row.get("authority_normalized_bytes") is not None:
-            item["authority_normalized_bytes"] = row["authority_normalized_bytes"]
-            item["authority_normalized_sha256"] = row["authority_normalized_sha256"]
-        manifest_rows.append(item)
-
-    manifest_base: dict[str, Any] = {
-        "schema_version": MANIFEST_SCHEMA,
-        "local_free_only": True,
-        "model_training_executed": False,
-        "source_count": len(manifest_rows),
-        "total_raw_bytes": sum(item["raw_bytes"] for item in manifest_rows),
-        "sources": manifest_rows,
-    }
-    identity = _sha256(_canonical_json_bytes(manifest_base))
-    manifest = dict(manifest_base)
-    manifest["materialization_identity_sha256"] = identity
-    manifest_path = output_dir / "manifest.json"
-    manifest_path.write_bytes(_canonical_json_bytes(manifest) + b"\n")
-    return manifest
+        identity = _sha256(_canonical_json_bytes(manifest_base))
+        manifest = dict(manifest_base)
+        manifest["materialization_identity_sha256"] = identity
+        (staging / "manifest.json").write_bytes(_canonical_json_bytes(manifest) + b"\n")
+        os.replace(staging, output_dir)
+        return manifest
+    except Exception:
+        shutil.rmtree(staging, ignore_errors=True)
+        raise
