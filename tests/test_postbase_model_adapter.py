@@ -142,6 +142,31 @@ def test_adapter_rejects_non_learned_checkpoint_counters(tmp_path: Path) -> None
         PostBaseModelAdapter.from_checkpoint(checkpoint)
 
 
+def test_adapter_rejects_external_network_or_wrapper_backend() -> None:
+    class ExternalNetworkBackend:
+        pass
+
+    with pytest.raises(PostBaseCompatibilityError, match="external, network, wrapper"):
+        PostBaseModelAdapter(ExternalNetworkBackend())  # type: ignore[arg-type]
+
+
+def test_adapter_public_surface_has_no_training_or_checkpoint_writer_entrypoint(
+    tmp_path: Path,
+) -> None:
+    checkpoint, _ = _checkpoint(tmp_path)
+    adapter = PostBaseModelAdapter.from_checkpoint(checkpoint)
+
+    forbidden = {
+        "backward",
+        "optimizer",
+        "optimizer_step",
+        "save_checkpoint",
+        "train",
+        "zero_grad",
+    }
+    assert forbidden.isdisjoint(name for name in dir(adapter) if not name.startswith("_"))
+
+
 def test_current_learned_10m_modelspec_is_supported_without_stage_allowlist() -> None:
     spec = ModelSpec(
         schema_version=1,
@@ -162,21 +187,25 @@ def test_current_learned_10m_modelspec_is_supported_without_stage_allowlist() ->
     validate_postbase_compatible_spec(spec)
 
 
-def test_future_compatible_20m_modelspec_is_not_size_gated() -> None:
-    future_spec = ModelSpec(
+def test_primary_model341_20m_modelspec_is_supported_without_size_gate() -> None:
+    # MODEL-341 exact head e4ff486fd90802fc123bebf60eed4e59196a98df.
+    primary_20m = ModelSpec(
         schema_version=1,
         vocab_size=256,
-        max_seq_len=2048,
+        max_seq_len=1024,
         d_model=320,
-        n_layers=14,
+        n_layers=16,
         n_heads=10,
         n_kv_heads=2,
         head_dim=32,
-        d_ff=1280,
+        d_ff=1080,
         rope_rotary_dim=32,
     )
-    assert future_spec.parameter_count() == 20_735_040
-    validate_postbase_compatible_spec(future_spec)
+    assert primary_20m.parameter_count() == 20_613_440
+    assert primary_20m.identity_sha256() == (
+        "fbff24d561a2818453554d58ca23fc6ace3303b078f1935a8576c4565bd92441"
+    )
+    validate_postbase_compatible_spec(primary_20m)
 
 
 def test_expected_modelspec_binding_fails_closed(tmp_path: Path) -> None:
