@@ -66,11 +66,40 @@ jobs:
           .d110/bin/python -m pip install "$WHEEL" orjson regex "xxhash==3.8.1"
           .d110/bin/python -m pip install --no-deps "$TOKENIZERS_WHEEL"
 
+      - name: Prove exact test and runtime dependencies before checks
+        run: |
+          set -euo pipefail
+          .d110/bin/python -m pip check
+          .d110/bin/python - <<'PY'
+          from importlib import metadata
+          import torch
+          import pytest
+          import ruff
+          import datatrove
+          import tokenizers
+          from twelve_six.model import TwelveSixDecoder
+          from twelve_six.training import Trainer, TrainerConfig
+          required = {
+              "torch": "2.13.0",
+              "pytest": "9.1.1",
+              "ruff": "0.16.4",
+              "datatrove": "0.10.0",
+              "tokenizers": "0.23.1",
+          }
+          actual = {name: metadata.version(name) for name in required}
+          assert actual == required, (actual, required)
+          assert torch.__version__ == required["torch"]
+          assert TwelveSixDecoder is not None
+          assert Trainer is not None and TrainerConfig is not None
+          assert pytest is not None and ruff is not None and datatrove is not None and tokenizers is not None
+          print(actual)
+          PY
+
       - name: Compile and revalidate composed incumbents
         run: |
           set -euo pipefail
           .d110/bin/python -m compileall -q src/twelve_six
-          .d110/bin/python -m ruff check \
+          .d110/bin/python -m ruff check --select E,F \
             src/twelve_six/data110_release_candidate.py \
             src/twelve_six/data/document_quality.py \
             src/twelve_six/data/privacy_filter.py \
@@ -90,6 +119,27 @@ jobs:
             tests/test_split_robustness.py \
             tests/test_data25_corpus_v01.py \
             tests/test_milestone100_first_learned.py
+
+      - name: Cheap DATA-110 launch preflight
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+          .d110/bin/python -m twelve_six.data110_release_candidate --help >/dev/null
+          .d110/bin/python - <<'PY'
+          from pathlib import Path
+          from twelve_six.data110_release_candidate import (
+              DATA25_CONFIG,
+              DATA25_RETAINED,
+              D06_CONFIG,
+              STAGE_CONFIG,
+          )
+          from twelve_six.training import Trainer
+          for path in (DATA25_CONFIG, DATA25_RETAINED, D06_CONFIG, STAGE_CONFIG):
+              assert Path(path).is_file(), path
+          assert Trainer is not None
+          PY
 
       - name: Reacquire bounded real rights-approved UK and EN inputs
         run: |
