@@ -7,8 +7,9 @@ without chat formatting, generation, or third-party benchmark frameworks.
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Protocol, Sequence
+from typing import Protocol
 
 import torch
 import torch.nn.functional as F
