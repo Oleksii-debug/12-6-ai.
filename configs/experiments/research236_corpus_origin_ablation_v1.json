@@ -8,6 +8,14 @@
     "external_training_corpus": "DATA-230-CORPUS-V03-EXTERNAL-REAL",
     "common_real_holdout": "EVAL-233-REAL-HOLDOUT-V2"
   },
+  "required_identity_bindings_before_optimizer_step_1": {
+    "data230_terminal_identity": null,
+    "external_corpus_identity": null,
+    "data25_selection_identity": null,
+    "external_selection_identity": null,
+    "eval233_selection_validation_identity": null,
+    "common_real_holdout_identity": null
+  },
   "corpora": {
     "project_authored": {
       "name": "DATA-25",
@@ -72,19 +80,25 @@
     "data25_selection_validation": {
       "score_both_training_arms": true,
       "selection_use": false,
-      "purpose": "cross_corpus_transfer"
+      "purpose": "cross_corpus_transfer",
+      "exact_byte_identity_required": true
     },
     "external_selection_validation": {
       "score_both_training_arms": true,
       "selection_use": false,
       "purpose": "cross_corpus_transfer",
-      "requires_zero_content_overlap_with_both_training_arms": true
+      "identity_source": "DATA-230.selection_validation_identity",
+      "requires_zero_content_overlap_with_both_training_arms": true,
+      "exact_byte_identity_required": true
     },
     "common_immutable_real_holdout": {
       "authority": "EVAL-233-REAL-HOLDOUT-V2",
+      "purpose": "final-test",
+      "identity_source": "EVAL-233.final_test_identity",
       "score_both_training_arms": true,
       "selection_use": false,
-      "final_test_never_used_for_checkpoint_or_hyperparameter_selection": true
+      "final_test_never_used_for_checkpoint_or_hyperparameter_selection": true,
+      "exact_byte_identity_required": true
     },
     "strata": ["UA", "EN", "code"],
     "source_family_heldouts": {
