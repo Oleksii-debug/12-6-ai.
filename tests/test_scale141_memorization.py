@@ -19,7 +19,9 @@ class IncrementModel(nn.Module):
         batch, length = input_ids.shape
         logits = torch.full((batch, length, 256), -20.0, device=input_ids.device)
         next_ids = (input_ids + 1) % 256
-        logits.scatter_(2, next_ids.unsqueeze(-1), 20.0 + self.anchor)
+        index = next_ids.unsqueeze(-1)
+        src = (20.0 + self.anchor).expand_as(index)
+        logits.scatter_(2, index, src)
         return SimpleNamespace(logits=logits)
 
 
