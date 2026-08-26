@@ -137,9 +137,15 @@ def _expect_frozen_map(
     expected: dict[str, Any],
     prefix: str,
 ) -> None:
+    """Require an exact frozen map: no missing, changed, or unreviewed extra keys."""
     _expect(errors, isinstance(actual, dict), f"{prefix} must be an object")
     if not isinstance(actual, dict):
         return
+    _expect(
+        errors,
+        set(actual) == set(expected),
+        f"{prefix} key set mismatch",
+    )
     for key, value in expected.items():
         _expect(
             errors,
