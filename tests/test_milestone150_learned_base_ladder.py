@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from twelve_six.milestone150_entrypoint import json_normalize
 from twelve_six.milestone150_learned_base_ladder import (
     EXPECTED_CORPUS_ID,
     SCALE_ORDER,
@@ -56,3 +57,16 @@ def test_milestone150_init_and_common_evaluation_identity_are_frozen() -> None:
     assert first["tokenizer"]["special_tokens"] == {}
     assert first["packing"]["sequence_length"] == 128
     assert first["packing"]["cross_document"] is False
+
+
+def test_milestone150_fresh_process_manifest_representation_is_json_stable() -> None:
+    in_process = {
+        "trainer_config": {"betas": (0.9, 0.95), "precision": "fp32"},
+        "checkpoint_steps": (0, 250, 500, 750, 1000),
+        "identity_sha256": "representation-only-sentinel",
+    }
+    normalized = json_normalize(in_process)
+    assert normalized["trainer_config"]["betas"] == [0.9, 0.95]
+    assert normalized["checkpoint_steps"] == [0, 250, 500, 750, 1000]
+    assert normalized["identity_sha256"] == in_process["identity_sha256"]
+    assert json_normalize(normalized) == normalized
