@@ -18,10 +18,14 @@ from .core import (
     CheckpointCompatibilityError,
     CheckpointIdentity,
     LoadResult,
+    _apply_model_weights,
     _decode_verified_state,
     _preflight_optimizer_state,
-    load_verified_checkpoint,
+    _preflight_rng_state,
+    _prepare_model_weights,
+    assert_identity,
     prepare_checkpoint_load,
+    restore_rng_state,
     save_checkpoint,
 )
 
@@ -359,11 +363,13 @@ def load_trainer_checkpoint(
     expected_environment_lock_hash: str | None = None,
     expected_seed: int | None = None,
 ) -> LoadResult:
-    """Verify one exact byte snapshot, bind it, then restore fresh D02 targets.
+    """Verify/decode one byte snapshot once, preflight it, then restore D02 targets.
 
-    The canonical nested identity checks, trainer-state preflight, and actual load
-    consume the same verified byte snapshot. The source directory is never
-    re-opened between run-binding verification and model mutation.
+    The canonical nested identity checks, trainer-state preflight, model-shape
+    preflight, RNG preflight, and actual restore all consume one decoded form of
+    the same ``VerifiedCheckpoint``. Model and optimizer tensors are therefore
+    not materialized a second time merely to cross the trainer-adapter boundary.
+    The source directory is never re-opened between verification and mutation.
     """
 
     if not hasattr(trainer, "load_state_dict"):
@@ -381,29 +387,37 @@ def load_trainer_checkpoint(
         expected_environment_lock_hash=expected_environment_lock_hash,
         expected_seed=expected_seed,
     )
+    assert_identity(
+        manifest,
+        git_sha=expected_git_sha,
+        model_spec_hash=expected_model_spec_hash,
+        tokenizer_hash=expected_tokenizer_hash,
+        tokenizer_vocab_hash=expected_tokenizer_vocab_hash,
+        dataset_manifest_hash=expected_dataset_manifest_hash,
+        run_manifest_hash=expected_run_manifest_hash,
+    )
 
-    # The trainer owns optimizer/scheduler/counter state, so validate that exact
-    # decoded snapshot before load_verified_checkpoint is allowed to touch model
-    # weights. This closes the same deferred optimizer-failure class for the
-    # production Trainer adapter path used by long-running campaigns.
-    _, combined_state = _decode_verified_state(verified)
+    arrays, combined_state = _decode_verified_state(verified)
     _preflight_trainer_state(
         trainer,
         combined_state.get("trainer"),
         manifest=manifest,
     )
+    if restore_rng:
+        _preflight_rng_state(combined_state["rng"])
+    materialized = _prepare_model_weights(model, arrays, strict_model)
 
-    result = load_verified_checkpoint(
-        verified,
-        model=model,
-        strict_model=strict_model,
-        restore_rng=restore_rng,
-        expected_git_sha=expected_git_sha,
-        expected_model_spec_hash=expected_model_spec_hash,
-        expected_tokenizer_hash=expected_tokenizer_hash,
-        expected_tokenizer_vocab_hash=expected_tokenizer_vocab_hash,
-        expected_dataset_manifest_hash=expected_dataset_manifest_hash,
-        expected_run_manifest_hash=expected_run_manifest_hash,
+    # Every compatibility check above is complete before the first live target
+    # mutation. Keep the already-decoded snapshot alive through apply so the
+    # trainer resume path never decodes model/optimizer tensors twice.
+    _apply_model_weights(model, materialized, strict_model)
+    if restore_rng:
+        restore_rng_state(combined_state["rng"])
+
+    result = LoadResult(
+        manifest=copy.deepcopy(manifest),
+        trainer_state=combined_state.get("trainer", {}),
+        rng_state=combined_state["rng"],
     )
     trainer.load_state_dict(result.trainer_state)
     return result
