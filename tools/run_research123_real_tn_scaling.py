@@ -3,7 +3,10 @@
 
 from __future__ import annotations
 
+import argparse
+import json
 import sys
+from pathlib import Path
 
 import research123_data25_adapter as adapter
 
@@ -39,7 +42,7 @@ def checkpoint_identity(
         "data": {
             "corpus_identity_sha256": data["corpus_identity_sha256"],
             "evaluation_subset_identity_sha256": data["dataset_identity_sha256"],
-            "packing_version": experiment.m100.PACKING_VERSION if hasattr(experiment, "m100") else "12-6.packing.v1",
+            "packing_version": adapter.m100.PACKING_VERSION,
             "sequence_length": adapter.SEQUENCE_LENGTH,
             "cross_document": False,
             "packing_sha256": data["training_trace_sha256"],
@@ -83,5 +86,52 @@ if "--resume-child" in sys.argv:
 
     experiment.TrainerConfig = normalized_trainer_config
 
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--source-sha")
+    parser.add_argument("--output-dir", type=Path, default=Path("evidence/recover171-research123"))
+    parser.add_argument("--output", type=Path)
+    parser.add_argument("--torch-threads", type=int, default=2)
+    parser.add_argument("--resume-child", type=Path)
+    parser.add_argument("--validate", type=Path)
+    args = parser.parse_args()
+
+    if args.resume_child is not None:
+        return experiment._run_resume_child(args.resume_child)
+    if args.validate is not None:
+        report = json.loads(args.validate.read_text(encoding="utf-8"))
+        experiment.validate_report(report)
+        print(json.dumps({"status": "PASS", "report_sha256": report["report_sha256"]}, sort_keys=True))
+        return 0
+
+    experiment._require(args.source_sha is not None, "--source-sha is required")
+    experiment._require(args.torch_threads >= 1, "--torch-threads must be >=1")
+    report = experiment.run_experiment(
+        source_sha=args.source_sha,
+        output_dir=args.output_dir,
+        torch_threads=args.torch_threads,
+    )
+    experiment.validate_report(report)
+    output = args.output or (args.output_dir / "research123-data25-tn-scaling.json")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    print(
+        json.dumps(
+            {
+                "status": "PASS_DATA25_BOUNDED_ONLY",
+                "report": str(output),
+                "report_sha256": report["report_sha256"],
+                "selected": report["selected_learned_base_checkpoint"],
+                "recommendation": report["recommendation"],
+                "ten_million_status": report["ten_million_status"],
+            },
+            indent=2,
+            sort_keys=True,
+        )
+    )
+    return 0
+
+
 if __name__ == "__main__":
-    raise SystemExit(experiment.main())
+    raise SystemExit(main())
