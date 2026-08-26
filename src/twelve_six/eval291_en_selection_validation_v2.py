@@ -13,7 +13,7 @@ EXPECTED_SELECTION = (
     "requests-authentication-doc:96dc99e811e40013",
     "flask-requestchecksum-doc:25bc38b2a43b2205",
 )
-EXPECTED_FINAL = ("pytest-capture-doc:5de89bc0e3fbd1a3",)
+EXPECTED_FINAL: tuple[str, ...] = ()
 V1_ID_BY_DOCUMENT = {
     "eval291-en-httpx-timeouts-v1": EXPECTED_SELECTION[0],
     "eval291-en-requests-authentication-v1": EXPECTED_SELECTION[1],
@@ -90,8 +90,8 @@ def validate(root: Path) -> dict:
         raise AuthorityError("selection membership/order changed")
     if tuple(x["membership_id"] for x in final_members) != EXPECTED_FINAL:
         raise AuthorityError("final membership/order changed")
-    if len({x["source_family"] for x in selection_members + final_members}) != 4:
-        raise AuthorityError("independent family count changed")
+    if len({x["source_family"] for x in selection_members}) != 3:
+        raise AuthorityError("independent selection family count changed")
     rows = materialize_selection_validation(root)
     if tuple(row["membership_id"] for row in rows) != EXPECTED_SELECTION:
         raise AuthorityError("materialized selection order changed")
@@ -112,6 +112,8 @@ def validate(root: Path) -> dict:
     _no_final_plaintext(final_manifest)
     if final_manifest.get("payload_committed") or final_manifest.get("outcomes_read") or final_manifest.get("outcomes_exposed"):
         raise AuthorityError("final-test firewall violated")
+    if final_manifest.get("members"):
+        raise AuthorityError("V2 must not add final-test membership")
     evidence = _json(root / "evidence/eval291/en-selection-validation-v2-authority.json")
     if evidence.get("status") != "PASS" or evidence.get("reservation_commit_sha") != rsha:
         raise AuthorityError("exposure evidence not terminal")
@@ -124,4 +126,4 @@ def validate(root: Path) -> dict:
     for score in scan["materialized_training"]["new_object_max_jaccard"].values():
         if score >= THRESHOLD:
             raise AuthorityError("materialized training near-copy collision")
-    return {"selection_records":len(rows),"final_test_records":len(final_members),"families":4,"reservation_commit_sha":rsha}
+    return {"selection_records":len(rows),"final_test_records":0,"families":3,"reservation_commit_sha":rsha}
