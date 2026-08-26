@@ -72,8 +72,12 @@ def quality_metrics(text: str) -> dict[str, int | float]:
 
 
 def assert_rights_phrases(text: str, required_phrases: list[str]) -> None:
-    folded = text.casefold()
-    missing = [phrase for phrase in required_phrases if phrase.casefold() not in folded]
+    folded = re.sub(r"\s+", " ", unicodedata.normalize("NFKC", text).casefold()).strip()
+    missing = [
+        phrase
+        for phrase in required_phrases
+        if re.sub(r"\s+", " ", phrase.casefold()).strip() not in folded
+    ]
     if missing:
         raise ProbeError(f"document-specific public-domain phrase missing: {missing!r}")
 
