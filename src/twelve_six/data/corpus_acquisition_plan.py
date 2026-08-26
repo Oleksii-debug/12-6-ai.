@@ -16,7 +16,6 @@ from typing import Any
 SCHEMA = "12-6.research-corpus-v1-scalable-acquisition-plan.v1"
 STRATA = ("ua", "en", "code")
 BASELINE_PR = 538
-BASELINE_HEAD = "226cbc26710a75af4a864576220b270089e7c52b"
 BASELINE_REGISTRY_PATH = "configs/data/next100_063_terminal_source_registry_v4.json"
 BASELINE_REGISTRY_SCHEMA = "12-6.next100-063-terminal-source-registry.v4"
 BASELINE_REGISTRY_IDENTITY = "9fc400a3144b46c481e45d043b0a3365eb2129c83bbacde6f9e7af8a41fadc58"
@@ -68,8 +67,19 @@ def _validate_stratum_vector(
 def _validate_baseline_authority(baseline: Mapping[str, Any]) -> tuple[dict[str, int], dict[str, int]]:
     if baseline.get("source_convergence_pr") != BASELINE_PR:
         raise CorpusAcquisitionPlanError("baseline source-convergence PR must bind canonical V4")
-    if baseline.get("source_convergence_head") != BASELINE_HEAD:
-        raise CorpusAcquisitionPlanError("baseline source-convergence head drift")
+
+    # The acquisition plan binds immutable V4 content identity, not the mutable PR
+    # tip. Exact live-head freshness belongs to the terminal #632 dedup gate. This
+    # prevents doc/workflow-only commits on #538 from silently changing planning
+    # authority while still rejecting any registry-content drift.
+    observed_head = baseline.get("source_convergence_head")
+    if not isinstance(observed_head, str) or len(observed_head) != 40:
+        raise CorpusAcquisitionPlanError("baseline source-convergence head must be a 40-char SHA")
+    try:
+        int(observed_head, 16)
+    except ValueError as exc:
+        raise CorpusAcquisitionPlanError("baseline source-convergence head must be hexadecimal") from exc
+
     if baseline.get("source_registry_path") != BASELINE_REGISTRY_PATH:
         raise CorpusAcquisitionPlanError("baseline source-registry path must bind canonical V4")
     if baseline.get("source_registry_schema") != BASELINE_REGISTRY_SCHEMA:
