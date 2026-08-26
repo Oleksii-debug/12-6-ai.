@@ -1,0 +1,24 @@
+{
+  "schema": "12-6.scale190.local-artifact-manifest.v1",
+  "pre_run_git_sha": "c971b65756617f3bdac0dee7c435c62bd073d095",
+  "executed_local_harness_sha256": "b7149e5ef9230b29f9d7544147affd8fbd60646b83aff678c05b13362f6ac925",
+  "artifact_storage": "LOCAL_FREE runtime /mnt/data; binaries intentionally not committed to git",
+  "bridge_checkpoints": [
+    {"seed":1337,"optimized_tokens":16632,"filename":"seed-1337-tokens-16632.pt","sha256":"4b11ffe0416e5df9fbd3dc7fdff607e9f6a484c8d0734730aedc5f597da2a6f7","bytes":38746842},
+    {"seed":1337,"optimized_tokens":65772,"filename":"seed-1337-tokens-65772.pt","sha256":"8ff8096028c727ddf00656e4de7fe04ccd5112e7284c7ee8e8b48f6630428211","bytes":38746842},
+    {"seed":1337,"optimized_tokens":131292,"filename":"seed-1337-tokens-131292.pt","sha256":"ec0f48a5933fec6a7ec15d1bc969822c22efb08a881cf443bdb8a525dcc74ac0","bytes":38747365},
+    {"seed":1338,"optimized_tokens":16632,"filename":"seed-1338-tokens-16632.pt","sha256":"5e0c3f8a35803a434e1f9b5337670a26d7af7bd6a6abf8a21e67f85943942e5a","bytes":38746842},
+    {"seed":1338,"optimized_tokens":65772,"filename":"seed-1338-tokens-65772.pt","sha256":"60b20ff40228a08570c3bb6574f8b99d27485240d55f27902c95e3ea0a267d36","bytes":38746842},
+    {"seed":1338,"optimized_tokens":131292,"filename":"seed-1338-tokens-131292.pt","sha256":"5a88ca4edf7a94cbf759cc9a11cefbfd96735f27c050c78e4b4e8aeec33380f7","bytes":38747365}
+  ],
+  "fresh_process_resume": {
+    "seed_1337": {"from_tokens":65772,"checkpoint_sha256":"8ff8096028c727ddf00656e4de7fe04ccd5112e7284c7ee8e8b48f6630428211","heldout_bpb_bit_equal_after_load":true},
+    "seed_1338": {"from_tokens":65772,"checkpoint_sha256":"60b20ff40228a08570c3bb6574f8b99d27485240d55f27902c95e3ea0a267d36","heldout_bpb_bit_equal_after_load":true}
+  },
+  "reference_regression_checkpoints": [
+    {"optimized_tokens":16632,"sha256":"519fc9f44b439883c7a19012b25fee17126d3f1c69885edbc4348fa73e4a26b3","bytes":1195018},
+    {"optimized_tokens":65772,"sha256":"24a59efbba838baa7065fee3ef5af1414552a59de2ba3dc06222b7c2e9c3122a","bytes":1195018}
+  ],
+  "local_bundle_total_bytes": 234958269,
+  "full_local_manifest_sha256": "15feca1e4767e3fd0197e9bc29f30a90e9964b01ff883a1782bb0ef8c21ba3b4"
+}
