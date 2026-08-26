@@ -37,6 +37,8 @@ REQUIRED_PROMOTION_GATES = {
     "reserved_evaluation_decontamination",
     "quality_privacy_dedup_split",
     "unique_post_pack_loss_ledger",
+    "stage_data_budget_authority",
+    "preregistered_replay_policy",
     "trained_tokenizer_identity_or_explicit_byte_baseline_decision",
     "checkpoint_integrity_terminal_retest",
     "selection_validation_terminal",
@@ -50,6 +52,8 @@ REQUIRED_LONG_TRAINING_GATES = {
     "requires_corpus_identity",
     "requires_tokenizer_fit_identity",
     "requires_unique_post_pack_loss_ledger",
+    "requires_stage_data_budget_authority",
+    "requires_preregistered_replay_policy",
     "requires_checkpoint_integrity_terminal_retest",
     "requires_selection_validation_terminal",
     "requires_compute_authorization_if_material_cost",
@@ -68,6 +72,7 @@ REQUIRED_METRICS = {
 
 EXPECTED_SOURCE_URLS = {
     "https://arxiv.org/abs/2203.15556",
+    "https://arxiv.org/abs/2305.16264",
     "https://arxiv.org/abs/2402.14905",
     "https://arxiv.org/abs/2502.02737",
 }
@@ -150,6 +155,30 @@ def validate_campaign(data: dict[str, Any]) -> list[str]:
             _expect(errors, principles.get(key) is True, f"scientific_principles.{key} must be true")
         _expect(errors, principles.get("cross_tokenizer_primary_metric") == "bits_per_byte", "cross-tokenizer primary metric must be BPB")
 
+    data_budget = data.get("data_budget_policy")
+    _expect(errors, isinstance(data_budget, dict), "data_budget_policy must be an object")
+    if isinstance(data_budget, dict):
+        for key in (
+            "training_exposure_tokens_are_not_unique_loss_positions",
+            "unique_loss_positions_are_not_source_bytes",
+            "replay_factor_must_be_measured",
+            "long_training_requires_stage_data_budget_authority",
+            "long_training_requires_preregistered_replay_policy",
+            "beyond_replay_reference_requires_explicit_preregistered_exception",
+        ):
+            _expect(errors, data_budget.get(key) is True, f"data_budget_policy.{key} must be true")
+        _expect(
+            errors,
+            data_budget.get("data_constrained_replay_reference_epochs") == 4,
+            "data-constrained replay planning reference drift",
+        )
+        _expect(
+            errors,
+            data_budget.get("replay_reference_interpretation")
+            == "PLANNING_REFERENCE_NOT_UNIVERSAL_HARD_CAP",
+            "replay reference must remain a planning reference rather than a universal hard cap",
+        )
+
     matrix = data.get("experiment_matrix")
     _expect(errors, isinstance(matrix, list), "experiment_matrix must be an array")
     if isinstance(matrix, list):
@@ -177,6 +206,12 @@ def validate_campaign(data: dict[str, Any]) -> list[str]:
                 _expect(errors, entry.get("requires_corpus_identity") is True, "R01-E10 must remain corpus-bound")
             if entry_id in {"R01-E20", "R01-E30"}:
                 _expect(errors, entry.get("planned_tokens_per_parameter") == [10, 20, 40], f"{entry_id} token sweep drift")
+                _expect(
+                    errors,
+                    entry.get("tokens_per_parameter_semantics")
+                    == "TOTAL_TRAINING_EXPOSURE_NOT_UNIQUE_DATA_REQUIREMENT",
+                    f"{entry_id} must distinguish exposure tokens from unique-data sufficiency",
+                )
         e30 = next((entry for entry in matrix if isinstance(entry, dict) and entry.get("id") == "R01-E30"), {})
         _expect(errors, e30.get("parameter_targets") == [20000000, 50000000, 100000000], "R01-E30 target ladder drift")
         _expect(errors, e30.get("freeze_100m_modelspec_now") is False, "100M ModelSpec must not be frozen before measured evidence")
