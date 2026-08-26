@@ -18,7 +18,7 @@ EXPECTED_TOKENIZER_VERSION = "s0-byte-v1"
 EXPECTED_TOKENIZER_CONFIG_SHA256 = "b04055c1061dd641dcab7cb9d62a931f09b8d1a070140a926ceb4e91d73ca8e1"
 EXPECTED_TOKENIZER_VOCAB_SHA256 = "905ed40bb42cc4d550e228ff5f24158d504b38e8ed5974dfa3077bd5867ad571"
 EXPECTED_CORPUS_SHA256 = "422f545da93526ceba2c0ff738e0b9deac65f35bfb31d87d2aab068cda091fc8"
-EXPECTED_SOURCE_ARTIFACT_NAME = "scale141-10m-learned-fallback"
+EXPECTED_SOURCE_ARTIFACT_NAME = "learn217-terminal-10m-learned-base"
 _REQUIRED_GATES = (
     "checkpoint_integrity",
     "fresh_process_resume",
@@ -184,7 +184,7 @@ def validate_verify218_authority(
     source_sha = _sha40(source.get("source_sha"), "learned source SHA")
     source_artifact_name = source.get("artifact_name")
     if source_artifact_name != EXPECTED_SOURCE_ARTIFACT_NAME:
-        raise Verify218AuthorityError("VERIFY-218 source artifact is not the maintained SCALE-141 learned artifact")
+        raise Verify218AuthorityError("VERIFY-218 source artifact is not the terminal LEARN-217 artifact")
 
     checkpoint = _mapping(manifest.get("checkpoint"), "VERIFY-218 checkpoint")
     if checkpoint.get("role") != "best":
