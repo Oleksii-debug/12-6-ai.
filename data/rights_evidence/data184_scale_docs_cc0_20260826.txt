@@ -1,0 +1,15 @@
+DATA-184 purpose-specific rights decision
+Source: spectral-compute/scale-docs
+Exact source version: git:a448d3e2a7a6847210bd4d86f33852cbf5d692e0
+Rights object: LICENSE blob 0e259d42c996742e9e3cba14c677129b2c1b6311
+License: CC0-1.0
+Rights source: repository LICENSE at the exact source revision and GitHub repository license metadata.
+Purpose decision under policy://12-6/data/explicit-model-training-evidence-v1:
+acquisition=ALLOWED
+storage=ALLOWED
+analysis=ALLOWED
+model_training=ALLOWED
+redistribution=ALLOWED
+Decision basis: CC0 dedication/fallback permits copying, modification and reuse without copyright restriction to the extent legally possible. Only exact pinned Markdown blobs listed by DATA-184 are admitted.
+Reviewed: 2026-08-26
+Reviewer: SWARM_WORKER_ID:DATA-184-REAL-SOURCE-DIVERSITY
