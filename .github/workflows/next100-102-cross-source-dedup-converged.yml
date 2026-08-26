@@ -16,6 +16,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: next100-102-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 env:
   TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
   PYTHONPATH: src
@@ -25,23 +29,38 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          fetch-depth: 1
-      - uses: actions/setup-python@v5
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Bind exact source head
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
-          python-version: "3.11"
+          python-version: "3.11.16"
+
       - name: Bind PDF extractor
         run: |
           set -euo pipefail
           pdftotext -v 2>&1 | head -n 1
           pdftotext -v 2>&1 | head -n 1 | grep -F "24.02"
-      - name: Compile and unit-test convergence layer
+
+      - name: Compile convergence layer
         run: |
           set -euo pipefail
           python -m py_compile src/twelve_six/data/cross_source_capacity_audit_v4.py
           python -m py_compile tools/run_next100_102_cross_source_dedup_converged.py
-          python -m unittest tests.test_next100_102_cross_source_dedup_converged -v
+          python -m py_compile tests/test_next100_102_cross_source_dedup_converged.py
+
+      - name: Run focused fail-closed regressions
+        run: >-
+          python -m unittest discover -s tests
+          -p 'test_next100_102_cross_source_dedup_converged.py' -v
+
       - name: Execute exact 22-object global dedup
         run: |
           set -euo pipefail
@@ -51,6 +70,7 @@ jobs:
             --repo-root .
           python tools/run_next100_102_cross_source_dedup_converged.py verify \
             --report /tmp/next100_102_report.json
+
       - name: Emit bounded summary
         run: |
           python - <<'PY'
@@ -63,6 +83,7 @@ jobs:
           print('report_sha256=', p['report_sha256'])
           print('training_authorized=', p['claim_boundary']['training_authorized'])
           PY
+
       - uses: actions/upload-artifact@v4
         with:
           name: next100-102-cross-source-dedup-report
