@@ -44,6 +44,14 @@
     "nasa_sti_harvesting_url": "https://sti.nasa.gov/harvesting-data-from-ntrs/",
     "us_code_17_105": "https://www.law.cornell.edu/uscode/text/17/105"
   },
+  "terminal_authority": {
+    "state": "RETEST",
+    "rights_prequalification": "PASS_FOR_BOUNDED_NTRS_TITLE_ABSTRACT_METADATA_ONLY",
+    "reason": "LIVE_EXACT_NTRS_SOURCE_BYTES_HAVE_NOT_BEEN_SEALED_AND_REPRODUCED_ON_A_FRESH_EXACT_HEAD_RUN",
+    "full_document_body": "NOT_ADMITTED_BY_THIS_AUTHORITY",
+    "corpus_credit": "ZERO_UNTIL_ADMIT_VERIFY",
+    "promotion_condition": "SEAL_LIVE_PROBE_PINS_THEN_PASS_A_FRESH_EXACT_HEAD_VERIFY_WITH_PIPEFAIL"
+  },
   "pins": null,
   "local_free_only": true
 }
