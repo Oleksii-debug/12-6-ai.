@@ -3,6 +3,8 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 
+import pytest
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -16,33 +18,43 @@ def _load_tool(name: str):
     return module
 
 
-def test_execution_spine_resolves_canonical_and_tokenizer_purpose() -> None:
-    bootstrap = _load_tool("bootstrap_execution_spine.py")
+def test_cpu_execution_plan_excludes_cuda_payloads() -> None:
+    bootstrap = _load_tool("execution_bootstrap.py")
 
-    base = bootstrap._resolve(ROOT, "linux-x86_64")
-    assert base["kind"] == "canonical"
-    assert base["base_profile"]["profile_id"] == "linux-x86_64"
-    assert base["overlay_paths"] == []
+    plan = bootstrap.resolve_plan(ROOT, ["runtime", "tests", "lint"], [])
 
-    tokenizer = bootstrap._resolve(ROOT, "linux-x86_64-tokenizer-experiment")
-    assert tokenizer["kind"] == "purpose"
-    assert tokenizer["base_profile"]["profile_id"] == "linux-x86_64"
-    assert [path.name for path in tokenizer["overlay_paths"]] == ["overlay.lock.txt"]
+    assert [lock["role"] for lock in plan["locks"]] == ["toolchain", "cpu_runtime", "dev"]
+    assert plan["cuda_packages_present"] is False
+    assert plan["package_count"] > 0
 
 
-def test_execution_spine_lock_selection_includes_dev_only_when_requested() -> None:
-    bootstrap = _load_tool("bootstrap_execution_spine.py")
-    resolved = bootstrap._resolve(ROOT, "linux-x86_64")
+def test_cuda_execution_plan_is_explicit_and_separate() -> None:
+    bootstrap = _load_tool("execution_bootstrap.py")
 
-    runtime = bootstrap._lock_paths(ROOT, resolved["base_profile"], False)
-    dev = bootstrap._lock_paths(ROOT, resolved["base_profile"], True)
+    plan = bootstrap.resolve_plan(ROOT, ["runtime", "cuda"], [])
 
-    assert [path.name for path in runtime] == ["toolchain.lock.txt", "runtime.lock.txt"]
-    assert [path.name for path in dev] == [
-        "toolchain.lock.txt",
-        "runtime.lock.txt",
-        "dev.lock.txt",
+    assert [lock["role"] for lock in plan["locks"]] == ["toolchain", "cuda_runtime"]
+    assert plan["cuda_packages_present"] is True
+
+
+def test_tokenizer_purpose_plan_does_not_pull_runtime_or_cuda() -> None:
+    bootstrap = _load_tool("execution_bootstrap.py")
+
+    plan = bootstrap.resolve_plan(ROOT, ["tokenizer"], [])
+
+    assert [lock["role"] for lock in plan["locks"]] == [
+        "toolchain",
+        "tokenizer_support",
+        "tokenizer_overlay",
     ]
+    assert plan["cuda_packages_present"] is False
+
+
+def test_command_audit_rejects_undeclared_pytest_capability() -> None:
+    bootstrap = _load_tool("execution_bootstrap.py")
+
+    with pytest.raises(bootstrap.ExecutionBootstrapError, match="undeclared capability tests"):
+        bootstrap.resolve_plan(ROOT, ["runtime"], ["python -m pytest -q"])
 
 
 def test_workflow_audit_accepts_central_scientific_bootstrap(tmp_path: Path) -> None:
@@ -58,7 +70,11 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: "3.11.16"
-      - run: python tools/bootstrap_execution_spine.py --purpose linux-x86_64 --with-dev
+      - uses: ./.github/actions/execution-bootstrap
+        with:
+          capabilities: runtime,tests,lint
+          venv: .research-env
+          manifest: evidence/environment.json
       - run: .research-env/bin/python -m pytest -q tests/test_execution_spine.py
 """.lstrip(),
         encoding="utf-8",
