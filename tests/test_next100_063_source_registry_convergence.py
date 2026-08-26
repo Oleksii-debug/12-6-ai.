@@ -6,6 +6,8 @@ import json
 import unittest
 from pathlib import Path
 
+# Audit regressions intentionally target provenance fields that were previously mutable
+# without invalidating the convergence validator.
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = ROOT / "configs/data/next100_063_source_registry_convergence_v1.json"
 VALIDATOR = ROOT / "tools/validate_next100_063_source_registry_convergence.py"
