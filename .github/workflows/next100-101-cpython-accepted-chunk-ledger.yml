@@ -1,0 +1,85 @@
+name: NEXT100-101 CPython Accepted Chunk Ledger
+
+on:
+  push:
+    branches:
+      - next100-101/cpython-accepted-chunk-ledger-20260826
+    paths:
+      - configs/data/next100_101_cpython_accepted_chunk_ledger_v1.json
+      - tools/materialize_next100_101_cpython_accepted_chunk_ledger.py
+      - tests/test_next100_101_cpython_accepted_chunk_ledger.py
+      - .github/workflows/next100-101-cpython-accepted-chunk-ledger.yml
+  pull_request:
+    paths:
+      - configs/data/next100_101_cpython_accepted_chunk_ledger_v1.json
+      - tools/materialize_next100_101_cpython_accepted_chunk_ledger.py
+      - tests/test_next100_101_cpython_accepted_chunk_ledger.py
+      - .github/workflows/next100-101-cpython-accepted-chunk-ledger.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: next100-101-cpython-ledger-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  exact-ledger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Validate immutable contract without network
+        run: |
+          python tools/materialize_next100_101_cpython_accepted_chunk_ledger.py --check-contract-only
+          python -m unittest tests.test_next100_101_cpython_accepted_chunk_ledger
+
+      - name: Materialize pinned source twice
+        run: |
+          python tools/materialize_next100_101_cpython_accepted_chunk_ledger.py --output /tmp/cpython-ledger-a.json
+          python tools/materialize_next100_101_cpython_accepted_chunk_ledger.py --output /tmp/cpython-ledger-b.json
+          cmp /tmp/cpython-ledger-a.json /tmp/cpython-ledger-b.json
+
+      - name: Enforce exact accepted capacity and privacy boundary
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          ledger = json.loads(Path('/tmp/cpython-ledger-a.json').read_text(encoding='utf-8'))
+          assert ledger['eligible_record_count'] == 14
+          assert ledger['eligible_utf8_bytes'] == 15540
+          assert len(ledger['records']) == 14
+          assert len({row['normalized_sha256'] for row in ledger['records']}) == 14
+          assert sum(row['utf8_bytes'] for row in ledger['records']) == 15540
+          assert ledger['rejected_summary']['count'] == 2
+          assert ledger['rejected_summary']['reasons'] == {'pii_phone': 2}
+          assert ledger['rejected_summary']['raw_text_emitted'] is False
+          assert ledger['rejected_summary']['chunk_hashes_emitted'] is False
+          assert all(set(row) == {'record_id', 'source_chunk_index', 'normalized_sha256', 'utf8_bytes'} for row in ledger['records'])
+          assert ledger['purpose_firewall']['evaluation'] == 'NOT_SEPARATELY_ADMITTED'
+          assert ledger['claim_boundary']['canonical_registry_rewritten'] is False
+          assert ledger['claim_boundary']['research_corpus_v1_released'] is False
+          print(json.dumps({
+              'status': 'PASS',
+              'ledger_identity_sha256': ledger['ledger_identity_sha256'],
+              'eligible_record_count': ledger['eligible_record_count'],
+              'eligible_utf8_bytes': ledger['eligible_utf8_bytes'],
+          }, sort_keys=True))
+          PY
+
+      - name: Upload exact ledger evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: next100-101-cpython-accepted-chunk-ledger
+          path: /tmp/cpython-ledger-a.json
+          if-no-files-found: error
+          retention-days: 30
