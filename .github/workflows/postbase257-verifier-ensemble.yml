@@ -1,0 +1,85 @@
+name: POSTBASE-257 Verifier Ensemble V1
+
+on:
+  push:
+    branches: [postbase257/verifier-ensemble-v1-20260826]
+  workflow_dispatch:
+
+concurrency:
+  group: postbase257-verifier-ensemble-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: {contents: read}
+
+env:
+  PYTHONPATH: src
+  POSTBASE257_EXECUTION_PROFILE: LOCAL_FREE
+
+jobs:
+  local-free-contract:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: "${{ github.sha }}"
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with: {python-version: "3.11.16"}
+
+      - name: Universal bootstrap and focused verifier tests
+        uses: ./.github/actions/execution-bootstrap
+        with:
+          capabilities: runtime,tests,lint
+          venv: .postbase257
+          command: python -m pytest -q tests/test_postbase_verification.py
+          manifest: reports/postbase257/environment.json
+
+      - name: Ruff isolated post-Base surface
+        run: >-
+          .postbase257/bin/ruff check
+          src/twelve_six/postbase/__init__.py
+          src/twelve_six/postbase/verification.py
+          tests/test_postbase_verification.py
+
+      - name: Enforce outside-canonical-Base diff boundary
+        run: |
+          set -euo pipefail
+          base=6afaf5889f9898037b53e8b0bc2b731d77782111
+          changed="$(git diff --name-only "$base" "$GITHUB_SHA")"
+          printf '%s\n' "$changed"
+          invalid="$(printf '%s\n' "$changed" | grep -Ev '^$|^src/twelve_six/postbase/|^tests/test_postbase_verification\.py$|^docs/POSTBASE257_VERIFIER_ENSEMBLE_V1\.md$|^\.github/workflows/postbase257-verifier-ensemble\.yml$' || true)"
+          if [[ -n "$invalid" ]]; then
+            echo "POSTBASE-257 modified files outside its isolated surface:" >&2
+            printf '%s\n' "$invalid" >&2
+            exit 1
+          fi
+
+      - name: Prove no external model-judge dependency or call path
+        run: |
+          set -euo pipefail
+          .postbase257/bin/python - <<'PY'
+          import ast
+          from pathlib import Path
+
+          path = Path('src/twelve_six/postbase/verification.py')
+          tree = ast.parse(path.read_text(encoding='utf-8'))
+          forbidden = {'openai', 'anthropic', 'requests', 'httpx', 'aiohttp'}
+          imports = set()
+          for node in ast.walk(tree):
+              if isinstance(node, ast.Import):
+                  imports.update(alias.name.split('.')[0] for alias in node.names)
+              elif isinstance(node, ast.ImportFrom) and node.module:
+                  imports.add(node.module.split('.')[0])
+          overlap = imports & forbidden
+          assert not overlap, f'external model/network dependency present: {sorted(overlap)}'
+          print({'external_model_judge_called': False, 'forbidden_imports': sorted(overlap)})
+          PY
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: postbase257-verifier-ensemble-local-free
+          path: reports/postbase257/environment.json
+          if-no-files-found: warn
