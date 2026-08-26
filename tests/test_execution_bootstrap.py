@@ -3,7 +3,9 @@ from __future__ import annotations
 import subprocess
 import venv
 from pathlib import Path
+
 import pytest
+
 import tools.execution_bootstrap as eb
 
 ROOT = Path(__file__).resolve().parents[1]
