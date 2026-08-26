@@ -134,7 +134,6 @@ class _Candidate:
     parent: str | None
     iteration: int
     text: str
-    scratch: str
     verification: Verification
 
 
@@ -174,7 +173,9 @@ class DeliberationController:
             "comparisons": [],
         }
         candidates: list[_Candidate] = []
+        best: _Candidate | None = None
         next_id = 1
+        reason = ""
 
         def reserve() -> str:
             nonlocal next_id
@@ -193,15 +194,15 @@ class DeliberationController:
                 branch = f"branch-{n + 1}"
                 response = self._stage(task, "propose", branch, cid, 0, None, None, budget, used, trace, deadline)
                 candidates.append(self._candidate(task, response, cid, branch, None, 0, "propose", trace))
+                best = self._compare(candidates, trace)
+                if self._target(best):
+                    reason = "verifier_target"
+                    break
 
-            if not candidates:
+            if not candidates or best is None:
                 raise RuntimeError("budget exhausted before any candidate completed")
 
-            best = self._compare(candidates, trace)
-            if self._target(best):
-                reason = "verifier_target"
-            else:
-                reason = ""
+            if not reason:
                 previous = best.verification.score
                 stable = 0
                 iteration = 1
@@ -241,6 +242,8 @@ class DeliberationController:
             best = self._compare(candidates, trace)
             reason = stop.reason
 
+        if best is None:
+            raise RuntimeError("no retained candidate")
         trace["budget_consumed"] = {**used, "wall_seconds": time.monotonic() - started}
         trace["stop_reason"] = reason
         trace["selected_final_candidate"] = best.id
@@ -282,10 +285,10 @@ class DeliberationController:
                 "iteration": iteration,
                 "generated_tokens": response.generated_tokens,
                 "response_sha256": _hash(response.text),
-                "private_scratch_sha256": _hash(response.private_scratch),
                 "tool_calls_requested": len(response.tool_calls),
                 "wall_seconds": elapsed,
             })
+            self._wall_ok(deadline)
             if not response.tool_calls:
                 return response
             if self.tools is None:
@@ -314,6 +317,7 @@ class DeliberationController:
                     "error_type": error,
                     "wall_seconds": time.monotonic() - t0,
                 })
+                self._wall_ok(deadline)
                 results.append(result)
             tool_results = tuple(results)
 
@@ -322,7 +326,7 @@ class DeliberationController:
         parent: str | None, iteration: int, stage: str, trace: dict[str, Any],
     ) -> _Candidate:
         verification = self.verifier.evaluate(task, response.text, branch, iteration)
-        candidate = _Candidate(cid, branch, parent, iteration, response.text, response.private_scratch, verification)
+        candidate = _Candidate(cid, branch, parent, iteration, response.text, verification)
         trace["branches_attempted"].append({
             "candidate_id": cid,
             "branch_id": branch,

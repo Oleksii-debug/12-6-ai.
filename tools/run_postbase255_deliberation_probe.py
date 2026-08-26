@@ -48,13 +48,22 @@ def main() -> int:
     small, large = run(3, 2), run(7, 4)
     assert large["trace"]["budget_consumed"]["model_calls"] > small["trace"]["budget_consumed"]["model_calls"]
     assert large["trace"]["budget_consumed"]["candidate_branches"] > small["trace"]["budget_consumed"]["candidate_branches"]
+    assert len(large["trace"]["model_calls"]) > len(small["trace"]["model_calls"])
+    assert len(large["trace"]["branches_attempted"]) > len(small["trace"]["branches_attempted"])
     assert large["score"] == small["score"]
+    rendered = json.dumps({"small": small, "large": large}, sort_keys=True)
+    assert "private_scratch" not in rendered
+    assert "internal:" not in rendered
     report = {
         "schema": "12-6.postbase255-local-free-probe.v1",
         "worker_id": "POSTBASE-255-DELIBERATION-CONTROLLER-V1",
         "execution_profile": "LOCAL_FREE",
         "external_teacher_api": False,
+        "external_llm": False,
         "simulated_waiting": False,
+        "larger_budget_more_search_work": True,
+        "larger_budget_quality_improvement_claimed": False,
+        "private_scratch_in_public_trace": False,
         "small": small,
         "large": large,
     }
