@@ -1,0 +1,108 @@
+name: EVAL-290 UA Selection Validation V1
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/eval290-ua-selection-validation-v1.yml"
+      - "configs/evaluation/eval290_ua_selection_*.json"
+      - "data/evaluation/eval290_ua_selection_validation_v1.jsonl"
+      - "data/evaluation/recover174_real_holdout_seed.jsonl.gz"
+      - "requirements/locks/linux-x86_64/eval290-extra.lock.txt"
+      - "src/twelve_six/eval290_ua_selection.py"
+      - "tests/test_eval290_ua_selection.py"
+
+permissions:
+  contents: read
+
+env:
+  PYTHONPATH: src
+
+jobs:
+  immutable-ua-selection-validation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Bind exact source checkout
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+
+      - name: Universal exact execution bootstrap
+        uses: ./.github/actions/execution-bootstrap
+        with:
+          capabilities: runtime,tests
+          venv: .eval290
+          manifest: eval290-environment.json
+          command: python -m pytest -q tests/test_eval290_ua_selection.py
+
+      - name: Install bounded Parquet reader from hash lock
+        run: >-
+          .eval290/bin/python -m pip install
+          --disable-pip-version-check
+          --require-hashes
+          --no-deps
+          -r requirements/locks/linux-x86_64/eval290-extra.lock.txt
+
+      - name: Focused contracts
+        run: |
+          set -euo pipefail
+          .eval290/bin/python -m compileall -q src/twelve_six/eval290_ua_selection.py
+          .eval290/bin/python -m pytest -q tests/test_eval290_ua_selection.py
+
+      - name: Build twice and require byte identity
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/eval290-a /tmp/eval290-b
+          .eval290/bin/python -m twelve_six.eval290_ua_selection build --repo-root . --output-dir /tmp/eval290-a
+          .eval290/bin/python -m twelve_six.eval290_ua_selection build --repo-root . --output-dir /tmp/eval290-b
+          diff -ru /tmp/eval290-a /tmp/eval290-b
+          .eval290/bin/python -m twelve_six.eval290_ua_selection verify --repo-root . --output-dir /tmp/eval290-a
+
+      - name: Verify committed immutable bytes when present
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -f data/evaluation/eval290_ua_selection_validation_v1.jsonl && -f configs/evaluation/eval290_ua_selection_validation_manifest_v1.json ]]; then
+            .eval290/bin/python -m twelve_six.eval290_ua_selection verify --repo-root . --output-dir /tmp/eval290-a --compare-committed
+          else
+            echo "BOOTSTRAP_PHASE: generated exact set; committed immutable bytes not present yet"
+          fi
+
+      - name: Print compact authority verdict
+        run: |
+          .eval290/bin/python - <<'PY'
+          import json
+          p = json.load(open('/tmp/eval290-a/eval290_ua_selection_validation_manifest_v1.json', encoding='utf-8'))
+          print(json.dumps({
+              'status': p['status'],
+              'documents': p['documents'],
+              'set_identity_sha256': p['set_identity_sha256'],
+              'data_sha256': p['data_file']['sha256'],
+              'families': p['diversity']['records_by_family'],
+              'top_family_byte_share': p['diversity']['top_family_byte_share'],
+              'effective_family_count': p['diversity']['effective_family_count'],
+              'final_test_overlap': p['final_test_disjointness']['exact_content_hash_overlap'],
+              'future_training_prohibited': p['reservation']['future_training_prohibited'],
+          }, ensure_ascii=False, indent=2, sort_keys=True))
+          PY
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: eval290-ua-selection-validation-v1
+          path: |
+            eval290-environment.json
+            /tmp/eval290-a/eval290_ua_selection_validation_v1.jsonl
+            /tmp/eval290-a/eval290_ua_selection_validation_manifest_v1.json
+          if-no-files-found: error
+          retention-days: 30

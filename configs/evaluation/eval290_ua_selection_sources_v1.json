@@ -1,0 +1,121 @@
+{
+  "schema_version": "12-6.eval290-ua-selection-sources.v1",
+  "worker_id": "EVAL-290-UA-SELECTION-VALIDATION-V1",
+  "captured_at": "2026-08-26T15:01:00+03:00",
+  "local_free_only": true,
+  "purpose": "selection-validation",
+  "purpose_constraints": {
+    "model_selection": true,
+    "tokenizer_selection": true,
+    "tokenizer_fit": false,
+    "hyperparameter_selection": true,
+    "final_reporting": false,
+    "model_training": false
+  },
+  "final_test_authority": {
+    "branch": "eval233/real-holdout-v2-20260826",
+    "head_sha": "b5512b4648cb09dd052b08884dc53f291e1ce935",
+    "workflow_run_id": 32957254139,
+    "artifact_id": 9602456151,
+    "artifact_digest_sha256": "c4631d10bbf373878eec3b47578cb61cd89c5b006f315be4ed6750c6db5ff3c2",
+    "set_identity_sha256": "6b012efc4d627b113b8adc2166e6ab50d9001284083f7a429c665b7752ca18d7",
+    "seed_path": "data/evaluation/recover174_real_holdout_seed.jsonl.gz",
+    "seed_sha256": "7e6827d22d573dda4c9ff2b5f0ab2b8fe3fdf5aa577970ecb77e94a10cf72367",
+    "ua_source_family": "ua.rada.open-data.laws-texts",
+    "documents": 16,
+    "ua_documents": 8
+  },
+  "excluded_sources": [
+    {
+      "source_id": "ua.rada.open-data.laws-texts",
+      "reason": "EXCLUDED_PRIOR_TRAINING_EXPOSURE_AND_FINAL_TEST_SOURCE_FAMILY",
+      "evidence": [
+        "tools/materialize_milestone100_real_corpus.py materializes the full Rada normalized record into train_records",
+        "EVAL-233 reserves eight Rada records as final-test"
+      ]
+    }
+  ],
+  "sources": [
+    {
+      "source_id": "uk.kubernetes.docs.concepts-index",
+      "source_family": "kubernetes.website.docs",
+      "provider": "Kubernetes Authors / CNCF",
+      "language": "uk",
+      "modality": "natural",
+      "source_version": "git:25f3dcbed7429ebe20174ccc7000428d0f0aedda",
+      "acquisition_url": "https://raw.githubusercontent.com/kubernetes/website/25f3dcbed7429ebe20174ccc7000428d0f0aedda/content/uk/docs/concepts/_index.md",
+      "raw_sha256": "50a790e0ece091f13fe039b5e36a23431680dec0357379f29b0029502f9b3a31",
+      "raw_bytes": 12871,
+      "adapter": "markdown_visible_v1",
+      "normalized_sha256": "7fe61779cf22d317b2ff78d5c738da3e9fe10bd6f43e0aa42d660e22e2b9b202",
+      "wave1_admission": {
+        "worker": "DATA-228-REAL-UA-EN-DIVERSITY-V2",
+        "branch": "data228/real-ua-en-diversity-v2",
+        "head_sha": "46a70c990dab6ff72bb84ddb54cff1156b491b40",
+        "probe_report_git_blob_sha1": "19cb931424c81dfef49a72c6c8fcc14f5843e035",
+        "probe_report_identity_sha256": "860b5bd9aed72d9bc754a4f73445d18ff3807408a0d6f5a18a83eca14b9f1712",
+        "probe_status": "PASS",
+        "rights_decision_git_blob_sha1": "f8aa7f8fb06589d4c7c061131d4b26bc2204ccc6",
+        "rights_status": "APPROVED_FOR_TRAINING_AND_ANALYSIS"
+      },
+      "pre_reservation_training_exposure": {
+        "status": "NO_EXECUTED_TRAINING_EVIDENCE_OBSERVED_AT_CUTOFF",
+        "cutoff": "2026-08-26T15:01:00+03:00",
+        "basis": [
+          "DATA-228 is source probing/rights evidence, not a training run",
+          "DATA-229 terminal registry cutoff excluded nonterminal DATA-228",
+          "MILESTONE-100 source pins contain Rada and Standard Ebooks only"
+        ]
+      }
+    },
+    {
+      "source_id": "hf:lang-uk/perestoroha-ocr",
+      "source_family": "lang-uk.perestoroha-ocr",
+      "provider": "Lang-UK",
+      "language": "uk",
+      "modality": "natural",
+      "source_version": "git:c7af19760e731a130e963eae29f3290c21296f3f",
+      "acquisition_url": "https://huggingface.co/datasets/lang-uk/perestoroha-ocr/resolve/c7af19760e731a130e963eae29f3290c21296f3f/data/train-00000-of-00001.parquet",
+      "raw_sha256": "e44c27b6151a1fea68eeef1e73e4460391f82e0501571d8aa4d5a792fc448b12",
+      "adapter": "parquet_transcription",
+      "field": "transcription",
+      "wave1_admission": {
+        "worker": "DATA-184-REAL-SOURCE-DIVERSITY",
+        "branch": "data184/real-source-diversity-20260826",
+        "head_sha": "04b99bae89fcdc0f6c4e8e938e3ffd3808974aa9",
+        "source_config_git_blob_sha1": "01642564ae30aa821b8e99a0b2f0251cf888bbd1",
+        "rights_evidence_git_blob_sha1": "79185af1cddd45705a280b26cad4652982865f24",
+        "rights_status": "APPROVED_FOR_TRAINING_AND_ANALYSIS"
+      },
+      "pre_reservation_training_exposure": {
+        "status": "NO_EXECUTED_TRAINING_EVIDENCE_OBSERVED_AT_CUTOFF",
+        "cutoff": "2026-08-26T15:01:00+03:00",
+        "basis": [
+          "DATA-184 branch had zero GitHub Actions runs at audit cutoff",
+          "Perestoroha is absent from MILESTONE-100 source pins",
+          "DATA-229 terminal registry cutoff did not include this source"
+        ]
+      }
+    }
+  ],
+  "selector": {
+    "algorithm": "eval290-fixed-ua-v1",
+    "seed": "12-6-eval290-ua-selection-v1",
+    "records_per_family": 4,
+    "target_chars": 900,
+    "min_chars": 400,
+    "max_chars": 1200,
+    "min_alpha_ratio": 0.45,
+    "min_cyrillic_alpha_ratio": 0.70,
+    "normalization": "NFKC+LF+per-line-whitespace-collapse+drop-empty-lines+strip",
+    "ranking": "sha256(seed\\0source_id\\0candidate_locator\\0content_sha256)",
+    "final_test_exact_hash_exclusion": true,
+    "final_test_source_family_exclusion": true
+  },
+  "diversity_gate": {
+    "minimum_independent_source_families": 2,
+    "minimum_records_per_family": 3,
+    "maximum_family_byte_share": 0.70,
+    "minimum_effective_family_count": 1.80
+  }
+}

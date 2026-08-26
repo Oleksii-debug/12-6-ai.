@@ -1,0 +1,48 @@
+{
+  "schema_version": "12-6.eval290-ua-selection-rights.v1",
+  "worker_id": "EVAL-290-UA-SELECTION-VALIDATION-V1",
+  "decision_scope": "SELECTION_VALIDATION_ONLY_FOR_EXACT_PINNED_SOURCE_OBJECTS",
+  "reviewed_at": "2026-08-26",
+  "training_permission_is_not_evaluation_reservation": true,
+  "sources": {
+    "uk.kubernetes.docs.concepts-index": {
+      "source_version": "git:25f3dcbed7429ebe20174ccc7000428d0f0aedda",
+      "raw_sha256": "50a790e0ece091f13fe039b5e36a23431680dec0357379f29b0029502f9b3a31",
+      "license_id": "CC-BY-4.0",
+      "upstream_rights_evidence_sha256": "9ba9550ad48438d0836ddab3da480b3b69ffa0aac7b7878b5a0039e7ab429411",
+      "upstream_rights_evidence_ref": "data228/real-ua-en-diversity-v2:data/external/rights-evidence/data228/kubernetes-website-cc-by-4.0-25f3dcb.txt",
+      "evaluation_status": "APPROVED_FOR_SELECTION_VALIDATION",
+      "decision_basis": "CC BY 4.0 permits reproduction, analysis and adaptation for any purpose subject to attribution; this decision separately admits the exact pinned object for selection-validation and does not derive evaluation authority from training permission.",
+      "uses": {
+        "acquisition": "ALLOWED",
+        "storage": "ALLOWED",
+        "analysis": "ALLOWED",
+        "selection_validation": "ALLOWED",
+        "final_test": "PROHIBITED_BY_PROJECT_ROLE",
+        "redistribution": "ALLOWED_WITH_ATTRIBUTION"
+      }
+    },
+    "hf:lang-uk/perestoroha-ocr": {
+      "source_version": "git:c7af19760e731a130e963eae29f3290c21296f3f",
+      "raw_sha256": "e44c27b6151a1fea68eeef1e73e4460391f82e0501571d8aa4d5a792fc448b12",
+      "license_id": "CC-BY-4.0",
+      "upstream_rights_evidence_sha256": "3b4b59d1912cde57d15e3df40cf31b3fdb0f32c49b915c33e26c5877c59ae0fc",
+      "upstream_rights_evidence_ref": "data184/real-source-diversity-20260826:data/rights_evidence/data184_perestoroha_ccby4_20260826.txt",
+      "evaluation_status": "APPROVED_FOR_SELECTION_VALIDATION",
+      "decision_basis": "The exact DATA-184 rights decision records CC BY 4.0 for the pinned dataset object and public-domain underlying text. Selection-validation is separately approved as analysis/reuse under that license, subject to attribution.",
+      "uses": {
+        "acquisition": "ALLOWED",
+        "storage": "ALLOWED",
+        "analysis": "ALLOWED",
+        "selection_validation": "ALLOWED",
+        "final_test": "PROHIBITED_BY_PROJECT_ROLE",
+        "redistribution": "ALLOWED_WITH_ATTRIBUTION"
+      }
+    }
+  },
+  "project_reservation": {
+    "legal_training_rights_may_exist": true,
+    "selected_record_training_use": "PROHIBITED_BY_PROJECT_RESERVATION",
+    "reason": "Selection-validation records must remain outside every future training corpus regardless of underlying license permissions."
+  }
+}

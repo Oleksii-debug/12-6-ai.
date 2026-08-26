@@ -1,0 +1,2 @@
+# EVAL-290 bounded Parquet reader only. CPython 3.11 / manylinux_2_28_x86_64.
+pyarrow==25.0.1 --hash=sha256:25f8720bf6387d5dc2ebd2622112de630760419e4b66134405dd24110d15f37e
