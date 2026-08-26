@@ -8,7 +8,7 @@ on:
       - "configs/data/multilingual_uk_en_code_v1.experimental.json"
       - "src/twelve_six/tokenization/**"
       - "src/twelve_six/data/**"
-      - "src/twelve_six/model/**"
+      - "src/twelve_six/model.py"
       - "src/twelve_six/training/**"
       - "data/s0/packaged/**"
       - "requirements/experiments/tokenizers-linux-x86_64.lock.txt"
