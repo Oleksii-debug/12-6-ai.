@@ -1,0 +1,354 @@
+{
+  "build_contract": {
+    "artificial_repetition": {
+      "document_replication": false,
+      "padding_counts_as_data": false,
+      "recycle_to_hit_budget": false,
+      "repeat_source_loss_positions": false,
+      "sampling_with_replacement": false
+    },
+    "byte_identical_complete_tree_required": true,
+    "canonical_json": {
+      "separators": [
+        ",",
+        ":"
+      ],
+      "sort_keys": true,
+      "trailing_newline": true,
+      "utf8": true
+    },
+    "clean_build_count": 2,
+    "clean_builds_share_mutable_cache": false,
+    "forbidden_identity_inputs": [
+      "wall_clock_time",
+      "host_name",
+      "absolute_workspace_path",
+      "random_uuid",
+      "filesystem_iteration_order",
+      "network_response_order"
+    ]
+  },
+  "component_lock": {
+    "balance_and_diversity": {
+      "dedicated_workflow_conclusion": "success",
+      "dedicated_workflow_run": 32955916650,
+      "failed_data105_policy_not_promoted": true,
+      "head_sha": "af1075168009dcf4ed53cff20d7e08538c1968c3",
+      "minimum_independent_families_per_language_for_at_least_two_languages": 2,
+      "minimum_independent_meaningful_holdout_families": 4,
+      "minimum_meaningful_holdout_records_per_family": 5,
+      "minimum_scoreable_holdout_loss_tokens_per_family": 4096,
+      "minimum_unique_train_loss_tokens_per_arm": 64512,
+      "release_use": "EVIDENCE_BOUNDARY_ONLY_DO_NOT_PROMOTE_FULL_GENERALIZATION_IDENTIFIABILITY_THRESHOLDS_AS_CORPUS_POLICY",
+      "rule": "AUDIT_DIVERSITY_WITHOUT_PADDING_OR_REPETITION",
+      "worker": "EVAL-237"
+    },
+    "dedup_and_reserved_decontamination": {
+      "benchmark_registry_identity_sha256": "10f7454f77eb2dc3871eeafa5055b1969eab42954eb8e19e61565f217c67df31",
+      "dedicated_workflow_conclusion": "success",
+      "dedicated_workflow_run": 32893344618,
+      "head_sha": "6b1c7f3418357e0ea1cfc6ab5ceda6a740dc5921",
+      "reference_bundle_identity_sha256": "1ea12613c4bd2528d30bd9c9139a77bd972f72e9ea72829e66e2a617bfeda0d9",
+      "report_identity_sha256": "1ababadb8c652ca50a88cf41635fe03928730e083b5c7e669cd52a6250259373",
+      "universal_semantic_cleanliness_claimed": false,
+      "wave3_rule": "RERUN_EXACT_AND_NEAR_DEDUP_AND_RESERVED_SCAN_ON_EXACT_WAVE3_TRAINING_INVENTORY",
+      "worker": "DATA-31"
+    },
+    "privacy": {
+      "binding_commit": "6d994e2aece6c44e28c1a2c344ac98b5a8fd5e08",
+      "producer": "DATA-33",
+      "producer_commit": "290b82fd0f7d1cc3a1840deae4378b9c500f1c15",
+      "retained_report_git_blob_sha1": "d670568437c555dc6e8f1228a6205007dbc1ffb8",
+      "scope": "POLICY_AND_RETAINED_EVIDENCE_ONLY_REAPPLY_TO_WAVE3"
+    },
+    "quality": {
+      "binding_commit": "6d994e2aece6c44e28c1a2c344ac98b5a8fd5e08",
+      "producer": "DATA-32",
+      "producer_commit": "b1c9449ca839ed10c872f444010f74fd225acae1",
+      "retained_report_git_blob_sha1": "ed11a4d605d57fbb7102ab58da7614a4c476cf85",
+      "scope": "POLICY_AND_RETAINED_EVIDENCE_ONLY_REAPPLY_TO_WAVE3"
+    },
+    "reservation": {
+      "authority_git_blob_sha1": "2008570890819f32c356677e1e250707d339b53a",
+      "authority_identity_sha256": "37473834df31c69faf39f5c1152e9fe1f7d4aeb1487fcf7489059e8ec444d4a7",
+      "dedicated_workflow_conclusion": "success",
+      "dedicated_workflow_run": 32957254139,
+      "final_test": {
+        "documents": 16,
+        "hyperparameter_selection_eligible": false,
+        "recover174_authority_identity_sha256": "c7211b3e1e6a4f22463d0e6174f0d6162c2452585704efad5564a35de8de609f",
+        "recover174_seed_git_blob_sha1": "4bfbfbf29fa9538cabda6068efd3a1fd036a9479",
+        "selection_eligible": false,
+        "tokenizer_fit_eligible": false
+      },
+      "head_sha": "b5512b4648cb09dd052b08884dc53f291e1ce935",
+      "selection_validation": {
+        "documents": 0,
+        "status": "BLOCKED_NO_IMMUTABLE_SELECTION_VALIDATION_AUTHORITY"
+      },
+      "wave3_release_blocker": "SELECTION_VALIDATION_MUST_BECOME_NONEMPTY_WITH_A_NEW_PREBOUND_IMMUTABLE_AUTHORITY",
+      "worker": "EVAL-233"
+    },
+    "rights": {
+      "canonical_data24_registry_identity_sha256": "82abd7dca04947d72a6d07d8228025c58373d17018fa8dc3a7bca30f7a2714c2",
+      "code_head_sha": "8ebdb2e132ed7bae5245e9d4c140752640ab9885",
+      "code_rights_policy_git_blob_sha1": "0ce5223a1cade10031899bf27348a1a65121d4c6",
+      "code_worker": "DATA-227",
+      "dedicated_workflow_conclusion": "success",
+      "dedicated_workflow_run": 32956209865,
+      "rule": "PUBLIC_ACCESS_OR_LICENSE_LABEL_ALONE_NEVER_AUTHORIZES_TRAINING",
+      "text_registry_identity_sha256": "1357a343eb4ea973950d8991913109cbea53fe4fa891f0be9745ab497eb59486"
+    },
+    "source_registry": {
+      "data213_artifact_id": 9600107886,
+      "data213_head_sha": "5ae74eb162641712ff97a326572bec5bfe2b0607",
+      "data213_workflow_run": 32950910634,
+      "dedicated_workflow_conclusion": "success",
+      "dedicated_workflow_run": 32957147036,
+      "head_sha": "90bc0b7f8b696ec35202532b13edf6ab29a662fe",
+      "registry_identity_sha256": "1357a343eb4ea973950d8991913109cbea53fe4fa891f0be9745ab497eb59486",
+      "worker": "DATA-229"
+    },
+    "unique_loss": {
+      "data25_ceiling_is_not_relabelled_as_unique_loss_count": true,
+      "data25_source_token_ceiling": 20000775,
+      "dedicated_workflow_conclusion": "success",
+      "dedicated_workflow_run": 32952787070,
+      "execution_authority": "LEARN-217",
+      "head_sha": "c02c8aa38e691521ae2ab6a4ff3ea1d643efd6ef",
+      "strongest_observed_no_replay_optimized_targets": 2000060,
+      "wave3_rule": "PUBLISH_COMPLETE_SOURCE_POSITION_UNIQUE_LOSS_LEDGER_BEFORE_ANY_REPLAY"
+    }
+  },
+  "contract_identity_sha256": "2a7348a2f6e737dde2b8471bf0ce680d7f803033043981bfce233166e18b87e5",
+  "contract_state": "FROZEN_EXECUTABLE_CONTRACT",
+  "corpus_state": "NOT_BUILT_NOT_FROZEN_NOT_TERMINAL",
+  "cutoff": {
+    "basis": "terminal repository evidence observable by DATA-300 at contract construction",
+    "utc": "2026-08-26T11:53:00Z"
+  },
+  "local_free_only": true,
+  "release_gates": [
+    {
+      "id": "G01_CONTRACT_IDENTITY",
+      "requirement": "exact DATA-300 contract identity and component lock match",
+      "severity": "HARD"
+    },
+    {
+      "id": "G02_SOURCE_INVENTORY",
+      "requirement": "exact five-source inventory, no unbound source, no DATA-228 candidate",
+      "severity": "HARD"
+    },
+    {
+      "id": "G03_RIGHTS",
+      "requirement": "purpose-specific training rights PASS for every training object; public access is insufficient",
+      "severity": "HARD"
+    },
+    {
+      "id": "G04_QUALITY",
+      "requirement": "retained DATA-32 policy is rerun on every Wave-3 candidate record and passes",
+      "severity": "HARD"
+    },
+    {
+      "id": "G05_PRIVACY",
+      "requirement": "retained DATA-33 privacy/secret policy is rerun on every Wave-3 candidate record and passes",
+      "severity": "HARD"
+    },
+    {
+      "id": "G06_DEDUP",
+      "requirement": "exact+near dedup and cluster-safe split pass with deterministic evidence",
+      "severity": "HARD"
+    },
+    {
+      "id": "G07_RESERVED_DECONTAM",
+      "requirement": "exact training inventory scanned against all reserved authorities; evaluation-connected training components excluded",
+      "severity": "HARD"
+    },
+    {
+      "id": "G08_BALANCE_DIVERSITY",
+      "requirement": "publish deterministic source/family/language/modality mass audit; preserve exact intake families unless excluded by an earlier hard gate; no duplicate documents, with-replacement sampling, or repeated loss positions",
+      "severity": "HARD"
+    },
+    {
+      "id": "G09_SELECTION_VALIDATION",
+      "requirement": "non-empty immutable selection-validation authority bound before any fit/selection",
+      "severity": "HARD"
+    },
+    {
+      "id": "G10_FINAL_TEST_ISOLATION",
+      "requirement": "final-test remains immutable, reserved, and unread until selection lock",
+      "severity": "HARD"
+    },
+    {
+      "id": "G11_UNIQUE_LOSS",
+      "requirement": "complete source-position ledger proves every optimized training loss position is used at most once",
+      "severity": "HARD"
+    },
+    {
+      "id": "G12_TWO_CLEAN_BUILDS",
+      "requirement": "two independent clean build trees are byte-identical for every file",
+      "severity": "HARD"
+    },
+    {
+      "id": "G13_RELEASE_TRUTH",
+      "requirement": "contract PASS alone never emits FROZEN or TERMINAL corpus state",
+      "severity": "HARD"
+    }
+  ],
+  "repository": "Oleksii-debug/12-6-ai.",
+  "schema_version": "12-6.data300-corpus-v03-frozen-build-contract.v1",
+  "split_contract": {
+    "content_hash_overlap_allowed_between_splits": false,
+    "dedup_cluster_straddling_allowed": false,
+    "final_test": {
+      "initial_authority_documents": 16,
+      "may_be_read_before_selection_is_locked": false,
+      "may_fit_tokenizer": false,
+      "may_select_checkpoint": false,
+      "may_select_hyperparameters": false,
+      "may_update_model": false,
+      "must_be_immutable_and_prebound": true
+    },
+    "selection_validation": {
+      "may_fit_tokenizer": false,
+      "may_report_final_test": false,
+      "may_select_checkpoint": true,
+      "may_select_hyperparameters": true,
+      "may_update_model": false,
+      "must_be_nonempty_before_tokenizer_or_model_selection": true
+    },
+    "train": {
+      "may_fit_tokenizer": true,
+      "may_report_final_test": false,
+      "may_select_checkpoint": false,
+      "may_select_hyperparameters": false,
+      "may_update_model": true
+    }
+  },
+  "terminal_source_inventory": {
+    "excluded_nonterminal_candidates": [
+      {
+        "dedicated_workflow_conclusion": "failure",
+        "dedicated_workflow_run": 32957120454,
+        "head_sha": "46a70c990dab6ff72bb84ddb54cff1156b491b40",
+        "rule": "NO_ADMISSION",
+        "worker_id": "DATA-228-REAL-UA-EN-DIVERSITY-V2"
+      }
+    ],
+    "family_count": 4,
+    "inventory_mode": "EXACT_NO_SILENT_ADDITIONS_OR_REMOVALS",
+    "source_count": 5,
+    "sources": [
+      {
+        "evaluation_rights_in_data229": "NOT_SEPARATELY_ADMITTED",
+        "language": "en",
+        "modality": "text",
+        "normalized_sha256": "154fb4034929714087e75150d678bf65049ddac32e79dcdf97162c8972c2be83",
+        "origin_class": "EXTERNAL_REAL",
+        "raw_sha256": "21582c7f0e4ad39f2b0ed97bbc2c082d275e898b7a63c28e6d9badb8ee0f7860",
+        "raw_size_bytes": 68812,
+        "registry_source_id": "external-real:en.standardebooks.manual.8-typography",
+        "source_authority": "DATA-229/DATA-213",
+        "source_family": "en.standardebooks.manual",
+        "training_rights": "ALLOWED",
+        "upstream_version": "git:d1143a9b459b5e6f9cdda93a7c1e04676bff4f6b"
+      },
+      {
+        "evaluation_rights_in_data229": "NOT_SEPARATELY_ADMITTED",
+        "language": "en",
+        "modality": "text",
+        "normalized_sha256": "94eb2f529922d125b3bd40691778886f4d5d80b128b925d0274fb3d94646ec5a",
+        "origin_class": "EXTERNAL_REAL",
+        "raw_sha256": "7ac53dfb4bf6f73f178560e09f33160d0250c69fb679802f3254dc0eb4c9f509",
+        "raw_size_bytes": 37299,
+        "registry_source_id": "external-real:en.standardebooks.manual.9-metadata",
+        "source_authority": "DATA-229/DATA-213",
+        "source_family": "en.standardebooks.manual",
+        "training_rights": "ALLOWED",
+        "upstream_version": "git:d1143a9b459b5e6f9cdda93a7c1e04676bff4f6b"
+      },
+      {
+        "evaluation_rights_in_data229": "NOT_SEPARATELY_ADMITTED",
+        "language": "uk",
+        "modality": "text",
+        "normalized_sha256": "72c301db0b2539f3f7a73c9c15e2e425700a6b758a1114f1a861e2d60c704c50",
+        "origin_class": "EXTERNAL_REAL",
+        "raw_sha256": "36eae31c3b0676ea7c02236fa05bd695c240c9a8eade5febc00457b8103ee1a4",
+        "raw_size_bytes": 332400,
+        "registry_source_id": "external-real:ua.rada.open-data.laws-texts.d23314",
+        "source_authority": "DATA-229/DATA-213",
+        "source_family": "ua.rada.open-data.laws-texts",
+        "training_rights": "ALLOWED"
+      },
+      {
+        "evaluation_rights": "NOT_SEPARATELY_AUTHORIZED",
+        "git_blob_sha1": "6f479a0885f723b7395843d41164a87041820776",
+        "language": "python",
+        "license_git_blob_sha1": "ab79d16a3f4c6c894c028d1f7431811e8711b42b",
+        "license_id": "BSD-3-Clause",
+        "modality": "code",
+        "origin_class": "EXTERNAL_REAL",
+        "raw_size_bytes": 8161,
+        "registry_source_id": "external-real:code.encode.httpx._content",
+        "source_authority": "DATA-227",
+        "source_family": "github:encode/httpx",
+        "training_rights": "ALLOWED",
+        "upstream_commit": "b5addb64f0161ff6bfe94c124ef76f6a1fba5254",
+        "upstream_path": "httpx/_content.py",
+        "upstream_repository": "https://github.com/encode/httpx"
+      },
+      {
+        "evaluation_rights": "NOT_SEPARATELY_AUTHORIZED",
+        "git_blob_sha1": "0466a7d347db4ed34a37db51b75fc8e80bc06055",
+        "language": "python",
+        "license_git_blob_sha1": "67db8588217f266eb561f75fae738656325deac9",
+        "license_id": "Apache-2.0",
+        "modality": "code",
+        "origin_class": "EXTERNAL_REAL",
+        "raw_size_bytes": 1542,
+        "registry_source_id": "external-real:code.psf.requests._internal_utils",
+        "source_authority": "DATA-227",
+        "source_family": "github:psf/requests",
+        "training_rights": "ALLOWED",
+        "upstream_commit": "5460f467b02e49471c0fd6cfc9ca0adab6351f98",
+        "upstream_path": "src/requests/_internal_utils.py",
+        "upstream_repository": "https://github.com/psf/requests"
+      }
+    ]
+  },
+  "truth_boundary": {
+    "contract_existence_does_not_freeze_corpus": true,
+    "failed_or_nonterminal_evidence_is_not_promoted": true,
+    "terminal_claim_requires_wave3_artifacts_and_separate_final_gate": true
+  },
+  "wave3_release_state": {
+    "forbidden_from_this_contract_alone": [
+      "CORPUS_FROZEN",
+      "TERMINAL_CORPUS",
+      "PRODUCTION_READY"
+    ],
+    "on_contract_validation": "CONTRACT_VALID_CORPUS_NOT_BUILT_NOT_FROZEN",
+    "on_single_build_pass": "CANDIDATE_ONLY_SECOND_BUILD_REQUIRED",
+    "on_two_builds_and_all_gates_pass": "CANDIDATE_READY_FOR_SEPARATE_FREEZE_REVIEW"
+  },
+  "wave3_required_artifacts": [
+    "authority/contract-lock.json",
+    "source/source-inventory.json",
+    "source/rights-evidence.json",
+    "quality/quality-report.json",
+    "privacy/privacy-report.json",
+    "dedup/exact-dedup.json",
+    "dedup/near-dedup-clusters.jsonl",
+    "decontamination/reserved-scan.json",
+    "balance/balance-report.json",
+    "splits/train/manifest.json",
+    "splits/selection-validation/manifest.json",
+    "splits/final-test/manifest.json",
+    "unique-loss/train-ledger.jsonl",
+    "unique-loss/summary.json",
+    "shards/train/manifest.json",
+    "release/gate-report.json",
+    "release/release-manifest.json"
+  ],
+  "worker_id": "DATA-300-CORPUS-V03-FROZEN-BUILD-CONTRACT"
+}
