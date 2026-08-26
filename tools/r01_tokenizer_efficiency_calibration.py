@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import math
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -20,9 +19,12 @@ SCHEMA = "12-6.r01-tokenizer-efficiency-calibration.v1"
 
 
 def _canonical_bytes(value: Any) -> bytes:
-    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode(
-        "utf-8"
-    )
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
 
 
 def _sha256(value: Any) -> str:
@@ -42,7 +44,9 @@ def calibrate(payload: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("records must be a non-empty list")
 
     seen: set[str] = set()
-    totals: dict[str, dict[str, int]] = defaultdict(lambda: {"utf8_bytes": 0, "content_tokens": 0})
+    totals: dict[str, dict[str, int]] = defaultdict(
+        lambda: {"utf8_bytes": 0, "content_tokens": 0}
+    )
 
     for index, record in enumerate(records):
         if not isinstance(record, dict):
@@ -59,7 +63,11 @@ def calibrate(payload: dict[str, Any]) -> dict[str, Any]:
         seen.add(record_id)
         if stratum not in STRATA:
             raise ValueError(f"records[{index}].stratum must be one of {STRATA}")
-        if isinstance(utf8_bytes, bool) or not isinstance(utf8_bytes, int) or utf8_bytes <= 0:
+        if (
+            isinstance(utf8_bytes, bool)
+            or not isinstance(utf8_bytes, int)
+            or utf8_bytes <= 0
+        ):
             raise ValueError(f"records[{index}].utf8_bytes must be a positive integer")
         if (
             isinstance(content_tokens, bool)
