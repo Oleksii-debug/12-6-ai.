@@ -406,19 +406,30 @@ def _prepare_model_weights(
 
 
 def _preflight_optimizer_state(optimizer: Any, state: Any) -> None:
-    """Validate dense optimizer state geometry before any live target mutation.
+    """Validate optimizer state before any live model or optimizer mutation.
 
-    PyTorch optimizers intentionally perform only limited validation inside
-    ``load_state_dict``. In particular, malformed per-parameter buffers can be
-    accepted and fail only on the next optimizer step. This preflight binds the
-    serialized parameter IDs to the live optimizer parameter geometry and
-    rejects incompatible tensor states before model weights are touched.
+    First-party PyTorch optimizers receive a structural geometry preflight because
+    ``Optimizer.load_state_dict`` maps serialized parameter IDs to live parameters
+    by group order without checking per-parameter tensor shapes. Other optimizer
+    implementations retain the checkpoint-v1 generic contract and are validated
+    by loading an isolated deep copy rather than assuming PyTorch's state schema.
     """
 
     if not isinstance(state, Mapping):
         raise CheckpointCompatibilityError("checkpoint optimizer state must be a mapping")
     if not hasattr(optimizer, "load_state_dict") or not hasattr(optimizer, "state_dict"):
         raise CheckpointCompatibilityError("optimizer must provide state_dict/load_state_dict")
+
+    optimizer_module = optimizer.__class__.__module__
+    if not optimizer_module.startswith("torch.optim"):
+        try:
+            probe = copy.deepcopy(optimizer)
+            probe.load_state_dict(copy.deepcopy(state))
+        except Exception as exc:
+            raise CheckpointCompatibilityError(
+                "checkpoint optimizer state failed isolated compatibility preflight"
+            ) from exc
+        return
 
     source_groups = state.get("param_groups")
     source_state = state.get("state")
@@ -472,6 +483,19 @@ def _preflight_optimizer_state(optimizer: Any, state: Any) -> None:
             f"optimizer state contains unknown parameter IDs: {sorted(map(str, unknown_ids))}"
         )
 
+    parameter_shaped_state_names = frozenset(
+        {
+            "momentum_buffer",
+            "exp_avg",
+            "exp_avg_sq",
+            "max_exp_avg_sq",
+            "sum",
+            "square_avg",
+            "grad_avg",
+            "acc_delta",
+            "ax",
+        }
+    )
     live_state = getattr(optimizer, "state", {})
     for source_id, parameter_state in source_state.items():
         if not isinstance(parameter_state, Mapping):
@@ -490,29 +514,39 @@ def _preflight_optimizer_state(optimizer: Any, state: Any) -> None:
             }
             if not is_torch_tensor:
                 continue
+
+            existing_value = existing_state.get(state_name) if isinstance(existing_state, Mapping) else None
+            existing_cls = existing_value.__class__ if existing_value is not None else None
+            existing_is_tensor = bool(
+                existing_cls is not None
+                and existing_cls.__module__.startswith("torch")
+                and existing_cls.__name__ in {"Tensor", "Parameter"}
+            )
             value_shape = tuple(value.shape)
-            if value.ndim != 0 and value_shape != target_shape:
-                raise CheckpointCompatibilityError(
-                    "optimizer state tensor shape mismatch for "
-                    f"{state_name!r}: checkpoint {value_shape} vs parameter {target_shape}"
-                )
-            if state_name == "momentum_buffer" and value.ndim != 0 and value.dtype != target_dtype:
-                raise CheckpointCompatibilityError(
-                    "optimizer momentum_buffer dtype mismatch: "
-                    f"checkpoint {value.dtype} vs parameter {target_dtype}"
-                )
-            if isinstance(existing_state, Mapping):
-                existing_value = existing_state.get(state_name)
-                if existing_value is not None:
-                    existing_cls = existing_value.__class__
-                    existing_is_tensor = existing_cls.__module__.startswith("torch") and (
-                        existing_cls.__name__ in {"Tensor", "Parameter"}
+            if existing_is_tensor:
+                if value_shape != tuple(existing_value.shape):
+                    raise CheckpointCompatibilityError(
+                        "optimizer state tensor shape mismatch for "
+                        f"{state_name!r}: checkpoint {value_shape} vs live {tuple(existing_value.shape)}"
                     )
-                    if existing_is_tensor and value.dtype != existing_value.dtype:
-                        raise CheckpointCompatibilityError(
-                            "optimizer state tensor dtype mismatch for "
-                            f"{state_name!r}: checkpoint {value.dtype} vs live {existing_value.dtype}"
-                        )
+                if value.dtype != existing_value.dtype:
+                    raise CheckpointCompatibilityError(
+                        "optimizer state tensor dtype mismatch for "
+                        f"{state_name!r}: checkpoint {value.dtype} vs live {existing_value.dtype}"
+                    )
+                continue
+
+            if state_name in parameter_shaped_state_names and value.ndim != 0:
+                if value_shape != target_shape:
+                    raise CheckpointCompatibilityError(
+                        "optimizer state tensor shape mismatch for "
+                        f"{state_name!r}: checkpoint {value_shape} vs parameter {target_shape}"
+                    )
+                if state_name == "momentum_buffer" and value.dtype != target_dtype:
+                    raise CheckpointCompatibilityError(
+                        "optimizer momentum_buffer dtype mismatch: "
+                        f"checkpoint {value.dtype} vs parameter {target_dtype}"
+                    )
 
 
 def _apply_model_weights(model: Any, materialized: Mapping[str, Any], strict: bool) -> None:
