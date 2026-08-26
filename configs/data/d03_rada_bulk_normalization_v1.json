@@ -4,8 +4,10 @@
   "local_free_only": true,
   "parent_probe": {
     "pr": 618,
-    "head_sha": "77f07aec1e9d3a14cae7e417ba2a5f2690a82ec7",
+    "head_sha": "bed8c3237379194b90e54d558697a0ddc7ea4f95",
     "probe_report_schema": "12-6.d03-rada-bulk-source-probe-report.v1",
+    "probe_worker_id": "D03-RADA-BULK-SOURCE-PROBE-20260826",
+    "probe_config_identity_sha256": "c2f198120cae00ba247c4eaad36d2a357770a47c7fa9a7608cc5ec182971b82b",
     "source_family": "ua.rada.open-data.laws-texts",
     "source_family_identity_sha256": "b8f1d2f99a3db71d894a3233e9417d6283d11768c41b1634bc8b096ab77aba4e"
   },
