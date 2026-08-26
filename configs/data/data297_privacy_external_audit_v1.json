@@ -70,7 +70,7 @@
       "authority": "DATA-227",
       "source_version": "git:b5addb64f0161ff6bfe94c124ef76f6a1fba5254",
       "expected_input_utf8_bytes": 8161,
-      "expected_input_sha256": "RUNTIME_BOUND_FROM_DATA227_TERMINAL_ARTIFACT"
+      "expected_input_sha256": "2c61b3ac94d1dcebcde0c6f519554d2d7917247fbaa0a97002db4ef69e70ff28"
     },
     {
       "source_id": "code.psf.requests._internal_utils",
@@ -80,7 +80,7 @@
       "authority": "DATA-227",
       "source_version": "git:5460f467b02e49471c0fd6cfc9ca0adab6351f98",
       "expected_input_utf8_bytes": 1542,
-      "expected_input_sha256": "RUNTIME_BOUND_FROM_DATA227_TERMINAL_ARTIFACT"
+      "expected_input_sha256": "4c7d8d132c9898fc7d715e473f3ac74785ddc4ab96d2c9240f87835dc6d981ff"
     }
   ],
   "expected_training_inventory": {
