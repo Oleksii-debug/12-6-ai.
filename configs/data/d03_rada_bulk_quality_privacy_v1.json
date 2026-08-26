@@ -4,7 +4,7 @@
   "local_free_only": true,
   "parent_normalization": {
     "pr": 641,
-    "head_sha": "7802e94b4115db39e6ff59f1a4cff872c40c6347",
+    "head_sha": "ae79b078f849513dc202bcb723a4145455309e35",
     "branch": "gpt56/d03-rada-bulk-normalization-20260826",
     "manifest_schema": "12-6.d03-rada-bulk-normalization-manifest.v1",
     "manifest_worker_id": "D03-RADA-BULK-NORMALIZATION-20260826",
@@ -31,11 +31,13 @@
       "record_id",
       "parent_record_id",
       "source_path",
+      "source_encoding",
       "chunk_index",
       "normalized_bytes",
       "normalized_sha256",
       "text"
     ],
+    "preserve_source_encoding_provenance": true,
     "rejected_text_emitted": false,
     "rejected_hashes_emitted": false,
     "deterministic_json_serialization": true,
