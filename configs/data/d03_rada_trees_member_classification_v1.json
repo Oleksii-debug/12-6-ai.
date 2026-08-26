@@ -1,0 +1,68 @@
+{
+  "schema_version": "12-6.d03-rada-trees-member-classification.v1",
+  "worker_id": "D03-RADA-TREES-MEMBER-CLASSIFICATION-20260826",
+  "execution_profile": "LOCAL_FREE",
+  "parent": {
+    "pr": 708,
+    "head_sha": "ff50eb1e3b9b264ac713e248d01e2342a9784156",
+    "report_schema": "12-6.d03-rada-trees-archive-intake.v2",
+    "dataset": "uacorpus/Rada_Trees",
+    "dataset_head": "1b994a5804dcda122721e8d33a03fd172cf8d867",
+    "archive_filename": "Rada_Trees.7z",
+    "member_content_hashes_required": true,
+    "hf_object_identity_required": true
+  },
+  "classification_policy": {
+    "plain_text_candidate_suffixes": [".txt"],
+    "ud_derivative_suffixes": [".conllu", ".conll", ".cupt"],
+    "annotation_derivative_suffixes": [".xml", ".json", ".jsonl", ".tsv", ".csv"],
+    "metadata_basenames": ["readme", "readme.md", "license", "license.txt", "citation.cff", "changelog", "changelog.md"],
+    "strict_decode_order": ["utf-8-sig", "windows-1251"],
+    "reject_nul": true,
+    "conllu_min_noncomment_rows": 3,
+    "conllu_required_columns": 10,
+    "markup_prefixes": ["<?xml", "<html", "<document", "<doc", "<text", "<corpus"],
+    "plain_text_requires_nonempty": true,
+    "plain_text_max_tab_fraction": 0.10,
+    "emit_member_text": false,
+    "emit_member_content_preview": false,
+    "exact_content_duplicates_collapsed_for_candidate_accounting": true
+  },
+  "rights_and_lineage": {
+    "dataset_card_license": "CC-BY-4.0",
+    "attribution_required": true,
+    "plain_text_original_transcripts_only_candidate": true,
+    "ud_annotation_default": "HOLD_ZERO_CREDIT",
+    "nlp_uk_annotation_default": "HOLD_ZERO_CREDIT",
+    "parlamint_grac_overlap_requires_lineage_dedup": true,
+    "period_provenance_stratification_required": true,
+    "member_classification_is_not_rights_admission": true,
+    "member_classification_is_not_family_independence_authority": true
+  },
+  "downstream_required": [
+    "BIND_MEMBER_LEVEL_ATTRIBUTION_AND_SOURCE_PROVENANCE",
+    "STRATIFY_PERIOD_PROVENANCE_AND_TRANSCRIPT_GENERATION_REGIME",
+    "RUN_UKRAINIAN_LANGUAGE_QUALITY_PRIVACY_FILTERS",
+    "RUN_EXACT_AND_NEAR_LINEAGE_DEDUP_AGAINST_RADA_LAWS_PARLAMINT_GRAC_AND_LIVE_CORPUS",
+    "RUN_EVALUATION_DECONTAMINATION",
+    "RECOMPUTE_FAMILY_CAP_AND_UA_MIXTURE_FEASIBILITY",
+    "ONLY_THEN_PROPOSE_NONZERO_SOURCE_CAPACITY_CREDIT"
+  ],
+  "claim_boundary": {
+    "plain_text_member_classification_complete": false,
+    "period_provenance_stratification_complete": false,
+    "member_rights_terminal": false,
+    "member_provenance_terminal": false,
+    "language_quality_privacy_complete": false,
+    "global_lineage_dedup_complete": false,
+    "evaluation_decontamination_complete": false,
+    "family_independence_terminal": false,
+    "training_authorized_bytes": 0,
+    "unique_causal_loss_positions_authorized": 0,
+    "tokenizer_fit_authorized": false,
+    "model_training_executed": false,
+    "optimizer_updates": 0,
+    "paid_compute_used": false,
+    "research_corpus_v1_released": false
+  }
+}
