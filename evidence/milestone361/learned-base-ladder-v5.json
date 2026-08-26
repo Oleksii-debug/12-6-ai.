@@ -1,0 +1,76 @@
+{
+  "schema": "12-6.milestone361-learned-base-ladder-v5.v1",
+  "worker_id": "NEXT100-018-LEARNED-LADDER-V5",
+  "milestone_id": "MILESTONE-361-LEARNED-BASE-LADDER-V5",
+  "generated_at_utc": "2026-08-26T17:54:00Z",
+  "execution_profile": "LOCAL_FREE",
+  "retraining_executed": false,
+  "paid_compute_authorized": false,
+  "predecessor": {
+    "authority": "MILESTONE-281-LEARNED-BASE-LADDER-V4",
+    "pr": 405,
+    "head_sha": "446fc9ff491d93316a0e22613e50c2c3ad0e1066"
+  },
+  "status": "BLOCKED_MISSING_INDEPENDENT_VERIFY_219_AND_VERIFY_218",
+  "ladder_v5_admitted": false,
+  "remaining_blockers_exact": [
+    {
+      "rung": "3M_LEARN191",
+      "producer_authority": "LEARN-191",
+      "producer_terminal": true,
+      "required_independent_verifier": "VERIFY-219",
+      "required_terminal_state": "terminal independent scientific verifier authority",
+      "observed_terminal": false,
+      "observed_publication": "ABSENT_FROM_FINAL_LIVE_PR_BRANCH_AND_COMMIT_SEARCH"
+    },
+    {
+      "rung": "10M_LEARN217",
+      "producer_authority": "LEARN-217",
+      "producer_terminal": true,
+      "required_independent_verifier": "VERIFY-218-LEARNED-10M-INDEPENDENT",
+      "required_terminal_state": "VERIFIED_LEARNED_10M",
+      "observed_terminal": false,
+      "observed_publication": "ABSENT_FROM_FINAL_LIVE_PR_BRANCH_AND_COMMIT_SEARCH"
+    }
+  ],
+  "comparison_boundary": {
+    "directly_comparable_equal_budget_rungs": ["100K", "500K", "1M"],
+    "equal_budget_optimized_targets_each": 948504,
+    "retained_direct_rank": ["1M", "500K", "100K"],
+    "different_budget_evidence": [
+      {"rung": "3M_LEARN191", "optimized_targets": 131938},
+      {"rung": "10M_LEARN217", "optimized_targets": 2000060}
+    ],
+    "forbid_direct_cross_budget_ranking": true,
+    "rule": "Unequal optimized-target budgets are evidence at different exposures and must not be ranked as if matched. 3M must not be directly ranked against 10M or against the equal-budget 100K/500K/1M ladder from these runs."
+  },
+  "producer_verifier_separation": {
+    "required": true,
+    "producer_self_verification_is_not_independent_admission_authority": true,
+    "runtime_or_inference_corroboration_is_not_independent_scientific_verifier_authority": true
+  },
+  "data_truth_boundary": {
+    "authority": "DATA-25",
+    "identity_sha256": "422f545da93526ceba2c0ff738e0b9deac65f35bfb31d87d2aab068cda091fc8",
+    "origin": "PROJECT_AUTHORED",
+    "external_real": false,
+    "representative_real_corpus_claim": false,
+    "final_corpus_freeze_claim": false
+  },
+  "admission_rule": "Admit 3M and 10M as separate different-budget learned evidence only after both required independent verifier authorities are terminal at the final live check. Preserve the 100K/500K/1M equal-budget ranking unchanged.",
+  "final_live_check_completed": true,
+  "final_live_check": {
+    "pr_search_completed": true,
+    "branch_search_completed": true,
+    "commit_search_completed": true,
+    "verify_219_terminal_authority_found": false,
+    "verify_218_terminal_authority_found": false
+  },
+  "claim_boundary": {
+    "no_stage_promotion": true,
+    "no_external_real_training_claim": true,
+    "no_broad_capability_claim": true,
+    "no_foreign_pretrained_weights": true,
+    "no_sft_rlhf_dpo": true
+  }
+}
