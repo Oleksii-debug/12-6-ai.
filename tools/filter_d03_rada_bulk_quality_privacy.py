@@ -29,12 +29,14 @@ REPORT_SCHEMA = "12-6.d03-rada-bulk-quality-privacy-report.v1"
 WORKER_ID = "D03-RADA-BULK-QUALITY-PRIVACY-20260826"
 PARENT_WORKER_ID = "D03-RADA-BULK-NORMALIZATION-20260826"
 PARENT_PR = 641
-PARENT_HEAD = "7802e94b4115db39e6ff59f1a4cff872c40c6347"
+PARENT_HEAD = "ae79b078f849513dc202bcb723a4145455309e35"
 PARENT_BRANCH = "gpt56/d03-rada-bulk-normalization-20260826"
 SOURCE_FAMILY = "ua.rada.open-data.laws-texts"
 PARENT_SAFE_RESULT = "NORMALIZED_RECORD_MATERIALIZATION_ONLY_DOWNSTREAM_GATES_REQUIRED"
+PARENT_NORMALIZER_NAME = "RADA_VISIBLE_TEXT_HTML_UTF8_CP1251_NFKC_V1"
 SAFE_RESULT = "QUALITY_PRIVACY_FILTERED_CANDIDATE_ONLY_DOWNSTREAM_GATES_REQUIRED"
 DEFAULT_CONFIG = Path("configs/data/d03_rada_bulk_quality_privacy_v1.json")
+ALLOWED_SOURCE_ENCODINGS = {"utf-8", "windows-1251"}
 
 EMAIL_RE = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE)
 PHONE_RE = re.compile(r"(?<!\w)(?:\+?\d[\d ()-]{7,}\d)(?!\w)")
@@ -44,6 +46,7 @@ SHA1_RE = re.compile(r"[0-9a-f]{40}")
 PARENT_RECORD_FIELDS = {
     "record_id",
     "source_path",
+    "source_encoding",
     "raw_bytes",
     "raw_sha256",
     "normalized_bytes",
@@ -54,6 +57,7 @@ ACCEPTED_RECORD_FIELDS = [
     "record_id",
     "parent_record_id",
     "source_path",
+    "source_encoding",
     "chunk_index",
     "normalized_bytes",
     "normalized_sha256",
@@ -146,6 +150,10 @@ def _validate_config(config: Mapping[str, Any]) -> None:
     _require(
         output.get("accepted_jsonl_fields") == ACCEPTED_RECORD_FIELDS,
         "accepted fields drift",
+    )
+    _require(
+        output.get("preserve_source_encoding_provenance") is True,
+        "source-encoding provenance disabled",
     )
     _require(
         output.get("rejected_text_emitted") is False,
@@ -269,6 +277,29 @@ def _verify_parent_manifest(manifest: Mapping[str, Any]) -> None:
         "parent decontamination state drift",
     )
 
+    normalization = manifest.get("normalization")
+    _require(isinstance(normalization, Mapping), "parent normalization section missing")
+    _require(
+        normalization.get("name") == PARENT_NORMALIZER_NAME,
+        "parent normalizer identity drift",
+    )
+    source_encoding_counts = normalization.get("source_encoding_counts")
+    _require(
+        isinstance(source_encoding_counts, Mapping),
+        "parent source-encoding counts missing",
+    )
+    for key, value in source_encoding_counts.items():
+        _require(key in ALLOWED_SOURCE_ENCODINGS, "parent source encoding drift")
+        _require(
+            isinstance(value, int) and not isinstance(value, bool) and value >= 0,
+            "parent source-encoding count invalid",
+        )
+    _require(
+        sum(int(value) for value in source_encoding_counts.values())
+        == normalization.get("record_count"),
+        "parent source-encoding count total drift",
+    )
+
     identity = manifest.get("manifest_identity_sha256")
     _require(
         isinstance(identity, str) and SHA256_RE.fullmatch(identity) is not None,
@@ -336,6 +367,7 @@ def _parse_parent_records(
 
     records: list[dict[str, Any]] = []
     seen: set[str] = set()
+    observed_encodings: Counter[str] = Counter()
     try:
         decoded = parent_jsonl.decode("utf-8", errors="strict")
     except UnicodeDecodeError as exc:
@@ -361,6 +393,12 @@ def _parse_parent_records(
         _require(isinstance(record_id, str) and record_id, "parent record_id missing")
         _require(record_id not in seen, f"duplicate parent record_id: {record_id}")
         seen.add(record_id)
+        source_encoding = row.get("source_encoding")
+        _require(
+            source_encoding in ALLOWED_SOURCE_ENCODINGS,
+            f"parent source encoding invalid: {record_id}",
+        )
+        observed_encodings[str(source_encoding)] += 1
         metadata = expected_by_id.get(record_id)
         _require(
             metadata is not None,
@@ -398,6 +436,11 @@ def _parse_parent_records(
     _require(
         normalization.get("record_count") == len(records),
         "parent record count drift",
+    )
+    _require(
+        dict(sorted(observed_encodings.items()))
+        == dict(normalization.get("source_encoding_counts", {})),
+        "parent source-encoding counts do not match records",
     )
     _require(
         normalization.get("normalized_bytes_observed_not_credited")
@@ -533,6 +576,7 @@ def materialize_quality_privacy_candidate(
                     "record_id": f"{parent['record_id']}.q{chunk_index:05d}",
                     "parent_record_id": parent["record_id"],
                     "source_path": parent["source_path"],
+                    "source_encoding": parent["source_encoding"],
                     "chunk_index": chunk_index,
                     "normalized_bytes": len(encoded),
                     "normalized_sha256": _sha256(encoded),
@@ -561,6 +605,7 @@ def materialize_quality_privacy_candidate(
     accepted_hashes = [str(row["normalized_sha256"]) for row in accepted]
     exact_duplicate_observations = len(accepted_hashes) - len(set(accepted_hashes))
     accepted_bytes = sum(int(row["normalized_bytes"]) for row in accepted)
+    accepted_encoding_counts = Counter(str(row["source_encoding"]) for row in accepted)
     rejected_count = sum(rejected_reasons.values())
     _require(
         total_chunks == len(accepted) + rejected_count,
@@ -581,11 +626,15 @@ def materialize_quality_privacy_candidate(
             "manifest_transport_sha256": parent_manifest_sha256,
             "jsonl_sha256": parent_manifest["normalization"]["jsonl_sha256"],
             "source_family": SOURCE_FAMILY,
+            "source_encoding_counts": dict(
+                parent_manifest["normalization"]["source_encoding_counts"]
+            ),
         },
         "policy": {
             "chunking": dict(chunking),
             "quality_privacy": dict(quality),
             "bounded_predicates_not_universal_privacy_claim": True,
+            "source_encoding_provenance_preserved": True,
         },
         "input": {
             "parent_record_count": len(records),
@@ -600,6 +649,9 @@ def materialize_quality_privacy_candidate(
             "rejected_chunk_count": rejected_count,
             "rejection_reasons": dict(sorted(rejected_reasons.items())),
             "accepted_bytes_observed_not_credited": accepted_bytes,
+            "accepted_source_encoding_counts": dict(
+                sorted(accepted_encoding_counts.items())
+            ),
             "accepted_jsonl_sha256": _sha256(accepted_jsonl),
             "accepted_inventory_sha256": inventory_hasher.hexdigest(),
             "exact_duplicate_accepted_hashes_observed_not_removed": (
@@ -692,6 +744,9 @@ def main() -> int:
                 "accepted_bytes_observed_not_credited": report[
                     "filter_result"
                 ]["accepted_bytes_observed_not_credited"],
+                "accepted_source_encoding_counts": report["filter_result"][
+                    "accepted_source_encoding_counts"
+                ],
                 "report_identity_sha256": report["report_identity_sha256"],
                 "training_authorized_bytes": 0,
             },
