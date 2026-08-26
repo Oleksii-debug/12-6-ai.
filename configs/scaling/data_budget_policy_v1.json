@@ -1,11 +1,13 @@
 {
   "schema_version": "12-6.scaling-data-budget-policy.v1",
   "worker_id": "R01-SCALING-DATA-BUDGET-GATE-20260826",
-  "purpose": "Keep parameter-scale planning separate from volatile source-capacity authority and require exact post-tokenization evidence before long learned-model campaigns.",
+  "purpose": "Keep parameter-scale planning separate from volatile source-capacity authority and keep total training-token exposure separate from unique causal-loss positions.",
   "truth_boundary": {
     "source_capacity_bytes_are_training_tokens": false,
     "source_capacity_bytes_are_unique_loss_positions": false,
     "source_capacity_target_is_training_budget": false,
+    "training_token_exposures_are_unique_loss_positions": false,
+    "planning_reference_is_minimum_training_requirement": false,
     "planning_reference_is_quality_guarantee": false,
     "planning_reference_is_compute_authorization": false,
     "this_policy_can_authorize_training": false,
@@ -15,17 +17,17 @@
     {
       "id": "hoffmann-2022-chinchilla",
       "url": "https://arxiv.org/abs/2203.15556",
-      "use": "compute-optimal reference: model size and training-token count scale together"
+      "use": "compute-optimal reference: model size and total training-token count scale together"
     },
     {
       "id": "muennighoff-2023-data-constrained",
       "url": "https://arxiv.org/abs/2305.16264",
-      "use": "repeated data has diminishing value; bounded replay is not equivalent to unlimited unique data"
+      "use": "unique-data volume and repeated training-token exposure are distinct; bounded replay can help but has diminishing value"
     },
     {
       "id": "sardana-2024-beyond-chinchilla",
       "url": "https://arxiv.org/abs/2401.00448",
-      "use": "inference-aware deployment can favor smaller models trained on substantially more tokens"
+      "use": "inference-aware deployment can favor smaller models trained on substantially more total token exposures"
     },
     {
       "id": "gadre-2024-overtraining",
@@ -44,15 +46,15 @@
     }
   ],
   "reference_policy": {
-    "baseline_unique_loss_tokens_per_parameter": 20,
-    "exploration_tokens_per_parameter": [20, 50, 100],
-    "note": "The 20x value is a planning reference, not a universal optimum. A campaign below it must be explicitly classified as a bounded scaling/smoke experiment rather than a full learned-stage attempt. Larger ratios must be selected from preregistered scaling experiments and compute constraints, not assumed automatically."
+    "baseline_training_token_exposures_per_parameter": 20,
+    "exploration_training_token_exposures_per_parameter": [20, 50, 100],
+    "note": "The 20x value is a compute-optimal planning reference for total training-token exposure, not a universal optimum, minimum requirement, unique-data requirement, or quality guarantee. Unique causal-loss positions and replay/epoch policy are accounted for separately. Larger or smaller exposure budgets must be justified by preregistered scaling experiments, data constraints, deployment economics and compute constraints."
   },
   "stages": [
     {
       "stage": "20M_PRIMARY",
       "parameter_count": 20613440,
-      "reference_unique_loss_tokens": {
+      "reference_training_token_exposures": {
         "20x": 412268800,
         "50x": 1030672000,
         "100x": 2061344000
@@ -63,7 +65,7 @@
     {
       "stage": "100M_TARGET",
       "parameter_count": 100000000,
-      "reference_unique_loss_tokens": {
+      "reference_training_token_exposures": {
         "20x": 2000000000,
         "50x": 5000000000,
         "100x": 10000000000
@@ -74,7 +76,7 @@
     {
       "stage": "1B_TARGET",
       "parameter_count": 1000000000,
-      "reference_unique_loss_tokens": {
+      "reference_training_token_exposures": {
         "20x": 20000000000,
         "50x": 50000000000,
         "100x": 100000000000
@@ -93,33 +95,37 @@
     "promotion_requires_terminal_exact_head_authority": true,
     "promotion_requires_immutable_materialized_corpus": true,
     "promotion_requires_exact_post_tokenization_accounting": true,
-    "note": "Scaling policy must not pin a rapidly changing source-registry byte snapshot. The data lane owns live capacity/provenance; learned-stage readiness consumes only terminal corpus/token/loss evidence."
+    "promotion_requires_unique_vs_replayed_exposure_accounting": true,
+    "note": "Scaling policy must not pin a rapidly changing source-registry byte snapshot. The data lane owns live capacity/provenance; learned-stage readiness consumes terminal corpus/token/loss evidence and reports unique positions separately from replayed exposures."
   },
   "long_training_gate": {
     "required_evidence": [
       "immutable_corpus_identity",
       "immutable_train_split_identity",
       "tokenizer_identity",
-      "exact_post_tokenization_train_token_count",
+      "exact_post_tokenization_unique_train_token_count",
       "exact_unique_loss_position_count",
       "document_boundary_loss_mask_identity",
       "evaluation_decontamination_authority",
       "deduplication_authority",
       "quality_and_privacy_authority",
       "checkpoint_resume_authority",
-      "preregistered_training_budget_and_stop_rule",
+      "preregistered_total_training_token_exposure_budget",
+      "preregistered_replay_policy_and_epoch_cap",
+      "preregistered_stop_rule",
       "explicit_compute_authorization"
     ],
     "forbidden_substitutions": [
       "source_bytes_for_training_tokens",
       "normalized_bytes_for_training_tokens",
       "source_capacity_target_for_training_budget",
+      "total_training_token_exposures_for_unique_loss_positions",
       "raw_record_count_for_unique_loss_positions",
       "replayed_tokens_for_unique_tokens",
       "queued_ci_for_terminal_success",
       "stale_source_snapshot_for_live_data_authority"
     ],
-    "below_20x_classification": "BOUNDED_SCALING_OR_SMOKE_EXPERIMENT_ONLY",
-    "full_stage_attempt_requires_at_least_reference_or_explicit_scaling_exception": true
+    "below_20x_requires_explicit_scaling_rationale": true,
+    "above_20x_requires_explicit_scaling_rationale": true
   }
 }
