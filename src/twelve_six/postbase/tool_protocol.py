@@ -11,7 +11,6 @@ from enum import Enum
 from pathlib import PurePosixPath
 from typing import Any, Literal, NotRequired, TypedDict
 
-
 PROTOCOL_VERSION = 1
 MAX_TIMEOUT_MS = 60_000
 MAX_OUTPUT_BYTES = 64 * 1024
