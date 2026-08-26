@@ -1,0 +1,35 @@
+name: NEXT100-092 Post-Base Evidence Namespace Firewall
+
+on:
+  pull_request:
+    paths:
+      - "configs/post_base/next100_092_evidence_namespace_audit_v1.json"
+      - "src/twelve_six/postbase_evidence_firewall.py"
+      - "tools/validate_next100_092_postbase_evidence_namespace.py"
+      - "tests/test_next100_092_postbase_evidence_namespace.py"
+      - "docs/NEXT100_092_POSTBASE_EVIDENCE_NAMESPACE_AUDIT.md"
+      - ".github/workflows/next100-092-postbase-evidence-namespace.yml"
+  push:
+    paths:
+      - "configs/post_base/next100_092_evidence_namespace_audit_v1.json"
+      - "src/twelve_six/postbase_evidence_firewall.py"
+      - "tools/validate_next100_092_postbase_evidence_namespace.py"
+      - "tests/test_next100_092_postbase_evidence_namespace.py"
+      - "docs/NEXT100_092_POSTBASE_EVIDENCE_NAMESPACE_AUDIT.md"
+      - ".github/workflows/next100-092-postbase-evidence-namespace.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  evidence-namespace-firewall:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate frozen audit and namespace policy
+        run: python3 tools/validate_next100_092_postbase_evidence_namespace.py
+      - name: Run adversarial fail-closed tests
+        run: python3 -m unittest tests.test_next100_092_postbase_evidence_namespace
