@@ -1,0 +1,113 @@
+{
+  "checkpoint_compatibility": {
+    "eos257_or_other_family": "INCOMPATIBLE_REQUIRES_NEW_CONTRACT_AND_NEW_MODEL_VOCAB",
+    "legacy_byte_noeos": "COMPATIBLE_IF_ALL_REQUIRED_IDENTITIES_MATCH",
+    "mismatch_policy": "FAIL_BEFORE_MODEL_TRAINER_OR_RNG_MUTATION",
+    "required_model_vocab_size": 256,
+    "required_packing_version_for_training_resume": "s0-byte-pack-v1",
+    "required_tokenizer_config_sha256": "b04055c1061dd641dcab7cb9d62a931f09b8d1a070140a926ceb4e91d73ca8e1",
+    "required_tokenizer_vocab_sha256": "905ed40bb42cc4d550e228ff5f24158d504b38e8ed5974dfa3077bd5867ad571"
+  },
+  "contract_id": "base-byte-noeos-v1",
+  "contract_version": 1,
+  "decision_cut_utc": "2026-08-26",
+  "document_boundary": {
+    "append_eos": false,
+    "cross_document_packing": false,
+    "eos_evidence_status": "PROVISIONAL_NOT_ACCEPTED_FOR_CONTRACT",
+    "evidence": {
+      "recover173_eos_bpb": 3.1837692043624295,
+      "recover173_eos_generation_terminations": 0,
+      "recover173_generation_attempts": 30,
+      "recover173_no_eos_bpb": 3.1863011984104266,
+      "recover173_selected_candidate": "B_eos_document_isolated"
+    },
+    "policy": "document_isolated"
+  },
+  "empty_context": {
+    "generation": "REJECT",
+    "reason": "no_bos_or_other_seed_token_exists",
+    "training_document": "YIELD_NO_EXAMPLE"
+  },
+  "family": {
+    "decision_authority": {
+      "milestone150": "ACCEPT_FOR_10M_BASELINE",
+      "tok188": "NO_PUBLISHED_ARTIFACT_AT_CONTRACT_CUT"
+    },
+    "selected_family": "byte",
+    "tokenizer_config_sha256": "b04055c1061dd641dcab7cb9d62a931f09b8d1a070140a926ceb4e91d73ca8e1",
+    "tokenizer_version": "s0-byte-v1",
+    "tokenizer_vocab_sha256": "905ed40bb42cc4d550e228ff5f24158d504b38e8ed5974dfa3077bd5867ad571"
+  },
+  "generation": {
+    "allowed_termination": [
+      "max_new_tokens",
+      "context_limit",
+      "explicit_external_stop_token",
+      "explicit_external_stop_string"
+    ],
+    "eos_termination": false,
+    "generated_id_range": [
+      0,
+      255
+    ]
+  },
+  "hf_transformers_export": {
+    "added_tokens": [],
+    "bos_token_id": null,
+    "decoder_start_token_id": null,
+    "eos_token_id": null,
+    "forced_bos_token_id": null,
+    "forced_eos_token_id": null,
+    "pad_token_id": null,
+    "special_tokens_map": {},
+    "transformers_architecture_compatibility": "NOT_CLAIMED_BY_TOKEN_CONTRACT",
+    "unk_token_id": null,
+    "vocab_size": 256
+  },
+  "identity_sha256": "78ef26dc096f46b400d6a13d98d8964f03f8552973b48e699e142c4fec047e27",
+  "migration": {
+    "compatible_legacy_rule": "same_byte_vocab_same_tokenizer_hashes_same_model_vocab_and_document_isolated_resume_binding",
+    "incompatible_rule": "fail_closed_then_retokenize_or_start_new_checkpoint_lineage_under_new_contract",
+    "silent_id_remap": false,
+    "silent_special_token_addition": false
+  },
+  "ordinary_vocabulary": {
+    "encoding": "utf-8",
+    "id_range": [
+      0,
+      255
+    ],
+    "mapping": "token_id_equals_raw_byte_value",
+    "normalization": "none",
+    "size": 256
+  },
+  "packing": {
+    "config_sha256": "23a695b807f3e3f5c61d19c34968bcd88fafc6a45346dc08673d7a494219f285",
+    "document_isolation_required": true,
+    "sequence_length_default": 128,
+    "version": "s0-byte-pack-v1",
+    "window_overlap_tokens": 1
+  },
+  "padding": {
+    "attention_mask_for_fill": 0,
+    "label_ignore_index": -100,
+    "loss_mask_for_fill": 0,
+    "masked_fill_semantics": "none",
+    "masked_fill_token_id": 0,
+    "rule": "fill_id_is_valid_storage_only_when_fully_masked",
+    "semantic_pad_token": false
+  },
+  "schema": "12-6.research-base-token-contract.v1",
+  "special_tokens": {
+    "bos_token_id": null,
+    "chat_token_ids": [],
+    "eod_token_id": null,
+    "eos_token_id": null,
+    "instruction_token_ids": [],
+    "pad_token_id": null,
+    "system_token_ids": [],
+    "unk_token_id": null
+  },
+  "status": "ACTIVE_FOR_NEXT_10M_BASELINE_UNTIL_SUPERSEDED"
+}

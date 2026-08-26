@@ -1,0 +1,54 @@
+name: TOK-189 Base Token Contract v1
+on:
+  pull_request:
+    branches: [env151/universal-execution-bootstrap-20260826]
+  workflow_dispatch:
+concurrency:
+  group: tok189-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+permissions: {contents: read}
+jobs:
+  contract-regression:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with: {ref: "${{ github.event.pull_request.head.sha || github.sha }}", persist-credentials: false}
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with: {python-version: "3.11.16"}
+      - uses: ./.github/actions/execution-bootstrap
+        with:
+          capabilities: runtime,tests
+          venv: .tok189-env
+          command: python -m pytest -q tests/test_base_token_contract.py tests/test_tokenization.py tests/test_packing.py tests/test_checkpoint_fail_closed_binding.py tests/test_inference_generation.py
+          manifest: tok189-evidence/universal-bootstrap.json
+      - name: Prepare exact DATA-25 contract regression
+        run: .tok189-env/bin/python tools/run_tok189_contract_regression.py prepare
+      - name: Train 467808-parameter Base to checkpoint 500
+        run: .tok189-env/bin/python tools/run_tok189_contract_regression.py phase1
+      - name: Prove fail-closed mismatch and fresh-process resume to step 1000
+        run: .tok189-env/bin/python tools/run_tok189_contract_regression.py resume
+      - name: Fresh checkpoint/eval/generation verification
+        run: .tok189-env/bin/python tools/run_tok189_contract_regression.py verify
+      - name: Finalize TOK-189 evidence
+        run: .tok189-env/bin/python tools/run_tok189_contract_regression.py finalize
+      - name: Assert final authority record
+        run: |
+          .tok189-env/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+          p=json.loads(Path('tok189-evidence/final-report.json').read_text(encoding='utf-8'))
+          assert p['result'] == 'PASS'
+          assert p['contract']['contract_id'] == 'base-byte-noeos-v1'
+          assert p['contract']['ordinary_vocab_size'] == 256
+          assert p['contract']['eos_eod'] is None
+          assert p['regression_500k']['parameter_count'] == 467808
+          assert p['regression_500k']['resume']['passed'] is True
+          assert p['regression_500k']['fresh_verification'] == 'PASS'
+          assert all(p['proofs'].values())
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: tok189-base-token-contract-v1
+          path: tok189-evidence
+          if-no-files-found: error
