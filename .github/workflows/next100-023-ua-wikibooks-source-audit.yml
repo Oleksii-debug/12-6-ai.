@@ -1,0 +1,36 @@
+name: NEXT100-023 Ukrainian Wikibooks source audit
+
+on:
+  pull_request:
+    paths:
+      - "configs/data/next100_023_ua_wikibooks_source_audit_v1.json"
+      - "tools/audit_next100_023_ua_wikibooks.py"
+      - "tests/test_next100_023_ua_wikibooks.py"
+      - ".github/workflows/next100-023-ua-wikibooks-source-audit.yml"
+      - "docs/NEXT100_023_UA_WIKIBOOKS_SOURCE_AUDIT.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Unit tests
+        run: python -m unittest tests/test_next100_023_ua_wikibooks.py -v
+      - name: Exact official dump probe
+        run: python tools/audit_next100_023_ua_wikibooks.py --out out/next100_023
+      - name: Print machine verdict
+        run: python -c 'import json; p=json.load(open("out/next100_023/ua_wikibooks_probe_report_v1.json", encoding="utf-8")); print(json.dumps(p, ensure_ascii=False, sort_keys=True)); assert p["verdict"] == "RETEST"; assert p["snapshot"]["actual_sha1"] == p["snapshot"]["expected_sha1"]'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: next100-023-ua-wikibooks-source-audit
+          path: out/next100_023
+          if-no-files-found: error
+          retention-days: 30
