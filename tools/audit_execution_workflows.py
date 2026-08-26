@@ -19,9 +19,18 @@ def audit_workflow(path: Path) -> dict[str, Any]:
     pinned = PINNED_ACTION.findall(text)
     unpinned = [ref for ref in refs if not re.fullmatch(r"[0-9a-f]{40}", ref)]
 
-    central = "tools/bootstrap_execution_spine.py" in text
-    with_dev = central and "--with-dev" in text
+    central = (
+        "tools/execution_bootstrap.py" in text
+        or ".github/actions/execution-bootstrap" in text
+    )
+    declares_tests = bool(
+        re.search(r"(?:--capabilities|capabilities:)[^\n]*(?:^|,)tests(?:,|$)", text, re.MULTILINE)
+    )
+    declares_lint = bool(
+        re.search(r"(?:--capabilities|capabilities:)[^\n]*(?:^|,)lint(?:,|$)", text, re.MULTILINE)
+    )
     scientific_tools = ("pytest" in text) or ("ruff" in text)
+    central_dev = central and (declares_tests or declares_lint)
     direct_lock_install = bool(
         re.search(
             r"pip\s+install(?:(?!\n\s*-\s+name:).)*requirements/locks/",
@@ -34,7 +43,7 @@ def audit_workflow(path: Path) -> dict[str, Any]:
     findings: list[str] = []
     if unpinned:
         findings.append(f"unpinned_actions:{','.join(unpinned)}")
-    if scientific_tools and not with_dev:
+    if scientific_tools and not central_dev:
         findings.append("scientific_tools_without_central_dev_bootstrap")
     if direct_lock_install:
         findings.append("direct_lock_install_deprecated")
@@ -44,7 +53,7 @@ def audit_workflow(path: Path) -> dict[str, Any]:
     return {
         "workflow": path.as_posix(),
         "central_bootstrap": central,
-        "central_dev_bootstrap": with_dev,
+        "central_dev_bootstrap": central_dev,
         "scientific_tools": scientific_tools,
         "direct_lock_install": direct_lock_install,
         "action_refs": len(refs),
