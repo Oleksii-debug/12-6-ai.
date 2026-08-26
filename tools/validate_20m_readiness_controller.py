@@ -19,6 +19,8 @@ EXPECTED_CORPUS_HEAD = "8820ba1b255f6bb95c7db0531fd846078a1aae01"
 EXPECTED_UA_SOURCE_HEAD = "84c51e42b6daa51796fd20d793b5ef1ff01cc9d2"
 EXPECTED_EN_SOURCE_HEAD = "5a6a495a24bce449334cbc5126d0114f61a9f57c"
 EXPECTED_DECONTAM_HEAD = "80e8fc9828214ce86e16b5c7f2fdec9107b4df43"
+EXPECTED_D05_AUDIT_HEAD = "5c3d3d93cb035c05ad2045a243d722a4ad1dce60"
+EXPECTED_D05_REMEDIATION_HEAD = "42296f6f228bbf866765d787e53004108fe7a39d"
 
 
 def canonical_identity(value: dict[str, Any]) -> str:
@@ -49,6 +51,24 @@ def validate(value: dict[str, Any]) -> None:
     assert model["parameter_count"] == EXPECTED_MODEL_PARAMS
     assert model["model_spec_sha256"] == EXPECTED_MODEL_SPEC
     assert all(state == "PASS" for state in model["mechanics"].values())
+
+    # Nominal save/load mechanics passing is not a corruption-integrity PASS.
+    # NEXT100-075 is the independent fail-closed authority until its full matrix
+    # is rerun against one exact remediated production head.
+    d05 = authorities["checkpoint_corruption_audit"]
+    assert d05["head_sha"] == EXPECTED_D05_AUDIT_HEAD
+    assert d05["base_model_sha"] == EXPECTED_MODEL_HEAD
+    assert d05["required_cases"] == 11
+    assert d05["rejected_before_mutation"] == 8
+    assert len(d05["blocking_cases"]) == 3
+    assert d05["verdict"] == "RETEST_REQUIRED"
+    assert d05["direct_production_module_rerun_required"] is True
+
+    remediation = authorities["d05_remediation_convergence"]
+    assert remediation["head_sha"] == EXPECTED_D05_REMEDIATION_HEAD
+    assert remediation["preferred_candidate_pr"] == 507
+    assert remediation["terminal_authority"] is False
+    assert remediation["state"].startswith("NONTERMINAL_")
 
     corpus = authorities["research_corpus_v03"]
     assert corpus["head_sha"] == EXPECTED_CORPUS_HEAD
@@ -89,8 +109,15 @@ def validate(value: dict[str, Any]) -> None:
 
     gates = value["gates"]
     assert gates["primary_20m_mechanics"] == "PASS"
+    assert gates["checkpoint_recovery_20m"] == "BLOCKED_D05_CORRUPTION_RETEST_REQUIRED"
+    assert gates["checkpoint_integrity_20m"] == "BLOCKED_3_OF_11_CORRUPTION_CLASSES"
     assert gates["real_20m_training"] == "BLOCKED"
     assert gates["unique_no_replay_loss_capacity"] == "BLOCKED_ZERO"
+
+    parallel_tracks = value["parallel_local_free_tracks"]
+    assert "CONVERGE_D05_REMEDIATION_AND_TRIAGE_LOCKED_ENVIRONMENT_CHECK_FAILURE" in parallel_tracks
+    assert "COMPOSE_SUCCESSOR_RESEARCH_CORPUS_V1_INTAKE" in parallel_tracks
+    assert len(parallel_tracks) == len(set(parallel_tracks))
 
     next_campaign = value["ordered_next_campaign"]
     assert next_campaign[0] == "COMPOSE_SUCCESSOR_RESEARCH_CORPUS_V1_INTAKE_FROM_TERMINAL_SOURCE_AUTHORITIES"
@@ -102,6 +129,7 @@ def validate(value: dict[str, Any]) -> None:
     assert decision["primary_blocker"] == (
         "RESEARCH_CORPUS_V1_NOT_TERMINAL_AND_ZERO_AUTHORIZED_UNIQUE_LOSS_CAPACITY"
     )
+    assert "D05_CHECKPOINT_INTEGRITY_RETEST_REQUIRED_ON_3_OF_11_CORRUPTION_CLASSES" in decision["secondary_blockers"]
 
     assert canonical_identity(value) == value["evidence_identity_sha256"]
 
@@ -118,6 +146,7 @@ def main() -> int:
     print("20M_MODEL_PARAMETERS=" + str(value["authorities"]["primary_20m_model"]["parameter_count"]))
     print("20M_AUTHORIZED_UNIQUE_TARGETS=" + str(value["campaign"]["authorized_unique_optimized_targets"]))
     print("20M_CAMPAIGN_RUNNABLE=" + str(value["campaign"]["campaign_runnable_now"]).lower())
+    print("20M_CHECKPOINT_INTEGRITY=" + value["gates"]["checkpoint_integrity_20m"])
     print("20M_NEXT=" + value["ordered_next_campaign"][0])
     print("20M_EVIDENCE_SHA256=" + value["evidence_identity_sha256"])
     return 0
