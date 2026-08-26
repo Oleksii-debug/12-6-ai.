@@ -1,0 +1,64 @@
+{
+  "available_real_source_evidence": {
+    "code": "THREE_REAL_FILES_4998_BYTES_BLOCKED_BY_D03_RIGHTS_AUTHORITY",
+    "ua_en": "BOUNDED_REAL_INTAKE_EVIDENCE_NOT_CANONICAL_IMMUTABLE_SNAPSHOT"
+  },
+  "blockers": [
+    "NO_CANONICAL_IMMUTABLE_REAL_UA_EN_CODE_HOLDOUT_BUNDLE",
+    "NO_REAL_CODE_EVALUATION_USE_AUTHORITY_BOUND_TO_CURRENT_D03_RIGHTS_STATE",
+    "NO_FRESH_DATA31_DECONTAMINATION_REPORT_FOR_THE_EVENTUAL_REAL_TRAINING_CANDIDATE",
+    "NO_PRE_FIT_AND_PRE_TRAIN_EXCLUSION_PROOFS_FOR_THE_EVENTUAL_REAL_HELDOUT_IDENTITY"
+  ],
+  "incumbents": {
+    "d06": {
+      "head_sha": "914973502ab92a925a5cc29d72e4b3cce0e81c80",
+      "pr": 28
+    },
+    "data21_22": {
+      "head_sha": "dcc7dfc39299487bca5bdbfe5e6c70eaa6706278",
+      "pr": 204
+    },
+    "data23": {
+      "head_sha": "5f223f9ef77762a042e966372fdf9f064b3cc9fe",
+      "pr": 216
+    },
+    "data25": {
+      "head_sha": "8af17afa7baf3d75c2328caf8b08af2400a95e09",
+      "pr": 210
+    },
+    "data31": {
+      "head_sha": "6b1c7f3418357e0ea1cfc6ab5ceda6a740dc5921",
+      "pr": 230
+    },
+    "milestone100": {
+      "head_sha": "015593b22a600184fb4c8001fe3d70893bfc51d5",
+      "pr": 267
+    }
+  },
+  "known_identities": {
+    "d06_benchmark_registry_sha256": "10f7454f77eb2dc3871eeafa5055b1969eab42954eb8e19e61565f217c67df31",
+    "data25_corpus_identity_sha256": "422f545da93526ceba2c0ff738e0b9deac65f35bfb31d87d2aab068cda091fc8"
+  },
+  "local_free_only": true,
+  "next_required_artifacts": [
+    "IMMUTABLE_UA_EN_CODE_REAL_SOURCE_SNAPSHOTS_WITH_EVALUATION_USE_AUTHORITY",
+    "EVAL131_HELDOUT_MANIFEST_AND_MODALITY_JSONL_FILES",
+    "TOKENIZER_FIT_EXCLUSION_PROOF_OR_FIXED_TOKENIZER_NO_FIT_PROOF",
+    "MODEL_TRAINING_EXCLUSION_PROOF",
+    "FRESH_DATA31_DECONTAMINATION_REPORT",
+    "RANDOM_INIT_AND_LEARNED_CHECKPOINT_REPORTS",
+    "SCALING_DASHBOARD_LADDER_REPORT"
+  ],
+  "not_quality_evidence": [
+    "DATA25_PROJECT_AUTHORED_VALIDATION_METRICS",
+    "TRAIN_LOSS",
+    "GENERATION_DEMOS"
+  ],
+  "observed_date": "2026-08-26",
+  "quality_authority": "FIRST_PARTY_HELDOUT_ONLY",
+  "quality_report_published": false,
+  "report_sha256": "f966127ae32ee0b10374098cf9d7580764b26b4ec042d5d462c0640113729f4e",
+  "schema_version": "12-6.eval131-real-corpus-readiness.v1",
+  "status": "BLOCKED_REAL_CORPUS_INPUTS",
+  "suite_id": "EVAL-131-REAL-CORPUS-CORE"
+}
