@@ -1,0 +1,17 @@
+DATA-184 purpose-specific rights decision
+Source: lang-uk/perestoroha-ocr
+Exact source version: c7af19760e731a130e963eae29f3290c21296f3f
+Training object: data/train-00000-of-00001.parquet
+Training object SHA-256: e44c27b6151a1fea68eeef1e73e4460391f82e0501571d8aa4d5a792fc448b12
+Rights source: immutable dataset card at the exact source version
+License: CC-BY-4.0
+Dataset-card facts: the dataset is released under CC BY 4.0; the underlying Perestoroha source text is public domain; the 2026 ground-truth proofreading is an editorial contribution of the dataset authors.
+Purpose decision under policy://12-6/data/explicit-model-training-evidence-v1:
+acquisition=ALLOWED
+storage=ALLOWED
+analysis=ALLOWED
+model_training=ALLOWED
+redistribution=ALLOWED_WITH_ATTRIBUTION
+Decision basis: CC BY 4.0 grants sharing and adaptation for any purpose subject to attribution. The exact training object is pinned by source revision and SHA-256. This decision applies only to that exact object and does not authorize other lang-uk datasets.
+Reviewed: 2026-08-26
+Reviewer: SWARM_WORKER_ID:DATA-184-REAL-SOURCE-DIVERSITY
