@@ -13,9 +13,11 @@ on:
       - "src/twelve_six/s0_*.py"
       - "configs/stages/s0*"
       - "configs/training/**"
+      - "data/s0/packaged/**"
       - "tools/run_s0_real_training.py"
       - "tools/validate_s0_training_evidence.py"
       - "tools/verify_locked_environment.py"
+      - "requirements/locks/index.json"
       - "requirements/locks/linux-x86_64/**"
       - "pyproject.toml"
   workflow_dispatch:
