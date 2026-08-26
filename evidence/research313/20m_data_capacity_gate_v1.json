@@ -1,0 +1,108 @@
+{
+  "actual_unique_loss_evidence": {
+    "by_language": {
+      "code": 0,
+      "en": 84791,
+      "uk": 88564
+    },
+    "documents": 3,
+    "full_five_source_ledger_exists": false,
+    "normalized_bytes": 173358,
+    "padding_positions_counted": 0,
+    "replay_permitted": false,
+    "scope": "DATA-229_TEXT_ONLY_3_OBJECTS",
+    "tokenizer": "s0-byte-v1",
+    "unique_nonignored_causal_loss_positions_one_pass": 173355
+  },
+  "authority_cutoff": {
+    "data294_head_sha": "2214db4a4a4eb77de8ff80dc68c93159dd697aae",
+    "data294_ledger_identity_sha256": "9a1cd57c52459bdc6e4bb2d46047a47713e10d9a5be7b0a4b86f041ba6f62bd0",
+    "data295_head_sha": "9498e78da5a9fa239e39f5c145d6fd986ebed7b4",
+    "data300_contract_identity_sha256": "07d7beaaff4616e839450de6af3d407855c832bf75a24a959d1a12de5d9364e5",
+    "data300_corpus_state": "NOT_BUILT_NOT_FROZEN_NOT_TERMINAL",
+    "data300_head_sha": "8ea7f830e50a23754d189dd4134f4afad76a7ee9",
+    "data300_pr": 392,
+    "research251_basis": "project-specific data-capacity gate; not a universal token/parameter optimum",
+    "research251_pr": 387
+  },
+  "blocked_release_gates": [
+    "G05_QUALITY",
+    "G06_PRIVACY",
+    "G09_BALANCE_DIVERSITY",
+    "G10_SELECTION_VALIDATION",
+    "G12_UNIQUE_LOSS",
+    "G14_TWO_CLEAN_BUILDS"
+  ],
+  "budget_classes": {
+    "meaningful_learned_campaign": {
+      "decision": "BLOCKED_DATA_AND_LEDGER",
+      "external_real_final_candidate_authorized_positions_now": 0,
+      "nominal_model_parameters": 20000000,
+      "project_native_decision_envelope_unique_positions": {
+        "derivation": "RESEARCH-251 local 0.5-2 unique-targets/parameter decision band applied only as a project planning envelope, not as an optimum",
+        "lower": 10000000,
+        "upper": 40000000
+      }
+    },
+    "mechanics": {
+      "claim_boundary": "mechanics work does not raise the final-corpus no-replay capacity",
+      "external_real_final_candidate_authorized_positions_now": 0,
+      "fixture_or_synthetic_mechanics_may_continue": true,
+      "purpose": "runtime/trainer/checkpoint qualification only; learned-quality authority is out of scope"
+    },
+    "short_science": {
+      "current_actual_text_ledger_positions": 173355,
+      "decision": "BLOCKED_ON_FINAL_CORPUS_AUTHORITY",
+      "external_real_final_candidate_authorized_positions_now": 0,
+      "portable_as_optimum": false,
+      "precedent_model_scale": "10M",
+      "project_precedent_unique_positions": 2000060
+    }
+  },
+  "candidate_inventory": {
+    "families_by_stratum": {
+      "code": 2,
+      "en": 1,
+      "uk": 1
+    },
+    "family_constrained_no_replay_budget_source_bytes": 0,
+    "family_gate_minimum_per_stratum": 2,
+    "independent_families": 4,
+    "selected_policy_target_source_bytes": 20000000,
+    "selected_policy_weights": {
+      "code": 0.2,
+      "en": 0.35,
+      "uk": 0.45
+    },
+    "source_bytes": 183061,
+    "source_bytes_by_stratum": {
+      "code": 9703,
+      "en": 84793,
+      "uk": 88565
+    },
+    "training_admitted_source_objects": 5
+  },
+  "evidence_identity_sha256": "cd6d80f2e31631723c7f513327082845b3edfcd8a90768809da74aaf8476ba99",
+  "execution_profile": "LOCAL_FREE",
+  "forbidden_inferences": [
+    "Do not relabel 183061 candidate source bytes as unique optimized loss positions.",
+    "Do not treat DATA-294 text-only 173355 positions as authority for the five-source final candidate.",
+    "Do not use the RESEARCH-251 project planning band as a universal or compute-optimal token/parameter law.",
+    "Do not use replay, sampling with replacement, document duplication, padding, source aliases, or repeated positions to reach 20M."
+  ],
+  "maximum_safe_preregistered_exposure": {
+    "before_any_replay": true,
+    "future_unlock_rule": "After a terminal final corpus exists, preregister at most the exact one-pass total from its immutable train unique-loss ledger; never substitute source bytes, padding, epochs, or a token/parameter ratio.",
+    "positions_now": 0,
+    "unit": "unique_nonignored_causal_loss_positions",
+    "why_zero": [
+      "DATA-300 says the Wave-3 corpus is not built/frozen/terminal.",
+      "The full five-source post-split/post-dedup/post-reservation unique-loss ledger does not exist.",
+      "DATA-295 family gate fails with UK/EN/code family counts 1/1/2 against minimum 2/2/2.",
+      "Quality/privacy exact reruns, nonempty selection-validation, and two clean builds are also unresolved."
+    ]
+  },
+  "schema_version": "12-6.research313-20m-data-capacity-gate.v1",
+  "verdict": "BLOCKED_NO_TERMINAL_FINAL_CORPUS_LEDGER",
+  "worker_id": "RESEARCH-313-20M-DATA-CAPACITY-GATE"
+}
