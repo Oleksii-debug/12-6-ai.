@@ -5,10 +5,11 @@ import hashlib
 import json
 import math
 import re
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import PurePosixPath
-from typing import Any, Callable, Literal, Mapping, NotRequired, Sequence, TypedDict
+from typing import Any, Literal, NotRequired, TypedDict
 
 
 PROTOCOL_VERSION = 1
@@ -395,11 +396,14 @@ def _validate_python_source(source: str) -> None:
             root = (node.module or "").split(".", 1)[0]
             if root not in _ALLOWED_PYTHON_IMPORT_ROOTS:
                 raise ProtocolViolation(ErrorCode.POLICY_DENIED, f"python import denied: {root}")
-        elif isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
-            if node.func.id in _FORBIDDEN_PYTHON_CALLS:
-                raise ProtocolViolation(
-                    ErrorCode.POLICY_DENIED, f"python call denied: {node.func.id}"
-                )
+        elif (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id in _FORBIDDEN_PYTHON_CALLS
+        ):
+            raise ProtocolViolation(
+                ErrorCode.POLICY_DENIED, f"python call denied: {node.func.id}"
+            )
 
 
 def _validate_arguments(
@@ -686,7 +690,7 @@ class MockExecutor:
                 str(exc),
                 request_hash=request_hash,
             )
-        except Exception:
+        except Exception:  # noqa: BLE001
             return self._failure(
                 request,
                 adapter_id,
