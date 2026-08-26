@@ -8,8 +8,8 @@
     "profile_id": "linux-x86_64",
     "path": "requirements/locks/linux-x86_64/profile.json"
   },
-  "required_modules": ["pytest", "ruff", "torch"],
-  "required_commands": [],
+  "required_modules": ["pytest", "torch"],
+  "required_commands": [".m150/bin/ruff"],
   "test_selectors": ["tests/test_milestone150_learned_base_ladder.py"],
   "critical_imports": ["twelve_six.model", "twelve_six.tokenization", "twelve_six.training"],
   "model_spec": {
