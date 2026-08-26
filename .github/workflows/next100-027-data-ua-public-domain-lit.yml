@@ -1,0 +1,32 @@
+name: NEXT100-027 Ukrainian public-domain literature
+
+on:
+  push:
+    branches:
+      - next100-027/data-ua-public-domain-lit-20260826
+  pull_request:
+    paths:
+      - "configs/data/next100_027_ua_public_domain_lit_v1.json"
+      - "data/external/snapshots/next100_027_verba_nomis1864_raw.jsonl"
+      - "data/external/snapshots/next100_027_verba_nomis1864_normalized.txt"
+      - "tools/validate_next100_027_ua_public_domain_lit.py"
+      - "docs/NEXT100_027_DATA_UA_PUBLIC_DOMAIN_LIT.md"
+      - ".github/workflows/next100-027-data-ua-public-domain-lit.yml"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Exact-head binding
+        shell: bash
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+      - name: Validate immutable authority
+        run: python tools/validate_next100_027_ua_public_domain_lit.py
+      - name: Byte-identical second validation
+        run: |
+          python tools/validate_next100_027_ua_public_domain_lit.py > /tmp/a
+          python tools/validate_next100_027_ua_public_domain_lit.py > /tmp/b
+          cmp /tmp/a /tmp/b
