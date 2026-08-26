@@ -1,0 +1,164 @@
+{
+  "schema": "next100092.postbase-evidence-namespace-audit.v1",
+  "worker_id": "NEXT100-092-POSTBASE-EVIDENCE-NAMESPACE-AUDIT",
+  "repository": {
+    "requested": "Oleksii-debug/12-6-ai",
+    "physical": "Oleksii-debug/12-6-ai.",
+    "audit_base_head": "ce275a272afbf8a9a4452a107db9190fa0abe653"
+  },
+  "execution": {
+    "profile": "LOCAL_FREE",
+    "external_llm_calls": false,
+    "teacher_api_calls": false,
+    "training_performed": false
+  },
+  "policy": {
+    "policy_id": "next100092.base-postbase-evidence-firewall.v1",
+    "base_provenance_reference_allowed": true,
+    "base_behavior_result_allowed": false,
+    "post_base_canonical_base_training_eligible": false,
+    "post_base_canonical_base_scientific_evidence": false,
+    "namespace_crossing_fails_closed": true
+  },
+  "audit_result": "PASS_NO_OBSERVED_NAMESPACE_CROSSING_CENTRAL_GATE_REQUIRED",
+  "components": [
+    {
+      "component_id": "model_adapter",
+      "pr": 428,
+      "head_sha": "e805bf715617999209aef88946cea01f3668f583",
+      "source_paths": [
+        "src/twelve_six/postbase/adapter.py"
+      ],
+      "authority_scope": "POST_BASE_ONLY",
+      "canonical_base_training_eligible": false,
+      "canonical_base_scientific_evidence": false,
+      "native_namespace_status": "EXPLICIT_FIREWALL",
+      "finding": "BaseCheckpointEvidence is immutable inherited Base provenance only; PostBaseGenerationEvidence is separately typed evidence_namespace=post_base."
+    },
+    {
+      "component_id": "communication_data",
+      "pr": 437,
+      "head_sha": "d83fe9f7227112615da1f8f6e7a10f56531dbb35",
+      "source_paths": [
+        "data/post_base/communication_v1/manifest.json",
+        "src/twelve_six/post_base/data_contract.py"
+      ],
+      "authority_scope": "POST_BASE_ONLY",
+      "canonical_base_training_eligible": false,
+      "canonical_base_scientific_evidence": false,
+      "native_namespace_status": "EXPLICIT_FIREWALL",
+      "finding": "Manifest hard-binds base_corpus_evidence=false, canonical_base_training_eligible=false and training_authorized=false."
+    },
+    {
+      "component_id": "sft_runner",
+      "pr": 433,
+      "head_sha": "53cd88f7132103a0f67a6922caa5274f68401d48",
+      "source_paths": [
+        "src/twelve_six/post_base/sft_runner.py",
+        "src/twelve_six/post_base/sft_recovery.py"
+      ],
+      "authority_scope": "POST_BASE_ONLY",
+      "canonical_base_training_eligible": false,
+      "canonical_base_scientific_evidence": false,
+      "native_namespace_status": "EXPLICIT_FIREWALL",
+      "finding": "Checkpoint and evaluation outputs are hard-bound to post-Base artifact/evidence namespaces; Base checkpoint fields are lineage references, not promoted results."
+    },
+    {
+      "component_id": "communication_eval",
+      "pr": 434,
+      "head_sha": "a3b598fd6951267f4d5582b874ddc265278337a4",
+      "source_paths": [
+        "src/twelve_six/post_base/communication_eval.py",
+        "tests/fixtures/post_base/communication_eval/v1/manifest.json"
+      ],
+      "authority_scope": "POST_BASE_ONLY",
+      "canonical_base_training_eligible": false,
+      "canonical_base_scientific_evidence": false,
+      "native_namespace_status": "EXPLICIT_FIREWALL",
+      "finding": "Evaluation manifest separates evidence/post_base/eval354 from evidence/base, sets base_raw_lm_diagnostics=false and training_eligible=false."
+    },
+    {
+      "component_id": "tools",
+      "pr": 435,
+      "head_sha": "72e74f7689c26463a5df1b9350fa4272373c9a71",
+      "source_paths": [
+        "src/twelve_six/postbase/model_tool_integration.py"
+      ],
+      "authority_scope": "POST_BASE_ONLY",
+      "canonical_base_training_eligible": false,
+      "canonical_base_scientific_evidence": false,
+      "native_namespace_status": "CENTRAL_GATE_REQUIRED",
+      "finding": "IntegrationRun can carry lineage=BASE as model lineage while serializing post-Base tool behavior without an explicit evidence namespace; lineage must never be interpreted as Base evidence authority."
+    },
+    {
+      "component_id": "deliberation",
+      "pr": 386,
+      "head_sha": "486bd91ca03bed41750c638d702f557f320b780a",
+      "source_paths": [
+        "src/twelve_six/postbase_deliberation.py"
+      ],
+      "authority_scope": "POST_BASE_ONLY",
+      "canonical_base_training_eligible": false,
+      "canonical_base_scientific_evidence": false,
+      "native_namespace_status": "CENTRAL_GATE_REQUIRED",
+      "finding": "Trace exports post-Base scores, verification summaries and selected candidates but has no explicit evidence_namespace field; publication therefore requires the central envelope gate."
+    },
+    {
+      "component_id": "hypothesis_search",
+      "pr": 422,
+      "head_sha": "ea1d8fff0d3235660dffe7ba411e192df83f5e1d",
+      "source_paths": [
+        "src/twelve_six/postbase_hypothesis.py"
+      ],
+      "authority_scope": "POST_BASE_ONLY",
+      "canonical_base_training_eligible": false,
+      "canonical_base_scientific_evidence": false,
+      "native_namespace_status": "CENTRAL_GATE_REQUIRED",
+      "finding": "Hypothesis export contains objects named evidence, contradictions and tests but no canonical evidence namespace; these are post-Base search state only."
+    },
+    {
+      "component_id": "verifier",
+      "pr": 423,
+      "head_sha": "7eac24e250c0853745208bab8ba9b2d3d104fbf5",
+      "implementation_head_sha": "8744c8ab4c21299ed5fd12e937ab2dadb92d574e",
+      "source_paths": [
+        "src/twelve_six/postbase/verification.py",
+        "tools/verify_postbase357_convergence.py"
+      ],
+      "authority_scope": "POST_BASE_ONLY",
+      "canonical_base_training_eligible": false,
+      "canonical_base_scientific_evidence": false,
+      "native_namespace_status": "CENTRAL_GATE_REQUIRED",
+      "finding": "VerifierResult and ensemble verdicts are deterministic post-Base verification outputs but do not themselves declare a Base/post-Base scientific-evidence namespace."
+    },
+    {
+      "component_id": "memory_rag",
+      "pr": 436,
+      "head_sha": "976adda1cfe981d7b6363d267854759bee802006",
+      "source_paths": [
+        "src/twelve_six/memory_rag/contracts.py",
+        "src/twelve_six/memory_rag/store.py",
+        "src/twelve_six/memory_rag/retrieval.py"
+      ],
+      "authority_scope": "POST_BASE_ONLY",
+      "canonical_base_training_eligible": false,
+      "canonical_base_scientific_evidence": false,
+      "native_namespace_status": "CENTRAL_GATE_REQUIRED",
+      "finding": "EvidenceObject and RetrievalResult preserve memory provenance but are retrieval evidence for post-Base orchestration, not canonical Base scientific evidence."
+    },
+    {
+      "component_id": "teacher_factory",
+      "pr": 427,
+      "head_sha": "6ae8cd70729565ac911a23bbcd628d602a19d030",
+      "source_paths": [
+        "src/twelve_six/postbase/contracts.py",
+        "src/twelve_six/postbase/factory.py"
+      ],
+      "authority_scope": "POST_BASE_ONLY",
+      "canonical_base_training_eligible": false,
+      "canonical_base_scientific_evidence": false,
+      "native_namespace_status": "EXPLICIT_FIREWALL",
+      "finding": "Dataset records/manifests hard-code base_corpus_evidence=false and canonical_base_training_eligible=false; as_base_corpus_evidence() always fails closed."
+    }
+  ]
+}
