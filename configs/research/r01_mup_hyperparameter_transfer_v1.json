@@ -1,0 +1,198 @@
+{
+  "schema_version": 1,
+  "campaign_id": "R01-MUP-HYPERPARAMETER-TRANSFER-V1",
+  "status": "RESEARCH_CANDIDATE_ONLY",
+  "parent_scaling_campaign": {
+    "path": "configs/research/r01_20m_to_100m_scaling_campaign_v1.json",
+    "merged_main_sha": "a73ab38026cb7849f478cc13ad58b93534a76e2f",
+    "model341_sha": "e4ff486fd90802fc123bebf60eed4e59196a98df",
+    "modelspec_sha256": "fbff24d561a2818453554d58ca23fc6ace3303b078f1935a8576c4565bd92441",
+    "parameter_count": 20613440
+  },
+  "hard_boundaries": {
+    "local_free_engineering_only": true,
+    "model_training_authorized": false,
+    "paid_compute_authorized": false,
+    "production_modelspec_change_authorized": false,
+    "optimizer_recipe_change_authorized": false,
+    "tokenizer_change_authorized": false,
+    "corpus_change_authorized": false,
+    "standard_parameterization_transfer_may_be_assumed": false,
+    "mup_adoption_may_be_assumed": false
+  },
+  "research_question": {
+    "primary": "Can a deliberately verified maximal-update parameterization reduce hyperparameter retuning cost when scaling the 12-6 AI architecture family beyond MODEL-341?",
+    "secondary": "How much bounded data repetition is tolerable in pilot studies without misreporting repeated exposure as unique training capacity?"
+  },
+  "comparison_arms": [
+    {
+      "id": "SP-CONTROL",
+      "parameterization": "CURRENT_STANDARD_PARAMETERIZATION",
+      "purpose": "retain an independently tuned control; no cross-size learning-rate transfer is presumed"
+    },
+    {
+      "id": "MUP-CANDIDATE",
+      "parameterization": "MAXIMAL_UPDATE_PARAMETERIZATION",
+      "purpose": "test zero-shot hyperparameter transfer only after implementation-level coordinate checks pass"
+    }
+  ],
+  "mup_integration_contract": {
+    "implementation_choice": "NOT_FROZEN",
+    "external_library_dependency_required": false,
+    "width_transfer_primary": true,
+    "depth_transfer_is_separate_experiment": true,
+    "width_and_depth_may_not_be_conflated_in_one_transfer_claim": true,
+    "tied_embedding_handling_must_be_mup_compatible": true,
+    "attention_logit_scaling_must_be_explicitly_verified": true,
+    "optimizer_parameter_group_scaling_must_be_explicitly_verified": true,
+    "initialization_scaling_must_be_explicitly_verified": true,
+    "scheduler_must_preserve_relative_parameter_group_scaling": true,
+    "ordinary_adamw_hyperparameters_may_not_be_relabelled_mup": true,
+    "checkpoint_identity_must_record_parameterization": true
+  },
+  "coordinate_check_preregistration": {
+    "purpose": "verify stable activation and update statistics before any learned scaling claim",
+    "production_model": false,
+    "shared": {
+      "n_layers": 16,
+      "head_dim": 32,
+      "n_kv_heads": 2,
+      "activation": "swiglu",
+      "norm": "rmsnorm_pre",
+      "position": "rope",
+      "tie_word_embeddings": true,
+      "vocab_size": 256
+    },
+    "width_probes": [
+      {
+        "d_model": 192,
+        "n_heads": 6
+      },
+      {
+        "d_model": 256,
+        "n_heads": 8
+      },
+      {
+        "d_model": 320,
+        "n_heads": 10
+      }
+    ],
+    "requirements": [
+      "same_exact_input_batch_identity",
+      "same_sequence_length",
+      "same_seed_family",
+      "same_optimizer_family",
+      "same_loss_definition",
+      "record_per_layer_activation_rms",
+      "record_per_layer_update_to_weight_ratio",
+      "record_gradient_norms",
+      "fail_on_nan_or_inf"
+    ],
+    "pass_claim_requires_independent_audit": true
+  },
+  "hyperparameter_transfer_preregistration": {
+    "optimizer_family": "AdamW_or_mup_equivalent",
+    "tuning_origin": "smallest_coord_check_qualified_proxy",
+    "learning_rate_search": {
+      "type": "relative_multiplier_around_measured_incumbent",
+      "multipliers": [
+        0.5,
+        1.0,
+        2.0
+      ]
+    },
+    "transferable_candidate_fields": [
+      "learning_rate_base",
+      "initialization_scale",
+      "adam_beta1",
+      "adam_beta2",
+      "adam_epsilon"
+    ],
+    "not_assumed_transferable": [
+      "batch_size",
+      "sequence_length",
+      "training_duration",
+      "weight_decay",
+      "dropout",
+      "depth",
+      "token_budget"
+    ],
+    "target_sizes_for_future_measurement": [
+      20613440,
+      50000000,
+      100000000
+    ],
+    "zero_shot_transfer_is_evidence_claim_not_default": true
+  },
+  "data_constrained_pilot": {
+    "purpose": "measure repeated-data degradation without confusing exposure with unique capacity",
+    "candidate_epoch_counts": [
+      1,
+      2,
+      4
+    ],
+    "unique_loss_positions_must_be_reported_separately": true,
+    "repeated_exposure_positions_must_be_reported_separately": true,
+    "repeated_positions_may_increase_unique_capacity": false,
+    "same_split_and_decontamination_identity_required": true,
+    "no_repetition_policy_change_authorized_by_this_contract": true
+  },
+  "metrics": {
+    "primary_cross_tokenizer_quality": "bits_per_byte",
+    "required": [
+      "heldout_bits_per_byte",
+      "heldout_loss",
+      "loss_curve",
+      "activation_rms_by_layer",
+      "update_to_weight_ratio_by_layer",
+      "gradient_norms",
+      "nan_inf_events",
+      "tokens_per_second",
+      "peak_memory_bytes",
+      "unique_loss_positions_seen",
+      "total_loss_position_exposures",
+      "checkpoint_resume_equivalence"
+    ]
+  },
+  "promotion_gates": [
+    "exact_corpus_identity",
+    "tokenizer_identity",
+    "evaluation_firewall",
+    "checkpoint_integrity_terminal",
+    "coordinate_check_terminal",
+    "standard_parameterization_control_measured",
+    "mup_candidate_measured",
+    "unique_vs_repeated_exposure_ledger",
+    "independent_scientific_audit",
+    "explicit_compute_authorization_if_material_cost"
+  ],
+  "decision_rules": {
+    "mup_can_replace_standard_parameterization_without_measurement": false,
+    "mup_can_justify_100m_modelspec_without_20m_evidence": false,
+    "repeated_data_can_satisfy_unique_loss_budget": false,
+    "one_successful_seed_is_sufficient_for_stage_promotion": false,
+    "final_test_can_be_used_for_hyperparameter_selection": false
+  },
+  "research_sources": [
+    {
+      "title": "Tensor Programs V: Tuning Large Neural Networks via Zero-Shot Hyperparameter Transfer",
+      "url": "https://arxiv.org/abs/2203.03466",
+      "use": "basis for deliberate maximal-update parameterization and hyperparameter-transfer experiments"
+    },
+    {
+      "title": "Scaling Data-Constrained Language Models",
+      "url": "https://arxiv.org/abs/2305.16264",
+      "use": "basis for bounded repetition experiments while keeping unique-data accounting separate"
+    },
+    {
+      "title": "MobileLLM: Optimizing Sub-billion Parameter Language Models for On-Device Use Cases",
+      "url": "https://proceedings.mlr.press/v235/liu24ce.html",
+      "use": "supports retaining deep-thin and grouped-query architecture bias below one billion parameters"
+    },
+    {
+      "title": "Training Compute-Optimal Large Language Models",
+      "url": "https://arxiv.org/abs/2203.15556",
+      "use": "joint model-data scaling reference; not a rigid authorization rule for this tiny-model regime"
+    }
+  ]
+}
