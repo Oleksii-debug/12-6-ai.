@@ -2,9 +2,9 @@
 """Acquire the exact Rada_Trees primary archive from its pinned HF object snapshot.
 
 This LOCAL_FREE acquisition layer deliberately grants zero training capacity. It
-binds the first Hugging Face resolve redirect to the immutable Xet identity from
-the self-hashed parent snapshot, streams exactly the expected number of bytes,
-and computes the full downloaded-content SHA-256 for the inventory successor.
+binds the Hugging Face resolve handoff to the immutable Xet object identity,
+streams exactly the expected byte count, and requires the downloaded SHA-256 to
+match the independently pinned content identity before atomic promotion.
 """
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import sys
 import urllib.error
 import urllib.parse
@@ -27,6 +28,7 @@ import run_d03_rada_trees_inventory_from_hf_snapshot as bridge
 USER_AGENT = "12-6-ai-rada-trees-exact-acquisition/1"
 CHUNK_BYTES = 1024 * 1024
 MAX_ARCHIVE_BYTES = 1_000_000_000
+HEX64 = re.compile(r"^[0-9a-f]{64}$")
 RESOLVE_URL = (
     "https://huggingface.co/datasets/"
     f"{bridge.REPO_ID}/resolve/{bridge.REVISION}/{bridge.PRIMARY_ARCHIVE}"
@@ -54,6 +56,20 @@ def _provider_https_url(url: str) -> bool:
 
 def _normalized_headers(headers: Mapping[str, str]) -> dict[str, str]:
     return {str(key).lower(): str(value).strip() for key, value in headers.items()}
+
+
+def _pinned_archive_identity() -> dict[str, str]:
+    config = bridge.inventory.load_config()
+    archive = config["primary_archive"]
+    content_sha256 = archive.get("exact_content_sha256")
+    xet_hash = archive.get("content_xet_hash")
+    if not isinstance(content_sha256, str) or HEX64.fullmatch(content_sha256) is None:
+        raise AcquisitionError("inventory config has no valid pinned archive SHA-256")
+    if content_sha256 != bridge.inventory.PINNED_CONTENT_SHA256:
+        raise AcquisitionError("inventory config archive SHA-256 authority drift")
+    if xet_hash != bridge.inventory.PINNED_XET_HASH:
+        raise AcquisitionError("inventory config Xet authority drift")
+    return {"content_sha256": content_sha256, "xet_hash": str(xet_hash)}
 
 
 def validate_first_redirect(
@@ -131,9 +147,12 @@ def _stream_exact_bytes(
     response: BinaryIO,
     output: BinaryIO,
     expected_size: int,
+    expected_sha256: str,
 ) -> tuple[int, str]:
     if expected_size <= 0 or expected_size > MAX_ARCHIVE_BYTES:
         raise AcquisitionError("snapshot archive byte size is outside acquisition bound")
+    if HEX64.fullmatch(expected_sha256) is None:
+        raise AcquisitionError("pinned archive SHA-256 is malformed")
 
     digest = hashlib.sha256()
     total = 0
@@ -151,7 +170,10 @@ def _stream_exact_bytes(
         raise AcquisitionError(
             f"download byte-size mismatch expected={expected_size} actual={total}"
         )
-    return total, digest.hexdigest()
+    observed_sha256 = digest.hexdigest()
+    if observed_sha256 != expected_sha256:
+        raise AcquisitionError("download SHA-256 mismatch against pinned source authority")
+    return total, observed_sha256
 
 
 def acquire(
@@ -161,6 +183,9 @@ def acquire(
     timeout: float = 120.0,
 ) -> dict[str, Any]:
     handoff = bridge.validate_hf_object_snapshot(snapshot)
+    pinned = _pinned_archive_identity()
+    if handoff["xet_hash"] != pinned["xet_hash"]:
+        raise AcquisitionError("parent snapshot Xet identity detached from pinned source authority")
     if handoff["size_bytes"] > MAX_ARCHIVE_BYTES:
         raise AcquisitionError("parent snapshot exceeds acquisition byte bound")
     if destination.name != bridge.PRIMARY_ARCHIVE:
@@ -214,6 +239,7 @@ def acquire(
                     response,
                     output,
                     handoff["size_bytes"],
+                    pinned["content_sha256"],
                 )
                 output.flush()
                 os.fsync(output.fileno())
@@ -227,7 +253,7 @@ def acquire(
     os.replace(temporary, destination)
     report: dict[str, Any] = {
         "schema_version": "12-6.d03-rada-trees-exact-acquisition.v1",
-        "state": "EXACT_HF_TRANSPORT_BOUND_ARCHIVE_ACQUIRED_ZERO_CREDIT",
+        "state": "EXACT_HF_TRANSPORT_AND_PINNED_CONTENT_IDENTITY_ACQUIRED_ZERO_CREDIT",
         "dataset": bridge.REPO_ID,
         "exact_revision": bridge.REVISION,
         "object_snapshot_identity_sha256": handoff["snapshot_identity_sha256"],
@@ -238,12 +264,14 @@ def acquire(
             "size_bytes": size_bytes,
             "git_blob_oid": handoff["git_blob_oid"],
             "xet_hash": handoff["xet_hash"],
+            "expected_content_sha256": pinned["content_sha256"],
             "content_sha256": sha256,
-            "content_sha256_computed": True,
+            "content_sha256_matches_pinned_authority": True,
             "transport_bound_to_exact_resolve": True,
         },
         "claim_boundary": {
             "archive_downloaded": True,
+            "archive_sha256_verified_against_pinned_authority": True,
             "archive_member_inventory_complete": False,
             "plain_text_classification_complete": False,
             "period_provenance_stratification_complete": False,
@@ -257,7 +285,7 @@ def acquire(
             "optimizer_updates": 0,
             "paid_compute_used": False,
         },
-        "next_gate": "RUN_HF_SNAPSHOT_INVENTORY_BRIDGE_WITH_COMPUTED_CONTENT_SHA256",
+        "next_gate": "RUN_HF_SNAPSHOT_INVENTORY_BRIDGE_WITH_PINNED_CONTENT_SHA256",
     }
     stable = json.dumps(
         report,
@@ -295,7 +323,7 @@ def main() -> int:
     print("D03_RADA_TREES_EXACT_ACQUISITION=ACQUIRED_ZERO_CREDIT")
     print("CONTENT_SHA256=" + report["archive"]["content_sha256"])
     print("TRAINING_AUTHORIZED_BYTES=0")
-    print("NEXT=RUN_HF_SNAPSHOT_INVENTORY_BRIDGE_WITH_COMPUTED_CONTENT_SHA256")
+    print("NEXT=RUN_HF_SNAPSHOT_INVENTORY_BRIDGE_WITH_PINNED_CONTENT_SHA256")
     return 0
 
 
