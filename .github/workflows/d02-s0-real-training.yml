@@ -8,6 +8,7 @@ on:
       - "src/twelve_six/training/**"
       - "src/twelve_six/checkpoint/**"
       - "src/twelve_six/tokenization/**"
+      - "!src/twelve_six/tokenization/calibration.py"
       - "src/twelve_six/packing/**"
       - "src/twelve_six/evaluation.py"
       - "src/twelve_six/s0_*.py"
