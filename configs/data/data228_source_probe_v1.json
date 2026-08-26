@@ -1,0 +1,40 @@
+{
+  "schema_version": "12-6.data228-source-probe.v1",
+  "local_free_only": true,
+  "baseline": {
+    "authority": "DATA-181 exact canonical snapshot promotion (DATA-213 publication not discoverable)",
+    "source_sha": "5ae74eb162641712ff97a326572bec5bfe2b0607",
+    "families": {
+      "uk": ["rada.open-data.laws-texts"],
+      "en": ["standardebooks.manual"]
+    }
+  },
+  "candidates": [
+    {
+      "source_id": "uk.kubernetes.docs.concepts-index",
+      "source_family": "kubernetes.website.docs",
+      "language": "uk",
+      "provider": "Kubernetes Authors / CNCF",
+      "source_version": "git:25f3dcbed7429ebe20174ccc7000428d0f0aedda",
+      "repo": "kubernetes/website",
+      "path": "content/uk/docs/concepts/_index.md",
+      "acquisition_url": "https://raw.githubusercontent.com/kubernetes/website/25f3dcbed7429ebe20174ccc7000428d0f0aedda/content/uk/docs/concepts/_index.md",
+      "license_id": "CC-BY-4.0",
+      "license_url": "https://raw.githubusercontent.com/kubernetes/website/25f3dcbed7429ebe20174ccc7000428d0f0aedda/LICENSE",
+      "adapter": "markdown_visible_v1"
+    },
+    {
+      "source_id": "en.python.docs.tutorial-introduction",
+      "source_family": "python.cpython.documentation",
+      "language": "en",
+      "provider": "Python Software Foundation",
+      "source_version": "git:7f0ccd6c0e3f85fbaeceb2f67b06ab3631db0480",
+      "repo": "python/cpython",
+      "path": "Doc/tutorial/introduction.rst",
+      "acquisition_url": "https://raw.githubusercontent.com/python/cpython/7f0ccd6c0e3f85fbaeceb2f67b06ab3631db0480/Doc/tutorial/introduction.rst",
+      "license_id": "PSF-2.0",
+      "license_url": "https://raw.githubusercontent.com/python/cpython/7f0ccd6c0e3f85fbaeceb2f67b06ab3631db0480/LICENSE",
+      "adapter": "plain_text"
+    }
+  ]
+}
