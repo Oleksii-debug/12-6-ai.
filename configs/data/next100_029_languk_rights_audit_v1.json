@@ -1,0 +1,149 @@
+{
+  "schema_version": "12-6.data-ua-languk-rights-audit.v1",
+  "worker_id": "NEXT100-029-DATA-UA-LANGUK",
+  "execution_profile": "LOCAL_FREE",
+  "cutoff_utc": "2026-08-26T18:02:18Z",
+  "base_authority": {
+    "repo": "Oleksii-debug/12-6-ai.",
+    "base_branch": "data301/corpus-v03-terminal-build-20260826",
+    "base_head_sha": "8820ba1b255f6bb95c7db0531fd846078a1aae01",
+    "data301_state": "TERMINAL_BLOCKED",
+    "incumbent_training_families": {
+      "total": 4,
+      "uk": 1,
+      "en": 1,
+      "code": 2
+    },
+    "incumbent_uk_family": "ua.rada.open-data.laws-texts",
+    "authorized_balanced_no_replay_capacity": 0
+  },
+  "policy": {
+    "rights_policy_ref": "policy://12-6/data/explicit-model-training-evidence-v1",
+    "unknown_or_ambiguous_training_rights": "FAIL_CLOSED",
+    "mixed_third_party_rights_without_safe_separation": "REJECT",
+    "public_or_research_availability_implies_training_rights": false,
+    "payload_materialization_requires_rights_and_privacy_clearance": true
+  },
+  "candidates": [
+    {
+      "candidate_id": "languk.ubertext",
+      "verdict": "REJECT_MIXED_RIGHTS",
+      "license": "NO_SINGLE_REUSE_LICENSE; publisher states Fair Use for statistical/scientific analysis",
+      "provenance": "Lang-UK UberText; shuffled sentences from multiple Ukrainian periodicals plus Wikipedia and fiction",
+      "training_rights": "NOT_PROVEN_FOR_PROJECT_MODEL_TRAINING",
+      "redistribution_rights": "NOT_PROVEN; upstream explicitly reports license restrictions on some periodicals",
+      "privacy": "ELEVATED_UNASSESSED; news/web text may contain personal data",
+      "family_independence": "NOT_ADMITTED",
+      "materialized_training_bytes": 0,
+      "evidence": [
+        {
+          "url": "https://www.lang.org.ua/en/produkty/korpusi/ubertext-corpus/",
+          "fact": "Upstream states some periodical licenses prohibit unchanged publication and distribution is asserted under Fair Use for statistical/scientific analysis."
+        }
+      ]
+    },
+    {
+      "candidate_id": "brown-uk.corpus",
+      "verdict": "REJECT_CHAIN_OF_TITLE_UNPROVEN",
+      "upstream_commit": "11ed17ea1c74b138fe6cc80b03dfea4f0e63abd9",
+      "license": "CC BY-NC-SA 4.0 stated at corpus level",
+      "provenance": "Human-curated genre-balanced Ukrainian corpus; metadata enumerates third-party newspaper/web fragments and authors/URLs",
+      "training_rights": "NOT_PROVEN_FOR_ALL_INCLUDED_TEXTS",
+      "redistribution_rights": "CORPUS_LEVEL_LICENSE_ASSERTED_BUT_COMPONENT_CHAIN_OF_TITLE_UNVERIFIED",
+      "privacy": "UNASSESSED",
+      "family_independence": "DISTINCT_FROM_RADA_IN_LINEAGE_BUT_NOT_ADMITTED",
+      "materialized_training_bytes": 0,
+      "evidence": [
+        {
+          "url": "https://github.com/brown-uk/corpus/tree/11ed17ea1c74b138fe6cc80b03dfea4f0e63abd9",
+          "readme_blob_sha": "79bbc783338133b035a4b03c657824ec3ad38b0d",
+          "meta_blob_sha": "f6fafd2d971899c334570957e933d59fb80c72b5"
+        }
+      ]
+    },
+    {
+      "candidate_id": "languk.court-decisions-uk.supreme-2024-5k",
+      "verdict": "RETEST_PRIVACY_AND_BYTE_MATERIALIZATION",
+      "dataset_repo": "lang-uk/court-decisions-uk",
+      "upstream_revision": "289c0316fc076db3e1607db6776a29df42f4ffc5",
+      "selected_file": "2024-5K-supreme-court-decisions-deduplicated.parquet",
+      "selected_file_origin_commit": "2dcac4c941b87bf9c242bdc919cef4b40f4a4813",
+      "selected_file_raw_sha256": "9b8870d10695715e4a0540c6f8fdca381599c0e6cdbaf3ecdf3c0782207b6597",
+      "selected_file_bytes": 20220778,
+      "license": "MIT",
+      "underlying_work_rights": {
+        "basis": "Ukraine Law No. 2811-IX Article 8(1)(3): official documents of judicial character are not protected by copyright",
+        "current_law_reference": "https://www.wipo.int/wipolex/en/legislation/details/22385",
+        "official_portal_current_law": "https://zakon.rada.gov.ua/laws/main/l20392z22"
+      },
+      "provenance": "2024 Supreme Court decisions derived from the Unified State Register of Court Decisions; upstream paper describes filtering ~150k Supreme Court decisions to ~5k with LSH deduplication",
+      "training_rights": "RIGHTS_LAYER_PLAUSIBLY_ALLOWED_BUT_NOT_ADMITTED_UNTIL_PRIVACY_AND_EXACT_LOCAL_MATERIALIZATION_PASS",
+      "redistribution_rights": "RIGHTS_LAYER_PLAUSIBLY_ALLOWED_SUBJECT_TO_MIT_NOTICE; no payload redistribution authorized by this audit",
+      "privacy": {
+        "state": "BLOCKED_PENDING_DETERMINISTIC_SCAN",
+        "reason": "Dataset viewer exposes person_count/address_count fields and court text can contain personal or sensitive case information even with source redaction.",
+        "viewer_evidence": "https://huggingface.co/datasets/lang-uk/court-decisions-uk"
+      },
+      "source_composition": "Supreme Court judicial decisions, 2024; legal/formal domain; upstream LSH-deduplicated",
+      "language_quality": {
+        "language": "uk",
+        "quality": "HIGH_FORMAL_LEGAL_BUT_DOMAIN_NARROW",
+        "representative_general_ukrainian": false,
+        "independent_language_scan_completed": false
+      },
+      "family_independence": {
+        "proposed_family_id": "ua.languk.supreme-court-decisions",
+        "independent_from_incumbent_rada_family": true,
+        "reason": "Judicial decision lineage via Supreme Court/Unified State Register is distinct from parliamentary statute lineage.",
+        "caveat": "Court decisions quote statutes; fragment/near-copy dedup against Rada remains mandatory."
+      },
+      "dedup_strategy": [
+        "verify exact upstream file SHA-256 before any parse",
+        "normalize text deterministically, preserving source record IDs",
+        "drop exact raw and normalized duplicates",
+        "detect court-template duplicates and near-copies within family",
+        "cross-family compare against Rada for quoted statute fragments and near-mirror clusters",
+        "cluster before train/selection split; never split near-duplicate clusters across boundaries"
+      ],
+      "bounded_subset_rule": {
+        "allowed_source_file": "2024-5K-supreme-court-decisions-deduplicated.parquet",
+        "exclude_file": "250-deanonymized-court-cases.parquet",
+        "max_records": 256,
+        "selection": "ascending stable source id after privacy PASS; no evaluation-reserved IDs",
+        "materialized_records_now": 0,
+        "materialized_training_bytes_now": 0,
+        "raw_subset_sha256": null,
+        "normalized_subset_sha256": null,
+        "reason_empty": "No byte-exact local payload was obtained and no deterministic privacy scan was executed; fail closed."
+      }
+    },
+    {
+      "candidate_id": "languk.malyuk",
+      "verdict": "REJECT_MIXED_UPSTREAM_RIGHTS",
+      "license": "NOT_SUFFICIENTLY_SOURCE_SEPARABLE_FOR_THIS AUDIT",
+      "provenance": "Combined pretraining corpus including UberText 2.0, OSCAR, Wikipedia and other sources",
+      "training_rights": "NOT_PROVEN_PER_COMPONENT",
+      "redistribution_rights": "NOT_PROVEN_PER_COMPONENT",
+      "privacy": "UNASSESSED_MIXED_WEB",
+      "family_independence": "NOT_ADMITTED",
+      "materialized_training_bytes": 0
+    }
+  ],
+  "terminal_result": {
+    "verdict": "RETEST_LANGUK_COURT_DECISIONS_ONLY",
+    "training_source_admitted": false,
+    "new_uk_family_admitted": false,
+    "materialized_training_records": 0,
+    "materialized_training_bytes": 0,
+    "registry_change_authorized": false,
+    "required_retest": [
+      "byte-exact acquisition of the selected 20,220,778-byte parquet matching SHA-256 9b8870d10695715e4a0540c6f8fdca381599c0e6cdbaf3ecdf3c0782207b6597",
+      "deterministic privacy/PII scan with quarantine semantics",
+      "independent Ukrainian-language quality statistics on retained rows",
+      "project-native cross-family dedup against Rada and all live terminal sources",
+      "raw and normalized SHA-256 for a <=256-record retained subset",
+      "late registry refresh proving no conflicting family admission"
+    ]
+  },
+  "evidence_identity_sha256": "96e1c85bdeaad908689b47252832ab9674897d3a3dff3e73804ca80b492ad9be"
+}
