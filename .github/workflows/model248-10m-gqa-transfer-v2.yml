@@ -1,0 +1,79 @@
+name: MODEL-248 10M GQA Transfer V2
+
+on:
+  pull_request:
+    paths:
+      - "configs/experiments/model248_10m_gqa_transfer_v2.json"
+      - "evidence/model248/**"
+      - "tools/validate_model248_readiness.py"
+      - "tests/test_model248_readiness.py"
+      - "docs/MODEL248_10M_GQA_TRANSFER_V2.md"
+      - ".github/workflows/model248-10m-gqa-transfer-v2.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  authority-gate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11.16"
+
+      - name: Universal execution bootstrap
+        uses: ./.github/actions/execution-bootstrap
+        with:
+          capabilities: tests,lint
+          venv: .model248
+          manifest: artifacts/model248/environment.json
+          command: python -m pytest -q tests/test_model248_readiness.py
+
+      - name: Compile focused sources
+        run: |
+          set -euo pipefail
+          .model248/bin/python -m py_compile tools/validate_model248_readiness.py tests/test_model248_readiness.py
+
+      - name: Validate fail-closed report
+        run: |
+          set -euo pipefail
+          .model248/bin/python tools/validate_model248_readiness.py | tee artifacts/model248/validation.json
+
+      - name: Focused contracts
+        run: |
+          set -euo pipefail
+          PYTHONPATH=. .model248/bin/python -m pytest -q tests/test_model248_readiness.py
+
+      - name: Scoped lint
+        run: |
+          set -euo pipefail
+          .model248/bin/python -m ruff check tools/validate_model248_readiness.py tests/test_model248_readiness.py
+
+      - name: Prove no numerical replacement claim
+        run: |
+          set -euo pipefail
+          .model248/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+          p = json.loads(Path("evidence/model248/readiness_20260826.json").read_text())
+          assert p["training_executed"] is False
+          assert p["optimizer_updates"] == 0
+          assert p["paired_replacement_runs"] == 0
+          assert p["decision"]["replace_8q2kv_with_8q4kv"] is False
+          PY
+
+      - name: Upload retained gate evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: model248-10m-gqa-transfer-v2-gate
+          path: |
+            artifacts/model248/
+            evidence/model248/readiness_20260826.json
+            configs/experiments/model248_10m_gqa_transfer_v2.json
+          retention-days: 30
