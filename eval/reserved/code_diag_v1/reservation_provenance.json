@@ -1,0 +1,16 @@
+{
+  "schema": "12-6.eval134-reservation-provenance.v1",
+  "repository": "Oleksii-debug/12-6-ai.",
+  "origin_pr": 287,
+  "origin_branch": "eval134/code-suite-v1-20260826",
+  "origin_head_sha": "74fee51945c83ebdf39e171a894741964ba51b6d",
+  "origin_registry_path": "data/s0/contamination_registry.json",
+  "origin_registry_blob_sha": "35639f87c98879c36bc0edeca4f5a0aa4fdd95c2",
+  "suite_id": "eval134-code-diagnostic-v1",
+  "suite_identity_sha256": "df18192f6190cc5d8be9492103a15097daaaf31afdd1cd45b2f4c21af5721105",
+  "data_sha256": "87e8085ef7bd9bb6b9755e5e88b2db040226bfd0bffd6696a3ca5f2afb0fe865",
+  "candidate_exact_sha256_root": "18bfda81d087b0f8db44793c0e224ec48f001058795f473ecf943bda3ddb9740",
+  "candidate_normalized_sha256_root": "633662dcfb4d5d713567b37935e912fb50ccd7d893b650fe711bbfdd84c44c70",
+  "reservation_status": "RESERVED_EVALUATION_ONLY",
+  "truth_boundary": "reservation provenance is historical evidence; DATA-25 overlap is rechecked directly during RECOVER-177"
+}
