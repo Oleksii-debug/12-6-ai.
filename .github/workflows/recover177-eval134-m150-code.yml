@@ -6,6 +6,10 @@ on:
       - milestone150/learned-base-ladder-v1-20260826
   workflow_dispatch:
 
+concurrency:
+  group: recover177-eval134-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
   actions: read
