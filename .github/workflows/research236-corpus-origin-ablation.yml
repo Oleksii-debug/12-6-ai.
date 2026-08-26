@@ -26,13 +26,15 @@ jobs:
         with:
           python-version: "3.11.16"
 
+      - name: Create evidence directory
+        run: mkdir -p research236-evidence
+
       - name: Universal exact bootstrap
         uses: ./.github/actions/execution-bootstrap
         with:
           capabilities: runtime,tests
           venv: .research236
           manifest: research236-evidence/environment.json
-          command: python -m pytest tests/test_research236_corpus_origin_ablation.py
 
       - name: Compile and test contract
         shell: bash
@@ -48,7 +50,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p research236-evidence
           set +e
           .research236/bin/python tools/research236_prerequisite_gate.py \
             --source-sha "$GITHUB_SHA" \
