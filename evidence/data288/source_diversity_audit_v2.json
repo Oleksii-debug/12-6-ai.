@@ -10,7 +10,12 @@
     "mean": 45765.25,
     "median": 46477.0,
     "min": 1542,
-    "ordered_bytes": [1542, 8161, 84793, 88565],
+    "ordered_bytes": [
+      1542,
+      8161,
+      84793,
+      88565
+    ],
     "p25_nearest_rank": 1542,
     "p75_nearest_rank": 84793
   },
@@ -30,7 +35,10 @@
       "normalized_unique_bytes": 84793,
       "raw_bytes": 106111,
       "raw_share_diagnostic": 0.2367418242178959,
-      "source_ids": ["en.standardebooks.manual.8-typography", "en.standardebooks.manual.9-metadata"],
+      "source_ids": [
+        "en.standardebooks.manual.8-typography",
+        "en.standardebooks.manual.9-metadata"
+      ],
       "stratum": "en"
     },
     {
@@ -40,7 +48,9 @@
       "normalized_unique_bytes": 8161,
       "raw_bytes": 8161,
       "raw_share_diagnostic": 0.01820782037151896,
-      "source_ids": ["code.encode.httpx._content"],
+      "source_ids": [
+        "code.encode.httpx._content"
+      ],
       "stratum": "code"
     },
     {
@@ -50,7 +60,9 @@
       "normalized_unique_bytes": 1542,
       "raw_bytes": 1542,
       "raw_share_diagnostic": 0.0034403209181328564,
-      "source_ids": ["code.psf.requests._internal_utils"],
+      "source_ids": [
+        "code.psf.requests._internal_utils"
+      ],
       "stratum": "code"
     },
     {
@@ -60,7 +72,9 @@
       "normalized_unique_bytes": 88565,
       "raw_bytes": 332400,
       "raw_share_diagnostic": 0.7416100344924522,
-      "source_ids": ["ua.rada.open-data.laws-texts.d23314"],
+      "source_ids": [
+        "ua.rada.open-data.laws-texts.d23314"
+      ],
       "stratum": "uk"
     }
   ],
@@ -70,7 +84,13 @@
     "mean": 36612.2,
     "median": 36791,
     "min": 1542,
-    "ordered_bytes": [1542, 8161, 36791, 48002, 88565],
+    "ordered_bytes": [
+      1542,
+      8161,
+      36791,
+      48002,
+      88565
+    ],
     "p25_nearest_rank": 8161,
     "p75_nearest_rank": 48002
   },
@@ -80,34 +100,76 @@
     "mean": 89642.8,
     "median": 37299,
     "min": 1542,
-    "ordered_bytes": [1542, 8161, 37299, 68812, 332400],
+    "ordered_bytes": [
+      1542,
+      8161,
+      37299,
+      68812,
+      332400
+    ],
     "p25_nearest_rank": 8161,
     "p75_nearest_rank": 68812
   },
   "gate_results_on_current_terminal_inventory": {
-    "cross_family_duplicate_or_mirror_edges": {"pass": true, "threshold": 0, "value": 0},
+    "cross_family_duplicate_or_mirror_edges": {
+      "pass": true,
+      "threshold": 0,
+      "value": 0
+    },
     "family_count_by_stratum": {
       "pass": false,
-      "threshold": {"code": 2, "en": 2, "uk": 2},
-      "value": {"code": 2, "en": 1, "uk": 1}
+      "threshold": {
+        "code": 2,
+        "en": 2,
+        "uk": 2
+      },
+      "value": {
+        "code": 2,
+        "en": 1,
+        "uk": 1
+      }
     },
-    "independent_family_count": {"pass": false, "threshold": 6, "value": 4},
-    "shannon_effective_family_count": {"pass": false, "threshold": 4.0, "value": 2.4270101760218714},
-    "top_family_share": {"pass": false, "threshold": 0.25, "value": 0.4838004818066109},
+    "independent_family_count": {
+      "pass": false,
+      "threshold": 6,
+      "value": 4
+    },
+    "shannon_effective_family_count": {
+      "pass": false,
+      "threshold": 4.0,
+      "value": 2.4270101760218714
+    },
+    "top_family_share": {
+      "pass": false,
+      "threshold": 0.25,
+      "value": 0.4838004818066109
+    },
     "within_stratum_top_family_share": {
       "pass": false,
       "threshold": 0.6,
-      "value": {"code": 0.8410800783262908, "en": 1.0, "uk": 1.0}
+      "value": {
+        "code": 0.8410800783262908,
+        "en": 1.0,
+        "uk": 1.0
+      }
     }
   },
   "independent_family_count": 4,
-  "independent_family_count_by_stratum": {"code": 2, "en": 1, "uk": 1},
+  "independent_family_count_by_stratum": {
+    "code": 2,
+    "en": 1,
+    "uk": 1
+  },
   "local_free_only": true,
   "next_corpus_diversity_gates": {
     "maximum_cross_family_duplicate_or_mirror_edges": 0,
     "maximum_top_family_share_of_normalized_unique_bytes": 0.25,
     "maximum_top_family_share_within_each_stratum": 0.6,
-    "minimum_independent_families_by_stratum": {"code": 2, "en": 2, "uk": 2},
+    "minimum_independent_families_by_stratum": {
+      "code": 2,
+      "en": 2,
+      "uk": 2
+    },
     "minimum_independent_families_total": 6,
     "minimum_shannon_effective_family_count": 4.0,
     "require_no_replay_to_increase_unique_bytes": true,
@@ -116,7 +178,11 @@
   "next_corpus_diversity_status": "BLOCKED_SOURCE_DIVERSITY",
   "normalized_entropy_fraction_of_observed_max": 0.6395900787326801,
   "normalized_unique_bytes": 183061,
-  "normalized_unique_bytes_by_stratum": {"code": 9703, "en": 84793, "uk": 88565},
+  "normalized_unique_bytes_by_stratum": {
+    "code": 9703,
+    "en": 84793,
+    "uk": 88565
+  },
   "object_count": 5,
   "overlap_and_lineage_audit": {
     "algorithm": "DATA-232-style deterministic NFKC/whitespace normalization plus token shingles and code skeleton",
@@ -130,7 +196,10 @@
     "observed_common_upstream_file_group": {
       "classification": "TWO_FILES_ONE_FAMILY",
       "family_id": "en.standardebooks.manual",
-      "source_ids": ["en.standardebooks.manual.8-typography", "en.standardebooks.manual.9-metadata"]
+      "source_ids": [
+        "en.standardebooks.manual.8-typography",
+        "en.standardebooks.manual.9-metadata"
+      ]
     },
     "thresholds": {
       "code_copy_jaccard": 0.82,
@@ -142,7 +211,11 @@
       "natural_shingle_tokens": 3
     }
   },
-  "raw_bytes_by_stratum_diagnostic": {"code": 9703, "en": 106111, "uk": 332400},
+  "raw_bytes_by_stratum_diagnostic": {
+    "code": 9703,
+    "en": 106111,
+    "uk": 332400
+  },
   "raw_source_bytes": 448214,
   "schema_version": "12-6.data288-source-diversity-audit.v2",
   "shannon_effective_family_count": 2.4270101760218714,
@@ -158,7 +231,10 @@
       "status": "TERMINAL_SUCCESS"
     },
     "DATA-228": {
-      "candidate_families": ["kubernetes.website.docs", "python.cpython.documentation"],
+      "candidate_families": [
+        "kubernetes.website.docs",
+        "python.cpython.documentation"
+      ],
       "dedicated_workflow_conclusion": "failure",
       "dedicated_workflow_run": 32957120454,
       "head_sha": "46a70c990dab6ff72bb84ddb54cff1156b491b40",
