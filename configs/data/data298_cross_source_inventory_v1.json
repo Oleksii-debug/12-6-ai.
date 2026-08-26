@@ -1,0 +1,92 @@
+{
+  "schema_version": "12-6.data298-cross-source-inventory.v1",
+  "worker_id": "DATA-298-CROSS-SOURCE-DEDUP-MIRROR-AUDIT",
+  "local_free_only": true,
+  "claim_boundary": "Observed source objects only. REGISTRY_TERMINAL and DEDICATED_TERMINAL are distinct terminal-evidence classes; PROBE_NONTERMINAL is never promoted by this audit.",
+  "sources": [
+    {
+      "source_id": "en.standardebooks.manual.8-typography",
+      "source_family": "en.standardebooks.manual",
+      "modality": "en",
+      "evidence_status": "REGISTRY_TERMINAL",
+      "authority_ref": "DATA-229 registry identity 1357a343eb4ea973950d8991913109cbea53fe4fa891f0be9745ab497eb59486",
+      "declared_capacity_bytes": 48002,
+      "expected_raw_bytes": 68812,
+      "expected_raw_sha256": "21582c7f0e4ad39f2b0ed97bbc2c082d275e898b7a63c28e6d9badb8ee0f7860",
+      "acquisition_url": "https://raw.githubusercontent.com/standardebooks/manual/d1143a9b459b5e6f9cdda93a7c1e04676bff4f6b/8-typography.rst",
+      "origin_key": "github:standardebooks/manual:d1143a9b459b5e6f9cdda93a7c1e04676bff4f6b:8-typography.rst"
+    },
+    {
+      "source_id": "en.standardebooks.manual.9-metadata",
+      "source_family": "en.standardebooks.manual",
+      "modality": "en",
+      "evidence_status": "REGISTRY_TERMINAL",
+      "authority_ref": "DATA-229 registry identity 1357a343eb4ea973950d8991913109cbea53fe4fa891f0be9745ab497eb59486",
+      "declared_capacity_bytes": 36791,
+      "expected_raw_bytes": 37299,
+      "expected_raw_sha256": "7ac53dfb4bf6f73f178560e09f33160d0250c69fb679802f3254dc0eb4c9f509",
+      "acquisition_url": "https://raw.githubusercontent.com/standardebooks/manual/d1143a9b459b5e6f9cdda93a7c1e04676bff4f6b/9-metadata.rst",
+      "origin_key": "github:standardebooks/manual:d1143a9b459b5e6f9cdda93a7c1e04676bff4f6b:9-metadata.rst"
+    },
+    {
+      "source_id": "ua.rada.open-data.laws-texts.d23314",
+      "source_family": "ua.rada.open-data.laws-texts",
+      "modality": "uk",
+      "evidence_status": "REGISTRY_TERMINAL",
+      "authority_ref": "DATA-229 registry identity 1357a343eb4ea973950d8991913109cbea53fe4fa891f0be9745ab497eb59486",
+      "declared_capacity_bytes": 88565,
+      "expected_raw_bytes": 332400,
+      "expected_raw_sha256": "36eae31c3b0676ea7c02236fa05bd695c240c9a8eade5febc00457b8103ee1a4",
+      "acquisition_url": "https://data.rada.gov.ua/ogd/zak/perv/text/d23314.htm",
+      "origin_key": "rada-open-data:laws-texts/bounded-2026-08-25:https://data.rada.gov.ua/ogd/zak/perv/text/d23314.htm"
+    },
+    {
+      "source_id": "code.encode.httpx._content",
+      "source_family": "github:encode/httpx",
+      "modality": "code",
+      "evidence_status": "DEDICATED_TERMINAL",
+      "authority_ref": "DATA-227 exact head 8ebdb2e132ed7bae5245e9d4c140752640ab9885 workflow 32956209865",
+      "declared_capacity_bytes": 8161,
+      "expected_raw_bytes": 8161,
+      "expected_git_blob_sha1": "6f479a0885f723b7395843d41164a87041820776",
+      "acquisition_url": "https://raw.githubusercontent.com/encode/httpx/b5addb64f0161ff6bfe94c124ef76f6a1fba5254/httpx/_content.py",
+      "origin_key": "github:encode/httpx:b5addb64f0161ff6bfe94c124ef76f6a1fba5254:httpx/_content.py"
+    },
+    {
+      "source_id": "code.psf.requests._internal_utils",
+      "source_family": "github:psf/requests",
+      "modality": "code",
+      "evidence_status": "DEDICATED_TERMINAL",
+      "authority_ref": "DATA-227 exact head 8ebdb2e132ed7bae5245e9d4c140752640ab9885 workflow 32956209865",
+      "declared_capacity_bytes": 1542,
+      "expected_raw_bytes": 1542,
+      "expected_git_blob_sha1": "0466a7d347db4ed34a37db51b75fc8e80bc06055",
+      "acquisition_url": "https://raw.githubusercontent.com/psf/requests/5460f467b02e49471c0fd6cfc9ca0adab6351f98/src/requests/_internal_utils.py",
+      "origin_key": "github:psf/requests:5460f467b02e49471c0fd6cfc9ca0adab6351f98:src/requests/_internal_utils.py"
+    },
+    {
+      "source_id": "uk.kubernetes.docs.concepts-index",
+      "source_family": "kubernetes.website.docs",
+      "modality": "uk",
+      "evidence_status": "PROBE_NONTERMINAL",
+      "authority_ref": "DATA-228 probe exact head 46a70c990dab6ff72bb84ddb54cff1156b491b40; current exact-head probe workflow nonterminal/failing",
+      "declared_capacity_bytes": 6809,
+      "expected_raw_bytes": 12871,
+      "expected_raw_sha256": "50a790e0ece091f13fe039b5e36a23431680dec0357379f29b0029502f9b3a31",
+      "acquisition_url": "https://raw.githubusercontent.com/kubernetes/website/25f3dcbed7429ebe20174ccc7000428d0f0aedda/content/uk/docs/concepts/_index.md",
+      "origin_key": "github:kubernetes/website:25f3dcbed7429ebe20174ccc7000428d0f0aedda:content/uk/docs/concepts/_index.md"
+    },
+    {
+      "source_id": "en.python.docs.tutorial-introduction",
+      "source_family": "python.cpython.documentation",
+      "modality": "en",
+      "evidence_status": "PROBE_NONTERMINAL",
+      "authority_ref": "DATA-228 probe exact head 46a70c990dab6ff72bb84ddb54cff1156b491b40; current exact-head probe workflow nonterminal/failing",
+      "declared_capacity_bytes": 17901,
+      "expected_raw_bytes": 19188,
+      "expected_raw_sha256": "cf1674daf9568abeb5fc22f62a991e17751fea4deb06f598362ce6e7de264808",
+      "acquisition_url": "https://raw.githubusercontent.com/python/cpython/7f0ccd6c0e3f85fbaeceb2f67b06ab3631db0480/Doc/tutorial/introduction.rst",
+      "origin_key": "github:python/cpython:7f0ccd6c0e3f85fbaeceb2f67b06ab3631db0480:Doc/tutorial/introduction.rst"
+    }
+  ]
+}
