@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Diagnose family-capped 45/35/20 capacity of NEXT100-063 V2.
+"""Diagnose family-capped 45/35/20 capacity of NEXT100-063 V4.
 
 This tool is deliberately diagnostic only. It never promotes source bytes to
 optimized loss positions and never authorizes training. It binds the exact
-NEXT100-063 V2 terminal-source-registry identity and the frozen DATA-295 balance
+NEXT100-063 V4 terminal-source-registry identity and the frozen DATA-295 balance
 policy, then computes the largest exact-mixture source-byte budget that can be
 formed without replay while respecting family concentration caps.
 """
@@ -15,8 +15,8 @@ from fractions import Fraction
 from pathlib import Path
 from typing import Any
 
-REGISTRY_PATH = Path("configs/data/next100_063_terminal_source_registry_v2.json")
-EXPECTED_REGISTRY_IDENTITY = "448dd61ed3e0d78d0bca9e202529a79c02811fd67beebe4833373d0c2ab0c0a7"
+REGISTRY_PATH = Path("configs/data/next100_063_terminal_source_registry_v4.json")
+EXPECTED_REGISTRY_IDENTITY = "9fc400a3144b46c481e45d043b0a3365eb2129c83bbacde6f9e7af8a41fadc58"
 TARGET_BYTES = 20_000_000
 
 MIXTURE = {
@@ -27,12 +27,19 @@ MIXTURE = {
 GLOBAL_FAMILY_CAP = Fraction(1, 4)
 WITHIN_STRATUM_FAMILY_CAP = Fraction(3, 5)
 
-BASE_FAMILY_BYTES = {
-    "uk": {"ua.rada.open-data.laws-texts": 88_565},
+# Exact family capacities of the terminal NEXT100-065 V3 dedup parent that V4
+# binds. These are numeric training-capacity bytes, not raw/source envelopes.
+DEDUP_PARENT_FAMILY_BYTES = {
+    "uk": {
+        "ua.rada.open-data.laws-texts": 88_565,
+        "ua.literature.lesia-ukrainka.na-krylah-pisen.1892-lviv": 1_479,
+    },
     "en": {"en.standardebooks.manual": 84_793},
     "code": {
         "github:encode/httpx": 8_161,
         "github:psf/requests": 1_542,
+        "github:django/django": 54_156,
+        "github:Kludex/starlette": 5_274,
     },
 }
 
@@ -57,36 +64,51 @@ def stratum_for(row: dict[str, Any]) -> str:
 def load_family_capacities(registry: dict[str, Any]) -> dict[str, dict[str, int]]:
     require(
         registry["registry_identity_sha256"] == EXPECTED_REGISTRY_IDENTITY,
-        "NEXT100-063 V2 registry identity drifted; refresh this diagnostic first",
+        "NEXT100-063 V4 registry identity drifted; refresh this diagnostic first",
     )
 
-    families = {stratum: dict(values) for stratum, values in BASE_FAMILY_BYTES.items()}
-    base = registry["base_registry"]["by_stratum"]
+    families = {
+        stratum: dict(values)
+        for stratum, values in DEDUP_PARENT_FAMILY_BYTES.items()
+    }
+    parent = registry["dedup_parent"]["by_stratum"]
     for stratum in ("uk", "en", "code"):
         require(
-            sum(families[stratum].values()) == base[stratum]["normalized_bytes"],
-            f"DATA-287 {stratum} aggregate no longer matches bound family capacities",
+            sum(families[stratum].values())
+            == parent[stratum]["numeric_training_capacity_bytes"],
+            f"NEXT100-065 V3 {stratum} aggregate no longer matches bound family capacities",
+        )
+        require(
+            len(families[stratum]) == parent[stratum]["family_count"],
+            f"NEXT100-065 V3 {stratum} family count drift",
         )
 
-    for row in registry["terminal_additions"]:
+    for row in registry["terminal_late_additions"]:
         require(
             row.get("dedicated_workflow_conclusion") == "success",
             f"source lacks successful dedicated exact-head workflow: PR {row['pr']}",
         )
-        require(row["training"].startswith("ALLOWED"), f"non-training source counted: PR {row['pr']}")
-        require(row["verdict"].startswith("ADMIT"), f"non-terminal source counted: PR {row['pr']}")
+        require(
+            str(row["training"]).startswith("ALLOWED"),
+            f"non-training source counted: PR {row['pr']}",
+        )
+        require(
+            str(row["verdict"]).startswith("ADMIT"),
+            f"non-terminal source counted: PR {row['pr']}",
+        )
         stratum = stratum_for(row)
         family = row["family"]
         require(family not in families[stratum], f"duplicate family credit: {family}")
-        normalized_bytes = int(row["normalized_bytes"])
-        require(normalized_bytes > 0, f"non-positive family capacity: {family}")
-        families[stratum][family] = normalized_bytes
+        capacity = int(row["numeric_training_capacity_bytes"])
+        require(capacity > 0, f"non-positive family capacity: {family}")
+        families[stratum][family] = capacity
 
-    inventory = registry["pre_global_dedup_inventory"]["by_stratum"]
+    inventory = registry["pre_successor_global_dedup_inventory"]["by_stratum"]
     for stratum in ("uk", "en", "code"):
         require(
-            sum(families[stratum].values()) == inventory[stratum]["normalized_bytes"],
-            f"{stratum} byte arithmetic mismatch",
+            sum(families[stratum].values())
+            == inventory[stratum]["numeric_training_capacity_bytes"],
+            f"{stratum} numeric-capacity arithmetic mismatch",
         )
         require(
             len(families[stratum]) == inventory[stratum]["family_count"],
@@ -116,7 +138,9 @@ def feasible(total_bytes: int, families: dict[str, dict[str, int]]) -> bool:
     return True
 
 
-def max_exact_mixture_bytes(families: dict[str, dict[str, int]], target: int = TARGET_BYTES) -> int:
+def max_exact_mixture_bytes(
+    families: dict[str, dict[str, int]], target: int = TARGET_BYTES
+) -> int:
     unit = 20
     lo = 0
     hi = target // unit
@@ -146,7 +170,7 @@ def build_report(registry: dict[str, Any]) -> dict[str, Any]:
         target_stratum = int(share * TARGET_BYTES)
         strata[stratum] = {
             "family_count": len(families[stratum]),
-            "raw_pre_global_dedup_bytes": raw_total,
+            "raw_pre_successor_global_dedup_bytes": raw_total,
             "20m_policy_target_bytes": target_stratum,
             "20m_raw_capacity_gap_bytes": max(target_stratum - raw_total, 0),
             "feasible_exact_mixture_required_bytes": int(required),
@@ -164,8 +188,9 @@ def build_report(registry: dict[str, Any]) -> dict[str, Any]:
         if available < required:
             limiting.append(stratum)
 
+    inventory = registry["pre_successor_global_dedup_inventory"]
     return {
-        "schema_version": "12-6.next100-063-balance-capacity-diagnostic.v2",
+        "schema_version": "12-6.next100-063-balance-capacity-diagnostic.v4",
         "source_registry_identity_sha256": EXPECTED_REGISTRY_IDENTITY,
         "policy": {
             "mixture": {key: float(value) for key, value in MIXTURE.items()},
@@ -173,13 +198,21 @@ def build_report(registry: dict[str, Any]) -> dict[str, Any]:
             "max_within_stratum_family_share": float(WITHIN_STRATUM_FAMILY_CAP),
             "replay_allowed": False,
         },
-        "raw_pre_global_dedup_bytes": registry["pre_global_dedup_inventory"]["candidate_normalized_bytes"],
+        "raw_pre_successor_global_dedup_numeric_training_capacity_bytes": inventory[
+            "candidate_numeric_training_capacity_bytes"
+        ],
+        "source_normalized_envelope_bytes": inventory[
+            "candidate_source_normalized_envelope_bytes"
+        ],
+        "uncredited_source_normalized_bytes": inventory[
+            "uncredited_source_normalized_bytes"
+        ],
         "diagnostic_exact_mixture_family_capped_source_bytes": feasible_total,
         "next_20_byte_increment_limiting_strata": limiting,
         "strata": strata,
         "truth_boundary": {
             "diagnostic_only": True,
-            "global_dedup_completed": False,
+            "successor_global_dedup_completed": False,
             "evaluation_decontamination_completed": False,
             "post_pack_unique_loss_positions": 0,
             "training_authorized": False,
@@ -202,10 +235,16 @@ def main() -> int:
             "NEXT100_063_FAMILY_CAPPED_EXACT_MIXTURE_BYTES="
             + str(report["diagnostic_exact_mixture_family_capped_source_bytes"])
         )
-        print("NEXT100_063_LIMITING_STRATA=" + ",".join(report["next_20_byte_increment_limiting_strata"]))
+        print(
+            "NEXT100_063_LIMITING_STRATA="
+            + ",".join(report["next_20_byte_increment_limiting_strata"])
+        )
         for stratum in ("uk", "en", "code"):
             row = report["strata"][stratum]
-            print(f"NEXT100_063_{stratum.upper()}_20M_RAW_GAP={row['20m_raw_capacity_gap_bytes']}")
+            print(
+                f"NEXT100_063_{stratum.upper()}_20M_RAW_GAP="
+                f"{row['20m_raw_capacity_gap_bytes']}"
+            )
         print("NEXT100_063_TRAINING_AUTHORIZED=false")
     return 0
 
