@@ -18,8 +18,18 @@ def _payload() -> dict:
         "corpus_identity": "corpus-v1-test",
         "tokenizer_identity": "tokenizer-test",
         "records": [
-            {"record_id": "ua-1", "stratum": "UA", "utf8_bytes": 240, "content_tokens": 80},
-            {"record_id": "en-1", "stratum": "EN", "utf8_bytes": 200, "content_tokens": 100},
+            {
+                "record_id": "ua-1",
+                "stratum": "UA",
+                "utf8_bytes": 240,
+                "content_tokens": 80,
+            },
+            {
+                "record_id": "en-1",
+                "stratum": "EN",
+                "utf8_bytes": 200,
+                "content_tokens": 100,
+            },
             {
                 "record_id": "code-1",
                 "stratum": "CODE",
