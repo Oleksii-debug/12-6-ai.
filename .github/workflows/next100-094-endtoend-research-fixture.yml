@@ -4,10 +4,12 @@ run-name: NEXT100-094 exact-head LOCAL_FREE objective fixture
 on:
   push:
     branches: [next100-094/endtoend-research-fixture-20260826]
+  pull_request:
+    branches: [postbase351/model-adapter-v1-20260826]
   workflow_dispatch:
 
 concurrency:
-  group: next100-094-${{ github.sha }}
+  group: next100-094-${{ github.event.pull_request.head.sha || github.sha }}
   cancel-in-progress: false
 
 permissions: {contents: read, actions: read}
@@ -18,7 +20,7 @@ jobs:
     timeout-minutes: 12
     env:
       PYTHONPATH: src
-      NEXT100_094_HEAD_SHA: ${{ github.sha }}
+      NEXT100_094_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
