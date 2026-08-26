@@ -34,11 +34,20 @@ def registry_identity(r: Mapping[str, Any], schema: str, key: str) -> str:
 def eligible_external(r: Mapping[str, Any]) -> tuple[dict[str, Any], ...]:
     registry_identity(r, EXTERNAL_SCHEMA, "sources")
     if not r["sources"]: return ()
-    from twelve_six.data.external_sources import validate_external_source_registry
+    from twelve_six.data.external_sources import (
+        ExternalSourceContractError,
+        validate_external_source_registry,
+    )
     out = []
-    for source in validate_external_source_registry(r):
-        source.assert_training_eligible()
-        out.append(source.to_dict())
+    try:
+        validated = validate_external_source_registry(r)
+        for source in validated:
+            if not source.training_eligible:
+                continue
+            source.assert_training_eligible()
+            out.append(source.to_dict())
+    except ExternalSourceContractError as exc:
+        raise CorpusBuildError(f"external source contract invalid: {exc}") from exc
     return tuple(out)
 
 def reserved_hashes(r: Mapping[str, Any]) -> frozenset[str]:
@@ -50,7 +59,6 @@ def reserved_hashes(r: Mapping[str, Any]) -> frozenset[str]:
                 raise CorpusBuildError("reserved fingerprint invalid")
             out.add(digest)
     return frozenset(out)
-
 def norm(text: str, code: bool) -> str:
     if "\ufffd" in text or any(0xD800 <= ord(c) <= 0xDFFF for c in text): raise CorpusBuildError("invalid Unicode")
     text.encode("utf-8", "strict")
@@ -96,9 +104,18 @@ def authored(config: Mapping[str, Any]) -> Iterable[dict[str, Any]]:
             rid = sha(f"{source_id}\0{version}\0{n}\0{raw}".encode())[:24]
             yield {"record_id": f"{source_id}:{rid}", "source_id": source_id, "source_version": version, "stratum": s, "external": False, "project_authored": True, "raw_text": raw}
 
-def external_records(sources: tuple[dict[str, Any], ...]) -> Iterable[dict[str, Any]]:
-    if sources: raise CorpusBuildError("eligible external sources exist but no materialized source adapter output is configured for corpus V0.1")
-    return ()
+def external_records(sources: tuple[dict[str, Any], ...], root: Path) -> Iterable[dict[str, Any]]:
+    if not sources:
+        return
+    from twelve_six.data.external_sources import (
+        ExternalSourceContractError,
+        iter_materialized_records,
+    )
+    for source in sources:
+        try:
+            yield from iter_materialized_records(root, source)
+        except ExternalSourceContractError as exc:
+            raise CorpusBuildError(f"external source materialization invalid: {exc}") from exc
 
 def write_jsonl(path: Path, rows: list[dict[str, Any]]) -> tuple[str, int]:
     payload = b"".join(cjson(r) for r in rows); path.write_bytes(payload); return sha(payload), len(payload)
@@ -116,7 +133,8 @@ def build_corpus(config_path: str | Path, output_dir: str | Path | None = None) 
     if out.exists(): shutil.rmtree(out)
     shard_dir = out / "shards"; shard_dir.mkdir(parents=True)
     seen: set[str] = set(); accepted = {s: [] for s in STRATA}; train_tokens = Counter(); counts = Counter()
-    for rec in chain(external_records(sources), authored(config)):
+    candidate_records = external_records(sources, root) if sources else authored(config)
+    for rec in candidate_records:
         s = rec["stratum"]; counts["candidate_documents"] += 1
         try: text = norm(rec["raw_text"], s == "code")
         except CorpusBuildError: counts["quality_rejected_documents"] += 1; continue
@@ -154,7 +172,24 @@ def build_corpus(config_path: str | Path, output_dir: str | Path | None = None) 
             keys = (("split",r["split"]),("stratum",r["stratum"]),("modality",r["modality"]),("source",r["source_id"]),("split_stratum",f'{r["split"]}:{r["stratum"]}'))
             for kind, key in keys:
                 a = aggs[kind][key]; a["documents"] += 1; a["bytes"] += r["byte_tokens"]; a["byte_tokens"] += r["byte_tokens"]
-    core = {"schema_version": MANIFEST_SCHEMA, "corpus_version": config["corpus_version"], "builder_sha256": sha(Path(__file__).read_bytes()), "config_sha256": sha(cjson(config)), "external_registry_identity_sha256": eid, "reserved_registry_identity_sha256": rid, "external_training_eligible_sources": len(sources), "truth_boundary": {"contains_external_training_data": any(r["external"] for r in rows), "contains_project_authored_data": any(r["project_authored"] for r in rows), "external_source_diversity_representative": any(r["external"] for r in rows), "claim": "Representative across intended UK/EN/code modalities for local small-model mechanics; not evidence of real-world external corpus representativeness when external_training_eligible_sources is zero."}, "pipeline": ["source_registry","extraction","normalization","quality_filtering","exact_dedup","reserved_eval_removal","stable_train_validation_split","physical_shards","manifest"], "tokenizer_accounting": "canonical byte tokenizer; byte_tokens equals UTF-8 bytes of normalized text", "mixture_target_percent": config["mixture_target_percent"], "target_train_byte_tokens": target, "counters": dict(sorted(counts.items())), "by_split": {k:dict(v) for k,v in sorted(aggs["split"].items())}, "by_stratum": {k:dict(v) for k,v in sorted(aggs["stratum"].items())}, "by_modality": {k:dict(v) for k,v in sorted(aggs["modality"].items())}, "by_source": {k:dict(v) for k,v in sorted(aggs["source"].items())}, "by_split_stratum": {k:dict(v) for k,v in sorted(aggs["split_stratum"].items())}, "shards": shards, "train_validation_content_overlap": 0}
+    external_contracts = [
+        {
+            "source_id": source["source_id"],
+            "source_version": source["source_version"],
+            "stratum": source["stratum"],
+            "license": source["license"],
+            "provenance": source["provenance"],
+            "rights": source["rights"],
+            "materialization": source["materialization"],
+        }
+        for source in sources
+    ]
+    truth_claim = (
+        "Includes only local hash-bound external sources whose registry explicitly records approved training use; registry review is not an independent legal or representativeness certification."
+        if sources
+        else "Representative across intended UK/EN/code modalities for local small-model mechanics; not evidence of real-world external corpus representativeness when external_training_eligible_sources is zero."
+    )
+    core = {"schema_version": MANIFEST_SCHEMA, "corpus_version": config["corpus_version"], "builder_sha256": sha(Path(__file__).read_bytes()), "config_sha256": sha(cjson(config)), "external_registry_identity_sha256": eid, "reserved_registry_identity_sha256": rid, "external_training_eligible_sources": len(sources), "external_source_contracts": external_contracts, "truth_boundary": {"contains_external_training_data": any(r["external"] for r in rows), "contains_project_authored_data": any(r["project_authored"] for r in rows), "external_source_diversity_representative": False, "claim": truth_claim}, "pipeline": ["source_registry","local_materialization_hash_verification","extraction","normalization","quality_filtering","exact_dedup","reserved_eval_removal","stable_train_validation_split","physical_shards","manifest"], "tokenizer_accounting": "canonical byte tokenizer; byte_tokens equals UTF-8 bytes of normalized text", "mixture_target_percent": config["mixture_target_percent"], "target_train_byte_tokens": target, "counters": dict(sorted(counts.items())), "by_split": {k:dict(v) for k,v in sorted(aggs["split"].items())}, "by_stratum": {k:dict(v) for k,v in sorted(aggs["stratum"].items())}, "by_modality": {k:dict(v) for k,v in sorted(aggs["modality"].items())}, "by_source": {k:dict(v) for k,v in sorted(aggs["source"].items())}, "by_split_stratum": {k:dict(v) for k,v in sorted(aggs["split_stratum"].items())}, "shards": shards, "train_validation_content_overlap": 0}
     manifest = {**core, "corpus_identity_sha256": sha(cjson(core))}; (out / "manifest.json").write_bytes(cjson(manifest)); return manifest
 
 def verify_rebuild(config_path: str | Path, first_output: str | Path, second_output: str | Path) -> dict[str, Any]:
