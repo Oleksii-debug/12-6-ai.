@@ -1,0 +1,74 @@
+name: NEXT100-049 NumPy Code Source Authority
+
+on:
+  push:
+    branches:
+      - next100-049/numpy-code-source-authority-20260826
+  pull_request:
+    paths:
+      - configs/data/next100_049_numpy_code_source_authority_v1.json
+      - tools/qualify_next100_049_numpy.py
+      - docs/NEXT100_049_NUMPY_CODE_SOURCE_AUTHORITY.md
+      - .github/workflows/next100-049-numpy-code-source-authority.yml
+      - data/registry/external_snapshots.v2.json
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: next100-049-numpy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      NEXT100_049_EXECUTION_PROFILE: LOCAL_FREE
+    steps:
+      - name: Check out exact triggering head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Verify exact checkout and execution boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$NEXT100_049_EXECUTION_PROFILE" = "LOCAL_FREE"
+          expected="${{ github.event.pull_request.head.sha || github.sha }}"
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$expected"
+          echo "exact_head=$actual"
+
+      - name: Compile qualifier
+        run: python -m py_compile tools/qualify_next100_049_numpy.py
+
+      - name: Materialize authority report A
+        run: python tools/qualify_next100_049_numpy.py --output /tmp/next100-049-a.json
+
+      - name: Materialize authority report B
+        run: python tools/qualify_next100_049_numpy.py --output /tmp/next100-049-b.json
+
+      - name: Require deterministic byte identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmp -s /tmp/next100-049-a.json /tmp/next100-049-b.json
+          sha256sum /tmp/next100-049-a.json
+          cp /tmp/next100-049-a.json next100-049-numpy-source-report.json
+
+      - name: Upload immutable report
+        uses: actions/upload-artifact@v4
+        with:
+          name: next100-049-numpy-source-${{ github.sha }}
+          path: next100-049-numpy-source-report.json
+          if-no-files-found: error
+          retention-days: 90
