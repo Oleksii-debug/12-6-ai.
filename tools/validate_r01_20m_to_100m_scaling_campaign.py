@@ -46,6 +46,15 @@ REQUIRED_PROMOTION_GATES = {
     "independent_audit",
 }
 
+REQUIRED_LONG_TRAINING_GATES = {
+    "requires_corpus_identity",
+    "requires_tokenizer_fit_identity",
+    "requires_unique_post_pack_loss_ledger",
+    "requires_checkpoint_integrity_terminal_retest",
+    "requires_selection_validation_terminal",
+    "requires_compute_authorization_if_material_cost",
+}
+
 REQUIRED_METRICS = {
     "bits_per_byte",
     "heldout_loss",
@@ -116,6 +125,16 @@ def validate_campaign(data: dict[str, Any]) -> list[str]:
     if isinstance(readiness, dict):
         _expect(errors, readiness.get("research_corpus_v1_identity") is None, "v1 snapshot must not fabricate corpus identity")
         _expect(errors, readiness.get("tokenizer_fit_identity") is None, "v1 snapshot must not fabricate tokenizer identity")
+        _expect(
+            errors,
+            readiness.get("checkpoint_integrity_terminal_retest") is False,
+            "v1 snapshot must not fabricate checkpoint-integrity terminality",
+        )
+        _expect(
+            errors,
+            readiness.get("selection_validation_terminal") is False,
+            "v1 snapshot must not fabricate selection-validation terminality",
+        )
         _expect(errors, readiness.get("compute_authorization") == "NOT_AUTHORIZED", "compute authorization drift")
         _expect(errors, readiness.get("long_training_decision") == "BLOCKED", "long training must remain blocked")
 
@@ -141,18 +160,27 @@ def validate_campaign(data: dict[str, Any]) -> list[str]:
             if not isinstance(entry, dict):
                 errors.append("experiment entry must be an object")
                 continue
+            entry_id = entry.get("id")
             if entry.get("long_training") is True:
-                _expect(errors, entry.get("authorized_now") is False, f"{entry.get('id')} long training cannot be authorized now")
-            if entry.get("id") == "R01-E00":
+                _expect(errors, entry.get("authorized_now") is False, f"{entry_id} long training cannot be authorized now")
+                for gate in REQUIRED_LONG_TRAINING_GATES:
+                    _expect(
+                        errors,
+                        entry.get(gate) is True,
+                        f"{entry_id}.{gate} must remain true for long training",
+                    )
+            if entry_id == "R01-E00":
                 _expect(errors, entry.get("parameters") == 20613440, "R01-E00 must bind exact MODEL-341 parameter count")
                 _expect(errors, entry.get("authorized_now") is True, "R01-E00 local mechanics control should remain executable")
-            if entry.get("id") == "R01-E10":
+            if entry_id == "R01-E10":
                 _expect(errors, entry.get("tokenizer_candidate_vocab_sizes") == [320, 384, 437, 512], "R01-E10 tokenizer grid drift")
-            if entry.get("id") in {"R01-E20", "R01-E30"}:
-                _expect(errors, entry.get("planned_tokens_per_parameter") == [10, 20, 40], f"{entry.get('id')} token sweep drift")
+                _expect(errors, entry.get("requires_corpus_identity") is True, "R01-E10 must remain corpus-bound")
+            if entry_id in {"R01-E20", "R01-E30"}:
+                _expect(errors, entry.get("planned_tokens_per_parameter") == [10, 20, 40], f"{entry_id} token sweep drift")
         e30 = next((entry for entry in matrix if isinstance(entry, dict) and entry.get("id") == "R01-E30"), {})
         _expect(errors, e30.get("parameter_targets") == [20000000, 50000000, 100000000], "R01-E30 target ladder drift")
         _expect(errors, e30.get("freeze_100m_modelspec_now") is False, "100M ModelSpec must not be frozen before measured evidence")
+        _expect(errors, e30.get("requires_20m_learned_evidence") is True, "R01-E30 must require terminal learned-20M evidence")
 
     gates = data.get("promotion_gates")
     _expect(errors, isinstance(gates, list), "promotion_gates must be an array")
