@@ -1,0 +1,123 @@
+{
+  "schema": "next100.external_code_source_admission.v1",
+  "worker_id": "NEXT100-052-CODE-TYPER",
+  "purpose": "training",
+  "local_free_only": true,
+  "upstream": {
+    "repository": "fastapi/typer",
+    "repository_id": 229937405,
+    "release": "0.27.1",
+    "commit": "fe2aa0e2f9c853de378e60ca24ec3b256144decf",
+    "release_published_at": "2026-08-03T14:40:44Z"
+  },
+  "family": {
+    "id": "github:fastapi/typer",
+    "stable_repository_id": 229937405,
+    "decision": "INDEPENDENT_WITH_LINEAGE_EXCLUSIONS",
+    "rule": "separate canonical repository is not sufficient by itself; vendored/copied/shared-source objects collapse to their source family and are excluded",
+    "click_relationship": "Typer is a CLI framework built on Click lineage; release 0.27.1 contains a typer/_click subtree carrying Click licensing, so typer/_click/** is excluded rather than credited to Typer",
+    "fastapi_relationship": "Typer and FastAPI share the fastapi GitHub organization and primary maintainer, but are separate non-fork repositories; shared governance does not collapse source families absent shared-source identity",
+    "pydantic_relationship": "typer/_typing.py explicitly states it was copied and reduced from pydantic 1.9.2, so it is excluded from Typer family capacity"
+  },
+  "license": {
+    "spdx": "MIT",
+    "path": "LICENSE",
+    "git_blob_sha1": "a7694736cf37716aafec14b24aa8d6316ebe07a3",
+    "raw_sha256": "58992cebcf8dfb6e40c4e2112ed12126c243666dca3912a3d78b7ecac4859d49",
+    "bytes": 1086,
+    "training_decision": "ALLOW",
+    "redistribution_decision": "ALLOW_WITH_NOTICE",
+    "obligations": [
+      "include the copyright notice and MIT permission notice in all copies or substantial portions of the Software"
+    ]
+  },
+  "selected_files": [
+    {
+      "path": "typer/utils.py",
+      "git_blob_sha1": "addf9334d4210a9cddc9e5608ae446417d372eb0",
+      "raw_sha256": "c272750d65c114c9f12c768c37f1c3627b712d16f2d0afabbb1eb76a89072272",
+      "bytes": 7599,
+      "language": "python"
+    }
+  ],
+  "selection_exclusions": [
+    "typer/_click/**: Click-derived/vendored lineage; do not count as Typer capacity",
+    "typer/_typing.py: upstream marks it copied/reduced from pydantic 1.9.2",
+    "typer/__init__.py and typer/__main__.py: version/bootstrap metadata, not substantive capacity",
+    "all other typer/** files: not authorized by this bounded snapshot",
+    "docs/**",
+    "docs_src/**",
+    "tests/**",
+    "scripts/**",
+    ".github/**",
+    "generated/build/minified/binary assets",
+    "evaluation-reserved objects"
+  ],
+  "lineage_comparators": [
+    {
+      "family": "github:pallets/click",
+      "repository": "pallets/click",
+      "release": "8.4.2",
+      "commit": "b2e30a175449cfda909ee4fbf4a29a6a071cad53",
+      "near_paths": [
+        "src/click/core.py",
+        "src/click/decorators.py",
+        "src/click/types.py",
+        "src/click/utils.py"
+      ]
+    },
+    {
+      "family": "github:fastapi/fastapi",
+      "repository": "fastapi/fastapi",
+      "release": "0.141.1",
+      "commit": "95f8322ee1dcda7ceace7b1c4f6c9915b36d748f",
+      "near_paths": [
+        "fastapi/dependencies/utils.py",
+        "fastapi/utils.py",
+        "fastapi/params.py",
+        "fastapi/routing.py"
+      ]
+    }
+  ],
+  "terminal_registry_code_objects": [
+    {
+      "family": "github:encode/httpx",
+      "repository": "encode/httpx",
+      "commit": "b5addb64f0161ff6bfe94c124ef76f6a1fba5254",
+      "path": "httpx/_content.py",
+      "git_blob_sha1": "6f479a0885f723b7395843d41164a87041820776"
+    },
+    {
+      "family": "github:psf/requests",
+      "repository": "psf/requests",
+      "commit": "5460f467b02e49471c0fd6cfc9ca0adab6351f98",
+      "path": "src/requests/_internal_utils.py",
+      "git_blob_sha1": "0466a7d347db4ed34a37db51b75fc8e80bc06055"
+    }
+  ],
+  "known_evaluation_reservations": [
+    {
+      "repository": "encode/httpx",
+      "commit": "b5addb64f0161ff6bfe94c124ef76f6a1fba5254",
+      "path": "docs/advanced/timeouts.md",
+      "git_blob_sha1": "aedcfb627f5139901638ebf8de30216c2640591e"
+    },
+    {
+      "repository": "psf/requests",
+      "commit": "5460f467b02e49471c0fd6cfc9ca0adab6351f98",
+      "path": "docs/user/authentication.rst",
+      "git_blob_sha1": "76be9cccafc0ce28a698672a128eac9d1f9bbe15"
+    }
+  ],
+  "dedup_policy": {
+    "raw_exact": "reject",
+    "normalized_exact": "reject",
+    "python_skeleton_5gram_jaccard_reject_at_or_above": 0.85,
+    "python_skeleton_5gram_containment_reject_at_or_above": 0.90,
+    "lineage_exact_blob_scan": "scan selected blob identity across complete pinned Click and FastAPI trees",
+    "lineage_near_scan": "scan selected object against pinned analogous Click and FastAPI implementation files"
+  },
+  "admission_scope": "typer/utils.py at the exact pinned commit only; no repository-wide or release-wide authority",
+  "evaluation_use": "NOT_AUTHORIZED_BY_THIS_AUTHORITY",
+  "training_executed": false
+}
