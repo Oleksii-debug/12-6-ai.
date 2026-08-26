@@ -20,6 +20,32 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.11.16"
+      - name: ENV-152 bootstrap exact CPU and data wheel hashes
+        run: |
+          set -euo pipefail
+          python -m venv .env152-bootstrap
+          .env152-bootstrap/bin/python -m pip install --disable-pip-version-check 'pip==26.2.1'
+          mkdir -p env152-bootstrap-wheels/cpu env152-bootstrap-wheels/data
+          .env152-bootstrap/bin/python -m pip download --no-deps --only-binary=:all: --index-url https://download.pytorch.org/whl/cpu --dest env152-bootstrap-wheels/cpu 'torch==2.13.0+cpu'
+          cat > /tmp/env152-constraints.txt <<'EOF'
+          numpy==2.4.6
+          fsspec==2026.7.0
+          huggingface-hub==1.28.0
+          tqdm==4.70.0
+          pyarrow==25.0.1
+          EOF
+          .env152-bootstrap/bin/python -m pip download --only-binary=:all: --dest env152-bootstrap-wheels/data -c /tmp/env152-constraints.txt 'datatrove==0.10.0' 'pyarrow==25.0.1'
+          .env152-bootstrap/bin/python - <<'PY' | tee env152-bootstrap-locks.txt
+          from pathlib import Path
+          import hashlib
+          for group in ('cpu','data'):
+              print(f'ENV152_LOCK_GROUP={group}')
+              total=0
+              for p in sorted((Path('env152-bootstrap-wheels')/group).iterdir()):
+                  b=p.read_bytes(); total += len(b)
+                  print(f'{p.name}\t{len(b)}\tsha256:{hashlib.sha256(b).hexdigest()}')
+              print(f'ENV152_TOTAL_BYTES_{group.upper()}={total}')
+          PY
       - name: Verify three independent clean purpose environments
         env:
           SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
@@ -41,6 +67,7 @@ jobs:
         with:
           name: d08-linux-purpose-environments
           path: |
+            env152-bootstrap-locks.txt
             d08-tokenizer-environment.json
             d08-transformers-environment.json
             d08-cuda-training-environment.json
