@@ -78,7 +78,8 @@
   "terminal_source_refresh": {
     "authority": "NEXT100-065-CROSSSOURCE-DEDUP-V3",
     "branch": "next100-065/crosssource-dedup-v3-20260826",
-    "head_sha_at_final_check": "e347a95b382ad13a547e76f4f1c6e91d86214df5",
+    "head_sha_at_final_check": "efc278cec0e4773eb4ff405bf4b4d24ee63b5d13",
+    "head_parent_with_same_source_vector": "e347a95b382ad13a547e76f4f1c6e91d86214df5",
     "source_vector_commit": "90065ffc97a5133e76cacdee6991eb171c4ea2ba",
     "source_vector_config_blob_sha": "c1e05f09490e25f6fed765dfb70d900717528f4d",
     "terminal_refresh_cutoff_utc": "2026-08-26T18:20:54Z",
@@ -107,7 +108,7 @@
       "github:django/django",
       "github:Kludex/starlette"
     ],
-    "quality_policy_effect": "NO_SOURCE_OR_FAMILY_IS_REMOVED_AT_SOURCE_LEVEL_BY_SOFT_QUALITY_METRICS; EACH ELIGIBLE OBJECT_IS_FILTERED_AT_THE_FROZEN_DOCUMENT_OR_LOCAL_WINDOW_UNIT",
+    "quality_policy_effect": "NO_SOURCE_OR_FAMILY_IS_REMOVED_AT_SOURCE_LEVEL_BY_SOFT_QUALITY_METRICS; EACH_ELIGIBLE_OBJECT_IS_FILTERED_AT_THE_FROZEN_DOCUMENT_OR_LOCAL_WINDOW_UNIT",
     "known_separate_selection_block": "The Wikisource object has a separate corpus-selection/decontamination block in NEXT100-062; this quality policy does not override rights or decontamination authority."
   },
   "final_concurrency_recheck": {
@@ -121,6 +122,7 @@
     "available_unique_source_bytes": 243970,
     "family_count_global": 7,
     "source_set_changed_after_policy_freeze": false,
+    "source_authority_head_advanced_without_source_vector_blob_change": true,
     "policy_change_required": false
   },
   "current_terminal_set_regression_alignment": {
