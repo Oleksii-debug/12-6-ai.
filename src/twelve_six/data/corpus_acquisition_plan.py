@@ -1,8 +1,8 @@
 """Fail-closed validation for the Research Corpus V1 scalable acquisition plan.
 
-Planning requests are deliberately not corpus capacity.  This module exists to
-make that firewall machine-checkable while the project expands legal, diverse,
-reproducible source coverage toward the 20 MB balanced target.
+Planning requests are deliberately not corpus capacity. This module makes that
+firewall machine-checkable while the project expands legal, diverse,
+reproducible source coverage toward the frozen 20 MB balanced target.
 """
 
 from __future__ import annotations
@@ -10,11 +10,23 @@ from __future__ import annotations
 import json
 from collections import Counter
 from collections.abc import Mapping
+from fractions import Fraction
 from pathlib import Path
 from typing import Any
 
 SCHEMA = "12-6.research-corpus-v1-scalable-acquisition-plan.v1"
+WORKER = "AUTONOMOUS-CORPUS-V1-ACQUISITION-20260826"
 STRATA = ("ua", "en", "code")
+EXPECTED_BASELINE_PR = 527
+EXPECTED_BASELINE_HEAD = "9ad8f74b12a2e991b7934356a88dd9a1f6ff3f41"
+EXPECTED_BASELINE_STATUS = "CANDIDATE_ONLY_PENDING_EXACT_HEAD_CI_AND_SUCCESSOR_GLOBAL_DEDUP"
+EXPECTED_OBSERVED = {"ua": 100856, "en": 144151, "code": 69133, "total": 314140}
+EXPECTED_FAMILIES = {"ua": 4, "en": 2, "code": 4, "total": 10}
+TARGET_POLICY = "DATA295_20MB_BALANCED_TARGET"
+EXPECTED_TARGETS = {"ua": 9000000, "en": 7000000, "code": 4000000, "total": 20000000}
+MAX_GLOBAL_FAMILY_FRACTION = Fraction(1, 4)
+MAX_OWN_STRATUM_FAMILY_FRACTION = Fraction(3, 5)
+STALE_EXECUTION_STEP = "finish_pr527_exact_head_ci"
 ALLOWED_CANDIDATE_STATUSES = {
     "REQUIRES_DEDICATED_ADMISSION",
     "RIGHTS_AND_AUTHORSHIP_RESEARCH_REQUIRED",
@@ -58,11 +70,24 @@ def _validate_stratum_vector(
     return parsed
 
 
+def _family_caps(targets: Mapping[str, int]) -> dict[str, int]:
+    global_cap = int(Fraction(targets["total"]) * MAX_GLOBAL_FAMILY_FRACTION)
+    return {
+        stratum: min(
+            global_cap,
+            int(Fraction(targets[stratum]) * MAX_OWN_STRATUM_FAMILY_FRACTION),
+        )
+        for stratum in STRATA
+    }
+
+
 def validate_acquisition_plan(plan: Mapping[str, Any]) -> dict[str, Any]:
     """Validate one acquisition plan without granting any training capacity."""
 
     if plan.get("schema_version") != SCHEMA:
         raise CorpusAcquisitionPlanError("unsupported acquisition-plan schema")
+    if plan.get("worker_id") != WORKER:
+        raise CorpusAcquisitionPlanError("acquisition-plan worker binding changed")
     if plan.get("local_free_only") is not True:
         raise CorpusAcquisitionPlanError("acquisition plan must be LOCAL_FREE only")
     if plan.get("model_training_executed") is not False:
@@ -76,12 +101,33 @@ def validate_acquisition_plan(plan: Mapping[str, Any]) -> dict[str, Any]:
     if not isinstance(firewall, Mapping):
         raise CorpusAcquisitionPlanError("capacity_firewall must be a mapping")
 
+    if baseline.get("source_convergence_pr") != EXPECTED_BASELINE_PR:
+        raise CorpusAcquisitionPlanError("source-convergence PR binding changed")
+    if baseline.get("source_convergence_head") != EXPECTED_BASELINE_HEAD:
+        raise CorpusAcquisitionPlanError("source-convergence head binding changed")
+    if baseline.get("status") != EXPECTED_BASELINE_STATUS:
+        raise CorpusAcquisitionPlanError("baseline status changed without audit refresh")
+
     observed = _validate_stratum_vector(
         baseline.get("observed_pre_dedup_bytes"),
         field="baseline.observed_pre_dedup_bytes",
         positive=True,
     )
+    observed_families = _validate_stratum_vector(
+        baseline.get("observed_independent_families"),
+        field="baseline.observed_independent_families",
+        positive=True,
+    )
+    if observed != EXPECTED_OBSERVED:
+        raise CorpusAcquisitionPlanError("observed pre-dedup authority vector changed")
+    if observed_families != EXPECTED_FAMILIES:
+        raise CorpusAcquisitionPlanError("observed independent-family vector changed")
+
+    if target.get("policy") != TARGET_POLICY:
+        raise CorpusAcquisitionPlanError("frozen DATA295 target policy changed")
     targets = _validate_stratum_vector(target.get("bytes"), field="target.bytes", positive=True)
+    if targets != EXPECTED_TARGETS:
+        raise CorpusAcquisitionPlanError("frozen 20 MB target vector changed")
     gaps = _validate_stratum_vector(
         target.get("planning_gap_from_observed_pre_dedup"),
         field="target.planning_gap_from_observed_pre_dedup",
@@ -95,6 +141,9 @@ def validate_acquisition_plan(plan: Mapping[str, Any]) -> dict[str, Any]:
             )
     if gaps["total"] != targets["total"] - observed["total"]:
         raise CorpusAcquisitionPlanError("total planning gap is inconsistent")
+    caps = _family_caps(targets)
+    if caps != {"ua": 5000000, "en": 4200000, "code": 2400000}:
+        raise CorpusAcquisitionPlanError("DATA295 family-cap arithmetic changed")
 
     if _nonnegative_int(
         baseline.get("training_authorized_bytes"),
@@ -105,6 +154,10 @@ def validate_acquisition_plan(plan: Mapping[str, Any]) -> dict[str, Any]:
         raise CorpusAcquisitionPlanError("planning bytes must never be treated as capacity")
     if firewall.get("observed_pre_dedup_bytes_are_training_authorized") is not False:
         raise CorpusAcquisitionPlanError("pre-dedup bytes cannot be training-authorized")
+    if firewall.get("minimum_status_for_capacity_credit") != (
+        "DEDICATED_TERMINAL_ADMISSION_PLUS_SUCCESSOR_GLOBAL_DEDUP"
+    ):
+        raise CorpusAcquisitionPlanError("minimum capacity-credit status changed")
     if _nonnegative_int(
         firewall.get("current_training_authorized_bytes"),
         field="capacity_firewall.current_training_authorized_bytes",
@@ -118,6 +171,8 @@ def validate_acquisition_plan(plan: Mapping[str, Any]) -> dict[str, Any]:
         raise CorpusAcquisitionPlanError("candidate_streams must be a non-empty list")
     candidate_ids: set[str] = set()
     planning_by_stratum: Counter[str] = Counter()
+    planning_by_family: Counter[str] = Counter()
+    family_stratum: dict[str, str] = {}
     families_by_stratum: dict[str, set[str]] = {stratum: set() for stratum in STRATA}
     for row in rows:
         if not isinstance(row, Mapping):
@@ -135,6 +190,11 @@ def validate_acquisition_plan(plan: Mapping[str, Any]) -> dict[str, Any]:
         family = row.get("family_candidate")
         if not isinstance(family, str) or not family:
             raise CorpusAcquisitionPlanError(f"{candidate_id}: family_candidate is required")
+        prior_stratum = family_stratum.setdefault(family, stratum)
+        if prior_stratum != stratum:
+            raise CorpusAcquisitionPlanError(
+                f"{candidate_id}: one family cannot be planned across multiple strata"
+            )
         request = _positive_int(
             row.get("planning_request_bytes"), field=f"{candidate_id}.planning_request_bytes"
         )
@@ -154,7 +214,15 @@ def validate_acquisition_plan(plan: Mapping[str, Any]) -> dict[str, Any]:
         if any(not isinstance(item, str) or not item.strip() for item in retests):
             raise CorpusAcquisitionPlanError(f"{candidate_id}: invalid required_retests entry")
         planning_by_stratum[stratum] += request
+        planning_by_family[family] += request
         families_by_stratum[stratum].add(family)
+
+    for family, request in planning_by_family.items():
+        stratum = family_stratum[family]
+        if request > caps[stratum]:
+            raise CorpusAcquisitionPlanError(
+                f"{family}: planning request {request} exceeds {stratum} family cap {caps[stratum]}"
+            )
 
     for stratum in STRATA:
         if planning_by_stratum[stratum] < gaps[stratum]:
@@ -170,6 +238,7 @@ def validate_acquisition_plan(plan: Mapping[str, Any]) -> dict[str, Any]:
     required_gates = {
         "source_or_object_specific_training_rights_basis",
         "cross_source_exact_and_near_duplicate_audit",
+        "within_stratum_and_global_family_cap_retest",
         "train_selection_final_eval_decontamination",
         "two_clean_build_determinism",
         "unique_nonignored_causal_position_ledger",
@@ -181,13 +250,19 @@ def validate_acquisition_plan(plan: Mapping[str, Any]) -> dict[str, Any]:
     execution_order = plan.get("next_execution_order")
     if not isinstance(execution_order, list) or len(execution_order) < 5:
         raise CorpusAcquisitionPlanError("next_execution_order is incomplete")
+    if execution_order[0] != STALE_EXECUTION_STEP:
+        raise CorpusAcquisitionPlanError("stale baseline execution marker changed without rebind audit")
 
     return {
         "schema_version": SCHEMA,
-        "status": "VALID_PLANNING_ARTIFACT_CAPACITY_ZERO",
+        "status": "VALID_PLANNING_ARTIFACT_STALE_BASELINE_CAPACITY_ZERO",
+        "baseline_refresh_required": True,
+        "execution_ready": False,
+        "blocking_reason": "PR527_CLOSED_UNMERGED_REBIND_TO_SURVIVING_NEXT100_063",
         "observed_pre_dedup_bytes": observed,
         "target_bytes": targets,
         "planning_gap_bytes": gaps,
+        "family_planning_caps": caps,
         "planning_request_bytes": {
             **{stratum: planning_by_stratum[stratum] for stratum in STRATA},
             "total": sum(planning_by_stratum.values()),
