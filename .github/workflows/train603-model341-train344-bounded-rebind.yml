@@ -1,0 +1,131 @@
+name: TRAIN-603 MODEL-341 x TRAIN-344 bounded rebind
+
+on:
+  pull_request:
+    paths:
+      - "configs/candidates/model341_20m_candidate_a.json"
+      - "configs/experiments/train344_20m_optimizer_transfer_contract.json"
+      - "configs/experiments/train603_model341_train344_bounded_rebind_v1.json"
+      - "tools/validate_train344_optimizer_transfer.py"
+      - "tools/run_train344_stability_probe.py"
+      - ".github/workflows/train603-model341-train344-bounded-rebind.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: train603-model341-train344-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  bounded-mechanics:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      PYTHONPATH: ${{ github.workspace }}/src
+      OMP_NUM_THREADS: "2"
+      MKL_NUM_THREADS: "2"
+    steps:
+      - name: Checkout exact successor head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set CPython 3.11.16
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+      - name: Validate immutable rebind authority
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          p=Path('configs/experiments/train603_model341_train344_bounded_rebind_v1.json')
+          v=json.loads(p.read_text())
+          claimed=v.pop('identity_sha256')
+          raw=json.dumps(v, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode()
+          assert hashlib.sha256(raw).hexdigest() == claimed == 'b675df9e0876ca08338ad318341c1f34f0899b89257ccd043d7cd512f97a7808'
+          assert v['issue'] == 603
+          assert v['execution_profile'] == 'LOCAL_FREE'
+          assert v['model341']['head_sha'] == 'e4ff486fd90802fc123bebf60eed4e59196a98df'
+          assert v['model341']['model_spec_sha256'] == 'fbff24d561a2818453554d58ca23fc6ace3303b078f1935a8576c4565bd92441'
+          assert v['model341']['init_spec_sha256'] == '86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5'
+          assert v['model341']['parameter_count'] == 20613440
+          assert v['train344']['head_sha'] == 'c0dcdd8ea5b8e974a262bc8f4dacb6589763a608'
+          assert v['train344']['contract_identity_sha256'] == '34b6a94fab016b36f1747287449b7cdadbd8ee36af5f650b26ff99f65f085519'
+          assert v['authorization'] == {
+              'learned_corpus_updates': 0,
+              'long_training': False,
+              'paid_compute': False,
+              'quality_selection': False,
+              'synthetic_mechanics_optimizer_updates': 96,
+              'synthetic_mechanics_targets': 24480,
+          }
+          PY
+      - name: Universal exact execution bootstrap
+        uses: ./.github/actions/execution-bootstrap
+        with:
+          capabilities: runtime
+          venv: .train603
+          manifest: evidence/train603/environment.json
+          command: python -c "import torch; print(torch.__version__)"
+      - name: Prove exact MODEL-341 gate under frozen TRAIN-344 contract
+        run: |
+          set -euo pipefail
+          .train603/bin/python tools/validate_train344_optimizer_transfer.py \
+            --model-config configs/candidates/model341_20m_candidate_a.json \
+            --output evidence/train603/readiness.json
+          .train603/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+          r=json.loads(Path('evidence/train603/readiness.json').read_text())
+          g=r['gate']
+          assert g['status'] == 'READY_FOR_BOUNDED_STABILITY_PROBE'
+          assert g['optimizer_updates_authorized'] == 96
+          assert g['parameter_count'] == 20613440
+          assert g['model_spec_sha256'] == 'fbff24d561a2818453554d58ca23fc6ace3303b078f1935a8576c4565bd92441'
+          assert g['init_spec_sha256'] == '86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5'
+          assert r['learned_transfer_budget']['authorized_unique_nonignored_causal_loss_positions_now'] == 0
+          assert r['local_free'] is True and r['paid_compute'] is False
+          PY
+      - name: Run preregistered three by thirty-two synthetic mechanics probe
+        run: |
+          set -euo pipefail
+          .train603/bin/python tools/run_train344_stability_probe.py \
+            --model-config configs/candidates/model341_20m_candidate_a.json \
+            --output evidence/train603/stability-probe.json
+      - name: Enforce result truth boundary
+        if: always()
+        run: |
+          set -euo pipefail
+          test -f evidence/train603/stability-probe.json
+          .train603/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+          r=json.loads(Path('evidence/train603/stability-probe.json').read_text())
+          assert r['overall_status'] in {'STABLE_MECHANICS_ONLY','UNSTABLE_MECHANICS_ONLY'}
+          assert r['parameter_count'] == 20613440
+          assert r['model_spec_sha256'] == 'fbff24d561a2818453554d58ca23fc6ace3303b078f1935a8576c4565bd92441'
+          assert r['init_spec_sha256'] == '86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5'
+          assert r['contract_identity_sha256'] == '34b6a94fab016b36f1747287449b7cdadbd8ee36af5f650b26ff99f65f085519'
+          assert len(r['arms']) == 3
+          assert [a['learning_rate'] for a in r['arms']] == [0.00016,0.00022,0.00026]
+          assert all(a['optimizer_steps'] == 32 for a in r['arms'])
+          assert all(a['optimized_tokens'] == 8160 for a in r['arms'])
+          assert sum(a['optimized_tokens'] for a in r['arms']) == 24480
+          assert r['learned_corpus_updates'] == 0
+          assert r['paid_compute'] is False
+          assert r['quality_winner'] is None
+          PY
+      - name: Upload mechanics-only evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: train603-model341-train344-mechanics
+          path: |
+            evidence/train603/readiness.json
+            evidence/train603/stability-probe.json
+            evidence/train603/environment.json

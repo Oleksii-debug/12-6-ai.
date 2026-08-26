@@ -1,0 +1,57 @@
+{
+  "authorization": {
+    "learned_corpus_updates": 0,
+    "long_training": false,
+    "paid_compute": false,
+    "quality_selection": false,
+    "synthetic_mechanics_optimizer_updates": 96,
+    "synthetic_mechanics_targets": 24480
+  },
+  "execution_profile": "LOCAL_FREE",
+  "identity_sha256": "b675df9e0876ca08338ad318341c1f34f0899b89257ccd043d7cd512f97a7808",
+  "issue": 603,
+  "model341": {
+    "branch": "model341/20m-candidate-a-20260826",
+    "head_sha": "e4ff486fd90802fc123bebf60eed4e59196a98df",
+    "init_spec_sha256": "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5",
+    "model_config": "configs/candidates/model341_20m_candidate_a.json",
+    "model_spec_sha256": "fbff24d561a2818453554d58ca23fc6ace3303b078f1935a8576c4565bd92441",
+    "parameter_count": 20613440,
+    "qualification_role": "MECHANICALLY_QUALIFIED_RANDOM_INIT_ONLY"
+  },
+  "required_result": {
+    "allowed_overall_status": [
+      "STABLE_MECHANICS_ONLY",
+      "UNSTABLE_MECHANICS_ONLY"
+    ],
+    "must_match_init_spec_sha256": "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5",
+    "must_match_model_spec_sha256": "fbff24d561a2818453554d58ca23fc6ace3303b078f1935a8576c4565bd92441",
+    "must_match_parameter_count": 20613440,
+    "must_report_learned_corpus_updates": 0,
+    "must_report_paid_compute": false,
+    "must_report_quality_winner": null
+  },
+  "schema": "12-6.train603-model341-train344-bounded-rebind.v1",
+  "train344": {
+    "branch": "train344/20m-optimizer-transfer-contract-20260826",
+    "contract_identity_sha256": "34b6a94fab016b36f1747287449b7cdadbd8ee36af5f650b26ff99f65f085519",
+    "contract_path": "configs/experiments/train344_20m_optimizer_transfer_contract.json",
+    "head_sha": "c0dcdd8ea5b8e974a262bc8f4dacb6589763a608",
+    "lr_candidates": [
+      0.00016,
+      0.00022,
+      0.00026
+    ],
+    "optimized_tokens_per_lr": 8160,
+    "optimizer_steps_per_lr": 32,
+    "selection_authority": "NONE",
+    "total_optimized_tokens": 24480
+  },
+  "truth_boundary": {
+    "learned_20m_checkpoint_created": false,
+    "optimizer_lr_selected": false,
+    "research_corpus_v1_used": false,
+    "stage_promoted": false
+  },
+  "worker_id": "TRAIN-603-MODEL341-TRAIN344-BOUNDED-REBIND"
+}
