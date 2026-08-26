@@ -21,6 +21,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: d04-strict-s0-evaluation-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   exact-candidate-evaluation:
     runs-on: ubuntu-24.04
