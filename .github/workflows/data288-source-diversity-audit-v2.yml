@@ -44,11 +44,14 @@ jobs:
           command: python -m pytest -q tests/test_data288_source_diversity.py
           manifest: data288-execution-environment.json
 
-      - name: Focused deterministic audit tests
-        run: |
-          .data288/bin/python -m compileall -q tools/validate_data288_source_diversity.py
-          .data288/bin/python -m pytest -q tests/test_data288_source_diversity.py
-          .data288/bin/ruff check tools/validate_data288_source_diversity.py tests/test_data288_source_diversity.py
+      - name: Compile deterministic audit
+        run: .data288/bin/python -m compileall -q tools/validate_data288_source_diversity.py
+
+      - name: Focused audit contracts
+        run: .data288/bin/python -m pytest -q tests/test_data288_source_diversity.py
+
+      - name: Focused audit lint
+        run: .data288/bin/ruff check tools/validate_data288_source_diversity.py tests/test_data288_source_diversity.py
 
       - name: Rebuild audit byte-identically
         run: |
