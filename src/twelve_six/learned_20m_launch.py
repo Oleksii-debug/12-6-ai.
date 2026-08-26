@@ -3,7 +3,7 @@
 The gate does not train a model and cannot grant authorization. It derives one of
 BLOCKED, READY_FOR_AUTHORIZATION_REQUEST, or TRAINING_AUTHORIZED from explicit
 machine-readable evidence. The final state requires separate compute and training
-authorization records.
+authorization records and a terminal bounded pilot.
 """
 
 from __future__ import annotations
@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -46,6 +47,7 @@ REQUIRED_EVIDENCE_GATES = (
     "learned_10m_independent",
     "selection_validation",
     "independent_audit",
+    "bounded_pilot",
 )
 
 SHA256_IDENTITY_FIELDS = (
@@ -54,6 +56,16 @@ SHA256_IDENTITY_FIELDS = (
     "packing_identity_sha256",
     "tokenizer_identity_sha256",
     "run_config_sha256",
+)
+
+RECIPE_SECTIONS = ("optimizer", "scheduler", "precision", "gradient_policy")
+PILOT_PASS_FIELDS = (
+    "finite_loss",
+    "loss_decreased",
+    "gradient_health_passed",
+    "checkpoint_resume_passed",
+    "throughput_measured",
+    "evaluation_isolation_passed",
 )
 
 
@@ -70,11 +82,21 @@ def _positive_int(value: object) -> bool:
 
 
 def _positive_number(value: object) -> bool:
-    return isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0
+    return (
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and math.isfinite(float(value))
+        and float(value) > 0.0
+    )
 
 
 def _nonnegative_number(value: object) -> bool:
-    return isinstance(value, (int, float)) and not isinstance(value, bool) and value >= 0
+    return (
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and math.isfinite(float(value))
+        and float(value) >= 0.0
+    )
 
 
 def _nonempty(value: object) -> bool:
@@ -231,13 +253,33 @@ def _validate_evidence(packet: dict[str, Any], blockers: list[dict[str, str]]) -
             )
 
 
+def _validate_bounded_pilot(packet: dict[str, Any], blockers: list[dict[str, str]]) -> None:
+    evidence = packet.get("terminal_evidence")
+    pilot = evidence.get("bounded_pilot") if isinstance(evidence, dict) else None
+    if not isinstance(pilot, dict):
+        return
+    if not _positive_int(pilot.get("max_steps")):
+        _block(
+            blockers,
+            "BOUNDED_PILOT_NOT_QUALIFIED",
+            "bounded_pilot.max_steps must be a positive finite predeclared bound",
+        )
+    for field in PILOT_PASS_FIELDS:
+        if pilot.get(field) is not True:
+            _block(
+                blockers,
+                "BOUNDED_PILOT_NOT_QUALIFIED",
+                f"bounded_pilot.{field} must be true before long training",
+            )
+
+
 def _validate_recipe(packet: dict[str, Any], blockers: list[dict[str, str]]) -> None:
     recipe = packet.get("training_recipe")
     if not isinstance(recipe, dict):
         _block(blockers, "TRAINING_RECIPE_MISSING", "training_recipe must be an object")
         return
 
-    for section_name in ("optimizer", "scheduler", "precision"):
+    for section_name in RECIPE_SECTIONS:
         section = recipe.get(section_name)
         if not isinstance(section, dict):
             _block(
@@ -298,21 +340,45 @@ def _validate_recipe(packet: dict[str, Any], blockers: list[dict[str, str]]) -> 
         )
 
 
+def _validate_budget_against_exposure(
+    packet: dict[str, Any], blockers: list[dict[str, str]]
+) -> None:
+    exposure = packet.get("post_pack_exposure")
+    recipe = packet.get("training_recipe")
+    if not isinstance(exposure, dict) or not isinstance(recipe, dict):
+        return
+    budget = recipe.get("budget")
+    if not isinstance(budget, dict):
+        return
+    unique_positions = exposure.get("unique_causal_loss_positions")
+    target = budget.get("target_optimized_tokens")
+    if _positive_int(unique_positions) and _positive_int(target) and target > unique_positions:
+        _block(
+            blockers,
+            "RUN_BUDGET_EXCEEDS_UNIQUE_EXPOSURE",
+            "target_optimized_tokens cannot exceed exact unique post-pack causal-loss positions",
+        )
+
+
 def _validate_resources(packet: dict[str, Any], blockers: list[dict[str, str]]) -> None:
     resources = packet.get("resource_envelope")
     if not isinstance(resources, dict):
         _block(blockers, "RESOURCE_ENVELOPE_MISSING", "resource_envelope must be an object")
         return
     if not _positive_number(resources.get("estimated_flops")):
-        _block(blockers, "FLOP_ESTIMATE_MISSING", "estimated_flops must be positive")
+        _block(blockers, "FLOP_ESTIMATE_MISSING", "estimated_flops must be positive and finite")
     if not _positive_number(resources.get("estimated_wall_clock_hours")):
-        _block(blockers, "WALL_CLOCK_ESTIMATE_MISSING", "estimated_wall_clock_hours must be positive")
+        _block(
+            blockers,
+            "WALL_CLOCK_ESTIMATE_MISSING",
+            "estimated_wall_clock_hours must be positive and finite",
+        )
     if not _positive_int(resources.get("device_count")):
         _block(blockers, "DEVICE_COUNT_INVALID", "device_count must be a positive integer")
     if not _nonempty(resources.get("device_type")):
         _block(blockers, "DEVICE_TYPE_MISSING", "device_type is required")
     if not _nonnegative_number(resources.get("max_cost_usd")):
-        _block(blockers, "COST_ENVELOPE_INVALID", "max_cost_usd must be non-negative")
+        _block(blockers, "COST_ENVELOPE_INVALID", "max_cost_usd must be finite and non-negative")
     if not _nonempty(resources.get("estimate_evidence_ref")):
         _block(blockers, "RESOURCE_EVIDENCE_MISSING", "estimate_evidence_ref is required")
 
@@ -394,7 +460,9 @@ def evaluate_packet(
     _validate_identities(packet, blockers)
     _validate_exposure(packet, blockers)
     _validate_evidence(packet, blockers)
+    _validate_bounded_pilot(packet, blockers)
     _validate_recipe(packet, blockers)
+    _validate_budget_against_exposure(packet, blockers)
     _validate_resources(packet, blockers)
     compute_authorized, training_authorized, missing_auth = _authorization_state(packet, blockers)
 
