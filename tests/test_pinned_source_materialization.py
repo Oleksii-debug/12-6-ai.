@@ -94,7 +94,7 @@ def test_materializes_exact_git_object_and_is_deterministic(tmp_path: Path) -> N
     ).read_bytes()
 
 
-def test_rejects_hash_drift_before_writing_payload(tmp_path: Path) -> None:
+def test_rejects_hash_drift_without_publishing_partial_output(tmp_path: Path) -> None:
     repo, commit, payload = _make_git_source(tmp_path)
     source = {
         **_common_source(payload),
@@ -108,11 +108,13 @@ def test_rejects_hash_drift_before_writing_payload(tmp_path: Path) -> None:
     with pytest.raises(PinnedSourceMaterializationError, match="raw SHA-256 drift"):
         materialize_pinned_sources(_base_config(source), repo_root=repo, output_dir=out)
 
-    assert not (out / "fixture-source.raw").exists()
-    assert not (out / "manifest.json").exists()
+    assert not out.exists()
 
 
-@pytest.mark.parametrize("git_path", ["../escape.txt", "/absolute.txt", "a\\b.txt", "HEAD:data.txt"])
+@pytest.mark.parametrize(
+    "git_path",
+    ["../escape.txt", "/absolute.txt", "a\\b.txt", "HEAD:data.txt"],
+)
 def test_rejects_unsafe_git_paths(tmp_path: Path, git_path: str) -> None:
     repo, commit, payload = _make_git_source(tmp_path)
     source = {
@@ -145,7 +147,7 @@ def test_rejects_moving_git_ref_instead_of_exact_commit(tmp_path: Path) -> None:
         )
 
 
-def test_https_payload_is_hash_pinned_and_records_final_locator(tmp_path: Path) -> None:
+def test_https_identity_uses_configured_locator_not_ephemeral_redirect(tmp_path: Path) -> None:
     payload = b"%PDF-pinned-fixture\n"
     source = {
         **_common_source(payload),
@@ -158,19 +160,30 @@ def test_https_payload_is_hash_pinned_and_records_final_locator(tmp_path: Path) 
         "authority_normalized_sha256": "b" * 64,
     }
 
-    def fake_download(url: str, expected_bytes: int) -> tuple[bytes, str]:
+    def first_download(url: str, expected_bytes: int) -> tuple[bytes, str]:
         assert expected_bytes == len(payload)
-        return payload, url
+        return payload, "https://cdn.example.invalid/object?token=first"
 
-    manifest = materialize_pinned_sources(
+    def second_download(url: str, expected_bytes: int) -> tuple[bytes, str]:
+        assert expected_bytes == len(payload)
+        return payload, "https://cdn.example.invalid/object?token=second"
+
+    first = materialize_pinned_sources(
         _base_config(source),
         repo_root=tmp_path,
-        output_dir=tmp_path / "out",
-        https_downloader=fake_download,
+        output_dir=tmp_path / "out-a",
+        https_downloader=first_download,
     )
-    row = manifest["sources"][0]
+    second = materialize_pinned_sources(
+        _base_config(source),
+        repo_root=tmp_path,
+        output_dir=tmp_path / "out-b",
+        https_downloader=second_download,
+    )
+    assert first == second
+    row = first["sources"][0]
     assert row["provider"] == "https_exact"
-    assert row["resolved_locator"] == "https://example.invalid/pinned.pdf"
+    assert row["source_locator"] == "https://example.invalid/pinned.pdf"
     assert row["normalization_verification_status"] == "NOT_EXECUTED_BY_THIS_TOOL"
     assert row["authority_normalized_bytes"] == 123
     assert row["authority_normalized_sha256"] == "b" * 64
@@ -194,3 +207,57 @@ def test_rejects_non_https_final_locator_from_injected_downloader(tmp_path: Path
             output_dir=tmp_path / "out",
             https_downloader=bad_redirect,
         )
+    assert not (tmp_path / "out").exists()
+
+
+def test_late_failure_keeps_entire_output_unpublished(tmp_path: Path) -> None:
+    first_payload = b"first"
+    second_payload = b"second"
+    first_source = {
+        **_common_source(first_payload),
+        "source_id": "a-first",
+        "provider": "https_exact",
+        "url": "https://example.invalid/first",
+    }
+    second_source = {
+        **_common_source(second_payload),
+        "source_id": "b-second",
+        "provider": "https_exact",
+        "url": "https://example.invalid/second",
+        "expected_raw_sha256": "0" * 64,
+    }
+    config = {
+        "schema_version": "12-6.pinned-source-payload-materialization.v1",
+        "local_free_only": True,
+        "model_training_executed": False,
+        "sources": [first_source, second_source],
+    }
+
+    def downloader(url: str, expected_bytes: int) -> tuple[bytes, str]:
+        payload = first_payload if url.endswith("/first") else second_payload
+        return payload, url
+
+    out = tmp_path / "out"
+    with pytest.raises(PinnedSourceMaterializationError, match="raw SHA-256 drift"):
+        materialize_pinned_sources(
+            config,
+            repo_root=tmp_path,
+            output_dir=out,
+            https_downloader=downloader,
+        )
+    assert not out.exists()
+
+
+def test_refuses_reusing_existing_output_directory(tmp_path: Path) -> None:
+    repo, commit, payload = _make_git_source(tmp_path)
+    source = {
+        **_common_source(payload),
+        "provider": "git_object",
+        "git_commit": commit,
+        "git_path": "data/sample.txt",
+    }
+    out = tmp_path / "out"
+    out.mkdir()
+
+    with pytest.raises(PinnedSourceMaterializationError, match="already exists"):
+        materialize_pinned_sources(_base_config(source), repo_root=repo, output_dir=out)
