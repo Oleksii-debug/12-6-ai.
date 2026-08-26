@@ -1,0 +1,288 @@
+name: MILESTONE-150 Learned Base Ladder V1
+
+on:
+  pull_request:
+    branches:
+      - milestone100/first-learned-base-20260826
+    paths:
+      - ".github/workflows/milestone150-learned-base-ladder-v1.yml"
+      - "src/twelve_six/milestone150*.py"
+      - "src/twelve_six/milestone100_first_learned.py"
+      - "src/twelve_six/model/**"
+      - "src/twelve_six/model.py"
+      - "src/twelve_six/training/**"
+      - "src/twelve_six/checkpoint/**"
+      - "src/twelve_six/checkpoint.py"
+      - "src/twelve_six/tokenization/**"
+      - "src/twelve_six/inference/**"
+      - "data/corpus_v01/**"
+      - "configs/data/corpus_v01.json"
+      - "requirements/locks/linux-x86_64/**"
+      - "tools/ci_dependency_preflight.py"
+      - "tests/test_milestone100*.py"
+      - "tests/test_milestone150*.py"
+      - "tests/test_data25_corpus_v01.py"
+  workflow_dispatch:
+
+concurrency:
+  group: milestone150-ladder-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  learned-base-ladder-v1:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      PYTHONPATH: src
+      OMP_NUM_THREADS: "2"
+      MKL_NUM_THREADS: "2"
+    steps:
+      - name: Checkout exact milestone head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up exact Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact source
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+
+      - name: Dependency and tool preflight before tests or runtime install
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: >-
+          python tools/ci_dependency_preflight.py
+          --profile linux-x86_64
+          --source-sha "$EXPECTED_SOURCE_SHA"
+          --output milestone150-ci-preflight.json
+
+      - name: Install hash-locked CPU runtime and test tooling
+        run: |
+          set -euo pipefail
+          python -m venv .m150
+          .m150/bin/python -m pip install \
+            --disable-pip-version-check --no-deps --require-hashes \
+            -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .m150/bin/python -m pip install \
+            --disable-pip-version-check --no-deps --require-hashes \
+            -r requirements/locks/linux-x86_64/runtime.lock.txt
+          .m150/bin/python -m pip install \
+            --disable-pip-version-check --no-deps --require-hashes \
+            -r requirements/locks/linux-x86_64/dev.lock.txt
+
+      - name: Compile and test convergence contracts
+        run: |
+          set -euo pipefail
+          .m150/bin/python -m compileall -q src/twelve_six
+          .m150/bin/python -m pytest -q \
+            tests/test_data25_corpus_v01.py \
+            tests/test_milestone100_first_learned.py \
+            tests/test_milestone100_one_m.py \
+            tests/test_milestone150_learned_base_ladder.py
+
+      - name: Prepare one corpus tokenizer evaluation truth
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          .m150/bin/python -m twelve_six.milestone150_entrypoint \
+            prepare \
+            --repo-root . \
+            --source-sha "$EXPECTED_SOURCE_SHA" \
+            --output-dir milestone150-evidence
+
+      - name: Execute comparable learned 100K rung
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          .m150/bin/python -m twelve_six.milestone150_entrypoint phase1 \
+            --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" \
+            --output-dir milestone150-evidence --scale 100k
+          .m150/bin/python -m twelve_six.milestone150_entrypoint resume \
+            --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" \
+            --output-dir milestone150-evidence --scale 100k
+          .m150/bin/python -m twelve_six.milestone150_entrypoint verify-scale \
+            --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" \
+            --output-dir milestone150-evidence --scale 100k
+
+      - name: Execute comparable learned 500K rung
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          .m150/bin/python -m twelve_six.milestone150_entrypoint phase1 \
+            --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" \
+            --output-dir milestone150-evidence --scale 500k
+          .m150/bin/python -m twelve_six.milestone150_entrypoint resume \
+            --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" \
+            --output-dir milestone150-evidence --scale 500k
+          .m150/bin/python -m twelve_six.milestone150_entrypoint verify-scale \
+            --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" \
+            --output-dir milestone150-evidence --scale 500k
+
+      - name: Execute comparable learned 1M rung
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          .m150/bin/python -m twelve_six.milestone150_entrypoint phase1 \
+            --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" \
+            --output-dir milestone150-evidence --scale 1m
+          .m150/bin/python -m twelve_six.milestone150_entrypoint resume \
+            --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" \
+            --output-dir milestone150-evidence --scale 1m
+          .m150/bin/python -m twelve_six.milestone150_entrypoint verify-scale \
+            --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" \
+            --output-dir milestone150-evidence --scale 1m
+
+      - name: Assemble and validate machine-readable ladder
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          .m150/bin/python -m twelve_six.milestone150_entrypoint finalize \
+            --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" \
+            --output-dir milestone150-evidence
+          .m150/bin/python -m twelve_six.milestone150_entrypoint validate \
+            milestone150-evidence/ladder-report.json \
+            --expected-source-sha "$EXPECTED_SOURCE_SHA"
+          .m150/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+          r = json.loads(Path("milestone150-evidence/ladder-report.json").read_text(encoding="utf-8"))
+          print(json.dumps({
+              "source_sha": r["source"]["git_sha"],
+              "truth_identity": r["truth_model"]["identity_sha256"],
+              "evaluation_identity": r["truth_model"]["evaluation_identity"]["identity_sha256"],
+              "quality_rank": r["rankings"]["quality"],
+              "efficiency_rank": r["rankings"]["efficiency"],
+              "scaling_improvement": r["rankings"]["scaling_improvement"],
+              "ten_million": r["ten_million"]["status"],
+              "report_sha256": r["report_sha256"],
+          }, ensure_ascii=False, indent=2, sort_keys=True))
+          PY
+
+      - name: Stage only freshly verified retained checkpoints
+        run: |
+          set -euo pipefail
+          .m150/bin/python - <<'PY'
+          import json
+          import shutil
+          from pathlib import Path
+
+          evidence = Path("milestone150-evidence")
+          retained = evidence / "retained"
+          retained.mkdir(parents=True, exist_ok=True)
+          index = {"schema": "12-6.learned-base-ladder-retained-checkpoints.v1", "scales": {}}
+          for scale in ("100k", "500k", "1m"):
+              report = json.loads((evidence / scale / "report.json").read_text(encoding="utf-8"))
+              if report["fresh_verification"]["status"] != "PASS":
+                  raise SystemExit(f"{scale}: refusing retention without fresh verification PASS")
+              roles = {
+                  "best": report["checkpoints"]["best_checkpoint"],
+                  "final": report["checkpoints"]["final_checkpoint"],
+              }
+              index["scales"][scale] = {}
+              for role, directory in roles.items():
+                  source = evidence / scale / directory
+                  destination = retained / scale / role
+                  if destination.exists():
+                      shutil.rmtree(destination)
+                  shutil.copytree(source, destination)
+                  index["scales"][scale][role] = {
+                      "source_directory": directory,
+                      "checkpoint_id": report["checkpoints"][f"{role}_checkpoint_id"],
+                      "fresh_verification": "PASS",
+                  }
+          (retained / "index.json").write_text(
+              json.dumps(index, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Publish exact-head ladder evidence to PR
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          .m150/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+          r = json.loads(Path("milestone150-evidence/ladder-report.json").read_text(encoding="utf-8"))
+          lines = [
+              "### MILESTONE-150 exact-head LEARNED BASE LADDER V1 evidence",
+              "",
+              f"- source SHA: `{r['source']['git_sha']}`",
+              f"- corpus identity: `{r['truth_model']['corpus_identity_sha256']}`",
+              f"- evaluation identity: `{r['truth_model']['evaluation_identity']['identity_sha256']}`",
+              f"- tokenizer: `{r['truth_model']['tokenizer']['version']}` / `{r['truth_model']['tokenizer']['config_sha256']}`",
+              "- retained comparable rungs: `100k`, `500k`, `1m`",
+              f"- 10M: `{r['ten_million']['status']}`",
+              f"- report SHA-256: `{r['report_sha256']}`",
+              "",
+              "| scale | params | best step | best BPB | final BPB | optimized tokens | fresh verify |",
+              "|---|---:|---:|---:|---:|---:|---|",
+          ]
+          for scale in ("100k", "500k", "1m"):
+              s = r["scales"][scale]
+              lines.append(
+                  f"| {scale} | {s['model']['parameter_count']} | {s['evaluation']['best_step']} | "
+                  f"{s['evaluation']['best_bits_per_byte']:.6f} | {s['evaluation']['final_bits_per_byte']:.6f} | "
+                  f"{s['training']['optimized_tokens']} | {s['fresh_verification']['status']} |"
+              )
+          lines += [
+              "",
+              "Truth boundary: learned scratch Base checkpoints only; no foreign pretrained weights, SFT, RLHF, DPO or paid compute. No intelligence, production-readiness, alignment or instruction-following claim is made. DATA-25 remains project-authored and is not claimed to be externally representative.",
+          ]
+          Path("milestone150-evidence/pr-comment.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+          PY
+          gh pr comment "$PR_NUMBER" --repo "$GH_REPO" --body-file milestone150-evidence/pr-comment.md
+
+      - name: Upload learned ladder evidence and freshly verified retained checkpoints
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: milestone150-learned-base-ladder-v1
+          path: |
+            milestone150-ci-preflight.json
+            milestone150-evidence/ladder-truth.json
+            milestone150-evidence/ladder-report.json
+            milestone150-evidence/corpus-manifest.json
+            milestone150-evidence/machine-prepare.json
+            milestone150-evidence/retained/
+            milestone150-evidence/100k/run-manifest.json
+            milestone150-evidence/100k/phase1.json
+            milestone150-evidence/100k/report.preverify.json
+            milestone150-evidence/100k/report.json
+            milestone150-evidence/100k/machine-*.json
+            milestone150-evidence/100k/train-curve.jsonl
+            milestone150-evidence/500k/run-manifest.json
+            milestone150-evidence/500k/phase1.json
+            milestone150-evidence/500k/report.preverify.json
+            milestone150-evidence/500k/report.json
+            milestone150-evidence/500k/machine-*.json
+            milestone150-evidence/500k/train-curve.jsonl
+            milestone150-evidence/1m/run-manifest.json
+            milestone150-evidence/1m/phase1.json
+            milestone150-evidence/1m/report.preverify.json
+            milestone150-evidence/1m/report.json
+            milestone150-evidence/1m/machine-*.json
+            milestone150-evidence/1m/train-curve.jsonl
+          if-no-files-found: error
+          retention-days: 30
