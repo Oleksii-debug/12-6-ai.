@@ -3,6 +3,11 @@
 This module wraps the checkpoint-v1 loader with corruption preflights that must
 complete before the production core mutates model, optimizer, scheduler, or RNG
 state. It intentionally keeps the serialized checkpoint format unchanged.
+
+The module also installs the hardened load/verify entry points back onto
+``checkpoint.core`` at import time. The original core implementations are kept
+as private delegates so callers cannot bypass the preflight merely by importing
+``twelve_six.checkpoint.core`` directly.
 """
 
 from __future__ import annotations
@@ -21,6 +26,12 @@ CheckpointCompatibilityError = _core.CheckpointCompatibilityError
 CheckpointIntegrityError = _core.CheckpointIntegrityError
 LoadResult = _core.LoadResult
 VerifiedCheckpoint = _core.VerifiedCheckpoint
+
+# Freeze the verified production implementations before installing the hardened
+# entry points back onto the core module. Hardened wrappers delegate only to
+# these saved callables, which prevents recursion after installation.
+_CORE_PREPARE_CHECKPOINT_LOAD = _core.prepare_checkpoint_load
+_CORE_LOAD_VERIFIED_CHECKPOINT = _core.load_verified_checkpoint
 
 
 def _validate_identity_counters(manifest: Mapping[str, Any]) -> None:
@@ -76,7 +87,10 @@ def _validate_model_tensor_dtypes(
             continue
 
         cls = target.__class__
-        if not (cls.__module__.startswith("torch") and cls.__name__ in {"Tensor", "Parameter"}):
+        if not (
+            cls.__module__.startswith("torch")
+            and cls.__name__ in {"Tensor", "Parameter"}
+        ):
             raise CheckpointCompatibilityError(
                 f"unsupported target tensor type for {name}: {type(target)!r}"
             )
@@ -156,7 +170,8 @@ def _validate_loaded_optimizer_semantics(optimizer: Any) -> None:
                         raise CheckpointCompatibilityError(
                             "optimizer state tensor dtype mismatch at "
                             f"group {group_index} param {param_index} {state_path}: "
-                            f"state {tensor.dtype} vs allowed {sorted(str(x) for x in allowed)}"
+                            f"state {tensor.dtype} vs allowed "
+                            f"{sorted(str(item) for item in allowed)}"
                         )
 
 
@@ -200,7 +215,7 @@ def _decode_weights(verified: VerifiedCheckpoint) -> dict[str, np.ndarray]:
 
 
 def prepare_checkpoint_load(directory: str | Path) -> VerifiedCheckpoint:
-    verified = _core.prepare_checkpoint_load(directory)
+    verified = _CORE_PREPARE_CHECKPOINT_LOAD(directory)
     _validate_identity_counters(verified.manifest)
     return verified
 
@@ -247,7 +262,7 @@ def load_verified_checkpoint(
             )
         _preflight_stateful_object(scheduler, scheduler_state, label="scheduler")
 
-    return _core.load_verified_checkpoint(
+    return _CORE_LOAD_VERIFIED_CHECKPOINT(
         verified,
         model=model,
         optimizer=optimizer,
@@ -293,3 +308,15 @@ def load_checkpoint(
         expected_dataset_manifest_hash=expected_dataset_manifest_hash,
         expected_run_manifest_hash=expected_run_manifest_hash,
     )
+
+
+def _install_core_entrypoints() -> None:
+    """Make direct core imports use the same hardened production load path."""
+
+    _core.prepare_checkpoint_load = prepare_checkpoint_load
+    _core.verify_checkpoint = verify_checkpoint
+    _core.load_verified_checkpoint = load_verified_checkpoint
+    _core.load_checkpoint = load_checkpoint
+
+
+_install_core_entrypoints()
