@@ -1,0 +1,133 @@
+{
+  "authority_identity_sha256": "08a5876d24d054e94171eeaebb3610e3992b39bed5b038550148348e621ac41c",
+  "contract": {
+    "git_blob_sha1": "622e193a35ba485ca162d9db736823f97303b7ff",
+    "path": "configs/evaluation/next100_057_code_selection_validation_v2.json",
+    "sha256": "d0d82afc57a44cbf9de5a32594da45f6a15c485b3d194c175911ae50d04e2252"
+  },
+  "decision": "BLOCKED",
+  "eligibility": {
+    "eligible_object_count": 0,
+    "eligible_source_families": [],
+    "eligible_source_family_count": 0,
+    "source_family_diversity_satisfied": false
+  },
+  "exact_blocker": "No terminal purpose-specific evaluation reservation authority currently provides even one pristine eligible code object, much less objects from two independent code families. EVAL-289 has an inactive empty reservation and its legacy httpx/requests candidates were already exposed to model training. Newly admitted NEXT100 code sources checked here are training authorities or explicitly lack evaluation authorization/reservation. Therefore a non-empty immutable evaluation JSONL cannot be lawfully or contamination-safely produced.",
+  "execution_class": "LOCAL_FREE",
+  "live_authority_findings": {
+    "eval289": {
+      "authority_identity_sha256": "de52b38690230bee8a912fc1265ad34b80a3abde46bd23401f15395749a4813c",
+      "eligible_object_count": 0,
+      "eligible_source_family_count": 0,
+      "head": "1c870e5e02bf48891ca599b0b3f3bfe6e84425bc",
+      "legacy_httpx_requests_training_exposed": true,
+      "legacy_optimizer_steps_total": 4,
+      "reservation_active": false
+    },
+    "eval322": {
+      "blockers": [
+        "CODE_SELECTION_AUTHORITY_ZERO_RECORD",
+        "CODE_FINAL_TEST_AUTHORITY_ABSENT"
+      ],
+      "code_enabled": false,
+      "config_git_blob_sha1": "39a251338cc041355a64a98a21672fbc9710de2f",
+      "head": "7c15363a8c110f30a493ac41ab49a824354a2a67",
+      "run_authorized": false
+    },
+    "new_training_source_authorities_checked": [
+      {
+        "evaluation_reserved": false,
+        "evaluation_use": "NOT_ADMITTED",
+        "head": "7248a6929ce126e14233e8acd510b06dead2d835",
+        "policy_git_blob_sha1": "53e43cca4745565414af333659b4901fb85c8e7b",
+        "source_family": "github:python/cpython",
+        "worker": "NEXT100-041-CODE-CPYTHON"
+      },
+      {
+        "evaluation_reserved": false,
+        "evaluation_use": "NOT_SEPARATELY_AUTHORIZED",
+        "head": "7d83f8d4f21f51ad0b59dca4ac80f80aba20fc13",
+        "policy_git_blob_sha1": "20f4821400b0fc847d99dd87ecb3e04d96a77046",
+        "source_family": "github:django/django",
+        "worker": "NEXT100-042-CODE-DJANGO"
+      },
+      {
+        "candidate_role": "TRAINING_ONLY",
+        "evaluation_use_authorized": false,
+        "policy_git_blob_sha1": "aafb3cc9171440ec408baf654e317fad9fc6eefd",
+        "source_family": "github:pallets/flask",
+        "worker": "NEXT100-043-CODE-FLASK"
+      },
+      {
+        "evaluation_use": "NOT_AUTHORIZED_BY_THIS_AUTHORITY",
+        "policy_git_blob_sha1": "2d8eba3d0e8952eacf72133a5910ba4c13e5baeb",
+        "purpose": "training",
+        "source_family": "github:Kludex/starlette",
+        "worker": "NEXT100-045-CODE-STARLETTE"
+      },
+      {
+        "evaluation_reservations_observed": 0,
+        "head": "3580327eb6b64bc019602c7bfefe38137b1b3b55",
+        "policy_git_blob_sha1": "b748da8317554fe88010d7a2cdfbf974e06a23bc",
+        "purpose": "base_pretraining_source_code",
+        "source_family": "github:pallets/jinja",
+        "worker": "NEXT100-047-CODE-JINJA"
+      }
+    ],
+    "non_terminal_or_non_evaluation_branch_note": "Additional concurrent code-source branches are not admissible here unless a terminal purpose-specific evaluation reservation authority binds exact objects before any tokenizer/training exposure. Branch existence or training authority is insufficient.",
+    "purpose_specific_code_evaluation_reservation_branches": [
+      "eval289/code-evaluation-rights-reservation-20260826"
+    ]
+  },
+  "model_training_executed": false,
+  "predecessor": {
+    "authority": "EVAL-292-CODE-SELECTION-VALIDATION-V1",
+    "authority_identity_sha256": "9a9848a82c34588753c9dca1379b8fae49cd7f366017507fc412de0c38cad46f",
+    "branch": "eval292/code-selection-validation-v1-20260826",
+    "head": "2cbe2f2d9c74984baa69e49e520e2280fc76421b",
+    "selection_record_count": 0,
+    "selection_set_sha256": "9fd52e879c388f06f0b103afa02d68678388867c81cfb0f27ddbf0ca18867054"
+  },
+  "requirements": {
+    "deterministic_selection": true,
+    "exact_evaluation_use_rights": true,
+    "immutable_jsonl_when_eligible": true,
+    "minimum_independent_code_families": 2,
+    "no_final_test_payload_access": true,
+    "pre_training_reservation": true,
+    "zero_model_training_exposure": true,
+    "zero_tokenizer_fit_exposure": true,
+    "zero_training_overlap": true
+  },
+  "schema_version": "12-6.next100-057-code-selection-validation-v2.authority.v1",
+  "selection": {
+    "deterministic_rule": "Filter terminal purpose-specific evaluation reservation authorities by exact rights, exact immutable identity, pre-exposure reservation, zero tokenizer/training exposure, and zero training overlap; sort by source_family/repository/revision/path/git_blob_sha1/raw_sha256; select the first eligible object from each independent family until two families are present.",
+    "immutable": true,
+    "jsonl": {
+      "path": null,
+      "published": false,
+      "reason": "Prerequisites are not satisfied; publishing an evaluation JSONL would fabricate eligibility.",
+      "sha256": null
+    },
+    "record_count": 0,
+    "records": []
+  },
+  "separation_proof": {
+    "final_test_outcomes_accessed": false,
+    "final_test_payload_accessed": false,
+    "final_test_payload_used_for_selection": false,
+    "overlap_proof_kind": "EMPTY_FAIL_CLOSED_SELECTION",
+    "selected_training_overlap_count": 0
+  },
+  "status": "BLOCKED_NO_PRISTINE_CODE_OBJECTS_WITH_EXPLICIT_EVALUATION_RESERVATION",
+  "terminal_for_observed_authority_vector": true,
+  "unblock_requirements": [
+    "Create a terminal purpose-specific evaluation-use authority for exact pinned code objects from at least two independent canonical source families.",
+    "Bind each object to repository, exact revision, path, Git blob SHA-1, raw SHA-256, license/rights evidence, and explicit evaluation-use permission.",
+    "Publish an active reservation for those exact identities before any tokenizer fit, corpus construction, model training, selection tuning, or benchmark outcome access.",
+    "Prove zero historical tokenizer exposure and zero historical model-training exposure for each reserved object.",
+    "Exclude every reserved raw/normalized/content identity from all current and future training inventories and prove zero overlap.",
+    "Re-run deterministic selection using authority metadata only; do not access final-test payloads or outcomes."
+  ],
+  "worker_id": "NEXT100-057-CODE-EVAL-SET-V2"
+}
