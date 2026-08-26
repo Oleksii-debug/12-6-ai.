@@ -1,0 +1,154 @@
+{
+  "authority_identity_sha256": "07a1de2bc33d5c8d70d5f88ae09ab208bc42e1148a1d154d2b44b17b5493fa4a",
+  "code_gate": {
+    "documents": 0,
+    "eval289": {
+      "authority_git_blob_sha1": "233a9c3e26d4a9731591d22adb38cea181131fa5",
+      "authority_identity_sha256": "de52b38690230bee8a912fc1265ad34b80a3abde46bd23401f15395749a4813c",
+      "data300_bound_head_sha": "1c870e5e02bf48891ca599b0b3f3bfe6e84425bc",
+      "eligible_pristine_families": 0,
+      "reserved_objects": 0,
+      "verdict": "BLOCKED_NO_PRISTINE_CODE_OBJECTS_WITH_EXPLICIT_EVALUATION_AUTHORITY"
+    },
+    "eval292": {
+      "authority_git_blob_sha1": "039e32e44afae65c5746d8835c503eef0859e3d2",
+      "authority_identity_sha256": "9a9848a82c34588753c9dca1379b8fae49cd7f366017507fc412de0c38cad46f",
+      "data300_bound_head_sha": "2cbe2f2d9c74984baa69e49e520e2280fc76421b",
+      "records": 0,
+      "selection_set_identity_sha256": "9fd52e879c388f06f0b103afa02d68678388867c81cfb0f27ddbf0ca18867054",
+      "verdict": "BLOCKED"
+    },
+    "included": false,
+    "reason": "Wave-2 code evaluation rights/reservation did not pass."
+  },
+  "complete_ua_en_code": false,
+  "evaluation_access_boundary": {
+    "authority_metadata_and_hashes_only": true,
+    "final_test_outcomes_read": false,
+    "final_test_outcomes_used": false,
+    "final_test_payload_read": false,
+    "selection_validation_payload_created_from_final_test": false
+  },
+  "execution_class": "LOCAL_FREE",
+  "frozen_corpus_exclusion_proof": {
+    "data299": {
+      "branch": "data299/eval-decontamination-preflight-20260826",
+      "evaluation_access_boundary": "AUTHORITY_METADATA_AND_HASHES_ONLY",
+      "near_match_materialization_required": true,
+      "registry_git_blob_sha1": "0797440e3fe23e90bdf5d4ce47dad56e7efeafc9",
+      "registry_identity_sha256": "2235b27441277542ef92748b5f9f6b21b983a7142ea53036b104e7be96cb44ee",
+      "registry_path": "data/evaluation/data299_eval_exclusion_registry_v1.json"
+    },
+    "data300": {
+      "branch": "data300/corpus-v03-frozen-build-contract-20260826",
+      "contract_git_blob_sha1": "39d4fa07ea17e66e042a3ccb1a55b8e5e1c5d7bf",
+      "contract_identity_sha256": "07d7beaaff4616e839450de6af3d407855c832bf75a24a959d1a12de5d9364e5",
+      "contract_path": "configs/data/data300_corpus_v03_frozen_build_contract_v2.json",
+      "contract_state": "FROZEN_EXECUTABLE_CONTRACT",
+      "corpus_state": "NOT_BUILT_NOT_FROZEN_NOT_TERMINAL",
+      "training_candidate_source_count": 5
+    },
+    "exact_source_hash_intersection": [
+      "154fb4034929714087e75150d678bf65049ddac32e79dcdf97162c8972c2be83",
+      "94eb2f529922d125b3bd40691778886f4d5d80b128b925d0274fb3d94646ec5a",
+      "21582c7f0e4ad39f2b0ed97bbc2c082d275e898b7a63c28e6d9badb8ee0f7860",
+      "7ac53dfb4bf6f73f178560e09f33160d0250c69fb679802f3254dc0eb4c9f509",
+      "36eae31c3b0676ea7c02236fa05bd695c240c9a8eade5febc00457b8103ee1a4",
+      "72c301db0b2539f3f7a73c9c15e2e425700a6b758a1114f1a861e2d60c704c50"
+    ],
+    "exact_source_hash_intersection_count": 6,
+    "exclusion_verified": false,
+    "interpretation": "The overlap is proven at reserved source-snapshot hash level without reading final-test payload. DATA-299 also requires near-match materialization. Therefore EVAL-304 cannot certify the DATA-300 candidate training inventory as excluded from the preserved final test.",
+    "near_match_scan_executed_by_eval304": false,
+    "record_payload_byte_comparison_executed": false,
+    "verdict": "FAIL_CLOSED_FROZEN_TRAINING_CANDIDATE_INVENTORY_INTERSECTS_RESERVED_FINAL_TEST_SOURCE_HASHES"
+  },
+  "preserved_final_test": {
+    "authority": "EVAL-233-REAL-HOLDOUT-V2",
+    "authority_git_blob_sha1": "2008570890819f32c356677e1e250707d339b53a",
+    "authority_identity_sha256": "37473834df31c69faf39f5c1152e9fe1f7d4aeb1487fcf7489059e8ec444d4a7",
+    "classification": "final_test",
+    "documents_total": 16,
+    "head_sha": "b5512b4648cb09dd052b08884dc53f291e1ce935",
+    "hyperparameter_selection_eligible": false,
+    "immutable": true,
+    "modalities": [
+      "ua",
+      "en"
+    ],
+    "model_update_eligible": false,
+    "reserved_seed": {
+      "content_hash_kind": "git-blob-sha1",
+      "git_blob_sha1": "4bfbfbf29fa9538cabda6068efd3a1fd036a9479",
+      "payload_copied_into_eval304": false,
+      "payload_read_by_eval304": false
+    },
+    "selection_eligible": false,
+    "tokenizer_fit_eligible": false
+  },
+  "purpose": "external-real final-test reservation authority",
+  "release_authorized": false,
+  "schema_version": "12-6.eval304-real-final-test-v3-authority.v1",
+  "selection_firewall": {
+    "final_test_bytes_moved_to_selection_validation": false,
+    "final_test_seed_reclassified": false,
+    "selection_validation_may_copy_final_test_payload": false,
+    "selection_validation_may_reference_only_authority_identity_and_hashes": true
+  },
+  "source_rights_authority": {
+    "authority": "RECOVER-174-EVAL131-REAL-CORE",
+    "authority_git_blob_sha1": "3ba9f221a82468f971c17eda518cd6f1642fd311",
+    "authority_identity_sha256": "c7211b3e1e6a4f22463d0e6174f0d6162c2452585704efad5564a35de8de609f",
+    "decision_scope": "HELDOUT_EVALUATION_ONLY_FOR_EXACT_PINNED_SNAPSHOTS",
+    "head_sha": "976c101b20ad2e31b0b3e2dda2beed8e7b03c2f3",
+    "sources": [
+      {
+        "admitted_source_snapshots_sha256": [
+          "154fb4034929714087e75150d678bf65049ddac32e79dcdf97162c8972c2be83",
+          "94eb2f529922d125b3bd40691778886f4d5d80b128b925d0274fb3d94646ec5a"
+        ],
+        "evaluation_status": "APPROVED_FOR_HELDOUT_EVALUATION",
+        "license_id": "CC0-1.0",
+        "modality": "en",
+        "raw_sha256": [
+          "21582c7f0e4ad39f2b0ed97bbc2c082d275e898b7a63c28e6d9badb8ee0f7860",
+          "7ac53dfb4bf6f73f178560e09f33160d0250c69fb679802f3254dc0eb4c9f509"
+        ],
+        "rights_authority_git_blob_sha1": "3ba9f221a82468f971c17eda518cd6f1642fd311",
+        "source_id": "en.standardebooks.manual",
+        "source_identity_sha256": "ba622171b752c4d411bd0b93a94dad14b7ff0e5ac88064678d1b91a551c01be3",
+        "source_version": "d1143a9b459b5e6f9cdda93a7c1e04676bff4f6b"
+      },
+      {
+        "admitted_source_snapshots_sha256": [
+          "72c301db0b2539f3f7a73c9c15e2e425700a6b758a1114f1a861e2d60c704c50"
+        ],
+        "evaluation_status": "APPROVED_FOR_HELDOUT_EVALUATION",
+        "license_id": "RADA-OPEN-DATA-REUSE",
+        "modality": "ua",
+        "raw_sha256": [
+          "36eae31c3b0676ea7c02236fa05bd695c240c9a8eade5febc00457b8103ee1a4"
+        ],
+        "redistribution_condition": "ATTRIBUTION_REQUIRED",
+        "rights_authority_git_blob_sha1": "3ba9f221a82468f971c17eda518cd6f1642fd311",
+        "source_id": "ua.rada.open-data.laws-texts",
+        "source_identity_sha256": "b8f1d2f99a3db71d894a3233e9417d6283d11768c41b1634bc8b096ab77aba4e",
+        "source_version": "laws-texts/bounded-2026-08-25"
+      }
+    ]
+  },
+  "status": "IMMUTABLE_UA_EN_ONLY_FINAL_TEST_AUTHORITY_CORPUS_EXCLUSION_BLOCKED",
+  "truth_boundary": {
+    "complete_ua_en_code_publishable": false,
+    "final_test_authority_exists": true,
+    "final_test_safe_against_data300_training_candidate": false,
+    "required_unblock": [
+      "Publish a successor training inventory that excludes every DATA-299 reserved final-test exact hash and connected near-match cluster.",
+      "Run the DATA-299/DATA-232 exact and near-match exclusion scan on the exact corpus materialization and require zero forbidden overlap.",
+      "Keep the EVAL-233 final-test seed unread until selection lock and never copy final-test bytes into selection validation.",
+      "For code, admit only new pristine exact objects with explicit evaluation-use authorization and pre-training reservation; do not reuse the DATA-227 training-exposed objects."
+    ],
+    "strongest_publishable_status": "PARTIAL_UA_EN_NO_CODE"
+  },
+  "worker_id": "EVAL-304-REAL-FINAL-TEST-V3"
+}
