@@ -1,0 +1,22 @@
+NEXT100-025-DATA-UA-GOV-OPEN rights evidence
+Captured: 2026-08-26
+Publisher/site owner: Secretariat of the Cabinet of Ministers of Ukraine
+Source: https://www.kmu.gov.ua/
+Page-level source family scope: only kmu.gov.ua news pages explicitly authored by the Department of Information and Public Communications of the Secretariat.
+
+Official portal license statement (verbatim, 13 words):
+“Весь контент доступний за ліцензією Creative Commons Attribution 4.0 International license, якщо не зазначено інше”
+
+License: CC BY 4.0
+Canonical license URL: https://creativecommons.org/licenses/by/4.0/
+
+Project interpretation:
+- acquisition/storage/analysis: allowed under CC BY 4.0;
+- model-training use: allowed as a permitted reuse/adaptation purpose, subject to attribution obligations;
+- redistribution of the captured source snapshot and normalized text: allowed with attribution, license link, and indication of changes;
+- evaluation use: not admitted by this authority;
+- any page carrying a contrary page-specific rights notice is excluded;
+- images, attachments, embeds, iframes, and linked third-party documents are excluded from this family.
+
+Attribution obligation for redistributed material:
+Credit Cabinet of Ministers of Ukraine / Secretariat of the Cabinet of Ministers of Ukraine, preserve the original source URL, link CC BY 4.0, and state that text was extracted/normalized.
