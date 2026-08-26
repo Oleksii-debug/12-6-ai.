@@ -1,0 +1,90 @@
+{
+  "schema_version": "12-6.next100-030-rustbook-oer-source.v1",
+  "worker_id": "NEXT100-030-DATA-UA-OER",
+  "mode": "PROBE",
+  "local_free_only": true,
+  "training_executed": false,
+  "source": {
+    "repository": "https://github.com/rust-lang-ua/rustbook_ukrainian",
+    "canonical_repository": "github.com/rust-lang-ua/rustbook_ukrainian",
+    "commit": "ca2d2e4f4434c661836926017af23bdd40ad4e3d",
+    "edition": "second-edition subtree",
+    "title": "Мова програмування Rust / The Rust Programming Language — Ukrainian translation",
+    "language": "uk",
+    "modality": "open_educational_textbook",
+    "source_family": "rust-book.documentation.uk-translation",
+    "lineage": [
+      "rust-lang/book — The Rust Programming Language",
+      "rust-lang-ua/rustbook_ukrainian — Ukrainian translation"
+    ],
+    "family_identity_rule": "One family for the Rust Book work/translation lineage; mirrors, forks, other hosting URLs, and later editions do not earn additional family credit."
+  },
+  "license": {
+    "declared_surface": "The selected second-edition subtree contains LICENSE-MIT and LICENSE-APACHE. This authority fails closed by satisfying the notice/redistribution conditions of both instead of depending on an OR-vs-AND interpretation.",
+    "operational_compliance": "Retain the Rust Project Developers copyright/permission notice and MIT text; retain Apache-2.0 license and applicable notices; mark modified files if redistributed in modified form; identify rust-lang-ua/rustbook_ukrainian and exact commit as source.",
+    "files": [
+      {"path": "second-edition/LICENSE-MIT", "git_blob_sha1": "5a56e6e8ed1909b4e4800aa8d2a0e7033ab4babe"},
+      {"path": "second-edition/LICENSE-APACHE", "git_blob_sha1": "96e9f0458b55a4047927de5bf04ceda89d772b2b"}
+    ]
+  },
+  "purpose_decisions": {
+    "acquisition": "ALLOWED",
+    "analysis": "ALLOWED",
+    "storage": "ALLOWED",
+    "model_training": "ALLOWED",
+    "redistribution": "ALLOWED_WITH_NOTICES",
+    "evaluation": "NOT_SEPARATELY_ADMITTED"
+  },
+  "selection": {
+    "rule": "Exact allowlist of three Chapter 1 source Markdown files under the explicitly licensed second-edition subtree at the pinned commit.",
+    "max_file_raw_bytes": 65536,
+    "max_total_raw_bytes": 65536,
+    "files": [
+      {"path": "second-edition/src/ch01-01-installation.md", "git_blob_sha1": "bcd4034731e66a746e4c127809f9d02c7f793064"},
+      {"path": "second-edition/src/ch01-02-hello-world.md", "git_blob_sha1": "c6342ef39456499ee093020f00aa3576fc92d48e"},
+      {"path": "second-edition/src/ch01-03-hello-cargo.md", "git_blob_sha1": "d37e8aa4f028923c22b967601d6218fb2cee83e9"}
+    ],
+    "explicit_exclusions": [
+      "top-level src/ and src-ukr/ are excluded because this authority binds only the second-edition subtree with co-located license files",
+      "second-edition/nostarch print-production material is excluded",
+      "images, generated book output, build scripts, tooling, glossary/dictionary files, README/contributor metadata, and license text are not training payload",
+      "all evaluation-reserved content is excluded"
+    ]
+  },
+  "normalization": {
+    "policy": "RUSTBOOK_UK_MARKDOWN_PROSE_NFC_V1",
+    "description": "Strict UTF-8; LF; Unicode NFC; remove HTML comments/tags, fenced code, inline-code spans and link targets while preserving link labels; remove Markdown structural punctuation; collapse whitespace per nonempty line; terminate with one LF."
+  },
+  "quality": {
+    "min_words_per_file": 250,
+    "min_cyrillic_ratio": 0.75,
+    "min_uk_specific_letters": 50,
+    "max_ru_specific_letters": 2,
+    "min_uk_lexical_hits": 6,
+    "manual_note": "The bounded chapters are coherent Ukrainian instructional prose with some legacy translation/editing imperfections; code-heavy and metadata surfaces are removed by normalization. This is a technical-language source, not a gold literary corpus."
+  },
+  "privacy": {
+    "reject_email_addresses": true,
+    "reject_phone_like_strings": true,
+    "reject_private_key_and_token_patterns": true
+  },
+  "dedup": {
+    "terminal_registry": "data/registry/external_snapshots.v2.json",
+    "reserved_fingerprints": "data/external/reserved_fingerprints.json",
+    "token_shingle_size": 5,
+    "near_jaccard_threshold": 0.8,
+    "known_evaluation_families": [
+      "kubernetes.website.docs",
+      "lang-uk.perestoroha-ocr"
+    ]
+  },
+  "expected_lock": {
+    "file_count": null,
+    "raw_bytes": null,
+    "raw_bundle_sha256": null,
+    "normalized_bytes": null,
+    "normalized_bundle_sha256": null,
+    "manifest_sha256": null,
+    "license_sha256": null
+  }
+}
