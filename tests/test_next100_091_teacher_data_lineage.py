@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import FrozenInstanceError
+from dataclasses import FrozenInstanceError, replace
 
 import pytest
 
@@ -166,6 +166,16 @@ def test_existing_version_name_cannot_be_reused_for_history_rewrite() -> None:
 
     with pytest.raises(LineageMutationError, match="immutable history cannot be rewritten"):
         lineage.derive_version("v1", accepted_records=(second,))
+
+
+def test_forged_base_eligible_record_is_rejected_before_version_creation() -> None:
+    first, _, _ = _evidence()
+    lineage = SyntheticDatasetLineage("lineage-proof")
+    forged = replace(first, canonical_base_training_eligible=True)
+
+    with pytest.raises(BaseCorpusBoundaryError, match="canonical Base-training eligibility"):
+        lineage.create_version("v1", accepted_records=(forged,))
+    assert lineage.versions == ()
 
 
 def test_canonical_base_eligibility_is_permanently_false_across_operations() -> None:
