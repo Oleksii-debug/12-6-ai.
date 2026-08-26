@@ -2,7 +2,24 @@ name: D04 Tokenizer Real Experiments
 
 on:
   pull_request:
+    # This is a specialist evidence workflow, not generic CI. Auto-run only
+    # when the controlled tokenizer experiment or its exact S0 corpus changes.
+    paths:
+      - "src/twelve_six/tokenization/**"
+      - "configs/tokenizers/**"
+      - "data/s0/packaged/**"
+      - "requirements/experiments/tokenizers-linux-x86_64.lock.txt"
+      - "tests/test_tokenization.py"
+      - "tests/test_tokenizer_future_experiments.py"
+      - "tests/test_tokenizer_real_experiments.py"
+      - "docs/D04_S0_TOKENIZER_PACKING.md"
+      - "docs/TOKENIZER_REAL_EXPERIMENTS_S1_PREFLIGHT.md"
+      - ".github/workflows/d04-tokenizer-real-experiments.yml"
   workflow_dispatch:
+
+concurrency:
+  group: d04-tokenizer-real-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read

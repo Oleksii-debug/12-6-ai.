@@ -2,7 +2,32 @@ name: DATA-181 Real Snapshot Promotion
 
 on:
   pull_request:
+    paths:
+      - ".github/actions/execution-bootstrap/**"
+      - "src/twelve_six/data/snapshot_promotion.py"
+      - "src/twelve_six/data/source_intake.py"
+      - "src/twelve_six/data/external_sources.py"
+      - "src/twelve_six/data/pipeline.py"
+      - "src/twelve_six/data/corpus_foundation.py"
+      - "tools/run_data181_snapshot_promotion.py"
+      - "tools/data24_eligibility_inventory.py"
+      - "configs/data/data181_real_snapshot_promotion_v1.json"
+      - "configs/data/external_source_candidates_ua_en_v1.json"
+      - "data/external/external_sources.json"
+      - "data/external/rights-evidence/data181/**"
+      - "reports/data24_training_eligibility_inventory.json"
+      - "tests/test_data181_snapshot_promotion.py"
+      - "tests/test_data24_rights_gate.py"
+      - "tests/test_data24_inventory_artifact.py"
+      - "tests/test_external_source_intake_ua_en.py"
+      - "tests/test_source_intake_reviewed_uk_lid.py"
+      - "docs/DATA181_REAL_SNAPSHOT_PROMOTION.md"
+      - ".github/workflows/data181-real-snapshot-promotion.yml"
   workflow_dispatch:
+
+concurrency:
+  group: data181-promotion-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
