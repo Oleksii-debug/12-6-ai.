@@ -27,7 +27,7 @@ def main() -> int:
     args = parser.parse_args()
 
     report = promote_snapshots(
-        repo_root=args.repo_root,
+        repo_root=args.repo_root.resolve(),
         plan_path=args.plan,
         registry_path=args.registry,
         evidence_dir=args.output,
