@@ -1,0 +1,107 @@
+name: NEXT100-058 UA Selection Validation V2
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/next100-058-ua-selection-validation-v2.yml"
+      - "configs/evaluation/next100_058_ua_selection_validation_v2.json"
+      - "data/evaluation/eval303/selection-validation/composite-membership.jsonl"
+      - "configs/data/data300_corpus_v03_frozen_build_contract_v2.json"
+      - "evidence/eval303/data300-exact-exclusion-proof-v1.json"
+      - "tools/validate_next100_058_ua_selection_validation_v2.py"
+      - "tests/test_next100_058_ua_selection_validation_v2.py"
+      - "docs/NEXT100_058_UA_SELECTION_VALIDATION_V2.md"
+  push:
+    branches:
+      - "next100-058/eval-ua-selection-v2-20260826"
+    paths:
+      - ".github/workflows/next100-058-ua-selection-validation-v2.yml"
+      - "configs/evaluation/next100_058_ua_selection_validation_v2.json"
+      - "data/evaluation/eval303/selection-validation/composite-membership.jsonl"
+      - "configs/data/data300_corpus_v03_frozen_build_contract_v2.json"
+      - "evidence/eval303/data300-exact-exclusion-proof-v1.json"
+      - "tools/validate_next100_058_ua_selection_validation_v2.py"
+      - "tests/test_next100_058_ua_selection_validation_v2.py"
+      - "docs/NEXT100_058_UA_SELECTION_VALIDATION_V2.md"
+
+permissions:
+  contents: read
+
+env:
+  PYTHONPATH: src
+
+jobs:
+  validate-fail-closed-authority:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Bind exact source checkout
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+
+      - name: Universal exact execution bootstrap
+        uses: ./.github/actions/execution-bootstrap
+        with:
+          capabilities: runtime,tests
+          venv: .next100-058
+          manifest: next100-058-environment.json
+          command: python -m pytest -q tests/test_next100_058_ua_selection_validation_v2.py
+
+      - name: Focused contracts
+        run: |
+          set -euo pipefail
+          .next100-058/bin/python -m compileall -q tools/validate_next100_058_ua_selection_validation_v2.py
+          .next100-058/bin/python -m pytest -q tests/test_next100_058_ua_selection_validation_v2.py
+
+      - name: Validate twice and require byte identity
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/next100-058-a /tmp/next100-058-b
+          mkdir -p /tmp/next100-058-a /tmp/next100-058-b
+          .next100-058/bin/python tools/validate_next100_058_ua_selection_validation_v2.py --output /tmp/next100-058-a/report.json
+          .next100-058/bin/python tools/validate_next100_058_ua_selection_validation_v2.py --output /tmp/next100-058-b/report.json
+          cmp /tmp/next100-058-a/report.json /tmp/next100-058-b/report.json
+          cat /tmp/next100-058-a/report.json
+
+      - name: Assert fail-closed truth boundary
+        run: |
+          set -euo pipefail
+          .next100-058/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path('/tmp/next100-058-a/report.json').read_text(encoding='utf-8'))
+          assert report['status'] == 'BLOCKED_NO_NEW_TERMINAL_PURPOSE_RESERVED_UA_SOURCE_AND_NO_NEAR_COPY_TRAINING_PROOF'
+          assert report['preserved_eval290_records'] == 8
+          assert len(report['preserved_eval290_families']) == 2
+          assert report['new_records_admitted'] == 0
+          assert report['new_families_admitted'] == 0
+          assert report['exact_training_overlap_count'] == 0
+          assert report['near_copy_training_cluster_proof_present'] is False
+          assert report['final_test_payload_read'] is False
+          assert report['final_test_outcomes_read'] is False
+          assert report['final_test_outcomes_exposed'] is False
+          assert report['training_executed'] is False
+          assert report['execution_profile'] == 'LOCAL_FREE'
+          PY
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: next100-058-ua-selection-validation-v2
+          path: |
+            next100-058-environment.json
+            configs/evaluation/next100_058_ua_selection_validation_v2.json
+            /tmp/next100-058-a/report.json
+          if-no-files-found: error
+          retention-days: 30
