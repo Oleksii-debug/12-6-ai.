@@ -1,0 +1,92 @@
+name: TOK-240 Unigram Reproducibility Final
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/tok240-unigram-reproducibility-final.yml"
+      - "src/twelve_six/tok240_unigram_repro.py"
+      - "src/twelve_six/tokenization/experiments.py"
+      - "tests/test_tok240_unigram_repro.py"
+      - "requirements/profiles/linux-x86_64-tokenizer-experiment/**"
+      - "requirements/execution/**"
+      - "data/s0/packaged/manifest.json"
+      - "data/s0/packaged/train.jsonl"
+      - "data/s0/packaged/validation.jsonl"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unigram-reproducibility-final:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up exact Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+          check-latest: false
+
+      - name: Bootstrap exact tokenizer environment
+        run: |
+          mkdir -p tok240-evidence
+          python tools/execution_bootstrap.py bootstrap \
+            --repo-root . \
+            --capabilities runtime,tokenizer,tests,lint \
+            --command "python -m pytest" \
+            --command "python -m ruff" \
+            --venv .tok240-env \
+            --manifest tok240-evidence/environment.json
+          .tok240-env/bin/python -m pip check
+          .tok240-env/bin/python - <<'PY'
+          import importlib.metadata
+          import platform
+          assert platform.python_version() == "3.11.16"
+          assert importlib.metadata.version("tokenizers") == "0.23.1"
+          PY
+
+      - name: Validate TOK-240 source and focused tests
+        env:
+          PYTHONPATH: src
+        run: |
+          .tok240-env/bin/python -m ruff check --select E4,E7,E9,F \
+            src/twelve_six/tok240_unigram_repro.py \
+            tests/test_tok240_unigram_repro.py
+          .tok240-env/bin/python -m pytest -q tests/test_tok240_unigram_repro.py
+
+      - name: Train independent Unigram artifacts and decide eligibility
+        env:
+          PYTHONPATH: src
+          PYTHONHASHSEED: "0"
+          TOKENIZERS_PARALLELISM: "false"
+          RAYON_NUM_THREADS: "1"
+          OMP_NUM_THREADS: "1"
+          MKL_NUM_THREADS: "1"
+        run: |
+          SOURCE_SHA="$(git rev-parse HEAD)"
+          .tok240-env/bin/python -m twelve_six.tok240_unigram_repro run \
+            --repo-root . \
+            --source-sha "$SOURCE_SHA" \
+            --runs 3 \
+            --environment-manifest tok240-evidence/environment.json \
+            --output tok240-evidence/unigram-reproducibility-final.json
+          .tok240-env/bin/python -m twelve_six.tok240_unigram_repro validate \
+            --input tok240-evidence/unigram-reproducibility-final.json \
+            --source-sha "$SOURCE_SHA"
+
+      - name: Retain final evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: tok240-unigram-reproducibility-final
+          path: tok240-evidence/
+          if-no-files-found: error
+          retention-days: 30
