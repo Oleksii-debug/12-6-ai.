@@ -1,13 +1,13 @@
 {
-  "case_count": 10,
+  "case_count": 12,
   "cases_file": "cases.jsonl",
-  "cases_sha256": "33a300d0d51c9a21d5890afbf6ff581a92abe79dc7c403376955fc9d3c3a6e36",
+  "cases_sha256": "65e2d28ef4adb442d636ec286e34ce7b43b21d7d2612325d1ca96e310863be8f",
   "category_counts": {
-    "context_handling": 2,
+    "context_handling": 3,
     "dialogue_consistency": 2,
     "formatting": 2,
     "instruction_adherence": 2,
-    "unavailable_tool_results": 2
+    "unavailable_tool_results": 3
   },
   "claims": {
     "broad_intelligence_claim_authorized": false,
@@ -26,6 +26,6 @@
     "training_eligible": false
   },
   "suite_id": "eval354-communication-suite-v1",
-  "suite_identity_sha256": "3f4b66ab82a876e7205ada0a6e07c62b1dfac1bb0edb15b4fb262ab6e77cece7",
+  "suite_identity_sha256": "7a94f1c2dd9cb31a571dd8383ed1994936abc6e6003b0b53829778ae19ba2ba7",
   "version": 1
 }
