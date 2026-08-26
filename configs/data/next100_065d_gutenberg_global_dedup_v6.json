@@ -1,0 +1,78 @@
+{
+  "schema_version": "12-6.next100-065d-cross-source-dedup.v6",
+  "worker_id": "NEXT100-065D-GUTENBERG-GLOBAL-DEDUP-V6",
+  "base_v5_head_sha": "8b67e6cfe0c0ae025d1e5d0d3647b70273e16946",
+  "local_free_only": true,
+  "model_training_executed": false,
+  "tokenizer_fit_executed": false,
+  "paid_compute_used": false,
+  "final_test_payload_read": false,
+  "gutenberg_authority": {
+    "seal_pr": 627,
+    "seal_head_sha": "c50b3f9cf871792c03886bdc1ccdc144812be88f",
+    "authority_identity_sha256": "1b1bad11b688826ee4f73701c08e3b5af76ba16e8d8a806e008d5b84bee0b97b",
+    "parent_pr": 470,
+    "parent_head_sha": "3f4ad26e1e8f3406a1274418cf5f485814ce3032",
+    "workflow_run_id": 32998859164,
+    "workflow_conclusion": "success",
+    "artifact_id": 9618402768,
+    "artifact_digest": "sha256:63fa5d9b403432074193e290beb0473b5a1f7b74de1ac30bad71b9ec8405e006",
+    "decision": "TERMINAL_SOURCE_ADMIT",
+    "family_id": "en.project-gutenberg.public-domain-books",
+    "independent_family_credit": 1,
+    "model_training": "ALLOWED_FOR_EXACT_ADMITTED_NORMALIZED_BODIES",
+    "evaluation": "NOT_AUTHORIZED",
+    "redistribution": "RIGHTS_CLEARED_JURISDICTIONS_ONLY",
+    "worldwide_public_domain_claim": false,
+    "normalizer_id": "NEXT100_033_PG_BODY_NFC_LF_V1",
+    "records": [
+      {
+        "source_id": "en.project-gutenberg.37177",
+        "encoding": "ascii",
+        "transport_repo": "GITenberg/Ludvig-Holberg-The-Founder-of-Norwegian-Literature-and-an-Oxford-Student_37177",
+        "transport_commit": "6ba1ee491cfba2aa56729967b48886bf71b20ac7",
+        "transport_path": "37177.txt",
+        "transport_git_blob_sha1": "cc35bab195c6d55b14568cd3da8fecfd0499f868",
+        "raw_bytes": 87742,
+        "raw_sha256": "cb88e93e292a743cdc7476f9cd8ea12ac85b0896023d5b6814bd82779f3faf96",
+        "normalized_utf8_bytes": 66612,
+        "normalized_sha256": "533f768fa90bd6fac90951760f12b1b70777ae3c147dbb053deb86ddf04860ba"
+      },
+      {
+        "source_id": "en.project-gutenberg.37985",
+        "encoding": "utf-8-sig",
+        "transport_repo": "GITenberg/A-Literary-History-of-the-Arabs_37985",
+        "transport_commit": "b8477090720ab89858bfed937f799760cb4f23e3",
+        "transport_path": "37985-0.txt",
+        "transport_git_blob_sha1": "cd62e73adf6d502823c4b59de304212cc3d63361",
+        "raw_bytes": 1203657,
+        "raw_sha256": "e356cd7d2e57677d48413768956fa9b517ed8f28d9ff8ff63b3651cfa0893066",
+        "normalized_utf8_bytes": 1158509,
+        "normalized_sha256": "6c4cd7d1fa4ef2340fe94a3ec737c72a55658ea3fb2bb19e5f5859eb8d8e3810"
+      },
+      {
+        "source_id": "en.project-gutenberg.40652",
+        "encoding": "iso-8859-1",
+        "transport_repo": "GITenberg/A-Guide-to-the-Scientific-Knowledge-of-Things-Familiar_40652",
+        "transport_commit": "4d69c9e1daad0951f2baecbae2709e72d8d7d53f",
+        "transport_path": "40652-8.txt",
+        "transport_git_blob_sha1": "52c517db02e5e5a7f5bfef806cf98dd8c92e06e1",
+        "raw_bytes": 482371,
+        "raw_sha256": "654ca36825a6bc0c80f7126983b53501d1087047b28d889affefb710eb2820c8",
+        "normalized_utf8_bytes": 446989,
+        "normalized_sha256": "e0e7095ba7ac0f1478d18feb4d87be1ed21be37e472fa4203bb92b43f9e593b4"
+      }
+    ]
+  },
+  "claim_boundary": {
+    "canonical_registry_replaced": false,
+    "corpus_materialized": false,
+    "decontamination_pass_claimed": false,
+    "balance_release_claimed": false,
+    "postpack_unique_loss_ledger_complete": false,
+    "tokenizer_fit_authorized": false,
+    "training_authorized": false,
+    "paid_compute_authorized": false,
+    "research_corpus_v1_terminal": false
+  }
+}
