@@ -67,7 +67,7 @@ jobs:
           EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
-          .m150/bin/python -m twelve_six.milestone150_learned_base_ladder \
+          .m150/bin/python -m twelve_six.milestone150_entrypoint \
             prepare \
             --repo-root . \
             --source-sha "$EXPECTED_SOURCE_SHA" \
@@ -78,13 +78,13 @@ jobs:
           EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
-          .m150/bin/python -m twelve_six.milestone150_learned_base_ladder phase1 \
+          .m150/bin/python -m twelve_six.milestone150_entrypoint phase1 \
             --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" \
             --output-dir milestone150-evidence --scale 100k
-          .m150/bin/python -m twelve_six.milestone150_learned_base_ladder resume \
+          .m150/bin/python -m twelve_six.milestone150_entrypoint resume \
             --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" \
             --output-dir milestone150-evidence --scale 100k
-          .m150/bin/python -m twelve_six.milestone150_learned_base_ladder verify-scale \
+          .m150/bin/python -m twelve_six.milestone150_entrypoint verify-scale \
             --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" \
             --output-dir milestone150-evidence --scale 100k
 
@@ -93,13 +93,13 @@ jobs:
           EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
-          .m150/bin/python -m twelve_six.milestone150_learned_base_ladder phase1 \
+          .m150/bin/python -m twelve_six.milestone150_entrypoint phase1 \
             --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" \
             --output-dir milestone150-evidence --scale 500k
-          .m150/bin/python -m twelve_six.milestone150_learned_base_ladder resume \
+          .m150/bin/python -m twelve_six.milestone150_entrypoint resume \
             --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" \
             --output-dir milestone150-evidence --scale 500k
-          .m150/bin/python -m twelve_six.milestone150_learned_base_ladder verify-scale \
+          .m150/bin/python -m twelve_six.milestone150_entrypoint verify-scale \
             --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" \
             --output-dir milestone150-evidence --scale 500k
 
@@ -108,13 +108,13 @@ jobs:
           EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
-          .m150/bin/python -m twelve_six.milestone150_learned_base_ladder phase1 \
+          .m150/bin/python -m twelve_six.milestone150_entrypoint phase1 \
             --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" \
             --output-dir milestone150-evidence --scale 1m
-          .m150/bin/python -m twelve_six.milestone150_learned_base_ladder resume \
+          .m150/bin/python -m twelve_six.milestone150_entrypoint resume \
             --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" \
             --output-dir milestone150-evidence --scale 1m
-          .m150/bin/python -m twelve_six.milestone150_learned_base_ladder verify-scale \
+          .m150/bin/python -m twelve_six.milestone150_entrypoint verify-scale \
             --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" \
             --output-dir milestone150-evidence --scale 1m
 
@@ -123,10 +123,10 @@ jobs:
           EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
-          .m150/bin/python -m twelve_six.milestone150_learned_base_ladder finalize \
+          .m150/bin/python -m twelve_six.milestone150_entrypoint finalize \
             --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" \
             --output-dir milestone150-evidence
-          .m150/bin/python -m twelve_six.milestone150_learned_base_ladder validate \
+          .m150/bin/python -m twelve_six.milestone150_entrypoint validate \
             milestone150-evidence/ladder-report.json \
             --expected-source-sha "$EXPECTED_SOURCE_SHA"
           .m150/bin/python - <<'PY'
