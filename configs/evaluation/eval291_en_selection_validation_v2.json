@@ -1,0 +1,34 @@
+{
+  "schema_version": "12-6.eval291-en-selection-validation-config.v2",
+  "worker_id": "NEXT100-059-EN-SELECTION-V2",
+  "execution_profile": "LOCAL_FREE",
+  "language": "en",
+  "purpose": "selection_validation",
+  "reservation": {
+    "commit_sha": "d3f7fead8c04cafd535d1e574a7203523b54464d",
+    "committed_at": "2026-08-26T18:22:37Z",
+    "path": "data/evaluation/eval291/v2/reservation.json"
+  },
+  "inheritance": {
+    "v1_branch": "eval291/en-selection-validation-v1-sol-20260826",
+    "v1_head_sha": "fb268061300127b62cc2a262664b30c614559dac",
+    "v1_config_blob_sha1": "033e49e7de7721d06981367b6647d830f837ec93",
+    "v1_selection_blob_sha1": "53bb46415a7465493022a435eb8e09034881f3a8"
+  },
+  "membership_manifest": "data/evaluation/eval291/v2/membership-manifest.json",
+  "selection_extension": "data/evaluation/eval291/v2/selection-validation/extension-en.jsonl",
+  "final_test_manifest": "data/evaluation/eval291/v2/final-test/manifest.json",
+  "authority_evidence": "evidence/eval291/en-selection-validation-v2-authority.json",
+  "policy": {
+    "training_eligible": false,
+    "tokenizer_fit_eligible": false,
+    "tokenizer_adaptation_eligible": false,
+    "final_test_payload_builder_visible": false,
+    "final_test_outcomes_read": false,
+    "near_copy": {
+      "token_shingle_size": 5,
+      "jaccard_threshold": 0.85
+    },
+    "fail_closed": true
+  }
+}
