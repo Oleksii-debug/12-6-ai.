@@ -215,6 +215,28 @@ def _preflight_stateful_component(component: Any | None, state: Any, *, label: s
     _validate_state_schema(live_state, state, path=f"{label} state")
 
 
+def _preflight_trainer_target(trainer: Any) -> None:
+    """Reject a D02 trainer target that its own loader would refuse after model mutation."""
+
+    # D02 Trainer deliberately refuses in-place recovery once a failed or ambiguous
+    # training transition has occurred. Mirror that cheap, non-mutating guard here
+    # so checkpoint model/RNG state is not applied before Trainer.load_state_dict()
+    # raises. Generic adapters without these D02-owned fields remain unaffected.
+    if not (
+        hasattr(trainer, "_failure_reason")
+        and hasattr(trainer, "_update_incomplete")
+    ):
+        return
+    if getattr(trainer, "_failure_reason") is not None:
+        raise CheckpointCompatibilityError(
+            "checkpoint restore requires a fresh trainer; target trainer is poisoned"
+        )
+    if getattr(trainer, "_update_incomplete") is True:
+        raise CheckpointCompatibilityError(
+            "checkpoint restore requires a fresh trainer; target trainer has an incomplete update"
+        )
+
+
 def _preflight_trainer_state(
     trainer: Any,
     state: Any,
@@ -236,6 +258,8 @@ def _preflight_trainer_state(
 
     if not isinstance(state, Mapping):
         raise CheckpointCompatibilityError("checkpoint trainer state must be a mapping")
+
+    _preflight_trainer_target(trainer)
 
     for field in ("micro_step", "optimizer_step", "tokens_seen"):
         value = state.get(field)
