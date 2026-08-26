@@ -21,6 +21,16 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Verify exact checkout
+        shell: bash
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$EXPECTED_HEAD"
 
       - name: Set up exact Python
         uses: actions/setup-python@v5
@@ -36,6 +46,8 @@ jobs:
 
       - name: Focused protocol tests
         shell: bash
+        env:
+          PYTHONPATH: src
         run: |
           set -euo pipefail
           .venv-postbase254/bin/python -m pytest -q tests/test_postbase254_tool_protocol.py
