@@ -40,6 +40,23 @@ jobs:
       - name: Validate immutable contract without network
         run: |
           python tools/materialize_next100_101_cpython_accepted_chunk_ledger.py --check-contract-only
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          config = json.loads(
+              Path('configs/data/next100_101_cpython_accepted_chunk_ledger_v1.json')
+              .read_text(encoding='utf-8')
+          )
+          source = config['source']
+          assert source['canonical_repository'] == 'https://github.com/python/cpython'
+          assert source['acquisition_url'] == (
+              'https://raw.githubusercontent.com/python/cpython/'
+              '7f0ccd6c0e3f85fbaeceb2f67b06ab3631db0480/'
+              'Doc/tutorial/introduction.rst'
+          )
+          print('NEXT100_101_EXACT_ACQUISITION_PROVENANCE=PASS')
+          PY
           python -m unittest tests.test_next100_101_cpython_accepted_chunk_ledger
 
       - name: Materialize pinned source twice
@@ -58,7 +75,7 @@ jobs:
           assert ledger['eligible_record_count'] == 14
           assert ledger['eligible_utf8_bytes'] == 15540
           assert len(ledger['records']) == 14
-          assert len({row['normalized_sha256'] for row in ledger['records']}) == 14
+          assert len({row['normalized_sha256'] for row in ledger['records']) == 14
           assert sum(row['utf8_bytes'] for row in ledger['records']) == 15540
           assert ledger['rejected_summary']['count'] == 2
           assert ledger['rejected_summary']['reasons'] == {'pii_phone': 2}
