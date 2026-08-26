@@ -1,0 +1,77 @@
+name: DATA-BULK-CODE-1 Permissive Python Bundle
+
+on:
+  pull_request:
+    paths:
+      - "configs/data/data_bulk_code1_permissive_python_bundle_v1.json"
+      - "tools/materialize_data_bulk_code1_permissive_python_bundle.py"
+      - "tests/test_data_bulk_code1_permissive_python_bundle.py"
+      - "docs/DATA_BULK_CODE1_PERMISSIVE_PYTHON_BUNDLE.md"
+      - ".github/workflows/data-bulk-code1-permissive-python-bundle.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  materialize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Prove exact source checkout
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Validate frozen acquisition contract
+        run: python tools/materialize_data_bulk_code1_permissive_python_bundle.py --check-contract-only
+      - name: Focused stdlib tests
+        run: python -m unittest tests.test_data_bulk_code1_permissive_python_bundle -v
+      - name: Compile acquisition code
+        run: python -m py_compile tools/materialize_data_bulk_code1_permissive_python_bundle.py tests/test_data_bulk_code1_permissive_python_bundle.py
+      - name: Independent materialization A
+        run: >-
+          python tools/materialize_data_bulk_code1_permissive_python_bundle.py
+          --workspace "$RUNNER_TEMP/materialization-a"
+          --output "$RUNNER_TEMP/bundle-a.json"
+      - name: Independent materialization B
+        run: >-
+          python tools/materialize_data_bulk_code1_permissive_python_bundle.py
+          --workspace "$RUNNER_TEMP/materialization-b"
+          --output "$RUNNER_TEMP/bundle-b.json"
+      - name: Require byte-identical clean materializations
+        run: cmp "$RUNNER_TEMP/bundle-a.json" "$RUNNER_TEMP/bundle-b.json"
+      - name: Revalidate terminal report
+        run: >-
+          python tools/materialize_data_bulk_code1_permissive_python_bundle.py
+          --validate-report "$RUNNER_TEMP/bundle-a.json"
+      - name: Print bounded capacity summary
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          report = json.loads((Path(os.environ["RUNNER_TEMP"]) / "bundle-a.json").read_text())
+          print("report_identity_sha256=", report["report_identity_sha256"])
+          print("source_family_count=", report["source_family_count"])
+          print("eligible_file_count=", report["eligible_file_count"])
+          print("eligible_utf8_bytes=", report["eligible_utf8_bytes"])
+          for source in report["sources"]:
+              print(source["family_id"], source["eligible_file_count"], source["eligible_utf8_bytes"])
+          assert report["claim_boundary"]["authorized_training_exposure"] == 0
+          assert report["purpose_firewall"]["automatic_canonical_capacity_credit"] is False
+          PY
+      - name: Upload immutable ledger evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: data-bulk-code1-${{ env.SOURCE_SHA }}
+          path: ${{ runner.temp }}/bundle-a.json
+          if-no-files-found: error
+          retention-days: 30
