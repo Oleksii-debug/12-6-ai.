@@ -28,6 +28,8 @@ def test_current_policy_passes() -> None:
         "stage_count": 3,
         "primary_parameter_count": 20_613_440,
         "primary_20x_unique_loss_tokens": 412_268_800,
+        "source_registry_pr": 538,
+        "source_capacity_bytes_at_cutoff": 565_743,
         "source_bytes_are_token_authority": False,
         "long_training_ready": False,
     }
@@ -67,4 +69,18 @@ def test_exact_tokenization_evidence_cannot_be_removed() -> None:
         "exact_post_tokenization_train_token_count"
     )
     with pytest.raises(ValueError, match="required evidence set drift"):
+        module.validate(broken)
+
+
+def test_live_registry_identity_cannot_drift_silently() -> None:
+    broken = copy.deepcopy(load_policy())
+    broken["current_20m_observation"]["source_registry_identity"] = "0" * 64
+    with pytest.raises(ValueError, match="source registry identity drift"):
+        module.validate(broken)
+
+
+def test_source_capacity_gap_is_derived_not_free_text() -> None:
+    broken = copy.deepcopy(load_policy())
+    broken["current_20m_observation"]["remaining_source_capacity_gap_bytes"] -= 1
+    with pytest.raises(ValueError, match="source-capacity gap arithmetic drift"):
         module.validate(broken)
