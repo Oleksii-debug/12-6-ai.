@@ -84,9 +84,9 @@ class UnitTestEvidence:
 class NumericCheck:
     claim_id: str
     expression: str
-    expected: int | float | str | Decimal
-    abs_tolerance: int | float | str | Decimal = 0
-    rel_tolerance: int | float | str | Decimal = 0
+    expected: float | str | Decimal
+    abs_tolerance: float | str | Decimal = 0
+    rel_tolerance: float | str | Decimal = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -154,7 +154,7 @@ class Verifier(Protocol):
 
 @runtime_checkable
 class ModelJudge(Protocol):
-    """Future heuristic model-judge seam; this module provides no implementation."""
+    """Future heuristic model-judge seam; no implementation is provided here."""
 
     judge_id: str
 
@@ -169,8 +169,13 @@ def _exact_equal(left: Any, right: Any) -> bool:
             _exact_equal(a, b) for a, b in zip(left, right, strict=True)
         )
     if isinstance(left, dict):
+        right_items = tuple(right.items())
         return len(left) == len(right) and all(
-            key in right and _exact_equal(value, right[key]) for key, value in left.items()
+            any(
+                _exact_equal(key, other_key) and _exact_equal(value, other_value)
+                for other_key, other_value in right_items
+            )
+            for key, value in left.items()
         )
     return bool(left == right)
 
@@ -182,7 +187,7 @@ def _group(items: tuple[Any, ...]) -> dict[str, list[Any]]:
     return grouped
 
 
-def _none(claim_id: str) -> ClaimVerdict:
+def _inconclusive(claim_id: str) -> ClaimVerdict:
     return ClaimVerdict(
         claim_id,
         VerificationStatus.INCONCLUSIVE,
@@ -201,23 +206,16 @@ class ExactAnswerFixtureVerifier:
         for claim in request.claims:
             fixtures = grouped.get(claim.claim_id, [])
             if not fixtures:
-                verdicts.append(_none(claim.claim_id))
-            elif all(_exact_equal(x.expected, x.actual) for x in fixtures):
-                verdicts.append(
-                    ClaimVerdict(
-                        claim.claim_id,
-                        VerificationStatus.PASS,
-                        (ReasonCode.EXACT_MATCH,),
-                    )
+                verdicts.append(_inconclusive(claim.claim_id))
+                continue
+            passed = all(_exact_equal(item.expected, item.actual) for item in fixtures)
+            verdicts.append(
+                ClaimVerdict(
+                    claim.claim_id,
+                    VerificationStatus.PASS if passed else VerificationStatus.FAIL,
+                    (ReasonCode.EXACT_MATCH if passed else ReasonCode.EXACT_MISMATCH,),
                 )
-            else:
-                verdicts.append(
-                    ClaimVerdict(
-                        claim.claim_id,
-                        VerificationStatus.FAIL,
-                        (ReasonCode.EXACT_MISMATCH,),
-                    )
-                )
+            )
         return VerifierResult(self.verifier_id, True, self.dimension, tuple(verdicts))
 
 
@@ -232,32 +230,29 @@ class UnitTestCodeVerifier:
         for claim in request.claims:
             runs = grouped.get(claim.claim_id, [])
             if not runs:
-                verdicts.append(_none(claim.claim_id))
+                verdicts.append(_inconclusive(claim.claim_id))
                 continue
             invalid = any(
-                not x.command.strip()
-                or min(x.exit_code, x.passed, x.failed, x.errors) < 0
-                or x.passed + x.failed + x.errors == 0
-                or (x.exit_code == 0 and (x.failed or x.errors))
-                for x in runs
+                not run.command.strip()
+                or min(run.exit_code, run.passed, run.failed, run.errors) < 0
+                or run.passed + run.failed + run.errors == 0
+                or (run.exit_code == 0 and (run.failed or run.errors))
+                for run in runs
             )
-            failing = any(x.exit_code != 0 or x.failed or x.errors for x in runs)
+            failed = any(run.exit_code != 0 or run.failed or run.errors for run in runs)
             if invalid:
-                code = ReasonCode.UNIT_TEST_EVIDENCE_INVALID
-                status = VerificationStatus.FAIL
-            elif failing:
-                code = ReasonCode.UNIT_TESTS_FAIL
-                status = VerificationStatus.FAIL
+                status, code = VerificationStatus.FAIL, ReasonCode.UNIT_TEST_EVIDENCE_INVALID
+            elif failed:
+                status, code = VerificationStatus.FAIL, ReasonCode.UNIT_TESTS_FAIL
             else:
-                code = ReasonCode.UNIT_TESTS_PASS
-                status = VerificationStatus.PASS
+                status, code = VerificationStatus.PASS, ReasonCode.UNIT_TESTS_PASS
             verdicts.append(ClaimVerdict(claim.claim_id, status, (code,)))
         return VerifierResult(self.verifier_id, True, self.dimension, tuple(verdicts))
 
 
-def _decimal(value: int | float | str | Decimal) -> Decimal:
+def _decimal(value: float | str | Decimal) -> Decimal:
     if isinstance(value, bool):
-        raise ValueError("boolean is not a numeric verification value")
+        raise TypeError("boolean is not a numeric verification value")
     try:
         result = value if isinstance(value, Decimal) else Decimal(str(value))
     except InvalidOperation as exc:
@@ -278,8 +273,9 @@ def _numeric(node: ast.AST, depth: int = 0) -> Decimal:
         value = _numeric(node.operand, depth + 1)
         return value if isinstance(node.op, ast.UAdd) else -value
     if not isinstance(node, ast.BinOp):
-        raise ValueError("unsupported numeric expression")
-    left, right = _numeric(node.left, depth + 1), _numeric(node.right, depth + 1)
+        raise TypeError("unsupported numeric expression")
+    left = _numeric(node.left, depth + 1)
+    right = _numeric(node.right, depth + 1)
     if isinstance(node.op, ast.Add):
         return left + right
     if isinstance(node.op, ast.Sub):
@@ -296,7 +292,7 @@ def _numeric(node: ast.AST, depth: int = 0) -> Decimal:
         if right != right.to_integral_value() or abs(right) > 1000:
             raise ValueError("unsupported exponent")
         return left ** int(right)
-    raise ValueError("unsupported numeric operator")
+    raise TypeError("unsupported numeric operator")
 
 
 def safe_calculate(expression: str) -> Decimal:
@@ -322,7 +318,7 @@ class NumericCalculatorVerifier:
         for claim in request.claims:
             checks = grouped.get(claim.claim_id, [])
             if not checks:
-                verdicts.append(_none(claim.claim_id))
+                verdicts.append(_inconclusive(claim.claim_id))
                 continue
             mismatch = False
             rejected = False
@@ -334,15 +330,17 @@ class NumericCalculatorVerifier:
                     relative = _decimal(check.rel_tolerance)
                     if absolute < 0 or relative < 0:
                         raise ValueError("negative tolerance")
-                    mismatch |= abs(actual - expected) > max(absolute, relative * abs(expected))
-                except (ValueError, ArithmeticError, InvalidOperation):
+                    mismatch |= abs(actual - expected) > max(
+                        absolute, relative * abs(expected)
+                    )
+                except (TypeError, ValueError, ArithmeticError, InvalidOperation):
                     rejected = True
             if rejected:
-                code, status = ReasonCode.NUMERIC_EXPRESSION_REJECTED, VerificationStatus.FAIL
+                status, code = VerificationStatus.FAIL, ReasonCode.NUMERIC_EXPRESSION_REJECTED
             elif mismatch:
-                code, status = ReasonCode.NUMERIC_MISMATCH, VerificationStatus.FAIL
+                status, code = VerificationStatus.FAIL, ReasonCode.NUMERIC_MISMATCH
             else:
-                code, status = ReasonCode.NUMERIC_MATCH, VerificationStatus.PASS
+                status, code = VerificationStatus.PASS, ReasonCode.NUMERIC_MATCH
             verdicts.append(ClaimVerdict(claim.claim_id, status, (code,)))
         return VerifierResult(self.verifier_id, True, self.dimension, tuple(verdicts))
 
@@ -358,7 +356,7 @@ class ConsistencyChecker:
         for claim in request.claims:
             facts = grouped.get(claim.claim_id, [])
             if not facts:
-                verdicts.append(_none(claim.claim_id))
+                verdicts.append(_inconclusive(claim.claim_id))
                 continue
             by_key: dict[str, list[Any]] = {}
             for fact in facts:
@@ -367,8 +365,8 @@ class ConsistencyChecker:
                 any(not _exact_equal(values[0], value) for value in values[1:])
                 for values in by_key.values()
             )
-            code = ReasonCode.INTERNAL_CONTRADICTION if conflict else ReasonCode.CONSISTENT_FACTS
             status = VerificationStatus.FAIL if conflict else VerificationStatus.PASS
+            code = ReasonCode.INTERNAL_CONTRADICTION if conflict else ReasonCode.CONSISTENT_FACTS
             verdicts.append(ClaimVerdict(claim.claim_id, status, (code,)))
         return VerifierResult(self.verifier_id, True, self.dimension, tuple(verdicts))
 
@@ -390,21 +388,22 @@ class SourceProvenanceChecker:
         for claim in request.claims:
             records = grouped.get(claim.claim_id, [])
             missing = not records or any(
-                not x.source_id.strip()
-                or not x.locator.strip()
-                or (self.require_content_hash and x.content_sha256 is None)
-                for x in records
+                not record.source_id.strip()
+                or not record.locator.strip()
+                or (self.require_content_hash and record.content_sha256 is None)
+                for record in records
             )
             bad_hash = any(
-                x.content_sha256 is not None and not _SHA256.fullmatch(x.content_sha256)
-                for x in records
+                record.content_sha256 is not None
+                and not _SHA256.fullmatch(record.content_sha256)
+                for record in records
             )
             if missing:
-                code, status = ReasonCode.PROVENANCE_MISSING, VerificationStatus.FAIL
+                status, code = VerificationStatus.FAIL, ReasonCode.PROVENANCE_MISSING
             elif bad_hash:
-                code, status = ReasonCode.PROVENANCE_HASH_INVALID, VerificationStatus.FAIL
+                status, code = VerificationStatus.FAIL, ReasonCode.PROVENANCE_HASH_INVALID
             else:
-                code, status = ReasonCode.PROVENANCE_COMPLETE, VerificationStatus.PASS
+                status, code = VerificationStatus.PASS, ReasonCode.PROVENANCE_COMPLETE
             verdicts.append(ClaimVerdict(claim.claim_id, status, (code,)))
         return VerifierResult(self.verifier_id, True, self.dimension, tuple(verdicts))
 
@@ -420,7 +419,7 @@ class CrossCandidateContradictionChecker:
         for claim in request.claims:
             facts = grouped.get(claim.claim_id, [])
             if not facts:
-                verdicts.append(_none(claim.claim_id))
+                verdicts.append(_inconclusive(claim.claim_id))
                 continue
             by_key: dict[str, list[Any]] = {}
             for fact in facts:
@@ -429,8 +428,8 @@ class CrossCandidateContradictionChecker:
                 any(not _exact_equal(values[0], value) for value in values[1:])
                 for values in by_key.values()
             )
-            code = ReasonCode.CANDIDATE_CONTRADICTION if conflict else ReasonCode.CANDIDATES_AGREE
             status = VerificationStatus.CONFLICT if conflict else VerificationStatus.PASS
+            code = ReasonCode.CANDIDATE_CONTRADICTION if conflict else ReasonCode.CANDIDATES_AGREE
             verdicts.append(ClaimVerdict(claim.claim_id, status, (code,)))
         return VerifierResult(self.verifier_id, True, self.dimension, tuple(verdicts))
 
@@ -455,7 +454,7 @@ class EnsembleResult:
 
 class VerifierEnsemble:
     def __init__(self, verifiers: tuple[Verifier, ...]) -> None:
-        if not verifiers or len({x.verifier_id for x in verifiers}) != len(verifiers):
+        if not verifiers or len({item.verifier_id for item in verifiers}) != len(verifiers):
             raise ValueError("ensemble needs non-empty unique verifier ids")
         self.verifiers = verifiers
 
@@ -468,66 +467,70 @@ class VerifierEnsemble:
                 or result.dimension is not verifier.dimension
             ):
                 raise ValueError("verifier result metadata mismatch")
-        aggregates = []
-        for claim in request.claims:
-            evidence = [
-                (result, verdict)
-                for result in results
-                for verdict in result.verdicts
-                if verdict.claim_id == claim.claim_id
-            ]
-            deterministic_fail = any(
-                result.deterministic and verdict.status is VerificationStatus.FAIL
-                for result, verdict in evidence
-            )
-            correctness_pass = any(
-                result.deterministic
-                and result.dimension is VerificationDimension.CORRECTNESS
-                and verdict.status is VerificationStatus.PASS
-                for result, verdict in evidence
-            )
-            passed = any(verdict.status is VerificationStatus.PASS for _, verdict in evidence)
-            failed = any(verdict.status is VerificationStatus.FAIL for _, verdict in evidence)
-            conflict = any(verdict.status is VerificationStatus.CONFLICT for _, verdict in evidence)
-            heuristic_pass = any(
-                not result.deterministic and verdict.status is VerificationStatus.PASS
-                for result, verdict in evidence
-            )
-            reasons = list(dict.fromkeys(code for _, v in evidence for code in v.reason_codes))
-            if deterministic_fail:
-                status = VerificationStatus.FAIL
-                reasons.append(ReasonCode.HARD_DETERMINISTIC_FAILURE)
-                if passed or conflict:
-                    reasons.append(ReasonCode.VERIFIER_DISAGREEMENT)
-            elif conflict or (passed and failed):
-                status = VerificationStatus.CONFLICT
-                reasons.append(ReasonCode.VERIFIER_DISAGREEMENT)
-            elif correctness_pass:
-                status = VerificationStatus.PASS
-            else:
-                status = VerificationStatus.INCONCLUSIVE
-                reasons.append(ReasonCode.NO_DETERMINISTIC_CORRECTNESS_SUPPORT)
-                if heuristic_pass:
-                    reasons.append(ReasonCode.HEURISTIC_ONLY_SUPPORT)
-            aggregates.append(
-                AggregatedClaimResult(
-                    claim.claim_id,
-                    status,
-                    tuple(dict.fromkeys(reasons)),
-                    correctness_pass,
-                    deterministic_fail,
-                )
-            )
-        statuses = [x.status for x in aggregates]
+        claims = tuple(self._aggregate_claim(claim.claim_id, results) for claim in request.claims)
+        statuses = tuple(item.status for item in claims)
         if VerificationStatus.FAIL in statuses:
             overall = VerificationStatus.FAIL
         elif VerificationStatus.CONFLICT in statuses:
             overall = VerificationStatus.CONFLICT
-        elif statuses and all(x is VerificationStatus.PASS for x in statuses):
+        elif statuses and all(status is VerificationStatus.PASS for status in statuses):
             overall = VerificationStatus.PASS
         else:
             overall = VerificationStatus.INCONCLUSIVE
-        return EnsembleResult(overall, tuple(aggregates))
+        return EnsembleResult(overall, claims)
+
+    @staticmethod
+    def _aggregate_claim(
+        claim_id: str, results: tuple[VerifierResult, ...]
+    ) -> AggregatedClaimResult:
+        evidence = [
+            (result, verdict)
+            for result in results
+            for verdict in result.verdicts
+            if verdict.claim_id == claim_id
+        ]
+        deterministic_fail = any(
+            result.deterministic and verdict.status is VerificationStatus.FAIL
+            for result, verdict in evidence
+        )
+        correctness_pass = any(
+            result.deterministic
+            and result.dimension is VerificationDimension.CORRECTNESS
+            and verdict.status is VerificationStatus.PASS
+            for result, verdict in evidence
+        )
+        passed = any(verdict.status is VerificationStatus.PASS for _, verdict in evidence)
+        failed = any(verdict.status is VerificationStatus.FAIL for _, verdict in evidence)
+        conflict = any(verdict.status is VerificationStatus.CONFLICT for _, verdict in evidence)
+        heuristic_pass = any(
+            not result.deterministic and verdict.status is VerificationStatus.PASS
+            for result, verdict in evidence
+        )
+        reasons = list(
+            dict.fromkeys(code for _, verdict in evidence for code in verdict.reason_codes)
+        )
+        if deterministic_fail:
+            status = VerificationStatus.FAIL
+            reasons.append(ReasonCode.HARD_DETERMINISTIC_FAILURE)
+            if passed or conflict:
+                reasons.append(ReasonCode.VERIFIER_DISAGREEMENT)
+        elif conflict or (passed and failed):
+            status = VerificationStatus.CONFLICT
+            reasons.append(ReasonCode.VERIFIER_DISAGREEMENT)
+        elif correctness_pass:
+            status = VerificationStatus.PASS
+        else:
+            status = VerificationStatus.INCONCLUSIVE
+            reasons.append(ReasonCode.NO_DETERMINISTIC_CORRECTNESS_SUPPORT)
+            if heuristic_pass:
+                reasons.append(ReasonCode.HEURISTIC_ONLY_SUPPORT)
+        return AggregatedClaimResult(
+            claim_id,
+            status,
+            tuple(dict.fromkeys(reasons)),
+            correctness_pass,
+            deterministic_fail,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -560,7 +563,9 @@ class FinalAnswerPlan:
 
 
 class FinalAnswerController:
-    def build_plan(self, request: VerificationRequest, result: EnsembleResult) -> FinalAnswerPlan:
+    def build_plan(
+        self, request: VerificationRequest, result: EnsembleResult
+    ) -> FinalAnswerPlan:
         controlled = []
         for claim in request.claims:
             item = result.claim(claim.claim_id)
@@ -572,5 +577,7 @@ class FinalAnswerController:
                 disposition = ClaimDisposition.CONFLICTED
             else:
                 disposition = ClaimDisposition.PROPOSED
-            controlled.append(ControlledClaim(claim, disposition, item.status, item.reason_codes))
+            controlled.append(
+                ControlledClaim(claim, disposition, item.status, item.reason_codes)
+            )
         return FinalAnswerPlan(tuple(controlled))
