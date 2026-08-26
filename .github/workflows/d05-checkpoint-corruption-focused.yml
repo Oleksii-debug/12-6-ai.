@@ -4,9 +4,11 @@ on:
   pull_request:
     paths:
       - "src/twelve_six/checkpoint/core.py"
+      - "src/twelve_six/checkpoint/trainer_adapter.py"
       - "tests/test_checkpoint_corruption_hardening.py"
       - "tests/test_checkpointing.py"
       - "tests/test_checkpoint_transactional_safety.py"
+      - "tests/test_trainer_checkpoint_corruption_preflight.py"
       - ".github/workflows/d05-checkpoint-corruption-focused.yml"
   workflow_dispatch:
 
@@ -45,6 +47,7 @@ jobs:
             tests/test_checkpoint_corruption_hardening.py
             tests/test_checkpoint_transactional_safety.py
             tests/test_checkpointing.py
+            tests/test_trainer_checkpoint_corruption_preflight.py
           manifest: d05-corruption-execution-environment.json
 
       - name: Compile checkpoint module
@@ -56,3 +59,4 @@ jobs:
           tests/test_checkpoint_corruption_hardening.py
           tests/test_checkpoint_transactional_safety.py
           tests/test_checkpointing.py
+          tests/test_trainer_checkpoint_corruption_preflight.py
