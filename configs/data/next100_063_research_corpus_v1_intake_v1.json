@@ -1,0 +1,176 @@
+{
+  "schema_version": "12-6.next100-063-research-corpus-v1-intake.v1",
+  "worker_id": "NEXT100-063-RESEARCH-CORPUS-V1-CONVERGENCE",
+  "issue_number": 530,
+  "repository": "Oleksii-debug/12-6-ai.",
+  "execution_profile": "LOCAL_FREE",
+  "authority_scope": "TERMINAL_SOURCE_INTAKE_NOT_CORPUS_FREEZE_NOT_TRAINING_AUTHORIZATION",
+  "authority_identity": {
+    "algorithm": "SHA256_PIPE_JOIN_V1",
+    "sha256": "0d489d1a4d8e86061d39fa93721a34f3db14f27830f47771ded5d7d866551fd4"
+  },
+  "base_data301": {
+    "branch": "data301/corpus-v03-terminal-build-20260826",
+    "head_sha": "8820ba1b255f6bb95c7db0531fd846078a1aae01",
+    "evidence_identity_sha256": "939065abeefff8aed924415589608ff3fc721fe4b0a57fc200146a4b6a137e81",
+    "candidate_source_count": 5,
+    "candidate_source_normalized_bytes": 183061,
+    "family_counts": {"uk": 1, "en": 1, "code": 2},
+    "corpus_identity": null,
+    "shard_identity": null,
+    "authorized_balanced_no_replay_capacity": 0
+  },
+  "base_registry": {
+    "head_sha": "b0523ccbc4b957615aac849d476cfa851be87578",
+    "registry_identity_sha256": "917e9bc31b2fa040d25e807ae3c01aa2cce32420752a891caacfb6c830e6632c",
+    "incumbent_families": [
+      "ua.rada.open-data.laws-texts",
+      "en.standardebooks.manual",
+      "github:encode/httpx",
+      "github:psf/requests"
+    ]
+  },
+  "selection_validation": {
+    "worker": "EVAL-303-SELECTION-VALIDATION-COMPOSITE",
+    "head_sha": "5e5a1de3b594cee5612e63d3d4c2a70499740ac7",
+    "composite_identity_sha256": "7b97a9ab04469236dc5bc17fc80155cb43430b01c443bb6209fac090557258fd",
+    "record_count": 10,
+    "records_by_stratum": {"uk": 8, "en": 2, "code": 0},
+    "training_allowed": false,
+    "tokenizer_fit_allowed": false,
+    "final_test_use_allowed": false,
+    "g10_state": "PASS_NONEMPTY_TERMINAL_SELECTION_AUTHORITY",
+    "near_copy_decontamination_still_required": true
+  },
+  "terminal_source_authorities": [
+    {
+      "worker": "NEXT100-026-DATA-UA-CABINET-MINISTRY",
+      "pr": 449,
+      "branch": "next100-026/data-ua-kmu-cabinet-ministry",
+      "head_sha": "40950a950b60921fd856af2719e1ae2486d9e892",
+      "authority_config_path": "configs/data/next100_026_kmu_source_audit_v1.json",
+      "authority_config_git_blob_sha1": "6f0a60dc161c0bb2d7600c3c062ae78e624b240e",
+      "authority_identity_sha256": "1f068e6cc5ce3fc4a51d8477acee31fab5a0178e15f49225b57de94c5178f7d9",
+      "dedicated_workflow_run": 32997970539,
+      "dedicated_workflow_conclusion": "success",
+      "family": "ua.kmu.portal.secretariat-news",
+      "stratum": "uk",
+      "source_record_count": 6,
+      "source_normalized_bytes": 9153,
+      "materialized_training_payload_bytes": 9153,
+      "training_rights": "ALLOWED_PRETRAINING",
+      "evaluation_rights": "NOT_SEPARATELY_ADMITTED"
+    },
+    {
+      "worker": "NEXT100-022-DATA-UA-WIKISOURCE",
+      "pr": 455,
+      "branch": "next100022/data-ua-wikisource-20260826",
+      "head_sha": "84c51e42b6daa51796fd20d793b5ef1ff01cc9d2",
+      "authority_config_path": "configs/data/next100022_ua_wikisource_candidate_v1.json",
+      "authority_config_git_blob_sha1": "9083f9fc8f97d8385292a74a0ce9e127f6fbeed2",
+      "authority_identity_sha256": "6b443faa7fef777214022028d5fdb356dae0ab1a9b71822b4e16bea8f92cd0d6",
+      "dedicated_workflow_run": 32998002424,
+      "dedicated_workflow_conclusion": "success",
+      "family": "ua.literature.lesia-ukrainka.na-krylah-pisen.1892-lviv",
+      "stratum": "uk",
+      "source_record_count": 1,
+      "source_normalized_bytes": 1479,
+      "materialized_training_payload_bytes": 1479,
+      "training_rights": "ALLOWED",
+      "evaluation_rights": "NOT_SEPARATELY_ADMITTED",
+      "near_match_decontamination_state": "REQUIRED_BEFORE_CORPUS_TRAINING_SELECTION"
+    },
+    {
+      "worker": "NEXT100-037-DATA-EN-PYTHON-DOCS",
+      "pr": 467,
+      "branch": "next100037/python-docs-source-authority-v2-20260826",
+      "head_sha": "5a6a495a24bce449334cbc5126d0114f61a9f57c",
+      "authority_config_path": "configs/data/next100_037_python_docs_source_authority_v1.json",
+      "authority_config_git_blob_sha1": "b15abac8744ccda9fe58d1351f7925b6ab328034",
+      "authority_identity_sha256": "46a00dc70db690ae2b3c4495a75283e7e752bdccb1047d4318c2ebadfa392f0d",
+      "dedicated_workflow_run": 32998356906,
+      "dedicated_workflow_conclusion": "success",
+      "family": "python.cpython.documentation",
+      "stratum": "en",
+      "source_record_count": 1,
+      "source_normalized_bytes": 17901,
+      "accepted_chunk_count": 14,
+      "rejected_chunk_count": 2,
+      "materialized_training_payload_bytes": null,
+      "training_rights": "ALLOWED",
+      "evaluation_rights": "NOT_SEPARATELY_ADMITTED",
+      "materialization_note": "Only the 14 accepted chunk hashes are training-eligible; exact accepted payload bytes must be materialized and identity-bound by the successor record-inventory stage."
+    }
+  ],
+  "source_authority_inventory": {
+    "incumbent_source_objects": 5,
+    "added_source_objects_before_cpython_chunk_materialization": 8,
+    "source_objects_total_before_cpython_chunk_materialization": 13,
+    "incumbent_source_normalized_bytes": 183061,
+    "added_source_normalized_bytes": 28533,
+    "source_normalized_bytes_total": 211594,
+    "exact_materialized_added_payload_bytes_excluding_cpython_accepted_chunks": 10632,
+    "exact_materialized_source_bytes_lower_bound_before_successor_gates": 193693,
+    "source_bytes_are_not_loss_positions": true,
+    "cpython_accepted_payload_bytes_materialized": false
+  },
+  "family_cardinality": {
+    "incumbent": {"uk": 1, "en": 1, "code": 2},
+    "added": {"uk": 2, "en": 1, "code": 0},
+    "intake_total": {"uk": 3, "en": 2, "code": 2},
+    "minimum_required_per_stratum": 2,
+    "family_cardinality_prerequisite_satisfied_at_source_authority_layer": true,
+    "independent_family_count_total": 7,
+    "replay_or_alias_credit_used": false
+  },
+  "mixture_policy": {
+    "uk_fraction": 0.45,
+    "en_fraction": 0.35,
+    "code_fraction": 0.20,
+    "maximum_family_share_total": 0.25,
+    "maximum_family_share_within_stratum": 0.60,
+    "replay_allowed": false,
+    "status": "PRESERVED_REQUIRES_SUCCESSOR_POST_DEDUP_CAPACITY_CALCULATION"
+  },
+  "gate_transition": {
+    "G05_QUALITY": "RETEST_REQUIRED_ON_EXACT_SUCCESSOR_RECORD_INVENTORY",
+    "G06_PRIVACY": "RETEST_REQUIRED_ON_EXACT_SUCCESSOR_RECORD_INVENTORY",
+    "G07_DEDUP": "REBUILD_REQUIRED_ON_EXACT_SUCCESSOR_RECORD_INVENTORY",
+    "G08_RESERVED_DECONTAMINATION": "BLOCKED_UNTIL_EXACT_PRE_DECONTAMINATION_RECORD_INVENTORY_IDENTITY",
+    "G09_BALANCE_DIVERSITY": "SOURCE_FAMILY_CARDINALITY_PREREQUISITE_SATISFIED_POST_DEDUP_CAPACITY_NOT_YET_PROVEN",
+    "G10_SELECTION_VALIDATION": "PASS_EVAL303_NONEMPTY_TERMINAL_AUTHORITY",
+    "G12_UNIQUE_LOSS": "BLOCKED_UNTIL_POST_SPLIT_POST_PACK_LEDGER",
+    "G14_TWO_CLEAN_BUILDS": "BLOCKED_UNTIL_SUCCESSOR_BUILD_IS_MATERIALIZED"
+  },
+  "training_authority": {
+    "corpus_identity": null,
+    "shard_identity": null,
+    "postpack_unique_loss_positions": null,
+    "authorized_training_exposure": 0,
+    "tokenizer_fit_authorized": false,
+    "long_training_authorized": false,
+    "paid_compute_authorized": false,
+    "base_weight_mutation_executed": false,
+    "optimizer_updates_executed": 0
+  },
+  "required_next_gates": [
+    "materialize exact accepted training records for every added source, including exact bytes for the 14 accepted CPython chunks",
+    "freeze one exact pre-decontamination successor record inventory and identity",
+    "run exact/normalized/fragment/near-copy/mirror/code-copy evaluation decontamination against all terminal reservations",
+    "rerun quality and privacy on every exact successor record",
+    "rerun global lineage-aware dedup and compute post-dedup family-share-constrained 45/35/20 capacity without replay",
+    "create cluster-safe train split and deterministic shards",
+    "build the complete successor tree twice from independent clean roots and require byte identity",
+    "materialize the post-pack unique nonignored causal-loss ledger and use it as the only no-replay training ceiling",
+    "rerun D05 checkpoint corruption qualification and bounded TRAIN-344 mechanics on exact MODEL-341 before any long campaign"
+  ],
+  "verdict": "TERMINAL_SOURCE_INTAKE_READY_RECORD_MATERIALIZATION_REQUIRED",
+  "truth_boundary": {
+    "research_corpus_v1_frozen": false,
+    "training_ready": false,
+    "learned_20m_claimed": false,
+    "representative_corpus_claimed": false,
+    "long_training_started": false,
+    "external_llm_used": false
+  }
+}
