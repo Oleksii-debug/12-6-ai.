@@ -32,14 +32,18 @@ def _begin_incremental_session(
     if not callable(factory):
         raise TypeError("backend begin_generation must be callable")
     session = factory(prompt_token_ids)
-    for method_name in ("next_token_logits", "append", "close"):
-        if not callable(getattr(session, method_name, None)):
-            try:
-                session.close()
-            finally:
-                raise TypeError(
-                    f"incremental generation session must expose {method_name}()"
-                )
+    missing = [
+        method_name
+        for method_name in ("next_token_logits", "append", "close")
+        if not callable(getattr(session, method_name, None))
+    ]
+    if missing:
+        close = getattr(session, "close", None)
+        if callable(close):
+            close()
+        raise TypeError(
+            "incremental generation session must expose callable " + ", ".join(f"{name}()" for name in missing)
+        )
     return cast(_GenerationSession, session)
 
 
