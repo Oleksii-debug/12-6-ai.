@@ -1,0 +1,47 @@
+name: ENV-152 Bootstrap Locks
+
+on:
+  pull_request:
+    branches:
+      - milestone150/learned-base-ladder-v1-20260826
+    paths:
+      - '.github/workflows/env152-bootstrap-locks.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11.16'
+      - name: Resolve CPU torch and data wheels for lock capture only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m venv .bootstrap
+          .bootstrap/bin/python -m pip install --upgrade 'pip==26.2.1'
+          mkdir -p bootstrap-wheels/cpu bootstrap-wheels/data
+          .bootstrap/bin/python -m pip download --no-deps --only-binary=:all: --index-url https://download.pytorch.org/whl/cpu --dest bootstrap-wheels/cpu 'torch==2.13.0+cpu'
+          cat > /tmp/env152-constraints.txt <<'EOF'
+          numpy==2.4.6
+          fsspec==2026.7.0
+          huggingface-hub==1.28.0
+          tqdm==4.70.0
+          pyarrow==25.0.1
+          EOF
+          .bootstrap/bin/python -m pip download --only-binary=:all: --dest bootstrap-wheels/data -c /tmp/env152-constraints.txt 'datatrove==0.10.0' 'pyarrow==25.0.1'
+          .bootstrap/bin/python - <<'PY'
+          from pathlib import Path
+          import hashlib
+          for group in ('cpu','data'):
+              print(f'ENV152_LOCK_GROUP={group}')
+              total=0
+              for p in sorted((Path('bootstrap-wheels')/group).iterdir()):
+                  b=p.read_bytes(); total += len(b)
+                  print(f'{p.name}\t{len(b)}\tsha256:{hashlib.sha256(b).hexdigest()}')
+              print(f'ENV152_TOTAL_BYTES_{group.upper()}={total}')
+          PY
