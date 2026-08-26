@@ -1,0 +1,110 @@
+{
+  "schema": "12-6.model198-rope-transfer-gate.v1",
+  "worker_id": "MODEL-198-10M-ROPE-TRANSFER",
+  "status": "BLOCKED_DEPENDENCY",
+  "authority": "LOCAL_FREE_RESEARCH_NO_PROMOTION",
+  "execution_date_local": "2026-08-26",
+  "mission": "Validate whether provisional smaller-model RoPE theta/base evidence transfers to the MODEL-197-selected 10M context without introducing positional-encoding alternatives.",
+  "constraints": {
+    "paid_compute": false,
+    "positional_architecture": "RoPE only",
+    "forbidden": ["YaRN", "NTK scaling", "RoPE interpolation", "other positional architectures"],
+    "matched_variables": ["initialization", "data", "optimized-token budget", "context"],
+    "required_metrics": [
+      "normal held-out BPB",
+      "reserved dependency-distance probes",
+      "attention scales",
+      "logit scales",
+      "first-party cached/stateless inference parity"
+    ],
+    "replacement_requires_multiple_seeds": true,
+    "universal_bootstrap_required": true
+  },
+  "dependencies": {
+    "model117": {
+      "status": "CONSUMED",
+      "branch": "model117/rope-base-256-512-20260826",
+      "report_path": "reports/model117/rope_base_256_512.local_free.json",
+      "report_blob_sha": "cc7fcdd6772df2550d0679695938260ff902b179",
+      "decision": "RETAIN_THETA_10000",
+      "theta_change": false,
+      "reason_summary": "theta 5000, 10000 and 20000 were effectively tied through 512; differences in held-out BPB, recurrence probes, gradients, attention/logit scales and cache parity were numerically negligible, so changing model identity was not justified",
+      "explicit_1024_rule": "theta=10000 may be inherited only as provisional incumbent at 1024 and requires dedicated 1K training/evaluation qualification"
+    },
+    "model197": {
+      "status": "MISSING_AT_EXECUTION_TIME",
+      "required_output": "selected 10M context from the controlled 256/512/1024 context-transfer experiment",
+      "checks_performed": [
+        "GitHub branch search for 197 and model197",
+        "GitHub repository code/commit search",
+        "project personal-context lookup"
+      ],
+      "result": "No MODEL-197 durable result was discoverable; selected context therefore cannot be inferred without violating the mission."
+    },
+    "env151": {
+      "status": "CONSUMED",
+      "branch": "env151/universal-execution-bootstrap-20260826",
+      "contract_doc_blob_sha": "43e7783a89dd2a9201e6471bba98b8899ccdd2bc",
+      "required_cpu_capabilities": ["runtime", "tests"],
+      "cuda_capability": false,
+      "ad_hoc_dependency_fallback": false
+    }
+  },
+  "observed_10m_spec_reference": {
+    "source_branch": "model117/rope-base-256-512-20260826",
+    "config_path": "configs/stages/s3_10m.json",
+    "config_blob_sha": "fb4d2f35b53cbbab93b3867ff35a5f01b526b233",
+    "expected_parameters": 10059840,
+    "max_seq_len": 1024,
+    "rope_theta": 10000.0,
+    "rope_rotary_dim": 40,
+    "note": "ModelSpec support for 1024 is not evidence that MODEL-197 selected 1024."
+  },
+  "candidate_set": {
+    "incumbent_theta": 10000.0,
+    "successor_theta": null,
+    "comparison_required": false,
+    "reason": "MODEL-117 retained the incumbent; MODEL-198 is therefore a transfer verification, not a reopened theta sweep."
+  },
+  "preregistered_transfer_verification": {
+    "activation_condition": "A durable MODEL-197 result must identify one selected context in {256, 512, 1024} and provide exact model/data/token-budget identities needed for a matched transfer run.",
+    "selected_context": null,
+    "seeds": [1337, 2027, 4242],
+    "seed_policy": "Run all three seeds for transfer robustness. Multiple seeds are mandatory for any replacement decision; no replacement candidate currently exists.",
+    "training": {
+      "theta": 10000.0,
+      "initialization": "identical to the corresponding MODEL-197 10M seed initialization",
+      "data_trace": "identical to MODEL-197",
+      "optimized_token_budget": "identical to MODEL-197",
+      "context_length": "exact MODEL-197 selected context",
+      "optimizer_and_batch_geometry": "inherit MODEL-197 unchanged unless MODEL-197 explicitly delegates them to an accepted incumbent"
+    },
+    "evaluation": {
+      "normal_heldout_bpb": true,
+      "reserved_dependency_distance_probes": true,
+      "attention_scale_observation": true,
+      "logit_scale_observation": true,
+      "cached_stateless_parity": true,
+      "nonfinite_fail_closed": true
+    },
+    "decision_rule": {
+      "pass": "Across the preregistered seeds, theta=10000 trains/evaluates without nonfinite failure, normal held-out BPB is reproducible under the MODEL-197 recipe, dependency-distance probes show no transfer-specific positional pathology at the selected context, attention/logit scales remain finite and non-explosive, and first-party cached/stateless inference parity stays within the repository's accepted numerical tolerance.",
+      "fail": "Any repeatable transfer-specific positional pathology, nonfinite behavior, or cache/stateless parity violation blocks closure and requires a new explicitly scoped positional-encoding experiment; it does not authorize an unpreregistered theta sweep.",
+      "replacement": "Not applicable unless later evidence names one evidence-supported successor. A replacement may not be selected from a one-seed result."
+    }
+  },
+  "current_decision": {
+    "theta": 10000.0,
+    "theta_change": false,
+    "dimension_closed": false,
+    "verdict": "BLOCKED_BY_MODEL197",
+    "reason": "The selected 10M context is a required controlled variable. Inferring it from ModelSpec max_seq_len, RoPE mathematics, or earlier context-readiness work would violate the experiment contract."
+  },
+  "not_tested": [
+    "10M transfer training at MODEL-197 selected context",
+    "10M normal held-out BPB under the selected context recipe",
+    "10M dependency-distance probes under the selected context recipe",
+    "10M attention/logit scale transfer measurements",
+    "10M cached/stateless parity under the selected context recipe"
+  ]
+}
