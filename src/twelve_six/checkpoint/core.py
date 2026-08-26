@@ -549,6 +549,110 @@ def _preflight_optimizer_state(optimizer: Any, state: Any) -> None:
                     )
 
 
+def _validate_state_schema(expected: Any, actual: Any, *, path: str) -> None:
+    """Validate nested state metadata without mutating the live component."""
+
+    if isinstance(expected, Mapping):
+        if not isinstance(actual, Mapping):
+            raise CheckpointCompatibilityError(f"{path} must be a mapping")
+        expected_keys = set(expected)
+        actual_keys = set(actual)
+        if actual_keys != expected_keys:
+            missing = sorted(map(str, expected_keys - actual_keys))
+            unexpected = sorted(map(str, actual_keys - expected_keys))
+            raise CheckpointCompatibilityError(
+                f"{path} keys differ: missing={missing}, unexpected={unexpected}"
+            )
+        for key, expected_value in expected.items():
+            _validate_state_schema(expected_value, actual[key], path=f"{path}.{key}")
+        return
+
+    if isinstance(expected, list):
+        if not isinstance(actual, list) or len(actual) != len(expected):
+            raise CheckpointCompatibilityError(
+                f"{path} list geometry mismatch: expected length {len(expected)}"
+            )
+        for index, (expected_value, actual_value) in enumerate(
+            zip(expected, actual, strict=True)
+        ):
+            _validate_state_schema(
+                expected_value,
+                actual_value,
+                path=f"{path}[{index}]",
+            )
+        return
+
+    if isinstance(expected, tuple):
+        if not isinstance(actual, tuple) or len(actual) != len(expected):
+            raise CheckpointCompatibilityError(
+                f"{path} tuple geometry mismatch: expected length {len(expected)}"
+            )
+        for index, (expected_value, actual_value) in enumerate(
+            zip(expected, actual, strict=True)
+        ):
+            _validate_state_schema(
+                expected_value,
+                actual_value,
+                path=f"{path}[{index}]",
+            )
+        return
+
+    expected_cls = expected.__class__ if expected is not None else None
+    actual_cls = actual.__class__ if actual is not None else None
+    expected_is_tensor = bool(
+        expected_cls is not None
+        and expected_cls.__module__.startswith("torch")
+        and expected_cls.__name__ in {"Tensor", "Parameter"}
+    )
+    actual_is_tensor = bool(
+        actual_cls is not None
+        and actual_cls.__module__.startswith("torch")
+        and actual_cls.__name__ in {"Tensor", "Parameter"}
+    )
+    if expected_is_tensor:
+        if not actual_is_tensor:
+            raise CheckpointCompatibilityError(f"{path} must be a torch tensor")
+        if tuple(actual.shape) != tuple(expected.shape) or actual.dtype != expected.dtype:
+            raise CheckpointCompatibilityError(
+                f"{path} tensor metadata mismatch: checkpoint "
+                f"shape={tuple(actual.shape)} dtype={actual.dtype}, live "
+                f"shape={tuple(expected.shape)} dtype={expected.dtype}"
+            )
+        return
+
+    if expected is None:
+        if actual is not None:
+            raise CheckpointCompatibilityError(f"{path} must be None")
+        return
+
+    if isinstance(expected, bool):
+        compatible = isinstance(actual, bool)
+    elif isinstance(expected, int):
+        compatible = isinstance(actual, int) and not isinstance(actual, bool)
+    elif isinstance(expected, float):
+        compatible = isinstance(actual, float)
+    else:
+        compatible = type(actual) is type(expected)
+    if not compatible:
+        raise CheckpointCompatibilityError(
+            f"{path} type mismatch: checkpoint {type(actual).__name__}, "
+            f"live {type(expected).__name__}"
+        )
+
+
+def _preflight_scheduler_state(scheduler: Any, state: Any) -> None:
+    """Validate direct scheduler state before model or optimizer mutation."""
+
+    if not isinstance(state, Mapping):
+        raise CheckpointCompatibilityError("checkpoint scheduler state must be a mapping")
+    if not hasattr(scheduler, "state_dict") or not hasattr(scheduler, "load_state_dict"):
+        raise CheckpointCompatibilityError("scheduler must provide state_dict/load_state_dict")
+    live_state = scheduler.state_dict()
+    if not isinstance(live_state, Mapping):
+        raise CheckpointCompatibilityError("live scheduler state must be a mapping")
+    _validate_state_schema(live_state, state, path="scheduler state")
+
+
 def _apply_model_weights(model: Any, materialized: Mapping[str, Any], strict: bool) -> None:
     if hasattr(model, "load_state_dict"):
         try:
@@ -981,12 +1085,14 @@ def load_verified_checkpoint(
         raise CheckpointCompatibilityError(
             "scheduler was requested but checkpoint has no scheduler state"
         )
+    if scheduler is not None:
+        _preflight_scheduler_state(scheduler, combined_state["scheduler"])
     if restore_rng:
         _preflight_rng_state(combined_state["rng"])
 
     # No checkpoint byte is reopened after this point. All integrity, identity,
-    # payload decoding, model/optimizer compatibility and supported RNG checks
-    # completed before the first mutation.
+    # payload decoding, model/optimizer/scheduler compatibility and supported RNG
+    # checks completed before the first mutation.
     _apply_model_weights(model, materialized, strict_model)
     if optimizer is not None:
         optimizer.load_state_dict(combined_state["optimizer"])
