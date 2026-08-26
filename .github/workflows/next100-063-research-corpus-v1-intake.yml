@@ -28,12 +28,18 @@ jobs:
           python-version: "3.11"
       - name: Verify DATA-301 ancestry
         run: git merge-base --is-ancestor 8820ba1b255f6bb95c7db0531fd846078a1aae01 HEAD
-      - name: Fetch exact terminal source heads
+      - name: Fetch exact terminal authority branches
         run: |
+          set -euo pipefail
           git fetch --no-tags origin \
-            40950a950b60921fd856af2719e1ae2486d9e892 \
-            84c51e42b6daa51796fd20d793b5ef1ff01cc9d2 \
-            5a6a495a24bce449334cbc5126d0114f61a9f57c
+            refs/heads/next100-026/data-ua-kmu-cabinet-ministry:refs/remotes/origin/next100-026/data-ua-kmu-cabinet-ministry \
+            refs/heads/next100022/data-ua-wikisource-20260826:refs/remotes/origin/next100022/data-ua-wikisource-20260826 \
+            refs/heads/next100037/python-docs-source-authority-v2-20260826:refs/remotes/origin/next100037/python-docs-source-authority-v2-20260826 \
+            refs/heads/data228/real-ua-en-diversity-v2:refs/remotes/origin/data228/real-ua-en-diversity-v2
+          test "$(git rev-parse refs/remotes/origin/next100-026/data-ua-kmu-cabinet-ministry)" = 40950a950b60921fd856af2719e1ae2486d9e892
+          test "$(git rev-parse refs/remotes/origin/next100022/data-ua-wikisource-20260826)" = 84c51e42b6daa51796fd20d793b5ef1ff01cc9d2
+          test "$(git rev-parse refs/remotes/origin/next100037/python-docs-source-authority-v2-20260826)" = 5a6a495a24bce449334cbc5126d0114f61a9f57c
+          test "$(git rev-parse refs/remotes/origin/data228/real-ua-en-diversity-v2)" = 46a70c990dab6ff72bb84ddb54cff1156b491b40
       - name: Validate intake and source authority blobs
         run: python tools/validate_next100_063_research_corpus_v1_intake.py --verify-git-authorities
       - name: Focused tests
