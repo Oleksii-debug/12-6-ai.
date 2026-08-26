@@ -1,0 +1,184 @@
+{
+  "schema": "12-6.predecontam-source-records.v1",
+  "worker_id": "DATA-526-PREDECONTAM-CANDIDATE-RECORDS",
+  "repository": "Oleksii-debug/12-6-ai.",
+  "execution_profile": "LOCAL_FREE",
+  "authority_evidence": {
+    "data287_incumbent_registry": {
+      "head_sha": "b0523ccbc4b957615aac849d476cfa851be87578",
+      "authority_identity_sha256": "917e9bc31b2fa040d25e807ae3c01aa2cce32420752a891caacfb6c830e6632c",
+      "dedicated_workflow_run": 32968622282,
+      "dedicated_workflow_conclusion": "success",
+      "record_count": 5
+    },
+    "next100_022_ua_wikisource": {
+      "head_sha": "84c51e42b6daa51796fd20d793b5ef1ff01cc9d2",
+      "authority_identity_sha256": "6b443faa7fef777214022028d5fdb356dae0ab1a9b71822b4e16bea8f92cd0d6",
+      "dedicated_workflow_run": 32998002424,
+      "dedicated_workflow_conclusion": "success",
+      "record_count": 1
+    },
+    "next100_034_nist_terminal": {
+      "head_sha": "b7491745b34ac8679baaf69cb96cd609dcbe0a16",
+      "authority_identity_sha256": "3ffba0fcd08ab42e940b2db12ffafb6f7234ad0bae6f7fe523071497485b9d1c",
+      "dedicated_workflow_run": 32998703545,
+      "dedicated_workflow_conclusion": "success",
+      "record_count": 3
+    }
+  },
+  "held_out_authorities": {
+    "next100_037_cpython_docs": {
+      "head_sha": "5a6a495a24bce449334cbc5126d0114f61a9f57c",
+      "authority_identity_sha256": "46a00dc70db690ae2b3c4495a75283e7e752bdccb1047d4318c2ebadfa392f0d",
+      "dedicated_workflow_run": 32998356906,
+      "dedicated_workflow_conclusion": "success",
+      "status": "HOLD_UNTIL_ACCEPTED_CHUNK_RECORD_MATERIALIZATION",
+      "reason": "Authority admits only 14 of 16 chunks and publishes their normalized hashes, but not exact byte counts for each accepted chunk. The full 17901-byte normalized source cannot be admitted because two phone-containing chunks are explicitly rejected."
+    },
+    "next100_026_kmu": {
+      "head_sha": "40950a950b60921fd856af2719e1ae2486d9e892",
+      "dedicated_workflow_run": 32997970539,
+      "dedicated_workflow_conclusion": "success",
+      "status": "DEFER_TO_ACTIVE_NEXT100_063_CONVERGENCE",
+      "reason": "Terminal source is valid, but active NEXT100-063 owns late source-registry convergence. DATA-526 uses the smallest exact record set that already satisfies the two-family-per-stratum pre-decontamination gate."
+    }
+  },
+  "truth_boundary": {
+    "state": "PRE_DECONTAMINATION_INPUT_ONLY",
+    "decontamination_executed": false,
+    "final_corpus_identity": null,
+    "final_training_authorized": false,
+    "replay_authorized": false,
+    "tokenizer_fit_authorized": false,
+    "long_training_authorized": false,
+    "paid_compute_used": false
+  },
+  "records": [
+    {
+      "source_id": "external-real:en.standardebooks.manual.8-typography",
+      "source_family": "en.standardebooks.manual",
+      "stratum": "en",
+      "raw_sha256": "21582c7f0e4ad39f2b0ed97bbc2c082d275e898b7a63c28e6d9badb8ee0f7860",
+      "normalized_sha256": "154fb4034929714087e75150d678bf65049ddac32e79dcdf97162c8972c2be83",
+      "normalized_utf8_bytes": 48002,
+      "authority_head_sha": "b0523ccbc4b957615aac849d476cfa851be87578",
+      "authority_identity_sha256": "917e9bc31b2fa040d25e807ae3c01aa2cce32420752a891caacfb6c830e6632c",
+      "source_rights_training_allowed": true,
+      "pre_decontamination_candidate": true,
+      "final_training_eligible": false,
+      "evaluation_reserved": false
+    },
+    {
+      "source_id": "external-real:en.standardebooks.manual.9-metadata",
+      "source_family": "en.standardebooks.manual",
+      "stratum": "en",
+      "raw_sha256": "7ac53dfb4bf6f73f178560e09f33160d0250c69fb679802f3254dc0eb4c9f509",
+      "normalized_sha256": "94eb2f529922d125b3bd40691778886f4d5d80b128b925d0274fb3d94646ec5a",
+      "normalized_utf8_bytes": 36791,
+      "authority_head_sha": "b0523ccbc4b957615aac849d476cfa851be87578",
+      "authority_identity_sha256": "917e9bc31b2fa040d25e807ae3c01aa2cce32420752a891caacfb6c830e6632c",
+      "source_rights_training_allowed": true,
+      "pre_decontamination_candidate": true,
+      "final_training_eligible": false,
+      "evaluation_reserved": false
+    },
+    {
+      "source_id": "external-real:ua.rada.open-data.laws-texts.d23314",
+      "source_family": "ua.rada.open-data.laws-texts",
+      "stratum": "ua",
+      "raw_sha256": "36eae31c3b0676ea7c02236fa05bd695c240c9a8eade5febc00457b8103ee1a4",
+      "normalized_sha256": "72c301db0b2539f3f7a73c9c15e2e425700a6b758a1114f1a861e2d60c704c50",
+      "normalized_utf8_bytes": 88565,
+      "authority_head_sha": "b0523ccbc4b957615aac849d476cfa851be87578",
+      "authority_identity_sha256": "917e9bc31b2fa040d25e807ae3c01aa2cce32420752a891caacfb6c830e6632c",
+      "source_rights_training_allowed": true,
+      "pre_decontamination_candidate": true,
+      "final_training_eligible": false,
+      "evaluation_reserved": false
+    },
+    {
+      "source_id": "external-real:code.encode.httpx._content",
+      "source_family": "github:encode/httpx",
+      "stratum": "code",
+      "raw_sha256": "2c61b3ac94d1dcebcde0c6f519554d2d7917247fbaa0a97002db4ef69e70ff28",
+      "normalized_sha256": "2c61b3ac94d1dcebcde0c6f519554d2d7917247fbaa0a97002db4ef69e70ff28",
+      "normalized_utf8_bytes": 8161,
+      "authority_head_sha": "b0523ccbc4b957615aac849d476cfa851be87578",
+      "authority_identity_sha256": "917e9bc31b2fa040d25e807ae3c01aa2cce32420752a891caacfb6c830e6632c",
+      "source_rights_training_allowed": true,
+      "pre_decontamination_candidate": true,
+      "final_training_eligible": false,
+      "evaluation_reserved": false
+    },
+    {
+      "source_id": "external-real:code.psf.requests._internal_utils",
+      "source_family": "github:psf/requests",
+      "stratum": "code",
+      "raw_sha256": "4c7d8d132c9898fc7d715e473f3ac74785ddc4ab96d2c9240f87835dc6d981ff",
+      "normalized_sha256": "4c7d8d132c9898fc7d715e473f3ac74785ddc4ab96d2c9240f87835dc6d981ff",
+      "normalized_utf8_bytes": 1542,
+      "authority_head_sha": "b0523ccbc4b957615aac849d476cfa851be87578",
+      "authority_identity_sha256": "917e9bc31b2fa040d25e807ae3c01aa2cce32420752a891caacfb6c830e6632c",
+      "source_rights_training_allowed": true,
+      "pre_decontamination_candidate": true,
+      "final_training_eligible": false,
+      "evaluation_reserved": false
+    },
+    {
+      "source_id": "ua.wikisource.lesia-ukrainka.na-krylah-pisen.1892.page13",
+      "source_family": "ua.literature.lesia-ukrainka.na-krylah-pisen.1892-lviv",
+      "stratum": "ua",
+      "raw_sha256": "65e570c3cd954b595b586554b89a90da6efad0deca6a84d2316937745db17ef2",
+      "normalized_sha256": "65e570c3cd954b595b586554b89a90da6efad0deca6a84d2316937745db17ef2",
+      "normalized_utf8_bytes": 1479,
+      "authority_head_sha": "84c51e42b6daa51796fd20d793b5ef1ff01cc9d2",
+      "authority_identity_sha256": "6b443faa7fef777214022028d5fdb356dae0ab1a9b71822b4e16bea8f92cd0d6",
+      "source_rights_training_allowed": true,
+      "pre_decontamination_candidate": true,
+      "final_training_eligible": false,
+      "evaluation_reserved": false
+    },
+    {
+      "source_id": "en.nist.technical-series.NIST.SP.800-204",
+      "source_family": "en.usgov.nist.technical-series",
+      "stratum": "en",
+      "raw_sha256": "25412c860165e5ee1cfbf26ed47c56f4d213b1996a73365f5561be6403cf7588",
+      "normalized_sha256": "570e8d75b6dc6aefee1f089818b46765c0dd1965e06947bcc2fff0169d22274e",
+      "normalized_utf8_bytes": 19668,
+      "authority_head_sha": "b7491745b34ac8679baaf69cb96cd609dcbe0a16",
+      "authority_identity_sha256": "3ffba0fcd08ab42e940b2db12ffafb6f7234ad0bae6f7fe523071497485b9d1c",
+      "source_rights_training_allowed": true,
+      "pre_decontamination_candidate": true,
+      "final_training_eligible": false,
+      "evaluation_reserved": false
+    },
+    {
+      "source_id": "en.nist.technical-series.NIST.SP.800-204C",
+      "source_family": "en.usgov.nist.technical-series",
+      "stratum": "en",
+      "raw_sha256": "d51133dc55a804990d80ba4b9c35e3fbb2d5acdf7b330b66edeaae59fc63d69b",
+      "normalized_sha256": "558da6a0886036a01a5139d635b1352b5cf5d74655d919c66a04e84f2d49c0fe",
+      "normalized_utf8_bytes": 19736,
+      "authority_head_sha": "b7491745b34ac8679baaf69cb96cd609dcbe0a16",
+      "authority_identity_sha256": "3ffba0fcd08ab42e940b2db12ffafb6f7234ad0bae6f7fe523071497485b9d1c",
+      "source_rights_training_allowed": true,
+      "pre_decontamination_candidate": true,
+      "final_training_eligible": false,
+      "evaluation_reserved": false
+    },
+    {
+      "source_id": "en.nist.technical-series.NIST.SP.800-215",
+      "source_family": "en.usgov.nist.technical-series",
+      "stratum": "en",
+      "raw_sha256": "159e17820a0a337c4a7e9c7ee8b966823e81dc72f5c6229e7d7244c40b0b1645",
+      "normalized_sha256": "6c99c3b14ee3ea7fe915940e38c080dbf2a785f1abcee2fd73e7fd731424770d",
+      "normalized_utf8_bytes": 19954,
+      "authority_head_sha": "b7491745b34ac8679baaf69cb96cd609dcbe0a16",
+      "authority_identity_sha256": "3ffba0fcd08ab42e940b2db12ffafb6f7234ad0bae6f7fe523071497485b9d1c",
+      "source_rights_training_allowed": true,
+      "pre_decontamination_candidate": true,
+      "final_training_eligible": false,
+      "evaluation_reserved": false
+    }
+  ]
+}
