@@ -1,0 +1,57 @@
+{
+  "schema_version": "12-6-data-budget-v1",
+  "status": "RESEARCH_REFERENCE_NOT_COMPUTE_AUTHORIZATION",
+  "accounting": {
+    "capacity_unit": "post_pack_unique_causal_loss_tokens",
+    "source_bytes_are_capacity": false,
+    "replay_counts_as_new_capacity": false,
+    "requires_terminal_corpus_identity": true,
+    "requires_terminal_tokenizer_identity": true,
+    "requires_train_eval_decontamination": true
+  },
+  "planning": {
+    "dense_training_flops_per_parameter_token": 6.0,
+    "note": "Approximate planning coefficient only; exact measured throughput and architecture costs remain authoritative for execution."
+  },
+  "tiers": {
+    "pilot_5x": {
+      "tokens_per_parameter": 5.0,
+      "purpose": "Bounded learning pilot used to expose training/data defects before a full campaign. It is not stage-promotion evidence by itself."
+    },
+    "compute_reference_20x": {
+      "tokens_per_parameter": 20.0,
+      "purpose": "Default research planning reference derived from Chinchilla-style compute-optimal scaling. It is a reference, not a universal law."
+    },
+    "extended_50x": {
+      "tokens_per_parameter": 50.0,
+      "purpose": "Optional overtraining experiment only after matched-budget evidence and explicit compute authorization where required."
+    }
+  },
+  "exact_targets": {
+    "MODEL-341-20M": {
+      "parameters": 20613440,
+      "pilot_5x_tokens": 103067200,
+      "compute_reference_20x_tokens": 412268800,
+      "extended_50x_tokens": 1030672000
+    },
+    "NOMINAL-100M": {
+      "parameters": 100000000,
+      "pilot_5x_tokens": 500000000,
+      "compute_reference_20x_tokens": 2000000000,
+      "extended_50x_tokens": 5000000000
+    },
+    "NOMINAL-1B": {
+      "parameters": 1000000000,
+      "pilot_5x_tokens": 5000000000,
+      "compute_reference_20x_tokens": 20000000000,
+      "extended_50x_tokens": 50000000000
+    }
+  },
+  "policy_boundaries": {
+    "does_not_authorize_training": true,
+    "does_not_override_data_rights": true,
+    "does_not_override_quality_privacy_dedup_or_decontamination": true,
+    "does_not_override_existing_mixture_preregistration": true,
+    "does_not_treat_parameter_count_as_quality": true
+  }
+}
