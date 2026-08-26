@@ -19,6 +19,20 @@ The current Research Corpus V1 plan requires a 45/35/20 Ukrainian/English/code b
 
 However, diversity is only useful if it is controlled. PluG contains historical literature, OCR-derived text, translations, and older orthographies. PluG2 expands Western Ukrainian material from roughly the 1880s–1920s and explicitly warns that this historical variant can complicate models oriented toward the modern standard.
 
+## Frozen 20 MB family-cap geometry
+
+DATA-295 preregisters the 20,000,000-byte planning mix as Ukrainian 9,000,000 / English 7,000,000 / code 4,000,000, with at least two independent training-eligible families per stratum. One family may consume at most 25% of the entire selected corpus and at most 60% of its own stratum.
+
+At the 20 MB target this yields exact per-family planning ceilings:
+
+- Ukrainian: `min(5,000,000, 5,400,000) = 5,000,000` bytes;
+- English: `min(5,000,000, 4,200,000) = 4,200,000` bytes;
+- code: `min(5,000,000, 2,400,000) = 2,400,000` bytes.
+
+Therefore PluG + PluG2, which are one lineage, can contribute at most 5,000,000 selected Ukrainian source bytes to the final 20 MB planning corpus even if the upstream corpus contains far more material. Overflow must be subsampled or replaced by an independent family. Replay, duplication, mirrors, formatting changes, or splitting PluG and PluG2 into two labels cannot repair the cap.
+
+These numbers are planning geometry, not terminal corpus authority. The cap is applied only after rights, quality/privacy, lineage deduplication and decontamination determine which bytes are actually eligible.
+
 ## Rights boundary
 
 The pinned README says only that the corpus is available under `CC-BY`; it does not state an exact CC-BY version in the text pinned by this probe. Therefore:
