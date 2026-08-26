@@ -1,0 +1,129 @@
+name: DATA-227 External Real Code Admission V2
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  admit-real-code:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact source head
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+
+      - name: Universal exact bootstrap
+        uses: ./.github/actions/execution-bootstrap
+        with:
+          capabilities: runtime,tests,lint
+          venv: .data227
+          command: python -m pytest
+          manifest: data227-execution-environment.json
+
+      - name: Focused static and contract tests
+        env:
+          PYTHONPATH: src
+        run: |
+          .data227/bin/python -m compileall -q src/twelve_six/data227_code_admission.py src/twelve_six/data/code_normalization.py
+          .data227/bin/ruff check --select E4,E9,F src/twelve_six/data227_code_admission.py tests/test_data227_code_admission.py
+          .data227/bin/python -m pytest -q tests/test_data227_code_admission.py tests/test_data24_rights_gate.py
+
+      - name: Acquire, normalize, D03-admit, dedupe, and stream Trainer
+        env:
+          PYTHONPATH: src
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          mkdir -p data227-evidence
+          .data227/bin/python -m twelve_six.data227_code_admission run \
+            --repo-root . \
+            --output-dir data227-evidence \
+            --source-sha "$EXPECTED_SOURCE_SHA" \
+            | tee data227-evidence/stdout.json
+
+      - name: Validate exact admission evidence
+        env:
+          PYTHONPATH: src
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          .data227/bin/python -m twelve_six.data227_code_admission validate \
+            data227-evidence/data227-real-code-source-admission.json \
+            --expected-source-sha "$EXPECTED_SOURCE_SHA"
+          .data227/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path("data227-evidence/data227-real-code-source-admission.json").read_text())
+          assert report["schema_version"] == "12-6.data227-real-code-source-admission.v2"
+          assert report["authority"] == "EXTERNAL_REAL_CODE_D03_ADMISSION_LOCAL_FREE"
+          assert report["source_family_count"] == 2
+          assert set(report["source_families"]) == {"github:encode/httpx", "github:psf/requests"}
+          assert report["admitted_object_count"] == 2
+          assert report["admitted_raw_bytes"] == 9703
+          assert report["blocked_prior_sources_reinterpreted"] is False
+          assert not report["deduplication"]["exact_duplicate_sha256"]
+          assert not report["deduplication"]["near_pairs"]
+          assert all(item["raw_sha256"] == item["normalization_sha256"] for item in report["objects"])
+          assert all(item["training_purpose_decision"] == "ALLOWED" for item in report["objects"])
+          assert all(item["redistribution_decision"] == "ALLOWED" for item in report["objects"])
+          assert all(item["model_training_eligible"] for item in report["eligibility_decisions"])
+          assert report["trainer_streaming_proof"]["passed"] is True
+          assert report["trainer_streaming_proof"]["optimizer_steps"] == 4
+          assert set(report["trainer_streaming_proof"]["source_ids_seen"]) == {
+              "code.encode.httpx._content",
+              "code.psf.requests._internal_utils",
+          }
+          PY
+
+      - name: Prove canonical raw snapshots are outside Git
+        run: |
+          .data227/bin/python - <<'PY'
+          import hashlib
+          import json
+          import subprocess
+          from pathlib import Path
+
+          report = json.loads(Path("data227-evidence/data227-real-code-source-admission.json").read_text())
+          for source in report["registry"]["sources"]:
+              uri = source["snapshot"]["uri"]
+              assert uri.startswith("file:data/external/snapshots/sha256/")
+              path = Path(uri.removeprefix("file:"))
+              payload = path.read_bytes()
+              assert len(payload) == source["snapshot"]["size_bytes"]
+              assert hashlib.sha256(payload).hexdigest() == source["snapshot"]["sha256"]
+              tracked = subprocess.run(
+                  ["git", "ls-files", "--error-unmatch", "--", path.as_posix()],
+                  stdout=subprocess.PIPE,
+                  stderr=subprocess.PIPE,
+                  text=True,
+              )
+              assert tracked.returncode != 0
+          PY
+
+      - name: Upload DATA-227 authority artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: data227-real-code-admission-${{ github.event.pull_request.head.sha || github.sha }}
+          if-no-files-found: error
+          retention-days: 90
+          path: |
+            configs/data/data227_code_rights_policy_v1.json
+            data227-execution-environment.json
+            data227-evidence/
+            data/external/snapshots/sha256/*/payload
