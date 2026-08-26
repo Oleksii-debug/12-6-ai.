@@ -1,0 +1,42 @@
+name: LEARN-345 20M campaign preregistration
+
+on:
+  push:
+    branches:
+      - "learn345/20m-campaign-preregistration-20260826"
+  pull_request:
+    paths:
+      - "evidence/learn345/**"
+      - "docs/LEARN345_20M_CAMPAIGN_PREREGISTRATION.md"
+      - "tools/validate_learn345_campaign_preregistration.py"
+      - "tests/test_learn345_campaign_preregistration.py"
+      - ".github/workflows/learn345-20m-campaign-preregistration.yml"
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Validate fail-closed preregistration
+        run: |
+          python tools/validate_learn345_campaign_preregistration.py
+          python -m pytest -q tests/test_learn345_campaign_preregistration.py
+      - name: Assert LOCAL_FREE and zero execution
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path("evidence/learn345/20m_campaign_preregistration_v1.json")
+          d = json.loads(p.read_text())
+          assert d["execution_profile"] == "LOCAL_FREE"
+          assert d["long_campaign_executed"] is False
+          assert d["optimizer_updates_executed"] == 0
+          assert d["truth_boundary"]["long_training_started"] is False
+          PY
