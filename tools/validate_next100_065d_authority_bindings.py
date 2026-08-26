@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 CONFIG = Path("configs/data/next100_065d_cross_source_dedup_v6.json")
+GUARD_CONFIG = Path("configs/data/next100_065d_convergence_guard_v1.json")
 REPO = "Oleksii-debug/12-6-ai."
 
 
@@ -18,13 +19,13 @@ def require(condition: bool, message: str) -> None:
         raise SystemExit(f"NEXT100-065D FAIL: {message}")
 
 
-def load_config() -> dict[str, Any]:
-    value = json.loads(CONFIG.read_text(encoding="utf-8"))
-    require(isinstance(value, dict), "config root must be object")
+def load_json(path: Path) -> dict[str, Any]:
+    value = json.loads(path.read_text(encoding="utf-8"))
+    require(isinstance(value, dict), f"{path}: config root must be object")
     return value
 
 
-def validate_static(config: dict[str, Any]) -> None:
+def validate_static(config: dict[str, Any], guard: dict[str, Any]) -> None:
     require(
         config.get("schema_version") == "12-6.next100-065d-cross-source-dedup.v6",
         "schema drift",
@@ -105,6 +106,42 @@ def validate_static(config: dict[str, Any]) -> None:
         "planning gap drift",
     )
 
+    require(
+        guard.get("schema_version") == "12-6.next100-065d-convergence-guard.v1",
+        "convergence guard schema drift",
+    )
+    require(guard.get("local_free_only") is True, "convergence guard LOCAL_FREE weakened")
+    cp = guard.get("post_v3_terminal_additions", {}).get("cpython_accepted_only", {})
+    require(cp.get("pr") == 567, "CPython accepted-only adapter PR drift")
+    require(
+        cp.get("head_sha") == "8f0cbc16f9a920ca9ab3e3061b53fbfec8838d77",
+        "CPython accepted-only adapter head drift",
+    )
+    require(cp.get("dedicated_workflow_run") == 33005689174, "CPython accepted-only run drift")
+    require(cp.get("dedicated_workflow_conclusion") == "success", "CPython accepted-only run not success")
+    require(cp.get("artifact_id") == 9620571005, "CPython accepted-only artifact id drift")
+    require(
+        cp.get("artifact_digest")
+        == "sha256:5c04e12f1100fd4012efc1cf693f213d1d7c9ababee2a16367897377cde60379",
+        "CPython accepted-only artifact digest drift",
+    )
+    require(cp.get("accepted_chunk_count") == 14, "CPython accepted chunk count drift")
+    require(cp.get("rejected_chunk_count") == 2, "CPython rejected chunk count drift")
+    require(cp.get("rejection_reasons") == {"pii_phone": 2}, "CPython rejection-reason drift")
+    require(cp.get("exact_eligible_capacity_bytes") == 15540, "CPython exact eligible capacity drift")
+
+    guard_vector = guard.get("expected_composed_vector_before_successor_global_dedup", {})
+    require(
+        guard_vector.get("capacity_bytes")
+        == {"uk": 100856, "en": 1838293, "code": 106031, "total": 2045180},
+        "convergence-guard composed capacity vector drift",
+    )
+    require(guard_vector.get("planning_gap_bytes") == 17954820, "convergence-guard planning gap drift")
+    require(
+        guard_vector.get("authorized_balanced_no_replay_loss_positions") == 0,
+        "convergence guard illegally authorizes loss positions",
+    )
+
     boundary = config.get("claim_boundary", {})
     for key in (
         "canonical_registry_replaced",
@@ -145,7 +182,7 @@ def validate_run(run_id: int, head_sha: str, label: str) -> None:
     require(run.get("conclusion") == "success", f"{label} dedicated run not success")
 
 
-def validate_live(config: dict[str, Any]) -> None:
+def validate_live(config: dict[str, Any], guard: dict[str, Any]) -> None:
     numpy = config["numpy"]
     numpy_pr = github_get(f"pulls/{numpy['pr']}")
     require(numpy_pr.get("head", {}).get("sha") == numpy["head_sha"], "NumPy PR head moved")
@@ -165,15 +202,25 @@ def validate_live(config: dict[str, Any]) -> None:
         "Gutenberg parent",
     )
 
+    cp = guard["post_v3_terminal_additions"]["cpython_accepted_only"]
+    cp_pr = github_get(f"pulls/{cp['pr']}")
+    require(cp_pr.get("head", {}).get("sha") == cp["head_sha"], "CPython accepted-only PR head moved")
+    validate_run(
+        int(cp["dedicated_workflow_run"]),
+        str(cp["head_sha"]),
+        "CPython accepted-only adapter",
+    )
+
 
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--github-live", action="store_true")
     args = parser.parse_args()
-    config = load_config()
-    validate_static(config)
+    config = load_json(CONFIG)
+    guard = load_json(GUARD_CONFIG)
+    validate_static(config, guard)
     if args.github_live:
-        validate_live(config)
+        validate_live(config, guard)
     print("NEXT100-065D AUTHORITY PASS")
     return 0
 
