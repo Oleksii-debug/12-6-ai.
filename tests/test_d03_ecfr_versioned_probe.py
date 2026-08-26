@@ -25,6 +25,8 @@ def test_frozen_probe_contract_validates_with_zero_authority() -> None:
     report = validate_probe_contract(_config())
 
     assert report["status"] == "PASS_ZERO_CREDIT_PROBE_CONTRACT"
+    assert report["titles_metadata_as_of"] == "2026-08-06"
+    assert report["reserved_titles"] == [35]
     assert report["family_credit"] == 0
     assert report["training_authorized_bytes"] == 0
     assert report["training_authorized_loss_positions"] == 0
@@ -35,13 +37,15 @@ def test_frozen_probe_contract_validates_with_zero_authority() -> None:
 def test_successor_request_is_point_in_time_and_deterministic() -> None:
     config = _config()
 
-    first = build_successor_request(config, request_date="2026-08-25", title=12)
-    second = build_successor_request(config, request_date="2026-08-25", title=12)
+    first = build_successor_request(config, request_date="2026-08-05", title=12)
+    second = build_successor_request(config, request_date="2026-08-05", title=12)
 
     assert first == second
     assert first["url"] == (
-        "https://www.ecfr.gov/api/versioner/v1/full/2026-08-25/title-12.xml"
+        "https://www.ecfr.gov/api/versioner/v1/full/2026-08-05/title-12.xml"
     )
+    assert first["titles_metadata_as_of"] == "2026-08-06"
+    assert first["reserved_title_check_passed"] is True
     assert first["two_byte_identical_acquisitions_required"] is True
     assert first["rights_and_provenance_status"] == "NOT_RUN"
     assert first["family_credit"] == 0
@@ -53,15 +57,36 @@ def test_successor_request_is_point_in_time_and_deterministic() -> None:
     assert identity == sha256_json(unhashed)
 
 
-def test_future_snapshot_request_fails_closed() -> None:
-    with pytest.raises(ProbeValidationError, match="newer than the frozen probe"):
-        build_successor_request(_config(), request_date="2026-08-27", title=1)
+def test_request_newer_than_available_titles_metadata_fails_closed() -> None:
+    with pytest.raises(ProbeValidationError, match="newer than the frozen eCFR titles metadata"):
+        build_successor_request(_config(), request_date="2026-08-07", title=1)
+
+
+def test_reserved_title_fails_closed() -> None:
+    with pytest.raises(ProbeValidationError, match="title 35 is reserved"):
+        build_successor_request(_config(), request_date="2026-08-05", title=35)
 
 
 @pytest.mark.parametrize("title", [0, 51, -1])
 def test_out_of_range_title_fails_closed(title: int) -> None:
     with pytest.raises(ProbeValidationError, match="between 1 and 50"):
-        build_successor_request(_config(), request_date="2026-08-25", title=title)
+        build_successor_request(_config(), request_date="2026-08-05", title=title)
+
+
+def test_metadata_date_drift_fails_closed() -> None:
+    config = _config()
+    config["source"]["titles_metadata_as_of"] = "2026-08-07"
+
+    with pytest.raises(ProbeValidationError, match="titles_metadata_as_of"):
+        validate_probe_contract(config)
+
+
+def test_reserved_title_inventory_drift_fails_closed() -> None:
+    config = _config()
+    config["source"]["reserved_titles_at_observation"] = []
+
+    with pytest.raises(ProbeValidationError, match="reserved_titles_at_observation"):
+        validate_probe_contract(config)
 
 
 def test_mutable_current_capacity_claim_fails_closed() -> None:
