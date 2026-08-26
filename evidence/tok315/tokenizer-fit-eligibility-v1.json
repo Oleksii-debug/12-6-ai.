@@ -1,0 +1,127 @@
+{
+  "canonical_byte_baseline": {
+    "config_blob_sha1": "cb3e6a305807e8653c27021f013d27be8124a320",
+    "config_path": "configs/s0/tokenizer_byte_v1.json",
+    "fit_required": false,
+    "tokenizer_version": "s0-byte-v1",
+    "type": "utf8-byte",
+    "vocab_size": 256,
+    "winner": false
+  },
+  "corpus_binding": {
+    "contract_git_blob_sha1": "39d4fa07ea17e66e042a3ccb1a55b8e5e1c5d7bf",
+    "contract_identity_sha256": "07d7beaaff4616e839450de6af3d407855c832bf75a24a959d1a12de5d9364e5",
+    "contract_path": "configs/data/data300_corpus_v03_frozen_build_contract_v2.json",
+    "contract_state": "FROZEN_EXECUTABLE_CONTRACT",
+    "corpus_state": "NOT_BUILT_NOT_FROZEN_NOT_TERMINAL",
+    "data300_head_sha": "8ea7f830e50a23754d189dd4134f4afad76a7ee9"
+  },
+  "evidence_sha256": "18c671ab50e99b79b96e5f030400b381c964ef9fc01924795de44af9cadb56f6",
+  "execution_profile": "LOCAL_FREE",
+  "future_bpe": {
+    "fit_may_start_now": false,
+    "may_read_final_test_for_fit": false,
+    "may_read_selection_validation_for_fit": false,
+    "required_inventory_sha256": "945afd3dbd144f81c8441adf92e7784259de3f21a4dd547e95893243dec6e90d",
+    "requires_data300_g08_pass": true,
+    "requires_materialized_training_bytes_identity": true,
+    "supported": true,
+    "winner": false
+  },
+  "proof": {
+    "bpe_fit_execution_permitted": false,
+    "note": "Exact source ingress excludes selection-validation/final-test authorities. Semantic byte-level non-overlap cannot be promoted until DATA-300 G08 passes on the materialized corpus.",
+    "reserved_byte_overlap": "BLOCKED_PENDING_DATA300_G08_ON_EXACT_MATERIALIZATION",
+    "source_membership_ingress": "PASS_EXACT_ALLOWLIST"
+  },
+  "repository": "Oleksii-debug/12-6-ai.",
+  "schema_version": "12-6.tok315-tokenizer-fit-eligibility.v1",
+  "separation": {
+    "eval233": {
+      "authority_blob_sha1": "2008570890819f32c356677e1e250707d339b53a",
+      "documents": 16,
+      "head_sha": "b5512b4648cb09dd052b08884dc53f291e1ce935",
+      "reserved_seed_blob_sha1": "4bfbfbf29fa9538cabda6068efd3a1fd036a9479",
+      "tokenizer_fit_eligible": false
+    },
+    "eval291": {
+      "head_sha": "27f4f731ad7197853a702879ba4c337cddc3a25c",
+      "records": 0
+    },
+    "eval292": {
+      "authority_identity_sha256": "9a9848a82c34588753c9dca1379b8fae49cd7f366017507fc412de0c38cad46f",
+      "head_sha": "2cbe2f2d9c74984baa69e49e520e2280fc76421b",
+      "records": 0,
+      "set_identity_sha256": "9fd52e879c388f06f0b103afa02d68678388867c81cfb0f27ddbf0ca18867054"
+    },
+    "filesystem_glob_or_fallback_allowed": false,
+    "final_test_ingress_count": 0,
+    "final_test_may_fit_tokenizer": false,
+    "selection_validation_ingress_count": 0,
+    "selection_validation_may_fit_tokenizer": false,
+    "unlisted_source_allowed": false
+  },
+  "status": "BLOCKED_PENDING_MATERIALIZED_RESERVED_DECONTAMINATION",
+  "tokenizer_training_inventory": {
+    "admitted_source_bytes": 183061,
+    "inventory_sha256": "945afd3dbd144f81c8441adf92e7784259de3f21a4dd547e95893243dec6e90d",
+    "resolution": "EXACT_DATA300_TRAINING_INVENTORY_ALLOWLIST_ONLY",
+    "source_count": 5,
+    "sources": [
+      {
+        "family": "en.standardebooks.manual",
+        "language": "en",
+        "modality": "text",
+        "normalized_bytes": 48002,
+        "normalized_sha256": "154fb4034929714087e75150d678bf65049ddac32e79dcdf97162c8972c2be83",
+        "raw_sha256": "21582c7f0e4ad39f2b0ed97bbc2c082d275e898b7a63c28e6d9badb8ee0f7860",
+        "source_id": "external-real:en.standardebooks.manual.8-typography",
+        "upstream_revision": "d1143a9b459b5e6f9cdda93a7c1e04676bff4f6b"
+      },
+      {
+        "family": "en.standardebooks.manual",
+        "language": "en",
+        "modality": "text",
+        "normalized_bytes": 36791,
+        "normalized_sha256": "94eb2f529922d125b3bd40691778886f4d5d80b128b925d0274fb3d94646ec5a",
+        "raw_sha256": "7ac53dfb4bf6f73f178560e09f33160d0250c69fb679802f3254dc0eb4c9f509",
+        "source_id": "external-real:en.standardebooks.manual.9-metadata",
+        "upstream_revision": "d1143a9b459b5e6f9cdda93a7c1e04676bff4f6b"
+      },
+      {
+        "family": "ua.rada.open-data.laws-texts",
+        "language": "uk",
+        "modality": "text",
+        "normalized_bytes": 88565,
+        "normalized_sha256": "72c301db0b2539f3f7a73c9c15e2e425700a6b758a1114f1a861e2d60c704c50",
+        "raw_sha256": "36eae31c3b0676ea7c02236fa05bd695c240c9a8eade5febc00457b8103ee1a4",
+        "source_id": "external-real:ua.rada.open-data.laws-texts.d23314"
+      },
+      {
+        "family": "github:encode/httpx",
+        "git_blob_sha1": "6f479a0885f723b7395843d41164a87041820776",
+        "language": "code",
+        "modality": "code",
+        "normalized_bytes": 8161,
+        "path": "httpx/_content.py",
+        "raw_sha256": "2c61b3ac94d1dcebcde0c6f519554d2d7917247fbaa0a97002db4ef69e70ff28",
+        "source_id": "external-real:code.encode.httpx._content",
+        "upstream_revision": "b5addb64f0161ff6bfe94c124ef76f6a1fba5254"
+      },
+      {
+        "family": "github:psf/requests",
+        "git_blob_sha1": "0466a7d347db4ed34a37db51b75fc8e80bc06055",
+        "language": "code",
+        "modality": "code",
+        "normalized_bytes": 1542,
+        "path": "src/requests/_internal_utils.py",
+        "raw_sha256": "4c7d8d132c9898fc7d715e473f3ac74785ddc4ab96d2c9240f87835dc6d981ff",
+        "source_id": "external-real:code.psf.requests._internal_utils",
+        "upstream_revision": "5460f467b02e49471c0fd6cfc9ca0adab6351f98"
+      }
+    ],
+    "sources_sha256": "6da9104da534b7f3a266926e1285d0e0519b893f23152d2b30f52260c4506ada"
+  },
+  "tokenizer_winner": "UNSELECTED",
+  "worker_id": "TOK-315-TOKENIZER-FIT-ELIGIBILITY"
+}
