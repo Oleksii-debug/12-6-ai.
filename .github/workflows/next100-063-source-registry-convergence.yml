@@ -1,0 +1,132 @@
+name: NEXT100-063 Source Registry Convergence
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/next100-063-source-registry-convergence.yml"
+      - "configs/data/next100_063_source_registry_convergence_cpython_v1.json"
+      - "src/twelve_six/data/source_registry_convergence_v1.py"
+      - "tests/test_next100_063_source_registry_convergence.py"
+      - "tools/run_next100_063_source_registry_convergence.py"
+      - "docs/NEXT100_063_SOURCE_REGISTRY_CONVERGENCE.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  converge-terminal-en-family:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Prove exact source head and green NEXT100-065 ancestor
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+          git merge-base --is-ancestor efc278cec0e4773eb4ff405bf4b4d24ee63b5d13 HEAD
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Universal exact LOCAL_FREE bootstrap
+        uses: ./.github/actions/execution-bootstrap
+        with:
+          capabilities: runtime,tests,lint
+          venv: .next100-063
+          command: python -m pytest -q tests/test_next100_063_source_registry_convergence.py
+          manifest: next100-063-execution-environment.json
+
+      - name: Compile focused implementation
+        run: >-
+          PYTHONPATH=src .next100-063/bin/python -m compileall -q
+          src/twelve_six/data/source_registry_convergence_v1.py
+          tools/run_next100_063_source_registry_convergence.py
+          tests/test_next100_063_source_registry_convergence.py
+
+      - name: Run fail-closed unit tests
+        run: >-
+          PYTHONPATH=src .next100-063/bin/python -m pytest -q
+          tests/test_next100_063_source_registry_convergence.py
+
+      - name: Focused lint
+        run: >-
+          .next100-063/bin/ruff check --select E4,E9,F
+          src/twelve_six/data/source_registry_convergence_v1.py
+          tools/run_next100_063_source_registry_convergence.py
+          tests/test_next100_063_source_registry_convergence.py
+
+      - name: Materialize exact convergence evidence twice
+        env:
+          PYTHONPATH: src
+        run: |
+          mkdir -p evidence/next100_063/a evidence/next100_063/b
+          .next100-063/bin/python tools/run_next100_063_source_registry_convergence.py run \
+            --config configs/data/next100_063_source_registry_convergence_cpython_v1.json \
+            --report evidence/next100_063/a/report.json
+          .next100-063/bin/python tools/run_next100_063_source_registry_convergence.py run \
+            --config configs/data/next100_063_source_registry_convergence_cpython_v1.json \
+            --report evidence/next100_063/b/report.json
+          cmp evidence/next100_063/a/report.json evidence/next100_063/b/report.json
+
+      - name: Verify exact scoped convergence and truth boundary
+        env:
+          PYTHONPATH: src
+        run: |
+          .next100-063/bin/python tools/run_next100_063_source_registry_convergence.py verify \
+            --report evidence/next100_063/a/report.json
+          .next100-063/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path("evidence/next100_063/a/report.json").read_text())
+          convergence = report["source_registry_convergence"]
+          addition = report["terminal_addition"]
+          dedup = report["dedup_report"]
+          boundary = report["claim_boundary"]
+
+          assert convergence["status"] == "PASS_SCOPED_TERMINAL_EN_FAMILY_CONVERGENCE"
+          assert convergence["source_count"] == 12
+          assert convergence["family_counts"] == {"code": 4, "en": 2, "uk": 2}
+          assert convergence["minimum_family_gate"] == "PASS"
+          assert addition["accepted_chunk_count"] == 14
+          assert addition["rejected_chunk_count"] == 2
+          assert addition["rejection_reasons"] == {"pii_phone": 2}
+          assert addition["declared_training_capacity_bytes"] > 0
+          assert dedup["source_count"] == 12
+          assert dedup["terminal_candidates"]["declared_capacity_bytes_before"] == (
+              243970 + addition["declared_training_capacity_bytes"]
+          )
+          assert report["model_training_executed"] is False
+          assert boundary["corpus_materialized"] is False
+          assert boundary["decontamination_pass_claimed"] is False
+          assert boundary["tokenizer_fit_authorized"] is False
+          assert boundary["training_authorized"] is False
+          assert boundary["paid_compute_used"] is False
+          assert boundary["twenty_megabyte_corpus_ready"] is False
+          PY
+
+      - name: Prove public evidence is text-free
+        run: |
+          ! grep -q '"text"' evidence/next100_063/a/report.json
+          ! grep -q 'raw.githubusercontent.com/python/cpython' evidence/next100_063/a/report.json
+
+      - name: Upload immutable NEXT100-063 evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: next100-063-source-registry-convergence-${{ github.event.pull_request.head.sha || github.sha }}
+          if-no-files-found: error
+          retention-days: 90
+          path: |
+            configs/data/next100_063_source_registry_convergence_cpython_v1.json
+            next100-063-execution-environment.json
+            evidence/next100_063/a/report.json
