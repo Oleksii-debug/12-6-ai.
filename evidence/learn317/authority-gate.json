@@ -1,0 +1,101 @@
+{
+  "schema_version": "12-6.learn317-external-real-500k-v2.authority-gate.v1",
+  "worker_id": "LEARN-317-EXTERNAL-REAL-500K-V2",
+  "repository": "Oleksii-debug/12-6-ai.",
+  "execution_profile": "LOCAL_FREE",
+  "base_data301": {
+    "branch": "data301/corpus-v03-terminal-build-20260826",
+    "head_sha": "d07b27ae399d104d2a01cb24b5a85fc4d9bcf800",
+    "authority_path": "configs/data/data301_corpus_v03_terminal_build_v1.json",
+    "authority_evidence_identity_sha256": "939065abeefff8aed924415589608ff3fc721fe4b0a57fc200146a4b6a137e81",
+    "terminal_status": "TERMINAL_BLOCKED",
+    "corpus_frozen": false,
+    "corpus_terminal": false,
+    "corpus_identity": null,
+    "shard_identity": null,
+    "authorized_balanced_no_replay_capacity": 0
+  },
+  "control": {
+    "scratch_only": true,
+    "foreign_weights_loaded": false,
+    "parameter_count": 467808,
+    "model_geometry": {
+      "d_model": 96,
+      "n_layers": 4,
+      "n_heads": 6,
+      "n_kv_heads": 6,
+      "head_dim": 16,
+      "ffn_dim": 256,
+      "sequence_length": 128,
+      "batch_size": 8
+    },
+    "model_spec_sha256": "208ac8ca113388e76f280d0154cae815785bee7705546f4d854d9447b9dd1f4a",
+    "init_spec_sha256": "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5",
+    "tokenizer": {
+      "id": "s0-byte-v1",
+      "kind": "canonical_byte",
+      "vocab_size": 256,
+      "special_token_count": 0,
+      "config_sha256": "b04055c1061dd641dcab7cb9d62a931f09b8d1a070140a926ceb4e91d73ca8e1",
+      "vocab_sha256": "905ed40bb42cc4d550e228ff5f24158d504b38e8ed5974dfa3077bd5867ad571"
+    },
+    "optimizer": {
+      "name": "AdamW",
+      "learning_rate": 0.0003,
+      "betas": [0.9, 0.95],
+      "eps": 1e-8,
+      "weight_decay": 0.0,
+      "schedule": "constant",
+      "warmup_steps": 0,
+      "global_grad_clip_norm": 1.0,
+      "precision": "fp32"
+    },
+    "seed": 1337,
+    "packing": "document_isolated",
+    "requested_target_cap": 948504,
+    "realized_target_cap_rule": "min(948504, exact_terminal_one_pass_unique_optimized_train_targets)",
+    "replay_allowed": false,
+    "sampling_with_replacement_allowed": false
+  },
+  "selection_protocol": {
+    "selection_validation_only_for_best_checkpoint": true,
+    "selection_checkpoint_fractions": [0.0, 0.25, 0.5, 0.75, 1.0],
+    "best_checkpoint_rule": "minimum frozen selection-validation aggregate BPB; deterministic tie-break to earliest checkpoint",
+    "final_test_may_be_read_before_selection_freeze": false,
+    "final_test_opened_by_learn317": false
+  },
+  "authority_gate": {
+    "training_authorized": false,
+    "optimizer_updates": 0,
+    "optimized_loss_positions_consumed": 0,
+    "replayed_loss_positions": 0,
+    "status": "BLOCKED_NO_FROZEN_TERMINAL_EXTERNAL_REAL_CORPUS",
+    "exact_blocker": "DATA-301 terminates blocked: the exact DATA-300 v2 inventory is infeasible under source-family diversity and nonempty selection-validation requirements; corpus_frozen=false, corpus_identity=null, and authorized balanced no-replay capacity=0. Starting training would violate the exact-frozen-candidate and no-replay requirements.",
+    "no_substitution": "Do not substitute DATA-25, project-authored, synthetic, prebuild candidate bytes, or any nonterminal corpus."
+  },
+  "required_run_evidence": {
+    "D05": {"status": "NOT_RUN_BLOCKED_UPSTREAM"},
+    "fresh_process_resume": {"status": "NOT_RUN_NO_CHECKPOINT"},
+    "bpb": {
+      "aggregate": null,
+      "ua": null,
+      "en": null,
+      "code": null,
+      "source_family": null,
+      "status": "NOT_RUN_NO_AUTHORIZED_TRAINING"
+    },
+    "gradient_telemetry": {"status": "NOT_RUN_NO_OPTIMIZER_UPDATES"},
+    "clip_telemetry": {"status": "NOT_RUN_NO_OPTIMIZER_UPDATES"},
+    "generation": {"status": "NOT_RUN_NO_CHECKPOINT"},
+    "final_test": {"status": "UNOPENED_SELECTION_NOT_FROZEN"}
+  },
+  "unblock_requirements": [
+    "A successor frozen corpus contract and terminal build must publish corpus and shard identities with nonzero exact one-pass balanced no-replay optimized-loss capacity.",
+    "At least two independently authorized training source families per UA, EN, and code stratum must satisfy the frozen balance/diversity authority without replay.",
+    "Exact Wave-3 quality and privacy authorities must pass on the successor inventory.",
+    "Exact/near dedup, evaluation decontamination, cluster-safe split, and full post-split unique-loss accounting must be terminal for that same corpus identity.",
+    "At least one nonempty immutable selection-validation authority required by the run must be terminal and proven disjoint from train and final-test bytes.",
+    "Two independent clean builds must yield byte-identical corpus/shard identities.",
+    "Only after those gates pass may LEARN-317 run D05, train locally up to the unique one-pass cap, select the best checkpoint on selection-validation, verify fresh-process resume, freeze selection, and then open final-test exactly once for reporting."
+  ]
+}
