@@ -54,6 +54,10 @@ def _is_sha256(value: Any) -> bool:
     return isinstance(value, str) and _SHA256_RE.fullmatch(value) is not None
 
 
+def _is_positive_int(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value > 0
+
+
 def _valid_authority_ref(value: Any, *, require_workflow: bool = False) -> bool:
     """Require a machine-addressable exact-head GitHub evidence reference."""
     if not isinstance(value, dict):
@@ -117,6 +121,13 @@ def _validate_envelope(data: dict[str, Any]) -> list[str]:
         ):
             if boundaries.get(key) is not False:
                 errors.append(f"truth_boundary_{key}_must_be_false")
+        for key in (
+            "source_bytes_are_not_loss_positions",
+            "training_exposure_is_not_unique_data",
+            "replay_cannot_inflate_unique_loss_ledger",
+        ):
+            if boundaries.get(key) is not True:
+                errors.append(f"truth_boundary_{key}_must_be_true")
     return errors
 
 
@@ -163,7 +174,7 @@ def assess_learned20m_readiness(data: dict[str, Any]) -> ReadinessAssessment:
     ledger = evidence.get("loss_ledger") if isinstance(evidence.get("loss_ledger"), dict) else {}
     _require_identity(local, ledger.get("identity_sha256"), "unique_loss_ledger_missing")
     positions = ledger.get("unique_causal_loss_positions")
-    if isinstance(positions, bool) or not isinstance(positions, int) or positions <= 0:
+    if not _is_positive_int(positions):
         local.append("unique_loss_positions_not_positive")
     _require_authority(
         local,
@@ -229,20 +240,28 @@ def assess_learned20m_readiness(data: dict[str, Any]) -> ReadinessAssessment:
         local.append("training_seed_plan_missing")
     _require_identity(local, recipe.get("config_sha256"), "training_config_identity_missing")
     _require_identity(local, recipe.get("stopping_policy_sha256"), "stopping_policy_missing")
+
     requested_positions = recipe.get("requested_unique_loss_positions")
-    if (
-        isinstance(requested_positions, bool)
-        or not isinstance(requested_positions, int)
-        or requested_positions <= 0
-    ):
+    if not _is_positive_int(requested_positions):
         local.append("requested_unique_loss_positions_not_positive")
-    elif (
-        isinstance(positions, int)
-        and not isinstance(positions, bool)
-        and positions > 0
-        and requested_positions > positions
-    ):
+    elif _is_positive_int(positions) and requested_positions > positions:
         local.append("requested_unique_loss_positions_exceed_ledger")
+
+    total_exposures = recipe.get("requested_total_training_exposures")
+    if not _is_positive_int(total_exposures):
+        local.append("requested_total_training_exposures_not_positive")
+
+    max_replay = recipe.get("max_exposures_per_unique_position")
+    if not _is_positive_int(max_replay):
+        local.append("max_exposures_per_unique_position_not_positive")
+
+    if _is_positive_int(requested_positions) and _is_positive_int(total_exposures):
+        if total_exposures < requested_positions:
+            local.append("total_training_exposures_below_unique_requirement")
+        if _is_positive_int(max_replay):
+            maximum_exposures = requested_positions * max_replay
+            if total_exposures > maximum_exposures:
+                local.append("total_training_exposures_exceed_replay_cap")
 
     local = sorted(set(local))
 
