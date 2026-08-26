@@ -1,0 +1,97 @@
+{
+  "authority": "LOCAL_FREE",
+  "bounded_probe": {
+    "data_role": "DETERMINISTIC_SYNTHETIC_MECHANICS_ONLY",
+    "optimized_causal_targets_per_lr": 8160,
+    "optimized_causal_targets_per_step": 255,
+    "optimizer_steps_per_lr": 32,
+    "permitted_statuses": [
+      "STABLE_MECHANICS_ONLY",
+      "UNSTABLE_MECHANICS_ONLY"
+    ],
+    "required_checks": [
+      "finite loss every step",
+      "finite pre-clip gradient norm every step",
+      "all trainable parameters finite after every committed update",
+      "exact optimizer step count",
+      "exact optimized causal target count",
+      "Trainer checkpoint-safe state after final step"
+    ],
+    "same_initial_weights_and_batch_trace_across_arms": true,
+    "seed": 20260826,
+    "total_optimized_causal_targets": 24480
+  },
+  "dependency_firewall": {
+    "active_checkpoint_remediation_pr": 532,
+    "checkpoint_integrity": "RETEST_REQUIRED_ACTIVE_REMEDIATION",
+    "learned_corpus_optimizer_updates_authorized": 0,
+    "long_training_authorized": false,
+    "paid_compute_authorized": false,
+    "rerun_or_refresh_required_after_data_and_d05_terminalization": true,
+    "research_corpus_v1": "BLOCKED_ZERO_AUTHORIZED_LEARNED_EXPOSURE"
+  },
+  "forbidden_claims": [
+    "best learning rate",
+    "learned 20M checkpoint",
+    "20M quality improvement",
+    "Research Corpus V1 readiness",
+    "checkpoint integrity PASS",
+    "long-training authorization",
+    "stage promotion",
+    "production readiness"
+  ],
+  "identity_sha256": "f212d051e80d65b9c731ea38dbe08b3e48d930f32caeb3da7becf68030613f21",
+  "optimizer": {
+    "betas": [
+      0.9,
+      0.95
+    ],
+    "deterministic_algorithms": true,
+    "eps": 1e-08,
+    "gradient_accumulation_steps": 1,
+    "gradient_clip_norm": 1.0,
+    "learning_rate_candidates": [
+      0.00016,
+      0.00022,
+      0.00026
+    ],
+    "micro_batch_size": 1,
+    "name": "AdamW",
+    "precision": "fp32",
+    "scheduler": "constant",
+    "selection_authority": "NONE",
+    "sequence_length": 256,
+    "warmup_steps": 0,
+    "weight_decay": 0.1
+  },
+  "purpose": "bind the frozen TRAIN-344 optimizer mechanics probe to the exact mechanically-qualified MODEL-341 primary candidate without granting learned-training authority",
+  "schema": "12-6.train344b-model341-optimizer-mechanics.v2",
+  "source_contract": {
+    "frozen_optimizer_semantics_reused": true,
+    "head_sha": "c0dcdd8ea5b8e974a262bc8f4dacb6589763a608",
+    "pr": 429,
+    "worker_id": "TRAIN-344-20M-OPTIMIZER-TRANSFER-CONTRACT"
+  },
+  "target_model": {
+    "authority_branch": "model341/20m-candidate-a-20260826",
+    "authority_sha": "e4ff486fd90802fc123bebf60eed4e59196a98df",
+    "canonical_base": "random_init",
+    "config_content_sha256": "ab4cb11bf5982c44e487b7d32cfcc1b1b858cb2302ff46d6c4c92a4eb0962218",
+    "config_git_blob_sha1": "69e3cbd5f5c83c9d3d529a2a6376db3055979c40",
+    "config_path": "configs/candidates/model341_20m_candidate_a.json",
+    "context_length": 1024,
+    "geometry": {
+      "d_ff": 1080,
+      "d_model": 320,
+      "head_dim": 32,
+      "n_heads": 10,
+      "n_kv_heads": 2,
+      "n_layers": 16
+    },
+    "init_spec_sha256": "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5",
+    "model_spec_sha256": "fbff24d561a2818453554d58ca23fc6ace3303b078f1935a8576c4565bd92441",
+    "parameter_count": 20613440,
+    "vocab_size": 256
+  },
+  "worker_id": "TRAIN-344B-MODEL341-OPTIMIZER-MECHANICS"
+}
