@@ -1,0 +1,90 @@
+name: EVAL-292 Code Selection Validation V1
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/eval292-code-selection-validation-v1.yml"
+      - "evidence/eval292/**"
+      - "evidence/eval233/real-holdout-v2-authority.json"
+      - "src/twelve_six/eval292_code_selection_validation.py"
+      - "tests/test_eval292_code_selection_validation.py"
+
+permissions:
+  contents: read
+
+env:
+  PYTHONPATH: src
+
+jobs:
+  immutable-code-selection-validation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Prove exact source checkout
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+      - name: Universal exact execution bootstrap
+        uses: ./.github/actions/execution-bootstrap
+        with:
+          capabilities: runtime,tests
+          venv: .eval292
+          manifest: eval292-environment.json
+          command: python -m pytest -q tests/test_eval292_code_selection_validation.py
+      - name: Focused contracts
+        run: |
+          set -euo pipefail
+          .eval292/bin/python -m compileall -q \
+            src/twelve_six/eval292_code_selection_validation.py
+          .eval292/bin/python -m pytest -q \
+            tests/test_eval292_code_selection_validation.py
+      - name: Deterministic rebuild
+        run: |
+          set -euo pipefail
+          .eval292/bin/python -m twelve_six.eval292_code_selection_validation \
+            build --repo-root . --output-dir eval292-evidence
+          .eval292/bin/python -m twelve_six.eval292_code_selection_validation \
+            verify --repo-root . --manifest eval292-evidence/manifest.json
+          cmp \
+            evidence/eval292/code-selection-validation-v1.json \
+            eval292-evidence/manifest.json
+      - name: Assert fail-closed separation
+        run: |
+          set -euo pipefail
+          .eval292/bin/python - <<'PY'
+          import json
+
+          path = "eval292-evidence/manifest.json"
+          value = json.load(open(path, encoding="utf-8"))
+          assert value["verdict"]["status"] == "BLOCKED"
+          assert value["verdict"]["release_allowed"] is False
+          assert value["selection_set"]["documents"] == 0
+          assert value["selection_set"]["records"] == []
+          assert value["selection_set"]["unique_content_bytes"] == 0
+          assert value["separation"]["future_training_source_id_overlap_count"] == 0
+          assert value["separation"]["selected_content_hash_overlap_count"] == 0
+          assert value["separation"]["final_test_records_copied"] == 0
+          assert value["separation"]["final_test_outcomes_inspected"] is False
+          assert value["separation"]["final_test_bytes_consumed"] is False
+          for candidate in value["candidates"]:
+              assert candidate["selection_admitted"] is False
+              assert candidate["evaluation_use_explicitly_authorized"] is False
+              assert candidate["reserved_from_all_training"] is False
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: eval292-code-selection-validation-v1
+          path: |
+            eval292-environment.json
+            eval292-evidence/manifest.json
+          if-no-files-found: error
+          retention-days: 30
