@@ -4,11 +4,19 @@ on:
   pull_request:
     paths:
       - "configs/data/research_corpus_v1_predecontam_blocker_v1.json"
+      - "configs/data/research_corpus_v1_predecontam_blocker_v2.json"
       - "tools/validate_data526_research_corpus_predecontam.py"
+      - "tools/validate_data526_research_corpus_predecontam_v2.py"
       - "tests/test_data526_research_corpus_predecontam.py"
+      - "tests/test_data526_research_corpus_predecontam_v2.py"
       - "docs/DATA526_RESEARCH_CORPUS_V1_PREDECONTAM.md"
+      - "docs/DATA526_RESEARCH_CORPUS_V1_PREDECONTAM_V2.md"
       - ".github/workflows/data526-research-corpus-v1-predecontam.yml"
   workflow_dispatch:
+
+concurrency:
+  group: data526-predecontam-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -19,30 +27,47 @@ jobs:
     timeout-minutes: 10
     env:
       TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ env.SOURCE_SHA }}
+          fetch-depth: 1
           persist-credentials: false
+
+      - name: Prove exact checkout
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
 
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.11.16"
 
-      - name: Validate blocker authority
+      - name: Validate historical V1 blocker authority
         run: python tools/validate_data526_research_corpus_predecontam.py
 
+      - name: Validate current V2 blocker authority
+        run: python tools/validate_data526_research_corpus_predecontam_v2.py
+
       - name: Run fail-closed mutation tests
-        run: python -m unittest -v tests.test_data526_research_corpus_predecontam
+        run: >-
+          python -m unittest -v
+          tests.test_data526_research_corpus_predecontam
+          tests.test_data526_research_corpus_predecontam_v2
 
       - name: Assert no execution promotion
         run: |
           python - <<'PY'
           import json
           from pathlib import Path
-          doc = json.loads(Path("configs/data/research_corpus_v1_predecontam_blocker_v1.json").read_text())
-          assert doc["status"] == "BLOCKED_WAIT_SOURCE_CONVERGENCE"
+          doc = json.loads(Path("configs/data/research_corpus_v1_predecontam_blocker_v2.json").read_text())
+          assert doc["status"] == "BLOCKED_WAIT_SOURCE_AND_GLOBAL_DEDUP_TERMINAL"
+          assert doc["source_convergence_candidate"]["terminal_authority_consumed"] is False
+          assert doc["global_dedup_candidate"]["terminal_authority_consumed"] is False
+          assert doc["global_dedup_candidate"]["post_dedup_report_sha256"] is None
+          assert doc["global_dedup_candidate"]["post_dedup_unique_capacity_bytes"] is None
           assert doc["candidate_freeze"]["frozen"] is False
           assert doc["candidate_freeze"]["candidate_set_digest_sha256"] is None
+          assert doc["claim_boundary"]["source_bytes_are_training_tokens"] is False
           assert doc["claim_boundary"]["authorized_unique_optimized_targets"] == 0
           assert doc["claim_boundary"]["training_executed"] is False
           assert doc["claim_boundary"]["paid_compute_used"] is False
