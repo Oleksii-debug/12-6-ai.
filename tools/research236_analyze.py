@@ -68,6 +68,7 @@ def _validate_cell(
     corpus: str,
     seed: int,
     eval_set_identities: dict[str, str],
+    external_corpus_identity: str,
 ) -> None:
     if cell.get("scale") != scale or cell.get("corpus") != corpus or int(cell.get("seed", -1)) != seed:
         raise ValueError(f"cell identity mismatch for {scale}/{corpus}/seed{seed}")
@@ -99,8 +100,8 @@ def _validate_cell(
         raise ValueError("arm did not start from random initialization")
     if corpus == "data25" and cell.get("training_corpus_identity") != DATA25_ID:
         raise ValueError("DATA-25 identity mismatch")
-    if corpus == "external_real" and not cell.get("training_corpus_identity"):
-        raise ValueError("external-real corpus identity missing")
+    if corpus == "external_real" and cell.get("training_corpus_identity") != external_corpus_identity:
+        raise ValueError("external-real corpus identity mismatch")
 
     metrics = cell.get("metrics", {})
     train_bpb = float(metrics["train_bpb"])
@@ -249,6 +250,10 @@ def analyze(payload: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("worker id mismatch")
     if payload.get("data230_terminal_identity") in {None, ""}:
         raise ValueError("missing terminal DATA-230 identity")
+    external_corpus_identity = payload.get("external_corpus_identity")
+    if external_corpus_identity in {None, ""}:
+        raise ValueError("missing external corpus identity")
+    external_corpus_identity = str(external_corpus_identity)
     required_eval_ids = (
         "data25_selection_identity",
         "external_selection_identity",
@@ -283,6 +288,7 @@ def analyze(payload: dict[str, Any]) -> dict[str, Any]:
                     corpus=corpus,
                     seed=seed,
                     eval_set_identities=eval_set_identities,
+                    external_corpus_identity=external_corpus_identity,
                 )
                 rows.setdefault(seed, {})[corpus] = cell
 
@@ -325,6 +331,8 @@ def analyze(payload: dict[str, Any]) -> dict[str, Any]:
         "worker_id": WORKER_ID,
         "matched_actual_optimized_tokens": MATCHED_OPTIMIZED_TOKENS,
         "paired_seeds": list(PAIRED_SEEDS),
+        "data230_terminal_identity": str(payload["data230_terminal_identity"]),
+        "external_corpus_identity": external_corpus_identity,
         "evaluation_set_identities": eval_set_identities,
         "scales": out_scales,
         "conclusion": conclusion,
