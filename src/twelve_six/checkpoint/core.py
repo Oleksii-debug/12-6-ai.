@@ -356,14 +356,26 @@ def _materialize_for_target(array: np.ndarray, target: Any) -> Any:
             raise CheckpointCompatibilityError(
                 f"shape mismatch: checkpoint {tuple(array.shape)} vs target {tuple(target.shape)}"
             )
-        return array.astype(target.dtype, copy=True)
+        if array.dtype != target.dtype:
+            raise CheckpointCompatibilityError(
+                f"dtype mismatch: checkpoint {array.dtype} vs target {target.dtype}"
+            )
+        return array.copy()
     cls = target.__class__
     if cls.__module__.startswith("torch") and cls.__name__ in {"Tensor", "Parameter"}:
         torch = importlib.import_module("torch")
-        if str(target.dtype) == "torch.bfloat16" and array.dtype == np.uint16:
+        if str(target.dtype) == "torch.bfloat16":
+            if array.dtype != np.uint16:
+                raise CheckpointCompatibilityError(
+                    f"dtype mismatch: checkpoint {array.dtype} vs target {target.dtype}"
+                )
             tensor = torch.from_numpy(array.copy()).view(torch.bfloat16)
         else:
-            tensor = torch.from_numpy(array.copy()).to(dtype=target.dtype)
+            tensor = torch.from_numpy(array.copy())
+            if tensor.dtype != target.dtype:
+                raise CheckpointCompatibilityError(
+                    f"dtype mismatch: checkpoint {tensor.dtype} vs target {target.dtype}"
+                )
         if tuple(target.shape) != tuple(tensor.shape):
             raise CheckpointCompatibilityError(
                 f"shape mismatch: checkpoint {tuple(tensor.shape)} vs target {tuple(target.shape)}"
@@ -408,6 +420,95 @@ def _state_dict_or_none(obj: Any | None) -> Any | None:
     if not hasattr(obj, "state_dict"):
         raise TypeError(f"{type(obj).__name__} must provide state_dict()")
     return obj.state_dict()
+
+
+def _preflight_optimizer_state(optimizer: Any, state: Any) -> None:
+    """Reject malformed PyTorch per-parameter state before mutating any target.
+
+    PyTorch maps serialized parameter ids to live parameters by group order and
+    does not validate the shapes of per-parameter tensors during load. A bad
+    momentum/EMA buffer can therefore survive ``load_state_dict`` and fail only
+    on the next optimizer step. Checkpoint-v1 fails closed before model load.
+    Custom optimizer formats without ``param_groups`` retain their existing
+    loader contract.
+    """
+
+    if not isinstance(state, Mapping):
+        raise CheckpointCompatibilityError("optimizer state must be a mapping")
+    live_groups = getattr(optimizer, "param_groups", None)
+    if live_groups is None:
+        return
+    saved_groups = state.get("param_groups")
+    saved_state = state.get("state")
+    if not isinstance(live_groups, list):
+        raise CheckpointCompatibilityError("optimizer param_groups must be a list")
+    if not isinstance(saved_groups, list) or not isinstance(saved_state, Mapping):
+        raise CheckpointCompatibilityError("checkpoint optimizer state is structurally invalid")
+    if len(saved_groups) != len(live_groups):
+        raise CheckpointCompatibilityError(
+            "checkpoint optimizer parameter-group count differs from target"
+        )
+
+    id_to_param: dict[Any, Any] = {}
+    for group_index, (saved_group, live_group) in enumerate(
+        zip(saved_groups, live_groups, strict=True)
+    ):
+        if not isinstance(saved_group, Mapping) or not isinstance(live_group, Mapping):
+            raise CheckpointCompatibilityError(
+                f"optimizer parameter group {group_index} must be a mapping"
+            )
+        saved_params = saved_group.get("params")
+        live_params = live_group.get("params")
+        if not isinstance(saved_params, (list, tuple)) or not isinstance(
+            live_params, (list, tuple)
+        ):
+            raise CheckpointCompatibilityError(
+                f"optimizer parameter group {group_index} params must be a sequence"
+            )
+        if len(saved_params) != len(live_params):
+            raise CheckpointCompatibilityError(
+                f"optimizer parameter group {group_index} size differs from target"
+            )
+        for saved_id, param in zip(saved_params, live_params, strict=True):
+            if saved_id in id_to_param:
+                raise CheckpointCompatibilityError(
+                    f"checkpoint optimizer parameter id is duplicated: {saved_id!r}"
+                )
+            id_to_param[saved_id] = param
+
+    for saved_id, param_state in saved_state.items():
+        if saved_id not in id_to_param:
+            raise CheckpointCompatibilityError(
+                f"checkpoint optimizer state references unknown parameter id {saved_id!r}"
+            )
+        if not isinstance(param_state, Mapping):
+            raise CheckpointCompatibilityError(
+                f"checkpoint optimizer state for parameter {saved_id!r} must be a mapping"
+            )
+        param = id_to_param[saved_id]
+        param_shape = tuple(getattr(param, "shape", ()))
+        for state_name, value in param_state.items():
+            value_shape: tuple[int, ...] | None = None
+            is_scalar = False
+            if isinstance(value, np.ndarray):
+                value_shape = tuple(value.shape)
+                is_scalar = value.ndim == 0 or (state_name == "step" and value.size == 1)
+            else:
+                cls = value.__class__
+                if cls.__module__.startswith("torch") and cls.__name__ in {
+                    "Tensor",
+                    "Parameter",
+                }:
+                    value_shape = tuple(value.shape)
+                    is_scalar = value.ndim == 0 or (
+                        state_name == "step" and value.numel() == 1
+                    )
+            if value_shape is not None and not is_scalar and value_shape != param_shape:
+                raise CheckpointCompatibilityError(
+                    "optimizer tensor shape mismatch for "
+                    f"parameter {saved_id!r} state {state_name!r}: "
+                    f"checkpoint {value_shape} vs target {param_shape}"
+                )
 
 
 def _artifact_record(path: Path) -> dict[str, Any]:
@@ -617,7 +718,24 @@ def _validate_manifest_identity(identity: Any) -> None:
         lock_hash = identity.get("environment_lock_hash")
         if lock_hash is not None:
             _require_exact_hex(lock_hash, field="identity.environment_lock_hash", lengths={64})
-    except ValueError as exc:
+        CheckpointIdentity(
+            git_sha=identity.get("git_sha"),
+            model_spec=identity.get("model_spec"),
+            parameter_count=identity.get("parameter_count"),
+            tokenizer_hash=identity.get("tokenizer_hash"),
+            tokenizer_vocab_hash=identity.get("tokenizer_vocab_hash"),
+            dataset_manifest_hash=identity.get("dataset_manifest_hash"),
+            run_manifest_hash=identity.get("run_manifest_hash"),
+            training_config=identity.get("training_config"),
+            seed=identity.get("seed"),
+            precision=identity.get("precision"),
+            step=identity.get("step"),
+            tokens_seen=identity.get("tokens_seen"),
+            optimizer=identity.get("optimizer"),
+            scheduler=identity.get("scheduler"),
+            environment_lock_hash=lock_hash,
+        ).validate()
+    except (TypeError, ValueError) as exc:
         raise CheckpointIntegrityError(str(exc)) from exc
 
     hash_pairs = (
@@ -646,7 +764,6 @@ def prepare_checkpoint_load(directory: str | Path) -> VerifiedCheckpoint:
     checksum_bytes = _read_regular_bytes(root, MANIFEST_CHECKSUM_NAME)
     manifest = _parse_manifest_bytes(manifest_bytes, checksum_bytes)
     _validate_manifest_identity(manifest.get("identity"))
-
     files = manifest.get("files")
     if not isinstance(files, dict) or set(files) != _PAYLOAD_NAMES:
         raise CheckpointIntegrityError(
@@ -786,12 +903,14 @@ def load_verified_checkpoint(
         raise CheckpointCompatibilityError(
             "scheduler was requested but checkpoint has no scheduler state"
         )
+    if optimizer is not None:
+        _preflight_optimizer_state(optimizer, combined_state["optimizer"])
     if restore_rng:
         _preflight_rng_state(combined_state["rng"])
 
     # No checkpoint byte is reopened after this point. All integrity, identity,
-    # payload decoding, model-shape and supported RNG compatibility checks above
-    # completed before the first mutation.
+    # payload decoding, model dtype/shape, optimizer tensor-shape, and supported
+    # RNG compatibility checks above completed before the first target mutation.
     _apply_model_weights(model, materialized, strict_model)
     if optimizer is not None:
         optimizer.load_state_dict(combined_state["optimizer"])
