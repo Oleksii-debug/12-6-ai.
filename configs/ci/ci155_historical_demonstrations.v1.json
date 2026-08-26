@@ -1,0 +1,50 @@
+{
+  "schema": "12-6.ci155-historical-demonstrations.v1",
+  "cases": [
+    {
+      "id": "EVAL-137",
+      "pr": 271,
+      "historical_red_source_sha": "11d41ac1d9144dd9400b15194930ea61ffd85924",
+      "historical_run_id": 32901119997,
+      "historical_job_id": 97974970778,
+      "scientific_surface_after_local_fix_sha": "7693dc7437fae951165b8ba2838feee6b8620b10",
+      "scientific_paths": [
+        "tools/run_source_generalization.py",
+        "tests/test_source_generalization.py",
+        "configs/experiments/eval137_source_generalization.json",
+        ".github/workflows/eval137-source-generalization.yml"
+      ],
+      "unrelated_repository_ruff_failures": [
+        "src/twelve_six/training/source_intake.py",
+        "src/twelve_six/training/observability.py",
+        "src/twelve_six/training/optimization_experiments.py",
+        "tests/test_batch_noise_optimization.py",
+        "tests/test_external_source_intake.py"
+      ],
+      "experiment_local_ruff_failures_at_red_sha": ["tools/run_source_generalization.py"],
+      "experiment_local_failure_fixed_before_demo": true,
+      "expected_local_gate_after_fix": "ELIGIBLE_TO_EXECUTE_IF_FOCUSED_TESTS_PASS",
+      "expected_integration_gate_at_historical_red_sha": "RED"
+    },
+    {
+      "id": "TRAIN-43-45",
+      "pr": 203,
+      "historical_red_source_sha": "764698f63151637273f3dd19cdf2b69599abf068",
+      "historical_run_id": 32861954219,
+      "historical_job_id": 97847862068,
+      "forced_unrelated_cleanup_sha": "4a398c1b476e35b72091e77f17de33da8a3f742d",
+      "scientific_paths": [
+        "tools/run_train43_45_stability.py",
+        "tests/test_train43_45_stability.py",
+        "configs/experiments/train43_45_stability.json",
+        ".github/workflows/train43-45-stability.yml"
+      ],
+      "unrelated_repository_ruff_failures": ["src/twelve_six/training/optimization_experiments.py"],
+      "experiment_local_ruff_failures_at_red_sha": ["tools/run_train43_45_stability.py"],
+      "experiment_local_failure_fixed_before_demo": false,
+      "expected_local_gate_after_fix": "BLOCKED_BY_OWN_EXE001_UNTIL_FIXED",
+      "expected_integration_gate_at_historical_red_sha": "RED",
+      "note": "The new contract removes the unrelated RUF046 prerequisite but correctly does not waive the experiment's own EXE001 defect."
+    }
+  ]
+}
