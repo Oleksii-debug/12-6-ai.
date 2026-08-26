@@ -19,8 +19,10 @@ jobs:
       PYTHONPATH: src
       OMP_NUM_THREADS: "2"
       MKL_NUM_THREADS: "2"
-      M150_SOURCE_SHA: ${{ github.event.pull_request.base.sha || '8344085ddd0b52e4b698c3344a1d0482153525dc' }}
-      M150_WORKFLOW: milestone150-learned-base-ladder-v1.yml
+      M150_SOURCE_SHA: "5838cd16869dcfcf762368d8673eddf52d51b7e3"
+      M150_RUN_ID: "32937411703"
+      M150_ARTIFACT_ID: "9595677772"
+      M150_ARTIFACT_DIGEST: "sha256:c00b7e9006320f8916c739a3311e8cc47ad0d0b16957f8ebd7d19233fd9f1c71"
       M150_ARTIFACT_NAME: milestone150-learned-base-ladder-v1
     steps:
       - name: Checkout exact recovery head
@@ -67,34 +69,19 @@ jobs:
             tests/test_recover177_eval134_m150.py \
             tests/test_milestone150_learned_base_ladder.py
 
-      - name: Require exact live M150 producer success
+      - name: Require frozen M150 evidence incumbent
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          completed=0
-          run_id=""
-          for _ in $(seq 1 300); do
-            run_id=$(gh api \
-              "repos/$GH_REPO/actions/workflows/$M150_WORKFLOW/runs?head_sha=$M150_SOURCE_SHA&per_page=20" \
-              --jq '.workflow_runs | sort_by(.created_at) | last | .id // empty')
-            if [ -n "$run_id" ]; then
-              read -r status conclusion head_sha < <(
-                gh api "repos/$GH_REPO/actions/runs/$run_id" \
-                  --jq '[.status, (.conclusion // ""), .head_sha] | @tsv'
-              )
-              test "$head_sha" = "$M150_SOURCE_SHA"
-              if [ "$status" = "completed" ]; then
-                test "$conclusion" = "success"
-                completed=1
-                break
-              fi
-            fi
-            sleep 20
-          done
-          test "$completed" = "1"
-          echo "M150_RUN_ID=$run_id" >> "$GITHUB_ENV"
+          read -r status conclusion head_sha < <(
+            gh api "repos/$GH_REPO/actions/runs/$M150_RUN_ID" \
+              --jq '[.status, (.conclusion // ""), .head_sha] | @tsv'
+          )
+          test "$status" = "completed"
+          test "$conclusion" = "success"
+          test "$head_sha" = "$M150_SOURCE_SHA"
 
       - name: Download exact M150 retained artifact
         env:
@@ -106,7 +93,8 @@ jobs:
             --jq ".artifacts[] | select(.name == \"$M150_ARTIFACT_NAME\") | .id")
           artifact_digest=$(gh api "repos/$GH_REPO/actions/runs/$M150_RUN_ID/artifacts" \
             --jq ".artifacts[] | select(.name == \"$M150_ARTIFACT_NAME\") | (.digest // \"\")")
-          test -n "$artifact_id"
+          test "$artifact_id" = "$M150_ARTIFACT_ID"
+          test "$artifact_digest" = "$M150_ARTIFACT_DIGEST"
           printf '%s\n' "$artifact_id" > .m150-artifact-id
           printf '%s\n' "$artifact_digest" > .m150-artifact-digest
           gh run download "$M150_RUN_ID" --repo "$GH_REPO" \
@@ -166,7 +154,7 @@ jobs:
           from pathlib import Path
           r = json.loads(Path("recover177-evidence/eval134-m150-code-recovery.json").read_text())
           lines = [
-              "### RECOVER-177 exact-head EVAL-134 evidence",
+              "### RECOVER-177 frozen-incumbent EVAL-134 evidence",
               "",
               f"- M150 producer: `{r['producer']['git_sha']}` / run `{r['producer']['workflow_run_id']}`",
               f"- M150 ladder report: `{r['producer']['ladder_report_sha256']}`",
