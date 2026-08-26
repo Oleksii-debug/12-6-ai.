@@ -8,10 +8,10 @@
     "head_sha": "74b792a8b28a4ba9244385d608ad348a5a9efcf3",
     "report_sha256": "274ce5aafdbbf9e64a393d66bd8aa98e49001aae79408fb30a7a3ec38b1f0305"
   },
-  "capacity_semantics": "Source-authority declared normalized training capacity for text and identity-preserved source bytes for code. This is pre-corpus source capacity, not a final post-evaluation-reservation or post-quality/privacy training ledger.",
+  "capacity_semantics": "Source-authority declared training-eligible normalized capacity for text and identity-preserved source bytes for code. For CPython documentation, capacity is only the 14 D03-accepted chunks (15540 UTF-8 bytes); the two pii_phone-rejected chunks are not credited. This is pre-corpus source capacity, not a final post-evaluation-reservation or post-quality/privacy training ledger.",
   "final_refresh_required": true,
-  "terminal_refresh_cutoff_utc": "2026-08-26T18:20:54Z",
-  "terminal_refresh_rule": "Only an exact current authority head with its dedicated admission/qualification workflow completed successfully is credited. Queued, in-progress, failed, probe, RETEST, and PR-text-only claims receive zero capacity.",
+  "terminal_refresh_cutoff_utc": "2026-08-26T18:22:58Z",
+  "terminal_refresh_rule": "Only an exact current authority head with its dedicated admission/qualification workflow completed successfully by the stated cutoff is credited. Queued, in-progress, failed, probe, RETEST, and PR-text-only claims receive zero capacity.",
   "sources": [
     {
       "source_id": "en.standardebooks.manual.8-typography",
@@ -42,6 +42,21 @@
       "origin_key": "github:standardebooks/manual:d1143a9b459b5e6f9cdda93a7c1e04676bff4f6b:9-metadata.rst"
     },
     {
+      "source_id": "en.python.docs.tutorial-introduction",
+      "source_family": "python.cpython.documentation",
+      "stable_origin_id": "github:python/cpython:official-documentation",
+      "stable_object_id": "git-sha1:465c32d0b72431cc446aae7edeb6b829c657b243",
+      "modality": "en",
+      "evidence_status": "DEDICATED_TERMINAL",
+      "authority_ref": "NEXT100-037 exact head 5a6a495a24bce449334cbc5126d0114f61a9f57c workflow 32998356906 authority 46a00dc70db690ae2b3c4495a75283e7e752bdccb1047d4318c2ebadfa392f0d",
+      "declared_capacity_bytes": 15540,
+      "expected_raw_bytes": 19188,
+      "expected_raw_sha256": "cf1674daf9568abeb5fc22f62a991e17751fea4deb06f598362ce6e7de264808",
+      "expected_git_blob_sha1": "465c32d0b72431cc446aae7edeb6b829c657b243",
+      "acquisition_url": "https://raw.githubusercontent.com/python/cpython/7f0ccd6c0e3f85fbaeceb2f67b06ab3631db0480/Doc/tutorial/introduction.rst",
+      "origin_key": "github:python/cpython:7f0ccd6c0e3f85fbaeceb2f67b06ab3631db0480:Doc/tutorial/introduction.rst"
+    },
+    {
       "source_id": "ua.rada.open-data.laws-texts.d23314",
       "source_family": "ua.rada.open-data.laws-texts",
       "stable_origin_id": "publisher:verkhovna-rada-open-data:laws-texts",
@@ -54,6 +69,104 @@
       "expected_raw_sha256": "36eae31c3b0676ea7c02236fa05bd695c240c9a8eade5febc00457b8103ee1a4",
       "acquisition_url": "https://data.rada.gov.ua/ogd/zak/perv/text/d23314.htm",
       "origin_key": "rada-open-data:laws-texts/bounded-2026-08-25:https://data.rada.gov.ua/ogd/zak/perv/text/d23314.htm"
+    },
+    {
+      "source_id": "ua.wikisource.lesia-ukrainka.na-krylah-pisen.1892.page13",
+      "source_family": "ua.literature.lesia-ukrainka.na-krylah-pisen.1892-lviv",
+      "stable_origin_id": "edition:lesia-ukrainka:na-krylah-pisen:1892-lviv",
+      "stable_object_id": "sha256:65e570c3cd954b595b586554b89a90da6efad0deca6a84d2316937745db17ef2",
+      "modality": "uk",
+      "evidence_status": "DEDICATED_TERMINAL",
+      "authority_ref": "NEXT100-022 exact head 84c51e42b6daa51796fd20d793b5ef1ff01cc9d2 workflow 32998002424",
+      "declared_capacity_bytes": 1479,
+      "expected_raw_bytes": 1479,
+      "expected_raw_sha256": "65e570c3cd954b595b586554b89a90da6efad0deca6a84d2316937745db17ef2",
+      "acquisition_url": "https://raw.githubusercontent.com/Oleksii-debug/12-6-ai./84c51e42b6daa51796fd20d793b5ef1ff01cc9d2/data/external/snapshots/next100022/ua_wikisource_lesia_1892_page13.txt",
+      "origin_key": "ukwikisource:page-revision:560107"
+    },
+    {
+      "source_id": "ua.kmu.portal.secretariat-news.2026-07-16-prime-minister-appointment",
+      "source_family": "ua.kmu.portal.secretariat-news",
+      "stable_origin_id": "publisher:kmu-secretariat-news",
+      "stable_object_id": "sha256:3caa6832e6b40cc8c5c57ed8e3080fa046dc9c351591399aad6fe8e90b9bdd66",
+      "modality": "uk",
+      "evidence_status": "DEDICATED_TERMINAL",
+      "authority_ref": "NEXT100-026 exact head 40950a950b60921fd856af2719e1ae2486d9e892 workflow 32997970539 manifest 1f068e6cc5ce3fc4a51d8477acee31fab5a0178e15f49225b57de94c5178f7d9",
+      "declared_capacity_bytes": 2806,
+      "expected_raw_bytes": 2805,
+      "expected_raw_sha256": "3caa6832e6b40cc8c5c57ed8e3080fa046dc9c351591399aad6fe8e90b9bdd66",
+      "acquisition_url": "https://raw.githubusercontent.com/Oleksii-debug/12-6-ai./40950a950b60921fd856af2719e1ae2486d9e892/data/external/snapshots/next100-026-kmu/raw/kmu-secretariat-2026-07-16-prime-minister-appointment.txt",
+      "origin_key": "kmu-secretariat:2026-07-16-prime-minister-appointment"
+    },
+    {
+      "source_id": "ua.kmu.portal.secretariat-news.2026-08-05-resilience-audit",
+      "source_family": "ua.kmu.portal.secretariat-news",
+      "stable_origin_id": "publisher:kmu-secretariat-news",
+      "stable_object_id": "sha256:f6ce7360e6fff650b09c065889157ac021685a8bba24a03fad8bd5644f974f9b",
+      "modality": "uk",
+      "evidence_status": "DEDICATED_TERMINAL",
+      "authority_ref": "NEXT100-026 exact head 40950a950b60921fd856af2719e1ae2486d9e892 workflow 32997970539 manifest 1f068e6cc5ce3fc4a51d8477acee31fab5a0178e15f49225b57de94c5178f7d9",
+      "declared_capacity_bytes": 1890,
+      "expected_raw_bytes": 1889,
+      "expected_raw_sha256": "f6ce7360e6fff650b09c065889157ac021685a8bba24a03fad8bd5644f974f9b",
+      "acquisition_url": "https://raw.githubusercontent.com/Oleksii-debug/12-6-ai./40950a950b60921fd856af2719e1ae2486d9e892/data/external/snapshots/next100-026-kmu/raw/kmu-secretariat-2026-08-05-resilience-audit.txt",
+      "origin_key": "kmu-secretariat:2026-08-05-resilience-audit"
+    },
+    {
+      "source_id": "ua.kmu.portal.secretariat-news.2026-07-23-budget-2027",
+      "source_family": "ua.kmu.portal.secretariat-news",
+      "stable_origin_id": "publisher:kmu-secretariat-news",
+      "stable_object_id": "sha256:13c5665e9ebbc5213feb4d3ad54e017b2ac3a40659c327b01df3877f25de71d1",
+      "modality": "uk",
+      "evidence_status": "DEDICATED_TERMINAL",
+      "authority_ref": "NEXT100-026 exact head 40950a950b60921fd856af2719e1ae2486d9e892 workflow 32997970539 manifest 1f068e6cc5ce3fc4a51d8477acee31fab5a0178e15f49225b57de94c5178f7d9",
+      "declared_capacity_bytes": 949,
+      "expected_raw_bytes": 948,
+      "expected_raw_sha256": "13c5665e9ebbc5213feb4d3ad54e017b2ac3a40659c327b01df3877f25de71d1",
+      "acquisition_url": "https://raw.githubusercontent.com/Oleksii-debug/12-6-ai./40950a950b60921fd856af2719e1ae2486d9e892/data/external/snapshots/next100-026-kmu/raw/kmu-secretariat-2026-07-23-budget-2027.txt",
+      "origin_key": "kmu-secretariat:2026-07-23-budget-2027"
+    },
+    {
+      "source_id": "ua.kmu.portal.secretariat-news.2026-08-18-resilience-funding",
+      "source_family": "ua.kmu.portal.secretariat-news",
+      "stable_origin_id": "publisher:kmu-secretariat-news",
+      "stable_object_id": "sha256:4b1071c5bfc55072bfab530216d994a719dfb9f1dc22a7ccbc58e799b0c5ca37",
+      "modality": "uk",
+      "evidence_status": "DEDICATED_TERMINAL",
+      "authority_ref": "NEXT100-026 exact head 40950a950b60921fd856af2719e1ae2486d9e892 workflow 32997970539 manifest 1f068e6cc5ce3fc4a51d8477acee31fab5a0178e15f49225b57de94c5178f7d9",
+      "declared_capacity_bytes": 1281,
+      "expected_raw_bytes": 1280,
+      "expected_raw_sha256": "4b1071c5bfc55072bfab530216d994a719dfb9f1dc22a7ccbc58e799b0c5ca37",
+      "acquisition_url": "https://raw.githubusercontent.com/Oleksii-debug/12-6-ai./40950a950b60921fd856af2719e1ae2486d9e892/data/external/snapshots/next100-026-kmu/raw/kmu-secretariat-2026-08-18-resilience-funding.txt",
+      "origin_key": "kmu-secretariat:2026-08-18-resilience-funding"
+    },
+    {
+      "source_id": "ua.kmu.portal.secretariat-news.2026-08-13-frontline-communities",
+      "source_family": "ua.kmu.portal.secretariat-news",
+      "stable_origin_id": "publisher:kmu-secretariat-news",
+      "stable_object_id": "sha256:4c3d9ccf517b611019c42e8a36665cdb7ed3ce4e1e94b07afc246fab4a7df021",
+      "modality": "uk",
+      "evidence_status": "DEDICATED_TERMINAL",
+      "authority_ref": "NEXT100-026 exact head 40950a950b60921fd856af2719e1ae2486d9e892 workflow 32997970539 manifest 1f068e6cc5ce3fc4a51d8477acee31fab5a0178e15f49225b57de94c5178f7d9",
+      "declared_capacity_bytes": 951,
+      "expected_raw_bytes": 950,
+      "expected_raw_sha256": "4c3d9ccf517b611019c42e8a36665cdb7ed3ce4e1e94b07afc246fab4a7df021",
+      "acquisition_url": "https://raw.githubusercontent.com/Oleksii-debug/12-6-ai./40950a950b60921fd856af2719e1ae2486d9e892/data/external/snapshots/next100-026-kmu/raw/kmu-secretariat-2026-08-13-frontline-communities.txt",
+      "origin_key": "kmu-secretariat:2026-08-13-frontline-communities"
+    },
+    {
+      "source_id": "ua.kmu.portal.secretariat-news.2026-08-19-eib-community-recovery",
+      "source_family": "ua.kmu.portal.secretariat-news",
+      "stable_origin_id": "publisher:kmu-secretariat-news",
+      "stable_object_id": "sha256:5705acebf5e5bf87a0d1ae5ede798819ab2757e6bb8c165341d2d3fb63d909a4",
+      "modality": "uk",
+      "evidence_status": "DEDICATED_TERMINAL",
+      "authority_ref": "NEXT100-026 exact head 40950a950b60921fd856af2719e1ae2486d9e892 workflow 32997970539 manifest 1f068e6cc5ce3fc4a51d8477acee31fab5a0178e15f49225b57de94c5178f7d9",
+      "declared_capacity_bytes": 1276,
+      "expected_raw_bytes": 1275,
+      "expected_raw_sha256": "5705acebf5e5bf87a0d1ae5ede798819ab2757e6bb8c165341d2d3fb63d909a4",
+      "acquisition_url": "https://raw.githubusercontent.com/Oleksii-debug/12-6-ai./40950a950b60921fd856af2719e1ae2486d9e892/data/external/snapshots/next100-026-kmu/raw/kmu-secretariat-2026-08-19-eib-community-recovery.txt",
+      "origin_key": "kmu-secretariat:2026-08-19-eib-community-recovery"
     },
     {
       "source_id": "code.encode.httpx._content",
@@ -82,20 +195,6 @@
       "expected_git_blob_sha1": "0466a7d347db4ed34a37db51b75fc8e80bc06055",
       "acquisition_url": "https://raw.githubusercontent.com/psf/requests/5460f467b02e49471c0fd6cfc9ca0adab6351f98/src/requests/_internal_utils.py",
       "origin_key": "github:psf/requests:5460f467b02e49471c0fd6cfc9ca0adab6351f98:src/requests/_internal_utils.py"
-    },
-    {
-      "source_id": "ua.wikisource.lesia-ukrainka.na-krylah-pisen.1892.page13",
-      "source_family": "ua.literature.lesia-ukrainka.na-krylah-pisen.1892-lviv",
-      "stable_origin_id": "edition:lesia-ukrainka:na-krylah-pisen:1892-lviv",
-      "stable_object_id": "sha256:65e570c3cd954b595b586554b89a90da6efad0deca6a84d2316937745db17ef2",
-      "modality": "uk",
-      "evidence_status": "DEDICATED_TERMINAL",
-      "authority_ref": "NEXT100-022 exact head 84c51e42b6daa51796fd20d793b5ef1ff01cc9d2 workflow 32998002424",
-      "declared_capacity_bytes": 1479,
-      "expected_raw_bytes": 1479,
-      "expected_raw_sha256": "65e570c3cd954b595b586554b89a90da6efad0deca6a84d2316937745db17ef2",
-      "acquisition_url": "https://raw.githubusercontent.com/Oleksii-debug/12-6-ai./84c51e42b6daa51796fd20d793b5ef1ff01cc9d2/data/external/snapshots/next100022/ua_wikisource_lesia_1892_page13.txt",
-      "origin_key": "ukwikisource:page-revision:560107"
     },
     {
       "source_id": "code.django.core.signing",
@@ -180,6 +279,46 @@
       "evidence": "Distinct files in one canonical Standard Ebooks manual repository; one origin family but not duplicate capacity absent copy evidence."
     },
     {
+      "left_source_id": "ua.kmu.portal.secretariat-news.2026-07-16-prime-minister-appointment",
+      "right_source_id": "ua.kmu.portal.secretariat-news.2026-08-05-resilience-audit",
+      "relation": "sibling_same_origin",
+      "capacity_collapsing": false,
+      "independence_collapsing": true,
+      "evidence": "Distinct bounded Secretariat-authored KMu news records in one terminal source-family authority."
+    },
+    {
+      "left_source_id": "ua.kmu.portal.secretariat-news.2026-08-05-resilience-audit",
+      "right_source_id": "ua.kmu.portal.secretariat-news.2026-07-23-budget-2027",
+      "relation": "sibling_same_origin",
+      "capacity_collapsing": false,
+      "independence_collapsing": true,
+      "evidence": "Distinct bounded Secretariat-authored KMu news records in one terminal source-family authority."
+    },
+    {
+      "left_source_id": "ua.kmu.portal.secretariat-news.2026-07-23-budget-2027",
+      "right_source_id": "ua.kmu.portal.secretariat-news.2026-08-18-resilience-funding",
+      "relation": "sibling_same_origin",
+      "capacity_collapsing": false,
+      "independence_collapsing": true,
+      "evidence": "Distinct bounded Secretariat-authored KMu news records in one terminal source-family authority."
+    },
+    {
+      "left_source_id": "ua.kmu.portal.secretariat-news.2026-08-18-resilience-funding",
+      "right_source_id": "ua.kmu.portal.secretariat-news.2026-08-13-frontline-communities",
+      "relation": "sibling_same_origin",
+      "capacity_collapsing": false,
+      "independence_collapsing": true,
+      "evidence": "Distinct bounded Secretariat-authored KMu news records in one terminal source-family authority."
+    },
+    {
+      "left_source_id": "ua.kmu.portal.secretariat-news.2026-08-13-frontline-communities",
+      "right_source_id": "ua.kmu.portal.secretariat-news.2026-08-19-eib-community-recovery",
+      "relation": "sibling_same_origin",
+      "capacity_collapsing": false,
+      "independence_collapsing": true,
+      "evidence": "Distinct bounded Secretariat-authored KMu news records in one terminal source-family authority."
+    },
+    {
       "left_source_id": "code.django.core.signing",
       "right_source_id": "code.django.db.transaction",
       "relation": "sibling_same_origin",
@@ -205,9 +344,7 @@
     }
   ],
   "excluded_nonterminal_at_refresh": [
-    {"authority": "NEXT100-026 KMu", "head_sha": "40950a950b60921fd856af2719e1ae2486d9e892", "dedicated_status": "QUEUED"},
     {"authority": "NEXT100-027 Nomis", "head_sha": "d75edd497c7fb1054e86d892c9462f059c1f4aa9", "dedicated_status": "QUEUED"},
-    {"authority": "NEXT100-037 CPython docs", "head_sha": "5a6a495a24bce449334cbc5126d0114f61a9f57c", "dedicated_status": "QUEUED"},
     {"authority": "NEXT100-038 MDN", "head_sha": "902eccc0b3efff09a38dc89cda789180b6c6e754", "dedicated_status": "QUEUED"},
     {"authority": "NEXT100-041 CPython code", "head_sha": "6157bedf9659477eb8a808baeb11646e76ffd6e5", "dedicated_status": "QUEUED"},
     {"authority": "NEXT100-047 Jinja", "head_sha": "3580327eb6b64bc019602c7bfefe38137b1b3b55", "dedicated_status": "QUEUED"},
