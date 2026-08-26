@@ -1,0 +1,47 @@
+name: ENV-151 Universal Execution Bootstrap
+on:
+  pull_request:
+    branches: [milestone150/learned-base-ladder-v1-20260826]
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  cpu-training-tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with: {ref: "${{ github.event.pull_request.head.sha || github.sha }}", persist-credentials: false}
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with: {python-version: "3.11.16"}
+      - uses: ./.github/actions/execution-bootstrap
+        with:
+          capabilities: runtime,tests
+          venv: .env151-cpu
+          command: python -m pytest -q tests/test_execution_bootstrap.py
+          manifest: env151-evidence/cpu-training-tests.json
+      - run: .env151-cpu/bin/python -m pytest -q tests/test_execution_bootstrap.py tests/test_milestone150_learned_base_ladder.py
+  tokenizer-experiment:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with: {ref: "${{ github.event.pull_request.head.sha || github.sha }}", persist-credentials: false}
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with: {python-version: "3.11.16"}
+      - uses: ./.github/actions/execution-bootstrap
+        with: {capabilities: tokenizer, venv: .env151-tokenizer, manifest: env151-evidence/tokenizer-experiment.json}
+      - run: .env151-tokenizer/bin/python -c "import tokenizers; assert tokenizers.__version__ == '0.23.1'"
+  cuda-training-no-gpu:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with: {ref: "${{ github.event.pull_request.head.sha || github.sha }}", persist-credentials: false}
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with: {python-version: "3.11.16"}
+      - uses: ./.github/actions/execution-bootstrap
+        with: {capabilities: "runtime,cuda", venv: .env151-cuda, manifest: env151-evidence/cuda-no-gpu.json, allow-no-gpu: "true"}
+      - run: |
+          .env151-cuda/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+          c=json.loads(Path('env151-evidence/cuda-no-gpu.json').read_text())['preflight']['cuda']
+          assert c == {'software_capability_declared': True, 'hardware_visible': False, 'hardware_claim': False, 'no_gpu_preflight': True}
+          PY
