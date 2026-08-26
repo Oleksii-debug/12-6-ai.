@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import copy
 import importlib.util
+import json
 from pathlib import Path
 
 import pytest
@@ -13,12 +15,25 @@ module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 
 
-def test_config_is_fail_closed() -> None:
+def test_config_is_fail_closed_and_content_sha_is_pinned() -> None:
     value = module.load_config()
     assert value["claim_boundary"]["training_authorized_bytes"] == 0
-    assert value["claim_boundary"]["archive_sha256_pinned"] is False
-    assert value["primary_archive"]["exact_content_sha256"] is None
+    assert value["claim_boundary"]["archive_downloaded"] is False
+    assert value["claim_boundary"]["archive_sha256_pinned"] is True
+    assert value["claim_boundary"]["archive_sha256_verified_from_download"] is False
+    assert value["primary_archive"]["exact_content_sha256"] == module.PINNED_CONTENT_SHA256
+    assert value["primary_archive"]["content_xet_hash"] == module.PINNED_XET_HASH
     assert value["parent"]["probe_head_sha"] == "92c1fd05d4399b0f0c4a35f0689160383f963c9c"
+
+
+def test_config_rejects_content_sha_authority_drift(tmp_path: Path) -> None:
+    value = json.loads(module.CONFIG.read_text(encoding="utf-8"))
+    mutated = copy.deepcopy(value)
+    mutated["primary_archive"]["exact_content_sha256"] = "0" * 64
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps(mutated), encoding="utf-8")
+    with pytest.raises(AssertionError):
+        module.load_config(path)
 
 
 def test_listing_parser_is_sorted_and_rejects_duplicate_nfkc_paths() -> None:
@@ -56,7 +71,12 @@ def test_inventory_tree_is_deterministic_and_hash_bound(tmp_path: Path) -> None:
 def test_inventory_rejects_listing_mismatch(tmp_path: Path) -> None:
     (tmp_path / "a.txt").write_bytes(b"a")
     with pytest.raises(ValueError, match="listing/extraction mismatch"):
-        module.inventory_extracted_tree(tmp_path, [{"path": "missing.txt", "size_bytes": 1}], 100, 1000)
+        module.inventory_extracted_tree(
+            tmp_path,
+            [{"path": "missing.txt", "size_bytes": 1}],
+            100,
+            1000,
+        )
 
 
 def test_inventory_rejects_symlink_and_size_bounds(tmp_path: Path) -> None:
@@ -66,13 +86,21 @@ def test_inventory_rejects_symlink_and_size_bounds(tmp_path: Path) -> None:
         link.symlink_to(tmp_path / "real.txt")
     except OSError:
         pytest.skip("symlinks unavailable")
-    expected = [{"path": "link.txt", "size_bytes": 5}, {"path": "real.txt", "size_bytes": 5}]
+    expected = [
+        {"path": "link.txt", "size_bytes": 5},
+        {"path": "real.txt", "size_bytes": 5},
+    ]
     with pytest.raises(ValueError, match="symlink forbidden"):
         module.inventory_extracted_tree(tmp_path, expected, 100, 1000)
 
     link.unlink()
     with pytest.raises(ValueError, match="max_single_member_bytes"):
-        module.inventory_extracted_tree(tmp_path, [{"path": "real.txt", "size_bytes": 5}], 4, 1000)
+        module.inventory_extracted_tree(
+            tmp_path,
+            [{"path": "real.txt", "size_bytes": 5}],
+            4,
+            1000,
+        )
 
 
 def test_validate_bounds_rejects_total_overflow() -> None:
