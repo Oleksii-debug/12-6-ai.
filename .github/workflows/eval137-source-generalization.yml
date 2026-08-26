@@ -23,7 +23,7 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.11.16"
-      - name: Verify exact locked environment
+      - name: Universal locked bootstrap
         env:
           SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
         run: >-
@@ -38,17 +38,20 @@ jobs:
           .eval137-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
           .eval137-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/dev.lock.txt
           PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .eval137-locked/bin/python -m pip install --no-deps --no-build-isolation -e .
-      - name: Compile EVAL-137 implementation surface
+      - name: Compile focused EVAL-137 implementation surface
         run: >-
           .eval137-locked/bin/python -m compileall -q
           src/twelve_six/training/source_generalization.py
+          src/twelve_six/training/eval137_recovery.py
           tools/run_source_generalization.py
           tests/test_source_generalization.py
-      - name: Exercise intake and source-generalization contracts
+          tests/test_eval137_recovery.py
+      - name: Exercise focused intake and source-generalization contracts
         run: >-
           .eval137-locked/bin/python -m pytest -q
           tests/test_external_source_intake_ua_en.py
           tests/test_source_generalization.py
+          tests/test_eval137_recovery.py
       - name: Execute fixed 467808-parameter source-generalization study
         env:
           SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
