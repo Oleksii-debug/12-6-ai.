@@ -37,6 +37,7 @@ def _identity(parameter_count: int) -> CheckpointIdentity:
     [
         ("_failure_reason", "synthetic poisoned trainer"),
         ("_update_incomplete", True),
+        ("_update_incomplete", 1),
     ],
 )
 def test_production_trainer_rejects_unloadable_target_before_model_or_rng_mutation(
@@ -70,7 +71,7 @@ def test_production_trainer_rejects_unloadable_target_before_model_or_rng_mutati
     }
 
     # Make the live RNG state intentionally distinct from the checkpoint RNG state.
-    # A preflight rejection must happen before load_verified_checkpoint can restore it.
+    # A preflight rejection must happen before checkpoint restore can mutate it.
     torch.manual_seed(123456)
     before_torch_rng = torch.random.get_rng_state().clone()
 
