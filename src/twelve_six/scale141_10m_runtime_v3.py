@@ -1,13 +1,15 @@
-"""SCALE-141 authoritative entrypoint with stable identity and memorization probes.
+"""SCALE-141 authoritative entrypoint with stable identity and launch gating.
 
 The v2 runtime owns actual-token accounting and memory-bounded evaluation. This
-entrypoint adds two fail-closed corrections found during pre-execution audit:
+entrypoint adds fail-closed corrections found during pre-execution audit:
 
 * dataclass configuration is normalized to JSON-native types before run-manifest
   hashing/comparison, so tuple-valued AdamW fields survive the fresh process;
 * the train-vs-heldout gap remains only a generalization proxy, while a separate
   hash-only training-passage continuation probe records memorization progression
-  without changing DATA-25 or emitting source text.
+  without changing DATA-25 or emitting source text;
+* CI-165 requires a SHA/config-bound cheap launch envelope before either long
+  training phase can execute.
 """
 from __future__ import annotations
 
@@ -17,12 +19,14 @@ from pathlib import Path
 from typing import Any
 
 from twelve_six.checkpoint import hash_json
+from twelve_six.launch_gate import require_launch_envelope_from_env
 from twelve_six import scale141_10m_runtime_v2 as v2
 from twelve_six import scale141_memorization as memorization
 
 SCHEMA = v2.SCHEMA
 _V2_RUN_MANIFEST = v2._run_manifest_v2
 _BASE_EVAL_POINT = v2.core._eval_point
+_LAUNCH_BINDING = {"workflow": "scale141-10m-learned-continuation", "scale": "10m"}
 
 
 def _json_normalize(value: Any) -> Any:
@@ -90,12 +94,18 @@ def _install() -> None:
     v2.core._eval_point = _eval_point_with_memorization
 
 
+def _require_launch_gate(repo: Path) -> None:
+    require_launch_envelope_from_env(repo, expected_binding=_LAUNCH_BINDING)
+
+
 def phase1(repo: Path, source_sha: str, out: Path) -> dict[str, Any]:
+    _require_launch_gate(repo)
     _install()
     return v2.phase1(repo, source_sha, out)
 
 
 def resume(repo: Path, source_sha: str, out: Path) -> dict[str, Any]:
+    _require_launch_gate(repo)
     _install()
     return v2.resume(repo, source_sha, out)
 
