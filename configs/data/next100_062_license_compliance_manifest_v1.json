@@ -1,0 +1,214 @@
+{
+  "schema_version": "12-6.next100-062-license-compliance-manifest.v1",
+  "worker_id": "NEXT100-062-LICENSE-COMPLIANCE-MANIFEST",
+  "local_free_only": true,
+  "authority_boundary": "TERMINAL_TRAINING_SOURCE_LICENSE_COMPLIANCE_NO_RIGHTS_REINTERPRETATION",
+  "terminality_rule": "ONLY_EXACT_HEAD_DEDICATED_TERMINAL_SUCCESS_ADMIT_AUTHORITIES_ENTER_SOURCE_SET",
+  "purpose_default": "FAIL_CLOSED_REQUIRE_SEPARATE_AUTHORITY",
+  "redistribution_release_status": "BLOCKED_PENDING_WIKISOURCE_SHARE_ALIKE_PATH_RESOLUTION",
+  "terminal_authority_vector": {
+    "DATA-287": {
+      "head_sha": "b0523ccbc4b957615aac849d476cfa851be87578",
+      "registry_identity_sha256": "917e9bc31b2fa040d25e807ae3c01aa2cce32420752a891caacfb6c830e6632c",
+      "dedicated_workflow_run": 32968622282,
+      "status": "TERMINAL_SUCCESS"
+    },
+    "DATA-293": {
+      "head_sha": "2665a4cd86186ba44024334719d30dcc35d222d8",
+      "dedicated_workflow_run": 32967466790,
+      "status": "TERMINAL_SUCCESS"
+    },
+    "NEXT100-022": {
+      "head_sha": "84c51e42b6daa51796fd20d793b5ef1ff01cc9d2",
+      "authority_identity_sha256": "6b443faa7fef777214022028d5fdb356dae0ab1a9b71822b4e16bea8f92cd0d6",
+      "dedicated_workflow_run": 32998002424,
+      "status": "TERMINAL_SUCCESS"
+    }
+  },
+  "concurrency_refresh": {
+    "included_terminal_successors": ["NEXT100-022"],
+    "excluded_at_observation": [
+      {"worker": "NEXT100-024/DATA-324", "status": "RETEST_RUNNER_QUEUE_ONLY"},
+      {"worker": "NEXT100-026", "status": "DEDICATED_WORKFLOW_QUEUED"},
+      {"worker": "NEXT100-027", "status": "DEDICATED_WORKFLOW_QUEUED"},
+      {"worker": "NEXT100-037", "status": "DEDICATED_WORKFLOW_QUEUED"},
+      {"worker": "NEXT100-040", "status": "DEDICATED_WORKFLOW_QUEUED"}
+    ]
+  },
+  "source_count": 6,
+  "sources": [
+    {
+      "source_id": "code.encode.httpx._content",
+      "source_family": "github:encode/httpx",
+      "source_version": "git:b5addb64f0161ff6bfe94c124ef76f6a1fba5254",
+      "raw_sha256": "2c61b3ac94d1dcebcde0c6f519554d2d7917247fbaa0a97002db4ef69e70ff28",
+      "terminal_source_authority": "DATA-227/DATA-287/DATA-293",
+      "license": "BSD-3-Clause",
+      "copyright_notice": "Copyright © 2019, Encode OSS Ltd. All rights reserved.",
+      "attribution": "REQUIRED_RETAIN_COPYRIGHT_NOTICE_CONDITIONS_AND_DISCLAIMER",
+      "notice": "FULL_BSD_3_CLAUSE_TEXT_REQUIRED_ON_REDISTRIBUTION",
+      "share_alike": "NOT_REQUIRED",
+      "redistribution_requirements": [
+        "retain copyright notice, conditions and disclaimer",
+        "reproduce them in documentation/materials for non-source redistribution",
+        "no endorsement using holder/contributor names without permission"
+      ],
+      "project_purpose_authorization": {
+        "model_training": "ALLOWED",
+        "redistribution": "ALLOWED_WITH_BSD_COPYRIGHT_CONDITIONS_DISCLAIMER",
+        "evaluation": "NOT_SEPARATELY_ADMITTED",
+        "tokenizer_fitting": "NOT_SEPARATELY_AUTHORIZED_BY_THIS_MANIFEST",
+        "selection_validation": "NOT_SEPARATELY_AUTHORIZED_BY_THIS_MANIFEST",
+        "final_test": "NOT_SEPARATELY_AUTHORIZED_BY_THIS_MANIFEST"
+      },
+      "required_accompanying_files_text": [
+        {"path": "data/compliance/next100_062/required/httpx-LICENSE.md", "git_blob_sha1": "ab79d16a3f4c6c894c028d1f7431811e8711b42b"}
+      ],
+      "compliance_status": "READY_WITH_DECLARED_CONDITIONS",
+      "missing_obligations": []
+    },
+    {
+      "source_id": "code.psf.requests._internal_utils",
+      "source_family": "github:psf/requests",
+      "source_version": "git:5460f467b02e49471c0fd6cfc9ca0adab6351f98",
+      "raw_sha256": "4c7d8d132c9898fc7d715e473f3ac74785ddc4ab96d2c9240f87835dc6d981ff",
+      "terminal_source_authority": "DATA-227/DATA-287/DATA-293",
+      "license": "Apache-2.0",
+      "copyright_notice": "Copyright 2019 Kenneth Reitz",
+      "attribution": "REQUIRED_RETAIN_APPLICABLE_SOURCE_FORM_NOTICES",
+      "notice": "Requests\nCopyright 2019 Kenneth Reitz\n",
+      "share_alike": "NOT_REQUIRED",
+      "redistribution_requirements": [
+        "give recipients Apache-2.0 license copy",
+        "modified files carry prominent change notices",
+        "retain applicable source-form notices",
+        "carry readable applicable NOTICE attribution notices"
+      ],
+      "project_purpose_authorization": {
+        "model_training": "ALLOWED",
+        "redistribution": "ALLOWED_WITH_APACHE_LICENSE_AND_APPLICABLE_NOTICE",
+        "evaluation": "NOT_SEPARATELY_ADMITTED",
+        "tokenizer_fitting": "NOT_SEPARATELY_AUTHORIZED_BY_THIS_MANIFEST",
+        "selection_validation": "NOT_SEPARATELY_AUTHORIZED_BY_THIS_MANIFEST",
+        "final_test": "NOT_SEPARATELY_AUTHORIZED_BY_THIS_MANIFEST"
+      },
+      "required_accompanying_files_text": [
+        {"path": "data/compliance/next100_062/required/requests-LICENSE", "git_blob_sha1": "dbd4d0af7db2fb4bab3f5842a472de54ecd5d72b"},
+        {"path": "data/compliance/next100_062/required/requests-NOTICE.txt", "git_blob_sha1": "1ff62db688277b77c83c1766dac7f165364d3528"}
+      ],
+      "upstream_license_git_blob_sha1": "67db8588217f266eb561f75fae738656325deac9",
+      "upstream_notice_git_blob_sha1": "1ff62db688277b77c83c1766dac7f165364d3528",
+      "compliance_status": "READY_WITH_DECLARED_CONDITIONS",
+      "missing_obligations": []
+    },
+    {
+      "source_id": "en.standardebooks.manual.8-typography",
+      "source_family": "en.standardebooks.manual",
+      "source_version": "git:d1143a9b459b5e6f9cdda93a7c1e04676bff4f6b",
+      "raw_sha256": "21582c7f0e4ad39f2b0ed97bbc2c082d275e898b7a63c28e6d9badb8ee0f7860",
+      "terminal_source_authority": "DATA-287/DATA-293",
+      "license": "CC0-1.0",
+      "copyright_notice": "NOT_REQUIRED_BY_SELECTED_CC0_OBJECT",
+      "attribution": "NOT_REQUIRED_BY_CC0",
+      "notice": "NOT_REQUIRED_BY_CC0",
+      "share_alike": "NOT_REQUIRED",
+      "redistribution_requirements": [],
+      "project_purpose_authorization": {
+        "model_training": "ALLOWED",
+        "redistribution": "ALLOWED",
+        "evaluation": "NOT_SEPARATELY_ADMITTED",
+        "tokenizer_fitting": "NOT_SEPARATELY_AUTHORIZED_BY_THIS_MANIFEST",
+        "selection_validation": "NOT_SEPARATELY_AUTHORIZED_BY_THIS_MANIFEST",
+        "final_test": "NOT_SEPARATELY_AUTHORIZED_BY_THIS_MANIFEST"
+      },
+      "required_accompanying_files_text": [],
+      "provenance_license_evidence": "data/external/rights-evidence/data181/standardebooks-manual-license-d1143a9.txt",
+      "compliance_status": "READY_NO_SELECTED_OBJECT_LICENSE_CONDITIONS",
+      "missing_obligations": []
+    },
+    {
+      "source_id": "en.standardebooks.manual.9-metadata",
+      "source_family": "en.standardebooks.manual",
+      "source_version": "git:d1143a9b459b5e6f9cdda93a7c1e04676bff4f6b",
+      "raw_sha256": "7ac53dfb4bf6f73f178560e09f33160d0250c69fb679802f3254dc0eb4c9f509",
+      "terminal_source_authority": "DATA-287/DATA-293",
+      "license": "CC0-1.0",
+      "copyright_notice": "NOT_REQUIRED_BY_SELECTED_CC0_OBJECT",
+      "attribution": "NOT_REQUIRED_BY_CC0",
+      "notice": "NOT_REQUIRED_BY_CC0",
+      "share_alike": "NOT_REQUIRED",
+      "redistribution_requirements": [],
+      "project_purpose_authorization": {
+        "model_training": "ALLOWED",
+        "redistribution": "ALLOWED",
+        "evaluation": "NOT_SEPARATELY_ADMITTED",
+        "tokenizer_fitting": "NOT_SEPARATELY_AUTHORIZED_BY_THIS_MANIFEST",
+        "selection_validation": "NOT_SEPARATELY_AUTHORIZED_BY_THIS_MANIFEST",
+        "final_test": "NOT_SEPARATELY_AUTHORIZED_BY_THIS_MANIFEST"
+      },
+      "required_accompanying_files_text": [],
+      "provenance_license_evidence": "data/external/rights-evidence/data181/standardebooks-manual-license-d1143a9.txt",
+      "compliance_status": "READY_NO_SELECTED_OBJECT_LICENSE_CONDITIONS",
+      "missing_obligations": []
+    },
+    {
+      "source_id": "ua.rada.open-data.laws-texts.d23314",
+      "source_family": "ua.rada.open-data.laws-texts",
+      "source_version": "laws-texts/bounded-2026-08-25",
+      "raw_sha256": "36eae31c3b0676ea7c02236fa05bd695c240c9a8eade5febc00457b8103ee1a4",
+      "terminal_source_authority": "DATA-287/DATA-293",
+      "license": "RADA-OPEN-DATA-REUSE",
+      "copyright_notice": "NO_SEPARATE_COPYRIGHT_NOTICE_REQUIRED_BY_RETAINED_TERMS",
+      "attribution": "REQUIRED_SOURCE_LINK",
+      "notice": "NOT_SEPARATELY_REQUIRED",
+      "share_alike": "NOT_REQUIRED",
+      "redistribution_requirements": ["preserve a link to the source of the public information"],
+      "project_purpose_authorization": {
+        "model_training": "ALLOWED_WITH_SOURCE_ATTRIBUTION_RETAINED_IN_PROVENANCE",
+        "redistribution": "ALLOWED_WITH_SOURCE_ATTRIBUTION",
+        "evaluation": "NOT_SEPARATELY_ADMITTED",
+        "tokenizer_fitting": "NOT_SEPARATELY_AUTHORIZED_BY_THIS_MANIFEST",
+        "selection_validation": "NOT_SEPARATELY_AUTHORIZED_BY_THIS_MANIFEST",
+        "final_test": "NOT_SEPARATELY_AUTHORIZED_BY_THIS_MANIFEST"
+      },
+      "required_accompanying_files_text": [
+        {"path": "data/compliance/next100_062/required/rada-ATTRIBUTION.txt", "git_blob_sha1": "4ac881911b40578ecd6a1714f955ff5e57a77af8"}
+      ],
+      "provenance_license_evidence": "data/external/rights-evidence/data181/rada-open-data-terms-20260826.txt",
+      "compliance_status": "READY_WITH_DECLARED_CONDITIONS",
+      "missing_obligations": []
+    },
+    {
+      "source_id": "ua.wikisource.lesia-ukrainka.na-krylah-pisen.1892.page13",
+      "source_family": "ua.literature.lesia-ukrainka.na-krylah-pisen.1892-lviv",
+      "source_version": "wikimedia-page-revision:560107",
+      "raw_sha256": "65e570c3cd954b595b586554b89a90da6efad0deca6a84d2316937745db17ef2",
+      "terminal_source_authority": "NEXT100-022",
+      "license": "PUBLIC-DOMAIN-UNDERLYING-EDITION + WIKIMEDIA-TEXT-LAYER-CC-BY-SA-4.0-AND/OR-GFDL-AS-APPLICABLE",
+      "copyright_notice": "UNDERLYING_1892_WORK_EDITION_PUBLIC_DOMAIN",
+      "attribution": "REQUIRED_PERMANENT_WIKISOURCE_REVISION_ATTRIBUTION",
+      "notice": "REQUIRED_CC_BY_SA_LICENSE_NOTICE_LINK_OR_GFDL_PATH_WHERE_TERMS_PERMIT",
+      "share_alike": "REQUIRED_AS_APPLICABLE_TO_WIKIMEDIA_CONTRIBUTOR_TEXT_LAYER_EXACT_REUSE_PATH_UNRESOLVED",
+      "redistribution_requirements": [
+        "preserve exact attribution sidecar",
+        "indicate normalization changes",
+        "preserve applicable CC BY-SA notice/link or comply with GFDL where Wikimedia Terms permit",
+        "do not generalize this bounded authority to other Wikisource content"
+      ],
+      "project_purpose_authorization": {
+        "model_training": "ALLOWED",
+        "redistribution": "ALLOWED_WITH_ATTRIBUTION_AND_LICENSE_NOTICE",
+        "evaluation": "NOT_SEPARATELY_ADMITTED",
+        "tokenizer_fitting": "NOT_SEPARATELY_AUTHORIZED_BY_THIS_MANIFEST",
+        "selection_validation": "NOT_SEPARATELY_AUTHORIZED_BY_THIS_MANIFEST",
+        "final_test": "NOT_SEPARATELY_AUTHORIZED_BY_THIS_MANIFEST"
+      },
+      "required_accompanying_files_text": [
+        {"path": "data/compliance/next100_062/required/wikisource-ATTRIBUTION.txt", "git_blob_sha1": "6876cd74979c8368f4e7e45bb19aef5aa1bc08be"}
+      ],
+      "corpus_selection_status": "BLOCKED_UNTIL_STANDARD_DATA232_DATA299_NEAR_MATCH_DECONTAMINATION",
+      "compliance_status": "TRAINING_RIGHTS_PRESERVED_REDISTRIBUTION_BLOCKED_PENDING_SHARE_ALIKE_PATH_RESOLUTION",
+      "missing_obligations": ["EXACT_WIKIMEDIA_REUSE_LICENSE_PATH_AND_SHARE_ALIKE_FULFILLMENT_NOT_YET_MATERIALIZED"]
+    }
+  ]
+}
