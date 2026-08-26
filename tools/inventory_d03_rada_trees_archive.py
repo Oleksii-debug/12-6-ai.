@@ -265,8 +265,10 @@ def build_report(
         raise ValueError("expected archive size must be positive")
     if upstream_object_identity != config["primary_archive"]["content_xet_hash"]:
         raise ValueError("upstream object identity detached from pinned Xet authority")
+    if archive.is_symlink():
+        raise ValueError("archive must be a regular non-symlink file")
     archive = archive.resolve()
-    if not archive.is_file() or archive.is_symlink():
+    if not archive.is_file():
         raise ValueError("archive must be a regular non-symlink file")
     actual_size = archive.stat().st_size
     actual_sha256 = sha256_file(archive)
