@@ -1,0 +1,238 @@
+{
+  "admitted": [
+    {
+      "audit_notes": [
+        "Dataset terms allow copying, publication, distribution, commercial use, combination and embedding with mandatory source attribution/link.",
+        "Current portal terms were re-read on 2026-08-26 and materially match the retained immutable evidence.",
+        "source_version is not an immutable upstream revision; the admitted object remains exact because raw_sha256 binds the materialized bytes."
+      ],
+      "language": "uk",
+      "license_id": "RADA-OPEN-DATA-REUSE",
+      "modality": "text",
+      "normalized_sha256": "72c301db0b2539f3f7a73c9c15e2e425700a6b758a1114f1a861e2d60c704c50",
+      "normalized_utf8_bytes": 88565,
+      "raw_bytes": 332400,
+      "raw_sha256": "36eae31c3b0676ea7c02236fa05bd695c240c9a8eade5febc00457b8103ee1a4",
+      "rights": {
+        "evaluation": "NOT_SEPARATELY_ADMITTED",
+        "model_training": "ALLOWED_WITH_SOURCE_ATTRIBUTION_RETAINED_IN_PROVENANCE",
+        "redistribution": "ALLOWED_WITH_SOURCE_ATTRIBUTION"
+      },
+      "rights_evidence": {
+        "current_terms_rechecked_on": "2026-08-26",
+        "evidence_sha256": "04c8d6ea19d670865631b454602eb02fca6397dab333fcc86ab4f5a81955db86",
+        "git_blob_sha1": "8b965544ad25538806f8293b4a3bb499314114e4",
+        "repo_path": "data/external/rights-evidence/data181/rada-open-data-terms-20260826.txt",
+        "stale_terms_detected": false
+      },
+      "source_family": "ua.rada.open-data.laws-texts",
+      "source_id": "ua.rada.open-data.laws-texts.d23314",
+      "source_version": "laws-texts/bounded-2026-08-25",
+      "source_version_binding": "PROJECT_BOUNDED_LABEL_PLUS_IMMUTABLE_RAW_SHA256"
+    },
+    {
+      "audit_notes": [
+        "Exact pinned LICENSE.md states repository contents are CC0 except build-manual.py; selected RST object is not the exception.",
+        "This object and 9-metadata are one source family, not two independent families."
+      ],
+      "language": "en",
+      "license_id": "CC0-1.0",
+      "modality": "text",
+      "normalized_sha256": "154fb4034929714087e75150d678bf65049ddac32e79dcdf97162c8972c2be83",
+      "normalized_utf8_bytes": 48002,
+      "raw_bytes": 68812,
+      "raw_sha256": "21582c7f0e4ad39f2b0ed97bbc2c082d275e898b7a63c28e6d9badb8ee0f7860",
+      "rights": {
+        "evaluation": "NOT_SEPARATELY_ADMITTED",
+        "model_training": "ALLOWED",
+        "redistribution": "ALLOWED"
+      },
+      "rights_evidence": {
+        "evidence_sha256": "3d06a26386025521e0a49850015362c0e89ea19fd6d11c6680b153a770d84c2e",
+        "repo_path": "data/external/rights-evidence/data181/standardebooks-manual-license-d1143a9.txt",
+        "stale_terms_detected": false,
+        "upstream_license_git_blob_sha1": "ecc3ab7a2a7d726cc225b51a0c85809a7b0274cb"
+      },
+      "source_family": "en.standardebooks.manual",
+      "source_id": "en.standardebooks.manual.8-typography",
+      "source_version": "git:d1143a9b459b5e6f9cdda93a7c1e04676bff4f6b",
+      "source_version_binding": "EXACT_GIT_COMMIT_PATH_AND_RAW_SHA256"
+    },
+    {
+      "audit_notes": [
+        "Exact pinned LICENSE.md states repository contents are CC0 except build-manual.py; selected RST object is not the exception.",
+        "This object and 8-typography are one source family, not two independent families."
+      ],
+      "language": "en",
+      "license_id": "CC0-1.0",
+      "modality": "text",
+      "normalized_sha256": "94eb2f529922d125b3bd40691778886f4d5d80b128b925d0274fb3d94646ec5a",
+      "normalized_utf8_bytes": 36791,
+      "raw_bytes": 37299,
+      "raw_sha256": "7ac53dfb4bf6f73f178560e09f33160d0250c69fb679802f3254dc0eb4c9f509",
+      "rights": {
+        "evaluation": "NOT_SEPARATELY_ADMITTED",
+        "model_training": "ALLOWED",
+        "redistribution": "ALLOWED"
+      },
+      "rights_evidence": {
+        "evidence_sha256": "3d06a26386025521e0a49850015362c0e89ea19fd6d11c6680b153a770d84c2e",
+        "repo_path": "data/external/rights-evidence/data181/standardebooks-manual-license-d1143a9.txt",
+        "stale_terms_detected": false,
+        "upstream_license_git_blob_sha1": "ecc3ab7a2a7d726cc225b51a0c85809a7b0274cb"
+      },
+      "source_family": "en.standardebooks.manual",
+      "source_id": "en.standardebooks.manual.9-metadata",
+      "source_version": "git:d1143a9b459b5e6f9cdda93a7c1e04676bff4f6b",
+      "source_version_binding": "EXACT_GIT_COMMIT_PATH_AND_RAW_SHA256"
+    },
+    {
+      "audit_notes": [
+        "Source blob and license blob were independently re-read at the exact admitted commit.",
+        "Public GitHub availability or SPDX labels were not used as substitute authority."
+      ],
+      "language": "code",
+      "license_id": "BSD-3-Clause",
+      "modality": "code",
+      "path": "httpx/_content.py",
+      "raw_bytes": 8161,
+      "repo": "encode/httpx",
+      "rights": {
+        "evaluation": "NOT_SEPARATELY_ADMITTED",
+        "model_training": "ALLOWED",
+        "redistribution": "ALLOWED_WITH_BSD_COPYRIGHT_CONDITIONS_DISCLAIMER"
+      },
+      "rights_evidence": {
+        "exact_revision_reverified": true,
+        "license_git_blob_sha1": "ab79d16a3f4c6c894c028d1f7431811e8711b42b",
+        "license_path": "LICENSE.md"
+      },
+      "source_family": "github:encode/httpx",
+      "source_git_blob_sha1": "6f479a0885f723b7395843d41164a87041820776",
+      "source_id": "code.encode.httpx._content",
+      "source_version": "git:b5addb64f0161ff6bfe94c124ef76f6a1fba5254"
+    },
+    {
+      "audit_notes": [
+        "Source and LICENSE blobs were independently re-read at the exact admitted commit.",
+        "DATA-293 additionally pins the exact NOTICE blob because redistribution obligations must not rely on an unbound NOTICE reference."
+      ],
+      "language": "code",
+      "license_id": "Apache-2.0",
+      "modality": "code",
+      "path": "src/requests/_internal_utils.py",
+      "raw_bytes": 1542,
+      "repo": "psf/requests",
+      "rights": {
+        "evaluation": "NOT_SEPARATELY_ADMITTED",
+        "model_training": "ALLOWED",
+        "redistribution": "ALLOWED_WITH_APACHE_LICENSE_AND_APPLICABLE_NOTICE"
+      },
+      "rights_evidence": {
+        "exact_revision_reverified": true,
+        "license_git_blob_sha1": "67db8588217f266eb561f75fae738656325deac9",
+        "license_path": "LICENSE",
+        "notice_git_blob_sha1": "1ff62db688277b77c83c1766dac7f165364d3528",
+        "notice_path": "NOTICE"
+      },
+      "source_family": "github:psf/requests",
+      "source_git_blob_sha1": "0466a7d347db4ed34a37db51b75fc8e80bc06055",
+      "source_id": "code.psf.requests._internal_utils",
+      "source_version": "git:5460f467b02e49471c0fd6cfc9ca0adab6351f98"
+    }
+  ],
+  "audit_date_utc": "2026-08-26",
+  "audit_findings": [
+    "STANDARD_EBOOKS_TWO_OBJECTS_EQUAL_ONE_INDEPENDENT_SOURCE_FAMILY",
+    "RADA_REDISTRIBUTION_IS_CONDITIONAL_ON_SOURCE_ATTRIBUTION",
+    "RADA_UPSTREAM_VERSION_LABEL_IS_NOT_IMMUTABLE_SO_RAW_SHA256_IS_CONTROLLING_BYTE_IDENTITY",
+    "REQUESTS_REDISTRIBUTION_NOTICE_NOW_EXACTLY_BOUND_BY_NOTICE_GIT_BLOB",
+    "DATA_228_FAILURE_IS_INFRASTRUCTURE_NOT_RIGHTS_REJECTION",
+    "NO_SOURCE_HAS_SEPARATE_EVALUATION_PURPOSE_AUTHORITY"
+  ],
+  "authority_boundary": "INDEPENDENT_PURPOSE_SPECIFIC_RECERTIFICATION_NO_RIGHTS_WEAKENING",
+  "baseline_authorities": {
+    "DATA-227": {
+      "artifact_digest_sha256": "080f073327020cb3bbb05c7348f658223804684d23012d9b66ab9b798c4fed5d",
+      "artifact_id": 9602093542,
+      "source_sha": "8ebdb2e132ed7bae5245e9d4c140752640ab9885",
+      "status": "TERMINAL_SUCCESS",
+      "workflow_run": 32956209865
+    },
+    "DATA-228": {
+      "failure_class": "ENVIRONMENT_BOOTSTRAP_MISSING_TORCH",
+      "rights_conclusion": "NO_ADVERSE_RIGHTS_FINDING",
+      "source_sha": "46a70c990dab6ff72bb84ddb54cff1156b491b40",
+      "status": "TERMINAL_FAILURE_BEFORE_SOURCE_MATERIALIZATION",
+      "workflow_run": 32957120454
+    },
+    "DATA-229": {
+      "registry_identity_sha256": "1357a343eb4ea973950d8991913109cbea53fe4fa891f0be9745ab497eb59486",
+      "source_sha": "90bc0b7f8b696ec35202532b13edf6ab29a662fe",
+      "status": "TERMINAL_SUCCESS",
+      "workflow_run": 32957147036
+    },
+    "DATA-278": {
+      "admitted_objects": 0,
+      "status": "NO_DURABLE_TERMINAL_AUTHORITY_DISCOVERED"
+    }
+  },
+  "inventory_summary": {
+    "evaluation_admitted_objects": 0,
+    "family_counts": {
+      "code": 2,
+      "en": 1,
+      "uk": 1
+    },
+    "not_admitted_candidate_objects": 2,
+    "training_admitted_families": 4,
+    "training_admitted_objects": 5
+  },
+  "local_free_only": true,
+  "not_admitted": [
+    {
+      "corpus_status": "NOT_ADMITTED_EVIDENCE_NOT_MATERIALIZED",
+      "evaluation": "NOT_SEPARATELY_ADMITTED",
+      "language": "uk",
+      "license_git_blob_sha1": "da6ab6cc8f333d7e89a99812866df8f24374d47c",
+      "license_id": "CC-BY-4.0",
+      "license_level_review": "COMPATIBLE_WITH_USE_AND_ATTRIBUTION_CONDITIONS",
+      "path": "content/uk/docs/concepts/_index.md",
+      "reason": "DATA-228 terminal run failed during environment bootstrap before source materialization and no explicit corpus-purpose admission was completed",
+      "repo": "kubernetes/website",
+      "source_family": "kubernetes.website.docs",
+      "source_git_blob_sha1": "ab9d757e99679b3db48a3230bf6eb07a997eec9c",
+      "source_id": "uk.kubernetes.docs.concepts-index",
+      "source_version": "git:25f3dcbed7429ebe20174ccc7000428d0f0aedda"
+    },
+    {
+      "corpus_status": "NOT_ADMITTED_EVIDENCE_NOT_MATERIALIZED",
+      "evaluation": "NOT_SEPARATELY_ADMITTED",
+      "language": "en",
+      "license_git_blob_sha1": "20cf39097c68baa17cc566b64e76d34ebf034044",
+      "license_id": "PSF-2.0",
+      "license_level_review": "COMPATIBLE_WITH_USE_AND_LICENSE_NOTICE_CONDITIONS",
+      "path": "Doc/tutorial/introduction.rst",
+      "reason": "DATA-228 terminal run failed during environment bootstrap before source materialization and no explicit corpus-purpose admission was completed",
+      "repo": "python/cpython",
+      "source_family": "python.cpython.documentation",
+      "source_git_blob_sha1": "465c32d0b72431cc446aae7edeb6b829c657b243",
+      "source_id": "en.python.docs.tutorial-introduction",
+      "source_version": "git:7f0ccd6c0e3f85fbaeceb2f67b06ab3631db0480"
+    }
+  ],
+  "purpose_policy": {
+    "evaluation": "FAIL_CLOSED_REQUIRE_SEPARATE_PURPOSE_AUTHORITY",
+    "model_training": "REQUIRE_EXPLICIT_PURPOSE_ADMISSION_AND_IMMUTABLE_SOURCE_BINDING",
+    "redistribution": "RETAIN_ALL_LICENSE_AND_ATTRIBUTION_NOTICE_CONDITIONS"
+  },
+  "rejected_or_absent_authorities": [
+    {
+      "effect": "NO_SOURCE_FROM_DATA_278_ADDED_TO_CURRENT_INVENTORY",
+      "status": "NO_DURABLE_TERMINAL_AUTHORITY_DISCOVERED",
+      "worker_id": "DATA-278-ENGLISH-LARGE-SOURCE-EXPANSION-A"
+    }
+  ],
+  "schema_version": "12-6.data293-independent-rights-recertification.v1",
+  "worker_id": "DATA-293-INDEPENDENT-RIGHTS-RECERTIFICATION"
+}
