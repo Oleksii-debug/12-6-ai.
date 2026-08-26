@@ -18,7 +18,7 @@ permissions:
 
 concurrency:
   group: next100-049-numpy-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   qualify:
