@@ -12,7 +12,8 @@
     "stratum": "en",
     "publisher": "Office of the Federal Register / Government Publishing Office",
     "portal": "https://www.ecfr.gov",
-    "titles_endpoint": "https://www.ecfr.gov/api/versioner-import/v1/titles",
+    "api_documentation": "https://www.ecfr.gov/developers/documentation/api/v1",
+    "titles_endpoint": "https://www.ecfr.gov/api/versioner/v1/titles.json",
     "historical_full_title_endpoint_template": "https://www.ecfr.gov/api/versioner/v1/full/{date}/title-{title}.xml",
     "api_key_required": false,
     "point_in_time_required": true,
@@ -22,7 +23,7 @@
   },
   "discovery_observation": {
     "observed_on": "2026-08-26",
-    "titles_metadata_date": "2026-07-31",
+    "titles_metadata_date": "2026-08-06",
     "import_in_progress": false,
     "title_numbers": {
       "minimum": 1,
@@ -60,6 +61,8 @@
     "sha256_and_byte_ledger_required": true,
     "deterministic_xml_parse_required": true,
     "exact_historical_date_and_title_required": true,
+    "request_date_must_not_exceed_titles_metadata_date": true,
+    "reserved_titles_must_be_rejected": true,
     "redirect_and_content_type_validation_required": true
   },
   "required_successor_gates": [
@@ -107,5 +110,5 @@
     "final_test_accessed": false,
     "dedicated_actions_workflow_added": false
   },
-  "contract_identity_sha256": "d861be6e9ff4232ef6fdc35d24cf210ab251a08fdeae6de2710a914e5d25118f"
+  "contract_identity_sha256": "79dbbe041e8270bb5fb89fa34b34807ca699056aef05df85421e3c22bd133408"
 }
