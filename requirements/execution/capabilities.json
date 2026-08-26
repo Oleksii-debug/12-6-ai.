@@ -19,7 +19,7 @@
   },
   "dependency_executables": {"pytest": "tests", "ruff": "lint"},
   "locks": {
-    "cpu_runtime": {"package_count": 12, "path": "requirements/execution/linux-x86_64/cpu-runtime.lock.txt", "sha256": "03e08dd06ff446651dcc6950d0f433325bb32261d3e2406b34506cd00e1be52a"},
+    "cpu_runtime": {"package_count": 12, "path": "requirements/execution/linux-x86_64/cpu-runtime.lock.txt", "sha256": "03e08dd06ff446651dcc6950d0f433325bb32261d3e2406b34506cd00e1be52a", "index_url": "https://download.pytorch.org/whl/cpu", "extra_index_url": "https://pypi.org/simple"},
     "cuda_runtime": {"package_count": 31, "path": "requirements/locks/linux-x86_64/runtime.lock.txt", "sha256": "ffefba3ea32b3ed267e92110bcc348cbeda21e8253c72c64a191ea762a6d6c14"},
     "dev": {"package_count": 6, "path": "requirements/locks/linux-x86_64/dev.lock.txt", "sha256": "1869e05c5eeaf056813df1c99dc63c7e5febb9794351ec640d265f62efaeac28"},
     "tokenizer_overlay": {"package_count": 13, "path": "requirements/profiles/linux-x86_64-tokenizer-experiment/overlay.lock.txt", "sha256": "11f27613ee7c15585796af39accde71b1e7c2791c24ff98d74c395262ee68544"},
