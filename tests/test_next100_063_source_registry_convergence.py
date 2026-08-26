@@ -23,8 +23,14 @@ class Next100063SourceRegistryConvergenceTests(unittest.TestCase):
     def test_current_authority_passes(self) -> None:
         report = module.validate(copy.deepcopy(self.data))
         self.assertEqual(report["status"], "PASS")
-        self.assertEqual(report["capacity_bytes"], {"uk": 100856, "en": 144151, "code": 69133, "total": 314140})
-        self.assertEqual(report["family_counts"], {"uk": 4, "en": 2, "code": 4, "total": 10})
+        self.assertEqual(
+            report["capacity_bytes"],
+            {"uk": 100856, "en": 144151, "code": 69133, "total": 314140},
+        )
+        self.assertEqual(
+            report["family_counts"],
+            {"uk": 4, "en": 2, "code": 4, "total": 10},
+        )
         self.assertEqual(report["numeric_source_object_count"], 21)
         self.assertEqual(report["next_gate"], "GLOBAL_CROSS_SOURCE_DEDUP")
 
@@ -34,9 +40,61 @@ class Next100063SourceRegistryConvergenceTests(unittest.TestCase):
         with self.assertRaises(module.ValidationError):
             module.validate(broken)
 
+    def test_generic_workflow_cannot_substitute_for_nist_authority(self) -> None:
+        broken = copy.deepcopy(self.data)
+        nist = next(
+            row
+            for row in broken["late_authorities"]
+            if row["worker_id"] == "NEXT100-034-DATA-EN-NIST"
+        )
+        nist["workflow_run"] = 32998704439
+        nist["workflow_name"] = "DATA-21-22 External Source Intake"
+        with self.assertRaises(module.ValidationError):
+            module.validate(broken)
+
+    def test_generic_workflow_cannot_substitute_for_verba_authority(self) -> None:
+        broken = copy.deepcopy(self.data)
+        verba = next(
+            row
+            for row in broken["late_authorities"]
+            if row["worker_id"] == "NEXT100-027-DATA-UA-PUBLIC-DOMAIN-LIT"
+        )
+        verba["workflow_run"] = 32998503690
+        verba["workflow_name"] = "DATA-21-22 External Source Intake"
+        with self.assertRaises(module.ValidationError):
+            module.validate(broken)
+
+    def test_authority_identity_drift_fails_closed(self) -> None:
+        broken = copy.deepcopy(self.data)
+        broken["late_authorities"][0]["authority_identity"] = "0" * 64
+        with self.assertRaises(module.ValidationError):
+            module.validate(broken)
+
+    def test_authority_path_drift_fails_closed(self) -> None:
+        broken = copy.deepcopy(self.data)
+        broken["late_authorities"][1]["authority_path"] = "configs/data/wrong.json"
+        with self.assertRaises(module.ValidationError):
+            module.validate(broken)
+
+    def test_base_authority_path_drift_fails_closed(self) -> None:
+        broken = copy.deepcopy(self.data)
+        broken["base_authority"]["config_path"] = "configs/data/wrong.json"
+        with self.assertRaises(module.ValidationError):
+            module.validate(broken)
+
+    def test_issue_binding_drift_fails_closed(self) -> None:
+        broken = copy.deepcopy(self.data)
+        broken["issue"] = 0
+        with self.assertRaises(module.ValidationError):
+            module.validate(broken)
+
     def test_cpython_docs_cannot_receive_unmaterialized_capacity_credit(self) -> None:
         broken = copy.deepcopy(self.data)
-        cpython = next(row for row in broken["late_authorities"] if row["worker_id"] == "NEXT100-037-DATA-EN-PYTHON-DOCS")
+        cpython = next(
+            row
+            for row in broken["late_authorities"]
+            if row["worker_id"] == "NEXT100-037-DATA-EN-PYTHON-DOCS"
+        )
         cpython["numeric_capacity_bytes"] = 17901
         cpython["independent_family_credit"] = 1
         cpython["capacity_object_count"] = 14
@@ -45,7 +103,9 @@ class Next100063SourceRegistryConvergenceTests(unittest.TestCase):
 
     def test_arithmetic_drift_fails_closed(self) -> None:
         broken = copy.deepcopy(self.data)
-        broken["converged_pre_successor_dedup_vector"]["numeric_capacity_bytes"]["total"] += 1
+        broken["converged_pre_successor_dedup_vector"]["numeric_capacity_bytes"][
+            "total"
+        ] += 1
         with self.assertRaises(module.ValidationError):
             module.validate(broken)
 
