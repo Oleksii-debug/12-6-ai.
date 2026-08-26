@@ -18,13 +18,20 @@ CANDIDATE = ROOT / "configs" / "stages" / "s6_1b.scale06_current_tokenizer.candi
 EXPECTED_PARAMETERS = 999_761_920
 EXPECTED_MODEL_IDENTITY = "f691e75eea9ca4c4edae197b5284c2564d3784a87fd3a831c6411af55dfc00be"
 
+SHA_A = "1" * 40
+SHA_B = "2" * 40
+SHA_C = "3" * 40
+SHA_D = "4" * 40
+SHA_E = "5" * 40
+ARTIFACT_SHA = "a" * 64
+
 ENGINEERING_AUTHORITIES = {
-    "preceding_stage_authority": "github:stage-s5@terminal-pass-sha",
-    "production_tokenizer_authority": "github:tokenizer@terminal-qualified-sha",
-    "native_gqa_authority": "github:perf-21@terminal-success-sha",
-    "distributed_checkpoint_authority": "github:dist-18@terminal-success-sha",
-    "data_pipeline_authority": "github:data-pipeline@terminal-qualified-sha",
-    "accelerator_runtime_authority": "artifact:accelerator-runtime@qualified-sha",
+    "preceding_stage_authority": f"github:stage-s5@{SHA_A}:admitted",
+    "production_tokenizer_authority": f"artifact:tokenizer@{ARTIFACT_SHA}",
+    "native_gqa_authority": f"github:perf-21@{SHA_B}:success",
+    "distributed_checkpoint_authority": f"github:dist-18@{SHA_C}:success",
+    "data_pipeline_authority": f"github:data-pipeline@{SHA_D}:qualified",
+    "accelerator_runtime_authority": f"github:accelerator-runtime@{SHA_E}:pass",
 }
 
 
@@ -111,10 +118,16 @@ def test_scale_1b_rejects_promotion_open_candidate(tmp_path: Path) -> None:
 def test_scale_1b_rejects_unbound_compute_self_attestation() -> None:
     with pytest.raises(ValueError, match="COMPUTE_AUTHORIZED"):
         Scale1BDependencies(compute_authorization="yes")
+    with pytest.raises(ValueError, match="non-empty authority reference"):
+        Scale1BDependencies(compute_authorization="COMPUTE_AUTHORIZED:")
 
 
-def test_scale_1b_rejects_blank_or_padded_authorities() -> None:
+def test_scale_1b_rejects_blank_padded_or_freeform_engineering_authorities() -> None:
     with pytest.raises(ValueError, match="must not be blank"):
         Scale1BDependencies(native_gqa_authority="")
     with pytest.raises(ValueError, match="surrounding whitespace"):
-        Scale1BDependencies(data_pipeline_authority=" github:data@sha ")
+        Scale1BDependencies(data_pipeline_authority=f" github:data@{SHA_D}:qualified ")
+    with pytest.raises(ValueError, match="github:<scope>"):
+        Scale1BDependencies(native_gqa_authority="PR #163 is green")
+    with pytest.raises(ValueError, match="github:<scope>"):
+        Scale1BDependencies(native_gqa_authority="github:perf-21@deadbeef:success")
