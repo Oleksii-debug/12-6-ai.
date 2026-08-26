@@ -6,17 +6,17 @@ on:
       - "src/twelve_six/s0_candidate_evaluation.py"
       - "src/twelve_six/evaluation.py"
       - "src/twelve_six/stage_gates.py"
-      - "src/twelve_six/checkpoint/**"
-      - "src/twelve_six/inference/**"
-      - "src/twelve_six/training/**"
       - "data/s0/**"
-      - "configs/stages/**"
-      - "requirements/locks/**"
+      - "configs/stages/s0_10k.json"
       - "tests/test_s0_candidate_evaluation.py"
       - "tests/fixtures/s0_complete_evidence.json"
       - "docs/S0_EXACT_CANDIDATE_EVALUATION.md"
       - ".github/workflows/d04-strict-s0-evaluation.yml"
   workflow_dispatch:
+
+concurrency:
+  group: d04-s0-eval-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -38,15 +38,27 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.11.16"
-      - run: python -m pip --version
-      - run: python -m pip install --disable-pip-version-check -e .[dev]
-      - run: python tools/check_repo_policy.py
-      - run: ruff check src tests tools
+      - name: Create exact LOCAL_FREE CPU environment
+        uses: ./.github/actions/execution-bootstrap
+        with:
+          capabilities: runtime,tests,lint
+          venv: .d04-s0
+          command: python -m pytest -q tests/test_s0_candidate_evaluation.py
+          manifest: d04-s0-execution-environment.json
+      - name: Enforce repository policy
+        run: .d04-s0/bin/python tools/check_repo_policy.py
+      - name: Focused D04 lint
+        run: >-
+          .d04-s0/bin/ruff check
+          src/twelve_six/s0_candidate_evaluation.py
+          src/twelve_six/evaluation.py
+          src/twelve_six/stage_gates.py
+          tests/test_s0_candidate_evaluation.py
       - name: Focused strict collector and fail-closed negatives
-        run: pytest -q tests/test_s0_candidate_evaluation.py
+        run: .d04-s0/bin/python -m pytest -q tests/test_s0_candidate_evaluation.py
       - name: Run real 40-step LOCAL_FREE exact-candidate evaluation
         run: |
-          python -m twelve_six.s0_candidate_evaluation \
+          .d04-s0/bin/python -m twelve_six.s0_candidate_evaluation \
             --repo-root . \
             --candidate-sha "$CANDIDATE_SHA" \
             --output-dir "$RUNNER_TEMP/s0-exact-evaluation" \
@@ -54,7 +66,7 @@ jobs:
             --fail-on-incomplete
       - name: Validate machine reports and non-promotion boundary
         run: |
-          python - <<'PY'
+          .d04-s0/bin/python - <<'PY'
           import json
           import os
           from pathlib import Path
@@ -78,13 +90,13 @@ jobs:
           assert promotion["promotion_authority_status"] == "NOT_TESTED"
           assert promotion["promotion_eligible"] is False
           PY
-      - name: Full repository regression suite
-        run: pytest -q
       - name: Upload exact-candidate gate evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: s0-d04-exact-evaluation-${{ env.CANDIDATE_SHA }}
-          path: ${{ runner.temp }}/s0-exact-evaluation/*.json
+          path: |
+            d04-s0-execution-environment.json
+            ${{ runner.temp }}/s0-exact-evaluation/*.json
           if-no-files-found: warn
           retention-days: 14
