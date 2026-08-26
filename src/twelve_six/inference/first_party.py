@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -120,19 +120,23 @@ def load_first_party_backend(
     checkpoint: Path,
     *,
     device: str | torch.device = "cpu",
+    spec_validator: Callable[[ModelSpec], object] | None = None,
 ) -> FirstPartyInferenceBackend:
     """Verify one checkpoint snapshot, bind ModelSpec/tokenizer, and expose inference.
 
     The checkpoint directory is read exactly once into D05's immutable
     ``VerifiedCheckpoint`` snapshot. ModelSpec/tokenizer validation, applied
     weights, and backend diagnostics therefore derive from the same bytes.
-    RNG state is intentionally not restored for inference.
+    An optional ModelSpec validator runs before model allocation. RNG state is
+    intentionally not restored for inference.
     """
 
     checkpoint = Path(checkpoint)
     verified = prepare_checkpoint_load(checkpoint)
     manifest = verified.manifest
     spec = _checkpoint_spec(manifest)
+    if spec_validator is not None:
+        spec_validator(spec)
     tokenizer = _require_byte_tokenizer(manifest, spec)
 
     model = TwelveSixDecoder(spec)
