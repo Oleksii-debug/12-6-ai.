@@ -2,21 +2,24 @@ name: D04 Strict S0 Exact-Candidate Evaluation
 
 on:
   pull_request:
+    # Auto-run only when the D04/S0 evaluation contract itself changes.
+    # Cross-lane checkpoint/training/inference changes remain testable through
+    # workflow_dispatch without making every domain PR pay for this 40-step run.
     paths:
       - "src/twelve_six/s0_candidate_evaluation.py"
       - "src/twelve_six/evaluation.py"
       - "src/twelve_six/stage_gates.py"
-      - "src/twelve_six/checkpoint/**"
-      - "src/twelve_six/inference/**"
-      - "src/twelve_six/training/**"
       - "data/s0/**"
-      - "configs/stages/**"
-      - "requirements/locks/**"
+      - "configs/stages/s0*"
       - "tests/test_s0_candidate_evaluation.py"
       - "tests/fixtures/s0_complete_evidence.json"
       - "docs/S0_EXACT_CANDIDATE_EVALUATION.md"
       - ".github/workflows/d04-strict-s0-evaluation.yml"
   workflow_dispatch:
+
+concurrency:
+  group: d04-strict-s0-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
