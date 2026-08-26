@@ -229,6 +229,20 @@ def assess_learned20m_readiness(data: dict[str, Any]) -> ReadinessAssessment:
         local.append("training_seed_plan_missing")
     _require_identity(local, recipe.get("config_sha256"), "training_config_identity_missing")
     _require_identity(local, recipe.get("stopping_policy_sha256"), "stopping_policy_missing")
+    requested_positions = recipe.get("requested_unique_loss_positions")
+    if (
+        isinstance(requested_positions, bool)
+        or not isinstance(requested_positions, int)
+        or requested_positions <= 0
+    ):
+        local.append("requested_unique_loss_positions_not_positive")
+    elif (
+        isinstance(positions, int)
+        and not isinstance(positions, bool)
+        and positions > 0
+        and requested_positions > positions
+    ):
+        local.append("requested_unique_loss_positions_exceed_ledger")
 
     local = sorted(set(local))
 
