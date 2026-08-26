@@ -49,7 +49,7 @@ def test_tampered_lock_is_rejected_before_install(tmp_path: Path) -> None:
     lock_path = root / "requirements/locks/linux-x86_64/runtime.lock.txt"
     lock_path.write_text(lock_path.read_text(encoding="utf-8") + "tampered==1.0\n", encoding="utf-8")
 
-    with pytest.raises(DependencyLockError, match="profile file hash mismatch|lock hash mismatch"):
+    with pytest.raises(DependencyLockError, match=r"component runtime stale"):
         validate_lock_index(root=root, index_path="requirements/locks/index.json")
 
 
@@ -61,7 +61,7 @@ def test_stale_pyproject_is_rejected(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    with pytest.raises(DependencyLockError, match="stale for current pyproject"):
+    with pytest.raises(DependencyLockError, match=r"component pyproject\.toml stale"):
         validate_profile_manifest(
             root=root,
             manifest_path="requirements/locks/linux-x86_64/profile.json",
