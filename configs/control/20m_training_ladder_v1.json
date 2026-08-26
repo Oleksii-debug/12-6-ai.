@@ -1,95 +1,91 @@
 {
   "schema": "12-6.20m-training-ladder.v1",
-  "status": "ACTIVE_FAIL_CLOSED",
+  "semantics_revision": 2,
+  "status": "ACTIVE_FAIL_CLOSED_UNIT_CORRECTED",
   "authority": {
     "readiness_pr": 519,
-    "readiness_head_sha_at_design": "83d92d50a4380636cc7f1cd41fa9ffd4445dd12e",
     "model_branch": "model341/20m-candidate-a-20260826",
     "model_head_sha": "e4ff486fd90802fc123bebf60eed4e59196a98df",
     "model_spec_sha256": "fbff24d561a2818453554d58ca23fc6ace3303b078f1935a8576c4565bd92441",
     "parameter_count": 20613440,
-    "random_init_only": true
+    "random_init_only": true,
+    "tokenizer_path": "configs/s0/tokenizer_byte_v1.json",
+    "tokenizer_version": "s0-byte-v1",
+    "tokenizer_type": "utf8-byte",
+    "vocab_size": 256,
+    "loss_position_unit": "UTF8_BYTE_POSITION"
   },
   "research_basis": [
     {
       "id": "HOFFMANN_2022_CHINCHILLA",
-      "reference": "Training Compute-Optimal Large Language Models, arXiv:2203.15556",
-      "use": "PLANNING_REFERENCE_ONLY",
-      "note": "70B parameters trained on about 1.4T tokens implies an approximately 20 tokens-per-parameter reference point; extrapolation to 20M is not asserted to be an exact optimum."
+      "reference": "arXiv:2203.15556",
+      "use": "EXTERNAL_SCALING_ANCHOR_NOT_BYTE_BUDGET",
+      "note": "The often-used approximately 20 source-reported tokens per parameter reference is not directly convertible to s0-byte-v1 UTF-8 byte positions."
     },
     {
-      "id": "ELDAN_LI_2023_TINYSTORIES",
-      "reference": "TinyStories, arXiv:2305.07759",
-      "use": "LOW_PARAMETER_BOUNDARY_EVIDENCE",
-      "note": "Sub-10M models can learn coherent behavior on a deliberately constrained synthetic curriculum; this is not evidence of general-language-model readiness."
+      "id": "BYT5_2021",
+      "reference": "arXiv:2105.13626",
+      "use": "BYTE_SEQUENCE_EFFICIENCY_CONTEXT",
+      "note": "Byte-level modeling changes sequence length and compute tradeoffs relative to tokenized models."
     },
     {
-      "id": "LIU_ET_AL_2024_MOBILELLM",
-      "reference": "MobileLLM, arXiv:2402.14905",
+      "id": "BLT_2024",
+      "reference": "arXiv:2412.09871",
+      "use": "BYTE_LEVEL_FLOP_SCALING_CONTEXT",
+      "note": "Competitive large-scale byte modeling uses explicit FLOP-controlled design and dynamic patching; MODEL-341 is a conventional decoder and requires its own measured curve."
+    },
+    {
+      "id": "MOBILELLM_2024",
+      "reference": "arXiv:2402.14905",
       "use": "SUB_BILLION_ARCHITECTURE_EVIDENCE",
-      "note": "Deep-thin design, embedding sharing and grouped-query attention are relevant architecture directions for later 100M-1B stages."
-    },
-    {
-      "id": "BEN_ALLAL_ET_AL_2025_SMOLLM2",
-      "reference": "SmolLM2, arXiv:2502.02737",
-      "use": "MODERN_OVERTRAINING_CONTEXT",
-      "note": "Modern small models may deliberately train far beyond a Chinchilla-style compute-optimal token count; any such extension for 12-6 must be evidence- and budget-driven."
+      "note": "Deep-thin designs and GQA are relevant controlled ablations for later 100M-1B stages."
     }
   ],
   "training_ladder": {
     "engineering_pilot": {
-      "requested_unique_optimized_targets": 20000000,
+      "requested_unique_optimized_byte_positions": 20000000,
       "purpose": "END_TO_END_LEARNING_AND_RECOVERY_PILOT",
       "claim_ceiling": "PIPELINE_AND_LEARNING_SIGNAL_ONLY_NO_GENERAL_BASE_QUALITY_CLAIM",
       "runnable_now": false
     },
-    "scientific_reference": {
-      "tokens_per_parameter": 20,
-      "reference_unique_optimized_targets": 412268800,
-      "status": "REFERENCE_ONLY_NOT_COMPUTE_AUTHORIZATION",
-      "extrapolation_warning": "The 20 tokens-per-parameter ratio is a planning reference derived from large-model compute-optimal evidence, not a proven optimum for this 20.6M architecture."
+    "science_complete_20m_budget": {
+      "unit": "UTF8_BYTE_POSITION",
+      "value": null,
+      "status": "UNDEFINED_PENDING_TOKENIZER_AND_FLOP_CALIBRATION"
     },
-    "milestones": [
-      {
-        "id": "L0_20M_PILOT",
-        "cumulative_unique_optimized_targets": 20000000,
-        "claim_ceiling": "MECHANICS_AND_LEARNING_SIGNAL"
-      },
-      {
-        "id": "L1_100M",
-        "cumulative_unique_optimized_targets": 100000000,
-        "claim_ceiling": "INTERMEDIATE_SCIENTIFIC_CHECKPOINT"
-      },
-      {
-        "id": "L2_200M",
-        "cumulative_unique_optimized_targets": 200000000,
-        "claim_ceiling": "INTERMEDIATE_SCIENTIFIC_CHECKPOINT"
-      },
-      {
-        "id": "L3_CHINCHILLA_REFERENCE",
-        "cumulative_unique_optimized_targets": 412268800,
-        "claim_ceiling": "REFERENCE_SCALE_BASE_EVALUATION_CANDIDATE"
-      }
+    "external_chinchilla_style_anchor": {
+      "rounded_source_reported_tokens_per_parameter": 20,
+      "hypothetical_source_reported_tokens_for_same_parameter_count": 412268800,
+      "direct_conversion_to_byte_positions": false,
+      "status": "REFERENCE_ONLY_NOT_TRAINING_TARGET_NOT_COMPUTE_AUTHORIZATION"
+    },
+    "decision_sequence": [
+      "L0_20M_BYTE_POSITION_ENGINEERING_PILOT",
+      "L1_TOKENIZER_EFFICIENCY_AND_CONTEXT_SPAN_CALIBRATION",
+      "L2_FLOP_NORMALIZED_BYTE_VS_SUBWORD_ABLATION",
+      "L3_HELD_OUT_LEARNING_CURVE_AND_DATA_MIXTURE_EVALUATION",
+      "L4_DEFINE_20M_SCIENCE_BUDGET_OR_PREREGISTERED_OVERRIDE",
+      "L5_CONSIDER_100M_PARAMETER_PROMOTION_ONLY_FROM_MEASURED_EVIDENCE"
     ]
   },
   "future_scale_reference": [
     {
       "nominal_parameters": 100000000,
-      "reference_tokens_at_20_per_parameter": 2000000000,
-      "status": "PLANNING_REFERENCE_ONLY"
+      "external_hypothetical_source_reported_tokens_at_20_per_parameter": 2000000000,
+      "direct_reference_byte_positions": null,
+      "status": "EXTERNAL_ANCHOR_ONLY_FUTURE_STAGE_BLOCKED"
     },
     {
       "nominal_parameters": 1000000000,
-      "reference_tokens_at_20_per_parameter": 20000000000,
-      "status": "PLANNING_REFERENCE_ONLY"
+      "external_hypothetical_source_reported_tokens_at_20_per_parameter": 20000000000,
+      "direct_reference_byte_positions": null,
+      "status": "EXTERNAL_ANCHOR_ONLY_FUTURE_STAGE_BLOCKED"
     }
   ],
   "current_data_gate": {
-    "research_corpus_branch": "data301/corpus-v03-terminal-build-20260826",
-    "research_corpus_head_sha": "8820ba1b255f6bb95c7db0531fd846078a1aae01",
     "corpus_identity": null,
     "shard_identity": null,
-    "authorized_unique_optimized_targets": 0,
+    "authorized_unique_optimized_byte_positions": 0,
     "long_training_runnable": false,
     "primary_blocker": "NO_TERMINAL_CORPUS_IDENTITY_AND_ZERO_AUTHORIZED_UNIQUE_LOSS_CAPACITY"
   },
@@ -102,6 +98,9 @@
     "CHECKPOINT_SAVE_LOAD_RESUME_AND_RNG_CONTINUATION_REQUALIFIED_ON_MODEL341",
     "BOUNDED_TRAINING_PROBE_SHOWS_EXPECTED_FINITE_LOSS_AND_UPDATE_BEHAVIOR",
     "HELD_OUT_EVALUATION_SEPARATION_AND_NONEMPTY_SELECTION_AUTHORITY",
+    "TOKENIZER_EFFICIENCY_CALIBRATION_BY_UA_EN_CODE",
+    "FLOP_NORMALIZED_BYTE_VS_SUBWORD_SCALING_CURVE",
+    "CONTEXT_SEMANTIC_SPAN_CALIBRATION_BY_LANGUAGE",
     "EXACT_RUN_CONFIG_HARDWARE_PROFILE_COST_ESTIMATE_AND_ARTIFACT_DESTINATION",
     "EXPLICIT_COMPUTE_AUTHORIZATION_FOR_ANY_MATERIALLY_PAID_LONG_RUN"
   ],

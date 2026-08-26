@@ -1,55 +1,46 @@
 # 20M training ladder
 
-## Decision
+## Current decision
 
-The exact MODEL-341 configuration is a mechanically qualified random-initialized decoder with 20,613,440 parameters. The currently preregistered 20,000,000 unique optimized-target campaign is retained, but its semantic role is narrowed to an end-to-end learning/recovery pilot. It must not be described as sufficient evidence that a general 20M Base is fully trained.
+MODEL-341 is an exact 20,613,440-parameter random-initialized decoder candidate. Its active tokenizer is `s0-byte-v1`: raw UTF-8 bytes, vocabulary size 256. Therefore a training loss position is an UTF-8 byte position, not a BPE/SentencePiece-style subword token.
 
-Long training remains blocked until a terminal exact corpus identity, shard identity and non-zero authorized unique-loss capacity exist. This document does not authorize paid compute.
+The preregistered 20,000,000 unique authorized byte-loss-position campaign remains useful, but only as an end-to-end engineering and early-learning pilot. It may qualify data plumbing, optimizer behavior, numerical stability, checkpoint recovery and the existence of a learning signal. It is not sufficient evidence that a general 20M Base is science-complete.
 
-## Why the distinction matters
+Long training remains blocked until terminal corpus/shard identities, non-zero authorized unique loss capacity and terminal checkpoint integrity exist. No materially paid compute is authorized by this control plane.
 
-The current Research Corpus V1 effort is necessary to prove provenance, rights, quality, privacy, deduplication, evaluation decontamination, deterministic splits/shards and loss accounting. That is an engineering and scientific-control milestone. Corpus correctness and corpus scale are separate questions.
+## Unit correction
 
-Hoffmann et al., *Training Compute-Optimal Large Language Models* (arXiv:2203.15556), trained Chinchilla at 70B parameters on about 1.4T tokens. The approximately 20 tokens-per-parameter ratio is useful here as a planning reference. It is not asserted to be the exact optimum for a 20.6M model because the paper's fitted regime is much larger than this stage.
+A previous planning draft multiplied 20,613,440 parameters by a rounded Chinchilla-style 20 tokens per parameter and obtained 412,268,800. The arithmetic is valid only when the counted training unit is comparable to the source-reported token unit. In this project it is not: MODEL-341 predicts raw UTF-8 bytes.
 
-For MODEL-341, the reference calculation is:
+For Ukrainian and other non-ASCII text, one human-visible character can occupy multiple UTF-8 bytes. Byte tokenization also changes sequence length, attention cost, semantic context span and training FLOPs relative to a learned subword tokenizer. Consequently:
 
-`20,613,440 parameters * 20 = 412,268,800 unique optimized targets`.
+- 412,268,800 remains an external hypothetical source-token anchor, not a byte-position target;
+- the former claim that 20M byte positions are about 4.85% of that reference is retired;
+- the science-complete byte budget is deliberately undefined until measured calibration exists;
+- the 100M and 1B stage anchors (2B and 20B source-reported tokens at a rounded 20-per-parameter ratio) are not direct byte budgets and cannot authorize runs.
 
-The ladder therefore separates:
+## Research basis
 
-1. 20M cumulative targets — pipeline, optimizer, learning-signal, checkpoint and recovery pilot.
-2. 100M cumulative targets — intermediate scientific checkpoint.
-3. 200M cumulative targets — intermediate scientific checkpoint.
-4. 412,268,800 cumulative targets — Chinchilla-style reference-scale evaluation candidate.
+Hoffmann et al., *Training Compute-Optimal Large Language Models* (arXiv:2203.15556), provides an important model/data scaling reference. It does not establish that an UTF-8 byte position is interchangeable with the tokens used in that work.
 
-Each milestone is a stop-and-evaluate boundary, not an instruction to spend compute automatically. A worse validation trend, data-quality defect, recovery defect, contamination finding, numerical instability or poor scaling efficiency stops progression.
+ByT5 (arXiv:2105.13626) demonstrates that token-free byte modeling is viable but explicitly changes the sequence-length and compute tradeoff. Byte Latent Transformer (arXiv:2412.09871) further shows that competitive large-scale byte modeling benefits from explicit FLOP-controlled scaling and a patching architecture. MODEL-341 is a conventional decoder Transformer, so its byte-level data budget must be measured rather than copied from a subword-token scaling law.
 
-## Small-model evidence boundary
+MobileLLM (arXiv:2402.14905) remains relevant to the later 100M-1B architecture path: deep-thin designs, embedding sharing and grouped-query attention should be evaluated as controlled ablations rather than adopted merely to hit a parameter count.
 
-TinyStories (Eldan and Li, arXiv:2305.07759) shows that models below 10M parameters can produce coherent multi-paragraph text when trained on a deliberately constrained synthetic story distribution. That is useful evidence that very small transformers can learn meaningful structure; it is not evidence that a similarly small unrestricted Base has broad language competence.
+## Required calibration before a science-complete 20M budget
 
-MobileLLM (Liu et al., arXiv:2402.14905) is relevant to the later 100M-1B architecture path because it reports strong sub-billion results from deep-thin architectures, embedding sharing and grouped-query attention. 12-6 should test those choices with controlled ablations rather than assuming that parameter count alone determines quality.
+The project must measure, on the same clean UA/EN/code corpus slices, bytes per character, bytes per learned subword token and tokenizer fertility by domain. It must then compare the current byte tokenizer against at least one learned subword tokenizer on controlled model/data/compute budgets.
 
-SmolLM2 (Ben Allal et al., arXiv:2502.02737) documents a modern data-centric small-model regime in which a 1.7B model is trained on roughly 11T tokens. This is evidence that useful modern small models are often deliberately trained beyond a simple compute-optimal reference. It does not justify copying that token budget into 12-6 without measured benefit and an explicit compute budget.
+Evaluation must report held-out likelihood normalized by byte and by character, training FLOPs or wall-clock per effective text unit, context semantic span by language/domain, and learning curves at multiple unique-data budgets. A numeric science-complete byte-position target may be introduced only after this calibration is preregistered and terminal.
 
-## 100M and 1B planning references
+## Promotion sequence
 
-Using the same planning ratio only as a first-order reference gives:
+1. Finish Research Corpus V1 authority: exact materialization, rights/provenance, privacy/quality, global deduplication, evaluation decontamination, deterministic splits/shards and no-replay accounting.
+2. Finish D05: the full corruption matrix must reject malformed checkpoints before live state mutation, then save/load/resume and RNG continuation must be requalified on exact MODEL-341 lineage.
+3. Run the bounded 20M unique-byte-position engineering pilot only when its exact data/checkpoint gates are terminal and compute is explicitly permitted.
+4. Measure byte-tokenizer efficiency and context span on UA/EN/code; run a byte-vs-subword controlled ablation.
+5. Fit a FLOP-normalized learning curve and define the 20M science baseline from measured evidence.
+6. Consider a 100M-parameter model only if the 20M learned checkpoint, data curve and compute-efficiency evidence justify the parameter increase.
+7. Consider 1B only after a learned 100M stage and distributed-training/recovery qualification.
 
-- nominal 100M parameters -> 2B tokens;
-- nominal 1B parameters -> 20B tokens.
-
-These figures are capacity-planning anchors, not fixed training prescriptions. Before either scale is authorized, 12-6 must use learning curves from the smaller stages to fit its own data/compute scaling model, estimate wall-clock and monetary cost, and decide whether additional tokens or additional parameters provide the better marginal return.
-
-## Promotion gates
-
-No materially paid long run may start unless all applicable gates are terminal and bound to the exact candidate lineage: corpus/shard identity, purpose-specific rights and provenance, quality/privacy/dedup, evaluation decontamination, tokenizer identity, D05 corruption rejection before live mutation, save/load/resume and RNG continuation, bounded training numerics, held-out evaluation separation, exact run config, hardware profile, cost estimate, artifact destination and explicit compute authorization.
-
-The D05 corruption finding is a P0 gate. A checkpoint loader that silently casts incompatible tensor dtypes, accepts malformed optimizer geometry or accepts invalid counters cannot be trusted for a long campaign even when ordinary save/load tests pass.
-
-## Operational consequence
-
-Research Corpus V1 should be completed because it unlocks the first real learning pilot. It should not be treated as the final data scale for the 20.6M Base. After the 20M-target pilot is terminal, the next decision is based on measured held-out loss, learning-curve slope, tokenizer fertility, data-mixture behavior, checkpoint integrity and compute efficiency. Only then should the project proceed to 100M, 200M and the reference-scale target.
-
-The same rule applies to 100M and 1B model growth: scale only from measured evidence, not from a parameter-count milestone alone.
+Parameter count is a capacity milestone, not a quality milestone. The project scales only when the previous stage has learned, survived recovery tests, and produced evidence that the next unit of compute is better spent on more parameters rather than more data, a better tokenizer, a better architecture or a longer context.

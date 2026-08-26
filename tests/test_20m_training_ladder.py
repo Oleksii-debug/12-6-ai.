@@ -18,15 +18,22 @@ class Test20MTrainingLadder(unittest.TestCase):
     def test_canonical_config_passes(self) -> None:
         validate(self.data)
 
-    def test_reference_target_is_exactly_bound_to_parameter_count(self) -> None:
-        mutated = copy.deepcopy(self.data)
-        mutated["training_ladder"]["scientific_reference"]["reference_unique_optimized_targets"] += 1
-        with self.assertRaises(LadderValidationError):
-            validate(mutated)
-
     def test_engineering_pilot_cannot_claim_general_base_quality(self) -> None:
         mutated = copy.deepcopy(self.data)
         mutated["training_ladder"]["engineering_pilot"]["claim_ceiling"] = "GENERAL_BASE_READY"
+        with self.assertRaises(LadderValidationError):
+            validate(mutated)
+
+    def test_external_reference_cannot_become_direct_byte_budget(self) -> None:
+        mutated = copy.deepcopy(self.data)
+        mutated["training_ladder"]["external_chinchilla_style_anchor"]["direct_conversion_to_byte_positions"] = True
+        mutated["training_ladder"]["science_complete_20m_budget"]["value"] = 412_268_800
+        with self.assertRaises(LadderValidationError):
+            validate(mutated)
+
+    def test_science_budget_remains_undefined_before_calibration(self) -> None:
+        mutated = copy.deepcopy(self.data)
+        mutated["training_ladder"]["science_complete_20m_budget"]["value"] = 100_000_000
         with self.assertRaises(LadderValidationError):
             validate(mutated)
 
@@ -42,9 +49,15 @@ class Test20MTrainingLadder(unittest.TestCase):
         with self.assertRaises(LadderValidationError):
             validate(mutated)
 
-    def test_future_scale_reference_preserves_planning_ratio(self) -> None:
+    def test_100m_future_stage_cannot_receive_fabricated_byte_budget(self) -> None:
         mutated = copy.deepcopy(self.data)
-        mutated["future_scale_reference"][0]["reference_tokens_at_20_per_parameter"] = 1_999_999_999
+        mutated["future_scale_reference"][0]["direct_reference_byte_positions"] = 2_000_000_000
+        with self.assertRaises(LadderValidationError):
+            validate(mutated)
+
+    def test_flop_normalized_byte_vs_subword_ablation_is_mandatory(self) -> None:
+        mutated = copy.deepcopy(self.data)
+        mutated["training_ladder"]["decision_sequence"].remove("L2_FLOP_NORMALIZED_BYTE_VS_SUBWORD_ABLATION")
         with self.assertRaises(LadderValidationError):
             validate(mutated)
 
