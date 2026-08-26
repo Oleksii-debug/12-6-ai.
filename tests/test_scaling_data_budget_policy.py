@@ -27,9 +27,10 @@ def test_current_policy_passes() -> None:
         "status": "PASS",
         "stage_count": 3,
         "primary_parameter_count": 20_613_440,
-        "primary_20x_unique_loss_tokens": 412_268_800,
+        "primary_20x_training_token_exposures": 412_268_800,
         "volatile_source_snapshot_embedded": False,
         "source_bytes_are_token_authority": False,
+        "token_exposures_are_unique_positions": False,
         "policy_can_authorize_training": False,
     }
 
@@ -48,10 +49,24 @@ def test_source_capacity_target_cannot_be_promoted_to_training_budget() -> None:
         module.validate(broken)
 
 
-def test_unique_loss_reference_is_derived_from_parameter_count() -> None:
+def test_training_exposures_cannot_be_relabelled_unique() -> None:
     broken = copy.deepcopy(load_policy())
-    broken["stages"][0]["reference_unique_loss_tokens"]["20x"] += 1
-    with pytest.raises(ValueError, match="20M_PRIMARY 20x token reference drift"):
+    broken["truth_boundary"]["training_token_exposures_are_unique_loss_positions"] = True
+    with pytest.raises(ValueError, match="must not be treated as unique loss positions"):
+        module.validate(broken)
+
+
+def test_20x_reference_is_derived_from_parameter_count() -> None:
+    broken = copy.deepcopy(load_policy())
+    broken["stages"][0]["reference_training_token_exposures"]["20x"] += 1
+    with pytest.raises(ValueError, match="20M_PRIMARY 20x token-exposure reference drift"):
+        module.validate(broken)
+
+
+def test_20x_reference_cannot_become_hard_minimum() -> None:
+    broken = copy.deepcopy(load_policy())
+    broken["truth_boundary"]["planning_reference_is_minimum_training_requirement"] = True
+    with pytest.raises(ValueError, match="cannot become a hard minimum"):
         module.validate(broken)
 
 
@@ -69,10 +84,19 @@ def test_scaling_policy_cannot_self_authorize_training() -> None:
         module.validate(broken)
 
 
-def test_exact_tokenization_evidence_cannot_be_removed() -> None:
+def test_unique_token_evidence_cannot_be_removed() -> None:
     broken = copy.deepcopy(load_policy())
     broken["long_training_gate"]["required_evidence"].remove(
-        "exact_post_tokenization_train_token_count"
+        "exact_post_tokenization_unique_train_token_count"
+    )
+    with pytest.raises(ValueError, match="required evidence set drift"):
+        module.validate(broken)
+
+
+def test_replay_policy_cannot_be_removed() -> None:
+    broken = copy.deepcopy(load_policy())
+    broken["long_training_gate"]["required_evidence"].remove(
+        "preregistered_replay_policy_and_epoch_cap"
     )
     with pytest.raises(ValueError, match="required evidence set drift"):
         module.validate(broken)
@@ -108,6 +132,15 @@ def test_source_registry_cannot_be_token_authority() -> None:
     broken = copy.deepcopy(load_policy())
     broken["data_authority_contract"]["source_registry_is_token_count_authority"] = True
     with pytest.raises(ValueError, match="data authority firewall missing"):
+        module.validate(broken)
+
+
+def test_unique_vs_replayed_accounting_cannot_be_disabled() -> None:
+    broken = copy.deepcopy(load_policy())
+    broken["data_authority_contract"][
+        "promotion_requires_unique_vs_replayed_exposure_accounting"
+    ] = False
+    with pytest.raises(ValueError, match="data authority invariant missing"):
         module.validate(broken)
 
 
