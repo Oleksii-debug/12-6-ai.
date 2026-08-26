@@ -76,6 +76,13 @@ def test_legacy_specialist_workflows_are_scoped_and_cancellable() -> None:
             ), f"{workflow_path} should not auto-run for control-only change {control_path}"
 
 
+def test_manual_dispatch_keeps_exact_source_binding() -> None:
+    fallback = "github.event.pull_request.head.sha || github.sha"
+    for workflow_path in ROUTED_WORKFLOWS:
+        text = Path(workflow_path).read_text(encoding="utf-8")
+        assert fallback in text, workflow_path
+
+
 def test_each_specialist_workflow_self_change_requalifies_it() -> None:
     for workflow_path in ROUTED_WORKFLOWS:
         paths = _pull_request_paths(Path(workflow_path).read_text(encoding="utf-8"))
