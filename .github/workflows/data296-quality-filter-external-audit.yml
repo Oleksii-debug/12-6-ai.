@@ -27,18 +27,44 @@ jobs:
           EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
 
-      - name: Bootstrap exact LOCAL_FREE runtime
-        uses: ./.github/actions/execution-bootstrap
-        with:
-          capabilities: runtime,tests
-          venv: .data296
-          command: python -m pytest
-          manifest: data296-execution-environment.json
+      - name: Capture exact LOCAL_FREE runtime
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import platform
+          import sys
+          from pathlib import Path
 
-      - name: Run DATA-296 contract tests
+          manifest = {
+              "schema_version": "12-6.data296-execution-environment.v1",
+              "source_sha": os.environ["EXPECTED_SOURCE_SHA"],
+              "local_free_only": True,
+              "dependency_mode": "STDLIB_ONLY_NO_INSTALL",
+              "python_version": platform.python_version(),
+              "python_implementation": platform.python_implementation(),
+              "platform": platform.platform(),
+              "executable": sys.executable,
+          }
+          assert manifest["python_version"] == "3.11.16"
+          Path("data296-execution-environment.json").write_text(
+              json.dumps(manifest, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+              encoding="utf-8",
+              newline="\n",
+          )
+          PY
+
+      - name: Compile DATA-296 path
         env:
           PYTHONPATH: src
-        run: .data296/bin/python -m pytest -q tests/test_data296_quality_external_audit.py
+        run: python -m compileall -q src/twelve_six/data tools/run_data296_quality_external_audit.py tests/test_data296_quality_external_audit.py
+
+      - name: Run DATA-296 contract checks
+        env:
+          PYTHONPATH: src
+        run: python tests/test_data296_quality_external_audit.py
 
       - name: Execute immutable external-real quality audit
         env:
@@ -46,7 +72,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p data296-evidence
-          .data296/bin/python tools/run_data296_quality_external_audit.py \
+          python tools/run_data296_quality_external_audit.py \
             --repo-root . \
             --plan configs/data/data296_quality_filter_external_audit_v1.json \
             --output data296-evidence/data296-quality-filter-external-audit.json \
@@ -54,7 +80,7 @@ jobs:
 
       - name: Assert statistics-only authority and family coverage
         run: |
-          .data296/bin/python - <<'PY'
+          python - <<'PY'
           import json
           from pathlib import Path
 
@@ -93,7 +119,7 @@ jobs:
         env:
           EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
-          .data296/bin/python - <<'PY'
+          python - <<'PY'
           import hashlib
           import json
           import os
