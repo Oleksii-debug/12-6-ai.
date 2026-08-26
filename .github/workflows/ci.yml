@@ -3,6 +3,11 @@ on:
   push:
     branches: [main]
   pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 jobs:
@@ -23,6 +28,15 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.11.16"
+      - name: Enforce shared CI workflow budget
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: >-
+          python src/twelve_six/ci_workflow_policy.py
+          --base "$BASE_SHA"
+          --head "$HEAD_SHA"
       - name: Locked clean install, package smoke and full checks
         run: >-
           python tools/verify_locked_environment.py
