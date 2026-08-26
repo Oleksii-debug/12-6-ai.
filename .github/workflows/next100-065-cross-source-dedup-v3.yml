@@ -77,7 +77,7 @@ jobs:
             --report evidence/next100_065/b/report.json
           cmp evidence/next100_065/a/report.json evidence/next100_065/b/report.json
 
-      - name: Verify conservative capacity and no-training boundary
+      - name: Verify conservative capacity and refreshed diversity boundary
         env:
           PYTHONPATH: src
         run: |
@@ -89,15 +89,23 @@ jobs:
 
           report = json.loads(Path("evidence/next100_065/a/report.json").read_text())
           scope = report["terminal_candidates"]
-          assert report["source_count"] == 11
+          assert report["source_count"] == 18
           assert report["model_training_executed"] is False
-          assert scope["declared_capacity_bytes_before"] == 243970
-          assert 0 <= scope["conservative_unique_capacity_bytes_after"] <= 243970
-          assert scope["stable_origin_count"] == 7
-          assert 1 <= scope["effective_independent_origin_count"] <= 7
-          assert scope["by_modality"]["uk"]["declared_capacity_bytes_before"] == 90044
-          assert scope["by_modality"]["en"]["declared_capacity_bytes_before"] == 84793
-          assert scope["by_modality"]["code"]["declared_capacity_bytes_before"] == 69133
+          assert scope["declared_capacity_bytes_before"] == 268663
+          assert 0 <= scope["conservative_unique_capacity_bytes_after"] <= 268663
+          assert scope["stable_origin_count"] == 9
+          assert 1 <= scope["effective_independent_origin_count"] <= 9
+          assert scope["declared_source_family_count"] == 9
+
+          uk = scope["by_modality"]["uk"]
+          en = scope["by_modality"]["en"]
+          code = scope["by_modality"]["code"]
+          assert uk["declared_capacity_bytes_before"] == 99197
+          assert en["declared_capacity_bytes_before"] == 100333
+          assert code["declared_capacity_bytes_before"] == 69133
+          assert uk["declared_source_family_count"] == 3
+          assert en["declared_source_family_count"] == 2
+          assert code["declared_source_family_count"] == 4
           PY
 
       - name: Prove text-free public evidence
