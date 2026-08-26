@@ -1,0 +1,47 @@
+{
+  "base_ref": "integrate222/learned-execution-spine-20260826",
+  "base_sha": "6afaf5889f9898037b53e8b0bc2b731d77782111",
+  "canonical_base_modified": false,
+  "external_llm_calls": false,
+  "local_free_only": true,
+  "mock_executor": {
+    "api": "fixture_only",
+    "calculator": "local_arithmetic_ast",
+    "document_retrieval": "fixture_only",
+    "filesystem": "in_memory_sandbox",
+    "python_execution": "validated_mock_never_executes",
+    "web_search": "fixture_only"
+  },
+  "phase_order": [
+    "model_generation",
+    "tool_execution",
+    "tool_observation",
+    "final_answer"
+  ],
+  "protocol_version": 1,
+  "safety": {
+    "deterministic_serialization": true,
+    "explicit_error_state": true,
+    "explicit_provenance": true,
+    "explicit_timeout": true,
+    "max_output_bytes": 65536,
+    "max_timeout_ms": 60000,
+    "shell_tool_registered": false,
+    "tool_observation_training_eligible": false,
+    "tool_observation_weight_update_eligible": false
+  },
+  "status": "READY_FOR_REVIEW",
+  "tools": [
+    "web.search",
+    "document.retrieve",
+    "calculator",
+    "python.execute",
+    "filesystem.sandbox",
+    "api.call"
+  ],
+  "validation": {
+    "compileall": "PASS",
+    "focused_pytest": "15 passed"
+  },
+  "worker_id": "POSTBASE-254-TOOL-USE-PROTOCOL"
+}
