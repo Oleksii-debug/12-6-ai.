@@ -167,6 +167,45 @@ def _rebound_edge_margin(
     return round(min(margins), 6)
 
 
+def _rebound_warnings(
+    decision: QualityDecision,
+    thresholds: ModeThresholds,
+    evidence: DiversityWindowEvidence,
+    *,
+    accepted_after_ttr_repair: bool,
+) -> tuple[str, ...]:
+    """Preserve incumbent near-limit evidence after removing the TTR rejection.
+
+    The incumbent only emits near-limit warnings when a record has no rejection
+    reasons. A record rejected solely for global TTR therefore has an empty
+    warning tuple even when another feature is close to its threshold. Once the
+    TTR reason is repaired, recompute the same warning predicates so the adapter
+    does not silently erase quality-boundary evidence.
+    """
+
+    warnings = set(decision.warnings)
+    warnings.add("global_ttr_below_windowed_diversity_floor")
+    if not accepted_after_ttr_repair:
+        return tuple(sorted(warnings))
+
+    features = decision.features
+    if features.url_char_ratio > thresholds.max_url_char_ratio * 0.70:
+        warnings.add("near_url_density_limit")
+    if features.repeated_line_ratio > thresholds.max_repeated_line_ratio * 0.70:
+        warnings.add("near_line_repetition_limit")
+    if features.symbol_ratio > thresholds.max_symbol_ratio * 0.80:
+        warnings.add("near_symbol_ratio_limit")
+    if features.template_line_ratio > thresholds.max_template_line_ratio * 0.70:
+        warnings.add("near_template_density_limit")
+    if (
+        evidence.token_count >= thresholds.diversity_min_tokens
+        and evidence.decision_distinct_token_ratio
+        < thresholds.min_distinct_token_ratio * 1.30
+    ):
+        warnings.add("near_diversity_limit")
+    return tuple(sorted(warnings))
+
+
 def assess_document(
     record_id: str,
     text: str,
@@ -194,12 +233,11 @@ def assess_document(
     reasons = tuple(
         reason for reason in incumbent.reasons if reason != "low_token_diversity"
     )
-    warnings = tuple(
-        sorted(
-            set(
-                (*incumbent.warnings, "global_ttr_below_windowed_diversity_floor")
-            )
-        )
+    warnings = _rebound_warnings(
+        incumbent,
+        thresholds,
+        evidence,
+        accepted_after_ttr_repair=not reasons,
     )
     score = max(0, 100 - 25 * len(reasons) - 5 * len(warnings))
     edge_margin = _rebound_edge_margin(incumbent, thresholds, evidence)
