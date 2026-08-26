@@ -5,6 +5,7 @@ on:
     paths:
       - "configs/control/20m_readiness_controller_v1.json"
       - "tools/validate_20m_readiness_controller.py"
+      - "tools/build_predecontam_candidate_identity.py"
       - "docs/20M_READINESS_CONTROLLER.md"
       - ".github/workflows/20m-readiness-controller.yml"
   workflow_dispatch:
@@ -25,6 +26,8 @@ jobs:
           python-version: "3.11.16"
       - name: Validate live readiness authority
         run: python tools/validate_20m_readiness_controller.py
+      - name: Exercise immutable pre-decontamination identity builder
+        run: python tools/build_predecontam_candidate_identity.py --self-test
       - name: Assert LOCAL_FREE truth boundary
         run: |
           python - <<'PY'
