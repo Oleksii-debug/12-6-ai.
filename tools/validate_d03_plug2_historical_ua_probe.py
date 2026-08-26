@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+from fractions import Fraction
 from pathlib import Path
 from typing import Any
 
@@ -92,6 +93,37 @@ def validate(value: dict[str, Any]) -> None:
     assert quality["family_cap_must_apply_after_quality_and_lineage_dedup"] is True
     assert quality["default_training_mix_status"] == "HOLD_UNTIL_STRATIFIED"
 
+    balance = value["balance_policy_geometry"]
+    assert balance["policy_origin_pr"] == 390
+    assert balance["hardening_reference_pr"] == 628
+    assert balance["planning_only_not_terminal_authority"] is True
+    assert balance["target_source_bytes"] == 20_000_000
+    assert balance["stratum_target_bytes"] == {
+        "uk": 9_000_000,
+        "en": 7_000_000,
+        "code": 4_000_000,
+    }
+    assert sum(balance["stratum_target_bytes"].values()) == balance["target_source_bytes"]
+    assert balance["minimum_independent_families_per_stratum"] == 2
+    assert Fraction(balance["max_family_global_fraction"]) == Fraction(1, 4)
+    assert Fraction(balance["max_family_own_stratum_fraction"]) == Fraction(3, 5)
+
+    derived_caps: dict[str, int] = {}
+    for stratum, target_bytes in balance["stratum_target_bytes"].items():
+        cap = min(
+            Fraction(balance["target_source_bytes"], 4),
+            Fraction(target_bytes * 3, 5),
+        )
+        assert cap.denominator == 1
+        derived_caps[stratum] = cap.numerator
+    assert derived_caps == {"uk": 5_000_000, "en": 4_200_000, "code": 2_400_000}
+    assert balance["family_target_cap_bytes"] == derived_caps
+    assert balance["plug_lineage_max_selected_bytes_at_20m"] == derived_caps["uk"]
+    assert balance["reported_upstream_tokens_do_not_override_family_cap"] is True
+    assert balance["overflow_repair"] == (
+        "SUBSAMPLE_OR_ACQUIRE_INDEPENDENT_FAMILY_NEVER_REPLAY"
+    )
+
     policy = value["acquisition_policy"]
     assert policy["preferred_first_payload"] == "PluG_texts"
     assert policy["plug2_default"] == (
@@ -150,6 +182,7 @@ def main() -> int:
     print("D03_PLUG2_HISTORICAL_UA_PROBE=PASS_FAIL_CLOSED")
     print("PINNED_COMMIT=" + value["source"]["pinned_commit_sha"])
     print("PINNED_ROOT_TREE=" + value["source"]["pinned_root_tree_sha"])
+    print("PLUG_20M_SELECTED_CAP_BYTES=5000000")
     print("TRAINING_AUTHORIZED_BYTES=0")
     print("NEXT=LIVE_TREE_INVENTORY_AND_RIGHTS_BINDING")
     return 0
