@@ -19,8 +19,8 @@ jobs:
       PYTHONPATH: src
       OMP_NUM_THREADS: "2"
       MKL_NUM_THREADS: "2"
-      M150_RUN_ID: "32937411703"
-      M150_SOURCE_SHA: "5838cd16869dcfcf762368d8673eddf52d51b7e3"
+      M150_SOURCE_SHA: ${{ github.event.pull_request.base.sha || '8344085ddd0b52e4b698c3344a1d0482153525dc' }}
+      M150_WORKFLOW: milestone150-learned-base-ladder-v1.yml
       M150_ARTIFACT_NAME: milestone150-learned-base-ladder-v1
     steps:
       - name: Checkout exact recovery head
@@ -67,27 +67,34 @@ jobs:
             tests/test_recover177_eval134_m150.py \
             tests/test_milestone150_learned_base_ladder.py
 
-      - name: Require exact M150 producer success
+      - name: Require exact live M150 producer success
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           completed=0
+          run_id=""
           for _ in $(seq 1 300); do
-            read -r status conclusion head_sha < <(
-              gh api "repos/$GH_REPO/actions/runs/$M150_RUN_ID" \
-                --jq '[.status, (.conclusion // ""), .head_sha] | @tsv'
-            )
-            test "$head_sha" = "$M150_SOURCE_SHA"
-            if [ "$status" = "completed" ]; then
-              test "$conclusion" = "success"
-              completed=1
-              break
+            run_id=$(gh api \
+              "repos/$GH_REPO/actions/workflows/$M150_WORKFLOW/runs?head_sha=$M150_SOURCE_SHA&per_page=20" \
+              --jq '.workflow_runs | sort_by(.created_at) | last | .id // empty')
+            if [ -n "$run_id" ]; then
+              read -r status conclusion head_sha < <(
+                gh api "repos/$GH_REPO/actions/runs/$run_id" \
+                  --jq '[.status, (.conclusion // ""), .head_sha] | @tsv'
+              )
+              test "$head_sha" = "$M150_SOURCE_SHA"
+              if [ "$status" = "completed" ]; then
+                test "$conclusion" = "success"
+                completed=1
+                break
+              fi
             fi
             sleep 20
           done
           test "$completed" = "1"
+          echo "M150_RUN_ID=$run_id" >> "$GITHUB_ENV"
 
       - name: Download exact M150 retained artifact
         env:
@@ -108,15 +115,13 @@ jobs:
       - name: Execute reserved EVAL-134 on M150 random and learned states
         run: |
           set -euo pipefail
-          artifact_id=$(cat .m150-artifact-id)
-          artifact_digest=$(cat .m150-artifact-digest)
           .recover177/bin/python tools/recover177_eval134_m150.py run \
             --repo-root . \
             --producer-dir producer-artifact \
             --producer-sha "$M150_SOURCE_SHA" \
             --producer-run-id "$M150_RUN_ID" \
-            --producer-artifact-id "$artifact_id" \
-            --producer-artifact-digest "$artifact_digest" \
+            --producer-artifact-id "$(cat .m150-artifact-id)" \
+            --producer-artifact-digest "$(cat .m150-artifact-digest)" \
             --output recover177-evidence/eval134-m150-code-recovery.json
 
       - name: Validate machine report on exact evaluator head
