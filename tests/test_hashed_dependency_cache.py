@@ -68,28 +68,43 @@ def test_cache_key_is_deterministic_and_contains_authority_dimensions(tmp_path: 
     assert len(first["component_locks"]) == 1
 
 
-def test_one_byte_profile_change_invalidates_existing_manifest(tmp_path: Path) -> None:
+def test_one_byte_profile_change_invalidates_and_rotates_cache_key(tmp_path: Path) -> None:
     profile_path = _write_fixture(tmp_path)
     manifest = _manifest(tmp_path, profile_path)
     path = tmp_path / profile_path
-    data = bytearray(path.read_bytes())
-    index = data.index(ord("f"))
-    data[index] = ord("g")
+    original = path.read_bytes()
+    data = bytearray(original)
+    index = data.index(ord("e"), data.index(b'"purpose"'))
+    data[index] = ord("f")
     path.write_bytes(bytes(data))
+
     with pytest.raises(DependencyCacheError, match="profile changed"):
         validate_manifest_files(tmp_path, manifest)
 
+    replacement = _manifest(tmp_path, profile_path)
+    assert replacement["cache_key"] != manifest["cache_key"]
+    assert replacement["purpose_profile"]["file_sha256"] != manifest["purpose_profile"]["file_sha256"]
 
-def test_one_byte_lock_change_invalidates_existing_manifest(tmp_path: Path) -> None:
+
+def test_one_byte_lock_change_invalidates_and_rotates_cache_key(tmp_path: Path) -> None:
     profile_path = _write_fixture(tmp_path)
     manifest = _manifest(tmp_path, profile_path)
-    path = tmp_path / "requirements/profiles/test/runtime.lock.txt"
-    data = bytearray(path.read_bytes())
-    index = data.index(ord("0"))
+    lock = tmp_path / "requirements/profiles/test/runtime.lock.txt"
+    data = bytearray(lock.read_bytes())
+    index = data.index(b"1.0.0") + len("1.0.")
     data[index] = ord("1")
-    path.write_bytes(bytes(data))
+    lock.write_bytes(bytes(data))
+
     with pytest.raises(DependencyCacheError, match="component lock changed"):
         validate_manifest_files(tmp_path, manifest)
+
+    profile_file = tmp_path / profile_path
+    profile = json.loads(profile_file.read_text(encoding="utf-8"))
+    profile["locks"]["runtime"]["sha256"] = _sha(lock.read_bytes())
+    profile_file.write_text(json.dumps(profile, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    replacement = _manifest(tmp_path, profile_path)
+    assert replacement["cache_key"] != manifest["cache_key"]
+    assert replacement["component_locks"][0]["file_sha256"] != manifest["component_locks"][0]["file_sha256"]
 
 
 def test_platform_or_python_drift_cannot_reuse_key(tmp_path: Path) -> None:
