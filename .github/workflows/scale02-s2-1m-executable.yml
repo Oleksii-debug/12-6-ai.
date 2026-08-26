@@ -2,6 +2,24 @@ name: SCALE-02 S2 1M Executable Preflight
 
 on:
   pull_request:
+    paths:
+      - ".github/workflows/scale02-s2-1m-executable.yml"
+      - "src/twelve_six/model.py"
+      - "src/twelve_six/checkpoint/**"
+      - "src/twelve_six/inference/**"
+      - "src/twelve_six/packing/**"
+      - "src/twelve_six/tokenization/**"
+      - "src/twelve_six/training/**"
+      - "configs/stages/alternatives/s2_1m_byte_gqa.candidate.json"
+      - "data/s0/packaged/**"
+      - "requirements/locks/**"
+      - "tools/verify_locked_environment.py"
+      - "pyproject.toml"
+  workflow_dispatch:
+
+concurrency:
+  group: scale02-s2-1m-executable-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
