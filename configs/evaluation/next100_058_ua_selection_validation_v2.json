@@ -1,5 +1,5 @@
 {
-  "authority_identity_sha256": "15ccaea65c2e273af5fb7ac3606d2c0cdd2bb9010df3be0da783267e8478eed8",
+  "authority_identity_sha256": "a52179e925f1261cf2d17ec3485dc8f6de19ffd000afb5ba15fd0e58ff2e4fca",
   "eval303_binding": {
     "composite_selection_identity_sha256": "7b97a9ab04469236dc5bc17fc80155cb43430b01c443bb6209fac090557258fd",
     "final_test_outcomes_read": false,
@@ -35,17 +35,18 @@
       "admitted_to_v2": false,
       "blockers": [
         "SAME_FAMILY_ALREADY_PRESENT_IN_EVAL290",
-        "SOURCE_AUTHORITY_REQUIRES_SEPARATE_EVALUATION_PURPOSE_AUTHORITY"
+        "SELECTION_VALIDATION_RIGHTS_NOT_ADMITTED",
+        "PRE_TRAINING_SELECTION_RESERVATION_ABSENT"
       ],
-      "head_sha": "41ea3138a66fdac9a14370e3035134353cb4a36a",
+      "head_sha": "a0887ba79b670e908b414123875cf81fda711a56",
       "new_family_credit": 0,
-      "pre_training_selection_reservation": "EVAL290_ALREADY_RESERVES_ONLY_ITS_EXISTING_SELECTED_RECORDS",
+      "pre_training_selection_reservation": "ABSENT_FOR_REPLACEMENT_OBJECT",
       "pull_request": 446,
-      "selection_validation_status": "NOT_SEPARATELY_ADMITTED",
+      "selection_validation_status": "NOT_GRANTED_BY_DATA324",
       "source_family": "kubernetes.website.docs",
-      "source_status": "RECOVERY_CANDIDATE_SAME_EVAL290_FAMILY",
+      "source_status": "RETEST_RUNNER_QUEUE_ONLY_SAME_EVAL290_FAMILY",
       "source_workflow_conclusion": null,
-      "source_workflow_run": 32998275977,
+      "source_workflow_run": 32998339895,
       "source_workflow_status": "queued"
     },
     {
@@ -61,9 +62,27 @@
       "pull_request": 449,
       "selection_validation_status": "NOT_SEPARATELY_ADMITTED",
       "source_family": "ua.kmu.portal.secretariat-news",
-      "source_status": "ADMIT_CANDIDATE_NONTERMINAL_AT_SNAPSHOT",
+      "source_status": "TRAINING_SOURCE_ADMIT_NONTERMINAL_WORKFLOW_AT_CUTOFF",
       "source_workflow_conclusion": null,
       "source_workflow_run": 32997970539,
+      "source_workflow_status": "queued"
+    },
+    {
+      "admitted_to_v2": false,
+      "blockers": [
+        "EXACT_HEAD_SOURCE_AUTHORITY_NOT_TERMINAL_SUCCESS",
+        "SELECTION_VALIDATION_RIGHTS_NOT_ADMITTED",
+        "PRE_TRAINING_SELECTION_RESERVATION_ABSENT"
+      ],
+      "head_sha": "e6b77bfc8b623f095cd5d1ca91edcd8e4734da63",
+      "new_family_credit": 0,
+      "pre_training_selection_reservation": "ABSENT",
+      "pull_request": 454,
+      "selection_validation_status": "NOT_SEPARATELY_ADMITTED",
+      "source_family": "php.manual.documentation",
+      "source_status": "RETEST_RUNNER_QUEUE_ONLY",
+      "source_workflow_conclusion": null,
+      "source_workflow_run": 32998632471,
       "source_workflow_status": "queued"
     },
     {
@@ -99,6 +118,42 @@
       "source_workflow_conclusion": "success",
       "source_workflow_run": 32998180391,
       "source_workflow_status": "completed"
+    },
+    {
+      "admitted_to_v2": false,
+      "blockers": [
+        "EXACT_HEAD_SOURCE_AUTHORITY_NOT_TERMINAL_SUCCESS",
+        "SELECTION_VALIDATION_RIGHTS_NOT_ADMITTED",
+        "PRE_TRAINING_SELECTION_RESERVATION_ABSENT"
+      ],
+      "head_sha": "2c202fa18d36cfb2c109110b92d322027309329a",
+      "new_family_credit": 0,
+      "pre_training_selection_reservation": "ABSENT",
+      "pull_request": 471,
+      "selection_validation_status": "NOT_ADMITTED",
+      "source_family": "ua.data-gov.derzhgeocadastre.dataset-register",
+      "source_status": "RETEST_PROBE_NOT_LOCKED",
+      "source_workflow_conclusion": null,
+      "source_workflow_run": 32998504158,
+      "source_workflow_status": "queued"
+    },
+    {
+      "admitted_to_v2": false,
+      "blockers": [
+        "EXACT_HEAD_SOURCE_AUTHORITY_NOT_TERMINAL_SUCCESS",
+        "SELECTION_VALIDATION_RIGHTS_NOT_ADMITTED",
+        "PRE_TRAINING_SELECTION_RESERVATION_ABSENT"
+      ],
+      "head_sha": "5e89eb05604e63beff4d54b477aedc3a2d085809",
+      "new_family_credit": 0,
+      "pre_training_selection_reservation": "ABSENT",
+      "pull_request": 478,
+      "selection_validation_status": "NOT_SEPARATELY_ADMITTED",
+      "source_family": "rust-lang-ua.rustbook-ukrainian.second-edition",
+      "source_status": "PROBE_ONLY",
+      "source_workflow_conclusion": null,
+      "source_workflow_run": 32999054473,
+      "source_workflow_status": "queued"
     }
   ],
   "preserved_eval290": {
