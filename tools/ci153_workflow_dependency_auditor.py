@@ -5,6 +5,10 @@ The auditor is Python-stdlib-only so it can execute before model/runtime
 packages or training artifacts are downloaded. It proves recognized command
 availability from literal pip installs, lock files, local pyproject extras, and
 D08 profile metadata without assuming undeclared packages from the runner.
+
+Dependency proof is ordered: a declaration/install only satisfies an invocation
+when it appears before that invocation in the workflow source. This prevents a
+later install step from retroactively validating an earlier pytest/ruff/tool use.
 """
 
 from __future__ import annotations
@@ -78,6 +82,7 @@ class Invocation:
     command: str
     package: str
     line: int
+    offset: int
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -206,7 +211,7 @@ def extract_invocations(text: str) -> list[Invocation]:
             if key not in seen:
                 seen.add(key)
                 invocations.append(
-                    Invocation("python_module", match.group(0), package, line)
+                    Invocation("python_module", match.group(0), package, line, match.start())
                 )
     for match in DIRECT_TOOL_RE.finditer(text):
         tool = match.group(1)
@@ -215,8 +220,10 @@ def extract_invocations(text: str) -> list[Invocation]:
         key = (tool, line, command)
         if key not in seen:
             seen.add(key)
-            invocations.append(Invocation("console_tool", command, TOOL_PACKAGE[tool], line))
-    return sorted(invocations, key=lambda row: (row.line, row.command))
+            invocations.append(
+                Invocation("console_tool", command, TOOL_PACKAGE[tool], line, match.start())
+            )
+    return sorted(invocations, key=lambda row: (row.offset, row.command))
 
 
 def direct_pip_packages(text: str) -> set[str]:
@@ -385,14 +392,27 @@ def audit_workflow(
     rel = path.relative_to(repo).as_posix()
     invocations = extract_invocations(text)
     declarations = installed_declarations(repo, text, profiles)
-    declared_packages = set(declarations["declared_packages"])
-    missing = sorted(
-        {
-            _norm_package(invocation.package)
-            for invocation in invocations
-            if _norm_package(invocation.package) not in declared_packages
-        }
-    )
+
+    invocation_rows: list[dict[str, Any]] = []
+    missing_occurrences: list[dict[str, Any]] = []
+    for invocation in invocations:
+        before = installed_declarations(repo, text[: invocation.offset], profiles)
+        normalized_package = _norm_package(invocation.package)
+        provided = normalized_package in set(before["declared_packages"])
+        row = invocation.to_dict()
+        row["provided_before_invocation"] = provided
+        row["declared_packages_before_invocation"] = before["declared_packages"]
+        invocation_rows.append(row)
+        if not provided:
+            missing_occurrences.append(
+                {
+                    "package": normalized_package,
+                    "line": invocation.line,
+                    "command": invocation.command,
+                }
+            )
+
+    missing = sorted({row["package"] for row in missing_occurrences})
     dynamic = ambiguous_commands(text)
     stale = bool(
         declarations["stale_profile_references"]
@@ -411,10 +431,10 @@ def audit_workflow(
         reason = "dynamic executable/module/requirement cannot be resolved statically"
     elif missing:
         classification = "MISSING_DECLARED_DEPENDENCY"
-        reason = "invoked tool is absent from explicitly installed declarations"
+        reason = "invoked tool is absent from explicit declarations available before invocation"
     else:
         classification = "VALID"
-        reason = "all recognized invoked tools are supplied by explicit declarations"
+        reason = "all recognized invoked tools are supplied by prior explicit declarations"
 
     return {
         "path": rel,
@@ -424,8 +444,9 @@ def audit_workflow(
         "python_executables": sorted(set(PYTHON_EXEC_RE.findall(text))),
         "pip_install_present": bool(PIP_INSTALL_RE.search(text)),
         "declarations": declarations,
-        "invocations": [row.to_dict() for row in invocations],
+        "invocations": invocation_rows,
         "missing_packages": missing,
+        "missing_invocations": missing_occurrences,
         "ambiguous_dynamic_commands": dynamic,
         "unknown_shell_tools_review_only": unknown_shell_tools(text),
     }
