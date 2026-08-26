@@ -79,16 +79,19 @@ jobs:
             --source-sha "$EXPECTED_SOURCE_SHA" \
             --workflow "$GITHUB_WORKFLOW" \
             --run-id "$GITHUB_RUN_ID" \
-            -- .ci161/bin/python -m compileall -q \
-              src/twelve_six/experiment_failure.py \
-              tools/run_classified_phase.py \
-              tools/build_ci161_historical_report.py \
-              tests/test_ci161_failure_classification.py
-          .ci161/bin/python -m ruff check \
-            src/twelve_six/experiment_failure.py \
-            tools/run_classified_phase.py \
-            tools/build_ci161_historical_report.py \
-            tests/test_ci161_failure_classification.py
+            -- bash -lc '
+              set -euo pipefail
+              .ci161/bin/python -m compileall -q \
+                src/twelve_six/experiment_failure.py \
+                tools/run_classified_phase.py \
+                tools/build_ci161_historical_report.py \
+                tests/test_ci161_failure_classification.py
+              .ci161/bin/python -m ruff check \
+                src/twelve_six/experiment_failure.py \
+                tools/run_classified_phase.py \
+                tools/build_ci161_historical_report.py \
+                tests/test_ci161_failure_classification.py
+            '
 
       - name: Run focused failure-classification tests
         env:
