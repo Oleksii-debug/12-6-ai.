@@ -1,0 +1,271 @@
+{
+  "admit": [
+    {
+      "author": "Ramaswamy Chandramouli (NIST)",
+      "csrc_url": "https://csrc.nist.gov/pubs/sp/800/204/final",
+      "date_published": "2019-08",
+      "doi": "10.6028/NIST.SP.800-204",
+      "emails_redacted": 0,
+      "language": "en",
+      "modality": "text",
+      "normalized_sha256": "570e8d75b6dc6aefee1f089818b46765c0dd1965e06947bcc2fff0169d22274e",
+      "normalized_utf8_bytes": 19668,
+      "pdf_start_page": 9,
+      "pdf_url": "https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-204.pdf",
+      "privacy": {
+        "emails_redacted": 0,
+        "private_or_user_generated_source": false,
+        "scope_note": "bounded public technical prose; contact/front matter excluded by start-page rule; regex redaction remains enabled",
+        "status": "PASS_PUBLIC_TECHNICAL_DOCUMENT_BODY"
+      },
+      "publication_id": "NIST.SP.800-204",
+      "quality": {
+        "alphabetic_char_ratio": 0.816166,
+        "characters": 19572,
+        "english_stopword_ratio": 0.209067,
+        "unexpected_control_chars": 0,
+        "unicode_replacement_chars": 0,
+        "words": 2669
+      },
+      "raw_bytes": 814054,
+      "raw_sha256": "25412c860165e5ee1cfbf26ed47c56f4d213b1996a73365f5561be6403cf7588",
+      "rights": {
+        "evaluation": "NOT_SEPARATELY_ADMITTED",
+        "license_profile": "NIST_TECHNICAL_SERIES_EMPLOYEE_AUTHORED_US_PUBLIC_DOMAIN_WITH_WORLDWIDE_REPRINT_DERIVATIVE_GRANT",
+        "model_training": "ALLOWED_WITH_NIST_SOURCE_PROVENANCE",
+        "redistribution": "ALLOWED_WITH_RECOMMENDED_CITATION_AND_NIST_COURTESY_LINE",
+        "us_copyright": "NOT_SUBJECT_TO_COPYRIGHT_IN_US_DOCUMENT_SPECIFIC"
+      }
+    },
+    {
+      "author": "Ramaswamy Chandramouli (NIST)",
+      "csrc_url": "https://csrc.nist.gov/pubs/sp/800/204/c/final",
+      "date_published": "2022-03",
+      "doi": "10.6028/NIST.SP.800-204C",
+      "emails_redacted": 0,
+      "language": "en",
+      "modality": "text",
+      "normalized_sha256": "558da6a0886036a01a5139d635b1352b5cf5d74655d919c66a04e84f2d49c0fe",
+      "normalized_utf8_bytes": 19736,
+      "pdf_start_page": 11,
+      "pdf_url": "https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-204C.pdf",
+      "privacy": {
+        "emails_redacted": 0,
+        "private_or_user_generated_source": false,
+        "scope_note": "bounded public technical prose; contact/front matter excluded by start-page rule; regex redaction remains enabled",
+        "status": "PASS_PUBLIC_TECHNICAL_DOCUMENT_BODY"
+      },
+      "publication_id": "NIST.SP.800-204C",
+      "quality": {
+        "alphabetic_char_ratio": 0.809015,
+        "characters": 19656,
+        "english_stopword_ratio": 0.232833,
+        "unexpected_control_chars": 0,
+        "unicode_replacement_chars": 0,
+        "words": 2796
+      },
+      "raw_bytes": 717082,
+      "raw_sha256": "d51133dc55a804990d80ba4b9c35e3fbb2d5acdf7b330b66edeaae59fc63d69b",
+      "rights": {
+        "evaluation": "NOT_SEPARATELY_ADMITTED",
+        "license_profile": "NIST_TECHNICAL_SERIES_EMPLOYEE_AUTHORED_US_PUBLIC_DOMAIN_WITH_WORLDWIDE_REPRINT_DERIVATIVE_GRANT",
+        "model_training": "ALLOWED_WITH_NIST_SOURCE_PROVENANCE",
+        "redistribution": "ALLOWED_WITH_RECOMMENDED_CITATION_AND_NIST_COURTESY_LINE",
+        "us_copyright": "NOT_SUBJECT_TO_COPYRIGHT_IN_US_DOCUMENT_SPECIFIC"
+      }
+    },
+    {
+      "author": "Ramaswamy Chandramouli (NIST)",
+      "csrc_url": "https://csrc.nist.gov/pubs/sp/800/215/final",
+      "date_published": "2022-11",
+      "doi": "10.6028/NIST.SP.800-215",
+      "emails_redacted": 0,
+      "language": "en",
+      "modality": "text",
+      "normalized_sha256": "6c99c3b14ee3ea7fe915940e38c080dbf2a785f1abcee2fd73e7fd731424770d",
+      "normalized_utf8_bytes": 19954,
+      "pdf_start_page": 11,
+      "pdf_url": "https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-215.pdf",
+      "privacy": {
+        "emails_redacted": 0,
+        "private_or_user_generated_source": false,
+        "scope_note": "bounded public technical prose; contact/front matter excluded by start-page rule; regex redaction remains enabled",
+        "status": "PASS_PUBLIC_TECHNICAL_DOCUMENT_BODY"
+      },
+      "publication_id": "NIST.SP.800-215",
+      "quality": {
+        "alphabetic_char_ratio": 0.812935,
+        "characters": 19822,
+        "english_stopword_ratio": 0.224519,
+        "unexpected_control_chars": 0,
+        "unicode_replacement_chars": 0,
+        "words": 2806
+      },
+      "raw_bytes": 1089318,
+      "raw_sha256": "159e17820a0a337c4a7e9c7ee8b966823e81dc72f5c6229e7d7244c40b0b1645",
+      "rights": {
+        "evaluation": "NOT_SEPARATELY_ADMITTED",
+        "license_profile": "NIST_TECHNICAL_SERIES_EMPLOYEE_AUTHORED_US_PUBLIC_DOMAIN_WITH_WORLDWIDE_REPRINT_DERIVATIVE_GRANT",
+        "model_training": "ALLOWED_WITH_NIST_SOURCE_PROVENANCE",
+        "redistribution": "ALLOWED_WITH_RECOMMENDED_CITATION_AND_NIST_COURTESY_LINE",
+        "us_copyright": "NOT_SUBJECT_TO_COPYRIGHT_IN_US_DOCUMENT_SPECIFIC"
+      }
+    }
+  ],
+  "audit_date_utc": "2026-08-26",
+  "authority_boundary": "SOURCE_LEVEL_TRAINING_AND_REDISTRIBUTION_AUTHORITY_ONLY_NO_EVALUATION_OR_FROZEN_CORPUS_MUTATION",
+  "authority_status": "ADMIT_BOUNDED_SUBSET_WITH_RETESTS",
+  "composition_projection": {
+    "baseline_english_normalized_bytes": 84793,
+    "baseline_unique_normalized_bytes": 183061,
+    "candidate_nist_normalized_bytes": 59358,
+    "claim_boundary": "PROJECTION_ONLY_NOT_CORPUS_ADMISSION",
+    "data295_global_family_cap": 0.25,
+    "data295_within_stratum_family_cap": 0.6,
+    "projected_english_normalized_bytes": 144151,
+    "projected_nist_english_stratum_share": 0.411777,
+    "projected_nist_global_share": 0.244857,
+    "projected_total_normalized_bytes": 242419,
+    "status": "WITHIN_DATA295_BOUNDS_IF_BASELINE_UNCHANGED"
+  },
+  "concurrency": {
+    "baseline_read": "DATA-293 head 2665a4cd86186ba44024334719d30dcc35d222d8 and DATA-287 head b0523ccbc4b957615aac849d476cfa851be87578",
+    "conflicting_nist_authority": "PENDING_BEFORE_TERMINAL_SEAL",
+    "final_live_registry_recheck": "PENDING_BEFORE_TERMINAL_SEAL"
+  },
+  "dedup": {
+    "canonical_cross_source_near_dedup": "REQUIRED_BEFORE_CORPUS_INTEGRATION",
+    "evaluation_contamination": "NOT_CLAIMED_AND_SEPARATE_AUTHORITY_REQUIRED",
+    "exact_normalized_collision_with_terminal_baseline": false,
+    "intra_subset_fail_threshold": 0.3,
+    "intra_subset_method": "13_WORD_SHINGLES_OVERLAP_DIVIDED_BY_SMALLER_SHINGLE_SET",
+    "pairwise": [
+      {
+        "a": "NIST.SP.800-204",
+        "b": "NIST.SP.800-204C",
+        "overlap": 0.000754
+      },
+      {
+        "a": "NIST.SP.800-204",
+        "b": "NIST.SP.800-215",
+        "overlap": 0.0
+      },
+      {
+        "a": "NIST.SP.800-204C",
+        "b": "NIST.SP.800-215",
+        "overlap": 0.0
+      }
+    ],
+    "terminal_registry_baseline": {
+      "authority": "DATA-287-EXTERNAL-SNAPSHOT-REGISTRY-V2",
+      "head_sha": "b0523ccbc4b957615aac849d476cfa851be87578",
+      "independent_family_count": 4,
+      "normalized_hashes": {
+        "external-real:code.encode.httpx._content": "2c61b3ac94d1dcebcde0c6f519554d2d7917247fbaa0a97002db4ef69e70ff28",
+        "external-real:code.psf.requests._internal_utils": "4c7d8d132c9898fc7d715e473f3ac74785ddc4ab96d2c9240f87835dc6d981ff",
+        "external-real:en.standardebooks.manual.8-typography": "154fb4034929714087e75150d678bf65049ddac32e79dcdf97162c8972c2be83",
+        "external-real:en.standardebooks.manual.9-metadata": "94eb2f529922d125b3bd40691778886f4d5d80b128b925d0274fb3d94646ec5a",
+        "external-real:ua.rada.open-data.laws-texts.d23314": "72c301db0b2539f3f7a73c9c15e2e425700a6b758a1114f1a861e2d60c704c50"
+      },
+      "source_count": 5,
+      "unique_normalized_bytes": 183061
+    }
+  },
+  "family": {
+    "family_accounting": "ALL_THREE_OBJECTS_COUNT_AS_ONE_NIST_TECHNICAL_SERIES_FAMILY",
+    "family_id": "en.usgov.nist.technical-series",
+    "family_identity_sha256": "958f6fb6c9477a494d0680bd98a1dc1fc817f8beaad7a5dd3fca6eab2d5c8498",
+    "independent_family_count": 1,
+    "language": "en",
+    "mirror_or_fork": false,
+    "modality": "text",
+    "publisher": "National Institute of Standards and Technology",
+    "selection_rule": "three final, sole-NIST-author technical-series publications with document-specific US public-domain statement"
+  },
+  "local_free_only": true,
+  "normalization": {
+    "boilerplate_rule": "EXCLUDE_ONLY_BY_PINNED_PDF_START_PAGE_THEN_APPLY_IDENTICAL_DETERMINISTIC_TEXT_RULES",
+    "command": "pdftotext -f <pinned-start-page> -nopgbrk -enc UTF-8",
+    "max_normalized_utf8_bytes_per_document": 20000,
+    "notes": "No semantic/manual sentence deletion; contact/front matter is skipped only by preregistered start-page boundary.",
+    "policy_id": "NEXT100_034_NIST_PDF_BODY_NFKC_BOUNDED_V1",
+    "postprocess": "CRLF/CR->LF; FF->LF; Unicode NFKC; redact email as <EMAIL>; rstrip lines; collapse >=3 LF to 2; strip+terminal LF; truncate to <=20000 UTF-8 bytes at last blank-line boundary, fallback last LF >=12000 bytes"
+  },
+  "privacy": {
+    "claim_boundary": "NO_UNIVERSAL_PII_ABSENCE_CLAIM_BEYOND_THIS_BOUNDED_EXTRACT_AND_RULESET",
+    "email_redaction_enabled": true,
+    "emails_redacted_total": 0,
+    "source_kind": "OFFICIAL_PUBLIC_TECHNICAL_PUBLICATIONS",
+    "status": "PASS_BOUNDED_PUBLIC_TECHNICAL_PROSE",
+    "user_generated_or_private_data": false
+  },
+  "probe_evidence": {
+    "extractor": "pdftotext version 24.02.0",
+    "job_id": 98270801325,
+    "network_role": "BOUNDED_SOURCE_ACQUISITION_ONLY_NO_MODEL_TRAINING",
+    "probe_source_commit": "aa05edc0c01043f6316b6adb74fbf0535bc64e4e",
+    "runner": "ubuntu-24.04",
+    "workflow_run": 32997600434
+  },
+  "quality": {
+    "minimum_alphabetic_char_ratio": 0.55,
+    "minimum_english_stopword_ratio": 0.08,
+    "minimum_words_per_document": 1800,
+    "required_unicode_replacement_chars": 0,
+    "required_unexpected_control_chars": 0,
+    "selection_preference": "TECHNICALLY_RICH_PROSE_NOT_TABLES_ONLY",
+    "status": "PASS"
+  },
+  "reject": [
+    {
+      "reason": "False as an admission rule: NIST itself identifies SRD and third-party-authored exceptions.",
+      "scope": "ALL_NIST_MATERIAL_BLANKET_PUBLIC_DOMAIN_RULE"
+    },
+    {
+      "reason": "Outside this bounded authority; no rights or quality inference is made.",
+      "scope": "UNREVIEWED_NIST_PUBLICATIONS"
+    }
+  ],
+  "retest": [
+    {
+      "reason": "CSRC identifies non-NIST coauthor Zack Butcher (Tetrate); third-party rights require document-specific proof.",
+      "scope": "NIST.SP.800-204A"
+    },
+    {
+      "reason": "CSRC identifies non-NIST coauthors Zack Butcher (Tetrate) and Aradhna Chetal (TIAA); third-party rights require document-specific proof.",
+      "scope": "NIST.SP.800-204B"
+    },
+    {
+      "reason": "CSRC identifies non-NIST coauthors Frederick Kautz (TestifySec) and Santiago Torres-Arias (Purdue University); third-party rights require document-specific proof.",
+      "scope": "NIST.SP.800-204D"
+    },
+    {
+      "reason": "NIST states SRD may be copyrighted/licensed under 15 U.S.C. 290e; license-specific analysis required.",
+      "scope": "NIST_STANDARD_REFERENCE_DATA"
+    }
+  ],
+  "rights_evidence": {
+    "official_sources_rechecked_on": "2026-08-26",
+    "repo_path": "data/external/rights-evidence/next100-034/nist-technical-series-rights-20260826.txt",
+    "sha256": "aef587d83640eab2c0ac8a8c226657237e96becd6d0cf12804fd56e03bdce7e1"
+  },
+  "rights_policy": {
+    "blanket_nist_public_domain_assumption": "REJECT",
+    "foreign_rights_grant": "NONEXCLUSIVE_PERPETUAL_PAID_UP_ROYALTY_FREE_WORLDWIDE_REPRINT_ALL_FORMATS_AND_DERIVATIVE_WORKS",
+    "official_policy_url": "https://www.nist.gov/open/copyright-fair-use-and-licensing-statements-srd-data-software-and-technical-series-publications",
+    "redistribution_provenance_condition": "RETAIN_RECOMMENDED_NIST_CITATION_AND_REPUBLISHED_COURTESY_LINE_CONSERVATIVELY",
+    "standard_reference_data_exception": "SRD_MAY_BE_COPYRIGHTED_OR_LICENSED_UNDER_15_USC_290E_RETEST_LICENSE_SPECIFICALLY",
+    "technical_series_employee_authored_us_status": "NOT_SUBJECT_TO_US_COPYRIGHT",
+    "third_party_caveat": "NIST_PUBLISHED_THIRD_PARTY_WORKS_MAY_BE_COPYRIGHT_PROTECTED_RETEST_DOCUMENT_SPECIFICALLY"
+  },
+  "schema_version": "12-6.next100-034-nist-technical-series-authority.v1",
+  "subset": {
+    "corpus_integration_status": "NOT_INTEGRATED_REQUIRES_SUCCESSOR_CORPUS_CONTRACT_AND_CANONICAL_DEDUP",
+    "normalized_utf8_bytes": 59358,
+    "publication_count": 3,
+    "raw_bytes": 2620454,
+    "subset_identity_sha256": "53b803af8f273980a5d1dd45a470dc37216a55dd7d6e8c67fecd469ab89bf5dd",
+    "training_purpose": "MODEL_PRETRAINING_ONLY_UNLESS_SEPARATE_PURPOSE_AUTHORITY_EXISTS"
+  },
+  "worker_id": "NEXT100-034-DATA-EN-NIST"
+}
