@@ -1,0 +1,98 @@
+{
+  "schema_version": "12-6.next100-023.ua-wikibooks-source-audit.v1",
+  "worker_id": "NEXT100-023-DATA-UA-WIKIBOOKS",
+  "audit_date_utc": "2026-08-26",
+  "verdict": "RETEST",
+  "terminal_for_current_candidate": true,
+  "local_free_only": true,
+  "candidate": {
+    "source_id": "ua.wikimedia.ukwikibooks.20260201.ns0",
+    "project": "Ukrainian Wikibooks",
+    "database": "ukwikibooks",
+    "language": "uk",
+    "modality": "educational_text",
+    "authoritative_upstream": "Wikimedia Foundation dump service",
+    "snapshot": {
+      "dump_date": "2026-02-01",
+      "file": "ukwikibooks-20260201-pages-articles.xml.bz2",
+      "url": "https://dumps.wikimedia.org/ukwikibooks/20260201/ukwikibooks-20260201-pages-articles.xml.bz2",
+      "sha1": "6975ba549f822ea2394567743fdb3564c36e048a",
+      "dump_status": "complete",
+      "selection": "all namespace-0 pages in the exact current-revision dump; no live-page fetches",
+      "revision_binding": "each emitted record must bind page_id + revision_id + revision_timestamp + revision_sha1 from the XML dump",
+      "deterministic": true,
+      "bounded": true
+    }
+  },
+  "rights": {
+    "license_class": "WIKIMEDIA_TEXT_CC-BY-SA-4.0_WITH_POSSIBLE_GFDL_OR_COMPATIBLE_IMPORTED_TEXT",
+    "model_training": "LICENSE_LEVEL_ALLOWED_SUBJECT_TO_PROVENANCE_AND_ATTRIBUTION_COMPLIANCE; PROJECT_ADMISSION_NOT_YET_GRANTED",
+    "redistribution": "LICENSE_LEVEL_ALLOWED_ONLY_WITH_APPLICABLE_ATTRIBUTION_LICENSE_AND_IMPORTED-TEXT_CONDITIONS; PROJECT_ADMISSION_NOT_YET_GRANTED",
+    "evaluation": "NOT_SEPARATELY_ADMITTED",
+    "attribution": [
+      "retain page title and stable source URL or an equivalent author list",
+      "retain exact page revision identity and page history route for contributor attribution",
+      "retain license notice and license URL/copy when redistributing",
+      "mark modifications where applicable",
+      "preserve any additional attribution requirements attached to imported text"
+    ],
+    "evidence": [
+      "https://foundation.wikimedia.org/wiki/Policy:Terms_of_Use#7._Licensing_of_Content",
+      "https://uk.wikibooks.org/wiki/Вікіпідручник:Авторські_права",
+      "https://dumps.wikimedia.org/ukwikibooks/20260201/",
+      "https://dumps.wikimedia.org/ukwikibooks/20260201/ukwikibooks-20260201-sha1sums.txt"
+    ]
+  },
+  "provenance": {
+    "platform_role": "Wikimedia Foundation hosts infrastructure; community contributors create/edit content",
+    "public_domain_distinction": "public-domain contributions may occur, but this audit does not relabel the whole dump as public domain",
+    "imported_text_risk": "Wikimedia Terms state imported text can carry compatible CC BY-SA licensing and additional attribution requirements",
+    "required_for_admission": "page-level provenance/attribution manifest must fail-close on imported-text notices and must not infer GFDL availability for every record"
+  },
+  "language_and_quality": {
+    "status": "MUST_BE_MATERIALIZED_BY_EXACT-DUMP_PROBE",
+    "probe": "tools/audit_next100_023_ua_wikibooks.py",
+    "required_statistics": [
+      "namespace0_pages",
+      "redirect_pages",
+      "nonredirect_pages",
+      "utf8_text_bytes",
+      "median_page_bytes",
+      "pages_ge_500_bytes",
+      "pages_ge_2000_bytes",
+      "cyrillic_letter_ratio",
+      "ukrainian_specific_letter_count",
+      "pages_with_ukrainian_specific_letters",
+      "exact_normalized_duplicate_groups"
+    ]
+  },
+  "family_lineage": {
+    "lineage_namespace": "wikimedia.uk",
+    "independent_family_credit": 0,
+    "status": "UNRESOLVED_CROSS_WIKIMEDIA_LINEAGE",
+    "rule": "A different Wikimedia project hostname/database is not sufficient evidence of an independent source family.",
+    "required_before_family_credit": [
+      "compare exact and normalized hashes against admitted/pending Ukrainian Wikipedia and Wikisource objects",
+      "inspect internal import/copy attribution and page histories for shared document lineage",
+      "collapse mirrors, copied pages, translations sharing the same document lineage, and imported derivatives into one connected family cluster"
+    ]
+  },
+  "dedup": {
+    "within_snapshot": "exact normalized duplicate groups measured by the probe",
+    "cross_source": "REQUIRED_BEFORE_ADMISSION",
+    "family_credit_before_cross_source_audit": 0
+  },
+  "admission_blockers": [
+    "PAGE_LEVEL_IMPORTED_TEXT_ATTRIBUTION_COMPLETENESS_NOT_YET_PROVEN",
+    "EXACT_DUMP_LANGUAGE_AND_QUALITY_REPORT_NOT_YET_MATERIALIZED_AT_AUTHORITY_CREATION",
+    "CROSS_WIKIMEDIA_WIKIPEDIA_WIKISOURCE_LINEAGE_AND_DEDUP_NOT_YET_TERMINAL"
+  ],
+  "retest_exit_criteria": [
+    "exact dump SHA-1 verification passes",
+    "deterministic namespace-0 probe produces immutable revision-level manifest and quality/language statistics",
+    "page-level attribution/provenance audit covers imported-text conditions",
+    "cross-Wikimedia lineage/dedup audit is terminal and assigns family identity without URL-based inflation",
+    "separate source-registry successor explicitly admits the object for training/redistribution",
+    "evaluation remains excluded unless separately authorized"
+  ]
+}
