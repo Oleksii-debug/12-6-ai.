@@ -1,6 +1,6 @@
 """Fail-closed readiness contract for the S6 (~1B) engineering candidate.
 
-This module does not authorize or launch accelerator work.  It turns the existing
+This module does not authorize or launch accelerator work. It turns the existing
 current-tokenizer S6 geometry into an explicit, machine-readable dependency gate and
 reuses the allocation-safe scale runtime for resource planning.
 """
@@ -19,29 +19,50 @@ from .scale_runtime import build_meta_decoder, estimate_scale_resources
 SCALE_1B_TARGET_PARAMETERS = 1_000_000_000
 SCALE_1B_CURRENT_BYTE_VOCAB = 256
 SCALE_1B_CONTEXT = 4096
+_COMPUTE_AUTHORIZATION_PREFIXES = ("COMPUTE_AUTHORIZED:", "TRAINING_AUTHORIZED:")
+
+
+def _validate_authority(name: str, value: str | None) -> None:
+    if value is None:
+        return
+    if not isinstance(value, str):
+        raise TypeError(f"{name} must be str or None")
+    if not value.strip():
+        raise ValueError(f"{name} must not be blank")
+    if value != value.strip():
+        raise ValueError(f"{name} must not contain surrounding whitespace")
 
 
 @dataclass(frozen=True, slots=True)
 class Scale1BDependencies:
-    """Positive evidence required before a material S6 training launch.
+    """Immutable evidence references required before a material S6 launch.
 
-    Every field is deliberately false by default.  Callers must supply evidence from
-    the owning lane rather than inferring readiness from the existence of an S6 JSON
-    file or from a queued/stale CI run.
+    A gate is qualified only when its owning lane supplies a durable authority
+    reference. Bare booleans are intentionally not accepted because they would let a
+    caller self-attest readiness without binding the decision to terminal evidence.
     """
 
-    preceding_stage_admitted: bool = False
-    production_tokenizer_qualified: bool = False
-    native_gqa_qualified: bool = False
-    distributed_checkpoint_qualified: bool = False
-    data_pipeline_qualified: bool = False
-    accelerator_runtime_qualified: bool = False
-    compute_authorized: bool = False
+    preceding_stage_authority: str | None = None
+    production_tokenizer_authority: str | None = None
+    native_gqa_authority: str | None = None
+    distributed_checkpoint_authority: str | None = None
+    data_pipeline_authority: str | None = None
+    accelerator_runtime_authority: str | None = None
+    compute_authorization: str | None = None
 
     def __post_init__(self) -> None:
         for name, value in asdict(self).items():
-            if type(value) is not bool:
-                raise TypeError(f"{name} must be bool")
+            _validate_authority(name, value)
+        if self.compute_authorization is not None and not self.compute_authorization.startswith(
+            _COMPUTE_AUTHORIZATION_PREFIXES
+        ):
+            raise ValueError(
+                "compute_authorization must begin with COMPUTE_AUTHORIZED: or "
+                "TRAINING_AUTHORIZED:"
+            )
+
+    def authority_map(self) -> dict[str, str | None]:
+        return asdict(self)
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,6 +78,7 @@ class Scale1BReadinessReport:
     attention_variant: str
     requires_native_gqa: bool
     sequence_length: int
+    evidence_authorities: dict[str, str | None]
     engineering_blockers: tuple[str, ...]
     authorization_blockers: tuple[str, ...]
     ready_for_authorization_request: bool
@@ -99,15 +121,17 @@ def validate_scale_1b_candidate(path: str | Path) -> StageConfig:
         raise ValueError("S6 must require preceding-stage admission")
 
     # SCALE-06 currently exists to prove execution compatibility with the integrated
-    # byte tokenizer.  A future production tokenizer changes the embedding surface
+    # byte tokenizer. A future production tokenizer changes the embedding surface
     # and therefore requires a newly solved and newly hashed ModelSpec rather than a
     # silent vocabulary swap in this candidate.
     if config.model.vocab_size != SCALE_1B_CURRENT_BYTE_VOCAB:
-        raise ValueError("current SCALE-06 candidate must bind the 256-token byte vocabulary")
+        raise ValueError(
+            "current SCALE-06 candidate must bind the 256-token byte vocabulary"
+        )
     if config.model.max_seq_len != SCALE_1B_CONTEXT:
         raise ValueError("current SCALE-06 candidate must bind the 4096-token context")
 
-    # The current S6 geometry is GQA.  The canonical model path still materializes
+    # The current S6 geometry is GQA. The canonical model path still materializes
     # repeated K/V heads; native-GQA qualification is therefore a real launch gate.
     if config.model.n_kv_heads >= config.model.n_heads:
         raise ValueError("current SCALE-06 candidate is expected to exercise GQA")
@@ -176,21 +200,21 @@ def assess_scale_1b_readiness(
     deps = dependencies or Scale1BDependencies()
 
     engineering_blockers: list[str] = []
-    if not deps.preceding_stage_admitted:
+    if deps.preceding_stage_authority is None:
         engineering_blockers.append("preceding_stage_not_admitted")
-    if not deps.production_tokenizer_qualified:
+    if deps.production_tokenizer_authority is None:
         engineering_blockers.append("production_tokenizer_not_qualified")
-    if config.model.n_kv_heads < config.model.n_heads and not deps.native_gqa_qualified:
+    if config.model.n_kv_heads < config.model.n_heads and deps.native_gqa_authority is None:
         engineering_blockers.append("native_gqa_not_qualified")
-    if not deps.distributed_checkpoint_qualified:
+    if deps.distributed_checkpoint_authority is None:
         engineering_blockers.append("distributed_checkpoint_not_qualified")
-    if not deps.data_pipeline_qualified:
+    if deps.data_pipeline_authority is None:
         engineering_blockers.append("data_pipeline_not_qualified")
-    if not deps.accelerator_runtime_qualified:
+    if deps.accelerator_runtime_authority is None:
         engineering_blockers.append("accelerator_runtime_not_qualified")
 
     authorization_blockers: list[str] = []
-    if not deps.compute_authorized:
+    if deps.compute_authorization is None:
         authorization_blockers.append("material_compute_not_authorized")
 
     exact_parameters = config.model.parameter_count()
@@ -207,6 +231,7 @@ def assess_scale_1b_readiness(
         attention_variant=_attention_variant(config),
         requires_native_gqa=config.model.n_kv_heads < config.model.n_heads,
         sequence_length=config.model.max_seq_len,
+        evidence_authorities=deps.authority_map(),
         engineering_blockers=tuple(engineering_blockers),
         authorization_blockers=tuple(authorization_blockers),
         ready_for_authorization_request=not engineering_blockers,
