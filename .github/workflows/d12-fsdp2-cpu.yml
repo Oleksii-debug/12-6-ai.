@@ -9,6 +9,9 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: d12-fsdp2-cpu-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 jobs:
   local-free-fsdp2:
     runs-on: ubuntu-24.04
