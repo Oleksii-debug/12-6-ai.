@@ -1,0 +1,216 @@
+name: ENV-160 Local Locked Parity
+
+on:
+  pull_request:
+    branches:
+      - milestone150/learned-base-ladder-v1-20260826
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+env:
+  PYTHONPATH: src
+  OMP_NUM_THREADS: "1"
+  MKL_NUM_THREADS: "1"
+
+jobs:
+  canonical-parity:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact ENV-160 head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up exact locked Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Bind source and install hash-locked runtime
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+          python -m venv .locked
+          .locked/bin/python -m pip install --disable-pip-version-check --no-deps --require-hashes -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .locked/bin/python -m pip install --disable-pip-version-check --no-deps --require-hashes -r requirements/locks/linux-x86_64/runtime.lock.txt
+      - name: Mandatory bootstrap and canonical replay
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          .locked/bin/python -m twelve_six.environment_parity bootstrap --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" --require-locked --output env160-evidence/canonical-bootstrap.json
+          .locked/bin/python -m twelve_six.environment_parity capture --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" --require-locked --output env160-evidence/canonical-trace.json
+          .locked/bin/python -m twelve_six.environment_parity capture --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" --require-locked --output env160-evidence/canonical-replay.json
+          .locked/bin/python -m twelve_six.environment_parity_compare env160-evidence/canonical-trace.json env160-evidence/canonical-replay.json --output env160-evidence/canonical-replay-comparison.json
+          .locked/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+          r = json.loads(Path('env160-evidence/canonical-replay-comparison.json').read_text())
+          if r['classification'] != 'PASS_BITWISE':
+              raise SystemExit(f"canonical replay drift: {r['classification']}")
+          if r['scientific_authority'] is not True:
+              raise SystemExit('locked canonical replay lacks scientific authority')
+          print(json.dumps({'classification': r['classification'], 'scientific_authority': r['scientific_authority'], 'report_sha256': r['report_sha256']}, indent=2, sort_keys=True))
+          PY
+      - name: Upload canonical trace
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: env160-canonical-trace
+          path: env160-evidence/
+          if-no-files-found: error
+          retention-days: 30
+
+  source-equivalent-parity:
+    needs: canonical-parity
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact same head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up observed local Python family
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13.5"
+      - name: Install observed source-equivalent dependencies and bootstrap
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+          python -m pip install --disable-pip-version-check --index-url https://download.pytorch.org/whl/cpu torch==2.10.0
+          python -m pip install --disable-pip-version-check numpy safetensors==0.8.0
+          python -m twelve_six.environment_parity bootstrap --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" --output env160-evidence/candidate-bootstrap.json
+      - name: Capture source-equivalent trace
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          python -m twelve_six.environment_parity capture --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" --output env160-evidence/candidate-trace.json
+      - name: Download canonical trace
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: env160-canonical-trace
+          path: env160-canonical
+      - name: Compare local against locked truth
+        run: |
+          set -euo pipefail
+          python -m twelve_six.environment_parity_compare env160-canonical/canonical-trace.json env160-evidence/candidate-trace.json --output env160-evidence/local-locked-comparison.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          r = json.loads(Path('env160-evidence/local-locked-comparison.json').read_text())
+          if r['semantic_pass'] is not True:
+              raise SystemExit('semantic drift across environments')
+          if r['scientific_authority'] is not False:
+              raise SystemExit('source-equivalent evidence illegally acquired authority')
+          print(json.dumps({'classification': r['classification'], 'semantic_pass': r['semantic_pass'], 'numeric': r['numeric'], 'scientific_authority': r['scientific_authority'], 'report_sha256': r['report_sha256']}, indent=2, sort_keys=True))
+          PY
+      - name: Upload comparison
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: env160-source-equivalent-comparison
+          path: env160-evidence/
+          if-no-files-found: error
+          retention-days: 30
+
+  exact-head-learned-ladder:
+    needs: canonical-parity
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      OMP_NUM_THREADS: "2"
+      MKL_NUM_THREADS: "2"
+    steps:
+      - name: Checkout exact convergence head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up exact Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Install exact locked research runtime
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+          python -m venv .m150
+          .m150/bin/python -m pip install --disable-pip-version-check --no-deps --require-hashes -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .m150/bin/python -m pip install --disable-pip-version-check --no-deps --require-hashes -r requirements/locks/linux-x86_64/runtime.lock.txt
+          .m150/bin/python -m pip install --disable-pip-version-check --no-deps --require-hashes -r requirements/locks/linux-x86_64/dev.lock.txt
+      - name: Mandatory locked bootstrap and focused tests
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          .m150/bin/python -m twelve_six.environment_parity bootstrap --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" --require-locked --output env160-evidence/ladder-bootstrap.json
+          .m150/bin/python -m compileall -q src/twelve_six
+          .m150/bin/python -m pytest -q tests/test_environment_parity.py tests/test_data25_corpus_v01.py tests/test_milestone100_first_learned.py tests/test_milestone100_one_m.py tests/test_milestone150_learned_base_ladder.py
+      - name: Run incumbent MILESTONE-150 exact-head ladder
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          .m150/bin/python -m twelve_six.milestone150_entrypoint prepare --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" --output-dir milestone150-evidence
+          for scale in 100k 500k 1m; do
+            .m150/bin/python -m twelve_six.milestone150_entrypoint phase1 --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" --output-dir milestone150-evidence --scale "$scale"
+            .m150/bin/python -m twelve_six.milestone150_entrypoint resume --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" --output-dir milestone150-evidence --scale "$scale"
+            .m150/bin/python -m twelve_six.milestone150_entrypoint verify-scale --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" --output-dir milestone150-evidence --scale "$scale"
+          done
+          .m150/bin/python -m twelve_six.milestone150_entrypoint finalize --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" --output-dir milestone150-evidence
+          .m150/bin/python -m twelve_six.milestone150_entrypoint validate milestone150-evidence/ladder-report.json --expected-source-sha "$EXPECTED_SOURCE_SHA"
+      - name: Bind environment fingerprint without mutating canonical report hashes
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          .m150/bin/python - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          from twelve_six.environment_parity import environment_fingerprint, hash_json
+          root = Path('milestone150-evidence')
+          fp = environment_fingerprint(Path('.').resolve(), source_sha=os.environ['EXPECTED_SOURCE_SHA'])
+          reports = []
+          for path in sorted(root.rglob('*.json')):
+              reports.append({'path': path.as_posix(), 'sha256': hashlib.sha256(path.read_bytes()).hexdigest(), 'environment_fingerprint_sha256': fp['fingerprint_sha256']})
+          value = {'schema': '12-6.experimental-report-environment-bindings.v1', 'source_sha': os.environ['EXPECTED_SOURCE_SHA'], 'environment_fingerprint': fp, 'reports': reports}
+          value['report_sha256'] = hash_json(value)
+          Path('env160-evidence').mkdir(exist_ok=True)
+          Path('env160-evidence/m150-report-environment-bindings.json').write_text(json.dumps(value, sort_keys=True, indent=2) + '\n')
+          PY
+      - name: Assert truth boundary and publish machine summary
+        run: |
+          set -euo pipefail
+          .m150/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+          r = json.loads(Path('milestone150-evidence/ladder-report.json').read_text())
+          if r['ten_million']['status'] != 'INCOMPLETE_NO_COMPARABLE_LEARNED_EVIDENCE':
+              raise SystemExit('10M status changed without common comparable evidence')
+          for scale in ('100k','500k','1m'):
+              if r['scales'][scale]['fresh_verification']['status'] != 'PASS':
+                  raise SystemExit(f'{scale}: fresh verification not PASS')
+          print(json.dumps({'source_sha': r['source']['git_sha'], 'truth_identity': r['truth_model']['identity_sha256'], 'evaluation_identity': r['truth_model']['evaluation_identity']['identity_sha256'], 'quality_rank': r['rankings']['quality'], 'efficiency_rank': r['rankings']['efficiency'], 'scaling_improvement': r['rankings']['scaling_improvement'], 'ten_million': r['ten_million']['status'], 'report_sha256': r['report_sha256']}, indent=2, sort_keys=True))
+          PY
+      - name: Upload exact-head evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: env160-m150-exact-head-evidence
+          path: |
+            env160-evidence/
+            milestone150-evidence/
+          if-no-files-found: error
+          retention-days: 30

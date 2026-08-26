@@ -1,0 +1,26 @@
+{
+  "schema": "12-6.env160-connected-local-observation.v1",
+  "date": "2026-08-26",
+  "environment": {
+    "python": "3.13.5",
+    "implementation": "CPython",
+    "torch": "2.10.0+cpu",
+    "cuda_available": false,
+    "system": "Linux",
+    "release": "6.18.35",
+    "machine": "x86_64",
+    "cpu_count": 5
+  },
+  "source_checkout": {
+    "requested_repository": "Oleksii-debug/12-6-ai.",
+    "requested_milestone150_sha": "c6e8ac2784920cb96b9b34d26cd68cf9468bd5f0",
+    "available_in_connected_local_runtime": false,
+    "reason": "The connected local runtime had no mounted repository checkout and external GitHub DNS clone access was unavailable."
+  },
+  "model_trace": {
+    "status": "NOT_RUN_NO_SOURCE_CHECKOUT",
+    "fabricated_values": false
+  },
+  "authority": "ENVIRONMENT_OBSERVATION_ONLY_SOURCE_EQUIVALENT_NON_AUTHORITATIVE",
+  "local_free": true
+}
