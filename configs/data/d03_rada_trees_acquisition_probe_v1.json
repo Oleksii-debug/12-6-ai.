@@ -1,0 +1,108 @@
+{
+  "schema_version": "12-6.d03-rada-trees-acquisition-probe.v1",
+  "worker_id": "D03-RADA-TREES-ACQUISITION-PROBE-20260826",
+  "execution_profile": "LOCAL_FREE",
+  "purpose": "DISCOVERY_AND_IMMUTABLE_ACQUISITION_PLANNING_ONLY",
+  "source": {
+    "dataset": "uacorpus/Rada_Trees",
+    "hosting": "huggingface",
+    "dataset_url": "https://huggingface.co/datasets/uacorpus/Rada_Trees",
+    "tree_url": "https://huggingface.co/datasets/uacorpus/Rada_Trees/tree/main",
+    "observed_head_sha": "1b994a5804dcda122721e8d33a03fd172cf8d867",
+    "observed_head_short": "1b994a5",
+    "observed_head_status": "VERIFIED_LINK_TARGET_ON_DATASET_HISTORY",
+    "language": "uk",
+    "modality": "text",
+    "reported_period": "1990-2024",
+    "reported_tokens_approx": 88000000,
+    "reported_total_repository_size": "1.23 GB",
+    "reported_formats": [
+      "plain_text_original_transcripts",
+      "universal_dependencies_annotation",
+      "nlp_uk_annotation"
+    ],
+    "reported_source": "official Verkhovna Rada plenary-session transcripts"
+  },
+  "observed_repository_files": [
+    {
+      "path": "Rada_Trees.7z",
+      "displayed_size": "536 MB",
+      "role": "PRIMARY_ARCHIVE_CANDIDATE_CONTENTS_NOT_YET_INVENTORIED",
+      "exact_blob_identity": null,
+      "training_capacity_credit_bytes": 0
+    },
+    {
+      "path": "rada_xtag_texts.7z",
+      "displayed_size": "698 MB",
+      "role": "ANNOTATION_OR_DERIVED_ARCHIVE_HOLD_UNTIL_CONTENTS_AND_LINEAGE_AUDIT",
+      "exact_blob_identity": null,
+      "training_capacity_credit_bytes": 0
+    }
+  ],
+  "rights": {
+    "dataset_card_license": "CC-BY-4.0",
+    "dataset_card_licensing_section": "CC BY 4.0",
+    "redistribution_obligation": "ATTRIBUTION_REQUIRED",
+    "model_training_decision": "RETEST_EXACT_ARCHIVE_AND_MEMBER_SCOPE_BEFORE_ADMISSION",
+    "evaluation_decision": "NOT_SEPARATELY_ADMITTED",
+    "final_test_decision": "PROHIBITED",
+    "reason": "The public dataset card is permissive, but this probe has not yet pinned archive bytes, member-level provenance, attribution payload, or content-format scope. Permission is not converted into numeric corpus credit by discovery metadata alone."
+  },
+  "lineage": {
+    "provisional_family_id": "ua.rada.plenary-transcripts.1990-2024",
+    "independent_from_existing_laws_texts_family": "PROVISIONAL_DIFFERENT_DOCUMENT_LINEAGE_REQUIRES_EXACT_MEMBER_AUDIT",
+    "existing_family_not_alias": "ua.rada.open-data.laws-texts",
+    "one_credit_per_underlying_transcript_rule": true,
+    "known_or_reported_same_lineage_surfaces": [
+      "Rada_Trees plain-text transcripts",
+      "Rada_Trees UD annotation",
+      "Rada_Trees nlp_uk annotation",
+      "ParlaMint-UA overlapping plenary transcripts",
+      "GRAC parliamentary transcript derivatives",
+      "other mirrors or annotations of the same Verkhovna Rada plenary transcript"
+    ],
+    "annotation_layers_create_new_family_credit": false,
+    "cross_source_lineage_dedup_required": true
+  },
+  "acquisition_policy": {
+    "preferred_training_payload": "PLAIN_TEXT_TRANSCRIPT_LAYER_ONLY",
+    "annotated_payload_default": "HOLD_ZERO_CREDIT",
+    "required_exact_archive_sha256": true,
+    "required_archive_member_inventory": true,
+    "required_member_sha256": true,
+    "required_member_path_normalization": true,
+    "required_duplicate_member_rejection": true,
+    "required_plain_text_vs_annotation_classification": true,
+    "required_attribution_manifest": true,
+    "required_member_level_language_quality_privacy_scan": true,
+    "max_single_member_bytes": 50000000,
+    "max_total_uncompressed_bytes": 10000000000
+  },
+  "downstream_required": [
+    "PIN_EXACT_DATASET_HEAD_AND_XET_OR_LFS_ARCHIVE_OBJECT_IDENTITY",
+    "DOWNLOAD_PRIMARY_ARCHIVE_AND_VERIFY_SHA256",
+    "INVENTORY_ARCHIVE_MEMBERS_WITH_PATH_SIZE_AND_SHA256",
+    "IDENTIFY_PLAIN_TEXT_ORIGINAL_TRANSCRIPT_MEMBERS_WITHOUT_COUNTING_ANNOTATION_DERIVATIVES",
+    "BIND_ATTRIBUTION_AND_MEMBER_LEVEL_PROVENANCE",
+    "RUN_LANGUAGE_QUALITY_PRIVACY_FILTERS",
+    "RUN_EXACT_AND_NEAR_LINEAGE_DEDUP_AGAINST_RADA_LAWS_PARLAMINT_GRAC_AND_LIVE_CORPUS",
+    "RUN_EVALUATION_DECONTAMINATION",
+    "RECOMPUTE_FAMILY_CAP_AND_UA_MIXTURE_FEASIBILITY",
+    "ONLY_THEN_PROPOSE_NONZERO_SOURCE_CAPACITY_CREDIT"
+  ],
+  "claim_boundary": {
+    "archive_downloaded": false,
+    "archive_sha256_pinned": false,
+    "archive_members_inventoried": false,
+    "bulk_source_admitted": false,
+    "family_independence_terminal": false,
+    "normalized_capacity_claimed": false,
+    "training_authorized_bytes": 0,
+    "training_exposure_authorized": false,
+    "tokenizer_fit_authorized": false,
+    "model_training_executed": false,
+    "optimizer_updates": 0,
+    "paid_compute_used": false,
+    "safe_result": "HIGH_LEVERAGE_SOURCE_DISCOVERED_EXACT_ACQUISITION_REQUIRED"
+  }
+}
