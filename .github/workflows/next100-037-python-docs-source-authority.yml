@@ -7,6 +7,9 @@ on:
 permissions:
   contents: read
 
+env:
+  TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
+
 jobs:
   validate-python-docs-source-authority:
     runs-on: ubuntu-24.04
@@ -32,3 +35,46 @@ jobs:
 
       - name: Validate bounded immutable Python docs authority
         run: python tools/validate_next100_037_python_docs_source_authority.py
+
+      - name: Compile accepted-chunk materializer
+        run: python -m compileall -q tools/materialize_next100_037_python_docs_accepted_chunks.py
+
+      - name: Materialize exact 14-chunk eligible byte ledger
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/next100-037/runtime
+          python tools/materialize_next100_037_python_docs_accepted_chunks.py \
+            --source-sha "$EXPECTED_SOURCE_SHA" \
+            --output evidence/next100-037/runtime/python-docs-accepted-chunk-ledger-v1.json
+
+      - name: Enforce no-training capacity boundary
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+
+          path = Path("evidence/next100-037/runtime/python-docs-accepted-chunk-ledger-v1.json")
+          value = json.loads(path.read_text(encoding="utf-8"))
+          supplied = value.pop("ledger_identity_sha256")
+          canonical = (json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8")
+          assert hashlib.sha256(canonical).hexdigest() == supplied
+          assert value["accepted_chunk_count"] == 14
+          assert value["rejected_chunk_count"] == 2
+          assert value["accepted_normalized_utf8_bytes"] > 0
+          assert value["accepted_normalized_utf8_bytes"] < 17901
+          assert value["execution"]["model_training_executed"] is False
+          assert value["execution"]["tokenizer_fit_executed"] is False
+          assert value["execution"]["paid_compute_used"] is False
+          assert value["claim_boundary"]["unique_loss_positions_authorized"] == 0
+          PY
+
+      - name: Upload exact accepted-chunk capacity authority
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: next100-037-python-docs-accepted-ledger-${{ github.event.pull_request.head.sha || github.sha }}
+          if-no-files-found: error
+          retention-days: 90
+          path: evidence/next100-037/runtime/python-docs-accepted-chunk-ledger-v1.json
