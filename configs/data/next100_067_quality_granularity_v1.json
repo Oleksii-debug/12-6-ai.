@@ -54,7 +54,7 @@
   "frozen_policy": {
     "schema_version": "12-6.quality-filter-granularity-policy.v1",
     "policy_id": "next100-067-document-first-local-window-salvage-v1",
-    "policy_sha256": "01691b174481d04b9f8ed6069b4ee20c2a94d953f9f70261232c5ef32b224e68",
+    "policy_sha256": "e8685c2c6b265b9b289ded7a5245888d8d16ae4d6e881f6229f3bc777601f857",
     "quality_threshold_policy_id": "d03-lightweight-uk-en-code-v1",
     "quality_threshold_policy_sha256": "97b9fe1452b22c6275a27f85524f670253a7f4012377361c4cb007004aeccd1d",
     "whole_source": {
@@ -74,7 +74,7 @@
       "window_target_chars": 8192,
       "window_max_chars": 12288,
       "window_min_tail_chars": 2048,
-      "partition": "ORDERED_LINE_ALIGNED_NO_OVERLAP_EXACT_RECONSTRUCTION_V1",
+      "partition": "ORDERED_LINE_PREFERRED_NO_OVERLAP_EXACT_RECONSTRUCTION_V1",
       "accepted_windows_are_retained_independently": true,
       "rejected_windows_do_not_reject_siblings": true,
       "family_eviction_authority": false
