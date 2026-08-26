@@ -16,9 +16,9 @@ EXPECTED_REGISTRY_IDENTITY = "77fb69c558df8c59fdae00583c955c62ad088cda98fd16b335
 EXPECTED_BASE_HEAD = "b0523ccbc4b957615aac849d476cfa851be87578"
 EXPECTED_BASE_IDENTITY = "917e9bc31b2fa040d25e807ae3c01aa2cce32420752a891caacfb6c830e6632c"
 
-# Exact terminal authority bindings.  A source row is not trusted merely because
+# Exact terminal authority bindings. A source row is not trusted merely because
 # it is syntactically well formed or because the registry self-hash was
-# recomputed after metadata drift.  The provenance-bearing fields below are
+# recomputed after metadata drift. The provenance-bearing fields below are
 # immutable inputs to this convergence authority.
 EXPECTED_TERMINAL_AUTHORITIES = {
     449: (
@@ -86,6 +86,15 @@ EXPECTED_TERMINAL_AUTHORITIES = {
     ),
 }
 
+REQUIRED_COMPOSITION_POLICY = {
+    "decontamination_required_before_corpus_identity": True,
+    "evaluation_permission_never_inferred_from_training_permission": True,
+    "global_cross_source_dedup_required_before_corpus_identity": True,
+    "one_independent_family_credit_per_canonical_lineage": True,
+    "only_terminal_admit_authorities_counted": True,
+    "parallel_retest_or_queued_candidates_counted": False,
+}
+
 
 def fail(msg: str) -> None:
     raise SystemExit(f"NEXT100-063 FAIL: {msg}")
@@ -106,6 +115,12 @@ def main() -> None:
         fail("unexpected worker identity")
     if data.get("decision") != EXPECTED_DECISION:
         fail("decision boundary drift")
+    if data.get("local_free_only") is not True:
+        fail("source-registry convergence must remain LOCAL_FREE")
+
+    policy = data.get("composition_policy")
+    if policy != REQUIRED_COMPOSITION_POLICY:
+        fail("composition policy weakened or drifted")
 
     base = data["base_registry"]
     if base.get("head_sha") != EXPECTED_BASE_HEAD:
@@ -151,22 +166,36 @@ def main() -> None:
 
         if not row["verdict"].startswith("ADMIT"):
             fail(f"non-terminal-admit row counted: PR {pr}")
-        if row["normalized_bytes"] <= 0:
-            fail(f"non-positive capacity: PR {pr}")
-        if not row["training"].startswith("ALLOWED"):
+        normalized_bytes = row["normalized_bytes"]
+        if (
+            not isinstance(normalized_bytes, int)
+            or isinstance(normalized_bytes, bool)
+            or normalized_bytes <= 0
+        ):
+            fail(f"non-positive or non-integer capacity: PR {pr}")
+        training = row.get("training")
+        if not isinstance(training, str) or not training.startswith("ALLOWED"):
             fail(f"training permission absent: PR {pr}")
-        if "ALLOWED" in row["evaluation"] or row["evaluation"] == "AUTHORIZED":
-            fail(f"evaluation permission leaked from training authority: PR {pr}")
+        evaluation = row.get("evaluation")
+        if not isinstance(evaluation, str) or not evaluation.startswith("NOT_"):
+            fail(f"evaluation permission must remain explicitly denied: PR {pr}")
 
         prs.add(pr)
         heads.add(row["head"])
         families.add(row["family"])
-        new_bytes += row["normalized_bytes"]
+        new_bytes += normalized_bytes
         key = "code" if row["modality"] == "code" else row["language"]
         if key not in by:
             fail(f"unsupported stratum: {key}")
-        by[key]["normalized_bytes"] += row["normalized_bytes"]
+        by[key]["normalized_bytes"] += normalized_bytes
         by[key]["family_count"] += 1
+
+    held_out = data.get("held_out_or_noncomposable")
+    if not isinstance(held_out, list):
+        fail("held_out_or_noncomposable must be a list")
+    held_out_prs = {item.get("pr") for item in held_out if isinstance(item, dict)}
+    if prs & held_out_prs:
+        fail("a counted terminal authority is also marked held-out/noncomposable")
 
     inv = data["pre_global_dedup_inventory"]
     total = base["unique_normalized_bytes"] + new_bytes
@@ -174,6 +203,8 @@ def main() -> None:
         fail("new-byte total drift")
     if inv["candidate_normalized_bytes"] != total:
         fail("candidate-byte total drift")
+    if inv["candidate_source_authority_count"] != base["source_count"] + len(rows):
+        fail("candidate source-authority count drift")
     if inv["candidate_independent_family_count"] != len(families):
         fail("family-count drift")
     if inv["by_stratum"] != by:
@@ -185,6 +216,9 @@ def main() -> None:
     target = inv["research_corpus_v1_target_normalized_bytes"]
     if inv["target_gap_normalized_bytes"] != target - total:
         fail("target-gap drift")
+    expected_fraction = total / target
+    if abs(inv["target_fraction"] - expected_fraction) > 1e-12:
+        fail("target-fraction drift")
 
     gates = data["downstream_gate_vector"]
     if gates["authorized_balanced_no_replay_loss_positions"] != 0:
