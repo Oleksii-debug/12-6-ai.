@@ -1,0 +1,152 @@
+name: GPU-200 Self-hosted CUDA runner smoke
+on:
+  pull_request:
+    paths:
+      - ".github/actions/self-hosted-gpu-preflight/action.yml"
+      - ".github/workflows/gpu200-self-hosted-smoke.yml"
+      - "docs/GPU200_SELF_HOSTED_RUNNER_CONTRACT.md"
+      - "tests/test_self_hosted_gpu_runner.py"
+      - "tools/self_hosted_gpu_runner.py"
+  workflow_dispatch:
+    inputs:
+      target_sha:
+        description: "Exact 40-character commit SHA to execute"
+        required: true
+        type: string
+      authorize_self_hosted_gpu:
+        description: "Explicitly authorize use of an already-attached self-hosted GPU runner"
+        required: true
+        default: false
+        type: boolean
+      durable_checkpoint_root:
+        description: "Existing absolute durable checkpoint root on the runner"
+        required: false
+        default: ""
+        type: string
+      gpu_index:
+        description: "Physical NVIDIA GPU index"
+        required: false
+        default: "0"
+        type: string
+      required_vram_gib:
+        description: "VRAM requirement for this smoke"
+        required: false
+        default: "0.25"
+        type: string
+      required_disk_gib:
+        description: "Durable disk requirement for this smoke"
+        required: false
+        default: "0.10"
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: gpu200-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: false
+jobs:
+  cpu-fail-closed-proof:
+    runs-on: ubuntu-24.04
+    env:
+      TARGET_SHA: ${{ github.event.pull_request.head.sha || inputs.target_sha || github.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || inputs.target_sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+      - uses: ./.github/actions/execution-bootstrap
+        with:
+          capabilities: tests
+          venv: .gpu200-cpu
+          command: "python -m pytest -q tests/test_self_hosted_gpu_runner.py"
+          manifest: gpu200-evidence/cpu-test-environment.json
+      - name: Contract tests through universal bootstrap
+        run: .gpu200-cpu/bin/python -m pytest -q tests/test_self_hosted_gpu_runner.py
+      - name: Prove ordinary CPU runner is refused
+        run: |
+          set -euo pipefail
+          mkdir -p gpu200-evidence
+          set +e
+          .gpu200-cpu/bin/python tools/self_hosted_gpu_runner.py host-preflight \
+            --repo-root "$GITHUB_WORKSPACE" \
+            --expected-sha "$TARGET_SHA" \
+            --scheduler-label ubuntu-24.04 \
+            --gpu-index 0 \
+            --durable-root "$RUNNER_TEMP" \
+            --required-vram-gib 0.01 \
+            --required-disk-gib 0.01 \
+            --evidence gpu200-evidence/cpu-fail-closed.json
+          rc=$?
+          set -e
+          test "$rc" -eq 2
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p = json.loads(Path("gpu200-evidence/cpu-fail-closed.json").read_text())
+          assert p["status"] == "REFUSED"
+          assert p["reason_code"] == "RUNNER_LABEL_CONTRACT"
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gpu200-cpu-fail-closed
+          path: gpu200-evidence/cpu-fail-closed.json
+          if-no-files-found: error
+
+  self-hosted-cuda-smoke:
+    if: github.event_name == 'workflow_dispatch' && inputs.authorize_self_hosted_gpu == true
+    runs-on: [self-hosted, linux, x64, gpu, cuda, twelve-six-ai]
+    env:
+      TARGET_SHA: ${{ inputs.target_sha }}
+      DURABLE_ROOT: ${{ inputs.durable_checkpoint_root }}
+      GPU_INDEX: ${{ inputs.gpu_index }}
+      REQUIRED_VRAM_GIB: ${{ inputs.required_vram_gib }}
+      REQUIRED_DISK_GIB: ${{ inputs.required_disk_gib }}
+      CUDA_VISIBLE_DEVICES: ${{ inputs.gpu_index }}
+    steps:
+      - name: Validate manual authorization inputs
+        run: |
+          set -euo pipefail
+          test -n "$DURABLE_ROOT"
+          [[ "$TARGET_SHA" =~ ^[0-9a-fA-F]{40}$ ]]
+          [[ "$GPU_INDEX" =~ ^[0-9]+$ ]]
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ inputs.target_sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+      - uses: ./.github/actions/self-hosted-gpu-preflight
+        with:
+          target-sha: ${{ inputs.target_sha }}
+          scheduler-labels: "self-hosted,linux,x64,gpu,cuda,twelve-six-ai"
+          gpu-index: ${{ inputs.gpu_index }}
+          durable-root: ${{ inputs.durable_checkpoint_root }}
+          required-vram-gib: ${{ inputs.required_vram_gib }}
+          vram-reserve-gib: "1.0"
+          required-disk-gib: ${{ inputs.required_disk_gib }}
+          disk-reserve-gib: "2.0"
+          capabilities: "runtime,cuda,tests"
+          command: "python -m pytest -q tests/test_self_hosted_gpu_runner.py"
+          venv: .gpu200
+          environment-manifest: gpu200-evidence/execution-environment.json
+          host-evidence: gpu200-evidence/host-preflight.json
+          environment-evidence: gpu200-evidence/environment-preflight.json
+      - name: Focused contract tests in exact CUDA environment
+        run: .gpu200/bin/python -m pytest -q tests/test_self_hosted_gpu_runner.py
+      - name: CUDA allocation and durable checkpoint smoke
+        run: |
+          .gpu200/bin/python tools/self_hosted_gpu_runner.py smoke \
+            --repo-root "$GITHUB_WORKSPACE" \
+            --expected-sha "$TARGET_SHA" \
+            --venv-python "$GITHUB_WORKSPACE/.gpu200/bin/python" \
+            --host-evidence gpu200-evidence/host-preflight.json \
+            --environment-evidence gpu200-evidence/environment-preflight.json \
+            --evidence gpu200-evidence/cuda-smoke.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gpu200-self-hosted-cuda-smoke
+          path: gpu200-evidence/*.json
+          if-no-files-found: error

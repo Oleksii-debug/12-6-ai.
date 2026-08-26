@@ -1,0 +1,80 @@
+name: "12-6 self-hosted CUDA preflight"
+description: "Fail-closed host/resource gate plus ENV-151 exact CUDA environment bootstrap"
+inputs:
+  target-sha: {description: "Exact 40-character Git SHA already checked out", required: true}
+  scheduler-labels: {description: "Comma-separated scheduler labels", required: true}
+  gpu-index: {description: "Physical NVIDIA GPU index exposed to this job", required: false, default: "0"}
+  durable-root: {description: "Existing absolute durable checkpoint root", required: true}
+  required-vram-gib: {description: "Experiment VRAM requirement", required: true}
+  vram-reserve-gib: {description: "VRAM safety reserve", required: false, default: "1.0"}
+  required-disk-gib: {description: "Experiment durable-disk requirement", required: true}
+  disk-reserve-gib: {description: "Durable-disk safety reserve", required: false, default: "2.0"}
+  capabilities: {description: "ENV-151 capabilities; must include runtime,cuda", required: false, default: "runtime,cuda"}
+  command: {description: "Optional command audited by ENV-151", required: false, default: ""}
+  venv: {description: "Fresh exact environment path", required: true}
+  environment-manifest: {description: "ENV-151 manifest path", required: true}
+  host-evidence: {description: "Host preflight evidence path", required: true}
+  environment-evidence: {description: "CUDA runtime identity evidence path", required: true}
+runs:
+  using: "composite"
+  steps:
+    - shell: bash
+      env:
+        CAPABILITIES: ${{ inputs.capabilities }}
+      run: |
+        set -euo pipefail
+        python - <<'PY'
+        import os
+        caps = {item.strip() for item in os.environ["CAPABILITIES"].split(",") if item.strip()}
+        missing = {"runtime", "cuda"} - caps
+        if missing:
+            raise SystemExit("self-hosted GPU preflight requires runtime,cuda capabilities")
+        PY
+    - shell: bash
+      env:
+        TARGET_SHA: ${{ inputs.target-sha }}
+        SCHEDULER_LABELS: ${{ inputs.scheduler-labels }}
+        GPU_INDEX: ${{ inputs.gpu-index }}
+        DURABLE_ROOT: ${{ inputs.durable-root }}
+        REQUIRED_VRAM_GIB: ${{ inputs.required-vram-gib }}
+        VRAM_RESERVE_GIB: ${{ inputs.vram-reserve-gib }}
+        REQUIRED_DISK_GIB: ${{ inputs.required-disk-gib }}
+        DISK_RESERVE_GIB: ${{ inputs.disk-reserve-gib }}
+        HOST_EVIDENCE: ${{ inputs.host-evidence }}
+      run: |
+        set -euo pipefail
+        args=()
+        IFS=',' read -ra labels <<< "$SCHEDULER_LABELS"
+        for label in "${labels[@]}"; do args+=(--scheduler-label "$label"); done
+        python "$GITHUB_ACTION_PATH/../../../tools/self_hosted_gpu_runner.py" host-preflight \
+          --repo-root "$GITHUB_WORKSPACE" \
+          --expected-sha "$TARGET_SHA" \
+          "${args[@]}" \
+          --gpu-index "$GPU_INDEX" \
+          --durable-root "$DURABLE_ROOT" \
+          --required-vram-gib "$REQUIRED_VRAM_GIB" \
+          --vram-reserve-gib "$VRAM_RESERVE_GIB" \
+          --required-disk-gib "$REQUIRED_DISK_GIB" \
+          --disk-reserve-gib "$DISK_RESERVE_GIB" \
+          --evidence "$GITHUB_WORKSPACE/$HOST_EVIDENCE"
+    - uses: ./.github/actions/execution-bootstrap
+      with:
+        capabilities: ${{ inputs.capabilities }}
+        venv: ${{ inputs.venv }}
+        command: ${{ inputs.command }}
+        manifest: ${{ inputs.environment-manifest }}
+    - shell: bash
+      env:
+        TARGET_SHA: ${{ inputs.target-sha }}
+        VENV: ${{ inputs.venv }}
+        HOST_EVIDENCE: ${{ inputs.host-evidence }}
+        ENVIRONMENT_EVIDENCE: ${{ inputs.environment-evidence }}
+      run: |
+        set -euo pipefail
+        "$GITHUB_WORKSPACE/$VENV/bin/python" \
+          "$GITHUB_ACTION_PATH/../../../tools/self_hosted_gpu_runner.py" environment-preflight \
+          --repo-root "$GITHUB_WORKSPACE" \
+          --expected-sha "$TARGET_SHA" \
+          --venv-python "$GITHUB_WORKSPACE/$VENV/bin/python" \
+          --host-evidence "$GITHUB_WORKSPACE/$HOST_EVIDENCE" \
+          --evidence "$GITHUB_WORKSPACE/$ENVIRONMENT_EVIDENCE"
