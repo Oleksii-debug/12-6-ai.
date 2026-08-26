@@ -111,18 +111,25 @@ def _expect(errors: list[str], condition: bool, message: str) -> None:
         errors.append(message)
 
 
+def _matches_expected(actual: Any, expected: Any) -> bool:
+    """Compare frozen contract scalars without bool/int coercion."""
+    if expected is None:
+        return actual is None
+    return type(actual) is type(expected) and actual == expected
+
+
 def validate_campaign(data: dict[str, Any]) -> list[str]:
     errors: list[str] = []
 
-    _expect(errors, data.get("schema_version") == 1, "schema_version must be 1")
+    _expect(errors, _matches_expected(data.get("schema_version"), 1), "schema_version must be 1")
     _expect(
         errors,
-        data.get("campaign_id") == "R01-20M-TO-100M-SCALING-V1",
+        _matches_expected(data.get("campaign_id"), "R01-20M-TO-100M-SCALING-V1"),
         "campaign_id mismatch",
     )
     _expect(
         errors,
-        data.get("status") == "CANDIDATE_PLANNING_ONLY",
+        _matches_expected(data.get("status"), "CANDIDATE_PLANNING_ONLY"),
         "campaign must remain planning-only",
     )
 
@@ -130,13 +137,21 @@ def validate_campaign(data: dict[str, Any]) -> list[str]:
     _expect(errors, isinstance(authority, dict), "authority must be an object")
     if isinstance(authority, dict):
         for key, value in EXPECTED_AUTHORITY.items():
-            _expect(errors, authority.get(key) == value, f"authority.{key} mismatch")
+            _expect(
+                errors,
+                _matches_expected(authority.get(key), value),
+                f"authority.{key} mismatch",
+            )
 
     baseline = data.get("baseline_model")
     _expect(errors, isinstance(baseline, dict), "baseline_model must be an object")
     if isinstance(baseline, dict):
         for key, value in EXPECTED_BASELINE.items():
-            _expect(errors, baseline.get(key) == value, f"baseline_model.{key} mismatch")
+            _expect(
+                errors,
+                _matches_expected(baseline.get(key), value),
+                f"baseline_model.{key} mismatch",
+            )
 
     boundaries = data.get("hard_boundaries")
     _expect(errors, isinstance(boundaries, dict), "hard_boundaries must be an object")
@@ -161,7 +176,11 @@ def validate_campaign(data: dict[str, Any]) -> list[str]:
     _expect(errors, isinstance(readiness, dict), "current_readiness must be an object")
     if isinstance(readiness, dict):
         for key, value in EXPECTED_READINESS.items():
-            _expect(errors, readiness.get(key) == value, f"current_readiness.{key} mismatch")
+            _expect(
+                errors,
+                _matches_expected(readiness.get(key), value),
+                f"current_readiness.{key} mismatch",
+            )
 
     principles = data.get("scientific_principles")
     _expect(errors, isinstance(principles, dict), "scientific_principles must be an object")
@@ -199,13 +218,13 @@ def validate_campaign(data: dict[str, Any]) -> list[str]:
                 for key, value in expected_gates.items():
                     _expect(
                         errors,
-                        entry.get(key) == value,
+                        _matches_expected(entry.get(key), value),
                         f"{experiment_id}.{key} mismatch",
                     )
             if entry.get("id") == "R01-E00":
                 _expect(
                     errors,
-                    entry.get("parameters") == 20613440,
+                    _matches_expected(entry.get("parameters"), 20613440),
                     "R01-E00 must bind exact MODEL-341 parameter count",
                 )
             if entry.get("id") == "R01-E10":
