@@ -215,7 +215,12 @@ def _preflight_stateful_component(component: Any | None, state: Any, *, label: s
     _validate_state_schema(live_state, state, path=f"{label} state")
 
 
-def _preflight_trainer_state(trainer: Any, state: Any) -> None:
+def _preflight_trainer_state(
+    trainer: Any,
+    state: Any,
+    *,
+    manifest: Mapping[str, Any] | None = None,
+) -> None:
     """Validate trainer-owned resume state before checkpoint model mutation.
 
     ``Trainer.load_state_dict`` correctly rejects invalid counters/configuration,
@@ -237,6 +242,19 @@ def _preflight_trainer_state(trainer: Any, state: Any) -> None:
         if not isinstance(value, int) or isinstance(value, bool) or value < 0:
             raise CheckpointCompatibilityError(
                 f"trainer {field} must be a non-negative integer"
+            )
+
+    if manifest is not None:
+        identity = manifest.get("identity")
+        if not isinstance(identity, Mapping):
+            raise CheckpointCompatibilityError("verified checkpoint identity is missing")
+        if state["optimizer_step"] != identity.get("step"):
+            raise CheckpointCompatibilityError(
+                "trainer optimizer_step disagrees with checkpoint identity.step"
+            )
+        if state["tokens_seen"] != identity.get("tokens_seen"):
+            raise CheckpointCompatibilityError(
+                "trainer tokens_seen disagrees with checkpoint identity.tokens_seen"
             )
 
     live_config = getattr(trainer, "config", None)
@@ -352,8 +370,9 @@ def load_trainer_checkpoint(
         raise TypeError("trainer must provide load_state_dict()")
 
     verified = prepare_checkpoint_load(directory)
+    manifest = verified.manifest
     _assert_bound_metadata(
-        verified.manifest,
+        manifest,
         expected_init_spec_hash=expected_init_spec_hash,
         expected_split_identity=expected_split_identity,
         expected_packing_hash=expected_packing_hash,
@@ -368,7 +387,11 @@ def load_trainer_checkpoint(
     # weights. This closes the same deferred optimizer-failure class for the
     # production Trainer adapter path used by long-running campaigns.
     _, combined_state = _decode_verified_state(verified)
-    _preflight_trainer_state(trainer, combined_state.get("trainer"))
+    _preflight_trainer_state(
+        trainer,
+        combined_state.get("trainer"),
+        manifest=manifest,
+    )
 
     result = load_verified_checkpoint(
         verified,
