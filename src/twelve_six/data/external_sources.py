@@ -129,10 +129,10 @@ class ExternalSource:
             raise ExternalSourceContractError(
                 f"{self.source_id}: rights.review_status must be approved"
             )
-        if self.rights.get("reviewed_by") in {None, ""}:
-            raise ExternalSourceContractError(
-                f"{self.source_id}: rights.reviewed_by is required"
-            )
+        _require_nonempty_string(
+            self.rights.get("reviewed_by"),
+            label=f"{self.source_id}: rights.reviewed_by",
+        )
         if self.materialization.get("format") != "jsonl":
             raise ExternalSourceContractError(
                 f"{self.source_id}: materialization.format must be jsonl"
