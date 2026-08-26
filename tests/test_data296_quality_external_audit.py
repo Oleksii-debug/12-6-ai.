@@ -77,3 +77,21 @@ def test_diagnostic_categories_are_interpretable() -> None:
     assert MODULE.is_rst_syntax_bearing(rst)
     assert MODULE.is_parse_valid_python(code)
     assert not MODULE.is_parse_valid_python("def broken(:\n")
+
+
+def main() -> int:
+    checks = (
+        test_preregistration_and_incumbent_blob_identities_are_locked,
+        test_all_policy_identities_match_preregistration,
+        test_alternatives_change_only_preregistered_narrow_thresholds,
+        test_line_pack_partition_is_exact_and_nonoverlapping,
+        test_diagnostic_categories_are_interpretable,
+    )
+    for check in checks:
+        check()
+        print(f"DATA296_CONTRACT_PASS={check.__name__}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
