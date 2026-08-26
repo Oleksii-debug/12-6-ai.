@@ -146,6 +146,40 @@ def test_connected_duplicate_graph_collapses_transitively() -> None:
     assert scope["conservative_unique_capacity_bytes_after"] == 100
 
 
+def test_authority_specific_rust_prose_normalization_is_hash_bound() -> None:
+    raw = b"# Heading\n\nPlain `code` prose.\n\n```rust\nfn main() {}\n```\n"
+    expected = b"Heading\n\nPlain prose.\n"
+    source = _source("rust", "rust-book", "rust-origin", "rust-object", raw, capacity=len(expected))
+    source.update(
+        {
+            "comparison_normalization": "RUST_BOOK_SOURCE_MARKDOWN_PROSE_ONLY_V1",
+            "expected_comparison_bytes": len(expected),
+            "expected_comparison_sha256": _sha(expected),
+        }
+    )
+    report = audit_payloads(_inventory([source]), {"rust": raw})
+    row = report["sources"][0]
+    assert row["comparison_policy"] == "RUST_BOOK_SOURCE_MARKDOWN_PROSE_ONLY_V1"
+    assert row["comparison_payload_bytes"] == len(expected)
+    assert row["comparison_payload_sha256"] == _sha(expected)
+    assert report["terminal_candidates"]["declared_capacity_bytes_before"] == len(expected)
+
+
+def test_authority_specific_normalization_drift_fails_closed() -> None:
+    raw = b"# Heading\n\nPlain `code` prose.\n"
+    expected = b"Heading\n\nPlain prose.\n"
+    source = _source("rust", "rust-book", "rust-origin", "rust-object", raw, capacity=len(expected))
+    source.update(
+        {
+            "comparison_normalization": "RUST_BOOK_SOURCE_MARKDOWN_PROSE_ONLY_V1",
+            "expected_comparison_bytes": len(expected),
+            "expected_comparison_sha256": "0" * 64,
+        }
+    )
+    with pytest.raises(CrossSourceV3Error, match="comparison SHA-256 changed"):
+        audit_payloads(_inventory([source]), {"rust": raw})
+
+
 def test_nonterminal_source_fails_closed() -> None:
     payload = b"candidate"
     source = _source("x", "fx", "ox", "xx", payload)
