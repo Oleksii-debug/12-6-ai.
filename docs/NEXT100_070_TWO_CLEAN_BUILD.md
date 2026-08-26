@@ -8,11 +8,11 @@ Execution profile: `LOCAL_FREE`
 
 This worker tests deterministic corpus construction at the current live corpus boundary. It must never convert missing hard-gate evidence into an implied corpus product.
 
-The worker is stacked on terminal DATA-301 / frozen DATA-300 v2 and late-binds the current source registry and purpose-specific rights vector before execution.
+The worker is stacked on terminal DATA-301 / frozen DATA-300 v2 and late-binds the current canonical source registry and purpose-specific rights vector before execution.
 
 ## Bound candidate
 
-At the initial authority cut, DATA-287 and DATA-293 describe the same exact five training-admitted objects frozen by DATA-300:
+The live canonical DATA-287 registry and DATA-293 rights vector still describe the same exact five training-admitted objects frozen by DATA-300:
 
 - 5 source objects;
 - 4 independent source families;
@@ -22,6 +22,22 @@ At the initial authority cut, DATA-287 and DATA-293 describe the same exact five
 - evaluation purpose is not inferred from training rights.
 
 DATA-300 requires at least two independent families per stratum and forbids replay/duplication as quota repair. Therefore the current family-constrained balanced no-replay capacity is zero.
+
+New source-specific ADMIT authorities are not silently composed into this candidate. They require a terminal successor source-registry/corpus authority before they can change the canonical build inventory.
+
+## Refreshed live gate evidence
+
+The historical DATA-300 blocker list is not copied blindly. NEXT100-070 binds later terminal evidence where available:
+
+- `G05_QUALITY`: DATA-296 successfully scanned the exact five-source / 183,061-byte candidate, but its whole-source sanity check exposed a filter-granularity hazard. Until a successor freezes the granularity policy, release remains blocked.
+- `G06_PRIVACY`: VERIFY-307 reran the incumbent privacy policy over all five candidate objects; all five passed with zero candidate findings/redactions. Its adversarial suite still recorded false negatives, so this is a current-candidate scan PASS rather than a universal detector-strength claim.
+- `G07_DEDUP`: DATA-298 terminal source-level evidence measures 183,061 -> 183,061 bytes with zero duplicate discount. Cluster-safe split/decontamination work is still not reached; the newer NEXT100-065 V3 exact-head workflow is queued and is not promoted to authority.
+- `G08_RESERVED_DECONTAMINATION`: NEXT100-066 terminally blocks because no exact candidate corpus identity exists. No contamination PASS is claimed.
+- `G09_BALANCE_DIVERSITY`: hard FAIL at family counts `1/1/2`; no replay budget is authorized.
+- `G10_SELECTION_VALIDATION`: EVAL-303 is now terminal and nonempty: 10 selection records, UA 8 / EN 2 / code 0, with an exact DATA-300 object/hash exclusion proof. Near-copy/cluster decontamination remains a separate mandatory gate.
+- `G12_UNIQUE_LOSS`: DATA-294 does not cover all five current source objects, so no full current-candidate causal loss ledger exists.
+
+Any one hard prebuild failure is sufficient to prevent split/shard materialization. `G09` alone is mathematically decisive for the current candidate.
 
 ## Deterministic execution boundary
 
@@ -41,7 +57,7 @@ The emitted surfaces are:
 - `gate_report.json`;
 - `tree_manifest.json`.
 
-When a hard prebuild gate is unavailable or fails, split and shard payloads are not created. Their manifests explicitly say `NOT_REACHED_PREBUILD_HARD_GATES`, carry no corpus identity, and have zero payload files. This is blocker evidence, not an empty corpus.
+When a hard prebuild gate fails, split and shard payloads are not created. Their manifests explicitly say `NOT_REACHED_PREBUILD_HARD_GATES`, carry no corpus identity, and have zero payload files. This is blocker evidence, not an empty corpus.
 
 Canonical JSON uses UTF-8, sorted keys, compact separators and one trailing newline. Wall-clock time, host name, absolute workspace path, UUIDs, filesystem iteration order and network response order do not enter output identity.
 
@@ -70,7 +86,7 @@ A successful NEXT100-070 workflow means only that two isolated executions reprod
 - shards built;
 - decontamination passed;
 - full five-source loss ledger exists;
-- selection-validation is sufficient;
+- family diversity is sufficient;
 - model training is authorized or executed.
 
-If a later terminal registry or rights authority changes the source vector, this worker must receive a successor binding and rerun before its evidence may be cited.
+If a later terminal canonical registry or rights authority changes the source vector, this worker must receive a successor binding and rerun before its evidence may be cited.
