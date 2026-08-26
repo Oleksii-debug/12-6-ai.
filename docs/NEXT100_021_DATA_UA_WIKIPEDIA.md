@@ -1,85 +1,73 @@
-# NEXT100-021 Ukrainian Wikipedia source-family evidence
+# NEXT100-021 Ukrainian Wikipedia source-family authority
 
 Worker: `NEXT100-021-DATA-UA-WIKIPEDIA`
 
-Terminal decision target: `RETEST`.
+Terminal decision: `REJECT` for current model-training admission.
 
-This change does not admit Ukrainian Wikipedia for model training, does not create a training snapshot, does not reserve evaluation material, and does not mutate the frozen corpus contract. It records exact upstream identity and runs a bounded analysis-only acquisition proof.
+This change does not admit Ukrainian Wikipedia, does not create a training snapshot, does not reserve evaluation material, and does not mutate the corpus contract or admitted-source registry.
 
-## Authoritative upstream and exact identity
+## Authoritative upstream and exact candidate identity
 
-Upstream is Wikimedia Foundation's dump service. The investigated immutable object is:
+Upstream is Wikimedia Foundation's official dump service. The exact candidate is:
 
 - dump family: `ukwiki`
 - dump date: `20260801`
 - object: `ukwiki-20260801-pages-articles1.xml-p1p194007.bz2`
 - exact dated URL: `https://dumps.wikimedia.org/ukwiki/20260801/ukwiki-20260801-pages-articles1.xml-p1p194007.bz2`
-- expected size: `166733586` bytes
-- upstream SHA-1: `e6aa53cf981f53807ca59d4fc7ab8e1d97151461`
+- reported compressed size: `166733586` bytes
+- official upstream SHA-1: `e6aa53cf981f53807ca59d4fc7ab8e1d97151461`
 
-The current `latest` index was observed on 2026-08-26 to identify this dump generation, but acquisition uses the dated URL and never the mutable `latest` payload alias.
+The dated object identity is used for the candidate. Mutable `latest` is used only to acquire the small official checksum manifest in the component proof; blocked Wikipedia content bytes are not fetched.
 
 ## Rights decision
 
-Ukrainian Wikipedia text is treated as `CC-BY-SA-4.0` for this review. The license and Wikimedia Terms permit reuse, including commercial reuse, but impose obligations. The project must preserve attribution, applicable additional attribution requirements for imported text, modification notices, license notice/link or copy, and ShareAlike requirements where triggered.
+Ukrainian Wikipedia text is reviewed as `CC-BY-SA-4.0`. License-level reuse is broad, including commercial reuse/adaptation, but project admission is a separate decision. Wikimedia reuse obligations include contributor attribution, applicable additional attribution requirements for imported text, modification notices, license notice/link or copy, ShareAlike when triggered, and no incompatible downstream legal or technical restrictions.
 
-Existing project candidate authority already marks `ua.wikipedia.ukwiki` as `REVIEW_REQUIRED` because there is no approved project ShareAlike compliance policy for training artifacts/model outputs. This worker does not override that decision by inference from the license label.
+The repository's incumbent candidate authority already marks `ua.wikipedia.ukwiki` `BLOCKED_BY_RIGHTS` / `REVIEW_REQUIRED`, with `allows_model_training=false`, because the project has no approved ShareAlike compliance policy for training artifacts/model outputs. No terminal successor policy resolving that blocker was found at cutoff. This worker therefore does not promote the license label into project-purpose permission.
 
-Purpose decisions remain independent:
+Purpose decisions:
 
-- bounded acquisition for analysis: `ALLOWED_FOR_BOUNDED_ANALYSIS_PROBE`
-- ephemeral analysis storage: `EPHEMERAL_ANALYSIS_ONLY`
-- analysis: `ALLOWED`
-- model training: `RETEST_REQUIRED`
-- redistribution: `RETEST_REQUIRED`
+- model training: `REJECT`
+- redistribution of a project-normalized Wikipedia snapshot: `NOT_ADMITTED`
 - evaluation: `NOT_SEPARATELY_ADMITTED`
+
+Retest requires an explicit owner-approved or terminal project ShareAlike compliance policy before materializing Wikipedia content.
 
 ## Privacy / PII
 
-Main-namespace article text can contain information about living or otherwise identifiable people. Public availability does not remove privacy, publicity, or other non-copyright risks. The bounded probe counts simple email-like and phone-like signals but this is not a substitute for the current project privacy gate. Exact normalized bytes must pass the project privacy/PII policy before any future training admission.
+Wikipedia article text can contain personal information about living or otherwise identifiable people. Public availability does not remove privacy, publicity, moral-right, or other non-copyright risk. Because the rights gate fails before content materialization, the exact-content privacy/PII gate is `NOT_RUN_RIGHTS_GATE_FAILED`; it becomes mandatory on any future retest.
 
 ## Bounded LOCAL_FREE acquisition
 
-The dedicated workflow downloads exactly one dated `pages-articles` shard with a hard `170000000` byte cap and verifies the published size and SHA-1. It computes an additional raw SHA-256 locally. Raw bytes are kept only in a temporary runner directory and are deleted before the evidence artifact is uploaded.
+The current exact-head workflow performs only a bounded upstream-metadata probe:
 
-The normalization probe selects at most 128 current non-redirect `ns=0` pages and at most 2,000,000 canonical normalized bytes. It runs the normalization twice against the same exact raw object and requires byte-identical metadata/hashes.
+- maximum network metadata bytes: `1048576`
+- resource: official Wikimedia SHA-1 manifest
+- purpose: verify that the exact dated dump object is bound to the published SHA-1
+- Wikipedia content payload bytes: exactly `0`
 
-No raw or normalized article text is uploaded. The artifact contains only source/revision identifiers, byte counts, hashes, privacy signal counts, and the terminal decision metadata.
+The previously considered 170 MB content probe is not current authority and is intentionally superseded by rights-first fail-close behavior. No raw SHA-256 or normalized SHA-256 is invented for content that was not materialized.
 
-## Deterministic normalization
+## Deterministic normalization contract
 
-Policy `UKWIKI_WIKITEXT_NFKC_LINES_V1`:
+A future retest is pre-bound to `UKWIKI_WIKITEXT_NFKC_LINES_V1`: namespace `0`, non-redirect current revisions in dump order, Unicode NFKC, canonical newlines, removal of Unicode `Cf`, line-end trim, outer trim, UTF-8, canonical JSONL bound to page/revision IDs. The exact-head component validates this normalizer on a deterministic project-owned fixture only. It does not normalize blocked Wikipedia bytes.
 
-1. select MediaWiki namespace `0` pages;
-2. exclude redirects;
-3. select current revision text in dump order;
-4. Unicode NFKC;
-5. CRLF/CR to LF;
-6. remove Unicode `Cf` format characters;
-7. trim trailing whitespace per line;
-8. trim outer whitespace;
-9. UTF-8 encode;
-10. hash canonical JSONL records bound to `page_id` and `revision_id`.
+Wikitext markup is to remain preserved at the rights-retest stage so imported attribution/source notices are not silently stripped before policy review.
 
-Wikitext markup is intentionally preserved during this rights retest so source/attribution notices are not silently discarded by an ad-hoc markup stripper.
+## Family and dedup
 
-## Family and dedup identity
+Candidate family identity: `wikimedia:wikipedia:ukwiki`.
 
-Independent family: `wikimedia:wikipedia:ukwiki`.
-
-This is distinct from incumbent Ukrainian family `ua.rada.open-data.laws-texts`. The record hashes are compatible with the existing exact/normalized/near-copy/fragment family audit semantics, but cross-family near-dedup is deliberately not claimed before rights admission. A future admission must run the current project dedup authority on the exact normalized candidate bytes.
+It is distinguishable from incumbent Ukrainian family `ua.rada.open-data.laws-texts`, but receives `independent_family_credit=0` while rejected. Existing exact/normalized/near-copy/fragment and lineage semantics are compatible with a future materialized candidate. Cross-family dedup is `NOT_RUN_RIGHTS_GATE_FAILED` and must run on exact normalized bytes before any future admission.
 
 ## Current registry boundary
 
-The branch is stacked on DATA-287 exact green head `b0523ccbc4b957615aac849d476cfa851be87578`. Machine registry identity is `917e9bc31b2fa040d25e807ae3c01aa2cce32420752a891caacfb6c830e6632c`. Ukrainian Wikipedia is not in the admitted snapshot set. A historical candidate entry exists and remains `REVIEW_REQUIRED`.
+The branch is stacked on DATA-287 exact green head `b0523ccbc4b957615aac849d476cfa851be87578`. The committed machine registry identity there is `917e9bc31b2fa040d25e807ae3c01aa2cce32420752a891caacfb6c830e6632c`. Ukrainian Wikipedia is not in the admitted snapshot set. Its historical candidate remains `REVIEW_REQUIRED`.
 
-The prose identity previously stated in the DATA-287 PR body is not used when it conflicts with the committed machine registry; exact-head machine bytes and their successful component workflow are authoritative for this binding.
+A stale prose registry identity in the DATA-287 PR body is not used over the exact machine registry bytes.
 
-## RETEST blockers
+## Terminal root cause
 
-1. `SHAREALIKE_TRAINING_ARTIFACT_AND_MODEL_OUTPUT_COMPLIANCE_POLICY_NOT_APPROVED`
-2. `IMPORTED_TEXT_ADDITIONAL_ATTRIBUTION_PRESERVATION_NOT_PROVEN_FOR_NORMALIZED_CORPUS`
-3. `EXACT_NORMALIZED_PRIVACY_PII_GATE_NOT_EXECUTED`
-4. `CROSS_FAMILY_NEAR_DEDUP_NOT_EXECUTED`
+`PROJECT_HAS_NO_APPROVED_SHAREALIKE_COMPLIANCE_POLICY_FOR_TRAINING_ARTIFACTS_OR_MODEL_OUTPUTS`
 
-No model training is executed by this worker.
+Consequences at this authority: no content materialization, no training snapshot, no redistribution admission, no evaluation reservation, no privacy/dedup execution on source bytes, and no model training.
