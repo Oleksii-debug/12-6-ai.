@@ -1,0 +1,106 @@
+name: CI-223 Final Snapshot Ruff Repair
+
+on:
+  push:
+    branches: [ci223/repository-release-gate-convergence-final-20260826]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ci223-final-ruff-repair
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    if: ${{ !contains(github.event.head_commit.message, 'CI-223 persist final Ruff repairs') }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ci223/repository-release-gate-convergence-final-20260826
+          fetch-depth: 0
+          persist-credentials: true
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+      - uses: ./.github/actions/execution-bootstrap
+        with:
+          capabilities: runtime,tests,lint
+          venv: .ci223-final-repair
+          command: python -m pytest -q
+          manifest: ci223-final-repair-environment.json
+      - name: Install repository into universal CPU environment
+        run: |
+          set -euo pipefail
+          PIP_NO_INDEX=1 .ci223-final-repair/bin/python -m pip install --no-deps --no-build-isolation -e .
+          .ci223-final-repair/bin/python - <<'PY'
+          import importlib.metadata as metadata
+          import twelve_six
+          import twelve_six.inference.cli
+
+          assert metadata.version("twelve-six-ai") == "0.2.0.dev0"
+          assert twelve_six.__version__ == "0.2.0-dev"
+          PY
+          .ci223-final-repair/bin/twelve-six-generate --help | grep -q 'usage: twelve-six-generate'
+      - name: Apply deterministic Ruff repairs
+        run: |
+          set -euo pipefail
+          .ci223-final-repair/bin/python -m ruff check --fix --unsafe-fixes src tests tools || true
+          .ci223-final-repair/bin/python - <<'PY'
+          from pathlib import Path
+
+          failure = Path("src/twelve_six/experiment_failure.py")
+          text = failure.read_text(encoding="utf-8")
+          text = text.replace(
+              'raise ValueError("experiment_started must be bool")',
+              'raise TypeError("experiment_started must be bool")',
+          )
+          text = text.replace(
+              'raise ValueError("diagnostics must be an object")',
+              'raise TypeError("diagnostics must be an object")',
+          )
+          failure.write_text(text, encoding="utf-8")
+
+          finalizer = Path("tools/evidence_finalizer.py")
+          text = finalizer.read_text(encoding="utf-8")
+          errors = "(OSError, ValueError, TypeError, subprocess.SubprocessError)"
+          text = text.replace(
+              "except Exception as exc:  # diagnostic rejection must not hide other evidence",
+              f"except {errors} as exc:  # diagnostic rejection must not hide other evidence",
+          )
+          text = text.replace(
+              "        except Exception as exc:\n            destination = payload_root / relative",
+              f"        except {errors} as exc:\n            destination = payload_root / relative",
+          )
+          text = text.replace(
+              "        except Exception as exc:\n            row[\"reason\"] = f\"{type(exc).__name__}: {exc}\"",
+              f"        except {errors} as exc:\n            row[\"reason\"] = f\"{{type(exc).__name__}}: {{exc}}\"",
+          )
+          finalizer.write_text(text, encoding="utf-8")
+          PY
+          chmod +x tools/build_ci161_historical_report.py tools/evidence_finalizer.py tools/run_classified_phase.py
+          .ci223-final-repair/bin/python -m ruff check src tests tools
+          git diff --check
+      - name: Prove convergence-sensitive contracts
+        run: |
+          set -euo pipefail
+          .ci223-final-repair/bin/python -m pytest -q \
+            tests/test_execution_bootstrap.py \
+            tests/test_ci161_failure_classification.py \
+            tests/test_ci165_launch_gate.py \
+            tests/test_evidence_finalizer_ci162.py \
+            tests/test_training_precision_runtime.py \
+            tests/test_scale141_recovery.py
+      - name: Persist only tested repairs
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- src tests tools; then
+            echo "No Ruff repair delta remains."
+            exit 0
+          fi
+          git config user.name "CI-223 Repository Release Gate"
+          git config user.email "ci223@users.noreply.github.com"
+          git add src tests tools
+          git commit -m "CI-223 persist final Ruff repairs"
+          git push origin HEAD:ci223/repository-release-gate-convergence-final-20260826
