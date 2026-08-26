@@ -37,15 +37,15 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
 
-      - name: Cheap metadata preflight
+      - name: Cheap execution and metadata preflight
         run: |
           set -euo pipefail
-          python tools/bootstrap_execution_spine.py \
-            --purpose linux-x86_64 --with-dev --preflight-only
-          python tools/bootstrap_execution_spine.py \
-            --purpose linux-x86_64-tokenizer-experiment --preflight-only
-          python tools/bootstrap_execution_spine.py \
-            --purpose linux-x86_64-cuda-training --preflight-only
+          python tools/converge_environment_metadata.py --check
+          python tools/execution_bootstrap.py plan \
+            --capabilities runtime,tests,lint \
+            --command "python -m pytest -q"
+          python tools/execution_bootstrap.py plan --capabilities tokenizer
+          python tools/execution_bootstrap.py plan --capabilities runtime,cuda
 
       - name: Audit centralized workflow dependency setup
         run: |
@@ -58,43 +58,73 @@ jobs:
             --output evidence/integrate159/legacy-workflow-audit.json \
             .github/workflows/milestone150-learned-base-ladder-v1.yml
 
-      - name: Bootstrap exact research execution environment
-        env:
-          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Bootstrap exact CPU research environment
+        uses: ./.github/actions/execution-bootstrap
+        with:
+          capabilities: runtime,tests,lint
+          venv: .spine
+          command: python -m pytest -q
+          manifest: evidence/integrate159/base-bootstrap.json
+
+      - name: Environment self-test and CPU/CUDA separation
         run: |
           set -euo pipefail
-          python tools/bootstrap_execution_spine.py \
-            --purpose linux-x86_64 \
-            --with-dev \
-            --venv .spine \
-            --source-sha "$EXPECTED_SOURCE_SHA" \
-            --evidence-out evidence/integrate159/base-bootstrap.json
           .spine/bin/python -m pip check
           .spine/bin/python -m pytest --version
           .spine/bin/python -m ruff --version
+          .spine/bin/python - <<'PY'
+          import importlib.metadata as metadata
+          import json
+          from pathlib import Path
+          import torch
+
+          manifest = json.loads(
+              Path("evidence/integrate159/base-bootstrap.json").read_text(encoding="utf-8")
+          )
+          names = {
+              (dist.metadata.get("Name") or "").lower().replace("_", "-").replace(".", "-")
+              for dist in metadata.distributions()
+          }
+          forbidden = sorted(
+              name
+              for name in names
+              if name.startswith("nvidia-") or name.startswith("cuda-") or name == "triton"
+          )
+          assert manifest["plan"]["cuda_packages_present"] is False
+          assert forbidden == []
+          assert torch.__version__ == "2.13.0+cpu"
+          assert torch.version.cuda is None
+          assert not torch.cuda.is_available()
+          print("cpu_runtime_no_cuda_payloads=PASS")
+          PY
 
       - name: Scoped scientific CI
         run: |
           set -euo pipefail
+          .spine/bin/python -m compileall -q \
+            tools/execution_bootstrap.py \
+            tools/converge_environment_metadata.py \
+            tools/audit_execution_workflows.py \
+            src/twelve_six/integration/dependency_lock.py
           .spine/bin/python -m ruff check \
-            tools/bootstrap_execution_spine.py \
             tools/audit_execution_workflows.py \
             tests/test_execution_spine.py
           .spine/bin/python -m pytest -q \
             tests/test_execution_spine.py \
+            tests/test_dependency_lock.py \
             tests/test_training_engine.py::test_optimizer_step_changes_weights_with_finite_metrics \
             tests/test_checkpointing.py::test_save_load_roundtrip_and_manifest
 
       - name: Tokenizer purpose runtime probe
-        env:
-          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        uses: ./.github/actions/execution-bootstrap
+        with:
+          capabilities: tokenizer
+          venv: .tokenizer-role
+          manifest: evidence/integrate159/tokenizer-bootstrap.json
+
+      - name: Verify tokenizer purpose behavior
         run: |
           set -euo pipefail
-          python tools/bootstrap_execution_spine.py \
-            --purpose linux-x86_64-tokenizer-experiment \
-            --venv .tokenizer-role \
-            --source-sha "$EXPECTED_SOURCE_SHA" \
-            --evidence-out evidence/integrate159/tokenizer-bootstrap.json
           .tokenizer-role/bin/python - <<'PY'
           from tokenizers import Tokenizer
           from tokenizers.models import WordLevel
@@ -105,22 +135,32 @@ jobs:
           PY
 
       - name: No-GPU CUDA-purpose preflight
-        env:
-          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        uses: ./.github/actions/execution-bootstrap
+        with:
+          capabilities: runtime,cuda
+          venv: .cuda-role
+          manifest: evidence/integrate159/cuda-bootstrap.json
+          allow-no-gpu: "true"
+
+      - name: Verify CUDA role without hardware claim
         run: |
           set -euo pipefail
-          python tools/bootstrap_execution_spine.py \
-            --purpose linux-x86_64-cuda-training \
-            --venv .cuda-role \
-            --source-sha "$EXPECTED_SOURCE_SHA" \
-            --evidence-out evidence/integrate159/cuda-bootstrap.json
           .cuda-role/bin/python - <<'PY'
+          import json
+          from pathlib import Path
           import torch
 
+          manifest = json.loads(
+              Path("evidence/integrate159/cuda-bootstrap.json").read_text(encoding="utf-8")
+          )
+          assert manifest["plan"]["cuda_packages_present"] is True
+          assert manifest["preflight"]["cuda"]["software_capability_declared"] is True
+          assert manifest["preflight"]["cuda"]["hardware_visible"] is False
+          assert manifest["preflight"]["cuda"]["hardware_claim"] is False
+          assert manifest["preflight"]["cuda"]["no_gpu_preflight"] is True
           assert torch.version.cuda == "13.0"
           assert not torch.cuda.is_available()
-          print("cuda_role_metadata=PASS")
-          print("gpu_execution=NOT_ATTEMPTED_NO_GPU")
+          print("cuda_no_gpu_preflight=PASS")
           PY
 
       - name: Formerly failing learned workflow pre-training section
@@ -148,11 +188,10 @@ jobs:
               data = json.loads((root / name).read_text(encoding="utf-8"))
               print(json.dumps({
                   "file": name,
-                  "purpose": data["purpose"],
-                  "evidence_sha256": data["evidence_sha256"],
-                  "pytest_ruff": data["verification"]["pytest_ruff_available"],
-                  "gpu_execution": data["verification"]["gpu_execution"],
-                  "cpu_minimality": data["verification"]["cpu_minimality"],
-                  "cuda_payloads": data["runtime_probe"]["cuda_payloads"],
+                  "capabilities": data["plan"]["capabilities"],
+                  "plan_sha256": data["plan"]["identity_sha256"],
+                  "environment_sha256": data["identity_sha256"],
+                  "cuda_packages_present": data["plan"]["cuda_packages_present"],
+                  "cuda": data["preflight"]["cuda"],
               }, sort_keys=True))
           PY
