@@ -1,0 +1,103 @@
+name: TRAIN-344 20M Optimizer Transfer Contract
+
+on:
+  pull_request:
+    paths:
+      - "configs/experiments/train344_20m_optimizer_transfer_contract.json"
+      - "tools/validate_train344_optimizer_transfer.py"
+      - "tools/run_train344_stability_probe.py"
+      - "docs/TRAIN344_20M_OPTIMIZER_TRANSFER_CONTRACT.md"
+      - ".github/workflows/train344-20m-optimizer-transfer-contract.yml"
+  workflow_dispatch:
+    inputs:
+      model_config:
+        description: "Exact mechanically qualified ~20M stage config path; leave empty to validate fail-closed preregistration only"
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: train344-20m-optimizer-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  contract-gate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      PYTHONPATH: ${{ github.workspace }}/src
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set CPython 3.11.16
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+      - name: Validate frozen preregistration before any result
+        run: |
+          set -euo pipefail
+          python tools/validate_train344_optimizer_transfer.py
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=json.loads(Path('evidence/train344/readiness.json').read_text())
+          assert p['gate']['status'] == 'BLOCKED_MISSING_20M_MODELSPEC'
+          assert p['gate']['optimizer_updates_authorized'] == 0
+          assert p['learned_transfer_budget']['authorized_unique_nonignored_causal_loss_positions_now'] == 0
+          PY
+      - name: Upload fail-closed gate
+        uses: actions/upload-artifact@v4
+        with:
+          name: train344-contract-gate
+          path: evidence/train344/readiness.json
+
+  bounded-stability-probe:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.model_config != '' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      PYTHONPATH: ${{ github.workspace }}/src
+      OMP_NUM_THREADS: "2"
+      MKL_NUM_THREADS: "2"
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set CPython 3.11.16
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+      - name: Universal exact execution bootstrap
+        uses: ./.github/actions/execution-bootstrap
+        with:
+          capabilities: runtime
+          venv: .train344
+          manifest: evidence/train344/environment.json
+          command: python -c "import torch; print(torch.__version__)"
+      - name: Verify supplied ModelSpec gate
+        run: |
+          set -euo pipefail
+          .train344/bin/python tools/validate_train344_optimizer_transfer.py --model-config "${{ inputs.model_config }}"
+      - name: Run exactly three by thirty-two bounded stability updates
+        run: |
+          set -euo pipefail
+          .train344/bin/python tools/run_train344_stability_probe.py --model-config "${{ inputs.model_config }}"
+      - name: Upload mechanics-only evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: train344-20m-stability-probe
+          path: |
+            evidence/train344/readiness.json
+            evidence/train344/stability-probe.json
+            evidence/train344/environment.json
