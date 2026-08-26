@@ -1,0 +1,90 @@
+name: NEXT100-039 Rust Book Source Authority
+
+on:
+  pull_request:
+    paths:
+      - tools/qualify_next100_039_rust_book.py
+      - .github/workflows/next100-039-rust-book-source-authority.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qualify-rust-book-prose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact source head
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+
+      - name: Compile deterministic qualifier
+        run: python -m py_compile tools/qualify_next100_039_rust_book.py
+
+      - name: Materialize bounded Rust Book authority twice
+        run: |
+          rm -rf /tmp/rust-book-a /tmp/rust-book-b next100039-evidence
+          mkdir -p /tmp/rust-book-a /tmp/rust-book-b next100039-evidence
+          python tools/qualify_next100_039_rust_book.py \
+            --output /tmp/rust-book-a/rust_book_source_authority.v1.json \
+            > /tmp/rust-book-a/stdout.json
+          cmp /tmp/rust-book-a/rust_book_source_authority.v1.json /tmp/rust-book-a/stdout.json
+          rm /tmp/rust-book-a/stdout.json
+          python tools/qualify_next100_039_rust_book.py \
+            --output /tmp/rust-book-b/rust_book_source_authority.v1.json \
+            > /tmp/rust-book-b/stdout.json
+          cmp /tmp/rust-book-b/rust_book_source_authority.v1.json /tmp/rust-book-b/stdout.json
+          rm /tmp/rust-book-b/stdout.json
+          diff -ru /tmp/rust-book-a /tmp/rust-book-b
+          cp -a /tmp/rust-book-a/. next100039-evidence/
+
+      - name: Verify terminal truth boundary
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path("next100039-evidence/rust_book_source_authority.v1.json").read_text(encoding="utf-8"))
+          assert report["worker_id"] == "NEXT100-039-DATA-EN-RUST-DOCS"
+          assert report["verdict"] == "ADMIT_PROSE_ONLY"
+          assert report["local_free_only"] is True
+          assert report["training_executed"] is False
+          assert report["upstream"]["commit"] == "917544888a55e4da7109bdba8c88c893c0da70f4"
+          assert report["upstream"]["selected_file_count"] == 9
+          assert report["upstream"]["expected_selected_raw_bytes"] == 115048
+          assert report["family"]["family_id"] == "en.rust-lang.book.prose"
+          assert report["family"]["family_credit"] == 1
+          assert report["rights_evidence"]["prose"]["model_training"].startswith("ALLOWED_")
+          assert report["rights_evidence"]["code"]["admitted_code_bytes"] == 0
+          assert report["purpose_decisions"]["evaluation"] == "NOT_SEPARATELY_ADMITTED"
+          assert report["quality"]["all_documents_pass"] is True
+          assert report["dedup"]["family_id_already_present"] is False
+          assert report["dedup"]["internal_exact_normalized_duplicate_count"] == 0
+          assert report["dedup"]["within_family_near_duplicate_pairs"] == []
+          assert report["dedup"]["cross_registry_exact_normalized_sha256_collisions"] == []
+          assert len(report["authority_identity_sha256"]) == 64
+          for name in ("LICENSE-MIT", "LICENSE-APACHE", "CONTRIBUTING.md"):
+              assert Path("next100039-evidence/rights", name).is_file()
+          PY
+
+      - name: Upload immutable source evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: next100039-rust-book-source-authority-${{ github.event.pull_request.head.sha || github.sha }}
+          if-no-files-found: error
+          retention-days: 90
+          path: next100039-evidence/
