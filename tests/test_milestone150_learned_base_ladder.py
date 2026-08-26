@@ -96,3 +96,24 @@ def test_milestone150_core_run_manifest_roundtrips_without_shim(tmp_path) -> Non
     persisted = _read_json(path)
     assert persisted == run
     assert run["trainer_config"]["betas"] == [0.9, 0.95]
+
+
+def test_milestone150_trainer_manifest_fields_are_json_native_before_execution() -> None:
+    tok = ByteTokenizer()
+    manifest = {"corpus_identity_sha256": EXPECTED_CORPUS_ID}
+    eval_id = evaluation_identity(tok, manifest)
+    for scale in SCALE_ORDER:
+        run = _run_manifest(
+            "0" * 40,
+            scale,
+            model_spec(scale),
+            init_spec(),
+            tok,
+            manifest,
+            eval_id,
+            trainer_config(),
+            {"combined_sha256": "1" * 64},
+        )
+        assert json_normalize(run) == run
+        assert run["trainer_config"]["betas"] == [0.9, 0.95]
+        assert run["checkpoint_steps"] == [0, 250, 500, 750, 1000]
