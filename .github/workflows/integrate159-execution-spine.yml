@@ -1,0 +1,158 @@
+name: INTEGRATE-159 Execution Spine Convergence
+
+on:
+  pull_request:
+    branches:
+      - milestone150/learned-base-ladder-v1-20260826
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  execution-spine:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      PYTHONPATH: src
+      OMP_NUM_THREADS: "2"
+      MKL_NUM_THREADS: "2"
+    steps:
+      - name: Checkout exact integration head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up exact Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact source
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+
+      - name: Cheap metadata preflight
+        run: |
+          set -euo pipefail
+          python tools/bootstrap_execution_spine.py \
+            --purpose linux-x86_64 --with-dev --preflight-only
+          python tools/bootstrap_execution_spine.py \
+            --purpose linux-x86_64-tokenizer-experiment --preflight-only
+          python tools/bootstrap_execution_spine.py \
+            --purpose linux-x86_64-cuda-training --preflight-only
+
+      - name: Audit centralized workflow dependency setup
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/integrate159
+          python tools/audit_execution_workflows.py --strict \
+            --output evidence/integrate159/workflow-audit.json \
+            .github/workflows/integrate159-execution-spine.yml
+          python tools/audit_execution_workflows.py \
+            --output evidence/integrate159/legacy-workflow-audit.json \
+            .github/workflows/milestone150-learned-base-ladder-v1.yml
+
+      - name: Bootstrap exact research execution environment
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          python tools/bootstrap_execution_spine.py \
+            --purpose linux-x86_64 \
+            --with-dev \
+            --venv .spine \
+            --source-sha "$EXPECTED_SOURCE_SHA" \
+            --evidence-out evidence/integrate159/base-bootstrap.json
+          .spine/bin/python -m pip check
+          .spine/bin/python -m pytest --version
+          .spine/bin/python -m ruff --version
+
+      - name: Scoped scientific CI
+        run: |
+          set -euo pipefail
+          .spine/bin/python -m ruff check \
+            tools/bootstrap_execution_spine.py \
+            tools/audit_execution_workflows.py \
+            tests/test_execution_spine.py
+          .spine/bin/python -m pytest -q \
+            tests/test_execution_spine.py \
+            tests/test_training_engine.py::test_optimizer_step_changes_weights_with_finite_metrics \
+            tests/test_checkpointing.py::test_save_load_roundtrip_and_manifest
+
+      - name: Tokenizer purpose runtime probe
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          python tools/bootstrap_execution_spine.py \
+            --purpose linux-x86_64-tokenizer-experiment \
+            --venv .tokenizer-role \
+            --source-sha "$EXPECTED_SOURCE_SHA" \
+            --evidence-out evidence/integrate159/tokenizer-bootstrap.json
+          .tokenizer-role/bin/python - <<'PY'
+          from tokenizers import Tokenizer
+          from tokenizers.models import WordLevel
+
+          tokenizer = Tokenizer(WordLevel({"[UNK]": 0, "hello": 1}, unk_token="[UNK]"))
+          assert tokenizer.encode("hello").ids == [1]
+          print("tokenizer_purpose_probe=PASS")
+          PY
+
+      - name: No-GPU CUDA-purpose preflight
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          python tools/bootstrap_execution_spine.py \
+            --purpose linux-x86_64-cuda-training \
+            --venv .cuda-role \
+            --source-sha "$EXPECTED_SOURCE_SHA" \
+            --evidence-out evidence/integrate159/cuda-bootstrap.json
+          .cuda-role/bin/python - <<'PY'
+          import torch
+
+          assert torch.version.cuda == "13.0"
+          assert not torch.cuda.is_available()
+          print("cuda_role_metadata=PASS")
+          print("gpu_execution=NOT_ATTEMPTED_NO_GPU")
+          PY
+
+      - name: Formerly failing learned workflow pre-training section
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          .spine/bin/python -m twelve_six.milestone150_entrypoint \
+            prepare \
+            --repo-root . \
+            --source-sha "$EXPECTED_SOURCE_SHA" \
+            --output-dir evidence/integrate159/m150-preflight
+          test -f evidence/integrate159/m150-preflight/ladder-truth.json
+          echo "m150_pretraining_prepare=PASS"
+
+      - name: Summarize execution-spine evidence
+        run: |
+          set -euo pipefail
+          .spine/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path("evidence/integrate159")
+          for name in ("base-bootstrap.json", "tokenizer-bootstrap.json", "cuda-bootstrap.json"):
+              data = json.loads((root / name).read_text(encoding="utf-8"))
+              print(json.dumps({
+                  "file": name,
+                  "purpose": data["purpose"],
+                  "evidence_sha256": data["evidence_sha256"],
+                  "pytest_ruff": data["verification"]["pytest_ruff_available"],
+                  "gpu_execution": data["verification"]["gpu_execution"],
+                  "cpu_minimality": data["verification"]["cpu_minimality"],
+                  "cuda_payloads": data["runtime_probe"]["cuda_payloads"],
+              }, sort_keys=True))
+          PY
