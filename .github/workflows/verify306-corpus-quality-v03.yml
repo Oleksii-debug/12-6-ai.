@@ -1,0 +1,39 @@
+name: VERIFY-306 Corpus Quality V03
+
+on:
+  push:
+    branches:
+      - verify306/corpus-quality-v03-20260826
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-corpus-quality-evidence:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact worker branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python 3.11.16
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: 3.11.16
+          check-latest: false
+
+      - name: Assert DATA-301 ancestry
+        shell: bash
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor 8820ba1b255f6bb95c7db0531fd846078a1aae01 HEAD
+
+      - name: Compile standalone validator
+        run: python -m py_compile tools/verify306_validate_evidence.py
+
+      - name: Validate immutable VERIFY-306 evidence
+        run: python tools/verify306_validate_evidence.py
