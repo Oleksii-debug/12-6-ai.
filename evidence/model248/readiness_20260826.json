@@ -1,0 +1,71 @@
+{
+  "schema": "12-6.model248-readiness.v1",
+  "worker_id": "MODEL-248-10M-GQA-TRANSFER-V2",
+  "date": "2026-08-26",
+  "repository": "Oleksii-debug/12-6-ai.",
+  "base_sha": "6afaf5889f9898037b53e8b0bc2b731d77782111",
+  "status": "BLOCKED_MISSING_PREREQUISITE_AUTHORITY",
+  "training_executed": false,
+  "optimizer_updates": 0,
+  "paired_replacement_runs": 0,
+  "consumed": {
+    "model142_sha": "ae9987644d64278428a97c8a5ac082ec74e17208",
+    "model142_result": "8Q/4KV won held-out BPB in all 3 paired seeds but all trajectories clipped on 100% of updates and the candidate was 3072 parameters smaller",
+    "model193_sha": "c5ed76c7bb83497dc9a6831dbaf3cb793ea90846",
+    "model193_result": "DO_NOT_REPLACE; valid paired repeats=0; strict exact parameter match unresolved; valid current corpus/cache/clipping gates unresolved",
+    "recover180_sha": "2781a0c67e069bdfe63aa805af5066ee13fe471a",
+    "learn217_sha": "c02c8aa38e691521ae2ab6a4ff3ea1d643efd6ef",
+    "learn217_observation": "accepted incumbent learned 10M run reports final-interval clip rate 0.068191, demonstrating non-saturated operation is mechanically possible but not providing a paired GQA replacement comparison",
+    "data229_sha": "90bc0b7f8b696ec35202532b13edf6ab29a662fe",
+    "data229_result": "immutable registry contains three terminal external-real text snapshots at its cutoff and zero admitted code sources; it is not a terminal DATA-230 corpus/selection authority",
+    "tok189_sha": "8cf9f8745bf80fda63eb39735a53f19d228629a8",
+    "tok189_result": "byte-token contract remains the last discoverable executed 10M baseline contract unless superseded by a terminal tokenizer-family decision"
+  },
+  "live_missing_or_nonterminal": {
+    "model180": "NO_SEPARATELY_DISCOVERABLE_MODEL_180_BRANCH_PR_OR_COMMIT_AT_CUTOFF; RECOVER-180 is present and is not relabeled as MODEL-180",
+    "train243": "NO_DISCOVERABLE_BRANCH_OR_PR_FOR_TRAIN-243-10M-CLIPPING-AUTHORITY-V2_AT_CUTOFF",
+    "current_corpus_decision": "NO_TERMINAL_MILESTONE-238_OR_TERMINAL_DATA-230_SELECTION_AUTHORITY_DISCOVERABLE_AT_CUTOFF",
+    "current_tokenizer_decision": "NO_DISCOVERABLE_BRANCH_OR_PR_FOR_TOK-241-FAMILY-DECISION-V2_AT_CUTOFF"
+  },
+  "hard_blockers": [
+    "strict exact total-parameter equality is impossible with only n_kv_heads and integer d_ff changes under the frozen architecture family",
+    "TRAIN-243 terminal non-saturated clipping authority is absent",
+    "the requested current terminal corpus/selection authority is absent",
+    "the requested current terminal tokenizer-family decision is absent",
+    "a separately published MODEL-180 authority is not discoverable"
+  ],
+  "parameter_match": {
+    "incumbent_parameters": 10000640,
+    "candidate_parameters": 9997568,
+    "delta": -3072,
+    "relative_delta": -0.00030718034045821067,
+    "strict_match": false,
+    "artificial_trainable_ballast_allowed": false
+  },
+  "prior_quality_signal": {
+    "model142_oriented_delta_incumbent_minus_candidate": [
+      0.022344857832940157,
+      0.2170076952363038,
+      0.18195238637101152
+    ],
+    "candidate_wins": 3,
+    "candidate_losses": 0,
+    "promotion_valid": false
+  },
+  "unexpanded_kv_cache_reference": {
+    "context_tokens": 1024,
+    "batch_size": 1,
+    "dtype_bytes": 2,
+    "incumbent_8q2kv_bytes": 3145728,
+    "candidate_8q4kv_bytes": 6291456,
+    "candidate_multiplier": 2.0
+  },
+  "decision": {
+    "replace_8q2kv_with_8q4kv": false,
+    "current_10m_default": "8Q/2KV",
+    "candidate_status": "PROMISING_BUT_NOT_AUTHORIZED_FOR_REPLACEMENT",
+    "reason": "No scientifically valid V2 paired execution can begin without weakening explicit prerequisites. The incumbent is retained by fail-closed replacement policy, not because current evidence proves it has better quality.",
+    "mha_required_now": false,
+    "paid_compute": false
+  }
+}
