@@ -1,0 +1,28 @@
+name: Data Capacity Acquisition Plan
+
+on:
+  pull_request:
+    paths:
+      - "configs/data/data_capacity_acquisition_plan_v1.json"
+      - "tools/validate_data_capacity_acquisition_plan.py"
+      - "tests/test_data_capacity_acquisition_plan.py"
+      - "docs/DATA_CAPACITY_ACQUISITION_PLAN.md"
+      - ".github/workflows/data-capacity-acquisition-plan.yml"
+  push:
+    branches:
+      - "autopulse/data-capacity-acquisition-20260826"
+
+concurrency:
+  group: data-capacity-acquisition-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate fail-closed plan
+        run: python tools/validate_data_capacity_acquisition_plan.py
+      - name: Focused regression tests
+        run: python -m pytest -q tests/test_data_capacity_acquisition_plan.py
