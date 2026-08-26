@@ -1,0 +1,88 @@
+{
+  "schema_version": "12-6.next100-065-cross-source-dedup.v3",
+  "worker_id": "NEXT100-071-CANONICAL-GLOBAL-CROSS-SOURCE-DEDUP",
+  "local_free_only": true,
+  "model_training_executed": false,
+  "sources": [
+    {
+      "source_id": "en.standardebooks.manual.8-typography",
+      "source_family": "en.standardebooks.manual",
+      "stable_origin_id": "github:standardebooks/manual",
+      "stable_object_id": "github:standardebooks/manual:d1143a9b459b5e6f9cdda93a7c1e04676bff4f6b:8-typography.rst",
+      "modality": "en",
+      "evidence_status": "REGISTRY_TERMINAL",
+      "authority_ref": "DATA-287 registry identity 917e9bc31b2fa040d25e807ae3c01aa2cce32420752a891caacfb6c830e6632c",
+      "declared_capacity_bytes": 48002,
+      "expected_raw_bytes": 68812,
+      "expected_raw_sha256": "21582c7f0e4ad39f2b0ed97bbc2c082d275e898b7a63c28e6d9badb8ee0f7860",
+      "acquisition_url": "https://raw.githubusercontent.com/standardebooks/manual/d1143a9b459b5e6f9cdda93a7c1e04676bff4f6b/8-typography.rst",
+      "origin_key": "github:standardebooks/manual:d1143a9b459b5e6f9cdda93a7c1e04676bff4f6b:8-typography.rst"
+    },
+    {
+      "source_id": "en.standardebooks.manual.9-metadata",
+      "source_family": "en.standardebooks.manual",
+      "stable_origin_id": "github:standardebooks/manual",
+      "stable_object_id": "github:standardebooks/manual:d1143a9b459b5e6f9cdda93a7c1e04676bff4f6b:9-metadata.rst",
+      "modality": "en",
+      "evidence_status": "REGISTRY_TERMINAL",
+      "authority_ref": "DATA-287 registry identity 917e9bc31b2fa040d25e807ae3c01aa2cce32420752a891caacfb6c830e6632c",
+      "declared_capacity_bytes": 36791,
+      "expected_raw_bytes": 37299,
+      "expected_raw_sha256": "7ac53dfb4bf6f73f178560e09f33160d0250c69fb679802f3254dc0eb4c9f509",
+      "acquisition_url": "https://raw.githubusercontent.com/standardebooks/manual/d1143a9b459b5e6f9cdda93a7c1e04676bff4f6b/9-metadata.rst",
+      "origin_key": "github:standardebooks/manual:d1143a9b459b5e6f9cdda93a7c1e04676bff4f6b:9-metadata.rst"
+    },
+    {
+      "source_id": "ua.rada.open-data.laws-texts.d23314",
+      "source_family": "ua.rada.open-data.laws-texts",
+      "stable_origin_id": "publisher:verkhovna-rada-open-data:laws-texts",
+      "stable_object_id": "sha256:36eae31c3b0676ea7c02236fa05bd695c240c9a8eade5febc00457b8103ee1a4",
+      "modality": "uk",
+      "evidence_status": "REGISTRY_TERMINAL",
+      "authority_ref": "DATA-287 registry identity 917e9bc31b2fa040d25e807ae3c01aa2cce32420752a891caacfb6c830e6632c",
+      "declared_capacity_bytes": 88565,
+      "expected_raw_bytes": 332400,
+      "expected_raw_sha256": "36eae31c3b0676ea7c02236fa05bd695c240c9a8eade5febc00457b8103ee1a4",
+      "acquisition_url": "https://data.rada.gov.ua/ogd/zak/perv/text/d23314.htm",
+      "origin_key": "rada-open-data:laws-texts/bounded-2026-08-25:https://data.rada.gov.ua/ogd/zak/perv/text/d23314.htm"
+    },
+    {
+      "source_id": "code.encode.httpx._content",
+      "source_family": "github:encode/httpx",
+      "stable_origin_id": "github:encode/httpx",
+      "stable_object_id": "git-sha1:6f479a0885f723b7395843d41164a87041820776",
+      "modality": "code",
+      "evidence_status": "REGISTRY_TERMINAL",
+      "authority_ref": "DATA-287 registry identity 917e9bc31b2fa040d25e807ae3c01aa2cce32420752a891caacfb6c830e6632c",
+      "declared_capacity_bytes": 8161,
+      "expected_raw_bytes": 8161,
+      "expected_git_blob_sha1": "6f479a0885f723b7395843d41164a87041820776",
+      "acquisition_url": "https://raw.githubusercontent.com/encode/httpx/b5addb64f0161ff6bfe94c124ef76f6a1fba5254/httpx/_content.py",
+      "origin_key": "github:encode/httpx:b5addb64f0161ff6bfe94c124ef76f6a1fba5254:httpx/_content.py"
+    },
+    {
+      "source_id": "code.psf.requests._internal_utils",
+      "source_family": "github:psf/requests",
+      "stable_origin_id": "github:psf/requests",
+      "stable_object_id": "git-sha1:0466a7d347db4ed34a37db51b75fc8e80bc06055",
+      "modality": "code",
+      "evidence_status": "REGISTRY_TERMINAL",
+      "authority_ref": "DATA-287 registry identity 917e9bc31b2fa040d25e807ae3c01aa2cce32420752a891caacfb6c830e6632c",
+      "declared_capacity_bytes": 1542,
+      "expected_raw_bytes": 1542,
+      "expected_git_blob_sha1": "0466a7d347db4ed34a37db51b75fc8e80bc06055",
+      "acquisition_url": "https://raw.githubusercontent.com/psf/requests/5460f467b02e49471c0fd6cfc9ca0adab6351f98/src/requests/_internal_utils.py",
+      "origin_key": "github:psf/requests:5460f467b02e49471c0fd6cfc9ca0adab6351f98:src/requests/_internal_utils.py"
+    }
+  ],
+  "lineage_edges": [
+    {
+      "left_source_id": "en.standardebooks.manual.8-typography",
+      "right_source_id": "en.standardebooks.manual.9-metadata",
+      "relation": "sibling_same_origin",
+      "capacity_collapsing": false,
+      "independence_collapsing": true,
+      "evidence": "Distinct files in one canonical Standard Ebooks manual repository; one origin family but no capacity collapse absent copy evidence."
+    }
+  ]
+}
