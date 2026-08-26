@@ -1,0 +1,49 @@
+{
+  "schema": "12-6.research-corpus-v1-successor-intake.v1",
+  "execution_profile": "LOCAL_FREE",
+  "repository": "Oleksii-debug/12-6-ai.",
+  "worker_id": "AUTONOMOUS-RESEARCH-CORPUS-V1-INTAKE-20260826",
+  "base_registry": {
+    "producer": "DATA-287",
+    "branch": "data287/external-snapshot-registry-v2-20260826",
+    "head_sha": "b0523ccbc4b957615aac849d476cfa851be87578",
+    "registry_identity_sha256": "917e9bc31b2fa040d25e807ae3c01aa2cce32420752a891caacfb6c830e6632c",
+    "source_object_count": 5,
+    "independent_family_count": 4,
+    "normalized_bytes": 183061,
+    "by_stratum_normalized_bytes": {"uk": 88565, "en": 84793, "code": 9703},
+    "families": ["ua.rada.open-data.laws-texts", "en.standardebooks.manual", "github:encode/httpx", "github:psf/requests"]
+  },
+  "terminal_additions": [
+    {"authority":"NEXT100-022-DATA-UA-WIKISOURCE","pr":455,"head_sha":"84c51e42b6daa51796fd20d793b5ef1ff01cc9d2","evidence_binding":{"kind":"authority_identity_sha256","sha256":"6b443faa7fef777214022028d5fdb356dae0ab1a9b71822b4e16bea8f92cd0d6"},"terminal_verdict":"ADMIT_BOUNDED_PD_EDITION_SNAPSHOT","family_id":"ua.literature.lesia-ukrainka.na-krylah-pisen.1892-lviv","stratum":"uk","modality":"text","record_count":1,"normalized_bytes":1479,"training_rights":"ALLOWED","evaluation_rights":"NOT_SEPARATELY_ADMITTED","pre_decontamination_only":true},
+    {"authority":"NEXT100-026-DATA-UA-CABINET-MINISTRY","pr":449,"head_sha":"40950a950b60921fd856af2719e1ae2486d9e892","evidence_binding":{"kind":"source_manifest_identity_sha256","sha256":"1f068e6cc5ce3fc4a51d8477acee31fab5a0178e15f49225b57de94c5178f7d9"},"terminal_verdict":"ADMIT","family_id":"ua.kmu.portal.secretariat-news","stratum":"uk","modality":"text","record_count":6,"normalized_bytes":9153,"training_rights":"ALLOWED_PRETRAINING","evaluation_rights":"NOT_SEPARATELY_ADMITTED","pre_decontamination_only":true},
+    {"authority":"NEXT100-037-DATA-EN-PYTHON-DOCS","pr":467,"head_sha":"5a6a495a24bce449334cbc5126d0114f61a9f57c","evidence_binding":{"kind":"authority_identity_sha256","sha256":"46a00dc70db690ae2b3c4495a75283e7e752bdccb1047d4318c2ebadfa392f0d"},"terminal_verdict":"ADMIT","family_id":"python.cpython.documentation","stratum":"en","modality":"text","record_count":14,"normalized_bytes":17901,"training_rights":"ALLOWED","evaluation_rights":"NOT_SEPARATELY_ADMITTED","pre_decontamination_only":true},
+    {"authority":"NEXT100-034-DATA-EN-NIST","pr":472,"head_sha":"b7491745b34ac8679baaf69cb96cd609dcbe0a16","evidence_binding":{"kind":"terminal_payload_sha256","sha256":"3ffba0fcd08ab42e940b2db12ffafb6f7234ad0bae6f7fe523071497485b9d1c"},"terminal_verdict":"ADMIT","family_id":"en.usgov.nist.technical-series","stratum":"en","modality":"text","record_count":3,"normalized_bytes":59358,"training_rights":"ALLOWED_WITH_NIST_SOURCE_PROVENANCE","evaluation_rights":"NOT_SEPARATELY_ADMITTED","pre_decontamination_only":true},
+    {"authority":"NEXT100-045-CODE-STARLETTE","pr":458,"head_sha":"c6756b5ebb6eb1d3bf3de2499167833d99d99a72","evidence_binding":{"kind":"report_sha256_without_self","sha256":"c6b210c8977cce4441134ef048ed7dbea1a1e74b295ee96ce70ce5d612962722"},"terminal_verdict":"ADMIT","family_id":"github:Kludex/starlette","stratum":"code","modality":"code","record_count":2,"normalized_bytes":5274,"training_rights":"ALLOW","evaluation_rights":"NOT_AUTHORIZED_BY_THIS_AUTHORITY","pre_decontamination_only":true}
+  ],
+  "pre_decontamination_projection": {
+    "candidate_record_count": 31,
+    "independent_family_count": 9,
+    "normalized_bytes": 276226,
+    "by_stratum_normalized_bytes": {"uk": 99197, "en": 162052, "code": 14977},
+    "family_count_by_stratum": {"uk": 3, "en": 3, "code": 3},
+    "hard_two_family_minimum": "PASS_PRE_DECONTAMINATION_ONLY",
+    "target_unique_normalized_bytes": 20000000,
+    "normalized_byte_shortfall": 19723774
+  },
+  "gates": {
+    "candidate_authority_inventory_frozen": true,
+    "exact_candidate_materialization": "BLOCKED_NOT_MATERIALIZED",
+    "evaluation_decontamination": "BLOCKED_UNTIL_EXACT_MATERIALIZATION",
+    "global_exact_near_dedup": "BLOCKED_UNTIL_EXACT_MATERIALIZATION",
+    "quality_privacy_recheck": "REQUIRED_ON_COMPOSED_BYTES",
+    "split_and_packing": "BLOCKED",
+    "unique_loss_ledger": "BLOCKED",
+    "training_authorized_loss_positions": 0,
+    "corpus_terminal": false,
+    "long_training_authorized": false
+  },
+  "next_steps": ["MATERIALIZE_EXACT_RECORDS_FROM_EACH_BOUND_AUTHORITY","HASH_AND_FREEZE_PRE_DECONTAMINATION_RECORD_INVENTORY","RUN_EVALUATION_EXACT_AND_NEAR_MATCH_DECONTAMINATION","RUN_GLOBAL_DEDUP_QUALITY_PRIVACY_AND_LINEAGE_COLLAPSE","APPLY_45_35_20_CAPS_WITHOUT_REPLAY","SPLIT_PACK_REBUILD_TWICE_AND_PROVE_BYTE_IDENTITY","EMIT_EXACT_POST_PACK_UNIQUE_LOSS_LEDGER"],
+  "truth_boundary": {"corpus_admission_claimed":false,"training_executed":false,"paid_compute_used":false,"model_results_used_to_select_sources":false,"terminal_source_authority_does_not_equal_corpus_admission":true},
+  "intake_identity_sha256": "ac016a8da297315a3c023246eaf9224e07fb3d1e458d06b7d17ba28abdb465cc"
+}

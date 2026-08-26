@@ -1,0 +1,29 @@
+name: Research Corpus V1 Successor Intake
+
+on:
+  pull_request:
+    paths:
+      - "configs/data/research_corpus_v1_successor_intake_v1.json"
+      - "tools/validate_research_corpus_v1_successor_intake.py"
+      - "tests/test_research_corpus_v1_successor_intake.py"
+      - ".github/workflows/research-corpus-v1-successor-intake.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-intake:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+      - name: Validate frozen intake authority
+        run: python tools/validate_research_corpus_v1_successor_intake.py
+      - name: Run fail-closed mutation regressions
+        run: python -m pytest -q tests/test_research_corpus_v1_successor_intake.py
