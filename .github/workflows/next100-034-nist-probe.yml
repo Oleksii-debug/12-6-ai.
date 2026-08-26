@@ -1,0 +1,27 @@
+name: NEXT100-034 NIST source probe
+
+on:
+  push:
+    branches:
+      - next100-034/data-en-nist-20260826
+    paths:
+      - tools/probe_next100_034_nist.py
+      - .github/workflows/next100-034-nist-probe.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PDF text extractor
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends poppler-utils
+          pdftotext -v
+      - name: Probe exact NIST bytes and bounded normalized text
+        run: python tools/probe_next100_034_nist.py
