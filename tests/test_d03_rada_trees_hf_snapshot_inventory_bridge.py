@@ -30,7 +30,7 @@ def snapshot() -> dict[str, Any]:
                 "path": module.PRIMARY_ARCHIVE,
                 "size_bytes": 123,
                 "git_blob_oid": "1" * 40,
-                "xet_hash": "2" * 64,
+                "xet_hash": module.inventory.PINNED_XET_HASH,
             },
             {
                 "path": module.SECONDARY_ARCHIVE,
@@ -72,12 +72,13 @@ def rehash(value: dict[str, Any]) -> None:
 
 
 def test_valid_snapshot_returns_exact_primary_object() -> None:
-    result = module.validate_hf_object_snapshot(snapshot())
+    value = snapshot()
+    result = module.validate_hf_object_snapshot(value)
     assert result == {
-        "snapshot_identity_sha256": snapshot()["snapshot_identity_sha256"],
+        "snapshot_identity_sha256": value["snapshot_identity_sha256"],
         "size_bytes": 123,
         "git_blob_oid": "1" * 40,
-        "xet_hash": "2" * 64,
+        "xet_hash": module.inventory.PINNED_XET_HASH,
     }
 
 
@@ -104,13 +105,27 @@ def test_archive_inventory_order_or_path_drift_is_rejected() -> None:
         module.validate_hf_object_snapshot(value)
 
 
-def test_build_bridge_derives_size_and_xet_identity_from_snapshot() -> None:
+def test_primary_xet_drift_is_rejected_even_if_snapshot_is_rehashed() -> None:
     value = snapshot()
-    config = {"inventory_policy": {}}
+    value["files"][0]["xet_hash"] = "0" * 64
+    rehash(value)
+    with pytest.raises(module.HandoffError, match="pinned source authority"):
+        module.validate_hf_object_snapshot(value)
+
+
+def test_build_bridge_derives_size_xet_and_content_sha_from_authorities() -> None:
+    value = snapshot()
+    config = {
+        "primary_archive": {
+            "exact_content_sha256": module.inventory.PINNED_CONTENT_SHA256,
+        },
+        "inventory_policy": {},
+    }
     inner = {
         "archive": {
             "size_bytes": 123,
-            "upstream_object_identity": "2" * 64,
+            "upstream_object_identity": module.inventory.PINNED_XET_HASH,
+            "sha256": module.inventory.PINNED_CONTENT_SHA256,
         },
         "inventory_identity_sha256": "5" * 64,
         "training_authorized_bytes": 0,
@@ -119,19 +134,19 @@ def test_build_bridge_derives_size_and_xet_identity_from_snapshot() -> None:
         report = module.build_bridge_report(
             config,
             Path("Rada_Trees.7z"),
-            "6" * 64,
             value,
             "7z",
         )
     build.assert_called_once_with(
         config,
         Path("Rada_Trees.7z"),
-        "6" * 64,
+        module.inventory.PINNED_CONTENT_SHA256,
         123,
-        "2" * 64,
+        module.inventory.PINNED_XET_HASH,
         "7z",
     )
     assert report["parent_object"]["git_blob_oid"] == "1" * 40
-    assert report["parent_object"]["xet_hash"] == "2" * 64
+    assert report["parent_object"]["xet_hash"] == module.inventory.PINNED_XET_HASH
+    assert report["parent_object"]["content_sha256"] == module.inventory.PINNED_CONTENT_SHA256
     assert report["claim_boundary"]["training_authorized_bytes"] == 0
     assert len(report["bridge_report_identity_sha256"]) == 64
