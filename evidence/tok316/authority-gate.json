@@ -1,0 +1,146 @@
+{
+  "base": {
+    "branch": "data300/corpus-v03-frozen-build-contract-20260826",
+    "contract_identity_sha256": "07d7beaaff4616e839450de6af3d407855c832bf75a24a959d1a12de5d9364e5",
+    "corpus_state": "NOT_BUILT_NOT_FROZEN_NOT_TERMINAL",
+    "head_sha": "8ea7f830e50a23754d189dd4134f4afad76a7ee9"
+  },
+  "blockers": [
+    "DATA-300 v2 explicitly states the corpus is NOT_BUILT_NOT_FROZEN_NOT_TERMINAL.",
+    "DATA-301 exists at the evidence cutoff but has zero commits beyond DATA-300 and therefore publishes no terminal corpus/shard identity.",
+    "TOK-315 tokenizer-fit eligibility evidence is not published at the evidence cutoff.",
+    "Without an exact eligible train-only tokenizer-fit inventory and content hash, running BPE would violate the purpose-separation gate."
+  ],
+  "candidate_results": [
+    {
+      "byte_identical_artifacts": null,
+      "code_fertility": null,
+      "embedding_tax_over_byte_baseline_tied_per_d_model": 64,
+      "embedding_tax_over_byte_baseline_untied_per_d_model": 128,
+      "en_fertility": null,
+      "requested_vocab_size": 320,
+      "strict_roundtrip": null,
+      "throughput": null,
+      "training_run_1": "NOT_RUN",
+      "training_run_2": "NOT_RUN",
+      "ua_fertility": null,
+      "unintended_unknown_tokens": null
+    },
+    {
+      "byte_identical_artifacts": null,
+      "code_fertility": null,
+      "embedding_tax_over_byte_baseline_tied_per_d_model": 128,
+      "embedding_tax_over_byte_baseline_untied_per_d_model": 256,
+      "en_fertility": null,
+      "requested_vocab_size": 384,
+      "strict_roundtrip": null,
+      "throughput": null,
+      "training_run_1": "NOT_RUN",
+      "training_run_2": "NOT_RUN",
+      "ua_fertility": null,
+      "unintended_unknown_tokens": null
+    },
+    {
+      "byte_identical_artifacts": null,
+      "code_fertility": null,
+      "embedding_tax_over_byte_baseline_tied_per_d_model": 181,
+      "embedding_tax_over_byte_baseline_untied_per_d_model": 362,
+      "en_fertility": null,
+      "requested_vocab_size": 437,
+      "strict_roundtrip": null,
+      "throughput": null,
+      "training_run_1": "NOT_RUN",
+      "training_run_2": "NOT_RUN",
+      "ua_fertility": null,
+      "unintended_unknown_tokens": null
+    },
+    {
+      "byte_identical_artifacts": null,
+      "code_fertility": null,
+      "embedding_tax_over_byte_baseline_tied_per_d_model": 256,
+      "embedding_tax_over_byte_baseline_untied_per_d_model": 512,
+      "en_fertility": null,
+      "requested_vocab_size": 512,
+      "strict_roundtrip": null,
+      "throughput": null,
+      "training_run_1": "NOT_RUN",
+      "training_run_2": "NOT_RUN",
+      "ua_fertility": null,
+      "unintended_unknown_tokens": null
+    }
+  ],
+  "execution": {
+    "expected_independent_training_runs": 8,
+    "final_test_bytes_read": false,
+    "independent_training_runs_completed": 0,
+    "numerical_winner_claimed": false,
+    "selection_validation_bytes_read": false,
+    "tokenizer_training_started": false
+  },
+  "gate_sha256": "d9b843538676a0b7230d20c4fe7f1f703cdc148b7b6ced7ea9387ba4c27e5b07",
+  "local_free_only": true,
+  "maintained_bpe": {
+    "algorithm": "bpe",
+    "decoder": "byte-level",
+    "implementation": "src/twelve_six/tokenization/experiments.py::train_hf_tokenizer",
+    "library": "tokenizers",
+    "library_version": "0.23.1",
+    "min_frequency": 2,
+    "normalization": "none",
+    "pre_tokenizer": "byte-level",
+    "runtime_substitution_allowed": false,
+    "self_written_bpe_substitution_allowed": false,
+    "special_tokens": [
+      "<unk>"
+    ]
+  },
+  "prerequisite_scan": {
+    "data301_branch": "data301/corpus-v03-terminal-build-20260826",
+    "data301_branch_found": true,
+    "data301_commits_ahead_of_data300": 0,
+    "data301_head_sha": "8ea7f830e50a23754d189dd4134f4afad76a7ee9",
+    "data301_terminal_corpus_identity_found": false,
+    "eligible_tokenizer_fit_manifest_found": false,
+    "tok315_branch_found": false,
+    "tok315_tokenizer_fit_inventory_identity_found": false
+  },
+  "protocol": {
+    "artifact_repeatability_requirement": "complete tokenizer JSON bytes and ordered token-to-id vocabulary semantics must be identical across the two independent trainings for each candidate",
+    "embedding_tax_baseline_vocab": 256,
+    "embedding_tax_formula_tied": "(candidate_vocab_size - 256) * d_model",
+    "embedding_tax_formula_untied": "2 * (candidate_vocab_size - 256) * d_model",
+    "fertility_primary_unit": "tokens_per_unicode_codepoint",
+    "fertility_secondary_unit": "tokens_per_utf8_byte",
+    "fertility_strata": [
+      "ua",
+      "en",
+      "code"
+    ],
+    "independent_trainings_per_candidate": 2,
+    "metric_surface": "eligible tokenizer-fit train corpus only; no selection-validation or final-test bytes",
+    "model_family_selection_permitted": false,
+    "requested_vocab_grid": [
+      320,
+      384,
+      437,
+      512
+    ],
+    "strict_roundtrip_required": true,
+    "throughput_repeats": 5,
+    "throughput_units": [
+      "utf8_bytes_per_second",
+      "tokens_per_second"
+    ],
+    "unintended_unknown_tokens_required": 0,
+    "winner_selection_permitted": false
+  },
+  "schema": "12-6.tok316-bpe-reproducibility-v03-gate.v1",
+  "status": "BLOCKED_NO_TERMINAL_TOKENIZER_FIT_CORPUS",
+  "unblock_requirements": [
+    "terminal frozen external-real training corpus identity and deterministic train shard hashes",
+    "TOK-315 or exact superseding tokenizer-fit eligibility authority binding train-only tokenizer-fit source inventory and hash",
+    "proof that selection-validation and final-test bytes are excluded from tokenizer training",
+    "local/free runtime with exact tokenizers==0.23.1 before any tokenizer fit"
+  ],
+  "worker_id": "TOK-316-BPE-REPRODUCIBILITY-V03"
+}
