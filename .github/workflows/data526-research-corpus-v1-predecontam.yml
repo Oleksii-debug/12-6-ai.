@@ -1,0 +1,50 @@
+name: DATA-526 Research Corpus V1 pre-decontam
+
+on:
+  pull_request:
+    paths:
+      - "configs/data/research_corpus_v1_predecontam_blocker_v1.json"
+      - "tools/validate_data526_research_corpus_predecontam.py"
+      - "tests/test_data526_research_corpus_predecontam.py"
+      - "docs/DATA526_RESEARCH_CORPUS_V1_PREDECONTAM.md"
+      - ".github/workflows/data526-research-corpus-v1-predecontam.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Validate blocker authority
+        run: python tools/validate_data526_research_corpus_predecontam.py
+
+      - name: Run fail-closed mutation tests
+        run: python -m unittest -v tests.test_data526_research_corpus_predecontam
+
+      - name: Assert no execution promotion
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          doc = json.loads(Path("configs/data/research_corpus_v1_predecontam_blocker_v1.json").read_text())
+          assert doc["status"] == "BLOCKED_WAIT_SOURCE_CONVERGENCE"
+          assert doc["candidate_freeze"]["frozen"] is False
+          assert doc["candidate_freeze"]["candidate_set_digest_sha256"] is None
+          assert doc["claim_boundary"]["authorized_unique_optimized_targets"] == 0
+          assert doc["claim_boundary"]["training_executed"] is False
+          assert doc["claim_boundary"]["paid_compute_used"] is False
+          assert doc["claim_boundary"]["long_training_authorized"] is False
+          PY
