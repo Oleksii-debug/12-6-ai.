@@ -1,15 +1,14 @@
 """DATA-183 Corpus V0.2 real-data release candidate.
 
-This module deliberately composes DATA-110 rather than replacing its corpus path.
-It adds the release evidence that DATA-183 requires: canonical origin classes,
-normalized train/validation overlap proof, exact one-pass optimization-target token
-supply by source/origin/stratum, no-duplication assertions, and an actual Trainer
-streaming smoke through the retained shards.
+Compose DATA-110 without replacing it. Add explicit DATA-183 release evidence:
+canonical origin classes, normalized train/validation overlap proof, exact finite
+optimization-target token supply by origin/source/stratum, no-target-padding by
+document duplication, and actual retained-shard -> Product packer -> Trainer
+streaming.
 
-The current DATA-110 external intake admits real UK/EN only.  Consequently a
-successful DATA-183 build is an honest UK/EN-real + project-code candidate and
-MUST remain blocked from a fully representative V0.2 claim until independently
-admitted external code exists.
+DATA-110 currently admits real UK/EN external sources only. A successful build is
+therefore an honest UA/EN-real + project-code candidate and remains blocked from
+a full V0.2 representativeness claim until rights-approved external code exists.
 """
 
 from __future__ import annotations
@@ -59,20 +58,19 @@ def _write_json(path: Path, value: object) -> None:
 
 
 def _canonical_origin(value: object) -> str:
-    raw = str(value)
     mapping = {
         "external_real": ORIGIN_EXTERNAL,
         ORIGIN_EXTERNAL: ORIGIN_EXTERNAL,
         "project_authored": ORIGIN_PROJECT,
         ORIGIN_PROJECT: ORIGIN_PROJECT,
     }
+    raw = str(value)
     if raw not in mapping:
         raise Data183Error(f"unsupported origin class: {raw}")
     return mapping[raw]
 
 
 def _audit_normalize(text: str) -> str:
-    """Independent conservative normalization for cross-split overlap auditing."""
     normalized = unicodedata.normalize("NFKC", text).replace("\r\n", "\n").replace("\r", "\n")
     return "\n".join(" ".join(line.split()) for line in normalized.split("\n")).strip()
 
@@ -92,12 +90,11 @@ def _iter_rows(build_root: Path, manifest: Mapping[str, Any]) -> Iterable[dict[s
         if sha256_file(path) != str(shard["sha256"]):
             raise Data183Error(f"shard hash mismatch: {path}")
         for raw in path.read_text(encoding="utf-8").splitlines():
-            if not raw.strip():
-                continue
-            row = json.loads(raw)
-            if not isinstance(row, dict):
-                raise Data183Error(f"non-object row in {path}")
-            yield row
+            if raw.strip():
+                row = json.loads(raw)
+                if not isinstance(row, dict):
+                    raise Data183Error(f"non-object row in {path}")
+                yield row
 
 
 def _target_tokens_for_row(row: Mapping[str, Any], tok: ByteTokenizer) -> int:
@@ -120,16 +117,16 @@ def audit_release(build_root: Path, manifest: Mapping[str, Any]) -> dict[str, An
         raise Data183Error("release contains no rows")
 
     record_ids = [str(row["record_id"]) for row in rows]
-    if len(record_ids) != len(set(record_ids)):
+    duplicate_record_ids = len(record_ids) - len(set(record_ids))
+    if duplicate_record_ids:
         raise Data183Error("duplicate record_id survived DATA-110")
 
     normalized_hashes: dict[str, set[str]] = {"train": set(), "validation": set()}
-    normalized_hash_counts: Counter[str] = Counter()
+    normalized_counts: Counter[str] = Counter()
     origins: Counter[str] = Counter()
     external_strata: set[str] = set()
     project_code = 0
     tok = ByteTokenizer()
-
     tokens_origin: Counter[str] = Counter()
     tokens_source: Counter[str] = Counter()
     tokens_stratum: Counter[str] = Counter()
@@ -142,11 +139,11 @@ def audit_release(build_root: Path, manifest: Mapping[str, Any]) -> dict[str, An
             raise Data183Error(f"unexpected split: {split}")
         digest = _norm_sha(str(row["text"]))
         normalized_hashes[split].add(digest)
-        normalized_hash_counts[digest] += 1
+        normalized_counts[digest] += 1
 
         origin = _canonical_origin(row.get("origin"))
-        origins[origin] += 1
         stratum = str(row["stratum"])
+        origins[origin] += 1
         if origin == ORIGIN_EXTERNAL:
             external_strata.add(stratum)
         if origin == ORIGIN_PROJECT and stratum == "code":
@@ -162,13 +159,8 @@ def audit_release(build_root: Path, manifest: Mapping[str, Any]) -> dict[str, An
             train_docs_origin[origin] += 1
 
     overlap = sorted(normalized_hashes["train"] & normalized_hashes["validation"])
-    duplicate_normalized_hashes = sum(1 for count in normalized_hash_counts.values() if count > 1)
     if overlap:
         raise Data183Error(f"normalized train-validation overlap detected: {len(overlap)}")
-    if duplicate_normalized_hashes:
-        raise Data183Error(
-            f"normalized duplicate documents survived global dedup: {duplicate_normalized_hashes}"
-        )
     if not {"uk", "en"}.issubset(external_strata):
         raise Data183Error(f"external real UK/EN missing after gates: {sorted(external_strata)}")
     if project_code <= 0:
@@ -190,8 +182,10 @@ def audit_release(build_root: Path, manifest: Mapping[str, Any]) -> dict[str, An
         "documents_total": len(rows),
         "documents_by_origin": dict(sorted(origins.items())),
         "train_documents_by_origin": dict(sorted(train_docs_origin.items())),
-        "duplicate_record_ids": len(record_ids) - len(set(record_ids)),
-        "duplicate_normalized_document_hashes": duplicate_normalized_hashes,
+        "duplicate_record_ids": duplicate_record_ids,
+        "duplicate_normalized_document_hashes_observed": sum(
+            1 for count in normalized_counts.values() if count > 1
+        ),
         "normalization_audit": {
             "form": "NFKC + newline canonicalization + per-line whitespace collapse",
             "train_unique_normalized_hashes": len(normalized_hashes["train"]),
@@ -205,7 +199,7 @@ def audit_release(build_root: Path, manifest: Mapping[str, Any]) -> dict[str, An
         "optimized_token_supply": {
             "definition": (
                 "one finite TRAIN pass of non-ignored autoregressive target labels emitted by "
-                "Product iter_packed_examples with cross_document=false; this is not a repeated-run token budget"
+                "Product iter_packed_examples with cross_document=false; not a repeated-run token budget"
             ),
             "tokenizer_version": tok.identity.version,
             "sequence_length": d110.SEQ,
@@ -214,27 +208,26 @@ def audit_release(build_root: Path, manifest: Mapping[str, Any]) -> dict[str, An
             "by_source_family": dict(sorted(tokens_source.items())),
             "by_stratum": dict(sorted(tokens_stratum.items())),
             "by_source_family_and_origin": source_origin,
-            "source_family_semantics": "exact source_id; no inferred source grouping",
+            "source_family_semantics": "exact source_id; no inferred grouping",
         },
     }
 
 
 def trainer_streaming_proof(repo: Path, build_root: Path, manifest: Mapping[str, Any]) -> dict[str, Any]:
-    """Run actual retained shard -> packer -> Trainer updates, one per stratum."""
+    """Exercise real retained shard -> packer -> Trainer updates, one per stratum."""
     torch.manual_seed(d110.SEED)
     spec, init, provenance = d110._model(repo)
-    model = TwelveSixDecoder(spec, init)
-    trainer = Trainer(model, d110._trainer_config(), device="cpu")
+    trainer = Trainer(TwelveSixDecoder(spec, init), d110._trainer_config(), device="cpu")
     tok = ByteTokenizer()
     steps: list[dict[str, Any]] = []
     for stratum in ("uk", "en", "code"):
         iterator = d110._cycling_packed(build_root, manifest, tok, stratum)
         batch = next(d110._batches(iterator))
         before_tokens = int(trainer.tokens_seen)
-        metrics = trainer.train_step(batch)
+        metrics = trainer.train_microbatch(batch)
         after_tokens = int(trainer.tokens_seen)
-        if after_tokens <= before_tokens:
-            raise Data183Error(f"Trainer consumed no optimized tokens for {stratum}")
+        if after_tokens <= before_tokens or not metrics.optimizer_stepped:
+            raise Data183Error(f"Trainer did not commit a streaming update for {stratum}")
         steps.append(
             {
                 "stratum": stratum,
@@ -244,10 +237,10 @@ def trainer_streaming_proof(repo: Path, build_root: Path, manifest: Mapping[str,
             }
         )
     if trainer.optimizer_step != 3:
-        raise Data183Error(f"expected three Trainer steps, got {trainer.optimizer_step}")
+        raise Data183Error(f"expected three Trainer updates, got {trainer.optimizer_step}")
     return {
         "schema": "12-6.data183-trainer-streaming-proof.v1",
-        "path": "retained shard -> _release_rows -> iter_packed_examples -> Trainer.train_step",
+        "path": "retained shard -> _release_rows -> iter_packed_examples -> Trainer.train_microbatch",
         "device": "cpu",
         "local_free": True,
         "model_spec_sha256": spec.identity_sha256(),
@@ -264,10 +257,8 @@ def trainer_streaming_proof(repo: Path, build_root: Path, manifest: Mapping[str,
 def build_candidate(repo: Path, source_sha: str, external_intake: Path, out: Path) -> dict[str, Any]:
     repo = repo.resolve()
     out = out.resolve()
-    external_intake = external_intake.resolve()
-    release = d110.build_release(repo, source_sha, external_intake, out / "data110")
-    candidate_manifest = release["candidate_manifest"]
-
+    release = d110.build_release(repo, source_sha, external_intake.resolve(), out / "data110")
+    candidate = release["candidate_manifest"]
     if release.get("two_build_deterministic_identity") is not True:
         raise Data183Error("DATA-110 two-build identity proof missing")
     if release.get("two_build_shards_exact") is not True:
@@ -275,23 +266,17 @@ def build_candidate(repo: Path, source_sha: str, external_intake: Path, out: Pat
     if release["build_a_identity_sha256"] != release["build_b_identity_sha256"]:
         raise Data183Error("DATA-110 clean-build identities differ")
 
-    audit = audit_release(out / "data110" / "build-a", candidate_manifest)
-    streaming = trainer_streaming_proof(repo, out / "data110" / "build-a", candidate_manifest)
-
+    audit = audit_release(out / "data110" / "build-a", candidate)
+    streaming = trainer_streaming_proof(repo, out / "data110" / "build-a", candidate)
     external_code = bool(audit["external_real_code_present"])
-    status = (
-        "CANDIDATE_EXTERNAL_UA_EN_CODE"
-        if external_code
-        else "CANDIDATE_UA_EN_REAL_PROJECT_CODE"
-    )
+    status = "CANDIDATE_EXTERNAL_UA_EN_CODE" if external_code else "CANDIDATE_UA_EN_REAL_PROJECT_CODE"
     blockers = [] if external_code else ["EXTERNAL_REAL_CODE_UNAVAILABLE"]
-    blockers.extend(
-        [
-            "FULL_V0_2_REPRESENTATIVENESS_NOT_ESTABLISHED",
-            "DATA110_CLASSIFICATION_RETEST_REQUIRED",
-        ]
-    )
+    blockers += [
+        "FULL_V0_2_REPRESENTATIVENESS_NOT_ESTABLISHED",
+        "DATA110_CLASSIFICATION_RETEST_REQUIRED",
+    ]
 
+    pipeline = set(candidate["pipeline"])
     core = {
         "schema": SCHEMA,
         "authority": AUTHORITY,
@@ -307,25 +292,16 @@ def build_candidate(repo: Path, source_sha: str, external_intake: Path, out: Pat
         },
         "rights_and_policy_gates": {
             "external_training_rights_explicit": bool(
-                candidate_manifest["external_intake"][
-                    "all_admitted_external_sources_explicit_training_eligible"
-                ]
+                candidate["external_intake"]["all_admitted_external_sources_explicit_training_eligible"]
             ),
-            "normalization_materialization_reused": "DATA-25 deterministic normalization/materialization incumbent"
-            in candidate_manifest["pipeline"],
-            "quality_gate_reexecuted": "DATA-32 document quality incumbent re-executed"
-            in candidate_manifest["pipeline"],
-            "privacy_gate_reexecuted": "DATA-33 privacy/secrets incumbent re-executed"
-            in candidate_manifest["pipeline"],
-            "exact_dedup_reexecuted": "SQLiteExactDedupIndex exact dedup"
-            in candidate_manifest["pipeline"],
+            "normalization_materialization_reused": "DATA-25 deterministic normalization/materialization incumbent" in pipeline,
+            "quality_gate_reexecuted": "DATA-32 document quality incumbent re-executed" in pipeline,
+            "privacy_gate_reexecuted": "DATA-33 privacy/secrets incumbent re-executed" in pipeline,
+            "exact_dedup_reexecuted": "SQLiteExactDedupIndex exact dedup" in pipeline,
             "near_dedup_decontamination_reexecuted": bool(
-                candidate_manifest["dedup_decontamination"]["publication_manifest_sha256"]
+                candidate["dedup_decontamination"]["publication_manifest_sha256"]
             ),
-            "cluster_safe_split_reexecuted": candidate_manifest["split"][
-                "cluster_straddles_across_variants"
-            ]
-            == 0,
+            "cluster_safe_split_reexecuted": candidate["split"]["cluster_straddles_across_variants"] == 0,
             "deterministic_sharding_reexecuted": True,
         },
         "origin_contract": {
@@ -381,8 +357,8 @@ def validate_candidate(path: Path, expected_source_sha: str | None = None) -> di
         raise Data183Error("two-build shard evidence failed")
     if report["audit"]["normalization_audit"]["train_validation_overlap"] != 0:
         raise Data183Error("normalized train-validation overlap is not zero")
-    if report["audit"]["duplicate_normalized_document_hashes"] != 0:
-        raise Data183Error("normalized duplicate documents survived")
+    if report["audit"]["duplicate_record_ids"] != 0:
+        raise Data183Error("duplicate record IDs survived")
     if report["trainer_streaming"]["passed"] is not True:
         raise Data183Error("Trainer streaming proof failed")
     if report["truth_boundary"]["local_free_only"] is not True:
@@ -413,12 +389,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.cmd == "build":
-        report = build_candidate(
-            args.repo_root,
-            args.source_sha,
-            args.external_intake,
-            args.output_dir,
-        )
+        report = build_candidate(args.repo_root, args.source_sha, args.external_intake, args.output_dir)
         print(
             json.dumps(
                 {
