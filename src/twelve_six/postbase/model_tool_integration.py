@@ -9,9 +9,10 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import dataclass
+from collections.abc import Sequence
+from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Protocol, Sequence, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from twelve_six.inference.contracts import GenerationConfig, InferenceBackend
 from twelve_six.inference.generation import generate
@@ -181,7 +182,7 @@ def decode_model_generation(raw_text: str) -> ModelGeneration:
     except (json.JSONDecodeError, ValueError) as exc:
         raise ValueError("model request output must be strict JSON") from exc
     if not isinstance(payload, dict):
-        raise ValueError("model request output must be a JSON object")
+        raise TypeError("model request output must be a JSON object")
     expected = {"protocol_version", "text", "tool_requests"}
     if set(payload) != expected:
         raise ValueError(
@@ -192,16 +193,16 @@ def decode_model_generation(raw_text: str) -> ModelGeneration:
     text = payload["text"]
     requests = payload["tool_requests"]
     if not isinstance(text, str):
-        raise ValueError("model request envelope text must be a string")
+        raise TypeError("model request envelope text must be a string")
     if not isinstance(requests, list):
-        raise ValueError("tool_requests must be a list")
+        raise TypeError("tool_requests must be a list")
     if len(requests) > MAX_TOOL_REQUESTS:
         raise ValueError(f"tool_requests exceeds limit of {MAX_TOOL_REQUESTS}")
 
     normalized_requests: list[dict[str, JsonValue]] = []
     for index, candidate in enumerate(requests):
         if not isinstance(candidate, dict):
-            raise ValueError(f"tool_requests[{index}] must be an object")
+            raise TypeError(f"tool_requests[{index}] must be an object")
         # Canonical serialization checks JSON types/non-finite numbers only.
         # Tool names, fields, argument schemas, timeouts, and policy are not checked here.
         canonical_json_bytes(candidate)
@@ -230,18 +231,18 @@ def render_observation_context(observations: Sequence[ToolObservation]) -> str:
     return canonical_json_bytes(payload).decode("utf-8")
 
 
+def _default_generation_config() -> GenerationConfig:
+    return GenerationConfig(max_new_tokens=512, sample=False, seed=0)
+
+
 @dataclass(slots=True)
 class FirstPartyBasePostBaseModelAdapter:
     """Use the maintained first-party ``InferenceBackend`` for two separated turns."""
 
     backend: InferenceBackend
     lineage: ModelLineage
-    request_config: GenerationConfig = GenerationConfig(
-        max_new_tokens=512, sample=False, seed=0
-    )
-    final_config: GenerationConfig = GenerationConfig(
-        max_new_tokens=512, sample=False, seed=0
-    )
+    request_config: GenerationConfig = field(default_factory=_default_generation_config)
+    final_config: GenerationConfig = field(default_factory=_default_generation_config)
     adapter_id: str = "postbase355-first-party-base-postbase-adapter-v1"
     external_llm: bool = False
 
