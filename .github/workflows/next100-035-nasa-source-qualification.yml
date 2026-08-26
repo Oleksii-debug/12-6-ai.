@@ -1,0 +1,90 @@
+name: NEXT100-035 NASA NTRS Source Qualification
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qualify-nasa-ntrs:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact source head
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+
+      - name: Compile and run offline gates
+        run: |
+          python -m compileall -q tools/qualify_next100_035_nasa.py tests/test_next100_035_nasa.py
+          python tests/test_next100_035_nasa.py
+
+      - name: Probe or verify exact NTRS records
+        run: |
+          set -o pipefail
+          mkdir -p next100-035-nasa-evidence
+          MODE="$(python - <<'PY'
+          import json
+          from pathlib import Path
+          cfg=json.loads(Path('configs/data/next100_035_nasa_ntrs_usgov_abstracts_v1.json').read_text())
+          print('verify' if isinstance(cfg.get('pins'), dict) else 'probe')
+          PY
+          )"
+          echo "qualification_mode=$MODE"
+          python tools/qualify_next100_035_nasa.py "$MODE" --out next100-035-nasa-evidence \
+            | tee next100-035-nasa-evidence/stdout.log
+
+      - name: Assert authority semantics
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('next100-035-nasa-evidence/nasa_ntrs_usgov_abstracts_authority.json')
+          report=json.loads(p.read_text())
+          assert report['authority'] == 'ADMIT'
+          assert report['local_free_only'] is True
+          assert report['training_executed'] is False
+          assert report['scope']['pdf_body_admitted'] is False
+          assert report['scope']['full_text_download_admitted'] is False
+          assert report['scope']['images_tables_figures_admitted'] is False
+          assert report['rights']['full_document_body'] == 'NOT_ADMITTED_BY_THIS_AUTHORITY'
+          assert report['rights']['evaluation'] == 'NOT_SEPARATELY_ADMITTED'
+          assert report['family']['independent_family_credit'] == 1
+          assert report['totals']['admitted_records'] >= 2
+          assert not report['deduplication']['duplicate_pairs']
+          for row in report['candidates']:
+              if row['decision'] == 'ADMIT':
+                  c=row['copyright']
+                  assert c['determinationType'] == 'GOV_PUBLIC_USE_PERMITTED'
+                  assert c.get('containsThirdPartyMaterial') is not True
+                  assert c.get('belongsToContractor') is not True
+                  assert c.get('belongsToPublisher') is not True
+                  assert row['all_authors_nasa_affiliated'] is True
+                  assert row['privacy_training_text'] == 'PASS_NO_EMAIL_PHONE_SSN_PATTERNS'
+          PY
+
+      - name: Upload bounded terminal evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: next100-035-nasa-${{ github.event.pull_request.head.sha || github.sha }}
+          if-no-files-found: error
+          retention-days: 90
+          path: |
+            configs/data/next100_035_nasa_ntrs_usgov_abstracts_v1.json
+            docs/NEXT100_035_NASA_NTRS_SOURCE_AUTHORITY.md
+            next100-035-nasa-evidence/

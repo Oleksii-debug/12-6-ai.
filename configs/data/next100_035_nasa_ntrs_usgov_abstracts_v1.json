@@ -1,0 +1,57 @@
+{
+  "schema_version": "12-6.next100-035-nasa-ntrs-usgov-abstracts.v1",
+  "worker_id": "NEXT100-035-DATA-EN-NASA",
+  "family_id": "nasa.sti.ntrs.usgov-technical-abstracts",
+  "family_count_credit": 1,
+  "source_endpoint_template": "https://ntrs.nasa.gov/api/citations/{document_id}",
+  "candidate_document_ids": [
+    19920019515,
+    20010000882,
+    20040081033,
+    20040200741,
+    20050165093,
+    20170010415,
+    20190031741,
+    20250009540
+  ],
+  "selection_rule": "SORTED_FIXED_ID_LIST_THEN_FAIL_CLOSED_RETAINED_METADATA_GATES_V2",
+  "training_payload_fields": ["title", "abstract"],
+  "normalization_policy": "NASA_NTRS_TITLE_ABSTRACT_NFKC_WS_V1",
+  "minimum_words_per_record": 80,
+  "minimum_admitted_records": 2,
+  "near_duplicate_jaccard_threshold": 0.85,
+  "copyright_determinations_allowed": [
+    "GOV_PUBLIC_USE_PERMITTED"
+  ],
+  "required_distribution": "PUBLIC",
+  "required_license_type": "NO",
+  "reject_if_contains_third_party_material_true": true,
+  "reject_if_belongs_to_contractor_true": true,
+  "reject_if_belongs_to_publisher_true": true,
+  "require_all_authors_nasa_affiliated": true,
+  "full_document_body_requires_explicit_third_party_false": true,
+  "exclude_full_text_downloads": true,
+  "exclude_pdf_body": true,
+  "exclude_images_tables_figures": true,
+  "training_purpose": "decoder-only Base pretraining research corpus",
+  "model_training_decision": "ALLOWED_IF_ALL_RETAINED_METADATA_GATES_PASS",
+  "redistribution_decision": "ALLOWED_FOR_RETAINED_TITLE_ABSTRACT_WITH_NASA_STI_ACKNOWLEDGMENT_AND_NO_ENDORSEMENT",
+  "evaluation_decision": "NOT_SEPARATELY_ADMITTED",
+  "attribution_text": "Source: NASA Scientific and Technical Information (STI) Program / NASA Technical Reports Server (NTRS).",
+  "rights_evidence": {
+    "nasa_sti_use_url": "https://sti.nasa.gov/disclaimers/",
+    "nasa_sti_openapi_terms_url": "https://www.sti.nasa.gov/docs/20221122_OpenAPI_Documentation.pdf",
+    "nasa_sti_harvesting_url": "https://sti.nasa.gov/harvesting-data-from-ntrs/",
+    "us_code_17_105": "https://www.law.cornell.edu/uscode/text/17/105"
+  },
+  "terminal_authority": {
+    "state": "RETEST",
+    "rights_prequalification": "PASS_FOR_BOUNDED_NTRS_TITLE_ABSTRACT_METADATA_ONLY",
+    "reason": "LIVE_EXACT_NTRS_SOURCE_BYTES_HAVE_NOT_BEEN_SEALED_AND_REPRODUCED_ON_A_FRESH_EXACT_HEAD_RUN",
+    "full_document_body": "NOT_ADMITTED_BY_THIS_AUTHORITY",
+    "corpus_credit": "ZERO_UNTIL_ADMIT_VERIFY",
+    "promotion_condition": "SEAL_LIVE_PROBE_PINS_THEN_PASS_A_FRESH_EXACT_HEAD_VERIFY_WITH_PIPEFAIL"
+  },
+  "pins": null,
+  "local_free_only": true
+}
