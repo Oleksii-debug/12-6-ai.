@@ -1,0 +1,97 @@
+name: CHECKPOINT-204 DCP CUDA Recovery
+on:
+  pull_request:
+    paths:
+      - "tools/run_checkpoint204_dcp_recovery.py"
+      - "tests/test_checkpoint204_dcp_recovery_contract.py"
+      - ".github/workflows/checkpoint204-dcp-cuda-recovery.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  checkpoint204-local-free-authority:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Prove exact source checkout
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Verify exact distributed CUDA purpose environment
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: >-
+          python tools/verify_purpose_environment.py
+          --profile linux-x86_64-cuda-training
+          --source-sha "$SOURCE_SHA"
+          --evidence-out checkpoint204-purpose-environment.json
+      - name: Materialize exact locked test environment
+        run: |
+          python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/dev.lock.txt
+          PIP_NO_INDEX=1 python -m pip install --no-deps --no-build-isolation -e .
+      - name: Focused lint and contract tests
+        run: |
+          python -m ruff check tools/run_checkpoint204_dcp_recovery.py tests/test_checkpoint204_dcp_recovery_contract.py
+          python -m pytest -q tests/test_checkpoint204_dcp_recovery_contract.py
+      - name: Retain accepted two-rank CPU Gloo authority
+        env:
+          GITHUB_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: python -m pytest -q tests/test_scale_fsdp2_dcp_integration.py
+      - name: Record fail-closed CUDA preflight
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: >-
+          python tools/run_checkpoint204_dcp_recovery.py
+          --source-sha "$SOURCE_SHA"
+          --output checkpoint204-preflight.json
+          --preflight-only
+      - id: cuda
+        name: Detect free visible multi-GPU CUDA topology
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import torch
+          import torch.distributed as dist
+          runnable = torch.cuda.is_available() and torch.cuda.device_count() >= 2 and dist.is_nccl_available()
+          print(f"runnable={'true' if runnable else 'false'}")
+          PY
+      - name: Real synchronous CUDA DCP recovery when already available
+        if: steps.cuda.outputs.runnable == 'true'
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          rm -rf .checkpoint204
+          torchrun --standalone --nproc-per-node=2 tools/run_checkpoint204_dcp_recovery.py \
+            --source-sha "$SOURCE_SHA" \
+            --stage configs/stages/s3_10m.json \
+            --checkpoint-root .checkpoint204 \
+            --output checkpoint204-cuda-recovery.json
+      - name: Preserve CUDA untested boundary when unavailable
+        if: steps.cuda.outputs.runnable != 'true'
+        run: |
+          python - <<'PY'
+          import json
+          report = json.load(open('checkpoint204-preflight.json', encoding='utf-8'))
+          assert report['status'] == 'CUDA_UNTESTED_NO_MULTI_GPU'
+          assert report['claims']['cuda_validated'] is False
+          print('CHECKPOINT-204 CUDA status: UNTESTED_NO_MULTI_GPU; CPU/Gloo incumbent retained')
+          PY
+      - name: Upload compact CHECKPOINT-204 evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: checkpoint204-dcp-cuda-recovery-evidence
+          path: |
+            checkpoint204-purpose-environment.json
+            checkpoint204-preflight.json
+            checkpoint204-cuda-recovery.json
+          if-no-files-found: error
+          retention-days: 30
