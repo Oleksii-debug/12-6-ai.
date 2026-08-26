@@ -17,6 +17,9 @@ from .core import (
     CheckpointCompatibilityError,
     CheckpointIdentity,
     LoadResult,
+    _decode_verified_state,
+    _preflight_optimizer_state,
+    _preflight_stateful_target,
     load_verified_checkpoint,
     prepare_checkpoint_load,
     save_checkpoint,
@@ -32,6 +35,109 @@ def _trainer_state_as_mapping(state: Any) -> Mapping[str, Any]:
         "trainer.state_dict() must return a dataclass instance or mapping "
         "for data-only serialization"
     )
+
+
+def _config_as_mapping(config: Any) -> Mapping[str, Any] | None:
+    if is_dataclass(config) and not isinstance(config, type):
+        return asdict(config)
+    if isinstance(config, Mapping):
+        return dict(config)
+    if hasattr(config, "model_dump"):
+        value = config.model_dump(mode="python")
+        return value if isinstance(value, Mapping) else None
+    if hasattr(config, "to_dict"):
+        value = config.to_dict()
+        return value if isinstance(value, Mapping) else None
+    return None
+
+
+def _require_counter(state: Mapping[str, Any], field: str) -> int:
+    value = state.get(field)
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise CheckpointCompatibilityError(
+            f"trainer {field} must be a non-negative integer"
+        )
+    return value
+
+
+def _preflight_trainer_state(trainer: Any, state: Any) -> None:
+    """Validate trainer-owned resume payload before any live model mutation.
+
+    The public Trainer loader owns optimizer/scheduler/scaler/counter semantics,
+    but calling it only after model restoration is not transactional: a corrupt
+    nested optimizer slot could otherwise reject after model weights changed.
+    This preflight mirrors the loader's fail-closed invariants without mutating
+    the live trainer.
+    """
+
+    if not isinstance(state, Mapping):
+        raise CheckpointCompatibilityError("checkpoint trainer state must be a mapping")
+
+    required = {
+        "micro_step",
+        "optimizer_step",
+        "tokens_seen",
+        "optimizer",
+        "scheduler",
+        "scaler",
+        "config",
+    }
+    if set(state) != required:
+        missing = sorted(required - set(state))
+        unexpected = sorted(set(state) - required)
+        raise CheckpointCompatibilityError(
+            f"trainer state keys differ: missing={missing}, unexpected={unexpected}"
+        )
+
+    current_config = _config_as_mapping(getattr(trainer, "config", None))
+    saved_config = state.get("config")
+    if current_config is None:
+        raise CheckpointCompatibilityError("trainer config is not serializable for preflight")
+    if not isinstance(saved_config, Mapping) or dict(saved_config) != dict(current_config):
+        raise CheckpointCompatibilityError("trainer config mismatch; refusing unsafe resume")
+
+    micro_step = _require_counter(state, "micro_step")
+    optimizer_step = _require_counter(state, "optimizer_step")
+    _require_counter(state, "tokens_seen")
+
+    accumulation = current_config.get("gradient_accumulation_steps")
+    if not isinstance(accumulation, int) or isinstance(accumulation, bool) or accumulation <= 0:
+        raise CheckpointCompatibilityError(
+            "trainer gradient_accumulation_steps must be a positive integer"
+        )
+    expected_micro_steps = optimizer_step * accumulation
+    if micro_step != expected_micro_steps:
+        raise CheckpointCompatibilityError(
+            "checkpoint is not at a complete committed accumulation boundary: "
+            f"micro_step={micro_step}, expected={expected_micro_steps}"
+        )
+
+    max_steps = current_config.get("max_steps")
+    if not isinstance(max_steps, int) or isinstance(max_steps, bool) or max_steps <= 0:
+        raise CheckpointCompatibilityError("trainer max_steps must be a positive integer")
+    if optimizer_step > max_steps:
+        raise CheckpointCompatibilityError(
+            "checkpoint optimizer_step exceeds configured max_steps"
+        )
+
+    optimizer = getattr(trainer, "optimizer", None)
+    if optimizer is None:
+        raise CheckpointCompatibilityError("trainer has no optimizer to restore")
+    _preflight_optimizer_state(optimizer, state.get("optimizer"))
+
+    scheduler = getattr(trainer, "scheduler", None)
+    saved_scheduler = state.get("scheduler")
+    if (scheduler is None) != (saved_scheduler is None):
+        raise CheckpointCompatibilityError("scheduler state/config mismatch")
+    if scheduler is not None:
+        _preflight_stateful_target(scheduler, saved_scheduler, label="scheduler")
+
+    scaler = getattr(trainer, "scaler", None)
+    saved_scaler = state.get("scaler")
+    if (scaler is None) != (saved_scaler is None):
+        raise CheckpointCompatibilityError("scaler state/config mismatch")
+    if scaler is not None:
+        _preflight_stateful_target(scaler, saved_scaler, label="scaler")
 
 
 def _assert_bound_metadata(
@@ -145,9 +251,10 @@ def load_trainer_checkpoint(
 ) -> LoadResult:
     """Verify one exact byte snapshot, bind it, then restore fresh D02 targets.
 
-    The canonical nested identity checks and the actual load consume the same
-    verified byte snapshot. The source directory is never re-opened between
-    run-binding verification and model mutation.
+    Canonical nested identity checks, trainer-owned optimizer/scheduler/scaler
+    preflight, and the actual load all consume the same immutable verified byte
+    snapshot. The source directory is never re-opened between verification and
+    model mutation.
     """
 
     if not hasattr(trainer, "load_state_dict"):
@@ -164,6 +271,12 @@ def load_trainer_checkpoint(
         expected_environment_lock_hash=expected_environment_lock_hash,
         expected_seed=expected_seed,
     )
+
+    # Decode the immutable in-memory snapshot once for trainer-owned preflight.
+    # load_verified_checkpoint decodes the same retained bytes again before the
+    # commit point; it never re-opens the source directory.
+    _, combined_state = _decode_verified_state(verified)
+    _preflight_trainer_state(trainer, combined_state.get("trainer"))
 
     result = load_verified_checkpoint(
         verified,
