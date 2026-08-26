@@ -27,7 +27,7 @@ The final source vector was refreshed against current exact PR heads.
 - PR #446, Kubernetes UA recovery: same `kubernetes.website.docs` family already represented by EVAL-290; exact-head recovery workflow was queued at the captured vector and the source authority still requires separate evaluation-purpose admission. It contributes zero new family credit.
 - PR #449, KMu Secretariat news: independent Ukrainian family candidate, but its exact-head source workflow was queued and its source authority says evaluation is not separately admitted. No pre-training selection reservation exists. It contributes zero records and zero family credit.
 - PR #455, bounded public-domain Ukrainian Wikisource edition: exact-head source qualification is terminal-success, but evaluation is explicitly not separately admitted and no pre-training selection reservation exists. It contributes zero records and zero family credit.
-- PR #462, bounded Verba/Nomis1864 snapshot: independent Ukrainian family candidate, but its exact-head source workflow was queued and the authority explicitly does not admit selection-validation. No pre-training selection reservation exists. It contributes zero records and zero family credit.
+- PR #462, bounded Verba/Nomis1864 snapshot: exact-head source qualification is terminal-success, but the authority explicitly does not admit selection-validation and no pre-training selection reservation exists. It contributes zero records and zero family credit.
 
 Public accessibility, public-domain status, CC BY reuse rights, or model-training permission are not substituted for purpose-specific selection-validation authority.
 
@@ -48,7 +48,7 @@ Until then, the lawful Ukrainian selection-validation capacity remains the prese
 
 Machine authority: `configs/evaluation/next100_058_ua_selection_validation_v2.json`
 
-Authority identity SHA-256: `65905172c628783bf01e488d3d1ddd352134184b9a722ed2b27cf59a220c33ab`
+Authority identity SHA-256: `15ccaea65c2e273af5fb7ac3606d2c0cdd2bb9010df3be0da783267e8478eed8`
 
 Validator: `tools/validate_next100_058_ua_selection_validation_v2.py`
 
