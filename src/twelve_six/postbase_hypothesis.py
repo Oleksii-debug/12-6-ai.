@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import math
 from dataclasses import asdict, dataclass, replace
 from typing import Any, Literal
 
 HypothesisStatus = Literal["active", "rejected", "revised"]
 EvidenceKind = Literal["support", "contradiction"]
+VerifierEvidenceStatus = Literal["PASS", "FAIL", "INCONCLUSIVE", "CONFLICT"]
 
 
 @dataclass(frozen=True)
@@ -25,6 +28,19 @@ class Evidence:
     weight: float
     hard: bool
     source: str
+
+
+@dataclass(frozen=True)
+class VerifierEvidence:
+    id: str
+    hypothesis_id: str
+    hypothesis_version_id: str
+    claim_id: str
+    status: VerifierEvidenceStatus
+    reason_codes: tuple[str, ...]
+    deterministic_failure: bool
+    deterministic_correctness_pass: bool
+    verifier_ids: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -60,9 +76,13 @@ class Hypothesis:
     statement: str
     assumptions: tuple[str, ...]
     parent_id: str | None
+    lineage_id: str
+    version: int
+    version_id: str
     status: HypothesisStatus
     score_history: tuple[ScorePoint, ...]
     evidence_ids: tuple[str, ...] = ()
+    verifier_evidence_ids: tuple[str, ...] = ()
     contradiction_ids: tuple[str, ...] = ()
     critique_ids: tuple[str, ...] = ()
     test_ids: tuple[str, ...] = ()
@@ -81,12 +101,14 @@ class HypothesisSearch:
     def __init__(self) -> None:
         self._hypotheses: dict[str, Hypothesis] = {}
         self._evidence: dict[str, Evidence] = {}
+        self._verifier_evidence: dict[str, VerifierEvidence] = {}
         self._contradictions: dict[str, Contradiction] = {}
         self._critiques: dict[str, Critique] = {}
         self._tests: dict[str, TestRecord] = {}
         self._counters = {
             "hypothesis": 0,
             "evidence": 0,
+            "verifier_evidence": 0,
             "contradiction": 0,
             "critique": 0,
             "test": 0,
@@ -104,12 +126,24 @@ class HypothesisSearch:
         assumptions = self._assumptions(assumptions)
         score = self._score(initial_score)
         hypothesis_id = self._next("hypothesis", "H")
+        lineage_id = hypothesis_id
+        version = 1
         point = self._score_point(score, "proposed")
         hypothesis = Hypothesis(
             id=hypothesis_id,
             statement=statement,
             assumptions=assumptions,
             parent_id=None,
+            lineage_id=lineage_id,
+            version=version,
+            version_id=self._version_id(
+                hypothesis_id,
+                lineage_id,
+                version,
+                statement,
+                assumptions,
+                None,
+            ),
             status="active",
             score_history=(point,),
         )
@@ -129,12 +163,24 @@ class HypothesisSearch:
         inherited = parent.assumptions if assumptions is None else self._assumptions(assumptions)
         score = parent.score if initial_score is None else self._score(initial_score)
         hypothesis_id = self._next("hypothesis", "H")
+        lineage_id = hypothesis_id
+        version = 1
         point = self._score_point(score, f"branched from {parent.id}")
         hypothesis = Hypothesis(
             id=hypothesis_id,
             statement=statement,
             assumptions=inherited,
             parent_id=parent.id,
+            lineage_id=lineage_id,
+            version=version,
+            version_id=self._version_id(
+                hypothesis_id,
+                lineage_id,
+                version,
+                statement,
+                inherited,
+                parent.id,
+            ),
             status="active",
             score_history=(point,),
         )
@@ -241,12 +287,55 @@ class HypothesisSearch:
         self._hypotheses[hypothesis.id] = hypothesis
         return record
 
+    def record_verifier_evidence(
+        self,
+        hypothesis_id: str,
+        *,
+        claim_id: str,
+        status: VerifierEvidenceStatus,
+        reason_codes: tuple[str, ...],
+        deterministic_failure: bool,
+        deterministic_correctness_pass: bool,
+        verifier_ids: tuple[str, ...],
+    ) -> VerifierEvidence:
+        hypothesis = self._open(hypothesis_id)
+        claim_id = self._text(claim_id, "claim id")
+        if claim_id != hypothesis.version_id:
+            raise ValueError("verifier evidence must target the exact hypothesis version id")
+        if status not in ("PASS", "FAIL", "INCONCLUSIVE", "CONFLICT"):
+            raise ValueError("unsupported verifier status")
+        if deterministic_failure and status != "FAIL":
+            raise ValueError("deterministic_failure requires FAIL status")
+        reason_codes = tuple(self._text(item, "reason code") for item in reason_codes)
+        verifier_ids = tuple(self._text(item, "verifier id") for item in verifier_ids)
+        if not verifier_ids:
+            raise ValueError("verifier_ids must be non-empty")
+        evidence_id = self._next("verifier_evidence", "VE")
+        evidence = VerifierEvidence(
+            id=evidence_id,
+            hypothesis_id=hypothesis.id,
+            hypothesis_version_id=hypothesis.version_id,
+            claim_id=claim_id,
+            status=status,
+            reason_codes=reason_codes,
+            deterministic_failure=bool(deterministic_failure),
+            deterministic_correctness_pass=bool(deterministic_correctness_pass),
+            verifier_ids=verifier_ids,
+        )
+        self._verifier_evidence[evidence_id] = evidence
+        self._hypotheses[hypothesis.id] = replace(
+            hypothesis,
+            verifier_evidence_ids=(*hypothesis.verifier_evidence_ids, evidence_id),
+        )
+        return evidence
+
     def reject(
         self,
         hypothesis_id: str,
         reason: str,
         *,
         evidence_ids: tuple[str, ...] = (),
+        verifier_evidence_ids: tuple[str, ...] = (),
     ) -> Hypothesis:
         hypothesis = self._open(hypothesis_id)
         reason = self._text(reason, "rejection reason")
@@ -254,11 +343,29 @@ class HypothesisSearch:
             evidence = self._evidence.get(evidence_id)
             if evidence is None or evidence.hypothesis_id != hypothesis.id:
                 raise ValueError(f"evidence {evidence_id!r} does not belong to {hypothesis.id}")
+        for verifier_evidence_id in verifier_evidence_ids:
+            verifier_evidence = self._verifier_evidence.get(verifier_evidence_id)
+            if (
+                verifier_evidence is None
+                or verifier_evidence.hypothesis_id != hypothesis.id
+                or verifier_evidence.hypothesis_version_id != hypothesis.version_id
+            ):
+                raise ValueError(
+                    f"verifier evidence {verifier_evidence_id!r} does not belong to "
+                    f"{hypothesis.version_id}"
+                )
+        score_evidence_id = (
+            verifier_evidence_ids[-1]
+            if verifier_evidence_ids
+            else evidence_ids[-1]
+            if evidence_ids
+            else None
+        )
         hypothesis = self._with_score(
             hypothesis,
             0.0,
             f"rejected: {reason}",
-            evidence_id=evidence_ids[-1] if evidence_ids else None,
+            evidence_id=score_evidence_id,
         )
         hypothesis = replace(hypothesis, status="rejected")
         self._hypotheses[hypothesis.id] = hypothesis
@@ -278,12 +385,23 @@ class HypothesisSearch:
         statement = self._text(statement, "statement")
         inherited = parent.assumptions if assumptions is None else self._assumptions(assumptions)
         score = parent.score if initial_score is None else self._score(initial_score)
-        hypothesis_id = self._next("hypothesis", "H")
+        child_id = self._next("hypothesis", "H")
+        version = parent.version + 1
         child = Hypothesis(
-            id=hypothesis_id,
+            id=child_id,
             statement=statement,
             assumptions=inherited,
             parent_id=parent.id,
+            lineage_id=parent.lineage_id,
+            version=version,
+            version_id=self._version_id(
+                child_id,
+                parent.lineage_id,
+                version,
+                statement,
+                inherited,
+                parent.id,
+            ),
             status="active",
             score_history=(self._score_point(score, f"revision of {parent.id}"),),
         )
@@ -293,7 +411,12 @@ class HypothesisSearch:
         return child
 
     def best(self) -> Hypothesis | None:
-        active = [hypothesis for hypothesis in self._hypotheses.values() if hypothesis.status == "active"]
+        active = [
+            hypothesis
+            for hypothesis in self._hypotheses.values()
+            if hypothesis.status == "active"
+            and not self._has_deterministic_verifier_failure(hypothesis)
+        ]
         if not active:
             return None
         return max(active, key=lambda item: (item.score, item.id))
@@ -307,6 +430,16 @@ class HypothesisSearch:
         except KeyError as exc:
             raise KeyError(f"unknown evidence {evidence_id!r}") from exc
 
+    def verifier_evidence(self, evidence_id: str) -> VerifierEvidence:
+        try:
+            return self._verifier_evidence[evidence_id]
+        except KeyError as exc:
+            raise KeyError(f"unknown verifier evidence {evidence_id!r}") from exc
+
+    def verification_history(self, hypothesis_id: str) -> tuple[VerifierEvidence, ...]:
+        hypothesis = self._get(hypothesis_id)
+        return tuple(self._verifier_evidence[item] for item in hypothesis.verifier_evidence_ids)
+
     def contradiction(self, contradiction_id: str) -> Contradiction:
         try:
             return self._contradictions[contradiction_id]
@@ -314,18 +447,29 @@ class HypothesisSearch:
             raise KeyError(f"unknown contradiction {contradiction_id!r}") from exc
 
     def export(self) -> dict[str, Any]:
+        best = self.best()
         return {
             "schema": self.schema,
             "worker_id": self.worker_id,
             "hypotheses": [asdict(self._hypotheses[key]) for key in sorted(self._hypotheses)],
             "evidence": [asdict(self._evidence[key]) for key in sorted(self._evidence)],
+            "verifier_evidence": [
+                asdict(self._verifier_evidence[key]) for key in sorted(self._verifier_evidence)
+            ],
             "contradictions": [
                 asdict(self._contradictions[key]) for key in sorted(self._contradictions)
             ],
             "critiques": [asdict(self._critiques[key]) for key in sorted(self._critiques)],
             "tests": [asdict(self._tests[key]) for key in sorted(self._tests)],
-            "selected_hypothesis_id": self.best().id if self.best() is not None else None,
+            "selected_hypothesis_id": best.id if best is not None else None,
+            "selected_hypothesis_version_id": best.version_id if best is not None else None,
         }
+
+    def _has_deterministic_verifier_failure(self, hypothesis: Hypothesis) -> bool:
+        return any(
+            self._verifier_evidence[evidence_id].deterministic_failure
+            for evidence_id in hypothesis.verifier_evidence_ids
+        )
 
     def _with_score(
         self,
@@ -386,3 +530,24 @@ class HypothesisSearch:
         if not math.isfinite(value) or not 0 < value <= 1:
             raise ValueError("weight must be finite and in (0,1]")
         return value
+
+    @staticmethod
+    def _version_id(
+        hypothesis_id: str,
+        lineage_id: str,
+        version: int,
+        statement: str,
+        assumptions: tuple[str, ...],
+        parent_id: str | None,
+    ) -> str:
+        payload = {
+            "hypothesis_id": hypothesis_id,
+            "lineage_id": lineage_id,
+            "version": version,
+            "statement": statement,
+            "assumptions": assumptions,
+            "parent_id": parent_id,
+        }
+        encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        digest = hashlib.sha256(encoded).hexdigest()[:16]
+        return f"{hypothesis_id}@v{version}:{digest}"
