@@ -33,7 +33,7 @@ def test_current_config_preserves_fail_closed_boundaries() -> None:
     assert config["tokenizer_fit_executed"] is False
     assert config["paid_compute_used"] is False
     assert config["final_test_payload_read"] is False
-    assert config["convergence_authority"]["head_sha"] == "5356d60c8c8af46d6fc34debfd3cb36731045338"
+    assert config["convergence_authority"]["head_sha"] == "9a6b43849042a4c0dc60d6da5e341827ccf311e7"
     assert config["convergence_authority"]["successor_revalidation_required"] is True
     assert config["acceptance"]["expected_source_objects"] == 22
     assert config["acceptance"]["expected_declared_capacity_bytes_before"] == 320632
