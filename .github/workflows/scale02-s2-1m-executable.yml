@@ -6,6 +6,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: scale02-s2-1m-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   locked-s2-1m-cpu-preflight:
     runs-on: ubuntu-24.04
