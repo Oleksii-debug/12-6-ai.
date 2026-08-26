@@ -4,12 +4,15 @@ on:
   push:
     branches:
       - "data526/predecontam-candidate-records-sol-20260826"
+      - "audit/data526-authority-provenance-20260826"
     paths:
       - "configs/data/data526_predecontam_source_records_v1.json"
       - "evidence/data526/predecontam_candidate_v1.json"
       - "tools/build_predecontam_candidate_identity.py"
       - "tools/validate_data526_predecontam_candidate.py"
+      - "tools/validate_data526_live_authorities.py"
       - "tests/test_data526_predecontam_candidate.py"
+      - "tests/test_data526_live_authorities.py"
       - "docs/DATA526_PREDECONTAM_CANDIDATE.md"
       - ".github/workflows/data526-predecontam-candidate.yml"
   pull_request:
@@ -18,13 +21,16 @@ on:
       - "evidence/data526/predecontam_candidate_v1.json"
       - "tools/build_predecontam_candidate_identity.py"
       - "tools/validate_data526_predecontam_candidate.py"
+      - "tools/validate_data526_live_authorities.py"
       - "tests/test_data526_predecontam_candidate.py"
+      - "tests/test_data526_live_authorities.py"
       - "docs/DATA526_PREDECONTAM_CANDIDATE.md"
       - ".github/workflows/data526-predecontam-candidate.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: data526-predecontam-${{ github.event.pull_request.number || github.ref }}
@@ -45,7 +51,9 @@ jobs:
           python3 -m py_compile \
             tools/build_predecontam_candidate_identity.py \
             tools/validate_data526_predecontam_candidate.py \
-            tests/test_data526_predecontam_candidate.py
+            tools/validate_data526_live_authorities.py \
+            tests/test_data526_predecontam_candidate.py \
+            tests/test_data526_live_authorities.py
 
       - name: Rebuild frozen identity to temporary output
         run: |
@@ -65,5 +73,12 @@ jobs:
       - name: Validate fail-closed candidate
         run: python3 tools/validate_data526_predecontam_candidate.py
 
+      - name: Verify live authority provenance
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 tools/validate_data526_live_authorities.py
+
       - name: Run adversarial tests
-        run: python3 -m unittest tests.test_data526_predecontam_candidate -v
+        run: |
+          python3 -m unittest tests.test_data526_predecontam_candidate -v
+          python3 -m unittest tests.test_data526_live_authorities -v
