@@ -20,6 +20,7 @@ from twelve_six.postbase import (
 
 WORKER_ID = "POSTBASE-359-TEACHER-FACTORY-CONVERGENCE"
 PARENT_CANDIDATE_HEAD = "5ec7bc917b506273751f0efa8d1048431bcafc8d"
+TRAINING_USE = "POSTBASE_SYNTHETIC_EXPERIMENTAL_ONLY"
 
 
 def _factory(curator: VersionedDatasetCurator, teacher) -> TeacherStudentDataFactory:
@@ -33,20 +34,33 @@ def _factory(curator: VersionedDatasetCurator, teacher) -> TeacherStudentDataFac
     )
 
 
+def _role_ids(factory: TeacherStudentDataFactory) -> dict[str, str]:
+    role_ids = {
+        "teacher": factory.teachers[0].adapter_id,
+        "critic": factory.critic.adapter_id,
+        "verifier": factory.verifier.adapter_id,
+        "judge": factory.judge.adapter_id,
+        "curator": factory.curator.adapter_id,
+    }
+    assert len(role_ids) == len(set(role_ids.values()))
+    return role_ids
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
 
     accepted_curator = VersionedDatasetCurator("postbase359-proof", "v1")
-    accepted = _factory(accepted_curator, CorrectTeacher("4")).run(
-        make_task("arithmetic-1", "What is 2 + 2?")
-    )
+    accepted_factory = _factory(accepted_curator, CorrectTeacher("4"))
+    accepted = accepted_factory.run(make_task("arithmetic-1", "What is 2 + 2?"))
 
     rejected_curator = VersionedDatasetCurator("postbase359-proof-wrong", "v1")
-    rejected = _factory(rejected_curator, ConfidentlyWrongTeacher("5")).run(
-        make_task("arithmetic-1", "What is 2 + 2?")
-    )
+    rejected_factory = _factory(rejected_curator, ConfidentlyWrongTeacher("5"))
+    rejected = rejected_factory.run(make_task("arithmetic-1", "What is 2 + 2?"))
+
+    accepted_role_ids = _role_ids(accepted_factory)
+    rejected_role_ids = _role_ids(rejected_factory)
 
     assert accepted.accepted and accepted.record is not None
     assert not rejected.accepted and rejected.record is None
@@ -55,11 +69,18 @@ def main() -> None:
     assert rejected_curator.records == ()
 
     accepted_manifest = accepted_curator.manifest()
+    rejected_manifest = rejected_curator.manifest()
     root_manifest = accepted_curator.manifest_history[0]
     assert accepted.record.parent_dataset_manifest_sha256 == root_manifest["manifest_sha256"]
     assert accepted_manifest["parent_manifest_sha256"] == root_manifest["manifest_sha256"]
     assert accepted_manifest["canonical_base_training_eligible"] is False
+    assert accepted_manifest["base_corpus_evidence"] is False
+    assert accepted_manifest["training_use"] == TRAINING_USE
     assert accepted.record.canonical_base_training_eligible is False
+    assert rejected_manifest["dataset_revision"] == 0
+    assert rejected_manifest["canonical_base_training_eligible"] is False
+    assert rejected_manifest["base_corpus_evidence"] is False
+    assert rejected_manifest["training_use"] == TRAINING_USE
 
     proposal = accepted.teacher_proposals[0]
     verification = accepted.verifications[0]
@@ -93,6 +114,7 @@ def main() -> None:
         "canonical_base_training_executed": False,
         "canonical_base_training_eligible": False,
         "base_corpus_evidence": False,
+        "training_use": TRAINING_USE,
         "flow": [
             "teacher_proposal",
             "independent_critique",
@@ -100,6 +122,11 @@ def main() -> None:
             "accept_reject",
             "versioned_postbase_dataset",
         ],
+        "role_identity_separation": {
+            "accepted_fixture": accepted_role_ids,
+            "confidently_wrong_fixture": rejected_role_ids,
+            "pairwise_distinct": True,
+        },
         "accepted_fixture": {
             "accepted": accepted.accepted,
             "record_id": accepted.record.record_id,
@@ -110,7 +137,9 @@ def main() -> None:
             "teacher_confidence": rejected.teacher_proposals[0].confidence,
             "accepted": rejected.accepted,
             "verification_status": rejected.verifications[0].status.value,
+            "accepted_records": len(rejected_curator.records),
             "curated_records": len(rejected_curator.records),
+            "dataset_revision": rejected_manifest["dataset_revision"],
         },
         "base_boundary_blocked": base_boundary_blocked,
     }

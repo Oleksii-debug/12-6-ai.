@@ -81,9 +81,13 @@ jobs:
           grep -q '"canonical_base_training_executed": false' postbase359-proof/report.json
           grep -q '"canonical_base_training_eligible": false' postbase359-proof/report.json
           grep -q '"base_corpus_evidence": false' postbase359-proof/report.json
+          grep -q '"training_use": "POSTBASE_SYNTHETIC_EXPERIMENTAL_ONLY"' postbase359-proof/report.json
+          grep -q '"pairwise_distinct": true' postbase359-proof/report.json
           grep -q '"teacher_confidence": 1.0' postbase359-proof/report.json
           grep -q '"verification_status": "CONTRADICTED"' postbase359-proof/report.json
           grep -q '"accepted": false' postbase359-proof/report.json
+          grep -q '"accepted_records": 0' postbase359-proof/report.json
+          grep -q '"dataset_revision": 0' postbase359-proof/report.json
 
       - name: Retain convergence proof
         if: always()
