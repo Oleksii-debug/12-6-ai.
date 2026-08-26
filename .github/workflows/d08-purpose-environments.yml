@@ -1,6 +1,22 @@
 name: D08 Purpose Environments
 on:
   pull_request:
+    # This workflow validates packaging/runtime environment contracts. It is
+    # intentionally broad across package source and environment definitions,
+    # but data/docs-only PRs do not need three Linux purpose environments plus
+    # a transported Windows wheel/runtime check.
+    paths:
+      - ".github/workflows/d08-purpose-environments.yml"
+      - "pyproject.toml"
+      - "src/**"
+      - "requirements/locks/**"
+      - "requirements/profiles/**"
+      - "tools/verify_purpose_environment.py"
+
+concurrency:
+  group: d08-purpose-environments-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 jobs:
