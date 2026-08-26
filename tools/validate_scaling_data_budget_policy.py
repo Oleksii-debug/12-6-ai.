@@ -7,31 +7,36 @@ from typing import Any
 
 EXPECTED_SCHEMA = "12-6.scaling-data-budget-policy.v1"
 REFERENCE_MULTIPLIERS = (20, 50, 100)
-CURRENT_REGISTRY_PR = 538
-CURRENT_REGISTRY_HEAD = "958ebec0f7c9cb00238c7df70566cefd6b504d92"
-CURRENT_REGISTRY_IDENTITY = "77fb69c558df8c59fdae00583c955c62ad088cda98fd16b335eedb26fb2d7526"
-CURRENT_SOURCE_BYTES = 565_743
-CURRENT_FAMILY_COUNT = 13
-SOURCE_TARGET_BYTES = 20_000_000
+EXPECTED_STAGE_PARAMETER_COUNTS = {
+    "20M_PRIMARY": 20_613_440,
+    "100M_TARGET": 100_000_000,
+    "1B_TARGET": 1_000_000_000,
+}
 REQUIRED_EVIDENCE = {
     "immutable_corpus_identity",
     "immutable_train_split_identity",
     "tokenizer_identity",
-    "exact_post_tokenization_train_token_count",
+    "exact_post_tokenization_unique_train_token_count",
     "exact_unique_loss_position_count",
     "document_boundary_loss_mask_identity",
     "evaluation_decontamination_authority",
     "deduplication_authority",
     "quality_and_privacy_authority",
     "checkpoint_resume_authority",
-    "preregistered_training_budget_and_stop_rule",
+    "preregistered_total_training_token_exposure_budget",
+    "preregistered_replay_policy_and_epoch_cap",
+    "preregistered_stop_rule",
+    "explicit_compute_authorization",
 }
 FORBIDDEN_SUBSTITUTIONS = {
     "source_bytes_for_training_tokens",
     "normalized_bytes_for_training_tokens",
+    "source_capacity_target_for_training_budget",
+    "total_training_token_exposures_for_unique_loss_positions",
     "raw_record_count_for_unique_loss_positions",
     "replayed_tokens_for_unique_tokens",
     "queued_ci_for_terminal_success",
+    "stale_source_snapshot_for_live_data_authority",
 }
 
 
@@ -41,31 +46,51 @@ def _require(condition: bool, message: str) -> None:
 
 
 def _validate_stage(stage: dict[str, Any]) -> None:
+    stage_name = stage.get("stage")
     parameter_count = stage.get("parameter_count")
     _require(
         isinstance(parameter_count, int) and not isinstance(parameter_count, bool),
         "parameter_count must be an integer",
     )
     _require(parameter_count > 0, "parameter_count must be positive")
+    _require(
+        stage_name in EXPECTED_STAGE_PARAMETER_COUNTS,
+        f"unexpected scaling stage: {stage_name}",
+    )
+    _require(
+        parameter_count == EXPECTED_STAGE_PARAMETER_COUNTS[stage_name],
+        f"{stage_name} parameter_count drift",
+    )
 
-    references = stage.get("reference_unique_loss_tokens")
-    _require(isinstance(references, dict), "reference_unique_loss_tokens must be a mapping")
+    references = stage.get("reference_training_token_exposures")
+    _require(
+        isinstance(references, dict),
+        "reference_training_token_exposures must be a mapping",
+    )
     for multiplier in REFERENCE_MULTIPLIERS:
         key = f"{multiplier}x"
         _require(
             references.get(key) == parameter_count * multiplier,
-            f"{stage.get('stage')} {key} token reference drift",
+            f"{stage_name} {key} token-exposure reference drift",
         )
 
     expected_flops = 6 * parameter_count * (parameter_count * 20)
     _require(
         stage.get("approx_dense_training_flops_at_20x") == expected_flops,
-        f"{stage.get('stage')} approximate 20x FLOPs drift",
+        f"{stage_name} approximate 20x FLOPs drift",
+    )
+    _require(
+        stage.get("status_source") == "external_stage_readiness_authority",
+        f"{stage_name} must not embed volatile readiness status",
     )
 
 
 def validate(policy: dict[str, Any]) -> dict[str, Any]:
     _require(policy.get("schema_version") == EXPECTED_SCHEMA, "unexpected schema_version")
+    _require(
+        "current_20m_observation" not in policy,
+        "volatile live source snapshots must not be embedded in scaling policy",
+    )
 
     boundary = policy.get("truth_boundary")
     _require(isinstance(boundary, dict), "truth_boundary must be a mapping")
@@ -78,12 +103,28 @@ def validate(policy: dict[str, Any]) -> dict[str, Any]:
         "bytes must never be loss-position authority",
     )
     _require(
+        boundary.get("source_capacity_target_is_training_budget") is False,
+        "source-capacity targets must never be training budgets",
+    )
+    _require(
+        boundary.get("training_token_exposures_are_unique_loss_positions") is False,
+        "token exposures must not be treated as unique loss positions",
+    )
+    _require(
+        boundary.get("planning_reference_is_minimum_training_requirement") is False,
+        "planning reference cannot become a hard minimum",
+    )
+    _require(
         boundary.get("planning_reference_is_quality_guarantee") is False,
         "planning references cannot guarantee quality",
     )
     _require(
         boundary.get("planning_reference_is_compute_authorization") is False,
         "planning references cannot authorize compute",
+    )
+    _require(
+        boundary.get("this_policy_can_authorize_training") is False,
+        "science policy must not self-authorize training",
     )
     _require(
         boundary.get("paid_compute_authorized") is False,
@@ -93,11 +134,12 @@ def validate(policy: dict[str, Any]) -> dict[str, Any]:
     reference_policy = policy.get("reference_policy")
     _require(isinstance(reference_policy, dict), "reference_policy must be a mapping")
     _require(
-        reference_policy.get("baseline_unique_loss_tokens_per_parameter") == 20,
+        reference_policy.get("baseline_training_token_exposures_per_parameter") == 20,
         "baseline planning reference must remain 20x",
     )
     _require(
-        reference_policy.get("exploration_tokens_per_parameter") == [20, 50, 100],
+        reference_policy.get("exploration_training_token_exposures_per_parameter")
+        == [20, 50, 100],
         "exploration ladder drift",
     )
 
@@ -106,80 +148,73 @@ def validate(policy: dict[str, Any]) -> dict[str, Any]:
         isinstance(stages, list) and len(stages) == 3,
         "expected exactly three planning stages",
     )
+    _require(
+        all(isinstance(stage, dict) for stage in stages),
+        "each stage must be a mapping",
+    )
     expected_stage_names = ["20M_PRIMARY", "100M_TARGET", "1B_TARGET"]
     _require(
         [stage.get("stage") for stage in stages] == expected_stage_names,
         "stage ordering or identity drift",
     )
     for stage in stages:
-        _require(isinstance(stage, dict), "each stage must be a mapping")
         _validate_stage(stage)
+
+    data_contract = policy.get("data_authority_contract")
+    _require(isinstance(data_contract, dict), "data_authority_contract must be a mapping")
+    required_true = {
+        "live_source_registry_owned_by_data_lane",
+        "source_capacity_targets_are_acquisition_planning_only",
+        "promotion_requires_terminal_exact_head_authority",
+        "promotion_requires_immutable_materialized_corpus",
+        "promotion_requires_exact_post_tokenization_accounting",
+        "promotion_requires_unique_vs_replayed_exposure_accounting",
+    }
+    for key in required_true:
+        _require(data_contract.get(key) is True, f"data authority invariant missing: {key}")
+    required_false = {
+        "volatile_source_capacity_embedded_here",
+        "source_registry_is_corpus_identity",
+        "source_registry_is_token_count_authority",
+        "source_registry_is_loss_position_authority",
+    }
+    for key in required_false:
+        _require(data_contract.get(key) is False, f"data authority firewall missing: {key}")
 
     gate = policy.get("long_training_gate")
     _require(isinstance(gate, dict), "long_training_gate must be a mapping")
+    required_evidence = gate.get("required_evidence")
+    _require(isinstance(required_evidence, list), "required_evidence must be a list")
     _require(
-        set(gate.get("required_evidence", [])) == REQUIRED_EVIDENCE,
+        set(required_evidence) == REQUIRED_EVIDENCE,
         "required evidence set drift",
     )
+    forbidden_substitutions = gate.get("forbidden_substitutions")
     _require(
-        set(gate.get("forbidden_substitutions", [])) == FORBIDDEN_SUBSTITUTIONS,
+        isinstance(forbidden_substitutions, list),
+        "forbidden_substitutions must be a list",
+    )
+    _require(
+        set(forbidden_substitutions) == FORBIDDEN_SUBSTITUTIONS,
         "forbidden substitution set drift",
     )
     _require(
-        gate.get("below_20x_classification") == "BOUNDED_SCALING_OR_SMOKE_EXPERIMENT_ONLY",
-        "below-reference classification drift",
+        gate.get("below_20x_requires_explicit_scaling_rationale") is True,
+        "below-reference scaling rationale gate missing",
     )
     _require(
-        gate.get("full_stage_attempt_requires_at_least_reference_or_explicit_scaling_exception")
-        is True,
-        "full-stage fail-closed rule missing",
-    )
-
-    current = policy.get("current_20m_observation")
-    _require(isinstance(current, dict), "current_20m_observation must be a mapping")
-    _require(current.get("source_registry_pr") == CURRENT_REGISTRY_PR, "source registry PR drift")
-    _require(
-        current.get("source_registry_head_sha") == CURRENT_REGISTRY_HEAD,
-        "source registry head drift",
-    )
-    _require(
-        current.get("source_registry_identity") == CURRENT_REGISTRY_IDENTITY,
-        "source registry identity drift",
-    )
-    _require(
-        current.get("observed_source_capacity_bytes") == CURRENT_SOURCE_BYTES,
-        "observed source-capacity authority drift",
-    )
-    _require(
-        current.get("observed_independent_families") == CURRENT_FAMILY_COUNT,
-        "observed source-family authority drift",
-    )
-    _require(
-        current.get("frozen_source_capacity_target_bytes") == SOURCE_TARGET_BYTES,
-        "source-capacity target drift",
-    )
-    _require(
-        current.get("remaining_source_capacity_gap_bytes")
-        == SOURCE_TARGET_BYTES - CURRENT_SOURCE_BYTES,
-        "source-capacity gap arithmetic drift",
-    )
-    _require(
-        current.get("authorized_balanced_no_replay_loss_positions") == 0,
-        "source registry cannot fabricate authorized loss positions",
-    )
-    _require(
-        current.get("bytes_to_tokens_conversion") == "FORBIDDEN_WITHOUT_EXACT_TOKENIZATION",
-        "bytes-to-token firewall missing",
-    )
-    _require(
-        current.get("learned_20m_long_training_ready") is False,
-        "policy must not fabricate 20M training readiness",
+        gate.get("above_20x_requires_explicit_scaling_rationale") is True,
+        "above-reference scaling rationale gate missing",
     )
 
     references = policy.get("research_basis")
     _require(
         isinstance(references, list) and len(references) >= 5,
         "research basis is incomplete",
+    )
+    _require(
+        all(isinstance(item, dict) for item in references),
+        "research basis entries must be mappings",
     )
     _require(
         len({item.get("id") for item in references}) == len(references),
@@ -190,11 +225,13 @@ def validate(policy: dict[str, Any]) -> dict[str, Any]:
         "status": "PASS",
         "stage_count": len(stages),
         "primary_parameter_count": stages[0]["parameter_count"],
-        "primary_20x_unique_loss_tokens": stages[0]["reference_unique_loss_tokens"]["20x"],
-        "source_registry_pr": CURRENT_REGISTRY_PR,
-        "source_capacity_bytes_at_cutoff": CURRENT_SOURCE_BYTES,
+        "primary_20x_training_token_exposures": stages[0][
+            "reference_training_token_exposures"
+        ]["20x"],
+        "volatile_source_snapshot_embedded": False,
         "source_bytes_are_token_authority": False,
-        "long_training_ready": False,
+        "token_exposures_are_unique_positions": False,
+        "policy_can_authorize_training": False,
     }
 
 
