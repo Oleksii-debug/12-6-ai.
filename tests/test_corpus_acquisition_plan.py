@@ -131,3 +131,18 @@ def test_family_vector_must_match_canonical_v4() -> None:
     plan["baseline"]["observed_independent_families"]["total"] = 13
     with pytest.raises(CorpusAcquisitionPlanError, match="family vector drift from canonical V4"):
         validate_acquisition_plan(plan)
+
+
+def test_pr_head_movement_is_allowed_when_immutable_registry_identity_is_unchanged() -> None:
+    plan = _plan()
+    plan["baseline"]["source_convergence_head"] = "1" * 40
+    summary = validate_acquisition_plan(plan)
+    assert summary["baseline_source_registry_identity_sha256"] == BASELINE_REGISTRY_IDENTITY
+    assert summary["training_authorized_bytes"] == 0
+
+
+def test_malformed_observed_pr_head_is_rejected() -> None:
+    plan = _plan()
+    plan["baseline"]["source_convergence_head"] = "not-a-sha"
+    with pytest.raises(CorpusAcquisitionPlanError, match="40-char SHA"):
+        validate_acquisition_plan(plan)
