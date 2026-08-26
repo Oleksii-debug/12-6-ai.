@@ -1,19 +1,52 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
+import sys
 import tempfile
+import types
 import unittest
 from pathlib import Path
 
-from twelve_six.data297_privacy_external_audit import (
-    _fixture_specs,
-    _resolve_data227_code,
-    _resolve_data229_text,
-    assert_incumbent_privacy_authority,
-    audit_labeled_fixtures,
-    load_config,
-)
+
+def _load_audit_module_for_test():
+    repository_root = Path(__file__).resolve().parents[1]
+    package_root = repository_root / "src" / "twelve_six"
+    data_root = package_root / "data"
+
+    package = types.ModuleType("twelve_six")
+    package.__path__ = [str(package_root)]
+    package.__package__ = "twelve_six"
+    sys.modules.setdefault("twelve_six", package)
+
+    data_package = types.ModuleType("twelve_six.data")
+    data_package.__path__ = [str(data_root)]
+    data_package.__package__ = "twelve_six.data"
+    sys.modules.setdefault("twelve_six.data", data_package)
+
+    module_name = "twelve_six.data297_privacy_external_audit"
+    existing = sys.modules.get(module_name)
+    if existing is not None:
+        return existing
+    spec = importlib.util.spec_from_file_location(
+        module_name, package_root / "data297_privacy_external_audit.py"
+    )
+    if spec is None or spec.loader is None:
+        raise RuntimeError("unable to load DATA-297 audit module")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+_audit = _load_audit_module_for_test()
+_fixture_specs = _audit._fixture_specs
+_resolve_data227_code = _audit._resolve_data227_code
+_resolve_data229_text = _audit._resolve_data229_text
+assert_incumbent_privacy_authority = _audit.assert_incumbent_privacy_authority
+audit_labeled_fixtures = _audit.audit_labeled_fixtures
+load_config = _audit.load_config
 
 
 class Data297PrivacyExternalAuditTests(unittest.TestCase):
@@ -44,7 +77,10 @@ class Data297PrivacyExternalAuditTests(unittest.TestCase):
             config["inventory_authorities"]["DATA-228"]["status"],
             "NONTERMINAL_EXCLUDED_FROM_TRAINING_INVENTORY",
         )
-        hashes = {item["source_id"]: item["expected_input_sha256"] for item in config["admitted_inventory"]}
+        hashes = {
+            item["source_id"]: item["expected_input_sha256"]
+            for item in config["admitted_inventory"]
+        }
         self.assertEqual(
             hashes["code.encode.httpx._content"],
             "2c61b3ac94d1dcebcde0c6f519554d2d7917247fbaa0a97002db4ef69e70ff28",
