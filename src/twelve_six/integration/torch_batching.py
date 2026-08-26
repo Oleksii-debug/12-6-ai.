@@ -6,6 +6,12 @@ from typing import Self
 
 import torch
 
+from twelve_six.inference.static_kv import (
+    StaticDecoderKVCache,
+    allocate_static_kv_cache,
+    decode_one_with_static_kv_cache,
+    prefill_static_kv_cache,
+)
 from twelve_six.integration.s0_runtime import S0TorchInferenceBackend
 from twelve_six.model import DecoderKVCache, TwelveSixDecoder
 from twelve_six.tokenization import ByteTokenizer
@@ -112,8 +118,8 @@ def right_padded_next_token_logits(
     return values, stats
 
 
-class S0TorchBatchedGenerationSession:
-    """One fixed-row equal-length batch backed by the incumbent model-native KV cache."""
+class S0TorchDynamicBatchedGenerationSession:
+    """Retained torch.cat-growing batch cache used only for parity measurement."""
 
     def __init__(
         self,
@@ -201,6 +207,126 @@ class S0TorchBatchedGenerationSession:
         self.close()
 
 
+class S0TorchBatchedGenerationSession:
+    """Fixed-row equal-length batch backed by a preallocated first-party KV arena."""
+
+    def __init__(
+        self,
+        backend: S0TorchBatchedInferenceBackend,
+        input_ids: Sequence[Sequence[int]],
+    ) -> None:
+        rows, lengths = _validated_rows(backend.model, input_ids)
+        if len(set(lengths)) != 1:
+            raise ValueError("KV-cache batch prefill requires exact-equal sequence lengths")
+
+        self._backend = backend
+        self._model = backend.model
+        self._batch_size = len(rows)
+        self._closed = False
+        self.tokens_processed = sum(lengths)
+        self._cache: StaticDecoderKVCache
+        self._logits: list[list[float]]
+
+        self._backend._acquire_generation_session()
+        try:
+            self._cache = allocate_static_kv_cache(
+                self._model,
+                batch_size=self._batch_size,
+                capacity=self._backend.max_context_tokens,
+            )
+            tensor = torch.tensor(
+                rows,
+                dtype=torch.long,
+                device=next(self._model.parameters()).device,
+            )
+            output = prefill_static_kv_cache(self._model, tensor, self._cache)
+            self._logits = output.logits[:, -1].detach().float().cpu().tolist()
+        except Exception:
+            self._backend._release_generation_session()
+            self._closed = True
+            raise
+
+    @property
+    def batch_size(self) -> int:
+        return self._batch_size
+
+    @property
+    def sequence_length(self) -> int:
+        self._require_open()
+        return self._cache.sequence_length
+
+    @property
+    def cache_bytes(self) -> int:
+        """Physical K/V bytes reserved once for the entire fixed-row cache."""
+        self._require_open()
+        return self._cache.allocated_bytes
+
+    @property
+    def logical_cache_bytes(self) -> int:
+        self._require_open()
+        return self._cache.logical_bytes
+
+    @property
+    def cache_storage_signature(self) -> tuple[tuple[int, int], ...]:
+        self._require_open()
+        return self._cache.storage_signature
+
+    def _require_open(self) -> None:
+        if self._closed:
+            raise RuntimeError("batched generation session is closed")
+
+    def next_token_logits_batch(self) -> Sequence[Sequence[float]]:
+        self._require_open()
+        return [list(row) for row in self._logits]
+
+    def append_batch(self, token_ids: Sequence[int]) -> None:
+        self._require_open()
+        if len(token_ids) != self._batch_size:
+            raise ValueError("batched KV append must provide exactly one token per cache row")
+        self._backend._validate_token_ids(token_ids)
+        if self._cache.sequence_length >= self._backend.max_context_tokens:
+            raise ValueError("static KV cache is already at model context limit")
+        tensor = torch.tensor(
+            [[token_id] for token_id in token_ids],
+            dtype=torch.long,
+            device=next(self._model.parameters()).device,
+        )
+        output = decode_one_with_static_kv_cache(self._model, tensor, self._cache)
+        self._logits = output.logits[:, -1].detach().float().cpu().tolist()
+        self.tokens_processed += self._batch_size
+
+    def reset_batch(self, input_ids: Sequence[Sequence[int]]) -> None:
+        """Reuse the same fixed-row cache for another equal-length batch of identical width."""
+        self._require_open()
+        rows, lengths = _validated_rows(self._model, input_ids)
+        if len(rows) != self._batch_size:
+            raise ValueError("reused static KV batch must keep the original batch size")
+        if len(set(lengths)) != 1:
+            raise ValueError("reused static KV batch requires exact-equal sequence lengths")
+        tensor = torch.tensor(
+            rows,
+            dtype=torch.long,
+            device=next(self._model.parameters()).device,
+        )
+        output = prefill_static_kv_cache(self._model, tensor, self._cache)
+        self._logits = output.logits[:, -1].detach().float().cpu().tolist()
+        self.tokens_processed = sum(lengths)
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._cache.reset()
+        self._backend._release_generation_session()
+        self._closed = True
+
+    def __enter__(self) -> Self:
+        self._require_open()
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        self.close()
+
+
 class S0TorchBatchedInferenceBackend(S0TorchInferenceBackend):
     """S0 raw-Base adapter exposing stateless and model-native batched inference."""
 
@@ -233,5 +359,12 @@ class S0TorchBatchedInferenceBackend(S0TorchInferenceBackend):
         self,
         input_ids: Sequence[Sequence[int]],
     ) -> S0TorchBatchedGenerationSession:
-        """Open one fixed-row equal-length batch on the accepted model-native cache."""
+        """Open one accepted static fixed-row equal-length batch."""
         return S0TorchBatchedGenerationSession(self, input_ids)
+
+    def begin_dynamic_generation_batch(
+        self,
+        input_ids: Sequence[Sequence[int]],
+    ) -> S0TorchDynamicBatchedGenerationSession:
+        """Open the retained dynamic batch cache only for explicit parity measurement."""
+        return S0TorchDynamicBatchedGenerationSession(self, input_ids)
