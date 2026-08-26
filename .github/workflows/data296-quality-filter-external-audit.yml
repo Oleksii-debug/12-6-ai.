@@ -1,0 +1,176 @@
+name: DATA-296 External Quality Filter Audit
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  external-quality-audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact audit head
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+
+      - name: Capture exact LOCAL_FREE runtime
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import platform
+          import sys
+          from pathlib import Path
+
+          manifest = {
+              "schema_version": "12-6.data296-execution-environment.v1",
+              "source_sha": os.environ["EXPECTED_SOURCE_SHA"],
+              "local_free_only": True,
+              "dependency_mode": "STDLIB_ONLY_NO_INSTALL",
+              "python_version": platform.python_version(),
+              "python_implementation": platform.python_implementation(),
+              "platform": platform.platform(),
+              "executable": sys.executable,
+          }
+          assert manifest["python_version"] == "3.11.16"
+          Path("data296-execution-environment.json").write_text(
+              json.dumps(manifest, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+              encoding="utf-8",
+              newline="\n",
+          )
+          PY
+
+      - name: Compile DATA-296 path
+        env:
+          PYTHONPATH: src
+        run: python -m compileall -q src/twelve_six/data tools/run_data296_quality_external_audit.py tests/test_data296_quality_external_audit.py
+
+      - name: Run DATA-296 contract checks
+        env:
+          PYTHONPATH: src
+        run: python tests/test_data296_quality_external_audit.py
+
+      - name: Execute immutable external-real quality audit
+        env:
+          PYTHONPATH: src
+        run: |
+          set -euo pipefail
+          mkdir -p data296-evidence
+          python tools/run_data296_quality_external_audit.py \
+            --repo-root . \
+            --plan configs/data/data296_quality_filter_external_audit_v1.json \
+            --output data296-evidence/data296-quality-filter-external-audit.json \
+            | tee data296-evidence/stdout.log
+
+      - name: Assert statistics-only authority and family coverage
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(
+              Path("data296-evidence/data296-quality-filter-external-audit.json").read_text()
+          )
+          assert report["schema_version"] == (
+              "12-6.data296-quality-filter-external-audit-report.v1"
+          )
+          assert report["local_free_only"] is True
+          assert report["policy_selection"] == "FORBIDDEN_NOT_PERFORMED"
+          assert report["model_results_read"] is False
+          assert report["final_test_outcomes_read"] is False
+          assert len(report["source_checks"]) == 5
+          assert {item["family_id"] for item in report["source_checks"]} == {
+              "ua.rada.open-data.laws-texts",
+              "en.standardebooks.manual",
+              "github:encode/httpx",
+              "github:psf/requests",
+          }
+          policies = {item["role"]: item for item in report["policy_reports"]}
+          assert set(policies) == {
+              "INCUMBENT",
+              "PERMISSIVE_PREREGISTERED",
+              "STRICT_PREREGISTERED",
+          }
+          assert policies["INCUMBENT"]["policy_sha256"] == (
+              "97b9fe1452b22c6275a27f85524f670253a7f4012377361c4cb007004aeccd1d"
+          )
+          for policy in policies.values():
+              assert len(policy["families"]) == 4
+              assert len(policy["diagnostic_categories"]) == 3
+          PY
+
+      - name: Build deterministic evidence manifest
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          paths = [
+              Path("configs/data/data296_quality_filter_external_audit_v1.json"),
+              Path("data296-evidence/data296-quality-filter-external-audit.json"),
+              Path("data296-evidence/stdout.log"),
+              Path("data296-execution-environment.json"),
+          ]
+          files = []
+          for path in paths:
+              payload = path.read_bytes()
+              files.append(
+                  {
+                      "path": path.as_posix(),
+                      "sha256": hashlib.sha256(payload).hexdigest(),
+                      "size_bytes": len(payload),
+                  }
+              )
+          core = {
+              "schema_version": "12-6.data296-quality-audit-artifact-manifest.v1",
+              "source_sha": os.environ["EXPECTED_SOURCE_SHA"],
+              "local_free_only": True,
+              "files": files,
+          }
+          canonical = (
+              json.dumps(core, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+              + "\n"
+          ).encode("utf-8")
+          manifest = {
+              **core,
+              "manifest_sha256": hashlib.sha256(canonical).hexdigest(),
+          }
+          Path("data296-evidence/artifact-manifest.json").write_text(
+              json.dumps(manifest, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+              encoding="utf-8",
+              newline="\n",
+          )
+          PY
+
+      - name: Upload DATA-296 immutable audit evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: data296-quality-filter-external-audit-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            configs/data/data296_quality_filter_external_audit_v1.json
+            data296-evidence/data296-quality-filter-external-audit.json
+            data296-evidence/stdout.log
+            data296-evidence/artifact-manifest.json
+            data296-execution-environment.json
+          if-no-files-found: error
+          retention-days: 90
