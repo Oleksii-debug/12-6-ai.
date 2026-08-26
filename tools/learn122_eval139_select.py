@@ -144,10 +144,12 @@ def self_test(policy: dict[str, Any]) -> None:
         {"checkpoint_id": "e", "checkpoint": "e", "actual_optimized_tokens": 4, "bits_per_byte": 2.0, "by_stratum": {}},
     ]
     decision = select(fixture, policy)
-    if decision["selected_checkpoint"]["checkpoint_id"] != "e":
-        raise SystemExit("selector self-test failed")
+    if decision["selected_checkpoint"]["checkpoint_id"] != "d":
+        raise SystemExit("selector self-test failed: preregistered smoothed incumbent drift")
     if decision["posthoc_comparison"]["absolute_raw_best_validation_checkpoint_id"] != "e":
-        raise SystemExit("selector raw-best self-test failed")
+        raise SystemExit("selector self-test failed: raw posthoc best drift")
+    if decision["selected_checkpoint"]["checkpoint_id"] == decision["posthoc_comparison"]["absolute_raw_best_validation_checkpoint_id"]:
+        raise SystemExit("selector self-test failed: raw-best leakage was not detected")
 
 
 def main() -> None:
