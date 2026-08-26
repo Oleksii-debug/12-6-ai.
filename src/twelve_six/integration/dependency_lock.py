@@ -8,7 +8,7 @@ import platform
 import re
 import sys
 import tomllib
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -160,53 +160,62 @@ def validate_profile_manifest(
     root_path = Path(root)
     path = root_path / manifest_path
     manifest = _load_json(path)
+    profile_id = str(manifest.get("profile_id", "<unknown>"))
+    label = f"profile {profile_id}"
     claimed = manifest.get("manifest_sha256")
     payload = dict(manifest)
     payload.pop("manifest_sha256", None)
     if manifest.get("schema_version") != SCHEMA_VERSION:
-        raise DependencyLockError("unsupported dependency-lock profile schema")
+        raise DependencyLockError(f"{label}: unsupported dependency-lock profile schema")
     if _SHA256.fullmatch(str(claimed or "")) is None:
-        raise DependencyLockError("invalid profile manifest SHA-256")
+        raise DependencyLockError(f"{label}: invalid manifest SHA-256")
     if sha256_bytes(canonical_json_bytes(payload)) != claimed:
-        raise DependencyLockError("profile manifest self-hash mismatch")
+        raise DependencyLockError(f"{label}: manifest self-hash mismatch")
     if manifest.get("project") != PROJECT_DISTRIBUTION:
-        raise DependencyLockError("profile project identity mismatch")
+        raise DependencyLockError(f"{label}: project identity mismatch")
     if manifest.get("profile_id") not in SUPPORTED_PROFILES:
-        raise DependencyLockError("unsupported profile identity")
+        raise DependencyLockError(f"{label}: unsupported profile identity")
     expected_python = {
         "implementation": PYTHON_IMPLEMENTATION,
         "version": EXACT_PYTHON_VERSION,
         "requires_python": SUPPORTED_REQUIRES_PYTHON,
     }
     if manifest.get("python") != expected_python:
-        raise DependencyLockError("profile Python policy mismatch")
+        raise DependencyLockError(f"{label}: Python policy mismatch")
     metadata = _project_metadata(root_path / "pyproject.toml")
-    if manifest.get("pyproject_sha256") != sha256_file(root_path / "pyproject.toml"):
-        raise DependencyLockError("profile is stale for current pyproject.toml")
+    pyproject_sha = sha256_file(root_path / "pyproject.toml")
+    if manifest.get("pyproject_sha256") != pyproject_sha:
+        raise DependencyLockError(
+            f"{label}: component pyproject.toml stale: "
+            f"expected={manifest.get('pyproject_sha256')} actual={pyproject_sha}"
+        )
     if manifest.get("declared_requirements") != metadata:
-        raise DependencyLockError("profile declared dependency union mismatch")
+        raise DependencyLockError(f"{label}: component pyproject requirements stale")
     if manifest.get("console_scripts") != CONSOLE_SCRIPTS:
-        raise DependencyLockError("profile console-script binding mismatch")
+        raise DependencyLockError(f"{label}: console-script binding mismatch")
     if enforce_current_platform and manifest.get("profile_id") != current_profile_id():
-        raise DependencyLockError("profile does not match current platform")
+        raise DependencyLockError(f"{label}: does not match current platform")
     locks = manifest.get("locks")
     if not isinstance(locks, dict) or set(locks) != {"toolchain", "runtime", "dev"}:
-        raise DependencyLockError("profile must bind toolchain/runtime/dev locks")
+        raise DependencyLockError(f"{label}: must bind toolchain/runtime/dev locks")
     for group, record in locks.items():
         if not isinstance(record, dict):
-            raise DependencyLockError(f"lock record {group!r} must be an object")
+            raise DependencyLockError(f"{label}: lock record {group!r} must be an object")
         digest = record.get("sha256")
         if _SHA256.fullmatch(str(digest or "")) is None:
-            raise DependencyLockError(f"invalid SHA-256 for {group} lock")
+            raise DependencyLockError(f"{label}: invalid SHA-256 for {group} lock")
         relative = record.get("path")
         if not isinstance(relative, str) or not relative:
-            raise DependencyLockError(f"missing path for {group} lock")
+            raise DependencyLockError(f"{label}: missing path for {group} lock")
         lock_path = root_path / relative
-        if sha256_file(lock_path) != digest:
-            raise DependencyLockError(f"{group} lock hash mismatch")
+        actual = sha256_file(lock_path)
+        if actual != digest:
+            raise DependencyLockError(
+                f"{label}: component {group} stale: expected={digest} actual={actual} path={relative}"
+            )
         count = record.get("package_count")
         if not isinstance(count, int) or count < 0:
-            raise DependencyLockError(f"invalid package count for {group} lock")
+            raise DependencyLockError(f"{label}: invalid package count for {group} lock")
     return manifest
 
 
@@ -220,7 +229,7 @@ def build_lock_index(*, root: str | Path, manifests: Mapping[str, str | Path]) -
             root=root_path, manifest_path=relative, enforce_current_platform=False
         )
         if manifest["profile_id"] != profile_id:
-            raise DependencyLockError("profile index key/id mismatch")
+            raise DependencyLockError(f"profile {profile_id}: index key/id mismatch")
         profiles[profile_id] = {
             "path": Path(relative).as_posix(),
             "sha256": sha256_file(root_path / relative),
@@ -236,7 +245,32 @@ def build_lock_index(*, root: str | Path, manifests: Mapping[str, str | Path]) -
     return payload
 
 
-def validate_lock_index(*, root: str | Path, index_path: str | Path) -> dict[str, Any]:
+def _selected_profiles(profile_ids: Iterable[str] | None) -> tuple[str, ...]:
+    if profile_ids is None:
+        return tuple(sorted(SUPPORTED_PROFILES))
+    selected = tuple(sorted(set(profile_ids)))
+    if not selected:
+        raise DependencyLockError("dependency-lock validation scope must not be empty")
+    unknown = set(selected) - SUPPORTED_PROFILES
+    if unknown:
+        raise DependencyLockError(f"unknown dependency-lock profiles: {sorted(unknown)}")
+    return selected
+
+
+def validate_lock_index(
+    *,
+    root: str | Path,
+    index_path: str | Path,
+    profile_ids: Iterable[str] | None = None,
+) -> dict[str, Any]:
+    """Validate aggregate metadata and either all or an explicit profile subset.
+
+    The aggregate document itself always remains fail-closed. ``profile_ids=None`` is
+    the global/release check and validates every profile. A narrow experiment passes
+    its exact profile id so unrelated optional/other-platform profile bytes cannot
+    prevent that experiment from reaching its own exact-lock validation.
+    """
+
     root_path = Path(root)
     index = _load_json(root_path / index_path)
     claimed = index.get("index_sha256")
@@ -255,19 +289,24 @@ def validate_lock_index(*, root: str | Path, index_path: str | Path) -> dict[str
     profiles = index.get("profiles")
     if not isinstance(profiles, dict) or set(profiles) != SUPPORTED_PROFILES:
         raise DependencyLockError("dependency-lock index profile set mismatch")
-    for profile_id, record in profiles.items():
+    for profile_id in _selected_profiles(profile_ids):
+        record = profiles[profile_id]
         if not isinstance(record, dict):
-            raise DependencyLockError("dependency-lock index profile must be an object")
+            raise DependencyLockError(f"profile {profile_id}: aggregate record must be an object")
         relative = record.get("path")
         if not isinstance(relative, str):
-            raise DependencyLockError("dependency-lock index profile path is invalid")
-        if sha256_file(root_path / relative) != record.get("sha256"):
-            raise DependencyLockError("dependency-lock profile file hash mismatch")
+            raise DependencyLockError(f"profile {profile_id}: aggregate path is invalid")
+        actual_file_sha = sha256_file(root_path / relative)
+        if actual_file_sha != record.get("sha256"):
+            raise DependencyLockError(
+                f"profile {profile_id}: aggregate profile bytes stale: "
+                f"expected={record.get('sha256')} actual={actual_file_sha} path={relative}"
+            )
         manifest = validate_profile_manifest(
             root=root_path, manifest_path=relative, enforce_current_platform=False
         )
         if manifest["profile_id"] != profile_id:
-            raise DependencyLockError("dependency-lock profile identity mismatch")
+            raise DependencyLockError(f"profile {profile_id}: aggregate identity mismatch")
         if manifest["manifest_sha256"] != record.get("manifest_sha256"):
-            raise DependencyLockError("dependency-lock profile semantic hash mismatch")
+            raise DependencyLockError(f"profile {profile_id}: aggregate semantic hash stale")
     return index
