@@ -1,0 +1,128 @@
+{
+  "schema_version": "12-6.d03-plug2-historical-ua-probe.v1",
+  "worker_id": "D03-PLUG2-HISTORICAL-UA-PROBE-20260826",
+  "execution_profile": "LOCAL_FREE",
+  "purpose": "DISCOVERY_AND_IMMUTABLE_ACQUISITION_PLANNING_ONLY",
+  "source": {
+    "repository": "Dandelliony/pluperfect_grac",
+    "hosting": "github",
+    "repository_url": "https://github.com/Dandelliony/pluperfect_grac",
+    "pinned_commit_sha": "27e503ecc2b553d52bfc121b8320144bb25294d8",
+    "pinned_root_tree_sha": "99dec65503cdb9a0b0865901145b7a4311a8bdd2",
+    "language": "uk",
+    "modality": "text",
+    "reported_plug_period": "1816-1954",
+    "reported_plug_tokens": 58676313,
+    "reported_plug_file_count": 42000,
+    "reported_plug2_tokens": 73900596,
+    "reported_unique_authors": 7590,
+    "reported_unique_translators": 44,
+    "reported_input_character": "copyright-free classic literature and other historical texts; OCR-derived and manually corrected",
+    "reported_historical_orthographies": [
+      "Kulishivka",
+      "Zhelekhivka",
+      "Skrypnykivka"
+    ]
+  },
+  "pinned_root_objects": [
+    {
+      "path": "PluG_metadata.psv",
+      "type": "blob",
+      "oid": "d3d4303030b5a0ddb0f5f42b519e8f1660daee67",
+      "bytes": 18513955,
+      "training_capacity_credit_bytes": 0
+    },
+    {
+      "path": "PluG_texts",
+      "type": "tree",
+      "oid": "815488d4bdd56f0e7b6d608934e4d5d446bc120f",
+      "training_capacity_credit_bytes": 0
+    },
+    {
+      "path": "PluG2_metadata.psv",
+      "type": "blob",
+      "oid": "ba51dcc47c0ca5cda9cc6926ae5f32a6d62cb1d2",
+      "bytes": 17473448,
+      "training_capacity_credit_bytes": 0
+    },
+    {
+      "path": "PluG2_texts",
+      "type": "tree",
+      "oid": "10985cdca9dd6c25f1b1e2d087b772104aa9a656",
+      "training_capacity_credit_bytes": 0
+    }
+  ],
+  "rights": {
+    "pinned_readme_statement": "The corpus is available under CC-BY license.",
+    "dataset_license_family": "CC-BY",
+    "exact_cc_by_version_pinned": false,
+    "redistribution_obligation": "ATTRIBUTION_REQUIRED",
+    "model_training_decision": "HOLD_UNTIL_EXACT_LICENSE_VERSION_AND_MEMBER_PROVENANCE",
+    "evaluation_decision": "NOT_SEPARATELY_ADMITTED",
+    "final_test_decision": "PROHIBITED",
+    "reason": "The pinned upstream README states CC-BY but does not pin an exact Creative Commons version. Discovery metadata therefore cannot authorize training capacity before exact rights and member provenance are bound."
+  },
+  "lineage": {
+    "provisional_family_id": "ua.plug.historical-literature-1816-1954",
+    "plug_and_plug2_share_one_family": true,
+    "annotation_or_repository_version_does_not_create_family_credit": true,
+    "known_parent_or_overlap_surface": "GRAC",
+    "cross_source_lineage_dedup_required": true,
+    "independent_from_rada_transcript_family": "PROVISIONAL_DIFFERENT_DOCUMENT_LINEAGE_REQUIRES_MEMBER_AUDIT",
+    "independent_from_other_literary_corpora": "NOT_ESTABLISHED"
+  },
+  "quality_strata": {
+    "modern_standard_ukrainian": "DO_NOT_ASSUME",
+    "historical_orthography_present": true,
+    "historical_language_variant_present": true,
+    "ocr_origin_present": true,
+    "required_period_provenance": true,
+    "required_orthography_label": true,
+    "required_ocr_quality_scan": true,
+    "family_cap_must_apply_after_quality_and_lineage_dedup": true,
+    "default_training_mix_status": "HOLD_UNTIL_STRATIFIED"
+  },
+  "acquisition_policy": {
+    "preferred_first_payload": "PluG_texts",
+    "plug2_default": "HOLD_UNTIL_HISTORICAL_ORTHOGRAPHY_ABLATION_OR_EXPLICIT_CAP",
+    "required_exact_commit_and_tree": true,
+    "required_recursive_tree_complete": true,
+    "required_text_blob_inventory": true,
+    "required_blob_oid_and_size": true,
+    "required_metadata_row_linkage": true,
+    "required_member_sha256_after_download": true,
+    "required_attribution_manifest": true,
+    "required_language_quality_privacy_scan": true,
+    "required_exact_and_near_lineage_dedup": true,
+    "required_evaluation_decontamination": true,
+    "max_single_text_blob_bytes": 50000000
+  },
+  "downstream_required": [
+    "LIVE_VERIFY_PINNED_COMMIT_ROOT_TREE_AND_ROOT_OBJECTS",
+    "MATERIALIZE_COMPLETE_NONTRUNCATED_TEXT_BLOB_INVENTORY",
+    "BIND_METADATA_ROWS_TO_TEXT_BLOBS_AND_PROVENANCE",
+    "PIN_EXACT_CC_BY_VERSION_AND_ATTRIBUTION_PAYLOAD",
+    "DOWNLOAD_BOUNDED_TEXT_MEMBERS_AND_VERIFY_SHA256",
+    "STRATIFY_BY_PERIOD_ORTHOGRAPHY_OCR_QUALITY_AND_TRANSLATION_STATUS",
+    "RUN_LANGUAGE_QUALITY_PRIVACY_FILTERS",
+    "RUN_EXACT_NEAR_AND_LINEAGE_DEDUP_AGAINST_GRAC_AND_LIVE_CORPUS",
+    "RUN_EVALUATION_DECONTAMINATION",
+    "RECOMPUTE_45_35_20_BALANCE_AND_FAMILY_CAPS",
+    "ONLY_THEN_PROPOSE_NONZERO_SOURCE_CAPACITY_CREDIT"
+  ],
+  "claim_boundary": {
+    "full_recursive_inventory_materialized": false,
+    "text_members_downloaded": false,
+    "member_sha256_pinned": false,
+    "exact_license_version_pinned": false,
+    "bulk_source_admitted": false,
+    "normalized_capacity_claimed": false,
+    "training_authorized_bytes": 0,
+    "training_exposure_authorized": false,
+    "tokenizer_fit_authorized": false,
+    "model_training_executed": false,
+    "optimizer_updates": 0,
+    "paid_compute_used": false,
+    "safe_result": "HIGH_LEVERAGE_HISTORICAL_UA_SOURCE_DISCOVERED_EXACT_AUDIT_REQUIRED"
+  }
+}
