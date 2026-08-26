@@ -11,8 +11,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from . import core
-from . import hardening
+from . import core, hardening
 
 
 def install_core_guards() -> None:
