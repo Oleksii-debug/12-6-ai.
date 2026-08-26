@@ -14,6 +14,17 @@ def _write(path: Path, text: str) -> None:
 def _repo(tmp_path: Path) -> Path:
     repo = tmp_path / "repo"
     _write(
+        repo / "pyproject.toml",
+        """[project]
+name = "fixture"
+version = "0.0.0"
+dependencies = ["torch>=2"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.12"]
+""",
+    )
+    _write(
         repo / "requirements/profiles/index.json",
         json.dumps(
             {
@@ -38,10 +49,11 @@ def _repo(tmp_path: Path) -> Path:
         repo / "requirements/locks/linux-x86_64/profile.json",
         json.dumps(
             {
+                "profile_id": "linux-x86_64",
                 "locks": {
                     "runtime": {"path": "requirements/locks/linux-x86_64/runtime.lock.txt"},
                     "dev": {"path": "requirements/locks/linux-x86_64/dev.lock.txt"},
-                }
+                },
             }
         ),
     )
@@ -89,6 +101,44 @@ jobs:
     assert row["missing_packages"] == []
 
 
+def test_literal_local_dev_extra_proves_bare_pytest_and_ruff(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    _write(
+        repo / ".github/workflows/local-extra.yml",
+        """name: local extra
+jobs:
+  test:
+    steps:
+      - run: python -m pip install -e .[dev]
+      - run: ruff check src tests
+      - run: pytest -q
+""",
+    )
+    report = audit_repository(repo)
+    row = report["workflows"][0]
+    assert row["classification"] == "VALID"
+    assert row["declarations"]["pyproject_install"]["extras"] == ["dev"]
+    assert {"pytest", "ruff", "torch"}.issubset(row["declarations"]["declared_packages"])
+
+
+def test_no_deps_local_install_does_not_claim_pyproject_dependencies(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    _write(
+        repo / ".github/workflows/no-deps.yml",
+        """name: no deps
+jobs:
+  test:
+    steps:
+      - run: python -m pip install --no-deps -e .[dev]
+      - run: pytest -q
+""",
+    )
+    report = audit_repository(repo)
+    row = report["workflows"][0]
+    assert row["classification"] == "MISSING_DECLARED_DEPENDENCY"
+    assert row["missing_packages"] == ["pytest"]
+
+
 def test_stale_profile_reference_fails_closed(tmp_path: Path) -> None:
     repo = _repo(tmp_path)
     _write(
@@ -104,6 +154,24 @@ jobs:
     row = report["workflows"][0]
     assert row["classification"] == "STALE_PROFILE_REFERENCE"
     assert row["declarations"]["stale_profile_references"] == ["does-not-exist"]
+
+
+def test_base_d08_profile_argument_is_resolved_but_not_treated_as_install(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    _write(
+        repo / ".github/workflows/profile.yml",
+        """name: profile
+jobs:
+  test:
+    steps:
+      - run: python tools/verify.py --profile linux-x86_64
+""",
+    )
+    report = audit_repository(repo)
+    row = report["workflows"][0]
+    assert row["classification"] == "VALID"
+    assert row["declarations"]["profile_references"] == ["linux-x86_64"]
+    assert row["declarations"]["declared_packages"] == []
 
 
 def test_dynamic_module_command_is_ambiguous(tmp_path: Path) -> None:
