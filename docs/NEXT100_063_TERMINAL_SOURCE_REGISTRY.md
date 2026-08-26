@@ -1,38 +1,62 @@
-# NEXT100-063 — terminal source registry convergence V1
+# NEXT100-063 — terminal source registry convergence V2
 
 ## Result
 
-This authority closes the missing registry-convergence step after DATA-287. It composes only terminal source-admission authorities observed by the cutoff and deliberately excludes RETEST, queued, conditional, and lineage-unresolved candidates.
+This authority converges late terminal source-admission decisions on top of the exact-green NEXT100-065 cross-source dedup V3 authority, rather than recomputing capacity from the older DATA-287 registry alone.
 
-The converged pre-global-dedup vector is **565,743 normalized bytes across 13 independent source families**: UK 100,856 bytes / 4 families; EN 168,544 bytes / 4 families; code 296,343 bytes / 5 families. The DATA-300 minimum of two independent families per stratum therefore becomes structurally satisfiable before global cross-source dedup.
+Scientific parent:
 
-This does **not** freeze Research Corpus V1. The 20,000,000-byte research target still has a 19,434,257-byte gap, and the composed objects have not yet passed one canonical global exact/near dedup, evaluation decontamination, post-composition quality/privacy validation, cluster-safe split, deterministic shard/pack materialization, or unique-loss accounting. Authorized balanced no-replay loss positions remain exactly zero.
+- NEXT100-065 exact head `efc278cec0e4773eb4ff405bf4b4d24ee63b5d13`;
+- config blob `c1e05f09490e25f6fed765dfb70d900717528f4d`;
+- dedicated workflow run `32999969398` = `success`;
+- certified parent capacity: 243,970 bytes across 11 objects / 7 independent families.
 
-## Counted terminal additions
+The corrected late authority layer produces **320,632 bytes of numeric training-source capacity across 12 source families before successor global dedup**. Its source-normalized envelope is **338,533 bytes**. The 17,901-byte difference is CPython documentation whose source authority is terminal but whose training permission is chunk-scoped: 14/16 chunks are accepted and two are rejected for `pii_phone`. This convergence gives those CPython source bytes zero numeric capacity until an exact accepted-chunk byte ledger/materialization becomes terminal.
 
-- PR #449 — KMu Secretariat Ukrainian text, 9,153 bytes.
-- PR #455 — bounded Lesya Ukrainka 1892 Wikisource page, 1,479 bytes.
-- PR #462 — bounded Verba/Nomis1864 Ukrainian literature, 1,659 bytes.
-- PR #445 — MDN prose-only English HTTP compression guide, 6,492 bytes.
-- PR #472 — bounded NIST SP 800 technical prose, 59,358 bytes.
-- PR #467 — bounded CPython tutorial documentation, 17,901 bytes.
-- PR #458 — bounded Starlette implementation code, 5,274 bytes.
-- PR #465 — bounded Pydantic implementation code, 235,204 bytes.
-- PR #475 — bounded Rich implementation code, 46,162 bytes.
+Current pre-successor-dedup strata:
 
-DATA-287 remains the immutable parent registry. This file is a successor authority vector, not a retroactive rewrite of DATA-300 or its frozen historical evidence.
+- Ukrainian: 100,856 numeric bytes / 4 families.
+- English: 150,643 numeric bytes / 4 source-authority families; 168,544-byte normalized envelope including zero-credit CPython source bytes.
+- Code: 69,133 numeric bytes / 4 families.
 
-## Fail-closed exclusions
+The minimum two-family rule is therefore structurally satisfiable at the source-authority layer. It is not yet a post-dedup, post-decontamination corpus claim.
 
-English Wikisource PR #469 is held because its bounded object is training-admitted but independent-family credit versus Wikimedia siblings remains RETEST. Kubernetes UA, PHP UA, CPython code, pandas, NumPy, attrs and Typer remain uncounted because their terminal/executable conditions were not satisfied at this cutoff.
+## Audit correction
+
+An independent exact-head workflow audit found that two source PR descriptions labelled their candidates as admitted while their dedicated source-admission workflows were actually red:
+
+- PR #465 Pydantic, exact head `ca1755886f052d272029d6d68b2f1b7f02187936`: dedicated run `32999061340` = `failure`.
+- PR #475 Rich, exact head `78cada1d69b3f0c438012c4e6cf79143aae2f603`: dedicated run `32999511493` = `failure`.
+
+They therefore receive **zero capacity and zero family credit** in V2. Generic or unrelated green workflows do not override a failed dedicated admission gate.
+
+## Late authorities counted after NEXT100-065
+
+- PR #449 — KMu Secretariat, 9,153 UA bytes, dedicated run `32997970539` success.
+- PR #462 — Verba/Nomis1864, 1,659 UA bytes, dedicated run `32998503672` success.
+- PR #445 — MDN prose-only snapshot, 6,492 EN bytes, dedicated run `32998544359` success.
+- PR #472 — NIST technical-series bounded subset, 59,358 EN bytes, dedicated run `32998703545` success.
+- PR #467 — CPython documentation source authority, 17,901 normalized EN source bytes, dedicated run `32998356906` success; numeric capacity remains zero here until the accepted 14-chunk byte ledger is terminal.
+
+UA Wikisource, Django and Starlette are not re-added because they are already inside the exact-green NEXT100-065 parent vector. This avoids duplicate family/capacity accounting.
+
+## Research Corpus V1 boundary
+
+The 20,000,000-byte acquisition-planning proxy still has a **19,679,368-byte numeric-capacity gap**. More importantly, source bytes are not causal loss tokens. This authority does not imply that a 20 MB corpus is sufficient to train a 20.6M-parameter model well.
+
+Research Corpus V1 remains blocked until the late-source vector passes a successor global exact/near/lineage dedup and then an immutable accepted-record inventory is bound. Evaluation decontamination, post-composition quality/privacy validation, cluster-safe split, deterministic shard/pack materialization, two clean builds and the unique post-pack causal-loss ledger remain mandatory.
+
+Authorized balanced no-replay loss positions remain exactly zero. Long training and paid compute remain prohibited.
 
 ## Next executable package
 
-1. Materialize the exact candidate record inventory for these terminal authorities.
-2. Re-run one global exact/near dedup across all families.
-3. Bind the resulting candidate identity.
-4. Execute evaluation decontamination without exposing final-test payloads to training.
-5. Re-run post-composition quality/privacy gates.
-6. Only then build cluster-safe train/validation splits, deterministic shards/packs, and the unique-loss ledger.
+1. Consume this authority in the successor global cross-source dedup lane; do not duplicate the NEXT100-065 parent objects.
+2. Materialize exact accepted records/chunks for every late source, including the CPython 14/16 training-eligible subset.
+3. Freeze the post-dedup candidate identity.
+4. Execute evaluation decontamination without making final-test payloads available to training.
+5. Re-run quality/privacy and balance/diversity on that exact identity.
+6. Build cluster-safe train/validation splits and deterministic shards/packs twice from clean roots.
+7. Compute the exact unique no-replay causal-loss ledger.
+8. Only after those gates, bind tokenizer/model/run identities and authorize bounded learned ~20M experiments.
 
-No model training, tokenizer fitting, optimizer update, paid compute, corpus freeze, or representativeness claim is introduced here.
+No model training, tokenizer fitting, optimizer update, paid compute, corpus freeze, or representativeness claim is introduced by NEXT100-063 V2.

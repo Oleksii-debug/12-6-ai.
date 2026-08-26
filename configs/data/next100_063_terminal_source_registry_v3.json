@@ -59,7 +59,7 @@
     {"pr": 474, "reason": "RETEST_OR_NONTERMINAL"},
     {"pr": 476, "reason": "RETEST_OR_NONTERMINAL"}
   ],
-  "observed_live_cutoff_utc": "2026-08-26T19:35:00Z",
+  "observed_live_cutoff_utc": "2026-08-26T19:40:00Z",
   "pre_successor_global_dedup_inventory": {
     "dedup_parent_numeric_training_capacity_bytes": 243970,
     "late_numeric_training_capacity_bytes": 76662,
@@ -79,7 +79,7 @@
     "target_fraction_by_numeric_training_capacity": 0.0160316,
     "target_gap_numeric_training_capacity_bytes": 19679368
   },
-  "schema_version": "12-6.next100-063-terminal-source-registry.v2",
+  "schema_version": "12-6.next100-063-terminal-source-registry.v3",
   "terminal_late_additions": [
     {"authority_identity": "1f068e6cc5ce3fc4a51d8477acee31fab5a0178e15f49225b57de94c5178f7d9", "dedicated_workflow_run": 32997970539, "evaluation": "NOT_SEPARATELY_ADMITTED", "family": "ua.kmu.portal.secretariat-news", "head": "40950a950b60921fd856af2719e1ae2486d9e892", "language": "uk", "modality": "text", "numeric_training_capacity_bytes": 9153, "source_normalized_bytes": 9153, "pr": 449, "redistribution": "ALLOWED_WITH_ATTRIBUTION", "training": "ALLOWED_PRETRAINING", "verdict": "ADMIT", "worker": "NEXT100-026-DATA-UA-CABINET-MINISTRY"},
     {"authority_identity": "85f596e79b0ec6479d2ef815e2a6a9bdbfaa55993c797309c1ea4d93b1d9b0e7", "dedicated_workflow_run": 32998503672, "evaluation": "NOT_ADMITTED", "family": "ua.verba.public-domain.nomis1864", "head": "d75edd497c7fb1054e86d892c9462f059c1f4aa9", "language": "uk", "modality": "text", "numeric_training_capacity_bytes": 1659, "source_normalized_bytes": 1659, "pr": 462, "redistribution": "ALLOWED_WITH_ATTRIBUTION", "training": "ALLOWED", "verdict": "ADMIT", "worker": "NEXT100-027-DATA-UA-PUBLIC-DOMAIN-LIT"},
@@ -87,6 +87,11 @@
     {"authority_identity": "3ffba0fcd08ab42e940b2db12ffafb6f7234ad0bae6f7fe523071497485b9d1c", "dedicated_workflow_run": 32998703545, "evaluation": "NOT_SEPARATELY_ADMITTED", "family": "en.usgov.nist.technical-series", "head": "b7491745b34ac8679baaf69cb96cd609dcbe0a16", "language": "en", "modality": "text", "numeric_training_capacity_bytes": 59358, "source_normalized_bytes": 59358, "pr": 472, "redistribution": "ALLOWED_WITH_RECOMMENDED_NIST_CITATION_AND_REPUBLISHED_COURTESY_LINE", "training": "ALLOWED_WITH_NIST_SOURCE_PROVENANCE", "verdict": "ADMIT", "worker": "NEXT100-034-DATA-EN-NIST"},
     {"accepted_chunk_count": 14, "authority_identity": "46a00dc70db690ae2b3c4495a75283e7e752bdccb1047d4318c2ebadfa392f0d", "dedicated_workflow_run": 32998356906, "evaluation": "NOT_SEPARATELY_ADMITTED", "family": "python.cpython.documentation", "head": "5a6a495a24bce449334cbc5126d0114f61a9f57c", "language": "en", "modality": "text", "numeric_training_capacity_bytes": 0, "rejected_chunk_count": 2, "source_normalized_bytes": 17901, "pr": 467, "redistribution": "ALLOWED_WITH_CONDITIONS", "training": "ALLOWED_ACCEPTED_CHUNKS_ONLY", "verdict": "ADMIT_SOURCE_AUTHORITY_CAPACITY_PENDING_ACCEPTED_CHUNK_LEDGER", "worker": "NEXT100-037-DATA-EN-PYTHON-DOCS"}
   ],
-  "worker_id": "NEXT100-063-CANONICAL-SOURCE-REGISTRY-CONVERGENCE",
-  "registry_identity_sha256": "56ab7c1e3ebf336c0ec9f51d8580f9aaad2890566d1bf7a5090e2b7f0102bfc5"
+  "worker_id": "NEXT100-063-CANONICAL-SOURCE-REGISTRY-CONVERGENCE-V3",
+  "supersedes": {
+    "v1_registry_identity_sha256": "77fb69c558df8c59fdae00583c955c62ad088cda98fd16b335eedb26fb2d7526",
+    "v2_registry_identity_sha256": "934933896a4b3b01dd58cd18d13bcc36245913f83412c6b3f697c64dd03e4d4d",
+    "correction": "Bind exact-green NEXT100-065 as the numerical/family parent, avoid re-crediting objects already inside that dedup vector, separate source-normalized envelope from numeric training-capacity credit, and retain failed dedicated source admissions at zero credit."
+  },
+  "registry_identity_sha256": "1f7eebfd735ad7219a33ad82edd15192dda88281994e1488d40a13b57016df29"
 }

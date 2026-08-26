@@ -13,37 +13,36 @@
     "canonical_issue": 530,
     "canonical_pr": 538,
     "branch": "next100-063/canonical-source-registry-convergence-20260826",
-    "head_sha": "958ebec0f7c9cb00238c7df70566cefd6b504d92",
+    "head_sha": "2ae26d479d4373a98561d3d587873c7ddde36ceb",
     "base_sha": "b0523ccbc4b957615aac849d476cfa851be87578",
-    "candidate_registry_identity_sha256": "77fb69c558df8c59fdae00583c955c62ad088cda98fd16b335eedb26fb2d7526",
-    "candidate_decision": "CONVERGED_TERMINAL_SOURCE_VECTOR_PRE_GLOBAL_DEDUP_NOT_CORPUS_FREEZE",
-    "candidate_normalized_bytes": 565743,
-    "candidate_independent_family_count": 13,
-    "candidate_source_authority_count": 14,
+    "registry_schema": "12-6.next100-063-terminal-source-registry.v2",
+    "candidate_registry_identity_sha256": "448dd61ed3e0d78d0bca9e202529a79c02811fd67beebe4833373d0c2ab0c0a7",
+    "candidate_decision": "CONVERGED_FAIL_CLOSED_TERMINAL_SOURCE_VECTOR_PRE_GLOBAL_DEDUP_NOT_CORPUS_FREEZE",
+    "candidate_normalized_bytes": 303374,
+    "candidate_independent_family_count": 11,
+    "terminal_addition_authority_count": 7,
     "candidate_by_stratum": {
-      "uk": {
-        "normalized_bytes": 100856,
-        "family_count": 4
-      },
-      "en": {
-        "normalized_bytes": 168544,
-        "family_count": 4
-      },
-      "code": {
-        "normalized_bytes": 296343,
-        "family_count": 5
-      }
+      "uk": {"normalized_bytes": 100856, "family_count": 4},
+      "en": {"normalized_bytes": 150643, "family_count": 3},
+      "code": {"normalized_bytes": 51875, "family_count": 4}
     },
+    "source_capacity_target_bytes": 20000000,
+    "source_capacity_target_gap_bytes": 19696626,
     "terminal_required": true,
     "terminal_at_cutoff": false,
     "pr_state_at_cutoff": "OPEN_DRAFT",
     "exact_head_terminal_verification_claimed": false,
     "observed_generic_ci": {
-      "run_id": 33005811593,
+      "run_id": 33006436871,
       "name": "CI",
       "status_at_cutoff": "queued",
       "conclusion_at_cutoff": null,
       "accepted_as_terminal_authority": false
+    },
+    "zero_credit_corrections": {
+      "cpython_docs_reason": "14_OF_16_ACCEPTED_BUT_EXACT_ACCEPTED_CHUNK_BYTE_LEDGER_NOT_MATERIALIZED",
+      "pydantic_dedicated_admission": "FAILURE_ZERO_CREDIT",
+      "rich_dedicated_admission": "FAILURE_ZERO_CREDIT"
     },
     "consumed_as_authority": false
   },
@@ -63,7 +62,7 @@
       "head_sha": "b0523ccbc4b957615aac849d476cfa851be87578",
       "registry_identity_sha256": "917e9bc31b2fa040d25e807ae3c01aa2cce32420752a891caacfb6c830e6632c"
     },
-    "note": "Lineage is reference-only. DATA526 consumes late-source composition only through a terminal canonical NEXT100-063 successor; it must not reconstruct a stale subset from earlier PR prose."
+    "note": "Lineage is reference-only. DATA526 consumes late-source composition only through a terminal canonical NEXT100-063 successor and never reconstructs optimistic capacity from PR prose."
   },
   "predecontamination_candidate_manifest": {
     "materialized": false,
@@ -77,6 +76,8 @@
   "fail_closed_contract": {
     "direct_late_source_hardcoding_allowed": false,
     "pending_nonterminal_source_credit_allowed": false,
+    "failed_dedicated_admission_credit_allowed": false,
+    "whole_source_bytes_for_partially_admitted_subrecords_allowed": false,
     "replay_or_duplication_for_quota_repair_allowed": false,
     "decontamination_against_moving_registry_allowed": false,
     "tokenizer_fit_before_exact_corpus_allowed": false,
@@ -87,7 +88,8 @@
     "canonical NEXT100-063 exact successor head is terminal and its terminal authority is explicit",
     "the exact terminal source-authority registry identity is frozen at the DATA526 composition cutoff",
     "every admitted training object has an exact source object id, family id, content hash, rights-purpose decision, and normalization identity",
-    "pending RETEST PROBE queued conditional or PR-text-only sources receive zero credit",
+    "partially admitted sources use only exact eligible subrecord byte identities and never whole-source capacity",
+    "pending RETEST PROBE queued conditional failed or PR-text-only sources receive zero credit",
     "candidate-set composite identity is computed only after the complete immutable object inventory is materialized"
   ],
   "handoff": {
