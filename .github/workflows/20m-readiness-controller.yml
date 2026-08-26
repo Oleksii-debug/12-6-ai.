@@ -26,17 +26,27 @@ jobs:
           python-version: "3.11.16"
       - name: Validate live readiness authority
         run: python tools/validate_20m_readiness_controller.py
+      - name: Prove validator remains fail-closed under Python optimization
+        run: python -O tools/validate_20m_readiness_controller.py
       - name: Exercise immutable pre-decontamination identity builder
         run: python tools/build_predecontam_candidate_identity.py --self-test
-      - name: Assert LOCAL_FREE truth boundary
+      - name: Enforce LOCAL_FREE truth boundary without assert semantics
         run: |
           python - <<'PY'
           import json
           from pathlib import Path
-          d=json.loads(Path("configs/control/20m_readiness_controller_v1.json").read_text())
-          assert d["execution_profile"] == "LOCAL_FREE"
-          assert d["training_executed"] is False
-          assert d["paid_compute_used"] is False
-          assert d["long_training_authorized"] is False
-          assert d["campaign"]["campaign_runnable_now"] is False
+
+          d = json.loads(
+              Path("configs/control/20m_readiness_controller_v1.json").read_text()
+          )
+          checks = {
+              "execution_profile": d["execution_profile"] == "LOCAL_FREE",
+              "training_executed": d["training_executed"] is False,
+              "paid_compute_used": d["paid_compute_used"] is False,
+              "long_training_authorized": d["long_training_authorized"] is False,
+              "campaign_runnable_now": d["campaign"]["campaign_runnable_now"] is False,
+          }
+          failed = [name for name, passed in checks.items() if not passed]
+          if failed:
+              raise SystemExit("LOCAL_FREE truth-boundary failure: " + ", ".join(failed))
           PY
