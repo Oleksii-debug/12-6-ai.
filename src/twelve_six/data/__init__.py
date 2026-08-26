@@ -29,6 +29,16 @@ from .external_sources import (
     verify_local_snapshot,
 )
 from .pipeline import DataContractError, PipelineConfig, build_dataset, language_id, normalize_text
+from .real_snapshot_registry import (
+    RealSnapshotRegistryError,
+    build_real_snapshot_registry,
+    load_real_snapshot_registry,
+    sources_for_corpus,
+    sources_for_holdout,
+    sources_for_redistribution,
+    validate_real_snapshot_registry,
+    verify_source_payload,
+)
 from .scalable_ingestion import (
     DATATROVE_VERSION,
     DataTroveParquetPlan,
@@ -55,6 +65,7 @@ __all__ = [
     "ExternalDataContractError",
     "ExternalSourceSpec",
     "PipelineConfig",
+    "RealSnapshotRegistryError",
     "ReservedSetSpec",
     "RightsDecision",
     "RightsEvidenceRef",
@@ -65,11 +76,18 @@ __all__ = [
     "build_datatrove_executor",
     "build_eligibility_inventory",
     "build_external_source_registry",
+    "build_real_snapshot_registry",
     "build_reserved_fingerprint_registry",
     "contamination_report",
     "language_id",
+    "load_real_snapshot_registry",
     "normalize_text",
+    "sources_for_corpus",
+    "sources_for_holdout",
+    "sources_for_redistribution",
     "validate_external_source_registry",
+    "validate_real_snapshot_registry",
     "validate_reserved_fingerprint_registry",
     "verify_local_snapshot",
+    "verify_source_payload",
 ]
