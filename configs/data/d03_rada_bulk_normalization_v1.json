@@ -12,8 +12,9 @@
     "source_family_identity_sha256": "b8f1d2f99a3db71d894a3233e9417d6283d11768c41b1634bc8b096ab77aba4e"
   },
   "normalization": {
-    "name": "RADA_VISIBLE_TEXT_HTML_NFKC_V1",
-    "decode": "STRICT_UTF8_OPTIONAL_BOM",
+    "name": "RADA_VISIBLE_TEXT_HTML_UTF8_CP1251_NFKC_V1",
+    "decode": "STRICT_UTF8_THEN_WINDOWS_1251_FALLBACK",
+    "legacy_fallback_encoding": "windows-1251",
     "unicode_normalization": "NFKC",
     "collapse_inline_whitespace": true,
     "collapse_blank_lines": true,
@@ -70,6 +71,7 @@
     "jsonl_record_fields": [
       "record_id",
       "source_path",
+      "source_encoding",
       "raw_bytes",
       "raw_sha256",
       "normalized_bytes",
