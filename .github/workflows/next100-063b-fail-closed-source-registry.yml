@@ -1,0 +1,79 @@
+name: NEXT100-063B Fail-Closed Source Registry
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/next100-063b-fail-closed-source-registry.yml"
+      - "configs/data/next100_063b_fail_closed_source_registry_v1.json"
+      - "tools/validate_next100_063b_fail_closed_source_registry.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-authority:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Prove exact source checkout
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Verify immutable conservative authority
+        run: python tools/validate_next100_063b_fail_closed_source_registry.py
+
+      - name: Prove CPython whole-source credit fails closed
+        run: |
+          cp configs/data/next100_063b_fail_closed_source_registry_v1.json /tmp/registry.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          path = Path("configs/data/next100_063b_fail_closed_source_registry_v1.json")
+          data = json.loads(path.read_text())
+          row = next(item for item in data["zero_credit_authorities"] if item["pr"] == 467)
+          row["eligible_capacity_bytes"] = 17901
+          row["family_credit"] = 1
+          path.write_text(json.dumps(data, sort_keys=True, separators=(",", ":")) + "\n")
+          PY
+          if python tools/validate_next100_063b_fail_closed_source_registry.py; then
+            echo "validator accepted unauthorized CPython whole-source capacity" >&2
+            exit 1
+          fi
+          mv /tmp/registry.json configs/data/next100_063b_fail_closed_source_registry_v1.json
+
+      - name: Prove failed Rich admission cannot gain credit
+        run: |
+          cp configs/data/next100_063b_fail_closed_source_registry_v1.json /tmp/registry.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          path = Path("configs/data/next100_063b_fail_closed_source_registry_v1.json")
+          data = json.loads(path.read_text())
+          row = next(item for item in data["zero_credit_authorities"] if item["pr"] == 475)
+          row["dedicated_workflow_conclusion"] = "success"
+          row["eligible_capacity_bytes"] = 46162
+          row["family_credit"] = 1
+          path.write_text(json.dumps(data, sort_keys=True, separators=(",", ":")) + "\n")
+          PY
+          if python tools/validate_next100_063b_fail_closed_source_registry.py; then
+            echo "validator accepted failed Rich admission" >&2
+            exit 1
+          fi
+          mv /tmp/registry.json configs/data/next100_063b_fail_closed_source_registry_v1.json
+
+      - name: Verify authority restored
+        run: python tools/validate_next100_063b_fail_closed_source_registry.py
