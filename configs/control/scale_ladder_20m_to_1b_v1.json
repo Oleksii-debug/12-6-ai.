@@ -1,0 +1,164 @@
+{
+  "schema_version": "12-6.scale-ladder-20m-to-1b.v1",
+  "worker_id": "COORD-SCALE-LADDER-20M-1B-V1",
+  "local_free_only": true,
+  "paid_compute_used": false,
+  "training_executed": false,
+  "purpose": "Bind the existing 20M, 100M, 400M, and 1B engineering candidates into one fail-closed promotion ladder without authorizing compute or claiming learned-model readiness.",
+  "global_policy": {
+    "candidate_geometry_is_not_learned_evidence": true,
+    "candidate_geometry_is_not_compute_authorization": true,
+    "candidate_geometry_is_not_stage_promotion": true,
+    "material_training_requires_explicit_compute_authorization": true,
+    "production_tokenizer_decision_required_before_scale_promotion": true,
+    "held_out_evaluation_required_before_scale_promotion": true,
+    "checkpoint_resume_evidence_required_before_scale_promotion": true,
+    "preceding_learned_stage_pass_required": true
+  },
+  "stages": [
+    {
+      "stage_id": "MODEL-341-20M-CANDIDATE-A",
+      "config_path": "configs/candidates/model341_20m_candidate_a.json",
+      "target_parameters": 20000000,
+      "expected_parameters": 20613440,
+      "max_relative_target_error": 0.04,
+      "expected_model_identity_sha256": "fbff24d561a2818453554d58ca23fc6ace3303b078f1935a8576c4565bd92441",
+      "tokenizer_vocab_size": 256,
+      "context_tokens": 1024,
+      "attention": {
+        "n_heads": 10,
+        "n_kv_heads": 2,
+        "head_dim": 32,
+        "kind": "GQA"
+      },
+      "status": "MECHANICS_CANDIDATE_NOT_LEARNED",
+      "training_authorized": false,
+      "promotion_allowed": false,
+      "requires_preceding_stage_pass": true,
+      "required_predecessor_evidence": [
+        "LEARNED_10M_INDEPENDENT_SCIENTIFIC_VERIFICATION",
+        "D05_CORRUPTION_RETEST_PASS"
+      ],
+      "required_training_gates": [
+        "TERMINAL_CORPUS_IDENTITY",
+        "GLOBAL_CROSS_SOURCE_DEDUP_PASS",
+        "EVALUATION_DECONTAMINATION_PASS",
+        "UNIQUE_OPTIMIZED_LOSS_LEDGER",
+        "TOKENIZER_DECISION_AND_IDENTITY",
+        "MATERIAL_COMPUTE_AUTHORIZATION"
+      ]
+    },
+    {
+      "stage_id": "S4-SCALE04-BYTE-MHA-v1",
+      "config_path": "configs/stages/s4_100m_accelerator.candidate.json",
+      "target_parameters": 100000000,
+      "expected_parameters": 99897600,
+      "max_relative_target_error": 0.002,
+      "expected_model_identity_sha256": "6103d0d457e25206c11871f09aef1f2e23860329c060379c9f956b3851740170",
+      "tokenizer_vocab_size": 256,
+      "context_tokens": 4096,
+      "attention": {
+        "n_heads": 12,
+        "n_kv_heads": 12,
+        "head_dim": 64,
+        "kind": "MHA"
+      },
+      "status": "ENGINEERING_CANDIDATE_NOT_FROZEN",
+      "training_authorized": false,
+      "promotion_allowed": false,
+      "requires_preceding_stage_pass": true,
+      "required_predecessor_evidence": [
+        "LEARNED_20M_PROMOTION_PASS"
+      ],
+      "required_training_gates": [
+        "PRODUCTION_TOKENIZER_KEEP_OR_REPLACE_DECISION",
+        "REAL_ACCELERATOR_FORWARD_BACKWARD_UPDATE_SMOKE",
+        "MEASURED_PEAK_VRAM_AND_TOKENS_PER_SECOND",
+        "CHECKPOINT_SAVE_VERIFY_RELOAD_RESUME_TELEMETRY",
+        "HELD_OUT_ZERO_OPTIMIZED_TOKEN_EVALUATION",
+        "MATERIAL_COMPUTE_AUTHORIZATION"
+      ]
+    },
+    {
+      "stage_id": "S5_400M_SCALE05_CANDIDATE",
+      "config_path": "configs/stages/s5_400m.scale05_candidate.json",
+      "target_parameters": 400000000,
+      "expected_parameters": 400421888,
+      "max_relative_target_error": 0.002,
+      "expected_model_identity_sha256": "9e6e59bbd7bece16a367fe2b4649079b5a2b6c92b44a99d7db892cc8db3684d2",
+      "tokenizer_vocab_size": 256,
+      "context_tokens": 4096,
+      "attention": {
+        "n_heads": 16,
+        "n_kv_heads": 4,
+        "head_dim": 64,
+        "kind": "GQA"
+      },
+      "status": "ENGINEERING_CANDIDATE_NOT_FROZEN",
+      "training_authorized": false,
+      "promotion_allowed": false,
+      "requires_preceding_stage_pass": true,
+      "required_predecessor_evidence": [
+        "LEARNED_100M_PROMOTION_PASS"
+      ],
+      "required_training_gates": [
+        "NATIVE_GQA_ACCEPTED_ON_TARGET_RUNTIME",
+        "PRODUCTION_TOKENIZER_KEEP_OR_REPLACE_DECISION",
+        "SCALE_SAFE_SHARDED_CHECKPOINT_RESUME",
+        "TARGET_GPU_MEMORY_AND_THROUGHPUT_MEASUREMENT",
+        "HELD_OUT_EVALUATION_BOUND_TO_RUN",
+        "MATERIAL_COMPUTE_AUTHORIZATION"
+      ]
+    },
+    {
+      "stage_id": "S6",
+      "config_path": "configs/stages/s6_1b.scale06_current_tokenizer.candidate.json",
+      "target_parameters": 1000000000,
+      "expected_parameters": 999761920,
+      "max_relative_target_error": 0.001,
+      "expected_model_identity_sha256": "f691e75eea9ca4c4edae197b5284c2564d3784a87fd3a831c6411af55dfc00be",
+      "tokenizer_vocab_size": 256,
+      "context_tokens": 4096,
+      "attention": {
+        "n_heads": 32,
+        "n_kv_heads": 8,
+        "head_dim": 64,
+        "kind": "GQA"
+      },
+      "status": "ENGINEERING_CANDIDATE_NOT_FROZEN",
+      "training_authorized": false,
+      "promotion_allowed": false,
+      "requires_preceding_stage_pass": true,
+      "required_predecessor_evidence": [
+        "LEARNED_400M_PROMOTION_PASS"
+      ],
+      "required_training_gates": [
+        "PRODUCTION_TOKENIZER_FROZEN",
+        "REPRESENTATIVE_CORPUS_FROZEN",
+        "TARGET_GPU_NCCL_MEASURED",
+        "NATIVE_GQA_TARGET_GPU_PARITY_MEASURED",
+        "DCP_FSDP2_CHECKPOINT_RESUME_COMPOSED_ON_S6",
+        "HELD_OUT_EVALUATION_BOUND_TO_S6_RUN",
+        "MATERIAL_COMPUTE_AUTHORIZATION"
+      ]
+    }
+  ],
+  "cross_stage_gates": [
+    {
+      "from": "MODEL-341-20M-CANDIDATE-A",
+      "to": "S4-SCALE04-BYTE-MHA-v1",
+      "decision": "BLOCK_UNTIL_LEARNED_20M_PROMOTION_PASS"
+    },
+    {
+      "from": "S4-SCALE04-BYTE-MHA-v1",
+      "to": "S5_400M_SCALE05_CANDIDATE",
+      "decision": "BLOCK_UNTIL_LEARNED_100M_PASS_AND_NATIVE_GQA_ACCEPTED"
+    },
+    {
+      "from": "S5_400M_SCALE05_CANDIDATE",
+      "to": "S6",
+      "decision": "BLOCK_UNTIL_LEARNED_400M_PROMOTION_PASS"
+    }
+  ],
+  "current_decision": "BLOCK_MATERIAL_SCALE_TRAINING_CONTINUE_LOCAL_FREE_ENGINEERING_AND_DATA_READINESS"
+}
