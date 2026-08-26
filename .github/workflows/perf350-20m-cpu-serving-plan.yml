@@ -1,0 +1,117 @@
+name: PERF-350 20M CPU Serving Plan
+
+on:
+  push:
+    branches: [perf350/20m-cpu-serving-plan-20260826]
+  workflow_dispatch:
+
+concurrency:
+  group: perf350-20m-cpu-serving-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: {contents: read}
+
+jobs:
+  local-free-cpu-serving:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      PYTHONPATH: src
+      PERF350_EXECUTION_PROFILE: LOCAL_FREE
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: "${{ github.sha }}"
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with: {python-version: "3.11.16"}
+
+      - name: Universal bootstrap focused contract
+        uses: ./.github/actions/execution-bootstrap
+        with:
+          capabilities: runtime,tests,lint
+          venv: .perf350-cpu
+          command: >-
+            python -m pytest -q tests/test_perf350_cpu_serving.py
+          manifest: reports/perf350/environment.json
+
+      - name: Verify LOCAL_FREE CPU-only boundary
+        run: |
+          set -euo pipefail
+          .perf350-cpu/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+          import torch
+
+          manifest = json.loads(Path('reports/perf350/environment.json').read_text())
+          assert manifest['preflight']['status'] == 'PASS'
+          assert manifest['plan']['cuda_packages_present'] is False
+          assert torch.__version__ == '2.13.0+cpu'
+          assert torch.version.cuda is None
+          assert torch.cuda.is_available() is False
+          print(json.dumps({'bootstrap': 'PASS', 'profile': 'LOCAL_FREE', 'device': 'cpu'}))
+          PY
+
+      - name: Ruff PERF-350 surface
+        run: >-
+          .perf350-cpu/bin/ruff check
+          tools/benchmark_perf350_20m_cpu_serving.py
+          tests/test_perf350_cpu_serving.py
+
+      - name: Measure 20M CPU serving mechanics
+        run: >-
+          .perf350-cpu/bin/python tools/benchmark_perf350_20m_cpu_serving.py
+          --output reports/perf350/cpu-serving-plan.json
+
+      - name: Validate measurement truth boundary
+        run: |
+          set -euo pipefail
+          .perf350-cpu/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path('reports/perf350/cpu-serving-plan.json')
+          report = json.loads(path.read_text())
+          assert report['worker_id'] == 'PERF-350-20M-CPU-SERVING-PLAN'
+          assert report['paid_compute'] is False
+          assert report['local_free_only'] is True
+          assert report['hardware_extrapolation_allowed'] is False
+          assert report['learned_20m_checkpoint_used'] is False
+          assert report['mechanics_surrogate']['parameters'] == 19_935_488
+          assert report['host']['cuda_available'] is False
+          assert report['host']['torch_cuda_version'] is None
+          defaults = report['defaults_for_this_exact_host_only']
+          assert defaults['interactive_batch_size'] == 1
+          assert defaults['kv_cache'] == 'static'
+          assert defaults['default_max_new_tokens'] == 64
+          assert defaults['static_kv_bytes_batch1'] == 12_582_912
+          static = next(
+              item for item in report['measurements']['cache']
+              if item['case']['cache_mode'] == 'static'
+          )
+          dynamic = next(
+              item for item in report['measurements']['cache']
+              if item['case']['cache_mode'] == 'dynamic'
+          )
+          assert static['cache']['physical_decode_growth_bytes'] == 0
+          assert static['cache']['static_allocation_stable'] is True
+          assert dynamic['cache']['physical_decode_growth_bytes'] > 0
+          assert defaults['torch_intraop_threads'] in {
+              item['case']['threads'] for item in report['measurements']['threads']
+          }
+          print(json.dumps({
+              'status': 'PASS',
+              'host': report['host'],
+              'defaults': defaults,
+          }, sort_keys=True))
+          PY
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: perf350-20m-cpu-serving-local-free
+          path: |
+            reports/perf350/environment.json
+            reports/perf350/cpu-serving-plan.json
+          if-no-files-found: warn
