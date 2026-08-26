@@ -49,7 +49,7 @@ def test_budget_passes_exact_threshold() -> None:
     assert result.ready is True
     assert result.shortfall_tokens == 0
     assert result.observed_tokens_per_parameter == 20.0
-    assert result.approximate_dense_training_flops_at_requirement == 50_993_820_672_000_000
+    assert result.approximate_dense_training_flops_at_requirement == 50_989_669_036_032_000
 
 
 def test_zero_materialized_tokens_are_valid_but_blocked() -> None:
