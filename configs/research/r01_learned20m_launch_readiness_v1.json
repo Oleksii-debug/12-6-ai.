@@ -53,6 +53,10 @@
       "resume_equivalent": false,
       "loss_trajectory_acceptable": false
     },
+    "learned_scale_evidence": {
+      "learned_3m": {"authority": null, "status": "NOT_RUN"},
+      "learned_10m": {"authority": null, "status": "NOT_RUN"}
+    },
     "cost_envelope": {
       "authority": null,
       "status": "NOT_ESTIMATED",
