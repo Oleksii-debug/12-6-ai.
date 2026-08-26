@@ -36,7 +36,7 @@ def _nist_row(pdf: bytes, normalized: bytes) -> dict[str, object]:
 def test_nist_normalization_matches_sealed_policy_primitives() -> None:
     text = "  Header  \r\ncontact@example.org\r\n\r\n\r\nFullwidth: ＡＢＣ  \fTail\n"
     normalized = v4._normalize_nist_extracted(text)
-    assert normalized.decode("utf-8") == "  Header\n<EMAIL>\n\nFullwidth: ABC\nTail\n"
+    assert normalized.decode("utf-8") == "Header\n<EMAIL>\n\nFullwidth: ABC\nTail\n"
 
 
 def test_nist_materialization_binds_pdf_and_normalized_hashes(monkeypatch: pytest.MonkeyPatch) -> None:
