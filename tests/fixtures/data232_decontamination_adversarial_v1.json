@@ -1,0 +1,79 @@
+{
+  "schema": "12-6.data232-adversarial-fixtures.v1",
+  "cases": [
+    {
+      "case_id": "unicode_nfkc_invisible_crlf",
+      "expected_match_type": "normalized_exact",
+      "train": {
+        "record_id": "fixture-train-normalized",
+        "source_id": "fixture-train-source",
+        "source_family": "fixture-train-family",
+        "modality": "en",
+        "text": "Ｆuture evaluation​ text\r\nMUST remain reserved."
+      },
+      "evaluation": {
+        "record_id": "fixture-eval-normalized",
+        "source_id": "fixture-eval-source",
+        "source_family": "fixture-eval-family",
+        "modality": "en",
+        "text": "Future evaluation text\nMUST remain reserved."
+      }
+    },
+    {
+      "case_id": "header_footer_fragment",
+      "expected_match_type": "document_fragment",
+      "thresholds": {"natural_fragment_containment": 0.8},
+      "train": {
+        "record_id": "fixture-train-fragment",
+        "source_id": "fixture-publisher",
+        "source_family": "fixture-family-a",
+        "modality": "en",
+        "text": "navigation header reserved0 reserved1 reserved2 reserved3 reserved4 reserved5 reserved6 reserved7 reserved8 reserved9 reserved10 reserved11 reserved12 reserved13 reserved14 reserved15 reserved16 reserved17 reserved18 reserved19 reserved20 reserved21 reserved22 reserved23 reserved24 reserved25 reserved26 reserved27 reserved28 reserved29 reserved30 reserved31 reserved32 reserved33 reserved34 reserved35 reserved36 reserved37 reserved38 reserved39 footer legal"
+      },
+      "evaluation": {
+        "record_id": "fixture-eval-fragment",
+        "source_id": "fixture-eval-source",
+        "source_family": "fixture-eval-family",
+        "modality": "en",
+        "text": "reserved0 reserved1 reserved2 reserved3 reserved4 reserved5 reserved6 reserved7 reserved8 reserved9 reserved10 reserved11 reserved12 reserved13 reserved14 reserved15 reserved16 reserved17 reserved18 reserved19 reserved20 reserved21 reserved22 reserved23 reserved24 reserved25 reserved26 reserved27 reserved28 reserved29 reserved30 reserved31 reserved32 reserved33 reserved34 reserved35 reserved36 reserved37 reserved38 reserved39"
+      }
+    },
+    {
+      "case_id": "near_duplicate_two_edits",
+      "expected_match_type": "near_match",
+      "train": {
+        "record_id": "fixture-train-near",
+        "source_id": "fixture-mirror-source",
+        "source_family": "fixture-mirror-family",
+        "modality": "en",
+        "text": "token0 token1 token2 token3 token4 token5 token6 token7 token8 token9 token10 token11 token12 token13 token14 token15 token16 token17 token18 token19 changed20 token21 token22 token23 token24 token25 token26 token27 token28 token29 token30 token31 token32 token33 token34 token35 token36 token37 token38 token39 token40 changed41 token42 token43 token44 token45 token46 token47 token48 token49 token50 token51 token52 token53 token54 token55 token56 token57 token58 token59"
+      },
+      "evaluation": {
+        "record_id": "fixture-eval-near",
+        "source_id": "fixture-eval-source",
+        "source_family": "fixture-eval-family",
+        "modality": "en",
+        "text": "token0 token1 token2 token3 token4 token5 token6 token7 token8 token9 token10 token11 token12 token13 token14 token15 token16 token17 token18 token19 token20 token21 token22 token23 token24 token25 token26 token27 token28 token29 token30 token31 token32 token33 token34 token35 token36 token37 token38 token39 token40 token41 token42 token43 token44 token45 token46 token47 token48 token49 token50 token51 token52 token53 token54 token55 token56 token57 token58 token59"
+      }
+    },
+    {
+      "case_id": "code_rename_comment_literal_copy",
+      "expected_match_type": "code_fork_copy",
+      "thresholds": {"code_copy_jaccard": 0.7},
+      "train": {
+        "record_id": "fixture-train-code",
+        "source_id": "fixture-repo-a",
+        "source_family": "fixture-repo-a",
+        "modality": "code",
+        "text": "def compute(alpha, beta):\n    # local note\n    total = alpha + beta\n    if total > 10:\n        return total * 3\n    return total - 2\n"
+      },
+      "evaluation": {
+        "record_id": "fixture-eval-code",
+        "source_id": "fixture-repo-eval",
+        "source_family": "fixture-repo-eval",
+        "modality": "code",
+        "text": "def calculate(left, right):\n    # different note\n    result = left + right\n    if result > 999:\n        return result * 44\n    return result - 88\n"
+      }
+    }
+  ]
+}
