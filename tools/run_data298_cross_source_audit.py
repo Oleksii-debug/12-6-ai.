@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Run or verify the DATA-298 cross-source capacity audit."""
 from __future__ import annotations
 
