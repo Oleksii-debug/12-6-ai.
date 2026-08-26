@@ -1,7 +1,16 @@
 from __future__ import annotations
 
+import os
+import pathlib
+import sys
+import types
 import unittest
 from datetime import datetime, timezone
+
+if os.environ.get("POSTBASE258_STDLIB_ISOLATED") == "1":
+    package = types.ModuleType("twelve_six")
+    package.__path__ = [str(pathlib.Path(__file__).parents[1] / "src" / "twelve_six")]
+    sys.modules["twelve_six"] = package
 
 from twelve_six.memory_rag import (
     EvidenceObject,
@@ -137,7 +146,6 @@ class MemoryRagPostbase258Tests(unittest.TestCase):
             retriever.retrieve("lexical path", use_embedding_adapter=True)
 
     def test_memory_substrate_has_no_model_or_torch_dependency(self) -> None:
-        import pathlib
         import twelve_six.memory_rag as package
 
         root = pathlib.Path(package.__file__).parent
