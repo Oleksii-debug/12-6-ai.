@@ -174,7 +174,7 @@ def resolve_plan(root: Path, capabilities: list[str], commands: list[str]) -> di
         lock_records.append(lock_record)
     forbidden = [
         name for name in merged
-        if name.startswith("nvidia-") or name.startswith("cuda-") or name == "triton"
+        if name.startswith(("nvidia-", "cuda-")) or name == "triton"
     ]
     if "cuda" not in declared and forbidden:
         raise ExecutionBootstrapError(
