@@ -79,6 +79,26 @@ jobs:
     row = report["workflows"][0]
     assert row["classification"] == "MISSING_DECLARED_DEPENDENCY"
     assert row["missing_packages"] == ["pytest"]
+    assert row["missing_invocations"][0]["package"] == "pytest"
+
+
+def test_late_dev_lock_does_not_retroactively_satisfy_pytest(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    _write(
+        repo / ".github/workflows/late.yml",
+        """name: late
+jobs:
+  test:
+    steps:
+      - run: python -m pytest -q tests
+      - run: python -m pip install -r requirements/locks/linux-x86_64/dev.lock.txt
+""",
+    )
+    report = audit_repository(repo)
+    row = report["workflows"][0]
+    assert row["classification"] == "MISSING_DECLARED_DEPENDENCY"
+    assert row["missing_packages"] == ["pytest"]
+    assert row["invocations"][0]["provided_before_invocation"] is False
 
 
 def test_dev_lock_proves_pytest_and_ruff(tmp_path: Path) -> None:
@@ -99,6 +119,7 @@ jobs:
     row = report["workflows"][0]
     assert row["classification"] == "VALID"
     assert row["missing_packages"] == []
+    assert all(item["provided_before_invocation"] for item in row["invocations"])
 
 
 def test_literal_local_dev_extra_proves_bare_pytest_and_ruff(tmp_path: Path) -> None:
