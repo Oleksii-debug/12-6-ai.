@@ -1,0 +1,100 @@
+name: DATA-324 Kubernetes UA Recovery
+
+on:
+  push:
+    branches:
+      - data324/kubernetes-ua-recovery-20260826
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  recover-kubernetes-ua:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact repository head
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+
+      - name: Compile recovery tools
+        run: |
+          python -m py_compile tools/materialize_data324_kubernetes_ua.py
+          python -m py_compile tools/validate_data324_reservation_exclusion.py
+
+      - name: Run offline contract tests
+        run: python -m unittest tests.test_data324_kubernetes_ua
+
+      - name: Materialize exact bounded snapshot twice
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/data324-replay
+          python tools/materialize_data324_kubernetes_ua.py --root .
+          python tools/validate_data324_reservation_exclusion.py
+          python tools/materialize_data324_kubernetes_ua.py --root /tmp/data324-replay
+          python tools/validate_data324_reservation_exclusion.py \
+            --report /tmp/data324-replay/reports/data324/kubernetes-ua-recovery-v1.json
+          cmp \
+            reports/data324/kubernetes-ua-recovery-v1.json \
+            /tmp/data324-replay/reports/data324/kubernetes-ua-recovery-v1.json
+          cmp \
+            data/external/snapshots/data324-kubernetes-ua-v1/manifest.json \
+            /tmp/data324-replay/data/external/snapshots/data324-kubernetes-ua-v1/manifest.json
+          cmp \
+            data/external/snapshots/data324-kubernetes-ua-v1/raw/what-is-kubernetes.md \
+            /tmp/data324-replay/data/external/snapshots/data324-kubernetes-ua-v1/raw/what-is-kubernetes.md
+          cmp \
+            data/external/snapshots/data324-kubernetes-ua-v1/normalized/what-is-kubernetes.uk.txt \
+            /tmp/data324-replay/data/external/snapshots/data324-kubernetes-ua-v1/normalized/what-is-kubernetes.uk.txt
+          cmp \
+            data/external/rights-evidence/data324/kubernetes-website-cc-by-4.0-25f3dcb.txt \
+            /tmp/data324-replay/data/external/rights-evidence/data324/kubernetes-website-cc-by-4.0-25f3dcb.txt
+          cmp \
+            data/external/snapshots/data324-kubernetes-ua-v1/ATTRIBUTION.txt \
+            /tmp/data324-replay/data/external/snapshots/data324-kubernetes-ua-v1/ATTRIBUTION.txt
+
+      - name: Commit immutable materialization on branch push
+        if: github.event_name == 'push'
+        run: |
+          set -euo pipefail
+          git add \
+            reports/data324/kubernetes-ua-recovery-v1.json \
+            data/external/snapshots/data324-kubernetes-ua-v1 \
+            data/external/rights-evidence/data324/kubernetes-website-cc-by-4.0-25f3dcb.txt
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "DATA-324: materialize immutable Kubernetes UA snapshot"
+          git push origin HEAD:${GITHUB_REF_NAME}
+
+      - name: Require committed materialization on PR
+        if: github.event_name == 'pull_request'
+        run: |
+          git diff --exit-code -- \
+            reports/data324/kubernetes-ua-recovery-v1.json \
+            data/external/snapshots/data324-kubernetes-ua-v1 \
+            data/external/rights-evidence/data324/kubernetes-website-cc-by-4.0-25f3dcb.txt
+
+      - name: Upload machine evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: data324-kubernetes-ua-recovery-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            reports/data324/kubernetes-ua-recovery-v1.json
+            data/external/snapshots/data324-kubernetes-ua-v1
+            data/external/rights-evidence/data324/kubernetes-website-cc-by-4.0-25f3dcb.txt
+          if-no-files-found: error
