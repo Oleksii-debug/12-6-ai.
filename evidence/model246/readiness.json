@@ -1,0 +1,104 @@
+{
+  "schema": "12-6.model246-context-v2-readiness.v1",
+  "worker_id": "MODEL-246-10M-CONTEXT-V2",
+  "status": "BLOCKED_MISSING_TERMINAL_OPTIMIZER_AND_DATA_AUTHORITIES",
+  "execution": {
+    "training_started": false,
+    "optimizer_updates": 0,
+    "paid_compute": false,
+    "local_free_only": true
+  },
+  "required_context_horizons": [256, 512, 1024],
+  "required_terminal_authorities": {
+    "optimizer": {
+      "preferred_worker": "TRAIN-244-10M-LR-BETA-V2",
+      "must_bind": ["learning_rate", "betas", "weight_decay", "epsilon", "clipping", "schedule", "effective_batch"],
+      "published_terminal_identity": null
+    },
+    "clipping": {
+      "preferred_worker": "TRAIN-243-10M-CLIPPING-AUTHORITY-V2",
+      "published_terminal_identity": null
+    },
+    "data": {
+      "preferred_worker": "DATA-230-CORPUS-V03-EXTERNAL-REAL",
+      "branch_observed": "data230/corpus-v03-external-real-20260826",
+      "observed_head_sha": "6d994e2aece6c44e28c1a2c344ac98b5a8fd5e08",
+      "observed_head_message": "DATA-214 restore retained quality and privacy evidence",
+      "published_terminal_identity": null
+    },
+    "batch": {
+      "preferred_worker": "TRAIN-245-10M-EFFECTIVE-BATCH-V2",
+      "published_terminal_identity": null,
+      "note": "If TRAIN-245 is not yet terminal, MODEL-246 may consume the effective batch fixed by terminal TRAIN-244 only if TRAIN-244 explicitly freezes it; otherwise block."
+    }
+  },
+  "historical_control": {
+    "worker_id": "MODEL-197-10M-CONTEXT-TRANSFER",
+    "head_sha": "df224d14b11099f3a36cebc5372bb5a869c37ec2",
+    "workflow_run_id": 32940725569,
+    "workflow_conclusion": "success",
+    "artifact_id": 9598153241,
+    "artifact_sha256": "6e407c7a81ffa02e668190755401c9f39f8331e058ce553f3e617d15e7776722",
+    "model_spec_sha256": "61caa5469123e23b9b72fc2024140bfca84c4c480dcb0a7e712ba800a4f22998",
+    "parameter_count": 10000640,
+    "tokenizer": "s0-byte-v1",
+    "corpus_identity_sha256": "422f545da93526ceba2c0ff738e0b9deac65f35bfb31d87d2aab068cda091fc8",
+    "optimizer": {
+      "name": "AdamW",
+      "learning_rate": 0.0003,
+      "betas": [0.9, 0.95],
+      "eps": 1e-08,
+      "weight_decay": 0.1,
+      "gradient_clip_norm": 1.0
+    },
+    "single_seed": true,
+    "decision": "KEEP_256_NO_LONGER_CONTEXT_BPB_GAIN",
+    "metrics": {
+      "256": {
+        "common_short_bpb": 1.0927784593402807,
+        "native_bpb": 1.0927784593402807,
+        "clip_rate": 1.0,
+        "optimized_tokens_per_second_cpu": 1584.159034987959,
+        "max_rss_bytes": 640598016
+      },
+      "512": {
+        "common_short_bpb": 2.0152682729763276,
+        "native_bpb": 1.207488241595174,
+        "clip_rate": 0.984375,
+        "optimized_tokens_per_second_cpu": 1550.4146461375767,
+        "max_rss_bytes": 732655616
+      },
+      "1024": {
+        "common_short_bpb": 2.2955104382120948,
+        "native_bpb": 1.4057391071832757,
+        "clip_rate": 0.9375,
+        "optimized_tokens_per_second_cpu": 1530.5698550258417,
+        "max_rss_bytes": 821948416
+      }
+    },
+    "not_promotable_to_v2_reason": "The old recipe clipped almost every update and used an optimizer/data identity that MODEL-246 is instructed to replace; single-seed evidence is insufficient for context-default replacement."
+  },
+  "v2_frozen_method": {
+    "model_geometry": "same exact 10M ModelSpec in every arm; max supported context may remain 1024",
+    "source_exposure": "same ordered whole documents/source bytes in every arm; each causal target optimized exactly once",
+    "update_grouping": "same source-content group per optimizer update across horizons; summed NLL normalized by exact causal target count",
+    "evaluation": [
+      "common short-horizon BPB at 256",
+      "native horizon BPB",
+      "reserved dependency-distance probes with matched short controls",
+      "padding/right-trim utilization",
+      "actual loss tokens and optimizer updates",
+      "CPU throughput and RSS only as CPU-specific systems evidence",
+      "pre-clip gradient norm, clip frequency/post-pre ratio, nonfinite checks, update ratio where accepted optimizer telemetry permits"
+    ],
+    "truth_boundary": "RoPE/KV mechanical support is not learned long-context capability.",
+    "replacement_rule": "No context-default replacement from a single seed; any longer-context promotion requires multiple paired seeds under one immutable terminal optimizer/data/tokenizer contract."
+  },
+  "blockers": [
+    "No branch, PR, commit, or terminal artifact for TRAIN-243-10M-CLIPPING-AUTHORITY-V2 was discoverable at the execution cutoff.",
+    "No branch, PR, commit, or terminal artifact for TRAIN-244-10M-LR-BETA-V2 was discoverable at the execution cutoff.",
+    "DATA-230 branch exists but still points to DATA-214 evidence rather than a terminal DATA-230 corpus authority.",
+    "TRAIN-245-10M-EFFECTIVE-BATCH-V2 was not published at the cutoff; effective batch therefore cannot be silently guessed if TRAIN-244 does not freeze it."
+  ],
+  "report_sha256": "5a607ac54d8dd0b3d2f7a560ed316ee1708f1230404c199ff96e5ff97c8ddf49"
+}
