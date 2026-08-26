@@ -74,6 +74,7 @@ def _make_local_pilot_ready() -> dict:
             "seed_count": 2,
             "config_sha256": SHA64,
             "stopping_policy_sha256": SHA64,
+            "requested_unique_loss_positions": 412_268_800,
         }
     )
     return data
@@ -111,6 +112,7 @@ def test_current_packet_is_blocked_at_all_three_phases() -> None:
     assert not result.material_training_authorized
     assert "data_budget_not_qualified" in result.local_free_pilot_blockers
     assert "checkpoint_integrity_not_terminal_pass" in result.local_free_pilot_blockers
+    assert "requested_unique_loss_positions_not_positive" in result.local_free_pilot_blockers
     assert "compute_not_explicitly_authorized" in result.material_training_blockers
 
 
@@ -120,6 +122,34 @@ def test_local_pilot_ready_does_not_imply_compute_or_training_authority() -> Non
     assert not result.ready_for_compute_authorization_request
     assert not result.material_training_authorized
     assert "bounded_pilot_not_terminal_pass" in result.compute_request_blockers
+
+
+def test_requested_unique_loss_budget_must_fit_terminal_ledger() -> None:
+    data = _make_local_pilot_ready()
+    ledger_positions = data["evidence"]["loss_ledger"]["unique_causal_loss_positions"]
+
+    data["evidence"]["training_recipe"]["requested_unique_loss_positions"] = (
+        ledger_positions + 1
+    )
+    result = assess_learned20m_readiness(data)
+    assert not result.ready_for_local_free_pilot
+    assert "requested_unique_loss_positions_exceed_ledger" in result.local_free_pilot_blockers
+
+    data["evidence"]["training_recipe"]["requested_unique_loss_positions"] = ledger_positions
+    result = assess_learned20m_readiness(data)
+    assert result.ready_for_local_free_pilot
+
+
+def test_requested_unique_loss_budget_rejects_malformed_values() -> None:
+    for bad in (0, -1, True, 1.5, "100"):
+        data = _make_local_pilot_ready()
+        data["evidence"]["training_recipe"]["requested_unique_loss_positions"] = bad
+        result = assess_learned20m_readiness(data)
+        assert not result.ready_for_local_free_pilot
+        assert (
+            "requested_unique_loss_positions_not_positive"
+            in result.local_free_pilot_blockers
+        )
 
 
 def test_compute_request_ready_does_not_imply_paid_training_authority() -> None:
