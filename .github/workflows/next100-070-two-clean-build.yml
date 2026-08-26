@@ -1,0 +1,149 @@
+name: NEXT100-070 Two Clean Build
+
+on:
+  push:
+    branches:
+      - "next100070/two-clean-build-20260826"
+    paths:
+      - "configs/data/next100_070_two_clean_build_v1.json"
+      - "tools/run_next100_070_two_clean_build.py"
+      - "tests/test_next100_070_two_clean_build.py"
+      - "docs/NEXT100_070_TWO_CLEAN_BUILD.md"
+      - ".github/workflows/next100-070-two-clean-build.yml"
+  pull_request:
+    paths:
+      - "configs/data/next100_070_two_clean_build_v1.json"
+      - "tools/run_next100_070_two_clean_build.py"
+      - "tests/test_next100_070_two_clean_build.py"
+      - "docs/NEXT100_070_TWO_CLEAN_BUILD.md"
+      - ".github/workflows/next100-070-two-clean-build.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  REGISTRY_BRANCH: data287/external-snapshot-registry-v2-20260826
+  REGISTRY_SHA: b0523ccbc4b957615aac849d476cfa851be87578
+  REGISTRY_PATH: data/registry/external_snapshots.v2.json
+  RIGHTS_BRANCH: data293/independent-rights-recertification-20260826
+  RIGHTS_SHA: 2665a4cd86186ba44024334719d30dcc35d222d8
+  RIGHTS_PATH: configs/data/data293_independent_rights_recertification_v1.json
+  PYTHONDONTWRITEBYTECODE: "1"
+
+jobs:
+  focused-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Compile harness and test
+        run: |
+          python3 -m py_compile tools/run_next100_070_two_clean_build.py tests/test_next100_070_two_clean_build.py
+      - name: Run stdlib-only focused tests
+        run: python3 tests/test_next100_070_two_clean_build.py
+
+  clean-a:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      tree_digest: ${{ steps.digest.outputs.tree_digest }}
+      tree_listing_b64: ${{ steps.digest.outputs.tree_listing_b64 }}
+    steps:
+      - name: Checkout candidate with no project cache
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Fetch and verify exact late-bound authorities
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=1 origin "refs/heads/${REGISTRY_BRANCH}:refs/remotes/origin/next100-registry"
+          test "$(git rev-parse refs/remotes/origin/next100-registry)" = "${REGISTRY_SHA}"
+          git fetch --no-tags --depth=1 origin "refs/heads/${RIGHTS_BRANCH}:refs/remotes/origin/next100-rights"
+          test "$(git rev-parse refs/remotes/origin/next100-rights)" = "${RIGHTS_SHA}"
+          git show "${REGISTRY_SHA}:${REGISTRY_PATH}" > "${RUNNER_TEMP}/registry.json"
+          git show "${RIGHTS_SHA}:${RIGHTS_PATH}" > "${RUNNER_TEMP}/rights.json"
+      - name: Execute clean build A to current hard blocker
+        run: |
+          set -euo pipefail
+          test ! -e "${RUNNER_TEMP}/clean-root"
+          mkdir "${RUNNER_TEMP}/clean-root"
+          python3 tools/run_next100_070_two_clean_build.py attempt \
+            --registry "${RUNNER_TEMP}/registry.json" \
+            --rights "${RUNNER_TEMP}/rights.json" \
+            --output "${RUNNER_TEMP}/clean-root"
+      - name: Canonical path and byte digest A
+        id: digest
+        run: |
+          set -euo pipefail
+          cd "${RUNNER_TEMP}/clean-root"
+          find . -type f -print | LC_ALL=C sort | while IFS= read -r path; do sha256sum "$path"; done > "${RUNNER_TEMP}/tree-listing.txt"
+          digest="$(sha256sum "${RUNNER_TEMP}/tree-listing.txt" | cut -d' ' -f1)"
+          listing_b64="$(base64 -w0 "${RUNNER_TEMP}/tree-listing.txt")"
+          echo "tree_digest=${digest}" >> "${GITHUB_OUTPUT}"
+          echo "tree_listing_b64=${listing_b64}" >> "${GITHUB_OUTPUT}"
+          cat "${RUNNER_TEMP}/tree-listing.txt"
+
+  clean-b:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      tree_digest: ${{ steps.digest.outputs.tree_digest }}
+      tree_listing_b64: ${{ steps.digest.outputs.tree_listing_b64 }}
+    steps:
+      - name: Checkout candidate with no project cache
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Fetch and verify exact late-bound authorities
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=1 origin "refs/heads/${REGISTRY_BRANCH}:refs/remotes/origin/next100-registry"
+          test "$(git rev-parse refs/remotes/origin/next100-registry)" = "${REGISTRY_SHA}"
+          git fetch --no-tags --depth=1 origin "refs/heads/${RIGHTS_BRANCH}:refs/remotes/origin/next100-rights"
+          test "$(git rev-parse refs/remotes/origin/next100-rights)" = "${RIGHTS_SHA}"
+          git show "${REGISTRY_SHA}:${REGISTRY_PATH}" > "${RUNNER_TEMP}/registry.json"
+          git show "${RIGHTS_SHA}:${RIGHTS_PATH}" > "${RUNNER_TEMP}/rights.json"
+      - name: Execute clean build B to current hard blocker
+        run: |
+          set -euo pipefail
+          test ! -e "${RUNNER_TEMP}/clean-root"
+          mkdir "${RUNNER_TEMP}/clean-root"
+          python3 tools/run_next100_070_two_clean_build.py attempt \
+            --registry "${RUNNER_TEMP}/registry.json" \
+            --rights "${RUNNER_TEMP}/rights.json" \
+            --output "${RUNNER_TEMP}/clean-root"
+      - name: Canonical path and byte digest B
+        id: digest
+        run: |
+          set -euo pipefail
+          cd "${RUNNER_TEMP}/clean-root"
+          find . -type f -print | LC_ALL=C sort | while IFS= read -r path; do sha256sum "$path"; done > "${RUNNER_TEMP}/tree-listing.txt"
+          digest="$(sha256sum "${RUNNER_TEMP}/tree-listing.txt" | cut -d' ' -f1)"
+          listing_b64="$(base64 -w0 "${RUNNER_TEMP}/tree-listing.txt")"
+          echo "tree_digest=${digest}" >> "${GITHUB_OUTPUT}"
+          echo "tree_listing_b64=${listing_b64}" >> "${GITHUB_OUTPUT}"
+          cat "${RUNNER_TEMP}/tree-listing.txt"
+
+  compare-clean-builds:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    needs: [focused-tests, clean-a, clean-b]
+    steps:
+      - name: Require complete path and byte identity
+        env:
+          A_DIGEST: ${{ needs.clean-a.outputs.tree_digest }}
+          B_DIGEST: ${{ needs.clean-b.outputs.tree_digest }}
+          A_LISTING: ${{ needs.clean-a.outputs.tree_listing_b64 }}
+          B_LISTING: ${{ needs.clean-b.outputs.tree_listing_b64 }}
+        run: |
+          set -euo pipefail
+          test -n "${A_DIGEST}"
+          test "${A_DIGEST}" = "${B_DIGEST}"
+          test -n "${A_LISTING}"
+          test "${A_LISTING}" = "${B_LISTING}"
+          echo "NEXT100-070 deterministic blocker tree identity: ${A_DIGEST}"
+          echo "No shared mutable project cache was used; clean-a and clean-b ran on separate runners."
