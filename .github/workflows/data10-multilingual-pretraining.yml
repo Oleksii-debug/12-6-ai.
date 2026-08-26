@@ -18,6 +18,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: data10-multilingual-pretraining-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   multilingual-local-free-probe:
     runs-on: ubuntu-24.04
