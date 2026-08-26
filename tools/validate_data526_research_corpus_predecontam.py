@@ -13,9 +13,10 @@ EXPECTED_DATA300_ID = "07d7beaaff4616e839450de6af3d407855c832bf75a24a959d1a12de5
 EXPECTED_DATA301_HEAD = "8820ba1b255f6bb95c7db0531fd846078a1aae01"
 EXPECTED_DATA301_ID = "939065abeefff8aed924415589608ff3fc721fe4b0a57fc200146a4b6a137e81"
 EXPECTED_CONVERGENCE_ISSUE = 521
-EXPECTED_CONVERGENCE_PR = 527
-EXPECTED_CONVERGENCE_BASE = "efc278cec0e4773eb4ff405bf4b4d24ee63b5d13"
-EXPECTED_OBSERVED_HEAD = "481468a8cebcd82c96f4801062203d627e13ded4"
+EXPECTED_CONVERGENCE_PR = 538
+EXPECTED_SUPERSEDED_PR = 527
+EXPECTED_CONVERGENCE_BASE = "b0523ccbc4b957615aac849d476cfa851be87578"
+EXPECTED_OBSERVED_HEAD = "94dce83cbe611144f961b9f93b3be273345a7f62"
 
 
 def canonical_sha256(doc: dict[str, Any]) -> str:
@@ -80,15 +81,16 @@ def validate_doc(doc: dict[str, Any]) -> None:
     conv = doc["required_source_convergence"]
     _require(conv.get("issue") == EXPECTED_CONVERGENCE_ISSUE, "source convergence issue drift")
     _require(conv.get("pull_request") == EXPECTED_CONVERGENCE_PR, "source convergence PR drift")
+    _require(conv.get("supersedes_pull_request") == EXPECTED_SUPERSEDED_PR, "supersession lineage drift")
     _require(conv.get("base_head_sha") == EXPECTED_CONVERGENCE_BASE, "source convergence base drift")
     _require(
         conv.get("observed_head_sha") == EXPECTED_OBSERVED_HEAD,
         "source convergence observed-head drift",
     )
-    _require(conv.get("pr_state") == "OPEN", "blocker snapshot expects open convergence PR")
+    _require(conv.get("pr_state") == "OPEN_DRAFT", "blocker snapshot expects open draft convergence PR")
     _require(
-        conv.get("exact_head_ci_state") == "QUEUED_NONTERMINAL",
-        "queue/nonterminal truth weakened",
+        conv.get("exact_head_ci_state") == "NOT_PUBLISHED_NONTERMINAL",
+        "nonterminal/no-CI truth weakened",
     )
     _require(
         conv.get("terminal_authority_consumed") is False,
@@ -99,19 +101,19 @@ def validate_doc(doc: dict[str, Any]) -> None:
         "reported_pre_successor_global_dedup_vector_non_authoritative_until_terminal"
     ]
     _require(
-        vector.get("source_capacity_bytes") == 314140,
+        vector.get("source_capacity_bytes") == 565743,
         "reported non-authoritative byte vector drift",
     )
     _require(
-        vector.get("independent_families") == 10,
+        vector.get("independent_families") == 13,
         "reported non-authoritative family vector drift",
     )
     _require(
-        sum(item["bytes"] for item in vector["by_stratum"].values()) == 314140,
+        sum(item["bytes"] for item in vector["by_stratum"].values()) == 565743,
         "stratum byte vector does not sum",
     )
     _require(
-        sum(item["families"] for item in vector["by_stratum"].values()) == 10,
+        sum(item["families"] for item in vector["by_stratum"].values()) == 13,
         "stratum family vector does not sum",
     )
 
