@@ -1,0 +1,208 @@
+{
+  "adversarial_candidate_scan": {
+    "candidate_records_scanned": 5,
+    "indicator_count": 0,
+    "matched_values_retained": false,
+    "pattern_class_count": 8,
+    "pattern_classes": [
+      "basic_auth_header",
+      "credential_uri",
+      "gitlab_token",
+      "huggingface_token",
+      "npm_auth_token",
+      "openai_style_key",
+      "private_unix_credential_path",
+      "private_windows_credential_path"
+    ],
+    "per_input_hash": [
+      {
+        "adversarial_indicator_counts": {},
+        "input_sha256": "154fb4034929714087e75150d678bf65049ddac32e79dcdf97162c8972c2be83",
+        "total": 0
+      },
+      {
+        "adversarial_indicator_counts": {},
+        "input_sha256": "94eb2f529922d125b3bd40691778886f4d5d80b128b925d0274fb3d94646ec5a",
+        "total": 0
+      },
+      {
+        "adversarial_indicator_counts": {},
+        "input_sha256": "72c301db0b2539f3f7a73c9c15e2e425700a6b758a1114f1a861e2d60c704c50",
+        "total": 0
+      },
+      {
+        "adversarial_indicator_counts": {},
+        "input_sha256": "2c61b3ac94d1dcebcde0c6f519554d2d7917247fbaa0a97002db4ef69e70ff28",
+        "total": 0
+      },
+      {
+        "adversarial_indicator_counts": {},
+        "input_sha256": "4c7d8d132c9898fc7d715e473f3ac74785ddc4ab96d2c9240f87835dc6d981ff",
+        "total": 0
+      }
+    ],
+    "result": "NO_ADDITIONAL_INDICATORS"
+  },
+  "adversarial_fixtures": {
+    "confusion": {
+      "false_negative": 7,
+      "false_positive": 0,
+      "true_negative": 7,
+      "true_positive": 8
+    },
+    "false_negative_fixture_ids": [
+      "positive-private-unix-ssh-path",
+      "positive-private-windows-cloud-path",
+      "positive-basic-auth-header",
+      "positive-npm-auth-token-shape",
+      "positive-gitlab-token-shape",
+      "positive-huggingface-token-shape",
+      "positive-openai-style-key-shape"
+    ],
+    "false_negative_rate": 0.4666666666666667,
+    "false_positive_fixture_ids": [],
+    "false_positive_rate": 0.0,
+    "fixture_count": 22,
+    "fixture_payload_retention": "NONE",
+    "fixture_payload_set_sha256": "e9abab6b32a9d0150eaf9532febaafb52b7e5b1a0829a01fe0cfa8cf4f1363b6",
+    "interpretation": "DATA-33 remains intentionally bounded; challenge failures are coverage gaps, not evidence of a matched secret in the candidate bytes.",
+    "negative_fixture_count": 7,
+    "positive_fixture_count": 15
+  },
+  "artifact_reacquisition": {
+    "candidate_input_utf8_bytes": 183061,
+    "candidate_source_count": 5,
+    "data227": {
+      "artifact_id": 9602093542,
+      "artifact_sha256": "080f073327020cb3bbb05c7348f658223804684d23012d9b66ab9b798c4fed5d",
+      "verified": true
+    },
+    "data229": {
+      "artifact_id": 9600107886,
+      "artifact_sha256": "927e10ccb83f919d57a8b78e3ea9cae72f9d4e0232401043234a35eec150074d",
+      "verified": true
+    },
+    "exact_identity_match_to_data300_inventory": true
+  },
+  "audit_scope": "final external-real candidate represented by DATA-301 terminal evidence; no final training shards exist because DATA-301 is terminal-blocked",
+  "authority_bindings": {
+    "data297_head_sha": "8d88f6521f52e6fcb7e129499fb800f7c8a8f360",
+    "data297_latest_workflow_conclusion": "failure_before_real-source-audit_due_artifact_download_401",
+    "data297_latest_workflow_run": 32968454113,
+    "data299_registry_identity_sha256": "2235b27441277542ef92748b5f9f6b21b983a7142ea53036b104e7be96cb44ee",
+    "data300_contract_identity_sha256": "07d7beaaff4616e839450de6af3d407855c832bf75a24a959d1a12de5d9364e5",
+    "data301_head_sha": "8820ba1b255f6bb95c7db0531fd846078a1aae01",
+    "data301_status": "TERMINAL_BLOCKED",
+    "data301_terminal_workflow_run": 32978147377,
+    "data33_policy_sha256": "8c905e3b8f81391c3f928f375bca8fe6d1b5d38b41dec5c081577e2c5ce58526",
+    "eval131_authority_identity_sha256": "c7211b3e1e6a4f22463d0e6174f0d6162c2452585704efad5564a35de8de609f"
+  },
+  "execution_class": "LOCAL_FREE",
+  "incumbent_privacy_scan": {
+    "allow_pass_count": 5,
+    "candidate_byte_scan_result": "PASS_UNDER_BOUNDED_DATA33_POLICY",
+    "coverage_claim": "high-confidence-patterns-only; zero detections does not imply zero PII/secrets",
+    "detector_finding_count": 0,
+    "input_utf8_bytes": 183061,
+    "policy_reused_unchanged": true,
+    "records": [
+      {
+        "action": "ALLOW",
+        "detector_counts": {},
+        "finding_count": 0,
+        "input_sha256": "154fb4034929714087e75150d678bf65049ddac32e79dcdf97162c8972c2be83",
+        "input_utf8_bytes": 48002,
+        "modality": "natural",
+        "source_id": "en.standardebooks.manual.8-typography",
+        "status": "PASS"
+      },
+      {
+        "action": "ALLOW",
+        "detector_counts": {},
+        "finding_count": 0,
+        "input_sha256": "94eb2f529922d125b3bd40691778886f4d5d80b128b925d0274fb3d94646ec5a",
+        "input_utf8_bytes": 36791,
+        "modality": "natural",
+        "source_id": "en.standardebooks.manual.9-metadata",
+        "status": "PASS"
+      },
+      {
+        "action": "ALLOW",
+        "detector_counts": {},
+        "finding_count": 0,
+        "input_sha256": "72c301db0b2539f3f7a73c9c15e2e425700a6b758a1114f1a861e2d60c704c50",
+        "input_utf8_bytes": 88565,
+        "modality": "natural",
+        "source_id": "ua.rada.open-data.laws-texts.d23314",
+        "status": "PASS"
+      },
+      {
+        "action": "ALLOW",
+        "detector_counts": {},
+        "finding_count": 0,
+        "input_sha256": "2c61b3ac94d1dcebcde0c6f519554d2d7917247fbaa0a97002db4ef69e70ff28",
+        "input_utf8_bytes": 8161,
+        "modality": "code",
+        "source_id": "code.encode.httpx._content",
+        "status": "PASS"
+      },
+      {
+        "action": "ALLOW",
+        "detector_counts": {},
+        "finding_count": 0,
+        "input_sha256": "4c7d8d132c9898fc7d715e473f3ac74785ddc4ab96d2c9240f87835dc6d981ff",
+        "input_utf8_bytes": 1542,
+        "modality": "code",
+        "source_id": "code.psf.requests._internal_utils",
+        "status": "PASS"
+      }
+    ],
+    "records_total": 5,
+    "redaction_count": 0,
+    "reject_count": 0,
+    "review_required_count": 0
+  },
+  "public_evidence_policy": {
+    "final_test_outcomes_read_or_emitted": false,
+    "fixture_payloads_retained": false,
+    "matched_secret_values_retained": false,
+    "raw_source_text_retained": false,
+    "sensitive_evidence_form": "SHA256_ONLY"
+  },
+  "report_identity_sha256": "ed302c408aa15f85d476bed961cfe5c0e28f2fb045cc91a6f0a027b894b3ee07",
+  "repository": "Oleksii-debug/12-6-ai.",
+  "reserved_material_audit": {
+    "candidate_identity_hash_collision_count": 6,
+    "candidate_source_count_with_eval131_identity_collision": 3,
+    "collision_sha256": [
+      "154fb4034929714087e75150d678bf65049ddac32e79dcdf97162c8972c2be83",
+      "21582c7f0e4ad39f2b0ed97bbc2c082d275e898b7a63c28e6d9badb8ee0f7860",
+      "36eae31c3b0676ea7c02236fa05bd695c240c9a8eade5febc00457b8103ee1a4",
+      "72c301db0b2539f3f7a73c9c15e2e425700a6b758a1114f1a861e2d60c704c50",
+      "7ac53dfb4bf6f73f178560e09f33160d0250c69fb679802f3254dc0eb4c9f509",
+      "94eb2f529922d125b3bd40691778886f4d5d80b128b925d0274fb3d94646ec5a"
+    ],
+    "data299_exact_source_hashes_are_part_of_exact_exclusion_union": true,
+    "public_evidence_hash_only": true,
+    "result": "FAIL_EXACT_RESERVED_SOURCE_IDENTITY_OVERLAP"
+  },
+  "schema_version": "12-6.verify307-corpus-privacy-v03-audit.v1",
+  "training_shard_audit": {
+    "corpus_identity": null,
+    "data301_pipeline_cluster_safe_split": "NOT_REACHED",
+    "data301_pipeline_deterministic_sharding": "NOT_REACHED",
+    "final_training_shards_exist": false,
+    "result": "NOT_APPLICABLE_NO_FINAL_SHARDS_TO_SCAN",
+    "safety_effect": "no reserved/private candidate material has entered non-existent final shards; corpus freeze must remain blocked",
+    "shard_identity": null
+  },
+  "verdict": {
+    "final_shard_absence": "CONFIRMED",
+    "pass_claim_authorized": false,
+    "privacy_candidate_bytes": "PASS_BOUNDED_WITH_KNOWN_DETECTOR_GAPS",
+    "reason": "Three frozen text candidate sources collide exactly with EVAL131 reserved source identities under DATA-299 exclusion semantics, and DATA-301 produced no final shards. The five source bytes are clean under DATA-33 plus the explicit adversarial candidate indicators checked here, but this cannot override the reserved-material hard failure.",
+    "reserved_material": "FAIL",
+    "status": "BLOCK_CORPUS_FREEZE"
+  },
+  "worker_id": "VERIFY-307-CORPUS-PRIVACY-V03"
+}
