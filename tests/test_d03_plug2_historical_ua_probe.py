@@ -45,6 +45,24 @@ class PluG2HistoricalUaProbeTests(unittest.TestCase):
         with self.assertRaises(AssertionError):
             validator.validate(value)
 
+    def test_20m_policy_target_drift_is_rejected(self) -> None:
+        value = copy.deepcopy(self.value)
+        value["balance_policy_geometry"]["target_source_bytes"] = 20_000_001
+        with self.assertRaises(AssertionError):
+            validator.validate(value)
+
+    def test_plug_family_cannot_exceed_5m_selected_bytes(self) -> None:
+        value = copy.deepcopy(self.value)
+        value["balance_policy_geometry"]["plug_lineage_max_selected_bytes_at_20m"] = 5_000_001
+        with self.assertRaises(AssertionError):
+            validator.validate(value)
+
+    def test_family_cap_cannot_be_repaired_by_replay(self) -> None:
+        value = copy.deepcopy(self.value)
+        value["balance_policy_geometry"]["overflow_repair"] = "REPLAY"
+        with self.assertRaises(AssertionError):
+            validator.validate(value)
+
     def _commit(self) -> dict[str, object]:
         return {
             "sha": validator.EXPECTED_COMMIT,
