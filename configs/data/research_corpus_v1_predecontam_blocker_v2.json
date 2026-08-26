@@ -23,7 +23,7 @@
   },
   "source_convergence_candidate": {
     "pull_request": 538,
-    "head_sha": "226cbc26710a75af4a864576220b270089e7c52b",
+    "head_sha": "1bcd1a57a7b2699294808b47888a255bf37a50aa",
     "registry_path": "configs/data/next100_063_terminal_source_registry_v4.json",
     "registry_schema_version": "12-6.next100-063-terminal-source-registry.v4",
     "registry_identity_sha256": "9fc400a3144b46c481e45d043b0a3365eb2129c83bbacde6f9e7af8a41fadc58",
@@ -32,9 +32,18 @@
     "pre_global_dedup_vector": {
       "source_object_count": 31,
       "by_stratum": {
-        "uk": {"numeric_training_capacity_bytes": 100856, "families": 4},
-        "en": {"numeric_training_capacity_bytes": 1838293, "families": 5},
-        "code": {"numeric_training_capacity_bytes": 106031, "families": 5}
+        "uk": {
+          "numeric_training_capacity_bytes": 100856,
+          "families": 4
+        },
+        "en": {
+          "numeric_training_capacity_bytes": 1838293,
+          "families": 5
+        },
+        "code": {
+          "numeric_training_capacity_bytes": 106031,
+          "families": 5
+        }
       },
       "numeric_training_capacity_bytes": 2045180,
       "normalized_source_envelope_bytes": 2047541,
@@ -45,15 +54,19 @@
   },
   "global_dedup_candidate": {
     "pull_request": 632,
-    "head_sha": "8181b247fc305f96f4be02d8630ce18cdcf63eae",
+    "head_sha": "938f0076f06fca653681774ce1a9585bd2f57380",
     "worker_id": "NEXT100-065D-CROSSSOURCE-DEDUP-V6",
     "config_path": "configs/data/next100_065d_cross_source_dedup_v6.json",
-    "dedicated_workflow_run": 33008762043,
-    "exact_head_ci_state": "PENDING_NONTERMINAL",
+    "dedicated_workflow_run": 33009534757,
+    "exact_head_ci_state": "QUEUED_NONTERMINAL",
     "terminal_authority_consumed": false,
     "expected_pre_dedup_source_object_count": 31,
     "expected_pre_dedup_numeric_capacity_bytes": 2045180,
-    "expected_pre_dedup_family_counts": {"uk": 4, "en": 5, "code": 5},
+    "expected_pre_dedup_family_counts": {
+      "uk": 4,
+      "en": 5,
+      "code": 5
+    },
     "post_dedup_report_sha256": null,
     "post_dedup_unique_capacity_bytes": null,
     "post_dedup_record_inventory_digest_sha256": null
@@ -64,7 +77,7 @@
     "records": [],
     "record_inventory_digest_sha256": null,
     "candidate_set_digest_sha256": null,
-    "reason": "Both the canonical source-registry V4 exact head and the composed 31-object global-dedup V6 exact head are nonterminal; queued/pending execution cannot be consumed as PASS authority."
+    "reason": "Both the canonical source-registry V4 exact head and the composed 31-object global-dedup V6 exact head are nonterminal; queued execution cannot be consumed as PASS authority."
   },
   "claim_boundary": {
     "source_bytes_are_training_tokens": false,
@@ -109,5 +122,5 @@
     ]
   },
   "evidence_identity_scope": "SHA256(canonical JSON with evidence_identity_sha256 omitted)",
-  "evidence_identity_sha256": "4837f26228c3cd55fbae605fbec894bc5788dda945e522ced8d7dd47a9e2ed19"
+  "evidence_identity_sha256": "3fa81ec07d970cc28f6fa1f0551804c41ce21ffdbee8f714e6ef780caa293229"
 }
