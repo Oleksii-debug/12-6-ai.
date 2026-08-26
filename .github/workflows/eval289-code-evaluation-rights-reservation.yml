@@ -1,0 +1,79 @@
+name: EVAL-289 Code Evaluation Rights Reservation
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/eval289-code-evaluation-rights-reservation.yml"
+      - "evidence/eval289/**"
+      - "src/twelve_six/eval289_code_rights.py"
+      - "tests/test_eval289_code_rights.py"
+      - "docs/EVAL289_CODE_EVALUATION_RIGHTS_RESERVATION.md"
+
+permissions:
+  contents: read
+
+env:
+  PYTHONPATH: src
+
+jobs:
+  rights-reservation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Prove exact source checkout
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+      - name: Universal exact execution bootstrap
+        uses: ./.github/actions/execution-bootstrap
+        with:
+          capabilities: runtime,tests
+          venv: .eval289
+          manifest: eval289-environment.json
+          command: python -m pytest -q tests/test_eval289_code_rights.py
+      - name: Verify fail-closed authority
+        run: |
+          set -euo pipefail
+          .eval289/bin/python -m compileall -q src/twelve_six/eval289_code_rights.py
+          .eval289/bin/python -m pytest -q tests/test_eval289_code_rights.py
+          .eval289/bin/python -m twelve_six.eval289_code_rights verify
+      - name: Assert no contaminated code reservation
+        run: |
+          set -euo pipefail
+          .eval289/bin/python - <<'PY'
+          import json
+          p = json.load(open(
+              'evidence/eval289/code-evaluation-rights-reservation.json',
+              encoding='utf-8',
+          ))
+          assert p['status'] == (
+              'BLOCKED_NO_PRISTINE_CODE_OBJECTS_WITH_EXPLICIT_EVALUATION_AUTHORITY'
+          )
+          assert p['observed_source_family_count'] == 2
+          assert p['eligible_object_count'] == 0
+          assert p['reservation']['active'] is False
+          assert p['reservation']['objects'] == []
+          assert p['model_training_executed_by_eval289'] is False
+          assert p['training_corpus_mutation_authorized'] is False
+          for item in p['candidates']:
+              assert item['evaluation_use_explicitly_authorized'] is False
+              assert item['training_exposure']['exposed'] is True
+              assert 'ALREADY_EXPOSED_TO_MODEL_TRAINING' in item['ineligibility_reasons']
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: eval289-code-evaluation-rights-reservation
+          path: |
+            eval289-environment.json
+            evidence/eval289/code-evaluation-rights-reservation.json
+          if-no-files-found: error
+          retention-days: 30
