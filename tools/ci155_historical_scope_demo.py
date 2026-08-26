@@ -11,13 +11,23 @@ from typing import Any
 
 
 def _git(root: Path, *args: str) -> str:
-    return subprocess.run(["git", *args], cwd=root, check=True, text=True, capture_output=True).stdout.strip()
+    completed = subprocess.run(
+        ["git", *args],
+        cwd=root,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    return completed.stdout.strip()
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo-root", default=".")
-    parser.add_argument("--cases", default="configs/ci/ci155_historical_demonstrations.v1.json")
+    parser.add_argument(
+        "--cases",
+        default="configs/ci/ci155_historical_demonstrations.v1.json",
+    )
     parser.add_argument("--output", default="ci155-historical-demonstrations.json")
     args = parser.parse_args()
     root = Path(args.repo_root).resolve()
@@ -25,17 +35,29 @@ def main() -> int:
     results: list[dict[str, Any]] = []
 
     for case in config["cases"]:
-        _git(root, "cat-file", "-e", f"{case['historical_red_source_sha']}^{{commit}}")
-        for key in ("scientific_surface_after_local_fix_sha", "forced_unrelated_cleanup_sha"):
+        _git(
+            root,
+            "cat-file",
+            "-e",
+            f"{case['historical_red_source_sha']}^{{commit}}",
+        )
+        for key in (
+            "scientific_surface_after_local_fix_sha",
+            "forced_unrelated_cleanup_sha",
+        ):
             if key in case:
                 _git(root, "cat-file", "-e", f"{case[key]}^{{commit}}")
         scientific = set(case["scientific_paths"])
         unrelated = set(case["unrelated_repository_ruff_failures"])
         local = set(case["experiment_local_ruff_failures_at_red_sha"])
         if scientific & unrelated:
-            raise RuntimeError(f"{case['id']}: an alleged unrelated Ruff path is in the scientific surface")
+            raise RuntimeError(
+                f"{case['id']}: unrelated Ruff path is in the scientific surface"
+            )
         if not local <= scientific:
-            raise RuntimeError(f"{case['id']}: local failure is not classified inside the scientific surface")
+            raise RuntimeError(
+                f"{case['id']}: local failure is outside the scientific surface"
+            )
         local_gate = (
             "WOULD_NOT_BE_BLOCKED_BY_UNRELATED_RUFF"
             if case["experiment_local_failure_fixed_before_demo"]
@@ -58,11 +80,17 @@ def main() -> int:
     report = {
         "schema": "12-6.ci155-historical-demonstration-results.v1",
         "status": "PASS",
-        "contract": "Unrelated repository Ruff debt cannot veto scientific execution; experiment-local defects still do; repository-wide red remains visible.",
+        "contract": (
+            "Unrelated repository Ruff debt cannot veto scientific execution; "
+            "experiment-local defects still do; repository-wide red remains visible."
+        ),
         "cases": results,
     }
     output = root / args.output
-    output.write_text(json.dumps(report, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+    output.write_text(
+        json.dumps(report, sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+    )
     print(json.dumps(report, sort_keys=True))
     return 0
 
