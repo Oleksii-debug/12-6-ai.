@@ -31,7 +31,7 @@ def test_policy_is_bounded_fastapi_code_only_and_one_family() -> None:
     assert policy["license"]["blob_sha1"] == "3e92463e6bd522a2a21e5f0a80d8089d6c4be20d"
     assert policy["limits"]["max_files"] == 3
     assert {item["path"] for item in policy["inventory"]} == {
-        "fastapi/encoders.py",
+        "fastapi/sse.py",
         "fastapi/exceptions.py",
         "fastapi/datastructures.py",
     }
@@ -42,16 +42,19 @@ def test_policy_is_bounded_fastapi_code_only_and_one_family() -> None:
     assert policy["training_purpose_authority"]["evaluation"] == "NOT_ADMITTED"
     assert policy["training_purpose_authority"]["reserved_for_evaluation"] is False
     assert policy["evaluation_boundary"]["code_record_count"] == 0
+    mixed = policy["explicit_exclusions"]["mixed_provenance_review_required"]
+    assert any("fastapi/encoders.py" in item for item in mixed)
 
 
 def test_code_only_path_boundary_rejects_tests_docs_and_unselected_code() -> None:
-    _assert_code_only_path("fastapi/encoders.py")
+    _assert_code_only_path("fastapi/sse.py")
     _assert_code_only_path("fastapi/exceptions.py")
     _assert_code_only_path("fastapi/datastructures.py")
     for path in (
         "tests/test_encoders.py",
         "docs/en/docs/index.md",
         "docs_src/response_model/tutorial001.py",
+        "fastapi/encoders.py",
         "fastapi/applications.py",
         "fastapi/py.typed",
     ):
