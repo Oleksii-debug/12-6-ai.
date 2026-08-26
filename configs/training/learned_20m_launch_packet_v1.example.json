@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "packet_id": "LEARNED-20M-LAUNCH-V1",
+  "authority": {
+    "r01_merge_main_sha": "a73ab38026cb7849f478cc13ad58b93534a76e2f",
+    "r01_campaign_path": "configs/research/r01_20m_to_100m_scaling_campaign_v1.json",
+    "r01_campaign_blob_sha1": "c50154db609d41eceb2ffc97912360df567bcc04",
+    "r01_campaign_id": "R01-20M-TO-100M-SCALING-V1",
+    "model341_sha": "e4ff486fd90802fc123bebf60eed4e59196a98df",
+    "modelspec_sha256": "fbff24d561a2818453554d58ca23fc6ace3303b078f1935a8576c4565bd92441",
+    "parameter_count": 20613440,
+    "base_lineage": "random_init_pretraining_only"
+  },
+  "artifacts": {
+    "code_sha": null,
+    "tokenizer_sha256": null,
+    "corpus_sha256": null,
+    "split_sha256": null,
+    "packing_sha256": null,
+    "unique_loss_ledger_sha256": null,
+    "unique_post_pack_causal_loss_positions": 0
+  },
+  "gates": {
+    "no_replay_proven": false,
+    "no_replay_accounting_ref": null,
+    "evaluation_decontamination_terminal": false,
+    "evaluation_decontamination_ref": null,
+    "checkpoint_integrity_terminal": false,
+    "checkpoint_integrity_ref": null,
+    "learned_3m_independent_terminal": false,
+    "learned_3m_independent_ref": null,
+    "learned_10m_independent_terminal": false,
+    "learned_10m_independent_ref": null
+  },
+  "recipe": {
+    "optimizer": null,
+    "scheduler": null,
+    "precision": null,
+    "seeds": [],
+    "target_causal_loss_positions": 0,
+    "stop_rule": null,
+    "checkpoint_policy_ref": null
+  },
+  "resources": {
+    "hardware_profile": null,
+    "estimated_flops": null,
+    "estimated_wall_clock_hours": null,
+    "maximum_cost_usd": null,
+    "output_destination": null,
+    "cancellation_rule": null
+  },
+  "authorizations": {
+    "compute_authorization_ref": null,
+    "training_authorization_ref": null
+  }
+}
