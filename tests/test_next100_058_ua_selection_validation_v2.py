@@ -49,7 +49,7 @@ def test_release_cannot_be_claimed_without_near_copy_proof() -> None:
 def test_late_bound_candidates_receive_no_illegal_credit() -> None:
     config = json.loads((ROOT / MODULE.CONFIG_PATH).read_text(encoding="utf-8"))
     candidates = config["late_bound_candidates"]
-    assert {item["pull_request"] for item in candidates} == {446, 449, 455, 462}
+    assert {item["pull_request"] for item in candidates} == {446, 449, 454, 455, 462, 471, 478}
     assert all(item["admitted_to_v2"] is False for item in candidates)
     assert all(item["new_family_credit"] == 0 for item in candidates)
     assert all(item["blockers"] for item in candidates)
