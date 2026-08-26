@@ -141,6 +141,11 @@
   ],
   "live_authority_bindings": [
     {
+      "worker_id": "DATA-287",
+      "branch": "data287/external-snapshot-registry-v2-20260826",
+      "authority_head_at_refresh": "b0523ccbc4b957615aac849d476cfa851be87578"
+    },
+    {
       "worker_id": "NEXT100-046-CODE-CLICK",
       "branch": "next100-046/click-code-source-admission-20260826",
       "authority_head_at_refresh": "5d7bd3d869e38f5f13ce8a82ad6fa19e3865a6df"
@@ -148,7 +153,13 @@
     {
       "worker_id": "NEXT100-044-CODE-FASTAPI",
       "branch": "next100/044-fastapi-code-admission-20260826",
-      "authority_head_at_refresh": "ae2499b6d4ec2f0ef87880865aaf66ceb357dcc4"
+      "authority_head_at_refresh": "fbbdd3a5fc5207c39708e133400ed0305767b9f9"
+    },
+    {
+      "worker_id": "EVAL-289",
+      "branch": "eval289/code-evaluation-rights-reservation-20260826",
+      "authority_head_at_refresh": "1c870e5e02bf48891ca599b0b3f3bfe6e84425bc",
+      "active_reserved_code_objects": 0
     }
   ],
   "known_evaluation_reservations": [
