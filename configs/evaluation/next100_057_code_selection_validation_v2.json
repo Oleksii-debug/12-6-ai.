@@ -1,0 +1,58 @@
+{
+  "admission_requirements": {
+    "exact_evaluation_use_authority_required": true,
+    "exact_revision_path_blob_binding_required": true,
+    "final_test_payload_access_for_selection_forbidden": true,
+    "future_training_exclusion_required": true,
+    "historical_tokenizer_fit_exposure_must_equal_zero": true,
+    "historical_training_exposure_must_equal_zero": true,
+    "minimum_independent_code_families": 2,
+    "reservation_before_any_tokenizer_or_training_exposure_required": true,
+    "training_overlap_must_equal_zero": true
+  },
+  "blocked_case_policy": {
+    "fabricate_records": false,
+    "publish_selection_jsonl": false,
+    "publish_terminal_blocker_authority": true
+  },
+  "deterministic_selection": {
+    "candidate_source": "terminal purpose-specific code evaluation reservation authorities only",
+    "family_identity_rule": "canonical upstream repository lineage after fork/mirror/transfer collapse",
+    "immutable_payload_required_when_ready": true,
+    "object_identity_key": [
+      "source_family",
+      "repository",
+      "revision",
+      "path",
+      "git_blob_sha1",
+      "raw_sha256"
+    ],
+    "reject_if_missing_any_required_field": true,
+    "selection_rule": "after all per-object gates pass, take the lexicographically first eligible object from each independent family until two families are selected",
+    "sort_key": [
+      "source_family",
+      "repository",
+      "revision",
+      "path",
+      "git_blob_sha1",
+      "raw_sha256"
+    ],
+    "stable_output_encoding": "UTF-8 JSON Lines; one canonical JSON object per line; keys sorted; LF newline"
+  },
+  "execution_class": "LOCAL_FREE",
+  "final_test_boundary": {
+    "outcome_access_allowed": false,
+    "payload_access_allowed": false,
+    "selection_may_consume_only_authority_metadata": true
+  },
+  "model_training_authorized": false,
+  "predecessor": {
+    "authority": "EVAL-292-CODE-SELECTION-VALIDATION-V1",
+    "authority_identity_sha256": "9a9848a82c34588753c9dca1379b8fae49cd7f366017507fc412de0c38cad46f",
+    "branch": "eval292/code-selection-validation-v1-20260826",
+    "head": "2cbe2f2d9c74984baa69e49e520e2280fc76421b"
+  },
+  "purpose": "code_selection_validation_successor_to_eval292",
+  "schema_version": "12-6.next100-057-code-selection-validation-v2.contract.v1",
+  "worker_id": "NEXT100-057-CODE-EVAL-SET-V2"
+}
