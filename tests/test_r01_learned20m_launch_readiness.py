@@ -96,6 +96,10 @@ def _make_compute_request_ready() -> dict:
             "loss_trajectory_acceptable": True,
         }
     )
+    for label in ("learned_3m", "learned_10m"):
+        evidence["learned_scale_evidence"][label].update(
+            {"authority": _authority(), "status": "PASS"}
+        )
     evidence["cost_envelope"].update(
         {
             "authority": _authority(workflow=False),
@@ -142,14 +146,8 @@ def test_current_packet_is_blocked_at_all_three_phases() -> None:
     assert "data_budget_not_qualified" in result.local_free_pilot_blockers
     assert "checkpoint_integrity_not_terminal_pass" in result.local_free_pilot_blockers
     assert "requested_unique_loss_positions_not_positive" in result.local_free_pilot_blockers
-    assert (
-        "requested_total_training_exposures_not_positive"
-        in result.local_free_pilot_blockers
-    )
-    assert (
-        "max_exposures_per_unique_position_not_positive"
-        in result.local_free_pilot_blockers
-    )
+    assert "learned_3m_not_terminal_pass" in result.compute_request_blockers
+    assert "learned_10m_not_terminal_pass" in result.compute_request_blockers
     assert "compute_not_explicitly_authorized" in result.material_training_blockers
     assert "training_not_explicitly_authorized" in result.material_training_blockers
 
@@ -160,19 +158,29 @@ def test_local_pilot_ready_does_not_imply_compute_or_training_authority() -> Non
     assert not result.ready_for_compute_authorization_request
     assert not result.material_training_authorized
     assert "bounded_pilot_not_terminal_pass" in result.compute_request_blockers
+    assert "learned_3m_not_terminal_pass" in result.compute_request_blockers
+
+
+def test_learned_scale_evidence_is_required_before_compute_request() -> None:
+    data = _make_compute_request_ready()
+    data["evidence"]["learned_scale_evidence"]["learned_10m"] = {
+        "authority": None,
+        "status": "NOT_RUN",
+    }
+    result = assess_learned20m_readiness(data)
+    assert result.ready_for_local_free_pilot
+    assert not result.ready_for_compute_authorization_request
+    assert "learned_10m_authority_missing" in result.compute_request_blockers
+    assert "learned_10m_not_terminal_pass" in result.compute_request_blockers
 
 
 def test_requested_unique_loss_budget_must_fit_terminal_ledger() -> None:
     data = _make_local_pilot_ready()
     ledger_positions = data["evidence"]["loss_ledger"]["unique_causal_loss_positions"]
-
-    data["evidence"]["training_recipe"]["requested_unique_loss_positions"] = (
-        ledger_positions + 1
-    )
+    data["evidence"]["training_recipe"]["requested_unique_loss_positions"] = ledger_positions + 1
     result = assess_learned20m_readiness(data)
     assert not result.ready_for_local_free_pilot
     assert "requested_unique_loss_positions_exceed_ledger" in result.local_free_pilot_blockers
-
     data["evidence"]["training_recipe"]["requested_unique_loss_positions"] = ledger_positions
     result = assess_learned20m_readiness(data)
     assert result.ready_for_local_free_pilot
@@ -184,25 +192,16 @@ def test_requested_unique_loss_budget_rejects_malformed_values() -> None:
         data["evidence"]["training_recipe"]["requested_unique_loss_positions"] = bad
         result = assess_learned20m_readiness(data)
         assert not result.ready_for_local_free_pilot
-        assert (
-            "requested_unique_loss_positions_not_positive"
-            in result.local_free_pilot_blockers
-        )
+        assert "requested_unique_loss_positions_not_positive" in result.local_free_pilot_blockers
 
 
 def test_total_training_exposure_cannot_be_below_unique_requirement() -> None:
     data = _make_local_pilot_ready()
     recipe = data["evidence"]["training_recipe"]
-    recipe["requested_total_training_exposures"] = (
-        recipe["requested_unique_loss_positions"] - 1
-    )
+    recipe["requested_total_training_exposures"] = recipe["requested_unique_loss_positions"] - 1
     result = assess_learned20m_readiness(data)
     assert not result.ready_for_local_free_pilot
-    assert (
-        "total_training_exposures_below_unique_requirement"
-        in result.local_free_pilot_blockers
-    )
-
+    assert "total_training_exposures_below_unique_requirement" in result.local_free_pilot_blockers
     recipe["requested_total_training_exposures"] = recipe["requested_unique_loss_positions"]
     result = assess_learned20m_readiness(data)
     assert result.ready_for_local_free_pilot
@@ -216,21 +215,14 @@ def test_total_training_exposure_must_respect_replay_cap() -> None:
     recipe["requested_total_training_exposures"] = 201
     result = assess_learned20m_readiness(data)
     assert not result.ready_for_local_free_pilot
-    assert (
-        "total_training_exposures_exceed_replay_cap"
-        in result.local_free_pilot_blockers
-    )
-
+    assert "total_training_exposures_exceed_replay_cap" in result.local_free_pilot_blockers
     recipe["requested_total_training_exposures"] = 200
     result = assess_learned20m_readiness(data)
     assert result.ready_for_local_free_pilot
 
 
 def test_exposure_controls_reject_malformed_values() -> None:
-    for field in (
-        "requested_total_training_exposures",
-        "max_exposures_per_unique_position",
-    ):
+    for field in ("requested_total_training_exposures", "max_exposures_per_unique_position"):
         for bad in (0, -1, True, 1.5, "100"):
             data = _make_local_pilot_ready()
             data["evidence"]["training_recipe"][field] = bad
@@ -260,15 +252,9 @@ def test_packet_authored_authorizations_cannot_self_authorize() -> None:
 def test_compute_and_training_authorization_refs_must_be_distinct() -> None:
     data = _make_compute_request_ready()
     _add_material_authorizations(data, compute_ref=COMPUTE_REF, training_ref=COMPUTE_REF)
-    result = assess_learned20m_readiness(
-        data,
-        verified_authorization_refs={COMPUTE_REF},
-    )
+    result = assess_learned20m_readiness(data, verified_authorization_refs={COMPUTE_REF})
     assert not result.material_training_authorized
-    assert (
-        "compute_and_training_authorization_refs_must_be_distinct"
-        in result.material_training_blockers
-    )
+    assert "compute_and_training_authorization_refs_must_be_distinct" in result.material_training_blockers
 
 
 def test_explicit_material_authority_must_cover_estimated_maximum() -> None:
@@ -278,7 +264,6 @@ def test_explicit_material_authority_must_cover_estimated_maximum() -> None:
     result = assess_learned20m_readiness(data, verified_authorization_refs=verified)
     assert not result.material_training_authorized
     assert "authorized_cost_below_estimated_maximum" in result.material_training_blockers
-
     data["evidence"]["compute_authorization"]["maximum_cost_usd"] = 50.0
     result = assess_learned20m_readiness(data, verified_authorization_refs=verified)
     assert result.material_training_authorized
@@ -290,10 +275,7 @@ def test_training_authorization_is_independent_of_compute_authorization() -> Non
     data["evidence"]["training_authorization"].update(
         {"authority": None, "status": "NOT_AUTHORIZED", "decision_ref": None}
     )
-    result = assess_learned20m_readiness(
-        data,
-        verified_authorization_refs={COMPUTE_REF},
-    )
+    result = assess_learned20m_readiness(data, verified_authorization_refs={COMPUTE_REF})
     assert not result.material_training_authorized
     assert "training_not_explicitly_authorized" in result.material_training_blockers
     assert "training_authorization_ref_missing" in result.material_training_blockers
