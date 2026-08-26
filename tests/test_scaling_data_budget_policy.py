@@ -28,11 +28,9 @@ def test_current_policy_passes() -> None:
         "stage_count": 3,
         "primary_parameter_count": 20_613_440,
         "primary_20x_unique_loss_tokens": 412_268_800,
-        "source_registry_pr": 538,
-        "source_registry_schema": "12-6.next100-063-terminal-source-registry.v2",
-        "source_capacity_bytes_at_cutoff": 266_476,
+        "volatile_source_snapshot_embedded": False,
         "source_bytes_are_token_authority": False,
-        "long_training_ready": False,
+        "policy_can_authorize_training": False,
     }
 
 
@@ -40,6 +38,13 @@ def test_bytes_cannot_be_promoted_to_training_tokens() -> None:
     broken = copy.deepcopy(load_policy())
     broken["truth_boundary"]["source_capacity_bytes_are_training_tokens"] = True
     with pytest.raises(ValueError, match="bytes must never be token authority"):
+        module.validate(broken)
+
+
+def test_source_capacity_target_cannot_be_promoted_to_training_budget() -> None:
+    broken = copy.deepcopy(load_policy())
+    broken["truth_boundary"]["source_capacity_target_is_training_budget"] = True
+    with pytest.raises(ValueError, match="must never be training budgets"):
         module.validate(broken)
 
 
@@ -57,10 +62,10 @@ def test_paid_compute_cannot_be_authorized_by_research_policy() -> None:
         module.validate(broken)
 
 
-def test_long_training_cannot_be_marked_ready_from_source_capacity() -> None:
+def test_scaling_policy_cannot_self_authorize_training() -> None:
     broken = copy.deepcopy(load_policy())
-    broken["current_20m_observation"]["learned_20m_long_training_ready"] = True
-    with pytest.raises(ValueError, match="must not fabricate 20M training readiness"):
+    broken["truth_boundary"]["this_policy_can_authorize_training"] = True
+    with pytest.raises(ValueError, match="must not self-authorize training"):
         module.validate(broken)
 
 
@@ -73,31 +78,41 @@ def test_exact_tokenization_evidence_cannot_be_removed() -> None:
         module.validate(broken)
 
 
-def test_live_registry_identity_cannot_drift_silently() -> None:
+def test_explicit_compute_authorization_cannot_be_removed() -> None:
     broken = copy.deepcopy(load_policy())
-    broken["current_20m_observation"]["source_registry_identity"] = "0" * 64
-    with pytest.raises(ValueError, match="source registry identity drift"):
-        module.validate(broken)
-
-
-def test_live_registry_schema_cannot_fall_back_to_superseded_v1() -> None:
-    broken = copy.deepcopy(load_policy())
-    broken["current_20m_observation"]["source_registry_schema"] = (
-        "12-6.next100-063-terminal-source-registry.v1"
+    broken["long_training_gate"]["required_evidence"].remove(
+        "explicit_compute_authorization"
     )
-    with pytest.raises(ValueError, match="source registry schema drift"):
+    with pytest.raises(ValueError, match="required evidence set drift"):
         module.validate(broken)
 
 
-def test_superseded_v1_source_capacity_cannot_be_reintroduced() -> None:
+def test_volatile_live_source_snapshot_is_rejected() -> None:
     broken = copy.deepcopy(load_policy())
-    broken["current_20m_observation"]["observed_source_capacity_bytes"] = 565_743
-    with pytest.raises(ValueError, match="observed source-capacity authority drift"):
+    broken["current_20m_observation"] = {
+        "source_registry_pr": 538,
+        "observed_source_capacity_bytes": 303_374,
+    }
+    with pytest.raises(ValueError, match="volatile live source snapshots"):
         module.validate(broken)
 
 
-def test_source_capacity_gap_is_derived_not_free_text() -> None:
+def test_source_registry_cannot_be_relabelled_as_corpus_identity() -> None:
     broken = copy.deepcopy(load_policy())
-    broken["current_20m_observation"]["remaining_source_capacity_gap_bytes"] -= 1
-    with pytest.raises(ValueError, match="source-capacity gap arithmetic drift"):
+    broken["data_authority_contract"]["source_registry_is_corpus_identity"] = True
+    with pytest.raises(ValueError, match="data authority firewall missing"):
+        module.validate(broken)
+
+
+def test_source_registry_cannot_be_token_authority() -> None:
+    broken = copy.deepcopy(load_policy())
+    broken["data_authority_contract"]["source_registry_is_token_count_authority"] = True
+    with pytest.raises(ValueError, match="data authority firewall missing"):
+        module.validate(broken)
+
+
+def test_stage_cannot_embed_volatile_readiness_status() -> None:
+    broken = copy.deepcopy(load_policy())
+    broken["stages"][0]["status_source"] = "READY"
+    with pytest.raises(ValueError, match="must not embed volatile readiness status"):
         module.validate(broken)
