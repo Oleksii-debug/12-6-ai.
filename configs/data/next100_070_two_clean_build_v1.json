@@ -1,0 +1,95 @@
+{
+  "schema_version": "12-6.next100-070-two-clean-build.v1",
+  "worker_id": "NEXT100-070-TWO-CLEAN-BUILD",
+  "execution_profile": "LOCAL_FREE",
+  "repository": "Oleksii-debug/12-6-ai.",
+  "base_contract": {
+    "worker": "DATA-300",
+    "head_sha": "8ea7f830e50a23754d189dd4134f4afad76a7ee9",
+    "path": "configs/data/data300_corpus_v03_frozen_build_contract_v2.json",
+    "git_blob_sha1": "39d4fa07ea17e66e042a3ccb1a55b8e5e1c5d7bf",
+    "contract_identity_sha256": "07d7beaaff4616e839450de6af3d407855c832bf75a24a959d1a12de5d9364e5"
+  },
+  "baseline_terminal_build": {
+    "worker": "DATA-301",
+    "head_sha": "8820ba1b255f6bb95c7db0531fd846078a1aae01",
+    "status": "TERMINAL_BLOCKED"
+  },
+  "late_bound_authorities": {
+    "registry": {
+      "worker": "DATA-287",
+      "branch": "data287/external-snapshot-registry-v2-20260826",
+      "head_sha": "b0523ccbc4b957615aac849d476cfa851be87578",
+      "path": "data/registry/external_snapshots.v2.json",
+      "git_blob_sha1": "21fe6485aa9eaa0945837efce54c69cfc1098472",
+      "registry_identity_sha256": "917e9bc31b2fa040d25e807ae3c01aa2cce32420752a891caacfb6c830e6632c"
+    },
+    "rights": {
+      "worker": "DATA-293",
+      "branch": "data293/independent-rights-recertification-20260826",
+      "head_sha": "2665a4cd86186ba44024334719d30dcc35d222d8",
+      "path": "configs/data/data293_independent_rights_recertification_v1.json",
+      "git_blob_sha1": "413a2049a5d8ec72ff616e3116904550dd50fe52"
+    }
+  },
+  "expected_candidate": {
+    "source_count": 5,
+    "independent_family_count": 4,
+    "unique_normalized_bytes": 183061,
+    "family_counts": {
+      "uk": 1,
+      "en": 1,
+      "code": 2
+    },
+    "minimum_independent_families_per_stratum": 2,
+    "family_constrained_no_replay_budget": 0
+  },
+  "determinism_contract": {
+    "clean_build_count": 2,
+    "shared_mutable_cache_allowed": false,
+    "canonical_json": {
+      "utf8": true,
+      "sort_keys": true,
+      "separators": [",", ":"],
+      "trailing_newline": true
+    },
+    "forbidden_identity_inputs": [
+      "wall_clock_time",
+      "host_name",
+      "absolute_workspace_path",
+      "random_uuid",
+      "filesystem_iteration_order",
+      "network_response_order"
+    ],
+    "required_surfaces": [
+      "normalized_records/manifest.json",
+      "split_manifests/manifest.json",
+      "shards/manifest.json",
+      "rights_manifest.json",
+      "quality_evidence.json",
+      "privacy_evidence.json",
+      "dedup_evidence.json",
+      "decontamination_evidence.json",
+      "loss_ledger.json",
+      "gate_report.json",
+      "tree_manifest.json"
+    ]
+  },
+  "prebuild_evidence_vector": {
+    "G05_QUALITY": "BLOCKED_NO_BOUND_EXACT_CURRENT_CANDIDATE_RERUN",
+    "G06_PRIVACY": "BLOCKED_NO_BOUND_EXACT_CURRENT_CANDIDATE_RERUN",
+    "G07_DEDUP": "BLOCKED_NO_BOUND_EXACT_CURRENT_MATERIALIZATION_RERUN",
+    "G08_RESERVED_DECONTAMINATION": "BLOCKED_NO_EXACT_CORPUS_IDENTITY",
+    "G09_BALANCE_DIVERSITY": "FAIL_FAMILY_DIVERSITY_NO_REPLAY_BUDGET_ZERO",
+    "G10_SELECTION_VALIDATION": "BLOCKED_NO_BOUND_NONEMPTY_TERMINAL_SELECTION_AUTHORITY",
+    "G12_UNIQUE_LOSS": "BLOCKED_NO_FULL_FIVE_SOURCE_LEDGER"
+  },
+  "execution_rule": "Validate exact registry and rights first. Evaluate all deterministic prebuild gate states independently. Do not materialize split or shard products when any hard prebuild gate fails. Emit canonical status/evidence manifests and prove their complete byte identity in two clean isolated roots.",
+  "claim_boundary": {
+    "corpus_built": false,
+    "corpus_frozen": false,
+    "shards_built": false,
+    "training_authorized_by_this_worker": false,
+    "model_training_executed": false
+  }
+}
