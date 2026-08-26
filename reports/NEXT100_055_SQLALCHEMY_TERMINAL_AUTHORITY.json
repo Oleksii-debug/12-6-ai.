@@ -1,0 +1,106 @@
+{
+  "schema_version": "12-6.next100-055-sqlalchemy-terminal-authority.v1",
+  "worker_id": "NEXT100-055-CODE-SQLALCHEMY",
+  "authority": "EXTERNAL_REAL_CODE_SOURCE_ADMISSION_LOCAL_FREE",
+  "terminal": true,
+  "verdict": "RETEST",
+  "admission_authorized": false,
+  "execution_class": "LOCAL_FREE",
+  "training_performed": false,
+  "paid_compute_used": false,
+  "reason": "Fail closed: exact source, rights, immutable inventory and isolation boundaries are bound, but the required executable privacy/secrets, AST-parse and exact/near-dedup gate has not completed. GitHub Actions run 32999461743 / job 98277150547 remained queued at sealing time, and the local sandbox could not resolve github.com for an independent exact-blob execution. No ADMIT claim is made without executed gate evidence.",
+  "source_branch": "next100-055/code-sqlalchemy-admission-20260826",
+  "qualification_head_before_seal": "3057b2ae87e906a3414d4c3d60b7090a30eb291c",
+  "upstream": {
+    "repository": "https://github.com/sqlalchemy/sqlalchemy",
+    "source_family": "github:sqlalchemy/sqlalchemy",
+    "release_tag": "rel_2_0_52",
+    "release_version": "2.0.52",
+    "commit": "190990768104d13e322d9c07261cb2778e7f256a",
+    "tree_sha1": "43e95234e70f5afb4a40bf89503b187491cdd0a1"
+  },
+  "license": {
+    "license_id": "MIT",
+    "path": "LICENSE",
+    "blob_sha1": "903d67495fc6c2017713c754cf16b8f179122ed2",
+    "size_bytes": 1100,
+    "model_training_rights": "ALLOWED",
+    "redistribution_rights": "ALLOWED_WITH_NOTICE",
+    "condition": "Include the SQLAlchemy MIT copyright and permission notice in copies or substantial portions of the Software."
+  },
+  "bounded_inventory": {
+    "object_count": 6,
+    "raw_bytes": 831341,
+    "generated_artifact_unique_capacity_credit": 0,
+    "objects": [
+      {"path": "lib/sqlalchemy/engine/base.py", "blob_sha1": "af313b878247cebdec463784f79eba87f8ca2660", "size_bytes": 123864},
+      {"path": "lib/sqlalchemy/engine/create.py", "blob_sha1": "dee77dab43349d71fe884bdc6a66825a19ffa7ee", "size_bytes": 34177},
+      {"path": "lib/sqlalchemy/pool/base.py", "blob_sha1": "d2090af6db8db0fed62635ea1303d5fc148f2f0b", "size_bytes": 52588},
+      {"path": "lib/sqlalchemy/sql/elements.py", "blob_sha1": "7d5963308200e753bb0b70e2795f9cda0e2e503c", "size_bytes": 179890},
+      {"path": "lib/sqlalchemy/sql/selectable.py", "blob_sha1": "53fc3e29f49c1a4e1973f745f8d0460859ca065f", "size_bytes": 244137},
+      {"path": "lib/sqlalchemy/orm/session.py", "blob_sha1": "26681bda094ba5f2abc477b6bf837df89186dba7", "size_bytes": 196685}
+    ]
+  },
+  "static_gates": {
+    "exact_release_commit_bound": "PASS",
+    "release_tree_bound": "PASS",
+    "license_blob_bound": "PASS",
+    "training_rights": "PASS",
+    "redistribution_rights": "PASS_WITH_NOTICE",
+    "first_party_implementation_scope": "PASS",
+    "human_authored_header_evidence": "PASS_SELECTED_FILES",
+    "generated_artifacts_excluded_from_unique_capacity": "PASS",
+    "source_family_identity": "PASS_ONE_FAMILY"
+  },
+  "execution_gates": {
+    "strict_utf8_identity": "RETEST_PENDING_EXECUTION",
+    "python_ast_parse_all": "RETEST_PENDING_EXECUTION",
+    "secret_scan_all": "RETEST_PENDING_EXECUTION",
+    "privacy_scan_all": "RETEST_PENDING_EXECUTION",
+    "exact_sha256_dedup": "RETEST_PENDING_EXECUTION",
+    "near_dedup_token5_jaccard_0_85": "RETEST_PENDING_EXECUTION"
+  },
+  "source_family_decision": {
+    "source_family": "github:sqlalchemy/sqlalchemy",
+    "decision": "ONE_PROVISIONAL_INDEPENDENT_SQLALCHEMY_FAMILY",
+    "capacity_count": 1,
+    "rule": "Collapse or exclude any affected object if later exact/near-duplicate or provenance-lineage evidence establishes non-independence."
+  },
+  "evaluation_boundary": {
+    "authority": "EVAL-322",
+    "branch": "eval322/real-ua-en-code-authority-20260826",
+    "current_head_at_late_check": "7c15363a8c110f30a493ac41ab49a824354a2a67",
+    "evidence_blob_sha1": "3199f97842d7fb4ea7e52e364a5847dfa646f854",
+    "evidence_identity_sha256": "43a666702feacd94af63b8e1be13bb5d35ca90a8bc6555b41911e77e8fbe556c",
+    "selection_records": 0,
+    "final_test_records": 0,
+    "candidate_role": "TRAINING_ONLY",
+    "evaluation_use_authorized": false,
+    "collision_status": "PASS_NO_CODE_RESERVATION_AT_LATE_CHECK"
+  },
+  "concurrency_late_check": {
+    "authority_registry_branch": "next100019/authority-registry-v3-20260826",
+    "authority_registry_head": "ce275a272afbf8a9a4452a107db9190fa0abe653",
+    "external_sources_blob_sha1": "07c0f7db05e5cd6d244375e37e1ebf204ccc948e",
+    "external_sources_count": 0,
+    "reserved_fingerprints_blob_sha1": "a80d86ba4d60c45fca0cfab9d77743e2f7928ca6",
+    "reserved_sets_count": 0,
+    "sqlalchemy_named_branches": ["next100-055/code-sqlalchemy-admission-20260826"],
+    "competing_sqlalchemy_branch_count": 0,
+    "status": "PASS_NO_REGISTRY_OR_EVALUATION_COLLISION"
+  },
+  "executable_authority": {
+    "manifest_path": "configs/data/next100_055_sqlalchemy_code_rights_v1.json",
+    "verifier_path": "src/twelve_six/next100_055_sqlalchemy_admission.py",
+    "workflow_path": ".github/workflows/next100-code-sqlalchemy-admission.yml",
+    "workflow_run_id": 32999461743,
+    "workflow_job_id": 98277150547,
+    "workflow_status_at_seal": "queued"
+  },
+  "retest_unblock": [
+    "Execute the committed verifier against the exact branch head and exact pinned upstream blobs.",
+    "Require PASS for immutable blob/size, human-authored/generated exclusion, strict UTF-8 identity, Python AST parse, secret scan, privacy scan, exact SHA-256 dedup and token-5 Jaccard near-dedup at 0.85.",
+    "Refresh authority registry and EVAL-322 immediately before issuing any ADMIT authority.",
+    "Issue a new terminal ADMIT_TRAINING_ONLY authority only if all execution gates pass and no evaluation reservation or concurrent source collision exists."
+  ]
+}
