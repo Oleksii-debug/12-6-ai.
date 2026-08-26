@@ -53,19 +53,18 @@ class Data297PrivacyExternalAuditTests(unittest.TestCase):
         self.assertEqual(
             metrics["confusion"],
             {
-                "false_negative": 8,
+                "false_negative": 7,
                 "false_positive": 0,
                 "true_negative": 7,
-                "true_positive": 7,
+                "true_positive": 8,
             },
         )
-        self.assertAlmostEqual(metrics["false_negative_rate"], 8 / 15)
+        self.assertAlmostEqual(metrics["false_negative_rate"], 7 / 15)
         self.assertEqual(metrics["false_positive_rate"], 0.0)
         self.assertEqual(
             set(metrics["false_negative_fixture_ids"]),
             {
                 "positive-basic-auth-header",
-                "positive-credential-bearing-database-uri",
                 "positive-gitlab-token-shape",
                 "positive-huggingface-token-shape",
                 "positive-npm-auth-token-shape",
