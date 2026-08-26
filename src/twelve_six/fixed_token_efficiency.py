@@ -23,9 +23,10 @@ import statistics
 import subprocess
 import sys
 import time
+from collections.abc import Iterable
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 import torch
 
@@ -421,9 +422,12 @@ def _train_until(
         train_elapsed = time.perf_counter() - train_started
         state["training_wall_seconds"] += train_elapsed
         state["grad_norms"].append(float(metrics.grad_norm))
-        if metrics.grad_norm is not None and bundle["trainer_config"].gradient_clip_norm is not None:
-            if metrics.grad_norm > bundle["trainer_config"].gradient_clip_norm:
-                state["clip_count"] += 1
+        if (
+            metrics.grad_norm is not None
+            and bundle["trainer_config"].gradient_clip_norm is not None
+            and metrics.grad_norm > bundle["trainer_config"].gradient_clip_norm
+        ):
+            state["clip_count"] += 1
         if snapshot is not None:
             state["update_ratios"].append(
                 {
@@ -651,7 +655,7 @@ def resume_model(
     state["grad_norms"] = list(state["grad_norms"])
     state["update_ratios"] = list(state["update_ratios"])
     state["checkpoints"] = list(state["checkpoints"])
-    resume_loss, checked_tokens, resume_eval_seconds = _evaluate_checked(
+    resume_loss, _checked_tokens, resume_eval_seconds = _evaluate_checked(
         model=model,
         trainer=trainer,
         validation_records=bundle["data"]["validation_records"],

@@ -8,9 +8,9 @@ estimates for the incumbent checkpoint implementation.
 from __future__ import annotations
 
 import math
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from statistics import median
-from typing import Iterable
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,7 +52,7 @@ def interval_for_recompute_target(
         raise ValueError("step_seconds must be finite and > 0")
     if not math.isfinite(max_recompute_seconds) or max_recompute_seconds <= 0.0:
         raise ValueError("max_recompute_seconds must be finite and > 0")
-    return max(1, int(math.floor(max_recompute_seconds / step_seconds)))
+    return max(1, math.floor(max_recompute_seconds / step_seconds))
 
 
 def checkpoint_overhead_percent(

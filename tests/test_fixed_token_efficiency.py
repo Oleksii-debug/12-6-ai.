@@ -7,9 +7,9 @@ import pytest
 import torch
 
 from twelve_six.fixed_token_efficiency import (
+    _EXPECTED_COUNTS,
     DEFAULT_TOKEN_BUDGETS,
     MODEL_SCHEMA,
-    _EXPECTED_COUNTS,
     _assert_token_transition,
     _canonical_hash,
     _make_pair_batch,

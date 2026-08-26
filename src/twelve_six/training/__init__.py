@@ -2,6 +2,17 @@
 
 from .config import PrecisionMode, SchedulerKind, TrainerConfig
 from .loss import causal_lm_loss, causal_pair_loss
+from .memory import (
+    TrainingTensorMemory,
+    gradient_tensor_bytes,
+    measure_training_tensor_memory,
+    optimizer_tensor_bytes,
+    parameter_tensor_bytes,
+    process_rss_bytes,
+    scaler_state_metadata,
+    scaler_tensor_bytes,
+    tensor_nbytes,
+)
 from .trainer import (
     CheckpointHookError,
     NonFiniteTrainingError,
@@ -25,8 +36,17 @@ __all__ = [
     "TrainerState",
     "TrainingRunResult",
     "TrainingStateInvalidError",
+    "TrainingTensorMemory",
     "build_optimizer",
     "build_scheduler",
     "causal_lm_loss",
     "causal_pair_loss",
+    "gradient_tensor_bytes",
+    "measure_training_tensor_memory",
+    "optimizer_tensor_bytes",
+    "parameter_tensor_bytes",
+    "process_rss_bytes",
+    "scaler_state_metadata",
+    "scaler_tensor_bytes",
+    "tensor_nbytes",
 ]

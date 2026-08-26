@@ -1,0 +1,88 @@
+name: TRAIN57 Optimizer Memory Evidence
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  optimizer-memory-cpu:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Prove exact source checkout
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Verify exact locked environment inputs
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: >-
+          python tools/verify_locked_environment.py
+          --profile linux-x86_64
+          --source-sha "$SOURCE_SHA"
+          --evidence-out train57-locked-environment.json
+      - name: Create locked LOCAL_FREE execution environment
+        run: |
+          python -m venv .train57-locked
+          .train57-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .train57-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          .train57-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/dev.lock.txt
+          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .train57-locked/bin/python -m pip install --no-deps --no-build-isolation -e .
+      - name: Focused estimator and live-state tests
+        run: >-
+          .train57-locked/bin/python -m pytest -q
+          tests/test_training_memory.py
+          tests/test_distributed_planning.py
+      - name: Measure 100K through 10M in isolated processes
+        run: |
+          .train57-locked/bin/python tools/measure_training_memory.py \
+            --scales 100k 500k 1m 10m \
+            --sequence-length 8 \
+            --precision fp32 \
+            --repeats 3 \
+            --output train57-optimizer-memory.json
+      - name: Validate measured state formulas
+        run: |
+          .train57-locked/bin/python - <<'PY'
+          import json
+          report = json.load(open("train57-optimizer-memory.json", encoding="utf-8"))
+          for scale, result in report["results"].items():
+              n = result["parameters"]
+              assert result["parameter_tensor_bytes"] == 4 * n, scale
+              assert result["gradient_bytes_pre_step"] == 4 * n, scale
+              assert result["adam_moment_bytes_after_first_step"] == 8 * n, scale
+              assert result["optimizer_state_empty_after_init"], scale
+              assert result["gradients_released_after_update"], scale
+              assert not result["scaler"]["enabled"], scale
+          print(json.dumps({
+              scale: {
+                  "parameters": result["parameters"],
+                  "parameter_tensor_bytes": result["parameter_tensor_bytes"],
+                  "gradient_bytes_pre_step": result["gradient_bytes_pre_step"],
+                  "adam_moment_bytes_after_first_step": result["adam_moment_bytes_after_first_step"],
+                  "optimizer_other_tensor_bytes": result["optimizer_other_tensor_bytes"],
+                  "scaler": result["scaler"],
+                  "rss": result["rss"],
+              }
+              for scale, result in report["results"].items()
+          }, indent=2, sort_keys=True))
+          PY
+      - name: Upload retained memory evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: train57-optimizer-memory-evidence
+          path: |
+            train57-locked-environment.json
+            train57-optimizer-memory.json
+          if-no-files-found: error
+          retention-days: 30

@@ -68,12 +68,12 @@ def test_expert_parallel_must_divide_data_parallel() -> None:
         ParallelPlan(data_parallel=6, expert_parallel=4).validate()
 
 
-def test_memory_estimate_reports_transparent_breakdown() -> None:
+def test_memory_estimate_defaults_match_live_fp32_trainer_state() -> None:
     estimate = estimate_training_memory(s0_model(), ParallelPlan())
-    assert estimate.parameter_bytes_per_rank == 20_000
-    assert estimate.gradient_bytes_per_rank == 20_000
+    assert estimate.parameter_bytes_per_rank == 40_000
+    assert estimate.gradient_bytes_per_rank == 40_000
     assert estimate.optimizer_bytes_per_rank == 80_000
-    assert estimate.master_weight_bytes_per_rank == 40_000
+    assert estimate.master_weight_bytes_per_rank == 0
     assert estimate.activation_bytes_per_rank > 0
     assert estimate.total_bytes_per_rank == sum(
         (
@@ -84,6 +84,22 @@ def test_memory_estimate_reports_transparent_breakdown() -> None:
             estimate.activation_bytes_per_rank,
         )
     )
+
+
+def test_memory_estimate_can_still_model_explicit_half_storage() -> None:
+    estimate = estimate_training_memory(
+        s0_model(),
+        ParallelPlan(),
+        parameter_bytes=2,
+        gradient_bytes=2,
+        optimizer_bytes_per_parameter=8,
+        master_weight_bytes=4,
+        activation_bytes=2,
+    )
+    assert estimate.parameter_bytes_per_rank == 20_000
+    assert estimate.gradient_bytes_per_rank == 20_000
+    assert estimate.optimizer_bytes_per_rank == 80_000
+    assert estimate.master_weight_bytes_per_rank == 40_000
 
 
 def test_fsdp_style_sharding_reduces_model_state_estimate() -> None:
