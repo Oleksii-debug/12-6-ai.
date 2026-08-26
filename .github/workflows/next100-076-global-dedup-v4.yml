@@ -1,0 +1,171 @@
+name: NEXT100-076 Global Dedup V4
+
+on:
+  push:
+    branches:
+      - next100-076/global-dedup-v4-sol-20260826
+    paths:
+      - "configs/data/next100_076_global_dedup_v4.json"
+      - "tools/run_next100_076_global_dedup_v4.py"
+      - "tests/test_next100_076_global_dedup_v4.py"
+      - ".github/workflows/next100-076-global-dedup-v4.yml"
+  pull_request:
+    paths:
+      - "configs/data/next100_076_global_dedup_v4.json"
+      - "tools/run_next100_076_global_dedup_v4.py"
+      - "tests/test_next100_076_global_dedup_v4.py"
+      - ".github/workflows/next100-076-global-dedup-v4.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: next100-076-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  global-dedup-v4:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - name: Checkout successor head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Prove exact successor checkout
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+
+      - name: Checkout exact KMu authority
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: 40950a950b60921fd856af2719e1ae2486d9e892
+          path: .authority/kmu
+          persist-credentials: false
+
+      - name: Checkout exact NIST authority
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: b7491745b34ac8679baaf69cb96cd609dcbe0a16
+          path: .authority/nist
+          persist-credentials: false
+
+      - name: Checkout exact MDN authority
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: 902eccc0b3efff09a38dc89cda789180b6c6e754
+          path: .authority/mdn
+          persist-credentials: false
+
+      - name: Checkout exact Nomis authority
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: d75edd497c7fb1054e86d892c9462f059c1f4aa9
+          path: .authority/nomis
+          persist-credentials: false
+
+      - name: Prove exact authority checkouts
+        run: |
+          test "$(git -C .authority/kmu rev-parse HEAD)" = "40950a950b60921fd856af2719e1ae2486d9e892"
+          test "$(git -C .authority/nist rev-parse HEAD)" = "b7491745b34ac8679baaf69cb96cd609dcbe0a16"
+          test "$(git -C .authority/mdn rev-parse HEAD)" = "902eccc0b3efff09a38dc89cda789180b6c6e754"
+          test "$(git -C .authority/nomis rev-parse HEAD)" = "d75edd497c7fb1054e86d892c9462f059c1f4aa9"
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Exact LOCAL_FREE execution bootstrap
+        uses: ./.github/actions/execution-bootstrap
+        with:
+          capabilities: runtime,tests,lint
+          venv: .next100-076
+          command: python -m pytest -q tests/test_next100_076_global_dedup_v4.py
+          manifest: next100-076-execution-environment.json
+
+      - name: Revalidate inherited NEXT100-063 convergence authority
+        run: .next100-076/bin/python tools/validate_next100_063_source_registry_convergence.py
+
+      - name: Focused compile and lint
+        run: |
+          PYTHONPATH=src .next100-076/bin/python -m compileall -q tools/run_next100_076_global_dedup_v4.py tests/test_next100_076_global_dedup_v4.py
+          .next100-076/bin/ruff check --select E4,E9,F tools/run_next100_076_global_dedup_v4.py tests/test_next100_076_global_dedup_v4.py
+
+      - name: Focused successor-dedup regressions
+        run: PYTHONPATH=src .next100-076/bin/python -m pytest -q tests/test_next100_076_global_dedup_v4.py
+
+      - name: Prove pinned NIST extractor is available
+        run: pdftotext -v 2>&1 | grep -F "24.02.0"
+
+      - name: Materialize exact 22-object global dedup twice
+        env:
+          PYTHONPATH: src
+        run: |
+          mkdir -p evidence/next100_076/a evidence/next100_076/b
+          .next100-076/bin/python tools/run_next100_076_global_dedup_v4.py run \
+            --repo-root . \
+            --config configs/data/next100_076_global_dedup_v4.json \
+            --kmu-root .authority/kmu \
+            --nist-root .authority/nist \
+            --mdn-root .authority/mdn \
+            --nomis-root .authority/nomis \
+            --report evidence/next100_076/a/report.json
+          .next100-076/bin/python tools/run_next100_076_global_dedup_v4.py run \
+            --repo-root . \
+            --config configs/data/next100_076_global_dedup_v4.json \
+            --kmu-root .authority/kmu \
+            --nist-root .authority/nist \
+            --mdn-root .authority/mdn \
+            --nomis-root .authority/nomis \
+            --report evidence/next100_076/b/report.json
+          cmp evidence/next100_076/a/report.json evidence/next100_076/b/report.json
+
+      - name: Verify successor report and truth boundary
+        env:
+          PYTHONPATH: src
+        run: |
+          .next100-076/bin/python tools/run_next100_076_global_dedup_v4.py verify \
+            --config configs/data/next100_076_global_dedup_v4.json \
+            --report evidence/next100_076/a/report.json
+          .next100-076/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path("evidence/next100_076/a/report.json").read_text())
+          scope = report["dedup_report"]["terminal_candidates"]
+          assert scope["source_count"] == 22
+          assert scope["declared_capacity_bytes_before"] == 320632
+          assert scope["by_modality"]["uk"]["declared_capacity_bytes_before"] == 100856
+          assert scope["by_modality"]["en"]["declared_capacity_bytes_before"] == 150643
+          assert scope["by_modality"]["code"]["declared_capacity_bytes_before"] == 69133
+          assert scope["conservative_unique_capacity_bytes_after"] <= 320632
+          assert report["next_gate"] == "BALANCE_DIVERSITY_RETEST"
+          assert report["model_training_executed"] is False
+          assert report["tokenizer_fit_executed"] is False
+          assert report["paid_compute_used"] is False
+          assert report["final_test_payload_read"] is False
+          assert report["research_corpus_v1_released"] is False
+          PY
+
+      - name: Prove public evidence is text-free
+        run: |
+          ! grep -q '"text"' evidence/next100_076/a/report.json
+          ! grep -q '"acquisition_url"' evidence/next100_076/a/report.json
+
+      - name: Upload immutable successor-dedup evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: next100-076-global-dedup-${{ env.SOURCE_SHA }}
+          path: |
+            configs/data/next100_076_global_dedup_v4.json
+            next100-076-execution-environment.json
+            evidence/next100_076/a/report.json
+          if-no-files-found: warn
+          retention-days: 90

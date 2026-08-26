@@ -1,0 +1,125 @@
+{
+  "schema_version": "12-6.next100-076-global-dedup.v4",
+  "worker_id": "NEXT100-076-GLOBAL-DEDUP-V4-SOL",
+  "issue": 569,
+  "execution_profile": "LOCAL_FREE",
+  "local_free_only": true,
+  "model_training_executed": false,
+  "tokenizer_fit_executed": false,
+  "paid_compute_used": false,
+  "final_test_payload_read": false,
+  "convergence_authority": {
+    "head_sha": "5356d60c8c8af46d6fc34debfd3cb36731045338",
+    "path": "configs/data/next100_063_source_registry_convergence_v1.json",
+    "blob_sha1": "d5b640b386219290f69d02a7f2e30a338c883009",
+    "expected_pre_dedup_capacity_bytes": {
+      "uk": 100856,
+      "en": 150643,
+      "code": 69133,
+      "total": 320632
+    },
+    "expected_pre_dedup_family_counts": {
+      "uk": 4,
+      "en": 3,
+      "code": 4,
+      "total": 11
+    },
+    "expected_numeric_source_objects": 22,
+    "dedicated_convergence_workflow_terminal": false,
+    "successor_revalidation_required": true
+  },
+  "base_dedup_authority": {
+    "head_sha": "efc278cec0e4773eb4ff405bf4b4d24ee63b5d13",
+    "path": "configs/data/next100_065_cross_source_dedup_v3.json",
+    "blob_sha1": "c1e05f09490e25f6fed765dfb70d900717528f4d",
+    "expected_source_objects": 11,
+    "expected_capacity_bytes": 243970
+  },
+  "late_authorities": {
+    "kmu": {
+      "worker_id": "NEXT100-026-DATA-UA-CABINET-MINISTRY",
+      "head_sha": "40950a950b60921fd856af2719e1ae2486d9e892",
+      "path": "configs/data/next100_026_kmu_source_audit_v1.json",
+      "blob_sha1": "6f0a60dc161c0bb2d7600c3c062ae78e624b240e",
+      "family_id": "ua.kmu.portal.secretariat-news",
+      "terminal_status": "ADMIT",
+      "expected_objects": 6,
+      "expected_capacity_bytes": 9153,
+      "payload_policy": "KMu_NFKC_COLLAPSE_WHITESPACE_V1"
+    },
+    "nist": {
+      "worker_id": "NEXT100-034-DATA-EN-NIST",
+      "head_sha": "b7491745b34ac8679baaf69cb96cd609dcbe0a16",
+      "path": "configs/data/next100_034_nist_terminal_authority_v2.json",
+      "blob_sha1": "8cef5ae316a45ad6265b732be86bd54a977405a1",
+      "supporting_path": "configs/data/next100_034_nist_technical_series_authority_v1.json",
+      "supporting_blob_sha1": "5341f043dc9b98da530a58ce70bc2af530d9be12",
+      "family_id": "en.usgov.nist.technical-series",
+      "terminal_status": "ADMIT",
+      "expected_objects": 3,
+      "expected_capacity_bytes": 59358,
+      "payload_policy": "NEXT100_034_NIST_PDF_BODY_NFKC_BOUNDED_V1",
+      "required_pdftotext_version": "24.02.0"
+    },
+    "mdn": {
+      "worker_id": "NEXT100-038-DATA-EN-MDN",
+      "head_sha": "902eccc0b3efff09a38dc89cda789180b6c6e754",
+      "path": "evidence/next100_038/mdn_source_authority.v1.json",
+      "blob_sha1": "5b55a5b041381d3f9aa810b0a305f65d58e401bd",
+      "family_id": "en.mdn.webdocs.prose",
+      "terminal_status": "ADMIT_PROSE_ONLY",
+      "expected_objects": 1,
+      "expected_capacity_bytes": 6492,
+      "payload_policy": "MDN_PROSE_ONLY_MARKDOWN_V1"
+    },
+    "nomis": {
+      "worker_id": "NEXT100-027-DATA-UA-PUBLIC-DOMAIN-LIT",
+      "head_sha": "d75edd497c7fb1054e86d892c9462f059c1f4aa9",
+      "path": "configs/data/next100_027_ua_public_domain_lit_v1.json",
+      "blob_sha1": "c09b8951aeaaa9d42da40ffcc180750fba4258c3",
+      "family_id": "ua.verba.public-domain.nomis1864",
+      "terminal_status": "ADMIT",
+      "expected_objects": 1,
+      "expected_capacity_bytes": 1659,
+      "payload_policy": "EXACT_COMMITTED_NORMALIZED_SNAPSHOT_V1"
+    },
+    "cpython_docs": {
+      "worker_id": "NEXT100-037-DATA-EN-PYTHON-DOCS",
+      "head_sha": "5a6a495a24bce449334cbc5126d0114f61a9f57c",
+      "path": "configs/data/next100_037_python_docs_source_authority_v1.json",
+      "blob_sha1": "b15abac8744ccda9fe58d1351f7925b6ab328034",
+      "family_id": "python.cpython.documentation",
+      "terminal_status": "ADMIT",
+      "expected_capacity_credit_bytes": 0,
+      "expected_family_credit": 0,
+      "reason": "accepted-chunk eligible-byte ledger is not materialized; fail closed with zero dedup inventory credit"
+    }
+  },
+  "matching_semantics": {
+    "engine": "NEXT100-065 V3 / DATA-298 / DATA-232",
+    "compare_authority_approved_training_payload_not_wrapper": true,
+    "raw_identity_must_be_verified_before_payload_normalization": true,
+    "capacity_inflation_forbidden": true,
+    "lineage_connected_components_required": true,
+    "same_origin_siblings_keep_distinct_capacity_absent_copy_evidence": true
+  },
+  "acceptance": {
+    "materialize_twice_byte_identical": true,
+    "expected_source_objects": 22,
+    "expected_declared_capacity_bytes_before": 320632,
+    "expected_modality_capacity_before": {
+      "uk": 100856,
+      "en": 150643,
+      "code": 69133
+    },
+    "expected_pre_dedup_stable_origins": 11,
+    "post_dedup_capacity_must_not_exceed_pre_dedup": true,
+    "raw_training_text_emitted_in_report": false
+  },
+  "downstream": {
+    "next_gate_on_success": "BALANCE_DIVERSITY_RETEST",
+    "corpus_materialization": "BLOCKED_UNTIL_POST_DEDUP_BALANCE_AND_RESERVATION_GATES",
+    "tokenizer_fit": "BLOCKED",
+    "learned_20m_campaign": "BLOCKED"
+  }
+}
