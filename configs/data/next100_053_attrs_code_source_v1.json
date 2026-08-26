@@ -80,12 +80,28 @@
     "uv.lock",
     "LICENSE as capacity"
   ],
+  "live_registry_binding": {
+    "worker": "DATA-287",
+    "branch": "data287/external-snapshot-registry-v2-20260826",
+    "commit": "b0523ccbc4b957615aac849d476cfa851be87578",
+    "path": "data/registry/external_snapshots.v2.json",
+    "registry_identity_sha256": "917e9bc31b2fa040d25e807ae3c01aa2cce32420752a891caacfb6c830e6632c",
+    "source_count": 5,
+    "independent_source_family_count": 4,
+    "evaluation_authorized_source_count": 0,
+    "code_families": [
+      "github:encode/httpx",
+      "github:psf/requests"
+    ],
+    "dedup_scope_decision": "Deduplicate the attrs candidate against every code object in this exact terminal registry. Parallel nonterminal source candidates are checked for exact family/blob conflicts during the final concurrency sweep but are not silently promoted into this registry."
+  },
   "evaluation_boundary": {
     "training_files_must_not_be_currently_reserved_for_evaluation": true,
     "initial_registry_commit": "8ebdb2e132ed7bae5245e9d4c140752640ab9885",
     "initial_reserved_registry_blob": "a80d86ba4d60c45fca0cfab9d77743e2f7928ca6",
     "initial_reserved_set_count": 0,
     "initial_attrs_pr_hits": 0,
+    "current_terminal_registry_evaluation_authorized_source_count": 0,
     "future_reservation_rule": "Any exact path/blob identity reserved by a newer evaluation authority before final sealing is excluded and capacity is recomputed; evaluation use is never inferred from this training admission."
   },
   "incumbent_code_families_for_dedup": [
@@ -121,6 +137,7 @@
     "privacy-like email and private-IP scan passes",
     "generated/vendored/build/minified path and marker checks pass",
     "substantive implementation quality thresholds pass",
+    "live DATA-287 registry identity and incumbent code family set remain exact",
     "no exact or >=0.85 near duplicate inside the selection or against incumbent admitted code objects",
     "no selected path/blob is evaluation-reserved at the final live-registry check"
   ]
