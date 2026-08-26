@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -168,3 +170,41 @@ def test_producer_evidence_bindings_are_retained() -> None:
         assert source["rights"]["redistribution"]["authority"] == (
             "policy://12-6/data/explicit-model-training-evidence-v1"
         )
+
+
+def test_next100_038_mdn_prose_candidate_is_bounded_and_registry_orthogonal(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    output = tmp_path / "mdn-source-authority.json"
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "tools/qualify_next100_038_mdn.py"),
+            "--output",
+            str(output),
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+        timeout=120,
+    )
+    if result.returncode != 0:
+        pytest.fail(
+            f"NEXT100-038 qualifier failed with {result.returncode}:\n"
+            f"STDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
+        )
+    report = json.loads(output.read_text(encoding="utf-8"))
+    assert report["verdict"] == "ADMIT_PROSE_ONLY"
+    assert report["claim_boundary"]["training_source_authority_terminal"] is True
+    assert report["claim_boundary"]["prose_only"] is True
+    assert report["claim_boundary"]["code_admitted"] is False
+    assert report["claim_boundary"]["evaluation_authorized"] is False
+    assert report["dedup"]["live_registry_identity_sha256"] == (
+        "917e9bc3d58ad426b9346788dcf22d1ee084f47846ef04782ac99c13c7a3ffb5"
+    )
+    assert report["dedup"]["cross_registry_normalized_sha256_collisions"] == []
+    assert report["dedup"]["internal_exact_duplicate_count"] == 0
+    with capsys.disabled():
+        print("NEXT100_038_REPORT=" + output.read_text(encoding="utf-8").strip(), flush=True)
