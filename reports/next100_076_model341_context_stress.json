@@ -1,0 +1,228 @@
+{
+  "worker": "NEXT100-076-20M-CONTEXT-STRESS",
+  "verdict": "PASS_CONTEXT_BOUNDARY_1024_FAIL_CLOSED_1025",
+  "pass": true,
+  "execution": {
+    "scope": "LOCAL_FREE CPU",
+    "torch": "2.10.0+cpu",
+    "seed": 341,
+    "method": "LOCAL_FREE CPU fetched-source semantic reproduction; production-import rerun harness committed separately",
+    "production_import_harness_executed_in_this_container": false,
+    "reason": "GitHub was connector-only in this environment and no repository checkout was locally mountable; fetched production blobs were reproduced for execution and the durable harness imports production modules directly.",
+    "source": {
+      "branch": "model341/20m-candidate-a-20260826",
+      "commit": "e4ff486fd90802fc123bebf60eed4e59196a98df",
+      "model_blob": "aacc0157cee08ceae5ef8a36e74bc90285c9b539",
+      "attention_perf_blob": "2323a709bf8f94047ffddc2de707b57d6edb8efd",
+      "static_kv_blob": "e4e8cf3746cbc7fc1e43f7c08b088b7df12e268b"
+    }
+  },
+  "identity": {
+    "model_sha": "fbff24d561a2818453554d58ca23fc6ace3303b078f1935a8576c4565bd92441",
+    "model_sha_ok": true,
+    "init_sha": "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5",
+    "init_sha_ok": true,
+    "parameters": 20613440,
+    "parameters_ok": true
+  },
+  "tolerances": {
+    "rtol": 1e-05,
+    "atol": 1e-05
+  },
+  "boundaries": [
+    {
+      "tokens": 1,
+      "finite_logits": true,
+      "prefill_parity": true,
+      "prefill_max_abs": 0.0,
+      "incremental_decode_parity": true,
+      "incremental_max_abs": 0.0,
+      "forward_latency_ms": 73.29943800004912,
+      "prefill_latency_ms": 12.860251000006429,
+      "incremental_cumulative_latency_ms": 14.382009999962975,
+      "incremental_avg_ms_per_token": 14.382009999962975,
+      "rss_baseline_bytes": 396214272,
+      "forward_peak_rss_bytes": 400977920,
+      "prefill_peak_rss_bytes": 401174528,
+      "kv_logical_bytes": 8192,
+      "kv_allocated_bytes": 8388608,
+      "kv_occupancy": 0.0009765625
+    },
+    {
+      "tokens": 2,
+      "finite_logits": true,
+      "prefill_parity": true,
+      "prefill_max_abs": 0.0,
+      "incremental_decode_parity": true,
+      "incremental_max_abs": 4.76837158203125e-07,
+      "forward_latency_ms": 24.677835000034065,
+      "prefill_latency_ms": 11.715449999996963,
+      "incremental_cumulative_latency_ms": 31.484749999947326,
+      "incremental_avg_ms_per_token": 15.742374999973663,
+      "rss_baseline_bytes": 402350080,
+      "forward_peak_rss_bytes": 402853888,
+      "prefill_peak_rss_bytes": 402874368,
+      "kv_logical_bytes": 16384,
+      "kv_allocated_bytes": 8388608,
+      "kv_occupancy": 0.001953125
+    },
+    {
+      "tokens": 32,
+      "finite_logits": true,
+      "prefill_parity": true,
+      "prefill_max_abs": 0.0,
+      "incremental_decode_parity": true,
+      "incremental_max_abs": 1.3113021850585938e-06,
+      "forward_latency_ms": 91.59123900002442,
+      "prefill_latency_ms": 28.89497799998253,
+      "incremental_cumulative_latency_ms": 519.5520630000487,
+      "incremental_avg_ms_per_token": 16.236001968751523,
+      "rss_baseline_bytes": 402870272,
+      "forward_peak_rss_bytes": 404209664,
+      "prefill_peak_rss_bytes": 404746240,
+      "kv_logical_bytes": 262144,
+      "kv_allocated_bytes": 8388608,
+      "kv_occupancy": 0.03125
+    },
+    {
+      "tokens": 128,
+      "finite_logits": true,
+      "prefill_parity": true,
+      "prefill_max_abs": 0.0,
+      "incremental_decode_parity": true,
+      "incremental_max_abs": 1.5497207641601562e-06,
+      "forward_latency_ms": 144.3680599999766,
+      "prefill_latency_ms": 78.47079099997245,
+      "incremental_cumulative_latency_ms": 2810.5952590002516,
+      "incremental_avg_ms_per_token": 21.957775460939466,
+      "rss_baseline_bytes": 404742144,
+      "forward_peak_rss_bytes": 407252992,
+      "prefill_peak_rss_bytes": 409366528,
+      "kv_logical_bytes": 1048576,
+      "kv_allocated_bytes": 8388608,
+      "kv_occupancy": 0.125
+    },
+    {
+      "tokens": 256,
+      "finite_logits": true,
+      "prefill_parity": true,
+      "prefill_max_abs": 0.0,
+      "incremental_decode_parity": true,
+      "incremental_max_abs": 1.6689300537109375e-06,
+      "forward_latency_ms": 313.3501640000418,
+      "prefill_latency_ms": 264.84930499998427,
+      "incremental_cumulative_latency_ms": 5104.538232000209,
+      "incremental_avg_ms_per_token": 19.939602468750817,
+      "rss_baseline_bytes": 406052864,
+      "forward_peak_rss_bytes": 416231424,
+      "prefill_peak_rss_bytes": 419131392,
+      "kv_logical_bytes": 2097152,
+      "kv_allocated_bytes": 8388608,
+      "kv_occupancy": 0.25
+    },
+    {
+      "tokens": 512,
+      "finite_logits": true,
+      "prefill_parity": true,
+      "prefill_max_abs": 0.0,
+      "incremental_decode_parity": true,
+      "incremental_max_abs": 2.1457672119140625e-06,
+      "forward_latency_ms": 519.2488189999835,
+      "prefill_latency_ms": 430.2319939999961,
+      "incremental_cumulative_latency_ms": 9808.208849000777,
+      "incremental_avg_ms_per_token": 19.156657908204643,
+      "rss_baseline_bytes": 414310400,
+      "forward_peak_rss_bytes": 426106880,
+      "prefill_peak_rss_bytes": 433041408,
+      "kv_logical_bytes": 4194304,
+      "kv_allocated_bytes": 8388608,
+      "kv_occupancy": 0.5
+    },
+    {
+      "tokens": 1023,
+      "finite_logits": true,
+      "prefill_parity": true,
+      "prefill_max_abs": 0.0,
+      "incremental_decode_parity": true,
+      "incremental_max_abs": 2.384185791015625e-06,
+      "forward_latency_ms": 804.0857099999812,
+      "prefill_latency_ms": 708.1836629999998,
+      "incremental_cumulative_latency_ms": 20587.969037001472,
+      "incremental_avg_ms_per_token": 20.12509192277759,
+      "rss_baseline_bytes": 419647488,
+      "forward_peak_rss_bytes": 438714368,
+      "prefill_peak_rss_bytes": 448610304,
+      "kv_logical_bytes": 8380416,
+      "kv_allocated_bytes": 8388608,
+      "kv_occupancy": 0.9990234375
+    },
+    {
+      "tokens": 1024,
+      "finite_logits": true,
+      "prefill_parity": true,
+      "prefill_max_abs": 0.0,
+      "incremental_decode_parity": true,
+      "incremental_max_abs": 2.5033950805664062e-06,
+      "forward_latency_ms": 781.6088069999978,
+      "prefill_latency_ms": 703.1067969999754,
+      "incremental_cumulative_latency_ms": 20600.34145800148,
+      "incremental_avg_ms_per_token": 20.11752095507957,
+      "rss_baseline_bytes": 428998656,
+      "forward_peak_rss_bytes": 448798720,
+      "prefill_peak_rss_bytes": 457191424,
+      "kv_logical_bytes": 8388608,
+      "kv_allocated_bytes": 8388608,
+      "kv_occupancy": 1.0
+    }
+  ],
+  "incremental_peak_rss_bytes": 432345088,
+  "rope_offsets": {
+    "trace_count": 1024,
+    "first": [[1, 0], [1, 1], [1, 2]],
+    "last": [[1, 1021], [1, 1022], [1, 1023]],
+    "exact_0_through_1023": true,
+    "max_offset": 1023
+  },
+  "kv": {
+    "per_layer_shape": [1, 2, 1024, 32],
+    "layers": 16,
+    "dtype": "float32",
+    "bytes_per_token": 8192,
+    "allocated_bytes": 8388608,
+    "logical_bytes_at_1024": 8388608
+  },
+  "fail_closed_1025": {
+    "forward_1025": {
+      "rejected": true,
+      "type": "ValueError",
+      "error": "sequence length 1025 exceeds max_seq_len 1024"
+    },
+    "static_prefill_1025": {
+      "rejected": true,
+      "type": "ValueError",
+      "error": "prompt exceeds static KV cache capacity"
+    },
+    "static_decode_after_1024": {
+      "rejected": true,
+      "type": "ValueError",
+      "error": "static KV cache is already at fixed capacity"
+    },
+    "state_unchanged": {
+      "pass": true,
+      "embedding_calls": 0,
+      "kv_hash_unchanged": true,
+      "rng_unchanged": true,
+      "storage_signature_unchanged": true,
+      "valid_length_before": 1024,
+      "valid_length_after": 1024,
+      "rope_calls_before": 1040,
+      "rope_calls_after": 1040
+    }
+  },
+  "notes": [
+    "No forward or decode computation was executed beyond the 1024-token model boundary; 1025 was exercised only as a rejection case.",
+    "Prefill parity was bitwise-equal in the local reproduction at every requested legal length.",
+    "Incremental decode parity remained within the locked 1e-5/1e-5 tolerance; worst observed max_abs was 2.5033950805664062e-06 at 1024 tokens.",
+    "Static KV backing storage is fixed at 8,388,608 bytes for batch=1, float32, 16 layers, 2 KV heads, head_dim=32, capacity=1024; logical occupancy is 8,192 bytes per valid token."
+  ]
+}
