@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -15,6 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 INPUTS = ROOT / "configs/data/data287_external_snapshot_registry_v2.json"
 BASE = ROOT / "data/registry/real_snapshots.v1.json"
 COMMITTED = ROOT / "data/registry/external_snapshots.v2.json"
+MDN_AUTHORITY = ROOT / "evidence/next100_038/mdn_source_authority.v1.json"
 
 
 def _build() -> dict[str, object]:
@@ -168,3 +171,35 @@ def test_producer_evidence_bindings_are_retained() -> None:
         assert source["rights"]["redistribution"]["authority"] == (
             "policy://12-6/data/explicit-model-training-evidence-v1"
         )
+
+
+def test_next100_038_mdn_prose_authority_is_terminal_and_reproducible() -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "tools/qualify_next100_038_mdn.py"),
+            "--output",
+            str(MDN_AUTHORITY),
+            "--verify",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+        timeout=120,
+    )
+    assert result.returncode == 0, f"STDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
+    report = json.loads(MDN_AUTHORITY.read_text(encoding="utf-8"))
+    assert report["verdict"] == "ADMIT_PROSE_ONLY"
+    assert report["claim_boundary"]["training_source_authority_terminal"] is True
+    assert report["claim_boundary"]["prose_only"] is True
+    assert report["claim_boundary"]["code_admitted"] is False
+    assert report["claim_boundary"]["evaluation_authorized"] is False
+    assert report["authority_identity_sha256"] == (
+        "0f5dbd5313f8196811e2a99f77eb8698c6bc69f69648d76a7e240ee9757ecc47"
+    )
+    assert report["dedup"]["live_registry_identity_sha256"] == (
+        "917e9bc31b2fa040d25e807ae3c01aa2cce32420752a891caacfb6c830e6632c"
+    )
+    assert report["dedup"]["cross_registry_normalized_sha256_collisions"] == []
+    assert report["dedup"]["internal_exact_duplicate_count"] == 0

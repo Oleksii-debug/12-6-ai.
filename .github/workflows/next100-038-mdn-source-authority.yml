@@ -1,0 +1,37 @@
+name: NEXT100-038 MDN Source Authority
+
+on:
+  pull_request:
+    paths:
+      - tools/qualify_next100_038_mdn.py
+      - evidence/next100_038/mdn_source_authority.v1.json
+      - .github/workflows/next100-038-mdn-source-authority.yml
+
+permissions:
+  contents: read
+
+jobs:
+  qualify-mdn-prose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+      - name: Bind exact source head
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+      - name: Compile deterministic qualifier
+        run: python -m py_compile tools/qualify_next100_038_mdn.py
+      - name: Verify committed bounded MDN authority
+        run: |
+          python tools/qualify_next100_038_mdn.py \
+            --output evidence/next100_038/mdn_source_authority.v1.json \
+            --verify
