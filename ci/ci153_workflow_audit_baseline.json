@@ -1,0 +1,134 @@
+{
+  "schema": "12-6.ci153-workflow-dependency-audit-baseline.v1",
+  "source": {
+    "repository": "Oleksii-debug/12-6-ai.",
+    "head_sha": "5cf415341d9c4418ec0476541a5bd614ea80dbb3",
+    "branch": "ci153/workflow-dependency-auditor-20260826"
+  },
+  "truth_boundary": {
+    "analysis": "deterministic static command/declaration review",
+    "actions_execution_status": "PENDING_QUEUED_RUNNER",
+    "model_dependencies_downloaded_for_audit": false,
+    "training_artifacts_downloaded_for_audit": false,
+    "paid_compute": false,
+    "legacy_exemptions": 0
+  },
+  "classification_counts": {
+    "VALID": 15,
+    "MISSING_DECLARED_DEPENDENCY": 0,
+    "STALE_PROFILE_REFERENCE": 0,
+    "AMBIGUOUS_DYNAMIC_COMMAND": 0,
+    "LEGACY_EXEMPT_WITH_REASON": 0
+  },
+  "inventory_count": 15,
+  "workflows": [
+    {
+      "path": ".github/workflows/ci.yml",
+      "git_blob_sha": "e9a363ea58a40f0e1bf55f8c7cb74e21587fdf1d",
+      "classification": "VALID",
+      "dependency_evidence": "D08 base-profile verification; no direct pytest/ruff/torchrun/tokenizers/transformers/vLLM invocation in workflow"
+    },
+    {
+      "path": ".github/workflows/ci153-workflow-dependency-audit.yml",
+      "git_blob_sha": "fa8c716849f40293d2a08a6e286e67d16e1df0d3",
+      "classification": "VALID",
+      "dependency_evidence": "stdlib-only audit runs before installs; hashed toolchain+dev locks are installed explicitly before pytest/ruff"
+    },
+    {
+      "path": ".github/workflows/d02-s0-real-training.yml",
+      "git_blob_sha": "78ad7a0d039a403857d336bc4c6366ef90f51d07",
+      "classification": "VALID",
+      "dependency_evidence": "explicit toolchain+runtime locks; project training/validation scripts; no direct audited external test CLI"
+    },
+    {
+      "path": ".github/workflows/d02-s0-repeatability.yml",
+      "git_blob_sha": "6b0f58562fa48a6a6409a2e7ec20a0e7bb1d90d0",
+      "classification": "VALID",
+      "dependency_evidence": "explicit toolchain+runtime locks; project repeatability scripts; no direct audited external test CLI"
+    },
+    {
+      "path": ".github/workflows/d02-s1-numerical-preflight.yml",
+      "git_blob_sha": "375bc94a93d2fd5ecce02a88e9c4854e438dea41",
+      "classification": "VALID",
+      "dependency_evidence": "explicit toolchain+runtime locks; project numerical-preflight scripts; no direct audited external test CLI"
+    },
+    {
+      "path": ".github/workflows/d04-strict-s0-evaluation.yml",
+      "git_blob_sha": "f02af5c027bafc002e69dc0fd321719dd97cb32a",
+      "classification": "VALID",
+      "dependency_evidence": "literal pip install -e .[dev]; pyproject dev extra declares pytest>=8 and ruff>=0.12 before bare pytest/ruff"
+    },
+    {
+      "path": ".github/workflows/d05-s1-checkpoint-preflight.yml",
+      "git_blob_sha": "38bc6dc8e336a7c9e4a42f7a1d007312c461b7ce",
+      "classification": "VALID",
+      "dependency_evidence": "explicit toolchain+runtime+dev locks before python -m pytest"
+    },
+    {
+      "path": ".github/workflows/d08-purpose-environments.yml",
+      "git_blob_sha": "65a4de074c0b582e5e5db1cbf0c8ad3c1ebee032",
+      "classification": "VALID",
+      "dependency_evidence": "all referenced D08 purpose profiles exist; wheel build uses explicit toolchain lock"
+    },
+    {
+      "path": ".github/workflows/d12-fsdp2-cpu.yml",
+      "git_blob_sha": "98a690c8caa103c81e4ef7c37e690d7cb95e8b27",
+      "classification": "VALID",
+      "dependency_evidence": "D08 base-profile verifier owns repository checks; no direct audited external test CLI in workflow"
+    },
+    {
+      "path": ".github/workflows/milestone100-first-learned-base.yml",
+      "git_blob_sha": "90c8918aa6234cd0a8ef10939acb226c369cfacc",
+      "classification": "VALID",
+      "dependency_evidence": "CI-153 migration adds explicit hashed dev.lock.txt after toolchain+runtime and before python -m pytest"
+    },
+    {
+      "path": ".github/workflows/milestone150-learned-base-ladder-v1.yml",
+      "git_blob_sha": "4f5acc336efd26ac041df5e6189f0eae77631d68",
+      "classification": "VALID",
+      "dependency_evidence": "explicit hashed toolchain+runtime+dev locks before convergence pytest; learned stages use first-party project module"
+    },
+    {
+      "path": ".github/workflows/scale-fsdp2-dcp-integration.yml",
+      "git_blob_sha": "4377ee477d8ec6a0286b1d5acc866b026d1d43c3",
+      "classification": "VALID",
+      "dependency_evidence": "explicit toolchain+runtime+dev locks before python -m ruff and python -m pytest"
+    },
+    {
+      "path": ".github/workflows/scale02-s2-1m-executable.yml",
+      "git_blob_sha": "e83c06380a85db576bfae4787401e62ee60d7ac7",
+      "classification": "VALID",
+      "dependency_evidence": "explicit toolchain+runtime locks; first-party S2 module; no direct audited external test CLI"
+    },
+    {
+      "path": ".github/workflows/scale03-s3-10m-runtime.yml",
+      "git_blob_sha": "54bc435bd4b99f9e73a3637eab61024cdde7b2af",
+      "classification": "VALID",
+      "dependency_evidence": "explicit toolchain+runtime+dev locks before python -m pytest"
+    },
+    {
+      "path": ".github/workflows/train29-s1-observability.yml",
+      "git_blob_sha": "f3b2d2df80ae1c338c985a6e0c22b00345e93900",
+      "classification": "VALID",
+      "dependency_evidence": "explicit toolchain+runtime+dev locks before python -m pytest"
+    }
+  ],
+  "historical_findings_and_migrations": [
+    {
+      "workflow": ".github/workflows/milestone100-first-learned-base.yml",
+      "before_git_blob_sha": "ec025d5ff70e675b3e6a4104d8d9e55b14bbd471",
+      "before_classification": "MISSING_DECLARED_DEPENDENCY",
+      "invocation": ".m100/bin/python -m pytest",
+      "installed_before": [
+        "requirements/locks/linux-x86_64/toolchain.lock.txt",
+        "requirements/locks/linux-x86_64/runtime.lock.txt"
+      ],
+      "missing_package": "pytest",
+      "d08_truth": "pytest is declared in requirements/locks/linux-x86_64/dev.lock.txt, not runtime/toolchain",
+      "remediation": "install the existing hashed dev.lock.txt before pytest; do not install an arbitrary ad-hoc package",
+      "after_git_blob_sha": "90c8918aa6234cd0a8ef10939acb226c369cfacc",
+      "after_classification": "VALID"
+    }
+  ],
+  "execution_note": "This retained baseline records the complete current workflow inventory and deterministic expected classifications. The executable auditor remains fail-closed; GitHub Actions must regenerate ci153-workflow-audit.json and pass fixture tests/lint before this baseline is treated as executed CI evidence."
+}
