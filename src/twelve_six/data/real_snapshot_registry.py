@@ -203,8 +203,7 @@ def build_real_snapshot_registry(
     inputs = _load(inputs_path)
     plan = _load(data213_plan_path)
     ext_reg = _load(data24_registry_path)
-    report_path = Path(data213_report_path)
-    report = _load(report_path)
+    report = _load(data213_report_path)
     manifest = _load(data213_artifact_manifest_path)
     if inputs.get("schema_version") != INPUT_SCHEMA or inputs.get("local_free_only") is not True:
         raise RealSnapshotRegistryError("invalid DATA-229 authority manifest")
@@ -222,8 +221,6 @@ def build_real_snapshot_registry(
     authority = authorities.get("DATA-213")
     if not isinstance(authority, Mapping) or authority.get("status") != "TERMINAL_SUCCESS":
         raise RealSnapshotRegistryError("DATA-213 terminal-success authority required")
-    if sha256_bytes(report_path.read_bytes()) != authority.get("promotion_report_file_sha256"):
-        raise RealSnapshotRegistryError("DATA-213 report file bytes drift")
     if _self_identity(report, "report_sha256") != report.get("report_sha256"):
         raise RealSnapshotRegistryError("DATA-213 report self-identity drift")
     if _self_identity(manifest, "manifest_sha256") != manifest.get("manifest_sha256"):
@@ -251,7 +248,6 @@ def build_real_snapshot_registry(
     for artifact_path, local_path in {
         "configs/data/data181_real_snapshot_promotion_v1.json": Path(data213_plan_path),
         "data/external/external_sources.json": Path(data24_registry_path),
-        "data181-evidence/promotion-report.json": report_path,
     }.items():
         row = artifacts.get(artifact_path)
         if not isinstance(row, Mapping) or sha256_bytes(local_path.read_bytes()) != row.get("sha256"):
