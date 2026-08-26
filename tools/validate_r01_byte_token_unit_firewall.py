@@ -30,7 +30,10 @@ def validate_firewall(data: dict[str, Any]) -> list[str]:
 
     require(data.get("schema") == EXPECTED_SCHEMA, "schema mismatch")
     require(data.get("status") == "FAIL_CLOSED", "status must remain FAIL_CLOSED")
-    require(data.get("canonical_byte_exposure_unit") == EXPECTED_UNIT, "byte exposure unit drift")
+    require(
+        data.get("canonical_byte_exposure_unit") == EXPECTED_UNIT,
+        "byte exposure unit drift",
+    )
     require(
         data.get("source_reported_token_ratios_are_execution_budgets") is False,
         "source-reported token ratios must never become execution budgets",
@@ -71,8 +74,14 @@ def validate_firewall(data: dict[str, Any]) -> list[str]:
         data.get("promotion_to_100m_allowed_from_reference_ratio_alone") is False,
         "100M promotion cannot follow from a reference token ratio alone",
     )
-    require(data.get("long_training_authorized") is False, "long training must remain blocked")
-    require(data.get("paid_compute_authorized") is False, "paid compute must remain blocked")
+    require(
+        data.get("long_training_authorized") is False,
+        "long training must remain blocked",
+    )
+    require(
+        data.get("paid_compute_authorized") is False,
+        "paid compute must remain blocked",
+    )
     return errors
 
 
