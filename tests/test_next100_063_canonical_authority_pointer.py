@@ -11,9 +11,12 @@ if str(TOOLS) not in sys.path:
     sys.path.insert(0, str(TOOLS))
 
 from validate_next100_063_canonical_authority_pointer import (  # noqa: E402
+    EXPECTED_CANONICAL_BLOB_SHA1,
     EXPECTED_CANONICAL_ID,
     EXPECTED_POINTER_ID,
     FORBIDDEN_IDS,
+    SOURCE_HEAD_SEMANTICS,
+    git_blob_sha1,
     validate,
 )
 
@@ -23,34 +26,78 @@ class Next100063CanonicalAuthorityPointerTests(unittest.TestCase):
         report = validate()
         self.assertEqual(report["status"], "PASS_CANONICAL_V2_ONLY")
         self.assertEqual(report["pointer_identity_sha256"], EXPECTED_POINTER_ID)
-        self.assertEqual(report["canonical_registry_identity_sha256"], EXPECTED_CANONICAL_ID)
+        self.assertEqual(
+            report["canonical_registry_identity_sha256"], EXPECTED_CANONICAL_ID
+        )
+        self.assertEqual(
+            report["canonical_registry_blob_sha1"], EXPECTED_CANONICAL_BLOB_SHA1
+        )
         self.assertEqual(report["candidate_normalized_bytes"], 303374)
         self.assertEqual(report["authorized_balanced_no_replay_loss_positions"], 0)
 
+    def test_canonical_registry_is_content_addressed(self) -> None:
+        pointer = json.loads(
+            (
+                ROOT
+                / "configs/data/next100_063_canonical_authority_pointer_v1.json"
+            ).read_text(encoding="utf-8")
+        )
+        canonical_path = ROOT / pointer["canonical"]["path"]
+
+        self.assertEqual(pointer["canonical"]["blob_sha1"], EXPECTED_CANONICAL_BLOB_SHA1)
+        self.assertEqual(git_blob_sha1(canonical_path), EXPECTED_CANONICAL_BLOB_SHA1)
+
+    def test_moving_pr_head_is_diagnostic_only(self) -> None:
+        pointer = json.loads(
+            (
+                ROOT
+                / "configs/data/next100_063_canonical_authority_pointer_v1.json"
+            ).read_text(encoding="utf-8")
+        )
+        self.assertEqual(pointer["source_head_semantics"], SOURCE_HEAD_SEMANTICS)
+        self.assertNotIn("authority_source_head_sha", pointer)
+        self.assertEqual(len(pointer["observed_source_pr_head_sha"]), 40)
+
     def test_all_known_stale_identities_are_forbidden(self) -> None:
         report = validate()
-        self.assertEqual(set(report["forbidden_registry_identity_sha256"]), FORBIDDEN_IDS)
+        self.assertEqual(
+            set(report["forbidden_registry_identity_sha256"]), FORBIDDEN_IDS
+        )
         self.assertNotIn(EXPECTED_CANONICAL_ID, FORBIDDEN_IDS)
 
     def test_historical_v1_path_cannot_masquerade_as_canonical(self) -> None:
         pointer = json.loads(
-            (ROOT / "configs/data/next100_063_canonical_authority_pointer_v1.json").read_text(encoding="utf-8")
+            (
+                ROOT
+                / "configs/data/next100_063_canonical_authority_pointer_v1.json"
+            ).read_text(encoding="utf-8")
         )
         old = json.loads(
-            (ROOT / "configs/data/next100_063_terminal_source_registry_v1.json").read_text(encoding="utf-8")
+            (
+                ROOT / "configs/data/next100_063_terminal_source_registry_v1.json"
+            ).read_text(encoding="utf-8")
         )
         canonical = json.loads(
             (ROOT / pointer["canonical"]["path"]).read_text(encoding="utf-8")
         )
-        self.assertNotEqual(old["registry_identity_sha256"], canonical["registry_identity_sha256"])
+        self.assertNotEqual(
+            old["registry_identity_sha256"], canonical["registry_identity_sha256"]
+        )
         self.assertIn(old["registry_identity_sha256"], FORBIDDEN_IDS)
-        self.assertEqual(canonical["registry_identity_sha256"], EXPECTED_CANONICAL_ID)
+        self.assertEqual(
+            canonical["registry_identity_sha256"], EXPECTED_CANONICAL_ID
+        )
 
     def test_consumer_rule_preserves_zero_training_exposure(self) -> None:
         pointer = json.loads(
-            (ROOT / "configs/data/next100_063_canonical_authority_pointer_v1.json").read_text(encoding="utf-8")
+            (
+                ROOT
+                / "configs/data/next100_063_canonical_authority_pointer_v1.json"
+            ).read_text(encoding="utf-8")
         )
-        self.assertEqual(pointer["canonical"]["authorized_balanced_no_replay_loss_positions"], 0)
+        self.assertEqual(
+            pointer["canonical"]["authorized_balanced_no_replay_loss_positions"], 0
+        )
         self.assertTrue(all(value is False for value in pointer["truth_boundary"].values()))
 
 
