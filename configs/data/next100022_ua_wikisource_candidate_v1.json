@@ -5,7 +5,7 @@
     "notice_path": "data/external/snapshots/next100022/ATTRIBUTION.txt",
     "notice_sha256": "dafebb296075eb9503eeb70fa6ae3ef00d7f9f7f86d56b4047055f3278415d8c"
   },
-  "authority_identity_sha256": "7de0ef750a40a809bfd52ef5f8abca51298ac0698d2b4bdec517e1ed31829432",
+  "authority_identity_sha256": "6b443faa7fef777214022028d5fdb356dae0ab1a9b71822b4e16bea8f92cd0d6",
   "authority_state": "TERMINAL_RIGHTS_AND_IMMUTABLE_SNAPSHOT",
   "canonical_registry_mutated": false,
   "evaluation_exclusion": {
@@ -22,6 +22,8 @@
   "evidence": {
     "commons_public_domain_marked": true,
     "uk_wikisource_copyright_policy_revision": 911097,
+    "wikimedia_terms_permanent_url": "https://foundation.wikimedia.org/w/index.php?title=Policy:Terms_of_Use/en&oldid=554852",
+    "wikimedia_terms_revision_id": 554852,
     "wikimedia_terms_url": "https://foundation.wikimedia.org/wiki/Policy:Terms_of_Use/en",
     "wipo_lex_current_law": "UA274 consolidated 2026-07-31"
   },
