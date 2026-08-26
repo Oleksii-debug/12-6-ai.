@@ -1,0 +1,54 @@
+name: NEXT100-087 Communication Data Independent Audit
+
+on:
+  pull_request:
+    paths:
+      - "data/post_base/communication_v1/**"
+      - "src/twelve_six/post_base/data_contract.py"
+      - "src/twelve_six/post_base/communication_data_audit.py"
+      - "tests/test_postbase352_communication_data_contract.py"
+      - "tests/test_postbase352_recovery.py"
+      - "tests/test_next100_087_comm_data_independent_audit.py"
+      - ".github/workflows/next100-087-communication-data-independent-audit.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: next100-087-${{ github.event.pull_request.head.sha || github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  independent-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PYTHONPATH: src
+    steps:
+      - name: Check out exact source head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Verify exact checkout
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+
+      - name: Compile audit surface
+        run: |
+          python -m compileall -q \
+            src/twelve_six/post_base/communication_data_audit.py \
+            tests/test_next100_087_comm_data_independent_audit.py
+
+      - name: Run POSTBASE-352 producer regressions
+        run: |
+          python tests/test_postbase352_communication_data_contract.py -v
+          python tests/test_postbase352_recovery.py -v
+
+      - name: Run independent adversarial audit
+        run: |
+          python tests/test_next100_087_comm_data_independent_audit.py -v
