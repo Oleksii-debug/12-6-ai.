@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def _build_pair():
-    assert transformers.__version__ == "5.15.0"
+    assert transformers.__version__ == "5.15.1"
     stage = load_stage_config(ROOT / "configs/stages/s0_10k.json")
     torch.manual_seed(1337)
     source = TwelveSixDecoder(stage.model, stage.init).eval()
