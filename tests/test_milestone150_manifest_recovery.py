@@ -5,11 +5,11 @@ import json
 from twelve_six.checkpoint import hash_json
 from twelve_six.tokenization import ByteTokenizer
 from twelve_six import milestone150_learned_base_ladder as base
-from twelve_six import milestone150_learned_base_ladder_v2 as recovery
+from twelve_six import milestone150_entrypoint as recovery
 
 
 def test_recovered_run_manifest_survives_json_round_trip() -> None:
-    run = recovery._json_stable_run_manifest(
+    run = recovery.normalized_run_manifest(
         "a" * 40,
         "100k",
         base.model_spec("100k"),
