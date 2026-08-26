@@ -1,0 +1,49 @@
+name: TRAIN-195 10M LR beta2 transfer gate
+on:
+  pull_request:
+    branches: [env151/universal-execution-bootstrap-20260826]
+    paths:
+      - 'configs/experiments/train195_10m_lr_beta_transfer.json'
+      - 'tools/train195_prerequisite_gate.py'
+      - 'tests/test_train195_prerequisite_gate.py'
+      - 'docs/TRAIN195_10M_LR_BETA_TRANSFER.md'
+      - '.github/workflows/train195-10m-lr-beta-transfer.yml'
+  workflow_dispatch:
+permissions: {contents: read}
+concurrency:
+  group: train195-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  prerequisite-gate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with: {ref: "${{ github.event.pull_request.head.sha || github.sha }}", persist-credentials: false}
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with: {python-version: "3.11.16"}
+      - uses: ./.github/actions/execution-bootstrap
+        with:
+          capabilities: runtime,tests
+          venv: .train195
+          command: python -m pytest -q tests/test_train195_prerequisite_gate.py
+          manifest: train195-evidence/bootstrap.json
+      - run: |
+          .train195/bin/python tools/train195_prerequisite_gate.py \
+            --config configs/experiments/train195_10m_lr_beta_transfer.json \
+            --report train195-evidence/prerequisite-gate.json
+      - run: |
+          set +e
+          .train195/bin/python tools/train195_prerequisite_gate.py \
+            --config configs/experiments/train195_10m_lr_beta_transfer.json \
+            --require-runnable
+          rc=$?
+          set -e
+          if [ "$rc" -ne 3 ]; then
+            echo "Expected current preregistration to fail closed with exit code 3, observed $rc" >&2
+            exit 1
+          fi
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: train195-prerequisite-gate
+          path: train195-evidence/
+          if-no-files-found: error
