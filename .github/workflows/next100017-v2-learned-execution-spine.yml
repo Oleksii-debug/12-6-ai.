@@ -1,0 +1,65 @@
+name: NEXT100-017B Learned Execution Spine V2
+
+on:
+  push:
+    branches:
+      - next100-017b/live-refresh-20260826
+    paths:
+      - evidence/next100017/v2/learned-execution-spine.v2.json
+      - scripts/validate_next100017_spine_v2.py
+      - .github/workflows/next100017-v2-learned-execution-spine.yml
+  pull_request:
+    paths:
+      - evidence/next100017/v2/learned-execution-spine.v2.json
+      - scripts/validate_next100017_spine_v2.py
+      - .github/workflows/next100017-v2-learned-execution-spine.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: next100-017b-spine-v2-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate-v2-composition:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout exact event head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
+
+      - name: Assert exact checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXPECTED="${{ github.event.pull_request.head.sha || github.sha }}"
+          ACTUAL="$(git rev-parse HEAD)"
+          test "$ACTUAL" = "$EXPECTED"
+
+      - name: Validate sealed V2 composition
+        run: python3 scripts/validate_next100017_spine_v2.py
+
+      - name: Enforce LOCAL_FREE no-training boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path('evidence/next100017/v2/learned-execution-spine.v2.json')
+          d = json.loads(p.read_text(encoding='utf-8'))
+          c = d['constraints']
+          assert c['local_free_only'] is True
+          assert c['long_training_performed'] is False
+          assert c['training_authorized'] is False
+          assert c['mechanical_pr_merge'] is False
+          p20 = d['composition_vector']['primary_20m_mechanics']
+          assert p20['mechanics_only'] is True
+          assert p20['learned'] is False
+          assert p20['evidence']['training_performed'] is False
+          print('NEXT100-017B LOCAL_FREE/no-training gate: PASS')
+          PY

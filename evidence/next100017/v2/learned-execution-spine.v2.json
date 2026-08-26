@@ -1,0 +1,348 @@
+{
+  "schema_version": "12-6.learned-execution-spine.next100017.v2",
+  "worker_id": "NEXT100-017B-INTEGRATE282-LIVE-REFRESH",
+  "repository": {
+    "requested": "Oleksii-debug/12-6-ai",
+    "physical": "Oleksii-debug/12-6-ai."
+  },
+  "constraints": {
+    "local_free_only": true,
+    "long_training_performed": false,
+    "training_authorized": false,
+    "mechanical_pr_merge": false,
+    "late_bound_exact_sha": true
+  },
+  "predecessor": {
+    "worker": "NEXT100-017-INTEGRATE282-REFRESH",
+    "pr": 466,
+    "head_sha": "bc121b26cafdcfa1706e2939a535d4147f7b4d10",
+    "classification": "historical",
+    "terminal_at_cutoff": true,
+    "dedicated_runs": [32998224265, 32998248844],
+    "role": "immutable_predecessor"
+  },
+  "composition_policy": {
+    "selected_classification": "terminal_authority",
+    "classification_enum": ["terminal_authority", "candidate", "blocked", "historical"],
+    "orthogonal_tags": ["mechanics-only", "learned"],
+    "rule": "Select only exact scoped terminal authorities for requested spine slots. Newness, implementation existence, or queued CI never promotes a candidate. Producer learned evidence is distinct from independent scientific admission. Downstream post-Base authorities do not replace the architectural communication boundary."
+  },
+  "composition_vector": {
+    "environment": {
+      "worker": "ENV-151",
+      "branch": "env151/universal-execution-bootstrap-20260826",
+      "head_sha": "bbca2101ea9409b47d844dd8292cd7f2290e3ff0",
+      "classification": "terminal_authority",
+      "scope": "universal execution bootstrap",
+      "evidence": {"workflow_run_id": 32951063385, "conclusion": "success"},
+      "mechanics_only": true,
+      "learned": false
+    },
+    "trainer": {
+      "worker": "D02",
+      "branch": "d02/s0-precision-runtime-contract-20260825",
+      "head_sha": "e77cf610443f08fcd2b10bf445b956e35bd2b3a8",
+      "classification": "terminal_authority",
+      "scope": "Trainer plus precision/runtime contract",
+      "evidence": {
+        "real_s0_training_run_id": 32901536099,
+        "determinism_run_id": 32901536093,
+        "precision_probe_run_id": 32901536113,
+        "strict_eval_run_id": 32901536120,
+        "scoped_runs_conclusion": "success"
+      },
+      "mechanics_only": true,
+      "learned": false
+    },
+    "d05_recovery": {
+      "worker": "CHECKPOINT-211",
+      "branch": "checkpoint211/scale141-recovery-immutability-20260826",
+      "head_sha": "349e6db94d4aca81c2d1a0ccc3368a98b6058392",
+      "classification": "terminal_authority",
+      "scope": "D05 immutable recovery and exact restore",
+      "evidence": {
+        "workflow_run_id": 32951984562,
+        "conclusion": "success",
+        "artifact_id": 9600513685,
+        "artifact_sha256": "1038f9ac5548e6caeb2f6ae1c0ad0ddfee6969c909fbf62afca635101a39aeb9"
+      },
+      "candidate_successor": {
+        "worker": "D05-20M-REMEDIATION",
+        "pr": 504,
+        "head_sha": "826ce26aad580077d4a94963bcbdf4ccc3ef3954",
+        "classification": "candidate",
+        "exact_head_d05_run_id": 33010092169,
+        "exact_head_d05_status": "queued",
+        "reason": "stronger MODEL-341 corruption hardening exists, but exact-head D05 terminal evidence is not complete"
+      },
+      "mechanics_only": true,
+      "learned": false
+    },
+    "learned_evidence": {
+      "3m": {
+        "worker": "LEARN-191",
+        "branch": "learn191/real-3m-20260826",
+        "head_sha": "a75920cef8bde37a8c590e34095be83c97b75f1d",
+        "classification": "terminal_authority",
+        "scope": "learned 3M producer evidence",
+        "parameters": 3213120,
+        "optimized_targets": 131938,
+        "evidence": {
+          "workflow_run_id": 32940842372,
+          "conclusion": "success",
+          "artifact_id": 9597788382,
+          "artifact_sha256": "f57bf36113a68fffd4bfcf877bf08762393479b9c09e6fd0fd613fbb91f044ee",
+          "retained_checkpoint_sha256": "920283a052c6c7fbd2b66f8ce5f775e4747c3d459e539b3625e4bebf1b9a7a59"
+        },
+        "canonical_ladder_admission": "blocked",
+        "independent_verifier_candidate": {
+          "worker": "VERIFY-219-LEARNED-3M-INDEPENDENT",
+          "pr": 582,
+          "head_sha": "ac0279602fdbd0bab0c08fa53851ba7a85138ff9",
+          "classification": "candidate",
+          "workflow_run_id": 33006132599,
+          "workflow_status": "queued",
+          "terminal_independent_verification": false
+        },
+        "mechanics_only": false,
+        "learned": true
+      },
+      "10m": {
+        "worker": "LEARN-217",
+        "branch": "learn217/terminal-10m-base-20260826",
+        "head_sha": "c02c8aa38e691521ae2ab6a4ff3ea1d643efd6ef",
+        "classification": "terminal_authority",
+        "scope": "learned 10M producer evidence",
+        "parameters": 10000640,
+        "optimized_targets": 2000060,
+        "evidence": {
+          "workflow_run_id": 32952787070,
+          "conclusion": "success",
+          "artifact_id": 9602650341,
+          "artifact_sha256": "8631e90417e40365b3fc0d6bc98ee6adda5a4ed24530e675d9a91c93219537ee",
+          "model_spec_sha256": "61caa5469123e23b9b72fc2024140bfca84c4c480dcb0a7e712ba800a4f22998",
+          "retained_checkpoint_sha256": "12f9edd88bf5e596ae6f985564a5dcff96033922100ba91678ef9a76c0df3156",
+          "chronological_final_sha256": "20fbb9ffe0e0ecb2b0098dd6f7c18e23cd6cfcc0a0e48cb25c73c26d2f50926d"
+        },
+        "canonical_ladder_admission": "blocked",
+        "independent_verifier_candidate": {
+          "worker": "VERIFY-218-LEARNED-10M-INDEPENDENT-V2-CONVERGENCE",
+          "pr": 580,
+          "head_sha": "2ed7773fb5e7638a4ab1062c2ccd47f152cf64b0",
+          "classification": "candidate",
+          "dedicated_run_id": 33006339364,
+          "dedicated_run_conclusion": "failure",
+          "terminal_independent_verification": false
+        },
+        "mechanics_only": false,
+        "learned": true
+      }
+    },
+    "perf_static_kv": {
+      "worker": "PERF-250",
+      "branch": "perf250/gqa-static-kv-convergence-v2-20260826",
+      "head_sha": "66f9be0c86a17568316e791dbf1890b238f114af",
+      "classification": "terminal_authority",
+      "scope": "learned-checkpoint static-KV qualification",
+      "evidence": {
+        "workflow_run_id": 32961371483,
+        "conclusion": "success",
+        "artifact_id": 9604015370,
+        "artifact_sha256": "019c9a561023bf7c061ff9938869f59e0076bbaf7b57a50101676f2892bac883",
+        "learned_static_dynamic_max_abs_logit_error": 0.0
+      },
+      "mechanics_only": true,
+      "learned": false
+    },
+    "primary_20m_mechanics": {
+      "worker": "NEXT100-077-20M-STATICKV-BATCH-STRESS",
+      "branch": "next100-077/20m-static-kv-batch-stress-20260826",
+      "head_sha": "43b33b340640d549edd76d7bb370897a9e3424d2",
+      "classification": "terminal_authority",
+      "scope": "exact primary MODEL-341 static-KV B1/B2/B4 stress extension over terminal NEXT100-009/PERF-347",
+      "source": {
+        "model341_head_sha": "e4ff486fd90802fc123bebf60eed4e59196a98df",
+        "perf347_head_sha": "a5b32313e401fc2ec38158cfc997d6633636bfa8",
+        "next100009_head_sha": "7e3fc17aa204f647e4493861ce0817a3e7a19e98",
+        "model_spec_sha256": "fbff24d561a2818453554d58ca23fc6ace3303b078f1935a8576c4565bd92441",
+        "parameters": 20613440
+      },
+      "evidence": {
+        "workflow_run_id": 32999460150,
+        "conclusion": "success",
+        "artifact_id": 9619235824,
+        "artifact_sha256": "c33b3fc93a0d96c68b6c1bc78040ee4d29b291d49ea8d5144cdbf183c1848513",
+        "batch_sizes": [1, 2, 4],
+        "static_kv_bytes": {"1": 8388608, "2": 16777216, "4": 33554432},
+        "local_free": true,
+        "device": "cpu",
+        "training_performed": false
+      },
+      "supersedes_in_slot": {
+        "worker": "NEXT100-009-PERF347-TERMINALIZE",
+        "head_sha": "7e3fc17aa204f647e4493861ce0817a3e7a19e98"
+      },
+      "mechanics_only": true,
+      "learned": false
+    },
+    "evaluation_fixes": {
+      "evaluator_execution": {
+        "worker": "RECOVER-176-EVAL-133",
+        "branch": "recover176/eval133-en-m150-ladder-20260826",
+        "head_sha": "de19adf253c19ba077a6b3af7c88c291249ed7aa",
+        "classification": "terminal_authority",
+        "scope": "raw evaluator execution and immutable evaluation identity",
+        "evidence": {
+          "workflow_run_id": 32951302310,
+          "conclusion": "success",
+          "evaluation_identity_sha256": "7189e6df053574beb686727c94e684cdbaf08a34ef33aa953eff7cdae0320113"
+        },
+        "mechanics_only": true,
+        "learned": false
+      },
+      "selection_validation": {
+        "worker": "EVAL-303",
+        "branch": "eval303/selection-validation-composite-20260826",
+        "head_sha": "5e5a1de3b594cee5612e63d3d4c2a70499740ac7",
+        "classification": "terminal_authority",
+        "scope": "selection-validation composite; no final-test reuse",
+        "evidence": {
+          "workflow_run_id": 32979177512,
+          "conclusion": "success",
+          "selection_identity_sha256": "7b97a9ab04469236dc5bc17fc80155cb43430b01c443bb6209fac090557258fd"
+        },
+        "mechanics_only": true,
+        "learned": false
+      },
+      "post_base_communication_suite": {
+        "worker": "EVAL-354",
+        "branch": "eval354/communication-suite-v1-20260826",
+        "head_sha": "a3b598fd6951267f4d5582b874ddc265278337a4",
+        "classification": "terminal_authority",
+        "scope": "post-Base communication behavior fixture evaluation only",
+        "evidence": {
+          "workflow_run_id": 32997462539,
+          "conclusion": "success",
+          "case_count": 12,
+          "training_eligible": false,
+          "optimizer_updates": 0,
+          "model_executed": false
+        },
+        "mechanics_only": true,
+        "learned": false
+      }
+    },
+    "post_base_communication_boundary": {
+      "worker": "POSTBASE-253",
+      "branch": "postbase253/communication-layer-contract-20260826",
+      "head_sha": "f6463424b5f53152fce6e6053b705f94e03f9f06",
+      "classification": "terminal_authority",
+      "scope": "communication-consumption architectural boundary above immutable Base",
+      "schema": "12-6.post-base.communication-consumption.v1",
+      "evidence": {
+        "workflow_run_id": 32960956930,
+        "conclusion": "success",
+        "optimizer_updates": 0,
+        "training_authorized": false
+      },
+      "downstream_terminal_extensions": [
+        {
+          "worker": "POSTBASE-352",
+          "branch": "postbase352/communication-data-contract-v1-20260826",
+          "head_sha": "d83fe9f7227112615da1f8f6e7a10f56531dbb35",
+          "classification": "terminal_authority",
+          "scope": "communication dataset contract downstream of POSTBASE-253",
+          "workflow_run_id": 32997692106,
+          "conclusion": "success",
+          "selected_as_boundary": false
+        }
+      ],
+      "mechanics_only": true,
+      "learned": false
+    }
+  },
+  "blocked_admissions": [
+    {
+      "subject": "3M canonical learned-ladder admission",
+      "classification": "blocked",
+      "producer": "LEARN-191",
+      "blocker": "VERIFY-219 implementation exists but terminal independent verification is not achieved; PR #582 exact head remains nonterminal with queued CI"
+    },
+    {
+      "subject": "10M canonical learned-ladder admission",
+      "classification": "blocked",
+      "producer": "LEARN-217",
+      "blocker": "VERIFY-218 implementation exists but exact-artifact admission run 33006339364 failed on current PR #580 head"
+    },
+    {
+      "subject": "20M learned promotion",
+      "classification": "blocked",
+      "producer": null,
+      "blocker": "selected 20M authority is mechanics-only; no learned 20M checkpoint or terminal learned evidence exists"
+    }
+  ],
+  "observed_non_selected": [
+    {
+      "worker": "NEXT100-017-INTEGRATE282-REFRESH",
+      "pr": 466,
+      "head_sha": "bc121b26cafdcfa1706e2939a535d4147f7b4d10",
+      "classification": "historical",
+      "reason": "immutable terminal predecessor superseded only by this V2 point-in-time composition"
+    },
+    {
+      "worker": "D05-20M-REMEDIATION",
+      "pr": 504,
+      "head_sha": "826ce26aad580077d4a94963bcbdf4ccc3ef3954",
+      "classification": "candidate",
+      "reason": "exact-head D05 run 33010092169 queued"
+    },
+    {
+      "worker": "VERIFY-218-LEARNED-10M-INDEPENDENT-V2-CONVERGENCE",
+      "pr": 580,
+      "head_sha": "2ed7773fb5e7638a4ab1062c2ccd47f152cf64b0",
+      "classification": "candidate",
+      "reason": "dedicated exact-artifact run 33006339364 failed"
+    },
+    {
+      "worker": "VERIFY-219-LEARNED-3M-INDEPENDENT",
+      "pr": 582,
+      "head_sha": "ac0279602fdbd0bab0c08fa53851ba7a85138ff9",
+      "classification": "candidate",
+      "reason": "terminal independent verifier proof not completed; observed CI queued"
+    },
+    {
+      "worker": "NEXT100-020-RELEASE-CI-CONVERGENCE",
+      "pr": 442,
+      "head_sha": "f91fa2e21cbadbed50d3c865eadfa7a19b5ab9f2",
+      "classification": "candidate",
+      "reason": "generic release CI is a separate concern; exact CI run 33006819790 queued"
+    }
+  ],
+  "concurrency_refresh": {
+    "performed_immediately_before_vector_write": true,
+    "vector_write_count": 1,
+    "refreshed_heads": {
+      "ENV-151": "bbca2101ea9409b47d844dd8292cd7f2290e3ff0",
+      "D02": "e77cf610443f08fcd2b10bf445b956e35bd2b3a8",
+      "CHECKPOINT-211": "349e6db94d4aca81c2d1a0ccc3368a98b6058392",
+      "LEARN-191": "a75920cef8bde37a8c590e34095be83c97b75f1d",
+      "LEARN-217": "c02c8aa38e691521ae2ab6a4ff3ea1d643efd6ef",
+      "PERF-250": "66f9be0c86a17568316e791dbf1890b238f114af",
+      "MODEL-341": "e4ff486fd90802fc123bebf60eed4e59196a98df",
+      "PERF-347": "a5b32313e401fc2ec38158cfc997d6633636bfa8",
+      "NEXT100-009": "7e3fc17aa204f647e4493861ce0817a3e7a19e98",
+      "NEXT100-077": "43b33b340640d549edd76d7bb370897a9e3424d2",
+      "RECOVER-176-EVAL-133": "de19adf253c19ba077a6b3af7c88c291249ed7aa",
+      "EVAL-303": "5e5a1de3b594cee5612e63d3d4c2a70499740ac7",
+      "EVAL-354": "a3b598fd6951267f4d5582b874ddc265278337a4",
+      "POSTBASE-253": "f6463424b5f53152fce6e6053b705f94e03f9f06",
+      "POSTBASE-352": "d83fe9f7227112615da1f8f6e7a10f56531dbb35",
+      "D05-PR504": "826ce26aad580077d4a94963bcbdf4ccc3ef3954",
+      "VERIFY-218-PR580": "2ed7773fb5e7638a4ab1062c2ccd47f152cf64b0",
+      "VERIFY-219-PR582": "ac0279602fdbd0bab0c08fa53851ba7a85138ff9",
+      "NEXT100-020": "f91fa2e21cbadbed50d3c865eadfa7a19b5ab9f2"
+    },
+    "material_delta": "NEXT100-077 became terminal exact-head B1/B2/B4 20M static-KV mechanics; EVAL-354 is retained as separate terminal post-Base evaluation; D05 and independent learned verifiers remain nonterminal."
+  },
+  "decision": "PASS: V2 late-binds stronger terminal 20M mechanics while preserving terminal/candidate/blocked/historical and mechanics-only/learned boundaries. No long training. LOCAL_FREE only."
+}
