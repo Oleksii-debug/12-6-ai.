@@ -1,0 +1,66 @@
+{
+  "schema_version": "12-6.next100-065d-convergence-guard.v1",
+  "worker_id": "NEXT100-065D-CANONICAL-CONVERGENCE-GUARD",
+  "local_free_only": true,
+  "canonical_registry_v3": {
+    "pr": 538,
+    "path": "configs/data/next100_063_terminal_source_registry_v3.json",
+    "schema_version": "12-6.next100-063-terminal-source-registry.v3",
+    "registry_identity_sha256": "66866a35d58b2f34431068a161986fc3eeb656e5ded1ca2ff8b40489049bac8c",
+    "dedup_parent_head_sha": "efc278cec0e4773eb4ff405bf4b4d24ee63b5d13",
+    "dedup_parent_workflow_run": 32999969398,
+    "numeric_training_capacity_bytes": 357530,
+    "by_stratum": {"uk": 100856, "en": 150643, "code": 106031},
+    "family_counts": {"uk": 4, "en": 4, "code": 5},
+    "independent_family_count": 13,
+    "authorized_balanced_no_replay_loss_positions": 0
+  },
+  "v5_to_v3_reconciliation": {
+    "v5_fixed_without_cpython_accepted_chunks": 320632,
+    "numpy_exact_capacity_bytes": 36898,
+    "sum_must_equal_canonical_v3_numeric_bytes": 357530
+  },
+  "post_v3_terminal_additions": {
+    "cpython_accepted_only": {
+      "pr": 567,
+      "head_sha": "8f0cbc16f9a920ca9ab3e3061b53fbfec8838d77",
+      "dedicated_workflow_run": 33005689174,
+      "dedicated_workflow_conclusion": "success",
+      "artifact_id": 9620571005,
+      "artifact_digest": "sha256:5c04e12f1100fd4012efc1cf693f213d1d7c9ababee2a16367897377cde60379",
+      "accepted_chunk_count": 14,
+      "rejected_chunk_count": 2,
+      "rejection_reasons": {"pii_phone": 2},
+      "exact_eligible_capacity_bytes": 15540
+    },
+    "gutenberg_terminal_seal": {
+      "pr": 627,
+      "head_sha": "c50b3f9cf871792c03886bdc1ccdc144812be88f",
+      "authority_identity_sha256": "1b1bad11b688826ee4f73701c08e3b5af76ba16e8d8a806e008d5b84bee0b97b",
+      "parent_pr": 470,
+      "parent_head_sha": "3f4ad26e1e8f3406a1274418cf5f485814ce3032",
+      "dedicated_workflow_run": 32998859164,
+      "dedicated_workflow_conclusion": "success",
+      "record_count": 3,
+      "exact_eligible_capacity_bytes": 1672110,
+      "evaluation": "NOT_AUTHORIZED"
+    }
+  },
+  "expected_composed_vector_before_successor_global_dedup": {
+    "source_object_count": 31,
+    "source_family_counts": {"uk": 4, "en": 5, "code": 5},
+    "capacity_bytes": {"uk": 100856, "en": 1838293, "code": 106031, "total": 2045180},
+    "research_corpus_v1_acquisition_target_bytes": 20000000,
+    "planning_gap_bytes": 17954820,
+    "authorized_balanced_no_replay_loss_positions": 0
+  },
+  "claim_boundary": {
+    "corpus_identity_claimed": false,
+    "decontamination_pass_claimed": false,
+    "tokenizer_fit_authorized": false,
+    "training_authorized": false,
+    "optimizer_updates": 0,
+    "learned_20m_claimed": false,
+    "paid_compute_authorized": false
+  }
+}
