@@ -1,0 +1,129 @@
+name: NEXT100-094 End-to-End Research Fixture
+run-name: NEXT100-094 exact-head LOCAL_FREE objective fixture
+
+on:
+  push:
+    branches: [next100-094/endtoend-research-fixture-20260826]
+  pull_request:
+    branches: [postbase351/model-adapter-v1-20260826]
+  workflow_dispatch:
+
+concurrency:
+  group: next100-094-${{ github.event.pull_request.head.sha || github.sha }}
+  cancel-in-progress: false
+
+permissions: {contents: read, actions: read}
+
+jobs:
+  objective-fixture:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      PYTHONPATH: src
+      NEXT100_094_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: "${{ env.NEXT100_094_HEAD_SHA }}"
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with: {python-version: "3.11.16"}
+
+      - name: Verify exact terminal component blobs
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD:src/twelve_six/post_base/__init__.py)" = "c2da7edc47b2dcbd4fb25652b65f03ed7f94fcbe"
+          test "$(git rev-parse HEAD:src/twelve_six/post_base/contract.py)" = "db3c78340a717429197ea85244ce131e02a8eb8d"
+          test "$(git rev-parse HEAD:src/twelve_six/postbase/adapter.py)" = "e5fa340a1ff1d57c46b9304e3b2dfbc0c1d517d6"
+          test "$(git rev-parse HEAD:src/twelve_six/postbase_deliberation.py)" = "b3d787f14f70ab42890024297ca6a0bd2738d0e2"
+          test "$(git rev-parse HEAD:src/twelve_six/postbase_hypothesis.py)" = "3a26aa1385dc52c7f7dfeba3f78ff327c3fddf24"
+          test "$(git rev-parse HEAD:src/twelve_six/postbase/verification.py)" = "e3c0504c1a6b3768c8aaea1aaaa3b3eb637eaab7"
+          test "$(git rev-parse HEAD:src/twelve_six/memory_rag/contracts.py)" = "da790ed7bb5b5794b4744600c82dab3e720f0a30"
+          test "$(git rev-parse HEAD:src/twelve_six/memory_rag/reasoning.py)" = "8c6f72f3c6eca200cb3a6aa041c42ffb6b46b561"
+          test "$(git rev-parse HEAD:src/twelve_six/memory_rag/retrieval.py)" = "d8141d6f2a4fac3352d84cf71c0cb9db7d1e7653"
+          test "$(git rev-parse HEAD:src/twelve_six/memory_rag/store.py)" = "021b77a00ee37d3a74f6f6112cacceee777ea49a"
+
+      - name: Bootstrap LOCAL_FREE CPU runtime
+        uses: ./.github/actions/execution-bootstrap
+        with:
+          capabilities: runtime,tests
+          venv: .next100-094-cpu
+          command: >-
+            python tests/test_next100_094_endtoend_research_fixture.py -v
+          manifest: reports/next100-094/environment.json
+
+      - name: Download exact terminal learned 10M Base artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p learned-artifacts/zips learned-artifacts/learn217 reports/next100-094
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/9602650341/zip" > learned-artifacts/zips/learn217.zip
+          echo "8631e90417e40365b3fc0d6bc98ee6adda5a4ed24530e675d9a91c93219537ee  learned-artifacts/zips/learn217.zip" | sha256sum -c -
+          unzip -q learned-artifacts/zips/learn217.zip -d learned-artifacts/learn217
+
+      - name: Record immutable Base checkpoint tree before fixture
+        run: |
+          set -euo pipefail
+          CHECKPOINT=learned-artifacts/learn217/scale141-evidence/retained/best
+          (cd "$CHECKPOINT" && find . -type f -print0 | sort -z | xargs -0 sha256sum) | sha256sum | awk '{print $1}' > reports/next100-094/base-before.sha256
+
+      - name: Run objective end-to-end fixture twice
+        env:
+          NEXT100_094_BASE_CHECKPOINT: learned-artifacts/learn217/scale141-evidence/retained/best
+        run: |
+          set -euo pipefail
+          .next100-094-cpu/bin/python tools/run_next100_094_endtoend_research_fixture.py > reports/next100-094/trace-a.json
+          .next100-094-cpu/bin/python tools/run_next100_094_endtoend_research_fixture.py > reports/next100-094/trace-b.json
+          cmp reports/next100-094/trace-a.json reports/next100-094/trace-b.json
+          .next100-094-cpu/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+          p = json.loads(Path('reports/next100-094/trace-a.json').read_text())
+          assert p['communication_boundary']['component'] == 'POSTBASE-253'
+          assert p['communication_boundary']['namespaces_distinct'] is True
+          assert p['communication_boundary']['execution_authorized_by_contract'] is False
+          assert p['base_adapter']['executed'] is True
+          assert p['base_adapter']['answer_authority'] is False
+          assert p['base_adapter']['runtime_policy'] == 'LOCAL_FREE'
+          assert p['memory_retrieval']['superseded_excluded'] == ['damaged-v1']
+          assert p['hypothesis_search']['initial_preferred'] == 'H001'
+          assert p['hypothesis_search']['wrong_candidate']['status'] == 'rejected'
+          assert p['hypothesis_search']['revision']['parent_id'] == 'H001'
+          assert p['verifier_ensemble']['wrong_candidate_status'] == 'FAIL'
+          assert p['verifier_ensemble']['final_status'] == 'PASS'
+          assert p['verifier_ensemble']['verified_claim_ids'] == ['answer']
+          assert p['final'] == {'answer': 37, 'verified': True}
+          assert p['execution_policy']['external_llm_calls'] == 0
+          assert p['execution_policy']['base_weight_changes'] == 0
+          assert 'PRIVATE_NEXT100_094' not in Path('reports/next100-094/trace-a.json').read_text()
+          PY
+
+      - name: Prove Base checkpoint tree unchanged
+        run: |
+          set -euo pipefail
+          CHECKPOINT=learned-artifacts/learn217/scale141-evidence/retained/best
+          (cd "$CHECKPOINT" && find . -type f -print0 | sort -z | xargs -0 sha256sum) | sha256sum | awk '{print $1}' > reports/next100-094/base-after.sha256
+          cmp reports/next100-094/base-before.sha256 reports/next100-094/base-after.sha256
+
+      - name: Enforce no external LLM client in fixture surface
+        run: |
+          set -euo pipefail
+          if grep -REn '^\s*(from|import)\s+(openai|anthropic|requests|httpx)(\.|\s|$)' src/twelve_six/postbase_research_fixture.py tools/run_next100_094_endtoend_research_fixture.py; then
+            echo "external LLM/network client forbidden" >&2
+            exit 1
+          fi
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: next100-094-endtoend-research-fixture
+          path: |
+            reports/next100-094/environment.json
+            reports/next100-094/trace-a.json
+            reports/next100-094/trace-b.json
+            reports/next100-094/base-before.sha256
+            reports/next100-094/base-after.sha256
+          if-no-files-found: warn
+          retention-days: 30
