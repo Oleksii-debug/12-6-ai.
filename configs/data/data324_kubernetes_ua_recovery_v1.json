@@ -1,0 +1,89 @@
+{
+  "schema_version": "12-6.data324-kubernetes-ua-recovery-config.v1",
+  "worker_id": "NEXT100-024-DATA-UA-KUBERNETES-RECOVERY",
+  "local_free_only": true,
+  "recovered_from": {
+    "worker_id": "DATA-228-REAL-UA-EN-DIVERSITY-V2",
+    "source_sha": "46a70c990dab6ff72bb84ddb54cff1156b491b40",
+    "workflow_run": 32957120454,
+    "failure_class": "ENVIRONMENT_BOOTSTRAP_MISSING_TORCH_BEFORE_SOURCE_MATERIALIZATION",
+    "rights_rejection": false
+  },
+  "upstream": {
+    "repo": "kubernetes/website",
+    "revision": "25f3dcbed7429ebe20174ccc7000428d0f0aedda",
+    "license_path": "LICENSE",
+    "expected_license_git_blob_sha1": "da6ab6cc8f333d7e89a99812866df8f24374d47c",
+    "live_refresh_main_sha_observed_2026_08_26": "65be3d5113725bf3cb73135e9b327cc71a183ccb",
+    "live_refresh_source_blob_unchanged": true
+  },
+  "file_set": [
+    {
+      "source_id": "uk.kubernetes.docs.concepts-index",
+      "path": "content/uk/docs/concepts/_index.md",
+      "expected_git_blob_sha1": "ab9d757e99679b3db48a3230bf6eb07a997eec9c"
+    }
+  ],
+  "license": {
+    "id": "CC-BY-4.0",
+    "rights": {
+      "model_training": "ALLOWED_WITH_ATTRIBUTION_RETAINED_IN_PROVENANCE",
+      "redistribution": "ALLOWED_WITH_CC_BY_4_0_ATTRIBUTION_LICENSE_LINK_AND_MODIFICATION_NOTICE",
+      "derivatives": "ALLOWED",
+      "evaluation": "NOT_SEPARATELY_ADMITTED"
+    },
+    "basis": "Exact pinned CC BY 4.0 license grants reproduction, sharing and adapted-material rights subject to attribution and related Section 3 conditions. Project policy separately admits this bounded technical-text use for model training; public availability alone is not the basis."
+  },
+  "family_identity": {
+    "source_family": "kubernetes.website.docs",
+    "canonical_upstream": "github:kubernetes/website",
+    "lineage_rule": "All Kubernetes website sibling documentation and translations remain one canonical upstream family unless a later explicit lineage authority proves independent origin; language or URL differences do not create new family credit."
+  },
+  "acquisition_bounds": {
+    "max_source_bytes": 100000,
+    "max_license_bytes": 50000,
+    "max_total_download_bytes": 150000,
+    "max_normalized_bytes": 100000,
+    "source_file_count": 1
+  },
+  "normalization": {
+    "id": "markdown-visible-uk-v2",
+    "decode": "strict-utf8",
+    "unicode": "NFKC",
+    "line_endings": "LF",
+    "operations": [
+      "strip-leading-yaml-frontmatter",
+      "strip-html-comments-including-embedded-English-originals",
+      "strip-hugo-shortcodes",
+      "retain-markdown-link-labels",
+      "retain-image-alt-text",
+      "strip-basic-markdown-punctuation",
+      "collapse-intraline-whitespace",
+      "drop-empty-lines",
+      "single-terminal-LF"
+    ]
+  },
+  "dedup": {
+    "incumbent_authority": "DATA-293 head 2665a4cd86186ba44024334719d30dcc35d222d8",
+    "incumbent_text_hashes": {
+      "raw_sha256": [
+        "36eae31c3b0676ea7c02236fa05bd695c240c9a8eade5febc00457b8103ee1a4",
+        "21582c7f0e4ad39f2b0ed97bbc2c082d275e898b7a63c28e6d9badb8ee0f7860",
+        "7ac53dfb4bf6f73f178560e09f33160d0250c69fb679802f3254dc0eb4c9f509"
+      ],
+      "normalized_sha256": [
+        "72c301db0b2539f3f7a73c9c15e2e425700a6b758a1114f1a861e2d60c704c50",
+        "154fb4034929714087e75150d678bf65049ddac32e79dcdf97162c8972c2be83",
+        "94eb2f529922d125b3bd40691778886f4d5d80b128b925d0274fb3d94646ec5a"
+      ]
+    }
+  },
+  "outputs": {
+    "raw_snapshot": "data/external/snapshots/data324-kubernetes-ua-v1/raw/concepts-index.md",
+    "normalized_snapshot": "data/external/snapshots/data324-kubernetes-ua-v1/normalized/concepts-index.uk.txt",
+    "license_evidence": "data/external/rights-evidence/data324/kubernetes-website-cc-by-4.0-25f3dcb.txt",
+    "attribution": "data/external/snapshots/data324-kubernetes-ua-v1/ATTRIBUTION.txt",
+    "manifest": "data/external/snapshots/data324-kubernetes-ua-v1/manifest.json",
+    "report": "reports/data324/kubernetes-ua-recovery-v1.json"
+  }
+}
