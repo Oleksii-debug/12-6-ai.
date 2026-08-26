@@ -1,0 +1,16 @@
+DATA-184 purpose-specific rights decision
+Source: pallets/itsdangerous
+Exact source version: git:672971d66a2ef9f85151e53283113f33d642dabd
+Rights object: LICENSE.txt
+License object Git blob SHA-1: 7b190ca6712aa09eede3e6de79f68d7fa29072da
+License text SHA-256: 63af09891b6be8ad1a4252ed43af0f4efba7fc948e228367bed7f3c5ae0b09d7
+License: BSD-3-Clause
+Purpose decision under policy://12-6/data/explicit-model-training-evidence-v1:
+acquisition=ALLOWED
+storage=ALLOWED
+analysis=ALLOWED
+model_training=ALLOWED
+redistribution=ALLOWED_WITH_LICENSE_NOTICE
+Decision basis: the exact repository license grants source/binary redistribution with or without modification subject to notice and non-endorsement conditions. DATA-184 records those obligations and admits only exact pinned source blobs.
+Reviewed: 2026-08-26
+Reviewer: SWARM_WORKER_ID:DATA-184-REAL-SOURCE-DIVERSITY
