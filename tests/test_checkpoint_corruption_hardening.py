@@ -12,7 +12,7 @@ from twelve_six.checkpoint import (
     CheckpointCompatibilityError,
     CheckpointIdentity,
     CheckpointIntegrityError,
-    canonical_json_bytes if False else hash_json,
+    hash_json,
     load_checkpoint,
     load_trainer_checkpoint,
     save_checkpoint,
