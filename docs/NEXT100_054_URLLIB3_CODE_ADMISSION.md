@@ -47,7 +47,11 @@ Therefore the two repositories are `RELATED_LINEAGE`. For this bounded admission
 
 ## Evaluation firewall
 
-The reviewed EVAL-322 canonical evaluator authority has the code modality blocked: zero code selection records and zero code final-test records because no pristine code objects with explicit evaluation authority exist. Thus none of the selected urllib3 objects is reserved for evaluation at the reviewed authority.
+The initial reviewed EVAL-322 authority had code evaluation blocked with zero code selection and final-test records. During the mandatory concurrency refresh, the newer terminal authority `NEXT100-057-CODE-EVAL-SET-V2` was discovered at head `6713fe972b875b8a516122bda347264fb4099b2b`, evidence blob `95fb3ac2c7505d1451575d3d7a599a9f3a65067c`, authority identity `08a5876d24d054e94171eeaebb3610e3992b39bed5b038550148348e621ac41c`.
+
+NEXT100-057 is terminal for its observed authority vector and remains `BLOCKED_NO_PRISTINE_CODE_OBJECTS_WITH_EXPLICIT_EVALUATION_RESERVATION`: eligible evaluation objects = 0, selected records = 0, and no evaluation JSONL is published. It independently rechecks the inactive empty EVAL-289 reservation and the blocked EVAL-322 authority. Therefore the current evaluation-selected object set is empty and its intersection with all eight selected urllib3 blobs is exactly zero.
+
+The dedicated workflow now performs a late fail-closed refresh against NEXT100-057 after producing the base admission report. If that authority branch moves, any eligible evaluation object appears, any selection record appears, or the reservation state changes, the workflow refuses to seal and requires a refreshed admission decision.
 
 This worker is training-only. Any later live code reservation matching a selected urllib3 object invalidates the terminal seal and requires exclusion or retest before training use.
 
@@ -63,10 +67,10 @@ The dedicated workflow reacquires and verifies the canonical repository, signed 
 - exact SHA-256 duplicate rejection;
 - near-duplicate rejection using 5-token shingles and Jaccard `>= 0.85`;
 - comparison against both DATA-227 terminal objects, including the bounded Requests source;
-- exact EVAL-322 evidence identity and zero-code gate at the reviewed authority.
+- the base EVAL-322 zero-code gate plus a late exact-head NEXT100-057 refresh proving zero eligible/selected code-evaluation objects and zero urllib3 collision.
 
 ## Execution boundary
 
 No model training, optimizer step, tokenizer fitting, paid API, or paid compute is performed. The admission workflow runs on GitHub-hosted `ubuntu-24.04` with Python `3.11.16` and `TWELVE_SIX_EXECUTION_PROFILE=LOCAL_FREE`.
 
-Terminal evidence consists of the exact pull-request head, successful dedicated workflow, retained artifact containing the self-hashed admission report and snapshots, exact license evidence, and the final live authority-vector refresh immediately before sealing.
+Terminal evidence consists of the exact pull-request head, successful dedicated workflow, retained artifact containing the self-hashed admission report, live-authority refresh report and snapshots, exact license evidence, and the final live authority-vector refresh immediately before sealing.
