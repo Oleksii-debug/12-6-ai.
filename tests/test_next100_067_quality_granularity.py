@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import json
+from itertools import pairwise
 from pathlib import Path
 
 from twelve_six.data.quality_granularity import (
@@ -65,7 +66,7 @@ def test_natural_window_partition_is_exact_nonoverlapping_and_bounded() -> None:
     assert "".join(window.text for window in windows) == text
     assert windows[0].start_char == 0
     assert windows[-1].end_char == len(text)
-    assert all(left.end_char == right.start_char for left, right in zip(windows, windows[1:]))
+    assert all(left.end_char == right.start_char for left, right in pairwise(windows))
     assert all(window.chars <= policy.natural_window_max_chars for window in windows)
 
 
