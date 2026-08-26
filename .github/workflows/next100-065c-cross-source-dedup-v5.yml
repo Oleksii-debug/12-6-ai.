@@ -202,7 +202,7 @@ jobs:
       - name: Upload immutable NEXT100-065D evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: next100-065d-cross-source-dedup-${{ env.SOURCE_SHA }}
+          name: next100-065d-cross-source-dedup-${{ github.event.pull_request.head.sha || github.sha }}
           if-no-files-found: error
           retention-days: 90
           path: |
