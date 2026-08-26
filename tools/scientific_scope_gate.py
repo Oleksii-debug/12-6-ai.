@@ -24,7 +24,12 @@ LOCK_RE = re.compile(r"^([A-Za-z0-9_.-]+)==([^\s\\]+)")
 INTERNAL_PREFIX = "twelve_six"
 
 
-def _run(cmd: list[str], *, cwd: Path, check: bool = True) -> subprocess.CompletedProcess[str]:
+def _run(
+    cmd: list[str],
+    *,
+    cwd: Path,
+    check: bool = True,
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(cmd, cwd=cwd, check=check, text=True, capture_output=True)
 
 
@@ -60,7 +65,9 @@ def locked_requirements(root: Path) -> tuple[dict[str, str], dict[str, str]]:
             dist, version = _canon_dist(match.group(1)), match.group(2)
             prior = versions.get(dist)
             if prior is not None and prior != version:
-                raise RuntimeError(f"conflicting lock versions for {dist}: {prior} vs {version}")
+                raise RuntimeError(
+                    f"conflicting lock versions for {dist}: {prior} vs {version}"
+                )
             versions[dist] = version
     return versions, hashes
 
@@ -86,8 +93,14 @@ def verify_environment(root: Path) -> dict[str, Any]:
     return {
         "python": sys.version.split()[0],
         "git": _git(root, "--version"),
-        "ruff": _run([sys.executable, "-m", "ruff", "--version"], cwd=root).stdout.strip(),
-        "pytest": _run([sys.executable, "-m", "pytest", "--version"], cwd=root).stdout.strip(),
+        "ruff": _run(
+            [sys.executable, "-m", "ruff", "--version"],
+            cwd=root,
+        ).stdout.strip(),
+        "pytest": _run(
+            [sys.executable, "-m", "pytest", "--version"],
+            cwd=root,
+        ).stdout.strip(),
         "lock_sha256": lock_hashes,
         "locked_distribution_count": len(versions),
     }
@@ -106,7 +119,13 @@ def verify_bootstrap_evidence(path: Path, source_sha: str) -> dict[str, Any]:
 
 
 def changed_paths(root: Path, base_sha: str, source_sha: str) -> list[str]:
-    out = _git(root, "diff", "--name-only", "--diff-filter=ACMRT", f"{base_sha}...{source_sha}")
+    out = _git(
+        root,
+        "diff",
+        "--name-only",
+        "--diff-filter=ACMRT",
+        f"{base_sha}...{source_sha}",
+    )
     return sorted(line for line in out.splitlines() if line)
 
 
@@ -128,7 +147,12 @@ def _module_for_path(path: Path, root: Path) -> tuple[str, bool]:
     return rel.replace("/", "."), is_package
 
 
-def _resolve_from(current: str, is_package: bool, level: int, module: str | None) -> str:
+def _resolve_from(
+    current: str,
+    is_package: bool,
+    level: int,
+    module: str | None,
+) -> str:
     if level == 0:
         return module or ""
     package = current if is_package else current.rsplit(".", 1)[0]
@@ -148,7 +172,9 @@ def semantic_sources(root: Path, entrypoints: list[str]) -> list[str]:
     while queue:
         path = queue.pop()
         if not path.is_file():
-            raise RuntimeError(f"missing experiment entrypoint/module: {path.relative_to(root)}")
+            raise RuntimeError(
+                f"missing experiment entrypoint/module: {path.relative_to(root)}"
+            )
         path = path.resolve()
         if path in seen:
             continue
@@ -159,7 +185,11 @@ def semantic_sources(root: Path, entrypoints: list[str]) -> list[str]:
         modules: set[str] = set()
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
-                modules.update(alias.name for alias in node.names if alias.name.startswith(INTERNAL_PREFIX))
+                modules.update(
+                    alias.name
+                    for alias in node.names
+                    if alias.name.startswith(INTERNAL_PREFIX)
+                )
             elif isinstance(node, ast.ImportFrom):
                 base = _resolve_from(current, is_package, node.level, node.module)
                 if base.startswith(INTERNAL_PREFIX):
@@ -174,7 +204,10 @@ def semantic_sources(root: Path, entrypoints: list[str]) -> list[str]:
     return sorted(path.relative_to(root).as_posix() for path in seen)
 
 
-def owned_tests(paths: list[str], ownership: dict[str, Any]) -> tuple[list[str], dict[str, list[str]]]:
+def owned_tests(
+    paths: list[str],
+    ownership: dict[str, Any],
+) -> tuple[list[str], dict[str, list[str]]]:
     selected: set[str] = set()
     hits: dict[str, list[str]] = {}
     unowned: list[str] = []
@@ -227,12 +260,20 @@ def run_gate(
         if not (root / test).is_file():
             raise RuntimeError(f"selected focused test missing: {test}")
 
-    changed_python = sorted(p for p in changed if p.endswith(".py") and (root / p).is_file())
+    changed_python = sorted(
+        path for path in changed if path.endswith(".py") and (root / path).is_file()
+    )
     commands: list[dict[str, Any]] = []
     if changed_python:
         cmd = [sys.executable, "-m", "ruff", "check", *changed_python]
         result = _run(cmd, cwd=root, check=False)
-        commands.append({"kind": "changed_path_lint", "argv": cmd, "returncode": result.returncode})
+        commands.append(
+            {
+                "kind": "changed_path_lint",
+                "argv": cmd,
+                "returncode": result.returncode,
+            }
+        )
         if result.returncode:
             raise RuntimeError(f"changed-path Ruff failed:\n{result.stdout}{result.stderr}")
 
@@ -240,14 +281,26 @@ def run_gate(
     if compile_paths:
         cmd = [sys.executable, "-m", "py_compile", *compile_paths]
         result = _run(cmd, cwd=root, check=False)
-        commands.append({"kind": "static_compile", "argv": cmd, "returncode": result.returncode})
+        commands.append(
+            {
+                "kind": "static_compile",
+                "argv": cmd,
+                "returncode": result.returncode,
+            }
+        )
         if result.returncode:
             raise RuntimeError(f"static compile failed:\n{result.stdout}{result.stderr}")
 
     if tests:
         cmd = [sys.executable, "-m", "pytest", "-q", *tests]
         result = _run(cmd, cwd=root, check=False)
-        commands.append({"kind": "focused_regressions", "argv": cmd, "returncode": result.returncode})
+        commands.append(
+            {
+                "kind": "focused_regressions",
+                "argv": cmd,
+                "returncode": result.returncode,
+            }
+        )
         if result.returncode:
             raise RuntimeError(f"focused tests failed:\n{result.stdout}{result.stderr}")
 
@@ -271,12 +324,18 @@ def run_gate(
             "status": manifest.get("integration_status", "NOT_EVALUATED"),
             "note": manifest.get(
                 "integration_note",
-                "Strict repository-wide integration/release status is independent of this experiment-local PASS.",
+                (
+                    "Strict repository-wide integration/release status is independent "
+                    "of this experiment-local PASS."
+                ),
             ),
         },
     }
     evidence_out.parent.mkdir(parents=True, exist_ok=True)
-    evidence_out.write_text(json.dumps(report, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+    evidence_out.write_text(
+        json.dumps(report, sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+    )
     return report
 
 
@@ -286,7 +345,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--manifest", required=True)
     parser.add_argument("--source-sha", required=True)
     parser.add_argument("--bootstrap-evidence", required=True)
-    parser.add_argument("--ownership-config", default="configs/ci/scientific_scope_ownership.v1.json")
+    parser.add_argument(
+        "--ownership-config",
+        default="configs/ci/scientific_scope_ownership.v1.json",
+    )
     parser.add_argument("--evidence-out", required=True)
     args = parser.parse_args(argv)
 
@@ -306,13 +368,20 @@ def main(argv: list[str] | None = None) -> int:
         bootstrap_evidence=rooted(args.bootstrap_evidence),
         evidence_out=rooted(args.evidence_out),
     )
-    print(json.dumps({
-        "scope_status": report["scope_status"],
-        "source_sha": report["source_sha"],
-        "focused_tests": report["focused_tests"],
-        "whole_repository_health_claimed": report["whole_repository_health_claimed"],
-        "integration_release_gate": report["integration_release_gate"],
-    }, sort_keys=True))
+    print(
+        json.dumps(
+            {
+                "scope_status": report["scope_status"],
+                "source_sha": report["source_sha"],
+                "focused_tests": report["focused_tests"],
+                "whole_repository_health_claimed": report[
+                    "whole_repository_health_claimed"
+                ],
+                "integration_release_gate": report["integration_release_gate"],
+            },
+            sort_keys=True,
+        )
+    )
     return 0
 
 
