@@ -1,0 +1,248 @@
+name: DATA-181 Real Snapshot Promotion
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  promote-real-snapshots:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact source head
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+
+      - name: Bootstrap universal exact LOCAL_FREE environment
+        uses: ./.github/actions/execution-bootstrap
+        with:
+          capabilities: runtime,tests
+          venv: .data181
+          command: python -m pytest
+          manifest: data181-execution-environment.json
+
+      - name: Test committed promotion, DATA-24 rights, and DATA-21 intake contracts
+        env:
+          PYTHONPATH: src
+        run: |
+          .data181/bin/python -m pytest -q \
+            tests/test_data181_snapshot_promotion.py \
+            tests/test_data24_rights_gate.py \
+            tests/test_data24_inventory_artifact.py \
+            tests/test_external_source_intake_ua_en.py \
+            tests/test_source_intake_reviewed_uk_lid.py
+
+      - name: Acquire twice, promote exact snapshots, and build deterministic small corpus
+        env:
+          PYTHONPATH: src
+        run: |
+          set -euo pipefail
+          .data181/bin/python tools/run_data181_snapshot_promotion.py \
+            --repo-root . \
+            --plan configs/data/data181_real_snapshot_promotion_v1.json \
+            --registry data/external/external_sources.json \
+            --output data181-evidence \
+            --max-download-bytes 2000000 \
+            | tee data181-evidence.stdout.json
+
+      - name: Assert promotion report and normal-gate corpus evidence
+        run: |
+          .data181/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path("data181-evidence/promotion-report.json").read_text())
+          plan = json.loads(Path("configs/data/data181_real_snapshot_promotion_v1.json").read_text())
+          registry = json.loads(Path("data/external/external_sources.json").read_text())
+
+          assert report["schema_version"] == "12-6.data181-real-snapshot-promotion-report.v1"
+          assert report["status"] == "PASS"
+          assert report["local_free_only"] is True
+          assert report["canonical_registry_identity_sha256"] == plan["canonical_registry_identity_sha256"]
+          assert len(report["objects"]) == 3
+
+          expected = {
+              (item["promoted_source_id"], item["source_version"]): item
+              for item in plan["objects"]
+          }
+          sources = {
+              (item["source_id"], item["source_version"]): item
+              for item in registry["sources"]
+          }
+          assert set(expected) == set(sources)
+          assert set(expected) == {
+              (item["promoted_source_id"], item["source_version"])
+              for item in report["objects"]
+          }
+
+          for item in report["objects"]:
+              key = (item["promoted_source_id"], item["source_version"])
+              planned = expected[key]
+              source = sources[key]
+              for field in (
+                  "raw_sha256",
+                  "raw_bytes",
+                  "normalized_sha256",
+                  "normalized_utf8_bytes",
+                  "source_manifest_sha256",
+                  "parent_source_identity_sha256",
+              ):
+                  assert item[field] == planned[field]
+              assert item["repeat_acquisition_same_raw_identity"] is True
+              assert item["repeat_extraction_same_normalized_identity"] is True
+              assert item["admitted_chunk_count"] > 0
+              assert set(item["rights_uses"].values()) == {"ALLOWED"}
+              assert len(item["rights_evidence_ids"]) == 2
+              assert item["snapshot_path"] == (
+                  f"data/external/snapshots/sha256/{item['raw_sha256']}/payload"
+              )
+
+              rights = source["rights"]
+              evidence_kinds = {ref["evidence_kind"] for ref in rights["evidence_refs"]}
+              assert "policy_decision" in evidence_kinds
+              assert rights["policy_ref"] == "policy://12-6/data/explicit-model-training-evidence-v1"
+              assert rights["uses"]["model_training"] == "ALLOWED"
+
+          small = report["small_corpus"]
+          assert small["repeat_build_same_identity"] is True
+          assert small["stats"]["accepted_documents"] >= 2
+          assert small["gate_path"] == (
+              "DATA24 EligibilityResolver -> admit_for_pretraining -> incumbent D03 build_dataset"
+          )
+
+          languages = set()
+          for name in ("train.jsonl", "validation.jsonl"):
+              for line in (Path("data181-evidence/small-corpus-build-a") / name).read_text().splitlines():
+                  if line.strip():
+                      languages.add(json.loads(line)["language"])
+          assert "uk" in languages
+          assert "en" in languages
+          PY
+
+      - name: Prove canonical raw snapshot payloads exist outside Git
+        run: |
+          .data181/bin/python - <<'PY'
+          import hashlib
+          import json
+          import subprocess
+          from pathlib import Path
+
+          registry = json.loads(Path("data/external/external_sources.json").read_text())
+          for source in registry["sources"]:
+              uri = source["snapshot"]["uri"]
+              assert uri.startswith("file:data/")
+              path = Path(uri.removeprefix("file:"))
+              payload = path.read_bytes()
+              assert len(payload) == source["snapshot"]["size_bytes"]
+              assert hashlib.sha256(payload).hexdigest() == source["snapshot"]["sha256"]
+              tracked = subprocess.run(
+                  ["git", "ls-files", "--error-unmatch", "--", path.as_posix()],
+                  check=False,
+                  stdout=subprocess.PIPE,
+                  stderr=subprocess.PIPE,
+                  text=True,
+              )
+              assert tracked.returncode != 0, f"canonical payload unexpectedly tracked by Git: {path}"
+          PY
+
+      - name: Build deterministic DATA-181 artifact manifest
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          .data181/bin/python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          def sha256(payload: bytes) -> str:
+              return hashlib.sha256(payload).hexdigest()
+
+          roots = [
+              Path("configs/data/data181_real_snapshot_promotion_v1.json"),
+              Path("configs/data/external_source_candidates_ua_en_v1.json"),
+              Path("data/external/external_sources.json"),
+              Path("data/external/rights-evidence/data181"),
+              Path("data/external/snapshots/sha256"),
+              Path("data181-evidence/promotion-report.json"),
+              Path("data181-evidence/normalized"),
+              Path("data181-evidence/small-corpus-input"),
+              Path("data181-evidence/small-corpus-build-a"),
+              Path("data181-evidence/small-corpus-build-b"),
+              Path("data181-evidence.stdout.json"),
+              Path("data181-execution-environment.json"),
+          ]
+          files = []
+          for root in roots:
+              paths = [root] if root.is_file() else sorted(
+                  path for path in root.rglob("*") if path.is_file()
+              )
+              assert paths, f"artifact root has no files: {root}"
+              for path in paths:
+                  payload = path.read_bytes()
+                  files.append(
+                      {
+                          "path": path.as_posix(),
+                          "sha256": sha256(payload),
+                          "size_bytes": len(payload),
+                      }
+                  )
+          files.sort(key=lambda item: item["path"])
+          core = {
+              "schema_version": "12-6.data181-artifact-manifest.v1",
+              "source_sha": os.environ["EXPECTED_SOURCE_SHA"],
+              "local_free_only": True,
+              "files": files,
+          }
+          canonical = (
+              json.dumps(core, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n"
+          ).encode("utf-8")
+          manifest = {**core, "manifest_sha256": sha256(canonical)}
+          path = Path("data181-evidence/artifact-manifest.json")
+          path.write_text(
+              json.dumps(manifest, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+              encoding="utf-8",
+              newline="\n",
+          )
+          roundtrip = json.loads(path.read_text(encoding="utf-8"))
+          check = {key: value for key, value in roundtrip.items() if key != "manifest_sha256"}
+          check_bytes = (
+              json.dumps(check, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n"
+          ).encode("utf-8")
+          assert sha256(check_bytes) == roundtrip["manifest_sha256"]
+          PY
+
+      - name: Upload canonical DATA-181 source snapshot package
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: data181-canonical-source-snapshots-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            configs/data/data181_real_snapshot_promotion_v1.json
+            configs/data/external_source_candidates_ua_en_v1.json
+            data/external/external_sources.json
+            data/external/rights-evidence/data181/*
+            data/external/snapshots/sha256/*/payload
+            data181-evidence/promotion-report.json
+            data181-evidence/artifact-manifest.json
+            data181-evidence/normalized/*.txt
+            data181-evidence/small-corpus-input/**
+            data181-evidence/small-corpus-build-a/**
+            data181-evidence/small-corpus-build-b/**
+            data181-evidence.stdout.json
+            data181-execution-environment.json
+          if-no-files-found: error
+          retention-days: 90
