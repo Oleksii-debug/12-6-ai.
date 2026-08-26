@@ -3,7 +3,7 @@
   "worker_id": "EVAL-290-UA-SELECTION-VALIDATION-V1",
   "status": "RESERVED_BY_DETERMINISTIC_SELECTOR_BEFORE_FUTURE_TRAINING",
   "reservation_declared_at": "2026-08-26T15:01:00+03:00",
-  "reservation_commit_sha": "__BIND_AFTER_INITIAL_COMMIT__",
+  "reservation_commit_sha": "8a393d98d37b2090d1ae3fe8be8d4e58f651159e",
   "source_config": "configs/evaluation/eval290_ua_selection_sources_v1.json",
   "rights_config": "configs/evaluation/eval290_ua_selection_rights_v1.json",
   "reservation_scope": {
