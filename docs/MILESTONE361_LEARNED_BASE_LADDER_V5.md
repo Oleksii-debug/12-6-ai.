@@ -2,11 +2,11 @@
 
 Worker: `NEXT100-018-LEARNED-LADDER-V5`
 
-## Current verdict
+## Final verdict
 
 `BLOCKED_MISSING_INDEPENDENT_VERIFY_219_AND_VERIFY_218`
 
-This successor to MILESTONE-281 does not admit the 3M or 10M learned runs yet. The remaining admission blockers are exact and limited to the missing independent scientific verifier authorities:
+This successor to MILESTONE-281 does not admit the 3M or 10M learned runs. The mandatory second live GitHub check was completed across PR, branch, and commit search; both required independent scientific verifier authorities remain absent:
 
 - 3M / LEARN-191 requires terminal `VERIFY-219`.
 - 10M / LEARN-217 requires terminal `VERIFY-218-LEARNED-10M-INDEPENDENT` with state `VERIFIED_LEARNED_10M`.
@@ -29,4 +29,4 @@ DATA-25 remains project-authored evidence with identity `422f545da93526ceba2c0ff
 
 No retraining, optimizer work, paid compute, foreign/pretrained weights, SFT, RLHF, or DPO was performed. `LOCAL_FREE` only.
 
-The machine authority is `evidence/milestone361/learned-base-ladder-v5.json`. Its final verdict must be refreshed by the mandatory second live GitHub check immediately before completion.
+Machine authority: `evidence/milestone361/learned-base-ladder-v5.json`.
