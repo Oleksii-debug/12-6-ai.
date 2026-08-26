@@ -18,6 +18,15 @@ CANDIDATE = ROOT / "configs" / "stages" / "s6_1b.scale06_current_tokenizer.candi
 EXPECTED_PARAMETERS = 999_761_920
 EXPECTED_MODEL_IDENTITY = "f691e75eea9ca4c4edae197b5284c2564d3784a87fd3a831c6411af55dfc00be"
 
+ENGINEERING_AUTHORITIES = {
+    "preceding_stage_authority": "github:stage-s5@terminal-pass-sha",
+    "production_tokenizer_authority": "github:tokenizer@terminal-qualified-sha",
+    "native_gqa_authority": "github:perf-21@terminal-success-sha",
+    "distributed_checkpoint_authority": "github:dist-18@terminal-success-sha",
+    "data_pipeline_authority": "github:data-pipeline@terminal-qualified-sha",
+    "accelerator_runtime_authority": "artifact:accelerator-runtime@qualified-sha",
+}
+
 
 def test_scale_1b_candidate_exact_identity_and_geometry() -> None:
     config = validate_scale_1b_candidate(CANDIDATE)
@@ -38,6 +47,7 @@ def test_scale_1b_default_assessment_is_fail_closed() -> None:
     assert report.requires_native_gqa is True
     assert report.ready_for_authorization_request is False
     assert report.ready_for_material_compute is False
+    assert all(value is None for value in report.evidence_authorities.values())
     assert report.engineering_blockers == (
         "preceding_stage_not_admitted",
         "production_tokenizer_not_qualified",
@@ -49,29 +59,20 @@ def test_scale_1b_default_assessment_is_fail_closed() -> None:
     assert report.authorization_blockers == ("material_compute_not_authorized",)
 
 
-def test_scale_1b_positive_evidence_must_be_explicit() -> None:
-    engineering_only = Scale1BDependencies(
-        preceding_stage_admitted=True,
-        production_tokenizer_qualified=True,
-        native_gqa_qualified=True,
-        distributed_checkpoint_qualified=True,
-        data_pipeline_qualified=True,
-        accelerator_runtime_qualified=True,
-        compute_authorized=False,
-    )
+def test_scale_1b_positive_evidence_requires_authority_references() -> None:
+    engineering_only = Scale1BDependencies(**ENGINEERING_AUTHORITIES)
     report = assess_scale_1b_readiness(CANDIDATE, engineering_only)
     assert report.engineering_blockers == ()
+    assert report.authorization_blockers == ("material_compute_not_authorized",)
     assert report.ready_for_authorization_request is True
     assert report.ready_for_material_compute is False
+    assert report.evidence_authorities["native_gqa_authority"] == ENGINEERING_AUTHORITIES[
+        "native_gqa_authority"
+    ]
 
     fully_authorized = Scale1BDependencies(
-        preceding_stage_admitted=True,
-        production_tokenizer_qualified=True,
-        native_gqa_qualified=True,
-        distributed_checkpoint_qualified=True,
-        data_pipeline_qualified=True,
-        accelerator_runtime_qualified=True,
-        compute_authorized=True,
+        **ENGINEERING_AUTHORITIES,
+        compute_authorization="COMPUTE_AUTHORIZED:owner-message-id:test",
     )
     report = assess_scale_1b_readiness(CANDIDATE, fully_authorized)
     assert report.engineering_blockers == ()
@@ -107,6 +108,13 @@ def test_scale_1b_rejects_promotion_open_candidate(tmp_path: Path) -> None:
         validate_scale_1b_candidate(path)
 
 
-def test_scale_1b_dependency_fields_require_real_booleans() -> None:
-    with pytest.raises(TypeError, match="compute_authorized must be bool"):
-        Scale1BDependencies(compute_authorized=1)  # type: ignore[arg-type]
+def test_scale_1b_rejects_unbound_compute_self_attestation() -> None:
+    with pytest.raises(ValueError, match="COMPUTE_AUTHORIZED"):
+        Scale1BDependencies(compute_authorization="yes")
+
+
+def test_scale_1b_rejects_blank_or_padded_authorities() -> None:
+    with pytest.raises(ValueError, match="must not be blank"):
+        Scale1BDependencies(native_gqa_authority="")
+    with pytest.raises(ValueError, match="surrounding whitespace"):
+        Scale1BDependencies(data_pipeline_authority=" github:data@sha ")
