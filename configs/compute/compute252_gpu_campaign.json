@@ -1,0 +1,151 @@
+{
+  "schema": "12-6.compute252-gpu-campaign.v1",
+  "worker_id": "COMPUTE-252-GPU-CAMPAIGN-ORCHESTRATOR",
+  "policy": {
+    "manual_only": true,
+    "provision_hardware": false,
+    "purchase_compute": false,
+    "paid_compute_authorized": false,
+    "credentials_in_repo": false,
+    "cpu_dry_run_target_measurements": 0
+  },
+  "runner": {
+    "labels": ["self-hosted", "linux", "x64", "gpu", "cuda", "twelve-six-ai"],
+    "purpose_environment": "linux-x86_64-cuda-training",
+    "python": "3.11.16",
+    "torch": "2.13.0",
+    "torch_cuda": "13.0"
+  },
+  "parents": {
+    "GPU-200": {
+      "sha": "26c2c9aca6229a015bb79a1892c4165d682f140d",
+      "workflow": ".github/workflows/gpu200-self-hosted-smoke.yml",
+      "status": "PREPARED"
+    },
+    "GPU-199": {
+      "sha": "f327a29070c93775569fbd5393e20683a263ec0d",
+      "evidence": "reports/gpu199/not_run_no_gpu_20260826.json",
+      "status": "NOT_RUN_NO_GPU",
+      "target_executor": null
+    },
+    "GPU-201": {
+      "sha": "b21c49dcb411f916613ac04f453e739fcc1db6b6",
+      "workflow": ".github/workflows/gpu201-10m-cuda-benchmark.yml",
+      "target_executor": "tools/run_gpu201_10m_cuda_benchmark.py",
+      "status": "PREPARED"
+    },
+    "SCALE-205": {
+      "sha": "1a31228c427fe50873c2552af35ff4036d591494",
+      "workflow": ".github/workflows/scale205-activation-checkpoint-gpu.yml",
+      "target_executor": "tools/run_scale205_activation_checkpoint_gpu.py",
+      "status": "PREPARED"
+    },
+    "PERF-206": {
+      "sha": null,
+      "workflow": null,
+      "target_executor": null,
+      "status": "PARENT_NOT_FOUND"
+    },
+    "SCALE-202": {
+      "sha": "4b427ca8d0912b6350f04c40794ec9a66c1bd8ef",
+      "workflow": ".github/workflows/scale202-100m-real-qualification.yml",
+      "target_executor": "tools/run_scale202_100m_qualification.py",
+      "status": "PREPARED"
+    },
+    "DIST-203": {
+      "sha": "820ddcb63f1f5681953b3289b679f6bdce6d67e5",
+      "evidence": "reports/dist203-fsdp2-cuda-two-gpu.json",
+      "status": "NOT_RUN_INSUFFICIENT_GPU"
+    },
+    "CHECKPOINT-204": {
+      "sha": "7a7112403b17f3c2d7083fe56444fc4d60ec4bff",
+      "workflow": ".github/workflows/checkpoint204-dcp-cuda-recovery.yml",
+      "target_executor": "tools/run_checkpoint204_dcp_recovery.py",
+      "status": "PREPARED"
+    }
+  },
+  "stages": [
+    {
+      "id": "hardware_environment_preflight",
+      "parent": "GPU-200",
+      "depends_on": [],
+      "kind": "target_device",
+      "artifact": "gpu200-self-hosted-cuda-smoke",
+      "required_terminal": "PASS"
+    },
+    {
+      "id": "precision_decision",
+      "parent": "GPU-199",
+      "depends_on": ["hardware_environment_preflight"],
+      "kind": "target_device",
+      "artifact": "gpu199-executed-precision-result",
+      "required_terminal": "PASS_TARGET_DEVICE_MEASURED"
+    },
+    {
+      "id": "ten_m_semantic_smoke",
+      "parent": "GPU-201",
+      "depends_on": ["precision_decision"],
+      "kind": "target_device",
+      "artifact": "gpu201-target-device-evidence",
+      "required_terminal": "PASS_TARGET_DEVICE_MEASURED"
+    },
+    {
+      "id": "ten_m_performance",
+      "parent": "GPU-201",
+      "depends_on": ["ten_m_semantic_smoke"],
+      "kind": "artifact_gate",
+      "reuse_artifact_from": "ten_m_semantic_smoke",
+      "required_terminal": "PASS_TARGET_DEVICE_MEASURED"
+    },
+    {
+      "id": "checkpoint",
+      "parent": "GPU-201",
+      "depends_on": ["ten_m_performance"],
+      "kind": "artifact_gate",
+      "reuse_artifact_from": "ten_m_semantic_smoke",
+      "required_terminal": "PASS_TARGET_DEVICE_MEASURED"
+    },
+    {
+      "id": "activation_checkpointing",
+      "parent": "SCALE-205",
+      "depends_on": ["checkpoint"],
+      "kind": "target_device",
+      "artifact": "scale205-target-gpu-evidence",
+      "required_terminal": "PASS_GPU_MEASURED"
+    },
+    {
+      "id": "compile",
+      "parent": "PERF-206",
+      "depends_on": ["activation_checkpointing"],
+      "kind": "target_device",
+      "artifact": "perf206-target-gpu-evidence",
+      "required_terminal": "PASS_TARGET_DEVICE_MEASURED"
+    },
+    {
+      "id": "hundred_m_qualification",
+      "parent": "SCALE-202",
+      "depends_on": ["compile"],
+      "kind": "target_device",
+      "artifact": "scale202-target-gpu-evidence",
+      "required_terminal": "PASS_GPU_MEASURED"
+    },
+    {
+      "id": "two_gpu_fsdp",
+      "parent": "DIST-203",
+      "depends_on": ["hundred_m_qualification"],
+      "kind": "topology_conditional",
+      "minimum_cuda_devices": 2,
+      "artifact": "dist203-two-gpu-evidence",
+      "required_terminal": "PASS_GPU_MEASURED"
+    },
+    {
+      "id": "two_gpu_dcp_recovery",
+      "parent": "CHECKPOINT-204",
+      "depends_on": ["two_gpu_fsdp"],
+      "kind": "topology_conditional",
+      "minimum_cuda_devices": 2,
+      "artifact": "checkpoint204-two-gpu-evidence",
+      "required_terminal": "PASS_GPU_MEASURED"
+    }
+  ]
+}
