@@ -1,0 +1,155 @@
+{
+  "cutoff_utc": "2026-08-26T12:01:02Z",
+  "family_resolution_policy": {
+    "file_count_is_not_family_count": true,
+    "fork_or_mirror": "COLLAPSE_TO_ROOT_UPSTREAM_FAMILY",
+    "same_canonical_upstream": "COLLAPSE_TO_ONE_FAMILY",
+    "same_repository_multiple_files": "COLLAPSE_TO_ONE_FAMILY",
+    "translation_lineage": "COLLAPSE_WHEN_SAME_UPSTREAM_DOCUMENT_LINEAGE_UNLESS_INDEPENDENT_ORIGIN_IS_PROVEN",
+    "vendored_or_generated_derivative": "DO_NOT_CREATE_NEW_FAMILY"
+  },
+  "independent_overlap_audit": {
+    "algorithm": "DATA-232-style deterministic NFKC/whitespace normalization plus token shingles and code skeleton",
+    "all_normalized_sha256_distinct": true,
+    "all_raw_sha256_distinct": true,
+    "cross_family_duplicate_or_mirror_edges": 0,
+    "max_code_pair_jaccard": 0.0,
+    "max_code_skeleton_jaccard": 0.02119700748129676,
+    "max_natural_pair_containment": 0.06139983235540654,
+    "max_natural_pair_jaccard": 0.025219487002926495,
+    "observed_common_upstream_file_group": {
+      "classification": "TWO_FILES_ONE_FAMILY",
+      "family_id": "en.standardebooks.manual",
+      "source_ids": [
+        "en.standardebooks.manual.8-typography",
+        "en.standardebooks.manual.9-metadata"
+      ]
+    },
+    "thresholds": {
+      "code_copy_jaccard": 0.82,
+      "code_fragment_containment": 0.9,
+      "code_near_jaccard": 0.86,
+      "code_shingle_tokens": 7,
+      "natural_fragment_containment": 0.88,
+      "natural_near_jaccard": 0.8,
+      "natural_shingle_tokens": 3
+    }
+  },
+  "local_free_only": true,
+  "next_corpus_diversity_gates": {
+    "maximum_cross_family_duplicate_or_mirror_edges": 0,
+    "maximum_top_family_share_of_normalized_unique_bytes": 0.25,
+    "maximum_top_family_share_within_each_stratum": 0.6,
+    "minimum_independent_families_by_stratum": {
+      "code": 2,
+      "en": 2,
+      "uk": 2
+    },
+    "minimum_independent_families_total": 6,
+    "minimum_shannon_effective_family_count": 4.0,
+    "require_no_replay_to_increase_unique_bytes": true,
+    "require_terminal_training_rights_for_every_counted_source": true
+  },
+  "schema_version": "12-6.data288-source-diversity-inputs.v2",
+  "sources": [
+    {
+      "canonical_upstream": "data.rada.gov.ua/laws-texts",
+      "family_id": "ua.rada.open-data.laws-texts",
+      "modality": "text",
+      "normalized_sha256": "72c301db0b2539f3f7a73c9c15e2e425700a6b758a1114f1a861e2d60c704c50",
+      "normalized_unique_bytes": 88565,
+      "raw_bytes": 332400,
+      "raw_sha256": "36eae31c3b0676ea7c02236fa05bd695c240c9a8eade5febc00457b8103ee1a4",
+      "redistribution_rights": "ALLOWED",
+      "source_id": "ua.rada.open-data.laws-texts.d23314",
+      "stratum": "uk",
+      "terminal_authority": "DATA-229/DATA-213",
+      "training_rights": "ALLOWED"
+    },
+    {
+      "canonical_upstream": "github:standardebooks/manual",
+      "family_id": "en.standardebooks.manual",
+      "modality": "text",
+      "normalized_sha256": "154fb4034929714087e75150d678bf65049ddac32e79dcdf97162c8972c2be83",
+      "normalized_unique_bytes": 48002,
+      "raw_bytes": 68812,
+      "raw_sha256": "21582c7f0e4ad39f2b0ed97bbc2c082d275e898b7a63c28e6d9badb8ee0f7860",
+      "redistribution_rights": "ALLOWED",
+      "source_id": "en.standardebooks.manual.8-typography",
+      "stratum": "en",
+      "terminal_authority": "DATA-229/DATA-213",
+      "training_rights": "ALLOWED"
+    },
+    {
+      "canonical_upstream": "github:standardebooks/manual",
+      "family_id": "en.standardebooks.manual",
+      "modality": "text",
+      "normalized_sha256": "94eb2f529922d125b3bd40691778886f4d5d80b128b925d0274fb3d94646ec5a",
+      "normalized_unique_bytes": 36791,
+      "raw_bytes": 37299,
+      "raw_sha256": "7ac53dfb4bf6f73f178560e09f33160d0250c69fb679802f3254dc0eb4c9f509",
+      "redistribution_rights": "ALLOWED",
+      "source_id": "en.standardebooks.manual.9-metadata",
+      "stratum": "en",
+      "terminal_authority": "DATA-229/DATA-213",
+      "training_rights": "ALLOWED"
+    },
+    {
+      "canonical_upstream": "github:encode/httpx",
+      "family_id": "github:encode/httpx",
+      "modality": "code",
+      "normalized_sha256": "2c61b3ac94d1dcebcde0c6f519554d2d7917247fbaa0a97002db4ef69e70ff28",
+      "normalized_unique_bytes": 8161,
+      "raw_bytes": 8161,
+      "raw_sha256": "2c61b3ac94d1dcebcde0c6f519554d2d7917247fbaa0a97002db4ef69e70ff28",
+      "redistribution_rights": "ALLOWED",
+      "source_id": "code.encode.httpx._content",
+      "stratum": "code",
+      "terminal_authority": "DATA-227",
+      "training_rights": "ALLOWED"
+    },
+    {
+      "canonical_upstream": "github:psf/requests",
+      "family_id": "github:psf/requests",
+      "modality": "code",
+      "normalized_sha256": "4c7d8d132c9898fc7d715e473f3ac74785ddc4ab96d2c9240f87835dc6d981ff",
+      "normalized_unique_bytes": 1542,
+      "raw_bytes": 1542,
+      "raw_sha256": "4c7d8d132c9898fc7d715e473f3ac74785ddc4ab96d2c9240f87835dc6d981ff",
+      "redistribution_rights": "ALLOWED",
+      "source_id": "code.psf.requests._internal_utils",
+      "stratum": "code",
+      "terminal_authority": "DATA-227",
+      "training_rights": "ALLOWED"
+    }
+  ],
+  "terminal_authorities": {
+    "DATA-227": {
+      "artifact_digest": "sha256:080f073327020cb3bbb05c7348f658223804684d23012d9b66ab9b798c4fed5d",
+      "artifact_id": 9602093542,
+      "dedicated_workflow_run": 32956209865,
+      "head_sha": "8ebdb2e132ed7bae5245e9d4c140752640ab9885",
+      "report_sha256": "234ace1497b00495716d00a1502c323fc06b88458c49ec3d6aa58bc2cdd52294",
+      "status": "TERMINAL_SUCCESS"
+    },
+    "DATA-228": {
+      "candidate_families": [
+        "kubernetes.website.docs",
+        "python.cpython.documentation"
+      ],
+      "dedicated_workflow_conclusion": "failure",
+      "dedicated_workflow_run": 32957120454,
+      "head_sha": "46a70c990dab6ff72bb84ddb54cff1156b491b40",
+      "status": "EXCLUDED_TERMINAL_FAILURE"
+    },
+    "DATA-229": {
+      "data213_artifact_id": 9600107886,
+      "data213_artifact_zip_sha256": "927e10ccb83f919d57a8b78e3ea9cae72f9d4e0232401043234a35eec150074d",
+      "dedicated_workflow_run": 32957147036,
+      "head_sha": "90bc0b7f8b696ec35202532b13edf6ab29a662fe",
+      "registry_identity_sha256": "1357a343eb4ea973950d8991913109cbea53fe4fa891f0be9745ab497eb59486",
+      "status": "TERMINAL_SUCCESS"
+    }
+  },
+  "worker_id": "DATA-288-SOURCE-DIVERSITY-AUDIT-V2"
+}
