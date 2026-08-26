@@ -3,12 +3,15 @@ from __future__ import annotations
 import copy
 import importlib.util
 import json
+import sys
 from pathlib import Path
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-TOOL_PATH = ROOT / "tools/classify_d03_rada_trees_members.py"
+TOOLS = ROOT / "tools"
+sys.path.insert(0, str(TOOLS))
+TOOL_PATH = TOOLS / "classify_d03_rada_trees_members.py"
 CONFIG_PATH = ROOT / "configs/data/d03_rada_trees_member_classification_v1.json"
 SPEC = importlib.util.spec_from_file_location("rada_trees_classify", TOOL_PATH)
 assert SPEC and SPEC.loader
