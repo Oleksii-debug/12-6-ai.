@@ -8,7 +8,7 @@ quantity.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from math import ceil
+from math import ceil, isfinite
 from typing import Any
 
 
@@ -41,9 +41,12 @@ def _nonnegative_int(name: str, value: int) -> int:
 
 
 def _positive_number(name: str, value: float) -> float:
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
-        raise ValueError(f"{name} must be a positive number")
-    return float(value)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{name} must be a finite positive number")
+    numeric = float(value)
+    if not isfinite(numeric) or numeric <= 0:
+        raise ValueError(f"{name} must be a finite positive number")
+    return numeric
 
 
 def required_unique_loss_tokens(parameter_count: int, tokens_per_parameter: float) -> int:
