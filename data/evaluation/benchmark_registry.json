@@ -1,0 +1,18 @@
+{
+  "benchmarks": [
+    {
+      "allowed_uses": [
+        "evaluation"
+      ],
+      "benchmark_id": "eval132-ua-raw-base",
+      "held_out": true,
+      "license_id": "PROJECT_OWNED",
+      "notes": "Project-authored Ukrainian raw-Base conditional-likelihood suite; dataset_sha256=ca8d9c9d97c854127e0209871e8929f19e06ec91f3f19902bc8fda33481691ff; not instruction following.",
+      "source_id": "project-authored:eval132:ua-raw-base-v1",
+      "source_url": null,
+      "version": "1.0.0"
+    }
+  ],
+  "manifest_sha256": "9033007a7323c64ed9b27c3930de916a41cd5c7efd1dfb673871ca7886a47a31",
+  "schema_version": "12-6.benchmark-registry.v1"
+}
