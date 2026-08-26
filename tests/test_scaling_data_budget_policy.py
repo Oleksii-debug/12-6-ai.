@@ -29,7 +29,8 @@ def test_current_policy_passes() -> None:
         "primary_parameter_count": 20_613_440,
         "primary_20x_unique_loss_tokens": 412_268_800,
         "source_registry_pr": 538,
-        "source_capacity_bytes_at_cutoff": 565_743,
+        "source_registry_schema": "12-6.next100-063-terminal-source-registry.v2",
+        "source_capacity_bytes_at_cutoff": 266_476,
         "source_bytes_are_token_authority": False,
         "long_training_ready": False,
     }
@@ -76,6 +77,22 @@ def test_live_registry_identity_cannot_drift_silently() -> None:
     broken = copy.deepcopy(load_policy())
     broken["current_20m_observation"]["source_registry_identity"] = "0" * 64
     with pytest.raises(ValueError, match="source registry identity drift"):
+        module.validate(broken)
+
+
+def test_live_registry_schema_cannot_fall_back_to_superseded_v1() -> None:
+    broken = copy.deepcopy(load_policy())
+    broken["current_20m_observation"]["source_registry_schema"] = (
+        "12-6.next100-063-terminal-source-registry.v1"
+    )
+    with pytest.raises(ValueError, match="source registry schema drift"):
+        module.validate(broken)
+
+
+def test_superseded_v1_source_capacity_cannot_be_reintroduced() -> None:
+    broken = copy.deepcopy(load_policy())
+    broken["current_20m_observation"]["observed_source_capacity_bytes"] = 565_743
+    with pytest.raises(ValueError, match="observed source-capacity authority drift"):
         module.validate(broken)
 
 

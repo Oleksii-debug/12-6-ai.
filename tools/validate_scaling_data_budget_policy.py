@@ -8,10 +8,11 @@ from typing import Any
 EXPECTED_SCHEMA = "12-6.scaling-data-budget-policy.v1"
 REFERENCE_MULTIPLIERS = (20, 50, 100)
 CURRENT_REGISTRY_PR = 538
-CURRENT_REGISTRY_HEAD = "958ebec0f7c9cb00238c7df70566cefd6b504d92"
-CURRENT_REGISTRY_IDENTITY = "77fb69c558df8c59fdae00583c955c62ad088cda98fd16b335eedb26fb2d7526"
-CURRENT_SOURCE_BYTES = 565_743
-CURRENT_FAMILY_COUNT = 13
+CURRENT_REGISTRY_SCHEMA = "12-6.next100-063-terminal-source-registry.v2"
+CURRENT_REGISTRY_HEAD = "7da63b7d85b65b1508ef5c7d73bfa8d56e718c9f"
+CURRENT_REGISTRY_IDENTITY = "934933896a4b3b01dd58cd18d13bcc36245913f83412c6b3f697c64dd03e4d4d"
+CURRENT_SOURCE_BYTES = 266_476
+CURRENT_FAMILY_COUNT = 10
 SOURCE_TARGET_BYTES = 20_000_000
 REQUIRED_EVIDENCE = {
     "immutable_corpus_identity",
@@ -139,6 +140,10 @@ def validate(policy: dict[str, Any]) -> dict[str, Any]:
     _require(isinstance(current, dict), "current_20m_observation must be a mapping")
     _require(current.get("source_registry_pr") == CURRENT_REGISTRY_PR, "source registry PR drift")
     _require(
+        current.get("source_registry_schema") == CURRENT_REGISTRY_SCHEMA,
+        "source registry schema drift",
+    )
+    _require(
         current.get("source_registry_head_sha") == CURRENT_REGISTRY_HEAD,
         "source registry head drift",
     )
@@ -192,6 +197,7 @@ def validate(policy: dict[str, Any]) -> dict[str, Any]:
         "primary_parameter_count": stages[0]["parameter_count"],
         "primary_20x_unique_loss_tokens": stages[0]["reference_unique_loss_tokens"]["20x"],
         "source_registry_pr": CURRENT_REGISTRY_PR,
+        "source_registry_schema": CURRENT_REGISTRY_SCHEMA,
         "source_capacity_bytes_at_cutoff": CURRENT_SOURCE_BYTES,
         "source_bytes_are_token_authority": False,
         "long_training_ready": False,

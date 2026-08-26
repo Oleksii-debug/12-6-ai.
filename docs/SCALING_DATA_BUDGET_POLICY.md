@@ -4,9 +4,9 @@
 
 The project must keep **model parameter count**, **source bytes**, **post-tokenization training tokens**, and **unique causal-loss positions** as separate quantities.
 
-The current primary architecture has 20,613,440 parameters. At the live cutoff recorded by this policy, NEXT100-063 / PR #538 reports 565,743 pre-global-dedup source bytes across 13 independent families and a separate frozen acquisition target of 20,000,000 source bytes. It authorizes zero balanced no-replay loss positions. None of those source-byte numbers is a training-token count, and none can authorize a learned-20M long run.
+The current primary architecture has 20,613,440 parameters. At the fail-closed live cutoff recorded by this policy, NEXT100-063 V2 / PR #538 reports 266,476 pre-global-dedup source bytes across 10 independent families and a separate frozen acquisition target of 20,000,000 source bytes. It authorizes zero balanced no-replay loss positions. None of those source-byte numbers is a training-token count, and none can authorize a learned-20M long run.
 
-The live source snapshot is provenance-bound in the machine policy to PR #538 head `958ebec0f7c9cb00238c7df70566cefd6b504d92` and registry identity `77fb69c558df8c59fdae00583c955c62ad088cda98fd16b335eedb26fb2d7526`. A newer source authority requires an explicit policy refresh; stale numbers must not drift silently.
+The live source snapshot is provenance-bound in the machine policy to PR #538 V2 head `7da63b7d85b65b1508ef5c7d73bfa8d56e718c9f` and registry identity `934933896a4b3b01dd58cd18d13bcc36245913f83412c6b3f697c64dd03e4d4d`. V2 supersedes the earlier V1 vector because V1 incorrectly credited unsupported CPython accepted-byte capacity and exact-head-failed Pydantic/Rich admissions. A newer source authority requires an explicit policy refresh; stale numbers must not drift silently.
 
 ## Research reference
 
