@@ -1,0 +1,95 @@
+name: COMPUTE-252 GPU Campaign Orchestrator
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/compute252-gpu-campaign.yml"
+      - "configs/compute/compute252_gpu_campaign.json"
+      - "tools/run_compute252_gpu_campaign.py"
+      - "tests/test_compute252_gpu_campaign.py"
+      - "docs/COMPUTE252_GPU_CAMPAIGN.md"
+  workflow_dispatch:
+    inputs:
+      request_target_campaign:
+        description: "Validate readiness for a future already-authorized self-hosted GPU campaign"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: compute252-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  cpu-dag-dry-run:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+      - name: Prove exact source checkout
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - name: Validate DAG without probing CUDA
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/run_compute252_gpu_campaign.py
+          python tools/run_compute252_gpu_campaign.py \
+            --manifest configs/compute/compute252_gpu_campaign.json \
+            --output reports/compute252/dry_run.json
+      - name: Require zero target-device measurements and no paid compute authority
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path("reports/compute252/dry_run.json").read_text())
+          assert report["dag_valid"] is True
+          assert report["mode"] == "CPU_DRY_RUN"
+          assert report["target_device_measurements_executed"] == 0
+          assert report["paid_compute_authorized"] is False
+          assert report["runner_labels"] == [
+              "self-hosted", "linux", "x64", "gpu", "cuda", "twelve-six-ai"
+          ]
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: compute252-cpu-dag-dry-run
+          path: reports/compute252/dry_run.json
+          if-no-files-found: error
+          retention-days: 30
+
+  manual-target-readiness:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.request_target_campaign }}
+    needs: cpu-dag-dry-run
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e
+        with:
+          name: compute252-cpu-dag-dry-run
+          path: reports/compute252
+      - name: Fail closed before allocating a self-hosted runner when parents are incomplete
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path("reports/compute252/dry_run.json").read_text())
+          if report["full_campaign_ready"]:
+              print("DAG parents are structurally ready. Target-device execution still requires explicit manual authorization in the authoritative parent workflows.")
+              raise SystemExit(0)
+          print("TARGET CAMPAIGN BLOCKED. No self-hosted GPU job was scheduled.")
+          for blocker in report["blockers"]:
+              print(f"{blocker['id']}: {blocker['status']} ({blocker['parent']})")
+          raise SystemExit(2)
+          PY
