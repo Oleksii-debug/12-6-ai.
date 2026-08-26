@@ -1,0 +1,171 @@
+name: RECOVER-168 LEARN-121 Long 1M
+
+on:
+  push:
+    branches:
+      - recover168/learn121-long-1m-20260826
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: recover168-learn121-long-1m
+  cancel-in-progress: false
+
+jobs:
+  recover-long-1m:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      PYTHONPATH: src
+      OMP_NUM_THREADS: "2"
+      MKL_NUM_THREADS: "2"
+    steps:
+      - name: Checkout exact recovery head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up exact Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind source and assemble accepted LEARN-122 mechanics
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+          for part in \
+            experiments/learn122/runner.00.part \
+            experiments/learn122/runner.01.part \
+            experiments/learn122/runner.02.part
+          do
+            test "$(git hash-object "$part")" = "$(git rev-parse "HEAD:$part")"
+          done
+          cat experiments/learn122/runner.00.part \
+              experiments/learn122/runner.01.part \
+              experiments/learn122/runner.02.part \
+              > src/twelve_six/learn122_real_500k_long.py
+          sha256sum \
+            src/twelve_six/learn122_real_500k_long.py \
+            src/twelve_six/recover168_learn121_long_1m.py \
+            > recover168-runner.sha256
+
+      - name: Install exact hash-locked dev test and CPU dependencies
+        run: |
+          set -euo pipefail
+          python -m venv .recover168
+          .recover168/bin/python -m pip install \
+            --disable-pip-version-check --no-deps --require-hashes \
+            -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .recover168/bin/python -m pip install \
+            --disable-pip-version-check --no-deps --require-hashes \
+            -r requirements/locks/linux-x86_64/runtime.lock.txt
+          .recover168/bin/python -m pip install \
+            --disable-pip-version-check --no-deps --require-hashes \
+            -r requirements/locks/linux-x86_64/dev.lock.txt
+
+      - name: Compile pytest ruff and launch-gate preflight
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          .recover168/bin/python -m py_compile \
+            src/twelve_six/learn122_real_500k_long.py \
+            src/twelve_six/recover168_learn121_long_1m.py
+          .recover168/bin/python -m pytest -q \
+            tests/test_data25_corpus_v01.py \
+            tests/test_milestone100_first_learned.py \
+            tests/test_milestone100_one_m.py
+          .recover168/bin/python -m ruff check \
+            src/twelve_six/recover168_learn121_long_1m.py
+          .recover168/bin/python -m twelve_six.recover168_learn121_long_1m \
+            preflight --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" \
+            --output-dir recover168-evidence
+
+      - name: Rebuild and freeze DATA-25 recovery protocol
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          .recover168/bin/python -m twelve_six.recover168_learn121_long_1m \
+            prepare --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" \
+            --output-dir recover168-evidence
+          cp recover168-runner.sha256 recover168-evidence/runner.sha256
+
+      - name: Fresh 1M trajectory to 250K tokens
+        env: { EXPECTED_SOURCE_SHA: "${{ github.sha }}" }
+        run: .recover168/bin/python -m twelve_six.recover168_learn121_long_1m advance --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" --output-dir recover168-evidence --target-tokens 250000
+
+      - name: Fresh-process resume to 500K tokens
+        env: { EXPECTED_SOURCE_SHA: "${{ github.sha }}" }
+        run: .recover168/bin/python -m twelve_six.recover168_learn121_long_1m advance --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" --output-dir recover168-evidence --target-tokens 500000
+
+      - name: Fresh-process resume to 1M tokens
+        env: { EXPECTED_SOURCE_SHA: "${{ github.sha }}" }
+        run: .recover168/bin/python -m twelve_six.recover168_learn121_long_1m advance --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" --output-dir recover168-evidence --target-tokens 1000000
+
+      - name: Causal continuation gate to 2M tokens
+        env: { EXPECTED_SOURCE_SHA: "${{ github.sha }}" }
+        run: .recover168/bin/python -m twelve_six.recover168_learn121_long_1m advance --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" --output-dir recover168-evidence --target-tokens 2000000
+
+      - name: Causal continuation gate to 4M tokens
+        env: { EXPECTED_SOURCE_SHA: "${{ github.sha }}" }
+        run: .recover168/bin/python -m twelve_six.recover168_learn121_long_1m advance --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" --output-dir recover168-evidence --target-tokens 4000000
+
+      - name: Causal continuation gate to 8M tokens
+        env: { EXPECTED_SOURCE_SHA: "${{ github.sha }}" }
+        run: .recover168/bin/python -m twelve_six.recover168_learn121_long_1m advance --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" --output-dir recover168-evidence --target-tokens 8000000
+
+      - name: Causal continuation gate to 10M tokens
+        env: { EXPECTED_SOURCE_SHA: "${{ github.sha }}" }
+        run: .recover168/bin/python -m twelve_six.recover168_learn121_long_1m advance --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" --output-dir recover168-evidence --target-tokens 10000000
+
+      - name: Fresh verify best final and seal report
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          .recover168/bin/python -m twelve_six.recover168_learn121_long_1m \
+            finalize --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" \
+            --output-dir recover168-evidence
+          .recover168/bin/python -m twelve_six.recover168_learn121_long_1m \
+            validate recover168-evidence/report.json \
+            --expected-source-sha "$EXPECTED_SOURCE_SHA"
+          .recover168/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+          r=json.loads(Path('recover168-evidence/report.json').read_text(encoding='utf-8'))
+          compact={
+              'source':r['source'],
+              'report_sha256':r['report_sha256'],
+              'model':r['model'],
+              'optimized_tokens_final':r['optimized_tokens_final'],
+              'optimizer_step_final':r['optimizer_step_final'],
+              'trajectory':r['trajectory'],
+              'selection':r['selection'],
+              'best_checkpoint':r['best_checkpoint'],
+              'final_checkpoint':r['final_checkpoint'],
+              'real_process_termination_and_resume_passed':r['real_process_termination_and_resume_passed'],
+              'compute':r['compute'],
+              'memorization_controls':r['memorization_controls'],
+              'claims':r['claims'],
+          }
+          print('RECOVER168_FINAL_REPORT_BEGIN')
+          print(json.dumps(compact, ensure_ascii=False, indent=2, sort_keys=True))
+          print('RECOVER168_FINAL_REPORT_END')
+          PY
+
+      - name: Upload learned artifact and complete retained evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: recover168-learn121-long-1m
+          path: recover168-evidence/
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 1
