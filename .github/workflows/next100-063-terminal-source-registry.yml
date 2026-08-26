@@ -1,0 +1,42 @@
+name: NEXT100-063 Terminal Source Registry
+
+on:
+  pull_request:
+    paths:
+      - "configs/data/next100_063_terminal_source_registry_v1.json"
+      - "tools/validate_next100_063_terminal_source_registry.py"
+      - ".github/workflows/next100-063-terminal-source-registry.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+
+jobs:
+  terminal-registry:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Prove exact source checkout
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Validate deterministic registry and truth boundary
+        run: python tools/validate_next100_063_terminal_source_registry.py
+
+      - name: Reacquire exact live PR heads and dedicated workflow conclusions
+        run: python tools/validate_next100_063_terminal_source_registry.py --github-live
