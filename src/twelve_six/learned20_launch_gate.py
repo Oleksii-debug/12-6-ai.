@@ -22,6 +22,46 @@ PILOT_AUTHORITIES = (
     "training_recipe",
 )
 LONG_TRAIN_AUTHORITIES = PILOT_AUTHORITIES + ("bounded_pilot", "compute_authorization")
+REQUIRED_RECIPE_KEYS = {
+    "optimizer_family",
+    "learning_rate",
+    "betas",
+    "weight_decay",
+    "scheduler",
+    "warmup_steps",
+    "precision",
+    "gradient_clip_norm",
+    "seed",
+    "requested_unique_loss_positions",
+    "requested_total_training_exposures",
+    "max_exposures_per_unique_position",
+    "max_optimizer_updates",
+    "checkpoint_interval_steps",
+    "stopping_rule",
+    "restart_policy",
+    "selection_validation_schedule",
+    "resource_plan_identity",
+    "estimated_training_flops",
+    "estimated_wall_clock_seconds",
+}
+REQUIRED_PILOT_SUCCESS = {
+    "finite_loss",
+    "loss_decreased",
+    "gradient_health_passed",
+    "checkpoint_resume_passed",
+    "evaluation_isolation_passed",
+    "throughput_measured",
+    "peak_memory_within_plan",
+}
+REQUIRED_TRUTH_FLAGS = {
+    "source_bytes_are_not_loss_positions",
+    "exposure_is_not_unique_data",
+    "parameter_count_is_not_quality",
+    "parameter_count_is_not_training_authority",
+    "cross_artifact_identity_binding_required",
+    "queued_ci_is_not_pass",
+    "no_replay_to_fill_unique_budget",
+}
 
 
 def _nonempty_text(value: Any) -> bool:
@@ -83,6 +123,7 @@ def validate_contract(data: Mapping[str, Any]) -> list[str]:
             "paid_compute_authorized",
             "stage_promotion_authorized",
             "final_test_payload_read_authorized",
+            "foreign_pretrained_weights_allowed",
         ):
             if boundaries.get(key) is not False:
                 errors.append(f"hard_boundaries.{key} must be false")
@@ -106,6 +147,28 @@ def validate_contract(data: Mapping[str, Any]) -> list[str]:
                 errors.append(f"{item.get('name')}.terminal must start false")
             if item.get("identity") is not None:
                 errors.append(f"{item.get('name')}.identity must start null")
+
+    recipe_contract = data.get("recipe_contract")
+    if not isinstance(recipe_contract, Mapping):
+        errors.append("recipe_contract must be an object")
+    elif set(recipe_contract) != REQUIRED_RECIPE_KEYS:
+        errors.append("recipe_contract key set mismatch")
+
+    pilot_success = data.get("pilot_success_contract")
+    if not isinstance(pilot_success, list):
+        errors.append("pilot_success_contract must be an array")
+    elif set(pilot_success) != REQUIRED_PILOT_SUCCESS:
+        errors.append("pilot_success_contract mismatch")
+
+    truth = data.get("truth_boundary")
+    if not isinstance(truth, Mapping):
+        errors.append("truth_boundary must be an object")
+    else:
+        if set(truth) != REQUIRED_TRUTH_FLAGS:
+            errors.append("truth_boundary key set mismatch")
+        for key in REQUIRED_TRUTH_FLAGS:
+            if truth.get(key) is not True:
+                errors.append(f"truth_boundary.{key} must be true")
 
     decision = data.get("default_decision")
     if not isinstance(decision, Mapping):
@@ -306,15 +369,7 @@ def assess_launch(
     if not _terminal_identity(evidence, "bounded_pilot"):
         long_blockers.append("bounded_pilot_not_terminal")
     elif isinstance(pilot, Mapping):
-        for key in (
-            "finite_loss",
-            "loss_decreased",
-            "gradient_health_passed",
-            "checkpoint_resume_passed",
-            "evaluation_isolation_passed",
-            "throughput_measured",
-            "peak_memory_within_plan",
-        ):
+        for key in REQUIRED_PILOT_SUCCESS:
             if pilot.get(key) is not True:
                 long_blockers.append(f"bounded_pilot.{key}_not_proven")
 
