@@ -1,24 +1,28 @@
-"""Fresh-process-safe entrypoint for MILESTONE-150.
+"""Fresh-process-safe, launch-gated entrypoint for MILESTONE-150.
 
 The core ladder manifest is hash-canonical through JSON, but TrainerConfig contains
-Python tuples (notably AdamW betas).  JSON persistence turns those tuples into
-lists.  A fresh process therefore must compare the same JSON data model rather
-than Python container implementation details.
+Python tuples (notably AdamW betas). JSON persistence turns those tuples into
+lists, so fresh processes normalize the already self-hashed manifest through the
+JSON data model.
 
-This shim deliberately does not weaken any manifest field or identity check.  It
-normalizes the already self-hashed run manifest through a deterministic JSON
-round trip before phase1/resume code sees it, preserving its identity SHA-256.
+CI-165 additionally makes every training phase fail closed unless a cheap launch
+gate envelope exists and is bound to the exact current Git SHA and scale config.
+Prepare/finalize/verification commands remain non-training operations.
 """
 
 from __future__ import annotations
 
 import json
+import sys
+from pathlib import Path
 from typing import Any
 
 from twelve_six import milestone150_learned_base_ladder as ladder
+from twelve_six.launch_gate import require_launch_envelope_from_env
 
 
 _ORIGINAL_RUN_MANIFEST = ladder._run_manifest
+_LONG_TRAINING_COMMANDS = {"phase1", "resume"}
 
 
 def json_normalize(value: Any) -> Any:
@@ -42,9 +46,40 @@ def install_fresh_process_manifest_normalization() -> None:
     ladder._run_manifest = normalized_run_manifest
 
 
+def _option_value(argv: list[str], option: str, default: str | None = None) -> str | None:
+    try:
+        index = argv.index(option)
+    except ValueError:
+        return default
+    if index + 1 >= len(argv):
+        return default
+    return argv[index + 1]
+
+
+def enforce_launch_gate(argv: list[str]) -> None:
+    """Refuse M150 training when the CI-165 envelope is absent/stale/misbound."""
+    if not argv or argv[0] not in _LONG_TRAINING_COMMANDS:
+        return
+    scale = _option_value(argv, "--scale")
+    if scale not in ladder.SCALE_ORDER:
+        # The incumbent argparse path will render the detailed CLI error; this
+        # branch prevents constructing a misleading binding for invalid input.
+        return
+    repo_root = Path(_option_value(argv, "--repo-root", ".") or ".").resolve()
+    require_launch_envelope_from_env(
+        repo_root,
+        expected_binding={
+            "workflow": "milestone150-learned-base-ladder-v1",
+            "scale": scale,
+        },
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
+    actual_argv = list(sys.argv[1:] if argv is None else argv)
     install_fresh_process_manifest_normalization()
-    return ladder.main(argv)
+    enforce_launch_gate(actual_argv)
+    return ladder.main(actual_argv)
 
 
 if __name__ == "__main__":
