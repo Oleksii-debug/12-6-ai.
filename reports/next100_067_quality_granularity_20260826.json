@@ -78,7 +78,9 @@
   "terminal_source_refresh": {
     "authority": "NEXT100-065-CROSSSOURCE-DEDUP-V3",
     "branch": "next100-065/crosssource-dedup-v3-20260826",
-    "head_sha": "e347a95b382ad13a547e76f4f1c6e91d86214df5",
+    "head_sha_at_final_check": "e347a95b382ad13a547e76f4f1c6e91d86214df5",
+    "source_vector_commit": "90065ffc97a5133e76cacdee6991eb171c4ea2ba",
+    "source_vector_config_blob_sha": "c1e05f09490e25f6fed765dfb70d900717528f4d",
     "terminal_refresh_cutoff_utc": "2026-08-26T18:20:54Z",
     "terminal_refresh_rule": "credit only exact current authority heads whose dedicated admission or qualification workflow completed successfully",
     "terminal_source_object_count": 11,
@@ -105,8 +107,21 @@
       "github:django/django",
       "github:Kludex/starlette"
     ],
-    "quality_policy_effect": "NO_SOURCE_OR_FAMILY_IS_REMOVED_AT_SOURCE_LEVEL_BY_SOFT_QUALITY_METRICS; EACH ELIGIBLE OBJECT IS FILTERED AT THE FROZEN DOCUMENT OR LOCAL-WINDOW UNIT",
+    "quality_policy_effect": "NO_SOURCE_OR_FAMILY_IS_REMOVED_AT_SOURCE_LEVEL_BY_SOFT_QUALITY_METRICS; EACH ELIGIBLE OBJECT_IS_FILTERED_AT_THE_FROZEN_DOCUMENT_OR_LOCAL_WINDOW_UNIT",
     "known_separate_selection_block": "The Wikisource object has a separate corpus-selection/decontamination block in NEXT100-062; this quality policy does not override rights or decontamination authority."
+  },
+  "final_concurrency_recheck": {
+    "newest_consumer_authority_seen": "NEXT100-069-BALANCE-DIVERSITY-V2",
+    "branch": "next100-069/balance-diversity-v2-20260826",
+    "head_sha": "100a26ff942e3b79547191a8b9e176e4043049aa",
+    "config_blob_sha": "a8ef2628a7d88f38065bf6a245ff0a6d5bc63ba5",
+    "source_vector_authority": "NEXT100-065-CROSSSOURCE-DEDUP-V3",
+    "source_vector_commit": "90065ffc97a5133e76cacdee6991eb171c4ea2ba",
+    "source_vector_config_blob_sha": "c1e05f09490e25f6fed765dfb70d900717528f4d",
+    "available_unique_source_bytes": 243970,
+    "family_count_global": 7,
+    "source_set_changed_after_policy_freeze": false,
+    "policy_change_required": false
   },
   "current_terminal_set_regression_alignment": {
     "ua_legal": "ua.rada.open-data.laws-texts.d23314",
