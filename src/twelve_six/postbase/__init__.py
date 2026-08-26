@@ -1,5 +1,17 @@
 """Post-Base agent infrastructure that is deliberately outside canonical Base model semantics."""
 
+from .model_tool_integration import (
+    BasePostBaseModelAdapter,
+    FirstPartyBasePostBaseModelAdapter,
+    IntegrationEvent,
+    IntegrationRun,
+    IntegrationStage,
+    ModelLineage,
+    ToolProtocolIntegration,
+    ValidatedToolCall,
+    decode_model_generation,
+    render_observation_context,
+)
 from .tool_protocol import (
     ErrorCode,
     FinalAnswer,
@@ -18,18 +30,28 @@ from .tool_protocol import (
 )
 
 __all__ = [
+    "BasePostBaseModelAdapter",
     "ErrorCode",
     "FinalAnswer",
+    "FirstPartyBasePostBaseModelAdapter",
+    "IntegrationEvent",
+    "IntegrationRun",
+    "IntegrationStage",
     "MockExecutor",
     "ModelGeneration",
+    "ModelLineage",
     "Phase",
     "Provenance",
     "ToolError",
     "ToolName",
     "ToolObservation",
+    "ToolProtocolIntegration",
     "ToolRequest",
     "ToolResult",
     "ToolUseCycle",
+    "ValidatedToolCall",
     "canonical_json_bytes",
+    "decode_model_generation",
     "parse_tool_request",
+    "render_observation_context",
 ]
