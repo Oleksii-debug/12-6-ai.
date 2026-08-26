@@ -1,0 +1,96 @@
+{
+  "schema_version": "12-6.next100-028-php-doc-uk-source.v1",
+  "worker_id": "NEXT100-028-DATA-UA-TECH-GITHUB",
+  "mode": "LOCKED",
+  "local_free_only": true,
+  "terminal": false,
+  "terminal_state": "LOCKED_PENDING_EXACT_HEAD_REPRODUCTION",
+  "source": {
+    "repository": "https://github.com/php/doc-uk",
+    "canonical_repository": "github.com/php/doc-uk",
+    "commit": "c165db75cc6f81cfdabf754656e73a68940de46c",
+    "description": "Official Ukrainian translation of the PHP documentation",
+    "language": "uk",
+    "modality": "technical_documentation",
+    "source_family": "php.manual.documentation",
+    "upstream_lineage": [
+      "PHP Documentation Group",
+      "github.com/php/doc-en",
+      "github.com/php/doc-uk"
+    ],
+    "fork": false,
+    "mirror": false
+  },
+  "license": {
+    "license_id": "CC-BY-3.0-or-later",
+    "documentation_scope_url": "https://www.php.net/license/",
+    "uk_manual_copyright_url": "https://www.php.net/manual/uk/copyright.php",
+    "license_repository": "https://github.com/php/doc-en",
+    "license_commit": "2cbc37d710751c33862709e622d0e928c9015c45",
+    "license_path": "appendices/license.xml",
+    "license_blob_sha1": "d8b388c25c87a12208e173a0f8e9f10754884dda",
+    "license_sha256": "6ecc1c14303ea6a60706fa2495e7dc0ee9654b9a996f98ccb3ff0a597571aace",
+    "rights_basis": "The official PHP licensing page states that PHP manual text and comments are covered by Creative Commons Attribution 3.0, and the Ukrainian manual copyright page states that the material may be distributed under CC BY 3.0 or later. The pinned manual license text grants reproduction, adaptation (including translation) and distribution rights. Under policy://12-6/data/explicit-model-training-evidence-v1 this exact bounded snapshot is approved for model-training use and redistribution subject to attribution/license obligations; public accessibility alone is not the basis.",
+    "redistribution_conditions": "Retain appropriate attribution to the PHP Documentation Group, identify the CC BY 3.0-or-later terms, preserve applicable copyright/license notices, and indicate modifications where required. This authority covers redistribution of the admitted source snapshot; it makes no blanket licensing claim about unrelated PHP website assets or model outputs."
+  },
+  "purpose_decisions": {
+    "acquisition": "ALLOWED",
+    "analysis": "ALLOWED",
+    "storage": "ALLOWED",
+    "model_training": "ALLOWED",
+    "redistribution": "ALLOWED",
+    "evaluation": "NOT_SEPARATELY_ADMITTED"
+  },
+  "selection": {
+    "rule": "Exact allowlist of core language XML files at the pinned commit; every selected file must declare Status: ready. Files marked wip are excluded.",
+    "max_total_raw_bytes": 65536,
+    "files": [
+      {"path": "language/basic-syntax.xml", "git_blob_sha1": "20140ee03022d1f4f0aeb301a1bfa3163900bb31", "expected_size": 12777},
+      {"path": "language/context.xml", "git_blob_sha1": "33a682d6b32d81392213480da774b11f029f574d", "expected_size": 1579},
+      {"path": "language/errors.xml", "git_blob_sha1": "7893e0759b8bef7f87dedd761616c9bf2bbebc6e", "expected_size": 1419},
+      {"path": "language/oop5.xml", "git_blob_sha1": "e1a4fe501efc417acb6c05ead82202860132021f", "expected_size": 2567},
+      {"path": "language/types.xml", "git_blob_sha1": "1e0559a3fd615458f22898182589dbd3198c49ec", "expected_size": 6129},
+      {"path": "language/wrappers.xml", "git_blob_sha1": "9572c335dbbf678863dcfc956177d36c14a5aa2c", "expected_size": 2073},
+      {"path": "language/types/boolean.xml", "git_blob_sha1": "6ef0946fefe14d539496e8db64046683729f7d68", "expected_size": 6223},
+      {"path": "language/types/callable.xml", "git_blob_sha1": "3c0b8a79d189da529a1be921fb89bb3170daeb1e", "expected_size": 5685},
+      {"path": "language/types/float.xml", "git_blob_sha1": "b1670b28a04780c4c49ad8987bccbf1c71fe4c07", "expected_size": 8707},
+      {"path": "language/types/integer.xml", "git_blob_sha1": "b698a85e3a3e2bbbcbc27c73e122f846d2ca181c", "expected_size": 12827}
+    ],
+    "explicit_exclusions": [
+      {"path": "language/types/array.xml", "reason": "upstream header declares Status: wip"},
+      {"path": "language/types/string.xml", "reason": "upstream header declares Status: wip"}
+    ]
+  },
+  "normalization": {
+    "policy": "PHP_DOCBOOK_VISIBLE_TEXT_UTF8_NFC_V1",
+    "description": "Strict UTF-8 decode, LF newlines, Unicode NFC, remove XML comments/tags/CDATA wrappers, unescape standard/numeric entities, remove unresolved DocBook entity tokens, collapse per-line whitespace, preserve nonempty visible/code lines, terminate with one LF."
+  },
+  "quality": {
+    "require_status_ready": true,
+    "require_en_revision_sha1": true,
+    "require_maintainer": true,
+    "reject_conflict_markers": true,
+    "reject_todo_fixme": true,
+    "human_translation_provenance": "php/doc-uk CONTRIBUTING.md defines translator pull requests, Status: wip/ready workflow, and independent Reviewed metadata; no generated machine-translation pipeline is selected or relied upon."
+  },
+  "privacy": {
+    "reject_private_key_markers": true,
+    "reject_live_secret_patterns": true,
+    "reject_nonexample_email_addresses": true
+  },
+  "dedup": {
+    "terminal_registry": "data/registry/external_snapshots.v2.json",
+    "reserved_fingerprints": "data/external/reserved_fingerprints.json",
+    "intra_snapshot_near_duplicate": {"token_shingle_size": 5, "jaccard_threshold": 0.85},
+    "family_must_be_new": true
+  },
+  "expected_lock": {
+    "file_count": 10,
+    "raw_bytes": 59986,
+    "raw_bundle_sha256": "8b6e7235083095de65398eba4923aaf37a40808341ac04f8accfdd800e83a5d6",
+    "normalized_bytes": 30510,
+    "normalized_bundle_sha256": "8802e3aa3d608305f8612efa9d90fdef65a76cdf518596fb52e3e7e5201db2e1",
+    "license_sha256": "6ecc1c14303ea6a60706fa2495e7dc0ee9654b9a996f98ccb3ff0a597571aace",
+    "manifest_sha256": null
+  }
+}
