@@ -1,0 +1,72 @@
+{
+  "schema": "12-6.20m-data-convergence-delta.v1",
+  "worker_id": "AUTONOMOUS-20M-DATA-CONVERGENCE-20260826",
+  "execution_profile": "LOCAL_FREE",
+  "source_registry": {
+    "pr": 538,
+    "branch": "next100-063/canonical-source-registry-convergence-20260826",
+    "head_sha": "94dce83cbe611144f961b9f93b3be273345a7f62",
+    "registry_identity_sha256": "77fb69c558df8c59fdae00583c955c62ad088cda98fd16b335eedb26fb2d7526",
+    "parent_data287_head_sha": "b0523ccbc4b957615aac849d476cfa851be87578",
+    "parent_registry_identity_sha256": "917e9bc31b2fa040d25e807ae3c01aa2cce32420752a891caacfb6c830e6632c",
+    "state": "CONVERGED_TERMINAL_SOURCE_VECTOR_PRE_GLOBAL_DEDUP_NOT_CORPUS_FREEZE",
+    "terminal_addition_count": 9,
+    "candidate_source_authority_count": 14,
+    "candidate_normalized_bytes": 565743,
+    "target_normalized_bytes": 20000000,
+    "target_gap_normalized_bytes": 19434257,
+    "independent_family_count": 13,
+    "family_minimum_gate": "PASS_PRE_GLOBAL_DEDUP",
+    "by_stratum": {
+      "ua": {"normalized_bytes": 100856, "family_count": 4},
+      "en": {"normalized_bytes": 168544, "family_count": 4},
+      "code": {"normalized_bytes": 296343, "family_count": 5}
+    }
+  },
+  "record_inventory_gate": {
+    "state": "BLOCKED_EXACT_RECORD_INVENTORY_NOT_YET_BOUND_TO_NEXT100_063_REGISTRY",
+    "required_parent_registry_identity_sha256": "77fb69c558df8c59fdae00583c955c62ad088cda98fd16b335eedb26fb2d7526",
+    "required_record_fields": [
+      "source_id",
+      "source_family",
+      "stratum",
+      "raw_sha256",
+      "normalized_sha256",
+      "normalized_utf8_bytes",
+      "authority_head_sha",
+      "authority_identity_sha256",
+      "source_rights_training_allowed",
+      "evaluation_reserved"
+    ],
+    "must_cover_every_counted_authority_or_explicitly_defer_with_reason": true,
+    "duplicate_normalized_content_forbidden": true,
+    "training_authorized": false
+  },
+  "decontamination_gate": {
+    "state": "BLOCKED_UNTIL_EXACT_RECORD_INVENTORY_IDENTITY",
+    "next100_066_scan_executed": false,
+    "exact_and_near_match_required": true,
+    "evaluation_payload_must_remain_reserved": true,
+    "training_authorized": false
+  },
+  "ordered_next_actions": [
+    "FREEZE_EXACT_RECORD_INVENTORY_BOUND_TO_NEXT100_063_REGISTRY_IDENTITY",
+    "VERIFY_RECORD_INVENTORY_INDEPENDENTLY",
+    "RUN_NEXT100_066_EXACT_NEAR_MATCH_EVALUATION_DECONTAMINATION",
+    "RUN_GLOBAL_CROSS_SOURCE_DEDUP_AND_QUALITY_PRIVACY_REVALIDATION",
+    "RUN_CLUSTER_SAFE_SPLIT_DETERMINISTIC_PACKING_TWO_CLEAN_BUILDS",
+    "COMPUTE_POSTPACK_UNIQUE_NONIGNORED_CAUSAL_LOSS_LEDGER",
+    "REQUALIFY_MODEL341_CHECKPOINT_AND_BOUNDED_TRAINING_MECHANICS",
+    "REQUEST_MATERIAL_COMPUTE_AUTHORIZATION_ONLY_AFTER_ALL_DATA_GATES_PASS"
+  ],
+  "truth_boundary": {
+    "final_corpus_identity": null,
+    "shard_identity": null,
+    "authorized_unique_loss_positions": 0,
+    "long_training_authorized": false,
+    "long_training_executed": false,
+    "paid_compute_authorized": false,
+    "paid_compute_used": false,
+    "learned_20m_claimed": false
+  }
+}
