@@ -7,7 +7,9 @@ execution remains owned by milestone100_first_learned and its incumbents.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
+from typing import Any
 
 from twelve_six import milestone100_first_learned as milestone
 from twelve_six.checkpoint import hash_json
@@ -17,6 +19,26 @@ from twelve_six.scaling_experiment import controlled_specs
 EXPECTED_PARAMETERS = 1_037_696
 RESEARCH41_HEAD = "9775a3432795dde9c96b3e84f6de143b2033a08c"
 RESEARCH41_MODEL_FAMILY_BLOB = "04b5c3173f2af139e9228e422cc1245a533a6c5d"
+_ORIGINAL_RUN_MANIFEST = milestone._run_manifest
+
+
+def json_normalize(value: Any) -> Any:
+    """Return the canonical JSON data-model representation of ``value``."""
+    return json.loads(json.dumps(value, ensure_ascii=False, sort_keys=True))
+
+
+def _normalized_run_manifest(*args: Any, **kwargs: Any) -> dict[str, Any]:
+    """Preserve run-manifest identity while making fresh-process comparison stable."""
+    value = _ORIGINAL_RUN_MANIFEST(*args, **kwargs)
+    normalized = json_normalize(value)
+    if not isinstance(normalized, dict):
+        raise milestone.MilestoneError("MILESTONE-100 run manifest must normalize to an object")
+    supplied = normalized.get("identity_sha256")
+    unsigned = dict(normalized)
+    unsigned.pop("identity_sha256", None)
+    if not isinstance(supplied, str) or supplied != hash_json(unsigned):
+        raise milestone.MilestoneError("run-manifest identity changed during JSON normalization")
+    return normalized
 
 
 def _one_m_model(repo: Path):
@@ -76,6 +98,7 @@ def _validate_one_m(path: Path, expected_source_sha: str | None = None):
 def install_override() -> None:
     milestone._model = _one_m_model
     milestone.validate = _validate_one_m
+    milestone._run_manifest = _normalized_run_manifest
 
 
 def main(argv=None) -> int:
