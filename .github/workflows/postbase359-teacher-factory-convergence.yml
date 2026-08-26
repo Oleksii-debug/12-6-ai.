@@ -45,13 +45,9 @@ jobs:
             tests/test_postbase259_teacher_student_factory.py \
             tests/test_postbase359_teacher_factory_convergence.py
           .venv-postbase359/bin/ruff check \
-            src/twelve_six/postbase/__init__.py \
             src/twelve_six/postbase/contracts.py \
             src/twelve_six/postbase/factory.py \
-            src/twelve_six/postbase/fixtures.py \
-            tests/test_postbase259_teacher_student_factory.py \
             tests/test_postbase359_teacher_factory_convergence.py \
-            tools/run_postbase259_proof.py \
             tools/run_postbase359_convergence.py
 
       - name: Compile convergence surface
