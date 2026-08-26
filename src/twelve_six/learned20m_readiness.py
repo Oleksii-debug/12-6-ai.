@@ -8,6 +8,7 @@ from typing import Any
 
 REPOSITORY = "Oleksii-debug/12-6-ai."
 CAMPAIGN_ID = "R01-LEARNED-20M-LAUNCH-V1"
+R01_CAMPAIGN_COMMIT_SHA = "a73ab38026cb7849f478cc13ad58b93534a76e2f"
 R01_CAMPAIGN_BLOB_SHA1 = "c50154db609d41eceb2ffc97912360df567bcc04"
 
 MODEL341_AUTHORITY = {
@@ -54,23 +55,46 @@ def _is_sha256(value: Any) -> bool:
     return isinstance(value, str) and _SHA256_RE.fullmatch(value) is not None
 
 
-def _valid_authority_ref(value: Any, *, require_workflow: bool = False) -> bool:
-    """Require a machine-addressable exact-head GitHub evidence reference."""
+def _valid_authority_ref(
+    value: Any,
+    *,
+    evidence_kind: str,
+    require_workflow: bool = False,
+    require_independent: bool = False,
+) -> bool:
+    """Require a typed, exact-head, non-self-asserted GitHub evidence reference."""
     if not isinstance(value, dict):
         return False
     if value.get("repository") != REPOSITORY:
         return False
+    if value.get("evidence_kind") != evidence_kind:
+        return False
     if not _is_git_sha(value.get("git_sha")):
+        return False
+    if value.get("observed_head_sha") != value.get("git_sha"):
         return False
     if not _is_sha256(value.get("evidence_sha256")):
         return False
     if value.get("terminal") is not True:
+        return False
+    if value.get("self_asserted") is not False:
         return False
     if require_workflow:
         run_id = value.get("workflow_run_id")
         if isinstance(run_id, bool) or not isinstance(run_id, int) or run_id <= 0:
             return False
         if value.get("workflow_conclusion") != "success":
+            return False
+        if value.get("workflow_run_head_sha") != value.get("git_sha"):
+            return False
+    if require_independent:
+        if value.get("independent") is not True:
+            return False
+        producer = value.get("producer_identity")
+        verifier = value.get("verifier_identity")
+        if not isinstance(producer, str) or not producer:
+            return False
+        if not isinstance(verifier, str) or not verifier or verifier == producer:
             return False
     return True
 
@@ -81,9 +105,20 @@ def _require_identity(blockers: list[str], value: Any, name: str) -> None:
 
 
 def _require_authority(
-    blockers: list[str], value: Any, name: str, *, require_workflow: bool = False
+    blockers: list[str],
+    value: Any,
+    name: str,
+    *,
+    evidence_kind: str,
+    require_workflow: bool = False,
+    require_independent: bool = False,
 ) -> None:
-    if not _valid_authority_ref(value, require_workflow=require_workflow):
+    if not _valid_authority_ref(
+        value,
+        evidence_kind=evidence_kind,
+        require_workflow=require_workflow,
+        require_independent=require_independent,
+    ):
         blockers.append(name)
 
 
@@ -93,6 +128,8 @@ def _validate_envelope(data: dict[str, Any]) -> list[str]:
         errors.append("schema_version_mismatch")
     if data.get("campaign_id") != CAMPAIGN_ID:
         errors.append("campaign_id_mismatch")
+    if data.get("r01_campaign_commit_sha") != R01_CAMPAIGN_COMMIT_SHA:
+        errors.append("r01_campaign_commit_authority_drift")
     if data.get("r01_campaign_blob_sha1") != R01_CAMPAIGN_BLOB_SHA1:
         errors.append("r01_campaign_authority_drift")
 
@@ -131,8 +168,19 @@ def assess_learned20m_readiness(data: dict[str, Any]) -> ReadinessAssessment:
     local = list(envelope_errors)
 
     code = evidence.get("code") if isinstance(evidence.get("code"), dict) else {}
-    if not _is_git_sha(code.get("git_sha")):
+    code_sha = code.get("git_sha")
+    if not _is_git_sha(code_sha):
         local.append("exact_code_sha_missing")
+    _require_authority(
+        local,
+        code.get("authority"),
+        "qualified_integration_head_authority_missing",
+        evidence_kind="qualified_integration_head",
+        require_workflow=True,
+    )
+    code_authority = code.get("authority")
+    if isinstance(code_authority, dict) and code_authority.get("git_sha") != code_sha:
+        local.append("qualified_integration_head_sha_mismatch")
 
     corpus = evidence.get("corpus") if isinstance(evidence.get("corpus"), dict) else {}
     _require_identity(local, corpus.get("manifest_sha256"), "corpus_manifest_missing")
@@ -144,6 +192,7 @@ def assess_learned20m_readiness(data: dict[str, Any]) -> ReadinessAssessment:
         local,
         corpus.get("authority"),
         "terminal_corpus_authority_missing",
+        evidence_kind="research_corpus_v1",
         require_workflow=True,
     )
 
@@ -157,6 +206,7 @@ def assess_learned20m_readiness(data: dict[str, Any]) -> ReadinessAssessment:
         local,
         tokenizer.get("authority"),
         "terminal_tokenizer_authority_missing",
+        evidence_kind="tokenizer_decision",
         require_workflow=True,
     )
 
@@ -169,12 +219,14 @@ def assess_learned20m_readiness(data: dict[str, Any]) -> ReadinessAssessment:
         local,
         ledger.get("authority"),
         "terminal_unique_loss_ledger_authority_missing",
+        evidence_kind="unique_post_pack_loss_ledger",
         require_workflow=True,
     )
     _require_authority(
         local,
         ledger.get("data_budget_authority"),
         "data_budget_authority_missing",
+        evidence_kind="terminal_data_budget_qualification",
         require_workflow=True,
     )
     if ledger.get("data_budget_status") != "QUALIFIED":
@@ -189,6 +241,7 @@ def assess_learned20m_readiness(data: dict[str, Any]) -> ReadinessAssessment:
         local,
         checkpoint.get("authority"),
         "checkpoint_integrity_authority_missing",
+        evidence_kind="d05_checkpoint_integrity",
         require_workflow=True,
     )
     if checkpoint.get("status") != "PASS":
@@ -201,12 +254,14 @@ def assess_learned20m_readiness(data: dict[str, Any]) -> ReadinessAssessment:
         local,
         evaluation.get("firewall_authority"),
         "evaluation_firewall_authority_missing",
+        evidence_kind="evaluation_firewall",
         require_workflow=True,
     )
     _require_authority(
         local,
         evaluation.get("selection_validation_authority"),
         "selection_validation_authority_missing",
+        evidence_kind="selection_validation",
         require_workflow=True,
     )
     if evaluation.get("status") != "PASS":
@@ -221,6 +276,7 @@ def assess_learned20m_readiness(data: dict[str, Any]) -> ReadinessAssessment:
         local,
         recipe.get("authority"),
         "training_recipe_authority_missing",
+        evidence_kind="learned_20m_training_recipe",
         require_workflow=True,
     )
     if recipe.get("status") != "QUALIFIED":
@@ -252,6 +308,7 @@ def assess_learned20m_readiness(data: dict[str, Any]) -> ReadinessAssessment:
         compute,
         pilot.get("authority"),
         "bounded_pilot_authority_missing",
+        evidence_kind="bounded_learned_20m_pilot",
         require_workflow=True,
     )
     if pilot.get("status") != "PASS":
@@ -261,7 +318,12 @@ def assess_learned20m_readiness(data: dict[str, Any]) -> ReadinessAssessment:
             compute.append(f"bounded_pilot_{key}_not_proven")
 
     cost = evidence.get("cost_envelope") if isinstance(evidence.get("cost_envelope"), dict) else {}
-    _require_authority(compute, cost.get("authority"), "cost_envelope_authority_missing")
+    _require_authority(
+        compute,
+        cost.get("authority"),
+        "cost_envelope_authority_missing",
+        evidence_kind="material_compute_cost_envelope",
+    )
     if cost.get("status") != "ESTIMATED":
         compute.append("cost_envelope_not_estimated")
     maximum_cost = cost.get("maximum_cost_usd")
@@ -279,7 +341,9 @@ def assess_learned20m_readiness(data: dict[str, Any]) -> ReadinessAssessment:
         compute,
         audit.get("authority"),
         "independent_audit_authority_missing",
+        evidence_kind="independent_launch_audit",
         require_workflow=True,
+        require_independent=True,
     )
     if audit.get("status") not in {"PASS", "PASS_WITH_NOTES"}:
         compute.append("independent_audit_not_terminal_pass")
@@ -296,9 +360,14 @@ def assess_learned20m_readiness(data: dict[str, Any]) -> ReadinessAssessment:
         material,
         authorization.get("authority"),
         "compute_authorization_authority_missing",
+        evidence_kind="material_compute_authorization",
     )
     if authorization.get("status") != "COMPUTE_AUTHORIZED":
         material.append("compute_not_explicitly_authorized")
+    if authorization.get("scope") != "LEARNED_20M_MATERIAL_COMPUTE":
+        material.append("compute_authorization_scope_mismatch")
+    if authorization.get("authorized_by_owner") is not True:
+        material.append("compute_owner_authorization_missing")
     authorized_limit = authorization.get("maximum_cost_usd")
     maximum_cost = cost.get("maximum_cost_usd")
     if isinstance(authorized_limit, bool) or not isinstance(authorized_limit, (int, float)):
@@ -306,6 +375,32 @@ def assess_learned20m_readiness(data: dict[str, Any]) -> ReadinessAssessment:
     elif isinstance(maximum_cost, (int, float)) and not isinstance(maximum_cost, bool):
         if authorized_limit < maximum_cost:
             material.append("authorized_cost_below_estimated_maximum")
+
+    training_authorization = (
+        evidence.get("training_authorization")
+        if isinstance(evidence.get("training_authorization"), dict)
+        else {}
+    )
+    _require_authority(
+        material,
+        training_authorization.get("authority"),
+        "training_authorization_authority_missing",
+        evidence_kind="learned_20m_training_authorization",
+    )
+    if training_authorization.get("status") != "TRAINING_AUTHORIZED":
+        material.append("training_not_explicitly_authorized")
+    if training_authorization.get("scope") != "LEARNED_20M_MATERIAL_TRAINING":
+        material.append("training_authorization_scope_mismatch")
+    if training_authorization.get("authorized_by_owner") is not True:
+        material.append("training_owner_authorization_missing")
+    if training_authorization.get("training_config_sha256") != recipe.get("config_sha256"):
+        material.append("training_authorization_config_mismatch")
+    compute_ref = authorization.get("authority")
+    compute_evidence_sha = (
+        compute_ref.get("evidence_sha256") if isinstance(compute_ref, dict) else None
+    )
+    if training_authorization.get("compute_authorization_evidence_sha256") != compute_evidence_sha:
+        material.append("training_authorization_compute_binding_mismatch")
 
     material = sorted(set(material))
     return ReadinessAssessment(
