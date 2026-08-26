@@ -12,9 +12,22 @@
     "head_sha": "efc278cec0e4773eb4ff405bf4b4d24ee63b5d13",
     "config_path": "configs/data/next100_065_cross_source_dedup_v3.json",
     "config_blob_sha1": "c1e05f09490e25f6fed765dfb70d900717528f4d",
+    "workflow_run": 32999969398,
+    "workflow_name": "NEXT100-065 Cross-Source Dedup V3",
+    "workflow_conclusion": "success",
     "terminal_refresh_cutoff_utc": "2026-08-26T18:20:54Z",
-    "numeric_capacity_bytes": {"uk": 90044, "en": 84793, "code": 69133, "total": 243970},
-    "independent_family_counts": {"uk": 2, "en": 1, "code": 4, "total": 7},
+    "numeric_capacity_bytes": {
+      "uk": 90044,
+      "en": 84793,
+      "code": 69133,
+      "total": 243970
+    },
+    "independent_family_counts": {
+      "uk": 2,
+      "en": 1,
+      "code": 4,
+      "total": 7
+    },
     "source_object_count": 11
   },
   "late_authorities": [
@@ -23,6 +36,7 @@
       "pr": 449,
       "head_sha": "40950a950b60921fd856af2719e1ae2486d9e892",
       "workflow_run": 32997970539,
+      "workflow_name": "NEXT100-026 KMu Source Rights Audit",
       "workflow_conclusion": "success",
       "authority_path": "configs/data/next100_026_kmu_source_audit_v1.json",
       "authority_blob_sha1": "6f0a60dc161c0bb2d7600c3c062ae78e624b240e",
@@ -40,7 +54,8 @@
       "worker_id": "NEXT100-034-DATA-EN-NIST",
       "pr": 472,
       "head_sha": "b7491745b34ac8679baaf69cb96cd609dcbe0a16",
-      "workflow_run": 32998704439,
+      "workflow_run": 32998703545,
+      "workflow_name": "NEXT100-034 NIST authority",
       "workflow_conclusion": "success",
       "authority_path": "configs/data/next100_034_nist_terminal_authority_v2.json",
       "authority_blob_sha1": "8cef5ae316a45ad6265b732be86bd54a977405a1",
@@ -58,7 +73,8 @@
       "worker_id": "NEXT100-027-DATA-UA-PUBLIC-DOMAIN-LIT",
       "pr": 462,
       "head_sha": "d75edd497c7fb1054e86d892c9462f059c1f4aa9",
-      "workflow_run": 32998503690,
+      "workflow_run": 32998503672,
+      "workflow_name": "NEXT100-027 Ukrainian public-domain literature",
       "workflow_conclusion": "success",
       "authority_path": "configs/data/next100_027_ua_public_domain_lit_v1.json",
       "authority_blob_sha1": "c09b8951aeaaa9d42da40ffcc180750fba4258c3",
@@ -77,6 +93,7 @@
       "pr": 467,
       "head_sha": "5a6a495a24bce449334cbc5126d0114f61a9f57c",
       "workflow_run": 32998356906,
+      "workflow_name": "NEXT100-037 Python Docs Source Authority",
       "workflow_conclusion": "success",
       "authority_path": "configs/data/next100_037_python_docs_source_authority_v1.json",
       "authority_blob_sha1": "b15abac8744ccda9fe58d1351f7925b6ab328034",
@@ -96,33 +113,82 @@
     }
   ],
   "credit_policy": {
-    "rule": "Credit only exact-head terminal-success source authorities with explicit training permission and exact numeric eligible capacity. Source admission without an exact eligible-byte ledger is recorded but receives zero numeric capacity/family credit until a successor materializes that ledger.",
+    "rule": "Credit only exact-head dedicated terminal-success source authorities with explicit training permission and exact numeric eligible capacity. Source admission without an exact eligible-byte ledger is recorded but receives zero numeric capacity/family credit until a successor materializes that ledger.",
+    "workflow_binding_rule": "Every credited authority binds the dedicated source workflow run id and exact workflow name; a generic repository workflow success cannot substitute for the dedicated admission workflow.",
     "queued_retest_probe_pr_text_only_credit": 0,
     "evaluation_permission_inferred_from_training": false,
     "cross_source_dedup_inferred": false,
     "corpus_identity_inferred": false
   },
   "converged_pre_successor_dedup_vector": {
-    "numeric_capacity_bytes": {"uk": 100856, "en": 144151, "code": 69133, "total": 314140},
-    "independent_family_counts": {"uk": 4, "en": 2, "code": 4, "total": 10},
+    "numeric_capacity_bytes": {
+      "uk": 100856,
+      "en": 144151,
+      "code": 69133,
+      "total": 314140
+    },
+    "independent_family_counts": {
+      "uk": 4,
+      "en": 2,
+      "code": 4,
+      "total": 10
+    },
     "numeric_source_object_count": 21,
     "family_minimum_required_per_stratum": 2,
     "family_minimum_candidate_status": "PASS_PRE_SUCCESSOR_GLOBAL_DEDUP",
     "canonical_balance_diversity_status": "RETEST_REQUIRED_AFTER_SUCCESSOR_GLOBAL_DEDUP"
   },
   "acquisition_plan_bytes": {
-    "frozen_targets": {"uk": 9000000, "en": 7000000, "code": 4000000, "total": 20000000},
-    "remaining_gap": {"uk": 8899144, "en": 6855849, "code": 3930867, "total": 19685860},
+    "frozen_targets": {
+      "uk": 9000000,
+      "en": 7000000,
+      "code": 4000000,
+      "total": 20000000
+    },
+    "remaining_gap": {
+      "uk": 8899144,
+      "en": 6855849,
+      "code": 3930867,
+      "total": 19685860
+    },
     "note": "These are source-capacity bytes, not optimized causal-target counts; do not equate them to training tokens or loss positions."
   },
   "downstream_handoff": [
-    {"gate": "GLOBAL_CROSS_SOURCE_DEDUP", "status": "REQUIRED", "reason": "late terminal source bytes have not been compared against the full current terminal graph"},
-    {"gate": "BALANCE_DIVERSITY", "status": "RETEST_REQUIRED", "reason": "family minimum is now numerically satisfiable pre-dedup, but source-share caps and post-dedup capacity must be recomputed"},
-    {"gate": "CORPUS_MATERIALIZATION", "status": "BLOCKED", "reason": "no immutable post-reservation/dedup/split/pack candidate corpus identity exists yet"},
-    {"gate": "DECONTAMINATION", "status": "BLOCKED", "reason": "requires exact candidate corpus identity and training-record inventory"},
-    {"gate": "UNIQUE_LOSS_LEDGER", "status": "BLOCKED", "reason": "requires exact post-pack corpus"},
-    {"gate": "TOKENIZER_FIT", "status": "BLOCKED", "reason": "requires exact materialized train corpus and reservation/decontamination closure"},
-    {"gate": "LEARNED_20M_CAMPAIGN", "status": "BLOCKED", "reason": "requires terminal Research Corpus V1 and explicit authorization for material paid compute if needed"}
+    {
+      "gate": "GLOBAL_CROSS_SOURCE_DEDUP",
+      "status": "REQUIRED",
+      "reason": "late terminal source bytes have not been compared against the full current terminal graph"
+    },
+    {
+      "gate": "BALANCE_DIVERSITY",
+      "status": "RETEST_REQUIRED",
+      "reason": "family minimum is now numerically satisfiable pre-dedup, but source-share caps and post-dedup capacity must be recomputed"
+    },
+    {
+      "gate": "CORPUS_MATERIALIZATION",
+      "status": "BLOCKED",
+      "reason": "no immutable post-reservation/dedup/split/pack candidate corpus identity exists yet"
+    },
+    {
+      "gate": "DECONTAMINATION",
+      "status": "BLOCKED",
+      "reason": "requires exact candidate corpus identity and training-record inventory"
+    },
+    {
+      "gate": "UNIQUE_LOSS_LEDGER",
+      "status": "BLOCKED",
+      "reason": "requires exact post-pack corpus"
+    },
+    {
+      "gate": "TOKENIZER_FIT",
+      "status": "BLOCKED",
+      "reason": "requires exact materialized train corpus and reservation/decontamination closure"
+    },
+    {
+      "gate": "LEARNED_20M_CAMPAIGN",
+      "status": "BLOCKED",
+      "reason": "requires terminal Research Corpus V1 and explicit authorization for material paid compute if needed"
+    }
   ],
   "claim_boundary": {
     "canonical_registry_rewritten": false,
