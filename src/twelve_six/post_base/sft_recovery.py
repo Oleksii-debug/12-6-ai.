@@ -166,9 +166,6 @@ def _verify_generation_chain(
     for generation in expected_generations:
         manifest_path = store.generation_path(generation) / "manifest.json"
         manifest = _read_json(manifest_path)
-        manifest_sha256 = _sha256_bytes(_canonical_bytes(manifest))
-        if manifest_sha256 != published_hashes[generation]:
-            raise RuntimeError("checkpoint manifest publication digest drift")
         expected_parent = None if generation == 0 else generation - 1
         if manifest.get("schema") != SFT_MECHANICS_SCHEMA:
             raise RuntimeError("checkpoint manifest schema drift")
@@ -187,6 +184,9 @@ def _verify_generation_chain(
         if manifest.get("base_checkpoint") != expected_base:
             raise RuntimeError("checkpoint Base binding drift")
 
+        manifest_sha256 = _sha256_bytes(_canonical_bytes(manifest))
+        if manifest_sha256 != published_hashes[generation]:
+            raise RuntimeError("checkpoint manifest publication digest drift")
         store.load_state(backend, generation)
         manifest_hashes.append(manifest_sha256)
 
