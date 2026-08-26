@@ -11,11 +11,13 @@ on:
       - "src/twelve_six/packing/**"
       - "configs/stages/s1*"
       - "configs/training/**"
+      - "data/s0/packaged/**"
       - "tools/run_s1_observability_probe.py"
       - "tools/validate_s1_observability_probe.py"
       - "tools/verify_locked_environment.py"
       - "tests/test_training_observability.py"
       - "tests/test_training_observability_decision.py"
+      - "requirements/locks/index.json"
       - "requirements/locks/linux-x86_64/**"
       - "pyproject.toml"
   workflow_dispatch:
