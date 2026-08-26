@@ -43,6 +43,16 @@ def _write_fixture(root: Path, *, package: str = "demo", wheel_hash: str | None 
     return "requirements/profiles/test/profile.json"
 
 
+def _write_lock(root: Path, relative: str, package: str, hash_digit: str) -> dict:
+    path = root / relative
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        f"{package}==1.0.0 --hash=sha256:{hash_digit * 64}\n",
+        encoding="utf-8",
+    )
+    return {"path": relative, "package_count": 1, "sha256": _sha(path.read_bytes())}
+
+
 def _manifest(root: Path, profile_path: str) -> dict:
     return build_manifest(
         root,
@@ -66,6 +76,40 @@ def test_cache_key_is_deterministic_and_contains_authority_dimensions(tmp_path: 
     assert first["python"] == {"implementation": "cpython", "version": "3.11.16"}
     assert first["purpose_profile"]["profile_id"] == "linux-x86_64-cpu-training"
     assert len(first["component_locks"]) == 1
+
+
+def test_linux_overlay_cache_matches_d08_toolchain_runtime_overlay_only(tmp_path: Path) -> None:
+    base_locks = {
+        "toolchain": _write_lock(tmp_path, "requirements/base/toolchain.lock.txt", "pip", "1"),
+        "runtime": _write_lock(tmp_path, "requirements/base/runtime.lock.txt", "torch", "2"),
+        "dev": _write_lock(tmp_path, "requirements/base/dev.lock.txt", "pytest", "3"),
+    }
+    base_path = tmp_path / "requirements/base/profile.json"
+    base_path.write_text(json.dumps({"locks": base_locks}, sort_keys=True), encoding="utf-8")
+    overlay = _write_lock(tmp_path, "requirements/purpose/overlay.lock.txt", "tokenizers", "4")
+    profile_path = tmp_path / "requirements/purpose/profile.json"
+    profile = {
+        "schema_version": "12-6.purpose-environment-profile.v1",
+        "profile_id": "linux-x86_64-tokenizer-experiment",
+        "profile_sha256": "5" * 64,
+        "kind": "linux-overlay",
+        "platform": {"system": "Linux", "machine": "x86_64"},
+        "python": {"implementation": "cpython", "version": "3.11.16"},
+        "base_profile": {
+            "path": "requirements/base/profile.json",
+            "file_sha256": _sha(base_path.read_bytes()),
+        },
+        "locks": {"overlay": overlay},
+    }
+    profile_path.write_text(json.dumps(profile, sort_keys=True), encoding="utf-8")
+    manifest = _manifest(tmp_path, "requirements/purpose/profile.json")
+    selected = {record["path"] for record in manifest["component_locks"]}
+    assert selected == {
+        "requirements/base/toolchain.lock.txt",
+        "requirements/base/runtime.lock.txt",
+        "requirements/purpose/overlay.lock.txt",
+    }
+    assert "requirements/base/dev.lock.txt" not in selected
 
 
 def test_one_byte_profile_change_invalidates_and_rotates_cache_key(tmp_path: Path) -> None:
