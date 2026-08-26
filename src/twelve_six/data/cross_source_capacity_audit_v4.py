@@ -1,13 +1,13 @@
 """Successor cross-source dedup with sealed NIST PDF materialization.
 
 NEXT100-065 deliberately excluded sources whose dedicated terminal workflows had
-not completed at its refresh cutoff.  NEXT100-034/NIST became terminal later,
+not completed at its refresh cutoff. NEXT100-034/NIST became terminal later,
 but its authority seals PDF byte identities plus deterministic normalized-text
 hashes rather than committing the normalized payload itself.
 
 This module composes the immutable NEXT100-065 inventory with late terminal
 sources and materializes the exact NIST comparison payload before delegating to
-the already-audited V3 lineage/dedup engine.  No model training is performed.
+the already-audited V3 lineage/dedup engine. No model training is performed.
 """
 from __future__ import annotations
 
@@ -92,11 +92,18 @@ def _validate_nist_row(row: Mapping[str, Any]) -> None:
     if not isinstance(start_page, int) or isinstance(start_page, bool) or start_page <= 0:
         raise CrossSourceV4Error(f"{source_id}: invalid pdf_start_page")
     expected_bytes = row.get("expected_comparison_bytes")
-    if not isinstance(expected_bytes, int) or isinstance(expected_bytes, bool) or not (1 <= expected_bytes <= MAX_NIST_NORMALIZED_BYTES):
+    if (
+        not isinstance(expected_bytes, int)
+        or isinstance(expected_bytes, bool)
+        or not (1 <= expected_bytes <= MAX_NIST_NORMALIZED_BYTES)
+    ):
         raise CrossSourceV4Error(f"{source_id}: invalid expected comparison byte count")
     if row.get("declared_capacity_bytes") != expected_bytes:
         raise CrossSourceV4Error(f"{source_id}: declared capacity must equal sealed normalized bytes")
-    _validate_sha256(row.get("expected_comparison_sha256"), field=f"{source_id}.expected_comparison_sha256")
+    _validate_sha256(
+        row.get("expected_comparison_sha256"),
+        field=f"{source_id}.expected_comparison_sha256",
+    )
     prefix = row.get("expected_extractor_version_prefix")
     if not isinstance(prefix, str) or not prefix.startswith("pdftotext version "):
         raise CrossSourceV4Error(f"{source_id}: extractor version must be pinned")
@@ -115,14 +122,18 @@ def _expand_inventory(inventory: Mapping[str, Any], base: Mapping[str, Any]) -> 
             raise CrossSourceV4Error("additional source must be a mapping")
         _validate_nist_row(raw)
 
-    source_ids = [row.get("source_id") for row in base_sources + additional if isinstance(row, Mapping)]
+    source_ids = [
+        row.get("source_id")
+        for row in base_sources + additional
+        if isinstance(row, Mapping)
+    ]
     if len(source_ids) != len(set(source_ids)):
         raise CrossSourceV4Error("successor source IDs overlap the immutable base inventory")
 
     transformed_sources: list[dict[str, Any]] = [dict(row) for row in base_sources]
     for raw in additional:
         row = dict(raw)
-        # V3 consumes the effective text payload.  Preserve upstream PDF identity
+        # V3 consumes the effective text payload. Preserve upstream PDF identity
         # in the successor inventory/evidence, but bind V3's raw fields to the
         # sealed normalized bytes after materialization.
         row["expected_raw_bytes"] = row["expected_comparison_bytes"]
@@ -246,7 +257,9 @@ def audit_payloads(
     payloads: Mapping[str, bytes],
 ) -> dict[str, Any]:
     expanded = _expand_inventory(inventory, base_inventory)
-    late_rows = {str(row["source_id"]): row for row in inventory["additional_sources"]}
+    late_rows = {
+        str(row["source_id"]): row for row in inventory["additional_sources"]
+    }
     expected_ids = {str(row["source_id"]) for row in expanded["sources"]}
     if set(payloads) != expected_ids:
         raise CrossSourceV4Error("payload coverage must equal the exact converged inventory")
@@ -262,9 +275,19 @@ def audit_payloads(
     core.pop("report_sha256", None)
     core["schema_version"] = REPORT_SCHEMA
     core["algorithm"] = ALGORITHM
-    core["worker_id"] = str(inventory.get("worker_id", "NEXT100-076-CORPUS-CONVERGENCE"))
-    core["base_inventory"] = dict(inventory["base_inventory"])
-    core["late_terminal_materialization"] = sorted(evidence, key=lambda item: item["source_id"])
+    core["worker_id"] = str(
+        inventory.get("worker_id", "NEXT100-076-CORPUS-CONVERGENCE")
+    )
+    base = inventory["base_inventory"]
+    core["base_inventory"] = {
+        "authority": base.get("authority"),
+        "authority_head_sha": base.get("authority_head_sha"),
+        "dedicated_workflow_run": base.get("dedicated_workflow_run"),
+        "expected_git_blob_sha1": base.get("expected_git_blob_sha1"),
+    }
+    core["late_terminal_materialization"] = sorted(
+        evidence, key=lambda item: item["source_id"]
+    )
     core["matching_authority"] = (
         "NEXT100-065 V3 exact/near/fragment/code/lineage semantics after exact sealed "
         "NEXT100-034 NIST PDF-to-training-text materialization"
@@ -275,7 +298,9 @@ def audit_payloads(
 def audit_live(inventory: Mapping[str, Any]) -> dict[str, Any]:
     base = _load_base_inventory(inventory)
     expanded = _expand_inventory(inventory, base)
-    late = {str(row["source_id"]): row for row in inventory["additional_sources"]}
+    late = {
+        str(row["source_id"]): row for row in inventory["additional_sources"]
+    }
     payloads: dict[str, bytes] = {}
     for row in expanded["sources"]:
         source_id = str(row["source_id"])
@@ -304,7 +329,9 @@ def verify_report(report: Mapping[str, Any]) -> None:
     scope = report.get("terminal_candidates")
     if not isinstance(scope, Mapping):
         raise CrossSourceV4Error("terminal candidate summary missing")
-    if scope.get("conservative_unique_capacity_bytes_after", 0) > scope.get("declared_capacity_bytes_before", -1):
+    if scope.get("conservative_unique_capacity_bytes_after", 0) > scope.get(
+        "declared_capacity_bytes_before", -1
+    ):
         raise CrossSourceV4Error("deduplication inflated capacity")
 
 
