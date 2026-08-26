@@ -1,0 +1,9 @@
+Compression in HTTP
+Source: https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/Compression
+Credit: Mozilla Contributors
+License: CC BY-SA 2.5 or later
+License reference: https://creativecommons.org/licenses/by-sa/2.5/
+
+Project modifications: frontmatter, code samples, inline code spans, tables, media/embed lines, macros, HTML markup, link destinations, and Markdown formatting were removed; prose was Unicode NFKC/whitespace normalized.
+
+This notice applies only to the admitted prose payload. Code samples, media, embeds, Mozilla marks/site look-and-feel, and third-party-permission material are excluded by the source authority.
