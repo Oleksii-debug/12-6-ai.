@@ -1,0 +1,58 @@
+name: NEXT100-030 Ukrainian Rust Book OER source
+
+on:
+  push:
+    branches:
+      - next100-030/data-ua-oer-rustbook-20260826
+  pull_request:
+    paths:
+      - configs/data/next100_030_rustbook_oer_source_v1.json
+      - tools/next100_030_rustbook_oer_snapshot.py
+      - docs/NEXT100_030_RUSTBOOK_UA_OER_SOURCE.md
+      - data/registry/external_snapshots.v2.json
+      - data/external/reserved_fingerprints.json
+      - .github/workflows/next100-030-rustbook-ua-oer-source.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: next100-030-rustbook-ua-oer-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Compile materializer
+        run: python -m py_compile tools/next100_030_rustbook_oer_snapshot.py
+      - name: Materialize bounded snapshot A
+        run: >-
+          python tools/next100_030_rustbook_oer_snapshot.py
+          --config configs/data/next100_030_rustbook_oer_source_v1.json
+          --out-dir /tmp/next100-030-a
+      - name: Materialize bounded snapshot B
+        run: >-
+          python tools/next100_030_rustbook_oer_snapshot.py
+          --config configs/data/next100_030_rustbook_oer_source_v1.json
+          --out-dir /tmp/next100-030-b
+      - name: Require deterministic byte identity
+        run: diff -r /tmp/next100-030-a /tmp/next100-030-b
+      - name: Stage source evidence
+        run: |
+          mkdir -p evidence/next100-030
+          cp -a /tmp/next100-030-a/. evidence/next100-030/
+          cat evidence/next100-030/manifest.json
+          cat evidence/next100-030/source_report.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: next100-030-rustbook-ua-oer-${{ github.sha }}
+          path: evidence/next100-030
+          if-no-files-found: error
+          retention-days: 90
