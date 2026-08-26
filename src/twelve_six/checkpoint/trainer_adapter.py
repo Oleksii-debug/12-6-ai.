@@ -17,10 +17,12 @@ from .core import (
     CheckpointCompatibilityError,
     CheckpointIdentity,
     LoadResult,
+    _decode_verified_state,
     load_verified_checkpoint,
     prepare_checkpoint_load,
     save_checkpoint,
 )
+from .hardening import preflight_trainer_state
 
 
 def _trainer_state_as_mapping(state: Any) -> Mapping[str, Any]:
@@ -145,9 +147,9 @@ def load_trainer_checkpoint(
 ) -> LoadResult:
     """Verify one exact byte snapshot, bind it, then restore fresh D02 targets.
 
-    The canonical nested identity checks and the actual load consume the same
-    verified byte snapshot. The source directory is never re-opened between
-    run-binding verification and model mutation.
+    The canonical nested identity checks, trainer semantic preflight, and actual
+    load consume the same verified byte snapshot.  The source directory is never
+    re-opened between run-binding verification and model mutation.
     """
 
     if not hasattr(trainer, "load_state_dict"):
@@ -164,6 +166,12 @@ def load_trainer_checkpoint(
         expected_environment_lock_hash=expected_environment_lock_hash,
         expected_seed=expected_seed,
     )
+
+    # Trainer-owned AdamW/scheduler/counters must be semantically valid before
+    # load_verified_checkpoint is allowed to mutate model weights.  This closes
+    # the deferred optimizer-step failure class found by the D05 red-team.
+    _, combined_state = _decode_verified_state(verified)
+    preflight_trainer_state(trainer, combined_state.get("trainer", {}))
 
     result = load_verified_checkpoint(
         verified,
