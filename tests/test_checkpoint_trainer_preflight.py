@@ -12,7 +12,11 @@ from safetensors.numpy import save as save_safetensors_bytes
 
 from twelve_six.checkpoint import CheckpointCompatibilityError, CheckpointIdentity, hash_json
 from twelve_six.checkpoint.state_tree import pack_state_tree, unpack_state_tree
-from twelve_six.checkpoint.trainer_adapter import load_trainer_checkpoint, save_trainer_checkpoint
+from twelve_six.checkpoint.trainer_adapter import (
+    _preflight_trainer_state,
+    load_trainer_checkpoint,
+    save_trainer_checkpoint,
+)
 
 
 class _TrainerProbe:
@@ -42,6 +46,24 @@ class _TrainerProbe:
     def load_state_dict(self, state: dict[str, Any]) -> None:
         self.loads += 1
         self.optimizer.load_state_dict(state["optimizer"])
+
+
+class _GenericTrainerProbe:
+    """Checkpoint-v1 trainer adapter with opaque trainer-owned optimizer state."""
+
+    def __init__(self) -> None:
+        self.config = {"seed": 7, "precision": "fp32"}
+        self.loads = 0
+        self.velocity = [1.0, 2.0]
+
+    def load_state_dict(self, state: dict[str, Any]) -> None:
+        if state["config"] != self.config:
+            raise ValueError("config mismatch")
+        velocity = state["optimizer"]["velocity"]
+        if not isinstance(velocity, list) or len(velocity) != 2:
+            raise ValueError("velocity geometry mismatch")
+        self.loads += 1
+        self.velocity = list(velocity)
 
 
 def _identity(parameter_count: int) -> CheckpointIdentity:
@@ -91,6 +113,24 @@ def _rewrite_state(checkpoint: Path, state: object) -> None:
     (checkpoint / "MANIFEST.sha256").write_text(
         f"{checksum}  manifest.json\n", encoding="ascii"
     )
+
+
+def test_generic_trainer_without_optimizer_attribute_preflights_on_detached_copy() -> None:
+    trainer = _GenericTrainerProbe()
+    state = {
+        "micro_step": 4,
+        "optimizer_step": 2,
+        "tokens_seen": 64,
+        "optimizer": {"velocity": [3.0, 4.0]},
+        "scheduler": {"last_epoch": 2},
+        "scaler": {},
+        "config": copy.deepcopy(trainer.config),
+    }
+
+    _preflight_trainer_state(trainer, state)
+
+    assert trainer.loads == 0
+    assert trainer.velocity == [1.0, 2.0]
 
 
 def test_trainer_owned_optimizer_corruption_fails_before_model_mutation(tmp_path: Path) -> None:
