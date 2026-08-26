@@ -5,6 +5,7 @@ on:
     paths:
       - "configs/data/research_corpus_v1_intake_v1.json"
       - "tools/validate_research_corpus_v1_intake.py"
+      - "tools/build_predecontam_candidate_identity.py"
       - "tests/test_research_corpus_v1_intake.py"
       - "docs/RESEARCH_CORPUS_V1_INTAKE_V1.md"
       - ".github/workflows/research-corpus-v1-intake.yml"
@@ -24,7 +25,9 @@ jobs:
           python-version: "3.11"
       - name: Validate intake authority
         run: python tools/validate_research_corpus_v1_intake.py
+      - name: Exercise pre-decontamination identity builder
+        run: python tools/build_predecontam_candidate_identity.py --self-test
       - name: Run focused fail-closed tests
         run: python -m unittest discover -s tests -p 'test_research_corpus_v1_intake.py' -v
       - name: Compile focused Python surfaces
-        run: python -m compileall -q tools/validate_research_corpus_v1_intake.py tests/test_research_corpus_v1_intake.py
+        run: python -m compileall -q tools/validate_research_corpus_v1_intake.py tools/build_predecontam_candidate_identity.py tests/test_research_corpus_v1_intake.py
