@@ -2,6 +2,12 @@ name: D04 Tokenizer Real Experiments
 
 on:
   pull_request:
+    paths:
+      - ".github/workflows/d04-tokenizer-real-experiments.yml"
+      - "src/twelve_six/tokenization/**"
+      - "data/s0/packaged/**"
+      - "requirements/experiments/tokenizers-linux-x86_64.lock.txt"
+      - "requirements/locks/linux-x86_64/**"
   workflow_dispatch:
 
 permissions:
