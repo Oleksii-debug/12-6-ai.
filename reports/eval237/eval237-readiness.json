@@ -1,0 +1,56 @@
+{
+  "frozen_controls": {
+    "batch_size": 4,
+    "loss_tokens_per_full_step": 252,
+    "optimized_token_budget_per_arm": 64512,
+    "optimizer": {
+      "betas": [
+        0.9,
+        0.95
+      ],
+      "eps": 1e-08,
+      "gradient_clip_norm": 1.0,
+      "learning_rate": 0.0003,
+      "name": "AdamW",
+      "precision": "fp32",
+      "scheduler": "constant",
+      "warmup_steps": 0,
+      "weight_decay": 0.0
+    },
+    "parameter_count": 467808,
+    "seed": 1337,
+    "sequence_length": 64,
+    "tokenizer": "byte-v1-vocab-256-no-specials"
+  },
+  "inherited_predecessor": {
+    "head_sha": "7c83fd00a31d4237f7636a540148a89fef9526a1",
+    "worker_id": "RECOVER-179-EVAL137-SOURCE-GENERALIZATION"
+  },
+  "next_executable_gate": {
+    "projection_schema": "12-6.eval237-data230-family-projection.v1",
+    "required_functions": [
+      "assess_diversity",
+      "build_matched_arm_plan",
+      "family_comparison"
+    ]
+  },
+  "numerical_result_claimed": false,
+  "numerical_training_executed": false,
+  "report_sha256": "d4bcc0d670066198a691f33cc518f19a6aba8231c66a2f484f2a9ffbfc22fd2d",
+  "required_predecessor": {
+    "observed_in_repository": false,
+    "terminal_registry_required": true,
+    "worker_id": "DATA-230-CORPUS-V03-EXTERNAL-REAL"
+  },
+  "schema_version": "12-6.eval237-source-family-generalization-v2.v1",
+  "scientific_boundary": {
+    "example_repetition_to_fill_budget_forbidden": true,
+    "language_domain_publisher_decomposition_requires_identifiability": true,
+    "matched_exposure_uses_actual_source_loss_tokens": true,
+    "old_two_family_regime_is_not_reused_as_v2_evidence": true,
+    "one_source_per_language_generalization_forbidden": true,
+    "padded_tensor_tokens_do_not_count_as_exposure": true
+  },
+  "status": "BLOCKED_MISSING_DATA230",
+  "worker_id": "EVAL-237-SOURCE-FAMILY-GENERALIZATION-V2"
+}
