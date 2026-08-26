@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Collection
 from dataclasses import dataclass
 from typing import Any
 
@@ -91,6 +92,21 @@ def _require_authority(
         blockers.append(name)
 
 
+def _verified_ref(
+    blockers: list[str],
+    value: Any,
+    name: str,
+    verified_refs: set[str],
+) -> str | None:
+    if not isinstance(value, str) or not value.strip():
+        blockers.append(f"{name}_missing")
+        return None
+    normalized = value.strip()
+    if normalized not in verified_refs:
+        blockers.append(f"{name}_unverified")
+    return normalized
+
+
 def _validate_envelope(data: dict[str, Any]) -> list[str]:
     errors: list[str] = []
     if data.get("schema_version") != 1:
@@ -131,8 +147,12 @@ def _validate_envelope(data: dict[str, Any]) -> list[str]:
     return errors
 
 
-def assess_learned20m_readiness(data: dict[str, Any]) -> ReadinessAssessment:
-    """Assess launch readiness without granting authority from partial evidence."""
+def assess_learned20m_readiness(
+    data: dict[str, Any],
+    *,
+    verified_authorization_refs: Collection[str] = (),
+) -> ReadinessAssessment:
+    """Assess launch readiness; packet contents alone cannot grant paid authority."""
     envelope_errors = _validate_envelope(data)
     evidence = data.get("evidence")
     if not isinstance(evidence, dict):
@@ -306,25 +326,61 @@ def assess_learned20m_readiness(data: dict[str, Any]) -> ReadinessAssessment:
     compute = sorted(set(compute))
 
     material = list(compute)
-    authorization = (
+    verified_refs = {
+        value.strip()
+        for value in verified_authorization_refs
+        if isinstance(value, str) and value.strip()
+    }
+
+    compute_auth = (
         evidence.get("compute_authorization")
         if isinstance(evidence.get("compute_authorization"), dict)
         else {}
     )
     _require_authority(
         material,
-        authorization.get("authority"),
+        compute_auth.get("authority"),
         "compute_authorization_authority_missing",
     )
-    if authorization.get("status") != "COMPUTE_AUTHORIZED":
+    if compute_auth.get("status") != "COMPUTE_AUTHORIZED":
         material.append("compute_not_explicitly_authorized")
-    authorized_limit = authorization.get("maximum_cost_usd")
-    maximum_cost = cost.get("maximum_cost_usd")
+    compute_decision_ref = _verified_ref(
+        material,
+        compute_auth.get("decision_ref"),
+        "compute_authorization_ref",
+        verified_refs,
+    )
+    authorized_limit = compute_auth.get("maximum_cost_usd")
     if isinstance(authorized_limit, bool) or not isinstance(authorized_limit, (int, float)):
         material.append("authorized_cost_limit_missing")
     elif isinstance(maximum_cost, (int, float)) and not isinstance(maximum_cost, bool):
         if authorized_limit < maximum_cost:
             material.append("authorized_cost_below_estimated_maximum")
+
+    training_auth = (
+        evidence.get("training_authorization")
+        if isinstance(evidence.get("training_authorization"), dict)
+        else {}
+    )
+    _require_authority(
+        material,
+        training_auth.get("authority"),
+        "training_authorization_authority_missing",
+    )
+    if training_auth.get("status") != "TRAINING_AUTHORIZED":
+        material.append("training_not_explicitly_authorized")
+    training_decision_ref = _verified_ref(
+        material,
+        training_auth.get("decision_ref"),
+        "training_authorization_ref",
+        verified_refs,
+    )
+    if (
+        compute_decision_ref is not None
+        and training_decision_ref is not None
+        and compute_decision_ref == training_decision_ref
+    ):
+        material.append("compute_and_training_authorization_refs_must_be_distinct")
 
     material = sorted(set(material))
     return ReadinessAssessment(
