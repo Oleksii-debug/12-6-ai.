@@ -21,14 +21,19 @@
     "govinfo_xml_user_guide": "https://www.govinfo.gov/bulkdata/ECFR/resources/ECFR-XML-User-Guide.pdf",
     "modality": "structured_regulatory_xml",
     "language": "en",
+    "titles_metadata_as_of": "2026-08-06",
     "title_min": 1,
     "title_max": 50,
+    "reserved_titles_at_observation": [
+      35
+    ],
     "reserved_titles_must_be_skipped": true
   },
   "versioning": {
     "mutable_current_endpoint_allowed_for_capacity": false,
     "point_in_time_date_required": true,
     "exact_title_required": true,
+    "request_date_must_not_exceed_titles_metadata_as_of": true,
     "two_byte_identical_acquisitions_required": true,
     "sha256_required": true,
     "byte_count_required": true,
