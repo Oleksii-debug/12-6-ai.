@@ -94,7 +94,7 @@ def _load_policy(repo: Path) -> dict[str, Any]:
 
 def _assert_code_only_path(path: str) -> None:
     allowed = {
-        "fastapi/encoders.py",
+        "fastapi/sse.py",
         "fastapi/exceptions.py",
         "fastapi/datastructures.py",
     }
@@ -411,7 +411,7 @@ def validate(path: Path, expected_source_sha: str) -> dict[str, Any]:
         raise FastapiAdmissionError("authority is not ADMIT")
     if report.get("source_head_sha") != expected_source_sha:
         raise FastapiAdmissionError("validated authority does not bind exact worker head")
-    if report["scope"]["files"] != 3 or report["scope"]["raw_bytes"] > 30000:
+    if report["scope"]["files"] != 3 or report["scope"]["raw_bytes"] > 25000:
         raise FastapiAdmissionError("bounded scope mismatch")
     if not report["deduplication"]["passed"] or not report["evaluation_boundary"]["passed"]:
         raise FastapiAdmissionError("dedup/evaluation boundary did not pass")
