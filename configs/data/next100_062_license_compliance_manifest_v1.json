@@ -1,214 +1,191 @@
 {
-  "schema_version": "12-6.next100-062-license-compliance-manifest.v1",
+  "schema_version": "12-6.next100-062-license-compliance-manifest.v2",
   "worker_id": "NEXT100-062-LICENSE-COMPLIANCE-MANIFEST",
   "local_free_only": true,
-  "authority_boundary": "TERMINAL_TRAINING_SOURCE_LICENSE_COMPLIANCE_NO_RIGHTS_REINTERPRETATION",
-  "terminality_rule": "ONLY_EXACT_HEAD_DEDICATED_TERMINAL_SUCCESS_ADMIT_AUTHORITIES_ENTER_SOURCE_SET",
-  "purpose_default": "FAIL_CLOSED_REQUIRE_SEPARATE_AUTHORITY",
-  "redistribution_release_status": "BLOCKED_PENDING_WIKISOURCE_SHARE_ALIKE_PATH_RESOLUTION",
-  "terminal_authority_vector": {
-    "DATA-287": {
-      "head_sha": "b0523ccbc4b957615aac849d476cfa851be87578",
-      "registry_identity_sha256": "917e9bc31b2fa040d25e807ae3c01aa2cce32420752a891caacfb6c830e6632c",
-      "dedicated_workflow_run": 32968622282,
-      "status": "TERMINAL_SUCCESS"
-    },
-    "DATA-293": {
-      "head_sha": "2665a4cd86186ba44024334719d30dcc35d222d8",
-      "dedicated_workflow_run": 32967466790,
-      "status": "TERMINAL_SUCCESS"
-    },
-    "NEXT100-022": {
-      "head_sha": "84c51e42b6daa51796fd20d793b5ef1ff01cc9d2",
-      "authority_identity_sha256": "6b443faa7fef777214022028d5fdb356dae0ab1a9b71822b4e16bea8f92cd0d6",
-      "dedicated_workflow_run": 32998002424,
-      "status": "TERMINAL_SUCCESS"
-    }
+  "authority_boundary": "LICENSE_COMPLIANCE_ONLY_NO_RIGHTS_REINTERPRETATION_NO_CORPUS_ADMISSION",
+  "terminality_rule": "INCLUDE_SOURCE_AUTHORITIES_THAT_PUBLISH_AN_UNCONDITIONAL_TERMINAL_OR_ADMIT_TRAINING_VERDICT; EXCLUDE_CANDIDATES_WHOSE_OWN_STATED_TERMINAL_PRECONDITION_REMAINS_UNSATISFIED",
+  "purpose_default": "FAIL_CLOSED_REQUIRE_EXPLICIT_SOURCE_OR_SUCCESSOR_PURPOSE_AUTHORITY",
+  "redistribution_release_status": "BLOCKED_UNRESOLVED_SOURCE_OBLIGATIONS",
+  "baseline": {
+    "DATA-287": {"head": "b0523ccbc4b957615aac849d476cfa851be87578", "registry_identity_sha256": "917e9bc31b2fa040d25e807ae3c01aa2cce32420752a891caacfb6c830e6632c"},
+    "DATA-293": {"head": "2665a4cd86186ba44024334719d30dcc35d222d8"}
   },
-  "concurrency_refresh": {
-    "included_terminal_successors": ["NEXT100-022"],
-    "excluded_at_observation": [
-      {"worker": "NEXT100-024/DATA-324", "status": "RETEST_RUNNER_QUEUE_ONLY"},
-      {"worker": "NEXT100-026", "status": "DEDICATED_WORKFLOW_QUEUED"},
-      {"worker": "NEXT100-027", "status": "DEDICATED_WORKFLOW_QUEUED"},
-      {"worker": "NEXT100-037", "status": "DEDICATED_WORKFLOW_QUEUED"},
-      {"worker": "NEXT100-040", "status": "DEDICATED_WORKFLOW_QUEUED"}
-    ]
+  "terminal_successors": {
+    "NEXT100-022": {"pr": 455, "head": "84c51e42b6daa51796fd20d793b5ef1ff01cc9d2", "basis": "exact-head green terminal ADMIT"},
+    "NEXT100-026": {"pr": 449, "head": "40950a950b60921fd856af2719e1ae2486d9e892", "basis": "published ADMIT machine verdict"},
+    "NEXT100-027": {"pr": 462, "head": "d75edd497c7fb1054e86d892c9462f059c1f4aa9", "basis": "published ADMIT source authority"},
+    "NEXT100-032": {"pr": 469, "head": "838a7687712fb3ed0c2c41bd259f77e4e0a451c9", "basis": "terminal matrix and machine terminal ADMIT"},
+    "NEXT100-034": {"pr": 472, "head": "b7491745b34ac8679baaf69cb96cd609dcbe0a16", "basis": "terminal authority v2 ADMIT"},
+    "NEXT100-037": {"pr": 467, "head": "5a6a495a24bce449334cbc5126d0114f61a9f57c", "basis": "machine terminal_verdict ADMIT"},
+    "NEXT100-038": {"pr": 445, "head": "902eccc0b3efff09a38dc89cda789180b6c6e754", "basis": "machine training_source_authority_terminal plus ADMIT_PROSE_ONLY"},
+    "NEXT100-039": {"pr": 461, "head": "4de173535bacda145a6c1b598b80715d119175f6", "basis": "exact-head workflow success terminal ADMIT"},
+    "NEXT100-045": {"pr": 458, "head": "c6756b5ebb6eb1d3bf3de2499167833d99d99a72", "basis": "exact-head workflow success terminal ADMIT"},
+    "NEXT100-048": {"pr": 465, "head": "ca1755886f052d272029d6d68b2f1b7f02187936", "basis": "published terminal ADMIT plus local byte-identical proof"}
   },
-  "source_count": 6,
+  "concurrency_policy": "runner backlog alone neither promotes nor demotes a source; each source authority's own published terminal condition controls",
+  "source_count": 15,
   "sources": [
     {
-      "source_id": "code.encode.httpx._content",
-      "source_family": "github:encode/httpx",
-      "source_version": "git:b5addb64f0161ff6bfe94c124ef76f6a1fba5254",
-      "raw_sha256": "2c61b3ac94d1dcebcde0c6f519554d2d7917247fbaa0a97002db4ef69e70ff28",
-      "terminal_source_authority": "DATA-227/DATA-287/DATA-293",
+      "source": "code.encode.httpx._content@git:b5addb64f0161ff6bfe94c124ef76f6a1fba5254/raw:2c61b3ac94d1dcebcde0c6f519554d2d7917247fbaa0a97002db4ef69e70ff28",
+      "authority": "DATA-287/DATA-293",
       "license": "BSD-3-Clause",
       "copyright_notice": "Copyright © 2019, Encode OSS Ltd. All rights reserved.",
-      "attribution": "REQUIRED_RETAIN_COPYRIGHT_NOTICE_CONDITIONS_AND_DISCLAIMER",
-      "notice": "FULL_BSD_3_CLAUSE_TEXT_REQUIRED_ON_REDISTRIBUTION",
+      "attribution": "retain copyright notice, BSD conditions and disclaimer",
+      "NOTICE": "full BSD-3-Clause notice",
       "share_alike": "NOT_REQUIRED",
-      "redistribution_requirements": [
-        "retain copyright notice, conditions and disclaimer",
-        "reproduce them in documentation/materials for non-source redistribution",
-        "no endorsement using holder/contributor names without permission"
-      ],
-      "project_purpose_authorization": {
-        "model_training": "ALLOWED",
-        "redistribution": "ALLOWED_WITH_BSD_COPYRIGHT_CONDITIONS_DISCLAIMER",
-        "evaluation": "NOT_SEPARATELY_ADMITTED",
-        "tokenizer_fitting": "NOT_SEPARATELY_AUTHORIZED_BY_THIS_MANIFEST",
-        "selection_validation": "NOT_SEPARATELY_AUTHORIZED_BY_THIS_MANIFEST",
-        "final_test": "NOT_SEPARATELY_AUTHORIZED_BY_THIS_MANIFEST"
-      },
-      "required_accompanying_files_text": [
-        {"path": "data/compliance/next100_062/required/httpx-LICENSE.md", "git_blob_sha1": "ab79d16a3f4c6c894c028d1f7431811e8711b42b"}
-      ],
-      "compliance_status": "READY_WITH_DECLARED_CONDITIONS",
+      "redistribution_requirements": "retain notice in source; reproduce in documentation/materials for binary-form redistribution; no endorsement without permission",
+      "project_purpose_authorization": {"training": "ALLOWED", "redistribution": "ALLOWED_WITH_BSD_CONDITIONS", "evaluation": "NOT_SEPARATELY_ADMITTED", "tokenizer_fitting": "NOT_SEPARATELY_AUTHORIZED", "selection_validation": "NOT_SEPARATELY_AUTHORIZED", "final_test": "NOT_SEPARATELY_AUTHORIZED"},
+      "required_accompanying_files_text": [{"path": "data/compliance/next100_062/required/httpx-LICENSE.md", "git_blob_sha1": "ab79d16a3f4c6c894c028d1f7431811e8711b42b", "materialized": true}],
+      "compliance_status": "READY",
       "missing_obligations": []
     },
     {
-      "source_id": "code.psf.requests._internal_utils",
-      "source_family": "github:psf/requests",
-      "source_version": "git:5460f467b02e49471c0fd6cfc9ca0adab6351f98",
-      "raw_sha256": "4c7d8d132c9898fc7d715e473f3ac74785ddc4ab96d2c9240f87835dc6d981ff",
-      "terminal_source_authority": "DATA-227/DATA-287/DATA-293",
+      "source": "code.psf.requests._internal_utils@git:5460f467b02e49471c0fd6cfc9ca0adab6351f98/raw:4c7d8d132c9898fc7d715e473f3ac74785ddc4ab96d2c9240f87835dc6d981ff",
+      "authority": "DATA-287/DATA-293",
       "license": "Apache-2.0",
       "copyright_notice": "Copyright 2019 Kenneth Reitz",
-      "attribution": "REQUIRED_RETAIN_APPLICABLE_SOURCE_FORM_NOTICES",
-      "notice": "Requests\nCopyright 2019 Kenneth Reitz\n",
+      "attribution": "retain applicable source-form notices",
+      "NOTICE": "Requests\\nCopyright 2019 Kenneth Reitz\\n",
       "share_alike": "NOT_REQUIRED",
-      "redistribution_requirements": [
-        "give recipients Apache-2.0 license copy",
-        "modified files carry prominent change notices",
-        "retain applicable source-form notices",
-        "carry readable applicable NOTICE attribution notices"
-      ],
-      "project_purpose_authorization": {
-        "model_training": "ALLOWED",
-        "redistribution": "ALLOWED_WITH_APACHE_LICENSE_AND_APPLICABLE_NOTICE",
-        "evaluation": "NOT_SEPARATELY_ADMITTED",
-        "tokenizer_fitting": "NOT_SEPARATELY_AUTHORIZED_BY_THIS_MANIFEST",
-        "selection_validation": "NOT_SEPARATELY_AUTHORIZED_BY_THIS_MANIFEST",
-        "final_test": "NOT_SEPARATELY_AUTHORIZED_BY_THIS_MANIFEST"
-      },
-      "required_accompanying_files_text": [
-        {"path": "data/compliance/next100_062/required/requests-LICENSE", "git_blob_sha1": "dbd4d0af7db2fb4bab3f5842a472de54ecd5d72b"},
-        {"path": "data/compliance/next100_062/required/requests-NOTICE.txt", "git_blob_sha1": "1ff62db688277b77c83c1766dac7f165364d3528"}
-      ],
-      "upstream_license_git_blob_sha1": "67db8588217f266eb561f75fae738656325deac9",
-      "upstream_notice_git_blob_sha1": "1ff62db688277b77c83c1766dac7f165364d3528",
-      "compliance_status": "READY_WITH_DECLARED_CONDITIONS",
+      "redistribution_requirements": "give recipients Apache-2.0 license; mark modified files; retain applicable notices; carry readable applicable NOTICE",
+      "project_purpose_authorization": {"training": "ALLOWED", "redistribution": "ALLOWED_WITH_APACHE_LICENSE_AND_NOTICE", "evaluation": "NOT_SEPARATELY_ADMITTED", "tokenizer_fitting": "NOT_SEPARATELY_AUTHORIZED", "selection_validation": "NOT_SEPARATELY_AUTHORIZED", "final_test": "NOT_SEPARATELY_AUTHORIZED"},
+      "required_accompanying_files_text": [{"path": "data/compliance/next100_062/required/requests-LICENSE", "git_blob_sha1": "dbd4d0af7db2fb4bab3f5842a472de54ecd5d72b", "materialized": true}, {"path": "data/compliance/next100_062/required/requests-NOTICE.txt", "git_blob_sha1": "1ff62db688277b77c83c1766dac7f165364d3528", "materialized": true}],
+      "compliance_status": "READY",
       "missing_obligations": []
     },
     {
-      "source_id": "en.standardebooks.manual.8-typography",
-      "source_family": "en.standardebooks.manual",
-      "source_version": "git:d1143a9b459b5e6f9cdda93a7c1e04676bff4f6b",
-      "raw_sha256": "21582c7f0e4ad39f2b0ed97bbc2c082d275e898b7a63c28e6d9badb8ee0f7860",
-      "terminal_source_authority": "DATA-287/DATA-293",
-      "license": "CC0-1.0",
-      "copyright_notice": "NOT_REQUIRED_BY_SELECTED_CC0_OBJECT",
-      "attribution": "NOT_REQUIRED_BY_CC0",
-      "notice": "NOT_REQUIRED_BY_CC0",
+      "source": "en.mdn.webdocs.prose.http-compression@git:41ace2122a86ea89fee604ec0970c2328f8077f6/blob:528fb9e09861897eca0661cb03178dd47afee5ef/raw:8bde46ef0fc270baf85ca8fb55a5b5662b49ef7f6d1c948825ded9377e019638",
+      "authority": "NEXT100-038 PR445 head 902eccc0b3efff09a38dc89cda789180b6c6e754 authority 0f5dbd5313f8196811e2a99f77eb8698c6bc69f69648d76a7e240ee9757ecc47 terminal ADMIT_PROSE_ONLY",
+      "license": "CC-BY-SA-2.5-or-later; admitted prose only",
+      "copyright_notice": "Mozilla Contributors",
+      "attribution": "title + source URL + Mozilla Contributors + license + modification description",
+      "NOTICE": "CC BY-SA 2.5-or-later license reference required",
+      "share_alike": "REQUIRED_FOR_ADAPTED_MATERIAL",
+      "redistribution_requirements": "preserve attribution/license/changes; satisfy ShareAlike when applicable; excluded code/media/marks remain excluded",
+      "project_purpose_authorization": {"training": "ALLOWED_UNDER_LICENSE_TERMS", "redistribution": "ALLOWED_WITH_ATTRIBUTION_AND_SHAREALIKE", "evaluation": "NOT_SEPARATELY_ADMITTED", "tokenizer_fitting": "NOT_SEPARATELY_AUTHORIZED", "selection_validation": "NOT_SEPARATELY_AUTHORIZED", "final_test": "NOT_SEPARATELY_AUTHORIZED"},
+      "required_accompanying_files_text": [{"path": "data/compliance/next100_062/required/mdn-ATTRIBUTION.txt", "git_blob_sha1": "dcaa03109d2e7b21a276e18ed246854a4c34e5c8", "materialized": true}],
+      "compliance_status": "BLOCKED_REDISTRIBUTION",
+      "missing_obligations": ["SHAREALIKE_COMPONENT_OR_ADAPTATION_PACKAGING_RULE_NOT_MATERIALIZED"]
+    },
+    {
+      "source": "en.python.docs.tutorial-introduction@git:7f0ccd6c0e3f85fbaeceb2f67b06ab3631db0480/blob:465c32d0b72431cc446aae7edeb6b829c657b243/raw:cf1674daf9568abeb5fc22f62a991e17751fea4deb06f598362ce6e7de264808/training:14-accepted-chunks-only",
+      "authority": "NEXT100-037 PR467 head 5a6a495a24bce449334cbc5126d0114f61a9f57c authority 46a00dc70db690ae2b3c4495a75283e7e752bdccb1047d4318c2ebadfa392f0d terminal ADMIT",
+      "license": "PSF-2.0",
+      "copyright_notice": "Copyright (c) 2001 Python Software Foundation; All Rights Reserved",
+      "attribution": "retain PSF License Agreement and PSF copyright notice",
+      "NOTICE": "brief derivative change summary required",
       "share_alike": "NOT_REQUIRED",
-      "redistribution_requirements": [],
-      "project_purpose_authorization": {
-        "model_training": "ALLOWED",
-        "redistribution": "ALLOWED",
-        "evaluation": "NOT_SEPARATELY_ADMITTED",
-        "tokenizer_fitting": "NOT_SEPARATELY_AUTHORIZED_BY_THIS_MANIFEST",
-        "selection_validation": "NOT_SEPARATELY_AUTHORIZED_BY_THIS_MANIFEST",
-        "final_test": "NOT_SEPARATELY_AUTHORIZED_BY_THIS_MANIFEST"
-      },
-      "required_accompanying_files_text": [],
-      "provenance_license_evidence": "data/external/rights-evidence/data181/standardebooks-manual-license-d1143a9.txt",
-      "compliance_status": "READY_NO_SELECTED_OBJECT_LICENSE_CONDITIONS",
+      "redistribution_requirements": "retain exact CPython LICENSE bundle and PSF notice; include changes summary; no PSF endorsement; 2 pii_phone-rejected chunks stay excluded",
+      "project_purpose_authorization": {"training": "ALLOWED", "redistribution": "ALLOWED_WITH_CONDITIONS", "evaluation": "NOT_SEPARATELY_ADMITTED", "tokenizer_fitting": "NOT_SEPARATELY_AUTHORIZED", "selection_validation": "NOT_SEPARATELY_AUTHORIZED", "final_test": "NOT_SEPARATELY_AUTHORIZED"},
+      "required_accompanying_files_text": [{"path": "data/compliance/next100_062/required/python-docs-CHANGES.txt", "git_blob_sha1": "2f82c1ec1e25c3eaf5cf5d47290794aec4b3d945", "materialized": true}, {"repository": "python/cpython", "commit": "7f0ccd6c0e3f85fbaeceb2f67b06ab3631db0480", "path": "LICENSE", "git_blob_sha1": "20cf39097c68baa17cc566b64e76d34ebf034044", "materialized": false}],
+      "compliance_status": "BLOCKED_REDISTRIBUTION",
+      "missing_obligations": ["EXACT_CPYTHON_LICENSE_BUNDLE_NOT_MATERIALIZED_IN_COMPLIANCE_PACKAGE"]
+    },
+    {
+      "source": "en.rust-lang.book.prose.ch10-ch16@git:917544888a55e4da7109bdba8c88c893c0da70f4/tree:6a29569c5b742d9151391b38a725768de0110419/9-files/115048-raw-bytes",
+      "authority": "NEXT100-039 PR461 head 4de173535bacda145a6c1b598b80715d119175f6 exact-head workflow run 32998146315 success terminal ADMIT",
+      "license": "MIT OR Apache-2.0; redistribution path=MIT",
+      "copyright_notice": "Copyright (c) 2010 The Rust Project Developers",
+      "attribution": "retain MIT copyright + permission notice",
+      "NOTICE": "MIT notice required",
+      "share_alike": "NOT_REQUIRED",
+      "redistribution_requirements": "retain exact MIT notice; excluded renderings/listings/translations do not inherit this source identity",
+      "project_purpose_authorization": {"training": "ALLOWED", "redistribution": "ALLOWED_UNDER_SELECTED_MIT_PATH", "evaluation": "NOT_SEPARATELY_ADMITTED", "tokenizer_fitting": "NOT_SEPARATELY_AUTHORIZED", "selection_validation": "NOT_SEPARATELY_AUTHORIZED", "final_test": "NOT_SEPARATELY_AUTHORIZED"},
+      "required_accompanying_files_text": [{"path": "data/compliance/next100_062/required/rust-book-LICENSE-MIT", "git_blob_sha1": "25597d5838fa4cd7ff5c3c2bb1d1b4c3731eda7f", "materialized": true}],
+      "compliance_status": "READY",
       "missing_obligations": []
     },
     {
-      "source_id": "en.standardebooks.manual.9-metadata",
-      "source_family": "en.standardebooks.manual",
-      "source_version": "git:d1143a9b459b5e6f9cdda93a7c1e04676bff4f6b",
-      "raw_sha256": "7ac53dfb4bf6f73f178560e09f33160d0250c69fb679802f3254dc0eb4c9f509",
-      "terminal_source_authority": "DATA-287/DATA-293",
-      "license": "CC0-1.0",
-      "copyright_notice": "NOT_REQUIRED_BY_SELECTED_CC0_OBJECT",
-      "attribution": "NOT_REQUIRED_BY_CC0",
-      "notice": "NOT_REQUIRED_BY_CC0",
-      "share_alike": "NOT_REQUIRED",
-      "redistribution_requirements": [],
-      "project_purpose_authorization": {
-        "model_training": "ALLOWED",
-        "redistribution": "ALLOWED",
-        "evaluation": "NOT_SEPARATELY_ADMITTED",
-        "tokenizer_fitting": "NOT_SEPARATELY_AUTHORIZED_BY_THIS_MANIFEST",
-        "selection_validation": "NOT_SEPARATELY_AUTHORIZED_BY_THIS_MANIFEST",
-        "final_test": "NOT_SEPARATELY_AUTHORIZED_BY_THIS_MANIFEST"
-      },
-      "required_accompanying_files_text": [],
-      "provenance_license_evidence": "data/external/rights-evidence/data181/standardebooks-manual-license-d1143a9.txt",
-      "compliance_status": "READY_NO_SELECTED_OBJECT_LICENSE_CONDITIONS",
-      "missing_obligations": []
+      "source": "en.standardebooks.manual.8-typography@git:d1143a9b459b5e6f9cdda93a7c1e04676bff4f6b/raw:21582c7f0e4ad39f2b0ed97bbc2c082d275e898b7a63c28e6d9badb8ee0f7860",
+      "authority": "DATA-287/DATA-293",
+      "license": "CC0-1.0; selected RST only; GPL build-manual.py excluded",
+      "copyright_notice": "NOT_REQUIRED", "attribution": "NOT_REQUIRED", "NOTICE": "NOT_REQUIRED", "share_alike": "NOT_REQUIRED", "redistribution_requirements": "NONE",
+      "project_purpose_authorization": {"training": "ALLOWED", "redistribution": "ALLOWED", "evaluation": "NOT_SEPARATELY_ADMITTED", "tokenizer_fitting": "NOT_SEPARATELY_AUTHORIZED", "selection_validation": "NOT_SEPARATELY_AUTHORIZED", "final_test": "NOT_SEPARATELY_AUTHORIZED"},
+      "required_accompanying_files_text": [], "compliance_status": "READY", "missing_obligations": []
     },
     {
-      "source_id": "ua.rada.open-data.laws-texts.d23314",
-      "source_family": "ua.rada.open-data.laws-texts",
-      "source_version": "laws-texts/bounded-2026-08-25",
-      "raw_sha256": "36eae31c3b0676ea7c02236fa05bd695c240c9a8eade5febc00457b8103ee1a4",
-      "terminal_source_authority": "DATA-287/DATA-293",
-      "license": "RADA-OPEN-DATA-REUSE",
-      "copyright_notice": "NO_SEPARATE_COPYRIGHT_NOTICE_REQUIRED_BY_RETAINED_TERMS",
-      "attribution": "REQUIRED_SOURCE_LINK",
-      "notice": "NOT_SEPARATELY_REQUIRED",
-      "share_alike": "NOT_REQUIRED",
-      "redistribution_requirements": ["preserve a link to the source of the public information"],
-      "project_purpose_authorization": {
-        "model_training": "ALLOWED_WITH_SOURCE_ATTRIBUTION_RETAINED_IN_PROVENANCE",
-        "redistribution": "ALLOWED_WITH_SOURCE_ATTRIBUTION",
-        "evaluation": "NOT_SEPARATELY_ADMITTED",
-        "tokenizer_fitting": "NOT_SEPARATELY_AUTHORIZED_BY_THIS_MANIFEST",
-        "selection_validation": "NOT_SEPARATELY_AUTHORIZED_BY_THIS_MANIFEST",
-        "final_test": "NOT_SEPARATELY_AUTHORIZED_BY_THIS_MANIFEST"
-      },
-      "required_accompanying_files_text": [
-        {"path": "data/compliance/next100_062/required/rada-ATTRIBUTION.txt", "git_blob_sha1": "4ac881911b40578ecd6a1714f955ff5e57a77af8"}
-      ],
-      "provenance_license_evidence": "data/external/rights-evidence/data181/rada-open-data-terms-20260826.txt",
-      "compliance_status": "READY_WITH_DECLARED_CONDITIONS",
-      "missing_obligations": []
+      "source": "en.standardebooks.manual.9-metadata@git:d1143a9b459b5e6f9cdda93a7c1e04676bff4f6b/raw:7ac53dfb4bf6f73f178560e09f33160d0250c69fb679802f3254dc0eb4c9f509",
+      "authority": "DATA-287/DATA-293",
+      "license": "CC0-1.0; selected RST only; GPL build-manual.py excluded",
+      "copyright_notice": "NOT_REQUIRED", "attribution": "NOT_REQUIRED", "NOTICE": "NOT_REQUIRED", "share_alike": "NOT_REQUIRED", "redistribution_requirements": "NONE",
+      "project_purpose_authorization": {"training": "ALLOWED", "redistribution": "ALLOWED", "evaluation": "NOT_SEPARATELY_ADMITTED", "tokenizer_fitting": "NOT_SEPARATELY_AUTHORIZED", "selection_validation": "NOT_SEPARATELY_AUTHORIZED", "final_test": "NOT_SEPARATELY_AUTHORIZED"},
+      "required_accompanying_files_text": [], "compliance_status": "READY", "missing_obligations": []
     },
     {
-      "source_id": "ua.wikisource.lesia-ukrainka.na-krylah-pisen.1892.page13",
-      "source_family": "ua.literature.lesia-ukrainka.na-krylah-pisen.1892-lviv",
-      "source_version": "wikimedia-page-revision:560107",
-      "raw_sha256": "65e570c3cd954b595b586554b89a90da6efad0deca6a84d2316937745db17ef2",
-      "terminal_source_authority": "NEXT100-022",
-      "license": "PUBLIC-DOMAIN-UNDERLYING-EDITION + WIKIMEDIA-TEXT-LAYER-CC-BY-SA-4.0-AND/OR-GFDL-AS-APPLICABLE",
-      "copyright_notice": "UNDERLYING_1892_WORK_EDITION_PUBLIC_DOMAIN",
-      "attribution": "REQUIRED_PERMANENT_WIKISOURCE_REVISION_ATTRIBUTION",
-      "notice": "REQUIRED_CC_BY_SA_LICENSE_NOTICE_LINK_OR_GFDL_PATH_WHERE_TERMS_PERMIT",
-      "share_alike": "REQUIRED_AS_APPLICABLE_TO_WIKIMEDIA_CONTRIBUTOR_TEXT_LAYER_EXACT_REUSE_PATH_UNRESOLVED",
-      "redistribution_requirements": [
-        "preserve exact attribution sidecar",
-        "indicate normalization changes",
-        "preserve applicable CC BY-SA notice/link or comply with GFDL where Wikimedia Terms permit",
-        "do not generalize this bounded authority to other Wikisource content"
-      ],
-      "project_purpose_authorization": {
-        "model_training": "ALLOWED",
-        "redistribution": "ALLOWED_WITH_ATTRIBUTION_AND_LICENSE_NOTICE",
-        "evaluation": "NOT_SEPARATELY_ADMITTED",
-        "tokenizer_fitting": "NOT_SEPARATELY_AUTHORIZED_BY_THIS_MANIFEST",
-        "selection_validation": "NOT_SEPARATELY_AUTHORIZED_BY_THIS_MANIFEST",
-        "final_test": "NOT_SEPARATELY_AUTHORIZED_BY_THIS_MANIFEST"
-      },
-      "required_accompanying_files_text": [
-        {"path": "data/compliance/next100_062/required/wikisource-ATTRIBUTION.txt", "git_blob_sha1": "6876cd74979c8368f4e7e45bb19aef5aa1bc08be"}
-      ],
-      "corpus_selection_status": "BLOCKED_UNTIL_STANDARD_DATA232_DATA299_NEAR_MATCH_DECONTAMINATION",
-      "compliance_status": "TRAINING_RIGHTS_PRESERVED_REDISTRIBUTION_BLOCKED_PENDING_SHARE_ALIKE_PATH_RESOLUTION",
-      "missing_obligations": ["EXACT_WIKIMEDIA_REUSE_LICENSE_PATH_AND_SHARE_ALIKE_FULFILLMENT_NOT_YET_MATERIALIZED"]
+      "source": "en.usgov.nist.technical-series@terminal-payload:3ffba0fcd08ab42e940b2db12ffafb6f7234ad0bae6f7fe523071497485b9d1c/3-exact-publications",
+      "authority": "NEXT100-034 PR472 head b7491745b34ac8679baaf69cb96cd609dcbe0a16 terminal authority v2 ADMIT",
+      "license": "exact three NIST employee-authored Technical Series works: document-specific US public-domain status plus worldwide reprint/derivative grant",
+      "copyright_notice": "document-specific NOT_SUBJECT_TO_COPYRIGHT_IN_US statements",
+      "attribution": "NIST provenance + exact recommended citation for each publication",
+      "NOTICE": "recommended citation followed by Republished courtesy of the National Institute of Standards and Technology.",
+      "share_alike": "NOT_REQUIRED",
+      "redistribution_requirements": "exact recommended citations + exact courtesy line + provenance; no blanket NIST/SRD inference",
+      "project_purpose_authorization": {"training": "ALLOWED_WITH_NIST_SOURCE_PROVENANCE", "redistribution": "ALLOWED_WITH_RECOMMENDED_NIST_CITATION_AND_REPUBLISHED_COURTESY_LINE", "evaluation": "NOT_SEPARATELY_ADMITTED", "tokenizer_fitting": "NOT_SEPARATELY_AUTHORIZED", "selection_validation": "NOT_SEPARATELY_AUTHORIZED", "final_test": "NOT_SEPARATELY_AUTHORIZED"},
+      "required_accompanying_files_text": [{"path": "data/compliance/next100_062/required/nist-ATTRIBUTION.txt", "git_blob_sha1": "1b5504ced6e79f33a7ff840ee0a9e46fef99887b", "materialized": true}],
+      "compliance_status": "BLOCKED_REDISTRIBUTION",
+      "missing_obligations": ["EXACT_NIST_RECOMMENDED_CITATION_TEXT_FOR_EACH_PUBLICATION_NOT_BOUND_IN_TERMINAL_SOURCE_AUTHORITY"]
+    },
+    {
+      "source": "en.wikisource.varieties-1902.pages20-22@revisions:8450353,8450364,6931309/norm:1c4ec6e66b425e517a17fb865dabaf3aeddfb1a16cb7e40bca2984be56dce0e7",
+      "authority": "NEXT100-032 PR469 head 838a7687712fb3ed0c2c41bd259f77e4e0a451c9 evidence d16a5e53ad3940778278532ee0be0602d7b9bbca3b27e53ad51e2287b1fa32e9 terminal ADMIT",
+      "license": "public-domain underlying 1902 work + CC-BY-SA-4.0 chosen platform-contribution path",
+      "copyright_notice": "William James 1902 edition public domain; contributor layer separately licensed",
+      "attribution": "edition metadata + English Wikisource + permanent revisions/history + license URI + changes",
+      "NOTICE": "CC BY-SA 4.0 license reference required; no additional restrictions",
+      "share_alike": "REQUIRED_WHEN_ADAPTED_MATERIAL",
+      "redistribution_requirements": "preserve attribution/license/changes; ShareAlike when applicable; no incompatible restrictions; whole project remains rejected",
+      "project_purpose_authorization": {"training": "ALLOWED", "redistribution": "ALLOWED_WITH_ATTRIBUTION_AND_SHAREALIKE", "evaluation": "NOT_SEPARATELY_ADMITTED", "tokenizer_fitting": "NOT_SEPARATELY_AUTHORIZED", "selection_validation": "NOT_SEPARATELY_AUTHORIZED", "final_test": "NOT_SEPARATELY_AUTHORIZED"},
+      "required_accompanying_files_text": [{"path": "data/compliance/next100_062/required/en-wikisource-ATTRIBUTION.txt", "git_blob_sha1": "64716fa056aa962508a388bbff140c2478302455", "materialized": true}],
+      "compliance_status": "BLOCKED_REDISTRIBUTION",
+      "missing_obligations": ["CC_BY_SA_COMPONENT_OR_ADAPTED_MATERIAL_PACKAGING_RULE_NOT_MATERIALIZED"]
+    },
+    {
+      "source": "github:Kludex/starlette@repo-id:138597372/git:4f250d6b814587e20c5365f0a5f0c4d42bcb929f/_utils+convertors",
+      "authority": "NEXT100-045 PR458 head c6756b5ebb6eb1d3bf3de2499167833d99d99a72 exact-head run 32998101312 SUCCESS terminal ADMIT",
+      "license": "BSD-3-Clause",
+      "copyright_notice": "Copyright © 2018, Encode OSS Ltd. All rights reserved.", "attribution": "retain copyright, conditions and disclaimer", "NOTICE": "full BSD notice required", "share_alike": "NOT_REQUIRED",
+      "redistribution_requirements": "retain source notice; binary redistribution reproduces notice; no endorsement without permission",
+      "project_purpose_authorization": {"training": "ALLOWED", "redistribution": "ALLOWED_WITH_NOTICE", "evaluation": "NOT_AUTHORIZED_BY_THIS_AUTHORITY", "tokenizer_fitting": "NOT_SEPARATELY_AUTHORIZED", "selection_validation": "NOT_SEPARATELY_AUTHORIZED", "final_test": "NOT_SEPARATELY_AUTHORIZED"},
+      "required_accompanying_files_text": [{"path": "data/compliance/next100_062/required/starlette-LICENSE.md", "git_blob_sha1": "d16a60ec5b9963ef86b35a52ac92227014618e6c", "materialized": true}], "compliance_status": "READY", "missing_obligations": []
+    },
+    {
+      "source": "github:pydantic/pydantic@git:cf67d4b3193c3fe43ede18612ed62785eee11382/4-exact-authored-files",
+      "authority": "NEXT100-048 PR465 head ca1755886f052d272029d6d68b2f1b7f02187936 authority a25e618f4e26dd7c0df643768ab867a7ae080ca6ad2e5a88bda89bc757ae183a terminal ADMIT",
+      "license": "MIT",
+      "copyright_notice": "Copyright (c) 2017 to present Pydantic Services Inc. and individual contributors.", "attribution": "retain copyright + permission notice", "NOTICE": "MIT notice required", "share_alike": "NOT_REQUIRED",
+      "redistribution_requirements": "retain exact MIT notice; excluded generated/v1/stubs/docs/tests/examples/pydantic-core remain excluded",
+      "project_purpose_authorization": {"training": "ALLOWED", "redistribution": "ALLOWED_WITH_MIT_NOTICE", "evaluation": "NOT_SEPARATELY_ADMITTED", "tokenizer_fitting": "NOT_SEPARATELY_AUTHORIZED", "selection_validation": "NOT_SEPARATELY_AUTHORIZED", "final_test": "NOT_SEPARATELY_AUTHORIZED"},
+      "required_accompanying_files_text": [{"path": "data/compliance/next100_062/required/pydantic-LICENSE", "git_blob_sha1": "488c6260c10f2e88fa1fae58a63fccec8d600cd1", "materialized": true}], "compliance_status": "READY", "missing_obligations": []
+    },
+    {
+      "source": "ua.kmu.portal.secretariat-news@manifest:1f068e6cc5ce3fc4a51d8477acee31fab5a0178e15f49225b57de94c5178f7d9/6-records",
+      "authority": "NEXT100-026 PR449 head 40950a950b60921fd856af2719e1ae2486d9e892 verdict ADMIT",
+      "license": "CC-BY-4.0", "copyright_notice": "Секретаріат Кабінету Міністрів України / Департамент інформації та комунікацій з громадськістю", "attribution": "source URLs + publisher + CC BY 4.0 + changes", "NOTICE": "license URI + modification notice", "share_alike": "NOT_REQUIRED",
+      "redistribution_requirements": "preserve URLs/publisher/license/changes; rejected Ministry CC-BY-NC-ND material remains excluded",
+      "project_purpose_authorization": {"training": "ALLOWED_PRETRAINING", "redistribution": "ALLOWED_WITH_ATTRIBUTION", "evaluation": "NOT_SEPARATELY_ADMITTED", "tokenizer_fitting": "NOT_SEPARATELY_AUTHORIZED", "selection_validation": "NOT_SEPARATELY_AUTHORIZED", "final_test": "PROHIBITED"},
+      "required_accompanying_files_text": [{"path": "data/compliance/next100_062/required/kmu-ATTRIBUTION.txt", "git_blob_sha1": "4191b859e558eb8ec44128defb41d68524253306", "materialized": true}], "compliance_status": "READY", "missing_obligations": []
+    },
+    {
+      "source": "ua.rada.open-data.laws-texts.d23314@raw:36eae31c3b0676ea7c02236fa05bd695c240c9a8eade5febc00457b8103ee1a4",
+      "authority": "DATA-287/DATA-293", "license": "RADA-OPEN-DATA-REUSE", "copyright_notice": "NO_SEPARATE_NOTICE_REQUIRED", "attribution": "mandatory source link", "NOTICE": "NO_SEPARATE_NOTICE_REQUIRED", "share_alike": "NOT_REQUIRED", "redistribution_requirements": "preserve source link",
+      "project_purpose_authorization": {"training": "ALLOWED_WITH_SOURCE_ATTRIBUTION_RETAINED_IN_PROVENANCE", "redistribution": "ALLOWED_WITH_SOURCE_ATTRIBUTION", "evaluation": "NOT_SEPARATELY_ADMITTED", "tokenizer_fitting": "NOT_SEPARATELY_AUTHORIZED", "selection_validation": "NOT_SEPARATELY_AUTHORIZED", "final_test": "NOT_SEPARATELY_AUTHORIZED"},
+      "required_accompanying_files_text": [{"path": "data/compliance/next100_062/required/rada-ATTRIBUTION.txt", "git_blob_sha1": "4ac881911b40578ecd6a1714f955ff5e57a77af8", "materialized": true}], "compliance_status": "READY", "missing_obligations": []
+    },
+    {
+      "source": "ua.verba.public-domain.nomis1864@verba-git:34a2c10ac35e1febad6c270a88fc8b83790407da/24-records/raw:492d985fd5c364fecc76a4ef387bdcbda936ebf47769e6fff011f113411d9b3b",
+      "authority": "NEXT100-027 PR462 head d75edd497c7fb1054e86d892c9462f059c1f4aa9 authority 85f596e79b0ec6479d2ef815e2a6a9bdbfaa55993c797309c1ea4d93b1d9b0e7 verdict ADMIT",
+      "license": "public-domain underlying 1864 work + CC-BY-4.0 digital compilation", "copyright_notice": "underlying work public domain; Verba compilation credited", "attribution": "Yemelianov, Dmytro (2026). verba — Ukrainian Proverbs Corpus (v1.0.2). https://verbacorpus.org", "NOTICE": "CC BY 4.0 reference + changes", "share_alike": "NOT_REQUIRED",
+      "redistribution_requirements": "preserve exact Verba attribution; identify CC BY 4.0; indicate normalization; exclude LLM-generated fields",
+      "project_purpose_authorization": {"training": "ALLOWED", "redistribution": "ALLOWED_WITH_ATTRIBUTION", "evaluation": "NOT_ADMITTED", "tokenizer_fitting": "ALLOWED", "selection_validation": "NOT_ADMITTED", "final_test": "NOT_ADMITTED"},
+      "required_accompanying_files_text": [{"path": "data/compliance/next100_062/required/nomis1864-ATTRIBUTION.txt", "git_blob_sha1": "d2b3aff1fcc0c94bf367faa263ca91d4fd05533d", "materialized": true}], "compliance_status": "READY", "missing_obligations": []
+    },
+    {
+      "source": "ua.wikisource.lesia-ukrainka.na-krylah-pisen.1892.page13@revision:560107/raw:65e570c3cd954b595b586554b89a90da6efad0deca6a84d2316937745db17ef2",
+      "authority": "NEXT100-022 PR455 head 84c51e42b6daa51796fd20d793b5ef1ff01cc9d2 authority 6b443faa7fef777214022028d5fdb356dae0ab1a9b71822b4e16bea8f92cd0d6 exact-head run 32998002424 success",
+      "license": "public-domain underlying edition + Wikimedia text layer CC-BY-SA-4.0 and/or GFDL as applicable", "copyright_notice": "underlying 1892 work/edition public domain", "attribution": "permanent revision + edition/scan provenance + contributor-layer attribution", "NOTICE": "applicable CC BY-SA license notice/link or GFDL path required", "share_alike": "REQUIRED_AS_APPLICABLE; EXACT_REUSE_PATH_UNRESOLVED",
+      "redistribution_requirements": "preserve attribution; indicate normalization; materialize exact Wikimedia reuse path; no generalization to other Wikisource content",
+      "project_purpose_authorization": {"training": "ALLOWED", "redistribution": "ALLOWED_WITH_ATTRIBUTION_AND_LICENSE_NOTICE", "evaluation": "NOT_SEPARATELY_ADMITTED", "tokenizer_fitting": "NOT_SEPARATELY_AUTHORIZED", "selection_validation": "NOT_SEPARATELY_AUTHORIZED", "final_test": "NOT_SEPARATELY_AUTHORIZED"},
+      "required_accompanying_files_text": [{"path": "data/compliance/next100_062/required/wikisource-ATTRIBUTION.txt", "git_blob_sha1": "6876cd74979c8368f4e7e45bb19aef5aa1bc08be", "materialized": true}], "compliance_status": "BLOCKED_REDISTRIBUTION", "missing_obligations": ["EXACT_WIKIMEDIA_REUSE_LICENSE_PATH_AND_SHAREALIKE_FULFILLMENT_NOT_MATERIALIZED"]
     }
   ]
 }
