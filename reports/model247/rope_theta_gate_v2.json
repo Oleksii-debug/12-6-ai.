@@ -1,0 +1,110 @@
+{
+  "schema": "12-6.model247-rope-theta-gate.v2",
+  "worker_id": "MODEL-247-ROPE-THETA-V2",
+  "mission": "Validate RoPE theta only after MODEL-246 selects the relevant ~10M training context.",
+  "status": "BLOCKED_PREREQUISITE_MODEL_246_NOT_PUBLISHED",
+  "execution": {
+    "training_trajectories_run": 0,
+    "theta_comparisons_run": 0,
+    "paid_compute": false,
+    "local_free_only": true,
+    "quality_or_long_context_claim": false
+  },
+  "cutoff": {
+    "repository": "Oleksii-debug/12-6-ai.",
+    "base_branch": "integrate222/learned-execution-spine-20260826",
+    "base_sha": "6afaf5889f9898037b53e8b0bc2b731d77782111",
+    "date_utc": "2026-08-26"
+  },
+  "prerequisite_gate": {
+    "required_worker_id": "MODEL-246-10M-CONTEXT-V2",
+    "required_terminal_output": "A durable repository authority selecting the relevant 10M context from the supported 256/512/1024 comparison under matched parameters and matched source-content exposure.",
+    "observed_pr_search_matches": 0,
+    "observed_commit_search_matches": 0,
+    "old_model197_is_not_a_substitute": true,
+    "reason": "The mission explicitly orders MODEL-247 after MODEL-246. Running theta before that context decision would make context a moving confound and violate the experiment contract."
+  },
+  "incumbent": {
+    "model_name": "S3-SCALE02-BYTE-GQA-v1",
+    "parameter_count": 10000640,
+    "model_spec_sha256": "61caa5469123e23b9b72fc2024140bfca84c4c480dcb0a7e712ba800a4f22998",
+    "vocab_size": 256,
+    "d_model": 256,
+    "layers": 12,
+    "query_heads": 8,
+    "kv_heads": 2,
+    "head_dim": 32,
+    "d_ff": 864,
+    "max_supported_context": 1024,
+    "rope_rotary_dim": 32,
+    "rope_theta": 10000,
+    "position_encoding": "RoPE",
+    "tokenizer": "s0-byte-v1"
+  },
+  "historical_evidence_intake": {
+    "model36_pr": 178,
+    "model36_finding": "All then-current stage configs use full rotary RoPE at theta 10000; RoPE/KV mechanics are capability plumbing, not learned long-context evidence.",
+    "model197_pr": 349,
+    "model197_role": "Predecessor matched 10M context-transfer protocol only; it does not satisfy the explicit MODEL-246 prerequisite for this worker.",
+    "current_10m_runtime_prs": [347, 350],
+    "alternative_theta_search": {
+      "admissible_previously_evidence_supported_alternative_found": false,
+      "selected_alternative_theta": null,
+      "notes": "Repository PR evidence searches for theta/RoPE and plausible larger-theta mentions did not locate an executed theta-quality comparison. No 100000, 500000, 1000000, YaRN, NTK interpolation, or other candidate is invented from convention."
+    }
+  },
+  "allowed_candidate_policy_after_unblock": {
+    "control_theta": 10000,
+    "maximum_number_of_alternatives": 1,
+    "alternative_requirement": "Must be identified by exact prior executed repository evidence and remain scientifically live after MODEL-246 fixes context.",
+    "if_no_admissible_alternative_exists": "Do not manufacture a second arm; retain theta 10000.",
+    "forbidden": [
+      "YaRN",
+      "NTK interpolation",
+      "new positional architecture",
+      "simultaneous context retuning",
+      "simultaneous optimizer retuning"
+    ]
+  },
+  "frozen_variables_after_unblock": [
+    "MODEL-246 selected training/evaluation context",
+    "total model parameter capacity and all non-theta ModelSpec geometry",
+    "initial weight generation within each paired seed",
+    "tokenizer",
+    "corpus and immutable splits",
+    "source document ordering and source-content exposure",
+    "packing/document-boundary policy",
+    "optimized loss-token budget",
+    "effective loss-token batch",
+    "optimizer family, learning rate, betas, epsilon, weight decay, clipping and schedule",
+    "precision/runtime",
+    "evaluation examples and dependency probes"
+  ],
+  "paired_seed_contract": {
+    "required": true,
+    "rule": "Each admissible theta arm must start from identical initial parameter tensors and consume the identical ordered data/loss-token trace for every seed. Seed count and promotion statistics must obey the current project decision authority; they must not be weakened for MODEL-247."
+  },
+  "required_measurements": {
+    "normal_held_out_bpb": "Evaluate the same immutable held-out content at the MODEL-246-authorized horizon and report paired BPB deltas.",
+    "dependency_distance_strata": "Report reserved dependency probes by preregistered distance strata that fit inside the selected context; do not score a distance the selected training context cannot support.",
+    "maximum_context_behavior": "Exercise the exact selected maximum trained context, including boundary prefill/decode behavior and over-context rejection where applicable.",
+    "attention_logit_numerical_health": [
+      "nonfinite attention/logit count",
+      "per-layer attention-score finite status and extrema or incumbent equivalent telemetry",
+      "logit finite status and extrema",
+      "loss spikes / numerical failure events"
+    ],
+    "cached_stateless_inference_parity": "Compare incumbent model-native cached decode against stateless full-prefix inference on identical token sequences using the existing project parity tolerance; do not widen tolerance per theta arm."
+  },
+  "decision_rule": {
+    "primary": "A non-10000 theta may replace the incumbent only with a material and repeatable paired gain under the frozen post-MODEL-246 contract, without a material regression in normal held-out BPB, dependency strata, maximum-context behavior, numerical health, or cached/stateless parity.",
+    "fallback": "If gain is not material and repeatable, retain theta 10000.",
+    "current_decision": "NO_DECISION_PREREQUISITE_BLOCKED"
+  },
+  "truth_boundary": [
+    "No RoPE support result is called learned long-context capability.",
+    "No theta candidate is inferred from external convention without repository evidence.",
+    "No training is run before MODEL-246 publishes terminal context authority.",
+    "No paid compute is authorized or used."
+  ]
+}
