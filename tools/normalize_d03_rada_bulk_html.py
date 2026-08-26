@@ -27,6 +27,8 @@ CANONICAL_BASENAME = re.compile(r"d[0-9]+\.htm")
 SHA256_RE = re.compile(r"[0-9a-f]{64}")
 PINNED_PROBE_GATE = "PASS_PINNED_DISCOVERY_REVALIDATED"
 PINNED_PROBE_RESULT = "PINNED_BULK_ARCHIVE_INVENTORIED_DOWNSTREAM_GATES_REQUIRED"
+DECODE_POLICY = "STRICT_UTF8_THEN_WINDOWS_1251_FALLBACK"
+LEGACY_FALLBACK_ENCODING = "windows-1251"
 
 
 class NormalizationError(RuntimeError):
@@ -88,6 +90,22 @@ def _validate_config(config: Mapping[str, Any]) -> None:
         str(parent.get("source_family_identity_sha256"))
     ):
         raise NormalizationError("source-family identity must be SHA-256")
+
+    normalization = config.get("normalization")
+    if not isinstance(normalization, Mapping):
+        raise NormalizationError("normalization policy missing")
+    if normalization.get("decode") != DECODE_POLICY:
+        raise NormalizationError("normalization decode policy drift")
+    if normalization.get("legacy_fallback_encoding") != LEGACY_FALLBACK_ENCODING:
+        raise NormalizationError("legacy fallback encoding drift")
+    if normalization.get("unicode_normalization") != "NFKC":
+        raise NormalizationError("unicode normalization policy drift")
+    if normalization.get("collapse_inline_whitespace") is not True:
+        raise NormalizationError("inline whitespace policy drift")
+    if normalization.get("collapse_blank_lines") is not True:
+        raise NormalizationError("blank-line policy drift")
+    if normalization.get("record_id_prefix") != "ua.rada.open-data.laws-texts.":
+        raise NormalizationError("record-id prefix drift")
 
     boundary = config.get("claim_boundary")
     if not isinstance(boundary, Mapping):
@@ -157,16 +175,30 @@ class _VisibleTextParser(HTMLParser):
             self.parts.append(data)
 
 
-def normalize_html_bytes(raw: bytes, config: Mapping[str, Any]) -> str:
-    """Extract deterministic visible text from one strict-UTF-8 HTML object."""
-    normalization = config.get("normalization")
-    if not isinstance(normalization, Mapping):
-        raise NormalizationError("normalization policy missing")
-    try:
-        decoded = raw.decode("utf-8-sig", errors="strict")
-    except UnicodeDecodeError as exc:
-        raise NormalizationError("Rada HTML is not strict UTF-8") from exc
+def _decode_html_bytes(
+    raw: bytes,
+    normalization: Mapping[str, Any],
+) -> tuple[str, str]:
+    """Decode one object with a deterministic UTF-8 then Windows-1251 policy."""
+    if normalization.get("decode") != DECODE_POLICY:
+        raise NormalizationError("normalization decode policy drift")
+    if normalization.get("legacy_fallback_encoding") != LEGACY_FALLBACK_ENCODING:
+        raise NormalizationError("legacy fallback encoding drift")
 
+    try:
+        return raw.decode("utf-8-sig", errors="strict"), "utf-8"
+    except UnicodeDecodeError:
+        pass
+
+    try:
+        return raw.decode("cp1251", errors="strict"), LEGACY_FALLBACK_ENCODING
+    except UnicodeDecodeError as exc:
+        raise NormalizationError(
+            "Rada HTML is neither strict UTF-8 nor windows-1251"
+        ) from exc
+
+
+def _normalize_decoded_html(decoded: str, normalization: Mapping[str, Any]) -> str:
     hidden_tags = {str(tag).lower() for tag in normalization.get("hidden_tags", [])}
     block_tags = {str(tag).lower() for tag in normalization.get("block_tags", [])}
     if not hidden_tags or not block_tags:
@@ -201,6 +233,24 @@ def normalize_html_bytes(raw: bytes, config: Mapping[str, Any]) -> str:
     while lines and not lines[-1]:
         lines.pop()
     return "\n".join(lines)
+
+
+def normalize_html_bytes_with_encoding(
+    raw: bytes,
+    config: Mapping[str, Any],
+) -> tuple[str, str]:
+    """Extract visible text and return the exact deterministic decode label."""
+    normalization = config.get("normalization")
+    if not isinstance(normalization, Mapping):
+        raise NormalizationError("normalization policy missing")
+    decoded, source_encoding = _decode_html_bytes(raw, normalization)
+    return _normalize_decoded_html(decoded, normalization), source_encoding
+
+
+def normalize_html_bytes(raw: bytes, config: Mapping[str, Any]) -> str:
+    """Extract deterministic visible text from one Rada HTML object."""
+    text, _ = normalize_html_bytes_with_encoding(raw, config)
+    return text
 
 
 def _probe_inventory_identity(
@@ -327,6 +377,7 @@ def materialize_normalized_records(
     records: list[dict[str, Any]] = []
     seen_ids: set[str] = set()
     observed_basenames: set[str] = set()
+    encoding_counts: dict[str, int] = {}
     with archive_file as zf:
         for info in zf.infolist():
             normalized_path = info.filename.replace("\\", "/")
@@ -353,16 +404,18 @@ def materialize_normalized_records(
             if expected_entry.get("raw_sha256") != raw_sha256:
                 raise NormalizationError(f"raw SHA-256 drift for {basename}")
 
-            text = normalize_html_bytes(raw, config)
+            text, source_encoding = normalize_html_bytes_with_encoding(raw, config)
             normalized = text.encode("utf-8")
             record_id = prefix + Path(basename).stem
             if record_id in seen_ids:
                 raise NormalizationError(f"duplicate record id: {record_id}")
             seen_ids.add(record_id)
+            encoding_counts[source_encoding] = encoding_counts.get(source_encoding, 0) + 1
             records.append(
                 {
                     "record_id": record_id,
                     "source_path": normalized_path,
+                    "source_encoding": source_encoding,
                     "raw_bytes": len(raw),
                     "raw_sha256": raw_sha256,
                     "normalized_bytes": len(normalized),
@@ -407,6 +460,9 @@ def materialize_normalized_records(
             "nonempty_record_count": nonempty_records,
             "raw_bytes": sum(int(record["raw_bytes"]) for record in records),
             "normalized_bytes_observed_not_credited": normalized_bytes,
+            "source_encoding_counts": {
+                key: encoding_counts[key] for key in sorted(encoding_counts)
+            },
             "normalized_record_inventory_sha256": inventory_hasher.hexdigest(),
             "jsonl_sha256": _sha256(jsonl),
         },
@@ -481,6 +537,9 @@ def main() -> int:
                 "record_count": manifest["normalization"]["record_count"],
                 "normalized_bytes_observed_not_credited": manifest["normalization"][
                     "normalized_bytes_observed_not_credited"
+                ],
+                "source_encoding_counts": manifest["normalization"][
+                    "source_encoding_counts"
                 ],
                 "manifest_identity_sha256": manifest["manifest_identity_sha256"],
                 "training_authorized_bytes": 0,
