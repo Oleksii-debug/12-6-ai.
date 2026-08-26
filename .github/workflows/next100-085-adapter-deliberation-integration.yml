@@ -106,7 +106,7 @@ jobs:
 
           checkpoint = Path('learned-artifacts/learn217/scale141-evidence/retained/best')
           expected_spec = '61caa5469123e23b9b72fc2024140bfca84c4c480dcb0a7e712ba800a4f22998'
-          expected_checkpoint = '9f1dc5352743a3acdf8c9897aa9a2c9a982bb9c1ab006c80410e5b1104a483fb'
+          expected_checkpoint = '12f9edd88bf5e596ae6f985564a5dcff96033922100ba91678ef9a76c0df3156'
           adapter = PostBaseModelAdapter.from_checkpoint(
               checkpoint,
               expected_model_spec_sha256=expected_spec,
@@ -146,6 +146,7 @@ jobs:
               'source_artifact': {
                   'artifact_id': 9602650341,
                   'zip_sha256': '8631e90417e40365b3fc0d6bc98ee6adda5a4ed24530e675d9a91c93219537ee',
+                  'retained_checkpoint_id': expected_checkpoint,
               },
               'base_evidence': base_before,
               'base_weight_sha256_before': weights_before,
