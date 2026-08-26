@@ -1,0 +1,67 @@
+name: CI-153 Workflow Dependency Audit
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact audit head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Set up exact Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Run stdlib-only workflow audit before dependency installation
+        run: |
+          set -euo pipefail
+          python tools/ci153_workflow_dependency_auditor.py \
+            --repo-root . \
+            --report ci153-workflow-audit.json \
+            --exemptions ci/ci153_legacy_exemptions.json \
+            --no-fail
+
+      - name: Bootstrap this worker test and lint dependencies explicitly
+        run: |
+          set -euo pipefail
+          python -m venv .ci153
+          .ci153/bin/python -m pip install \
+            --disable-pip-version-check --no-deps --require-hashes \
+            -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .ci153/bin/python -m pip install \
+            --disable-pip-version-check --no-deps --require-hashes \
+            -r requirements/locks/linux-x86_64/dev.lock.txt
+
+      - name: Test and lint the auditor
+        run: |
+          set -euo pipefail
+          PYTHONPATH=. .ci153/bin/python -m pytest -q tests/test_ci153_workflow_dependency_auditor.py
+          .ci153/bin/python -m ruff check tools/ci153_workflow_dependency_auditor.py tests/test_ci153_workflow_dependency_auditor.py
+
+      - name: Enforce complete active-workflow audit
+        run: |
+          set -euo pipefail
+          python tools/ci153_workflow_dependency_auditor.py \
+            --repo-root . \
+            --report ci153-workflow-audit.json \
+            --exemptions ci/ci153_legacy_exemptions.json
+
+      - name: Upload machine-readable full workflow report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ci153-workflow-dependency-audit
+          path: ci153-workflow-audit.json
+          if-no-files-found: error
+          retention-days: 30
