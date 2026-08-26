@@ -18,7 +18,7 @@
   "candidate_freeze": {
     "candidate_set_digest_sha256": null,
     "frozen": false,
-    "reason": "NEXT100-063 exact-head CI is nonterminal; issue #526 forbids hard-coding a stale late-source subset.",
+    "reason": "NEXT100-063 canonical convergence PR #538 is draft/nonterminal and explicitly claims no exact-head CI; issue #526 forbids consuming it as terminal authority.",
     "record_count": 0,
     "record_inventory_digest_sha256": null,
     "records": []
@@ -46,35 +46,36 @@
     "tokenizer_fit": "NOT_PERMITTED"
   },
   "evidence_identity_scope": "SHA256(canonical JSON with evidence_identity_sha256 omitted)",
-  "evidence_identity_sha256": "6cb3fd58a769158019e31f5dd4b7b3abdae62551f1aaaf1374269ebd99b115f1",
+  "evidence_identity_sha256": "9ab1d931ffeb4da5f8080af3632de1b3ee3e0ba412056a59f7003867f00f4876",
   "execution_profile": "LOCAL_FREE",
   "purpose": "Fail-close Research Corpus V1 pre-decontamination candidate freeze until NEXT100-063 source-authority convergence is terminal.",
   "repository": "Oleksii-debug/12-6-ai.",
   "required_source_convergence": {
-    "base_head_sha": "efc278cec0e4773eb4ff405bf4b4d24ee63b5d13",
-    "exact_head_ci_state": "QUEUED_NONTERMINAL",
+    "base_head_sha": "b0523ccbc4b957615aac849d476cfa851be87578",
+    "exact_head_ci_state": "NOT_PUBLISHED_NONTERMINAL",
     "issue": 521,
-    "observed_head_sha": "481468a8cebcd82c96f4801062203d627e13ded4",
-    "pr_state": "OPEN",
-    "pull_request": 527,
+    "observed_head_sha": "94dce83cbe611144f961b9f93b3be273345a7f62",
+    "pr_state": "OPEN_DRAFT",
+    "pull_request": 538,
     "reported_pre_successor_global_dedup_vector_non_authoritative_until_terminal": {
       "by_stratum": {
         "code": {
-          "bytes": 69133,
-          "families": 4
+          "bytes": 296343,
+          "families": 5
         },
         "en": {
-          "bytes": 144151,
-          "families": 2
+          "bytes": 168544,
+          "families": 4
         },
         "uk": {
           "bytes": 100856,
           "families": 4
         }
       },
-      "independent_families": 10,
-      "source_capacity_bytes": 314140
+      "independent_families": 13,
+      "source_capacity_bytes": 565743
     },
+    "supersedes_pull_request": 527,
     "terminal_authority_consumed": false
   },
   "schema_version": "12-6.research-corpus-v1-predecontam-blocker.v1",
