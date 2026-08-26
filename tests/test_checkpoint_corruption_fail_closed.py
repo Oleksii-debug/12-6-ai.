@@ -215,10 +215,10 @@ class SourceScheduler:
 
 class TargetScheduler:
     def state_dict(self) -> dict[str, int]:
-        return {"schema_version": 1}
+        return {"schema_version": 1, "last_epoch": 0}
 
     def load_state_dict(self, state: dict[str, int]) -> None:
-        if state != {"schema_version": 1}:
+        if state != {"schema_version": 1, "last_epoch": 0}:
             raise ValueError("scheduler schema mismatch")
 
 
