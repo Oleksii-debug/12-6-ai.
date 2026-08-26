@@ -1,9 +1,9 @@
 name: ENV-151 CPU lock provenance
 
 on:
-  push:
+  pull_request:
     branches:
-      - env151/cpu-lock-provenance-20260826
+      - milestone150/learned-base-ladder-v1-20260826
 
 permissions:
   contents: read
@@ -16,7 +16,7 @@ jobs:
       - name: Checkout exact head
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
       - name: Set up exact Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -33,7 +33,6 @@ jobs:
             'torch==2.13.0+cpu' 'numpy==2.4.6' 'safetensors==0.8.0'
           .resolver/bin/python - <<'PY'
           import json
-          import re
           from pathlib import Path
 
           report = json.loads(Path('cpu-report.json').read_text())
