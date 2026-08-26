@@ -1,0 +1,37 @@
+{
+  "schema_version": "12-6.research-corpus-v1-training-scope.v1",
+  "local_free_only": true,
+  "model_training_executed": false,
+  "research_corpus_v1_source_milestone_bytes": 20000000,
+  "source_bytes_are_training_tokens": false,
+  "source_milestone_proves_training_sufficiency": false,
+  "exact_model": {
+    "authority": "MODEL-341",
+    "parameters": 20613440,
+    "mechanics_status": "QUALIFIED_CANDIDATE_NOT_LEARNED_MODEL"
+  },
+  "scaling_policy_dependency": {
+    "candidate_pr": 568,
+    "candidate_head": "b7f94a1da468e3bdd2746bd594af65d2d4329ef7",
+    "status": "CANDIDATE_ONLY_NOT_TERMINAL_AUTHORITY",
+    "reference_unique_loss_tokens_20x": 412268800,
+    "reference_is_authorized_budget": false,
+    "note": "20 tokens/parameter is retained only as a research planning reference. A successor authority must reconcile live scaling-policy candidates and preregister the actual learned-stage budget."
+  },
+  "current_authority": {
+    "materialized_unique_loss_tokens": 0,
+    "training_authorized_unique_loss_tokens": 0,
+    "long_learned_20m_training_authorized": false
+  },
+  "required_before_long_learned_20m_training": [
+    "terminal_research_corpus_identity",
+    "terminal_tokenizer_identity",
+    "train_selection_final_eval_decontamination",
+    "post_pack_unique_nonignored_causal_loss_token_count",
+    "terminal_scaling_budget_policy",
+    "preregistered_budget_and_stopping_rule",
+    "checkpoint_recovery_terminal_pass",
+    "compute_authorization"
+  ],
+  "truth_boundary": "RESEARCH_CORPUS_V1_20MB_IS_A_SOURCE_ACQUISITION_MILESTONE_ONLY; IT MUST NOT BE RELABELED AS 20M_MODEL_TRAINING_SUFFICIENCY"
+}
