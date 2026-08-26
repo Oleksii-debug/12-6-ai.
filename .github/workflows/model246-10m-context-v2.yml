@@ -1,0 +1,51 @@
+name: MODEL-246 10M Context V2 Readiness
+on:
+  push:
+    branches: [model246/10m-context-v2-20260826]
+  workflow_dispatch:
+concurrency:
+  group: model246-10m-context-v2-readiness
+  cancel-in-progress: false
+permissions: {contents: read}
+jobs:
+  fail-closed-readiness:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with: {ref: "${{ github.sha }}", persist-credentials: false}
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with: {python-version: "3.11.16"}
+      - uses: ./.github/actions/execution-bootstrap
+        with:
+          capabilities: runtime,tests
+          venv: .model246-env
+          command: python tools/validate_model246_readiness.py
+          manifest: model246-evidence/environment.json
+      - name: Validate immutable fail-closed authority gate
+        run: |
+          set -euo pipefail
+          .model246-env/bin/python tools/validate_model246_readiness.py | tee model246-evidence/readiness.stdout.json
+      - name: Prove no V2 training output was fabricated
+        run: |
+          set -euo pipefail
+          .model246-env/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path('evidence/model246/readiness.json').read_text())
+          assert report['execution']['training_started'] is False
+          assert report['execution']['optimizer_updates'] == 0
+          assert report['status'].startswith('BLOCKED_')
+          for forbidden in ('arm-256.json', 'arm-512.json', 'arm-1024.json', 'model246-summary.json'):
+              assert not Path('model246-evidence', forbidden).exists(), forbidden
+          print('PASS: MODEL-246 remains fail-closed; no numerical V2 arm output exists')
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: model246-context-v2-readiness
+          path: |
+            evidence/model246/readiness.json
+            model246-evidence/environment.json
+            model246-evidence/readiness.stdout.json
+          if-no-files-found: error
