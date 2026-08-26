@@ -38,7 +38,7 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
 
-      - name: Install hash-locked CPU runtime
+      - name: Install hash-locked CPU runtime and test tooling
         run: |
           set -euo pipefail
           python -m venv .scale141
@@ -48,6 +48,9 @@ jobs:
           .scale141/bin/python -m pip install \
             --disable-pip-version-check --no-deps --require-hashes \
             -r requirements/locks/linux-x86_64/runtime.lock.txt
+          .scale141/bin/python -m pip install \
+            --disable-pip-version-check --no-deps --require-hashes \
+            -r requirements/locks/linux-x86_64/dev.lock.txt
 
       - name: Compile and test SCALE-141 contracts
         run: |
