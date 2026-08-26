@@ -1,0 +1,196 @@
+name: NEXT100-085 Adapter Deliberation Integration
+run-name: NEXT100-085 LOCAL_FREE Base/controller integration proof
+
+on:
+  push:
+    branches: [next100-085/adapter-deliberation-integration-20260826]
+  workflow_dispatch:
+
+concurrency:
+  group: next100-085-${{ github.sha }}
+  cancel-in-progress: true
+
+permissions: {contents: read, actions: read}
+
+jobs:
+  local-free-cpu:
+    runs-on: ubuntu-24.04
+    env:
+      PYTHONPATH: src
+      NEXT100_085_EXECUTION_PROFILE: LOCAL_FREE
+      NEXT100_085_HEAD_SHA: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: "${{ env.NEXT100_085_HEAD_SHA }}"
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with: {python-version: "3.11.16"}
+
+      - name: Bootstrap focused LOCAL_FREE tests
+        uses: ./.github/actions/execution-bootstrap
+        with:
+          capabilities: runtime,tests,lint
+          venv: .next100-085-cpu
+          command: >-
+            python -m pytest -q
+            tests/test_postbase_model_adapter.py
+            tests/test_next100_085_adapter_deliberation_integration.py
+          manifest: reports/next100-085/environment.json
+
+      - name: Ruff integration surface
+        run: >-
+          .next100-085-cpu/bin/ruff check
+          src/twelve_six/postbase
+          src/twelve_six/postbase_deliberation.py
+          src/twelve_six/postbase_hypothesis.py
+          tests/test_next100_085_adapter_deliberation_integration.py
+
+      - name: Prove no external model/network or training dependency
+        run: |
+          set -euo pipefail
+          if grep -REn '^\s*(from|import)\s+(openai|anthropic|requests|httpx)(\.|\s|$)' src/twelve_six/postbase src/twelve_six/postbase_deliberation.py src/twelve_six/postbase_hypothesis.py; then
+            echo "controller integration must remain LOCAL_FREE" >&2
+            exit 1
+          fi
+          if grep -REn '\b(save_checkpoint|backward|optimizer\.step)\b' src/twelve_six/postbase; then
+            echo "post-Base integration must not own training/checkpoint mutation mechanics" >&2
+            exit 1
+          fi
+
+      - name: Download exact POSTBASE-351 learned 10M artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p learned-artifacts/zips learned-artifacts/learn217 reports/next100-085
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/9602650341/zip" > learned-artifacts/zips/learn217.zip
+          echo "8631e90417e40365b3fc0d6bc98ee6adda5a4ed24530e675d9a91c93219537ee  learned-artifacts/zips/learn217.zip" | sha256sum -c -
+          unzip -q learned-artifacts/zips/learn217.zip -d learned-artifacts/learn217
+
+      - name: Record learned Base checkpoint tree before controller use
+        run: |
+          set -euo pipefail
+          CHECKPOINT=learned-artifacts/learn217/scale141-evidence/retained/best
+          (cd "$CHECKPOINT" && find . -type f -print0 | sort -z | xargs -0 sha256sum) | sha256sum | awk '{print $1}' > reports/next100-085/base-tree-before.sha256
+
+      - name: Exercise learned 10M through deliberation and hypothesis integration
+        run: |
+          set -euo pipefail
+          .next100-085-cpu/bin/python - <<'PY'
+          import hashlib
+          import json
+          from dataclasses import asdict
+          from pathlib import Path
+
+          import torch
+
+          from twelve_six.postbase import PostBaseModelAdapter
+          from twelve_six.postbase.controller_integration import DeliberationBaseBridge, HypothesisBaseBridge
+          from twelve_six.postbase_deliberation import Budget, Config, DeliberationController, Verification
+
+          class PassVerifier:
+              def evaluate(self, task, text, branch_id, iteration):
+                  return Verification(1.0, 1.0, "mechanics-only deterministic stop")
+
+          def weight_digest(adapter):
+              digest = hashlib.sha256()
+              for name, tensor in sorted(adapter._backend.model.state_dict().items()):
+                  value = tensor.detach().cpu().contiguous()
+                  digest.update(name.encode())
+                  digest.update(str(value.dtype).encode())
+                  digest.update(str(tuple(value.shape)).encode())
+                  digest.update(value.flatten().view(torch.uint8).numpy().tobytes())
+              return digest.hexdigest()
+
+          checkpoint = Path('learned-artifacts/learn217/scale141-evidence/retained/best')
+          expected_spec = '61caa5469123e23b9b72fc2024140bfca84c4c480dcb0a7e712ba800a4f22998'
+          expected_checkpoint = '9f1dc5352743a3acdf8c9897aa9a2c9a982bb9c1ab006c80410e5b1104a483fb'
+          adapter = PostBaseModelAdapter.from_checkpoint(
+              checkpoint,
+              expected_model_spec_sha256=expected_spec,
+          )
+          assert adapter.base_evidence.checkpoint_id == expected_checkpoint
+          assert adapter.model_spec.parameter_count() == 10_000_640
+          base_before = asdict(adapter.base_evidence)
+          weights_before = weight_digest(adapter)
+
+          deliberation = DeliberationBaseBridge(adapter)
+          controller = DeliberationController(
+              deliberation,
+              PassVerifier(),
+              config=Config(initial_branches=1, target_score=1.0, min_confidence=1.0),
+          )
+          budget = Budget(model_calls=1, generated_tokens=8, candidate_branches=1)
+          controller.run('NEXT100-085 mechanics pass one', budget)
+          controller.run('NEXT100-085 mechanics pass two', budget)
+
+          hypothesis = HypothesisBaseBridge(adapter)
+          proposed = hypothesis.propose('NEXT100-085 mechanics hypothesis', max_new_tokens=16)
+          hypothesis.critique(proposed.id, 'NEXT100-085 mechanics hypothesis', max_new_tokens=16)
+
+          assert asdict(adapter.base_evidence) == base_before
+          assert weight_digest(adapter) == weights_before
+          assert len(deliberation.post_base_evidence) == 2
+          assert len(hypothesis.post_base_evidence) == 2
+          assert all(item.evidence_namespace == 'post_base' for item in deliberation.post_base_evidence)
+          assert all(item.evidence_namespace == 'post_base' for item in hypothesis.post_base_evidence)
+          assert all(item.generation.controller == 'deliberation' for item in deliberation.post_base_evidence)
+          assert all(item.generation.controller == 'hypothesis' for item in hypothesis.post_base_evidence)
+
+          report = {
+              'schema': '12-6.next100-085.learned-10m-integration-proof.v1',
+              'worker': 'NEXT100-085-ADAPTER-DELIBERATION-INTEGRATION',
+              'runtime_policy': 'LOCAL_FREE',
+              'source_artifact': {
+                  'artifact_id': 9602650341,
+                  'zip_sha256': '8631e90417e40365b3fc0d6bc98ee6adda5a4ed24530e675d9a91c93219537ee',
+              },
+              'base_evidence': base_before,
+              'base_weight_sha256_before': weights_before,
+              'base_weight_sha256_after': weight_digest(adapter),
+              'deliberation_calls': [item.to_dict() for item in deliberation.post_base_evidence],
+              'hypothesis_calls': [item.to_dict() for item in hypothesis.post_base_evidence],
+              'claims': {
+                  'checkpoint_immutable_in_memory': True,
+                  'base_evidence_namespace_preserved': True,
+                  'post_base_evidence_namespace_preserved': True,
+                  'reasoning_quality_claimed': False,
+              },
+          }
+          Path('reports/next100-085/learned-10m-integration-proof.json').write_text(
+              json.dumps(report, indent=2, sort_keys=True) + '\n',
+              encoding='utf-8',
+          )
+          PY
+
+      - name: Prove learned Base checkpoint tree is byte-identical after controller use
+        run: |
+          set -euo pipefail
+          CHECKPOINT=learned-artifacts/learn217/scale141-evidence/retained/best
+          (cd "$CHECKPOINT" && find . -type f -print0 | sort -z | xargs -0 sha256sum) | sha256sum | awk '{print $1}' > reports/next100-085/base-tree-after.sha256
+          cmp reports/next100-085/base-tree-before.sha256 reports/next100-085/base-tree-after.sha256
+
+      - name: Verify exact checked-out head and CPU-only execution
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$NEXT100_085_HEAD_SHA"
+          .next100-085-cpu/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+          import torch
+          manifest = json.loads(Path('reports/next100-085/environment.json').read_text())
+          assert manifest['preflight']['status'] == 'PASS'
+          assert manifest['plan']['cuda_packages_present'] is False
+          assert torch.version.cuda is None
+          assert torch.cuda.is_available() is False
+          PY
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: next100-085-adapter-deliberation-integration
+          path: reports/next100-085/
+          if-no-files-found: warn
+          retention-days: 30
