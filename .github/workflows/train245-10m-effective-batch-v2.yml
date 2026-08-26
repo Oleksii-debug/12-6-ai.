@@ -1,0 +1,49 @@
+name: TRAIN-245 10M effective batch V2 gate
+on:
+  pull_request:
+    branches: [train195/10m-lr-beta-transfer-gate-20260826]
+    paths:
+      - 'configs/experiments/train245_10m_effective_batch_v2.json'
+      - 'tools/train245_effective_batch_gate.py'
+      - 'tests/test_train245_effective_batch_gate.py'
+      - 'docs/TRAIN245_10M_EFFECTIVE_BATCH_V2.md'
+      - '.github/workflows/train245-10m-effective-batch-v2.yml'
+  workflow_dispatch:
+permissions: {contents: read}
+concurrency:
+  group: train245-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  prerequisite-gate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with: {ref: "${{ github.event.pull_request.head.sha || github.sha }}", persist-credentials: false}
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with: {python-version: "3.11.16"}
+      - uses: ./.github/actions/execution-bootstrap
+        with:
+          capabilities: runtime,tests
+          venv: .train245
+          command: python -m pytest -q tests/test_train245_effective_batch_gate.py
+          manifest: train245-evidence/bootstrap.json
+      - run: |
+          .train245/bin/python tools/train245_effective_batch_gate.py \
+            --config configs/experiments/train245_10m_effective_batch_v2.json \
+            --report train245-evidence/prerequisite-gate.json
+      - run: |
+          set +e
+          .train245/bin/python tools/train245_effective_batch_gate.py \
+            --config configs/experiments/train245_10m_effective_batch_v2.json \
+            --require-runnable
+          rc=$?
+          set -e
+          if [ "$rc" -ne 3 ]; then
+            echo "Expected current TRAIN-245 state to fail closed with exit code 3, observed $rc" >&2
+            exit 1
+          fi
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: train245-effective-batch-gate
+          path: train245-evidence/
+          if-no-files-found: error
