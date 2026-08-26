@@ -5,8 +5,9 @@ import hashlib
 import json
 import math
 import sys
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 
 from twelve_six.inference.first_party import load_first_party_backend
 from twelve_six.inference.parity import compare_backends
@@ -84,8 +85,8 @@ def _collect_raw_trace(reference, candidate, prompts: Sequence[str], max_new_tok
             vllm_logits = _finite_logits(candidate.next_token_logits(history), side="vllm")
             if len(reference_logits) != len(vllm_logits):
                 raise ValueError("raw-logit vocabulary size mismatch during trace")
-            reference_token = int(greedy_token(reference_logits))
-            vllm_token = int(greedy_token(vllm_logits))
+            reference_token = greedy_token(reference_logits)
+            vllm_token = greedy_token(vllm_logits)
             steps.append(
                 {
                     "step_index": step_index,
