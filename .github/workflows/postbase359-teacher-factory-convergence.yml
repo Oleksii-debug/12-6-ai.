@@ -1,0 +1,99 @@
+name: POSTBASE-359 Teacher Factory Convergence
+
+on:
+  push:
+    branches:
+      - postbase359/teacher-factory-convergence-20260826
+  pull_request:
+    branches:
+      - postbase259/teacher-student-data-factory-v1-20260826
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  local-free-convergence:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up exact Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11.16"
+
+      - name: Universal execution bootstrap
+        uses: ./.github/actions/execution-bootstrap
+        with:
+          capabilities: runtime,tests,lint
+          venv: .venv-postbase359
+          manifest: postbase359-proof/bootstrap.json
+
+      - name: Focused inherited and convergence contracts
+        shell: bash
+        env:
+          PYTHONPATH: src
+        run: |
+          set -euo pipefail
+          .venv-postbase359/bin/python -m pytest -q \
+            tests/test_postbase259_teacher_student_factory.py \
+            tests/test_postbase359_teacher_factory_convergence.py
+          .venv-postbase359/bin/ruff check \
+            src/twelve_six/postbase/contracts.py \
+            src/twelve_six/postbase/factory.py \
+            tests/test_postbase359_teacher_factory_convergence.py \
+            tools/run_postbase359_convergence.py
+
+      - name: Compile convergence surface
+        shell: bash
+        run: |
+          set -euo pipefail
+          .venv-postbase359/bin/python -m compileall -q \
+            src/twelve_six/postbase \
+            tests/test_postbase259_teacher_student_factory.py \
+            tests/test_postbase359_teacher_factory_convergence.py \
+            tools/run_postbase259_proof.py \
+            tools/run_postbase359_convergence.py
+
+      - name: Execute deterministic local proof
+        shell: bash
+        env:
+          PYTHONPATH: src
+        run: |
+          set -euo pipefail
+          .venv-postbase359/bin/python tools/run_postbase359_convergence.py \
+            --output postbase359-proof/report.json
+
+      - name: Enforce provider-neutral and Base boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          ! grep -R -n -E \
+            'OPENAI_API_KEY|ANTHROPIC_API_KEY|GEMINI_API_KEY|api[_-]?key|https?://|import openai|from openai|import anthropic|from anthropic' \
+            src/twelve_six/postbase tools/run_postbase359_convergence.py
+          grep -q '"external_teacher_calls": 0' postbase359-proof/report.json
+          grep -q '"canonical_base_training_executed": false' postbase359-proof/report.json
+          grep -q '"canonical_base_training_eligible": false' postbase359-proof/report.json
+          grep -q '"base_corpus_evidence": false' postbase359-proof/report.json
+          grep -q '"training_use": "POSTBASE_SYNTHETIC_EXPERIMENTAL_ONLY"' postbase359-proof/report.json
+          grep -q '"pairwise_distinct": true' postbase359-proof/report.json
+          grep -q '"teacher_confidence": 1.0' postbase359-proof/report.json
+          grep -q '"verification_status": "CONTRADICTED"' postbase359-proof/report.json
+          grep -q '"accepted": false' postbase359-proof/report.json
+          grep -q '"accepted_records": 0' postbase359-proof/report.json
+          grep -q '"dataset_revision": 0' postbase359-proof/report.json
+
+      - name: Retain convergence proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: postbase359-teacher-factory-convergence-${{ github.sha }}
+          path: postbase359-proof/
+          if-no-files-found: error
+          retention-days: 30
