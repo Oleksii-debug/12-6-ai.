@@ -3,7 +3,7 @@
 This package is the fail-closed boundary between the merged R01 20M→100M planning
 contract and any future material learned-20M training run.
 
-It does not train a model and it cannot grant itself financial permission.
+It does not train a model and packet contents alone cannot grant financial permission.
 
 ## Derived states
 
@@ -12,14 +12,20 @@ dependency is absent or invalid.
 
 `READY_FOR_AUTHORIZATION_REQUEST` means the complete machine packet is scientifically
 and operationally ready, but separate explicit compute and training authorization
-references are still absent or invalid.
+references are still absent or not independently verified.
 
-`TRAINING_AUTHORIZED` is derived only when the packet is otherwise ready and carries
-two distinct non-empty authorization references: one for compute/budget and one for
-the training run itself.
+`TRAINING_AUTHORIZED` is derived only when the packet is otherwise ready, carries two
+distinct non-empty authorization references, and those exact references are supplied
+through the out-of-packet trusted `verified_authorization_refs` boundary.
 
 The caller cannot submit a `state` field. Unknown fields fail closed, so prose or a
 parameter-count milestone cannot override the derived decision.
+
+The standalone CLI supplies no trusted authorization set. It can therefore report
+`BLOCKED` or `READY_FOR_AUTHORIZATION_REQUEST`, but it cannot turn packet text into
+`TRAINING_AUTHORIZED`. A future launcher must verify owner-approved compute/training
+records or an approved budget policy outside the packet before passing those exact
+references to the gate, consistent with `docs/TRAINING_AUTHORIZATION.md`.
 
 ## Exact inherited authorities
 

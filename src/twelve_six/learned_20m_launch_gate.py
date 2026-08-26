@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 import re
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from typing import Any
 
 BLOCKED = "BLOCKED"
@@ -132,8 +132,12 @@ def _require_text(errors: list[str], value: Any, label: str) -> None:
         errors.append(f"{label}_required")
 
 
-def assess_learned_20m_launch(packet: Mapping[str, Any]) -> dict[str, Any]:
-    """Derive launch state from evidence; never trust a caller-supplied state."""
+def assess_learned_20m_launch(
+    packet: Mapping[str, Any],
+    *,
+    verified_authorization_refs: Collection[str] = (),
+) -> dict[str, Any]:
+    """Derive launch state; packet contents alone can never grant financial authority."""
 
     blockers: list[str] = []
     authorization_blockers: list[str] = []
@@ -271,14 +275,24 @@ def assess_learned_20m_launch(packet: Mapping[str, Any]) -> dict[str, Any]:
     if authorizations is not None:
         compute_ref = authorizations.get("compute_authorization_ref")
         training_ref = authorizations.get("training_authorization_ref")
-        if not _is_nonempty_text(compute_ref):
+        verified_refs = set(verified_authorization_refs)
+        compute_ref_text = compute_ref.strip() if _is_nonempty_text(compute_ref) else None
+        training_ref_text = training_ref.strip() if _is_nonempty_text(training_ref) else None
+
+        if compute_ref_text is None:
             authorization_blockers.append("compute_authorization_ref_missing")
-        if not _is_nonempty_text(training_ref):
+        elif compute_ref_text not in verified_refs:
+            authorization_blockers.append("compute_authorization_ref_unverified")
+
+        if training_ref_text is None:
             authorization_blockers.append("training_authorization_ref_missing")
+        elif training_ref_text not in verified_refs:
+            authorization_blockers.append("training_authorization_ref_unverified")
+
         if (
-            _is_nonempty_text(compute_ref)
-            and _is_nonempty_text(training_ref)
-            and compute_ref.strip() == training_ref.strip()
+            compute_ref_text is not None
+            and training_ref_text is not None
+            and compute_ref_text == training_ref_text
         ):
             authorization_blockers.append(
                 "compute_and_training_authorization_refs_must_be_distinct"

@@ -73,13 +73,33 @@ def test_scientific_readiness_is_not_training_authorization() -> None:
     }
 
 
-def test_two_separate_explicit_authorizations_are_required() -> None:
+def test_packet_cannot_self_authorize_with_unverified_refs() -> None:
     packet = _ready_packet()
     packet["authorizations"] = {
         "compute_authorization_ref": "owner-approval:compute:learned20m-v1",
         "training_authorization_ref": "owner-approval:training:learned20m-v1",
     }
     result = assess_learned_20m_launch(packet)
+    assert result["state"] == READY_FOR_AUTHORIZATION_REQUEST
+    assert result["training_authorized"] is False
+    assert set(result["authorization_blockers"]) == {
+        "compute_authorization_ref_unverified",
+        "training_authorization_ref_unverified",
+    }
+
+
+def test_two_separate_verified_authorizations_are_required() -> None:
+    packet = _ready_packet()
+    compute_ref = "owner-approval:compute:learned20m-v1"
+    training_ref = "owner-approval:training:learned20m-v1"
+    packet["authorizations"] = {
+        "compute_authorization_ref": compute_ref,
+        "training_authorization_ref": training_ref,
+    }
+    result = assess_learned_20m_launch(
+        packet,
+        verified_authorization_refs={compute_ref, training_ref},
+    )
     assert result["state"] == TRAINING_AUTHORIZED
     assert result["training_authorized"] is True
     assert result["blockers"] == []
@@ -142,7 +162,10 @@ def test_same_reference_cannot_authorize_compute_and_training() -> None:
         "compute_authorization_ref": "approval:same",
         "training_authorization_ref": "approval:same",
     }
-    result = assess_learned_20m_launch(packet)
+    result = assess_learned_20m_launch(
+        packet,
+        verified_authorization_refs={"approval:same"},
+    )
     assert result["state"] == READY_FOR_AUTHORIZATION_REQUEST
     assert result["training_authorized"] is False
     expected = "compute_and_training_authorization_refs_must_be_distinct"
