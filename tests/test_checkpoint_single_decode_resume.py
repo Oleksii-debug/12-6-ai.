@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 
 import twelve_six.checkpoint.core as checkpoint_core
-from twelve_six.checkpoint import CheckpointIdentity
+from twelve_six.checkpoint import CheckpointCompatibilityError, CheckpointIdentity
 from twelve_six.checkpoint.trainer_adapter import (
     load_trainer_checkpoint,
     save_trainer_checkpoint,
@@ -135,7 +135,7 @@ def test_identity_mismatch_fails_before_payload_decode(
 
     monkeypatch.setattr(checkpoint_core, "load_safetensors_bytes", forbidden_decode)
 
-    with pytest.raises(Exception, match="checkpoint identity mismatch"):
+    with pytest.raises(CheckpointCompatibilityError, match="checkpoint identity mismatch"):
         load_trainer_checkpoint(
             checkpoint,
             model=target_model,
