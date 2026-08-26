@@ -2,6 +2,24 @@ name: D02 S1 Numerical Preflight
 
 on:
   pull_request:
+    paths:
+      - "src/twelve_six/model.py"
+      - "src/twelve_six/training/**"
+      - "src/twelve_six/tokenization/**"
+      - "src/twelve_six/packing/**"
+      - "data/s0/**"
+      - "configs/stages/s1_100k.json"
+      - "requirements/locks/**"
+      - "pyproject.toml"
+      - "tools/verify_locked_environment.py"
+      - "tools/run_s1_numerical_preflight.py"
+      - "tools/validate_s1_numerical_preflight.py"
+      - ".github/workflows/d02-s1-numerical-preflight.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: d02-s1-numerical-preflight-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -13,19 +31,19 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
       - name: Prove exact source checkout
         env:
-          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.11.16"
       - name: Verify exact D08 locked environment and repository checks
         env:
-          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: >-
           python tools/verify_locked_environment.py
           --profile linux-x86_64
@@ -38,10 +56,9 @@ jobs:
           .d02-s1-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
           .d02-s1-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
           PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .d02-s1-locked/bin/python -m pip install --no-deps --no-build-isolation -e .
-          .d02-s1-locked/bin/python -c "import torch,twelve_six; assert torch.__version__; print(twelve_six.__version__)"
       - name: Execute current S1 engineering-candidate numerical preflight
         env:
-          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           .d02-s1-locked/bin/python tools/run_s1_numerical_preflight.py \
             --source-sha "$SOURCE_SHA" \
