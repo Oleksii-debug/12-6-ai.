@@ -1,0 +1,16 @@
+DATA-184 purpose-specific rights decision
+Source: pytest-dev/pluggy
+Exact source version: git:3b6d46ddfcef132e1e4edfc98d24ad1eb6c36b37
+Rights object: LICENSE
+License object Git blob SHA-1: 85f4dd63d2da8e31d7e84d5180f016fdfe315c2c
+License text SHA-256: d6b65e6c213a5d0b577911d34d6e5949b9f59d76c238c5071a2f3fc16cfb2606
+License: MIT
+Purpose decision under policy://12-6/data/explicit-model-training-evidence-v1:
+acquisition=ALLOWED
+storage=ALLOWED
+analysis=ALLOWED
+model_training=ALLOWED
+redistribution=ALLOWED_WITH_LICENSE_NOTICE
+Decision basis: the exact repository license grants use, copy, modification, publication, distribution, sublicensing and sale subject to preservation of the copyright/license notice. DATA-184 admits only exact pinned source blobs.
+Reviewed: 2026-08-26
+Reviewer: SWARM_WORKER_ID:DATA-184-REAL-SOURCE-DIVERSITY
