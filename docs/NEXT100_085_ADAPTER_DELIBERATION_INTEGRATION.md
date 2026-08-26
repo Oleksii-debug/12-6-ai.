@@ -10,11 +10,12 @@ Runtime policy: `LOCAL_FREE` only. No external model judge, retrieval service, n
 - POSTBASE-255 deliberation controller source head: `486bd91ca03bed41750c638d702f557f320b780a`.
 - POSTBASE-256 hypothesis-search source head: `ea1d8fff0d3235660dffe7ba411e192df83f5e1d`.
 - LEARN-217 learned-10M producer head: `c02c8aa38e691521ae2ab6a4ff3ea1d643efd6ef`, checkpoint id `9f1dc5352743a3acdf8c9897aa9a2c9a982bb9c1ab006c80410e5b1104a483fb`, ModelSpec SHA-256 `61caa5469123e23b9b72fc2024140bfca84c4c480dcb0a7e712ba800a4f22998`.
+- POSTBASE-351's terminal workflow binds LEARN-217 artifact `9602650341` with ZIP SHA-256 `8631e90417e40365b3fc0d6bc98ee6adda5a4ed24530e675d9a91c93219537ee` as the D05-verified learned Base snapshot eligible for read-only adapter consumption.
 - EVAL-284 consolidated panel head: `eb6fec707cedb4ae3fa9890d176b5a74d1b7e2d0`. Its panel verdict is `INCOMPLETE_WAVE1_10M_EVIDENCE` and records `VERIFY_218_independent_learned_10M_authority_missing_at_cutoff`.
 
-At implementation time no terminal independent VERIFY-10M/VERIFY-218 authority was discoverable. Therefore this branch does **not** label the LEARN-217 producer artifact as independently verified and does not claim to have executed the integration against a terminal verified learned-10M checkpoint. The tests use a tiny local learned-checkpoint mechanics fixture with positive training counters solely to exercise the same immutable first-party checkpoint path.
+The dedicated NEXT100-085 workflow therefore consumes the exact learned 10M checkpoint identity already authorized by POSTBASE-351 for immutable Base-generation mechanics. This does **not** upgrade the separate EVAL-284 panel: no independent VERIFY-218 result is inferred, and no reasoning-quality or broad-capability claim is made from this integration proof.
 
-A final live authority refresh is required before terminal verdict. If an independent terminal authority appears, its exact checkpoint identity must be bound before any statement that a verified learned 10M Base was consumed.
+A final live POSTBASE-351/VERIFY-10M authority refresh is required before terminal verdict. Any newer terminal checkpoint-verification authority must be bound exactly rather than silently inheriting the older artifact identity.
 
 ## Integration boundary
 
@@ -42,5 +43,7 @@ The hypothesis graph export similarly contains hypotheses, scores, tests, critiq
 4. two complete deliberation-controller invocations leave every checkpoint file byte-identical;
 5. the loaded model state-dict digest is identical before and after repeated controller calls;
 6. frozen Base evidence is unchanged after those calls.
+
+The dedicated learned-10M workflow additionally downloads the exact POSTBASE-351-authorized LEARN-217 artifact, verifies its ZIP digest and checkpoint identity, runs repeated deliberation calls plus hypothesis proposal/critique calls, compares the in-memory Base-weight digest before/after, and compares the checkpoint tree hash before/after.
 
 The mechanics verifier intentionally returns a deterministic pass so the test terminates cheaply. This proves plumbing, budget handoff, namespace separation and non-mutation only. It is **not evidence of reasoning quality, intelligence, instruction following, factuality, or production readiness**.
