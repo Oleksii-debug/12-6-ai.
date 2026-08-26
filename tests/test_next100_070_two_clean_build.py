@@ -3,9 +3,8 @@ from __future__ import annotations
 import importlib.util
 import json
 import tempfile
+import unittest
 from pathlib import Path
-
-import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "tools/run_next100_070_two_clean_build.py"
@@ -82,29 +81,39 @@ def _tree(root: Path) -> dict[str, bytes]:
     }
 
 
-def test_two_clean_roots_are_byte_identical() -> None:
-    with tempfile.TemporaryDirectory() as td:
-        tmp = Path(td)
-        config, registry_path, rights_path = _fixture_authorities(tmp)
-        contract, registry, rights, records = MOD.validate_authorities(config, registry_path, rights_path)
-        root_a = tmp / "clean-a"
-        root_b = tmp / "clean-b"
-        result_a = MOD.build_outputs(config, contract, registry, rights, records, root_a)
-        result_b = MOD.build_outputs(config, contract, registry, rights, records, root_b)
-        assert result_a["tree_listing_sha256"] == result_b["tree_listing_sha256"]
-        assert _tree(root_a) == _tree(root_b)
-        assert set(_tree(root_a)) == set(config["determinism_contract"]["required_surfaces"])
-        assert json.loads((root_a / "gate_report.json").read_text(encoding="utf-8"))["status"] == "BLOCKED_DETERMINISTIC_PREFLIGHT_COMPLETE"
-        assert json.loads((root_a / "shards/manifest.json").read_text(encoding="utf-8"))["payload_file_count"] == 0
+class Next100070Tests(unittest.TestCase):
+    def test_two_clean_roots_are_byte_identical(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            config, registry_path, rights_path = _fixture_authorities(tmp)
+            contract, registry, rights, records = MOD.validate_authorities(config, registry_path, rights_path)
+            root_a = tmp / "clean-a"
+            root_b = tmp / "clean-b"
+            result_a = MOD.build_outputs(config, contract, registry, rights, records, root_a)
+            result_b = MOD.build_outputs(config, contract, registry, rights, records, root_b)
+            self.assertEqual(result_a["tree_listing_sha256"], result_b["tree_listing_sha256"])
+            self.assertEqual(_tree(root_a), _tree(root_b))
+            self.assertEqual(set(_tree(root_a)), set(config["determinism_contract"]["required_surfaces"]))
+            self.assertEqual(
+                json.loads((root_a / "gate_report.json").read_text(encoding="utf-8"))["status"],
+                "BLOCKED_DETERMINISTIC_PREFLIGHT_COMPLETE",
+            )
+            self.assertEqual(
+                json.loads((root_a / "shards/manifest.json").read_text(encoding="utf-8"))["payload_file_count"],
+                0,
+            )
+
+    def test_dirty_output_root_fails_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            config, registry_path, rights_path = _fixture_authorities(tmp)
+            contract, registry, rights, records = MOD.validate_authorities(config, registry_path, rights_path)
+            dirty = tmp / "dirty"
+            dirty.mkdir()
+            (dirty / "residue").write_text("shared cache residue", encoding="utf-8")
+            with self.assertRaisesRegex(MOD.ValidationError, "clean and empty"):
+                MOD.build_outputs(config, contract, registry, rights, records, dirty)
 
 
-def test_dirty_output_root_fails_closed() -> None:
-    with tempfile.TemporaryDirectory() as td:
-        tmp = Path(td)
-        config, registry_path, rights_path = _fixture_authorities(tmp)
-        contract, registry, rights, records = MOD.validate_authorities(config, registry_path, rights_path)
-        dirty = tmp / "dirty"
-        dirty.mkdir()
-        (dirty / "residue").write_text("shared cache residue", encoding="utf-8")
-        with pytest.raises(MOD.ValidationError, match="clean and empty"):
-            MOD.build_outputs(config, contract, registry, rights, records, dirty)
+if __name__ == "__main__":
+    unittest.main()
