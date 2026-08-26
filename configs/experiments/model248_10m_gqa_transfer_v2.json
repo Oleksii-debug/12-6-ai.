@@ -1,0 +1,109 @@
+{
+  "schema": "12-6.model248-10m-gqa-transfer-v2.v1",
+  "worker_id": "MODEL-248-10M-GQA-TRANSFER-V2",
+  "authority": "LOCAL_FREE_FAIL_CLOSED_REPLACEMENT_GATE",
+  "question": "May the accepted 10M 8Q/2KV incumbent be replaced by 8Q/4KV under the current optimizer, corpus, tokenizer and evaluation authorities?",
+  "comparison": {
+    "incumbent": {
+      "label": "8Q/2KV",
+      "d_model": 256,
+      "n_layers": 12,
+      "n_heads": 8,
+      "n_kv_heads": 2,
+      "head_dim": 32,
+      "d_ff": 864,
+      "parameters": 10000640
+    },
+    "candidate": {
+      "label": "8Q/4KV",
+      "d_model": 256,
+      "n_layers": 12,
+      "n_heads": 8,
+      "n_kv_heads": 4,
+      "head_dim": 32,
+      "d_ff": 821,
+      "parameters": 9997568,
+      "parameter_delta": -3072,
+      "relative_parameter_delta": -0.00030718034045821067
+    },
+    "mha_isolation_control": {
+      "enabled": false,
+      "reason": "MODEL-142 already isolated the 8Q/4KV signal against MHA; V2 does not reopen a broad attention-head search. MHA may be added only if a new ambiguity specific to the valid V2 execution appears before outcomes are observed."
+    }
+  },
+  "strict_parameter_match": {
+    "required": true,
+    "satisfied": false,
+    "derivation": "2KV->4KV adds 393216 attention parameters. One integer d_ff unit changes 12*3*256=9216 parameters. Exact cancellation requires -42.6666666667 d_ff units, so exact equality is impossible by integer d_ff alone.",
+    "forbidden_repairs": [
+      "candidate-only bias parameters",
+      "candidate-only gates",
+      "candidate-only norms",
+      "unused padding parameters",
+      "any other trainable ballast"
+    ],
+    "status": "BLOCKED_STRICT_TOTAL_PARAMETER_MATCH"
+  },
+  "frozen_pairing_contract_after_unblock": {
+    "minimum_paired_seeds": 3,
+    "preferred_seed_family_if_not_superseded_by_authority": [1515, 1516, 1517],
+    "identical_seed_within_pair": true,
+    "identical_data_trace_within_pair": true,
+    "identical_optimized_tokens_within_pair": true,
+    "identical_tokenizer_within_pair": true,
+    "identical_optimizer_within_pair": true,
+    "identical_context_and_packing_within_pair": true,
+    "identical_evaluation_bytes_within_pair": true,
+    "selection_uses_final_test": false
+  },
+  "required_authority_inputs": [
+    "MODEL-180 evidence or an explicit authoritative statement that it is superseded/unavailable",
+    "MODEL-193 evidence",
+    "TRAIN-243-10M-CLIPPING-AUTHORITY-V2 terminal decision",
+    "current terminal corpus authority with immutable selection-validation identity",
+    "current terminal tokenizer-family decision"
+  ],
+  "non_saturated_optimizer_gate": {
+    "required": true,
+    "source_must_be": "TRAIN-243-10M-CLIPPING-AUTHORITY-V2 or a terminal accepted successor",
+    "same_policy_for_both_arms": true,
+    "nonfinite_gradients_fail_before_clipping": true,
+    "saturated_clipping_is_ineligible": true
+  },
+  "required_metrics": [
+    "heldout_bpb",
+    "ua_bpb",
+    "en_bpb",
+    "code_bpb",
+    "layer_health",
+    "clip_rate",
+    "update_weight_ratio",
+    "step_time",
+    "memory",
+    "unexpanded_kv_cache_bytes"
+  ],
+  "kv_cache_accounting": {
+    "formula": "2 * n_layers * n_kv_heads * head_dim * sequence_length * batch_size * element_size_bytes",
+    "reference_context_tokens": 1024,
+    "reference_batch_size": 1,
+    "reference_element_size_bytes": 2,
+    "incumbent_bytes": 3145728,
+    "candidate_bytes": 6291456,
+    "candidate_to_incumbent_ratio": 2.0
+  },
+  "replacement_authority": {
+    "minimum_valid_paired_seeds": 3,
+    "requires_repeatable_material_heldout_gain": true,
+    "requires_no_material_ua_en_code_regression": true,
+    "requires_healthy_layers_and_updates": true,
+    "systems_metrics_are_secondary_to_quality_and_numerical_health": true,
+    "universal_paired_bootstrap_required": true,
+    "fallback_if_any_gate_fails": "KEEP_8Q2KV"
+  },
+  "truth_boundary": {
+    "training_authorized_while_any_prerequisite_is_missing": false,
+    "architecture_wide_freeze": false,
+    "paid_compute": false,
+    "foreign_pretrained_weights": false
+  }
+}
