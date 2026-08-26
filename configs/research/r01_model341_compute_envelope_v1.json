@@ -1,0 +1,133 @@
+{
+  "schema_version": "12-6.r01-model341-compute-envelope.v1",
+  "repository": "Oleksii-debug/12-6-ai.",
+  "status": "PLANNING_ONLY_FAIL_CLOSED",
+  "authority": {
+    "main_sha_at_claim": "a73ab38026cb7849f478cc13ad58b93534a76e2f",
+    "r01_merge_sha": "a73ab38026cb7849f478cc13ad58b93534a76e2f",
+    "model341_sha": "e4ff486fd90802fc123bebf60eed4e59196a98df",
+    "modelspec_sha256": "fbff24d561a2818453554d58ca23fc6ace3303b078f1935a8576c4565bd92441",
+    "long_training_authorized": false,
+    "paid_compute_authorized": false,
+    "stage_promotion_authorized": false
+  },
+  "model341_geometry": {
+    "parameter_count": 20613440,
+    "vocab_size": 256,
+    "d_model": 320,
+    "n_layers": 16,
+    "n_heads": 10,
+    "n_kv_heads": 2,
+    "head_dim": 32,
+    "d_ff": 1080,
+    "context_length": 1024,
+    "tie_word_embeddings": true
+  },
+  "planning_sequence_length": 1024,
+  "compute_accounting": {
+    "six_n_reference_flops_per_token": 123680640,
+    "architecture_aware_flops_per_token": 186103680,
+    "architecture_to_six_n_ratio": 1.5047114892031606,
+    "reference_semantics": "6N is retained only as a historical scaling reference",
+    "architecture_aware_semantics": "6 times exact non-embedding parameters plus explicit attention sequence-length term",
+    "measurement_semantics": "both values are analytical planning estimates and are not measured GPU FLOPs"
+  },
+  "planned_tokens_per_parameter": [
+    10,
+    20,
+    40
+  ],
+  "model341_campaign_rows": [
+    {
+      "tokens_per_parameter": 10,
+      "training_tokens": 206134400,
+      "six_n_reference_total_flops": 25494834518016000,
+      "architecture_aware_total_flops": 38362370414592000,
+      "projected_wall_hours": null,
+      "projected_cost_eur": null
+    },
+    {
+      "tokens_per_parameter": 20,
+      "training_tokens": 412268800,
+      "six_n_reference_total_flops": 50989669036032000,
+      "architecture_aware_total_flops": 76724740829184000,
+      "projected_wall_hours": null,
+      "projected_cost_eur": null
+    },
+    {
+      "tokens_per_parameter": 40,
+      "training_tokens": 824537600,
+      "six_n_reference_total_flops": 101979338072064000,
+      "architecture_aware_total_flops": 153449481658368000,
+      "projected_wall_hours": null,
+      "projected_cost_eur": null
+    }
+  ],
+  "runtime_and_cost_gate": {
+    "measured_same_geometry_tokens_per_second": null,
+    "measured_accelerator_identity": null,
+    "accelerator_count": null,
+    "eur_per_accelerator_hour": null,
+    "rate_timestamp_utc": null,
+    "blockers": [
+      "NO_MEASURED_SAME_GEOMETRY_ACCELERATOR_THROUGHPUT",
+      "NO_CURRENT_ACCELERATOR_RATE",
+      "COMPUTE_NOT_AUTHORIZED"
+    ],
+    "rule": "wall time derives from measured same-geometry tokens per second; monetary cost additionally requires explicit current rate and authorization"
+  },
+  "future_size_targets": [
+    {
+      "parameter_target": 50000000,
+      "model_spec_frozen": false,
+      "six_n_reference_10tpp_total_flops": 150000000000000000,
+      "six_n_reference_20tpp_total_flops": 300000000000000000,
+      "six_n_reference_40tpp_total_flops": 600000000000000000,
+      "architecture_aware_total_flops": null,
+      "projected_cost_eur": null,
+      "blockers": [
+        "MODELSPEC_NOT_FROZEN",
+        "NO_SAME_GEOMETRY_THROUGHPUT",
+        "NO_CURRENT_RATE",
+        "COMPUTE_NOT_AUTHORIZED"
+      ]
+    },
+    {
+      "parameter_target": 100000000,
+      "model_spec_frozen": false,
+      "six_n_reference_10tpp_total_flops": 600000000000000000,
+      "six_n_reference_20tpp_total_flops": 1200000000000000000,
+      "six_n_reference_40tpp_total_flops": 2400000000000000000,
+      "architecture_aware_total_flops": null,
+      "projected_cost_eur": null,
+      "blockers": [
+        "MODELSPEC_NOT_FROZEN",
+        "NO_SAME_GEOMETRY_THROUGHPUT",
+        "NO_CURRENT_RATE",
+        "COMPUTE_NOT_AUTHORIZED"
+      ]
+    }
+  ],
+  "research_sources": [
+    {
+      "title": "Training Compute-Optimal Large Language Models",
+      "url": "https://arxiv.org/abs/2203.15556",
+      "use": "joint model-data scaling reference"
+    },
+    {
+      "title": "DeepSeek LLM: Scaling Open-Source Language Models with Longtermism",
+      "url": "https://arxiv.org/abs/2401.02954",
+      "use": "architecture-aware FLOPs/token correction showing material 6N error at small scale"
+    }
+  ],
+  "truth_boundary": {
+    "source_bytes_equal_training_tokens": false,
+    "six_n_is_measured_compute": false,
+    "architecture_aware_flops_is_measured_compute": false,
+    "future_50m_or_100m_geometry_frozen": false,
+    "gpu_throughput_measured": false,
+    "price_quote_current": false,
+    "paid_compute_authorized": false,
+    "learned_20m_claimed": false
+  }
+}
