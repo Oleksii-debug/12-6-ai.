@@ -8,6 +8,7 @@ ownership inside the checkpoint API.
 
 from __future__ import annotations
 
+import copy
 from collections.abc import Mapping
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
@@ -110,6 +111,10 @@ def _preflight_trainer_state(trainer: Any, state: Any) -> None:
     restored. This mirrors those fail-closed checks and reuses D05 optimizer
     geometry validation so a bad trainer-owned AdamW/SGD state cannot partially
     restore a live model before failing.
+
+    Checkpoint-v1 also supports generic trainer-owned state adapters that do not
+    expose a public ``optimizer`` attribute. Those retain compatibility through
+    an isolated deep-copy load probe so the live trainer and model remain untouched.
     """
 
     if not isinstance(state, Mapping):
@@ -153,9 +158,17 @@ def _preflight_trainer_state(trainer: Any, state: Any) -> None:
 
     optimizer = getattr(trainer, "optimizer", None)
     if optimizer is None:
-        raise CheckpointCompatibilityError(
-            "trainer must expose optimizer for checkpoint resume preflight"
-        )
+        if not hasattr(trainer, "load_state_dict"):
+            raise CheckpointCompatibilityError("trainer must provide load_state_dict")
+        try:
+            probe = copy.deepcopy(trainer)
+            probe.load_state_dict(copy.deepcopy(state))
+        except Exception as exc:
+            raise CheckpointCompatibilityError(
+                "checkpoint trainer state failed isolated compatibility preflight"
+            ) from exc
+        return
+
     _preflight_optimizer_state(optimizer, state.get("optimizer"))
 
     scheduler = getattr(trainer, "scheduler", None)
