@@ -1,0 +1,10 @@
+NIST Technical Series bounded source family
+
+Admitted publications:
+- Ramaswamy Chandramouli, NIST SP 800-204, Security Strategies for Microservices-based Application Systems, DOI 10.6028/NIST.SP.800-204.
+- Ramaswamy Chandramouli, NIST SP 800-204C, Implementation of DevSecOps for a Microservices-based Application with Service Mesh, DOI 10.6028/NIST.SP.800-204C.
+- Ramaswamy Chandramouli, NIST SP 800-215, Guide to a Secure Enterprise Network Landscape, DOI 10.6028/NIST.SP.800-215.
+
+Republished courtesy of the National Institute of Standards and Technology.
+
+Project use is a bounded deterministic text extraction/normalization from the exact official PDFs. NIST provenance is retained. This notice does not generalize to other NIST publications, third-party-authored NIST publications, or Standard Reference Data.
