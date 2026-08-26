@@ -1,0 +1,25 @@
+name: Research Corpus V1 Intake
+
+on:
+  pull_request:
+    paths:
+      - "data/registry/research_corpus_v1_intake.v1.json"
+      - "tools/validate_research_corpus_v1_intake.py"
+      - "docs/RESEARCH_CORPUS_V1_INTAKE.md"
+      - ".github/workflows/research-corpus-v1-intake.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Validate frozen intake and fail-closed invariants
+        run: python tools/validate_research_corpus_v1_intake.py data/registry/research_corpus_v1_intake.v1.json --self-test
