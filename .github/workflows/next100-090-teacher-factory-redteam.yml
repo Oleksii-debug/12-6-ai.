@@ -1,0 +1,74 @@
+name: NEXT100-090 Teacher Factory Red-Team
+
+on:
+  push:
+    branches:
+      - next100-090/teacher-factory-redteam-20260826
+  pull_request:
+    branches:
+      - postbase359/teacher-factory-convergence-20260826
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  local-free-redteam:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up exact Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11.16"
+
+      - name: Universal execution bootstrap
+        uses: ./.github/actions/execution-bootstrap
+        with:
+          capabilities: runtime,tests,lint
+          venv: .venv-next100-090
+          manifest: next100-090-proof/bootstrap.json
+
+      - name: Run inherited and adversarial teacher-factory gates
+        shell: bash
+        env:
+          PYTHONPATH: src
+        run: |
+          set -euo pipefail
+          .venv-next100-090/bin/python -m pytest -q \
+            tests/test_postbase259_teacher_student_factory.py \
+            tests/test_postbase359_teacher_factory_convergence.py \
+            tests/test_next100_090_teacher_factory_redteam.py
+          .venv-next100-090/bin/ruff check \
+            src/twelve_six/postbase/contracts.py \
+            src/twelve_six/postbase/factory.py \
+            src/twelve_six/postbase/fixtures.py \
+            tests/test_postbase259_teacher_student_factory.py \
+            tests/test_postbase359_teacher_factory_convergence.py \
+            tests/test_next100_090_teacher_factory_redteam.py
+
+      - name: Compile hardened surface
+        shell: bash
+        run: |
+          set -euo pipefail
+          .venv-next100-090/bin/python -m compileall -q \
+            src/twelve_six/postbase \
+            tests/test_postbase259_teacher_student_factory.py \
+            tests/test_postbase359_teacher_factory_convergence.py \
+            tests/test_next100_090_teacher_factory_redteam.py
+
+      - name: Enforce LOCAL_FREE and Base-training firewall
+        shell: bash
+        run: |
+          set -euo pipefail
+          ! grep -R -n -E \
+            'OPENAI_API_KEY|ANTHROPIC_API_KEY|GEMINI_API_KEY|api[_-]?key|https?://|import openai|from openai|import anthropic|from anthropic' \
+            src/twelve_six/postbase tests/test_next100_090_teacher_factory_redteam.py
+          grep -q 'canonical_base_training_eligible=False' \
+            tests/test_next100_090_teacher_factory_redteam.py
