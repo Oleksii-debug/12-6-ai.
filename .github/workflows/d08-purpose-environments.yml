@@ -1,6 +1,15 @@
 name: D08 Purpose Environments
 on:
   pull_request:
+    paths:
+      - ".github/workflows/d08-purpose-environments.yml"
+      - "pyproject.toml"
+      - "requirements/**"
+      - "tools/verify_purpose_environment.py"
+      - "src/twelve_six/__init__.py"
+concurrency:
+  group: d08-purpose-environments-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
