@@ -1,0 +1,102 @@
+{
+  "worker": "MODEL-341-20M-CANDIDATE-A",
+  "qualification": "PASS",
+  "pass": true,
+  "random_init_only": true,
+  "long_training_performed": false,
+  "execution": {
+    "scope": "LOCAL_FREE CPU mechanical probe",
+    "torch": "2.10.0+cpu",
+    "production_source_basis": {
+      "base_branch": "integrate282/post217-learned-spine-20260826",
+      "model_py_blob": "aacc0157cee08ceae5ef8a36e74bc90285c9b539",
+      "attention_perf_py_blob": "2323a709bf8f94047ffddc2de707b57d6edb8efd",
+      "static_kv_py_blob": "e4e8cf3746cbc7fc1e43f7c08b088b7df12e268b",
+      "checkpoint_core_py_blob": "4c4929503c825f2bf347079d7495af6f60a29e49",
+      "checkpoint_state_tree_py_blob": "87343298d15776a08b4840625c94afea1ad85595"
+    },
+    "note": "The local probe reproduced the fetched production model, static-KV, and D05 data-only serialization semantics. The committed qualifier imports those production modules directly for repository reruns."
+  },
+  "model_spec_sha256": "fbff24d561a2818453554d58ca23fc6ace3303b078f1935a8576c4565bd92441",
+  "init_spec_sha256": "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5",
+  "spec": {
+    "schema_version": 1,
+    "vocab_size": 256,
+    "max_seq_len": 1024,
+    "d_model": 320,
+    "n_layers": 16,
+    "n_heads": 10,
+    "n_kv_heads": 2,
+    "head_dim": 32,
+    "d_ff": 1080,
+    "activation": "swiglu",
+    "norm_kind": "rmsnorm",
+    "norm_placement": "pre",
+    "norm_eps": 1e-5,
+    "position_embedding": "rope",
+    "rope_theta": 10000.0,
+    "rope_rotary_dim": 32,
+    "attention_bias": false,
+    "mlp_bias": false,
+    "attention_dropout": 0.0,
+    "final_norm": true,
+    "tie_word_embeddings": true,
+    "lm_head_bias": false
+  },
+  "parameter_breakdown": {
+    "token_embedding": 81920,
+    "attention_per_layer": 245760,
+    "mlp_per_layer": 1036800,
+    "norms_per_layer": 640,
+    "block_per_layer": 1283200,
+    "blocks_total": 20531200,
+    "final_norm": 320,
+    "lm_head_extra": 0,
+    "total": 20613440
+  },
+  "checks": {
+    "parameter_count": {
+      "pass": true,
+      "actual": 20613440,
+      "expected": 20613440,
+      "seconds": 0.9865398406982422
+    },
+    "forward_backward_update": {
+      "pass": true,
+      "logits_shape": [1, 32, 256],
+      "loss": 5.605273246765137,
+      "grad_norm_l2": 33.38355227273583,
+      "embedding_changed": true,
+      "finite_parameters": true,
+      "seconds": 1.1658432483673096
+    },
+    "d05_save_load": {
+      "pass": true,
+      "checkpoint_id": "56135fd7bfb8a47dfa41ad4a2ae1fa3e567eb126e311ee5a3364728dcf8477c3",
+      "state_equal": true,
+      "logits_bitwise_equal": true,
+      "optimizer_param_groups_equal": true,
+      "pickle": false,
+      "bytes": 165300354,
+      "seconds": 9.091463565826416
+    },
+    "static_kv": {
+      "pass": true,
+      "prefill_matches_stateless": true,
+      "decode_matches_stateless": true,
+      "storage_stable": true,
+      "cache_shape": [1, 2, 1024, 32],
+      "allocated_bytes": 8388608,
+      "valid_length": 9,
+      "finite_logits": true,
+      "seconds": 0.15828633308410645
+    },
+    "context_bounds_and_finite_logits": {
+      "pass": true,
+      "1025_rejected": true,
+      "1024_shape": [1, 1024, 256],
+      "1024_finite_logits": true,
+      "seconds": 0.49202704429626465
+    }
+  }
+}
