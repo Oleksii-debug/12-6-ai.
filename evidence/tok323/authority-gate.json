@@ -1,0 +1,74 @@
+{
+  "schema_version": "12-6.tok323-bpe-vs-byte-final.authority-gate.v1",
+  "worker_id": "TOK-323-BPE-VS-BYTE-FINAL",
+  "execution_profile": "LOCAL_FREE",
+  "status": "BLOCKED_NO_TERMINAL_FROZEN_RESEARCH_CORPUS_V1",
+  "recommendation": null,
+  "practical_tie_claimed": false,
+  "training_started": false,
+  "optimizer_updates": 0,
+  "authority_bindings": {
+    "tok316_head_sha": "5bcbc7f885c5d1e6035adf4e40e181c00c24d96f",
+    "tok316_verdict": "BLOCKED_TOKENIZER_FIT_NOT_YET_PERMITTED",
+    "data300_contract_identity_sha256": "07d7beaaff4616e839450de6af3d407855c832bf75a24a959d1a12de5d9364e5",
+    "data305_head_sha": "9300e96aab2f17deb086a2329c8062c4a1bea1fe",
+    "data305_evidence_identity_sha256": "05997b4be4589271c44588dd75985c71b9fd71cdaebafabfbde72d02f64780d9",
+    "data305_status": "BLOCKED_NO_EXACT_CORPUS_IDENTITY",
+    "training_corpus_identity": null,
+    "shard_identity": null,
+    "eval303_head_sha": "5e5a1de3b594cee5612e63d3d4c2a70499740ac7",
+    "eval303_exact_exclusion_proof_identity_sha256": "ac9a0e2c3beab26c0d664b0006b11ec9fd155fa78be9f46d56ecb3ed336f2621",
+    "eval303_selection_documents": 10,
+    "eval303_exact_byte_overlap_count": 0,
+    "eval303_near_copy_or_dedup_cluster_scan_claimed": false,
+    "eval303_wave3_g07_g08_still_required": true
+  },
+  "frozen_comparison_contract": {
+    "byte_vocab_size": 256,
+    "bpe_vocab_candidates": [320, 384, 437, 512],
+    "bpe_implementation": "src/twelve_six/tokenization/experiments.py::train_hf_tokenizer",
+    "bpe_runtime": "tokenizers==0.23.1",
+    "matched_total_trainable_parameters": 467808,
+    "optimized_loss_tokens_per_arm": 16384,
+    "model_seeds": [1337, 7331, 18701],
+    "primary_selection_metric": "paired immutable-selection aggregate BPB",
+    "required_strata": ["UA", "EN", "code"],
+    "required_secondary_metrics": [
+      "worst-modality BPB",
+      "fertility",
+      "embedding parameter tax",
+      "training throughput"
+    ],
+    "final_test_may_select": false
+  },
+  "execution_observations": {
+    "bpe_artifacts_available_for_final_pairing": false,
+    "byte_arm_run": "NOT_RUN_AUTHORITY_BLOCKED",
+    "bpe_arms_run": "NOT_RUN_AUTHORITY_BLOCKED",
+    "bpb": "NOT_MEASURED",
+    "ua_bpb": "NOT_MEASURED",
+    "en_bpb": "NOT_MEASURED",
+    "code_bpb": "NOT_MEASURED",
+    "worst_modality_bpb": "NOT_MEASURED",
+    "fertility": "NOT_MEASURED_ON_FROZEN_RESEARCH_CORPUS_V1",
+    "embedding_tax": "FORMULA_ONLY_NO_WINNER",
+    "training_throughput": "NOT_MEASURED",
+    "final_test_outcomes_read": false,
+    "selection_validation_outcomes_read": false
+  },
+  "blocking_requirements": [
+    "NON_NULL_TERMINAL_FROZEN_RESEARCH_CORPUS_V1_IDENTITY",
+    "NON_NULL_DETERMINISTIC_SHARD_IDENTITY",
+    "PASS_CLEAN_OR_PASS_WITH_EXCLUSIONS_DECONTAMINATION_ON_EXACT_TRAINING_INVENTORY",
+    "FULL_SELECTION_VALIDATION_CLUSTER_SAFE_EXCLUSION_AUTHORITY",
+    "TOK315_OR_SUPERSEDING_FIT_AUTHORITY_WITH_FIT_MAY_START_NOW_TRUE",
+    "REPRODUCIBLE_BPE_ARTIFACTS_FOR_CANDIDATE_GRID"
+  ],
+  "decision_rule": {
+    "allowed_terminal_family_outputs_after_execution": ["BYTE", "BPE", "PRACTICAL_TIE"],
+    "current_output": "NO_VALID_FAMILY_RECOMMENDATION",
+    "reason": "A practical tie is an empirical result, not a substitute for missing authorized paired measurements."
+  },
+  "evidence_identity_method": "sha256(canonical-json-without-evidence_identity_sha256)",
+  "evidence_identity_sha256": "8705fb217b7bb685149c1414373d473bf0e599cf0f5435af0eb3a5a62ec1855d"
+}
