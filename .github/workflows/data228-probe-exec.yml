@@ -23,23 +23,39 @@ jobs:
           python-version: "3.11.16"
 
       - name: Run deterministic immutable-source probe
+        id: probe
+        continue-on-error: true
         env:
           PYTHONPATH: src
         run: |
+          set +e
+          mkdir -p reports/data228
           python tools/run_data228_source_probe.py \
             --config configs/data/data228_source_probe_v1.json \
             --report reports/data228/source-probe.json \
             --evidence-dir data/external/rights-evidence/data228 \
-            --max-bytes 2000000
+            --max-bytes 2000000 \
+            > >(tee reports/data228/probe.stdout.log) \
+            2> >(tee reports/data228/probe.stderr.log >&2)
+          rc=$?
+          printf '%s\n' "$rc" > reports/data228/probe-exit-code.txt
+          exit "$rc"
 
-      - name: Commit probe identities to DATA-228 feature branch
+      - name: Commit probe evidence to DATA-228 feature branch
+        if: always()
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add reports/data228/source-probe.json data/external/rights-evidence/data228
-          if git diff --cached --quiet; then
-            exit 0
+          git add reports/data228
+          if [ -d data/external/rights-evidence/data228 ]; then
+            git add data/external/rights-evidence/data228
           fi
-          git commit -m "DATA-228: record immutable source probe evidence [skip ci]"
-          git push origin HEAD:data228/real-ua-en-diversity-v2
+          if ! git diff --cached --quiet; then
+            git commit -m "DATA-228: record immutable source probe execution evidence [skip ci]"
+            git push origin HEAD:data228/real-ua-en-diversity-v2
+          fi
+
+      - name: Enforce probe success
+        if: steps.probe.outcome != 'success'
+        run: exit 1
