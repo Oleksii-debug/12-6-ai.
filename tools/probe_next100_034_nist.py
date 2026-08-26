@@ -193,3 +193,5 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+# Persistence retrigger: terminal evidence is committed by CI, not inferred from this marker.
