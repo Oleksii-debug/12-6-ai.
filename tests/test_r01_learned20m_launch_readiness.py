@@ -10,6 +10,8 @@ ROOT = Path(__file__).resolve().parents[1]
 CONFIG = ROOT / "configs/research/r01_learned20m_launch_readiness_v1.json"
 SHA40 = "a" * 40
 SHA64 = "b" * 64
+COMPUTE_REF = "issue:1#compute-authorized-example"
+TRAINING_REF = "issue:1#training-authorized-example"
 
 
 def _load() -> dict:
@@ -107,6 +109,31 @@ def _make_compute_request_ready() -> dict:
     return data
 
 
+def _add_material_authorizations(
+    data: dict,
+    *,
+    compute_ref: str = COMPUTE_REF,
+    training_ref: str = TRAINING_REF,
+    maximum_cost_usd: float = 50.0,
+) -> None:
+    evidence = data["evidence"]
+    evidence["compute_authorization"].update(
+        {
+            "authority": _authority(workflow=False),
+            "status": "COMPUTE_AUTHORIZED",
+            "decision_ref": compute_ref,
+            "maximum_cost_usd": maximum_cost_usd,
+        }
+    )
+    evidence["training_authorization"].update(
+        {
+            "authority": _authority(workflow=False),
+            "status": "TRAINING_AUTHORIZED",
+            "decision_ref": training_ref,
+        }
+    )
+
+
 def test_current_packet_is_blocked_at_all_three_phases() -> None:
     result = assess_learned20m_readiness(_load())
     assert not result.ready_for_local_free_pilot
@@ -124,6 +151,7 @@ def test_current_packet_is_blocked_at_all_three_phases() -> None:
         in result.local_free_pilot_blockers
     )
     assert "compute_not_explicitly_authorized" in result.material_training_blockers
+    assert "training_not_explicitly_authorized" in result.material_training_blockers
 
 
 def test_local_pilot_ready_does_not_imply_compute_or_training_authority() -> None:
@@ -217,24 +245,58 @@ def test_compute_request_ready_does_not_imply_paid_training_authority() -> None:
     assert result.ready_for_compute_authorization_request
     assert not result.material_training_authorized
     assert "compute_not_explicitly_authorized" in result.material_training_blockers
+    assert "training_not_explicitly_authorized" in result.material_training_blockers
 
 
-def test_explicit_compute_authority_must_cover_estimated_maximum() -> None:
+def test_packet_authored_authorizations_cannot_self_authorize() -> None:
     data = _make_compute_request_ready()
-    data["evidence"]["compute_authorization"].update(
-        {
-            "authority": _authority(workflow=False),
-            "status": "COMPUTE_AUTHORIZED",
-            "maximum_cost_usd": 49.0,
-        }
-    )
+    _add_material_authorizations(data)
     result = assess_learned20m_readiness(data)
+    assert not result.material_training_authorized
+    assert "compute_authorization_ref_unverified" in result.material_training_blockers
+    assert "training_authorization_ref_unverified" in result.material_training_blockers
+
+
+def test_compute_and_training_authorization_refs_must_be_distinct() -> None:
+    data = _make_compute_request_ready()
+    _add_material_authorizations(data, compute_ref=COMPUTE_REF, training_ref=COMPUTE_REF)
+    result = assess_learned20m_readiness(
+        data,
+        verified_authorization_refs={COMPUTE_REF},
+    )
+    assert not result.material_training_authorized
+    assert (
+        "compute_and_training_authorization_refs_must_be_distinct"
+        in result.material_training_blockers
+    )
+
+
+def test_explicit_material_authority_must_cover_estimated_maximum() -> None:
+    data = _make_compute_request_ready()
+    _add_material_authorizations(data, maximum_cost_usd=49.0)
+    verified = {COMPUTE_REF, TRAINING_REF}
+    result = assess_learned20m_readiness(data, verified_authorization_refs=verified)
     assert not result.material_training_authorized
     assert "authorized_cost_below_estimated_maximum" in result.material_training_blockers
 
     data["evidence"]["compute_authorization"]["maximum_cost_usd"] = 50.0
-    result = assess_learned20m_readiness(data)
+    result = assess_learned20m_readiness(data, verified_authorization_refs=verified)
     assert result.material_training_authorized
+
+
+def test_training_authorization_is_independent_of_compute_authorization() -> None:
+    data = _make_compute_request_ready()
+    _add_material_authorizations(data)
+    data["evidence"]["training_authorization"].update(
+        {"authority": None, "status": "NOT_AUTHORIZED", "decision_ref": None}
+    )
+    result = assess_learned20m_readiness(
+        data,
+        verified_authorization_refs={COMPUTE_REF},
+    )
+    assert not result.material_training_authorized
+    assert "training_not_explicitly_authorized" in result.material_training_blockers
+    assert "training_authorization_ref_missing" in result.material_training_blockers
 
 
 def test_nonterminal_or_failed_workflow_reference_fails_closed() -> None:
