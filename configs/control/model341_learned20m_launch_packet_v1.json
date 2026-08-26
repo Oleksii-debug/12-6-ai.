@@ -1,0 +1,111 @@
+{
+  "schema_version": 1,
+  "packet_id": "MODEL341-LEARNED-20M-LAUNCH-PACKET-V1",
+  "status": "BLOCKED_PENDING_TERMINAL_AUTHORITIES",
+  "authority": {
+    "repository": "Oleksii-debug/12-6-ai.",
+    "template_main_sha": "a73ab38026cb7849f478cc13ad58b93534a76e2f",
+    "model341_branch": "model341/20m-candidate-a-20260826",
+    "model341_sha": "e4ff486fd90802fc123bebf60eed4e59196a98df",
+    "modelspec_sha256": "fbff24d561a2818453554d58ca23fc6ace3303b078f1935a8576c4565bd92441",
+    "parameter_count": 20613440,
+    "base_lineage": "RANDOM_INIT_PRETRAINING_ONLY"
+  },
+  "truth_boundary": {
+    "package_scope": "CONTROL_PLANE_ONLY",
+    "corpus_mutation": false,
+    "tokenizer_fit": false,
+    "optimizer_updates": 0,
+    "model_weight_mutation": false,
+    "final_test_access": false,
+    "paid_compute_used": false,
+    "stage_promotion": false,
+    "learned_20m_claim": false
+  },
+  "authority_contract": {
+    "terminal_only": true,
+    "queued_running_cancelled_not_pass": true,
+    "self_attestation_forbidden": true,
+    "accepted_reference_kinds": ["github", "artifact"],
+    "github_reference_format": "github:<scope>@<40hex>:<terminal-decision>",
+    "artifact_reference_format": "artifact:<scope>@sha256:<64hex>:<terminal-decision>",
+    "accepted_terminal_decisions": ["pass", "success", "qualified", "admit", "authorized"]
+  },
+  "required_authorities": {
+    "qualified_integration_head": null,
+    "research_corpus_v1": null,
+    "reserved_evaluation_decontamination": null,
+    "cluster_safe_split": null,
+    "deterministic_packing": null,
+    "unique_post_pack_loss_ledger": null,
+    "tokenizer_or_byte_baseline_decision": null,
+    "checkpoint_integrity": null,
+    "learned_ladder_independent_verification": null,
+    "selection_validation": null,
+    "training_recipe": null,
+    "runtime_profile": null,
+    "cost_model": null,
+    "independent_launch_audit": null
+  },
+  "training_recipe": {
+    "seed_set": [],
+    "optimizer": null,
+    "scheduler": null,
+    "precision": null,
+    "gradient_clip_norm": null,
+    "unique_loss_positions": null,
+    "unique_loss_unit": "UNIQUE_AUTHORIZED_CAUSAL_LOSS_POSITIONS",
+    "total_training_exposure": null,
+    "training_exposure_unit": "CAUSAL_LOSS_POSITION_EXPOSURES",
+    "replay_policy": null,
+    "stop_rule": null,
+    "checkpoint_cadence": null,
+    "resume_policy": null
+  },
+  "evaluation_firewall": {
+    "selection_validation_identity": null,
+    "final_test_identity": null,
+    "training_must_exclude_selection_validation": true,
+    "training_must_exclude_final_test": true,
+    "final_test_read_before_terminal_training": false,
+    "selection_schedule": null
+  },
+  "compute_envelope": {
+    "estimated_training_flops": null,
+    "resource_shape": null,
+    "profiled_loss_positions_per_second": null,
+    "wall_clock_upper_bound_seconds": null,
+    "maximum_budget_eur": null,
+    "compute_authorization": null,
+    "training_authorization": null
+  },
+  "phase_evidence": {
+    "bounded_smoke": null,
+    "short_horizon": null
+  },
+  "decision": {
+    "ready_for_authorization_request": false,
+    "ready_for_short_horizon": false,
+    "ready_for_long_training": false,
+    "current_blockers": [
+      "terminal_authorities_missing",
+      "training_recipe_unbound",
+      "evaluation_firewall_unbound",
+      "compute_envelope_unbound",
+      "explicit_compute_authorization_missing",
+      "explicit_training_authorization_missing",
+      "bounded_smoke_evidence_missing",
+      "short_horizon_evidence_missing"
+    ]
+  },
+  "handoff": {
+    "data": "bind immutable corpus, decontamination, split, packing and unique-loss authorities",
+    "tokenizer": "bind corpus-specific tokenizer or explicit byte-baseline decision with BPB evidence",
+    "d05": "bind terminal checkpoint corruption and fresh-process resume authority",
+    "train": "bind evidence-backed optimizer, scheduler, precision, seeds, replay policy and stop rule",
+    "d06": "bind contamination-safe selection-validation authority and schedule",
+    "c01": "bind runtime profile, FLOP estimate, resource assumptions and monetary ceiling",
+    "owner": "issue immutable COMPUTE_AUTHORIZED and TRAINING_AUTHORIZED references only after all preceding gates are terminal",
+    "audit": "independently verify exact references before any material launch"
+  }
+}
