@@ -70,6 +70,25 @@
       "evaluation_authorized": false
     },
     {
+      "worker_id": "NEXT100-038-DATA-EN-MDN",
+      "pr": 445,
+      "head_sha": "902eccc0b3efff09a38dc89cda789180b6c6e754",
+      "workflow_run": 32998544359,
+      "workflow_name": "NEXT100-038 MDN Source Authority",
+      "workflow_conclusion": "success",
+      "authority_path": "evidence/next100_038/mdn_source_authority.v1.json",
+      "authority_blob_sha1": "5b55a5b041381d3f9aa810b0a305f65d58e401bd",
+      "authority_identity": "0f5dbd5313f8196811e2a99f77eb8698c6bc69f69648d76a7e240ee9757ecc47",
+      "terminal_status": "ADMIT_PROSE_ONLY",
+      "family_id": "en.mdn.webdocs.prose",
+      "stratum": "en",
+      "numeric_capacity_bytes": 6492,
+      "capacity_object_count": 1,
+      "independent_family_credit": 1,
+      "training_authorized": true,
+      "evaluation_authorized": false
+    },
+    {
       "worker_id": "NEXT100-027-DATA-UA-PUBLIC-DOMAIN-LIT",
       "pr": 462,
       "head_sha": "d75edd497c7fb1054e86d892c9462f059c1f4aa9",
@@ -115,6 +134,7 @@
   "credit_policy": {
     "rule": "Credit only exact-head dedicated terminal-success source authorities with explicit training permission and exact numeric eligible capacity. Source admission without an exact eligible-byte ledger is recorded but receives zero numeric capacity/family credit until a successor materializes that ledger.",
     "workflow_binding_rule": "Every credited authority binds the dedicated source workflow run id and exact workflow name; a generic repository workflow success cannot substitute for the dedicated admission workflow.",
+    "failed_dedicated_workflow_credit": 0,
     "queued_retest_probe_pr_text_only_credit": 0,
     "evaluation_permission_inferred_from_training": false,
     "cross_source_dedup_inferred": false,
@@ -123,17 +143,17 @@
   "converged_pre_successor_dedup_vector": {
     "numeric_capacity_bytes": {
       "uk": 100856,
-      "en": 144151,
+      "en": 150643,
       "code": 69133,
-      "total": 314140
+      "total": 320632
     },
     "independent_family_counts": {
       "uk": 4,
-      "en": 2,
+      "en": 3,
       "code": 4,
-      "total": 10
+      "total": 11
     },
-    "numeric_source_object_count": 21,
+    "numeric_source_object_count": 22,
     "family_minimum_required_per_stratum": 2,
     "family_minimum_candidate_status": "PASS_PRE_SUCCESSOR_GLOBAL_DEDUP",
     "canonical_balance_diversity_status": "RETEST_REQUIRED_AFTER_SUCCESSOR_GLOBAL_DEDUP"
@@ -147,9 +167,9 @@
     },
     "remaining_gap": {
       "uk": 8899144,
-      "en": 6855849,
+      "en": 6849357,
       "code": 3930867,
-      "total": 19685860
+      "total": 19679368
     },
     "note": "These are source-capacity bytes, not optimized causal-target counts; do not equate them to training tokens or loss positions."
   },
@@ -162,7 +182,7 @@
     {
       "gate": "BALANCE_DIVERSITY",
       "status": "RETEST_REQUIRED",
-      "reason": "family minimum is now numerically satisfiable pre-dedup, but source-share caps and post-dedup capacity must be recomputed"
+      "reason": "family minimum is numerically satisfiable pre-dedup, but source-share caps and post-dedup capacity must be recomputed"
     },
     {
       "gate": "CORPUS_MATERIALIZATION",
