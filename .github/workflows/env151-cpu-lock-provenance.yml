@@ -1,0 +1,67 @@
+name: ENV-151 CPU lock provenance
+
+on:
+  push:
+    branches:
+      - env151/cpu-lock-provenance-20260826
+
+permissions:
+  contents: read
+
+jobs:
+  resolve-cpu-runtime:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Set up exact Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Resolve exact CPU-only runtime provenance
+        run: |
+          set -euo pipefail
+          python -m venv .resolver
+          .resolver/bin/python -m pip install --disable-pip-version-check --dry-run --ignore-installed \
+            --report cpu-report.json \
+            --index-url https://download.pytorch.org/whl/cpu \
+            --extra-index-url https://pypi.org/simple \
+            'torch==2.13.0+cpu' 'numpy==2.4.6' 'safetensors==0.8.0'
+          .resolver/bin/python - <<'PY'
+          import json
+          import re
+          from pathlib import Path
+
+          report = json.loads(Path('cpu-report.json').read_text())
+          rows = []
+          forbidden = []
+          torch_url = None
+          for item in report['install']:
+              name = item['metadata']['name'].lower().replace('_', '-').replace('.', '-')
+              version = item['metadata']['version']
+              url = item['download_info']['url']
+              digest = item['download_info']['archive_info']['hashes']['sha256']
+              if name == 'torch':
+                  torch_url = url
+              if name.startswith(('nvidia-', 'cuda-', 'triton')):
+                  forbidden.append(name)
+              rows.append((name, version, digest, url))
+          if forbidden:
+              raise SystemExit(f'CPU resolver unexpectedly selected CUDA packages: {forbidden}')
+          if not torch_url or '/whl/cpu/' not in torch_url:
+              raise SystemExit(f'torch artifact is not CPU-index provenance: {torch_url}')
+          print('ENV151_CPU_LOCK_BEGIN')
+          print('# 12-6 AI linux-x86_64-cpu-training runtime lock; CPython 3.11.16 resolver provenance.')
+          print('# Authority install: python -m pip install --require-hashes --no-deps -r <this-file>')
+          for name, version, digest, _url in sorted(rows):
+              print(f'{name}=={version} --hash=sha256:{digest}')
+          print('ENV151_CPU_LOCK_END')
+          print('ENV151_CPU_URLS_BEGIN')
+          for name, version, digest, url in sorted(rows):
+              print(json.dumps({'name': name, 'version': version, 'sha256': digest, 'url': url}, sort_keys=True))
+          print('ENV151_CPU_URLS_END')
+          PY
