@@ -10,9 +10,10 @@ import os
 import re
 import shutil
 import tempfile
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Mapping
+from typing import Any
 
 from twelve_six.checkpoint import hash_json, verify_checkpoint
 
