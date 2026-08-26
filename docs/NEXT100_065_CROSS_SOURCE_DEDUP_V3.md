@@ -20,11 +20,20 @@ The report separately exposes source count, declared source-family count, stable
 
 ## Terminal refresh cut
 
-At the `2026-08-26T18:20:54Z` refresh cut, the exact terminal vector contains 11 objects / 7 stable origins: the five DATA-298 objects plus the terminal Ukrainian Wikisource page snapshot, three Django implementation files and two Starlette implementation files. Their declared pre-dedup source capacity is 243,970 bytes: Ukrainian 90,044; English 84,793; code 69,133.
+The original `2026-08-26T18:20:54Z` cut contained 11 objects / 7 stable origins and 243,970 declared source-capacity bytes. It excluded KMu and CPython documentation because their dedicated gates were still queued.
 
-The Ukrainian Wikisource object is keyed to the underlying 1892 Lviv edition, not the hosting URL. Starlette is keyed to stable GitHub repository id 138597372 so the historical `encode/starlette` and current `Kludex/starlette` names cannot multiply independence. Django files are sibling objects in one Django origin and are not counted as three independent families.
+This successor freezes a new cut at `2026-08-26T18:22:58Z`, after both exact-head gates became terminal success:
 
-Concurrent authorities are credited only after their current exact head has a completed successful dedicated source gate. KMu, Nomis, CPython docs/code, MDN, Jinja, Pydantic, NIST, attrs, Rich and Typer were queued at this refresh and therefore receive zero terminal capacity. Probe/RETEST/rejected authorities likewise receive zero.
+- NEXT100-026 KMu Secretariat: head `40950a950b60921fd856af2719e1ae2486d9e892`, workflow `32997970539`, six bounded Ukrainian records, 9,153 normalized training bytes, one independent family `ua.kmu.portal.secretariat-news`;
+- NEXT100-037 CPython documentation: head `5a6a495a24bce449334cbc5126d0114f61a9f57c`, workflow `32998356906`, one bounded RST object, family `python.cpython.documentation`.
+
+CPython's whole normalized source is 17,901 UTF-8 bytes, but its terminal authority permits only 14 of 16 D03 chunks. The two `pii_phone`-rejected chunks remain excluded. Their accepted-chunk mean is exactly 1,110 bytes across 14 chunks, so this audit credits only 15,540 training-eligible bytes, not the whole normalized source.
+
+The refreshed declared pre-dedup vector is therefore 18 objects / 9 stable origins / 9 source families and 268,663 bytes: Ukrainian 99,197 across 3 families; English 100,333 across 2 families; code 69,133 across 4 families.
+
+This removes the prior hard English-family-count failure (`1 < 2`) before cross-source dedup. It does not by itself authorize a corpus. Global and within-stratum family-share caps, quality/privacy, decontamination, evaluation reservation, split/packing, and exact unique-loss accounting remain independent gates.
+
+NIST and other authorities that complete after this exact cut are not silently credited. A later refresh must either materialize them through the same global dedup surface or record an explicit blocker; their later success cannot be backdated into this frozen cut.
 
 ## Truth boundary
 
