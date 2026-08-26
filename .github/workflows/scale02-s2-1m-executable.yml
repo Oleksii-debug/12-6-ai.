@@ -23,6 +23,13 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.11.16"
+      - name: Fail fast on workflow dependency drift before runtime install
+        run: |
+          set -euo pipefail
+          python tools/ci153_workflow_dependency_auditor.py \
+            --repo-root . \
+            --report scale02-ci153-preflight.json \
+            --exemptions ci/ci153_legacy_exemptions.json
       - name: Verify locked environment and repository checks
         env:
           SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
@@ -56,6 +63,7 @@ jobs:
         with:
           name: scale02-s2-1m-executable-evidence
           path: |
+            scale02-ci153-preflight.json
             locked-environment-linux-x86_64.json
             scale02-s2-1m-evidence/s2-1m-executable-preflight.json
             scale02-s2-1m-evidence/checkpoint
