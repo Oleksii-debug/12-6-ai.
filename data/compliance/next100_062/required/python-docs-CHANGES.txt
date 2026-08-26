@@ -1,0 +1,6 @@
+Python documentation derivative change summary
+
+Source object: python/cpython@7f0ccd6c0e3f85fbaeceb2f67b06ab3631db0480, Doc/tutorial/introduction.rst.
+Project processing: deterministic text normalization/chunking was applied; only the 14 chunks accepted by the terminal NEXT100-037 quality/privacy authority are eligible for training or redistribution through this corpus package. Two chunks rejected by the incumbent pii_phone predicate remain excluded.
+
+This file is the brief summary of changes required when distributing the derivative. It does not replace the exact CPython LICENSE bundle or PSF copyright notice, which must also accompany redistribution.

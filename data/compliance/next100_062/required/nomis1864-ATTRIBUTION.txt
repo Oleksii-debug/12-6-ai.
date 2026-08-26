@@ -1,0 +1,6 @@
+Source: Yemelianov, Dmytro (2026). verba — Ukrainian Proverbs Corpus (v1.0.2). https://verbacorpus.org
+Underlying work: Матвій Номис, Українські приказки, прислів'я і таке інше (1864), public domain.
+Digital compilation layer: Creative Commons Attribution 4.0 International (CC BY 4.0).
+License: https://creativecommons.org/licenses/by/4.0/
+
+This project redistributes only the bounded Nomis1864-selected snapshot. Normalization uses Unicode NFC and outer-whitespace trimming; historical spelling and punctuation are otherwise preserved. This notice identifies the source, license, and modifications.

@@ -1,0 +1,15 @@
+William James; The Varieties of Religious Experience; Longmans, Green, and Co.; 1902
+Source platform: English Wikisource
+Chosen platform-contribution reuse path: CC BY-SA 4.0
+License: https://creativecommons.org/licenses/by-sa/4.0/
+
+Permanent selected revisions:
+https://en.wikisource.org/w/index.php?title=Page:The_varieties_of_religious_experience,_a_study_in_human_nature.djvu/20&oldid=8450353
+https://en.wikisource.org/w/index.php?title=Page:The_varieties_of_religious_experience,_a_study_in_human_nature.djvu/21&oldid=8450364
+https://en.wikisource.org/w/index.php?title=Page:The_varieties_of_religious_experience,_a_study_in_human_nature.djvu/22&oldid=6931309
+Index revision: https://en.wikisource.org/w/index.php?title=Index:The_varieties_of_religious_experience,_a_study_in_human_nature.djvu&oldid=13271826
+Main work revision: https://en.wikisource.org/w/index.php?title=The_Varieties_of_Religious_Experience&oldid=14857116
+
+Project changes: only the transcluded Page bodies are retained; running headers, page numbers, scan images, navigation, footer, categories, and site chrome are removed; text is UTF-8, Unicode NFKC and whitespace-normalized while preserving paragraph boundaries.
+
+This notice does not admit English Wikisource as a whole or imply a license consequence for downstream model weights.
