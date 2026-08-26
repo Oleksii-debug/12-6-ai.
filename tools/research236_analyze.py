@@ -61,13 +61,23 @@ def _exact_paired_bootstrap(deltas: list[float]) -> dict[str, float]:
     }
 
 
-def _validate_cell(cell: dict[str, Any], *, scale: str, corpus: str, seed: int) -> None:
+def _validate_cell(
+    cell: dict[str, Any],
+    *,
+    scale: str,
+    corpus: str,
+    seed: int,
+    eval_set_identities: dict[str, str],
+) -> None:
     if cell.get("scale") != scale or cell.get("corpus") != corpus or int(cell.get("seed", -1)) != seed:
         raise ValueError(f"cell identity mismatch for {scale}/{corpus}/seed{seed}")
     if cell.get("tokenizer") != TOKENIZER_ID:
         raise ValueError("tokenizer mismatch")
     if cell.get("evaluation_identity") != EVAL_ID:
         raise ValueError("evaluation identity mismatch")
+    for field, expected in eval_set_identities.items():
+        if cell.get(field) != expected:
+            raise ValueError(f"evaluation-set identity mismatch: {field}")
     spec = MODEL_SPECS[scale]
     if int(cell.get("parameters", -1)) != spec["parameters"]:
         raise ValueError("parameter-count mismatch")
@@ -239,8 +249,17 @@ def analyze(payload: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("worker id mismatch")
     if payload.get("data230_terminal_identity") in {None, ""}:
         raise ValueError("missing terminal DATA-230 identity")
-    if payload.get("common_real_holdout_identity") in {None, ""}:
-        raise ValueError("missing common real holdout identity")
+    required_eval_ids = (
+        "data25_selection_identity",
+        "external_selection_identity",
+        "common_real_holdout_identity",
+    )
+    eval_set_identities: dict[str, str] = {}
+    for field in required_eval_ids:
+        value = payload.get(field)
+        if value in {None, ""}:
+            raise ValueError(f"missing {field}")
+        eval_set_identities[field] = str(value)
 
     scales = payload.get("scales", {})
     if "500k" not in scales:
@@ -258,7 +277,13 @@ def analyze(payload: dict[str, Any]) -> dict[str, Any]:
             if set(by_seed) != set(PAIRED_SEEDS):
                 raise ValueError(f"paired seed set mismatch for {scale}/{corpus}")
             for seed, cell in by_seed.items():
-                _validate_cell(cell, scale=scale, corpus=corpus, seed=seed)
+                _validate_cell(
+                    cell,
+                    scale=scale,
+                    corpus=corpus,
+                    seed=seed,
+                    eval_set_identities=eval_set_identities,
+                )
                 rows.setdefault(seed, {})[corpus] = cell
 
         summaries = {metric: _paired_summary(rows, metric) for metric in COMMON_EVAL_METRICS}
@@ -300,6 +325,7 @@ def analyze(payload: dict[str, Any]) -> dict[str, Any]:
         "worker_id": WORKER_ID,
         "matched_actual_optimized_tokens": MATCHED_OPTIMIZED_TOKENS,
         "paired_seeds": list(PAIRED_SEEDS),
+        "evaluation_set_identities": eval_set_identities,
         "scales": out_scales,
         "conclusion": conclusion,
     }
