@@ -7,7 +7,7 @@ V2 corrects the V1 unblock order. Terminal source-registry convergence by itself
 ## Current exact nonterminal dependency snapshot
 
 Source convergence candidate:
-- PR #538, head `226cbc26710a75af4a864576220b270089e7c52b`;
+- PR #538, head `1bcd1a57a7b2699294808b47888a255bf37a50aa`;
 - V4 registry identity `9fc400a3144b46c481e45d043b0a3365eb2129c83bbacde6f9e7af8a41fadc58`;
 - 31 source objects / 14 independent families;
 - UK 100,856 numeric bytes / 4 families;
@@ -18,9 +18,9 @@ Source convergence candidate:
 - exact-head CI is queued/nonterminal, so this candidate is not consumed as terminal authority.
 
 Global dedup candidate:
-- PR #632, head `8181b247fc305f96f4be02d8630ce18cdcf63eae`;
+- PR #632, head `938f0076f06fca653681774ce1a9585bd2f57380`;
 - worker `NEXT100-065D-CROSSSOURCE-DEDUP-V6`;
-- dedicated run `33008762043` is pending/nonterminal;
+- dedicated run `33009534757` is queued/nonterminal;
 - expected input is the same 31-object / 2,045,180-byte / UK4-EN5-code5 family vector;
 - no terminal post-dedup report hash, post-dedup unique-capacity value, or record-inventory identity is claimed.
 
