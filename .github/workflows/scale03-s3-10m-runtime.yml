@@ -34,6 +34,14 @@ jobs:
         with:
           python-version: "3.11.16"
 
+      - name: Fail fast on workflow dependency drift before runtime install
+        run: |
+          set -euo pipefail
+          python tools/ci153_workflow_dependency_auditor.py \
+            --repo-root . \
+            --report scale03-ci153-preflight.json \
+            --exemptions ci/ci153_legacy_exemptions.json
+
       - name: Verify D08 locked environment and repository checks
         run: >-
           python tools/verify_locked_environment.py
@@ -126,6 +134,7 @@ jobs:
         with:
           name: scale03-s3-10m-evidence-${{ env.SOURCE_SHA }}
           path: |
+            scale03-ci153-preflight.json
             locked-environment-linux-x86_64.json
             s3-10m-engineering-evidence.json
           if-no-files-found: error
