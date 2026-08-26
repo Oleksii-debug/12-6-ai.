@@ -1,0 +1,117 @@
+name: SCALE-202 100M Real Qualification
+
+on:
+  pull_request:
+    branches:
+      - milestone150/learned-base-ladder-v1-20260826
+    paths:
+      - ".github/workflows/scale202-100m-real-qualification.yml"
+      - ".github/actions/execution-bootstrap/**"
+      - "requirements/execution/**"
+      - "tools/execution_bootstrap.py"
+      - "tools/run_scale202_100m_qualification.py"
+      - "src/twelve_six/distributed/activation_checkpointing.py"
+      - "src/twelve_six/distributed/fsdp2_training.py"
+      - "src/twelve_six/distributed/dcp_checkpoint.py"
+      - "src/twelve_six/training/**"
+      - "src/twelve_six/checkpoint/**"
+      - "src/twelve_six/model.py"
+      - "src/twelve_six/tokenization/**"
+      - "src/twelve_six/milestone100_first_learned.py"
+      - "configs/stages/s4_100m_accelerator.candidate.json"
+      - "configs/data/corpus_v01.json"
+      - "data/corpus/v0.1/**"
+      - "evidence/scale202/**"
+      - "tests/test_scale202_100m_qualification.py"
+  workflow_dispatch:
+
+concurrency:
+  group: scale202-100m-real-qualification-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  qualify-or-record-blocker:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      PYTHONPATH: src
+      SCALE202_BOOTSTRAP_MANIFEST: evidence/scale202/universal-bootstrap.json
+      OMP_NUM_THREADS: "2"
+      MKL_NUM_THREADS: "2"
+    steps:
+      - name: Checkout exact qualification head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up exact Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact source
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+
+      - name: Universal exact-lock bootstrap with CUDA capability probe
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/scale202
+          python tools/execution_bootstrap.py bootstrap \
+            --repo-root . \
+            --capabilities runtime,cuda,tests \
+            --command "python -m pytest -q tests/test_scale202_100m_qualification.py" \
+            --command "python tools/run_scale202_100m_qualification.py" \
+            --venv .scale202 \
+            --manifest "$SCALE202_BOOTSTRAP_MANIFEST" \
+            --allow-no-gpu
+
+      - name: Test fail-closed qualification contract
+        run: |
+          set -euo pipefail
+          .scale202/bin/python -m pytest -q tests/test_scale202_100m_qualification.py
+
+      - name: Execute one-step qualification only when hardware permits
+        run: |
+          set -euo pipefail
+          .scale202/bin/python tools/run_scale202_100m_qualification.py \
+            --repo-root . \
+            --output evidence/scale202/result.json \
+            --work-dir evidence/scale202/work
+          .scale202/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+          result = json.loads(Path("evidence/scale202/result.json").read_text(encoding="utf-8"))
+          print(json.dumps({
+              "status": result["status"],
+              "source_sha": result.get("source_sha"),
+              "cuda_available": result["hardware_preflight"]["cuda_available"],
+              "visible_cuda_devices": result["hardware_preflight"]["visible_cuda_devices"],
+              "parameter_count": result["contract"]["parameter_count"],
+              "model_spec_sha256": result["contract"]["model_spec_sha256"],
+              "corpus_identity_sha256": result["contract"]["corpus_identity_sha256"],
+              "paid_compute": result["paid_compute"],
+          }, indent=2, sort_keys=True))
+          PY
+
+      - name: Upload compact qualification evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: scale202-100m-real-qualification
+          path: |
+            evidence/scale202/current_no_gpu_blocker_20260826.json
+            evidence/scale202/universal-bootstrap.json
+            evidence/scale202/result.json
+            evidence/scale202/work/run-manifest.json
+            evidence/scale202/work/checkpoint-step-0001/manifest.json
+            evidence/scale202/work/checkpoint-step-0001/MANIFEST.sha256
+          if-no-files-found: ignore
