@@ -1,0 +1,36 @@
+{
+  "schema_version": "12-6.data294-reserved-eval-ranges.v1",
+  "local_free_only": true,
+  "real_snapshot_registry_identity_sha256": "1357a343eb4ea973950d8991913109cbea53fe4fa891f0be9745ab497eb59486",
+  "tokenizer": {
+    "version": "s0-byte-v1",
+    "config_sha256": "b04055c1061dd641dcab7cb9d62a931f09b8d1a070140a926ceb4e91d73ca8e1",
+    "vocab_sha256": "905ed40bb42cc4d550e228ff5f24158d504b38e8ed5974dfa3077bd5867ad571",
+    "mapping": "normalized-utf8-byte-identity",
+    "add_bos": false,
+    "add_eos": false,
+    "cross_document": false
+  },
+  "sources": [
+    {
+      "registry_source_id": "external-real:en.standardebooks.manual.8-typography",
+      "normalized_payload_sha256": "154fb4034929714087e75150d678bf65049ddac32e79dcdf97162c8972c2be83",
+      "reserved_eval_byte_ranges": []
+    },
+    {
+      "registry_source_id": "external-real:en.standardebooks.manual.9-metadata",
+      "normalized_payload_sha256": "94eb2f529922d125b3bd40691778886f4d5d80b128b925d0274fb3d94646ec5a",
+      "reserved_eval_byte_ranges": []
+    },
+    {
+      "registry_source_id": "external-real:ua.rada.open-data.laws-texts.d23314",
+      "normalized_payload_sha256": "72c301db0b2539f3f7a73c9c15e2e425700a6b758a1114f1a861e2d60c704c50",
+      "reserved_eval_byte_ranges": []
+    }
+  ],
+  "claim_boundary": {
+    "current_registry_has_inline_reserved_eval_ranges": false,
+    "future_corpus_must_materialize_every_reserved_range_before_ledger_build": true,
+    "final_test_bytes_must_never_be_added_as_training_sources": true
+  }
+}
