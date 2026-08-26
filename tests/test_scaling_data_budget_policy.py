@@ -21,6 +21,18 @@ def load_policy() -> dict:
     return json.loads(POLICY.read_text(encoding="utf-8"))
 
 
+def _recompute_stage_budget(stage: dict) -> None:
+    parameter_count = stage["parameter_count"]
+    stage["reference_training_token_exposures"] = {
+        "20x": parameter_count * 20,
+        "50x": parameter_count * 50,
+        "100x": parameter_count * 100,
+    }
+    stage["approx_dense_training_flops_at_20x"] = 6 * parameter_count * (
+        parameter_count * 20
+    )
+
+
 def test_current_policy_passes() -> None:
     report = module.validate(load_policy())
     assert report == {
@@ -60,6 +72,30 @@ def test_20x_reference_is_derived_from_parameter_count() -> None:
     broken = copy.deepcopy(load_policy())
     broken["stages"][0]["reference_training_token_exposures"]["20x"] += 1
     with pytest.raises(ValueError, match="20M_PRIMARY 20x token-exposure reference drift"):
+        module.validate(broken)
+
+
+def test_exact_20m_primary_parameter_identity_cannot_drift() -> None:
+    broken = copy.deepcopy(load_policy())
+    broken["stages"][0]["parameter_count"] = 20_000_000
+    _recompute_stage_budget(broken["stages"][0])
+    with pytest.raises(ValueError, match="20M_PRIMARY parameter_count drift"):
+        module.validate(broken)
+
+
+def test_100m_stage_identity_cannot_be_relabelled_with_consistent_math() -> None:
+    broken = copy.deepcopy(load_policy())
+    broken["stages"][1]["parameter_count"] = 10_000_000
+    _recompute_stage_budget(broken["stages"][1])
+    with pytest.raises(ValueError, match="100M_TARGET parameter_count drift"):
+        module.validate(broken)
+
+
+def test_1b_stage_identity_cannot_be_relabelled_with_consistent_math() -> None:
+    broken = copy.deepcopy(load_policy())
+    broken["stages"][2]["parameter_count"] = 100_000_000
+    _recompute_stage_budget(broken["stages"][2])
+    with pytest.raises(ValueError, match="1B_TARGET parameter_count drift"):
         module.validate(broken)
 
 
