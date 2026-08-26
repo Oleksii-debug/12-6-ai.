@@ -1,0 +1,131 @@
+name: TRAIN-344B MODEL-341 Optimizer Mechanics
+
+on:
+  pull_request:
+    paths:
+      - "configs/experiments/train344b_model341_optimizer_mechanics_v2.json"
+      - "configs/candidates/model341_20m_candidate_a.json"
+      - "tools/validate_train344b_model341_optimizer_mechanics.py"
+      - "tools/run_train344b_model341_optimizer_probe.py"
+      - "tests/test_train344b_model341_optimizer_mechanics.py"
+      - "docs/TRAIN344B_MODEL341_OPTIMIZER_MECHANICS.md"
+      - ".github/workflows/train344b-model341-optimizer-mechanics.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: train344b-model341-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  exact-identity-gate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      PYTHONPATH: ${{ github.workspace }}/src:${{ github.workspace }}
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Require MODEL-341 ancestry
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor e4ff486fd90802fc123bebf60eed4e59196a98df HEAD
+          test "$(git rev-parse e4ff486fd90802fc123bebf60eed4e59196a98df:configs/candidates/model341_20m_candidate_a.json)" = "69e3cbd5f5c83c9d3d529a2a6376db3055979c40"
+      - name: Set CPython 3.11.16
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+      - name: Universal runtime bootstrap
+        uses: ./.github/actions/execution-bootstrap
+        with:
+          capabilities: runtime,tests
+          venv: .train344b
+          manifest: evidence/train344b/environment.json
+          command: python -c "import torch; print(torch.__version__)"
+      - name: Validate exact identity and focused regressions
+        run: |
+          set -euo pipefail
+          .train344b/bin/python tools/validate_train344b_model341_optimizer_mechanics.py
+          .train344b/bin/python -m pytest -q tests/test_train344b_model341_optimizer_mechanics.py
+          .train344b/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+          report=json.loads(Path('evidence/train344b/readiness.json').read_text())
+          gate=report['model_gate']
+          assert gate['parameter_count'] == 20613440
+          assert gate['model_spec_sha256'] == 'fbff24d561a2818453554d58ca23fc6ace3303b078f1935a8576c4565bd92441'
+          assert gate['optimizer_updates_authorized_for_synthetic_probe'] == 96
+          assert gate['learned_corpus_optimizer_updates_authorized'] == 0
+          assert report['dependency_firewall']['long_training_authorized'] is False
+          PY
+      - name: Upload exact readiness evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: train344b-model341-readiness
+          path: |
+            evidence/train344b/readiness.json
+            evidence/train344b/environment.json
+
+  bounded-synthetic-probe:
+    needs: exact-identity-gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      PYTHONPATH: ${{ github.workspace }}/src:${{ github.workspace }}/tools
+      OMP_NUM_THREADS: "2"
+      MKL_NUM_THREADS: "2"
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Require exact MODEL-341 ancestor
+        run: git merge-base --is-ancestor e4ff486fd90802fc123bebf60eed4e59196a98df HEAD
+      - name: Set CPython 3.11.16
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+      - name: Universal runtime bootstrap
+        uses: ./.github/actions/execution-bootstrap
+        with:
+          capabilities: runtime
+          venv: .train344b
+          manifest: evidence/train344b/probe-environment.json
+          command: python -c "import torch; print(torch.__version__)"
+      - name: Run frozen three-by-thirty-two mechanics probe
+        run: |
+          set -euo pipefail
+          .train344b/bin/python tools/run_train344b_model341_optimizer_probe.py
+      - name: Assert mechanics-only truth boundary
+        run: |
+          .train344b/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+          report=json.loads(Path('evidence/train344b/model341-optimizer-probe.json').read_text())
+          assert report['overall_status'] == 'STABLE_MECHANICS_ONLY'
+          assert report['parameter_count'] == 20613440
+          assert report['learned_corpus_optimizer_updates'] == 0
+          assert report['long_training'] is False
+          assert report['paid_compute'] is False
+          assert report['selection_authority'] == 'NONE'
+          assert report['quality_winner'] is None
+          assert sum(a['optimizer_steps'] for a in report['arms']) == 96
+          assert sum(a['optimized_causal_targets'] for a in report['arms']) == 24480
+          assert len({a['initial_model_digest_sha256'] for a in report['arms']}) == 1
+          PY
+      - name: Upload bounded mechanics evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: train344b-model341-optimizer-probe
+          path: |
+            evidence/train344b/model341-optimizer-probe.json
+            evidence/train344b/probe-environment.json
