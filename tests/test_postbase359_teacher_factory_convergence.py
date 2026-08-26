@@ -159,7 +159,7 @@ def test_successor_dataset_version_chains_to_prior_manifest() -> None:
     v2 = VersionedDatasetCurator(
         "postbase359-proof",
         "v2",
-        parent_manifest_sha256=v1_manifest["manifest_sha256"],
+        parent_manifest=v1_manifest,
     )
     v2_root = v2.manifest()
 
