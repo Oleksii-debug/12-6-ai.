@@ -49,6 +49,10 @@ def test_frozen_intake_validates() -> None:
             "drift: normalized_bytes",
         ),
         (
+            lambda p: p["terminal_additions"][4].update(pre_decontamination_only=False),
+            "scope drift",
+        ),
+        (
             lambda p: p["gates"].update(training_authorized_loss_positions=1),
             "training exposure",
         ),
