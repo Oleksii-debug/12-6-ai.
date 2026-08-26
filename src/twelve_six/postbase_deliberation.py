@@ -4,8 +4,9 @@ import hashlib
 import json
 import math
 import time
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass
-from typing import Any, Mapping, Protocol
+from typing import Any, Protocol
 
 
 def _hash(text: str) -> str:
@@ -299,7 +300,7 @@ class DeliberationController:
                     result = self.tools.execute(call.name, call.arguments)
                     if not isinstance(result, str):
                         raise TypeError("tool result must be str")
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001 - executor boundary
                     ok, error = False, type(exc).__name__
                     result = f"[tool_error:{error}]"
                 used["tool_calls"] += 1
