@@ -1,34 +1,36 @@
-"""Deterministic capability-to-lock execution bootstrap."""
+"""ENV-151 deterministic capability-to-lock execution bootstrap.
 
+Stdlib-only by design: this file can validate an experiment contract before any
+project/runtime dependency is installed.
+"""
 from __future__ import annotations
 
 import argparse
 import hashlib
 import json
-import os
-from pathlib import Path
 import platform
 import re
 import subprocess
 import sys
-from typing import Any
 import venv
+from pathlib import Path
+from typing import Any
 
 SCHEMA = "12-6.execution-capabilities.v1"
 MANIFEST_SCHEMA = "12-6.execution-environment-manifest.v1"
-CPU_EXTRA_INDEX = "https://download.pytorch.org/whl/cpu"
-LOCK_LINE = re.compile(
-    r"^[A-Za-z0-9][A-Za-z0-9._-]*==([^\s;@/\\]+)(?: --hash=sha256:[0-9a-f]{64})+$"
+_LOCK_LINE = re.compile(
+    r"^[A-Za-z0-9][A-Za-z0-9._-]*==([^\s;@/\\]+)"
+    r"(?: --hash=sha256:[0-9a-f]{64})+$"
 )
-NAME_NORMALIZER = re.compile(r"[-_.]+")
+_NAME = re.compile(r"[-_.]+")
 
 
 class ExecutionBootstrapError(RuntimeError):
-    """Raised when an execution capability cannot be materialized exactly."""
+    pass
 
 
 def _canonical_name(value: str) -> str:
-    return NAME_NORMALIZER.sub("-", value.strip()).lower()
+    return _NAME.sub("-", value.strip()).lower()
 
 
 def _sha256_file(path: Path) -> str:
@@ -52,17 +54,15 @@ def _safe(root: Path, relative: str) -> Path:
 
 
 def _load_registry(root: Path) -> dict[str, Any]:
-    value = json.loads(
-        (root / "requirements/execution/capabilities.json").read_text(encoding="utf-8")
-    )
+    path = root / "requirements/execution/capabilities.json"
+    value = json.loads(path.read_text(encoding="utf-8"))
     if value.get("schema") != SCHEMA:
         raise ExecutionBootstrapError("execution capability registry schema mismatch")
-    python = value["python"]
-    if platform.python_version() != python["version"]:
+    if platform.python_version() != value["python"]["version"]:
         raise ExecutionBootstrapError(
-            f"bootstrap requires CPython {python['version']}, got {platform.python_version()}"
+            f"bootstrap requires CPython {value['python']['version']}, got {platform.python_version()}"
         )
-    if sys.implementation.name != python["implementation"]:
+    if sys.implementation.name != value["python"]["implementation"]:
         raise ExecutionBootstrapError("Python implementation mismatch")
     return value
 
@@ -71,14 +71,15 @@ def _validate_lock(root: Path, role: str, record: dict[str, Any]) -> dict[str, s
     path = _safe(root, record["path"])
     if not path.is_file():
         raise ExecutionBootstrapError(f"{role}: lock is missing: {path}")
-    if _sha256_file(path) != record["sha256"]:
+    digest = _sha256_file(path)
+    if digest != record["sha256"]:
         raise ExecutionBootstrapError(f"{role}: lock SHA-256 drift")
     packages: dict[str, str] = {}
     for number, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
         line = raw.strip()
         if not line or line.startswith("#"):
             continue
-        if LOCK_LINE.fullmatch(line) is None:
+        if _LOCK_LINE.fullmatch(line) is None:
             raise ExecutionBootstrapError(f"{role}: non-exact/unhashed line {number}")
         name, tail = line.split("==", 1)
         canonical = _canonical_name(name)
@@ -99,38 +100,36 @@ def _command_capability(command: str, registry: dict[str, Any]) -> str | None:
         return "tests"
     if words[:3] == ["python", "-m", "ruff"] or words[0] == "ruff":
         return "lint"
-    return registry.get("dependency_executables", {}).get(Path(words[0]).name)
+    executable_map = registry.get("dependency_executables", {})
+    name = Path(words[0]).name
+    return executable_map.get(name)
 
 
 def resolve_plan(root: Path, capabilities: list[str], commands: list[str]) -> dict[str, Any]:
     registry = _load_registry(root)
-    declared = list(dict.fromkeys(cap.strip() for cap in capabilities if cap.strip()))
+    declared: list[str] = []
+    for cap in capabilities:
+        cap = cap.strip()
+        if cap and cap not in declared:
+            declared.append(cap)
     if not declared:
         raise ExecutionBootstrapError("at least one capability must be declared")
-
-    capability_records = registry["capabilities"]
-    for capability in declared:
-        record = capability_records.get(capability)
+    cap_records = registry["capabilities"]
+    for cap in declared:
+        record = cap_records.get(cap)
         if not isinstance(record, dict):
-            raise ExecutionBootstrapError(f"unknown capability: {capability}")
+            raise ExecutionBootstrapError(f"unknown capability: {cap}")
         if record.get("status") != "available":
             raise ExecutionBootstrapError(
-                f"{capability}: {record.get('status', 'unavailable')} "
-                f"({record.get('reason', 'no exact lock')})"
+                f"{cap}: {record.get('status', 'unavailable')} ({record.get('reason', 'no exact lock')})"
             )
         for requirement in record.get("requires", []):
             if requirement not in declared:
-                raise ExecutionBootstrapError(
-                    f"{capability} requires declared capability {requirement}"
-                )
-
+                raise ExecutionBootstrapError(f"{cap} requires declared capability {requirement}")
     for command in commands:
         needed = _command_capability(command, registry)
         if needed is not None and needed not in declared:
-            raise ExecutionBootstrapError(
-                f"command {command!r} requires undeclared capability {needed}"
-            )
-
+            raise ExecutionBootstrapError(f"command {command!r} requires undeclared capability {needed}")
     roles = ["toolchain"]
     if "cuda" in declared:
         if "runtime" not in declared:
@@ -148,83 +147,65 @@ def resolve_plan(root: Path, capabilities: list[str], commands: list[str]) -> di
         roles.append("transformers_overlay")
     if "tests" in declared or "lint" in declared:
         roles.append("dev")
-    roles = list(dict.fromkeys(roles))
-
-    merged: dict[str, str] = {}
-    locks = []
+    ordered_roles: list[str] = []
     for role in roles:
+        if role not in ordered_roles:
+            ordered_roles.append(role)
+    merged: dict[str, str] = {}
+    lock_records: list[dict[str, Any]] = []
+    for role in ordered_roles:
         record = registry["locks"][role]
         packages = _validate_lock(root, role, record)
         for name, version in packages.items():
-            if name in merged and merged[name] != version:
-                raise ExecutionBootstrapError(
-                    f"lock conflict for {name}: {merged[name]} versus {version}"
-                )
+            old = merged.get(name)
+            if old is not None and old != version:
+                raise ExecutionBootstrapError(f"lock conflict for {name}: {old} versus {version}")
             merged[name] = version
-        locks.append(
-            {
-                "role": role,
-                "path": record["path"],
-                "sha256": record["sha256"],
-                "package_count": record["package_count"],
-            }
-        )
-
+        lock_record: dict[str, Any] = {
+            "role": role,
+            "path": record["path"],
+            "sha256": record["sha256"],
+            "package_count": record["package_count"],
+        }
+        if "index_url" in record:
+            lock_record["index_url"] = record["index_url"]
+        if "extra_index_url" in record:
+            lock_record["extra_index_url"] = record["extra_index_url"]
+        lock_records.append(lock_record)
     forbidden = [
-        name
-        for name in merged
+        name for name in merged
         if name.startswith("nvidia-") or name.startswith("cuda-") or name == "triton"
     ]
     if "cuda" not in declared and forbidden:
         raise ExecutionBootstrapError(
             "non-CUDA plan inherited CUDA packages: " + ", ".join(sorted(forbidden))
         )
-
     imports: list[str] = []
     executables: list[str] = []
-    for capability in declared:
-        imports.extend(capability_records[capability].get("imports", []))
-        executables.extend(capability_records[capability].get("executables", []))
-
-    plan: dict[str, Any] = {
+    for cap in declared:
+        imports.extend(cap_records[cap].get("imports", []))
+        executables.extend(cap_records[cap].get("executables", []))
+    payload = {
         "schema": "12-6.execution-plan.v1",
         "capabilities": declared,
         "commands": commands,
-        "locks": locks,
+        "locks": lock_records,
         "imports": sorted(set(imports)),
         "executables": sorted(set(executables)),
         "package_count": len(merged),
         "cuda_packages_present": bool(forbidden),
         "d08_authority": registry["d08_authority"],
     }
-    plan["identity_sha256"] = hashlib.sha256(_canonical_bytes(plan)).hexdigest()
-    return plan
+    payload["identity_sha256"] = hashlib.sha256(_canonical_bytes(payload)).hexdigest()
+    return payload
 
 
 def _venv_python(directory: Path) -> Path:
     return directory / ("Scripts/python.exe" if platform.system() == "Windows" else "bin/python")
 
 
-def _run(command: list[str | Path], cwd: Path, *, env: dict[str, str] | None = None) -> None:
-    rendered = [str(item) for item in command]
-    print("+", " ".join(rendered), flush=True)
-    subprocess.run(rendered, cwd=cwd, check=True, env=env)
-
-
-def _install_lock(python: Path, root: Path, lock: dict[str, Any]) -> None:
-    command: list[str | Path] = [
-        python,
-        "-m",
-        "pip",
-        "install",
-        "--disable-pip-version-check",
-        "--require-hashes",
-        "--no-deps",
-    ]
-    if lock["role"] == "cpu_runtime":
-        command += ["--extra-index-url", CPU_EXTRA_INDEX]
-    command += ["-r", _safe(root, lock["path"])]
-    _run(command, root)
+def _run(command: list[str | Path], cwd: Path) -> None:
+    subprocess.run([str(item) for item in command], cwd=cwd, check=True)
 
 
 def _probe_imports(python: Path, modules: list[str], cwd: Path) -> None:
@@ -235,21 +216,20 @@ def _probe_imports(python: Path, modules: list[str], cwd: Path) -> None:
         f"mods={modules!r}\n"
         "missing=[]\n"
         "for name in mods:\n"
-        "    try:\n"
-        "        importlib.import_module(name)\n"
-        "    except Exception as exc:\n"
-        "        missing.append((name,type(exc).__name__,str(exc)))\n"
+        "  try: importlib.import_module(name)\n"
+        "  except Exception as e: missing.append((name, type(e).__name__, str(e)))\n"
         "assert not missing, 'missing imports: '+repr(missing)\n"
     )
     _run([python, "-c", code], cwd)
 
 
 def _probe_executables(python: Path, executables: list[str]) -> None:
+    bindir = python.parent
     missing = []
     for name in executables:
-        candidates = [python.parent / name]
+        candidates = [bindir / name]
         if platform.system() == "Windows":
-            candidates.append(python.parent / f"{name}.exe")
+            candidates.append(bindir / f"{name}.exe")
         if not any(path.is_file() for path in candidates):
             missing.append(name)
     if missing:
@@ -260,25 +240,16 @@ def _probe_executables(python: Path, executables: list[str]) -> None:
 
 def _installed(python: Path, cwd: Path) -> dict[str, str]:
     code = (
-        "import importlib.metadata as m,json\n"
-        "print(json.dumps({d.metadata['Name']:d.version for d in m.distributions()},sort_keys=True))"
+        "import importlib.metadata as m, json\n"
+        "print(json.dumps({d.metadata['Name']: d.version for d in m.distributions()}, sort_keys=True))"
     )
-    output = subprocess.run(
-        [str(python), "-c", code],
-        cwd=cwd,
-        check=True,
-        capture_output=True,
-        text=True,
-    ).stdout
-    return json.loads(output)
+    completed = subprocess.run(
+        [str(python), "-c", code], cwd=cwd, check=True, capture_output=True, text=True
+    )
+    return json.loads(completed.stdout)
 
 
-def preflight(
-    root: Path,
-    python: Path,
-    plan: dict[str, Any],
-    allow_no_gpu: bool,
-) -> dict[str, Any]:
+def preflight(root: Path, python: Path, plan: dict[str, Any], allow_no_gpu: bool) -> dict[str, Any]:
     _probe_imports(python, plan["imports"], root)
     _probe_executables(python, plan["executables"])
     cuda = {
@@ -288,21 +259,16 @@ def preflight(
         "no_gpu_preflight": False,
     }
     if "cuda" in plan["capabilities"]:
-        output = subprocess.run(
+        completed = subprocess.run(
             [str(python), "-c", "import torch; print(int(torch.cuda.is_available()))"],
-            cwd=root,
-            check=True,
-            capture_output=True,
-            text=True,
-        ).stdout.strip()
-        visible = output == "1"
+            cwd=root, check=True, capture_output=True, text=True
+        )
+        visible = completed.stdout.strip() == "1"
         cuda["hardware_visible"] = visible
         cuda["hardware_claim"] = visible
         if not visible:
             if not allow_no_gpu:
-                raise ExecutionBootstrapError(
-                    "CUDA software is installed but no CUDA hardware is visible"
-                )
+                raise ExecutionBootstrapError("CUDA software is installed but no CUDA hardware is visible")
             cuda["no_gpu_preflight"] = True
     return {"status": "PASS", "cuda": cuda}
 
@@ -321,26 +287,27 @@ def bootstrap(
     venv.EnvBuilder(with_pip=True).create(venv_dir)
     python = _venv_python(venv_dir)
     for lock in plan["locks"]:
-        _install_lock(python, root, lock)
+        command: list[str | Path] = [
+            python, "-m", "pip", "install", "--disable-pip-version-check", "--require-hashes", "--no-deps"
+        ]
+        if "index_url" in lock:
+            command.extend(["--index-url", lock["index_url"]])
+        if "extra_index_url" in lock:
+            command.extend(["--extra-index-url", lock["extra_index_url"]])
+        command.extend(["-r", _safe(root, lock["path"])])
+        _run(command, cwd=root)
     proof = preflight(root, python, plan, allow_no_gpu)
-    manifest: dict[str, Any] = {
+    manifest = {
         "schema": MANIFEST_SCHEMA,
         "plan": plan,
-        "python": {
-            "implementation": sys.implementation.name,
-            "bootstrap_version": platform.python_version(),
-            "venv_executable": str(python),
-        },
+        "python": {"implementation": sys.implementation.name, "bootstrap_version": platform.python_version(), "venv_executable": str(python)},
         "platform": {"system": platform.system(), "machine": platform.machine()},
         "packages": _installed(python, root),
         "preflight": proof,
     }
     manifest["identity_sha256"] = hashlib.sha256(_canonical_bytes(manifest)).hexdigest()
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
-    manifest_path.write_text(
-        json.dumps(manifest, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
+    manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return manifest
 
 
@@ -360,44 +327,18 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     root = args.repo_root.resolve()
     capabilities = _csv(args.capabilities)
-
     if args.action == "plan":
         print(json.dumps(resolve_plan(root, capabilities, args.command), indent=2, sort_keys=True))
         return 0
     if args.action == "bootstrap":
         if args.venv is None or args.manifest is None:
             parser.error("bootstrap requires --venv and --manifest")
-        manifest = bootstrap(
-            root,
-            args.venv.resolve(),
-            capabilities,
-            args.command,
-            args.manifest.resolve(),
-            args.allow_no_gpu,
-        )
-        print(
-            json.dumps(
-                {
-                    "status": "PASS",
-                    "identity_sha256": manifest["identity_sha256"],
-                    "capabilities": manifest["plan"]["capabilities"],
-                    "cuda": manifest["preflight"]["cuda"],
-                },
-                sort_keys=True,
-            )
-        )
+        manifest = bootstrap(root, args.venv.resolve(), capabilities, args.command, args.manifest.resolve(), args.allow_no_gpu)
+        print(json.dumps({"status": "PASS", "identity_sha256": manifest["identity_sha256"], "capabilities": manifest["plan"]["capabilities"], "cuda": manifest["preflight"]["cuda"]}, sort_keys=True))
         return 0
-
     if args.venv is None:
         parser.error("preflight requires --venv")
-    plan = resolve_plan(root, capabilities, args.command)
-    print(
-        json.dumps(
-            preflight(root, _venv_python(args.venv.resolve()), plan, args.allow_no_gpu),
-            indent=2,
-            sort_keys=True,
-        )
-    )
+    print(json.dumps(preflight(root, _venv_python(args.venv.resolve()), resolve_plan(root, capabilities, args.command), args.allow_no_gpu), indent=2, sort_keys=True))
     return 0
 
 
