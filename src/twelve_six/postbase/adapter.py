@@ -170,6 +170,12 @@ class PostBaseModelAdapter:
     """One local, read-only adapter over the maintained first-party Base runtime."""
 
     def __init__(self, backend: FirstPartyInferenceBackend) -> None:
+        if type(backend) is not FirstPartyInferenceBackend:
+            raise PostBaseCompatibilityError(
+                "post-Base adapter accepts only the exact maintained "
+                "FirstPartyInferenceBackend; external, network, wrapper, and "
+                "subclass backends are forbidden"
+            )
         validate_postbase_compatible_spec(backend.model.spec)
         self._backend = backend
         self._base_evidence = BaseCheckpointEvidence.from_backend(backend)
