@@ -2,6 +2,27 @@ name: TRAIN-29 S1 Training Observability
 
 on:
   pull_request:
+    paths:
+      - ".github/workflows/train29-s1-observability.yml"
+      - "src/twelve_six/model.py"
+      - "src/twelve_six/training/**"
+      - "src/twelve_six/data/**"
+      - "src/twelve_six/packing/**"
+      - "src/twelve_six/tokenization/**"
+      - "src/twelve_six/checkpoint/**"
+      - "configs/stages/s1*"
+      - "tools/run_s1_observability_probe.py"
+      - "tools/validate_s1_observability_probe.py"
+      - "tools/verify_locked_environment.py"
+      - "tests/test_training_observability.py"
+      - "tests/test_training_observability_decision.py"
+      - "requirements/locks/linux-x86_64/**"
+      - "pyproject.toml"
+  workflow_dispatch:
+
+concurrency:
+  group: train29-s1-observability-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -13,19 +34,19 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
       - name: Prove exact source checkout
         env:
-          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.11.16"
       - name: Verify exact D08 locked environment and repository checks
         env:
-          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: >-
           python tools/verify_locked_environment.py
           --profile linux-x86_64
@@ -46,7 +67,7 @@ jobs:
           tests/test_training_observability_decision.py
       - name: Execute real 107856-parameter S1 observability probe
         env:
-          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           .train29-locked/bin/python tools/run_s1_observability_probe.py \
             --source-sha "$SOURCE_SHA" \
