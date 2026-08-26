@@ -1,0 +1,14 @@
+Source family: ua.kmu.portal.secretariat-news
+Publisher: Секретаріат Кабінету Міністрів України, Департамент інформації та комунікацій з громадськістю
+License: Creative Commons Attribution 4.0 International (CC BY 4.0)
+License: https://creativecommons.org/licenses/by/4.0/
+
+Exact source URLs:
+https://www.kmu.gov.ua/news/verkhovna-rada-pryznachyla-serhiia-koretskoho-premier-ministrom-ukrainy
+https://www.kmu.gov.ua/news/uriad-rozpochav-pidhotovku-proiektu-derzhbiudzhetu-na-2027-rik
+https://www.kmu.gov.ua/news/uriad-zavershyv-audyt-vykonannia-planiv-stiikosti
+https://www.kmu.gov.ua/news/uriad-vydilyv-23-mlrd-hrn-na-pidtrymku-pryfrontovykh-hromad
+https://www.kmu.gov.ua/news/uriad-rozpodilyv-35-mlrd-hrn-na-realizatsiiu-planiv-stiikosti
+https://www.kmu.gov.ua/news/uriad-spriamuvav-49-mlrd-hrn-vid-ieib-na-vidnovlennia-hromad-iaki-postrazhdaly-vid-boiovykh-dii-abo-pryinialy-chymalo-vpo
+
+Project snapshot is a bounded extraction/normalization of the source articles. Changes from source formatting are indicated by this notice; no authorship claim is made for the source text.
