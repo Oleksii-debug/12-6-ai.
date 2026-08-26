@@ -40,7 +40,7 @@ class Data526PredecontamBlockerTests(unittest.TestCase):
 
     def test_pending_source_bytes_are_not_loss_capacity(self):
         doc = copy.deepcopy(BASE)
-        doc["claim_boundary"]["authorized_unique_optimized_targets"] = 565743
+        doc["claim_boundary"]["authorized_unique_optimized_targets"] = 303374
         with self.assertRaises(ValueError):
             validator.validate_doc(rehash(doc))
 
