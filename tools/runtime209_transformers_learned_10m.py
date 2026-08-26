@@ -343,11 +343,11 @@ def _qk_evidence(reference: Any, target: Any) -> dict[str, Any]:
     source = reference.model.state_dict()
     converted = target.state_dict()
     q_perm = torch.tensor(
-        rope_pairwise_to_llama_permutation(spec.n_heads, spec.head_dim),
+        rope_pairwise_to_llama_permutation(heads=spec.n_heads, head_dim=spec.head_dim),
         dtype=torch.long,
     )
     k_perm = torch.tensor(
-        rope_pairwise_to_llama_permutation(spec.n_kv_heads, spec.head_dim),
+        rope_pairwise_to_llama_permutation(heads=spec.n_kv_heads, head_dim=spec.head_dim),
         dtype=torch.long,
     )
     layers: list[dict[str, Any]] = []
