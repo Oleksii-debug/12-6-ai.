@@ -6,7 +6,7 @@ This milestone is a convergence qualification layer over DATA-110. It does not c
 
 ## Exact incumbents
 
-The branch is stacked on DATA-110 exact head `e4f8fe7faef93aef9a2d9a00cb8464e900b463e4` and re-executes its composed rights, immutable intake, quality, privacy, exact/near deduplication, D06 decontamination, cluster-safe split, deterministic sharding, document-isolated packing, Product Trainer, checkpoint/resume and held-out evaluation path.
+The branch is stacked on DATA-110 exact head `fd60b362c7089e20b3c0e1fb37dc839ae5a17c5c` and re-executes its composed rights, immutable intake, quality, privacy, exact/near deduplication, D06 decontamination, cluster-safe split, deterministic sharding, document-isolated packing, Product Trainer, checkpoint/resume and held-out evaluation path through the canonical `data110_entrypoint.py`.
 
 The previous dataset identity is DATA-25:
 
@@ -14,7 +14,13 @@ The previous dataset identity is DATA-25:
 
 The fixed comparison uses the same approximately-1M Base geometry used by DATA-110: 836,736 parameters with canonical `s0-byte-v1`, random initialization, seed 1337, FP32, AdamW, sequence length 128, batch 8, the same UA/EN/code mixture and 512 optimizer steps.
 
-Candidate and previous-DATA-25 arms are evaluated on one common candidate validation identity. The machine report contains aggregate BPB, UA/EN/code BPB and provenance-bound source-family BPB for both arms.
+## Leakage-safe common evaluation
+
+DATA-110 constructs its project-authored candidate material only from DATA-25 `train` rows, then performs a new cluster-safe candidate split. Therefore candidate-validation cannot be used as the authoritative common selection metric for a DATA-25 baseline, because some candidate-validation project rows originated from DATA-25 train.
+
+DATA-185 instead uses the original DATA-25 `validation` split as the common candidate-vs-previous evaluation identity. Before the comparison is accepted, it explicitly requires zero exact content-hash overlap between the DATA-110 candidate train split and DATA-25 validation. Aggregate BPB, UA/EN/code BPB and source-family BPB are reported for both models on this common identity.
+
+The DATA-110 candidate's own validation split is still evaluated, including every provenance-bound source family. Families without validation examples are reported with `bits_per_byte: null` and `NO_VALIDATION_EXAMPLES`; they are not silently omitted. Candidate-validation results are diagnostic and are not the candidate-vs-previous selection metric.
 
 ## Scientific qualification gates
 
@@ -27,10 +33,11 @@ DATA-185 records and validates:
 - zero train-validation cluster straddles;
 - D06/reserved-eval training-eligibility evidence;
 - streaming Product Trainer evidence and fresh-process resume;
+- zero exact candidate-train/common-eval overlap;
 - evaluation non-mutation;
 - a matched previous-DATA-25 learning comparison.
 
-The family unit is the exact provenance `source_id` because DATA-110 does not bind a broader semantic family taxonomy. DATA-185 deliberately does not invent one.
+The family unit is exact provenance `source_id` because DATA-110 does not bind a broader semantic family taxonomy. DATA-185 deliberately does not invent one.
 
 ## Real-code blocker
 
@@ -42,11 +49,19 @@ That is an explicit blocker, not a fabricated code-data claim.
 
 The fixed DATA-185 comparison is one paired trajectory. RESEARCH-140 exact head `c2fa6ba71691c3d8cc86aa0a1c3c83eb10bce98` requires at least three paired repeats before selecting a winner. Therefore the machine report records the one-pair result as `INSUFFICIENT_REPEATS`, descriptive only, with no p-value or asymptotic significance claim.
 
-The single pair is still used as a fail-closed non-regression diagnostic: the candidate must not regress by more than 0.02 BPB on the common held-out identity. Passing that check is not a claim that the candidate is better.
+The single pair is used only as a fail-closed non-regression diagnostic on the common DATA-25 validation identity. Passing it is not a claim that the candidate is better.
 
-## Current structural decision
+## Machine status
 
-The present source composition cannot satisfy the real-code gate, and the admitted external source diversity is only one rights-approved real UA source family and one rights-approved real EN source family. Therefore the expected scientific qualification is:
+The qualification command always writes one of exactly:
+
+- `FREEZE_FOR_RESEARCH_V1`
+- `RETEST_REQUIRED`
+- `BLOCKED`
+
+Scientific/data gaps produce `RETEST_REQUIRED` with machine reasons. Execution or evidence-integrity failures produce a minimal `BLOCKED` report and leave unsupported candidate/comparison sections absent.
+
+The present source composition cannot satisfy the real-code gate, and the admitted external source diversity is only one rights-approved real UA source family and one rights-approved real EN source family. Therefore the expected successful exact-head qualification is:
 
 `RETEST_REQUIRED`
 
