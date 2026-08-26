@@ -1,0 +1,67 @@
+{
+  "concurrency_identity_sha256": "7c7b35bc22133164c69e7838f5691c222357b319a245230561edd116412e39c7",
+  "schema_version": "12-6.next100-027-concurrency-refresh.v1",
+  "worker_id": "NEXT100-027-DATA-UA-PUBLIC-DOMAIN-LIT",
+  "checked_live_registry": {
+    "authority": "DATA-287-EXTERNAL-SNAPSHOT-REGISTRY-V2",
+    "pr": 404,
+    "head_sha": "b0523ccbc4b957615aac849d476cfa851be87578",
+    "registry_path": "data/registry/external_snapshots.v2.json",
+    "registry_identity_sha256": "917e9bc31b2fa040d25e807ae3c01aa2cce32420752a891caacfb6c830e6632c",
+    "source_count": 5,
+    "independent_source_family_count": 4,
+    "families": [
+      "en.standardebooks.manual",
+      "github:encode/httpx",
+      "github:psf/requests",
+      "ua.rada.open-data.laws-texts"
+    ]
+  },
+  "candidate": {
+    "source_family": "ua.verba.public-domain.nomis1864",
+    "already_counted_in_live_registry": false,
+    "exact_family_overlap": false,
+    "source_hash_overlap_with_live_registry": false,
+    "raw_sha256": "492d985fd5c364fecc76a4ef387bdcbda936ebf47769e6fff011f113411d9b3b",
+    "normalized_sha256": "1eb91dbd631898c6a2efe274b700a5be0deaca243c0a9d5d30994ddadcf43598"
+  },
+  "concurrent_source_authorities_observed": {
+    "NEXT100-021": {
+      "pr": 450,
+      "status": "RETEST",
+      "family": "wikimedia:wikipedia:ukwiki",
+      "candidate_overlap": false
+    },
+    "NEXT100-022": {
+      "pr": 455,
+      "status": "ADMIT_BOUNDED_PD_EDITION_SNAPSHOT",
+      "family_note": "underlying Lesya Ukrainka 1892 edition lineage; canonical registry not mutated",
+      "candidate_overlap": false
+    },
+    "NEXT100-023": {
+      "pr": 441,
+      "status": "RETEST",
+      "family_credit": 0,
+      "candidate_overlap": false
+    },
+    "NEXT100-024": {
+      "pr": 446,
+      "status": "CONDITIONAL_ON_EXACT_HEAD_GATE",
+      "family": "kubernetes.website.docs",
+      "candidate_overlap": false
+    },
+    "NEXT100-026": {
+      "pr": 449,
+      "status": "ADMIT_BOUNDED_SOURCE_SNAPSHOT",
+      "family": "ua.kmu.portal.secretariat-news",
+      "canonical_registry_mutated": false,
+      "candidate_overlap": false
+    }
+  },
+  "conclusion": {
+    "duplicate_family_count": 0,
+    "canonical_registry_mutation_by_worker": false,
+    "requires_successor_registry_authority": true,
+    "status": "PASS_NO_DUPLICATE_FAMILY_AT_FINAL_REFRESH"
+  }
+}
