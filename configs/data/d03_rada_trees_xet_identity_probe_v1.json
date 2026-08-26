@@ -1,0 +1,56 @@
+{
+  "schema_version": "12-6.d03-rada-trees-xet-identity-probe.v1",
+  "worker_id": "D03-RADA-TREES-XET-IDENTITY-20260826",
+  "execution_profile": "LOCAL_FREE",
+  "parent_probe": {
+    "head_sha": "b38e8e2cd78d3e30ccef2413f3c17d265c2aa3ce",
+    "path": "configs/data/d03_rada_trees_acquisition_probe_v1.json",
+    "git_blob_sha1": "bb5e37eb4aad9e31119ffef24a35e696dcb3e73e",
+    "required_safe_result": "HIGH_LEVERAGE_SOURCE_DISCOVERED_EXACT_ACQUISITION_REQUIRED"
+  },
+  "upstream": {
+    "repo_type": "dataset",
+    "repo_id": "uacorpus/Rada_Trees",
+    "revision": "1b994a5804dcda122721e8d33a03fd172cf8d867",
+    "tree_api_template": "https://huggingface.co/api/datasets/{repo_id}/tree/{revision}",
+    "resolve_template": "https://huggingface.co/datasets/{repo_id}/resolve/{revision}/{path}",
+    "expected_license_discovery": "CC-BY-4.0"
+  },
+  "archive_targets": [
+    {
+      "path": "Rada_Trees.7z",
+      "role": "PRIMARY_PLAIN_TEXT_AND_ANNOTATION_ARCHIVE_REQUIRES_MEMBER_CLASSIFICATION",
+      "minimum_bytes": 500000000,
+      "maximum_bytes": 650000000,
+      "training_capacity_credit_bytes": 0
+    },
+    {
+      "path": "rada_xtag_texts.7z",
+      "role": "DERIVED_OR_ANNOTATED_ARCHIVE_HOLD_ZERO_CREDIT_PENDING_MEMBER_LINEAGE_AUDIT",
+      "minimum_bytes": 650000000,
+      "maximum_bytes": 800000000,
+      "training_capacity_credit_bytes": 0
+    }
+  ],
+  "identity_requirements": {
+    "exact_revision_required": true,
+    "git_blob_oid_required": true,
+    "xet_hash_required": true,
+    "tree_size_required": true,
+    "resolve_header_xet_crosscheck_required": true,
+    "archive_bytes_downloaded_by_this_probe": false
+  },
+  "claim_boundary": {
+    "archive_bytes_downloaded": false,
+    "archive_members_inventoried": false,
+    "archive_content_sha256_claimed": false,
+    "normalized_capacity_claimed": false,
+    "training_authorized_bytes": 0,
+    "evaluation_authorized": false,
+    "tokenizer_fit_authorized": false,
+    "model_training_executed": false,
+    "optimizer_updates": 0,
+    "paid_compute_used": false,
+    "safe_result_on_success": "EXACT_XET_ARCHIVE_IDENTITIES_PINNED_NEXT_GATE_DOWNLOAD_HASH_MEMBER_INVENTORY"
+  }
+}
