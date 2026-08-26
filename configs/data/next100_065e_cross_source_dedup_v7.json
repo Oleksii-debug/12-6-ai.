@@ -1,0 +1,97 @@
+{
+  "schema_version": "12-6.next100-065e-cross-source-dedup.v7",
+  "worker_id": "NEXT100-065E-CROSSSOURCE-DEDUP-V7",
+  "local_free_only": true,
+  "model_training_executed": false,
+  "tokenizer_fit_executed": false,
+  "paid_compute_used": false,
+  "final_test_payload_read": false,
+  "base_v6": {
+    "config_path": "configs/data/next100_065d_cross_source_dedup_v6.json",
+    "source_object_count": 31,
+    "source_family_counts": {"uk": 4, "en": 5, "code": 5},
+    "fixed_capacity_without_cpython_accepted_chunks": {
+      "uk": 100856,
+      "en": 1822753,
+      "code": 106031,
+      "total": 2029640
+    },
+    "expected_total_if_cpython_accepted_capacity_is_15540": 2045180
+  },
+  "attrs": {
+    "worker": "NEXT100-053-CODE-ATTRS",
+    "pr": 474,
+    "head_sha": "cda0232d5574ef91eae0d7e0b7fa5efddcbe218b",
+    "dedicated_workflow_run": 33006080831,
+    "dedicated_workflow_name": "NEXT100-053 attrs Code Source Admission",
+    "dedicated_workflow_conclusion": "success",
+    "authority_identity_sha256": "151e593c3b67ae4c7686323983e6c45306a870b732573ee4820c0c017b65a7d4",
+    "terminal_artifact_id": 9621650719,
+    "terminal_artifact_digest": "sha256:a8176b50a2254fcb50a6f80ca82b63459ba8e9cfddba904b16e5ac79f9c55ff2",
+    "source_family": "github:python-attrs/attrs",
+    "stable_origin_id": "github:python-attrs/attrs",
+    "release_tag": "26.1.0",
+    "upstream_commit": "7bfc49e9b22d5ba25b6e429524c3d49fee27cb36",
+    "upstream_tree": "31beb3550ee7198eba22b862471ad6ea7bfb16d2",
+    "license_git_blob_sha1": "2bd6453d255e19b973f19b128596a8b6dd65b2c3",
+    "normalization_policy": "STRICT_UTF8_IDENTITY_PRESERVE_V1",
+    "training": "ALLOWED",
+    "evaluation": "NOT_SEPARATELY_ADMITTED",
+    "files": [
+      {
+        "path": "src/attr/_make.py",
+        "git_blob_sha1": "4b32d6a71b0d91f3c4eb9ae615771aa46cae00eb",
+        "raw_bytes": 106129
+      },
+      {
+        "path": "src/attr/_funcs.py",
+        "git_blob_sha1": "1adb50021373d9c09fcb9db0641bbc03248d54a3",
+        "raw_bytes": 16479
+      },
+      {
+        "path": "src/attr/validators.py",
+        "git_blob_sha1": "0b1a294432d294c4f154be2d9439d825c3ec0781",
+        "raw_bytes": 21553
+      },
+      {
+        "path": "src/attr/_next_gen.py",
+        "git_blob_sha1": "4ccd0da2446dc126ce936b054581a527e247cabc",
+        "raw_bytes": 26274
+      }
+    ],
+    "exact_capacity_bytes": 170435
+  },
+  "registry_v5_reconciliation": {
+    "registry_pr": 538,
+    "observed_head_sha": "10342d590d91b6999c42515cdf87fe31e2355844",
+    "config_path": "configs/data/next100_063_terminal_source_registry_v5.json",
+    "config_git_blob_sha1": "2dcc57cfba8ab6d600bc431a8713f7b8e305dcbf",
+    "registry_workflow_terminal": false,
+    "dependency_rule": "The nonterminal registry head is diagnostic only; V7 consumes attrs from its own terminal exact source authority."
+  },
+  "expected_vector": {
+    "source_object_count": 35,
+    "source_family_counts": {"uk": 4, "en": 5, "code": 6},
+    "fixed_capacity_without_cpython_accepted_chunks": {
+      "uk": 100856,
+      "en": 1822753,
+      "code": 276466,
+      "total": 2200075
+    },
+    "expected_total_if_cpython_accepted_capacity_is_15540": 2215615,
+    "research_corpus_v1_acquisition_target_bytes": 20000000,
+    "planning_gap_if_no_successor_global_dedup_collapse": 17784385,
+    "full_cpython_normalized_bytes_must_not_be_credited": 17901
+  },
+  "claim_boundary": {
+    "canonical_registry_replaced": false,
+    "corpus_materialized": false,
+    "decontamination_pass_claimed": false,
+    "balance_release_claimed": false,
+    "postpack_unique_loss_ledger_complete": false,
+    "tokenizer_fit_authorized": false,
+    "training_authorized": false,
+    "paid_compute_authorized": false,
+    "research_corpus_v1_terminal": false
+  }
+}
