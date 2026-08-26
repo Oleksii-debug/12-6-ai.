@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "packing_version": "s0-byte-pack-v1",
+  "tokenizer_config_sha256": "b04055c1061dd641dcab7cb9d62a931f09b8d1a070140a926ceb4e91d73ca8e1",
+  "sequence_length": 128,
+  "document_boundary_policy": "isolate",
+  "cross_document_packing": false,
+  "add_bos": false,
+  "add_eos": false,
+  "masked_fill_token_id": 0,
+  "masked_fill_is_semantic_special": false,
+  "label_ignore_index": -100,
+  "window_overlap_tokens": 1
+}

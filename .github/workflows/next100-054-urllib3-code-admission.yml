@@ -1,0 +1,115 @@
+name: NEXT100-054 urllib3 Code Admission
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qualify-urllib3:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact source head
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+
+      - name: Compile and run focused contract tests
+        env:
+          PYTHONPATH: src
+        run: |
+          python -m compileall -q \
+            src/twelve_six/next100_054_urllib3_admission.py \
+            src/twelve_six/next100_054_live_code_eval_refresh.py \
+            tests/test_next100_054_urllib3_admission.py
+          python -m unittest -v tests.test_next100_054_urllib3_admission
+
+      - name: Acquire exact source and produce terminal admission report
+        env:
+          PYTHONPATH: src
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          rm -rf next100-054-evidence
+          python -m twelve_six.next100_054_urllib3_admission run \
+            --repo-root . \
+            --output-dir next100-054-evidence \
+            --source-sha "$EXPECTED_SOURCE_SHA" \
+            | tee next100-054-evidence/stdout.json
+
+      - name: Refresh live code-evaluation authority
+        env:
+          PYTHONPATH: src
+        run: |
+          python -m twelve_six.next100_054_live_code_eval_refresh \
+            --repo-root . \
+            --output-dir next100-054-evidence \
+            | tee next100-054-evidence/live-authority-stdout.json
+
+      - name: Validate immutable report identity
+        env:
+          PYTHONPATH: src
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          python -m twelve_six.next100_054_urllib3_admission validate \
+            next100-054-evidence/next100-054-urllib3-code-admission.json \
+            --expected-source-sha "$EXPECTED_SOURCE_SHA"
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path("next100-054-evidence/next100-054-urllib3-code-admission.json").read_text())
+          live = json.loads(Path("next100-054-evidence/next100-054-live-code-eval-authority.json").read_text())
+          assert report["verdict"] == "ADMIT_TRAINING_ONLY"
+          assert report["terminal"] is True
+          assert report["selection"]["object_count"] == 8
+          assert report["selection"]["raw_bytes"] == 228836
+          assert report["selection"]["source_family"] == "github:urllib3/urllib3"
+          assert report["rights"]["license_id"] == "MIT"
+          assert report["rights"]["training_purpose_decision"] == "ALLOWED"
+          assert report["rights"]["redistribution_decision"] == "ALLOWED"
+          assert report["privacy_secret_parse"]["python_ast_parse_all"] is True
+          assert report["privacy_secret_parse"]["secret_scan_all"] == "PASS"
+          assert report["privacy_secret_parse"]["privacy_scan_all"] == "PASS"
+          assert report["deduplication"]["status"] == "PASS"
+          assert not report["deduplication"]["exact_duplicate_sha256"]
+          assert not report["deduplication"]["near_pairs_at_or_above_threshold"]
+          assert report["evaluation_boundary"]["selected_blob_intersection_count"] == 0
+          assert report["source_family_decision"]["decision"] == "SEPARATE_CURRENT_BOUNDED_FAMILIES_WITH_LINEAGE_CAVEAT"
+          assert report["training_performed"] is False
+          assert report["paid_compute_used"] is False
+          assert live["decision"] == "PASS_EMPTY_CODE_EVALUATION_SELECTION"
+          assert live["authority"] == "NEXT100-057-CODE-EVAL-SET-V2"
+          assert live["eligible_evaluation_object_count"] == 0
+          assert live["selected_evaluation_record_count"] == 0
+          assert live["selected_urllib3_evaluation_collision_count"] == 0
+          assert len(live["selected_urllib3_blob_sha1"]) == 8
+          assert live["candidate_role"] == "TRAINING_ONLY"
+          assert live["evaluation_use_authorized"] is False
+          assert live["training_performed"] is False
+          assert live["paid_compute_used"] is False
+          PY
+
+      - name: Upload immutable qualification evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: next100-054-urllib3-admission-${{ github.event.pull_request.head.sha || github.sha }}
+          if-no-files-found: error
+          retention-days: 90
+          path: |
+            configs/data/next100_054_urllib3_code_rights_v1.json
+            next100-054-evidence/

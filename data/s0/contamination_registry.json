@@ -1,0 +1,13 @@
+{
+  "forbidden_normalized_sha256": [
+    "db6d06184180ed7cc719b4f54cf05944bc2d076bfbf189b623b279f985372c84"
+  ],
+  "forbidden_source_purposes": [
+    "benchmark",
+    "evaluation_test",
+    "heldout_test"
+  ],
+  "note": "D06/D03 must expand this registry before ingesting any external corpus or benchmark-adjacent material.",
+  "registry_state": "S0_CONTROLLED_SENTINEL_ONLY",
+  "schema_version": 1
+}
