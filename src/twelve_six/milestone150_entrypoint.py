@@ -17,7 +17,6 @@ from typing import Any
 
 from twelve_six import milestone150_learned_base_ladder as ladder
 
-
 _ORIGINAL_RUN_MANIFEST = ladder._run_manifest
 
 
