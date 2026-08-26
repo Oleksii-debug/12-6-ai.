@@ -52,7 +52,7 @@ def _read_jsonl(path: Path) -> list[dict[str, Any]]:
             raise ValueError(f"blank JSONL line at {path}:{line_number}")
         value = json.loads(raw_line)
         if not isinstance(value, dict):
-            raise ValueError(f"JSONL record must be an object at {path}:{line_number}")
+            raise TypeError(f"JSONL record must be an object at {path}:{line_number}")
         records.append(value)
     return records
 
@@ -201,7 +201,7 @@ def _parse_case(raw: dict[str, Any]) -> CommunicationCase:
     messages: list[Message] = []
     for index, message in enumerate(raw_messages):
         if not isinstance(message, dict):
-            raise ValueError(f"message {index} must be an object for {case_id}")
+            raise TypeError(f"message {index} must be an object for {case_id}")
         _require_exact_keys(message, {"role", "content"}, label=f"message {index} for {case_id}")
         role = message["role"]
         content = message["content"]
@@ -211,7 +211,7 @@ def _parse_case(raw: dict[str, Any]) -> CommunicationCase:
 
     raw_tool_state = raw["tool_state"]
     if not isinstance(raw_tool_state, dict):
-        raise ValueError(f"tool_state must be an object for {case_id}")
+        raise TypeError(f"tool_state must be an object for {case_id}")
     tool_state: list[tuple[str, str]] = []
     for tool_name, state in sorted(raw_tool_state.items()):
         if not isinstance(tool_name, str) or not tool_name:
@@ -222,11 +222,11 @@ def _parse_case(raw: dict[str, Any]) -> CommunicationCase:
 
     expectation_raw = raw["expectation"]
     if not isinstance(expectation_raw, dict):
-        raise ValueError(f"expectation must be an object for {case_id}")
+        raise TypeError(f"expectation must be an object for {case_id}")
     expectation = _parse_expectation(expectation_raw, case_id=case_id)
     reference_response = raw["reference_response"]
     if not isinstance(reference_response, str):
-        raise ValueError(f"reference_response must be a string for {case_id}")
+        raise TypeError(f"reference_response must be a string for {case_id}")
 
     return CommunicationCase(
         case_id=case_id,
@@ -249,7 +249,7 @@ def load_suite(manifest_path: Path) -> CommunicationSuite:
     manifest_path = manifest_path.resolve()
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     if not isinstance(manifest, dict):
-        raise ValueError("suite manifest must be an object")
+        raise TypeError("suite manifest must be an object")
     _require_exact_keys(
         manifest,
         {
@@ -391,7 +391,7 @@ def load_responses(path: Path) -> dict[str, str]:
         case_id = record["case_id"]
         response = record["response"]
         if not isinstance(case_id, str) or not isinstance(response, str):
-            raise ValueError(f"invalid response record {index}")
+            raise TypeError(f"invalid response record {index}")
         if case_id in responses:
             raise ValueError(f"duplicate response case_id: {case_id}")
         responses[case_id] = response
