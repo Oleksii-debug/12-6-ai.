@@ -1,0 +1,36 @@
+name: D03 DataTrove MinHash
+
+on:
+  push:
+    branches:
+      - d09/data-provenance-corpus-foundation-20260824
+    paths:
+      - "src/twelve_six/data/datatrove_dedup_runtime.py"
+      - "tests/test_datatrove_dedup_runtime.py"
+      - "tests/test_datatrove_dedup_integration.py"
+      - "pyproject.toml"
+      - ".github/workflows/d03-datatrove-minhash.yml"
+  pull_request:
+    paths:
+      - "src/twelve_six/data/datatrove_dedup_runtime.py"
+      - "tests/test_datatrove_dedup_runtime.py"
+      - "tests/test_datatrove_dedup_integration.py"
+      - "pyproject.toml"
+      - ".github/workflows/d03-datatrove-minhash.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  minhash-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e ".[dev,data-scale]"
+      - run: ruff check src/twelve_six/data/datatrove_dedup_runtime.py tests/test_datatrove_dedup_runtime.py tests/test_datatrove_dedup_integration.py
+      - run: pytest -q tests/test_datatrove_dedup_runtime.py tests/test_datatrove_dedup_integration.py
