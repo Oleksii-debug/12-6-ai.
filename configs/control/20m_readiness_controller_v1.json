@@ -7,12 +7,36 @@
       "requested_optimized_targets": 20000000,
       "state": "STALE_FAIL_CLOSED_REQUIRES_LIVE_REBIND"
     },
+    "checkpoint_corruption_audit": {
+      "base_model_sha": "e4ff486fd90802fc123bebf60eed4e59196a98df",
+      "blocking_cases": [
+        "MODEL_DTYPE_MISMATCH_SILENT_CAST",
+        "WRONG_SHAPED_SGD_MOMENTUM_ACCEPTED_BEFORE_DEFERRED_FAILURE",
+        "NEGATIVE_STEP_OR_TOKENS_SEEN_ACCEPTED_AFTER_CONSISTENT_MANIFEST_REBIND"
+      ],
+      "branch": "next100/075-20m-checkpoint-corruption-20260826",
+      "direct_production_module_rerun_required": true,
+      "head_sha": "5c3d3d93cb035c05ad2045a243d722a4ad1dce60",
+      "rejected_before_mutation": 8,
+      "required_cases": 11,
+      "verdict": "RETEST_REQUIRED"
+    },
     "code_selection_validation_v2": {
       "branch": "next100-057/code-selection-validation-v2-20260826",
       "eligible_families": 0,
       "eligible_objects": 0,
       "head_sha": "6713fe972b875b8a516122bda347264fb4099b2b",
       "state": "BLOCKED_NO_PRISTINE_CODE_OBJECTS_WITH_EXPLICIT_EVALUATION_RESERVATION"
+    },
+    "d05_remediation_convergence": {
+      "branch": "next100/d05-failclosed-hardening-20260826",
+      "exact_head_d05_preflight": "FAILED_BEFORE_FOCUSED_REGRESSION_AT_LOCKED_REPOSITORY_CHECK_STAGE",
+      "full_ci": "QUEUED_AT_REFRESH",
+      "head_sha": "42296f6f228bbf866765d787e53004108fe7a39d",
+      "preferred_candidate_pr": 507,
+      "selection_basis": "PR508 convergence review preferred PR507 over a weaker duplicate",
+      "state": "NONTERMINAL_REQUIRES_ENVIRONMENT_FAILURE_TRIAGE_AND_11_CASE_RERUN",
+      "terminal_authority": false
     },
     "decontamination_v4": {
       "branch": "next100-066/decontamination-v4-20260826",
@@ -59,7 +83,7 @@
     "recovery_qualification": {
       "branch": "checkpoint346/20m-recovery-qualification-20260826",
       "head_sha": "b252ad8765124bfe9695895058e9e4b90830239b",
-      "state": "STALE_FAIL_CLOSED_REQUIRES_MODEL341_REQUALIFICATION"
+      "state": "SUPERSEDED_BY_D05_CORRUPTION_RETEST_REQUIRED"
     },
     "research_corpus_v03": {
       "authorized_balanced_no_replay_capacity": 0,
@@ -90,9 +114,10 @@
     }
   },
   "authority_refresh": {
+    "checkpoint_audit_refreshed": true,
     "drive_consulted": true,
     "main_refreshed": true,
-    "minimum_cutoff_utc": "2026-08-26T19:13:50Z",
+    "minimum_cutoff_utc": "2026-08-26T19:26:09Z",
     "specialist_branches_refreshed": true,
     "truth_rule": "exact live GitHub authority outranks stale worker cutoff and Drive narrative"
   },
@@ -104,10 +129,11 @@
     "long_training_started": false,
     "requested_optimized_targets": 20000000
   },
-  "evidence_identity_sha256": "86516d9151548b4d96e4cc694a7facf672087bc2a1321f572722a2b3084b9c85",
+  "evidence_identity_sha256": "d6f77c2acadbb7b492e84c20717e89a5a7e5c976dabc4bdc53ecac56c686fcf8",
   "execution_profile": "LOCAL_FREE",
   "gates": {
-    "checkpoint_recovery_20m": "BLOCKED_STALE_REQUALIFICATION",
+    "checkpoint_integrity_20m": "BLOCKED_3_OF_11_CORRUPTION_CLASSES",
+    "checkpoint_recovery_20m": "BLOCKED_D05_CORRUPTION_RETEST_REQUIRED",
     "code_selection_validation": "BLOCKED",
     "code_training_family_diversity": "PASS_INCUMBENT_TWO_FAMILIES",
     "decontamination": "BLOCKED_NO_CANDIDATE_IDENTITY",
@@ -131,6 +157,12 @@
     "REQUEST_EXPLICIT_COMPUTE_AUTHORIZATION_ONLY_AFTER_CAMPAIGN_IS_DATA_READY"
   ],
   "paid_compute_used": false,
+  "parallel_local_free_tracks": [
+    "CONVERGE_D05_REMEDIATION_AND_TRIAGE_LOCKED_ENVIRONMENT_CHECK_FAILURE",
+    "RERUN_NEXT100_075_FULL_11_CASE_CORRUPTION_MATRIX_ON_EXACT_PRODUCTION_HEAD",
+    "COMPOSE_SUCCESSOR_RESEARCH_CORPUS_V1_INTAKE",
+    "MATERIALIZE_EXACT_CANDIDATE_CORPUS_IDENTITY_FOR_DECONTAMINATION"
+  ],
   "repository": "Oleksii-debug/12-6-ai.",
   "schema": "12-6.autonomous-20m-readiness-controller.v1",
   "terminal_decision": {
@@ -138,7 +170,8 @@
     "secondary_blockers": [
       "NO_EXACT_CANDIDATE_CORPUS_IDENTITY_FOR_DECONTAMINATION",
       "UA_SECOND_FAMILY_NOT_YET_CORPUS_ELIGIBLE",
-      "CHECKPOINT346_STALE_AGAINST_NOW_AVAILABLE_MODEL341",
+      "D05_CHECKPOINT_INTEGRITY_RETEST_REQUIRED_ON_3_OF_11_CORRUPTION_CLASSES",
+      "D05_REMEDIATION_NOT_TERMINAL_EXACT_HEAD_GREEN",
       "CODE_SELECTION_VALIDATION_REMAINS_ZERO"
     ],
     "status": "BLOCK_LONG_TRAINING_CONTINUE_LOCAL_FREE_ENGINEERING"
