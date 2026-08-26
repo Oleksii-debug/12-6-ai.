@@ -204,7 +204,13 @@ def require_exact_base_tokenizer(expected: TokenizerCompatibility, candidate: To
     expected.require_exact_match(candidate)
 
 
-def to_posttraining_records(record: CommunicationRecord, *, for_training: bool = False) -> tuple[DatasetRecord, ...]:
+def to_posttraining_records(
+    record: CommunicationRecord,
+    *,
+    for_training: bool = False,
+    synthetic_authority: SyntheticDataAuthority | None = None,
+) -> tuple[DatasetRecord, ...]:
+    _validate_provenance(record, synthetic_authority)
     if for_training and record.split is not CommunicationSplit.TRAIN:
         raise CommunicationDataError("only train split may be converted for training")
     split_map = {CommunicationSplit.TRAIN: Split.TRAIN, CommunicationSplit.SELECTION: Split.VALIDATION, CommunicationSplit.FINAL: Split.TEST}
@@ -333,7 +339,7 @@ def validate_dataset(root: Path, manifest_path: Path, *, base_tokenizer: Tokeniz
             for prompt, completion in format_sft_turns(record):
                 observed = len((prompt + completion).encode("utf-8"))
                 max_observed = max(max_observed, observed)
-                if observed > max_bytes or any(token >= 256 for token in (prompt + completion).encode("utf-8")):
+                if observed > max_bytes:
                     raise CommunicationDataError("SFT example exceeds byte-tokenizer/context contract")
         all_records.extend(records)
     _validate_split_isolation(all_records, threshold)
