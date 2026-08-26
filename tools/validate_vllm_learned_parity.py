@@ -2,11 +2,15 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.metadata as metadata
 import json
 import math
+import platform
 import sys
 from pathlib import Path
 from typing import Any, Sequence
+
+import torch
 
 from twelve_six.inference.first_party import load_first_party_backend
 from twelve_six.inference.parity import compare_backends
@@ -18,6 +22,7 @@ from twelve_six.inference.vllm_native_llama import (
 from twelve_six.model import ModelSpec
 
 SCHEMA = "12-6.vllm-native-llama-learned-parity.v1"
+RUNTIME_PACKAGE_SCHEMA = "12-6.vllm-runtime-package-identity.v1"
 DEFAULT_PROBES = (
     "Hello from 12-6.",
     "Привіт від 12-6.",
@@ -57,6 +62,57 @@ def _context_probe(model_dir: Path) -> str:
     if spec.max_seq_len < 2:
         raise ValueError("ModelSpec max_seq_len must be at least 2 for context parity")
     return "x" * (spec.max_seq_len - 1)
+
+
+def _installed_runtime_identity(candidate: VllmNativeLlamaBackend) -> dict[str, Any]:
+    cuda_available = bool(torch.cuda.is_available())
+    identity: dict[str, Any] = {
+        "schema": RUNTIME_PACKAGE_SCHEMA,
+        "python": platform.python_version(),
+        "vllm_import_version": candidate.vllm_version,
+        "vllm_distribution_version": metadata.version("vllm"),
+        "torch": torch.__version__,
+        "transformers": metadata.version("transformers"),
+        "safetensors": metadata.version("safetensors"),
+        "cuda_available": cuda_available,
+        "torch_cuda_version": torch.version.cuda,
+    }
+    if cuda_available:
+        identity["cuda_device_name"] = torch.cuda.get_device_name(0)
+        identity["cuda_device_capability"] = list(torch.cuda.get_device_capability(0))
+    identity["identity_sha256"] = _sha256_value(identity)
+    return identity
+
+
+def _require_runtime_contract(path: Path, observed: dict[str, Any]) -> dict[str, Any]:
+    try:
+        contract = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError("invalid runtime package contract JSON") from exc
+    if not isinstance(contract, dict) or contract.get("schema") != RUNTIME_PACKAGE_SCHEMA:
+        raise ValueError("runtime package contract schema mismatch")
+    expected_hash = contract.get("identity_sha256")
+    unsigned = dict(contract)
+    unsigned.pop("identity_sha256", None)
+    if expected_hash != _sha256_value(unsigned):
+        raise ValueError("runtime package contract self-hash mismatch")
+    for key in (
+        "python",
+        "vllm_import_version",
+        "vllm_distribution_version",
+        "torch",
+        "transformers",
+        "safetensors",
+        "cuda_available",
+        "torch_cuda_version",
+    ):
+        if contract.get(key) != observed.get(key):
+            raise ValueError(f"runtime package contract mismatch: {key}")
+    if observed["cuda_available"]:
+        for key in ("cuda_device_name", "cuda_device_capability"):
+            if contract.get(key) != observed.get(key):
+                raise ValueError(f"runtime package contract mismatch: {key}")
+    return contract
 
 
 def _collect_raw_trace(reference, candidate, prompts: Sequence[str], max_new_tokens: int):
@@ -124,6 +180,11 @@ def _collect_raw_trace(reference, candidate, prompts: Sequence[str], max_new_tok
 
 
 def collect(args: argparse.Namespace) -> dict[str, Any]:
+    if not torch.cuda.is_available():
+        raise ValueError(
+            "learned vLLM raw-logit/generation parity requires compatible CUDA GPU execution"
+        )
+
     prompts = list(args.prompt or DEFAULT_PROBES)
     boundary = _context_probe(args.model_dir)
     if boundary not in prompts:
@@ -144,6 +205,28 @@ def collect(args: argparse.Namespace) -> dict[str, Any]:
         tensor_parallel_size=args.tensor_parallel_size,
         gpu_memory_utilization=args.gpu_memory_utilization,
     )
+    if args.expected_vllm_version is not None and candidate.vllm_version != args.expected_vllm_version:
+        raise ValueError(
+            "vLLM import version mismatch: "
+            f"expected {args.expected_vllm_version}, got {candidate.vllm_version}"
+        )
+
+    runtime_identity = _installed_runtime_identity(candidate)
+    if (
+        args.expected_vllm_dist_version is not None
+        and runtime_identity["vllm_distribution_version"] != args.expected_vllm_dist_version
+    ):
+        raise ValueError(
+            "vLLM distribution version mismatch: "
+            f"expected {args.expected_vllm_dist_version}, "
+            f"got {runtime_identity['vllm_distribution_version']}"
+        )
+    runtime_contract = None
+    if args.runtime_package_contract_json is not None:
+        runtime_contract = _require_runtime_contract(
+            args.runtime_package_contract_json, runtime_identity
+        )
+
     report = compare_backends(
         reference,
         candidate,
@@ -199,6 +282,9 @@ def collect(args: argparse.Namespace) -> dict[str, Any]:
             "logprobs_mode": "raw_logits",
             "max_logprobs": -1,
         },
+        "runtime_package_identity": runtime_identity,
+        "runtime_package_contract": runtime_contract,
+        "execution_device": "CUDA_GPU",
         "parity": report.to_dict(),
         "raw_logit_and_greedy_trace": raw_trace,
         "context_behavior": {
@@ -240,6 +326,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--dtype", default="float32")
     parser.add_argument("--tensor-parallel-size", type=int, default=1)
     parser.add_argument("--gpu-memory-utilization", type=float, default=0.5)
+    parser.add_argument("--expected-vllm-version")
+    parser.add_argument("--expected-vllm-dist-version")
+    parser.add_argument("--runtime-package-contract-json", type=Path)
     parser.add_argument("--output", type=Path, required=True)
     return parser
 
