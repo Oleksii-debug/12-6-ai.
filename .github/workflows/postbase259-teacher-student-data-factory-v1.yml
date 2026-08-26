@@ -1,0 +1,79 @@
+name: POSTBASE-259 Teacher Student Data Factory V1
+
+on:
+  push:
+    branches:
+      - postbase259/teacher-student-data-factory-v1-20260826
+  pull_request:
+    branches:
+      - integrate222/learned-execution-spine-20260826
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  local-free-proof:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up exact Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11.16"
+
+      - name: Universal execution bootstrap
+        uses: ./.github/actions/execution-bootstrap
+        with:
+          capabilities: runtime,tests,lint
+          venv: .venv-postbase259
+          manifest: postbase259-proof/bootstrap.json
+
+      - name: Focused contracts
+        shell: bash
+        env:
+          PYTHONPATH: src
+        run: |
+          set -euo pipefail
+          .venv-postbase259/bin/python -m pytest -q tests/test_postbase259_teacher_student_factory.py
+          .venv-postbase259/bin/ruff check \
+            src/twelve_six/postbase/__init__.py \
+            src/twelve_six/postbase/contracts.py \
+            src/twelve_six/postbase/factory.py \
+            src/twelve_six/postbase/fixtures.py \
+            tests/test_postbase259_teacher_student_factory.py \
+            tools/run_postbase259_proof.py
+
+      - name: Execute local mock-teacher proof
+        shell: bash
+        env:
+          PYTHONPATH: src
+        run: |
+          set -euo pipefail
+          .venv-postbase259/bin/python tools/run_postbase259_proof.py \
+            --output postbase259-proof/report.json
+
+      - name: Prove no provider or Base-training dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          ! grep -R -n -E 'OPENAI_API_KEY|ANTHROPIC_API_KEY|GEMINI_API_KEY|api[_-]?key|https?://' \
+            src/twelve_six/postbase tools/run_postbase259_proof.py
+          grep -q 'POSTBASE/EXPERIMENTAL' postbase259-proof/report.json
+          grep -q '"canonical_base_training_executed": false' postbase259-proof/report.json
+          grep -q '"foreign_teacher_calls": 0' postbase259-proof/report.json
+
+      - name: Retain proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: postbase259-teacher-student-proof-${{ github.sha }}
+          path: postbase259-proof/
+          if-no-files-found: error
+          retention-days: 30
