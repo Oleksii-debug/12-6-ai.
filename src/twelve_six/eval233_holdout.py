@@ -14,8 +14,9 @@ import argparse
 import gzip
 import hashlib
 import json
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 WORKER_ID = "EVAL-233-REAL-HOLDOUT-V2"
 SCHEMA = "12-6.eval233-real-holdout-v2.v2"
@@ -69,7 +70,7 @@ def sha256_bytes(value: bytes) -> str:
 def git_blob_sha1(value: bytes) -> str:
     header = f"blob {len(value)}\0".encode("ascii")
     # SHA-1 is required only to verify immutable Git object identity.
-    return hashlib.sha1(header + value).hexdigest()  # noqa: S324
+    return hashlib.sha1(header + value).hexdigest()
 
 
 def _read_json(path: Path) -> dict[str, Any]:
