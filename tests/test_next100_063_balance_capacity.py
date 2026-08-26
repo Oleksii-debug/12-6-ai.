@@ -8,7 +8,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 TOOL = ROOT / "tools/diagnose_next100_063_balance_capacity.py"
-REGISTRY = ROOT / "configs/data/next100_063_terminal_source_registry_v1.json"
+REGISTRY = ROOT / "configs/data/next100_063_terminal_source_registry_v2.json"
 
 spec = importlib.util.spec_from_file_location("next100_063_balance_capacity", TOOL)
 assert spec is not None and spec.loader is not None
@@ -16,17 +16,17 @@ module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 
 
-def test_live_registry_family_caps_make_uk_the_real_bottleneck() -> None:
+def test_live_v2_registry_family_caps_make_uk_the_real_bottleneck() -> None:
     registry = json.loads(REGISTRY.read_text(encoding="utf-8"))
     report = module.build_report(registry)
 
-    assert report["raw_pre_global_dedup_bytes"] == 565_743
+    assert report["raw_pre_global_dedup_bytes"] == 266_476
     assert report["diagnostic_exact_mixture_family_capped_source_bytes"] == 61_440
     assert report["next_20_byte_increment_limiting_strata"] == ["uk"]
 
     assert report["strata"]["uk"]["20m_raw_capacity_gap_bytes"] == 8_899_144
-    assert report["strata"]["en"]["20m_raw_capacity_gap_bytes"] == 6_831_456
-    assert report["strata"]["code"]["20m_raw_capacity_gap_bytes"] == 3_703_657
+    assert report["strata"]["en"]["20m_raw_capacity_gap_bytes"] == 6_849_357
+    assert report["strata"]["code"]["20m_raw_capacity_gap_bytes"] == 3_985_023
 
     assert report["truth_boundary"]["post_pack_unique_loss_positions"] == 0
     assert report["truth_boundary"]["training_authorized"] is False
