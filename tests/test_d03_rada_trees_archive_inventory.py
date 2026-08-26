@@ -103,6 +103,26 @@ def test_inventory_rejects_symlink_and_size_bounds(tmp_path: Path) -> None:
         )
 
 
+def test_build_report_rejects_symlink_archive_before_resolution(tmp_path: Path) -> None:
+    real_archive = tmp_path / "real.7z"
+    real_archive.write_bytes(b"not-the-pinned-archive")
+    archive_link = tmp_path / "Rada_Trees.7z"
+    try:
+        archive_link.symlink_to(real_archive)
+    except OSError:
+        pytest.skip("symlinks unavailable")
+
+    with pytest.raises(ValueError, match="regular non-symlink"):
+        module.build_report(
+            module.load_config(),
+            archive_link,
+            module.PINNED_CONTENT_SHA256,
+            real_archive.stat().st_size,
+            module.PINNED_XET_HASH,
+            "7z",
+        )
+
+
 def test_validate_bounds_rejects_total_overflow() -> None:
     entries = [{"path": "a", "size_bytes": 6}, {"path": "b", "size_bytes": 6}]
     with pytest.raises(ValueError, match="max_total_uncompressed_bytes"):
