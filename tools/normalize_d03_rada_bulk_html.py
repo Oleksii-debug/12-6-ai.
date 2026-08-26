@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Deterministically materialize visible-text records from a probed Rada ZIP.
+"""Deterministically materialize visible-text records from a pinned Rada ZIP.
 
-This is a normalization boundary only. It verifies the exact D03 probe inventory,
-then emits normalized JSONL plus a text-free manifest. It deliberately grants
+This is a normalization boundary only. It verifies the exact D03 probe authority
+and inventory, then emits normalized JSONL plus a text-free manifest. It grants
 zero training capacity until quality/privacy/dedup/decontamination and later
 corpus gates are terminal.
 """
@@ -24,6 +24,8 @@ PROBE_SCHEMA = "12-6.d03-rada-bulk-source-probe-report.v1"
 MANIFEST_SCHEMA = "12-6.d03-rada-bulk-normalization-manifest.v1"
 DEFAULT_CONFIG = Path("configs/data/d03_rada_bulk_normalization_v1.json")
 CANONICAL_BASENAME = re.compile(r"d[0-9]+\.htm")
+PINNED_PROBE_GATE = "PASS_PINNED_DISCOVERY_REVALIDATED"
+PINNED_PROBE_RESULT = "PINNED_BULK_ARCHIVE_INVENTORIED_DOWNSTREAM_GATES_REQUIRED"
 
 
 class NormalizationError(RuntimeError):
@@ -59,6 +61,33 @@ def _validate_config(config: Mapping[str, Any]) -> None:
         raise NormalizationError("unsupported normalization config schema")
     if config.get("local_free_only") is not True:
         raise NormalizationError("normalization must remain LOCAL_FREE")
+
+    parent = config.get("parent_probe")
+    if not isinstance(parent, Mapping):
+        raise NormalizationError("parent_probe missing")
+    if parent.get("pr") != 618:
+        raise NormalizationError("unexpected parent probe PR")
+    if not isinstance(parent.get("head_sha"), str) or not re.fullmatch(
+        r"[0-9a-f]{40}", str(parent.get("head_sha"))
+    ):
+        raise NormalizationError("parent probe head must be an exact commit SHA")
+    if parent.get("probe_report_schema") != PROBE_SCHEMA:
+        raise NormalizationError("parent probe report schema drift")
+    if not isinstance(parent.get("probe_worker_id"), str) or not parent.get(
+        "probe_worker_id"
+    ):
+        raise NormalizationError("parent probe worker identity missing")
+    if not isinstance(parent.get("probe_config_identity_sha256"), str) or not re.fullmatch(
+        r"[0-9a-f]{64}", str(parent.get("probe_config_identity_sha256"))
+    ):
+        raise NormalizationError("parent probe config identity must be SHA-256")
+    if parent.get("source_family") != "ua.rada.open-data.laws-texts":
+        raise NormalizationError("unexpected Rada source family")
+    if not isinstance(parent.get("source_family_identity_sha256"), str) or not re.fullmatch(
+        r"[0-9a-f]{64}", str(parent.get("source_family_identity_sha256"))
+    ):
+        raise NormalizationError("source-family identity must be SHA-256")
+
     boundary = config.get("claim_boundary")
     if not isinstance(boundary, Mapping):
         raise NormalizationError("claim_boundary missing")
@@ -104,8 +133,13 @@ class _VisibleTextParser(HTMLParser):
         tag: str,
         attrs: list[tuple[str, str | None]],
     ) -> None:
-        self.handle_starttag(tag, attrs)
-        if not self.hidden_stack and tag.lower() in self.block_tags:
+        del attrs
+        tag = tag.lower()
+        if self.hidden_stack:
+            return
+        if tag in self.hidden_tags:
+            return
+        if tag in self.block_tags:
             self.parts.append("\n")
 
     def handle_endtag(self, tag: str) -> None:
@@ -141,7 +175,7 @@ def normalize_html_bytes(raw: bytes, config: Mapping[str, Any]) -> str:
     try:
         parser.feed(decoded)
         parser.close()
-    except Exception as exc:  # HTMLParser may expose malformed-input errors.
+    except Exception as exc:
         raise NormalizationError("HTML parsing failed") from exc
 
     text = unicodedata.normalize("NFKC", "".join(parser.parts))
@@ -176,18 +210,30 @@ def _validate_probe(
     if probe.get("schema_version") != PROBE_SCHEMA:
         raise NormalizationError("unsupported probe report schema")
     parent = config["parent_probe"]
+    if probe.get("worker_id") != parent["probe_worker_id"]:
+        raise NormalizationError("probe worker identity drift")
+    if probe.get("config_identity_sha256") != parent["probe_config_identity_sha256"]:
+        raise NormalizationError("probe config identity drift")
     if probe.get("source_family") != parent["source_family"]:
         raise NormalizationError("probe source-family drift")
     if probe.get("training_authorized_bytes") != 0:
         raise NormalizationError("probe unexpectedly grants training capacity")
     if probe.get("corpus_admitted") is not False:
         raise NormalizationError("probe unexpectedly claims corpus admission")
+    if probe.get("tokenizer_fit_authorized") is not False:
+        raise NormalizationError("probe unexpectedly authorizes tokenizer fit")
+    if probe.get("model_training_executed") is not False:
+        raise NormalizationError("probe unexpectedly claims model training")
+    if probe.get("paid_compute_used") is not False:
+        raise NormalizationError("probe unexpectedly claims paid compute")
+    if probe.get("safe_result") != PINNED_PROBE_RESULT:
+        raise NormalizationError("probe is not a pinned terminal acquisition result")
 
     gates = probe.get("gates")
     if not isinstance(gates, Mapping):
         raise NormalizationError("probe gates missing")
-    if gates.get("exact_archive_identity") != "PASS":
-        raise NormalizationError("probe archive identity is not PASS")
+    if gates.get("exact_archive_identity") != PINNED_PROBE_GATE:
+        raise NormalizationError("probe archive identity is not pinned/revalidated PASS")
     if gates.get("safe_zip_inventory") != "PASS":
         raise NormalizationError("probe ZIP inventory is not PASS")
     if gates.get("canonical_normalization") != "NOT_RUN":
@@ -291,10 +337,7 @@ def materialize_normalized_records(
         raise NormalizationError(f"probe entries missing from archive: {missing[:3]}")
 
     records.sort(key=lambda row: Path(row["source_path"]).name)
-    jsonl = b"".join(
-        _canonical_json_bytes(record) + b"\n"
-        for record in records
-    )
+    jsonl = b"".join(_canonical_json_bytes(record) + b"\n" for record in records)
     record_manifest = [
         {key: value for key, value in record.items() if key != "text"}
         for record in records
@@ -314,6 +357,7 @@ def materialize_normalized_records(
         "parent_probe": {
             "pr": config["parent_probe"]["pr"],
             "head_sha": config["parent_probe"]["head_sha"],
+            "probe_config_identity_sha256": probe["config_identity_sha256"],
             "probe_report_sha256": probe_report_sha256,
             "archive_sha256": probe["archive"]["sha256"],
             "entry_identity_sha256": probe["inventory"]["entry_identity_sha256"],
