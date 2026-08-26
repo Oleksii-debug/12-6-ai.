@@ -5,8 +5,10 @@ import json
 from pathlib import Path
 
 import pytest
-
-from twelve_six.data_budget import evaluate_data_budget, required_unique_loss_tokens
+from twelve_six.data_budget import (
+    evaluate_data_budget,
+    required_unique_loss_tokens,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
