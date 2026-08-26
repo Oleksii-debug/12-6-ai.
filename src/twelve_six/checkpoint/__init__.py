@@ -1,5 +1,11 @@
 """Checkpointing, integrity, resume, and export primitives for 12-6 AI."""
 
+from . import core as _core
+from .progress_binding import install as _install_progress_binding
+
+_install_progress_binding(_core)
+del _core, _install_progress_binding
+
 from .core import (
     CheckpointCompatibilityError,
     CheckpointError,
