@@ -29,3 +29,6 @@ jobs:
 
       - name: Validate bounded NIST source authority
         run: python tools/validate_next100_034_nist_authority.py
+
+      - name: Validate terminal concurrency seal
+        run: python tools/validate_next100_034_nist_terminal_seal.py
