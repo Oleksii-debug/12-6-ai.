@@ -4,8 +4,9 @@ title = "12-6 AI secret scan exceptions"
 useDefault = true
 
 [allowlist]
-description = "Published D04 tokenizer identity SHA-256 fixtures, not credentials"
+description = "Published repository identity SHA fixtures, not credentials"
 regexes = [
   '''^b04055c1061dd641dcab7cb9d62a931f09b8d1a070140a926ceb4e91d73ca8e1$''',
-  '''^905ed40bb42cc4d550e228ff5f24158d504b38e8ed5974dfa3077bd5867ad571$'''
+  '''^905ed40bb42cc4d550e228ff5f24158d504b38e8ed5974dfa3077bd5867ad571$''',
+  '''^3527bf50d5d6cd7d4cbf9e477863430a31873baa$'''
 ]
