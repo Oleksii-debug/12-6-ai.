@@ -1,0 +1,58 @@
+{
+  "schema": "twelve-six.cisa-public-domain-probe.v1",
+  "status": "PROBE_ONLY_NO_TRAINING_AUTHORITY",
+  "audit_date_utc": "2026-08-26",
+  "language": "en",
+  "modality": "text",
+  "source_family": "en.usgov.dhs.cisa-public-domain-guidance",
+  "allowed_download_hosts": [
+    "www.cisa.gov"
+  ],
+  "required_rights_phrases_casefold": [
+    "this publication is in the public domain",
+    "authorization to copy and distribute this publication in whole or in part is granted"
+  ],
+  "documents": [
+    {
+      "publication_id": "CISA.ATRG.K12.2024.V2",
+      "title": "Anonymized Threat Response Guidance: A Toolkit for K-12 Schools",
+      "url": "https://www.cisa.gov/sites/default/files/2024-10/ATRGToolkit508_V2.pdf",
+      "publisher": "Cybersecurity and Infrastructure Security Agency",
+      "year": 2024,
+      "rights_basis": "document-specific public-domain and copy/distribute grant embedded in the publication"
+    },
+    {
+      "publication_id": "CISA.USSS.K12.BYSTANDER.2023",
+      "title": "Improving School Safety Through Bystander Reporting: A Toolkit for Strengthening K-12 Reporting Programs",
+      "url": "https://www.cisa.gov/sites/default/files/2023-05/CISA-USSS%20K-12%20Bystander%20Reporting%20Toolkit_508.pdf",
+      "publisher": "Cybersecurity and Infrastructure Security Agency and U.S. Secret Service",
+      "year": 2023,
+      "rights_basis": "document-specific public-domain and copy/distribute grant embedded in the publication"
+    }
+  ],
+  "normalization": {
+    "unicode": "NFKC",
+    "line_endings": "LF",
+    "strip_line_edges": true,
+    "collapse_internal_horizontal_whitespace": true,
+    "collapse_blank_lines": true,
+    "redact_email_addresses": true,
+    "preserve_page_breaks": false
+  },
+  "quality_minimums": {
+    "normalized_utf8_bytes_per_document": 20000,
+    "word_count_per_document": 2500,
+    "alphabetic_character_ratio": 0.55
+  },
+  "truth_boundary": {
+    "training_authorized_exposure": 0,
+    "corpus_admitted": false,
+    "evaluation_admitted": false,
+    "tokenizer_fit_authorized": false,
+    "paid_compute_authorized": false,
+    "requires_terminal_source_authority": true,
+    "requires_cross_source_dedup": true,
+    "requires_privacy_quality_review": true,
+    "requires_decontamination_and_postpack_unique_loss_ledger": true
+  }
+}
