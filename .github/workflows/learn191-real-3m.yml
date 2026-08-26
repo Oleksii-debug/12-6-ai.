@@ -1,0 +1,188 @@
+name: LEARN-191 Real 3M Learned Base
+
+on:
+  pull_request:
+    branches:
+      - recover178/eval136-memorization-authority-20260826
+  workflow_dispatch:
+
+concurrency:
+  group: learn191-real-3m-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  learned-3m:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    env:
+      PYTHONPATH: src
+      OMP_NUM_THREADS: "2"
+      MKL_NUM_THREADS: "2"
+      TOKENIZERS_PARALLELISM: "false"
+    steps:
+      - name: Checkout exact LEARN-191 head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up exact Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact source
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+
+      - name: Universal hash-locked bootstrap
+        run: |
+          set -euo pipefail
+          python tools/bootstrap_universal_environment.py \
+            --venv .learn191 \
+            --lock requirements/locks/linux-x86_64/toolchain.lock.txt \
+            --lock requirements/locks/linux-x86_64/runtime.lock.txt \
+            --lock requirements/locks/linux-x86_64/dev.lock.txt \
+            --evidence-out learn191-bootstrap.json
+
+      - name: Compile and test contract
+        run: |
+          set -euo pipefail
+          .learn191/bin/python -m compileall -q \
+            src/twelve_six/launch_gate.py \
+            src/twelve_six/learn191_contract.py \
+            src/twelve_six/learn191_real_3m.py
+          .learn191/bin/python -m pytest -q \
+            tests/test_learn191_real_3m.py \
+            tests/test_milestone150_learned_base_ladder.py
+
+      - name: Prepare frozen corpus and preregistration
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          .learn191/bin/python -m twelve_six.learn191_real_3m prepare \
+            --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" \
+            --output-dir learn191-evidence
+
+      - name: Create and verify launch envelope
+        run: |
+          set -euo pipefail
+          .learn191/bin/python -m twelve_six.launch_gate create \
+            --repo-root . \
+            --request configs/launch/learn191-3m.json \
+            --output learn191-evidence/launch-3m.json
+          .learn191/bin/python -m twelve_six.launch_gate verify \
+            --repo-root . \
+            --request configs/launch/learn191-3m.json \
+            --envelope learn191-evidence/launch-3m.json
+
+      - name: Train random init through midpoint
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          TWELVE_SIX_LAUNCH_REQUEST: configs/launch/learn191-3m.json
+          TWELVE_SIX_LAUNCH_ENVELOPE: learn191-evidence/launch-3m.json
+        run: |
+          set -euo pipefail
+          .learn191/bin/python -m twelve_six.learn191_real_3m phase1 \
+            --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" \
+            --output-dir learn191-evidence
+
+      - name: Fresh-process midpoint resume to final target
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          TWELVE_SIX_LAUNCH_REQUEST: configs/launch/learn191-3m.json
+          TWELVE_SIX_LAUNCH_ENVELOPE: learn191-evidence/launch-3m.json
+        run: |
+          set -euo pipefail
+          .learn191/bin/python -m twelve_six.learn191_real_3m resume \
+            --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" \
+            --output-dir learn191-evidence
+
+      - name: Finalize learned artifact
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          .learn191/bin/python -m twelve_six.learn191_real_3m finalize \
+            --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" \
+            --output-dir learn191-evidence
+
+      - name: Fresh-process final checkpoint proof
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          .learn191/bin/python -m twelve_six.learn191_real_3m verify-final \
+            --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" \
+            --output-dir learn191-evidence
+
+      - name: Print compact scientific result
+        run: |
+          set -euo pipefail
+          .learn191/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+          r=json.loads(Path('learn191-evidence/learn191-real-3m-report.json').read_text())
+          compact={
+            'source_sha':r['source_sha'],
+            'parameter_count':r['model']['parameter_count'],
+            'model_spec_sha256':r['model']['spec_sha256'],
+            'corpus_identity_sha256':r['corpus_identity_sha256'],
+            'selection_validation_identity_sha256':r['selection_validation']['identity_sha256'],
+            'source_exposure_fraction':r['source_exposure_fraction'],
+            'compute_proxy_final_6NT':r['compute_proxy_final_6NT'],
+            'best_checkpoint':r['best_checkpoint'],
+            'final_checkpoint':r['final_checkpoint'],
+            'fresh_process_resume':r['fresh_process_resume'],
+            'evaluations':[
+              {
+                'target':e['target_optimized_tokens'],
+                'actual_tokens':e['actual_optimized_tokens'],
+                'step':e['optimizer_step'],
+                'bpb':e['selection_validation']['bits_per_byte'],
+                'ua_bpb':e['selection_validation']['by_stratum']['uk']['bits_per_byte'],
+                'en_bpb':e['selection_validation']['by_stratum']['en']['bits_per_byte'],
+                'code_bpb':e['selection_validation']['by_stratum']['code']['bits_per_byte'],
+                'train_probe_bpb':e['train_probe']['bits_per_byte'],
+                'memorization_gap_bpb':e['memorization']['train_minus_validation_bpb'],
+                'train_segment':e['train_segment'],
+              } for e in r['evaluations']
+            ],
+            'phase1_observability':r['observability']['phase1'],
+            'resume_observability':r['observability']['resume'],
+            'identity_sha256':r['identity_sha256'],
+          }
+          print('LEARN191_RESULT_BEGIN')
+          print(json.dumps(compact,sort_keys=True,indent=2))
+          print('LEARN191_RESULT_END')
+          PY
+
+      - name: Upload exact learned 3M artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: learn191-real-3m-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            learn191-bootstrap.json
+            learn191-evidence/truth.json
+            learn191-evidence/run-manifest.json
+            learn191-evidence/launch-3m.json
+            learn191-evidence/learn191-real-3m-report.json
+            learn191-evidence/3m/train-curve.jsonl
+            learn191-evidence/3m/phase1.json
+            learn191-evidence/3m/resume.json
+            learn191-evidence/3m/best-checkpoint.json
+            learn191-evidence/3m/final-checkpoint.json
+            learn191-evidence/3m/final-fresh-load-proof.json
+            learn191-evidence/3m/checkpoint-t016632/**
+            learn191-evidence/3m/checkpoint-t065772/**
+            learn191-evidence/3m/checkpoint-t131292/**
+          if-no-files-found: error
+          retention-days: 30
