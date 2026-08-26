@@ -7,10 +7,11 @@ on:
   pull_request:
     paths:
       - configs/data/next100_028_php_doc_uk_source_v1.json
-      - tools/next100_028_php_doc_uk_snapshot.py
+      - tools/next100_028_php_doc_uk_snapshot_v2.py
       - docs/NEXT100_028_PHP_DOC_UK_SOURCE.md
       - data/registry/external_snapshots.v2.json
       - data/external/reserved_fingerprints.json
+      - data/external/rights-evidence/next100-028/php_doc_uk_source_authority_v1.json
       - .github/workflows/next100-028-php-doc-uk-source.yml
   workflow_dispatch:
 
@@ -31,15 +32,15 @@ jobs:
         with:
           python-version: "3.11"
       - name: Compile verifier
-        run: python -m py_compile tools/next100_028_php_doc_uk_snapshot.py
+        run: python -m py_compile tools/next100_028_php_doc_uk_snapshot_v2.py
       - name: Materialize bounded snapshot A
         run: >-
-          python tools/next100_028_php_doc_uk_snapshot.py
+          python tools/next100_028_php_doc_uk_snapshot_v2.py
           --config configs/data/next100_028_php_doc_uk_source_v1.json
           --out-dir /tmp/next100-028-a
       - name: Materialize bounded snapshot B
         run: >-
-          python tools/next100_028_php_doc_uk_snapshot.py
+          python tools/next100_028_php_doc_uk_snapshot_v2.py
           --config configs/data/next100_028_php_doc_uk_source_v1.json
           --out-dir /tmp/next100-028-b
       - name: Require deterministic byte identity
