@@ -1,0 +1,75 @@
+{
+  "authority_identity_sha256": "23dc4bb52ff887a299d1cdad32cff352f2909e6a2cebcf4b2388a60337bf4460",
+  "blockers": [
+    "en.standardebooks.manual.8-typography:EVALUATION_RIGHTS_NOT_SEPARATELY_ADMITTED",
+    "en.standardebooks.manual.8-typography:NOT_RESERVED_FROM_TRAINING",
+    "en.standardebooks.manual.9-metadata:EVALUATION_RIGHTS_NOT_SEPARATELY_ADMITTED",
+    "en.standardebooks.manual.9-metadata:NOT_RESERVED_FROM_TRAINING"
+  ],
+  "classification": "external_real_selection_validation",
+  "deterministic_rebuild": {
+    "canonical_json": "UTF-8; sort_keys=true; separators=(',',':'); trailing_newline=true",
+    "network_required": false,
+    "source_bytes_materialized": false
+  },
+  "documents": 0,
+  "eligible_source_families": [],
+  "eligible_source_objects": 0,
+  "final_test_guard": {
+    "authority_worker_id": "EVAL-233-REAL-HOLDOUT-V2",
+    "content_bytes_inspected_by_eval291": false,
+    "data232_final_test_identity_sha256": "86d51eb106524cd8e4d0f94d4ff6e2e3426c6321e0698279877dfc4d5fce3116",
+    "final_test_bytes_may_be_copied": false,
+    "final_test_records_may_be_selected": false,
+    "head_sha": "b5512b4648cb09dd052b08884dc53f291e1ce935",
+    "metadata_only_binding": true,
+    "outcomes_inspected": false,
+    "recover174_authority_git_blob_sha1": "3ba9f221a82468f971c17eda518cd6f1642fd311",
+    "recover174_authority_identity_sha256": "c7211b3e1e6a4f22463d0e6174f0d6162c2452585704efad5564a35de8de609f",
+    "recover174_seed_git_blob_sha1": "4bfbfbf29fa9538cabda6068efd3a1fd036a9479"
+  },
+  "language": "en",
+  "local_free_only": true,
+  "observed_terminal_source_families": [
+    "en.standardebooks.manual"
+  ],
+  "observed_terminal_source_objects": 2,
+  "purpose_separation": {
+    "final_reporting_eligible": false,
+    "final_test_roots_prohibited": [
+      "data/evaluation/final-test",
+      "data/evaluation/recover174_real_holdout_seed.jsonl.gz"
+    ],
+    "hyperparameter_selection_eligible_when_unblocked": true,
+    "model_selection_eligible_when_unblocked": true,
+    "selection_records_final_test_eligible": false,
+    "selection_records_train_eligible": false,
+    "selection_validation_root": "data/evaluation/selection-validation/en/v1",
+    "tokenizer_fit_eligible": false,
+    "training_roots_prohibited": [
+      "data/train",
+      "data/corpus",
+      "artifacts/train"
+    ]
+  },
+  "record_content_sha256": [],
+  "records": [],
+  "schema_version": "12-6.eval291-en-selection-validation-authority.v1",
+  "source_authority": {
+    "canonical_source_registry_identity_sha256": "82abd7dca04947d72a6d07d8228025c58373d17018fa8dc3a7bca30f7a2714c2",
+    "head_sha": "90bc0b7f8b696ec35202532b13edf6ab29a662fe",
+    "registry_identity_sha256": "1357a343eb4ea973950d8991913109cbea53fe4fa891f0be9745ab497eb59486",
+    "terminal_status": "success",
+    "worker_id": "DATA-229-EXTERNAL-SNAPSHOT-REGISTRY-V1",
+    "workflow_run": 32957147036
+  },
+  "status": "BLOCKED_NO_TERMINAL_EN_EVALUATION_RESERVATION",
+  "truth_boundary": {
+    "final_test_bytes_copied": false,
+    "final_test_outcomes_inspected": false,
+    "rights_inferred_from_training_permission": false,
+    "selection_validation_is_usable": false,
+    "training_bytes_reclassified": false
+  },
+  "worker_id": "EVAL-291-EN-SELECTION-VALIDATION-V1"
+}

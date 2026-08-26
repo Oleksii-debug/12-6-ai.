@@ -1,0 +1,96 @@
+{
+  "admission_policy": {
+    "requires_deterministic_rebuild": true,
+    "requires_exact_source_and_content_hashes": true,
+    "requires_explicit_evaluation_use_authority": true,
+    "requires_external_real": true,
+    "requires_no_final_test_identity_or_bytes": true,
+    "requires_reservation_from_all_future_training_before_training_exposure": true,
+    "requires_terminal_source_authority": true
+  },
+  "classification": "external_real_selection_validation",
+  "final_test_guard": {
+    "authority_worker_id": "EVAL-233-REAL-HOLDOUT-V2",
+    "content_bytes_inspected_by_eval291": false,
+    "data232_final_test_identity_sha256": "86d51eb106524cd8e4d0f94d4ff6e2e3426c6321e0698279877dfc4d5fce3116",
+    "final_test_bytes_may_be_copied": false,
+    "final_test_records_may_be_selected": false,
+    "head_sha": "b5512b4648cb09dd052b08884dc53f291e1ce935",
+    "metadata_only_binding": true,
+    "outcomes_inspected": false,
+    "recover174_authority_git_blob_sha1": "3ba9f221a82468f971c17eda518cd6f1642fd311",
+    "recover174_authority_identity_sha256": "c7211b3e1e6a4f22463d0e6174f0d6162c2452585704efad5564a35de8de609f",
+    "recover174_seed_git_blob_sha1": "4bfbfbf29fa9538cabda6068efd3a1fd036a9479"
+  },
+  "language": "en",
+  "local_free_only": true,
+  "purpose_separation": {
+    "final_reporting_eligible": false,
+    "final_test_roots_prohibited": [
+      "data/evaluation/final-test",
+      "data/evaluation/recover174_real_holdout_seed.jsonl.gz"
+    ],
+    "hyperparameter_selection_eligible_when_unblocked": true,
+    "model_selection_eligible_when_unblocked": true,
+    "selection_records_final_test_eligible": false,
+    "selection_records_train_eligible": false,
+    "selection_validation_root": "data/evaluation/selection-validation/en/v1",
+    "tokenizer_fit_eligible": false,
+    "training_roots_prohibited": [
+      "data/train",
+      "data/corpus",
+      "artifacts/train"
+    ]
+  },
+  "schema_version": "12-6.eval291-en-selection-validation.v1",
+  "source_authority": {
+    "canonical_source_registry_identity_sha256": "82abd7dca04947d72a6d07d8228025c58373d17018fa8dc3a7bca30f7a2714c2",
+    "head_sha": "90bc0b7f8b696ec35202532b13edf6ab29a662fe",
+    "registry_identity_sha256": "1357a343eb4ea973950d8991913109cbea53fe4fa891f0be9745ab497eb59486",
+    "terminal_status": "success",
+    "worker_id": "DATA-229-EXTERNAL-SNAPSHOT-REGISTRY-V1",
+    "workflow_run": 32957147036
+  },
+  "source_cutoff_utc": "2026-08-26T12:01:55Z",
+  "terminal_english_sources": [
+    {
+      "evaluation_decision_identity_sha256": "3b79f3a5a6f421cd7c7a0246ffbaf44cadae98b18e0eb3e4d8c209e7236aa008",
+      "evaluation_rights_status": "NOT_SEPARATELY_ADMITTED",
+      "exclusion_reason": "NO_EXPLICIT_EVALUATION_PURPOSE_AUTHORITY_AND_NOT_RESERVED_FROM_TRAINING",
+      "license_id": "CC0-1.0",
+      "normalized_sha256": "154fb4034929714087e75150d678bf65049ddac32e79dcdf97162c8972c2be83",
+      "normalized_utf8_bytes": 48002,
+      "raw_sha256": "21582c7f0e4ad39f2b0ed97bbc2c082d275e898b7a63c28e6d9badb8ee0f7860",
+      "raw_size_bytes": 68812,
+      "registry_source_id": "external-real:en.standardebooks.manual.8-typography",
+      "reserved_from_training": false,
+      "rights_evidence_set_identity_sha256": "57b7fd48e72889ac36d53fe892a19abea26392dce96dc63009eae8f1145edc14",
+      "selection_validation_admitted": false,
+      "source_family_id": "en.standardebooks.manual",
+      "source_family_identity_sha256": "ba622171b752c4d411bd0b93a94dad14b7ff0e5ac88064678d1b91a551c01be3",
+      "source_id": "en.standardebooks.manual.8-typography",
+      "source_version": "git:d1143a9b459b5e6f9cdda93a7c1e04676bff4f6b",
+      "training_rights_status": "ALLOWED"
+    },
+    {
+      "evaluation_decision_identity_sha256": "202d0756e4a84be1c58cadb2e8a9054cd3b9ae0d3369c190e6da133b7f570593",
+      "evaluation_rights_status": "NOT_SEPARATELY_ADMITTED",
+      "exclusion_reason": "NO_EXPLICIT_EVALUATION_PURPOSE_AUTHORITY_AND_NOT_RESERVED_FROM_TRAINING",
+      "license_id": "CC0-1.0",
+      "normalized_sha256": "94eb2f529922d125b3bd40691778886f4d5d80b128b925d0274fb3d94646ec5a",
+      "normalized_utf8_bytes": 36791,
+      "raw_sha256": "7ac53dfb4bf6f73f178560e09f33160d0250c69fb679802f3254dc0eb4c9f509",
+      "raw_size_bytes": 37299,
+      "registry_source_id": "external-real:en.standardebooks.manual.9-metadata",
+      "reserved_from_training": false,
+      "rights_evidence_set_identity_sha256": "c340e55e55abec6dc91e87f22ae85c91c85476e8aa23038bc485be19fcce3ee5",
+      "selection_validation_admitted": false,
+      "source_family_id": "en.standardebooks.manual",
+      "source_family_identity_sha256": "ba622171b752c4d411bd0b93a94dad14b7ff0e5ac88064678d1b91a551c01be3",
+      "source_id": "en.standardebooks.manual.9-metadata",
+      "source_version": "git:d1143a9b459b5e6f9cdda93a7c1e04676bff4f6b",
+      "training_rights_status": "ALLOWED"
+    }
+  ],
+  "worker_id": "EVAL-291-EN-SELECTION-VALIDATION-V1"
+}
