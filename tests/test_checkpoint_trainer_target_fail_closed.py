@@ -37,6 +37,7 @@ def _identity(parameter_count: int) -> CheckpointIdentity:
     [
         ("_failure_reason", "synthetic poisoned trainer"),
         ("_update_incomplete", True),
+        ("_update_incomplete", 1),
     ],
 )
 def test_production_trainer_rejects_unloadable_target_before_model_or_rng_mutation(
