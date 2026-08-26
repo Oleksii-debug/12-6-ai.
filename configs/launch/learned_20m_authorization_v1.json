@@ -38,12 +38,24 @@
     "learned_3m_independent": {"terminal": false, "evidence_ref": null},
     "learned_10m_independent": {"terminal": false, "evidence_ref": null},
     "selection_validation": {"terminal": false, "evidence_ref": null},
-    "independent_audit": {"terminal": false, "evidence_ref": null}
+    "independent_audit": {"terminal": false, "evidence_ref": null},
+    "bounded_pilot": {
+      "terminal": false,
+      "evidence_ref": null,
+      "max_steps": 0,
+      "finite_loss": false,
+      "loss_decreased": false,
+      "gradient_health_passed": false,
+      "checkpoint_resume_passed": false,
+      "throughput_measured": false,
+      "evaluation_isolation_passed": false
+    }
   },
   "training_recipe": {
     "optimizer": {"name": null, "config_sha256": null},
     "scheduler": {"name": null, "config_sha256": null},
     "precision": {"name": null, "config_sha256": null},
+    "gradient_policy": {"name": null, "config_sha256": null},
     "seeds": [],
     "budget": {
       "target_optimized_tokens": 0,
