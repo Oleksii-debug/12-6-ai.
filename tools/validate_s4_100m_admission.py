@@ -12,6 +12,8 @@ DEFAULT_CONFIG = Path("configs/control/s4_100m_admission_v1.json")
 TARGET_PARAMETERS = 100_000_000
 EXPECTED_SCHEMA = "12-6.s4-100m-admission.v1"
 EXPECTED_PREDECESSOR_SHA = "e4ff486fd90802fc123bebf60eed4e59196a98df"
+EXPECTED_TOKEN_BUDGET_SCHEMA = "12-6.pretraining-token-budget.v1"
+EXPECTED_TOKEN_BUDGET_BLOB = "4b2371fd20c9a0b96bf26902dc2c29d195ea96f4"
 BLOCKING_GATE_VALUES = {"BLOCKED", "NO"}
 
 
@@ -76,6 +78,35 @@ def parameter_count(model: dict[str, Any]) -> int:
     ) + final_norm
 
 
+def _validate_token_budget_authority(
+    contract: dict[str, Any], errors: list[str]
+) -> dict[str, Any]:
+    authority = _require_mapping(
+        contract.get("token_budget_authority"), "token_budget_authority", errors
+    )
+    if authority.get("path") != "configs/control/pretraining_token_budget_v1.json":
+        errors.append("token budget authority must point to pretraining_token_budget_v1.json")
+    if authority.get("schema") != EXPECTED_TOKEN_BUDGET_SCHEMA:
+        errors.append("token budget authority schema mismatch")
+    if authority.get("blob_sha") != EXPECTED_TOKEN_BUDGET_BLOB:
+        errors.append("token budget authority blob drifted from the reviewed upstream snapshot")
+    if authority.get("policy_owner") != "UPSTREAM_TOKEN_BUDGET_CONTROLLER":
+        errors.append("S4 admission must not claim ownership of token-budget policy")
+    if authority.get("compute_optimal_reference_tokens_per_parameter") != 20:
+        errors.append("token budget authority must preserve the reviewed 20 tpp planning reference")
+    if authority.get("predecessor_20m_reference_tokens") != 412_268_800:
+        errors.append("token budget authority 20M reference mismatch")
+    if authority.get("canonical_100m_reference_tokens") != 2_000_000_000:
+        errors.append("token budget authority 100M reference mismatch")
+    if authority.get("canonical_1b_reference_tokens") != 20_000_000_000:
+        errors.append("token budget authority 1B reference mismatch")
+    if authority.get("current_20m_request_classification") != (
+        "PIPELINE_PILOT_NOT_SCIENCE_COMPLETE_20M_BASELINE"
+    ):
+        errors.append("20M request must remain classified as a pipeline pilot")
+    return authority
+
+
 def validate_contract(contract: dict[str, Any]) -> tuple[list[str], dict[str, int]]:
     errors: list[str] = []
     computed: dict[str, int] = {}
@@ -92,6 +123,8 @@ def validate_contract(contract: dict[str, Any]) -> tuple[list[str], dict[str, in
         errors.append("predecessor mechanical qualification must be PASS")
     if predecessor.get("long_training_performed") is not False:
         errors.append("contract must not claim predecessor long training")
+
+    token_budget_authority = _validate_token_budget_authority(contract, errors)
 
     selection = _require_mapping(contract.get("selection_rule"), "selection_rule", errors)
     max_deviation = selection.get("maximum_target_deviation_fraction")
@@ -179,6 +212,9 @@ def validate_contract(contract: dict[str, Any]) -> tuple[list[str], dict[str, in
         errors,
     )
     tpp = references.get("reference_only_tokens_per_parameter")
+    authority_tpp = token_budget_authority.get("compute_optimal_reference_tokens_per_parameter")
+    if tpp != authority_tpp:
+        errors.append("local scaling reference must exactly inherit upstream token-budget policy")
     if not isinstance(tpp, (int, float)) or isinstance(tpp, bool) or tpp <= 0:
         errors.append("reference_only_tokens_per_parameter must be positive")
     else:
