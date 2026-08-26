@@ -10,12 +10,40 @@ from __future__ import annotations
 import argparse
 import ast
 import hashlib
+import importlib.machinery
 import json
 import re
+import sys
+import types
 import urllib.request
 from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
+
+# This audit is deliberately stdlib-only. The project package root imports the
+# model runtime (and therefore torch), but the bound DATA-296 data modules do not
+# require it. Install namespace packages without executing twelve_six/__init__.py
+# so the audit measures data filters rather than runtime packaging side effects.
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+_SRC_ROOT = _REPO_ROOT / "src"
+
+
+def _install_namespace(name: str, path: Path) -> None:
+    module = types.ModuleType(name)
+    module.__package__ = name
+    module.__path__ = [str(path)]  # type: ignore[attr-defined]
+    spec = importlib.machinery.ModuleSpec(name, loader=None, is_package=True)
+    spec.submodule_search_locations = [str(path)]
+    module.__spec__ = spec
+    sys.modules[name] = module
+
+
+if "twelve_six" not in sys.modules:
+    _install_namespace("twelve_six", _SRC_ROOT / "twelve_six")
+if "twelve_six.data" not in sys.modules:
+    _install_namespace("twelve_six.data", _SRC_ROOT / "twelve_six" / "data")
+if "twelve_six.packing" not in sys.modules:
+    _install_namespace("twelve_six.packing", _SRC_ROOT / "twelve_six" / "packing")
 
 from twelve_six.data.document_quality import ModeThresholds, QualityPolicy, assess_document
 from twelve_six.data.multilingual_pretraining import detect_language, strict_normalize_utf8
@@ -422,10 +450,7 @@ def comparison_rows(policy_reports: list[dict[str, Any]]) -> list[dict[str, Any]
 def run(repo: Path, plan_path: Path, output_path: Path) -> dict[str, Any]:
     plan = json.loads(plan_path.read_text(encoding="utf-8"))
     verify_preregistration(plan, repo)
-    policies = [
-        (raw["role"], policy_from_plan(raw))
-        for raw in plan["policies"]
-    ]
+    policies = [(raw["role"], policy_from_plan(raw)) for raw in plan["policies"]]
     text_records, text_checks = acquire_text_objects(plan)
     code_records, code_checks = acquire_code_objects(plan)
     records = text_records + code_records
