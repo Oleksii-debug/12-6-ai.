@@ -1,39 +1,25 @@
 name: NEXT100-034 NIST source probe
 
 on:
-  push:
-    branches:
-      - next100-034/data-en-nist-20260826
-    paths:
-      - tools/probe_next100_034_nist.py
-      - .github/workflows/next100-034-nist-probe.yml
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   probe:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
       - name: Install PDF text extractor
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends poppler-utils
           pdftotext -v
+
       - name: Probe exact NIST bytes and bounded normalized text
-        run: |
-          mkdir -p evidence/next100-034
-          python tools/probe_next100_034_nist.py | tee /tmp/nist-probe.log
-          sed -n 's/^NIST_PROBE_JSON=//p' /tmp/nist-probe.log > evidence/next100-034/nist_probe_manifest.json
-          python -m json.tool evidence/next100-034/nist_probe_manifest.json >/dev/null
-      - name: Persist immutable probe result
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add evidence/next100-034/nist_probe_manifest.json
-          git diff --cached --quiet && exit 0
-          git commit -m "NEXT100-034: persist NIST probe evidence"
-          git push
+        run: python tools/probe_next100_034_nist.py
