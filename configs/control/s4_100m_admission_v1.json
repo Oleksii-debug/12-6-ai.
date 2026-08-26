@@ -1,0 +1,168 @@
+{
+  "schema": "12-6.s4-100m-admission.v1",
+  "worker_id": "R01-S4-100M-ADMISSION-20260826",
+  "repository": "Oleksii-debug/12-6-ai.",
+  "execution_profile": "LOCAL_FREE",
+  "base_readiness_controller": {
+    "branch": "coord/20m-readiness-controller-20260826",
+    "head_sha": "85f98137e1407eaf05223087cf087b13dee8f7db",
+    "decision": "BLOCK_LONG_TRAINING_CONTINUE_LOCAL_FREE_ENGINEERING"
+  },
+  "predecessor_20m": {
+    "branch": "model341/20m-candidate-a-20260826",
+    "head_sha": "e4ff486fd90802fc123bebf60eed4e59196a98df",
+    "model_spec_sha256": "fbff24d561a2818453554d58ca23fc6ace3303b078f1935a8576c4565bd92441",
+    "parameter_count": 20613440,
+    "mechanical_qualification": "PASS",
+    "long_training_performed": false,
+    "learned_scientific_gate": "BLOCKED_NO_TERMINAL_CORPUS_AND_ZERO_AUTHORIZED_REAL_LOSS_CAPACITY"
+  },
+  "incumbent_s4_candidate": {
+    "path": "configs/stages/s4_100m_accelerator.candidate.json",
+    "blob_sha": "37f647efef8121dbd882e40d2d155531553888e3",
+    "candidate_id": "S4-SCALE04-BYTE-MHA-v1",
+    "expected_parameters": 99897600,
+    "attention_family": "MHA",
+    "tokenizer": "s0-byte-v1",
+    "status": "ENGINEERING_CANDIDATE_NOT_FROZEN",
+    "promotion_allowed": false,
+    "review_required": true,
+    "review_reason": "The incumbent MHA selection rationale predates the mechanically qualified MODEL-341 GQA path and must not silently become the learned S4 architecture."
+  },
+  "research_candidates": [
+    {
+      "candidate_id": "S4-GQA-EXACTISH-v1",
+      "purpose": "Parameter-target control candidate; not selected for training.",
+      "expected_parameters": 100000512,
+      "target_deviation_fraction": 0.00000512,
+      "model": {
+        "vocab_size": 256,
+        "max_seq_len": 4096,
+        "d_model": 768,
+        "n_layers": 16,
+        "n_heads": 12,
+        "n_kv_heads": 4,
+        "head_dim": 64,
+        "d_ff": 2024,
+        "activation": "swiglu",
+        "norm_kind": "rmsnorm",
+        "position_embedding": "rope",
+        "tie_word_embeddings": true
+      }
+    },
+    {
+      "candidate_id": "S4-GQA-ALIGNED-v1",
+      "purpose": "Hardware-friendly d_ff control candidate; not selected for training.",
+      "expected_parameters": 100885248,
+      "target_deviation_fraction": 0.00885248,
+      "model": {
+        "vocab_size": 256,
+        "max_seq_len": 4096,
+        "d_model": 768,
+        "n_layers": 16,
+        "n_heads": 12,
+        "n_kv_heads": 4,
+        "head_dim": 64,
+        "d_ff": 2048,
+        "activation": "swiglu",
+        "norm_kind": "rmsnorm",
+        "position_embedding": "rope",
+        "tie_word_embeddings": true
+      }
+    }
+  ],
+  "selection_rule": {
+    "selected_candidate": null,
+    "required_before_selection": [
+      "EXACT_MODEL_BUILD_AND_PARAMETER_REPORT",
+      "GQA_SDPA_NUMERICAL_EQUIVALENCE_PROBE",
+      "GQA_BACKEND_THROUGHPUT_AND_MEMORY_PROBE_ON_TARGET_HARDWARE",
+      "FORWARD_BACKWARD_UPDATE_AND_FINITE_GRADIENTS",
+      "SAVE_LOAD_RESUME_REQUALIFICATION",
+      "TOKENIZER_DECISION_AND_RECOMPUTED_MODELSPEC_IF_VOCAB_CHANGES"
+    ],
+    "maximum_target_deviation_fraction": 0.02
+  },
+  "tokenizer_gate": {
+    "current_mechanical_tokenizer": "s0-byte-v1",
+    "current_vocab_size": 256,
+    "production_decision": "BLOCKED_REQUIRES_EVIDENCE",
+    "byte_tokenizer_may_win": true,
+    "trained_tokenizer_may_win": true,
+    "required_comparison_metrics": [
+      "LOSSLESS_ROUNDTRIP",
+      "TOKENS_PER_CHARACTER_BY_LANGUAGE",
+      "TOKENS_PER_WORD_BY_LANGUAGE",
+      "BYTES_PER_TOKEN_BY_LANGUAGE",
+      "SEQUENCE_LENGTH_DISTRIBUTION",
+      "TRAINING_THROUGHPUT_TOKENS_AND_BYTES_PER_SECOND",
+      "VALIDATION_BITS_PER_BYTE_OR_EQUIVALENT_TOKENIZER_NORMALIZED_METRIC",
+      "VOCAB_PARAMETER_COST_AND_RECOMPUTED_TOTAL_PARAMETERS"
+    ],
+    "rule": "The byte tokenizer remains valid for mechanics. Full learned S4 training requires an explicit keep-byte-v1 versus trained-tokenizer decision; any vocabulary change invalidates the provisional S4 parameter counts and requires a new ModelSpec identity."
+  },
+  "data_gate": {
+    "exact_final_corpus_identity": null,
+    "exact_shard_identity": null,
+    "decontamination_terminal": false,
+    "two_clean_builds_identical": false,
+    "authorized_unique_no_replay_loss_positions": 0,
+    "rule": "No learned S4 campaign is runnable until exact corpus/shard identities, terminal decontamination, deterministic rebuild evidence, and a preregistered unique-loss budget exist."
+  },
+  "training_budget_research_reference": {
+    "fixed_campaign_tokens": null,
+    "reference_only_tokens_per_parameter": 20.0,
+    "predecessor_20m_reference_tokens": 412268800,
+    "s4_gqa_exactish_reference_tokens": 2000010240,
+    "s4_gqa_aligned_reference_tokens": 2017704960,
+    "rule": "The 20 tokens/parameter figure is a scaling-law reference, not a campaign requirement or compute authorization. The actual token budget must be preregistered after corpus, tokenizer, loss-curve, and budget evidence are available."
+  },
+  "runtime_gate": {
+    "preferred_precision": "bf16_with_fp32_sensitive_state",
+    "s4_single_gpu_allowed_if_measured_fit": true,
+    "fsdp2_required_for_s4": false,
+    "fsdp2_readiness_required_before_larger_stages": true,
+    "activation_checkpointing_probe_required": true,
+    "gqa_backend_probe_required": true,
+    "distributed_checkpoint_compatibility_required_before_distributed_training": true
+  },
+  "gates": {
+    "predecessor_20m_mechanics": "PASS",
+    "predecessor_20m_learned_science": "BLOCKED",
+    "exact_final_corpus_identity": "BLOCKED",
+    "tokenizer_production_decision": "BLOCKED",
+    "s4_modelspec_frozen": "BLOCKED",
+    "s4_gqa_backend_qualified": "BLOCKED",
+    "s4_checkpoint_recovery_qualified": "BLOCKED",
+    "s4_optimizer_preregistered": "BLOCKED",
+    "s4_evaluation_preregistered": "BLOCKED",
+    "material_compute_authorized": "NO"
+  },
+  "ordered_next_actions": [
+    "FINISH_20M_DATA_AND_D05_GATES_WITHOUT_LONG_TRAINING",
+    "RUN_TOKENIZER_COMPARISON_ON_TERMINAL_TRAIN_ONLY_CORPUS",
+    "REGENERATE_S4_MODELSPEC_IF_TOKENIZER_VOCAB_CHANGES",
+    "COMPARE_INCUMBENT_MHA_WITH_GQA_CONTROL_CANDIDATES_LOCALLY",
+    "FREEZE_ONE_S4_MODELSPEC_AND_INIT_IDENTITY",
+    "PREREGISTER_S4_OPTIMIZER_SCHEDULE_TOKEN_BUDGET_AND_EVAL",
+    "QUALIFY_S4_SAVE_LOAD_RESUME_AND_GQA_BACKEND",
+    "ESTIMATE_MEMORY_THROUGHPUT_AND_EXACT_COMPUTE_COST",
+    "REQUEST_EXPLICIT_COMPUTE_AUTHORIZATION",
+    "ONLY_THEN_START_LEARNED_S4_TRAINING"
+  ],
+  "research_sources": [
+    "https://deepmind.google/blog/an-empirical-analysis-of-compute-optimal-large-language-model-training/",
+    "https://aclanthology.org/2023.emnlp-main.298/",
+    "https://docs.pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention",
+    "https://docs.pytorch.org/docs/main/distributed.fsdp.fully_shard.html",
+    "https://github.com/pytorch/torchtitan"
+  ],
+  "promotion_allowed": false,
+  "long_training_authorized": false,
+  "paid_compute_used": false,
+  "terminal_decision": {
+    "status": "BLOCK_S4_LONG_TRAINING_CONTINUE_LOCAL_FREE_RESEARCH_AND_ENGINEERING",
+    "primary_reason": "S4 architecture, tokenizer, data, recovery, optimizer, evaluation, and compute gates are not frozen.",
+    "safe_parallel_work": "Local ModelSpec/GQA/tokenizer/runtime qualification that does not mutate the active DATA or D05 ownership surfaces."
+  }
+}
