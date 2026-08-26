@@ -1,0 +1,106 @@
+name: NEXT100-082 Hypothesis Verifier Integration
+
+on:
+  push:
+    branches: [next100-082/hypothesis-verifier-integration-20260826]
+  pull_request:
+    branches: [postbase357/verifier-ensemble-convergence-20260826]
+  workflow_dispatch:
+
+concurrency:
+  group: next100-082-hypothesis-verifier-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: {contents: read}
+
+env:
+  PYTHONPATH: src
+  NEXT100_082_EXECUTION_PROFILE: LOCAL_FREE
+
+jobs:
+  deterministic-local-free-integration:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: "${{ github.sha }}"
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with: {python-version: "3.11.16"}
+
+      - name: Bind terminal hypothesis and verifier authorities
+        run: |
+          set -euo pipefail
+          hypothesis=ea1d8fff0d3235660dffe7ba411e192df83f5e1d
+          verifier=7eac24e250c0853745208bab8ba9b2d3d104fbf5
+          verifier_blob=e3c0504c1a6b3768c8aaea1aaaa3b3eb637eaab7
+          git merge-base --is-ancestor "$hypothesis" "$GITHUB_SHA"
+          git merge-base --is-ancestor "$verifier" "$GITHUB_SHA"
+          test "$(git rev-parse "$GITHUB_SHA:src/twelve_six/postbase/verification.py")" = "$verifier_blob"
+
+      - name: Bootstrap and focused regression tests
+        uses: ./.github/actions/execution-bootstrap
+        with:
+          capabilities: runtime,tests,lint
+          venv: .next100082
+          command: >-
+            python -m pytest -q
+            tests/test_postbase_hypothesis.py
+            tests/test_postbase_verification.py
+            tests/test_next100_082_hypothesis_verifier_integration.py
+          manifest: reports/next100_082/environment.json
+
+      - name: Ruff integration surface
+        run: >-
+          .next100082/bin/ruff check
+          src/twelve_six/postbase_hypothesis.py
+          src/twelve_six/postbase/hypothesis_verifier.py
+          src/twelve_six/postbase/__init__.py
+          tests/test_next100_082_hypothesis_verifier_integration.py
+          tools/run_next100_082_hypothesis_verifier_probe.py
+
+      - name: Build deterministic integration evidence twice
+        run: |
+          set -euo pipefail
+          .next100082/bin/python tools/run_next100_082_hypothesis_verifier_probe.py --output reports/next100_082/probe-a.json
+          .next100082/bin/python tools/run_next100_082_hypothesis_verifier_probe.py --output reports/next100_082/probe-b.json
+          cmp reports/next100_082/probe-a.json reports/next100_082/probe-b.json
+          cp reports/next100_082/probe-a.json reports/next100_082/probe.json
+          cat reports/next100_082/probe.json
+
+      - name: Prove no external model or network judge dependency
+        run: |
+          set -euo pipefail
+          .next100082/bin/python - <<'PY'
+          import ast
+          from pathlib import Path
+
+          forbidden = {'openai', 'anthropic', 'requests', 'httpx', 'aiohttp'}
+          paths = (
+              Path('src/twelve_six/postbase_hypothesis.py'),
+              Path('src/twelve_six/postbase/hypothesis_verifier.py'),
+              Path('tools/run_next100_082_hypothesis_verifier_probe.py'),
+          )
+          imports = set()
+          for path in paths:
+              tree = ast.parse(path.read_text(encoding='utf-8'))
+              for node in ast.walk(tree):
+                  if isinstance(node, ast.Import):
+                      imports.update(alias.name.split('.')[0] for alias in node.names)
+                  elif isinstance(node, ast.ImportFrom) and node.module:
+                      imports.add(node.module.split('.')[0])
+          overlap = imports & forbidden
+          assert not overlap, f'external model/network dependency present: {sorted(overlap)}'
+          print({'execution_profile': 'LOCAL_FREE', 'external_model_judge_called': False})
+          PY
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: next100-082-hypothesis-verifier-${{ github.sha }}
+          path: |
+            reports/next100_082/environment.json
+            reports/next100_082/probe.json
+          if-no-files-found: warn
