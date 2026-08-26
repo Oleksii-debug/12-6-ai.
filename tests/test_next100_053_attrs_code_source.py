@@ -33,6 +33,33 @@ def test_git_blob_identity_is_content_bound() -> None:
     assert digest != mod.git_blob_sha1(data + b"# drift\n")
 
 
+def test_mit_grant_validation_allows_line_wrapped_canonical_text() -> None:
+    text = """
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software.
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+"""
+    mod.validate_mit_grant_text(text)
+
+
+def test_mit_grant_validation_rejects_missing_core_grant() -> None:
+    text = """
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software under restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software.
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+"""
+    with pytest.raises(mod.AdmissionError, match="MIT grant text drift"):
+        mod.validate_mit_grant_text(text)
+
+
 def test_secret_scan_rejects_private_key() -> None:
     raw = b"-----BEGIN PRIVATE KEY-----\nnot-real\n"
     with pytest.raises(mod.AdmissionError, match="secret-like"):
