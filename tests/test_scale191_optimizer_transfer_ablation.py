@@ -5,7 +5,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-SCRIPT = Path(__file__).resolve().parents[1] / "tools" / "scale191_optimizer_transfer_ablation.py"
+ROOT = Path(__file__).resolve().parents[1]
+SCRIPT = ROOT / "tools" / "scale191_optimizer_transfer_ablation.py"
+FROZEN_PLAN = ROOT / "evidence" / "scale191" / "preregistration.json"
 
 
 def test_scale191_plan_is_full_factorial_and_fail_closed(tmp_path: Path) -> None:
@@ -18,6 +20,8 @@ def test_scale191_plan_is_full_factorial_and_fail_closed(tmp_path: Path) -> None
     )
     assert completed.returncode == 0, completed.stderr
     plan = json.loads(output.read_text(encoding="utf-8"))
+    frozen = json.loads(FROZEN_PLAN.read_text(encoding="utf-8"))
+    assert plan == frozen
     assert plan["schema"] == "12-6.scale191.optimizer-transfer.v1"
     assert plan["varied_only"] == ["learning_rate", "gradient_clip_norm"]
     assert plan["fixed_identity"]["parameter_count"] == 3_221_184
