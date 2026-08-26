@@ -4,7 +4,33 @@ on:
   pull_request:
     branches:
       - milestone150/learned-base-ladder-v1-20260826
+    paths:
+      - ".github/workflows/recover170-train41-long-100k.yml"
+      - "src/twelve_six/recover170_train41.py"
+      - "tests/test_recover170_train41.py"
+      - "src/twelve_six/milestone100_first_learned.py"
+      - "src/twelve_six/milestone150*.py"
+      - "src/twelve_six/model/**"
+      - "src/twelve_six/model.py"
+      - "src/twelve_six/training/**"
+      - "src/twelve_six/checkpoint/**"
+      - "src/twelve_six/checkpoint.py"
+      - "src/twelve_six/tokenization/**"
+      - "src/twelve_six/inference/**"
+      - "data/corpus_v01/**"
+      - "configs/data/corpus_v01.json"
+      - "requirements/locks/linux-x86_64/**"
+      - "requirements/profiles/**"
+      - "tools/verify_purpose_environment.py"
+      - "tools/ci_dependency_preflight.py"
+      - "tests/test_data25_corpus_v01.py"
+      - "tests/test_milestone100*.py"
+      - "tests/test_milestone150*.py"
   workflow_dispatch:
+
+concurrency:
+  group: recover170-train41-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -37,6 +63,15 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+
+      - name: Dependency and tool preflight before environment creation
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: >-
+          python tools/ci_dependency_preflight.py
+          --profile linux-x86_64
+          --source-sha "$SOURCE_SHA"
+          --output recover170-ci-preflight.json
 
       - name: Mandatory D08 purpose-environment preflight
         env:
@@ -189,6 +224,7 @@ jobs:
         with:
           name: recover170-train41-long-100k
           path: |
+            recover170-ci-preflight.json
             recover170-purpose-environment.json
             recover170-evidence/environment-preflight.json
             recover170-evidence/corpus-manifest.json
