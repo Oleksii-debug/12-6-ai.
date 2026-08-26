@@ -22,8 +22,9 @@ from twelve_six.checkpoint.state_tree import pack_state_tree, unpack_state_tree
 
 
 class NumpyModel:
-    def __init__(self, value: list[float], *, dtype: np.dtype = np.dtype("float64")) -> None:
-        self.weights = np.asarray(value, dtype=dtype).copy()
+    def __init__(self, value: list[float], *, dtype: np.dtype | None = None) -> None:
+        resolved_dtype = np.dtype("float64") if dtype is None else dtype
+        self.weights = np.asarray(value, dtype=resolved_dtype).copy()
         self.loads = 0
 
     def state_dict(self) -> dict[str, np.ndarray]:
