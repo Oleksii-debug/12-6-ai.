@@ -1,0 +1,60 @@
+#!/usr/bin/env python3
+"""Run or verify NEXT100-065D global cross-source dedup V6."""
+
+from __future__ import annotations
+
+import argparse
+import json
+from pathlib import Path
+
+from twelve_six.data.cross_source_capacity_audit_v6 import run_from_files, verify_report
+
+
+def _load(path: str) -> dict[str, object]:
+    value = json.loads(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(value, dict):
+        raise SystemExit(f"{path}: JSON root must be an object")
+    return value
+
+
+def _write(report: dict[str, object], path: str) -> None:
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(
+        json.dumps(report, sort_keys=True, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    run = subparsers.add_parser("run")
+    run.add_argument("--base-inventory", required=True)
+    run.add_argument("--v4-extension", required=True)
+    run.add_argument("--v5-config", required=True)
+    run.add_argument("--v6-config", required=True)
+    run.add_argument("--report", required=True)
+
+    verify = subparsers.add_parser("verify")
+    verify.add_argument("--report", required=True)
+
+    args = parser.parse_args()
+    if args.command == "run":
+        report = run_from_files(
+            args.base_inventory,
+            args.v4_extension,
+            args.v5_config,
+            args.v6_config,
+        )
+        verify_report(report)
+        _write(report, args.report)
+        return 0
+
+    verify_report(_load(args.report))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
