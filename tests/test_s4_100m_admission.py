@@ -95,3 +95,15 @@ def test_v1_cannot_fabricate_corpus_identity_or_capacity() -> None:
 
     assert "v1 snapshot must not fabricate a final corpus identity" in errors
     assert "v1 snapshot must preserve zero authorized real loss positions" in errors
+
+
+def test_token_budget_policy_cannot_be_locally_redefined() -> None:
+    validator = _load_validator()
+    contract = deepcopy(_load_contract())
+    contract["token_budget_authority"]["blob_sha"] = "different"
+    contract["training_budget_research_reference"]["reference_only_tokens_per_parameter"] = 24
+
+    errors, _ = validator.validate_contract(contract)
+
+    assert any("token budget authority blob drifted" in error for error in errors)
+    assert any("must exactly inherit upstream token-budget policy" in error for error in errors)
