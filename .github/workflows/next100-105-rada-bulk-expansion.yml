@@ -1,0 +1,125 @@
+name: NEXT100-105 Rada Bulk Expansion Probe
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/next100-105-rada-bulk-expansion.yml"
+      - "configs/data/next100_105_rada_bulk_expansion_v1.json"
+      - "tools/probe_next100_105_rada_bulk_expansion.py"
+      - "tests/test_next100_105_rada_bulk_expansion.py"
+      - "docs/NEXT100_105_RADA_BULK_EXPANSION.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  offline-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Bind exact source head
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Compile focused implementation
+        run: >-
+          python -m compileall -q
+          tools/probe_next100_105_rada_bulk_expansion.py
+          tests/test_next100_105_rada_bulk_expansion.py
+
+      - name: Validate frozen contract
+        run: python tools/probe_next100_105_rada_bulk_expansion.py validate-config
+
+      - name: Run adversarial stdlib tests
+        run: python tests/test_next100_105_rada_bulk_expansion.py -v
+
+  live-rada-probe:
+    needs: offline-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Bind exact source head
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Acquire bounded official Rada archive once
+        run: |
+          mkdir -p evidence/next100_105/a evidence/next100_105/b
+          for attempt in 1 2 3; do
+            python tools/probe_next100_105_rada_bulk_expansion.py fetch \
+              --output /tmp/rada-texts.zip \
+              --metadata-output evidence/next100_105/fetch.json && break
+            test "$attempt" -lt 3 || exit 1
+            sleep 5
+          done
+          test -s /tmp/rada-texts.zip
+
+      - name: Materialize hash-only candidate twice
+        run: |
+          python tools/probe_next100_105_rada_bulk_expansion.py probe \
+            --archive /tmp/rada-texts.zip \
+            --report evidence/next100_105/a/report.json
+          python tools/probe_next100_105_rada_bulk_expansion.py probe \
+            --archive /tmp/rada-texts.zip \
+            --report evidence/next100_105/b/report.json
+          cmp evidence/next100_105/a/report.json evidence/next100_105/b/report.json
+          python tools/probe_next100_105_rada_bulk_expansion.py verify-report \
+            --report evidence/next100_105/a/report.json
+
+      - name: Prove fail-closed capacity and privacy boundary
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path("evidence/next100_105/a/report.json").read_text())
+          assert report["decision"] == "PROBE_LOCK_REQUIRED"
+          assert report["mode"] == "PROBE"
+          assert report["family"]["family_credit_added"] == 0
+          assert report["family"]["additional_candidate_cap"] == 4_911_435
+          assert 0 <= report["candidate"]["selected_pre_dedup_normalized_bytes"] <= 4_911_435
+          assert report["gates"]["training_capacity_credit"] == 0
+          assert report["gates"]["training_eligible"] is False
+          assert report["execution"]["training_executed"] is False
+          assert report["execution"]["paid_compute_used"] is False
+          assert report["execution"]["final_test_payload_read"] is False
+          assert all("text" not in record for record in report["candidate"]["records"])
+          PY
+
+      - name: Upload hash-only probe evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: next100-105-rada-bulk-probe-${{ github.event.pull_request.head.sha || github.sha }}
+          if-no-files-found: error
+          retention-days: 90
+          path: |
+            configs/data/next100_105_rada_bulk_expansion_v1.json
+            evidence/next100_105/fetch.json
+            evidence/next100_105/a/report.json
