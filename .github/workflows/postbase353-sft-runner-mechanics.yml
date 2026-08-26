@@ -12,6 +12,7 @@ on:
       - "tests/test_post_base_sft_runner.py"
       - "tests/test_postbase353_recovery.py"
       - "tests/test_postbase353_redteam.py"
+      - "tests/test_postbase353_manifest_forgery.py"
       - ".github/workflows/postbase353-sft-runner-mechanics.yml"
   workflow_dispatch:
 
@@ -47,6 +48,7 @@ jobs:
           tests/test_post_base_sft_runner.py
           tests/test_postbase353_recovery.py
           tests/test_postbase353_redteam.py
+          tests/test_postbase353_manifest_forgery.py
       - name: Scoped exact-head component tests
         run: >-
           pytest -q
@@ -54,3 +56,4 @@ jobs:
           tests/test_post_base_sft_runner.py
           tests/test_postbase353_recovery.py
           tests/test_postbase353_redteam.py
+          tests/test_postbase353_manifest_forgery.py
