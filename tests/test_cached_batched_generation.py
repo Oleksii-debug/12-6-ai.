@@ -5,13 +5,13 @@ from collections.abc import Sequence
 import pytest
 import torch
 
-import twelve_six.integration.torch_batching as torch_batching
 from twelve_six.inference.batching import (
     BatchGenerationRequest,
     generate_batch_cached,
 )
 from twelve_six.inference.contracts import GenerationConfig
 from twelve_six.inference.generation import generate
+from twelve_six.integration import torch_batching
 from twelve_six.integration.torch_batching import S0TorchBatchedInferenceBackend
 from twelve_six.model import InitSpec, ModelSpec, TwelveSixDecoder
 from twelve_six.tokenization import ByteTokenizer
