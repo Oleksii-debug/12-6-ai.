@@ -17,7 +17,7 @@ Training-eligible input capacity at the audit boundary is 183,061 UTF-8 bytes ac
 
 ## What is measured
 
-The exact DATA-33 pass is applied to every admitted object. The sanitized report records per-source and per-family input bytes, retained training bytes, dropped bytes, action counts and detector counts. REDACT remains train-eligible under DATA-33; QUARANTINE and EXCLUDE contribute zero retained training bytes.
+The exact DATA-33 pass is applied to every admitted object. The sanitized report records per-source and per-family input bytes, retained training bytes, excluded input bytes, action counts and detector counts. REDACT remains train-eligible under DATA-33; QUARANTINE and EXCLUDE contribute zero retained training bytes.
 
 A separate labeled challenge panel is assembled only at runtime. It covers configured PII and credential classes plus private user paths and code-oriented patterns such as environment assignments, authentication headers, credential-bearing connection URIs and package/service token shapes. Benign near-miss fixtures measure false positives. The audit records TP/FN/TN/FP counts and rates without retaining fixture payloads.
 
@@ -33,7 +33,9 @@ The workflow downloads exact terminal source artifacts by immutable artifact IDs
 
 Run the fixture-only audit with:
 
-`PYTHONPATH=src python -m twelve_six.data297_privacy_external_audit fixtures`
+`python tools/run_data297_privacy_external_audit.py fixtures`
+
+The launcher deliberately bypasses the repository root package's eager model/PyTorch imports. DATA-297 is pure data-policy work and does not install or require the training stack.
 
 The full external-real audit is executed by `.github/workflows/data297-privacy-external-audit.yml`, which binds the exact pull-request head and DATA-33 ancestry before reading the terminal DATA-213/DATA-227 artifacts.
 
