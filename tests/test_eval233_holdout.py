@@ -9,17 +9,17 @@ import pytest
 from twelve_six.eval233_holdout import Eval233Error, build, git_blob_sha1, hash_json, verify
 
 
-def _fixture(root: Path) -> tuple[str, str, str, list[bytes]]:
-    seed = root / "data/evaluation/recover174_real_holdout_seed.jsonl.gz"
-    auth = root / "configs/evaluation/recover174_source_authority_v1.json"
-    seed.parent.mkdir(parents=True)
-    auth.parent.mkdir(parents=True)
+def _fixture(root: Path) -> tuple[str, str, str, bytes]:
+    seed_path = root / "data/evaluation/recover174_real_holdout_seed.jsonl.gz"
+    authority_path = root / "configs/evaluation/recover174_source_authority_v1.json"
+    seed_path.parent.mkdir(parents=True)
+    authority_path.parent.mkdir(parents=True)
     authority = {
         "admitted_modalities": ["ua", "en"],
         "blocked_modalities": {"code": {"status": "BLOCKED_NO_EVALUATION_USE_AUTHORITY"}},
         "sources": {},
     }
-    rows = []
+    rows: list[bytes] = []
     for modality in ("ua", "en"):
         source_id = f"{modality}.fixture"
         snapshots = []
@@ -47,15 +47,15 @@ def _fixture(root: Path) -> tuple[str, str, str, list[bytes]]:
         }
     authority_id = hash_json(authority)
     authority["authority_identity_sha256"] = authority_id
-    auth_bytes = json.dumps(authority, sort_keys=True).encode()
-    seed_bytes = gzip.compress(b"".join(rows), mtime=0)
-    auth.write_bytes(auth_bytes)
-    seed.write_bytes(seed_bytes)
-    return git_blob_sha1(seed_bytes), git_blob_sha1(auth_bytes), authority_id, rows
+    authority_blob = json.dumps(authority, sort_keys=True).encode()
+    seed_blob = gzip.compress(b"".join(rows), mtime=0)
+    authority_path.write_bytes(authority_blob)
+    seed_path.write_bytes(seed_blob)
+    return git_blob_sha1(seed_blob), git_blob_sha1(authority_blob), authority_id, seed_blob
 
 
-def test_preserves_bytes_and_seals_final_test(tmp_path: Path) -> None:
-    seed_sha, auth_sha, auth_id, rows = _fixture(tmp_path)
+def test_exact_final_test_preserved_and_selection_remains_empty(tmp_path: Path) -> None:
+    seed_sha, auth_sha, auth_id, seed_blob = _fixture(tmp_path)
     out = tmp_path / "out"
     manifest = build(
         tmp_path,
@@ -65,20 +65,24 @@ def test_preserves_bytes_and_seals_final_test(tmp_path: Path) -> None:
         expected_authority_git_blob_sha1=auth_sha,
         expected_authority_identity=auth_id,
     )
-    emitted = []
-    for purpose in ("selection-validation", "final-test"):
-        for modality in ("ua", "en"):
-            emitted += (out / purpose / f"{modality}.jsonl").read_bytes().splitlines(keepends=True)
-    assert sorted(emitted) == sorted(rows)
-    assert manifest["code"]["documents"] == 0
-    assert manifest["decontamination"]["evaluation_release_allowed"] is False
+    assert (out / "final-test/recover174_real_holdout_seed.jsonl.gz").read_bytes() == seed_blob
+    selection = json.loads((out / "selection-validation/manifest.json").read_text())
     final = json.loads((out / "final-test/manifest.json").read_text())
+    assert selection["documents"] == 0
+    assert selection["records"] == []
+    assert selection["invented_from_final_test"] is False
+    assert final["documents"] == 8
+    assert final["modality_documents"] == {"ua": 4, "en": 4}
     assert final["selection_eligible"] is False
     assert final["tokenizer_fit_eligible"] is False
     assert final["hyperparameter_selection_eligible"] is False
+    assert manifest["code"]["documents"] == 0
+    assert manifest["code"]["evaluation_use_explicitly_authorized"] is False
+    assert manifest["decontamination"]["scan_executed"] is False
+    assert manifest["decontamination"]["evaluation_release_allowed"] is False
 
 
-def test_immutable_rerun_and_tamper_failure(tmp_path: Path) -> None:
+def test_exact_rerun_is_immutable_and_tamper_fails(tmp_path: Path) -> None:
     seed_sha, auth_sha, auth_id, _ = _fixture(tmp_path)
     out = tmp_path / "out"
     kwargs = {
@@ -88,7 +92,29 @@ def test_immutable_rerun_and_tamper_failure(tmp_path: Path) -> None:
         "expected_authority_identity": auth_id,
     }
     assert build(tmp_path, out, **kwargs) == build(tmp_path, out, **kwargs)
-    target = out / "selection-validation/ua.jsonl"
-    target.write_bytes(target.read_bytes() + b"{}\n")
+    target = out / "final-test/recover174_real_holdout_seed.jsonl.gz"
+    target.write_bytes(target.read_bytes() + b"x")
+    with pytest.raises(Eval233Error, match="immutable output bytes differ"):
+        build(tmp_path, out, **kwargs)
     with pytest.raises(Eval233Error):
         verify(out)
+
+
+def test_provenance_defect_fails_closed(tmp_path: Path) -> None:
+    seed_sha, auth_sha, auth_id, _ = _fixture(tmp_path)
+    seed_path = tmp_path / "data/evaluation/recover174_real_holdout_seed.jsonl.gz"
+    rows = gzip.decompress(seed_path.read_bytes()).splitlines(keepends=True)
+    first = json.loads(rows[0])
+    first["source_snapshot_sha256"] = "f" * 64
+    rows[0] = json.dumps(first, separators=(",", ":")).encode() + b"\n"
+    tampered = gzip.compress(b"".join(rows), mtime=0)
+    seed_path.write_bytes(tampered)
+    with pytest.raises(Eval233Error, match="not admitted"):
+        build(
+            tmp_path,
+            tmp_path / "out",
+            source_sha="c" * 40,
+            expected_seed_git_blob_sha1=git_blob_sha1(tampered),
+            expected_authority_git_blob_sha1=auth_sha,
+            expected_authority_identity=auth_id,
+        )

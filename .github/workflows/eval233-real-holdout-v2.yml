@@ -14,6 +14,9 @@ on:
 permissions:
   contents: read
 
+env:
+  PYTHONPATH: src
+
 jobs:
   immutable-holdout:
     runs-on: ubuntu-24.04
@@ -57,10 +60,17 @@ jobs:
           import json
           p = json.load(open('eval233-evidence/holdout/manifest.json', encoding='utf-8'))
           assert p['code']['documents'] == 0
-          assert p['code']['status'] == 'BLOCKED_NO_TERMINAL_DATA227_EVALUATION_USE_AUTHORITY'
-          assert p['decontamination']['status'] == 'BLOCKED_NO_PUBLISHED_DATA232_AUTHORITY'
+          assert p['code']['status'] == 'BLOCKED_DATA227_TRAINING_ONLY_NO_EVALUATION_RESERVATION'
+          assert p['code']['evaluation_use_explicitly_authorized'] is False
+          assert p['decontamination']['status'] == 'BLOCKED_DATA232_MISSING_TERMINAL_DATA230'
+          assert p['decontamination']['scan_executed'] is False
           assert p['decontamination']['evaluation_release_allowed'] is False
+          selection = json.load(open('eval233-evidence/holdout/selection-validation/manifest.json', encoding='utf-8'))
+          assert selection['documents'] == 0
+          assert selection['invented_from_final_test'] is False
           final = json.load(open('eval233-evidence/holdout/final-test/manifest.json', encoding='utf-8'))
+          assert final['documents'] == 16
+          assert final['modality_documents'] == {'ua': 8, 'en': 8}
           assert final['selection_eligible'] is False
           assert final['tokenizer_fit_eligible'] is False
           assert final['hyperparameter_selection_eligible'] is False
