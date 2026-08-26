@@ -1,0 +1,28 @@
+name: NEXT100-029 Lang-UK rights audit
+
+on:
+  pull_request:
+    paths:
+      - "configs/data/next100_029_languk_rights_audit_v1.json"
+      - "docs/NEXT100_029_DATA_UA_LANGUK_RIGHTS_AUDIT.md"
+      - "tools/validate_next100_029_languk_rights_audit.py"
+      - "tests/test_next100_029_languk_rights_audit.py"
+      - ".github/workflows/next100-029-languk-rights-audit.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Validate machine evidence
+        run: python tools/validate_next100_029_languk_rights_audit.py
+      - name: Run focused tests
+        run: python -m pytest -q tests/test_next100_029_languk_rights_audit.py
