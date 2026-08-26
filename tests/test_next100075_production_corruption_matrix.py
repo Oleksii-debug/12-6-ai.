@@ -148,6 +148,31 @@ def model341_sgd_checkpoint(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
 
 @pytest.fixture(scope="session")
+def model341_adamw_checkpoint(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    checkpoint = tmp_path_factory.mktemp("next100075-adamw") / "model341-adamw"
+    model = _new_model(341077)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3, betas=(0.9, 0.95), weight_decay=0.1)
+    first_parameter = next(model.parameters())
+    first_parameter.grad = torch.ones_like(first_parameter)
+    optimizer.step()
+    optimizer.zero_grad(set_to_none=True)
+    save_checkpoint(
+        checkpoint,
+        model=model,
+        optimizer=optimizer,
+        identity=_identity(
+            optimizer={
+                "name": "AdamW",
+                "lr": 1e-3,
+                "betas": [0.9, 0.95],
+                "weight_decay": 0.1,
+            }
+        ),
+    )
+    return checkpoint
+
+
+@pytest.fixture(scope="session")
 def model341_target() -> TwelveSixDecoder:
     return _new_model(941075)
 
@@ -259,6 +284,42 @@ def test_case_06_optimizer_state_corruption_rejected_before_mutation(
     sentinel = _sentinel(target)
 
     with pytest.raises(CheckpointCompatibilityError, match="optimizer state tensor shape mismatch"):
+        load_checkpoint(
+            checkpoint,
+            model=target,
+            optimizer=target_optimizer,
+            restore_rng=False,
+        )
+    _assert_unmutated(target, sentinel)
+    assert target_optimizer.state == {}
+
+
+def test_case_06b_adamw_moment_dtype_corruption_rejected_before_mutation(
+    tmp_path: Path, model341_adamw_checkpoint: Path
+) -> None:
+    checkpoint = _copy_checkpoint(
+        model341_adamw_checkpoint,
+        tmp_path / "adamw-moment-dtype-corruption",
+    )
+    tree = json.loads((checkpoint / "state.json").read_text(encoding="utf-8"))
+    arrays = load_safetensors_bytes((checkpoint / "state.safetensors").read_bytes())
+    combined = copy.deepcopy(unpack_state_tree(tree, arrays))
+    optimizer_state = combined["optimizer"]["state"]
+    first_parameter_state = next(iter(optimizer_state.values()))
+    first_parameter_state["exp_avg"] = first_parameter_state["exp_avg"].double()
+    first_parameter_state["exp_avg_sq"] = first_parameter_state["exp_avg_sq"].double()
+    _rewrite_state(checkpoint, combined)
+
+    target = _new_model(941078)
+    target_optimizer = torch.optim.AdamW(
+        target.parameters(),
+        lr=1e-3,
+        betas=(0.9, 0.95),
+        weight_decay=0.1,
+    )
+    sentinel = _sentinel(target)
+
+    with pytest.raises(CheckpointCompatibilityError, match="optimizer state tensor dtype mismatch"):
         load_checkpoint(
             checkpoint,
             model=target,
