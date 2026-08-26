@@ -124,7 +124,7 @@ def test_numeric_calculator_is_deterministic_and_rejects_calls() -> None:
     result = VerifierEnsemble((NumericCalculatorVerifier(),)).verify(request)
     assert result.status is VerificationStatus.PASS
     assert safe_calculate("2 ** 10") == 1024
-    with pytest.raises(ValueError):
+    with pytest.raises(TypeError):
         safe_calculate("__import__('os').system('true')")
 
 
@@ -233,3 +233,12 @@ def test_unit_test_evidence_cannot_claim_zero_test_success() -> None:
     result = VerifierEnsemble((UnitTestCodeVerifier(),)).verify(request)
     assert result.status is VerificationStatus.FAIL
     assert ReasonCode.UNIT_TEST_EVIDENCE_INVALID in result.claim("code").reason_codes
+
+
+def test_exact_equality_is_type_strict_for_dict_keys() -> None:
+    request = VerificationRequest(
+        claims=(Claim("keys", "dict key exact equality"),),
+        exact_fixtures=(ExactAnswerFixture("keys", {True: "x"}, {1: "x"}),),
+    )
+    result = VerifierEnsemble((ExactAnswerFixtureVerifier(),)).verify(request)
+    assert result.status is VerificationStatus.FAIL
