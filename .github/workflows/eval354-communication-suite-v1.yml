@@ -1,0 +1,35 @@
+name: EVAL-354 Communication Suite V1
+
+on:
+  push:
+    branches:
+      - "eval354/**"
+  pull_request:
+    paths:
+      - "src/twelve_six/post_base/communication_eval.py"
+      - "tests/test_eval354_communication_suite.py"
+      - "tests/fixtures/post_base/communication_eval/v1/**"
+      - "tools/validate_eval354_communication_suite.py"
+      - "docs/EVAL354_COMMUNICATION_SUITE_V1.md"
+      - "evidence/post_base/eval354/**"
+      - ".github/workflows/eval354-communication-suite-v1.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  eval354:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e .[dev]
+      - run: >-
+          ruff check src/twelve_six/post_base/communication_eval.py
+          tests/test_eval354_communication_suite.py
+          tools/validate_eval354_communication_suite.py
+      - run: pytest -q tests/test_eval354_communication_suite.py tests/test_post_base_contract.py
+      - run: python tools/validate_eval354_communication_suite.py
