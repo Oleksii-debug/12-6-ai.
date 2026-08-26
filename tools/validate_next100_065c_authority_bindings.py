@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail-closed immutable/live authority validator for NEXT100-065C."""
+"""Fail-closed immutable/live authority validator for NEXT100-065C/V6."""
 from __future__ import annotations
 
 import argparse
@@ -9,7 +9,8 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
-CONFIG = Path("configs/data/next100_065c_cross_source_dedup_v5.json")
+V5_CONFIG = Path("configs/data/next100_065c_cross_source_dedup_v5.json")
+V6_CONFIG = Path("configs/data/next100_065d_cross_source_dedup_v6.json")
 REPO = "Oleksii-debug/12-6-ai."
 
 EXPECTED_ACCEPTED = [
@@ -29,39 +30,65 @@ EXPECTED_ACCEPTED = [
     "a09756447fdbd535629939d1bcaf8db5f6fba4b23bdc9468e27625f67c11e470",
 ]
 
+# These authorities require the live PR head and the dedicated run head to be
+# the same exact SHA. Any movement or non-success fails closed.
 LIVE_AUTHORITIES = {
     449: ("40950a950b60921fd856af2719e1ae2486d9e892", 32997970539),
     462: ("d75edd497c7fb1054e86d892c9462f059c1f4aa9", 32998503672),
     472: ("b7491745b34ac8679baaf69cb96cd609dcbe0a16", 32998703545),
     445: ("902eccc0b3efff09a38dc89cda789180b6c6e754", 32998544359),
     467: ("5a6a495a24bce449334cbc5126d0114f61a9f57c", 32998356906),
+    468: ("bca7a4c8afc5cb2546c35e3a0ebad9619cd3a4a8", 32998548535),
 }
+
+# NEXT100-107 is a seal over a completed exact-head parent execution. The seal
+# PR itself has a different SHA, so validate the seal head and the bound parent
+# run independently rather than pretending the run executed on the seal head.
+GUTENBERG_SEAL_PR = 627
+GUTENBERG_SEAL_HEAD = "c50b3f9cf871792c03886bdc1ccdc144812be88f"
+GUTENBERG_PARENT_HEAD = "3f4ad26e1e8f3406a1274418cf5f485814ce3032"
+GUTENBERG_PARENT_RUN = 32998859164
 
 
 def require(condition: bool, message: str) -> None:
     if not condition:
-        raise SystemExit(f"NEXT100-065C FAIL: {message}")
+        raise SystemExit(f"NEXT100-065C/V6 FAIL: {message}")
 
 
-def load_config() -> dict[str, Any]:
-    value = json.loads(CONFIG.read_text(encoding="utf-8"))
-    require(isinstance(value, dict), "config root must be object")
+def load_json(path: Path) -> dict[str, Any]:
+    value = json.loads(path.read_text(encoding="utf-8"))
+    require(isinstance(value, dict), f"{path}: root must be object")
     return value
 
 
-def validate_static(config: dict[str, Any]) -> None:
-    require(config.get("schema_version") == "12-6.next100-065c-cross-source-dedup.v5", "schema drift")
-    require(config.get("worker_id") == "NEXT100-065C-CROSSSOURCE-DEDUP-V5", "worker drift")
-    require(config.get("local_free_only") is True, "LOCAL_FREE weakened")
-    for key in ("model_training_executed", "tokenizer_fit_executed", "paid_compute_used", "final_test_payload_read"):
-        require(config.get(key) is False, f"execution boundary weakened: {key}")
+def validate_v5_static(config: dict[str, Any]) -> None:
+    require(
+        config.get("schema_version") == "12-6.next100-065c-cross-source-dedup.v5",
+        "V5 schema drift",
+    )
+    require(config.get("worker_id") == "NEXT100-065C-CROSSSOURCE-DEDUP-V5", "V5 worker drift")
+    require(config.get("local_free_only") is True, "V5 LOCAL_FREE weakened")
+    for key in (
+        "model_training_executed",
+        "tokenizer_fit_executed",
+        "paid_compute_used",
+        "final_test_payload_read",
+    ):
+        require(config.get(key) is False, f"V5 execution boundary weakened: {key}")
 
     base = config.get("base_v4", {})
     require(base.get("pr") == 576, "base PR drift")
-    require(base.get("head_sha") == "5738bb8bac8fda058d5ae9c1361c4a0c3756f360", "base V4 head drift")
+    require(
+        base.get("head_sha") == "5738bb8bac8fda058d5ae9c1361c4a0c3756f360",
+        "base V4 head drift",
+    )
     require(base.get("source_object_count") == 21, "base object count drift")
     require(base.get("source_family_counts") == {"uk": 4, "en": 2, "code": 4}, "base family drift")
-    require(base.get("source_capacity_bytes") == {"uk": 100856, "en": 144151, "code": 69133, "total": 314140}, "base capacity drift")
+    require(
+        base.get("source_capacity_bytes")
+        == {"uk": 100856, "en": 144151, "code": 69133, "total": 314140},
+        "base capacity drift",
+    )
 
     mdn = config.get("mdn", {})
     mdn_expected = {
@@ -107,29 +134,124 @@ def validate_static(config: dict[str, Any]) -> None:
     for key, value in cp_expected.items():
         require(cp.get(key) == value, f"CPython binding drift: {key}")
     require(cp.get("accepted_normalized_sha256") == EXPECTED_ACCEPTED, "CPython accepted hash vector drift")
-    require(cp.get("quality_policy") == {
-        "min_chars": 60,
-        "max_chars": 1600,
-        "min_alpha_ratio": 0.35,
-        "reject_control_characters": True,
-        "reject_email": True,
-        "reject_phone": True,
-    }, "CPython quality policy drift")
+    require(
+        cp.get("quality_policy")
+        == {
+            "min_chars": 60,
+            "max_chars": 1600,
+            "min_alpha_ratio": 0.35,
+            "reject_control_characters": True,
+            "reject_email": True,
+            "reject_phone": True,
+        },
+        "CPython quality policy drift",
+    )
     require(cp.get("chunking") == {"max_chars": 1200, "min_chars": 80}, "CPython chunking drift")
 
     expected = config.get("expected_vector", {})
-    require(expected.get("source_object_count") == 23, "expected source count drift")
-    require(expected.get("source_family_counts") == {"uk": 4, "en": 4, "code": 4}, "expected family vector drift")
-    require(expected.get("fixed_capacity_without_cpython_accepted_chunks") == {"uk": 100856, "en": 150643, "code": 69133, "total": 320632}, "fixed capacity drift")
-    require(expected.get("full_cpython_normalized_bytes_must_not_be_credited") == 17901, "CPython full-byte prohibition drift")
+    require(expected.get("source_object_count") == 23, "V5 expected source count drift")
+    require(expected.get("source_family_counts") == {"uk": 4, "en": 4, "code": 4}, "V5 family vector drift")
+    require(
+        expected.get("fixed_capacity_without_cpython_accepted_chunks")
+        == {"uk": 100856, "en": 150643, "code": 69133, "total": 320632},
+        "V5 fixed capacity drift",
+    )
+    require(
+        expected.get("full_cpython_normalized_bytes_must_not_be_credited") == 17901,
+        "CPython full-byte prohibition drift",
+    )
 
-    boundary = config.get("claim_boundary", {})
     for key in (
-        "canonical_registry_replaced", "corpus_materialized", "decontamination_pass_claimed",
-        "balance_release_claimed", "postpack_unique_loss_ledger_complete", "tokenizer_fit_authorized",
-        "training_authorized", "paid_compute_authorized", "research_corpus_v1_terminal",
+        "canonical_registry_replaced",
+        "corpus_materialized",
+        "decontamination_pass_claimed",
+        "balance_release_claimed",
+        "postpack_unique_loss_ledger_complete",
+        "tokenizer_fit_authorized",
+        "training_authorized",
+        "paid_compute_authorized",
+        "research_corpus_v1_terminal",
     ):
-        require(boundary.get(key) is False, f"truth boundary weakened: {key}")
+        require(config["claim_boundary"].get(key) is False, f"V5 truth boundary weakened: {key}")
+
+
+def validate_v6_static(config: dict[str, Any]) -> None:
+    require(
+        config.get("schema_version") == "12-6.next100-065d-cross-source-dedup.v6",
+        "V6 schema drift",
+    )
+    require(config.get("worker_id") == "NEXT100-065D-CROSSSOURCE-DEDUP-V6", "V6 worker drift")
+    require(config.get("local_free_only") is True, "V6 LOCAL_FREE weakened")
+    for key in (
+        "model_training_executed",
+        "tokenizer_fit_executed",
+        "paid_compute_used",
+        "final_test_payload_read",
+    ):
+        require(config.get(key) is False, f"V6 execution boundary weakened: {key}")
+
+    numpy = config.get("numpy", {})
+    require(numpy.get("pr") == 468, "NumPy PR drift")
+    require(numpy.get("head_sha") == LIVE_AUTHORITIES[468][0], "NumPy head drift")
+    require(numpy.get("dedicated_workflow_run") == LIVE_AUTHORITIES[468][1], "NumPy run drift")
+    require(numpy.get("dedicated_workflow_conclusion") == "success", "NumPy conclusion drift")
+    require(numpy.get("source_family") == "github:numpy/numpy", "NumPy family drift")
+    require(numpy.get("exact_capacity_bytes") == 36898, "NumPy capacity drift")
+    require(len(numpy.get("files", [])) == 5, "NumPy file-count drift")
+    require(sum(int(item["raw_bytes"]) for item in numpy["files"]) == 36898, "NumPy file bytes drift")
+
+    gutenberg = config.get("gutenberg", {})
+    require(gutenberg.get("pr") == GUTENBERG_SEAL_PR, "Gutenberg seal PR drift")
+    require(gutenberg.get("head_sha") == GUTENBERG_SEAL_HEAD, "Gutenberg seal head drift")
+    require(gutenberg.get("parent_head_sha") == GUTENBERG_PARENT_HEAD, "Gutenberg parent head drift")
+    require(gutenberg.get("dedicated_workflow_run") == GUTENBERG_PARENT_RUN, "Gutenberg run drift")
+    require(gutenberg.get("dedicated_workflow_conclusion") == "success", "Gutenberg conclusion drift")
+    require(
+        gutenberg.get("authority_identity_sha256")
+        == "1b1bad11b688826ee4f73701c08e3b5af76ba16e8d8a806e008d5b84bee0b97b",
+        "Gutenberg authority identity drift",
+    )
+    require(gutenberg.get("source_family") == "en.project-gutenberg.public-domain-books", "Gutenberg family drift")
+    require(gutenberg.get("exact_capacity_bytes") == 1672110, "Gutenberg capacity drift")
+    require(len(gutenberg.get("records", [])) == 3, "Gutenberg record-count drift")
+    require(
+        sum(int(item["normalized_bytes"]) for item in gutenberg["records"]) == 1672110,
+        "Gutenberg record bytes drift",
+    )
+
+    expected = config.get("expected_vector", {})
+    require(expected.get("source_object_count") == 31, "V6 expected source count drift")
+    require(expected.get("source_family_counts") == {"uk": 4, "en": 5, "code": 5}, "V6 family vector drift")
+    require(
+        expected.get("fixed_capacity_without_cpython_accepted_chunks")
+        == {"uk": 100856, "en": 1822753, "code": 106031, "total": 2029640},
+        "V6 fixed capacity drift",
+    )
+    require(
+        expected.get("expected_total_if_cpython_accepted_capacity_is_15540") == 2045180,
+        "V6 planning total drift",
+    )
+    require(
+        expected.get("planning_gap_if_no_successor_global_dedup_collapse") == 17954820,
+        "V6 planning gap drift",
+    )
+    require(
+        expected.get("full_cpython_normalized_bytes_must_not_be_credited") == 17901,
+        "V6 CPython full-byte prohibition drift",
+    )
+
+    for key in (
+        "canonical_registry_replaced",
+        "corpus_materialized",
+        "decontamination_pass_claimed",
+        "balance_release_claimed",
+        "postpack_unique_loss_ledger_complete",
+        "tokenizer_fit_authorized",
+        "training_authorized",
+        "paid_compute_authorized",
+        "research_corpus_v1_terminal",
+    ):
+        require(config["claim_boundary"].get(key) is False, f"V6 truth boundary weakened: {key}")
 
 
 def github_get(path: str) -> dict[str, Any]:
@@ -141,7 +263,7 @@ def github_get(path: str) -> dict[str, Any]:
             "Authorization": f"Bearer {token}",
             "Accept": "application/vnd.github+json",
             "X-GitHub-Api-Version": "2022-11-28",
-            "User-Agent": "12-6-ai-next100-065c-authority-validator",
+            "User-Agent": "12-6-ai-next100-065d-authority-validator",
         },
     )
     with urllib.request.urlopen(request, timeout=30) as response:
@@ -159,16 +281,27 @@ def validate_live() -> None:
         require(run.get("status") == "completed", f"PR #{pr} dedicated run nonterminal")
         require(run.get("conclusion") == "success", f"PR #{pr} dedicated run not success")
 
+    seal = github_get(f"pulls/{GUTENBERG_SEAL_PR}")
+    require(
+        seal.get("head", {}).get("sha") == GUTENBERG_SEAL_HEAD,
+        f"Gutenberg seal PR #{GUTENBERG_SEAL_PR} head moved",
+    )
+    run = github_get(f"actions/runs/{GUTENBERG_PARENT_RUN}")
+    require(run.get("head_sha") == GUTENBERG_PARENT_HEAD, "Gutenberg parent run head mismatch")
+    require(run.get("status") == "completed", "Gutenberg parent run nonterminal")
+    require(run.get("conclusion") == "success", "Gutenberg parent run not success")
+
 
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--github-live", action="store_true")
     args = parser.parse_args()
-    config = load_config()
-    validate_static(config)
+
+    validate_v5_static(load_json(V5_CONFIG))
+    validate_v6_static(load_json(V6_CONFIG))
     if args.github_live:
         validate_live()
-    print("NEXT100-065C AUTHORITY PASS")
+    print("NEXT100-065C/V6 AUTHORITY PASS")
     return 0
 
 
