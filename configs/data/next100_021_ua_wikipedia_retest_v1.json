@@ -96,7 +96,7 @@
   "registry_concurrency": {
     "base_registry_worker": "DATA-287-EXTERNAL-SNAPSHOT-REGISTRY-V2",
     "base_registry_head": "b0523ccbc4b957615aac849d476cfa851be87578",
-    "base_registry_identity_sha256": "50f68b1cee3b1dc5335b8655e0df8d130be22495f9237fefca04b93b30fba4cb",
+    "base_registry_identity_sha256": "917e9bc31b2fa040d25e807ae3c01aa2cce32420752a891caacfb6c830e6632c",
     "wikipedia_already_admitted": false,
     "historical_candidate_present": true,
     "historical_candidate_status": "REVIEW_REQUIRED"
@@ -113,5 +113,5 @@
     "corpus_contract_mutated": false,
     "evaluation_material_reserved": false
   },
-  "evidence_identity_sha256": "f83cf969b52d2d503176807192592928641c661debc35e985ab29455464be46d"
+  "evidence_identity_sha256": "e95784fb4acdef977954a979d3e35333e6e86d64a2eb420e6d6360047ddb78c9"
 }
