@@ -1,0 +1,198 @@
+name: RECOVER-177 EVAL-134 on M150 checkpoints
+
+on:
+  pull_request:
+    branches:
+      - milestone150/learned-base-ladder-v1-20260826
+  workflow_dispatch:
+
+concurrency:
+  group: recover177-eval134-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: write
+
+jobs:
+  eval134-m150-code:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      PYTHONPATH: src
+      OMP_NUM_THREADS: "2"
+      MKL_NUM_THREADS: "2"
+      M150_SOURCE_SHA: "5838cd16869dcfcf762368d8673eddf52d51b7e3"
+      M150_RUN_ID: "32937411703"
+      M150_ARTIFACT_ID: "9595677772"
+      M150_ARTIFACT_DIGEST: "sha256:c00b7e9006320f8916c739a3311e8cc47ad0d0b16957f8ebd7d19233fd9f1c71"
+      M150_ARTIFACT_NAME: milestone150-learned-base-ladder-v1
+    steps:
+      - name: Checkout exact recovery head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up exact Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact evaluator source
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+
+      - name: Universal hash-locked execution bootstrap
+        run: |
+          set -euo pipefail
+          python -m venv .recover177
+          .recover177/bin/python -m pip install \
+            --disable-pip-version-check --no-deps --require-hashes \
+            -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .recover177/bin/python -m pip install \
+            --disable-pip-version-check --no-deps --require-hashes \
+            -r requirements/locks/linux-x86_64/runtime.lock.txt
+          .recover177/bin/python -m pip install \
+            --disable-pip-version-check --no-deps --require-hashes \
+            -r requirements/locks/linux-x86_64/dev.lock.txt
+          .recover177/bin/python -m pip check
+
+      - name: Compile and run scoped recovery tests
+        run: |
+          set -euo pipefail
+          .recover177/bin/python -m compileall -q \
+            src/twelve_six/code_diagnostic.py \
+            tools/recover177_eval134_m150.py
+          .recover177/bin/python -m pytest -q \
+            tests/test_recover177_eval134_m150.py \
+            tests/test_milestone150_learned_base_ladder.py
+
+      - name: Require frozen M150 evidence incumbent
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          read -r status conclusion head_sha < <(
+            gh api "repos/$GH_REPO/actions/runs/$M150_RUN_ID" \
+              --jq '[.status, (.conclusion // ""), .head_sha] | @tsv'
+          )
+          test "$status" = "completed"
+          test "$conclusion" = "success"
+          test "$head_sha" = "$M150_SOURCE_SHA"
+
+      - name: Download exact M150 retained artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          artifact_id=$(gh api "repos/$GH_REPO/actions/runs/$M150_RUN_ID/artifacts" \
+            --jq ".artifacts[] | select(.name == \"$M150_ARTIFACT_NAME\") | .id")
+          artifact_digest=$(gh api "repos/$GH_REPO/actions/runs/$M150_RUN_ID/artifacts" \
+            --jq ".artifacts[] | select(.name == \"$M150_ARTIFACT_NAME\") | (.digest // \"\")")
+          test "$artifact_id" = "$M150_ARTIFACT_ID"
+          test "$artifact_digest" = "$M150_ARTIFACT_DIGEST"
+          printf '%s\n' "$artifact_id" > .m150-artifact-id
+          printf '%s\n' "$artifact_digest" > .m150-artifact-digest
+          gh run download "$M150_RUN_ID" --repo "$GH_REPO" \
+            --name "$M150_ARTIFACT_NAME" --dir producer-artifact
+
+      - name: Execute reserved EVAL-134 on M150 random and learned states
+        run: |
+          set -euo pipefail
+          .recover177/bin/python tools/recover177_eval134_m150.py run \
+            --repo-root . \
+            --producer-dir producer-artifact \
+            --producer-sha "$M150_SOURCE_SHA" \
+            --producer-run-id "$M150_RUN_ID" \
+            --producer-artifact-id "$(cat .m150-artifact-id)" \
+            --producer-artifact-digest "$(cat .m150-artifact-digest)" \
+            --output recover177-evidence/eval134-m150-code-recovery.json
+
+      - name: Validate machine report on exact evaluator head
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          .recover177/bin/python tools/recover177_eval134_m150.py validate \
+            recover177-evidence/eval134-m150-code-recovery.json \
+            --expected-evaluator-sha "$EXPECTED_SOURCE_SHA"
+          .recover177/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+          r = json.loads(Path("recover177-evidence/eval134-m150-code-recovery.json").read_text())
+          compact = {
+              "producer_sha": r["producer"]["git_sha"],
+              "producer_run_id": r["producer"]["workflow_run_id"],
+              "producer_ladder_report_sha256": r["producer"]["ladder_report_sha256"],
+              "suite_identity_sha256": r["suite_and_decontamination"]["suite_identity_sha256"],
+              "data25_train_overlap": r["suite_and_decontamination"]["training_overlap_count"],
+              "data25_normalized_overlap": r["suite_and_decontamination"]["normalized_training_overlap_count"],
+              "500k_random": r["evaluations"]["500k_random_init"]["summary"]["overall"],
+              "500k_best": r["evaluations"]["500k_best"]["summary"]["overall"],
+              "1m_random": r["evaluations"]["1m_random_init"]["summary"]["overall"],
+              "1m_best": r["evaluations"]["1m_best"]["summary"]["overall"],
+              "ten_million": r["ten_million"]["status"],
+              "report_sha256": r["report_sha256"],
+          }
+          print(json.dumps(compact, indent=2, sort_keys=True))
+          PY
+
+      - name: Publish recovery evidence to PR
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          .recover177/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+          r = json.loads(Path("recover177-evidence/eval134-m150-code-recovery.json").read_text())
+          lines = [
+              "### RECOVER-177 frozen-incumbent EVAL-134 evidence",
+              "",
+              f"- M150 producer: `{r['producer']['git_sha']}` / run `{r['producer']['workflow_run_id']}`",
+              f"- M150 ladder report: `{r['producer']['ladder_report_sha256']}`",
+              f"- EVAL-134 suite: `{r['suite_and_decontamination']['suite_identity_sha256']}`",
+              f"- DATA-25 train overlap: `{r['suite_and_decontamination']['training_overlap_count']}` raw / `{r['suite_and_decontamination']['normalized_training_overlap_count']}` normalized",
+              f"- 10M: `{r['ten_million']['status']}`",
+              f"- recovery report: `{r['report_sha256']}`",
+              "",
+              "| state | raw acc | byte-normalized acc | mean correct BPB |",
+              "|---|---:|---:|---:|",
+          ]
+          for key in ("500k_random_init", "500k_best", "1m_random_init", "1m_best"):
+              s = r["evaluations"][key]["summary"]["overall"]
+              lines.append(
+                  f"| {key} | {s['raw_accuracy']:.6f} | {s['byte_normalized_accuracy']:.6f} | "
+                  f"{s['mean_correct_bits_per_source_byte']:.6f} |"
+              )
+          lines += [
+              "",
+              "Truth boundary: conditional-likelihood code-structure diagnostic only. No code instruction-following, code-generation capability, intelligence, production-readiness or alignment claim. Byte-vocabulary M150 checkpoints are not remapped to the incompatible learned-BPE vocabulary.",
+          ]
+          Path("recover177-evidence/pr-comment.md").write_text("\n".join(lines) + "\n")
+          PY
+          gh pr comment "$PR_NUMBER" --repo "$GH_REPO" \
+            --body-file recover177-evidence/pr-comment.md
+
+      - name: Upload RECOVER-177 machine evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: recover177-eval134-m150-code
+          path: |
+            recover177-evidence/eval134-m150-code-recovery.json
+            eval/reserved/code_diag_v1/manifest.json
+            eval/reserved/code_diag_v1/probes.jsonl
+            eval/reserved/code_diag_v1/reservation_provenance.json
+          if-no-files-found: error
+          retention-days: 30
