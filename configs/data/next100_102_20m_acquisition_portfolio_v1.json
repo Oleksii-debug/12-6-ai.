@@ -1,0 +1,222 @@
+{
+  "schema_version": "12-6.next100-102-20m-acquisition-portfolio.v1",
+  "worker_id": "NEXT100-102-20M-ACQUISITION-PORTFOLIO",
+  "issue": 551,
+  "execution_class": "LOCAL_FREE",
+  "model_training_executed": false,
+  "tokenizer_fit_executed": false,
+  "optimizer_steps_executed": 0,
+  "paid_compute_used": false,
+  "final_test_payload_read": false,
+  "planning_input": {
+    "source_convergence_pr": 527,
+    "source_convergence_head_sha": "9ad8f74b12a2e991b7934356a88dd9a1f6ff3f41",
+    "source_convergence_status_at_claim": "OPEN_NONTERMINAL_INPUT_DO_NOT_PROMOTE",
+    "source_convergence_schema": "12-6.next100-063-source-registry-convergence.v1",
+    "capacity_stage": "PRE_SUCCESSOR_GLOBAL_DEDUP",
+    "capacity_bytes": {"uk": 100856, "en": 144151, "code": 69133, "total": 314140},
+    "independent_family_counts": {"uk": 4, "en": 2, "code": 4, "total": 10}
+  },
+  "frozen_policy": {
+    "authority": "DATA-295-BALANCE-POLICY-20M-V1",
+    "target_total_source_bytes": 20000000,
+    "target_bytes": {"uk": 9000000, "en": 7000000, "code": 4000000, "total": 20000000},
+    "max_family_fraction_total": "1/4",
+    "max_family_fraction_own_stratum": "3/5",
+    "minimum_independent_families_per_stratum": 2,
+    "replay_or_duplication_to_meet_quota": false,
+    "model_metric_guided_mixture_retuning": false
+  },
+  "derived_acquisition_geometry": {
+    "remaining_gap_bytes": {"uk": 8899144, "en": 6855849, "code": 3930867, "total": 19685860},
+    "max_bytes_per_single_family_at_target": {"uk": 5000000, "en": 4200000, "code": 2400000},
+    "minimum_new_families_if_all_gap_bytes_come_from_new_families": {"uk": 2, "en": 2, "code": 2},
+    "note": "Planning geometry only. Candidate bytes remain zero credited capacity until exact terminal source qualification and successor global dedup."
+  },
+  "portfolio_lanes": [
+    {
+      "lane_id": "UA-PD-LITERATURE-MULTI-AUTHOR",
+      "stratum": "uk",
+      "planning_budget_bytes": 4500000,
+      "minimum_distinct_families": 4,
+      "single_family_lane": false,
+      "candidate_authority_status": "RESEARCH_ONLY_NOT_ADMITTED",
+      "capacity_credit_now_bytes": 0,
+      "research_basis": "Public-domain Ukrainian literature from multiple independent authors or editions; exact public-domain term, transcription or platform rights, content identity and lineage must be proved per object.",
+      "hard_filters": ["EXACT_RIGHTS", "AUTHOR_EDITION_LINEAGE", "QUALITY", "PRIVACY", "GLOBAL_DEDUP", "EVAL_SEPARATION"]
+    },
+    {
+      "lane_id": "UA-OFFICIAL-TEXT-MULTI-ORIGIN",
+      "stratum": "uk",
+      "planning_budget_bytes": 3000000,
+      "minimum_distinct_families": 2,
+      "single_family_lane": false,
+      "candidate_authority_status": "RESEARCH_ONLY_NOT_ADMITTED",
+      "capacity_credit_now_bytes": 0,
+      "research_basis": "Official Ukrainian legal, regulatory or public-information text with exact origin and reuse terms; one portal must not be relabeled as many independent families without lineage proof.",
+      "hard_filters": ["EXACT_RIGHTS", "ORIGIN_LINEAGE", "QUALITY", "PRIVACY", "GLOBAL_DEDUP", "EVAL_SEPARATION"]
+    },
+    {
+      "lane_id": "UA-OPEN-DATA-PROSE-MULTI-AGENCY",
+      "stratum": "uk",
+      "planning_budget_bytes": 2500000,
+      "minimum_distinct_families": 2,
+      "single_family_lane": false,
+      "candidate_authority_status": "RESEARCH_ONLY_NOT_ADMITTED",
+      "capacity_credit_now_bytes": 0,
+      "research_basis": "CC-BY or open-data material only where the payload is useful natural-language text; structured identifiers, personal records and low-information tables receive zero capacity.",
+      "hard_filters": ["EXACT_RIGHTS", "TEXTUAL_QUALITY", "STRICT_PII_REJECTION", "GLOBAL_DEDUP", "EVAL_SEPARATION"]
+    },
+    {
+      "lane_id": "EN-US-FEDERAL-GOVWORKS",
+      "stratum": "en",
+      "planning_budget_bytes": 2400000,
+      "minimum_distinct_families": 1,
+      "single_family_lane": true,
+      "candidate_authority_status": "RESEARCH_ONLY_NOT_ADMITTED",
+      "capacity_credit_now_bytes": 0,
+      "research_basis": "Document-level U.S. federal employee or government works only; third-party, contractor, transferred-copyright and special statutory material must be excluded or separately licensed.",
+      "hard_filters": ["EMPLOYEE_WORK_PROVENANCE", "THIRD_PARTY_EXCLUSION", "QUALITY", "PRIVACY", "GLOBAL_DEDUP", "EVAL_SEPARATION"]
+    },
+    {
+      "lane_id": "EN-FEDERAL-TECHNICAL-MULTI-AGENCY",
+      "stratum": "en",
+      "planning_budget_bytes": 2000000,
+      "minimum_distinct_families": 2,
+      "single_family_lane": false,
+      "candidate_authority_status": "RESEARCH_ONLY_NOT_ADMITTED",
+      "capacity_credit_now_bytes": 0,
+      "research_basis": "Technical prose from multiple federal agency origins, each object requiring employee authorship and third-party-rights review.",
+      "hard_filters": ["EMPLOYEE_WORK_PROVENANCE", "THIRD_PARTY_EXCLUSION", "QUALITY", "GLOBAL_DEDUP", "EVAL_SEPARATION"]
+    },
+    {
+      "lane_id": "EN-NIST-TERMINAL-FAMILY-EXPANSION",
+      "stratum": "en",
+      "planning_budget_bytes": 1200000,
+      "minimum_distinct_families": 1,
+      "single_family_lane": true,
+      "candidate_authority_status": "RESEARCH_ONLY_NOT_ADMITTED",
+      "capacity_credit_now_bytes": 0,
+      "research_basis": "Expand only with document-specific NIST authorship and rights evidence comparable to the already terminal bounded NIST authority; do not generalize NIST public-domain status.",
+      "hard_filters": ["DOCUMENT_SPECIFIC_RIGHTS", "AUTHOR_AFFILIATION", "QUALITY", "GLOBAL_DEDUP", "EVAL_SEPARATION"]
+    },
+    {
+      "lane_id": "EN-OPEN-PROSE-INDEPENDENT-FAMILIES",
+      "stratum": "en",
+      "planning_budget_bytes": 1600000,
+      "minimum_distinct_families": 2,
+      "single_family_lane": false,
+      "candidate_authority_status": "RESEARCH_ONLY_NOT_ADMITTED",
+      "capacity_credit_now_bytes": 0,
+      "research_basis": "Independent public-domain or permissively licensed prose families; existing Standard Ebooks may expand only within its family cap and without dominating the stratum.",
+      "hard_filters": ["EXACT_RIGHTS", "LINEAGE", "QUALITY", "GLOBAL_DEDUP", "EVAL_SEPARATION"]
+    },
+    {
+      "lane_id": "CODE-SQLALCHEMY-MIT",
+      "stratum": "code",
+      "planning_budget_bytes": 1400000,
+      "minimum_distinct_families": 1,
+      "single_family_lane": true,
+      "candidate_authority_status": "RESEARCH_ONLY_NOT_ADMITTED",
+      "capacity_credit_now_bytes": 0,
+      "research_basis": "Bounded first-party SQLAlchemy source under exact MIT release license; docs, tests, generated, vendored and third-party material excluded unless separately qualified.",
+      "hard_filters": ["EXACT_RELEASE", "EXACT_LICENSE", "FIRST_PARTY_ONLY", "SECRET_PRIVACY_SCAN", "AST_OR_PARSE", "GLOBAL_DEDUP", "EVAL_SEPARATION"]
+    },
+    {
+      "lane_id": "CODE-DJANGO-QUALIFIED-FAMILY-EXPANSION",
+      "stratum": "code",
+      "planning_budget_bytes": 1000000,
+      "minimum_distinct_families": 1,
+      "single_family_lane": true,
+      "candidate_authority_status": "RESEARCH_ONLY_NOT_ADMITTED",
+      "capacity_credit_now_bytes": 0,
+      "research_basis": "Expand the already represented Django family only through exact source qualification; the target cap prevents it from dominating code.",
+      "hard_filters": ["EXACT_RELEASE", "EXACT_LICENSE", "FIRST_PARTY_ONLY", "SECRET_PRIVACY_SCAN", "AST_OR_PARSE", "GLOBAL_DEDUP", "EVAL_SEPARATION"]
+    },
+    {
+      "lane_id": "CODE-CPYTHON-FIRST-PARTY",
+      "stratum": "code",
+      "planning_budget_bytes": 1000000,
+      "minimum_distinct_families": 1,
+      "single_family_lane": true,
+      "candidate_authority_status": "RESEARCH_ONLY_NOT_ADMITTED",
+      "capacity_credit_now_bytes": 0,
+      "research_basis": "Bounded CPython-authored source only after module-level third-party provenance exclusions and exact PSF or applicable license evidence.",
+      "hard_filters": ["EXACT_RELEASE", "MODULE_PROVENANCE", "THIRD_PARTY_EXCLUSION", "SECRET_PRIVACY_SCAN", "AST_OR_PARSE", "GLOBAL_DEDUP", "EVAL_SEPARATION"]
+    },
+    {
+      "lane_id": "CODE-PERMISSIVE-PYTHON-MULTI-FAMILY",
+      "stratum": "code",
+      "planning_budget_bytes": 800000,
+      "minimum_distinct_families": 2,
+      "single_family_lane": false,
+      "candidate_authority_status": "RESEARCH_ONLY_NOT_ADMITTED",
+      "capacity_credit_now_bytes": 0,
+      "research_basis": "Multiple independent MIT, BSD or Apache-style first-party Python implementation families; dependency relationships do not automatically create or collapse family identity.",
+      "hard_filters": ["EXACT_RELEASE", "EXACT_LICENSE", "LINEAGE", "SECRET_PRIVACY_SCAN", "AST_OR_PARSE", "GLOBAL_DEDUP", "EVAL_SEPARATION"]
+    }
+  ],
+  "portfolio_budget_summary": {
+    "planning_budget_bytes": {"uk": 10000000, "en": 7200000, "code": 4200000, "total": 21400000},
+    "budget_exceeds_current_gap": {"uk": true, "en": true, "code": true},
+    "credited_capacity_from_portfolio_now_bytes": 0
+  },
+  "research_evidence": [
+    {
+      "evidence_id": "UA-RADA-PORTAL-CCBY4",
+      "url": "https://zakon.rada.gov.ua/laws/show/2811-20#Text",
+      "observation": "The official Verkhovna Rada portal states site content is available under CC BY 4.0 unless otherwise noted.",
+      "authority_effect": "RESEARCH_ONLY_DO_NOT_INFER_OBJECT_ADMISSION"
+    },
+    {
+      "evidence_id": "UA-DATA-GOV-REUSE",
+      "url": "https://data.gov.ua/pages/about",
+      "observation": "Ukraine's open-data portal states content is CC BY 4.0 unless otherwise noted; dataset reuse still requires source-specific quality and privacy review.",
+      "authority_effect": "RESEARCH_ONLY_DO_NOT_INFER_DATASET_QUALITY_OR_PRIVACY"
+    },
+    {
+      "evidence_id": "US-17-USC-105",
+      "url": "https://uscode.house.gov/view.xhtml?req=(title:17%20section:105%20edition:prelim)",
+      "observation": "17 U.S.C. 105 generally removes U.S. copyright protection from works of the United States Government, with statutory exceptions and no automatic coverage for contractor or assigned works.",
+      "authority_effect": "RESEARCH_ONLY_REQUIRE_DOCUMENT_LEVEL_AUTHORSHIP_PROVENANCE"
+    },
+    {
+      "evidence_id": "SQLALCHEMY-MIT",
+      "url": "https://docs.sqlalchemy.org/en/21/copyright.html",
+      "observation": "Current SQLAlchemy documentation publishes the MIT license for SQLAlchemy software and documentation.",
+      "authority_effect": "RESEARCH_ONLY_REQUIRE_EXACT_RELEASE_AND_FIRST_PARTY_OBJECT_AUDIT"
+    }
+  ],
+  "qualification_contract": [
+    "PIN_EXACT_UPSTREAM_OR_OFFICIAL_OBJECT_IDENTITY",
+    "PIN_EXACT_RIGHTS_EVIDENCE_AND_PURPOSE_DECISION",
+    "MATERIALIZE_EXACT_BYTES_AND_NORMALIZATION_IDENTITY",
+    "RUN_QUALITY_LANGUAGE_PRIVACY_SECRET_FILTERS",
+    "RUN_EXACT_NEAR_LINEAGE_AWARE_GLOBAL_DEDUP",
+    "PROVE_SELECTION_FINAL_TEST_RESERVATION_SEPARATION_WITHOUT_READING_FINAL_OUTCOMES",
+    "REQUIRE_TERMINAL_SOURCE_AUTHORITY_BEFORE_ANY_CAPACITY_CREDIT",
+    "RERUN_SUCCESSOR_GLOBAL_DEDUP_BEFORE_BALANCE_OR_CORPUS_PROMOTION"
+  ],
+  "downstream_order": [
+    "SOURCE_QUALIFICATION",
+    "SOURCE_REGISTRY_CONVERGENCE",
+    "GLOBAL_CROSS_SOURCE_DEDUP",
+    "BALANCE_DIVERSITY_RETEST",
+    "IMMUTABLE_PRE_DECONTAMINATION_CORPUS_IDENTITY",
+    "EVALUATION_DECONTAMINATION",
+    "QUALITY_PRIVACY_SPLIT_TWO_CLEAN_BUILD",
+    "UNIQUE_POSTPACK_LOSS_LEDGER",
+    "TOKENIZER_FIT_AUTHORIZATION",
+    "MODEL341_20M_TRAINING_AUTHORIZATION"
+  ],
+  "claim_boundary": {
+    "candidate_source_admitted": false,
+    "post_dedup_capacity_claimed": false,
+    "research_corpus_v1_released": false,
+    "tokenizer_fit_authorized": false,
+    "long_training_authorized": false,
+    "learned_20m_checkpoint_claimed": false,
+    "learned_100m_checkpoint_claimed": false,
+    "safe_result": "ACQUISITION_PORTFOLIO_READY_FOR_PARALLEL_SOURCE_QUALIFICATION"
+  }
+}
