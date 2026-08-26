@@ -1,0 +1,81 @@
+{
+  "claim_boundary": {
+    "authorized_unique_loss_positions": 0,
+    "corpus_release_claimed": false,
+    "final_research_corpus_v1_identity": null,
+    "learned_20m_claimed": false,
+    "long_training_authorized": false,
+    "predecontamination_candidate_identity_exists": true,
+    "representative_corpus_claimed": false,
+    "shard_identity": null,
+    "training_authorized": false
+  },
+  "composition_policy": {
+    "minimum_independent_families_per_stratum": 2,
+    "replay_allowed": false,
+    "source_alias_capacity_allowed": false,
+    "source_bytes_are_loss_positions": false,
+    "target_mix": {"code": 0.2, "en": 0.35, "uk": 0.45}
+  },
+  "deferred_terminal_sources": [
+    {
+      "authority_identity_sha256": "46a00dc70db690ae2b3c4495a75283e7e752bdccb1047d4318c2ebadfa392f0d",
+      "head_sha": "5a6a495a24bce449334cbc5126d0114f61a9f57c",
+      "reason": "terminal source is valid, but its training-eligible unit is 14 accepted chunks while exact per-chunk byte lengths/content materialization are not sealed in that authority; do not inflate this exact-byte intake",
+      "worker": "NEXT100-037-DATA-EN-PYTHON-DOCS"
+    }
+  ],
+  "inventory_summary": {
+    "by_stratum": {
+      "code": {"families": 2, "family_ids": ["github:encode/httpx", "github:psf/requests"], "normalized_source_bytes": 9703, "records": 2},
+      "en": {"families": 2, "family_ids": ["en.standardebooks.manual", "en.usgov.nist.technical-series"], "normalized_source_bytes": 144151, "records": 5},
+      "uk": {"families": 2, "family_ids": ["ua.kmu.portal.secretariat-news", "ua.rada.open-data.laws-texts"], "normalized_source_bytes": 97718, "records": 7}
+    },
+    "g09_family_minimum_satisfied_predecontamination": true,
+    "normalized_source_bytes": 251572,
+    "record_count": 14,
+    "unique_normalized_hash_count": 14
+  },
+  "local_free_only": true,
+  "parent_corpus_authority": {
+    "evidence_identity_sha256": "939065abeefff8aed924415589608ff3fc721fe4b0a57fc200146a4b6a137e81",
+    "head_sha": "8820ba1b255f6bb95c7db0531fd846078a1aae01",
+    "supersession_scope": "candidate inventory only; final corpus/shards remain blocked",
+    "terminal_state": "TERMINAL_BLOCKED",
+    "worker": "DATA-301"
+  },
+  "predecontamination_candidate_identity_sha256": "fb2b95bdc93301fc4456e06650722024794a46ac692883ffc8e74be131cca1e9",
+  "records": [
+    {"family_id":"github:encode/httpx","language":"python","locator":{"authority":"DATA-287","snapshot_uri":"file:data/external/snapshots/sha256/2c61b3ac94d1dcebcde0c6f519554d2d7917247fbaa0a97002db4ef69e70ff28/payload"},"modality":"code","normalized_bytes":8161,"normalized_sha256":"2c61b3ac94d1dcebcde0c6f519554d2d7917247fbaa0a97002db4ef69e70ff28","record_id":"data287:httpx:_content","stratum":"code"},
+    {"family_id":"github:psf/requests","language":"python","locator":{"authority":"DATA-287","snapshot_uri":"file:data/external/snapshots/sha256/4c7d8d132c9898fc7d715e473f3ac74785ddc4ab96d2c9240f87835dc6d981ff/payload"},"modality":"code","normalized_bytes":1542,"normalized_sha256":"4c7d8d132c9898fc7d715e473f3ac74785ddc4ab96d2c9240f87835dc6d981ff","record_id":"data287:requests:_internal_utils","stratum":"code"},
+    {"family_id":"en.standardebooks.manual","language":"en","locator":{"authority":"DATA-287","snapshot_uri":"file:data/external/snapshots/sha256/21582c7f0e4ad39f2b0ed97bbc2c082d275e898b7a63c28e6d9badb8ee0f7860/payload"},"modality":"text","normalized_bytes":48002,"normalized_sha256":"154fb4034929714087e75150d678bf65049ddac32e79dcdf97162c8972c2be83","record_id":"data287:standardebooks:8-typography","stratum":"en"},
+    {"family_id":"en.standardebooks.manual","language":"en","locator":{"authority":"DATA-287","snapshot_uri":"file:data/external/snapshots/sha256/7ac53dfb4bf6f73f178560e09f33160d0250c69fb679802f3254dc0eb4c9f509/payload"},"modality":"text","normalized_bytes":36791,"normalized_sha256":"94eb2f529922d125b3bd40691778886f4d5d80b128b925d0274fb3d94646ec5a","record_id":"data287:standardebooks:9-metadata","stratum":"en"},
+    {"family_id":"ua.rada.open-data.laws-texts","language":"uk","locator":{"authority":"DATA-287","snapshot_uri":"file:data/external/snapshots/sha256/36eae31c3b0676ea7c02236fa05bd695c240c9a8eade5febc00457b8103ee1a4/payload"},"modality":"text","normalized_bytes":88565,"normalized_sha256":"72c301db0b2539f3f7a73c9c15e2e425700a6b758a1114f1a861e2d60c704c50","record_id":"data287:rada:d23314","stratum":"uk"},
+    {"family_id":"ua.kmu.portal.secretariat-news","language":"uk","locator":{"authority":"NEXT100-026","git_head":"40950a950b60921fd856af2719e1ae2486d9e892","normalization_authority":"configs/data/next100_026_kmu_source_audit_v1.json","path":"data/external/snapshots/next100-026-kmu/raw/kmu-secretariat-2026-07-16-prime-minister-appointment.txt","repository":"Oleksii-debug/12-6-ai."},"modality":"text","normalized_bytes":2806,"normalized_sha256":"5597ee6700b170c0ed93fa9e6c318097634ce1ae00657a5592090373b0169874","record_id":"next100-026:kmu-secretariat-2026-07-16-prime-minister-appointment","stratum":"uk"},
+    {"family_id":"ua.kmu.portal.secretariat-news","language":"uk","locator":{"authority":"NEXT100-026","git_head":"40950a950b60921fd856af2719e1ae2486d9e892","normalization_authority":"configs/data/next100_026_kmu_source_audit_v1.json","path":"data/external/snapshots/next100-026-kmu/raw/kmu-secretariat-2026-08-05-resilience-audit.txt","repository":"Oleksii-debug/12-6-ai."},"modality":"text","normalized_bytes":1890,"normalized_sha256":"6e1e1f134f9cf8e11d92891acbf014f0ee30ec9219f179a862d706b74dd877eb","record_id":"next100-026:kmu-secretariat-2026-08-05-resilience-audit","stratum":"uk"},
+    {"family_id":"ua.kmu.portal.secretariat-news","language":"uk","locator":{"authority":"NEXT100-026","git_head":"40950a950b60921fd856af2719e1ae2486d9e892","normalization_authority":"configs/data/next100_026_kmu_source_audit_v1.json","path":"data/external/snapshots/next100-026-kmu/raw/kmu-secretariat-2026-07-23-budget-2027.txt","repository":"Oleksii-debug/12-6-ai."},"modality":"text","normalized_bytes":949,"normalized_sha256":"2338bdb3adf3c70b70f77b8df0bef0c9e81b098697e32703ab2205475cb2ab85","record_id":"next100-026:kmu-secretariat-2026-07-23-budget-2027","stratum":"uk"},
+    {"family_id":"ua.kmu.portal.secretariat-news","language":"uk","locator":{"authority":"NEXT100-026","git_head":"40950a950b60921fd856af2719e1ae2486d9e892","normalization_authority":"configs/data/next100_026_kmu_source_audit_v1.json","path":"data/external/snapshots/next100-026-kmu/raw/kmu-secretariat-2026-08-18-resilience-funding.txt","repository":"Oleksii-debug/12-6-ai."},"modality":"text","normalized_bytes":1281,"normalized_sha256":"e7393c379a383c7fd27e1105411cd0b3717f87b7c848bbfbda7ea54a6bd5ea27","record_id":"next100-026:kmu-secretariat-2026-08-18-resilience-funding","stratum":"uk"},
+    {"family_id":"ua.kmu.portal.secretariat-news","language":"uk","locator":{"authority":"NEXT100-026","git_head":"40950a950b60921fd856af2719e1ae2486d9e892","normalization_authority":"configs/data/next100_026_kmu_source_audit_v1.json","path":"data/external/snapshots/next100-026-kmu/raw/kmu-secretariat-2026-08-13-frontline-communities.txt","repository":"Oleksii-debug/12-6-ai."},"modality":"text","normalized_bytes":951,"normalized_sha256":"c3d3b823e03da0e8dcf09939b654a1038404fd5eae834789b6ad7c484eb7a346","record_id":"next100-026:kmu-secretariat-2026-08-13-frontline-communities","stratum":"uk"},
+    {"family_id":"ua.kmu.portal.secretariat-news","language":"uk","locator":{"authority":"NEXT100-026","git_head":"40950a950b60921fd856af2719e1ae2486d9e892","normalization_authority":"configs/data/next100_026_kmu_source_audit_v1.json","path":"data/external/snapshots/next100-026-kmu/raw/kmu-secretariat-2026-08-19-eib-community-recovery.txt","repository":"Oleksii-debug/12-6-ai."},"modality":"text","normalized_bytes":1276,"normalized_sha256":"6a5cf6b19feed67794caad09622a308e434c2997f01ddcadf2faa0ba35e61a6b","record_id":"next100-026:kmu-secretariat-2026-08-19-eib-community-recovery","stratum":"uk"},
+    {"family_id":"en.usgov.nist.technical-series","language":"en","locator":{"authority":"NEXT100-034","authority_path":"configs/data/next100_034_nist_terminal_authority_v2.json","git_head":"b7491745b34ac8679baaf69cb96cd609dcbe0a16","normalization_policy_id":"NEXT100_034_NIST_PDF_BODY_NFKC_BOUNDED_V1","publication_id":"NIST.SP.800-204","raw_sha256":"25412c860165e5ee1cfbf26ed47c56f4d213b1996a73365f5561be6403cf7588","repository":"Oleksii-debug/12-6-ai."},"modality":"text","normalized_bytes":19668,"normalized_sha256":"570e8d75b6dc6aefee1f089818b46765c0dd1965e06947bcc2fff0169d22274e","record_id":"next100-034:NIST.SP.800-204","stratum":"en"},
+    {"family_id":"en.usgov.nist.technical-series","language":"en","locator":{"authority":"NEXT100-034","authority_path":"configs/data/next100_034_nist_terminal_authority_v2.json","git_head":"b7491745b34ac8679baaf69cb96cd609dcbe0a16","normalization_policy_id":"NEXT100_034_NIST_PDF_BODY_NFKC_BOUNDED_V1","publication_id":"NIST.SP.800-204C","raw_sha256":"d51133dc55a804990d80ba4b9c35e3fbb2d5acdf7b330b66edeaae59fc63d69b","repository":"Oleksii-debug/12-6-ai."},"modality":"text","normalized_bytes":19736,"normalized_sha256":"558da6a0886036a01a5139d635b1352b5cf5d74655d919c66a04e84f2d49c0fe","record_id":"next100-034:NIST.SP.800-204C","stratum":"en"},
+    {"family_id":"en.usgov.nist.technical-series","language":"en","locator":{"authority":"NEXT100-034","authority_path":"configs/data/next100_034_nist_terminal_authority_v2.json","git_head":"b7491745b34ac8679baaf69cb96cd609dcbe0a16","normalization_policy_id":"NEXT100_034_NIST_PDF_BODY_NFKC_BOUNDED_V1","publication_id":"NIST.SP.800-215","raw_sha256":"159e17820a0a337c4a7e9c7ee8b966823e81dc72f5c6229e7d7244c40b0b1645","repository":"Oleksii-debug/12-6-ai."},"modality":"text","normalized_bytes":19954,"normalized_sha256":"6c99c3b14ee3ea7fe915940e38c080dbf2a785f1abcee2fd73e7fd731424770d","record_id":"next100-034:NIST.SP.800-215","stratum":"en"}
+  ],
+  "required_successors": [
+    "exact/normalized/fragment/near-copy evaluation decontamination on this candidate identity",
+    "cross-source lineage-aware dedup on all 14 records",
+    "quality/privacy rerun on the composed candidate",
+    "cluster-safe split and deterministic shard materialization",
+    "two clean byte-identical builds",
+    "post-pack unique nonignored causal-loss ledger",
+    "balanced no-replay capacity authorization"
+  ],
+  "schema_version": "12-6.next100-063-research-corpus-v1-intake.v1",
+  "source_authorities": [
+    {"head_sha":"b0523ccbc4b957615aac849d476cfa851be87578","normalized_bytes":183061,"record_count":5,"registry_identity_sha256":"917e9bc31b2fa040d25e807ae3c01aa2cce32420752a891caacfb6c830e6632c","worker":"DATA-287-EXTERNAL-SNAPSHOT-REGISTRY-V2","workflow_conclusion":"success","workflow_run":32968622282},
+    {"head_sha":"40950a950b60921fd856af2719e1ae2486d9e892","manifest_identity_sha256":"1f068e6cc5ce3fc4a51d8477acee31fab5a0178e15f49225b57de94c5178f7d9","normalized_bytes":9153,"record_count":6,"worker":"NEXT100-026-DATA-UA-CABINET-MINISTRY","workflow_conclusion":"success","workflow_run":32997970539},
+    {"head_sha":"b7491745b34ac8679baaf69cb96cd609dcbe0a16","normalized_bytes":59358,"record_count":3,"terminal_payload_sha256":"3ffba0fcd08ab42e940b2db12ffafb6f7234ad0bae6f7fe523071497485b9d1c","worker":"NEXT100-034-DATA-EN-NIST","workflow_conclusion":"success","workflow_run":32998703545}
+  ],
+  "status": "PREDECONTAMINATION_CANDIDATE_FROZEN",
+  "worker_id": "NEXT100-063-RESEARCH-CORPUS-V1-INTAKE"
+}
