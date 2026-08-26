@@ -1,5 +1,5 @@
 {
-  "authority_identity_sha256": "65905172c628783bf01e488d3d1ddd352134184b9a722ed2b27cf59a220c33ab",
+  "authority_identity_sha256": "15ccaea65c2e273af5fb7ac3606d2c0cdd2bb9010df3be0da783267e8478eed8",
   "eval303_binding": {
     "composite_selection_identity_sha256": "7b97a9ab04469236dc5bc17fc80155cb43430b01c443bb6209fac090557258fd",
     "final_test_outcomes_read": false,
@@ -86,7 +86,6 @@
     {
       "admitted_to_v2": false,
       "blockers": [
-        "EXACT_HEAD_SOURCE_AUTHORITY_NOT_TERMINAL_SUCCESS",
         "SELECTION_VALIDATION_RIGHTS_NOT_ADMITTED",
         "PRE_TRAINING_SELECTION_RESERVATION_ABSENT"
       ],
@@ -96,10 +95,10 @@
       "pull_request": 462,
       "selection_validation_status": "NOT_ADMITTED",
       "source_family": "ua.verba.public-domain.nomis1864",
-      "source_status": "ADMIT_CANDIDATE_NONTERMINAL_AT_SNAPSHOT",
-      "source_workflow_conclusion": null,
+      "source_status": "TERMINAL_BOUNDED_PUBLIC_DOMAIN_LITERATURE_SNAPSHOT",
+      "source_workflow_conclusion": "success",
       "source_workflow_run": 32998180391,
-      "source_workflow_status": "queued"
+      "source_workflow_status": "completed"
     }
   ],
   "preserved_eval290": {
