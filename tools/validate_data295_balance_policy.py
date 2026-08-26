@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Validate the DATA-295 preregistered corpus mixture without model outcomes."""
 
 from __future__ import annotations
@@ -7,7 +6,6 @@ import argparse
 import json
 import math
 from pathlib import Path
-
 
 EXPECTED_SCHEMA = "12-6.data295-balance-policy-20m.v1"
 STRATA = ("uk", "en", "code")
@@ -51,7 +49,7 @@ def validate(policy: dict) -> None:
         allocation = candidate["current_modality_only_allocation"]
         assert sum(allocation.values()) == expected_ceiling
         for key in STRATA:
-            expected = int(round(expected_ceiling * float(weights[key]) / 100.0))
+            expected = round(expected_ceiling * float(weights[key]) / 100.0)
             assert allocation[key] == expected
             assert allocation[key] <= strata[key]
         target = candidate["target_20m_allocation"]
