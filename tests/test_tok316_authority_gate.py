@@ -61,6 +61,16 @@ def test_tok316_rejects_final_test_exposure_even_with_fresh_self_hash(tmp_path: 
     assert result.returncode != 0
 
 
+def test_tok316_rejects_tok315_fit_permission_invention(tmp_path: Path) -> None:
+    value = json.loads(EVIDENCE.read_text(encoding="utf-8"))
+    value["prerequisite_scan"]["tok315_fit_may_start_now"] = True
+    _rehash(value)
+    mutated = tmp_path / "invented-fit-permission.json"
+    mutated.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    result = _run(mutated)
+    assert result.returncode != 0
+
+
 def test_tok316_rejects_grid_or_runtime_substitution(tmp_path: Path) -> None:
     value = json.loads(EVIDENCE.read_text(encoding="utf-8"))
     value["protocol"]["requested_vocab_grid"] = [256, 320, 384, 512]
