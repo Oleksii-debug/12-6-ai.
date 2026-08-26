@@ -1,0 +1,19 @@
+{
+  "schema_version": "12-6.eval322-external-real-evaluator.config.v1",
+  "worker_id": "EVAL-322-REAL-UA-EN-CODE-AUTHORITY",
+  "execution_class": "LOCAL_FREE",
+  "authority_evidence_path": "evidence/eval322/external-real-evaluator-authority-v1.json",
+  "authority_evidence_identity_sha256": "43a666702feacd94af63b8e1be13bb5d35ca90a8bc6555b41911e77e8fbe556c",
+  "selection_validation_authority": "EVAL-303-SELECTION-VALIDATION-COMPOSITE",
+  "final_test_authority": "EVAL-304-REAL-FINAL-TEST-V3",
+  "modalities": ["ua", "en"],
+  "code_enabled": false,
+  "run_authorized": false,
+  "fail_closed": true,
+  "strongest_publishable_status": "PARTIAL_UA_EN_NO_CODE",
+  "run_blockers": [
+    "DATA305_NO_PASS_CLEAN_OR_PASS_WITH_EXCLUSIONS_ON_EXACT_TERMINAL_CORPUS",
+    "CODE_SELECTION_AUTHORITY_ZERO_RECORD",
+    "CODE_FINAL_TEST_AUTHORITY_ABSENT"
+  ]
+}
