@@ -60,6 +60,16 @@
     ],
     "distributed_bias_at_or_below_100m": "prefer_single_device_or_data_parallel_before_tensor_pipeline_context_parallelism"
   },
+  "data_budget_policy": {
+    "training_exposure_tokens_are_not_unique_loss_positions": true,
+    "unique_loss_positions_are_not_source_bytes": true,
+    "replay_factor_must_be_measured": true,
+    "long_training_requires_stage_data_budget_authority": true,
+    "long_training_requires_preregistered_replay_policy": true,
+    "data_constrained_replay_reference_epochs": 4,
+    "replay_reference_interpretation": "PLANNING_REFERENCE_NOT_UNIVERSAL_HARD_CAP",
+    "beyond_replay_reference_requires_explicit_preregistered_exception": true
+  },
   "experiment_matrix": [
     {
       "id": "R01-E00",
@@ -97,9 +107,12 @@
         20,
         40
       ],
+      "tokens_per_parameter_semantics": "TOTAL_TRAINING_EXPOSURE_NOT_UNIQUE_DATA_REQUIREMENT",
       "requires_corpus_identity": true,
       "requires_tokenizer_fit_identity": true,
       "requires_unique_post_pack_loss_ledger": true,
+      "requires_stage_data_budget_authority": true,
+      "requires_preregistered_replay_policy": true,
       "requires_checkpoint_integrity_terminal_retest": true,
       "requires_selection_validation_terminal": true,
       "requires_compute_authorization_if_material_cost": true,
@@ -121,9 +134,12 @@
         20,
         40
       ],
+      "tokens_per_parameter_semantics": "TOTAL_TRAINING_EXPOSURE_NOT_UNIQUE_DATA_REQUIREMENT",
       "requires_corpus_identity": true,
       "requires_tokenizer_fit_identity": true,
       "requires_unique_post_pack_loss_ledger": true,
+      "requires_stage_data_budget_authority": true,
+      "requires_preregistered_replay_policy": true,
       "requires_checkpoint_integrity_terminal_retest": true,
       "requires_selection_validation_terminal": true,
       "requires_20m_learned_evidence": true,
@@ -163,6 +179,8 @@
     "reserved_evaluation_decontamination",
     "quality_privacy_dedup_split",
     "unique_post_pack_loss_ledger",
+    "stage_data_budget_authority",
+    "preregistered_replay_policy",
     "trained_tokenizer_identity_or_explicit_byte_baseline_decision",
     "checkpoint_integrity_terminal_retest",
     "selection_validation_terminal",
@@ -172,7 +190,7 @@
     "independent_audit"
   ],
   "handoff": {
-    "DATA": "materialize Research Corpus V1 and immutable candidate identity before learned runs",
+    "DATA": "materialize Research Corpus V1, exact unique post-pack loss positions, and stage-specific data-budget/replay authority before learned runs",
     "TOK": "fit and reproduce corpus-bound tokenizer candidates and report BPB fertility roundtrip throughput",
     "TRAIN": "run bounded optimizer and token-budget pilots only after data tokenizer checkpoint gates",
     "D06": "compare contamination-safe metrics and fit empirical scaling curves",
@@ -184,6 +202,11 @@
       "title": "Training Compute-Optimal Large Language Models",
       "url": "https://arxiv.org/abs/2203.15556",
       "use": "starting reference for joint model and data scaling not a rigid tiny-model prescription"
+    },
+    {
+      "title": "Scaling Data-Constrained Language Models",
+      "url": "https://arxiv.org/abs/2305.16264",
+      "use": "separate unique data from replay exposure and treat repeated-data value as diminishing rather than free capacity"
     },
     {
       "title": "MobileLLM: Optimizing Sub-billion Parameter Language Models for On-Device Use Cases",
