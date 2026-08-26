@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "worker_id": "NEXT100-020-RELEASE-CI-CONVERGENCE",
+  "policy": "LOCAL_FREE",
+  "carrier_parent_sha": "516c5da7d010fd01fa554c2c21a2b2489683067d",
+  "carrier_lineage": "CI-285 release repair successor",
+  "status": "PENDING_EXACT_HEAD_GENERIC_CI",
+  "release_ci": {
+    "required": true,
+    "generic_repository_checks": true,
+    "lint_disabled": false,
+    "full_tests_globally_skipped": false,
+    "scientific_gates_removed": false
+  },
+  "separation": {
+    "release_ci": "generic repository policy, locked environment, lint, full repository tests",
+    "scientific_exact_head_workflows": "independent scientific evidence; not inferred from generic CI",
+    "component_workflows": "scoped component evidence; scoped green is not release green"
+  },
+  "shared_root_causes_carried_from_ci285": [
+    "repository-wide Ruff debt on the strong locked release lineage"
+  ],
+  "known_non_release_equivalences": [
+    "startup_failure or action_required without jobs is not a source-code failure",
+    "component workflow success does not override a generic repository CI failure",
+    "generic repository CI success does not promote or invalidate scientific evidence"
+  ],
+  "post_wave_release_candidate": null,
+  "post_wave_release_candidate_reason": "No successor to INTEGRATE-282 was published at carrier creation cutoff; final live refresh is required before verdict."
+}
