@@ -1,0 +1,93 @@
+{
+  "base_authorities": {
+    "data300": {
+      "contract_identity_sha256": "07d7beaaff4616e839450de6af3d407855c832bf75a24a959d1a12de5d9364e5",
+      "contract_state": "FROZEN_EXECUTABLE_CONTRACT",
+      "corpus_state": "NOT_BUILT_NOT_FROZEN_NOT_TERMINAL",
+      "head_sha": "8ea7f830e50a23754d189dd4134f4afad76a7ee9"
+    },
+    "data301": {
+      "authorized_balanced_no_replay_capacity": 0,
+      "corpus_identity": null,
+      "evidence_identity_sha256": "939065abeefff8aed924415589608ff3fc721fe4b0a57fc200146a4b6a137e81",
+      "head_sha": "8820ba1b255f6bb95c7db0531fd846078a1aae01",
+      "shard_identity": null,
+      "status": "TERMINAL_BLOCKED"
+    }
+  },
+  "candidate_freeze": {
+    "candidate_set_digest_sha256": null,
+    "frozen": false,
+    "reason": "NEXT100-063 exact-head CI is nonterminal; issue #526 forbids hard-coding a stale late-source subset.",
+    "record_count": 0,
+    "record_inventory_digest_sha256": null,
+    "records": []
+  },
+  "claim_boundary": {
+    "authorized_unique_optimized_targets": 0,
+    "corpus_frozen": false,
+    "decontamination_executed": false,
+    "final_test_outcomes_read": false,
+    "final_test_payload_accessed": false,
+    "long_training_authorized": false,
+    "optimizer_updates": 0,
+    "paid_compute_used": false,
+    "shards_published": false,
+    "tokenizer_fit_executed": false,
+    "training_executed": false
+  },
+  "downstream_gates": {
+    "balance_diversity_retest": "NOT_AUTHORIZED_BY_THIS_BLOCKER",
+    "corpus_materialization": "NOT_PERMITTED",
+    "global_dedup": "NOT_AUTHORIZED_BY_THIS_BLOCKER",
+    "long_training": "NOT_PERMITTED",
+    "paid_compute": "NOT_PERMITTED",
+    "reserved_evaluation_decontamination": "NOT_PERMITTED_NO_FROZEN_CANDIDATE_IDENTITY",
+    "tokenizer_fit": "NOT_PERMITTED"
+  },
+  "evidence_identity_scope": "SHA256(canonical JSON with evidence_identity_sha256 omitted)",
+  "evidence_identity_sha256": "6cb3fd58a769158019e31f5dd4b7b3abdae62551f1aaaf1374269ebd99b115f1",
+  "execution_profile": "LOCAL_FREE",
+  "purpose": "Fail-close Research Corpus V1 pre-decontamination candidate freeze until NEXT100-063 source-authority convergence is terminal.",
+  "repository": "Oleksii-debug/12-6-ai.",
+  "required_source_convergence": {
+    "base_head_sha": "efc278cec0e4773eb4ff405bf4b4d24ee63b5d13",
+    "exact_head_ci_state": "QUEUED_NONTERMINAL",
+    "issue": 521,
+    "observed_head_sha": "481468a8cebcd82c96f4801062203d627e13ded4",
+    "pr_state": "OPEN",
+    "pull_request": 527,
+    "reported_pre_successor_global_dedup_vector_non_authoritative_until_terminal": {
+      "by_stratum": {
+        "code": {
+          "bytes": 69133,
+          "families": 4
+        },
+        "en": {
+          "bytes": 144151,
+          "families": 2
+        },
+        "uk": {
+          "bytes": 100856,
+          "families": 4
+        }
+      },
+      "independent_families": 10,
+      "source_capacity_bytes": 314140
+    },
+    "terminal_authority_consumed": false
+  },
+  "schema_version": "12-6.research-corpus-v1-predecontam-blocker.v1",
+  "status": "BLOCKED_WAIT_SOURCE_CONVERGENCE",
+  "unblock_rule": {
+    "no_pending_source_capacity_credit": true,
+    "no_queue_as_pass": true,
+    "no_replay_or_duplicate_quota_repair": true,
+    "required": [
+      "NEXT100-063 exact observed head must become terminal-success under its dedicated exact-head validation.",
+      "The terminal successor authority must expose the exact admitted training-purpose source/object/family/content/normalization vector.",
+      "DATA-526 must then freeze a sorted exact pre-decontamination record inventory and composite candidate-set digest before any reserved-evaluation decontamination."
+    ]
+  },
+  "worker_id": "DATA-526-RESEARCH-CORPUS-V1-PREDECONTAM"
+}
