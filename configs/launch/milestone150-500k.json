@@ -1,5 +1,6 @@
 {
   "schema": "12-6.expensive-run-launch-request.v1",
+  "training_intent": "mechanics",
   "binding": {
     "workflow": "milestone150-learned-base-ladder-v1",
     "scale": "500k"
