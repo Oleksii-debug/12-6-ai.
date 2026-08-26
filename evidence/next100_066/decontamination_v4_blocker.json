@@ -1,0 +1,43 @@
+{
+  "blocking_reason": "Mandatory final live corpus check found DATA-301 still at 8820ba1b255f6bb95c7db0531fd846078a1aae01 with terminal-blocked authority, null corpus identity, and null shard identity. No successor terminal corpus release or exact bound training-record inventory was discoverable. Therefore decontamination matching is not authorized to start.",
+  "candidate_corpus_identity": null,
+  "candidate_shard_identity": null,
+  "candidate_training_record_inventory_identity": null,
+  "evaluation_payloads_read": false,
+  "evidence_identity_algorithm": "sha256(canonical-json-without-evidence_identity_sha256)",
+  "evidence_identity_sha256": "d909975ac656c9a36ed491cea32e806608b799e431449be3a0ee60f503bd3835",
+  "exclusions_claimed": false,
+  "execution_profile": "LOCAL_FREE",
+  "final_test_outcomes_read": false,
+  "final_test_payload_read": false,
+  "live_authority_check": {
+    "cross_source_dedup_audit_is_not_candidate_corpus_identity": true,
+    "data300_candidate_contract_identity_sha256": "07d7beaaff4616e839450de6af3d407855c832bf75a24a959d1a12de5d9364e5",
+    "data301_branch": "data301/corpus-v03-terminal-build-20260826",
+    "data301_evidence_identity_sha256": "939065abeefff8aed924415589608ff3fc721fe4b0a57fc200146a4b6a137e81",
+    "data301_head_sha": "8820ba1b255f6bb95c7db0531fd846078a1aae01",
+    "data301_state": "TERMINAL_BLOCKED",
+    "data305_prior_decontamination_evidence_identity_sha256": "05997b4be4589271c44588dd75985c71b9fd71cdaebafabfbde72d02f64780d9",
+    "external_snapshot_registry_is_not_candidate_corpus_identity": true,
+    "next100_063_branch_found": false,
+    "next100_064_branch_found": false,
+    "next100_066_branch_found_before_publication": false
+  },
+  "matchers_executed": {
+    "code_copy_detection": false,
+    "exact_hashes": false,
+    "fragment_containment": false,
+    "near_copy_clusters": false,
+    "normalized_hashes": false
+  },
+  "pass_verdict_emitted": false,
+  "repository": "Oleksii-debug/12-6-ai.",
+  "scan_executed": false,
+  "schema": "12-6.next100-066-decontamination-v4.blocker.v1",
+  "status": "BLOCKED_NO_EXACT_CANDIDATE_CORPUS_IDENTITY",
+  "unblock_requires": [
+    "terminal immutable candidate corpus identity",
+    "exact training-record inventory cryptographically bound to that corpus identity"
+  ],
+  "worker_id": "NEXT100-066-DECONTAMINATION-V4"
+}
