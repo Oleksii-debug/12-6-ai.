@@ -5,9 +5,7 @@ import json
 from pathlib import Path
 
 import pytest
-
 from tools.run_compute252_gpu_campaign import EXPECTED_LABELS, build_dry_run
-
 
 MANIFEST_PATH = Path("configs/compute/compute252_gpu_campaign.json")
 EXPECTED_ORDER = [
