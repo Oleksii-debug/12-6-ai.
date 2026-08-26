@@ -1,0 +1,75 @@
+name: EVAL-233 Real Holdout V2
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/eval233-real-holdout-v2.yml"
+      - "configs/evaluation/recover174_source_authority_v1.json"
+      - "data/evaluation/recover174_real_holdout_seed.jsonl.gz"
+      - "evidence/eval233/**"
+      - "src/twelve_six/eval233_holdout.py"
+      - "tests/test_eval233_holdout.py"
+
+permissions:
+  contents: read
+
+jobs:
+  immutable-holdout:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Prove exact source checkout
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+      - name: Universal exact execution bootstrap
+        uses: ./.github/actions/execution-bootstrap
+        with:
+          capabilities: runtime,tests
+          venv: .eval233
+          manifest: eval233-environment.json
+          command: python -m pytest -q tests/test_eval233_holdout.py
+      - name: Focused contracts
+        run: |
+          set -euo pipefail
+          .eval233/bin/python -m compileall -q src/twelve_six/eval233_holdout.py
+          .eval233/bin/python -m pytest -q tests/test_eval233_holdout.py
+      - name: Materialize immutable sets
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          .eval233/bin/python -m twelve_six.eval233_holdout build --repo-root . --output-dir eval233-evidence/holdout --source-sha "$SOURCE_SHA"
+          .eval233/bin/python -m twelve_six.eval233_holdout verify --output-dir eval233-evidence/holdout
+      - name: Assert truthful blockers and final-test isolation
+        run: |
+          set -euo pipefail
+          .eval233/bin/python - <<'PY'
+          import json
+          p = json.load(open('eval233-evidence/holdout/manifest.json', encoding='utf-8'))
+          assert p['code']['documents'] == 0
+          assert p['code']['status'] == 'BLOCKED_NO_TERMINAL_DATA227_EVALUATION_USE_AUTHORITY'
+          assert p['decontamination']['status'] == 'BLOCKED_NO_PUBLISHED_DATA232_AUTHORITY'
+          assert p['decontamination']['evaluation_release_allowed'] is False
+          final = json.load(open('eval233-evidence/holdout/final-test/manifest.json', encoding='utf-8'))
+          assert final['selection_eligible'] is False
+          assert final['tokenizer_fit_eligible'] is False
+          assert final['hyperparameter_selection_eligible'] is False
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: eval233-real-holdout-v2
+          path: |
+            eval233-environment.json
+            eval233-evidence/holdout
+          if-no-files-found: error
+          retention-days: 30

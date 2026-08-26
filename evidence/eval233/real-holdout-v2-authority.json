@@ -1,0 +1,56 @@
+{
+  "authority_identity_sha256": "2de35f27b31b9a783b248db5bbf6f575e1ce568d810348d750b9f1b4bc4618c3",
+  "base_authority": {
+    "recover174_authority_git_blob_sha1": "3ba9f221a82468f971c17eda518cd6f1642fd311",
+    "recover174_authority_identity_sha256": "c7211b3e1e6a4f22463d0e6174f0d6162c2452585704efad5564a35de8de609f",
+    "recover174_head_sha": "976c101b20ad2e31b0b3e2dda2beed8e7b03c2f3",
+    "recover174_seed_git_blob_sha1": "4bfbfbf29fa9538cabda6068efd3a1fd036a9479"
+  },
+  "code": {
+    "documents": 0,
+    "observed_branch": "data227/real-code-source-admission-v2-20260826",
+    "observed_branch_head": "5ae74eb162641712ff97a326572bec5bfe2b0607",
+    "observed_head_is_preexisting_DATA185_commit": false,
+    "observed_head_is_preexisting_DATA213_commit": true,
+    "status": "BLOCKED_NO_TERMINAL_DATA227_EVALUATION_USE_AUTHORITY",
+    "training_rights_do_not_imply_evaluation_rights": true
+  },
+  "decontamination": {
+    "current_corpus_candidate_identity_sha256": null,
+    "data232_report_identity_sha256": null,
+    "evaluation_release_allowed": false,
+    "status": "BLOCKED_NO_PUBLISHED_DATA232_AUTHORITY"
+  },
+  "implementation_state": "PARTIAL_PREREQUISITES_UNPUBLISHED_OR_NONTERMINAL",
+  "local_free_only": true,
+  "preservation": {
+    "normalization": "PRESERVE_RECOVER174_DECOMPRESSED_JSONL_ROW_BYTES_NO_RENORMALIZATION",
+    "partition_outputs_copy_original_decompressed_jsonl_row_bytes": true,
+    "ua_en_records_rewritten": false,
+    "ua_en_seed_blob_reused_exactly": true
+  },
+  "schema_version": "12-6.eval233-authority.v1",
+  "sets": {
+    "final-test": {
+      "hyperparameter_selection_eligible": false,
+      "immutable": true,
+      "purpose": "final evaluation only",
+      "selection_eligible": false,
+      "tokenizer_fit_eligible": false
+    },
+    "selection-validation": {
+      "immutable": true,
+      "purpose": "model/tokenizer/hyperparameter selection only"
+    }
+  },
+  "universal_bootstrap": {
+    "authority": "ENV-151 execution-bootstrap",
+    "required": true
+  },
+  "unsupported_claims": {
+    "complete_ua_en_code_holdout": false,
+    "data232_clean": false,
+    "final_test_selection_use": false
+  },
+  "worker_id": "EVAL-233-REAL-HOLDOUT-V2"
+}
