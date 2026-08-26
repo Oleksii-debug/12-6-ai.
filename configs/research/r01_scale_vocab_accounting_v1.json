@@ -1,0 +1,101 @@
+{
+  "schema": "12-6.r01-scale-vocab-accounting.v1",
+  "status": "CANDIDATE_PLANNING_ONLY",
+  "authority": {
+    "main_base_sha": "a73ab38026cb7849f478cc13ad58b93534a76e2f",
+    "r01_campaign_git_blob_sha": "c50154db609d41eceb2ffc97912360df567bcc04",
+    "model341": {
+      "branch": "model341/20m-candidate-a-20260826",
+      "sha": "e4ff486fd90802fc123bebf60eed4e59196a98df",
+      "candidate_config_git_blob_sha": "69e3cbd5f5c83c9d3d529a2a6376db3055979c40",
+      "expected_model_identity_sha256": "fbff24d561a2818453554d58ca23fc6ace3303b078f1935a8576c4565bd92441",
+      "expected_parameters": 20613440,
+      "geometry": {
+        "vocab_size": 256,
+        "d_model": 320,
+        "n_layers": 16,
+        "n_heads": 10,
+        "n_kv_heads": 2,
+        "head_dim": 32,
+        "d_ff": 1080,
+        "attention_bias": false,
+        "mlp_bias": false,
+        "final_norm": true,
+        "tie_word_embeddings": true,
+        "lm_head_bias": false
+      }
+    }
+  },
+  "vocabulary_sizes": [256, 320, 384, 437, 512, 1024, 4096],
+  "context_lengths": [1024, 2048, 4096],
+  "d_ff_multiple": 64,
+  "candidate_geometries": [
+    {
+      "candidate_id": "R01-50M-GQA-A",
+      "target_parameters": 50000000,
+      "selection_note": "Planning geometry only: deeper/thinner GQA surface for accounting. It is not a frozen ModelSpec and carries no training authorization.",
+      "geometry": {
+        "vocab_size": 256,
+        "d_model": 512,
+        "n_layers": 17,
+        "n_heads": 8,
+        "n_kv_heads": 2,
+        "head_dim": 64,
+        "d_ff": 1472,
+        "attention_bias": false,
+        "mlp_bias": false,
+        "final_norm": true,
+        "tie_word_embeddings": true,
+        "lm_head_bias": false
+      }
+    },
+    {
+      "candidate_id": "R01-100M-GQA-A",
+      "target_parameters": 100000000,
+      "selection_note": "Planning geometry only: deeper GQA alternative to the existing 99.9M MHA engineering candidate. Learned-20M evidence must decide whether this family is worth promoting.",
+      "geometry": {
+        "vocab_size": 256,
+        "d_model": 768,
+        "n_layers": 15,
+        "n_heads": 12,
+        "n_kv_heads": 3,
+        "head_dim": 64,
+        "d_ff": 2240,
+        "attention_bias": false,
+        "mlp_bias": false,
+        "final_norm": true,
+        "tie_word_embeddings": true,
+        "lm_head_bias": false
+      }
+    },
+    {
+      "candidate_id": "R01-100M-MHA-EXISTING-CONTROL",
+      "target_parameters": 100000000,
+      "selection_note": "Accounting control reproducing the existing S4 byte-vocab MHA engineering candidate geometry; still candidate-only and not a promotion decision.",
+      "geometry": {
+        "vocab_size": 256,
+        "d_model": 768,
+        "n_layers": 13,
+        "n_heads": 12,
+        "n_kv_heads": 12,
+        "head_dim": 64,
+        "d_ff": 2304,
+        "attention_bias": false,
+        "mlp_bias": false,
+        "final_norm": true,
+        "tie_word_embeddings": true,
+        "lm_head_bias": false
+      }
+    }
+  ],
+  "truth_boundary": {
+    "planning_only": true,
+    "tokenizer_fit_performed": false,
+    "corpus_mutated": false,
+    "model_weights_mutated": false,
+    "training_authorized": false,
+    "paid_compute_authorized": false,
+    "modelspec_frozen": false,
+    "learned_20m_quality_claimed": false
+  }
+}
