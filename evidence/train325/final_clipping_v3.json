@@ -1,0 +1,159 @@
+{
+  "candidate_results": {
+    "clip_q90": {
+      "clip_frequency_mean": 0.7392431311560393,
+      "gradient_clip_norm": 2.1,
+      "heldout_bpb_ci95": [
+        0.23761720893176752,
+        0.26758506474970545
+      ],
+      "heldout_bpb_mean": 0.2508302938730621,
+      "loss_spikes_total": 668,
+      "nonfinite_events": [],
+      "paired_bpb_delta_vs_incumbent_ci95": [
+        -0.07089407767668093,
+        0.03695199042486577
+      ],
+      "paired_bpb_delta_vs_incumbent_mean": -0.015712741375618178,
+      "preregistered_gate_evaluation": {
+        "finite": true,
+        "gradient_clip_norm": 2.1,
+        "label": "clip_q90",
+        "quality": false,
+        "spikes_ok": true,
+        "stable": false,
+        "tail_frequency_ok": false,
+        "update_ok": true
+      }
+    },
+    "clip_q95": {
+      "clip_frequency_mean": 0.42042509072058065,
+      "gradient_clip_norm": 3.4000000000000004,
+      "heldout_bpb_ci95": [
+        0.2439613785588873,
+        0.2639585287227155
+      ],
+      "heldout_bpb_mean": 0.2522702899577253,
+      "loss_spikes_total": 705,
+      "nonfinite_events": [],
+      "paired_bpb_delta_vs_incumbent_ci95": [
+        -0.04455275788573293,
+        0.0133283042340476
+      ],
+      "paired_bpb_delta_vs_incumbent_mean": -0.014272745290954939,
+      "preregistered_gate_evaluation": {
+        "finite": true,
+        "gradient_clip_norm": 3.4000000000000004,
+        "label": "clip_q95",
+        "quality": true,
+        "spikes_ok": false,
+        "stable": false,
+        "tail_frequency_ok": false,
+        "update_ok": true
+      }
+    },
+    "incumbent_clip_1p0": {
+      "clip_frequency_mean": 0.9377916018662519,
+      "gradient_clip_norm": 1.0,
+      "heldout_bpb_ci95": [
+        0.23063307432483968,
+        0.30851128660844845
+      ],
+      "heldout_bpb_mean": 0.2665430352486803,
+      "loss_spikes_total": 674,
+      "nonfinite_events": [],
+      "paired_bpb_delta_vs_incumbent_ci95": [
+        0.0,
+        0.0
+      ],
+      "paired_bpb_delta_vs_incumbent_mean": 0.0,
+      "preregistered_gate_evaluation": {
+        "label": "incumbent_clip_1p0",
+        "role": "fallback incumbent retained because no less-intrusive arm passed all gates",
+        "stable": true
+      }
+    },
+    "unclipped": {
+      "clip_frequency_mean": 0.0,
+      "gradient_clip_norm": null,
+      "heldout_bpb_ci95": [
+        0.3644240539037627,
+        0.8718415764054891
+      ],
+      "heldout_bpb_mean": 0.6132532013599833,
+      "loss_spikes_total": 618,
+      "nonfinite_events": [],
+      "paired_bpb_delta_vs_incumbent_ci95": [
+        0.13379097957892308,
+        0.6113568315927363
+      ],
+      "paired_bpb_delta_vs_incumbent_mean": 0.346710166111303,
+      "preregistered_gate_evaluation": {
+        "finite": true,
+        "gradient_clip_norm": null,
+        "label": "unclipped",
+        "quality": false,
+        "spikes_ok": true,
+        "stable": false,
+        "tail_frequency_ok": true,
+        "update_ok": true
+      }
+    }
+  },
+  "consumed_train243": {
+    "actions_run_id": 32960810083,
+    "artifact_digest": "sha256:d99bcf3bdc96556bb4e1da87333e08bcfeb759a1cc27c94bdddd926faab4a526",
+    "artifact_id": 9604676694,
+    "artifact_name": "train243-10m-clipping-authority-v2",
+    "equal_optimized_token_exposure": {
+      "actual_optimized_tokens": 131294,
+      "passed": true,
+      "target": 131072
+    },
+    "nan_inf_failed_before_clipping": true,
+    "paired_seeds": [
+      20260825,
+      20260826,
+      20260827
+    ],
+    "preregistration_identity_sha256": "2437aac25fdef09d362915655207ba0037a1d3b8311410829244fe96fb3286e3",
+    "report_sha256": "19f097e2a0f4ca5af74c587968b20d578692fdbe490bed13f8790c24e2fefa59",
+    "source_sha": "7ff794749a6c6f6f8f905314a29f64e6daaf2211",
+    "terminal_status": "SUCCESS"
+  },
+  "decision": {
+    "lr_co_tuned": false,
+    "new_optimizer_updates_executed_by_train325": 0,
+    "reason_no_new_run": "TRAIN-243 is terminal and already executed the required multiple paired seeds under the frozen learned-10M contract; Research Corpus V1 is not terminal, so a corpus-transfer rerun would fabricate a data authority.",
+    "selected_gradient_clip_norm": 1.0,
+    "selection_basis": "least intrusive preregistered arm that is stable; no less-intrusive candidate passed all preregistered gates",
+    "verdict": "FINAL_RETAIN_CLIP_1P0_FOR_TESTED_LEARNED_10M_IDENTITY"
+  },
+  "identity_sha256": "f6b450aab15400ad0866b576f676371b8ca756ba21c865060e458d4004d590b0",
+  "research_corpus_v1": {
+    "blockers": [
+      "zero balanced no-replay budget from family-diversity gate",
+      "empty terminal selection-validation",
+      "missing exact Wave-3 quality/privacy reruns",
+      "missing full five-source unique-loss ledger",
+      "missing two authorized clean byte-identical builds"
+    ],
+    "compatible_for_new_clipping_rerun": false,
+    "head_sha": "8820ba1b255f6bb95c7db0531fd846078a1aae01",
+    "latest_terminal_gate": "DATA-301",
+    "pr_number": 408,
+    "status": "BLOCKED_NO_TERMINAL_FROZEN_RESEARCH_CORPUS_IDENTITY",
+    "terminal_evidence_run_id": 32978085433,
+    "transfer_rule": "clip=1.0 is authoritative only for the tested learned-10M identity; revalidate rather than assume transfer when Research Corpus V1 becomes terminal."
+  },
+  "schema": "12-6.train325-10m-clipping-final.v3",
+  "scope": {
+    "authority": "LOCAL_FREE",
+    "foreign_weights": false,
+    "model_parameters": 10000640,
+    "paid_compute": false,
+    "tokenizer": "s0-byte-v1",
+    "universal_clipping_claim": false
+  },
+  "worker_id": "TRAIN-325-10M-CLIPPING-FINAL-V3"
+}
