@@ -1,0 +1,71 @@
+name: NEXT100-102 converged global cross-source dedup
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "configs/data/next100_102_cross_source_dedup_converged_v1.json"
+      - "src/twelve_six/data/cross_source_capacity_audit_v4.py"
+      - "tools/run_next100_102_cross_source_dedup_converged.py"
+      - "tests/test_next100_102_cross_source_dedup_converged.py"
+      - ".github/workflows/next100-102-cross-source-dedup-converged.yml"
+  push:
+    branches:
+      - "next100-102/global-cross-source-dedup-v4-20260826"
+
+permissions:
+  contents: read
+
+env:
+  TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
+  PYTHONPATH: src
+
+jobs:
+  dedup:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Bind PDF extractor
+        run: |
+          set -euo pipefail
+          pdftotext -v 2>&1 | head -n 1
+          pdftotext -v 2>&1 | head -n 1 | grep -F "24.02"
+      - name: Compile and unit-test convergence layer
+        run: |
+          set -euo pipefail
+          python -m py_compile src/twelve_six/data/cross_source_capacity_audit_v4.py
+          python -m py_compile tools/run_next100_102_cross_source_dedup_converged.py
+          python -m unittest tests.test_next100_102_cross_source_dedup_converged -v
+      - name: Execute exact 22-object global dedup
+        run: |
+          set -euo pipefail
+          python tools/run_next100_102_cross_source_dedup_converged.py run \
+            --config configs/data/next100_102_cross_source_dedup_converged_v1.json \
+            --report /tmp/next100_102_report.json \
+            --repo-root .
+          python tools/run_next100_102_cross_source_dedup_converged.py verify \
+            --report /tmp/next100_102_report.json
+      - name: Emit bounded summary
+        run: |
+          python - <<'PY'
+          import json
+          p = json.load(open('/tmp/next100_102_report.json', encoding='utf-8'))
+          print('source_count=', p['source_count'])
+          print('pre_dedup_declared_capacity_bytes=', p['pre_dedup_declared_capacity_bytes'])
+          print('post_dedup_conservative_unique_capacity_bytes=', p['post_dedup_conservative_unique_capacity_bytes'])
+          print('duplicate_discount_bytes=', p['duplicate_discount_bytes'])
+          print('report_sha256=', p['report_sha256'])
+          print('training_authorized=', p['claim_boundary']['training_authorized'])
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: next100-102-cross-source-dedup-report
+          path: /tmp/next100_102_report.json
+          if-no-files-found: error
+          retention-days: 30
