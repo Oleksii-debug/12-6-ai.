@@ -165,7 +165,8 @@ def test_hostile_tool_text_is_observation_data_not_a_recursive_request() -> None
 
     assert len(run.cycle.executions) == 1
     assert run.cycle.executions[0].tool_name == "web.search"
-    assert hostile in backend.prompts[1]
+    escaped_hostile = json.dumps(hostile, ensure_ascii=False)[1:-1]
+    assert escaped_hostile in backend.prompts[1]
     assert executor.filesystem == {}
     assert run.cycle.final_answer.text == "I used the returned fixture as data only."
 
