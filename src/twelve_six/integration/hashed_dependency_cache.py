@@ -1,6 +1,6 @@
 """Safe exact-lock wheelhouse caching for CI dependency setup.
 
-The cache is acceleration only.  Correctness remains anchored by committed purpose
+The cache is acceleration only. Correctness remains anchored by committed purpose
 profiles and exact-hash lock files; installs must still use pip --require-hashes.
 """
 
@@ -22,6 +22,7 @@ _HASH = re.compile(r"--hash=sha256:([0-9a-f]{64})")
 _REQUIREMENT = re.compile(r"^([A-Za-z0-9][A-Za-z0-9._-]*)==([^\s;@/\\]+)(.*)$")
 _NAME_NORMALIZER = re.compile(r"[-_.]+")
 _FORBIDDEN_CPU_PREFIXES = ("nvidia-", "cuda-", "triton", "pytorch-triton")
+_LINUX_PURPOSE_KINDS = {"linux-overlay", "linux-base-role"}
 
 
 class DependencyCacheError(RuntimeError):
@@ -141,11 +142,15 @@ def _collect_locks(
     *,
     seen_paths: set[str],
     identities: list[LockIdentity],
+    groups: Iterable[str] | None = None,
 ) -> None:
     locks = document.get("locks", {})
     if not isinstance(locks, dict):
         raise DependencyCacheError("profile locks must be an object")
-    for name in sorted(locks):
+    selected = tuple(groups) if groups is not None else tuple(sorted(locks))
+    for name in selected:
+        if name not in locks:
+            raise DependencyCacheError(f"required lock group is missing: {name}")
         record = locks[name]
         if not isinstance(record, dict) or not record.get("path"):
             raise DependencyCacheError(f"malformed lock record: {name}")
@@ -165,7 +170,7 @@ def _collect_locks(
 
 
 def resolve_profile(root: Path, profile_path: str) -> ProfileResolution:
-    """Resolve one purpose profile and every exact component lock it consumes."""
+    """Resolve exactly the component locks consumed by the D08 purpose profile."""
 
     root = root.resolve()
     path = _safe_path(root, profile_path)
@@ -186,11 +191,12 @@ def resolve_profile(root: Path, profile_path: str) -> ProfileResolution:
     locks: list[LockIdentity] = []
     seen_paths: set[str] = set()
     support_profiles: list[tuple[str, str]] = []
+    kind = str(profile.get("kind", ""))
 
     base_ref = profile.get("base_profile")
-    if base_ref is not None:
+    if kind in _LINUX_PURPOSE_KINDS:
         if not isinstance(base_ref, dict) or not base_ref.get("path"):
-            raise DependencyCacheError("malformed base_profile reference")
+            raise DependencyCacheError("Linux purpose profile lacks base_profile reference")
         base_relative = str(base_ref["path"])
         base_path = _safe_path(root, base_relative)
         if not base_path.is_file():
@@ -201,9 +207,39 @@ def resolve_profile(root: Path, profile_path: str) -> ProfileResolution:
             raise DependencyCacheError("base profile file hash mismatch")
         base = _load_json(base_path)
         support_profiles.append((base_relative, base_sha))
-        _collect_locks(root, base, seen_paths=seen_paths, identities=locks)
+        _collect_locks(
+            root,
+            base,
+            seen_paths=seen_paths,
+            identities=locks,
+            groups=("toolchain", "runtime"),
+        )
+        purpose_locks = profile.get("locks", {})
+        if not isinstance(purpose_locks, dict):
+            raise DependencyCacheError("purpose profile locks must be an object")
+        if "overlay" in purpose_locks:
+            _collect_locks(
+                root,
+                profile,
+                seen_paths=seen_paths,
+                identities=locks,
+                groups=("overlay",),
+            )
+    elif kind == "windows-runtime":
+        _collect_locks(
+            root,
+            profile,
+            seen_paths=seen_paths,
+            identities=locks,
+            groups=("toolchain", "runtime"),
+        )
+    else:
+        # Synthetic fixtures and future standalone profiles can still be reasoned about
+        # locally; the workflow separately requires repository authority validation.
+        if base_ref is not None:
+            raise DependencyCacheError(f"unsupported purpose profile kind with base_profile: {kind!r}")
+        _collect_locks(root, profile, seen_paths=seen_paths, identities=locks)
 
-    _collect_locks(root, profile, seen_paths=seen_paths, identities=locks)
     if not locks:
         raise DependencyCacheError("purpose profile resolves to no dependency locks")
 
@@ -293,8 +329,8 @@ def build_manifest(
             "semantic_sha256": resolution.profile_semantic_sha256,
         },
         "support_profiles": [
-            {"path": path, "file_sha256": digest}
-            for path, digest in resolution.support_profiles
+            {"path": support_path, "file_sha256": digest}
+            for support_path, digest in resolution.support_profiles
         ],
         "component_locks": [
             {
@@ -308,13 +344,12 @@ def build_manifest(
     identity = _sha256_bytes(_canonical_bytes(payload))
     safe_profile = re.sub(r"[^A-Za-z0-9_.-]+", "-", resolution.profile_id)
     key = f"ci164-v1-{system.lower()}-{machine}-py{version}-{safe_profile}-{identity}"
-    manifest = {
+    return {
         "schema_version": MANIFEST_SCHEMA,
         "cache_key": key,
         "identity_sha256": identity,
         **payload,
     }
-    return manifest
 
 
 def validate_manifest_files(root: Path, manifest: dict[str, Any]) -> None:
@@ -352,7 +387,9 @@ def verify_wheelhouse(root: Path, manifest: dict[str, Any], wheelhouse: Path) ->
         raise DependencyCacheError("wheelhouse path is not a directory")
 
     wheels = sorted(wheelhouse.glob("*.whl"))
-    unexpected = sorted(path.name for path in wheelhouse.iterdir() if path.is_file() and path.suffix != ".whl")
+    unexpected = sorted(
+        path.name for path in wheelhouse.iterdir() if path.is_file() and path.suffix != ".whl"
+    )
     if unexpected:
         raise DependencyCacheError(f"wheelhouse contains non-wheel files: {unexpected}")
     total = 0
