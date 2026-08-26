@@ -9,6 +9,9 @@ on:
       - "configs/runs/s3_10m_scale03_gpu_pilot.json"
       - "docs/S3_10M_SCALE03_ENGINEERING.md"
       - ".github/workflows/scale03-s3-10m-runtime.yml"
+      - "tools/ci_dependency_preflight.py"
+      - "tools/ci153_workflow_dependency_auditor.py"
+      - "ci/ci153_legacy_exemptions.json"
   workflow_dispatch:
 
 permissions:
@@ -33,6 +36,13 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.11.16"
+
+      - name: Dependency and workflow-command preflight before environment install
+        run: >-
+          python tools/ci_dependency_preflight.py
+          --profile linux-x86_64
+          --source-sha "$SOURCE_SHA"
+          --output scale03-ci-preflight.json
 
       - name: Verify D08 locked environment and repository checks
         run: >-
@@ -126,6 +136,7 @@ jobs:
         with:
           name: scale03-s3-10m-evidence-${{ env.SOURCE_SHA }}
           path: |
+            scale03-ci-preflight.json
             locked-environment-linux-x86_64.json
             s3-10m-engineering-evidence.json
           if-no-files-found: error
