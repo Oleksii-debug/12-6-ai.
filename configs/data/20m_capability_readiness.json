@@ -1,0 +1,14 @@
+{
+  "schema_version": "12-6.corpus-readiness-policy.v1",
+  "policy_id": "model341-20m-capability-pretraining-v1",
+  "intent": "capability_pretraining",
+  "model_candidate_path": "configs/candidates/model341_20m_candidate_a.json",
+  "corpus_manifest_path": "data/corpus/v0.1/manifest.json",
+  "min_train_tokens_per_parameter": 20.0,
+  "min_external_training_eligible_sources": 1,
+  "require_external_training_data": true,
+  "require_external_source_diversity": true,
+  "require_zero_train_validation_overlap": true,
+  "required_strata": ["uk", "en", "code"],
+  "rationale": "Fail-closed floor for serious byte-level capability pretraining. With the canonical byte tokenizer, byte_tokens are training tokens. The 20 tokens/parameter floor is a research-informed planning threshold, not a quality guarantee and not compute authorization."
+}
