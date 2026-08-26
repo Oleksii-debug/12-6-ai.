@@ -19,6 +19,7 @@ def _spec(**overrides) -> DataTroveMinhashSpec:
         "output_uri": "file:///tmp/output",
         "work_uri": "file:///tmp/minhash-work",
         "logging_uri": "file:///tmp/minhash-logs",
+        "language": "uk",
         "signature_tasks": 32,
         "workers": 4,
     }
@@ -35,8 +36,11 @@ def test_runtime_plan_matches_datatrove_0100_public_minhash_shape() -> None:
     assert spec.total_signature_hashes == 112
     assert spec.n_grams == 5
     assert spec.hash_precision == 64
+    assert manifest["language"] == "uk"
     assert manifest["datatrove_version"] == "0.10.0"
     assert manifest["total_signature_hashes"] == 112
+    assert manifest["within_partition_near_dedup"] is True
+    assert manifest["global_cross_partition_dedup_claimed"] is False
     assert len(manifest["plan_sha256"]) == 64
 
 
@@ -58,12 +62,16 @@ def test_runtime_plan_rejects_unsafe_or_unvalidated_variants() -> None:
         _spec(hash_precision=32)
     with pytest.raises(DataTroveMinhashError, match="version"):
         _spec(datatrove_version="0.9.0")
+    with pytest.raises(DataTroveMinhashError, match="language"):
+        _spec(language="")
 
 
 def test_runtime_manifest_is_deterministic_and_parameter_sensitive() -> None:
     first = _spec().manifest()
     second = _spec().manifest()
-    changed = _spec(n_grams=6).manifest()
+    changed_ngram = _spec(n_grams=6).manifest()
+    changed_language = _spec(language="en").manifest()
 
     assert first == second
-    assert first["plan_sha256"] != changed["plan_sha256"]
+    assert first["plan_sha256"] != changed_ngram["plan_sha256"]
+    assert first["plan_sha256"] != changed_language["plan_sha256"]
