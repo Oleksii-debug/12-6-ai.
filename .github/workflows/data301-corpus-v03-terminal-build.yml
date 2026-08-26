@@ -1,0 +1,52 @@
+name: DATA-301 Corpus V03 Terminal Build
+
+on:
+  push:
+    branches:
+      - "data301/corpus-v03-terminal-build-20260826"
+    paths:
+      - "configs/data/data301_corpus_v03_terminal_build_v1.json"
+      - "tools/validate_data301_corpus_v03_terminal_build.py"
+      - "tests/test_data301_corpus_v03_terminal_build.py"
+      - "docs/DATA301_CORPUS_V03_TERMINAL_BUILD.md"
+      - ".github/workflows/data301-corpus-v03-terminal-build.yml"
+  pull_request:
+    paths:
+      - "configs/data/data301_corpus_v03_terminal_build_v1.json"
+      - "tools/validate_data301_corpus_v03_terminal_build.py"
+      - "tests/test_data301_corpus_v03_terminal_build.py"
+      - "docs/DATA301_CORPUS_V03_TERMINAL_BUILD.md"
+      - ".github/workflows/data301-corpus-v03-terminal-build.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  terminal-evidence:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact DATA-301 candidate
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Show local Python runtime
+        run: python3 --version
+
+      - name: Compile self-contained validators
+        run: |
+          python3 -m py_compile \
+            tools/validate_data300_corpus_v03_build_contract_v2.py \
+            tools/validate_data301_corpus_v03_terminal_build.py \
+            tests/test_data301_corpus_v03_terminal_build.py
+
+      - name: Revalidate frozen DATA-300 v2 authority
+        run: python3 tools/validate_data300_corpus_v03_build_contract_v2.py validate-contract
+
+      - name: Validate DATA-301 terminal blocker and Product Trainer streaming
+        run: python3 tools/validate_data301_corpus_v03_terminal_build.py validate
+
+      - name: Run focused DATA-301 tests
+        run: python3 tests/test_data301_corpus_v03_terminal_build.py
