@@ -1,0 +1,67 @@
+name: EVAL-303 Selection Validation Composite V1
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "eval303/selection-validation-composite-20260826"
+    paths:
+      - ".github/workflows/eval303-selection-validation-composite-v1.yml"
+      - "configs/evaluation/eval303_selection_validation_composite_v1.json"
+      - "data/evaluation/eval303/selection-validation/composite-membership.jsonl"
+      - "evidence/eval303/data300-exact-exclusion-proof-v1.json"
+      - "tools/validate_eval303_selection_validation_composite.py"
+      - "tests/test_eval303_selection_validation_composite.py"
+      - "docs/EVAL303_SELECTION_VALIDATION_COMPOSITE_V1.md"
+
+permissions:
+  contents: read
+
+env:
+  PYTHONPATH: .
+
+jobs:
+  immutable-selection-composite:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Bind exact source checkout
+        run: test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+
+      - name: Universal exact execution bootstrap
+        uses: ./.github/actions/execution-bootstrap
+        with:
+          capabilities: runtime,tests
+          venv: .eval303
+          manifest: eval303-environment.json
+          command: python -m pytest -q tests/test_eval303_selection_validation_composite.py
+
+      - name: Focused verification
+        run: |
+          set -euo pipefail
+          .eval303/bin/python -m compileall -q tools/validate_eval303_selection_validation_composite.py
+          .eval303/bin/python -m pytest -q tests/test_eval303_selection_validation_composite.py
+          .eval303/bin/python tools/validate_eval303_selection_validation_composite.py verify
+
+      - name: Two deterministic materializations
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/eval303-a /tmp/eval303-b
+          .eval303/bin/python tools/validate_eval303_selection_validation_composite.py materialize --output-dir /tmp/eval303-a
+          .eval303/bin/python tools/validate_eval303_selection_validation_composite.py materialize --output-dir /tmp/eval303-b
+          diff -ru /tmp/eval303-a /tmp/eval303-b
+          diff -ru configs/evaluation/eval303_selection_validation_composite_v1.json /tmp/eval303-a/configs/evaluation/eval303_selection_validation_composite_v1.json
+          diff -ru data/evaluation/eval303/selection-validation/composite-membership.jsonl /tmp/eval303-a/data/evaluation/eval303/selection-validation/composite-membership.jsonl
+          diff -ru evidence/eval303/data300-exact-exclusion-proof-v1.json /tmp/eval303-a/evidence/eval303/data300-exact-exclusion-proof-v1.json
+
+      - name: Print authority verdict
+        run: .eval303/bin/python tools/validate_eval303_selection_validation_composite.py verify
