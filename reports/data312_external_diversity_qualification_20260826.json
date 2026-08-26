@@ -1,0 +1,212 @@
+{
+  "candidate_authority": {
+    "branch": "data300/corpus-v03-frozen-build-contract-20260826",
+    "contract_git_blob_sha1": "39d4fa07ea17e66e042a3ccb1a55b8e5e1c5d7bf",
+    "contract_identity_sha256": "07d7beaaff4616e839450de6af3d407855c832bf75a24a959d1a12de5d9364e5",
+    "contract_path": "configs/data/data300_corpus_v03_frozen_build_contract_v2.json",
+    "corpus_state": "NOT_BUILT_NOT_FROZEN_NOT_TERMINAL",
+    "head_sha": "8ea7f830e50a23754d189dd4134f4afad76a7ee9"
+  },
+  "execution_profile": "LOCAL_FREE",
+  "measurements": {
+    "by_language_or_stratum": {
+      "code": {
+        "entropy": {
+          "effective_family_count": 1.549410467986,
+          "normalized_entropy": 0.631719391823,
+          "shannon_bits": 0.631719391823,
+          "shannon_nats": 0.437874515347
+        },
+        "independent_family_count": 2,
+        "inventory_unique_bytes": 9703,
+        "share_of_total": 0.05300418986,
+        "share_of_total_percent": 5.300419,
+        "source_object_count": 2,
+        "top_family": "github:encode/httpx",
+        "top_family_share_within_stratum": 0.841080078326,
+        "top_family_share_within_stratum_percent": 84.108008
+      },
+      "en": {
+        "entropy": {
+          "effective_family_count": 1.0,
+          "normalized_entropy": 0.0,
+          "shannon_bits": -0.0,
+          "shannon_nats": -0.0
+        },
+        "independent_family_count": 1,
+        "inventory_unique_bytes": 84793,
+        "share_of_total": 0.463195328333,
+        "share_of_total_percent": 46.319533,
+        "source_object_count": 2,
+        "top_family": "en.standardebooks.manual",
+        "top_family_share_within_stratum": 1.0,
+        "top_family_share_within_stratum_percent": 100.0
+      },
+      "uk": {
+        "entropy": {
+          "effective_family_count": 1.0,
+          "normalized_entropy": 0.0,
+          "shannon_bits": -0.0,
+          "shannon_nats": -0.0
+        },
+        "independent_family_count": 1,
+        "inventory_unique_bytes": 88565,
+        "share_of_total": 0.483800481807,
+        "share_of_total_percent": 48.380048,
+        "source_object_count": 1,
+        "top_family": "ua.rada.open-data.laws-texts",
+        "top_family_share_within_stratum": 1.0,
+        "top_family_share_within_stratum_percent": 100.0
+      }
+    },
+    "by_modality": {
+      "code": {
+        "independent_family_count": 2,
+        "inventory_unique_bytes": 9703,
+        "share_of_total": 0.05300418986,
+        "share_of_total_percent": 5.300419,
+        "source_object_count": 2
+      },
+      "text": {
+        "independent_family_count": 2,
+        "inventory_unique_bytes": 173358,
+        "share_of_total": 0.94699581014,
+        "share_of_total_percent": 94.699581,
+        "source_object_count": 3
+      }
+    },
+    "families": [
+      {
+        "family": "ua.rada.open-data.laws-texts",
+        "inventory_unique_bytes": 88565,
+        "modalities": [
+          "text"
+        ],
+        "share_of_total": 0.483800481807,
+        "share_of_total_percent": 48.380048,
+        "source_object_count": 1,
+        "strata": [
+          "uk"
+        ]
+      },
+      {
+        "family": "en.standardebooks.manual",
+        "inventory_unique_bytes": 84793,
+        "modalities": [
+          "text"
+        ],
+        "share_of_total": 0.463195328333,
+        "share_of_total_percent": 46.319533,
+        "source_object_count": 2,
+        "strata": [
+          "en"
+        ]
+      },
+      {
+        "family": "github:encode/httpx",
+        "inventory_unique_bytes": 8161,
+        "modalities": [
+          "code"
+        ],
+        "share_of_total": 0.044580768159,
+        "share_of_total_percent": 4.458077,
+        "source_object_count": 1,
+        "strata": [
+          "code"
+        ]
+      },
+      {
+        "family": "github:psf/requests",
+        "inventory_unique_bytes": 1542,
+        "modalities": [
+          "code"
+        ],
+        "share_of_total": 0.008423421701,
+        "share_of_total_percent": 0.842342,
+        "source_object_count": 1,
+        "strata": [
+          "code"
+        ]
+      }
+    ],
+    "independent_family_count": 4,
+    "inventory_unique_bytes": 183061,
+    "overall_family_entropy": {
+      "effective_family_count": 2.427010176022,
+      "normalized_entropy": 0.639590078733,
+      "shannon_bits": 1.279180157465,
+      "shannon_nats": 0.886660119575
+    },
+    "source_object_count": 5,
+    "top_family": {
+      "family": "ua.rada.open-data.laws-texts",
+      "inventory_unique_bytes": 88565,
+      "share_of_total": 0.483800481807,
+      "share_of_total_percent": 48.380048
+    }
+  },
+  "preregistered_diversity_authority": {
+    "config_git_blob_sha1": "a3195511fd85805ab57b481f19e86ddc8e951ce0",
+    "dedicated_workflow_conclusion": "success",
+    "dedicated_workflow_run": 32966862418,
+    "family_identity_rule": "Independent upstream publisher/project lineage; mirrors, forks, vendored copies, generated derivatives, and duplicated documents do not create new families.",
+    "hard_thresholds": {
+      "maximum_family_share_of_total": 0.25,
+      "maximum_family_share_within_stratum": 0.6,
+      "minimum_independent_families_per_stratum": 2
+    },
+    "head_sha": "9498e78da5a9fa239e39f5c145d6fd986ebed7b4",
+    "selected_policy": "continuity_45_35_20",
+    "stratum_fraction": {
+      "code": 0.2,
+      "en": 0.35,
+      "uk": 0.45
+    },
+    "worker_id": "DATA-295-BALANCE-POLICY-20M-V1"
+  },
+  "repair_boundary": {
+    "current_frozen_contract_can_accept_silent_source_additions": false,
+    "replay_or_document_duplication_can_fix": false,
+    "required_direction": "Acquire independently authorized UK and EN family lineages, and rebalance/subsample dominant families (including code) under a successor DATA-300 contract before corpus freeze."
+  },
+  "schema_version": "12-6.data312-external-diversity-qualification.v1",
+  "threshold_evaluation": {
+    "maximum_family_share_of_total": {
+      "pass": false,
+      "threshold": 0.25,
+      "threshold_percent": 25.0,
+      "violating_families": [
+        "ua.rada.open-data.laws-texts",
+        "en.standardebooks.manual"
+      ]
+    },
+    "maximum_family_share_within_stratum": {
+      "pass": false,
+      "threshold": 0.6,
+      "threshold_percent": 60.0,
+      "violating_strata": [
+        "code",
+        "en",
+        "uk"
+      ]
+    },
+    "minimum_independent_families_per_stratum": {
+      "failing_strata": [
+        "en",
+        "uk"
+      ],
+      "pass": false,
+      "threshold": 2
+    }
+  },
+  "truth_boundary": {
+    "entropy_and_effective_family_count_are_descriptive_only": true,
+    "entropy_threshold_preregistered": false,
+    "measurement_unit": "authority-declared unique training-eligible source bytes at the frozen candidate inventory",
+    "post_wave3_terminal_deduplicated_corpus_unique_bytes_claimed": false,
+    "same_declared_family_is_collapsed_across_multiple_files": true,
+    "source_objects_are_not_independent_families": true
+  },
+  "verdict": "FAIL_DIVERSITY",
+  "worker_id": "DATA-312-EXTERNAL-DIVERSITY-QUALIFICATION"
+}

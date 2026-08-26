@@ -1,0 +1,29 @@
+name: DATA-312 external diversity qualification
+
+on:
+  push:
+    branches:
+      - data312/external-diversity-qualification-20260826
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile qualifier
+        run: python -m py_compile tools/qualify_data312_external_diversity.py
+      - name: Recompute and verify frozen report
+        run: >-
+          python tools/qualify_data312_external_diversity.py
+          --contract configs/data/data300_corpus_v03_frozen_build_contract_v2.json
+          --check-report reports/data312_external_diversity_qualification_20260826.json
