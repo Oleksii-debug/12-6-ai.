@@ -53,13 +53,23 @@ jobs:
           test "$VERIFY218_HEAD_SHA" != "$PRODUCER_SHA"
           .verify218/bin/ruff check \
             src/twelve_six/verify218_learned_10m.py \
+            src/twelve_six/verify218_resume_probe.py \
+            src/twelve_six/verify218_authority_bridge.py \
             tests/test_verify218_learned_10m.py
           .verify218/bin/python -m compileall -q \
             src/twelve_six/verify218_learned_10m.py \
+            src/twelve_six/verify218_resume_probe.py \
+            src/twelve_six/verify218_authority_bridge.py \
             tests/test_verify218_learned_10m.py
           if grep -En '\b(Trainer|optimizer\.step|backward|save_checkpoint|save_trainer_checkpoint)\b' \
             src/twelve_six/verify218_learned_10m.py; then
-            echo "VERIFY-218 must remain verification-only and contain no training mutation path" >&2
+            echo "VERIFY-218 scientific evaluator must contain no trainer or update path" >&2
+            exit 1
+          fi
+          if grep -En '(optimizer\.step|scheduler\.step|\.backward\(|train_microbatch\(|\.run\()' \
+            src/twelve_six/verify218_resume_probe.py \
+            src/twelve_six/verify218_authority_bridge.py; then
+            echo "VERIFY-218 recovery/authority probes must restore only and never update" >&2
             exit 1
           fi
 
@@ -87,6 +97,14 @@ jobs:
             --repo-root . \
             --artifact-root learned-artifacts/learn217 \
             --verifier-head-sha "$VERIFY218_HEAD_SHA" \
+            --output reports/verify218/detailed-authority.json
+
+      - name: Execute fresh-process recovery and downstream authority bridge
+        run: |
+          set -euo pipefail
+          .verify218/bin/python -m twelve_six.verify218_authority_bridge \
+            --detailed reports/verify218/detailed-authority.json \
+            --artifact-root learned-artifacts/learn217 \
             --output reports/verify218/authority.json
 
       - name: Enforce terminal authority contract
@@ -101,17 +119,41 @@ jobs:
           value = json.loads(path.read_text(encoding='utf-8'))
           supplied = value.pop('identity_sha256')
           assert supplied == hash_json(value)
-          assert value['worker'] == 'VERIFY-218-LEARNED-10M-INDEPENDENT'
-          assert value['state'] == 'VERIFIED_LEARNED_10M'
+          assert value['worker_id'] == 'VERIFY-218-LEARNED-10M-INDEPENDENT'
+          assert value['status'] == 'VERIFIED_LEARNED_10M'
+          assert value['verified_learned_10m'] is True
+          assert value['foreign_pretrained_weights'] is False
+          assert value['mechanics_only_checkpoint'] is False
+          assert value['one_step_smoke'] is False
           assert value['producer']['git_sha'] == 'c02c8aa38e691521ae2ab6a4ff3ea1d643efd6ef'
           assert value['producer']['artifact_id'] == 9602650341
           assert value['producer']['artifact_zip_sha256'] == '8631e90417e40365b3fc0d6bc98ee6adda5a4ed24530e675d9a91c93219537ee'
           assert value['model']['parameter_count'] == 10000640
           assert value['model']['model_spec_sha256'] == '61caa5469123e23b9b72fc2024140bfca84c4c480dcb0a7e712ba800a4f22998'
-          assert value['data_and_eval']['corpus_identity_sha256'] == '422f545da93526ceba2c0ff738e0b9deac65f35bfb31d87d2aab068cda091fc8'
-          assert value['data_and_eval']['ladder_common_evaluation_identity_sha256'] == '7189e6df053574beb686727c94e684cdbaf08a34ef33aa953eff7cdae0320113'
-          assert value['data_and_eval']['best_improved_over_reconstructed_random_init'] is True
-          assert value['data_and_eval']['final_improved_over_reconstructed_random_init'] is True
+          assert value['tokenizer']['version'] == 's0-byte-v1'
+          assert value['tokenizer']['config_sha256'] == 'b04055c1061dd641dcab7cb9d62a931f09b8d1a070140a926ceb4e91d73ca8e1'
+          assert value['tokenizer']['vocab_sha256'] == '905ed40bb42cc4d550e228ff5f24158d504b38e8ed5974dfa3077bd5867ad571'
+          assert value['corpus_identity_sha256'] == '422f545da93526ceba2c0ff738e0b9deac65f35bfb31d87d2aab068cda091fc8'
+          assert value['source']['artifact_id'] == 9602650341
+          assert value['source']['artifact_name'] == 'learn217-terminal-10m-learned-base'
+          assert value['source']['artifact_digest'] == 'sha256:8631e90417e40365b3fc0d6bc98ee6adda5a4ed24530e675d9a91c93219537ee'
+          assert value['source']['workflow_run_id'] == 32952787070
+          assert value['source']['source_sha'] == 'c02c8aa38e691521ae2ab6a4ff3ea1d643efd6ef'
+          assert value['checkpoint']['role'] == 'best'
+          assert value['checkpoint']['step'] > 0
+          assert value['checkpoint']['tokens_seen'] > 0
+          for gate in (
+              'checkpoint_integrity',
+              'fresh_process_resume',
+              'finite_first_party_logits',
+              'heldout_bpb',
+              'evaluation_non_mutation',
+              'greedy_generation',
+              'best_final_role_resolution',
+          ):
+              assert value['gates'][gate] is True
+          assert value['fresh_process_resume']['training_executed'] is False
+          assert value['fresh_process_resume']['optimizer_updates'] == 0
           assert value['boundaries']['training_executed'] is False
           assert value['boundaries']['optimizer_updates'] == 0
           assert value['boundaries']['paid_compute'] is False
@@ -129,4 +171,5 @@ jobs:
           retention-days: 30
           path: |
             reports/verify218/environment.json
+            reports/verify218/detailed-authority.json
             reports/verify218/authority.json
