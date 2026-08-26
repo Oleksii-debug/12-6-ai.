@@ -25,13 +25,13 @@ class Next100063SourceRegistryConvergenceTests(unittest.TestCase):
         self.assertEqual(report["status"], "PASS")
         self.assertEqual(
             report["capacity_bytes"],
-            {"uk": 100856, "en": 144151, "code": 69133, "total": 314140},
+            {"uk": 100856, "en": 150643, "code": 69133, "total": 320632},
         )
         self.assertEqual(
             report["family_counts"],
-            {"uk": 4, "en": 2, "code": 4, "total": 10},
+            {"uk": 4, "en": 3, "code": 4, "total": 11},
         )
-        self.assertEqual(report["numeric_source_object_count"], 21)
+        self.assertEqual(report["numeric_source_object_count"], 22)
         self.assertEqual(report["next_gate"], "GLOBAL_CROSS_SOURCE_DEDUP")
 
     def test_nonterminal_late_workflow_fails_closed(self) -> None:
@@ -52,14 +52,25 @@ class Next100063SourceRegistryConvergenceTests(unittest.TestCase):
         with self.assertRaises(module.ValidationError):
             module.validate(broken)
 
-    def test_workflow_name_drift_fails_closed_even_if_run_is_success(self) -> None:
+    def test_mdn_credit_is_bound_to_terminal_dedicated_workflow(self) -> None:
         broken = copy.deepcopy(self.data)
-        verba = next(
+        mdn = next(
             row
             for row in broken["late_authorities"]
-            if row["worker_id"] == "NEXT100-027-DATA-UA-PUBLIC-DOMAIN-LIT"
+            if row["worker_id"] == "NEXT100-038-DATA-EN-MDN"
         )
-        verba["workflow_name"] = "DATA-21-22 External Source Intake"
+        mdn["workflow_conclusion"] = "failure"
+        with self.assertRaises(module.ValidationError):
+            module.validate(broken)
+
+    def test_mdn_prose_only_status_is_exactly_bound(self) -> None:
+        broken = copy.deepcopy(self.data)
+        mdn = next(
+            row
+            for row in broken["late_authorities"]
+            if row["worker_id"] == "NEXT100-038-DATA-EN-MDN"
+        )
+        mdn["terminal_status"] = "ADMIT"
         with self.assertRaises(module.ValidationError):
             module.validate(broken)
 
@@ -73,6 +84,20 @@ class Next100063SourceRegistryConvergenceTests(unittest.TestCase):
         cpython["numeric_capacity_bytes"] = 17901
         cpython["independent_family_credit"] = 1
         cpython["capacity_object_count"] = 14
+        with self.assertRaises(module.ValidationError):
+            module.validate(broken)
+
+    def test_base_stratum_drift_fails_even_if_total_is_preserved(self) -> None:
+        broken = copy.deepcopy(self.data)
+        base = broken["base_authority"]["numeric_capacity_bytes"]
+        base["uk"] -= 100
+        base["en"] += 100
+        with self.assertRaises(module.ValidationError):
+            module.validate(broken)
+
+    def test_failed_dedicated_workflow_credit_policy_cannot_relax(self) -> None:
+        broken = copy.deepcopy(self.data)
+        broken["credit_policy"]["failed_dedicated_workflow_credit"] = 1
         with self.assertRaises(module.ValidationError):
             module.validate(broken)
 
