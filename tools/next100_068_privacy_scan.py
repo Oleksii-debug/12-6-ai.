@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Hash-safe privacy V3 scan of the frozen terminal source vector.
 
-The scanner downloads exact immutable objects, verifies byte length and SHA-256,
-and emits only source ids, whole-object hashes, byte counts, actions, and detector
-counts. It never emits source text, previews, matched values, or per-match hashes.
+Downloads exact immutable objects, verifies byte length and SHA-256, then emits
+only source ids, whole-object hashes, byte counts, actions, and detector counts.
+Source text, previews, matched values, and per-match hashes are never emitted.
 """
 from __future__ import annotations
 
@@ -65,6 +65,9 @@ def main() -> int:
     manifest["all_source_identities_verified"] = True
     manifest["all_matched_private_values_retained"] = False
     manifest["all_matched_private_value_hashes_retained"] = False
+    # build_manifest's manifest_sha256 binds its own stable core. This second
+    # identity binds the complete emitted evidence including per-source rows.
+    manifest["evidence_sha256"] = canonical_sha(manifest)
     assert_hash_safe_evidence(manifest)
 
     output = ROOT / args.output
@@ -75,7 +78,8 @@ def main() -> int:
         "action_counts": manifest["action_counts"],
         "detector_counts": manifest["detector_counts"],
         "inventory_sha256": inventory_sha,
-        "manifest_sha256": manifest["manifest_sha256"],
+        "manifest_core_sha256": manifest["manifest_sha256"],
+        "evidence_sha256": manifest["evidence_sha256"],
         "all_source_identities_verified": True,
     }, sort_keys=True))
     return 0
