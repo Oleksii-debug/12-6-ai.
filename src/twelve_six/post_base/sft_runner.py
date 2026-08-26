@@ -1,9 +1,8 @@
 """Mechanics-only supervised fine-tuning runner for the post-Base communication layer.
 
-The runner is deliberately framework-neutral. It exercises the orchestration boundary
-around a backend supplied by a later model-adapter worker, while enforcing that this
-worker can run only tiny local/project-owned fixtures. It never receives the canonical
-Base path as a mutable training target.
+The runner is framework-neutral and intentionally restricted to tiny project-owned or
+locally synthetic fixtures. It exercises post-Base orchestration without authorizing a
+real communication campaign or exposing canonical Base files as mutable training state.
 """
 
 from __future__ import annotations
@@ -72,7 +71,7 @@ def _normalized_metrics(metrics: Mapping[str, float], *, field: str) -> dict[str
     for name, value in metrics.items():
         _require_text(name, field=f"{field} metric name")
         if isinstance(value, bool) or not isinstance(value, (int, float)):
-            raise ValueError(f"{field} metric {name!r} must be numeric")
+            raise TypeError(f"{field} metric {name!r} must be numeric")
         numeric = float(value)
         if not math.isfinite(numeric):
             raise ValueError(f"{field} metric {name!r} must be finite")
@@ -201,12 +200,7 @@ class SFTMechanicsDataset:
             }
             for source_id, source_kind, source_revision, generator_id in sorted(
                 sources,
-                key=lambda item: (
-                    item[0],
-                    item[1],
-                    item[2],
-                    item[3] or "",
-                ),
+                key=lambda item: (item[0], item[1], item[2], item[3] or ""),
             )
         ]
         return _sha256(payload)
@@ -236,8 +230,7 @@ class SFTMechanicsDataset:
         )
 
     def require_contract_match(self, contract: PostBaseConsumptionContract) -> None:
-        expected = self.to_contract_provenance()
-        if contract.dataset != expected:
+        if contract.dataset != self.to_contract_provenance():
             raise ValueError("mechanics fixture identities do not match the communication contract")
 
 
@@ -283,12 +276,6 @@ class SFTMechanicsPlan:
 
 @runtime_checkable
 class SFTMechanicsBackend(Protocol):
-    """Minimal backend contract used by the mechanics runner.
-
-    A real model adapter may implement this later. POSTBASE-353 tests use a tiny
-    deterministic scalar fixture backend only.
-    """
-
     backend_id: str
 
     def load_input_checkpoint(self, checkpoint_root: Path) -> object:
@@ -378,14 +365,13 @@ class SFTCheckpointStore:
 
     def _activate(self, generation: int, *, reason: str) -> None:
         manifest = self._read_manifest(generation)
-        manifest_sha256 = hashlib.sha256(_canonical_bytes(manifest)).hexdigest()
         _atomic_json(
             self.active_pointer,
             {
                 "schema": SFT_MECHANICS_SCHEMA,
                 "run_id": self.run_id,
                 "generation": generation,
-                "manifest_sha256": manifest_sha256,
+                "manifest_sha256": hashlib.sha256(_canonical_bytes(manifest)).hexdigest(),
                 "reason": reason,
             },
         )
@@ -469,8 +455,7 @@ class SFTCheckpointStore:
             raise ValueError("checkpoint backend_id does not match the requested backend")
         backend_root = self.generation_path(generation) / "backend"
         current_snapshot = snapshot_directory(backend_root)
-        expected = manifest.get("backend_snapshot_sha256")
-        if current_snapshot.identity_sha256 != expected:
+        if current_snapshot.identity_sha256 != manifest.get("backend_snapshot_sha256"):
             raise RuntimeError("checkpoint generation bytes do not match its immutable manifest")
         return backend.load_checkpoint(backend_root)
 
@@ -503,15 +488,18 @@ class SFTEvaluationStore:
         path = self.root / f"generation_{generation:06d}_{phase}.json"
         if path.exists():
             raise FileExistsError("evaluation evidence is immutable")
-        payload: dict[str, object] = {
-            "schema": SFT_MECHANICS_SCHEMA,
-            "run_id": self.run_id,
-            "generation": generation,
-            "phase": phase,
-            "evaluation_split_sha256": dataset.evaluation_split_sha256,
-            "metrics": normalized,
-        }
-        path.write_bytes(_canonical_bytes(payload))
+        path.write_bytes(
+            _canonical_bytes(
+                {
+                    "schema": SFT_MECHANICS_SCHEMA,
+                    "run_id": self.run_id,
+                    "generation": generation,
+                    "phase": phase,
+                    "evaluation_split_sha256": dataset.evaluation_split_sha256,
+                    "metrics": normalized,
+                }
+            )
+        )
         return path
 
 
@@ -554,12 +542,7 @@ def run_sft_mechanics(
     experiment_root: Path,
     backend: SFTMechanicsBackend,
 ) -> SFTMechanicsReceipt:
-    """Exercise SFT orchestration on a disjoint cloned fixture checkpoint.
-
-    This function is intentionally unavailable for real communication campaigns in
-    POSTBASE-353. The plan and dataset contracts both fail closed outside fixture-only,
-    LOCAL_FREE mechanics qualification.
-    """
+    """Exercise fixture-only SFT orchestration on a disjoint cloned checkpoint."""
 
     if backend.backend_id != plan.backend_id:
         raise ValueError("backend_id does not match the mechanics plan")
