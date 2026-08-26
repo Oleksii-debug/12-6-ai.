@@ -27,9 +27,28 @@ def _scientifically_ready() -> dict[str, object]:
         record["terminal"] = True
         record["evidence_ref"] = "issue:548#terminal-evidence-fixture"
 
+    pilot = packet["terminal_evidence"]["bounded_pilot"]
+    pilot["max_steps"] = 16
+    for key in (
+        "finite_loss",
+        "loss_decreased",
+        "gradient_health_passed",
+        "checkpoint_resume_passed",
+        "throughput_measured",
+        "evaluation_isolation_passed",
+    ):
+        pilot[key] = True
+
     recipe = packet["training_recipe"]
-    names = {"optimizer": "AdamW", "scheduler": "cosine", "precision": "bf16"}
-    for index, section_name in enumerate(("optimizer", "scheduler", "precision"), 7):
+    names = {
+        "optimizer": "AdamW",
+        "scheduler": "cosine",
+        "precision": "bf16",
+        "gradient_policy": "global_norm_clip",
+    }
+    for index, section_name in enumerate(
+        ("optimizer", "scheduler", "precision", "gradient_policy"), 7
+    ):
         recipe[section_name]["name"] = names[section_name]
         recipe[section_name]["config_sha256"] = format(index, "064x")
     recipe["seeds"] = [1234, 5678]
@@ -144,3 +163,44 @@ def test_compute_authorization_must_cover_declared_cost_envelope() -> None:
     result = evaluate_packet(packet)
     assert result["state"] == BLOCKED
     assert any(item["code"] == "COMPUTE_BUDGET_TOO_SMALL" for item in result["blockers"])
+
+
+def test_both_authorizations_cannot_bypass_failed_bounded_pilot() -> None:
+    packet = _scientifically_ready()
+    _authorize(packet)
+    packet["terminal_evidence"]["bounded_pilot"]["finite_loss"] = False
+    result = evaluate_packet(packet)
+    assert result["state"] == BLOCKED
+    assert result["training_may_start"] is False
+    assert any(
+        item["code"] == "BOUNDED_PILOT_NOT_QUALIFIED" for item in result["blockers"]
+    )
+
+
+def test_run_budget_cannot_exceed_unique_post_pack_exposure() -> None:
+    packet = _scientifically_ready()
+    _authorize(packet)
+    packet["training_recipe"]["budget"]["target_optimized_tokens"] = 20_000_001
+    result = evaluate_packet(packet)
+    assert result["state"] == BLOCKED
+    assert result["training_may_start"] is False
+    assert any(
+        item["code"] == "RUN_BUDGET_EXCEEDS_UNIQUE_EXPOSURE"
+        for item in result["blockers"]
+    )
+
+
+def test_gradient_policy_is_mandatory_recipe_authority() -> None:
+    packet = _scientifically_ready()
+    packet["training_recipe"]["gradient_policy"]["name"] = None
+    result = evaluate_packet(packet)
+    assert result["state"] == BLOCKED
+    assert any(item["code"] == "RECIPE_VALUE_MISSING" for item in result["blockers"])
+
+
+def test_nonfinite_cost_envelope_is_rejected() -> None:
+    packet = _scientifically_ready()
+    packet["resource_envelope"]["max_cost_usd"] = float("inf")
+    result = evaluate_packet(packet)
+    assert result["state"] == BLOCKED
+    assert any(item["code"] == "COST_ENVELOPE_INVALID" for item in result["blockers"])
