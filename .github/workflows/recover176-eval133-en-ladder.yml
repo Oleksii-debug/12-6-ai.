@@ -1,0 +1,230 @@
+name: RECOVER-176 EVAL-133 English on M150 ladder
+
+on:
+  pull_request:
+    branches:
+      - milestone150/learned-base-ladder-v1-20260826
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  eval133-m150-ladder:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      M150_SOURCE_SHA: "1037439f65c48529904be170064bf69d0c75d18b"
+      OMP_NUM_THREADS: "2"
+      MKL_NUM_THREADS: "2"
+    steps:
+      - name: Checkout exact recovery head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          path: recovery
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Checkout accepted M150 exact head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: 1037439f65c48529904be170064bf69d0c75d18b
+          path: m150
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up exact Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Prove recovery does not alter M150 model trainer checkpoint core
+        run: |
+          set -euo pipefail
+          test "$(git -C m150 rev-parse HEAD)" = "$M150_SOURCE_SHA"
+          git -C recovery diff --exit-code "$M150_SOURCE_SHA" -- \
+            src/twelve_six/model.py \
+            src/twelve_six/training \
+            src/twelve_six/checkpoint \
+            src/twelve_six/tokenization \
+            src/twelve_six/milestone100_first_learned.py \
+            src/twelve_six/milestone150_learned_base_ladder.py
+
+      - name: Install full hash-locked CPU runtime plus tests
+        run: |
+          set -euo pipefail
+          python -m venv recovery/.recover176
+          recovery/.recover176/bin/python -m pip install \
+            --disable-pip-version-check --no-deps --require-hashes \
+            -r recovery/requirements/locks/linux-x86_64/toolchain.lock.txt
+          recovery/.recover176/bin/python -m pip install \
+            --disable-pip-version-check --no-deps --require-hashes \
+            -r recovery/requirements/locks/linux-x86_64/runtime.lock.txt
+          recovery/.recover176/bin/python -m pip install \
+            --disable-pip-version-check --no-deps --require-hashes \
+            -r recovery/requirements/locks/linux-x86_64/dev.lock.txt
+          recovery/.recover176/bin/python -m pytest --version
+
+      - name: Compile and test immutable EVAL-133 recovery contracts
+        env:
+          PYTHONPATH: ${{ github.workspace }}/recovery/src
+        run: |
+          set -euo pipefail
+          recovery/.recover176/bin/python -m compileall -q recovery/src/twelve_six
+          recovery/.recover176/bin/python -m pytest -q \
+            recovery/tests/test_en_raw_diagnostic.py \
+            recovery/tests/test_recover176_eval133_ladder.py \
+            recovery/tests/test_milestone150_learned_base_ladder.py
+
+      - name: Reproduce accepted M150 corpus tokenizer evaluation truth
+        working-directory: m150
+        env:
+          PYTHONPATH: ${{ github.workspace }}/m150/src
+        run: |
+          set -euo pipefail
+          "$GITHUB_WORKSPACE/recovery/.recover176/bin/python" \
+            -m twelve_six.milestone150_entrypoint prepare \
+            --repo-root . \
+            --source-sha "$M150_SOURCE_SHA" \
+            --output-dir "$GITHUB_WORKSPACE/m150-evidence"
+
+      - name: Reproduce and freshly verify comparable learned ladder
+        working-directory: m150
+        env:
+          PYTHONPATH: ${{ github.workspace }}/m150/src
+        run: |
+          set -euo pipefail
+          for scale in 100k 500k 1m; do
+            "$GITHUB_WORKSPACE/recovery/.recover176/bin/python" \
+              -m twelve_six.milestone150_entrypoint phase1 \
+              --repo-root . --source-sha "$M150_SOURCE_SHA" \
+              --output-dir "$GITHUB_WORKSPACE/m150-evidence" --scale "$scale"
+            "$GITHUB_WORKSPACE/recovery/.recover176/bin/python" \
+              -m twelve_six.milestone150_entrypoint resume \
+              --repo-root . --source-sha "$M150_SOURCE_SHA" \
+              --output-dir "$GITHUB_WORKSPACE/m150-evidence" --scale "$scale"
+            "$GITHUB_WORKSPACE/recovery/.recover176/bin/python" \
+              -m twelve_six.milestone150_entrypoint verify-scale \
+              --repo-root . --source-sha "$M150_SOURCE_SHA" \
+              --output-dir "$GITHUB_WORKSPACE/m150-evidence" --scale "$scale"
+          done
+
+      - name: Assemble and validate M150 machine-readable ladder
+        working-directory: m150
+        env:
+          PYTHONPATH: ${{ github.workspace }}/m150/src
+        run: |
+          set -euo pipefail
+          "$GITHUB_WORKSPACE/recovery/.recover176/bin/python" \
+            -m twelve_six.milestone150_entrypoint finalize \
+            --repo-root . --source-sha "$M150_SOURCE_SHA" \
+            --output-dir "$GITHUB_WORKSPACE/m150-evidence"
+          "$GITHUB_WORKSPACE/recovery/.recover176/bin/python" \
+            -m twelve_six.milestone150_entrypoint validate \
+            "$GITHUB_WORKSPACE/m150-evidence/ladder-report.json" \
+            --expected-source-sha "$M150_SOURCE_SHA"
+
+      - name: Verify EVAL-133 exclusion and evaluate random best final checkpoints
+        env:
+          PYTHONPATH: ${{ github.workspace }}/recovery/src
+        run: |
+          set -euo pipefail
+          recovery/.recover176/bin/python \
+            -m twelve_six.recover176_eval133_ladder run \
+            --repo-root recovery \
+            --m150-evidence m150-evidence \
+            --output recover176-evidence/learned-base-ladder-v1-eval133.json \
+            --expected-m150-source-sha "$M150_SOURCE_SHA"
+          recovery/.recover176/bin/python \
+            -m twelve_six.recover176_eval133_ladder validate \
+            recover176-evidence/learned-base-ladder-v1-eval133.json \
+            --expected-m150-source-sha "$M150_SOURCE_SHA"
+
+      - name: Stage evaluated checkpoint evidence
+        run: |
+          set -euo pipefail
+          recovery/.recover176/bin/python - <<'PY'
+          import json
+          import shutil
+          from pathlib import Path
+
+          root = Path("m150-evidence")
+          out = Path("recover176-evidence/checkpoints")
+          report = json.loads(
+              Path("recover176-evidence/learned-base-ladder-v1-eval133.json").read_text()
+          )
+          for scale in ("100k", "500k", "1m"):
+              for row in report["eval133"]["scales"][scale]["checkpoints"]:
+                  for role in row["roles"]:
+                      destination = out / scale / role
+                      if destination.exists():
+                          shutil.rmtree(destination)
+                      shutil.copytree(
+                          root / scale / f"checkpoint-{row['step']:04d}", destination
+                      )
+          PY
+
+      - name: Publish exact evaluation summary to PR
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          recovery/.recover176/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+          r = json.loads(
+              Path("recover176-evidence/learned-base-ladder-v1-eval133.json").read_text()
+          )
+          lines = [
+              "### RECOVER-176 — immutable EVAL-133 on M150 LEARNED BASE LADDER V1",
+              "",
+              f"- M150 exact source: `{r['source']['m150_source_sha']}`",
+              f"- EVAL-133 suite: `{r['eval133']['identity']['suite_sha256']}`",
+              f"- reserved-evaluation exclusion: `{r['eval133']['reserved_evaluation_exclusion']['status']}`",
+              f"- 10M: `{r['learned_base_ladder_v1']['ten_million']['status']}`",
+              "",
+              "| scale | params | best step | random acc | best acc | best raw margin | best normalized margin/token |",
+              "|---|---:|---:|---:|---:|---:|---:|",
+          ]
+          for row in r["eval133"]["scale_trend_best_checkpoint"]:
+              lines.append(
+                  f"| {row['scale']} | {row['parameters']} | {row['best_step']} | "
+                  f"{row['random_init_accuracy']:.4f} | {row['best_accuracy']:.4f} | "
+                  f"{row['best_mean_log_likelihood_margin']:.6f} | "
+                  f"{row['best_mean_normalized_margin_nats_per_token']:.6f} |"
+              )
+          lines += [
+              "",
+              "Interpretation boundary: raw next-byte LM minimal-pair diagnostic only. No instruction-following, intelligence, alignment, production-readiness, or broad English-proficiency claim.",
+              f"Report SHA-256: `{r['report_sha256']}`",
+          ]
+          Path("recover176-evidence/pr-comment.md").write_text(
+              "\n".join(lines) + "\n", encoding="utf-8"
+          )
+          PY
+          gh pr comment "$PR_NUMBER" --repo "$GH_REPO" \
+            --body-file recover176-evidence/pr-comment.md
+
+      - name: Upload reproducible ladder and EVAL-133 evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: recover176-eval133-m150-learned-base-ladder
+          path: |
+            recover176-evidence/learned-base-ladder-v1-eval133.json
+            recover176-evidence/checkpoints/
+            m150-evidence/ladder-truth.json
+            m150-evidence/ladder-report.json
+            m150-evidence/corpus-manifest.json
+            m150-evidence/100k/run-manifest.json
+            m150-evidence/100k/report.json
+            m150-evidence/500k/run-manifest.json
+            m150-evidence/500k/report.json
+            m150-evidence/1m/run-manifest.json
+            m150-evidence/1m/report.json
+          if-no-files-found: error
+          retention-days: 30
