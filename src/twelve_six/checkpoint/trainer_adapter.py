@@ -60,7 +60,12 @@ def _require_counter(state: Mapping[str, Any], field: str) -> int:
     return value
 
 
-def _preflight_trainer_state(trainer: Any, state: Any) -> None:
+def _preflight_trainer_state(
+    trainer: Any,
+    state: Any,
+    *,
+    manifest: Mapping[str, Any] | None = None,
+) -> None:
     """Validate trainer-owned resume payload before any live model mutation.
 
     The public Trainer loader owns optimizer/scheduler/scaler/counter semantics,
@@ -98,7 +103,7 @@ def _preflight_trainer_state(trainer: Any, state: Any) -> None:
 
     micro_step = _require_counter(state, "micro_step")
     optimizer_step = _require_counter(state, "optimizer_step")
-    _require_counter(state, "tokens_seen")
+    tokens_seen = _require_counter(state, "tokens_seen")
 
     accumulation = current_config.get("gradient_accumulation_steps")
     if not isinstance(accumulation, int) or isinstance(accumulation, bool) or accumulation <= 0:
@@ -119,6 +124,19 @@ def _preflight_trainer_state(trainer: Any, state: Any) -> None:
         raise CheckpointCompatibilityError(
             "checkpoint optimizer_step exceeds configured max_steps"
         )
+
+    if manifest is not None:
+        identity = manifest.get("identity")
+        if not isinstance(identity, Mapping):
+            raise CheckpointCompatibilityError("verified checkpoint identity is missing")
+        if optimizer_step != identity.get("step"):
+            raise CheckpointCompatibilityError(
+                "trainer optimizer_step disagrees with checkpoint identity.step"
+            )
+        if tokens_seen != identity.get("tokens_seen"):
+            raise CheckpointCompatibilityError(
+                "trainer tokens_seen disagrees with checkpoint identity.tokens_seen"
+            )
 
     optimizer = getattr(trainer, "optimizer", None)
     if optimizer is None:
@@ -261,8 +279,9 @@ def load_trainer_checkpoint(
         raise TypeError("trainer must provide load_state_dict()")
 
     verified = prepare_checkpoint_load(directory)
+    manifest = verified.manifest
     _assert_bound_metadata(
-        verified.manifest,
+        manifest,
         expected_init_spec_hash=expected_init_spec_hash,
         expected_split_identity=expected_split_identity,
         expected_packing_hash=expected_packing_hash,
@@ -276,7 +295,11 @@ def load_trainer_checkpoint(
     # load_verified_checkpoint decodes the same retained bytes again before the
     # commit point; it never re-opens the source directory.
     _, combined_state = _decode_verified_state(verified)
-    _preflight_trainer_state(trainer, combined_state.get("trainer"))
+    _preflight_trainer_state(
+        trainer,
+        combined_state.get("trainer"),
+        manifest=manifest,
+    )
 
     result = load_verified_checkpoint(
         verified,
