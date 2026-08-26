@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+import twelve_six.eval233_holdout as eval233
 from twelve_six.eval233_holdout import Eval233Error, build, git_blob_sha1, hash_json, verify
 
 
@@ -54,8 +55,15 @@ def _fixture(root: Path) -> tuple[str, str, str, bytes]:
     return git_blob_sha1(seed_blob), git_blob_sha1(authority_blob), authority_id, seed_blob
 
 
-def test_exact_final_test_preserved_and_selection_remains_empty(tmp_path: Path) -> None:
+def _bind_fixture_seed(monkeypatch: pytest.MonkeyPatch, seed_sha: str) -> None:
+    monkeypatch.setattr(eval233, "RECOVER174_SEED_GIT_BLOB_SHA1", seed_sha)
+
+
+def test_exact_final_test_preserved_and_selection_remains_empty(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     seed_sha, auth_sha, auth_id, seed_blob = _fixture(tmp_path)
+    _bind_fixture_seed(monkeypatch, seed_sha)
     out = tmp_path / "out"
     manifest = build(
         tmp_path,
@@ -82,8 +90,11 @@ def test_exact_final_test_preserved_and_selection_remains_empty(tmp_path: Path) 
     assert manifest["decontamination"]["evaluation_release_allowed"] is False
 
 
-def test_exact_rerun_is_immutable_and_tamper_fails(tmp_path: Path) -> None:
+def test_exact_rerun_is_immutable_and_tamper_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     seed_sha, auth_sha, auth_id, _ = _fixture(tmp_path)
+    _bind_fixture_seed(monkeypatch, seed_sha)
     out = tmp_path / "out"
     kwargs = {
         "source_sha": "b" * 40,
@@ -100,8 +111,10 @@ def test_exact_rerun_is_immutable_and_tamper_fails(tmp_path: Path) -> None:
         verify(out)
 
 
-def test_provenance_defect_fails_closed(tmp_path: Path) -> None:
-    seed_sha, auth_sha, auth_id, _ = _fixture(tmp_path)
+def test_provenance_defect_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _seed_sha, auth_sha, auth_id, _ = _fixture(tmp_path)
     seed_path = tmp_path / "data/evaluation/recover174_real_holdout_seed.jsonl.gz"
     rows = gzip.decompress(seed_path.read_bytes()).splitlines(keepends=True)
     first = json.loads(rows[0])
@@ -109,12 +122,14 @@ def test_provenance_defect_fails_closed(tmp_path: Path) -> None:
     rows[0] = json.dumps(first, separators=(",", ":")).encode() + b"\n"
     tampered = gzip.compress(b"".join(rows), mtime=0)
     seed_path.write_bytes(tampered)
+    tampered_sha = git_blob_sha1(tampered)
+    _bind_fixture_seed(monkeypatch, tampered_sha)
     with pytest.raises(Eval233Error, match="not admitted"):
         build(
             tmp_path,
             tmp_path / "out",
             source_sha="c" * 40,
-            expected_seed_git_blob_sha1=git_blob_sha1(tampered),
+            expected_seed_git_blob_sha1=tampered_sha,
             expected_authority_git_blob_sha1=auth_sha,
             expected_authority_identity=auth_id,
         )
