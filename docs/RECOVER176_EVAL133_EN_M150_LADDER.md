@@ -1,31 +1,40 @@
-# RECOVER-176 — EVAL-133 English on LEARNED BASE LADDER V1
+# EVAL-216 / RECOVER-176 — EVAL-133 English on M150 learned Base ladder
 
-RECOVER-176 is a convergence recovery, not a new model family and not a new English benchmark.
+RECOVER-176 is a convergence recovery. It does not change the accepted EVAL-133 examples, reservation, scorer, or original tests.
 
-The accepted learned Base ladder is MILESTONE-150 at exact source `1037439f65c48529904be170064bf69d0c75d18b`. Its comparable learned rungs are 95,568 parameters (~100K), 467,808 parameters (~500K), and 1,037,696 parameters (~1M), all trained from random initialization under one DATA-25 V0.1 / `s0-byte-v1` / document-isolated 128-byte / held-out BPB truth model. The ~10M rung remains `INCOMPLETE_NO_COMPARABLE_LEARNED_EVIDENCE`; RECOVER-176 does not promote it.
+## Exact failed regression
 
-## Immutable EVAL-133 recovery
+Terminal workflow run `32938876543` passed bootstrap, frozen-suite tests, M150 reconstruction/training/verification, and M150 ladder finalization. It failed only when the recovery bridge began checkpoint evaluation. The bridge read `scale_report["model"]["model_spec_sha256"]`, but the M150 scale-report contract stores that identity as `scale_report["model"]["spec_sha256"]`. The result was `KeyError: 'model_spec_sha256'` before any EVAL-133 scoring completed.
 
-The suite, reservation registry, scorer, and original tests are restored byte-for-byte from the accepted EVAL-133 branch and guarded by their original Git blob object IDs. The suite identity remains `eval133-en-raw-v1` version `1.0.0`, SHA-256 `f9e713ff336e6189f7aa0ddbb21303431ab2041b6700ed38243eaf65865805cb`. The reservation identity remains `850e0c34fd6ab35d0829b3f78ff5e81fbcb8c1ee900f3e7f1b967ea23a8f2e40`.
+This is a RECOVER-176 consumer-schema defect, not an EVAL-133 semantic/scoring defect and not an environment/bootstrap defect. A regression test now locks the actual M150 scale-report field.
 
-The old EVAL-133 workflow is not reused because its exact run failed before testing with `No module named pytest`. RECOVER-176 installs the complete hash-locked Linux x86_64 toolchain, runtime, and dev/test locks before running the original EVAL-133 tests.
+## Producer authority
 
-## Corpus exclusion gate
+EVAL-216 consumes the terminal frozen M150 retained-evidence incumbent rather than retraining another ladder:
 
-DATA-25 predates the EVAL-133 reservation registry, so its original corpus manifest alone is not accepted as proof of exclusion. RECOVER-176 rebuilds the exact M150 DATA-25 corpus, then runs the immutable EVAL-133 normalized decontamination logic over both DATA-25 train and validation text. It also checks the retained legacy S0 packaged train and validation material.
+- source `5838cd16869dcfcf762368d8673eddf52d51b7e3`;
+- workflow run `32937411703`, terminal `SUCCESS`;
+- artifact `9595677772`, `milestone150-learned-base-ladder-v1`;
+- artifact digest `sha256:c00b7e9006320f8916c739a3311e8cc47ad0d0b16957f8ebd7d19233fd9f1c71`;
+- ladder report `1f8350bed574a7b78778f0ebb7854ca5311173006820ec27110122f8965c9a5a`;
+- DATA-25 identity `422f545da93526ceba2c0ff738e0b9deac65f35bfb31d87d2aab068cda091fc8`;
+- common M150 evaluation identity `7189e6df053574beb686727c94e684cdbaf08a34ef33aa953eff7cdae0320113`;
+- canonical `s0-byte-v1` tokenizer.
 
-Any exact full-alternative collision or normalized reserved context/full-continuation substring collision fails the recovery.
+The 100K/500K/1M random-init states are deterministically reconstructed with the producer seed and must match the exact `phase1.json` state hashes. Learned evaluations use the exact retained best checkpoints. No 10M numerical result is emitted until a terminal learned 10M checkpoint exists.
 
-## Checkpoints evaluated
+## Immutable EVAL-133 authority
 
-For every comparable M150 scale, RECOVER-176 evaluates the step-0 random-initialization checkpoint, the M150 best held-out-BPB checkpoint, and the M150 final step-1000 checkpoint. When best and final are the same checkpoint, the checkpoint is evaluated once and carries both roles.
+Suite ID remains `eval133-en-raw-v1`, version `1.0.0`, SHA-256 `f9e713ff336e6189f7aa0ddbb21303431ab2041b6700ed38243eaf65865805cb`. Reservation SHA-256 remains `850e0c34fd6ab35d0829b3f78ff5e81fbcb8c1ee900f3e7f1b967ea23a8f2e40`. The suite, reservation index, cloze scorer, EVAL-133 evaluator, reservation implementation, and original test file remain guarded by their original Git blob identities.
 
-Before EVAL-133 scoring, each checkpoint is verified and loaded with M150 source, ModelSpec, tokenizer, DATA-25 corpus, run-manifest, and seed bindings. The original EVAL-133 scorer checks model-state and model-mode non-mutation. RECOVER-176 additionally hashes Trainer state before and after every scoring pass and fails if it changes.
+The deterministic DATA-25 corpus is rebuilt twice and must reproduce the exact producer corpus identity. The immutable EVAL-133 reservation/decontamination logic then scans DATA-25 train and validation plus retained legacy S0 packaged train/validation. Any collision fails closed.
 
-The report includes pair accuracy, raw log-likelihood margins, token/UTF-8-byte-normalized margins, all eight per-phenomenon breakdowns, length diagnostics, item scores, and a scale trend based on each scale's M150 best checkpoint. No monotonic scaling improvement is assumed; the measured trend is reported as observed.
+## Evaluation proof
 
-## Authoritative output
+Each scale is evaluated on the identical 32-pair, eight-phenomenon suite. Learned checkpoint identity is bound to producer SHA, ModelSpec, tokenizer config/vocab, DATA-25, run manifest, checkpoint ID, and seed. The first-party checkpoint backend is checked for finite logits, and scoring uses the unchanged first-party EVAL-133 conditional-likelihood path.
 
-The machine-readable output is `recover176-evidence/learned-base-ladder-v1-eval133.json`. It embeds the complete validated M150 LEARNED BASE LADDER V1 report, including its quality/efficiency/scaling rankings, exact model/training/checkpoint/generation evidence, and 10M incomplete boundary, then adds immutable EVAL-133 identity, decontamination evidence, random/best/final English raw-LM results, non-mutation evidence, and scale trend.
+Every scoring pass records exact model-state and Trainer-state hashes before/after and requires optimizer-step delta `0` and optimized-token delta `0`. Output includes pair accuracy, raw likelihood margin, token/UTF-8-byte normalized margins, preferred/dispreferred conditional BPB, context BPB, per-phenomenon results, learned-vs-random deltas, and learned scale trend.
 
-This artifact is evidence for a learned scratch Base language-model ladder and a project-authored raw English minimal-pair diagnostic only. It makes no claim of instruction following, intelligence, alignment, production readiness, or broad English proficiency. It uses no foreign pretrained weights, SFT, RLHF, DPO, or paid compute.
+Recovery report schema is `12-6.recover176-eval133-learned-base-ladder.v2` because producer binding and machine evidence changed. EVAL-133 itself remains v1 unchanged.
+
+Truth boundary: LOCAL_FREE only; no foreign pretrained weights, SFT, RLHF, DPO, paid compute, instruction-following claim, broad English-proficiency claim, intelligence claim, alignment claim, or production-readiness claim.
