@@ -46,14 +46,14 @@
     "tokenizer_fit": "NOT_PERMITTED"
   },
   "evidence_identity_scope": "SHA256(canonical JSON with evidence_identity_sha256 omitted)",
-  "evidence_identity_sha256": "9ab1d931ffeb4da5f8080af3632de1b3ee3e0ba412056a59f7003867f00f4876",
+  "evidence_identity_sha256": "810904645d9586e286ce1c19c794e8fa6c4f10386c0f28131bfdc489e1922376",
   "execution_profile": "LOCAL_FREE",
   "purpose": "Fail-close Research Corpus V1 pre-decontamination candidate freeze until NEXT100-063 source-authority convergence is terminal.",
   "repository": "Oleksii-debug/12-6-ai.",
   "required_source_convergence": {
     "base_head_sha": "b0523ccbc4b957615aac849d476cfa851be87578",
     "exact_head_ci_state": "NOT_PUBLISHED_NONTERMINAL",
-    "issue": 521,
+    "issue": 530,
     "observed_head_sha": "94dce83cbe611144f961b9f93b3be273345a7f62",
     "pr_state": "OPEN_DRAFT",
     "pull_request": 538,
@@ -75,6 +75,8 @@
       "independent_families": 13,
       "source_capacity_bytes": 565743
     },
+    "reported_registry_identity_sha256_non_authoritative_until_terminal": "77fb69c558df8c59fdae00583c955c62ad088cda98fd16b335eedb26fb2d7526",
+    "supersedes_issue": 521,
     "supersedes_pull_request": 527,
     "terminal_authority_consumed": false
   },
