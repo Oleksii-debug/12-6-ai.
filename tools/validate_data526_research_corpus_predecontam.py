@@ -17,23 +17,50 @@ EXPECTED_SUPERSEDED_ISSUE = 521
 EXPECTED_CONVERGENCE_PR = 538
 EXPECTED_SUPERSEDED_PR = 527
 EXPECTED_CONVERGENCE_BASE = "b0523ccbc4b957615aac849d476cfa851be87578"
-EXPECTED_OBSERVED_HEAD = "ec7ec036bde3b280043a93e064a0c8cb3416c2e4"
-EXPECTED_REPORTED_REGISTRY_ID = "448dd61ed3e0d78d0bca9e202529a79c02811fd67beebe4833373d0c2ab0c0a7"
+EXPECTED_OBSERVED_HEAD = "226cbc26710a75af4a864576220b270089e7c52b"
+EXPECTED_REPORTED_REGISTRY_ID = "9fc400a3144b46c481e45d043b0a3365eb2129c83bbacde6f9e7af8a41fadc58"
 EXPECTED_VECTOR = {
     "by_stratum": {
-        "code": {"bytes": 51875, "families": 4},
-        "en": {"bytes": 150643, "families": 3},
+        "code": {"bytes": 106031, "families": 5},
+        "en": {"bytes": 1838293, "families": 5},
         "uk": {"bytes": 100856, "families": 4},
     },
-    "independent_families": 11,
-    "source_capacity_bytes": 303374,
+    "independent_families": 14,
+    "source_capacity_bytes": 2045180,
 }
+EXPECTED_DEDUP_PR = 632
+EXPECTED_DEDUP_WORKER = "NEXT100-065D-CROSSSOURCE-DEDUP-V6"
+EXPECTED_DEDUP_SCHEMA = "12-6.next100-065d-cross-source-dedup-report.v6"
+EXPECTED_DEDUP_HEAD = "704a558545b158fecff5cb41ad5bd16f93884cdd"
+EXPECTED_DEDUP_VECTOR = {
+    "source_object_count": 31,
+    "source_capacity_bytes": 2045180,
+    "by_stratum": {
+        "uk": {"bytes": 100856, "families": 4},
+        "en": {"bytes": 1838293, "families": 5},
+        "code": {"bytes": 106031, "families": 5},
+    },
+    "independent_families": 14,
+    "cpython_accepted_capacity_bytes": 15540,
+}
+EXPECTED_DEDUP_OUTPUTS = [
+    "exact_head_success",
+    "immutable_v6_report_identity",
+    "conservative_unique_capacity_bytes_after_global_dedup",
+    "retained_or_excluded_source_object_decisions",
+    "no_queue_as_pass",
+]
 
 
 def canonical_sha256(doc: dict[str, Any]) -> str:
     payload = dict(doc)
     payload.pop("evidence_identity_sha256", None)
-    raw = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    raw = json.dumps(
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    ).encode("utf-8")
     return hashlib.sha256(raw).hexdigest()
 
 
@@ -45,61 +72,224 @@ def _require(condition: bool, message: str) -> None:
 def validate_doc(doc: dict[str, Any]) -> None:
     _require(doc.get("schema_version") == EXPECTED_SCHEMA, "schema drift")
     _require(doc.get("repository") == "Oleksii-debug/12-6-ai.", "repository identity drift")
-    _require(doc.get("execution_profile") == "LOCAL_FREE", "execution profile must remain LOCAL_FREE")
+    _require(
+        doc.get("execution_profile") == "LOCAL_FREE",
+        "execution profile must remain LOCAL_FREE",
+    )
     _require(doc.get("status") == EXPECTED_STATUS, "blocked status weakened")
-    _require(doc.get("evidence_identity_scope") == "SHA256(canonical JSON with evidence_identity_sha256 omitted)", "identity scope drift")
-    _require(doc.get("evidence_identity_sha256") == canonical_sha256(doc), "evidence self-hash mismatch")
+    _require(
+        doc.get("evidence_identity_scope")
+        == "SHA256(canonical JSON with evidence_identity_sha256 omitted)",
+        "identity scope drift",
+    )
+    _require(
+        doc.get("evidence_identity_sha256") == canonical_sha256(doc),
+        "evidence self-hash mismatch",
+    )
 
     d300 = doc["base_authorities"]["data300"]
     _require(d300.get("head_sha") == EXPECTED_DATA300_HEAD, "DATA-300 head drift")
-    _require(d300.get("contract_identity_sha256") == EXPECTED_DATA300_ID, "DATA-300 contract identity drift")
-    _require(d300.get("corpus_state") == "NOT_BUILT_NOT_FROZEN_NOT_TERMINAL", "DATA-300 corpus truth weakened")
+    _require(
+        d300.get("contract_identity_sha256") == EXPECTED_DATA300_ID,
+        "DATA-300 contract identity drift",
+    )
+    _require(
+        d300.get("corpus_state") == "NOT_BUILT_NOT_FROZEN_NOT_TERMINAL",
+        "DATA-300 corpus truth weakened",
+    )
 
     d301 = doc["base_authorities"]["data301"]
     _require(d301.get("head_sha") == EXPECTED_DATA301_HEAD, "DATA-301 head drift")
-    _require(d301.get("evidence_identity_sha256") == EXPECTED_DATA301_ID, "DATA-301 evidence identity drift")
+    _require(
+        d301.get("evidence_identity_sha256") == EXPECTED_DATA301_ID,
+        "DATA-301 evidence identity drift",
+    )
     _require(d301.get("status") == "TERMINAL_BLOCKED", "DATA-301 state drift")
-    _require(d301.get("corpus_identity") is None and d301.get("shard_identity") is None, "blocked DATA-301 cannot have corpus/shard identity")
-    _require(d301.get("authorized_balanced_no_replay_capacity") == 0, "DATA-301 capacity must remain zero")
+    _require(
+        d301.get("corpus_identity") is None and d301.get("shard_identity") is None,
+        "blocked DATA-301 cannot have corpus/shard identity",
+    )
+    _require(
+        d301.get("authorized_balanced_no_replay_capacity") == 0,
+        "DATA-301 capacity must remain zero",
+    )
 
     conv = doc["required_source_convergence"]
-    _require(conv.get("issue") == EXPECTED_CONVERGENCE_ISSUE, "source convergence issue drift")
-    _require(conv.get("supersedes_issue") == EXPECTED_SUPERSEDED_ISSUE, "superseded issue lineage drift")
-    _require(conv.get("pull_request") == EXPECTED_CONVERGENCE_PR, "source convergence PR drift")
-    _require(conv.get("supersedes_pull_request") == EXPECTED_SUPERSEDED_PR, "supersession PR lineage drift")
-    _require(conv.get("base_head_sha") == EXPECTED_CONVERGENCE_BASE, "source convergence base drift")
-    _require(conv.get("observed_head_sha") == EXPECTED_OBSERVED_HEAD, "source convergence observed-head drift")
-    _require(conv.get("pr_state") == "OPEN_DRAFT", "blocker snapshot expects open draft convergence PR")
-    _require(conv.get("exact_head_ci_state") == "QUEUED_NONTERMINAL", "queued/nonterminal truth weakened")
-    _require(conv.get("reported_registry_identity_sha256_non_authoritative_until_terminal") == EXPECTED_REPORTED_REGISTRY_ID, "reported registry identity drift")
-    _require(conv.get("terminal_authority_consumed") is False, "nonterminal convergence must not be consumed")
+    _require(
+        conv.get("issue") == EXPECTED_CONVERGENCE_ISSUE,
+        "source convergence issue drift",
+    )
+    _require(
+        conv.get("supersedes_issue") == EXPECTED_SUPERSEDED_ISSUE,
+        "superseded issue lineage drift",
+    )
+    _require(
+        conv.get("pull_request") == EXPECTED_CONVERGENCE_PR,
+        "source convergence PR drift",
+    )
+    _require(
+        conv.get("supersedes_pull_request") == EXPECTED_SUPERSEDED_PR,
+        "supersession PR lineage drift",
+    )
+    _require(
+        conv.get("base_head_sha") == EXPECTED_CONVERGENCE_BASE,
+        "source convergence base drift",
+    )
+    _require(
+        conv.get("observed_head_sha") == EXPECTED_OBSERVED_HEAD,
+        "source convergence observed-head drift",
+    )
+    _require(
+        conv.get("pr_state") == "OPEN_DRAFT",
+        "blocker snapshot expects open draft convergence PR",
+    )
+    _require(
+        conv.get("exact_head_ci_state") == "QUEUED_NONTERMINAL",
+        "source convergence queue/nonterminal truth weakened",
+    )
+    _require(
+        conv.get("reported_registry_identity_sha256_non_authoritative_until_terminal")
+        == EXPECTED_REPORTED_REGISTRY_ID,
+        "reported registry identity drift",
+    )
+    _require(
+        conv.get("terminal_authority_consumed") is False,
+        "nonterminal source convergence must not be consumed",
+    )
 
-    vector = conv["reported_pre_successor_global_dedup_vector_non_authoritative_until_terminal"]
-    _require(vector == EXPECTED_VECTOR, "reported non-authoritative stratum vector drift")
-    _require(sum(item["bytes"] for item in vector["by_stratum"].values()) == 303374, "stratum byte vector does not sum")
-    _require(sum(item["families"] for item in vector["by_stratum"].values()) == 11, "stratum family vector does not sum")
+    vector = conv[
+        "reported_pre_successor_global_dedup_vector_non_authoritative_until_terminal"
+    ]
+    _require(vector == EXPECTED_VECTOR, "reported non-authoritative source vector drift")
+    _require(
+        sum(item["bytes"] for item in vector["by_stratum"].values()) == 2045180,
+        "source stratum byte vector does not sum",
+    )
+    _require(
+        sum(item["families"] for item in vector["by_stratum"].values()) == 14,
+        "source stratum family vector does not sum",
+    )
+
+    dedup = doc["required_global_dedup"]
+    _require(dedup.get("pull_request") == EXPECTED_DEDUP_PR, "global dedup PR drift")
+    _require(dedup.get("worker_id") == EXPECTED_DEDUP_WORKER, "global dedup worker drift")
+    _require(
+        dedup.get("required_report_schema") == EXPECTED_DEDUP_SCHEMA,
+        "global dedup report schema drift",
+    )
+    _require(
+        dedup.get("observed_head_sha") == EXPECTED_DEDUP_HEAD,
+        "global dedup observed-head drift",
+    )
+    _require(
+        dedup.get("pr_state") == "OPEN_DRAFT",
+        "blocker snapshot expects open draft global dedup PR",
+    )
+    _require(
+        dedup.get("exact_head_ci_state") == "QUEUED_NONTERMINAL",
+        "global dedup queue/nonterminal truth weakened",
+    )
+    _require(
+        dedup.get("terminal_authority_consumed") is False,
+        "nonterminal global dedup must not be consumed",
+    )
+    _require(
+        dedup.get("reported_pre_dedup_vector_non_authoritative_until_terminal")
+        == EXPECTED_DEDUP_VECTOR,
+        "reported non-authoritative global-dedup vector drift",
+    )
+    _require(
+        dedup.get("required_terminal_outputs") == EXPECTED_DEDUP_OUTPUTS,
+        "global dedup terminal-output contract drift",
+    )
+
+    dedup_vector = dedup["reported_pre_dedup_vector_non_authoritative_until_terminal"]
+    _require(
+        dedup_vector["source_capacity_bytes"] == vector["source_capacity_bytes"],
+        "source registry/global dedup capacity snapshots disagree",
+    )
+    _require(
+        dedup_vector["independent_families"] == vector["independent_families"],
+        "source registry/global dedup family snapshots disagree",
+    )
+    _require(
+        dedup_vector["by_stratum"] == vector["by_stratum"],
+        "source registry/global dedup stratum snapshots disagree",
+    )
 
     freeze = doc["candidate_freeze"]
-    _require(freeze.get("frozen") is False, "candidate must not be frozen before source convergence")
-    _require(freeze.get("candidate_set_digest_sha256") is None, "candidate digest must be null while blocked")
-    _require(freeze.get("record_inventory_digest_sha256") is None, "record inventory digest must be null while blocked")
-    _require(freeze.get("record_count") == 0 and freeze.get("records") == [], "no successor records may be hard-coded while blocked")
+    _require(
+        freeze.get("frozen") is False,
+        "candidate must not be frozen before terminal source convergence and terminal global dedup",
+    )
+    _require(
+        freeze.get("candidate_set_digest_sha256") is None,
+        "candidate digest must be null while blocked",
+    )
+    _require(
+        freeze.get("record_inventory_digest_sha256") is None,
+        "record inventory digest must be null while blocked",
+    )
+    _require(
+        freeze.get("record_count") == 0 and freeze.get("records") == [],
+        "no successor records may be hard-coded while blocked",
+    )
 
     claims = doc["claim_boundary"]
-    for key in ("corpus_frozen", "shards_published", "decontamination_executed", "final_test_payload_accessed", "final_test_outcomes_read", "tokenizer_fit_executed", "training_executed", "paid_compute_used", "long_training_authorized"):
+    for key in (
+        "corpus_frozen",
+        "shards_published",
+        "decontamination_executed",
+        "final_test_payload_accessed",
+        "final_test_outcomes_read",
+        "tokenizer_fit_executed",
+        "training_executed",
+        "paid_compute_used",
+        "long_training_authorized",
+    ):
         _require(claims.get(key) is False, f"claim boundary weakened: {key}")
     _require(claims.get("optimizer_updates") == 0, "optimizer updates must remain zero")
-    _require(claims.get("authorized_unique_optimized_targets") == 0, "pending source capacity must not become optimized-target authority")
+    _require(
+        claims.get("authorized_unique_optimized_targets") == 0,
+        "pending source capacity must not become optimized-target authority",
+    )
 
     gates = doc["downstream_gates"]
-    _require(gates.get("reserved_evaluation_decontamination") == "NOT_PERMITTED_NO_FROZEN_CANDIDATE_IDENTITY", "decontamination gate weakened")
+    _require(
+        gates.get("global_dedup") == "REQUIRED_TERMINAL_UPSTREAM_BEFORE_CANDIDATE_FREEZE",
+        "global dedup ordering gate weakened",
+    )
+    _require(
+        gates.get("reserved_evaluation_decontamination")
+        == "NOT_PERMITTED_NO_FROZEN_CANDIDATE_IDENTITY",
+        "decontamination gate weakened",
+    )
     for key in ("corpus_materialization", "tokenizer_fit", "long_training", "paid_compute"):
         _require(gates.get(key) == "NOT_PERMITTED", f"downstream gate weakened: {key}")
 
     unblock = doc["unblock_rule"]
     _require(unblock.get("no_queue_as_pass") is True, "queue-as-pass guard missing")
-    _require(unblock.get("no_pending_source_capacity_credit") is True, "pending capacity guard missing")
-    _require(unblock.get("no_replay_or_duplicate_quota_repair") is True, "replay guard missing")
+    _require(
+        unblock.get("no_pending_source_capacity_credit") is True,
+        "pending capacity guard missing",
+    )
+    _require(
+        unblock.get("no_replay_or_duplicate_quota_repair") is True,
+        "replay guard missing",
+    )
+    required = unblock.get("required")
+    _require(isinstance(required, list) and len(required) == 4, "unblock sequence drift")
+    _require(
+        any("PR #632" in item and "terminal-success" in item for item in required),
+        "global dedup terminal-success is missing from unblock sequence",
+    )
+    _require(
+        any(
+            "post-global-dedup" in item and "may not be frozen directly" in item
+            for item in required
+        ),
+        "post-global-dedup-only freeze rule is missing",
+    )
 
 
 def main() -> int:
