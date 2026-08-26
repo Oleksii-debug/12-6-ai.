@@ -4,7 +4,7 @@
   "local_free_only": true,
   "canonical_registry": {
     "pr": 538,
-    "head_sha": "226cbc26710a75af4a864576220b270089e7c52b",
+    "head_sha": "1bcd1a57a7b2699294808b47888a255bf37a50aa",
     "path": "configs/data/next100_063_terminal_source_registry_v4.json",
     "git_blob_sha1": "60924a7cb76dc76bbff26a340184f54a2c374c83",
     "schema_version": "12-6.next100-063-terminal-source-registry.v4",
