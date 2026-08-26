@@ -1,0 +1,100 @@
+{
+  "schema_version": "12-6.next100-069-balance-diversity-v2.v1",
+  "worker_id": "NEXT100-069-BALANCE-DIVERSITY-V2",
+  "execution_class": "LOCAL_FREE",
+  "model_training_executed": false,
+  "model_result_guided_tuning": false,
+  "policy": {
+    "authority": "DATA-295-BALANCE-POLICY-20M-V1",
+    "head_sha": "d53369fd8859136c335a6a1ee341b9377bf5c407",
+    "target_total_source_bytes": 20000000,
+    "strata": {
+      "ua": {"target_fraction": "9/20", "target_bytes": 9000000},
+      "en": {"target_fraction": "7/20", "target_bytes": 7000000},
+      "code": {"target_fraction": "1/5", "target_bytes": 4000000}
+    },
+    "minimum_independent_families_per_stratum": 2,
+    "max_family_fraction_total": "1/4",
+    "max_family_fraction_own_stratum": "3/5",
+    "replay_or_duplication_to_meet_quota": false,
+    "mixture_retuning_from_model_bpb": false
+  },
+  "source_vector": {
+    "authority": "NEXT100-065-CROSSSOURCE-DEDUP-V3",
+    "branch": "next100-065/crosssource-dedup-v3-20260826",
+    "head_sha": "90065ffc97a5133e76cacdee6991eb171c4ea2ba",
+    "config_blob_sha": "c1e05f09490e25f6fed765dfb70d900717528f4d",
+    "terminal_refresh_cutoff_utc": "2026-08-26T18:20:54Z",
+    "terminal_refresh_commit_utc": "2026-08-26T18:22:22Z",
+    "terminal_rule": "Only exact current authority heads with dedicated admission/qualification workflow completed successfully receive capacity; queued/in-progress/failed/probe/RETEST/PR-text-only claims receive zero capacity."
+  },
+  "available_unique_source_bytes": {
+    "total": 243970,
+    "by_stratum": {"ua": 90044, "en": 84793, "code": 69133}
+  },
+  "families": [
+    {"stratum": "ua", "family_id": "ua.rada.open-data.laws-texts", "bytes": 88565},
+    {"stratum": "ua", "family_id": "ua.literature.lesia-ukrainka.na-krylah-pisen.1892-lviv", "bytes": 1479},
+    {"stratum": "en", "family_id": "en.standardebooks.manual", "bytes": 84793},
+    {"stratum": "code", "family_id": "github:encode/httpx", "bytes": 8161},
+    {"stratum": "code", "family_id": "github:psf/requests", "bytes": 1542},
+    {"stratum": "code", "family_id": "github:django/django", "bytes": 54156},
+    {"stratum": "code", "family_id": "github:Kludex/starlette", "bytes": 5274}
+  ],
+  "family_count": {"ua": 2, "en": 1, "code": 4, "global": 7},
+  "effective_family_count_hill_q2": {
+    "definition": "N_eff = 1 / sum_i(p_i^2), computed on unique source-byte shares within the stated scope.",
+    "ua": {"exact_fraction": "4053960968/3922973333", "decimal": 1.0333898866704327},
+    "en": {"exact_fraction": "1/1", "decimal": 1.0},
+    "code": {"exact_fraction": "4779371689/3029667097", "decimal": 1.5775237133256559},
+    "global": {"exact_fraction": "14880340225/4516366653", "decimal": 3.2947591212763303}
+  },
+  "available_pool_shares": {
+    "strata_pct": {"ua": 36.90781653481985, "en": 34.75550272574497, "code": 28.336680739435177},
+    "families": [
+      {"family_id": "ua.rada.open-data.laws-texts", "global_fraction": "17713/48794", "global_pct": 36.30159445833504, "own_stratum_fraction": "88565/90044", "own_stratum_pct": 98.35746968148905},
+      {"family_id": "ua.literature.lesia-ukrainka.na-krylah-pisen.1892-lviv", "global_fraction": "1479/243970", "global_pct": 0.6062220764848137, "own_stratum_fraction": "1479/90044", "own_stratum_pct": 1.6425303185109503},
+      {"family_id": "en.standardebooks.manual", "global_fraction": "84793/243970", "global_pct": 34.75550272574497, "own_stratum_fraction": "1/1", "own_stratum_pct": 100.0},
+      {"family_id": "github:encode/httpx", "global_fraction": "8161/243970", "global_pct": 3.345083411894905, "own_stratum_fraction": "8161/69133", "own_stratum_pct": 11.804782086702444},
+      {"family_id": "github:psf/requests", "global_fraction": "771/121985", "global_pct": 0.6320449235561749, "own_stratum_fraction": "6/269", "own_stratum_pct": 2.2304832713754648},
+      {"family_id": "github:django/django", "global_fraction": "27078/121985", "global_pct": 22.197811206295857, "own_stratum_fraction": "54156/69133", "own_stratum_pct": 78.3359611184239},
+      {"family_id": "github:Kludex/starlette", "global_fraction": "2637/121985", "global_pct": 2.1617411976882406, "own_stratum_fraction": "5274/69133", "own_stratum_pct": 7.628773523498185}
+    ]
+  },
+  "family_gate": {
+    "minimum_family_count": {"ua": "PASS", "en": "FAIL_1_LT_2", "code": "PASS"},
+    "whole_available_pool_if_consumed_without_subsampling": {
+      "global_25pct_violations": ["ua.rada.open-data.laws-texts", "en.standardebooks.manual"],
+      "own_stratum_60pct_violations": ["ua.rada.open-data.laws-texts", "en.standardebooks.manual", "github:django/django"],
+      "note": "Pool-share violations do not require deleting bytes; they require deterministic subsampling/capping when composing a training mixture."
+    },
+    "fixed_mixture_nonreplay_feasible_source_bytes": 0,
+    "fixed_mixture_status": "FAIL_EN_HAS_ONLY_ONE_TERMINAL_DEDUP_CERTIFIED_FAMILY"
+  },
+  "acquisition_gaps_to_20m_source_bytes": {
+    "by_stratum": {"ua": 8909956, "en": 6915207, "code": 3930867},
+    "total": 19756030,
+    "target_family_byte_caps": {"ua": 5000000, "en": 4200000, "code": 2400000},
+    "minimum_additional_independent_families_for_hard_family_count": {"ua": 0, "en": 1, "code": 0},
+    "minimum_new_families_if_existing_exact_snapshots_are_frozen_and_all_gap_bytes_must_come_from_new_families": {"ua": 2, "en": 2, "code": 2},
+    "same_family_expansion_note": "The second minimum is a snapshot-frozen acquisition topology bound, not a requirement if existing terminal families later gain additional unique admitted objects within their family caps."
+  },
+  "unique_loss_positions": {
+    "full_current_vector_exact_total": null,
+    "status": "BLOCKED_MISSING_NEXT100_064_GENERALIZED_MULTI_SOURCE_LOSS_LEDGER",
+    "legacy_authority": "DATA-294-UNIQUE-LOSS-POSITION-ACCOUNTING-V1",
+    "legacy_head_sha": "a0fea940ffa5c2fe0fcd874cf6e883587bb23aa5",
+    "certified_partial": {"total": 173355, "ua_rada": 88564, "en_standardebooks": 84791},
+    "full_stratum_status": {"ua": "UNKNOWN_1479_WIKISOURCE_BYTES_NOT_LEDGERED", "en": "EXACT_84791", "code": "UNKNOWN_69133_CODE_BYTES_NOT_LEDGERED"},
+    "source_bytes_covered_by_legacy_loss_ledger": 173358,
+    "source_bytes_not_yet_loss_ledgered": 70612,
+    "no_source_bytes_relabelled_as_loss_positions": true
+  },
+  "verdict": "FAIL_RETAIN_45_35_20_POLICY_ACQUIRE_MORE_DATA_NO_BPB_RETUNING",
+  "blockers": [
+    "EN_TERMINAL_DEDUP_CERTIFIED_FAMILY_COUNT_1_LT_2",
+    "FULL_VECTOR_UNIQUE_LOSS_POSITION_LEDGER_ABSENT_NEXT100_064",
+    "20M_UNIQUE_SOURCE_BYTE_CAPACITY_GAP_19756030"
+  ],
+  "authority_identity_sha256": "dd24167846a15822d34a233329e3c65bb54601940bbad3ad13fd1ea0a6fcda58"
+}
