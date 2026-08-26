@@ -1,32 +1,44 @@
 from __future__ import annotations
 
 import copy
+import importlib.util
+from pathlib import Path
+from types import ModuleType
 
 import pytest
 
-from tools.build_predecontam_candidate_identity import (
-    INPUT_SCHEMA,
-    STRATA,
-    _synthetic_record,
-    build_candidate,
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def _load_tool(module_name: str, filename: str) -> ModuleType:
+    spec = importlib.util.spec_from_file_location(module_name, ROOT / "tools" / filename)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"unable to load tool module: {filename}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+builder = _load_tool("build_predecontam_candidate_identity", "build_predecontam_candidate_identity.py")
+validator = _load_tool(
+    "validate_predecontam_candidate_identity", "validate_predecontam_candidate_identity.py"
 )
-from tools.validate_predecontam_candidate_identity import validate_candidate
 
 
 def _candidate() -> dict:
     records = []
     index = 0
-    for stratum in STRATA:
+    for stratum in builder.STRATA:
         for suffix in ("a", "b"):
             index += 1
             records.append(
-                _synthetic_record(index, stratum, f"{stratum}.family.{suffix}")
+                builder._synthetic_record(index, stratum, f"{stratum}.family.{suffix}")
             )
-    return build_candidate({"schema": INPUT_SCHEMA, "records": records})
+    return builder.build_candidate({"schema": builder.INPUT_SCHEMA, "records": records})
 
 
 def test_validator_accepts_exact_builder_output() -> None:
-    report = validate_candidate(_candidate())
+    report = validator.validate_candidate(_candidate())
     assert report["verdict"] == "PASS"
     assert report["record_count"] == 6
     assert report["final_training_authorized"] is False
@@ -50,14 +62,14 @@ def test_validator_rejects_tampered_top_level_fields(field: str, value: object) 
     candidate = _candidate()
     candidate[field] = value
     with pytest.raises(ValueError):
-        validate_candidate(candidate)
+        validator.validate_candidate(candidate)
 
 
 def test_validator_rejects_noncanonical_record_order() -> None:
     candidate = _candidate()
     candidate["records"] = list(reversed(candidate["records"]))
     with pytest.raises(ValueError, match="canonical builder order"):
-        validate_candidate(candidate)
+        validator.validate_candidate(candidate)
 
 
 def test_validator_rejects_duplicate_source_identity_even_if_candidate_hash_is_stale() -> None:
@@ -66,11 +78,11 @@ def test_validator_rejects_duplicate_source_identity_even_if_candidate_hash_is_s
     tampered["normalized_sha256"] = "f" * 64
     candidate["records"].append(tampered)
     with pytest.raises(ValueError):
-        validate_candidate(candidate)
+        validator.validate_candidate(candidate)
 
 
 def test_validator_rejects_record_contract_extension() -> None:
     candidate = _candidate()
     candidate["records"][0]["unexpected_authority"] = "should-not-be-silently-accepted"
     with pytest.raises(ValueError, match="field mismatch"):
-        validate_candidate(candidate)
+        validator.validate_candidate(candidate)
