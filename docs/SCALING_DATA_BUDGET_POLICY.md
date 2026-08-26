@@ -4,11 +4,13 @@
 
 The project must keep **model parameter count**, **source bytes**, **post-tokenization training tokens**, and **unique causal-loss positions** as separate quantities.
 
-The current primary architecture has 20,613,440 parameters. The current source-authority convergence reports only 314,140 pre-successor-dedup source bytes and a separate frozen acquisition target of 20,000,000 source bytes. Neither number is a training-token count, and neither can authorize a learned-20M long run.
+The current primary architecture has 20,613,440 parameters. At the live cutoff recorded by this policy, NEXT100-063 / PR #538 reports 565,743 pre-global-dedup source bytes across 13 independent families and a separate frozen acquisition target of 20,000,000 source bytes. It authorizes zero balanced no-replay loss positions. None of those source-byte numbers is a training-token count, and none can authorize a learned-20M long run.
+
+The live source snapshot is provenance-bound in the machine policy to PR #538 head `958ebec0f7c9cb00238c7df70566cefd6b504d92` and registry identity `77fb69c558df8c59fdae00583c955c62ad088cda98fd16b335eedb26fb2d7526`. A newer source authority requires an explicit policy refresh; stale numbers must not drift silently.
 
 ## Research reference
 
-Hoffmann et al. (2022) found that compute-optimal model size and training-token count should scale together. The commonly used Chinchilla planning point is approximately 20 training tokens per parameter. This repository uses **20x only as a lower planning reference**, not as a universal optimum or a model-quality guarantee.
+Hoffmann et al. (2022) found that compute-optimal model size and training-token count should scale together. The commonly used Chinchilla planning point is approximately 20 training tokens per parameter. This repository uses **20x only as a planning reference**, not as a universal optimum or a model-quality guarantee.
 
 Later work strengthens the reason not to treat 20x as a ceiling. Data-constrained scaling work shows that repeated data has diminishing value; inference-aware scaling and over-training studies show that smaller models can rationally be trained on substantially more tokens; Llama 3 reports continued gains far beyond its Chinchilla-optimal token count. DataComp-LM and FineWeb/FineWeb-Edu also show that curation and filtering quality materially change outcomes.
 
