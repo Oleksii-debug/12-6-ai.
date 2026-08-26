@@ -1,6 +1,7 @@
 {
   "schema_version": 1,
   "campaign_id": "R01-LEARNED-20M-LAUNCH-V1",
+  "r01_campaign_commit_sha": "a73ab38026cb7849f478cc13ad58b93534a76e2f",
   "r01_campaign_blob_sha1": "c50154db609d41eceb2ffc97912360df567bcc04",
   "model_authority": {
     "branch": "model341/20m-candidate-a-20260826",
@@ -10,7 +11,7 @@
     "canonical_base": "random_init"
   },
   "evidence": {
-    "code": {"git_sha": null},
+    "code": {"git_sha": null, "authority": null},
     "corpus": {
       "manifest_sha256": null,
       "split_sha256": null,
@@ -60,7 +61,17 @@
     "compute_authorization": {
       "authority": null,
       "status": "NOT_AUTHORIZED",
+      "scope": null,
+      "authorized_by_owner": false,
       "maximum_cost_usd": null
+    },
+    "training_authorization": {
+      "authority": null,
+      "status": "NOT_AUTHORIZED",
+      "scope": null,
+      "authorized_by_owner": false,
+      "training_config_sha256": null,
+      "compute_authorization_evidence_sha256": null
     }
   },
   "truth_boundary": {
