@@ -1,8 +1,7 @@
 """DATA-297 external-real audit built on the incumbent DATA-33 privacy authority.
 
-The module does not add detectors or change DATA-33 actions. It measures that exact
-policy against runtime-assembled labeled fixtures and exact terminal source bytes.
-Public evidence contains identities, counts and byte accounting only.
+This module measures DATA-33 unchanged. It never adds detectors, never persists
+matched values or source text, and uses synthetic runtime-only challenge fixtures.
 """
 from __future__ import annotations
 
@@ -62,15 +61,17 @@ def load_config(path: Path = DEFAULT_CONFIG) -> Mapping[str, Any]:
         raise Data297AuditError("DATA-297 is LOCAL_FREE only")
     expected = config["expected_training_inventory"]
     inventory = list(config["admitted_inventory"])
-    if len(inventory) != expected["source_count"]:
+    if len(inventory) != int(expected["source_count"]):
         raise Data297AuditError("admitted source-count drift")
-    families = {item["source_family"] for item in inventory}
-    if len(families) != expected["family_count"]:
+    if len({item["source_family"] for item in inventory}) != int(expected["family_count"]):
         raise Data297AuditError("admitted family-count drift")
     if sum(int(item["expected_input_utf8_bytes"]) for item in inventory) != int(
         expected["input_utf8_bytes"]
     ):
         raise Data297AuditError("admitted byte-capacity drift")
+    for item in inventory:
+        if not _SHA256_RE.fullmatch(str(item["expected_input_sha256"])):
+            raise Data297AuditError("every admitted source must bind an exact lowercase SHA-256")
     return config
 
 
@@ -94,7 +95,6 @@ class LabeledFixture:
 
 
 def _synthetic_secret(label: str, length: int = 28) -> str:
-    # Runtime-only deterministic material. No real/private datum is used.
     digest = hashlib.sha256(("DATA297:" + label).encode("ascii")).hexdigest()
     core = (digest * 4)[: max(8, length - 2)]
     return "A" + core + "!"
@@ -103,175 +103,103 @@ def _synthetic_secret(label: str, length: int = 28) -> str:
 def _fixture_specs() -> tuple[LabeledFixture, ...]:
     return (
         LabeledFixture(
-            "positive-pii-email",
-            "pii",
-            "natural",
-            True,
+            "positive-pii-email", "pii", "natural", True,
             lambda: "Contact " + "fixture.owner" + "@" + "example.invalid" + " for review.",
         ),
         LabeledFixture(
-            "positive-pii-phone",
-            "pii",
-            "natural",
-            True,
+            "positive-pii-phone", "pii", "natural", True,
             lambda: "Synthetic contact +1 202 555 0100.",
         ),
         LabeledFixture(
-            "positive-private-key-marker",
-            "code-secret",
-            "code",
-            True,
-            lambda: "-----BEGIN " + "PRIVATE KEY-----\n" + "FIXTURE" + "\n-----END PRIVATE KEY-----",
+            "positive-private-key-marker", "code-secret", "code", True,
+            lambda: "-----BEGIN " + "PRIVATE KEY-----\nFIXTURE\n-----END PRIVATE KEY-----",
         ),
         LabeledFixture(
-            "positive-github-token-shape",
-            "api-key",
-            "code",
-            True,
-            lambda: "token = \"" + "gh" + "p_" + "A" * 36 + "\"",
+            "positive-github-token-shape", "api-key", "code", True,
+            lambda: 'token = "' + "gh" + "p_" + "A" * 36 + '"',
         ),
         LabeledFixture(
-            "positive-aws-access-id-shape",
-            "api-key",
-            "code",
-            True,
-            lambda: "key = \"" + "AK" + "IA" + "A" * 16 + "\"",
+            "positive-aws-access-id-shape", "api-key", "code", True,
+            lambda: 'key = "' + "AK" + "IA" + "A" * 16 + '"',
         ),
         LabeledFixture(
-            "positive-dotenv-api-key-assignment",
-            "code-secret",
-            "code",
-            True,
+            "positive-dotenv-api-key-assignment", "code-secret", "code", True,
             lambda: "api_" + "key=" + _synthetic_secret("dotenv-api-key", 30),
         ),
         LabeledFixture(
-            "positive-bearer-jwt-shape",
-            "code-secret",
-            "code",
-            True,
-            lambda: "Authorization: Bearer "
-            + "eyJ"
-            + "A" * 12
-            + "."
-            + "B" * 12
-            + "."
-            + "C" * 12,
+            "positive-bearer-jwt-shape", "code-secret", "code", True,
+            lambda: "Authorization: Bearer " + "eyJ" + "A" * 12 + "." + "B" * 12 + "." + "C" * 12,
         ),
         LabeledFixture(
-            "positive-private-unix-ssh-path",
-            "private-path",
-            "code",
-            True,
+            "positive-private-unix-ssh-path", "private-path", "code", True,
             lambda: "/home/" + "fixture-user" + "/.ssh/" + "id_rsa",
         ),
         LabeledFixture(
-            "positive-private-windows-cloud-path",
-            "private-path",
-            "code",
-            True,
-            lambda: "C:\\Users\\" + "fixture-user" + "\\.aws\\" + "credentials",
+            "positive-private-windows-cloud-path", "private-path", "code", True,
+            lambda: "C:\\Users\\" + "fixture-user" + "\\.aws\\credentials",
         ),
         LabeledFixture(
-            "positive-basic-auth-header",
-            "code-secret",
-            "code",
-            True,
-            lambda: "Authorization: Basic "
-            + base64.b64encode(
+            "positive-basic-auth-header", "code-secret", "code", True,
+            lambda: "Authorization: Basic " + base64.b64encode(
                 ("fixture-user:" + _synthetic_secret("basic-auth", 22)).encode("ascii")
             ).decode("ascii"),
         ),
         LabeledFixture(
-            "positive-credential-bearing-database-uri",
-            "code-secret",
-            "code",
-            True,
-            lambda: "postgresql://fixture-user:"
-            + _synthetic_secret("database-uri", 22)
+            "positive-credential-bearing-database-uri", "code-secret", "code", True,
+            lambda: "postgresql://fixture-user:" + _synthetic_secret("database-uri", 22)
             + "@db.example.invalid/app",
         ),
         LabeledFixture(
-            "positive-npm-auth-token-shape",
-            "api-key",
-            "code",
-            True,
+            "positive-npm-auth-token-shape", "api-key", "code", True,
             lambda: "//registry.npmjs.org/:_auth" + "Token=" + _synthetic_secret("npm", 34),
         ),
         LabeledFixture(
-            "positive-gitlab-token-shape",
-            "api-key",
-            "code",
-            True,
+            "positive-gitlab-token-shape", "api-key", "code", True,
             lambda: "gl" + "pat-" + _synthetic_secret("gitlab", 30).replace("!", "A"),
         ),
         LabeledFixture(
-            "positive-huggingface-token-shape",
-            "api-key",
-            "code",
-            True,
+            "positive-huggingface-token-shape", "api-key", "code", True,
             lambda: "h" + "f_" + _synthetic_secret("hf", 34).replace("!", "A"),
         ),
         LabeledFixture(
-            "positive-openai-style-key-shape",
-            "api-key",
-            "code",
-            True,
+            "positive-openai-style-key-shape", "api-key", "code", True,
             lambda: "s" + "k-" + _synthetic_secret("generic-sk", 40).replace("!", "A"),
         ),
         LabeledFixture(
-            "negative-env-placeholder",
-            "benign-code",
-            "code",
-            False,
+            "negative-env-placeholder", "benign-code", "code", False,
             lambda: "api_" + "key=${API_KEY}",
         ),
         LabeledFixture(
-            "negative-password-placeholder",
-            "benign-code",
-            "code",
-            False,
+            "negative-password-placeholder", "benign-code", "code", False,
             lambda: "pass" + "word=change" + "me",
         ),
         LabeledFixture(
-            "negative-token-example-placeholder",
-            "benign-code",
-            "code",
-            False,
+            "negative-token-example-placeholder", "benign-code", "code", False,
             lambda: "token=example" + "123",
         ),
         LabeledFixture(
-            "negative-checksum-literal",
-            "benign-code",
-            "code",
-            False,
-            lambda: "checksum = \"" + hashlib.sha256(b"public fixture").hexdigest() + "\"",
+            "negative-checksum-literal", "benign-code", "code", False,
+            lambda: 'checksum = "' + hashlib.sha256(b"public fixture").hexdigest() + '"',
         ),
         LabeledFixture(
-            "negative-generic-documentation-path",
-            "benign-path",
-            "code",
-            False,
+            "negative-generic-documentation-path", "benign-path", "code", False,
             lambda: "/home/user/project/README.md",
         ),
         LabeledFixture(
-            "negative-iso-date",
-            "benign-natural",
-            "natural",
-            False,
+            "negative-iso-date", "benign-natural", "natural", False,
             lambda: "Release date 2026-08-26.",
         ),
         LabeledFixture(
-            "negative-public-url",
-            "benign-natural",
-            "natural",
-            False,
+            "negative-public-url", "benign-natural", "natural", False,
             lambda: "See https://example.invalid/docs for the public example.",
         ),
     )
 
 
 def audit_labeled_fixtures() -> Mapping[str, Any]:
-    confusion = Counter({"true_positive": 0, "false_negative": 0, "true_negative": 0, "false_positive": 0})
+    confusion = Counter(
+        {"true_positive": 0, "false_negative": 0, "true_negative": 0, "false_positive": 0}
+    )
     by_category: dict[str, Counter[str]] = defaultdict(
         lambda: Counter(
             {"true_positive": 0, "false_negative": 0, "true_negative": 0, "false_positive": 0}
@@ -313,7 +241,9 @@ def audit_labeled_fixtures() -> Mapping[str, Any]:
         "false_negative_fixture_ids": sorted(false_negative_ids),
         "false_positive_fixture_ids": sorted(false_positive_ids),
         "detector_counts": dict(sorted(detector_counts.items())),
-        "by_category": {key: dict(sorted(value.items())) for key, value in sorted(by_category.items())},
+        "by_category": {
+            key: dict(sorted(value.items())) for key, value in sorted(by_category.items())
+        },
         "fixture_payload_set_sha256": _sha256_json(sorted(payload_hashes)),
         "payload_retention": "NONE",
     }
@@ -329,9 +259,7 @@ def _resolve_data229_text(root: Path, expected: Mapping[str, Any]) -> str:
     expected_sha = str(expected["expected_input_sha256"])
     expected_bytes = int(expected["expected_input_utf8_bytes"])
     for payload in _candidate_normalized_payloads(root):
-        variants = [payload]
-        if payload.endswith(b"\n"):
-            variants.append(payload[:-1])
+        variants = (payload, payload[:-1]) if payload.endswith(b"\n") else (payload,)
         for candidate in variants:
             if len(candidate) == expected_bytes and _sha256_bytes(candidate) == expected_sha:
                 return candidate.decode("utf-8", errors="strict")
@@ -349,35 +277,49 @@ def _find_unique_json(root: Path, filename: str) -> Mapping[str, Any]:
 
 def _resolve_data227_code(root: Path, expected: Mapping[str, Any]) -> tuple[str, str]:
     report = _find_unique_json(root, "data227-real-code-source-admission.json")
-    objects = [item for item in report.get("objects", []) if item.get("source_id") == expected["source_id"]]
-    if len(objects) != 1:
-        raise Data297AuditError("DATA-227 source object missing or duplicated: " + str(expected["source_id"]))
+    objects = [
+        item for item in report.get("objects", [])
+        if item.get("source_id") == expected["source_id"]
+    ]
+    registry_sources = [
+        item for item in report.get("registry", {}).get("sources", [])
+        if item.get("source_id") == expected["source_id"]
+    ]
+    if len(objects) != 1 or len(registry_sources) != 1:
+        raise Data297AuditError(
+            "DATA-227 source object/registry entry missing or duplicated: "
+            + str(expected["source_id"])
+        )
+
     item = objects[0]
+    registry_source = registry_sources[0]
+    snapshot = registry_source.get("snapshot", {})
     raw_sha = str(item.get("raw_sha256", ""))
+    expected_sha = str(expected["expected_input_sha256"])
+    expected_bytes = int(expected["expected_input_utf8_bytes"])
     if not _SHA256_RE.fullmatch(raw_sha):
         raise Data297AuditError("DATA-227 object does not bind raw SHA-256")
     if item.get("normalization_sha256") != raw_sha:
         raise Data297AuditError("DATA-227 raw/normalization identity drift")
-    expected_bytes = int(expected["expected_input_utf8_bytes"])
-    if int(item.get("raw_bytes", item.get("size_bytes", -1))) != expected_bytes:
-        raise Data297AuditError("DATA-227 byte count drift")
+    if raw_sha != expected_sha or snapshot.get("sha256") != expected_sha:
+        raise Data297AuditError("DATA-227 configured/report/registry SHA-256 drift")
+    if int(snapshot.get("size_bytes", -1)) != expected_bytes:
+        raise Data297AuditError("DATA-227 registry snapshot byte count drift")
 
     matches: list[bytes] = []
     for path in sorted(root.rglob("payload")):
         if not path.is_file():
             continue
         payload = path.read_bytes()
-        if len(payload) == expected_bytes and _sha256_bytes(payload) == raw_sha:
+        if len(payload) == expected_bytes and _sha256_bytes(payload) == expected_sha:
             matches.append(payload)
     if len(matches) != 1:
         raise Data297AuditError("DATA-227 exact snapshot payload missing or duplicated")
-    return matches[0].decode("utf-8", errors="strict"), raw_sha
+    return matches[0].decode("utf-8", errors="strict"), expected_sha
 
 
 def _record_public_row(
-    expected: Mapping[str, Any],
-    result: Any,
-    input_bytes: int,
+    expected: Mapping[str, Any], result: Any, input_bytes: int
 ) -> Mapping[str, Any]:
     retained = (
         len(result.sanitized_text.encode("utf-8"))
@@ -390,7 +332,7 @@ def _record_public_row(
         "language": expected["language"],
         "input_utf8_bytes": input_bytes,
         "retained_training_utf8_bytes": retained,
-        "dropped_input_utf8_bytes": 0 if result.train_eligible_after_privacy else input_bytes,
+        "excluded_input_utf8_bytes": 0 if result.train_eligible_after_privacy else input_bytes,
     }
 
 
@@ -404,7 +346,7 @@ def _aggregate_families(rows: Iterable[Mapping[str, Any]]) -> Mapping[str, Any]:
                 "source_count": 0,
                 "input_utf8_bytes": 0,
                 "retained_training_utf8_bytes": 0,
-                "dropped_input_utf8_bytes": 0,
+                "excluded_input_utf8_bytes": 0,
                 "action_counts": Counter(),
                 "detector_counts": Counter(),
             },
@@ -412,7 +354,7 @@ def _aggregate_families(rows: Iterable[Mapping[str, Any]]) -> Mapping[str, Any]:
         bucket["source_count"] += 1
         bucket["input_utf8_bytes"] += int(row["input_utf8_bytes"])
         bucket["retained_training_utf8_bytes"] += int(row["retained_training_utf8_bytes"])
-        bucket["dropped_input_utf8_bytes"] += int(row["dropped_input_utf8_bytes"])
+        bucket["excluded_input_utf8_bytes"] += int(row["excluded_input_utf8_bytes"])
         bucket["action_counts"][row["action"]] += 1
         bucket["detector_counts"].update(row["detector_counts"])
 
@@ -422,11 +364,10 @@ def _aggregate_families(rows: Iterable[Mapping[str, Any]]) -> Mapping[str, Any]:
             "source_count": bucket["source_count"],
             "input_utf8_bytes": bucket["input_utf8_bytes"],
             "retained_training_utf8_bytes": bucket["retained_training_utf8_bytes"],
-            "dropped_input_utf8_bytes": bucket["dropped_input_utf8_bytes"],
+            "excluded_input_utf8_bytes": bucket["excluded_input_utf8_bytes"],
             "retention_ratio": (
                 bucket["retained_training_utf8_bytes"] / bucket["input_utf8_bytes"]
-                if bucket["input_utf8_bytes"]
-                else 0.0
+                if bucket["input_utf8_bytes"] else 0.0
             ),
             "action_counts": dict(sorted(bucket["action_counts"].items())),
             "detector_counts": dict(sorted(bucket["detector_counts"].items())),
@@ -447,17 +388,15 @@ def build_external_audit_report(
     for expected in config["admitted_inventory"]:
         if expected["authority"] == "DATA-229":
             text = _resolve_data229_text(data229_root, expected)
-            input_sha = _sha256_bytes(text.encode("utf-8"))
         elif expected["authority"] == "DATA-227":
-            text, input_sha = _resolve_data227_code(data227_root, expected)
+            text, _ = _resolve_data227_code(data227_root, expected)
         else:
             raise Data297AuditError("unexpected admitted authority")
 
-        input_bytes = len(text.encode("utf-8"))
-        if input_bytes != int(expected["expected_input_utf8_bytes"]):
+        payload = text.encode("utf-8")
+        if len(payload) != int(expected["expected_input_utf8_bytes"]):
             raise Data297AuditError("materialized input-byte drift")
-        configured_sha = str(expected["expected_input_sha256"])
-        if _SHA256_RE.fullmatch(configured_sha) and input_sha != configured_sha:
+        if _sha256_bytes(payload) != expected["expected_input_sha256"]:
             raise Data297AuditError("materialized input SHA-256 drift")
 
         result = scan_record(
@@ -467,7 +406,7 @@ def build_external_audit_report(
             modality=str(expected["modality"]),
             text=text,
         )
-        rows.append(_record_public_row(expected, result, input_bytes))
+        rows.append(_record_public_row(expected, result, len(payload)))
 
     expected_inventory = config["expected_training_inventory"]
     observed_input = sum(int(row["input_utf8_bytes"]) for row in rows)
@@ -495,7 +434,10 @@ def build_external_audit_report(
             "admitted_terminal_sources_scanned": len(rows),
             "admitted_terminal_families_scanned": len(observed_families),
             "nonterminal_data228_promoted": False,
-            "coverage": "DATA-33 high-confidence-patterns-only; false negatives remain possible outside labeled fixtures.",
+            "coverage": (
+                "DATA-33 high-confidence-patterns-only; false negatives remain possible "
+                "outside labeled fixtures."
+            ),
         },
         "fixture_metrics": fixture_metrics,
         "inventory": {
@@ -503,7 +445,9 @@ def build_external_audit_report(
             "retained_training_utf8_bytes": sum(
                 int(row["retained_training_utf8_bytes"]) for row in rows
             ),
-            "dropped_input_utf8_bytes": sum(int(row["dropped_input_utf8_bytes"]) for row in rows),
+            "excluded_input_utf8_bytes": sum(
+                int(row["excluded_input_utf8_bytes"]) for row in rows
+            ),
             "by_family": observed_families,
             "records": sorted(rows, key=lambda row: str(row["source_id"])),
         },
@@ -519,8 +463,7 @@ def build_external_audit_report(
 
     serialized = json.dumps(report, ensure_ascii=False, sort_keys=True)
     for fixture in _fixture_specs():
-        payload = fixture.build()
-        if payload in serialized:
+        if fixture.build() in serialized:
             raise Data297AuditError("public report leaked a fixture payload")
     return report
 
@@ -539,11 +482,11 @@ def _main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
 
-    fixtures = sub.add_parser("fixtures", help="Measure DATA-33 on runtime-only labeled fixtures")
+    fixtures = sub.add_parser("fixtures")
     fixtures.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
     fixtures.add_argument("--output", type=Path)
 
-    audit = sub.add_parser("audit", help="Audit exact materialized terminal external-real source bytes")
+    audit = sub.add_parser("audit")
     audit.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
     audit.add_argument("--data229-root", type=Path, required=True)
     audit.add_argument("--data227-root", type=Path, required=True)
@@ -552,12 +495,11 @@ def _main() -> int:
     args = parser.parse_args()
     if args.command == "fixtures":
         config = load_config(args.config)
-        policy_sha = assert_incumbent_privacy_authority(config)
         core = {
             "schema_version": "12-6.data297-privacy-fixtures.v1",
             "worker_id": WORKER_ID,
             "local_free_only": True,
-            "privacy_policy_sha256": policy_sha,
+            "privacy_policy_sha256": assert_incumbent_privacy_authority(config),
             "fixture_metrics": audit_labeled_fixtures(),
         }
         report = {**core, "report_identity_sha256": _sha256_json(core)}
@@ -574,13 +516,18 @@ def _main() -> int:
         config_path=args.config,
     )
     write_public_report(report, args.output)
-    print(json.dumps({
-        "report_identity_sha256": report["report_identity_sha256"],
-        "input_utf8_bytes": report["inventory"]["input_utf8_bytes"],
-        "retained_training_utf8_bytes": report["inventory"]["retained_training_utf8_bytes"],
-        "false_negative_rate": report["fixture_metrics"]["false_negative_rate"],
-        "false_positive_rate": report["fixture_metrics"]["false_positive_rate"],
-    }, sort_keys=True))
+    print(
+        json.dumps(
+            {
+                "report_identity_sha256": report["report_identity_sha256"],
+                "input_utf8_bytes": report["inventory"]["input_utf8_bytes"],
+                "retained_training_utf8_bytes": report["inventory"]["retained_training_utf8_bytes"],
+                "false_negative_rate": report["fixture_metrics"]["false_negative_rate"],
+                "false_positive_rate": report["fixture_metrics"]["false_positive_rate"],
+            },
+            sort_keys=True,
+        )
+    )
     return 0
 
 
