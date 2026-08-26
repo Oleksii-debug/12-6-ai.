@@ -1,0 +1,119 @@
+{
+  "budget_preregistration": {
+    "artificial_repetition_allowed": false,
+    "budget_rule": "min(preregistered_reference_budget, frozen_corpus_family_constrained_one_pass_unique_optimized_targets)",
+    "document_replication_allowed": false,
+    "optimizer_step_1_authorized": false,
+    "padding_counts_as_data": false,
+    "realized_optimized_target_budget": 0,
+    "recycle_to_hit_budget_allowed": false,
+    "requested_mode": "no_replay_one_pass_only",
+    "sampling_with_replacement_allowed": false
+  },
+  "checkpoint_and_evaluation_protocol": {
+    "best_checkpoint_selector": "minimum_frozen_selection_validation_aggregate_BPB",
+    "evaluation_model_state_mutation_allowed": false,
+    "evaluation_trainer_state_mutation_allowed": false,
+    "final_test_before_selection_freeze_allowed": false,
+    "fresh_process_resume_required": true,
+    "required_bpb_reports_when_unblocked": [
+      "aggregate_BPB",
+      "UA_BPB",
+      "EN_BPB",
+      "code_BPB",
+      "source_family_BPB"
+    ],
+    "retain_best_and_final_separately": true,
+    "selection_validation_only_for_best_checkpoint": true
+  },
+  "execution": {
+    "bpb_metrics_available": false,
+    "checkpoints_written": false,
+    "evaluation_non_mutation_executed": false,
+    "execution_profile": "LOCAL_FREE",
+    "fresh_resume_executed": false,
+    "optimizer_updates": 0,
+    "paid_compute": false,
+    "training_started": false
+  },
+  "gate_identity_sha256": "dcb69c0bcdfee0d160bab0b348f90f7d337ad8c5a77eeefb30d119cead7471d6",
+  "independent_contract_reconstruction": {
+    "depends_on_learn317_runtime": false,
+    "frozen_corpus_contract": {
+      "admitted_source_bytes": 183061,
+      "blocking_gates": [
+        "G05_QUALITY",
+        "G06_PRIVACY",
+        "G09_BALANCE_DIVERSITY",
+        "G10_SELECTION_VALIDATION",
+        "G12_UNIQUE_LOSS",
+        "G14_TWO_CLEAN_BUILDS"
+      ],
+      "by_stratum_bytes": {
+        "code": 9703,
+        "en": 84793,
+        "uk": 88565
+      },
+      "by_stratum_families": {
+        "code": 2,
+        "en": 1,
+        "uk": 1
+      },
+      "contract_identity_sha256": "07d7beaaff4616e839450de6af3d407855c832bf75a24a959d1a12de5d9364e5",
+      "contract_state": "FROZEN_EXECUTABLE_CONTRACT",
+      "corpus_freeze_authorized": false,
+      "corpus_state": "NOT_BUILT_NOT_FROZEN_NOT_TERMINAL",
+      "dedicated_workflow_conclusion": "success",
+      "dedicated_workflow_run": 32968492138,
+      "family_constrained_no_replay_budget": 0,
+      "path": "configs/data/data300_corpus_v03_frozen_build_contract_v2.json",
+      "source_count": 5,
+      "source_sha": "8ea7f830e50a23754d189dd4134f4afad76a7ee9",
+      "terminal_corpus_claim_authorized": false,
+      "worker_id": "DATA-300-CORPUS-V03-FROZEN-BUILD-CONTRACT"
+    },
+    "learn317_availability_required": false,
+    "model_1m": {
+      "foreign_pretrained_weights": false,
+      "model_spec_sha256": "ff3cee542a1f75bb4e1eff8d7d24d72533af8f4f3d82bd064fb1cbfeba8c8d07",
+      "parameters": 1037696,
+      "random_initialization_only": true
+    },
+    "optimizer": {
+      "batch_size": 8,
+      "betas": [0.9,
+        0.95
+      ],
+      "document_isolated": true,
+      "eps": 1e-08,
+      "gradient_clip_norm": 1.0,
+      "learning_rate": 0.0003,
+      "name": "AdamW",
+      "precision": "fp32",
+      "schedule": "constant",
+      "seed": 1337,
+      "sequence_length": 128,
+      "warmup_steps": 0,
+      "weight_decay": 0.0
+    },
+    "tokenizer": {
+      "config_sha256": "b04055c1061dd641dcab7cb9d62a931f09b8d1a070140a926ceb4e91d73ca8e1",
+      "special_tokens": [],
+      "tokenizer_id": "s0-byte-v1",
+      "vocab_sha256": "905ed40bb42cc4d550e228ff5f24158d504b38e8ed5974dfa3077bd5867ad571",
+      "vocab_size": 256
+    }
+  },
+  "informational_repository_observation": {
+    "data301_published_at_cutoff": false,
+    "eval303_published_at_cutoff": false,
+    "learn317_published_at_cutoff": false,
+    "not_a_dependency_for_decision": true
+  },
+  "repository": "Oleksii-debug/12-6-ai.",
+  "schema": "12-6.learn318-external-real-1m-v2.authority-gate.v1",
+  "source_cutoff_utc": "2026-08-26T13:58:33Z",
+  "status": "BLOCKED_FROZEN_CORPUS_NOT_TERMINAL_AND_NO_REPLAY_BUDGET_ZERO",
+  "unblock_condition": "Reconstruct a successor terminal/frozen corpus authority independently; require a positive family-constrained one-pass unique optimized-target budget, nonempty immutable selection-validation authority, completed unique-loss proof, and deterministic clean-build evidence. Then rerun LEARN-318 from random initialization under the exact shared tokenizer/optimizer contract without replay.",
+  "worker_id": "LEARN-318-EXTERNAL-REAL-1M-V2"
+}
