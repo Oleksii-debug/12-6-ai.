@@ -1,17 +1,18 @@
 """Fail-closed data readiness checks for capability-oriented pretraining.
 
 This module is intentionally cheap: it evaluates model/corpus metadata only and
-never instantiates model weights or starts training.  It separates *data
-readiness* from *compute authorization* so a PASS here can never be interpreted
-as permission to spend money or launch a long run.
+never instantiates model weights or starts training. It separates data readiness
+from compute authorization so a PASS here can never be interpreted as permission
+to spend money or launch a long run.
 """
 from __future__ import annotations
 
 import hashlib
 import json
 import math
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 POLICY_SCHEMA = "12-6.corpus-readiness-policy.v1"
 CORPUS_SCHEMA = "12-6.corpus-manifest.v1"
@@ -75,7 +76,7 @@ def evaluate_corpus_readiness(
 ) -> dict[str, Any]:
     """Evaluate whether a corpus is suitable for capability-oriented pretraining.
 
-    The policy owns the data/parameter floor.  The default project policy uses a
+    The policy owns the data/parameter floor. The default project policy uses a
     research-informed 20 training-token/parameter minimum for the byte tokenizer,
     but the evaluator itself does not silently invent or relax that threshold.
     """
@@ -109,7 +110,9 @@ def evaluate_corpus_readiness(
 
     corpus_identity = manifest.get("corpus_identity_sha256")
     by_split = manifest.get("by_split")
-    if not isinstance(by_split, Mapping) or not isinstance(by_split.get("train"), Mapping):
+    if not isinstance(by_split, Mapping) or not isinstance(
+        by_split.get("train"), Mapping
+    ):
         raise CorpusReadinessError("manifest by_split.train is missing")
     train_tokens = _positive_int(
         by_split["train"].get("byte_tokens"), label="manifest train byte_tokens"
@@ -124,7 +127,9 @@ def evaluate_corpus_readiness(
     contains_external = truth.get("contains_external_training_data")
     external_diversity = truth.get("external_source_diversity_representative")
     if not isinstance(contains_external, bool):
-        raise CorpusReadinessError("truth_boundary.contains_external_training_data must be boolean")
+        raise CorpusReadinessError(
+            "truth_boundary.contains_external_training_data must be boolean"
+        )
     if not isinstance(external_diversity, bool):
         raise CorpusReadinessError(
             "truth_boundary.external_source_diversity_representative must be boolean"
@@ -225,7 +230,9 @@ def _read_json(path: Path) -> dict[str, Any]:
     return value
 
 
-def evaluate_policy_file(policy_path: str | Path, *, repo_root: str | Path) -> dict[str, Any]:
+def evaluate_policy_file(
+    policy_path: str | Path, *, repo_root: str | Path
+) -> dict[str, Any]:
     """Load a pinned project policy, model candidate and corpus manifest."""
 
     root = Path(repo_root).resolve()
