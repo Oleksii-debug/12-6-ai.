@@ -1,0 +1,124 @@
+{
+  "schema_version": "12-6.eval291-en-selection-validation-authority.v2",
+  "worker_id": "NEXT100-059-EN-SELECTION-V2",
+  "execution_profile": "LOCAL_FREE",
+  "status": "PASS",
+  "reservation_commit_sha": "d3f7fead8c04cafd535d1e574a7203523b54464d",
+  "reservation_committed_at": "2026-08-26T18:22:37Z",
+  "terminal_membership": {
+    "selection_validation_records": 3,
+    "selection_families": 3,
+    "final_test_records_added": 0,
+    "selection_order": [
+      "httpx-timeouts-doc:b699f15c8df51d20",
+      "requests-authentication-doc:96dc99e811e40013",
+      "flask-requestchecksum-doc:25bc38b2a43b2205"
+    ]
+  },
+  "live_source_rights_recheck": {
+    "result": "PASS_AFTER_METADATA_CORRECTION",
+    "performed_immediately_before_terminalization": true,
+    "objects": [
+      {
+        "membership_id": "httpx-timeouts-doc:b699f15c8df51d20",
+        "revision": "b5addb64f0161ff6bfe94c124ef76f6a1fba5254",
+        "source_blob_expected": "aedcfb627f5139901638ebf8de30216c2640591e",
+        "source_blob_observed": "aedcfb627f5139901638ebf8de30216c2640591e",
+        "license_id": "BSD-3-Clause",
+        "license_blob_expected": "ab79d16a3f4c6c894c028d1f7431811e8711b42b",
+        "license_blob_observed": "ab79d16a3f4c6c894c028d1f7431811e8711b42b"
+      },
+      {
+        "membership_id": "requests-authentication-doc:96dc99e811e40013",
+        "revision": "5460f467b02e49471c0fd6cfc9ca0adab6351f98",
+        "source_blob_expected": "76be9cccafc0ce28a698672a128eac9d1f9bbe15",
+        "source_blob_observed": "76be9cccafc0ce28a698672a128eac9d1f9bbe15",
+        "license_id": "Apache-2.0",
+        "license_blob_expected": "67db8588217f266eb561f75fae738656325deac9",
+        "license_blob_observed": "67db8588217f266eb561f75fae738656325deac9",
+        "notice_blob_expected": "1ff62db688277b77c83c1766dac7f165364d3528",
+        "notice_blob_observed": "1ff62db688277b77c83c1766dac7f165364d3528"
+      },
+      {
+        "membership_id": "flask-requestchecksum-doc:25bc38b2a43b2205",
+        "revision": "22d924701a6ae2e4cd01e9a15bbaf3946094af65",
+        "source_blob_expected": "25bc38b2a43b220597ca8c2e4a3b87730173a95a",
+        "source_blob_observed": "25bc38b2a43b220597ca8c2e4a3b87730173a95a",
+        "license_id": "BSD-3-Clause",
+        "license_blob_expected": "9d227a0cc43c3268d15722b763bd94ad298645a1",
+        "license_blob_observed": "9d227a0cc43c3268d15722b763bd94ad298645a1"
+      }
+    ],
+    "rejected_candidate_audit": {
+      "membership_id": "pytest-capture-doc:5de89bc0e3fbd1a3",
+      "terminal_member": false,
+      "reason": "FINAL_TEST_FIREWALL_FAIL_CLOSED_BUILDER_RIGHTS_CHECK_RESOLVED_PAYLOAD",
+      "license_id": "MIT",
+      "correct_license_blob": "c3f1657fce94589bd1ec7cead810639047f3d359",
+      "provisional_license_blob_corrected": "8eb357bf34d92aa6e37b8cf411ce67cfba24f2e8",
+      "outcomes_read": false,
+      "outcomes_exposed": false
+    }
+  },
+  "exposure_scan": {
+    "source_identity_collisions": [],
+    "near_copy_collisions": [],
+    "near_copy_contract": {
+      "token_shingle_size": 5,
+      "jaccard_threshold": 0.85
+    },
+    "tok315_admitted_code_pair_checks": {
+      "httpx_doc_vs_httpx_code_jaccard": 0.0,
+      "requests_doc_vs_requests_code_jaccard": 0.0007380073800738007,
+      "httpx_doc_vs_requests_code_jaccard": 0.0,
+      "requests_doc_vs_httpx_code_jaccard": 0.0,
+      "result": "PASS"
+    },
+    "materialized_training": {
+      "checked_repository_training_files": [
+        "data/s0/packaged/train.jsonl",
+        "data/synthetic/data10/uk-en-code-train.txt"
+      ],
+      "new_object_max_jaccard": {
+        "flask-requestchecksum-doc:25bc38b2a43b2205": 0.0017921146953405018
+      },
+      "threshold": 0.85,
+      "result": "PASS"
+    },
+    "tokenizer_authority": {
+      "branch": "tok315/tokenizer-fit-eligibility-20260826",
+      "head_sha": "b41e0ccbc9cf21933dcf285ce8d5eadb4bd33cce",
+      "fit_may_start_now": false,
+      "selection_validation_ingress_count": 0,
+      "final_test_ingress_count": 0,
+      "future_reserved_byte_overlap_state": "BLOCKED_PENDING_DATA300_G08_ON_EXACT_MATERIALIZATION"
+    },
+    "concurrent_flask_training_authority": {
+      "branch": "next100-043/code-flask-admission-20260826",
+      "head_sha": "2e5e8bf1dbeb183286741aef7aebcbde2438622c",
+      "training_revision": "22d924701a6ae2e4cd01e9a15bbaf3946094af65",
+      "selected_training_blob_count": 8,
+      "docs_glob_excluded": true,
+      "reserved_flask_doc_selected_for_training": false
+    },
+    "concurrency_branch_recheck": {
+      "tokenizer_branch_names_rechecked": true,
+      "training_branch_names_rechecked": true,
+      "flask_named_branches": 1,
+      "pytest_named_branches": 0,
+      "httpx_named_branches": 0,
+      "requests_named_branches": 0
+    }
+  },
+  "final_test_firewall": {
+    "v2_final_test_members": 0,
+    "payload_committed": false,
+    "outcomes_read": false,
+    "outcomes_exposed": false,
+    "rejected_candidate_may_not_reenter_without_new_blind_reservation": true
+  },
+  "limitations": [
+    "Byte-level near-copy proof covers repository material available for comparison plus the exact HTTPX and Requests code objects in TOK-315. The broader future tokenizer corpus is not materialized and tokenizer fitting is blocked; any future fit or training promotion must re-run exact and near-copy decontamination against this reservation.",
+    "The zero-exposure claim is scoped to repository authorities, admitted object identities, and materialized bytes visible at seal; it does not assert knowledge of hypothetical external or private corpora."
+  ]
+}
