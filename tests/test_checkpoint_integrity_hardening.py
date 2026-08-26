@@ -5,11 +5,16 @@ import copy
 import numpy as np
 import pytest
 
+import twelve_six.checkpoint.core as checkpoint_core
 from twelve_six.checkpoint import CheckpointCompatibilityError, CheckpointIntegrityError
 from twelve_six.checkpoint.hardening import (
     _preflight_optimizer_state,
     _validate_identity_counters,
     _validate_model_tensor_dtypes,
+    load_checkpoint,
+    load_verified_checkpoint,
+    prepare_checkpoint_load,
+    verify_checkpoint,
 )
 
 
@@ -19,6 +24,13 @@ class _NumpyModel:
 
     def state_dict(self):
         return {"weight": self.weight}
+
+
+def test_direct_core_load_entrypoints_are_hardened() -> None:
+    assert checkpoint_core.prepare_checkpoint_load is prepare_checkpoint_load
+    assert checkpoint_core.verify_checkpoint is verify_checkpoint
+    assert checkpoint_core.load_verified_checkpoint is load_verified_checkpoint
+    assert checkpoint_core.load_checkpoint is load_checkpoint
 
 
 def test_negative_step_fails_closed() -> None:
