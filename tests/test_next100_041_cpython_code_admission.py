@@ -42,6 +42,23 @@ def test_policy_is_bounded_code_only_and_one_family() -> None:
     assert policy["training_purpose_authority"]["reserved_for_evaluation"] is False
 
 
+def test_late_registry_binding_and_cpython_lineage_rule() -> None:
+    policy = _policy()
+    registry = policy["current_registry_binding"]
+    assert registry["producer_head"] == "b0523ccbc4b957615aac849d476cfa851be87578"
+    assert registry["registry_identity_sha256"] == "917e9bc31b2fa040d25e807ae3c01aa2cce32420752a891caacfb6c830e6632c"
+    assert registry["source_count"] == 5
+    assert registry["independent_source_family_count"] == 4
+
+    lineage = policy["family_lineage_concurrency"]
+    assert lineage["canonical_upstream_family_id"] == "github:python/cpython"
+    assert lineage["bound_registry_contains_cpython"] is False
+    assert lineage["bound_registry_family_credit_if_admitted"] == 1
+    assert lineage["observed_sibling_candidate"]["pull_request"] == 467
+    assert lineage["observed_sibling_candidate"]["terminal_state_at_review"] == "NONTERMINAL_WORKFLOW_QUEUED"
+    assert lineage["additional_family_credit_if_sibling_cpython_terminal"] == 0
+
+
 def test_code_only_path_boundary_rejects_docs_tests_and_non_python() -> None:
     _assert_code_only_path("Lib/graphlib.py")
     for path in ("Doc/library/graphlib.rst", "Lib/test/test_graphlib.py", "Modules/gcmodule.c"):
