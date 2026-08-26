@@ -1,9 +1,9 @@
 """Cheap, fail-closed launch gate for long learned-model experiments.
 
 The gate deliberately checks cheap environment/tooling invariants before importing
-model/runtime modules.  It never instantiates model weights, creates an optimizer,
-or performs training.  A successful run emits a hash-signed launch envelope bound
-to the exact Git SHA, launch request, purpose profile and lock identities.
+model/runtime modules. It never instantiates model weights, creates an optimizer,
+or performs training. A successful run emits a hash-signed launch envelope bound
+to the exact Git SHA, launch request, environment profile and lock identities.
 """
 
 from __future__ import annotations
@@ -78,6 +78,10 @@ def _repo_path(repo: Path, raw: str, *, label: str) -> Path:
     return candidate
 
 
+def _relative(repo: Path, path: Path) -> str:
+    return str(path.resolve().relative_to(repo.resolve()))
+
+
 def _git_head(repo: Path) -> str:
     try:
         result = subprocess.run(
@@ -90,8 +94,8 @@ def _git_head(repo: Path) -> str:
     except (OSError, subprocess.CalledProcessError) as exc:
         raise LaunchGateError("cannot resolve exact source SHA") from exc
     value = result.stdout.strip()
-    if len(value) != 40:
-        raise LaunchGateError("git HEAD is not a full 40-character SHA")
+    if len(value) != 40 or any(char not in "0123456789abcdef" for char in value):
+        raise LaunchGateError("git HEAD is not a lowercase full 40-character SHA")
     return value
 
 
@@ -99,25 +103,96 @@ def _python_version() -> str:
     return ".".join(str(x) for x in sys.version_info[:3])
 
 
-def _check_tools(request: dict[str, Any]) -> list[dict[str, str]]:
-    """Check pytest/ruff/other tools before any heavyweight project import."""
+def _check_tools(repo: Path, request: dict[str, Any]) -> list[dict[str, str]]:
+    """Check pytest/Ruff/other tools before any heavyweight project import."""
     checks: list[dict[str, str]] = []
-    for module in request.get("required_modules", []):
+    modules = request.get("required_modules", [])
+    commands = request.get("required_commands", [])
+    if not isinstance(modules, list):
+        raise LaunchGateError("required_modules must be a list")
+    if not isinstance(commands, list):
+        raise LaunchGateError("required_commands must be a list")
+
+    for module in modules:
         if not isinstance(module, str) or not module:
             raise LaunchGateError("required_modules must contain non-empty strings")
         if importlib.util.find_spec(module) is None:
             raise LaunchGateError(f"required module unavailable: {module}")
         checks.append({"kind": "module", "name": module, "status": "PASS"})
-    for command in request.get("required_commands", []):
+
+    for command in commands:
         if not isinstance(command, str) or not command:
             raise LaunchGateError("required_commands must contain non-empty strings")
-        resolved = shutil.which(command)
-        if resolved is None:
-            raise LaunchGateError(f"required command unavailable: {command}")
+        if "/" in command or "\\" in command:
+            candidate = _repo_path(repo, command, label="required command")
+            if not candidate.is_file() or not os.access(candidate, os.X_OK):
+                raise LaunchGateError(f"required command unavailable: {command}")
+            resolved = str(candidate)
+        else:
+            found = shutil.which(command)
+            if found is None:
+                raise LaunchGateError(f"required command unavailable: {command}")
+            resolved = found
         checks.append(
             {"kind": "command", "name": command, "path": resolved, "status": "PASS"}
         )
     return checks
+
+
+def _validate_dependency_index(repo: Path, base_path: Path, base: dict[str, Any]) -> dict[str, str]:
+    index_path = repo / "requirements" / "locks" / "index.json"
+    index = _read_json(index_path)
+    profiles = index.get("profiles")
+    profile_id = base.get("profile_id")
+    if not isinstance(profiles, dict) or profile_id not in profiles:
+        raise LaunchGateError(f"dependency lock index missing profile: {profile_id}")
+    record = profiles[profile_id]
+    if not isinstance(record, dict):
+        raise LaunchGateError(f"invalid dependency lock index record: {profile_id}")
+    if _repo_path(repo, str(record.get("path", "")), label="indexed dependency profile") != base_path:
+        raise LaunchGateError("dependency lock index/profile path mismatch")
+    if record.get("sha256") != _hash_file(base_path):
+        raise LaunchGateError("dependency lock index/profile file hash mismatch")
+    if record.get("manifest_sha256") != base.get("manifest_sha256"):
+        raise LaunchGateError("dependency lock index/profile manifest mismatch")
+    if index.get("python_version") != _python_version():
+        raise LaunchGateError("dependency lock index Python identity mismatch")
+    return {
+        "path": _relative(repo, index_path),
+        "file_sha256": _hash_file(index_path),
+        "index_sha256": str(index.get("index_sha256")),
+    }
+
+
+def _validate_purpose_index(
+    repo: Path,
+    profile_path: Path,
+    profile: dict[str, Any],
+) -> dict[str, str] | None:
+    try:
+        profile_path.relative_to((repo / "requirements" / "profiles").resolve())
+    except ValueError:
+        return None
+    index_path = repo / "requirements" / "profiles" / "index.json"
+    index = _read_json(index_path)
+    profiles = index.get("profiles")
+    profile_id = profile.get("profile_id")
+    if not isinstance(profiles, dict) or profile_id not in profiles:
+        raise LaunchGateError(f"purpose environment index missing profile: {profile_id}")
+    record = profiles[profile_id]
+    if not isinstance(record, dict):
+        raise LaunchGateError(f"invalid purpose environment index record: {profile_id}")
+    if _repo_path(repo, str(record.get("path", "")), label="indexed purpose profile") != profile_path:
+        raise LaunchGateError("purpose environment index/profile path mismatch")
+    if record.get("sha256") != _hash_file(profile_path):
+        raise LaunchGateError("purpose environment index/profile file hash mismatch")
+    if record.get("profile_sha256") != profile.get("profile_sha256"):
+        raise LaunchGateError("purpose environment index/profile semantic mismatch")
+    return {
+        "path": _relative(repo, index_path),
+        "file_sha256": _hash_file(index_path),
+        "index_sha256": str(index.get("index_sha256")),
+    }
 
 
 def _verify_lock_profile(repo: Path, request: dict[str, Any]) -> dict[str, Any]:
@@ -134,6 +209,7 @@ def _verify_lock_profile(repo: Path, request: dict[str, Any]) -> dict[str, Any]:
     if expected_declared is not None and profile.get("profile_sha256") != expected_declared:
         raise LaunchGateError("purpose profile semantic SHA mismatch")
 
+    purpose_index = _validate_purpose_index(repo, profile_path, profile)
     profile_file_sha = _hash_file(profile_path)
     base = profile
     base_path = profile_path
@@ -150,6 +226,7 @@ def _verify_lock_profile(repo: Path, request: dict[str, Any]) -> dict[str, Any]:
         if base.get("manifest_sha256") != base_pointer.get("manifest_sha256"):
             raise LaunchGateError("purpose/base profile manifest identity mismatch")
 
+    dependency_index = _validate_dependency_index(repo, base_path, base)
     expected_python = profile.get("python", {}).get("version") or base.get("python", {}).get("version")
     if expected_python != _python_version():
         raise LaunchGateError(
@@ -172,19 +249,21 @@ def _verify_lock_profile(repo: Path, request: dict[str, Any]) -> dict[str, Any]:
         if actual != item.get("sha256"):
             raise LaunchGateError(f"{role} lock hash mismatch")
         lock_result[str(role)] = {
-            "path": str(lock_path.relative_to(repo.resolve())),
+            "path": _relative(repo, lock_path),
             "sha256": actual,
         }
 
     return {
         "profile_id": expected_id,
-        "profile_path": str(profile_path.relative_to(repo.resolve())),
+        "profile_path": _relative(repo, profile_path),
         "profile_file_sha256": profile_file_sha,
         "profile_semantic_sha256": profile.get("profile_sha256"),
+        "purpose_index": purpose_index,
         "base_profile_id": base.get("profile_id"),
-        "base_profile_path": str(base_path.relative_to(repo.resolve())),
+        "base_profile_path": _relative(repo, base_path),
         "base_profile_file_sha256": _hash_file(base_path),
         "base_manifest_sha256": base.get("manifest_sha256"),
+        "dependency_index": dependency_index,
         "locks": lock_result,
     }
 
@@ -247,7 +326,7 @@ def _verify_storage(repo: Path, request: dict[str, Any]) -> dict[str, Any]:
     except OSError as exc:
         raise LaunchGateError(f"checkpoint output is not writable: {output}") from exc
     return {
-        "checkpoint_output": str(output.relative_to(repo.resolve())),
+        "checkpoint_output": _relative(repo, output),
         "free_bytes": free,
         "minimum_free_bytes": minimum,
         "writable": True,
@@ -266,14 +345,16 @@ def _verify_corpus(repo: Path, request: dict[str, Any]) -> dict[str, str]:
     if not isinstance(actual, str) or actual != expected:
         raise LaunchGateError("corpus identity mismatch")
     return {
-        "manifest_path": str(manifest_path.relative_to(repo.resolve())),
+        "manifest_path": _relative(repo, manifest_path),
         "manifest_file_sha256": _hash_file(manifest_path),
         "identity_key": identity_key,
         "identity_sha256": actual,
     }
 
 
-def _verify_project_contracts(request: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any], list[str]]:
+def _verify_project_contracts(
+    request: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any], list[str]]:
     """Import project runtime only after cheap tooling/profile checks passed."""
     imports = request.get("critical_imports")
     if not isinstance(imports, list) or not imports:
@@ -347,13 +428,16 @@ def _verify_gpu_if_required(request: dict[str, Any]) -> dict[str, Any]:
 
 def create_launch_envelope(repo: Path, request_path: Path, output_path: Path) -> dict[str, Any]:
     repo = repo.resolve()
-    request = _read_json(request_path.resolve())
+    request_file = _repo_path(repo, str(request_path), label="launch request")
+    output_file = _repo_path(repo, str(output_path), label="launch envelope")
+    request = _read_json(request_file)
     if request.get("schema") != REQUEST_SCHEMA:
         raise LaunchGateError("launch request schema mismatch")
 
-    # Historical failure boundary: pytest/ruff availability is checked first,
+    # Historical failure boundary: pytest/Ruff availability is checked first,
     # before importing twelve_six.model / torch or constructing a ModelSpec.
-    tool_checks = _check_tools(request)
+    tool_checks = _check_tools(repo, request)
+    source_sha = _git_head(repo)
     profile = _verify_lock_profile(repo, request)
     selectors = _verify_test_selectors(repo, request)
     budget = _verify_budget(request)
@@ -364,7 +448,8 @@ def create_launch_envelope(repo: Path, request_path: Path, output_path: Path) ->
 
     unsigned = {
         "schema": ENVELOPE_SCHEMA,
-        "source_sha": _git_head(repo),
+        "source_sha": source_sha,
+        "request_path": _relative(repo, request_file),
         "request_sha256": _hash_json(request),
         "binding": request.get("binding"),
         "python": {
@@ -386,6 +471,7 @@ def create_launch_envelope(repo: Path, request_path: Path, output_path: Path) ->
         },
         "check_order": [
             "tool_availability",
+            "source_sha",
             "purpose_profile_and_locks",
             "test_selectors",
             "run_budget",
@@ -398,7 +484,7 @@ def create_launch_envelope(repo: Path, request_path: Path, output_path: Path) ->
     }
     envelope = dict(unsigned)
     envelope["envelope_sha256"] = _hash_json(unsigned)
-    _write_json(output_path.resolve(), envelope)
+    _write_json(output_file, envelope)
     return envelope
 
 
@@ -410,8 +496,10 @@ def verify_launch_envelope(
     expected_binding: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     repo = repo.resolve()
-    request = _read_json(request_path.resolve())
-    envelope = _read_json(envelope_path.resolve())
+    request_file = _repo_path(repo, str(request_path), label="launch request")
+    envelope_file = _repo_path(repo, str(envelope_path), label="launch envelope")
+    request = _read_json(request_file)
+    envelope = _read_json(envelope_file)
     if envelope.get("schema") != ENVELOPE_SCHEMA:
         raise LaunchGateError("launch envelope schema mismatch")
     unsigned = dict(envelope)
@@ -420,6 +508,8 @@ def verify_launch_envelope(
         raise LaunchGateError("launch envelope hash signature mismatch")
     if envelope.get("source_sha") != _git_head(repo):
         raise LaunchGateError("stale launch envelope: source SHA mismatch")
+    if envelope.get("request_path") != _relative(repo, request_file):
+        raise LaunchGateError("stale launch envelope: launch request path mismatch")
     if envelope.get("request_sha256") != _hash_json(request):
         raise LaunchGateError("stale launch envelope: launch config mismatch")
     if expected_binding is not None and envelope.get("binding") != expected_binding:
