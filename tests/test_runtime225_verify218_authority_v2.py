@@ -11,6 +11,7 @@ from twelve_six.inference.verify218_authority import (
     EXPECTED_TOKENIZER_CONFIG_SHA256,
     EXPECTED_TOKENIZER_VERSION,
     EXPECTED_TOKENIZER_VOCAB_SHA256,
+    Verify218AuthorityError,
 )
 from twelve_six.inference.verify218_authority_v2 import (
     EXPECTED_SOURCE_ARTIFACT_DIGEST,
@@ -136,5 +137,5 @@ def test_v2_rejects_any_learned_source_substitution(field: str, value: object) -
 def test_v2_retains_v1_scientific_gate_fail_closed_behavior() -> None:
     manifest = deepcopy(_manifest())
     manifest["gates"]["fresh_process_resume"] = False
-    with pytest.raises(Exception, match="required gates"):
+    with pytest.raises(Verify218AuthorityError, match="required gates"):
         _validate(manifest)
