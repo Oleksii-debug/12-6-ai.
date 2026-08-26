@@ -24,10 +24,14 @@ ROOT = Path(__file__).resolve().parents[1]
 CONFIG = ROOT / "configs/data/d03_rada_trees_archive_inventory_v1.json"
 HEX64 = re.compile(r"[0-9a-f]{64}")
 DRIVE = re.compile(r"^[A-Za-z]:")
+PINNED_CONTENT_SHA256 = "5e53939cd255276c58190569aebfaa6c90fb085fb10063e3e5f661747749719d"
+PINNED_XET_HASH = "a31d24710d417246fb7e48028baaf6b9efb9a199983d78264f7997c69e42a801"
 
 
 def canonical_json(value: Any) -> bytes:
-    return (json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8")
+    return (
+        json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n"
+    ).encode("utf-8")
 
 
 def sha256_bytes(payload: bytes) -> str:
@@ -115,7 +119,12 @@ def validate_bounds(entries: Iterable[dict[str, Any]], max_member: int, max_tota
     return total
 
 
-def inventory_extracted_tree(root: Path, expected: list[dict[str, Any]], max_member: int, max_total: int) -> list[dict[str, Any]]:
+def inventory_extracted_tree(
+    root: Path,
+    expected: list[dict[str, Any]],
+    max_member: int,
+    max_total: int,
+) -> list[dict[str, Any]]:
     root = root.resolve()
     expected_map = {item["path"]: int(item["size_bytes"]) for item in expected}
     actual: list[dict[str, Any]] = []
@@ -147,8 +156,14 @@ def inventory_extracted_tree(root: Path, expected: list[dict[str, Any]], max_mem
     if actual_map != expected_map:
         missing = sorted(set(expected_map) - set(actual_map))
         extra = sorted(set(actual_map) - set(expected_map))
-        mismatched = sorted(path for path in set(expected_map) & set(actual_map) if expected_map[path] != actual_map[path])
-        raise ValueError(f"listing/extraction mismatch missing={missing} extra={extra} size_mismatch={mismatched}")
+        mismatched = sorted(
+            path
+            for path in set(expected_map) & set(actual_map)
+            if expected_map[path] != actual_map[path]
+        )
+        raise ValueError(
+            f"listing/extraction mismatch missing={missing} extra={extra} size_mismatch={mismatched}"
+        )
     if not actual:
         raise ValueError("extracted tree contains no regular files")
     return actual
@@ -163,7 +178,9 @@ def find_extractor(preferred: str | None, accepted: list[str]) -> str:
 
 
 def extractor_version(executable: str) -> str:
-    proc = subprocess.run([executable], check=False, capture_output=True, text=True, timeout=30)
+    proc = subprocess.run(
+        [executable], check=False, capture_output=True, text=True, timeout=30
+    )
     text = (proc.stdout or proc.stderr).strip().splitlines()
     if not text:
         return "UNKNOWN"
@@ -203,8 +220,12 @@ def load_config(path: Path = CONFIG) -> dict[str, Any]:
     assert value["parent"]["probe_head_sha"] == "92c1fd05d4399b0f0c4a35f0689160383f963c9c"
     assert value["parent"]["dataset"] == "uacorpus/Rada_Trees"
     assert value["parent"]["dataset_head_sha"] == "1b994a5804dcda122721e8d33a03fd172cf8d867"
-    assert value["primary_archive"]["path"] == "Rada_Trees.7z"
-    assert value["primary_archive"]["exact_content_sha256"] is None
+    archive = value["primary_archive"]
+    assert archive["path"] == "Rada_Trees.7z"
+    assert archive["exact_content_sha256"] == PINNED_CONTENT_SHA256
+    assert archive["content_sha256_authority"] == "HF_XET_POINTER_AT_EXACT_DATASET_REVISION"
+    assert archive["content_xet_hash"] == PINNED_XET_HASH
+    assert archive["identity_state"] == "HF_IMMUTABLE_POINTER_SHA256_PINNED_CONTENT_DOWNLOAD_REQUIRED"
     policy = value["inventory_policy"]
     assert policy["hash_algorithm"] == "sha256"
     assert policy["reject_symlinks"] is True
@@ -213,6 +234,9 @@ def load_config(path: Path = CONFIG) -> dict[str, Any]:
     assert policy["require_preextract_member_listing"] is True
     assert policy["require_listing_vs_extraction_exact_match"] is True
     boundary = value["claim_boundary"]
+    assert boundary["archive_downloaded"] is False
+    assert boundary["archive_sha256_pinned"] is True
+    assert boundary["archive_sha256_verified_from_download"] is False
     assert boundary["training_authorized_bytes"] == 0
     assert boundary["normalized_capacity_credited"] == 0
     assert boundary["training_exposure_authorized"] is False
@@ -230,12 +254,17 @@ def build_report(
     upstream_object_identity: str,
     extractor: str,
 ) -> dict[str, Any]:
-    if not HEX64.fullmatch(expected_sha256):
-        raise ValueError("expected archive SHA-256 must be 64 lowercase hex chars")
+    pinned_sha256 = config["primary_archive"]["exact_content_sha256"]
+    if not isinstance(pinned_sha256, str) or not HEX64.fullmatch(pinned_sha256):
+        raise ValueError("config archive SHA-256 must be pinned as 64 lowercase hex chars")
+    if pinned_sha256 != PINNED_CONTENT_SHA256:
+        raise ValueError("config archive SHA-256 authority drift")
+    if expected_sha256 != pinned_sha256:
+        raise ValueError("expected archive SHA-256 detached from pinned source authority")
     if expected_size <= 0:
         raise ValueError("expected archive size must be positive")
-    if not upstream_object_identity.strip():
-        raise ValueError("upstream object identity is required")
+    if upstream_object_identity != config["primary_archive"]["content_xet_hash"]:
+        raise ValueError("upstream object identity detached from pinned Xet authority")
     archive = archive.resolve()
     if not archive.is_file() or archive.is_symlink():
         raise ValueError("archive must be a regular non-symlink file")
@@ -243,12 +272,16 @@ def build_report(
     actual_sha256 = sha256_file(archive)
     if actual_size != expected_size:
         raise ValueError(f"archive size mismatch expected={expected_size} actual={actual_size}")
-    if actual_sha256 != expected_sha256:
-        raise ValueError("archive SHA-256 mismatch")
+    if actual_sha256 != pinned_sha256:
+        raise ValueError("archive SHA-256 mismatch against pinned source authority")
 
     policy = config["inventory_policy"]
     listing = list_archive(extractor, archive)
-    total = validate_bounds(listing, policy["max_single_member_bytes"], policy["max_total_uncompressed_bytes"])
+    total = validate_bounds(
+        listing,
+        policy["max_single_member_bytes"],
+        policy["max_total_uncompressed_bytes"],
+    )
     with tempfile.TemporaryDirectory(prefix="rada-trees-inventory-") as tmp:
         temp_root = Path(tmp)
         extract_archive(extractor, archive, temp_root)
@@ -277,9 +310,13 @@ def build_report(
             "path": config["primary_archive"]["path"],
             "upstream_object_identity": upstream_object_identity,
             "sha256": actual_sha256,
+            "sha256_authority": config["primary_archive"]["content_sha256_authority"],
             "size_bytes": actual_size,
         },
-        "extractor": {"name": Path(extractor).name, "version_observed": extractor_version(extractor)},
+        "extractor": {
+            "name": Path(extractor).name,
+            "version_observed": extractor_version(extractor),
+        },
         "member_count": len(members),
         "uncompressed_bytes_observed": total,
         "members": members,
