@@ -6,10 +6,10 @@
     "head_sha": "8ea7f830e50a23754d189dd4134f4afad76a7ee9"
   },
   "blockers": [
-    "DATA-300 v2 explicitly states the corpus is NOT_BUILT_NOT_FROZEN_NOT_TERMINAL.",
-    "DATA-301 exists at the evidence cutoff but has zero commits beyond DATA-300 and therefore publishes no terminal corpus/shard identity.",
-    "TOK-315 tokenizer-fit eligibility evidence is not published at the evidence cutoff.",
-    "Without an exact eligible train-only tokenizer-fit inventory and content hash, running BPE would violate the purpose-separation gate."
+    "DATA-301 terminal verdict is TERMINAL_BLOCKED and emits no corpus or shard identity.",
+    "TOK-315 now binds the five-source training allowlist but explicitly sets fit_may_start_now=false.",
+    "TOK-315 remains BLOCKED_PENDING_MATERIALIZED_RESERVED_DECONTAMINATION and requires DATA-300 G08 proof on the exact materialization.",
+    "No eligible materialized tokenizer-fit manifest exists, so BPE execution is not purpose-authorized."
   ],
   "candidate_results": [
     {
@@ -77,7 +77,7 @@
     "selection_validation_bytes_read": false,
     "tokenizer_training_started": false
   },
-  "gate_sha256": "d9b843538676a0b7230d20c4fe7f1f703cdc148b7b6ced7ea9387ba4c27e5b07",
+  "gate_sha256": "f67d7c464f1cbfaafd6013fe57a35723d6dd1b8e1e84c19fa81c5020afe69d5f",
   "local_free_only": true,
   "maintained_bpe": {
     "algorithm": "bpe",
@@ -97,12 +97,21 @@
   "prerequisite_scan": {
     "data301_branch": "data301/corpus-v03-terminal-build-20260826",
     "data301_branch_found": true,
-    "data301_commits_ahead_of_data300": 0,
-    "data301_head_sha": "8ea7f830e50a23754d189dd4134f4afad76a7ee9",
+    "data301_evidence_identity_sha256": "939065abeefff8aed924415589608ff3fc721fe4b0a57fc200146a4b6a137e81",
+    "data301_shard_identity_found": false,
     "data301_terminal_corpus_identity_found": false,
-    "eligible_tokenizer_fit_manifest_found": false,
-    "tok315_branch_found": false,
-    "tok315_tokenizer_fit_inventory_identity_found": false
+    "data301_verdict": "TERMINAL_BLOCKED",
+    "eligible_materialized_tokenizer_fit_manifest_found": false,
+    "tok315_admitted_source_bytes": 183061,
+    "tok315_branch": "tok315/tokenizer-fit-eligibility-20260826",
+    "tok315_branch_found": true,
+    "tok315_evidence_sha256": "18c671ab50e99b79b96e5f030400b381c964ef9fc01924795de44af9cadb56f6",
+    "tok315_final_test_ingress_count": 0,
+    "tok315_fit_may_start_now": false,
+    "tok315_required_inventory_sha256": "945afd3dbd144f81c8441adf92e7784259de3f21a4dd547e95893243dec6e90d",
+    "tok315_selection_validation_ingress_count": 0,
+    "tok315_source_count": 5,
+    "tok315_status": "BLOCKED_PENDING_MATERIALIZED_RESERVED_DECONTAMINATION"
   },
   "protocol": {
     "artifact_repeatability_requirement": "complete tokenizer JSON bytes and ordered token-to-id vocabulary semantics must be identical across the two independent trainings for each candidate",
@@ -117,7 +126,7 @@
       "code"
     ],
     "independent_trainings_per_candidate": 2,
-    "metric_surface": "eligible tokenizer-fit train corpus only; no selection-validation or final-test bytes",
+    "metric_surface": "eligible materialized tokenizer-fit train corpus only; no selection-validation or final-test bytes",
     "model_family_selection_permitted": false,
     "requested_vocab_grid": [
       320,
@@ -135,11 +144,12 @@
     "winner_selection_permitted": false
   },
   "schema": "12-6.tok316-bpe-reproducibility-v03-gate.v1",
-  "status": "BLOCKED_NO_TERMINAL_TOKENIZER_FIT_CORPUS",
+  "status": "BLOCKED_TOKENIZER_FIT_NOT_YET_PERMITTED",
   "unblock_requirements": [
-    "terminal frozen external-real training corpus identity and deterministic train shard hashes",
-    "TOK-315 or exact superseding tokenizer-fit eligibility authority binding train-only tokenizer-fit source inventory and hash",
-    "proof that selection-validation and final-test bytes are excluded from tokenizer training",
+    "terminal or otherwise purpose-authorized materialized external-real train corpus with deterministic shard hashes",
+    "TOK-315 or exact superseding eligibility authority with fit_may_start_now=true for that exact materialization",
+    "passing reserved-byte decontamination / DATA-300 G08 on the exact materialized train bytes",
+    "proof that selection-validation and final-test ingress counts remain zero for tokenizer fit",
     "local/free runtime with exact tokenizers==0.23.1 before any tokenizer fit"
   ],
   "worker_id": "TOK-316-BPE-REPRODUCIBILITY-V03"
