@@ -1,0 +1,177 @@
+name: DATA-214 Corpus V0.2 convergence recovery
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - data214/corpus-v02-convergence-recovery-20260826
+
+permissions:
+  contents: read
+
+jobs:
+  focused-recovery:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact recovery head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up CPython 3.11.16
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.11.16
+
+      - name: Bind exact recovery source
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+          test "$(git merge-base 49cb84baa6caae2d35ba5b15543d18dc57eb3117 HEAD)" = \
+            "49cb84baa6caae2d35ba5b15543d18dc57eb3117"
+
+      - name: Universal bootstrap for tests and lint
+        uses: ./.github/actions/execution-bootstrap
+        with:
+          capabilities: tests,lint
+          venv: .data214
+          command: python -m pytest
+          manifest: data214-evidence/execution-environment.json
+
+      - name: Install exact Product runtime consumed by DATA-183
+        run: |
+          set -euo pipefail
+          .data214/bin/python -m pip install \
+            --disable-pip-version-check --no-deps --require-hashes \
+            -r requirements/locks/linux-x86_64/runtime.lock.txt
+
+      - name: Install exact inherited DATA-31 DataTrove experiment runtime
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/data214-datatrove /tmp/data214-tokenizers
+          .data214/bin/python -m pip download --no-deps datatrove==0.10.0 \
+            -d /tmp/data214-datatrove
+          WHEEL="$(find /tmp/data214-datatrove -name 'datatrove-0.10.0-*.whl' -print -quit)"
+          test -n "$WHEEL"
+          test "$(sha256sum "$WHEEL" | awk '{print $1}')" = \
+            "c7bb75deed2c3e88fb5138f8ea075a170ee98d6c94fc263829609091ea9c2b5d"
+          .data214/bin/python -m pip download --no-deps tokenizers==0.23.1 \
+            -d /tmp/data214-tokenizers
+          TOKENIZERS_WHEEL="$(find /tmp/data214-tokenizers -name 'tokenizers-0.23.1-*.whl' -print -quit)"
+          test -n "$TOKENIZERS_WHEEL"
+          test "$(sha256sum "$TOKENIZERS_WHEEL" | awk '{print $1}')" = \
+            "5075b405006415ea148a992d093699c66eb01952bf59f4d5727089a98bda45a4"
+          .data214/bin/python -m pip install "$WHEEL" orjson regex "xxhash==3.8.1"
+          .data214/bin/python -m pip install --no-deps "$TOKENIZERS_WHEEL"
+          .data214/bin/python -m pip check
+
+      - name: Bind universal bootstrap evidence to exact source
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          .data214/bin/python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          source = Path("data214-evidence/execution-environment.json")
+          payload = {
+              "schema": "12-6.data214-bootstrap-binding.v1",
+              "source_sha": os.environ["EXPECTED_SOURCE_SHA"],
+              "universal_environment_manifest": source.as_posix(),
+              "universal_environment_manifest_sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
+          }
+          Path("data214-evidence/bootstrap-binding.json").write_text(
+              json.dumps(payload, sort_keys=True, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Run scoped DATA-183 scientific convergence gate
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          .data214/bin/python tools/scientific_scope_gate.py \
+            --repo-root . \
+            --manifest configs/ci/data214_corpus_v02_recovery_scope.v1.json \
+            --source-sha "$EXPECTED_SOURCE_SHA" \
+            --bootstrap-evidence data214-evidence/bootstrap-binding.json \
+            --evidence-out data214-evidence/scoped-convergence.json
+
+      - name: Record DATA-213 prerequisite without inventing authority
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          REFS="$(git ls-remote --heads origin | grep -i 'data213' || true)"
+          export REFS
+          .data214/bin/python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          refs = [line for line in os.environ.get("REFS", "").splitlines() if line.strip()]
+          status = "REF_PRESENT_TERMINAL_NOT_ESTABLISHED" if refs else "NO_DATA213_REF_TERMINAL_NOT_ESTABLISHED"
+          payload = {
+              "schema": "12-6.data214-data213-prerequisite.v1",
+              "source_sha": os.environ["EXPECTED_SOURCE_SHA"],
+              "status": status,
+              "terminal_snapshot_authority_consumed": False,
+              "promoted_source_identities_invented": False,
+              "observed_data181_run": 32939124042,
+              "observed_data181_terminal": "FAILURE",
+              "matching_data213_ref_count": len(refs),
+              "requirement": "Consume DATA-213 only after explicit terminal repaired snapshot authority exists.",
+          }
+          Path("data214-evidence/data213-prerequisite.json").write_text(
+              json.dumps(payload, sort_keys=True, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps({"data213_prerequisite": status}, sort_keys=True))
+          PY
+
+      - name: Build deterministic small fixture corpus twice
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          .data214/bin/python tools/data214_small_deterministic_build.py \
+            --source-sha "$EXPECTED_SOURCE_SHA" \
+            --output-dir data214-evidence/small-build
+
+      - name: Assert recovery truth boundary
+        run: |
+          set -euo pipefail
+          .data214/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+
+          scope = json.loads(Path("data214-evidence/scoped-convergence.json").read_text())
+          prereq = json.loads(Path("data214-evidence/data213-prerequisite.json").read_text())
+          small = json.loads(Path("data214-evidence/small-build/small-build-report.json").read_text())
+          assert scope["scope_status"] == "PASS"
+          assert scope["whole_repository_health_claimed"] is False
+          assert prereq["terminal_snapshot_authority_consumed"] is False
+          assert prereq["promoted_source_identities_invented"] is False
+          assert small["authority"] == "TEST_FIXTURE_ONLY_NOT_SOURCE_SNAPSHOT_OR_CORPUS_PROMOTION"
+          assert small["promoted_source_identities_consumed"] is False
+          assert small["two_build_identity"]["identical"] is True
+          assert small["project_authored_code_remains_separate"] is True
+          assert small["full_scientific_corpus_campaign_executed"] is False
+          assert small["network_reacquisition_executed"] is False
+          print("DATA-214 focused recovery PASS")
+          PY
+
+      - name: Upload focused recovery evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: data214-corpus-v02-convergence-recovery-${{ github.sha }}
+          path: data214-evidence
+          if-no-files-found: error

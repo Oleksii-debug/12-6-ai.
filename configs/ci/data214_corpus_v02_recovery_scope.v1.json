@@ -1,0 +1,32 @@
+{
+  "schema": "12-6.scientific-scope-manifest.v1",
+  "experiment_id": "DATA-214-CORPUS-V02-CONVERGENCE-RECOVERY",
+  "base_sha": "49cb84baa6caae2d35ba5b15543d18dc57eb3117",
+  "entrypoints": [
+    "src/twelve_six/data183_corpus_v02_real.py"
+  ],
+  "declared_consumed_paths": [
+    "configs/data/corpus_v01.json",
+    "data/corpus/v0.1/manifest.json",
+    "configs/data/decontamination_current_s0_v1.json",
+    "data/s0/packaged/validation.jsonl",
+    "data/s0/source_registry.json",
+    "requirements/locks/linux-x86_64/toolchain.lock.txt",
+    "requirements/locks/linux-x86_64/runtime.lock.txt",
+    "requirements/locks/linux-x86_64/dev.lock.txt"
+  ],
+  "additional_tests": [
+    "tests/test_scientific_scope_gate.py",
+    "tests/test_data183_corpus_v02_real.py",
+    "tests/test_data110_release_candidate.py",
+    "tests/test_data25_corpus_v01.py",
+    "tests/test_milestone100_first_learned.py",
+    "tests/test_external_source_intake_ua_en.py",
+    "tests/test_document_quality.py",
+    "tests/test_privacy_filter.py",
+    "tests/test_benchmark_decontamination.py",
+    "tests/test_split_robustness.py"
+  ],
+  "integration_status": "SEPARATE_STRICT_GATE",
+  "integration_note": "DATA-214 proves only the recovered DATA-183 scientific convergence surface. It does not claim repository-wide release health or terminal real-source authority."
+}
