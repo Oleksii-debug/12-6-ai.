@@ -1,0 +1,109 @@
+{
+  "schema": "12-6.research332-external-real-1m-replication.v1",
+  "worker_id": "RESEARCH-332-1M-EXTERNAL-REPLICATION",
+  "repository": "Oleksii-debug/12-6-ai.",
+  "execution_profile": "LOCAL_FREE",
+  "status": "BLOCKED_REFERENCE_RUN_NEVER_AUTHORIZED_NO_NONZERO_FROZEN_TRAINING_BUDGET",
+  "reference_authority": {
+    "worker_id": "LEARN-318-EXTERNAL-REAL-1M-V2",
+    "branch": "learn318/external-real-1m-v2-20260826",
+    "gate_identity_sha256": "dcb69c0bcdfee0d160bab0b348f90f7d337ad8c5a77eeefb30d119cead7471d6",
+    "model_parameters": 1037696,
+    "model_spec_sha256": "ff3cee542a1f75bb4e1eff8d7d24d72533af8f4f3d82bd064fb1cbfeba8c8d07",
+    "random_initialization_only": true
+  },
+  "frozen_controls": {
+    "corpus_contract_identity_sha256": "07d7beaaff4616e839450de6af3d407855c832bf75a24a959d1a12de5d9364e5",
+    "corpus_source_sha": "8ea7f830e50a23754d189dd4134f4afad76a7ee9",
+    "corpus_state": "NOT_BUILT_NOT_FROZEN_NOT_TERMINAL",
+    "source_count": 5,
+    "admitted_source_bytes": 183061,
+    "by_stratum_bytes": {
+      "uk": 88565,
+      "en": 84793,
+      "code": 9703
+    },
+    "by_stratum_families": {
+      "uk": 1,
+      "en": 1,
+      "code": 2
+    },
+    "tokenizer": {
+      "id": "s0-byte-v1",
+      "vocab_size": 256,
+      "special_tokens": [],
+      "config_sha256": "b04055c1061dd641dcab7cb9d62a931f09b8d1a070140a926ceb4e91d73ca8e1",
+      "vocab_sha256": "905ed40bb42cc4d550e228ff5f24158d504b38e8ed5974dfa3077bd5867ad571"
+    },
+    "optimizer": {
+      "name": "AdamW",
+      "learning_rate": 0.0003,
+      "betas": [0.9, 0.95],
+      "eps": 1e-8,
+      "weight_decay": 0.0,
+      "schedule": "constant",
+      "warmup_steps": 0,
+      "gradient_clip_norm": 1.0,
+      "precision": "fp32",
+      "sequence_length": 128,
+      "batch_size": 8,
+      "document_isolated": true
+    },
+    "token_budget_rule": "min(reference_preregistered_budget, terminal_family_constrained_one_pass_unique_train_optimized_targets)",
+    "current_authorized_optimized_target_budget": 0,
+    "replay_allowed": false,
+    "sampling_with_replacement_allowed": false,
+    "document_replication_allowed": false,
+    "padding_counts_as_data": false
+  },
+  "seed_panel": {
+    "seeds": [1337, 2027, 4099, 7919, 104729],
+    "seed_is_only_intended_experimental_factor": true,
+    "data_order_fixed_independently_of_initialization_seed": true,
+    "minimum_completed_seeds_for_replication_claim": 4
+  },
+  "execution": {
+    "training_started": false,
+    "completed_seed_count": 0,
+    "optimizer_updates_total": 0,
+    "checkpoints_written": false,
+    "bpb_metrics_available": false,
+    "variance_estimable": false
+  },
+  "seed_results": [
+    {"seed": 1337, "status": "BLOCKED", "optimizer_updates": 0, "aggregate_bpb": null, "ua_bpb": null, "en_bpb": null, "code_bpb": null, "source_family_bpb": null},
+    {"seed": 2027, "status": "BLOCKED", "optimizer_updates": 0, "aggregate_bpb": null, "ua_bpb": null, "en_bpb": null, "code_bpb": null, "source_family_bpb": null},
+    {"seed": 4099, "status": "BLOCKED", "optimizer_updates": 0, "aggregate_bpb": null, "ua_bpb": null, "en_bpb": null, "code_bpb": null, "source_family_bpb": null},
+    {"seed": 7919, "status": "BLOCKED", "optimizer_updates": 0, "aggregate_bpb": null, "ua_bpb": null, "en_bpb": null, "code_bpb": null, "source_family_bpb": null},
+    {"seed": 104729, "status": "BLOCKED", "optimizer_updates": 0, "aggregate_bpb": null, "ua_bpb": null, "en_bpb": null, "code_bpb": null, "source_family_bpb": null}
+  ],
+  "variance_report": {
+    "status": "NOT_ESTIMABLE_NO_COMPLETED_SEEDS",
+    "required_statistics_when_unblocked": [
+      "all_seed_values",
+      "mean",
+      "sample_standard_deviation_ddof_1",
+      "minimum",
+      "maximum",
+      "range",
+      "median",
+      "coefficient_of_variation_when_mean_nonzero",
+      "95_percent_t_interval_low_power_n5",
+      "best_worst_absolute_delta",
+      "best_worst_percent_delta_vs_seed_mean"
+    ]
+  },
+  "independent_blocker_confirmation": {
+    "data301": "TERMINAL_BLOCKED_NO_CORPUS_OR_SHARD_IDENTITY_ZERO_AUTHORIZED_BALANCED_NO_REPLAY_CAPACITY",
+    "data312": "FAIL_DIVERSITY_UK_1_FAMILY_EN_1_FAMILY_CODE_2_FAMILIES",
+    "eval303": "NONEMPTY_UA_EN_SELECTION_COMPOSITE_BUT_CODE_ZERO_AND_NO_DATA300_TERMINAL_CLAIM"
+  },
+  "required_bpb_outputs_when_unblocked": [
+    "aggregate_BPB",
+    "UA_BPB",
+    "EN_BPB",
+    "code_BPB",
+    "source_family_BPB"
+  ],
+  "unblock_condition": "A single successor external-real corpus identity must be terminal and frozen, expose a positive family-constrained one-pass unique train optimized-target budget, pass quality/privacy/dedup/decontamination/cluster-safe split/diversity gates, provide a complete unique-loss ledger and immutable nonempty selection-validation authority, and reproduce as two byte-identical clean builds. Then run all five seeds with identical non-seed controls and the same realized token budget."
+}
