@@ -10,10 +10,14 @@
   "engineering_pilot_is_science_complete_budget": false,
   "science_complete_20m_byte_position_budget": null,
   "science_complete_budget_status": "UNDEFINED_PENDING_TOKENIZER_AND_FLOP_CALIBRATION",
+  "cross_tokenizer_primary_metric": "BITS_PER_BYTE",
+  "token_nll_or_perplexity_may_rank_tokenizers": false,
+  "bits_per_byte_authority_required": true,
   "required_calibrations": [
     "tokenizer_efficiency_by_ua_en_code",
     "semantic_context_span_calibration",
     "flop_normalized_byte_vs_subword_ablation",
+    "tokenizer_agnostic_bits_per_byte",
     "heldout_learning_curves"
   ],
   "promotion_to_100m_allowed_from_reference_ratio_alone": false,
