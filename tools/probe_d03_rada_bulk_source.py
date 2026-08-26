@@ -24,9 +24,56 @@ CONFIG_SCHEMA = "12-6.d03-rada-bulk-source-probe.v1"
 DEFAULT_CONFIG = Path("configs/data/d03_rada_bulk_source_probe_v1.json")
 CHUNK_BYTES = 1024 * 1024
 
+EXPECTED_WORKER_ID = "D03-RADA-BULK-SOURCE-PROBE-20260826"
+EXPECTED_PARENT = {
+    "name": "DATA-287-EXTERNAL-SNAPSHOT-REGISTRY-V2",
+    "head_sha": "b0523ccbc4b957615aac849d476cfa851be87578",
+    "registry_identity_sha256": (
+        "917e9bc31b2fa040d25e807ae3c01aa2cce32420752a891caacfb6c830e6632c"
+    ),
+    "existing_source_id": "ua.rada.open-data.laws-texts.d23314",
+    "existing_family_id": "ua.rada.open-data.laws-texts",
+    "existing_family_identity_sha256": (
+        "b8f1d2f99a3db71d894a3233e9417d6283d11768c41b1634bc8b096ab77aba4e"
+    ),
+    "existing_normalized_bytes": 88565,
+    "existing_rights_model_training": "ALLOWED",
+}
+EXPECTED_SOURCE = {
+    "dataset_id": "laws-texts",
+    "publisher": "Апарат Верховної Ради України",
+    "page_url": "https://data.rada.gov.ua/open/data/en/laws-texts",
+    "archive_url": "https://data.rada.gov.ua/ogd/zak/perv/text/texts.zip",
+    "family_id": "ua.rada.open-data.laws-texts",
+    "language": "uk",
+    "modality": "text",
+    "upstream_mutability": "FREQUENTLY_UPDATED_REQUIRES_EXACT_ARCHIVE_REPIN",
+}
+EXPECTED_POLICY = {
+    "canonical_entry_regex": r"d[0-9]+\.htm",
+    "min_canonical_entries": 5000,
+    "max_archive_bytes": 100000000,
+    "max_entry_bytes": 20000000,
+    "max_total_uncompressed_bytes": 1000000000,
+    "hash_every_canonical_entry": True,
+    "reject_path_traversal": True,
+    "reject_symlinks": True,
+    "require_unique_canonical_basenames": True,
+}
+
 
 class ProbeError(RuntimeError):
     """Raised when the upstream archive or probe input fails closed."""
+
+
+def _canonical_json_bytes(value: Any) -> bytes:
+    return (
+        json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n"
+    ).encode("utf-8")
+
+
+def _config_identity(config: dict[str, Any]) -> str:
+    return hashlib.sha256(_canonical_json_bytes(config)).hexdigest()
 
 
 def _sha256_stream(stream: BinaryIO) -> tuple[str, int]:
@@ -42,6 +89,8 @@ def _sha256_stream(stream: BinaryIO) -> tuple[str, int]:
 
 
 def _download(url: str, *, max_bytes: int) -> tuple[bytes, dict[str, str]]:
+    if url != EXPECTED_SOURCE["archive_url"]:
+        raise ProbeError("archive URL is not the pinned Rada bulk endpoint")
     request = urllib.request.Request(
         url,
         headers={
@@ -50,6 +99,9 @@ def _download(url: str, *, max_bytes: int) -> tuple[bytes, dict[str, str]]:
         },
     )
     with urllib.request.urlopen(request, timeout=120) as response:
+        final_url = response.geturl()
+        if final_url != EXPECTED_SOURCE["archive_url"]:
+            raise ProbeError(f"unexpected archive redirect target: {final_url!r}")
         content_length = response.headers.get("Content-Length")
         if content_length is not None:
             try:
@@ -85,19 +137,71 @@ def _safe_archive_name(name: str) -> bool:
     return ".." not in parts
 
 
+def _require_exact_mapping(
+    raw: dict[str, Any],
+    field: str,
+    expected: dict[str, Any],
+) -> None:
+    value = raw.get(field)
+    if not isinstance(value, dict):
+        raise ProbeError(f"{field} must be an object")
+    for key, expected_value in expected.items():
+        if value.get(key) != expected_value:
+            raise ProbeError(f"{field}.{key} drifted from the pinned v1 authority")
+
+
+def _validate_config(raw: dict[str, Any]) -> None:
+    if raw.get("schema_version") != CONFIG_SCHEMA:
+        raise ProbeError("unsupported probe config schema")
+    if raw.get("worker_id") != EXPECTED_WORKER_ID:
+        raise ProbeError("worker_id drifted from the pinned v1 authority")
+    if raw.get("local_free_only") is not True:
+        raise ProbeError("config must be LOCAL_FREE only")
+    for field in ("model_training_executed", "tokenizer_fit_executed", "paid_compute_used"):
+        if raw.get(field) is not False:
+            raise ProbeError(f"config must bind {field}=false")
+    if raw.get("training_authorized_bytes") != 0:
+        raise ProbeError("probe must authorize exactly zero training bytes")
+
+    _require_exact_mapping(raw, "parent_authority", EXPECTED_PARENT)
+    _require_exact_mapping(raw, "source", EXPECTED_SOURCE)
+    _require_exact_mapping(raw, "probe_policy", EXPECTED_POLICY)
+
+    rights = raw.get("rights_boundary")
+    if not isinstance(rights, dict):
+        raise ProbeError("rights_boundary must be an object")
+    if rights.get("bulk_extension_status") != "NOT_ADMITTED_BY_THIS_PROBE":
+        raise ProbeError("bulk extension must remain not admitted by this probe")
+    if rights.get("evaluation") != "NOT_SEPARATELY_ADMITTED":
+        raise ProbeError("evaluation purpose must remain separately gated")
+    if rights.get("final_test") != "PROHIBITED":
+        raise ProbeError("final-test use must remain prohibited")
+
+    claim = raw.get("claim_boundary")
+    if not isinstance(claim, dict):
+        raise ProbeError("claim_boundary must be an object")
+    required_false = (
+        "bulk_source_admitted",
+        "normalized_capacity_claimed",
+        "training_exposure_authorized",
+        "research_corpus_v1_released",
+        "learned_20m_claimed",
+    )
+    for field in required_false:
+        if claim.get(field) is not False:
+            raise ProbeError(f"claim_boundary.{field} must remain false")
+    if claim.get("safe_result") != "PROBE_ONLY":
+        raise ProbeError("claim_boundary.safe_result must remain PROBE_ONLY")
+
+
 def _load_config(path: Path) -> dict[str, Any]:
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise ProbeError(f"cannot load config: {path}") from exc
-    if raw.get("schema_version") != CONFIG_SCHEMA:
-        raise ProbeError("unsupported probe config schema")
-    if raw.get("local_free_only") is not True:
-        raise ProbeError("config must be LOCAL_FREE only")
-    if raw.get("model_training_executed") is not False:
-        raise ProbeError("config must bind model_training_executed=false")
-    if raw.get("training_authorized_bytes") != 0:
-        raise ProbeError("probe must authorize exactly zero training bytes")
+    if not isinstance(raw, dict):
+        raise ProbeError("probe config root must be an object")
+    _validate_config(raw)
     return raw
 
 
@@ -109,6 +213,10 @@ def inventory_archive(
     expected_bytes: int | None = None,
 ) -> dict[str, Any]:
     """Hash and inventory a ZIP while retaining a zero-training truth boundary."""
+    if (expected_md5 is None) != (expected_bytes is None):
+        raise ProbeError("expected_md5 and expected_bytes must be supplied together")
+    strict_revalidation = expected_md5 is not None and expected_bytes is not None
+
     policy = config["probe_policy"]
     if len(archive) > int(policy["max_archive_bytes"]):
         raise ProbeError("archive exceeds configured size limit")
@@ -198,9 +306,22 @@ def inventory_archive(
         identity.update(b"\n")
 
     canonical_raw_bytes = sum(int(row["raw_bytes"]) for row in rows)
+    identity_gate = "PASS_PINNED_DISCOVERY_REVALIDATED" if strict_revalidation else "OBSERVED_UNPINNED"
+    safe_result = (
+        "PINNED_BULK_ARCHIVE_INVENTORIED_DOWNSTREAM_GATES_REQUIRED"
+        if strict_revalidation
+        else "CURRENT_UPSTREAM_OBSERVED_SUCCESSOR_PIN_REQUIRED"
+    )
     return {
         "schema_version": SCHEMA,
         "worker_id": config["worker_id"],
+        "config_identity_sha256": _config_identity(config),
+        "parent_authority": {
+            "head_sha": config["parent_authority"]["head_sha"],
+            "registry_identity_sha256": config["parent_authority"][
+                "registry_identity_sha256"
+            ],
+        },
         "source_family": config["source"]["family_id"],
         "source_dataset_id": config["source"]["dataset_id"],
         "archive": {
@@ -218,7 +339,7 @@ def inventory_archive(
             "entries": rows,
         },
         "gates": {
-            "exact_archive_identity": "PASS",
+            "exact_archive_identity": identity_gate,
             "safe_zip_inventory": "PASS",
             "canonical_normalization": "NOT_RUN",
             "quality": "NOT_RUN",
@@ -234,7 +355,7 @@ def inventory_archive(
         "tokenizer_fit_authorized": False,
         "model_training_executed": False,
         "paid_compute_used": False,
-        "safe_result": "EXACT_BULK_ARCHIVE_INVENTORIED_DOWNSTREAM_GATES_REQUIRED",
+        "safe_result": safe_result,
     }
 
 
@@ -272,8 +393,9 @@ def main() -> None:
         )
 
     observed = config["discovery_observation"]
-    expected_md5 = None if args.accept_current_upstream else str(observed["archive_md5"])
-    expected_bytes = None if args.accept_current_upstream else int(observed["archive_bytes"])
+    strict_revalidation = not args.accept_current_upstream
+    expected_md5 = str(observed["archive_md5"]) if strict_revalidation else None
+    expected_bytes = int(observed["archive_bytes"]) if strict_revalidation else None
     report = inventory_archive(
         archive,
         config,
@@ -281,7 +403,7 @@ def main() -> None:
         expected_bytes=expected_bytes,
     )
     report["http_response"] = response_headers
-    report["discovery_observation_revalidated"] = not args.accept_current_upstream
+    report["discovery_observation_revalidated"] = strict_revalidation
 
     encoded = json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
     if args.output is None:
