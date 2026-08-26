@@ -24,6 +24,10 @@ on:
       - ".github/workflows/d05-s1-checkpoint-preflight.yml"
   workflow_dispatch:
 
+concurrency:
+  group: d05-s1-checkpoint-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
