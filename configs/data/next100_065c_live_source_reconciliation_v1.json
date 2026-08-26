@@ -1,0 +1,78 @@
+{
+  "schema_version": "12-6.next100-065c-live-source-reconciliation.v1",
+  "worker_id": "AUTODEV-NEXT100-065C-LIVE-SOURCE-RECONCILIATION",
+  "execution_profile": "LOCAL_FREE",
+  "local_free_only": true,
+  "parent_dedup_snapshot": {
+    "pr": 632,
+    "head_sha": "9ce7c59fb72d5e96c730018befc18d14e3b9072b",
+    "role": "EXECUTABLE_DEDUP_LANE_NOT_TERMINAL_SOURCE_AUTHORITY",
+    "known_scope": "V4_PLUS_MDN_PLUS_ACCEPTED_ONLY_CPYTHON",
+    "terminal_promotion_allowed": false
+  },
+  "registry_v3": {
+    "pr": 538,
+    "head_snapshot": "cc7755ac1b6cf904d56b4d38853c7e97c1b209f1",
+    "schema": "12-6.next100-063-terminal-source-registry.v3",
+    "identity_sha256": "66866a35d58b2f34431068a161986fc3eeb656e5ded1ca2ff8b40489049bac8c",
+    "numeric_capacity_bytes": {
+      "uk": 100856,
+      "en": 150643,
+      "code": 106031,
+      "total": 357530
+    },
+    "independent_families": 13,
+    "authorized_unique_causal_loss_positions": 0
+  },
+  "accepted_only_cpython": {
+    "pr": 567,
+    "head_sha": "8f0cbc16f9a920ca9ab3e3061b53fbfec8838d77",
+    "dedicated_workflow_run": 33005689174,
+    "dedicated_workflow_conclusion": "success",
+    "artifact_id": 9620571005,
+    "artifact_digest": "sha256:5c04e12f1100fd4012efc1cf693f213d1d7c9ababee2a16367897377cde60379",
+    "accepted_chunk_count": 14,
+    "rejected_chunk_count": 2,
+    "rejection_reasons": {
+      "pii_phone": 2
+    },
+    "eligible_capacity_bytes": 15540,
+    "family_credit_delta": 0
+  },
+  "gutenberg_terminal": {
+    "pr": 627,
+    "head_sha": "c50b3f9cf871792c03886bdc1ccdc144812be88f",
+    "authority_identity_sha256": "1b1bad11b688826ee4f73701c08e3b5af76ba16e8d8a806e008d5b84bee0b97b",
+    "parent_workflow_run": 32998859164,
+    "parent_workflow_conclusion": "success",
+    "normalized_utf8_bytes": 1672110,
+    "record_count": 3,
+    "family_id": "en.project-gutenberg.public-domain-books",
+    "independent_family_credit": 1,
+    "evaluation": "NOT_AUTHORIZED"
+  },
+  "minimum_required_successor_vector_before_global_dedup": {
+    "numeric_capacity_bytes": {
+      "uk": 100856,
+      "en": 1838293,
+      "code": 106031,
+      "total": 2045180
+    },
+    "independent_families": 14,
+    "derivation": "registry_v3 + accepted_only_cpython_numeric_delta + gutenberg_terminal"
+  },
+  "promotion_gate": {
+    "full_live_object_graph_materialized": false,
+    "successor_global_exact_near_fragment_lineage_dedup_passed": false,
+    "immutable_record_inventory_frozen": false,
+    "reserved_evaluation_decontamination_passed": false,
+    "post_composition_quality_privacy_passed": false,
+    "cluster_safe_split_and_deterministic_pack_passed": false,
+    "two_clean_builds_byte_identical": false,
+    "unique_causal_loss_ledger_published": false,
+    "authorized_unique_causal_loss_positions": 0,
+    "long_training_authorized": false,
+    "paid_compute_authorized": false,
+    "decision": "BLOCK_LONG_TRAINING_CONTINUE_LOCAL_FREE_ENGINEERING"
+  }
+}
