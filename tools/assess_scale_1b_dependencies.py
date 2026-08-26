@@ -32,8 +32,10 @@ def main() -> int:
     parser.add_argument(
         "--stage-data-budget-authority",
         help=(
-            "Terminal stage-specific data-budget authority based on exact post-tokenization "
-            "unique causal-loss positions or an explicit preregistered scaling exception."
+            "Terminal stage-specific data-budget authority binding exact unique "
+            "post-tokenization corpus/loss counts plus the preregistered total "
+            "training-token exposure and replay/epoch policy. Exposure planning "
+            "ratios are not unique-data requirements."
         ),
     )
     parser.add_argument(
@@ -53,8 +55,9 @@ def main() -> int:
     parser.add_argument(
         "--compute-authorization",
         help=(
-            "Explicit owner authorization reference. Must begin with "
-            "COMPUTE_AUTHORIZED: or TRAINING_AUTHORIZED:."
+            "Explicit owner authorization reference. Must begin with COMPUTE_AUTHORIZED: "
+            "or TRAINING_AUTHORIZED: and then bind a terminal-shaped GitHub commit or "
+            "SHA-256 artifact authority."
         ),
     )
     parser.add_argument("--meta-probe", action="store_true")
