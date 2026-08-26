@@ -8,6 +8,12 @@ from typing import Self
 
 import torch
 
+from twelve_six.inference.static_kv import (
+    StaticDecoderKVCache,
+    allocate_static_kv_cache,
+    decode_one_with_static_kv_cache,
+    prefill_static_kv_cache,
+)
 from twelve_six.model import DecoderKVCache, ModelSpec, TwelveSixDecoder
 from twelve_six.tokenization import ByteTokenizer
 
@@ -41,8 +47,8 @@ def kv_cache_payload_bytes(
     )
 
 
-class S0TorchGenerationSession:
-    """One ephemeral, model-native KV-cache session for incremental generation."""
+class S0TorchDynamicGenerationSession:
+    """Retained torch.cat-growing cache session used only as a parity reference."""
 
     def __init__(
         self,
@@ -124,6 +130,121 @@ class S0TorchGenerationSession:
         self.close()
 
 
+class S0TorchGenerationSession:
+    """Accepted first-party generation session backed by one preallocated KV arena."""
+
+    def __init__(
+        self,
+        backend: S0TorchInferenceBackend,
+        input_ids: Sequence[int],
+    ) -> None:
+        backend._validate_token_ids(input_ids)
+        if not input_ids:
+            raise ValueError("input_ids must be non-empty")
+        if len(input_ids) > backend.max_context_tokens:
+            raise ValueError("input_ids exceed model context")
+
+        self._backend = backend
+        self._model = backend.model
+        self._closed = False
+        self.tokens_processed = len(input_ids)
+        self._cache: StaticDecoderKVCache
+        self._logits: list[float]
+
+        self._backend._acquire_generation_session()
+        try:
+            self._cache = allocate_static_kv_cache(
+                self._model,
+                batch_size=1,
+                capacity=self._backend.max_context_tokens,
+            )
+            tensor = torch.tensor(
+                [list(input_ids)],
+                dtype=torch.long,
+                device=next(self._model.parameters()).device,
+            )
+            output = prefill_static_kv_cache(self._model, tensor, self._cache)
+            self._logits = output.logits[0, -1].detach().float().cpu().tolist()
+        except (RuntimeError, TypeError, ValueError):
+            self._backend._release_generation_session()
+            self._closed = True
+            raise
+
+    @property
+    def sequence_length(self) -> int:
+        self._require_open()
+        return self._cache.sequence_length
+
+    @property
+    def cache_bytes(self) -> int:
+        """Physical K/V bytes reserved for the session; constant after construction."""
+        self._require_open()
+        return self._cache.allocated_bytes
+
+    @property
+    def logical_cache_bytes(self) -> int:
+        self._require_open()
+        return self._cache.logical_bytes
+
+    @property
+    def cache_storage_signature(self) -> tuple[tuple[int, int], ...]:
+        self._require_open()
+        return self._cache.storage_signature
+
+    def _require_open(self) -> None:
+        if self._closed:
+            raise RuntimeError("generation session is closed")
+
+    def next_token_logits(self) -> Sequence[float]:
+        self._require_open()
+        return list(self._logits)
+
+    def append(self, token_id: int) -> None:
+        self._require_open()
+        self._backend._validate_token_ids((token_id,))
+        if self._cache.sequence_length >= self._backend.max_context_tokens:
+            raise ValueError("static KV cache is already at model context limit")
+        tensor = torch.tensor(
+            [[token_id]],
+            dtype=torch.long,
+            device=next(self._model.parameters()).device,
+        )
+        output = decode_one_with_static_kv_cache(self._model, tensor, self._cache)
+        self._logits = output.logits[0, -1].detach().float().cpu().tolist()
+        self.tokens_processed += 1
+
+    def reset(self, input_ids: Sequence[int]) -> None:
+        """Reuse the same K/V storage for a new non-empty prompt."""
+        self._require_open()
+        self._backend._validate_token_ids(input_ids)
+        if not input_ids:
+            raise ValueError("input_ids must be non-empty")
+        if len(input_ids) > self._backend.max_context_tokens:
+            raise ValueError("input_ids exceed model context")
+        tensor = torch.tensor(
+            [list(input_ids)],
+            dtype=torch.long,
+            device=next(self._model.parameters()).device,
+        )
+        output = prefill_static_kv_cache(self._model, tensor, self._cache)
+        self._logits = output.logits[0, -1].detach().float().cpu().tolist()
+        self.tokens_processed = len(input_ids)
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._cache.reset()
+        self._backend._release_generation_session()
+        self._closed = True
+
+    def __enter__(self) -> Self:
+        self._require_open()
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        self.close()
+
+
 class S0TorchInferenceBackend:
     """Adapt the D01 decoder + D04 tokenizer to the D07 inference protocol."""
 
@@ -156,6 +277,10 @@ class S0TorchInferenceBackend:
             batch_size=batch_size,
             element_size_bytes=element_size,
         )
+
+    def estimate_static_cache_bytes(self, *, batch_size: int = 1) -> int:
+        """Return fixed physical bytes reserved by the accepted static cache."""
+        return self.estimate_cache_bytes(self.max_context_tokens, batch_size=batch_size)
 
     def _acquire_generation_session(self) -> None:
         with self._generation_lock:
@@ -195,8 +320,12 @@ class S0TorchInferenceBackend:
                 )
 
     def begin_generation(self, input_ids: Sequence[int]) -> S0TorchGenerationSession:
-        """Create an inference-only incremental session without changing D07 semantics."""
+        """Create the accepted static-cache incremental generation session."""
         return S0TorchGenerationSession(self, input_ids)
+
+    def begin_dynamic_generation(self, input_ids: Sequence[int]) -> S0TorchDynamicGenerationSession:
+        """Open the retained torch.cat-growing cache only for explicit parity measurement."""
+        return S0TorchDynamicGenerationSession(self, input_ids)
 
     @torch.no_grad()
     def next_token_logits(self, input_ids: Sequence[int]) -> Sequence[float]:
