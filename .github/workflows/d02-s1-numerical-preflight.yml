@@ -13,9 +13,11 @@ on:
       - "src/twelve_six/stage_gates.py"
       - "configs/stages/s1*"
       - "configs/training/**"
+      - "data/s0/packaged/**"
       - "tools/run_s1_numerical_preflight.py"
       - "tools/validate_s1_numerical_preflight.py"
       - "tools/verify_locked_environment.py"
+      - "requirements/locks/index.json"
       - "requirements/locks/linux-x86_64/**"
       - "pyproject.toml"
   workflow_dispatch:
