@@ -21,6 +21,11 @@
   },
   "required_authorities": [
     {
+      "name": "launch_binding",
+      "terminal": false,
+      "identity": null
+    },
+    {
       "name": "corpus",
       "terminal": false,
       "identity": null
@@ -76,15 +81,25 @@
     "gradient_clip_norm": "must_be_positive",
     "seed": "must_be_explicit_and_nonnegative",
     "requested_unique_loss_positions": "must_not_exceed_terminal_ledger",
+    "requested_total_training_exposures": "must_be_explicit_and_positive",
+    "max_exposures_per_unique_position": "must_be_explicit_and_positive",
     "max_optimizer_updates": "must_be_positive",
-    "stopping_rule": "must_be_preregistered"
+    "checkpoint_interval_steps": "must_be_positive",
+    "stopping_rule": "must_be_preregistered",
+    "restart_policy": "must_be_preregistered",
+    "selection_validation_schedule": "must_be_preregistered",
+    "resource_plan_identity": "must_be_bound",
+    "estimated_training_flops": "must_be_positive",
+    "estimated_wall_clock_seconds": "must_be_positive"
   },
   "pilot_success_contract": [
     "finite_loss",
     "loss_decreased",
     "gradient_health_passed",
     "checkpoint_resume_passed",
-    "evaluation_isolation_passed"
+    "evaluation_isolation_passed",
+    "throughput_measured",
+    "peak_memory_within_plan"
   ],
   "default_decision": {
     "pilot_ready": false,
@@ -94,9 +109,11 @@
   },
   "truth_boundary": {
     "source_bytes_are_not_loss_positions": true,
+    "exposure_is_not_unique_data": true,
     "parameter_count_is_not_quality": true,
     "parameter_count_is_not_training_authority": true,
+    "cross_artifact_identity_binding_required": true,
     "queued_ci_is_not_pass": true,
-    "no_replay_to_fill_budget": true
+    "no_replay_to_fill_unique_budget": true
   }
 }
