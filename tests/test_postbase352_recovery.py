@@ -98,6 +98,17 @@ class PostBase352RecoveryTests(unittest.TestCase):
             with self.assertRaisesRegex(CommunicationDataError, "physically separate"):
                 validate_dataset(root, manifest_path)
 
+    def test_canonical_split_symlink_substitution_fails_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "communication_v1"
+            shutil.copytree(self.dataset_root, root)
+            final_path = root / "final.jsonl"
+            final_real = root / "final-real.jsonl"
+            final_path.rename(final_real)
+            final_path.symlink_to(final_real.name)
+            with self.assertRaisesRegex(CommunicationDataError, "must not be symlinks"):
+                validate_dataset(root, root / "manifest.json")
+
     def test_foreign_output_requires_authority_bound_rights(self) -> None:
         base = _load_jsonl(
             self.dataset_root / "train.jsonl", CommunicationSplit.TRAIN

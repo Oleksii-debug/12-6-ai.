@@ -482,13 +482,17 @@ def validate_dataset(
 
     _require_split_manifest_maps(manifest)
     root = root.resolve()
-    split_paths = {
-        split: (root / f"{split.value}.jsonl").resolve() for split in CommunicationSplit
+    raw_split_paths = {
+        split: root / f"{split.value}.jsonl" for split in CommunicationSplit
     }
+    for path in raw_split_paths.values():
+        if path.is_symlink():
+            raise CommunicationDataError("split files must not be symlinks")
+    split_paths = {split: path.resolve() for split, path in raw_split_paths.items()}
     if len(set(split_paths.values())) != len(split_paths):
         raise CommunicationDataError("split paths must be distinct")
     for path in split_paths.values():
-        if root not in path.parents or path.is_symlink() or not path.is_file():
+        if root not in path.parents or not path.is_file():
             raise CommunicationDataError("split files must be distinct regular files under dataset root")
 
     all_records: list[CommunicationRecord] = []
