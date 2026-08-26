@@ -74,6 +74,10 @@ def build_gate_report(
             blockers.append("data230:insufficient_one_pass_loss_token_supply")
         if data230.get("artificial_repetition") not in {False, None}:
             blockers.append("data230:artificial_repetition_detected")
+        if not data230.get("corpus_identity"):
+            blockers.append("data230:corpus_identity_missing")
+        if not data230.get("selection_validation_identity"):
+            blockers.append("data230:selection_validation_identity_missing")
 
     if eval_ok:
         purposes = set(eval233.get("purposes", []))
@@ -81,6 +85,10 @@ def build_gate_report(
             blockers.append("eval233:purpose_separation_missing")
         if eval233.get("final_test_exposed_to_selection") is True:
             blockers.append("eval233:final_test_selection_leak")
+        if not eval233.get("selection_validation_identity"):
+            blockers.append("eval233:selection_validation_identity_missing")
+        if not eval233.get("final_test_identity"):
+            blockers.append("eval233:final_test_identity_missing")
 
     report: dict[str, Any] = {
         "schema": "12-6.research236-prerequisite-gate.v1",
@@ -116,6 +124,14 @@ def build_gate_report(
         "authorities": {
             "data230_present": data230 is not None,
             "eval233_present": eval233 is not None,
+            "data230_corpus_identity": None if data230 is None else data230.get("corpus_identity"),
+            "data230_selection_validation_identity": None
+            if data230 is None
+            else data230.get("selection_validation_identity"),
+            "eval233_selection_validation_identity": None
+            if eval233 is None
+            else eval233.get("selection_validation_identity"),
+            "eval233_final_test_identity": None if eval233 is None else eval233.get("final_test_identity"),
         },
         "claim_boundary": {
             "external_real_automatically_better": False,
