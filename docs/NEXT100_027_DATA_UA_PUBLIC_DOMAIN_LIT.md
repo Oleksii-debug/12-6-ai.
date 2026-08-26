@@ -34,6 +34,8 @@ Normalized text: `1eb91dbd631898c6a2efe274b700a5be0deaca243c0a9d5d30994ddadcf435
 
 Authority identity: `85f596e79b0ec6479d2ef815e2a6a9bdbfaa55993c797309c1ea4d93b1d9b0e7`.
 
+Final concurrency-refresh identity: `7c7b35bc22133164c69e7838f5691c222357b319a245230561edd116412e39c7`.
+
 Normalization is deliberately conservative: NFC + outer-whitespace trim only, preserving case, punctuation and historical spelling.
 
 ## Language / quality / privacy
@@ -48,7 +50,7 @@ The payload is historical folk text only and carries no modern contact fields or
 
 The 24 record ids are unique and the 24 normalized text records are exact-unique.
 
-Live DATA-293 training families at the admission base are Rada, Standard Ebooks, HTTPX and Requests; `ua.verba.public-domain.nomis1864` is not one of them.
+Final live-registry refresh binds DATA-287 V2 at exact head `b0523ccbc4b957615aac849d476cfa851be87578`, registry identity `917e9bc31b2fa040d25e807ae3c01aa2cce32420752a891caacfb6c830e6632c`. Its canonical inventory remains 5 source objects across 4 families: Rada, Standard Ebooks, HTTPX and Requests. `ua.verba.public-domain.nomis1864` is absent, with zero exact family/hash overlap. Concurrent NEXT100 Wikipedia/Wikisource/Wikibooks/Kubernetes/KMu source authorities were also checked; none aliases the Nomis/Verba lineage and none has inserted this family into the canonical registry.
 
 EVAL-233 final-test lineages are Rada/Standard-Ebooks. EVAL-303 selection-validation lineages are Kubernetes Ukrainian docs, Lang-UK Perestoroha OCR, HTTPX and Requests. The Verba/Nomis family is disjoint. This worker does not read final-test or selection-validation payload text.
 
