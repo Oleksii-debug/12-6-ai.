@@ -4,6 +4,12 @@ on:
   pull_request:
     branches: [env151/universal-execution-bootstrap-20260826]
   workflow_dispatch:
+    inputs:
+      run_scale_matrix:
+        description: "Explicitly authorize the full 1M/3M/10M training matrix"
+        required: true
+        default: false
+        type: boolean
 
 concurrency:
   group: research192-${{ github.event.pull_request.number || github.run_id }}
@@ -47,6 +53,7 @@ jobs:
 
   train:
     needs: contract
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_scale_matrix }}
     strategy:
       fail-fast: false
       matrix:
@@ -104,7 +111,7 @@ jobs:
           ROOT="research192-evidence/${ARM}"
           mkdir -p "research192-upload/${ARM}/${SCALE}"
           cp "$ROOT/environment.json" "research192-upload/${ARM}/environment.json"
-          cp "$ROOT/ladder-truth.json" "research192-upload/${ARM}/ladder-truth.json"
+          cp "$ROOT/ladder-truth.json" "research192-upload/${ARM]/ladder-truth.json"
           cp "$ROOT/research192-arm.json" "research192-upload/${ARM}/research192-arm.json"
           cp "$ROOT/${SCALE}/report.json" "research192-upload/${ARM}/${SCALE}/report.json"
           cp "$ROOT/${SCALE}/run-manifest.json" "research192-upload/${ARM}/${SCALE}/run-manifest.json"
