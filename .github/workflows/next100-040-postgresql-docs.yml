@@ -24,7 +24,7 @@ jobs:
         run: |
           set -euo pipefail
           echo "source_sha=$(git rev-parse HEAD)"
-          python tools/qualify_next100_040_postgresql_docs.py \
+          python tools/run_next100_040_postgresql_docs.py \
             --output evidence/next100040/postgresql_docs_source_authority.json \
             --emit-base64
 
@@ -32,7 +32,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python tools/qualify_next100_040_postgresql_docs.py \
+          python tools/run_next100_040_postgresql_docs.py \
             --output /tmp/postgresql_docs_source_authority.second.json
           cmp evidence/next100040/postgresql_docs_source_authority.json \
               /tmp/postgresql_docs_source_authority.second.json
