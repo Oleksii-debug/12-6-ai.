@@ -1,0 +1,113 @@
+{
+  "schema_version": "12-6.research-corpus-v1-predecontam-blocker.v2",
+  "worker_id": "DATA-526-RESEARCH-CORPUS-V1-PREDECONTAM-V2",
+  "repository": "Oleksii-debug/12-6-ai.",
+  "execution_profile": "LOCAL_FREE",
+  "status": "BLOCKED_WAIT_SOURCE_AND_GLOBAL_DEDUP_TERMINAL",
+  "purpose": "Fail-close Research Corpus V1 pre-decontamination candidate freeze until exact source convergence and successor global dedup are both terminal.",
+  "base_authorities": {
+    "data300": {
+      "head_sha": "8ea7f830e50a23754d189dd4134f4afad76a7ee9",
+      "contract_identity_sha256": "07d7beaaff4616e839450de6af3d407855c832bf75a24a959d1a12de5d9364e5",
+      "contract_state": "FROZEN_EXECUTABLE_CONTRACT",
+      "corpus_state": "NOT_BUILT_NOT_FROZEN_NOT_TERMINAL"
+    },
+    "data301": {
+      "head_sha": "8820ba1b255f6bb95c7db0531fd846078a1aae01",
+      "evidence_identity_sha256": "939065abeefff8aed924415589608ff3fc721fe4b0a57fc200146a4b6a137e81",
+      "status": "TERMINAL_BLOCKED",
+      "corpus_identity": null,
+      "shard_identity": null,
+      "authorized_balanced_no_replay_capacity": 0
+    }
+  },
+  "source_convergence_candidate": {
+    "pull_request": 538,
+    "head_sha": "226cbc26710a75af4a864576220b270089e7c52b",
+    "registry_path": "configs/data/next100_063_terminal_source_registry_v4.json",
+    "registry_schema_version": "12-6.next100-063-terminal-source-registry.v4",
+    "registry_identity_sha256": "9fc400a3144b46c481e45d043b0a3365eb2129c83bbacde6f9e7af8a41fadc58",
+    "exact_head_ci_state": "QUEUED_NONTERMINAL",
+    "terminal_authority_consumed": false,
+    "pre_global_dedup_vector": {
+      "source_object_count": 31,
+      "by_stratum": {
+        "uk": {"numeric_training_capacity_bytes": 100856, "families": 4},
+        "en": {"numeric_training_capacity_bytes": 1838293, "families": 5},
+        "code": {"numeric_training_capacity_bytes": 106031, "families": 5}
+      },
+      "numeric_training_capacity_bytes": 2045180,
+      "normalized_source_envelope_bytes": 2047541,
+      "uncredited_normalized_bytes": 2361,
+      "independent_families": 14,
+      "authorized_balanced_no_replay_loss_positions": 0
+    }
+  },
+  "global_dedup_candidate": {
+    "pull_request": 632,
+    "head_sha": "8181b247fc305f96f4be02d8630ce18cdcf63eae",
+    "worker_id": "NEXT100-065D-CROSSSOURCE-DEDUP-V6",
+    "config_path": "configs/data/next100_065d_cross_source_dedup_v6.json",
+    "dedicated_workflow_run": 33008762043,
+    "exact_head_ci_state": "PENDING_NONTERMINAL",
+    "terminal_authority_consumed": false,
+    "expected_pre_dedup_source_object_count": 31,
+    "expected_pre_dedup_numeric_capacity_bytes": 2045180,
+    "expected_pre_dedup_family_counts": {"uk": 4, "en": 5, "code": 5},
+    "post_dedup_report_sha256": null,
+    "post_dedup_unique_capacity_bytes": null,
+    "post_dedup_record_inventory_digest_sha256": null
+  },
+  "candidate_freeze": {
+    "frozen": false,
+    "record_count": 0,
+    "records": [],
+    "record_inventory_digest_sha256": null,
+    "candidate_set_digest_sha256": null,
+    "reason": "Both the canonical source-registry V4 exact head and the composed 31-object global-dedup V6 exact head are nonterminal; queued/pending execution cannot be consumed as PASS authority."
+  },
+  "claim_boundary": {
+    "source_bytes_are_training_tokens": false,
+    "authorized_unique_optimized_targets": 0,
+    "corpus_frozen": false,
+    "global_dedup_terminal": false,
+    "decontamination_executed": false,
+    "final_test_payload_accessed": false,
+    "final_test_outcomes_read": false,
+    "shards_published": false,
+    "tokenizer_fit_executed": false,
+    "training_executed": false,
+    "optimizer_updates": 0,
+    "long_training_authorized": false,
+    "paid_compute_used": false
+  },
+  "downstream_gates": {
+    "source_convergence": "WAIT_EXACT_HEAD_TERMINAL_SUCCESS",
+    "global_exact_near_fragment_lineage_dedup": "WAIT_EXACT_HEAD_TERMINAL_SUCCESS",
+    "record_inventory_freeze": "NOT_PERMITTED_NO_TERMINAL_GLOBAL_DEDUP",
+    "reserved_evaluation_decontamination": "NOT_PERMITTED_NO_FROZEN_POST_DEDUP_CANDIDATE_IDENTITY",
+    "post_composition_quality_privacy": "NOT_PERMITTED",
+    "balance_diversity_family_caps": "NOT_PERMITTED",
+    "cluster_safe_split_pack": "NOT_PERMITTED",
+    "two_clean_build_proof": "NOT_PERMITTED",
+    "postpack_unique_loss_ledger": "NOT_PERMITTED",
+    "tokenizer_fit": "NOT_PERMITTED",
+    "long_training": "NOT_PERMITTED",
+    "paid_compute": "NOT_PERMITTED"
+  },
+  "unblock_rule": {
+    "no_queue_or_pending_as_pass": true,
+    "no_source_bytes_as_token_or_loss_capacity": true,
+    "no_replay_or_duplicate_quota_repair": true,
+    "source_registry_and_dedup_must_bind_same_composed_vector": true,
+    "required_order": [
+      "NEXT100-063 V4 or an explicitly superseding canonical registry must become terminal-success at the exact consumed head.",
+      "NEXT100-065D global dedup must become terminal-success at the exact consumed head and bind the same 31-object / 2,045,180-byte pre-dedup vector (or an explicitly superseding terminal vector).",
+      "DATA-526 must consume the immutable terminal post-dedup report and materialized record graph, then sort and freeze the exact post-dedup pre-decontamination record inventory.",
+      "Only that frozen post-dedup candidate identity may be handed to reserved-evaluation decontamination.",
+      "Quality/privacy, balance/family caps, cluster-safe split/packing, two clean byte-identical builds and post-pack unique causal-loss accounting remain mandatory after decontamination before tokenizer/training authorization."
+    ]
+  },
+  "evidence_identity_scope": "SHA256(canonical JSON with evidence_identity_sha256 omitted)",
+  "evidence_identity_sha256": "4837f26228c3cd55fbae605fbec894bc5788dda945e522ced8d7dd47a9e2ed19"
+}
