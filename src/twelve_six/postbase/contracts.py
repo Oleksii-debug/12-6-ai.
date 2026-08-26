@@ -7,7 +7,8 @@ from enum import Enum
 from typing import Any, Mapping, Protocol, Sequence
 
 WORKER_ID = "POSTBASE-259-TEACHER-STUDENT-DATA-FACTORY-V1"
-SCHEMA_VERSION = "12-6.postbase259-teacher-student-factory.v1"
+CONVERGENCE_WORKER_ID = "POSTBASE-359-TEACHER-FACTORY-CONVERGENCE"
+SCHEMA_VERSION = "12-6.postbase-teacher-student-factory.v2"
 DATASET_CLASSIFICATION = "POSTBASE/EXPERIMENTAL"
 
 
@@ -117,8 +118,11 @@ class DatasetRecord:
     record_id: str
     dataset_name: str
     dataset_version: str
+    dataset_revision: int
+    parent_dataset_manifest_sha256: str
     classification: str
     base_corpus_evidence: bool
+    canonical_base_training_eligible: bool
     training_use: str
     task: TaskRecord
     student_answer: StudentAnswer
@@ -164,6 +168,7 @@ class VerificationRequest:
     prompt: str
     student_answer: str
     proposal: TeacherProposal
+    critic_review: CriticReview
 
 
 @dataclass(frozen=True)
