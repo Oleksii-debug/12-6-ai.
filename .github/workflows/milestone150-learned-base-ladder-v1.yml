@@ -4,7 +4,29 @@ on:
   pull_request:
     branches:
       - milestone100/first-learned-base-20260826
+    paths:
+      - ".github/workflows/milestone150-learned-base-ladder-v1.yml"
+      - "src/twelve_six/milestone150*.py"
+      - "src/twelve_six/milestone100_first_learned.py"
+      - "src/twelve_six/model/**"
+      - "src/twelve_six/model.py"
+      - "src/twelve_six/training/**"
+      - "src/twelve_six/checkpoint/**"
+      - "src/twelve_six/checkpoint.py"
+      - "src/twelve_six/tokenization/**"
+      - "src/twelve_six/inference/**"
+      - "data/corpus_v01/**"
+      - "configs/data/corpus_v01.json"
+      - "requirements/locks/linux-x86_64/**"
+      - "tools/ci_dependency_preflight.py"
+      - "tests/test_milestone100*.py"
+      - "tests/test_milestone150*.py"
+      - "tests/test_data25_corpus_v01.py"
   workflow_dispatch:
+
+concurrency:
+  group: milestone150-ladder-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -37,6 +59,15 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+
+      - name: Dependency and tool preflight before tests or runtime install
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: >-
+          python tools/ci_dependency_preflight.py
+          --profile linux-x86_64
+          --source-sha "$EXPECTED_SOURCE_SHA"
+          --output milestone150-ci-preflight.json
 
       - name: Install hash-locked CPU runtime and test tooling
         run: |
@@ -229,6 +260,7 @@ jobs:
         with:
           name: milestone150-learned-base-ladder-v1
           path: |
+            milestone150-ci-preflight.json
             milestone150-evidence/ladder-truth.json
             milestone150-evidence/ladder-report.json
             milestone150-evidence/corpus-manifest.json
