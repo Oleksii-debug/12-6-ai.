@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import sys
 from pathlib import Path
 
 
@@ -10,6 +11,7 @@ SPEC = importlib.util.spec_from_file_location(
 )
 assert SPEC is not None and SPEC.loader is not None
 SIM = importlib.util.module_from_spec(SPEC)
+sys.modules[SPEC.name] = SIM
 SPEC.loader.exec_module(SIM)
 
 
