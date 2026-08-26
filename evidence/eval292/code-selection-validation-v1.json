@@ -1,0 +1,141 @@
+{
+  "authority_cutoff_utc": "2026-08-26T12:02:04Z",
+  "authority_identity_sha256": "9a9848a82c34588753c9dca1379b8fae49cd7f366017507fc412de0c38cad46f",
+  "candidates": [
+    {
+      "blockers": [
+        "NO_EXPLICIT_EVALUATION_USE_AUTHORIZATION",
+        "NOT_RESERVED_FROM_TRAINING",
+        "PRESENT_IN_TERMINAL_FUTURE_TRAINING_INPUT_INVENTORY"
+      ],
+      "commit": "b5addb64f0161ff6bfe94c124ef76f6a1fba5254",
+      "content_bytes": 8161,
+      "content_git_blob_sha1": "6f479a0885f723b7395843d41164a87041820776",
+      "data227_training_authorized": true,
+      "evaluation_use_explicitly_authorized": false,
+      "license_git_blob_sha1": "ab79d16a3f4c6c894c028d1f7431811e8711b42b",
+      "license_id": "BSD-3-Clause",
+      "path": "httpx/_content.py",
+      "present_in_terminal_data295_training_input_inventory": true,
+      "repository_url": "https://github.com/encode/httpx",
+      "reserved_from_all_training": false,
+      "selection_admitted": false,
+      "source_family": "github:encode/httpx",
+      "source_id": "code.encode.httpx._content"
+    },
+    {
+      "blockers": [
+        "NO_EXPLICIT_EVALUATION_USE_AUTHORIZATION",
+        "NOT_RESERVED_FROM_TRAINING",
+        "PRESENT_IN_TERMINAL_FUTURE_TRAINING_INPUT_INVENTORY"
+      ],
+      "commit": "5460f467b02e49471c0fd6cfc9ca0adab6351f98",
+      "content_bytes": 1542,
+      "content_git_blob_sha1": "0466a7d347db4ed34a37db51b75fc8e80bc06055",
+      "data227_training_authorized": true,
+      "evaluation_use_explicitly_authorized": false,
+      "license_git_blob_sha1": "67db8588217f266eb561f75fae738656325deac9",
+      "license_id": "Apache-2.0",
+      "path": "src/requests/_internal_utils.py",
+      "present_in_terminal_data295_training_input_inventory": true,
+      "repository_url": "https://github.com/psf/requests",
+      "reserved_from_all_training": false,
+      "selection_admitted": false,
+      "source_family": "github:psf/requests",
+      "source_id": "code.psf.requests._internal_utils"
+    }
+  ],
+  "implementation_base": {
+    "branch": "eval233/real-holdout-v2-20260826",
+    "head_sha": "b5512b4648cb09dd052b08884dc53f291e1ce935"
+  },
+  "inputs": {
+    "data227": {
+      "candidate_bytes": 9703,
+      "candidate_documents": 2,
+      "candidate_independent_repositories": 2,
+      "dedicated_workflow_conclusion": "success",
+      "dedicated_workflow_run_id": 32956209865,
+      "head_sha": "8ebdb2e132ed7bae5245e9d4c140752640ab9885",
+      "rights_policy_git_blob_sha1": "0ce5223a1cade10031899bf27348a1a65121d4c6",
+      "scope": "D03/model-training admission only",
+      "worker_id": "DATA-227-REAL-CODE-SOURCE-ADMISSION-V2"
+    },
+    "data295_future_training_inventory": {
+      "activation_status": "BLOCKED_SOURCE_FAMILY_DIVERSITY",
+      "code_input_bytes": 9703,
+      "code_input_families": [
+        "github:encode/httpx",
+        "github:psf/requests"
+      ],
+      "dedicated_workflow_conclusion": "success",
+      "dedicated_workflow_run_id": 32966394993,
+      "head_sha": "6ab35f8f0f68f1943ff612f4ab529d2d970db1d6",
+      "note": "Terminal preregistered future-corpus policy input inventory; not promoted here to a corpus identity.",
+      "worker_id": "DATA-295-BALANCE-POLICY-20M-V1"
+    },
+    "eval233": {
+      "authority_git_blob_sha1": "2008570890819f32c356677e1e250707d339b53a",
+      "code_status": "BLOCKED_DATA227_TRAINING_ONLY_NO_EVALUATION_RESERVATION",
+      "dedicated_workflow_conclusion": "success",
+      "dedicated_workflow_run_id": 32957254139,
+      "evaluation_use_explicitly_authorized": false,
+      "head_sha": "b5512b4648cb09dd052b08884dc53f291e1ce935",
+      "reserved_from_training": false,
+      "worker_id": "EVAL-233-REAL-HOLDOUT-V2"
+    }
+  },
+  "rules": {
+    "explicit_evaluation_authorization_required": true,
+    "final_test_outcomes_may_not_be_inspected_for_selection_construction": true,
+    "final_test_records_may_not_be_copied": true,
+    "future_training_inventory_overlap_must_equal_zero": true,
+    "local_free_only": true,
+    "multiple_independent_repositories_required_when_available": true,
+    "pretraining_reservation_required": true,
+    "training_rights_do_not_imply_evaluation_rights": true
+  },
+  "schema_version": "12-6.eval292-code-selection-validation.v1",
+  "selection_set": {
+    "documents": 0,
+    "hyperparameter_selection_eligible": false,
+    "immutable": true,
+    "independent_source_families": 0,
+    "modality": "code",
+    "purpose": "selection-validation",
+    "records": [],
+    "schema_version": "12-6.eval292-code-selection-set.v1",
+    "selection_eligible": false,
+    "set_identity_sha256": "9fd52e879c388f06f0b103afa02d68678388867c81cfb0f27ddbf0ca18867054",
+    "status": "BLOCKED_NO_ELIGIBLE_CODE_OBJECTS",
+    "tokenizer_fit_eligible": false,
+    "training_eligible": false,
+    "unique_content_bytes": 0
+  },
+  "separation": {
+    "final_test_bytes_consumed": false,
+    "final_test_outcomes_inspected": false,
+    "final_test_records_copied": 0,
+    "future_training_source_family_overlap_count": 0,
+    "future_training_source_id_overlap_count": 0,
+    "proof_kind": "EMPTY_FAIL_CLOSED_SET",
+    "selected_content_hash_overlap_count": 0,
+    "selected_source_families": [],
+    "selected_source_ids": []
+  },
+  "unblock_conditions": [
+    "Publish a terminal code evaluation-rights authority for exact pinned objects.",
+    "Reserve those exact objects from every current and future training inventory before selection construction.",
+    "Use at least two independent repositories when at least two eligible reserved repositories exist.",
+    "Prove zero source/content overlap against the frozen future-training inventory.",
+    "Rebuild deterministically without reading final-test outcomes."
+  ],
+  "verdict": {
+    "reason": "No Wave-1 code object has both explicit evaluation-use authorization and reservation from all training; both terminal DATA-227 objects are also present in the terminal DATA-295 future-training input inventory.",
+    "release_allowed": false,
+    "selection_documents": 0,
+    "selection_independent_repositories": 0,
+    "status": "BLOCKED"
+  },
+  "worker_id": "EVAL-292-CODE-SELECTION-VALIDATION-V1"
+}
