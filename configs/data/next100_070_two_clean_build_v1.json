@@ -44,6 +44,90 @@
     "minimum_independent_families_per_stratum": 2,
     "family_constrained_no_replay_budget": 0
   },
+  "live_evidence_authorities": {
+    "quality": {
+      "worker": "DATA-296",
+      "pr": 399,
+      "head_sha": "e44ac40c071834d677e00255d4f8e862f4a7ac4b",
+      "workflow_run": 32968039182,
+      "report_sha256": "c2db5395903ad26fe9d0f90dbd2b35395ee6b0efdc7d8a9989531fcbe52a2cb3",
+      "artifact_digest": "sha256:42a069641ae144242e2af00db9a21339ad6e47c37a847864a7ec1d594183a7bd",
+      "current_candidate_scan": true,
+      "current_candidate_bytes": 183061,
+      "incumbent_pack_retained_unique_bytes": 178064,
+      "release_gate_pass": false,
+      "blocker": "QUALITY_GRANULARITY_POLICY_NOT_FROZEN_AFTER_WHOLE_SOURCE_HAZARD"
+    },
+    "privacy": {
+      "worker": "VERIFY-307",
+      "pr": 414,
+      "head_sha": "9ecafdaeed973498573d95ada52608e24dbaa3a2",
+      "current_candidate_scan": true,
+      "current_candidate_sources": 5,
+      "current_candidate_bytes": 183061,
+      "candidate_sources_pass": 5,
+      "candidate_findings": 0,
+      "candidate_redactions": 0,
+      "adversarial_tp": 8,
+      "adversarial_fn": 7,
+      "adversarial_tn": 7,
+      "adversarial_fp": 0,
+      "release_gate_pass": true,
+      "claim_boundary": "CURRENT_CANDIDATE_SCAN_PASS_ONLY_DOES_NOT_WAIVE_RESERVED_MATERIAL_OR_DECONTAMINATION_GATES"
+    },
+    "dedup": {
+      "worker": "DATA-298",
+      "pr": 389,
+      "head_sha": "74b792a8b28a4ba9244385d608ad348a5a9efcf3",
+      "workflow_run": 32967161591,
+      "report_sha256": "274ce5aafdbbf9e64a393d66bd8aa98e49001aae79408fb30a7a3ec38b1f0305",
+      "artifact_digest": "sha256:f144ac95fe10e8cfbfe25c2af4463bd5548f33f3a01e093d17dc25a173c6d322",
+      "source_level_current_candidate_scan": true,
+      "source_level_bytes_before": 183061,
+      "source_level_bytes_after": 183061,
+      "source_level_duplicate_discount": 0,
+      "release_gate_pass": false,
+      "blocker": "CLUSTER_SAFE_SPLIT_CHECK_NOT_REACHED",
+      "observed_successor": {
+        "worker": "NEXT100-065-CROSSSOURCE-DEDUP-V3",
+        "pr": 477,
+        "head_sha": "e347a95b382ad13a547e76f4f1c6e91d86214df5",
+        "workflow_run": 32999666281,
+        "workflow_state": "QUEUED_NOT_AUTHORITY"
+      }
+    },
+    "decontamination": {
+      "worker": "NEXT100-066-DECONTAMINATION-V4",
+      "pr": 482,
+      "head_sha": "80e8fc9828214ce86e16b5c7f2fdec9107b4df43",
+      "evidence_identity_sha256": "d909975ac656c9a36ed491cea32e806608b799e431449be3a0ee60f503bd3835",
+      "state": "BLOCKED_NO_EXACT_CANDIDATE_CORPUS_IDENTITY",
+      "scan_executed": false,
+      "release_gate_pass": false
+    },
+    "selection_validation": {
+      "worker": "EVAL-303",
+      "pr": 417,
+      "head_sha": "5e5a1de3b594cee5612e63d3d4c2a70499740ac7",
+      "composite_identity_sha256": "7b97a9ab04469236dc5bc17fc80155cb43430b01c443bb6209fac090557258fd",
+      "membership_sha256": "e4bb39dd7aa6a20c7ed34e093f563b5f4896ac16828151c6b375a83cd8a068c6",
+      "record_count": 10,
+      "ua_records": 8,
+      "en_records": 2,
+      "code_records": 0,
+      "independent_family_count": 4,
+      "data300_exact_exclusion_proof_identity_sha256": "ac9a0e2c3beab26c0d664b0006b11ec9fd155fa78be9f46d56ecb3ed336f2621",
+      "release_gate_pass": true,
+      "claim_boundary": "EXACT_OBJECT_EXCLUSION_ONLY_NEAR_COPY_AND_CLUSTER_DECONTAMINATION_REMAIN_SEPARATE"
+    },
+    "unique_loss": {
+      "worker": "DATA-294",
+      "head_sha": "2214db4a4a4eb77de8ff80dc68c93159dd697aae",
+      "scope": "THREE_DATA229_TEXT_OBJECTS_ONLY",
+      "full_five_source_ledger": false,
+      "release_gate_pass": false
+    }
+  },
   "determinism_contract": {
     "clean_build_count": 2,
     "shared_mutable_cache_allowed": false,
@@ -76,12 +160,12 @@
     ]
   },
   "prebuild_evidence_vector": {
-    "G05_QUALITY": "BLOCKED_NO_BOUND_EXACT_CURRENT_CANDIDATE_RERUN",
-    "G06_PRIVACY": "BLOCKED_NO_BOUND_EXACT_CURRENT_CANDIDATE_RERUN",
-    "G07_DEDUP": "BLOCKED_NO_BOUND_EXACT_CURRENT_MATERIALIZATION_RERUN",
-    "G08_RESERVED_DECONTAMINATION": "BLOCKED_NO_EXACT_CORPUS_IDENTITY",
+    "G05_QUALITY": "BLOCKED_QUALITY_GRANULARITY_POLICY_NOT_FROZEN_DESPITE_DATA296_SCAN",
+    "G06_PRIVACY": "PASS_VERIFY307_CURRENT_FIVE_SOURCE_SCAN",
+    "G07_DEDUP": "BLOCKED_CLUSTER_SAFE_SPLIT_CHECK_NOT_REACHED_SOURCE_LEVEL_DATA298_PASS",
+    "G08_RESERVED_DECONTAMINATION": "BLOCKED_NEXT100066_NO_EXACT_CORPUS_IDENTITY",
     "G09_BALANCE_DIVERSITY": "FAIL_FAMILY_DIVERSITY_NO_REPLAY_BUDGET_ZERO",
-    "G10_SELECTION_VALIDATION": "BLOCKED_NO_BOUND_NONEMPTY_TERMINAL_SELECTION_AUTHORITY",
+    "G10_SELECTION_VALIDATION": "PASS_EVAL303_TERMINAL_NONEMPTY_SELECTION_VALIDATION",
     "G12_UNIQUE_LOSS": "BLOCKED_NO_FULL_FIVE_SOURCE_LEDGER"
   },
   "execution_rule": "Validate exact registry and rights first. Evaluate all deterministic prebuild gate states independently. Do not materialize split or shard products when any hard prebuild gate fails. Emit canonical status/evidence manifests and prove their complete byte identity in two clean isolated roots.",
