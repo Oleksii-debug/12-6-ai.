@@ -7,6 +7,11 @@ from typing import Any
 
 EXPECTED_SCHEMA = "12-6.scaling-data-budget-policy.v1"
 REFERENCE_MULTIPLIERS = (20, 50, 100)
+EXPECTED_STAGE_PARAMETER_COUNTS = {
+    "20M_PRIMARY": 20_613_440,
+    "100M_TARGET": 100_000_000,
+    "1B_TARGET": 1_000_000_000,
+}
 REQUIRED_EVIDENCE = {
     "immutable_corpus_identity",
     "immutable_train_split_identity",
@@ -41,12 +46,21 @@ def _require(condition: bool, message: str) -> None:
 
 
 def _validate_stage(stage: dict[str, Any]) -> None:
+    stage_name = stage.get("stage")
     parameter_count = stage.get("parameter_count")
     _require(
         isinstance(parameter_count, int) and not isinstance(parameter_count, bool),
         "parameter_count must be an integer",
     )
     _require(parameter_count > 0, "parameter_count must be positive")
+    _require(
+        stage_name in EXPECTED_STAGE_PARAMETER_COUNTS,
+        f"unexpected scaling stage: {stage_name}",
+    )
+    _require(
+        parameter_count == EXPECTED_STAGE_PARAMETER_COUNTS[stage_name],
+        f"{stage_name} parameter_count drift",
+    )
 
     references = stage.get("reference_training_token_exposures")
     _require(
@@ -57,17 +71,17 @@ def _validate_stage(stage: dict[str, Any]) -> None:
         key = f"{multiplier}x"
         _require(
             references.get(key) == parameter_count * multiplier,
-            f"{stage.get('stage')} {key} token-exposure reference drift",
+            f"{stage_name} {key} token-exposure reference drift",
         )
 
     expected_flops = 6 * parameter_count * (parameter_count * 20)
     _require(
         stage.get("approx_dense_training_flops_at_20x") == expected_flops,
-        f"{stage.get('stage')} approximate 20x FLOPs drift",
+        f"{stage_name} approximate 20x FLOPs drift",
     )
     _require(
         stage.get("status_source") == "external_stage_readiness_authority",
-        f"{stage.get('stage')} must not embed volatile readiness status",
+        f"{stage_name} must not embed volatile readiness status",
     )
 
 
@@ -134,13 +148,16 @@ def validate(policy: dict[str, Any]) -> dict[str, Any]:
         isinstance(stages, list) and len(stages) == 3,
         "expected exactly three planning stages",
     )
+    _require(
+        all(isinstance(stage, dict) for stage in stages),
+        "each stage must be a mapping",
+    )
     expected_stage_names = ["20M_PRIMARY", "100M_TARGET", "1B_TARGET"]
     _require(
         [stage.get("stage") for stage in stages] == expected_stage_names,
         "stage ordering or identity drift",
     )
     for stage in stages:
-        _require(isinstance(stage, dict), "each stage must be a mapping")
         _validate_stage(stage)
 
     data_contract = policy.get("data_authority_contract")
@@ -166,12 +183,19 @@ def validate(policy: dict[str, Any]) -> dict[str, Any]:
 
     gate = policy.get("long_training_gate")
     _require(isinstance(gate, dict), "long_training_gate must be a mapping")
+    required_evidence = gate.get("required_evidence")
+    _require(isinstance(required_evidence, list), "required_evidence must be a list")
     _require(
-        set(gate.get("required_evidence", [])) == REQUIRED_EVIDENCE,
+        set(required_evidence) == REQUIRED_EVIDENCE,
         "required evidence set drift",
     )
+    forbidden_substitutions = gate.get("forbidden_substitutions")
     _require(
-        set(gate.get("forbidden_substitutions", [])) == FORBIDDEN_SUBSTITUTIONS,
+        isinstance(forbidden_substitutions, list),
+        "forbidden_substitutions must be a list",
+    )
+    _require(
+        set(forbidden_substitutions) == FORBIDDEN_SUBSTITUTIONS,
         "forbidden substitution set drift",
     )
     _require(
@@ -187,6 +211,10 @@ def validate(policy: dict[str, Any]) -> dict[str, Any]:
     _require(
         isinstance(references, list) and len(references) >= 5,
         "research basis is incomplete",
+    )
+    _require(
+        all(isinstance(item, dict) for item in references),
+        "research basis entries must be mappings",
     )
     _require(
         len({item.get("id") for item in references}) == len(references),
