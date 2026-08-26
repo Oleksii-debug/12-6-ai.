@@ -1,0 +1,16 @@
+{
+  "schema_version": "12-6.data184-parent-project-code.v1",
+  "source_id": "project-authored.12-6-ai.source-code",
+  "source_version": "git:117e0f156fff6b0226f00748ff25938f1b4a2612",
+  "parent_git_sha": "117e0f156fff6b0226f00748ff25938f1b4a2612",
+  "path_glob": "src/twelve_six/**/*.py",
+  "family": "project_authored_repository_code",
+  "language": "code",
+  "modality": "code",
+  "license_id": "PROJECT-AUTHORED",
+  "rights_policy_ref": "policy://12-6/data/explicit-model-training-evidence-v1",
+  "rights_evidence_path": "data/rights_evidence/data184_parent_project_code_20260826.txt",
+  "rights_evidence_sha256": "825c4fc262fac9325528b680a5680469998b1829838f8616cf7942f93eda3f59",
+  "purpose": "pretraining",
+  "role": "incumbent_control_and_expanded"
+}
