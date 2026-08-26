@@ -16,10 +16,9 @@ from pathlib import Path
 from typing import Any
 
 REGISTRY_PATH = Path("configs/data/next100_063_terminal_source_registry_v2.json")
-EXPECTED_REGISTRY_IDENTITY = "934933896a4b3b01dd58cd18d13bcc36245913f83412c6b3f697c64dd03e4d4d"
+EXPECTED_REGISTRY_IDENTITY = "448dd61ed3e0d78d0bca9e202529a79c02811fd67beebe4833373d0c2ab0c0a7"
 TARGET_BYTES = 20_000_000
 
-# Frozen DATA-295 policy: 45% Ukrainian / 35% English / 20% code.
 MIXTURE = {
     "uk": Fraction(9, 20),
     "en": Fraction(7, 20),
@@ -28,16 +27,9 @@ MIXTURE = {
 GLOBAL_FAMILY_CAP = Fraction(1, 4)
 WITHIN_STRATUM_FAMILY_CAP = Fraction(3, 5)
 
-# Exact DATA-287 family capacities underlying the aggregate base vector in
-# NEXT100-063. Keeping these explicit lets the diagnostic enforce concentration
-# rather than incorrectly treating each stratum aggregate as one fungible pool.
 BASE_FAMILY_BYTES = {
-    "uk": {
-        "ua.rada.open-data.laws-texts": 88_565,
-    },
-    "en": {
-        "en.standardebooks.manual": 84_793,
-    },
+    "uk": {"ua.rada.open-data.laws-texts": 88_565},
+    "en": {"en.standardebooks.manual": 84_793},
     "code": {
         "github:encode/httpx": 8_161,
         "github:psf/requests": 1_542,
@@ -69,7 +61,6 @@ def load_family_capacities(registry: dict[str, Any]) -> dict[str, dict[str, int]
     )
 
     families = {stratum: dict(values) for stratum, values in BASE_FAMILY_BYTES.items()}
-
     base = registry["base_registry"]["by_stratum"]
     for stratum in ("uk", "en", "code"):
         require(
@@ -101,7 +92,6 @@ def load_family_capacities(registry: dict[str, Any]) -> dict[str, dict[str, int]
             len(families[stratum]) == inventory[stratum]["family_count"],
             f"{stratum} family-count mismatch",
         )
-
     return families
 
 
@@ -127,9 +117,6 @@ def feasible(total_bytes: int, families: dict[str, dict[str, int]]) -> bool:
 
 
 def max_exact_mixture_bytes(families: dict[str, dict[str, int]], target: int = TARGET_BYTES) -> int:
-    # All frozen shares have denominator 20, so exact mixture totals are multiples
-    # of 20 bytes. For every stratum, capped-available/T is non-increasing as T
-    # grows, so feasibility is monotone and binary search is exact here.
     unit = 20
     lo = 0
     hi = target // unit
