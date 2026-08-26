@@ -1,0 +1,19 @@
+NEXT100-026 KMu portal rights evidence
+Captured/reviewed: 2026-08-26
+Publisher: Secretariat of the Cabinet of Ministers of Ukraine
+Publisher terms URL: https://www.kmu.gov.ua/
+Observed publisher statement:
+"Весь контент доступний за ліцензією Creative Commons Attribution 4.0 International license, якщо не зазначено інше"
+
+License: Creative Commons Attribution 4.0 International (CC BY 4.0)
+License URL: https://creativecommons.org/licenses/by/4.0/
+License capabilities used by this audit:
+- Share: copy and redistribute in any medium or format for any purpose, including commercially.
+- Adapt: remix, transform, and build upon for any purpose, including commercially.
+- Attribution: appropriate credit, license link, and indication of changes are required.
+
+Scope rule:
+Only pages explicitly authored by the Department of Information and Public Communications of the Secretariat of the Cabinet of Ministers are admitted. Each selected page was reviewed for a page-specific contrary notice; none was observed in the selected extraction. Ministry-authored syndicated portal items are excluded.
+
+Negative control:
+The Ministry of Economy and Environment site states CC BY-NC-ND 4.0. That ministry site is rejected for this training snapshot and demonstrates that government publication alone is not treated as a reuse grant.
