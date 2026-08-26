@@ -1,0 +1,53 @@
+name: NEXT100-052 Typer Code Source Admission
+
+on:
+  pull_request:
+    paths:
+      - "configs/data/next100_052_typer_code_source_v1.json"
+      - "tools/validate_next100_052_typer.py"
+      - "docs/NEXT100_052_TYPER_CODE_SOURCE_AUTHORITY.md"
+      - ".github/workflows/next100-052-typer-code-source.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile verifier
+        run: python -m py_compile tools/validate_next100_052_typer.py
+      - name: Verify immutable source, rights, privacy, parse, dedup, lineage, and reservations
+        run: python tools/validate_next100_052_typer.py
+      - name: Assert terminal report contract
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path("evidence/next100_052/typer_source_admission.json").read_text())
+          assert report["verdict"] == "ADMIT", report
+          assert report["training_executed"] is False
+          assert report["local_free_only"] is True
+          assert not report["failures"]
+          assert not report["evaluation_reservation_overlaps"]
+          assert len(report["files"]) == 1
+          assert report["files"][0]["parse_valid"] is True
+          assert not report["files"][0]["secret_hits"]
+          assert not report["files"][0]["privacy_hits"]
+          assert all(not item["exact_blob_hits_anywhere_in_tree"] for item in report["lineage_reports"])
+          PY
+      - name: Upload hash-bound evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: next100-052-typer-${{ github.sha }}
+          path: evidence/next100_052/typer_source_admission.json
+          if-no-files-found: error
+          retention-days: 30
