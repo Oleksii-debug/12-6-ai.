@@ -1,0 +1,65 @@
+{
+  "schema_version": "12-6.d03-rada-trees-archive-inventory.v1",
+  "worker_id": "D03-RADA-TREES-ARCHIVE-INVENTORY-20260826",
+  "execution_profile": "LOCAL_FREE",
+  "purpose": "EXACT_ARCHIVE_HASH_AND_DETERMINISTIC_MEMBER_INVENTORY_ONLY",
+  "parent": {
+    "probe_pr": 638,
+    "probe_head_sha": "92c1fd05d4399b0f0c4a35f0689160383f963c9c",
+    "probe_config_path": "configs/data/d03_rada_trees_acquisition_probe_v1.json",
+    "object_probe_path": "tools/probe_d03_rada_trees_hf_objects.py",
+    "dataset": "uacorpus/Rada_Trees",
+    "dataset_head_sha": "1b994a5804dcda122721e8d33a03fd172cf8d867"
+  },
+  "primary_archive": {
+    "path": "Rada_Trees.7z",
+    "displayed_size": "536 MB",
+    "role": "PRIMARY_PLAIN_TEXT_ARCHIVE_CANDIDATE",
+    "exact_content_sha256": null,
+    "identity_state": "HF_OBJECT_METADATA_PROBE_PARENT_CONTENT_DOWNLOAD_REQUIRED"
+  },
+  "held_archive": {
+    "path": "rada_xtag_texts.7z",
+    "displayed_size": "698 MB",
+    "role": "ANNOTATION_OR_DERIVED_ARCHIVE_HOLD_ZERO_CREDIT"
+  },
+  "inventory_policy": {
+    "accepted_extractors": ["7zz", "7z"],
+    "path_normalization": "UNICODE_NFKC_POSIX_RELATIVE",
+    "hash_algorithm": "sha256",
+    "reject_symlinks": true,
+    "reject_special_files": true,
+    "reject_duplicate_normalized_paths": true,
+    "require_preextract_member_listing": true,
+    "require_listing_vs_extraction_exact_match": true,
+    "max_single_member_bytes": 50000000,
+    "max_total_uncompressed_bytes": 10000000000
+  },
+  "successor_required": [
+    "EXECUTE_PARENT_EXACT_HF_OBJECT_METADATA_PROBE",
+    "DOWNLOAD_PRIMARY_ARCHIVE_AT_EXACT_DATASET_REVISION",
+    "BIND_AND_VERIFY_ARCHIVE_CONTENT_SHA256_AND_EXACT_SIZE",
+    "RUN_THIS_DETERMINISTIC_MEMBER_INVENTORY",
+    "CLASSIFY_ORIGINAL_PLAIN_TEXT_VS_ANNOTATIONS_DERIVATIVES_AND_METADATA",
+    "BIND_MEMBER_LEVEL_ATTRIBUTION_AND_PROVENANCE",
+    "RUN_LANGUAGE_QUALITY_PRIVACY",
+    "RUN_EXACT_NEAR_AND_LINEAGE_DEDUP",
+    "RUN_EVALUATION_DECONTAMINATION",
+    "ONLY_THEN_PROPOSE_NONZERO_SOURCE_CAPACITY"
+  ],
+  "claim_boundary": {
+    "parent_hf_object_probe_executed": false,
+    "archive_downloaded": false,
+    "archive_sha256_pinned": false,
+    "archive_members_inventoried": false,
+    "member_payload_classified": false,
+    "normalized_capacity_credited": 0,
+    "training_authorized_bytes": 0,
+    "training_exposure_authorized": false,
+    "tokenizer_fit_authorized": false,
+    "model_training_executed": false,
+    "optimizer_updates": 0,
+    "paid_compute_used": false,
+    "safe_result": "INVENTORY_MECHANICS_READY_PARENT_METADATA_AND_ARCHIVE_REQUIRED"
+  }
+}
