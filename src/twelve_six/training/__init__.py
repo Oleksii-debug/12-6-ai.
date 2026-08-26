@@ -2,6 +2,7 @@
 
 from .config import PrecisionMode, SchedulerKind, TrainerConfig
 from .loss import causal_lm_loss, causal_pair_loss
+from .precision import PrecisionRuntime, autocast_dtype, resolve_precision_runtime
 from .trainer import (
     CheckpointHookError,
     NonFiniteTrainingError,
@@ -18,6 +19,7 @@ __all__ = [
     "CheckpointHookError",
     "NonFiniteTrainingError",
     "PrecisionMode",
+    "PrecisionRuntime",
     "SchedulerKind",
     "StepMetrics",
     "Trainer",
@@ -25,8 +27,10 @@ __all__ = [
     "TrainerState",
     "TrainingRunResult",
     "TrainingStateInvalidError",
+    "autocast_dtype",
     "build_optimizer",
     "build_scheduler",
     "causal_lm_loss",
     "causal_pair_loss",
+    "resolve_precision_runtime",
 ]
