@@ -81,9 +81,22 @@ def _family_caps(targets: Mapping[str, int]) -> dict[str, int]:
     }
 
 
-def validate_acquisition_plan(plan: Mapping[str, Any]) -> dict[str, Any]:
-    """Validate one acquisition plan without granting any training capacity."""
+def validate_acquisition_plan(
+    plan: Mapping[str, Any],
+    *,
+    allow_stale_planning: bool = False,
+) -> dict[str, Any]:
+    """Validate one acquisition plan without granting any training capacity.
 
+    The currently committed plan is bound to closed-unmerged PR #527. By
+    default that stale authority is a hard error so downstream materialization
+    cannot silently consume it. Read-only planning/audit callers may opt in to
+    ``allow_stale_planning=True`` to inspect its geometry while capacity remains
+    zero and execution readiness remains false.
+    """
+
+    if not isinstance(allow_stale_planning, bool):
+        raise CorpusAcquisitionPlanError("allow_stale_planning must be boolean")
     if plan.get("schema_version") != SCHEMA:
         raise CorpusAcquisitionPlanError("unsupported acquisition-plan schema")
     if plan.get("worker_id") != WORKER:
@@ -253,7 +266,7 @@ def validate_acquisition_plan(plan: Mapping[str, Any]) -> dict[str, Any]:
     if execution_order[0] != STALE_EXECUTION_STEP:
         raise CorpusAcquisitionPlanError("stale baseline execution marker changed without rebind audit")
 
-    return {
+    summary = {
         "schema_version": SCHEMA,
         "status": "VALID_PLANNING_ARTIFACT_STALE_BASELINE_CAPACITY_ZERO",
         "baseline_refresh_required": True,
@@ -274,6 +287,12 @@ def validate_acquisition_plan(plan: Mapping[str, Any]) -> dict[str, Any]:
         "training_authorized_bytes": 0,
         "long_training_authorized": False,
     }
+    if not allow_stale_planning:
+        raise CorpusAcquisitionPlanError(
+            "stale source-convergence baseline: PR #527 is closed unmerged; "
+            "rebind to the surviving NEXT100-063 authority before materialization or execution"
+        )
+    return summary
 
 
 def load_and_validate_acquisition_plan(path: str | Path) -> dict[str, Any]:
