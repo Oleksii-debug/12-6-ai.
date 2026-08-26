@@ -1,0 +1,42 @@
+name: POSTBASE-255 Deliberation Controller V1
+
+on:
+  push:
+    branches: [postbase255/deliberation-controller-v1-20260826]
+  workflow_dispatch:
+
+permissions: {contents: read}
+
+jobs:
+  local-free:
+    runs-on: ubuntu-24.04
+    env:
+      PYTHONPATH: src
+      POSTBASE255_EXECUTION_PROFILE: LOCAL_FREE
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: "${{ github.sha }}"
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+      - name: Install LOCAL_FREE test tooling
+        run: python -m pip install -e ".[dev]"
+      - name: Focused tests
+        run: python -m pytest -q tests/test_postbase_deliberation.py
+      - name: Ruff isolated surface
+        run: >-
+          ruff check src/twelve_six/postbase_deliberation.py
+          tests/test_postbase_deliberation.py
+          tools/run_postbase255_deliberation_probe.py
+      - name: Execute bounded deliberation probe
+        run: >-
+          python tools/run_postbase255_deliberation_probe.py
+          --output reports/postbase255/local_free_probe.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: postbase255-deliberation-controller-local-free
+          path: reports/postbase255/local_free_probe.json
+          if-no-files-found: warn
