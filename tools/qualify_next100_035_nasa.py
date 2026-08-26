@@ -145,15 +145,15 @@ def qualify_one(config: dict[str, Any], document_id: int, out_dir: Path) -> dict
         reasons.append("NO_DOCUMENT_COPYRIGHT_METADATA")
         copyright_data = {}
     if copyright_data.get("determinationType") not in config["copyright_determinations_allowed"]:
-        reasons.append("COPYRIGHT_DETERMINATION_NOT_PUBLIC_USE")
+        reasons.append("COPYRIGHT_DETERMINATION_NOT_GOV_PUBLIC_USE")
     if copyright_data.get("licenseType") != config["required_license_type"]:
         reasons.append("UNEXPECTED_LICENSE_TYPE")
-    if copyright_data.get("containsThirdPartyMaterial") is not False:
-        reasons.append("THIRD_PARTY_CONTENT_NOT_EXPLICITLY_FALSE")
-    if copyright_data.get("belongsToContractor") is not False:
-        reasons.append("CONTRACTOR_COPYRIGHT_NOT_EXPLICITLY_FALSE")
-    if copyright_data.get("belongsToPublisher") is not False:
-        reasons.append("PUBLISHER_COPYRIGHT_NOT_EXPLICITLY_FALSE")
+    if copyright_data.get("containsThirdPartyMaterial") is True:
+        reasons.append("THIRD_PARTY_CONTENT_POSITIVE")
+    if copyright_data.get("belongsToContractor") is True:
+        reasons.append("CONTRACTOR_COPYRIGHT_POSITIVE")
+    if copyright_data.get("belongsToPublisher") is True:
+        reasons.append("PUBLISHER_COPYRIGHT_POSITIVE")
 
     authors_ok, author_reasons = nasa_author_gate(record)
     if not authors_ok:
@@ -205,6 +205,11 @@ def qualify_one(config: dict[str, Any], document_id: int, out_dir: Path) -> dict
     if not reasons:
         (norm_dir / f"{normalized_sha}.txt").write_bytes(normalized_bytes)
 
+    body_exclusions_explicit = all(
+        copyright_data.get(key) is False
+        for key in ("containsThirdPartyMaterial", "belongsToContractor", "belongsToPublisher")
+    )
+
     return {
         "document_id": document_id,
         "citation_url": f"https://ntrs.nasa.gov/citations/{document_id}",
@@ -217,6 +222,11 @@ def qualify_one(config: dict[str, Any], document_id: int, out_dir: Path) -> dict
         "distribution": record.get("distribution"),
         "copyright": copyright_data,
         "all_authors_nasa_affiliated": authors_ok,
+        "full_document_body_rights": (
+            "EXPLICIT_THIRD_PARTY_EXCLUSIONS_PRESENT_BUT_BODY_STILL_OUT_OF_SCOPE"
+            if body_exclusions_explicit
+            else "NOT_ADMITTED_THIRD_PARTY_EXCLUSIONS_NOT_EXPLICIT"
+        ),
         "http_body_sha256": sha256(body),
         "http_body_bytes": len(body),
         "canonical_record_sha256": sha256(canonical_record),
@@ -296,10 +306,12 @@ def build_evidence(config: dict[str, Any], out_dir: Path) -> dict[str, Any]:
             "images_tables_figures_admitted": False,
         },
         "rights": {
-            "document_gate": "PUBLIC + public-use copyright determination + no third-party material + no contractor/publisher copyright + NASA civil authors",
+            "retained_metadata_gate": "PUBLIC + GOV_PUBLIC_USE_PERMITTED + no positive third-party/contractor/publisher flag + NASA civil authors",
             "model_training": "ALLOWED" if admitted else "NOT_ADMITTED",
             "redistribution": config["redistribution_decision"] if admitted else "NOT_ADMITTED",
             "evaluation": config["evaluation_decision"],
+            "full_document_body": "NOT_ADMITTED_BY_THIS_AUTHORITY",
+            "full_document_body_requires_explicit_third_party_false": True,
             "attribution": config["attribution_text"],
             "rights_evidence": config["rights_evidence"],
             "no_endorsement": True,
