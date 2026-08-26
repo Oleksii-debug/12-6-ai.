@@ -80,7 +80,7 @@
         "commit": "5460f467b02e49471c0fd6cfc9ca0adab6351f98",
         "path": "src/requests/_internal_utils.py",
         "blob_sha1": "0466a7d347db4ed34a37db51b75fc8e80bc06055",
-        "raw_sha256": "4c7d8d132c9898fc7d715e473f3ac74785ddc4ab96d2c9240f87835dc6d981ff28",
+        "raw_sha256": "4c7d8d132c9898fc7d715e473f3ac74785ddc4ab96d2c9240f87835dc6d981ff",
         "size_bytes": 1542,
         "raw_url": "https://raw.githubusercontent.com/psf/requests/5460f467b02e49471c0fd6cfc9ca0adab6351f98/src/requests/_internal_utils.py"
       }
