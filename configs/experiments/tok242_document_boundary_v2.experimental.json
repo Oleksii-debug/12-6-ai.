@@ -1,0 +1,95 @@
+{
+  "candidates": [
+    {
+      "append_eos_eod": false,
+      "cross_document": false,
+      "eligible": true,
+      "id": "A",
+      "name": "no_explicit_eos_document_isolated"
+    },
+    {
+      "append_eos_eod": true,
+      "cross_document": false,
+      "eligible": "ONLY_IF_SELECTED_TOKENIZER_CAN_ADD_OR_RESERVE_ONE_DOCUMENT_BOUNDARY_ID_DETERMINISTICALLY",
+      "id": "B",
+      "name": "eos_eod_document_isolated"
+    },
+    {
+      "append_eos_eod": true,
+      "cross_document": true,
+      "eligible": "ONLY_IF_EXISTING_DATA_CONTRACT_EXPLICITLY_PERMITS_CROSS_DOCUMENT_CAUSAL_PACKING",
+      "id": "C",
+      "name": "eos_eod_cross_document"
+    }
+  ],
+  "compatibility": {
+    "family_or_vocab_change_requires_new_contract_version": true,
+    "incumbent_contract": "base-byte-noeos-v1",
+    "incumbent_remains_unchanged_while_blocked": true,
+    "resume_mismatch_policy": "FAIL_BEFORE_MODEL_TRAINER_OPTIMIZER_OR_RNG_MUTATION",
+    "silent_checkpoint_migration_forbidden": true
+  },
+  "decision_rule": {
+    "cross_document": "cannot win by packing efficiency alone; must be contract-eligible and not materially worsen content BPB or boundary behavior",
+    "generation": "EOS termination behavior is diagnostic, not sufficient by itself",
+    "no_token_count_shortcut": true,
+    "primary": "paired selection-validation content BPB at equal source-content exposure and matched total parameter capacity",
+    "simplicity_prior": "if EOS lacks material paired support, retain no explicit EOS"
+  },
+  "execution_profile": "LOCAL_FREE",
+  "identity_sha256": "a41f6b9c8c9d597eb665bf71693454aabeb9c07e7b60cf96541300ccab496acc",
+  "measurements": [
+    "content_bpb_excluding_control_token_overhead",
+    "document_start_bpb",
+    "document_end_bpb",
+    "packing_efficiency_content_targets",
+    "packing_efficiency_valid_targets",
+    "training_throughput_per_source_content",
+    "raw_base_generation_termination_behavior",
+    "parameter_tax",
+    "checkpoint_tokenizer_compatibility"
+  ],
+  "model_probe": {
+    "capacity_match": "match total trainable model parameters after vocabulary/control-token tax",
+    "exact_geometry": "RESOLVE_ONLY_AFTER_TOK241_SELECTED_VOCABULARY_IS_BOUND",
+    "paired_seeds": [
+      1337,
+      1338,
+      7331
+    ],
+    "random_initialization": true,
+    "target_scale": "approximately_500k_total_trainable_parameters"
+  },
+  "prerequisites": {
+    "tok241": {
+      "observed_repository_state": "NO_PR_BRANCH_OR_COMMIT_AUTHORITY_DISCOVERED_AT_2026-08-26_CUT",
+      "required": true,
+      "required_fields": [
+        "terminal decision in {KEEP_BYTE,SELECT_BPE,SELECT_UNIGRAM,PRACTICAL_TIE,INSUFFICIENT_EVIDENCE}",
+        "selected tokenizer family and immutable tokenizer artifact identity",
+        "tokenizer vocabulary size and exact ordinary/special-token contract",
+        "terminal research corpus identity used for TOK-241",
+        "selection-validation identity used for TOK-241"
+      ]
+    }
+  },
+  "schema": "12-6.tok242-document-boundary-experiment.v2",
+  "selection_data_policy": {
+    "control_token_overhead_excluded_from_content_bpb": true,
+    "equal_source_content_exposure": true,
+    "final_test_forbidden": true,
+    "selection_validation_only": true
+  },
+  "semantics": {
+    "attention_reset_at_eos": false,
+    "bos": null,
+    "chat_tokens": [],
+    "eos_eod_meaning": "document boundary only; never chat/instruction semantics",
+    "instruction_tokens": [],
+    "padding": "retain selected-family incumbent semantics; no semantic PAD introduced by TOK-242",
+    "system_tokens": [],
+    "user_tokens": []
+  },
+  "status": "BLOCKED_MISSING_TOK241_AUTHORITY",
+  "worker_id": "TOK-242-DOCUMENT-BOUNDARY-V2"
+}
