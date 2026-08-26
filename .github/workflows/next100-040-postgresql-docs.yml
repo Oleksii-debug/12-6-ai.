@@ -1,0 +1,46 @@
+name: NEXT100-040 PostgreSQL docs qualification
+
+on:
+  pull_request:
+    branches:
+      - data287/external-snapshot-registry-v2-20260826
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Verify exact head and qualify immutable PostgreSQL docs
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "source_sha=$(git rev-parse HEAD)"
+          python tools/qualify_next100_040_postgresql_docs.py \
+            --output evidence/next100040/postgresql_docs_source_authority.json \
+            --emit-base64
+
+      - name: Determinism rerun
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/qualify_next100_040_postgresql_docs.py \
+            --output /tmp/postgresql_docs_source_authority.second.json
+          cmp evidence/next100040/postgresql_docs_source_authority.json \
+              /tmp/postgresql_docs_source_authority.second.json
+          sha256sum evidence/next100040/postgresql_docs_source_authority.json
+
+      - name: Upload terminal evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: next100-040-postgresql-docs-authority
+          path: evidence/next100040/postgresql_docs_source_authority.json
+          if-no-files-found: error
