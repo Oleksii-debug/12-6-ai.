@@ -1,0 +1,201 @@
+name: VERIFY-218 RUNTIME-225 Authority Bridge
+run-name: VERIFY-218 exact dual-artifact RUNTIME-225 authority proof
+
+on:
+  push:
+    branches: [verify218/runtime225-authority-bridge-20260826]
+  workflow_dispatch:
+
+concurrency:
+  group: verify218-runtime225-bridge-${{ github.sha }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  bridge-authority:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      PYTHONPATH: src
+      VERIFY218_HEAD_SHA: ${{ github.sha }}
+      PRODUCER_SHA: c02c8aa38e691521ae2ab6a4ff3ea1d643efd6ef
+      SCIENTIFIC_ARTIFACT_ID: "9602650341"
+      SCIENTIFIC_ARTIFACT_SHA256: 8631e90417e40365b3fc0d6bc98ee6adda5a4ed24530e675d9a91c93219537ee
+      SCIENTIFIC_RUN_ID: "32952787070"
+      RUNTIME_ARTIFACT_ID: "9602907196"
+      RUNTIME_ARTIFACT_SHA256: d2abd029f64207567a1d6b4ce9943ff15bfd211acdd05e9ff84156ce66607218
+      RUNTIME_RUN_ID: "32952786715"
+
+    steps:
+      - name: Checkout exact bridge head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set exact CPython 3.11.16
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+
+      - name: Universal exact execution bootstrap
+        uses: ./.github/actions/execution-bootstrap
+        with:
+          capabilities: runtime,tests,lint
+          venv: .verify218-bridge
+          manifest: reports/verify218-bridge/environment.json
+          command: >-
+            python -m pytest -q
+            tests/test_verify218_learned_10m.py
+            tests/test_verify218_runtime225_authority.py
+
+      - name: Bind exact bridge source and focused contracts
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$VERIFY218_HEAD_SHA"
+          test "$VERIFY218_HEAD_SHA" != "$PRODUCER_SHA"
+          .verify218-bridge/bin/ruff check \
+            src/twelve_six/verify218_learned_10m.py \
+            src/twelve_six/verify218_resume_probe.py \
+            src/twelve_six/verify218_runtime225_authority.py \
+            tests/test_verify218_learned_10m.py \
+            tests/test_verify218_runtime225_authority.py
+          .verify218-bridge/bin/python -m compileall -q \
+            src/twelve_six/verify218_learned_10m.py \
+            src/twelve_six/verify218_resume_probe.py \
+            src/twelve_six/verify218_runtime225_authority.py
+          .verify218-bridge/bin/python -m pytest -q \
+            tests/test_verify218_learned_10m.py \
+            tests/test_verify218_runtime225_authority.py
+
+      - name: Fetch exact producer transport metadata
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p reports/verify218-bridge learned-artifacts/zips
+          gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/${SCIENTIFIC_ARTIFACT_ID}" \
+            > reports/verify218-bridge/scientific-artifact.json
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${SCIENTIFIC_RUN_ID}" \
+            > reports/verify218-bridge/scientific-run.json
+          gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/${RUNTIME_ARTIFACT_ID}" \
+            > reports/verify218-bridge/runtime-artifact.json
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RUNTIME_RUN_ID}" \
+            > reports/verify218-bridge/runtime-run.json
+
+      - name: Download exact terminal LEARN-217 scientific artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p learned-artifacts/scientific
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${SCIENTIFIC_ARTIFACT_ID}/zip" \
+            > learned-artifacts/zips/scientific.zip
+          echo "${SCIENTIFIC_ARTIFACT_SHA256}  learned-artifacts/zips/scientific.zip" | sha256sum -c -
+          unzip -q learned-artifacts/zips/scientific.zip -d learned-artifacts/scientific
+
+      - name: Download exact SCALE-141 runtime artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p learned-artifacts/runtime
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${RUNTIME_ARTIFACT_ID}/zip" \
+            > learned-artifacts/zips/runtime.zip
+          echo "${RUNTIME_ARTIFACT_SHA256}  learned-artifacts/zips/runtime.zip" | sha256sum -c -
+          unzip -q learned-artifacts/zips/runtime.zip -d learned-artifacts/runtime
+
+      - name: Re-execute independent scientific VERIFY-218 proof
+        run: |
+          set -euo pipefail
+          .verify218-bridge/bin/python -m twelve_six.verify218_learned_10m \
+            --repo-root . \
+            --artifact-root learned-artifacts/scientific \
+            --verifier-head-sha "$VERIFY218_HEAD_SHA" \
+            --output reports/verify218-bridge/scientific-authority.json
+
+      - name: Execute independent fresh-process D02 D05 restore probe
+        run: |
+          set -euo pipefail
+          .verify218-bridge/bin/python -m twelve_six.verify218_resume_probe \
+            --checkpoint learned-artifacts/scientific/scale141-evidence/retained/recovery-phase1 \
+            > reports/verify218-bridge/resume-probe.json
+          .verify218-bridge/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+          value = json.loads(Path('reports/verify218-bridge/resume-probe.json').read_text())
+          assert value['checkpoint_safe_after_restore'] is True
+          assert value['training_executed'] is False
+          assert value['optimizer_updates'] == 0
+          assert value['optimizer_state']['populated_parameters'] > 0
+          assert value['optimizer_state']['scalar_step_tensors'] > 0
+          PY
+
+      - name: Cross-bind scientific authority to the exact RUNTIME-225 source artifact
+        run: |
+          set -euo pipefail
+          .verify218-bridge/bin/python -m twelve_six.verify218_runtime225_authority \
+            --scientific-authority reports/verify218-bridge/scientific-authority.json \
+            --scientific-artifact-metadata reports/verify218-bridge/scientific-artifact.json \
+            --scientific-run-metadata reports/verify218-bridge/scientific-run.json \
+            --runtime-artifact-metadata reports/verify218-bridge/runtime-artifact.json \
+            --runtime-run-metadata reports/verify218-bridge/runtime-run.json \
+            --runtime-root learned-artifacts/runtime/scale141-evidence \
+            --resume-probe reports/verify218-bridge/resume-probe.json \
+            --output reports/verify218-bridge/runtime225-authority.json
+
+      - name: Enforce exact RUNTIME-225 consumer schema
+        run: |
+          set -euo pipefail
+          .verify218-bridge/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+          value = json.loads(Path('reports/verify218-bridge/runtime225-authority.json').read_text())
+          assert value['schema'].startswith('12-6.verify218-')
+          assert value['worker_id'] == 'VERIFY-218-LEARNED-10M-INDEPENDENT'
+          assert value['status'] == 'VERIFIED_LEARNED_10M'
+          assert value['verified_learned_10m'] is True
+          assert value['foreign_pretrained_weights'] is False
+          assert value['mechanics_only_checkpoint'] is False
+          assert value['one_step_smoke'] is False
+          expected_gates = {
+              'checkpoint_integrity',
+              'fresh_process_resume',
+              'finite_first_party_logits',
+              'heldout_bpb',
+              'evaluation_non_mutation',
+              'greedy_generation',
+              'best_final_role_resolution',
+          }
+          assert set(value['gates']) == expected_gates
+          assert all(value['gates'].values())
+          source = value['source']
+          assert source['artifact_id'] == 9602907196
+          assert source['artifact_name'] == 'scale141-10m-learned-fallback'
+          assert source['artifact_digest'] == 'sha256:d2abd029f64207567a1d6b4ce9943ff15bfd211acdd05e9ff84156ce66607218'
+          assert source['workflow_run_id'] == 32952786715
+          assert source['source_sha'] == 'c02c8aa38e691521ae2ab6a4ff3ea1d643efd6ef'
+          assert value['checkpoint']['checkpoint_id'] == '12f9edd88bf5e596ae6f985564a5dcff96033922100ba91678ef9a76c0df3156'
+          print(value['identity_sha256'])
+          PY
+
+      - name: Upload exact VERIFY-218 RUNTIME-225 authority
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: verify218-runtime225-authority-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 30
+          path: |
+            reports/verify218-bridge/environment.json
+            reports/verify218-bridge/scientific-artifact.json
+            reports/verify218-bridge/scientific-run.json
+            reports/verify218-bridge/runtime-artifact.json
+            reports/verify218-bridge/runtime-run.json
+            reports/verify218-bridge/scientific-authority.json
+            reports/verify218-bridge/resume-probe.json
+            reports/verify218-bridge/runtime225-authority.json
