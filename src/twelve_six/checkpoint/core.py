@@ -356,14 +356,22 @@ def _materialize_for_target(array: np.ndarray, target: Any) -> Any:
             raise CheckpointCompatibilityError(
                 f"shape mismatch: checkpoint {tuple(array.shape)} vs target {tuple(target.shape)}"
             )
-        return array.astype(target.dtype, copy=True)
+        if array.dtype != target.dtype:
+            raise CheckpointCompatibilityError(
+                f"dtype mismatch: checkpoint {array.dtype} vs target {target.dtype}"
+            )
+        return array.copy()
     cls = target.__class__
     if cls.__module__.startswith("torch") and cls.__name__ in {"Tensor", "Parameter"}:
         torch = importlib.import_module("torch")
         if str(target.dtype) == "torch.bfloat16" and array.dtype == np.uint16:
             tensor = torch.from_numpy(array.copy()).view(torch.bfloat16)
         else:
-            tensor = torch.from_numpy(array.copy()).to(dtype=target.dtype)
+            tensor = torch.from_numpy(array.copy())
+            if tensor.dtype != target.dtype:
+                raise CheckpointCompatibilityError(
+                    f"dtype mismatch: checkpoint {tensor.dtype} vs target {target.dtype}"
+                )
         if tuple(target.shape) != tuple(tensor.shape):
             raise CheckpointCompatibilityError(
                 f"shape mismatch: checkpoint {tuple(tensor.shape)} vs target {tuple(target.shape)}"
@@ -408,6 +416,92 @@ def _state_dict_or_none(obj: Any | None) -> Any | None:
     if not hasattr(obj, "state_dict"):
         raise TypeError(f"{type(obj).__name__} must provide state_dict()")
     return obj.state_dict()
+
+
+def _preflight_state_dict_load(target: Any, state: Any, *, label: str) -> None:
+    """Exercise state loading on an isolated copy before touching live state."""
+
+    if not hasattr(target, "load_state_dict"):
+        raise CheckpointCompatibilityError(f"{label} must provide load_state_dict()")
+    if not isinstance(state, Mapping):
+        raise CheckpointCompatibilityError(f"checkpoint {label} state must be a mapping")
+    try:
+        probe = copy.deepcopy(target)
+    except Exception as exc:
+        raise CheckpointCompatibilityError(
+            f"cannot isolate {label} for checkpoint compatibility preflight"
+        ) from exc
+    try:
+        probe.load_state_dict(copy.deepcopy(state))
+    except Exception as exc:
+        raise CheckpointCompatibilityError(
+            f"checkpoint {label} state is incompatible with target"
+        ) from exc
+
+
+def _preflight_torch_optimizer_state(optimizer: Any, state: Any) -> None:
+    """Validate PyTorch per-parameter optimizer tensor geometry and dtype.
+
+    PyTorch accepts some malformed state tensors during ``load_state_dict`` and
+    only fails on the next ``step``.  This check binds saved parameter IDs to
+    the live optimizer's parameter-group order and rejects non-scalar state
+    tensors that cannot represent the corresponding parameter before any live
+    model or optimizer mutation occurs.
+    """
+
+    if not optimizer.__class__.__module__.startswith("torch"):
+        return
+    if not isinstance(state, Mapping):
+        raise CheckpointCompatibilityError("checkpoint optimizer state must be a mapping")
+    saved_groups = state.get("param_groups")
+    saved_state = state.get("state")
+    live_groups = getattr(optimizer, "param_groups", None)
+    if not isinstance(saved_groups, list) or not isinstance(saved_state, Mapping):
+        raise CheckpointCompatibilityError("checkpoint PyTorch optimizer state is malformed")
+    if not isinstance(live_groups, list) or len(saved_groups) != len(live_groups):
+        raise CheckpointCompatibilityError("checkpoint optimizer parameter-group count differs")
+
+    torch = importlib.import_module("torch")
+    for group_index, (saved_group, live_group) in enumerate(zip(saved_groups, live_groups)):
+        if not isinstance(saved_group, Mapping) or not isinstance(live_group, Mapping):
+            raise CheckpointCompatibilityError("checkpoint optimizer parameter group is malformed")
+        saved_params = saved_group.get("params")
+        live_params = live_group.get("params")
+        if not isinstance(saved_params, (list, tuple)) or not isinstance(
+            live_params, (list, tuple)
+        ):
+            raise CheckpointCompatibilityError("checkpoint optimizer parameter list is malformed")
+        if len(saved_params) != len(live_params):
+            raise CheckpointCompatibilityError(
+                f"checkpoint optimizer parameter count differs in group {group_index}"
+            )
+        for saved_id, parameter in zip(saved_params, live_params):
+            parameter_state = saved_state.get(saved_id, {})
+            if not isinstance(parameter_state, Mapping):
+                raise CheckpointCompatibilityError(
+                    f"checkpoint optimizer state for parameter {saved_id!r} is malformed"
+                )
+            for state_name, value in parameter_state.items():
+                if not torch.is_tensor(value):
+                    continue
+                if value.numel() <= 1:
+                    continue
+                if tuple(value.shape) != tuple(parameter.shape):
+                    raise CheckpointCompatibilityError(
+                        "checkpoint optimizer tensor shape mismatch for "
+                        f"group {group_index} parameter {saved_id!r} state {state_name!r}: "
+                        f"checkpoint {tuple(value.shape)} vs parameter {tuple(parameter.shape)}"
+                    )
+                if value.is_floating_point() and parameter.is_floating_point():
+                    allowed_dtypes = {parameter.dtype}
+                    if str(parameter.dtype) in {"torch.float16", "torch.bfloat16"}:
+                        allowed_dtypes.add(torch.float32)
+                    if value.dtype not in allowed_dtypes:
+                        raise CheckpointCompatibilityError(
+                            "checkpoint optimizer tensor dtype mismatch for "
+                            f"group {group_index} parameter {saved_id!r} state {state_name!r}: "
+                            f"checkpoint {value.dtype} vs parameter {parameter.dtype}"
+                        )
 
 
 def _artifact_record(path: Path) -> dict[str, Any]:
@@ -620,6 +714,42 @@ def _validate_manifest_identity(identity: Any) -> None:
     except ValueError as exc:
         raise CheckpointIntegrityError(str(exc)) from exc
 
+    if not isinstance(identity.get("model_spec"), Mapping) or not identity["model_spec"]:
+        raise CheckpointIntegrityError("identity.model_spec must be a non-empty mapping")
+    if not isinstance(identity.get("training_config"), Mapping) or not identity["training_config"]:
+        raise CheckpointIntegrityError("identity.training_config must be a non-empty mapping")
+    if not isinstance(identity.get("optimizer"), Mapping) or not identity["optimizer"]:
+        raise CheckpointIntegrityError("identity.optimizer must be a non-empty mapping")
+    scheduler = identity.get("scheduler")
+    if scheduler is not None and (not isinstance(scheduler, Mapping) or not scheduler):
+        raise CheckpointIntegrityError("identity.scheduler must be a non-empty mapping or null")
+    parameter_count = identity.get("parameter_count")
+    if (
+        not isinstance(parameter_count, int)
+        or isinstance(parameter_count, bool)
+        or parameter_count <= 0
+    ):
+        raise CheckpointIntegrityError("identity.parameter_count must be a positive integer")
+    seed = identity.get("seed")
+    if not isinstance(seed, int) or isinstance(seed, bool) or seed < 0:
+        raise CheckpointIntegrityError("identity.seed must be a non-negative integer")
+    precision = identity.get("precision")
+    if not isinstance(precision, str) or not precision.strip():
+        raise CheckpointIntegrityError("identity.precision must be a non-empty string")
+    step = identity.get("step")
+    tokens_seen = identity.get("tokens_seen")
+    if (
+        not isinstance(step, int)
+        or isinstance(step, bool)
+        or not isinstance(tokens_seen, int)
+        or isinstance(tokens_seen, bool)
+        or step < 0
+        or tokens_seen < 0
+    ):
+        raise CheckpointIntegrityError(
+            "identity.step and identity.tokens_seen must be non-negative integers"
+        )
+
     hash_pairs = (
         ("model_spec", "model_spec_hash"),
         ("training_config", "training_config_hash"),
@@ -778,25 +908,33 @@ def load_verified_checkpoint(
     )
     arrays, combined_state = _decode_verified_state(verified)
     materialized = _prepare_model_weights(model, arrays, strict_model)
-    if optimizer is not None and combined_state.get("optimizer") is None:
+    optimizer_state = combined_state.get("optimizer")
+    scheduler_state = combined_state.get("scheduler")
+    if optimizer is not None and optimizer_state is None:
         raise CheckpointCompatibilityError(
             "optimizer was requested but checkpoint has no optimizer state"
         )
-    if scheduler is not None and combined_state.get("scheduler") is None:
+    if scheduler is not None and scheduler_state is None:
         raise CheckpointCompatibilityError(
             "scheduler was requested but checkpoint has no scheduler state"
         )
+    if optimizer is not None:
+        _preflight_torch_optimizer_state(optimizer, optimizer_state)
+        _preflight_state_dict_load(optimizer, optimizer_state, label="optimizer")
+    if scheduler is not None:
+        _preflight_state_dict_load(scheduler, scheduler_state, label="scheduler")
     if restore_rng:
         _preflight_rng_state(combined_state["rng"])
 
     # No checkpoint byte is reopened after this point. All integrity, identity,
-    # payload decoding, model-shape and supported RNG compatibility checks above
+    # payload decoding, exact model dtype/shape, optimizer/scheduler loadability,
+    # optimizer tensor geometry, and supported RNG compatibility checks above
     # completed before the first mutation.
     _apply_model_weights(model, materialized, strict_model)
     if optimizer is not None:
-        optimizer.load_state_dict(combined_state["optimizer"])
+        optimizer.load_state_dict(optimizer_state)
     if scheduler is not None:
-        scheduler.load_state_dict(combined_state["scheduler"])
+        scheduler.load_state_dict(scheduler_state)
     if restore_rng:
         restore_rng_state(combined_state["rng"])
     return LoadResult(
