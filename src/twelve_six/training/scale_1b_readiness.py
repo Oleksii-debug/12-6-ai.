@@ -8,6 +8,7 @@ reuses the allocation-safe scale runtime for resource planning.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -20,9 +21,21 @@ SCALE_1B_TARGET_PARAMETERS = 1_000_000_000
 SCALE_1B_CURRENT_BYTE_VOCAB = 256
 SCALE_1B_CONTEXT = 4096
 _COMPUTE_AUTHORIZATION_PREFIXES = ("COMPUTE_AUTHORIZED:", "TRAINING_AUTHORIZED:")
+_ENGINEERING_AUTHORITY_RE = re.compile(
+    r"^(?:github:[A-Za-z0-9._/#-]+@[0-9a-f]{40}:(?:success|pass|admitted|qualified)"
+    r"|artifact:[A-Za-z0-9._/#-]+@[0-9a-f]{64})$"
+)
+_ENGINEERING_AUTHORITY_FIELDS = (
+    "preceding_stage_authority",
+    "production_tokenizer_authority",
+    "native_gqa_authority",
+    "distributed_checkpoint_authority",
+    "data_pipeline_authority",
+    "accelerator_runtime_authority",
+)
 
 
-def _validate_authority(name: str, value: str | None) -> None:
+def _validate_text_reference(name: str, value: str | None) -> None:
     if value is None:
         return
     if not isinstance(value, str):
@@ -33,13 +46,39 @@ def _validate_authority(name: str, value: str | None) -> None:
         raise ValueError(f"{name} must not contain surrounding whitespace")
 
 
+def _validate_engineering_authority(name: str, value: str | None) -> None:
+    _validate_text_reference(name, value)
+    if value is not None and _ENGINEERING_AUTHORITY_RE.fullmatch(value) is None:
+        raise ValueError(
+            f"{name} must bind either github:<scope>@<40hex>:<terminal-state> "
+            "or artifact:<scope>@<64hex>"
+        )
+
+
+def _validate_compute_authorization(value: str | None) -> None:
+    _validate_text_reference("compute_authorization", value)
+    if value is None:
+        return
+    prefix = next(
+        (candidate for candidate in _COMPUTE_AUTHORIZATION_PREFIXES if value.startswith(candidate)),
+        None,
+    )
+    if prefix is None:
+        raise ValueError(
+            "compute_authorization must begin with COMPUTE_AUTHORIZED: or "
+            "TRAINING_AUTHORIZED:"
+        )
+    if not value[len(prefix) :].strip():
+        raise ValueError("compute_authorization must include a non-empty authority reference")
+
+
 @dataclass(frozen=True, slots=True)
 class Scale1BDependencies:
     """Immutable evidence references required before a material S6 launch.
 
     A gate is qualified only when its owning lane supplies a durable authority
-    reference. Bare booleans are intentionally not accepted because they would let a
-    caller self-attest readiness without binding the decision to terminal evidence.
+    reference. Bare booleans and free-form strings are intentionally rejected so a
+    caller cannot clear readiness without binding the decision to terminal evidence.
     """
 
     preceding_stage_authority: str | None = None
@@ -51,15 +90,10 @@ class Scale1BDependencies:
     compute_authorization: str | None = None
 
     def __post_init__(self) -> None:
-        for name, value in asdict(self).items():
-            _validate_authority(name, value)
-        if self.compute_authorization is not None and not self.compute_authorization.startswith(
-            _COMPUTE_AUTHORIZATION_PREFIXES
-        ):
-            raise ValueError(
-                "compute_authorization must begin with COMPUTE_AUTHORIZED: or "
-                "TRAINING_AUTHORIZED:"
-            )
+        values = asdict(self)
+        for name in _ENGINEERING_AUTHORITY_FIELDS:
+            _validate_engineering_authority(name, values[name])
+        _validate_compute_authorization(self.compute_authorization)
 
     def authority_map(self) -> dict[str, str | None]:
         return asdict(self)
