@@ -82,7 +82,7 @@ def select_last_known_good(
     for candidate in candidates:
         try:
             verifier(candidate)
-        except Exception as exc:  # fail-closed: a newer invalid generation is never selected
+        except Exception as exc:  # fail-closed: newer invalid generations are never selected
             rejected.append({"generation": candidate.name, "reason": type(exc).__name__})
             continue
         return candidate, rejected
@@ -139,9 +139,9 @@ def _snapshot_equal(left: tuple[torch.Tensor, ...], right: tuple[torch.Tensor, .
     )
 
 
-def _build_stack(stage_path: Path, rank: int, world_size: int):
-    torch.cuda.set_device(rank)
-    device = torch.device("cuda", rank)
+def _build_stack(stage_path: Path, local_rank: int, world_size: int):
+    torch.cuda.set_device(local_rank)
+    device = torch.device("cuda", local_rank)
     torch.manual_seed(20_426)
     torch.cuda.manual_seed_all(20_426)
     stage = load_stage_config(stage_path)
@@ -166,26 +166,41 @@ def _build_stack(stage_path: Path, rank: int, world_size: int):
     return stage, model, optimizer, trainer, plan, config, device
 
 
-def _identity(stage, trainer: FSDP2Trainer, config: TrainerConfig, source_sha: str) -> ScaleCheckpointIdentity:
+def _identity(
+    stage,
+    trainer: FSDP2Trainer,
+    config: TrainerConfig,
+    source_sha: str,
+) -> ScaleCheckpointIdentity:
     purpose_profile = Path("requirements/profiles/linux-x86_64-cuda-training/profile.json")
+    training_identity = {
+        "learning_rate": config.learning_rate,
+        "weight_decay": config.weight_decay,
+        "betas": list(config.betas),
+        "eps": config.eps,
+        "max_steps": config.max_steps,
+        "warmup_steps": config.warmup_steps,
+        "scheduler": config.scheduler,
+        "gradient_accumulation_steps": config.gradient_accumulation_steps,
+        "gradient_clip_norm": config.gradient_clip_norm,
+        "precision": config.precision,
+        "seed": config.seed,
+        "deterministic_algorithms": config.deterministic_algorithms,
+        "deterministic_warn_only": config.deterministic_warn_only,
+    }
     return ScaleCheckpointIdentity(
         git_sha=source_sha.lower(),
         model_spec_sha256=stage.model.identity_sha256(),
         init_spec_sha256=stage.init.identity_sha256(),
-        tokenizer_config_sha256=hashlib.sha256(b"checkpoint204.synthetic-token-trace.v1").hexdigest(),
+        tokenizer_config_sha256=hashlib.sha256(
+            b"checkpoint204.synthetic-token-trace.v1"
+        ).hexdigest(),
         tokenizer_vocab_sha256=hashlib.sha256(str(stage.model.vocab_size).encode()).hexdigest(),
-        data_manifest_sha256=hashlib.sha256(b"checkpoint204.bounded-synthetic-trace.v1").hexdigest(),
+        data_manifest_sha256=hashlib.sha256(
+            b"checkpoint204.bounded-synthetic-trace.v1"
+        ).hexdigest(),
         packing_sha256=hashlib.sha256(b"checkpoint204.fixed-seq16.v1").hexdigest(),
-        training_config_sha256=canonical_json_sha256({
-            "learning_rate": config.learning_rate,
-            "weight_decay": config.weight_decay,
-            "max_steps": config.max_steps,
-            "scheduler": config.scheduler,
-            "gradient_accumulation_steps": config.gradient_accumulation_steps,
-            "gradient_clip_norm": config.gradient_clip_norm,
-            "precision": config.precision,
-            "seed": config.seed,
-        }),
+        training_config_sha256=canonical_json_sha256(training_identity),
         environment_lock_sha256=_sha256_file(purpose_profile),
         seed=20_426,
         step=trainer.optimizer_step,
@@ -193,13 +208,10 @@ def _identity(stage, trainer: FSDP2Trainer, config: TrainerConfig, source_sha: s
     )
 
 
-def _init_group(store_path: Path, rank: int, world_size: int) -> None:
-    dist.init_process_group(
-        "nccl",
-        init_method=f"file://{store_path.resolve()}",
-        rank=rank,
-        world_size=world_size,
-    )
+def _init_group() -> None:
+    # torchrun owns the rendezvous store. Destroying and calling init again creates a fresh
+    # NCCL default process group without relying on a racy shared file-store lifecycle.
+    dist.init_process_group("nccl")
 
 
 def _wait_for(path: Path, timeout_seconds: float = 60.0) -> None:
@@ -213,29 +225,30 @@ def _wait_for(path: Path, timeout_seconds: float = 60.0) -> None:
 
 def run_cuda_recovery(args: argparse.Namespace) -> None:
     rank = int(os.environ["RANK"])
+    local_rank = int(os.environ.get("LOCAL_RANK", rank))
     world_size = int(os.environ["WORLD_SIZE"])
     if world_size < 2:
         raise RuntimeError("CHECKPOINT-204 real CUDA recovery requires at least two ranks/GPUs")
     hardware = cuda_preflight()
-    if hardware["cuda_device_count"] < world_size or not hardware["nccl_available"]:
-        raise RuntimeError("visible CUDA/NCCL topology does not satisfy requested world size")
+    if hardware["cuda_device_count"] <= local_rank or not hardware["nccl_available"]:
+        raise RuntimeError("visible CUDA/NCCL topology does not satisfy requested local rank")
 
     root = args.checkpoint_root.resolve()
     root.mkdir(parents=True, exist_ok=True)
     valid_checkpoint = root / "generation-000002"
     invalid_newer = root / "generation-000003"
-    phase1_store = root / "phase1.store"
-    phase2_store = root / "phase2.store"
     ready_marker = root / "fallback-selection.json"
     if rank == 0:
-        for path in (valid_checkpoint, invalid_newer, phase1_store, phase2_store, ready_marker):
+        for path in (valid_checkpoint, invalid_newer, ready_marker):
             if path.is_dir():
                 shutil.rmtree(path)
             elif path.exists():
                 path.unlink()
 
-    _init_group(phase1_store, rank, world_size)
-    stage, model, optimizer, trainer, plan, config, device = _build_stack(args.stage, rank, world_size)
+    _init_group()
+    stage, model, optimizer, trainer, plan, config, device = _build_stack(
+        args.stage, local_rank, world_size
+    )
     if stage.model.parameter_count() < 9_000_000:
         raise AssertionError("CHECKPOINT-204 must use the bounded ~10M stage first")
     first = trainer.train_microbatch(_batch(0, vocab_size=stage.model.vocab_size, device=device))
@@ -280,10 +293,6 @@ def run_cuda_recovery(args: argparse.Namespace) -> None:
     dist.barrier()
     dist.destroy_process_group()
 
-    verify_wall = None
-    selected_name = None
-    rejected = None
-    storage_bytes = None
     if rank == 0:
         verify_start = time.perf_counter()
         verified = verify_scale_checkpoint(valid_checkpoint)
@@ -292,15 +301,16 @@ def run_cuda_recovery(args: argparse.Namespace) -> None:
             raise AssertionError("standalone verification identity mismatch")
         storage_bytes = _tree_bytes(valid_checkpoint)
         invalid_newer.mkdir()
-        (invalid_newer / "COMMITTED").write_text("corrupt-newer-generation\n", encoding="utf-8")
+        (invalid_newer / "COMMITTED").write_text(
+            "corrupt-newer-generation\n", encoding="utf-8"
+        )
         selected, rejected = select_last_known_good(root)
         if selected != valid_checkpoint:
             raise AssertionError("failed to fall back to last-known-good checkpoint")
-        selected_name = selected.name
         _write_json(
             ready_marker,
             {
-                "selected": selected_name,
+                "selected": selected.name,
                 "rejected": rejected,
                 "verify_wall_seconds": verify_wall,
                 "storage_bytes": storage_bytes,
@@ -312,8 +322,10 @@ def run_cuda_recovery(args: argparse.Namespace) -> None:
     if selection["selected"] != valid_checkpoint.name:
         raise AssertionError("all ranks must agree on the LKG generation")
 
-    _init_group(phase2_store, rank, world_size)
-    stage2, model2, optimizer2, trainer2, plan2, _, device2 = _build_stack(args.stage, rank, world_size)
+    _init_group()
+    stage2, model2, optimizer2, trainer2, plan2, _, device2 = _build_stack(
+        args.stage, local_rank, world_size
+    )
 
     def restore_rank_state(value: Any) -> None:
         trainer2.micro_step = int(value["micro_step"])
@@ -334,11 +346,14 @@ def run_cuda_recovery(args: argparse.Namespace) -> None:
     dist.barrier()
     load_wall = time.perf_counter() - load_start
     checkpoint_equal = _snapshot_equal(_snapshot(model2), checkpoint_snapshot)
-    resumed = trainer2.train_microbatch(_batch(2, vocab_size=stage2.model.vocab_size, device=device2))
+    resumed = trainer2.train_microbatch(
+        _batch(2, vocab_size=stage2.model.vocab_size, device=device2)
+    )
     final_equal = _snapshot_equal(_snapshot(model2), control_snapshot)
     loss_equal = float(resumed.loss) == control_loss
     local = {
         "rank": rank,
+        "local_rank": local_rank,
         "save_wall_seconds": save_wall,
         "load_wall_seconds": load_wall,
         "checkpoint_shard_exact": checkpoint_equal,
@@ -368,7 +383,9 @@ def run_cuda_recovery(args: argparse.Namespace) -> None:
             "schema_version": SCHEMA_VERSION,
             "swarm_worker_id": "CHECKPOINT-204-DCP-CUDA-RECOVERY",
             "source_sha": args.source_sha,
-            "status": "PASS_REAL_CUDA_DCP_RECOVERY" if passed else "FAIL_REAL_CUDA_DCP_RECOVERY",
+            "status": (
+                "PASS_REAL_CUDA_DCP_RECOVERY" if passed else "FAIL_REAL_CUDA_DCP_RECOVERY"
+            ),
             "hardware": hardware,
             "topology": {"backend": "nccl", "world_size": world_size},
             "model": {
@@ -398,7 +415,11 @@ def run_cuda_recovery(args: argparse.Namespace) -> None:
                 "verify_wall_seconds_rank0": selection["verify_wall_seconds"],
                 "load_wall_seconds_max_rank": max(row["load_wall_seconds"] for row in rows),
             },
-            "resume": {"precommit_optimizer_steps": 2, "post_resume_step": 3, "ranks": rows},
+            "resume": {
+                "precommit_optimizer_steps": 2,
+                "post_resume_step": 3,
+                "ranks": rows,
+            },
             "claims": {
                 "cuda_validated": passed,
                 "paid_compute_used": False,
