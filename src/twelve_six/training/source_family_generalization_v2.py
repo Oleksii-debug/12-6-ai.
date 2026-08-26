@@ -150,7 +150,8 @@ def load_family_projection(value: Mapping[str, Any]) -> list[FamilyDescriptor]:
 
 def _eligible_holdout_family(family: FamilyDescriptor) -> bool:
     return (
-        family.training_authorized
+        family.origin == "EXTERNAL_REAL"
+        and family.training_authorized
         and family.independent_family
         and family.train_loss_tokens > 0
         and family.holdout_loss_tokens >= MIN_HOLDOUT_LOSS_TOKENS
