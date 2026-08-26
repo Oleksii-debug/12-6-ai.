@@ -1,6 +1,23 @@
 name: D02 Real S0 Training
 on:
   pull_request:
+    paths:
+      - ".github/workflows/d02-s0-real-training.yml"
+      - "pyproject.toml"
+      - "requirements/locks/linux-x86_64/**"
+      - "tools/verify_locked_environment.py"
+      - "tools/run_s0_real_training.py"
+      - "tools/validate_s0_training_evidence.py"
+      - "src/twelve_six/model.py"
+      - "src/twelve_six/packing/**"
+      - "src/twelve_six/tokenization/**"
+      - "src/twelve_six/training/**"
+      - "configs/stages/s0_10k.json"
+      - "configs/s0/**"
+      - "data/s0/packaged/**"
+concurrency:
+  group: d02-s0-real-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
