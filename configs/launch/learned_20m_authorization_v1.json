@@ -1,0 +1,79 @@
+{
+  "schema": "12-6.learned-20m-launch-authorization.v1",
+  "authority": {
+    "source_git_sha": null,
+    "model341": {
+      "branch": "model341/20m-candidate-a-20260826",
+      "sha": "e4ff486fd90802fc123bebf60eed4e59196a98df",
+      "modelspec_sha256": "fbff24d561a2818453554d58ca23fc6ace3303b078f1935a8576c4565bd92441",
+      "parameter_count": 20613440,
+      "canonical_base": "random_init"
+    },
+    "r01": {
+      "path": "configs/research/r01_20m_to_100m_scaling_campaign_v1.json",
+      "git_blob_sha": "c50154db609d41eceb2ffc97912360df567bcc04",
+      "campaign_id": "R01-20M-TO-100M-SCALING-V1",
+      "experiment_id": "R01-E20"
+    }
+  },
+  "identities": {
+    "corpus_identity_sha256": null,
+    "split_identity_sha256": null,
+    "packing_identity_sha256": null,
+    "tokenizer_identity_sha256": null,
+    "run_config_sha256": null
+  },
+  "post_pack_exposure": {
+    "unique_causal_loss_positions": 0,
+    "replayed_loss_positions": 0,
+    "duplicate_loss_positions": 0,
+    "padding_loss_positions": 0,
+    "ledger_sha256": null
+  },
+  "terminal_evidence": {
+    "corpus_admission_and_provenance": {"terminal": false, "evidence_ref": null},
+    "evaluation_decontamination": {"terminal": false, "evidence_ref": null},
+    "packing_and_unique_loss_ledger": {"terminal": false, "evidence_ref": null},
+    "checkpoint_integrity_d05": {"terminal": false, "evidence_ref": null},
+    "learned_3m_independent": {"terminal": false, "evidence_ref": null},
+    "learned_10m_independent": {"terminal": false, "evidence_ref": null},
+    "selection_validation": {"terminal": false, "evidence_ref": null},
+    "independent_audit": {"terminal": false, "evidence_ref": null}
+  },
+  "training_recipe": {
+    "optimizer": {"name": null, "config_sha256": null},
+    "scheduler": {"name": null, "config_sha256": null},
+    "precision": {"name": null, "config_sha256": null},
+    "seeds": [],
+    "budget": {
+      "target_optimized_tokens": 0,
+      "max_steps": 0,
+      "max_wall_minutes": 0
+    },
+    "stop_rules": []
+  },
+  "resource_envelope": {
+    "estimated_flops": 0,
+    "estimated_wall_clock_hours": 0,
+    "device_type": null,
+    "device_count": 0,
+    "max_cost_usd": null,
+    "estimate_evidence_ref": null
+  },
+  "authorizations": {
+    "compute": {
+      "decision": "NOT_AUTHORIZED",
+      "reference": null,
+      "max_cost_usd": null
+    },
+    "training": {
+      "decision": "NOT_AUTHORIZED",
+      "reference": null
+    }
+  },
+  "truth_boundary": {
+    "planning_fields_are_not_authorization": true,
+    "parameter_count_is_not_authorization": true,
+    "scientific_readiness_is_not_training_authorization": true
+  }
+}
