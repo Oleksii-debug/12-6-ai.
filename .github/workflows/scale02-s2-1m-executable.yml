@@ -1,7 +1,16 @@
 name: SCALE-02 S2 1M Executable Preflight
 
 on:
+  workflow_dispatch:
   pull_request:
+    paths:
+      - ".github/workflows/scale02-s2-1m-executable.yml"
+      - "src/twelve_six/training/s2_preflight.py"
+      - "tests/test_s2_preflight*.py"
+
+concurrency:
+  group: scale02-s2-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -13,19 +22,23 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
       - name: Prove exact source checkout
         env:
-          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.11.16"
+      - name: Dependency and tool preflight before tests
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: python tools/ci_dependency_preflight.py --profile linux-x86_64 --source-sha "$SOURCE_SHA"
       - name: Verify locked environment and repository checks
         env:
-          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: >-
           python tools/verify_locked_environment.py
           --profile linux-x86_64
@@ -40,7 +53,7 @@ jobs:
           PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .scale02-s2-locked/bin/python -m pip install --no-deps --no-build-isolation -e .
       - name: Execute S2 ~1M trainer checkpoint inference vertical
         env:
-          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           .scale02-s2-locked/bin/python -m twelve_six.training.s2_preflight \
             --repo-root . \
