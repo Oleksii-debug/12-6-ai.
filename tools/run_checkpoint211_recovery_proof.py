@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Execute bounded CHECKPOINT-211 recovery-lifecycle proof; never runs 10M training."""
 from __future__ import annotations
 
