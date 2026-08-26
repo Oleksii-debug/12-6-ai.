@@ -24,6 +24,7 @@ PROBE_SCHEMA = "12-6.d03-rada-bulk-source-probe-report.v1"
 MANIFEST_SCHEMA = "12-6.d03-rada-bulk-normalization-manifest.v1"
 DEFAULT_CONFIG = Path("configs/data/d03_rada_bulk_normalization_v1.json")
 CANONICAL_BASENAME = re.compile(r"d[0-9]+\.htm")
+SHA256_RE = re.compile(r"[0-9a-f]{64}")
 PINNED_PROBE_GATE = "PASS_PINNED_DISCOVERY_REVALIDATED"
 PINNED_PROBE_RESULT = "PINNED_BULK_ARCHIVE_INVENTORIED_DOWNSTREAM_GATES_REQUIRED"
 
@@ -77,14 +78,14 @@ def _validate_config(config: Mapping[str, Any]) -> None:
         "probe_worker_id"
     ):
         raise NormalizationError("parent probe worker identity missing")
-    if not isinstance(parent.get("probe_config_identity_sha256"), str) or not re.fullmatch(
-        r"[0-9a-f]{64}", str(parent.get("probe_config_identity_sha256"))
+    if not isinstance(parent.get("probe_config_identity_sha256"), str) or not SHA256_RE.fullmatch(
+        str(parent.get("probe_config_identity_sha256"))
     ):
         raise NormalizationError("parent probe config identity must be SHA-256")
     if parent.get("source_family") != "ua.rada.open-data.laws-texts":
         raise NormalizationError("unexpected Rada source family")
-    if not isinstance(parent.get("source_family_identity_sha256"), str) or not re.fullmatch(
-        r"[0-9a-f]{64}", str(parent.get("source_family_identity_sha256"))
+    if not isinstance(parent.get("source_family_identity_sha256"), str) or not SHA256_RE.fullmatch(
+        str(parent.get("source_family_identity_sha256"))
     ):
         raise NormalizationError("source-family identity must be SHA-256")
 
@@ -202,6 +203,31 @@ def normalize_html_bytes(raw: bytes, config: Mapping[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _probe_inventory_identity(
+    entries_by_basename: Mapping[str, Mapping[str, Any]],
+) -> tuple[str, int]:
+    """Recompute the exact inventory identity defined by the parent D03 probe."""
+    identity = hashlib.sha256()
+    raw_total = 0
+    for basename in sorted(entries_by_basename):
+        entry = entries_by_basename[basename]
+        raw_bytes = entry.get("raw_bytes")
+        raw_sha256 = entry.get("raw_sha256")
+        if isinstance(raw_bytes, bool) or not isinstance(raw_bytes, int) or raw_bytes < 0:
+            raise NormalizationError(f"invalid raw byte count for {basename}")
+        if not isinstance(raw_sha256, str) or not SHA256_RE.fullmatch(raw_sha256):
+            raise NormalizationError(f"invalid raw SHA-256 for {basename}")
+
+        identity.update(basename.encode("utf-8"))
+        identity.update(b"\0")
+        identity.update(str(raw_bytes).encode("ascii"))
+        identity.update(b"\0")
+        identity.update(raw_sha256.encode("ascii"))
+        identity.update(b"\n")
+        raw_total += raw_bytes
+    return identity.hexdigest(), raw_total
+
+
 def _validate_probe(
     probe: Mapping[str, Any],
     config: Mapping[str, Any],
@@ -264,8 +290,15 @@ def _validate_probe(
         if basename in by_basename:
             raise NormalizationError(f"duplicate probe basename: {basename}")
         by_basename[basename] = raw_entry
+
     if inventory.get("canonical_entry_count") != len(by_basename):
         raise NormalizationError("probe canonical-entry count drift")
+
+    computed_identity, computed_raw_total = _probe_inventory_identity(by_basename)
+    if inventory.get("entry_identity_sha256") != computed_identity:
+        raise NormalizationError("probe entry-identity SHA-256 drift")
+    if inventory.get("canonical_raw_bytes") != computed_raw_total:
+        raise NormalizationError("probe canonical raw-byte total drift")
     return by_basename
 
 
@@ -278,6 +311,10 @@ def materialize_normalized_records(
 ) -> tuple[bytes, dict[str, Any]]:
     """Verify the exact probe inventory and return deterministic JSONL + manifest."""
     _validate_config(config)
+    if not isinstance(probe_report_sha256, str) or not SHA256_RE.fullmatch(
+        probe_report_sha256
+    ):
+        raise NormalizationError("probe report identity must be SHA-256")
     expected = _validate_probe(probe, config, archive)
     normalizer = config["normalization"]
     prefix = str(normalizer["record_id_prefix"])
@@ -301,7 +338,9 @@ def materialize_normalized_records(
             observed_basenames.add(basename)
             expected_entry = expected.get(basename)
             if expected_entry is None:
-                raise NormalizationError(f"canonical archive entry absent from probe: {basename}")
+                raise NormalizationError(
+                    f"canonical archive entry absent from probe: {basename}"
+                )
             if expected_entry.get("path") != normalized_path:
                 raise NormalizationError(f"archive path drift for {basename}")
             try:
