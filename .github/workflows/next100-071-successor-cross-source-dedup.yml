@@ -60,6 +60,15 @@ jobs:
         with:
           python-version: "3.11.16"
 
+      - name: Revalidate bound source convergence authority
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/validate_next100_063_source_registry_convergence.py tests/test_next100_063_source_registry_convergence.py
+          python tools/validate_next100_063_source_registry_convergence.py > /tmp/next100-063-a.json
+          python tools/validate_next100_063_source_registry_convergence.py > /tmp/next100-063-b.json
+          cmp /tmp/next100-063-a.json /tmp/next100-063-b.json
+          python -m unittest discover -s tests -p 'test_next100_063_source_registry_convergence.py' -v
+
       - name: Install deterministic PDF extractor
         run: |
           sudo apt-get update
