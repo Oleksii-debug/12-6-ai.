@@ -160,3 +160,17 @@ def test_schema_version_rejects_boolean_alias() -> None:
     data["schema_version"] = True
     errors = validator.validate_campaign(data)
     assert any("schema_version" in error for error in errors)
+
+
+def test_current_readiness_rejects_unreviewed_extra_key() -> None:
+    data = _load()
+    data["current_readiness"]["training_authorized"] = True
+    errors = validator.validate_campaign(data)
+    assert any("current_readiness key set mismatch" in error for error in errors)
+
+
+def test_optimizer_policy_rejects_unreviewed_extra_key() -> None:
+    data = _load()
+    data["optimizer_research"]["allow_nonfinite_updates"] = True
+    errors = validator.validate_campaign(data)
+    assert any("optimizer_research key set mismatch" in error for error in errors)
