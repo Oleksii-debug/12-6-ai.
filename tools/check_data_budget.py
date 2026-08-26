@@ -12,7 +12,10 @@ from typing import Any
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
-from twelve_six.data_budget import evaluate_data_budget, required_unique_loss_tokens
+from twelve_six.data_budget import (  # noqa: E402
+    evaluate_data_budget,
+    required_unique_loss_tokens,
+)
 
 
 DEFAULT_POLICY = REPO_ROOT / "configs/scaling/data_budget_v1.json"
@@ -109,12 +112,15 @@ def main() -> int:
         ],
     )
 
+    decision = (
+        "READY_FOR_THIS_DATA_BUDGET_TIER" if result.ready else "BLOCKED_DATA_SHORTFALL"
+    )
     payload = {
         "schema_version": "12-6-data-budget-result-v1",
         "policy_status": policy["status"],
         "tier": args.tier,
         "capacity_unit": policy["accounting"]["capacity_unit"],
-        "decision": "READY_FOR_THIS_DATA_BUDGET_TIER" if result.ready else "BLOCKED_DATA_SHORTFALL",
+        "decision": decision,
         **result.to_dict(),
         "compute_authorized": False,
     }
