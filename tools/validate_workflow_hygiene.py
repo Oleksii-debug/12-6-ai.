@@ -1,19 +1,18 @@
-#!/usr/bin/env python3
 """Fail-closed policy checks for repository GitHub Actions workflows.
 
 This validator deliberately uses only the Python standard library so it can run
-before project dependencies are installed.  It is not a general YAML parser;
-it validates the small set of structural invariants that bound Actions queue
-pressure and workflow privilege in this repository.
+before project dependencies are installed. It is not a general YAML parser; it
+validates the small set of structural invariants that bound Actions queue pressure
+and workflow privilege in this repository.
 """
 
 from __future__ import annotations
 
 import argparse
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
 
 WORKFLOW_GLOBS = ("*.yml", "*.yaml")
 _KEY_RE = re.compile(r"^([A-Za-z0-9_.-]+):(?:\s*(.*))?$")
