@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "packet_id": "LEARNED-20M-LAUNCH-PACKET-V1",
+  "issue": 653,
+  "status": "PRELAUNCH_CONTROL",
+  "authority": {
+    "template_main_sha": "a73ab38026cb7849f478cc13ad58b93534a76e2f",
+    "model341_branch": "model341/20m-candidate-a-20260826",
+    "model341_sha": "e4ff486fd90802fc123bebf60eed4e59196a98df",
+    "modelspec_sha256": "fbff24d561a2818453554d58ca23fc6ace3303b078f1935a8576c4565bd92441",
+    "parameter_count": 20613440,
+    "r01_contract_path": "configs/research/r01_20m_to_100m_scaling_campaign_v1.json",
+    "r01_contract_git_blob_sha1": "c50154db609d41eceb2ffc97912360df567bcc04"
+  },
+  "truth_boundary": {
+    "package_performs_training": false,
+    "package_authorizes_paid_compute_by_itself": false,
+    "parameter_count_is_authorization": false,
+    "planning_readiness_is_training_authorization": false,
+    "final_test_payload_access_allowed": false
+  },
+  "launch_evidence": {
+    "code_commit_sha": null,
+    "model_spec_sha256": "fbff24d561a2818453554d58ca23fc6ace3303b078f1935a8576c4565bd92441",
+    "tokenizer": {
+      "identity_sha256": null,
+      "fit_corpus_identity_sha256": null,
+      "byte_baseline_explicitly_selected": false
+    },
+    "corpus": {
+      "corpus_identity_sha256": null,
+      "split_identity_sha256": null,
+      "packing_identity_sha256": null,
+      "unique_causal_loss_positions": 0,
+      "no_replay_proven": false
+    },
+    "evaluation": {
+      "reservation_identity_sha256": null,
+      "decontamination_identity_sha256": null,
+      "selection_validation_authority_ref": null,
+      "final_test_firewall_preregistered": false
+    },
+    "checkpoint_integrity": {
+      "authority_ref": null,
+      "terminal_retest_passed": false,
+      "fresh_process_resume_passed": false
+    },
+    "learned_ladder": {
+      "learned_3m_authority_ref": null,
+      "learned_10m_authority_ref": null,
+      "independently_verified": false
+    },
+    "training_recipe": {
+      "optimizer": null,
+      "scheduler": null,
+      "precision": null,
+      "learning_rate": null,
+      "warmup": null,
+      "gradient_policy": null,
+      "seeds": [],
+      "total_unique_loss_positions": 0,
+      "budget_matches_corpus_ledger": false,
+      "stopping_rules": []
+    },
+    "resource_envelope": {
+      "accelerator_profile": null,
+      "estimated_flops": 0,
+      "estimated_wall_clock_hours": 0,
+      "max_cost_usd": null,
+      "cost_estimate_authority_ref": null
+    }
+  },
+  "authorizations": {
+    "compute": {
+      "status": "NOT_AUTHORIZED",
+      "authority_ref": null
+    },
+    "training": {
+      "status": "NOT_AUTHORIZED",
+      "authority_ref": null
+    }
+  },
+  "declared_state": "BLOCKED"
+}
