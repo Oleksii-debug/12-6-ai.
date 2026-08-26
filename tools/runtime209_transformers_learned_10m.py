@@ -1,9 +1,8 @@
-"""Exact learned-10M evidence harness for the incumbent 12-6 -> Llama bridge.
+"""Exact learned-10M evidence for the incumbent 12-6 -> standard-Llama bridge.
 
-This module deliberately does not add an exporter or model adapter. It consumes
-RUNTIME-97/#135's verified canonical HF export, standard-Llama materialization,
-and Transformers runtime seams, binds them to a retained SCALE-141 learned 10M
-checkpoint, and records fail-closed local-only parity evidence.
+This is an evidence harness only. It reuses RUNTIME-97/#135 export and runtime
+seams and refuses any source that is not a terminal-green retained SCALE-141
+learned checkpoint with the exact admitted ModelSpec/tokenizer/corpus identities.
 """
 
 from __future__ import annotations
@@ -40,7 +39,6 @@ from twelve_six.inference.transformers_llama_runtime import (
 )
 
 SCHEMA = "12-6.runtime209-transformers-learned-10m-parity.v1"
-PREPARED_SCHEMA = "12-6.runtime209-transformers-learned-10m-prepared.v1"
 EXPECTED_TRANSFORMERS_VERSION = "5.15.1"
 EXPECTED_PARAMETER_COUNT = 10_000_640
 EXPECTED_MODEL_SPEC_SHA256 = "61caa5469123e23b9b72fc2024140bfca84c4c480dcb0a7e712ba800a4f22998"
@@ -55,7 +53,7 @@ EXPECTED_D08_SOURCE_SHA = "10da7d4c1d2fe5a229659143877ad82d3739bed9"
 EXPECTED_D08_PROFILE_SHA256 = "d54843c76befcd0e8a1703f8d34c822fdbf3085351d1d357661b91265148a039"
 EXPECTED_D08_OVERLAY_SHA256 = "68f73eaac9e3a9418e85e54a3170d1378c51af0161138d0f4f8667c595deb0b0"
 EXPECTED_BOOTSTRAP_SOURCE_SHA = "c127216ecf9722bea1964c7488cb7ff0f8cdebe4"
-EXPECTED_BOOTSTRAP_MANIFEST_SCHEMA = "12-6.execution-environment-manifest.v1"
+EXPECTED_BOOTSTRAP_SCHEMA = "12-6.execution-environment-manifest.v1"
 EXPECTED_D08_CANONICAL_MANIFEST_SHA256 = "283ca83571e527babda700e0c66ed03fb1c2aa4674bee0dba2272f64f344e1bf"
 EXPECTED_D08_CANONICAL_INDEX_SHA256 = "5de40d40012123ccf654b3e29d9cd47df814978e4155ca9dde232b61e9cd6341"
 EXPECTED_CAPABILITIES = {"runtime", "tests", "lint", "transformers"}
@@ -81,21 +79,21 @@ def _sha256_file(path: Path) -> str:
 
 
 def _canonical_hash(value: Mapping[str, Any]) -> str:
-    data = json.dumps(
+    payload = json.dumps(
         value,
         sort_keys=True,
         separators=(",", ":"),
         ensure_ascii=False,
         allow_nan=False,
     ).encode("utf-8")
-    return _sha256(data)
+    return _sha256(payload)
 
 
-def _json(path: Path, *, label: str) -> dict[str, Any]:
+def _load_json(path: Path, label: str) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise Runtime209Error(f"{label} is not readable UTF-8 JSON: {path}") from exc
+        raise Runtime209Error(f"{label} is not valid readable UTF-8 JSON") from exc
     if not isinstance(value, dict):
         raise Runtime209Error(f"{label} must be a JSON object")
     return value
@@ -108,13 +106,13 @@ def _git_head(root: Path) -> str:
 
 
 def _tensor_sha256(tensor: torch.Tensor) -> str:
-    value = tensor.detach().to(device="cpu", dtype=torch.float32).contiguous()
+    value = tensor.detach().to(dtype=torch.float32, device="cpu").contiguous()
     return _sha256(value.numpy().tobytes(order="C"))
 
 
-def _logit_metrics(reference: torch.Tensor, candidate: torch.Tensor) -> dict[str, Any]:
-    reference = reference.detach().to(device="cpu", dtype=torch.float32).contiguous()
-    candidate = candidate.detach().to(device="cpu", dtype=torch.float32).contiguous()
+def _metrics(reference: torch.Tensor, candidate: torch.Tensor) -> dict[str, Any]:
+    reference = reference.detach().float().cpu().contiguous()
+    candidate = candidate.detach().float().cpu().contiguous()
     if reference.shape != candidate.shape:
         return {
             "reference_shape": list(reference.shape),
@@ -138,36 +136,33 @@ def _logit_metrics(reference: torch.Tensor, candidate: torch.Tensor) -> dict[str
     }
 
 
-def _lower_packages(packages: Mapping[str, Any]) -> dict[str, str]:
-    return {str(name).lower(): str(version) for name, version in packages.items()}
-
-
-def _validate_bootstrap_manifest(path: Path, source_sha: str) -> dict[str, Any]:
+def _validate_bootstrap(path: Path, source_sha: str) -> dict[str, Any]:
     if source_sha != EXPECTED_BOOTSTRAP_SOURCE_SHA:
         raise Runtime209Error("universal bootstrap source SHA drifted")
-    manifest = _json(path, label="universal bootstrap manifest")
-    if manifest.get("schema") != EXPECTED_BOOTSTRAP_MANIFEST_SCHEMA:
+    manifest = _load_json(path, "universal bootstrap manifest")
+    if manifest.get("schema") != EXPECTED_BOOTSTRAP_SCHEMA:
         raise Runtime209Error("universal bootstrap manifest schema mismatch")
     plan = manifest.get("plan")
     if not isinstance(plan, dict):
-        raise Runtime209Error("universal bootstrap manifest is missing execution plan")
+        raise Runtime209Error("universal bootstrap plan is missing")
     if set(plan.get("capabilities", [])) != EXPECTED_CAPABILITIES:
         raise Runtime209Error("universal bootstrap capability set mismatch")
     if plan.get("cuda_packages_present") is not False:
-        raise Runtime209Error("CPU Transformers purpose runtime inherited CUDA packages")
+        raise Runtime209Error("CPU purpose runtime inherited CUDA packages")
     authority = plan.get("d08_authority")
     if not isinstance(authority, dict):
-        raise Runtime209Error("universal bootstrap plan is missing D08 authority")
+        raise Runtime209Error("universal bootstrap D08 authority is missing")
     if authority.get("canonical_manifest_sha256") != EXPECTED_D08_CANONICAL_MANIFEST_SHA256:
-        raise Runtime209Error("universal bootstrap D08 manifest authority drifted")
+        raise Runtime209Error("universal bootstrap D08 manifest identity drifted")
     if authority.get("canonical_index_sha256") != EXPECTED_D08_CANONICAL_INDEX_SHA256:
-        raise Runtime209Error("universal bootstrap D08 index authority drifted")
+        raise Runtime209Error("universal bootstrap D08 index identity drifted")
     overlays = [
-        row for row in plan.get("locks", [])
+        row
+        for row in plan.get("locks", [])
         if isinstance(row, dict) and row.get("role") == "transformers_overlay"
     ]
     if len(overlays) != 1 or overlays[0].get("sha256") != EXPECTED_D08_OVERLAY_SHA256:
-        raise Runtime209Error("universal bootstrap did not consume exact Transformers overlay")
+        raise Runtime209Error("universal bootstrap Transformers overlay drifted")
     preflight = manifest.get("preflight")
     if not isinstance(preflight, dict) or preflight.get("status") != "PASS":
         raise Runtime209Error("universal bootstrap preflight did not pass")
@@ -177,62 +172,58 @@ def _validate_bootstrap_manifest(path: Path, source_sha: str) -> dict[str, Any]:
     packages = manifest.get("packages")
     if not isinstance(packages, dict):
         raise Runtime209Error("universal bootstrap package inventory is missing")
-    lowered = _lower_packages(packages)
-    if lowered.get("transformers") != EXPECTED_TRANSFORMERS_VERSION:
+    normalized = {str(k).lower(): str(v) for k, v in packages.items()}
+    if normalized.get("transformers") != EXPECTED_TRANSFORMERS_VERSION:
         raise Runtime209Error("universal bootstrap Transformers version drifted")
-    if not lowered.get("torch", "").startswith("2.13.0"):
+    if not normalized.get("torch", "").startswith("2.13.0"):
         raise Runtime209Error("universal bootstrap torch version drifted")
     return manifest
 
 
-def _validate_artifact_binding(
+def _validate_artifact(
+    artifact_path: Path,
+    run_path: Path,
     *,
-    artifact_metadata_path: Path,
-    run_metadata_path: Path,
-    source_artifact_id: int,
-    source_artifact_digest: str,
-    source_run_id: int,
+    artifact_id: int,
+    digest: str,
+    run_id: int,
     source_sha: str,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    artifact = _json(artifact_metadata_path, label="SCALE-141 artifact metadata")
-    run = _json(run_metadata_path, label="SCALE-141 workflow-run metadata")
-    if artifact.get("id") != source_artifact_id:
+    artifact = _load_json(artifact_path, "SCALE-141 artifact metadata")
+    run = _load_json(run_path, "SCALE-141 workflow-run metadata")
+    if artifact.get("id") != artifact_id:
         raise Runtime209Error("SCALE-141 artifact id mismatch")
     if artifact.get("name") != EXPECTED_ARTIFACT_NAME:
         raise Runtime209Error("SCALE-141 artifact name mismatch")
-    if artifact.get("digest") != source_artifact_digest:
-        raise Runtime209Error("SCALE-141 artifact digest mismatch")
-    if artifact.get("expired") is not False:
-        raise Runtime209Error("SCALE-141 artifact is expired")
+    if artifact.get("digest") != digest or artifact.get("expired") is not False:
+        raise Runtime209Error("SCALE-141 artifact digest/expiry mismatch")
     workflow_run = artifact.get("workflow_run")
     if not isinstance(workflow_run, dict):
-        raise Runtime209Error("SCALE-141 artifact is missing workflow-run provenance")
-    if workflow_run.get("id") != source_run_id:
-        raise Runtime209Error("SCALE-141 artifact workflow-run id mismatch")
-    if workflow_run.get("head_sha") != source_sha:
-        raise Runtime209Error("SCALE-141 artifact workflow-run source SHA mismatch")
-    if run.get("id") != source_run_id or run.get("head_sha") != source_sha:
+        raise Runtime209Error("SCALE-141 artifact workflow provenance is missing")
+    if workflow_run.get("id") != run_id or workflow_run.get("head_sha") != source_sha:
+        raise Runtime209Error("SCALE-141 artifact workflow provenance mismatch")
+    if run.get("id") != run_id or run.get("head_sha") != source_sha:
         raise Runtime209Error("SCALE-141 workflow-run identity mismatch")
     if run.get("status") != "completed" or run.get("conclusion") != "success":
         raise Runtime209Error("SCALE-141 source run is not terminal SUCCESS")
     return artifact, run
 
 
-def _validate_retained_source(
-    *,
-    checkpoint_dir: Path,
+def _validate_retained(
     fresh_path: Path,
-    retained_index_path: Path,
+    index_path: Path,
+    checkpoint_dir: Path,
+    *,
     source_sha: str,
-) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
-    fresh = _json(fresh_path, label="SCALE-141 fresh verification")
-    retained = _json(retained_index_path, label="SCALE-141 retained index")
-    if fresh.get("schema") != EXPECTED_FRESH_SCHEMA:
-        raise Runtime209Error("SCALE-141 fresh-verification schema mismatch")
-    verification = fresh.get("fresh_verification")
-    if not isinstance(verification, dict) or verification.get("status") != "PASS":
-        raise Runtime209Error("SCALE-141 fresh verification is not PASS")
-    required_fresh = (
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    fresh = _load_json(fresh_path, "SCALE-141 fresh verification")
+    index = _load_json(index_path, "SCALE-141 retained index")
+    if fresh.get("schema") != EXPECTED_FRESH_SCHEMA or fresh.get("source_sha") != source_sha:
+        raise Runtime209Error("SCALE-141 fresh-verification identity mismatch")
+    if fresh.get("corpus_identity_sha256") != EXPECTED_CORPUS_SHA256:
+        raise Runtime209Error("SCALE-141 fresh-verification corpus identity mismatch")
+    gates = fresh.get("fresh_verification")
+    required = (
         "checkpoint_load",
         "first_party_logits",
         "evaluation_non_mutation",
@@ -241,159 +232,150 @@ def _validate_retained_source(
         "reproducibility_manifest_validation",
         "best_and_final_retained",
     )
-    if any(verification.get(field) is not True for field in required_fresh):
-        raise Runtime209Error("SCALE-141 fresh-verification gates are incomplete")
-    if fresh.get("source_sha") != source_sha:
-        raise Runtime209Error("SCALE-141 fresh-verification source SHA mismatch")
-    if fresh.get("corpus_identity_sha256") != EXPECTED_CORPUS_SHA256:
-        raise Runtime209Error("SCALE-141 fresh-verification corpus identity mismatch")
-    if retained.get("schema") != EXPECTED_RETAINED_SCHEMA or retained.get("source_sha") != source_sha:
-        raise Runtime209Error("SCALE-141 retained-checkpoint index identity mismatch")
-    roles = retained.get("roles")
-    if not isinstance(roles, dict) or not isinstance(roles.get(CHECKPOINT_ROLE), dict):
-        raise Runtime209Error("SCALE-141 retained best checkpoint is missing")
-    retained_best = roles[CHECKPOINT_ROLE]
-    if retained_best.get("fresh_verification") != "PASS":
-        raise Runtime209Error("retained best checkpoint lacks fresh-verification PASS")
+    if not isinstance(gates, dict) or gates.get("status") != "PASS":
+        raise Runtime209Error("SCALE-141 fresh verification is not PASS")
+    if any(gates.get(name) is not True for name in required):
+        raise Runtime209Error("SCALE-141 fresh verification gates are incomplete")
+    if index.get("schema") != EXPECTED_RETAINED_SCHEMA or index.get("source_sha") != source_sha:
+        raise Runtime209Error("SCALE-141 retained index identity mismatch")
+    roles = index.get("roles")
     evidence = fresh.get("evidence")
-    if not isinstance(evidence, dict) or not isinstance(evidence.get(CHECKPOINT_ROLE), dict):
-        raise Runtime209Error("SCALE-141 best-checkpoint fresh evidence is missing")
-    fresh_best = evidence[CHECKPOINT_ROLE]
-    if fresh_best.get("checkpoint_id") != retained_best.get("checkpoint_id"):
-        raise Runtime209Error("retained best checkpoint id differs from fresh verification")
-    if fresh_best.get("target_optimized_tokens") != retained_best.get("target_optimized_tokens"):
-        raise Runtime209Error("retained best optimized-token target differs from fresh verification")
+    if not isinstance(roles, dict) or not isinstance(evidence, dict):
+        raise Runtime209Error("SCALE-141 retained/fresh role mappings are missing")
+    retained = roles.get(CHECKPOINT_ROLE)
+    best = evidence.get(CHECKPOINT_ROLE)
+    if not isinstance(retained, dict) or not isinstance(best, dict):
+        raise Runtime209Error("SCALE-141 retained best checkpoint is missing")
+    if retained.get("fresh_verification") != "PASS":
+        raise Runtime209Error("retained best checkpoint lacks fresh-verification PASS")
+    if retained.get("checkpoint_id") != best.get("checkpoint_id"):
+        raise Runtime209Error("retained best checkpoint id mismatch")
+    if retained.get("target_optimized_tokens") != best.get("target_optimized_tokens"):
+        raise Runtime209Error("retained best scheduled-token target mismatch")
+    identity = best.get("checkpoint_identity")
+    if not isinstance(identity, dict):
+        raise Runtime209Error("best checkpoint identity is missing")
+    expected = {
+        "git_sha": source_sha,
+        "model_spec_hash": EXPECTED_MODEL_SPEC_SHA256,
+        "parameter_count": EXPECTED_PARAMETER_COUNT,
+        "tokenizer_hash": EXPECTED_TOKENIZER_CONFIG_SHA256,
+        "tokenizer_vocab_hash": EXPECTED_TOKENIZER_VOCAB_SHA256,
+        "dataset_manifest_hash": EXPECTED_CORPUS_SHA256,
+    }
+    for field, value in expected.items():
+        if identity.get(field) != value:
+            raise Runtime209Error(f"best checkpoint identity mismatch: {field}")
+    if int(identity.get("step", 0)) <= 0 or int(identity.get("tokens_seen", 0)) <= 0:
+        raise Runtime209Error("retained source checkpoint is not learned")
+    scheduled_target = int(best["target_optimized_tokens"])
+    actual_tokens = int(identity["tokens_seen"])
+    if actual_tokens < scheduled_target or actual_tokens - scheduled_target > 254:
+        raise Runtime209Error("SCALE-141 threshold overshoot is outside declared bound")
     if not checkpoint_dir.is_dir():
         raise Runtime209Error("retained best checkpoint directory is missing")
-    identity = fresh_best.get("checkpoint_identity")
-    if not isinstance(identity, dict):
-        raise Runtime209Error("SCALE-141 best checkpoint identity is missing")
-    if identity.get("git_sha") != source_sha:
-        raise Runtime209Error("learned 10M checkpoint source SHA mismatch")
-    if identity.get("model_spec_hash") != EXPECTED_MODEL_SPEC_SHA256:
-        raise Runtime209Error("learned 10M checkpoint ModelSpec mismatch")
-    if identity.get("parameter_count") != EXPECTED_PARAMETER_COUNT:
-        raise Runtime209Error("learned 10M checkpoint parameter count mismatch")
-    if identity.get("tokenizer_hash") != EXPECTED_TOKENIZER_CONFIG_SHA256:
-        raise Runtime209Error("learned 10M checkpoint tokenizer config identity mismatch")
-    if identity.get("tokenizer_vocab_hash") != EXPECTED_TOKENIZER_VOCAB_SHA256:
-        raise Runtime209Error("learned 10M checkpoint tokenizer vocab identity mismatch")
-    if identity.get("dataset_manifest_hash") != EXPECTED_CORPUS_SHA256:
-        raise Runtime209Error("learned 10M checkpoint corpus identity mismatch")
-    if int(identity.get("step", 0)) <= 0 or int(identity.get("tokens_seen", 0)) <= 0:
-        raise Runtime209Error("consumed 10M checkpoint is not learned")
-    if int(identity["tokens_seen"]) != int(fresh_best["target_optimized_tokens"]):
-        raise Runtime209Error("checkpoint optimized-token identity mismatch")
-    return fresh, retained, fresh_best
+    return fresh, best
 
 
 def _full_logits(reference: Any, target: Any, ids: Sequence[int]) -> tuple[torch.Tensor, torch.Tensor]:
     tensor = torch.tensor([list(ids)], dtype=torch.long)
     with torch.inference_mode():
-        reference_logits = reference.model(tensor).logits[0].detach().float().cpu()
-        candidate_logits = target(input_ids=tensor, use_cache=False).logits[0].detach().float().cpu()
-    return reference_logits, candidate_logits
+        ref = reference.model(tensor).logits[0].detach().float().cpu()
+        cand = target(input_ids=tensor, use_cache=False).logits[0].detach().float().cpu()
+    return ref, cand
 
 
 def _prompt_evidence(
     reference: Any,
     candidate: TransformersLlamaRuntime,
     target: Any,
-    *,
     category: str,
     prompt: str,
     max_new_tokens: int,
 ) -> dict[str, Any]:
     ids = candidate.encode(prompt)
     if ids != list(prompt.encode("utf-8")) or candidate.decode(ids) != prompt:
-        raise Runtime209Error(f"canonical byte tokenizer failed for {category}")
-    full_reference, full_candidate = _full_logits(reference, target, ids)
-    full_metrics = _logit_metrics(full_reference, full_candidate)
+        raise Runtime209Error(f"canonical byte-tokenizer mapping failed for {category}")
+    ref_full, cand_full = _full_logits(reference, target, ids)
+    full = _metrics(ref_full, cand_full)
 
-    reference_ids = list(ids)
-    candidate_ids = list(ids)
+    ref_ids = list(ids)
+    cand_ids = list(ids)
     steps: list[dict[str, Any]] = []
     for index in range(min(max_new_tokens, candidate.max_context_tokens - len(ids))):
-        ref_logits = torch.tensor(reference.next_token_logits(reference_ids), dtype=torch.float32)
-        cand_logits = candidate.next_token_logits_tensor(candidate_ids)
-        metrics = _logit_metrics(ref_logits, cand_logits)
-        reference_token = int(torch.argmax(ref_logits).item())
-        candidate_token = int(torch.argmax(cand_logits).item())
-        metrics.update(
-            {
-                "index": index,
-                "reference_argmax": reference_token,
-                "candidate_argmax": candidate_token,
-                "greedy_token_exact": reference_token == candidate_token,
-            }
+        ref_logits = torch.tensor(reference.next_token_logits(ref_ids), dtype=torch.float32)
+        cand_logits = candidate.next_token_logits_tensor(cand_ids)
+        row = _metrics(ref_logits, cand_logits)
+        ref_token = int(torch.argmax(ref_logits).item())
+        cand_token = int(torch.argmax(cand_logits).item())
+        row.update(
+            index=index,
+            reference_argmax=ref_token,
+            candidate_argmax=cand_token,
+            greedy_token_exact=ref_token == cand_token,
         )
-        steps.append(metrics)
-        reference_ids.append(reference_token)
-        candidate_ids.append(candidate_token)
+        steps.append(row)
+        ref_ids.append(ref_token)
+        cand_ids.append(cand_token)
 
-    reference_continuation = reference_ids[len(ids):]
-    candidate_continuation = candidate_ids[len(ids):]
-    reference_text = reference.decode(reference_continuation)
-    candidate_text = candidate.decode(candidate_continuation)
+    ref_continuation = ref_ids[len(ids):]
+    cand_continuation = cand_ids[len(ids):]
+    ref_text = reference.decode(ref_continuation)
+    cand_text = candidate.decode(cand_continuation)
     return {
         "category": category,
         "prompt": prompt,
         "prompt_sha256": _sha256(prompt.encode("utf-8")),
         "input_token_ids": ids,
-        "input_token_count": len(ids),
-        "full_prompt_logits": full_metrics,
-        "reference_continuation_ids": reference_continuation,
-        "candidate_continuation_ids": candidate_continuation,
-        "greedy_tokens_exact": reference_continuation == candidate_continuation,
-        "reference_decoded_continuation": reference_text,
-        "candidate_decoded_continuation": candidate_text,
-        "decoded_continuation_exact": reference_text == candidate_text,
+        "full_prompt_logits": full,
         "generation_steps": steps,
+        "reference_continuation_ids": ref_continuation,
+        "candidate_continuation_ids": cand_continuation,
+        "greedy_tokens_exact": ref_continuation == cand_continuation,
+        "reference_decoded_continuation": ref_text,
+        "candidate_decoded_continuation": cand_text,
+        "decoded_continuation_exact": ref_text == cand_text,
     }
 
 
-def _qk_learned_weight_evidence(reference: Any, target: Any) -> dict[str, Any]:
+def _qk_evidence(reference: Any, target: Any) -> dict[str, Any]:
     spec = reference.model.spec
     source = reference.model.state_dict()
-    target_state = target.state_dict()
-    q_permutation = torch.tensor(
-        rope_pairwise_to_llama_permutation(heads=spec.n_heads, head_dim=spec.head_dim),
+    converted = target.state_dict()
+    q_perm = torch.tensor(
+        rope_pairwise_to_llama_permutation(spec.n_heads, spec.head_dim),
         dtype=torch.long,
     )
-    k_permutation = torch.tensor(
-        rope_pairwise_to_llama_permutation(heads=spec.n_kv_heads, head_dim=spec.head_dim),
+    k_perm = torch.tensor(
+        rope_pairwise_to_llama_permutation(spec.n_kv_heads, spec.head_dim),
         dtype=torch.long,
     )
     layers: list[dict[str, Any]] = []
     for layer in range(spec.n_layers):
-        source_q = source[f"blocks.{layer}.attn.q_proj.weight"].detach().cpu()
-        source_k = source[f"blocks.{layer}.attn.k_proj.weight"].detach().cpu()
-        expected_q = source_q.index_select(0, q_permutation)
-        expected_k = source_k.index_select(0, k_permutation)
-        actual_q = target_state[f"model.layers.{layer}.self_attn.q_proj.weight"].detach().cpu()
-        actual_k = target_state[f"model.layers.{layer}.self_attn.k_proj.weight"].detach().cpu()
-        q_exact = bool(torch.equal(expected_q, actual_q))
-        k_exact = bool(torch.equal(expected_k, actual_k))
+        q = source[f"blocks.{layer}.attn.q_proj.weight"].detach().cpu()
+        k = source[f"blocks.{layer}.attn.k_proj.weight"].detach().cpu()
+        expected_q = q.index_select(0, q_perm)
+        expected_k = k.index_select(0, k_perm)
+        actual_q = converted[f"model.layers.{layer}.self_attn.q_proj.weight"].detach().cpu()
+        actual_k = converted[f"model.layers.{layer}.self_attn.k_proj.weight"].detach().cpu()
         layers.append(
             {
                 "layer": layer,
-                "q_exact": q_exact,
-                "k_exact": k_exact,
-                "source_q_sha256": _tensor_sha256(source_q),
-                "source_k_sha256": _tensor_sha256(source_k),
-                "expected_llama_q_sha256": _tensor_sha256(expected_q),
-                "expected_llama_k_sha256": _tensor_sha256(expected_k),
-                "actual_llama_q_sha256": _tensor_sha256(actual_q),
-                "actual_llama_k_sha256": _tensor_sha256(actual_k),
+                "q_exact": bool(torch.equal(expected_q, actual_q)),
+                "k_exact": bool(torch.equal(expected_k, actual_k)),
+                "source_q_sha256": _tensor_sha256(q),
+                "source_k_sha256": _tensor_sha256(k),
+                "llama_q_sha256": _tensor_sha256(actual_q),
+                "llama_k_sha256": _tensor_sha256(actual_k),
             }
         )
     return {
         "transform": "PAIRWISE_INTERLEAVED_TO_LLAMA_HALF_SPLIT",
-        "q_permutation_rows": int(q_permutation.numel()),
-        "k_permutation_rows": int(k_permutation.numel()),
-        "layers": layers,
+        "q_permutation_rows": int(q_perm.numel()),
+        "k_permutation_rows": int(k_perm.numel()),
         "all_q_exact": all(row["q_exact"] for row in layers),
         "all_k_exact": all(row["k_exact"] for row in layers),
+        "layers": layers,
     }
 
 
@@ -421,37 +403,37 @@ def collect_evidence(
     if _git_head(repo_root) != bridge_source_sha:
         raise Runtime209Error("bridge source SHA does not match checkout HEAD")
     if d08_source_sha != EXPECTED_D08_SOURCE_SHA:
-        raise Runtime209Error("D08 purpose-runtime source SHA drifted")
+        raise Runtime209Error("D08 source SHA drifted")
     if d08_profile_sha256 != EXPECTED_D08_PROFILE_SHA256:
-        raise Runtime209Error("D08 Transformers purpose profile hash drifted")
+        raise Runtime209Error("D08 Transformers profile identity drifted")
     if d08_overlay_sha256 != EXPECTED_D08_OVERLAY_SHA256:
-        raise Runtime209Error("D08 Transformers overlay lock hash drifted")
+        raise Runtime209Error("D08 Transformers overlay identity drifted")
     if importlib.metadata.version("transformers") != EXPECTED_TRANSFORMERS_VERSION:
-        raise Runtime209Error("RUNTIME-209 is not executing exact Transformers 5.15.1")
+        raise Runtime209Error("exact Transformers 5.15.1 is not executing")
     if os.environ.get("HF_HUB_OFFLINE") != "1" or os.environ.get("TRANSFORMERS_OFFLINE") != "1":
-        raise Runtime209Error("Transformers execution must run with hub access disabled")
+        raise Runtime209Error("hub access is not disabled")
 
-    bootstrap_manifest = _validate_bootstrap_manifest(
-        bootstrap_manifest_path, bootstrap_source_sha
-    )
-    artifact_metadata, run_metadata = _validate_artifact_binding(
-        artifact_metadata_path=artifact_metadata_path,
-        run_metadata_path=run_metadata_path,
-        source_artifact_id=source_artifact_id,
-        source_artifact_digest=source_artifact_digest,
-        source_run_id=source_run_id,
+    bootstrap = _validate_bootstrap(bootstrap_manifest_path, bootstrap_source_sha)
+    artifact, run = _validate_artifact(
+        artifact_metadata_path,
+        run_metadata_path,
+        artifact_id=source_artifact_id,
+        digest=source_artifact_digest,
+        run_id=source_run_id,
         source_sha=source_sha,
     )
-    fresh, retained, fresh_best = _validate_retained_source(
-        checkpoint_dir=checkpoint_dir,
-        fresh_path=fresh_verification_path,
-        retained_index_path=retained_index_path,
+    fresh, best = _validate_retained(
+        fresh_verification_path,
+        retained_index_path,
+        checkpoint_dir,
         source_sha=source_sha,
     )
 
     reference = load_first_party_backend(checkpoint_dir)
     diagnostics = reference.diagnostics()
-    required_diagnostics = {
+    identity = best["checkpoint_identity"]
+    expected_diagnostics = {
+        "checkpoint_id": best["checkpoint_id"],
         "git_sha": source_sha,
         "model_spec_sha256": EXPECTED_MODEL_SPEC_SHA256,
         "parameter_count": EXPECTED_PARAMETER_COUNT,
@@ -459,221 +441,201 @@ def collect_evidence(
         "tokenizer_config_sha256": EXPECTED_TOKENIZER_CONFIG_SHA256,
         "tokenizer_vocab_sha256": EXPECTED_TOKENIZER_VOCAB_SHA256,
         "dataset_manifest_sha256": EXPECTED_CORPUS_SHA256,
+        "run_manifest_sha256": fresh["run_manifest_identity_sha256"],
+        "step": identity["step"],
+        "tokens_seen": identity["tokens_seen"],
     }
-    for field, expected in required_diagnostics.items():
-        if diagnostics.get(field) != expected:
+    for field, value in expected_diagnostics.items():
+        if diagnostics.get(field) != value:
             raise Runtime209Error(f"first-party checkpoint diagnostic mismatch: {field}")
-    if diagnostics.get("checkpoint_id") != fresh_best.get("checkpoint_id"):
-        raise Runtime209Error("first-party checkpoint id differs from SCALE-141 fresh verification")
-    if diagnostics.get("run_manifest_sha256") != fresh.get("run_manifest_identity_sha256"):
-        raise Runtime209Error("first-party run-manifest identity differs from SCALE-141 verification")
-    if int(diagnostics.get("step", 0)) <= 0 or int(diagnostics.get("tokens_seen", 0)) <= 0:
-        raise Runtime209Error("first-party source checkpoint is not learned")
 
     plan = build_llama_interop_plan(reference.model.spec)
     if plan.source_model_spec_sha256 != EXPECTED_MODEL_SPEC_SHA256:
-        raise Runtime209Error("incumbent Llama plan did not bind exact learned 10M ModelSpec")
+        raise Runtime209Error("incumbent plan did not bind exact 10M ModelSpec")
     if plan.source_parameter_count != EXPECTED_PARAMETER_COUNT:
-        raise Runtime209Error("incumbent Llama plan parameter count drifted")
+        raise Runtime209Error("incumbent plan parameter count drifted")
     if plan.target_architecture != "LlamaForCausalLM":
-        raise Runtime209Error("incumbent Llama plan target architecture drifted")
+        raise Runtime209Error("incumbent target architecture drifted")
     if plan.rope_transform != "PAIRWISE_INTERLEAVED_TO_LLAMA_HALF_SPLIT":
-        raise Runtime209Error("incumbent Llama plan RoPE basis conversion drifted")
+        raise Runtime209Error("incumbent RoPE basis transform drifted")
 
     output_dir.mkdir(parents=True, exist_ok=False)
-    canonical_export = export_hf_directory(
+    canonical = export_hf_directory(
         checkpoint_dir,
         output_dir / "canonical-hf-export",
         hf_config=llama_config_dict(reference.model.spec),
     )
     runtime_dir = materialize_standard_llama_directory(
-        canonical_export,
+        canonical,
         output_dir / "standard-llama",
     )
-    runtime_provenance = verify_standard_llama_directory(runtime_dir)
-    if runtime_provenance.get("source_checkpoint_id") != diagnostics["checkpoint_id"]:
-        raise Runtime209Error("standard-Llama directory is not bound to learned checkpoint")
-    if runtime_provenance.get("model_spec_sha256") != EXPECTED_MODEL_SPEC_SHA256:
+    provenance = verify_standard_llama_directory(runtime_dir)
+    if provenance.get("source_checkpoint_id") != diagnostics["checkpoint_id"]:
+        raise Runtime209Error("standard-Llama directory checkpoint identity mismatch")
+    if provenance.get("model_spec_sha256") != EXPECTED_MODEL_SPEC_SHA256:
         raise Runtime209Error("standard-Llama directory ModelSpec drifted")
-    if runtime_provenance.get("parameter_count") != EXPECTED_PARAMETER_COUNT:
+    if provenance.get("parameter_count") != EXPECTED_PARAMETER_COUNT:
         raise Runtime209Error("standard-Llama directory parameter count drifted")
-    if runtime_provenance.get("rope_transform") != plan.rope_transform:
+    if provenance.get("rope_transform") != plan.rope_transform:
         raise Runtime209Error("standard-Llama directory RoPE transform drifted")
-    if runtime_provenance.get("foreign_pretrained_weights") is not False:
+    if provenance.get("foreign_pretrained_weights") is not False:
         raise Runtime209Error("standard-Llama directory introduced foreign weights")
-    if runtime_provenance.get("model_downloaded") is not False:
-        raise Runtime209Error("standard-Llama directory provenance claims a model download")
+    if provenance.get("model_downloaded") is not False:
+        raise Runtime209Error("standard-Llama directory claims a model download")
 
-    target = LlamaForCausalLM.from_pretrained(
-        runtime_dir,
-        local_files_only=True,
-    ).eval()
+    target = LlamaForCausalLM.from_pretrained(runtime_dir, local_files_only=True).eval()
     candidate = TransformersLlamaRuntime(
         model=target,
         tokenizer=reference.tokenizer,
         spec=reference.model.spec,
         checkpoint_id=diagnostics["checkpoint_id"],
-        source_manifest_sha256=runtime_provenance["source_manifest_sha256"],
-        weights_sha256=runtime_provenance["runtime_weights_sha256"],
-        config_sha256=runtime_provenance["runtime_config_sha256"],
+        source_manifest_sha256=provenance["source_manifest_sha256"],
+        weights_sha256=provenance["runtime_weights_sha256"],
+        config_sha256=provenance["runtime_config_sha256"],
         plan_sha256=plan.identity_sha256(),
     )
 
-    qk_evidence = _qk_learned_weight_evidence(reference, target)
-    prompt_records = [
-        _prompt_evidence(
-            reference,
-            candidate,
-            target,
-            category=category,
-            prompt=prompt,
-            max_new_tokens=max_new_tokens,
-        )
+    qk = _qk_evidence(reference, target)
+    prompts = [
+        _prompt_evidence(reference, candidate, target, category, prompt, max_new_tokens)
         for category, prompt in PROMPTS
     ]
-
     boundary_ids = [
         (index * 17 + 3) % candidate.spec.vocab_size
         for index in range(candidate.max_context_tokens)
     ]
-    boundary_reference, boundary_candidate = _full_logits(reference, target, boundary_ids)
-    boundary_metrics = _logit_metrics(boundary_reference, boundary_candidate)
+    ref_boundary, cand_boundary = _full_logits(reference, target, boundary_ids)
+    boundary = _metrics(ref_boundary, cand_boundary)
     over_context = boundary_ids + [0]
-    reference_rejected = False
-    candidate_rejected = False
+    ref_rejected = cand_rejected = False
     try:
         reference.next_token_logits(over_context)
     except ValueError:
-        reference_rejected = True
+        ref_rejected = True
     try:
         candidate.next_token_logits(over_context)
     except ValueError:
-        candidate_rejected = True
+        cand_rejected = True
 
+    steps = [step for row in prompts for step in row["generation_steps"]]
     failures: list[str] = []
-    if not qk_evidence["all_q_exact"] or not qk_evidence["all_k_exact"]:
+    if not qk["all_q_exact"] or not qk["all_k_exact"]:
         failures.append("learned_qk_rope_weight_conversion")
-    if not all(row["full_prompt_logits"].get("allclose") for row in prompt_records):
+    if not all(row["full_prompt_logits"].get("allclose") for row in prompts):
         failures.append("full_prompt_logits")
-    all_steps = [step for row in prompt_records for step in row["generation_steps"]]
-    if not all(step.get("allclose") for step in all_steps):
+    if not all(step.get("allclose") for step in steps):
         failures.append("generation_step_logits")
-    if not all(step.get("greedy_token_exact") for step in all_steps):
-        failures.append("greedy_next_token")
-    if not all(row["greedy_tokens_exact"] for row in prompt_records):
-        failures.append("short_generation_token_ids")
-    if not all(row["decoded_continuation_exact"] for row in prompt_records):
+    if not all(step.get("greedy_token_exact") for step in steps):
+        failures.append("greedy_next_tokens")
+    if not all(row["greedy_tokens_exact"] for row in prompts):
+        failures.append("short_generation_ids")
+    if not all(row["decoded_continuation_exact"] for row in prompts):
         failures.append("short_generation_decoded")
-    if not boundary_metrics.get("allclose"):
+    if not boundary.get("allclose"):
         failures.append("full_context_logits")
-    if not reference_rejected or not candidate_rejected:
+    if not ref_rejected or not cand_rejected:
         failures.append("context_overflow_rejection")
 
-    metric_records = [row["full_prompt_logits"] for row in prompt_records]
-    metric_records.extend(all_steps)
-    metric_records.append(boundary_metrics)
-    valid_abs = [float(row["max_abs_error"]) for row in metric_records if "max_abs_error" in row]
-    valid_rel = [float(row["max_rel_error"]) for row in metric_records if "max_rel_error" in row]
-
+    metric_rows = [row["full_prompt_logits"] for row in prompts] + steps + [boundary]
+    abs_values = [float(row["max_abs_error"]) for row in metric_rows if "max_abs_error" in row]
+    rel_values = [float(row["max_rel_error"]) for row in metric_rows if "max_rel_error" in row]
     evidence: dict[str, Any] = {
         "schema": SCHEMA,
         "passed": not failures,
         "bridge": {
             "source_sha": bridge_source_sha,
-            "reused_runtime97_harness_lineage": True,
-            "conversion_seam": "twelve_six.inference.transformers_llama",
-            "standard_directory_seam": "twelve_six.inference.llama_runtime_export",
+            "reuses_runtime97_and_pr135": True,
+            "canonical_export_seam": "twelve_six.checkpoint.export_hf_directory",
+            "standard_llama_seam": "twelve_six.inference.llama_runtime_export",
             "second_exporter_added": False,
-            "new_transformers_model_adapter_added": False,
+            "custom_transformers_model_added": False,
             "plan_sha256": plan.identity_sha256(),
         },
         "learned_source": {
             "artifact_id": source_artifact_id,
-            "artifact_name": artifact_metadata["name"],
+            "artifact_name": artifact["name"],
             "artifact_digest": source_artifact_digest,
             "workflow_run_id": source_run_id,
-            "source_git_sha": source_sha,
+            "workflow_run_conclusion": run["conclusion"],
+            "source_sha": source_sha,
             "checkpoint_role": CHECKPOINT_ROLE,
+            "scheduled_target_optimized_tokens": best["target_optimized_tokens"],
+            "actual_checkpoint_tokens_seen": diagnostics["tokens_seen"],
             "checkpoint_id": diagnostics["checkpoint_id"],
             "checkpoint_step": diagnostics["step"],
-            "checkpoint_tokens_seen": diagnostics["tokens_seen"],
             "model_spec_sha256": diagnostics["model_spec_sha256"],
             "parameter_count": diagnostics["parameter_count"],
             "corpus_identity_sha256": diagnostics["dataset_manifest_sha256"],
             "run_manifest_sha256": diagnostics["run_manifest_sha256"],
-            "fresh_verification_sha256": _sha256_file(fresh_verification_path),
+            "fresh_verification_file_sha256": _sha256_file(fresh_verification_path),
             "fresh_verification_identity_sha256": fresh.get("identity_sha256"),
             "retained_index_sha256": _sha256_file(retained_index_path),
-            "source_run_conclusion": run_metadata["conclusion"],
         },
         "tokenizer_identity": {
             "version": diagnostics["tokenizer_version"],
             "config_sha256": diagnostics["tokenizer_config_sha256"],
             "vocab_sha256": diagnostics["tokenizer_vocab_sha256"],
             "vocab_size": diagnostics["vocab_size"],
-            "special_token_semantics_invented": False,
+            "invented_special_token_semantics": False,
         },
         "runtime": {
             "d08_source_sha": d08_source_sha,
-            "d08_profile_id": "linux-x86_64-transformers-interop",
+            "d08_profile": "linux-x86_64-transformers-interop",
             "d08_profile_sha256": d08_profile_sha256,
-            "d08_overlay_lock_sha256": d08_overlay_sha256,
+            "d08_overlay_sha256": d08_overlay_sha256,
             "universal_bootstrap_source_sha": bootstrap_source_sha,
-            "universal_bootstrap_manifest_sha256": _sha256_file(bootstrap_manifest_path),
-            "universal_bootstrap_identity_sha256": bootstrap_manifest.get("identity_sha256"),
+            "bootstrap_manifest_sha256": _sha256_file(bootstrap_manifest_path),
+            "bootstrap_identity_sha256": bootstrap.get("identity_sha256"),
             "python": platform.python_version(),
             "torch": torch.__version__,
             "transformers": importlib.metadata.version("transformers"),
             "device": "cpu",
             "dtype": "float32",
-            "offline_environment": {
-                "HF_HUB_OFFLINE": os.environ.get("HF_HUB_OFFLINE"),
-                "TRANSFORMERS_OFFLINE": os.environ.get("TRANSFORMERS_OFFLINE"),
-            },
+            "HF_HUB_OFFLINE": os.environ.get("HF_HUB_OFFLINE"),
+            "TRANSFORMERS_OFFLINE": os.environ.get("TRANSFORMERS_OFFLINE"),
         },
         "standard_llama_directory": {
             "architecture": target.__class__.__name__,
             "class_module": target.__class__.__module__,
             "load_method": "LlamaForCausalLM.from_pretrained(local_directory, local_files_only=True)",
-            "runtime_weights_sha256": runtime_provenance["runtime_weights_sha256"],
-            "runtime_config_sha256": runtime_provenance["runtime_config_sha256"],
-            "source_manifest_sha256": runtime_provenance["source_manifest_sha256"],
-            "qk_rope_basis_conversion": runtime_provenance["rope_transform"],
-            "foreign_pretrained_weights": runtime_provenance["foreign_pretrained_weights"],
-            "model_downloaded": runtime_provenance["model_downloaded"],
+            "runtime_weights_sha256": provenance["runtime_weights_sha256"],
+            "runtime_config_sha256": provenance["runtime_config_sha256"],
+            "source_manifest_sha256": provenance["source_manifest_sha256"],
+            "qk_rope_basis_conversion": provenance["rope_transform"],
+            "foreign_pretrained_weights": provenance["foreign_pretrained_weights"],
+            "model_downloaded": provenance["model_downloaded"],
         },
-        "learned_qk_rope_weights": qk_evidence,
-        "prompts": prompt_records,
+        "learned_qk_rope_weights": qk,
+        "prompts": prompts,
         "context_boundary": {
             "max_context_tokens": candidate.max_context_tokens,
             "boundary_input_sha256": _sha256(bytes(boundary_ids)),
-            "full_logits": boundary_metrics,
-            "reference_over_context_rejected": reference_rejected,
-            "transformers_bridge_over_context_rejected": candidate_rejected,
+            "full_logits": boundary,
+            "reference_over_context_rejected": ref_rejected,
+            "transformers_bridge_over_context_rejected": cand_rejected,
         },
         "acceptance": {
             "logit_atol": LOGIT_ATOL,
             "logit_rtol": LOGIT_RTOL,
             "tolerance_changed_for_runtime209": False,
-            "max_abs_error": max(valid_abs) if valid_abs else None,
-            "max_rel_error": max(valid_rel) if valid_rel else None,
-            "full_logit_tensors_compared": len(prompt_records) + 1,
-            "generation_next_logit_vectors_compared": len(all_steps),
+            "max_abs_error": max(abs_values) if abs_values else None,
+            "max_rel_error": max(rel_values) if rel_values else None,
+            "full_logit_tensors_compared": len(prompts) + 1,
+            "generation_next_logit_vectors_compared": len(steps),
         },
         "failures": failures,
         "truth_boundary": {
             "foreign_pretrained_weights_used": False,
             "hub_model_download_used": False,
             "paid_compute_used": False,
-            "instruction_or_alignment_claim": False,
             "quality_or_capability_claim": False,
             "production_stage_promotion": False,
             "source_substitution_allowed": False,
         },
     }
     evidence["evidence_sha256"] = _canonical_hash(evidence)
-    evidence_path = output_dir / "runtime209-transformers-learned-10m-parity.json"
-    evidence_path.write_text(
+    path = output_dir / "runtime209-transformers-learned-10m-parity.json"
+    path.write_text(
         json.dumps(evidence, sort_keys=True, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
