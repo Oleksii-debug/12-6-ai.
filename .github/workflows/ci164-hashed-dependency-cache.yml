@@ -136,6 +136,25 @@ jobs:
             exit 0
           fi
           mkdir -p ci164-evidence
+          profile_id=$(python - "$profile" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          value = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          print(value["profile_id"])
+          PY
+          )
+          set +e
+          python tools/verify_purpose_environment.py \
+            --profile "$profile_id" \
+            --validate-only > "ci164-evidence/${LANE}-purpose-validation.txt" 2>&1
+          authority_status=$?
+          set -e
+          if [[ $authority_status -ne 0 ]]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "reason=purpose profile failed repository authority validation" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           set +e
           output=$(python tools/hashed_dependency_cache.py key \
             --profile-path "$profile" \
