@@ -7,6 +7,9 @@ import json
 import subprocess
 from pathlib import Path
 
+DATA228_HEAD = "46a70c990dab6ff72bb84ddb54cff1156b491b40"
+DATA228_REPORT_PATH = "reports/data228/source-probe.json"
+
 EXPECTED_IDENTITY_PARTS = [
     "12-6.next100-063-research-corpus-v1-intake.v1",
     "8820ba1b255f6bb95c7db0531fd846078a1aae01",
@@ -113,6 +116,7 @@ def validate(data: dict) -> None:
 
 
 def verify_git_authorities(data: dict) -> None:
+    cpython_authority = None
     for item in data["terminal_source_authorities"]:
         raw = subprocess.check_output(["git", "show", f"{item['head_sha']}:{item['authority_config_path']}"])
         _require(_git_blob_sha1(raw) == item["authority_config_git_blob_sha1"], f"authority blob mismatch for {item['worker']}")
@@ -120,9 +124,22 @@ def verify_git_authorities(data: dict) -> None:
         observed = source.get("authority_identity_sha256", source.get("manifest_identity_sha256"))
         _require(observed == item["authority_identity_sha256"], f"authority payload identity mismatch for {item['worker']}")
         if item["worker"] == "NEXT100-037-DATA-EN-PYTHON-DOCS":
+            cpython_authority = source
             _require(source["lineage"]["data228_probe_report_sha256"] == item["data228_source_probe_report_sha256"], "CPython/DATA-228 lineage mismatch")
             preview = source["quality_privacy"]
             _require(preview["accepted_chunk_count"] == 14 and preview["rejected_chunk_count"] == 2, "CPython preview count mismatch")
+
+    _require(cpython_authority is not None, "CPython authority missing")
+    report_raw = subprocess.check_output(["git", "show", f"{DATA228_HEAD}:{DATA228_REPORT_PATH}"])
+    report = json.loads(report_raw)
+    _require(report["report_sha256"] == EXPECTED_IDENTITY_PARTS[7], "terminal DATA-228 report SHA drift")
+    cpython_probe = next(x for x in report["candidates"] if x["source_id"] == "en.python.docs.tutorial-introduction")
+    preview = cpython_probe["privacy_quality_preview"]
+    _require(preview["accepted_chunk_count"] == 14 and preview["rejected_chunk_count"] == 2, "DATA-228 CPython count drift")
+    _require(preview["rejection_reasons"] == {"pii_phone": 2}, "DATA-228 CPython rejection drift")
+    _require(preview["accepted_document_utf8_bytes"] == {"min": 290, "max": 1196, "mean": 1110.0}, "DATA-228 CPython byte statistics drift")
+    _require(int(preview["accepted_document_utf8_bytes"]["mean"] * preview["accepted_chunk_count"]) == 15540, "DATA-228 CPython aggregate byte derivation drift")
+    _require(preview["accepted_normalized_sha256"] == cpython_authority["quality_privacy"]["accepted_normalized_sha256"], "CPython accepted hash vector mismatch")
 
 
 def main() -> int:
