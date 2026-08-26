@@ -1,0 +1,18 @@
+name: "12-6 execution bootstrap"
+description: "Install only declared exact capability locks and fail closed before experiment execution"
+inputs:
+  capabilities: {description: "Comma-separated capability set", required: true}
+  venv: {description: "Fresh venv path", required: true}
+  command: {description: "Command audited against capabilities", required: false, default: ""}
+  manifest: {description: "Environment manifest path", required: true}
+  allow-no-gpu: {description: "Permit CUDA software preflight with no visible GPU", required: false, default: "false"}
+runs:
+  using: "composite"
+  steps:
+    - shell: bash
+      run: |
+        set -euo pipefail
+        args=(bootstrap --repo-root "$GITHUB_WORKSPACE" --capabilities "${{ inputs.capabilities }}" --venv "$GITHUB_WORKSPACE/${{ inputs.venv }}" --manifest "$GITHUB_WORKSPACE/${{ inputs.manifest }}")
+        if [[ -n "${{ inputs.command }}" ]]; then args+=(--command "${{ inputs.command }}"); fi
+        if [[ "${{ inputs.allow-no-gpu }}" == "true" ]]; then args+=(--allow-no-gpu); fi
+        python "$GITHUB_ACTION_PATH/../../../tools/execution_bootstrap.py" "${args[@]}"
