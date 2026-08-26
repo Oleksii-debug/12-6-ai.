@@ -293,8 +293,7 @@ def _verify_checkpoint(
         cwd=repo_root,
         env=env,
         text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
         timeout=120,
         check=False,
     )
@@ -368,7 +367,7 @@ def finalize_workspace(
             relative = _safe_relative(path, workspace)
             details = _copy_verified_file(path, payload_root / relative)
             retained_metadata.append({"path": relative.as_posix(), **details})
-        except Exception as exc:  # diagnostic rejection must not hide other evidence
+        except (OSError, ValueError, TypeError, subprocess.SubprocessError) as exc:  # diagnostic rejection must not hide other evidence
             rejected_metadata.append({"path": str(path), "reason": f"{type(exc).__name__}: {exc}"})
 
     checkpoint_rows: list[dict[str, Any]] = []
@@ -418,7 +417,7 @@ def finalize_workspace(
                 }
             )
             valid_checkpoint_parents.add(checkpoint.parent.resolve())
-        except Exception as exc:
+        except (OSError, ValueError, TypeError, subprocess.SubprocessError) as exc:
             destination = payload_root / relative
             if destination.exists():
                 shutil.rmtree(destination, ignore_errors=True)
@@ -437,7 +436,7 @@ def finalize_workspace(
         try:
             details = _copy_verified_file(curve, payload_root / relative)
             row.update({"retained": True, **details})
-        except Exception as exc:
+        except (OSError, ValueError, TypeError, subprocess.SubprocessError) as exc:
             row["reason"] = f"{type(exc).__name__}: {exc}"
         training_rows.append(row)
 
