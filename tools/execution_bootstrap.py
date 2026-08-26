@@ -114,7 +114,6 @@ def resolve_plan(root: Path, capabilities: list[str], commands: list[str]) -> di
             declared.append(cap)
     if not declared:
         raise ExecutionBootstrapError("at least one capability must be declared")
-
     cap_records = registry["capabilities"]
     for cap in declared:
         record = cap_records.get(cap)
@@ -127,14 +126,10 @@ def resolve_plan(root: Path, capabilities: list[str], commands: list[str]) -> di
         for requirement in record.get("requires", []):
             if requirement not in declared:
                 raise ExecutionBootstrapError(f"{cap} requires declared capability {requirement}")
-
     for command in commands:
         needed = _command_capability(command, registry)
         if needed is not None and needed not in declared:
-            raise ExecutionBootstrapError(
-                f"command {command!r} requires undeclared capability {needed}"
-            )
-
+            raise ExecutionBootstrapError(f"command {command!r} requires undeclared capability {needed}")
     roles = ["toolchain"]
     if "cuda" in declared:
         if "runtime" not in declared:
@@ -142,7 +137,6 @@ def resolve_plan(root: Path, capabilities: list[str], commands: list[str]) -> di
         roles.append("cuda_runtime")
     elif "runtime" in declared or "distributed" in declared:
         roles.append("cpu_runtime")
-
     if "tokenizer" in declared:
         if "runtime" not in declared:
             roles.append("tokenizer_support")
@@ -153,14 +147,12 @@ def resolve_plan(root: Path, capabilities: list[str], commands: list[str]) -> di
         roles.append("transformers_overlay")
     if "tests" in declared or "lint" in declared:
         roles.append("dev")
-
     ordered_roles: list[str] = []
     for role in roles:
         if role not in ordered_roles:
             ordered_roles.append(role)
-
     merged: dict[str, str] = {}
-    lock_records = []
+    lock_records: list[dict[str, Any]] = []
     for role in ordered_roles:
         record = registry["locks"][role]
         packages = _validate_lock(root, role, record)
@@ -169,31 +161,30 @@ def resolve_plan(root: Path, capabilities: list[str], commands: list[str]) -> di
             if old is not None and old != version:
                 raise ExecutionBootstrapError(f"lock conflict for {name}: {old} versus {version}")
             merged[name] = version
-        lock_records.append(
-            {
-                "role": role,
-                "path": record["path"],
-                "sha256": record["sha256"],
-                "package_count": record["package_count"],
-            }
-        )
-
+        lock_record: dict[str, Any] = {
+            "role": role,
+            "path": record["path"],
+            "sha256": record["sha256"],
+            "package_count": record["package_count"],
+        }
+        if "index_url" in record:
+            lock_record["index_url"] = record["index_url"]
+        if "extra_index_url" in record:
+            lock_record["extra_index_url"] = record["extra_index_url"]
+        lock_records.append(lock_record)
     forbidden = [
-        name
-        for name in merged
+        name for name in merged
         if name.startswith("nvidia-") or name.startswith("cuda-") or name == "triton"
     ]
     if "cuda" not in declared and forbidden:
         raise ExecutionBootstrapError(
             "non-CUDA plan inherited CUDA packages: " + ", ".join(sorted(forbidden))
         )
-
     imports: list[str] = []
     executables: list[str] = []
     for cap in declared:
         imports.extend(cap_records[cap].get("imports", []))
         executables.extend(cap_records[cap].get("executables", []))
-
     payload = {
         "schema": "12-6.execution-plan.v1",
         "capabilities": declared,
@@ -210,9 +201,7 @@ def resolve_plan(root: Path, capabilities: list[str], commands: list[str]) -> di
 
 
 def _venv_python(directory: Path) -> Path:
-    if platform.system() == "Windows":
-        return directory / "Scripts/python.exe"
-    return directory / "bin/python"
+    return directory / ("Scripts/python.exe" if platform.system() == "Windows" else "bin/python")
 
 
 def _run(command: list[str | Path], cwd: Path) -> None:
@@ -272,19 +261,14 @@ def preflight(root: Path, python: Path, plan: dict[str, Any], allow_no_gpu: bool
     if "cuda" in plan["capabilities"]:
         completed = subprocess.run(
             [str(python), "-c", "import torch; print(int(torch.cuda.is_available()))"],
-            cwd=root,
-            check=True,
-            capture_output=True,
-            text=True,
+            cwd=root, check=True, capture_output=True, text=True
         )
         visible = completed.stdout.strip() == "1"
         cuda["hardware_visible"] = visible
         cuda["hardware_claim"] = visible
         if not visible:
             if not allow_no_gpu:
-                raise ExecutionBootstrapError(
-                    "CUDA software is installed but no CUDA hardware is visible"
-                )
+                raise ExecutionBootstrapError("CUDA software is installed but no CUDA hardware is visible")
             cuda["no_gpu_preflight"] = True
     return {"status": "PASS", "cuda": cuda}
 
@@ -303,29 +287,20 @@ def bootstrap(
     venv.EnvBuilder(with_pip=True).create(venv_dir)
     python = _venv_python(venv_dir)
     for lock in plan["locks"]:
-        _run(
-            [
-                python,
-                "-m",
-                "pip",
-                "install",
-                "--disable-pip-version-check",
-                "--require-hashes",
-                "--no-deps",
-                "-r",
-                _safe(root, lock["path"]),
-            ],
-            root,
-        )
+        command: list[str | Path] = [
+            python, "-m", "pip", "install", "--disable-pip-version-check", "--require-hashes", "--no-deps"
+        ]
+        if "index_url" in lock:
+            command.extend(["--index-url", lock["index_url"]])
+        if "extra_index_url" in lock:
+            command.extend(["--extra-index-url", lock["extra_index_url"]])
+        command.extend(["-r", _safe(root, lock["path"])])
+        _run(command, cwd=root)
     proof = preflight(root, python, plan, allow_no_gpu)
     manifest = {
         "schema": MANIFEST_SCHEMA,
         "plan": plan,
-        "python": {
-            "implementation": sys.implementation.name,
-            "bootstrap_version": platform.python_version(),
-            "venv_executable": str(python),
-        },
+        "python": {"implementation": sys.implementation.name, "bootstrap_version": platform.python_version(), "venv_executable": str(python)},
         "platform": {"system": platform.system(), "machine": platform.machine()},
         "packages": _installed(python, root),
         "preflight": proof,
@@ -358,36 +333,12 @@ def main(argv: list[str] | None = None) -> int:
     if args.action == "bootstrap":
         if args.venv is None or args.manifest is None:
             parser.error("bootstrap requires --venv and --manifest")
-        manifest = bootstrap(
-            root,
-            args.venv.resolve(),
-            capabilities,
-            args.command,
-            args.manifest.resolve(),
-            args.allow_no_gpu,
-        )
-        print(
-            json.dumps(
-                {
-                    "status": "PASS",
-                    "identity_sha256": manifest["identity_sha256"],
-                    "capabilities": manifest["plan"]["capabilities"],
-                    "cuda": manifest["preflight"]["cuda"],
-                },
-                sort_keys=True,
-            )
-        )
+        manifest = bootstrap(root, args.venv.resolve(), capabilities, args.command, args.manifest.resolve(), args.allow_no_gpu)
+        print(json.dumps({"status": "PASS", "identity_sha256": manifest["identity_sha256"], "capabilities": manifest["plan"]["capabilities"], "cuda": manifest["preflight"]["cuda"]}, sort_keys=True))
         return 0
     if args.venv is None:
         parser.error("preflight requires --venv")
-    plan = resolve_plan(root, capabilities, args.command)
-    print(
-        json.dumps(
-            preflight(root, _venv_python(args.venv.resolve()), plan, args.allow_no_gpu),
-            indent=2,
-            sort_keys=True,
-        )
-    )
+    print(json.dumps(preflight(root, _venv_python(args.venv.resolve()), resolve_plan(root, capabilities, args.command), args.allow_no_gpu), indent=2, sort_keys=True))
     return 0
 
 
