@@ -19,6 +19,7 @@ from typing import Iterable
 
 from twelve_six.data.document_quality import (
     Mode,
+    ModeThresholds,
     QualityDecision,
     QualityPolicy,
     assess_document as assess_document_incumbent,
@@ -133,6 +134,39 @@ def diversity_window_evidence(
     )
 
 
+def _rebound_edge_margin(
+    decision: QualityDecision,
+    thresholds: ModeThresholds,
+    evidence: DiversityWindowEvidence,
+) -> float:
+    """Recompute the accepted boundary after replacing only the TTR component."""
+    features = decision.features
+    margins = [
+        (features.chars - thresholds.min_chars) / max(thresholds.min_chars, 1),
+        (thresholds.max_chars - features.chars) / max(thresholds.max_chars, 1),
+        (thresholds.max_symbol_ratio - features.symbol_ratio)
+        / max(thresholds.max_symbol_ratio, 1e-9),
+        (thresholds.max_repeated_line_ratio - features.repeated_line_ratio)
+        / max(thresholds.max_repeated_line_ratio, 1e-9),
+        (thresholds.max_url_char_ratio - features.url_char_ratio)
+        / max(thresholds.max_url_char_ratio, 1e-9),
+        (thresholds.max_template_line_ratio - features.template_line_ratio)
+        / max(thresholds.max_template_line_ratio, 1e-9),
+        (thresholds.max_boilerplate_line_ratio - features.boilerplate_line_ratio)
+        / max(thresholds.max_boilerplate_line_ratio, 1e-9),
+        (thresholds.max_other_script_letter_ratio - features.other_script_letter_ratio)
+        / max(thresholds.max_other_script_letter_ratio, 1e-9),
+        (
+            evidence.decision_distinct_token_ratio
+            - thresholds.min_distinct_token_ratio
+        )
+        / max(thresholds.min_distinct_token_ratio, 1e-9),
+        (thresholds.max_dominant_token_ratio - features.dominant_token_ratio)
+        / max(thresholds.max_dominant_token_ratio, 1e-9),
+    ]
+    return round(min(margins), 6)
+
+
 def assess_document(
     record_id: str,
     text: str,
@@ -168,11 +202,7 @@ def assess_document(
         )
     )
     score = max(0, 100 - 25 * len(reasons) - 5 * len(warnings))
-
-    diversity_margin = (
-        evidence.decision_distinct_token_ratio - thresholds.min_distinct_token_ratio
-    ) / max(thresholds.min_distinct_token_ratio, 1e-9)
-    edge_margin = round(max(0.0, diversity_margin), 6)
+    edge_margin = _rebound_edge_margin(incumbent, thresholds, evidence)
 
     return replace(
         incumbent,
