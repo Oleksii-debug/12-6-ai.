@@ -1,0 +1,87 @@
+name: NEXT100-044 FastAPI Registry Seal
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  seal-fastapi-registry:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact source head
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+
+      - name: Bootstrap LOCAL_FREE runtime
+        uses: ./.github/actions/execution-bootstrap
+        with:
+          capabilities: runtime
+          venv: .next100-044-seal
+          command: python -m twelve_six.next100_044_fastapi_registry_seal --help
+          manifest: next100-044-registry-seal-environment.json
+
+      - name: Reproduce source admission at exact head
+        env:
+          PYTHONPATH: src
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          mkdir -p next100-044-seal-evidence
+          .next100-044-seal/bin/python -m twelve_six.next100_044_fastapi_code_admission run \
+            --repo-root . \
+            --output-dir next100-044-seal-evidence \
+            --source-sha "$EXPECTED_SOURCE_SHA"
+
+      - name: Bind canonical DATA-287 registry and prove zero exact overlap
+        env:
+          PYTHONPATH: src
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          .next100-044-seal/bin/python -m twelve_six.next100_044_fastapi_registry_seal \
+            --repo-root . \
+            --admission-report next100-044-seal-evidence/next100-044-fastapi-code-admission.json \
+            --output-dir next100-044-seal-evidence \
+            --source-sha "$EXPECTED_SOURCE_SHA" \
+            | tee next100-044-seal-evidence/registry-seal-stdout.json
+          .next100-044-seal/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path("next100-044-seal-evidence/next100-044-fastapi-registry-seal.json").read_text())
+          assert report["terminal_verdict"] == "PASS"
+          assert report["canonical_registry"]["producer_head"] == "b0523ccbc4b957615aac849d476cfa851be87578"
+          assert report["canonical_registry"]["registry_identity_sha256"] == "917e9bc31b2fa040d25e807ae3c01aa2cce32420752a891caacfb6c830e6632c"
+          assert report["canonical_registry"]["source_count"] == 5
+          assert report["canonical_registry"]["independent_source_family_count"] == 4
+          assert report["candidate"]["family"] == "github:fastapi/fastapi"
+          assert report["candidate"]["family_present_before_admission"] is False
+          assert report["candidate"]["exact_registry_overlap"] == []
+          assert len(report["candidate"]["raw_sha256"]) == 3
+          PY
+
+      - name: Upload registry seal evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: next100-044-fastapi-registry-seal-${{ github.event.pull_request.head.sha || github.sha }}
+          if-no-files-found: error
+          retention-days: 90
+          path: |
+            configs/data/next100_044_fastapi_registry_seal_v1.json
+            next100-044-registry-seal-environment.json
+            next100-044-seal-evidence/
