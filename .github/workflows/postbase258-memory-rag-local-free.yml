@@ -1,0 +1,27 @@
+name: POSTBASE-258 memory RAG LOCAL_FREE
+
+on:
+  pull_request:
+    paths:
+      - "src/twelve_six/memory_rag/**"
+      - "tests/test_memory_rag_postbase258.py"
+      - "docs/POSTBASE258_MEMORY_RAG_V1.md"
+      - ".github/workflows/postbase258-memory-rag-local-free.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  memory-rag-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run stdlib-only contract suite
+        env:
+          PYTHONPATH: src
+        run: python tests/test_memory_rag_postbase258.py -v
