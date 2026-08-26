@@ -13,7 +13,7 @@
     "canonical_issue": 530,
     "canonical_pr": 538,
     "branch": "next100-063/canonical-source-registry-convergence-20260826",
-    "head_sha": "94dce83cbe611144f961b9f93b3be273345a7f62",
+    "head_sha": "958ebec0f7c9cb00238c7df70566cefd6b504d92",
     "base_sha": "b0523ccbc4b957615aac849d476cfa851be87578",
     "candidate_registry_identity_sha256": "77fb69c558df8c59fdae00583c955c62ad088cda98fd16b335eedb26fb2d7526",
     "candidate_decision": "CONVERGED_TERMINAL_SOURCE_VECTOR_PRE_GLOBAL_DEDUP_NOT_CORPUS_FREEZE",
@@ -39,7 +39,7 @@
     "pr_state_at_cutoff": "OPEN_DRAFT",
     "exact_head_terminal_verification_claimed": false,
     "observed_generic_ci": {
-      "run_id": 33005434232,
+      "run_id": 33005811593,
       "name": "CI",
       "status_at_cutoff": "queued",
       "conclusion_at_cutoff": null,
