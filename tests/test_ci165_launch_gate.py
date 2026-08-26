@@ -27,7 +27,9 @@ def test_historical_missing_pytest_fails_before_heavy_project_setup(
     )
     heavy_called = False
 
-    def fail_if_heavy(_: dict[str, object]) -> tuple[dict[str, object], dict[str, object], list[str]]:
+    def fail_if_heavy(
+        _: dict[str, object],
+    ) -> tuple[dict[str, object], dict[str, object], list[str]]:
         nonlocal heavy_called
         heavy_called = True
         raise AssertionError("heavy project contracts must not run when pytest is missing")
@@ -46,7 +48,7 @@ def test_invalid_run_budget_is_fail_closed() -> None:
         launch_gate._verify_budget({"budget": {"max_wall_minutes": 10}})
 
 
-def test_envelope_hash_signature_and_source_config_binding(
+def test_envelope_hash_signature_source_config_and_binding(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     request = {
@@ -97,6 +99,26 @@ def test_envelope_hash_signature_and_source_config_binding(
         expected_binding={"workflow": "fixture", "scale": "500k"},
     )
     assert verified["envelope_sha256"] == envelope["envelope_sha256"]
+
+    with pytest.raises(launch_gate.LaunchGateError, match="bound to another workflow/config"):
+        launch_gate.verify_launch_envelope(
+            tmp_path,
+            request_path,
+            envelope_path,
+            expected_binding={"workflow": "fixture", "scale": "1m"},
+        )
+
+    monkeypatch.setattr(launch_gate, "_git_head", lambda _: "b" * 40)
+    with pytest.raises(launch_gate.LaunchGateError, match="source SHA mismatch"):
+        launch_gate.verify_launch_envelope(tmp_path, request_path, envelope_path)
+    monkeypatch.setattr(launch_gate, "_git_head", lambda _: "a" * 40)
+
+    tampered = dict(envelope)
+    tampered["training_performed"] = True
+    envelope_path.write_text(json.dumps(tampered), encoding="utf-8")
+    with pytest.raises(launch_gate.LaunchGateError, match="hash signature mismatch"):
+        launch_gate.verify_launch_envelope(tmp_path, request_path, envelope_path)
+    envelope_path.write_text(json.dumps(envelope), encoding="utf-8")
 
     request["binding"]["scale"] = "1m"
     request_path.write_text(json.dumps(request), encoding="utf-8")
