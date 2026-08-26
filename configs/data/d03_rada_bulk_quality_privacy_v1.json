@@ -38,6 +38,9 @@
     ],
     "rejected_text_emitted": false,
     "rejected_hashes_emitted": false,
+    "chunking_short_fragments_accounted": true,
+    "chunking_dropped_text_emitted": false,
+    "chunking_dropped_hashes_emitted": false,
     "deterministic_json_serialization": true,
     "self_hashed_report": true,
     "two_clean_builds_required": true

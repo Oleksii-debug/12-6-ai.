@@ -140,6 +140,18 @@ def _validate_config(config: Mapping[str, Any]) -> None:
     _require(output.get("accepted_jsonl_fields") == ACCEPTED_RECORD_FIELDS, "accepted fields drift")
     _require(output.get("rejected_text_emitted") is False, "rejected text emission enabled")
     _require(output.get("rejected_hashes_emitted") is False, "rejected hash emission enabled")
+    _require(
+        output.get("chunking_short_fragments_accounted") is True,
+        "chunking short-fragment accounting disabled",
+    )
+    _require(
+        output.get("chunking_dropped_text_emitted") is False,
+        "chunking-dropped text emission enabled",
+    )
+    _require(
+        output.get("chunking_dropped_hashes_emitted") is False,
+        "chunking-dropped hash emission enabled",
+    )
     for key in (
         "deterministic_json_serialization",
         "self_hashed_report",
@@ -287,20 +299,42 @@ def _parse_parent_records(
     return records
 
 
-def _chunk_text(text: str, *, max_chars: int, min_chars: int) -> tuple[str, ...]:
-    """DATA-228/DATA-181 generic natural-text chunking semantics."""
+def _chunk_text(
+    text: str,
+    *,
+    max_chars: int,
+    min_chars: int,
+) -> tuple[tuple[str, ...], dict[str, int]]:
+    """DATA-228/DATA-181 chunking plus explicit accounting for short drops.
+
+    The inherited mechanics intentionally omit final/overflow fragments shorter
+    than ``min_chars``. Preserve that exact accepted-chunk behavior, but report
+    the omitted fragment count/characters/UTF-8 bytes so downstream capacity and
+    loss accounting cannot mistake silent chunking loss for fully classified
+    quality/privacy coverage.
+    """
     _require(max_chars >= min_chars >= 20, "invalid chunk limits")
     paragraphs = [part.strip() for part in text.split("\n") if part.strip()]
     chunks: list[str] = []
     current: list[str] = []
     current_len = 0
+    dropped_short_fragment_count = 0
+    dropped_short_fragment_chars = 0
+    dropped_short_fragment_bytes = 0
 
     def flush() -> None:
         nonlocal current, current_len
+        nonlocal dropped_short_fragment_count
+        nonlocal dropped_short_fragment_chars
+        nonlocal dropped_short_fragment_bytes
         if current:
             value = "\n".join(current).strip()
             if len(value) >= min_chars:
                 chunks.append(value)
+            elif value:
+                dropped_short_fragment_count += 1
+                dropped_short_fragment_chars += len(value)
+                dropped_short_fragment_bytes += len(value.encode("utf-8"))
             current = []
             current_len = 0
 
@@ -331,7 +365,11 @@ def _chunk_text(text: str, *, max_chars: int, min_chars: int) -> tuple[str, ...]
             current.append(piece)
             current_len += needed
     flush()
-    return tuple(chunks)
+    return tuple(chunks), {
+        "short_fragment_count": dropped_short_fragment_count,
+        "short_fragment_chars": dropped_short_fragment_chars,
+        "short_fragment_bytes": dropped_short_fragment_bytes,
+    }
 
 
 def _quality_reason(
@@ -383,13 +421,19 @@ def materialize_quality_privacy_candidate(
     rejected_reasons: Counter[str] = Counter()
     zero_chunk_parent_count = 0
     total_chunks = 0
+    chunking_dropped_short_fragment_count = 0
+    chunking_dropped_short_fragment_chars = 0
+    chunking_dropped_short_fragment_bytes = 0
 
     for parent in records:
-        chunks = _chunk_text(
+        chunks, chunking_stats = _chunk_text(
             parent["text"],
             max_chars=int(chunking["max_chars"]),
             min_chars=int(chunking["min_chars"]),
         )
+        chunking_dropped_short_fragment_count += chunking_stats["short_fragment_count"]
+        chunking_dropped_short_fragment_chars += chunking_stats["short_fragment_chars"]
+        chunking_dropped_short_fragment_bytes += chunking_stats["short_fragment_bytes"]
         if not chunks:
             zero_chunk_parent_count += 1
         for chunk_index, chunk in enumerate(chunks):
@@ -433,7 +477,13 @@ def materialize_quality_privacy_candidate(
     exact_duplicate_observations = len(accepted_hashes) - len(set(accepted_hashes))
     accepted_bytes = sum(int(row["normalized_bytes"]) for row in accepted)
     rejected_count = sum(rejected_reasons.values())
-    _require(total_chunks == len(accepted) + rejected_count, "chunk accounting mismatch")
+    _require(total_chunks == len(accepted) + rejected_count, "quality chunk accounting mismatch")
+    candidate_fragment_count = total_chunks + chunking_dropped_short_fragment_count
+    _require(
+        candidate_fragment_count
+        == len(accepted) + rejected_count + chunking_dropped_short_fragment_count,
+        "end-to-end fragment accounting mismatch",
+    )
 
     report: dict[str, Any] = {
         "schema_version": REPORT_SCHEMA,
@@ -459,10 +509,16 @@ def materialize_quality_privacy_candidate(
             "zero_chunk_parent_count": zero_chunk_parent_count,
         },
         "filter_result": {
+            "candidate_fragment_count": candidate_fragment_count,
             "total_chunks": total_chunks,
             "accepted_chunk_count": len(accepted),
             "rejected_chunk_count": rejected_count,
             "rejection_reasons": dict(sorted(rejected_reasons.items())),
+            "chunking_dropped_short_fragment_count": chunking_dropped_short_fragment_count,
+            "chunking_dropped_short_fragment_chars": chunking_dropped_short_fragment_chars,
+            "chunking_dropped_short_fragment_bytes": chunking_dropped_short_fragment_bytes,
+            "chunking_dropped_text_emitted": False,
+            "chunking_dropped_hashes_emitted": False,
             "accepted_bytes_observed_not_credited": accepted_bytes,
             "accepted_jsonl_sha256": _sha256(accepted_jsonl),
             "accepted_inventory_sha256": inventory_hasher.hexdigest(),
@@ -545,6 +601,9 @@ def main() -> int:
                 "status": "PASS_QUALITY_PRIVACY_FILTERED_CANDIDATE_ONLY",
                 "accepted_chunk_count": report["filter_result"]["accepted_chunk_count"],
                 "rejected_chunk_count": report["filter_result"]["rejected_chunk_count"],
+                "chunking_dropped_short_fragment_count": report["filter_result"][
+                    "chunking_dropped_short_fragment_count"
+                ],
                 "accepted_bytes_observed_not_credited": report["filter_result"][
                     "accepted_bytes_observed_not_credited"
                 ],
