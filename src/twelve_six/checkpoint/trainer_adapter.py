@@ -231,7 +231,7 @@ def _preflight_trainer_target(trainer: Any) -> None:
         raise CheckpointCompatibilityError(
             "checkpoint restore requires a fresh trainer; target trainer is poisoned"
         )
-    if getattr(trainer, "_update_incomplete") is True:
+    if getattr(trainer, "_update_incomplete"):
         raise CheckpointCompatibilityError(
             "checkpoint restore requires a fresh trainer; target trainer has an incomplete update"
         )
