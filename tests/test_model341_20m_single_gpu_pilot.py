@@ -7,12 +7,18 @@ from twelve_six.model import load_stage_config
 
 ROOT = Path(__file__).resolve().parents[1]
 RUN = ROOT / "configs/runs/model341_20m.single_gpu_pilot.experimental.json"
+SERIOUS = ROOT / "configs/runs/model341_20m_serious.blocked.json"
+CORPUS = ROOT / "configs/data/corpus_v01.json"
 EXPECTED_MODEL_SHA = "fbff24d561a2818453554d58ca23fc6ace3303b078f1935a8576c4565bd92441"
 EXPECTED_INIT_SHA = "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5"
 
 
 def _payload() -> dict:
     return json.loads(RUN.read_text(encoding="utf-8"))
+
+
+def _serious() -> dict:
+    return json.loads(SERIOUS.read_text(encoding="utf-8"))
 
 
 def test_model341_20m_pilot_binds_exact_candidate() -> None:
@@ -55,3 +61,30 @@ def test_model341_20m_pilot_matches_incumbent_runner_contract() -> None:
     assert pilot["microbatch_size"] >= 1
     assert 2 <= pilot["sequence_length"] <= stage.model.max_seq_len
     assert trainer["precision"] in {"fp16", "bf16"}
+
+
+def test_model341_20m_serious_target_is_parameter_scaled_and_fail_closed() -> None:
+    payload = _serious()
+    stage = load_stage_config(ROOT / payload["stage_config"])
+
+    assert payload["parameter_count"] == stage.model.parameter_count() == 20_613_440
+    assert payload["sizing_basis"]["tokens_per_parameter"] == 20
+    assert payload["target_training_byte_tokens"] == payload["parameter_count"] * 20
+    assert payload["launch_state"] == "BLOCKED_NOT_AUTHORIZED"
+    assert payload["compute_authorized"] is False
+    assert payload["paid_compute_authorized"] is False
+    assert payload["capability_claim_allowed"] is False
+    assert payload["launch_blockers"]
+
+
+def test_corpus_v01_target_is_not_misrepresented_as_serious_20m_scale() -> None:
+    serious = _serious()
+    corpus = json.loads(CORPUS.read_text(encoding="utf-8"))
+    corpus_target = sum(corpus["target_train_byte_tokens"].values())
+
+    assert corpus_target == 20_000_000
+    assert serious["current_corpus_v01_target_byte_tokens"] == corpus_target
+    assert serious["minimum_capacity_gap_vs_corpus_v01_target"] == (
+        serious["target_training_byte_tokens"] - corpus_target
+    )
+    assert serious["target_training_byte_tokens"] > corpus_target * 20
