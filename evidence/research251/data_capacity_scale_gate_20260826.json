@@ -1,0 +1,188 @@
+{
+  "authority": {
+    "latest_external_real_registry": {
+      "head_sha": "90bc0b7f8b696ec35202532b13edf6ab29a662fe",
+      "pr": 369,
+      "registry_identity_sha256": "1357a343eb4ea973950d8991913109cbea53fe4fa891f0be9745ab497eb59486",
+      "worker": "DATA-229"
+    },
+    "learned_ladder": {
+      "head_sha": "66b6c432f78042565bc09aaca5b3d4a95a3f358d",
+      "pr": 358,
+      "worker": "MILESTONE-221-LEARNED-LADDER-V3"
+    },
+    "terminal_external_real_research_corpus": "ABSENT_NO_TERMINAL_DATA230_OR_MILESTONE238",
+    "terminal_train_corpus": {
+      "identity_sha256": "422f545da93526ceba2c0ff738e0b9deac65f35bfb31d87d2aab068cda091fc8",
+      "pr": 210,
+      "worker": "DATA-25-CORPUS-V01"
+    }
+  },
+  "current_data": {
+    "external_real_training_corpus_authority": false,
+    "latest_external_real_family_bytes": {
+      "en.standardebooks.manual": 84793,
+      "ua.rada.open-data.laws-texts": 88565
+    },
+    "latest_external_real_family_share": {
+      "en.standardebooks.manual": 0.4891207789660702,
+      "ua.rada.open-data.laws-texts": 0.5108792210339298
+    },
+    "latest_external_real_registry_code_source_count": 0,
+    "latest_external_real_registry_normalized_utf8_bytes": 173358,
+    "latest_external_real_registry_source_count": 3,
+    "latest_external_real_registry_source_family_count": 2,
+    "note": "DATA-229 is an immutable snapshot registry, not a terminal assembled research corpus. Its 173,358 normalized bytes are not added to DATA-25 as if one authority.",
+    "terminal_project_authored_by_modality": {
+      "code": 4000220,
+      "en": 7000137,
+      "uk": 9000418
+    },
+    "terminal_project_authored_train_documents": 43238,
+    "terminal_project_authored_train_source_byte_tokens": 20000775
+  },
+  "date_utc": "2026-08-26",
+  "decision": "DATA_LIMITED_BEYOND_10M_SHORT_SCIENCE",
+  "empirical_scaling_evidence": {
+    "learn217_10m": {
+      "boundary": "project-authored DATA-25; this is not external-real representativeness evidence",
+      "corpus_replay": false,
+      "heldout_bpb_by_optimized_tokens": {
+        "1000133": 0.09396947088095904,
+        "1500237": 0.09027367917550246,
+        "2000060": 0.08580920473294919,
+        "500026": 0.10861559077768285
+      },
+      "observed_overfit_onset": "NOT_OBSERVED_THROUGH_2,000,060 UNIQUE/NO-REPLAY LOSS TOKENS; held-out BPB continues to improve",
+      "optimized_loss_tokens": 2000060,
+      "params": 10000640
+    },
+    "m150_equal_budget": {
+      "observed_overfit_onset": "NOT_OBSERVED_THROUGH_948504_TARGETS; best checkpoint is final for all three",
+      "optimized_loss_tokens_per_rung": 948504,
+      "rungs": [
+        {"best_final_bpb": 1.8529853170496395, "best_step": 1000, "params": 95568},
+        {"best_final_bpb": 0.2645455968814711, "best_step": 1000, "params": 467808},
+        {"best_final_bpb": 0.12651757096387536, "best_step": 1000, "params": 1037696}
+      ]
+    }
+  },
+  "evidence_identity_sha256": "ea64452f8610538aa865afdb04ef8744dcb890c499910351d4dc8823c5a9de0b",
+  "global_gate": {
+    "100m": "mechanics may proceed; meaningful learned campaign blocked by at least ~2.5x to 10x quantitative unique-token shortfall versus 50-200M range, plus diversity",
+    "10m": "mechanics and short learned science are supported; meaningful research remains data-limited by external-real diversity and exact whole-corpus unique-loss accounting",
+    "1b": "only mechanics architecture qualification is defensible; meaningful learning requires ~0.625-2.5B unique tokens",
+    "400m": "current 20M source ceiling fits only the lower mechanics band; meaningful science requires ~250M-1B unique tokens",
+    "reason": "The only terminal train corpus has 20,000,775 project-authored source byte tokens; exact whole-corpus unique loss-token supply is not separately published, and no terminal external-real UA/EN/code research corpus exists. DATA-229 has only 2 external-real source families and zero code sources.",
+    "verdict": "DO_NOT_SCALE_PARAMETER_COUNT_FOR_MEANINGFUL_LEARNING_ABOVE_10M_ON_CURRENT_DATA"
+  },
+  "local_free_only": true,
+  "scales": [
+    {
+      "current_execution_verified_unique_loss_token_floor": 2000060,
+      "current_source_tokens_per_parameter": 1.999949503231793,
+      "current_terminal_source_token_ceiling": 20000775,
+      "current_verified_loss_tokens_per_parameter": 0.19999320043517216,
+      "data_limited": true,
+      "data_limited_scope": "meaningful research campaign and full pretraining; mechanics/short scientific work is feasible",
+      "full_pretraining_ambition_range": [50000000, 200000000],
+      "maximum_recommended_exposure_before_uncontrolled_recycling": {
+        "execution_verified_without_replay": 2000060,
+        "hard_source_token_ceiling": 20000775,
+        "policy": "do not exceed one pass; extension above 2,000,060 optimized loss tokens first requires an exact source-position/unique-loss ledger proving no repeated loss positions. Never count padding."
+      },
+      "mechanics_qualification": "already qualified on first-party 10M paths; mechanics alone is not a data-sufficiency claim",
+      "minimum_meaningful_unique_token_range": [5000000, 20000000],
+      "next_missing_corpus_requirement": "terminal external-real UA/EN/code research corpus with real code, multiple independent source families, and an exact no-repeat unique-loss ledger covering at least 5M loss tokens; 20M+ preferred before one-pass saturation studies",
+      "parameter_count": 10000640,
+      "parameter_status": "exact_executed_ModelSpec",
+      "range_basis": "project evidence: 10M is still improving at 0.20 token/parameter; 1M ladder improves through ~0.91 token/parameter. 0.5-2 token/parameter is a decision envelope for a meaningful next campaign, not an optimum; 5-20 token/parameter is planning-only full-pretraining ambition.",
+      "scale": "10M",
+      "short_scientific_training": {"basis": "LEARN-217 terminal no-replay execution", "unique_loss_tokens": 2000060}
+    },
+    {
+      "current_execution_verified_unique_loss_token_floor": 2000060,
+      "current_source_tokens_per_parameter": 0.20021276787430328,
+      "current_terminal_source_token_ceiling": 20000775,
+      "current_verified_loss_tokens_per_parameter": 0.02002110160804664,
+      "data_limited": true,
+      "data_limited_scope": "short scientific upper end, meaningful campaign, and full pretraining",
+      "full_pretraining_ambition_range": [500000000, 2000027648],
+      "maximum_recommended_exposure_before_uncontrolled_recycling": {
+        "execution_verified_without_replay": 2000060,
+        "hard_source_token_ceiling": 20000775,
+        "policy": "do not exceed one pass; extension above 2,000,060 optimized loss tokens first requires an exact source-position/unique-loss ledger proving no repeated loss positions. Never count padding."
+      },
+      "mechanics_qualification": "SCALE-04 defines a 50,003,968-token pilot, but this does not make repeated/project-authored bytes meaningful pretraining data",
+      "minimum_meaningful_unique_token_range": [50000000, 200000000],
+      "next_missing_corpus_requirement": "at least 50-200M exact unique nonignored loss tokens from terminal external-real UA/EN/code data with independent source families; 0.5-2.0B for a larger serious/full campaign, with repetition audited rather than hidden",
+      "parameter_count": 99897600,
+      "parameter_status": "exact_current_SCALE-04_candidate",
+      "range_basis": "lower/meaningful envelope preserves the 0.5-2 token/parameter project decision band; SCALE-04 serious profile is 2,000,027,648 byte tokens (~20 token/parameter), used as a planning endpoint not a universal optimum",
+      "scale": "100M",
+      "short_scientific_training": {"basis": "bounded scientific/pilot envelope; upper end matches SCALE-04 pilot", "unique_loss_tokens_range": [20000000, 50000000]}
+    },
+    {
+      "current_execution_verified_unique_loss_token_floor": 2000060,
+      "current_source_tokens_per_parameter": 0.049949255021743466,
+      "current_terminal_source_token_ceiling": 20000775,
+      "current_verified_loss_tokens_per_parameter": 0.004994881798269729,
+      "data_limited": true,
+      "data_limited_scope": "anything beyond mechanics",
+      "full_pretraining_ambition_range": [2000000000, 8000000000],
+      "maximum_recommended_exposure_before_uncontrolled_recycling": {
+        "execution_verified_without_replay": 2000060,
+        "hard_source_token_ceiling": 20000775,
+        "policy": "do not exceed one pass; extension above 2,000,060 optimized loss tokens first requires an exact source-position/unique-loss ledger proving no repeated loss positions. Never count padding."
+      },
+      "mechanics_qualification": "SCALE-05 explicitly plans 10-50M byte tokens for mechanics",
+      "minimum_meaningful_unique_token_range": [250000000, 1000000000],
+      "next_missing_corpus_requirement": "250M-1B unique no-repeat research tokens for meaningful 400M science; 2-8B diverse external-real tokens for full-pretraining ambition, including real code and multiple independent UA/EN/code source families",
+      "optional_extension_unique_tokens": 12000000000,
+      "parameter_count": 400421888,
+      "parameter_status": "exact_current_SCALE-05_candidate",
+      "range_basis": "directly project-native SCALE-05 schedule: 10-50M mechanics -> ~250M -> up to ~1B serious comparison; after tokenizer selection 2B/4B/8B primary planning, optional 12B only if held-out curves support it",
+      "scale": "400M",
+      "short_scientific_training": {"basis": "SCALE-05 explicit intermediate gate", "unique_loss_tokens": 250000000}
+    },
+    {
+      "current_execution_verified_unique_loss_token_floor": 2000060,
+      "current_source_tokens_per_parameter": 0.020000775,
+      "current_terminal_source_token_ceiling": 20000775,
+      "current_verified_loss_tokens_per_parameter": 0.00200006,
+      "data_limited": true,
+      "data_limited_scope": "short scientific training, meaningful campaign, and full pretraining; only mechanics qualification is currently defensible",
+      "full_pretraining_ambition_range": [5000000000, 20000000000],
+      "maximum_recommended_exposure_before_uncontrolled_recycling": {
+        "execution_verified_without_replay": 2000060,
+        "hard_source_token_ceiling": 20000775,
+        "policy": "do not exceed one pass; extension above 2,000,060 optimized loss tokens first requires an exact source-position/unique-loss ledger proving no repeated loss positions. Never count padding."
+      },
+      "mechanics_qualification": "25-125M unique-token equivalent is a linear token/parameter extrapolation of SCALE-05's 400M mechanics band; mechanics may instead use bounded synthetic fixtures and must not be called pretraining",
+      "minimum_meaningful_unique_token_range": [625000000, 2500000000],
+      "next_missing_corpus_requirement": "at least ~0.625-2.5B unique diverse external-real loss tokens before a meaningful 1B learned campaign; 5-20B for full-pretraining ambition, with corpus quality/diversity and held-out curves controlling any extension",
+      "parameter_count": 1000000000,
+      "parameter_status": "nominal_planning_scale_no_exact_1B_ModelSpec_located",
+      "range_basis": "explicit extrapolation of the project's 400M token/parameter gates (not an empirical 1B optimum): ~0.625-2.5 token/parameter meaningful science and 5-20 token/parameter full-pretraining planning",
+      "scale": "1B",
+      "short_scientific_training": {"basis": "linear 1B extrapolation of SCALE-05 ~250M/400M intermediate gate", "unique_loss_tokens": 625000000}
+    }
+  ],
+  "schema": "12-6.research251-data-capacity-scale-gate.v1",
+  "tier_definitions": {
+    "full_pretraining_ambition": "planning-scale scratch pretraining; ranges are project planning envelopes and held-out-curve controlled, not claimed universal optima",
+    "meaningful_learned_campaign": "enough unique data to compare a scale scientifically without the result being dominated by immediate data starvation; must also meet source-family diversity",
+    "mechanics_qualification": "prove construction, optimization, memory/checkpoint/inference mechanics; may use bounded fixtures and must not be advertised as learned quality",
+    "short_scientific_training": "bounded learned trajectory sufficient to observe optimization/quality direction, not a pretraining claim"
+  },
+  "training_executed": false,
+  "unique_loss_token_accounting": {
+    "padded_tokens_count_as_data": false,
+    "policy": "Use 2,000,060 as the execution-proven unique-loss floor and 20,000,775 as a source-token upper ceiling, not as an already-proven exact loss-token count.",
+    "proof": "LEARN-217 reports optimized_tokens=2,000,060, corpus_replay=false, fraction_of_one_train_corpus=0.0999991250, and token accounting as actual labels[:,1:] != -100.",
+    "strongest_execution_verified_no_replay_unique_loss_tokens": 2000060,
+    "terminal_source_token_ceiling": 20000775,
+    "whole_DATA25_exact_unique_loss_token_count_published": false
+  },
+  "worker_id": "RESEARCH-251-DATA-CAPACITY-SCALE-GATE"
+}
