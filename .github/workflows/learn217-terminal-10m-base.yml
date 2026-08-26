@@ -95,35 +95,38 @@ jobs:
             tests/test_scale141_memorization.py \
             tests/test_scale141_recovery.py
 
-      - name: Materialize and bind DATA tokenizer model identities
+      - name: Materialize exact DATA tokenizer model and run identities
         run: |
           set -euo pipefail
           .scale141/bin/python - <<'PY'
           import json
+          import os
           from pathlib import Path
-          from twelve_six.milestone100_first_learned import EXPECTED_CORPUS_ID, _build_corpus
           from twelve_six import scale141_10m_continuation as core
+          from twelve_six import scale141_10m_runtime_v2 as v2
+          from twelve_six import scale141_10m_runtime_v3 as v3
 
           repo = Path('.').resolve()
           out = Path('scale141-evidence').resolve()
           out.mkdir(parents=True, exist_ok=True)
-          manifest = _build_corpus(repo, out)
-          if manifest['corpus_identity_sha256'] != EXPECTED_CORPUS_ID:
-              raise SystemExit('DATA-25 corpus identity mismatch')
-          manifest2, tok, spec, init_spec, cfg, locks, run = core._common(repo, __import__('os').environ['EXPECTED_SOURCE_SHA'], out, False)
-          if manifest2['corpus_identity_sha256'] != __import__('os').environ['EXPECTED_CORPUS_ID']:
+          v3._install()
+          v2._install_runtime_contract()
+          manifest, tok, spec, init_spec, cfg, locks, run = core._common(
+              repo, os.environ['EXPECTED_SOURCE_SHA'], out, True
+          )
+          if manifest['corpus_identity_sha256'] != os.environ['EXPECTED_CORPUS_ID']:
               raise SystemExit('SCALE-141 DATA identity mismatch')
-          if spec.parameter_count() != int(__import__('os').environ['EXPECTED_PARAMETER_COUNT']):
+          if spec.parameter_count() != int(os.environ['EXPECTED_PARAMETER_COUNT']):
               raise SystemExit('S3 parameter count mismatch')
-          if spec.identity_sha256() != __import__('os').environ['EXPECTED_MODEL_SPEC_SHA256']:
+          if spec.identity_sha256() != os.environ['EXPECTED_MODEL_SPEC_SHA256']:
               raise SystemExit('S3 ModelSpec identity mismatch')
           if tok.identity.version != 's0-byte-v1' or tok.identity.vocab_size != 256:
               raise SystemExit('canonical byte tokenizer mismatch')
-          if run['identity_sha256'] == '':
+          if not isinstance(run.get('identity_sha256'), str) or len(run['identity_sha256']) != 64:
               raise SystemExit('run identity missing')
           proof = {
-              'source_sha': __import__('os').environ['EXPECTED_SOURCE_SHA'],
-              'corpus_identity_sha256': manifest2['corpus_identity_sha256'],
+              'source_sha': os.environ['EXPECTED_SOURCE_SHA'],
+              'corpus_identity_sha256': manifest['corpus_identity_sha256'],
               'tokenizer_version': tok.identity.version,
               'tokenizer_config_sha256': tok.identity.config_sha256,
               'tokenizer_vocab_sha256': tok.identity.vocab_sha256,
@@ -132,7 +135,9 @@ jobs:
               'init_spec_sha256': init_spec.identity_sha256(),
               'run_identity_sha256': run['identity_sha256'],
           }
-          (out / 'learn217-identity-preflight.json').write_text(json.dumps(proof, sort_keys=True, indent=2) + '\n', encoding='utf-8')
+          (out / 'learn217-identity-preflight.json').write_text(
+              json.dumps(proof, sort_keys=True, indent=2) + '\n', encoding='utf-8'
+          )
           print(json.dumps(proof, sort_keys=True, indent=2))
           PY
 
@@ -208,7 +213,8 @@ jobs:
             --source-sha "$EXPECTED_SOURCE_SHA" \
             --output-dir scale141-evidence
           .scale141/bin/python - <<'PY'
-          import json, os
+          import json
+          import os
           from pathlib import Path
           v = json.loads(Path('scale141-evidence/fresh-verification.json').read_text(encoding='utf-8'))
           if v['fresh_verification']['status'] != 'PASS':
@@ -227,7 +233,8 @@ jobs:
         run: |
           set -euo pipefail
           .scale141/bin/python - <<'PY'
-          import json, shutil
+          import json
+          import shutil
           from pathlib import Path
           from twelve_six.checkpoint import verify_checkpoint
           from twelve_six.scale141_recovery import resolve_recovery_generation
@@ -289,7 +296,9 @@ jobs:
               'tokens_seen': current.reference['tokens_seen'],
               'pointer_sha256': current.reference['pointer_sha256'],
           }
-          (retained / 'index.json').write_text(json.dumps(index, sort_keys=True, indent=2) + '\n', encoding='utf-8')
+          (retained / 'index.json').write_text(
+              json.dumps(index, sort_keys=True, indent=2) + '\n', encoding='utf-8'
+          )
           print(json.dumps(index, sort_keys=True, indent=2))
           PY
 
@@ -314,13 +323,13 @@ jobs:
               'ua_bpb': final['heldout']['by_modality']['uk']['bits_per_byte'],
               'en_bpb': final['heldout']['by_modality']['en']['bits_per_byte'],
               'code_bpb': final['heldout']['by_modality']['code']['bits_per_byte'],
-              'train_probe_bpb': final['training_probe']['bits_per_byte'],
-              'gradient_norm_mean': final['training_interval'].get('gradient_norm_mean'),
-              'gradient_norm_p95': final['training_interval'].get('gradient_norm_p95'),
+              'train_probe_bpb': final['train_probe']['bits_per_byte'],
+              'grad_norm_mean': final['training_interval'].get('grad_norm_mean'),
+              'grad_norm_p95': final['training_interval'].get('grad_norm_p95'),
               'clip_rate': final['training_interval'].get('clip_rate'),
-              'update_weight_ratio': final['training_interval'].get('relative_update_mean'),
+              'update_weight_ratio': final['training_interval'].get('scheduled_step_relative_update_norm'),
               'throughput_tokens_per_second': final['training_interval'].get('train_tokens_per_second_mean'),
-              'memory_rss_bytes': final['training_interval'].get('rss_bytes_max'),
+              'memory_rss_peak_bytes': final['training_interval'].get('rss_peak_bytes'),
               'fresh_process_resume': r['fresh_process_resume'],
               'best_target_optimized_tokens': v['best_target_optimized_tokens'],
               'best_checkpoint_id': retained['roles']['best']['checkpoint_id'],
@@ -328,7 +337,7 @@ jobs:
               'fresh_verification': v['fresh_verification']['status'],
               'ladder_common_evaluation_identity': v['ladder_common_evaluation']['identity']['identity_sha256'],
               'memorization': final['memorization'],
-              'generalization_gap': final['memorization'].get('generalization_gap_bits_per_byte'),
+              'generalization_gap_bits_per_byte': final['memorization'].get('heldout_minus_train_bits_per_byte'),
               'report_sha256': r['report_sha256'],
               'fresh_verification_sha256': v['identity_sha256'],
               'retained_recovery': retained['recovery'],
@@ -336,7 +345,9 @@ jobs:
               'foreign_weights': False,
               'sft_rlhf_dpo': False,
           }
-          Path('scale141-evidence/learn217-terminal-summary.json').write_text(json.dumps(summary, sort_keys=True, indent=2) + '\n', encoding='utf-8')
+          Path('scale141-evidence/learn217-terminal-summary.json').write_text(
+              json.dumps(summary, sort_keys=True, indent=2) + '\n', encoding='utf-8'
+          )
           print(json.dumps(summary, sort_keys=True, indent=2))
           PY
 
