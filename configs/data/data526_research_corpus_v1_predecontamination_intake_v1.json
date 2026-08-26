@@ -1,0 +1,107 @@
+{
+  "schema_version": "12-6.data526-research-corpus-v1-predecontamination-intake.v1",
+  "worker_id": "DATA526-RESEARCH-CORPUS-V1-PREDECONTAMINATION-INTAKE",
+  "issue": 526,
+  "execution_profile": "LOCAL_FREE",
+  "status": "BLOCKED_WAIT_SOURCE_CONVERGENCE",
+  "model_training_executed": false,
+  "tokenizer_fit_executed": false,
+  "paid_compute_used": false,
+  "final_test_payload_read": false,
+  "corpus_or_shards_promoted": false,
+  "source_convergence_dependency": {
+    "canonical_issue": 530,
+    "canonical_pr": 538,
+    "branch": "next100-063/canonical-source-registry-convergence-20260826",
+    "head_sha": "94dce83cbe611144f961b9f93b3be273345a7f62",
+    "base_sha": "b0523ccbc4b957615aac849d476cfa851be87578",
+    "candidate_registry_identity_sha256": "77fb69c558df8c59fdae00583c955c62ad088cda98fd16b335eedb26fb2d7526",
+    "candidate_decision": "CONVERGED_TERMINAL_SOURCE_VECTOR_PRE_GLOBAL_DEDUP_NOT_CORPUS_FREEZE",
+    "candidate_normalized_bytes": 565743,
+    "candidate_independent_family_count": 13,
+    "candidate_source_authority_count": 14,
+    "candidate_by_stratum": {
+      "uk": {
+        "normalized_bytes": 100856,
+        "family_count": 4
+      },
+      "en": {
+        "normalized_bytes": 168544,
+        "family_count": 4
+      },
+      "code": {
+        "normalized_bytes": 296343,
+        "family_count": 5
+      }
+    },
+    "terminal_required": true,
+    "terminal_at_cutoff": false,
+    "pr_state_at_cutoff": "OPEN_DRAFT",
+    "exact_head_terminal_verification_claimed": false,
+    "observed_generic_ci": {
+      "run_id": 33005434232,
+      "name": "CI",
+      "status_at_cutoff": "queued",
+      "conclusion_at_cutoff": null,
+      "accepted_as_terminal_authority": false
+    },
+    "consumed_as_authority": false
+  },
+  "incumbent_lineage_reference": {
+    "data300": {
+      "head_sha": "8ea7f830e50a23754d189dd4134f4afad76a7ee9",
+      "contract_identity_sha256": "07d7beaaff4616e839450de6af3d407855c832bf75a24a959d1a12de5d9364e5"
+    },
+    "data301": {
+      "head_sha": "8820ba1b255f6bb95c7db0531fd846078a1aae01",
+      "evidence_identity_sha256": "939065abeefff8aed924415589608ff3fc721fe4b0a57fc200146a4b6a137e81",
+      "terminal_state": "TERMINAL_BLOCKED",
+      "corpus_identity": null,
+      "shard_identity": null
+    },
+    "data287": {
+      "head_sha": "b0523ccbc4b957615aac849d476cfa851be87578",
+      "registry_identity_sha256": "917e9bc31b2fa040d25e807ae3c01aa2cce32420752a891caacfb6c830e6632c"
+    },
+    "note": "Lineage is reference-only. DATA526 consumes late-source composition only through a terminal canonical NEXT100-063 successor; it must not reconstruct a stale subset from earlier PR prose."
+  },
+  "predecontamination_candidate_manifest": {
+    "materialized": false,
+    "source_object_ids": [],
+    "family_ids": [],
+    "content_hashes": [],
+    "rights_purpose_decisions": [],
+    "normalization_identities": [],
+    "composite_identity_sha256": null
+  },
+  "fail_closed_contract": {
+    "direct_late_source_hardcoding_allowed": false,
+    "pending_nonterminal_source_credit_allowed": false,
+    "replay_or_duplication_for_quota_repair_allowed": false,
+    "decontamination_against_moving_registry_allowed": false,
+    "tokenizer_fit_before_exact_corpus_allowed": false,
+    "long_training_before_terminal_corpus_allowed": false,
+    "paid_compute_without_explicit_authorization_allowed": false
+  },
+  "activation_requirements": [
+    "canonical NEXT100-063 exact successor head is terminal and its terminal authority is explicit",
+    "the exact terminal source-authority registry identity is frozen at the DATA526 composition cutoff",
+    "every admitted training object has an exact source object id, family id, content hash, rights-purpose decision, and normalization identity",
+    "pending RETEST PROBE queued conditional or PR-text-only sources receive zero credit",
+    "candidate-set composite identity is computed only after the complete immutable object inventory is materialized"
+  ],
+  "handoff": {
+    "current_next_action": "WAIT_CANONICAL_NEXT100_063_TERMINAL_THEN_MATERIALIZE_PREDECONTAMINATION_MANIFEST",
+    "after_activation": "RESERVED_EVALUATION_EXACT_NEAR_MATCH_DECONTAMINATION",
+    "training_authorized_now": false,
+    "tokenizer_fit_authorized_now": false,
+    "decontamination_authorized_now": false
+  },
+  "claim_boundary": {
+    "research_corpus_v1_released": false,
+    "candidate_corpus_identity_claimed": false,
+    "post_dedup_capacity_claimed": false,
+    "unique_loss_positions_claimed": false,
+    "learned_20m_checkpoint_claimed": false
+  }
+}
