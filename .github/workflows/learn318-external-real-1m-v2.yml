@@ -1,0 +1,68 @@
+name: LEARN-318 External Real 1M V2 Authority Gate
+
+on:
+  pull_request:
+    branches: [data300/corpus-v03-frozen-build-contract-20260826]
+  workflow_dispatch:
+
+concurrency:
+  group: learn318-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  authority-gate:
+    runs-on: ubuntu-24.04
+    env:
+      PYTHONPATH: src:.
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+
+      - name: Universal exact bootstrap
+        uses: ./.github/actions/execution-bootstrap
+        with:
+          capabilities: runtime,tests
+          venv: .learn318
+          command: python -m pytest -q tests/test_learn318_authority_gate.py
+          manifest: learn318-environment.json
+
+      - name: Validate independent contract reconstruction
+        run: |
+          set -euo pipefail
+          .learn318/bin/python tools/validate_learn318_authority_gate.py \
+            evidence/learn318/authority-gate.json \
+            configs/data/data300_corpus_v03_frozen_build_contract_v2.json
+
+      - name: Prove zero-budget fail-closed execution
+        run: |
+          set -euo pipefail
+          .learn318/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path("evidence/learn318/authority-gate.json").read_text())
+          assert report["execution"]["training_started"] is False
+          assert report["execution"]["optimizer_updates"] == 0
+          assert report["budget_preregistration"]["realized_optimized_target_budget"] == 0
+          assert report["execution"]["bpb_metrics_available"] is False
+          print("LEARN318_BLOCKED_AS_DESIGNED_NO_TRAINING")
+          PY
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: learn318-authority-gate
+          path: |
+            evidence/learn318/authority-gate.json
+            learn318-environment.json
+            docs/LEARN318_EXTERNAL_REAL_1M_V2.md
+          if-no-files-found: error
+          retention-days: 30
