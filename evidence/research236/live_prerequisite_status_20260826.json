@@ -1,7 +1,11 @@
 {
   "authorities": {
+    "data230_corpus_identity": null,
     "data230_present": false,
-    "eval233_present": false
+    "data230_selection_validation_identity": null,
+    "eval233_final_test_identity": null,
+    "eval233_present": false,
+    "eval233_selection_validation_identity": null
   },
   "blockers": [
     "data230:missing:DATA-230-CORPUS-V03-EXTERNAL-REAL",
@@ -46,7 +50,7 @@
     "source_loss_token_repetition_allowed": false,
     "tokenizer": "s0-byte-v1"
   },
-  "report_sha256": "0d370bbe49823ebacd5e101e415294d7d232aa300e1006d639ae126890578580",
+  "report_sha256": "e66ae4e246eb999644ec00413812198a27277d84eef76bb3a0d72774acbec8ec",
   "repository": "Oleksii-debug/12-6-ai.",
   "schema": "12-6.research236-prerequisite-gate.v1",
   "source_sha": "6afaf5889f9898037b53e8b0bc2b731d77782111",
