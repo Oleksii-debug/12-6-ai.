@@ -1,14 +1,15 @@
 from __future__ import annotations
 
-from typing import Any, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 from .contracts import (
+    CONVERGENCE_WORKER_ID,
+    DATASET_CLASSIFICATION,
     AcceptanceError,
     BaseCorpusBoundaryError,
-    CONVERGENCE_WORKER_ID,
     CriticAdapter,
     CriticReview,
-    DATASET_CLASSIFICATION,
     DatasetCuratorAdapter,
     DatasetRecord,
     Decision,
