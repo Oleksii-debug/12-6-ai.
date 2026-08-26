@@ -1,9 +1,11 @@
 name: NEXT100-038 MDN Source Authority
 
 on:
-  push:
-    branches:
-      - next100-038/mdn-prose-source-authority-20260826
+  pull_request:
+    paths:
+      - tools/qualify_next100_038_mdn.py
+      - evidence/next100_038/mdn_source_authority.v1.json
+      - .github/workflows/next100-038-mdn-source-authority.yml
 
 permissions:
   contents: read
