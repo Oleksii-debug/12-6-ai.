@@ -82,10 +82,10 @@ def test_numpy_materializer_rejects_git_blob_rebinding(monkeypatch: pytest.Monke
         {
             "path": "numpy/_core/demo.py",
             "git_blob_sha1": "0" * 40,
-            "raw_bytes": 12,
+            "raw_bytes": 11,
         }
     ]
-    spec["exact_capacity_bytes"] = 12
+    spec["exact_capacity_bytes"] = 11
     monkeypatch.setattr(v6.v5.v1, "fetch_exact_source", lambda _: b"print('x')\n")
     with pytest.raises(v6.CrossSourceV6Error, match="NumPy Git blob drift"):
         v6._materialize_numpy(spec)
