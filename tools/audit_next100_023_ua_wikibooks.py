@@ -69,10 +69,6 @@ def percentile(sorted_values: list[int], fraction: float) -> int:
     return sorted_values[index]
 
 
-def children(page: ET.Element, name: str):
-    return page.findall(f"{{*}}{name}")
-
-
 def child_text(parent: ET.Element, name: str, default: str = "") -> str:
     node = parent.find(f"{{*}}{name}")
     return default if node is None or node.text is None else node.text
@@ -216,7 +212,7 @@ def audit_dump(dump_path: Path) -> tuple[dict, list[dict]]:
         },
         "provenance_risk": {
             "pages_with_possible_import_or_attribution_markers": marker_pages,
-            "page_history_contributor_lists_materialized": false,
+            "page_history_contributor_lists_materialized": False,
             "imported_text_additional_attribution_completeness": "NOT_PROVEN",
         },
         "family_lineage": {
