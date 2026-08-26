@@ -17,6 +17,8 @@ from .core import (
     CheckpointCompatibilityError,
     CheckpointIdentity,
     LoadResult,
+    _decode_verified_state,
+    _preflight_optimizer_state,
     load_verified_checkpoint,
     prepare_checkpoint_load,
     save_checkpoint,
@@ -100,6 +102,68 @@ def _assert_bound_metadata(
         raise CheckpointCompatibilityError(f"checkpoint canonical binding mismatch: {mismatches}")
 
 
+def _preflight_trainer_state(trainer: Any, state: Any) -> None:
+    """Validate trainer-owned resume state before checkpoint model mutation.
+
+    ``Trainer.load_state_dict`` correctly rejects invalid counters/configuration,
+    but the adapter used to call it only after model weights had already been
+    restored. This mirrors those fail-closed checks and reuses D05 optimizer
+    geometry validation so a bad trainer-owned AdamW/SGD state cannot partially
+    restore a live model before failing.
+    """
+
+    if not isinstance(state, Mapping):
+        raise CheckpointCompatibilityError("checkpoint trainer state must be a mapping")
+
+    for field in ("micro_step", "optimizer_step", "tokens_seen"):
+        value = state.get(field)
+        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+            raise CheckpointCompatibilityError(
+                f"trainer {field} must be a non-negative integer"
+            )
+
+    live_config = getattr(trainer, "config", None)
+    if is_dataclass(live_config) and not isinstance(live_config, type):
+        live_config = asdict(live_config)
+    elif hasattr(live_config, "model_dump"):
+        live_config = live_config.model_dump(mode="python")
+
+    checkpoint_config = state.get("config")
+    if live_config is not None and checkpoint_config != live_config:
+        raise CheckpointCompatibilityError("trainer config mismatch; refusing unsafe resume")
+
+    if isinstance(live_config, Mapping):
+        accumulation = live_config.get("gradient_accumulation_steps")
+        max_steps = live_config.get("max_steps")
+        if isinstance(accumulation, int) and not isinstance(accumulation, bool) and accumulation > 0:
+            expected_micro_steps = state["optimizer_step"] * accumulation
+            if state["micro_step"] != expected_micro_steps:
+                raise CheckpointCompatibilityError(
+                    "checkpoint is not at a complete committed accumulation boundary: "
+                    f"micro_step={state['micro_step']}, expected={expected_micro_steps}"
+                )
+        if (
+            isinstance(max_steps, int)
+            and not isinstance(max_steps, bool)
+            and state["optimizer_step"] > max_steps
+        ):
+            raise CheckpointCompatibilityError(
+                "checkpoint optimizer_step exceeds configured max_steps"
+            )
+
+    optimizer = getattr(trainer, "optimizer", None)
+    if optimizer is None:
+        raise CheckpointCompatibilityError(
+            "trainer must expose optimizer for checkpoint resume preflight"
+        )
+    _preflight_optimizer_state(optimizer, state.get("optimizer"))
+
+    scheduler = getattr(trainer, "scheduler", None)
+    checkpoint_scheduler = state.get("scheduler")
+    if (checkpoint_scheduler is None) != (scheduler is None):
+        raise CheckpointCompatibilityError("scheduler state/config mismatch")
+
+
 def save_trainer_checkpoint(
     directory: str | Path,
     *,
@@ -145,9 +209,9 @@ def load_trainer_checkpoint(
 ) -> LoadResult:
     """Verify one exact byte snapshot, bind it, then restore fresh D02 targets.
 
-    The canonical nested identity checks and the actual load consume the same
-    verified byte snapshot. The source directory is never re-opened between
-    run-binding verification and model mutation.
+    The canonical nested identity checks, trainer-state preflight, and actual load
+    consume the same verified byte snapshot. The source directory is never
+    re-opened between run-binding verification and model mutation.
     """
 
     if not hasattr(trainer, "load_state_dict"):
@@ -164,6 +228,13 @@ def load_trainer_checkpoint(
         expected_environment_lock_hash=expected_environment_lock_hash,
         expected_seed=expected_seed,
     )
+
+    # The trainer owns optimizer/scheduler/counter state, so validate that exact
+    # decoded snapshot before load_verified_checkpoint is allowed to touch model
+    # weights. This closes the same deferred optimizer-failure class for the
+    # production Trainer adapter path used by long-running campaigns.
+    _, combined_state = _decode_verified_state(verified)
+    _preflight_trainer_state(trainer, combined_state.get("trainer"))
 
     result = load_verified_checkpoint(
         verified,
