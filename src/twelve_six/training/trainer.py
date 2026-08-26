@@ -178,8 +178,13 @@ class Trainer:
         self._failure_reason: str | None = None
         self.optimizer.zero_grad(set_to_none=True)
 
-    @staticmethod
-    def _configure_determinism(config: TrainerConfig) -> None:
+    def _configure_determinism(self, config: TrainerConfig) -> None:
+        if not hasattr(self, "precision_runtime"):
+            self.precision_runtime = resolve_precision_runtime(
+                config.precision,
+                self.device,
+            )
+            validate_master_weight_semantics(self.model, self.precision_runtime)
         random.seed(config.seed)
         torch.manual_seed(config.seed)
         if torch.cuda.is_available():
