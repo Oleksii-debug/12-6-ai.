@@ -1,0 +1,101 @@
+{
+  "schema": "12-6.d03-ecfr-versioned-probe.v1",
+  "status": "PROBE_PLANNED_ZERO_CREDIT",
+  "scope": "LOCAL_FREE_DISCOVERY_AND_SUCCESSOR_REQUEST_ONLY",
+  "authority": {
+    "repository": "Oleksii-debug/12-6-ai.",
+    "base_git_sha": "a73ab38026cb7849f478cc13ad58b93534a76e2f",
+    "issue": 672,
+    "observed_at_utc": "2026-08-26T20:06:00Z"
+  },
+  "source": {
+    "source_id": "d03.ecfr.versioned-regulations.v1",
+    "family_id": "us.federal-regulations.ecfr",
+    "stratum": "en",
+    "publisher": "Office of the Federal Register and U.S. Government Publishing Office",
+    "portal": "https://www.ecfr.gov",
+    "api_documentation": "https://www.ecfr.gov/developers/documentation/api/v1",
+    "titles_endpoint": "https://www.ecfr.gov/api/versioner/v1/titles.json",
+    "historical_title_endpoint_template": "https://www.ecfr.gov/api/versioner/v1/full/{date}/title-{title}.xml",
+    "govinfo_developer_hub": "https://www.govinfo.gov/developers",
+    "govinfo_xml_user_guide": "https://www.govinfo.gov/bulkdata/ECFR/resources/ECFR-XML-User-Guide.pdf",
+    "modality": "structured_regulatory_xml",
+    "language": "en",
+    "title_min": 1,
+    "title_max": 50,
+    "reserved_titles_must_be_skipped": true
+  },
+  "versioning": {
+    "mutable_current_endpoint_allowed_for_capacity": false,
+    "point_in_time_date_required": true,
+    "exact_title_required": true,
+    "two_byte_identical_acquisitions_required": true,
+    "sha256_required": true,
+    "byte_count_required": true,
+    "content_type_required": "application/xml",
+    "request_identity_fields": [
+      "date",
+      "title",
+      "url"
+    ]
+  },
+  "rights": {
+    "status": "REVIEW_REQUIRED_BEFORE_ANY_CAPACITY",
+    "primary_reference": "https://www.copyright.gov/title17/92chap1.html",
+    "section": "17 U.S.C. 105",
+    "government_work_rule": "US_GOVERNMENT_WORKS_GENERALLY_NOT_COPYRIGHT_PROTECTED_UNDER_TITLE_17",
+    "blanket_training_permission_claimed": false,
+    "government_can_hold_transferred_copyrights": true,
+    "covered_work_exceptions_exist": true,
+    "third_party_or_contractor_material_requires_separate_basis": true,
+    "incorporated_by_reference_material_requires_separate_basis": true,
+    "images_media_and_external_attachments_require_separate_basis": true,
+    "unknown_provenance_must_be_excluded": true,
+    "issuing_agency_context_must_be_preserved": true
+  },
+  "xml_safety": {
+    "doctype_allowed": false,
+    "external_entities_allowed": false,
+    "network_resolution_during_parse_allowed": false,
+    "archive_or_xml_byte_limit": 134217728,
+    "single_text_node_byte_limit": 8388608
+  },
+  "credit": {
+    "family_credit": 0,
+    "candidate_raw_bytes": 0,
+    "normalized_capacity_credited": 0,
+    "training_authorized_bytes": 0,
+    "training_authorized_loss_positions": 0,
+    "tokenizer_fit_authorized": false,
+    "model_training_authorized": false,
+    "paid_compute_authorized": false,
+    "corpus_release_authorized": false
+  },
+  "required_successors": [
+    "EXACT_POINT_IN_TIME_TITLE_REQUEST",
+    "TWO_BYTE_IDENTICAL_ACQUISITIONS",
+    "RAW_SHA256_AND_BYTE_LEDGER",
+    "RIGHTS_AND_PROVENANCE_CLASSIFICATION",
+    "DETERMINISTIC_XML_EXTRACTION_AND_NORMALIZATION",
+    "QUALITY_AND_PRIVACY_REVIEW",
+    "GLOBAL_EXACT_NEAR_FRAGMENT_AND_LINEAGE_DEDUP",
+    "EVALUATION_RESERVATION_DECONTAMINATION",
+    "FAMILY_CAP_AND_STRATUM_BALANCE_RETEST",
+    "CLUSTER_SAFE_SPLIT",
+    "DETERMINISTIC_SHARD_AND_PACK_TWO_CLEAN_BUILDS",
+    "POST_PACK_UNIQUE_CAUSAL_LOSS_LEDGER",
+    "TOKENIZER_AUTHORIZATION",
+    "CHECKPOINT_AND_EVALUATION_GATES",
+    "EXPLICIT_COMPUTE_AND_TRAINING_AUTHORIZATION"
+  ],
+  "forbidden_claims": [
+    "CURRENT_ECFR_IS_IMMUTABLE",
+    "PUBLIC_AVAILABILITY_EQUALS_TRAINING_RIGHTS",
+    "GOVERNMENT_HOSTING_EQUALS_PUBLIC_DOMAIN_FOR_EVERY_EMBEDDED_OBJECT",
+    "SOURCE_BYTES_EQUAL_TOKEN_COUNT",
+    "SOURCE_BYTES_EQUAL_UNIQUE_CAUSAL_LOSS_POSITIONS",
+    "PROBE_EQUALS_CORPUS_ADMISSION",
+    "PROBE_EQUALS_TOKENIZER_AUTHORIZATION",
+    "PROBE_EQUALS_TRAINING_AUTHORIZATION"
+  ]
+}
