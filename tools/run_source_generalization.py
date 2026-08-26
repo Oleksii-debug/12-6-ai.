@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from twelve_six.training.eval137_recovery import eval137_language_gate
 from twelve_six.training.source_generalization import (
     run_source_generalization,
     validate_source_generalization_report,
@@ -48,13 +49,17 @@ def main() -> int:
     if missing:
         parser.error("required for execution: " + ", ".join(missing))
 
-    report = run_source_generalization(
-        args.root,
-        source_sha=args.source_sha,
-        locked_environment_evidence=_read_json(args.locked_environment_evidence),
-        seed=args.seed,
-        torch_threads=args.torch_threads,
-    )
+    # Recovery-179 changes only the generic long-document language-admission
+    # boundary. Corpus bytes, source-family partitions, frozen evaluation
+    # records, model/optimizer identity, and token budget remain unchanged.
+    with eval137_language_gate():
+        report = run_source_generalization(
+            args.root,
+            source_sha=args.source_sha,
+            locked_environment_evidence=_read_json(args.locked_environment_evidence),
+            seed=args.seed,
+            torch_threads=args.torch_threads,
+        )
     args.output.write_text(
         json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
