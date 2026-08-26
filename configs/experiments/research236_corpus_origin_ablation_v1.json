@@ -1,0 +1,117 @@
+{
+  "schema": "12-6.research236-corpus-origin-ablation-plan.v1",
+  "worker_id": "RESEARCH-236-CORPUS-ORIGIN-ABLATION",
+  "repository": "Oleksii-debug/12-6-ai.",
+  "authority_base_sha": "6afaf5889f9898037b53e8b0bc2b731d77782111",
+  "status": "PREREGISTERED_BLOCKED_PENDING_DATA230_EVAL233",
+  "required_authorities": {
+    "external_training_corpus": "DATA-230-CORPUS-V03-EXTERNAL-REAL",
+    "common_real_holdout": "EVAL-233-REAL-HOLDOUT-V2"
+  },
+  "corpora": {
+    "project_authored": {
+      "name": "DATA-25",
+      "identity": "422f545da93526ceba2c0ff738e0b9deac65f35bfb31d87d2aab068cda091fc8",
+      "origin": "PROJECT_AUTHORED"
+    },
+    "external_real": {
+      "name": "DATA-230",
+      "identity": null,
+      "origin": "EXTERNAL_REAL_BACKED",
+      "must_be_terminal_and_deterministic": true,
+      "must_not_be_substituted_with": ["DATA-183"]
+    }
+  },
+  "frozen": {
+    "tokenizer": {
+      "id": "s0-byte-v1",
+      "vocab_size": 256,
+      "config_sha256": "b04055c1061dd641dcab7cb9d62a931f09b8d1a070140a926ceb4e91d73ca8e1",
+      "vocab_sha256": "905ed40bb42cc4d550e228ff5f24158d504b38e8ed5974dfa3077bd5867ad571"
+    },
+    "evaluation_identity": "7189e6df053574beb686727c94e684cdbaf08a34ef33aa953eff7cdae0320113",
+    "sequence_length": 128,
+    "batch_size": 8,
+    "optimizer": {
+      "name": "AdamW",
+      "lr": 0.0003,
+      "betas": [0.9, 0.95],
+      "eps": 1e-08,
+      "weight_decay": 0.0,
+      "schedule": "constant",
+      "warmup_steps": 0,
+      "gradient_clip": 1.0,
+      "precision": "fp32_deterministic"
+    },
+    "matched_actual_optimized_loss_tokens": 131938,
+    "paired_seeds": [1337, 1338, 7331],
+    "checkpoint_policy": "fixed_final_boundary_only_for_head_to_head_ablation"
+  },
+  "model_scales": {
+    "500k": {
+      "required": true,
+      "parameters": 467808,
+      "model_spec_sha256": "208ac8ca113388e76f280d0154cae815785bee7705546f4d854d9447b9dd1f4a"
+    },
+    "1m": {
+      "required": false,
+      "run_if_available": true,
+      "parameters": 1037696,
+      "model_spec_sha256": "ff3cee542a1f75bb4e1eff8d7d24d72533af8f4f3d82bd064fb1cbfeba8c8d07"
+    }
+  },
+  "exposure_contract": {
+    "authority": "Trainer.tokens_seen plus source-position ledger",
+    "count": "actual unique nonignored causal source/loss token positions",
+    "padded_tensor_positions_count": false,
+    "repeated_source_loss_token_positions_allowed": false,
+    "artificial_corpus_repetition_allowed": false,
+    "matched_source_loss_tokens_per_arm": 131938
+  },
+  "evaluation": {
+    "data25_selection_validation": {
+      "score_both_training_arms": true,
+      "selection_use": false,
+      "purpose": "cross_corpus_transfer"
+    },
+    "external_selection_validation": {
+      "score_both_training_arms": true,
+      "selection_use": false,
+      "purpose": "cross_corpus_transfer",
+      "requires_zero_content_overlap_with_both_training_arms": true
+    },
+    "common_immutable_real_holdout": {
+      "authority": "EVAL-233-REAL-HOLDOUT-V2",
+      "score_both_training_arms": true,
+      "selection_use": false,
+      "final_test_never_used_for_checkpoint_or_hyperparameter_selection": true
+    },
+    "strata": ["UA", "EN", "code"],
+    "source_family_heldouts": {
+      "same_family_keys_for_both_training_arms": true,
+      "report_mean_worst_best_and_spread": true,
+      "report_paired_delta_per_family": true
+    }
+  },
+  "report": {
+    "training_bpb": "descriptive_per_corpus_not_same_bytes_head_to_head",
+    "heldout_bpb": true,
+    "cross_corpus_transfer": true,
+    "memorization": {
+      "method": "hash-sampled fixed training probes without canary injection",
+      "proxy": "own_train_probe_bpb_minus_own_selection_bpb",
+      "privacy_leakage_claim": false
+    },
+    "generalization_gap": "common_real_holdout_bpb_minus_training_bpb",
+    "source_family_sensitivity": true,
+    "paired_directional_bootstrap": "exact_empirical_for_three_paired_seeds"
+  },
+  "claim_boundary": {
+    "external_real_automatically_better": false,
+    "universal_corpus_superiority_claim": false,
+    "foreign_pretrained_weights": false,
+    "sft_rlhf_dpo": false,
+    "paid_compute": false,
+    "execution_profile": "LOCAL_FREE"
+  }
+}
