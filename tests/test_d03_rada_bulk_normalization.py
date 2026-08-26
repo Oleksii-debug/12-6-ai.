@@ -58,10 +58,18 @@ def _probe_config(min_entries: int) -> dict:
     }
 
 
-def _probe(archive: bytes, min_entries: int) -> dict:
-    report = inventory_archive(archive, _probe_config(min_entries))
-    assert report["training_authorized_bytes"] == 0
-    return report
+def _strict_probe(archive: bytes, min_entries: int) -> dict:
+    config = _probe_config(min_entries)
+    return inventory_archive(
+        archive,
+        config,
+        expected_md5=hashlib.md5(archive, usedforsecurity=False).hexdigest(),
+        expected_bytes=len(archive),
+    )
+
+
+def _observation_probe(archive: bytes, min_entries: int) -> dict:
+    return inventory_archive(archive, _probe_config(min_entries))
 
 
 def _report_sha(report: dict) -> str:
@@ -74,12 +82,32 @@ def _report_sha(report: dict) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def _normalizer_config_for_report(report: dict) -> dict:
+    config = copy.deepcopy(CONFIG)
+    config["parent_probe"]["probe_worker_id"] = report["worker_id"]
+    config["parent_probe"]["probe_config_identity_sha256"] = report[
+        "config_identity_sha256"
+    ]
+    return config
+
+
 def _materialize(archive: bytes, report: dict) -> tuple[bytes, dict]:
     return materialize_normalized_records(
         archive,
         report,
-        CONFIG,
+        _normalizer_config_for_report(report),
         probe_report_sha256=_report_sha(report),
+    )
+
+
+def test_production_contract_binds_hardened_probe_authority() -> None:
+    parent = CONFIG["parent_probe"]
+    assert parent["pr"] == 618
+    assert parent["head_sha"] == "bed8c3237379194b90e54d558697a0ddc7ea4f95"
+    assert parent["probe_worker_id"] == "D03-RADA-BULK-SOURCE-PROBE-20260826"
+    assert (
+        parent["probe_config_identity_sha256"]
+        == "c2f198120cae00ba247c4eaad36d2a357770a47c7fa9a7608cc5ec182971b82b"
     )
 
 
@@ -97,6 +125,11 @@ def test_visible_text_extraction_is_nfkc_and_hides_noncontent() -> None:
     assert "display" not in text
 
 
+def test_self_closing_hidden_and_block_tags_do_not_corrupt_parser_state() -> None:
+    html = b"<body>one<br/>two<script/> three</body>"
+    assert normalize_html_bytes(html, CONFIG) == "one\ntwo three"
+
+
 def test_two_clean_materializations_are_byte_identical_and_zero_credit() -> None:
     archive = _archive(
         {
@@ -107,7 +140,7 @@ def test_two_clean_materializations_are_byte_identical_and_zero_credit() -> None
             "README.txt": b"ignored",
         }
     )
-    report = _probe(archive, 2)
+    report = _strict_probe(archive, 2)
     jsonl_a, manifest_a = _materialize(archive, report)
     jsonl_b, manifest_b = _materialize(archive, report)
 
@@ -129,17 +162,38 @@ def test_two_clean_materializations_are_byte_identical_and_zero_credit() -> None
     assert rows[0]["text"] == "Перший\nТекст акта"
 
 
+def test_unpinned_observation_mode_is_rejected() -> None:
+    archive = _archive({"d1.htm": b"<p>one</p>"})
+    report = _observation_probe(archive, 1)
+    with pytest.raises(NormalizationError, match="not a pinned terminal acquisition"):
+        _materialize(archive, report)
+
+
+def test_probe_config_identity_drift_is_rejected() -> None:
+    archive = _archive({"d1.htm": b"<p>one</p>"})
+    report = _strict_probe(archive, 1)
+    config = _normalizer_config_for_report(report)
+    config["parent_probe"]["probe_config_identity_sha256"] = "0" * 64
+    with pytest.raises(NormalizationError, match="probe config identity drift"):
+        materialize_normalized_records(
+            archive,
+            report,
+            config,
+            probe_report_sha256=_report_sha(report),
+        )
+
+
 def test_archive_bytes_must_match_exact_probe() -> None:
     archive = _archive({"d1.htm": b"<p>one</p>"})
-    report = _probe(archive, 1)
+    report = _strict_probe(archive, 1)
     tampered = _archive({"d1.htm": b"<p>changed</p>"})
-    with pytest.raises(NormalizationError, match="archive SHA-256 does not match probe"):
+    with pytest.raises(NormalizationError, match="archive byte count does not match probe|archive SHA-256 does not match probe"):
         _materialize(tampered, report)
 
 
-def test_entry_hash_must_match_probe_even_if_archive_binding_is_resealed() -> None:
+def test_entry_hash_must_match_probe_even_if_report_is_mutated() -> None:
     archive = _archive({"d1.htm": b"<p>one</p>"})
-    report = _probe(archive, 1)
+    report = _strict_probe(archive, 1)
     broken = copy.deepcopy(report)
     broken["inventory"]["entries"][0]["raw_sha256"] = "0" * 64
     with pytest.raises(NormalizationError, match="raw SHA-256 drift"):
@@ -148,7 +202,7 @@ def test_entry_hash_must_match_probe_even_if_archive_binding_is_resealed() -> No
 
 def test_probe_cannot_hide_a_canonical_archive_entry() -> None:
     archive = _archive({"d1.htm": b"<p>one</p>", "d2.htm": b"<p>two</p>"})
-    report = _probe(archive, 2)
+    report = _strict_probe(archive, 2)
     broken = copy.deepcopy(report)
     broken["inventory"]["entries"] = broken["inventory"]["entries"][:1]
     broken["inventory"]["canonical_entry_count"] = 1
@@ -158,14 +212,14 @@ def test_probe_cannot_hide_a_canonical_archive_entry() -> None:
 
 def test_invalid_utf8_fails_closed_at_normalization() -> None:
     archive = _archive({"d1.htm": b"<p>bad:\xff</p>"})
-    report = _probe(archive, 1)
+    report = _strict_probe(archive, 1)
     with pytest.raises(NormalizationError, match="not strict UTF-8"):
         _materialize(archive, report)
 
 
 def test_empty_visible_document_is_retained_for_later_quality_rejection() -> None:
     archive = _archive({"d1.htm": b"<html><head>x</head><script>y</script></html>"})
-    report = _probe(archive, 1)
+    report = _strict_probe(archive, 1)
     jsonl, manifest = _materialize(archive, report)
     row = json.loads(jsonl.decode())
     assert row["text"] == ""
@@ -176,8 +230,8 @@ def test_empty_visible_document_is_retained_for_later_quality_rejection() -> Non
 
 def test_truth_boundary_mutation_is_rejected() -> None:
     archive = _archive({"d1.htm": b"<p>one</p>"})
-    report = _probe(archive, 1)
-    config = copy.deepcopy(CONFIG)
+    report = _strict_probe(archive, 1)
+    config = _normalizer_config_for_report(report)
     config["claim_boundary"]["training_authorized_bytes"] = 1
     with pytest.raises(NormalizationError, match="authorize zero training bytes"):
         materialize_normalized_records(
