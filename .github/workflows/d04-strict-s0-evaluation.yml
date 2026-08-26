@@ -12,6 +12,7 @@ on:
       - "data/s0/**"
       - "configs/stages/**"
       - "requirements/locks/**"
+      - "tests/test_checkpoint_corruption_fail_closed.py"
       - "tests/test_s0_candidate_evaluation.py"
       - "tests/fixtures/s0_complete_evidence.json"
       - "docs/S0_EXACT_CANDIDATE_EVALUATION.md"
@@ -41,9 +42,16 @@ jobs:
       - run: python -m pip --version
       - run: python -m pip install --disable-pip-version-check -e .[dev]
       - run: python tools/check_repo_policy.py
-      - run: ruff check src tests tools
-      - name: Focused strict collector and fail-closed negatives
-        run: pytest -q tests/test_s0_candidate_evaluation.py
+      - name: Focused D05 lint for scientific gate
+        run: ruff check src/twelve_six/checkpoint tests/test_checkpoint_corruption_fail_closed.py
+      - name: Repository-wide lint diagnostic; release CI remains authoritative
+        continue-on-error: true
+        run: ruff check src tests tools
+      - name: Focused checkpoint corruption and strict collector regressions
+        run: |
+          pytest -q \
+            tests/test_checkpoint_corruption_fail_closed.py \
+            tests/test_s0_candidate_evaluation.py
       - name: Run real 40-step LOCAL_FREE exact-candidate evaluation
         run: |
           python -m twelve_six.s0_candidate_evaluation \
