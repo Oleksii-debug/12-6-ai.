@@ -1,0 +1,96 @@
+{
+  "schema_version": "12-6.next100-102-en-source-convergence.v1",
+  "worker_id": "NEXT100-102-EN-SOURCE-CONVERGENCE",
+  "cutoff_utc": "2026-08-26T19:28:00Z",
+  "local_free_only": true,
+  "base_registry": {
+    "worker": "DATA-287",
+    "head_sha": "b0523ccbc4b957615aac849d476cfa851be87578",
+    "path": "data/registry/external_snapshots.v2.json",
+    "registry_identity_sha256": "917e9bc31b2fa040d25e807ae3c01aa2cce32420752a891caacfb6c830e6632c",
+    "snapshot_object_count": 5,
+    "independent_family_count": 4,
+    "unique_normalized_bytes": 183061,
+    "english_normalized_bytes": 84793,
+    "english_independent_family_count": 1
+  },
+  "terminal_additions": [
+    {
+      "worker": "NEXT100-034-DATA-EN-NIST",
+      "pr": 472,
+      "head_sha": "b7491745b34ac8679baaf69cb96cd609dcbe0a16",
+      "authority_path": "configs/data/next100_034_nist_terminal_authority_v2.json",
+      "authority_blob_sha1": "8cef5ae316a45ad6265b732be86bd54a977405a1",
+      "authority_identity": "3ffba0fcd08ab42e940b2db12ffafb6f7234ad0bae6f7fe523071497485b9d1c",
+      "scoped_workflow_run": 32998703545,
+      "scoped_workflow_conclusion": "success",
+      "generic_ci_release_green": false,
+      "verdict": "ADMIT",
+      "language": "en",
+      "modality": "text",
+      "family_id": "en.usgov.nist.technical-series",
+      "snapshot_object_count": 3,
+      "normalized_bytes": 59358,
+      "normalized_sha256": [
+        "570e8d75b6dc6aefee1f089818b46765c0dd1965e06947bcc2fff0169d22274e",
+        "558da6a0886036a01a5139d635b1352b5cf5d74655d919c66a04e84f2d49c0fe",
+        "6c99c3b14ee3ea7fe915940e38c080dbf2a785f1abcee2fd73e7fd731424770d"
+      ],
+      "training_rights": "ALLOWED_WITH_NIST_SOURCE_PROVENANCE",
+      "evaluation_rights": "NOT_SEPARATELY_ADMITTED"
+    },
+    {
+      "worker": "NEXT100-038-DATA-EN-MDN",
+      "pr": 445,
+      "head_sha": "902eccc0b3efff09a38dc89cda789180b6c6e754",
+      "authority_path": "evidence/next100_038/mdn_source_authority.v1.json",
+      "authority_blob_sha1": "5b55a5b041381d3f9aa810b0a305f65d58e401bd",
+      "authority_identity": "0f5dbd5313f8196811e2a99f77eb8698c6bc69f69648d76a7e240ee9757ecc47",
+      "scoped_workflow_run": 32998544359,
+      "scoped_workflow_conclusion": "success",
+      "generic_ci_release_green": false,
+      "verdict": "ADMIT_PROSE_ONLY",
+      "language": "en",
+      "modality": "text",
+      "family_id": "en.mdn.webdocs.prose",
+      "snapshot_object_count": 1,
+      "normalized_bytes": 6492,
+      "normalized_sha256": [
+        "10855740b0ed5588d133f421318c637be99d9e9f4921675af9f6dc8a5663507b"
+      ],
+      "training_rights": "ALLOWED_UNDER_LICENSE_TERMS",
+      "evaluation_rights": "NOT_SEPARATELY_ADMITTED"
+    }
+  ],
+  "converged_intake": {
+    "snapshot_object_count": 9,
+    "independent_family_count": 6,
+    "unique_normalized_bytes_before_cross_source_near_dedup": 248911,
+    "english_normalized_bytes_before_cross_source_near_dedup": 150643,
+    "english_independent_family_count": 3,
+    "english_family_minimum_required": 2,
+    "english_family_minimum_status": "PASS_AT_SOURCE_AUTHORITY_LAYER",
+    "exact_normalized_hash_collision_within_added_set": false,
+    "replay_used": false
+  },
+  "downstream_gates": {
+    "canonical_cross_source_exact_dedup": "REQUIRED",
+    "canonical_cross_source_near_dedup": "REQUIRED",
+    "evaluation_decontamination": "REQUIRED",
+    "quality_privacy_recheck_after_materialization": "REQUIRED",
+    "split_and_pack": "NOT_REACHED",
+    "unique_loss_ledger": "NOT_REACHED",
+    "research_corpus_v1": "BLOCKED_NOT_MATERIALIZED",
+    "long_20m_training": "BLOCKED"
+  },
+  "truth_boundary": {
+    "canonical_registry_mutated": false,
+    "candidate_corpus_identity_created": false,
+    "training_shards_created": false,
+    "training_authorized_exposure": 0,
+    "representative_corpus_claimed": false,
+    "release_green_claimed": false,
+    "learned_20m_claimed": false,
+    "purpose": "Bind terminal independent English source authorities into one deterministic successor intake so canonical corpus materialization can consume them without replaying source-selection debates."
+  }
+}
