@@ -7,6 +7,7 @@ on:
       - "tests/test_s1_checkpoint_preflight.py"
       - "tests/test_checkpoint_corruption_fail_closed.py"
       - "tests/test_checkpoint_transactional_safety.py"
+      - "tests/test_checkpoint_trainer_preflight.py"
       - "configs/stages/s1_100k.json"
       - "src/twelve_six/checkpoint/**"
       - "src/twelve_six/model.py"
@@ -58,12 +59,14 @@ jobs:
           src/twelve_six/checkpoint
           tests/test_checkpoint_corruption_fail_closed.py
           tests/test_checkpoint_transactional_safety.py
+          tests/test_checkpoint_trainer_preflight.py
           tests/test_s1_checkpoint_preflight.py
       - name: Focused D05 checkpoint integrity regression
         run: >-
           .d05-s1-locked/bin/python -m pytest -q
           tests/test_checkpoint_corruption_fail_closed.py
           tests/test_checkpoint_transactional_safety.py
+          tests/test_checkpoint_trainer_preflight.py
           tests/test_s1_checkpoint_preflight.py
       - name: Execute real S1-shaped checkpoint/resume preflight
         run: |
