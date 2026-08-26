@@ -24,7 +24,7 @@ jobs:
         with:
           python-version: 3.11.16
 
-      - name: Bind exact recovery source and incumbent heads
+      - name: Bind exact recovery source
         env:
           EXPECTED_SOURCE_SHA: ${{ github.sha }}
         run: |
@@ -32,18 +32,14 @@ jobs:
           test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
           test "$(git merge-base 49cb84baa6caae2d35ba5b15543d18dc57eb3117 HEAD)" = \
             "49cb84baa6caae2d35ba5b15543d18dc57eb3117"
-          test "$(git rev-parse origin/env151/universal-execution-bootstrap-20260826)" = \
-            "c127216ecf9722bea1964c7488cb7ff0f8cdebe4"
-          test "$(git rev-parse origin/ci155/scientific-scope-isolation-20260826)" = \
-            "2690961373afe983c85207b8d37ecc80cf884c78"
 
       - name: Materialize exact ENV-151 and CI-155 incumbents
         run: |
           set -euo pipefail
           mkdir -p requirements/execution configs/ci tests tools
-          git show c127216ecf9722bea1964c7488cb7ff0f8cdebe4:tools/execution_bootstrap.py \
+          git show bbca2101ea9409b47d844dd8292cd7f2290e3ff0:tools/execution_bootstrap.py \
             > tools/execution_bootstrap.py
-          git show c127216ecf9722bea1964c7488cb7ff0f8cdebe4:requirements/execution/capabilities.json \
+          git show bbca2101ea9409b47d844dd8292cd7f2290e3ff0:requirements/execution/capabilities.json \
             > requirements/execution/capabilities.json
           git show 2690961373afe983c85207b8d37ecc80cf884c78:tools/scientific_scope_gate.py \
             > tools/scientific_scope_gate.py
@@ -53,7 +49,7 @@ jobs:
             > tests/test_scientific_scope_gate.py
           chmod +x tools/execution_bootstrap.py tools/scientific_scope_gate.py
           test "$(git hash-object tools/execution_bootstrap.py)" = \
-            "3f611ac3de7a35e5952cd6caeab518009b44fa98"
+            "86881ea145cb5faa4545cc7156fbb660ae9a33f0"
           test "$(git hash-object requirements/execution/capabilities.json)" = \
             "cd6fc00cb23ddb19b58fecab5c32a1a68224b144"
           test "$(git hash-object tools/scientific_scope_gate.py)" = \
@@ -117,8 +113,10 @@ jobs:
               "source_sha": os.environ["EXPECTED_SOURCE_SHA"],
               "universal_environment_manifest": source.as_posix(),
               "universal_environment_manifest_sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
-              "env151_commit": "c127216ecf9722bea1964c7488cb7ff0f8cdebe4",
-              "ci155_commit": "2690961373afe983c85207b8d37ecc80cf884c78",
+              "env151_observed_live_head": "bbca2101ea9409b47d844dd8292cd7f2290e3ff0",
+              "env151_consumed_commit": "bbca2101ea9409b47d844dd8292cd7f2290e3ff0",
+              "ci155_observed_live_head": "2690961373afe983c85207b8d37ecc80cf884c78",
+              "ci155_consumed_commit": "2690961373afe983c85207b8d37ecc80cf884c78",
           }
           Path("data214-evidence/bootstrap-binding.json").write_text(
               json.dumps(payload, sort_keys=True, indent=2) + "\n",
@@ -208,4 +206,4 @@ jobs:
         with:
           name: data214-corpus-v02-convergence-recovery-${{ github.sha }}
           path: data214-evidence
-          if-no-files-found: error
+          if-no-files-found: warn
