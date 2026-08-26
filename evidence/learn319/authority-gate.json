@@ -1,0 +1,117 @@
+{
+  "authority_cutoff": {
+    "data300_contract_head": "8ea7f830e50a23754d189dd4134f4afad76a7ee9",
+    "data300_contract_identity_sha256": "07d7beaaff4616e839450de6af3d407855c832bf75a24a959d1a12de5d9364e5",
+    "data300_corpus_state": "NOT_BUILT_NOT_FROZEN_NOT_TERMINAL",
+    "data301_ahead_by": 0,
+    "data301_branch": "data301/corpus-v03-terminal-build-20260826",
+    "data301_terminal_release_found": false,
+    "data301_vs_data300": "identical"
+  },
+  "decision": "BLOCKED_NO_TERMINAL_FROZEN_CORPUS",
+  "hard_blockers": [
+    "NO_TERMINAL_FROZEN_CORPUS_IDENTITY",
+    "G05_NO_EXACT_WAVE3_QUALITY_RERUN",
+    "G06_NO_EXACT_WAVE3_PRIVACY_RERUN",
+    "G09_BALANCE_DIVERSITY_BLOCKED",
+    "G10_SELECTION_VALIDATION_EMPTY",
+    "G12_NO_FULL_FIVE_SOURCE_UNIQUE_LOSS_LEDGER",
+    "G14_NO_TWO_CLEAN_BYTE_IDENTICAL_BUILDS"
+  ],
+  "identity_sha256": "ed2e7d7811e91305a0aa306527ec7c8f3b3273f424dbae2ad3de9eb2f68f5cea",
+  "observed_candidate": {
+    "code_bytes": 9703,
+    "data294_text_only_unique_causal_targets": 173355,
+    "en_bytes": 84793,
+    "full_five_source_unique_loss_ledger_present": false,
+    "independent_families": 4,
+    "source_bytes": 183061,
+    "source_objects": 5,
+    "terminal_nonempty_selection_validation_present": false,
+    "ua_bytes": 88565
+  },
+  "preregistered_successor_contract": {
+    "model": {
+      "attention_heads": 12,
+      "context": 256,
+      "d_ff": 528,
+      "d_model": 192,
+      "family": "decoder_only_base",
+      "kv_heads": 12,
+      "layers": 7,
+      "modelspec_sha256": "462c85da80a3c0d7d6a4f1a570b87d208b1847d8a57b12a4d9be7e36846b65dc",
+      "parameters": 3213120,
+      "vocab_size": 256
+    },
+    "optimizer": {
+      "betas": [
+        0.9,
+        0.95
+      ],
+      "clip_global_norm": 1.0,
+      "eps": 1e-08,
+      "lr": 0.0003,
+      "name": "AdamW",
+      "precision": "fp32",
+      "schedule": "constant",
+      "seed": 1337,
+      "warmup_updates": 0,
+      "weight_decay": 0.0
+    },
+    "required_telemetry": [
+      "aggregate_BPB",
+      "UA_BPB",
+      "EN_BPB",
+      "code_BPB",
+      "source_family_BPB",
+      "preclip_gradient_norm",
+      "postclip_gradient_norm",
+      "clip_activation",
+      "update_to_weight_L2_ratio",
+      "optimized_targets",
+      "raw_base_generation",
+      "first_party_logits_fingerprint",
+      "fresh_process_resume_proof",
+      "evaluation_non_mutation_proof"
+    ],
+    "selection": {
+      "best_and_final_retained_separately": true,
+      "best_rule": "minimum_aggregate_selection_validation_BPB_only",
+      "evaluation_must_not_mutate_model_state": true,
+      "final_test_influences_selection": false
+    },
+    "token_budget": {
+      "fresh_resume_fraction": 0.5,
+      "padding_counts_as_data": false,
+      "replay_allowed": false,
+      "requested_short_anchor_optimized_targets": 131938,
+      "rule": "min(131938, terminal_one_pass_unique_train_optimized_targets)",
+      "sampling_with_replacement_allowed": false,
+      "selection_fractions": [
+        0.0,
+        0.25,
+        0.5,
+        0.75,
+        1.0
+      ]
+    },
+    "tokenizer": {
+      "id": "s0-byte-v1",
+      "special_tokens": 0,
+      "type": "canonical_byte",
+      "vocab_size": 256
+    }
+  },
+  "schema_version": 1,
+  "truth": {
+    "foreign_pretrained_weights_used": false,
+    "learned_checkpoint_emitted": false,
+    "optimizer_updates": 0,
+    "paid_compute_used": false,
+    "quality_result_claimed": false,
+    "stage_promotion_authorized": false,
+    "training_executed": false
+  },
+  "unblock_condition": "A terminal corpus release satisfying every DATA-300 hard gate must publish an exact corpus identity, full post-split five-source unique-loss ledger, nonempty immutable selection-validation identity, deterministic shard identities, and a one-pass unique-train capacity at least equal to the realized short budget. Only then may optimizer step 1 occur.",
+  "worker_id": "LEARN-319-EXTERNAL-REAL-3M-SHORT"
+}
