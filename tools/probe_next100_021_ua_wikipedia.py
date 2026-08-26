@@ -104,7 +104,7 @@ def download_exact(config: dict[str, Any], target: Path) -> dict[str, Any]:
         upstream["dated_url"],
         headers={"User-Agent": "12-6-ai-NEXT100-021/1.0 bounded-source-validation"},
     )
-    sha1 = hashlib.sha1()  # nosec B324 - required only to verify Wikimedia's published digest
+    sha1 = hashlib.sha1()  # nosec B324 - verification of Wikimedia's published digest only
     sha256 = hashlib.sha256()
     total = 0
     with urllib.request.urlopen(request, timeout=120) as response, target.open("wb") as out:
@@ -217,6 +217,8 @@ def build_report(config: dict[str, Any], source_sha: str) -> dict[str, Any]:
         raw_path = Path(temp_dir) / config["upstream"]["dump_object"]
         raw = download_exact(config, raw_path)
         normalized = extract_probe(config, raw_path)
+        repeated = extract_probe(config, raw_path)
+        assert canonical_bytes(normalized) == canonical_bytes(repeated)
     core = {
         "schema_version": "12-6.next100-021-ua-wikipedia-runtime-evidence.v1",
         "worker": config["worker"],
@@ -238,6 +240,7 @@ def build_report(config: dict[str, Any], source_sha: str) -> dict[str, Any]:
         "incumbent_registry": incumbent,
         "bounded_acquisition": raw,
         "bounded_normalization": normalized,
+        "repeat_normalization_byte_identical": True,
         "privacy_status": config["privacy"]["status"],
         "dedup_status": config["dedup"]["status"],
         "terminal_blockers": config["terminal_blockers"],
@@ -258,6 +261,7 @@ def verify_report(report: dict[str, Any]) -> None:
     assert report["model_training_executed"] is False
     assert report["training_snapshot_created"] is False
     assert report["evaluation_material_reserved"] is False
+    assert report["repeat_normalization_byte_identical"] is True
     assert report["payload_retention"] == {
         "raw": False,
         "normalized": False,
