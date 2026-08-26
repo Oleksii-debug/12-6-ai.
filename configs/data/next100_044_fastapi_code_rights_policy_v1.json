@@ -1,0 +1,148 @@
+{
+  "schema_version": "12-6.next100-044-fastapi-code-rights-policy.v1",
+  "worker_id": "NEXT100-044-CODE-FASTAPI",
+  "reviewed_at": "2026-08-26",
+  "reviewer_ref": "NEXT100-044-CODE-FASTAPI",
+  "policy_ref": "policy://12-6/data/explicit-model-training-evidence-v1",
+  "decision_rule": "Approve only the enumerated FastAPI first-party Python implementation Git blobs at the exact pinned upstream commit after exact license-blob verification, code-only path enforcement, privacy/secret/private-endpoint scan, Python AST parse validation, current-training-registry deduplication, independent-family accounting, and evaluation-reservation exclusion. Public availability alone never authorizes training.",
+  "upstream": {
+    "repository": "https://github.com/fastapi/fastapi",
+    "commit": "49033471594ea5d99a80abdf1043231b7791ee49",
+    "tree": "c2a8e5511f6a7174e9b5fb72a513288128011287",
+    "canonical_family_id": "github:fastapi/fastapi",
+    "family_scope": "upstream_repository",
+    "modality_partition": "code",
+    "fork": false,
+    "mirror": false
+  },
+  "license": {
+    "license_id": "MIT",
+    "path": "LICENSE",
+    "blob_sha1": "3e92463e6bd522a2a21e5f0a80d8089d6c4be20d",
+    "expected_bytes": 1086,
+    "url": "https://raw.githubusercontent.com/fastapi/fastapi/49033471594ea5d99a80abdf1043231b7791ee49/LICENSE",
+    "scope_note": "The exact repository root LICENSE is the MIT License. This admission is intentionally restricted to the three enumerated first-party fastapi/*.py implementation objects and does not admit tests, docs, docs_src, examples, fixtures, generated material, vendored material, or third-party dependencies.",
+    "redistribution_conditions": "Retain the FastAPI copyright notice and MIT permission notice in all copies or substantial portions. No warranty is provided by upstream."
+  },
+  "training_purpose_authority": {
+    "decision": "ALLOWED",
+    "basis": "The reviewed MIT grant expressly permits use, copy, modify, merge, publish, distribute, sublicense, and sell copies. Under the project explicit-model-training policy, the enumerated exact source-code objects are approved for pretraining and redistribution subject to preservation of the MIT notice; this is a purpose-specific project decision and is not inferred from public accessibility.",
+    "redistribution": "ALLOWED_WITH_NOTICE",
+    "evaluation": "NOT_ADMITTED",
+    "reserved_for_evaluation": false
+  },
+  "inventory": [
+    {
+      "source_id": "code.fastapi.fastapi.encoders",
+      "path": "fastapi/encoders.py",
+      "blob_sha1": "e578768dac5b33556087b42bd6a2e0782a9d5379",
+      "expected_bytes": 11713,
+      "raw_url": "https://raw.githubusercontent.com/fastapi/fastapi/49033471594ea5d99a80abdf1043231b7791ee49/fastapi/encoders.py",
+      "language": "python",
+      "source_kind": "source_code",
+      "purpose": "pretraining"
+    },
+    {
+      "source_id": "code.fastapi.fastapi.exceptions",
+      "path": "fastapi/exceptions.py",
+      "blob_sha1": "d7065c52fe20220e12b7d20db4da7cbeadaf171a",
+      "expected_bytes": 7453,
+      "raw_url": "https://raw.githubusercontent.com/fastapi/fastapi/49033471594ea5d99a80abdf1043231b7791ee49/fastapi/exceptions.py",
+      "language": "python",
+      "source_kind": "source_code",
+      "purpose": "pretraining"
+    },
+    {
+      "source_id": "code.fastapi.fastapi.datastructures",
+      "path": "fastapi/datastructures.py",
+      "blob_sha1": "1da784cf0927ed55ec6abeb051d89a6ce1e90630",
+      "expected_bytes": 5321,
+      "raw_url": "https://raw.githubusercontent.com/fastapi/fastapi/49033471594ea5d99a80abdf1043231b7791ee49/fastapi/datastructures.py",
+      "language": "python",
+      "source_kind": "source_code",
+      "purpose": "pretraining"
+    }
+  ],
+  "explicit_exclusions": {
+    "tests_and_fixtures": [
+      "tests/",
+      "*test*.py",
+      "fixtures/",
+      "credentials/endpoints embedded in tests"
+    ],
+    "documentation": [
+      "docs/",
+      "docs_src/",
+      "*.md",
+      "*.rst"
+    ],
+    "generated_or_vendored": [
+      "vendor/",
+      "vendored/",
+      "third_party/",
+      "generated/",
+      "build/",
+      "dist/"
+    ],
+    "metadata_only": [
+      "fastapi/__init__.py",
+      "pyproject.toml",
+      "version metadata"
+    ],
+    "evaluation": "Any benchmark, held-out, final-test, selection-validation, or evaluation-reserved object is excluded. This worker grants no evaluation use."
+  },
+  "current_registry_binding": {
+    "authority": "DATA-287-EXTERNAL-SNAPSHOT-REGISTRY-V2",
+    "producer_head": "b0523ccbc4b957615aac849d476cfa851be87578",
+    "registry_identity_sha256": "50f68b1cee3b1dc5335b8655e0df8d130be22495f9237fefca04b93b30fba4cb",
+    "existing_families": [
+      "en.standardebooks.manual",
+      "ua.rada.open-data.laws-texts",
+      "github:encode/httpx",
+      "github:psf/requests"
+    ],
+    "existing_raw_sha256": [
+      "21582c7f0e4ad39f2b0ed97bbc2c082d275e898b7a63c28e6d9badb8ee0f7860",
+      "7ac53dfb4bf6f73f178560e09f33160d0250c69fb679802f3254dc0eb4c9f509",
+      "36eae31c3b0676ea7c02236fa05bd695c240c9a8eade5febc00457b8103ee1a4",
+      "2c61b3ac94d1dcebcde0c6f519554d2d7917247fbaa0a97002db4ef69e70ff28",
+      "4c7d8d132c9898fc7d715e473f3ac74785ddc4ab96d2c9240f87835dc6d981ff"
+    ],
+    "existing_code_objects": [
+      {
+        "source_id": "code.encode.httpx._content",
+        "family": "github:encode/httpx",
+        "raw_url": "https://raw.githubusercontent.com/encode/httpx/b5addb64f0161ff6bfe94c124ef76f6a1fba5254/httpx/_content.py",
+        "raw_sha256": "2c61b3ac94d1dcebcde0c6f519554d2d7917247fbaa0a97002db4ef69e70ff28",
+        "git_blob_sha1": "6f479a0885f723b7395843d41164a87041820776"
+      },
+      {
+        "source_id": "code.psf.requests._internal_utils",
+        "family": "github:psf/requests",
+        "raw_url": "https://raw.githubusercontent.com/psf/requests/5460f467b02e49471c0fd6cfc9ca0adab6351f98/src/requests/_internal_utils.py",
+        "raw_sha256": "4c7d8d132c9898fc7d715e473f3ac74785ddc4ab96d2c9240f87835dc6d981ff",
+        "git_blob_sha1": "0466a7d347db4ed34a37db51b75fc8e80bc06055"
+      }
+    ]
+  },
+  "evaluation_boundary": {
+    "composite_authority": "EVAL-303-SELECTION-VALIDATION-COMPOSITE",
+    "composite_head": "5e5a1de3b594cee5612e63d3d4c2a70499740ac7",
+    "composite_selection_identity_sha256": "7b97a9ab04469236dc5bc17fc80155cb43430b01c443bb6209fac090557258fd",
+    "code_component": "EVAL-292",
+    "code_component_head": "2cbe2f2d9c74984baa69e49e520e2280fc76421b",
+    "code_component_run": 32967204390,
+    "code_component_set_identity_sha256": "9fd52e879c388f06f0b103afa02d68678388867c81cfb0f27ddbf0ca18867054",
+    "code_record_count": 0,
+    "fastapi_inventory_reserved": false,
+    "basis": "EVAL-303 composes 10 selection-validation records and explicitly reports code=0. Its terminal EVAL-292 code component is a zero-record set. The FastAPI objects here are training-only, held_out=false, benchmark_material=false, reserved_for_evaluation=false, and evaluation_use=NOT_ADMITTED."
+  },
+  "limits": {
+    "max_files": 3,
+    "max_bytes_per_file": 20000,
+    "max_total_raw_bytes": 30000,
+    "normalization": "STRICT_UTF8_IDENTITY_PRESERVE_V1",
+    "near_duplicate_token_shingle_size": 5,
+    "near_duplicate_jaccard_threshold": 0.85
+  }
+}
