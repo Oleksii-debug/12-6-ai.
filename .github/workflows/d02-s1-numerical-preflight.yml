@@ -2,6 +2,24 @@ name: D02 S1 Numerical Preflight
 
 on:
   pull_request:
+    paths:
+      - ".github/workflows/d02-s1-numerical-preflight.yml"
+      - "pyproject.toml"
+      - "requirements/locks/linux-x86_64/**"
+      - "tools/verify_locked_environment.py"
+      - "tools/run_s1_numerical_preflight.py"
+      - "tools/validate_s1_numerical_preflight.py"
+      - "src/twelve_six/model.py"
+      - "src/twelve_six/packing/**"
+      - "src/twelve_six/tokenization/**"
+      - "src/twelve_six/training/**"
+      - "configs/stages/s1_100k.json"
+      - "configs/s0/**"
+      - "data/s0/packaged/**"
+
+concurrency:
+  group: d02-s1-preflight-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
