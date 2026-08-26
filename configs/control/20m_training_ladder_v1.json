@@ -1,0 +1,114 @@
+{
+  "schema": "12-6.20m-training-ladder.v1",
+  "status": "ACTIVE_FAIL_CLOSED",
+  "authority": {
+    "readiness_pr": 519,
+    "readiness_head_sha_at_design": "83d92d50a4380636cc7f1cd41fa9ffd4445dd12e",
+    "model_branch": "model341/20m-candidate-a-20260826",
+    "model_head_sha": "e4ff486fd90802fc123bebf60eed4e59196a98df",
+    "model_spec_sha256": "fbff24d561a2818453554d58ca23fc6ace3303b078f1935a8576c4565bd92441",
+    "parameter_count": 20613440,
+    "random_init_only": true
+  },
+  "research_basis": [
+    {
+      "id": "HOFFMANN_2022_CHINCHILLA",
+      "reference": "Training Compute-Optimal Large Language Models, arXiv:2203.15556",
+      "use": "PLANNING_REFERENCE_ONLY",
+      "note": "70B parameters trained on about 1.4T tokens implies an approximately 20 tokens-per-parameter reference point; extrapolation to 20M is not asserted to be an exact optimum."
+    },
+    {
+      "id": "ELDAN_LI_2023_TINYSTORIES",
+      "reference": "TinyStories, arXiv:2305.07759",
+      "use": "LOW_PARAMETER_BOUNDARY_EVIDENCE",
+      "note": "Sub-10M models can learn coherent behavior on a deliberately constrained synthetic curriculum; this is not evidence of general-language-model readiness."
+    },
+    {
+      "id": "LIU_ET_AL_2024_MOBILELLM",
+      "reference": "MobileLLM, arXiv:2402.14905",
+      "use": "SUB_BILLION_ARCHITECTURE_EVIDENCE",
+      "note": "Deep-thin design, embedding sharing and grouped-query attention are relevant architecture directions for later 100M-1B stages."
+    },
+    {
+      "id": "BEN_ALLAL_ET_AL_2025_SMOLLM2",
+      "reference": "SmolLM2, arXiv:2502.02737",
+      "use": "MODERN_OVERTRAINING_CONTEXT",
+      "note": "Modern small models may deliberately train far beyond a Chinchilla-style compute-optimal token count; any such extension for 12-6 must be evidence- and budget-driven."
+    }
+  ],
+  "training_ladder": {
+    "engineering_pilot": {
+      "requested_unique_optimized_targets": 20000000,
+      "purpose": "END_TO_END_LEARNING_AND_RECOVERY_PILOT",
+      "claim_ceiling": "PIPELINE_AND_LEARNING_SIGNAL_ONLY_NO_GENERAL_BASE_QUALITY_CLAIM",
+      "runnable_now": false
+    },
+    "scientific_reference": {
+      "tokens_per_parameter": 20,
+      "reference_unique_optimized_targets": 412268800,
+      "status": "REFERENCE_ONLY_NOT_COMPUTE_AUTHORIZATION",
+      "extrapolation_warning": "The 20 tokens-per-parameter ratio is a planning reference derived from large-model compute-optimal evidence, not a proven optimum for this 20.6M architecture."
+    },
+    "milestones": [
+      {
+        "id": "L0_20M_PILOT",
+        "cumulative_unique_optimized_targets": 20000000,
+        "claim_ceiling": "MECHANICS_AND_LEARNING_SIGNAL"
+      },
+      {
+        "id": "L1_100M",
+        "cumulative_unique_optimized_targets": 100000000,
+        "claim_ceiling": "INTERMEDIATE_SCIENTIFIC_CHECKPOINT"
+      },
+      {
+        "id": "L2_200M",
+        "cumulative_unique_optimized_targets": 200000000,
+        "claim_ceiling": "INTERMEDIATE_SCIENTIFIC_CHECKPOINT"
+      },
+      {
+        "id": "L3_CHINCHILLA_REFERENCE",
+        "cumulative_unique_optimized_targets": 412268800,
+        "claim_ceiling": "REFERENCE_SCALE_BASE_EVALUATION_CANDIDATE"
+      }
+    ]
+  },
+  "future_scale_reference": [
+    {
+      "nominal_parameters": 100000000,
+      "reference_tokens_at_20_per_parameter": 2000000000,
+      "status": "PLANNING_REFERENCE_ONLY"
+    },
+    {
+      "nominal_parameters": 1000000000,
+      "reference_tokens_at_20_per_parameter": 20000000000,
+      "status": "PLANNING_REFERENCE_ONLY"
+    }
+  ],
+  "current_data_gate": {
+    "research_corpus_branch": "data301/corpus-v03-terminal-build-20260826",
+    "research_corpus_head_sha": "8820ba1b255f6bb95c7db0531fd846078a1aae01",
+    "corpus_identity": null,
+    "shard_identity": null,
+    "authorized_unique_optimized_targets": 0,
+    "long_training_runnable": false,
+    "primary_blocker": "NO_TERMINAL_CORPUS_IDENTITY_AND_ZERO_AUTHORIZED_UNIQUE_LOSS_CAPACITY"
+  },
+  "promotion_requirements": [
+    "TERMINAL_EXACT_CORPUS_AND_SHARD_IDENTITIES",
+    "PURPOSE_SPECIFIC_RIGHTS_AND_PROVENANCE_PASS",
+    "QUALITY_PRIVACY_DEDUP_AND_EVAL_DECONTAMINATION_PASS",
+    "TOKENIZER_IDENTITY_LOCKED_TO_CHECKPOINT_LINEAGE",
+    "D05_CORRUPTION_MATRIX_PASS_BEFORE_TARGET_MUTATION",
+    "CHECKPOINT_SAVE_LOAD_RESUME_AND_RNG_CONTINUATION_REQUALIFIED_ON_MODEL341",
+    "BOUNDED_TRAINING_PROBE_SHOWS_EXPECTED_FINITE_LOSS_AND_UPDATE_BEHAVIOR",
+    "HELD_OUT_EVALUATION_SEPARATION_AND_NONEMPTY_SELECTION_AUTHORITY",
+    "EXACT_RUN_CONFIG_HARDWARE_PROFILE_COST_ESTIMATE_AND_ARTIFACT_DESTINATION",
+    "EXPLICIT_COMPUTE_AUTHORIZATION_FOR_ANY_MATERIALLY_PAID_LONG_RUN"
+  ],
+  "compute_boundary": {
+    "execution_profile_now": "LOCAL_FREE",
+    "material_paid_compute_authorized": false,
+    "long_training_authorized": false,
+    "training_executed_by_this_change": false
+  }
+}
