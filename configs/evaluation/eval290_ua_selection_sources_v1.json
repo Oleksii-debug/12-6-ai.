@@ -47,7 +47,10 @@
       "raw_sha256": "50a790e0ece091f13fe039b5e36a23431680dec0357379f29b0029502f9b3a31",
       "raw_bytes": 12871,
       "adapter": "markdown_visible_v1",
-      "normalized_sha256": "7fe61779cf22d317b2ff78d5c738da3e9fe10bd6f43e0aa42d660e22e2b9b202",
+      "normalized_sha256": "2434682091e5731383279b89c06166fd486fb1d508580114eefdda53261d69b4",
+      "selection_normalization_note": "EVAL-290 applies its own frozen visible-Markdown extraction to the exact DATA-228-admitted raw object. Wave-1 normalized identity remains separately bound below and is not silently substituted.",
+      "wave1_normalized_sha256": "7fe61779cf22d317b2ff78d5c738da3e9fe10bd6f43e0aa42d660e22e2b9b202",
+      "wave1_normalization_identity_sha256": "44a3ac24f3ad44b39fe5866ef96028b9cf8a0f6615dda9a36e8a64d02bd9cef5",
       "wave1_admission": {
         "worker": "DATA-228-REAL-UA-EN-DIVERSITY-V2",
         "branch": "data228/real-ua-en-diversity-v2",
