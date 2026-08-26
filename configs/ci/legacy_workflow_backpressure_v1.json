@@ -1,0 +1,27 @@
+{
+  "schema": "12-6.ci-legacy-workflow-backpressure.v1",
+  "authority": "CONTROL_PLANE_ONLY_NO_SCIENTIFIC_GATE_REMOVAL",
+  "base_pr": 646,
+  "problem_issue": 652,
+  "policy": {
+    "all_pull_request_workflows_require_pr_scoped_concurrency": true,
+    "cancel_superseded_heads": true,
+    "path_scope_narrowing_requires_dependency_audit": true,
+    "latest_exact_head_checks_remain_required": true
+  },
+  "workflows": [
+    {"path": ".github/workflows/ci.yml", "class": "SHARED_FULL_CI", "pull_request": true, "paths_scoped": false, "scope_status": "BROAD_SHARED_CI_INTENTIONAL"},
+    {"path": ".github/workflows/d02-s0-real-training.yml", "class": "TRAINING_EVIDENCE_HIGH_COST", "pull_request": true, "paths_scoped": false, "scope_status": "BROAD_PENDING_DEPENDENCY_AUDIT"},
+    {"path": ".github/workflows/d02-s0-repeatability.yml", "class": "TRAINING_EVIDENCE_HIGH_COST", "pull_request": true, "paths_scoped": false, "scope_status": "BROAD_PENDING_DEPENDENCY_AUDIT"},
+    {"path": ".github/workflows/d02-s1-numerical-preflight.yml", "class": "TRAINING_EVIDENCE_HIGH_COST", "pull_request": true, "paths_scoped": false, "scope_status": "BROAD_PENDING_DEPENDENCY_AUDIT"},
+    {"path": ".github/workflows/d04-strict-s0-evaluation.yml", "class": "EVALUATION_EVIDENCE", "pull_request": true, "paths_scoped": true, "scope_status": "PATH_SCOPED_EXISTING"},
+    {"path": ".github/workflows/d05-s1-checkpoint-preflight.yml", "class": "CHECKPOINT_EVIDENCE", "pull_request": true, "paths_scoped": true, "scope_status": "PATH_SCOPED_EXISTING"},
+    {"path": ".github/workflows/d08-purpose-environments.yml", "class": "ENVIRONMENT_MATRIX_HIGH_COST", "pull_request": true, "paths_scoped": false, "scope_status": "BROAD_PENDING_DEPENDENCY_AUDIT"},
+    {"path": ".github/workflows/d12-fsdp2-cpu.yml", "class": "DISTRIBUTED_EVIDENCE", "pull_request": true, "paths_scoped": true, "scope_status": "PATH_SCOPED_EXISTING"},
+    {"path": ".github/workflows/data21-22-external-source-intake.yml", "class": "DATA_INTAKE_NETWORK", "pull_request": true, "paths_scoped": false, "scope_status": "BROAD_PENDING_DEPENDENCY_AUDIT"},
+    {"path": ".github/workflows/scale-fsdp2-dcp-integration.yml", "class": "DISTRIBUTED_SCALE_EVIDENCE", "pull_request": true, "paths_scoped": true, "scope_status": "PATH_SCOPED_EXISTING"},
+    {"path": ".github/workflows/scale02-s2-1m-executable.yml", "class": "SCALE_TRAINING_EVIDENCE", "pull_request": true, "paths_scoped": false, "scope_status": "BROAD_PENDING_DEPENDENCY_AUDIT"},
+    {"path": ".github/workflows/scale03-s3-10m-runtime.yml", "class": "SCALE_TRAINING_EVIDENCE", "pull_request": true, "paths_scoped": true, "scope_status": "PATH_SCOPED_EXISTING"},
+    {"path": ".github/workflows/train29-s1-observability.yml", "class": "TRAINING_OBSERVABILITY", "pull_request": true, "paths_scoped": false, "scope_status": "BROAD_PENDING_DEPENDENCY_AUDIT"}
+  ]
+}
