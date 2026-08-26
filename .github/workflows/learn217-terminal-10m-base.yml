@@ -1,0 +1,364 @@
+name: LEARN-217 Terminal 10M Learned Base
+
+on:
+  pull_request:
+    branches:
+      - scale141/10m-learned-fallback-20260826
+    paths:
+      - ".github/workflows/learn217-terminal-10m-base.yml"
+      - ".github/actions/execution-bootstrap/**"
+      - "requirements/execution/**"
+      - "configs/launch/scale141-10m.json"
+      - "src/twelve_six/launch_gate.py"
+      - "src/twelve_six/scale141*.py"
+      - "src/twelve_six/model/**"
+      - "src/twelve_six/model.py"
+      - "src/twelve_six/training/**"
+      - "src/twelve_six/checkpoint/**"
+      - "src/twelve_six/checkpoint.py"
+      - "src/twelve_six/tokenization/**"
+      - "src/twelve_six/inference/**"
+      - "data/corpus_v01/**"
+      - "configs/data/corpus_v01.json"
+      - "configs/stages/alternatives/s3_10m_scale03_byte_gqa.execution.json"
+      - "tests/test_ci165_scale141_gate.py"
+      - "tests/test_scale141*.py"
+      - "tests/test_checkpointing.py"
+      - "tests/test_data25_corpus_v01.py"
+      - "tools/run_checkpoint211_recovery_proof.py"
+      - "tools/execution_bootstrap.py"
+  workflow_dispatch:
+
+concurrency:
+  group: learn217-terminal-10m-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  terminal-learned-10m:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    env:
+      EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      PYTHONPATH: ${{ github.workspace }}/src
+      OMP_NUM_THREADS: "2"
+      MKL_NUM_THREADS: "2"
+      EXPECTED_MODEL_SPEC_SHA256: 61caa5469123e23b9b72fc2024140bfca84c4c480dcb0a7e712ba800a4f22998
+      EXPECTED_PARAMETER_COUNT: "10000640"
+      EXPECTED_CORPUS_ID: 422f545da93526ceba2c0ff738e0b9deac65f35bfb31d87d2aab068cda091fc8
+      EXPECTED_LADDER_EVAL_ID: 7189e6df053574beb686727c94e684cdbaf08a34ef33aa953eff7cdae0320113
+
+    steps:
+      - name: Checkout exact LEARN-217 candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set exact CPython 3.11.16
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact source
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+
+      - name: Universal exact execution bootstrap
+        uses: ./.github/actions/execution-bootstrap
+        with:
+          capabilities: runtime,tests,lint
+          venv: .scale141
+          manifest: scale141-evidence/environment.json
+          command: python -m pytest tests/test_scale141_recovery.py
+
+      - name: Compile lint and focused contracts
+        run: |
+          set -euo pipefail
+          .scale141/bin/python -m compileall -q src/twelve_six tools/run_checkpoint211_recovery_proof.py
+          .scale141/bin/ruff check \
+            src/twelve_six/scale141_10m_runtime_v3.py \
+            src/twelve_six/scale141_recovery.py \
+            tools/run_checkpoint211_recovery_proof.py \
+            tests/test_scale141_recovery.py
+          .scale141/bin/python -m pytest -q \
+            tests/test_ci165_scale141_gate.py \
+            tests/test_data25_corpus_v01.py \
+            tests/test_checkpointing.py \
+            tests/test_scale141_10m_continuation.py \
+            tests/test_scale141_10m_runtime_v2.py \
+            tests/test_scale141_10m_runtime_v3.py \
+            tests/test_scale141_memorization.py \
+            tests/test_scale141_recovery.py
+
+      - name: Materialize and bind DATA tokenizer model identities
+        run: |
+          set -euo pipefail
+          .scale141/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+          from twelve_six.milestone100_first_learned import EXPECTED_CORPUS_ID, _build_corpus
+          from twelve_six import scale141_10m_continuation as core
+
+          repo = Path('.').resolve()
+          out = Path('scale141-evidence').resolve()
+          out.mkdir(parents=True, exist_ok=True)
+          manifest = _build_corpus(repo, out)
+          if manifest['corpus_identity_sha256'] != EXPECTED_CORPUS_ID:
+              raise SystemExit('DATA-25 corpus identity mismatch')
+          manifest2, tok, spec, init_spec, cfg, locks, run = core._common(repo, __import__('os').environ['EXPECTED_SOURCE_SHA'], out, False)
+          if manifest2['corpus_identity_sha256'] != __import__('os').environ['EXPECTED_CORPUS_ID']:
+              raise SystemExit('SCALE-141 DATA identity mismatch')
+          if spec.parameter_count() != int(__import__('os').environ['EXPECTED_PARAMETER_COUNT']):
+              raise SystemExit('S3 parameter count mismatch')
+          if spec.identity_sha256() != __import__('os').environ['EXPECTED_MODEL_SPEC_SHA256']:
+              raise SystemExit('S3 ModelSpec identity mismatch')
+          if tok.identity.version != 's0-byte-v1' or tok.identity.vocab_size != 256:
+              raise SystemExit('canonical byte tokenizer mismatch')
+          if run['identity_sha256'] == '':
+              raise SystemExit('run identity missing')
+          proof = {
+              'source_sha': __import__('os').environ['EXPECTED_SOURCE_SHA'],
+              'corpus_identity_sha256': manifest2['corpus_identity_sha256'],
+              'tokenizer_version': tok.identity.version,
+              'tokenizer_config_sha256': tok.identity.config_sha256,
+              'tokenizer_vocab_sha256': tok.identity.vocab_sha256,
+              'model_spec_sha256': spec.identity_sha256(),
+              'parameter_count': spec.parameter_count(),
+              'init_spec_sha256': init_spec.identity_sha256(),
+              'run_identity_sha256': run['identity_sha256'],
+          }
+          (out / 'learn217-identity-preflight.json').write_text(json.dumps(proof, sort_keys=True, indent=2) + '\n', encoding='utf-8')
+          print(json.dumps(proof, sort_keys=True, indent=2))
+          PY
+
+      - name: Prove immutable recovery lifecycle before training
+        run: |
+          set -euo pipefail
+          .scale141/bin/python tools/run_checkpoint211_recovery_proof.py \
+            --source-sha "$EXPECTED_SOURCE_SHA" \
+            --environment-manifest scale141-evidence/environment.json \
+            --output learn217-recovery-preflight
+          .scale141/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+          r = json.loads(Path('learn217-recovery-preflight/recovery-proof.json').read_text(encoding='utf-8'))
+          assert r['historical_failure']['reproduced'] is True
+          assert r['generation_proof']['older_generation_bytes_unchanged'] is True
+          assert r['fresh_load']['optimizer_state_restored'] is True
+          assert r['fresh_load']['rng_restored'] is True
+          assert r['corrupt_current_generation_fail_closed'] is True
+          assert r['cleanup']['retained_generation_count'] == 1
+          assert r['full_10m_retraining_performed'] is False
+          print(r['identity_sha256'])
+          PY
+
+      - name: Create and verify mandatory launch envelope
+        run: |
+          set -euo pipefail
+          .scale141/bin/python -m twelve_six.launch_gate create \
+            --repo-root . \
+            --request configs/launch/scale141-10m.json \
+            --output scale141-evidence/launch-10m.json
+          .scale141/bin/python -m twelve_six.launch_gate verify \
+            --repo-root . \
+            --request configs/launch/scale141-10m.json \
+            --envelope scale141-evidence/launch-10m.json
+
+      - name: Execute learned 10M phase 1 from random initialization
+        env:
+          TWELVE_SIX_LAUNCH_REQUEST: configs/launch/scale141-10m.json
+          TWELVE_SIX_LAUNCH_ENVELOPE: scale141-evidence/launch-10m.json
+        run: |
+          set -euo pipefail
+          .scale141/bin/python -m twelve_six.scale141_10m_runtime_v3 \
+            phase1 \
+            --repo-root . \
+            --source-sha "$EXPECTED_SOURCE_SHA" \
+            --output-dir scale141-evidence
+
+      - name: Execute mandatory fresh-process resume to terminal target
+        env:
+          TWELVE_SIX_LAUNCH_REQUEST: configs/launch/scale141-10m.json
+          TWELVE_SIX_LAUNCH_ENVELOPE: scale141-evidence/launch-10m.json
+        run: |
+          set -euo pipefail
+          .scale141/bin/python -m twelve_six.scale141_10m_runtime_v3 \
+            resume \
+            --repo-root . \
+            --source-sha "$EXPECTED_SOURCE_SHA" \
+            --output-dir scale141-evidence
+
+      - name: Validate terminal scientific report
+        run: |
+          set -euo pipefail
+          .scale141/bin/python -m twelve_six.scale141_10m_runtime_v3 \
+            validate scale141-evidence/report.json \
+            --expected-source-sha "$EXPECTED_SOURCE_SHA"
+
+      - name: Fresh D05 verify best and final checkpoints
+        run: |
+          set -euo pipefail
+          .scale141/bin/python -m twelve_six.scale141_fresh_verify \
+            --repo-root . \
+            --source-sha "$EXPECTED_SOURCE_SHA" \
+            --output-dir scale141-evidence
+          .scale141/bin/python - <<'PY'
+          import json, os
+          from pathlib import Path
+          v = json.loads(Path('scale141-evidence/fresh-verification.json').read_text(encoding='utf-8'))
+          if v['fresh_verification']['status'] != 'PASS':
+              raise SystemExit('fresh verification did not PASS')
+          if v['model']['parameter_count'] != int(os.environ['EXPECTED_PARAMETER_COUNT']):
+              raise SystemExit('fresh verification parameter count mismatch')
+          if v['model']['model_spec_sha256'] != os.environ['EXPECTED_MODEL_SPEC_SHA256']:
+              raise SystemExit('fresh verification ModelSpec mismatch')
+          identity = v['ladder_common_evaluation']['identity']['identity_sha256']
+          if identity != os.environ['EXPECTED_LADDER_EVAL_ID']:
+              raise SystemExit('M150 common evaluation identity mismatch')
+          print(v['identity_sha256'])
+          PY
+
+      - name: Retain best final and two verified recovery generations
+        run: |
+          set -euo pipefail
+          .scale141/bin/python - <<'PY'
+          import json, shutil
+          from pathlib import Path
+          from twelve_six.checkpoint import verify_checkpoint
+          from twelve_six.scale141_recovery import resolve_recovery_generation
+
+          root = Path('scale141-evidence')
+          verification = json.loads((root / 'fresh-verification.json').read_text(encoding='utf-8'))
+          phase1 = json.loads((root / 'phase1.json').read_text(encoding='utf-8'))
+          retained = root / 'retained'
+          retained.mkdir(parents=True, exist_ok=True)
+          index = {
+              'schema': '12-6.learn217-terminal-retained.v1',
+              'source_sha': verification['source_sha'],
+              'roles': {},
+              'recovery': {},
+          }
+          for role in ('best', 'final'):
+              evidence = verification['evidence'][role]
+              source = root / evidence['checkpoint_directory']
+              checked = verify_checkpoint(source)
+              if checked['checkpoint_id'] != evidence['checkpoint_id']:
+                  raise SystemExit(f'{role} checkpoint identity mismatch')
+              destination = retained / role
+              if destination.exists():
+                  shutil.rmtree(destination)
+              shutil.copytree(source, destination)
+              index['roles'][role] = {
+                  'source_directory': evidence['checkpoint_directory'],
+                  'target_optimized_tokens': evidence['target_optimized_tokens'],
+                  'checkpoint_id': checked['checkpoint_id'],
+                  'fresh_verification': 'PASS',
+              }
+
+          phase_ref = phase1['recovery_resume']
+          phase_source = root / 'recovery' / 'generations' / f"generation-{int(phase_ref['generation']):08d}"
+          phase_checked = verify_checkpoint(phase_source)
+          if phase_checked['checkpoint_id'] != phase_ref['checkpoint_id']:
+              raise SystemExit('phase1 recovery identity mismatch')
+          phase_dest = retained / 'recovery-phase1'
+          if phase_dest.exists():
+              shutil.rmtree(phase_dest)
+          shutil.copytree(phase_source, phase_dest)
+          index['recovery']['phase1'] = {
+              'generation': phase_ref['generation'],
+              'checkpoint_id': phase_ref['checkpoint_id'],
+              'optimizer_step': phase_ref['optimizer_step'],
+              'tokens_seen': phase_ref['tokens_seen'],
+              'pointer_sha256': phase_ref['pointer_sha256'],
+          }
+
+          current = resolve_recovery_generation(root / 'recovery')
+          current_dest = retained / 'recovery-current'
+          if current_dest.exists():
+              shutil.rmtree(current_dest)
+          shutil.copytree(current.path, current_dest)
+          index['recovery']['current'] = {
+              'generation': current.reference['generation'],
+              'checkpoint_id': current.reference['checkpoint_id'],
+              'optimizer_step': current.reference['optimizer_step'],
+              'tokens_seen': current.reference['tokens_seen'],
+              'pointer_sha256': current.reference['pointer_sha256'],
+          }
+          (retained / 'index.json').write_text(json.dumps(index, sort_keys=True, indent=2) + '\n', encoding='utf-8')
+          print(json.dumps(index, sort_keys=True, indent=2))
+          PY
+
+      - name: Emit LEARN-217 terminal summary
+        run: |
+          set -euo pipefail
+          .scale141/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+          r = json.loads(Path('scale141-evidence/report.json').read_text(encoding='utf-8'))
+          v = json.loads(Path('scale141-evidence/fresh-verification.json').read_text(encoding='utf-8'))
+          retained = json.loads(Path('scale141-evidence/retained/index.json').read_text(encoding='utf-8'))
+          final = r['scheduled']['2000000']
+          summary = {
+              'status': 'TERMINAL_LEARNED_10M_PASS',
+              'source_sha': r['source_sha'],
+              'parameter_count': r['model']['parameter_count'],
+              'model_spec_sha256': r['model']['model_spec_sha256'],
+              'optimized_tokens': r['corpus']['optimized_tokens'],
+              'optimized_tokens_by_modality': r['corpus']['optimized_tokens_by_modality'],
+              'aggregate_bpb': final['heldout']['bits_per_byte'],
+              'ua_bpb': final['heldout']['by_modality']['uk']['bits_per_byte'],
+              'en_bpb': final['heldout']['by_modality']['en']['bits_per_byte'],
+              'code_bpb': final['heldout']['by_modality']['code']['bits_per_byte'],
+              'train_probe_bpb': final['training_probe']['bits_per_byte'],
+              'gradient_norm_mean': final['training_interval'].get('gradient_norm_mean'),
+              'gradient_norm_p95': final['training_interval'].get('gradient_norm_p95'),
+              'clip_rate': final['training_interval'].get('clip_rate'),
+              'update_weight_ratio': final['training_interval'].get('relative_update_mean'),
+              'throughput_tokens_per_second': final['training_interval'].get('train_tokens_per_second_mean'),
+              'memory_rss_bytes': final['training_interval'].get('rss_bytes_max'),
+              'fresh_process_resume': r['fresh_process_resume'],
+              'best_target_optimized_tokens': v['best_target_optimized_tokens'],
+              'best_checkpoint_id': retained['roles']['best']['checkpoint_id'],
+              'final_checkpoint_id': retained['roles']['final']['checkpoint_id'],
+              'fresh_verification': v['fresh_verification']['status'],
+              'ladder_common_evaluation_identity': v['ladder_common_evaluation']['identity']['identity_sha256'],
+              'memorization': final['memorization'],
+              'generalization_gap': final['memorization'].get('generalization_gap_bits_per_byte'),
+              'report_sha256': r['report_sha256'],
+              'fresh_verification_sha256': v['identity_sha256'],
+              'retained_recovery': retained['recovery'],
+              'paid_compute': False,
+              'foreign_weights': False,
+              'sft_rlhf_dpo': False,
+          }
+          Path('scale141-evidence/learn217-terminal-summary.json').write_text(json.dumps(summary, sort_keys=True, indent=2) + '\n', encoding='utf-8')
+          print(json.dumps(summary, sort_keys=True, indent=2))
+          PY
+
+      - name: Upload terminal LEARN-217 learned Base artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: learn217-terminal-10m-learned-base
+          if-no-files-found: error
+          retention-days: 30
+          path: |
+            scale141-evidence/environment.json
+            scale141-evidence/learn217-identity-preflight.json
+            scale141-evidence/launch-10m.json
+            scale141-evidence/report.json
+            scale141-evidence/fresh-verification.json
+            scale141-evidence/phase1.json
+            scale141-evidence/corpus-manifest.json
+            scale141-evidence/run-manifest.json
+            scale141-evidence/cadence-runtime.json
+            scale141-evidence/machine-phase1.json
+            scale141-evidence/machine-resume.json
+            scale141-evidence/train-curve.jsonl
+            scale141-evidence/learn217-terminal-summary.json
+            scale141-evidence/retained/
+            learn217-recovery-preflight/recovery-proof.json
