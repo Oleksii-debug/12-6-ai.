@@ -1,0 +1,74 @@
+name: NEXT100-093 local assistant orchestrator
+
+on:
+  push:
+    branches: [next100-093/local-assistant-orchestrator-20260826]
+  pull_request:
+  workflow_dispatch:
+
+permissions: {contents: read}
+
+jobs:
+  local-free:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      PYTHONPATH: src
+      NEXT100_093_EXECUTION_PROFILE: LOCAL_FREE
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+      - name: Universal LOCAL_FREE bootstrap
+        uses: ./.github/actions/execution-bootstrap
+        with:
+          capabilities: runtime,tests,lint
+          venv: .next100093
+          manifest: reports/next100-093/environment.json
+      - name: Compile orchestration surface
+        run: .next100093/bin/python -m compileall -q src/twelve_six/local_assistant
+      - name: Run focused tests
+        run: .next100093/bin/python tests/test_local_assistant_orchestrator.py -v
+      - name: Ruff focused composition surface
+        run: >-
+          .next100093/bin/ruff check
+          src/twelve_six/local_assistant
+          tests/test_local_assistant_orchestrator.py
+      - name: Run deterministic plain-text probe
+        run: >-
+          .next100093/bin/python -m twelve_six.local_assistant --probe
+          --trace reports/next100-093/probe.json
+      - name: Assert machine safety boundary
+        run: |
+          .next100093/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+          p = json.loads(Path("reports/next100-093/probe.json").read_text())
+          assert p["execution_profile"] == "LOCAL_FREE"
+          assert p["safety"]["base_weights_modified"] is False
+          assert p["safety"]["training_executed"] is False
+          assert p["safety"]["optimizer_updates"] == 0
+          assert p["safety"]["external_llm_used"] is False
+          assert p["safety"]["chat_personality_claim"] is False
+          assert "private_scratch" not in json.dumps(p)
+          PY
+      - name: Forbid orchestration training/network ownership
+        run: |
+          set -euo pipefail
+          if grep -REn '\b(backward|optimizer\.step|save_checkpoint)\b' src/twelve_six/local_assistant; then
+            echo "orchestrator must not own training/checkpoint mutation" >&2
+            exit 1
+          fi
+          if grep -REn '^\s*(from|import)\s+(openai|anthropic|requests|httpx)(\.|\s|$)' src/twelve_six/local_assistant; then
+            echo "orchestrator must not own external LLM/network clients" >&2
+            exit 1
+          fi
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: next100-093-local-assistant-orchestrator
+          path: reports/next100-093/
+          if-no-files-found: warn
