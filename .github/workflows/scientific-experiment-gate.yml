@@ -1,0 +1,84 @@
+name: Scientific experiment local gate
+
+on:
+  workflow_call:
+    inputs:
+      scope_manifest:
+        description: Repository-relative scientific scope manifest
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      scope_manifest:
+        description: Repository-relative scientific scope manifest
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  experiment-local-gate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      PYTHONPATH: src
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - name: Checkout exact experiment head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up exact Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact source and preflight tools
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          git --version
+          python --version
+
+      - name: Bootstrap exact locked dev and test environment authority
+        run: |
+          set -euo pipefail
+          python tools/verify_locked_environment.py \
+            --profile linux-x86_64 \
+            --source-sha "$SOURCE_SHA" \
+            --evidence-out scientific-bootstrap.json
+
+      - name: Install exact execution environment before lint and tests
+        run: |
+          set -euo pipefail
+          python -m venv .scientific
+          for lock in toolchain runtime dev; do
+            .scientific/bin/python -m pip install --disable-pip-version-check --no-deps --require-hashes \
+              -r "requirements/locks/linux-x86_64/${lock}.lock.txt"
+          done
+          .scientific/bin/python -m ruff --version
+          .scientific/bin/python -m pytest --version
+
+      - name: Execute scientific scope gate
+        run: |
+          set -euo pipefail
+          .scientific/bin/python tools/scientific_scope_gate.py \
+            --repo-root . \
+            --manifest "${{ inputs.scope_manifest }}" \
+            --source-sha "$SOURCE_SHA" \
+            --bootstrap-evidence scientific-bootstrap.json \
+            --evidence-out scientific-scope-evidence.json
+
+      - name: Upload experiment-local evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: scientific-scope-${{ github.run_id }}
+          path: |
+            scientific-bootstrap.json
+            scientific-scope-evidence.json
+          if-no-files-found: error
+          retention-days: 30

@@ -1,0 +1,43 @@
+name: CI-155 scientific scope isolation proof
+
+on:
+  pull_request:
+    branches:
+      - integrate149/research-convergence-20260826
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  local-scientific-gate:
+    uses: ./.github/workflows/scientific-experiment-gate.yml
+    with:
+      scope_manifest: configs/ci/ci155_self_scope.v1.json
+
+  historical-demonstrations:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - name: Checkout exact head with history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Bind source and execute retained historical demonstrations
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          python tools/ci155_historical_scope_demo.py \
+            --repo-root . \
+            --output ci155-historical-demonstrations.json
+      - name: Upload historical demonstration evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ci155-historical-demonstrations-${{ github.run_id }}
+          path: ci155-historical-demonstrations.json
+          if-no-files-found: error
+          retention-days: 30

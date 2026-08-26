@@ -1,0 +1,16 @@
+{
+  "schema": "12-6.scientific-scope-manifest.v1",
+  "experiment_id": "CI-155-SCIENTIFIC-SCOPE-ISOLATION",
+  "base_sha": "b6828df276f27b093e918208f58888a7dc7257a1",
+  "entrypoints": [
+    "tools/scientific_scope_gate.py",
+    "tools/ci155_historical_scope_demo.py"
+  ],
+  "declared_consumed_paths": [
+    "configs/ci/scientific_scope_ownership.v1.json",
+    "configs/ci/ci155_historical_demonstrations.v1.json"
+  ],
+  "additional_tests": ["tests/test_scientific_scope_gate.py"],
+  "integration_status": "SEPARATE_STRICT_GATE",
+  "integration_note": "The existing repository-wide CI remains authoritative for integration/release health; this local gate makes no whole-repository health claim."
+}
