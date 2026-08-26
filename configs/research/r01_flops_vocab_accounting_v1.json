@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "report_id": "R01-FLOPS-VOCAB-ACCOUNTING-V1",
+  "planning_only": true,
+  "authority": {
+    "main_base_sha": "a73ab38026cb7849f478cc13ad58b93534a76e2f",
+    "model341_branch": "model341/20m-candidate-a-20260826",
+    "model341_sha": "e4ff486fd90802fc123bebf60eed4e59196a98df",
+    "model341_modelspec_sha256": "fbff24d561a2818453554d58ca23fc6ace3303b078f1935a8576c4565bd92441"
+  },
+  "expected_baseline_parameters": 20613440,
+  "hard_boundaries": {
+    "training_authorized": false,
+    "paid_compute_authorized": false,
+    "tokenizer_fit_authorized": false,
+    "stage_promotion_authorized": false
+  },
+  "baseline_model": {
+    "vocab_size": 256,
+    "max_seq_len": 1024,
+    "d_model": 320,
+    "n_layers": 16,
+    "n_heads": 10,
+    "n_kv_heads": 2,
+    "head_dim": 32,
+    "d_ff": 1080,
+    "tie_word_embeddings": true,
+    "attention_bias": false,
+    "mlp_bias": false,
+    "final_norm": true,
+    "lm_head_bias": false
+  },
+  "context_probe_tokens": [128, 512, 1024],
+  "tokenizer_candidate_vocab_sizes": [256, 320, 384, 437, 512],
+  "d_ff_multiple_of": 8,
+  "candidate_geometries": [
+    {
+      "id": "R01-CANDIDATE-50M-A",
+      "target_parameters": 50000000,
+      "model": {
+        "vocab_size": 256,
+        "max_seq_len": 1024,
+        "d_model": 384,
+        "n_layers": 28,
+        "n_heads": 12,
+        "n_kv_heads": 2,
+        "head_dim": 32,
+        "d_ff": 1248,
+        "tie_word_embeddings": true,
+        "attention_bias": false,
+        "mlp_bias": false,
+        "final_norm": true,
+        "lm_head_bias": false
+      }
+    },
+    {
+      "id": "R01-CANDIDATE-100M-A",
+      "target_parameters": 100000000,
+      "model": {
+        "vocab_size": 256,
+        "max_seq_len": 1024,
+        "d_model": 640,
+        "n_layers": 19,
+        "n_heads": 20,
+        "n_kv_heads": 4,
+        "head_dim": 32,
+        "d_ff": 2224,
+        "tie_word_embeddings": true,
+        "attention_bias": false,
+        "mlp_bias": false,
+        "final_norm": true,
+        "lm_head_bias": false
+      }
+    }
+  ]
+}
