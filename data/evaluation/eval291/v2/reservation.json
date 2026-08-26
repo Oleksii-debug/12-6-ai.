@@ -1,0 +1,110 @@
+{
+  "schema_version": "12-6.eval291-en-selection-reservation.v2",
+  "worker_id": "NEXT100-059-EN-SELECTION-V2",
+  "execution_profile": "LOCAL_FREE",
+  "state": "RESERVED_UNSEALED",
+  "purpose": "purpose_specific_external_real_english_evaluation_reservation",
+  "reservation_epoch": "THIS_FILE_FIRST_COMMIT_SHA_AND_COMMIT_TIME",
+  "policy": {
+    "training_eligible": false,
+    "tokenizer_fit_eligible": false,
+    "tokenizer_adaptation_eligible": false,
+    "selection_validation_payload_repo_visible": true,
+    "final_test_payload_repo_visible": false,
+    "final_test_outcomes_may_be_read": false,
+    "final_test_outcomes_may_influence_selection": false,
+    "deterministic_membership": true,
+    "near_copy_token_shingle_size": 5,
+    "near_copy_jaccard_threshold": 0.85,
+    "fail_closed_on_identity_or_near_copy_training_overlap": true
+  },
+  "objects": [
+    {
+      "membership_id": "httpx-timeouts-doc:b699f15c8df51d20",
+      "partition": "selection_validation",
+      "source_family": "github:encode/httpx",
+      "repository": "https://github.com/encode/httpx",
+      "revision": "b5addb64f0161ff6bfe94c124ef76f6a1fba5254",
+      "path": "docs/advanced/timeouts.md",
+      "git_blob_sha1": "aedcfb627f5139901638ebf8de30216c2640591e",
+      "raw_sha256": "48959a587ecc6430f9051ab1b1c76fcebc3f3e95ec01199281aab813a2dcfaa1",
+      "license_id": "BSD-3-Clause",
+      "license_path": "LICENSE.md",
+      "license_git_blob_sha1": "ab79d16a3f4c6c894c028d1f7431811e8711b42b",
+      "reservation_lineage": "EVAL-291 V1 inherited and reaffirmed"
+    },
+    {
+      "membership_id": "requests-authentication-doc:96dc99e811e40013",
+      "partition": "selection_validation",
+      "source_family": "github:psf/requests",
+      "repository": "https://github.com/psf/requests",
+      "revision": "5460f467b02e49471c0fd6cfc9ca0adab6351f98",
+      "path": "docs/user/authentication.rst",
+      "git_blob_sha1": "76be9cccafc0ce28a698672a128eac9d1f9bbe15",
+      "raw_sha256": "5878d62d3929b057f8a6008f21641ae9fae0515b5ed6174da7ac763e36ccdae6",
+      "license_id": "Apache-2.0",
+      "license_path": "LICENSE",
+      "license_git_blob_sha1": "67db8588217f266eb561f75fae738656325deac9",
+      "notice_path": "NOTICE",
+      "notice_git_blob_sha1": "1ff62db688277b77c83c1766dac7f165364d3528",
+      "reservation_lineage": "EVAL-291 V1 inherited and reaffirmed"
+    },
+    {
+      "membership_id": "flask-requestchecksum-doc:25bc38b2a43b2205",
+      "partition": "selection_validation",
+      "source_family": "github:pallets/flask",
+      "repository": "https://github.com/pallets/flask",
+      "revision": "22d924701a6ae2e4cd01e9a15bbaf3946094af65",
+      "path": "docs/patterns/requestchecksum.rst",
+      "git_blob_sha1": "25bc38b2a43b220597ca8c2e4a3b87730173a95a",
+      "license_id": "BSD-3-Clause",
+      "license_path": "LICENSE.txt",
+      "license_git_blob_sha1": "9d227a0cc43c3268d15722b763bd94ad298645a1",
+      "training_admission_boundary": {
+        "authority_branch": "next100-043/code-flask-admission-20260826",
+        "training_revision": "22d924701a6ae2e4cd01e9a15bbaf3946094af65",
+        "training_allowlist_excludes": "docs/**",
+        "selected_training_blob_count": 8,
+        "this_blob_selected_for_training": false
+      }
+    },
+    {
+      "membership_id": "pytest-capture-doc:5de89bc0e3fbd1a3",
+      "partition": "final_test",
+      "source_family": "github:pytest-dev/pytest",
+      "repository": "https://github.com/pytest-dev/pytest",
+      "revision": "28549a5f6b82bc916bb2ec5cb9fbfffe9b79fc66",
+      "path": "doc/en/how-to/capture-stdout-stderr.rst",
+      "git_blob_sha1": "5de89bc0e3fbd1a35f5805a06d89c2b3c17eb937",
+      "license_id": "MIT",
+      "license_path": "LICENSE",
+      "license_git_blob_sha1": "8eb357bf34d92aa6e37b8cf411ce67cfba24f2e8",
+      "payload_storage": "NOT_COMMITTED",
+      "outcomes_storage": "NOT_READ_NOT_COMMITTED"
+    }
+  ],
+  "partition_order": {
+    "selection_validation": [
+      "httpx-timeouts-doc:b699f15c8df51d20",
+      "requests-authentication-doc:96dc99e811e40013",
+      "flask-requestchecksum-doc:25bc38b2a43b2205"
+    ],
+    "final_test": [
+      "pytest-capture-doc:5de89bc0e3fbd1a3"
+    ]
+  },
+  "forbidden_consumers": [
+    "model_training",
+    "continued_pretraining",
+    "instruction_training",
+    "tokenizer_fit",
+    "tokenizer_adaptation"
+  ],
+  "seal_preconditions": [
+    "reservation commit exists before any post-reservation training/tokenizer admission of these exact objects",
+    "live pinned source and rights blobs rechecked immediately before seal",
+    "current training/tokenizer authority heads rescanned for exact source identity and near-copy exposure",
+    "final-test plaintext remains absent from repository",
+    "local V2 validation tests pass"
+  ]
+}
