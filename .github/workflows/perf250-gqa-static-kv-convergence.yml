@@ -37,6 +37,7 @@ jobs:
             tests/test_attention_perf_model_integration.py
             tests/test_static_kv_cache.py
             tests/test_kv_cache_generation.py
+            tests/test_kv_cache_serving.py
             tests/test_cached_batched_generation.py
             tests/test_checkpointing.py
           manifest: reports/perf250/environment.json
@@ -89,6 +90,7 @@ jobs:
           tests/test_attention_perf.py
           tests/test_attention_perf_model_integration.py
           tests/test_static_kv_cache.py
+          tests/test_kv_cache_serving.py
           tools/benchmark_static_kv_cache.py
           tools/benchmark_perf250_learned.py
 
