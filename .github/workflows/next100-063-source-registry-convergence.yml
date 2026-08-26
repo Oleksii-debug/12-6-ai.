@@ -1,0 +1,41 @@
+name: NEXT100-063 Source Registry Convergence
+
+on:
+  push:
+    branches:
+      - next100-063/source-registry-convergence-20260826
+    paths:
+      - configs/data/next100_063_source_registry_convergence_v1.json
+      - tools/validate_next100_063_source_registry_convergence.py
+      - tests/test_next100_063_source_registry_convergence.py
+      - .github/workflows/next100-063-source-registry-convergence.yml
+  pull_request:
+    paths:
+      - configs/data/next100_063_source_registry_convergence_v1.json
+      - tools/validate_next100_063_source_registry_convergence.py
+      - tests/test_next100_063_source_registry_convergence.py
+      - .github/workflows/next100-063-source-registry-convergence.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: next100-063-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1e
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+      - name: Validate converged authority vector
+        run: python tools/validate_next100_063_source_registry_convergence.py
+      - name: Run focused regressions
+        run: python -m unittest tests.test_next100_063_source_registry_convergence -v
