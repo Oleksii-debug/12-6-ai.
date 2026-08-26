@@ -29,7 +29,7 @@ from .transformers_llama import (
     rope_pairwise_to_llama_permutation,
 )
 
-TRANSFORMERS_VERSION = "5.15.0"
+TRANSFORMERS_VERSION = "5.15.1"
 EVIDENCE_SCHEMA = "12-6.transformers-llama-runtime-parity.v1"
 # Independent but semantically equivalent kernels may round differently in fp32.
 # This is a provisional acceptance ceiling; runtime evidence reports observed error

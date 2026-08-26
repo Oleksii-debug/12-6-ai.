@@ -39,7 +39,7 @@ def _identity(stage) -> CheckpointIdentity:
 
 
 def test_standard_llama_runtime_export_loads_via_from_pretrained(tmp_path: Path) -> None:
-    assert transformers.__version__ == "5.15.0"
+    assert transformers.__version__ == "5.15.1"
     stage = load_stage_config(ROOT / "configs/stages/s0_10k.json")
     torch.manual_seed(1337)
     source = TwelveSixDecoder(stage.model, stage.init).eval()
