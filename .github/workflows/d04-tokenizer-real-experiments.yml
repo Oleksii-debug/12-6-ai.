@@ -13,6 +13,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: d04-tokenizer-real-experiments-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   controlled-tokenizer-preflight:
     runs-on: ubuntu-24.04
