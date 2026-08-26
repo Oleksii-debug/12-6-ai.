@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import os
 import urllib.request
@@ -110,7 +111,61 @@ def validate_static(config: dict[str, Any], guard: dict[str, Any]) -> None:
         guard.get("schema_version") == "12-6.next100-065d-convergence-guard.v1",
         "convergence guard schema drift",
     )
+    require(guard.get("worker_id") == "NEXT100-065D-CANONICAL-CONVERGENCE-GUARD", "convergence guard worker drift")
     require(guard.get("local_free_only") is True, "convergence guard LOCAL_FREE weakened")
+
+    registry = guard.get("canonical_registry_v3", {})
+    require(registry.get("pr") == 538, "canonical registry PR drift")
+    require(
+        registry.get("path") == "configs/data/next100_063_terminal_source_registry_v3.json",
+        "canonical registry path drift",
+    )
+    require(
+        registry.get("schema_version") == "12-6.next100-063-terminal-source-registry.v3",
+        "canonical registry schema drift",
+    )
+    require(
+        registry.get("registry_identity_sha256")
+        == "66866a35d58b2f34431068a161986fc3eeb656e5ded1ca2ff8b40489049bac8c",
+        "canonical registry identity drift",
+    )
+    require(
+        registry.get("dedup_parent_head_sha") == "efc278cec0e4773eb4ff405bf4b4d24ee63b5d13",
+        "canonical registry dedup-parent head drift",
+    )
+    require(registry.get("dedup_parent_workflow_run") == 32999969398, "canonical registry dedup-parent run drift")
+    require(registry.get("numeric_training_capacity_bytes") == 357530, "canonical registry capacity drift")
+    require(
+        registry.get("by_stratum") == {"uk": 100856, "en": 150643, "code": 106031},
+        "canonical registry stratum vector drift",
+    )
+    require(
+        registry.get("family_counts") == {"uk": 4, "en": 4, "code": 5},
+        "canonical registry family vector drift",
+    )
+    require(registry.get("independent_family_count") == 13, "canonical registry family total drift")
+    require(
+        registry.get("authorized_balanced_no_replay_loss_positions") == 0,
+        "canonical registry illegally authorizes loss positions",
+    )
+
+    reconciliation = guard.get("v5_to_v3_reconciliation", {})
+    require(
+        reconciliation.get("v5_fixed_without_cpython_accepted_chunks") == 320632,
+        "V5 reconciliation capacity drift",
+    )
+    require(reconciliation.get("numpy_exact_capacity_bytes") == 36898, "NumPy reconciliation capacity drift")
+    require(
+        reconciliation.get("sum_must_equal_canonical_v3_numeric_bytes") == 357530,
+        "canonical reconciliation target drift",
+    )
+    require(
+        int(reconciliation["v5_fixed_without_cpython_accepted_chunks"])
+        + int(reconciliation["numpy_exact_capacity_bytes"])
+        == int(reconciliation["sum_must_equal_canonical_v3_numeric_bytes"]),
+        "V5 + NumPy does not reconcile to canonical V3",
+    )
+
     cp = guard.get("post_v3_terminal_additions", {}).get("cpython_accepted_only", {})
     require(cp.get("pr") == 567, "CPython accepted-only adapter PR drift")
     require(
@@ -131,6 +186,11 @@ def validate_static(config: dict[str, Any], guard: dict[str, Any]) -> None:
     require(cp.get("exact_eligible_capacity_bytes") == 15540, "CPython exact eligible capacity drift")
 
     guard_vector = guard.get("expected_composed_vector_before_successor_global_dedup", {})
+    require(guard_vector.get("source_object_count") == 31, "convergence-guard object count drift")
+    require(
+        guard_vector.get("source_family_counts") == {"uk": 4, "en": 5, "code": 5},
+        "convergence-guard family vector drift",
+    )
     require(
         guard_vector.get("capacity_bytes")
         == {"uk": 100856, "en": 1838293, "code": 106031, "total": 2045180},
@@ -182,7 +242,83 @@ def validate_run(run_id: int, head_sha: str, label: str) -> None:
     require(run.get("conclusion") == "success", f"{label} dedicated run not success")
 
 
+def decode_contents_json(payload: dict[str, Any], label: str) -> dict[str, Any]:
+    require(payload.get("encoding") == "base64", f"{label} contents encoding drift")
+    content = payload.get("content")
+    require(isinstance(content, str) and content, f"{label} contents missing")
+    try:
+        raw = base64.b64decode(content, validate=False)
+        value = json.loads(raw.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise SystemExit(f"NEXT100-065D FAIL: {label} contents decode failed: {exc}") from exc
+    require(isinstance(value, dict), f"{label} JSON root must be object")
+    return value
+
+
+def validate_live_canonical_registry(guard: dict[str, Any]) -> None:
+    expected = guard["canonical_registry_v3"]
+    pr_number = int(expected["pr"])
+    first_pr = github_get(f"pulls/{pr_number}")
+    head_sha = first_pr.get("head", {}).get("sha")
+    require(isinstance(head_sha, str) and head_sha, "canonical registry PR has no head SHA")
+
+    payload = github_get(f"contents/{expected['path']}?ref={head_sha}")
+    live = decode_contents_json(payload, "canonical registry V3")
+
+    second_pr = github_get(f"pulls/{pr_number}")
+    require(second_pr.get("head", {}).get("sha") == head_sha, "canonical registry PR moved during validation")
+    require(live.get("schema_version") == expected["schema_version"], "live canonical registry schema drift")
+    require(
+        live.get("registry_identity_sha256") == expected["registry_identity_sha256"],
+        "live canonical registry identity drift",
+    )
+
+    parent = live.get("dedup_parent", {})
+    require(parent.get("head_sha") == expected["dedup_parent_head_sha"], "live canonical dedup-parent head drift")
+    require(
+        parent.get("dedicated_workflow_run") == expected["dedup_parent_workflow_run"],
+        "live canonical dedup-parent run drift",
+    )
+    require(parent.get("dedicated_workflow_conclusion") == "success", "live canonical dedup-parent not success")
+    validate_run(
+        int(expected["dedup_parent_workflow_run"]),
+        str(expected["dedup_parent_head_sha"]),
+        "canonical V3 dedup parent",
+    )
+
+    inventory = live.get("pre_successor_global_dedup_inventory", {})
+    require(
+        inventory.get("candidate_numeric_training_capacity_bytes") == expected["numeric_training_capacity_bytes"],
+        "live canonical numeric capacity drift",
+    )
+    by_stratum = inventory.get("by_stratum", {})
+    actual_capacity = {
+        str(name): int(values.get("numeric_training_capacity_bytes", -1))
+        for name, values in by_stratum.items()
+        if isinstance(values, dict)
+    }
+    actual_families = {
+        str(name): int(values.get("family_count", -1))
+        for name, values in by_stratum.items()
+        if isinstance(values, dict)
+    }
+    require(actual_capacity == expected["by_stratum"], "live canonical stratum capacity drift")
+    require(actual_families == expected["family_counts"], "live canonical stratum family drift")
+    require(
+        inventory.get("candidate_independent_family_count") == expected["independent_family_count"],
+        "live canonical independent-family total drift",
+    )
+    downstream = live.get("downstream_gate_vector", {})
+    require(
+        downstream.get("authorized_balanced_no_replay_loss_positions")
+        == expected["authorized_balanced_no_replay_loss_positions"],
+        "live canonical registry exposure boundary drift",
+    )
+
+
 def validate_live(config: dict[str, Any], guard: dict[str, Any]) -> None:
+    validate_live_canonical_registry(guard)
+
     numpy = config["numpy"]
     numpy_pr = github_get(f"pulls/{numpy['pr']}")
     require(numpy_pr.get("head", {}).get("sha") == numpy["head_sha"], "NumPy PR head moved")
