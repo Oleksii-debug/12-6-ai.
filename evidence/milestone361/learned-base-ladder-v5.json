@@ -21,7 +21,7 @@
       "required_independent_verifier": "VERIFY-219",
       "required_terminal_state": "terminal independent scientific verifier authority",
       "observed_terminal": false,
-      "observed_publication": "ABSENT_FROM_LIVE_PR_BRANCH_AND_COMMIT_SEARCH"
+      "observed_publication": "ABSENT_FROM_FINAL_LIVE_PR_BRANCH_AND_COMMIT_SEARCH"
     },
     {
       "rung": "10M_LEARN217",
@@ -30,7 +30,7 @@
       "required_independent_verifier": "VERIFY-218-LEARNED-10M-INDEPENDENT",
       "required_terminal_state": "VERIFIED_LEARNED_10M",
       "observed_terminal": false,
-      "observed_publication": "ABSENT_FROM_LIVE_PR_BRANCH_AND_COMMIT_SEARCH"
+      "observed_publication": "ABSENT_FROM_FINAL_LIVE_PR_BRANCH_AND_COMMIT_SEARCH"
     }
   ],
   "comparison_boundary": {
@@ -58,7 +58,14 @@
     "final_corpus_freeze_claim": false
   },
   "admission_rule": "Admit 3M and 10M as separate different-budget learned evidence only after both required independent verifier authorities are terminal at the final live check. Preserve the 100K/500K/1M equal-budget ranking unchanged.",
-  "final_live_check_completed": false,
+  "final_live_check_completed": true,
+  "final_live_check": {
+    "pr_search_completed": true,
+    "branch_search_completed": true,
+    "commit_search_completed": true,
+    "verify_219_terminal_authority_found": false,
+    "verify_218_terminal_authority_found": false
+  },
   "claim_boundary": {
     "no_stage_promotion": true,
     "no_external_real_training_claim": true,
