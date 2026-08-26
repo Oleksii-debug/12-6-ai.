@@ -107,27 +107,32 @@
     },
     "source_registry_convergence_candidate": {
       "branch": "next100-063/canonical-source-registry-convergence-20260826",
-      "candidate_independent_family_count": 13,
-      "candidate_normalized_bytes": 565743,
+      "candidate_independent_family_count": 10,
+      "candidate_normalized_bytes": 266476,
+      "candidate_source_authority_count": 11,
+      "correction": "V2 removes unsupported full CPython accepted-byte credit and failed exact-head Pydantic/Rich admissions from capacity credit.",
       "draft": true,
       "family_minimum_gate": "PASS_PRE_GLOBAL_DEDUP",
-      "head_sha": "94dce83cbe611144f961b9f93b3be273345a7f62",
+      "head_sha": "7da63b7d85b65b1508ef5c7d73bfa8d56e718c9f",
       "pre_global_dedup_by_stratum": {
         "code": {
-          "family_count": 5,
-          "normalized_bytes": 296343
+          "family_count": 3,
+          "normalized_bytes": 14977
         },
         "en": {
-          "family_count": 4,
-          "normalized_bytes": 168544
+          "family_count": 3,
+          "normalized_bytes": 150643
         },
         "uk": {
           "family_count": 4,
           "normalized_bytes": 100856
         }
       },
-      "registry_identity_sha256": "77fb69c558df8c59fdae00583c955c62ad088cda98fd16b335eedb26fb2d7526",
-      "research_corpus_v1_target_gap_normalized_bytes": 19434257,
+      "registry_identity_sha256": "934933896a4b3b01dd58cd18d13bcc36245913f83412c6b3f697c64dd03e4d4d",
+      "research_corpus_v1_target_gap_normalized_bytes": 19733524,
+      "schema_version": "12-6.next100-063-terminal-source-registry.v2",
+      "source_registry_decision": "CONVERGED_FAIL_CLOSED_TERMINAL_SOURCE_VECTOR_PRE_GLOBAL_DEDUP_NOT_CORPUS_FREEZE",
+      "supersedes_registry_identity_sha256": "77fb69c558df8c59fdae00583c955c62ad088cda98fd16b335eedb26fb2d7526",
       "terminal_authority": false,
       "training_authorized_loss_positions": 0
     },
@@ -145,7 +150,7 @@
     "checkpoint_audit_refreshed": true,
     "drive_consulted": true,
     "main_refreshed": true,
-    "minimum_cutoff_utc": "2026-08-26T19:32:48Z",
+    "minimum_cutoff_utc": "2026-08-26T19:36:00Z",
     "source_registry_refreshed": true,
     "specialist_branches_refreshed": true,
     "truth_rule": "exact live GitHub authority outranks stale worker cutoff and Drive narrative"
@@ -158,7 +163,7 @@
     "long_training_started": false,
     "requested_optimized_targets": 20000000
   },
-  "evidence_identity_sha256": "d379001cbe82f33be871b35818e04f6f99663f89ad6bbc7f32e309b46f0bdd0c",
+  "evidence_identity_sha256": "ecb71e0acf7a9c366d2847358d64da62f9af88f27875d915da4e9b5b31394b4a",
   "execution_profile": "LOCAL_FREE",
   "gates": {
     "checkpoint_integrity_20m": "BLOCKED_PENDING_CURRENT_HEAD_GREEN_AND_11_OF_11_RERUN",
@@ -172,7 +177,7 @@
     "optimizer_mechanics_20m": "READY_FOR_BOUNDED_LOCAL_FREE_REBIND",
     "primary_20m_mechanics": "PASS",
     "real_20m_training": "BLOCKED",
-    "source_registry_convergence": "CANDIDATE_NONTERMINAL_565743_BYTES_13_FAMILIES",
+    "source_registry_convergence": "CANDIDATE_V2_FAIL_CLOSED_266476_BYTES_10_FAMILIES",
     "ua_training_family_diversity": "PASS_PRE_GLOBAL_DEDUP_CANDIDATE",
     "unique_no_replay_loss_capacity": "BLOCKED_ZERO"
   },
@@ -199,7 +204,7 @@
   "terminal_decision": {
     "primary_blocker": "RESEARCH_CORPUS_V1_NOT_TERMINAL_AND_ZERO_AUTHORIZED_UNIQUE_LOSS_CAPACITY",
     "secondary_blockers": [
-      "SOURCE_REGISTRY_CONVERGENCE_CANDIDATE_NOT_YET_TERMINAL_OR_CORPUS_MATERIALIZED",
+      "SOURCE_REGISTRY_V2_VECTOR_EXISTS_BUT_CORPUS_NOT_YET_MATERIALIZED",
       "NO_EXACT_CANDIDATE_CORPUS_IDENTITY_FOR_DECONTAMINATION",
       "D05_REMEDIATION_CURRENT_HEAD_NOT_YET_GREEN",
       "NEXT100_075_FULL_11_CASE_PRODUCTION_RERUN_NOT_YET_GREEN",
