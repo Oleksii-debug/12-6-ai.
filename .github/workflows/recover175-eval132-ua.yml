@@ -5,6 +5,11 @@ on:
     branches:
       - milestone150/learned-base-ladder-v1-20260826
   workflow_dispatch:
+    inputs:
+      m150_source_sha:
+        description: Exact successful M150 source SHA to evaluate
+        required: true
+        type: string
 
 concurrency:
   group: recover175-eval132-${{ github.event.pull_request.number || github.run_id }}
@@ -23,8 +28,7 @@ jobs:
       PYTHONPATH: src
       OMP_NUM_THREADS: "2"
       MKL_NUM_THREADS: "2"
-      M150_RUN_ID: "32938439174"
-      M150_SOURCE_SHA: "8344085ddd0b52e4b698c3344a1d0482153525dc"
+      M150_SOURCE_SHA: ${{ github.event.pull_request.base.sha || inputs.m150_source_sha }}
     steps:
       - name: Checkout exact RECOVER-175 head
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -44,6 +48,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+          test -n "$M150_SOURCE_SHA"
           test "$(git rev-parse HEAD:data/evaluation/benchmark_registry.json)" = "170d80f90b871481ceae6b3d651656130c1892f7"
           test "$(git rev-parse HEAD:data/evaluation/ua_raw_base_v1/manifest.json)" = "2db0bf5c6f93838852b8a730584946986fed530e"
           test "$(git rev-parse HEAD:data/evaluation/ua_raw_base_v1/source_rows.json)" = "068c5b515cfafef1f5dbd1ab8b44348e3e7e00f9"
@@ -89,8 +94,15 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          STATE="$(gh run view "$M150_RUN_ID" --repo "$GH_REPO" --json status,conclusion --jq '.status + " " + (.conclusion // "")')"
-          test "$STATE" = "completed success"
+          M150_RUN_ID="$(
+            gh api --method GET \
+              "repos/$GH_REPO/actions/workflows/milestone150-learned-base-ladder-v1.yml/runs?event=pull_request&head_sha=$M150_SOURCE_SHA&per_page=20" \
+              --jq '.workflow_runs[] | select(.status == "completed" and .conclusion == "success") | .id' \
+              | head -n 1
+          )"
+          test -n "$M150_RUN_ID"
+          BOUND="$(gh run view "$M150_RUN_ID" --repo "$GH_REPO" --json headSha,status,conclusion --jq '.headSha + " " + .status + " " + .conclusion')"
+          test "$BOUND" = "$M150_SOURCE_SHA completed success"
           rm -rf m150-upstream
           mkdir -p m150-upstream
           gh run download "$M150_RUN_ID" --repo "$GH_REPO" \
@@ -101,6 +113,7 @@ jobs:
           M150_DIR="$(dirname "$REPORT")"
           test -f "$M150_DIR/retained/index.json"
           printf 'M150_EVIDENCE=%s\n' "$M150_DIR" >> "$GITHUB_ENV"
+          printf 'M150_EVIDENCE_RUN_ID=%s\n' "$M150_RUN_ID" >> "$GITHUB_ENV"
 
       - name: Execute random-init and learned EVAL-132 ladder diagnostics
         run: |
@@ -158,6 +171,7 @@ jobs:
           set -euo pipefail
           .r175/bin/python - <<'PY'
           import json
+          import os
           from pathlib import Path
           r = json.loads(Path("recover175-evidence/learned-base-ladder-v1.json").read_text(encoding="utf-8"))
           d = r["ukrainian_raw_lm_diagnostic"]
@@ -166,6 +180,8 @@ jobs:
               "",
               f"- frozen dataset: `{d['suite']['dataset_sha256']}` / {d['suite']['item_count']} pairs / 9 phenomena",
               f"- reserved evaluation registration: `{d['suite_registration']['status']}` / {d['suite_registration']['reserved_variant_count']} variants",
+              f"- upstream M150 source: `{d['common_truth']['m150_source_sha']}`",
+              f"- upstream M150 run: `{os.environ['M150_EVIDENCE_RUN_ID']}`",
               f"- upstream M150 report: `{d['common_truth']['m150_report_sha256']}`",
               "- tokenizer-length separation: exact common `s0-byte-v1`, 1.0 token/source-byte",
               "- 10M: `INCOMPLETE_NO_VERIFIED_LEARNED_CHECKPOINT`",
