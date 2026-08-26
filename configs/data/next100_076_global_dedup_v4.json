@@ -9,7 +9,7 @@
   "paid_compute_used": false,
   "final_test_payload_read": false,
   "convergence_authority": {
-    "head_sha": "5356d60c8c8af46d6fc34debfd3cb36731045338",
+    "head_sha": "9a6b43849042a4c0dc60d6da5e341827ccf311e7",
     "path": "configs/data/next100_063_source_registry_convergence_v1.json",
     "blob_sha1": "d5b640b386219290f69d02a7f2e30a338c883009",
     "expected_pre_dedup_capacity_bytes": {
