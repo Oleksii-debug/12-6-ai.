@@ -2,6 +2,25 @@ name: D02 S1 Numerical Preflight
 
 on:
   pull_request:
+    # Specialist evidence: this preflight exercises the S1 model/Trainer against
+    # the controlled S0 fixture, so unrelated PRs must not consume a full run.
+    paths:
+      - ".github/workflows/d02-s1-numerical-preflight.yml"
+      - "pyproject.toml"
+      - "configs/stages/s1_100k.json"
+      - "data/s0/packaged/**"
+      - "requirements/locks/linux-x86_64/**"
+      - "src/twelve_six/model/**"
+      - "src/twelve_six/packing/**"
+      - "src/twelve_six/tokenization/**"
+      - "src/twelve_six/training/**"
+      - "tools/run_s1_numerical_preflight.py"
+      - "tools/validate_s1_numerical_preflight.py"
+      - "tools/verify_locked_environment.py"
+
+concurrency:
+  group: d02-s1-numerical-preflight-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
