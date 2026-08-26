@@ -1,0 +1,60 @@
+{
+  "worker_id": "TOK-324-DOCUMENT-BOUNDARY-FINAL",
+  "repository": "Oleksii-debug/12-6-ai.",
+  "branch": "tok324/document-boundary-final-20260826",
+  "base_sha": "5bcbc7f885c5d1e6035adf4e40e181c00c24d96f",
+  "mode": "LOCAL_FREE",
+  "status": "BLOCKED_NO_ELIGIBLE_TOKENIZER_FAMILY",
+  "requested_experiment": {
+    "comparison": [
+      "A_NO_EOS_DOCUMENT_ISOLATED",
+      "B_EOS_DOCUMENT_ISOLATED"
+    ],
+    "equal_source_content_exposure_required": true,
+    "chat_system_user_token_semantics": false,
+    "promotion_rule": "PROMOTE_EOS_ONLY_ON_REPEATABLE_MATERIAL_GAIN_OTHERWISE_RETAIN_NO_EOS"
+  },
+  "live_authority": {
+    "tok315_branch": "tok315/tokenizer-fit-eligibility-20260826",
+    "tok315_sha": "b41e0ccbc9cf21933dcf285ce8d5eadb4bd33cce",
+    "tok315_fit_may_start_now": false,
+    "tok315_blocker": "PENDING_MATERIALIZED_RESERVED_DECONTAMINATION",
+    "tok316_branch": "tok316/bpe-reproducibility-v03-20260826",
+    "tok316_sha": "5bcbc7f885c5d1e6035adf4e40e181c00c24d96f",
+    "tok316_status": "BLOCKED_TOKENIZER_FIT_NOT_YET_PERMITTED",
+    "tok316_trainings_completed": "0/8",
+    "tok316_family_winner": null
+  },
+  "execution": {
+    "family_specific_ab_training_executed": false,
+    "source_content_tokens_consumed_A": 0,
+    "source_content_tokens_consumed_B": 0,
+    "paid_compute": false,
+    "final_test_exposed": false,
+    "selection_validation_exposed": false,
+    "new_special_token_semantics_introduced": false
+  },
+  "decision": {
+    "scientific_eos_promotion": "NOT_EVALUABLE",
+    "operational_boundary_policy": "RETAIN_NO_EOS",
+    "reason": "The strongest eligible tokenizer family is not yet established. TOK-316 cannot fit or compare its 320/384/437/512 BPE candidates because TOK-315 has not authorized tokenizer fitting. Running an EOS experiment on an assumed family would violate the frozen dependency chain and could confound vocabulary, embedding tax, tokenizer identity, and checkpoint compatibility.",
+    "historical_evidence_treatment": "NON_TRANSFER_ONLY"
+  },
+  "historical_boundary_evidence": {
+    "source": "TOK-242 / RECOVER-173-TOK-115",
+    "scope": "canonical byte tokenizer on earlier project-authored corpus; not transferable to the final external-real strongest family",
+    "matched_268k_B_minus_A_content_bpb": 0.05924702242191504,
+    "matched_1m_B_minus_A_content_bpb": -0.0025283359578636144,
+    "matched_1m_eos_terminations": "0/6",
+    "interpretation": "No repeatable material EOS gain was established; earlier evidence therefore supports retaining no-EOS only as an incumbent, not as the final family-specific scientific verdict."
+  },
+  "unblock_requirements": [
+    "materialized reserved-decontaminated tokenizer-fit corpus with TOK-315 or superseding fit_may_start_now=true",
+    "TOK-316 completion of all 320/384/437/512 candidates twice with reproducible artifacts and no unintended unknowns",
+    "terminal strongest eligible tokenizer-family selection with immutable tokenizer identity",
+    "frozen train/selection identities and parameter-matched A/B configs",
+    "paired repeated seeds with exactly equal source-content exposure and no replay beyond preregistered capacity",
+    "materiality threshold preregistered before looking at A/B outcomes"
+  ],
+  "terminal_rule": "Until all unblock requirements are satisfied, do not add EOS to the canonical token contract and do not claim an EOS quality result."
+}
