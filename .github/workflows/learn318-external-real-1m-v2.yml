@@ -1,6 +1,8 @@
 name: LEARN-318 External Real 1M V2 Authority Gate
 
 on:
+  push:
+    branches: [learn318/external-real-1m-v2-20260826]
   pull_request:
     branches: [data300/corpus-v03-frozen-build-contract-20260826]
   workflow_dispatch:
