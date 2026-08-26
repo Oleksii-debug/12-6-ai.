@@ -1,0 +1,639 @@
+{
+  "schema_version": "ci286.authority-supersession.v1",
+  "generated_by": "CI-286-AUTHORITY-SUPERSESSION-MAP",
+  "observation_cutoff_utc": "2026-08-26T12:06:34Z",
+  "repository": {
+    "requested": "Oleksii-debug/12-6-ai",
+    "physical": "Oleksii-debug/12-6-ai.",
+    "base_branch": "integrate222/learned-execution-spine-20260826",
+    "base_sha": "6afaf5889f9898037b53e8b0bc2b731d77782111",
+    "authority_branch": "ci286/authority-supersession-map-20260826"
+  },
+  "policy": {
+    "local_free_only": true,
+    "automatic_merge": false,
+    "automatic_pr_close": false,
+    "candidate_newness_does_not_imply_authority": true,
+    "failed_or_blocked_is_historical_not_authority": true,
+    "circular_supersession": "fail"
+  },
+  "registry_input": {
+    "mode": "materialized_retained_registry_plus_live_crosscheck",
+    "standalone_ci274_registry_found": false,
+    "retained_registry": {
+      "id": "MILESTONE-150-LEARNED-BASE-LADDER-V1",
+      "source_sha": "5838cd16869dcfcf762368d8673eddf52d51b7e3",
+      "artifact_id": 9595677772,
+      "artifact_sha256": "c00b7e9006320f8916c739a3311e8cc47ad0d0b16957f8ebd7d19233fd9f1c71",
+      "corpus_identity": "422f545da93526ceba2c0ff738e0b9deac65f35bfb31d87d2aab068cda091fc8",
+      "evaluation_identity": "7189e6df053574beb686727c94e684cdbaf08a34ef33aa953eff7cdae0320113"
+    },
+    "later_live_artifacts": {
+      "learned_10m": {
+        "pr": 355,
+        "head_sha": "c02c8aa38e691521ae2ab6a4ff3ea1d643efd6ef",
+        "artifact_id": 9602650341,
+        "artifact_sha256": "8631e90417e40365b3fc0d6bc98ee6adda5a4ed24530e675d9a91c93219537ee",
+        "model_spec_sha256": "61caa5469123e23b9b72fc2024140bfca84c4c480dcb0a7e712ba800a4f22998",
+        "parameter_count": 10000640
+      }
+    },
+    "notes": [
+      "No standalone CI-274 registry object was discoverable at the observation cutoff; absence is recorded rather than synthesized.",
+      "Retained MILESTONE-150 identities are cross-checked against current terminal PR/workflow evidence.",
+      "Different token-budget learned artifacts are provenance evidence, not automatically equal-budget scientific rankings."
+    ]
+  },
+  "required_subsystems": [
+    "environment",
+    "model",
+    "trainer",
+    "checkpoint",
+    "data_rights",
+    "corpus",
+    "evaluation",
+    "inference",
+    "performance",
+    "post_base"
+  ],
+  "subsystems": {
+    "environment": {
+      "resolution": "resolved",
+      "incumbent": "ENV-151",
+      "rationale": "Maintained exact capability/lock bootstrap; later branches consume it rather than replace it."
+    },
+    "model": {
+      "resolution": "resolved",
+      "incumbent": "LEARN-217-MODEL",
+      "rationale": "Latest terminal learned Base pins the accepted 10M S3 GQA ModelSpec without changing model math."
+    },
+    "trainer": {
+      "resolution": "resolved",
+      "incumbent": "D02-TRAINER",
+      "rationale": "Accepted precision/Trainer runtime implementation; downstream exact integration records terminal success. New TRAIN-243 has no exact-head Actions at cutoff."
+    },
+    "checkpoint": {
+      "resolution": "resolved",
+      "incumbent": "CHECKPOINT-211",
+      "rationale": "Terminal immutable recovery-generation contract used by LEARN-217."
+    },
+    "data_rights": {
+      "resolution": "resolved",
+      "incumbent": "DATA-24-RIGHTS",
+      "rationale": "EligibilityResolver remains the semantic rights authority and was revalidated by exact-green DATA-227."
+    },
+    "corpus": {
+      "resolution": "resolved",
+      "incumbent": "DATA-25-CORPUS",
+      "rationale": "Exact corpus identity used by learned Base; newer external-real snapshot/capacity evidence has not promoted a successor corpus."
+    },
+    "evaluation": {
+      "resolution": "resolved",
+      "incumbent": "RECOVER-176-EVAL-133",
+      "rationale": "Terminal immutable EVAL-133 recomputation on retained learned ladder. EVAL-284 has no Actions at cutoff."
+    },
+    "inference": {
+      "resolution": "resolved",
+      "incumbent": "D07-FIRST-PARTY-INFERENCE",
+      "rationale": "Verified canonical first-party checkpoint loader/Base completion runtime with exact parity and fail-closed boundaries."
+    },
+    "performance": {
+      "resolution": "resolved",
+      "incumbent": "PERF-250",
+      "rationale": "Terminal convergence of native GQA and accepted static KV with learned 1M/3M/10M verification."
+    },
+    "post_base": {
+      "resolution": "resolved",
+      "incumbent": "POSTBASE-253",
+      "rationale": "Terminal communication-consumption boundary; parallel Post-Base experiments do not supersede the namespace/rollback contract."
+    }
+  },
+  "nodes": [
+    {
+      "id": "ENV-151",
+      "subsystem": "environment",
+      "disposition": "incumbent",
+      "authority_kind": "execution_bootstrap",
+      "source": {
+        "pr": 313,
+        "branch": "env151/universal-execution-bootstrap-20260826",
+        "head_sha": "bbca2101ea9409b47d844dd8292cd7f2290e3ff0"
+      },
+      "evidence_state": "terminal_green",
+      "evidence": {
+        "claim": "universal exact execution bootstrap",
+        "local_free": true
+      },
+      "notes": [
+        "Preserves D08 identity authority; provides maintained execution closure."
+      ]
+    },
+    {
+      "id": "LEARN-217-MODEL",
+      "subsystem": "model",
+      "disposition": "incumbent",
+      "authority_kind": "artifact_bound_modelspec",
+      "source": {
+        "pr": 355,
+        "branch": "learn217/terminal-10m-base-20260826",
+        "head_sha": "c02c8aa38e691521ae2ab6a4ff3ea1d643efd6ef"
+      },
+      "evidence_state": "terminal_green",
+      "evidence": {
+        "parameter_count": 10000640,
+        "model_spec_sha256": "61caa5469123e23b9b72fc2024140bfca84c4c480dcb0a7e712ba800a4f22998",
+        "artifact_id": 9602650341,
+        "artifact_sha256": "8631e90417e40365b3fc0d6bc98ee6adda5a4ed24530e675d9a91c93219537ee"
+      },
+      "notes": [
+        "Consumes accepted S3 GQA incumbent unchanged; no new trainer or model math."
+      ]
+    },
+    {
+      "id": "D02-TRAINER",
+      "subsystem": "trainer",
+      "disposition": "incumbent",
+      "authority_kind": "trainer_precision_runtime",
+      "source": {
+        "pr": 118,
+        "branch": "d02/s0-precision-runtime-contract-20260825",
+        "head_sha": "e77cf610443f08fcd2b10bf445b956e35bd2b3a8"
+      },
+      "evidence_state": "downstream_revalidated",
+      "evidence": {
+        "validation_pr": 280,
+        "validation_note": "Later D26 integration records terminal SUCCESS for CI, D02 Real S0, Repeatability, Strict Eval, and D02 Precision Scale Probe at this exact source head."
+      },
+      "notes": [
+        "Original PR body predates terminal current-head result; downstream exact-head witness is used.",
+        "INTEGRATE-163 wrapper failure does not demote the underlying accepted D02 implementation."
+      ]
+    },
+    {
+      "id": "CHECKPOINT-211",
+      "subsystem": "checkpoint",
+      "disposition": "incumbent",
+      "authority_kind": "immutable_recovery",
+      "source": {
+        "pr": 354,
+        "branch": "checkpoint211/scale141-recovery-immutability-20260826",
+        "head_sha": "349e6db94d4aca81c2d1a0ccc3368a98b6058392"
+      },
+      "evidence_state": "terminal_green",
+      "evidence": {
+        "run": 32951984562,
+        "artifact_id": 9600513685,
+        "artifact_sha256": "1038f9ac5548e6caeb2f6ae1c0ad0ddfee6969c909fbf62afca635101a39aeb9"
+      },
+      "notes": [
+        "Preserves D05 immutability; generation pointer lifecycle is fail-closed."
+      ]
+    },
+    {
+      "id": "DATA-24-RIGHTS",
+      "subsystem": "data_rights",
+      "disposition": "incumbent",
+      "authority_kind": "semantic_rights_resolver",
+      "source": {
+        "pr": 224,
+        "branch": "data24/rights-gate-20260825",
+        "head_sha": "eac3e55c2aa7d5072f2afcf678af5cc109a67312"
+      },
+      "evidence_state": "downstream_revalidated",
+      "evidence": {
+        "revalidated_by": "DATA-227",
+        "note": "DATA-227 exact-green explicitly retains DATA-24 v2 EligibilityResolver as authoritative."
+      },
+      "notes": [
+        "Own-head legacy generic CI is red; current authority is semantic and downstream-revalidated, not mislabeled generic-green."
+      ]
+    },
+    {
+      "id": "DATA-25-CORPUS",
+      "subsystem": "corpus",
+      "disposition": "incumbent",
+      "authority_kind": "learned_base_corpus",
+      "source": {
+        "pr": 210,
+        "branch": "data25/corpus-v01-20260825",
+        "head_sha": "8af17afa7baf3d75c2328caf8b08af2400a95e09"
+      },
+      "evidence_state": "terminal_green",
+      "evidence": {
+        "corpus_identity": "422f545da93526ceba2c0ff738e0b9deac65f35bfb31d87d2aab068cda091fc8",
+        "shards": 36,
+        "train_documents": 43238,
+        "train_byte_tokens": 20000775,
+        "validation_documents": 2969,
+        "validation_byte_tokens": 1410473
+      },
+      "notes": [
+        "Project-authored data only at V0.1; not evidence of representative external-real diversity."
+      ]
+    },
+    {
+      "id": "RECOVER-176-EVAL-133",
+      "subsystem": "evaluation",
+      "disposition": "incumbent",
+      "authority_kind": "frozen_evaluator_execution",
+      "source": {
+        "pr": 329,
+        "branch": "recover176/eval133-en-m150-ladder-20260826",
+        "head_sha": "de19adf253c19ba077a6b3af7c88c291249ed7aa"
+      },
+      "evidence_state": "terminal_green",
+      "evidence": {
+        "run": 32951302310,
+        "evaluation_identity": "7189e6df053574beb686727c94e684cdbaf08a34ef33aa953eff7cdae0320113",
+        "state_non_mutation": true
+      },
+      "notes": [
+        "EVAL-133 suite/reservation/scorer remains byte-identical; recovery fixes consumer contract only."
+      ]
+    },
+    {
+      "id": "D07-FIRST-PARTY-INFERENCE",
+      "subsystem": "inference",
+      "disposition": "incumbent",
+      "authority_kind": "first_party_base_runtime",
+      "source": {
+        "pr": 63,
+        "branch": "d05/first-party-inference-s0-20260824",
+        "head_sha": "9a1a6f8494b5d5dd9346afb644fc84de2e39d5e0"
+      },
+      "evidence_state": "terminal_green",
+      "evidence": {
+        "run": 32745879308,
+        "full_pytest": "171 passed",
+        "parity": "zero-tolerance first-party parity on fixture"
+      },
+      "notes": [
+        "Raw Base completion semantics only; chat/system/instruction semantics are explicitly rejected.",
+        "Later learned/performance paths load checkpoints through this backend."
+      ]
+    },
+    {
+      "id": "PERF-250",
+      "subsystem": "performance",
+      "disposition": "incumbent",
+      "authority_kind": "gqa_static_kv_convergence",
+      "source": {
+        "pr": 379,
+        "branch": "perf250/gqa-static-kv-convergence-v2-20260826",
+        "head_sha": "66f9be0c86a17568316e791dbf1890b238f114af"
+      },
+      "evidence_state": "terminal_green",
+      "evidence": {
+        "run": 32961371483,
+        "artifact_id": 9604015370,
+        "artifact_sha256": "019c9a561023bf7c061ff9938869f59e0076bbaf7b57a50101676f2892bac883",
+        "learned_10m_static_vs_dynamic_max_abs_logit_error": 0.0
+      },
+      "notes": [
+        "Accepts bounded static allocation and semantic convergence; does not claim CPU speedup or GPU throughput."
+      ]
+    },
+    {
+      "id": "POSTBASE-253",
+      "subsystem": "post_base",
+      "disposition": "incumbent",
+      "authority_kind": "communication_consumption_boundary",
+      "source": {
+        "pr": 381,
+        "branch": "postbase253/communication-layer-contract-20260826",
+        "head_sha": "f6463424b5f53152fce6e6053b705f94e03f9f06"
+      },
+      "evidence_state": "terminal_green",
+      "evidence": {
+        "run": 32960956930,
+        "schema": "12-6.post-base.communication-consumption.v1",
+        "optimizer_updates": 0
+      },
+      "notes": [
+        "Defines isolation/rollback boundary only; does not authorize communication training."
+      ]
+    },
+    {
+      "id": "TRAIN-243",
+      "subsystem": "trainer",
+      "disposition": "candidate",
+      "authority_kind": "candidate_trainer",
+      "source": {
+        "pr": 380,
+        "branch": "train243/optimizer-candidate-20260826",
+        "head_sha": "7ff794749a6c6f6f8f905314a29f64e6daaf2211"
+      },
+      "evidence_state": "no_exact_head_run",
+      "non_authority_reason": "No Actions run existed for exact head at cutoff."
+    },
+    {
+      "id": "TRAIN-244",
+      "subsystem": "trainer",
+      "disposition": "historical",
+      "authority_kind": "experiment",
+      "source": {
+        "pr": 376
+      },
+      "evidence_state": "stale",
+      "non_authority_reason": "Blocker snapshot said TRAIN-243 absent; TRAIN-243 now exists, so this is historical cutoff evidence until independently rerun."
+    },
+    {
+      "id": "TRAIN-245",
+      "subsystem": "trainer",
+      "disposition": "historical",
+      "authority_kind": "experiment",
+      "source": {
+        "pr": 377
+      },
+      "evidence_state": "stale",
+      "non_authority_reason": "Blocker snapshot said TRAIN-244 absent; that prerequisite now exists, so old blocker is not current authority."
+    },
+    {
+      "id": "TRAIN-194",
+      "subsystem": "trainer",
+      "disposition": "historical",
+      "authority_kind": "experiment",
+      "source": {
+        "pr": 344
+      },
+      "evidence_state": "failed",
+      "non_authority_reason": "Terminal Ruff failure."
+    },
+    {
+      "id": "INTEGRATE-163",
+      "subsystem": "trainer",
+      "disposition": "historical",
+      "authority_kind": "composition_wrapper",
+      "source": {
+        "pr": 304,
+        "head_sha": "e700acaed7963d641ecabc7d4f0e1017be272300"
+      },
+      "evidence_state": "failed",
+      "non_authority_reason": "Integration wrapper workflows failed; underlying accepted D02 source is tracked independently."
+    },
+    {
+      "id": "MODEL-246",
+      "subsystem": "model",
+      "disposition": "historical",
+      "authority_kind": "experiment",
+      "source": {
+        "pr": 374
+      },
+      "evidence_state": "blocked",
+      "non_authority_reason": "Missing terminal optimizer/data authorities at its observation point."
+    },
+    {
+      "id": "MODEL-247",
+      "subsystem": "model",
+      "disposition": "historical",
+      "authority_kind": "experiment",
+      "source": {
+        "pr": 371
+      },
+      "evidence_state": "stale",
+      "non_authority_reason": "Stale prerequisite snapshot; retained RoPE theta=10000 rather than promoting a successor."
+    },
+    {
+      "id": "MODEL-248",
+      "subsystem": "model",
+      "disposition": "parallel_evidence",
+      "authority_kind": "negative_selection",
+      "source": {
+        "pr": 375
+      },
+      "evidence_state": "terminal_evidence",
+      "non_authority_reason": "Decision evidence says KEEP current 8Q/2KV; it validates retention rather than creating a new model incumbent."
+    },
+    {
+      "id": "DATA-227",
+      "subsystem": "data_rights",
+      "disposition": "parallel_evidence",
+      "authority_kind": "rights_validation",
+      "source": {
+        "pr": 367,
+        "head_sha": "8ebdb2e132ed7bae5245e9d4c140752640ab9885"
+      },
+      "evidence_state": "terminal_green",
+      "non_authority_reason": "Validates external-real code rights while explicitly retaining DATA-24 EligibilityResolver authority."
+    },
+    {
+      "id": "DATA-229",
+      "subsystem": "corpus",
+      "disposition": "parallel_evidence",
+      "authority_kind": "snapshot_registry",
+      "source": {
+        "pr": 369,
+        "head_sha": "90bc0b7f8b696ec35202532b13edf6ab29a662fe"
+      },
+      "evidence_state": "terminal_green",
+      "non_authority_reason": "Immutable external-real snapshot registry is evidence input, not a promoted learned Base corpus."
+    },
+    {
+      "id": "DATA-232",
+      "subsystem": "corpus",
+      "disposition": "historical",
+      "authority_kind": "experiment",
+      "source": {
+        "pr": 368
+      },
+      "evidence_state": "blocked",
+      "non_authority_reason": "Blocked on absent DATA-230."
+    },
+    {
+      "id": "DATA-298",
+      "subsystem": "corpus",
+      "disposition": "parallel_evidence",
+      "authority_kind": "capacity_evidence",
+      "source": {
+        "pr": 389
+      },
+      "evidence_state": "terminal_evidence",
+      "non_authority_reason": "Dedup/capacity evidence explicitly does not claim source-rights authority or promote a successor corpus."
+    },
+    {
+      "id": "EVAL-233",
+      "subsystem": "evaluation",
+      "disposition": "candidate",
+      "authority_kind": "external_real_partial",
+      "source": {
+        "pr": 365
+      },
+      "evidence_state": "partial",
+      "non_authority_reason": "Only partial UA/EN real holdout; code and selection-valid final coverage blocked."
+    },
+    {
+      "id": "EVAL-284",
+      "subsystem": "evaluation",
+      "disposition": "candidate",
+      "authority_kind": "consolidated_panel",
+      "source": {
+        "branch": "eval284/learned-10m-wave1-panel-20260826",
+        "head_sha": "eb6fec707cedb4ae3fa9890d176b5a74d1b7e2d0"
+      },
+      "evidence_state": "no_exact_head_run",
+      "non_authority_reason": "Newest panel head had zero Actions runs at cutoff."
+    },
+    {
+      "id": "RUNTIME-225",
+      "subsystem": "inference",
+      "disposition": "candidate",
+      "authority_kind": "transformers_interop",
+      "source": {
+        "pr": 357
+      },
+      "evidence_state": "blocked",
+      "non_authority_reason": "Blocked on missing VERIFY-218; does not supersede first-party inference."
+    },
+    {
+      "id": "PERF-207",
+      "subsystem": "performance",
+      "disposition": "historical",
+      "authority_kind": "static_cache_predecessor",
+      "source": {
+        "pr": 336
+      },
+      "evidence_state": "blocked",
+      "non_authority_reason": "Earlier static-cache blocker; superseded by terminal PERF-250 convergence."
+    },
+    {
+      "id": "CHECKPOINT-204",
+      "subsystem": "checkpoint",
+      "disposition": "historical",
+      "authority_kind": "recovery_predecessor",
+      "source": {
+        "pr": 338
+      },
+      "evidence_state": "historical",
+      "non_authority_reason": "Earlier CPU-only checkpoint recovery evidence; superseded by terminal CHECKPOINT-211 immutable generations."
+    },
+    {
+      "id": "INTEGRATE-222",
+      "subsystem": "environment",
+      "disposition": "historical",
+      "authority_kind": "ancestry_carrier",
+      "source": {
+        "pr": 359,
+        "branch": "integrate222/learned-execution-spine-20260826",
+        "head_sha": "6afaf5889f9898037b53e8b0bc2b731d77782111"
+      },
+      "evidence_state": "failed",
+      "non_authority_reason": "Useful ancestry/code carrier, but dedicated integration and generic CI workflows were red; not a globally-green authority."
+    },
+    {
+      "id": "EVAL-131",
+      "subsystem": "evaluation",
+      "disposition": "historical",
+      "authority_kind": "evaluator_core",
+      "source": {
+        "pr": 299
+      },
+      "evidence_state": "historical",
+      "non_authority_reason": "Underlying evaluator core retained; current execution authority is RECOVER-176/EVAL-133."
+    },
+    {
+      "id": "POSTBASE-254",
+      "subsystem": "post_base",
+      "disposition": "parallel_evidence",
+      "authority_kind": "tool_use_protocol",
+      "source": {
+        "pr": 384
+      },
+      "evidence_state": "parallel",
+      "non_authority_reason": "Parallel Post-Base feature experiment; does not supersede communication-consumption boundary."
+    },
+    {
+      "id": "POSTBASE-255",
+      "subsystem": "post_base",
+      "disposition": "parallel_evidence",
+      "authority_kind": "bounded_deliberation",
+      "source": {
+        "pr": 386
+      },
+      "evidence_state": "parallel",
+      "non_authority_reason": "Parallel Post-Base feature experiment; no boundary supersession."
+    },
+    {
+      "id": "POSTBASE-257",
+      "subsystem": "post_base",
+      "disposition": "parallel_evidence",
+      "authority_kind": "verifier_ensemble",
+      "source": {
+        "pr": 388
+      },
+      "evidence_state": "terminal_green",
+      "non_authority_reason": "Terminal parallel verifier feature; no boundary supersession."
+    },
+    {
+      "id": "POSTBASE-258",
+      "subsystem": "post_base",
+      "disposition": "parallel_evidence",
+      "authority_kind": "memory_rag",
+      "source": {
+        "pr": 382
+      },
+      "evidence_state": "terminal_green",
+      "non_authority_reason": "Terminal parallel memory/RAG feature; no boundary supersession."
+    },
+    {
+      "id": "POSTBASE-259",
+      "subsystem": "post_base",
+      "disposition": "parallel_evidence",
+      "authority_kind": "teacher_student_factory",
+      "source": {
+        "pr": 385
+      },
+      "evidence_state": "parallel",
+      "non_authority_reason": "Parallel data-factory experiment; no boundary supersession."
+    }
+  ],
+  "edges": [
+    {
+      "type": "supersedes",
+      "from": "CHECKPOINT-211",
+      "to": "CHECKPOINT-204",
+      "reason": "Immutable generation recovery replaces older checkpoint recovery authority."
+    },
+    {
+      "type": "supersedes",
+      "from": "PERF-250",
+      "to": "PERF-207",
+      "reason": "Terminal native-GQA/static-KV convergence closes earlier blocker."
+    },
+    {
+      "type": "supersedes",
+      "from": "RECOVER-176-EVAL-133",
+      "to": "EVAL-131",
+      "reason": "Current frozen evaluator execution retains EVAL core while superseding older execution evidence."
+    },
+    {
+      "type": "revalidates",
+      "from": "DATA-227",
+      "to": "DATA-24-RIGHTS",
+      "reason": "External-real code rights run explicitly retains and revalidates EligibilityResolver semantics."
+    },
+    {
+      "type": "retains",
+      "from": "MODEL-248",
+      "to": "LEARN-217-MODEL",
+      "reason": "Negative candidate selection keeps current 8Q/2KV model geometry."
+    },
+    {
+      "type": "invalidates_as_authority",
+      "from": "D02-TRAINER",
+      "to": "INTEGRATE-163",
+      "reason": "Failed wrapper is not authority over the accepted source implementation."
+    },
+    {
+      "type": "blocks_promotion",
+      "from": "RUNTIME-225",
+      "to": "D07-FIRST-PARTY-INFERENCE",
+      "reason": "Transformers interop remains blocked and therefore cannot supersede first-party runtime."
+    },
+    {
+      "type": "candidate_against",
+      "from": "TRAIN-243",
+      "to": "D02-TRAINER",
+      "reason": "Candidate is newer but lacks exact-head Actions evidence at cutoff."
+    }
+  ]
+}
