@@ -1,0 +1,84 @@
+{
+  "schema": "12-6.gpu199-cuda-precision-pilot.v1",
+  "swarm_worker_id": "GPU-199-CUDA-PRECISION-PILOT",
+  "repository": "Oleksii-debug/12-6-ai.",
+  "base_integrated_precision_runtime_head": "e700acaed7963d641ecabc7d4f0e1017be272300",
+  "observed_at_utc": "2026-08-26T06:47:18.063919+00:00",
+  "mission_status": "NOT_RUN_NO_GPU",
+  "launch_policy": {
+    "no_provisioning": true,
+    "no_purchase": true,
+    "no_paid_compute": true,
+    "simulate_cuda": false,
+    "device_bound_result_required": true
+  },
+  "consumed_evidence": {
+    "TRAIN-60": {
+      "pr": 235,
+      "head": "30c2f56a86177ce9fa3f25167389c86fa396d9a8",
+      "decision": "keep fp32 as reference; require native device-bound CUDA bf16 evidence before any precision promotion"
+    },
+    "TRAIN-129": {
+      "branch": "train129/cuda-precision-preflight-20260826",
+      "head": "99cc46391c7d8b7dec99ee22166b69f7d25cdd4a",
+      "decision": "prior LOCAL_FREE no-CUDA evidence retained; no CUDA result claimed"
+    },
+    "TRAIN-15": {
+      "pr": 153,
+      "head": "d6b71a7a18a6ac8cf9ec47fa181264b9df55b7eb",
+      "decision": "consume existing exactly-one-visible-CUDA single-GPU runtime; do not fork a new runner"
+    },
+    "integrated_precision_runtime_seam": {
+      "branch": "integrate163/precision-runtime-seam-20260826",
+      "head": "e700acaed7963d641ecabc7d4f0e1017be272300",
+      "decision": "hardened D02 precision runtime is composed into the GPU preflight surface"
+    }
+  },
+  "fresh_hardware_preflight": {
+    "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
+    "machine": "x86_64",
+    "python": "3.13.5",
+    "torch_version": "2.10.0+cpu",
+    "torch_cuda_build": null,
+    "cuda_is_available": false,
+    "visible_cuda_devices": 0,
+    "cuda_visible_devices_env": null,
+    "nvidia_visible_devices_env": null,
+    "nvidia_smi_path": null,
+    "nvidia_device_nodes": [],
+    "exact_gpu_identity": null
+  },
+  "gates": {
+    "cuda_device_visible": false,
+    "exact_gpu_identity_recorded": false,
+    "fp32_reference_executed_on_cuda": false,
+    "native_bf16_probe_executed": false,
+    "fp16_gradscaler_fallback_executed": false,
+    "learned_fixed_trace_executed": false,
+    "checkpoint_reload_executed_on_cuda": false,
+    "post_reload_inference_executed_on_cuda": false,
+    "cuda_vram_measured": false,
+    "cuda_throughput_measured": false
+  },
+  "precision_results": {
+    "fp32": null,
+    "bf16": null,
+    "fp16_gradscaler": null
+  },
+  "measurements": {
+    "held_out_quality_trajectory": null,
+    "gradient_norms": null,
+    "update_norms": null,
+    "finite_state": null,
+    "throughput": null,
+    "peak_allocated_vram_bytes": null,
+    "peak_reserved_vram_bytes": null,
+    "checkpoint_reload": null,
+    "post_reload_inference": null
+  },
+  "termination": {
+    "successful": true,
+    "reason": "No CUDA device exists in the attached LOCAL_FREE execution environment. Per mission contract, no CUDA experiment, emulation, fallback simulation, provisioning, or purchase is permitted.",
+    "status": "NOT_RUN_NO_GPU"
+  }
+}
