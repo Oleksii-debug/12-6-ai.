@@ -127,6 +127,7 @@ jobs:
       - name: Run scoped DATA-183 scientific convergence gate
         env:
           EXPECTED_SOURCE_SHA: ${{ github.sha }}
+          PYTHONPATH: ${{ github.workspace }}/src
         run: |
           set -euo pipefail
           .data214/bin/python tools/scientific_scope_gate.py \
