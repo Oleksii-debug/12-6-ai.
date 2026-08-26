@@ -15,8 +15,11 @@ STATUS = "DISCOVERY_ONLY_ZERO_CREDIT"
 BASE_SHA = "a73ab38026cb7849f478cc13ad58b93534a76e2f"
 SOURCE_ID = "en.us.ecfr.regulations"
 FAMILY_ID = "us.federal-regulations.ecfr"
-TITLES_ENDPOINT = "https://www.ecfr.gov/api/versioner-import/v1/titles"
+API_DOCUMENTATION = "https://www.ecfr.gov/developers/documentation/api/v1"
+TITLES_ENDPOINT = "https://www.ecfr.gov/api/versioner/v1/titles.json"
 FULL_TITLE_TEMPLATE = "https://www.ecfr.gov/api/versioner/v1/full/{date}/title-{title}.xml"
+TITLES_METADATA_DATE = "2026-08-06"
+RESERVED_TITLES = [35]
 
 REQUIRED_EXCLUSIONS = (
     "incorporated_by_reference_material",
@@ -115,6 +118,7 @@ def validate_probe(config: dict[str, Any]) -> dict[str, Any]:
         "publisher drift",
     )
     _require(source.get("portal") == "https://www.ecfr.gov", "portal drift")
+    _require(source.get("api_documentation") == API_DOCUMENTATION, "API documentation drift")
     _require(source.get("titles_endpoint") == TITLES_ENDPOINT, "titles endpoint drift")
     _require(
         source.get("historical_full_title_endpoint_template") == FULL_TITLE_TEMPLATE,
@@ -139,12 +143,17 @@ def validate_probe(config: dict[str, Any]) -> dict[str, Any]:
 
     observation = config.get("discovery_observation")
     _require(isinstance(observation, dict), "discovery observation missing")
+    _require(observation.get("observed_on") == "2026-08-26", "observation date drift")
+    _require(
+        observation.get("titles_metadata_date") == TITLES_METADATA_DATE,
+        "titles metadata date drift",
+    )
     _require(observation.get("authority") == "DISCOVERY_ONLY", "observation overpromoted")
     _require(observation.get("import_in_progress") is False, "observation was mid-import")
     title_numbers = observation.get("title_numbers")
     _require(isinstance(title_numbers, dict), "title observation missing")
     _require(
-        title_numbers == {"minimum": 1, "maximum": 50, "reserved": [35]},
+        title_numbers == {"minimum": 1, "maximum": 50, "reserved": RESERVED_TITLES},
         "title vector drift",
     )
     _require(observation.get("non_reserved_titles_observed") == 49, "title count drift")
@@ -195,6 +204,8 @@ def validate_probe(config: dict[str, Any]) -> dict[str, Any]:
         "sha256_and_byte_ledger_required",
         "deterministic_xml_parse_required",
         "exact_historical_date_and_title_required",
+        "request_date_must_not_exceed_titles_metadata_date",
+        "reserved_titles_must_be_rejected",
         "redirect_and_content_type_validation_required",
     ):
         _require(materialization.get(field) is True, f"{field} must remain required")
@@ -227,6 +238,8 @@ def validate_probe(config: dict[str, Any]) -> dict[str, Any]:
         "contract_identity_sha256": identity,
         "source_id": SOURCE_ID,
         "family_id": FAMILY_ID,
+        "titles_metadata_date": TITLES_METADATA_DATE,
+        "reserved_titles": RESERVED_TITLES,
         "canonical_capacity_credit_bytes": 0,
         "authorized_unique_loss_positions": 0,
         "training_authorized": False,
