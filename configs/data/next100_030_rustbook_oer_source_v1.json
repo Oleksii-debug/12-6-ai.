@@ -1,7 +1,7 @@
 {
   "schema_version": "12-6.next100-030-rustbook-oer-source.v1",
   "worker_id": "NEXT100-030-DATA-UA-OER",
-  "mode": "PROBE",
+  "mode": "LOCKED",
   "local_free_only": true,
   "training_executed": false,
   "source": {
@@ -92,12 +92,15 @@
     }
   },
   "expected_lock": {
-    "file_count": null,
-    "raw_bytes": null,
-    "raw_bundle_sha256": null,
-    "normalized_bytes": null,
-    "normalized_bundle_sha256": null,
-    "manifest_sha256": null,
-    "license_sha256": null
+    "file_count": 2,
+    "raw_bytes": 20198,
+    "raw_bundle_sha256": "a51faa914faae31a9c0254577667b1c5e62bf2ac2cde3d8db1115b5f563bc6bb",
+    "normalized_bytes": 18165,
+    "normalized_bundle_sha256": "f2c8c39c2edef995e90e8c0be6a8abc1b278ce98b534adf6e912c0c717a9cb1c",
+    "manifest_sha256": "df9ab2943e140b8735c692eb4ee40c3f10dd03ca843ec9800e0bdf4d7ff664af",
+    "license_sha256": {
+      "second-edition/LICENSE-MIT": "9ebd13f30b03c699a767424d6e90b7e1e2a4e60ffd6b0d9c6f9fa7c0d3a78b80",
+      "second-edition/LICENSE-APACHE": "ed4a8f25c2867753376d2ab335ffbe28e600be79dc837859b6d648e5e576cd1c"
+    }
   }
 }
