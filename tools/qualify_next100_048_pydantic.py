@@ -142,13 +142,14 @@ def qualify(*, repo_root: Path, policy_path: Path, source_sha: str) -> dict[str,
     license_bytes = download(policy["license"]["url"])
     require(git_blob_sha1(license_bytes) == LICENSE_BLOB, "license Git blob drift")
     license_text = license_bytes.decode("utf-8", errors="strict")
+    license_semantic_text = " ".join(license_text.split())
     for phrase in (
         "The MIT License (MIT)",
         "deal in the Software without restriction",
         "use, copy, modify, merge, publish, distribute, sublicense, and/or sell",
         "copyright notice and this permission notice shall be included",
     ):
-        require(phrase in license_text, f"MIT grant phrase missing: {phrase}")
+        require(phrase in license_semantic_text, f"MIT grant phrase missing: {phrase}")
 
     objects: list[dict[str, Any]] = []
     texts: dict[str, str] = {}
