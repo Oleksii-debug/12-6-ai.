@@ -50,8 +50,12 @@ jobs:
             -r requirements/locks/linux-x86_64/runtime.lock.txt
           .model116/bin/python -m pip install \
             --disable-pip-version-check --no-deps --require-hashes \
+            -r requirements/locks/linux-x86_64/dev.lock.txt
+          .model116/bin/python -m pip install \
+            --disable-pip-version-check --no-deps --require-hashes \
             -r requirements/experiments/tokenizers-linux-x86_64.lock.txt
           test "$(.model116/bin/python -c 'import tokenizers; print(tokenizers.__version__)')" = "0.23.1"
+          test "$(.model116/bin/python -m pytest --version | awk '{print $2}')" = "9.1.1"
 
       - name: Compile and test matched-capacity contracts
         run: |
