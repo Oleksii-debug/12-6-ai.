@@ -1,0 +1,175 @@
+name: GPU-201 10M CUDA Benchmark
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/gpu201-10m-cuda-benchmark.yml"
+      - "tools/run_gpu201_10m_cuda_benchmark.py"
+      - "tools/profile_perf148_10m.py"
+      - "tests/test_gpu201_10m_cuda_benchmark.py"
+      - "docs/GPU201_10M_CUDA_BENCHMARK.md"
+      - "src/twelve_six/training/**"
+      - "src/twelve_six/scale141*.py"
+      - "configs/stages/alternatives/s3_10m_scale03_byte_gqa.execution.json"
+      - "configs/runs/s3_10m_scale03_gpu_pilot.json"
+      - "requirements/profiles/linux-x86_64-cuda-training/**"
+      - "requirements/locks/**"
+  workflow_dispatch:
+    inputs:
+      run_cuda:
+        description: "Run only on an already-free authorized self-hosted CUDA runner"
+        required: true
+        default: false
+        type: boolean
+      gpu199_report_path:
+        description: "Workspace path to executed GPU-199 JSON evidence"
+        required: false
+        default: "gpu199-evidence/report.json"
+        type: string
+
+concurrency:
+  group: gpu201-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  cpu-fail-closed:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Prove exact source checkout and accepted instrumentation
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$(git rev-parse HEAD:src/twelve_six/training/precision.py)" = "63b35f695ab4b7d4bf35a777c884d0233f9cc24e"
+          test "$(git rev-parse HEAD:src/twelve_six/training/trainer.py)" = "0ec579154521a9f11b2167f9f2611a2a05064c52"
+          test "$(git rev-parse HEAD:tools/profile_perf148_10m.py)" = "17ac055ea2ae360e28fa608893f92ada3ddee4ec"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Verify exact CUDA purpose profile without claiming a GPU
+        run: |
+          set -euo pipefail
+          python tools/verify_purpose_environment.py \
+            --profile linux-x86_64-cuda-training \
+            --source-sha "$SOURCE_SHA" \
+            --evidence-out gpu201-cuda-purpose-cpu.json
+      - name: Install exact locked test runtime
+        run: |
+          set -euo pipefail
+          python -m venv .gpu201
+          .gpu201/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .gpu201/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          .gpu201/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/dev.lock.txt
+          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .gpu201/bin/python -m pip install --no-deps --no-build-isolation -e .
+          .gpu201/bin/python -m pip check
+      - name: Focused static and unit verification
+        run: |
+          set -euo pipefail
+          .gpu201/bin/python -m ruff check tools/run_gpu201_10m_cuda_benchmark.py tests/test_gpu201_10m_cuda_benchmark.py
+          .gpu201/bin/python -m pytest -q tests/test_gpu201_10m_cuda_benchmark.py
+      - name: Prove ordinary CPU runner fails closed
+        run: |
+          set -euo pipefail
+          .gpu201/bin/python tools/run_gpu201_10m_cuda_benchmark.py \
+            --repo-root . \
+            --source-sha "$SOURCE_SHA" \
+            --output gpu201-not-run-no-gpu.json
+          .gpu201/bin/python - <<'PY'
+          import json
+          value = json.load(open("gpu201-not-run-no-gpu.json", encoding="utf-8"))
+          assert value["status"] == "NOT_RUN_NO_GPU"
+          assert value["benchmark_executed"] is False
+          assert value["target_device_numbers_present"] is False
+          assert value["cpu_extrapolation_present"] is False
+          assert value["paid_compute"] is False
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: gpu201-no-gpu-evidence
+          path: |
+            gpu201-not-run-no-gpu.json
+            gpu201-cuda-purpose-cpu.json
+          if-no-files-found: error
+          retention-days: 30
+
+  cuda-target-device:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_cuda }}
+    runs-on: [self-hosted, linux, x64, cuda, gpu]
+    timeout-minutes: 120
+    env:
+      SOURCE_SHA: ${{ github.sha }}
+      GPU199_REPORT_PATH: ${{ inputs.gpu199_report_path }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Prove exact source and explicit GPU-199 handoff
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test -f "$GPU199_REPORT_PATH"
+          test "$(git rev-parse HEAD:src/twelve_six/training/precision.py)" = "63b35f695ab4b7d4bf35a777c884d0233f9cc24e"
+          test "$(git rev-parse HEAD:src/twelve_six/training/trainer.py)" = "0ec579154521a9f11b2167f9f2611a2a05064c52"
+          test "$(git rev-parse HEAD:tools/profile_perf148_10m.py)" = "17ac055ea2ae360e28fa608893f92ada3ddee4ec"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Verify exact CUDA purpose environment on target device
+        run: |
+          set -euo pipefail
+          python tools/verify_purpose_environment.py \
+            --profile linux-x86_64-cuda-training \
+            --source-sha "$SOURCE_SHA" \
+            --evidence-out gpu201-cuda-purpose.json
+      - name: Install exact locked campaign runtime
+        run: |
+          set -euo pipefail
+          python -m venv .gpu201
+          .gpu201/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .gpu201/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .gpu201/bin/python -m pip install --no-deps --no-build-isolation -e .
+          .gpu201/bin/python -m pip check
+      - name: Execute real target-device campaign
+        run: |
+          set -euo pipefail
+          .gpu201/bin/python tools/run_gpu201_10m_cuda_benchmark.py \
+            --repo-root . \
+            --source-sha "$SOURCE_SHA" \
+            --gpu199-report "$GPU199_REPORT_PATH" \
+            --environment-evidence gpu201-cuda-purpose.json \
+            --output gpu201-report.json \
+            --output-dir gpu201-evidence
+      - name: Require real target-device authority
+        run: |
+          .gpu201/bin/python - <<'PY'
+          import json
+          value = json.load(open("gpu201-report.json", encoding="utf-8"))
+          assert value["status"] == "PASS_TARGET_DEVICE_MEASURED"
+          assert value["benchmark_executed"] is True
+          assert value["target_device_numbers_present"] is True
+          assert value["cpu_extrapolation_present"] is False
+          assert value["paid_compute"] is False
+          assert value["precision_trials"]["fp32"]["measured_optimizer_steps"] >= 16
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: gpu201-target-device-evidence
+          path: |
+            gpu201-report.json
+            gpu201-cuda-purpose.json
+            gpu201-evidence/profile-*.json
+            gpu201-evidence/checkpoint-roundtrip
+          if-no-files-found: error
+          retention-days: 30
