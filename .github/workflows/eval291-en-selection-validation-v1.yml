@@ -1,0 +1,79 @@
+name: EVAL-291 English Selection Validation V1
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/eval291-en-selection-validation-v1.yml"
+      - "configs/evaluation/eval291_en_selection_validation_v1.json"
+      - "data/evaluation/eval291/**"
+      - "evidence/eval291/**"
+      - "src/twelve_six/eval291_en_selection_validation.py"
+      - "tests/test_eval291_en_selection_validation.py"
+      - "docs/EVAL291_EN_SELECTION_VALIDATION_V1.md"
+
+permissions:
+  contents: read
+
+env:
+  PYTHONPATH: src
+
+jobs:
+  immutable-en-selection-validation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Prove exact source checkout
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+      - name: Universal exact execution bootstrap
+        uses: ./.github/actions/execution-bootstrap
+        with:
+          capabilities: runtime,tests
+          venv: .eval291
+          manifest: eval291-environment.json
+          command: python -m pytest -q tests/test_eval291_en_selection_validation.py
+      - name: Deterministic offline rebuild
+        run: |
+          set -euo pipefail
+          .eval291/bin/python -m compileall -q src/twelve_six/eval291_en_selection_validation.py
+          .eval291/bin/python -m pytest -q tests/test_eval291_en_selection_validation.py
+          cp data/evaluation/eval291/selection-validation/en.jsonl /tmp/eval291-en.jsonl
+          cp evidence/eval291/en-selection-validation-v1-authority.json /tmp/eval291-authority.json
+          .eval291/bin/python -m twelve_six.eval291_en_selection_validation build --repo-root .
+          cmp /tmp/eval291-en.jsonl data/evaluation/eval291/selection-validation/en.jsonl
+          cmp /tmp/eval291-authority.json evidence/eval291/en-selection-validation-v1-authority.json
+          .eval291/bin/python -m twelve_six.eval291_en_selection_validation verify --repo-root .
+      - name: Assert purpose and final-test firewalls
+        run: |
+          set -euo pipefail
+          .eval291/bin/python - <<'PY'
+          import json
+          authority = json.load(open("evidence/eval291/en-selection-validation-v1-authority.json", encoding="utf-8"))
+          assert authority["documents"] == 2
+          assert authority["source_families"] == ["github:encode/httpx", "github:psf/requests"]
+          assert authority["firewalls"]["selection_bytes_are_training_eligible"] is False
+          assert authority["firewalls"]["selection_bytes_are_tokenizer_fit_eligible"] is False
+          assert authority["firewalls"]["selection_bytes_are_final_test_eligible"] is False
+          assert authority["firewalls"]["final_test_payload_used_as_builder_input"] is False
+          assert authority["firewalls"]["final_test_outcomes_inspected"] is False
+          assert authority["firewalls"]["data227_training_objects_reused"] is False
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: eval291-en-selection-validation-v1
+          path: |
+            eval291-environment.json
+            evidence/eval291/en-selection-validation-v1-authority.json
+            data/evaluation/eval291/selection-validation/en.jsonl
+          if-no-files-found: error
+          retention-days: 30
