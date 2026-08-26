@@ -4,10 +4,12 @@ run-name: POSTBASE-351 exact-head LOCAL_FREE proof
 on:
   push:
     branches: [postbase351/model-adapter-v1-20260826]
+  pull_request:
+    branches: [perf250/gqa-static-kv-convergence-v2-20260826]
   workflow_dispatch:
 
 concurrency:
-  group: postbase351-model-adapter-${{ github.ref }}
+  group: postbase351-model-adapter-${{ github.event.pull_request.head.sha || github.sha }}
   cancel-in-progress: true
 
 permissions: {contents: read, actions: read}
@@ -18,10 +20,11 @@ jobs:
     env:
       PYTHONPATH: src
       POSTBASE351_EXECUTION_PROFILE: LOCAL_FREE
+      POSTBASE351_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: "${{ github.sha }}"
+          ref: "${{ env.POSTBASE351_HEAD_SHA }}"
           persist-credentials: false
 
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
@@ -56,6 +59,12 @@ jobs:
             echo "post-Base adapter must not own checkpoint/training mutation mechanics" >&2
             exit 1
           fi
+
+      - name: Verify exact checked-out head
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$POSTBASE351_HEAD_SHA"
+          printf '%s\n' "$POSTBASE351_HEAD_SHA" > reports/postbase351/head.sha256
 
       - name: Verify LOCAL_FREE CPU-only boundary
         run: |
@@ -161,6 +170,7 @@ jobs:
           name: postbase351-model-adapter-local-free
           path: |
             reports/postbase351/environment.json
+            reports/postbase351/head.sha256
             reports/postbase351/learned-10m-proof.json
             reports/postbase351/base-tree-before.sha256
             reports/postbase351/base-tree-after.sha256
