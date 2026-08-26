@@ -1,0 +1,26 @@
+name: research313-20m-data-capacity-gate
+
+on:
+  pull_request:
+    paths:
+      - "docs/RESEARCH313_20M_DATA_CAPACITY_GATE.md"
+      - "evidence/research313/20m_data_capacity_gate_v1.json"
+      - "tools/validate_research313_20m_data_capacity.py"
+      - "tests/test_research313_20m_data_capacity.py"
+      - ".github/workflows/research313-20m-data-capacity-gate.yml"
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Compile validator and test
+        run: python -m py_compile tools/validate_research313_20m_data_capacity.py tests/test_research313_20m_data_capacity.py
+      - name: Validate evidence
+        run: python tools/validate_research313_20m_data_capacity.py
+      - name: Focused stdlib test
+        run: python -m unittest discover -s tests -p 'test_research313_20m_data_capacity.py' -v
