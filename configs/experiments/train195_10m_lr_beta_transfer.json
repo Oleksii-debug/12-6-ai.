@@ -1,0 +1,132 @@
+{
+  "schema": "12-6.train195-10m-lr-beta-transfer.v1",
+  "worker_id": "TRAIN-195-10M-LR-BETA-TRANSFER",
+  "status": "BLOCKED_MISSING_PREREQUISITE_AUTHORITY",
+  "execution_class": "LOCAL_FREE",
+  "paid_compute": false,
+  "base_execution_authority": {
+    "env151_pr": 313,
+    "source_sha": "c127216ecf9722bea1964c7488cb7ff0f8cdebe4",
+    "universal_bootstrap_required": true
+  },
+  "required_prerequisites": {
+    "train125_lr_transfer": {
+      "required": true,
+      "authority_present": false,
+      "source_sha": null,
+      "evidence_sha256": null,
+      "predicted_lr": null,
+      "prediction_method": null,
+      "freeze_weight_decay": null,
+      "freeze_schedule_family": null,
+      "freeze_batch_geometry": null,
+      "blocker": "No indexed TRAIN-125 branch, PR, commit, or retained evidence artifact was recoverable at preregistration time; absolute LR candidates and the transfer control recipe must not be invented."
+    },
+    "train194_clipping": {
+      "required": true,
+      "authority_present": false,
+      "source_sha": null,
+      "evidence_sha256": null,
+      "accepted_clip_norm": null,
+      "nonfinite_fail_closed_before_clipping": null,
+      "blocker": "No accepted TRAIN-194 clipping decision is published. RECOVER-180 still states that no clipping result is claimed and remains blocked on an accepted non-pathological 10M clipping decision."
+    }
+  },
+  "consumed_evidence": {
+    "train48_beta2": {
+      "pr": 208,
+      "source_sha": "6606823177e66f437278b2f22c44479c72d8d6b5",
+      "authority": "PROVISIONAL_SOURCE_EQUIVALENT_LOCAL_FREE",
+      "small_scale_beta2_order_best_to_worst": [0.99, 0.98, 0.95],
+      "clip_norm": 1.0,
+      "clip_frequency": 1.0,
+      "limitation": "Every observed small-scale update clipped, so second-moment transfer interpretation is confounded by clipping saturation.",
+      "primary_beta2_pair": [0.95, 0.99],
+      "conditional_midpoint_beta2": 0.98,
+      "reason": "0.95 is the incumbent control and 0.99 is the only small-scale endpoint with a repeatable directional quality signal; 0.98 remains a predeclared rescue midpoint rather than reopening a three-way search immediately."
+    },
+    "research140_decision_protocol": {
+      "pr": 284,
+      "source_sha": "c2fa6ba71691c3d8cc86aa0a1c3c83eb10bce98c",
+      "minimum_paired_repeats_for_promotion": 3,
+      "maximum_exploratory_repeats": 7,
+      "train48_retroactive_decision": "INSUFFICIENT_REPEATS",
+      "selection_purpose": "selection_validation"
+    },
+    "recover180_clipping_state": {
+      "pr": 332,
+      "source_sha": "2781a0c67e069bdfe63aa805af5066ee13fe471a",
+      "decision": "NO_ACCEPTED_CLIPPING_RESULT"
+    }
+  },
+  "freeze_contract": {
+    "gradient_clip_norm": null,
+    "weight_decay": null,
+    "epsilon": 1e-8,
+    "schedule_family": null,
+    "batch_geometry": null,
+    "beta1": 0.9,
+    "rule": "All non-LR/beta2 controls must be immutable before any optimizer update. Unknown values remain blockers rather than being filled from unrelated historical recipes."
+  },
+  "staged_design": {
+    "absolute_lr_candidates": null,
+    "stage_a_lr_transfer": {
+      "purpose": "Select within a narrow log-symmetric neighborhood around the exact TRAIN-125 10M LR prediction while holding beta2 at the incumbent 0.95.",
+      "lr_multipliers_of_train125_prediction": [0.8, 1.0, 1.25],
+      "beta2": 0.95,
+      "minimum_paired_seeds": 3,
+      "same_initial_weights_within_seed": true,
+      "same_data_trace_within_seed": true
+    },
+    "stage_b_beta2_transfer": {
+      "purpose": "At the Stage-A selected LR, compare the incumbent beta2 against the strongest surviving small-scale transfer candidate.",
+      "beta2_candidates": [0.95, 0.99],
+      "minimum_paired_seeds": 3,
+      "same_initial_weights_within_seed": true,
+      "same_data_trace_within_seed": true
+    },
+    "stage_c_conditional_midpoint": {
+      "scheduled_by_default": false,
+      "beta2": 0.98,
+      "trigger": "Only if beta2=0.99 is classified UNSTABLE while beta2=0.95 is stable and the Stage-B quality/time-to-quality evidence still leaves a material unresolved tradeoff. The midpoint must then use at least three paired seeds; it cannot be introduced post hoc for a one-seed reversal."
+    },
+    "minimum_second_moment_time_constants": 3.0,
+    "minimum_updates_formula": "ceil(3 / (1 - max(beta2 in compared stage)))",
+    "minimum_updates_for_beta2_0_99": 300
+  },
+  "measurements": [
+    "selection_validation_bpb",
+    "training_loss",
+    "global_preclip_gradient_norm",
+    "global_postclip_gradient_norm",
+    "post_to_pre_gradient_norm_ratio",
+    "update_to_weight_ratio",
+    "raw_exp_avg_sq_rms",
+    "bias_corrected_exp_avg_sq_rms",
+    "second_moment_quantiles",
+    "nonfinite_gradient_count_before_clipping",
+    "nonfinite_optimizer_state_count",
+    "loss_spike_count",
+    "clip_frequency",
+    "optimized_tokens",
+    "wall_seconds",
+    "time_to_quality"
+  ],
+  "decision_contract": {
+    "paired": true,
+    "minimum_paired_repeats": 3,
+    "one_seed_can_promote": false,
+    "decision_protocol": "RESEARCH-140",
+    "final_test_eligible_for_selection": false,
+    "quality_primary": "selection_validation_bpb",
+    "stability_required": true,
+    "nonfinite_failure_is_fatal": true,
+    "promotion_rule": "Only a CLEAR_WIN under the current paired materiality/uncertainty rules may change the 10M experimental optimizer default. PRACTICAL_TIE retains the less intrusive incumbent; UNSTABLE or INSUFFICIENT_REPEATS cannot promote."
+  },
+  "truth_boundary": {
+    "training_executed": false,
+    "numerical_result_claimed": false,
+    "optimizer_promoted": false,
+    "reason": "TRAIN-125 LR authority and TRAIN-194 clipping authority are both missing."
+  }
+}
