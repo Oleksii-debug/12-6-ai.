@@ -5,6 +5,17 @@
   "state": "RESERVED_UNSEALED",
   "purpose": "purpose_specific_external_real_english_evaluation_reservation",
   "reservation_epoch": "THIS_FILE_FIRST_COMMIT_SHA_AND_COMMIT_TIME",
+  "reservation_commit_sha": "d3f7fead8c04cafd535d1e574a7203523b54464d",
+  "reservation_committed_at": "2026-08-26T18:22:37Z",
+  "metadata_corrections": [
+    {
+      "field": "objects[pytest-capture-doc:5de89bc0e3fbd1a3].license_git_blob_sha1",
+      "reserved_membership_changed": false,
+      "provisional_value": "8eb357bf34d92aa6e37b8cf411ce67cfba24f2e8",
+      "correct_value": "c3f1657fce94589bd1ec7cead810639047f3d359",
+      "basis": "Final live GitHub fetch of LICENSE at pinned pytest revision 28549a5f6b82bc916bb2ec5cb9fbfffe9b79fc66 before seal."
+    }
+  ],
   "policy": {
     "training_eligible": false,
     "tokenizer_fit_eligible": false,
@@ -78,7 +89,7 @@
       "git_blob_sha1": "5de89bc0e3fbd1a35f5805a06d89c2b3c17eb937",
       "license_id": "MIT",
       "license_path": "LICENSE",
-      "license_git_blob_sha1": "8eb357bf34d92aa6e37b8cf411ce67cfba24f2e8",
+      "license_git_blob_sha1": "c3f1657fce94589bd1ec7cead810639047f3d359",
       "payload_storage": "NOT_COMMITTED",
       "outcomes_storage": "NOT_READ_NOT_COMMITTED"
     }
