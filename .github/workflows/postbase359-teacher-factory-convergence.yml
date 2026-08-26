@@ -12,6 +12,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: postbase359-teacher-factory-convergence-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   local-free-convergence:
     runs-on: ubuntu-24.04
