@@ -7,7 +7,7 @@
   "authority_scope": "TERMINAL_SOURCE_INTAKE_NOT_CORPUS_FREEZE_NOT_TRAINING_AUTHORIZATION",
   "authority_identity": {
     "algorithm": "SHA256_PIPE_JOIN_V1",
-    "sha256": "0d489d1a4d8e86061d39fa93721a34f3db14f27830f47771ded5d7d866551fd4"
+    "sha256": "670ba06132c06abb0f12e0aa33dc3a770d07848b8a2480dc24b3dcb7d7262b42"
   },
   "base_data301": {
     "branch": "data301/corpus-v03-terminal-build-20260826",
@@ -88,6 +88,7 @@
       "authority_config_path": "configs/data/next100_037_python_docs_source_authority_v1.json",
       "authority_config_git_blob_sha1": "b15abac8744ccda9fe58d1351f7925b6ab328034",
       "authority_identity_sha256": "46a00dc70db690ae2b3c4495a75283e7e752bdccb1047d4318c2ebadfa392f0d",
+      "data228_source_probe_report_sha256": "860b5bd9aed72d9bc754a4f73445d18ff3807408a0d6f5a18a83eca14b9f1712",
       "dedicated_workflow_run": 32998356906,
       "dedicated_workflow_conclusion": "success",
       "family": "python.cpython.documentation",
@@ -96,10 +97,13 @@
       "source_normalized_bytes": 17901,
       "accepted_chunk_count": 14,
       "rejected_chunk_count": 2,
+      "accepted_chunk_utf8_bytes_sum_from_terminal_probe": 15540,
+      "accepted_chunk_utf8_bytes_min": 290,
+      "accepted_chunk_utf8_bytes_max": 1196,
       "materialized_training_payload_bytes": null,
       "training_rights": "ALLOWED",
       "evaluation_rights": "NOT_SEPARATELY_ADMITTED",
-      "materialization_note": "Only the 14 accepted chunk hashes are training-eligible; exact accepted payload bytes must be materialized and identity-bound by the successor record-inventory stage."
+      "materialization_note": "The terminal DATA-228 probe proves 14 accepted chunk hashes and an exact aggregate 15,540 UTF-8 bytes. The bytes are evidence-bound but are not relabelled as branch-materialized training payload until a successor materializer emits exact chunk files/JSONL and manifest identity."
     }
   ],
   "source_authority_inventory": {
@@ -110,6 +114,8 @@
     "added_source_normalized_bytes": 28533,
     "source_normalized_bytes_total": 211594,
     "exact_materialized_added_payload_bytes_excluding_cpython_accepted_chunks": 10632,
+    "cpython_accepted_chunk_bytes_bound_by_terminal_probe": 15540,
+    "known_accepted_or_incumbent_bytes_before_successor_global_gates": 209233,
     "exact_materialized_source_bytes_lower_bound_before_successor_gates": 193693,
     "source_bytes_are_not_loss_positions": true,
     "cpython_accepted_payload_bytes_materialized": false
