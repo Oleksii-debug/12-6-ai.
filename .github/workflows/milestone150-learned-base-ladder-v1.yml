@@ -4,9 +4,11 @@ on:
   pull_request:
     branches:
       - milestone100/first-learned-base-20260826
+      - milestone150/learned-base-ladder-v1-20260826
     paths:
       - ".github/workflows/milestone150-learned-base-ladder-v1.yml"
       - "src/twelve_six/milestone150*.py"
+      - "src/twelve_six/launch_gate.py"
       - "src/twelve_six/milestone100_first_learned.py"
       - "src/twelve_six/model/**"
       - "src/twelve_six/model.py"
@@ -17,8 +19,10 @@ on:
       - "src/twelve_six/inference/**"
       - "data/corpus_v01/**"
       - "configs/data/corpus_v01.json"
+      - "configs/launch/milestone150-*.json"
       - "requirements/locks/linux-x86_64/**"
       - "tools/ci_dependency_preflight.py"
+      - "tests/test_ci165_launch_gate.py"
       - "tests/test_milestone100*.py"
       - "tests/test_milestone150*.py"
       - "tests/test_data25_corpus_v01.py"
@@ -60,7 +64,7 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
 
-      - name: Dependency and tool preflight before tests or runtime install
+      - name: Dependency and lock preflight before any install
         env:
           EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: >-
@@ -69,7 +73,7 @@ jobs:
           --source-sha "$EXPECTED_SOURCE_SHA"
           --output milestone150-ci-preflight.json
 
-      - name: Install hash-locked CPU runtime and test tooling
+      - name: Install locked test tooling before model runtime
         run: |
           set -euo pipefail
           python -m venv .m150
@@ -78,16 +82,24 @@ jobs:
             -r requirements/locks/linux-x86_64/toolchain.lock.txt
           .m150/bin/python -m pip install \
             --disable-pip-version-check --no-deps --require-hashes \
-            -r requirements/locks/linux-x86_64/runtime.lock.txt
+            -r requirements/locks/linux-x86_64/dev.lock.txt
+          .m150/bin/python -m pytest --version
+          .m150/bin/ruff --version
+
+      - name: Install hash-locked CPU runtime
+        run: |
+          set -euo pipefail
           .m150/bin/python -m pip install \
             --disable-pip-version-check --no-deps --require-hashes \
-            -r requirements/locks/linux-x86_64/dev.lock.txt
+            -r requirements/locks/linux-x86_64/runtime.lock.txt
+          .m150/bin/python -m pip check
 
-      - name: Compile and test convergence contracts
+      - name: Compile and test convergence plus launch-gate contracts
         run: |
           set -euo pipefail
           .m150/bin/python -m compileall -q src/twelve_six
           .m150/bin/python -m pytest -q \
+            tests/test_ci165_launch_gate.py \
             tests/test_data25_corpus_v01.py \
             tests/test_milestone100_first_learned.py \
             tests/test_milestone100_one_m.py \
@@ -104,9 +116,25 @@ jobs:
             --source-sha "$EXPECTED_SOURCE_SHA" \
             --output-dir milestone150-evidence
 
+      - name: Create and verify mandatory cheap launch envelopes
+        run: |
+          set -euo pipefail
+          for scale in 100k 500k 1m; do
+            .m150/bin/python -m twelve_six.launch_gate create \
+              --repo-root . \
+              --request "configs/launch/milestone150-${scale}.json" \
+              --output "milestone150-evidence/launch-${scale}.json"
+            .m150/bin/python -m twelve_six.launch_gate verify \
+              --repo-root . \
+              --request "configs/launch/milestone150-${scale}.json" \
+              --envelope "milestone150-evidence/launch-${scale}.json"
+          done
+
       - name: Execute comparable learned 100K rung
         env:
           EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          TWELVE_SIX_LAUNCH_REQUEST: configs/launch/milestone150-100k.json
+          TWELVE_SIX_LAUNCH_ENVELOPE: milestone150-evidence/launch-100k.json
         run: |
           set -euo pipefail
           .m150/bin/python -m twelve_six.milestone150_entrypoint phase1 \
@@ -122,6 +150,8 @@ jobs:
       - name: Execute comparable learned 500K rung
         env:
           EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          TWELVE_SIX_LAUNCH_REQUEST: configs/launch/milestone150-500k.json
+          TWELVE_SIX_LAUNCH_ENVELOPE: milestone150-evidence/launch-500k.json
         run: |
           set -euo pipefail
           .m150/bin/python -m twelve_six.milestone150_entrypoint phase1 \
@@ -137,6 +167,8 @@ jobs:
       - name: Execute comparable learned 1M rung
         env:
           EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          TWELVE_SIX_LAUNCH_REQUEST: configs/launch/milestone150-1m.json
+          TWELVE_SIX_LAUNCH_ENVELOPE: milestone150-evidence/launch-1m.json
         run: |
           set -euo pipefail
           .m150/bin/python -m twelve_six.milestone150_entrypoint phase1 \
@@ -261,6 +293,7 @@ jobs:
           name: milestone150-learned-base-ladder-v1
           path: |
             milestone150-ci-preflight.json
+            milestone150-evidence/launch-*.json
             milestone150-evidence/ladder-truth.json
             milestone150-evidence/ladder-report.json
             milestone150-evidence/corpus-manifest.json
