@@ -1,6 +1,24 @@
 name: D02 S0 Determinism Repeatability
 on:
   pull_request:
+    paths:
+      - ".github/workflows/d02-s0-repeatability.yml"
+      - "pyproject.toml"
+      - "requirements/locks/linux-x86_64/**"
+      - "tools/verify_locked_environment.py"
+      - "tools/run_s0_determinism_probe.py"
+      - "tools/collect_s0_repeatability_evidence.py"
+      - "tools/validate_s0_repeatability_evidence.py"
+      - "src/twelve_six/model.py"
+      - "src/twelve_six/packing/**"
+      - "src/twelve_six/tokenization/**"
+      - "src/twelve_six/training/**"
+      - "configs/stages/s0_10k.json"
+      - "configs/s0/**"
+      - "data/s0/packaged/**"
+concurrency:
+  group: d02-s0-repeatability-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
