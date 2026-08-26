@@ -41,7 +41,8 @@
       "status": "BLOCKED",
       "seed_count": 0,
       "config_sha256": null,
-      "stopping_policy_sha256": null
+      "stopping_policy_sha256": null,
+      "requested_unique_loss_positions": 0
     },
     "bounded_pilot": {
       "authority": null,
