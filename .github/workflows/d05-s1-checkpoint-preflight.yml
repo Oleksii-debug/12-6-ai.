@@ -8,7 +8,9 @@ on:
       - "tests/test_checkpoint_corruption_fail_closed.py"
       - "tests/test_checkpoint_transactional_safety.py"
       - "tests/test_checkpoint_trainer_preflight.py"
+      - "tests/test_next100075_production_corruption_matrix.py"
       - "configs/stages/s1_100k.json"
+      - "configs/candidates/model341_20m_candidate_a.json"
       - "src/twelve_six/checkpoint/**"
       - "src/twelve_six/model.py"
       - "src/twelve_six/training/**"
@@ -26,7 +28,7 @@ permissions:
 jobs:
   s1-checkpoint-preflight:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 30
     env:
       SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
@@ -60,6 +62,7 @@ jobs:
           tests/test_checkpoint_corruption_fail_closed.py
           tests/test_checkpoint_transactional_safety.py
           tests/test_checkpoint_trainer_preflight.py
+          tests/test_next100075_production_corruption_matrix.py
           tests/test_s1_checkpoint_preflight.py
       - name: Focused D05 checkpoint integrity regression
         run: >-
@@ -68,6 +71,11 @@ jobs:
           tests/test_checkpoint_transactional_safety.py
           tests/test_checkpoint_trainer_preflight.py
           tests/test_s1_checkpoint_preflight.py
+      - name: NEXT100-075 exact MODEL-341 production corruption matrix
+        run: >-
+          .d05-s1-locked/bin/python -m pytest -q
+          tests/test_next100075_production_corruption_matrix.py
+          --junitxml="$RUNNER_TEMP/next100075-production-corruption-matrix.xml"
       - name: Execute real S1-shaped checkpoint/resume preflight
         run: |
           .d05-s1-locked/bin/python -m twelve_six.checkpoint.s1_preflight \
@@ -103,13 +111,14 @@ jobs:
           assert payload["constraints"]["promotion_claimed"] is False
           assert payload["constraints"]["s1_quality_claimed"] is False
           PY
-      - name: Upload S1 engineering checkpoint preflight evidence
+      - name: Upload D05 checkpoint evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: d05-s1-checkpoint-preflight-${{ env.SOURCE_SHA }}
           path: |
             locked-environment-linux-x86_64.json
+            ${{ runner.temp }}/next100075-production-corruption-matrix.xml
             ${{ runner.temp }}/d05-s1-checkpoint-preflight/s1-checkpoint-preflight.json
             ${{ runner.temp }}/d05-s1-checkpoint-preflight/checkpoint/
           if-no-files-found: error
