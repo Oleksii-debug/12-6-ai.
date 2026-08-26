@@ -13,10 +13,12 @@ EXPECTED_UNIT = "UNIQUE_AUTHORIZED_UTF8_BYTE_LOSS_POSITIONS"
 EXPECTED_STATUS = "UNDEFINED_PENDING_TOKENIZER_AND_FLOP_CALIBRATION"
 EXPECTED_REFERENCE = [10, 20, 40]
 EXPECTED_PILOT_POSITIONS = 20_000_000
+EXPECTED_CROSS_TOKENIZER_METRIC = "BITS_PER_BYTE"
 REQUIRED_CALIBRATIONS = {
     "tokenizer_efficiency_by_ua_en_code",
     "semantic_context_span_calibration",
     "flop_normalized_byte_vs_subword_ablation",
+    "tokenizer_agnostic_bits_per_byte",
     "heldout_learning_curves",
 }
 
@@ -62,6 +64,18 @@ def validate_firewall(data: dict[str, Any]) -> list[str]:
     require(
         data.get("science_complete_budget_status") == EXPECTED_STATUS,
         "science-complete budget status drift",
+    )
+    require(
+        data.get("cross_tokenizer_primary_metric") == EXPECTED_CROSS_TOKENIZER_METRIC,
+        "cross-tokenizer primary metric must remain BITS_PER_BYTE",
+    )
+    require(
+        data.get("token_nll_or_perplexity_may_rank_tokenizers") is False,
+        "token NLL/perplexity must not rank different tokenizers",
+    )
+    require(
+        data.get("bits_per_byte_authority_required") is True,
+        "tokenizer-agnostic bits-per-byte authority must remain required",
     )
     calibrations = data.get("required_calibrations")
     require(isinstance(calibrations, list), "required_calibrations must be a list")
