@@ -1,0 +1,39 @@
+{
+  "all_reserved_authorities_identity": "d169a9ca3bd561729227a222cdea47b8296b753bee0cd7f0ffea02621ac74b2a",
+  "blocking_reason": "No terminal DATA-230 corpus identity/inventory is published at this worker cutoff.",
+  "excluded_records": [],
+  "final_test_identity": "86d51eb106524cd8e4d0f94d4ff6e2e3426c6321e0698279877dfc4d5fce3116",
+  "final_test_outcomes_read": false,
+  "hash_only_evidence": true,
+  "local_free_only": true,
+  "matching": {
+    "algorithm": "data232-deterministic-overlap-cluster-v2",
+    "code_skeleton": "data232-code-skeleton-v1",
+    "normalization": "data232-contamination-normalization-v2",
+    "thresholds": {
+      "code_copy_jaccard": 0.82,
+      "code_copy_min_tokens": 16,
+      "code_fragment_containment": 0.9,
+      "code_fragment_min_tokens": 16,
+      "code_near_jaccard": 0.86,
+      "code_shingle_tokens": 7,
+      "natural_fragment_containment": 0.88,
+      "natural_fragment_min_tokens": 18,
+      "natural_near_jaccard": 0.8,
+      "natural_shingle_tokens": 3
+    }
+  },
+  "model_architecture_or_hyperparameters_selected": false,
+  "report_sha256": "1dc6e25ad795c790919e71e36a3a32bdf73736903452ea1c4234d2c208207b20",
+  "schema": "12-6.data232-decontamination-report.v2",
+  "selection_validation_identity": null,
+  "status": "BLOCKED_MISSING_DATA230",
+  "training_corpus_identity": null,
+  "training_executed": false,
+  "unblock_requires": [
+    "terminal DATA-230 corpus identity",
+    "exact DATA-230 training record inventory",
+    "immutable selection-validation identity from the DATA-230 lineage"
+  ],
+  "worker_id": "DATA-232-DECONTAMINATION-AUTHORITY-V2"
+}
