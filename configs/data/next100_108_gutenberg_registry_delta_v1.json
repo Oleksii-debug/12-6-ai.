@@ -1,0 +1,126 @@
+{
+  "acquisition_priority": {
+    "20m_source_floor_gap_order_by_bytes": [
+      "uk",
+      "en",
+      "code"
+    ],
+    "immediate_balanced_capacity": "UK_FIRST_CODE_SECOND_EN_NONLIMITING_AT_CURRENT_SCALE",
+    "note": "Gutenberg materially improves English source capacity but does not raise the current 45/35/20 stratum-only ceiling because UK remains the limiter and code is the next limiter."
+  },
+  "additive_source": {
+    "artifact_digest": "sha256:63fa5d9b403432074193e290beb0473b5a1f7b74de1ac30bad71b9ec8405e006",
+    "artifact_id": 9618402768,
+    "dedicated_workflow_conclusion": "success",
+    "dedicated_workflow_run": 32998859164,
+    "evaluation": "NOT_AUTHORIZED",
+    "executed_parent_head_sha": "3f4ad26e1e8f3406a1274418cf5f485814ce3032",
+    "executed_parent_pr": 470,
+    "family": "en.project-gutenberg.public-domain-books",
+    "language": "en",
+    "modality": "text",
+    "normalized_bytes": 1672110,
+    "record_count": 3,
+    "report_evidence_identity_sha256": "e454d9b1a94497aec95776c8b9b6318b73647bc3248f62da70e45a7c369f637e",
+    "report_sha256": "2d1e99f0cb41a1b90ce995076d88bffa7435b151f6036dea0a54552d89556cd0",
+    "seal_authority_identity_sha256": "1b1bad11b688826ee4f73701c08e3b5af76ba16e8d8a806e008d5b84bee0b97b",
+    "seal_head_sha": "c50b3f9cf871792c03886bdc1ccdc144812be88f",
+    "seal_pr": 627,
+    "terminal_decision": "ADMIT",
+    "training": "ALLOWED_FOR_EXACT_ADMITTED_NORMALIZED_BODIES"
+  },
+  "authority_identity_sha256": "be5434d61cb14d2585af4047ac5af845a139f37fa447fc430255cec327228a6e",
+  "claim_boundary": {
+    "authorized_unique_loss_positions": 0,
+    "corpus_identity": null,
+    "learned_100m": false,
+    "learned_20m": false,
+    "model_training_executed": false,
+    "optimizer_updates": 0,
+    "shard_identity": null
+  },
+  "decision": "SOURCE_REGISTRY_SUCCESSOR_DELTA_PRE_GLOBAL_DEDUP_NOT_CORPUS_FREEZE",
+  "downstream_gates": {
+    "cluster_safe_split_pack": "BLOCKED",
+    "family_cap_and_mix_selection": "REQUIRED",
+    "global_cross_source_exact_near_fragment_lineage_dedup": "REQUIRED_NEXT",
+    "long_training": "BLOCKED",
+    "paid_compute": "NOT_AUTHORIZED",
+    "post_composition_quality_privacy": "REQUIRED",
+    "reserved_evaluation_decontamination": "REQUIRED_AFTER_EXACT_SURVIVOR_INVENTORY",
+    "tokenizer_fit": "BLOCKED",
+    "two_clean_builds": "BLOCKED",
+    "unique_loss_ledger": "BLOCKED"
+  },
+  "execution_profile": "LOCAL_FREE",
+  "parent_registry": {
+    "by_stratum": {
+      "code": {
+        "family_count": 4,
+        "normalized_bytes": 51875
+      },
+      "en": {
+        "family_count": 3,
+        "normalized_bytes": 150643
+      },
+      "uk": {
+        "family_count": 4,
+        "normalized_bytes": 100856
+      }
+    },
+    "candidate_independent_family_count": 11,
+    "candidate_normalized_bytes": 303374,
+    "head_sha": "7c7d79ab3de33383e7fe1f032807a8d2f5db69a4",
+    "registry_identity_sha256": "448dd61ed3e0d78d0bca9e202529a79c02811fd67beebe4833373d0c2ab0c0a7"
+  },
+  "schema_version": "12-6.next100-108-gutenberg-registry-delta.v1",
+  "successor_pre_global_dedup_inventory": {
+    "by_stratum": {
+      "code": {
+        "family_count": 4,
+        "normalized_bytes": 51875
+      },
+      "en": {
+        "family_count": 4,
+        "normalized_bytes": 1822753
+      },
+      "uk": {
+        "family_count": 4,
+        "normalized_bytes": 100856
+      }
+    },
+    "candidate_independent_family_count": 12,
+    "candidate_normalized_bytes": 1975484,
+    "family_caps_are_selection_constraints_not_inventory_admission": true,
+    "family_minimum_gate": "PASS_PRE_GLOBAL_DEDUP",
+    "gutenberg_candidate_share_en": 0.91735413,
+    "gutenberg_candidate_share_global": 0.84643055,
+    "gutenberg_family_requires_downselection_under_25pct_global_60pct_within_stratum_caps": true,
+    "research_corpus_v1_target_normalized_bytes": 20000000,
+    "stratum_only_ceiling_by_stratum": {
+      "code": 259375,
+      "en": 5207865,
+      "uk": 224124
+    },
+    "stratum_only_no_replay_ceiling_limiter": "uk",
+    "stratum_only_no_replay_ceiling_normalized_bytes": 224124,
+    "target_fraction": 0.0987742,
+    "target_gap_normalized_bytes": 18024516,
+    "target_mix": {
+      "code": 0.2,
+      "en": 0.35,
+      "uk": 0.45
+    },
+    "target_stratum_bytes": {
+      "code": 4000000,
+      "en": 7000000,
+      "uk": 9000000
+    },
+    "target_stratum_gaps": {
+      "code": 3948125,
+      "en": 5177247,
+      "uk": 8899144
+    }
+  },
+  "worker_id": "NEXT100-108-GUTENBERG-REGISTRY-DELTA"
+}
