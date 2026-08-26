@@ -20,7 +20,10 @@ EXPECTED_UA_SOURCE_HEAD = "84c51e42b6daa51796fd20d793b5ef1ff01cc9d2"
 EXPECTED_EN_SOURCE_HEAD = "5a6a495a24bce449334cbc5126d0114f61a9f57c"
 EXPECTED_DECONTAM_HEAD = "80e8fc9828214ce86e16b5c7f2fdec9107b4df43"
 EXPECTED_D05_AUDIT_HEAD = "5c3d3d93cb035c05ad2045a243d722a4ad1dce60"
-EXPECTED_D05_REMEDIATION_HEAD = "42296f6f228bbf866765d787e53004108fe7a39d"
+EXPECTED_D05_REMEDIATION_HEAD = "5c4bdf3faa31397fef65b800d00ff95483be3aac"
+EXPECTED_D05_PREVIOUS_GREEN_HEAD = "397ba857f08b08eb1363a634597a757d25e8fd68"
+EXPECTED_SOURCE_REGISTRY_HEAD = "94dce83cbe611144f961b9f93b3be273345a7f62"
+EXPECTED_SOURCE_REGISTRY_ID = "77fb69c558df8c59fdae00583c955c62ad088cda98fd16b335eedb26fb2d7526"
 
 
 class ReadinessValidationError(ValueError):
@@ -82,10 +85,26 @@ def validate(value: dict[str, Any]) -> None:
 
     remediation = authorities["d05_remediation_convergence"]
     _require(
-        remediation["head_sha"] == EXPECTED_D05_REMEDIATION_HEAD,
-        "unexpected D05 remediation head",
+        remediation["current_head_sha"] == EXPECTED_D05_REMEDIATION_HEAD,
+        "unexpected current D05 remediation head",
     )
-    _require(remediation["preferred_candidate_pr"] == 507, "unexpected D05 preferred PR")
+    _require(
+        remediation["previous_green_head_sha"] == EXPECTED_D05_PREVIOUS_GREEN_HEAD,
+        "unexpected prior green D05 head",
+    )
+    _require(
+        remediation["previous_exact_head_green_run"] == 33005163523,
+        "unexpected prior green D05 run",
+    )
+    _require(
+        remediation["current_exact_head_d05_run"] == 33005737951,
+        "unexpected current D05 run",
+    )
+    _require(
+        remediation["current_exact_head_d05_status"] == "QUEUED_AT_REFRESH",
+        "current D05 run was not queued at snapshot refresh",
+    )
+    _require(remediation["preferred_candidate_pr"] == 504, "unexpected D05 preferred PR")
     _require(remediation["terminal_authority"] is False, "D05 remediation is prematurely terminal")
     _require(
         remediation["state"].startswith("NONTERMINAL_"),
@@ -100,6 +119,48 @@ def validate(value: dict[str, Any]) -> None:
     _require(
         corpus["authorized_balanced_no_replay_capacity"] == 0,
         "blocked corpus unexpectedly authorizes no-replay capacity",
+    )
+
+    source_registry = authorities["source_registry_convergence_candidate"]
+    _require(
+        source_registry["head_sha"] == EXPECTED_SOURCE_REGISTRY_HEAD,
+        "unexpected source-registry candidate head",
+    )
+    _require(
+        source_registry["registry_identity_sha256"] == EXPECTED_SOURCE_REGISTRY_ID,
+        "unexpected source-registry identity",
+    )
+    _require(
+        source_registry["candidate_normalized_bytes"] == 565_743,
+        "source-registry byte capacity changed",
+    )
+    _require(
+        source_registry["candidate_independent_family_count"] == 13,
+        "source-registry family count changed",
+    )
+    _require(
+        source_registry["family_minimum_gate"] == "PASS_PRE_GLOBAL_DEDUP",
+        "source-registry family gate changed",
+    )
+    _require(source_registry["draft"] is True, "source-registry candidate is no longer marked draft")
+    _require(
+        source_registry["terminal_authority"] is False,
+        "source-registry candidate is prematurely terminal",
+    )
+    _require(
+        source_registry["training_authorized_loss_positions"] == 0,
+        "source-registry candidate unexpectedly authorizes training loss positions",
+    )
+    _require(
+        source_registry["research_corpus_v1_target_gap_normalized_bytes"] == 19_434_257,
+        "source-registry target gap changed",
+    )
+    _require(
+        all(
+            row["family_count"] >= 2
+            for row in source_registry["pre_global_dedup_by_stratum"].values()
+        ),
+        "one or more source-registry strata are below the family minimum",
     )
 
     ua = authorities["ua_wikisource_source"]
@@ -151,8 +212,18 @@ def validate(value: dict[str, Any]) -> None:
         "20M checkpoint recovery gate changed",
     )
     _require(
-        gates["checkpoint_integrity_20m"] == "BLOCKED_3_OF_11_CORRUPTION_CLASSES",
+        gates["checkpoint_integrity_20m"]
+        == "BLOCKED_PENDING_CURRENT_HEAD_GREEN_AND_11_OF_11_RERUN",
         "20M checkpoint integrity gate changed",
+    )
+    _require(
+        gates["source_registry_convergence"]
+        == "CANDIDATE_NONTERMINAL_565743_BYTES_13_FAMILIES",
+        "source-registry convergence gate changed",
+    )
+    _require(
+        gates["exact_candidate_corpus_identity"] == "BLOCKED_NOT_MATERIALIZED",
+        "candidate corpus identity gate changed",
     )
     _require(gates["real_20m_training"] == "BLOCKED", "real 20M training is not blocked")
     _require(
@@ -162,21 +233,26 @@ def validate(value: dict[str, Any]) -> None:
 
     parallel_tracks = value["parallel_local_free_tracks"]
     _require(
-        "CONVERGE_D05_REMEDIATION_AND_TRIAGE_LOCKED_ENVIRONMENT_CHECK_FAILURE"
+        "TERMINALIZE_NEXT100_063_AND_MATERIALIZE_EXACT_CANDIDATE_CORPUS_IDENTITY"
         in parallel_tracks,
-        "D05 convergence track is missing",
+        "source-registry/corpus convergence track is missing",
     )
     _require(
-        "COMPOSE_SUCCESSOR_RESEARCH_CORPUS_V1_INTAKE" in parallel_tracks,
-        "corpus convergence track is missing",
+        "WAIT_FOR_PR504_CURRENT_EXACT_HEAD_D05_AND_THEN_RERUN_NEXT100_075_11_CASE_MATRIX"
+        in parallel_tracks,
+        "D05 convergence track is missing",
     )
     _require(len(parallel_tracks) == len(set(parallel_tracks)), "parallel tracks contain duplicates")
 
     next_campaign = value["ordered_next_campaign"]
     _require(
-        next_campaign[0]
-        == "COMPOSE_SUCCESSOR_RESEARCH_CORPUS_V1_INTAKE_FROM_TERMINAL_SOURCE_AUTHORITIES",
+        next_campaign[0] == "TERMINALIZE_NEXT100_063_SOURCE_REGISTRY_CONVERGENCE",
         "first ordered next action changed",
+    )
+    _require(
+        next_campaign[1]
+        == "MATERIALIZE_EXACT_PRE_DECONTAMINATION_CANDIDATE_RECORD_INVENTORY_AND_IDENTITY",
+        "second ordered next action changed",
     )
     _require(
         next_campaign[-1]
@@ -196,9 +272,13 @@ def validate(value: dict[str, Any]) -> None:
         "primary blocker changed unexpectedly",
     )
     _require(
-        "D05_CHECKPOINT_INTEGRITY_RETEST_REQUIRED_ON_3_OF_11_CORRUPTION_CLASSES"
+        "D05_REMEDIATION_CURRENT_HEAD_NOT_YET_GREEN" in decision["secondary_blockers"],
+        "D05 current-head blocker is missing",
+    )
+    _require(
+        "NEXT100_075_FULL_11_CASE_PRODUCTION_RERUN_NOT_YET_GREEN"
         in decision["secondary_blockers"],
-        "D05 secondary blocker is missing",
+        "D05 11-case rerun blocker is missing",
     )
 
     _require(
@@ -220,6 +300,7 @@ def main() -> int:
     print("20M_AUTHORIZED_UNIQUE_TARGETS=" + str(value["campaign"]["authorized_unique_optimized_targets"]))
     print("20M_CAMPAIGN_RUNNABLE=" + str(value["campaign"]["campaign_runnable_now"]).lower())
     print("20M_CHECKPOINT_INTEGRITY=" + value["gates"]["checkpoint_integrity_20m"])
+    print("20M_SOURCE_REGISTRY=" + value["gates"]["source_registry_convergence"])
     print("20M_NEXT=" + value["ordered_next_campaign"][0])
     print("20M_EVIDENCE_SHA256=" + value["evidence_identity_sha256"])
     return 0
