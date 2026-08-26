@@ -1,0 +1,54 @@
+{
+  "schema_version": "12-6.data228-rights-decisions.v1",
+  "policy_ref": "policy://12-6/data/explicit-model-training-evidence-v1",
+  "reviewed_at": "2026-08-26",
+  "reviewer_ref": "DATA-228-REAL-UA-EN-DIVERSITY-V2",
+  "decisions": [
+    {
+      "source_id": "uk.kubernetes.docs.concepts-index",
+      "source_version": "git:25f3dcbed7429ebe20174ccc7000428d0f0aedda",
+      "license_id": "CC-BY-4.0",
+      "status": "APPROVED_FOR_TRAINING",
+      "uses": {
+        "acquisition": "ALLOWED",
+        "storage": "ALLOWED",
+        "analysis": "ALLOWED",
+        "model_training": "ALLOWED",
+        "redistribution": "ALLOWED"
+      },
+      "allows_derivatives": true,
+      "basis": "The exact captured CC BY 4.0 license grants worldwide royalty-free rights to reproduce and Share the Licensed Material and to produce, reproduce and Share Adapted Material, including technical modifications. Model training is approved under the project's explicit-training policy as analysis/technical transformation of the licensed text; this is a project policy decision, not an assertion that public accessibility alone grants training rights.",
+      "redistribution_conditions": [
+        "retain supplied creator/copyright/license/disclaimer information when sharing licensed material",
+        "identify the CC BY 4.0 license and provide its text or URI/hyperlink",
+        "indicate modifications and retain indications of previous modifications when sharing modified material",
+        "do not impose downstream restrictions on the licensed material",
+        "do not imply endorsement by Kubernetes, CNCF, or contributors"
+      ],
+      "license_evidence_path": "data/external/rights-evidence/data228/kubernetes-website-cc-by-4.0-25f3dcb.txt",
+      "terms_url": "https://raw.githubusercontent.com/kubernetes/website/25f3dcbed7429ebe20174ccc7000428d0f0aedda/LICENSE"
+    },
+    {
+      "source_id": "en.python.docs.tutorial-introduction",
+      "source_version": "git:7f0ccd6c0e3f85fbaeceb2f67b06ab3631db0480",
+      "license_id": "PSF-2.0",
+      "status": "APPROVED_FOR_TRAINING",
+      "uses": {
+        "acquisition": "ALLOWED",
+        "storage": "ALLOWED",
+        "analysis": "ALLOWED",
+        "model_training": "ALLOWED",
+        "redistribution": "ALLOWED"
+      },
+      "allows_derivatives": true,
+      "basis": "The exact captured PSF License Version 2 states that Python software and documentation are licensed under PSF v2 and grants rights to reproduce, analyze, test, prepare derivative works, distribute, and otherwise use Python and its associated documentation. Model training is therefore explicitly approved under the project's training-rights policy subject to the license conditions.",
+      "redistribution_conditions": [
+        "retain the PSF License Agreement and PSF copyright notice in Python or derivative versions as required by PSF v2",
+        "if distributing a derivative work based on or incorporating Python, include a brief summary of changes",
+        "do not imply trademark endorsement or sponsorship by the Python Software Foundation"
+      ],
+      "license_evidence_path": "data/external/rights-evidence/data228/cpython-psf-license-7f0ccd6.txt",
+      "terms_url": "https://raw.githubusercontent.com/python/cpython/7f0ccd6c0e3f85fbaeceb2f67b06ab3631db0480/LICENSE"
+    }
+  ]
+}
