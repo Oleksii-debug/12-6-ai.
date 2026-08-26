@@ -1,0 +1,181 @@
+{
+  "audit_identity_sha256": "daffef7aeb5da2994f71b8d7dad26c609704b8ee096c564a3f398be0d9d3423d",
+  "authority_cutoff_utc": "2026-08-26T12:01:02Z",
+  "excluded_nonadmitted_candidates": [
+    "DATA-228"
+  ],
+  "family_length_distribution_normalized_unique_bytes": {
+    "count": 4,
+    "max": 88565,
+    "mean": 45765.25,
+    "median": 46477.0,
+    "min": 1542,
+    "ordered_bytes": [1542, 8161, 84793, 88565],
+    "p25_nearest_rank": 1542,
+    "p75_nearest_rank": 84793
+  },
+  "family_resolution_policy": {
+    "file_count_is_not_family_count": true,
+    "fork_or_mirror": "COLLAPSE_TO_ROOT_UPSTREAM_FAMILY",
+    "same_canonical_upstream": "COLLAPSE_TO_ONE_FAMILY",
+    "same_repository_multiple_files": "COLLAPSE_TO_ONE_FAMILY",
+    "translation_lineage": "COLLAPSE_WHEN_SAME_UPSTREAM_DOCUMENT_LINEAGE_UNLESS_INDEPENDENT_ORIGIN_IS_PROVEN",
+    "vendored_or_generated_derivative": "DO_NOT_CREATE_NEW_FAMILY"
+  },
+  "family_rows": [
+    {
+      "family_id": "en.standardebooks.manual",
+      "file_count": 2,
+      "normalized_share": 0.46319532833317856,
+      "normalized_unique_bytes": 84793,
+      "raw_bytes": 106111,
+      "raw_share_diagnostic": 0.2367418242178959,
+      "source_ids": ["en.standardebooks.manual.8-typography", "en.standardebooks.manual.9-metadata"],
+      "stratum": "en"
+    },
+    {
+      "family_id": "github:encode/httpx",
+      "file_count": 1,
+      "normalized_share": 0.04458076815924746,
+      "normalized_unique_bytes": 8161,
+      "raw_bytes": 8161,
+      "raw_share_diagnostic": 0.01820782037151896,
+      "source_ids": ["code.encode.httpx._content"],
+      "stratum": "code"
+    },
+    {
+      "family_id": "github:psf/requests",
+      "file_count": 1,
+      "normalized_share": 0.008423421700963067,
+      "normalized_unique_bytes": 1542,
+      "raw_bytes": 1542,
+      "raw_share_diagnostic": 0.0034403209181328564,
+      "source_ids": ["code.psf.requests._internal_utils"],
+      "stratum": "code"
+    },
+    {
+      "family_id": "ua.rada.open-data.laws-texts",
+      "file_count": 1,
+      "normalized_share": 0.4838004818066109,
+      "normalized_unique_bytes": 88565,
+      "raw_bytes": 332400,
+      "raw_share_diagnostic": 0.7416100344924522,
+      "source_ids": ["ua.rada.open-data.laws-texts.d23314"],
+      "stratum": "uk"
+    }
+  ],
+  "file_length_distribution_normalized_unique_bytes": {
+    "count": 5,
+    "max": 88565,
+    "mean": 36612.2,
+    "median": 36791,
+    "min": 1542,
+    "ordered_bytes": [1542, 8161, 36791, 48002, 88565],
+    "p25_nearest_rank": 8161,
+    "p75_nearest_rank": 48002
+  },
+  "file_length_distribution_raw_bytes": {
+    "count": 5,
+    "max": 332400,
+    "mean": 89642.8,
+    "median": 37299,
+    "min": 1542,
+    "ordered_bytes": [1542, 8161, 37299, 68812, 332400],
+    "p25_nearest_rank": 8161,
+    "p75_nearest_rank": 68812
+  },
+  "gate_results_on_current_terminal_inventory": {
+    "cross_family_duplicate_or_mirror_edges": {"pass": true, "threshold": 0, "value": 0},
+    "family_count_by_stratum": {
+      "pass": false,
+      "threshold": {"code": 2, "en": 2, "uk": 2},
+      "value": {"code": 2, "en": 1, "uk": 1}
+    },
+    "independent_family_count": {"pass": false, "threshold": 6, "value": 4},
+    "shannon_effective_family_count": {"pass": false, "threshold": 4.0, "value": 2.4270101760218714},
+    "top_family_share": {"pass": false, "threshold": 0.25, "value": 0.4838004818066109},
+    "within_stratum_top_family_share": {
+      "pass": false,
+      "threshold": 0.6,
+      "value": {"code": 0.8410800783262908, "en": 1.0, "uk": 1.0}
+    }
+  },
+  "independent_family_count": 4,
+  "independent_family_count_by_stratum": {"code": 2, "en": 1, "uk": 1},
+  "local_free_only": true,
+  "next_corpus_diversity_gates": {
+    "maximum_cross_family_duplicate_or_mirror_edges": 0,
+    "maximum_top_family_share_of_normalized_unique_bytes": 0.25,
+    "maximum_top_family_share_within_each_stratum": 0.6,
+    "minimum_independent_families_by_stratum": {"code": 2, "en": 2, "uk": 2},
+    "minimum_independent_families_total": 6,
+    "minimum_shannon_effective_family_count": 4.0,
+    "require_no_replay_to_increase_unique_bytes": true,
+    "require_terminal_training_rights_for_every_counted_source": true
+  },
+  "next_corpus_diversity_status": "BLOCKED_SOURCE_DIVERSITY",
+  "normalized_entropy_fraction_of_observed_max": 0.6395900787326801,
+  "normalized_unique_bytes": 183061,
+  "normalized_unique_bytes_by_stratum": {"code": 9703, "en": 84793, "uk": 88565},
+  "object_count": 5,
+  "overlap_and_lineage_audit": {
+    "algorithm": "DATA-232-style deterministic NFKC/whitespace normalization plus token shingles and code skeleton",
+    "all_normalized_sha256_distinct": true,
+    "all_raw_sha256_distinct": true,
+    "cross_family_duplicate_or_mirror_edges": 0,
+    "max_code_pair_jaccard": 0.0,
+    "max_code_skeleton_jaccard": 0.02119700748129676,
+    "max_natural_pair_containment": 0.06139983235540654,
+    "max_natural_pair_jaccard": 0.025219487002926495,
+    "observed_common_upstream_file_group": {
+      "classification": "TWO_FILES_ONE_FAMILY",
+      "family_id": "en.standardebooks.manual",
+      "source_ids": ["en.standardebooks.manual.8-typography", "en.standardebooks.manual.9-metadata"]
+    },
+    "thresholds": {
+      "code_copy_jaccard": 0.82,
+      "code_fragment_containment": 0.9,
+      "code_near_jaccard": 0.86,
+      "code_shingle_tokens": 7,
+      "natural_fragment_containment": 0.88,
+      "natural_near_jaccard": 0.8,
+      "natural_shingle_tokens": 3
+    }
+  },
+  "raw_bytes_by_stratum_diagnostic": {"code": 9703, "en": 106111, "uk": 332400},
+  "raw_source_bytes": 448214,
+  "schema_version": "12-6.data288-source-diversity-audit.v2",
+  "shannon_effective_family_count": 2.4270101760218714,
+  "shannon_entropy_bits": 1.2791801574653603,
+  "shannon_entropy_nats": 0.8866601195753413,
+  "terminal_inputs": {
+    "DATA-227": {
+      "artifact_digest": "sha256:080f073327020cb3bbb05c7348f658223804684d23012d9b66ab9b798c4fed5d",
+      "artifact_id": 9602093542,
+      "dedicated_workflow_run": 32956209865,
+      "head_sha": "8ebdb2e132ed7bae5245e9d4c140752640ab9885",
+      "report_sha256": "234ace1497b00495716d00a1502c323fc06b88458c49ec3d6aa58bc2cdd52294",
+      "status": "TERMINAL_SUCCESS"
+    },
+    "DATA-228": {
+      "candidate_families": ["kubernetes.website.docs", "python.cpython.documentation"],
+      "dedicated_workflow_conclusion": "failure",
+      "dedicated_workflow_run": 32957120454,
+      "head_sha": "46a70c990dab6ff72bb84ddb54cff1156b491b40",
+      "status": "EXCLUDED_TERMINAL_FAILURE"
+    },
+    "DATA-229": {
+      "data213_artifact_id": 9600107886,
+      "data213_artifact_zip_sha256": "927e10ccb83f919d57a8b78e3ea9cae72f9d4e0232401043234a35eec150074d",
+      "dedicated_workflow_run": 32957147036,
+      "head_sha": "90bc0b7f8b696ec35202532b13edf6ab29a662fe",
+      "registry_identity_sha256": "1357a343eb4ea973950d8991913109cbea53fe4fa891f0be9745ab497eb59486",
+      "status": "TERMINAL_SUCCESS"
+    }
+  },
+  "top_family": "ua.rada.open-data.laws-texts",
+  "top_family_share_normalized_unique_bytes": 0.4838004818066109,
+  "top_family_share_raw_bytes_diagnostic": 0.7416100344924522,
+  "training_executed": false,
+  "worker_id": "DATA-288-SOURCE-DIVERSITY-AUDIT-V2"
+}
