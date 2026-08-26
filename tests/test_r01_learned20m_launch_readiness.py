@@ -75,6 +75,8 @@ def _make_local_pilot_ready() -> dict:
             "config_sha256": SHA64,
             "stopping_policy_sha256": SHA64,
             "requested_unique_loss_positions": 412_268_800,
+            "requested_total_training_exposures": 412_268_800,
+            "max_exposures_per_unique_position": 1,
         }
     )
     return data
@@ -113,6 +115,14 @@ def test_current_packet_is_blocked_at_all_three_phases() -> None:
     assert "data_budget_not_qualified" in result.local_free_pilot_blockers
     assert "checkpoint_integrity_not_terminal_pass" in result.local_free_pilot_blockers
     assert "requested_unique_loss_positions_not_positive" in result.local_free_pilot_blockers
+    assert (
+        "requested_total_training_exposures_not_positive"
+        in result.local_free_pilot_blockers
+    )
+    assert (
+        "max_exposures_per_unique_position_not_positive"
+        in result.local_free_pilot_blockers
+    )
     assert "compute_not_explicitly_authorized" in result.material_training_blockers
 
 
@@ -150,6 +160,55 @@ def test_requested_unique_loss_budget_rejects_malformed_values() -> None:
             "requested_unique_loss_positions_not_positive"
             in result.local_free_pilot_blockers
         )
+
+
+def test_total_training_exposure_cannot_be_below_unique_requirement() -> None:
+    data = _make_local_pilot_ready()
+    recipe = data["evidence"]["training_recipe"]
+    recipe["requested_total_training_exposures"] = (
+        recipe["requested_unique_loss_positions"] - 1
+    )
+    result = assess_learned20m_readiness(data)
+    assert not result.ready_for_local_free_pilot
+    assert (
+        "total_training_exposures_below_unique_requirement"
+        in result.local_free_pilot_blockers
+    )
+
+    recipe["requested_total_training_exposures"] = recipe["requested_unique_loss_positions"]
+    result = assess_learned20m_readiness(data)
+    assert result.ready_for_local_free_pilot
+
+
+def test_total_training_exposure_must_respect_replay_cap() -> None:
+    data = _make_local_pilot_ready()
+    recipe = data["evidence"]["training_recipe"]
+    recipe["requested_unique_loss_positions"] = 100
+    recipe["max_exposures_per_unique_position"] = 2
+    recipe["requested_total_training_exposures"] = 201
+    result = assess_learned20m_readiness(data)
+    assert not result.ready_for_local_free_pilot
+    assert (
+        "total_training_exposures_exceed_replay_cap"
+        in result.local_free_pilot_blockers
+    )
+
+    recipe["requested_total_training_exposures"] = 200
+    result = assess_learned20m_readiness(data)
+    assert result.ready_for_local_free_pilot
+
+
+def test_exposure_controls_reject_malformed_values() -> None:
+    for field in (
+        "requested_total_training_exposures",
+        "max_exposures_per_unique_position",
+    ):
+        for bad in (0, -1, True, 1.5, "100"):
+            data = _make_local_pilot_ready()
+            data["evidence"]["training_recipe"][field] = bad
+            result = assess_learned20m_readiness(data)
+            assert not result.ready_for_local_free_pilot
+            assert f"{field}_not_positive" in result.local_free_pilot_blockers
 
 
 def test_compute_request_ready_does_not_imply_paid_training_authority() -> None:
@@ -205,3 +264,16 @@ def test_truth_boundary_cannot_be_promoted_by_packet_mutation() -> None:
         "truth_boundary_paid_compute_executed_by_this_package_must_be_false"
         in result.local_free_pilot_blockers
     )
+
+
+def test_unit_truth_boundary_cannot_be_weakened() -> None:
+    for key in (
+        "source_bytes_are_not_loss_positions",
+        "training_exposure_is_not_unique_data",
+        "replay_cannot_inflate_unique_loss_ledger",
+    ):
+        data = _make_local_pilot_ready()
+        data["truth_boundary"][key] = False
+        result = assess_learned20m_readiness(data)
+        assert not result.ready_for_local_free_pilot
+        assert f"truth_boundary_{key}_must_be_true" in result.local_free_pilot_blockers
