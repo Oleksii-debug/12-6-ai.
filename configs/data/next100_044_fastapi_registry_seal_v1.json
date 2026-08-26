@@ -1,0 +1,19 @@
+{
+  "schema_version": "12-6.next100-044-fastapi-registry-seal.v1",
+  "worker_id": "NEXT100-044-CODE-FASTAPI",
+  "authority": "DATA-287-EXTERNAL-SNAPSHOT-REGISTRY-V2",
+  "producer_head": "b0523ccbc4b957615aac849d476cfa851be87578",
+  "registry_path": "data/registry/external_snapshots.v2.json",
+  "registry_identity_sha256": "917e9bc31b2fa040d25e807ae3c01aa2cce32420752a891caacfb6c830e6632c",
+  "source_count": 5,
+  "independent_source_family_count": 4,
+  "existing_families": [
+    "en.standardebooks.manual",
+    "ua.rada.open-data.laws-texts",
+    "github:encode/httpx",
+    "github:psf/requests"
+  ],
+  "candidate_family": "github:fastapi/fastapi",
+  "supersedes_static_policy_registry_identity_sha256": "50f68b1cee3b1dc5335b8655e0df8d130be22495f9237fefca04b93b30fba4cb",
+  "basis": "The canonical DATA-287 registry file at the exact producer head is authoritative. Its top-level registry_identity_sha256 is 917e9bc31b2fa040d25e807ae3c01aa2cce32420752a891caacfb6c830e6632c; the older value was copied from PR prose and is superseded for terminal sealing."
+}
