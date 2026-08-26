@@ -82,6 +82,28 @@
     "family_cap_must_apply_after_quality_and_lineage_dedup": true,
     "default_training_mix_status": "HOLD_UNTIL_STRATIFIED"
   },
+  "balance_policy_geometry": {
+    "policy_origin_pr": 390,
+    "hardening_reference_pr": 628,
+    "planning_only_not_terminal_authority": true,
+    "target_source_bytes": 20000000,
+    "stratum_target_bytes": {
+      "uk": 9000000,
+      "en": 7000000,
+      "code": 4000000
+    },
+    "minimum_independent_families_per_stratum": 2,
+    "max_family_global_fraction": "1/4",
+    "max_family_own_stratum_fraction": "3/5",
+    "family_target_cap_bytes": {
+      "uk": 5000000,
+      "en": 4200000,
+      "code": 2400000
+    },
+    "plug_lineage_max_selected_bytes_at_20m": 5000000,
+    "reported_upstream_tokens_do_not_override_family_cap": true,
+    "overflow_repair": "SUBSAMPLE_OR_ACQUIRE_INDEPENDENT_FAMILY_NEVER_REPLAY"
+  },
   "acquisition_policy": {
     "preferred_first_payload": "PluG_texts",
     "plug2_default": "HOLD_UNTIL_HISTORICAL_ORTHOGRAPHY_ABLATION_OR_EXPLICIT_CAP",
