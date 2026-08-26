@@ -1,0 +1,137 @@
+{
+  "schema_version": "12-6.next100-054-urllib3-code-admission.v1",
+  "worker_id": "NEXT100-054-CODE-URLLIB3",
+  "authority": "EXTERNAL_REAL_CODE_SOURCE_ADMISSION_LOCAL_FREE",
+  "purpose": "base_pretraining_source_qualification",
+  "upstream": {
+    "repository": "https://github.com/urllib3/urllib3",
+    "source_family": "github:urllib3/urllib3",
+    "release_tag": "2.7.0",
+    "annotated_tag_sha1": "d5df809a675471a67a576a7921820104153b9366",
+    "commit": "9a950b92d999f906b6020bb2d1076ee56cddd5d2",
+    "tree_sha1": "85726e54c225e400240f779a0bfe2b10654e9ac1"
+  },
+  "license_review": {
+    "license_id": "MIT",
+    "license_path": "LICENSE.txt",
+    "license_blob_sha1": "e6183d0276b26c5b87aecccf8d0d5bcd7b1148d4",
+    "license_size_bytes": 1093,
+    "license_url": "https://raw.githubusercontent.com/urllib3/urllib3/9a950b92d999f906b6020bb2d1076ee56cddd5d2/LICENSE.txt",
+    "reviewed_at": "2026-08-26",
+    "reviewer_ref": "NEXT100-054-CODE-URLLIB3",
+    "rights_basis": "The exact pinned MIT license grants unrestricted use, copy, modification, merge, publication, distribution, sublicensing and sale, subject to retaining the copyright and permission notice. Under the project explicit-purpose policy, the exact bounded snapshot is approved for model-training use and redistribution subject to that condition; public availability alone is not the basis.",
+    "uses": {
+      "acquisition": "ALLOWED",
+      "storage": "ALLOWED",
+      "analysis": "ALLOWED",
+      "model_training": "ALLOWED",
+      "redistribution": "ALLOWED"
+    },
+    "redistribution_conditions": "Include the urllib3 MIT copyright and permission notice in copies or substantial portions of the Software."
+  },
+  "selection_policy": {
+    "kind": "explicit_bounded_first_party_implementation_allowlist",
+    "counted_capacity_rule": "Only the eight exact Python blobs listed in selected_files count as candidate capacity.",
+    "excluded_capacity": [
+      "docs/**",
+      "test/**",
+      "tests/**",
+      ".github/**",
+      "changelog/**",
+      "CHANGES.rst",
+      "README*",
+      "pyproject.toml",
+      "src/urllib3/py.typed",
+      "src/urllib3/contrib/**",
+      "src/urllib3/http2/**",
+      "any path containing vendor, vendored, third_party, node_modules, dist, build, generated, gen, deps, dependencies, .venv, or site-packages"
+    ],
+    "excluded_objects_count_as_capacity": false
+  },
+  "selected_files": [
+    {"path": "src/urllib3/connection.py", "blob_sha1": "84e1dab9452d18ad0a2020c55f1966f4920f56c2", "size_bytes": 42786},
+    {"path": "src/urllib3/connectionpool.py", "blob_sha1": "70fbc5e725aee571654b1a58748537fa167b498d", "size_bytes": 44164},
+    {"path": "src/urllib3/poolmanager.py", "blob_sha1": "8f2c56745cdf5ee206767e22fd61c2fb6bc21e55", "size_bytes": 23895},
+    {"path": "src/urllib3/response.py", "blob_sha1": "e9246b75e36215b7f956700aa4cb363e8423e526", "size_bytes": 53219},
+    {"path": "src/urllib3/_collections.py", "blob_sha1": "ee9ca662b625ce6b0a4743d05a186301b9a30ee6", "size_bytes": 17522},
+    {"path": "src/urllib3/_request_methods.py", "blob_sha1": "297c271bf401c1cb48c6225f8822e78f58c3ca56", "size_bytes": 9931},
+    {"path": "src/urllib3/util/retry.py", "blob_sha1": "7649898e1d9930724a456c1c6fdecb66e078b4cc", "size_bytes": 19577},
+    {"path": "src/urllib3/util/ssl_.py", "blob_sha1": "e66549a76c4b5821e639e5facfeb63dd1a39d543", "size_bytes": 17742}
+  ],
+  "candidate_bytes": 228836,
+  "terminal_code_registry_baseline": {
+    "authority": "DATA-227",
+    "head": "8ebdb2e132ed7bae5245e9d4c140752640ab9885",
+    "workflow_run": 32956209865,
+    "artifact_id": 9602093542,
+    "artifact_digest": "sha256:080f073327020cb3bbb05c7348f658223804684d23012d9b66ab9b798c4fed5d",
+    "source_families": ["github:encode/httpx", "github:psf/requests"],
+    "admitted_raw_bytes": 9703,
+    "objects": [
+      {
+        "source_id": "code.encode.httpx._content",
+        "source_family": "github:encode/httpx",
+        "commit": "b5addb64f0161ff6bfe94c124ef76f6a1fba5254",
+        "path": "httpx/_content.py",
+        "blob_sha1": "6f479a0885f723b7395843d41164a87041820776",
+        "raw_sha256": "2c61b3ac94d1dcebcde0c6f519554d2d7917247fbaa0a97002db4ef69e70ff28",
+        "size_bytes": 8161,
+        "raw_url": "https://raw.githubusercontent.com/encode/httpx/b5addb64f0161ff6bfe94c124ef76f6a1fba5254/httpx/_content.py"
+      },
+      {
+        "source_id": "code.psf.requests._internal_utils",
+        "source_family": "github:psf/requests",
+        "commit": "5460f467b02e49471c0fd6cfc9ca0adab6351f98",
+        "path": "src/requests/_internal_utils.py",
+        "blob_sha1": "0466a7d347db4ed34a37db51b75fc8e80bc06055",
+        "raw_sha256": "4c7d8d132c9898fc7d715e473f3ac74785ddc4ab96d2c9240f87835dc6d981ff",
+        "size_bytes": 1542,
+        "raw_url": "https://raw.githubusercontent.com/psf/requests/5460f467b02e49471c0fd6cfc9ca0adab6351f98/src/requests/_internal_utils.py"
+      }
+    ]
+  },
+  "requests_lineage_audit": {
+    "requests_commit": "5460f467b02e49471c0fd6cfc9ca0adab6351f98",
+    "current_dependency": {
+      "path": "pyproject.toml",
+      "blob_sha1": "e7a1e015e09765802f6ac8d98b5ca5f0daabefb7",
+      "required_text": "urllib3>=1.26,<3"
+    },
+    "current_compat_alias": {
+      "path": "src/requests/packages.py",
+      "blob_sha1": "5ab3d8e250de8475cb22553f564e5444e02c7460",
+      "required_text": "requests.packages.{mod}"
+    },
+    "historical_lineage": {
+      "path": "HISTORY.md",
+      "blob_sha1": "4fb8a63a33de22c456140ae545d5e2232b7f1177",
+      "required_text": "Fix error when urllib3 is unbundled and requests continues to use the vendored import location."
+    },
+    "decision_rule": "Historical vendoring and current dependency/compatibility alias establish related lineage. Keep the current bounded urllib3 source family separate from the terminal Requests family only if exact and near-duplicate checks against the admitted Requests object are clean; any copied/vendored urllib3 object in a future Requests admission must be collapsed or excluded by provenance/dedup.",
+    "provisional_family_decision": "RELATED_LINEAGE_SEPARATE_CURRENT_BOUNDED_OBJECTS_IF_DEDUP_CLEAN"
+  },
+  "evaluation_boundary": {
+    "authority": "EVAL-322",
+    "branch": "eval322/real-ua-en-code-authority-20260826",
+    "head_at_review": "7c15363a8c110f30a493ac41ab49a824354a2a67",
+    "evidence_path": "evidence/eval322/external-real-evaluator-authority-v1.json",
+    "evidence_blob_sha1": "3199f97842d7fb4ea7e52e364a5847dfa646f854",
+    "evidence_identity_sha256": "43a666702feacd94af63b8e1be13bb5d35ca90a8bc6555b41911e77e8fbe556c",
+    "code_gate_verdict_at_review": "BLOCKED",
+    "selection_records_at_review": 0,
+    "final_test_records_at_review": 0,
+    "candidate_role": "TRAINING_ONLY",
+    "evaluation_use_authorized": false,
+    "rule": "Fail closed if any selected urllib3 object becomes evaluation-reserved before terminal sealing."
+  },
+  "verification": {
+    "normalization": "STRICT_UTF8_IDENTITY_PRESERVE_V1",
+    "python_parse": "AST_REQUIRED_ALL_FILES",
+    "secret_scan": "PRIVATE_KEY_GITHUB_OPENAI_AWS_GOOGLE_SLACK_TOKEN_PATTERNS",
+    "privacy_scan": "HIGH_RISK_PII_US_SSN_AND_PAYMENT_PAN_LIKE_PATTERNS",
+    "exact_dedup": "SHA256",
+    "near_dedup": {"token_shingle_size": 5, "jaccard_threshold": 0.85},
+    "compare_against_terminal_code_baseline": true,
+    "family_rule": "The eight selected urllib3 blobs count as one source family, github:urllib3/urllib3, subject to the explicit Requests related-lineage decision."
+  }
+}
