@@ -3,7 +3,7 @@
     "cuda": {"executables": [], "imports": ["torch"], "requires": ["runtime"], "status": "available"},
     "datatrove": {"reason": "No committed D08 exact purpose lock exists.", "status": "unavailable_no_exact_lock"},
     "distributed": {"executables": [], "imports": ["torch.distributed"], "requires": ["runtime"], "status": "available"},
-    "lint": {"executables": ["ruff"], "imports": ["ruff"], "requires": [], "status": "available"},
+    "lint": {"executables": ["ruff"], "imports": [], "requires": [], "status": "available"},
     "pyarrow": {"reason": "No committed D08 exact purpose lock exists.", "status": "unavailable_no_exact_lock"},
     "runtime": {"executables": [], "imports": ["torch", "numpy", "safetensors"], "requires": [], "status": "available"},
     "tests": {"executables": ["pytest"], "imports": ["pytest"], "requires": [], "status": "available"},
