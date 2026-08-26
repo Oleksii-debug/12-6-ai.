@@ -79,7 +79,7 @@ jobs:
           import twelve_six.inference.cli
 
           assert metadata.version("twelve-six-ai") == "0.2.0.dev0"
-          assert twelve_six.__version__ == "0.2.0.dev0"
+          assert twelve_six.__version__ == "0.2.0-dev"
           PY
           .ci223-repair/bin/twelve-six-generate --help | grep -q 'usage: twelve-six-generate'
       - name: Prove convergence-sensitive contracts
