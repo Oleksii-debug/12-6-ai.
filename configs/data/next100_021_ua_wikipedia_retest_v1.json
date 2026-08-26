@@ -1,7 +1,7 @@
 {
-  "schema_version": "12-6.next100-021-ua-wikipedia-retest.v1",
+  "schema_version": "12-6.next100-021-ua-wikipedia-authority.v2",
   "worker": "NEXT100-021-DATA-UA-WIKIPEDIA",
-  "decision": "RETEST",
+  "decision": "REJECT",
   "local_free_only": true,
   "model_training_executed": false,
   "source": {
@@ -10,7 +10,7 @@
     "source_kind": "encyclopedia",
     "language": "uk",
     "purpose": "pretraining",
-    "independent_family_id": "wikimedia:wikipedia:ukwiki",
+    "candidate_family_id": "wikimedia:wikipedia:ukwiki",
     "origin": "EXTERNAL_REAL",
     "benchmark_material": false,
     "held_out": false,
@@ -22,7 +22,6 @@
     "dump_family": "ukwiki",
     "dump_object": "ukwiki-20260801-pages-articles1.xml-p1p194007.bz2",
     "dated_url": "https://dumps.wikimedia.org/ukwiki/20260801/ukwiki-20260801-pages-articles1.xml-p1p194007.bz2",
-    "latest_index_url": "https://dumps.wikimedia.org/ukwiki/latest/",
     "sha1_manifest_url": "https://dumps.wikimedia.org/ukwiki/latest/ukwiki-latest-sha1sums.txt",
     "expected_size_bytes": 166733586,
     "expected_sha1": "e6aa53cf981f53807ca59d4fc7ab8e1d97151461",
@@ -33,12 +32,11 @@
     "terms_url": "https://foundation.wikimedia.org/wiki/Policy:Terms_of_Use",
     "terms_revision_oldid": 554823,
     "license_url": "https://creativecommons.org/licenses/by-sa/4.0/",
-    "acquisition": "ALLOWED_FOR_BOUNDED_ANALYSIS_PROBE",
-    "storage": "EPHEMERAL_ANALYSIS_ONLY",
-    "analysis": "ALLOWED",
-    "model_training": "RETEST_REQUIRED",
-    "redistribution": "RETEST_REQUIRED",
+    "license_level_reuse": "BROADLY_PERMITTED_WITH_CONDITIONS",
+    "model_training": "REJECT",
+    "redistribution": "NOT_ADMITTED",
     "evaluation": "NOT_SEPARATELY_ADMITTED",
+    "project_policy_status": "BLOCKED_BY_RIGHTS",
     "obligations": [
       "attribute authors by article URL/stable conforming copy/author list",
       "preserve additional attribution requirements for imported text where applicable",
@@ -47,30 +45,31 @@
       "apply CC-BY-SA-4.0-or-later to distributed modified/additional text where required",
       "do not impose additional legal or technical restrictions that violate the license"
     ],
-    "policy_blocker": "PROJECT_HAS_NO_APPROVED_SHAREALIKE_COMPLIANCE_POLICY_FOR_TRAINING_ARTIFACTS_OR_MODEL_OUTPUTS"
+    "rejection_root_cause": "PROJECT_HAS_NO_APPROVED_SHAREALIKE_COMPLIANCE_POLICY_FOR_TRAINING_ARTIFACTS_OR_MODEL_OUTPUTS"
   },
   "privacy": {
-    "risk": "PUBLIC_ARTICLE_TEXT_CAN_CONTAIN_PERSONAL_INFORMATION_ABOUT_LIVING_OR_IDENTIFIABLE_PEOPLE;_PUBLICATION_DOES_NOT_REMOVE_PRIVACY_OR_PUBLICITY_RISK",
-    "dump_scope_reduction": "PAGES_ARTICLES_CURRENT_TEXT;_NORMALIZATION_PROBE_SELECTS_NS0_NON_REDIRECT_ONLY",
-    "required_before_training": "RUN_CURRENT_PROJECT_PRIVACY_PII_GATE_ON_EXACT_NORMALIZED_BYTES_AND_REVIEW_HIGH_RISK_RECORDS",
-    "status": "RETEST_REQUIRED"
+    "risk": "PUBLIC_ARTICLE_TEXT_CAN_CONTAIN_PERSONAL_INFORMATION_ABOUT_LIVING_OR_IDENTIFIABLE_PEOPLE; PUBLICATION_DOES_NOT_REMOVE_PRIVACY_OR_PUBLICITY_RISK",
+    "content_gate": "NOT_RUN_RIGHTS_GATE_FAILED",
+    "required_on_any_future_retest": "RUN_CURRENT_PROJECT_PRIVACY_PII_GATE_ON_EXACT_NORMALIZED_BYTES_AND_REVIEW_HIGH_RISK_RECORDS"
   },
-  "bounded_probe": {
-    "raw_download_cap_bytes": 170000000,
-    "expected_raw_bytes": 166733586,
-    "normalized_record_cap": 128,
-    "normalized_byte_cap": 2000000,
-    "retain_raw_payload": false,
-    "retain_normalized_payload": false,
-    "artifact_contains_text": false,
-    "network_source": "DATED_WIKIMEDIA_DUMP_ONLY",
-    "verify_upstream_sha1": true,
-    "compute_raw_sha256": true,
-    "compute_normalized_payload_sha256": true
+  "bounded_acquisition": {
+    "content_payload_executed": false,
+    "network_content_bytes_downloaded": 0,
+    "content_download_cap_bytes": 170000000,
+    "raw_sha256": null,
+    "normalized_sha256": null,
+    "reason": "RIGHTS_GATE_FAILED_BEFORE_CONTENT_MATERIALIZATION",
+    "metadata_probe": {
+      "allowed": true,
+      "max_bytes": 1048576,
+      "resource": "WIKIMEDIA_SHA1_MANIFEST_ONLY",
+      "purpose": "VERIFY_EXACT_DUMP_IDENTITY_WITHOUT_FETCHING_BLOCKED_CONTENT"
+    }
   },
   "normalization": {
     "policy_id": "UKWIKI_WIKITEXT_NFKC_LINES_V1",
-    "steps": [
+    "execution_status": "NOT_RUN_RIGHTS_GATE_FAILED",
+    "deterministic_contract": [
       "select MediaWiki page namespace ns=0",
       "exclude redirect pages",
       "select current revision text in dump order",
@@ -82,16 +81,16 @@
       "encode UTF-8",
       "canonical JSONL with page_id revision_id text"
     ],
-    "wikitext_markup_preserved": true,
-    "reason": "DO_NOT_SILENTLY_STRIP_ATTRIBUTION_OR_SOURCE_NOTICES_DURING_RIGHTS_RETEST"
+    "fixture_determinism_test_required": true,
+    "wikitext_markup_preserved_on_future_retest": true
   },
   "dedup": {
-    "compatible_with": "DATA-298-style raw/normalized exact, near-copy, fragment-containment and family-lineage audit",
-    "record_key": "sha256(canonical normalized record bytes)",
-    "family_identity": "wikimedia:wikipedia:ukwiki",
-    "incumbent_distinct_family": "ua.rada.open-data.laws-texts",
-    "cross_family_near_dedup_status": "NOT_EXECUTED_UNTIL_SOURCE_RIGHTS_ADMISSION",
-    "status": "RETEST_REQUIRED"
+    "compatibility": "DATA-298-style raw/normalized exact, near-copy, fragment-containment and family-lineage audit",
+    "execution_status": "NOT_RUN_RIGHTS_GATE_FAILED",
+    "candidate_family_id": "wikimedia:wikipedia:ukwiki",
+    "independent_family_credit": 0,
+    "incumbent_ua_family": "ua.rada.open-data.laws-texts",
+    "future_requirement": "RUN_CURRENT_CROSS_FAMILY_DEDUP_ON_EXACT_NORMALIZED_BYTES_BEFORE_ANY_ADMISSION"
   },
   "registry_concurrency": {
     "base_registry_worker": "DATA-287-EXTERNAL-SNAPSHOT-REGISTRY-V2",
@@ -101,17 +100,12 @@
     "historical_candidate_present": true,
     "historical_candidate_status": "REVIEW_REQUIRED"
   },
-  "terminal_blockers": [
-    "SHAREALIKE_TRAINING_ARTIFACT_AND_MODEL_OUTPUT_COMPLIANCE_POLICY_NOT_APPROVED",
-    "IMPORTED_TEXT_ADDITIONAL_ATTRIBUTION_PRESERVATION_NOT_PROVEN_FOR_NORMALIZED_CORPUS",
-    "EXACT_NORMALIZED_PRIVACY_PII_GATE_NOT_EXECUTED",
-    "CROSS_FAMILY_NEAR_DEDUP_NOT_EXECUTED"
-  ],
-  "admission": {
+  "terminal": {
     "training_snapshot_created": false,
     "registry_mutated": false,
     "corpus_contract_mutated": false,
-    "evaluation_material_reserved": false
+    "evaluation_material_reserved": false,
+    "retest_condition": "EXPLICIT_OWNER_APPROVED_OR_TERMINAL_PROJECT_SHAREALIKE_COMPLIANCE_POLICY_THEN_EXACT_BOUNDED_MATERIALIZATION_AND_ALL_DATA_GATES"
   },
-  "evidence_identity_sha256": "e95784fb4acdef977954a979d3e35333e6e86d64a2eb420e6d6360047ddb78c9"
+  "evidence_identity_sha256": "7d9704a1005f0ec0b86ccfb1a115c8603b72b20fa1b0290e8e1b01a79816a81e"
 }
