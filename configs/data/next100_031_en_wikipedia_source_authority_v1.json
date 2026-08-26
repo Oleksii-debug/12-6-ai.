@@ -1,0 +1,124 @@
+{
+  "authority_identity_sha256": "c7cd80788b5143f90331b72b2dbaba148acabbea225a383557571c77c8c23204",
+  "bounded_materialization": {
+    "network_bytes_downloaded": 0,
+    "normalization_policy": "PROPOSED_ONLY: parse XML; retain ns=0 non-redirect current revision text; strict UTF-8/newline normalization; canonical JSONL; no partial-page truncation",
+    "normalized_sha256": null,
+    "proposed_bound_if_retested": {
+      "determinism": "pin dump date, file, official checksum/index boundary, page_id, revision_id, revision_timestamp, raw SHA-256 and normalized SHA-256",
+      "max_normalized_bytes": 1048576,
+      "selection": "first multistream block (100 pages) from the first official pages-articles multistream shard, then ns=0/non-redirect filtering"
+    },
+    "raw_sha256": null,
+    "status": "NOT_RUN_RIGHTS_GATE_FAILED"
+  },
+  "dedup": {
+    "required_if_retested": [
+      "exact normalized SHA-256 dedup against live external registry",
+      "family-level alias/mirror check",
+      "near-dedup before corpus promotion",
+      "contamination check against reserved evaluation/final-test material without consuming reserved content into training"
+    ],
+    "status": "PLAN_ONLY"
+  },
+  "evaluated_at_utc": "2026-08-26T18:02:04Z",
+  "language_verification": {
+    "required_if_retested": "incumbent English LID must pass on every retained record",
+    "status": "NOT_RUN_RIGHTS_GATE_FAILED"
+  },
+  "local_free_only": true,
+  "privacy": {
+    "fail_closed": true,
+    "source_level_risk": "Wikipedia may contain biographies and other public personal data; project PII/privacy screening remains mandatory on any future retained bytes.",
+    "status": "NOT_RUN_RIGHTS_GATE_FAILED"
+  },
+  "project_policy_compatibility": {
+    "decision": "INCOMPATIBLE_UNTIL_EXPLICIT_SHAREALIKE_COMPLIANCE_POLICY_EXISTS",
+    "incumbent_block_reason": "CC-BY-SA source; project has no approved ShareAlike compliance policy for training artifacts/model outputs.",
+    "incumbent_candidate_registry_blob_sha1": "ea58da75f0a01a5b6ca76ba422fe08340dad83d1",
+    "incumbent_candidate_registry_path": "configs/data/external_source_candidates_ua_en_v1.json",
+    "incumbent_status": "BLOCKED_BY_RIGHTS",
+    "no_silent_reinterpretation": true
+  },
+  "purpose_decisions": {
+    "evaluation": {
+      "reason": "Evaluation/final-test/selection material is outside this authority and must remain firewalled.",
+      "status": "NOT_SEPARATELY_ADMITTED"
+    },
+    "model_training": {
+      "reason": "Upstream reuse rights are broad, but current project policy explicitly withholds model-training admission until ShareAlike compliance for training artifacts/model outputs is approved.",
+      "status": "REJECT"
+    },
+    "redistribution": {
+      "reason": "No project-compliant attribution/ShareAlike redistribution policy and no materialized snapshot authority.",
+      "status": "NOT_ADMITTED"
+    }
+  },
+  "quality": {
+    "source_level_notes": [
+      "Wikipedia is heterogeneous and one bounded slice cannot establish broad English representativeness.",
+      "Wikitext/templates/redirects require deterministic filtering before quality claims."
+    ],
+    "status": "NOT_RUN_RIGHTS_GATE_FAILED"
+  },
+  "registry_snapshot": {
+    "english_training_family_count_observed": 1,
+    "english_training_family_ids": [
+      "en.standardebooks.manual"
+    ],
+    "parent_head_sha": "b0523ccbc4b957615aac849d476cfa851be87578",
+    "parent_pr": 404,
+    "wikipedia_already_counted": false
+  },
+  "retest_conditions": [
+    "Owner-approved or terminal project policy explicitly resolves CC BY-SA attribution/ShareAlike obligations for training artifacts and model-output/weight distribution claims.",
+    "Bounded immutable bytes are materialized from the pinned dump/revisions and raw/normalized SHA-256 are retained.",
+    "English LID, quality, privacy/PII, exact/near dedup and contamination gates pass.",
+    "Live registry is refreshed again and no conflicting terminal Wikipedia authority exists."
+  ],
+  "rights": {
+    "allows_adaptation_under_license": true,
+    "allows_commercial_reuse_under_license": true,
+    "attribution_obligations": [
+      "credit authors via article/revision-history URL, equivalent stable copy, or author list",
+      "identify CC BY-SA 4.0 and provide license link/copy",
+      "indicate modifications",
+      "preserve additional attribution notices for imported text when applicable"
+    ],
+    "license_id": "CC-BY-SA-4.0",
+    "license_scope": "Wikipedia community text; page-specific/imported-text exceptions and additional attribution requirements may apply",
+    "license_text_url": "https://foundation.wikimedia.org/wiki/Legal:Text_of_the_Creative_Commons_Attribution-ShareAlike_4.0_International_License/en",
+    "sharealike_obligation": "If adapted material is shared, contributions must be distributed under CC BY-SA 4.0 or compatible terms as applicable.",
+    "terms_url": "https://foundation.wikimedia.org/wiki/Policy:Terms_of_Use/en",
+    "warranty_boundary": "License does not resolve privacy, publicity, moral rights, fair-use exceptions, or every third-party right."
+  },
+  "schema_version": "12-6.en-wikipedia-source-authority.v1",
+  "source": {
+    "authoritative_dump": {
+      "candidate_file": "enwiki-20260801-pages-articles1.xml-p1p41242.bz2",
+      "candidate_file_reported_size_mb": 284.6,
+      "candidate_file_sha1": "97ea1ad5a871e951ddadaaf199f69b1ddf121b34",
+      "checksum_evidence_url": "https://dumps.wikimedia.org/enwiki/20260801/enwiki-20260801-sha1sums.txt",
+      "current_revision_semantics": "pages-articles current revisions at dump time",
+      "dump_date": "20260801",
+      "dump_directory": "https://dumps.wikimedia.org/enwiki/20260801/",
+      "status_evidence_url": "https://dumps.wikimedia.org/enwiki/20260801/"
+    },
+    "language": "en",
+    "modality": "text",
+    "provider": "Wikimedia Foundation / English Wikipedia contributors",
+    "source_family": {
+      "family_count_claim": "ONE_FAMILY_ONLY_NO_BROAD_REPRESENTATIVENESS",
+      "family_id": "en.wikipedia.enwiki",
+      "fork": false,
+      "independent_from": [
+        "en.standardebooks.manual"
+      ],
+      "mirror": false
+    },
+    "source_id": "en.wikipedia.enwiki"
+  },
+  "terminal": true,
+  "terminal_state": "REJECT",
+  "worker_id": "NEXT100-031-DATA-EN-WIKIPEDIA"
+}

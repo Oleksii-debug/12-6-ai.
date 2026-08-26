@@ -1,0 +1,28 @@
+name: NEXT100-031 English Wikipedia source authority
+
+on:
+  push:
+    branches:
+      - next100-031/en-wikipedia-terminal-reject-20260826
+  pull_request:
+    paths:
+      - configs/data/next100_031_en_wikipedia_source_authority_v1.json
+      - tools/validate_next100_031_en_wikipedia_authority.py
+      - docs/NEXT100_031_EN_WIKIPEDIA_SOURCE_AUTHORITY.md
+      - configs/data/external_source_candidates_ua_en_v1.json
+      - data/registry/external_snapshots.v2.json
+      - .github/workflows/next100-031-en-wikipedia-source-authority.yml
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Validate immutable rejection authority
+        run: python tools/validate_next100_031_en_wikipedia_authority.py
