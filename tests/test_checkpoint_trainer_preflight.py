@@ -165,6 +165,30 @@ def test_generic_trainer_without_optimizer_attribute_preflights_on_detached_copy
     assert trainer.velocity == [1.0, 2.0]
 
 
+@pytest.mark.parametrize(
+    ("identity", "message"),
+    [
+        ({"step": 2, "tokens_seen": 3}, "optimizer_step disagrees"),
+        ({"step": 1, "tokens_seen": 4}, "tokens_seen disagrees"),
+    ],
+)
+def test_trainer_progress_must_match_verified_checkpoint_identity(
+    identity: dict[str, int],
+    message: str,
+) -> None:
+    torch = pytest.importorskip("torch")
+    model = torch.nn.Linear(3, 2, bias=False)
+    trainer = _TrainerProbe(model, populated=False)
+    state = trainer.state_dict()
+
+    with pytest.raises(CheckpointCompatibilityError, match=message):
+        _preflight_trainer_state(
+            trainer,
+            state,
+            manifest={"identity": identity},
+        )
+
+
 def test_trainer_owned_optimizer_corruption_fails_before_model_mutation(tmp_path: Path) -> None:
     torch = pytest.importorskip("torch")
     torch.manual_seed(7)
