@@ -48,7 +48,7 @@ Compute authorization is separate and uses the same immutable reference discipli
 3. `native_gqa_authority`: 32Q/8KV path integrated without materializing repeated K/V heads, with target-runtime numerical and accelerator evidence.
 4. `distributed_checkpoint_authority`: DCP/FSDP2 save/load/resume and reshard composed on the target model/runtime with integrity evidence.
 5. `data_pipeline_authority`: deterministic corpus ingestion, dedup/decontamination, split, packing, restart and accounting mechanics qualified.
-6. `stage_data_budget_authority`: stage-specific data sufficiency bound to exact post-tokenization unique non-ignored causal-loss positions and the selected R01 budget tier or an explicit preregistered scaling exception. A working data pipeline is not this evidence.
+6. `stage_data_budget_authority`: stage-specific authority that binds exact unique post-tokenization corpus-token and non-ignored causal-loss counts, a preregistered total training-token exposure budget, and the replay/epoch policy used to reach that exposure. The R01 20x/50x/100x ladder applies to total training-token exposure planning, not to a unique-data minimum.
 7. `training_recipe_authority`: scale-qualified optimizer/LR/schedule/warmup/precision/gradient policy, initialization assumptions, seeds, training budget, checkpoint/evaluation cadence and stopping rule. A successful 20M recipe is not automatically transferable to 1B.
 8. `evaluation_firewall_authority`: preregistered selection-validation/final-test identities plus training-data exclusion and decontamination authority before optimizer step 1.
 9. `accelerator_runtime_authority`: exact CUDA/PyTorch/NCCL topology with finite forward/backward/update, measured memory/throughput and no silent distributed-objective drift.
@@ -60,9 +60,11 @@ The first nine are prerequisites for even requesting a material-compute authoriz
 
 ### Data pipeline is not data budget
 
-R01 policy PR #568 deliberately separates volatile source capacity from exact post-tokenization unique causal-loss positions. Its planning reference is approximately 20 unique loss tokens per parameter, not an authorization rule. For a 1B target that reference is 20B unique loss positions; 50x and 100x planning points are 50B and 100B. The final campaign may choose another preregistered point from measured scaling evidence, but a pipeline implementation or source-byte total cannot stand in for the stage budget.
+R01 policy PR #568 separates four quantities that must not be conflated: source-capacity bytes, unique post-tokenization corpus tokens, unique non-ignored causal-loss positions, and total training-token exposure after any permitted replay. The 20x / 50x / 100x ladder is an **exposure-budget planning ladder**. For a nominal 1B target those planning points are approximately 20B / 50B / 100B total training-token exposures; they are not requirements for 20B / 50B / 100B unique loss positions, are not hard minima or maxima, and are not quality guarantees.
 
-The runtime evaluator in stacked PR #611 is the intended kind of machine evidence this gate should eventually consume. Meeting a data tier still does not authorize training or paid compute by itself.
+The stage authority must therefore bind the immutable unique-data/loss ledger separately from the selected exposure budget and replay/epoch cap. Data-constrained scaling evidence makes this distinction operationally important because repeated exposure has diminishing value and cannot be relabeled as new unique data. A working pipeline or a source-byte total cannot stand in for either unique-data evidence or the preregistered exposure plan.
+
+The runtime evaluator in stacked PR #611 is the intended kind of machine evidence this gate should eventually consume. Meeting an exposure tier still does not authorize training or paid compute by itself.
 
 ### Preceding-stage success is not optimizer transfer authority
 
@@ -82,7 +84,7 @@ The current canonical model still repeats K/V heads for GQA before SDPA. Maintai
 
 ## Data/compute scaling boundary
 
-Parameter count is not the target by itself. Compute-optimal scaling shows that model and data scale together; data-constrained studies show that repeated data has diminishing value; deployment-aware and over-training studies show that useful token/parameter ratios can exceed the simple compute-optimal point. Llama 3 is a production example of much longer small-model pretraining. The correct project action is therefore to measure scaling curves and freeze a stage-specific budget, not to equate parameter count, source bytes or replayed tokens with learning progress.
+Parameter count is not the target by itself. Compute-optimal scaling shows that model and data scale together; data-constrained studies show that repeated data has diminishing value; deployment-aware and over-training studies show that useful token/parameter ratios can exceed the simple compute-optimal point. The correct project action is therefore to measure scaling curves and freeze both the unique-data requirements and the total-exposure/replay policy explicitly, not to equate parameter count, source bytes, unique positions or replayed exposures with one another.
 
 ## Allocation-safe validation
 
