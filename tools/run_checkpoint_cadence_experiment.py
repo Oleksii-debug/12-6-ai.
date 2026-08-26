@@ -7,9 +7,10 @@ import random
 import subprocess
 import tempfile
 import time
+from collections.abc import Mapping
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 import torch
 
