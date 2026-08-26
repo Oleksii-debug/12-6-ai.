@@ -1,0 +1,22 @@
+{
+  "schema_version": "12-6.research320-data301-reresolution.v1",
+  "worker_id": "RESEARCH-320-DATA25-VS-EXTERNAL-CONTROL",
+  "resolved_at_utc": "2026-08-26T14:06:42Z",
+  "resolved_at_local": "2026-08-26T17:06:42+03:00",
+  "data301_branch": "data301/corpus-v03-terminal-build-20260826",
+  "data301_head_sha": "8820ba1b255f6bb95c7db0531fd846078a1aae01",
+  "data301_evidence_identity_sha256": "939065abeefff8aed924415589608ff3fc721fe4b0a57fc200146a4b6a137e81",
+  "data301_terminal_status": "TERMINAL_BLOCKED",
+  "corpus_frozen": false,
+  "corpus_terminal": false,
+  "corpus_identity": null,
+  "shard_identity": null,
+  "authorized_balanced_no_replay_capacity": 0,
+  "full_five_source_terminal_ledger_available": false,
+  "text_only_partial_one_pass_unique_optimized_targets": 173355,
+  "text_only_partial_scope": "DATA-229_TEXT_ONLY_3_OBJECTS",
+  "selection_validation_nonempty": false,
+  "research320_effect": "BLOCKER_CONFIRMED_AFTER_LATEST_DATA301_PUBLICATION",
+  "optimizer_step_1_authorized": false,
+  "reason": "Latest DATA-301 terminal evidence confirms that the exact frozen five-source inventory is infeasible under family-diversity and nonempty-selection requirements. Partial text-only loss capacity cannot be substituted for an authorized balanced full-corpus matched exposure."
+}
