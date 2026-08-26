@@ -5,11 +5,11 @@ import gc
 import hashlib
 import json
 import os
+import resource
 import threading
 import time
 from pathlib import Path
 
-import psutil
 import torch
 
 from twelve_six import TwelveSixDecoder, count_trainable_parameters, load_stage_config
@@ -28,20 +28,31 @@ RTOL = 1e-5
 ATOL = 1e-5
 
 
+def _current_rss_bytes() -> int:
+    """Read current Linux RSS without adding a project dependency."""
+    try:
+        with Path("/proc/self/statm").open("r", encoding="ascii") as handle:
+            rss_pages = int(handle.read().split()[1])
+        return rss_pages * int(os.sysconf("SC_PAGE_SIZE"))
+    except (OSError, ValueError, IndexError):
+        # Fallback is a high-water mark rather than current RSS, but remains safe
+        # for environments without procfs and does not under-report peak memory.
+        return int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss) * 1024
+
+
 class RSSSampler:
     def __init__(self) -> None:
-        self.process = psutil.Process(os.getpid())
         self._stop = threading.Event()
         self.peak_bytes = 0
         self.seconds = 0.0
 
     def _sample(self) -> None:
         while not self._stop.is_set():
-            self.peak_bytes = max(self.peak_bytes, self.process.memory_info().rss)
+            self.peak_bytes = max(self.peak_bytes, _current_rss_bytes())
             time.sleep(0.001)
 
     def __enter__(self) -> RSSSampler:
-        self.peak_bytes = self.process.memory_info().rss
+        self.peak_bytes = _current_rss_bytes()
         self.started = time.perf_counter()
         self.thread = threading.Thread(target=self._sample, daemon=True)
         self.thread.start()
@@ -51,7 +62,7 @@ class RSSSampler:
         self.seconds = time.perf_counter() - self.started
         self._stop.set()
         self.thread.join()
-        self.peak_bytes = max(self.peak_bytes, self.process.memory_info().rss)
+        self.peak_bytes = max(self.peak_bytes, _current_rss_bytes())
 
 
 def _rng_sha256() -> str:
@@ -86,9 +97,10 @@ def audit() -> dict[str, object]:
     torch.manual_seed(SEED)
     stage = load_stage_config(CONFIG)
     model = TwelveSixDecoder(stage.model, stage.init).eval()
-    process = psutil.Process(os.getpid())
 
-    tokens = ((torch.arange(REJECT_LENGTH, dtype=torch.long) * 73 + 19) % stage.model.vocab_size).view(1, -1)
+    tokens = (
+        (torch.arange(REJECT_LENGTH, dtype=torch.long) * 73 + 19) % stage.model.vocab_size
+    ).view(1, -1)
     static_cache = allocate_static_kv_cache(model, batch_size=1)
 
     report: dict[str, object] = {
@@ -117,7 +129,7 @@ def audit() -> dict[str, object]:
     for length in LENGTHS:
         input_ids = tokens[:, :length]
         gc.collect()
-        rss_baseline = process.memory_info().rss
+        rss_baseline = _current_rss_bytes()
         trace_start = len(rope_trace)
         with torch.inference_mode(), RSSSampler() as full_sample:
             full = model(input_ids).logits.detach().clone()
@@ -225,6 +237,7 @@ def audit() -> dict[str, object]:
         ),
     }
     hook.remove()
+    static_embedding_calls = embedding_calls
     static_after = {
         "valid_lengths": tuple(static_cache.valid_lengths),
         "storage_signature": static_cache.storage_signature,
@@ -234,7 +247,7 @@ def audit() -> dict[str, object]:
     }
     static_rejections["state_unchanged"] = {
         "pass": static_before == static_after,
-        "embedding_calls": embedding_calls,
+        "embedding_calls": static_embedding_calls,
     }
 
     # Independently verify the dynamic concatenating cache rejects a 1025th token
@@ -256,6 +269,7 @@ def audit() -> dict[str, object]:
         ),
     }
     hook.remove()
+    dynamic_embedding_calls = embedding_calls
     dynamic_after = {
         "sequence_length": dynamic_cache.sequence_length,
         "kv_sha256": _dynamic_cache_sha256(dynamic_cache),
@@ -264,7 +278,7 @@ def audit() -> dict[str, object]:
     }
     dynamic_rejections["state_unchanged"] = {
         "pass": dynamic_before == dynamic_after,
-        "embedding_calls": embedding_calls,
+        "embedding_calls": dynamic_embedding_calls,
     }
 
     report["fail_closed_1025"] = {
@@ -273,7 +287,12 @@ def audit() -> dict[str, object]:
     }
     report["kv"] = {
         "dtype": str(next(model.parameters()).dtype).removeprefix("torch."),
-        "shape_per_layer": [1, stage.model.n_kv_heads, stage.model.max_seq_len, stage.model.head_dim],
+        "shape_per_layer": [
+            1,
+            stage.model.n_kv_heads,
+            stage.model.max_seq_len,
+            stage.model.head_dim,
+        ],
         "layers": stage.model.n_layers,
         "bytes_per_token": static_cache.allocated_bytes // stage.model.max_seq_len,
         "allocated_bytes": static_cache.allocated_bytes,
@@ -287,14 +306,22 @@ def audit() -> dict[str, object]:
         and bool(item["incremental_decode_parity"])
         for item in boundaries
     )
-    static_ok = all(
-        bool(static_rejections[name]["rejected"])
-        for name in ("forward_1025", "static_prefill_1025", "static_decode_after_1024")
-    ) and bool(static_rejections["state_unchanged"]["pass"]) and embedding_calls == 0
-    dynamic_ok = all(
-        bool(dynamic_rejections[name]["rejected"])
-        for name in ("dynamic_prefill_1025", "dynamic_decode_after_1024")
-    ) and bool(dynamic_rejections["state_unchanged"]["pass"])
+    static_ok = (
+        all(
+            bool(static_rejections[name]["rejected"])
+            for name in ("forward_1025", "static_prefill_1025", "static_decode_after_1024")
+        )
+        and bool(static_rejections["state_unchanged"]["pass"])
+        and static_embedding_calls == 0
+    )
+    dynamic_ok = (
+        all(
+            bool(dynamic_rejections[name]["rejected"])
+            for name in ("dynamic_prefill_1025", "dynamic_decode_after_1024")
+        )
+        and bool(dynamic_rejections["state_unchanged"]["pass"])
+        and dynamic_embedding_calls == 0
+    )
 
     report["pass"] = bool(
         boundary_ok
