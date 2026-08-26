@@ -299,6 +299,22 @@ def assess_learned20m_readiness(
         if pilot.get(key) is not True:
             compute.append(f"bounded_pilot_{key}_not_proven")
 
+    scale = (
+        evidence.get("learned_scale_evidence")
+        if isinstance(evidence.get("learned_scale_evidence"), dict)
+        else {}
+    )
+    for label in ("learned_3m", "learned_10m"):
+        item = scale.get(label) if isinstance(scale.get(label), dict) else {}
+        _require_authority(
+            compute,
+            item.get("authority"),
+            f"{label}_authority_missing",
+            require_workflow=True,
+        )
+        if item.get("status") != "PASS":
+            compute.append(f"{label}_not_terminal_pass")
+
     cost = evidence.get("cost_envelope") if isinstance(evidence.get("cost_envelope"), dict) else {}
     _require_authority(compute, cost.get("authority"), "cost_envelope_authority_missing")
     if cost.get("status") != "ESTIMATED":
