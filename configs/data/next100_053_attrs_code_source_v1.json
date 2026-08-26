@@ -1,0 +1,144 @@
+{
+  "schema_version": "12-6.next100-053-attrs-code-source.v1",
+  "worker_id": "NEXT100-053-CODE-ATTRS",
+  "execution_profile": "LOCAL_FREE",
+  "source_id": "code.python-attrs.attrs.core-v1",
+  "source_family": "github:python-attrs/attrs",
+  "provider": "python-attrs",
+  "repository_url": "https://github.com/python-attrs/attrs",
+  "release_tag": "26.1.0",
+  "release_tag_object_sha1": "61c0e096b70c00059cd7d29e8df07051d73f7b69",
+  "upstream_commit": "7bfc49e9b22d5ba25b6e429524c3d49fee27cb36",
+  "upstream_tree": "31beb3550ee7198eba22b862471ad6ea7bfb16d2",
+  "captured_at": "2026-08-26T18:09:21Z",
+  "purpose": "base_pretraining_source_code",
+  "normalization_policy": "STRICT_UTF8_IDENTITY_PRESERVE_V1",
+  "license": {
+    "spdx": "MIT",
+    "path": "LICENSE",
+    "git_blob_sha1": "2bd6453d255e19b973f19b128596a8b6dd65b2c3",
+    "size_bytes": 1109,
+    "raw_url": "https://raw.githubusercontent.com/python-attrs/attrs/7bfc49e9b22d5ba25b6e429524c3d49fee27cb36/LICENSE",
+    "training_use_decision": "ALLOWED",
+    "redistribution_decision": "ALLOWED_WITH_LICENSE_CONDITIONS",
+    "conditions": [
+      "include the copyright notice and MIT permission notice in copies or substantial portions of redistributed source snapshots"
+    ],
+    "decision_basis": "The exact pinned MIT license grants use, copy, modification, publication, distribution, sublicensing, and sale rights subject to notice retention. Under the project code-rights policy this is sufficient authority for the bounded training purpose and source redistribution subject to the MIT notice condition; public availability alone is not treated as authority."
+  },
+  "upstream_ai_policy": {
+    "path": ".github/AI_POLICY.md",
+    "git_blob_sha1": "d943904e706d804b390829542ff57265ae65f254",
+    "scope_decision": "CONTRIBUTION_POLICY_NOT_TRAINING_LICENSE_RESTRICTION",
+    "basis": "The policy governs responsibility and provenance for contributions submitted upstream; it does not revoke or narrow the MIT rights attached to the released source snapshot."
+  },
+  "files": [
+    {
+      "path": "src/attr/_make.py",
+      "git_blob_sha1": "4b32d6a71b0d91f3c4eb9ae615771aa46cae00eb",
+      "size_bytes": 106129,
+      "language": "python",
+      "role": "core class transformation and generated-method construction implementation"
+    },
+    {
+      "path": "src/attr/_funcs.py",
+      "git_blob_sha1": "1adb50021373d9c09fcb9db0641bbc03248d54a3",
+      "size_bytes": 16479,
+      "language": "python",
+      "role": "runtime attribute utility and serialization implementation"
+    },
+    {
+      "path": "src/attr/validators.py",
+      "git_blob_sha1": "0b1a294432d294c4f154be2d9439d825c3ec0781",
+      "size_bytes": 21553,
+      "language": "python",
+      "role": "validator implementations"
+    },
+    {
+      "path": "src/attr/_next_gen.py",
+      "git_blob_sha1": "4ccd0da2446dc126ce936b054581a527e247cabc",
+      "size_bytes": 26274,
+      "language": "python",
+      "role": "modern attrs API implementation layer"
+    }
+  ],
+  "capacity_bytes": 170435,
+  "capacity_rule": "Count only the four selected substantive human-authored Python implementation files after every hard gate passes. Re-export shims, typing stubs, docs, tests, benchmarks, examples, generated/build outputs, packaging metadata, lockfiles, and license text are excluded from code capacity.",
+  "explicit_exclusions": [
+    "src/attrs/** forwarding and public re-export shims",
+    "src/**/*.pyi",
+    "src/**/py.typed",
+    "tests/**",
+    "bench/**",
+    "typing-examples/**",
+    "docs/**",
+    ".github/** as capacity",
+    "CHANGELOG.md",
+    "README.md",
+    "pyproject.toml",
+    "tox.ini",
+    "uv.lock",
+    "LICENSE as capacity"
+  ],
+  "live_registry_binding": {
+    "worker": "DATA-287",
+    "branch": "data287/external-snapshot-registry-v2-20260826",
+    "commit": "b0523ccbc4b957615aac849d476cfa851be87578",
+    "path": "data/registry/external_snapshots.v2.json",
+    "registry_identity_sha256": "917e9bc31b2fa040d25e807ae3c01aa2cce32420752a891caacfb6c830e6632c",
+    "source_count": 5,
+    "independent_source_family_count": 4,
+    "evaluation_authorized_source_count": 0,
+    "code_families": [
+      "github:encode/httpx",
+      "github:psf/requests"
+    ],
+    "dedup_scope_decision": "Deduplicate the attrs candidate against every code object in this exact terminal registry. Parallel nonterminal source candidates are checked for exact family/blob conflicts during the final concurrency sweep but are not silently promoted into this registry."
+  },
+  "evaluation_boundary": {
+    "training_files_must_not_be_currently_reserved_for_evaluation": true,
+    "initial_registry_commit": "8ebdb2e132ed7bae5245e9d4c140752640ab9885",
+    "initial_reserved_registry_blob": "a80d86ba4d60c45fca0cfab9d77743e2f7928ca6",
+    "initial_reserved_set_count": 0,
+    "initial_attrs_pr_hits": 0,
+    "current_terminal_registry_evaluation_authorized_source_count": 0,
+    "future_reservation_rule": "Any exact path/blob identity reserved by a newer evaluation authority before final sealing is excluded and capacity is recomputed; evaluation use is never inferred from this training admission."
+  },
+  "incumbent_code_families_for_dedup": [
+    {
+      "source_family": "github:encode/httpx",
+      "path": "httpx/_content.py",
+      "commit": "b5addb64f0161ff6bfe94c124ef76f6a1fba5254",
+      "git_blob_sha1": "6f479a0885f723b7395843d41164a87041820776"
+    },
+    {
+      "source_family": "github:psf/requests",
+      "path": "src/requests/_internal_utils.py",
+      "commit": "5460f467b02e49471c0fd6cfc9ca0adab6351f98",
+      "git_blob_sha1": "0466a7d347db4ed34a37db51b75fc8e80bc06055"
+    }
+  ],
+  "dedup": {
+    "exact_identity": "Git blob SHA-1 plus raw SHA-256 at execution",
+    "near_method": "lowercased 5-token shingle Jaccard",
+    "near_threshold": 0.85,
+    "family_rule": "python-attrs/attrs is one independent upstream source family; four files add byte capacity but one family credit"
+  },
+  "required_gates": [
+    "canonical upstream repository is neither fork nor mirror",
+    "signed stable release tag resolves to the pinned commit",
+    "exact upstream commit and tree remain fetchable",
+    "license bytes match the pinned Git blob identity and MIT grant text",
+    "upstream AI policy is recorded and does not supersede the MIT release license",
+    "every selected file byte size and Git blob identity match",
+    "strict UTF-8 identity normalization",
+    "Python AST parse and compile succeed",
+    "secret/private-key/token scan passes",
+    "privacy-like email and private-IP scan passes",
+    "generated/vendored/build/minified path and marker checks pass",
+    "substantive implementation quality thresholds pass",
+    "live DATA-287 registry identity and incumbent code family set remain exact",
+    "no exact or >=0.85 near duplicate inside the selection or against incumbent admitted code objects",
+    "no selected path/blob is evaluation-reserved at the final live-registry check"
+  ]
+}
