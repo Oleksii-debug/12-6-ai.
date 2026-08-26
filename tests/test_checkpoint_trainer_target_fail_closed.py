@@ -39,7 +39,7 @@ def _identity(parameter_count: int) -> CheckpointIdentity:
         ("_update_incomplete", True),
     ],
 )
-def test_production_trainer_rejects_unloadable_target_before_model_mutation(
+def test_production_trainer_rejects_unloadable_target_before_model_or_rng_mutation(
     tmp_path: Path,
     target_flag: str,
     target_value: object,
@@ -69,13 +69,19 @@ def test_production_trainer_rejects_unloadable_target_before_model_mutation(
         name: tensor.detach().clone() for name, tensor in target_model.state_dict().items()
     }
 
+    # Make the live RNG state intentionally distinct from the checkpoint RNG state.
+    # A preflight rejection must happen before load_verified_checkpoint can restore it.
+    torch.manual_seed(123456)
+    before_torch_rng = torch.random.get_rng_state().clone()
+
     with pytest.raises(CheckpointCompatibilityError, match="fresh trainer"):
         load_trainer_checkpoint(
             checkpoint,
             model=target_model,
             trainer=target_trainer,
-            restore_rng=False,
+            restore_rng=True,
         )
 
     for name, tensor in target_model.state_dict().items():
         torch.testing.assert_close(tensor, before_model[name], rtol=0, atol=0)
+    assert torch.equal(torch.random.get_rng_state(), before_torch_rng)
