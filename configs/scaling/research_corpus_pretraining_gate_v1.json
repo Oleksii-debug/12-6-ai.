@@ -1,0 +1,96 @@
+{
+  "schema_version": "12-6.research-corpus-pretraining-gate.v1",
+  "authority_boundary": "PLANNING_AND_FAIL_CLOSED_GATING_NOT_TRAINING_AUTHORIZATION",
+  "generated_at_utc": "2026-08-26T19:45:00Z",
+  "project_state": {
+    "primary_20m_parameter_count": 20613440,
+    "primary_20m_authority": "MODEL-341",
+    "live_readiness_pr": 519,
+    "live_readiness_decision": "BLOCK_LONG_TRAINING_CONTINUE_LOCAL_FREE_ENGINEERING",
+    "data301_head_sha": "8820ba1b255f6bb95c7db0531fd846078a1aae01",
+    "data301_evidence_identity_sha256": "939065abeefff8aed924415589608ff3fc721fe4b0a57fc200146a4b6a137e81",
+    "terminal_corpus_identity": null,
+    "terminal_shard_identity": null,
+    "authorized_balanced_no_replay_loss_positions": 0
+  },
+  "research_corpus_v1_minimum_source_capacity": {
+    "purpose": "MINIMUM_ACQUISITION_AND_PIPELINE_RESEARCH_TARGET_NOT_QUALITY_PRETRAINING_TOKEN_BUDGET",
+    "target_unique_normalized_bytes": 20000000,
+    "mixture": {
+      "uk_text": 0.45,
+      "en_text": 0.35,
+      "code": 0.20
+    },
+    "minimum_independent_families_per_stratum": 2,
+    "replay_or_duplicate_capacity_forbidden": true,
+    "current_planning_snapshot": {
+      "source": "NEXT100-069 / PR #495 dedup-certified planning snapshot",
+      "authority_boundary": "PLANNING_SNAPSHOT_DOES_NOT_REPLACE_TERMINAL_CORPUS_IDENTITY",
+      "strata": {
+        "uk_text": {
+          "unique_normalized_bytes": 90044,
+          "independent_families": 2
+        },
+        "en_text": {
+          "unique_normalized_bytes": 84793,
+          "independent_families": 1
+        },
+        "code": {
+          "unique_normalized_bytes": 69133,
+          "independent_families": 4
+        }
+      }
+    }
+  },
+  "training_modes": {
+    "MECHANICS_PILOT": {
+      "purpose": "prove model trainer checkpoint inference and deterministic plumbing",
+      "quality_claim_allowed": false,
+      "terminal_corpus_required": false,
+      "material_paid_compute_allowed": false
+    },
+    "RESEARCH_CAMPAIGN": {
+      "purpose": "project-local learned-model experiment with immutable unique no-replay loss accounting",
+      "quality_claim_allowed": false,
+      "terminal_corpus_required": true,
+      "material_paid_compute_allowed": false,
+      "primary_20m_preregistered_positions": 20000000,
+      "primary_20m_meaningful_floor_positions": 10000000,
+      "primary_20m_planning_ceiling_positions": 40000000,
+      "authority": "LEARN-345 and RESEARCH-313 project-local planning envelope"
+    },
+    "QUALITY_PRETRAIN_REFERENCE": {
+      "purpose": "external scaling reference for future data and compute planning; not an automatic training gate",
+      "quality_claim_allowed": false,
+      "terminal_corpus_required": true,
+      "material_paid_compute_allowed": false,
+      "reference": {
+        "name": "Chinchilla empirical compute-optimal training point",
+        "parameters": 70000000000,
+        "training_tokens": 1300000000000,
+        "source_url": "https://deepmind.google/discover/blog/an-empirical-analysis-of-compute-optimal-large-language-model-training/",
+        "interpretation": "Use the derived token-per-parameter ratio only as a planning reference. It is not a universal optimum or authorization threshold."
+      },
+      "future_parameter_targets": [
+        20613440,
+        100000000,
+        1000000000
+      ]
+    }
+  },
+  "modern_overtraining_observation": {
+    "name": "Olmo 2 1B",
+    "nominal_parameters": 1000000000,
+    "pretraining_tokens": 4000000000000,
+    "source_url": "https://docs.allenai.org/release_notes/olmo-release-notes",
+    "interpretation": "Modern quality-focused open models may train far beyond the Chinchilla compute-optimal reference when downstream quality and inference amortization matter. This observation is not a 12-6 budget requirement."
+  },
+  "promotion_invariants": [
+    "Never equate parameter count, source bytes, tokenizer tokens, optimized causal loss positions, epochs, or FLOPs.",
+    "Source bytes cannot be converted into scientific token capacity until the exact tokenizer and post-pack unique-loss ledger are bound.",
+    "MECHANICS_PILOT evidence cannot promote a model to a learned scientific or quality-pretraining claim.",
+    "RESEARCH_CAMPAIGN cannot start while terminal corpus identity, shard identity, and positive unique no-replay loss capacity are absent.",
+    "QUALITY_PRETRAIN_REFERENCE is a planning comparison only and never overrides project data rights, decontamination, evaluation separation, compute authorization, or audit gates.",
+    "No materially paid cloud or GPU training is authorized by this file."
+  ]
+}
