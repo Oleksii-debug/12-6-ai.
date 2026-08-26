@@ -1,0 +1,26 @@
+{
+  "schema_version": "12-6.eval290-ua-selection-reservation.v1",
+  "worker_id": "EVAL-290-UA-SELECTION-VALIDATION-V1",
+  "status": "RESERVED_BY_DETERMINISTIC_SELECTOR_BEFORE_FUTURE_TRAINING",
+  "reservation_declared_at": "2026-08-26T15:01:00+03:00",
+  "reservation_commit_sha": "8a393d98d37b2090d1ae3fe8be8d4e58f651159e",
+  "source_config": "configs/evaluation/eval290_ua_selection_sources_v1.json",
+  "rights_config": "configs/evaluation/eval290_ua_selection_rights_v1.json",
+  "reservation_scope": {
+    "exact_source_objects": [
+      "50a790e0ece091f13fe039b5e36a23431680dec0357379f29b0029502f9b3a31",
+      "e44c27b6151a1fea68eeef1e73e4460391f82e0501571d8aa4d5a792fc448b12"
+    ],
+    "selected_records": "ALL_RECORDS_PRODUCED_BY_SELECTOR_CONTRACT_ON_THE_EXACT_SOURCE_OBJECTS",
+    "future_training": "PROHIBITED",
+    "tokenizer_fit": "PROHIBITED",
+    "final_test": "PROHIBITED",
+    "selection_validation": "ALLOWED"
+  },
+  "enforcement": {
+    "future_corpus_builders_must_consume_this_reservation": true,
+    "selected_content_sha256_overlap_with_training_is_fatal": true,
+    "selected_record_id_overlap_with_training_is_fatal": true,
+    "reservation_commit_must_precede_any_future_training_commit_using_these_sources": true
+  }
+}
