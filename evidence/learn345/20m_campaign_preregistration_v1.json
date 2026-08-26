@@ -1,0 +1,210 @@
+{
+  "activation_requirements": {
+    "frozen_research_corpus_v1": {
+      "minimum_positions_for_meaningful_campaign": 10000000,
+      "must_be_terminal": true,
+      "must_bind_corpus_identity": true,
+      "must_bind_shard_manifest_identity": true,
+      "must_bind_train_unique_loss_ledger_identity": true,
+      "must_publish_one_pass_unique_nonignored_causal_positions": true,
+      "required": true
+    },
+    "optimizer": {
+      "must_bind_train344_terminal_contract": true,
+      "required": true
+    },
+    "primary_20m_model": {
+      "must_be_random_init": true,
+      "must_bind_exact_modelspec": true,
+      "must_pass_model341_mechanical_qualification": true,
+      "required": true
+    },
+    "selection_validation": {
+      "must_be_immutable_and_training_prohibited": true,
+      "required": true
+    }
+  },
+  "activation_state": "BLOCKED_MISSING_TERMINAL_RESEARCH_CORPUS_V1_PRIMARY_20M_MODELSPEC_AND_OPTIMIZER_TRANSFER",
+  "authority_cutoff": "2026-08-26T14:49:27Z",
+  "campaign": {
+    "authorized_campaign_budget_rule": "min(20000000, terminal_research_corpus_v1_one_pass_unique_nonignored_causal_positions)",
+    "duplicated_document_capacity_credit": false,
+    "dpo_allowed": false,
+    "first_campaign_upper_guardrail": 40000000,
+    "foreign_pretrained_weights_allowed": false,
+    "meaningful_minimum_optimized_targets": 10000000,
+    "no_replay_maximum_rule": "terminal_research_corpus_v1_one_pass_unique_nonignored_causal_positions",
+    "padding_counts_as_data": false,
+    "replacement_sampling_allowed": false,
+    "replay_allowed": false,
+    "requested_optimized_target_budget": 20000000,
+    "rlhf_allowed": false,
+    "scratch_only": true,
+    "sft_allowed": false,
+    "source_alias_capacity_credit": false,
+    "tokenizer_fit_on_selection_or_final_test": false,
+    "activation_budget_rule": "authorized_campaign_budget >= 10000000"
+  },
+  "checkpoint_and_recovery": {
+    "current_pointer_atomic": true,
+    "each_generation_must_bind": [
+      "campaign_contract_identity",
+      "model_spec_identity",
+      "tokenizer_identity",
+      "corpus_identity",
+      "train_ledger_identity",
+      "train_trace_identity",
+      "optimizer_contract_identity",
+      "exact_cumulative_optimized_targets",
+      "trainer_state",
+      "optimizer_state",
+      "rng_state",
+      "exposure_guard_state"
+    ],
+    "format": "D05",
+    "generation_labels": [
+      "g000",
+      "g010",
+      "g025",
+      "g050",
+      "g075",
+      "g090",
+      "g100"
+    ],
+    "immutable_generations": true,
+    "overwrite_existing_generation": false,
+    "planned_resume": "Only from an exact verified generation; mandatory fresh-process resume from g050.",
+    "unexpected_mid_segment_failure": "Do not replay consumed positions. Mark that run invalid for scientific selection and restart only as a new scratch run identity if another execution is authorized."
+  },
+  "evidence_identity_sha256": "ad95af791d9f9eea741e7ad812bd61696259df0dcaac911837088265180b10d3",
+  "evaluation_outputs": [
+    "aggregate_selection_validation_BPB",
+    "UA_selection_validation_BPB_if_present",
+    "EN_selection_validation_BPB_if_present",
+    "code_selection_validation_BPB_if_present",
+    "source_family_BPB_if_present",
+    "pre_clip_global_grad_norm",
+    "post_clip_global_grad_norm",
+    "clip_activation",
+    "update_to_weight_L2_ratio",
+    "exact_cumulative_optimized_targets",
+    "raw_base_generation_from_fixed_first_party_prompts",
+    "first_party_logits_fingerprint"
+  ],
+  "execution_profile": "LOCAL_FREE",
+  "final_test_firewall": {
+    "final_test_outcomes_read_before_selection_lock": false,
+    "final_test_payload_read_before_selection_lock": false,
+    "post_lock_policy": "A separate evaluation worker may score the locked selected checkpoint exactly once under the final-test authority. The result is report-only and cannot trigger checkpoint reselection or hyperparameter changes.",
+    "sealed_during_training_and_selection": true,
+    "selection_lock_requires": [
+      "campaign_contract_identity",
+      "exact_selected_checkpoint_sha256",
+      "chronological_final_checkpoint_sha256",
+      "complete_selection_trajectory_sha256",
+      "final_test_unread_attestation"
+    ]
+  },
+  "long_campaign_executed": false,
+  "observed_authorities": {
+    "data300_contract": {
+      "contract_identity_sha256": "07d7beaaff4616e839450de6af3d407855c832bf75a24a959d1a12de5d9364e5",
+      "corpus_state": "NOT_BUILT_NOT_FROZEN_NOT_TERMINAL",
+      "head_sha": "8ea7f830e50a23754d189dd4134f4afad76a7ee9"
+    },
+    "data301_terminal_build": {
+      "authorized_balanced_no_replay_capacity": 0,
+      "corpus_identity": null,
+      "evidence_identity_sha256": "939065abeefff8aed924415589608ff3fc721fe4b0a57fc200146a4b6a137e81",
+      "head_sha": "8820ba1b255f6bb95c7db0531fd846078a1aae01",
+      "shard_identity": null,
+      "status": "TERMINAL_BLOCKED"
+    },
+    "final_test": {
+      "authority": "EVAL-233",
+      "final_test_identity_sha256": "86d51eb106524cd8e4d0f94d4ff6e2e3426c6321e0698279877dfc4d5fce3116",
+      "head_sha": "b5512b4648cb09dd052b08884dc53f291e1ce935",
+      "outcomes_read": false
+    },
+    "optimizer_transfer": {
+      "optimizer_contract_identity_sha256": null,
+      "required_from": "TRAIN-344",
+      "terminal_authority_found": false
+    },
+    "primary_20m_architecture": {
+      "modelspec_identity_sha256": null,
+      "parameter_count": null,
+      "required_from": [
+        "RESEARCH-339",
+        "MODEL-341"
+      ],
+      "terminal_authority_found": false
+    },
+    "research313_capacity_gate": {
+      "current_max_safe_unique_optimized_targets": 0,
+      "evidence_identity_sha256": "d8aa1bbd9446c4ca881a97e9218891ee4223d6de60a5ee5534462978b5f2e970",
+      "head_sha": "728d95018b362b0c5625751471647083a830bf44",
+      "meaningful_20m_planning_lower_edge": 10000000,
+      "meaningful_20m_planning_upper_edge": 40000000
+    },
+    "selection_validation": {
+      "authority": "EVAL-303-SELECTION-VALIDATION-COMPOSITE",
+      "composite_identity_sha256": "7b97a9ab04469236dc5bc17fc80155cb43430b01c443bb6209fac090557258fd",
+      "head_sha": "5e5a1de3b594cee5612e63d3d4c2a70499740ac7",
+      "membership_sha256": "e4bb39dd7aa6a20c7ed34e093f563b5f4896ac16828151c6b375a83cd8a068c6",
+      "records": {
+        "code": 0,
+        "en": 2,
+        "ua": 8
+      },
+      "selection_only": true
+    }
+  },
+  "optimizer_updates_executed": 0,
+  "schedule": {
+    "boundary_fractions": [
+      "0",
+      "0.10",
+      "0.25",
+      "0.50",
+      "0.75",
+      "0.90",
+      "1.00"
+    ],
+    "checkpoint_at_every_boundary": true,
+    "evaluation_at_every_boundary": true,
+    "evaluation_state_mutation_allowed": false,
+    "mandatory_fresh_process_resume_after_fraction": "0.50",
+    "materialization_rule": "Before optimizer step 1, map every fraction to an exact cumulative optimized-target update boundary using the immutable precomputed train trace; freeze the integer boundary vector and its SHA-256. Boundary 0 is exact 0 and boundary 1.00 is exact authorized_campaign_budget."
+  },
+  "schema": "12-6.learn345.20m-campaign-preregistration.v1",
+  "selection_rule": {
+    "chronological_final_retained_separately": true,
+    "eligible_boundaries": [
+      "0.10",
+      "0.25",
+      "0.50",
+      "0.75",
+      "0.90",
+      "1.00"
+    ],
+    "final_test_may_influence_selection": false,
+    "metric_direction": "minimize",
+    "primary_metric": "immutable_selection_validation_aggregate_BPB",
+    "tie_rule": "If aggregate BPB differs by <= 1e-9, select the lower-exposure checkpoint.",
+    "validity_gates": [
+      "checkpoint_D05_verifies",
+      "all_logits_and_losses_finite",
+      "evaluation_non_mutation_proof_passes",
+      "campaign_identity_and_exposure_counter_match"
+    ]
+  },
+  "truth_boundary": {
+    "campaign_runnable_now": false,
+    "long_training_started": false,
+    "optimizer_transfer_consumed": false,
+    "primary_20m_model_consumed": false,
+    "research_corpus_v1_consumed": false
+  },
+  "worker_id": "LEARN-345-20M-CAMPAIGN-PREREGISTRATION"
+}
