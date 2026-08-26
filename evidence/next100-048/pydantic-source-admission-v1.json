@@ -1,6 +1,6 @@
 {
   "authority": "EXTERNAL_REAL_CODE_SOURCE_TERMINAL_LOCAL_FREE",
-  "authority_identity_sha256": "98722ca45eb787d13d63c956fcd5fe8495a4ecf723f0a3abe8b4108cf6dc5462",
+  "authority_identity_sha256": "a25e618f4e26dd7c0df643768ab867a7ae080ca6ad2e5a88bda89bc757ae183a",
   "evaluation_boundary": {
     "active_reserved_objects_at_checked_authority": 0,
     "eval289_head_sha": "1c870e5e02bf48891ca599b0b3f3bfe6e84425bc",
@@ -33,6 +33,28 @@
       "redistribution": "ALLOWED_WITH_MIT_NOTICE",
       "storage": "ALLOWED"
     }
+  },
+  "live_registry_concurrency_seal": {
+    "active_code_evaluation_reservation_objects": 0,
+    "canonical_code_families": [
+      "github:encode/httpx",
+      "github:psf/requests"
+    ],
+    "canonical_code_source_count": 2,
+    "canonical_code_unique_raw_bytes": 9703,
+    "canonical_registry_authority": "DATA-287-EXTERNAL-SNAPSHOT-REGISTRY-V2",
+    "concurrent_sibling_code_admissions_counted_as_canonical": false,
+    "data227_head_unchanged": true,
+    "data287_head_sha": "b0523ccbc4b957615aac849d476cfa851be87578",
+    "eval289_head_unchanged": true,
+    "late_check_date_utc": "2026-08-26",
+    "pydantic_present_in_canonical_registry": false,
+    "registry_git_blob_sha1": "21fe6485aa9eaa0945837efce54c69cfc1098472",
+    "registry_identity_sha256": "917e9bc31b2fa040d25e807ae3c01aa2cce32420752a891caacfb6c830e6632c",
+    "registry_path": "data/registry/external_snapshots.v2.json",
+    "seal_rule": "Parallel sibling admission PRs are noncanonical until a successor registry-convergence authority composes them and reruns the global cross-source graph.",
+    "second_pydantic_admission_pr_found": false,
+    "second_pydantic_branch_found": false
   },
   "predecessor_code_authority": {
     "data227_head_sha": "8ebdb2e132ed7bae5245e9d4c140752640ab9885",
