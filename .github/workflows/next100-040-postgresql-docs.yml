@@ -11,13 +11,19 @@ permissions:
 
 jobs:
   qualify:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - name: Checkout exact PR head
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Set up exact Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
 
       - name: Verify exact head and qualify immutable PostgreSQL docs
         shell: bash
@@ -39,7 +45,7 @@ jobs:
           sha256sum evidence/next100040/postgresql_docs_source_authority.json
 
       - name: Upload terminal evidence
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: next100-040-postgresql-docs-authority
           path: evidence/next100040/postgresql_docs_source_authority.json
