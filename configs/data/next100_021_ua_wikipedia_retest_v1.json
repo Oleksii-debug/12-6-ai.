@@ -1,0 +1,111 @@
+{
+  "schema_version": "12-6.next100-021-ua-wikipedia-authority.v2",
+  "worker": "NEXT100-021-DATA-UA-WIKIPEDIA",
+  "decision": "REJECT",
+  "local_free_only": true,
+  "model_training_executed": false,
+  "source": {
+    "source_id": "ua.wikipedia.ukwiki",
+    "provider": "Wikimedia Foundation / Ukrainian Wikipedia contributors",
+    "source_kind": "encyclopedia",
+    "language": "uk",
+    "purpose": "pretraining",
+    "candidate_family_id": "wikimedia:wikipedia:ukwiki",
+    "origin": "EXTERNAL_REAL",
+    "benchmark_material": false,
+    "held_out": false,
+    "evaluation": "NOT_SEPARATELY_ADMITTED"
+  },
+  "upstream": {
+    "authority": "Wikimedia Foundation dumps.wikimedia.org",
+    "dump_date": "20260801",
+    "dump_family": "ukwiki",
+    "dump_object": "ukwiki-20260801-pages-articles1.xml-p1p194007.bz2",
+    "dated_url": "https://dumps.wikimedia.org/ukwiki/20260801/ukwiki-20260801-pages-articles1.xml-p1p194007.bz2",
+    "sha1_manifest_url": "https://dumps.wikimedia.org/ukwiki/latest/ukwiki-latest-sha1sums.txt",
+    "expected_size_bytes": 166733586,
+    "expected_sha1": "e6aa53cf981f53807ca59d4fc7ab8e1d97151461",
+    "latest_observed_generated_date": "2026-08-04"
+  },
+  "rights": {
+    "license_id": "CC-BY-SA-4.0",
+    "terms_url": "https://foundation.wikimedia.org/wiki/Policy:Terms_of_Use",
+    "terms_revision_oldid": 554823,
+    "license_url": "https://creativecommons.org/licenses/by-sa/4.0/",
+    "license_level_reuse": "BROADLY_PERMITTED_WITH_CONDITIONS",
+    "model_training": "REJECT",
+    "redistribution": "NOT_ADMITTED",
+    "evaluation": "NOT_SEPARATELY_ADMITTED",
+    "project_policy_status": "BLOCKED_BY_RIGHTS",
+    "obligations": [
+      "attribute authors by article URL/stable conforming copy/author list",
+      "preserve additional attribution requirements for imported text where applicable",
+      "indicate modifications",
+      "include license notice/link or license copy on redistributed copies or modified versions",
+      "apply CC-BY-SA-4.0-or-later to distributed modified/additional text where required",
+      "do not impose additional legal or technical restrictions that violate the license"
+    ],
+    "rejection_root_cause": "PROJECT_HAS_NO_APPROVED_SHAREALIKE_COMPLIANCE_POLICY_FOR_TRAINING_ARTIFACTS_OR_MODEL_OUTPUTS"
+  },
+  "privacy": {
+    "risk": "PUBLIC_ARTICLE_TEXT_CAN_CONTAIN_PERSONAL_INFORMATION_ABOUT_LIVING_OR_IDENTIFIABLE_PEOPLE; PUBLICATION_DOES_NOT_REMOVE_PRIVACY_OR_PUBLICITY_RISK",
+    "content_gate": "NOT_RUN_RIGHTS_GATE_FAILED",
+    "required_on_any_future_retest": "RUN_CURRENT_PROJECT_PRIVACY_PII_GATE_ON_EXACT_NORMALIZED_BYTES_AND_REVIEW_HIGH_RISK_RECORDS"
+  },
+  "bounded_acquisition": {
+    "content_payload_executed": false,
+    "network_content_bytes_downloaded": 0,
+    "content_download_cap_bytes": 170000000,
+    "raw_sha256": null,
+    "normalized_sha256": null,
+    "reason": "RIGHTS_GATE_FAILED_BEFORE_CONTENT_MATERIALIZATION",
+    "metadata_probe": {
+      "allowed": true,
+      "max_bytes": 1048576,
+      "resource": "WIKIMEDIA_SHA1_MANIFEST_ONLY",
+      "purpose": "VERIFY_EXACT_DUMP_IDENTITY_WITHOUT_FETCHING_BLOCKED_CONTENT"
+    }
+  },
+  "normalization": {
+    "policy_id": "UKWIKI_WIKITEXT_NFKC_LINES_V1",
+    "execution_status": "NOT_RUN_RIGHTS_GATE_FAILED",
+    "deterministic_contract": [
+      "select MediaWiki page namespace ns=0",
+      "exclude redirect pages",
+      "select current revision text in dump order",
+      "Unicode NFKC",
+      "normalize CRLF and CR to LF",
+      "remove Unicode Cf format characters",
+      "rstrip each line",
+      "strip outer whitespace",
+      "encode UTF-8",
+      "canonical JSONL with page_id revision_id text"
+    ],
+    "fixture_determinism_test_required": true,
+    "wikitext_markup_preserved_on_future_retest": true
+  },
+  "dedup": {
+    "compatibility": "DATA-298-style raw/normalized exact, near-copy, fragment-containment and family-lineage audit",
+    "execution_status": "NOT_RUN_RIGHTS_GATE_FAILED",
+    "candidate_family_id": "wikimedia:wikipedia:ukwiki",
+    "independent_family_credit": 0,
+    "incumbent_ua_family": "ua.rada.open-data.laws-texts",
+    "future_requirement": "RUN_CURRENT_CROSS_FAMILY_DEDUP_ON_EXACT_NORMALIZED_BYTES_BEFORE_ANY_ADMISSION"
+  },
+  "registry_concurrency": {
+    "base_registry_worker": "DATA-287-EXTERNAL-SNAPSHOT-REGISTRY-V2",
+    "base_registry_head": "b0523ccbc4b957615aac849d476cfa851be87578",
+    "base_registry_identity_sha256": "917e9bc31b2fa040d25e807ae3c01aa2cce32420752a891caacfb6c830e6632c",
+    "wikipedia_already_admitted": false,
+    "historical_candidate_present": true,
+    "historical_candidate_status": "REVIEW_REQUIRED"
+  },
+  "terminal": {
+    "training_snapshot_created": false,
+    "registry_mutated": false,
+    "corpus_contract_mutated": false,
+    "evaluation_material_reserved": false,
+    "retest_condition": "EXPLICIT_OWNER_APPROVED_OR_TERMINAL_PROJECT_SHAREALIKE_COMPLIANCE_POLICY_THEN_EXACT_BOUNDED_MATERIALIZATION_AND_ALL_DATA_GATES"
+  },
+  "evidence_identity_sha256": "7d9704a1005f0ec0b86ccfb1a115c8603b72b20fa1b0290e8e1b01a79816a81e"
+}
