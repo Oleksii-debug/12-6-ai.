@@ -10,6 +10,12 @@ SCOPED_SPECIALIST_WORKFLOWS = (
     ".github/workflows/train29-s1-observability.yml",
 )
 
+SCALE02_DIRECT_INPUTS = (
+    "configs/stages/alternatives/s2_1m_byte_gqa.candidate.json",
+    "data/s0/packaged/**",
+    "requirements/locks/index.json",
+)
+
 
 def test_specialist_workflows_are_scoped_cancellable_and_dispatchable() -> None:
     root = Path(__file__).resolve().parents[1]
@@ -23,3 +29,12 @@ def test_specialist_workflows_are_scoped_cancellable_and_dispatchable() -> None:
         assert "\nconcurrency:\n" in text, workflow_path
         assert "cancel-in-progress: true" in text, workflow_path
         assert manual_exact_head in text, workflow_path
+
+
+def test_scale02_scope_keeps_direct_runtime_inputs() -> None:
+    root = Path(__file__).resolve().parents[1]
+    workflow_path = ".github/workflows/scale02-s2-1m-executable.yml"
+    text = (root / workflow_path).read_text(encoding="utf-8")
+
+    for direct_input in SCALE02_DIRECT_INPUTS:
+        assert f'- "{direct_input}"' in text, direct_input
