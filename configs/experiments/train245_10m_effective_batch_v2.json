@@ -1,0 +1,152 @@
+{
+  "schema": "12-6.train245-10m-effective-batch.v2",
+  "worker_id": "TRAIN-245-10M-EFFECTIVE-BATCH-V2",
+  "status": "BLOCKED_MISSING_TRAIN244_AUTHORITY",
+  "execution_class": "LOCAL_FREE",
+  "paid_compute": false,
+  "base_lineage": {
+    "branch": "train195/10m-lr-beta-transfer-gate-20260826",
+    "source_sha": "8a0f746bbcb73b4e7497091d2f347b8f2deb7be5",
+    "reason": "TRAIN-245 is prepared on the current optimizer-transfer preregistration lineage but cannot execute until terminal TRAIN-244 publishes the selected 10M optimizer authority."
+  },
+  "required_prerequisites": {
+    "train244_optimizer": {
+      "required": true,
+      "authority_present": false,
+      "worker_id": "TRAIN-244-10M-LR-BETA-V2",
+      "source_sha": null,
+      "evidence_sha256": null,
+      "decision": null,
+      "learning_rate": null,
+      "beta1": null,
+      "beta2": null,
+      "weight_decay": null,
+      "epsilon": null,
+      "gradient_clip_norm": null,
+      "schedule_family": null,
+      "model_spec_sha256": null,
+      "data_identity": null,
+      "tokenizer_identity": null,
+      "microbatch_size": null,
+      "sequence_length": null,
+      "precision": null,
+      "ordered_train_trace_identity": null,
+      "optimized_token_budget": null,
+      "blocker": "No TRAIN-244 PR, commit, branch, or terminal evidence artifact is published at this cutoff. LR/beta/WD/clipping/model/data and the exact ordered trace must not be guessed from older 10M recipes."
+    }
+  },
+  "consumed_accumulation_authority": {
+    "train46_pr": 249,
+    "worker": "TRAIN-46",
+    "source_sha": "6f027dd4f89b6e45ef967b256c2c8da0c2c2d4cd",
+    "workflow_run": 32862523852,
+    "workflow_conclusion": "success",
+    "artifact_id": 9571718097,
+    "artifact_digest": "sha256:40d050a94345093884528b653f7354b5edabba9a14b2d750b6cc5cd7639fdaf9",
+    "report_sha256": "20eddee576c96b4031b4ab906325bb40440cd280bd72043245f046392471d244",
+    "parameters": 1037696,
+    "gradient_accumulation_semantics_correct": true,
+    "valid_token_weighted": true,
+    "variable_valid_token_rows_exercised": true,
+    "effective_batch_equivalence": {
+      "microbatch_full": 4,
+      "accumulation_full": 1,
+      "microbatch_accumulated": 1,
+      "accumulation_accumulated": 4,
+      "valid_causal_tokens": 2952,
+      "optimizer_steps": 12,
+      "final_parameter_max_abs_diff": 7.492490112781525e-07,
+      "optimizer_state_max_abs_diff": 7.450580596923828e-09,
+      "pass": true
+    },
+    "checkpoint_boundary_safe": true,
+    "truth_boundary": "LOCAL_FREE single-process CPU correctness evidence; it proves accumulation semantics, not the 10M batch optimum or GPU throughput."
+  },
+  "freeze_contract": {
+    "learning_rate": null,
+    "beta1": null,
+    "beta2": null,
+    "weight_decay": null,
+    "epsilon": null,
+    "gradient_clip_norm": null,
+    "schedule_family": null,
+    "model_spec_sha256": null,
+    "data_identity": null,
+    "tokenizer_identity": null,
+    "microbatch_size": null,
+    "sequence_length": null,
+    "precision": null,
+    "rule": "All fields are copied exactly from terminal TRAIN-244 before optimizer step 1. TRAIN-245 may change only gradient_accumulation_steps."
+  },
+  "preregistered_batch_grid": {
+    "gradient_accumulation_steps": [1, 2, 4],
+    "candidate_count": 3,
+    "microbatch_shape_fixed": true,
+    "same_initial_weights_within_seed": true,
+    "same_ordered_microbatch_trace_within_seed": true,
+    "same_total_optimized_loss_tokens_within_seed": true,
+    "no_example_or_loss_token_reordering": true,
+    "no_example_or_loss_token_reuse": true,
+    "trace_end_must_be_common_accumulation_boundary": true,
+    "lcm_accumulation_steps": 4,
+    "effective_loss_tokens_per_update_definition": "exact valid causal loss tokens summed across each committed accumulation group; report realized distribution rather than nominal padded tensor positions",
+    "microbatch_hardware_efficiency": "CONTROLLED_FIXED_NOT_SWEPT",
+    "cpu_throughput_interpretation": "CPU-specific only; do not extrapolate to GPU."
+  },
+  "execution_contract": {
+    "minimum_paired_seeds": 3,
+    "seed_pairing": "same random initialization and exact train trace across all accumulation candidates within each seed",
+    "optimized_token_budget_source": "exact TRAIN-244 authority",
+    "optimizer_update_count_expected_to_vary": true,
+    "optimizer_updates_definition": "count of committed AdamW updates at the exact common optimized-token boundary",
+    "evaluation_non_mutating": true,
+    "gradient_noise_probe": {
+      "name": "trace_covariance_over_mean_gradient_squared",
+      "definition": "trace(cov(g_micro))/||mean(g_micro)||^2 on a fixed state-preserving microbatch probe",
+      "claim_boundary": "local gradient-noise proxy only; never call it an exact theoretical critical batch size"
+    }
+  },
+  "measurements": [
+    "held_out_bpb",
+    "gradient_noise_proxy",
+    "clip_rate",
+    "update_to_weight_ratio",
+    "optimizer_updates",
+    "cpu_wall_seconds",
+    "optimized_loss_tokens_per_second",
+    "peak_process_rss_bytes",
+    "realized_loss_tokens_per_update_distribution"
+  ],
+  "decision_contract": {
+    "quality_primary": "held_out_bpb",
+    "paired_seed_bootstrap_resamples": 10000,
+    "bootstrap_seed": 245,
+    "quality_equivalence_relative_bpb": 0.005,
+    "selection_order": [
+      "reject any numerical failure or control/trace mismatch",
+      "retain candidates within 0.5% relative held-out BPB of the best paired-seed mean",
+      "among retained candidates select lowest mean CPU wall time",
+      "if candidates are within 5% CPU wall time, select the smaller effective batch as the less intrusive statistical change"
+    ],
+    "grid_edge_rule": "If accumulation=4 is selected and quality has not plateaued, report GRID_EDGE alongside the selected tested batch; do not extrapolate a larger optimum.",
+    "gpu_claim_allowed": false
+  },
+  "result": {
+    "decision": "INSUFFICIENT_EVIDENCE",
+    "selected_gradient_accumulation_steps": null,
+    "selected_effective_loss_tokens_per_update": null,
+    "reason": "TRAIN-244 optimizer authority is missing, so the frozen optimizer/model/data/trace identity and numerical batch comparison cannot lawfully execute."
+  },
+  "candidate_results": {
+    "accumulation_1": null,
+    "accumulation_2": null,
+    "accumulation_4": null
+  },
+  "truth_boundary": {
+    "training_executed": false,
+    "numerical_batch_comparison_claimed": false,
+    "effective_batch_selected": false,
+    "cpu_result_claimed": false,
+    "gpu_result_claimed": false
+  }
+}
