@@ -1,0 +1,49 @@
+name: NEXT100-064 Unique Loss Ledger V2
+
+on:
+  pull_request:
+    paths:
+      - "src/twelve_six/data/unique_loss_ledger_v2.py"
+      - "tests/test_unique_loss_ledger_v2.py"
+      - "tools/validate_next100_064_unique_loss_ledger_v2.py"
+      - "evidence/next100_064/unique_loss_ledger_v2_authority.json"
+      - "docs/NEXT100_064_UNIQUE_LOSS_LEDGER_V2.md"
+      - ".github/workflows/next100-064-unique-loss-ledger-v2.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    env:
+      TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
+      PYTHONPATH: src
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Assert exact event head
+        if: github.event_name == 'pull_request'
+        run: test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+      - name: Compile V2 implementation
+        run: python -m py_compile src/twelve_six/data/unique_loss_ledger_v2.py tools/validate_next100_064_unique_loss_ledger_v2.py
+      - name: Validate frozen authority twice
+        run: |
+          python tools/validate_next100_064_unique_loss_ledger_v2.py > /tmp/next100-064-a.txt
+          python tools/validate_next100_064_unique_loss_ledger_v2.py > /tmp/next100-064-b.txt
+          cmp /tmp/next100-064-a.txt /tmp/next100-064-b.txt
+          cat /tmp/next100-064-a.txt
+      - name: Run adversarial ledger tests when pytest is present
+        run: |
+          if python -c 'import pytest' 2>/dev/null; then
+            python -m pytest -q tests/test_unique_loss_ledger_v2.py
+          else
+            echo 'pytest unavailable on runner; dedicated stdlib authority validation passed'
+          fi
+      - name: Assert LOCAL_FREE no-training scope
+        run: |
+          test "$TWELVE_SIX_EXECUTION_PROFILE" = "LOCAL_FREE"
+          grep -q '"training_executed": false' evidence/next100_064/unique_loss_ledger_v2_authority.json

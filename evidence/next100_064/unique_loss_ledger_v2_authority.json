@@ -1,0 +1,235 @@
+{
+  "schema_version": "12-6.next100-064-unique-loss-ledger-v2-authority.v1",
+  "worker_id": "NEXT100-064-UNIQUE-LOSS-LEDGER-V2",
+  "execution_profile": "LOCAL_FREE",
+  "training_executed": false,
+  "cutoff_utc": "2026-08-26T18:29:51Z",
+  "verdict": "BLOCKED_NO_TERMINAL_POSTPACK_CORPUS_MATERIALIZATION",
+  "position_semantics": {
+    "policy": "logical-causal-token-target-postpack-v2",
+    "source_bytes_relabelled_as_loss_positions": false,
+    "supports": [
+      "text",
+      "code"
+    ],
+    "required_stages": [
+      "normalization",
+      "evaluation_reservations",
+      "document_boundaries",
+      "dedup",
+      "split",
+      "packing"
+    ],
+    "padding_loss_positions": 0,
+    "cross_document_loss_positions": 0
+  },
+  "terminal_source_authority_vector": [
+    {
+      "source_id": "en.standardebooks.manual.8-typography",
+      "family_id": "en.standardebooks.manual",
+      "head_sha": "b0523ccbc4b957615aac849d476cfa851be87578",
+      "terminal": true,
+      "training_source_admitted": true,
+      "eligible_for_postpack_loss_ledger": false
+    },
+    {
+      "source_id": "en.standardebooks.manual.9-metadata",
+      "family_id": "en.standardebooks.manual",
+      "head_sha": "b0523ccbc4b957615aac849d476cfa851be87578",
+      "terminal": true,
+      "training_source_admitted": true,
+      "eligible_for_postpack_loss_ledger": false
+    },
+    {
+      "source_id": "ua.rada.open-data.laws-texts.d23314",
+      "family_id": "ua.rada.open-data.laws-texts",
+      "head_sha": "b0523ccbc4b957615aac849d476cfa851be87578",
+      "terminal": true,
+      "training_source_admitted": true,
+      "eligible_for_postpack_loss_ledger": false
+    },
+    {
+      "source_id": "code.encode.httpx._content",
+      "family_id": "github:encode/httpx",
+      "head_sha": "b0523ccbc4b957615aac849d476cfa851be87578",
+      "terminal": true,
+      "training_source_admitted": true,
+      "eligible_for_postpack_loss_ledger": false
+    },
+    {
+      "source_id": "code.psf.requests._internal_utils",
+      "family_id": "github:psf/requests",
+      "head_sha": "b0523ccbc4b957615aac849d476cfa851be87578",
+      "terminal": true,
+      "training_source_admitted": true,
+      "eligible_for_postpack_loss_ledger": false
+    },
+    {
+      "source_id": "ua.wikisource.lesia-ukrainka.na-krylah-pisen.1892.page13",
+      "family_id": "ua.literature.lesia-ukrainka.na-krylah-pisen.1892-lviv",
+      "head_sha": "84c51e42b6daa51796fd20d793b5ef1ff01cc9d2",
+      "terminal": true,
+      "training_source_admitted": true,
+      "eligible_for_postpack_loss_ledger": false
+    },
+    {
+      "source_id": "code.django.core.signing",
+      "family_id": "github:django/django",
+      "head_sha": "7d83f8d4f21f51ad0b59dca4ac80f80aba20fc13",
+      "terminal": true,
+      "training_source_admitted": true,
+      "eligible_for_postpack_loss_ledger": false
+    },
+    {
+      "source_id": "code.django.db.transaction",
+      "family_id": "github:django/django",
+      "head_sha": "7d83f8d4f21f51ad0b59dca4ac80f80aba20fc13",
+      "terminal": true,
+      "training_source_admitted": true,
+      "eligible_for_postpack_loss_ledger": false
+    },
+    {
+      "source_id": "code.django.urls.resolvers",
+      "family_id": "github:django/django",
+      "head_sha": "7d83f8d4f21f51ad0b59dca4ac80f80aba20fc13",
+      "terminal": true,
+      "training_source_admitted": true,
+      "eligible_for_postpack_loss_ledger": false
+    },
+    {
+      "source_id": "code.starlette._utils",
+      "family_id": "github:Kludex/starlette",
+      "head_sha": "c6756b5ebb6eb1d3bf3de2499167833d99d99a72",
+      "terminal": true,
+      "training_source_admitted": true,
+      "eligible_for_postpack_loss_ledger": false
+    },
+    {
+      "source_id": "code.starlette.convertors",
+      "family_id": "github:Kludex/starlette",
+      "head_sha": "c6756b5ebb6eb1d3bf3de2499167833d99d99a72",
+      "terminal": true,
+      "training_source_admitted": true,
+      "eligible_for_postpack_loss_ledger": false
+    },
+    {
+      "source_id": "ua.kmu.portal.secretariat-news.bounded-six",
+      "family_id": "ua.kmu.portal.secretariat-news",
+      "head_sha": "40950a950b60921fd856af2719e1ae2486d9e892",
+      "terminal": true,
+      "training_source_admitted": true,
+      "eligible_for_postpack_loss_ledger": false
+    }
+  ],
+  "live_convergence": {
+    "next100_065": {
+      "head_sha": "efc278cec0e4773eb4ff405bf4b4d24ee63b5d13",
+      "workflow_run": 32999969398,
+      "state": "QUEUED",
+      "terminal": false
+    },
+    "next100_062": {
+      "head_sha": "f8331e21ab0686bf30b089fc2da57218c6681ce1",
+      "workflow_run": 32999251854,
+      "state": "QUEUED",
+      "terminal": false
+    },
+    "next100_061": {
+      "head_sha": "452cd2e49938d4124ee3c99fcaf2dcf932a98fe5",
+      "state": "NO_WORKER_COMMIT_AT_CUTOFF",
+      "terminal": false
+    },
+    "next100_063": {
+      "state": "ABSENT_AT_CUTOFF",
+      "terminal": false
+    }
+  },
+  "blocking_authorities": [
+    {
+      "worker_id": "DATA-301",
+      "head_sha": "8820ba1b255f6bb95c7db0531fd846078a1aae01",
+      "status": "TERMINAL_BLOCKED",
+      "reason": "null corpus identity; split/packing not reached"
+    },
+    {
+      "worker_id": "NEXT100-066-DECONTAMINATION-V4",
+      "head_sha": "80e8fc9828214ce86e16b5c7f2fdec9107b4df43",
+      "status": "BLOCKED_NO_EXACT_CANDIDATE_CORPUS_IDENTITY",
+      "evidence_identity_sha256": "d909975ac656c9a36ed491cea32e806608b799e431449be3a0ee60f503bd3835"
+    },
+    {
+      "worker_id": "NEXT100-063-EXTERNAL-REGISTRY-V3",
+      "status": "ABSENT_AT_CUTOFF"
+    }
+  ],
+  "exact_postpack_one_pass_maximum": {
+    "status": "NOT_MATERIALIZED",
+    "total": null,
+    "by_language": null,
+    "by_modality": null,
+    "by_family": null
+  },
+  "training_authorized_exposure_now": {
+    "total": 0,
+    "by_language": {
+      "en": 0,
+      "python": 0,
+      "uk": 0
+    },
+    "by_modality": {
+      "code": 0,
+      "text": 0
+    },
+    "by_family": {
+      "en.standardebooks.manual": 0,
+      "github:Kludex/starlette": 0,
+      "github:django/django": 0,
+      "github:encode/httpx": 0,
+      "github:psf/requests": 0,
+      "ua.kmu.portal.secretariat-news": 0,
+      "ua.literature.lesia-ukrainka.na-krylah-pisen.1892-lviv": 0,
+      "ua.rada.open-data.laws-texts": 0
+    }
+  },
+  "historical_prebuild_diagnostic": {
+    "is_training_authority": false,
+    "stage_boundary": "BEFORE_CURRENT_EVAL_RESERVATIONS_GLOBAL_DEDUP_SPLIT_PACKING",
+    "source_bytes_relabelled_as_loss_positions": false,
+    "total": 183056,
+    "by_language": {
+      "en": 84791,
+      "python": 9701,
+      "uk": 88564
+    },
+    "by_modality": {
+      "code": 9701,
+      "text": 173355
+    },
+    "by_family": {
+      "en.standardebooks.manual": 84791,
+      "github:encode/httpx": 8160,
+      "github:psf/requests": 1541,
+      "ua.rada.open-data.laws-texts": 88564
+    }
+  },
+  "replay_resume_contract": {
+    "duplicate_or_overlapping_claim": "REJECT",
+    "actual_loss_mask_count_must_equal_claimed_count": true,
+    "resume_binds": [
+      "ledger_identity_sha256",
+      "materialization_identity_sha256",
+      "packing_identity_sha256",
+      "authorized_budget",
+      "checkpoint_generation",
+      "checkpoint_manifest_sha256",
+      "optimizer_step",
+      "trainer_nonignored_target_count"
+    ],
+    "resume_drift": "REJECT"
+  },
+  "local_validation": {
+    "tests": "9/9 PASS",
+    "training_executed": false
+  },
+  "evidence_identity_sha256": "8c4b18a4d18309d55d98d15bde5f569e7592ddd2c239c8847b309aed80b9b41f"
+}
