@@ -1,4 +1,4 @@
-name: NEXT100-065C-D Cross-Source Dedup V6
+name: NEXT100-065D Cross-Source Dedup V6
 
 on:
   pull_request:
@@ -126,7 +126,7 @@ jobs:
           tests/test_next100_065d_exact_capacity_guard.py
           tests/test_next100_065d_registry_v4_guard.py
 
-      - name: Materialize full 31-object V6 audit twice
+      - name: Materialize full 35-object V6 audit twice
         env:
           PYTHONPATH: src
         run: |
@@ -162,20 +162,21 @@ jobs:
           evidence = report["materialization_evidence"]
           cp = next(item for item in evidence if item["source_id"] == "en.python.docs.tutorial-introduction")
           numpy = [item for item in evidence if item["source_id"].startswith("code.numpy.")]
+          attrs = [item for item in evidence if item["source_id"].startswith("code.attrs.")]
           gutenberg = [item for item in evidence if item["source_id"].startswith("en.project-gutenberg.")]
 
-          assert vector["source_object_count"] == 31
-          assert vector["source_family_counts"] == {"code": 5, "en": 5, "uk": 4}
+          assert vector["source_object_count"] == 35
+          assert vector["source_family_counts"] == {"code": 6, "en": 5, "uk": 4}
           assert vector["cpython_accepted_capacity_bytes"] == 15540
-          assert vector["source_capacity_bytes_before_global_dedup"] == 2045180
+          assert vector["source_capacity_bytes_before_global_dedup"] == 2215615
           assert vector["source_capacity_by_modality_before_global_dedup"] == {
               "uk": 100856,
               "en": 1838293,
-              "code": 106031,
+              "code": 276466,
           }
-          assert vector["pre_dedup_planning_gap_bytes"] == 17954820
-          assert scope["declared_capacity_bytes_before"] == 2045180
-          assert 0 <= vector["conservative_unique_capacity_bytes_after_global_dedup"] <= 2045180
+          assert vector["pre_dedup_planning_gap_bytes"] == 17784385
+          assert scope["declared_capacity_bytes_before"] == 2215615
+          assert 0 <= vector["conservative_unique_capacity_bytes_after_global_dedup"] <= 2215615
           assert cp["normalized_source_bytes"] == 17901
           assert cp["accepted_chunk_count"] == 14
           assert cp["rejected_chunk_count"] == 2
@@ -183,6 +184,9 @@ jobs:
           assert cp["accepted_capacity_bytes"] == 15540
           assert len(numpy) == 5
           assert sum(item["raw_bytes"] for item in numpy) == 36898
+          assert len(attrs) == 4
+          assert sum(item["raw_bytes"] for item in attrs) == 170435
+          assert {item["source_family"] for item in attrs} == {"github:python-attrs/attrs"}
           assert len(gutenberg) == 3
           assert sum(item["normalized_bytes"] for item in gutenberg) == 1672110
           assert report["model_training_executed"] is False
