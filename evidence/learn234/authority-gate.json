@@ -1,0 +1,113 @@
+{
+  "branch_base_sha": "66b6c432f78042565bc09aaca5b3d4a95a3f358d",
+  "budget_preregistration": {
+    "artificial_corpus_repetition_allowed": false,
+    "best_checkpoint_selector": "minimum_frozen_selection_validation_aggregate_BPB",
+    "checkpoint_fractions": [
+      0.0,
+      0.25,
+      0.5,
+      0.75,
+      1.0
+    ],
+    "data25_matched_anchor_optimized_tokens": 948504,
+    "external_real_budget_rule": "min(948504, DATA230_one_pass_unique_train_optimized_targets)",
+    "retain_best_and_final_separately": true
+  },
+  "comparison_anchor": {
+    "artifact_id": 9595677772,
+    "artifact_sha256": "c00b7e9006320f8916c739a3311e8cc47ad0d0b16957f8ebd7d19233fd9f1c71",
+    "best_final_bpb": 0.2645455968814711,
+    "corpus_identity": "422f545da93526ceba2c0ff738e0b9deac65f35bfb31d87d2aab068cda091fc8",
+    "optimized_tokens": 948504,
+    "producer_source_sha": "5838cd16869dcfcf762368d8673eddf52d51b7e3",
+    "workflow_run_id": 32937411703
+  },
+  "execution": {
+    "dpo": false,
+    "foreign_weights": false,
+    "optimizer_updates": 0,
+    "paid_compute": false,
+    "rlhf": false,
+    "sft": false,
+    "training_started": false
+  },
+  "gate_identity_sha256": "a790ec9d5a697fb12ee4d65bdb5ab284cc7bef6aeba89c698539322bc49d04e4",
+  "incumbent_500k": {
+    "geometry": {
+      "d_ff": 256,
+      "d_model": 96,
+      "head_dim": 16,
+      "n_heads": 6,
+      "n_kv_heads": 6,
+      "n_layers": 4,
+      "vocab_size": 256
+    },
+    "init_spec_sha256": "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5",
+    "model_spec_sha256": "208ac8ca113388e76f280d0154cae815785bee7705546f4d854d9447b9dd1f4a",
+    "parameters": 467808,
+    "random_initialization_only": true
+  },
+  "optimizer_incumbent": {
+    "batch_size": 8,
+    "betas": [
+      0.9,
+      0.95
+    ],
+    "eps": 1e-08,
+    "gradient_clip_norm": 1.0,
+    "learning_rate": 0.0003,
+    "name": "AdamW",
+    "precision": "fp32",
+    "schedule": "constant",
+    "seed": 1337,
+    "sequence_length": 128,
+    "warmup_steps": 0,
+    "weight_decay": 0.0
+  },
+  "repository": "Oleksii-debug/12-6-ai.",
+  "required_authorities": {
+    "data230": {
+      "corpus_identity": null,
+      "observed_status": "NOT_PUBLISHED_IN_LIVE_REPOSITORY",
+      "required": true,
+      "terminal_deterministic": false,
+      "worker_id": "DATA-230-CORPUS-V03-EXTERNAL-REAL"
+    },
+    "eval233": {
+      "holdout_identity": null,
+      "observed_status": "NOT_PUBLISHED_IN_LIVE_REPOSITORY",
+      "required_for_training": false,
+      "required_when_available_for_external_holdout_evaluation": true,
+      "worker_id": "EVAL-233-REAL-HOLDOUT-V2"
+    }
+  },
+  "required_measurements_when_unblocked": [
+    "selection_validation_aggregate_BPB",
+    "selection_validation_UA_BPB",
+    "selection_validation_EN_BPB",
+    "selection_validation_code_BPB",
+    "selection_validation_source_family_BPB",
+    "EVAL233_external_real_holdout_when_available",
+    "gradient_norms",
+    "clip_rate",
+    "update_ratio",
+    "throughput",
+    "memory",
+    "checkpoint_integrity",
+    "fresh_process_resume",
+    "memorization_generalization",
+    "DATA25_500K_matched_optimized_token_comparison_when_possible"
+  ],
+  "schema": "12-6.learn234-authority-gate.v1",
+  "status": "BLOCKED_NO_TERMINAL_DATA230",
+  "tokenizer_incumbent": {
+    "config_sha256": "b04055c1061dd641dcab7cb9d62a931f09b8d1a070140a926ceb4e91d73ca8e1",
+    "special_tokens": [],
+    "tokenizer_id": "s0-byte-v1",
+    "vocab_sha256": "905ed40bb42cc4d550e228ff5f24158d504b38e8ed5974dfa3077bd5867ad571",
+    "vocab_size": 256
+  },
+  "unblock_condition": "A published DATA-230 authority must bind a terminal deterministic corpus identity and deterministic final shards with enough one-pass unique optimized-target supply; LEARN-234 must re-resolve the current tokenizer/500K/optimizer authorities before optimizer step 1.",
+  "worker_id": "LEARN-234-EXTERNAL-REAL-500K"
+}
