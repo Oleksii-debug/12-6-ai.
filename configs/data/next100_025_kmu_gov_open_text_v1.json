@@ -1,0 +1,102 @@
+{
+  "authority_boundary": "SOURCE_SPECIFIC_TRAINING_RIGHTS_AND_BOUNDED_SNAPSHOT_ONLY;NO_EVALUATION_AUTHORITY",
+  "dedup": {
+    "cross_family_normalized_hashes": [
+      "72c301db0b2539f3f7a73c9c15e2e425700a6b758a1114f1a861e2d60c704c50"
+    ],
+    "cross_family_reference": "ua.rada.open-data.laws-texts.d23314",
+    "intra_family_5token_jaccard": "REJECT_ABOVE_THRESHOLD",
+    "intra_family_exact": "REJECT",
+    "intra_family_normalized": "REJECT"
+  },
+  "family": {
+    "author_prefix": "Департамент інформації та комунікацій з громадськістю Секретаріату Кабінету Міністрів України",
+    "family_id": "ua.kmu.portal.secretariat-news",
+    "host": "www.kmu.gov.ua",
+    "independence_basis": "different publisher, host, editorial pipeline, and content class from Verkhovna Rada open legislation",
+    "independent_from": [
+      "ua.rada.open-data.laws-texts"
+    ],
+    "lineage": "publisher:secretariat-kmu|host:kmu.gov.ua|class:secretariat-authored-news",
+    "publisher": "Секретаріат Кабінету Міністрів України",
+    "source_kind": "official_government_public_information"
+  },
+  "language": {
+    "expected": "uk",
+    "min_cyrillic_alpha_ratio": 0.8,
+    "min_uk_lexical_hits": 2,
+    "min_uk_specific_chars": 5
+  },
+  "local_free_only": true,
+  "mode": "PROBE",
+  "privacy": {
+    "emails": "REJECT_DOCUMENT",
+    "long_numeric_identifiers": "REJECT_DOCUMENT",
+    "phone_numbers": "REJECT_DOCUMENT",
+    "public_official_names": "ALLOWED_AS_PUBLIC_INFORMATION"
+  },
+  "quality": {
+    "max_near_duplicate_jaccard": 0.85,
+    "min_accepted_documents": 14,
+    "min_document_utf8_bytes": 450,
+    "min_total_normalized_utf8_bytes": 30000
+  },
+  "rights": {
+    "attribution_required": true,
+    "attribution_template": "Source: Cabinet of Ministers of Ukraine / Secretariat of the Cabinet of Ministers of Ukraine; original URL; CC BY 4.0; normalized/extracted text, changes indicated.",
+    "license_id": "CC-BY-4.0",
+    "license_url": "https://creativecommons.org/licenses/by/4.0/",
+    "page_exception_policy": "FAIL_CLOSED_ON_ANY_PAGE_SPECIFIC_CONTRARY_LICENSE_OR_RIGHTS_NOTICE",
+    "publisher_ownership_statement": "portal property is attributed to the Secretariat of the Cabinet of Ministers of Ukraine",
+    "site_statement": "all content is CC BY 4.0 unless otherwise stated",
+    "terms_url": "https://www.kmu.gov.ua/",
+    "third_party_policy": "EXCLUDE_IMAGES_ATTACHMENTS_EMBEDS_IFRAMES_AND_LINKED_DOCUMENTS",
+    "uses": {
+      "acquisition": "ALLOWED",
+      "analysis": "ALLOWED",
+      "evaluation": "NOT_ADMITTED",
+      "model_training": "ALLOWED",
+      "redistribution": "ALLOWED",
+      "storage": "ALLOWED"
+    }
+  },
+  "rights_evidence": {
+    "path": "data/external/rights-evidence/next100-025/kmu-portal-cc-by-4.0-20260826.txt",
+    "sha256": "e63b00352bc3eb13f7a32265ad26e535bc22342b6b8399a0d5fea663486729f9"
+  },
+  "schema_version": "12-6.next100-025-kmu-gov-open-text.v1",
+  "snapshot": {
+    "max_documents": 25,
+    "max_download_bytes_per_document": 2000000,
+    "retrieval_date": "2026-08-26",
+    "snapshot_id": "kmu-secretariat-news-bounded-2026-08-26",
+    "urls": [
+      {"expected_normalized_sha256": null,"expected_normalized_utf8_bytes": null,"expected_raw_bytes": null,"expected_raw_sha256": null,"url": "https://www.kmu.gov.ua/news/premier-ministr-formuvannia-uriadu-zaversheno-poperedu-aktyvna-robota-ta-podalshi-zminy?=print"},
+      {"expected_normalized_sha256": null,"expected_normalized_utf8_bytes": null,"expected_raw_bytes": null,"expected_raw_sha256": null,"url": "https://www.kmu.gov.ua/news/verkhovna-rada-pryznachyla-serhiia-koretskoho-premier-ministrom-ukrainy?=print"},
+      {"expected_normalized_sha256": null,"expected_normalized_utf8_bytes": null,"expected_raw_bytes": null,"expected_raw_sha256": null,"url": "https://www.kmu.gov.ua/news/promova-premier-ministra-ukrainy-serhiia-koretskoho-u-verkhovnii-radi?=print"},
+      {"expected_normalized_sha256": null,"expected_normalized_utf8_bytes": null,"expected_raw_bytes": null,"expected_raw_sha256": null,"url": "https://www.kmu.gov.ua/news/uriad-rozpodilyv-83-mlrd-hrn-na-zmitsnennia-syl-bezpeky-i-oborony?=print"},
+      {"expected_normalized_sha256": null,"expected_normalized_utf8_bytes": null,"expected_raw_bytes": null,"expected_raw_sha256": null,"url": "https://www.kmu.gov.ua/news/molod-maie-realizovuvaty-svii-potentsial-ta-mrii-v-ukraini-serhii-koretskyi?=print"},
+      {"expected_normalized_sha256": null,"expected_normalized_utf8_bytes": null,"expected_raw_bytes": null,"expected_raw_sha256": null,"url": "https://www.kmu.gov.ua/news/uriad-rozpodilyv-35-mlrd-hrn-na-realizatsiiu-planiv-stiikosti?=print"},
+      {"expected_normalized_sha256": null,"expected_normalized_utf8_bytes": null,"expected_raw_bytes": null,"expected_raw_sha256": null,"url": "https://www.kmu.gov.ua/news/serhii-koretskyi-mizhnarodni-domovlenosti-maiut-iaknaishvydshe-peretvoriuvatysia-na-konkretnyi-rezultat-dlia-ukrainy?=print"},
+      {"expected_normalized_sha256": null,"expected_normalized_utf8_bytes": null,"expected_raw_bytes": null,"expected_raw_sha256": null,"url": "https://www.kmu.gov.ua/news/premier-ministr-ukrainy-iuliia-svyrydenko-predstavyla-u-verkhovnii-radi-zvit-pro-robotu-uriadu?=print"},
+      {"expected_normalized_sha256": null,"expected_normalized_utf8_bytes": null,"expected_raw_bytes": null,"expected_raw_sha256": null,"url": "https://www.kmu.gov.ua/news/premier-ministr-serhii-koretskyi-predstavyv-radi-koalitsii-proiekt-prohramy-diialnosti-uriadu?=print"},
+      {"expected_normalized_sha256": null,"expected_normalized_utf8_bytes": null,"expected_raw_bytes": null,"expected_raw_sha256": null,"url": "https://www.kmu.gov.ua/news/uriad-zavershyv-audyt-vykonannia-planiv-stiikosti?=print"},
+      {"expected_normalized_sha256": null,"expected_normalized_utf8_bytes": null,"expected_raw_bytes": null,"expected_raw_sha256": null,"url": "https://www.kmu.gov.ua/news/ukraina-otrymala-vid-mvf-druhyi-transh-v-ramkakh-prohramy-eff?=print"},
+      {"expected_normalized_sha256": null,"expected_normalized_utf8_bytes": null,"expected_raw_bytes": null,"expected_raw_sha256": null,"url": "https://www.kmu.gov.ua/news/uriad-rozpochav-pidhotovku-proiektu-derzhbiudzhetu-na-2027-rik?=print"},
+      {"expected_normalized_sha256": null,"expected_normalized_utf8_bytes": null,"expected_raw_bytes": null,"expected_raw_sha256": null,"url": "https://www.kmu.gov.ua/news/serhii-koretskyi-uriad-i-verkhovna-rada-spilno-pratsiuvatymut-nad-zabezpechenniam-finansovoi-stiikosti-ta-potreb-syl-oborony?=print"},
+      {"expected_normalized_sha256": null,"expected_normalized_utf8_bytes": null,"expected_raw_bytes": null,"expected_raw_sha256": null,"url": "https://www.kmu.gov.ua/news/uriad-vydilyv-23-mlrd-hrn-na-pidtrymku-pryfrontovykh-hromad?=print"},
+      {"expected_normalized_sha256": null,"expected_normalized_utf8_bytes": null,"expected_raw_bytes": null,"expected_raw_sha256": null,"url": "https://www.kmu.gov.ua/news/serhii-koretskyi-i-premier-ministr-niderlandiv-obhovoryly-posylennia-protypovitrianoi-oborony-ukrainy?=print"},
+      {"expected_normalized_sha256": null,"expected_normalized_utf8_bytes": null,"expected_raw_bytes": null,"expected_raw_sha256": null,"url": "https://www.kmu.gov.ua/news/premier-ministr-ukrainy-serhii-koretskyi-proviv-pershe-zasidannia-novoho-skladu-kabinetu-ministriv?=print"},
+      {"expected_normalized_sha256": null,"expected_normalized_utf8_bytes": null,"expected_raw_bytes": null,"expected_raw_sha256": null,"url": "https://www.kmu.gov.ua/news/serhii-koretskyi-doruchyv-minkultury-ta-minfinu-pidhotuvaty-mekhanizm-derzhavnoi-pidtrymky-knyhovydavnychoi-haluzi?=print"},
+      {"expected_normalized_sha256": null,"expected_normalized_utf8_bytes": null,"expected_raw_bytes": null,"expected_raw_sha256": null,"url": "https://www.kmu.gov.ua/news/ukraina-otrymala-347-mlrd-ievro-vid-ies-v-mezhakh-ukraine-support-loan?=print"},
+      {"expected_normalized_sha256": null,"expected_normalized_utf8_bytes": null,"expected_raw_bytes": null,"expected_raw_sha256": null,"url": "https://www.kmu.gov.ua/news/serhii-koretskyi-obhovoryv-z-ihorem-terekhovym-pidhotovku-kharkova-do-zymy-ta-posylennia-stiikosti-mista?=print"},
+      {"expected_normalized_sha256": null,"expected_normalized_utf8_bytes": null,"expected_raw_bytes": null,"expected_raw_sha256": null,"url": "https://www.kmu.gov.ua/news/yuliia-svyrydenko-ambasadory-bezbariernosti-prezentuvaly-na-uriadi-kliuchovi-proiekty-iaki-realizuiut-razom-iz-komandamy-ministerstv?=print"},
+      {"expected_normalized_sha256": null,"expected_normalized_utf8_bytes": null,"expected_raw_bytes": null,"expected_raw_sha256": null,"url": "https://www.kmu.gov.ua/news/uriad-hotuie-zminy-poklykani-pidvyshchyty-bezpeku-na-dorohakh?=print"},
+      {"expected_normalized_sha256": null,"expected_normalized_utf8_bytes": null,"expected_raw_bytes": null,"expected_raw_sha256": null,"url": "https://www.kmu.gov.ua/news/premier-ministr-iuliia-svyrydenko-obhovoryla-iz-premier-ministrom-chekhii-andriiem-babishem-prohres-u-ievropeiskii-intehratsii-ukrainy?=print"},
+      {"expected_normalized_sha256": null,"expected_normalized_utf8_bytes": null,"expected_raw_bytes": null,"expected_raw_sha256": null,"url": "https://www.kmu.gov.ua/news/yuliia-svyrydenko-predstavyla-rezultaty-roboty-uriadu-za-rik?=print"},
+      {"expected_normalized_sha256": null,"expected_normalized_utf8_bytes": null,"expected_raw_bytes": null,"expected_raw_sha256": null,"url": "https://www.kmu.gov.ua/news/yuliia-svyrydenko-pro-pidsumky-tyzhnia-start-transformatsii-syl-oborony-novyi-transh-mvf-ta-posylennia-pidtrymky-biznesu?=print"},
+      {"expected_normalized_sha256": null,"expected_normalized_utf8_bytes": null,"expected_raw_bytes": null,"expected_raw_sha256": null,"url": "https://www.kmu.gov.ua/news/yuliia-svyrydenko-bezbariernist-maie-staty-standartom-u-vsikh-sferakh-zhyttia?=print"}
+    ]
+  },
+  "worker": "NEXT100-025-DATA-UA-GOV-OPEN"
+}
