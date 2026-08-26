@@ -33,7 +33,10 @@ jobs:
         env:
           PYTHONPATH: src
         run: |
-          python -m compileall -q src/twelve_six/next100_054_urllib3_admission.py tests/test_next100_054_urllib3_admission.py
+          python -m compileall -q \
+            src/twelve_six/next100_054_urllib3_admission.py \
+            src/twelve_six/next100_054_live_code_eval_refresh.py \
+            tests/test_next100_054_urllib3_admission.py
           python -m unittest -v tests.test_next100_054_urllib3_admission
 
       - name: Acquire exact source and produce terminal admission report
@@ -48,6 +51,15 @@ jobs:
             --source-sha "$EXPECTED_SOURCE_SHA" \
             | tee next100-054-evidence/stdout.json
 
+      - name: Refresh live code-evaluation authority
+        env:
+          PYTHONPATH: src
+        run: |
+          python -m twelve_six.next100_054_live_code_eval_refresh \
+            --repo-root . \
+            --output-dir next100-054-evidence \
+            | tee next100-054-evidence/live-authority-stdout.json
+
       - name: Validate immutable report identity
         env:
           PYTHONPATH: src
@@ -61,6 +73,7 @@ jobs:
           from pathlib import Path
 
           report = json.loads(Path("next100-054-evidence/next100-054-urllib3-code-admission.json").read_text())
+          live = json.loads(Path("next100-054-evidence/next100-054-live-code-eval-authority.json").read_text())
           assert report["verdict"] == "ADMIT_TRAINING_ONLY"
           assert report["terminal"] is True
           assert report["selection"]["object_count"] == 8
@@ -79,6 +92,16 @@ jobs:
           assert report["source_family_decision"]["decision"] == "SEPARATE_CURRENT_BOUNDED_FAMILIES_WITH_LINEAGE_CAVEAT"
           assert report["training_performed"] is False
           assert report["paid_compute_used"] is False
+          assert live["decision"] == "PASS_EMPTY_CODE_EVALUATION_SELECTION"
+          assert live["authority"] == "NEXT100-057-CODE-EVAL-SET-V2"
+          assert live["eligible_evaluation_object_count"] == 0
+          assert live["selected_evaluation_record_count"] == 0
+          assert live["selected_urllib3_evaluation_collision_count"] == 0
+          assert len(live["selected_urllib3_blob_sha1"]) == 8
+          assert live["candidate_role"] == "TRAINING_ONLY"
+          assert live["evaluation_use_authorized"] is False
+          assert live["training_performed"] is False
+          assert live["paid_compute_used"] is False
           PY
 
       - name: Upload immutable qualification evidence
