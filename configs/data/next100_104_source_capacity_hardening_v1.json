@@ -1,0 +1,66 @@
+{
+  "authority_identity_sha256": "b3a80fdb269bb95026e42bd5c93748038688007f5532b90dc9ca461289478820",
+  "claim_boundary": {
+    "corpus_identity_claimed": false,
+    "loss_positions_authorized": 0,
+    "paid_compute_used": false,
+    "parent_exact_byte_total_rejected": true,
+    "parent_family_vector_rejected": false,
+    "training_authorized": false,
+    "training_executed": false
+  },
+  "corrected_fail_closed_accounting": {
+    "authorized_balanced_no_replay_loss_positions": 0,
+    "by_stratum_known_exact_bytes_lower_bound": {
+      "code": 296343,
+      "en": 150643,
+      "uk": 100856
+    },
+    "candidate_exact_training_eligible_bytes": null,
+    "exact_target_gap_normalized_bytes": null,
+    "family_gate_status": "PASS_SOURCE_FAMILY_EXISTENCE_PRE_GLOBAL_DEDUP_BYTE_CAPACITY_PENDING",
+    "known_exact_new_terminal_bytes_lower_bound": 364781,
+    "known_exact_training_eligible_bytes_lower_bound": 547842,
+    "long_training": "BLOCKED",
+    "research_corpus_v1_target_normalized_bytes": 20000000,
+    "source_family_counts": {
+      "code": 5,
+      "en": 4,
+      "global": 13,
+      "uk": 4
+    }
+  },
+  "finding": {
+    "accepted_chunk_count": 14,
+    "authority_head_sha": "5a6a495a24bce449334cbc5126d0114f61a9f57c",
+    "authority_identity_sha256": "46a00dc70db690ae2b3c4495a75283e7e752bdccb1047d4318c2ebadfa392f0d",
+    "chunk_count": 16,
+    "class": "NONELIGIBLE_SOURCE_BYTES_COUNTED_AS_EXACT_TRAINING_ELIGIBLE_CAPACITY",
+    "exact_accepted_chunk_byte_total": "NOT_MATERIALIZED",
+    "exact_total_capacity_claim_allowed": false,
+    "rejected_chunk_count": 2,
+    "rejected_reason": {
+      "pii_phone": 2
+    },
+    "source_family": "python.cpython.documentation",
+    "source_normalized_utf8_bytes": 17901,
+    "training_eligibility": "ONLY_ACCEPTED_CHUNKS_ARE_ELIGIBLE_REJECTED_CHUNKS_REMAIN_EXCLUDED"
+  },
+  "local_free_only": true,
+  "parent_registry": {
+    "head_sha": "94dce83cbe611144f961b9f93b3be273345a7f62",
+    "pr": 538,
+    "registry_identity_sha256": "77fb69c558df8c59fdae00583c955c62ad088cda98fd16b335eedb26fb2d7526",
+    "reported_candidate_normalized_bytes": 565743,
+    "reported_new_terminal_normalized_bytes": 382682
+  },
+  "required_remediation": [
+    "reconstruct the exact 16 CPython chunks under the terminal authority normalization/chunking policy",
+    "materialize exact byte length and normalized SHA-256 for each of the 14 accepted chunks",
+    "prove the two rejected chunks are absent from the candidate inventory",
+    "recompute exact source-registry byte accounting and self-identity",
+    "run global cross-source dedup before any corpus identity or training exposure"
+  ],
+  "schema_version": "12-6.next100-104-source-capacity-hardening.v1",
+  "worker_id": "NEXT100-104-SOURCE-CAPACITY-HARDENING"
+}
