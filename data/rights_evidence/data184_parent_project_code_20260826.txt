@@ -1,0 +1,13 @@
+DATA-184 incumbent project-code rights decision
+Source: project-authored.12-6-ai.source-code
+Exact source version: git:117e0f156fff6b0226f00748ff25938f1b4a2612
+Prior authority: tools/materialize_milestone100_real_corpus.py on the exact parent classifies src/twelve_six Python source as project-authored. DATA-184 preserves that accepted incumbent classification; it does not infer rights for third-party dependencies or vendored material.
+Purpose decision under policy://12-6/data/explicit-model-training-evidence-v1:
+acquisition=ALLOWED
+storage=ALLOWED
+analysis=ALLOWED
+model_training=ALLOWED
+redistribution=ALLOWED
+Scope: only src/twelve_six/*.py blobs reachable from exact parent commit 117e0f156fff6b0226f00748ff25938f1b4a2612 after current privacy and quality gates. No dependency, generated, vendored or external repository content is covered.
+Reviewed: 2026-08-26
+Reviewer: SWARM_WORKER_ID:DATA-184-REAL-SOURCE-DIVERSITY
