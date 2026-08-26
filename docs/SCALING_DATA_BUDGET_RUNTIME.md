@@ -1,47 +1,38 @@
 # Scaling Data-Budget Runtime Evaluator
 
-This supplement consumes the scientific policy in `configs/scaling/data_budget_policy_v1.json` and turns it into a reusable runtime check. It deliberately does not create a second scaling policy.
+This supplement consumes `configs/scaling/data_budget_policy_v1.json`. It does not create a second scaling policy and it does not authorize training.
 
-## Input contract
+## Two quantities that must remain separate
 
-The only capacity input is an exact count of post-tokenization unique causal-loss positions from a terminal corpus/split/tokenizer/packing identity.
+The runtime accepts both:
 
-The runtime does not accept source bytes, normalized bytes, record counts, epochs, replayed samples, padding, or evaluation material as substitutes.
+- exact post-tokenization **unique causal-loss positions** from a terminal corpus/split/tokenizer/packing identity;
+- planned **total training-token exposures**, including any preregistered replay.
+
+They are not interchangeable. The 20x/50x/100x values in the parent policy are total-exposure planning references. They are not requirements for 20x/50x/100x unique data.
+
+The evaluator therefore never reports a data tier as satisfied merely because unique positions equal `parameter_count * multiplier`.
 
 ## Output contract
 
-The evaluator reports:
+The evaluator reports the exact stage parameter count, selected exposure multiplier, unique loss positions, planned total exposures, the parent policy's reference total exposures, below/match/above relation, unique positions per parameter, implied planned exposures per unique position, and rough dense-training FLOP planning values.
 
-- exact stage parameter count;
-- preregistered token multiplier;
-- required unique loss positions;
-- observed positions per parameter;
-- exact shortfall;
-- capped progress fraction;
-- whether this one data-budget tier is met;
-- a rough dense-training FLOP planning value using `6 * N * D`.
-
-Even when a data-budget tier is met, both `training_authorized` and `paid_compute_authorized` remain false. Corpus rights, quality/privacy, decontamination, checkpoint integrity, training configuration, stop rules, and compute authorization are separate gates.
+A reference match is descriptive only. `training_authorized=false` and `paid_compute_authorized=false` remain hard boundaries. Rights, quality/privacy, decontamination, deduplication, replay/epoch policy, checkpoint integrity, evaluation isolation, stop rules, exact candidate composition and compute authorization remain separate gates.
 
 ## Current 20M example
 
-With no terminal post-pack unique-loss inventory:
+A hypothetical immutable corpus with 20,000,000 unique loss positions can still be evaluated against a 412,268,800 total-exposure plan without pretending that the corpus itself contains 412,268,800 unique positions:
 
 ```bash
 python tools/check_scaling_data_budget.py \
   --stage 20M_PRIMARY \
-  --unique-loss-positions 0 \
+  --unique-loss-positions 20000000 \
+  --planned-training-token-exposures 412268800 \
   --multiplier 20
 ```
 
-Expected decision:
+This reports `MATCHES_REFERENCE` for total exposure and an implied exposure/unique-position ratio of about 20.61. Whether that replay pressure is scientifically acceptable is a separate preregistered replay-policy decision; this runtime does not approve it.
 
-```text
-BLOCKED_DATA_BUDGET
-```
+## Integration boundary
 
-The exact 20M primary 20x reference remains 412,268,800 unique loss positions. This tool does not claim that 20x is a universal optimum; it only evaluates the preregistered policy authored by the parent scaling-data-budget PR.
-
-## Integration target
-
-The successor Research Corpus V1 controller should call this evaluator only after it has terminal exact post-tokenization unique-loss evidence. A source-authority byte total by itself must never be passed through a byte-to-token heuristic to satisfy this gate.
+Source bytes, normalized bytes, record counts, padding, evaluation material and repeated samples may not masquerade as unique causal-loss positions. Conversely, a total exposure reference may not be relabelled as a unique-data requirement. Downstream readiness controllers should consume both quantities explicitly and keep training/compute authorization fail-closed.
