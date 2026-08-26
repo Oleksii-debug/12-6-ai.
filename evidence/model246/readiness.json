@@ -8,15 +8,32 @@
     "paid_compute": false,
     "local_free_only": true
   },
-  "required_context_horizons": [256, 512, 1024],
+  "required_context_horizons": [
+    256,
+    512,
+    1024
+  ],
   "required_terminal_authorities": {
     "optimizer": {
       "preferred_worker": "TRAIN-244-10M-LR-BETA-V2",
-      "must_bind": ["learning_rate", "betas", "weight_decay", "epsilon", "clipping", "schedule", "effective_batch"],
+      "observed_pr": 376,
+      "observed_head_sha": "a4b0543738545bbb37d26446c56ab5056c982d86",
+      "observed_decision": "INSUFFICIENT_EVIDENCE",
+      "observed_training_started": false,
+      "must_bind": [
+        "learning_rate",
+        "betas",
+        "weight_decay",
+        "epsilon",
+        "clipping",
+        "schedule",
+        "effective_batch"
+      ],
       "published_terminal_identity": null
     },
     "clipping": {
       "preferred_worker": "TRAIN-243-10M-CLIPPING-AUTHORITY-V2",
+      "observed_branch_count": 0,
       "published_terminal_identity": null
     },
     "data": {
@@ -28,8 +45,12 @@
     },
     "batch": {
       "preferred_worker": "TRAIN-245-10M-EFFECTIVE-BATCH-V2",
+      "observed_pr": 377,
+      "observed_head_sha": "7269a96102ecaa9ecc44731abd94cd9a7252bc35",
+      "observed_decision": "INSUFFICIENT_EVIDENCE / BLOCKED_MISSING_TRAIN244_AUTHORITY",
+      "observed_training_started": false,
       "published_terminal_identity": null,
-      "note": "If TRAIN-245 is not yet terminal, MODEL-246 may consume the effective batch fixed by terminal TRAIN-244 only if TRAIN-244 explicitly freezes it; otherwise block."
+      "note": "TRAIN-245 is published but cannot select a batch while TRAIN-244 lacks an exact optimizer recipe; MODEL-246 must not guess the batch."
     }
   },
   "historical_control": {
@@ -46,7 +67,10 @@
     "optimizer": {
       "name": "AdamW",
       "learning_rate": 0.0003,
-      "betas": [0.9, 0.95],
+      "betas": [
+        0.9,
+        0.95
+      ],
       "eps": 1e-08,
       "weight_decay": 0.1,
       "gradient_clip_norm": 1.0
@@ -95,10 +119,10 @@
     "replacement_rule": "No context-default replacement from a single seed; any longer-context promotion requires multiple paired seeds under one immutable terminal optimizer/data/tokenizer contract."
   },
   "blockers": [
-    "No branch, PR, commit, or terminal artifact for TRAIN-243-10M-CLIPPING-AUTHORITY-V2 was discoverable at the execution cutoff.",
-    "No branch, PR, commit, or terminal artifact for TRAIN-244-10M-LR-BETA-V2 was discoverable at the execution cutoff.",
+    "TRAIN-243-10M-CLIPPING-AUTHORITY-V2 remains absent: no matching branch was discoverable after TRAIN-244 publication.",
+    "TRAIN-244 PR #376 is published at a4b0543738545bbb37d26446c56ab5056c982d86 but its decision is INSUFFICIENT_EVIDENCE and it executed zero optimizer updates because TRAIN-243 is absent; no exact 10M optimizer recipe is selected.",
     "DATA-230 branch exists but still points to DATA-214 evidence rather than a terminal DATA-230 corpus authority.",
-    "TRAIN-245-10M-EFFECTIVE-BATCH-V2 was not published at the cutoff; effective batch therefore cannot be silently guessed if TRAIN-244 does not freeze it."
+    "TRAIN-245 PR #377 is published at 7269a96102ecaa9ecc44731abd94cd9a7252bc35 but is blocked on TRAIN-244 and selects no effective batch."
   ],
-  "report_sha256": "5a607ac54d8dd0b3d2f7a560ed316ee1708f1230404c199ff96e5ff97c8ddf49"
+  "report_sha256": "f504d4c751bb2572f9993f76ea0bf8f38e6f298c2176d8252813a820cbed182a"
 }
