@@ -165,8 +165,9 @@ def qualify_one(config: dict[str, Any], document_id: int, out_dir: Path) -> dict
     if str(export_control.get("itar") or "NO").upper() not in ("NO", "FALSE", "0"):
         reasons.append("ITAR_EXPORT_CONTROL")
 
+    # NTRS defines public sensitiveInformation value 2 as NONE.
     sensitive = record.get("sensitiveInformation")
-    if sensitive not in (None, 0, False, "0"):
+    if sensitive not in (None, 2, "2"):
         reasons.append("SENSITIVE_INFORMATION_FLAG")
 
     title = record.get("title")
@@ -244,9 +245,19 @@ def build_evidence(config: dict[str, Any], out_dir: Path) -> dict[str, Any]:
             if left["normalized_sha256"] == right["normalized_sha256"]:
                 duplicate_pairs.append({"left": left["document_id"], "right": right["document_id"], "kind": "EXACT"})
                 continue
-            score = jaccard(shingles(normalized_texts[left["document_id"]]), shingles(normalized_texts[right["document_id"]]))
+            score = jaccard(
+                shingles(normalized_texts[left["document_id"]]),
+                shingles(normalized_texts[right["document_id"]]),
+            )
             if score >= float(config["near_duplicate_jaccard_threshold"]):
-                duplicate_pairs.append({"left": left["document_id"], "right": right["document_id"], "kind": "NEAR", "jaccard": score})
+                duplicate_pairs.append(
+                    {
+                        "left": left["document_id"],
+                        "right": right["document_id"],
+                        "kind": "NEAR",
+                        "jaccard": score,
+                    }
+                )
 
     terminal_reasons: list[str] = []
     if len(admitted) < int(config["minimum_admitted_records"]):
@@ -254,11 +265,15 @@ def build_evidence(config: dict[str, Any], out_dir: Path) -> dict[str, Any]:
     if duplicate_pairs:
         terminal_reasons.append("INTERNAL_DUPLICATE_OR_NEAR_DUPLICATE")
 
-    family_identity = sha256(canonical_bytes({
-        "family_id": config["family_id"],
-        "document_ids": [row["document_id"] for row in admitted],
-        "normalized_sha256": [row["normalized_sha256"] for row in admitted],
-    }))
+    family_identity = sha256(
+        canonical_bytes(
+            {
+                "family_id": config["family_id"],
+                "document_ids": [row["document_id"] for row in admitted],
+                "normalized_sha256": [row["normalized_sha256"] for row in admitted],
+            }
+        )
+    )
 
     evidence: dict[str, Any] = {
         "schema_version": config["schema_version"],
@@ -347,7 +362,10 @@ def verify_pins(config: dict[str, Any], evidence: dict[str, Any]) -> None:
     current = pins_from_evidence(evidence)
     if current != pins:
         print("PIN_MISMATCH", file=sys.stderr)
-        print(json.dumps({"expected": pins, "current": current}, indent=2, ensure_ascii=False), file=sys.stderr)
+        print(
+            json.dumps({"expected": pins, "current": current}, indent=2, ensure_ascii=False),
+            file=sys.stderr,
+        )
         raise SystemExit(2)
     if evidence["authority"] != "ADMIT":
         raise SystemExit("sealed authority is not ADMIT")
@@ -366,7 +384,12 @@ def main() -> None:
     evidence_path = out_dir / "nasa_ntrs_usgov_abstracts_authority.json"
     evidence_path.write_bytes(canonical_bytes(evidence) + b"\n")
     pins = pins_from_evidence(evidence)
-    print(json.dumps({"authority": evidence["authority"], "pins": pins, "totals": evidence["totals"]}, sort_keys=True))
+    print(
+        json.dumps(
+            {"authority": evidence["authority"], "pins": pins, "totals": evidence["totals"]},
+            sort_keys=True,
+        )
+    )
     if args.mode == "verify":
         verify_pins(config, evidence)
     if evidence["authority"] != "ADMIT":
