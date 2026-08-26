@@ -13,6 +13,7 @@ MODELSPEC_SHA256 = (
 PARAMETER_COUNT = 20_613_440
 
 PILOT_AUTHORITIES = (
+    "launch_binding",
     "corpus",
     "unique_loss_ledger",
     "tokenizer",
@@ -42,6 +43,12 @@ def _positive_number(value: Any) -> bool:
         and math.isfinite(float(value))
         and float(value) > 0.0
     )
+
+
+def _hex_text(value: Any, length: int) -> bool:
+    if not isinstance(value, str) or len(value) != length:
+        return False
+    return all(char in "0123456789abcdef" for char in value)
 
 
 def validate_contract(data: Mapping[str, Any]) -> list[str]:
@@ -154,12 +161,55 @@ def _validate_recipe(item: Mapping[str, Any], blockers: list[str]) -> None:
         blockers.append("training_recipe.gradient_clip_norm_invalid")
     if not _nonnegative_int(item.get("seed")):
         blockers.append("training_recipe.seed_invalid")
-    if not _positive_int(item.get("requested_unique_loss_positions")):
-        blockers.append("training_recipe.requested_unique_loss_positions_invalid")
-    if not _positive_int(item.get("max_optimizer_updates")):
-        blockers.append("training_recipe.max_optimizer_updates_invalid")
-    if not _nonempty_text(item.get("stopping_rule")):
-        blockers.append("training_recipe.stopping_rule_missing")
+    for key in (
+        "requested_unique_loss_positions",
+        "requested_total_training_exposures",
+        "max_exposures_per_unique_position",
+        "max_optimizer_updates",
+        "checkpoint_interval_steps",
+    ):
+        if not _positive_int(item.get(key)):
+            blockers.append(f"training_recipe.{key}_invalid")
+    for key in (
+        "stopping_rule",
+        "restart_policy",
+        "selection_validation_schedule",
+        "resource_plan_identity",
+    ):
+        if not _nonempty_text(item.get(key)):
+            blockers.append(f"training_recipe.{key}_missing")
+    if not _positive_number(item.get("estimated_training_flops")):
+        blockers.append("training_recipe.estimated_training_flops_invalid")
+    if not _positive_number(item.get("estimated_wall_clock_seconds")):
+        blockers.append("training_recipe.estimated_wall_clock_seconds_invalid")
+
+
+def _validate_launch_binding(evidence: Mapping[str, Any], blockers: list[str]) -> None:
+    binding = evidence.get("launch_binding")
+    if not isinstance(binding, Mapping):
+        return
+    if not _hex_text(binding.get("code_sha"), 40):
+        blockers.append("launch_binding.code_sha_invalid")
+    if binding.get("modelspec_sha256") != MODELSPEC_SHA256:
+        blockers.append("launch_binding.modelspec_sha256_mismatch")
+    if not _hex_text(binding.get("config_sha256"), 64):
+        blockers.append("launch_binding.config_sha256_invalid")
+
+    links = {
+        "corpus_identity": ("corpus", "identity"),
+        "loss_ledger_identity": ("unique_loss_ledger", "identity"),
+        "tokenizer_identity": ("tokenizer", "identity"),
+        "checkpoint_identity": ("checkpoint", "identity"),
+        "evaluation_firewall_identity": ("evaluation_firewall", "identity"),
+        "training_recipe_identity": ("training_recipe", "identity"),
+    }
+    for binding_key, (authority_name, authority_key) in links.items():
+        expected = evidence.get(authority_name)
+        expected_identity = expected.get(authority_key) if isinstance(expected, Mapping) else None
+        if not _nonempty_text(binding.get(binding_key)):
+            blockers.append(f"launch_binding.{binding_key}_missing")
+        elif binding.get(binding_key) != expected_identity:
+            blockers.append(f"launch_binding.{binding_key}_mismatch")
 
 
 def assess_launch(
@@ -218,6 +268,10 @@ def assess_launch(
             blockers.append("evaluation_firewall.training_overlap_nonzero")
         if firewall.get("tokenizer_fit_overlap_count") != 0:
             blockers.append("evaluation_firewall.tokenizer_fit_overlap_nonzero")
+        if firewall.get("final_test_access_before_training") is not False:
+            blockers.append("evaluation_firewall.final_test_pretraining_access_forbidden")
+        if firewall.get("final_test_access_before_terminal_selection") is not False:
+            blockers.append("evaluation_firewall.final_test_preselection_access_forbidden")
 
     recipe = evidence.get("training_recipe")
     if isinstance(recipe, Mapping):
@@ -225,9 +279,24 @@ def assess_launch(
 
     if isinstance(ledger, Mapping) and isinstance(recipe, Mapping):
         available = ledger.get("authorized_unique_loss_positions")
-        requested = recipe.get("requested_unique_loss_positions")
-        if _positive_int(available) and _positive_int(requested) and requested > available:
-            blockers.append("training_recipe.requests_more_unique_loss_than_authorized")
+        requested_unique = recipe.get("requested_unique_loss_positions")
+        requested_total = recipe.get("requested_total_training_exposures")
+        max_exposures = recipe.get("max_exposures_per_unique_position")
+        if _positive_int(available) and _positive_int(requested_unique):
+            if requested_unique > available:
+                blockers.append("training_recipe.requests_more_unique_loss_than_authorized")
+        if _positive_int(requested_unique) and _positive_int(requested_total):
+            if requested_total < requested_unique:
+                blockers.append("training_recipe.total_exposure_below_unique_requirement")
+        if (
+            _positive_int(available)
+            and _positive_int(requested_total)
+            and _positive_int(max_exposures)
+            and requested_total > available * max_exposures
+        ):
+            blockers.append("training_recipe.total_exposure_exceeds_replay_cap")
+
+    _validate_launch_binding(evidence, blockers)
 
     pilot_blockers = sorted(set(blockers))
     pilot_ready = not pilot_blockers
@@ -243,6 +312,8 @@ def assess_launch(
             "gradient_health_passed",
             "checkpoint_resume_passed",
             "evaluation_isolation_passed",
+            "throughput_measured",
+            "peak_memory_within_plan",
         ):
             if pilot.get(key) is not True:
                 long_blockers.append(f"bounded_pilot.{key}_not_proven")
