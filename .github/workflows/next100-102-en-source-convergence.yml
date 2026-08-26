@@ -1,0 +1,43 @@
+name: NEXT100-102 EN Source Convergence
+
+on:
+  pull_request:
+    paths:
+      - "configs/data/next100_102_en_source_convergence_v1.json"
+      - "data/registry/external_snapshots.v2.json"
+      - "tools/validate_next100_102_en_source_convergence.py"
+      - ".github/workflows/next100-102-en-source-convergence.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  converge-terminal-en-authorities:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Prove exact source checkout
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Validate convergence and adversarial fail-closed cases
+        run: >-
+          python tools/validate_next100_102_en_source_convergence.py
+          --self-test
+          --report-out "$RUNNER_TEMP/next100-102-en-source-convergence.json"
+      - name: Upload exact-head convergence evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: next100-102-en-source-convergence-${{ env.SOURCE_SHA }}
+          path: ${{ runner.temp }}/next100-102-en-source-convergence.json
+          if-no-files-found: error
+          retention-days: 30
