@@ -360,7 +360,15 @@ def _run_manifest(
         "dpo": False,
         "paid_compute": False,
     }
-    return _self_hashed(value)
+    # Bind the manifest to its persisted JSON semantics before hashing. Dataclass
+    # tuples (notably AdamW betas) serialize as JSON arrays; normalizing here keeps
+    # strict phase1/resume equality while preserving the fail-closed identity check.
+    persisted_value = json.loads(
+        json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    )
+    if not isinstance(persisted_value, dict):
+        raise LadderError("run manifest must normalize to a JSON object")
+    return _self_hashed(persisted_value)
 
 
 def _checkpoint_identity(
