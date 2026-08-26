@@ -1,0 +1,61 @@
+{
+  "schema": "12-6.expensive-run-launch-request.v1",
+  "binding": {
+    "workflow": "scale141-10m-learned-continuation",
+    "scale": "10m"
+  },
+  "purpose_profile": {
+    "profile_id": "linux-x86_64",
+    "path": "requirements/locks/linux-x86_64/profile.json"
+  },
+  "required_modules": ["pytest", "torch"],
+  "required_commands": [".scale141/bin/ruff"],
+  "test_selectors": ["tests/test_scale141_10m_runtime_v3.py"],
+  "critical_imports": ["twelve_six.model", "twelve_six.tokenization", "twelve_six.training"],
+  "model_spec": {
+    "schema_version": 1,
+    "vocab_size": 256,
+    "max_seq_len": 1024,
+    "d_model": 256,
+    "n_layers": 12,
+    "n_heads": 8,
+    "n_kv_heads": 2,
+    "head_dim": 32,
+    "d_ff": 864,
+    "activation": "swiglu",
+    "norm_kind": "rmsnorm",
+    "norm_placement": "pre",
+    "norm_eps": 1e-5,
+    "position_embedding": "rope",
+    "rope_theta": 10000.0,
+    "rope_rotary_dim": 32,
+    "attention_bias": false,
+    "mlp_bias": false,
+    "attention_dropout": 0.0,
+    "final_norm": true,
+    "tie_word_embeddings": true,
+    "lm_head_bias": false
+  },
+  "model_spec_sha256": "61caa5469123e23b9b72fc2024140bfca84c4c480dcb0a7e712ba800a4f22998",
+  "parameter_count": 10000640,
+  "tokenizer": {
+    "kind": "byte",
+    "version": "s0-byte-v1",
+    "config_sha256": "b04055c1061dd641dcab7cb9d62a931f09b8d1a070140a926ceb4e91d73ca8e1",
+    "vocab_sha256": "905ed40bb42cc4d550e228ff5f24158d504b38e8ed5974dfa3077bd5867ad571",
+    "vocab_size": 256
+  },
+  "corpus": {
+    "manifest_path": "scale141-evidence/corpus-manifest.json",
+    "identity_key": "corpus_identity_sha256",
+    "expected_identity_sha256": "422f545da93526ceba2c0ff738e0b9deac65f35bfb31d87d2aab068cda091fc8"
+  },
+  "checkpoint_output": "scale141-evidence/checkpoints",
+  "disk_min_free_bytes": 2147483648,
+  "budget": {
+    "optimizer_steps": 20000,
+    "target_optimized_tokens": 2000000,
+    "max_wall_minutes": 360
+  },
+  "requires_gpu": false
+}
