@@ -1,0 +1,222 @@
+name: DATA-228 Immutable Source Probe
+
+on:
+  push:
+    branches:
+      - data228/real-ua-en-diversity-v2
+    paths:
+      - .github/workflows/data228-source-probe.yml
+      - configs/data/data228_source_probe_v1.json
+
+permissions:
+  contents: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: data228/real-ua-en-diversity-v2
+          fetch-depth: 0
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Acquire exact objects and compute immutable identities
+        env:
+          PYTHONPATH: src
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+
+          import hashlib
+          import json
+          import re
+          import unicodedata
+          from pathlib import Path
+          from urllib.request import Request, urlopen
+
+          from twelve_six.data.pipeline import PipelineConfig, _quality_reason
+          from twelve_six.data.snapshot_promotion import _chunk_text
+
+          root = Path('.')
+          config = json.loads(Path('configs/data/data228_source_probe_v1.json').read_text(encoding='utf-8'))
+          out = Path('reports/data228')
+          out.mkdir(parents=True, exist_ok=True)
+          evidence_dir = Path('data/external/rights-evidence/data228')
+          evidence_dir.mkdir(parents=True, exist_ok=True)
+
+          MAX_BYTES = 2_000_000
+
+          def sha256(payload: bytes) -> str:
+              return hashlib.sha256(payload).hexdigest()
+
+          def canonical(value: object) -> bytes:
+              return (json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(',', ':')) + '\n').encode('utf-8')
+
+          def fetch(url: str) -> bytes:
+              req = Request(url, headers={'User-Agent': '12-6-ai-DATA-228/1.0', 'Accept-Encoding': 'identity'})
+              with urlopen(req, timeout=30) as response:
+                  length = response.headers.get('Content-Length')
+                  if length is not None and int(length) > MAX_BYTES:
+                      raise RuntimeError(f'oversized source: {url}')
+                  payload = response.read(MAX_BYTES + 1)
+              if len(payload) > MAX_BYTES:
+                  raise RuntimeError(f'oversized source: {url}')
+              return payload
+
+          def normalize_text(text: str) -> str:
+              text = unicodedata.normalize('NFKC', text.replace('\r\n', '\n').replace('\r', '\n'))
+              lines = [' '.join(line.split()) for line in text.split('\n')]
+              return '\n'.join(line for line in lines if line).strip()
+
+          def markdown_visible(text: str) -> str:
+              # Strip YAML front matter and translation-source HTML comments so the
+              # Ukrainian source contributes only visible Ukrainian documentation.
+              if text.startswith('---\n'):
+                  end = text.find('\n---\n', 4)
+                  if end != -1:
+                      text = text[end + 5:]
+              text = re.sub(r'<!--.*?-->', '', text, flags=re.DOTALL)
+              text = re.sub(r'\{\{<.*?>\}\}', ' ', text, flags=re.DOTALL)
+              text = re.sub(r'\{\{%.*?%\}\}', ' ', text, flags=re.DOTALL)
+              text = re.sub(r'!\[([^\]]*)\]\([^)]*\)', r'\1', text)
+              text = re.sub(r'\[([^\]]+)\]\([^)]*\)', r'\1', text)
+              text = re.sub(r'[`*_#>|]+', ' ', text)
+              return text
+
+          adapter_descriptor = {
+              'plain_text': {
+                  'name': 'plain_text',
+                  'decode': 'strict-utf8',
+                  'truncate_chars': 50000,
+                  'normalize': 'NFKC+LF+per-line-whitespace-collapse+drop-empty-lines+strip',
+              },
+              'markdown_visible_v1': {
+                  'name': 'markdown_visible_v1',
+                  'decode': 'strict-utf8',
+                  'extract': [
+                      'strip-leading-yaml-frontmatter',
+                      'strip-html-comments',
+                      'strip-hugo-shortcodes',
+                      'retain-markdown-link-labels',
+                      'strip-basic-markdown-punctuation',
+                  ],
+                  'truncate_chars': 50000,
+                  'normalize': 'NFKC+LF+per-line-whitespace-collapse+drop-empty-lines+strip',
+              },
+          }
+
+          quality_config = PipelineConfig(
+              split_seed='12-6-data228-probe-v1',
+              validation_fraction=0.20,
+              min_chars=60,
+              max_chars=1600,
+              min_alpha_ratio=0.35,
+              near_duplicate_threshold=0.92,
+              near_duplicate_shingle_words=5,
+              tiny_near_dedup_max_documents=5000,
+          )
+
+          reports = []
+          for item in config['candidates']:
+              raw = fetch(item['acquisition_url'])
+              license_raw = fetch(item['license_url'])
+              text = raw.decode('utf-8', errors='strict')
+              if item['adapter'] == 'markdown_visible_v1':
+                  extracted = markdown_visible(text)
+              elif item['adapter'] == 'plain_text':
+                  extracted = text
+              else:
+                  raise RuntimeError(f"unsupported adapter {item['adapter']}")
+              bounded = extracted[:50000]
+              normalized = normalize_text(bounded)
+              normalized_bytes = normalized.encode('utf-8')
+              chunks = _chunk_text(normalized)
+              quality_reasons: dict[str, int] = {}
+              accepted_lengths: list[int] = []
+              accepted_sha: list[str] = []
+              for chunk in chunks:
+                  reason = _quality_reason(chunk, quality_config)
+                  if reason is not None:
+                      quality_reasons[reason] = quality_reasons.get(reason, 0) + 1
+                      continue
+                  encoded = chunk.encode('utf-8')
+                  accepted_lengths.append(len(encoded))
+                  accepted_sha.append(sha256(normalize_text(chunk).encode('utf-8')))
+
+              if len(accepted_sha) != len(set(accepted_sha)):
+                  raise RuntimeError(f"{item['source_id']}: exact duplicate chunks in candidate")
+              if not accepted_lengths:
+                  raise RuntimeError(f"{item['source_id']}: no chunks pass privacy/quality preview")
+
+              evidence_name = (
+                  'kubernetes-website-cc-by-4.0-25f3dcb.txt'
+                  if item['language'] == 'uk'
+                  else 'cpython-psf-license-7f0ccd6.txt'
+              )
+              evidence_path = evidence_dir / evidence_name
+              evidence_path.write_bytes(license_raw)
+
+              desc = adapter_descriptor[item['adapter']]
+              reports.append({
+                  **item,
+                  'raw_sha256': sha256(raw),
+                  'raw_bytes': len(raw),
+                  'git_blob_sha1': hashlib.sha1(b'blob ' + str(len(raw)).encode('ascii') + b'\0' + raw).hexdigest(),
+                  'license_evidence_path': evidence_path.as_posix(),
+                  'license_evidence_sha256': sha256(license_raw),
+                  'license_evidence_bytes': len(license_raw),
+                  'normalization_descriptor': desc,
+                  'normalization_identity_sha256': sha256(canonical(desc)),
+                  'normalized_sha256': sha256(normalized_bytes),
+                  'normalized_utf8_bytes': len(normalized_bytes),
+                  'privacy_quality_preview': {
+                      'chunk_count': len(chunks),
+                      'accepted_chunk_count': len(accepted_lengths),
+                      'rejected_chunk_count': len(chunks) - len(accepted_lengths),
+                      'rejection_reasons': quality_reasons,
+                      'accepted_document_utf8_bytes': {
+                          'min': min(accepted_lengths),
+                          'max': max(accepted_lengths),
+                          'mean': sum(accepted_lengths) / len(accepted_lengths),
+                      },
+                      'exact_duplicate_chunks': 0,
+                  },
+              })
+
+          family_keys = {(x['language'], x['source_family']) for x in reports}
+          if len(family_keys) != len(reports):
+              raise RuntimeError('candidate source families are not independent by language')
+          if any(x['source_family'] in {'rada.open-data.laws-texts', 'standardebooks.manual'} for x in reports):
+              raise RuntimeError('candidate aliases an incumbent source family')
+
+          core = {
+              'schema_version': '12-6.data228-source-probe-report.v1',
+              'status': 'PASS',
+              'local_free_only': True,
+              'authority_boundary': 'DATA_181_BASELINE_USED_BECAUSE_DATA_213_PUBLICATION_NOT_DISCOVERABLE',
+              'baseline_source_sha': config['baseline']['source_sha'],
+              'candidates': reports,
+          }
+          report = {**core, 'report_sha256': sha256(canonical(core))}
+          Path('reports/data228/source-probe.json').write_text(
+              json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2) + '\n',
+              encoding='utf-8', newline='\n'
+          )
+          PY
+
+      - name: Commit content-addressed probe evidence
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add reports/data228/source-probe.json data/external/rights-evidence/data228
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "DATA-228: record immutable source probe evidence [skip ci]"
+          git push origin HEAD:data228/real-ua-en-diversity-v2
