@@ -1,10 +1,10 @@
 {
   "schema_version": "12-6.next100-028-php-doc-uk-source.v1",
   "worker_id": "NEXT100-028-DATA-UA-TECH-GITHUB",
-  "mode": "PROBE",
+  "mode": "LOCKED",
   "local_free_only": true,
   "terminal": false,
-  "terminal_state": "PROBE",
+  "terminal_state": "LOCKED_PENDING_EXACT_HEAD_REPRODUCTION",
   "source": {
     "repository": "https://github.com/php/doc-uk",
     "canonical_repository": "github.com/php/doc-uk",
@@ -29,7 +29,7 @@
     "license_commit": "2cbc37d710751c33862709e622d0e928c9015c45",
     "license_path": "appendices/license.xml",
     "license_blob_sha1": "d8b388c25c87a12208e173a0f8e9f10754884dda",
-    "license_sha256": null,
+    "license_sha256": "6ecc1c14303ea6a60706fa2495e7dc0ee9654b9a996f98ccb3ff0a597571aace",
     "rights_basis": "The official PHP licensing page states that PHP manual text and comments are covered by Creative Commons Attribution 3.0, and the Ukrainian manual copyright page states that the material may be distributed under CC BY 3.0 or later. The pinned manual license text grants reproduction, adaptation (including translation) and distribution rights. Under policy://12-6/data/explicit-model-training-evidence-v1 this exact bounded snapshot is approved for model-training use and redistribution subject to attribution/license obligations; public accessibility alone is not the basis.",
     "redistribution_conditions": "Retain appropriate attribution to the PHP Documentation Group, identify the CC BY 3.0-or-later terms, preserve applicable copyright/license notices, and indicate modifications where required. This authority covers redistribution of the admitted source snapshot; it makes no blanket licensing claim about unrelated PHP website assets or model outputs."
   },
@@ -87,10 +87,10 @@
   "expected_lock": {
     "file_count": 10,
     "raw_bytes": 59986,
-    "raw_bundle_sha256": null,
-    "normalized_bytes": null,
-    "normalized_bundle_sha256": null,
-    "license_sha256": null,
+    "raw_bundle_sha256": "8b6e7235083095de65398eba4923aaf37a40808341ac04f8accfdd800e83a5d6",
+    "normalized_bytes": 30510,
+    "normalized_bundle_sha256": "8802e3aa3d608305f8612efa9d90fdef65a76cdf518596fb52e3e7e5201db2e1",
+    "license_sha256": "6ecc1c14303ea6a60706fa2495e7dc0ee9654b9a996f98ccb3ff0a597571aace",
     "manifest_sha256": null
   }
 }
