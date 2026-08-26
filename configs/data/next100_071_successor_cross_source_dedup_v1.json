@@ -1,0 +1,213 @@
+{
+  "schema_version": "12-6.next100-071-successor-cross-source-dedup.v1",
+  "worker_id": "NEXT100-071-GLOBAL-CROSS-SOURCE-DEDUP",
+  "local_free_only": true,
+  "model_training_executed": false,
+  "tokenizer_fit_executed": false,
+  "paid_compute_used": false,
+  "final_test_payload_read": false,
+  "base_inventory_binding": {
+    "path": "configs/data/next100_065_cross_source_dedup_v3.json",
+    "worker_id": "NEXT100-065-CROSSSOURCE-DEDUP-V3",
+    "authority_head_sha": "efc278cec0e4773eb4ff405bf4b4d24ee63b5d13",
+    "git_blob_sha1": "c1e05f09490e25f6fed765dfb70d900717528f4d",
+    "numeric_capacity_bytes": 243970,
+    "source_object_count": 11
+  },
+  "convergence_binding": {
+    "path": "configs/data/next100_063_source_registry_convergence_v1.json",
+    "branch_base_head_sha": "67578821e2e1e3ed3b0a35ba79933bcfab299379",
+    "git_blob_sha1": "e47e5b48de488dd93024888f54cc81462dddd98d",
+    "next_gate": "GLOBAL_CROSS_SOURCE_DEDUP"
+  },
+  "expected_pre_dedup": {
+    "numeric_capacity_bytes": {
+      "uk": 100856,
+      "en": 144151,
+      "code": 69133,
+      "total": 314140
+    },
+    "independent_family_counts": {
+      "uk": 4,
+      "en": 2,
+      "code": 4,
+      "total": 10
+    },
+    "source_object_count": 21,
+    "family_minimum_required_per_stratum": 2
+  },
+  "late_numeric_sources": [
+    {
+      "source_id": "kmu-secretariat-2026-07-16-prime-minister-appointment",
+      "source_family": "ua.kmu.portal.secretariat-news",
+      "stable_origin_id": "publisher:kmu.gov.ua:secretariat-news",
+      "stable_object_id": "sha256:3caa6832e6b40cc8c5c57ed8e3080fa046dc9c351591399aad6fe8e90b9bdd66",
+      "modality": "uk",
+      "evidence_status": "DEDICATED_TERMINAL",
+      "declared_capacity_bytes": 2806,
+      "expected_raw_bytes": 2805,
+      "expected_raw_sha256": "3caa6832e6b40cc8c5c57ed8e3080fa046dc9c351591399aad6fe8e90b9bdd66",
+      "acquisition_url": "https://raw.githubusercontent.com/Oleksii-debug/12-6-ai./40950a950b60921fd856af2719e1ae2486d9e892/data/external/snapshots/next100-026-kmu/raw/kmu-secretariat-2026-07-16-prime-minister-appointment.txt",
+      "origin_key": "kmu.gov.ua:secretariat-news:2026-07-16-prime-minister-appointment",
+      "authority_ref": "PR#449@40950a950b60921fd856af2719e1ae2486d9e892"
+    },
+    {
+      "source_id": "kmu-secretariat-2026-08-05-resilience-audit",
+      "source_family": "ua.kmu.portal.secretariat-news",
+      "stable_origin_id": "publisher:kmu.gov.ua:secretariat-news",
+      "stable_object_id": "sha256:f6ce7360e6fff650b09c065889157ac021685a8bba24a03fad8bd5644f974f9b",
+      "modality": "uk",
+      "evidence_status": "DEDICATED_TERMINAL",
+      "declared_capacity_bytes": 1890,
+      "expected_raw_bytes": 1889,
+      "expected_raw_sha256": "f6ce7360e6fff650b09c065889157ac021685a8bba24a03fad8bd5644f974f9b",
+      "acquisition_url": "https://raw.githubusercontent.com/Oleksii-debug/12-6-ai./40950a950b60921fd856af2719e1ae2486d9e892/data/external/snapshots/next100-026-kmu/raw/kmu-secretariat-2026-08-05-resilience-audit.txt",
+      "origin_key": "kmu.gov.ua:secretariat-news:2026-08-05-resilience-audit",
+      "authority_ref": "PR#449@40950a950b60921fd856af2719e1ae2486d9e892"
+    },
+    {
+      "source_id": "kmu-secretariat-2026-07-23-budget-2027",
+      "source_family": "ua.kmu.portal.secretariat-news",
+      "stable_origin_id": "publisher:kmu.gov.ua:secretariat-news",
+      "stable_object_id": "sha256:13c5665e9ebbc5213feb4d3ad54e017b2ac3a40659c327b01df3877f25de71d1",
+      "modality": "uk",
+      "evidence_status": "DEDICATED_TERMINAL",
+      "declared_capacity_bytes": 949,
+      "expected_raw_bytes": 948,
+      "expected_raw_sha256": "13c5665e9ebbc5213feb4d3ad54e017b2ac3a40659c327b01df3877f25de71d1",
+      "acquisition_url": "https://raw.githubusercontent.com/Oleksii-debug/12-6-ai./40950a950b60921fd856af2719e1ae2486d9e892/data/external/snapshots/next100-026-kmu/raw/kmu-secretariat-2026-07-23-budget-2027.txt",
+      "origin_key": "kmu.gov.ua:secretariat-news:2026-07-23-budget-2027",
+      "authority_ref": "PR#449@40950a950b60921fd856af2719e1ae2486d9e892"
+    },
+    {
+      "source_id": "kmu-secretariat-2026-08-18-resilience-funding",
+      "source_family": "ua.kmu.portal.secretariat-news",
+      "stable_origin_id": "publisher:kmu.gov.ua:secretariat-news",
+      "stable_object_id": "sha256:4b1071c5bfc55072bfab530216d994a719dfb9f1dc22a7ccbc58e799b0c5ca37",
+      "modality": "uk",
+      "evidence_status": "DEDICATED_TERMINAL",
+      "declared_capacity_bytes": 1281,
+      "expected_raw_bytes": 1280,
+      "expected_raw_sha256": "4b1071c5bfc55072bfab530216d994a719dfb9f1dc22a7ccbc58e799b0c5ca37",
+      "acquisition_url": "https://raw.githubusercontent.com/Oleksii-debug/12-6-ai./40950a950b60921fd856af2719e1ae2486d9e892/data/external/snapshots/next100-026-kmu/raw/kmu-secretariat-2026-08-18-resilience-funding.txt",
+      "origin_key": "kmu.gov.ua:secretariat-news:2026-08-18-resilience-funding",
+      "authority_ref": "PR#449@40950a950b60921fd856af2719e1ae2486d9e892"
+    },
+    {
+      "source_id": "kmu-secretariat-2026-08-13-frontline-communities",
+      "source_family": "ua.kmu.portal.secretariat-news",
+      "stable_origin_id": "publisher:kmu.gov.ua:secretariat-news",
+      "stable_object_id": "sha256:4c3d9ccf517b611019c42e8a36665cdb7ed3ce4e1e94b07afc246fab4a7df021",
+      "modality": "uk",
+      "evidence_status": "DEDICATED_TERMINAL",
+      "declared_capacity_bytes": 951,
+      "expected_raw_bytes": 950,
+      "expected_raw_sha256": "4c3d9ccf517b611019c42e8a36665cdb7ed3ce4e1e94b07afc246fab4a7df021",
+      "acquisition_url": "https://raw.githubusercontent.com/Oleksii-debug/12-6-ai./40950a950b60921fd856af2719e1ae2486d9e892/data/external/snapshots/next100-026-kmu/raw/kmu-secretariat-2026-08-13-frontline-communities.txt",
+      "origin_key": "kmu.gov.ua:secretariat-news:2026-08-13-frontline-communities",
+      "authority_ref": "PR#449@40950a950b60921fd856af2719e1ae2486d9e892"
+    },
+    {
+      "source_id": "kmu-secretariat-2026-08-19-eib-community-recovery",
+      "source_family": "ua.kmu.portal.secretariat-news",
+      "stable_origin_id": "publisher:kmu.gov.ua:secretariat-news",
+      "stable_object_id": "sha256:5705acebf5e5bf87a0d1ae5ede798819ab2757e6bb8c165341d2d3fb63d909a4",
+      "modality": "uk",
+      "evidence_status": "DEDICATED_TERMINAL",
+      "declared_capacity_bytes": 1276,
+      "expected_raw_bytes": 1275,
+      "expected_raw_sha256": "5705acebf5e5bf87a0d1ae5ede798819ab2757e6bb8c165341d2d3fb63d909a4",
+      "acquisition_url": "https://raw.githubusercontent.com/Oleksii-debug/12-6-ai./40950a950b60921fd856af2719e1ae2486d9e892/data/external/snapshots/next100-026-kmu/raw/kmu-secretariat-2026-08-19-eib-community-recovery.txt",
+      "origin_key": "kmu.gov.ua:secretariat-news:2026-08-19-eib-community-recovery",
+      "authority_ref": "PR#449@40950a950b60921fd856af2719e1ae2486d9e892"
+    },
+    {
+      "source_id": "ua-verba-nomis1864-bounded24",
+      "source_family": "ua.verba.public-domain.nomis1864",
+      "stable_origin_id": "edition:nomis1864:1864",
+      "stable_object_id": "sha256:1eb91dbd631898c6a2efe274b700a5be0deaca243c0a9d5d30994ddadcf43598",
+      "modality": "uk",
+      "evidence_status": "DEDICATED_TERMINAL",
+      "declared_capacity_bytes": 1659,
+      "expected_raw_bytes": 1659,
+      "expected_raw_sha256": "1eb91dbd631898c6a2efe274b700a5be0deaca243c0a9d5d30994ddadcf43598",
+      "acquisition_url": "https://raw.githubusercontent.com/Oleksii-debug/12-6-ai./d75edd497c7fb1054e86d892c9462f059c1f4aa9/data/external/snapshots/next100_027_verba_nomis1864_normalized.txt",
+      "origin_key": "verba:nomis1864:34a2c10ac35e1febad6c270a88fc8b83790407da:bounded24",
+      "authority_ref": "PR#462@d75edd497c7fb1054e86d892c9462f059c1f4aa9"
+    },
+    {
+      "source_id": "nist-sp-800-204",
+      "source_family": "en.usgov.nist.technical-series",
+      "stable_origin_id": "publisher:nist:technical-series",
+      "stable_object_id": "doi:10.6028/NIST.SP.800-204",
+      "modality": "en",
+      "evidence_status": "DEDICATED_TERMINAL",
+      "declared_capacity_bytes": 19668,
+      "expected_raw_bytes": 19668,
+      "expected_raw_sha256": "570e8d75b6dc6aefee1f089818b46765c0dd1965e06947bcc2fff0169d22274e",
+      "acquisition_url": "https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-204.pdf",
+      "origin_key": "doi:10.6028/NIST.SP.800-204",
+      "authority_ref": "PR#472@b7491745b34ac8679baaf69cb96cd609dcbe0a16",
+      "materialization_policy": "NEXT100_034_NIST_PDF_BODY_NFKC_BOUNDED_V1",
+      "pdf_start_page": 9,
+      "upstream_raw_bytes": 814054,
+      "upstream_raw_sha256": "25412c860165e5ee1cfbf26ed47c56f4d213b1996a73365f5561be6403cf7588"
+    },
+    {
+      "source_id": "nist-sp-800-204c",
+      "source_family": "en.usgov.nist.technical-series",
+      "stable_origin_id": "publisher:nist:technical-series",
+      "stable_object_id": "doi:10.6028/NIST.SP.800-204C",
+      "modality": "en",
+      "evidence_status": "DEDICATED_TERMINAL",
+      "declared_capacity_bytes": 19736,
+      "expected_raw_bytes": 19736,
+      "expected_raw_sha256": "558da6a0886036a01a5139d635b1352b5cf5d74655d919c66a04e84f2d49c0fe",
+      "acquisition_url": "https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-204C.pdf",
+      "origin_key": "doi:10.6028/NIST.SP.800-204C",
+      "authority_ref": "PR#472@b7491745b34ac8679baaf69cb96cd609dcbe0a16",
+      "materialization_policy": "NEXT100_034_NIST_PDF_BODY_NFKC_BOUNDED_V1",
+      "pdf_start_page": 11,
+      "upstream_raw_bytes": 717082,
+      "upstream_raw_sha256": "d51133dc55a804990d80ba4b9c35e3fbb2d5acdf7b330b66edeaae59fc63d69b"
+    },
+    {
+      "source_id": "nist-sp-800-215",
+      "source_family": "en.usgov.nist.technical-series",
+      "stable_origin_id": "publisher:nist:technical-series",
+      "stable_object_id": "doi:10.6028/NIST.SP.800-215",
+      "modality": "en",
+      "evidence_status": "DEDICATED_TERMINAL",
+      "declared_capacity_bytes": 19954,
+      "expected_raw_bytes": 19954,
+      "expected_raw_sha256": "6c99c3b14ee3ea7fe915940e38c080dbf2a785f1abcee2fd73e7fd731424770d",
+      "acquisition_url": "https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-215.pdf",
+      "origin_key": "doi:10.6028/NIST.SP.800-215",
+      "authority_ref": "PR#472@b7491745b34ac8679baaf69cb96cd609dcbe0a16",
+      "materialization_policy": "NEXT100_034_NIST_PDF_BODY_NFKC_BOUNDED_V1",
+      "pdf_start_page": 11,
+      "upstream_raw_bytes": 1089318,
+      "upstream_raw_sha256": "159e17820a0a337c4a7e9c7ee8b966823e81dc72f5c6229e7d7244c40b0b1645"
+    }
+  ],
+  "zero_credit_exclusions": [
+    {
+      "worker_id": "NEXT100-037-DATA-EN-PYTHON-DOCS",
+      "authority_ref": "PR#467@5a6a495a24bce449334cbc5126d0114f61a9f57c",
+      "family_id": "python.cpython.documentation",
+      "source_normalized_bytes_not_capacity_credit": 17901,
+      "accepted_chunk_count": 14,
+      "rejected_chunk_count": 2,
+      "numeric_capacity_bytes": 0,
+      "independent_family_credit": 0,
+      "reason": "BLOCKED_ACCEPTED_CHUNK_BYTE_LEDGER_NOT_MATERIALIZED"
+    }
+  ],
+  "claim_boundary": {
+    "post_dedup_capacity_claimed_before_execution": false,
+    "canonical_balance_diversity_claimed": false,
+    "corpus_materialization_authorized": false,
+    "tokenizer_fit_authorized": false,
+    "model_training_authorized": false
+  }
+}
