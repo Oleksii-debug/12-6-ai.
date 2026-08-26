@@ -148,8 +148,8 @@ class TwentyMInference:
         backend: FirstPartyInferenceBackend = load_first_party_backend(
             Path(checkpoint),
             device=device,
+            spec_validator=validate_20m_spec,
         )
-        validate_20m_spec(backend.model.spec)
         return cls(backend=backend, source="checkpoint", init_seed=None)
 
 
