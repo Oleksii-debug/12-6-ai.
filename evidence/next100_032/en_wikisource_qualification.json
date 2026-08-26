@@ -1,0 +1,186 @@
+{
+  "attribution": {
+    "minimum_ledger_fields": [
+      "William James; The Varieties of Religious Experience; Longmans, Green, and Co.; 1902",
+      "English Wikisource",
+      "each selected permanent revision URL",
+      "page history URL or equivalent contributor-history locator",
+      "CC BY-SA 4.0 license URI",
+      "statement of extraction/normalization changes"
+    ],
+    "required": true
+  },
+  "bounded_acquisition": {
+    "extraction": "take transcluded Page body only; exclude running header, page number, scan image, navigation, footer, categories, and site chrome",
+    "network_policy": "HTTPS_GET_ONLY_EXACT_PERMALINK_OR_MEDIAWIKI_REVISION_LOOKUP; NO_CATEGORY_CRAWL; NO_DUMP",
+    "normalization": "UTF-8; Unicode NFKC; collapse horizontal whitespace inside extracted text; preserve paragraph boundaries; join selected pages in ascending scan-page order with one blank line; terminal LF",
+    "normalized_bytes": 5536,
+    "normalized_sha256": "1c4ec6e66b425e517a17fb865dabaf3aeddfb1a16cb7e40bca2984be56dce0e7",
+    "page_revision_count": 3,
+    "raw_extracted_bytes": 5535,
+    "raw_extracted_sha256": "263404f43b0c3c6964bf266a34694e06db96bbb0d1dbba37f29e475480d4e46d",
+    "selection": "exact Page namespace revision IDs 8450353, 8450364, 6931309 only"
+  },
+  "claims_not_made": [
+    "English Wikisource as a whole is rights-uniform",
+    "the source is broadly representative of English",
+    "Wikisource is an independent family from every other Wikimedia project",
+    "evaluation use is authorized",
+    "model weights have any specific license consequence",
+    "final corpus inclusion or corpus freeze"
+  ],
+  "dedup": {
+    "against_live_registry": {
+      "exact_page_normalized_hash_match": false,
+      "exact_whole_snapshot_normalized_hash_match": false,
+      "observed_independent_family_count": 4,
+      "observed_source_count": 5,
+      "registry_head": "b0523ccbc4b957615aac849d476cfa851be87578",
+      "registry_identity_sha256": "917e9bc31b2fa040d25e807ae3c01aa2cce32420752a891caacfb6c830e6632c",
+      "status": "PASS_EXACT_HASH_ONLY"
+    },
+    "corpus_convergence_requirement": "RUN_CROSS_SOURCE_NEAR_COPY_AND_MIRROR_AUDIT_BEFORE_CANONICAL_CORPUS_INCLUSION",
+    "within_subset": {
+      "duplicate_normalized_page_hashes": 0,
+      "duplicate_revision_ids": 0,
+      "max_pairwise_word_5gram_jaccard": 0.0,
+      "status": "PASS"
+    }
+  },
+  "evidence_identity_sha256": "d16a5e53ad3940778278532ee0be0602d7b9bbca3b27e53ad51e2287b1fa32e9",
+  "family_lineage": {
+    "automatic_independent_family_credit": false,
+    "current_diversity_credit": 0,
+    "family_candidate_id": "wikimedia.enwikisource.scan-backed-public-text",
+    "parent_ecosystem": "wikimedia",
+    "reason": "This worker does not count a Wikimedia sister project as independent merely because its hostname/project differs. Registry convergence must reconcile any Wikipedia/Wikisource/Wikibooks siblings and underlying shared editions.",
+    "work_lineage_id": "william-james.varieties-of-religious-experience.longmans-1902"
+  },
+  "live_registry_binding": {
+    "must_refresh_before_seal": true,
+    "observed_head_sha": "b0523ccbc4b957615aac849d476cfa851be87578",
+    "observed_registry_identity_sha256": "917e9bc31b2fa040d25e807ae3c01aa2cce32420752a891caacfb6c830e6632c",
+    "registry_path": "data/registry/external_snapshots.v2.json"
+  },
+  "local_free_only": true,
+  "privacy": {
+    "final_corpus_privacy_scan_required": true,
+    "initial_risk": "LOW",
+    "source_character": "historical published 1902 public text"
+  },
+  "provenance": {
+    "scan_index": {
+      "edition_metadata": "1902; Longmans; New York; source DjVu",
+      "permanent_url": "https://en.wikisource.org/w/index.php?title=Index:The_varieties_of_religious_experience,_a_study_in_human_nature.djvu&oldid=13271826",
+      "proofread_state": "DONE_ALL_WORK_PAGES_VALIDATED",
+      "revision_id": 13271826,
+      "title": "Index:The varieties of religious experience, a study in human nature.djvu",
+      "transclusion_state": "FULLY_TRANSCLUDED"
+    },
+    "selected_revisions": [
+      {
+        "normalized_extracted_sha256": "7b6d3f4c5b85685fa2a6ab92d8c2d5dda1764454690649d8f37f9e93983db239",
+        "page_namespace_title": "Page:The varieties of religious experience, a study in human nature.djvu/20",
+        "permanent_url": "https://en.wikisource.org/w/index.php?title=Page:The_varieties_of_religious_experience,_a_study_in_human_nature.djvu/20&oldid=8450353",
+        "proofread_state": "VALIDATED",
+        "revision_id": 8450353
+      },
+      {
+        "normalized_extracted_sha256": "e038bde85df84c10b202b862999d5a164b7618b2497f40ae141406611ef0d305",
+        "page_namespace_title": "Page:The varieties of religious experience, a study in human nature.djvu/21",
+        "permanent_url": "https://en.wikisource.org/w/index.php?title=Page:The_varieties_of_religious_experience,_a_study_in_human_nature.djvu/21&oldid=8450364",
+        "proofread_state": "VALIDATED",
+        "revision_id": 8450364
+      },
+      {
+        "normalized_extracted_sha256": "b19d15540229a0c6e1426ec8c5b25d618e0bb23a5d7dc76deadb2e06118bea54",
+        "page_namespace_title": "Page:The varieties of religious experience, a study in human nature.djvu/22",
+        "permanent_url": "https://en.wikisource.org/w/index.php?title=Page:The_varieties_of_religious_experience,_a_study_in_human_nature.djvu/22&oldid=6931309",
+        "proofread_state": "VALIDATED",
+        "revision_id": 6931309
+      }
+    ],
+    "work": {
+      "author": "William James",
+      "edition_year": 1902,
+      "mainspace_permanent_url": "https://en.wikisource.org/w/index.php?title=The_Varieties_of_Religious_Experience&oldid=14857116",
+      "mainspace_revision_id": 14857116,
+      "publisher": "Longmans, Green, and Co.",
+      "title": "The Varieties of Religious Experience",
+      "underlying_work_rights": "PUBLIC_DOMAIN_WORLDWIDE_PD_OLD"
+    }
+  },
+  "quality": {
+    "language": "en",
+    "language_evidence": "English Wikisource metadata plus manual content inspection; selected pages are English prose",
+    "latin_ascii_letter_share": 1.0,
+    "quality_verdict": "PASS_FOR_SOURCE_QUALIFICATION",
+    "selected_pages_total": 3,
+    "selected_pages_validated": 3,
+    "unicode_replacement_characters": 0,
+    "word_count": 930
+  },
+  "rights": {
+    "edition_specific": {
+      "excluded_by_default": [
+        "modern translations",
+        "modern introductions or annotations",
+        "user/talk/project namespace commentary",
+        "works carrying bespoke or uncertain license tags",
+        "scans or illustrations whose rights are not independently cleared"
+      ],
+      "status": "ALLOWED_FOR_SELECTED_1902_SCAN_TRANSCRIPTION_ONLY"
+    },
+    "platform_contributions": {
+      "cc_by_sa_4_legal_revision_id": 566062,
+      "cc_by_sa_4_legal_url": "https://foundation.wikimedia.org/w/index.php?title=Legal:Text_of_the_Creative_Commons_Attribution-ShareAlike_4.0_International_License/en&oldid=566062",
+      "chosen_redistribution_compliance_path": "CC-BY-SA-4.0",
+      "copyright_policy_revision_id": 15195841,
+      "copyright_policy_url": "https://en.wikisource.org/w/index.php?title=Wikisource:Copyright_policy&oldid=15195841",
+      "licenses": [
+        "CC-BY-SA-4.0",
+        "GFDL-unversioned-no-invariant-sections"
+      ],
+      "obligations": [
+        "retain creator/contributor attribution where supplied",
+        "retain a URI or hyperlink to the licensed material where reasonably practicable",
+        "identify CC BY-SA 4.0 and provide license URI/text",
+        "indicate modifications",
+        "apply ShareAlike when redistributed material is Adapted Material under the license",
+        "do not add legal or technological restrictions inconsistent with the license"
+      ],
+      "reuse_guidance_revision_id": 14771651,
+      "reuse_guidance_url": "https://en.wikisource.org/w/index.php?title=Wikisource:Reusing_Wikisource_content&oldid=14771651",
+      "status": "ALLOWED"
+    },
+    "project_policy_compatibility": {
+      "acquisition": "ALLOWED",
+      "analysis": "ALLOWED",
+      "evaluation": "NOT_SEPARATELY_ADMITTED",
+      "model_training": "ALLOWED",
+      "redistribution": "ALLOWED_WITH_OBLIGATIONS",
+      "storage": "ALLOWED"
+    },
+    "underlying_work": {
+      "basis": "PD-old: published before 1931; author died at least 100 years ago",
+      "evidence_revision_id": 14857116,
+      "status": "ALLOWED"
+    }
+  },
+  "schema_version": "12-6.source-qualification.next100-032.v1",
+  "source_platform": "English Wikisource",
+  "terminal_scope": "BOUNDED_RIGHTS_CLEAR_SCAN_BACKED_SUBSET_ONLY",
+  "terminal_verdict": "ADMIT",
+  "training_scope": {
+    "downstream_model_weight_license_effect": "NOT_ADJUDICATED_BY_THIS_SOURCE_AUTHORITY",
+    "evaluation": "NOT_SEPARATELY_ADMITTED",
+    "purpose": "model_training_pretraining_only",
+    "redistribution": "ALLOWED_WITH_ATTRIBUTION_AND_SHAREALIKE_FOR_PLATFORM_CONTRIBUTION_LAYER",
+    "source_id": "en.wikisource.varieties-1902.pages20-22"
+  },
+  "whole_project_dump": {
+    "reason": "English Wikisource is not a rights-uniform corpus: underlying works may be public domain or compatibly licensed, platform contributions are separately licensed, and edition/translation/annotation rights are work-specific.",
+    "verdict": "REJECT"
+  },
+  "worker_id": "NEXT100-032-DATA-EN-WIKISOURCE"
+}
