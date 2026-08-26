@@ -11,23 +11,29 @@ from twelve_six.local_assistant.orchestrator import LocalAssistantOrchestrator, 
 
 
 class LocalAssistantOrchestratorTests(unittest.TestCase):
-    def test_nonterminal_capabilities_fail_closed_before_execution(self) -> None:
+    def test_nonterminal_mock_tools_fail_closed_before_execution(self) -> None:
         orchestrator = LocalAssistantOrchestrator()
-        with self.assertRaises(CapabilityUnavailableError):
-            orchestrator.run(
-                "fixture",
-                RunOptions(mock_model=True, use_hypothesis_search=True),
-            )
-        with self.assertRaises(CapabilityUnavailableError):
-            orchestrator.run(
-                "fixture",
-                RunOptions(mock_model=True, memory_db=":memory:"),
-            )
         with self.assertRaises(CapabilityUnavailableError):
             orchestrator.run(
                 "calc:2+2",
                 RunOptions(mock_model=True, use_mock_tools=True),
             )
+
+    def test_terminal_hypothesis_and_memory_surfaces_are_composable(self) -> None:
+        result = LocalAssistantOrchestrator().run(
+            "fixture",
+            RunOptions(
+                mock_model=True,
+                use_hypothesis_search=True,
+                memory_db=":memory:",
+            ),
+        )
+        self.assertEqual(result.text, "fixture")
+        self.assertIn("hypothesis_before", result.trace)
+        self.assertIn("hypothesis_after", result.trace)
+        self.assertEqual(result.trace["memory"]["evidence"], [])
+        self.assertTrue(result.trace["authorities"]["hypothesis_search"]["terminal"])
+        self.assertTrue(result.trace["authorities"]["memory_rag"]["terminal"])
 
     def test_probe_is_plain_text_and_machine_trace_is_safety_bounded(self) -> None:
         result = LocalAssistantOrchestrator().run(

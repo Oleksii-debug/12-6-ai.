@@ -22,8 +22,8 @@ class CapabilityAuthority:
         return asdict(self)
 
 
-# This slate is intentionally conservative. A green candidate is not promoted to
-# terminal merely because its source is present in this composition.
+# A component is enabled only when a later live authority explicitly recognizes
+# its tested source head as terminal/converged. Source presence alone is never enough.
 AUTHORITIES: dict[str, CapabilityAuthority] = {
     "model_adapter": CapabilityAuthority(
         name="model_adapter",
@@ -52,19 +52,21 @@ AUTHORITIES: dict[str, CapabilityAuthority] = {
         source_status="PASS_COMPONENT_CONVERGENCE",
         terminal=True,
         accepted_source=True,
-        reason="POSTBASE-357 independent convergence authority is green; production verifier blob is pinned.",
+        reason=(
+            "POSTBASE-357 independent convergence authority is green; production verifier blob is pinned."
+        ),
         workflow_run_id=32983319052,
     ),
     "hypothesis_search": CapabilityAuthority(
         name="hypothesis_search",
         source_pr=422,
         head_sha="ea1d8fff0d3235660dffe7ba411e192df83f5e1d",
-        source_status="EXACT_HEAD_GREEN_NO_LATER_TERMINAL_DECLARATION",
-        terminal=False,
+        source_status="TERMINAL_EXACT_HEAD_LOCAL_FREE_SUCCESS",
+        terminal=True,
         accepted_source=True,
         reason=(
-            "Dedicated and generic workflows are green, but the later POSTBASE-255 "
-            "terminal intake explicitly did not recognize a separate terminal POSTBASE-356 authority."
+            "POSTBASE-256/356 dedicated and generic exact-head workflows are green; "
+            "NEXT100-097 final live authority refresh explicitly recognizes this head as terminal."
         ),
         workflow_run_id=32983600700,
     ),
@@ -72,12 +74,12 @@ AUTHORITIES: dict[str, CapabilityAuthority] = {
         name="memory_rag",
         source_pr=436,
         head_sha="976adda1cfe981d7b6363d267854759bee802006",
-        source_status="CONVERGENCE_CANDIDATE_SCOPED_GREEN",
-        terminal=False,
+        source_status="TERMINAL_SCOPED_EXACT_HEAD_LOCAL_FREE_SUCCESS",
+        terminal=True,
         accepted_source=True,
         reason=(
-            "POSTBASE-358 scoped convergence workflow is green, but its own documentation labels the "
-            "state CONVERGENCE CANDIDATE; no later terminal authority is promoted here."
+            "POSTBASE-358 scoped exact-head LOCAL_FREE convergence workflow is green; "
+            "NEXT100-097 final live authority refresh explicitly recognizes the component as terminal."
         ),
         workflow_run_id=32983793329,
     ),
@@ -85,12 +87,12 @@ AUTHORITIES: dict[str, CapabilityAuthority] = {
         name="mock_tools",
         source_pr=384,
         head_sha="2f675e48a3172911a6f98ab6d4c46162ff536128",
-        source_status="SOURCE_ACCEPTED_BY_LATER_INTEGRATION_BUT_EXACT_HEAD_GATE_FAILED",
+        source_status="NONTERMINAL_EXACT_HEAD_GATE_FAILED",
         terminal=False,
         accepted_source=True,
         reason=(
-            "POSTBASE-254 source is retained byte-exact, but its exact-head dedicated workflow failed; "
-            "a terminal successor must explicitly supersede this gate."
+            "POSTBASE-254 source is retained byte-exact, but dedicated exact-head run 32961334473 failed; "
+            "NEXT100-097 live refresh still found no terminal NEXT100-086 successor."
         ),
         workflow_run_id=32961334473,
     ),

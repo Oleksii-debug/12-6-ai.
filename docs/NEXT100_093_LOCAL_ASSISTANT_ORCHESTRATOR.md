@@ -12,7 +12,7 @@ The library entrypoint is `twelve_six.local_assistant.LocalAssistantOrchestrator
 PYTHONPATH=src python -m twelve_six.local_assistant --task "plain text" --checkpoint PATH --trace trace.json
 ```
 
-One line can also be read from stdin. Standard output is the selected plain-text response. Machine evidence is written separately as JSON when `--trace` is supplied. `--authorities` prints the live-baked capability slate. `--probe` runs only a deterministic project-authored mechanics fixture.
+One line can also be read from stdin. Standard output is the selected plain-text response. Machine evidence is written separately as JSON when `--trace` is supplied. `--authorities` prints the capability slate. `--probe` runs only a deterministic project-authored mechanics fixture.
 
 A learned Base checkpoint is never silently replaced by the mock fixture: ordinary model execution requires `--checkpoint`; mock mechanics require explicit `--mock-model` or `--probe`.
 
@@ -20,16 +20,16 @@ A learned Base checkpoint is never silently replaced by the mock fixture: ordina
 
 Source presence and terminal authority are separate concepts. Each component has a pinned source PR/head plus an explicit `terminal` bit. A requested nonterminal capability raises `CapabilityUnavailableError` before model, memory, hypothesis, or tool execution.
 
-Initial composition slate at authorship:
+Final late-bound slate for this worker:
 
 - POSTBASE-351 model adapter: terminal LOCAL_FREE pass.
 - POSTBASE-255 deliberation: terminal component convergence.
 - POSTBASE-357 verifier: terminal independent convergence.
-- POSTBASE-256/356 hypothesis search: source retained, gated pending a later recognized terminal convergence authority.
-- POSTBASE-358 memory/RAG: source retained, gated while its own state remains convergence candidate rather than terminal authority.
-- POSTBASE-254 deterministic mock tools: source retained, gated because the exact-head dedicated workflow failed; no local substitute is invented.
+- POSTBASE-256/356 hypothesis search: terminal exact-head LOCAL_FREE success, explicitly recognized by the later NEXT100-097 live authority refresh.
+- POSTBASE-358 memory/RAG: terminal scoped exact-head LOCAL_FREE success, explicitly recognized by the later NEXT100-097 live authority refresh.
+- POSTBASE-254 deterministic mock tools: source retained but gated; its dedicated exact-head workflow failed and the same NEXT100-097 refresh found no terminal NEXT100-086 successor.
 
-A later worker may update only the authority slate after an exact successor authority is verified. The orchestration code must not infer terminality from source presence or a green unrelated workflow.
+A later worker may update the authority slate only after an exact successor authority is verified. The orchestration code must not infer terminality from source presence or from an unrelated green workflow.
 
 ## Verifier bridge
 
@@ -49,7 +49,7 @@ The top-level trace records `base_weights_modified=false`, `training_executed=fa
 
 ## Trace privacy
 
-The top-level trace contains capability state, hashes, bounded public component traces, Base/post-Base typed evidence, and result hashes. It does not record private scratch. Memory traces, when terminally enabled, carry IDs/provenance/hash/version/score metadata rather than copying retrieved content into the orchestration trace.
+The top-level trace contains capability state, hashes, bounded public component traces, Base/post-Base typed evidence, and result hashes. It does not record private scratch. Memory traces carry IDs/provenance/hash/version/score metadata rather than copying retrieved content into the orchestration trace.
 
 ## Scope
 
