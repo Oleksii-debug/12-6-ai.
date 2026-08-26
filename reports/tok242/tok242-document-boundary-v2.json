@@ -1,0 +1,85 @@
+{
+  "base_ref": {
+    "branch": "tok189/base-token-contract-v1-20260826",
+    "sha": "8cf9f8745bf80fda63eb39735a53f19d228629a8"
+  },
+  "decision": {
+    "cross_document_policy": "NOT_AUTHORIZED_WHILE_NO_EOS_INCUMBENT_IS_ACTIVE",
+    "incumbent_boundary_policy": "NO_EXPLICIT_EOS_DOCUMENT_ISOLATED",
+    "new_token_contract_version_emitted": false,
+    "scientific_family_specific_decision": "NOT_RUN_MISSING_TOK241",
+    "why_incumbent_is_retained": "No current family-specific material evidence justifies adding EOS, and the task explicitly requires simpler no-EOS when material support is absent."
+  },
+  "execution": {
+    "cross_document_probe_executed": false,
+    "final_test_exposed": false,
+    "new_500k_probes_executed": false,
+    "paid_compute": false
+  },
+  "historical_nontransfer_evidence": {
+    "artifact_digest": "sha256:7924af47374b94568e7a859a4766946e7cde09517683598daadba600416a1f7b",
+    "artifact_id": 9595844482,
+    "authority": "RECOVER-173/TOK-115",
+    "interpretation": "Historical results are scale- and horizon-sensitive. EOS-isolated was worse at 268K and only ~0.00253 BPB better at 1M in one matched seed; matched generation did not terminate on EOS. Cross-document packing improved utilization but materially worsened 1M content BPB. This does not establish material EOS support for TOK-242.",
+    "matched_1m": {
+      "A_content_packing_efficiency": 0.9258520153985508,
+      "A_eos_terminations": "0/6 (no EOS semantics)",
+      "A_no_eos_isolated_content_bpb": 2.9800990743029656,
+      "A_source_content_tokens_per_second": 7319.635213550402,
+      "B_content_packing_efficiency": 0.9258520153985508,
+      "B_document_end_eos_bits": 6.954552930145634,
+      "B_document_end_top1_accuracy": 0.0,
+      "B_document_start_bits_after_eos": 7.2876985309996085,
+      "B_eos_isolated_content_bpb": 2.977570738345102,
+      "B_eos_terminations": "0/6",
+      "B_minus_A_content_bpb": -0.0025283359578636144,
+      "B_source_content_tokens_per_second": 7449.7784114092465,
+      "B_valid_target_packing_efficiency": 0.9278617527173914,
+      "B_vs_A_relative_ratio": 0.9991515933212874,
+      "C_content_packing_efficiency": 0.9887487934362934,
+      "C_eos_cross_document_content_bpb": 3.2338973432558054,
+      "C_eos_terminations": "0/6",
+      "C_minus_A_content_bpb": 0.25379826895283975,
+      "C_source_content_tokens_per_second": 7903.064926582203
+    },
+    "matched_268k": {
+      "A_no_eos_isolated_content_bpb": 4.325891861345296,
+      "B_eos_isolated_content_bpb": 4.385138883767211,
+      "B_minus_A_content_bpb": 0.05924702242191504,
+      "C_eos_cross_document_content_bpb": 4.483702783899142
+    },
+    "scope": "DATA-25 project-authored corpus with canonical byte tokenizer; historical only, not a substitute for TOK-241",
+    "source_sha": "e34a7089e1b93b702177b9b5f2a8bcc7b009ae57",
+    "substantial_B_later_diagnostic": {
+      "document_end_eos_bits": 0.9361343144341082,
+      "document_end_top1_accuracy": 0.5625,
+      "document_start_bits_after_eos": 13.89557693105247,
+      "eos_terminations": "1/6",
+      "optimized_tokens_including_eos": 262220,
+      "parameter_count": 1037824
+    },
+    "workflow_run": 32937994328
+  },
+  "identity_sha256": "793384fed6f8e0867fae21eabfcfc8c49824c79196d13ac2fa5efdfbfd68f605",
+  "operational_policy_while_blocked": "KEEP_EXISTING_NO_EOS_INCUMBENT",
+  "reason": "TOK-242 is defined under the tokenizer family selected by TOK-241, but no terminal TOK-241 PR, branch, commit, artifact, or prior-result authority is available at this source cut. Running family-specific ~500K boundary probes by assuming byte would violate the dependency and could mis-size vocabulary/embedding tax or checkpoint compatibility.",
+  "repository": "Oleksii-debug/12-6-ai.",
+  "schema": "12-6.tok242-document-boundary-readiness.v2",
+  "status": "BLOCKED_MISSING_TOK241_AUTHORITY",
+  "tok241_discovery": {
+    "branch_found": false,
+    "family_selected": null,
+    "matched_500k_execution_authorized": false,
+    "pr_found": false,
+    "prior_result_found": false
+  },
+  "unblock_requirements": [
+    "terminal TOK-241 family decision and immutable tokenizer artifact identity",
+    "same terminal research corpus identity and selection-validation authority used by TOK-241",
+    "family-specific deterministic EOS/EOD ID reservation/addition semantics if candidate B is representable",
+    "parameter-matched ~500K A/B probes with equal source-content exposure across paired seeds",
+    "candidate C only if the current data contract explicitly permits cross-document causal packing",
+    "checkpoint/tokenizer compatibility versioning after, not before, a supported policy change"
+  ],
+  "worker_id": "TOK-242-DOCUMENT-BOUNDARY-V2"
+}
