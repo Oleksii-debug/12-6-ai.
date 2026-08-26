@@ -26,11 +26,15 @@
     "config_blob_sha": "c1e05f09490e25f6fed765dfb70d900717528f4d",
     "terminal_refresh_cutoff_utc": "2026-08-26T18:20:54Z",
     "terminal_refresh_commit_utc": "2026-08-26T18:22:22Z",
-    "terminal_rule": "Only exact current authority heads with dedicated admission/qualification workflow completed successfully receive capacity; queued/in-progress/failed/probe/RETEST/PR-text-only claims receive zero capacity."
+    "terminal_rule": "Only exact current authority heads with dedicated admission/qualification workflow completed successfully receive capacity; queued/in-progress/failed/probe/RETEST/PR-text-only claims receive zero capacity.",
+    "latest_registry_head_observed": "efc278cec0e4773eb4ff405bf4b4d24ee63b5d13",
+    "latest_registry_config_blob_sha": "c1e05f09490e25f6fed765dfb70d900717528f4d",
+    "latest_registry_head_workflow_state_at_loss_cut": "QUEUED"
   },
   "available_unique_source_bytes": {
     "total": 243970,
-    "by_stratum": {"ua": 90044, "en": 84793, "code": 69133}
+    "by_stratum": {"ua": 90044, "en": 84793, "code": 69133},
+    "status": "DEDUP_CERTIFIED_LOWER_BOUND_EXCLUDES_LATE_TERMINAL_KMU"
   },
   "families": [
     {"stratum": "ua", "family_id": "ua.rada.open-data.laws-texts", "bytes": 88565},
@@ -81,20 +85,72 @@
   },
   "unique_loss_positions": {
     "full_current_vector_exact_total": null,
-    "status": "BLOCKED_MISSING_NEXT100_064_GENERALIZED_MULTI_SOURCE_LOSS_LEDGER",
+    "status": "BLOCKED_NEXT100_064_NO_TERMINAL_POSTPACK_CORPUS_MATERIALIZATION",
     "legacy_authority": "DATA-294-UNIQUE-LOSS-POSITION-ACCOUNTING-V1",
     "legacy_head_sha": "a0fea940ffa5c2fe0fcd874cf6e883587bb23aa5",
     "certified_partial": {"total": 173355, "ua_rada": 88564, "en_standardebooks": 84791},
     "full_stratum_status": {"ua": "UNKNOWN_1479_WIKISOURCE_BYTES_NOT_LEDGERED", "en": "EXACT_84791", "code": "UNKNOWN_69133_CODE_BYTES_NOT_LEDGERED"},
     "source_bytes_covered_by_legacy_loss_ledger": 173358,
     "source_bytes_not_yet_loss_ledgered": 70612,
-    "no_source_bytes_relabelled_as_loss_positions": true
+    "no_source_bytes_relabelled_as_loss_positions": true,
+    "next100_064_authority": {
+      "head_sha": "0f4189f78b23b0aa5540fd024be0959b2fb29926",
+      "evidence_blob_sha": "49a3bfbec2464b7ea3262a23166de84bf7767fff",
+      "verdict": "BLOCKED_NO_TERMINAL_POSTPACK_CORPUS_MATERIALIZATION",
+      "exact_postpack_one_pass_maximum_total": null,
+      "training_authorized_exposure_now_total": 0,
+      "historical_prebuild_diagnostic_not_training_authority": {
+        "total": 183056,
+        "by_language": {"en": 84791, "python": 9701, "uk": 88564},
+        "by_modality": {"code": 9701, "text": 173355}
+      }
+    }
   },
   "verdict": "FAIL_RETAIN_45_35_20_POLICY_ACQUIRE_MORE_DATA_NO_BPB_RETUNING",
   "blockers": [
-    "EN_TERMINAL_DEDUP_CERTIFIED_FAMILY_COUNT_1_LT_2",
-    "FULL_VECTOR_UNIQUE_LOSS_POSITION_LEDGER_ABSENT_NEXT100_064",
-    "20M_UNIQUE_SOURCE_BYTE_CAPACITY_GAP_19756030"
+    "EN_TERMINAL_FAMILY_COUNT_1_LT_2",
+    "NEXT100_064_BLOCKED_NO_TERMINAL_POSTPACK_CORPUS_MATERIALIZATION",
+    "LATE_TERMINAL_KMU_PENDING_SUCCESSOR_GLOBAL_DEDUP_CONVERGENCE",
+    "20M_DEDUP_CERTIFIED_UNIQUE_SOURCE_BYTE_GAP_19756030"
   ],
-  "authority_identity_sha256": "dd24167846a15822d34a233329e3c65bb54601940bbad3ad13fd1ea0a6fcda58"
+  "final_concurrency_refresh": {
+    "next100_064_head_sha": "0f4189f78b23b0aa5540fd024be0959b2fb29926",
+    "next100_064_cutoff_utc": "2026-08-26T18:29:51Z",
+    "next100_064_verdict": "BLOCKED_NO_TERMINAL_POSTPACK_CORPUS_MATERIALIZATION",
+    "late_terminal_admission": {
+      "source_id": "ua.kmu.portal.secretariat-news.bounded-six",
+      "family_id": "ua.kmu.portal.secretariat-news",
+      "head_sha": "40950a950b60921fd856af2719e1ae2486d9e892",
+      "dedicated_workflow_run": 32997970539,
+      "dedicated_workflow_conclusion": "success",
+      "declared_normalized_bytes": 9153,
+      "status": "TERMINAL_ADMITTED_PENDING_SUCCESSOR_GLOBAL_DEDUP_CERTIFICATION"
+    },
+    "live_terminal_admitted_pre_successor_global_dedup_bytes": {
+      "total": 253123,
+      "by_stratum": {"ua": 99197, "en": 84793, "code": 69133},
+      "family_count": {"ua": 3, "en": 1, "code": 4, "global": 8},
+      "effective_family_count_hill_q2": {
+        "ua": {"exact_fraction": "1405720687/1132817725", "decimal": 1.2409063311575568},
+        "en": {"exact_fraction": "1/1", "decimal": 1.0},
+        "code": {"exact_fraction": "4779371689/3029667097", "decimal": 1.5775237133256559},
+        "global": {"exact_fraction": "64071253129/18149244021", "decimal": 3.5302436319036143}
+      },
+      "family_shares_pct": [
+        {"family_id": "ua.rada.open-data.laws-texts", "global_pct": 34.98891843096044, "own_stratum_pct": 89.28193392945352},
+        {"family_id": "ua.literature.lesia-ukrainka.na-krylah-pisen.1892-lviv", "global_pct": 0.5843009129948681, "own_stratum_pct": 1.4909725092492716},
+        {"family_id": "ua.kmu.portal.secretariat-news", "global_pct": 3.6160285710899442, "own_stratum_pct": 9.227093561297217},
+        {"family_id": "en.standardebooks.manual", "global_pct": 33.498733817156086, "own_stratum_pct": 100.0},
+        {"family_id": "github:encode/httpx", "global_pct": 3.224124239993995, "own_stratum_pct": 11.804782086702444},
+        {"family_id": "github:psf/requests", "global_pct": 0.6091899985382601, "own_stratum_pct": 2.2304832713754648},
+        {"family_id": "github:django/django", "global_pct": 21.395132010919593, "own_stratum_pct": 78.33596111842391},
+        {"family_id": "github:Kludex/starlette", "global_pct": 2.083572018346812, "own_stratum_pct": 7.628773523498185}
+      ],
+      "conditional_acquisition_gaps_if_kmu_survives_successor_global_dedup": {
+        "by_stratum": {"ua": 8900803, "en": 6915207, "code": 3930867},
+        "total": 19746877
+      }
+    }
+  },
+  "authority_identity_sha256": "f71890282a81d94445d98d335152cdc837ac6b16251a34b1bb372c95a87b581b"
 }
