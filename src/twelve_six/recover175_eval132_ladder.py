@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -18,7 +19,7 @@ from twelve_six.model import TwelveSixDecoder
 SCHEMA = "12-6.learned-base-ladder-v1.eval132-ua-convergence.v1"
 DIAGNOSTIC_SCHEMA = "12-6.eval132-ua-ladder-diagnostic.v1"
 AUTHORITY = "LOCAL_FREE_RAW_BASE_DIAGNOSTIC_NOT_STAGE_PROMOTION"
-DEFAULT_M150_SHA = "8344085ddd0b52e4b698c3344a1d0482153525dc"
+DEFAULT_M150_SHA = os.environ.get("M150_SOURCE_SHA", "d2f2ee8eb2fe408ccb487f0df98a3bbc972be0bc")
 EXPECTED_EVAL132_BLOBS = {
     "data/evaluation/benchmark_registry.json": "170d80f90b871481ceae6b3d651656130c1892f7",
     "data/evaluation/ua_raw_base_v1/manifest.json": "2db0bf5c6f93838852b8a730584946986fed530e",
