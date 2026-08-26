@@ -6,9 +6,9 @@ import argparse
 import json
 from pathlib import Path
 
-from twelve_six.inference.verify218_authority import (
+from twelve_six.inference.verify218_authority_v2 import (
     load_json_object,
-    validate_verify218_authority,
+    validate_verify218_authority_v2,
 )
 
 
@@ -27,7 +27,7 @@ def _parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
-    evidence = validate_verify218_authority(
+    evidence = validate_verify218_authority_v2(
         load_json_object(args.verify_manifest, label="VERIFY-218 authority manifest"),
         load_json_object(args.verify_artifact_metadata, label="VERIFY-218 artifact metadata"),
         load_json_object(args.verify_run_metadata, label="VERIFY-218 run metadata"),
