@@ -22,12 +22,17 @@ That proof is intentionally narrower than the current task requirement. EVAL-303
 
 ## Late-bound Ukrainian candidates
 
-The final source vector was refreshed against current exact PR heads.
+The final source vector was refreshed against current exact PR heads and newly appearing Ukrainian source workers.
 
-- PR #446, Kubernetes UA recovery: same `kubernetes.website.docs` family already represented by EVAL-290; exact-head recovery workflow was queued at the captured vector and the source authority still requires separate evaluation-purpose admission. It contributes zero new family credit.
-- PR #449, KMu Secretariat news: independent Ukrainian family candidate, but its exact-head source workflow was queued and its source authority says evaluation is not separately admitted. No pre-training selection reservation exists. It contributes zero records and zero family credit.
+- PR #446, Kubernetes UA recovery at head `a0887ba79b670e908b414123875cf81fda711a56`: same `kubernetes.website.docs` family already represented by EVAL-290; exact-head recovery workflow remains queued and DATA-324 does not grant evaluation use. The replacement object has no pre-training selection reservation. It contributes zero records and zero family credit.
+- PR #449, KMu Secretariat news: independent Ukrainian family and bounded training-source candidate, but its exact-head source workflow remains queued, evaluation is `NOT_SEPARATELY_ADMITTED`, and no pre-training selection reservation exists. It contributes zero records and zero family credit.
+- PR #454, Ukrainian PHP documentation: rights are compatible with bounded training reuse, but exact source materialization is still `RETEST_RUNNER_QUEUE_ONLY`; evaluation is `NOT_SEPARATELY_ADMITTED` and no pre-training selection reservation exists. It contributes zero records and zero family credit.
 - PR #455, bounded public-domain Ukrainian Wikisource edition: exact-head source qualification is terminal-success, but evaluation is explicitly not separately admitted and no pre-training selection reservation exists. It contributes zero records and zero family credit.
-- PR #462, bounded Verba/Nomis1864 snapshot: exact-head source qualification is terminal-success, but the authority explicitly does not admit selection-validation and no pre-training selection reservation exists. It contributes zero records and zero family credit.
+- PR #462, bounded Verba/Nomis1864 snapshot: exact-head source qualification is terminal-success, but selection-validation/final-test use is explicitly not admitted and no pre-training selection reservation exists. It contributes zero records and zero family credit.
+- PR #471, Derzhgeocadastre open-data register: reuse rights pass, but the exact snapshot remains PROBE/RETEST with the dedicated workflow queued; evaluation is `NOT_ADMITTED` and no pre-training selection reservation exists. It contributes zero records and zero family credit.
+- PR #478, Ukrainian Rust Book OER: the exact bounded candidate remains PROBE-only with its source workflow queued; evaluation is `NOT_SEPARATELY_ADMITTED` and no pre-training selection reservation exists. It contributes zero records and zero family credit.
+
+The Lang-UK court-decision path in PR #447 is not a selectable source object at this cutoff: privacy and byte-exact materialization remain unresolved, and the audit admits zero training/evaluation records. Ukrainian Wikipedia/Wikibooks paths are likewise not promoted because their own rights/lineage gates remain blocked or RETEST.
 
 Public accessibility, public-domain status, CC BY reuse rights, or model-training permission are not substituted for purpose-specific selection-validation authority.
 
@@ -37,7 +42,7 @@ A later successor may add records only when all of these are simultaneously true
 
 1. The exact source object has terminal source and rights authority.
 2. A separate purpose decision explicitly admits the exact object for selection-validation.
-3. An immutable reservation predates any training or tokenizer-fit exposure of the selected records.
+3. An immutable reservation predates any model-training or tokenizer-fit exposure of the selected records.
 4. A deterministic selector binds exact selected record identities and content hashes and marks them ineligible for training, tokenizer fitting and final-test use.
 5. A DATA-232/DATA-300-compatible exact, normalized, near-copy, fragment, mirror and connected-component scan against the exact training corpus proves zero selected-object training-cluster overlap.
 6. Final-test separation is established without reading or publishing final-test outcomes.
@@ -48,7 +53,7 @@ Until then, the lawful Ukrainian selection-validation capacity remains the prese
 
 Machine authority: `configs/evaluation/next100_058_ua_selection_validation_v2.json`
 
-Authority identity SHA-256: `15ccaea65c2e273af5fb7ac3606d2c0cdd2bb9010df3be0da783267e8478eed8`
+Authority identity SHA-256: `a52179e925f1261cf2d17ec3485dc8f6de19ffd000afb5ba15fd0e58ff2e4fca`
 
 Validator: `tools/validate_next100_058_ua_selection_validation_v2.py`
 
