@@ -16,8 +16,10 @@ import json
 import os
 import re
 import shutil
+import stat
 import subprocess
 import tempfile
+import unicodedata
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -30,6 +32,7 @@ MAX_MEMBER_BYTES = 50_000_000
 MAX_TOTAL_UNCOMPRESSED_BYTES = 10_000_000_000
 _HEX40 = re.compile(r"^[0-9a-f]{40}$")
 _HEX64 = re.compile(r"^[0-9a-f]{64}$")
+_DRIVE = re.compile(r"^[A-Za-z]:")
 
 
 class IntakeError(RuntimeError):
@@ -131,16 +134,18 @@ def load_object_snapshot(path: Path) -> tuple[dict[str, Any], dict[str, Any]]:
 
 
 def normalize_member_path(raw: str) -> str:
-    if not raw or "\x00" in raw:
+    if not isinstance(raw, str) or not raw or "\x00" in raw:
         raise IntakeError("empty/NUL archive member path")
     if "\\" in raw:
         raise IntakeError(f"backslash archive path rejected: {raw!r}")
-    path = PurePosixPath(raw)
-    if path.is_absolute():
-        raise IntakeError(f"absolute archive path rejected: {raw!r}")
-    if not path.parts or any(part in {"", ".", ".."} for part in path.parts):
+
+    value = unicodedata.normalize("NFKC", raw)
+    if value.startswith("/") or _DRIVE.match(value):
+        raise IntakeError(f"absolute/archive-drive path rejected: {raw!r}")
+    parts = value.split("/")
+    if any(part in {"", ".", ".."} for part in parts):
         raise IntakeError(f"unsafe archive path rejected: {raw!r}")
-    return path.as_posix()
+    return PurePosixPath(*parts).as_posix()
 
 
 def _parse_int(value: str, field: str, path: str) -> int:
@@ -171,8 +176,11 @@ def parse_7z_slt(text: str) -> list[dict[str, Any]]:
                 current = {}
             continue
         if " = " in line:
-            key, value = line.split(" = ", 1)
-            current[key.strip()] = value
+            raw_key, value = line.split(" = ", 1)
+            key = raw_key.strip()
+            if key in current:
+                raise IntakeError(f"duplicate 7z listing field: {key}")
+            current[key] = value
     if current:
         records.append(current)
 
@@ -187,9 +195,11 @@ def parse_7z_slt(text: str) -> list[dict[str, Any]]:
         seen.add(member_path)
 
         attributes = record.get("Attributes", "")
-        is_directory = member_path.endswith("/") or attributes.startswith("D")
+        is_directory = attributes.startswith("D")
         if any(key in record for key in ("Symbolic Link", "Hard Link")):
             raise IntakeError(f"archive link member rejected: {member_path}")
+        if not is_directory and "Size" not in record:
+            raise IntakeError(f"archive file member missing Size: {member_path}")
 
         size = _parse_int(record.get("Size", "0"), "Size", member_path)
         if not is_directory and size > MAX_MEMBER_BYTES:
@@ -198,7 +208,7 @@ def parse_7z_slt(text: str) -> list[dict[str, Any]]:
             )
         members.append(
             {
-                "path": member_path.rstrip("/") if is_directory else member_path,
+                "path": member_path,
                 "size": size,
                 "is_directory": is_directory,
                 "sha256": None,
@@ -238,6 +248,31 @@ def run_7z_listing(archive: Path, executable: str = "7z") -> list[dict[str, Any]
     return parse_7z_slt(result.stdout)
 
 
+def _collect_extracted_files(root: Path) -> dict[str, Path]:
+    actual: dict[str, Path] = {}
+    for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
+        base = Path(dirpath)
+        for name in dirnames:
+            candidate = base / name
+            mode = candidate.lstat().st_mode
+            if stat.S_ISLNK(mode):
+                raise IntakeError(f"extracted directory symlink rejected: {candidate}")
+            if not stat.S_ISDIR(mode):
+                raise IntakeError(f"extracted non-directory entry rejected: {candidate}")
+        for name in filenames:
+            candidate = base / name
+            mode = candidate.lstat().st_mode
+            if stat.S_ISLNK(mode):
+                raise IntakeError(f"extracted file symlink rejected: {candidate}")
+            if not stat.S_ISREG(mode):
+                raise IntakeError(f"extracted special file rejected: {candidate}")
+            rel = normalize_member_path(candidate.relative_to(root).as_posix())
+            if rel in actual:
+                raise IntakeError(f"duplicate normalized extracted path: {rel}")
+            actual[rel] = candidate
+    return actual
+
+
 def extract_and_hash(
     archive: Path,
     members: list[dict[str, Any]],
@@ -246,7 +281,11 @@ def extract_and_hash(
     resolved = shutil.which(executable)
     if resolved is None:
         raise IntakeError(f"required 7z executable not found: {executable}")
-    expected = {member["path"] for member in members if not member["is_directory"]}
+    expected = {
+        member["path"]: member["size"]
+        for member in members
+        if not member["is_directory"]
+    }
 
     with tempfile.TemporaryDirectory(prefix="rada-trees-intake-") as tmp:
         root = Path(tmp)
@@ -265,37 +304,26 @@ def extract_and_hash(
                 f"7z extraction failed with code {result.returncode}: {result.stderr[-500:]}"
             )
 
-        actual: dict[str, Path] = {}
-        for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
-            base = Path(dirpath)
-            for name in dirnames:
-                candidate = base / name
-                if candidate.is_symlink():
-                    raise IntakeError(f"extracted directory symlink rejected: {candidate}")
-            for name in filenames:
-                candidate = base / name
-                if candidate.is_symlink():
-                    raise IntakeError(f"extracted file symlink rejected: {candidate}")
-                rel = normalize_member_path(candidate.relative_to(root).as_posix())
-                actual[rel] = candidate
-
-        if set(actual) != expected:
-            missing = sorted(expected - set(actual))
-            extra = sorted(set(actual) - expected)
+        actual = _collect_extracted_files(root)
+        actual_sizes = {path: file.stat().st_size for path, file in actual.items()}
+        if actual_sizes != expected:
+            missing = sorted(set(expected) - set(actual_sizes))
+            extra = sorted(set(actual_sizes) - set(expected))
+            mismatched = sorted(
+                path
+                for path in set(expected) & set(actual_sizes)
+                if expected[path] != actual_sizes[path]
+            )
             raise IntakeError(
-                f"extracted member set mismatch; missing={missing[:5]} extra={extra[:5]}"
+                "extracted member mismatch; "
+                f"missing={missing[:5]} extra={extra[:5]} size_mismatch={mismatched[:5]}"
             )
 
         enriched: list[dict[str, Any]] = []
         for source in sorted(members, key=lambda item: item["path"]):
             item = dict(source)
             if not item["is_directory"]:
-                disk = actual[item["path"]]
-                if disk.stat().st_size != item["size"]:
-                    raise IntakeError(
-                        f"size mismatch after extraction for {item['path']}"
-                    )
-                item["sha256"] = sha256_file(disk)
+                item["sha256"] = sha256_file(actual[item["path"]])
             enriched.append(item)
         return enriched
 
@@ -309,8 +337,8 @@ def build_report(
     hash_members: bool = False,
 ) -> dict[str, Any]:
     primary_object = validate_object_snapshot(object_snapshot)
-    if archive.name != PRIMARY_ARCHIVE or not archive.is_file():
-        raise IntakeError("expected an existing file named exactly Rada_Trees.7z")
+    if archive.name != PRIMARY_ARCHIVE or not archive.is_file() or archive.is_symlink():
+        raise IntakeError("expected a regular non-symlink file named exactly Rada_Trees.7z")
 
     compressed_bytes = archive.stat().st_size
     if compressed_bytes != primary_object["size_bytes"]:
