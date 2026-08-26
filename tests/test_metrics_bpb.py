@@ -51,7 +51,9 @@ def test_shard_merge_matches_monolithic_accumulation() -> None:
         [math.log(2.0), 2.0 * math.log(2.0), 0.5 * math.log(2.0), math.log(2.0)],
         [1, 2, 1, 3],
     )
-    assert merged == monolithic
+    assert merged.total_utf8_bytes == monolithic.total_utf8_bytes
+    assert merged.predicted_tokens == monolithic.predicted_tokens
+    assert merged.total_nll_nats == pytest.approx(monolithic.total_nll_nats)
     assert merged.bits_per_byte == pytest.approx(monolithic.bits_per_byte)
 
 
