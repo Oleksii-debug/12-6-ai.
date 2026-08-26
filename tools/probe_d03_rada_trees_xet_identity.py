@@ -16,6 +16,8 @@ CONFIG_SCHEMA = "12-6.d03-rada-trees-xet-identity-probe.v1"
 REPORT_SCHEMA = "12-6.d03-rada-trees-xet-identity-report.v1"
 HEX40 = re.compile(r"^[0-9a-f]{40}$")
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
+EXPECTED_TREE_API_TEMPLATE = "https://huggingface.co/api/datasets/{repo_id}/tree/{revision}"
+EXPECTED_RESOLVE_TEMPLATE = "https://huggingface.co/datasets/{repo_id}/resolve/{revision}/{path}"
 
 
 class ProbeError(RuntimeError):
@@ -86,9 +88,32 @@ def _validate_config(config: Mapping[str, Any], repo_root: Path) -> None:
     if parent_json.get("rights", {}).get("dataset_card_license") != upstream.get("expected_license_discovery"):
         raise ProbeError("license discovery boundary drift")
 
+    if upstream.get("repo_type") != "dataset":
+        raise ProbeError("upstream repo type must remain dataset")
+    if upstream.get("tree_api_template") != EXPECTED_TREE_API_TEMPLATE:
+        raise ProbeError("Hub tree API template drift")
+    if upstream.get("resolve_template") != EXPECTED_RESOLVE_TEMPLATE:
+        raise ProbeError("Hub resolve template drift")
+
     revision = str(upstream.get("revision", ""))
     if not HEX40.fullmatch(revision):
         raise ProbeError("upstream revision must be exact lowercase 40-hex commit")
+
+    identity_requirements = config.get("identity_requirements")
+    if not isinstance(identity_requirements, Mapping):
+        raise ProbeError("missing identity requirements")
+    required_true = (
+        "exact_revision_required",
+        "git_blob_oid_required",
+        "xet_hash_required",
+        "tree_size_required",
+        "resolve_header_xet_crosscheck_required",
+    )
+    if any(identity_requirements.get(key) is not True for key in required_true):
+        raise ProbeError("identity requirement weakened")
+    if identity_requirements.get("archive_bytes_downloaded_by_this_probe") is not False:
+        raise ProbeError("identity probe may not download archive bodies")
+
     targets = config.get("archive_targets")
     if not isinstance(targets, list) or len(targets) != 2:
         raise ProbeError("expected exactly two archive targets")
@@ -130,10 +155,18 @@ def _tree_entries(config: Mapping[str, Any]) -> list[dict[str, Any]]:
 
 
 def _resolve_headers(url: str) -> Mapping[str, str]:
+    """Read Xet identity from the documented GET/302 resolve handshake.
+
+    Hugging Face documents X-Xet-Hash on a GET request to the resolve URL and
+    requires clients not to follow the redirect when using that identity.  A
+    normal 200/206 response is rejected because accepting it could silently
+    convert this metadata-only probe into an archive-body transfer.
+    """
+
     opener = urllib.request.build_opener(_NoRedirect)
     request = urllib.request.Request(
         url,
-        method="HEAD",
+        method="GET",
         headers={"User-Agent": "12-6-ai-rada-trees-xet-probe/1"},
     )
     try:
@@ -143,8 +176,10 @@ def _resolve_headers(url: str) -> Mapping[str, str]:
             raise ProbeError(f"resolve metadata HTTP error {exc.code}") from exc
         return {k.lower(): v for k, v in exc.headers.items()}
     else:
-        with response:
-            return {k.lower(): v for k, v in response.headers.items()}
+        response.close()
+        raise ProbeError(
+            "resolve endpoint did not return a blocked redirect; refusing possible archive body"
+        )
 
 
 def _select_tree_record(entries: list[dict[str, Any]], path: str) -> dict[str, Any]:
@@ -194,6 +229,7 @@ def _normalize_file_record(
         "git_blob_oid": oid,
         "xet_hash": xet_hash,
         "size_bytes": size,
+        "resolve_http_contract": "GET_NO_REDIRECT",
         "resolve_repo_commit": header_commit or str(upstream["revision"]),
         "resolve_xet_hash": header_xet,
         "resolve_linked_size_bytes": int(linked_size) if linked_size is not None else None,
@@ -258,6 +294,8 @@ def verify_report(report: Mapping[str, Any]) -> None:
             raise ProbeError("invalid report Xet hash")
         if item.get("xet_hash") != item.get("resolve_xet_hash"):
             raise ProbeError("report Xet crosscheck failed")
+        if item.get("resolve_http_contract") != "GET_NO_REDIRECT":
+            raise ProbeError("report resolve HTTP contract drift")
         if item.get("archive_body_downloaded") is not False or item.get("training_capacity_credit_bytes") != 0:
             raise ProbeError("report overclaims archive use")
     boundary = report.get("claim_boundary", {})
