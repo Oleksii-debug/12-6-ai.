@@ -7,6 +7,10 @@ on:
     paths:
       - .github/workflows/data228-source-probe.yml
       - configs/data/data228_source_probe_v1.json
+  pull_request:
+    paths:
+      - .github/workflows/data228-source-probe.yml
+      - configs/data/data228_source_probe_v1.json
 
 permissions:
   contents: write
@@ -42,7 +46,6 @@ jobs:
           from twelve_six.data.pipeline import PipelineConfig, _quality_reason
           from twelve_six.data.snapshot_promotion import _chunk_text
 
-          root = Path('.')
           config = json.loads(Path('configs/data/data228_source_probe_v1.json').read_text(encoding='utf-8'))
           out = Path('reports/data228')
           out.mkdir(parents=True, exist_ok=True)
@@ -74,8 +77,6 @@ jobs:
               return '\n'.join(line for line in lines if line).strip()
 
           def markdown_visible(text: str) -> str:
-              # Strip YAML front matter and translation-source HTML comments so the
-              # Ukrainian source contributes only visible Ukrainian documentation.
               if text.startswith('---\n'):
                   end = text.find('\n---\n', 4)
                   if end != -1:
@@ -210,6 +211,7 @@ jobs:
           PY
 
       - name: Commit content-addressed probe evidence
+        if: github.event_name == 'push'
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
@@ -220,3 +222,12 @@ jobs:
           fi
           git commit -m "DATA-228: record immutable source probe evidence [skip ci]"
           git push origin HEAD:data228/real-ua-en-diversity-v2
+
+      - name: Upload probe evidence on pull request
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: data228-source-probe-${{ github.event.pull_request.head.sha }}
+          path: |
+            reports/data228/source-probe.json
+            data/external/rights-evidence/data228
