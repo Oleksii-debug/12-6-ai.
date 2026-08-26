@@ -1,0 +1,124 @@
+name: NEXT100-077 20M Static-KV Batch Stress
+
+on:
+  push:
+    branches: [next100-077/20m-static-kv-batch-stress-20260826]
+  workflow_dispatch:
+
+concurrency:
+  group: next100-077-20m-static-kv-batch-stress-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: {contents: read}
+
+jobs:
+  local-free-static-kv-batch-stress:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      PYTHONPATH: src
+      NEXT100_077_EXECUTION_PROFILE: LOCAL_FREE
+      PYTHONHASHSEED: "0"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: "${{ github.sha }}"
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with: {python-version: "3.11.16"}
+
+      - name: Universal bootstrap focused contract
+        uses: ./.github/actions/execution-bootstrap
+        with:
+          capabilities: runtime,tests,lint
+          venv: .next100-077
+          command: >-
+            python -m pytest -q tests/test_next100_077_20m_static_kv_batch_stress.py
+          manifest: reports/next100_077/environment.json
+
+      - name: Verify LOCAL_FREE CPU-only boundary
+        run: |
+          set -euo pipefail
+          .next100-077/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+          import torch
+
+          manifest = json.loads(Path('reports/next100_077/environment.json').read_text())
+          assert manifest['preflight']['status'] == 'PASS'
+          assert manifest['plan']['cuda_packages_present'] is False
+          assert torch.version.cuda is None
+          assert torch.cuda.is_available() is False
+          print(json.dumps({
+              'bootstrap': 'PASS',
+              'profile': 'LOCAL_FREE',
+              'device': 'cpu',
+              'torch': torch.__version__,
+          }, sort_keys=True))
+          PY
+
+      - name: Ruff NEXT100-077 surface
+        run: >-
+          .next100-077/bin/ruff check
+          tools/qualify_next100_077_20m_static_kv_batch_stress.py
+          tests/test_next100_077_20m_static_kv_batch_stress.py
+
+      - name: Execute bounded B1 B2 B4 stress matrix
+        run: >-
+          .next100-077/bin/python tools/qualify_next100_077_20m_static_kv_batch_stress.py
+          --json-output reports/next100_077/static-kv-batch-stress.json
+
+      - name: Validate exact authority and physical bytes
+        run: |
+          set -euo pipefail
+          .next100-077/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(
+              Path('reports/next100_077/static-kv-batch-stress.json').read_text()
+          )
+          assert report['worker'] == 'NEXT100-077-20M-STATICKV-BATCH-STRESS'
+          assert report['qualification'] == 'PASS'
+          assert report['execution']['profile'] == 'LOCAL_FREE'
+          assert report['execution']['device'] == 'cpu'
+          assert report['execution']['training_performed'] is False
+          assert report['authority']['model341_head'] == (
+              'e4ff486fd90802fc123bebf60eed4e59196a98df'
+          )
+          assert report['authority']['model_spec_sha256'] == (
+              'fbff24d561a2818453554d58ca23fc6ace3303b078f1935a8576c4565bd92441'
+          )
+          assert report['cache_accounting']['physical_bytes_by_batch'] == {
+              '1': 8388608,
+              '2': 16777216,
+              '4': 33554432,
+          }
+          assert report['scheduler_boundary']['continuous_batching_added'] is False
+          assert report['scheduler_boundary']['production_scheduler_modified'] is False
+          for batch in ('1', '2', '4'):
+              cell = report['batches'][batch]
+              assert cell['parity_and_backing']['static_backing_growth_bytes'] == 0
+              assert cell['parity_and_backing']['storage_identity_stable'] is True
+              assert cell['overflow_isolation']['overflow_isolated'] is True
+              assert cell['partial_completion_and_sampling'][
+                  'seeded_sampling_deterministic'
+              ] is True
+              assert cell['eos']['eos_per_row'] is True
+          print(json.dumps({
+              'status': 'PASS',
+              'physical_bytes_by_batch': report['cache_accounting'][
+                  'physical_bytes_by_batch'
+              ],
+          }, sort_keys=True))
+          PY
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: next100-077-20m-static-kv-batch-stress-local-free
+          path: |
+            reports/next100_077/environment.json
+            reports/next100_077/static-kv-batch-stress.json
+          if-no-files-found: warn
