@@ -56,6 +56,34 @@ class Data526PredecontamBlockerTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             validator.validate_doc(rehash(doc))
 
+    def test_superseded_issue_cannot_be_rebound_as_current(self):
+        doc = copy.deepcopy(BASE)
+        doc["required_source_convergence"]["issue"] = 521
+        with self.assertRaises(ValueError):
+            validator.validate_doc(rehash(doc))
+
+    def test_registry_identity_drift_fails_closed(self):
+        doc = copy.deepcopy(BASE)
+        doc["required_source_convergence"]["reported_registry_identity_sha256_non_authoritative_until_terminal"] = "0" * 64
+        with self.assertRaises(ValueError):
+            validator.validate_doc(rehash(doc))
+
+    def test_stratum_redistribution_preserving_totals_fails(self):
+        doc = copy.deepcopy(BASE)
+        vector = doc["required_source_convergence"]["reported_pre_successor_global_dedup_vector_non_authoritative_until_terminal"]["by_stratum"]
+        vector["uk"]["bytes"] += 1
+        vector["en"]["bytes"] -= 1
+        with self.assertRaises(ValueError):
+            validator.validate_doc(rehash(doc))
+
+    def test_family_redistribution_preserving_total_fails(self):
+        doc = copy.deepcopy(BASE)
+        vector = doc["required_source_convergence"]["reported_pre_successor_global_dedup_vector_non_authoritative_until_terminal"]["by_stratum"]
+        vector["uk"]["families"] += 1
+        vector["code"]["families"] -= 1
+        with self.assertRaises(ValueError):
+            validator.validate_doc(rehash(doc))
+
     def test_self_hash_detects_unrehash_tamper(self):
         doc = copy.deepcopy(BASE)
         doc["status"] = "READY"
