@@ -18,7 +18,10 @@ from typing import Literal, Protocol, runtime_checkable
 import torch
 
 from twelve_six.inference.contracts import GenerationConfig, GenerationResult
-from twelve_six.inference.first_party import FirstPartyInferenceBackend, load_first_party_backend
+from twelve_six.inference.first_party import (
+    FirstPartyInferenceBackend,
+    load_first_party_backend,
+)
 from twelve_six.inference.generation import generate as run_generation
 from twelve_six.model import ModelSpec, canonical_json_sha256
 from twelve_six.tokenization import ByteTokenizer
