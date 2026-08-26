@@ -8,7 +8,7 @@ The canonical research environment is the repository's hash-locked Linux x86-64 
 
 `python -m twelve_six.environment_parity capture` runs the actual first-party `ModelSpec`, `InitSpec`, `TwelveSixDecoder`, D02 `Trainer`, AdamW and D05 checkpoint stack on a tiny fixed CPU trace. It records the environment fingerprint, ModelSpec and InitSpec identities, parameter count, complete initial weights, first forward logits, causal loss, gradients, state after one optimizer update, state after three optimizer updates, D05 checkpoint identities at steps 1 and 3, a verified fresh checkpoint reload, held-out evaluation non-mutation and exact Trainer token counters.
 
-`python -m twelve_six.environment_parity compare` compares two trace JSON files. Model/config/input/token-counter/checkpoint semantics must match exactly. FP32 tensors are compared with `atol=1e-6` and `rtol=1e-5`. Bitwise equality is reported when it happens, but is not required across Python/PyTorch/platform versions.
+`python -m twelve_six.environment_parity_compare canonical.json candidate.json --output comparison.json` compares two trace files. Model/config/input/token-counter/checkpoint-lineage semantics must match exactly. D05's runtime snapshot fields (`environment` and `environment_hash`) are intentionally compared as environment evidence rather than lineage semantics, because they are expected to differ between Python/PyTorch versions. Initial weights, logits, loss, gradients, update states and held-out values are compared numerically with FP32 `atol=1e-6` and `rtol=1e-5`. Bitwise equality is reported when it happens, but is not required across versions.
 
 Classifications are `PASS_BITWISE`, `PASS_NUMERIC_TOLERANCE`, `NUMERIC_DRIFT_REQUIRES_EXACT_HEAD` and `SEMANTIC_DRIFT`.
 
@@ -17,6 +17,8 @@ Classifications are `PASS_BITWISE`, `PASS_NUMERIC_TOLERANCE`, `NUMERIC_DRIFT_REQ
 Source-equivalent evidence may be used to localize failures, develop deterministic traces, check syntax/invariants and obtain rough explicitly non-authoritative local performance diagnostics. It never upgrades itself to canonical authority.
 
 An exact-head locked rerun is mandatory for published held-out quality or learned-result numbers, checkpoint selection, cross-scale quality/efficiency/scaling rankings, architecture/tokenizer/optimizer/schedule scientific decisions, stage promotion or freeze decisions, and reproducibility claims.
+
+Every ENV-160 bootstrap/trace/comparison report carries an environment fingerprint. For canonical MILESTONE-150 reports, ENV-160 writes a sidecar binding from each immutable report SHA-256 to the exact environment fingerprint instead of mutating M150's self-hashed scientific payloads.
 
 ## MILESTONE-150 convergence
 

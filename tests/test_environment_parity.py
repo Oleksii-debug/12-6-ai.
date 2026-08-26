@@ -2,31 +2,42 @@ from __future__ import annotations
 
 import copy
 
-from twelve_six.environment_parity import compare_traces, decision_policy
+from twelve_six.environment_parity import decision_policy
+from twelve_six.environment_parity_compare import compare_traces
 from twelve_six.milestone150_entrypoint import json_normalize
 
 
 def _trace(*, locked: bool = True) -> dict:
     fp = {
+        "fingerprint_sha256": ("a" if locked else "b") * 64,
         "exact_locked_runtime": locked,
         "python": {"version": "3.11.16" if locked else "3.13.5"},
         "torch": {"version": "2.13.0" if locked else "2.10.0+cpu"},
         "platform": {"release": "x"},
     }
-    tensor = {"sha256": "a" * 64, "values": [1.0, 2.0]}
-    state = {"state_sha256": "b" * 64, "tensors": {"w": tensor}}
-    gradients = {"gradient_sha256": "c" * 64, "tensors": {"w": tensor}}
+    tensor = {"sha256": "c" * 64, "values": [1.0, 2.0]}
+    state = {"state_sha256": "d" * 64, "tensors": {"w": tensor}}
+    gradients = {"gradient_sha256": "e" * 64, "tensors": {"w": tensor}}
+    environment = {
+        "python": fp["python"]["version"],
+        "packages": {"torch": fp["torch"]["version"]},
+    }
     checkpoint = {
-        "checkpoint_id": "d" * 64,
-        "identity": {"step": 1, "tokens_seen": 13},
+        "checkpoint_id": "f" * 64,
+        "identity": {
+            "step": 1,
+            "tokens_seen": 13,
+            "environment": environment,
+            "environment_hash": ("1" if locked else "2") * 64,
+        },
     }
     return {
-        "source_sha": "e" * 40,
+        "source_sha": "3" * 40,
         "environment_fingerprint": fp,
         "model": {
-            "model_spec_sha256": "f" * 64,
+            "model_spec_sha256": "4" * 64,
             "parameter_count": 10,
-            "init_spec_sha256": "1" * 64,
+            "init_spec_sha256": "5" * 64,
         },
         "optimizer": {"name": "AdamW", "config": {"betas": [0.9, 0.95]}},
         "inputs": {"train": [1]},
@@ -34,8 +45,13 @@ def _trace(*, locked: bool = True) -> dict:
         "checkpoints": {
             "step_1": checkpoint,
             "step_3": {
-                "checkpoint_id": "2" * 64,
-                "identity": {"step": 3, "tokens_seen": 39},
+                "checkpoint_id": "6" * 64,
+                "identity": {
+                    "step": 3,
+                    "tokens_seen": 39,
+                    "environment": environment,
+                    "environment_hash": ("1" if locked else "2") * 64,
+                },
             },
         },
         "heldout_evaluation": {"loss": 2.0, "non_mutation_passed": True},
@@ -63,13 +79,20 @@ def test_identical_trace_is_bitwise_pass() -> None:
     assert report["scientific_authority"] is True
 
 
-def test_cross_version_small_float_difference_is_debug_only_tolerance_pass() -> None:
+def test_runtime_snapshot_difference_is_not_semantic_drift() -> None:
+    report = compare_traces(_trace(locked=True), _trace(locked=False))
+    assert report["semantic_pass"] is True
+    assert report["classification"] == "PASS_NUMERIC_TOLERANCE"
+    assert report["scientific_authority"] is False
+
+
+def test_cross_version_small_float_difference_is_tolerance_pass() -> None:
     canonical = _trace(locked=True)
     candidate = _trace(locked=False)
     candidate["initial"]["logits"]["values"][0] += 5e-7
     report = compare_traces(canonical, candidate)
     assert report["classification"] == "PASS_NUMERIC_TOLERANCE"
-    assert report["scientific_authority"] is False
+    assert report["numeric"]["pass"] is True
 
 
 def test_semantic_drift_fails_closed() -> None:
@@ -83,7 +106,7 @@ def test_semantic_drift_fails_closed() -> None:
 def test_numeric_drift_requires_exact_head() -> None:
     canonical = _trace()
     candidate = copy.deepcopy(canonical)
-    candidate["initial"]["logits"]["values"][0] += 1e-2
+    candidate["initial"]["weights"]["tensors"]["w"]["values"][0] += 1e-2
     report = compare_traces(canonical, candidate)
     assert report["classification"] == "NUMERIC_DRIFT_REQUIRES_EXACT_HEAD"
 

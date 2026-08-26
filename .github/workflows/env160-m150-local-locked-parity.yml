@@ -47,13 +47,15 @@ jobs:
           .locked/bin/python -m twelve_six.environment_parity bootstrap --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" --require-locked --output env160-evidence/canonical-bootstrap.json
           .locked/bin/python -m twelve_six.environment_parity capture --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" --require-locked --output env160-evidence/canonical-trace.json
           .locked/bin/python -m twelve_six.environment_parity capture --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" --require-locked --output env160-evidence/canonical-replay.json
-          .locked/bin/python -m twelve_six.environment_parity compare env160-evidence/canonical-trace.json env160-evidence/canonical-replay.json --output env160-evidence/canonical-replay-comparison.json
+          .locked/bin/python -m twelve_six.environment_parity_compare env160-evidence/canonical-trace.json env160-evidence/canonical-replay.json --output env160-evidence/canonical-replay-comparison.json
           .locked/bin/python - <<'PY'
           import json
           from pathlib import Path
           r = json.loads(Path('env160-evidence/canonical-replay-comparison.json').read_text())
           if r['classification'] != 'PASS_BITWISE':
               raise SystemExit(f"canonical replay drift: {r['classification']}")
+          if r['scientific_authority'] is not True:
+              raise SystemExit('locked canonical replay lacks scientific authority')
           print(json.dumps({'classification': r['classification'], 'scientific_authority': r['scientific_authority'], 'report_sha256': r['report_sha256']}, indent=2, sort_keys=True))
           PY
       - name: Upload canonical trace
@@ -79,14 +81,14 @@ jobs:
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.13.5"
-      - name: Mandatory local tool bootstrap
+      - name: Install observed source-equivalent dependencies and bootstrap
         env:
           EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
           python -m pip install --disable-pip-version-check --index-url https://download.pytorch.org/whl/cpu torch==2.10.0
-          python -m pip install --disable-pip-version-check safetensors==0.8.0
+          python -m pip install --disable-pip-version-check numpy safetensors==0.8.0
           python -m twelve_six.environment_parity bootstrap --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" --output env160-evidence/candidate-bootstrap.json
       - name: Capture source-equivalent trace
         env:
@@ -102,7 +104,7 @@ jobs:
       - name: Compare local against locked truth
         run: |
           set -euo pipefail
-          python -m twelve_six.environment_parity compare env160-canonical/canonical-trace.json env160-evidence/candidate-trace.json --output env160-evidence/local-locked-comparison.json
+          python -m twelve_six.environment_parity_compare env160-canonical/canonical-trace.json env160-evidence/candidate-trace.json --output env160-evidence/local-locked-comparison.json
           python - <<'PY'
           import json
           from pathlib import Path
@@ -111,7 +113,7 @@ jobs:
               raise SystemExit('semantic drift across environments')
           if r['scientific_authority'] is not False:
               raise SystemExit('source-equivalent evidence illegally acquired authority')
-          print(json.dumps({'classification': r['classification'], 'numeric': r['numeric'], 'scientific_authority': r['scientific_authority'], 'report_sha256': r['report_sha256']}, indent=2, sort_keys=True))
+          print(json.dumps({'classification': r['classification'], 'semantic_pass': r['semantic_pass'], 'numeric': r['numeric'], 'scientific_authority': r['scientific_authority'], 'report_sha256': r['report_sha256']}, indent=2, sort_keys=True))
           PY
       - name: Upload comparison
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -170,7 +172,7 @@ jobs:
           done
           .m150/bin/python -m twelve_six.milestone150_entrypoint finalize --repo-root . --source-sha "$EXPECTED_SOURCE_SHA" --output-dir milestone150-evidence
           .m150/bin/python -m twelve_six.milestone150_entrypoint validate milestone150-evidence/ladder-report.json --expected-source-sha "$EXPECTED_SOURCE_SHA"
-      - name: Bind exact environment fingerprint to every retained JSON report
+      - name: Bind environment fingerprint without mutating canonical report hashes
         env:
           EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
@@ -183,14 +185,13 @@ jobs:
           fp = environment_fingerprint(Path('.').resolve(), source_sha=os.environ['EXPECTED_SOURCE_SHA'])
           reports = []
           for path in sorted(root.rglob('*.json')):
-              raw = path.read_bytes()
-              reports.append({'path': path.as_posix(), 'sha256': hashlib.sha256(raw).hexdigest(), 'environment_fingerprint_sha256': fp['fingerprint_sha256']})
+              reports.append({'path': path.as_posix(), 'sha256': hashlib.sha256(path.read_bytes()).hexdigest(), 'environment_fingerprint_sha256': fp['fingerprint_sha256']})
           value = {'schema': '12-6.experimental-report-environment-bindings.v1', 'source_sha': os.environ['EXPECTED_SOURCE_SHA'], 'environment_fingerprint': fp, 'reports': reports}
           value['report_sha256'] = hash_json(value)
           Path('env160-evidence').mkdir(exist_ok=True)
           Path('env160-evidence/m150-report-environment-bindings.json').write_text(json.dumps(value, sort_keys=True, indent=2) + '\n')
           PY
-      - name: Assert M150 truth boundary and publish summary
+      - name: Assert truth boundary and publish machine summary
         run: |
           set -euo pipefail
           .m150/bin/python - <<'PY'
