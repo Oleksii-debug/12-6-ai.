@@ -29,6 +29,18 @@ from .core import (
     save_checkpoint,
 )
 
+_CANONICAL_TRAINER_STATE_FIELDS = frozenset(
+    {
+        "micro_step",
+        "optimizer_step",
+        "tokens_seen",
+        "optimizer",
+        "scheduler",
+        "scaler",
+        "config",
+    }
+)
+
 
 def _trainer_state_as_mapping(state: Any) -> Mapping[str, Any]:
     if is_dataclass(state) and not isinstance(state, type):
@@ -260,6 +272,19 @@ def _preflight_trainer_state(
         raise CheckpointCompatibilityError("checkpoint trainer state must be a mapping")
 
     _preflight_trainer_target(trainer)
+
+    # Canonical D02 Trainer and its scale subclasses construct TrainerState(**state)
+    # during the real load. Extra keys therefore fail only at that final call unless
+    # the adapter mirrors the exact schema now, before model/RNG mutation.
+    if hasattr(trainer, "_failure_reason") and hasattr(trainer, "_update_incomplete"):
+        actual_fields = set(state)
+        if actual_fields != _CANONICAL_TRAINER_STATE_FIELDS:
+            missing = sorted(_CANONICAL_TRAINER_STATE_FIELDS - actual_fields)
+            unexpected = sorted(actual_fields - _CANONICAL_TRAINER_STATE_FIELDS)
+            raise CheckpointCompatibilityError(
+                "canonical trainer state keys differ: "
+                f"missing={missing}, unexpected={unexpected}"
+            )
 
     for field in ("micro_step", "optimizer_step", "tokens_seen"):
         value = state.get(field)
