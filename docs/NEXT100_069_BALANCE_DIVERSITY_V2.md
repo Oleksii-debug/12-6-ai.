@@ -16,22 +16,35 @@ The DATA-295 policy remains unchanged:
 - No family may exceed 60% of its own stratum.
 - Replay or duplication cannot satisfy quota.
 
-## Consumed terminal source vector
+## Dedup-certified source vector
 
-This authority is stacked on NEXT100-065 head `90065ffc97a5133e76cacdee6991eb171c4ea2ba` and its refreshed terminal-source rule: only an exact current authority head whose dedicated admission/qualification workflow completed successfully receives capacity.
+NEXT100-065 config blob `c1e05f09490e25f6fed765dfb70d900717528f4d` remains byte-identical at the latest observed registry head `efc278cec0e4773eb4ff405bf4b4d24ee63b5d13`. Its last terminal-success source-vector cut contains 11 objects and seven independent families.
 
-Conservative unique source-authority capacity after NEXT100-065 lineage dedup:
+Conservative globally dedup-certified unique source capacity:
 
 - Ukrainian: 90,044 bytes across 2 families.
 - English: 84,793 bytes across 1 family.
 - Code: 69,133 bytes across 4 families.
 - Total: 243,970 bytes across 7 independent families.
 
-No capacity-collapsing duplicate edge exists in the consumed vector. Same-origin sibling objects collapse only for family independence, not byte capacity.
+No capacity-collapsing duplicate edge exists in that certified vector. Same-origin sibling objects collapse only for family independence, not byte capacity.
+
+## Final concurrency refresh
+
+NEXT100-064 appeared during the mandatory final refresh at head `0f4189f78b23b0aa5540fd024be0959b2fb29926`, cutoff `2026-08-26T18:29:51Z`. It independently records KMu Secretariat source `ua.kmu.portal.secretariat-news.bounded-six` as terminal training-admitted. The KMu exact head `40950a950b60921fd856af2719e1ae2486d9e892` has a successful dedicated source-rights workflow and declares 9,153 normalized UA bytes.
+
+That KMu terminalization postdates the last terminal-success NEXT100-065 source-vector cut. Therefore it is not added to the globally dedup-certified unique-byte numerator until a successor NEXT100-065 convergence incorporates it. The live terminal-admitted pre-successor-global-dedup inventory is consequently:
+
+- Ukrainian: 99,197 source-authority bytes across 3 families.
+- English: 84,793 bytes across 1 family.
+- Code: 69,133 bytes across 4 families.
+- Total: 253,123 bytes across 8 families.
+
+These 253,123 bytes are not presented as globally dedup-certified unique capacity. The exact conservative unique-byte answer remains the 243,970-byte lower bound above until KMu survives successor global dedup.
 
 ## Family balance
 
-Available-pool family shares, before any deterministic subsampling:
+On the globally dedup-certified 243,970-byte vector, before deterministic subsampling:
 
 - `ua.rada.open-data.laws-texts`: 88,565 bytes; 36.301594% global; 98.357470% of UA.
 - `ua.literature.lesia-ukrainka.na-krylah-pisen.1892-lviv`: 1,479 bytes; 0.606222% global; 1.642530% of UA.
@@ -41,40 +54,40 @@ Available-pool family shares, before any deterministic subsampling:
 - `github:django/django`: 54,156 bytes; 22.197811% global; 78.335961% of code.
 - `github:Kludex/starlette`: 5,274 bytes; 2.161741% global; 7.628774% of code.
 
-Hill-q2 effective family counts on unique-byte shares:
+Hill-q2 effective family counts on certified unique-byte shares:
 
 - UA: 1.0333898867.
 - EN: 1.0.
 - code: 1.5775237133.
 - global: 3.2947591213.
 
-Whole-pool concentration is not a deletion rule. Rada, Standard Ebooks, and Django would need deterministic capping/subsampling in a composed mixture. The decisive hard blocker is English family count: 1 < 2. Therefore the maximum non-replayed fixed 45/35/20 mixture satisfying every family rule is currently 0 bytes.
+If KMu's 9,153 bytes survive successor global dedup unchanged, the live terminal-admitted family shares would yield Hill-q2 counts UA 1.2409063312, EN 1.0, code 1.5775237133, global 3.5302436319. KMu itself would be 3.616029% global and 9.227094% of UA; Rada would still dominate UA at 89.281934%.
+
+Whole-pool concentration is not a deletion rule. Rada and Standard Ebooks exceed the 25% global limit; Rada, Standard Ebooks, and Django exceed 60% of their current strata. Deterministic subsampling/capping is required in a composed training mixture. The decisive hard blocker remains English family count: 1 < 2. Therefore the maximum non-replayed fixed 45/35/20 mixture satisfying every family rule remains 0 bytes.
 
 ## Acquisition gaps to the frozen 20M target
 
-Exact unique source-byte gaps against the consumed terminal vector:
+Exact gaps against the globally dedup-certified unique-byte lower bound are:
 
 - UA: 8,909,956 bytes.
 - EN: 6,915,207 bytes.
 - code: 3,930,867 bytes.
 - total: 19,756,030 bytes.
 
-At the 20M target, the effective per-family ceilings are 5,000,000 UA bytes, 4,200,000 EN bytes, and 2,400,000 code bytes. English requires at least one additional terminal independent family merely to pass the two-family hard minimum. If existing exact snapshots are frozen and every gap byte must come only from newly acquired families, at least two new families per stratum are required by the byte ceilings. This second statement is not imposed when an existing terminal family later expands with additional unique admissible objects.
+If KMu survives successor global dedup unchanged, the conditional gaps become UA 8,900,803 and total 19,746,877 bytes; EN and code are unchanged.
+
+At the 20M target, the effective per-family ceilings are 5,000,000 UA bytes, 4,200,000 EN bytes, and 2,400,000 code bytes. English requires at least one additional independent terminal family merely to pass the two-family hard minimum. If current exact snapshots are frozen and every gap byte must come only from newly acquired families, the byte ceilings require at least two new family bins per stratum; same-family expansion can change that topology.
 
 ## Unique loss positions
 
-A full current-vector loss-position count is deliberately not inferred from source bytes. NEXT100-064 generalized multi-source loss accounting is absent.
+NEXT100-064 now exists, but its terminal verdict is `BLOCKED_NO_TERMINAL_POSTPACK_CORPUS_MATERIALIZATION`. It explicitly reports the exact post-pack one-pass maximum as `null`; current authorized training exposure is 0. No source bytes are relabelled as loss positions.
 
-DATA-294 certifies only the incumbent text subset:
+Its historical pre-build diagnostic is 183,056 causal targets: 173,355 text and 9,701 code. That diagnostic is explicitly not training authority and is before current evaluation reservations, global dedup, split, and packing, so it is not substituted for the requested current exact loss-position capacity.
 
-- Rada UA: 88,564 unique causal loss positions.
-- Standard Ebooks EN: 84,791.
-- certified partial total: 173,355.
-
-The current EN stratum therefore has an exact 84,791 loss positions because no additional EN source is terminal in NEXT100-065. Full UA is unknown because the 1,479-byte Wikisource object is not in DATA-294. All 69,133 code bytes are also outside DATA-294. Exactly 70,612 current source bytes remain unledgered for causal loss-position accounting.
+DATA-294 remains useful only as a certified historical partial: Rada UA 88,564 and Standard Ebooks EN 84,791, total 173,355. Full current UA/code/post-pack totals remain unavailable until an exact terminal corpus materialization reaches reservations, global dedup, split, and packing.
 
 ## Verdict
 
 `FAIL_RETAIN_45_35_20_POLICY_ACQUIRE_MORE_DATA_NO_BPB_RETUNING`
 
-The mixture is not retuned. The next admissible progress is corpus acquisition and terminalization, especially an independent English family, followed by a refreshed cross-source dedup registry and generalized exact loss-position ledger.
+The mixture is not retuned. Blocking conditions are: only one terminal English family, no terminal post-pack corpus materialization for exact loss-position accounting, KMu awaiting successor global-dedup convergence, and the remaining 20M unique-byte acquisition gap.
