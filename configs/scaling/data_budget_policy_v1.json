@@ -1,0 +1,116 @@
+{
+  "schema_version": "12-6.scaling-data-budget-policy.v1",
+  "worker_id": "R01-SCALING-DATA-BUDGET-GATE-20260826",
+  "purpose": "Prevent source bytes from being treated as training tokens and require exact post-tokenization evidence before long learned-model campaigns.",
+  "truth_boundary": {
+    "source_capacity_bytes_are_training_tokens": false,
+    "source_capacity_bytes_are_unique_loss_positions": false,
+    "planning_reference_is_quality_guarantee": false,
+    "planning_reference_is_compute_authorization": false,
+    "paid_compute_authorized": false
+  },
+  "research_basis": [
+    {
+      "id": "hoffmann-2022-chinchilla",
+      "url": "https://arxiv.org/abs/2203.15556",
+      "use": "compute-optimal reference: model size and training-token count scale together"
+    },
+    {
+      "id": "muennighoff-2023-data-constrained",
+      "url": "https://arxiv.org/abs/2305.16264",
+      "use": "repeated data has diminishing value; up to four epochs can be materially different from unlimited replay"
+    },
+    {
+      "id": "sardana-2024-beyond-chinchilla",
+      "url": "https://arxiv.org/abs/2401.00448",
+      "use": "inference-aware deployment can favor smaller models trained on substantially more tokens"
+    },
+    {
+      "id": "gadre-2024-overtraining",
+      "url": "https://arxiv.org/abs/2403.08540",
+      "use": "over-training scaling remains predictable across model sizes and downstream tasks"
+    },
+    {
+      "id": "llama3-2024",
+      "url": "https://ai.meta.com/blog/meta-llama-3/",
+      "use": "production evidence that smaller dense models can continue improving far beyond a compute-optimal token reference"
+    },
+    {
+      "id": "datacomp-lm-2024",
+      "url": "https://arxiv.org/abs/2406.11794",
+      "use": "data curation and filtering materially affect downstream quality at fixed training scale"
+    }
+  ],
+  "reference_policy": {
+    "baseline_unique_loss_tokens_per_parameter": 20,
+    "exploration_tokens_per_parameter": [20, 50, 100],
+    "note": "The 20x value is a planning reference, not a universal optimum. A campaign below it must be explicitly classified as a bounded scaling/smoke experiment rather than a full learned-stage attempt. Larger ratios must be selected from preregistered small-scale experiments and compute constraints, not assumed automatically."
+  },
+  "stages": [
+    {
+      "stage": "20M_PRIMARY",
+      "parameter_count": 20613440,
+      "reference_unique_loss_tokens": {
+        "20x": 412268800,
+        "50x": 1030672000,
+        "100x": 2061344000
+      },
+      "approx_dense_training_flops_at_20x": 50989669036032000,
+      "status": "BLOCKED_PENDING_EXACT_POST_TOKENIZATION_CORPUS_EVIDENCE"
+    },
+    {
+      "stage": "100M_TARGET",
+      "parameter_count": 100000000,
+      "reference_unique_loss_tokens": {
+        "20x": 2000000000,
+        "50x": 5000000000,
+        "100x": 10000000000
+      },
+      "approx_dense_training_flops_at_20x": 1200000000000000000,
+      "status": "PLANNING_ONLY"
+    },
+    {
+      "stage": "1B_TARGET",
+      "parameter_count": 1000000000,
+      "reference_unique_loss_tokens": {
+        "20x": 20000000000,
+        "50x": 50000000000,
+        "100x": 100000000000
+      },
+      "approx_dense_training_flops_at_20x": 120000000000000000000,
+      "status": "PLANNING_ONLY"
+    }
+  ],
+  "long_training_gate": {
+    "required_evidence": [
+      "immutable_corpus_identity",
+      "immutable_train_split_identity",
+      "tokenizer_identity",
+      "exact_post_tokenization_train_token_count",
+      "exact_unique_loss_position_count",
+      "document_boundary_loss_mask_identity",
+      "evaluation_decontamination_authority",
+      "deduplication_authority",
+      "quality_and_privacy_authority",
+      "checkpoint_resume_authority",
+      "preregistered_training_budget_and_stop_rule"
+    ],
+    "forbidden_substitutions": [
+      "source_bytes_for_training_tokens",
+      "normalized_bytes_for_training_tokens",
+      "raw_record_count_for_unique_loss_positions",
+      "replayed_tokens_for_unique_tokens",
+      "queued_ci_for_terminal_success"
+    ],
+    "below_20x_classification": "BOUNDED_SCALING_OR_SMOKE_EXPERIMENT_ONLY",
+    "full_stage_attempt_requires_at_least_reference_or_explicit_scaling_exception": true
+  },
+  "current_20m_observation": {
+    "observed_source_capacity_bytes": 314140,
+    "observed_source_capacity_authority": "NEXT100-063 pre-successor-global-dedup vector",
+    "frozen_source_capacity_target_bytes": 20000000,
+    "bytes_to_tokens_conversion": "FORBIDDEN_WITHOUT_EXACT_TOKENIZATION",
+    "learned_20m_long_training_ready": false,
+    "blocker": "Exact materialized, decontaminated, post-tokenization unique-loss corpus evidence does not exist; source-capacity bytes cannot establish token sufficiency."
+  }
+}
