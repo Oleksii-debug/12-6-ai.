@@ -1,5 +1,11 @@
 """Checkpointing, integrity, resume, and export primitives for 12-6 AI."""
 
+from . import core as _core
+from .integrity_hardening import install as _install_integrity_hardening
+
+_install_integrity_hardening(_core)
+del _core, _install_integrity_hardening
+
 from .core import (
     CheckpointCompatibilityError,
     CheckpointError,
