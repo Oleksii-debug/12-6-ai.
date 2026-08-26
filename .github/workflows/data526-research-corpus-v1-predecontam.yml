@@ -5,10 +5,13 @@ on:
     paths:
       - "configs/data/research_corpus_v1_predecontam_blocker_v1.json"
       - "configs/data/research_corpus_v1_predecontam_blocker_v2.json"
+      - "configs/data/research_corpus_v1_predecontam_blocker_v3.json"
       - "tools/validate_data526_research_corpus_predecontam.py"
       - "tools/validate_data526_research_corpus_predecontam_v2.py"
+      - "tools/validate_data526_research_corpus_predecontam_v3.py"
       - "tests/test_data526_research_corpus_predecontam.py"
       - "tests/test_data526_research_corpus_predecontam_v2.py"
+      - "tests/test_data526_research_corpus_predecontam_v3.py"
       - "docs/DATA526_RESEARCH_CORPUS_V1_PREDECONTAM.md"
       - "docs/DATA526_RESEARCH_CORPUS_V1_PREDECONTAM_V2.md"
       - ".github/workflows/data526-research-corpus-v1-predecontam.yml"
@@ -45,21 +48,25 @@ jobs:
       - name: Validate historical V1 blocker authority
         run: python tools/validate_data526_research_corpus_predecontam.py
 
-      - name: Validate current V2 blocker authority
+      - name: Validate historical V2 blocker authority
         run: python tools/validate_data526_research_corpus_predecontam_v2.py
+
+      - name: Validate current V3 blocker authority
+        run: python tools/validate_data526_research_corpus_predecontam_v3.py
 
       - name: Run fail-closed mutation tests
         run: >-
           python -m unittest -v
           tests.test_data526_research_corpus_predecontam
           tests.test_data526_research_corpus_predecontam_v2
+          tests.test_data526_research_corpus_predecontam_v3
 
       - name: Assert no execution promotion
         run: |
           python - <<'PY'
           import json
           from pathlib import Path
-          doc = json.loads(Path("configs/data/research_corpus_v1_predecontam_blocker_v2.json").read_text())
+          doc = json.loads(Path("configs/data/research_corpus_v1_predecontam_blocker_v3.json").read_text())
           assert doc["status"] == "BLOCKED_WAIT_SOURCE_AND_GLOBAL_DEDUP_TERMINAL"
           assert doc["source_convergence_candidate"]["terminal_authority_consumed"] is False
           assert doc["global_dedup_candidate"]["terminal_authority_consumed"] is False
@@ -69,6 +76,7 @@ jobs:
           assert doc["candidate_freeze"]["candidate_set_digest_sha256"] is None
           assert doc["claim_boundary"]["source_bytes_are_training_tokens"] is False
           assert doc["claim_boundary"]["authorized_unique_optimized_targets"] == 0
+          assert doc["claim_boundary"]["tokenizer_fit_executed"] is False
           assert doc["claim_boundary"]["training_executed"] is False
           assert doc["claim_boundary"]["paid_compute_used"] is False
           assert doc["claim_boundary"]["long_training_authorized"] is False
