@@ -1,5 +1,12 @@
 """Checkpointing, integrity, resume, and export primitives for 12-6 AI."""
 
+from . import core as _core
+from .integrity_hardening import install_checkpoint_hardening
+
+# Install fail-closed load-time guards before any public or trainer adapter
+# references capture the D05 functions.
+install_checkpoint_hardening(_core)
+
 from .core import (
     CheckpointCompatibilityError,
     CheckpointError,
