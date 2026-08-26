@@ -6,8 +6,15 @@ from dataclasses import dataclass
 import pytest
 
 from twelve_six.postbase_deliberation import (
-    AdapterContractError, Budget, Config, DeliberationController,
-    DeterministicMockAdapter, Request, Response, ToolCall, Verification,
+    AdapterContractError,
+    Budget,
+    Config,
+    DeliberationController,
+    DeterministicMockAdapter,
+    Request,
+    Response,
+    ToolCall,
+    Verification,
 )
 
 
