@@ -58,6 +58,34 @@ def test_required_flop_calibration_cannot_be_removed() -> None:
     assert any("calibration set" in error for error in errors)
 
 
+def test_tokenizer_agnostic_bpb_calibration_cannot_be_removed() -> None:
+    data = copy.deepcopy(_load())
+    data["required_calibrations"].remove("tokenizer_agnostic_bits_per_byte")
+    errors = validator.validate_firewall(data)
+    assert any("calibration set" in error for error in errors)
+
+
+def test_cross_tokenizer_primary_metric_must_remain_bpb() -> None:
+    data = copy.deepcopy(_load())
+    data["cross_tokenizer_primary_metric"] = "TOKEN_PERPLEXITY"
+    errors = validator.validate_firewall(data)
+    assert any("BITS_PER_BYTE" in error for error in errors)
+
+
+def test_token_nll_cannot_rank_different_tokenizers() -> None:
+    data = copy.deepcopy(_load())
+    data["token_nll_or_perplexity_may_rank_tokenizers"] = True
+    errors = validator.validate_firewall(data)
+    assert any("must not rank" in error for error in errors)
+
+
+def test_bpb_authority_cannot_be_dropped() -> None:
+    data = copy.deepcopy(_load())
+    data["bits_per_byte_authority_required"] = False
+    errors = validator.validate_firewall(data)
+    assert any("bits-per-byte authority" in error for error in errors)
+
+
 def test_reference_ratio_alone_cannot_promote_100m() -> None:
     data = copy.deepcopy(_load())
     data["promotion_to_100m_allowed_from_reference_ratio_alone"] = True
