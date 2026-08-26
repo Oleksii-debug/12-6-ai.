@@ -18,7 +18,7 @@
   "candidate_freeze": {
     "candidate_set_digest_sha256": null,
     "frozen": false,
-    "reason": "NEXT100-063 canonical convergence PR #538 is draft/nonterminal and exact-head Actions are runner-queued; issue #526 forbids consuming it as terminal authority.",
+    "reason": "Both terminal source convergence and terminal successor global dedup are required before DATA-526 may freeze any pre-decontamination record inventory.",
     "record_count": 0,
     "record_inventory_digest_sha256": null,
     "records": []
@@ -39,16 +39,16 @@
   "downstream_gates": {
     "balance_diversity_retest": "NOT_AUTHORIZED_BY_THIS_BLOCKER",
     "corpus_materialization": "NOT_PERMITTED",
-    "global_dedup": "NOT_AUTHORIZED_BY_THIS_BLOCKER",
+    "global_dedup": "REQUIRED_TERMINAL_UPSTREAM_BEFORE_CANDIDATE_FREEZE",
     "long_training": "NOT_PERMITTED",
     "paid_compute": "NOT_PERMITTED",
     "reserved_evaluation_decontamination": "NOT_PERMITTED_NO_FROZEN_CANDIDATE_IDENTITY",
     "tokenizer_fit": "NOT_PERMITTED"
   },
   "evidence_identity_scope": "SHA256(canonical JSON with evidence_identity_sha256 omitted)",
-  "evidence_identity_sha256": "775693a6166c165f4923c37350335a8ea7022d2ee52d8d6f6f2baf39661a5bcf",
+  "evidence_identity_sha256": "b9cb4f215e334ea4901b4e34bce3d432d3bc4c215df67db31f8f1193267835bf",
   "execution_profile": "LOCAL_FREE",
-  "purpose": "Fail-close Research Corpus V1 pre-decontamination candidate freeze until NEXT100-063 source-authority convergence is terminal.",
+  "purpose": "Fail-close Research Corpus V1 pre-decontamination candidate freeze until terminal source convergence and terminal successor global dedup are both available.",
   "repository": "Oleksii-debug/12-6-ai.",
   "required_source_convergence": {
     "base_head_sha": "b0523ccbc4b957615aac849d476cfa851be87578",
@@ -87,10 +87,47 @@
     "no_queue_as_pass": true,
     "no_replay_or_duplicate_quota_repair": true,
     "required": [
-      "NEXT100-063 exact observed head must become terminal-success under its dedicated exact-head validation.",
-      "The terminal successor authority must expose the exact admitted training-purpose source/object/family/content/normalization vector.",
-      "DATA-526 must then freeze a sorted exact pre-decontamination record inventory and composite candidate-set digest before any reserved-evaluation decontamination."
+      "NEXT100-063 source convergence must be terminal-success at the exact consumed authority and expose the exact admitted training-purpose source/object/family/content/normalization vector.",
+      "NEXT100-065D / PR #632 successor global dedup must be terminal-success at the exact consumed head with an immutable V6 report over the complete composed source graph.",
+      "DATA-526 must freeze only the post-global-dedup retained record/object graph, preserving exact lineage to the terminal source registry and terminal V6 report; pre-dedup registry rows may not be frozen directly.",
+      "Only that exact post-global-dedup candidate identity may be handed to reserved-evaluation decontamination."
     ]
   },
-  "worker_id": "DATA-526-RESEARCH-CORPUS-V1-PREDECONTAM"
+  "worker_id": "DATA-526-RESEARCH-CORPUS-V1-PREDECONTAM",
+  "required_global_dedup": {
+    "pull_request": 632,
+    "worker_id": "NEXT100-065D-CROSSSOURCE-DEDUP-V6",
+    "required_report_schema": "12-6.next100-065d-cross-source-dedup-report.v6",
+    "observed_head_sha": "704a558545b158fecff5cb41ad5bd16f93884cdd",
+    "pr_state": "OPEN_DRAFT",
+    "exact_head_ci_state": "QUEUED_NONTERMINAL",
+    "terminal_authority_consumed": false,
+    "reported_pre_dedup_vector_non_authoritative_until_terminal": {
+      "source_object_count": 31,
+      "source_capacity_bytes": 2045180,
+      "by_stratum": {
+        "uk": {
+          "bytes": 100856,
+          "families": 4
+        },
+        "en": {
+          "bytes": 1838293,
+          "families": 5
+        },
+        "code": {
+          "bytes": 106031,
+          "families": 5
+        }
+      },
+      "independent_families": 14,
+      "cpython_accepted_capacity_bytes": 15540
+    },
+    "required_terminal_outputs": [
+      "exact_head_success",
+      "immutable_v6_report_identity",
+      "conservative_unique_capacity_bytes_after_global_dedup",
+      "retained_or_excluded_source_object_decisions",
+      "no_queue_as_pass"
+    ]
+  }
 }
