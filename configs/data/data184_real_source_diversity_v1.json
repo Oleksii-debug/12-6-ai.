@@ -1,0 +1,168 @@
+{
+  "authority": "DATA184_BOUNDED_EXPERIMENT_NOT_CANONICAL_CORPUS_PROMOTION",
+  "base_truth": {
+    "ab_equal_requested_optimized_tokens": 65536,
+    "ab_model_parameters": 467808,
+    "parent_head": "117e0f156fff6b0226f00748ff25938f1b4a2612",
+    "previous_materializer": "tools/materialize_milestone100_real_corpus.py",
+    "previous_pins": "configs/data/milestone100_real_source_pins_v1.json",
+    "rights_policy_ref": "policy://12-6/data/explicit-model-training-evidence-v1",
+    "seed": 1337,
+    "tokenizer": "s0-byte-v1"
+  },
+  "bootstrap": {
+    "method": "universal paired bootstrap over held-out chunk losses",
+    "replicates": 1000,
+    "seed": 184
+  },
+  "captured_at": "2026-08-26",
+  "dedup": {
+    "cross_source": true,
+    "exact": "sha256_utf8",
+    "near": "5-token-shingle Jaccard",
+    "threshold": 0.85
+  },
+  "family_counting_rule": "Count one independent upstream material lineage as one family. Mirrors, forks, duplicated files and translations of the same underlying material are not independent families.",
+  "schema_version": "12-6.data184-real-source-diversity.v1",
+  "sources": [
+    {
+      "family": "ua_legislation_public_records",
+      "language": "uk",
+      "license_id": "RADA-OPEN-DATA-REUSE",
+      "modality": "natural",
+      "objects": [
+        {
+          "adapter": "html_text",
+          "raw_bytes": 332400,
+          "raw_sha256": "36eae31c3b0676ea7c02236fa05bd695c240c9a8eade5febc00457b8103ee1a4",
+          "url": "https://data.rada.gov.ua/ogd/zak/perv/text/d23314.htm"
+        }
+      ],
+      "provider": "Verkhovna Rada of Ukraine",
+      "rights_evidence_path": "data/rights_evidence/data102_rada_laws_20260826.txt",
+      "rights_evidence_sha256": "5c6a79e23bc874a9bb334451d8f2e94711fb35f2f46e08449a0aa622a0b3b43f",
+      "role": "incumbent",
+      "source_id": "ua.rada.open-data.laws-texts",
+      "source_version": "laws-texts/bounded-2026-08-25",
+      "terms_url": "https://data.rada.gov.ua/open/data/laws-texts"
+    },
+    {
+      "family": "en_style_reference",
+      "language": "en",
+      "license_id": "CC0-1.0",
+      "modality": "natural",
+      "objects": [
+        {
+          "adapter": "plain_text",
+          "raw_bytes": 68812,
+          "raw_sha256": "21582c7f0e4ad39f2b0ed97bbc2c082d275e898b7a63c28e6d9badb8ee0f7860",
+          "url": "https://raw.githubusercontent.com/standardebooks/manual-of-style/d1143a9b459b5e6f9cdda93a7c1e04676bff4f6b/8-typography.rst"
+        },
+        {
+          "adapter": "plain_text",
+          "raw_bytes": 37299,
+          "raw_sha256": "7ac53dfb4bf6f73f178560e09f33160d0250c69fb679802f3254dc0eb4c9f509",
+          "url": "https://raw.githubusercontent.com/standardebooks/manual-of-style/d1143a9b459b5e6f9cdda93a7c1e04676bff4f6b/9-metadata.rst"
+        }
+      ],
+      "provider": "Standard Ebooks",
+      "rights_evidence_path": "data/rights_evidence/data102_standard_ebooks_20260826.txt",
+      "rights_evidence_sha256": "a18c4acebf818abeed941b02c171f675639b619bb50c76ce64f5cfc4a3a4232c",
+      "role": "incumbent",
+      "source_id": "en.standard-ebooks.manual-of-style",
+      "source_version": "git:d1143a9b459b5e6f9cdda93a7c1e04676bff4f6b",
+      "terms_url": "https://raw.githubusercontent.com/standardebooks/manual-of-style/d1143a9b459b5e6f9cdda93a7c1e04676bff4f6b/LICENSE.md"
+    },
+    {
+      "family": "ua_historical_ocr",
+      "language": "uk",
+      "license_id": "CC-BY-4.0",
+      "modality": "natural",
+      "objects": [
+        {
+          "adapter": "parquet_transcription",
+          "field": "transcription",
+          "raw_sha256": "e44c27b6151a1fea68eeef1e73e4460391f82e0501571d8aa4d5a792fc448b12",
+          "split": "train",
+          "url": "https://huggingface.co/datasets/lang-uk/perestoroha-ocr/resolve/c7af19760e731a130e963eae29f3290c21296f3f/data/train-00000-of-00001.parquet"
+        }
+      ],
+      "provider": "Lang-UK",
+      "rights_evidence_path": "data/rights_evidence/data184_perestoroha_ccby4_20260826.txt",
+      "rights_evidence_sha256": "3b4b59d1912cde57d15e3df40cf31b3fdb0f32c49b915c33e26c5877c59ae0fc",
+      "role": "new",
+      "source_id": "hf:lang-uk/perestoroha-ocr",
+      "source_version": "git:c7af19760e731a130e963eae29f3290c21296f3f",
+      "terms_url": "https://huggingface.co/datasets/lang-uk/perestoroha-ocr/blob/c7af19760e731a130e963eae29f3290c21296f3f/README.md"
+    },
+    {
+      "family": "en_compiler_documentation",
+      "language": "en",
+      "license_blob_sha1": "0e259d42c996742e9e3cba14c677129b2c1b6311",
+      "license_id": "CC0-1.0",
+      "modality": "natural",
+      "objects": [
+        {"git_blob_sha1": "65acfbc58ba9ba53c16c138b740a0153df061ade", "path": "docs/README.md", "raw_bytes": 7165},
+        {"git_blob_sha1": "430c6d2696a56f81b527d35ace475d7cb8803334", "path": "docs/licensing.md", "raw_bytes": 10807},
+        {"git_blob_sha1": "94a70b6b09d6e1d257d1a717bf827bed2b328059", "path": "docs/manual/changelogs/whats-new.md", "raw_bytes": 35559},
+        {"git_blob_sha1": "b8cb9577607deb87033f6630b50036967caa4562", "path": "docs/manual/compiler/diagnostic-reference.md", "raw_bytes": 7144},
+        {"git_blob_sha1": "3abe674fc6d9fdccfb642e71f5a0d51ba886b849", "path": "docs/manual/compiler/diagnostics.md", "raw_bytes": 3260},
+        {"git_blob_sha1": "895449bf0530abaff0d94062164bbd00b9d6c7b2", "path": "docs/manual/compiler/dialects.md", "raw_bytes": 6871},
+        {"git_blob_sha1": "7c2d010212b1fc80545f8a70dda16d3b50bfcb5a", "path": "docs/manual/compiler/inline-ptx.md", "raw_bytes": 18999},
+        {"git_blob_sha1": "367b8bc3278f8c151f311b1ea7356081161aa391", "path": "docs/manual/compiler/language-extensions.md", "raw_bytes": 4933},
+        {"git_blob_sha1": "187ddfa0d2edbc59266b210bf0595a6922ef116f", "path": "docs/manual/compiler/optimisation-flags.md", "raw_bytes": 3244},
+        {"git_blob_sha1": "3f690e43378f803742aae1c4f5ecfa2c1e0806cd", "path": "docs/manual/faq.md", "raw_bytes": 4287},
+        {"git_blob_sha1": "f8c1aa4fa1a183aa1d3d988285828b867af8134c", "path": "docs/manual/comparison.md", "raw_bytes": 3326}
+      ],
+      "provider": "Spectral Compute",
+      "raw_url_template": "https://raw.githubusercontent.com/spectral-compute/scale-docs/a448d3e2a7a6847210bd4d86f33852cbf5d692e0/{path}",
+      "rights_evidence_path": "data/rights_evidence/data184_scale_docs_cc0_20260826.txt",
+      "rights_evidence_sha256": "376a90d003b19b0acd216a76947f4d78fdabb6b4af8ad7e60ce256d6279f17bb",
+      "role": "new",
+      "source_id": "github:spectral-compute/scale-docs",
+      "source_version": "git:a448d3e2a7a6847210bd4d86f33852cbf5d692e0",
+      "terms_url": "https://raw.githubusercontent.com/spectral-compute/scale-docs/a448d3e2a7a6847210bd4d86f33852cbf5d692e0/LICENSE"
+    },
+    {
+      "family": "code_itsdangerous",
+      "language": "code",
+      "license_id": "BSD-3-Clause",
+      "license_sha256": "63af09891b6be8ad1a4252ed43af0f4efba7fc948e228367bed7f3c5ae0b09d7",
+      "modality": "code",
+      "objects": [
+        {"git_blob_sha1": "f5ca80f905c9bb29b993c437a89174e668704658", "path": "src/itsdangerous/encoding.py", "raw_bytes": 1409, "raw_sha256": "c304f3e6aff7ccb71a01dba793afef4a84adc06a9859edf4ed997f53ceda4453", "url": "https://raw.githubusercontent.com/pallets/itsdangerous/672971d66a2ef9f85151e53283113f33d642dabd/src/itsdangerous/encoding.py"},
+        {"git_blob_sha1": "fc23feaaff690c477901dc50cc52dd18086051c5", "path": "src/itsdangerous/_json.py", "raw_bytes": 473, "raw_sha256": "c0f4069a07b6c99f77dbc107285ea069d19ec866022502b1b54fa22ca13a5270", "url": "https://raw.githubusercontent.com/pallets/itsdangerous/672971d66a2ef9f85151e53283113f33d642dabd/src/itsdangerous/_json.py"}
+      ],
+      "provider": "Pallets",
+      "rights_evidence_path": "data/rights_evidence/data184_itsdangerous_bsd3_20260826.txt",
+      "rights_evidence_sha256": "c9ac64a70c70b4e9f8555984096472a3a9301eb8abb7791eac10effb82ee8e2b",
+      "role": "new",
+      "source_id": "github:pallets/itsdangerous",
+      "source_version": "git:672971d66a2ef9f85151e53283113f33d642dabd",
+      "terms_url": "https://raw.githubusercontent.com/pallets/itsdangerous/672971d66a2ef9f85151e53283113f33d642dabd/LICENSE.txt"
+    },
+    {
+      "family": "code_pluggy",
+      "language": "code",
+      "license_id": "MIT",
+      "license_sha256": "d6b65e6c213a5d0b577911d34d6e5949b9f59d76c238c5071a2f3fc16cfb2606",
+      "modality": "code",
+      "objects": [
+        {"git_blob_sha1": "d9d5dbe8f83c3e9fa7b5afec6ebde7631a4a5fc8", "path": "src/pluggy/_result.py", "raw_bytes": 3116, "raw_sha256": "f2668b485954c9e3f74a995bc4710d9f0390d012ac48a889a266864151aa5d4c", "url": "https://raw.githubusercontent.com/pytest-dev/pluggy/3b6d46ddfcef132e1e4edfc98d24ad1eb6c36b37/src/pluggy/_result.py"}
+      ],
+      "provider": "pytest-dev",
+      "rights_evidence_path": "data/rights_evidence/data184_pluggy_mit_20260826.txt",
+      "rights_evidence_sha256": "fbae45a9bf5f2e2b78156f5e41297e9f7fdebe818e5c2ddead970760d617f7d1",
+      "role": "new",
+      "source_id": "github:pytest-dev/pluggy",
+      "source_version": "git:3b6d46ddfcef132e1e4edfc98d24ad1eb6c36b37",
+      "terms_url": "https://raw.githubusercontent.com/pytest-dev/pluggy/3b6d46ddfcef132e1e4edfc98d24ad1eb6c36b37/LICENSE"
+    }
+  ],
+  "split": {
+    "heldout_bucket": 0,
+    "heldout_modulus": 5,
+    "target_chunk_utf8_bytes": 2048,
+    "unit": "deterministic chunks after dedup"
+  }
+}
