@@ -143,3 +143,28 @@ def test_data229_text_source_version_drift_is_rejected(tmp_path: Path) -> None:
     )
     with pytest.raises(ExternalSnapshotRegistryV2Error, match="source_version drift"):
         build_external_snapshot_registry_v2(inputs_path=path, base_registry_path=BASE)
+
+
+def test_producer_evidence_bindings_are_retained() -> None:
+    registry = _build()
+    for source in registry["sources"]:
+        binding = source["producer_evidence_binding"]
+        assert source["exact_upstream_identity"]["source_manifest_sha256"]
+        if source["producer_worker"] == "DATA-213":
+            assert binding["registry_identity_sha256"] == (
+                "1357a343eb4ea973950d8991913109cbea53fe4fa891f0be9745ab497eb59486"
+            )
+            assert binding["report_identity_sha256"] is None
+            assert binding["rights_policy_sha256"] is None
+        else:
+            assert binding == {
+                "registry_identity_sha256": "149bd763e814190d1c0da2bb362b7c189dc3d0e3c0c4144083d7fb28dce9d872",
+                "report_identity_sha256": "234ace1497b00495716d00a1502c323fc06b88458c49ec3d6aa58bc2cdd52294",
+                "rights_policy_sha256": "905a567242c66dd24b3c5b1e73c4da2c0af4d077179db5739850f79eb6f8fbe3",
+            }
+        assert source["rights"]["model_training"]["authority"] == (
+            "policy://12-6/data/explicit-model-training-evidence-v1"
+        )
+        assert source["rights"]["redistribution"]["authority"] == (
+            "policy://12-6/data/explicit-model-training-evidence-v1"
+        )
