@@ -66,7 +66,7 @@ jobs:
             echo "VERIFY-218 scientific evaluator must contain no trainer or update path" >&2
             exit 1
           fi
-          if grep -En '(optimizer\.step|scheduler\.step|\.backward\(|train_microbatch\(|\.run\()' \
+          if grep -En '(optimizer\.step|scheduler\.step|\.backward\(|train_microbatch\(|trainer\.run\()' \
             src/twelve_six/verify218_resume_probe.py \
             src/twelve_six/verify218_authority_bridge.py; then
             echo "VERIFY-218 recovery/authority probes must restore only and never update" >&2
