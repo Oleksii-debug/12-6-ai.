@@ -63,6 +63,8 @@ class CommunicationDataContractTests(unittest.TestCase):
         )
         with self.assertRaises(CommunicationDataError):
             _validate_provenance(foreign, None)
+        with self.assertRaises(CommunicationDataError):
+            to_posttraining_records(foreign, for_training=True)
         authority = SyntheticDataAuthority(
             authority_id="SYNTH-AUTH-001",
             authority_sha256="a" * 64,
@@ -70,6 +72,10 @@ class CommunicationDataContractTests(unittest.TestCase):
             owner_approved=True,
         )
         _validate_provenance(foreign, authority)
+        rows = to_posttraining_records(
+            foreign, for_training=True, synthetic_authority=authority
+        )
+        self.assertEqual(rows[0].split, Split.TRAIN)
 
     def test_family_and_near_duplicate_leakage_fail_closed(self) -> None:
         train = _load_jsonl(self.dataset_root / "train.jsonl", CommunicationSplit.TRAIN)[0]
