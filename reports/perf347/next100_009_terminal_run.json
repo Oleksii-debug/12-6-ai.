@@ -1,0 +1,82 @@
+{
+  "authority": {
+    "model341_head": "e4ff486fd90802fc123bebf60eed4e59196a98df",
+    "model_spec_sha256": "fbff24d561a2818453554d58ca23fc6ace3303b078f1935a8576c4565bd92441",
+    "perf347_head": "a5b32313e401fc2ec38158cfc997d6633636bfa8",
+    "source_blobs": {
+      "attention_perf_py": "2323a709bf8f94047ffddc2de707b57d6edb8efd",
+      "model341_config": "69e3cbd5f5c83c9d3d529a2a6376db3055979c40",
+      "model_py": "aacc0157cee08ceae5ef8a36e74bc90285c9b539",
+      "static_kv_py": "e4e8cf3746cbc7fc1e43f7c08b088b7df12e268b"
+    }
+  },
+  "checks": {
+    "batching": {
+      "batch_size": 2,
+      "dynamic_after_bytes": 196608,
+      "dynamic_before_bytes": 131072,
+      "max_abs_static_dynamic": 0.0,
+      "partial_completion_active_row_parity": true,
+      "static_arena_bytes": 16777216
+    },
+    "context_1024": {
+      "max_abs_static_dynamic": 0.0,
+      "max_abs_static_stateless": 7.748603820800781e-07,
+      "overflow_before_mutation": true,
+      "overflow_errors": [
+        "static KV cache is already at fixed capacity",
+        "KV cache is already at model max_seq_len",
+        "sequence length 1025 exceeds max_seq_len 1024"
+      ],
+      "pass": true
+    },
+    "dynamic_kv_growth": {
+      "batch1_growth_bytes": 131072,
+      "batch2_growth_bytes": 65536
+    },
+    "eos": true,
+    "explicit_stop_token": true,
+    "fp32_static_arena": {
+      "batch1_bytes": 8388608,
+      "batch2_bytes": 16777216,
+      "formula": "2*n_layers*batch*n_kv_heads*capacity*head_dim*4"
+    },
+    "greedy_parity": true,
+    "greedy_tokens": [101, 101, 101, 101, 101, 101],
+    "logits_parity": {
+      "max_abs_static_dynamic": 0.0,
+      "max_abs_static_stateless": 9.5367431640625e-07
+    },
+    "reset_reuse": {
+      "static_arena_bytes": 8388608,
+      "storage_pointer_stable": true
+    },
+    "sampled_tokens": [25, 3, 85, 76, 99, 56],
+    "seeded_sampling_parity": true,
+    "static_kv_decode_growth": {
+      "arena_bytes_after": 8388608,
+      "arena_bytes_before": 8388608,
+      "arena_growth_bytes": 0,
+      "scope_note": "K/V backing arena only; decode still allocates transient compute tensors.",
+      "storage_pointer_stable": true
+    }
+  },
+  "execution": {
+    "cuda_available": false,
+    "cuda_build": null,
+    "device": "cpu",
+    "scope": "LOCAL_FREE CPU independent semantic reproduction from exact fetched source blobs",
+    "seed": 347,
+    "torch": "2.10.0+cpu",
+    "training_performed": false
+  },
+  "model": {
+    "dtype": "float32",
+    "max_seq_len": 1024,
+    "parameters": 20613440
+  },
+  "pass": true,
+  "qualification": "PASS",
+  "schema_version": 1,
+  "worker": "NEXT100-009-PERF347-TERMINALIZE"
+}

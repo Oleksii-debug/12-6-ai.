@@ -1,0 +1,109 @@
+{
+  "schema_version": 1,
+  "worker": "NEXT100-009-PERF347-TERMINALIZE",
+  "component": "PERF-347-20M-STATIC-KV-CAPACITY",
+  "terminal_status": "PASS",
+  "terminal": true,
+  "scope": "Static-KV qualification for exact primary MODEL-341 only",
+  "authority": {
+    "model341_worker": "MODEL-341-20M-CANDIDATE-A",
+    "model341_head": "e4ff486fd90802fc123bebf60eed4e59196a98df",
+    "perf347_head_qualified": "a5b32313e401fc2ec38158cfc997d6633636bfa8",
+    "model_spec_sha256": "fbff24d561a2818453554d58ca23fc6ace3303b078f1935a8576c4565bd92441",
+    "model_parameters": 20613440,
+    "model_py_blob": "aacc0157cee08ceae5ef8a36e74bc90285c9b539",
+    "attention_perf_py_blob": "2323a709bf8f94047ffddc2de707b57d6edb8efd",
+    "static_kv_py_blob": "e4e8cf3746cbc7fc1e43f7c08b088b7df12e268b",
+    "model341_config_blob": "69e3cbd5f5c83c9d3d529a2a6376db3055979c40",
+    "perf347_qualifier_blob": "4f9062d53ca86cc85171a20704dd7a91f0c611f2",
+    "perf347_gate_test_blob": "307494afa2193c69f3a668072841c490fa7da867"
+  },
+  "lineage": {
+    "perf347_is_ahead_of_model341_by_commits": 2,
+    "perf347_is_behind_model341_by_commits": 0,
+    "model341_consumed_without_architecture_change": true
+  },
+  "independent_run": {
+    "artifact_path": "reports/perf347/next100_009_terminal_run.json",
+    "artifact_blob": "3074648d1e132459de9fd1ddcabc4302bed57b85",
+    "artifact_file_sha256": "eada92ef54d24a01db561799e5a592a12c848f6d15b8033fe8adf431105dc8d6",
+    "probe_source_sha256": "fbac1975db1799c451e94f5da89fd9627e88ce7aa236c00d4a7d5e30e8f4212c",
+    "torch": "2.10.0+cpu",
+    "device": "cpu",
+    "cuda_available": false,
+    "seed": 347,
+    "training_performed": false,
+    "basis": "Independent LOCAL_FREE semantic reproduction from the exact fetched source blobs; no prior PERF-347 verdict text was used as evidence."
+  },
+  "requirements": {
+    "stateless_dynamic_static_logits_parity": {
+      "status": "PASS",
+      "max_abs_static_dynamic": 0.0,
+      "max_abs_static_stateless": 9.5367431640625e-07,
+      "rtol": 1e-06,
+      "atol": 1e-06
+    },
+    "greedy_parity": {
+      "status": "PASS",
+      "tokens": [101, 101, 101, 101, 101, 101]
+    },
+    "seeded_sampling_parity": {
+      "status": "PASS",
+      "seed": 347,
+      "tokens": [25, 3, 85, 76, 99, 56]
+    },
+    "eos": {"status": "PASS"},
+    "explicit_stop_token": {"status": "PASS"},
+    "batching": {
+      "status": "PASS",
+      "batch_size": 2,
+      "max_abs_static_dynamic": 0.0
+    },
+    "partial_completion": {
+      "status": "PASS",
+      "active_row_parity_after_retired_row_filler": true
+    },
+    "reset_reuse": {
+      "status": "PASS",
+      "storage_pointer_stable": true
+    },
+    "storage_pointer_stability": {
+      "status": "PASS"
+    },
+    "context_1024": {
+      "status": "PASS",
+      "max_abs_static_dynamic": 0.0,
+      "max_abs_static_stateless": 7.748603820800781e-07
+    },
+    "overflow_before_mutation": {
+      "status": "PASS",
+      "static_valid_length_after_rejection": 1024
+    },
+    "exact_fp32_static_arena_bytes": {
+      "status": "PASS",
+      "formula": "2*n_layers*batch*n_kv_heads*capacity*head_dim*4",
+      "batch1": 8388608,
+      "batch2": 16777216
+    },
+    "zero_static_decode_allocation_growth": {
+      "status": "PASS",
+      "scope": "preallocated K/V backing arena",
+      "growth_bytes": 0,
+      "storage_pointer_stable": true,
+      "not_claimed": "Zero total process/tensor allocation during decode is not claimed; transient compute tensors are expected."
+    }
+  },
+  "dynamic_reference": {
+    "batch1_growth_16_decode_tokens_bytes": 131072,
+    "batch1_growth_per_decode_token_bytes": 8192,
+    "batch2_growth_4_decode_steps_bytes": 65536,
+    "batch2_growth_per_decode_step_bytes": 16384
+  },
+  "prohibitions": {
+    "model_training": false,
+    "model_weight_mutation": false,
+    "external_llm": false,
+    "paid_compute": false
+  },
+  "decision": "PERF-347 is terminal for the exact MODEL-341 primary geometry and FP32 CPU static-KV mechanics represented by the bound heads and blobs. Any MODEL-341 head or bound source-blob change invalidates this authority and requires requalification."
+}
