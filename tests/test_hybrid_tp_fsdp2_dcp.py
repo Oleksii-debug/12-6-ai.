@@ -181,7 +181,8 @@ def _worker(
         coordinate = layout.coordinate(rank)
         stage, model, optimizer, trainer, plan, binding = _build_stack(stage_path)
         assert binding.world_size == _WORLD_SIZE
-        assert binding.data_parallel_degree if False else True
+        assert binding.parallel_plan.data_parallel == _DP
+        assert binding.parallel_plan.tensor_parallel == _TP
         assert binding.tensor_parallel_plan.tp_degree == _TP
         assert binding.tensor_parallel_plan.model_spec_sha256 == stage.model.identity_sha256()
 
