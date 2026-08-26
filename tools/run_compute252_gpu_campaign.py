@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 from __future__ import annotations
 
 import argparse
@@ -17,7 +16,7 @@ EXECUTABLE_KINDS = {"target_device", "topology_conditional"}
 def _load(path: Path) -> dict[str, Any]:
     value = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(value, dict):
-        raise ValueError("campaign manifest must be a JSON object")
+        raise TypeError("campaign manifest must be a JSON object")
     return value
 
 
