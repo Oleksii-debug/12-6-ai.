@@ -1,0 +1,239 @@
+name: RECOVER-170 TRAIN-41 Long 100K
+
+on:
+  pull_request:
+    branches:
+      - milestone150/learned-base-ladder-v1-20260826
+    paths:
+      - ".github/workflows/recover170-train41-long-100k.yml"
+      - "src/twelve_six/recover170_train41.py"
+      - "tests/test_recover170_train41.py"
+      - "src/twelve_six/milestone100_first_learned.py"
+      - "src/twelve_six/milestone150*.py"
+      - "src/twelve_six/model/**"
+      - "src/twelve_six/model.py"
+      - "src/twelve_six/training/**"
+      - "src/twelve_six/checkpoint/**"
+      - "src/twelve_six/checkpoint.py"
+      - "src/twelve_six/tokenization/**"
+      - "src/twelve_six/inference/**"
+      - "data/corpus_v01/**"
+      - "configs/data/corpus_v01.json"
+      - "requirements/locks/linux-x86_64/**"
+      - "requirements/profiles/**"
+      - "tools/verify_purpose_environment.py"
+      - "tools/ci_dependency_preflight.py"
+      - "tests/test_data25_corpus_v01.py"
+      - "tests/test_milestone100*.py"
+      - "tests/test_milestone150*.py"
+  workflow_dispatch:
+
+concurrency:
+  group: recover170-train41-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  recover-train41-long-100k:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    env:
+      PYTHONPATH: src
+      OMP_NUM_THREADS: "2"
+      MKL_NUM_THREADS: "2"
+    steps:
+      - name: Checkout exact recovery head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up exact Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact source
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+
+      - name: Dependency and tool preflight before environment creation
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: >-
+          python tools/ci_dependency_preflight.py
+          --profile linux-x86_64
+          --source-sha "$SOURCE_SHA"
+          --output recover170-ci-preflight.json
+
+      - name: Mandatory D08 purpose-environment preflight
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          python tools/verify_purpose_environment.py \
+            --profile linux-x86_64-cuda-training \
+            --source-sha "$SOURCE_SHA" \
+            --evidence-out recover170-purpose-environment.json
+
+      - name: Install scoped hash-locked scientific runtime
+        run: |
+          set -euo pipefail
+          python -m venv .recover170
+          .recover170/bin/python -m pip install \
+            --disable-pip-version-check --no-deps --require-hashes \
+            -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .recover170/bin/python -m pip install \
+            --disable-pip-version-check --no-deps --require-hashes \
+            -r requirements/locks/linux-x86_64/runtime.lock.txt
+          .recover170/bin/python -m pip install \
+            --disable-pip-version-check --no-deps --require-hashes \
+            -r requirements/locks/linux-x86_64/dev.lock.txt
+
+      - name: Focused scientific contract checks
+        run: |
+          set -euo pipefail
+          .recover170/bin/python -m compileall -q \
+            src/twelve_six/recover170_train41.py \
+            src/twelve_six/milestone100_first_learned.py \
+            src/twelve_six/milestone150_learned_base_ladder.py
+          .recover170/bin/python -m ruff check \
+            src/twelve_six/recover170_train41.py \
+            tests/test_recover170_train41.py
+          .recover170/bin/python -m pytest -q \
+            tests/test_recover170_train41.py \
+            tests/test_data25_corpus_v01.py \
+            tests/test_milestone100_first_learned.py \
+            tests/test_milestone150_manifest_recovery.py
+
+      - name: Prepare DATA-25 long-run authority
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          .recover170/bin/python -m twelve_six.recover170_train41 prepare \
+            --repo-root . \
+            --source-sha "$SOURCE_SHA" \
+            --output-dir recover170-evidence \
+            --environment-evidence recover170-purpose-environment.json
+
+      - name: Execute phase 1 through fresh-process frontier
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          .recover170/bin/python -m twelve_six.recover170_train41 phase1 \
+            --repo-root . \
+            --source-sha "$SOURCE_SHA" \
+            --output-dir recover170-evidence
+
+      - name: Execute mandatory fresh process and complete trajectory
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          .recover170/bin/python -m twelve_six.recover170_train41 resume \
+            --repo-root . \
+            --source-sha "$SOURCE_SHA" \
+            --output-dir recover170-evidence
+
+      - name: Validate completed scientific report
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          .recover170/bin/python -m twelve_six.recover170_train41 validate \
+            recover170-evidence/report.json \
+            --expected-source-sha "$SOURCE_SHA"
+          .recover170/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(
+              Path("recover170-evidence/report.json").read_text(encoding="utf-8")
+          )
+          points = report["evaluation"]["points"]
+          final = points[-1]
+          print(json.dumps({
+              "source_sha": report["source"]["git_sha"],
+              "parameter_count": report["model"]["parameter_count"],
+              "corpus_identity": report["truth_model"]["corpus_identity_sha256"],
+              "optimized_tokens": report["run"]["frontier_actual_optimized_tokens"],
+              "optimizer_steps": report["run"]["optimizer_steps"],
+              "final_heldout_bpb": final["heldout"]["bits_per_byte"],
+              "final_uk_bpb": final["heldout"]["by_stratum"]["uk"]["bits_per_byte"],
+              "final_en_bpb": final["heldout"]["by_stratum"]["en"]["bits_per_byte"],
+              "final_code_bpb": final["heldout"]["by_stratum"]["code"]["bits_per_byte"],
+              "resume": report["resume"]["status"],
+              "overfit_proxy": report["evaluation"]["overfit_memorization_proxy"],
+              "tokens_per_second": report["systems"]["optimized_tokens_per_training_second"],
+              "peak_rss_bytes": report["systems"]["peak_rss_bytes"],
+              "report_sha256": report["identity_sha256"],
+          }, ensure_ascii=False, sort_keys=True, indent=2))
+          PY
+
+      - name: Publish compact exact-head recovery evidence to PR
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          .recover170/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(
+              Path("recover170-evidence/report.json").read_text(encoding="utf-8")
+          )
+          final = report["evaluation"]["points"][-1]
+          overfit = report["evaluation"]["overfit_memorization_proxy"]
+          lines = [
+              "### RECOVER-170 exact-head completed TRAIN-41 long ~100K evidence",
+              "",
+              f"- source SHA: `{report['source']['git_sha']}`",
+              f"- parameters: `{report['model']['parameter_count']}`",
+              f"- DATA-25 corpus: `{report['truth_model']['corpus_identity_sha256']}`",
+              f"- actual optimized causal targets: `{report['run']['frontier_actual_optimized_tokens']}`",
+              f"- optimizer steps: `{report['run']['optimizer_steps']}`",
+              f"- final held-out BPB: `{final['heldout']['bits_per_byte']:.6f}`",
+              f"- UK / EN / code BPB: `{final['heldout']['by_stratum']['uk']['bits_per_byte']:.6f}` / `{final['heldout']['by_stratum']['en']['bits_per_byte']:.6f}` / `{final['heldout']['by_stratum']['code']['bits_per_byte']:.6f}`",
+              f"- fresh-process resume: `{report['resume']['status']}`",
+              f"- overfit proxy: `{overfit['status']}`",
+              f"- report SHA-256: `{report['identity_sha256']}`",
+              "",
+              "The historical S0 fixture was intentionally replaced by the compatible project-authored DATA-25 corpus. No representative external-corpus, intelligence, production-readiness, alignment, or instruction-following claim is made.",
+          ]
+          Path("recover170-evidence/pr-comment.md").write_text(
+              "\n".join(lines) + "\n", encoding="utf-8"
+          )
+          PY
+          gh pr comment "$PR_NUMBER" --repo "$GH_REPO" \
+            --body-file recover170-evidence/pr-comment.md
+
+      - name: Upload completed trajectory and retained checkpoints
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: recover170-train41-long-100k
+          path: |
+            recover170-ci-preflight.json
+            recover170-purpose-environment.json
+            recover170-evidence/environment-preflight.json
+            recover170-evidence/corpus-manifest.json
+            recover170-evidence/evaluation-identity.json
+            recover170-evidence/run-manifest.json
+            recover170-evidence/machine-prepare.json
+            recover170-evidence/phase1.json
+            recover170-evidence/report.json
+            recover170-evidence/train-curve.jsonl
+            recover170-evidence/checkpoints/
+          if-no-files-found: error
+          retention-days: 30
