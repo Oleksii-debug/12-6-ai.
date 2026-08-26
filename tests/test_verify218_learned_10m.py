@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 from copy import deepcopy
 from pathlib import Path
 
@@ -14,6 +15,8 @@ from twelve_six.verify218_learned_10m import (
     WORKER,
     Verify218Error,
     _compare_common_eval,
+    _independent_common_eval,
+    _independent_eval_batch,
     _tree_sha256,
     _verify_self_hash,
 )
@@ -78,6 +81,15 @@ def test_common_eval_rejects_state_mutation() -> None:
     actual["model_state_sha256_after"] = "b" * 64
     with pytest.raises(Verify218Error, match="state hash changed"):
         _compare_common_eval(actual, expected, label="fixture")
+
+
+def test_independent_common_eval_does_not_delegate_producer_evaluator() -> None:
+    common_source = inspect.getsource(_independent_common_eval)
+    batch_source = inspect.getsource(_independent_eval_batch)
+    assert "m100._evaluate" not in common_source
+    assert "_independent_eval_batch" in common_source
+    assert "F.cross_entropy" in batch_source
+    assert 'reduction="sum"' in batch_source
 
 
 def test_checkpoint_tree_digest_is_content_and_path_sensitive(tmp_path: Path) -> None:
