@@ -34,13 +34,11 @@ jobs:
           git merge-base --is-ancestor 290b82fd0f7d1cc3a1840deae4378b9c500f1c15 HEAD
 
       - name: Run fixture and evidence-safety contracts
-        env:
-          PYTHONPATH: src
         run: |
           set -euo pipefail
           python -m unittest discover -s tests -p 'test_data297_privacy_external_audit.py' -v
           mkdir -p data297-evidence
-          python -m twelve_six.data297_privacy_external_audit fixtures \
+          python tools/run_data297_privacy_external_audit.py fixtures \
             --output data297-evidence/privacy-fixture-audit.json
 
       - name: Download exact terminal source artifacts
@@ -89,11 +87,9 @@ jobs:
           PY
 
       - name: Audit complete terminal external-real inventory
-        env:
-          PYTHONPATH: src
         run: |
           set -euo pipefail
-          python -m twelve_six.data297_privacy_external_audit audit \
+          python tools/run_data297_privacy_external_audit.py audit \
             --data229-root .data297-input/data213 \
             --data227-root .data297-input/data227 \
             --output data297-evidence/privacy-external-audit.json
@@ -114,6 +110,7 @@ jobs:
           assert report["claim_boundary"]["admitted_terminal_families_scanned"] == 4
           assert report["claim_boundary"]["nonterminal_data228_promoted"] is False
           assert report["inventory"]["input_utf8_bytes"] == 183061
+          assert report["inventory"]["retained_training_utf8_bytes"] <= 183061
           assert set(report["inventory"]["by_family"]) == {
               "en.standardebooks.manual",
               "ua.rada.open-data.laws-texts",
