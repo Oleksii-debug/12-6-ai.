@@ -52,6 +52,8 @@ class _TrainerProbe:
         self.scheduler = _StateComponentProbe() if with_state_components else None
         self.scaler = _StateComponentProbe() if with_state_components else None
         self.loads = 0
+        self._failure_reason = None
+        self._update_incomplete = False
         if populated:
             loss = model(torch.ones(1, 3)).sum()
             loss.backward()
@@ -72,6 +74,17 @@ class _TrainerProbe:
         }
 
     def load_state_dict(self, state: dict[str, Any]) -> None:
+        expected = {
+            "micro_step",
+            "optimizer_step",
+            "tokens_seen",
+            "optimizer",
+            "scheduler",
+            "scaler",
+            "config",
+        }
+        if set(state) != expected:
+            raise TypeError("canonical trainer state keys differ")
         self.loads += 1
         self.optimizer.load_state_dict(state["optimizer"])
         if self.scheduler is not None:
@@ -187,6 +200,50 @@ def test_trainer_progress_must_match_verified_checkpoint_identity(
             state,
             manifest={"identity": identity},
         )
+
+
+def test_extra_canonical_trainer_field_fails_before_model_mutation(tmp_path: Path) -> None:
+    torch = pytest.importorskip("torch")
+    torch.manual_seed(27)
+    source_model = torch.nn.Linear(3, 2, bias=False)
+    source_trainer = _TrainerProbe(source_model, populated=True)
+    checkpoint = tmp_path / "trainer-extra-key"
+    save_trainer_checkpoint(
+        checkpoint,
+        model=source_model,
+        trainer=source_trainer,
+        identity=_identity(sum(parameter.numel() for parameter in source_model.parameters())),
+    )
+
+    tree = json.loads((checkpoint / "state.json").read_text(encoding="utf-8"))
+    tensors = load_safetensors_bytes((checkpoint / "state.safetensors").read_bytes())
+    state = unpack_state_tree(tree, tensors)
+    state["trainer"]["unexpected_future_field"] = {"corrupt": True}
+    _rewrite_state(checkpoint, state)
+
+    torch.manual_seed(127)
+    target_model = torch.nn.Linear(3, 2, bias=False)
+    target_trainer = _TrainerProbe(target_model, populated=False)
+    before_model = {
+        name: tensor.detach().clone() for name, tensor in target_model.state_dict().items()
+    }
+    before_optimizer = copy.deepcopy(target_trainer.optimizer.state_dict())
+
+    with pytest.raises(
+        CheckpointCompatibilityError,
+        match="canonical trainer state keys differ",
+    ):
+        load_trainer_checkpoint(
+            checkpoint,
+            model=target_model,
+            trainer=target_trainer,
+            restore_rng=False,
+        )
+
+    for name, tensor in target_model.state_dict().items():
+        torch.testing.assert_close(tensor, before_model[name], rtol=0, atol=0)
+    assert target_trainer.optimizer.state_dict() == before_optimizer
+    assert target_trainer.loads == 0
 
 
 def test_trainer_owned_optimizer_corruption_fails_before_model_mutation(tmp_path: Path) -> None:
