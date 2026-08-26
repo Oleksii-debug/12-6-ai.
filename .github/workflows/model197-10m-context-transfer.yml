@@ -1,0 +1,82 @@
+name: MODEL-197 10M Context Transfer
+on:
+  push:
+    branches: [model197/10m-context-transfer-20260826]
+  workflow_dispatch:
+    inputs:
+      target_tokens:
+        description: Matched optimized causal-target budget per context arm
+        required: false
+        default: "262144"
+concurrency:
+  group: model197-10m-context-transfer
+  cancel-in-progress: false
+permissions: {contents: read}
+jobs:
+  context-transfer-cpu:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with: {ref: "${{ github.sha }}", persist-credentials: false}
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with: {python-version: "3.11.16"}
+      - uses: ./.github/actions/execution-bootstrap
+        with:
+          capabilities: runtime,tests
+          venv: .model197-env
+          command: python -m pytest -q tests/test_model197_context_transfer.py tests/test_packing_performance.py tests/test_long_dependency.py
+          manifest: model197-evidence/environment.json
+      - name: Verify inherited contracts
+        run: |
+          set -euo pipefail
+          PYTHONPATH=src .model197-env/bin/python -m pytest -q \
+            tests/test_model197_context_transfer.py \
+            tests/test_packing_performance.py \
+            tests/test_long_dependency.py
+      - name: Prepare immutable matched plan
+        run: |
+          set -euo pipefail
+          TARGET="${{ github.event.inputs.target_tokens }}"
+          if [[ -z "$TARGET" ]]; then TARGET=262144; fi
+          PYTHONPATH=src .model197-env/bin/python -m twelve_six.model197_context_transfer prepare \
+            --repo . --out model197-evidence --target-tokens "$TARGET" \
+            > model197-evidence/prepare.stdout.json
+      - name: Train and evaluate context 256
+        run: |
+          set -euo pipefail
+          PYTHONPATH=src .model197-env/bin/python -m twelve_six.model197_context_transfer run-arm \
+            --repo . --out model197-evidence --horizon 256 \
+            > model197-evidence/arm-256.stdout.json
+      - name: Train and evaluate context 512
+        run: |
+          set -euo pipefail
+          PYTHONPATH=src .model197-env/bin/python -m twelve_six.model197_context_transfer run-arm \
+            --repo . --out model197-evidence --horizon 512 \
+            > model197-evidence/arm-512.stdout.json
+      - name: Train and evaluate context 1024
+        run: |
+          set -euo pipefail
+          PYTHONPATH=src .model197-env/bin/python -m twelve_six.model197_context_transfer run-arm \
+            --repo . --out model197-evidence --horizon 1024 \
+            > model197-evidence/arm-1024.stdout.json
+      - name: Summarize matched comparison
+        run: |
+          set -euo pipefail
+          PYTHONPATH=src .model197-env/bin/python -m twelve_six.model197_context_transfer summarize \
+            --out model197-evidence > model197-evidence/summary.stdout.json
+          cat model197-evidence/model197-summary.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: model197-context-transfer-cpu
+          path: |
+            model197-evidence/environment.json
+            model197-evidence/corpus-manifest.json
+            model197-evidence/model197-plan.json
+            model197-evidence/arm-256.json
+            model197-evidence/arm-512.json
+            model197-evidence/arm-1024.json
+            model197-evidence/model197-summary.json
+            model197-evidence/*.stdout.json
+          if-no-files-found: warn
