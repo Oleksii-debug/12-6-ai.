@@ -1,0 +1,90 @@
+name: ENV-154 Lock Metadata Convergence
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lock-metadata-convergence:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      PYTHONPATH: src
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up exact Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Install exact test dependencies before pytest and Ruff
+        run: |
+          set -euo pipefail
+          python -m venv .env154
+          .env154/bin/python -m pip install \
+            --disable-pip-version-check --no-deps --require-hashes \
+            -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .env154/bin/python -m pip install \
+            --disable-pip-version-check --no-deps --require-hashes \
+            -r requirements/locks/linux-x86_64/runtime.lock.txt
+          .env154/bin/python -m pip install \
+            --disable-pip-version-check --no-deps --require-hashes \
+            -r requirements/locks/linux-x86_64/dev.lock.txt
+
+      - name: Preflight required imports
+        run: |
+          set -euo pipefail
+          .env154/bin/python -c "import pytest, ruff; print('preflight imports PASS')"
+
+      - name: Verify committed derived metadata is current
+        run: |
+          set -euo pipefail
+          .env154/bin/python tools/converge_environment_metadata.py --check
+          .env154/bin/python tools/verify_locked_environment.py --profile linux-x86_64 --validate-only
+          for profile in \
+            linux-x86_64-tokenizer-experiment \
+            linux-x86_64-transformers-interop \
+            linux-x86_64-cuda-training; do
+            .env154/bin/python tools/verify_purpose_environment.py \
+              --profile "$profile" --root . --validate-only
+          done
+
+      - name: Run focused regression and adversarial drift suite
+        run: |
+          set -euo pipefail
+          .env154/bin/python -m pytest -q \
+            tests/test_dependency_lock.py \
+            tests/test_purpose_environment_profiles.py \
+            tests/test_env154_lock_metadata_convergence.py
+
+      - name: Ruff changed Python surfaces
+        run: |
+          set -euo pipefail
+          .env154/bin/python -m ruff check \
+            src/twelve_six/integration/dependency_lock.py \
+            tools/converge_environment_metadata.py \
+            tests/test_dependency_lock.py \
+            tests/test_env154_lock_metadata_convergence.py
+
+      - name: Prove deterministic regeneration is byte-idempotent
+        run: |
+          set -euo pipefail
+          before="$(git status --porcelain requirements/locks requirements/profiles)"
+          test -z "$before"
+          .env154/bin/python tools/converge_environment_metadata.py --write
+          git diff --exit-code -- requirements/locks requirements/profiles
+          .env154/bin/python - <<'PY'
+          from pathlib import Path
+          from twelve_six.integration.dependency_lock import validate_global_lock_index
+          validate_global_lock_index(root=Path('.'), index_path='requirements/locks/index.json')
+          print('global release lock verification PASS')
+          PY
