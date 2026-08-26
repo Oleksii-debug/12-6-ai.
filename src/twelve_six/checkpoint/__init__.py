@@ -1,5 +1,13 @@
 """Checkpointing, integrity, resume, and export primitives for 12-6 AI."""
 
+from . import core as _core
+from .load_hardening import install_checkpoint_hardening
+
+# Install fail-closed resume guards before any downstream adapter binds core
+# function objects. This preserves the checkpoint-v1 disk format while making
+# direct ``twelve_six.checkpoint.core`` imports receive the hardened functions.
+install_checkpoint_hardening()
+
 from .core import (
     CheckpointCompatibilityError,
     CheckpointError,
