@@ -53,8 +53,8 @@
       "best_checkpoint": {"step": 1000, "checkpoint_id": "a8b5b2d2106a63a10a85e6ebba0b1bd5ea77fc9faf3836fb3319fac0ad0a6cbb"},
       "final_checkpoint": {"step": 1000, "checkpoint_id": "a8b5b2d2106a63a10a85e6ebba0b1bd5ea77fc9faf3836fb3319fac0ad0a6cbb"},
       "heldout_bpb": {"aggregate": 1.8529853170496395, "ua": 2.0254259767376777, "en": 1.685492693074772, "code": 1.6812353764375643},
-      "first_party_inference": {"verified": true, "evaluation_non_mutation": true, "logits_sha256": {"ua": "e8e567", "en": "3d8f9a", "code": "30947d"}},
-      "memorization": {"authority": "RECOVER-178-EVAL136-MEMORIZATION", "type": "separate controlled canary-injection diagnostic", "exact_recovery_lift": 0.0, "nll_advantage": 1.3758201599, "rank_percentile_delta": 0.6875, "disproportionate_memorization": true, "privacy_claim": "NONE"}
+      "first_party_inference": {"verified": true, "evaluation_non_mutation": true, "logits_sha256": {"ua": "e8e567b0077c64b149684f3d6da0e220856bb6657b35a07858b66b19345e77bb", "en": "3d8f9ae283e5e1bf0fdb6241786e5c7968a00dc1ce2cdad36543d57e38723504", "code": "30947db9351a1590b4034daa12bda91ee37495d912321ed57a1fea016d54f176"}},
+      "memorization": {"authority": "RECOVER-178-EVAL136-MEMORIZATION", "type": "separate controlled canary-injection diagnostic", "exact_recovery_lift": 0.0, "nll_advantage": 1.3758201599121098, "rank_percentile_delta": 0.6875, "disproportionate_memorization": true, "privacy_claim": "NONE"}
     },
     {
       "rung": "500K",
@@ -66,8 +66,8 @@
       "best_checkpoint": {"step": 1000, "checkpoint_id": "8d13262139f3fcb89c7efb141c7a449e4faba9048166d0dd2f49eba4288b4524"},
       "final_checkpoint": {"step": 1000, "checkpoint_id": "8d13262139f3fcb89c7efb141c7a449e4faba9048166d0dd2f49eba4288b4524"},
       "heldout_bpb": {"aggregate": 0.2645455968814711, "ua": 0.37933297833635227, "en": 0.12579645499499625, "code": 0.1781162699814322},
-      "first_party_inference": {"verified": true, "evaluation_non_mutation": true, "logits_sha256": {"ua": "e790fe", "en": "a78238", "code": "73d175"}},
-      "memorization": {"authority": "RECOVER-178-EVAL136-MEMORIZATION", "type": "separate controlled canary-injection diagnostic", "exact_recovery_lift": 1.0, "nll_advantage": 4.9395995637, "rank_percentile_delta": 0.5625, "privacy_claim": "NONE"}
+      "first_party_inference": {"verified": true, "evaluation_non_mutation": true, "logits_sha256": {"ua": "e790fee63bb81b8d00c1ea14d3e2a8d19387b0917d658fad21468e491a22b69c", "en": "a78238c7ef049ebf522fdfbe8c5f5ac825f71663162bb65c7707ccec86c927a0", "code": "73d17554ecfb39d4204e79d05ddea8e563a4b3005ec2ffe171bc5906736121d8"}},
+      "memorization": {"authority": "RECOVER-178-EVAL136-MEMORIZATION", "type": "separate controlled canary-injection diagnostic", "exact_recovery_lift": 1.0, "nll_advantage": 4.939599563678106, "rank_percentile_delta": 0.5625, "privacy_claim": "NONE"}
     },
     {
       "rung": "1M",
@@ -79,8 +79,8 @@
       "best_checkpoint": {"step": 1000, "checkpoint_id": "2292b43f0114479965d71e910185396af989738da0776a59bf6badb86990bf98"},
       "final_checkpoint": {"step": 1000, "checkpoint_id": "2292b43f0114479965d71e910185396af989738da0776a59bf6badb86990bf98"},
       "heldout_bpb": {"aggregate": 0.12651757096387536, "ua": 0.12946803024656128, "en": 0.10200510512203087, "code": 0.1457361042689415},
-      "first_party_inference": {"verified": true, "evaluation_non_mutation": true, "logits_sha256": {"ua": "a14262", "en": "851f02", "code": "6b6c35"}},
-      "memorization": {"authority": "RECOVER-178-EVAL136-MEMORIZATION", "type": "separate controlled canary-injection diagnostic", "exact_recovery_lift": 1.0, "nll_advantage": 6.5055185705, "rank_percentile_delta": 0.625, "privacy_claim": "NONE"}
+      "first_party_inference": {"verified": true, "evaluation_non_mutation": true, "logits_sha256": {"ua": "a1426274da40182abcf345c45433f2017d20455a138ec92c47f09dc6ddb67cd0", "en": "851f02afcb14fa680ac8568f60439d7dd6529e908743a3bec2cdd5dc9e89ca45", "code": "6b6c3547ebc5056b216367c81cfa27e13053ee2c1e4e447df38bebe99bfc748d"}},
+      "memorization": {"authority": "RECOVER-178-EVAL136-MEMORIZATION", "type": "separate controlled canary-injection diagnostic", "exact_recovery_lift": 1.0, "nll_advantage": 6.5055185705423355, "rank_percentile_delta": 0.625, "privacy_claim": "NONE"}
     }
   ],
   "different_budget_evidence": [
