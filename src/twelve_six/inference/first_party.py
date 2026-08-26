@@ -1,23 +1,26 @@
-"""Canonical first-party checkpoint-to-D07 inference adapter for 12-6 Base."""
+"""Verified first-party checkpoint adapter for ModelSpec-driven inference."""
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
+
+import torch
 
 from twelve_six.checkpoint import (
     CheckpointCompatibilityError,
     load_verified_checkpoint,
     prepare_checkpoint_load,
 )
-from twelve_six.integration.s0_runtime import S0TorchInferenceBackend
 from twelve_six.model import ModelSpec, TwelveSixDecoder
 from twelve_six.tokenization import ByteTokenizer
 
+from .torch_backend import TorchInferenceBackend
 
-class FirstPartyInferenceBackend(S0TorchInferenceBackend):
-    """Verified D01+D04+D05 composition exposed through the D07 protocol."""
+
+class FirstPartyInferenceBackend(TorchInferenceBackend):
+    """Verified D01+D04+D05 composition exposed through the generic protocol."""
 
     def __init__(
         self,
@@ -31,23 +34,13 @@ class FirstPartyInferenceBackend(S0TorchInferenceBackend):
         self.manifest = dict(manifest)
         self.checkpoint_path = checkpoint_path
 
-    def next_token_logits(self, input_ids: Sequence[int]) -> Sequence[float]:
-        for token_id in input_ids:
-            if not isinstance(token_id, int) or isinstance(token_id, bool):
-                raise TypeError("input token IDs must be integers")
-            if not 0 <= token_id < self.tokenizer.vocab_size:
-                raise ValueError(
-                    f"input token ID {token_id} is outside vocabulary "
-                    f"[0, {self.tokenizer.vocab_size})"
-                )
-        return super().next_token_logits(input_ids)
-
     def diagnostics(self) -> dict[str, object]:
-        """Return privacy-safe checkpoint and runtime identities for CLI/evidence."""
+        """Return privacy-safe checkpoint and runtime identities for evidence."""
 
         identity = self.manifest["identity"]
         return {
             "backend": "first_party_torch",
+            "source": "checkpoint",
             "checkpoint_id": self.manifest["checkpoint_id"],
             "git_sha": identity["git_sha"],
             "model_spec_sha256": identity["model_spec_hash"],
@@ -123,14 +116,17 @@ def _require_byte_tokenizer(manifest: Mapping[str, Any], spec: ModelSpec) -> Byt
     return tokenizer
 
 
-def load_first_party_backend(checkpoint: Path) -> FirstPartyInferenceBackend:
-    """Verify one checkpoint snapshot, bind D01/D04 identities, and expose D07.
+def load_first_party_backend(
+    checkpoint: Path,
+    *,
+    device: str | torch.device = "cpu",
+) -> FirstPartyInferenceBackend:
+    """Verify one checkpoint snapshot, bind ModelSpec/tokenizer, and expose inference.
 
     The checkpoint directory is read exactly once into D05's immutable
     ``VerifiedCheckpoint`` snapshot. ModelSpec/tokenizer validation, applied
-    weights, and backend diagnostics are therefore derived from the same bytes
-    even if the source path changes after verification. RNG state is
-    intentionally not restored for inference.
+    weights, and backend diagnostics therefore derive from the same bytes.
+    RNG state is intentionally not restored for inference.
     """
 
     checkpoint = Path(checkpoint)
@@ -148,6 +144,7 @@ def load_first_party_backend(checkpoint: Path) -> FirstPartyInferenceBackend:
         expected_tokenizer_hash=tokenizer.identity.config_sha256,
         expected_tokenizer_vocab_hash=tokenizer.identity.vocab_sha256,
     )
+    model.to(torch.device(device))
     model.eval()
     return FirstPartyInferenceBackend(
         model,
