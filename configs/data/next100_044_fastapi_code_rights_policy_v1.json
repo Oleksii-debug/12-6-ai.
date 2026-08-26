@@ -33,11 +33,11 @@
   },
   "inventory": [
     {
-      "source_id": "code.fastapi.fastapi.encoders",
-      "path": "fastapi/encoders.py",
-      "blob_sha1": "e578768dac5b33556087b42bd6a2e0782a9d5379",
-      "expected_bytes": 11713,
-      "raw_url": "https://raw.githubusercontent.com/fastapi/fastapi/49033471594ea5d99a80abdf1043231b7791ee49/fastapi/encoders.py",
+      "source_id": "code.fastapi.fastapi.sse",
+      "path": "fastapi/sse.py",
+      "blob_sha1": "c31334835032570d8244526a623ac249ffc77284",
+      "expected_bytes": 7083,
+      "raw_url": "https://raw.githubusercontent.com/fastapi/fastapi/49033471594ea5d99a80abdf1043231b7791ee49/fastapi/sse.py",
       "language": "python",
       "source_kind": "source_code",
       "purpose": "pretraining"
@@ -89,7 +89,10 @@
       "pyproject.toml",
       "version metadata"
     ],
-    "evaluation": "Any benchmark, held-out, final-test, selection-validation, or evaluation-reserved object is excluded. This worker grants no evaluation use."
+    "evaluation": "Any benchmark, held-out, final-test, selection-validation, or evaluation-reserved object is excluded. This worker grants no evaluation use.",
+    "mixed_provenance_review_required": [
+      "fastapi/encoders.py (explicitly marks code taken/adapted from Pydantic v1; excluded from this authority)"
+    ]
   },
   "current_registry_binding": {
     "authority": "DATA-287-EXTERNAL-SNAPSHOT-REGISTRY-V2",
@@ -140,7 +143,7 @@
   "limits": {
     "max_files": 3,
     "max_bytes_per_file": 20000,
-    "max_total_raw_bytes": 30000,
+    "max_total_raw_bytes": 25000,
     "normalization": "STRICT_UTF8_IDENTITY_PRESERVE_V1",
     "near_duplicate_token_shingle_size": 5,
     "near_duplicate_jaccard_threshold": 0.85
