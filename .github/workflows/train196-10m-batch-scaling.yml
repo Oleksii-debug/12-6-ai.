@@ -1,0 +1,124 @@
+name: TRAIN-196 10M Batch Scaling
+
+on:
+  push:
+    branches:
+      - train196/10m-batch-scaling-20260826
+    paths:
+      - ".github/workflows/train196-10m-batch-scaling.yml"
+      - ".github/actions/execution-bootstrap/**"
+      - "requirements/execution/**"
+      - "requirements/locks/linux-x86_64/**"
+      - "tools/execution_bootstrap.py"
+      - "src/twelve_six/train196_batch_scaling.py"
+      - "src/twelve_six/milestone100_first_learned.py"
+      - "src/twelve_six/model/**"
+      - "src/twelve_six/model.py"
+      - "src/twelve_six/training/**"
+      - "src/twelve_six/packing/**"
+      - "src/twelve_six/packing.py"
+      - "src/twelve_six/tokenization/**"
+      - "data/corpus/v0.1/**"
+      - "configs/data/corpus_v01.json"
+      - "configs/stages/alternatives/s3_10m_scale03_byte_gqa.execution.json"
+      - "tests/test_train196_batch_scaling.py"
+  workflow_dispatch:
+
+concurrency:
+  group: train196-10m-batch-scaling-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  local-free-cpu-batch-scaling:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      PYTHONPATH: src
+      OMP_NUM_THREADS: "2"
+      MKL_NUM_THREADS: "2"
+      SOURCE_SHA: ${{ github.sha }}
+    steps:
+      - name: Checkout exact TRAIN-196 source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Set up exact Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact source
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+
+      - name: Universal execution bootstrap
+        uses: ./.github/actions/execution-bootstrap
+        with:
+          capabilities: runtime,tests
+          venv: .train196
+          command: python -m pytest -q tests/test_train196_batch_scaling.py
+          manifest: train196-bootstrap-manifest.json
+
+      - name: Run focused TRAIN-196 contract tests
+        run: .train196/bin/python -m pytest -q tests/test_train196_batch_scaling.py
+
+      - name: Execute paired 10M effective-batch comparison
+        run: |
+          .train196/bin/python -m twelve_six.train196_batch_scaling run \
+            --repo-root . \
+            --source-sha "$SOURCE_SHA" \
+            --output-dir evidence/train196 \
+            --seeds 1515 1616 1717
+
+      - name: Print decision-relevant summary
+        run: |
+          .train196/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path("evidence/train196/train196-report.json").read_text(encoding="utf-8"))
+          print(json.dumps({
+              "source_sha": report["source_sha"],
+              "authority": report["authority"],
+              "paired_seeds": report["paired_seeds"],
+              "statistical_candidates": report["statistical_candidates"],
+              "selection": report["selection"],
+              "microbatch_hardware_efficiency": report["microbatch_hardware_efficiency"],
+              "machine_scope": report["machine_scope"],
+              "gpu_retest_preregistration": report["gpu_retest_preregistration"],
+              "truth_boundary": report["truth_boundary"],
+              "report_sha256": report["report_sha256"],
+          }, ensure_ascii=False, indent=2, sort_keys=True))
+          PY
+
+      - name: Retain compact verified TRAIN-196 evidence on branch
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            evidence/train196/corpus-manifest.json \
+            evidence/train196/train196-preregistration.json \
+            evidence/train196/train196-report.json \
+            evidence/train196/workers/*.json \
+            train196-bootstrap-manifest.json
+          git commit -m "TRAIN-196 retain CPU batch scaling evidence"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+
+      - name: Upload retained evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: train196-10m-batch-scaling
+          path: |
+            train196-bootstrap-manifest.json
+            evidence/train196/corpus-manifest.json
+            evidence/train196/train196-preregistration.json
+            evidence/train196/train196-report.json
+            evidence/train196/workers/*.json
+          if-no-files-found: warn
+          retention-days: 30
