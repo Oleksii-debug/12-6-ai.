@@ -47,9 +47,12 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add reports/data228
+          git add -f reports/data228/probe-exit-code.txt
+          [ ! -f reports/data228/source-probe.json ] || git add -f reports/data228/source-probe.json
+          [ ! -f reports/data228/probe.stdout.log ] || git add -f reports/data228/probe.stdout.log
+          [ ! -f reports/data228/probe.stderr.log ] || git add -f reports/data228/probe.stderr.log
           if [ -d data/external/rights-evidence/data228 ]; then
-            git add data/external/rights-evidence/data228
+            git add -f data/external/rights-evidence/data228/*.txt
           fi
           if ! git diff --cached --quiet; then
             git commit -m "DATA-228: record immutable source probe execution evidence [skip ci]"
@@ -57,5 +60,5 @@ jobs:
           fi
 
       - name: Enforce probe success
-        if: steps.probe.outcome != 'success'
-        run: exit 1
+        if: always()
+        run: test "$(cat reports/data228/probe-exit-code.txt)" = "0"
