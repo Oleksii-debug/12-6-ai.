@@ -1,0 +1,341 @@
+{
+  "authority_identity_sha256": "6922c8c1b0fcfed032413af0469207d1dcf0a6e30ebda49a79765206a496a193",
+  "candidate_inventory": {
+    "capacity_note": "CPython accepted chunk byte lengths are not terminally materialized in one candidate tree; byte capacity remains null until exact reacquisition/materialization. No source bytes are relabelled as optimized loss positions.",
+    "exact_training_candidate_bytes": null,
+    "family_counts_by_stratum": {
+      "code": 2,
+      "en": 2,
+      "uk": 2
+    },
+    "inventory_kind": "PRE_DECONTAMINATION_EXACT_RECORD_IDENTITY_SET",
+    "known_normalized_bytes_lower_bound": 184540,
+    "logical_record_count": 20,
+    "parent_records": [
+      {
+        "content_sha256": "154fb4034929714087e75150d678bf65049ddac32e79dcdf97162c8972c2be83",
+        "family": "en.standardebooks.manual",
+        "identity_kind": "normalized_sha256",
+        "language": "en",
+        "modality": "text",
+        "normalized_bytes": 48002,
+        "source_id": "external-real:en.standardebooks.manual.8-typography"
+      },
+      {
+        "content_sha256": "94eb2f529922d125b3bd40691778886f4d5d80b128b925d0274fb3d94646ec5a",
+        "family": "en.standardebooks.manual",
+        "identity_kind": "normalized_sha256",
+        "language": "en",
+        "modality": "text",
+        "normalized_bytes": 36791,
+        "source_id": "external-real:en.standardebooks.manual.9-metadata"
+      },
+      {
+        "content_sha256": "72c301db0b2539f3f7a73c9c15e2e425700a6b758a1114f1a861e2d60c704c50",
+        "family": "ua.rada.open-data.laws-texts",
+        "identity_kind": "normalized_sha256",
+        "language": "uk",
+        "modality": "text",
+        "normalized_bytes": 88565,
+        "source_id": "external-real:ua.rada.open-data.laws-texts.d23314"
+      },
+      {
+        "content_sha256": "2c61b3ac94d1dcebcde0c6f519554d2d7917247fbaa0a97002db4ef69e70ff28",
+        "family": "github:encode/httpx",
+        "identity_kind": "raw_sha256",
+        "language": "code",
+        "modality": "code",
+        "normalized_bytes": 8161,
+        "source_id": "external-real:code.encode.httpx._content"
+      },
+      {
+        "content_sha256": "4c7d8d132c9898fc7d715e473f3ac74785ddc4ab96d2c9240f87835dc6d981ff",
+        "family": "github:psf/requests",
+        "identity_kind": "raw_sha256",
+        "language": "code",
+        "modality": "code",
+        "normalized_bytes": 1542,
+        "source_id": "external-real:code.psf.requests._internal_utils"
+      }
+    ],
+    "source_family_count": 6,
+    "source_normalized_bytes_upper_bound_before_chunk_rejection": 202441,
+    "successor_records": [
+      {
+        "content_sha256": "65e570c3cd954b595b586554b89a90da6efad0deca6a84d2316937745db17ef2",
+        "family": "ua.literature.lesia-ukrainka.na-krylah-pisen.1892-lviv",
+        "identity_kind": "normalized_snapshot_sha256",
+        "language": "uk",
+        "modality": "text",
+        "normalized_bytes": 1479,
+        "record_id": "ua.wikisource.lesia-ukrainka.na-krylah-pisen.1892.page13",
+        "source_id": "ua.wikisource.lesia-ukrainka.na-krylah-pisen.1892.page13"
+      },
+      {
+        "content_sha256": "604c7243b37696ca7173dbdf9dd2b5663f54075590e599b741243f882739e869",
+        "family": "python.cpython.documentation",
+        "identity_kind": "accepted_normalized_chunk_sha256",
+        "language": "en",
+        "modality": "text",
+        "normalized_bytes": null,
+        "record_id": "en.python.docs.tutorial-introduction#accepted-01",
+        "source_id": "en.python.docs.tutorial-introduction"
+      },
+      {
+        "content_sha256": "65eff0ae0fbb474ee32bc02f12111f57775474d1b6375c3dd0894ec666d05267",
+        "family": "python.cpython.documentation",
+        "identity_kind": "accepted_normalized_chunk_sha256",
+        "language": "en",
+        "modality": "text",
+        "normalized_bytes": null,
+        "record_id": "en.python.docs.tutorial-introduction#accepted-02",
+        "source_id": "en.python.docs.tutorial-introduction"
+      },
+      {
+        "content_sha256": "49771a2eedc6cae523e10e7fa04feac4e79713e324d7fe4d37577689ded1b279",
+        "family": "python.cpython.documentation",
+        "identity_kind": "accepted_normalized_chunk_sha256",
+        "language": "en",
+        "modality": "text",
+        "normalized_bytes": null,
+        "record_id": "en.python.docs.tutorial-introduction#accepted-03",
+        "source_id": "en.python.docs.tutorial-introduction"
+      },
+      {
+        "content_sha256": "1998f1a712c71a4cdec3d6f9693b0de79451004fcc5bdc78149d7d7a180427af",
+        "family": "python.cpython.documentation",
+        "identity_kind": "accepted_normalized_chunk_sha256",
+        "language": "en",
+        "modality": "text",
+        "normalized_bytes": null,
+        "record_id": "en.python.docs.tutorial-introduction#accepted-04",
+        "source_id": "en.python.docs.tutorial-introduction"
+      },
+      {
+        "content_sha256": "647bda8d594fec2c8be35b0505986f9f5e885d2fba8692838cb6f48494b8bc04",
+        "family": "python.cpython.documentation",
+        "identity_kind": "accepted_normalized_chunk_sha256",
+        "language": "en",
+        "modality": "text",
+        "normalized_bytes": null,
+        "record_id": "en.python.docs.tutorial-introduction#accepted-05",
+        "source_id": "en.python.docs.tutorial-introduction"
+      },
+      {
+        "content_sha256": "68bb8862c2b25dc702412cc1470410f7a218498dbbcdfb52a4db3269bd973d26",
+        "family": "python.cpython.documentation",
+        "identity_kind": "accepted_normalized_chunk_sha256",
+        "language": "en",
+        "modality": "text",
+        "normalized_bytes": null,
+        "record_id": "en.python.docs.tutorial-introduction#accepted-06",
+        "source_id": "en.python.docs.tutorial-introduction"
+      },
+      {
+        "content_sha256": "ab11186bb4c1fb0ddc849693cff0b4f230b162dc41d6908d6807f1f0f86ac6c2",
+        "family": "python.cpython.documentation",
+        "identity_kind": "accepted_normalized_chunk_sha256",
+        "language": "en",
+        "modality": "text",
+        "normalized_bytes": null,
+        "record_id": "en.python.docs.tutorial-introduction#accepted-07",
+        "source_id": "en.python.docs.tutorial-introduction"
+      },
+      {
+        "content_sha256": "aab52bdb384c5503d34d524edb06cacdc0c7ea03385c5413bd1db29cb7f7f388",
+        "family": "python.cpython.documentation",
+        "identity_kind": "accepted_normalized_chunk_sha256",
+        "language": "en",
+        "modality": "text",
+        "normalized_bytes": null,
+        "record_id": "en.python.docs.tutorial-introduction#accepted-08",
+        "source_id": "en.python.docs.tutorial-introduction"
+      },
+      {
+        "content_sha256": "bb78d8aad6fcd8ccf9408bd64a998aebedff14804aa79f78421cdd1fcdd91fef",
+        "family": "python.cpython.documentation",
+        "identity_kind": "accepted_normalized_chunk_sha256",
+        "language": "en",
+        "modality": "text",
+        "normalized_bytes": null,
+        "record_id": "en.python.docs.tutorial-introduction#accepted-09",
+        "source_id": "en.python.docs.tutorial-introduction"
+      },
+      {
+        "content_sha256": "a19741280be37f9268367aa31e8c3eedc1876b839b9aca4d13299f2872153b55",
+        "family": "python.cpython.documentation",
+        "identity_kind": "accepted_normalized_chunk_sha256",
+        "language": "en",
+        "modality": "text",
+        "normalized_bytes": null,
+        "record_id": "en.python.docs.tutorial-introduction#accepted-10",
+        "source_id": "en.python.docs.tutorial-introduction"
+      },
+      {
+        "content_sha256": "c9e8a1dc6709e6e50dadc9f22269f3ba149c2c4ba0f1b53ae32f0811acab79cb",
+        "family": "python.cpython.documentation",
+        "identity_kind": "accepted_normalized_chunk_sha256",
+        "language": "en",
+        "modality": "text",
+        "normalized_bytes": null,
+        "record_id": "en.python.docs.tutorial-introduction#accepted-11",
+        "source_id": "en.python.docs.tutorial-introduction"
+      },
+      {
+        "content_sha256": "e67ce9871a098147df5caa26900518e61422ce789252a766ae046a6eb4fde742",
+        "family": "python.cpython.documentation",
+        "identity_kind": "accepted_normalized_chunk_sha256",
+        "language": "en",
+        "modality": "text",
+        "normalized_bytes": null,
+        "record_id": "en.python.docs.tutorial-introduction#accepted-12",
+        "source_id": "en.python.docs.tutorial-introduction"
+      },
+      {
+        "content_sha256": "3b86d261ef94dd7b0deb0c577faaa41b9026f50cd18abee6c5eb84aa5aeb38ee",
+        "family": "python.cpython.documentation",
+        "identity_kind": "accepted_normalized_chunk_sha256",
+        "language": "en",
+        "modality": "text",
+        "normalized_bytes": null,
+        "record_id": "en.python.docs.tutorial-introduction#accepted-13",
+        "source_id": "en.python.docs.tutorial-introduction"
+      },
+      {
+        "content_sha256": "a09756447fdbd535629939d1bcaf8db5f6fba4b23bdc9468e27625f67c11e470",
+        "family": "python.cpython.documentation",
+        "identity_kind": "accepted_normalized_chunk_sha256",
+        "language": "en",
+        "modality": "text",
+        "normalized_bytes": null,
+        "record_id": "en.python.docs.tutorial-introduction#accepted-14",
+        "source_id": "en.python.docs.tutorial-introduction"
+      }
+    ]
+  },
+  "candidate_inventory_identity_sha256": "c952562878598ab81f28e4c734a0fd24cafb1101859acd8c4a675b069a011fa4",
+  "claim_boundary": {
+    "corpus_ready": false,
+    "decontamination_passed": false,
+    "learned_20m": false,
+    "model_quality_claim": false,
+    "training_started": false
+  },
+  "control_authority": {
+    "decision": "BLOCK_LONG_TRAINING_CONTINUE_LOCAL_FREE_ENGINEERING",
+    "evidence_identity_sha256": "86516d9151548b4d96e4cc694a7facf672087bc2a1321f572722a2b3084b9c85",
+    "head_sha": "83d92d50a4380636cc7f1cd41fa9ffd4445dd12e",
+    "pr": 519
+  },
+  "execution_profile": "LOCAL_FREE",
+  "gate_state": {
+    "G03_SOURCE_INVENTORY": "PASS_IDENTITY_FROZEN_PRE_DECONTAMINATION",
+    "G04_RIGHTS": "PASS_SOURCE_LEVEL_AUTHORITY_BOUND_RECHECK_ON_MATERIALIZATION",
+    "G05_QUALITY": "REQUIRES_COMPOSITE_RERUN_ON_EXACT_MATERIALIZATION",
+    "G06_PRIVACY": "REQUIRES_COMPOSITE_RERUN_ON_EXACT_MATERIALIZATION",
+    "G07_DEDUP": "REQUIRES_GLOBAL_EXACT_NEAR_LINEAGE_RERUN",
+    "G08_RESERVED_DECONTAMINATION": "BLOCKED_UNTIL_EXACT_CONTENT_MATERIALIZATION",
+    "G09_BALANCE_DIVERSITY": "STRUCTURAL_MINIMUM_FAMILY_COUNT_REACHED_CAPACITY_AND_CAPS_UNPROVEN",
+    "G10_SELECTION_VALIDATION": "PASS_NONEMPTY_EVAL303_BOUND",
+    "G12_UNIQUE_LOSS": "BLOCKED_NO_POST_SPLIT_POST_PACK_LEDGER",
+    "G14_TWO_CLEAN_BUILDS": "BLOCKED_NOT_REACHED"
+  },
+  "materialization": {
+    "reason": "The successor freezes exact record content identities and immutable source authorities, but CPython accepted chunk bytes are not yet materialized into this branch. A deterministic reacquisition/materializer must reproduce all 14 accepted hashes before decontamination.",
+    "required_before_decontamination": [
+      "reacquire CPython exact upstream blob and reproduce the authority normalization/chunk acceptance set",
+      "verify all 14 accepted CPython chunk SHA-256 identities",
+      "read the exact bound UA Wikisource snapshot bytes from its immutable branch/path",
+      "reacquire or bind the five DATA-300 parent records by their exact content identities",
+      "write one immutable candidate-record manifest with per-record byte lengths and content hashes"
+    ],
+    "single_tree_exact_content_materialized": false
+  },
+  "ordered_next_actions": [
+    "MATERIALIZE_EXACT_CANDIDATE_RECORD_BYTES_AND_PER_RECORD_LENGTHS",
+    "RUN_EXACT_NEAR_MATCH_EVALUATION_DECONTAMINATION",
+    "RUN_COMPOSITE_QUALITY_PRIVACY_AND_GLOBAL_DEDUP",
+    "BUILD_CLUSTER_SAFE_SPLITS_AND_APPLY_45_35_20_FAMILY_CAPS_WITHOUT_REPLAY",
+    "RUN_TWO_CLEAN_BUILDS_AND_FREEZE_SHARD_IDENTITY",
+    "BUILD_POST_PACK_UNIQUE_LOSS_LEDGER",
+    "REQUALIFY_20M_CHECKPOINT_RECOVERY_AND_BOUNDED_OPTIMIZER_MECHANICS",
+    "REFRESH_20M_CAMPAIGN_PREREGISTRATION",
+    "REQUEST_COMPUTE_AUTHORIZATION_ONLY_IF_ALL_DATA_GATES_PASS"
+  ],
+  "parent_data300": {
+    "branch": "data300/corpus-v03-frozen-build-contract-20260826",
+    "contract_identity_sha256": "07d7beaaff4616e839450de6af3d407855c832bf75a24a959d1a12de5d9364e5",
+    "family_counts_by_stratum": {
+      "code": 2,
+      "en": 1,
+      "uk": 1
+    },
+    "head_sha": "8ea7f830e50a23754d189dd4134f4afad76a7ee9",
+    "record_count": 5
+  },
+  "parent_data301": {
+    "authorized_balanced_no_replay_capacity": 0,
+    "branch": "data301/corpus-v03-terminal-build-20260826",
+    "corpus_identity": null,
+    "head_sha": "8820ba1b255f6bb95c7db0531fd846078a1aae01",
+    "shard_identity": null,
+    "state": "TERMINAL_BLOCKED"
+  },
+  "purpose": "Freeze a successor Research Corpus V1 pre-decontamination intake identity from exact terminal source authorities without claiming corpus freeze, shard identity, training capacity, or long-training readiness.",
+  "release_state": {
+    "corpus_frozen": false,
+    "corpus_identity": null,
+    "pre_decontamination_candidate_identity_frozen": true,
+    "release_ready": false,
+    "shard_identity": null,
+    "terminal_corpus": false
+  },
+  "repository": "Oleksii-debug/12-6-ai.",
+  "schema_version": "12-6.next100-102-research-corpus-v1-intake.v1",
+  "selection_validation": {
+    "branch": "eval303/selection-validation-composite-20260826",
+    "final_test_consumed": false,
+    "head_sha": "5e5a1de3b594cee5612e63d3d4c2a70499740ac7",
+    "records": {
+      "code": 0,
+      "en": 2,
+      "ua": 8
+    },
+    "state": "NONEMPTY_SELECTION_AUTHORITY"
+  },
+  "source_authorities": {
+    "python_docs": {
+      "accepted_chunk_count": 14,
+      "authority_blob_sha1": "b15abac8744ccda9fe58d1351f7925b6ab328034",
+      "authority_identity_sha256": "46a00dc70db690ae2b3c4495a75283e7e752bdccb1047d4318c2ebadfa392f0d",
+      "authority_path": "configs/data/next100_037_python_docs_source_authority_v1.json",
+      "branch": "next100037/python-docs-source-authority-v2-20260826",
+      "evaluation": "NOT_SEPARATELY_ADMITTED",
+      "head_sha": "5a6a495a24bce449334cbc5126d0114f61a9f57c",
+      "rejected_chunk_count": 2,
+      "terminal_verdict": "ADMIT",
+      "training_permission": "ALLOWED",
+      "whole_source_normalized_bytes": 17901,
+      "whole_source_normalized_sha256": "64a4ec4fd7574ba4c22e615a032b157e446b9c7f5a7917cb7f10fa214a05bd1a"
+    },
+    "ua_wikisource": {
+      "authority_blob_sha1": "9083f9fc8f97d8385292a74a0ce9e127f6fbeed2",
+      "authority_identity_sha256": "6b443faa7fef777214022028d5fdb356dae0ab1a9b71822b4e16bea8f92cd0d6",
+      "authority_path": "configs/data/next100022_ua_wikisource_candidate_v1.json",
+      "branch": "next100022/data-ua-wikisource-20260826",
+      "evaluation": "NOT_SEPARATELY_ADMITTED",
+      "head_sha": "84c51e42b6daa51796fd20d793b5ef1ff01cc9d2",
+      "selection_state": "BLOCKED_UNTIL_STANDARD_NEAR_MATCH_DECONTAMINATION",
+      "training_permission": "ALLOWED",
+      "verdict": "ADMIT_BOUNDED_PD_EDITION_SNAPSHOT"
+    }
+  },
+  "training_authority": {
+    "authorized_unique_optimized_targets": 0,
+    "long_training_authorized": false,
+    "paid_compute_used": false,
+    "reason": "Pre-decontamination identity freeze is not a corpus release or loss-position ledger.",
+    "training_executed": false
+  },
+  "worker_id": "NEXT100-102-RESEARCH-CORPUS-V1-INTAKE"
+}

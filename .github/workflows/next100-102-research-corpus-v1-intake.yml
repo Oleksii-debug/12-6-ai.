@@ -1,0 +1,36 @@
+name: NEXT100-102 Research Corpus V1 Intake
+
+on:
+  push:
+    branches:
+      - "next100-102/research-corpus-v1-intake-20260826"
+    paths:
+      - "configs/data/next100_102_research_corpus_v1_intake.json"
+      - "tools/validate_next100_102_research_corpus_v1_intake.py"
+      - "tests/test_next100_102_research_corpus_v1_intake.py"
+      - "docs/NEXT100_102_RESEARCH_CORPUS_V1_INTAKE.md"
+      - ".github/workflows/next100-102-research-corpus-v1-intake.yml"
+  pull_request:
+    paths:
+      - "configs/data/next100_102_research_corpus_v1_intake.json"
+      - "tools/validate_next100_102_research_corpus_v1_intake.py"
+      - "tests/test_next100_102_research_corpus_v1_intake.py"
+      - "docs/NEXT100_102_RESEARCH_CORPUS_V1_INTAKE.md"
+      - ".github/workflows/next100-102-research-corpus-v1-intake.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-intake:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile validator and tests
+        run: python3 -m py_compile tools/validate_next100_102_research_corpus_v1_intake.py tests/test_next100_102_research_corpus_v1_intake.py
+      - name: Validate exact successor intake
+        run: python3 tools/validate_next100_102_research_corpus_v1_intake.py
+      - name: Run adversarial regressions
+        run: python3 tests/test_next100_102_research_corpus_v1_intake.py
