@@ -1,0 +1,197 @@
+{
+  "authority_identity": "sha256:01b235cd9ad546e78df16e74e357f09620a4ebe96ba2c995d129c6803e4e0526",
+  "compute_budget_comparison": {
+    "integrated_milestone_status": "NOT_RUN_BLOCKED_WITH_FIXTURE",
+    "terminal_component_evidence": {
+      "authority": "POSTBASE-255",
+      "larger_budget": {
+        "candidate_branches": 4,
+        "generated_tokens": 512,
+        "model_calls": 7,
+        "tool_calls": 0
+      },
+      "observed": [
+        "larger budget consumed more model calls",
+        "larger budget consumed more candidate branches",
+        "larger trace contained more model calls",
+        "larger trace attempted more branches",
+        "small and larger verifier score were equal"
+      ],
+      "quality_improvement_claimed": false,
+      "small_budget": {
+        "candidate_branches": 2,
+        "generated_tokens": 512,
+        "model_calls": 3,
+        "tool_calls": 0
+      }
+    }
+  },
+  "execution": {
+    "base_weight_changes": false,
+    "external_llm_calls": false,
+    "external_teacher_calls": false,
+    "model_training": false,
+    "private_reasoning_published": false,
+    "profile": "LOCAL_FREE"
+  },
+  "mandatory_components": [
+    {
+      "artifact_digest": "sha256:e21a0193377812223094f7293c5d73cd43667666f6609d15700eccdaaf50f1fb",
+      "artifact_id": 9617499353,
+      "authority": "POSTBASE-351",
+      "component": "immutable_base_adapter",
+      "head_sha": "e805bf715617999209aef88946cea01f3668f583",
+      "pr": 428,
+      "state": "TERMINAL_LOCAL_FREE_PASS",
+      "terminal": true,
+      "workflow_run": 32998080549
+    },
+    {
+      "authority": "POSTBASE-253",
+      "component": "communication_boundary",
+      "head_sha": "f6463424b5f53152fce6e6053b705f94e03f9f06",
+      "pr": 381,
+      "state": "TERMINAL_GREEN",
+      "terminal": true,
+      "workflow_run": 32960956930
+    },
+    {
+      "authority": "POSTBASE-254",
+      "component": "tools",
+      "expected_successor_worker": "NEXT100-086-TOOL-PROTOCOL-TERMINAL",
+      "head_sha": "2f675e48a3172911a6f98ab6d4c46162ff536128",
+      "pr": 384,
+      "state": "NONTERMINAL_FAILED_EXACT_HEAD_COMPONENT_RUN",
+      "successor_candidate": {
+        "authority": "POSTBASE-355",
+        "head_sha": "85879e50487a56eb19dd4e0edab43ac405d75fd8",
+        "pr": 435,
+        "state": "NONTERMINAL_QUEUED_GENERIC_CI_ONLY",
+        "terminal": false,
+        "workflow_conclusion": null,
+        "workflow_run": 32999368108,
+        "workflow_status": "queued"
+      },
+      "terminal": false,
+      "terminal_successor_branch_observed": false,
+      "workflow_conclusion": "failure",
+      "workflow_run": 32961334473
+    },
+    {
+      "artifact_digest": "sha256:42f81f65c7210cbc944264fa338a70436e93935ed5dc166eb07886b15456b9ff",
+      "artifact_id": 9617049942,
+      "authority": "POSTBASE-255",
+      "component": "deliberation",
+      "head_sha": "486bd91ca03bed41750c638d702f557f320b780a",
+      "pr": 386,
+      "state": "PASS_COMPONENT_CONVERGENCE",
+      "terminal": true,
+      "workflow_run": 32997278311
+    },
+    {
+      "artifact_digest": "sha256:04a67b2df88aa7884ce5514ae94dd9a0f283b92fc537e87cf207fd277f79a910",
+      "artifact_id": 9612341993,
+      "authority": "POSTBASE-356/HYPOTHESIS-SEARCH-V1",
+      "component": "hypothesis_search",
+      "head_sha": "ea1d8fff0d3235660dffe7ba411e192df83f5e1d",
+      "pr": 422,
+      "state": "TERMINAL_EXACT_HEAD_SUCCESS",
+      "terminal": true,
+      "workflow_run": 32983288617
+    },
+    {
+      "artifact_digest": "sha256:f5ee2d24532b81806efc1fd7e748f64f8e9aa63f417ac7768f4edf64864e7388",
+      "artifact_id": 9612374655,
+      "authority": "POSTBASE-357",
+      "component": "verifier_ensemble",
+      "head_sha": "7eac24e250c0853745208bab8ba9b2d3d104fbf5",
+      "pr": 423,
+      "production_source_blob": "e3c0504c1a6b3768c8aaea1aaaa3b3eb637eaab7",
+      "state": "PASS_COMPONENT_CONVERGENCE_SOURCE_UNCHANGED_AFTER_TESTED_COMMIT",
+      "terminal": true,
+      "tested_commit_sha": "ad1bfe9365fcfba28d995cbe43aa89a76e1bf157",
+      "workflow_run": 32983319052
+    },
+    {
+      "authority": "POSTBASE-358",
+      "component": "memory_rag",
+      "generic_ci_same_head": "failure",
+      "head_sha": "976adda1cfe981d7b6363d267854759bee802006",
+      "pr": 436,
+      "state": "SCOPED_TERMINAL_LOCAL_FREE_PASS",
+      "terminal": true,
+      "workflow_run": 32983793329
+    },
+    {
+      "authority": "POSTBASE-359",
+      "component": "teacher_data_factory_boundary",
+      "generic_ci_same_head": "failure",
+      "head_sha": "6ae8cd70729565ac911a23bbcd628d602a19d030",
+      "pr": 427,
+      "state": "SCOPED_TERMINAL_LOCAL_FREE_PASS",
+      "terminal": true,
+      "workflow_run": 32997210933
+    }
+  ],
+  "non_authoritative_concurrent_integration_candidates": [
+    {
+      "branch": "next100-082/hypothesis-verifier-integration-20260826",
+      "head_sha": "7f8dbb88c6c9ad92968f66bae94103600893d357",
+      "reason": "new merge-composition SHA observed with no workflow runs",
+      "terminal": false,
+      "worker": "NEXT100-082-HYPOTHESIS-VERIFIER-INTEGRATION"
+    },
+    {
+      "branch": "next100-083/hypothesis-memory-rag-20260826",
+      "head_sha": "976adda1cfe981d7b6363d267854759bee802006",
+      "reason": "branch still points to POSTBASE-358 component head; no new hypothesis-memory integration proof",
+      "terminal": false,
+      "worker": "NEXT100-083-HYPOTHESIS-MEMORY-RAG"
+    },
+    {
+      "branch": "next100-085/adapter-deliberation-integration-20260826",
+      "head_sha": "e805bf715617999209aef88946cea01f3668f583",
+      "reason": "branch still points to POSTBASE-351 component head; no new adapter-deliberation integration proof",
+      "terminal": false,
+      "worker": "NEXT100-085-ADAPTER-DELIBERATION-INTEGRATION"
+    }
+  ],
+  "objective_end_to_end_fixture": {
+    "objective_checkability": "preregistered_only",
+    "private_reasoning": "not_exposed",
+    "reason": "Mandatory tools component has no terminal authority. Running an integrated fixture would silently substitute an unverified tool candidate.",
+    "required": true,
+    "status": "NOT_RUN_FAIL_CLOSED_BEFORE_EXECUTION"
+  },
+  "repository": {
+    "physical": "Oleksii-debug/12-6-ai.",
+    "requested": "Oleksii-debug/12-6-ai"
+  },
+  "schema": "next100097.milestone-deliberative-v0.blocked-authority.v1",
+  "seal": {
+    "final_live_refresh_required_after_publication": true,
+    "prepared_at_utc": "2026-08-26T18:26:20Z"
+  },
+  "terminal_policy": {
+    "all_mandatory_components_must_be_terminal": true,
+    "integrated_fixture_requires_all_mandatory_components_terminal": true,
+    "nonterminal_candidate_substitution_forbidden": true
+  },
+  "unblock_condition": {
+    "acceptable": [
+      "POSTBASE-254 exact-head terminal success after fixing its failed component gate",
+      "POSTBASE-355 or successor exact-head scoped terminal success proving the required tool protocol",
+      "NEXT100-086 terminal authority if published and exact-head green"
+    ],
+    "required": "terminal exact-head tool protocol authority",
+    "then_required": [
+      "live-refresh every mandatory component authority",
+      "run one objective integrated synthetic fixture using only terminal components",
+      "run the same fixture under small and larger compute budgets",
+      "verify Base immutability and namespace separation",
+      "seal a new successor authority"
+    ]
+  },
+  "verdict": "BLOCKED_MANDATORY_TOOLS_NONTERMINAL",
+  "worker": "NEXT100-097-MILESTONE-DELIBERATIVE-V0"
+}
