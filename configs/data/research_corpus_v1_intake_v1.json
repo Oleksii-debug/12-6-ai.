@@ -1,0 +1,180 @@
+{
+  "candidate_family_diversity": {
+    "authority_level_gate": "PASS",
+    "corpus_level_gate": "NOT_YET_EVALUABLE_UNTIL_MATERIALIZATION_DECONTAMINATION_AND_GLOBAL_DEDUP",
+    "counts": {
+      "code": 2,
+      "en": 2,
+      "uk": 2
+    },
+    "families_by_stratum_after_authority_intake": {
+      "code": [
+        "github:encode/httpx",
+        "github:psf/requests"
+      ],
+      "en": [
+        "en.standardebooks.manual",
+        "python.cpython.documentation"
+      ],
+      "uk": [
+        "ua.rada.open-data.laws-texts",
+        "ua.kmu.portal.secretariat-news"
+      ]
+    },
+    "required_min_independent_families_per_stratum": 2
+  },
+  "capacity_accounting": {
+    "authorized_unique_optimized_targets": 0,
+    "cpython_source_normalized_bytes_before_rejected_chunk_exclusion": 17901,
+    "exact_postpack_unique_nonignored_loss_positions": null,
+    "exact_training_eligible_bytes": null,
+    "incumbent_registry_normalized_source_bytes": 183061,
+    "kmu_normalized_source_bytes": 9153,
+    "pre_filter_source_envelope_bytes": 210115,
+    "pre_filter_source_envelope_is_training_capacity": false
+  },
+  "claim_boundary": {
+    "corpus_frozen": false,
+    "final_test_outcomes_read": false,
+    "learned_20m_checkpoint_created": false,
+    "long_training_authorized": false,
+    "optimizer_updates": 0,
+    "paid_compute_used": false,
+    "representative_corpus_claimed": false,
+    "stage_promotion_claimed": false,
+    "training_executed": false
+  },
+  "evidence_identity_sha256": "74777291227ad604747cebb7254f74c4f696dc738767b3090ced62daadfffbe3",
+  "execution_profile": "LOCAL_FREE",
+  "gates": {
+    "cluster_safe_split_and_shards": "BLOCKED",
+    "evaluation_decontamination": "BLOCKED_UNTIL_EXACT_CANDIDATE_IDENTITY",
+    "exact_candidate_corpus_identity": "BLOCKED",
+    "exact_candidate_record_inventory": "BLOCKED_NOT_MATERIALIZED_ON_ONE_BRANCH",
+    "family_diversity_authority_level": "PASS_2_2_2",
+    "global_dedup": "BLOCKED_UNTIL_MATERIALIZATION",
+    "quality_privacy_revalidation": "REQUIRED",
+    "real_20m_training": "BLOCKED",
+    "source_authority_intake": "PASS",
+    "two_clean_builds": "BLOCKED",
+    "unique_loss_ledger": "BLOCKED"
+  },
+  "incumbent_registry": {
+    "branch": "data287/external-snapshot-registry-v2-20260826",
+    "evaluation_rights": "NOT_SEPARATELY_ADMITTED",
+    "families_by_stratum": {
+      "code": [
+        "github:encode/httpx",
+        "github:psf/requests"
+      ],
+      "en": [
+        "en.standardebooks.manual"
+      ],
+      "uk": [
+        "ua.rada.open-data.laws-texts"
+      ]
+    },
+    "head_sha": "b0523ccbc4b957615aac849d476cfa851be87578",
+    "independent_family_count": 4,
+    "normalized_source_bytes": 183061,
+    "registry_identity_sha256": "917e9bc31b2fa040d25e807ae3c01aa2cce32420752a891caacfb6c830e6632c",
+    "snapshot_count": 5,
+    "training_rights": "ALLOWED_FOR_ALL_FIVE_BOUND_OBJECTS",
+    "worker": "DATA-287-EXTERNAL-SNAPSHOT-REGISTRY-V2"
+  },
+  "ordered_next_steps": [
+    "MATERIALIZE_EXACT_ACCEPTED_KMU_AND_CPYTHON_OBJECTS_ALONGSIDE_DATA287_IN_ONE_SUCCESSOR_CANDIDATE",
+    "FREEZE_SORTED_RECORD_INVENTORY_AND_CANDIDATE_IDENTITY",
+    "RUN_EXACT_NORMALIZED_FRAGMENT_NEAR_MATCH_AND_LINEAGE_DECONTAMINATION_AGAINST_SELECTION_AND_FINAL_TEST_RESERVATIONS_WITHOUT_READING_FINAL_TEST_OUTCOMES",
+    "RUN_GLOBAL_DEDUP_QUALITY_PRIVACY_AND_FAMILY_ACCOUNTING",
+    "BUILD_CLUSTER_SAFE_TRAIN_SPLIT_AND_DETERMINISTIC_SHARDS_TWICE_FROM_CLEAN_ROOTS",
+    "EMIT_EXACT_POSTPACK_UNIQUE_NONIGNORED_CAUSAL_LOSS_LEDGER",
+    "REQUALIFY_20M_CHECKPOINT_AND_OPTIMIZER_MECHANICS_ON_THE_FROZEN_CORPUS_CONTRACT",
+    "REFRESH_20M_CAMPAIGN_PREREGISTRATION_AND_KEEP_PAID_COMPUTE_FAIL_CLOSED_UNTIL_EXPLICIT_AUTHORIZATION"
+  ],
+  "parent_readiness_authority": {
+    "branch": "coord/20m-readiness-controller-20260826",
+    "decision": "BLOCK_LONG_TRAINING_CONTINUE_LOCAL_FREE_ENGINEERING",
+    "head_sha": "83d92d50a4380636cc7f1cd41fa9ffd4445dd12e",
+    "primary_20m_model_head_sha": "e4ff486fd90802fc123bebf60eed4e59196a98df",
+    "primary_20m_model_spec_sha256": "fbff24d561a2818453554d58ca23fc6ace3303b078f1935a8576c4565bd92441",
+    "primary_20m_parameter_count": 20613440
+  },
+  "purpose": "Bind the first successor Research Corpus V1 intake to exact terminal source authorities without fabricating a corpus freeze, decontamination result, or training capacity.",
+  "repository": "Oleksii-debug/12-6-ai.",
+  "schema": "12-6.research-corpus-v1-intake.v1",
+  "successor_authorities": {
+    "en_cpython_docs": {
+      "accepted_chunk_count": 14,
+      "accepted_normalized_chunk_sha256": [
+        "604c7243b37696ca7173dbdf9dd2b5663f54075590e599b741243f882739e869",
+        "65eff0ae0fbb474ee32bc02f12111f57775474d1b6375c3dd0894ec666d05267",
+        "49771a2eedc6cae523e10e7fa04feac4e79713e324d7fe4d37577689ded1b279",
+        "1998f1a712c71a4cdec3d6f9693b0de79451004fcc5bdc78149d7d7a180427af",
+        "647bda8d594fec2c8be35b0505986f9f5e885d2fba8692838cb6f48494b8bc04",
+        "68bb8862c2b25dc702412cc1470410f7a218498dbbcdfb52a4db3269bd973d26",
+        "ab11186bb4c1fb0ddc849693cff0b4f230b162dc41d6908d6807f1f0f86ac6c2",
+        "aab52bdb384c5503d34d524edb06cacdc0c7ea03385c5413bd1db29cb7f7f388",
+        "bb78d8aad6fcd8ccf9408bd64a998aebedff14804aa79f78421cdd1fcdd91fef",
+        "a19741280be37f9268367aa31e8c3eedc1876b839b9aca4d13299f2872153b55",
+        "c9e8a1dc6709e6e50dadc9f22269f3ba149c2c4ba0f1b53ae32f0811acab79cb",
+        "e67ce9871a098147df5caa26900518e61422ce789252a766ae046a6eb4fde742",
+        "3b86d261ef94dd7b0deb0c577faaa41b9026f50cd18abee6c5eb84aa5aeb38ee",
+        "a09756447fdbd535629939d1bcaf8db5f6fba4b23bdc9468e27625f67c11e470"
+      ],
+      "authority_identity_sha256": "46a00dc70db690ae2b3c4495a75283e7e752bdccb1047d4318c2ebadfa392f0d",
+      "branch": "next100037/python-docs-source-authority-v2-20260826",
+      "code_evaluation_reservation_eligible": false,
+      "dedicated_workflow_conclusion": "success",
+      "dedicated_workflow_run": 32998356906,
+      "evaluation": "NOT_SEPARATELY_ADMITTED",
+      "family_id": "python.cpython.documentation",
+      "head_sha": "5a6a495a24bce449334cbc5126d0114f61a9f57c",
+      "independent_from": [
+        "en.standardebooks.manual"
+      ],
+      "pr_number": 467,
+      "producer_worker": "NEXT100-037-DATA-EN-PYTHON-DOCS",
+      "rejected_chunk_count": 2,
+      "rejection_reasons": {
+        "pii_phone": 2
+      },
+      "source_normalized_bytes": 17901,
+      "source_normalized_sha256": "64a4ec4fd7574ba4c22e615a032b157e446b9c7f5a7917cb7f10fa214a05bd1a",
+      "training": "ALLOWED_ONLY_FOR_ACCEPTED_CHUNKS",
+      "verdict": "ADMIT"
+    },
+    "ua_kmu_secretariat": {
+      "branch": "next100-026/data-ua-kmu-cabinet-ministry",
+      "dedicated_workflow_conclusion": "success",
+      "dedicated_workflow_run": 32997970539,
+      "evaluation": "NOT_SEPARATELY_ADMITTED",
+      "family_id": "ua.kmu.portal.secretariat-news",
+      "final_test": "PROHIBITED",
+      "head_sha": "40950a950b60921fd856af2719e1ae2486d9e892",
+      "independent_from": [
+        "ua.rada.open-data.laws-texts"
+      ],
+      "manifest_identity_sha256": "1f068e6cc5ce3fc4a51d8477acee31fab5a0178e15f49225b57de94c5178f7d9",
+      "normalized_record_sha256": [
+        "5597ee6700b170c0ed93fa9e6c318097634ce1ae00657a5592090373b0169874",
+        "6e1e1f134f9cf8e11d92891acbf014f0ee30ec9219f179a862d706b74dd877eb",
+        "2338bdb3adf3c70b70f77b8df0bef0c9e81b098697e32703ab2205475cb2ab85",
+        "e7393c379a383c7fd27e1105411cd0b3717f87b7c848bbfbda7ea54a6bd5ea27",
+        "c3d3b823e03da0e8dcf09939b654a1038404fd5eae834789b6ad7c484eb7a346",
+        "6a5cf6b19feed67794caad09622a308e434c2997f01ddcadf2faa0ba35e61a6b"
+      ],
+      "normalized_source_bytes": 9153,
+      "pr_number": 449,
+      "producer_worker": "NEXT100-026-DATA-UA-CABINET-MINISTRY",
+      "record_count": 6,
+      "training": "ALLOWED_PRETRAINING",
+      "verdict": "ADMIT"
+    }
+  },
+  "terminal_decision": {
+    "meaning": "The 2/2/2 family minimum is now satisfiable at source-authority level, but training remains unauthorized until the exact successor corpus is materialized and all downstream gates pass.",
+    "status": "SOURCE_AUTHORITY_INTAKE_READY_MATERIALIZATION_REQUIRED"
+  },
+  "worker_id": "AUTONOMOUS-RESEARCH-CORPUS-V1-INTAKE-20260826"
+}
