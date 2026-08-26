@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """NEXT100-070 deterministic two-clean-build preflight/materialization boundary.
 
-This worker intentionally fails closed.  It validates the exact late-bound registry and
+This worker intentionally fails closed. It validates the exact late-bound registry and
 rights vector, derives the current hard-gate state, and emits canonical byte-stable
-manifests for every required build surface.  When a prebuild hard gate fails, split
+manifests for every required build surface. When a prebuild hard gate fails, split
 and shard payloads are not fabricated: their manifests record NOT_REACHED.
 """
 
@@ -68,6 +68,40 @@ def write_json(path: Path, payload: Any) -> None:
     path.write_bytes(canonical_bytes(payload))
 
 
+def validate_live_evidence(config: dict[str, Any]) -> None:
+    live = config["live_evidence_authorities"]
+    required = {"quality", "privacy", "dedup", "decontamination", "selection_validation", "unique_loss"}
+    require(set(live) == required, "live evidence authority set drift")
+
+    require(live["quality"]["current_candidate_scan"] is True, "DATA-296 current-candidate scan missing")
+    require(live["quality"]["current_candidate_bytes"] == 183061, "DATA-296 byte scope drift")
+    require(live["quality"]["release_gate_pass"] is False, "quality gate unexpectedly promoted")
+
+    require(live["privacy"]["current_candidate_scan"] is True, "VERIFY-307 current-candidate scan missing")
+    require(live["privacy"]["candidate_sources_pass"] == 5, "VERIFY-307 source coverage drift")
+    require(live["privacy"]["candidate_findings"] == 0, "VERIFY-307 candidate finding count drift")
+    require(live["privacy"]["release_gate_pass"] is True, "current candidate privacy scan is no longer PASS")
+
+    require(live["dedup"]["source_level_current_candidate_scan"] is True, "DATA-298 source-level scan missing")
+    require(live["dedup"]["source_level_bytes_before"] == 183061, "DATA-298 pre-dedup byte scope drift")
+    require(live["dedup"]["source_level_bytes_after"] == 183061, "DATA-298 conservative capacity drift")
+    require(live["dedup"]["source_level_duplicate_discount"] == 0, "DATA-298 duplicate discount drift")
+    require(live["dedup"]["release_gate_pass"] is False, "dedup release gate unexpectedly promoted")
+    require(
+        live["dedup"]["observed_successor"]["workflow_state"] == "QUEUED_NOT_AUTHORITY",
+        "nonterminal NEXT100-065 successor was accidentally promoted",
+    )
+
+    require(live["decontamination"]["scan_executed"] is False, "decontamination scan state drift")
+    require(live["decontamination"]["release_gate_pass"] is False, "decontamination unexpectedly promoted")
+
+    require(live["selection_validation"]["record_count"] > 0, "selection-validation unexpectedly empty")
+    require(live["selection_validation"]["release_gate_pass"] is True, "terminal selection-validation not PASS")
+
+    require(live["unique_loss"]["full_five_source_ledger"] is False, "five-source loss ledger unexpectedly present")
+    require(live["unique_loss"]["release_gate_pass"] is False, "unique-loss gate unexpectedly promoted")
+
+
 def validate_authorities(
     config: dict[str, Any], registry_path: Path, rights_path: Path
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], list[dict[str, Any]]]:
@@ -76,6 +110,7 @@ def validate_authorities(
     require(config["repository"] == "Oleksii-debug/12-6-ai.", "repository identity drift")
     require(config["determinism_contract"]["shared_mutable_cache_allowed"] is False, "mutable cache was enabled")
     require(config["determinism_contract"]["clean_build_count"] == 2, "clean build count drift")
+    validate_live_evidence(config)
 
     base = config["base_contract"]
     contract_path = ROOT / base["path"]
@@ -120,9 +155,15 @@ def validate_authorities(
         right = rights_sources[source_id]
         family = reg["independent_source_family"]["family_id"]
         require(family == frozen["family"] == right["source_family"], f"family drift: {source_id}")
-        require(int(reg["snapshot"]["normalized_bytes"]) == int(frozen["normalized_bytes"]), f"normalized bytes drift: {source_id}")
+        require(
+            int(reg["snapshot"]["normalized_bytes"]) == int(frozen["normalized_bytes"]),
+            f"normalized bytes drift: {source_id}",
+        )
         if "normalized_sha256" in frozen:
-            require(reg["snapshot"]["normalized_sha256"] == frozen["normalized_sha256"], f"normalized hash drift: {source_id}")
+            require(
+                reg["snapshot"]["normalized_sha256"] == frozen["normalized_sha256"],
+                f"normalized hash drift: {source_id}",
+            )
         else:
             require(reg["snapshot"]["raw_sha256"] == frozen["raw_sha256"], f"raw hash drift: {source_id}")
         training_right = str(right["rights"]["model_training"])
@@ -144,7 +185,10 @@ def validate_authorities(
 
     observed_family_counts = {key: len(value) for key, value in family_sets.items()}
     require(observed_family_counts == expected["family_counts"], f"family count vector drift: {observed_family_counts}")
-    require(sum(row["normalized_bytes"] for row in normalized_records) == expected["unique_normalized_bytes"], "record bytes do not sum to expected candidate capacity")
+    require(
+        sum(row["normalized_bytes"] for row in normalized_records) == expected["unique_normalized_bytes"],
+        "record bytes do not sum to expected candidate capacity",
+    )
     require(len(rights["admitted"]) == expected["source_count"], "rights admitted count drift")
     return contract, registry, rights, normalized_records
 
@@ -162,10 +206,14 @@ def build_outputs(
     output_root.mkdir(parents=True, exist_ok=True)
 
     expected = config["expected_candidate"]
+    live = config["live_evidence_authorities"]
     min_families = int(expected["minimum_independent_families_per_stratum"])
     family_counts = expected["family_counts"]
     diversity_pass = all(int(family_counts[key]) >= min_families for key in ("uk", "en", "code"))
-    require(diversity_pass is False, "current candidate unexpectedly satisfies family-diversity gate; successor build authority required")
+    require(
+        diversity_pass is False,
+        "current candidate unexpectedly satisfies family-diversity gate; successor build authority required",
+    )
     require(int(expected["family_constrained_no_replay_budget"]) == 0, "no-replay budget unexpectedly nonzero")
 
     authority_binding = {
@@ -221,11 +269,12 @@ def build_outputs(
     vector = config["prebuild_evidence_vector"]
     component_lock = contract.get("terminal_component_lock", {})
     evidence_specs = {
-        "quality_evidence.json": ("G05_QUALITY", "quality"),
-        "privacy_evidence.json": ("G06_PRIVACY", "privacy"),
-        "dedup_evidence.json": ("G07_DEDUP", "dedup"),
+        "quality_evidence.json": ("G05_QUALITY", "quality", "current_candidate_scan"),
+        "privacy_evidence.json": ("G06_PRIVACY", "privacy", "current_candidate_scan"),
+        "dedup_evidence.json": ("G07_DEDUP", "dedup", "source_level_current_candidate_scan"),
     }
-    for filename, (gate, component) in evidence_specs.items():
+    for filename, (gate, component, scan_key) in evidence_specs.items():
+        authority = live[component]
         write_json(
             output_root / filename,
             {
@@ -234,9 +283,11 @@ def build_outputs(
                 "state": vector[gate],
                 "current_candidate_source_count": expected["source_count"],
                 "current_candidate_unique_normalized_bytes": expected["unique_normalized_bytes"],
-                "bound_exact_current_candidate_rerun": False,
+                "bound_exact_current_candidate_scan": bool(authority[scan_key]),
+                "release_gate_pass": bool(authority["release_gate_pass"]),
+                "live_authority": authority,
                 "frozen_contract_component_observation": component_lock.get(component),
-                "claim_boundary": "STATUS_EVIDENCE_ONLY_NOT_A_NEW_CONTENT_SCAN",
+                "claim_boundary": "BOUND_TERMINAL_STATUS_EVIDENCE_NOT_A_NEW_CONTENT_SCAN_BY_NEXT100_070",
             },
         )
 
@@ -248,6 +299,7 @@ def build_outputs(
             "state": vector["G08_RESERVED_DECONTAMINATION"],
             "exact_corpus_identity": None,
             "scan_executed_by_this_worker": False,
+            "live_authority": live["decontamination"],
             "claim_boundary": "NO_CONTAMINATION_PASS_CLAIM_WITHOUT_EXACT_CORPUS_IDENTITY",
         },
     )
@@ -260,6 +312,7 @@ def build_outputs(
             "state": vector["G12_UNIQUE_LOSS"],
             "full_current_candidate_ledger_available": False,
             "authorized_balanced_no_replay_capacity": expected["family_constrained_no_replay_budget"],
+            "live_authority": live["unique_loss"],
             "frozen_contract_component_observation": component_lock.get("unique_loss"),
             "claim_boundary": "NO_FULL_FIVE_SOURCE_CAUSAL_LOSS_LEDGER_INVENTED",
         },
@@ -298,6 +351,7 @@ def build_outputs(
             "shard_materialization": "NOT_REACHED",
             "model_training_executed": False,
             "authority_binding": authority_binding,
+            "live_evidence_authorities": live,
         },
     )
 
@@ -319,8 +373,15 @@ def build_outputs(
     )
 
     required = set(config["determinism_contract"]["required_surfaces"])
-    actual = {path.relative_to(output_root).as_posix() for path in output_root.rglob("*") if path.is_file()}
-    require(actual == required, f"output path set drift: missing={sorted(required-actual)} extra={sorted(actual-required)}")
+    actual = {
+        path.relative_to(output_root).as_posix()
+        for path in output_root.rglob("*")
+        if path.is_file()
+    }
+    require(
+        actual == required,
+        f"output path set drift: missing={sorted(required - actual)} extra={sorted(actual - required)}",
+    )
 
     final_rows = []
     for path in sorted(p for p in output_root.rglob("*") if p.is_file()):
@@ -349,7 +410,13 @@ def main() -> int:
     config = load_json(args.config)
     contract, registry, rights, records = validate_authorities(config, args.registry, args.rights)
     result = build_outputs(config, contract, registry, rights, records, args.output)
-    print(json.dumps({key: value for key, value in result.items() if key != "tree_listing"}, sort_keys=True, separators=(",", ":")))
+    print(
+        json.dumps(
+            {key: value for key, value in result.items() if key != "tree_listing"},
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+    )
     print(result["tree_listing"], end="")
     return 0
 
