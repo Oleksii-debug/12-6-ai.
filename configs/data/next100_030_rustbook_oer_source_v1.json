@@ -27,6 +27,13 @@
       {"path": "second-edition/LICENSE-APACHE", "git_blob_sha1": "96e9f0458b55a4047927de5bf04ceda89d772b2b"}
     ]
   },
+  "attribution": {
+    "credit": "The Rust Project Developers; Ukrainian translation contributors at rust-lang-ua/rustbook_ukrainian",
+    "source_revision": "ca2d2e4f4434c661836926017af23bdd40ad4e3d",
+    "retain_mit_notice": true,
+    "retain_apache_2_license_and_applicable_notices": true,
+    "modified_file_notice_on_redistribution": true
+  },
   "purpose_decisions": {
     "acquisition": "ALLOWED",
     "analysis": "ALLOWED",
@@ -36,15 +43,15 @@
     "evaluation": "NOT_SEPARATELY_ADMITTED"
   },
   "selection": {
-    "rule": "Exact allowlist of three Chapter 1 source Markdown files under the explicitly licensed second-edition subtree at the pinned commit.",
+    "rule": "Exact allowlist of two Chapter 1 source Markdown files under the explicitly licensed second-edition subtree at the pinned commit.",
     "max_file_raw_bytes": 65536,
     "max_total_raw_bytes": 65536,
     "files": [
       {"path": "second-edition/src/ch01-01-installation.md", "git_blob_sha1": "bcd4034731e66a746e4c127809f9d02c7f793064"},
-      {"path": "second-edition/src/ch01-02-hello-world.md", "git_blob_sha1": "c6342ef39456499ee093020f00aa3576fc92d48e"},
-      {"path": "second-edition/src/ch01-03-hello-cargo.md", "git_blob_sha1": "d37e8aa4f028923c22b967601d6218fb2cee83e9"}
+      {"path": "second-edition/src/ch01-02-hello-world.md", "git_blob_sha1": "c6342ef39456499ee093020f00aa3576fc92d48e"}
     ],
     "explicit_exclusions": [
+      "second-edition/src/ch01-03-hello-cargo.md is excluded because its teaching fixture contains an example email address and the privacy gate is intentionally strict",
       "top-level src/ and src-ukr/ are excluded because this authority binds only the second-edition subtree with co-located license files",
       "second-edition/nostarch print-production material is excluded",
       "images, generated book output, build scripts, tooling, glossary/dictionary files, README/contributor metadata, and license text are not training payload",
@@ -76,7 +83,13 @@
     "known_evaluation_families": [
       "kubernetes.website.docs",
       "lang-uk.perestoroha-ocr"
-    ]
+    ],
+    "evaluation_selection_authority": {
+      "worker": "EVAL-303-SELECTION-VALIDATION-COMPOSITE",
+      "selection_identity_sha256": "7b97a9ab04469236dc5bc17fc80155cb43430b01c443bb6209fac090557258fd",
+      "ua_component_worker": "EVAL-290",
+      "ua_component_identity_sha256": "c32320a706a283049e35eb537eb20a1e7f5865b86c24397c8b73d1e3d2014164"
+    }
   },
   "expected_lock": {
     "file_count": null,
