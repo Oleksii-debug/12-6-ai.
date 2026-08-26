@@ -1,10 +1,18 @@
 from __future__ import annotations
 
-from twelve_six.milestone150_entrypoint import json_normalize
+import pytest
+
+from twelve_six.milestone150_entrypoint import (
+    json_normalize,
+    require_fresh_manifest_match,
+    require_shared_checkpoint_generation_snapshot,
+)
 from twelve_six.milestone150_learned_base_ladder import (
     EXPECTED_CORPUS_ID,
+    MAX_STEPS,
     SCALE_ORDER,
     SCALE_SPECS,
+    LadderError,
     _read_json,
     _run_manifest,
     _write_json,
@@ -117,3 +125,52 @@ def test_milestone150_trainer_manifest_fields_are_json_native_before_execution()
         assert json_normalize(run) == run
         assert run["trainer_config"]["betas"] == [0.9, 0.95]
         assert run["checkpoint_steps"] == [0, 250, 500, 750, 1000]
+
+
+def test_milestone150_fresh_manifest_match_is_fail_closed() -> None:
+    tok = ByteTokenizer()
+    manifest = {"corpus_identity_sha256": EXPECTED_CORPUS_ID}
+    eval_id = evaluation_identity(tok, manifest)
+    expected = _run_manifest(
+        "0" * 40,
+        "100k",
+        model_spec("100k"),
+        init_spec(),
+        tok,
+        manifest,
+        eval_id,
+        trainer_config(),
+        {"combined_sha256": "1" * 64},
+    )
+    require_fresh_manifest_match(json_normalize(expected), expected)
+
+    mutated = json_normalize(expected)
+    mutated["batch_size"] = int(mutated["batch_size"]) + 1
+    with pytest.raises(LadderError):
+        require_fresh_manifest_match(mutated, expected)
+
+
+def test_milestone150_shared_best_final_generation_role_is_fail_closed() -> None:
+    report = {
+        "evaluation": {"best_step": MAX_STEPS},
+        "generation": {
+            "best_checkpoint": {"uk": "same"},
+            "final_checkpoint": {"uk": "same"},
+        },
+    }
+    require_shared_checkpoint_generation_snapshot(report)
+
+    report["generation"]["final_checkpoint"] = {"uk": "different"}
+    with pytest.raises(LadderError, match="best/final generation snapshots diverge"):
+        require_shared_checkpoint_generation_snapshot(report)
+
+
+def test_milestone150_distinct_best_final_checkpoints_may_have_distinct_generation() -> None:
+    report = {
+        "evaluation": {"best_step": MAX_STEPS - 250},
+        "generation": {
+            "best_checkpoint": {"uk": "best"},
+            "final_checkpoint": {"uk": "final"},
+        },
+    }
+    require_shared_checkpoint_generation_snapshot(report)
