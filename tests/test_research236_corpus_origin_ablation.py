@@ -105,6 +105,7 @@ def _payload() -> dict:
     return {
         "worker_id": "RESEARCH-236-CORPUS-ORIGIN-ABLATION",
         "data230_terminal_identity": "data230-terminal",
+        "external_corpus_identity": "external-real-id",
         "data25_selection_identity": "data25-selection-id",
         "external_selection_identity": "external-selection-id",
         "common_real_holdout_identity": "eval233-final-id",
@@ -151,4 +152,12 @@ def test_analyzer_rejects_evaluation_byte_identity_drift() -> None:
     broken = copy.deepcopy(payload)
     broken["scales"]["500k"]["external_real"][0]["common_real_holdout_identity"] = "other-bytes"
     with pytest.raises(ValueError, match="evaluation-set identity mismatch"):
+        analyze(broken)
+
+
+def test_analyzer_rejects_external_corpus_identity_drift() -> None:
+    payload = _payload()
+    broken = copy.deepcopy(payload)
+    broken["scales"]["500k"]["external_real"][0]["training_corpus_identity"] = "other-corpus"
+    with pytest.raises(ValueError, match="external-real corpus identity mismatch"):
         analyze(broken)
