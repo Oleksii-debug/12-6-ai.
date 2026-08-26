@@ -2,9 +2,11 @@
   "schema": "12-6.next100-063-canonical-authority-pointer.v1",
   "worker_id": "NEXT100-063-CANONICAL-AUTHORITY-SELECTOR",
   "repository": "Oleksii-debug/12-6-ai.",
-  "authority_source_head_sha": "33017f1e344534841b31df5a6e0bfaf5b7cb2bcc",
+  "observed_source_pr_head_sha": "33017f1e344534841b31df5a6e0bfaf5b7cb2bcc",
+  "source_head_semantics": "DIAGNOSTIC_ONLY_NOT_TERMINAL_AUTHORITY",
   "canonical": {
     "path": "configs/data/next100_063_terminal_source_registry_v2.json",
+    "blob_sha1": "ba25cc1d4e4acca71752408db4fd0437ea1a07ae",
     "schema_version": "12-6.next100-063-terminal-source-registry.v2",
     "worker_id": "NEXT100-063-CANONICAL-SOURCE-REGISTRY-CONVERGENCE-V2",
     "registry_identity_sha256": "448dd61ed3e0d78d0bca9e202529a79c02811fd67beebe4833373d0c2ab0c0a7",
@@ -27,7 +29,7 @@
       "status": "SUPERSEDED_DRAFT_V2_IDENTITY_DO_NOT_CONSUME"
     }
   ],
-  "consumer_rule": "DOWNSTREAM_MUST_RESOLVE_THIS_POINTER_AND_MATCH_CANONICAL_REGISTRY_IDENTITY_BEFORE_CONSUMING_NEXT100_063",
+  "consumer_rule": "DOWNSTREAM_MUST_RESOLVE_THIS_POINTER_AND_MATCH_CANONICAL_REGISTRY_IDENTITY_AND_BLOB_BEFORE_CONSUMING_NEXT100_063",
   "truth_boundary": {
     "corpus_identity_claimed": false,
     "post_dedup_capacity_claimed": false,
@@ -35,5 +37,5 @@
     "tokenizer_fit_authorized": false,
     "paid_compute_authorized": false
   },
-  "pointer_identity_sha256": "603a330e775ca1678c5c62656593285cad202d7d458af24be02201837dc250d8"
+  "pointer_identity_sha256": "3388474cfb79431f13d5c23e6a41ddb7e7c18fc817d9eb9c8b6aaf57537582fb"
 }
