@@ -103,6 +103,118 @@ def _assert_bound_metadata(
         raise CheckpointCompatibilityError(f"checkpoint canonical binding mismatch: {mismatches}")
 
 
+def _validate_state_schema(expected: Any, actual: Any, *, path: str) -> None:
+    """Validate a state-dict payload without mutating or copying model-scale objects."""
+
+    if isinstance(expected, Mapping):
+        if not isinstance(actual, Mapping):
+            raise CheckpointCompatibilityError(f"{path} must be a mapping")
+        expected_keys = set(expected)
+        actual_keys = set(actual)
+        if actual_keys != expected_keys:
+            missing = sorted(map(str, expected_keys - actual_keys))
+            unexpected = sorted(map(str, actual_keys - expected_keys))
+            raise CheckpointCompatibilityError(
+                f"{path} keys differ: missing={missing}, unexpected={unexpected}"
+            )
+        for key, expected_value in expected.items():
+            _validate_state_schema(
+                expected_value,
+                actual[key],
+                path=f"{path}.{key}",
+            )
+        return
+
+    if isinstance(expected, list):
+        if not isinstance(actual, list) or len(actual) != len(expected):
+            raise CheckpointCompatibilityError(
+                f"{path} list geometry mismatch: expected length {len(expected)}"
+            )
+        for index, (expected_value, actual_value) in enumerate(
+            zip(expected, actual, strict=True)
+        ):
+            _validate_state_schema(
+                expected_value,
+                actual_value,
+                path=f"{path}[{index}]",
+            )
+        return
+
+    if isinstance(expected, tuple):
+        if not isinstance(actual, tuple) or len(actual) != len(expected):
+            raise CheckpointCompatibilityError(
+                f"{path} tuple geometry mismatch: expected length {len(expected)}"
+            )
+        for index, (expected_value, actual_value) in enumerate(
+            zip(expected, actual, strict=True)
+        ):
+            _validate_state_schema(
+                expected_value,
+                actual_value,
+                path=f"{path}[{index}]",
+            )
+        return
+
+    expected_cls = expected.__class__ if expected is not None else None
+    actual_cls = actual.__class__ if actual is not None else None
+    expected_is_tensor = bool(
+        expected_cls is not None
+        and expected_cls.__module__.startswith("torch")
+        and expected_cls.__name__ in {"Tensor", "Parameter"}
+    )
+    actual_is_tensor = bool(
+        actual_cls is not None
+        and actual_cls.__module__.startswith("torch")
+        and actual_cls.__name__ in {"Tensor", "Parameter"}
+    )
+    if expected_is_tensor:
+        if not actual_is_tensor:
+            raise CheckpointCompatibilityError(f"{path} must be a torch tensor")
+        if tuple(actual.shape) != tuple(expected.shape) or actual.dtype != expected.dtype:
+            raise CheckpointCompatibilityError(
+                f"{path} tensor metadata mismatch: checkpoint "
+                f"shape={tuple(actual.shape)} dtype={actual.dtype}, live "
+                f"shape={tuple(expected.shape)} dtype={expected.dtype}"
+            )
+        return
+
+    if expected is None:
+        if actual is not None:
+            raise CheckpointCompatibilityError(f"{path} must be None")
+        return
+
+    if isinstance(expected, bool):
+        compatible = isinstance(actual, bool)
+    elif isinstance(expected, int):
+        compatible = isinstance(actual, int) and not isinstance(actual, bool)
+    elif isinstance(expected, float):
+        compatible = isinstance(actual, float)
+    else:
+        compatible = type(actual) is type(expected)
+    if not compatible:
+        raise CheckpointCompatibilityError(
+            f"{path} type mismatch: checkpoint {type(actual).__name__}, "
+            f"live {type(expected).__name__}"
+        )
+
+
+def _preflight_stateful_component(component: Any | None, state: Any, *, label: str) -> None:
+    """Check scheduler/scaler state schema without cloning model-scale optimizer state."""
+
+    if (state is None) != (component is None):
+        raise CheckpointCompatibilityError(f"{label} state/config mismatch")
+    if component is None:
+        return
+    if not hasattr(component, "state_dict") or not hasattr(component, "load_state_dict"):
+        raise CheckpointCompatibilityError(
+            f"{label} must provide state_dict/load_state_dict"
+        )
+    live_state = component.state_dict()
+    if not isinstance(live_state, Mapping):
+        raise CheckpointCompatibilityError(f"live {label} state must be a mapping")
+    _validate_state_schema(live_state, state, path=f"{label} state")
+
+
 def _preflight_trainer_state(trainer: Any, state: Any) -> None:
     """Validate trainer-owned resume state before checkpoint model mutation.
 
@@ -140,7 +252,11 @@ def _preflight_trainer_state(trainer: Any, state: Any) -> None:
     if isinstance(live_config, Mapping):
         accumulation = live_config.get("gradient_accumulation_steps")
         max_steps = live_config.get("max_steps")
-        if isinstance(accumulation, int) and not isinstance(accumulation, bool) and accumulation > 0:
+        if (
+            isinstance(accumulation, int)
+            and not isinstance(accumulation, bool)
+            and accumulation > 0
+        ):
             expected_micro_steps = state["optimizer_step"] * accumulation
             if state["micro_step"] != expected_micro_steps:
                 raise CheckpointCompatibilityError(
@@ -170,11 +286,16 @@ def _preflight_trainer_state(trainer: Any, state: Any) -> None:
         return
 
     _preflight_optimizer_state(optimizer, state.get("optimizer"))
-
-    scheduler = getattr(trainer, "scheduler", None)
-    checkpoint_scheduler = state.get("scheduler")
-    if (checkpoint_scheduler is None) != (scheduler is None):
-        raise CheckpointCompatibilityError("scheduler state/config mismatch")
+    _preflight_stateful_component(
+        getattr(trainer, "scheduler", None),
+        state.get("scheduler"),
+        label="scheduler",
+    )
+    _preflight_stateful_component(
+        getattr(trainer, "scaler", None),
+        state.get("scaler"),
+        label="scaler",
+    )
 
 
 def save_trainer_checkpoint(
