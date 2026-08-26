@@ -1,0 +1,163 @@
+name: INTEGRATE-282 Post217 Learned Spine
+
+on:
+  push:
+    branches:
+      - integrate282/post217-learned-spine-20260826
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: integrate282-post217-learned-spine-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHONPATH: src
+  INTEGRATE282_EXECUTION_PROFILE: LOCAL_FREE
+
+jobs:
+  convergence-proof:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 70
+    steps:
+      - name: Checkout exact convergence head with ancestry
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: "${{ github.sha }}"
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+
+      - name: Prove accepted ancestry and exact upstream blobs
+        shell: bash
+        run: |
+          set -euo pipefail
+          for sha in \
+            6afaf5889f9898037b53e8b0bc2b731d77782111 \
+            349e6db94d4aca81c2d1a0ccc3368a98b6058392 \
+            c02c8aa38e691521ae2ab6a4ff3ea1d643efd6ef \
+            66f9be0c86a17568316e791dbf1890b238f114af \
+            b5512b4648cb09dd052b08884dc53f291e1ce935
+          do
+            git merge-base --is-ancestor "$sha" HEAD
+          done
+          test "$(git hash-object src/twelve_six/model.py)" = aacc0157cee08ceae5ef8a36e74bc90285c9b539
+          test "$(git hash-object src/twelve_six/inference/static_kv.py)" = e4e8cf3746cbc7fc1e43f7c08b088b7df12e268b
+          test "$(git hash-object src/twelve_six/inference/generation.py)" = 637a04824891e684ce0d763041a488ff20df7505
+          test "$(git hash-object src/twelve_six/eval233_holdout.py)" = 3e509302f1fde4af16a3603430daf314acdc0285
+          mkdir -p reports/integrate282
+          git rev-parse HEAD > reports/integrate282/head-sha.txt
+          git log --graph --oneline --decorate -60 > reports/integrate282/ancestry.txt
+
+      - name: Universal LOCAL_FREE execution bootstrap
+        uses: ./.github/actions/execution-bootstrap
+        with:
+          capabilities: runtime,tests,lint
+          venv: .integrate282
+          manifest: reports/integrate282/bootstrap.json
+
+      - name: Prove CPU-only boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          .integrate282/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+          import torch
+
+          manifest = json.loads(Path('reports/integrate282/bootstrap.json').read_text())
+          assert manifest['preflight']['status'] == 'PASS'
+          assert torch.version.cuda is None
+          assert torch.cuda.is_available() is False
+          print(json.dumps({'bootstrap': 'PASS', 'profile': 'LOCAL_FREE', 'device': 'cpu'}))
+          PY
+
+      - name: Trainer D05 recovery GQA static-KV and evaluation tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          .integrate282/bin/python -m pytest -q \
+            tests/test_execution_bootstrap.py \
+            tests/test_training_engine.py \
+            tests/test_training_precision_runtime.py \
+            tests/test_trainer_checkpoint_adapter.py \
+            tests/test_checkpointing.py \
+            tests/test_checkpoint_transactional_safety.py \
+            tests/test_scale141_recovery.py \
+            tests/test_attention_perf.py \
+            tests/test_attention_perf_model_integration.py \
+            tests/test_static_kv_cache.py \
+            tests/test_kv_cache_generation.py \
+            tests/test_kv_cache_serving.py \
+            tests/test_eval233_holdout.py
+
+      - name: Prove accepted GQA and static KV implementation invariants
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -n "def _expand_kv" src/twelve_six/model.py; then
+            echo "accepted native GQA must not restore the old K/V expansion helper" >&2
+            exit 1
+          fi
+          if grep -nE "[kv]\.repeat_interleave\(" src/twelve_six/model.py; then
+            echo "accepted native GQA must not materialize grouped K/V to query-head width" >&2
+            exit 1
+          fi
+          if grep -n "torch\.cat" src/twelve_six/inference/static_kv.py; then
+            echo "accepted static KV decode must not grow cache with torch.cat" >&2
+            exit 1
+          fi
+
+      - name: Download immutable learned 1M 3M and 10M artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p learned-artifacts/zips learned-artifacts/m150 learned-artifacts/learn191 learned-artifacts/learn217
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/9595677772/zip" > learned-artifacts/zips/m150.zip
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/9597788382/zip" > learned-artifacts/zips/learn191.zip
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/9602650341/zip" > learned-artifacts/zips/learn217.zip
+          echo "c00b7e9006320f8916c739a3311e8cc47ad0d0b16957f8ebd7d19233fd9f1c71  learned-artifacts/zips/m150.zip" | sha256sum -c -
+          echo "f57bf36113a68fffd4bfcf877bf08762393479b9c09e6fd0fd613fbb91f044ee  learned-artifacts/zips/learn191.zip" | sha256sum -c -
+          echo "8631e90417e40365b3fc0d6bc98ee6adda5a4ed24530e675d9a91c93219537ee  learned-artifacts/zips/learn217.zip" | sha256sum -c -
+          unzip -q learned-artifacts/zips/m150.zip -d learned-artifacts/m150
+          unzip -q learned-artifacts/zips/learn191.zip -d learned-artifacts/learn191
+          unzip -q learned-artifacts/zips/learn217.zip -d learned-artifacts/learn217
+
+      - name: Independent fresh load finite logits and UA EN code evaluator smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          .integrate282/bin/python tools/run_integrate282_spine_proof.py \
+            --checkpoint learned_1m=learned-artifacts/m150/retained/1m/best \
+            --checkpoint learned_3m=learned-artifacts/learn191/learn191-evidence/3m/checkpoint-t131292 \
+            --checkpoint learned_10m=learned-artifacts/learn217/scale141-evidence/retained/best \
+            --output reports/integrate282/independent-learned-consumer.json
+
+      - name: Learned 1M 3M 10M static KV parity
+        shell: bash
+        run: |
+          set -euo pipefail
+          .integrate282/bin/python tools/benchmark_perf250_learned.py \
+            --repetitions 1 \
+            --checkpoint learned_1m=learned-artifacts/m150/retained/1m/best \
+            --checkpoint learned_3m=learned-artifacts/learn191/learn191-evidence/3m/checkpoint-t131292 \
+            --checkpoint learned_10m=learned-artifacts/learn217/scale141-evidence/retained/best \
+            --output reports/integrate282/learned-static-kv-parity.json
+
+      - name: Retain INTEGRATE-282 evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: integrate282-post217-learned-spine-${{ github.sha }}
+          path: |
+            reports/integrate282/
+          if-no-files-found: error
+          retention-days: 30
