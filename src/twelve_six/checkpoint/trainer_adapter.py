@@ -18,10 +18,15 @@ from .core import (
     CheckpointCompatibilityError,
     CheckpointIdentity,
     LoadResult,
+    VerifiedCheckpoint,
+    _apply_model_weights,
     _decode_verified_state,
     _preflight_optimizer_state,
-    load_verified_checkpoint,
+    _preflight_rng_state,
+    _prepare_model_weights,
+    assert_identity,
     prepare_checkpoint_load,
+    restore_rng_state,
     save_checkpoint,
 )
 
@@ -340,6 +345,55 @@ def _preflight_trainer_state(
     )
 
 
+def _apply_predecoded_trainer_checkpoint(
+    verified: VerifiedCheckpoint,
+    *,
+    arrays: Mapping[str, Any],
+    combined_state: Mapping[str, Any],
+    model: Any,
+    strict_model: bool,
+    restore_rng: bool,
+    expected_git_sha: str | None,
+    expected_model_spec_hash: str | None,
+    expected_tokenizer_hash: str | None,
+    expected_tokenizer_vocab_hash: str | None,
+    expected_dataset_manifest_hash: str | None,
+    expected_run_manifest_hash: str | None,
+) -> LoadResult:
+    """Apply one already-decoded verified snapshot without decoding it again.
+
+    The Trainer path must inspect trainer-owned optimizer/scheduler/counter state
+    before model mutation. Reusing that exact decode here avoids materializing
+    model and optimizer checkpoint tensors a second time on 100M/1B-scale resume.
+    All mutation-critical checks still delegate to the canonical D05 primitives.
+    """
+
+    manifest = verified.manifest
+    assert_identity(
+        manifest,
+        git_sha=expected_git_sha,
+        model_spec_hash=expected_model_spec_hash,
+        tokenizer_hash=expected_tokenizer_hash,
+        tokenizer_vocab_hash=expected_tokenizer_vocab_hash,
+        dataset_manifest_hash=expected_dataset_manifest_hash,
+        run_manifest_hash=expected_run_manifest_hash,
+    )
+    materialized = _prepare_model_weights(model, arrays, strict_model)
+    if restore_rng:
+        _preflight_rng_state(combined_state["rng"])
+
+    # All identity, trainer, model and supported RNG checks complete before the
+    # first mutation. The verified source directory is never re-opened here.
+    _apply_model_weights(model, materialized, strict_model)
+    if restore_rng:
+        restore_rng_state(combined_state["rng"])
+    return LoadResult(
+        manifest=copy.deepcopy(manifest),
+        trainer_state=combined_state.get("trainer", {}),
+        rng_state=combined_state["rng"],
+    )
+
+
 def save_trainer_checkpoint(
     directory: str | Path,
     *,
@@ -386,8 +440,9 @@ def load_trainer_checkpoint(
     """Verify one exact byte snapshot, bind it, then restore fresh D02 targets.
 
     The canonical nested identity checks, trainer-state preflight, and actual load
-    consume the same verified byte snapshot. The source directory is never
-    re-opened between run-binding verification and model mutation.
+    consume the same verified byte snapshot and the same decoded tensor state.
+    The source directory is never re-opened between run-binding verification and
+    model mutation, and the payload is decoded exactly once on this path.
     """
 
     if not hasattr(trainer, "load_state_dict"):
@@ -406,19 +461,20 @@ def load_trainer_checkpoint(
         expected_seed=expected_seed,
     )
 
-    # The trainer owns optimizer/scheduler/counter state, so validate that exact
-    # decoded snapshot before load_verified_checkpoint is allowed to touch model
-    # weights. This closes the same deferred optimizer-failure class for the
-    # production Trainer adapter path used by long-running campaigns.
-    _, combined_state = _decode_verified_state(verified)
+    # Decode once, validate the trainer-owned state from those exact objects, then
+    # pass the same decoded objects into the model/RNG apply path. In particular,
+    # do not call load_verified_checkpoint(), which would decode the snapshot again.
+    arrays, combined_state = _decode_verified_state(verified)
     _preflight_trainer_state(
         trainer,
         combined_state.get("trainer"),
         manifest=manifest,
     )
 
-    result = load_verified_checkpoint(
+    result = _apply_predecoded_trainer_checkpoint(
         verified,
+        arrays=arrays,
+        combined_state=combined_state,
         model=model,
         strict_model=strict_model,
         restore_rng=restore_rng,
