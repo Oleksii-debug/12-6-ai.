@@ -2,16 +2,17 @@
   "schema": "12-6.ci153-workflow-dependency-audit-baseline.v1",
   "source": {
     "repository": "Oleksii-debug/12-6-ai.",
-    "head_sha": "5cf415341d9c4418ec0476541a5bd614ea80dbb3",
+    "audited_workflow_head_sha": "b8aae822117837da2e8fad6b1d6d26d7eb4f915c",
     "branch": "ci153/workflow-dependency-auditor-20260826"
   },
   "truth_boundary": {
-    "analysis": "deterministic static command/declaration review",
+    "analysis": "deterministic ordered static command/declaration review",
     "actions_execution_status": "PENDING_QUEUED_RUNNER",
     "model_dependencies_downloaded_for_audit": false,
     "training_artifacts_downloaded_for_audit": false,
     "paid_compute": false,
-    "legacy_exemptions": 0
+    "legacy_exemptions": 0,
+    "current_execution_claim": false
   },
   "classification_counts": {
     "VALID": 15,
@@ -32,7 +33,7 @@
       "path": ".github/workflows/ci153-workflow-dependency-audit.yml",
       "git_blob_sha": "fa8c716849f40293d2a08a6e286e67d16e1df0d3",
       "classification": "VALID",
-      "dependency_evidence": "stdlib-only audit runs before installs; hashed toolchain+dev locks are installed explicitly before pytest/ruff"
+      "dependency_evidence": "stdlib-only audit executes first; hashed toolchain+dev locks are installed explicitly before this worker invokes pytest/ruff"
     },
     {
       "path": ".github/workflows/d02-s0-real-training.yml",
@@ -56,19 +57,19 @@
       "path": ".github/workflows/d04-strict-s0-evaluation.yml",
       "git_blob_sha": "f02af5c027bafc002e69dc0fd321719dd97cb32a",
       "classification": "VALID",
-      "dependency_evidence": "literal pip install -e .[dev]; pyproject dev extra declares pytest>=8 and ruff>=0.12 before bare pytest/ruff"
+      "dependency_evidence": "literal pip install -e .[dev] occurs before bare ruff/pytest; pyproject dev extra declares pytest>=8 and ruff>=0.12"
     },
     {
       "path": ".github/workflows/d05-s1-checkpoint-preflight.yml",
       "git_blob_sha": "38bc6dc8e336a7c9e4a42f7a1d007312c461b7ce",
       "classification": "VALID",
-      "dependency_evidence": "explicit toolchain+runtime+dev locks before python -m pytest"
+      "dependency_evidence": "explicit toolchain+runtime+dev locks occur before python -m pytest"
     },
     {
       "path": ".github/workflows/d08-purpose-environments.yml",
       "git_blob_sha": "65a4de074c0b582e5e5db1cbf0c8ad3c1ebee032",
       "classification": "VALID",
-      "dependency_evidence": "all referenced D08 purpose profiles exist; wheel build uses explicit toolchain lock"
+      "dependency_evidence": "all referenced D08 purpose/base profiles exist; wheel build uses explicit toolchain lock"
     },
     {
       "path": ".github/workflows/d12-fsdp2-cpu.yml",
@@ -78,39 +79,39 @@
     },
     {
       "path": ".github/workflows/milestone100-first-learned-base.yml",
-      "git_blob_sha": "90c8918aa6234cd0a8ef10939acb226c369cfacc",
+      "git_blob_sha": "f1859d8c2dc1869b1d81f41fd27e6902e5d5e428",
       "classification": "VALID",
-      "dependency_evidence": "CI-153 migration adds explicit hashed dev.lock.txt after toolchain+runtime and before python -m pytest"
+      "dependency_evidence": "stdlib CI-153 gate runs before runtime install; hashed toolchain+runtime+dev locks then precede python -m pytest"
     },
     {
       "path": ".github/workflows/milestone150-learned-base-ladder-v1.yml",
-      "git_blob_sha": "4f5acc336efd26ac041df5e6189f0eae77631d68",
+      "git_blob_sha": "5a0d0c94c1eb941ffbf2571d6cf5efcd22d514a5",
       "classification": "VALID",
-      "dependency_evidence": "explicit hashed toolchain+runtime+dev locks before convergence pytest; learned stages use first-party project module"
+      "dependency_evidence": "stdlib CI-153 gate runs before runtime install; hashed toolchain+runtime+dev locks precede convergence pytest and learned stages"
     },
     {
       "path": ".github/workflows/scale-fsdp2-dcp-integration.yml",
       "git_blob_sha": "4377ee477d8ec6a0286b1d5acc866b026d1d43c3",
       "classification": "VALID",
-      "dependency_evidence": "explicit toolchain+runtime+dev locks before python -m ruff and python -m pytest"
+      "dependency_evidence": "explicit toolchain+runtime+dev locks occur before python -m ruff and python -m pytest"
     },
     {
       "path": ".github/workflows/scale02-s2-1m-executable.yml",
-      "git_blob_sha": "e83c06380a85db576bfae4787401e62ee60d7ac7",
+      "git_blob_sha": "4fd31da41d7813519d9ea84563839548de512b67",
       "classification": "VALID",
-      "dependency_evidence": "explicit toolchain+runtime locks; first-party S2 module; no direct audited external test CLI"
+      "dependency_evidence": "stdlib CI-153 gate runs before runtime install; explicit toolchain+runtime locks precede first-party S2 execution"
     },
     {
       "path": ".github/workflows/scale03-s3-10m-runtime.yml",
-      "git_blob_sha": "54bc435bd4b99f9e73a3637eab61024cdde7b2af",
+      "git_blob_sha": "5dffa79b7697be064423a6f94af1b7efa49f4d94",
       "classification": "VALID",
-      "dependency_evidence": "explicit toolchain+runtime+dev locks before python -m pytest"
+      "dependency_evidence": "stdlib CI-153 gate runs before runtime install; explicit toolchain+runtime+dev locks precede python -m pytest and 10M mechanics probe"
     },
     {
       "path": ".github/workflows/train29-s1-observability.yml",
       "git_blob_sha": "f3b2d2df80ae1c338c985a6e0c22b00345e93900",
       "classification": "VALID",
-      "dependency_evidence": "explicit toolchain+runtime+dev locks before python -m pytest"
+      "dependency_evidence": "explicit toolchain+runtime+dev locks occur before python -m pytest"
     }
   ],
   "historical_findings_and_migrations": [
@@ -126,9 +127,16 @@
       "missing_package": "pytest",
       "d08_truth": "pytest is declared in requirements/locks/linux-x86_64/dev.lock.txt, not runtime/toolchain",
       "remediation": "install the existing hashed dev.lock.txt before pytest; do not install an arbitrary ad-hoc package",
-      "after_git_blob_sha": "90c8918aa6234cd0a8ef10939acb226c369cfacc",
-      "after_classification": "VALID"
+      "dependency_fix_git_blob_sha": "90c8918aa6234cd0a8ef10939acb226c369cfacc",
+      "current_git_blob_sha": "f1859d8c2dc1869b1d81f41fd27e6902e5d5e428",
+      "current_classification": "VALID"
     }
   ],
-  "execution_note": "This retained baseline records the complete current workflow inventory and deterministic expected classifications. The executable auditor remains fail-closed; GitHub Actions must regenerate ci153-workflow-audit.json and pass fixture tests/lint before this baseline is treated as executed CI evidence."
+  "fail_fast_migrations": [
+    ".github/workflows/milestone100-first-learned-base.yml",
+    ".github/workflows/milestone150-learned-base-ladder-v1.yml",
+    ".github/workflows/scale02-s2-1m-executable.yml",
+    ".github/workflows/scale03-s3-10m-runtime.yml"
+  ],
+  "execution_note": "This retained baseline records the complete current workflow inventory and deterministic expected classifications after ordered dependency proof and fail-fast migrations. The executable auditor remains fail-closed; GitHub Actions must regenerate ci153-workflow-audit.json and pass fixture tests/lint before this baseline is treated as executed CI evidence."
 }
