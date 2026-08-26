@@ -1,0 +1,70 @@
+{
+  "schema": "12-6.ci153-workflow-dependency-audit-baseline.v2",
+  "source": {
+    "repository": "Oleksii-debug/12-6-ai.",
+    "audited_workflow_head_sha": "e9589af2abdc93c2ad5370ad7a93e44cf2ead05b",
+    "base_head_sha": "8344085ddd0b52e4b698c3344a1d0482153525dc",
+    "branch": "ci153/workflow-dependency-auditor-v2-20260826"
+  },
+  "truth_boundary": {
+    "analysis": "deterministic ordered static command/declaration review",
+    "actions_execution_status": "PENDING_RUNNER_EXECUTION",
+    "current_execution_claim": false,
+    "model_dependencies_downloaded_for_audit": false,
+    "training_artifacts_downloaded_for_audit": false,
+    "paid_compute": false,
+    "legacy_exemptions": 0,
+    "env151_present": false,
+    "incumbent_preflight_reused": "tools/ci_dependency_preflight.py"
+  },
+  "classification_counts": {
+    "VALID": 15,
+    "MISSING_DECLARED_DEPENDENCY": 0,
+    "STALE_PROFILE_REFERENCE": 0,
+    "AMBIGUOUS_DYNAMIC_COMMAND": 0,
+    "LEGACY_EXEMPT_WITH_REASON": 0
+  },
+  "inventory_count": 15,
+  "workflows": [
+    {"path": ".github/workflows/ci.yml", "git_blob_sha": "45e84530489ddef24f85f910e0a32546dc403434", "classification": "VALID"},
+    {"path": ".github/workflows/ci153-workflow-dependency-audit.yml", "git_blob_sha": "1f1de1c1bd2c4325f75309f5674af444db6cde66", "classification": "VALID"},
+    {"path": ".github/workflows/d02-s0-real-training.yml", "git_blob_sha": "3736a06c690a0cfa63ce6c4eabd7e9b961c45300", "classification": "VALID"},
+    {"path": ".github/workflows/d02-s0-repeatability.yml", "git_blob_sha": "69168a1571764acb0f5f27cf1ed913bbc5d6200e", "classification": "VALID"},
+    {"path": ".github/workflows/d02-s1-numerical-preflight.yml", "git_blob_sha": "227e09b38d1f017af0d7a01bfa0f4d8113c5db1f", "classification": "VALID"},
+    {"path": ".github/workflows/d04-strict-s0-evaluation.yml", "git_blob_sha": "f02af5c027bafc002e69dc0fd321719dd97cb32a", "classification": "VALID"},
+    {"path": ".github/workflows/d05-s1-checkpoint-preflight.yml", "git_blob_sha": "38bc6dc8e336a7c9e4a42f7a1d007312c461b7ce", "classification": "VALID"},
+    {"path": ".github/workflows/d08-purpose-environments.yml", "git_blob_sha": "9e80d01a5b3e3f86b2a4bf9e8b5ab141582090ed", "classification": "VALID"},
+    {"path": ".github/workflows/d12-fsdp2-cpu.yml", "git_blob_sha": "98a690c8caa103c81e4ef7c37e690d7cb95e8b27", "classification": "VALID"},
+    {"path": ".github/workflows/milestone100-first-learned-base.yml", "git_blob_sha": "db5f0aa4ff694acc4e9aad41d08ba1c37e04e35c", "classification": "VALID"},
+    {"path": ".github/workflows/milestone150-learned-base-ladder-v1.yml", "git_blob_sha": "a1d9cc9660a60b467ee81b1db12d137e076d3ece", "classification": "VALID"},
+    {"path": ".github/workflows/scale-fsdp2-dcp-integration.yml", "git_blob_sha": "4377ee477d8ec6a0286b1d5acc866b026d1d43c3", "classification": "VALID"},
+    {"path": ".github/workflows/scale02-s2-1m-executable.yml", "git_blob_sha": "8b4d9eb033f4ffdc57b4e17e79bdd2b716a67a76", "classification": "VALID"},
+    {"path": ".github/workflows/scale03-s3-10m-runtime.yml", "git_blob_sha": "c5d8d090d9a833660165461819172f6e8f3352d3", "classification": "VALID"},
+    {"path": ".github/workflows/train29-s1-observability.yml", "git_blob_sha": "afda3a4d85d8eb924d33cfd7cddc94cbcebd4e8d", "classification": "VALID"}
+  ],
+  "historical_required_finding": {
+    "workflow": ".github/workflows/milestone100-first-learned-base.yml",
+    "historical_git_blob_sha": "ec025d5ff70e675b3e6a4104d8d9e55b14bbd471",
+    "classification": "MISSING_DECLARED_DEPENDENCY",
+    "invocation": ".m100/bin/python -m pytest",
+    "declared_before_invocation": [
+      "requirements/locks/linux-x86_64/toolchain.lock.txt",
+      "requirements/locks/linux-x86_64/runtime.lock.txt"
+    ],
+    "missing_package": "pytest",
+    "d08_resolution": "pytest is provided by requirements/locks/linux-x86_64/dev.lock.txt",
+    "current_remediation": "the current MILESTONE-100 installs the hashed dev lock before pytest and now executes the composed cheap dependency/workflow-command preflight before any runtime installation"
+  },
+  "convergence_reuse": {
+    "ci156_fanout_queue_control": true,
+    "generic_preflight_extended_not_replaced": true,
+    "generic_preflight_schema": "12-6.ci-dependency-preflight.v2",
+    "static_audit_schema": "12-6.ci153-workflow-dependency-audit.v1",
+    "ordered_dependency_proof": true,
+    "pyproject_extra_resolution": true,
+    "d08_profile_and_lock_resolution": true,
+    "recognized_python_modules": ["pytest", "ruff", "torch.distributed.run", "tokenizers", "transformers", "vllm", "datasets", "sentencepiece", "tiktoken", "pyarrow", "pandas", "accelerate", "deepspeed"],
+    "recognized_console_tools": ["pytest", "ruff", "torchrun", "vllm", "accelerate", "deepspeed", "transformers-cli", "huggingface-cli"]
+  },
+  "execution_note": "This baseline is a retained static expectation bound to the exact workflow blobs above. It is not executed CI evidence until the exact-head CI-153 workflow regenerates ci153-workflow-audit.json and passes its fixtures and lint."
+}

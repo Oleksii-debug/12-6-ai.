@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import shutil
 import subprocess
@@ -13,6 +14,8 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 INDEX = ROOT / "requirements" / "locks" / "index.json"
+STATIC_AUDITOR = ROOT / "tools" / "ci153_workflow_dependency_auditor.py"
+STATIC_EXEMPTIONS = ROOT / "ci" / "ci153_legacy_exemptions.json"
 
 
 def _sha256(path: Path) -> str:
@@ -71,6 +74,37 @@ def _validate_profile(profile_id: str) -> dict[str, Any]:
     }
 
 
+def _workflow_dependency_audit() -> dict[str, Any]:
+    """Run CI-153 in-process while preserving this preflight's stdlib-only contract."""
+    if not STATIC_AUDITOR.is_file():
+        return {
+            "status": "NOT_INSTALLED",
+            "blocking_workflows": [],
+            "note": "CI-153 auditor is not present at this source identity",
+        }
+    spec = importlib.util.spec_from_file_location("ci153_workflow_dependency_auditor", STATIC_AUDITOR)
+    if spec is None or spec.loader is None:
+        raise SystemExit("unable to load CI-153 workflow dependency auditor")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    report = module.audit_repository(ROOT, STATIC_EXEMPTIONS)
+    blocking = list(report.get("blocking_workflows", []))
+    summary = {
+        "status": "PASS" if not blocking else "FAIL",
+        "schema": report.get("schema"),
+        "inventory_count": report.get("inventory_count"),
+        "inventory_sha256": report.get("inventory_sha256"),
+        "classification_counts": report.get("classification_counts"),
+        "blocking_workflows": blocking,
+    }
+    if blocking:
+        raise SystemExit(
+            "workflow dependency audit failed before environment install: " + ", ".join(blocking)
+        )
+    return summary
+
+
 def run(profile_id: str, source_sha: str, output: Path | None) -> dict[str, Any]:
     if len(source_sha) != 40 or any(c not in "0123456789abcdef" for c in source_sha):
         raise SystemExit("--source-sha must be a lowercase 40-character Git SHA")
@@ -81,14 +115,16 @@ def run(profile_id: str, source_sha: str, output: Path | None) -> dict[str, Any]
     if current != source_sha:
         raise SystemExit(f"source checkout mismatch: {current} != {source_sha}")
     profile = _validate_profile(profile_id)
+    workflow_audit = _workflow_dependency_audit()
     evidence = {
-        "schema": "12-6.ci-dependency-preflight.v1",
+        "schema": "12-6.ci-dependency-preflight.v2",
         "source_sha": source_sha,
         "python": sys.version.split()[0],
         "git": subprocess.check_output([git, "--version"], text=True).strip(),
         "lock_index_path": str(INDEX.relative_to(ROOT)),
         "lock_index_file_sha256": _sha256(INDEX),
         "profile": profile,
+        "workflow_dependency_audit": workflow_audit,
         "network_install_performed": False,
         "tests_performed": False,
         "status": "PASS",

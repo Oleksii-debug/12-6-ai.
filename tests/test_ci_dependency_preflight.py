@@ -18,3 +18,11 @@ def test_linux_x86_lock_profile_hashes_validate_without_install() -> None:
     assert profile["profile_id"] == "linux-x86_64"
     assert set(profile["locks"]) == {"toolchain", "runtime", "dev"}
     assert all(len(item["sha256"]) == 64 for item in profile["locks"].values())
+
+
+def test_ci153_static_workflow_audit_is_composed_and_fail_closed() -> None:
+    summary = MODULE._workflow_dependency_audit()
+    assert summary["status"] == "PASS"
+    assert summary["schema"] == "12-6.ci153-workflow-dependency-audit.v1"
+    assert summary["inventory_count"] >= 1
+    assert summary["blocking_workflows"] == []
