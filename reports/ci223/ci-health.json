@@ -1,0 +1,126 @@
+{
+  "schema": "12-6.ci-health.v1",
+  "repository": "Oleksii-debug/12-6-ai.",
+  "audit_scope": {
+    "kind": "bounded-current-release-gate-audit",
+    "generic_run_ids": [
+      32941141917,
+      32940842230,
+      32951063419
+    ],
+    "candidate_base_branch": "integrate222/learned-execution-spine-20260826",
+    "candidate_base_sha": "0e5329340498819cdef464d9218b433293da78df",
+    "candidate_branch": "ci223/repository-release-gate-convergence-final-20260826",
+    "count_semantics": "root_cause_signature_counts counts deduplicated issue signatures. root_cause_occurrence_counts counts observed evidence instances in the bounded audit and may overlap when a non-terminal systemic defect coexists with the terminal failure."
+  },
+  "root_cause_signature_counts": {
+    "real source defect": 1,
+    "stale global expectation": 0,
+    "legacy branch artifact": 0,
+    "lint debt": 1,
+    "environment profile mismatch": 1,
+    "test assumption invalid after accepted evolution": 1,
+    "irrelevant workflow fan-out": 0
+  },
+  "root_cause_occurrence_counts": {
+    "real source defect": 1,
+    "stale global expectation": 0,
+    "legacy branch artifact": 0,
+    "lint debt": 3,
+    "environment profile mismatch": 3,
+    "test assumption invalid after accepted evolution": 1,
+    "irrelevant workflow fan-out": 0
+  },
+  "same_sha_scientific_vs_generic": [
+    {
+      "sha": "035085434d3ac6e615e9a3cd40e8d8ae19e3bc00",
+      "scientific_workflow": "MILESTONE-210 Learned Base Ladder V2",
+      "scientific_run_id": 32941141881,
+      "scientific_conclusion": "success",
+      "generic_run_id": 32941141917,
+      "generic_conclusion": "failure",
+      "generic_terminal_root_cause": "lint debt",
+      "ruff_diagnostics": 13
+    },
+    {
+      "sha": "a75920cef8bde37a8c590e34095be83c97b75f1d",
+      "scientific_workflow": "LEARN-191 Real 3M Learned Base",
+      "scientific_run_id": 32940842372,
+      "scientific_conclusion": "success",
+      "generic_run_id": 32940842230,
+      "generic_conclusion": "failure",
+      "generic_terminal_root_cause": "lint debt",
+      "ruff_diagnostics": 20
+    }
+  ],
+  "issues": [
+    {
+      "id": "ruff-repository-drift",
+      "category": "lint debt",
+      "status": "fixed_on_candidate",
+      "terminal": true,
+      "occurrences": 3,
+      "evidence": {
+        "generic_runs": [
+          32941141917,
+          32940842230,
+          32951063419
+        ],
+        "diagnostic_counts": {
+          "32941141917": 13,
+          "32940842230": 20,
+          "32951063419": 10
+        }
+      }
+    },
+    {
+      "id": "canonical-cuda-profile-on-cpu-generic-runner",
+      "category": "environment profile mismatch",
+      "status": "fixed_on_candidate",
+      "terminal": false,
+      "occurrences": 3,
+      "evidence": {
+        "generic_runs": [
+          32941141917,
+          32940842230,
+          32951063419
+        ],
+        "runner": "ubuntu-24.04",
+        "old_profile": "linux-x86_64 canonical CUDA runtime",
+        "replacement": "universal bootstrap CPU purpose profile for generic x86 release checks",
+        "arm_release_profile_retained": "linux-aarch64 canonical portability profile"
+      }
+    },
+    {
+      "id": "ci165-gate-implementation-not-absorbed",
+      "category": "real source defect",
+      "status": "fixed_on_candidate",
+      "terminal": true,
+      "occurrences": 1,
+      "evidence": {
+        "candidate_base_sha": "0e5329340498819cdef464d9218b433293da78df",
+        "accepted_upstream_branch": "ci165/expensive-run-gatekeeper-20260826",
+        "repair": "restore fail-closed M150 phase1/resume launch-envelope enforcement without changing model math"
+      }
+    },
+    {
+      "id": "ci165-envelope-fixture-missing-request-path",
+      "category": "test assumption invalid after accepted evolution",
+      "status": "fixed_on_candidate",
+      "terminal": true,
+      "occurrences": 1,
+      "evidence": {
+        "accepted_contract": "launch envelope remains cryptographically bound to request_path",
+        "repair": "update only the hand-built test fixture; production verifier remains strict"
+      }
+    }
+  ],
+  "release_candidate": {
+    "gate": "strict integration/release",
+    "scientific_gate": "scoped",
+    "whole_repo_green_claim": false,
+    "historical_red_statuses_reclassified": false,
+    "expensive_learned_campaigns_retriggered_by_ci223": 0,
+    "runtime_proof": "GitHub Actions generic CI on exact candidate SHA"
+  }
+}
