@@ -2,7 +2,20 @@ name: DATA-229 Real Snapshot Registry
 
 on:
   pull_request:
+    paths:
+      - "src/twelve_six/data/real_snapshot_registry.py"
+      - "tools/build_real_snapshot_registry.py"
+      - "configs/data/data229_real_snapshot_registry_v1.json"
+      - "data/registry/real_snapshots.v1.json"
+      - "evidence/data229/**"
+      - "tests/test_real_snapshot_registry.py"
+      - "docs/DATA229_REAL_SNAPSHOT_REGISTRY.md"
+      - ".github/workflows/data229-real-snapshot-registry.yml"
   workflow_dispatch:
+
+concurrency:
+  group: data229-registry-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
