@@ -12,6 +12,7 @@ import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Mapping
 
 from twelve_six.post_base.contract import TokenizerCompatibility, snapshot_directory
 from twelve_six.post_base.sft_runner import (
@@ -180,9 +181,28 @@ def _verify_generation_chain(
     return tuple(manifest_hashes)
 
 
+def _expected_evaluation_payload(
+    *,
+    run_id: str,
+    generation: int,
+    phase: str,
+    metrics: Mapping[str, float],
+    dataset: SFTMechanicsDataset,
+) -> dict[str, object]:
+    return {
+        "schema": SFT_MECHANICS_SCHEMA,
+        "run_id": run_id,
+        "generation": generation,
+        "phase": phase,
+        "evaluation_split_sha256": dataset.evaluation_split_sha256,
+        "metrics": dict(metrics),
+    }
+
+
 def _verify_evaluation_separation(
     receipt: SFTMechanicsReceipt,
     dataset: SFTMechanicsDataset,
+    plan: SFTMechanicsPlan,
 ) -> None:
     if receipt.checkpoint_namespace == receipt.evaluation_namespace:
         raise RuntimeError("checkpoint artifacts and evaluation evidence share a namespace")
@@ -191,10 +211,43 @@ def _verify_evaluation_separation(
     if receipt.checkpoint_namespace.is_relative_to(receipt.evaluation_namespace):
         raise RuntimeError("checkpoint artifacts are nested inside evaluation evidence")
 
-    for path in (receipt.baseline_evaluation, receipt.final_evaluation):
+    expected = (
+        (
+            receipt.baseline_evaluation,
+            _expected_evaluation_payload(
+                run_id=plan.run_id,
+                generation=0,
+                phase="baseline",
+                metrics=receipt.baseline_metrics,
+                dataset=dataset,
+            ),
+        ),
+        (
+            receipt.final_evaluation,
+            _expected_evaluation_payload(
+                run_id=plan.run_id,
+                generation=receipt.final_checkpoint.generation,
+                phase="final",
+                metrics=receipt.final_metrics,
+                dataset=dataset,
+            ),
+        ),
+    )
+    expected_names = {path.name for path, _ in expected}
+    actual_names = {
+        path.name
+        for path in receipt.evaluation_namespace.iterdir()
+        if path.is_file() and not path.is_symlink()
+    }
+    if actual_names != expected_names:
+        raise RuntimeError("evaluation evidence set drift")
+
+    for path, expected_payload in expected:
+        if path.parent != receipt.evaluation_namespace or path.is_symlink():
+            raise RuntimeError("evaluation evidence path escaped its immutable namespace")
         payload = _read_json(path)
-        if payload.get("evaluation_split_sha256") != dataset.evaluation_split_sha256:
-            raise RuntimeError("evaluation evidence split binding drift")
+        if payload != expected_payload:
+            raise RuntimeError("evaluation evidence payload drift")
 
 
 def _prove_rollback_pointer(
@@ -274,7 +327,7 @@ def terminalize_sft_mechanics(
         receipt=receipt,
     )
     _verify_active_pointer(store, expected_generation=receipt.final_checkpoint.generation)
-    _verify_evaluation_separation(receipt, dataset)
+    _verify_evaluation_separation(receipt, dataset, plan)
     _prove_rollback_pointer(
         store=store,
         backend=backend,
