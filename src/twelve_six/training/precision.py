@@ -99,7 +99,7 @@ def resolve_precision_runtime(
 
     if precision == "fp16":
         if device_type != "cuda":
-            raise ValueError("fp16 training requires an available CUDA device")
+            raise ValueError("fp16 training requires a CUDA device")
         return PrecisionRuntime(
             requested=precision,
             device_type=device_type,
