@@ -1,0 +1,71 @@
+{
+  "decision_boundary": {
+    "copyrighted_or_permission_only_pg_items": "REJECT",
+    "evaluation_use": "NOT_AUTHORIZED_BY_THIS_SOURCE_AUTHORITY",
+    "model_training": "ALLOWED_FOR_THE_EXACT_NORMALIZED_BODIES_IF_ALL_MACHINE_GATES_PASS",
+    "redistribution": "ALLOWED_FOR_THE_EXACT_NORMALIZED_BODIES_IN_RIGHTS_CLEARED_JURISDICTIONS; UNIVERSAL_WORLDWIDE_STATUS_NOT_CLAIMED",
+    "trademark": "DOWNSTREAM_TRAINING_CORPUS MUST NOT PRESENT THE NORMALIZED TEXT AS A PROJECT_GUTENBERG-TM ELECTRONIC WORK; provenance citation may remain out-of-band."
+  },
+  "observed_at_utc": "2026-08-26T18:20:00Z",
+  "project_gutenberg_policy": {
+    "license_url": "https://www.gutenberg.org/policy/license",
+    "material_findings": [
+      "For an individual work unrestricted by United States copyright, Project Gutenberg states that references to Project Gutenberg and its license may be removed, leaving text unrestricted by United States intellectual-property law.",
+      "Project Gutenberg distinguishes public-domain/unrestricted works from copyrighted works posted with permission; the latter are not admitted by this authority.",
+      "The Project Gutenberg name is a registered trademark. This authority removes Project Gutenberg header/footer material and does not authorize downstream branding or advertising with the trademark.",
+      "Project Gutenberg states that public-domain items may be republished, used commercially, and made into derivative works in the United States; model training is treated here as an allowed analytical/derivative use only for the source-specific unrestricted works below.",
+      "Project Gutenberg expressly warns that non-United-States users must check local law; this authority therefore does not make a universal worldwide public-domain claim."
+    ],
+    "permission_url": "https://www.gutenberg.org/policy/permission",
+    "robot_access_url": "https://www.gutenberg.org/policy/robot_access.html"
+  },
+  "schema_version": "12-6.next100-033.project-gutenberg-rights-evidence.v1",
+  "scope": "SOURCE_SPECIFIC_RIGHTS_EVIDENCE_NOT_A_BLANKET_GUTENBERG_ADMISSION",
+  "transport_and_edition": {
+    "current_policy_controls_over_historical_transport_license_for_qualification": true,
+    "gitenberg_license_blob_sha1": "8d062dda262bcdc42d45b861bd796117feb6d0fe",
+    "gitenberg_license_kind": "historical Project Gutenberg full license snapshot",
+    "lineage": "Project Gutenberg edition bytes mirrored into GITenberg; transport does not create an independent training family.",
+    "transport": "GITenberg immutable GitHub mirror"
+  },
+  "ukraine_term_check": {
+    "finding": "The Ukrainian copyright framework uses a general author-life-plus-70-years term. All admitted authors below died no later than 1945, so the ordinary life+70 horizon had elapsed before this 2026 review. No special Ukrainian rights extension is asserted or relied upon.",
+    "official_law_url": "https://zakon.rada.gov.ua/laws/show/2811-20",
+    "official_legacy_summary_url": "https://zakon.rada.gov.ua/laws/anot/3792-12"
+  },
+  "worker_id": "NEXT100-033-DATA-EN-GUTENBERG",
+  "works": [
+    {
+      "author": "Simon Christian Hammer",
+      "author_life": "1866-1932",
+      "death_evidence_url": "https://snl.no/Simon_Christian_Hammer",
+      "ebook_id": 37177,
+      "original_publication": "Oxford: B. H. Blackwell, 1920",
+      "project_gutenberg_catalog_status_observed": "Public domain in the USA.",
+      "project_gutenberg_landing_url": "https://www.gutenberg.org/ebooks/37177",
+      "project_gutenberg_release_date": "2011-08-23",
+      "title": "Ludvig Holberg, The Founder of Norwegian Literature and an Oxford Student"
+    },
+    {
+      "author": "Reynold Alleyne Nicholson",
+      "author_life": "1868-1945",
+      "bibliographic_evidence_url": "https://www.loc.gov/item/07036932/",
+      "ebook_id": 37985,
+      "original_publication": "London: T. Fisher Unwin; New York: Charles Scribner's Sons, 1907",
+      "project_gutenberg_catalog_status_observed": "Public domain in the USA.",
+      "project_gutenberg_landing_url": "https://www.gutenberg.org/ebooks/37985",
+      "project_gutenberg_release_date": "2011-11-11",
+      "title": "A Literary History of the Arabs"
+    },
+    {
+      "author": "Ebenezer Cobham Brewer",
+      "author_life": "1810-1897",
+      "ebook_id": 40652,
+      "original_publication": "London: Jarrold and Sons; historical edition lineage predates 1931",
+      "project_gutenberg_catalog_status_observed": "Public domain in the USA.",
+      "project_gutenberg_landing_url": "https://www.gutenberg.org/ebooks/40652",
+      "project_gutenberg_release_date": "2012-09-03",
+      "title": "A Guide to the Scientific Knowledge of Things Familiar"
+    }
+  ]
+}
