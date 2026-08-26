@@ -22,6 +22,10 @@
     "data300_corpus_state": "NOT_BUILT_NOT_FROZEN_NOT_TERMINAL",
     "data300_head_sha": "8ea7f830e50a23754d189dd4134f4afad76a7ee9",
     "data300_pr": 392,
+    "data301_evidence_identity_sha256": "939065abeefff8aed924415589608ff3fc721fe4b0a57fc200146a4b6a137e81",
+    "data301_head_sha": "8820ba1b255f6bb95c7db0531fd846078a1aae01",
+    "data301_pr": 408,
+    "data301_status": "TERMINAL_BLOCKED",
     "research251_basis": "project-specific data-capacity gate; not a universal token/parameter optimum",
     "research251_pr": 387
   },
@@ -82,7 +86,7 @@
     },
     "training_admitted_source_objects": 5
   },
-  "evidence_identity_sha256": "cd6d80f2e31631723c7f513327082845b3edfcd8a90768809da74aaf8476ba99",
+  "evidence_identity_sha256": "d8aa1bbd9446c4ca881a97e9218891ee4223d6de60a5ee5534462978b5f2e970",
   "execution_profile": "LOCAL_FREE",
   "forbidden_inferences": [
     "Do not relabel 183061 candidate source bytes as unique optimized loss positions.",
@@ -96,7 +100,7 @@
     "positions_now": 0,
     "unit": "unique_nonignored_causal_loss_positions",
     "why_zero": [
-      "DATA-300 says the Wave-3 corpus is not built/frozen/terminal.",
+      "DATA-301 terminalizes the exact DATA-300 candidate as blocked with authorized balanced no-replay capacity 0 and no corpus/shard identity.",
       "The full five-source post-split/post-dedup/post-reservation unique-loss ledger does not exist.",
       "DATA-295 family gate fails with UK/EN/code family counts 1/1/2 against minimum 2/2/2.",
       "Quality/privacy exact reruns, nonempty selection-validation, and two clean builds are also unresolved."
