@@ -106,9 +106,15 @@
     "full_stage_attempt_requires_at_least_reference_or_explicit_scaling_exception": true
   },
   "current_20m_observation": {
-    "observed_source_capacity_bytes": 314140,
-    "observed_source_capacity_authority": "NEXT100-063 pre-successor-global-dedup vector",
+    "snapshot_cutoff_utc": "2026-08-26T19:33:58Z",
+    "source_registry_pr": 538,
+    "source_registry_head_sha": "958ebec0f7c9cb00238c7df70566cefd6b504d92",
+    "source_registry_identity": "77fb69c558df8c59fdae00583c955c62ad088cda98fd16b335eedb26fb2d7526",
+    "observed_source_capacity_bytes": 565743,
+    "observed_independent_families": 13,
     "frozen_source_capacity_target_bytes": 20000000,
+    "remaining_source_capacity_gap_bytes": 19434257,
+    "authorized_balanced_no_replay_loss_positions": 0,
     "bytes_to_tokens_conversion": "FORBIDDEN_WITHOUT_EXACT_TOKENIZATION",
     "learned_20m_long_training_ready": false,
     "blocker": "Exact materialized, decontaminated, post-tokenization unique-loss corpus evidence does not exist; source-capacity bytes cannot establish token sufficiency."
