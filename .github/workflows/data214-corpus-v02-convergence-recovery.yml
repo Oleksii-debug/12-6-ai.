@@ -24,7 +24,7 @@ jobs:
         with:
           python-version: 3.11.16
 
-      - name: Bind exact recovery source
+      - name: Bind exact recovery source and incumbent heads
         env:
           EXPECTED_SOURCE_SHA: ${{ github.sha }}
         run: |
@@ -32,14 +32,46 @@ jobs:
           test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
           test "$(git merge-base 49cb84baa6caae2d35ba5b15543d18dc57eb3117 HEAD)" = \
             "49cb84baa6caae2d35ba5b15543d18dc57eb3117"
+          test "$(git rev-parse origin/env151/universal-execution-bootstrap-20260826)" = \
+            "c127216ecf9722bea1964c7488cb7ff0f8cdebe4"
+          test "$(git rev-parse origin/ci155/scientific-scope-isolation-20260826)" = \
+            "2690961373afe983c85207b8d37ecc80cf884c78"
+
+      - name: Materialize exact ENV-151 and CI-155 incumbents
+        run: |
+          set -euo pipefail
+          mkdir -p requirements/execution configs/ci tests tools
+          git show c127216ecf9722bea1964c7488cb7ff0f8cdebe4:tools/execution_bootstrap.py \
+            > tools/execution_bootstrap.py
+          git show c127216ecf9722bea1964c7488cb7ff0f8cdebe4:requirements/execution/capabilities.json \
+            > requirements/execution/capabilities.json
+          git show 2690961373afe983c85207b8d37ecc80cf884c78:tools/scientific_scope_gate.py \
+            > tools/scientific_scope_gate.py
+          git show 2690961373afe983c85207b8d37ecc80cf884c78:configs/ci/scientific_scope_ownership.v1.json \
+            > configs/ci/scientific_scope_ownership.v1.json
+          git show 2690961373afe983c85207b8d37ecc80cf884c78:tests/test_scientific_scope_gate.py \
+            > tests/test_scientific_scope_gate.py
+          chmod +x tools/execution_bootstrap.py tools/scientific_scope_gate.py
+          test "$(git hash-object tools/execution_bootstrap.py)" = \
+            "3f611ac3de7a35e5952cd6caeab518009b44fa98"
+          test "$(git hash-object requirements/execution/capabilities.json)" = \
+            "cd6fc00cb23ddb19b58fecab5c32a1a68224b144"
+          test "$(git hash-object tools/scientific_scope_gate.py)" = \
+            "a0ba60a0521fe411b2dd61bddf4cfcbeaa1a89dd"
+          test "$(git hash-object configs/ci/scientific_scope_ownership.v1.json)" = \
+            "8956a9a3e0ee4db4e3a961f0e931f5bf21524a12"
+          test "$(git hash-object tests/test_scientific_scope_gate.py)" = \
+            "1a7fac14f18919e278f3a2b7c6b2841134fb6416"
 
       - name: Universal bootstrap for tests and lint
-        uses: ./.github/actions/execution-bootstrap
-        with:
-          capabilities: tests,lint
-          venv: .data214
-          command: python -m pytest
-          manifest: data214-evidence/execution-environment.json
+        run: |
+          set -euo pipefail
+          python tools/execution_bootstrap.py bootstrap \
+            --repo-root "$GITHUB_WORKSPACE" \
+            --capabilities tests,lint \
+            --venv "$GITHUB_WORKSPACE/.data214" \
+            --manifest "$GITHUB_WORKSPACE/data214-evidence/execution-environment.json" \
+            --command "python -m pytest"
 
       - name: Install exact Product runtime consumed by DATA-183
         run: |
@@ -85,6 +117,8 @@ jobs:
               "source_sha": os.environ["EXPECTED_SOURCE_SHA"],
               "universal_environment_manifest": source.as_posix(),
               "universal_environment_manifest_sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
+              "env151_commit": "c127216ecf9722bea1964c7488cb7ff0f8cdebe4",
+              "ci155_commit": "2690961373afe983c85207b8d37ecc80cf884c78",
           }
           Path("data214-evidence/bootstrap-binding.json").write_text(
               json.dumps(payload, sort_keys=True, indent=2) + "\n",
@@ -141,7 +175,7 @@ jobs:
           EXPECTED_SOURCE_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          .data214/bin/python tools/data214_small_deterministic_build.py \
+          PYTHONPATH=src .data214/bin/python tools/data214_small_deterministic_build.py \
             --source-sha "$EXPECTED_SOURCE_SHA" \
             --output-dir data214-evidence/small-build
 
