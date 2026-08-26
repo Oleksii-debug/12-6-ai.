@@ -300,7 +300,10 @@ def test_case_08_counter_corruption_rejected_before_mutation(
     _rebind_manifest(checkpoint)
     sentinel = _sentinel(model341_target)
 
-    with pytest.raises(CheckpointIntegrityError, match="step and tokens_seen"):
+    with pytest.raises(
+        CheckpointIntegrityError,
+        match=r"identity\.step and identity\.tokens_seen must be non-negative integers",
+    ):
         load_checkpoint(checkpoint, model=model341_target, restore_rng=False)
     _assert_unmutated(model341_target, sentinel)
 
