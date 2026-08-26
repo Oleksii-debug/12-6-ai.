@@ -1,0 +1,111 @@
+{
+  "schema_version": "12-6.next100-105-rada-bulk-expansion.v1",
+  "worker_id": "NEXT100-105-DATA-UA-RADA-BULK-EXPANSION",
+  "local_free_only": true,
+  "mode": "PROBE",
+  "training_executed": false,
+  "tokenizer_fit_executed": false,
+  "paid_compute_used": false,
+  "final_test_payload_read": false,
+  "parent_registry": {
+    "pr": 538,
+    "head_sha": "94dce83cbe611144f961b9f93b3be273345a7f62",
+    "registry_identity_sha256": "77fb69c558df8c59fdae00583c955c62ad088cda98fd16b335eedb26fb2d7526",
+    "config_path": "configs/data/next100_063_terminal_source_registry_v1.json",
+    "candidate_normalized_bytes": 565743,
+    "uk_normalized_bytes": 100856,
+    "uk_family_count": 4
+  },
+  "source": {
+    "dataset_id": "laws-texts",
+    "title": "Тексти первинних законів бази даних Законодавство України",
+    "publisher": "Апарат Верховної Ради України",
+    "family_id": "ua.rada.open-data.laws-texts",
+    "language": "uk",
+    "modality": "text",
+    "portal_url": "https://data.rada.gov.ua/open/data/laws-texts",
+    "archive_url": "https://data.rada.gov.ua/ogd/zak/perv/text/texts.zip",
+    "portal_observation": {
+      "observed_utc": "2026-08-26T19:35:00Z",
+      "published_local": "2026-08-07 16:58:14",
+      "reported_archive_bytes": 46682933,
+      "reported_archive_md5": "06f239fd182e580ce22ab00dce867e31",
+      "reported_file_count": 5926,
+      "authority": "official-rada-open-data-portal"
+    },
+    "existing_training_authority": {
+      "registry": "DATA-287",
+      "head_sha": "b0523ccbc4b957615aac849d476cfa851be87578",
+      "registry_identity_sha256": "917e9bc31b2fa040d25e807ae3c01aa2cce32420752a891caacfb6c830e6632c",
+      "model_training": "ALLOWED",
+      "redistribution": "ALLOWED_WITH_SOURCE_ATTRIBUTION",
+      "evaluation": "NOT_SEPARATELY_ADMITTED"
+    }
+  },
+  "frozen_balance_policy": {
+    "research_corpus_target_normalized_bytes": 20000000,
+    "uk_target_normalized_bytes": 9000000,
+    "family_max_total_fraction": 0.25,
+    "family_max_stratum_fraction": 0.60,
+    "effective_family_cap_normalized_bytes": 5000000,
+    "existing_rada_normalized_bytes": 88565,
+    "maximum_additional_pre_dedup_normalized_bytes": 4911435,
+    "replay_or_duplication_for_quota": "FORBIDDEN",
+    "new_family_credit": 0
+  },
+  "selection_policy": {
+    "member_name_regex": "^d[0-9]+\\.htm$",
+    "reject_backup_suffixes": [".1", ".2", ".3"],
+    "exclude_member_names": ["d23314.htm"],
+    "max_archive_bytes": 60000000,
+    "max_member_uncompressed_bytes": 20000000,
+    "max_total_uncompressed_bytes": 1000000000,
+    "min_normalized_bytes_per_record": 256,
+    "min_cyrillic_alpha_ratio": 0.70,
+    "normalization": "RADA_VISIBLE_HTML_NFKC_WS_V1",
+    "candidate_order": "numeric_document_id_ascending",
+    "candidate_byte_cap": 4911435,
+    "exact_duplicate_policy": "KEEP_FIRST_NUMERIC_ID_ONLY",
+    "near_duplicate_policy": "REQUIRED_DOWNSTREAM_BEFORE_CAPACITY_CREDIT"
+  },
+  "privacy_quality_policy": {
+    "reject_private_key_markers": true,
+    "reject_live_email_addresses": true,
+    "reject_ua_international_phone_patterns": true,
+    "reject_nul_or_invalid_decode": true,
+    "no_redaction_into_eligibility": true,
+    "quality_privacy_revalidation_required_after_composition": true
+  },
+  "evaluation_firewall": {
+    "eval303_head_sha": "5e5a1de3b594cee5612e63d3d4c2a70499740ac7",
+    "eval303_composite_identity": "7b97a9ab04469236dc5bc17fc80155cb43430b01c443bb6209fac090557258fd",
+    "eval303_membership_sha256": "e4bb39dd7aa6a20c7ed34e093f563b5f4896ac16828151c6b375a83cd8a068c6",
+    "eval233_head_sha": "2583a77690ea41f870d2a5e281481d7daae1a5d6",
+    "eval233_final_test_identity": "86d51eb106524cd8e4d0f94d4ff6e2e3426c6321e0698279877dfc4d5fce3116",
+    "purpose_firewall_pr": 503,
+    "purpose_firewall_head_sha": "57d5620105125b717f21ecae349bf1e90cfd2fcd",
+    "selection_reserved_records_may_enter_training": false,
+    "final_test_records_may_enter_training": false,
+    "final_test_payload_may_be_read_by_this_worker": false,
+    "hash_only_exact_near_fragment_decontamination_required_before_training_credit": true,
+    "same_family_overlap_with_final_test_is_not_a_decontamination_pass": true
+  },
+  "lock": null,
+  "promotion_contract": {
+    "probe_result": "PROBE_LOCK_REQUIRED",
+    "locked_result": "LOCKED_SOURCE_CANDIDATE_REQUIRES_GLOBAL_DEDUP_DECONTAMINATION",
+    "training_capacity_credit_in_probe_mode": 0,
+    "training_capacity_credit_before_global_dedup_decontamination": 0,
+    "training_eligible_before_corpus_release": false,
+    "required_successors": [
+      "seal exact archive SHA-256 and byte length on a successor commit",
+      "reproduce deterministic selected-record hash inventory from the locked archive",
+      "run global exact/near/fragment/lineage dedup against the complete terminal source graph",
+      "run hash-only selection/final-test decontamination without reading final-test outcomes",
+      "rerun quality/privacy on the composed exact candidate",
+      "recompute 45/35/20 balance and family caps",
+      "materialize split/shard/pack twice byte-identically",
+      "publish one-pass unique nonignored causal-loss ledger"
+    ]
+  }
+}
