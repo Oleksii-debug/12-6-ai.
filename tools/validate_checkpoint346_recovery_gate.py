@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Validate the fail-closed CHECKPOINT-346 dependency gate.
 
-This validator deliberately performs no optimizer work.  It protects the truth
+This validator deliberately performs no optimizer work. It protects the truth
 boundary until the exact RESEARCH-339/MODEL-341 primary ~20M authority exists.
 """
 from __future__ import annotations
@@ -12,9 +12,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 EVIDENCE = ROOT / "evidence/checkpoint346/recovery_20m_dependency_gate_v1.json"
-EXPECTED_IDENTITY = "cfb42e2f5f7dd08b6c1556abeeb97399c9a9e110a2cfe151b5f98e96466e1557"
+EXPECTED_IDENTITY = "c198d2a01603f83060a2ec3a2f3ea213fbd187ecf9f2b405bb35675c5ca13a1e"
 EXPECTED_RECOVERY_HEAD = "349e6db94d4aca81c2d1a0ccc3368a98b6058392"
 EXPECTED_RECOVERY_PROOF = "9e002d07e85624da5b9799a08a006f589472769055df6609e17b17e698a8da5b"
+EXPECTED_ALTERNATE_HEAD = "51e640d00cd9900e70e63f8a867f19bc9d7d0565"
 
 
 def _hash_without_identity(value: dict[str, object]) -> str:
@@ -41,6 +42,13 @@ def load_and_validate(path: Path = EVIDENCE) -> dict[str, object]:
     predecessors = value["required_predecessors"]
     assert predecessors["research339"]["repository_authority_found"] is False
     assert predecessors["model341"]["repository_authority_found"] is False
+
+    observation = value["repository_observation"]
+    alternate = observation["observed_alternate_control"]
+    assert alternate["worker_id"] == "MODEL-342-20M-CONTROL-B"
+    assert alternate["head_sha"] == EXPECTED_ALTERNATE_HEAD
+    assert alternate["exact_parameters"] == 19_935_488
+    assert alternate["not_substitutable_for_primary"] is True
 
     accounting = value["execution_accounting"]
     assert accounting == {
