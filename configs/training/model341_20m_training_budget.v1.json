@@ -1,0 +1,46 @@
+{
+  "schema": "12-6.training-budget.v1",
+  "candidate": {
+    "name": "MODEL-341-20M-CANDIDATE-A",
+    "parameter_count": 20613440,
+    "model_identity_sha256": "fbff24d561a2818453554d58ca23fc6ace3303b078f1935a8576c4565bd92441"
+  },
+  "unit": "postpack_nonignored_causal_loss_positions",
+  "budget_points": [
+    {
+      "name": "engineering_1x",
+      "tokens_per_parameter": 1,
+      "loss_positions": 20613440
+    },
+    {
+      "name": "calibration_5x",
+      "tokens_per_parameter": 5,
+      "loss_positions": 103067200
+    },
+    {
+      "name": "calibration_10x",
+      "tokens_per_parameter": 10,
+      "loss_positions": 206134400
+    },
+    {
+      "name": "chinchilla_reference_20x",
+      "tokens_per_parameter": 20,
+      "loss_positions": 412268800
+    }
+  ],
+  "policy": {
+    "raw_bytes_are_training_capacity": false,
+    "pre_dedup_tokens_are_training_capacity": false,
+    "replay_authorized": false,
+    "budget_selection_requires_terminal_postpack_capacity": true,
+    "budget_selection_requires_evaluation_preregistration": true,
+    "compute_authorized_by_this_contract": false,
+    "quality_or_capability_claim_authorized": false
+  },
+  "research_boundary": {
+    "chinchilla_20x_is_reference_not_universal_optimum": true,
+    "byte_level_sequence_cost_must_be_measured": true,
+    "serious_run_budget_is_not_frozen": true,
+    "next_decision": "select exposure only after corpus convergence and preregistered calibration evidence"
+  }
+}
