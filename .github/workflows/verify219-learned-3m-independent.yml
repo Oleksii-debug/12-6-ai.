@@ -94,6 +94,7 @@ jobs:
           set -euo pipefail
           .verify219/bin/python - <<'PY'
           import json
+          import math
           from pathlib import Path
           from twelve_six.checkpoint import hash_json
 
@@ -110,6 +111,26 @@ jobs:
           assert value['data_and_eval']['corpus_identity_sha256'] == '422f545da93526ceba2c0ff738e0b9deac65f35bfb31d87d2aab068cda091fc8'
           assert value['data_and_eval']['m150_common_evaluation_identity_sha256'] == '7189e6df053574beb686727c94e684cdbaf08a34ef33aa953eff7cdae0320113'
           assert value['data_and_eval']['final_m150_common_improved_over_random_init'] is True
+          assert value['measured_best_target_optimized_tokens'] == 131292
+
+          expected_boundaries = {
+              '16632': (18, 17125),
+              '65772': (70, 66417),
+              '131292': (139, 131938),
+          }
+          for target, (step, tokens) in expected_boundaries.items():
+              identity = value['checkpoints'][target]['identity']
+              assert identity['step'] == step
+              assert identity['tokens_seen'] == tokens
+              assert value['checkpoints'][target]['checkpoint_tree_sha256_before'] == value['checkpoints'][target]['checkpoint_tree_sha256_after']
+
+          assert value['checkpoints']['131292']['checkpoint_id'] == '920283a052c6c7fbd2b66f8ce5f775e4747c3d459e539b3625e4bebf1b9a7a59'
+          assert math.isclose(
+              value['checkpoints']['131292']['selection_validation']['bits_per_byte'],
+              2.2859499700392583,
+              rel_tol=0.0,
+              abs_tol=1e-7,
+          )
           assert value['boundaries']['training_executed'] is False
           assert value['boundaries']['optimizer_updates'] == 0
           assert value['boundaries']['paid_compute'] is False
