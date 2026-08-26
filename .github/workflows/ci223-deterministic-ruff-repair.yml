@@ -69,6 +69,19 @@ jobs:
           chmod +x tools/build_ci161_historical_report.py tools/evidence_finalizer.py tools/run_classified_phase.py
           .ci223-repair/bin/python -m ruff check src tests tools
           git diff --check
+      - name: Install repository into universal CPU environment
+        run: |
+          set -euo pipefail
+          PIP_NO_INDEX=1 .ci223-repair/bin/python -m pip install --no-deps --no-build-isolation -e .
+          .ci223-repair/bin/python - <<'PY'
+          import importlib.metadata as metadata
+          import twelve_six
+          import twelve_six.inference.cli
+
+          assert metadata.version("twelve-six-ai") == "0.2.0.dev0"
+          assert twelve_six.__version__ == "0.2.0.dev0"
+          PY
+          .ci223-repair/bin/twelve-six-generate --help | grep -q 'usage: twelve-six-generate'
       - name: Prove convergence-sensitive contracts
         run: |
           set -euo pipefail
