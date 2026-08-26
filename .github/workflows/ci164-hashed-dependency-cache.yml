@@ -1,0 +1,218 @@
+name: CI-164 Hashed Dependency Cache
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  cache-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Compile CI-164 cache tooling
+        env:
+          PYTHONPATH: src
+        run: |
+          python -m compileall -q src/twelve_six/integration/hashed_dependency_cache.py
+          python -m compileall -q tools/hashed_dependency_cache.py tools/ci164_benchmark_cache.py
+      - name: Prove one-byte profile and lock invalidation without network
+        env:
+          PYTHONPATH: src
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import tempfile
+          from pathlib import Path
+
+          from twelve_six.integration.hashed_dependency_cache import (
+              DependencyCacheError,
+              build_manifest,
+              validate_manifest_files,
+          )
+
+          with tempfile.TemporaryDirectory() as tmp:
+              root = Path(tmp)
+              lock = root / "requirements/profiles/probe/runtime.lock.txt"
+              lock.parent.mkdir(parents=True)
+              lock.write_text("demo==1.0.0 --hash=sha256:" + "1" * 64 + "\n")
+              profile = root / "requirements/profiles/probe/profile.json"
+              payload = {
+                  "profile_id": "linux-x86_64-cpu-training",
+                  "platform": {"system": "Linux", "machine": "x86_64"},
+                  "python": {"implementation": "cpython", "version": "3.11.16"},
+                  "locks": {
+                      "runtime": {
+                          "path": "requirements/profiles/probe/runtime.lock.txt",
+                          "package_count": 1,
+                          "sha256": hashlib.sha256(lock.read_bytes()).hexdigest(),
+                      }
+                  },
+              }
+              profile.write_text(json.dumps(payload, sort_keys=True))
+              manifest = build_manifest(
+                  root,
+                  "requirements/profiles/probe/profile.json",
+                  actual_system="Linux",
+                  actual_machine="x86_64",
+                  actual_python_implementation="cpython",
+                  actual_python_version="3.11.16",
+              )
+              original = bytearray(profile.read_bytes())
+              original[0] = ord("[")
+              profile.write_bytes(original)
+              try:
+                  validate_manifest_files(root, manifest)
+              except DependencyCacheError:
+                  pass
+              else:
+                  raise SystemExit("one-byte profile mutation reused cache authority")
+              profile.write_text(json.dumps(payload, sort_keys=True))
+              original = bytearray(lock.read_bytes())
+              original[5] = ord("1") if original[5] != ord("1") else ord("2")
+              lock.write_bytes(original)
+              try:
+                  validate_manifest_files(root, manifest)
+              except DependencyCacheError:
+                  pass
+              else:
+                  raise SystemExit("one-byte lock mutation reused cache authority")
+          print("one_byte_invalidation=PASS")
+          PY
+
+  benchmark:
+    needs: cache-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - lane: cpu-training-test
+            primary: requirements/profiles/linux-x86_64-cpu-training/profile.json
+            fallback: ""
+          - lane: tokenizer
+            primary: requirements/profiles/linux-x86_64-tokenizer-experiment/profile.json
+            fallback: ""
+          - lane: heavy-optional
+            primary: requirements/profiles/linux-x86_64-data-processing/profile.json
+            fallback: requirements/profiles/linux-x86_64-transformers-interop/profile.json
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - id: identity
+        name: Resolve exact purpose-profile cache identity
+        env:
+          PYTHONPATH: src
+          PRIMARY: ${{ matrix.primary }}
+          FALLBACK: ${{ matrix.fallback }}
+          LANE: ${{ matrix.lane }}
+        shell: bash
+        run: |
+          set -u
+          profile="$PRIMARY"
+          if [[ ! -f "$profile" && -n "$FALLBACK" && -f "$FALLBACK" ]]; then
+            profile="$FALLBACK"
+          fi
+          if [[ ! -f "$profile" ]]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "reason=required ENV-151/152 purpose profile is not committed" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          mkdir -p ci164-evidence
+          profile_id=$(python - "$profile" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          value = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          print(value["profile_id"])
+          PY
+          )
+          set +e
+          python tools/verify_purpose_environment.py \
+            --profile "$profile_id" \
+            --validate-only > "ci164-evidence/${LANE}-purpose-validation.txt" 2>&1
+          authority_status=$?
+          set -e
+          if [[ $authority_status -ne 0 ]]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "reason=purpose profile failed repository authority validation" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          set +e
+          output=$(python tools/hashed_dependency_cache.py key \
+            --profile-path "$profile" \
+            --out "ci164-evidence/${LANE}-cache-manifest.json" 2>&1)
+          status=$?
+          set -e
+          if [[ $status -ne 0 ]]; then
+            printf '%s\n' "$output" > "ci164-evidence/${LANE}-blocked.txt"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "reason=profile is not a safe separated non-CUDA cache authority" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          printf '%s\n' "$output"
+          cache_key=$(printf '%s\n' "$output" | sed -n 's/^cache_key=//p' | head -n1)
+          if [[ -z "$cache_key" ]]; then
+            echo "cache key generation emitted no key" >&2
+            exit 1
+          fi
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+          echo "profile=$profile" >> "$GITHUB_OUTPUT"
+          echo "cache_key=$cache_key" >> "$GITHUB_OUTPUT"
+      - name: Restore exact wheelhouse cache
+        if: steps.identity.outputs.ready == 'true'
+        id: wheel-cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: .ci164-wheelhouse/${{ matrix.lane }}
+          key: ${{ steps.identity.outputs.cache_key }}
+      - name: Re-hash restored wheels and measure cold versus warm setup
+        if: steps.identity.outputs.ready == 'true'
+        env:
+          PYTHONPATH: src
+          LANE: ${{ matrix.lane }}
+        run: |
+          python tools/ci164_benchmark_cache.py \
+            --manifest "ci164-evidence/${LANE}-cache-manifest.json" \
+            --wheelhouse ".ci164-wheelhouse/${LANE}" \
+            --evidence-out "ci164-evidence/${LANE}-timing.json"
+      - name: Record fail-closed dependency status
+        if: steps.identity.outputs.ready != 'true'
+        env:
+          LANE: ${{ matrix.lane }}
+          REASON: ${{ steps.identity.outputs.reason }}
+        run: |
+          mkdir -p ci164-evidence
+          cat > "ci164-evidence/${LANE}-status.json" <<EOF
+          {
+            "schema_version": "12-6.ci164-cache-status.v1",
+            "lane": "${LANE}",
+            "status": "BLOCKED_ENV_PURPOSE_PROFILE_NOT_SAFE_OR_FINAL",
+            "reason": "${REASON}",
+            "timing_claim": null
+          }
+          EOF
+      - name: Upload CI-164 cache evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ci164-${{ matrix.lane }}
+          path: ci164-evidence
+          if-no-files-found: error
+          retention-days: 30
