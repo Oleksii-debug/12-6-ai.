@@ -29,6 +29,16 @@ PINNED_PROBE_GATE = "PASS_PINNED_DISCOVERY_REVALIDATED"
 PINNED_PROBE_RESULT = "PINNED_BULK_ARCHIVE_INVENTORIED_DOWNSTREAM_GATES_REQUIRED"
 DECODE_POLICY = "STRICT_UTF8_THEN_WINDOWS_1251_FALLBACK"
 LEGACY_FALLBACK_ENCODING = "windows-1251"
+EXPECTED_RECORD_FIELDS = [
+    "record_id",
+    "source_path",
+    "source_encoding",
+    "raw_bytes",
+    "raw_sha256",
+    "normalized_bytes",
+    "normalized_sha256",
+    "text",
+]
 
 
 class NormalizationError(RuntimeError):
@@ -106,6 +116,23 @@ def _validate_config(config: Mapping[str, Any]) -> None:
         raise NormalizationError("blank-line policy drift")
     if normalization.get("record_id_prefix") != "ua.rada.open-data.laws-texts.":
         raise NormalizationError("record-id prefix drift")
+
+    output = config.get("output_contract")
+    if not isinstance(output, Mapping):
+        raise NormalizationError("output_contract missing")
+    if output.get("jsonl_record_fields") != EXPECTED_RECORD_FIELDS:
+        raise NormalizationError("JSONL record field contract drift")
+    required_output_true = (
+        "manifest_is_text_free",
+        "exact_probe_inventory_required",
+        "duplicate_record_ids_rejected",
+        "deterministic_json_serialization",
+    )
+    for key in required_output_true:
+        if output.get(key) is not True:
+            raise NormalizationError(f"output contract weakened: {key}")
+    if output.get("record_order") != "LEXICOGRAPHIC_CANONICAL_BASENAME":
+        raise NormalizationError("record ordering contract drift")
 
     boundary = config.get("claim_boundary")
     if not isinstance(boundary, Mapping):
@@ -368,6 +395,7 @@ def materialize_normalized_records(
     expected = _validate_probe(probe, config, archive)
     normalizer = config["normalization"]
     prefix = str(normalizer["record_id_prefix"])
+    normalization_config_identity = _sha256(_canonical_json_bytes(config))
 
     try:
         archive_file = zipfile.ZipFile(io.BytesIO(archive))
@@ -446,6 +474,7 @@ def materialize_normalized_records(
         "schema_version": MANIFEST_SCHEMA,
         "worker_id": config["worker_id"],
         "local_free_only": True,
+        "normalization_config_identity_sha256": normalization_config_identity,
         "parent_probe": {
             "pr": config["parent_probe"]["pr"],
             "head_sha": config["parent_probe"]["head_sha"],
@@ -456,6 +485,8 @@ def materialize_normalized_records(
         },
         "normalization": {
             "name": normalizer["name"],
+            "decode_policy": normalizer["decode"],
+            "legacy_fallback_encoding": normalizer["legacy_fallback_encoding"],
             "record_count": len(records),
             "nonempty_record_count": nonempty_records,
             "raw_bytes": sum(int(record["raw_bytes"]) for record in records),
@@ -540,6 +571,9 @@ def main() -> int:
                 ],
                 "source_encoding_counts": manifest["normalization"][
                     "source_encoding_counts"
+                ],
+                "normalization_config_identity_sha256": manifest[
+                    "normalization_config_identity_sha256"
                 ],
                 "manifest_identity_sha256": manifest["manifest_identity_sha256"],
                 "training_authorized_bytes": 0,
