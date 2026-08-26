@@ -15,6 +15,7 @@ EXPECTED_IDENTITY_PARTS = [
     "1f068e6cc5ce3fc4a51d8477acee31fab5a0178e15f49225b57de94c5178f7d9",
     "6b443faa7fef777214022028d5fdb356dae0ab1a9b71822b4e16bea8f92cd0d6",
     "46a00dc70db690ae2b3c4495a75283e7e752bdccb1047d4318c2ebadfa392f0d",
+    "860b5bd9aed72d9bc754a4f73445d18ff3807408a0d6f5a18a83eca14b9f1712",
     "7b97a9ab04469236dc5bc17fc80155cb43430b01c443bb6209fac090557258fd",
     "45/35/20|min2|no-replay",
 ]
@@ -50,7 +51,7 @@ def validate(data: dict) -> None:
     _require(len(incumbent) == 4, "incumbent family set changed")
 
     selection = data["selection_validation"]
-    _require(selection["composite_identity_sha256"] == EXPECTED_IDENTITY_PARTS[7], "EVAL-303 identity drift")
+    _require(selection["composite_identity_sha256"] == EXPECTED_IDENTITY_PARTS[8], "EVAL-303 identity drift")
     _require(selection["record_count"] == 10, "selection record count drift")
     _require(not selection["training_allowed"] and not selection["tokenizer_fit_allowed"], "selection data leaked into training")
 
@@ -75,13 +76,19 @@ def validate(data: dict) -> None:
         seen_families.add(family)
 
     cpython = next(x for x in authorities if x["worker"] == "NEXT100-037-DATA-EN-PYTHON-DOCS")
+    _require(cpython["data228_source_probe_report_sha256"] == EXPECTED_IDENTITY_PARTS[7], "DATA-228 probe identity drift")
     _require(cpython["accepted_chunk_count"] == 14 and cpython["rejected_chunk_count"] == 2, "CPython chunk gate drift")
-    _require(cpython["materialized_training_payload_bytes"] is None, "CPython accepted bytes must not be fabricated")
+    _require(cpython["accepted_chunk_utf8_bytes_sum_from_terminal_probe"] == 15540, "CPython accepted-byte sum drift")
+    _require(cpython["accepted_chunk_utf8_bytes_min"] == 290 and cpython["accepted_chunk_utf8_bytes_max"] == 1196, "CPython accepted-byte range drift")
+    _require(cpython["materialized_training_payload_bytes"] is None, "CPython accepted bytes must not be relabelled as materialized")
 
     inv = data["source_authority_inventory"]
     _require(inv["source_normalized_bytes_total"] == 183061 + 9153 + 1479 + 17901, "source byte accounting mismatch")
+    _require(inv["cpython_accepted_chunk_bytes_bound_by_terminal_probe"] == 15540, "bound CPython byte accounting mismatch")
+    _require(inv["known_accepted_or_incumbent_bytes_before_successor_global_gates"] == 183061 + 9153 + 1479 + 15540, "known accepted/incumbent byte accounting mismatch")
     _require(inv["exact_materialized_source_bytes_lower_bound_before_successor_gates"] == 183061 + 9153 + 1479, "materialized lower-bound mismatch")
     _require(inv["source_bytes_are_not_loss_positions"], "source bytes must not be relabelled as loss positions")
+    _require(not inv["cpython_accepted_payload_bytes_materialized"], "CPython materialization state drift")
 
     card = data["family_cardinality"]
     _require(card["intake_total"] == {"uk": 3, "en": 2, "code": 2}, "family cardinality mismatch")
@@ -112,6 +119,10 @@ def verify_git_authorities(data: dict) -> None:
         source = json.loads(raw)
         observed = source.get("authority_identity_sha256", source.get("manifest_identity_sha256"))
         _require(observed == item["authority_identity_sha256"], f"authority payload identity mismatch for {item['worker']}")
+        if item["worker"] == "NEXT100-037-DATA-EN-PYTHON-DOCS":
+            _require(source["lineage"]["data228_probe_report_sha256"] == item["data228_source_probe_report_sha256"], "CPython/DATA-228 lineage mismatch")
+            preview = source["quality_privacy"]
+            _require(preview["accepted_chunk_count"] == 14 and preview["rejected_chunk_count"] == 2, "CPython preview count mismatch")
 
 
 def main() -> int:
