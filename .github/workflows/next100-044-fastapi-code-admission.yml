@@ -75,14 +75,23 @@ jobs:
           report = json.loads(path.read_text(encoding="utf-8"))
           assert report["terminal_verdict"] == "ADMIT"
           assert report["scope"]["files"] == 3
-          assert report["scope"]["raw_bytes"] == 24487
+          assert report["scope"]["raw_bytes"] == 19857
           assert report["scope"]["docs_included"] is False
           assert report["scope"]["tests_or_fixtures_included"] is False
           assert report["scope"]["vendored_or_generated_included"] is False
           assert report["scope"]["evaluation_objects_included"] is False
           assert report["upstream"]["canonical_family_id"] == "github:fastapi/fastapi"
           assert report["upstream"]["independent_family_credit"] == 1
-          assert len({o["git_blob_sha1"] for o in report["objects"]}) == 3
+          assert {o["path"] for o in report["objects"]} == {
+              "fastapi/sse.py",
+              "fastapi/exceptions.py",
+              "fastapi/datastructures.py",
+          }
+          assert {o["git_blob_sha1"] for o in report["objects"]} == {
+              "c31334835032570d8244526a623ac249ffc77284",
+              "d7065c52fe20220e12b7d20db4da7cbeadaf171a",
+              "1da784cf0927ed55ec6abeb051d89a6ce1e90630",
+          }
           assert len({o["raw_sha256"] for o in report["objects"]}) == 3
           assert all(o["raw_sha256"] == o["normalized_sha256"] for o in report["objects"])
           assert all(o["parse_validity"]["passed"] for o in report["objects"])
