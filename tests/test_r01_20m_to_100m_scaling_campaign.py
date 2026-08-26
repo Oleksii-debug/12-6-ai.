@@ -37,6 +37,13 @@ def test_readiness_checkpoint_retest_cannot_be_silently_promoted() -> None:
     assert any("checkpoint_integrity_terminal_retest" in error for error in errors)
 
 
+def test_readiness_false_cannot_be_replaced_by_integer_zero() -> None:
+    data = _load()
+    data["current_readiness"]["checkpoint_integrity_terminal_retest"] = 0
+    errors = validator.validate_campaign(data)
+    assert any("checkpoint_integrity_terminal_retest" in error for error in errors)
+
+
 def test_readiness_selection_validation_cannot_be_silently_promoted() -> None:
     data = _load()
     data["current_readiness"]["selection_validation_terminal"] = True
@@ -75,6 +82,14 @@ def test_learned_20m_cannot_drop_checkpoint_gate() -> None:
     assert any("requires_checkpoint_integrity_terminal_retest" in error for error in errors)
 
 
+def test_true_prerequisite_cannot_be_replaced_by_integer_one() -> None:
+    data = _load()
+    experiment = next(item for item in data["experiment_matrix"] if item["id"] == "R01-E20")
+    experiment["requires_checkpoint_integrity_terminal_retest"] = 1
+    errors = validator.validate_campaign(data)
+    assert any("requires_checkpoint_integrity_terminal_retest" in error for error in errors)
+
+
 def test_100m_sweep_cannot_drop_learned_20m_gate() -> None:
     data = _load()
     experiment = next(item for item in data["experiment_matrix"] if item["id"] == "R01-E30")
@@ -96,6 +111,13 @@ def test_model341_authority_drift_fails_closed() -> None:
     data["authority"]["model341_sha"] = "0" * 40
     errors = validator.validate_campaign(data)
     assert any("authority.model341_sha" in error for error in errors)
+
+
+def test_parameter_count_cannot_be_bool_true() -> None:
+    data = _load()
+    data["authority"]["parameter_count"] = True
+    errors = validator.validate_campaign(data)
+    assert any("authority.parameter_count" in error for error in errors)
 
 
 def test_cross_tokenizer_metric_cannot_drop_bpb() -> None:
