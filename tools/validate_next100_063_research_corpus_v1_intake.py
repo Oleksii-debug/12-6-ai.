@@ -73,7 +73,6 @@ def validate_intake(document: dict[str, Any]) -> None:
     record_ids: set[str] = set()
     hashes: set[str] = set()
     families: dict[str, set[str]] = defaultdict(set)
-    bytes_by_stratum: dict[str, int] = defaultdict(int)
     total_bytes = 0
     for record in records:
         if not isinstance(record, dict):
@@ -94,7 +93,9 @@ def validate_intake(document: dict[str, Any]) -> None:
         try:
             int(digest, 16)
         except ValueError as exc:
-            raise IntakeValidationError(f"non-hex normalized_sha256: {record_id}") from exc
+            raise IntakeValidationError(
+                f"non-hex normalized_sha256: {record_id}"
+            ) from exc
         if digest in hashes:
             _fail(f"duplicate normalized content hash: {digest}")
         hashes.add(digest)
@@ -102,12 +103,15 @@ def validate_intake(document: dict[str, Any]) -> None:
             _fail(f"invalid stratum: {record_id}")
         if not isinstance(family_id, str) or not family_id:
             _fail(f"family_id missing: {record_id}")
-        if not isinstance(normalized_bytes, int) or isinstance(normalized_bytes, bool) or normalized_bytes <= 0:
+        if (
+            not isinstance(normalized_bytes, int)
+            or isinstance(normalized_bytes, bool)
+            or normalized_bytes <= 0
+        ):
             _fail(f"normalized_bytes invalid: {record_id}")
         if not isinstance(locator, dict) or not locator:
             _fail(f"content locator missing: {record_id}")
         families[stratum].add(family_id)
-        bytes_by_stratum[stratum] += normalized_bytes
         total_bytes += normalized_bytes
 
     if total_bytes != EXPECTED_BYTES:
