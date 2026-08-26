@@ -1,7 +1,8 @@
-name: TOK-115 EOS Real Corpus
+name: RECOVER-173 TOK-115 EOS Boundaries
 
 on:
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -9,93 +10,137 @@ permissions:
 jobs:
   local-free-eos-boundary:
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    timeout-minutes: 180
     env:
       OMP_NUM_THREADS: "2"
       MKL_NUM_THREADS: "2"
+      PYTHONPATH: src
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Checkout exact recovery head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
+
       - name: Prove exact source checkout
         env:
-          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+
+      - name: Set up exact Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.11.16"
-      - name: Verify exact D08 locked environment and repository checks
+
+      - name: Universal D08 purpose bootstrap proof
         env:
-          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: >-
-          python tools/verify_locked_environment.py
-          --profile linux-x86_64
+          python tools/verify_purpose_environment.py
+          --profile linux-x86_64-tokenizer-experiment
           --source-sha "$SOURCE_SHA"
-          --evidence-out tok115-locked-environment.json
-          --run-repo-checks
-      - name: Create exact locked TOK-115 environment
+          --evidence-out recover173-purpose-environment.json
+
+      - name: Create exact locked recovery test overlay
         run: |
-          python -m venv .tok115-locked
-          .tok115-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
-          .tok115-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
-          .tok115-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/dev.lock.txt
-          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .tok115-locked/bin/python -m pip install --no-deps --no-build-isolation -e .
-      - name: Compile TOK-115 orchestrator
-        run: .tok115-locked/bin/python -m py_compile tools/run_tok115_eos_real_corpus.py
-      - name: Execute matched A B C matrix at 268K and 1M
+          set -euo pipefail
+          python -m venv .recover173
+          .recover173/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .recover173/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          .recover173/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/dev.lock.txt
+          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .recover173/bin/python -m pip install --no-deps --no-build-isolation -e .
+
+      - name: Compile exact TOK-115 DATA-106 overlay
+        run: |
+          set -euo pipefail
+          .recover173/bin/python -m py_compile \
+            tools/run_tok115_eos_real_corpus.py \
+            tools/run_data106_tok115_convergence.py
+
+      - name: Run exact recovery contract tests
+        run: |
+          set -euo pipefail
+          .recover173/bin/python -m pytest -q \
+            tests/test_purpose_environment_profiles.py \
+            tests/test_tokenization.py \
+            tests/test_packing.py \
+            tests/test_checkpoint_fail_closed_binding.py \
+            tests/test_training_engine.py
+
+      - name: Execute fixed-budget matched A B C matrix at 268K and 1M
         env:
-          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: >-
-          .tok115-locked/bin/python tools/run_tok115_eos_real_corpus.py
+          .recover173/bin/python tools/run_data106_tok115_convergence.py
           --phase matched
-          --output-dir evidence/tok115
+          --output-dir evidence/recover173
           --source-sha "$SOURCE_SHA"
           --torch-threads 2
-      - name: Start substantial selected 1M scratch run and retain quarter midpoint checkpoints
+
+      - name: Start substantial selected 1M scratch run
         env:
-          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: >-
-          .tok115-locked/bin/python tools/run_tok115_eos_real_corpus.py
+          .recover173/bin/python tools/run_data106_tok115_convergence.py
           --phase start
-          --output-dir evidence/tok115
+          --output-dir evidence/recover173
           --source-sha "$SOURCE_SHA"
           --torch-threads 2
+
       - name: Fresh-process midpoint resume and exact final reload
         env:
-          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: >-
-          .tok115-locked/bin/python tools/run_tok115_eos_real_corpus.py
+          .recover173/bin/python tools/run_data106_tok115_convergence.py
           --phase resume
-          --output-dir evidence/tok115
+          --output-dir evidence/recover173
           --source-sha "$SOURCE_SHA"
           --torch-threads 2
-      - name: Fail-closed validate milestone evidence
+
+      - name: Fail-closed validate RECOVER-173 evidence
         run: |
-          .tok115-locked/bin/python - <<'PY'
+          set -euo pipefail
+          .recover173/bin/python - <<'PY'
           import json
           from pathlib import Path
 
-          report = json.loads(Path("evidence/tok115/final-report.json").read_text(encoding="utf-8"))
+          report = json.loads(Path("evidence/recover173/final-report.json").read_text(encoding="utf-8"))
           matched = report["matched_experiment"]
           assert len(matched["results"]) == 6
           assert {(r["scale"], r["candidate"]) for r in matched["results"]} == {
-              (s, c) for s in ("268k", "1m") for c in ("A", "B", "C")
+              (scale, candidate)
+              for scale in ("268k", "1m")
+              for candidate in ("A", "B", "C")
           }
-          assert all(r["heldout"]["decrease"] > 0 for r in matched["results"])
-          assert all(r["train_panel"]["decrease"] > 0 for r in matched["results"])
+          data106 = matched["data106"]
+          assert data106["fixed_optimized_valid_token_budget"] == 60_000
+          assert data106["fixed_source_document_slice"] is True
+          assert data106["incumbent_control_replay"]["status"] == "PASS"
+          assert data106["split_proof"]["evaluation_records_passed_to_training_packer"] is False
+          assert data106["eos_semantics"]["attention_reset_at_eos"] is False
+          for result in matched["results"]:
+              assert result["training"]["observer"]["counters"]["optimized_tokens"] == 60_000
+              assert result["training"]["tokens_seen_including_eos"] == 60_000
+              assert result["heldout"]["decrease"] > 0
+              assert result["train_panel"]["decrease"] > 0
+              assert result["gradient_behavior"]["all_reported_gradient_norms_finite"] is True
           assert report["learning_proof"]["heldout_bpb_decrease"] > 0
           assert report["learning_proof"]["train_panel_bpb_decrease"] > 0
+          assert report["learning_proof"]["actual_trainer_loss_decreased"] is True
           assert report["learning_proof"]["evaluation_non_mutating"] is True
           assert report["fresh_process_resume"]["different_process"] is True
           assert report["checkpoints"]["final"]["step"] == report["training"]["final_step"]
           assert report["checkpoints"]["final_fresh_reload"]["matches_in_memory_final_state"] is True
           assert matched["checkpoint_identity_rejection"]["status"] == "PASS"
-          assert all(p["rejected_before_model_mutation"] for p in matched["checkpoint_identity_rejection"]["probes"])
-          assert all(p["target_model_state_unchanged"] for p in matched["checkpoint_identity_rejection"]["probes"])
+          assert all(
+              probe["rejected_before_model_mutation"]
+              and probe["target_model_state_unchanged"]
+              for probe in matched["checkpoint_identity_rejection"]["probes"]
+          )
           assert matched["parameter_tax"]["268k"]["extra_parameters_for_eos"] == 72
           assert matched["parameter_tax"]["1m"]["extra_parameters_for_eos"] == 128
+          assert report["data106"]["migration_and_checkpoint_compatibility"]["vocab256_to_vocab257_in_place_resume"] == "FORBIDDEN_FAIL_CLOSED"
           assert report["truth_boundary"]["paid_compute"] is False
           assert report["truth_boundary"]["instruction_tuning"] is False
           assert report["model"]["foreign_pretrained_weights"] is False
@@ -109,20 +154,20 @@ jobs:
               "parameter_count": report["model"]["parameter_count"],
               "initial_heldout_bpb": report["learning_proof"]["initial_heldout_bpb"],
               "final_heldout_bpb": report["learning_proof"]["final_heldout_bpb"],
-              "heldout_bpb_decrease": report["learning_proof"]["heldout_bpb_decrease"],
-              "initial_train_panel_bpb": report["learning_proof"]["initial_train_panel_bpb"],
-              "final_train_panel_bpb": report["learning_proof"]["final_train_panel_bpb"],
+              "fixed_optimized_valid_token_budget": data106["fixed_optimized_valid_token_budget"],
               "final_checkpoint_id": report["checkpoints"]["final"]["checkpoint_id"],
               "eos_decision": report["eos_decision"]["decision"],
+              "data106_recommendation": report["data106"]["recommendation"],
           }, indent=2, sort_keys=True))
           PY
-      - name: Upload TOK-115 learned Base evidence
+
+      - name: Upload RECOVER-173 learned Base evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: tok115-eos-real-corpus
+          name: recover173-tok115-eos-boundaries
           path: |
-            tok115-locked-environment.json
-            evidence/tok115
+            recover173-purpose-environment.json
+            evidence/recover173
           if-no-files-found: warn
           retention-days: 30
