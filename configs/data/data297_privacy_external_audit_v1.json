@@ -1,0 +1,104 @@
+{
+  "schema_version": "12-6.data297-privacy-external-audit-inputs.v1",
+  "worker_id": "DATA-297-PRIVACY-EXTERNAL-AUDIT",
+  "local_free_only": true,
+  "privacy_authority": {
+    "worker": "DATA-33-PII-SECRETS",
+    "source_sha": "290b82fd0f7d1cc3a1840deae4378b9c500f1c15",
+    "policy_schema": "12-6.pii-secrets-policy.v1",
+    "policy_sha256": "8c905e3b8f81391c3f928f375bca8fe6d1b5d38b41dec5c081577e2c5ce58526",
+    "semantics": "Reuse DATA-33 detector/actions/evidence exactly; this audit does not create or tune a second privacy framework."
+  },
+  "inventory_authorities": {
+    "DATA-229": {
+      "source_sha": "90bc0b7f8b696ec35202532b13edf6ab29a662fe",
+      "registry_identity_sha256": "1357a343eb4ea973950d8991913109cbea53fe4fa891f0be9745ab497eb59486",
+      "payload_producer": "DATA-213",
+      "payload_artifact_id": 9600107886,
+      "payload_artifact_sha256": "927e10ccb83f919d57a8b78e3ea9cae72f9d4e0232401043234a35eec150074d",
+      "status": "TERMINAL_SUCCESS"
+    },
+    "DATA-227": {
+      "source_sha": "8ebdb2e132ed7bae5245e9d4c140752640ab9885",
+      "workflow_run": 32956209865,
+      "artifact_id": 9602093542,
+      "artifact_sha256": "080f073327020cb3bbb05c7348f658223804684d23012d9b66ab9b798c4fed5d",
+      "status": "TERMINAL_SUCCESS"
+    },
+    "DATA-228": {
+      "source_sha": "46a70c990dab6ff72bb84ddb54cff1156b491b40",
+      "status": "NONTERMINAL_EXCLUDED_FROM_TRAINING_INVENTORY",
+      "reason": "Dedicated immutable-source probe is not terminal-success at the audit cutoff."
+    }
+  },
+  "admitted_inventory": [
+    {
+      "source_id": "en.standardebooks.manual.8-typography",
+      "source_family": "en.standardebooks.manual",
+      "language": "en",
+      "modality": "natural",
+      "authority": "DATA-229",
+      "source_version": "git:d1143a9b459b5e6f9cdda93a7c1e04676bff4f6b",
+      "expected_input_utf8_bytes": 48002,
+      "expected_input_sha256": "154fb4034929714087e75150d678bf65049ddac32e79dcdf97162c8972c2be83"
+    },
+    {
+      "source_id": "en.standardebooks.manual.9-metadata",
+      "source_family": "en.standardebooks.manual",
+      "language": "en",
+      "modality": "natural",
+      "authority": "DATA-229",
+      "source_version": "git:d1143a9b459b5e6f9cdda93a7c1e04676bff4f6b",
+      "expected_input_utf8_bytes": 36791,
+      "expected_input_sha256": "94eb2f529922d125b3bd40691778886f4d5d80b128b925d0274fb3d94646ec5a"
+    },
+    {
+      "source_id": "ua.rada.open-data.laws-texts.d23314",
+      "source_family": "ua.rada.open-data.laws-texts",
+      "language": "uk",
+      "modality": "natural",
+      "authority": "DATA-229",
+      "source_version": "laws-texts/bounded-2026-08-25",
+      "expected_input_utf8_bytes": 88565,
+      "expected_input_sha256": "72c301db0b2539f3f7a73c9c15e2e425700a6b758a1114f1a861e2d60c704c50"
+    },
+    {
+      "source_id": "code.encode.httpx._content",
+      "source_family": "github:encode/httpx",
+      "language": "python",
+      "modality": "code",
+      "authority": "DATA-227",
+      "source_version": "git:b5addb64f0161ff6bfe94c124ef76f6a1fba5254",
+      "expected_input_utf8_bytes": 8161,
+      "expected_input_sha256": "2c61b3ac94d1dcebcde0c6f519554d2d7917247fbaa0a97002db4ef69e70ff28"
+    },
+    {
+      "source_id": "code.psf.requests._internal_utils",
+      "source_family": "github:psf/requests",
+      "language": "python",
+      "modality": "code",
+      "authority": "DATA-227",
+      "source_version": "git:5460f467b02e49471c0fd6cfc9ca0adab6351f98",
+      "expected_input_utf8_bytes": 1542,
+      "expected_input_sha256": "4c7d8d132c9898fc7d715e473f3ac74785ddc4ab96d2c9240f87835dc6d981ff"
+    }
+  ],
+  "expected_training_inventory": {
+    "source_count": 5,
+    "family_count": 4,
+    "input_utf8_bytes": 183061,
+    "by_family_input_utf8_bytes": {
+      "en.standardebooks.manual": 84793,
+      "ua.rada.open-data.laws-texts": 88565,
+      "github:encode/httpx": 8161,
+      "github:psf/requests": 1542
+    }
+  },
+  "public_evidence_policy": {
+    "matched_values": "FORBIDDEN",
+    "text_previews": "FORBIDDEN",
+    "raw_source_text": "FORBIDDEN",
+    "fixture_payloads": "FORBIDDEN",
+    "allowed": ["source/family identifiers", "counts", "byte counts", "detector ids", "actions", "status", "sha256 identities"]
+  }
+}
