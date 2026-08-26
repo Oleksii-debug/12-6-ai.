@@ -63,6 +63,40 @@ class Next100063SourceRegistryConvergenceTests(unittest.TestCase):
         with self.assertRaises(module.ValidationError):
             module.validate(broken)
 
+    def test_base_authority_path_drift_fails_closed(self) -> None:
+        broken = copy.deepcopy(self.data)
+        broken["base_authority"]["config_path"] = "configs/data/stale-or-unrelated.json"
+        with self.assertRaises(module.ValidationError):
+            module.validate(broken)
+
+    def test_base_terminal_cutoff_drift_fails_closed(self) -> None:
+        broken = copy.deepcopy(self.data)
+        broken["base_authority"]["terminal_refresh_cutoff_utc"] = "2026-08-26T00:00:00Z"
+        with self.assertRaises(module.ValidationError):
+            module.validate(broken)
+
+    def test_late_authority_identity_drift_fails_closed(self) -> None:
+        broken = copy.deepcopy(self.data)
+        nist = next(
+            row
+            for row in broken["late_authorities"]
+            if row["worker_id"] == "NEXT100-034-DATA-EN-NIST"
+        )
+        nist["authority_identity"] = "0" * 64
+        with self.assertRaises(module.ValidationError):
+            module.validate(broken)
+
+    def test_late_authority_path_drift_fails_closed(self) -> None:
+        broken = copy.deepcopy(self.data)
+        kmu = next(
+            row
+            for row in broken["late_authorities"]
+            if row["worker_id"] == "NEXT100-026-DATA-UA-CABINET-MINISTRY"
+        )
+        kmu["authority_path"] = "configs/data/unbound-kmu.json"
+        with self.assertRaises(module.ValidationError):
+            module.validate(broken)
+
     def test_cpython_docs_cannot_receive_unmaterialized_capacity_credit(self) -> None:
         broken = copy.deepcopy(self.data)
         cpython = next(
