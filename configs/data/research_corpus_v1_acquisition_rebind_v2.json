@@ -1,0 +1,91 @@
+{
+  "schema_version": "12-6.research-corpus-v1-acquisition-rebind.v2",
+  "worker_id": "DATA-BULK-ACQ-V1-R1-PROVENANCE-REBIND",
+  "issue": 629,
+  "execution_class": "LOCAL_FREE",
+  "base_pr": 594,
+  "base_head_sha": "4c297ecd826614558dc1d29eb67356d9cd42f13b",
+  "parent_convergence": {
+    "worker_id": "NEXT100-063-SOURCE-REGISTRY-CONVERGENCE",
+    "pr": 527,
+    "head_sha": "5356d60c8c8af46d6fc34debfd3cb36731045338",
+    "config_path": "configs/data/next100_063_source_registry_convergence_v1.json",
+    "config_blob_sha1": "d5b640b386219290f69d02a7f2e30a338c883009",
+    "safe_result": "SOURCE_AUTHORITY_VECTOR_CONVERGED_FOR_NEXT_DEDUP_ITERATION",
+    "observed_exact_head_workflow": {
+      "run_id": 33005956092,
+      "name": "NEXT100-063 Source Registry Convergence",
+      "status": "queued",
+      "conclusion": null
+    },
+    "terminal_for_capacity_authority": false
+  },
+  "candidate_pre_successor_dedup_bytes": {
+    "uk": 100856,
+    "en": 150643,
+    "code": 69133,
+    "total": 320632
+  },
+  "candidate_independent_family_counts": {
+    "uk": 4,
+    "en": 3,
+    "code": 4,
+    "total": 11
+  },
+  "frozen_targets_bytes": {
+    "uk": 9000000,
+    "en": 7000000,
+    "code": 4000000,
+    "total": 20000000
+  },
+  "candidate_remaining_gap_bytes": {
+    "uk": 8899144,
+    "en": 6849357,
+    "code": 3930867,
+    "total": 19679368
+  },
+  "planning_survival_floor": {
+    "numerator": 3,
+    "denominator": 5,
+    "is_measured_evidence": false
+  },
+  "buffered_gross_required_bytes": {
+    "uk": 14831907,
+    "en": 11415595,
+    "code": 6551445,
+    "total": 32798947
+  },
+  "existing_v1_planned_gross_bytes": {
+    "uk": 15000000,
+    "en": 11500000,
+    "code": 6700000,
+    "total": 33200000
+  },
+  "planning_headroom_bytes": {
+    "uk": 168093,
+    "en": 84405,
+    "code": 148555,
+    "total": 401053
+  },
+  "stale_v1_delta": {
+    "additional_candidate_en_bytes": 6492,
+    "remaining_gap_total_reduction_bytes": 6492,
+    "buffered_gross_total_reduction_bytes": 10820
+  },
+  "activation": {
+    "planning_arithmetic_status": "PASS_ON_EXACT_PARENT_CONFIG_BYTES",
+    "source_capacity_authority_status": "BLOCKED_PARENT_EXACT_HEAD_WORKFLOW_NONTERMINAL",
+    "global_dedup": "REQUIRED",
+    "corpus_release": "BLOCKED",
+    "training_exposure_loss_positions": 0
+  },
+  "claim_boundary": {
+    "source_acquisition_executed": false,
+    "post_dedup_capacity_claimed": false,
+    "corpus_identity_created": false,
+    "tokenizer_fit_authorized": false,
+    "model_training_authorized": false,
+    "paid_compute_authorized": false
+  },
+  "rebind_identity_sha256": "ac98f56ff5236fa0ea1786c38320d62959ce6f9f7f240dd263992e930eb38287"
+}
