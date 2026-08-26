@@ -1,0 +1,39 @@
+{
+  "schema": "12-6.next100-063-canonical-authority-pointer.v1",
+  "worker_id": "NEXT100-063-CANONICAL-AUTHORITY-SELECTOR",
+  "repository": "Oleksii-debug/12-6-ai.",
+  "authority_source_head_sha": "33017f1e344534841b31df5a6e0bfaf5b7cb2bcc",
+  "canonical": {
+    "path": "configs/data/next100_063_terminal_source_registry_v2.json",
+    "schema_version": "12-6.next100-063-terminal-source-registry.v2",
+    "worker_id": "NEXT100-063-CANONICAL-SOURCE-REGISTRY-CONVERGENCE-V2",
+    "registry_identity_sha256": "448dd61ed3e0d78d0bca9e202529a79c02811fd67beebe4833373d0c2ab0c0a7",
+    "candidate_normalized_bytes": 303374,
+    "authorized_balanced_no_replay_loss_positions": 0
+  },
+  "superseded": [
+    {
+      "path": "configs/data/next100_063_terminal_source_registry_v1.json",
+      "observed_registry_identity_sha256": "56ab7c1e3ebf336c0ec9f51d8580f9aaad2890566d1bf7a5090e2b7f0102bfc5",
+      "status": "NON_CANONICAL_SUPERSEDED_DO_NOT_CONSUME",
+      "reason": "Historical/diagnostic vector remains in-tree but is not the surviving machine authority."
+    },
+    {
+      "registry_identity_sha256": "77fb69c558df8c59fdae00583c955c62ad088cda98fd16b335eedb26fb2d7526",
+      "status": "SUPERSEDED_DRAFT_IDENTITY_DO_NOT_CONSUME"
+    },
+    {
+      "registry_identity_sha256": "934933896a4b3b01dd58cd18d13bcc36245913f83412c6b3f697c64dd03e4d4d",
+      "status": "SUPERSEDED_DRAFT_V2_IDENTITY_DO_NOT_CONSUME"
+    }
+  ],
+  "consumer_rule": "DOWNSTREAM_MUST_RESOLVE_THIS_POINTER_AND_MATCH_CANONICAL_REGISTRY_IDENTITY_BEFORE_CONSUMING_NEXT100_063",
+  "truth_boundary": {
+    "corpus_identity_claimed": false,
+    "post_dedup_capacity_claimed": false,
+    "training_authorized": false,
+    "tokenizer_fit_authorized": false,
+    "paid_compute_authorized": false
+  },
+  "pointer_identity_sha256": "603a330e775ca1678c5c62656593285cad202d7d458af24be02201837dc250d8"
+}
