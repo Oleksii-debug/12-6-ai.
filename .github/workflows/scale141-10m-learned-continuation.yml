@@ -56,6 +56,7 @@ jobs:
         run: |
           set -euo pipefail
           .scale141/bin/python -m compileall -q src/twelve_six
+          .scale141/bin/python -m twelve_six.scale141_fresh_verify --help >/dev/null
           .scale141/bin/python -m pytest -q \
             tests/test_data25_corpus_v01.py \
             tests/test_checkpointing.py \
@@ -117,6 +118,43 @@ jobs:
           }, ensure_ascii=False, indent=2, sort_keys=True))
           PY
 
+      - name: Fresh-verify and retain best and final 10M checkpoints
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          .scale141/bin/python -m twelve_six.scale141_fresh_verify \
+            --repo-root . \
+            --source-sha "$EXPECTED_SOURCE_SHA" \
+            --output-dir scale141-evidence
+          .scale141/bin/python - <<'PY'
+          import json
+          import shutil
+          from pathlib import Path
+
+          root = Path("scale141-evidence")
+          verification = json.loads((root / "fresh-verification.json").read_text(encoding="utf-8"))
+          if verification["fresh_verification"]["status"] != "PASS":
+              raise SystemExit("refusing retention without fresh verification PASS")
+          retained = root / "retained"
+          retained.mkdir(parents=True, exist_ok=True)
+          index = {"schema": "12-6.scale141-retained-checkpoints.v1", "source_sha": verification["source_sha"], "roles": {}}
+          for role in ("best", "final"):
+              evidence = verification["evidence"][role]
+              source = root / evidence["checkpoint_directory"]
+              destination = retained / role
+              if destination.exists():
+                  shutil.rmtree(destination)
+              shutil.copytree(source, destination)
+              index["roles"][role] = {
+                  "source_directory": evidence["checkpoint_directory"],
+                  "target_optimized_tokens": evidence["target_optimized_tokens"],
+                  "checkpoint_id": evidence["checkpoint_id"],
+                  "fresh_verification": "PASS",
+              }
+          (retained / "index.json").write_text(json.dumps(index, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+          PY
+
       - name: Publish compact evidence to PR
         if: github.event_name == 'pull_request'
         env:
@@ -129,6 +167,7 @@ jobs:
           import json
           from pathlib import Path
           r = json.loads(Path("scale141-evidence/report.json").read_text(encoding="utf-8"))
+          v = json.loads(Path("scale141-evidence/fresh-verification.json").read_text(encoding="utf-8"))
           s0 = r["scheduled"]["0"]
           sf = r["scheduled"]["2000000"]
           f = r["fresh_process_resume"]
@@ -144,6 +183,7 @@ jobs:
               f"- modality optimized bytes UK/EN/code: `{r['corpus']['optimized_tokens_by_modality']['uk']}` / `{r['corpus']['optimized_tokens_by_modality']['en']}` / `{r['corpus']['optimized_tokens_by_modality']['code']}`",
               f"- held-out fixed-suite BPB token 0 → 2M: `{s0['heldout']['bits_per_byte']:.6f}` → `{sf['heldout']['bits_per_byte']:.6f}`",
               f"- held-out modality BPB final UK/EN/code: `{sf['heldout']['by_modality']['uk']['bits_per_byte']:.6f}` / `{sf['heldout']['by_modality']['en']['bits_per_byte']:.6f}` / `{sf['heldout']['by_modality']['code']['bits_per_byte']:.6f}`",
+              f"- best trained checkpoint target: `{v['best_target_optimized_tokens']}` optimized bytes at BPB `{v['best_heldout_bits_per_byte']:.6f}`; fresh verify=`{v['fresh_verification']['status']}`",
               f"- hash-only training-passage memorization probe final exact short-continuation rate: `{mem['exact_short_continuation_rate']:.4%}`; mean BPB `{mem['mean_bits_per_byte']:.6f}`",
               f"- final interval clip rate: `{sf['training_interval']['clip_rate']:.4%}`",
               f"- final interval throughput: `{sf['training_interval']['train_tokens_per_second_mean']:.2f}` optimized byte targets/s",
@@ -151,6 +191,7 @@ jobs:
               f"- measured recovery cadence: every `{c['checkpoint_every_optimizer_steps']}` optimizer steps; joint 5s/5% feasibility=`{c['five_second_and_overhead_constraints_jointly_feasible']}`",
               f"- final checkpoint id: `{r['checkpoint_integrity']['final_checkpoint_id']}`",
               f"- report SHA-256: `{r['report_sha256']}`",
+              f"- fresh-verification SHA-256: `{v['identity_sha256']}`",
               "",
               "Pre-execution audit rejected nominal padded-token accounting and switched the authority to Trainer.tokens_seen; evaluation is streamed one window at a time; tuple-valued config is normalized before cross-process manifest hashing. Memorization output contains hashes/metrics only and makes no privacy-leakage claim. Scaling-law values remain explicitly out-of-domain diagnostics, not success gates. DATA-25 is project-authored UK/EN/code evidence, not an external-corpus representativeness claim.",
           ]
@@ -164,6 +205,7 @@ jobs:
           name: scale141-10m-learned-fallback
           path: |
             scale141-evidence/report.json
+            scale141-evidence/fresh-verification.json
             scale141-evidence/phase1.json
             scale141-evidence/corpus-manifest.json
             scale141-evidence/run-manifest.json
@@ -171,7 +213,6 @@ jobs:
             scale141-evidence/machine-phase1.json
             scale141-evidence/machine-resume.json
             scale141-evidence/train-curve.jsonl
-            scale141-evidence/checkpoint-token-1000000/
-            scale141-evidence/checkpoint-token-2000000/
+            scale141-evidence/retained/
           if-no-files-found: error
           retention-days: 14
