@@ -1,0 +1,56 @@
+name: NEXT100-028 PHP Ukrainian documentation source
+
+on:
+  push:
+    branches:
+      - next100-028/data-ua-tech-github-php-doc-uk-20260826
+  pull_request:
+    paths:
+      - configs/data/next100_028_php_doc_uk_source_v1.json
+      - tools/next100_028_php_doc_uk_snapshot.py
+      - docs/NEXT100_028_PHP_DOC_UK_SOURCE.md
+      - data/registry/external_snapshots.v2.json
+      - data/external/reserved_fingerprints.json
+      - .github/workflows/next100-028-php-doc-uk-source.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: next100-028-php-doc-uk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Compile verifier
+        run: python -m py_compile tools/next100_028_php_doc_uk_snapshot.py
+      - name: Materialize bounded snapshot A
+        run: >-
+          python tools/next100_028_php_doc_uk_snapshot.py
+          --config configs/data/next100_028_php_doc_uk_source_v1.json
+          --out-dir /tmp/next100-028-a
+      - name: Materialize bounded snapshot B
+        run: >-
+          python tools/next100_028_php_doc_uk_snapshot.py
+          --config configs/data/next100_028_php_doc_uk_source_v1.json
+          --out-dir /tmp/next100-028-b
+      - name: Require deterministic byte identity
+        run: diff -r /tmp/next100-028-a /tmp/next100-028-b
+      - name: Stage D03-style evidence
+        run: |
+          mkdir -p evidence/next100-028
+          cp -a /tmp/next100-028-a/. evidence/next100-028/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: next100-028-php-doc-uk-${{ github.sha }}
+          path: evidence/next100-028
+          if-no-files-found: error
+          retention-days: 90
