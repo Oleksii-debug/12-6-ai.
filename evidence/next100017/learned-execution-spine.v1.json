@@ -1,0 +1,295 @@
+{
+  "schema_version": "12-6.learned-execution-spine.next100017.v1",
+  "worker_id": "NEXT100-017-INTEGRATE282-REFRESH",
+  "repository": {
+    "requested": "Oleksii-debug/12-6-ai",
+    "physical": "Oleksii-debug/12-6-ai."
+  },
+  "constraints": {
+    "local_free_only": true,
+    "long_training_performed": false,
+    "training_authorized": false,
+    "mechanical_pr_merge": false,
+    "late_bound_exact_sha": true
+  },
+  "source_base": {
+    "worker": "INTEGRATE-282",
+    "branch": "integrate282/post217-learned-spine-20260826",
+    "head_sha": "8dcb9370f51259f9126128325920729351782a64",
+    "classification": "historical",
+    "role": "carrier_only"
+  },
+  "composition_policy": {
+    "selected_classification": "terminal_authority",
+    "classification_enum": [
+      "terminal_authority",
+      "candidate",
+      "blocked",
+      "historical"
+    ],
+    "orthogonal_tags": [
+      "mechanics-only",
+      "learned"
+    ],
+    "rule": "Select only exact scoped terminal authorities for the requested execution-spine slots. Newness or PR existence alone never promotes a component. Learned producer evidence is distinct from canonical learned-ladder admission."
+  },
+  "composition_vector": {
+    "environment": {
+      "worker": "ENV-151",
+      "branch": "env151/universal-execution-bootstrap-20260826",
+      "head_sha": "bbca2101ea9409b47d844dd8292cd7f2290e3ff0",
+      "classification": "terminal_authority",
+      "scope": "universal execution bootstrap",
+      "evidence": {
+        "workflow_run_id": 32951063385,
+        "conclusion": "success",
+        "generic_ci_is_not_promoted": true
+      },
+      "mechanics_only": true,
+      "learned": false
+    },
+    "trainer": {
+      "worker": "D02",
+      "branch": "d02/s0-precision-runtime-contract-20260825",
+      "head_sha": "e77cf610443f08fcd2b10bf445b956e35bd2b3a8",
+      "classification": "terminal_authority",
+      "scope": "Trainer plus precision/runtime contract",
+      "evidence": {
+        "real_s0_training_run_id": 32901536099,
+        "determinism_run_id": 32901536093,
+        "precision_probe_run_id": 32901536113,
+        "strict_eval_run_id": 32901536120,
+        "scoped_runs_conclusion": "success",
+        "generic_ci_is_not_promoted": true
+      },
+      "mechanics_only": true,
+      "learned": false
+    },
+    "d05_recovery": {
+      "worker": "CHECKPOINT-211",
+      "branch": "checkpoint211/scale141-recovery-immutability-20260826",
+      "head_sha": "349e6db94d4aca81c2d1a0ccc3368a98b6058392",
+      "classification": "terminal_authority",
+      "scope": "D05 immutable recovery and exact restore",
+      "evidence": {
+        "workflow_run_id": 32951984562,
+        "conclusion": "success",
+        "artifact_id": 9600513685,
+        "artifact_sha256": "1038f9ac5548e6caeb2f6ae1c0ad0ddfee6969c909fbf62afca635101a39aeb9",
+        "proof_identity_sha256": "9e002d07e85624da5b9799a08a006f589472769055df6609e17b17e698a8da5b"
+      },
+      "mechanics_only": true,
+      "learned": false
+    },
+    "learned_evidence": {
+      "3m": {
+        "worker": "LEARN-191",
+        "branch": "learn191/real-3m-20260826",
+        "head_sha": "a75920cef8bde37a8c590e34095be83c97b75f1d",
+        "classification": "terminal_authority",
+        "scope": "learned 3M producer evidence",
+        "parameters": 3213120,
+        "optimized_targets": 131938,
+        "evidence": {
+          "workflow_run_id": 32940842372,
+          "conclusion": "success",
+          "artifact_id": 9597788382,
+          "artifact_sha256": "f57bf36113a68fffd4bfcf877bf08762393479b9c09e6fd0fd613fbb91f044ee",
+          "retained_checkpoint_sha256": "920283a052c6c7fbd2b66f8ce5f775e4747c3d459e539b3625e4bebf1b9a7a59"
+        },
+        "canonical_ladder_admission": "blocked",
+        "missing_independent_verifier": "VERIFY-219",
+        "mechanics_only": false,
+        "learned": true
+      },
+      "10m": {
+        "worker": "LEARN-217",
+        "branch": "learn217/terminal-10m-base-20260826",
+        "head_sha": "c02c8aa38e691521ae2ab6a4ff3ea1d643efd6ef",
+        "classification": "terminal_authority",
+        "scope": "learned 10M producer evidence",
+        "parameters": 10000640,
+        "optimized_targets": 2000060,
+        "evidence": {
+          "workflow_run_id": 32952787070,
+          "conclusion": "success",
+          "artifact_id": 9602650341,
+          "artifact_sha256": "8631e90417e40365b3fc0d6bc98ee6adda5a4ed24530e675d9a91c93219537ee",
+          "model_spec_sha256": "61caa5469123e23b9b72fc2024140bfca84c4c480dcb0a7e712ba800a4f22998",
+          "retained_checkpoint_sha256": "12f9edd88bf5e596ae6f985564a5dcff96033922100ba91678ef9a76c0df3156",
+          "chronological_final_sha256": "20fbb9ffe0e0ecb2b0098dd6f7c18e23cd6cfcc0a0e48cb25c73c26d2f50926d"
+        },
+        "canonical_ladder_admission": "blocked",
+        "missing_independent_verifier": "VERIFY-218",
+        "mechanics_only": false,
+        "learned": true
+      }
+    },
+    "perf_static_kv": {
+      "worker": "PERF-250",
+      "branch": "perf250/gqa-static-kv-convergence-v2-20260826",
+      "head_sha": "66f9be0c86a17568316e791dbf1890b238f114af",
+      "classification": "terminal_authority",
+      "scope": "learned-checkpoint static-KV qualification",
+      "evidence": {
+        "workflow_run_id": 32961371483,
+        "conclusion": "success",
+        "artifact_id": 9604015370,
+        "artifact_sha256": "019c9a561023bf7c061ff9938869f59e0076bbaf7b57a50101676f2892bac883",
+        "learned_static_dynamic_max_abs_logit_error": 0.0
+      },
+      "mechanics_only": true,
+      "learned": false
+    },
+    "primary_20m_mechanics": {
+      "worker": "NEXT100-009-PERF347-TERMINALIZE",
+      "authority_head_sha": "7e3fc17aa204f647e4493861ce0817a3e7a19e98",
+      "classification": "terminal_authority",
+      "scope": "exact primary MODEL-341 plus PERF-347 FP32 CPU static-KV mechanics",
+      "source": {
+        "model341_head_sha": "e4ff486fd90802fc123bebf60eed4e59196a98df",
+        "perf347_head_sha": "a5b32313e401fc2ec38158cfc997d6633636bfa8",
+        "model_spec_sha256": "fbff24d561a2818453554d58ca23fc6ace3303b078f1935a8576c4565bd92441",
+        "parameters": 20613440
+      },
+      "evidence": {
+        "transport": "committed independent LOCAL_FREE terminal artifact",
+        "authority_path": "reports/perf347/next100_009_terminal_authority.json",
+        "authority_blob": "bb7c42513002f6a8f527bcc353864b409cd49d2d",
+        "terminal_status": "PASS",
+        "independent_run_blob": "3074648d1e132459de9fd1ddcabc4302bed57b85",
+        "independent_run_file_sha256": "eada92ef54d24a01db561799e5a592a12c848f6d15b8033fe8adf431105dc8d6",
+        "exact_head_actions_runs": 0,
+        "training_performed": false,
+        "device": "cpu",
+        "torch": "2.10.0+cpu"
+      },
+      "mechanics_only": true,
+      "learned": false
+    },
+    "evaluation_fixes": {
+      "evaluator_execution": {
+        "worker": "RECOVER-176-EVAL-133",
+        "branch": "recover176/eval133-en-m150-ladder-20260826",
+        "head_sha": "de19adf253c19ba077a6b3af7c88c291249ed7aa",
+        "classification": "terminal_authority",
+        "scope": "raw evaluator execution and immutable evaluation identity",
+        "evidence": {
+          "workflow_run_id": 32951302310,
+          "conclusion": "success",
+          "evaluation_identity_sha256": "7189e6df053574beb686727c94e684cdbaf08a34ef33aa953eff7cdae0320113"
+        },
+        "mechanics_only": true,
+        "learned": false
+      },
+      "selection_validation": {
+        "worker": "EVAL-303",
+        "branch": "eval303/selection-validation-composite-20260826",
+        "head_sha": "5e5a1de3b594cee5612e63d3d4c2a70499740ac7",
+        "classification": "terminal_authority",
+        "scope": "selection-validation composite; no final-test reuse",
+        "evidence": {
+          "workflow_run_id": 32979177512,
+          "conclusion": "success",
+          "selection_identity_sha256": "7b97a9ab04469236dc5bc17fc80155cb43430b01c443bb6209fac090557258fd"
+        },
+        "mechanics_only": true,
+        "learned": false
+      }
+    },
+    "post_base_communication_boundary": {
+      "worker": "POSTBASE-253",
+      "branch": "postbase253/communication-layer-contract-20260826",
+      "head_sha": "f6463424b5f53152fce6e6053b705f94e03f9f06",
+      "classification": "terminal_authority",
+      "scope": "communication-consumption boundary above immutable Base",
+      "schema": "12-6.post-base.communication-consumption.v1",
+      "evidence": {
+        "workflow_run_id": 32960956930,
+        "conclusion": "success",
+        "optimizer_updates": 0,
+        "training_authorized": false
+      },
+      "mechanics_only": true,
+      "learned": false
+    }
+  },
+  "blocked_admissions": [
+    {
+      "subject": "3M canonical learned-ladder admission",
+      "classification": "blocked",
+      "producer": "LEARN-191",
+      "blocker": "missing independent VERIFY-219 authority"
+    },
+    {
+      "subject": "10M canonical learned-ladder admission",
+      "classification": "blocked",
+      "producer": "LEARN-217",
+      "blocker": "missing independent VERIFY-218 authority"
+    },
+    {
+      "subject": "20M learned promotion",
+      "classification": "blocked",
+      "producer": null,
+      "blocker": "primary 20M has mechanics authority only; no learned terminal evidence exists in this composition"
+    }
+  ],
+  "blocker_snapshot": {
+    "worker": "MILESTONE-361",
+    "branch": "milestone361/learned-base-ladder-v5-20260826",
+    "head_sha": "f54aa8eb33410a81c4b2cff8ebc8013e619edff9",
+    "classification": "blocked",
+    "verdict": "BLOCKED_MISSING_INDEPENDENT_VERIFY_219_AND_VERIFY_218",
+    "generic_ci_conclusion": "failure",
+    "generic_ci_run_id": 32997091548,
+    "selected_as_incumbent": false
+  },
+  "observed_non_selected": [
+    {
+      "worker": "INTEGRATE-282",
+      "head_sha": "8dcb9370f51259f9126128325920729351782a64",
+      "classification": "historical",
+      "reason": "stale integration carrier; superseded by this exact-SHA composition vector"
+    },
+    {
+      "worker": "INTEGRATE-222",
+      "head_sha": "6afaf5889f9898037b53e8b0bc2b731d77782111",
+      "classification": "historical",
+      "reason": "ancestry only"
+    },
+    {
+      "worker": "CI-285",
+      "head_sha": "516c5da7d010fd01fa554c2c21a2b2489683067d",
+      "classification": "candidate",
+      "reason": "generic release wrapper had action_required and is not scientific component authority"
+    },
+    {
+      "worker": "EVAL-284",
+      "head_sha": "eb6fec707cedb4ae3fa9890d176b5a74d1b7e2d0",
+      "classification": "candidate",
+      "reason": "consolidated panel did not replace the terminal raw evaluator or terminal selection-validation authorities"
+    }
+  ],
+  "concurrency_refresh": {
+    "performed_immediately_before_vector_write": true,
+    "vector_write_count": 1,
+    "refreshed_heads": {
+      "ENV-151": "bbca2101ea9409b47d844dd8292cd7f2290e3ff0",
+      "D02": "e77cf610443f08fcd2b10bf445b956e35bd2b3a8",
+      "CHECKPOINT-211": "349e6db94d4aca81c2d1a0ccc3368a98b6058392",
+      "LEARN-191": "a75920cef8bde37a8c590e34095be83c97b75f1d",
+      "LEARN-217": "c02c8aa38e691521ae2ab6a4ff3ea1d643efd6ef",
+      "PERF-250": "66f9be0c86a17568316e791dbf1890b238f114af",
+      "MODEL-341": "e4ff486fd90802fc123bebf60eed4e59196a98df",
+      "PERF-347": "a5b32313e401fc2ec38158cfc997d6633636bfa8",
+      "NEXT100-009": "7e3fc17aa204f647e4493861ce0817a3e7a19e98",
+      "RECOVER-176-EVAL-133": "de19adf253c19ba077a6b3af7c88c291249ed7aa",
+      "EVAL-303": "5e5a1de3b594cee5612e63d3d4c2a70499740ac7",
+      "POSTBASE-253": "f6463424b5f53152fce6e6053b705f94e03f9f06",
+      "MILESTONE-361": "f54aa8eb33410a81c4b2cff8ebc8013e619edff9",
+      "INTEGRATE-282": "8dcb9370f51259f9126128325920729351782a64"
+    },
+    "material_change_consumed": "NEXT100-009 moved from e7efa315e9a6ae21e22b4285fde3a3c4c91f2194 to 7e3fc17aa204f647e4493861ce0817a3e7a19e98 and published the terminal PERF-347 authority; this vector binds only the refreshed head."
+  },
+  "decision": "PASS: successor composition vector created without mechanically merging authorities. It preserves scoped terminal authority, candidate, blocked, historical, mechanics-only and learned distinctions. No long training was run."
+}
