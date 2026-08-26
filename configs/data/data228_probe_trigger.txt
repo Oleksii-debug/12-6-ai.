@@ -1,2 +1,2 @@
 DATA-228 isolated immutable-source probe trigger.
-rerun=2
+rerun=3
