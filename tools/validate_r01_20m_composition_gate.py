@@ -31,6 +31,16 @@ def _is_sha(value: object) -> bool:
     return isinstance(value, str) and SHA40.fullmatch(value) is not None
 
 
+def _blocked(decision: str, **extra: Any) -> dict[str, Any]:
+    return {
+        "decision": decision,
+        "composition_ancestry_verified": False,
+        "exact_candidate_head_ci_verified": False,
+        "training_authorized": False,
+        **extra,
+    }
+
+
 def validate_manifest(data: dict[str, Any]) -> list[str]:
     errors: list[str] = []
     if data.get("schema_version") != 1:
@@ -106,7 +116,7 @@ def validate_manifest(data: dict[str, Any]) -> list[str]:
                 errors.append(f"truth_boundary.{key} must remain false in v1")
 
     if status == "PASS":
-        errors.append("committed v1 manifest must not self-assert PASS without live ancestry proof")
+        errors.append("committed v1 manifest must not self-assert PASS without live evidence")
 
     return errors
 
@@ -140,24 +150,22 @@ def assess_composition(
     commit_exists: Callable[[str], bool] | None = None,
     is_ancestor: Callable[[str, str], bool] | None = None,
 ) -> dict[str, Any]:
+    """Prove composition ancestry only; CI and training authority stay external."""
+
     errors = validate_manifest(data)
     if errors:
-        return {"decision": "INVALID_MANIFEST", "errors": errors, "ready": False}
+        return _blocked("INVALID_MANIFEST", errors=errors)
 
     components = {item["role"]: item for item in data["components"]}
     missing = sorted(
         role for role, item in components.items() if item.get("authority_sha") is None
     )
     if missing:
-        return {
-            "decision": "BLOCKED_MISSING_AUTHORITIES",
-            "missing_roles": missing,
-            "ready": False,
-        }
+        return _blocked("BLOCKED_MISSING_AUTHORITIES", missing_roles=missing)
 
     candidate = data.get("candidate_head_sha")
     if not isinstance(candidate, str):
-        return {"decision": "BLOCKED_NO_CANDIDATE_HEAD", "ready": False}
+        return _blocked("BLOCKED_NO_CANDIDATE_HEAD")
 
     exists = commit_exists or (lambda sha: _git_commit_exists(repo_root, sha))
     ancestor = is_ancestor or (
@@ -167,11 +175,10 @@ def assess_composition(
     )
 
     if not exists(candidate):
-        return {
-            "decision": "BLOCKED_CANDIDATE_COMMIT_NOT_FOUND",
-            "candidate_head_sha": candidate,
-            "ready": False,
-        }
+        return _blocked(
+            "BLOCKED_CANDIDATE_COMMIT_NOT_FOUND",
+            candidate_head_sha=candidate,
+        )
 
     missing_commits: list[str] = []
     non_ancestors: list[str] = []
@@ -184,25 +191,26 @@ def assess_composition(
             non_ancestors.append(role)
 
     if missing_commits:
-        return {
-            "decision": "BLOCKED_COMPONENT_COMMIT_NOT_FOUND",
-            "missing_commit_roles": missing_commits,
-            "candidate_head_sha": candidate,
-            "ready": False,
-        }
+        return _blocked(
+            "BLOCKED_COMPONENT_COMMIT_NOT_FOUND",
+            missing_commit_roles=missing_commits,
+            candidate_head_sha=candidate,
+        )
     if non_ancestors:
-        return {
-            "decision": "BLOCKED_COMPONENT_NOT_ANCESTOR",
-            "non_ancestor_roles": non_ancestors,
-            "candidate_head_sha": candidate,
-            "ready": False,
-        }
+        return _blocked(
+            "BLOCKED_COMPONENT_NOT_ANCESTOR",
+            non_ancestor_roles=non_ancestors,
+            candidate_head_sha=candidate,
+        )
 
     return {
-        "decision": "PASS_SINGLE_COMPOSED_CANDIDATE",
+        "decision": "PASS_COMPOSITION_ANCESTRY_ONLY",
         "candidate_head_sha": candidate,
         "component_roles": sorted(REQUIRED_ROLES),
-        "ready": True,
+        "composition_ancestry_verified": True,
+        "exact_candidate_head_ci_verified": False,
+        "exact_candidate_head_ci_required": True,
+        "training_authorized": False,
     }
 
 
@@ -217,7 +225,7 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--repo-root", type=Path, default=Path("."))
     parser.add_argument(
-        "--assert-ready",
+        "--assert-composed",
         action="store_true",
         help="Exit nonzero unless all authorities are ancestors of one exact candidate head.",
     )
@@ -228,14 +236,14 @@ def main() -> int:
     args = _parse_args()
     data = json.loads(args.manifest.read_text(encoding="utf-8"))
     if not isinstance(data, dict):
-        print(json.dumps({"decision": "INVALID_MANIFEST", "ready": False}, sort_keys=True))
+        print(json.dumps(_blocked("INVALID_MANIFEST"), sort_keys=True))
         return 1
 
     assessment = assess_composition(data, repo_root=args.repo_root)
     print(json.dumps(assessment, sort_keys=True))
     if assessment["decision"] == "INVALID_MANIFEST":
         return 1
-    if args.assert_ready and not assessment["ready"]:
+    if args.assert_composed and not assessment["composition_ancestry_verified"]:
         return 2
     return 0
 
