@@ -9,7 +9,7 @@ from typing import Any, Protocol
 
 WORKER_ID = "POSTBASE-259-TEACHER-STUDENT-DATA-FACTORY-V1"
 CONVERGENCE_WORKER_ID = "POSTBASE-359-TEACHER-FACTORY-CONVERGENCE"
-SCHEMA_VERSION = "12-6.postbase-teacher-student-factory.v2"
+SCHEMA_VERSION = "12-6.postbase-teacher-student-factory.v3"
 DATASET_CLASSIFICATION = "POSTBASE/EXPERIMENTAL"
 
 
@@ -100,6 +100,8 @@ class VerificationResult:
     status: VerificationStatus
     evidence: str
     provenance: Provenance
+    evidence_revision: str = ""
+    subject_sha256: str = ""
 
 
 @dataclass(frozen=True)
@@ -177,6 +179,8 @@ class VerificationResponse:
     status: VerificationStatus
     evidence: str
     source_ref: str
+    evidence_revision: str = ""
+    subject_sha256: str = ""
 
 
 class StudentAdapter(Protocol):
@@ -206,6 +210,7 @@ class CriticAdapter(Protocol):
 
 class DeterministicVerifierAdapter(Protocol):
     adapter_id: str
+    evidence_revision: str
 
     def verify(self, request: VerificationRequest) -> VerificationResponse: ...
 
@@ -256,6 +261,21 @@ def canonical_json(value: Any) -> str:
 
 def sha256_json(value: Any) -> str:
     return hashlib.sha256(canonical_json(value).encode()).hexdigest()
+
+
+def verification_subject_sha256(request: VerificationRequest) -> str:
+    """Bind verifier evidence to the exact task/proposal/critique state it evaluated."""
+
+    return sha256_json(
+        {
+            "task_id": request.task_id,
+            "prompt": request.prompt,
+            "student_answer": request.student_answer,
+            "proposal_id": request.proposal.contribution_id,
+            "proposal_answer": request.proposal.proposed_answer,
+            "critic_review_id": request.critic_review.contribution_id,
+        }
+    )
 
 
 def provenance(
