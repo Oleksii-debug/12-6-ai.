@@ -1,16 +1,15 @@
 {
   "schema": "12-6.scale191.optimizer-transfer.v1",
   "authority": "LOCAL_FREE_RESEARCH_ONLY_NOT_PROMOTION",
-  "worker_id": "SCALE-191-OPTIMIZER-TRANSFER",
   "parent_evidence": {
     "pr": 352,
     "head_sha": "2f1ce640aa8a881f77aba7722d3bed8a00d633b7",
-    "observed_problem": "SCALE-190 late held-out BPB reversal after 65,772 tokens with more than 94 percent gradient clipping in both seeds"
+    "observed_problem": "SCALE-190 late held-out BPB reversal after 65,772 tokens with >94% gradient clipping in both seeds"
   },
   "hypotheses": {
     "h_lr": "late reversal is sensitive to AdamW learning-rate transfer",
     "h_clip": "clip norm 1.0 materially constrains the 3.2M trajectory",
-    "h_interaction": "learning rate and clip norm interact at fixed model and data"
+    "h_interaction": "learning rate and clip norm interact at fixed model/data"
   },
   "fixed_identity": {
     "model_identity_sha256": "37b7fdd44b35280c121f9300022bfd69b23efbf0abbcfe62fbb0eb465470b693",
@@ -38,7 +37,7 @@
     "deterministic_algorithms": true
   },
   "varied_only": ["learning_rate", "gradient_clip_norm"],
-  "grid_rule": "symmetric log2 factors 0.5x, 1x, 2x around SCALE-190 baseline",
+  "grid_rule": "symmetric log2 factors 0.5x/1x/2x around SCALE-190 baseline",
   "trials": [
     {"trial_id": "lr-0.5x_clip-0.5x", "lr_factor": 0.5, "clip_factor": 0.5, "learning_rate": 0.00015, "gradient_clip_norm": 0.5, "is_scale190_baseline": false},
     {"trial_id": "lr-0.5x_clip-1x", "lr_factor": 0.5, "clip_factor": 1.0, "learning_rate": 0.00015, "gradient_clip_norm": 1.0, "is_scale190_baseline": false},
