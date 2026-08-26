@@ -9,11 +9,15 @@ from tools.scientific_scope_gate import owned_tests, semantic_sources
 
 
 ROOT = Path(__file__).resolve().parents[1]
+OWNERSHIP_PATH = ROOT / "configs/ci/scientific_scope_ownership.v1.json"
+
+
+def _ownership() -> dict[str, object]:
+    return json.loads(OWNERSHIP_PATH.read_text(encoding="utf-8"))
 
 
 def test_ownership_rules_are_additive_for_training_surface() -> None:
-    ownership = json.loads((ROOT / "configs/ci/scientific_scope_ownership.v1.json").read_text(encoding="utf-8"))
-    tests, hits = owned_tests(["src/twelve_six/training/trainer.py"], ownership)
+    tests, hits = owned_tests(["src/twelve_six/training/trainer.py"], _ownership())
     assert "first-party-minimum" in hits["src/twelve_six/training/trainer.py"]
     assert "training-engine" in hits["src/twelve_six/training/trainer.py"]
     assert "tests/test_s0_convergence_integration.py" in tests
@@ -21,8 +25,8 @@ def test_ownership_rules_are_additive_for_training_surface() -> None:
 
 
 def test_ownership_config_references_existing_tests() -> None:
-    ownership = json.loads((ROOT / "configs/ci/scientific_scope_ownership.v1.json").read_text(encoding="utf-8"))
-    for rule in ownership["rules"]:
+    ownership = _ownership()
+    for rule in ownership["rules"]:  # type: ignore[index]
         for test in rule["tests"]:
             assert (ROOT / test).is_file(), (rule["id"], test)
 
@@ -38,8 +42,14 @@ def test_semantic_sources_follows_internal_import_closure(tmp_path: Path) -> Non
     (tmp_path / "src/twelve_six/__init__.py").write_text("", encoding="utf-8")
     (tmp_path / "src/twelve_six/model.py").write_text("VALUE = 1\n", encoding="utf-8")
     (tmp_path / "src/twelve_six/training/__init__.py").write_text("", encoding="utf-8")
-    (tmp_path / "src/twelve_six/training/probe.py").write_text("from .. import model\n", encoding="utf-8")
-    (tmp_path / "tools/experiment.py").write_text("import twelve_six.training.probe\n", encoding="utf-8")
+    (tmp_path / "src/twelve_six/training/probe.py").write_text(
+        "from .. import model\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "tools/experiment.py").write_text(
+        "import twelve_six.training.probe\n",
+        encoding="utf-8",
+    )
 
     result = semantic_sources(tmp_path, ["tools/experiment.py"])
     assert "tools/experiment.py" in result
