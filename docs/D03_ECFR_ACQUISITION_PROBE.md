@@ -8,16 +8,19 @@ The learned ~20M campaign is currently data-gated. Adding another small hand-pic
 
 ## Official technical basis
 
-The eCFR Developer Resources state that eCFR data originates from files used for print/PDF production, is transformed into GPO bulk XML, and is processed into point-in-time units. The API requires no key.
+The official eCFR API documentation is `https://www.ecfr.gov/developers/documentation/api/v1` and declares `https://www.ecfr.gov` as the API base. GPO also exposes eCFR XML through its bulk-data infrastructure.
 
 This probe binds:
 
-- title metadata: `https://www.ecfr.gov/api/versioner-import/v1/titles`
+- API documentation: `https://www.ecfr.gov/developers/documentation/api/v1`
+- title metadata: `https://www.ecfr.gov/api/versioner/v1/titles.json`
 - historical full-title template: `https://www.ecfr.gov/api/versioner/v1/full/{date}/title-{title}.xml`
 - conservative source ID: `en.us.ecfr.regulations`
 - conservative family ID: `us.federal-regulations.ecfr`
 
-The 2026-08-26 discovery observation saw the titles metadata at `meta.date=2026-07-31`, `import_in_progress=false`, titles 1-50 with title 35 reserved. This observation is not an immutable data authority. A successor must select explicit historical date/title objects and verify exact response bytes.
+The official title-metadata response checked on 2026-08-26 reported `meta.date=2026-08-06`, `import_in_progress=false`, titles 1-50, and title 35 as reserved. The probe hard-binds that observation instead of an older discovery snapshot. It remains discovery evidence rather than an immutable training artifact.
+
+A successor must not request a purported point-in-time object later than the frozen title-metadata availability date without first publishing a refreshed source-authority observation. It must also reject titles marked reserved rather than letting a syntactically valid title number masquerade as materializable content.
 
 ## Rights/provenance boundary
 
@@ -39,20 +42,21 @@ This prevents a single federal compilation from manufacturing diversity credits.
 
 The next implementation should remain fail-closed:
 
-1. Query title metadata only to choose an already completed point-in-time date.
-2. Select a bounded set of exact `(date, title)` objects.
-3. Fetch each exact historical XML object twice independently.
-4. Reject redirects to unexpected origins, wrong content type, malformed XML, byte drift, or unequal repeat acquisitions.
-5. Seal raw SHA-256 and byte count per exact object.
-6. Parse XML deterministically and preserve enough structural provenance to trace every emitted text record back to title/chapter/part/section.
-7. Execute rights/provenance classification before granting any training eligibility.
-8. Apply language/quality/privacy filtering.
-9. Run global exact, near, fragment, and lineage dedup against the live corpus authority.
-10. Apply evaluation-reservation decontamination.
-11. Recompute balance and family caps without replay.
-12. Create cluster-safe splits, deterministic tokenization/packing, and two clean byte-identical builds.
-13. Count exact post-pack non-ignored unique causal-loss positions.
-14. Only after tokenizer, D05 checkpoint, evaluation and compute gates are terminal may a learned campaign consume the resulting exposure.
+1. Query the bound title metadata and select only an already available point-in-time date no later than its frozen `meta.date` unless a new observation is separately sealed.
+2. Reject reserved titles; in the current frozen observation Title 35 is reserved.
+3. Select a bounded set of exact `(date, title)` objects.
+4. Fetch each exact historical XML object twice independently.
+5. Reject redirects to unexpected origins, wrong content type, malformed XML, byte drift, or unequal repeat acquisitions.
+6. Seal raw SHA-256 and byte count per exact object.
+7. Parse XML deterministically and preserve enough structural provenance to trace every emitted text record back to title/chapter/part/section.
+8. Execute rights/provenance classification before granting any training eligibility.
+9. Apply language/quality/privacy filtering.
+10. Run global exact, near, fragment, and lineage dedup against the live corpus authority.
+11. Apply evaluation-reservation decontamination.
+12. Recompute balance and family caps without replay.
+13. Create cluster-safe splits, deterministic tokenization/packing, and two clean byte-identical builds.
+14. Count exact post-pack non-ignored unique causal-loss positions.
+15. Only after tokenizer, D05 checkpoint, evaluation and compute gates are terminal may a learned campaign consume the resulting exposure.
 
 No step in this document turns source bytes into token-budget or training authorization.
 
@@ -68,6 +72,8 @@ Focused tests:
 
 The validator intentionally rejects:
 
+- drift from the official API documentation/title endpoint and the frozen title-metadata observation;
+- weakening the metadata-date or reserved-title successor boundary;
 - mutable/current acquisition authority;
 - any nonzero source/corpus/family/training credit at probe stage;
 - title/agency family inflation;
