@@ -1,0 +1,77 @@
+{
+  "schema_version": "12-6.next100-065d-registry-v4-guard.v1",
+  "worker_id": "NEXT100-065D-REGISTRY-V4-GUARD",
+  "local_free_only": true,
+  "canonical_registry": {
+    "pr": 538,
+    "head_sha": "226cbc26710a75af4a864576220b270089e7c52b",
+    "path": "configs/data/next100_063_terminal_source_registry_v4.json",
+    "git_blob_sha1": "60924a7cb76dc76bbff26a340184f54a2c374c83",
+    "schema_version": "12-6.next100-063-terminal-source-registry.v4",
+    "worker_id": "NEXT100-063-CANONICAL-SOURCE-REGISTRY-CONVERGENCE-V4",
+    "registry_identity_sha256": "9fc400a3144b46c481e45d043b0a3365eb2129c83bbacde6f9e7af8a41fadc58",
+    "superseded_v3_registry_identity_sha256": "66866a35d58b2f34431068a161986fc3eeb656e5ded1ca2ff8b40489049bac8c",
+    "numeric_training_capacity_bytes": 2045180,
+    "source_normalized_envelope_bytes": 2047541,
+    "uncredited_source_normalized_bytes": 2361,
+    "by_stratum": {
+      "uk": {"family_count": 4, "numeric_training_capacity_bytes": 100856},
+      "en": {"family_count": 5, "numeric_training_capacity_bytes": 1838293},
+      "code": {"family_count": 5, "numeric_training_capacity_bytes": 106031}
+    },
+    "independent_family_count": 14,
+    "authorized_balanced_no_replay_loss_positions": 0
+  },
+  "required_embedded_authorities": {
+    "cpython_accepted_only": {
+      "pr": 467,
+      "source_head_sha": "5a6a495a24bce449334cbc5126d0114f61a9f57c",
+      "accepted_materialization_head_sha": "8f0cbc16f9a920ca9ab3e3061b53fbfec8838d77",
+      "workflow_run": 33005689174,
+      "artifact_id": 9620571005,
+      "artifact_digest": "sha256:5c04e12f1100fd4012efc1cf693f213d1d7c9ababee2a16367897377cde60379",
+      "numeric_training_capacity_bytes": 15540,
+      "source_normalized_bytes": 17901,
+      "accepted_chunk_count": 14,
+      "rejected_chunk_count": 2,
+      "rejection_reasons": {"pii_phone": 2}
+    },
+    "gutenberg": {
+      "pr": 470,
+      "source_head_sha": "3f4ad26e1e8f3406a1274418cf5f485814ce3032",
+      "terminal_seal_pr": 627,
+      "terminal_seal_head_sha": "c50b3f9cf871792c03886bdc1ccdc144812be88f",
+      "workflow_run": 32998859164,
+      "artifact_id": 9618402768,
+      "artifact_digest": "sha256:63fa5d9b403432074193e290beb0473b5a1f7b74de1ac30bad71b9ec8405e006",
+      "authority_identity_sha256": "1b1bad11b688826ee4f73701c08e3b5af76ba16e8d8a806e008d5b84bee0b97b",
+      "numeric_training_capacity_bytes": 1672110,
+      "source_record_count": 3,
+      "family": "en.project-gutenberg.public-domain-books",
+      "evaluation": "NOT_AUTHORIZED"
+    }
+  },
+  "v6_reconciliation": {
+    "expected_source_object_count": 31,
+    "expected_source_family_counts": {"uk": 4, "en": 5, "code": 5},
+    "expected_pre_global_dedup_capacity_bytes": {
+      "uk": 100856,
+      "en": 1838293,
+      "code": 106031,
+      "total": 2045180
+    },
+    "must_equal_canonical_v4_numeric_training_capacity": true,
+    "research_corpus_v1_acquisition_target_bytes": 20000000,
+    "planning_gap_bytes": 17954820,
+    "authorized_unique_causal_loss_positions": 0
+  },
+  "claim_boundary": {
+    "corpus_identity_claimed": false,
+    "decontamination_pass_claimed": false,
+    "tokenizer_fit_authorized": false,
+    "training_authorized": false,
+    "optimizer_updates": 0,
+    "learned_20m_claimed": false,
+    "paid_compute_authorized": false
+  }
+}
