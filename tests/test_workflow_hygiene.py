@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+
 from tools.validate_workflow_hygiene import WorkflowPolicyError, validate_workflow_text
 
 
