@@ -1,0 +1,51 @@
+name: DATA CISA public-domain source probe
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Install deterministic PDF text extractor
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends poppler-utils
+          pdftotext -v
+
+      - name: Run network-free fail-closed regressions
+        run: python -m unittest tests.test_cisa_public_domain_probe -v
+
+      - name: Probe exact official CISA publications
+        run: |
+          python tools/probe_cisa_public_domain_sources.py \
+            --output /tmp/cisa-public-domain-probe.json
+
+      - name: Prove zero training authority
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(
+              Path("/tmp/cisa-public-domain-probe.json").read_text(encoding="utf-8")
+          )
+          assert report["status"] == "PROBE_PASS_REQUIRES_TERMINAL_AUTHORITY"
+          assert report["training_authorized_exposure"] == 0
+          assert report["corpus_admitted"] is False
+          assert all(document["training_credit"] == 0 for document in report["documents"])
+          print(report["report_sha256"])
+          print(report["candidate_normalized_utf8_bytes"])
+          PY
