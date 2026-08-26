@@ -47,34 +47,61 @@ CANONICAL_BASE_PATH_PREFIXES = (
     "data/base",
 )
 
-BASE_REFERENCE_CONTAINER_KEYS = frozenset(
-    {
-        "base_evidence",
-        "base_checkpoint",
-        "base_provenance",
-    }
-)
-
-BASE_PROVENANCE_OUTPUT_KEYS = frozenset(
-    {
-        "final_text",
-        "score",
-        "confidence",
-        "reward",
-        "eval_result",
-        "evaluation_result",
-        "accepted",
-        "judge_decision",
-        "verdicts",
-        "tool_calls",
-        "observations",
-        "trace",
-        "hypotheses",
-        "generated_token_count",
-        "training_eligible",
-        "weight_update_eligible",
-    }
-)
+BASE_REFERENCE_ALLOWED_KEYS = {
+    "base_evidence": frozenset(
+        {
+            "evidence_namespace",
+            "checkpoint_id",
+            "git_sha",
+            "model_spec_sha256",
+            "parameter_count",
+            "vocab_size",
+            "max_context_tokens",
+            "tokenizer_version",
+            "tokenizer_config_sha256",
+            "tokenizer_vocab_sha256",
+            "dataset_manifest_sha256",
+            "run_manifest_sha256",
+            "step",
+            "tokens_seen",
+            "device",
+        }
+    ),
+    "base_checkpoint": frozenset(
+        {
+            "checkpoint_id",
+            "sha256",
+            "git_sha",
+            "stage",
+            "lineage",
+        }
+    ),
+    "base_provenance": frozenset(
+        {
+            "checkpoint_id",
+            "sha256",
+            "git_sha",
+            "model_spec_sha256",
+            "parameter_count",
+            "vocab_size",
+            "max_context_tokens",
+            "tokenizer_version",
+            "tokenizer_config_sha256",
+            "tokenizer_vocab_sha256",
+            "dataset_manifest_sha256",
+            "run_manifest_sha256",
+            "manifest_sha256",
+            "artifact_digest",
+            "evidence_identity",
+            "source_id",
+            "step",
+            "tokens_seen",
+            "device",
+            "stage",
+            "lineage",
+        }
+    ),
+}
 
 REQUIRED_COMPONENTS = frozenset(
     {
@@ -126,27 +153,38 @@ def _is_base_path(path: str) -> bool:
     )
 
 
-def _walk(
-    value: Any,
-    *,
-    path: tuple[str, ...] = (),
-    in_base_reference: bool = False,
-) -> None:
-    if isinstance(value, Mapping):
-        keys = {str(key) for key in value}
-        if in_base_reference and keys.intersection(BASE_PROVENANCE_OUTPUT_KEYS):
-            offending = sorted(keys.intersection(BASE_PROVENANCE_OUTPUT_KEYS))
+def _validate_base_reference(container: str, value: Any) -> None:
+    if not isinstance(value, Mapping):
+        raise NamespaceViolation(f"{container} must be a provenance object")
+    allowed = BASE_REFERENCE_ALLOWED_KEYS[container]
+    keys = {str(key) for key in value}
+    unexpected = sorted(keys - allowed)
+    if unexpected:
+        raise NamespaceViolation(
+            f"{container} contains non-provenance fields: {', '.join(unexpected)}"
+        )
+    for key, item in value.items():
+        if isinstance(item, (Mapping, list, tuple)):
             raise NamespaceViolation(
-                "post-Base result fields smuggled into Base provenance: "
-                + ", ".join(offending)
+                f"{container}.{key} must remain a flat immutable provenance value"
+            )
+    if container == "base_evidence" and "evidence_namespace" in value:
+        namespace = value["evidence_namespace"]
+        if namespace != BASE_NAMESPACE:
+            raise NamespaceViolation(
+                "base_evidence.evidence_namespace must equal base when supplied"
             )
 
+
+def _walk(value: Any, *, path: tuple[str, ...] = ()) -> None:
+    if isinstance(value, Mapping):
         for raw_key, item in value.items():
             key = str(raw_key)
             current = (*path, key)
-            child_base_reference = (
-                in_base_reference or key in BASE_REFERENCE_CONTAINER_KEYS
-            )
+
+            if key in BASE_REFERENCE_ALLOWED_KEYS:
+                _validate_base_reference(key, item)
+                continue
 
             if key in FORBIDDEN_TRUE_KEYS and item is True:
                 raise NamespaceViolation(
@@ -155,7 +193,7 @@ def _walk(
 
             if key in NAMESPACE_KEYS and isinstance(item, str):
                 normalized = item.strip().lower().replace("-", "_")
-                if normalized == BASE_NAMESPACE and not child_base_reference:
+                if normalized == BASE_NAMESPACE:
                     raise NamespaceViolation(
                         f"{'.'.join(current)} cannot target canonical Base evidence"
                     )
@@ -178,20 +216,12 @@ def _walk(
                         f"{'.'.join(current)} relabels post-Base output as Base training"
                     )
 
-            _walk(
-                item,
-                path=current,
-                in_base_reference=child_base_reference,
-            )
+            _walk(item, path=current)
         return
 
     if isinstance(value, (list, tuple)):
         for index, item in enumerate(value):
-            _walk(
-                item,
-                path=(*path, str(index)),
-                in_base_reference=in_base_reference,
-            )
+            _walk(item, path=(*path, str(index)))
 
 
 def validate_post_base_envelope(envelope: EvidenceEnvelope) -> None:
@@ -212,13 +242,14 @@ def validate_post_base_envelope(envelope: EvidenceEnvelope) -> None:
         )
     if not envelope.artifact_kind.strip():
         raise NamespaceViolation("artifact_kind must be non-empty")
-    if envelope.artifact_path is not None and _is_base_path(
-        envelope.artifact_path
-    ):
-        raise NamespaceViolation(
-            "post-Base artifact cannot be written to canonical Base path: "
-            f"{envelope.artifact_path}"
-        )
+    if envelope.artifact_path is not None:
+        if not isinstance(envelope.artifact_path, str):
+            raise NamespaceViolation("artifact_path must be text when supplied")
+        if _is_base_path(envelope.artifact_path):
+            raise NamespaceViolation(
+                "post-Base artifact cannot be written to canonical Base path: "
+                f"{envelope.artifact_path}"
+            )
     _walk(envelope.payload)
 
 
@@ -320,12 +351,15 @@ def validate_artifact_dict(artifact: Mapping[str, Any]) -> None:
     payload = artifact.get("payload")
     if not isinstance(payload, Mapping):
         raise NamespaceViolation("artifact payload must be an object")
+    artifact_path = artifact.get("artifact_path")
+    if artifact_path is not None and not isinstance(artifact_path, str):
+        raise NamespaceViolation("artifact_path must be text when supplied")
     validate_post_base_envelope(
         EvidenceEnvelope(
             component_id=str(artifact.get("component_id", "")),
             artifact_kind=str(artifact.get("artifact_kind", "")),
             payload=payload,
-            artifact_path=artifact.get("artifact_path"),
+            artifact_path=artifact_path,
             origin_namespace=str(artifact.get("origin_namespace", "")),
             evidence_namespace=str(artifact.get("evidence_namespace", "")),
         )
