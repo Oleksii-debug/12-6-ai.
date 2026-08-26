@@ -1,0 +1,78 @@
+{
+  "schema": "12-6.r01-flops-vocab-accounting.v1",
+  "status": "LOCAL_FREE_PLANNING_ONLY",
+  "authority": {
+    "main_sha": "a73ab38026cb7849f478cc13ad58b93534a76e2f",
+    "r01_merged_pr": 564,
+    "model341_sha": "e4ff486fd90802fc123bebf60eed4e59196a98df",
+    "model341_modelspec_sha256": "fbff24d561a2818453554d58ca23fc6ace3303b078f1935a8576c4565bd92441",
+    "model341_parameter_count": 20613440,
+    "issue": 713
+  },
+  "baseline_geometry": {
+    "vocab_size": 256,
+    "max_seq_len": 1024,
+    "d_model": 320,
+    "n_layers": 16,
+    "n_heads": 10,
+    "n_kv_heads": 2,
+    "head_dim": 32,
+    "d_ff": 1080,
+    "tie_word_embeddings": true
+  },
+  "parameterization": {
+    "linear_biases": false,
+    "attention": "GQA_QKVO",
+    "mlp": "SWIGLU_GATE_UP_DOWN",
+    "block_norm_scales": 2,
+    "final_norm_scales": 1,
+    "rope_has_learned_parameters": false
+  },
+  "flop_convention": {
+    "multiply_add_flops": 2,
+    "attention_context_forward_formula": "4 * n_layers * q_dim * seq_len",
+    "training_dominant_matmul_multiplier_over_forward": 3,
+    "six_n_is_exact": false,
+    "hardware_profiler_is_runtime_authority": true
+  },
+  "vocab_sensitivity_sizes": [256, 320, 384, 437, 512],
+  "candidate_geometries": [
+    {
+      "id": "R01-C50M-DEEP-THIN-GQA-ARITHMETIC",
+      "parameter_band": [45000000, 55000000],
+      "geometry": {
+        "vocab_size": 512,
+        "max_seq_len": 1024,
+        "d_model": 384,
+        "n_layers": 25,
+        "n_heads": 6,
+        "n_kv_heads": 2,
+        "head_dim": 64,
+        "d_ff": 1408,
+        "tie_word_embeddings": true
+      }
+    },
+    {
+      "id": "R01-C100M-DEEP-THIN-GQA-ARITHMETIC",
+      "parameter_band": [90000000, 110000000],
+      "geometry": {
+        "vocab_size": 512,
+        "max_seq_len": 1024,
+        "d_model": 512,
+        "n_layers": 26,
+        "n_heads": 8,
+        "n_kv_heads": 2,
+        "head_dim": 64,
+        "d_ff": 2048,
+        "tie_word_embeddings": true
+      }
+    }
+  ],
+  "claims": {
+    "training_authorized": false,
+    "paid_compute_authorized": false,
+    "tokenizer_fit_authorized": false,
+    "model100m_frozen": false,
+    "candidate_geometries_are_planning_only": true
+  }
+}
