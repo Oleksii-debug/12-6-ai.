@@ -5,6 +5,7 @@ on:
     paths:
       - "configs/data/data_bulk_code1_permissive_python_bundle_v1.json"
       - "tools/materialize_data_bulk_code1_permissive_python_bundle.py"
+      - "tools/assert_data_bulk_code1_secret_fail_closed.py"
       - "tests/test_data_bulk_code1_permissive_python_bundle.py"
       - "docs/DATA_BULK_CODE1_PERMISSIVE_PYTHON_BUNDLE.md"
       - ".github/workflows/data-bulk-code1-permissive-python-bundle.yml"
@@ -35,7 +36,13 @@ jobs:
       - name: Focused stdlib tests
         run: python -m unittest tests.test_data_bulk_code1_permissive_python_bundle -v
       - name: Compile acquisition code
-        run: python -m py_compile tools/materialize_data_bulk_code1_permissive_python_bundle.py tests/test_data_bulk_code1_permissive_python_bundle.py
+        run: >-
+          python -m py_compile
+          tools/materialize_data_bulk_code1_permissive_python_bundle.py
+          tools/assert_data_bulk_code1_secret_fail_closed.py
+          tests/test_data_bulk_code1_permissive_python_bundle.py
+      - name: Self-test fail-closed secret firewall
+        run: python tools/assert_data_bulk_code1_secret_fail_closed.py --self-test
       - name: Independent materialization A
         run: >-
           python tools/materialize_data_bulk_code1_permissive_python_bundle.py
@@ -46,6 +53,11 @@ jobs:
           python tools/materialize_data_bulk_code1_permissive_python_bundle.py
           --workspace "$RUNNER_TEMP/materialization-b"
           --output "$RUNNER_TEMP/bundle-b.json"
+      - name: Fail closed on any credential-pattern hit
+        run: >-
+          python tools/assert_data_bulk_code1_secret_fail_closed.py
+          "$RUNNER_TEMP/bundle-a.json"
+          "$RUNNER_TEMP/bundle-b.json"
       - name: Require byte-identical clean materializations
         run: cmp "$RUNNER_TEMP/bundle-a.json" "$RUNNER_TEMP/bundle-b.json"
       - name: Revalidate terminal report
