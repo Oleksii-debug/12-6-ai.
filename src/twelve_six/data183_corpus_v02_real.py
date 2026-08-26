@@ -1,10 +1,9 @@
 """DATA-183 Corpus V0.2 real-data release candidate.
 
-Compose DATA-110 without replacing it. Add explicit DATA-183 release evidence:
-canonical origin classes, normalized train/validation overlap proof, exact finite
-optimization-target token supply by origin/source/stratum, no-target-padding by
-document duplication, and actual retained-shard -> Product packer -> Trainer
-streaming.
+Compose DATA-110 without replacing it. Add canonical origin classes, normalized
+train/validation overlap proof, exact finite optimization-target token supply by
+origin/source/stratum, no target-padding by document duplication, and actual
+retained-shard -> Product packer -> Trainer streaming.
 
 DATA-110 currently admits real UK/EN external sources only. A successful build is
 therefore an honest UA/EN-real + project-code candidate and remains blocked from
@@ -71,7 +70,8 @@ def _canonical_origin(value: object) -> str:
 
 
 def _audit_normalize(text: str) -> str:
-    normalized = unicodedata.normalize("NFKC", text).replace("\r\n", "\n").replace("\r", "\n")
+    normalized = unicodedata.normalize("NFKC", text)
+    normalized = normalized.replace("\r\n", "\n").replace("\r", "\n")
     return "\n".join(" ".join(line.split()) for line in normalized.split("\n")).strip()
 
 
@@ -90,11 +90,12 @@ def _iter_rows(build_root: Path, manifest: Mapping[str, Any]) -> Iterable[dict[s
         if sha256_file(path) != str(shard["sha256"]):
             raise Data183Error(f"shard hash mismatch: {path}")
         for raw in path.read_text(encoding="utf-8").splitlines():
-            if raw.strip():
-                row = json.loads(raw)
-                if not isinstance(row, dict):
-                    raise Data183Error(f"non-object row in {path}")
-                yield row
+            if not raw.strip():
+                continue
+            row = json.loads(raw)
+            if not isinstance(row, dict):
+                raise Data183Error(f"non-object row in {path}")
+            yield row
 
 
 def _target_tokens_for_row(row: Mapping[str, Any], tok: ByteTokenizer) -> int:
@@ -107,7 +108,7 @@ def _target_tokens_for_row(row: Mapping[str, Any], tok: ByteTokenizer) -> int:
         sequence_length=d110.SEQ,
         cross_document=False,
     ):
-        total += sum(1 for label in example.labels if int(label) != -100)
+        total += example.num_loss_tokens
     return total
 
 
@@ -198,8 +199,8 @@ def audit_release(build_root: Path, manifest: Mapping[str, Any]) -> dict[str, An
         "project_authored_code_documents": project_code,
         "optimized_token_supply": {
             "definition": (
-                "one finite TRAIN pass of non-ignored autoregressive target labels emitted by "
-                "Product iter_packed_examples with cross_document=false; not a repeated-run token budget"
+                "one finite TRAIN pass of actual causal loss positions emitted by Product "
+                "iter_packed_examples with cross_document=false; not a repeated-run token budget"
             ),
             "tokenizer_version": tok.identity.version,
             "sequence_length": d110.SEQ,
@@ -213,7 +214,11 @@ def audit_release(build_root: Path, manifest: Mapping[str, Any]) -> dict[str, An
     }
 
 
-def trainer_streaming_proof(repo: Path, build_root: Path, manifest: Mapping[str, Any]) -> dict[str, Any]:
+def trainer_streaming_proof(
+    repo: Path,
+    build_root: Path,
+    manifest: Mapping[str, Any],
+) -> dict[str, Any]:
     """Exercise real retained shard -> packer -> Trainer updates, one per stratum."""
     torch.manual_seed(d110.SEED)
     spec, init, provenance = d110._model(repo)
@@ -233,14 +238,19 @@ def trainer_streaming_proof(repo: Path, build_root: Path, manifest: Mapping[str,
                 "stratum": stratum,
                 "optimizer_step": int(metrics.optimizer_step),
                 "optimized_tokens_delta": after_tokens - before_tokens,
-                "loss": float(metrics.update_loss if metrics.update_loss is not None else metrics.loss),
+                "loss": float(
+                    metrics.update_loss if metrics.update_loss is not None else metrics.loss
+                ),
             }
         )
     if trainer.optimizer_step != 3:
         raise Data183Error(f"expected three Trainer updates, got {trainer.optimizer_step}")
     return {
         "schema": "12-6.data183-trainer-streaming-proof.v1",
-        "path": "retained shard -> _release_rows -> iter_packed_examples -> Trainer.train_microbatch",
+        "path": (
+            "retained shard -> _release_rows -> iter_packed_examples -> "
+            "Trainer.train_microbatch"
+        ),
         "device": "cpu",
         "local_free": True,
         "model_spec_sha256": spec.identity_sha256(),
@@ -254,7 +264,12 @@ def trainer_streaming_proof(repo: Path, build_root: Path, manifest: Mapping[str,
     }
 
 
-def build_candidate(repo: Path, source_sha: str, external_intake: Path, out: Path) -> dict[str, Any]:
+def build_candidate(
+    repo: Path,
+    source_sha: str,
+    external_intake: Path,
+    out: Path,
+) -> dict[str, Any]:
     repo = repo.resolve()
     out = out.resolve()
     release = d110.build_release(repo, source_sha, external_intake.resolve(), out / "data110")
@@ -269,7 +284,11 @@ def build_candidate(repo: Path, source_sha: str, external_intake: Path, out: Pat
     audit = audit_release(out / "data110" / "build-a", candidate)
     streaming = trainer_streaming_proof(repo, out / "data110" / "build-a", candidate)
     external_code = bool(audit["external_real_code_present"])
-    status = "CANDIDATE_EXTERNAL_UA_EN_CODE" if external_code else "CANDIDATE_UA_EN_REAL_PROJECT_CODE"
+    status = (
+        "CANDIDATE_EXTERNAL_UA_EN_CODE"
+        if external_code
+        else "CANDIDATE_UA_EN_REAL_PROJECT_CODE"
+    )
     blockers = [] if external_code else ["EXTERNAL_REAL_CODE_UNAVAILABLE"]
     blockers += [
         "FULL_V0_2_REPRESENTATIVENESS_NOT_ESTABLISHED",
@@ -292,16 +311,26 @@ def build_candidate(repo: Path, source_sha: str, external_intake: Path, out: Pat
         },
         "rights_and_policy_gates": {
             "external_training_rights_explicit": bool(
-                candidate["external_intake"]["all_admitted_external_sources_explicit_training_eligible"]
+                candidate["external_intake"][
+                    "all_admitted_external_sources_explicit_training_eligible"
+                ]
             ),
-            "normalization_materialization_reused": "DATA-25 deterministic normalization/materialization incumbent" in pipeline,
-            "quality_gate_reexecuted": "DATA-32 document quality incumbent re-executed" in pipeline,
-            "privacy_gate_reexecuted": "DATA-33 privacy/secrets incumbent re-executed" in pipeline,
+            "normalization_materialization_reused": (
+                "DATA-25 deterministic normalization/materialization incumbent" in pipeline
+            ),
+            "quality_gate_reexecuted": (
+                "DATA-32 document quality incumbent re-executed" in pipeline
+            ),
+            "privacy_gate_reexecuted": (
+                "DATA-33 privacy/secrets incumbent re-executed" in pipeline
+            ),
             "exact_dedup_reexecuted": "SQLiteExactDedupIndex exact dedup" in pipeline,
             "near_dedup_decontamination_reexecuted": bool(
                 candidate["dedup_decontamination"]["publication_manifest_sha256"]
             ),
-            "cluster_safe_split_reexecuted": candidate["split"]["cluster_straddles_across_variants"] == 0,
+            "cluster_safe_split_reexecuted": (
+                candidate["split"]["cluster_straddles_across_variants"] == 0
+            ),
             "deterministic_sharding_reexecuted": True,
         },
         "origin_contract": {
@@ -389,7 +418,12 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.cmd == "build":
-        report = build_candidate(args.repo_root, args.source_sha, args.external_intake, args.output_dir)
+        report = build_candidate(
+            args.repo_root,
+            args.source_sha,
+            args.external_intake,
+            args.output_dir,
+        )
         print(
             json.dumps(
                 {
@@ -403,7 +437,12 @@ def main(argv: list[str] | None = None) -> int:
         )
     else:
         report = validate_candidate(args.report, args.expected_source_sha)
-        print(json.dumps({"validation": "PASS", "report_sha256": report["report_sha256"]}, indent=2))
+        print(
+            json.dumps(
+                {"validation": "PASS", "report_sha256": report["report_sha256"]},
+                indent=2,
+            )
+        )
     return 0
 
 
