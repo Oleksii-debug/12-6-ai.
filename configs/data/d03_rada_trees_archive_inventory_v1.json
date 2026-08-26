@@ -15,8 +15,10 @@
     "path": "Rada_Trees.7z",
     "displayed_size": "536 MB",
     "role": "PRIMARY_PLAIN_TEXT_ARCHIVE_CANDIDATE",
-    "exact_content_sha256": null,
-    "identity_state": "HF_OBJECT_METADATA_PROBE_PARENT_CONTENT_DOWNLOAD_REQUIRED"
+    "exact_content_sha256": "5e53939cd255276c58190569aebfaa6c90fb085fb10063e3e5f661747749719d",
+    "content_sha256_authority": "HF_XET_POINTER_AT_EXACT_DATASET_REVISION",
+    "content_xet_hash": "a31d24710d417246fb7e48028baaf6b9efb9a199983d78264f7997c69e42a801",
+    "identity_state": "HF_IMMUTABLE_POINTER_SHA256_PINNED_CONTENT_DOWNLOAD_REQUIRED"
   },
   "held_archive": {
     "path": "rada_xtag_texts.7z",
@@ -38,7 +40,7 @@
   "successor_required": [
     "EXECUTE_PARENT_EXACT_HF_OBJECT_METADATA_PROBE",
     "DOWNLOAD_PRIMARY_ARCHIVE_AT_EXACT_DATASET_REVISION",
-    "BIND_AND_VERIFY_ARCHIVE_CONTENT_SHA256_AND_EXACT_SIZE",
+    "VERIFY_ARCHIVE_CONTENT_SHA256_AGAINST_PINNED_HF_POINTER_IDENTITY",
     "RUN_THIS_DETERMINISTIC_MEMBER_INVENTORY",
     "CLASSIFY_ORIGINAL_PLAIN_TEXT_VS_ANNOTATIONS_DERIVATIVES_AND_METADATA",
     "BIND_MEMBER_LEVEL_ATTRIBUTION_AND_PROVENANCE",
@@ -50,7 +52,8 @@
   "claim_boundary": {
     "parent_hf_object_probe_executed": false,
     "archive_downloaded": false,
-    "archive_sha256_pinned": false,
+    "archive_sha256_pinned": true,
+    "archive_sha256_verified_from_download": false,
     "archive_members_inventoried": false,
     "member_payload_classified": false,
     "normalized_capacity_credited": 0,
@@ -60,6 +63,6 @@
     "model_training_executed": false,
     "optimizer_updates": 0,
     "paid_compute_used": false,
-    "safe_result": "INVENTORY_MECHANICS_READY_PARENT_METADATA_AND_ARCHIVE_REQUIRED"
+    "safe_result": "PINNED_CONTENT_SHA256_DOWNLOAD_AND_INVENTORY_STILL_REQUIRED"
   }
 }
