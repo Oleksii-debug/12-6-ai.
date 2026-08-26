@@ -5,7 +5,11 @@ import json
 from pathlib import Path
 
 from twelve_six.postbase_deliberation import (
-    Budget, Config, DeliberationController, DeterministicMockAdapter, Verification,
+    Budget,
+    Config,
+    DeliberationController,
+    DeterministicMockAdapter,
+    Verification,
 )
 
 
