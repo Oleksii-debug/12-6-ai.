@@ -1,0 +1,6 @@
+Source: Verkhovna Rada of Ukraine Open Data Portal — Laws texts
+Terms/source page: https://data.rada.gov.ua/open/data/laws-texts
+Exact admitted source object: https://data.rada.gov.ua/ogd/zak/perv/text/d23314.htm
+Project snapshot label: laws-texts/bounded-2026-08-25
+
+This attribution accompanies any redistribution of the admitted Rada open-data corpus material. The retained source terms require a link to the source of the public information.
