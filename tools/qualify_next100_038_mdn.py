@@ -13,18 +13,17 @@ UPSTREAM_REPO = "https://github.com/mdn/content"
 UPSTREAM_COMMIT = "41ace2122a86ea89fee604ec0970c2328f8077f6"
 RAW_ROOT = f"https://raw.githubusercontent.com/mdn/content/{UPSTREAM_COMMIT}"
 LICENSE_PATH = "LICENSE.md"
+LICENSE_GIT_BLOB_SHA1 = "6563e36c4864195a3144b532b216f4155f5d0cba"
 ATTRIBUTION_POLICY_PATH = "files/en-us/mdn/writing_guidelines/attrib_copyright_license/index.md"
+ATTRIBUTION_POLICY_GIT_BLOB_SHA1 = "beb97a41a1d50de08bdb4e71af8aed1faad14093"
 REGISTRY_PATH = Path("data/registry/external_snapshots.v2.json")
 SELECTION_ROOT = "files/en-us/web/http/guides"
 SELECTED = (
-    "files/en-us/web/http/guides/authentication/index.md",
-    "files/en-us/web/http/guides/caching/index.md",
     "files/en-us/web/http/guides/compression/index.md",
-    "files/en-us/web/http/guides/conditional_requests/index.md",
-    "files/en-us/web/http/guides/content_negotiation/index.md",
-    "files/en-us/web/http/guides/cookies/index.md",
-    "files/en-us/web/http/guides/cors/index.md",
 )
+EXPECTED_GIT_BLOB_SHA1 = {
+    "files/en-us/web/http/guides/compression/index.md": "528fb9e09861897eca0661cb03178dd47afee5ef",
+}
 NORMALIZATION_POLICY = "MDN_PROSE_ONLY_MARKDOWN_V1"
 THIRD_PARTY_MARKERS = (
     "all rights reserved",
@@ -44,16 +43,35 @@ def sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def git_blob_sha1(data: bytes) -> str:
+    header = f"blob {len(data)}\0".encode("ascii")
+    return hashlib.sha1(header + data).hexdigest()
+
+
 def canonical_bytes(value: object) -> bytes:
-    return (json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False) + "\n").encode("utf-8")
+    return (
+        json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        + "\n"
+    ).encode("utf-8")
 
 
 def fetch(path: str) -> bytes:
-    req = urllib.request.Request(f"{RAW_ROOT}/{path}", headers={"User-Agent": "12-6-ai-next100-038-mdn-qualification"})
+    req = urllib.request.Request(
+        f"{RAW_ROOT}/{path}",
+        headers={"User-Agent": "12-6-ai-next100-038-mdn-qualification"},
+    )
     with urllib.request.urlopen(req, timeout=30) as response:
         data = response.read()
     data.decode("utf-8", errors="strict")
     return data
+
+
+def verify_git_blob(path: str, data: bytes, expected: str) -> None:
+    actual = git_blob_sha1(data)
+    if actual != expected:
+        raise SystemExit(
+            f"exact upstream byte drift for {path}: expected {expected}, got {actual}"
+        )
 
 
 def parse_frontmatter(text: str) -> tuple[dict[str, str], str]:
@@ -76,7 +94,9 @@ def strip_fenced_code(text: str) -> tuple[str, int]:
     removed = 0
     for line in text.splitlines():
         stripped = line.lstrip()
-        if fence is None and (stripped.startswith("```") or stripped.startswith("~~~")):
+        if fence is None and (
+            stripped.startswith("```") or stripped.startswith("~~~")
+        ):
             fence = stripped[:3]
             removed += 1
             continue
@@ -91,8 +111,15 @@ def strip_fenced_code(text: str) -> tuple[str, int]:
     return "\n".join(out), removed
 
 
-def normalize_prose(raw: bytes) -> tuple[bytes, dict[str, int], dict[str, str]]:
-    text = unicodedata.normalize("NFKC", raw.decode("utf-8", errors="strict").replace("\r\n", "\n").replace("\r", "\n"))
+def normalize_prose(
+    raw: bytes,
+) -> tuple[bytes, dict[str, int], dict[str, str]]:
+    text = unicodedata.normalize(
+        "NFKC",
+        raw.decode("utf-8", errors="strict")
+        .replace("\r\n", "\n")
+        .replace("\r", "\n"),
+    )
     frontmatter, text = parse_frontmatter(text)
     text = re.sub(r"<!--.*?-->", "", text, flags=re.S)
     text, fenced_lines = strip_fenced_code(text)
@@ -110,13 +137,21 @@ def normalize_prose(raw: bytes) -> tuple[bytes, dict[str, int], dict[str, str]]:
         if not stripped:
             prose_lines.append("")
             continue
-        if stripped.startswith("![") or "<img" in stripped.lower() or "<picture" in stripped.lower():
+        if (
+            stripped.startswith("![")
+            or "<img" in stripped.lower()
+            or "<picture" in stripped.lower()
+        ):
             stats["image_lines_removed"] += 1
             continue
         if stripped.startswith("|") and stripped.endswith("|"):
             stats["table_lines_removed"] += 1
             continue
-        if re.search(r"\{\{\s*(Embed|InteractiveExample|LiveSample|EmbedGHLiveSample)", line, flags=re.I):
+        if re.search(
+            r"\{\{\s*(Embed|InteractiveExample|LiveSample|EmbedGHLiveSample)",
+            line,
+            flags=re.I,
+        ):
             stats["embed_macro_lines_removed"] += 1
             continue
         spans = re.findall(r"`+[^`\n]*`+", line)
@@ -153,7 +188,10 @@ def word_tokens(text: str) -> list[str]:
 
 def shingle_set(text: str, width: int = 5) -> set[tuple[str, ...]]:
     tokens = word_tokens(text)
-    return {tuple(tokens[i : i + width]) for i in range(max(0, len(tokens) - width + 1))}
+    return {
+        tuple(tokens[i : i + width])
+        for i in range(max(0, len(tokens) - width + 1))
+    }
 
 
 def jaccard(a: set[tuple[str, ...]], b: set[tuple[str, ...]]) -> float:
@@ -171,40 +209,75 @@ def main() -> int:
     args = parser.parse_args()
 
     registry = json.loads(REGISTRY_PATH.read_text(encoding="utf-8"))
-    live_hashes = {row["snapshot"]["normalized_sha256"] for row in registry["sources"]}
+    live_hashes = {
+        row["snapshot"]["normalized_sha256"] for row in registry["sources"]
+    }
+
     license_raw = fetch(LICENSE_PATH)
     attribution_raw = fetch(ATTRIBUTION_POLICY_PATH)
+    verify_git_blob(LICENSE_PATH, license_raw, LICENSE_GIT_BLOB_SHA1)
+    verify_git_blob(
+        ATTRIBUTION_POLICY_PATH,
+        attribution_raw,
+        ATTRIBUTION_POLICY_GIT_BLOB_SHA1,
+    )
     license_text = license_raw.decode("utf-8")
     attribution_text = attribution_raw.decode("utf-8")
 
     rights_preconditions = {
-        "prose_cc_by_sa_2_5_present": "All prose content is available under" in license_text and "CC-BY-SA 2.5" in license_text,
-        "code_cc0_post_2010_present": "Added on or after August 20, 2010" in license_text and "CC0" in license_text,
-        "code_mit_pre_2010_present": "Added before August 20, 2010" in license_text and "MIT" in license_text,
-        "yari_code_age_ambiguity_present": "currently no way to determine" in attribution_text and "December 14 2020" in attribution_text,
-        "logos_trademarks_excluded_by_policy": "Logos, trademarks, service marks, and wordmarks" in attribution_text,
+        "prose_cc_by_sa_2_5_present": (
+            "All prose content is available under" in license_text
+            and "CC-BY-SA 2.5" in license_text
+        ),
+        "code_cc0_post_2010_present": (
+            "Added on or after August 20, 2010" in license_text
+            and "CC0" in license_text
+        ),
+        "code_mit_pre_2010_present": (
+            "Added before August 20, 2010" in license_text
+            and "MIT" in license_text
+        ),
+        "yari_code_age_ambiguity_present": (
+            "currently no way to determine" in attribution_text
+            and "December 14 2020" in attribution_text
+        ),
+        "logos_trademarks_excluded_by_policy": (
+            "Logos, trademarks, service marks, and wordmarks"
+            in attribution_text
+        ),
     }
     if not all(rights_preconditions.values()):
         raise SystemExit(f"rights precondition failed: {rights_preconditions}")
 
-    pages = []
+    pages: list[dict[str, object]] = []
     normalized_payloads: dict[str, bytes] = {}
     for path in SELECTED:
         raw = fetch(path)
+        verify_git_blob(path, raw, EXPECTED_GIT_BLOB_SHA1[path])
         raw_text = raw.decode("utf-8")
         lower = raw_text.lower()
-        marker_hits = sorted(marker for marker in THIRD_PARTY_MARKERS if marker in lower)
+        marker_hits = sorted(
+            marker for marker in THIRD_PARTY_MARKERS if marker in lower
+        )
         normalized, removal_stats, frontmatter = normalize_prose(raw)
         normalized_text = normalized.decode("utf-8")
         tokens = word_tokens(normalized_text)
         signal_hits = sum(1 for token in tokens if token in ENGLISH_SIGNALS)
         alpha_chars = sum(ch.isalpha() for ch in normalized_text)
-        ascii_alpha = sum(("a" <= ch.lower() <= "z") for ch in normalized_text)
+        ascii_alpha = sum(
+            "a" <= ch.lower() <= "z" for ch in normalized_text
+        )
+        ratio = ascii_alpha / alpha_chars if alpha_chars else 0.0
         page = {
             "path": path,
             "title": frontmatter.get("title"),
             "slug": frontmatter.get("slug"),
-            "canonical_url": f"https://developer.mozilla.org/en-US/docs/{frontmatter.get('slug')}" if frontmatter.get("slug") else None,
+            "canonical_url": (
+                f"https://developer.mozilla.org/en-US/docs/{frontmatter.get('slug')}"
+                if frontmatter.get("slug")
+                else None
+            ),
+            "git_blob_sha1": git_blob_sha1(raw),
             "raw_sha256": sha256(raw),
             "raw_bytes": len(raw),
             "normalized_sha256": sha256(normalized),
@@ -212,33 +285,57 @@ def main() -> int:
             "normalization_policy": NORMALIZATION_POLICY,
             "word_count": len(tokens),
             "english_signal_hits": signal_hits,
-            "ascii_alpha_ratio": round(ascii_alpha / alpha_chars, 6) if alpha_chars else 0.0,
+            "ascii_alpha_ratio": round(ratio, 6),
             "third_party_marker_hits": marker_hits,
             "mixed_rights_removal": removal_stats,
-            "quality_status": "PASS" if len(tokens) >= 400 and signal_hits >= 20 and (ascii_alpha / alpha_chars if alpha_chars else 0.0) >= 0.95 and not marker_hits else "REJECT",
+            "quality_status": (
+                "PASS"
+                if len(tokens) >= 400
+                and signal_hits >= 20
+                and ratio >= 0.95
+                and not marker_hits
+                else "REJECT"
+            ),
             "attribution": {
                 "credit": "Mozilla Contributors",
                 "title": frontmatter.get("title"),
-                "source_url": f"https://developer.mozilla.org/en-US/docs/{frontmatter.get('slug')}" if frontmatter.get("slug") else None,
+                "source_url": (
+                    f"https://developer.mozilla.org/en-US/docs/{frontmatter.get('slug')}"
+                    if frontmatter.get("slug")
+                    else None
+                ),
                 "license": "CC-BY-SA-2.5-or-later",
-                "modification_note": "Frontmatter, code samples, inline code spans, tables, media/embed lines, macros, HTML markup, link destinations, and Markdown formatting removed; prose NFKC/whitespace normalized.",
+                "modification_note": (
+                    "Frontmatter, code samples, inline code spans, tables, "
+                    "media/embed lines, macros, HTML markup, link destinations, "
+                    "and Markdown formatting removed; prose NFKC/whitespace normalized."
+                ),
             },
         }
         pages.append(page)
         normalized_payloads[path] = normalized
 
-    hashes = [page["normalized_sha256"] for page in pages]
+    hashes = [str(page["normalized_sha256"]) for page in pages]
     exact_internal_duplicates = len(hashes) - len(set(hashes))
     registry_collisions = sorted(set(hashes) & live_hashes)
-    shingles = {path: shingle_set(payload.decode("utf-8")) for path, payload in normalized_payloads.items()}
-    near_pairs = []
+    shingles = {
+        path: shingle_set(payload.decode("utf-8"))
+        for path, payload in normalized_payloads.items()
+    }
+    near_pairs: list[dict[str, object]] = []
     max_jaccard = 0.0
     for i, left in enumerate(SELECTED):
         for right in SELECTED[i + 1 :]:
             score = jaccard(shingles[left], shingles[right])
             max_jaccard = max(max_jaccard, score)
             if score >= 0.85:
-                near_pairs.append({"left": left, "right": right, "five_word_shingle_jaccard": round(score, 6)})
+                near_pairs.append(
+                    {
+                        "left": left,
+                        "right": right,
+                        "five_word_shingle_jaccard": round(score, 6),
+                    }
+                )
 
     family_material = {
         "canonical_repository": UPSTREAM_REPO,
@@ -255,7 +352,7 @@ def main() -> int:
         and not near_pairs
     )
 
-    report = {
+    report: dict[str, object] = {
         "schema_version": "12-6.next100-038-mdn-source-authority.v1",
         "worker_id": "NEXT100-038-DATA-EN-MDN",
         "local_free_only": True,
@@ -269,23 +366,33 @@ def main() -> int:
         },
         "rights_evidence": {
             "license_path": LICENSE_PATH,
-            "license_raw_sha256": sha256(license_raw),
+            "license_git_blob_sha1": LICENSE_GIT_BLOB_SHA1,
             "attribution_policy_path": ATTRIBUTION_POLICY_PATH,
-            "attribution_policy_raw_sha256": sha256(attribution_raw),
+            "attribution_policy_git_blob_sha1": ATTRIBUTION_POLICY_GIT_BLOB_SHA1,
             "preconditions": rights_preconditions,
             "prose": {
                 "license": "CC-BY-SA-2.5-or-later",
-                "model_training": "ALLOWED",
+                "model_training": "ALLOWED_UNDER_LICENSE_TERMS",
                 "redistribution": "ALLOWED_WITH_ATTRIBUTION_AND_SHAREALIKE",
                 "evaluation": "NOT_SEPARATELY_ADMITTED",
-                "required_attribution": "Document title + source URL + Mozilla Contributors + CC-BY-SA 2.5 notice + modification description.",
+                "required_attribution": (
+                    "Document title + source URL + Mozilla Contributors + "
+                    "CC-BY-SA 2.5 notice + modification description."
+                ),
             },
             "code_samples": {
-                "license_boundary": "CC0-1.0 if added on/after 2010-08-20; MIT if added before 2010-08-20",
+                "license_boundary": (
+                    "CC0-1.0 if added on/after 2010-08-20; "
+                    "MIT if added before 2010-08-20"
+                ),
                 "historical_license_resolvable_per_snippet": False,
                 "model_training": "REJECTED_THIS_AUTHORITY",
                 "redistribution": "REJECTED_THIS_AUTHORITY",
-                "reason": "MDN states Yari currently cannot determine which historical code license applies; MIT attribution cannot be reconstructed reliably per snippet. All code is removed from the admitted payload.",
+                "reason": (
+                    "MDN states Yari currently cannot determine which historical "
+                    "code license applies; MIT attribution cannot be reconstructed "
+                    "reliably per snippet. All code is removed from the admitted payload."
+                ),
             },
             "excluded_mixed_rights": [
                 "code examples and snippets",
@@ -294,19 +401,28 @@ def main() -> int:
                 "Mozilla logos, trademarks, service marks, wordmarks, and site look-and-feel",
                 "any page with explicit third-party republication/permission markers",
             ],
-            "model_output_license_implication": "NOT_ADJUDICATED_BY_THIS_SOURCE_AUTHORITY",
+            "model_output_license_implication": (
+                "NOT_ADJUDICATED_BY_THIS_SOURCE_AUTHORITY"
+            ),
         },
         "family": {
             "family_id": "en.mdn.webdocs.prose",
             "family_identity_sha256": family_identity,
-            "independence_rule": "All selected MDN pages count as one upstream family regardless of page count; mirrors/forks do not create new families.",
+            "independence_rule": (
+                "All selected MDN pages count as one upstream family regardless of "
+                "page count; mirrors/forks do not create new families."
+            ),
         },
         "pages": pages,
         "quality": {
-            "all_pages_pass": all(page["quality_status"] == "PASS" for page in pages),
-            "total_raw_bytes": sum(page["raw_bytes"] for page in pages),
-            "total_normalized_bytes": sum(page["normalized_bytes"] for page in pages),
-            "total_words": sum(page["word_count"] for page in pages),
+            "all_pages_pass": all(
+                page["quality_status"] == "PASS" for page in pages
+            ),
+            "total_raw_bytes": sum(int(page["raw_bytes"]) for page in pages),
+            "total_normalized_bytes": sum(
+                int(page["normalized_bytes"]) for page in pages
+            ),
+            "total_words": sum(int(page["word_count"]) for page in pages),
             "minimum_words_per_page": 400,
             "minimum_ascii_alpha_ratio": 0.95,
             "minimum_english_signal_hits": 20,
@@ -318,8 +434,14 @@ def main() -> int:
             "cross_registry_normalized_sha256_collisions": registry_collisions,
             "within_mdn_near_duplicate_threshold": 0.85,
             "within_mdn_near_duplicate_pairs": near_pairs,
-            "maximum_within_mdn_five_word_shingle_jaccard": round(max_jaccard, 6),
-            "downstream_requirement": "Rerun canonical corpus-level exact/near dedup and evaluation decontamination when composing this family with later registries; source admission is not a corpus freeze.",
+            "maximum_within_mdn_five_word_shingle_jaccard": round(
+                max_jaccard, 6
+            ),
+            "downstream_requirement": (
+                "Rerun canonical corpus-level exact/near dedup and evaluation "
+                "decontamination when composing this family with later registries; "
+                "source admission is not a corpus freeze."
+            ),
         },
         "claim_boundary": {
             "training_source_authority_terminal": terminal,
