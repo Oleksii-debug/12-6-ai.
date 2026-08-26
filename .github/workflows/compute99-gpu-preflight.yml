@@ -4,8 +4,17 @@ on:
   pull_request:
     paths:
       - "src/twelve_six/training/gpu_launch_preflight.py"
+      - "src/twelve_six/training/precision.py"
+      - "src/twelve_six/training/trainer.py"
+      - "src/twelve_six/training/__init__.py"
+      - "src/twelve_six/training/single_gpu.py"
       - "tools/run_gpu_launch_preflight.py"
+      - "tools/run_single_gpu_pilot.py"
       - "tests/test_gpu_launch_preflight.py"
+      - "tests/test_training_precision_runtime.py"
+      - "tests/test_precision_runtime_integration_seam.py"
+      - "tests/test_single_gpu_training.py"
+      - "tests/test_training_observability.py"
       - "configs/compute/gpu_launch_preflight.current.json"
       - "docs/GPU_LAUNCH_PREFLIGHT_COMPUTE99.md"
       - "evidence/compute99/**"
@@ -21,6 +30,7 @@ jobs:
     timeout-minutes: 30
     env:
       SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      D02_PRECISION_HEAD: e77cf610443f08fcd2b10bf445b956e35bd2b3a8
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -28,8 +38,15 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Prove exact source checkout
-        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - name: Prove exact source checkout and selective D02 ancestry
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          git merge-base --is-ancestor "$D02_PRECISION_HEAD" HEAD
+          test "$(git rev-parse HEAD:src/twelve_six/training/precision.py)" = "63b35f695ab4b7d4bf35a777c884d0233f9cc24e"
+          test "$(git rev-parse HEAD:src/twelve_six/training/trainer.py)" = "0ec579154521a9f11b2167f9f2611a2a05064c52"
+          test "$(git rev-parse HEAD:src/twelve_six/training/__init__.py)" = "fddf3eee6d0ac2b3c8db5ab335bdecd10ef5fe35"
+          test "$(git rev-parse HEAD:tests/test_training_precision_runtime.py)" = "e5b6642179024aa1f29832c098244deab4c16d52"
 
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
@@ -43,25 +60,42 @@ jobs:
           --evidence-out compute99-locked-environment.json
           --run-repo-checks
 
-      - name: Create exact locked execution environment
+      - name: Create exact locked execution environment with test and precision dependencies
         run: |
+          set -euo pipefail
           python -m venv .compute99-locked
           .compute99-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
           .compute99-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
           .compute99-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/dev.lock.txt
           PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .compute99-locked/bin/python -m pip install --no-deps --no-build-isolation -e .
 
-      - name: Focused lint and tests
+      - name: Focused precision seam lint and regressions
         run: |
-          .compute99-locked/bin/python -m ruff check src/twelve_six/training/gpu_launch_preflight.py tools/run_gpu_launch_preflight.py tests/test_gpu_launch_preflight.py
-          .compute99-locked/bin/python -m pytest -q tests/test_gpu_launch_preflight.py
+          set -euo pipefail
+          .compute99-locked/bin/python -m ruff check \
+            src/twelve_six/training/precision.py \
+            src/twelve_six/training/trainer.py \
+            src/twelve_six/training/__init__.py \
+            src/twelve_six/training/gpu_launch_preflight.py \
+            tools/run_gpu_launch_preflight.py \
+            tests/test_training_precision_runtime.py \
+            tests/test_precision_runtime_integration_seam.py \
+            tests/test_single_gpu_training.py \
+            tests/test_training_observability.py \
+            tests/test_gpu_launch_preflight.py
+          .compute99-locked/bin/python -m pytest -q \
+            tests/test_training_precision_runtime.py \
+            tests/test_precision_runtime_integration_seam.py \
+            tests/test_single_gpu_training.py \
+            tests/test_training_observability.py \
+            tests/test_gpu_launch_preflight.py
 
       - name: Execute current preflight without provisioning compute
         run: |
           .compute99-locked/bin/python tools/run_gpu_launch_preflight.py \
             --output compute99-gpu-preflight.json
 
-      - name: Validate fail-closed truth boundary
+      - name: Validate precision blocker removal and fail-closed hardware truth
         run: |
           .compute99-locked/bin/python - <<'PY'
           import json
@@ -72,8 +106,8 @@ jobs:
           assert report["launch_ready"] is False
           assert report["status"] == "BLOCKED"
           assert "campaign.current_product_binding" in report["blockers"]
-          assert "10m.precision_incumbent_composed" in report["blockers"]
-          assert "100m.precision_incumbent_composed" in report["blockers"]
+          assert "10m.precision_incumbent_composed" not in report["blockers"]
+          assert "100m.precision_incumbent_composed" not in report["blockers"]
           assert "10m.authorization" in report["blockers"]
           assert "100m.authorization" in report["blockers"]
           if torch.cuda.is_available():
@@ -84,5 +118,7 @@ jobs:
               assert report["smoke_10m"]["status"] == "NOT_RUN_NO_GPU"
               assert report["smoke_10m"]["tokens_per_second"] is None
               assert report["smoke_10m"]["cuda_peak_allocated_bytes"] is None
+              assert "10m.precision_hardware_support" in report["blockers"]
+              assert "100m.precision_hardware_support" in report["blockers"]
           assert "CPU throughput" in report["cost_truth_boundary"]
           PY
