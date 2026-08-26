@@ -29,8 +29,10 @@ jobs:
           EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
         run: test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
 
-      - name: Compile recovery materializer
-        run: python -m py_compile tools/materialize_data324_kubernetes_ua.py
+      - name: Compile recovery tools
+        run: |
+          python -m py_compile tools/materialize_data324_kubernetes_ua.py
+          python -m py_compile tools/validate_data324_reservation_exclusion.py
 
       - name: Run offline contract tests
         run: python -m unittest tests.test_data324_kubernetes_ua
@@ -40,7 +42,10 @@ jobs:
           set -euo pipefail
           rm -rf /tmp/data324-replay
           python tools/materialize_data324_kubernetes_ua.py --root .
+          python tools/validate_data324_reservation_exclusion.py
           python tools/materialize_data324_kubernetes_ua.py --root /tmp/data324-replay
+          python tools/validate_data324_reservation_exclusion.py \
+            --report /tmp/data324-replay/reports/data324/kubernetes-ua-recovery-v1.json
           cmp \
             reports/data324/kubernetes-ua-recovery-v1.json \
             /tmp/data324-replay/reports/data324/kubernetes-ua-recovery-v1.json
@@ -48,11 +53,11 @@ jobs:
             data/external/snapshots/data324-kubernetes-ua-v1/manifest.json \
             /tmp/data324-replay/data/external/snapshots/data324-kubernetes-ua-v1/manifest.json
           cmp \
-            data/external/snapshots/data324-kubernetes-ua-v1/raw/concepts-index.md \
-            /tmp/data324-replay/data/external/snapshots/data324-kubernetes-ua-v1/raw/concepts-index.md
+            data/external/snapshots/data324-kubernetes-ua-v1/raw/what-is-kubernetes.md \
+            /tmp/data324-replay/data/external/snapshots/data324-kubernetes-ua-v1/raw/what-is-kubernetes.md
           cmp \
-            data/external/snapshots/data324-kubernetes-ua-v1/normalized/concepts-index.uk.txt \
-            /tmp/data324-replay/data/external/snapshots/data324-kubernetes-ua-v1/normalized/concepts-index.uk.txt
+            data/external/snapshots/data324-kubernetes-ua-v1/normalized/what-is-kubernetes.uk.txt \
+            /tmp/data324-replay/data/external/snapshots/data324-kubernetes-ua-v1/normalized/what-is-kubernetes.uk.txt
           cmp \
             data/external/rights-evidence/data324/kubernetes-website-cc-by-4.0-25f3dcb.txt \
             /tmp/data324-replay/data/external/rights-evidence/data324/kubernetes-website-cc-by-4.0-25f3dcb.txt
