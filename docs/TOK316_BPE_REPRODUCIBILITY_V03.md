@@ -4,15 +4,17 @@
 
 ## Verdict
 
-`BLOCKED_NO_TERMINAL_TOKENIZER_FIT_CORPUS`
+`BLOCKED_TOKENIZER_FIT_NOT_YET_PERMITTED`
 
-No BPE candidate was trained at this evidence cutoff. This is a purpose/data-authority blocker, not a BPE failure and not a tokenizer-family decision.
+No BPE candidate was trained. This is a purpose/data-authority blocker, not a BPE failure and not a tokenizer-family decision.
 
-TOK-316 is bound to DATA-300 v2 exact head `8ea7f830e50a23754d189dd4134f4afad76a7ee9` and contract identity `07d7beaaff4616e839450de6af3d407855c832bf75a24a959d1a12de5d9364e5`. DATA-300 explicitly reports `NOT_BUILT_NOT_FROZEN_NOT_TERMINAL` and requires a later Wave-3 materialization before train bytes are authoritative.
+TOK-316 is anchored to DATA-300 v2 exact head `8ea7f830e50a23754d189dd4134f4afad76a7ee9` and contract identity `07d7beaaff4616e839450de6af3d407855c832bf75a24a959d1a12de5d9364e5`.
 
-At the TOK-316 cutoff, branch `data301/corpus-v03-terminal-build-20260826` exists but is identical to the DATA-300 head: zero commits ahead, no terminal corpus identity, no train-shard hashes and no frozen tokenizer-fit inventory are published there. No `tok315` branch or exact superseding tokenizer-fit eligibility authority is published at the cutoff.
+DATA-301 has now published terminal evidence, but its verdict is `TERMINAL_BLOCKED`. DATA-301 evidence identity is `939065abeefff8aed924415589608ff3fc721fe4b0a57fc200146a4b6a137e81`; it explicitly emits no corpus identity and no shard identity. The corpus therefore remains not built, not frozen, not terminal and not release-ready.
 
-Running BPE against DATA-300's source candidates, DATA-229 snapshots, DATA-183, DATA-25, selection-validation, final-test, or any locally reconstructed approximation would therefore weaken the frozen purpose boundary. TOK-316 fails closed instead.
+TOK-315 has also published exact tokenizer-fit eligibility evidence. It binds five source objects / 183,061 admitted source bytes with training-inventory identity `945afd3dbd144f81c8441adf92e7784259de3f21a4dd547e95893243dec6e90d`, and proves zero selection-validation ingress and zero final-test ingress at the source-membership boundary. However, TOK-315 status is `BLOCKED_PENDING_MATERIALIZED_RESERVED_DECONTAMINATION`, `fit_may_start_now=false`, and its proof requires DATA-300 G08 reserved-byte decontamination on the exact materialized train bytes before BPE fitting may begin.
+
+Therefore the source allowlist is known, but an eligible materialized tokenizer-fit corpus is not. Running BPE against the pre-materialization source inventory, DATA-229 snapshots, DATA-183, DATA-25, selection-validation, final-test, or a locally reconstructed approximation would weaken the purpose boundary. TOK-316 fails closed instead.
 
 ## Maintained implementation binding
 
@@ -35,7 +37,7 @@ The candidate grid is exactly:
 
 `320, 384, 437, 512`
 
-Each candidate requires two independent trainings from the exact same ordered eligible tokenizer-fit train texts. The complete serialized tokenizer JSON bytes and ordered token-to-ID vocabulary semantics must be identical between the two runs. Any drift is a reproducibility failure for that candidate.
+Each candidate requires two independent trainings from the exact same ordered eligible materialized tokenizer-fit train texts. The complete serialized tokenizer JSON bytes and ordered token-to-ID vocabulary semantics must be identical between the two runs. Any drift is a reproducibility failure for that candidate.
 
 Every completed candidate must additionally prove, on the eligible tokenizer-fit train corpus only:
 
@@ -86,17 +88,18 @@ Tokenizer/model-family winner claimed: `false`.
 
 Numerical TOK-316 execution becomes eligible only when all of the following are simultaneously available and exactly bound before training run 1:
 
-1. terminal frozen external-real corpus identity and deterministic train-shard hashes;
-2. TOK-315 or an exact superseding authority that binds the train-only tokenizer-fit inventory and its identity/hash;
-3. explicit proof that selection-validation and final-test bytes are excluded from tokenizer training;
-4. exact local/free `tokenizers==0.23.1` runtime.
+1. a purpose-authorized exact materialized external-real train corpus with deterministic shard identities;
+2. TOK-315 or an exact superseding authority for that materialization with `fit_may_start_now=true`;
+3. passing reserved-byte decontamination / DATA-300 G08 on those exact materialized train bytes;
+4. proof that selection-validation and final-test ingress counts remain zero for tokenizer fitting;
+5. exact local/free `tokenizers==0.23.1` runtime.
 
 Once those conditions exist, all four candidates must be rerun twice from scratch. No result in this blocker checkpoint may be reused as numerical evidence because none exists.
 
 ## Durable evidence
 
 - `evidence/tok316/authority-gate.json` — self-hashed exact cutoff, protocol and blocker truth.
-- `tools/validate_tok316_authority_gate.py` — rejects weakened corpus, runtime, grid, exposure or numerical claims.
+- `tools/validate_tok316_authority_gate.py` — rejects weakened DATA-301/TOK-315 bindings, runtime, grid, exposure or numerical claims.
 - `tests/test_tok316_authority_gate.py` — adversarially verifies that invented training, final-test exposure, runtime substitution and grid drift fail even after recomputing the evidence self-hash.
 
 LOCAL_FREE only.
