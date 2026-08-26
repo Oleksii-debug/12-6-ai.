@@ -1,0 +1,153 @@
+{
+  "authority_boundary": "EXACT_DATA21_22_OBJECTS_PROMOTED_THROUGH_DATA24_RIGHTS_AND_NORMAL_D03_GATES",
+  "canonical_registry_identity_sha256": "82abd7dca04947d72a6d07d8228025c58373d17018fa8dc3a7bca30f7a2714c2",
+  "claims_explicitly_absent": [
+    "representative_corpus",
+    "production_corpus_freeze",
+    "benchmark_clean_universal",
+    "intelligence",
+    "production_readiness",
+    "alignment",
+    "instruction_following"
+  ],
+  "data21_22": {
+    "candidate_registry_file_sha256": "239804466ead653237c657e69b15f3acfdd0689155d2f7a9057eb0c858159490",
+    "candidate_registry_identity_sha256": "678d250ac9910f58ab1b9113cf713a2fea52a6a21e7a8434e6434d95a8045214",
+    "head_sha": "dcc7dfc39299487bca5bdbfe5e6c70eaa6706278",
+    "intake_manifest_sha256": "9d50c0baf98247c1babc5fca8dead5b1fa87264ad92ea62527c34e342a7dd735",
+    "pr": 204,
+    "workflow_artifact_sha256": "377ef800f481e61e5d30b9bdccc798278e57b689b5bb12d5b2c5029c3c3fde74",
+    "workflow_run": 32900602711
+  },
+  "data24": {
+    "head_sha": "eac3e55c2aa7d5072f2afcf678af5cc109a67312",
+    "policy_ref": "policy://12-6/data/explicit-model-training-evidence-v1",
+    "pr": 224,
+    "schema": "12-6.external-source-registry.v2"
+  },
+  "local_free_only": true,
+  "objects": [
+    {
+      "admitted_chunk_count": 36,
+      "admitted_chunk_identity_sha256": "f2e49d7f5340aea6cb252b73bf3c7aee0a2326347ee02887a8e62f171c69d1e4",
+      "data21_record_id": "ext-ba861bf058ce23e02cc569d1a63de897",
+      "decoded_encoding": "utf-8",
+      "normalized_path": "normalized/ext-ba861bf058ce23e02cc569d1a63de897.txt",
+      "normalized_sha256": "72c301db0b2539f3f7a73c9c15e2e425700a6b758a1114f1a861e2d60c704c50",
+      "normalized_utf8_bytes": 88565,
+      "parent_source_id": "ua.rada.open-data.laws-texts",
+      "parent_source_identity_sha256": "b8f1d2f99a3db71d894a3233e9417d6283d11768c41b1634bc8b096ab77aba4e",
+      "promoted_source_id": "ua.rada.open-data.laws-texts.d23314",
+      "raw_bytes": 332400,
+      "raw_sha256": "36eae31c3b0676ea7c02236fa05bd695c240c9a8eade5febc00457b8103ee1a4",
+      "registry_identity_sha256": "82abd7dca04947d72a6d07d8228025c58373d17018fa8dc3a7bca30f7a2714c2",
+      "rejected_chunk_count": 12,
+      "rejected_chunks": [
+        {"reason": "MultilingualDataError: language hint 'uk' conflicts with detected 'mixed'", "record_id": "ext-ba861bf058ce23e02cc569d1a63de897-chunk-0000"},
+        {"reason": "MultilingualDataError: language hint 'uk' conflicts with detected 'mixed'", "record_id": "ext-ba861bf058ce23e02cc569d1a63de897-chunk-0001"},
+        {"reason": "MultilingualDataError: language hint 'uk' conflicts with detected 'mixed'", "record_id": "ext-ba861bf058ce23e02cc569d1a63de897-chunk-0002"},
+        {"reason": "MultilingualDataError: language hint 'uk' conflicts with detected 'mixed'", "record_id": "ext-ba861bf058ce23e02cc569d1a63de897-chunk-0003"},
+        {"reason": "MultilingualDataError: language hint 'uk' conflicts with detected 'mixed'", "record_id": "ext-ba861bf058ce23e02cc569d1a63de897-chunk-0010"},
+        {"reason": "MultilingualDataError: language hint 'uk' conflicts with detected 'mixed'", "record_id": "ext-ba861bf058ce23e02cc569d1a63de897-chunk-0014"},
+        {"reason": "MultilingualDataError: language hint 'uk' conflicts with detected 'mixed'", "record_id": "ext-ba861bf058ce23e02cc569d1a63de897-chunk-0017"},
+        {"reason": "MultilingualDataError: language hint 'uk' conflicts with detected 'mixed'", "record_id": "ext-ba861bf058ce23e02cc569d1a63de897-chunk-0020"},
+        {"reason": "MultilingualDataError: language hint 'uk' conflicts with detected 'mixed'", "record_id": "ext-ba861bf058ce23e02cc569d1a63de897-chunk-0026"},
+        {"reason": "MultilingualDataError: language hint 'uk' conflicts with detected 'mixed'", "record_id": "ext-ba861bf058ce23e02cc569d1a63de897-chunk-0029"},
+        {"reason": "MultilingualDataError: language hint 'uk' conflicts with detected 'mixed'", "record_id": "ext-ba861bf058ce23e02cc569d1a63de897-chunk-0030"},
+        {"reason": "MultilingualDataError: language hint 'uk' conflicts with detected 'mixed'", "record_id": "ext-ba861bf058ce23e02cc569d1a63de897-chunk-0034"}
+      ],
+      "repeat_acquisition_same_raw_identity": true,
+      "repeat_extraction_same_normalized_identity": true,
+      "rights_evidence_ids": [
+        "ua.rada.open-data.laws-texts.d23314-data21-22-policy-decision",
+        "ua.rada.open-data.laws-texts.d23314-source-rights"
+      ],
+      "rights_uses": {"acquisition": "ALLOWED", "analysis": "ALLOWED", "model_training": "ALLOWED", "redistribution": "ALLOWED", "storage": "ALLOWED"},
+      "snapshot_path": "data/external/snapshots/sha256/36eae31c3b0676ea7c02236fa05bd695c240c9a8eade5febc00457b8103ee1a4/payload",
+      "source_manifest_sha256": "7227a1d7ccb5a71a7f4440d9b9d1bd82d293fd5bea7b09f71dc7339236e06d68",
+      "source_version": "laws-texts/bounded-2026-08-25"
+    },
+    {
+      "admitted_chunk_count": 43,
+      "admitted_chunk_identity_sha256": "780e7c993693b29a91e253c67654bd72bdc3a493cec5830e409d20cb8d1d9cae",
+      "data21_record_id": "ext-34108f6cb4826107ff3b53be7b172eb0",
+      "decoded_encoding": "utf-8",
+      "normalized_path": "normalized/ext-34108f6cb4826107ff3b53be7b172eb0.txt",
+      "normalized_sha256": "154fb4034929714087e75150d678bf65049ddac32e79dcdf97162c8972c2be83",
+      "normalized_utf8_bytes": 48002,
+      "parent_source_id": "en.standardebooks.manual",
+      "parent_source_identity_sha256": "ba622171b752c4d411bd0b93a94dad14b7ff0e5ac88064678d1b91a551c01be3",
+      "promoted_source_id": "en.standardebooks.manual.8-typography",
+      "raw_bytes": 68812,
+      "raw_sha256": "21582c7f0e4ad39f2b0ed97bbc2c082d275e898b7a63c28e6d9badb8ee0f7860",
+      "registry_identity_sha256": "82abd7dca04947d72a6d07d8228025c58373d17018fa8dc3a7bca30f7a2714c2",
+      "rejected_chunk_count": 0,
+      "rejected_chunks": [],
+      "repeat_acquisition_same_raw_identity": true,
+      "repeat_extraction_same_normalized_identity": true,
+      "rights_evidence_ids": [
+        "en.standardebooks.manual.8-typography-data21-22-policy-decision",
+        "en.standardebooks.manual.8-typography-source-rights"
+      ],
+      "rights_uses": {"acquisition": "ALLOWED", "analysis": "ALLOWED", "model_training": "ALLOWED", "redistribution": "ALLOWED", "storage": "ALLOWED"},
+      "snapshot_path": "data/external/snapshots/sha256/21582c7f0e4ad39f2b0ed97bbc2c082d275e898b7a63c28e6d9badb8ee0f7860/payload",
+      "source_manifest_sha256": "7be4e9ad119a4ae9e81f633c437a933c7673d9bbd6b9362ea8a598e8c187c97f",
+      "source_version": "git:d1143a9b459b5e6f9cdda93a7c1e04676bff4f6b"
+    },
+    {
+      "admitted_chunk_count": 33,
+      "admitted_chunk_identity_sha256": "e0d7127c271eda5c84ecf35a255cd95e4dc1f505aaf19cde00e722d94d500ec9",
+      "data21_record_id": "ext-b47c3572ee24c4641b86e91804ed04fe",
+      "decoded_encoding": "utf-8",
+      "normalized_path": "normalized/ext-b47c3572ee24c4641b86e91804ed04fe.txt",
+      "normalized_sha256": "94eb2f529922d125b3bd40691778886f4d5d80b128b925d0274fb3d94646ec5a",
+      "normalized_utf8_bytes": 36791,
+      "parent_source_id": "en.standardebooks.manual",
+      "parent_source_identity_sha256": "ba622171b752c4d411bd0b93a94dad14b7ff0e5ac88064678d1b91a551c01be3",
+      "promoted_source_id": "en.standardebooks.manual.9-metadata",
+      "raw_bytes": 37299,
+      "raw_sha256": "7ac53dfb4bf6f73f178560e09f33160d0250c69fb679802f3254dc0eb4c9f509",
+      "registry_identity_sha256": "82abd7dca04947d72a6d07d8228025c58373d17018fa8dc3a7bca30f7a2714c2",
+      "rejected_chunk_count": 0,
+      "rejected_chunks": [],
+      "repeat_acquisition_same_raw_identity": true,
+      "repeat_extraction_same_normalized_identity": true,
+      "rights_evidence_ids": [
+        "en.standardebooks.manual.9-metadata-data21-22-policy-decision",
+        "en.standardebooks.manual.9-metadata-source-rights"
+      ],
+      "rights_uses": {"acquisition": "ALLOWED", "analysis": "ALLOWED", "model_training": "ALLOWED", "redistribution": "ALLOWED", "storage": "ALLOWED"},
+      "snapshot_path": "data/external/snapshots/sha256/7ac53dfb4bf6f73f178560e09f33160d0250c69fb679802f3254dc0eb4c9f509/payload",
+      "source_manifest_sha256": "f46b244d7036f98c818ebe3232f04ccf981a16818fd55307baaf63e5b78b1544",
+      "source_version": "git:d1143a9b459b5e6f9cdda93a7c1e04676bff4f6b"
+    }
+  ],
+  "report_sha256": "6fc791cf0c6d3501535bfd935c847d8e2c1cff8508a4de78255ec1daf9384fd7",
+  "schema_version": "12-6.data181-real-snapshot-promotion-report.v1",
+  "small_corpus": {
+    "contamination_registry_sha256": "2ecd6ae4dba16c667cdcef15be88bb05352936578e557e45211feb6ba0166664",
+    "dataset_identity_sha256": "8d5b2269755c8cb9c7bb619a7cdbd09e762826a698f30cf6db08ecc98339f9e9",
+    "gate_path": "DATA24 EligibilityResolver -> admit_for_pretraining -> incumbent D03 build_dataset",
+    "output_sha256": {
+      "manifest.json": "ad8ccc42bd656a29fdadb3c77af393f0e4f9b165ed01eb203595e619716f3629",
+      "train.jsonl": "ed2260fbeaf1ae5364bde215d5df8c07fd6977a87115f8a623cb4c558f7fdd51",
+      "validation.jsonl": "d92a66798e901cd9b6263449dca170e43d54ff1003f0e051445344d05d7a99e9"
+    },
+    "repeat_build_same_identity": true,
+    "source_registry_sha256": "4499acd7146a35964563d97601000b6e9917132c682d548f93ea3081963b2030",
+    "stats": {
+      "accepted_documents": 112,
+      "accepted_utf8_bytes": 152468,
+      "contamination_rejected": 0,
+      "exact_duplicates_removed": 0,
+      "input_documents": 112,
+      "near_duplicates_removed": 0,
+      "quality_rejected": 0,
+      "train_documents": 90,
+      "train_text_utf8_bytes": 122240,
+      "validation_documents": 22,
+      "validation_text_utf8_bytes": 30228
+    }
+  },
+  "status": "PASS"
+}
