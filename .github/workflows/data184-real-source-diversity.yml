@@ -1,0 +1,124 @@
+name: DATA-184 Real Source Diversity
+
+on:
+  pull_request:
+    paths:
+      - "src/twelve_six/data184_diversity.py"
+      - "configs/data/data184_*.json"
+      - "data/rights_evidence/data184_*.txt"
+      - "requirements/locks/linux-x86_64/data184-extra.lock.txt"
+      - "tests/test_data184_diversity.py"
+      - ".github/workflows/data184-real-source-diversity.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  matched-500k-ab:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Bind exact DATA-184 head
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
+          git status --short
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Verify incumbent locked environment
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: >-
+          python tools/verify_locked_environment.py
+          --profile linux-x86_64
+          --source-sha "$SOURCE_SHA"
+          --evidence-out evidence-data184-locked-environment.json
+
+      - name: Create hash-locked LOCAL_FREE environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m venv .data184-locked
+          .data184-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .data184-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          .data184-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/dev.lock.txt
+          .data184-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/data184-extra.lock.txt
+          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .data184-locked/bin/python -m pip install --no-deps --no-build-isolation -e .
+
+      - name: Focused invariant preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          .data184-locked/bin/python -m py_compile src/twelve_six/data184_diversity.py
+          .data184-locked/bin/python -m pytest -q tests/test_data184_diversity.py
+
+      - name: Run matched 467808-parameter real-source A B
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          .data184-locked/bin/python -m twelve_six.data184_diversity run \
+            --repo-root . \
+            --source-sha "$SOURCE_SHA" \
+            --output-dir evidence/data184 \
+            --config configs/data/data184_real_source_diversity_v1.json
+          .data184-locked/bin/python -m twelve_six.data184_diversity validate \
+            evidence/data184/data184-report.json \
+            --expected-source-sha "$SOURCE_SHA"
+
+      - name: Print compact evidence verdict
+        shell: bash
+        run: |
+          set -euo pipefail
+          .data184-locked/bin/python - <<'PY'
+          import json
+          p = json.load(open("evidence/data184/data184-report.json", encoding="utf-8"))
+          ab = p["matched_500k_ab"]
+          print(json.dumps({
+              "status": p["status"],
+              "source_sha": p["source"]["git_sha"],
+              "new_families": p["admission"]["actual_new_families"],
+              "raw_new_bytes": p["admission"]["new_raw_acquired_bytes_by_source"],
+              "admitted_new_bytes": p["admission"]["new_admitted_training_plus_heldout_bytes_by_family"],
+              "control_diversity": p["diversity"]["ab_control"],
+              "expanded_diversity": p["diversity"]["ab_expanded"],
+              "control_final_bpb": ab["control"]["final_evaluation"]["aggregate_bpb"],
+              "expanded_final_bpb": ab["expanded"]["final_evaluation"]["aggregate_bpb"],
+              "delta_bpb": ab["aggregate_final_delta_bpb"],
+              "per_family_control_bpb": {k:v["bpb"] for k,v in ab["control"]["final_evaluation"]["by_family"].items()},
+              "per_family_expanded_bpb": {k:v["bpb"] for k,v in ab["expanded"]["final_evaluation"]["by_family"].items()},
+              "bootstrap": ab["bootstrap"],
+              "report_sha256": p["report_sha256"],
+          }, ensure_ascii=False, indent=2, sort_keys=True))
+          PY
+
+      - name: Upload exact DATA-184 evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: data184-real-source-diversity-${{ steps.source.outputs.sha }}
+          path: |
+            evidence-data184-locked-environment.json
+            evidence/data184/
+            configs/data/data184_real_source_diversity_v1.json
+            configs/data/data184_parent_project_code_v1.json
+            data/rights_evidence/data184_*.txt
+            data/rights_evidence/data102_rada_laws_20260826.txt
+            data/rights_evidence/data102_standard_ebooks_20260826.txt
+            requirements/locks/linux-x86_64/data184-extra.lock.txt
+          if-no-files-found: warn
+          retention-days: 30
