@@ -1,0 +1,163 @@
+{
+  "schema": "next100098.machine-readiness.v1",
+  "worker": "NEXT100-098-READINESS-DASHBOARD",
+  "repository": "Oleksii-debug/12-6-ai.",
+  "profile": "LOCAL_FREE",
+  "status_enum": ["PASS", "TERMINAL_BLOCKED", "IN_PROGRESS", "CANDIDATE_ONLY", "NOT_RUN"],
+  "no_percentage_readiness_score": true,
+  "training_performed": false,
+  "external_llm_calls": false,
+  "paid_compute": false,
+  "authority_registry": {
+    "pr": 473,
+    "head": "ce275a272afbf8a9a4452a107db9190fa0abe653",
+    "identity": "sha256:6af7c984fbdf3304e2bb6a2a2ca4bc4e4e6f4ead3a73be3777fd5e459fc2d5c9"
+  },
+  "components": [
+    {
+      "name": "learned 3M",
+      "status": "TERMINAL_BLOCKED",
+      "authority": "MILESTONE-361 / LEARN-191",
+      "blocker": "MISSING_INDEPENDENT_VERIFY_219"
+    },
+    {
+      "name": "learned 10M",
+      "status": "TERMINAL_BLOCKED",
+      "authority": "MILESTONE-361 / LEARN-217",
+      "blocker": "MISSING_INDEPENDENT_VERIFY_218_LEARNED_10M"
+    },
+    {
+      "name": "primary 20M mechanics",
+      "status": "PASS",
+      "authority": "MODEL-341 + NEXT100-009/PERF-347",
+      "head": "e4ff486fd90802fc123bebf60eed4e59196a98df",
+      "modelspec": "fbff24d561a2818453554d58ca23fc6ace3303b078f1935a8576c4565bd92441",
+      "scope": "mechanics_only_not_learned"
+    },
+    {
+      "name": "Research Corpus V1",
+      "status": "TERMINAL_BLOCKED",
+      "authority": "DATA-301 + NEXT100-064 final refresh",
+      "blocker": "NO_TERMINAL_BALANCED_EXTERNAL_REAL_CORPUS_PRODUCT",
+      "training_authorized_exposure": 0
+    },
+    {
+      "name": "UA/EN/code selection",
+      "status": "TERMINAL_BLOCKED",
+      "authority": "EVAL-290/EVAL-291/EVAL-292 + EVAL-303",
+      "ua": "PASS",
+      "en": "PASS",
+      "code": "TERMINAL_BLOCKED",
+      "blocker": "ZERO_ADMITTED_CODE_SELECTION_RECORDS"
+    },
+    {
+      "name": "checkpoint recovery",
+      "status": "PASS",
+      "authority": "CHECKPOINT-211",
+      "head": "349e6db94d4aca81c2d1a0ccc3368a98b6058392",
+      "run": 32951984562,
+      "scope": "generic_immutable_recovery_lifecycle",
+      "primary20m_corruption_redteam": "RETEST_REQUIRED_NONTERMINAL"
+    },
+    {
+      "name": "Transformers parity",
+      "status": "CANDIDATE_ONLY",
+      "authority": "RUNTIME-349/RUNTIME-225",
+      "blocker": "EXACT_MODEL341_RERUN_AND_VERIFY218_REQUIRED"
+    },
+    {
+      "name": "CPU serving",
+      "status": "CANDIDATE_ONLY",
+      "authority": "PERF-350",
+      "head": "6e4744ee2dfc356fcc65e6df2af6bb0e3979a9ff",
+      "run": 32983556834,
+      "blocker": "PRIMARY_MODEL341_REMEASUREMENT_REQUIRED"
+    },
+    {
+      "name": "post-Base adapter",
+      "status": "PASS",
+      "authority": "POSTBASE-351",
+      "head": "e805bf715617999209aef88946cea01f3668f583",
+      "run": 32998080549
+    },
+    {
+      "name": "communication",
+      "status": "PASS",
+      "authority": "POSTBASE-253 + POSTBASE-352 + EVAL-354"
+    },
+    {
+      "name": "SFT mechanics",
+      "status": "PASS",
+      "authority": "POSTBASE-353",
+      "head": "53cd88f7132103a0f67a6922caa5274f68401d48",
+      "run": 32997388278,
+      "scope": "fixture_only_mechanics"
+    },
+    {
+      "name": "tools",
+      "status": "IN_PROGRESS",
+      "authority": "POSTBASE-355",
+      "head": "09a0c8c15a7c9fc381605444af57298234bf3a22",
+      "run": 32999837439,
+      "run_state": "QUEUED",
+      "blocker": "NO_SCOPED_TERMINAL_TOOL_AUTHORITY"
+    },
+    {
+      "name": "deliberation",
+      "status": "PASS",
+      "authority": "POSTBASE-255",
+      "run": 32997278311
+    },
+    {
+      "name": "hypothesis search",
+      "status": "PASS",
+      "authority": "POSTBASE-356",
+      "run": 32983288617
+    },
+    {
+      "name": "verifier",
+      "status": "PASS",
+      "authority": "POSTBASE-357",
+      "run": 32983319052
+    },
+    {
+      "name": "memory/RAG",
+      "status": "PASS",
+      "authority": "POSTBASE-358",
+      "head": "976adda1cfe981d7b6363d267854759bee802006",
+      "run": 32983793329
+    },
+    {
+      "name": "teacher factory",
+      "status": "PASS",
+      "authority": "POSTBASE-359",
+      "head": "6ae8cd70729565ac911a23bbcd628d602a19d030",
+      "run": 32997210933
+    },
+    {
+      "name": "end-to-end system",
+      "status": "TERMINAL_BLOCKED",
+      "authority": "NEXT100-097-MILESTONE-DELIBERATIVE-V0",
+      "pr": 491,
+      "head": "4325e6ad48704d322aa49591b7b392287a750568",
+      "verdict": "BLOCKED_MANDATORY_TOOLS_NONTERMINAL",
+      "integrated_fixture": "NOT_RUN_FAIL_CLOSED_BEFORE_EXECUTION",
+      "machine_authority_identity": "sha256:3fd072078ea1c9e073f462b014bad37be35f324336b2de0f03f48fa9b9d2ffe3"
+    }
+  ],
+  "final_live_refresh": {
+    "cutoff_utc": "2026-08-26T18:31:40Z",
+    "latest_pr_number_seen": 498,
+    "verify_218_terminal_authority_found": false,
+    "verify_219_terminal_authority_found": false,
+    "tools_current_head": "09a0c8c15a7c9fc381605444af57298234bf3a22",
+    "tools_current_run": 32999837439,
+    "tools_current_run_state": "QUEUED",
+    "research_corpus_terminal_product_found": false,
+    "next100_064_training_authorized_exposure": 0,
+    "end_to_end_terminal_blocked_authority_found": true,
+    "end_to_end_completed_fixture_found": false,
+    "material_status_change_from_previous_seal": false,
+    "late_prs_checked": [497, 498]
+  }
+}
