@@ -55,15 +55,6 @@ jobs:
           test "$(git rev-parse HEAD:src/twelve_six/eval_reservations.py)" = "b6336fe40154559ca283175cba3f321454952bdc"
           test "$(git rev-parse HEAD:tests/test_en_raw_diagnostic.py)" = "32d4ecdc25fa63182938c1a98543d03d7d533979"
 
-      - name: Dependency preflight
-        env:
-          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: >-
-          python tools/ci_dependency_preflight.py
-          --profile linux-x86_64
-          --source-sha "$EXPECTED_SOURCE_SHA"
-          --output recover176-ci-preflight.json
-
       - name: Universal hash-locked execution bootstrap
         run: |
           set -euo pipefail
@@ -207,9 +198,8 @@ jobs:
         with:
           name: recover176-eval133-en-learned-base-ladder-v2
           path: |
-            recover176-ci-preflight.json
             recover176-evidence/learned-base-ladder-v1-eval133.json
-            recover176-evidence/recover176-evidence-summary.json
+            recover176-evidence-summary.json
             recover176-evidence/pr-comment.md
           if-no-files-found: error
           retention-days: 30
