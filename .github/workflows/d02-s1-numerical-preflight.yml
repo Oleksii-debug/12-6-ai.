@@ -6,6 +6,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: d02-s1-numerical-preflight-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   locked-s1-cpu-preflight:
     runs-on: ubuntu-24.04
