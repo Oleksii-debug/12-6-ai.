@@ -73,7 +73,7 @@ def _replace_combined_state(checkpoint: Path, combined_state: object) -> None:
     _rebind_manifest(checkpoint)
 
 
-def test_one_element_sgd_momentum_rejects_before_model_mutation(tmp_path: Path) -> None:
+def _saved_sgd_checkpoint(tmp_path: Path) -> tuple[Path, object]:
     source_model = torch.nn.Linear(4, 4, bias=False)
     source_optimizer = torch.optim.SGD(source_model.parameters(), lr=0.1, momentum=0.9)
 
@@ -92,17 +92,32 @@ def test_one_element_sgd_momentum_rejects_before_model_mutation(tmp_path: Path) 
     tree = json.loads((checkpoint / "state.json").read_text(encoding="utf-8"))
     state_arrays = load_safetensors_bytes((checkpoint / "state.safetensors").read_bytes())
     combined_state = copy.deepcopy(unpack_state_tree(tree, state_arrays))
+    return checkpoint, combined_state
 
-    optimizer_state = combined_state["optimizer"]["state"]
+
+def _first_momentum_buffer(combined_state: object) -> tuple[dict[str, object], object]:
+    assert isinstance(combined_state, dict)
+    optimizer = combined_state["optimizer"]
+    assert isinstance(optimizer, dict)
+    optimizer_state = optimizer["state"]
+    assert isinstance(optimizer_state, dict)
     first_parameter_id = next(iter(optimizer_state))
-    momentum = optimizer_state[first_parameter_id]["momentum_buffer"]
+    parameter_state = optimizer_state[first_parameter_id]
+    assert isinstance(parameter_state, dict)
+    return parameter_state, parameter_state["momentum_buffer"]
+
+
+def test_one_element_sgd_momentum_rejects_before_model_mutation(tmp_path: Path) -> None:
+    checkpoint, combined_state = _saved_sgd_checkpoint(tmp_path)
+    parameter_state, momentum = _first_momentum_buffer(combined_state)
+
     if isinstance(momentum, torch.Tensor):
         corrupt_momentum = torch.zeros((1,), dtype=momentum.dtype)
     elif isinstance(momentum, np.ndarray):
         corrupt_momentum = np.zeros((1,), dtype=momentum.dtype)
     else:  # pragma: no cover - fail loudly if the state-tree contract changes.
         raise AssertionError(f"unexpected momentum_buffer type: {type(momentum)!r}")
-    optimizer_state[first_parameter_id]["momentum_buffer"] = corrupt_momentum
+    parameter_state["momentum_buffer"] = corrupt_momentum
     _replace_combined_state(checkpoint, combined_state)
 
     target_model = torch.nn.Linear(4, 4, bias=False)
@@ -110,6 +125,35 @@ def test_one_element_sgd_momentum_rejects_before_model_mutation(tmp_path: Path) 
     model_before = target_model.weight.detach().clone()
 
     with pytest.raises(CheckpointCompatibilityError, match="optimizer.*shape mismatch"):
+        load_checkpoint(
+            checkpoint,
+            model=target_model,
+            optimizer=target_optimizer,
+            restore_rng=False,
+        )
+
+    assert torch.equal(target_model.weight.detach(), model_before)
+    assert target_optimizer.state == {}
+
+
+def test_sgd_momentum_dtype_corruption_rejects_before_model_mutation(tmp_path: Path) -> None:
+    checkpoint, combined_state = _saved_sgd_checkpoint(tmp_path)
+    parameter_state, momentum = _first_momentum_buffer(combined_state)
+
+    if isinstance(momentum, torch.Tensor):
+        corrupt_momentum = momentum.to(dtype=torch.float64)
+    elif isinstance(momentum, np.ndarray):
+        corrupt_momentum = momentum.astype(np.float64)
+    else:  # pragma: no cover - fail loudly if the state-tree contract changes.
+        raise AssertionError(f"unexpected momentum_buffer type: {type(momentum)!r}")
+    parameter_state["momentum_buffer"] = corrupt_momentum
+    _replace_combined_state(checkpoint, combined_state)
+
+    target_model = torch.nn.Linear(4, 4, bias=False)
+    target_optimizer = torch.optim.SGD(target_model.parameters(), lr=0.1, momentum=0.9)
+    model_before = target_model.weight.detach().clone()
+
+    with pytest.raises(CheckpointCompatibilityError, match="optimizer.*dtype mismatch"):
         load_checkpoint(
             checkpoint,
             model=target_model,

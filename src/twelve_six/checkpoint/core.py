@@ -467,16 +467,27 @@ def _preflight_generic_state(source: Any, target: Any, *, path: str) -> None:
 
 
 def _preflight_optimizer_param_state(value: Any, parameter: Any, *, path: str) -> None:
-    """Require non-scalar optimizer tensor slots to match their live parameter shape."""
+    """Require non-scalar optimizer tensor slots to match parameter shape and dtype."""
 
     shape = _state_tensor_shape(value)
     if shape is not None:
-        size = int(np.prod(shape, dtype=np.int64)) if shape else 1
-        if size > 1 and shape != tuple(parameter.shape):
-            raise CheckpointCompatibilityError(
-                f"{path} optimizer tensor shape mismatch: checkpoint {shape} "
-                f"vs parameter {tuple(parameter.shape)}"
-            )
+        # A scalar tensor has rank zero (shape == ()). A one-element vector
+        # such as shape (1,) is still non-scalar optimizer state and must not
+        # bypass parameter compatibility checks.
+        if shape:
+            parameter_shape = tuple(parameter.shape)
+            if shape != parameter_shape:
+                raise CheckpointCompatibilityError(
+                    f"{path} optimizer tensor shape mismatch: checkpoint {shape} "
+                    f"vs parameter {parameter_shape}"
+                )
+            value_dtype = _state_tensor_dtype(value)
+            parameter_dtype = _state_tensor_dtype(parameter)
+            if value_dtype != parameter_dtype:
+                raise CheckpointCompatibilityError(
+                    f"{path} optimizer tensor dtype mismatch: checkpoint {value_dtype} "
+                    f"vs parameter {parameter_dtype}"
+                )
         return
     if isinstance(value, Mapping):
         for key, item in value.items():
