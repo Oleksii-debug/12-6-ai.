@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Diagnose family-capped 45/35/20 capacity of NEXT100-063.
+"""Diagnose family-capped 45/35/20 capacity of NEXT100-063 V2.
 
 This tool is deliberately diagnostic only. It never promotes source bytes to
 optimized loss positions and never authorizes training. It binds the exact
-NEXT100-063 terminal-source-registry identity and the frozen DATA-295 balance
+NEXT100-063 V2 terminal-source-registry identity and the frozen DATA-295 balance
 policy, then computes the largest exact-mixture source-byte budget that can be
 formed without replay while respecting family concentration caps.
 """
@@ -15,8 +15,8 @@ from fractions import Fraction
 from pathlib import Path
 from typing import Any
 
-REGISTRY_PATH = Path("configs/data/next100_063_terminal_source_registry_v1.json")
-EXPECTED_REGISTRY_IDENTITY = "77fb69c558df8c59fdae00583c955c62ad088cda98fd16b335eedb26fb2d7526"
+REGISTRY_PATH = Path("configs/data/next100_063_terminal_source_registry_v2.json")
+EXPECTED_REGISTRY_IDENTITY = "934933896a4b3b01dd58cd18d13bcc36245913f83412c6b3f697c64dd03e4d4d"
 TARGET_BYTES = 20_000_000
 
 # Frozen DATA-295 policy: 45% Ukrainian / 35% English / 20% code.
@@ -65,7 +65,7 @@ def stratum_for(row: dict[str, Any]) -> str:
 def load_family_capacities(registry: dict[str, Any]) -> dict[str, dict[str, int]]:
     require(
         registry["registry_identity_sha256"] == EXPECTED_REGISTRY_IDENTITY,
-        "NEXT100-063 registry identity drifted; refresh this diagnostic first",
+        "NEXT100-063 V2 registry identity drifted; refresh this diagnostic first",
     )
 
     families = {stratum: dict(values) for stratum, values in BASE_FAMILY_BYTES.items()}
@@ -78,6 +78,10 @@ def load_family_capacities(registry: dict[str, Any]) -> dict[str, dict[str, int]
         )
 
     for row in registry["terminal_additions"]:
+        require(
+            row.get("dedicated_workflow_conclusion") == "success",
+            f"source lacks successful dedicated exact-head workflow: PR {row['pr']}",
+        )
         require(row["training"].startswith("ALLOWED"), f"non-training source counted: PR {row['pr']}")
         require(row["verdict"].startswith("ADMIT"), f"non-terminal source counted: PR {row['pr']}")
         stratum = stratum_for(row)
@@ -124,8 +128,8 @@ def feasible(total_bytes: int, families: dict[str, dict[str, int]]) -> bool:
 
 def max_exact_mixture_bytes(families: dict[str, dict[str, int]], target: int = TARGET_BYTES) -> int:
     # All frozen shares have denominator 20, so exact mixture totals are multiples
-    # of 20 bytes. Feasibility is monotone after family caps begin to bind; binary
-    # search over these exact-mixture units keeps the diagnostic cheap at 20M scale.
+    # of 20 bytes. For every stratum, capped-available/T is non-increasing as T
+    # grows, so feasibility is monotone and binary search is exact here.
     unit = 20
     lo = 0
     hi = target // unit
@@ -165,8 +169,8 @@ def build_report(registry: dict[str, Any]) -> dict[str, Any]:
         }
 
     limiting = []
+    next_total = feasible_total + 20
     for stratum, share in MIXTURE.items():
-        next_total = feasible_total + 20
         required = share * next_total
         cap = family_cap(next_total, stratum)
         available = sum(min(Fraction(v), cap) for v in families[stratum].values())
@@ -174,7 +178,7 @@ def build_report(registry: dict[str, Any]) -> dict[str, Any]:
             limiting.append(stratum)
 
     return {
-        "schema_version": "12-6.next100-063-balance-capacity-diagnostic.v1",
+        "schema_version": "12-6.next100-063-balance-capacity-diagnostic.v2",
         "source_registry_identity_sha256": EXPECTED_REGISTRY_IDENTITY,
         "policy": {
             "mixture": {key: float(value) for key, value in MIXTURE.items()},
