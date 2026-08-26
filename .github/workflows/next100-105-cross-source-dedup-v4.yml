@@ -1,0 +1,63 @@
+name: NEXT100-105 Cross-Source Dedup V4
+
+on:
+  pull_request:
+    paths:
+      - "configs/data/next100_105_cross_source_dedup_v4.json"
+      - "configs/data/next100_063_source_registry_convergence_v1.json"
+      - "configs/data/next100_065_cross_source_dedup_v3.json"
+      - "src/twelve_six/data/cross_source_capacity_audit.py"
+      - "src/twelve_six/data/cross_source_capacity_audit_v3.py"
+      - "tools/run_next100_105_cross_source_dedup_v4.py"
+      - "tests/test_next100_105_cross_source_dedup_v4.py"
+      - ".github/workflows/next100-105-cross-source-dedup-v4.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dedup-v4:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install pinned NIST extraction dependency
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y poppler-utils
+          pdftotext -v 2>&1 | head -1
+          pdftotext -v 2>&1 | head -1 | grep -F "24.02.0"
+
+      - name: Run fail-closed V4 contract tests
+        env:
+          PYTHONPATH: src
+        run: python -m pytest -q tests/test_next100_105_cross_source_dedup_v4.py
+
+      - name: Execute successor global dedup twice
+        env:
+          PYTHONPATH: src
+        run: |
+          mkdir -p evidence/next100105/run-a evidence/next100105/run-b
+          python tools/run_next100_105_cross_source_dedup_v4.py \
+            --report evidence/next100105/run-a/cross-source-dedup-v4-report.json \
+            --expanded-inventory evidence/next100105/run-a/expanded-inventory.json
+          python tools/run_next100_105_cross_source_dedup_v4.py \
+            --report evidence/next100105/run-b/cross-source-dedup-v4-report.json \
+            --expanded-inventory evidence/next100105/run-b/expanded-inventory.json
+          cmp evidence/next100105/run-a/cross-source-dedup-v4-report.json evidence/next100105/run-b/cross-source-dedup-v4-report.json
+          cmp evidence/next100105/run-a/expanded-inventory.json evidence/next100105/run-b/expanded-inventory.json
+          sha256sum evidence/next100105/run-a/cross-source-dedup-v4-report.json
+          sha256sum evidence/next100105/run-a/expanded-inventory.json
+
+      - name: Upload exact-head evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: next100-105-cross-source-dedup-v4
+          path: evidence/next100105/
+          if-no-files-found: error
