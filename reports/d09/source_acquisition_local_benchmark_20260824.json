@@ -1,0 +1,19 @@
+{
+  "bytes": 33554432,
+  "chunk_count": 32,
+  "chunk_size_bytes": 1048576,
+  "compute_class": "LOCAL_FREE",
+  "elapsed_seconds": 0.18829810600004748,
+  "evidence_scope": "LOCAL_FREE_SYNTHETIC_SOURCE_ACQUISITION_ONLY",
+  "machine": "x86_64",
+  "mib": 32.0,
+  "mib_per_second": 169.94329194151285,
+  "paid_cost_usd": 0,
+  "peak_to_chunk_ratio": 2.021756172180176,
+  "peak_tracemalloc_bytes": 2119965,
+  "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
+  "python_version": "3.13.5",
+  "remote_fsspec_execution": "NOT_TESTED",
+  "schema_version": "12-6.source-acquisition-benchmark.v1",
+  "verified_sha256_match": true
+}

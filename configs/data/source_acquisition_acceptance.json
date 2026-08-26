@@ -1,0 +1,50 @@
+{
+  "schema_version": "12-6.source-acquisition-acceptance.v1",
+  "stack_base_pr": 64,
+  "stack_base_sha": "cd259202bd7fd2bdbb4d75a40cb7b67bf0908593",
+  "s0_fixture_mutated": false,
+  "external_sources_approved_by_this_package": 0,
+  "paid_compute_authorized": false,
+  "promotion_allowed": false,
+  "stages": [
+    {
+      "stage": "S1",
+      "status": "NOT_READY",
+      "acceptance_evidence": [
+        "One reviewed external source version has an exact registry identity, immutable expected size/SHA-256 and source-version retrieval plan.",
+        "Corrupt-byte and wrong-size injection tests prove the final destination is never published on verification failure.",
+        "Interrupted local retrieval resumes only from an exact plan-bound contiguous chunk checkpoint and rejects a tampered partial prefix.",
+        "Verified retrieval receipt and deterministic retrieval inventory bind the exact source registry without treating retrieval as rights approval."
+      ]
+    },
+    {
+      "stage": "S2",
+      "status": "NOT_READY",
+      "acceptance_evidence": [
+        "At least three immutable source versions have independent verified receipts and no duplicate source-version inventory entries.",
+        "Maintained fsspec remote/object-store execution is exercised with exact runtime version and no credentials embedded in durable URIs.",
+        "Remote interruption/resume is injected and final remote bytes reproduce the registered SHA-256 and size exactly.",
+        "Retrieval inventory is handed to the exact corpus-foundation/dedup plan without source-registry identity drift."
+      ]
+    },
+    {
+      "stage": "S3",
+      "status": "NOT_READY",
+      "acceptance_evidence": [
+        "Representative multi-source acquisition records throughput, peak memory, bytes transferred, request counts and storage/egress cost where applicable.",
+        "Repeated retrieval from the same immutable source-version set produces identical verified artifact hashes and inventory identity.",
+        "Expired credentials, truncated streams, unexpected upstream mutation and destination collision all fail closed with no verified final artifact."
+      ]
+    },
+    {
+      "stage": "S4",
+      "status": "NOT_READY",
+      "acceptance_evidence": [
+        "A corpus-freeze candidate references an exact verified retrieval inventory plus the independent rights/policy and decontamination evidence owned by their respective gates.",
+        "Every retrieved source artifact is reproducible from its exact registered version or has an explicitly preserved immutable snapshot with the same hash.",
+        "AUDIT-B independently retests retrieval/inventory identity and rights separation before any corpus-freeze acceptance.",
+        "Any materially paid acquisition/storage execution has separate explicit authorization; absent it, only LOCAL_FREE evidence is admissible."
+      ]
+    }
+  ]
+}
