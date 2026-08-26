@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Validate NEXT100-029 fail-closed Lang-UK rights evidence using stdlib only."""
 from __future__ import annotations
 
