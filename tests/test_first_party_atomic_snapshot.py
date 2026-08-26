@@ -3,9 +3,15 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
+import pytest
 import torch
 
-from twelve_six.checkpoint import CheckpointIdentity, save_checkpoint, verify_checkpoint
+from twelve_six.checkpoint import (
+    CheckpointCompatibilityError,
+    CheckpointIdentity,
+    save_checkpoint,
+    verify_checkpoint,
+)
 from twelve_six.inference import first_party
 from twelve_six.model import TwelveSixDecoder, load_stage_config
 from twelve_six.tokenization import ByteTokenizer
@@ -145,3 +151,38 @@ def test_first_party_loader_keeps_identity_and_weights_on_one_verified_snapshot(
     disk_manifest = verify_checkpoint(checkpoint)
     assert disk_manifest["checkpoint_id"] == manifest_b["checkpoint_id"]
     assert disk_manifest["identity"]["git_sha"] == "b" * 40
+
+
+def test_first_party_loader_rejects_external_model_spec_mismatch_before_allocation(
+    tmp_path: Path, monkeypatch
+) -> None:
+    stage = load_stage_config(ROOT / "configs/stages/s0_10k.json")
+    tokenizer = ByteTokenizer()
+    checkpoint = tmp_path / "checkpoint"
+    model = TwelveSixDecoder(stage.model, stage.init)
+    save_checkpoint(
+        checkpoint,
+        model=model,
+        identity=_identity(
+            stage=stage,
+            tokenizer=tokenizer,
+            git_hex="a",
+            dataset_hex="d",
+            run_hex="e",
+            step=3,
+            tokens_seen=96,
+        ),
+    )
+
+    def forbid_model_allocation(*args, **kwargs):
+        raise AssertionError("model allocation must not occur after external ModelSpec mismatch")
+
+    monkeypatch.setattr(first_party, "TwelveSixDecoder", forbid_model_allocation)
+    with pytest.raises(
+        CheckpointCompatibilityError,
+        match="externally expected identity",
+    ):
+        first_party.load_first_party_backend(
+            checkpoint,
+            expected_model_spec_sha256="0" * 64,
+        )
