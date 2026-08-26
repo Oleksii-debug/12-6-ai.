@@ -1,0 +1,104 @@
+{
+  "authority_identity_sha256": "fae001fc330a4654e5c8475c970038f594deafa121a44afb0f195bcd72c2f6aa",
+  "bounded_successor_contract": {
+    "max_normalized_bytes": 5000000,
+    "prohibited_shortcuts": [
+      "credit_published_2_91_gb_as_training_capacity",
+      "treat_dataset_card_license_prose_as_per_record_rights_proof",
+      "treat_publication_date_alone_as_author_death_proof",
+      "count_multiple_parquet_shards_as_independent_families",
+      "use_replay_padding_or_sampling_with_replacement_to_repair_capacity"
+    ],
+    "required_before_nonzero_credit": [
+      "pin_exact_row_inventory_and_source_parquet_object_identity",
+      "bind_each_selected_row_to_original_internet_archive_identifier",
+      "establish_per_record_public_domain_or_compatible_training_rights",
+      "reject_rows_with_ambiguous_or_missing_rights_evidence",
+      "materialize_exact_text_bytes_and_normalized_sha256",
+      "ukrainian_language_and_script_validation",
+      "ocr_quality_and_noncharacter_threshold_validation",
+      "quality_privacy_pii_screen",
+      "exact_near_fragment_and_lineage_dedup_against_current_registry",
+      "reserved_evaluation_decontamination_before_final_corpus_admission"
+    ],
+    "single_family_until_lineage_proven": true
+  },
+  "execution_profile": "LOCAL_FREE_METADATA_ONLY",
+  "observed_at_utc": "2026-08-26T20:15:00Z",
+  "observed_live_card_conflict": {
+    "blanket_training_admission_allowed": false,
+    "example_dates_seen": [
+      1919,
+      1935,
+      1947
+    ],
+    "present": true,
+    "reason": "The live dataset preview at the pinned dataset card contains rows dated later than the stated initial pre-1884 cutoff, including 1919, 1935, and 1947 examples; collection-level rights prose therefore cannot substitute for per-record rights evidence."
+  },
+  "project_capacity_context": {
+    "current_terminal_uk_source_bytes_before_successor_global_dedup": 100856,
+    "current_uk_gap_to_planning_floor_bytes": 8899144,
+    "effective_max_candidate_credit_bytes_if_one_family": 5000000,
+    "max_family_share_total": 0.25,
+    "max_family_share_within_stratum": 0.6,
+    "research_corpus_v1_planning_floor_bytes": 20000000,
+    "target_uk_share": 0.45,
+    "target_uk_source_floor_bytes": 9000000
+  },
+  "published_rights_claims": {
+    "collection_statement": "most_of_collection_public_domain",
+    "curation_statement": "author_dead_more_than_70_years",
+    "initial_cutoff_statement": "as_of_march_2024_retained_exclusively_titles_published_before_1884",
+    "license_statement": "entire_collection_public_domain_in_all_regions",
+    "use_statement": "training_and_republication_without_restriction"
+  },
+  "qualification_decision": {
+    "corpus_admission": false,
+    "independent_family_credit": 0,
+    "paid_compute_authorized": false,
+    "status": "RETEST",
+    "tokenizer_fit_authorized": false,
+    "training_authorized": false,
+    "training_capacity_credit_bytes": 0,
+    "final_test_payload_accessed": false
+  },
+  "quality_risks": {
+    "dataset_card_acknowledges_multicolumn_table_formatting_risk": true,
+    "dataset_card_acknowledges_ocr_errors": true,
+    "dataset_card_acknowledges_unwanted_headers_page_counts": true,
+    "ocr_generated": true,
+    "published_columns": [
+      "file_id",
+      "date",
+      "word_count",
+      "character_count",
+      "complete_text",
+      "ocr_quality",
+      "share_nonchar"
+    ]
+  },
+  "schema_version": "12-6.next100-110-ua-cultural-heritage-source-audit.v1",
+  "source": {
+    "dataset": "PleIAs/Ukrainian-CulturalHeritage-Books",
+    "dataset_card_url": "https://huggingface.co/datasets/PleIAs/Ukrainian-CulturalHeritage-Books",
+    "format": "parquet",
+    "host": "huggingface.co",
+    "language_label": "Ukrainian",
+    "revision": "54fc0f867ea4029b4f4155baa934375095d3d992",
+    "row_count_published": 19574,
+    "total_file_size_display_published": "2.91 GB",
+    "tree_url": "https://huggingface.co/datasets/PleIAs/Ukrainian-CulturalHeritage-Books/tree/main",
+    "upstream_digitized_file_count_published": 19574,
+    "upstream_origin": "Internet Archive digitized files",
+    "word_count_display_published": "462M words"
+  },
+  "truth_boundary": {
+    "learned_20m_claimed": false,
+    "model_training_executed": false,
+    "optimizer_updates": 0,
+    "payload_bytes_downloaded_by_this_authority": 0,
+    "research_corpus_v1_frozen": false,
+    "source_bytes_equal_loss_positions_claimed": false
+  },
+  "worker_id": "AUTODEV-NEXT100-110-UA-CULTURAL-HERITAGE"
+}
