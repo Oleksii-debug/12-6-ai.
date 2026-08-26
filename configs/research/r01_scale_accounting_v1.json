@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "campaign_id": "R01-SCALE-ACCOUNTING-V1",
+  "issue": 713,
+  "status": "PLANNING_ONLY",
+  "authority": {
+    "model341_sha": "e4ff486fd90802fc123bebf60eed4e59196a98df",
+    "modelspec_sha256": "fbff24d561a2818453554d58ca23fc6ace3303b078f1935a8576c4565bd92441",
+    "expected_parameter_count": 20613440
+  },
+  "baseline": {
+    "vocab_size": 256,
+    "max_seq_len": 1024,
+    "d_model": 320,
+    "n_layers": 16,
+    "n_heads": 10,
+    "n_kv_heads": 2,
+    "head_dim": 32,
+    "d_ff": 1080,
+    "tie_word_embeddings": true
+  },
+  "vocabulary_sensitivity": [256, 512, 1024, 2048, 4096, 8192],
+  "candidate_geometries": [
+    {
+      "id": "R01-SCALE-50M-PROBE-A",
+      "target_parameters": 50000000,
+      "status": "PLANNING_ONLY_NOT_FROZEN",
+      "spec": {
+        "vocab_size": 4096,
+        "max_seq_len": 1024,
+        "d_model": 384,
+        "n_layers": 28,
+        "n_heads": 12,
+        "n_kv_heads": 4,
+        "head_dim": 32,
+        "d_ff": 1152,
+        "tie_word_embeddings": true
+      }
+    },
+    {
+      "id": "R01-SCALE-100M-PROBE-A",
+      "target_parameters": 100000000,
+      "status": "PLANNING_ONLY_NOT_FROZEN",
+      "spec": {
+        "vocab_size": 4096,
+        "max_seq_len": 1024,
+        "d_model": 448,
+        "n_layers": 36,
+        "n_heads": 14,
+        "n_kv_heads": 2,
+        "head_dim": 32,
+        "d_ff": 1680,
+        "tie_word_embeddings": true
+      }
+    }
+  ],
+  "truth_boundary": {
+    "tokenizer_fit_authorized": false,
+    "model_training_authorized": false,
+    "paid_compute_authorized": false,
+    "model_100m_frozen": false,
+    "stage_promotion_authorized": false
+  }
+}
