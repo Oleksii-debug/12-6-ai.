@@ -36,6 +36,7 @@ jobs:
 
       - name: Probe or verify exact NTRS records
         run: |
+          set -o pipefail
           mkdir -p next100-035-nasa-evidence
           MODE="$(python - <<'PY'
           import json
