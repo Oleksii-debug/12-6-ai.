@@ -1,0 +1,154 @@
+{
+  "schema_version": "12-6.next100-067-quality-granularity-evidence.v1",
+  "worker_id": "NEXT100-067-CORPUS-QUALITY-GRANULARITY",
+  "status": "FROZEN_POLICY",
+  "local_free_only": true,
+  "model_results_read": false,
+  "final_test_outcomes_read": false,
+  "model_result_guided_tuning": false,
+  "preregistration": {
+    "branch": "next100-067/corpus-quality-granularity-20260826",
+    "initial_preregister_commit": "31800dc23ccbd76d01473c4979814d9249e45120",
+    "final_preregister_commit_before_comparison": "9b7adb0824b9e9a51c24708fc7989a6bd143b019",
+    "config_path": "configs/data/next100_067_quality_granularity_v1.json",
+    "metrics_predeclared_before_comparison": true,
+    "thresholds_changed": false
+  },
+  "data296_binding": {
+    "branch": "data296/quality-filter-external-audit-20260826",
+    "head_sha": "e44ac40c071834d677e00255d4f8e862f4a7ac4b",
+    "preregistration_sha256": "bc4d3f61b9fdf593538e776ddcb82164cc616c77f230ea5de016128436e3ffb3",
+    "quality_policy_id": "d03-lightweight-uk-en-code-v1",
+    "quality_policy_sha256": "97b9fe1452b22c6275a27f85524f670253a7f4012377361c4cb007004aeccd1d",
+    "threshold_reuse_exact": true
+  },
+  "frozen_policy": {
+    "policy_id": "next100-067-document-first-local-window-salvage-v1",
+    "policy_sha256": "e8685c2c6b265b9b289ded7a5245888d8d16ae4d6e881f6229f3bc777601f857",
+    "whole_source_soft_rejection_authority": false,
+    "document_primary_quality_unit": true,
+    "large_natural_language_window_trigger_chars": 16384,
+    "large_natural_language_window_target_chars": 8192,
+    "large_natural_language_window_max_chars": 12288,
+    "large_natural_language_window_min_tail_chars": 2048,
+    "rejected_natural_language_window_rejects_siblings": false,
+    "code_atomic_unit": "SOURCE_NATIVE_FILE_OR_SYNTAX_AWARE_UPSTREAM_UNIT",
+    "arbitrary_code_pack_rejection_authority": false,
+    "post_packing_quality_rejection_authority": false,
+    "family_eviction_authority": false
+  },
+  "comparison_results_after_preregistration": {
+    "ua_legal_structural_canary": {
+      "purpose": "exercise heterogeneous large legal-text granularity failure using the unchanged incumbent quality metrics",
+      "whole_source_accepted": false,
+      "whole_source_reasons": ["dominant_token_repetition", "high_line_repetition"],
+      "frozen_authoritative_unit": "BOUNDED_NATURAL_LANGUAGE_WINDOW",
+      "frozen_status": "RETAIN_PARTIAL",
+      "retained_utf8_bytes": 38573,
+      "rejected_utf8_bytes": 30118,
+      "granularity_disagreement_count": 1,
+      "diagnostic_arbitrary_pack_acceptance_rate": 0.666667,
+      "family_eviction_authority": false
+    },
+    "english_documentation_structural_canary": {
+      "purpose": "exercise heterogeneous large documentation granularity failure using the unchanged incumbent quality metrics",
+      "whole_source_accepted": false,
+      "whole_source_reasons": ["dominant_token_repetition", "high_line_repetition"],
+      "frozen_authoritative_unit": "BOUNDED_NATURAL_LANGUAGE_WINDOW",
+      "frozen_status": "RETAIN_PARTIAL",
+      "retained_utf8_bytes": 25849,
+      "rejected_utf8_bytes": 24624,
+      "granularity_disagreement_count": 1,
+      "diagnostic_arbitrary_pack_acceptance_rate": 0.64,
+      "family_eviction_authority": false
+    },
+    "real_repository_python_code": {
+      "source_path": "src/twelve_six/data/quality_granularity.py",
+      "whole_source_python_parse": "PASS",
+      "frozen_authoritative_unit": "DOCUMENT",
+      "frozen_status": "RETAIN_ALL",
+      "retained_utf8_bytes": 18945,
+      "rejected_utf8_bytes": 0,
+      "diagnostic_pack_chars": 1024,
+      "diagnostic_pack_count": 19,
+      "diagnostic_pack_python_parse_failures": 19,
+      "arbitrary_pack_rejection_authority": false
+    }
+  },
+  "terminal_source_refresh": {
+    "authority": "NEXT100-065-CROSSSOURCE-DEDUP-V3",
+    "branch": "next100-065/crosssource-dedup-v3-20260826",
+    "head_sha_at_final_check": "efc278cec0e4773eb4ff405bf4b4d24ee63b5d13",
+    "head_parent_with_same_source_vector": "e347a95b382ad13a547e76f4f1c6e91d86214df5",
+    "source_vector_commit": "90065ffc97a5133e76cacdee6991eb171c4ea2ba",
+    "source_vector_config_blob_sha": "c1e05f09490e25f6fed765dfb70d900717528f4d",
+    "terminal_refresh_cutoff_utc": "2026-08-26T18:20:54Z",
+    "terminal_refresh_rule": "credit only exact current authority heads whose dedicated admission or qualification workflow completed successfully",
+    "terminal_source_object_count": 11,
+    "declared_pre_quality_capacity_bytes": 243970,
+    "objects": [
+      "en.standardebooks.manual.8-typography",
+      "en.standardebooks.manual.9-metadata",
+      "ua.rada.open-data.laws-texts.d23314",
+      "code.encode.httpx._content",
+      "code.psf.requests._internal_utils",
+      "ua.wikisource.lesia-ukrainka.na-krylah-pisen.1892.page13",
+      "code.django.core.signing",
+      "code.django.db.transaction",
+      "code.django.urls.resolvers",
+      "code.starlette._utils",
+      "code.starlette.convertors"
+    ],
+    "families": [
+      "en.standardebooks.manual",
+      "ua.rada.open-data.laws-texts",
+      "github:encode/httpx",
+      "github:psf/requests",
+      "ua.literature.lesia-ukrainka.na-krylah-pisen.1892-lviv",
+      "github:django/django",
+      "github:Kludex/starlette"
+    ],
+    "quality_policy_effect": "NO_SOURCE_OR_FAMILY_IS_REMOVED_AT_SOURCE_LEVEL_BY_SOFT_QUALITY_METRICS; EACH_ELIGIBLE_OBJECT_IS_FILTERED_AT_THE_FROZEN_DOCUMENT_OR_LOCAL_WINDOW_UNIT",
+    "known_separate_selection_block": "The Wikisource object has a separate corpus-selection/decontamination block in NEXT100-062; this quality policy does not override rights or decontamination authority."
+  },
+  "final_concurrency_recheck": {
+    "newest_consumer_authority_seen": "NEXT100-069-BALANCE-DIVERSITY-V2",
+    "branch": "next100-069/balance-diversity-v2-20260826",
+    "head_sha": "100a26ff942e3b79547191a8b9e176e4043049aa",
+    "config_blob_sha": "a8ef2628a7d88f38065bf6a245ff0a6d5bc63ba5",
+    "source_vector_authority": "NEXT100-065-CROSSSOURCE-DEDUP-V3",
+    "source_vector_commit": "90065ffc97a5133e76cacdee6991eb171c4ea2ba",
+    "source_vector_config_blob_sha": "c1e05f09490e25f6fed765dfb70d900717528f4d",
+    "available_unique_source_bytes": 243970,
+    "family_count_global": 7,
+    "source_set_changed_after_policy_freeze": false,
+    "source_authority_head_advanced_without_source_vector_blob_change": true,
+    "policy_change_required": false
+  },
+  "current_terminal_set_regression_alignment": {
+    "ua_legal": "ua.rada.open-data.laws-texts.d23314",
+    "english_documentation": [
+      "en.standardebooks.manual.8-typography",
+      "en.standardebooks.manual.9-metadata"
+    ],
+    "real_code_original_data296": [
+      "code.encode.httpx._content",
+      "code.psf.requests._internal_utils"
+    ],
+    "newer_terminal_code_families_seen_at_final_refresh": [
+      "github:django/django",
+      "github:Kludex/starlette"
+    ],
+    "policy_change_required_by_newer_sources": false
+  },
+  "validation_scope": {
+    "full_repository_pytest_executed": false,
+    "reason": "LOCAL_FREE execution environment had no checkout/network path for a full repository test run; no hosted CI was used.",
+    "local_contract_harness_executed": true,
+    "local_contract_harness_result": "PASS",
+    "tests_committed": "tests/test_next100_067_quality_granularity.py",
+    "implementation_committed": "src/twelve_six/data/quality_granularity.py"
+  },
+  "verdict": "FREEZE",
+  "verdict_reason": "Whole-source soft quality rejection has excessive blast radius on heterogeneous natural-language objects; arbitrary packs are not semantic boundaries and can destroy code parse structure. Source-native documents are the primary quality unit, with exact local-window salvage only for large UK/EN documents and syntax-aware atomicity for code."
+}
