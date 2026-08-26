@@ -1,0 +1,176 @@
+{
+  "schema": "12-6.research-corpus-v1-intake-convergence.v1",
+  "worker_id": "AUTONOMOUS-DATA-RESEARCH-CORPUS-V1-INTAKE-20260826",
+  "repository": "Oleksii-debug/12-6-ai.",
+  "execution_profile": "LOCAL_FREE",
+  "purpose": "Compose a fail-closed pre-decontamination intake from terminal source authorities without claiming a final corpus or authorizing training.",
+  "controller_binding": {
+    "base_pr": 519,
+    "base_head_sha": "2442b4da9bc059b1e0a44c55ebb320f570db9a79",
+    "ordered_campaign_step": "COMPOSE_SUCCESSOR_RESEARCH_CORPUS_V1_INTAKE_FROM_TERMINAL_SOURCE_AUTHORITIES"
+  },
+  "baseline_registry": {
+    "authority_name": "DATA-287 external snapshot registry v2",
+    "head_sha": "b0523ccbc4b957615aac849d476cfa851be87578",
+    "registry_identity_sha256": "917e9bc31b2fa040d25e807ae3c01aa2cce32420752a891caacfb6c830e6632c",
+    "sources": [
+      {
+        "source_id": "en.standardebooks.manual.8-typography",
+        "family_id": "en.standardebooks.manual",
+        "stratum": "en",
+        "payload_bytes": 48002,
+        "terminal_evidence": true,
+        "training_rights": "ALLOWED",
+        "evaluation_rights": "NOT_SEPARATELY_ADMITTED"
+      },
+      {
+        "source_id": "en.standardebooks.manual.9-metadata",
+        "family_id": "en.standardebooks.manual",
+        "stratum": "en",
+        "payload_bytes": 36791,
+        "terminal_evidence": true,
+        "training_rights": "ALLOWED",
+        "evaluation_rights": "NOT_SEPARATELY_ADMITTED"
+      },
+      {
+        "source_id": "ua.rada.open-data.laws-texts.d23314",
+        "family_id": "ua.rada.open-data.laws-texts",
+        "stratum": "ua",
+        "payload_bytes": 88565,
+        "terminal_evidence": true,
+        "training_rights": "ALLOWED",
+        "evaluation_rights": "NOT_SEPARATELY_ADMITTED"
+      },
+      {
+        "source_id": "code.encode.httpx._content",
+        "family_id": "github:encode/httpx",
+        "stratum": "code",
+        "payload_bytes": 8161,
+        "terminal_evidence": true,
+        "training_rights": "ALLOWED",
+        "evaluation_rights": "NOT_SEPARATELY_ADMITTED"
+      },
+      {
+        "source_id": "code.psf.requests._internal_utils",
+        "family_id": "github:psf/requests",
+        "stratum": "code",
+        "payload_bytes": 1542,
+        "terminal_evidence": true,
+        "training_rights": "ALLOWED",
+        "evaluation_rights": "NOT_SEPARATELY_ADMITTED"
+      }
+    ]
+  },
+  "terminal_candidate_authorities": [
+    {
+      "source_id": "en.python.docs.tutorial-introduction",
+      "authority_pr": 467,
+      "authority_head_sha": "5a6a495a24bce449334cbc5126d0114f61a9f57c",
+      "authority_identity_sha256": "46a00dc70db690ae2b3c4495a75283e7e752bdccb1047d4318c2ebadfa392f0d",
+      "family_id": "python.cpython.documentation",
+      "stratum": "en",
+      "payload_bytes": 17901,
+      "terminal_evidence": true,
+      "admission_state": "TERMINAL_ADMIT",
+      "training_rights": "ALLOWED",
+      "evaluation_rights": "NOT_SEPARATELY_ADMITTED",
+      "requires_standard_cross_source_dedup": true,
+      "requires_standard_eval_decontamination": true
+    },
+    {
+      "source_id": "en.usgov.nist.technical-series.bounded-3",
+      "authority_pr": 472,
+      "authority_head_sha": "b7491745b34ac8679baaf69cb96cd609dcbe0a16",
+      "family_id": "en.usgov.nist.technical-series",
+      "stratum": "en",
+      "payload_bytes": 59358,
+      "terminal_evidence": true,
+      "admission_state": "TERMINAL_ADMIT",
+      "training_rights": "ALLOWED_WITH_NIST_SOURCE_PROVENANCE",
+      "evaluation_rights": "NOT_SEPARATELY_ADMITTED",
+      "requires_standard_cross_source_dedup": true,
+      "requires_standard_eval_decontamination": true
+    },
+    {
+      "source_id": "ua.kmu.portal.secretariat-news.bounded-6",
+      "authority_pr": 449,
+      "authority_head_sha": "40950a950b60921fd856af2719e1ae2486d9e892",
+      "authority_identity_sha256": "1f068e6cc5ce3fc4a51d8477acee31fab5a0178e15f49225b57de94c5178f7d9",
+      "family_id": "ua.kmu.portal.secretariat-news",
+      "stratum": "ua",
+      "payload_bytes": 9153,
+      "terminal_evidence": true,
+      "admission_state": "TERMINAL_ADMIT",
+      "training_rights": "ALLOWED_PRETRAINING",
+      "evaluation_rights": "NOT_SEPARATELY_ADMITTED",
+      "requires_standard_cross_source_dedup": true,
+      "requires_standard_eval_decontamination": true
+    },
+    {
+      "source_id": "ua.verba.public-domain.nomis1864.bounded-24",
+      "authority_pr": 462,
+      "authority_head_sha": "d75edd497c7fb1054e86d892c9462f059c1f4aa9",
+      "authority_identity_sha256": "85f596e79b0ec6479d2ef815e2a6a9bdbfaa55993c797309c1ea4d93b1d9b0e7",
+      "family_id": "ua.verba.public-domain.nomis1864",
+      "stratum": "ua",
+      "payload_bytes": 1659,
+      "terminal_evidence": true,
+      "admission_state": "TERMINAL_ADMIT",
+      "training_rights": "ALLOWED_WITH_ATTRIBUTION",
+      "evaluation_rights": "NOT_SEPARATELY_ADMITTED",
+      "requires_standard_cross_source_dedup": true,
+      "requires_standard_eval_decontamination": true
+    },
+    {
+      "source_id": "ua.literature.lesia-ukrainka.na-krylah-pisen.1892-lviv",
+      "authority_pr": 455,
+      "authority_head_sha": "84c51e42b6daa51796fd20d793b5ef1ff01cc9d2",
+      "authority_identity_sha256": "6b443faa7fef777214022028d5fdb356dae0ab1a9b71822b4e16bea8f92cd0d6",
+      "family_id": "ua.literature.lesia-ukrainka.na-krylah-pisen.1892-lviv",
+      "stratum": "ua",
+      "payload_bytes": 1479,
+      "terminal_evidence": true,
+      "admission_state": "TERMINAL_RIGHTS_SNAPSHOT_DECONTAM_REQUIRED",
+      "training_rights": "CONDITIONED_ON_STANDARD_NEAR_MATCH_DECONTAMINATION",
+      "evaluation_rights": "NOT_SEPARATELY_ADMITTED",
+      "requires_standard_cross_source_dedup": true,
+      "requires_standard_eval_decontamination": true
+    },
+    {
+      "source_id": "code.kludex.starlette.bounded-2",
+      "authority_pr": 458,
+      "authority_head_sha": "c6756b5ebb6eb1d3bf3de2499167833d99d99a72",
+      "family_id": "github:Kludex/starlette",
+      "stratum": "code",
+      "payload_bytes": 5274,
+      "terminal_evidence": true,
+      "admission_state": "TERMINAL_ADMIT",
+      "training_rights": "ALLOWED_WITH_NOTICE",
+      "evaluation_rights": "NOT_AUTHORIZED_BY_THIS_AUTHORITY",
+      "requires_standard_cross_source_dedup": true,
+      "requires_standard_eval_decontamination": true
+    }
+  ],
+  "capacity_proxy": {
+    "meaning": "Acquisition planning only. Byte capacity is not optimized-token capacity and is not a training authorization.",
+    "target_bytes": {
+      "ua": 9000000,
+      "en": 7000000,
+      "code": 4000000
+    },
+    "minimum_independent_families_per_stratum": 2
+  },
+  "hard_truth_boundary": {
+    "exact_predecontamination_inventory_frozen": false,
+    "global_cross_source_dedup_passed": false,
+    "evaluation_decontamination_passed": false,
+    "privacy_quality_pipeline_passed": false,
+    "train_val_split_frozen": false,
+    "two_clean_builds_match": false,
+    "unique_no_replay_loss_ledger_terminal": false,
+    "authorized_unique_optimized_targets": 0,
+    "final_corpus_ready": false,
+    "training_authorized": false,
+    "paid_compute_authorized": false
+  }
+}
