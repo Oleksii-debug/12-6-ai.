@@ -29,13 +29,15 @@
       "state": "BLOCKED_NO_PRISTINE_CODE_OBJECTS_WITH_EXPLICIT_EVALUATION_RESERVATION"
     },
     "d05_remediation_convergence": {
-      "branch": "next100/d05-failclosed-hardening-20260826",
-      "exact_head_d05_preflight": "FAILED_BEFORE_FOCUSED_REGRESSION_AT_LOCKED_REPOSITORY_CHECK_STAGE",
-      "full_ci": "QUEUED_AT_REFRESH",
-      "head_sha": "42296f6f228bbf866765d787e53004108fe7a39d",
-      "preferred_candidate_pr": 507,
-      "selection_basis": "PR508 convergence review preferred PR507 over a weaker duplicate",
-      "state": "NONTERMINAL_REQUIRES_ENVIRONMENT_FAILURE_TRIAGE_AND_11_CASE_RERUN",
+      "branch": "dev/d05-checkpoint-fail-closed-20260826",
+      "current_exact_head_d05_run": 33005737951,
+      "current_exact_head_d05_status": "QUEUED_AT_REFRESH",
+      "current_head_sha": "5c4bdf3faa31397fef65b800d00ff95483be3aac",
+      "previous_exact_head_green_run": 33005163523,
+      "previous_green_head_sha": "397ba857f08b08eb1363a634597a757d25e8fd68",
+      "preferred_candidate_pr": 504,
+      "selection_basis": "PR504 preserves generic optimizer and trainer compatibility, separates focused D05 authority from repository-wide lint debt, and adds scheduler/scaler preflight on the latest head",
+      "state": "NONTERMINAL_CURRENT_HEAD_QUEUED_REQUIRES_EXACT_HEAD_GREEN_AND_INDEPENDENT_11_CASE_RERUN",
       "terminal_authority": false
     },
     "decontamination_v4": {
@@ -103,6 +105,32 @@
       },
       "state": "NONEMPTY_SELECTION_AUTHORITY"
     },
+    "source_registry_convergence_candidate": {
+      "branch": "next100-063/canonical-source-registry-convergence-20260826",
+      "candidate_independent_family_count": 13,
+      "candidate_normalized_bytes": 565743,
+      "draft": true,
+      "family_minimum_gate": "PASS_PRE_GLOBAL_DEDUP",
+      "head_sha": "94dce83cbe611144f961b9f93b3be273345a7f62",
+      "pre_global_dedup_by_stratum": {
+        "code": {
+          "family_count": 5,
+          "normalized_bytes": 296343
+        },
+        "en": {
+          "family_count": 4,
+          "normalized_bytes": 168544
+        },
+        "uk": {
+          "family_count": 4,
+          "normalized_bytes": 100856
+        }
+      },
+      "registry_identity_sha256": "77fb69c558df8c59fdae00583c955c62ad088cda98fd16b335eedb26fb2d7526",
+      "research_corpus_v1_target_gap_normalized_bytes": 19434257,
+      "terminal_authority": false,
+      "training_authorized_loss_positions": 0
+    },
     "ua_wikisource_source": {
       "authority_identity_sha256": "6b443faa7fef777214022028d5fdb356dae0ab1a9b71822b4e16bea8f92cd0d6",
       "authority_state": "TERMINAL_RIGHTS_AND_IMMUTABLE_SNAPSHOT",
@@ -117,7 +145,8 @@
     "checkpoint_audit_refreshed": true,
     "drive_consulted": true,
     "main_refreshed": true,
-    "minimum_cutoff_utc": "2026-08-26T19:26:09Z",
+    "minimum_cutoff_utc": "2026-08-26T19:32:48Z",
+    "source_registry_refreshed": true,
     "specialist_branches_refreshed": true,
     "truth_rule": "exact live GitHub authority outranks stale worker cutoff and Drive narrative"
   },
@@ -129,49 +158,51 @@
     "long_training_started": false,
     "requested_optimized_targets": 20000000
   },
-  "evidence_identity_sha256": "d6f77c2acadbb7b492e84c20717e89a5a7e5c976dabc4bdc53ecac56c686fcf8",
+  "evidence_identity_sha256": "d379001cbe82f33be871b35818e04f6f99663f89ad6bbc7f32e309b46f0bdd0c",
   "execution_profile": "LOCAL_FREE",
   "gates": {
-    "checkpoint_integrity_20m": "BLOCKED_3_OF_11_CORRUPTION_CLASSES",
+    "checkpoint_integrity_20m": "BLOCKED_PENDING_CURRENT_HEAD_GREEN_AND_11_OF_11_RERUN",
     "checkpoint_recovery_20m": "BLOCKED_D05_CORRUPTION_RETEST_REQUIRED",
     "code_selection_validation": "BLOCKED",
     "code_training_family_diversity": "PASS_INCUMBENT_TWO_FAMILIES",
     "decontamination": "BLOCKED_NO_CANDIDATE_IDENTITY",
-    "en_training_family_diversity": "SOURCE_AUTHORITY_AVAILABLE_NOT_COMPOSED",
-    "exact_candidate_corpus_identity": "BLOCKED_NOT_COMPOSED",
+    "en_training_family_diversity": "PASS_PRE_GLOBAL_DEDUP_CANDIDATE",
+    "exact_candidate_corpus_identity": "BLOCKED_NOT_MATERIALIZED",
     "final_corpus_identity": "BLOCKED",
     "optimizer_mechanics_20m": "READY_FOR_BOUNDED_LOCAL_FREE_REBIND",
     "primary_20m_mechanics": "PASS",
     "real_20m_training": "BLOCKED",
-    "ua_training_family_diversity": "BLOCKED_PENDING_DECONTAMINATION_OR_ALTERNATE_TERMINAL_SOURCE",
+    "source_registry_convergence": "CANDIDATE_NONTERMINAL_565743_BYTES_13_FAMILIES",
+    "ua_training_family_diversity": "PASS_PRE_GLOBAL_DEDUP_CANDIDATE",
     "unique_no_replay_loss_capacity": "BLOCKED_ZERO"
   },
   "long_training_authorized": false,
   "ordered_next_campaign": [
-    "COMPOSE_SUCCESSOR_RESEARCH_CORPUS_V1_INTAKE_FROM_TERMINAL_SOURCE_AUTHORITIES",
-    "FREEZE_EXACT_PRE_DECONTAMINATION_CANDIDATE_RECORD_INVENTORY_AND_IDENTITY",
+    "TERMINALIZE_NEXT100_063_SOURCE_REGISTRY_CONVERGENCE",
+    "MATERIALIZE_EXACT_PRE_DECONTAMINATION_CANDIDATE_RECORD_INVENTORY_AND_IDENTITY",
     "RUN_STANDARD_EXACT_NEAR_MATCH_EVALUATION_DECONTAMINATION",
     "RUN_QUALITY_PRIVACY_DEDUP_SPLIT_TWO_CLEAN_BUILDS_AND_UNIQUE_LOSS_LEDGER",
+    "RERUN_NEXT100_075_FULL_11_CASE_CORRUPTION_MATRIX_ON_EXACT_D05_REMEDIATED_PRODUCTION_HEAD",
     "REQUALIFY_CHECKPOINT346_AND_RUN_BOUNDED_TRAIN344_MECHANICS_ON_MODEL341",
     "REFRESH_LEARN345_AGAINST_TERMINAL_CORPUS_MODEL_OPTIMIZER_AND_RECOVERY_AUTHORITIES",
     "REQUEST_EXPLICIT_COMPUTE_AUTHORIZATION_ONLY_AFTER_CAMPAIGN_IS_DATA_READY"
   ],
   "paid_compute_used": false,
   "parallel_local_free_tracks": [
-    "CONVERGE_D05_REMEDIATION_AND_TRIAGE_LOCKED_ENVIRONMENT_CHECK_FAILURE",
-    "RERUN_NEXT100_075_FULL_11_CASE_CORRUPTION_MATRIX_ON_EXACT_PRODUCTION_HEAD",
-    "COMPOSE_SUCCESSOR_RESEARCH_CORPUS_V1_INTAKE",
-    "MATERIALIZE_EXACT_CANDIDATE_CORPUS_IDENTITY_FOR_DECONTAMINATION"
+    "TERMINALIZE_NEXT100_063_AND_MATERIALIZE_EXACT_CANDIDATE_CORPUS_IDENTITY",
+    "WAIT_FOR_PR504_CURRENT_EXACT_HEAD_D05_AND_THEN_RERUN_NEXT100_075_11_CASE_MATRIX",
+    "CONTINUE_TERMINAL_RIGHTS_CLEARED_SOURCE_ACQUISITION_TO_CLOSE_20M_BYTE_GAP",
+    "CONVERGE_REPOSITORY_WIDE_LINT_AND_CI_QUEUE_CONTROL_SEPARATELY_FROM_D05_AUTHORITY"
   ],
   "repository": "Oleksii-debug/12-6-ai.",
   "schema": "12-6.autonomous-20m-readiness-controller.v1",
   "terminal_decision": {
     "primary_blocker": "RESEARCH_CORPUS_V1_NOT_TERMINAL_AND_ZERO_AUTHORIZED_UNIQUE_LOSS_CAPACITY",
     "secondary_blockers": [
+      "SOURCE_REGISTRY_CONVERGENCE_CANDIDATE_NOT_YET_TERMINAL_OR_CORPUS_MATERIALIZED",
       "NO_EXACT_CANDIDATE_CORPUS_IDENTITY_FOR_DECONTAMINATION",
-      "UA_SECOND_FAMILY_NOT_YET_CORPUS_ELIGIBLE",
-      "D05_CHECKPOINT_INTEGRITY_RETEST_REQUIRED_ON_3_OF_11_CORRUPTION_CLASSES",
-      "D05_REMEDIATION_NOT_TERMINAL_EXACT_HEAD_GREEN",
+      "D05_REMEDIATION_CURRENT_HEAD_NOT_YET_GREEN",
+      "NEXT100_075_FULL_11_CASE_PRODUCTION_RERUN_NOT_YET_GREEN",
       "CODE_SELECTION_VALIDATION_REMAINS_ZERO"
     ],
     "status": "BLOCK_LONG_TRAINING_CONTINUE_LOCAL_FREE_ENGINEERING"
