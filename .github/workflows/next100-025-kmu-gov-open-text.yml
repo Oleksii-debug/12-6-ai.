@@ -1,0 +1,94 @@
+name: NEXT100-025 KMU Government Open Text
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qualify-kmu-source:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact source head
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+
+      - name: Static contract checks
+        run: |
+          python -m py_compile tools/next100_025_kmu_snapshot.py
+          python - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          cfg=json.loads(Path('configs/data/next100_025_kmu_gov_open_text_v1.json').read_text())
+          assert cfg['worker']=='NEXT100-025-DATA-UA-GOV-OPEN'
+          assert cfg['local_free_only'] is True
+          assert cfg['family']['family_id']=='ua.kmu.portal.secretariat-news'
+          assert 'ua.rada.open-data.laws-texts' in cfg['family']['independent_from']
+          assert cfg['rights']['license_id']=='CC-BY-4.0'
+          assert cfg['rights']['uses']['model_training']=='ALLOWED'
+          assert cfg['rights']['uses']['redistribution']=='ALLOWED'
+          assert cfg['rights']['uses']['evaluation']=='NOT_ADMITTED'
+          p=Path(cfg['rights_evidence']['path'])
+          assert hashlib.sha256(p.read_bytes()).hexdigest()==cfg['rights_evidence']['sha256']
+          PY
+
+      - name: Acquire bounded source twice and enforce rights language privacy quality dedup
+        run: |
+          set -euo pipefail
+          python tools/next100_025_kmu_snapshot.py \
+            --config configs/data/next100_025_kmu_gov_open_text_v1.json \
+            --output next100-025-evidence \
+            | tee next100-025-evidence.stdout.json
+
+      - name: Assert terminal semantics when locked
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          cfg=json.loads(Path('configs/data/next100_025_kmu_gov_open_text_v1.json').read_text())
+          report=json.loads(Path('next100-025-evidence/report.json').read_text())
+          assert report['accepted_documents'] >= cfg['quality']['min_accepted_documents']
+          assert report['total_normalized_utf8_bytes'] >= cfg['quality']['min_total_normalized_utf8_bytes']
+          assert report['language']['all_passed'] is True
+          assert report['privacy']['all_passed'] is True
+          assert report['dedup']['intra_family_raw_unique'] is True
+          assert report['dedup']['intra_family_normalized_unique'] is True
+          assert report['evaluation_authority']=='NOT_ADMITTED'
+          if cfg['mode']=='LOCKED':
+              assert report['status']=='PASS'
+              rows=[json.loads(line) for line in Path('next100-025-evidence/train.jsonl').read_text().splitlines() if line.strip()]
+              assert rows and all(row['training_eligible'] is True for row in rows)
+              assert all(row['evaluation_eligible'] is False for row in rows)
+          else:
+              assert report['status']=='PROBE_LOCK_REQUIRED'
+          PY
+
+      - name: Upload bounded immutable source package
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: next100-025-kmu-gov-open-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            configs/data/next100_025_kmu_gov_open_text_v1.json
+            data/external/rights-evidence/next100-025/kmu-portal-cc-by-4.0-20260826.txt
+            next100-025-evidence/report.json
+            next100-025-evidence/artifact-manifest.json
+            next100-025-evidence/train.jsonl
+            next100-025-evidence/normalized/*.txt
+            next100-025-evidence/snapshots/sha256/*/payload
+            next100-025-evidence.stdout.json
+          if-no-files-found: error
+          retention-days: 90
