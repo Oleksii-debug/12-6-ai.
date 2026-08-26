@@ -27,17 +27,24 @@ class Next100063TerminalSourceRegistryV2Tests(unittest.TestCase):
     def test_current_registry_passes(self) -> None:
         report = module.validate(copy.deepcopy(self.data))
         self.assertEqual(report["status"], "PASS")
-        self.assertEqual(report["candidate_normalized_bytes"], 266476)
-        self.assertEqual(report["candidate_independent_family_count"], 10)
+        self.assertEqual(report["candidate_normalized_bytes"], 303374)
+        self.assertEqual(report["candidate_independent_family_count"], 11)
         self.assertEqual(
             report["by_stratum"],
             {
                 "uk": {"normalized_bytes": 100856, "family_count": 4},
                 "en": {"normalized_bytes": 150643, "family_count": 3},
-                "code": {"normalized_bytes": 14977, "family_count": 3},
+                "code": {"normalized_bytes": 51875, "family_count": 4},
             },
         )
         self.assertEqual(report["held_fail_closed_prs"], [467, 465, 475])
+
+    def test_numpy_terminal_authority_is_required(self) -> None:
+        broken = copy.deepcopy(self.data)
+        broken["terminal_additions"] = [row for row in broken["terminal_additions"] if row.get("pr") != 468]
+        self.reseal(broken)
+        with self.assertRaises(module.ValidationError):
+            module.validate(broken)
 
     def test_failed_or_unmaterialized_sources_cannot_receive_credit(self) -> None:
         for blocked_pr in (467, 465, 475):
@@ -73,6 +80,20 @@ class Next100063TerminalSourceRegistryV2Tests(unittest.TestCase):
     def test_capacity_arithmetic_drift_fails_closed(self) -> None:
         broken = copy.deepcopy(self.data)
         broken["pre_global_dedup_inventory"]["candidate_normalized_bytes"] += 1
+        self.reseal(broken)
+        with self.assertRaises(module.ValidationError):
+            module.validate(broken)
+
+    def test_replay_cannot_repair_capacity(self) -> None:
+        broken = copy.deepcopy(self.data)
+        broken["composition_policy"]["replay_or_duplication_may_repair_capacity"] = True
+        self.reseal(broken)
+        with self.assertRaises(module.ValidationError):
+            module.validate(broken)
+
+    def test_nonterminal_candidates_cannot_be_counted(self) -> None:
+        broken = copy.deepcopy(self.data)
+        broken["composition_policy"]["parallel_retest_queued_or_failed_candidates_counted"] = True
         self.reseal(broken)
         with self.assertRaises(module.ValidationError):
             module.validate(broken)
