@@ -2,10 +2,12 @@
 """DATA-228 immutable UA/EN diversity source probe.
 
 The probe acquires only commit-pinned public source objects and their license
-texts, computes content identities, applies a deterministic extraction and the
+texts, computes content identities, applies deterministic extraction and the
 incumbent D03 privacy/quality preview, and writes machine-readable evidence.
-It does not itself authorize training; a later DATA-24 registry decision is
-required before admission.
+It deliberately has no project-package or torch dependency so rights/data
+probing remains LOCAL_FREE and independent of model runtime installation.
+It does not itself authorize training; a DATA-24 registry decision is required
+before admission.
 """
 from __future__ import annotations
 
@@ -14,13 +16,20 @@ import hashlib
 import json
 import re
 import unicodedata
+from dataclasses import dataclass
 from pathlib import Path
 from urllib.request import Request, urlopen
 
-from twelve_six.data.pipeline import PipelineConfig, _quality_reason
-from twelve_six.data.snapshot_promotion import _chunk_text
-
 MAX_BYTES_DEFAULT = 2_000_000
+EMAIL_RE = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE)
+PHONE_RE = re.compile(r"(?<!\w)(?:\+?\d[\d ()-]{7,}\d)(?!\w)")
+
+
+@dataclass(frozen=True)
+class _D03PreviewConfig:
+    min_chars: int = 60
+    max_chars: int = 1600
+    min_alpha_ratio: float = 0.35
 
 
 def _sha256(payload: bytes) -> str:
@@ -55,6 +64,74 @@ def _normalize_text(text: str) -> str:
     )
     lines = [" ".join(line.split()) for line in text.split("\n")]
     return "\n".join(line for line in lines if line).strip()
+
+
+def _quality_reason(text: str, config: _D03PreviewConfig) -> str | None:
+    """Exact DATA-181/D03 quality/privacy predicate needed by this probe."""
+    if len(text) < config.min_chars:
+        return "too_short"
+    if len(text) > config.max_chars:
+        return "too_long"
+    if any(unicodedata.category(ch) == "Cc" and ch not in "\n\t" for ch in text):
+        return "control_character"
+    if EMAIL_RE.search(text):
+        return "pii_email"
+    if PHONE_RE.search(text):
+        return "pii_phone"
+    visible = [ch for ch in text if not ch.isspace()]
+    if not visible:
+        return "empty"
+    alpha_ratio = sum(ch.isalpha() for ch in visible) / len(visible)
+    if alpha_ratio < config.min_alpha_ratio:
+        return "low_alpha_ratio"
+    return None
+
+
+def _chunk_text(text: str, *, max_chars: int = 1200, min_chars: int = 80) -> tuple[str, ...]:
+    """Exact DATA-181 generic natural-text chunking semantics."""
+    if max_chars < min_chars or min_chars < 20:
+        raise RuntimeError("invalid chunk limits")
+    paragraphs = [part.strip() for part in text.split("\n") if part.strip()]
+    chunks: list[str] = []
+    current: list[str] = []
+    current_len = 0
+
+    def flush() -> None:
+        nonlocal current, current_len
+        if current:
+            value = "\n".join(current).strip()
+            if len(value) >= min_chars:
+                chunks.append(value)
+            current, current_len = [], 0
+
+    for paragraph in paragraphs:
+        if len(paragraph) <= max_chars:
+            pieces = [paragraph]
+        else:
+            pieces: list[str] = []
+            words = paragraph.split()
+            part: list[str] = []
+            part_len = 0
+            for word in words:
+                needed = len(word) if not part else len(word) + 1
+                if part and part_len + needed > max_chars:
+                    pieces.append(" ".join(part))
+                    part = [word]
+                    part_len = len(word)
+                else:
+                    part.append(word)
+                    part_len += needed
+            if part:
+                pieces.append(" ".join(part))
+
+        for piece in pieces:
+            needed = len(piece) if not current else len(piece) + 1
+            if current and current_len + needed > max_chars:
+                flush()
+            current.append(piece)
+            current_len += needed
+    flush()
+    return tuple(chunks)
 
 
 def _markdown_visible(text: str) -> str:
@@ -112,17 +189,7 @@ def run_probe(
     evidence_root.mkdir(parents=True, exist_ok=True)
     destination = Path(report_path)
     destination.parent.mkdir(parents=True, exist_ok=True)
-
-    quality_config = PipelineConfig(
-        split_seed="12-6-data228-probe-v1",
-        validation_fraction=0.20,
-        min_chars=60,
-        max_chars=1600,
-        min_alpha_ratio=0.35,
-        near_duplicate_threshold=0.92,
-        near_duplicate_shingle_words=5,
-        tiny_near_dedup_max_documents=5000,
-    )
+    quality_config = _D03PreviewConfig()
 
     reports: list[dict[str, object]] = []
     for item in config["candidates"]:
@@ -191,6 +258,7 @@ def run_probe(
                         "max": max(accepted_lengths),
                         "mean": sum(accepted_lengths) / len(accepted_lengths),
                     },
+                    "accepted_normalized_sha256": accepted_sha,
                     "exact_duplicate_chunks": 0,
                 },
             }
@@ -209,6 +277,18 @@ def run_probe(
         "local_free_only": True,
         "authority_boundary": "DATA_181_BASELINE_USED_BECAUSE_DATA_213_PUBLICATION_NOT_DISCOVERABLE",
         "baseline_source_sha": config["baseline"]["source_sha"],
+        "d03_preview_semantics": {
+            "source_commit": config["baseline"]["source_sha"],
+            "chunking": {"max_chars": 1200, "min_chars": 80},
+            "quality": {
+                "min_chars": quality_config.min_chars,
+                "max_chars": quality_config.max_chars,
+                "min_alpha_ratio": quality_config.min_alpha_ratio,
+                "reject_control_characters": True,
+                "reject_email": True,
+                "reject_phone": True,
+            },
+        },
         "candidates": reports,
     }
     report = {**core, "report_sha256": _sha256(_canonical(core))}
