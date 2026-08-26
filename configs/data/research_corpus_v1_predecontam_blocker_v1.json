@@ -46,7 +46,7 @@
     "tokenizer_fit": "NOT_PERMITTED"
   },
   "evidence_identity_scope": "SHA256(canonical JSON with evidence_identity_sha256 omitted)",
-  "evidence_identity_sha256": "af1b6a222ac2950386f63446c32ee383a6d7e7d19c66a15524aaf05787a4bb27",
+  "evidence_identity_sha256": "86afd32e1680ac1dc676de1da63a3dd96b0e03f108e0490495e4bc311712e6dd",
   "execution_profile": "LOCAL_FREE",
   "purpose": "Fail-close Research Corpus V1 pre-decontamination candidate freeze until terminal source convergence and terminal successor global dedup are both available.",
   "repository": "Oleksii-debug/12-6-ai.",
@@ -54,7 +54,7 @@
     "base_head_sha": "b0523ccbc4b957615aac849d476cfa851be87578",
     "exact_head_ci_state": "QUEUED_NONTERMINAL",
     "issue": 530,
-    "observed_head_sha": "226cbc26710a75af4a864576220b270089e7c52b",
+    "observed_head_sha": "1bcd1a57a7b2699294808b47888a255bf37a50aa",
     "pr_state": "OPEN_DRAFT",
     "pull_request": 538,
     "reported_pre_successor_global_dedup_vector_non_authoritative_until_terminal": {
@@ -98,7 +98,7 @@
     "pull_request": 632,
     "worker_id": "NEXT100-065D-CROSSSOURCE-DEDUP-V6",
     "required_report_schema": "12-6.next100-065d-cross-source-dedup-report.v6",
-    "observed_head_sha": "704a558545b158fecff5cb41ad5bd16f93884cdd",
+    "observed_head_sha": "938f0076f06fca653681774ce1a9585bd2f57380",
     "pr_state": "OPEN_DRAFT",
     "exact_head_ci_state": "QUEUED_NONTERMINAL",
     "terminal_authority_consumed": false,
