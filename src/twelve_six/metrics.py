@@ -1,6 +1,6 @@
 """Tokenizer-agnostic language-model metrics.
 
-The primary primitive here is bits per byte (BPB).  BPB normalizes negative
+The primary primitive here is bits per byte (BPB). BPB normalizes negative
 log-likelihood by the number of raw bytes represented by the scored targets,
 so it remains meaningful when tokenizer segmentation or vocabulary size changes.
 """
@@ -123,9 +123,9 @@ def bpb_from_aggregate(
     """Build validated BPB totals from already-reduced evaluation statistics."""
 
     return BPBTotals(
-        total_nll_nats=float(total_nll_nats),
-        total_utf8_bytes=int(total_utf8_bytes),
-        predicted_tokens=int(predicted_tokens),
+        total_nll_nats=total_nll_nats,
+        total_utf8_bytes=total_utf8_bytes,
+        predicted_tokens=predicted_tokens,
     )
 
 
