@@ -1,0 +1,56 @@
+{
+  "base_authority": {
+    "env151_branch": "env151/universal-execution-bootstrap-20260826",
+    "env151_sha": "bbca2101ea9409b47d844dd8292cd7f2290e3ff0",
+    "universal_bootstrap_required": true
+  },
+  "forbidden_actions_taken": {
+    "changed_data_composition": false,
+    "invented_learn234_identity": false,
+    "ran_unmatched_1m_training": false,
+    "relabelled_data183_as_data230": false,
+    "relabelled_data25_as_external_real": false
+  },
+  "foreign_pretrained_weights": false,
+  "next_unblock_condition": "A terminal LEARN-234 authority must publish exact corpus/tokenizer/evaluation identities and matched optimized-token checkpoints; LEARN-235 must then be rerun from random initialization under that exact exposure.",
+  "non_substitutable_existing_evidence": {
+    "data183": {
+      "reason": "external-real UA/EN plus project-authored code is not the requested DATA-230/LEARN-234 identity",
+      "status": "CANDIDATE_UA_EN_REAL_PROJECT_CODE"
+    },
+    "data25_1m": {
+      "corpus_identity": "422f545da93526ceba2c0ff738e0b9deac65f35bfb31d87d2aab068cda091fc8",
+      "heldout_bpb_best_final": 0.12651757096387536,
+      "model_parameters": 1037696,
+      "model_spec_sha256": "ff3cee542a1f75bb4e1eff8d7d24d72533af8f4f3d82bd064fb1cbfeba8c8d07",
+      "role": "cross_corpus_diagnostic_only"
+    }
+  },
+  "optimizer_updates": 0,
+  "paid_compute": false,
+  "report_sha256": "c1ba6eb05cc068e167a68018a0a8163cf251a1a1b02059dfc5138aa727cf6bca",
+  "repository": "Oleksii-debug/12-6-ai.",
+  "required_missing_authority": {
+    "observed_at_cutoff": "NOT_PUBLISHED",
+    "required_fields": [
+      "terminal_success_source_sha",
+      "corpus_identity",
+      "tokenizer_identity",
+      "evaluation_identity",
+      "optimized_token_schedule",
+      "500k_modelspec_identity",
+      "500k_best_checkpoint_identity",
+      "500k_final_checkpoint_identity"
+    ],
+    "worker_id": "LEARN-234-EXTERNAL-REAL-500K"
+  },
+  "schema": "12-6.learn235-external-real-1m.blocker.v1",
+  "source_cutoff_utc": "2026-08-26T09:49:22Z",
+  "status": "BLOCKED_NO_TERMINAL_LEARN234_IDENTITY",
+  "training_executed": false,
+  "upstream_missing_or_nonterminal": [
+    "DATA-230-CORPUS-V03-EXTERNAL-REAL",
+    "LEARN-234-EXTERNAL-REAL-500K"
+  ],
+  "worker_id": "LEARN-235-EXTERNAL-REAL-1M"
+}
