@@ -28,6 +28,7 @@ TRAINED_TARGETS = (500_000, 1_000_000, 1_500_000, 2_000_000)
 COMMON_EVAL_TARGETS = (0,) + TRAINED_TARGETS
 VERIFY_TOL = 1e-7
 LADDER_EVAL_SCHEMA = "12-6.learned-base-ladder-evaluation-identity.v1"
+EXPECTED_LADDER_EVAL_ID = "7189e6df053574beb686727c94e684cdbaf08a34ef33aa953eff7cdae0320113"
 
 
 class Scale141VerificationError(RuntimeError):
@@ -87,6 +88,10 @@ def _ladder_evaluation_identity(tok, manifest: dict[str, Any]) -> dict[str, Any]
         },
     }
     value["identity_sha256"] = hash_json(value)
+    if value["identity_sha256"] != EXPECTED_LADDER_EVAL_ID:
+        raise Scale141VerificationError(
+            "M150 common evaluation identity drifted; refusing 10M ladder retention"
+        )
     return value
 
 
@@ -301,8 +306,6 @@ def verify(repo: Path, source_sha: str, out: Path) -> dict[str, Any]:
             "final_bits_per_byte": common_final_bpb,
             "best_improved_vs_random_init": common_best_bpb < common_initial_bpb,
         },
-        # Compatibility keys consumed by the existing retention workflow. They
-        # deliberately name the M150-common best checkpoint.
         "best_target_optimized_tokens": best_target,
         "final_target_optimized_tokens": final_target,
         "initial_heldout_bits_per_byte": common_initial_bpb,
