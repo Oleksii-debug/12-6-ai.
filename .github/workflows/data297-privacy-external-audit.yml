@@ -121,10 +121,10 @@ jobs:
               "github:psf/requests",
           }
           assert report["fixture_metrics"]["confusion"] == {
-              "false_negative": 8,
+              "false_negative": 7,
               "false_positive": 0,
               "true_negative": 7,
-              "true_positive": 7,
+              "true_positive": 8,
           }
           assert all(value is False for value in report["public_evidence"].values())
           PY
