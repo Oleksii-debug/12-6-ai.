@@ -11,6 +11,7 @@ from typing import Any
 
 EXPECTED_LABELS = ["self-hosted", "linux", "x64", "gpu", "cuda", "twelve-six-ai"]
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
+EXECUTABLE_KINDS = {"target_device", "topology_conditional"}
 
 
 def _load(path: Path) -> dict[str, Any]:
@@ -96,18 +97,19 @@ def build_dry_run(manifest: dict[str, Any]) -> dict[str, Any]:
         parent = parents[parent_name]
         sha = parent.get("sha")
         deps = stage.get("depends_on", [])
+        kind = stage.get("kind")
 
         if sha is None:
             status = "BLOCKED_PARENT_NOT_FOUND"
         elif not SHA40.fullmatch(str(sha)):
             raise ValueError(f"invalid parent SHA for {parent_name}")
-        elif stage.get("kind") == "target_device" and parent.get("target_executor") is None and parent_name != "GPU-200":
+        elif kind in EXECUTABLE_KINDS and parent.get("target_executor") is None and parent_name != "GPU-200":
             status = "BLOCKED_PARENT_TARGET_EXECUTOR_MISSING"
         elif any(not statuses[dep].startswith("READY") for dep in deps):
             status = "BLOCKED_DEPENDENCY"
-        elif stage.get("kind") == "topology_conditional":
+        elif kind == "topology_conditional":
             status = "READY_IF_TOPOLOGY_EXISTS"
-        elif stage.get("kind") == "artifact_gate":
+        elif kind == "artifact_gate":
             reuse = stage.get("reuse_artifact_from")
             if reuse not in statuses:
                 raise ValueError(f"artifact gate {stage_id} has invalid reuse source")
