@@ -8,7 +8,7 @@ DATA-526 is the composition point that must eventually freeze one exact Research
 
 The incumbent DATA-300 contract remains bound at `8ea7f830e50a23754d189dd4134f4afad76a7ee9`, contract identity `07d7beaaff4616e839450de6af3d407855c832bf75a24a959d1a12de5d9364e5`. DATA-301 remains terminal-blocked at `8820ba1b255f6bb95c7db0531fd846078a1aae01`, evidence identity `939065abeefff8aed924415589608ff3fc721fe4b0a57fc200146a4b6a137e81`, with no corpus identity, no shard identity, and zero authorized balanced no-replay capacity.
 
-Issue #526 requires the late source vector to come through the surviving NEXT100-063 issue #530 rather than by hard-coding whichever source PRs happen to be visible. The earlier issue #521 and PR #527 are superseded lineage. The active canonical candidate is draft PR #538 at observed exact head `226cbc26710a75af4a864576220b270089e7c52b`, based on DATA-287 head `b0523ccbc4b957615aac849d476cfa851be87578`.
+Issue #526 requires the late source vector to come through the surviving NEXT100-063 issue #530 rather than by hard-coding whichever source PRs happen to be visible. The earlier issue #521 and PR #527 are superseded lineage. The active canonical candidate is draft PR #538 at observed exact head `1bcd1a57a7b2699294808b47888a255bf37a50aa`, based on DATA-287 head `b0523ccbc4b957615aac849d476cfa851be87578`.
 
 The current V4 machine registry reports identity `9fc400a3144b46c481e45d043b0a3365eb2129c83bbacde6f9e7af8a41fadc58` and a provisional pre-successor-global-dedup source vector of 2,045,180 source-capacity bytes across 14 independent families: Ukrainian 100,856 bytes / four families, English 1,838,293 / five, and code 106,031 / five. The vector includes the exact 15,540-byte accepted-only CPython capacity and exact terminal Gutenberg/NumPy additions; it does not convert source bytes into tokenizer tokens or optimized causal-loss positions.
 
@@ -18,7 +18,7 @@ Exact-head Actions for PR #538 are currently queued. Queue state is not PASS aut
 
 The earlier DATA-526 blocker sequence was too weak: it allowed the candidate-freeze step immediately after terminal source-registry convergence. That would permit a future implementation to freeze the pre-dedup registry graph and bypass the successor global exact/near/fragment/lineage dedup stage.
 
-The live successor dedup lane is NEXT100-065D / PR #632, observed here at head `704a558545b158fecff5cb41ad5bd16f93884cdd`. Its V6 report schema is `12-6.next100-065d-cross-source-dedup-report.v6`. The current composed input vector is 31 source objects / 2,045,180 source-capacity bytes / 14 independent families, including exact 15,540-byte accepted-only CPython capacity. The exact-head V6 workflow is queued and therefore remains nonterminal.
+The live successor dedup lane is NEXT100-065D / PR #632, observed here at head `938f0076f06fca653681774ce1a9585bd2f57380`. Its V6 report schema is `12-6.next100-065d-cross-source-dedup-report.v6`. The current composed input vector is 31 source objects / 2,045,180 source-capacity bytes / 14 independent families, including exact 15,540-byte accepted-only CPython capacity. The exact-head V6 workflow is queued and therefore remains nonterminal.
 
 DATA-526 now requires immutable terminal V6 evidence before any candidate freeze. The terminal handoff must include exact-head success, an immutable V6 report identity, conservative post-global-dedup capacity, retained/excluded object decisions, and an explicit queue-is-not-pass boundary.
 
