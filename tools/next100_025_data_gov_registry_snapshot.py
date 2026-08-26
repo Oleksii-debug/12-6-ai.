@@ -12,11 +12,25 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 EMAIL_RE = re.compile(r"[\w.+-]+@[\w.-]+\.[A-Za-zА-Яа-яІіЇїЄєҐґ]{2,}")
-PHONE_RE = re.compile(r"(?<!\d)(?:\+?38[\s().-]*)?0\d{2}[\s().-]*\d{3}[\s.-]*\d{2}[\s.-]*\d{2}(?!\d)")
+PHONE_RE = re.compile(
+    r"(?<!\d)(?:\+?38[\s().-]*)?0\d{2}[\s().-]*\d{3}[\s.-]*\d{2}[\s.-]*\d{2}(?!\d)"
+)
 LONG_ID_RE = re.compile(r"(?<!\d)\d{10,}(?!\d)")
 URL_RE = re.compile(r"https?://\S+", re.IGNORECASE)
 WORD_RE = re.compile(r"[0-9A-Za-zА-Яа-яІіЇїЄєҐґ'’\-]+", re.UNICODE)
-UA_LEXEMES = ("держав", "дан", "інформац", "набір", "реєстр", "україн", "оновлен", "розпоряд", "публіч", "норматив", "послуг")
+UA_LEXEMES = (
+    "держав",
+    "дан",
+    "інформац",
+    "набір",
+    "реєстр",
+    "україн",
+    "оновлен",
+    "розпоряд",
+    "публіч",
+    "норматив",
+    "послуг",
+)
 
 
 def sha256(data: bytes) -> str:
@@ -24,7 +38,9 @@ def sha256(data: bytes) -> str:
 
 
 def canonical_json(obj: object) -> bytes:
-    return (json.dumps(obj, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8")
+    return (
+        json.dumps(obj, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n"
+    ).encode("utf-8")
 
 
 def fetch(url: str, max_bytes: int) -> bytes:
@@ -52,6 +68,25 @@ def load_json_bytes(payload: bytes) -> object:
     raise RuntimeError("resource is not decodable JSON")
 
 
+def validate_package_identity(package: dict, cfg: dict) -> None:
+    """Bind the public CKAN package name without confusing it with internal UUID."""
+    expected_name = cfg["dataset"]["dataset_id"]
+    actual_name = package.get("name")
+    if actual_name != expected_name:
+        raise RuntimeError(
+            "dataset name/slug mismatch: "
+            f"expected={expected_name!r} actual={actual_name!r} "
+            f"internal_id={package.get('id')!r}"
+        )
+
+    expected_title = cfg["dataset"]["title"]
+    actual_title = package.get("title")
+    if actual_title != expected_title:
+        raise RuntimeError(
+            f"dataset title mismatch: expected={expected_title!r} actual={actual_title!r}"
+        )
+
+
 def pick_resource(package: dict, cfg: dict) -> dict:
     resources = package.get("resources") or []
     expected_id = cfg["resource_selection"].get("expected_resource_id")
@@ -61,9 +96,18 @@ def pick_resource(package: dict, cfg: dict) -> dict:
             raise RuntimeError(f"locked resource id missing or ambiguous: {expected_id}")
         return matches[0]
 
-    allowed = {value.casefold().lstrip(".") for value in cfg["resource_selection"]["allowed_formats"]}
-    excluded = [value.casefold() for value in cfg["resource_selection"]["exclude_name_fragments"]]
-    preferred = [value.casefold() for value in cfg["resource_selection"]["prefer_name_fragments"]]
+    allowed = {
+        value.casefold().lstrip(".")
+        for value in cfg["resource_selection"]["allowed_formats"]
+    }
+    excluded = [
+        value.casefold()
+        for value in cfg["resource_selection"]["exclude_name_fragments"]
+    ]
+    preferred = [
+        value.casefold()
+        for value in cfg["resource_selection"]["prefer_name_fragments"]
+    ]
     candidates = []
     for resource in resources:
         fmt = str(resource.get("format") or "").casefold().lstrip(".")
@@ -104,7 +148,11 @@ def flatten_scalars(value: object, prefix: str = "") -> list[tuple[str, str]]:
             path = f"{prefix}.{key}" if prefix else str(key)
             out.extend(flatten_scalars(item, path))
     elif isinstance(value, list):
-        scalar_items = [str(item) for item in value if isinstance(item, (str, int, float, bool)) and str(item).strip()]
+        scalar_items = [
+            str(item)
+            for item in value
+            if isinstance(item, (str, int, float, bool)) and str(item).strip()
+        ]
         if scalar_items:
             out.append((prefix, "; ".join(scalar_items)))
         for index, item in enumerate(value):
@@ -134,7 +182,9 @@ def shingle_set(text: str, n: int = 5) -> set[tuple[str, ...]]:
     words = [match.group(0).casefold() for match in WORD_RE.finditer(text)]
     if len(words) < n:
         return set()
-    return {tuple(words[index:index+n]) for index in range(len(words) - n + 1)}
+    return {
+        tuple(words[index : index + n]) for index in range(len(words) - n + 1)
+    }
 
 
 def jaccard(left: set, right: set) -> float:
@@ -144,10 +194,19 @@ def jaccard(left: set, right: set) -> float:
 
 
 def safe_record_text(record: dict, cfg: dict) -> tuple[str, dict]:
-    safe_fragments = [value.casefold() for value in cfg["safe_text_key_fragments"]]
-    excluded = [value.casefold() for value in cfg["privacy"]["exclude_key_fragments"]]
+    safe_fragments = [
+        value.casefold() for value in cfg["safe_text_key_fragments"]
+    ]
+    excluded = [
+        value.casefold() for value in cfg["privacy"]["exclude_key_fragments"]
+    ]
     kept: list[str] = []
-    rejected_scalars = {"email": 0, "phone": 0, "long_numeric_identifier": 0, "excluded_key": 0}
+    rejected_scalars = {
+        "email": 0,
+        "phone": 0,
+        "long_numeric_identifier": 0,
+        "excluded_key": 0,
+    }
     for key, raw_value in flatten_scalars(record):
         folded_key = key.casefold()
         if any(fragment in folded_key for fragment in excluded):
@@ -155,7 +214,9 @@ def safe_record_text(record: dict, cfg: dict) -> tuple[str, dict]:
             continue
         if not any(fragment in folded_key for fragment in safe_fragments):
             continue
-        value = unicodedata.normalize("NFC", " ".join(raw_value.replace("\xa0", " ").split()))
+        value = unicodedata.normalize(
+            "NFC", " ".join(raw_value.replace("\xa0", " ").split())
+        )
         value = URL_RE.sub("", value).strip(" ;,")
         if not value:
             continue
@@ -199,13 +260,16 @@ def main() -> int:
 
     package_payload = fetch(cfg["dataset"]["package_api"], 2_000_000)
     package_response = load_json_bytes(package_payload)
-    if not isinstance(package_response, dict) or package_response.get("success") is not True:
+    if (
+        not isinstance(package_response, dict)
+        or package_response.get("success") is not True
+    ):
         raise RuntimeError("CKAN package_show did not succeed")
     package = package_response.get("result")
     if not isinstance(package, dict):
         raise RuntimeError("CKAN package result missing")
-    if package.get("id") != cfg["dataset"]["dataset_id"]:
-        raise RuntimeError("dataset identity mismatch")
+    validate_package_identity(package, cfg)
+
     organization = package.get("organization") or {}
     org_title = organization.get("title") if isinstance(organization, dict) else None
     if org_title != cfg["dataset"]["publisher"]:
@@ -217,7 +281,10 @@ def main() -> int:
     resource = pick_resource(package, cfg)
     resource_url = str(resource.get("url") or "")
     parsed = urlparse(resource_url)
-    if parsed.scheme != "https" or parsed.hostname not in {"data.gov.ua", "www.data.gov.ua"}:
+    if parsed.scheme != "https" or parsed.hostname not in {
+        "data.gov.ua",
+        "www.data.gov.ua",
+    }:
         raise RuntimeError(f"resource escaped data.gov.ua boundary: {resource_url}")
 
     max_bytes = cfg["resource_selection"]["max_download_bytes"]
@@ -237,8 +304,19 @@ def main() -> int:
     accepted: list[dict] = []
     normalized_seen: set[str] = set()
     shingles: list[set] = []
-    rejected = {"too_short": 0, "language": 0, "exact_duplicate": 0, "near_duplicate": 0, "no_safe_text": 0}
-    scalar_rejections = {"email": 0, "phone": 0, "long_numeric_identifier": 0, "excluded_key": 0}
+    rejected = {
+        "too_short": 0,
+        "language": 0,
+        "exact_duplicate": 0,
+        "near_duplicate": 0,
+        "no_safe_text": 0,
+    }
+    scalar_rejections = {
+        "email": 0,
+        "phone": 0,
+        "long_numeric_identifier": 0,
+        "excluded_key": 0,
+    }
 
     for ordinal, record in enumerate(records):
         text, scalar_stats = safe_record_text(record, cfg)
@@ -260,29 +338,52 @@ def main() -> int:
             rejected["exact_duplicate"] += 1
             continue
         current_shingles = shingle_set(text)
-        if any(jaccard(current_shingles, prior) > cfg["dedup"]["intra_family_near_duplicate_5token_jaccard"] for prior in shingles):
+        if any(
+            jaccard(current_shingles, prior)
+            > cfg["dedup"]["intra_family_near_duplicate_5token_jaccard"]
+            for prior in shingles
+        ):
             rejected["near_duplicate"] += 1
             continue
         normalized_seen.add(record_hash)
         shingles.append(current_shingles)
-        accepted.append({"ordinal": ordinal, "normalized_sha256": record_hash, "normalized_utf8_bytes": len(encoded), "text": text, "language": lang})
+        accepted.append(
+            {
+                "ordinal": ordinal,
+                "normalized_sha256": record_hash,
+                "normalized_utf8_bytes": len(encoded),
+                "text": text,
+                "language": lang,
+            }
+        )
 
-    aggregate_text = "\n---\n".join(item["text"].rstrip() for item in accepted).strip() + "\n"
+    aggregate_text = (
+        "\n---\n".join(item["text"].rstrip() for item in accepted).strip() + "\n"
+    )
     aggregate_bytes = aggregate_text.encode("utf-8")
     aggregate_hash = sha256(aggregate_bytes)
     aggregate_lang = language_evidence(aggregate_text, cfg["language"])
     lang_pass = (
-        aggregate_lang["cyrillic_alpha_ratio"] >= cfg["language"]["min_cyrillic_alpha_ratio"]
-        and aggregate_lang["uk_specific_chars"] >= cfg["language"]["min_uk_specific_chars"]
-        and aggregate_lang["uk_lexical_hits"] >= cfg["language"]["min_uk_lexical_hits"]
+        aggregate_lang["cyrillic_alpha_ratio"]
+        >= cfg["language"]["min_cyrillic_alpha_ratio"]
+        and aggregate_lang["uk_specific_chars"]
+        >= cfg["language"]["min_uk_specific_chars"]
+        and aggregate_lang["uk_lexical_hits"]
+        >= cfg["language"]["min_uk_lexical_hits"]
     )
 
     if len(accepted) < cfg["quality"]["min_accepted_records"]:
-        raise RuntimeError(f"substantiality record gate failed: accepted={len(accepted)} rejected={rejected}")
+        raise RuntimeError(
+            f"substantiality record gate failed: accepted={len(accepted)} rejected={rejected}"
+        )
     if len(aggregate_bytes) < cfg["quality"]["min_total_normalized_utf8_bytes"]:
-        raise RuntimeError(f"substantiality byte gate failed: bytes={len(aggregate_bytes)}")
+        raise RuntimeError(
+            f"substantiality byte gate failed: bytes={len(aggregate_bytes)}"
+        )
     if not lang_pass:
-        raise RuntimeError(f"aggregate Ukrainian language gate failed: {aggregate_lang}")
+        raise RuntimeError(
+            f"aggregate Ukrainian language gate failed: {aggregate_lang}"
+        )
     if aggregate_hash in cfg["dedup"]["cross_family_normalized_hashes"]:
         raise RuntimeError("cross-family normalized exact duplicate")
 
@@ -298,7 +399,10 @@ def main() -> int:
     if cfg["mode"] == "LOCKED":
         for field, actual in lock_values.items():
             if cfg["resource_selection"].get(field) != actual:
-                raise RuntimeError(f"locked identity mismatch {field}: expected={cfg['resource_selection'].get(field)!r} actual={actual!r}")
+                raise RuntimeError(
+                    f"locked identity mismatch {field}: "
+                    f"expected={cfg['resource_selection'].get(field)!r} actual={actual!r}"
+                )
 
     raw_dir = output / "snapshots" / "sha256" / raw_hash
     raw_dir.mkdir(parents=True, exist_ok=True)
@@ -307,21 +411,25 @@ def main() -> int:
 
     train_rows = []
     for item in accepted:
-        train_rows.append({
-            "source_id": cfg["family"]["family_id"],
-            "source_version": resource.get("id"),
-            "source_url": resource_url,
-            "dataset_id": cfg["dataset"]["dataset_id"],
-            "language": "uk",
-            "license": cfg["rights"]["dataset_license_label"],
-            "attribution_required": True,
-            "raw_sha256": raw_hash,
-            "normalized_sha256": item["normalized_sha256"],
-            "text": item["text"],
-            "training_eligible": cfg["mode"] == "LOCKED",
-            "evaluation_eligible": False,
-        })
-    with (output / "train.jsonl").open("w", encoding="utf-8", newline="\n") as handle:
+        train_rows.append(
+            {
+                "source_id": cfg["family"]["family_id"],
+                "source_version": resource.get("id"),
+                "source_url": resource_url,
+                "dataset_id": cfg["dataset"]["dataset_id"],
+                "language": "uk",
+                "license": cfg["rights"]["dataset_license_label"],
+                "attribution_required": True,
+                "raw_sha256": raw_hash,
+                "normalized_sha256": item["normalized_sha256"],
+                "text": item["text"],
+                "training_eligible": cfg["mode"] == "LOCKED",
+                "evaluation_eligible": False,
+            }
+        )
+    with (output / "train.jsonl").open(
+        "w", encoding="utf-8", newline="\n"
+    ) as handle:
         for row in train_rows:
             handle.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
 
@@ -333,6 +441,7 @@ def main() -> int:
         "local_free_only": True,
         "family": cfg["family"],
         "dataset": {
+            "public_identifier": cfg["dataset"]["dataset_id"],
             "id": package.get("id"),
             "name": package.get("name"),
             "title": package.get("title"),
@@ -361,30 +470,54 @@ def main() -> int:
         "rights_evidence_sha256": actual_rights_sha,
         "language": {**aggregate_lang, "passed": lang_pass},
         "privacy": {
-            "policy": "safe-key allowlist plus scalar exclusion for contacts/PII-like values",
+            "policy": (
+                "safe-key allowlist plus scalar exclusion for contacts/PII-like values"
+            ),
             "excluded_scalars": scalar_rejections,
             "passed": True,
         },
         "dedup": {
             "accepted_unique_normalized_records": len(normalized_seen),
-            "near_duplicate_threshold": cfg["dedup"]["intra_family_near_duplicate_5token_jaccard"],
+            "near_duplicate_threshold": cfg["dedup"][
+                "intra_family_near_duplicate_5token_jaccard"
+            ],
             "cross_family_reference": cfg["dedup"]["cross_family_reference"],
-            "cross_family_exact_normalized_exclusions": cfg["dedup"]["cross_family_normalized_hashes"],
+            "cross_family_exact_normalized_exclusions": cfg["dedup"][
+                "cross_family_normalized_hashes"
+            ],
         },
         "attribution": {
             "required": True,
             "template": cfg["rights"]["attribution_template"],
-            "changes": "Selected safe administrative text fields only; contacts and PII-like scalars excluded; URLs removed from text; Unicode NFC; whitespace normalized; records deduplicated.",
+            "changes": (
+                "Selected safe administrative text fields only; contacts and PII-like "
+                "scalars excluded; URLs removed from text; Unicode NFC; whitespace "
+                "normalized; records deduplicated."
+            ),
         },
         "lock_values": lock_values,
         "evaluation_authority": "NOT_ADMITTED",
     }
-    (output / "report.json").write_text(json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8", newline="\n")
+    (output / "report.json").write_text(
+        json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
 
     files = []
-    for path in sorted(path for path in output.rglob("*") if path.is_file() and path.name != "artifact-manifest.json"):
+    for path in sorted(
+        path
+        for path in output.rglob("*")
+        if path.is_file() and path.name != "artifact-manifest.json"
+    ):
         data = path.read_bytes()
-        files.append({"path": path.relative_to(output).as_posix(), "sha256": sha256(data), "size_bytes": len(data)})
+        files.append(
+            {
+                "path": path.relative_to(output).as_posix(),
+                "sha256": sha256(data),
+                "size_bytes": len(data),
+            }
+        )
     manifest_core = {
         "schema_version": "12-6.next100-025-artifact-manifest.v1",
         "dataset_id": cfg["dataset"]["dataset_id"],
@@ -393,8 +526,15 @@ def main() -> int:
         "normalized_sha256": aggregate_hash,
         "files": files,
     }
-    manifest = {**manifest_core, "manifest_sha256": sha256(canonical_json(manifest_core))}
-    (output / "artifact-manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8", newline="\n")
+    manifest = {
+        **manifest_core,
+        "manifest_sha256": sha256(canonical_json(manifest_core)),
+    }
+    (output / "artifact-manifest.json").write_text(
+        json.dumps(manifest, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
 
     print(json.dumps(report, ensure_ascii=False, sort_keys=True))
     return 0
