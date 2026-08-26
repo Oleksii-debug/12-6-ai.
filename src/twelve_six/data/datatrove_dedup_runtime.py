@@ -23,6 +23,12 @@ def _canonical_json_bytes(value: Any) -> bytes:
     ).encode("utf-8")
 
 
+def _require_text(value: str, field: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise DataTroveMinhashError(f"{field} must be a non-empty string")
+    return value.strip()
+
+
 def _require_sha256(value: str, field: str) -> str:
     if not isinstance(value, str) or len(value) != 64:
         raise DataTroveMinhashError(f"{field} must be lowercase SHA-256 hex")
@@ -52,7 +58,13 @@ def _join_uri(base: str, suffix: str) -> str:
 
 @dataclass(frozen=True)
 class DataTroveMinhashSpec:
-    """Executable DataTrove MinHash contract matching the public 0.10.0 API."""
+    """Executable DataTrove MinHash contract matching the public 0.10.0 API.
+
+    ``language`` is deliberately mandatory. DataTrove's signature stage otherwise defaults
+    to English, which is unsafe for this project's mixed Ukrainian/English/code corpus.
+    Run language/modality partitions with an explicit tokenizer language and retain the
+    partition identity in the manifest before any global successor corpus is promoted.
+    """
 
     source_registry_sha256: str
     reserved_registry_sha256: str
@@ -60,6 +72,7 @@ class DataTroveMinhashSpec:
     output_uri: str
     work_uri: str
     logging_uri: str
+    language: str
     num_buckets: int = 14
     hashes_per_bucket: int = 8
     n_grams: int = 5
@@ -72,6 +85,7 @@ class DataTroveMinhashSpec:
     def __post_init__(self) -> None:
         _require_sha256(self.source_registry_sha256, "source_registry_sha256")
         _require_sha256(self.reserved_registry_sha256, "reserved_registry_sha256")
+        _require_text(self.language, "language")
         uris = [
             _validate_uri(getattr(self, field), field)
             for field in ("input_uri", "output_uri", "work_uri", "logging_uri")
@@ -117,7 +131,8 @@ class DataTroveMinhashSpec:
             **asdict(self),
             "total_signature_hashes": self.total_signature_hashes,
             "stage_topology": self.stage_topology(),
-            "within_dataset_near_dedup": True,
+            "within_partition_near_dedup": True,
+            "global_cross_partition_dedup_claimed": False,
             "output_semantics": (
                 "datatrove_jsonl_preserving_id_text_and_remaining_fields_as_metadata"
             ),
@@ -133,7 +148,7 @@ def _assert_runtime_version(expected: str) -> None:
         installed = version("datatrove")
     except PackageNotFoundError as exc:  # pragma: no cover - optional dependency boundary
         raise RuntimeError(
-            "DataTrove MinHash execution requires optional dependency datatrove[io]==0.10.0"
+            "DataTrove MinHash execution requires the project data-scale optional dependencies"
         ) from exc
     if installed != expected:
         raise RuntimeError(
@@ -159,7 +174,7 @@ def build_datatrove_minhash_executors(spec: DataTroveMinhashSpec):
         from datatrove.utils.hashing import HashConfig
     except ImportError as exc:  # pragma: no cover - optional dependency boundary
         raise RuntimeError(
-            "DataTrove MinHash execution requires optional dependency datatrove[io]==0.10.0"
+            "DataTrove MinHash execution requires the project data-scale optional dependencies"
         ) from exc
 
     config = MinhashConfig(
@@ -181,7 +196,11 @@ def build_datatrove_minhash_executors(spec: DataTroveMinhashSpec):
                 add_file_path=False,
                 shuffle_files=False,
             ),
-            MinhashDedupSignature(output_folder=signatures, config=config),
+            MinhashDedupSignature(
+                output_folder=signatures,
+                config=config,
+                language=spec.language,
+            ),
         ],
         tasks=spec.signature_tasks,
         workers=spec.workers,
