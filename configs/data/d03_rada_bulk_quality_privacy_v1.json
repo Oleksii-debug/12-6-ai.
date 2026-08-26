@@ -4,7 +4,7 @@
   "local_free_only": true,
   "parent_normalization": {
     "pr": 641,
-    "head_sha": "59f3c452dde1d529fcc1544fa9be2528a039f200",
+    "head_sha": "7802e94b4115db39e6ff59f1a4cff872c40c6347",
     "branch": "gpt56/d03-rada-bulk-normalization-20260826",
     "manifest_schema": "12-6.d03-rada-bulk-normalization-manifest.v1",
     "manifest_worker_id": "D03-RADA-BULK-NORMALIZATION-20260826",
