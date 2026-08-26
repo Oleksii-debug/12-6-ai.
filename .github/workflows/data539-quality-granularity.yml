@@ -1,0 +1,23 @@
+name: DATA-539 quality granularity
+
+on:
+  pull_request:
+    paths:
+      - "src/twelve_six/data/document_quality.py"
+      - "src/twelve_six/data/document_quality_v2.py"
+      - "tests/test_data539_quality_granularity.py"
+      - "tools/validate_data539_quality_granularity.py"
+      - ".github/workflows/data539-quality-granularity.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate bounded granularity repair
+        run: python tools/validate_data539_quality_granularity.py
