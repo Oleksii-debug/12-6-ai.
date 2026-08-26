@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "campaign_id": "R01-LEARNED-20M-LAUNCH-V1",
+  "r01_campaign_blob_sha1": "c50154db609d41eceb2ffc97912360df567bcc04",
+  "model_authority": {
+    "branch": "model341/20m-candidate-a-20260826",
+    "git_sha": "e4ff486fd90802fc123bebf60eed4e59196a98df",
+    "modelspec_sha256": "fbff24d561a2818453554d58ca23fc6ace3303b078f1935a8576c4565bd92441",
+    "parameter_count": 20613440,
+    "canonical_base": "random_init"
+  },
+  "evidence": {
+    "code": {"git_sha": null},
+    "corpus": {
+      "manifest_sha256": null,
+      "split_sha256": null,
+      "packing_sha256": null,
+      "two_clean_builds_identical": false,
+      "authority": null
+    },
+    "tokenizer": {
+      "identity_sha256": null,
+      "decision": "UNRESOLVED",
+      "authority": null
+    },
+    "loss_ledger": {
+      "identity_sha256": null,
+      "unique_causal_loss_positions": 0,
+      "authority": null,
+      "data_budget_authority": null,
+      "data_budget_status": "BLOCKED"
+    },
+    "checkpoint_integrity": {"authority": null, "status": "RETEST_REQUIRED"},
+    "evaluation": {
+      "firewall_authority": null,
+      "selection_validation_authority": null,
+      "status": "BLOCKED"
+    },
+    "training_recipe": {
+      "authority": null,
+      "status": "BLOCKED",
+      "seed_count": 0,
+      "config_sha256": null,
+      "stopping_policy_sha256": null
+    },
+    "bounded_pilot": {
+      "authority": null,
+      "status": "NOT_RUN",
+      "numerics_finite": false,
+      "resume_equivalent": false,
+      "loss_trajectory_acceptable": false
+    },
+    "cost_envelope": {
+      "authority": null,
+      "status": "NOT_ESTIMATED",
+      "maximum_cost_usd": null
+    },
+    "independent_audit": {"authority": null, "status": "NOT_RUN"},
+    "compute_authorization": {
+      "authority": null,
+      "status": "NOT_AUTHORIZED",
+      "maximum_cost_usd": null
+    }
+  },
+  "truth_boundary": {
+    "foreign_pretrained_weights_used": false,
+    "alignment_or_posttraining_mixed_into_base": false,
+    "final_test_payload_consumed": false,
+    "model_training_executed_by_this_package": false,
+    "paid_compute_executed_by_this_package": false
+  }
+}
