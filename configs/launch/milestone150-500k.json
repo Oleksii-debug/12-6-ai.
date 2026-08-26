@@ -1,0 +1,61 @@
+{
+  "schema": "12-6.expensive-run-launch-request.v1",
+  "binding": {
+    "workflow": "milestone150-learned-base-ladder-v1",
+    "scale": "500k"
+  },
+  "purpose_profile": {
+    "profile_id": "linux-x86_64",
+    "path": "requirements/locks/linux-x86_64/profile.json"
+  },
+  "required_modules": ["pytest", "ruff", "torch"],
+  "required_commands": [],
+  "test_selectors": ["tests/test_milestone150_learned_base_ladder.py"],
+  "critical_imports": ["twelve_six.model", "twelve_six.tokenization", "twelve_six.training"],
+  "model_spec": {
+    "schema_version": 1,
+    "vocab_size": 256,
+    "max_seq_len": 256,
+    "d_model": 96,
+    "n_layers": 4,
+    "n_heads": 6,
+    "n_kv_heads": 6,
+    "head_dim": 16,
+    "d_ff": 256,
+    "activation": "swiglu",
+    "norm_kind": "rmsnorm",
+    "norm_placement": "pre",
+    "norm_eps": 1e-5,
+    "position_embedding": "rope",
+    "rope_theta": 10000.0,
+    "rope_rotary_dim": 16,
+    "attention_bias": false,
+    "mlp_bias": false,
+    "attention_dropout": 0.0,
+    "final_norm": true,
+    "tie_word_embeddings": true,
+    "lm_head_bias": false
+  },
+  "model_spec_sha256": "208ac8ca113388e76f280d0154cae815785bee7705546f4d854d9447b9dd1f4a",
+  "parameter_count": 467808,
+  "tokenizer": {
+    "kind": "byte",
+    "version": "s0-byte-v1",
+    "config_sha256": "b04055c1061dd641dcab7cb9d62a931f09b8d1a070140a926ceb4e91d73ca8e1",
+    "vocab_sha256": "905ed40bb42cc4d550e228ff5f24158d504b38e8ed5974dfa3077bd5867ad571",
+    "vocab_size": 256
+  },
+  "corpus": {
+    "manifest_path": "milestone150-evidence/corpus-manifest.json",
+    "identity_key": "corpus_identity_sha256",
+    "expected_identity_sha256": "422f545da93526ceba2c0ff738e0b9deac65f35bfb31d87d2aab068cda091fc8"
+  },
+  "checkpoint_output": "milestone150-evidence/500k",
+  "disk_min_free_bytes": 536870912,
+  "budget": {
+    "optimizer_steps": 1000,
+    "target_optimized_tokens": 948754,
+    "max_wall_minutes": 60
+  },
+  "requires_gpu": false
+}
