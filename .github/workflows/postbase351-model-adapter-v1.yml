@@ -1,4 +1,5 @@
 name: POSTBASE-351 Model Adapter V1
+run-name: POSTBASE-351 exact-head LOCAL_FREE proof
 
 on:
   push:
