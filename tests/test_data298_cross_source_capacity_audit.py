@@ -83,8 +83,8 @@ def test_origin_alias_collapses_even_when_wrapper_bytes_differ() -> None:
 
 
 def test_nfkc_invisible_and_whitespace_normalized_exact_collapses() -> None:
-    a = "Café has normalized words and spacing for duplicate detection.\nSecond line here.".encode("utf-8")
-    b = "Cafe\u0301   has normalized words\u200b and spacing for duplicate detection.  Second line here.".encode("utf-8")
+    a = "Café has normalized words and spacing for duplicate detection.\nSecond line here.".encode()
+    b = "Cafe\u0301   has normalized words\u200b and spacing for duplicate detection.  Second line here.".encode()
     inv = _inventory(
         _source("a", "family-a", "en", a),
         _source("b", "family-b", "en", b),
