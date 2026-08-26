@@ -17,9 +17,13 @@ from .core import (
     CheckpointCompatibilityError,
     CheckpointIdentity,
     LoadResult,
+    _decode_verified_state,
+    save_checkpoint,
+)
+from .hardening import (
     load_verified_checkpoint,
     prepare_checkpoint_load,
-    save_checkpoint,
+    preflight_trainer_state,
 )
 
 
@@ -100,6 +104,37 @@ def _assert_bound_metadata(
         raise CheckpointCompatibilityError(f"checkpoint canonical binding mismatch: {mismatches}")
 
 
+def _preflight_trainer_semantics(trainer: Any, trainer_state: Mapping[str, Any]) -> None:
+    """Mirror D02 resume invariants before any live model state is changed."""
+
+    preflight_trainer_state(trainer, trainer_state)
+    target_config = getattr(trainer, "config", None)
+    if target_config is None or not is_dataclass(target_config):
+        raise CheckpointCompatibilityError("trainer must expose a dataclass config for safe resume")
+    expected_config = asdict(target_config)
+    if trainer_state.get("config") != expected_config:
+        raise CheckpointCompatibilityError("trainer config mismatch; refusing unsafe resume")
+
+    micro_step = trainer_state["micro_step"]
+    optimizer_step = trainer_state["optimizer_step"]
+    accumulation = expected_config.get("gradient_accumulation_steps")
+    max_steps = expected_config.get("max_steps")
+    if not isinstance(accumulation, int) or isinstance(accumulation, bool) or accumulation <= 0:
+        raise CheckpointCompatibilityError("trainer gradient_accumulation_steps is invalid")
+    if micro_step != optimizer_step * accumulation:
+        raise CheckpointCompatibilityError(
+            "checkpoint is not at a complete committed accumulation boundary: "
+            f"micro_step={micro_step}, expected={optimizer_step * accumulation}"
+        )
+    if isinstance(max_steps, int) and not isinstance(max_steps, bool) and optimizer_step > max_steps:
+        raise CheckpointCompatibilityError("checkpoint optimizer_step exceeds configured max_steps")
+
+    checkpoint_scheduler = trainer_state.get("scheduler")
+    live_scheduler = getattr(trainer, "scheduler", None)
+    if (checkpoint_scheduler is None) != (live_scheduler is None):
+        raise CheckpointCompatibilityError("scheduler state/config mismatch")
+
+
 def save_trainer_checkpoint(
     directory: str | Path,
     *,
@@ -145,9 +180,9 @@ def load_trainer_checkpoint(
 ) -> LoadResult:
     """Verify one exact byte snapshot, bind it, then restore fresh D02 targets.
 
-    The canonical nested identity checks and the actual load consume the same
-    verified byte snapshot. The source directory is never re-opened between
-    run-binding verification and model mutation.
+    Canonical identity, model tensor metadata, trainer counters, and optimizer
+    tensor metadata are checked against the same immutable byte snapshot before
+    the first live model/trainer mutation.
     """
 
     if not hasattr(trainer, "load_state_dict"):
@@ -164,6 +199,12 @@ def load_trainer_checkpoint(
         expected_environment_lock_hash=expected_environment_lock_hash,
         expected_seed=expected_seed,
     )
+
+    _, combined_state = _decode_verified_state(verified)
+    trainer_state = combined_state.get("trainer")
+    if not isinstance(trainer_state, Mapping):
+        raise CheckpointCompatibilityError("checkpoint trainer state must be a mapping")
+    _preflight_trainer_semantics(trainer, trainer_state)
 
     result = load_verified_checkpoint(
         verified,
