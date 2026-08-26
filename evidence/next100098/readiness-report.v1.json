@@ -1,0 +1,290 @@
+{
+  "schema": "next100098.machine-readiness.v1",
+  "worker": "NEXT100-098-READINESS-DASHBOARD",
+  "repository": {
+    "requested_name": "Oleksii-debug/12-6-ai",
+    "physical_name": "Oleksii-debug/12-6-ai.",
+    "authority_registry_pr": 473,
+    "authority_registry_head": "ce275a272afbf8a9a4452a107db9190fa0abe653",
+    "authority_registry_identity": "sha256:6af7c984fbdf3304e2bb6a2a2ca4bc4e4e6f4ead3a73be3777fd5e459fc2d5c9"
+  },
+  "execution": {
+    "profile": "LOCAL_FREE",
+    "training_performed": false,
+    "external_llm_calls": false,
+    "paid_compute": false
+  },
+  "status_enum": [
+    "PASS",
+    "TERMINAL_BLOCKED",
+    "IN_PROGRESS",
+    "CANDIDATE_ONLY",
+    "NOT_RUN"
+  ],
+  "classification_policy": {
+    "PASS": "Surviving terminal authority satisfies the requested component scope.",
+    "TERMINAL_BLOCKED": "A current terminal decision explicitly blocks the requested component scope.",
+    "IN_PROGRESS": "Current exact relevant work is active and nonterminal, with no terminal successor satisfying the scope.",
+    "CANDIDATE_ONLY": "Implementation or scoped evidence exists, but required current terminal proof for the requested scope does not.",
+    "NOT_RUN": "No qualifying execution or terminal proof for the requested combined scope was found.",
+    "candidate_newness_does_not_supersede_terminal_authority": true,
+    "generic_ci_success_does_not_create_scoped_terminal_authority": true,
+    "no_percentage_readiness_score": true
+  },
+  "readiness": [
+    {
+      "key": "learned_3m",
+      "label": "learned 3M",
+      "status": "TERMINAL_BLOCKED",
+      "reason": "LEARN-191 is genuine terminal producer evidence, but learned-ladder admission is terminally blocked because independent VERIFY-219 is not published.",
+      "authority": {
+        "producer_pr": 348,
+        "producer_head": "a75920cef8bde37a8c590e34095be83c97b75f1d",
+        "producer_run": 32940842372,
+        "admission_gate_pr": 439,
+        "blocker": "MISSING_INDEPENDENT_VERIFY_219"
+      }
+    },
+    {
+      "key": "learned_10m",
+      "label": "learned 10M",
+      "status": "TERMINAL_BLOCKED",
+      "reason": "LEARN-217 is genuine terminal producer evidence, but learned-ladder admission is terminally blocked because independent VERIFY-218-LEARNED-10M-INDEPENDENT is not published.",
+      "authority": {
+        "producer_pr": 355,
+        "producer_head": "c02c8aa38e691521ae2ab6a4ff3ea1d643efd6ef",
+        "producer_run": 32952787070,
+        "admission_gate_pr": 439,
+        "blocker": "MISSING_INDEPENDENT_VERIFY_218_LEARNED_10M"
+      }
+    },
+    {
+      "key": "primary_20m_mechanics",
+      "label": "primary 20M mechanics",
+      "status": "PASS",
+      "reason": "MODEL-341 primary 20,613,440-parameter mechanics is mechanically qualified and NEXT100-009/PERF-347 supplies terminal primary-geometry static-KV convergence. This is mechanics-only, not learned-20M authority.",
+      "authority": {
+        "model341_head": "e4ff486fd90802fc123bebf60eed4e59196a98df",
+        "modelspec": "fbff24d561a2818453554d58ca23fc6ace3303b078f1935a8576c4565bd92441",
+        "static_kv_pr": 440,
+        "static_kv_head": "7e3fc17aa204f647e4493861ce0817a3e7a19e98"
+      }
+    },
+    {
+      "key": "research_corpus_v1",
+      "label": "Research Corpus V1",
+      "status": "TERMINAL_BLOCKED",
+      "reason": "DATA-301 terminal execution produced no released balanced external-real corpus or shard identity, and the 20M capacity gate authorizes zero safe external-real learned exposure. Concurrent source/build candidates have not superseded that corpus-level blocker.",
+      "authority": {
+        "data301_pr": 408,
+        "data301_head": "8820ba1b255f6bb95c7db0531fd846078a1aae01",
+        "capacity_gate_pr": 410,
+        "blocker": "NO_TERMINAL_BALANCED_EXTERNAL_REAL_CORPUS_PRODUCT"
+      }
+    },
+    {
+      "key": "ua_en_code_selection",
+      "label": "UA/EN/code selection",
+      "status": "TERMINAL_BLOCKED",
+      "reason": "UA and EN selection authorities are nonempty, but code selection remains terminally empty and blocked; the three-stratum aggregate is therefore blocked.",
+      "authority": {
+        "ua": {
+          "status": "PASS",
+          "pr": 402,
+          "head": "029514654829cebc149cff6fc1fea2a8ba4fa566",
+          "run": 32968339064
+        },
+        "en": {
+          "status": "PASS",
+          "pr": 395,
+          "run": 32967119568
+        },
+        "code": {
+          "status": "TERMINAL_BLOCKED",
+          "pr": 396,
+          "head": "2cbe2f2d9c74984baa69e49e520e2280fc76421b",
+          "run": 32967204390,
+          "blocker": "ZERO_ADMITTED_CODE_SELECTION_RECORDS"
+        },
+        "composite_pr": 417,
+        "composite_head": "5e5a1de3b594cee5612e63d3d4c2a70499740ac7"
+      }
+    },
+    {
+      "key": "checkpoint_recovery",
+      "label": "checkpoint recovery",
+      "status": "PASS",
+      "reason": "CHECKPOINT-211 remains the incumbent terminal immutable recovery and checkpoint-lifecycle authority. New primary-20M corruption work is RETEST_REQUIRED and nonterminal, so it does not supersede this generic terminal authority.",
+      "authority": {
+        "pr": 354,
+        "head": "349e6db94d4aca81c2d1a0ccc3368a98b6058392",
+        "run": 32951984562,
+        "artifact": 9600513685
+      },
+      "scope_note": "PASS is for the maintained generic recovery lifecycle; exact primary-MODEL-341 corruption hardening is not promoted by this status."
+    },
+    {
+      "key": "transformers_parity",
+      "label": "Transformers parity",
+      "status": "CANDIDATE_ONLY",
+      "reason": "Maintained parity/export machinery exists, but RUNTIME-349 must rerun on exact MODEL-341 and learned-10M RUNTIME-225 remains gated on missing VERIFY-218. No current terminal proof satisfies the requested parity scope.",
+      "authority": {
+        "primary20m_runtime_pr": 430,
+        "learned10m_runtime_pr": 357,
+        "blocker": "CURRENT_EXACT_PARITY_PROOF_NOT_TERMINAL"
+      }
+    },
+    {
+      "key": "cpu_serving",
+      "label": "CPU serving",
+      "status": "CANDIDATE_ONLY",
+      "reason": "PERF-350 is terminal measured evidence only for an alternate 19,935,488-parameter geometry; its own authority requires remeasurement on the retained primary MODEL-341 geometry before transfer.",
+      "authority": {
+        "pr": 432,
+        "head": "6e4744ee2dfc356fcc65e6df2af6bb0e3979a9ff",
+        "run": 32983556834,
+        "blocker": "PRIMARY_20M_GEOMETRY_REMEASUREMENT_REQUIRED_FOR_TRANSFER"
+      }
+    },
+    {
+      "key": "post_base_adapter",
+      "label": "post-Base adapter",
+      "status": "PASS",
+      "reason": "POSTBASE-351 exact-head LOCAL_FREE proof is terminal-success and proves immutable learned-Base adapter mechanics and integrity.",
+      "authority": {
+        "pr": 428,
+        "head": "e805bf715617999209aef88946cea01f3668f583",
+        "run": 32998080549,
+        "artifact": 9617499353
+      }
+    },
+    {
+      "key": "communication",
+      "label": "communication",
+      "status": "PASS",
+      "reason": "Terminal communication boundary, communication-data contract, and immutable communication evaluation suite are all present.",
+      "authority": {
+        "boundary_pr": 381,
+        "boundary_run": 32960956930,
+        "data_pr": 437,
+        "data_run": 32997692106,
+        "eval_pr": 434,
+        "eval_run": 32997462539
+      }
+    },
+    {
+      "key": "sft_mechanics",
+      "label": "SFT mechanics",
+      "status": "PASS",
+      "reason": "POSTBASE-353 fixture-only SFT mechanics has terminal component authority; no real communication-training campaign is implied.",
+      "authority": {
+        "pr": 433,
+        "head": "53cd88f7132103a0f67a6922caa5274f68401d48",
+        "run": 32997388278
+      }
+    },
+    {
+      "key": "tools",
+      "label": "tools",
+      "status": "IN_PROGRESS",
+      "reason": "POSTBASE-355 current exact head has an active queued generic CI run and no accepted scoped terminal component proof; the prior candidate had no scoped terminal PASS.",
+      "authority": {
+        "pr": 435,
+        "head": "85879e50487a56eb19dd4e0edab43ac405d75fd8",
+        "run": 32999368108,
+        "run_name": "CI",
+        "run_state": "QUEUED",
+        "blocker": "NO_SCOPED_TERMINAL_COMPONENT_AUTHORITY"
+      }
+    },
+    {
+      "key": "deliberation",
+      "label": "deliberation",
+      "status": "PASS",
+      "reason": "POSTBASE-255 deterministic budgeted deliberation controller has terminal component convergence authority.",
+      "authority": {
+        "pr": 386,
+        "run": 32997278311,
+        "artifact": 9617049942
+      }
+    },
+    {
+      "key": "hypothesis_search",
+      "label": "hypothesis search",
+      "status": "PASS",
+      "reason": "POSTBASE-356 competing-hypothesis mechanics has terminal component authority.",
+      "authority": {
+        "pr": 422,
+        "run": 32983288617,
+        "artifact": 9612341993
+      }
+    },
+    {
+      "key": "verifier",
+      "label": "verifier",
+      "status": "PASS",
+      "reason": "POSTBASE-357 verifier ensemble has retained terminal tested-production authority.",
+      "authority": {
+        "pr": 423,
+        "run": 32983319052,
+        "artifact": 9612374655
+      }
+    },
+    {
+      "key": "memory_rag",
+      "label": "memory/RAG",
+      "status": "PASS",
+      "reason": "POSTBASE-358 SQLite/BM25 memory-RAG convergence has exact-head terminal component success.",
+      "authority": {
+        "pr": 436,
+        "head": "976adda1cfe981d7b6363d267854759bee802006",
+        "run": 32983793329
+      }
+    },
+    {
+      "key": "teacher_factory",
+      "label": "teacher factory",
+      "status": "PASS",
+      "reason": "POSTBASE-359 teacher factory has terminal component authority; newer immutable-lineage work is additive and nonterminal and does not revoke the incumbent terminal factory.",
+      "authority": {
+        "pr": 427,
+        "head": "6ae8cd70729565ac911a23bbcd628d602a19d030",
+        "run": 32997210933
+      }
+    },
+    {
+      "key": "end_to_end_system",
+      "label": "end-to-end system",
+      "status": "NOT_RUN",
+      "reason": "No qualifying terminal all-component end-to-end synthetic fixture or MILESTONE-360 successor was found at the live refresh.",
+      "authority": {
+        "terminal_authority_found": false,
+        "searched_workers": [
+          "NEXT100-093",
+          "NEXT100-094",
+          "NEXT100-097",
+          "MILESTONE-360"
+        ]
+      }
+    }
+  ],
+  "final_live_refresh": {
+    "cutoff_utc": "2026-08-26T18:27:17Z",
+    "latest_pr_number_seen": 490,
+    "verify_218_terminal_authority_found": false,
+    "verify_219_terminal_authority_found": false,
+    "research_corpus_v1_terminal_product_found": false,
+    "end_to_end_terminal_authority_found": false,
+    "tools_exact_head": {
+      "sha": "85879e50487a56eb19dd4e0edab43ac405d75fd8",
+      "run": 32999368108,
+      "state": "QUEUED"
+    },
+    "late_observations": [
+      "PR 489 retains the DATA-301 family-constrained no-replay hard blocker and does not claim a corpus or shard product.",
+      "PR 487 reports RETEST_REQUIRED for a primary-20M checkpoint corruption red-team using a semantic reproducer and explicitly does not claim positive production-module authority.",
+      "PR 490 is a new primary-20M first-party inference API mechanics candidate and does not alter learned-20M or Transformers parity authority.",
+      "PR 486 adds teacher-dataset lineage work on top of terminal POSTBASE-359; no terminal supersession was observed."
+    ]
+  }
+}
