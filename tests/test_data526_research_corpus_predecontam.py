@@ -20,15 +20,47 @@ class Data526PredecontamBlockerTests(unittest.TestCase):
     def test_baseline(self):
         validator.validate_doc(copy.deepcopy(BASE))
 
-    def test_queue_cannot_be_promoted_to_pass(self):
+    def test_source_queue_cannot_be_promoted_to_pass(self):
         doc = copy.deepcopy(BASE)
         doc["required_source_convergence"]["exact_head_ci_state"] = "SUCCESS"
         with self.assertRaises(ValueError):
             validator.validate_doc(rehash(doc))
 
-    def test_nonterminal_authority_cannot_be_consumed(self):
+    def test_nonterminal_source_authority_cannot_be_consumed(self):
         doc = copy.deepcopy(BASE)
         doc["required_source_convergence"]["terminal_authority_consumed"] = True
+        with self.assertRaises(ValueError):
+            validator.validate_doc(rehash(doc))
+
+    def test_global_dedup_queue_cannot_be_promoted_to_pass(self):
+        doc = copy.deepcopy(BASE)
+        doc["required_global_dedup"]["exact_head_ci_state"] = "SUCCESS"
+        with self.assertRaises(ValueError):
+            validator.validate_doc(rehash(doc))
+
+    def test_nonterminal_global_dedup_cannot_be_consumed(self):
+        doc = copy.deepcopy(BASE)
+        doc["required_global_dedup"]["terminal_authority_consumed"] = True
+        with self.assertRaises(ValueError):
+            validator.validate_doc(rehash(doc))
+
+    def test_global_dedup_pr_cannot_be_rebound(self):
+        doc = copy.deepcopy(BASE)
+        doc["required_global_dedup"]["pull_request"] = 576
+        with self.assertRaises(ValueError):
+            validator.validate_doc(rehash(doc))
+
+    def test_global_dedup_head_drift_fails_closed(self):
+        doc = copy.deepcopy(BASE)
+        doc["required_global_dedup"]["observed_head_sha"] = "e" * 40
+        with self.assertRaises(ValueError):
+            validator.validate_doc(rehash(doc))
+
+    def test_source_and_dedup_vectors_must_agree(self):
+        doc = copy.deepcopy(BASE)
+        doc["required_global_dedup"][
+            "reported_pre_dedup_vector_non_authoritative_until_terminal"
+        ]["by_stratum"]["en"]["bytes"] -= 1
         with self.assertRaises(ValueError):
             validator.validate_doc(rehash(doc))
 
@@ -38,9 +70,21 @@ class Data526PredecontamBlockerTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             validator.validate_doc(rehash(doc))
 
+    def test_candidate_cannot_freeze_before_terminal_dedup(self):
+        doc = copy.deepcopy(BASE)
+        doc["candidate_freeze"]["frozen"] = True
+        with self.assertRaises(ValueError):
+            validator.validate_doc(rehash(doc))
+
+    def test_global_dedup_ordering_gate_cannot_be_weakened(self):
+        doc = copy.deepcopy(BASE)
+        doc["downstream_gates"]["global_dedup"] = "NOT_AUTHORIZED_BY_THIS_BLOCKER"
+        with self.assertRaises(ValueError):
+            validator.validate_doc(rehash(doc))
+
     def test_pending_source_bytes_are_not_loss_capacity(self):
         doc = copy.deepcopy(BASE)
-        doc["claim_boundary"]["authorized_unique_optimized_targets"] = 303374
+        doc["claim_boundary"]["authorized_unique_optimized_targets"] = 2045180
         with self.assertRaises(ValueError):
             validator.validate_doc(rehash(doc))
 
@@ -64,13 +108,17 @@ class Data526PredecontamBlockerTests(unittest.TestCase):
 
     def test_registry_identity_drift_fails_closed(self):
         doc = copy.deepcopy(BASE)
-        doc["required_source_convergence"]["reported_registry_identity_sha256_non_authoritative_until_terminal"] = "0" * 64
+        doc["required_source_convergence"][
+            "reported_registry_identity_sha256_non_authoritative_until_terminal"
+        ] = "0" * 64
         with self.assertRaises(ValueError):
             validator.validate_doc(rehash(doc))
 
     def test_stratum_redistribution_preserving_totals_fails(self):
         doc = copy.deepcopy(BASE)
-        vector = doc["required_source_convergence"]["reported_pre_successor_global_dedup_vector_non_authoritative_until_terminal"]["by_stratum"]
+        vector = doc["required_source_convergence"][
+            "reported_pre_successor_global_dedup_vector_non_authoritative_until_terminal"
+        ]["by_stratum"]
         vector["uk"]["bytes"] += 1
         vector["en"]["bytes"] -= 1
         with self.assertRaises(ValueError):
@@ -78,9 +126,19 @@ class Data526PredecontamBlockerTests(unittest.TestCase):
 
     def test_family_redistribution_preserving_total_fails(self):
         doc = copy.deepcopy(BASE)
-        vector = doc["required_source_convergence"]["reported_pre_successor_global_dedup_vector_non_authoritative_until_terminal"]["by_stratum"]
+        vector = doc["required_source_convergence"][
+            "reported_pre_successor_global_dedup_vector_non_authoritative_until_terminal"
+        ]["by_stratum"]
         vector["uk"]["families"] += 1
         vector["code"]["families"] -= 1
+        with self.assertRaises(ValueError):
+            validator.validate_doc(rehash(doc))
+
+    def test_unblock_sequence_must_require_terminal_global_dedup(self):
+        doc = copy.deepcopy(BASE)
+        doc["unblock_rule"]["required"] = [
+            item for item in doc["unblock_rule"]["required"] if "PR #632" not in item
+        ]
         with self.assertRaises(ValueError):
             validator.validate_doc(rehash(doc))
 
