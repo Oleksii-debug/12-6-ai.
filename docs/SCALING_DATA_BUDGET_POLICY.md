@@ -2,55 +2,58 @@
 
 ## Decision
 
-The project must keep **model parameter count**, **source bytes**, **post-tokenization training tokens**, and **unique causal-loss positions** as separate quantities.
+The project must keep **model parameter count**, **source bytes**, **unique post-tokenization corpus tokens**, **unique causal-loss positions**, and **total training-token exposures** as separate quantities.
 
-The current primary architecture has 20,613,440 parameters. Source-registry capacity is owned by the data lane and changes as exact-head source admissions succeed, fail, or are corrected. This scaling policy therefore **does not embed a live source-byte snapshot**. A rapidly changing source registry is not a corpus identity, token count, or causal-loss ledger.
+The current primary architecture has 20,613,440 parameters. Source-registry capacity is owned by the data lane and changes as exact-head source admissions succeed, fail, or are corrected. This scaling policy therefore **does not embed a live source-byte snapshot**. A rapidly changing source registry is not a corpus identity, token count, causal-loss ledger, or training budget.
 
 That separation is deliberate: during active source qualification, an optimistic source vector can be superseded within minutes by a fail-closed audit. Copying the current byte count into a long-lived scaling contract creates a race and can turn stale planning data into false scientific authority.
 
 ## Research reference
 
-Hoffmann et al. (2022) found that compute-optimal model size and training-token count should scale together. The commonly used Chinchilla planning point is approximately 20 training tokens per parameter. This repository uses **20x only as a planning reference**, not as a universal optimum or a model-quality guarantee.
+Hoffmann et al. (2022) studied model size and the **total number of tokens used for training** under a compute budget. The commonly used Chinchilla planning point is approximately 20 training-token exposures per parameter. It is not a requirement for 20 unique corpus tokens per parameter.
 
-Later work strengthens the reason not to treat 20x as a ceiling. Data-constrained scaling work shows that repeated data has diminishing value; inference-aware scaling and over-training studies show that smaller models can rationally be trained on substantially more tokens; Llama 3 reports continued gains far beyond its Chinchilla-optimal token count. DataComp-LM also shows that curation and filtering quality materially change outcomes.
+That distinction matters in a data-constrained project. Muennighoff et al. (2023) explicitly vary repeated-data training and show that limited replay can retain substantial value while further repetition eventually gives diminishing returns. Unique corpus size, replay/epoch count and total token exposure therefore need separate ledgers.
+
+Later inference-aware and over-training work also shows why 20x is not a universal ceiling. Smaller models may rationally receive substantially more total token exposure depending on inference economics, downstream quality and compute constraints. Data curation remains a separate determinant of quality.
 
 Therefore the 12-6 AI policy is:
 
 1. do not convert source bytes to tokens by assumption;
 2. do not use a source-capacity acquisition target as a training-token budget;
-3. do not count replayed tokens as unique loss positions;
-4. keep live source-registry facts in the data authority rather than duplicating them in scaling policy;
-5. require exact corpus, split, tokenizer, post-tokenization token-count and loss-mask identities before long training;
-6. treat a run below the 20x planning reference as a bounded scaling/smoke experiment unless a preregistered scaling experiment justifies a different budget;
-7. choose larger data budgets from scaling experiments, evaluation results and compute constraints rather than from an arbitrary fixed multiplier;
-8. keep explicit compute authorization separate from scientific readiness.
+3. do not relabel total token exposures as unique corpus tokens or unique causal-loss positions;
+4. record unique post-tokenization data, replay/epoch policy and total training-token exposure separately;
+5. keep live source-registry facts in the data authority rather than duplicating them in scaling policy;
+6. require exact corpus, split, tokenizer, post-tokenization and loss-mask identities before long training;
+7. use the 20x figure as a compute-planning reference rather than a hard minimum, maximum or quality guarantee;
+8. require an explicit scaling rationale for planned budgets materially below or above that reference;
+9. keep explicit compute authorization separate from scientific readiness.
 
-## Current planning numbers
+## Planning numbers
 
-For the exact 20,613,440-parameter MODEL-341 geometry:
+For exact MODEL-341 with 20,613,440 parameters:
 
-- 20x reference: 412,268,800 unique loss tokens;
-- 50x exploration point: 1,030,672,000 unique loss tokens;
-- 100x exploration point: 2,061,344,000 unique loss tokens;
+- 20x reference: 412,268,800 total training-token exposures;
+- 50x exploration point: 1,030,672,000 total training-token exposures;
+- 100x exploration point: 2,061,344,000 total training-token exposures;
 - rough dense-transformer training compute at 20x using `6 * N * D`: 50,989,669,036,032,000 FLOPs.
 
 For future planning only:
 
-| Stage | Parameters | 20x tokens | 50x tokens | 100x tokens |
+| Stage | Parameters | 20x exposures | 50x exposures | 100x exposures |
 | --- | ---: | ---: | ---: | ---: |
 | 20M primary | 20,613,440 | 412,268,800 | 1,030,672,000 | 2,061,344,000 |
 | 100M target | 100,000,000 | 2,000,000,000 | 5,000,000,000 | 10,000,000,000 |
 | 1B target | 1,000,000,000 | 20,000,000,000 | 50,000,000,000 | 100,000,000,000 |
 
-These numbers are planning references. They do not imply that 20x is enough for the desired downstream capability, that 100x is affordable, or that data repetition is equivalent to unique data.
+These are exposure-budget references. They do not state how many unique tokens the project currently owns, how many epochs should be run, whether 20x is sufficient for the target capability, or whether 50x/100x is affordable or optimal.
 
 ## Data-authority contract
 
 The live source registry may report bytes and independent source families for acquisition planning. Those values remain external to this policy because they are volatile and because source admission is earlier than corpus materialization.
 
-Promotion from source acquisition to learned-stage readiness requires terminal exact-head authority, an immutable materialized corpus, global deduplication, evaluation decontamination, quality/privacy review, deterministic split/shard/pack construction, tokenizer identity, exact post-tokenization token accounting and exact unique causal-loss accounting.
+Promotion from source acquisition to learned-stage readiness requires terminal exact-head authority, an immutable materialized corpus, global deduplication, evaluation decontamination, quality/privacy review, deterministic split/shard/pack construction, tokenizer identity, exact unique post-tokenization token accounting, exact unique causal-loss accounting and an explicit replay/exposure plan.
 
-No source-registry byte total, no source-capacity target, no queued CI run and no stale snapshot can substitute for those artifacts.
+No source-registry byte total, no source-capacity target, no replayed exposure count, no queued CI run and no stale snapshot can substitute for those artifacts.
 
 ## Long-training gate
 
@@ -58,13 +61,15 @@ A learned-stage long run remains fail-closed until the project has immutable evi
 
 - corpus identity and train-split identity;
 - tokenizer identity;
-- exact post-tokenization train-token count;
+- exact post-tokenization unique train-token count;
 - exact unique causal-loss position count and document-boundary loss mask;
 - evaluation decontamination;
 - deduplication;
 - quality/privacy review;
 - checkpoint/resume integrity;
-- a preregistered token/step budget and stopping rule;
+- preregistered total token-exposure budget;
+- preregistered replay policy and epoch cap;
+- preregistered stopping rule;
 - explicit compute authorization.
 
 The machine-readable policy and validator are in `configs/scaling/data_budget_policy_v1.json` and `tools/validate_scaling_data_budget_policy.py`.
