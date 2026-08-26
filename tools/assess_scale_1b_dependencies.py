@@ -29,6 +29,26 @@ def main() -> int:
     parser.add_argument("--native-gqa-authority")
     parser.add_argument("--distributed-checkpoint-authority")
     parser.add_argument("--data-pipeline-authority")
+    parser.add_argument(
+        "--stage-data-budget-authority",
+        help=(
+            "Terminal stage-specific data-budget authority based on exact post-tokenization "
+            "unique causal-loss positions or an explicit preregistered scaling exception."
+        ),
+    )
+    parser.add_argument(
+        "--training-recipe-authority",
+        help=(
+            "Scale-qualified training recipe authority covering optimizer/LR/schedule/warmup/"
+            "precision/gradient policy, seeds, budget and stopping rules."
+        ),
+    )
+    parser.add_argument(
+        "--evaluation-firewall-authority",
+        help=(
+            "Preregistered selection/final-test and decontamination authority for the 1B campaign."
+        ),
+    )
     parser.add_argument("--accelerator-runtime-authority")
     parser.add_argument(
         "--compute-authorization",
@@ -46,6 +66,9 @@ def main() -> int:
         native_gqa_authority=args.native_gqa_authority,
         distributed_checkpoint_authority=args.distributed_checkpoint_authority,
         data_pipeline_authority=args.data_pipeline_authority,
+        stage_data_budget_authority=args.stage_data_budget_authority,
+        training_recipe_authority=args.training_recipe_authority,
+        evaluation_firewall_authority=args.evaluation_firewall_authority,
         accelerator_runtime_authority=args.accelerator_runtime_authority,
         compute_authorization=args.compute_authorization,
     )
