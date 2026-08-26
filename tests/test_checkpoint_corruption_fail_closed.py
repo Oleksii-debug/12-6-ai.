@@ -206,3 +206,60 @@ def test_wrong_shaped_momentum_fails_before_model_mutation(tmp_path: Path) -> No
     for name, value in target.state_dict().items():
         torch.testing.assert_close(value, before[name])
     assert not target_optimizer.state
+
+
+class SourceScheduler:
+    def state_dict(self) -> dict[str, int]:
+        return {"schema_version": 2}
+
+
+class TargetScheduler:
+    def state_dict(self) -> dict[str, int]:
+        return {"schema_version": 1}
+
+    def load_state_dict(self, state: dict[str, int]) -> None:
+        if state != {"schema_version": 1}:
+            raise ValueError("scheduler schema mismatch")
+
+
+def test_direct_scheduler_incompatibility_fails_before_model_mutation(tmp_path: Path) -> None:
+    checkpoint = tmp_path / "scheduler-preflight"
+    identity = _identity()
+    identity = CheckpointIdentity(
+        git_sha=identity.git_sha,
+        model_spec=identity.model_spec,
+        parameter_count=identity.parameter_count,
+        tokenizer_hash=identity.tokenizer_hash,
+        tokenizer_vocab_hash=identity.tokenizer_vocab_hash,
+        dataset_manifest_hash=identity.dataset_manifest_hash,
+        run_manifest_hash=identity.run_manifest_hash,
+        training_config=identity.training_config,
+        seed=identity.seed,
+        precision=identity.precision,
+        step=identity.step,
+        tokens_seen=identity.tokens_seen,
+        optimizer=identity.optimizer,
+        scheduler={"name": "versioned-scheduler"},
+        environment_lock_hash=identity.environment_lock_hash,
+    )
+    save_checkpoint(
+        checkpoint,
+        model=NumpyModel([1, 2, 3]),
+        scheduler=SourceScheduler(),
+        identity=identity,
+    )
+
+    target = NumpyModel([9, 9, 9])
+    scheduler = TargetScheduler()
+    before = target.weights.copy()
+
+    with pytest.raises(CheckpointCompatibilityError, match="scheduler"):
+        load_checkpoint(
+            checkpoint,
+            model=target,
+            scheduler=scheduler,
+            restore_rng=False,
+        )
+
+    np.testing.assert_array_equal(target.weights, before)
+    assert target.loads == 0
