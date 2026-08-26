@@ -1,0 +1,143 @@
+{
+  "base_data300": {
+    "branch": "data300/corpus-v03-frozen-build-contract-20260826",
+    "contract_git_blob_sha1": "39d4fa07ea17e66e042a3ccb1a55b8e5e1c5d7bf",
+    "contract_identity_sha256": "07d7beaaff4616e839450de6af3d407855c832bf75a24a959d1a12de5d9364e5",
+    "contract_path": "configs/data/data300_corpus_v03_frozen_build_contract_v2.json",
+    "contract_state": "FROZEN_EXECUTABLE_CONTRACT",
+    "corpus_state": "NOT_BUILT_NOT_FROZEN_NOT_TERMINAL",
+    "dedicated_workflow_conclusion": "success",
+    "dedicated_workflow_run": 32968492138,
+    "head_sha": "8ea7f830e50a23754d189dd4134f4afad76a7ee9"
+  },
+  "blocking_gates": {
+    "G05_QUALITY": "No passing exact Wave-3 quality rerun; DATA-296 successor is red and excluded.",
+    "G06_PRIVACY": "No passing exact Wave-3 privacy rerun; DATA-297 successor is red and excluded.",
+    "G09_BALANCE_DIVERSITY": "Current family counts uk=1,en=1,code=2 violate DATA-295 minimum two independent families per stratum; no replay may repair this.",
+    "G10_SELECTION_VALIDATION": "Terminal EVAL-291 and EVAL-292 authorities contain zero records; EVAL-290 is red/excluded, so terminal nonempty selection-validation count is zero.",
+    "G12_UNIQUE_LOSS": "DATA-294 ledger is terminal only for the 3-object DATA-229 text scope; a full five-source Wave-3 ledger does not exist.",
+    "G14_TWO_CLEAN_BUILDS": "No Wave-3 corpus product has been built twice yet."
+  },
+  "candidate_inventory": {
+    "by_family": {
+      "en.standardebooks.manual": {
+        "bytes": 84793,
+        "docs": 2
+      },
+      "github:encode/httpx": {
+        "bytes": 8161,
+        "docs": 1
+      },
+      "github:psf/requests": {
+        "bytes": 1542,
+        "docs": 1
+      },
+      "ua.rada.open-data.laws-texts": {
+        "bytes": 88565,
+        "docs": 1
+      }
+    },
+    "by_stratum": {
+      "code": {
+        "bytes": 9703,
+        "docs": 2,
+        "families": 2
+      },
+      "en": {
+        "bytes": 84793,
+        "docs": 2,
+        "families": 1
+      },
+      "uk": {
+        "bytes": 88565,
+        "docs": 1,
+        "families": 1
+      }
+    },
+    "data298_duplicate_discount_bytes": 0,
+    "data298_observed_duplicate_matches": 0,
+    "independent_family_count": 4,
+    "normalized_unique_bytes_prebuild": 183061,
+    "source_count": 5
+  },
+  "evidence_identity_scope": "SHA256(canonical JSON with evidence_identity_sha256 and evidence_identity_scope omitted)",
+  "evidence_identity_sha256": "939065abeefff8aed924415589608ff3fc721fe4b0a57fc200146a4b6a137e81",
+  "execution_profile": "LOCAL_FREE",
+  "one_pass_loss_position_accounting": {
+    "authorized_balanced_no_replay_capacity": 0,
+    "full_five_source_terminal_ledger_available": false,
+    "reason": "DATA-295 source-family diversity gate makes the exact frozen inventory infeasible before a full five-source Wave-3 loss ledger can be authorized.",
+    "terminal_text_only_data294": {
+      "by_family": {
+        "en.standardebooks.manual": 84791,
+        "github:encode/httpx": 0,
+        "github:psf/requests": 0,
+        "ua.rada.open-data.laws-texts": 88564
+      },
+      "by_language": {
+        "code": 0,
+        "en": 84791,
+        "uk": 88564
+      },
+      "ledger_identity_sha256": "9a1cd57c52459bdc6e4bb2d46047a47713e10d9a5be7b0a4b86f041ba6f62bd0",
+      "normalized_bytes": 173358,
+      "one_pass_unique_optimized_targets": 173355,
+      "scope": "DATA-229_TEXT_ONLY_3_OBJECTS"
+    }
+  },
+  "pipeline_attempt": {
+    "balance": "HARD_BLOCKED_SOURCE_FAMILY_DIVERSITY",
+    "cluster_safe_split": "NOT_REACHED",
+    "deterministic_sharding": "NOT_REACHED",
+    "eval_decontamination": "PREFLIGHT_AUTHORITY_ONLY_NO_FINAL_BUILD_RESULT",
+    "exact_near_dedup": "PASS_PREBUILD_ONLY_MUST_RERUN_ON_EXACT_MATERIALIZATION",
+    "normalization": "BOUND_TO_EXACT_FIVE_SOURCE_HASHES",
+    "order": [
+      "rights",
+      "normalization",
+      "quality",
+      "privacy",
+      "exact_near_dedup",
+      "eval_decontamination",
+      "cluster_safe_split",
+      "balance",
+      "deterministic_sharding"
+    ],
+    "privacy": "BLOCKED_NO_PASSING_EXACT_WAVE3_RERUN",
+    "quality": "BLOCKED_NO_PASSING_EXACT_WAVE3_RERUN",
+    "rights": "PASS_PREBUILD_DATA293",
+    "two_clean_builds": "NOT_PERMITTED_BECAUSE_PREBUILD_HARD_GATES_FAIL"
+  },
+  "product_trainer_streaming": {
+    "interface": "Trainer.run(batches: Iterable[Batch])",
+    "proof_kind": "AST_SOURCE_SEMANTICS",
+    "source_level_ci_proof_required": true,
+    "streaming_semantics": [
+      "Trainer.run consumes batches directly with a for-loop over the supplied Iterable.",
+      "The loop stops once max_steps is reached instead of materializing unused batches.",
+      "The method does not require Sequence semantics, len(), indexing, list(), tuple(), or sorted() materialization of batches.",
+      "A one-shot generator therefore satisfies the method's data-source contract."
+    ],
+    "trainer_git_blob_sha1": "8fb5e9ce4c5417986ad1f086ebc16cd7538a151e",
+    "trainer_path": "src/twelve_six/training/trainer.py"
+  },
+  "repository": "Oleksii-debug/12-6-ai.",
+  "schema_version": "12-6.data301-corpus-v03-terminal-build.v1",
+  "terminal_verdict": {
+    "corpus_frozen": false,
+    "corpus_identity": null,
+    "corpus_terminal": false,
+    "exact_blocker": "DATA-300 v2 is immutable and infeasible under DATA-295 family-diversity plus nonempty selection-validation requirements. Changing the source inventory requires a successor DATA-300 contract; this worker may not inject sources or manufacture capacity by replay.",
+    "release_ready": false,
+    "shard_identity": null,
+    "status": "TERMINAL_BLOCKED",
+    "unblock_requirements": [
+      "Create a successor DATA-300 contract with at least two independently authorized training families in each of uk, en and code while preserving rights and reservations.",
+      "Bind at least one nonempty terminal immutable selection-validation authority before any selection.",
+      "Run exact Wave-3 quality and privacy authorities successfully on the successor inventory.",
+      "Rebuild exact/near dedup, evaluation decontamination, cluster-safe split and full post-split unique-loss ledger.",
+      "Build deterministic shards twice from independent clean roots and require byte-identical tree and shard identities."
+    ]
+  },
+  "worker_id": "DATA-301-CORPUS-V03-TERMINAL-BUILD"
+}
