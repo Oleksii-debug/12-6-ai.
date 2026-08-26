@@ -21,8 +21,11 @@ from twelve_six.checkpoint import (
 from twelve_six.checkpoint.state_tree import pack_state_tree, unpack_state_tree
 
 
+_DEFAULT_DTYPE = np.dtype(np.float64)
+
+
 class Model:
-    def __init__(self, values: list[float], *, dtype: np.dtype = np.dtype(np.float64)) -> None:
+    def __init__(self, values: list[float], *, dtype: np.dtype = _DEFAULT_DTYPE) -> None:
         self.weights = np.asarray(values, dtype=dtype).copy()
         self.loads = 0
 
