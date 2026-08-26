@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "gate_id": "R01-20M-SINGLE-COMPOSED-CANDIDATE-V1",
+  "status": "BLOCKED_UNCOMPOSED",
+  "candidate_head_sha": null,
+  "requirements": {
+    "single_executable_tree_required": true,
+    "all_required_components_must_be_ancestors": true,
+    "exact_candidate_head_ci_required": true,
+    "component_green_without_composition_is_insufficient": true,
+    "long_training_requires_composition_pass": true
+  },
+  "components": [
+    {
+      "role": "MODEL_MECHANICS",
+      "required": true,
+      "authority_sha": "e4ff486fd90802fc123bebf60eed4e59196a98df",
+      "state": "BOUND_EXACT_AUTHORITY"
+    },
+    {
+      "role": "RESEARCH_CORPUS_V1",
+      "required": true,
+      "authority_sha": null,
+      "state": "BLOCKED_NO_TERMINAL_AUTHORITY"
+    },
+    {
+      "role": "TOKENIZER",
+      "required": true,
+      "authority_sha": null,
+      "state": "BLOCKED_NO_TERMINAL_AUTHORITY"
+    },
+    {
+      "role": "CHECKPOINT_INTEGRITY",
+      "required": true,
+      "authority_sha": null,
+      "state": "BLOCKED_RETEST_REQUIRED"
+    },
+    {
+      "role": "SELECTION_EVALUATION",
+      "required": true,
+      "authority_sha": null,
+      "state": "BLOCKED_NO_TERMINAL_COMPOSED_AUTHORITY"
+    },
+    {
+      "role": "TRAINER_RUNTIME",
+      "required": true,
+      "authority_sha": null,
+      "state": "BLOCKED_NO_TERMINAL_COMPOSED_AUTHORITY"
+    },
+    {
+      "role": "TRAINING_RECIPE",
+      "required": true,
+      "authority_sha": null,
+      "state": "BLOCKED_REBIND_REQUIRED"
+    }
+  ],
+  "truth_boundary": {
+    "learned_20m_checkpoint_exists": false,
+    "long_training_authorized": false,
+    "paid_compute_authorized": false,
+    "stage_promotion_authorized": false
+  }
+}
