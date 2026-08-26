@@ -1,0 +1,250 @@
+{
+  "schema_version": "12-6.eval284.learned-10m-wave1-consolidated-panel.v1",
+  "worker_id": "EVAL-284-LEARNED-10M-CONSOLIDATED-PANEL",
+  "repository": "Oleksii-debug/12-6-ai.",
+  "cutoff_utc": "2026-08-26T11:50:00Z",
+  "base_integration_sha": "6afaf5889f9898037b53e8b0bc2b731d77782111",
+  "overall_verdict": "INCOMPLETE_WAVE1_10M_EVIDENCE",
+  "local_free_only": true,
+  "execution_policy": {
+    "training_rerun_performed": false,
+    "evaluation_suite_rerun_performed": false,
+    "evaluation_suite_rewrite_performed": false,
+    "model_or_checkpoint_mutation_performed": false,
+    "persistent_training_state_mutation_performed": false,
+    "report_only_repository_commit": true
+  },
+  "learned_10m_anchor": {
+    "authority": "LEARN-217 producer terminal artifact",
+    "pr": 355,
+    "source_sha": "c02c8aa38e691521ae2ab6a4ff3ea1d643efd6ef",
+    "workflow_run": 32952787070,
+    "workflow_conclusion": "success",
+    "python": "3.11.16",
+    "artifact_id": 9602650341,
+    "artifact_name": "learn217-terminal-10m-learned-base",
+    "artifact_digest": "sha256:8631e90417e40365b3fc0d6bc98ee6adda5a4ed24530e675d9a91c93219537ee",
+    "report_sha256": "9cae18c926406ec19e99d01c21b09d2a6fcd35904ae92bafdf621e996cf1d56b",
+    "fresh_verification_sha256": "61ae3bcdb5221edbf9b6dad54d64b9877c0f39cc687abdd681adfb2519971b6e",
+    "final_checkpoint_id": "9f1dc5352743a3acdf8c9897aa9a2c9a982bb9c1ab006c80410e5b1104a483fb",
+    "model_spec_sha256": "61caa5469123e23b9b72fc2024140bfca84c4c480dcb0a7e712ba800a4f22998",
+    "parameter_count": 10000640,
+    "tokenizer": "s0-byte-v1",
+    "data25_identity": "422f545da93526ceba2c0ff738e0b9deac65f35bfb31d87d2aab068cda091fc8",
+    "optimized_bytes": 2000060,
+    "corpus_replay_claim": false,
+    "optimized_bytes_by_modality": {
+      "ua": 1024883,
+      "en": 626835,
+      "code": 348342
+    },
+    "independent_verify_218_status": "MISSING_AT_CUTOFF"
+  },
+  "surfaces": [
+    {
+      "id": "learn217_campaign_project_authored_heldout",
+      "class": "project-authored heldout",
+      "status": "AVAILABLE_PRODUCER_AUTHORITY",
+      "evaluation_identity": "LEARN-217 fixed campaign heldout; distinct from M150 common selection heldout",
+      "random_init": {
+        "bpb": 7.924097,
+        "availability": "available"
+      },
+      "learned_best": {
+        "bpb": null,
+        "availability": "not_exposed_on_same_surface"
+      },
+      "learned_final": {
+        "bpb": 0.085809,
+        "availability": "available"
+      },
+      "learned_final_modality_bpb": {
+        "ua": 0.052927,
+        "en": 0.087781,
+        "code": 0.126956
+      },
+      "state_non_mutation": "VERIFIED_BY_PRODUCER_EVALUATION_GUARD",
+      "artifact_anchor": "LEARN-217 artifact 9602650341",
+      "scope_boundary": "Project-authored heldout only; not external-real evaluation."
+    },
+    {
+      "id": "learn217_m150_common_selection_heldout",
+      "class": "project-authored heldout",
+      "status": "AVAILABLE_PRODUCER_AUTHORITY",
+      "evaluation_identity": "7189e6df053574beb686727c94e684cdbaf08a34ef33aa953eff7cdae0320113",
+      "random_init": {
+        "bpb": null,
+        "availability": "not_exposed_on_same_surface"
+      },
+      "learned_best": {
+        "bpb": 1.088724,
+        "byte_target": 1000000,
+        "availability": "available"
+      },
+      "learned_final": {
+        "bpb": 1.121159,
+        "availability": "available"
+      },
+      "state_non_mutation": "VERIFIED_BY_PRODUCER_EVALUATION_GUARD",
+      "artifact_anchor": "LEARN-217 artifact 9602650341",
+      "scope_boundary": "Do not combine numerically with the distinct LEARN-217 fixed campaign heldout surface."
+    },
+    {
+      "id": "eval132_ua_frozen_mechanistic",
+      "class": "frozen mechanistic diagnostic",
+      "status": "NOT_EXECUTED_ON_10M",
+      "suite": "EVAL-132",
+      "suite_identity": "ca8d9c9d97c854127e0209871e8929f19e06ec91f3f19902bc8fda33481691ff",
+      "authority_pr": 320,
+      "authority_source_sha": "82e837c1053d6a77c4d1eb86cfaa7dfb521e2e63",
+      "authority_workflow_run": 32938992714,
+      "authority_workflow_conclusion": "success",
+      "authority_artifact_id": 9597191977,
+      "authority_artifact_name": "recover175-eval132-ua-learned-base-ladder-v1",
+      "authority_artifact_digest": "sha256:816c23247ab83944e543886b962e5abdb80b6678e51da80101fa433b088617d8",
+      "random_init": null,
+      "learned_best": null,
+      "learned_final": null,
+      "ten_m_result_reason": "Authority evaluates only retained M150 100K/500K/1M checkpoints and explicitly records 10M as incomplete/no verified learned checkpoint at that execution time.",
+      "state_non_mutation": "HISTORICAL_AUTHORITY_VERIFIED_FOR_EXECUTED_M150_CELLS; NO_10M_EXECUTION_TO_VERIFY",
+      "scope_boundary": "Ukrainian raw-Base conditional-likelihood diagnostic; no broad proficiency, instruction-following, or intelligence claim."
+    },
+    {
+      "id": "eval133_en_frozen_mechanistic",
+      "class": "frozen mechanistic diagnostic",
+      "status": "NOT_EXECUTED_ON_10M",
+      "suite": "EVAL-133",
+      "suite_identity": "f9e713ff336e6189f7aa0ddbb21303431ab2041b6700ed38243eaf65865805cb",
+      "reservation_identity": "850e0c34fd6ab35d0829b3f78ff5e81fbcb8c1ee900f3e7f1b967ea23a8f2e40",
+      "authority_pr": 329,
+      "authority_source_sha": "de19adf253c19ba077a6b3af7c88c291249ed7aa",
+      "authority_workflow_run": 32951302310,
+      "authority_workflow_conclusion": "success",
+      "authority_artifact_id": 9600282641,
+      "authority_artifact_name": "recover176-eval133-en-learned-base-ladder-v2",
+      "authority_artifact_digest": "sha256:7ae13c78e830045fca1ce3c571c539d8503a3ef89d0c071e098aa21866a18422",
+      "report_identity": "8f3a4774c1090e90d047bc9d441f82ef42946f72f5aeea26781170622a69a8cf",
+      "random_init": null,
+      "learned_best": null,
+      "learned_final": null,
+      "ten_m_result_reason": "Authority evaluates only retained M150 100K/500K/1M checkpoints and explicitly emits no 10M numerical result.",
+      "state_non_mutation": "HISTORICAL_AUTHORITY_VERIFIED_FOR_EXECUTED_M150_CELLS; NO_10M_EXECUTION_TO_VERIFY",
+      "scope_boundary": "English raw-Base conditional-likelihood diagnostic; no broad English proficiency, instruction-following, or intelligence claim."
+    },
+    {
+      "id": "eval134_code_frozen_mechanistic",
+      "class": "frozen mechanistic diagnostic",
+      "status": "NOT_EXECUTED_ON_10M",
+      "suite": "EVAL-134",
+      "suite_identity": "df18192f6190cc5d8be9492103a15097daaaf31afdd1cd45b2f4c21af5721105",
+      "authority_pr": 321,
+      "authority_source_sha": "4cb4767ba7002383c9ec6f31f1fcea1014105259",
+      "authority_workflow_run": 32939213215,
+      "authority_workflow_conclusion": "success",
+      "authority_artifact_id": 9597312250,
+      "authority_artifact_name": "recover177-eval134-m150-code",
+      "authority_artifact_digest": "sha256:fcc1aaf47d6492db5dd517575c8841703e13a21d24804f2d7eeae26dccdef599",
+      "data25_overlap_raw": 0,
+      "data25_overlap_normalized": 0,
+      "random_init": null,
+      "learned_best": null,
+      "learned_final": null,
+      "ten_m_result_reason": "Authority evaluates only retained M150 100K/500K/1M checkpoints and explicitly keeps 10M numerical code-eval evidence absent.",
+      "state_non_mutation": "HISTORICAL_AUTHORITY_VERIFIED_FOR_EXECUTED_M150_CELLS; NO_10M_EXECUTION_TO_VERIFY",
+      "scope_boundary": "Reserved mechanistic code-structure conditional-likelihood diagnostic only; no code instruction-following or code-generation capability claim."
+    },
+    {
+      "id": "eval136_memorization_canary",
+      "class": "memorization canary experiment",
+      "status": "NOT_EXECUTED_ON_10M",
+      "suite": "EVAL-136",
+      "authority_pr": 318,
+      "authority_source_sha": "fc4b3a1ed39216ee8e4cc938283ece2bd44f4d68",
+      "authority_workflow_run": 32938943596,
+      "authority_artifact_id": 9597643947,
+      "authority_artifact_digest": "sha256:bba24085b45f1c73f7f4735b7cbef9994d4c1a6f1d585921641a2a271375b665",
+      "seed": 20260826,
+      "exposure_levels": [0, 1, 2, 4, 8, 16],
+      "replicas": 3,
+      "checkpoints": [0, 250, 500, 750, 1000],
+      "random_init": null,
+      "learned_best": null,
+      "learned_final": null,
+      "ten_m_result_reason": "10M was explicitly not run because the exact-green precondition was absent at recovery execution time.",
+      "state_non_mutation": "HISTORICAL_AUTHORITY_RECORDS_NON_MUTATION_PER_EXECUTED_CHECKPOINT; NO_10M_EXECUTION_TO_VERIFY",
+      "scope_boundary": "Separate injected-canary experiment; not equivalent to the LEARN-217 hash-only training-passage probe and not a privacy-leak claim."
+    },
+    {
+      "id": "eval233_external_real_partial_final_test",
+      "class": "external-real partial final test",
+      "status": "BLOCKED_NOT_RELEASED_FOR_SCORING",
+      "authority_pr": 365,
+      "authority_source_sha": "b5512b4648cb09dd052b08884dc53f291e1ce935",
+      "authority_workflow_run": 32957254139,
+      "authority_workflow_conclusion": "success",
+      "authority_artifact_id": 9602456151,
+      "authority_artifact_name": "eval233-real-holdout-v2",
+      "authority_artifact_digest": "sha256:c4631d10bbf373878eec3b47578cb61cd89c5b006f315be4ed6750c6db5ff3c2",
+      "final_test_identity": "86d51eb106524cd8e4d0f94d4ff6e2e3426c6321e0698279877dfc4d5fce3116",
+      "reserved_authorities_identity": "d169a9ca3bd561729227a222cdea47b8296b753bee0cd7f0ffea02621ac74b2a",
+      "blocker_report_identity": "1dc6e25ad795c790919e71e36a3a32bdf73736903452ea1c4234d2c208207b20",
+      "records": {
+        "ua": 8,
+        "en": 8,
+        "code": 0,
+        "selection_validation": 0
+      },
+      "decontamination": {
+        "status": "BLOCKED_MISSING_DATA230",
+        "scan_executed": false,
+        "evaluation_release_allowed": false
+      },
+      "random_init": null,
+      "learned_best": null,
+      "learned_final": null,
+      "ten_m_result_reason": "Final-test authority is materialized but release for scoring is fail-closed; no 10M scorer result exists.",
+      "state_non_mutation": "NOT_APPLICABLE_NO_10M_SCORING_EXECUTION",
+      "scope_boundary": "Do not expose reserved final-test contents; code and selection-validation coverage are absent at this cutoff."
+    },
+    {
+      "id": "learn217_auxiliary_hash_only_training_passage_probe",
+      "class": "auxiliary memorization-related producer probe",
+      "status": "AVAILABLE_SEPARATE_NON_CANARY",
+      "artifact_anchor": "LEARN-217 artifact 9602650341",
+      "random_init": null,
+      "learned_best": null,
+      "learned_final": {
+        "exact_short_continuation_rate": 1.0,
+        "mean_bpb": 0.000513
+      },
+      "state_non_mutation": "VERIFIED_BY_PRODUCER_HASH_AND_TRAINER_OPTIMIZER_SCHEDULER_GUARD",
+      "scope_boundary": "Hash-only probe on training passages. It is not EVAL-136 and must not be relabeled as the canary experiment."
+    }
+  ],
+  "required_missing_evidence": [
+    "VERIFY_218_independent_learned_10M_authority_missing_at_cutoff",
+    "EVAL_132_10M_not_executed",
+    "EVAL_133_10M_not_executed",
+    "EVAL_134_10M_not_executed",
+    "EVAL_136_10M_not_executed",
+    "EVAL_233_release_blocked_missing_DATA230",
+    "EVAL_233_external_real_code_zero_records",
+    "EVAL_233_selection_validation_zero_records"
+  ],
+  "panel_interpretation": {
+    "permitted": [
+      "Report exact producer heldout evidence for LEARN-217 on its named evaluation surfaces.",
+      "Report that frozen UA/EN/code and canary authorities are valid historical authorities but have no 10M execution at this cutoff.",
+      "Report that external-real final-test materialization exists but is not released for scoring."
+    ],
+    "forbidden": [
+      "Do not infer instruction following.",
+      "Do not infer factual intelligence.",
+      "Do not infer production readiness.",
+      "Do not infer alignment or safety.",
+      "Do not treat project-authored heldout as external-real evidence.",
+      "Do not mix metrics from distinct heldout evaluation identities.",
+      "Do not relabel the LEARN-217 hash-only training-passage probe as EVAL-136."
+    ]
+  }
+}
