@@ -1,0 +1,178 @@
+name: POSTBASE-351 Model Adapter V1
+run-name: POSTBASE-351 exact-head LOCAL_FREE proof
+
+on:
+  push:
+    branches: [postbase351/model-adapter-v1-20260826]
+  pull_request:
+    branches: [perf250/gqa-static-kv-convergence-v2-20260826]
+  workflow_dispatch:
+
+concurrency:
+  group: postbase351-model-adapter-${{ github.event.pull_request.head.sha || github.sha }}
+  cancel-in-progress: true
+
+permissions: {contents: read, actions: read}
+
+jobs:
+  local-free-cpu:
+    runs-on: ubuntu-24.04
+    env:
+      PYTHONPATH: src
+      POSTBASE351_EXECUTION_PROFILE: LOCAL_FREE
+      POSTBASE351_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: "${{ env.POSTBASE351_HEAD_SHA }}"
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with: {python-version: "3.11.16"}
+
+      - name: Universal bootstrap focused adapter tests
+        uses: ./.github/actions/execution-bootstrap
+        with:
+          capabilities: runtime,tests,lint
+          venv: .postbase351-cpu
+          command: >-
+            python -m pytest -q
+            tests/test_postbase_model_adapter.py
+            tests/test_first_party_atomic_snapshot.py
+            tests/test_inference_generation.py
+          manifest: reports/postbase351/environment.json
+
+      - name: Ruff post-Base surface
+        run: >-
+          .postbase351-cpu/bin/ruff check
+          src/twelve_six/postbase
+          tests/test_postbase_model_adapter.py
+
+      - name: Prove no external LLM or checkpoint writer dependency
+        run: |
+          set -euo pipefail
+          if grep -REn '^\s*(from|import)\s+(openai|anthropic|requests|httpx)(\.|\s|$)' src/twelve_six/postbase; then
+            echo "post-Base adapter must not import an external LLM/network client" >&2
+            exit 1
+          fi
+          if grep -REn '\b(save_checkpoint|backward|optimizer\.step)\b' src/twelve_six/postbase; then
+            echo "post-Base adapter must not own checkpoint/training mutation mechanics" >&2
+            exit 1
+          fi
+
+      - name: Verify exact checked-out head
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$POSTBASE351_HEAD_SHA"
+          printf '%s\n' "$POSTBASE351_HEAD_SHA" > reports/postbase351/head.sha256
+
+      - name: Verify LOCAL_FREE CPU-only boundary
+        run: |
+          set -euo pipefail
+          .postbase351-cpu/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+          import torch
+
+          manifest = json.loads(Path('reports/postbase351/environment.json').read_text())
+          assert manifest['preflight']['status'] == 'PASS'
+          assert manifest['plan']['cuda_packages_present'] is False
+          assert torch.version.cuda is None
+          assert torch.cuda.is_available() is False
+          print(json.dumps({'profile': 'LOCAL_FREE', 'device': 'cpu', 'status': 'PASS'}))
+          PY
+
+      - name: Download exact terminal learned 10M artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p learned-artifacts/zips learned-artifacts/learn217 reports/postbase351
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/9602650341/zip" > learned-artifacts/zips/learn217.zip
+          echo "8631e90417e40365b3fc0d6bc98ee6adda5a4ed24530e675d9a91c93219537ee  learned-artifacts/zips/learn217.zip" | sha256sum -c -
+          unzip -q learned-artifacts/zips/learn217.zip -d learned-artifacts/learn217
+
+      - name: Record learned Base checkpoint tree before post-Base use
+        run: |
+          set -euo pipefail
+          CHECKPOINT=learned-artifacts/learn217/scale141-evidence/retained/best
+          (cd "$CHECKPOINT" && find . -type f -print0 | sort -z | xargs -0 sha256sum) | sha256sum | awk '{print $1}' > reports/postbase351/base-tree-before.sha256
+
+      - name: Exercise learned 10M through deliberation and tool controller ports
+        run: |
+          set -euo pipefail
+          .postbase351-cpu/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+
+          from twelve_six.inference.contracts import GenerationConfig
+          from twelve_six.postbase import ControllerGenerationRequest, PostBaseModelAdapter
+
+          expected_spec = '61caa5469123e23b9b72fc2024140bfca84c4c480dcb0a7e712ba800a4f22998'
+          checkpoint = Path('learned-artifacts/learn217/scale141-evidence/retained/best')
+          adapter = PostBaseModelAdapter.from_checkpoint(
+              checkpoint,
+              expected_model_spec_sha256=expected_spec,
+          )
+          assert adapter.model_spec.parameter_count() == 10_000_640
+          assert adapter.base_evidence.step > 0
+          assert adapter.base_evidence.tokens_seen > 0
+
+          outputs = []
+          for controller, prompt in (
+              ('deliberation', 'POSTBASE-351 local deliberation probe'),
+              ('tool', 'POSTBASE-351 local tool-controller probe'),
+          ):
+              response = adapter.generate(
+                  ControllerGenerationRequest(
+                      controller=controller,
+                      prompt=prompt,
+                      config=GenerationConfig(max_new_tokens=2, sample=False),
+                  )
+              )
+              assert response.base_evidence.evidence_namespace == 'base'
+              assert response.post_base_evidence.evidence_namespace == 'post_base'
+              assert response.post_base_evidence.runtime_policy == 'LOCAL_FREE'
+              outputs.append(response.post_base_evidence.to_dict())
+
+          report = {
+              'schema': '12-6.postbase351.learned-10m-proof.v1',
+              'worker': 'POSTBASE-351-MODEL-ADAPTER-V1',
+              'source_artifact': {
+                  'artifact_id': 9602650341,
+                  'zip_sha256': '8631e90417e40365b3fc0d6bc98ee6adda5a4ed24530e675d9a91c93219537ee',
+              },
+              'base_evidence': adapter.base_evidence.to_dict(),
+              'post_base_evidence': outputs,
+              'claims': {
+                  'verified_checkpoint_consumed': True,
+                  'base_checkpoint_write_requested': False,
+                  'external_llm_used': False,
+                  'runtime_policy': 'LOCAL_FREE',
+              },
+          }
+          Path('reports/postbase351/learned-10m-proof.json').write_text(
+              json.dumps(report, indent=2, sort_keys=True) + '\n',
+              encoding='utf-8',
+          )
+          PY
+
+      - name: Prove learned Base checkpoint tree is byte-identical after use
+        run: |
+          set -euo pipefail
+          CHECKPOINT=learned-artifacts/learn217/scale141-evidence/retained/best
+          (cd "$CHECKPOINT" && find . -type f -print0 | sort -z | xargs -0 sha256sum) | sha256sum | awk '{print $1}' > reports/postbase351/base-tree-after.sha256
+          cmp reports/postbase351/base-tree-before.sha256 reports/postbase351/base-tree-after.sha256
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: postbase351-model-adapter-local-free
+          path: |
+            reports/postbase351/environment.json
+            reports/postbase351/head.sha256
+            reports/postbase351/learned-10m-proof.json
+            reports/postbase351/base-tree-before.sha256
+            reports/postbase351/base-tree-after.sha256
+          if-no-files-found: warn
+          retention-days: 30
