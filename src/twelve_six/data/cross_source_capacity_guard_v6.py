@@ -1,10 +1,10 @@
 """Fail-closed exact planning-vector guard for NEXT100-065D/V6.
 
-The V6 composition recomputes accepted-only CPython bytes from the exact source,
-but terminal adapter authority fixes that accepted capacity at 15,540 bytes.
-The current composed vector additionally binds terminal attrs authority at
-170,435 bytes. Any drift must fail closed rather than become new training
-capacity implicitly.
+The V6 composition may recompute accepted-only CPython bytes from the exact
+source, but the terminal adapter already fixed that accepted capacity at 15,540
+bytes on exact head 8f0cbc16f9a920ca9ab3e3061b53fbfec8838d77, dedicated run
+33005689174.  A recomputation that produces any other capacity is authority
+drift and must not silently become a new planning vector.
 """
 from __future__ import annotations
 
@@ -17,18 +17,13 @@ CPYTHON_ACCEPTED_ADAPTER_RUN = 33005689174
 CPYTHON_ACCEPTED_CAPACITY_BYTES = 15540
 CPYTHON_FULL_NORMALIZED_SOURCE_BYTES = 17901
 
-ATTRS_PR = 474
-ATTRS_HEAD = "cda0232d5574ef91eae0d7e0b7fa5efddcbe218b"
-ATTRS_RUN = 33006080831
-ATTRS_CAPACITY_BYTES = 170435
-
 RESEARCH_CORPUS_V1_TARGET_BYTES = 20_000_000
-EXPECTED_PRE_DEDUP_TOTAL_BYTES = 2_215_615
-EXPECTED_PRE_DEDUP_GAP_BYTES = 17_784_385
+EXPECTED_PRE_DEDUP_TOTAL_BYTES = 2_045_180
+EXPECTED_PRE_DEDUP_GAP_BYTES = 17_954_820
 EXPECTED_PRE_DEDUP_BY_MODALITY = {
     "uk": 100_856,
     "en": 1_838_293,
-    "code": 276_466,
+    "code": 106_031,
 }
 
 
@@ -42,7 +37,12 @@ def _require(condition: bool, message: str) -> None:
 
 
 def verify_exact_terminal_vector(report: Mapping[str, Any]) -> None:
-    """Require the exact post-source, pre-global-dedup planning vector."""
+    """Require the exact post-source, pre-global-dedup planning vector.
+
+    This is deliberately stricter than the generic V6 report verifier.  It
+    prevents a fresh CPython recomputation from replacing the already terminal
+    accepted-only adapter authority without an explicit successor decision.
+    """
     vector = report.get("source_vector")
     _require(isinstance(vector, Mapping), "V6 source_vector missing")
 
@@ -80,4 +80,8 @@ def verify_exact_terminal_vector(report: Mapping[str, Any]) -> None:
         gap == EXPECTED_PRE_DEDUP_GAP_BYTES,
         f"V6 pre-dedup planning gap drift: expected {EXPECTED_PRE_DEDUP_GAP_BYTES}, got {gap}",
     )
-    _require(total + gap == target, "V6 target/capacity/gap arithmetic is inconsistent")
+
+    _require(
+        total + gap == target,
+        "V6 target/capacity/gap arithmetic is inconsistent",
+    )
