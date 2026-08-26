@@ -11,6 +11,8 @@ from twelve_six.data185_scientific_candidate import (
     RESEARCH140_HEAD,
     SCHEMA,
     SOURCE_FAMILY_MIN_BY_STRATUM,
+    Data185Error,
+    _blocked_report,
     _research140_single_pair,
     validate,
 )
@@ -24,6 +26,7 @@ def test_scientific_thresholds_are_explicit_and_cross_modal() -> None:
 def test_single_fixed_pair_uses_research140_fail_closed_semantics() -> None:
     result = _research140_single_pair(4.20, 4.10)
     assert result["methodology_upstream_head"] == RESEARCH140_HEAD
+    assert result["metric"] == "common_data25_validation_bits_per_byte"
     assert result["paired_repeats"] == 1
     assert result["decision"] == "INSUFFICIENT_REPEATS"
     assert result["winner"] is None
@@ -49,6 +52,17 @@ def test_validate_accepts_only_bound_machine_report(tmp_path: Path) -> None:
     path.write_text(json.dumps(report), encoding="utf-8")
     checked = validate(path, "a" * 40)
     assert checked["status"] == "RETEST_REQUIRED"
+
+
+def test_blocked_report_omits_unsupported_comparison(tmp_path: Path) -> None:
+    blocked = _blocked_report("c" * 40, Data185Error("missing evidence"))
+    assert blocked["status"] == "BLOCKED"
+    assert "fixed_approx_1m_comparison" not in blocked
+    assert "candidate" not in blocked
+    path = tmp_path / "blocked.json"
+    path.write_text(json.dumps(blocked), encoding="utf-8")
+    checked = validate(path, "c" * 40)
+    assert checked["status"] == "BLOCKED"
 
 
 def test_validate_rejects_self_hash_drift(tmp_path: Path) -> None:
