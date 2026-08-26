@@ -1,0 +1,110 @@
+{
+  "schema_version": "12-6.next100-076-cross-source-dedup.v4",
+  "worker_id": "NEXT100-076-CORPUS-NIST-CONVERGENCE",
+  "local_free_only": true,
+  "model_training_executed": false,
+  "claim_boundary": "SUCCESSOR_TERMINAL_SOURCE_CONVERGENCE_AND_GLOBAL_DEDUP_ONLY; NOT FINAL CORPUS MATERIALIZATION; NOT DECONTAMINATION; NOT TRAINING AUTHORITY",
+  "base_inventory": {
+    "authority": "NEXT100-065-CROSSSOURCE-DEDUP-V3",
+    "authority_head_sha": "efc278cec0e4773eb4ff405bf4b4d24ee63b5d13",
+    "dedicated_workflow_run": 32999969398,
+    "acquisition_url": "https://raw.githubusercontent.com/Oleksii-debug/12-6-ai./efc278cec0e4773eb4ff405bf4b4d24ee63b5d13/configs/data/next100_065_cross_source_dedup_v3.json",
+    "expected_git_blob_sha1": "c1e05f09490e25f6fed765dfb70d900717528f4d"
+  },
+  "late_terminal_authorities": [
+    {
+      "authority": "NEXT100-034-NIST",
+      "head_sha": "b7491745b34ac8679baaf69cb96cd609dcbe0a16",
+      "dedicated_workflow_run": 32998703545,
+      "terminal_status": "ADMIT",
+      "family_id": "en.usgov.nist.technical-series",
+      "family_count": 1,
+      "normalized_utf8_bytes": 59358
+    }
+  ],
+  "additional_sources": [
+    {
+      "source_id": "en.usgov.nist.sp800-204",
+      "source_family": "en.usgov.nist.technical-series",
+      "stable_origin_id": "publisher:nist:technical-series",
+      "stable_object_id": "doi:10.6028/NIST.SP.800-204",
+      "modality": "en",
+      "evidence_status": "DEDICATED_TERMINAL",
+      "authority_ref": "NEXT100-034 exact head b7491745b34ac8679baaf69cb96cd609dcbe0a16 workflow 32998703545 terminal ADMIT",
+      "declared_capacity_bytes": 19668,
+      "expected_raw_bytes": 814054,
+      "expected_raw_sha256": "25412c860165e5ee1cfbf26ed47c56f4d213b1996a73365f5561be6403cf7588",
+      "acquisition_url": "https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-204.pdf",
+      "origin_key": "nist:technical-series:doi:10.6028/NIST.SP.800-204",
+      "comparison_normalization": "NEXT100_034_NIST_PDF_BODY_NFKC_BOUNDED_V1",
+      "expected_comparison_bytes": 19668,
+      "expected_comparison_sha256": "570e8d75b6dc6aefee1f089818b46765c0dd1965e06947bcc2fff0169d22274e",
+      "pdf_start_page": 9,
+      "expected_extractor_version_prefix": "pdftotext version 24.02.0"
+    },
+    {
+      "source_id": "en.usgov.nist.sp800-204c",
+      "source_family": "en.usgov.nist.technical-series",
+      "stable_origin_id": "publisher:nist:technical-series",
+      "stable_object_id": "doi:10.6028/NIST.SP.800-204C",
+      "modality": "en",
+      "evidence_status": "DEDICATED_TERMINAL",
+      "authority_ref": "NEXT100-034 exact head b7491745b34ac8679baaf69cb96cd609dcbe0a16 workflow 32998703545 terminal ADMIT",
+      "declared_capacity_bytes": 19736,
+      "expected_raw_bytes": 717082,
+      "expected_raw_sha256": "d51133dc55a804990d80ba4b9c35e3fbb2d5acdf7b330b66edeaae59fc63d69b",
+      "acquisition_url": "https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-204C.pdf",
+      "origin_key": "nist:technical-series:doi:10.6028/NIST.SP.800-204C",
+      "comparison_normalization": "NEXT100_034_NIST_PDF_BODY_NFKC_BOUNDED_V1",
+      "expected_comparison_bytes": 19736,
+      "expected_comparison_sha256": "558da6a0886036a01a5139d635b1352b5cf5d74655d919c66a04e84f2d49c0fe",
+      "pdf_start_page": 11,
+      "expected_extractor_version_prefix": "pdftotext version 24.02.0"
+    },
+    {
+      "source_id": "en.usgov.nist.sp800-215",
+      "source_family": "en.usgov.nist.technical-series",
+      "stable_origin_id": "publisher:nist:technical-series",
+      "stable_object_id": "doi:10.6028/NIST.SP.800-215",
+      "modality": "en",
+      "evidence_status": "DEDICATED_TERMINAL",
+      "authority_ref": "NEXT100-034 exact head b7491745b34ac8679baaf69cb96cd609dcbe0a16 workflow 32998703545 terminal ADMIT",
+      "declared_capacity_bytes": 19954,
+      "expected_raw_bytes": 1089318,
+      "expected_raw_sha256": "159e17820a0a337c4a7e9c7ee8b966823e81dc72f5c6229e7d7244c40b0b1645",
+      "acquisition_url": "https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-215.pdf",
+      "origin_key": "nist:technical-series:doi:10.6028/NIST.SP.800-215",
+      "comparison_normalization": "NEXT100_034_NIST_PDF_BODY_NFKC_BOUNDED_V1",
+      "expected_comparison_bytes": 19954,
+      "expected_comparison_sha256": "6c99c3b14ee3ea7fe915940e38c080dbf2a785f1abcee2fd73e7fd731424770d",
+      "pdf_start_page": 11,
+      "expected_extractor_version_prefix": "pdftotext version 24.02.0"
+    }
+  ],
+  "additional_lineage_edges": [
+    {
+      "left_source_id": "en.usgov.nist.sp800-204",
+      "right_source_id": "en.usgov.nist.sp800-204c",
+      "relation": "sibling_same_origin",
+      "capacity_collapsing": false,
+      "independence_collapsing": true,
+      "evidence": "Distinct terminal-admitted NIST technical-series publications from one publisher family; no intra-subset near-copy evidence, so capacity remains distinct while family independence collapses to one origin."
+    },
+    {
+      "left_source_id": "en.usgov.nist.sp800-204c",
+      "right_source_id": "en.usgov.nist.sp800-215",
+      "relation": "sibling_same_origin",
+      "capacity_collapsing": false,
+      "independence_collapsing": true,
+      "evidence": "Distinct terminal-admitted NIST technical-series publications from one publisher family; no intra-subset near-copy evidence, so capacity remains distinct while family independence collapses to one origin."
+    }
+  ],
+  "expected_pre_dedup_projection": {
+    "base_declared_capacity_bytes": 243970,
+    "added_nist_declared_capacity_bytes": 59358,
+    "converged_declared_capacity_bytes": 303328,
+    "english_declared_capacity_bytes": 144151,
+    "english_independent_family_floor": 2,
+    "note": "Projection only. Canonical successor report must establish actual cross-source dedup capacity and family accounting."
+  }
+}
