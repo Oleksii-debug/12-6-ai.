@@ -1,5 +1,13 @@
 """Checkpointing, integrity, resume, and export primitives for 12-6 AI."""
 
+from . import core as _core
+from .hardening import install_checkpoint_hardening
+
+# D05 hardening is installed before downstream checkpoint adapters import core
+# symbols, so direct ``twelve_six.checkpoint.core`` and package-level callers
+# receive the same fail-closed loader behavior.
+install_checkpoint_hardening(_core)
+
 from .core import (
     CheckpointCompatibilityError,
     CheckpointError,
