@@ -1,0 +1,105 @@
+{
+  "schema_version": "12-6.external-scale-calibration.v1",
+  "as_of_utc": "2026-08-26",
+  "execution_profile": "LOCAL_FREE",
+  "paid_compute_used": false,
+  "training_executed": false,
+  "decision": "DATA_FIRST_DO_NOT_LAUNCH_LONG_20M_TRAINING",
+  "current_authority": {
+    "primary_20m_parameters": 20613440,
+    "primary_20m_modelspec_sha256": "fbff24d561a2818453554d58ca23fc6ace3303b078f1935a8576c4565bd92441",
+    "primary_20m_authority_sha": "e4ff486fd90802fc123bebf60eed4e59196a98df",
+    "authorized_current_external_unique_optimized_targets": 0,
+    "long_training_allowed_now": false
+  },
+  "project_planning_bands": {
+    "meaningful_science_unique_targets_per_parameter": {
+      "minimum": 0.5,
+      "maximum": 2.0,
+      "authority": "RESEARCH-251_PROJECT_LOCAL_PLANNING_GUARD",
+      "universal_optimum_claimed": false
+    },
+    "full_pretraining_training_tokens_per_parameter": {
+      "minimum": 5.0,
+      "maximum": 20.0,
+      "authority": "RESEARCH-251_PROJECT_LOCAL_PLANNING_ENVELOPE",
+      "universal_optimum_claimed": false
+    }
+  },
+  "scale_targets": [
+    {
+      "label": "MODEL-341_PRIMARY_20M",
+      "parameters": 20613440,
+      "meaningful_unique_targets_min": 10306720,
+      "meaningful_unique_targets_max": 41226880,
+      "full_pretraining_tokens_min": 103067200,
+      "full_pretraining_tokens_max": 412268800,
+      "twenty_tokens_per_parameter_reference": 412268800
+    },
+    {
+      "label": "NEXT_100M_PLANNING",
+      "parameters": 100000000,
+      "meaningful_unique_targets_min": 50000000,
+      "meaningful_unique_targets_max": 200000000,
+      "full_pretraining_tokens_min": 500000000,
+      "full_pretraining_tokens_max": 2000000000,
+      "twenty_tokens_per_parameter_reference": 2000000000
+    },
+    {
+      "label": "FUTURE_1B_PLANNING",
+      "parameters": 1000000000,
+      "meaningful_unique_targets_min": 500000000,
+      "meaningful_unique_targets_max": 2000000000,
+      "full_pretraining_tokens_min": 5000000000,
+      "full_pretraining_tokens_max": 20000000000,
+      "twenty_tokens_per_parameter_reference": 20000000000
+    }
+  ],
+  "external_calibration": [
+    {
+      "id": "HOFFMANN_2022_CHINCHILLA",
+      "url": "https://arxiv.org/abs/2203.15556",
+      "finding": "Compute-optimal model size and training-token count scale together; Chinchilla 70B used about 1.4T tokens, approximately 20 tokens per parameter.",
+      "use_in_project": "REFERENCE_ONLY_NOT_A_UNIVERSAL_GATE",
+      "universal_optimum_claimed": false
+    },
+    {
+      "id": "MUENNIGHOFF_2025_DATA_CONSTRAINED",
+      "url": "https://jmlr.org/papers/v26/24-1000.html",
+      "finding": "In data-constrained fixed-compute experiments, repeating data for up to roughly four epochs can have negligible loss change relative to unique data, while additional repetition eventually gives diminishing value.",
+      "use_in_project": "CONTROLLED_REPETITION_RESEARCH_ONLY_AFTER_TERMINAL_UNIQUE_CORPUS",
+      "repeated_tokens_count_as_unique": false
+    },
+    {
+      "id": "META_LLAMA3_2024",
+      "url": "https://ai.meta.com/blog/meta-llama-3/",
+      "finding": "Meta reports an approximately 200B-token Chinchilla-optimal reference for an 8B model, while Llama 3 models continued improving when trained far beyond that amount, up to 15T tokens.",
+      "use_in_project": "EVIDENCE_THAT_INFERENCE_EFFICIENT_SMALL_MODELS_MAY_BE_OVERTRAINED_BEYOND_COMPUTE_OPTIMAL",
+      "universal_optimum_claimed": false
+    },
+    {
+      "id": "HF_SMOLLM_2024",
+      "url": "https://huggingface.co/blog/smollm",
+      "finding": "SmolLM 135M and 360M models were each trained on 600B tokens, illustrating that small practical models may use training exposure far above simple compute-optimal ratios.",
+      "use_in_project": "SCALE_CONTEXT_ONLY_NOT_A_TARGET_TO_COPY",
+      "universal_optimum_claimed": false
+    }
+  ],
+  "repetition_policy": {
+    "default_for_authority": "NO_REPLAY_UNIQUE_LEDGER_FIRST",
+    "controlled_repeat_experiment_allowed_after_terminal_unique_corpus": true,
+    "research_reference_epoch_ceiling": 4,
+    "research_reference_is_authorization": false,
+    "repeated_tokens_may_increase_unique_capacity": false,
+    "padding_may_increase_data_capacity": false
+  },
+  "promotion_requirements": [
+    "terminal immutable training corpus identity",
+    "terminal unique nonignored causal-loss ledger",
+    "terminal tokenizer identity bound to the corpus",
+    "checkpoint corruption matrix passes on direct production path",
+    "bounded optimizer mechanics requalified on exact MODEL-341 authority",
+    "selection and final evaluation remain isolated from training",
+    "material compute receives explicit authorization before long training"
+  ]
+}
