@@ -110,7 +110,9 @@ def test_scale_1b_positive_evidence_requires_authority_references() -> None:
 
     fully_authorized = Scale1BDependencies(
         **ENGINEERING_AUTHORITIES,
-        compute_authorization="COMPUTE_AUTHORIZED:owner-message-id:test",
+        compute_authorization=(
+            f"COMPUTE_AUTHORIZED:artifact:owner-compute-approval@{ARTIFACT_SHA}"
+        ),
     )
     report = assess_scale_1b_readiness(CANDIDATE, fully_authorized)
     assert report.engineering_blockers == ()
@@ -165,6 +167,10 @@ def test_scale_1b_rejects_unbound_compute_self_attestation() -> None:
         Scale1BDependencies(compute_authorization="yes")
     with pytest.raises(ValueError, match="non-empty authority reference"):
         Scale1BDependencies(compute_authorization="COMPUTE_AUTHORIZED:")
+    with pytest.raises(ValueError, match="durable github/artifact authority"):
+        Scale1BDependencies(compute_authorization="COMPUTE_AUTHORIZED:owner-message-id:test")
+    with pytest.raises(ValueError, match="durable github/artifact authority"):
+        Scale1BDependencies(compute_authorization=f"COMPUTE_AUTHORIZED:github:owner@{SHA_A}:queued")
 
 
 def test_scale_1b_rejects_blank_padded_or_freeform_engineering_authorities() -> None:
