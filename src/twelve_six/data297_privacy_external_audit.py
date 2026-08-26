@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping
 
-from .privacy_filter import (
+from .data.privacy_filter import (
     assert_no_secret_values_in_manifest,
     detect_privacy_findings,
     privacy_policy_manifest,
