@@ -27,6 +27,9 @@ from .hardening import (
 from .hf_export import export_hf_directory
 from .run_binding import bind_checkpoint_identity
 from .trainer_adapter import load_trainer_checkpoint, save_trainer_checkpoint
+from .core_guard import install_core_guards
+
+install_core_guards()
 
 __all__ = [
     "CheckpointCompatibilityError",
