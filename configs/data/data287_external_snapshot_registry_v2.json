@@ -67,7 +67,9 @@
       },
       "license_id": "CC0-1.0",
       "mirror": false,
-      "fork": false
+      "fork": false,
+      "rights_authority": "policy://12-6/data/explicit-model-training-evidence-v1",
+      "source_manifest_sha256": "7be4e9ad119a4ae9e81f633c437a933c7673d9bbd6b9362ea8a598e8c187c97f"
     },
     {
       "producer": "DATA-213",
@@ -89,7 +91,9 @@
       },
       "license_id": "CC0-1.0",
       "mirror": false,
-      "fork": false
+      "fork": false,
+      "rights_authority": "policy://12-6/data/explicit-model-training-evidence-v1",
+      "source_manifest_sha256": "f46b244d7036f98c818ebe3232f04ccf981a16818fd55307baaf63e5b78b1544"
     },
     {
       "producer": "DATA-213",
@@ -112,7 +116,9 @@
       },
       "license_id": "RADA-OPEN-DATA-REUSE",
       "mirror": false,
-      "fork": false
+      "fork": false,
+      "rights_authority": "policy://12-6/data/explicit-model-training-evidence-v1",
+      "source_manifest_sha256": "7227a1d7ccb5a71a7f4440d9b9d1bd82d293fd5bea7b09f71dc7339236e06d68"
     },
     {
       "producer": "DATA-227",
@@ -140,7 +146,8 @@
       "license_sha256": "4ec59d544f12b5f539a3a716fd321ac58ccd8030b465221f2c880200cdf28d8d",
       "redistribution_conditions": "Retain copyright notice, license conditions and disclaimer; no endorsement using copyright-holder/contributor names.",
       "mirror": false,
-      "fork": false
+      "fork": false,
+      "rights_authority": "policy://12-6/data/explicit-model-training-evidence-v1"
     },
     {
       "producer": "DATA-227",
@@ -168,19 +175,26 @@
       "license_sha256": "09e8a9bcec8067104652c168685ab0931e7868f9c8284b66f5ae6edae5f1130b",
       "redistribution_conditions": "Comply with Apache-2.0 section 4, including license delivery and applicable attribution/NOTICE obligations.",
       "mirror": false,
-      "fork": false
+      "fork": false,
+      "rights_authority": "policy://12-6/data/explicit-model-training-evidence-v1"
     }
   ],
   "explicit_exclusions": [
     {
       "worker": "DATA-228",
       "reason": "terminal admission failed before immutable identity evidence was retained",
-      "candidate_families": ["kubernetes.website.docs", "python.cpython.documentation"]
+      "candidate_families": [
+        "kubernetes.website.docs",
+        "python.cpython.documentation"
+      ]
     },
     {
       "worker": "DATA-23",
       "reason": "prior code pilot remained rights-blocked and DATA-227 explicitly did not reinterpret it",
-      "candidate_families": ["github:pallets/itsdangerous", "github:pytest-dev/pluggy"]
+      "candidate_families": [
+        "github:pallets/itsdangerous",
+        "github:pytest-dev/pluggy"
+      ]
     }
   ]
 }
