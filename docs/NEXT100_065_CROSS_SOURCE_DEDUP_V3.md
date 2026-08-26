@@ -18,11 +18,13 @@ All capacity-collapsing exact, normalized, near-copy, fragment, code-skeleton an
 
 The report separately exposes source count, declared source-family count, stable-origin count, effective independent-origin count, raw bytes, declared capacity before dedup, conservative capacity after dedup, duplicate discount, duplicate clusters and modality-level summaries.
 
-## Initial terminal vector
+## Terminal refresh cut
 
-The initial exact-head cut contains the five previously terminal training-candidate objects: Rada, two Standard Ebooks manual files, HTTPX code and Requests code. The two Standard Ebooks files are one stable origin, not two independent families. Their bytes are not collapsed because they are distinct sibling documents and DATA-298 found no copy edge.
+At the `2026-08-26T18:20:54Z` refresh cut, the exact terminal vector contains 11 objects / 7 stable origins: the five DATA-298 objects plus the terminal Ukrainian Wikisource page snapshot, three Django implementation files and two Starlette implementation files. Their declared pre-dedup source capacity is 243,970 bytes: Ukrainian 90,044; English 84,793; code 69,133.
 
-Concurrent NEXT100 source authorities whose dedicated exact-head gates are queued or otherwise nonterminal are recorded only as observations and receive zero capacity until a mandatory final live refresh confirms terminal success. A successor commit is required if the final source vector changes.
+The Ukrainian Wikisource object is keyed to the underlying 1892 Lviv edition, not the hosting URL. Starlette is keyed to stable GitHub repository id 138597372 so the historical `encode/starlette` and current `Kludex/starlette` names cannot multiply independence. Django files are sibling objects in one Django origin and are not counted as three independent families.
+
+Concurrent authorities are credited only after their current exact head has a completed successful dedicated source gate. KMu, Nomis, CPython docs/code, MDN, Jinja, Pydantic, NIST, attrs, Rich and Typer were queued at this refresh and therefore receive zero terminal capacity. Probe/RETEST/rejected authorities likewise receive zero.
 
 ## Truth boundary
 

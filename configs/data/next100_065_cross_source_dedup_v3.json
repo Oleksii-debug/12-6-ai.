@@ -10,6 +10,8 @@
   },
   "capacity_semantics": "Source-authority declared normalized training capacity for text and identity-preserved source bytes for code. This is pre-corpus source capacity, not a final post-evaluation-reservation or post-quality/privacy training ledger.",
   "final_refresh_required": true,
+  "terminal_refresh_cutoff_utc": "2026-08-26T18:20:54Z",
+  "terminal_refresh_rule": "Only an exact current authority head with its dedicated admission/qualification workflow completed successfully is credited. Queued, in-progress, failed, probe, RETEST, and PR-text-only claims receive zero capacity.",
   "sources": [
     {
       "source_id": "en.standardebooks.manual.8-typography",
@@ -57,7 +59,7 @@
       "source_id": "code.encode.httpx._content",
       "source_family": "github:encode/httpx",
       "stable_origin_id": "github:encode/httpx",
-      "stable_object_id": "github:encode/httpx:b5addb64f0161ff6bfe94c124ef76f6a1fba5254:httpx/_content.py",
+      "stable_object_id": "git-sha1:6f479a0885f723b7395843d41164a87041820776",
       "modality": "code",
       "evidence_status": "DEDICATED_TERMINAL",
       "authority_ref": "DATA-227 exact head 8ebdb2e132ed7bae5245e9d4c140752640ab9885 workflow 32956209865",
@@ -71,7 +73,7 @@
       "source_id": "code.psf.requests._internal_utils",
       "source_family": "github:psf/requests",
       "stable_origin_id": "github:psf/requests",
-      "stable_object_id": "github:psf/requests:5460f467b02e49471c0fd6cfc9ca0adab6351f98:src/requests/_internal_utils.py",
+      "stable_object_id": "git-sha1:0466a7d347db4ed34a37db51b75fc8e80bc06055",
       "modality": "code",
       "evidence_status": "DEDICATED_TERMINAL",
       "authority_ref": "DATA-227 exact head 8ebdb2e132ed7bae5245e9d4c140752640ab9885 workflow 32956209865",
@@ -80,6 +82,92 @@
       "expected_git_blob_sha1": "0466a7d347db4ed34a37db51b75fc8e80bc06055",
       "acquisition_url": "https://raw.githubusercontent.com/psf/requests/5460f467b02e49471c0fd6cfc9ca0adab6351f98/src/requests/_internal_utils.py",
       "origin_key": "github:psf/requests:5460f467b02e49471c0fd6cfc9ca0adab6351f98:src/requests/_internal_utils.py"
+    },
+    {
+      "source_id": "ua.wikisource.lesia-ukrainka.na-krylah-pisen.1892.page13",
+      "source_family": "ua.literature.lesia-ukrainka.na-krylah-pisen.1892-lviv",
+      "stable_origin_id": "edition:lesia-ukrainka:na-krylah-pisen:1892-lviv",
+      "stable_object_id": "sha256:65e570c3cd954b595b586554b89a90da6efad0deca6a84d2316937745db17ef2",
+      "modality": "uk",
+      "evidence_status": "DEDICATED_TERMINAL",
+      "authority_ref": "NEXT100-022 exact head 84c51e42b6daa51796fd20d793b5ef1ff01cc9d2 workflow 32998002424",
+      "declared_capacity_bytes": 1479,
+      "expected_raw_bytes": 1479,
+      "expected_raw_sha256": "65e570c3cd954b595b586554b89a90da6efad0deca6a84d2316937745db17ef2",
+      "acquisition_url": "https://raw.githubusercontent.com/Oleksii-debug/12-6-ai./84c51e42b6daa51796fd20d793b5ef1ff01cc9d2/data/external/snapshots/next100022/ua_wikisource_lesia_1892_page13.txt",
+      "origin_key": "ukwikisource:page-revision:560107"
+    },
+    {
+      "source_id": "code.django.core.signing",
+      "source_family": "github:django/django",
+      "stable_origin_id": "github:django/django",
+      "stable_object_id": "git-sha1:d6be4a5d804916e3d7705018f485c4c374d90cc3",
+      "modality": "code",
+      "evidence_status": "DEDICATED_TERMINAL",
+      "authority_ref": "NEXT100-042 exact head 7d83f8d4f21f51ad0b59dca4ac80f80aba20fc13 workflow 32998037233",
+      "declared_capacity_bytes": 9594,
+      "expected_raw_bytes": 9594,
+      "expected_git_blob_sha1": "d6be4a5d804916e3d7705018f485c4c374d90cc3",
+      "acquisition_url": "https://raw.githubusercontent.com/django/django/b2821457e8bfa9e9066837b9f9b3a3955224ab19/django/core/signing.py",
+      "origin_key": "github:django/django:b2821457e8bfa9e9066837b9f9b3a3955224ab19:django/core/signing.py"
+    },
+    {
+      "source_id": "code.django.db.transaction",
+      "source_family": "github:django/django",
+      "stable_origin_id": "github:django/django",
+      "stable_object_id": "git-sha1:1710d1ef17497c4aef3f4b65498dd539d0ee0050",
+      "modality": "code",
+      "evidence_status": "DEDICATED_TERMINAL",
+      "authority_ref": "NEXT100-042 exact head 7d83f8d4f21f51ad0b59dca4ac80f80aba20fc13 workflow 32998037233",
+      "declared_capacity_bytes": 12506,
+      "expected_raw_bytes": 12506,
+      "expected_git_blob_sha1": "1710d1ef17497c4aef3f4b65498dd539d0ee0050",
+      "acquisition_url": "https://raw.githubusercontent.com/django/django/b2821457e8bfa9e9066837b9f9b3a3955224ab19/django/db/transaction.py",
+      "origin_key": "github:django/django:b2821457e8bfa9e9066837b9f9b3a3955224ab19:django/db/transaction.py"
+    },
+    {
+      "source_id": "code.django.urls.resolvers",
+      "source_family": "github:django/django",
+      "stable_origin_id": "github:django/django",
+      "stable_object_id": "git-sha1:6c681f9d8d32a35ca512cf3d08b68ab5bc358777",
+      "modality": "code",
+      "evidence_status": "DEDICATED_TERMINAL",
+      "authority_ref": "NEXT100-042 exact head 7d83f8d4f21f51ad0b59dca4ac80f80aba20fc13 workflow 32998037233",
+      "declared_capacity_bytes": 32056,
+      "expected_raw_bytes": 32056,
+      "expected_git_blob_sha1": "6c681f9d8d32a35ca512cf3d08b68ab5bc358777",
+      "acquisition_url": "https://raw.githubusercontent.com/django/django/b2821457e8bfa9e9066837b9f9b3a3955224ab19/django/urls/resolvers.py",
+      "origin_key": "github:django/django:b2821457e8bfa9e9066837b9f9b3a3955224ab19:django/urls/resolvers.py"
+    },
+    {
+      "source_id": "code.starlette._utils",
+      "source_family": "github:Kludex/starlette",
+      "stable_origin_id": "github-repo-id:138597372",
+      "stable_object_id": "git-sha1:b9b8639b2106fd552db7526c3f12aa429b430252",
+      "modality": "code",
+      "evidence_status": "DEDICATED_TERMINAL",
+      "authority_ref": "NEXT100-045 exact head c6756b5ebb6eb1d3bf3de2499167833d99d99a72 workflow 32998101312",
+      "declared_capacity_bytes": 2970,
+      "expected_raw_bytes": 2970,
+      "expected_raw_sha256": "7cb67fa5195ca7ec0fe33122c9e5ce225edfa3297fcc82f9026e84f9c56583cb",
+      "expected_git_blob_sha1": "b9b8639b2106fd552db7526c3f12aa429b430252",
+      "acquisition_url": "https://raw.githubusercontent.com/Kludex/starlette/4f250d6b814587e20c5365f0a5f0c4d42bcb929f/starlette/_utils.py",
+      "origin_key": "github-repo-id:138597372:4f250d6b814587e20c5365f0a5f0c4d42bcb929f:starlette/_utils.py"
+    },
+    {
+      "source_id": "code.starlette.convertors",
+      "source_family": "github:Kludex/starlette",
+      "stable_origin_id": "github-repo-id:138597372",
+      "stable_object_id": "git-sha1:72b1cf9fdfb6d7f5be61f648a9ae016deb45012b",
+      "modality": "code",
+      "evidence_status": "DEDICATED_TERMINAL",
+      "authority_ref": "NEXT100-045 exact head c6756b5ebb6eb1d3bf3de2499167833d99d99a72 workflow 32998101312",
+      "declared_capacity_bytes": 2304,
+      "expected_raw_bytes": 2304,
+      "expected_raw_sha256": "175aec7b701a70df6bb1f2674deb839e36cde75affa2e1dcdd62f26248e45ffa",
+      "expected_git_blob_sha1": "72b1cf9fdfb6d7f5be61f648a9ae016deb45012b",
+      "acquisition_url": "https://raw.githubusercontent.com/Kludex/starlette/4f250d6b814587e20c5365f0a5f0c4d42bcb929f/starlette/convertors.py",
+      "origin_key": "github-repo-id:138597372:4f250d6b814587e20c5365f0a5f0c4d42bcb929f:starlette/convertors.py"
     }
   ],
   "lineage_edges": [
@@ -90,26 +178,43 @@
       "capacity_collapsing": false,
       "independence_collapsing": true,
       "evidence": "Distinct files in one canonical Standard Ebooks manual repository; one origin family but not duplicate capacity absent copy evidence."
+    },
+    {
+      "left_source_id": "code.django.core.signing",
+      "right_source_id": "code.django.db.transaction",
+      "relation": "sibling_same_origin",
+      "capacity_collapsing": false,
+      "independence_collapsing": true,
+      "evidence": "Distinct implementation files in the same exact Django upstream snapshot."
+    },
+    {
+      "left_source_id": "code.django.db.transaction",
+      "right_source_id": "code.django.urls.resolvers",
+      "relation": "sibling_same_origin",
+      "capacity_collapsing": false,
+      "independence_collapsing": true,
+      "evidence": "Distinct implementation files in the same exact Django upstream snapshot."
+    },
+    {
+      "left_source_id": "code.starlette._utils",
+      "right_source_id": "code.starlette.convertors",
+      "relation": "sibling_same_origin",
+      "capacity_collapsing": false,
+      "independence_collapsing": true,
+      "evidence": "Distinct implementation files in one stable Starlette repository identity 138597372. Historical encode/starlette and Kludex/starlette names are aliases of this origin, not independent families."
     }
   ],
-  "nonterminal_observations_at_initial_cut": [
-    {
-      "pr": 449,
-      "head_sha": "40950a950b60921fd856af2719e1ae2486d9e892",
-      "authority": "NEXT100-026 KMu Source Rights Audit",
-      "status": "DEDICATED_GATE_QUEUED"
-    },
-    {
-      "pr": 451,
-      "head_sha": "219008fab94507116f177b012fc7c74325aac2e0",
-      "authority": "NEXT100-037 Python Docs Source Authority",
-      "status": "DEDICATED_GATE_QUEUED"
-    },
-    {
-      "pr": 462,
-      "head_sha": "0c5c8e039602cdc72f1dd205f83685936346d0d3",
-      "authority": "NEXT100-027 Ukrainian public-domain literature",
-      "status": "DEDICATED_GATE_QUEUED"
-    }
+  "excluded_nonterminal_at_refresh": [
+    {"authority": "NEXT100-026 KMu", "head_sha": "40950a950b60921fd856af2719e1ae2486d9e892", "dedicated_status": "QUEUED"},
+    {"authority": "NEXT100-027 Nomis", "head_sha": "d75edd497c7fb1054e86d892c9462f059c1f4aa9", "dedicated_status": "QUEUED"},
+    {"authority": "NEXT100-037 CPython docs", "head_sha": "5a6a495a24bce449334cbc5126d0114f61a9f57c", "dedicated_status": "QUEUED"},
+    {"authority": "NEXT100-038 MDN", "head_sha": "902eccc0b3efff09a38dc89cda789180b6c6e754", "dedicated_status": "QUEUED"},
+    {"authority": "NEXT100-041 CPython code", "head_sha": "6157bedf9659477eb8a808baeb11646e76ffd6e5", "dedicated_status": "QUEUED"},
+    {"authority": "NEXT100-047 Jinja", "head_sha": "3580327eb6b64bc019602c7bfefe38137b1b3b55", "dedicated_status": "QUEUED"},
+    {"authority": "NEXT100-048 Pydantic", "head_sha": "c52b8c6af1469746072efd81ef6ccf5db95bf4e0", "dedicated_status": "QUEUED"},
+    {"authority": "NEXT100-034 NIST", "head_sha": "b7491745b34ac8679baaf69cb96cd609dcbe0a16", "dedicated_status": "QUEUED"},
+    {"authority": "NEXT100-053 attrs", "head_sha": "f18d94c91718f7ff6bc84fbc9b49761ade0049aa", "dedicated_status": "QUEUED"},
+    {"authority": "NEXT100-051 Rich", "head_sha": "b5cee9f5b8acf946814305cfd1d9379106b10790", "dedicated_status": "QUEUED"},
+    {"authority": "NEXT100-052 Typer", "head_sha": "f06ff0fa5fd87cb61fdd54c46b233f6577bcd069", "dedicated_status": "QUEUED"}
   ]
 }

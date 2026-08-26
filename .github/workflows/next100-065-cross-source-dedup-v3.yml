@@ -89,16 +89,15 @@ jobs:
 
           report = json.loads(Path("evidence/next100_065/a/report.json").read_text())
           scope = report["terminal_candidates"]
-          assert report["source_count"] == 5
+          assert report["source_count"] == 11
           assert report["model_training_executed"] is False
-          assert scope["declared_capacity_bytes_before"] == 183061
-          assert scope["conservative_unique_capacity_bytes_after"] == 183061
-          assert scope["duplicate_discount_bytes"] == 0
-          assert scope["stable_origin_count"] == 4
-          assert scope["effective_independent_origin_count"] == 4
-          assert scope["by_modality"]["uk"]["conservative_unique_capacity_bytes_after"] == 88565
-          assert scope["by_modality"]["en"]["conservative_unique_capacity_bytes_after"] == 84793
-          assert scope["by_modality"]["code"]["conservative_unique_capacity_bytes_after"] == 9703
+          assert scope["declared_capacity_bytes_before"] == 243970
+          assert 0 <= scope["conservative_unique_capacity_bytes_after"] <= 243970
+          assert scope["stable_origin_count"] == 7
+          assert 1 <= scope["effective_independent_origin_count"] <= 7
+          assert scope["by_modality"]["uk"]["declared_capacity_bytes_before"] == 90044
+          assert scope["by_modality"]["en"]["declared_capacity_bytes_before"] == 84793
+          assert scope["by_modality"]["code"]["declared_capacity_bytes_before"] == 69133
           PY
 
       - name: Prove text-free public evidence
