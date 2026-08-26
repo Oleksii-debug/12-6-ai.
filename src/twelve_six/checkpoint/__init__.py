@@ -1,6 +1,7 @@
 """Checkpointing, integrity, resume, and export primitives for 12-6 AI."""
 
 from . import core as _core
+from . import trainer_adapter as _trainer_adapter
 from .core import (
     CheckpointCompatibilityError,
     CheckpointError,
@@ -20,18 +21,17 @@ from .core import (
     verify_checkpoint,
 )
 from .hardening import install_checkpoint_hardening
+from .hf_export import export_hf_directory
+from .run_binding import bind_checkpoint_identity
 
-# Install fail-closed D05 compatibility checks before downstream adapters import
-# loader symbols from ``core``. Public aliases are rebound after installation so
-# both ``twelve_six.checkpoint`` and ``twelve_six.checkpoint.core`` share the
-# hardened implementation.
+# Install fail-closed D05 compatibility checks, then make every package-level
+# and trainer-adapter loader reference the same hardened implementation.
 install_checkpoint_hardening()
 load_checkpoint = _core.load_checkpoint
 load_verified_checkpoint = _core.load_verified_checkpoint
-
-from .hf_export import export_hf_directory
-from .run_binding import bind_checkpoint_identity
-from .trainer_adapter import load_trainer_checkpoint, save_trainer_checkpoint
+_trainer_adapter.load_verified_checkpoint = _core.load_verified_checkpoint
+load_trainer_checkpoint = _trainer_adapter.load_trainer_checkpoint
+save_trainer_checkpoint = _trainer_adapter.save_trainer_checkpoint
 
 __all__ = [
     "CheckpointCompatibilityError",
