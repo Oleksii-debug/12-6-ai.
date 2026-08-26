@@ -1,0 +1,70 @@
+{
+  "schema_version": "12-6.d03-rada-bulk-quality-privacy.v1",
+  "worker_id": "D03-RADA-BULK-QUALITY-PRIVACY-20260826",
+  "local_free_only": true,
+  "parent_normalization": {
+    "pr": 641,
+    "head_sha": "59f3c452dde1d529fcc1544fa9be2528a039f200",
+    "branch": "gpt56/d03-rada-bulk-normalization-20260826",
+    "manifest_schema": "12-6.d03-rada-bulk-normalization-manifest.v1",
+    "manifest_worker_id": "D03-RADA-BULK-NORMALIZATION-20260826",
+    "source_family": "ua.rada.open-data.laws-texts",
+    "safe_result": "NORMALIZED_RECORD_MATERIALIZATION_ONLY_DOWNSTREAM_GATES_REQUIRED"
+  },
+  "chunking": {
+    "name": "DATA228_DATA181_GENERIC_NATURAL_TEXT_V1",
+    "max_chars": 1200,
+    "min_chars": 80
+  },
+  "quality_privacy": {
+    "name": "DATA228_D03_PREVIEW_V1",
+    "min_chars": 60,
+    "max_chars": 1600,
+    "min_alpha_ratio": 0.35,
+    "reject_control_characters": true,
+    "reject_email": true,
+    "reject_phone": true,
+    "reject_empty": true
+  },
+  "output_contract": {
+    "accepted_jsonl_fields": [
+      "record_id",
+      "parent_record_id",
+      "source_path",
+      "chunk_index",
+      "normalized_bytes",
+      "normalized_sha256",
+      "text"
+    ],
+    "rejected_text_emitted": false,
+    "rejected_hashes_emitted": false,
+    "deterministic_json_serialization": true,
+    "self_hashed_report": true,
+    "two_clean_builds_required": true
+  },
+  "downstream_required": [
+    "GLOBAL_CROSS_SOURCE_EXACT_NEAR_DEDUP",
+    "EVALUATION_DECONTAMINATION",
+    "BALANCE_DIVERSITY_AND_FAMILY_CAP_RETEST",
+    "DETERMINISTIC_SPLIT_SHARD_PACK",
+    "TWO_CLEAN_BYTE_IDENTICAL_BUILDS",
+    "UNIQUE_CAUSAL_LOSS_LEDGER",
+    "TOKENIZER_FIT_AUTHORIZATION",
+    "D05_CHECKPOINT_REQUALIFICATION",
+    "LEARNED_20M_COMPUTE_AUTHORIZATION"
+  ],
+  "claim_boundary": {
+    "bulk_source_admitted": false,
+    "canonical_capacity_credited": false,
+    "training_authorized_bytes": 0,
+    "tokenizer_fit_authorized": false,
+    "model_training_executed": false,
+    "optimizer_updates": 0,
+    "paid_compute_used": false,
+    "evaluation_authorized": false,
+    "final_test_accessed": false,
+    "research_corpus_v1_released": false,
+    "learned_20m_claimed": false,
+    "safe_result": "QUALITY_PRIVACY_FILTERED_CANDIDATE_ONLY_DOWNSTREAM_GATES_REQUIRED"
+  }
+}
