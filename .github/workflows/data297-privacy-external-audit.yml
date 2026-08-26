@@ -1,0 +1,146 @@
+name: DATA-297 External Privacy Audit
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  privacy-external-audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact source and incumbent DATA-33 ancestry
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+          git merge-base --is-ancestor 290b82fd0f7d1cc3a1840deae4378b9c500f1c15 HEAD
+
+      - name: Run fixture and evidence-safety contracts
+        env:
+          PYTHONPATH: src
+        run: |
+          set -euo pipefail
+          python -m unittest discover -s tests -p 'test_data297_privacy_external_audit.py' -v
+          mkdir -p data297-evidence
+          python -m twelve_six.data297_privacy_external_audit fixtures \
+            --output data297-evidence/privacy-fixture-audit.json
+
+      - name: Download exact terminal source artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib
+          import io
+          import os
+          import urllib.request
+          import zipfile
+          from pathlib import Path
+
+          repo = "Oleksii-debug/12-6-ai."
+          specs = (
+              (9600107886, "927e10ccb83f919d57a8b78e3ea9cae72f9d4e0232401043234a35eec150074d", Path(".data297-input/data213")),
+              (9602093542, "080f073327020cb3bbb05c7348f658223804684d23012d9b66ab9b798c4fed5d", Path(".data297-input/data227")),
+          )
+          token = os.environ["GH_TOKEN"]
+          for artifact_id, expected_sha, destination in specs:
+              request = urllib.request.Request(
+                  f"https://api.github.com/repos/{repo}/actions/artifacts/{artifact_id}/zip",
+                  headers={
+                      "Accept": "application/vnd.github+json",
+                      "Authorization": f"Bearer {token}",
+                      "X-GitHub-Api-Version": "2022-11-28",
+                      "User-Agent": "DATA-297-LOCAL-FREE",
+                  },
+              )
+              with urllib.request.urlopen(request, timeout=60) as response:
+                  payload = response.read()
+              actual_sha = hashlib.sha256(payload).hexdigest()
+              if actual_sha != expected_sha:
+                  raise SystemExit(
+                      f"artifact {artifact_id} digest drift: expected {expected_sha}, got {actual_sha}"
+                  )
+              destination.mkdir(parents=True, exist_ok=True)
+              with zipfile.ZipFile(io.BytesIO(payload)) as archive:
+                  for member in archive.infolist():
+                      target = (destination / member.filename).resolve()
+                      if destination.resolve() not in target.parents and target != destination.resolve():
+                          raise SystemExit("artifact zip contains an unsafe path")
+                  archive.extractall(destination)
+          PY
+
+      - name: Audit complete terminal external-real inventory
+        env:
+          PYTHONPATH: src
+        run: |
+          set -euo pipefail
+          python -m twelve_six.data297_privacy_external_audit audit \
+            --data229-root .data297-input/data213 \
+            --data227-root .data297-input/data227 \
+            --output data297-evidence/privacy-external-audit.json
+
+      - name: Validate sanitized public evidence
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path("data297-evidence/privacy-external-audit.json").read_text())
+          assert report["worker_id"] == "DATA-297-PRIVACY-EXTERNAL-AUDIT"
+          assert report["local_free_only"] is True
+          assert report["privacy_authority"]["framework_action"] == "REUSED_UNCHANGED"
+          assert report["privacy_authority"]["policy_sha256"] == "8c905e3b8f81391c3f928f375bca8fe6d1b5d38b41dec5c081577e2c5ce58526"
+          assert report["claim_boundary"]["admitted_terminal_sources_scanned"] == 5
+          assert report["claim_boundary"]["admitted_terminal_families_scanned"] == 4
+          assert report["claim_boundary"]["nonterminal_data228_promoted"] is False
+          assert report["inventory"]["input_utf8_bytes"] == 183061
+          assert set(report["inventory"]["by_family"]) == {
+              "en.standardebooks.manual",
+              "ua.rada.open-data.laws-texts",
+              "github:encode/httpx",
+              "github:psf/requests",
+          }
+          assert report["fixture_metrics"]["confusion"] == {
+              "false_negative": 8,
+              "false_positive": 0,
+              "true_negative": 7,
+              "true_positive": 7,
+          }
+          assert all(value is False for value in report["public_evidence"].values())
+          PY
+
+      - name: Remove materialized source bytes before artifact publication
+        if: always()
+        run: rm -rf .data297-input
+
+      - name: Upload sanitized DATA-297 evidence only
+        if: success()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: data297-privacy-external-audit-${{ github.event.pull_request.head.sha || github.sha }}
+          if-no-files-found: error
+          retention-days: 90
+          path: |
+            configs/data/data297_privacy_external_audit_v1.json
+            data297-evidence/privacy-fixture-audit.json
+            data297-evidence/privacy-external-audit.json
