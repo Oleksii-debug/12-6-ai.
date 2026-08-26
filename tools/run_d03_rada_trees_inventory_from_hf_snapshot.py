@@ -2,8 +2,8 @@
 """Run canonical Rada_Trees archive inventory from the exact HF object snapshot.
 
 This is a fail-closed provenance bridge between PR #638 metadata evidence and
-the archive inventory engine in this branch. Operator-supplied size/object IDs
-are not accepted: they are derived from the self-hashed parent snapshot.
+the archive inventory engine in this branch. Operator-supplied size, object IDs,
+and content hashes are not accepted: all are derived from pinned authorities.
 """
 from __future__ import annotations
 
@@ -105,6 +105,8 @@ def validate_hf_object_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
         raise HandoffError("primary archive Git blob OID is invalid")
     if not isinstance(xet_hash, str) or HEX64.fullmatch(xet_hash) is None:
         raise HandoffError("primary archive Xet identity is invalid")
+    if xet_hash != inventory.PINNED_XET_HASH:
+        raise HandoffError("primary archive Xet identity detached from pinned source authority")
 
     return {
         "snapshot_identity_sha256": identity,
@@ -127,15 +129,17 @@ def load_snapshot(path: Path) -> dict[str, Any]:
 def build_bridge_report(
     config: dict[str, Any],
     archive: Path,
-    expected_sha256: str,
     snapshot: dict[str, Any],
     extractor: str,
 ) -> dict[str, Any]:
     handoff = validate_hf_object_snapshot(snapshot)
+    pinned_sha256 = config["primary_archive"]["exact_content_sha256"]
+    if pinned_sha256 != inventory.PINNED_CONTENT_SHA256:
+        raise HandoffError("inventory config content SHA-256 authority drift")
     inner = inventory.build_report(
         config,
         archive,
-        expected_sha256,
+        pinned_sha256,
         handoff["size_bytes"],
         handoff["xet_hash"],
         extractor,
@@ -148,10 +152,12 @@ def build_bridge_report(
         raise HandoffError("inventory report size detached from parent snapshot")
     if archive_evidence.get("upstream_object_identity") != handoff["xet_hash"]:
         raise HandoffError("inventory report object identity detached from parent snapshot")
+    if archive_evidence.get("sha256") != pinned_sha256:
+        raise HandoffError("inventory report content hash detached from pinned source authority")
 
     report: dict[str, Any] = {
         "schema_version": "12-6.d03-rada-trees-hf-snapshot-inventory-bridge.v1",
-        "state": "EXACT_HF_OBJECT_TO_CONTENT_INVENTORY_BOUND_CLASSIFICATION_NOT_RUN",
+        "state": "EXACT_HF_OBJECT_TO_PINNED_CONTENT_INVENTORY_BOUND_CLASSIFICATION_NOT_RUN",
         "parent_hf_object_snapshot_identity_sha256": handoff[
             "snapshot_identity_sha256"
         ],
@@ -160,6 +166,7 @@ def build_bridge_report(
             "size_bytes": handoff["size_bytes"],
             "git_blob_oid": handoff["git_blob_oid"],
             "xet_hash": handoff["xet_hash"],
+            "content_sha256": pinned_sha256,
         },
         "inventory_report": inner,
         "claim_boundary": {
@@ -187,7 +194,6 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--archive", type=Path, required=True)
     parser.add_argument("--object-snapshot", type=Path, required=True)
-    parser.add_argument("--expected-sha256", required=True)
     parser.add_argument("--extractor")
     parser.add_argument("--output", type=Path, required=True)
     return parser.parse_args()
@@ -204,7 +210,6 @@ def main() -> int:
     report = build_bridge_report(
         config,
         args.archive,
-        args.expected_sha256,
         snapshot,
         extractor,
     )
