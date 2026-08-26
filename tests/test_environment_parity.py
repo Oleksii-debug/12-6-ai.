@@ -3,7 +3,7 @@ from __future__ import annotations
 import copy
 
 from twelve_six.environment_parity import compare_traces, decision_policy
-from twelve_six.milestone150_env160_entry import json_normalize
+from twelve_six.milestone150_entrypoint import json_normalize
 
 
 def _trace(*, locked: bool = True) -> dict:

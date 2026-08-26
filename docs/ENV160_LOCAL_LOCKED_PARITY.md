@@ -1,6 +1,6 @@
 # ENV-160 local/locked runtime parity
 
-ENV-160 separates three questions that were previously easy to conflate: whether source/config identities are the same, whether floating-point execution is numerically equivalent, and whether a result has canonical scientific authority.
+ENV-160 separates three questions: whether source/config identities are the same, whether floating-point execution is numerically equivalent, and whether a result has canonical scientific authority.
 
 The canonical research environment is the repository's hash-locked Linux x86-64 CPU profile under CPython 3.11.16 and PyTorch 2.13.0. A source-equivalent environment may run the same exact Git head under another Python/PyTorch combination, but it is debugging evidence only.
 
@@ -18,10 +18,10 @@ Source-equivalent evidence may be used to localize failures, develop determinist
 
 An exact-head locked rerun is mandatory for published held-out quality or learned-result numbers, checkpoint selection, cross-scale quality/efficiency/scaling rankings, architecture/tokenizer/optimizer/schedule scientific decisions, stage promotion or freeze decisions, and reproducibility claims.
 
-## MILESTONE-150 convergence fix
+## MILESTONE-150 convergence
 
 The failed MILESTONE-150 exact-head 100K run reached step 500 and 474,377 optimized tokens before resume rejected a semantically unchanged run manifest. `TrainerConfig.betas` is a tuple in memory but a JSON array after persistence, so direct Python dict equality produced a false mismatch.
 
-`milestone150_env160_entry.py` fixes only this persistence boundary: self-hashed M150 payloads are JSON-normalized before hashing and comparison. It also adds the stable ENV-160 fingerprint to M150 experimental reports and machine manifests. Model/data/optimizer/evaluation/checkpoint mathematics are unchanged.
+The accepted incumbent MILESTONE-150 branch now owns the repair through `milestone150_entrypoint.py` plus persisted-JSON normalization in the core run-manifest path. ENV-160 does not override that logic. Its job is additive: bootstrap the exact locked environment, fingerprint the runtime, execute the same first-party tiny trace under locked and source-equivalent environments, quantify numerical parity, and enforce the authority boundary.
 
 10M remains fail-closed unless a genuinely learned checkpoint is verified under the same MILESTONE-150 corpus/tokenizer/evaluation truth identity. No intelligence, production-readiness, alignment or instruction-following claim is authorized.
