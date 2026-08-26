@@ -38,12 +38,53 @@ def test_long_training_experiment_cannot_be_authorized_now() -> None:
     assert any("R01-E20" in error for error in errors)
 
 
+def test_long_training_prerequisite_cannot_be_relaxed() -> None:
+    required = (
+        "requires_corpus_identity",
+        "requires_tokenizer_fit_identity",
+        "requires_unique_post_pack_loss_ledger",
+        "requires_checkpoint_integrity_terminal_retest",
+        "requires_selection_validation_terminal",
+        "requires_compute_authorization_if_material_cost",
+    )
+    for experiment_id in ("R01-E20", "R01-E30"):
+        for field in required:
+            data = _load()
+            experiment = next(
+                item for item in data["experiment_matrix"] if item["id"] == experiment_id
+            )
+            experiment[field] = False
+            errors = validator.validate_campaign(data)
+            assert any(
+                f"{experiment_id}.{field}" in error for error in errors
+            ), (experiment_id, field, errors)
+
+
+def test_readiness_cannot_fabricate_checkpoint_or_selection_terminality() -> None:
+    for field in (
+        "checkpoint_integrity_terminal_retest",
+        "selection_validation_terminal",
+    ):
+        data = _load()
+        data["current_readiness"][field] = True
+        errors = validator.validate_campaign(data)
+        assert any(field.replace("_", "-") in error or "terminality" in error for error in errors)
+
+
 def test_100m_modelspec_cannot_be_frozen_before_evidence() -> None:
     data = _load()
     experiment = next(item for item in data["experiment_matrix"] if item["id"] == "R01-E30")
     experiment["freeze_100m_modelspec_now"] = True
     errors = validator.validate_campaign(data)
     assert any("100M ModelSpec" in error for error in errors)
+
+
+def test_100m_sweep_requires_learned_20m_evidence() -> None:
+    data = _load()
+    experiment = next(item for item in data["experiment_matrix"] if item["id"] == "R01-E30")
+    experiment["requires_20m_learned_evidence"] = False
+    errors = validator.validate_campaign(data)
+    assert any("learned-20M" in error for error in errors)
 
 
 def test_model341_authority_drift_fails_closed() -> None:
