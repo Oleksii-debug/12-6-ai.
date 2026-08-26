@@ -1,0 +1,105 @@
+{
+  "schema_version": "12-6.r02-tokenizer-flop-calibration.v1",
+  "campaign_id": "R02-TOKENIZER-FLOP-CALIBRATION-V1",
+  "status": "MEASUREMENT_CONTRACT_READY_DATA_BLOCKED",
+  "parent_r01": {
+    "main_sha": "a73ab38026cb7849f478cc13ad58b93534a76e2f",
+    "config_path": "configs/research/r01_20m_to_100m_scaling_campaign_v1.json",
+    "config_git_blob_sha1": "c50154db609d41eceb2ffc97912360df567bcc04",
+    "model341_sha": "e4ff486fd90802fc123bebf60eed4e59196a98df",
+    "model_parameter_count": 20613440
+  },
+  "hard_boundaries": {
+    "local_free_only": true,
+    "corpus_payload_read_by_contract_validator": false,
+    "tokenizer_fit_executed": false,
+    "model_training_executed": false,
+    "optimizer_updates": 0,
+    "selection_validation_consumed": false,
+    "final_test_consumed": false,
+    "paid_compute_authorized": false,
+    "long_training_authorized": false,
+    "stage_promotion_authorized": false
+  },
+  "budget_truth": {
+    "engineering_pilot_unit": "UNIQUE_AUTHORIZED_UTF8_BYTE_LOSS_POSITIONS",
+    "engineering_pilot_positions": 20000000,
+    "engineering_pilot_is_science_complete_budget": false,
+    "science_complete_20m_budget_status": "UNDEFINED_PENDING_TOKENIZER_AND_FLOP_CALIBRATION",
+    "parameter_count_is_not_compute_budget": true,
+    "token_count_is_not_cross_tokenizer_invariant": true,
+    "primary_cross_tokenizer_quality_metric": "bits_per_utf8_byte",
+    "primary_cross_tokenizer_cost_metric": "measured_training_flops_per_utf8_byte"
+  },
+  "calibration_scope": {
+    "required_strata": ["uk", "en", "code"],
+    "required_tokenizer_candidates": [
+      {"id": "byte-v256", "kind": "byte", "vocab_size": 256},
+      {"id": "subword-v320", "kind": "subword", "vocab_size": 320},
+      {"id": "subword-v384", "kind": "subword", "vocab_size": 384},
+      {"id": "subword-v437", "kind": "subword", "vocab_size": 437},
+      {"id": "subword-v512", "kind": "subword", "vocab_size": 512}
+    ],
+    "same_exact_calibration_bytes_required_across_tokenizers": true,
+    "same_model_parameter_count_required": true,
+    "same_model_architecture_except_vocab_dependent_terms_required": true,
+    "same_loss_mask_semantics_required": true,
+    "same_calibration_slice_identity_required": true,
+    "minimum_repeats_per_candidate": 2,
+    "future_measurement_requires_terminal_research_corpus_v1_identity": true,
+    "future_subword_measurement_requires_exact_tokenizer_identity": true
+  },
+  "measurement_schema": {
+    "schema_version": "12-6.r02-tokenizer-flop-measurement.v1",
+    "required_top_level_fields": [
+      "tokenizer_id",
+      "tokenizer_kind",
+      "vocab_size",
+      "tokenizer_identity",
+      "research_corpus_identity",
+      "calibration_slice_identity",
+      "model_parameter_count",
+      "model_architecture_identity",
+      "loss_mask_identity",
+      "context_window_loss_positions",
+      "repeat_id",
+      "peak_memory_bytes",
+      "strata"
+    ],
+    "required_per_stratum_fields": [
+      "utf8_bytes",
+      "nonignored_loss_positions",
+      "total_nll_nats",
+      "measured_training_flops",
+      "wall_seconds"
+    ]
+  },
+  "derived_metrics": {
+    "bits_per_utf8_byte": "total_nll_nats / ln(2) / utf8_bytes",
+    "loss_positions_per_utf8_byte": "nonignored_loss_positions / utf8_bytes",
+    "utf8_bytes_per_loss_position": "utf8_bytes / nonignored_loss_positions",
+    "measured_training_flops_per_utf8_byte": "measured_training_flops / utf8_bytes",
+    "measured_training_flops_per_loss_position": "measured_training_flops / nonignored_loss_positions",
+    "semantic_context_span_utf8_bytes": "context_window_loss_positions * utf8_bytes_per_loss_position",
+    "equal_flop_projected_loss_positions": "reference_flops / candidate_flops_per_loss_position",
+    "equal_flop_projected_utf8_bytes": "reference_flops / candidate_flops_per_utf8_byte"
+  },
+  "decision_rules": {
+    "do_not_rank_cross_tokenizer_candidates_by_token_perplexity": true,
+    "require_bits_per_utf8_byte_for_quality_ranking": true,
+    "require_measured_not_formula_only_flops_for_final_cost_ranking": true,
+    "require_per_stratum_results_before_weighted_aggregate": true,
+    "require_equal_flop_projection_before_science_budget_proposal": true,
+    "require_heldout_learning_curves_after_tokenizer_flop_calibration": true,
+    "calibration_pass_does_not_authorize_training": true,
+    "calibration_pass_does_not_authorize_paid_compute": true
+  },
+  "post_calibration_handoff": [
+    "freeze exact tokenizer identities on terminal Research Corpus V1 training split only",
+    "run bounded equal-FLOP learning-curve pilots on byte and selected subword candidates",
+    "compare bits-per-byte by UA EN and code plus weighted aggregate",
+    "measure context-span quality tradeoffs rather than assuming token counts are equivalent",
+    "fit empirical loss-versus-FLOP curves before proposing the science-complete 20M budget",
+    "request explicit material-compute authorization only after the proposed budget and hardware runtime evidence are bound"
+  ]
+}
