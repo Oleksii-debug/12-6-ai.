@@ -12,12 +12,15 @@ import argparse
 import hashlib
 import json
 import os
+import sys
 import urllib.error
 import urllib.parse
 import urllib.request
-from email.message import Message
 from pathlib import Path
 from typing import Any, BinaryIO, Mapping
+
+TOOLS = Path(__file__).resolve().parent
+sys.path.insert(0, str(TOOLS))
 
 import run_d03_rada_trees_inventory_from_hf_snapshot as bridge
 
