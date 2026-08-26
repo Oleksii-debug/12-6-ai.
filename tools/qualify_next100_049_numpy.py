@@ -223,7 +223,7 @@ def main() -> int:
     required_license_phrases = (
         "Redistribution and use in source and binary forms, with or without",
         "modification, are permitted provided that the following conditions",
-        "Neither the name of the copyright holder nor the names of its",
+        "Neither the name of the NumPy Developers nor the names of any",
         "THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS",
     )
     if not all(phrase in license_text for phrase in required_license_phrases):
