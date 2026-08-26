@@ -1,0 +1,113 @@
+{
+  "authority_boundary": "SOURCE_SPECIFIC_TRAINING_RIGHTS_AND_BOUNDED_SNAPSHOT_ONLY;NO_EVALUATION_AUTHORITY",
+  "dataset": {
+    "dataset_id": "644b424e-9884-43cb-8204-0214657f2248",
+    "dataset_page": "https://data.gov.ua/dataset/644b424e-9884-43cb-8204-0214657f2248",
+    "package_api": "https://data.gov.ua/api/3/action/package_show?id=644b424e-9884-43cb-8204-0214657f2248",
+    "publisher": "Державна служба України з питань геодезії, картографії та кадастру",
+    "title": "Реєстр наборів даних, що перебувають у володінні розпорядника інформації"
+  },
+  "dedup": {
+    "cross_family_normalized_hashes": [
+      "72c301db0b2539f3f7a73c9c15e2e425700a6b758a1114f1a861e2d60c704c50"
+    ],
+    "cross_family_reference": "ua.rada.open-data.laws-texts.d23314",
+    "intra_family_exact": "REJECT",
+    "intra_family_near_duplicate_5token_jaccard": 0.92
+  },
+  "family": {
+    "family_id": "ua.data-gov.derzhgeocadastre.dataset-register",
+    "independent_from": [
+      "ua.rada.open-data.laws-texts",
+      "ua.kmu.portal.secretariat-news"
+    ],
+    "independence_basis": "different publisher, source system, data class, and editorial/data-production pipeline",
+    "lineage": "publisher:derzhgeocadastre|portal:data.gov.ua|dataset:644b424e-9884-43cb-8204-0214657f2248|class:open-dataset-register",
+    "source_kind": "official_open_data_administrative_metadata"
+  },
+  "language": {
+    "expected": "uk",
+    "min_cyrillic_alpha_ratio": 0.78,
+    "min_uk_specific_chars": 20,
+    "min_uk_lexical_hits": 3
+  },
+  "local_free_only": true,
+  "mode": "PROBE",
+  "privacy": {
+    "exclude_key_fragments": [
+      "email",
+      "mail",
+      "phone",
+      "tel",
+      "contact",
+      "person",
+      "responsible",
+      "відповід",
+      "телефон",
+      "пошта",
+      "адрес"
+    ],
+    "emails": "REJECT_SCALAR",
+    "phone_numbers": "REJECT_SCALAR",
+    "long_numeric_identifiers": "REJECT_SCALAR"
+  },
+  "quality": {
+    "min_accepted_records": 12,
+    "min_record_utf8_bytes": 80,
+    "min_total_normalized_utf8_bytes": 12000
+  },
+  "resource_selection": {
+    "allowed_formats": ["JSON", ".JSON", "json"],
+    "exclude_name_fragments": ["structure", "структур", "працівник", "employee"],
+    "prefer_name_fragments": ["register", "реєстр"],
+    "max_download_bytes": 10000000,
+    "expected_resource_id": null,
+    "expected_resource_url": null,
+    "expected_resource_last_modified": null,
+    "expected_raw_sha256": null,
+    "expected_raw_bytes": null,
+    "expected_normalized_sha256": null,
+    "expected_normalized_utf8_bytes": null
+  },
+  "rights": {
+    "attribution_required": true,
+    "attribution_template": "Source: Державна служба України з питань геодезії, картографії та кадастру; data.gov.ua dataset 644b424e-9884-43cb-8204-0214657f2248; original resource URL; extracted/normalized text, changes indicated.",
+    "dataset_license_label": "Creative Commons Attribution",
+    "reuse_basis": "dataset page explicitly permits free copying, publication, redistribution, commercial use, combination and inclusion in own products with mandatory source attribution",
+    "uses": {
+      "acquisition": "ALLOWED",
+      "analysis": "ALLOWED",
+      "evaluation": "NOT_ADMITTED",
+      "model_training": "ALLOWED",
+      "redistribution": "ALLOWED_WITH_ATTRIBUTION",
+      "storage": "ALLOWED"
+    }
+  },
+  "rights_evidence": {
+    "path": "data/external/rights-evidence/next100-025/data-gov-derzhgeocadastre-register-20260826.txt",
+    "sha256": "da4a217baaf0f1312b201ca4920f8874a5927da59f170d09d7a3258b3bcf7afd"
+  },
+  "safe_text_key_fragments": [
+    "title",
+    "name",
+    "description",
+    "desc",
+    "назв",
+    "опис",
+    "keyword",
+    "ключ",
+    "frequency",
+    "period",
+    "частот",
+    "purpose",
+    "basis",
+    "підстав",
+    "признач",
+    "format",
+    "theme",
+    "category",
+    "категор"
+  ],
+  "schema_version": "12-6.next100-025-derzhgeocadastre-open-registry.v1",
+  "worker": "NEXT100-025-DATA-UA-GOV-OPEN"
+}
