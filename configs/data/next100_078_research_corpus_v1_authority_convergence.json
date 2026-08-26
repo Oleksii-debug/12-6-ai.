@@ -1,0 +1,111 @@
+{
+  "schema_version": "12-6.next100-078-research-corpus-v1-authority-convergence.v1",
+  "worker_id": "NEXT100-078-RESEARCH-CORPUS-V1-AUTHORITY-CONVERGENCE",
+  "execution_class": "LOCAL_FREE",
+  "training_executed": false,
+  "compute_authorized": false,
+  "purpose": "Converge exact terminal source-authority metadata onto the current lineage-aware source-capacity vector without pretending that remote authority bytes are already a frozen corpus.",
+  "base_vector": {
+    "name": "NEXT100-065-CROSSSOURCE-DEDUP-V3",
+    "head_sha": "efc278cec0e4773eb4ff405bf4b4d24ee63b5d13",
+    "config_path": "configs/data/next100_065_cross_source_dedup_v3.json",
+    "expected_capacity_bytes": 243970,
+    "expected_family_counts": {
+      "uk": 2,
+      "en": 1,
+      "code": 4
+    }
+  },
+  "mixture_policy": {
+    "uk": 0.45,
+    "en": 0.35,
+    "code": 0.2,
+    "replay_allowed": false,
+    "planning_target_source_bytes": 20000000
+  },
+  "minimum_independent_families": {
+    "uk": 2,
+    "en": 2,
+    "code": 2
+  },
+  "additive_authorities": [
+    {
+      "authority_id": "NEXT100-026",
+      "pr_number": 449,
+      "head_sha": "40950a950b60921fd856af2719e1ae2486d9e892",
+      "dedicated_workflow": {
+        "name": "NEXT100-026 KMu Source Rights Audit",
+        "run_id": 32997970539,
+        "conclusion": "success"
+      },
+      "verdict": "ADMIT",
+      "modality": "uk",
+      "source_family": "ua.kmu.portal.secretariat-news",
+      "declared_capacity_bytes": 9153,
+      "authority_identity_kind": "source_manifest_identity_sha256",
+      "authority_identity_sha256": "1f068e6cc5ce3fc4a51d8477acee31fab5a0178e15f49225b57de94c5178f7d9",
+      "materialization_state": "NOT_COMPOSED_REMOTE_AUTHORITY"
+    },
+    {
+      "authority_id": "NEXT100-038",
+      "pr_number": 445,
+      "head_sha": "902eccc0b3efff09a38dc89cda789180b6c6e754",
+      "dedicated_workflow": {
+        "name": "NEXT100-038 MDN Source Authority",
+        "run_id": 32998544359,
+        "conclusion": "success"
+      },
+      "verdict": "ADMIT_PROSE_ONLY",
+      "modality": "en",
+      "source_family": "en.mdn.webdocs.prose",
+      "declared_capacity_bytes": 6492,
+      "authority_identity_kind": "authority_identity_sha256",
+      "authority_identity_sha256": "0f5dbd5313f8196811e2a99f77eb8698c6bc69f69648d76a7e240ee9757ecc47",
+      "normalized_sha256": "10855740b0ed5588d133f421318c637be99d9e9f4921675af9f6dc8a5663507b",
+      "materialization_state": "NOT_COMPOSED_REMOTE_AUTHORITY"
+    },
+    {
+      "authority_id": "NEXT100-034",
+      "pr_number": 472,
+      "head_sha": "b7491745b34ac8679baaf69cb96cd609dcbe0a16",
+      "dedicated_workflow": {
+        "name": "NEXT100-034 NIST authority",
+        "run_id": 32998703545,
+        "conclusion": "success"
+      },
+      "verdict": "ADMIT",
+      "modality": "en",
+      "source_family": "en.usgov.nist.technical-series",
+      "declared_capacity_bytes": 59358,
+      "authority_identity_kind": "terminal_payload_sha256",
+      "authority_identity_sha256": "3ffba0fcd08ab42e940b2db12ffafb6f7234ad0bae6f7fe523071497485b9d1c",
+      "normalized_objects": [
+        {
+          "source_id": "NIST.SP.800-204",
+          "bytes": 19668,
+          "sha256": "570e8d75b6dc6aefee1f089818b46765c0dd1965e06947bcc2fff0169d22274e"
+        },
+        {
+          "source_id": "NIST.SP.800-204C",
+          "bytes": 19736,
+          "sha256": "558da6a0886036a01a5139d635b1352b5cf5d74655d919c66a04e84f2d49c0fe"
+        },
+        {
+          "source_id": "NIST.SP.800-215",
+          "bytes": 19954,
+          "sha256": "6c99c3b14ee3ea7fe915940e38c080dbf2a785f1abcee2fd73e7fd731424770d"
+        }
+      ],
+      "materialization_state": "NOT_COMPOSED_REMOTE_AUTHORITY"
+    }
+  ],
+  "downstream_gates": {
+    "authority_diversity": "EVALUATE_FROM_COMPOSED_VECTOR",
+    "exact_record_inventory": "BLOCKED_UNTIL_BYTES_COMPOSED_AND_FROZEN",
+    "decontamination": "BLOCKED_UNTIL_EXACT_RECORD_INVENTORY",
+    "quality_privacy_dedup_split": "BLOCKED_UNTIL_EXACT_RECORD_INVENTORY",
+    "unique_loss_ledger": "BLOCKED_UNTIL_POST_PACK_MATERIALIZATION",
+    "tokenizer_fit": "BLOCKED_UNTIL_DECONTAMINATED_TRAIN_IDENTITY",
+    "long_training": "PROHIBITED"
+  }
+}
