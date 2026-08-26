@@ -1,0 +1,87 @@
+name: CI-285 Isolated Ruff Repair Bootstrap
+
+on:
+  push:
+    branches:
+      - ci285/release-gate-post217-20260826
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: ${{ !contains(github.event.head_commit.message, '[ci285-repaired]') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: true
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Apply exact shared Ruff repairs
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          replacements = {
+              "src/twelve_six/data/corpus_v01.py": [
+                  (
+                      "import argparse, hashlib, json, shutil, unicodedata\nfrom collections import Counter, defaultdict\nfrom itertools import chain\nfrom pathlib import Path\nfrom typing import Any, Iterable, Mapping",
+                      "import argparse\nimport hashlib\nimport json\nimport shutil\nimport unicodedata\nfrom collections import Counter, defaultdict\nfrom collections.abc import Iterable, Mapping\nfrom itertools import chain\nfrom pathlib import Path\nfrom typing import Any",
+                  ),
+              ],
+              "src/twelve_six/launch_gate.py": [
+                  ("except Exception as exc:  # noqa: BLE001 - gate must fail closed on import defects", "except Exception as exc:"),
+                  ("except Exception as exc:  # noqa: BLE001", "except Exception as exc:"),
+              ],
+              "src/twelve_six/milestone100_first_learned.py": [
+                  (
+                      "import sys\nfrom dataclasses import asdict\nfrom pathlib import Path\nfrom typing import Any, Iterator",
+                      "import sys\nfrom collections.abc import Iterator\nfrom dataclasses import asdict\nfrom pathlib import Path\nfrom typing import Any",
+                  ),
+              ],
+              "src/twelve_six/scale141_10m_continuation.py": [
+                  (
+                      "from dataclasses import asdict\nfrom pathlib import Path\nfrom typing import Any, Iterator",
+                      "from collections.abc import Iterator\nfrom dataclasses import asdict\nfrom pathlib import Path\nfrom typing import Any",
+                  ),
+                  ("    batch, wait = batch, 0.0", "    wait = 0.0"),
+              ],
+              "src/twelve_six/scale141_memorization.py": [
+                  ('.encode("utf-8")', '.encode()'),
+              ],
+              "tools/execution_bootstrap.py": [
+                  (
+                      'name.startswith("nvidia-") or name.startswith("cuda-") or name == "triton"',
+                      'name.startswith(("nvidia-", "cuda-")) or name == "triton"',
+                  ),
+              ],
+          }
+
+          for file_name, pairs in replacements.items():
+              path = Path(file_name)
+              text = path.read_text(encoding="utf-8")
+              for old, new in pairs:
+                  count = text.count(old)
+                  if count != 1:
+                      raise SystemExit(f"{file_name}: expected exactly one match for {old!r}, found {count}")
+                  text = text.replace(old, new, 1)
+              path.write_text(text, encoding="utf-8")
+          PY
+      - name: Verify repository Ruff gate
+        run: |
+          python -m pip install --disable-pip-version-check ruff==0.16.4
+          python -m ruff check src tests tools
+      - name: Remove bootstrap workflow and persist repair
+        shell: bash
+        run: |
+          rm .github/workflows/ci285-repair-bootstrap.yml
+          git config user.name "CI-285 Release Gate"
+          git config user.email "ci285@users.noreply.github.com"
+          git add src/twelve_six/data/corpus_v01.py src/twelve_six/launch_gate.py src/twelve_six/milestone100_first_learned.py src/twelve_six/scale141_10m_continuation.py src/twelve_six/scale141_memorization.py tools/execution_bootstrap.py .github/workflows/ci285-repair-bootstrap.yml
+          git diff --cached --check
+          git commit -m "CI-285 fix shared repository Ruff blockers [ci285-repaired]"
+          git push origin HEAD:ci285/release-gate-post217-20260826
