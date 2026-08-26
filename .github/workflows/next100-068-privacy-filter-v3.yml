@@ -1,0 +1,30 @@
+name: NEXT100-068 privacy filter V3 red-team
+
+on:
+  push:
+    branches:
+      - next100-068/privacy-filter-v3-20260826
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  privacy-v3:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Synthetic adversarial gate
+        run: python -m pytest -q tests/test_privacy_filter_v3_redteam.py
+      - name: Hash-safe terminal external-real scan
+        run: python tools/next100_068_privacy_scan.py --output reports/next100_068_privacy_real_scan.json
+      - name: Upload hash-safe evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: next100-068-privacy-v3-${{ github.sha }}
+          path: reports/next100_068_privacy_real_scan.json
+          if-no-files-found: error
