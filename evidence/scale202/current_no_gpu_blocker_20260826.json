@@ -1,0 +1,63 @@
+{
+  "schema_version": "12-6.scale202-current-blocker.v1",
+  "worker_id": "SCALE-202-100M-REAL-QUALIFICATION",
+  "status": "NOT_RUN_NO_GPU",
+  "authority": "FRESH_LOCAL_FREE_HARDWARE_PREFLIGHT_PLUS_CURRENT_100M_CONTRACT",
+  "qualification_execution": {
+    "100m_model_constructed_on_cuda": false,
+    "forward_backward_executed": false,
+    "finite_gradient_check_executed": false,
+    "optimizer_update_executed": false,
+    "weights_moved_proved": false,
+    "cuda_vram_measured": false,
+    "checkpoint_reload_executed_on_cuda": false,
+    "post_reload_probe_executed_on_cuda": false,
+    "reason": "No CUDA device exists in the attached LOCAL_FREE environment; SCALE-202 forbids CPU substitution or CUDA simulation for the real 100M qualification."
+  },
+  "current_100m_contract": {
+    "stage_config": "configs/stages/s4_100m_accelerator.candidate.json",
+    "parameter_count": 99897600,
+    "model_spec_sha256": "6103d0d457e25206c11871f09aef1f2e23860329c060379c9f956b3851740170",
+    "init_spec_sha256": "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5",
+    "tokenizer_version": "s0-byte-v1",
+    "tokenizer_config_sha256": "b04055c1061dd641dcab7cb9d62a931f09b8d1a070140a926ceb4e91d73ca8e1",
+    "tokenizer_vocab_sha256": "905ed40bb42cc4d550e228ff5f24158d504b38e8ed5974dfa3077bd5867ad571",
+    "corpus_identity_sha256": "422f545da93526ceba2c0ff738e0b9deac65f35bfb31d87d2aab068cda091fc8",
+    "train_validation_content_overlap": 0,
+    "preferred_precision": "bf16"
+  },
+  "single_gpu_memory_gate": {
+    "prior_estimated_bytes": 4215510401,
+    "headroom_factor": 1.25,
+    "required_free_bytes": 5269388002,
+    "observed_eligible_gpu_free_bytes": null,
+    "interpretation": "The incumbent first-order BF16 estimate is planning evidence only. With zero visible CUDA devices there is no target VRAM to measure and no single-GPU attempt is authorized."
+  },
+  "fresh_hardware_evidence": {
+    "source_worker": "GPU-199-CUDA-PRECISION-PILOT",
+    "source_pr": 334,
+    "source_head_sha": "f327a29070c93775569fbd5393e20683a263ec0d",
+    "source_path": "reports/gpu199/not_run_no_gpu_20260826.json",
+    "source_blob_sha": "1027b52ea5e9a9f8f48373b161278325382cfa8c",
+    "observed_at_utc": "2026-08-26T06:47:18.063919+00:00",
+    "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
+    "machine": "x86_64",
+    "python": "3.13.5",
+    "torch_version": "2.10.0+cpu",
+    "torch_cuda_build": null,
+    "cuda_is_available": false,
+    "visible_cuda_devices": 0,
+    "nvidia_smi_path": null,
+    "nvidia_device_nodes": [],
+    "exact_gpu_identity": null
+  },
+  "fsdp2_decision": {
+    "eligible": false,
+    "reason": "FSDP2 is permitted only when multiple free GPUs are genuinely present and a single GPU cannot fit. The fresh hardware preflight observed zero GPUs."
+  },
+  "cost_boundary": {
+    "paid_compute_authorized": false,
+    "provisioning_performed": false,
+    "hardware_purchase_performed": false
+  }
+}
