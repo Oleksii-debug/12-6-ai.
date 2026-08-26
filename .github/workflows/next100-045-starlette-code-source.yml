@@ -1,0 +1,49 @@
+name: NEXT100-045 Starlette Code Source Admission
+
+on:
+  pull_request:
+    paths:
+      - "configs/data/next100_045_starlette_code_source_v1.json"
+      - "tools/validate_next100_045_starlette.py"
+      - "docs/NEXT100_045_STARLETTE_CODE_SOURCE_AUTHORITY.md"
+      - ".github/workflows/next100-045-starlette-code-source.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile verifier
+        run: python -m py_compile tools/validate_next100_045_starlette.py
+      - name: Verify immutable source, rights boundary, privacy, parse, dedup, and reservations
+        run: python tools/validate_next100_045_starlette.py
+      - name: Assert terminal report contract
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path("evidence/next100_045/starlette_source_admission.json").read_text())
+          assert report["verdict"] == "ADMIT", report
+          assert report["training_executed"] is False
+          assert report["local_free_only"] is True
+          assert not report["failures"]
+          assert not report["evaluation_reservation_overlaps"]
+          assert all(item["parse_valid"] for item in report["files"])
+          assert all(not item["secret_hits"] for item in report["files"])
+          assert all(not item["privacy_hits"] for item in report["files"])
+          PY
+      - name: Upload hash-bound evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: next100-045-starlette-${{ github.sha }}
+          path: evidence/next100_045/starlette_source_admission.json
+          if-no-files-found: error
+          retention-days: 30
