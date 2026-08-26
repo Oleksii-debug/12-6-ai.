@@ -1,0 +1,75 @@
+{
+  "schema": "12-6.dist203-fsdp2-cuda-two-gpu-preflight.v1",
+  "worker_id": "DIST-203-FSDP2-CUDA-TWO-GPU",
+  "status": "NOT_RUN_INSUFFICIENT_GPU",
+  "recorded_at_utc": "2026-08-26T06:48:53Z",
+  "source": {
+    "repository": "Oleksii-debug/12-6-ai.",
+    "base_branch": "scale-144-fsdp2-shard-policy",
+    "base_sha": "548156b9ef2c2617d517c4bb01866eb201b87b98",
+    "reuse_contract": "existing native FSDP2 + DCP runtime and SCALE-144 tested policy set; no distributed framework added"
+  },
+  "required_gate": {
+    "minimum_visible_compatible_cuda_gpus": 2,
+    "backend": "nccl",
+    "single_host_two_rank_required": true,
+    "purpose_environment": {
+      "profile_id": "linux-x86_64-cuda-training",
+      "profile_sha256": "e2880fb2c9dbd56f84b558d8705d5248cbf079401da4ba83cc6d382e5a6cdbd6",
+      "required_python": "3.11.16",
+      "required_torch": "2.13.0",
+      "required_torch_cuda": "13.0",
+      "gpu_execution_required_for_runtime_pass": true
+    }
+  },
+  "available_execution_host_preflight": {
+    "kernel": "Linux 6.18.35 x86_64",
+    "python": "3.13.5",
+    "torch": "2.10.0+cpu",
+    "torch_cuda_build": null,
+    "cuda_available": false,
+    "visible_cuda_device_count": 0,
+    "nccl_available": false,
+    "nvidia_smi": "NOT_FOUND",
+    "gpu_devices": [],
+    "topology": null,
+    "gate_passed": false
+  },
+  "execution": {
+    "cuda_nccl_process_group_initialized": false,
+    "ten_million_forward_backward_update_attempted": false,
+    "ten_million_per_rank_gpu_memory_measured": false,
+    "ten_million_loss_agreement_measured": false,
+    "ten_million_gradient_update_health_measured": false,
+    "ten_million_communication_timing_measured": false,
+    "dcp_checkpoint_written": false,
+    "fresh_two_rank_reload_attempted": false,
+    "exact_continuation_claimed": false,
+    "hundred_million_qualification_attempted": false,
+    "cpu_gloo_fallback_used": false,
+    "paid_compute_used": false
+  },
+  "scale_144_policy_context": {
+    "tested_policies": [
+      "full_shard",
+      "root_keep_unsharded",
+      "shard_grad_op"
+    ],
+    "cpu_gloo_engineering_default": "root_keep_unsharded",
+    "cuda_nccl_default": null,
+    "reason": "SCALE-144 explicitly forbids projecting CPU/Gloo policy timing to CUDA/NCCL without real compatible hardware."
+  },
+  "blocker": {
+    "code": "INSUFFICIENT_VISIBLE_CUDA_GPU_COUNT",
+    "required": 2,
+    "observed": 0,
+    "message": "No compatible CUDA device is visible on the available free execution host, so real two-rank CUDA/NCCL evidence cannot be produced without fabricating execution."
+  },
+  "claim_boundary": {
+    "cuda_nccl_evidence": false,
+    "distributed_cuda_training_proof": false,
+    "ten_million_cuda_training_proof": false,
+    "hundred_million_cuda_training_proof": false,
+    "policy_promotion_from_cpu_to_cuda": false
+  }
+}
