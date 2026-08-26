@@ -1,0 +1,88 @@
+{
+  "attribution_path": "data/external/snapshots/data324-kubernetes-ua-v1/ATTRIBUTION.txt",
+  "canonical_upstream": "github:kubernetes/website",
+  "dedup": {
+    "dedup_key": "32fccd0a0d2aa8a755a60e768443bdca1a743566b9482954031754a24a1f7bd5",
+    "exact_normalized_collision_with_current_training_texts": false,
+    "exact_raw_collision_with_current_training_texts": false,
+    "family_collapse_required_for_any_kubernetes_website_translation_or_sibling": true
+  },
+  "evaluation": "NOT_SEPARATELY_ADMITTED",
+  "family_lineage_rule": "All Kubernetes website sibling documentation and translations remain one canonical upstream family unless a later explicit lineage authority proves independent origin; language or URL differences do not create new family credit.",
+  "language_evidence": {
+    "alphabetic_chars": 3397,
+    "cyrillic_chars": 2772,
+    "cyrillic_share_of_alpha": 0.8160141301148072,
+    "decision": "PASS",
+    "latin_chars": 625,
+    "latin_share_of_alpha": 0.1839858698851928,
+    "rule": "cyrillic_share>=0.70 AND count(ІіЇїЄєҐґ)>=20 after English-comment stripping",
+    "ukrainian_specific_chars": 207,
+    "ukrainian_specific_set_present": [
+      "є",
+      "і",
+      "ї"
+    ]
+  },
+  "license_evidence": {
+    "bytes": 18657,
+    "git_blob_sha1": "da6ab6cc8f333d7e89a99812866df8f24374d47c",
+    "materialized_path": "data/external/rights-evidence/data324/kubernetes-website-cc-by-4.0-25f3dcb.txt",
+    "path": "LICENSE",
+    "sha256": "9ba9550ad48438d0836ddab3da480b3b69ffa0aac7b7878b5a0039e7ab429411",
+    "url": "https://raw.githubusercontent.com/kubernetes/website/25f3dcbed7429ebe20174ccc7000428d0f0aedda/LICENSE"
+  },
+  "license_id": "CC-BY-4.0",
+  "local_free_only": true,
+  "manifest_identity_sha256": "e41dc8b677760b1d6ac25c982baf9ed47388afac4cb29872e919aa1f02faa32a",
+  "normalization": {
+    "decode": "strict-utf8",
+    "id": "markdown-visible-uk-v2",
+    "line_endings": "LF",
+    "operations": [
+      "strip-leading-yaml-frontmatter",
+      "strip-html-comments-including-embedded-English-originals",
+      "strip-hugo-shortcodes",
+      "retain-markdown-link-labels",
+      "retain-image-alt-text",
+      "strip-basic-markdown-punctuation",
+      "collapse-intraline-whitespace",
+      "drop-empty-lines",
+      "single-terminal-LF"
+    ],
+    "unicode": "NFKC"
+  },
+  "objects": [
+    {
+      "git_blob_sha1": "ab9d757e99679b3db48a3230bf6eb07a997eec9c",
+      "language": "uk",
+      "normalized_sha256": "32fccd0a0d2aa8a755a60e768443bdca1a743566b9482954031754a24a1f7bd5",
+      "normalized_snapshot_path": "data/external/snapshots/data324-kubernetes-ua-v1/normalized/concepts-index.uk.txt",
+      "normalized_utf8_bytes": 6810,
+      "path": "content/uk/docs/concepts/_index.md",
+      "raw_bytes": 12871,
+      "raw_sha256": "50a790e0ece091f13fe039b5e36a23431680dec0357379f29b0029502f9b3a31",
+      "raw_snapshot_path": "data/external/snapshots/data324-kubernetes-ua-v1/raw/concepts-index.md",
+      "source_id": "uk.kubernetes.docs.concepts-index",
+      "source_url": "https://raw.githubusercontent.com/kubernetes/website/25f3dcbed7429ebe20174ccc7000428d0f0aedda/content/uk/docs/concepts/_index.md"
+    }
+  ],
+  "privacy_evidence": {
+    "decision": "PASS",
+    "email_like_hits": 0,
+    "note": "bounded technical documentation heuristic only; no claim of universal PII absence",
+    "phone_like_hits": 0
+  },
+  "rights": {
+    "derivatives": "ALLOWED",
+    "evaluation": "NOT_SEPARATELY_ADMITTED",
+    "model_training": "ALLOWED_WITH_ATTRIBUTION_RETAINED_IN_PROVENANCE",
+    "redistribution": "ALLOWED_WITH_CC_BY_4_0_ATTRIBUTION_LICENSE_LINK_AND_MODIFICATION_NOTICE"
+  },
+  "schema_version": "12-6.data324-kubernetes-ua-snapshot-manifest.v1",
+  "source_family": "kubernetes.website.docs",
+  "training_executed": false,
+  "upstream_revision": "25f3dcbed7429ebe20174ccc7000428d0f0aedda",
+  "verdict": "ADMIT",
+  "worker_id": "NEXT100-024-DATA-UA-KUBERNETES-RECOVERY"
+}
