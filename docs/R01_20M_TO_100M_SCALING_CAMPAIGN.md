@@ -45,11 +45,28 @@ https://arxiv.org/abs/2502.02737
 
 SmolLM2 documents a data-centric small-model recipe with small-scale ablations and staged mixture refinement before committing to very large training exposure. This supports treating data mixture as an experimental axis, not as a fixed afterthought.
 
+**Blake et al., 2024 — u-muP**  
+https://arxiv.org/abs/2407.17465
+
+u-muP combines maximal-update parameterization with unit scaling and is designed to make useful hyperparameters transfer more consistently across model widths/scales. This is evidence that hyperparameter transfer can be deliberately engineered. It is not evidence that the current standard-parameterized 20M recipe can be copied unchanged to 50M or 100M.
+
+**DeepSeek LLM, 2024 — compute-aware scaling**  
+https://arxiv.org/abs/2401.02954
+
+The scaling analysis distinguishes parameter-count proxies from non-embedding FLOPs/token and shows that attention overhead can make simple parameter-based compute approximations materially inaccurate, especially at smaller scales. R01 therefore records parameter count but uses measured or exact non-embedding FLOPs/token as the primary scale-comparison axis.
+
+**Meister, 2026 — TokEval**  
+https://arxiv.org/abs/2608.18062
+
+TokEval evaluates tokenizers with both intrinsic structure-sensitive metrics and controlled language-model pretraining, including bits-per-byte as a tokenizer-agnostic language-model metric. This strengthens the existing R01 rule that raw token-level perplexity must not be the primary comparison across different tokenizer identities.
+
 ### R01 inference from those facts
 
 The incumbent D320/L16 + GQA + tied-embedding direction is a reasonable control for the present size, but it is not frozen for 100M. The next architectural decision should be based on matched data/tokenizer experiments rather than on a presumed larger-model template.
 
 At <=100M there is no evidence-based reason to force tensor, pipeline, context, or expert parallelism into the model merely because those techniques will be needed later. Prefer the simplest execution topology that fits and measure throughput/memory before adding distributed complexity.
+
+Parameter count remains an identity and deployment metric, but it is not sufficient as the sole compute scale variable. At every learned 20M/50M/100M point, record exact parameter count plus measured or exact non-embedding FLOPs/token, including attention cost, and report vocabulary projection compute separately.
 
 ### Experiment proposals, not accepted truths
 
@@ -58,6 +75,23 @@ The `[10, 20, 40]` tokens-per-parameter grid is a planned measurement grid for f
 The AdamW beta2 candidates `[0.95, 0.98, 0.999]` are an ablation grid. They do not replace the current optimizer configuration without measured evidence.
 
 The 20M/50M/100M size grid exists to measure whether loss and downstream contamination-safe validation improve enough to justify the next size. It is explicitly not a release ladder and does not freeze the ~100M architecture.
+
+u-muP is an experiment proposal, not an adopted parameterization. A future 50M/100M recipe may use either scale-specific retuning under a matched data/tokenizer/metric contract or a validated transfer parameterization such as u-muP with a matched standard-parameterization control. Silent reuse of the 20M learning rate, betas, warmup, scheduler, batch-token geometry, clipping, precision, or initialization is forbidden.
+
+## Cross-scale hyperparameter gate
+
+Before R01-E30 can support freezing a 100M ModelSpec, the project must produce one of two evidence paths:
+
+1. scale-specific retuning for the larger point under the same bound corpus/tokenizer/evaluation contract; or
+2. a validated transfer-parameterization experiment, with u-muP currently the research candidate, compared against a matched standard-parameterization control.
+
+Every path must record learning rate, optimizer betas, weight decay, warmup, scheduler, batch tokens, gradient clipping, precision, initialization/parameterization, seed, loss curve, and gradient-health evidence. The campaign validator fails closed if this gate is removed or if u-muP is marked adopted without evidence.
+
+## Compute-accounting rule
+
+For the 20M/50M/100M curve, parameter count is reported but `6 * parameters * tokens` is not the primary scientific scale axis. The campaign requires measured or exact non-embedding FLOPs/token, attention compute included, with vocabulary projection compute reported separately. This prevents width, context, GQA, or vocabulary changes from being misread as equal-compute comparisons merely because parameter counts look comparable.
+
+The token-per-parameter grid remains a measurement grid. No value in `[10, 20, 40]` is declared compute-optimal in advance.
 
 ## The blocking order for a learned 20M run
 
@@ -76,25 +110,25 @@ No missing gate may be replaced by a chat claim, parameter-count target, queued 
 
 Bits-per-byte is the primary cross-tokenizer language-model metric because token-level perplexity changes meaning when the tokenizer changes. Validation NLL/perplexity remain useful within one tokenizer identity.
 
-Every candidate must also record the loss curve, gradient health, tokens/second, peak memory, checkpoint/resume equivalence, deterministic rebuild or seed evidence, exact model/tokenizer/data/config identities, and contamination-safe evaluation provenance.
+Every candidate must also record the loss curve, gradient health, tokens/second, peak memory, non-embedding FLOPs/token, checkpoint/resume equivalence, deterministic rebuild or seed evidence, exact model/tokenizer/data/config identities, and contamination-safe evaluation provenance.
 
 A faster or larger candidate is not promoted if its validation/evaluation evidence is worse or untrustworthy.
 
 ## 100M decision rule
 
-Do not freeze a 100M ModelSpec now. First obtain terminal learned-20M evidence, then compare at least the planned 20M/50M/100M points under controlled tokenizer/data/metric contracts. Freeze the 100M ModelSpec only when the measured curve and hardware profile justify it.
+Do not freeze a 100M ModelSpec now. First obtain terminal learned-20M evidence, then compare at least the planned 20M/50M/100M points under controlled tokenizer/data/metric contracts. Freeze the 100M ModelSpec only when the measured curve, cross-scale training-recipe evidence, and hardware profile justify it.
 
-The long-term 1B and larger roadmap remains valid, but every jump must carry forward reproducible checkpoint lineage, dataset identity, tokenizer identity, evaluation separation, and cost evidence. Sparse MoE is a later large-scale research decision, not a reason to complicate the <=100M Base.
+The long-term 1B and larger roadmap remains valid, but every jump must carry forward reproducible checkpoint lineage, dataset identity, tokenizer identity, evaluation separation, stage-specific optimization evidence, and cost evidence. Sparse MoE is a later large-scale research decision, not a reason to complicate the <=100M Base.
 
 ## Handoff by lane
 
 - DATA: finish immutable Research Corpus V1 identity and post-pack unique-loss authority.
-- TOK: execute reproducible corpus-bound tokenizer experiments and report BPB/fertility/roundtrip/throughput.
-- TRAIN: after gates, run bounded optimizer/token-budget pilots and produce numerical evidence.
-- D06: compare contamination-safe metrics and fit the empirical scaling curve.
+- TOK: execute reproducible corpus-bound tokenizer experiments and report BPB/fertility/roundtrip/throughput plus structure-sensitive intrinsic diagnostics.
+- TRAIN: after gates, run bounded optimizer/token-budget pilots; do not silently copy 20M hyperparameters to larger scales.
+- D06: compare contamination-safe metrics and fit the empirical scaling curve using BPB plus compute-normalized scale evidence.
 - D05/AUDIT-A: close exact-head checkpoint integrity and resume evidence.
 - C01: produce hardware/cost envelope and obtain explicit compute authorization before material spend.
-- D01: use measured results to propose, then audit, the 100M ModelSpec.
+- D01: use measured results and cross-scale recipe evidence to propose, then audit, the 100M ModelSpec.
 
 ## Truth boundary
 
