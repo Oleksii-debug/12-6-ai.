@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   probe:
@@ -24,4 +24,16 @@ jobs:
           sudo apt-get install -y --no-install-recommends poppler-utils
           pdftotext -v
       - name: Probe exact NIST bytes and bounded normalized text
-        run: python tools/probe_next100_034_nist.py
+        run: |
+          mkdir -p evidence/next100-034
+          python tools/probe_next100_034_nist.py | tee /tmp/nist-probe.log
+          sed -n 's/^NIST_PROBE_JSON=//p' /tmp/nist-probe.log > evidence/next100-034/nist_probe_manifest.json
+          python -m json.tool evidence/next100-034/nist_probe_manifest.json >/dev/null
+      - name: Persist immutable probe result
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add evidence/next100-034/nist_probe_manifest.json
+          git diff --cached --quiet && exit 0
+          git commit -m "NEXT100-034: persist NIST probe evidence"
+          git push
