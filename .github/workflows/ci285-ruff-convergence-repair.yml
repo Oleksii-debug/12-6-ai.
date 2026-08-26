@@ -61,6 +61,11 @@ jobs:
               'raise ValueError("diagnostics must be an object")',
               'raise TypeError("diagnostics must be an object")',
           )
+          replace_once(
+              "src/twelve_six/milestone150_learned_base_ladder.py",
+              "sorted(set((best_step, MAX_STEPS)))",
+              "sorted({best_step, MAX_STEPS})",
+          )
 
           ladder = Path("src/twelve_six/milestone150_learned_base_ladder.py")
           text = ladder.read_text(encoding="utf-8")
@@ -84,6 +89,10 @@ jobs:
               broad,
               "except (OSError, ValueError, subprocess.SubprocessError) as exc:",
           )
+          old_capture = "stdout=subprocess.PIPE,\n        stderr=subprocess.PIPE,"
+          if text.count(old_capture) != 1:
+              raise SystemExit(f"evidence_finalizer capture pattern count={text.count(old_capture)}")
+          text = text.replace(old_capture, "capture_output=True,", 1)
           finalizer.write_text(text, encoding="utf-8")
           PY
 
