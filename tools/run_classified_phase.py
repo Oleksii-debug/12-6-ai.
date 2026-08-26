@@ -13,17 +13,27 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "src"))
 
-from twelve_six.experiment_failure import (  # noqa: E402
-    FailurePhase,
-    FailureSignal,
-    build_report,
-    make_signal_for_process,
-    read_start_marker,
-    safe_name,
-    write_report,
-)
+
+def _load_failure_module():
+    path = ROOT / "src" / "twelve_six" / "experiment_failure.py"
+    spec = importlib.util.spec_from_file_location("_ci161_experiment_failure", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"cannot load CI-161 failure module: {path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+_failure = _load_failure_module()
+FailurePhase = _failure.FailurePhase
+FailureSignal = _failure.FailureSignal
+build_report = _failure.build_report
+make_signal_for_process = _failure.make_signal_for_process
+read_start_marker = _failure.read_start_marker
+safe_name = _failure.safe_name
+write_report = _failure.write_report
 
 TAIL_BYTES = 64 * 1024
 
