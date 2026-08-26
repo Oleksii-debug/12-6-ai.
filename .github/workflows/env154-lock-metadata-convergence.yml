@@ -40,10 +40,20 @@ jobs:
             --disable-pip-version-check --no-deps --require-hashes \
             -r requirements/locks/linux-x86_64/dev.lock.txt
 
-      - name: Preflight required imports
+      - name: Preflight required imports and test tooling
         run: |
           set -euo pipefail
-          .env154/bin/python -c "import pytest, ruff; print('preflight imports PASS')"
+          .env154/bin/python - <<'PY'
+          from importlib.metadata import version
+          import pytest
+          from twelve_six.integration import dependency_lock
+
+          assert version("pytest") == "9.1.1"
+          assert version("ruff") == "0.16.4"
+          assert dependency_lock.EXACT_PYTHON_VERSION == "3.11.16"
+          print("preflight imports and locked test-tool versions PASS")
+          PY
+          .env154/bin/ruff --version
 
       - name: Verify committed derived metadata is current
         run: |
@@ -69,7 +79,7 @@ jobs:
       - name: Ruff changed Python surfaces
         run: |
           set -euo pipefail
-          .env154/bin/python -m ruff check \
+          .env154/bin/ruff check \
             src/twelve_six/integration/dependency_lock.py \
             tools/converge_environment_metadata.py \
             tests/test_dependency_lock.py \
