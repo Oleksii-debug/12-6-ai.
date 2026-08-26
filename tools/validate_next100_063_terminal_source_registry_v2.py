@@ -71,6 +71,15 @@ EXPECTED_ROWS = {
         "dedicated_workflow_run": 32998101312,
         "dedicated_workflow_name": "NEXT100-045 Starlette Code Source Admission",
     },
+    468: {
+        "worker": "NEXT100-049-CODE-NUMPY",
+        "head": "bca7a4c8afc5cb2546c35e3a0ebad9619cd3a4a8",
+        "authority_identity": "e9d2ce633915d6b6844b35e4abb0188974ef4791b208362c4f106ec0ad79ca70",
+        "family": "github:numpy/numpy",
+        "normalized_bytes": 36898,
+        "dedicated_workflow_run": 32998548535,
+        "dedicated_workflow_name": "NEXT100-049 NumPy Code Source Authority",
+    },
 }
 
 BLOCKED = {
@@ -113,19 +122,14 @@ def require(condition: bool, message: str) -> None:
 def canonical_identity(data: dict[str, Any]) -> str:
     body = dict(data)
     body.pop("registry_identity_sha256", None)
-    encoded = json.dumps(
-        body, sort_keys=True, separators=(",", ":"), ensure_ascii=False
-    ).encode("utf-8")
+    encoded = json.dumps(body, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
 
 
 def validate(data: dict[str, Any]) -> dict[str, Any]:
     require(data.get("schema_version") == SCHEMA, "schema mismatch")
     require(data.get("worker_id") == WORKER, "worker mismatch")
-    require(
-        data.get("registry_identity_sha256") == canonical_identity(data),
-        "registry identity mismatch",
-    )
+    require(data.get("registry_identity_sha256") == canonical_identity(data), "registry identity mismatch")
 
     supersedes = data.get("supersedes")
     require(isinstance(supersedes, dict), "supersedes missing")
@@ -145,7 +149,8 @@ def validate(data: dict[str, Any]) -> dict[str, Any]:
         "decontamination_required_before_corpus_identity",
     ):
         require(policy.get(key) is True, f"policy weakened: {key}")
-    require(policy.get("parallel_retest_or_queued_candidates_counted") is False, "queued candidates counted")
+    require(policy.get("parallel_retest_queued_or_failed_candidates_counted") is False, "nonterminal candidates counted")
+    require(policy.get("replay_or_duplication_may_repair_capacity") is False, "replay/duplication capacity repair enabled")
 
     base = data.get("base_registry")
     require(isinstance(base, dict), "base registry missing")
@@ -154,17 +159,22 @@ def validate(data: dict[str, Any]) -> dict[str, Any]:
     require(base.get("unique_normalized_bytes") == 183061, "base byte drift")
     require(base.get("source_count") == 5, "base source-count drift")
     require(base.get("independent_family_count") == 4, "base family-count drift")
+    require(
+        base.get("by_stratum")
+        == {
+            "code": {"family_count": 2, "normalized_bytes": 9703},
+            "en": {"family_count": 1, "normalized_bytes": 84793},
+            "uk": {"family_count": 1, "normalized_bytes": 88565},
+        },
+        "base stratum vector drift",
+    )
 
     rows = data.get("terminal_additions")
     require(isinstance(rows, list) and len(rows) == len(EXPECTED_ROWS), "credited row set changed")
     by_pr: dict[int, dict[str, Any]] = {}
     seen_heads: set[str] = set()
     seen_families = set(base.get("families", []))
-    by_stratum = {
-        "uk": dict(base["by_stratum"]["uk"]),
-        "en": dict(base["by_stratum"]["en"]),
-        "code": dict(base["by_stratum"]["code"]),
-    }
+    by_stratum = {key: dict(value) for key, value in base["by_stratum"].items()}
     new_bytes = 0
 
     for raw in rows:
@@ -197,13 +207,14 @@ def validate(data: dict[str, Any]) -> dict[str, Any]:
     require(set(by_pr) == set(EXPECTED_ROWS), "credited source set incomplete")
     require(not (set(BLOCKED) & set(by_pr)), "blocked source received credit")
 
+    numpy_row = by_pr[468]
+    require(numpy_row.get("terminal_report_sha256") == "e9d2ce633915d6b6844b35e4abb0188974ef4791b208362c4f106ec0ad79ca70", "NumPy terminal report drift")
+    require(numpy_row.get("terminal_artifact_id") == 9618015895, "NumPy terminal artifact drift")
+    require(numpy_row.get("terminal_artifact_zip_sha256") == "402016760c2ea5b341ed15537bb173e9bf10a938870313f00fd5e617ba20b020", "NumPy artifact identity drift")
+
     held = data.get("held_out_or_noncomposable")
     require(isinstance(held, list), "held-out vector missing")
-    held_by_pr = {
-        row.get("pr"): row
-        for row in held
-        if isinstance(row, dict) and isinstance(row.get("pr"), int)
-    }
+    held_by_pr = {row.get("pr"): row for row in held if isinstance(row, dict) and isinstance(row.get("pr"), int)}
     for pr, expected in BLOCKED.items():
         require(pr in held_by_pr, f"blocked PR {pr} missing")
         row = held_by_pr[pr]
@@ -224,12 +235,12 @@ def validate(data: dict[str, Any]) -> dict[str, Any]:
     inv = data.get("pre_global_dedup_inventory")
     require(isinstance(inv, dict), "inventory missing")
     total = int(base["unique_normalized_bytes"]) + new_bytes
-    require(new_bytes == 83415, "new terminal byte total drift")
-    require(total == 266476, "candidate byte total drift")
+    require(new_bytes == 120313, "new terminal byte total drift")
+    require(total == 303374, "candidate byte total drift")
     require(inv.get("base_unique_normalized_bytes") == 183061, "inventory base-byte drift")
     require(inv.get("new_terminal_normalized_bytes") == new_bytes, "inventory new-byte drift")
+    require(inv.get("terminal_addition_authority_count") == len(rows), "terminal addition count drift")
     require(inv.get("candidate_normalized_bytes") == total, "inventory candidate-byte drift")
-    require(inv.get("candidate_source_authority_count") == int(base["source_count"]) + len(rows), "candidate source-count drift")
     require(inv.get("candidate_independent_family_count") == len(seen_families), "candidate family-count drift")
     require(inv.get("by_stratum") == by_stratum, "stratum accounting drift")
     minimum = inv.get("minimum_independent_families_per_stratum")
@@ -239,10 +250,19 @@ def validate(data: dict[str, Any]) -> dict[str, Any]:
     target = inv.get("research_corpus_v1_target_normalized_bytes")
     require(target == 20_000_000, "Research Corpus V1 target drift")
     require(inv.get("target_gap_normalized_bytes") == target - total, "target gap drift")
-    require(math.isclose(inv.get("target_fraction"), total / target, rel_tol=0.0, abs_tol=1e-12), "target fraction drift")
+    require(math.isclose(float(inv.get("target_fraction")), total / target, rel_tol=0.0, abs_tol=1e-12), "target fraction drift")
+    require(inv.get("required_stratum_fraction") == {"uk": 0.45, "en": 0.35, "code": 0.2}, "required stratum mix drift")
+    expected_ceilings = {
+        key: math.floor(by_stratum[key]["normalized_bytes"] / frac)
+        for key, frac in inv["required_stratum_fraction"].items()
+    }
+    require(inv.get("stratum_only_ceiling_by_stratum") == expected_ceilings, "stratum no-replay ceilings drift")
+    require(inv.get("stratum_only_no_replay_ceiling_normalized_bytes") == min(expected_ceilings.values()), "global no-replay ceiling drift")
+    require(inv.get("stratum_only_no_replay_ceiling_limiter") == "uk", "no-replay limiter drift")
 
     gates = data.get("downstream_gate_vector")
     require(isinstance(gates, dict), "downstream gate vector missing")
+    require(gates.get("source_registry_convergence") == "PASS_FAIL_CLOSED_CANDIDATE_AUTHORITY_VECTOR", "source convergence state drift")
     require(gates.get("global_cross_source_exact_near_dedup") == "REQUIRED_NEXT", "dedup gate weakened")
     require(gates.get("evaluation_decontamination") == "REQUIRED_AFTER_EXACT_CANDIDATE_INVENTORY", "decontamination gate weakened")
     require(gates.get("authorized_balanced_no_replay_loss_positions") == 0, "training exposure must remain zero")
