@@ -1,0 +1,12 @@
+NEXT100-022 Ukrainian Wikisource snapshot attribution
+
+Source text: Ukrainian Wikisource, “Сторінка:Леся Українка. На крилах пісень. 1892.pdf/13”
+Permanent revision: https://uk.wikisource.org/w/index.php?title=Сторінка:Леся_Українка._На_крилах_пісень._1892.pdf/13&oldid=560107
+Index revision: https://uk.wikisource.org/w/index.php?title=Індекс:Леся_Українка._На_крилах_пісень._1892.pdf&oldid=729499
+Underlying scan: Wikimedia Commons “Леся Українка. На крилах пісень. 1892.pdf”, SHA-1 4ae5ba96e7e76d7fb26b37d5277a2e82c1443407.
+
+Underlying literary work and edition are treated as public domain for this authority. Wikimedia community text-layer reuse is conservatively attributed through the permanent source URL. Redistribution of this snapshot must preserve this attribution notice and a CC BY-SA license notice/link as required by the Wikimedia Terms of Use; where GFDL applies, reusers may comply with that license instead when the Terms permit.
+
+Normalization changes from the rendered approved page: MediaWiki chrome and scan image omitted; leading non-breaking-space stanza markers converted to blank-line stanza boundaries; Unicode NFC; LF line endings; one final LF. No spelling modernization or content correction was performed.
+
+This qualification does not admit generic Ukrainian Wikisource content, modern translations, or CC-BY-SA-only original works.

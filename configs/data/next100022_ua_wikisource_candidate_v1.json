@@ -1,0 +1,129 @@
+{
+  "attribution": {
+    "method": "PERMANENT_SOURCE_URL_PLUS_NOTICE",
+    "must_preserve_on_redistribution": true,
+    "notice_path": "data/external/snapshots/next100022/ATTRIBUTION.txt",
+    "notice_sha256": "dafebb296075eb9503eeb70fa6ae3ef00d7f9f7f86d56b4047055f3278415d8c"
+  },
+  "authority_identity_sha256": "6b443faa7fef777214022028d5fdb356dae0ab1a9b71822b4e16bea8f92cd0d6",
+  "authority_state": "TERMINAL_RIGHTS_AND_IMMUTABLE_SNAPSHOT",
+  "canonical_registry_mutated": false,
+  "evaluation_exclusion": {
+    "candidate_snapshot_sha256": "65e570c3cd954b595b586554b89a90da6efad0deca6a84d2316937745db17ef2",
+    "corpus_training_selection": "BLOCKED_UNTIL_STANDARD_DATA232_DATA299_NEAR_MATCH_DECONTAMINATION",
+    "data25_nfkc_whitespace_collapse_sha256": "6712a26753547e9cb26e3993fad001e89f25e66a6fe40032785aa4b493b22ecb",
+    "data299_registry_identity_sha256": "2235b27441277542ef92748b5f9f6b21b983a7142ea53036b104e7be96cb44ee",
+    "eval132_hash_shard_identity_sha256": "f37e6d8a3d37f091287b03f8baf8dd1dcc66bef2a9b4b93b47538f3d65134685",
+    "exact_hash_collision_observed": false,
+    "near_match_scan": "NOT_RUN_EVALUATION_PAYLOAD_ACCESS_FORBIDDEN_TO_THIS_WORKER",
+    "reason": "Rights permission is separate from corpus admission; hash-only exact exclusion passes, but this worker does not inspect reserved evaluation payloads.",
+    "task_reserved_new_evaluation_material": false
+  },
+  "evidence": {
+    "commons_public_domain_marked": true,
+    "uk_wikisource_copyright_policy_revision": 911097,
+    "wikimedia_terms_permanent_url": "https://foundation.wikimedia.org/w/index.php?title=Policy:Terms_of_Use/en&oldid=554852",
+    "wikimedia_terms_revision_id": 554852,
+    "wikimedia_terms_url": "https://foundation.wikimedia.org/wiki/Policy:Terms_of_Use/en",
+    "wipo_lex_current_law": "UA274 consolidated 2026-07-31"
+  },
+  "execution_class": "LOCAL_FREE",
+  "family_lineage": {
+    "family_basis": "CANONICAL_UNDERLYING_EDITION_DOCUMENT_LINEAGE_NOT_HOSTING_DOMAIN",
+    "family_id": "ua.literature.lesia-ukrainka.na-krylah-pisen.1892-lviv",
+    "independence_reason": "No current registry family resolves to this underlying edition/document lineage; platform commonality alone is neither independence nor equivalence.",
+    "independent_from_registry_parent": true,
+    "same_family_aliases": [
+      "Wikimedia Commons scan of the same 1892 edition",
+      "Google Books scan identified by VuD74cFPso0C",
+      "other mirrors or transcriptions derived from the same edition"
+    ],
+    "wikimedia_platform_is_not_family_identity": true
+  },
+  "privacy": {
+    "attribution_via_public_revision_url": true,
+    "content_pii_status": "NO_PERSONAL_DATA_EXPECTED_IN_SELECTED_1892_LITERARY_BODY",
+    "contributor_usernames_copied": false
+  },
+  "registry_parent": {
+    "independent_source_family_count": 4,
+    "path": "data/registry/external_snapshots.v2.json",
+    "registry_identity_sha256": "917e9bc31b2fa040d25e807ae3c01aa2cce32420752a891caacfb6c830e6632c",
+    "source_count": 5,
+    "source_sha": "b0523ccbc4b957615aac849d476cfa851be87578"
+  },
+  "rights": {
+    "model_output_license_inference": "NONE",
+    "scope_boundary": "Only the exact public-domain edition/page snapshot is admitted. Generic Ukrainian Wikisource, modern/original translations, contributor-authored works, and CC-BY-SA-only content are not admitted by this authority.",
+    "underlying_work": {
+      "public_domain_from_ukraine": "1984-01-01",
+      "status": "PUBLIC_DOMAIN",
+      "ukraine": "PUBLIC_DOMAIN_AUTHOR_DIED_1913_LIFE_PLUS_70_EXPIRED",
+      "ukraine_term_basis": "Law No. 2811-IX Article 31: 70 years from January 1 following the author's death",
+      "united_states": "PUBLIC_DOMAIN_PUBLISHED_BEFORE_1931"
+    },
+    "uses": {
+      "acquisition": "ALLOWED",
+      "analysis": "ALLOWED",
+      "evaluation": "NOT_SEPARATELY_ADMITTED",
+      "model_training_permission": "ALLOWED",
+      "redistribution": "ALLOWED_WITH_ATTRIBUTION_AND_LICENSE_NOTICE",
+      "storage": "ALLOWED"
+    },
+    "wikimedia_text_layer": {
+      "attribution_required": true,
+      "changes_must_be_indicated": true,
+      "license_expression": "CC-BY-SA-4.0 AND/OR GFDL_AS_APPLICABLE_UNDER_WIKIMEDIA_TERMS",
+      "license_notice_required_on_redistributed_copy": true,
+      "status": "FREE_LICENSED_CONTRIBUTOR_LAYER"
+    }
+  },
+  "schema_version": "12-6.next100022-ua-wikisource-qualification.v1",
+  "snapshot": {
+    "bounded_pages": 1,
+    "bytes": 1479,
+    "normalization_policy": "WIKISOURCE_RENDERED_PD_TEXT_NFC_LF_STANZA_V1",
+    "normalization_steps": [
+      "select only approved rendered literary body for page revision 560107",
+      "exclude MediaWiki chrome, navigation, categories, footer, page history and scan image",
+      "convert leading non-breaking-space stanza markers to blank-line stanza boundaries",
+      "preserve spelling, punctuation and combining-accent semantics",
+      "Unicode NFC",
+      "LF line endings",
+      "exactly one final LF"
+    ],
+    "path": "data/external/snapshots/next100022/ua_wikisource_lesia_1892_page13.txt",
+    "sha256": "65e570c3cd954b595b586554b89a90da6efad0deca6a84d2316937745db17ef2"
+  },
+  "source": {
+    "hosting_platform": "wikimedia:ukwikisource",
+    "index_revision_id": 729499,
+    "index_revision_url": "https://uk.wikisource.org/w/index.php?title=Індекс:Леся_Українка._На_крилах_пісень._1892.pdf&oldid=729499",
+    "index_title": "Індекс:Леся Українка. На крилах пісень. 1892.pdf",
+    "language": "uk",
+    "modality": "text",
+    "page_revision_id": 560107,
+    "page_revision_url": "https://uk.wikisource.org/w/index.php?title=Сторінка:Леся_Українка._На_крилах_пісень._1892.pdf/13&oldid=560107",
+    "page_title": "Сторінка:Леся Українка. На крилах пісень. 1892.pdf/13",
+    "proofread_status": "APPROVED_PAGE_WITH_FULLY_VERIFIED_INDEX",
+    "source_id": "ua.wikisource.lesia-ukrainka.na-krylah-pisen.1892.page13"
+  },
+  "training_executed": false,
+  "underlying_edition": {
+    "author": "Леся Українка (Лариса Косач-Квітка)",
+    "author_death_date": "1913-08-01",
+    "collection": "На крилах пісень",
+    "commons_file": "Леся Українка. На крилах пісень. 1892.pdf",
+    "commons_file_bytes": 2069409,
+    "commons_file_sha1": "4ae5ba96e7e76d7fb26b37d5277a2e82c1443407",
+    "commons_pages": 112,
+    "commons_source": "https://books.google.com.ua/books?id=VuD74cFPso0C",
+    "metadata_note": "Commons description contains a Date=1902 field inconsistent with the Wikisource index/filename publication year 1892; this authority binds the edition identity to the verified Wikisource index and treats the Commons Date field as non-authoritative scan metadata.",
+    "publication_place": "Львів",
+    "publication_year": 1892,
+    "publisher": "З друкарні Товариства імени Шевченка",
+    "work": "Contra spem spero!"
+  },
+  "verdict": "ADMIT_BOUNDED_PD_EDITION_SNAPSHOT",
+  "worker_id": "NEXT100-022-DATA-UA-WIKISOURCE"
+}
