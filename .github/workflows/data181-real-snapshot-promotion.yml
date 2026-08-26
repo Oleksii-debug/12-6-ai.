@@ -23,6 +23,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: data181-real-snapshot-promotion-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   promote-real-snapshots:
     runs-on: ubuntu-24.04
