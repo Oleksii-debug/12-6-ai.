@@ -1,0 +1,52 @@
+NEXT100-034-DATA-EN-NIST
+Audit date: 2026-08-26
+Authority scope: bounded NIST Technical Series English text candidate family.
+
+OFFICIAL RIGHTS POLICY
+Source: https://www.nist.gov/open/copyright-fair-use-and-licensing-statements-srd-data-software-and-technical-series-publications
+NIST states that employee-authored Technical Series works are not subject to copyright protection in the United States. For foreign rights NIST may assert, NIST grants the public a non-exclusive, perpetual, paid-up, royalty-free, worldwide right to reprint in all formats and make derivative works. NIST requests its recommended citation followed by “Republished courtesy of the National Institute of Standards and Technology.” NIST also explicitly warns that some NIST-published works may have been written by third parties and may be copyright-protected.
+The same policy separately states that Standard Reference Data may be copyrighted under 15 U.S.C. § 290e and can be licensed. Therefore this authority does not treat all NIST material as public domain and excludes SRD from automatic admission.
+
+DOCUMENT-SPECIFIC RIGHTS AND AUTHORSHIP
+NIST.SP.800-204
+CSRC: https://csrc.nist.gov/pubs/sp/800/204/final
+PDF: https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-204.pdf
+DOI: 10.6028/NIST.SP.800-204
+Final publication: August 2019
+Author shown by NIST: Ramaswamy Chandramouli (NIST)
+PDF Authority page states that the publication may be used voluntarily by nongovernmental organizations, is not subject to copyright in the United States, and that attribution would be appreciated by NIST.
+
+NIST.SP.800-204C
+CSRC: https://csrc.nist.gov/pubs/sp/800/204/c/final
+PDF: https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-204C.pdf
+DOI: 10.6028/NIST.SP.800-204C
+Final publication: March 2022
+Author shown by NIST: Ramaswamy Chandramouli (NIST)
+PDF Authority page states that the publication may be used voluntarily by nongovernmental organizations, is not subject to copyright in the United States, and that attribution would be appreciated by NIST.
+
+NIST.SP.800-215
+CSRC: https://csrc.nist.gov/pubs/sp/800/215/final
+PDF: https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-215.pdf
+DOI: 10.6028/NIST.SP.800-215
+Final publication: November 2022
+Author shown by NIST: Ramaswamy Chandramouli (NIST)
+PDF Authority page states that the publication may be used voluntarily by nongovernmental organizations, is not subject to copyright in the United States, and that attribution would be appreciated by NIST.
+
+BOUNDED BYTE PROBE
+GitHub Actions run: 32997600434
+Job: 98270801325
+Probe source commit: aa05edc0c01043f6316b6adb74fbf0535bc64e4e
+Runner: ubuntu-24.04
+Extractor: pdftotext 24.02.0
+The probe fetched only the three official NIST PDF URLs above, verified the PDF magic bytes, recorded raw byte lengths and SHA-256 values, extracted body text from preregistered start pages, normalized deterministically, bounded each normalized object to <=20,000 UTF-8 bytes, and applied quality and within-family dedup gates.
+
+PURPOSE BOUNDARY
+Model-training use: admitted for this exact bounded subset.
+Redistribution: admitted subject to retained NIST provenance and conservative use of the NIST recommended citation plus the “Republished courtesy of the National Institute of Standards and Technology.” line.
+Evaluation use: not separately admitted.
+This source authority does not mutate or supersede a frozen corpus contract and does not claim benchmark cleanliness.
+
+RETEST / REJECT BOUNDARY
+NIST SP 800-204A, 800-204B, and 800-204D have non-NIST coauthors according to their NIST CSRC records. They require document-specific third-party copyright analysis before use and are RETEST, not admitted here.
+NIST Standard Reference Data is RETEST/LICENSE-SPECIFIC because NIST states SRD may be copyrighted/licensed.
+The blanket proposition “all NIST material is public domain” is REJECTED.
