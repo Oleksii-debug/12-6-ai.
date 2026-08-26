@@ -1,0 +1,200 @@
+{
+  "authority_identity_sha256": "a52179e925f1261cf2d17ec3485dc8f6de19ffd000afb5ba15fd0e58ff2e4fca",
+  "eval303_binding": {
+    "composite_selection_identity_sha256": "7b97a9ab04469236dc5bc17fc80155cb43430b01c443bb6209fac090557258fd",
+    "final_test_outcomes_read": false,
+    "final_test_payload_read": false,
+    "head_sha": "5e5a1de3b594cee5612e63d3d4c2a70499740ac7",
+    "membership_jsonl_sha256": "e4bb39dd7aa6a20c7ed34e093f563b5f4896ac16828151c6b375a83cd8a068c6",
+    "ua_records": 8
+  },
+  "execution_profile": "LOCAL_FREE",
+  "expansion_result": {
+    "fabricated_records": 0,
+    "immutable_payload_rewritten": false,
+    "new_families_admitted": 0,
+    "new_records_admitted": 0,
+    "total_preserved_families": 2,
+    "total_preserved_records": 8
+  },
+  "final_test_outcomes_exposed": false,
+  "hard_requirements": {
+    "deterministic_selection_required": true,
+    "exact_training_overlap_allowed": false,
+    "final_test_outcome_access_allowed": false,
+    "final_test_prohibited": true,
+    "future_training_prohibited": true,
+    "minimum_independent_ua_families": 2,
+    "near_copy_training_cluster_overlap_allowed": false,
+    "pre_training_reservation_required": true,
+    "selection_validation_rights_exact_object_required": true,
+    "tokenizer_fit_prohibited": true
+  },
+  "late_bound_candidates": [
+    {
+      "admitted_to_v2": false,
+      "blockers": [
+        "SAME_FAMILY_ALREADY_PRESENT_IN_EVAL290",
+        "SELECTION_VALIDATION_RIGHTS_NOT_ADMITTED",
+        "PRE_TRAINING_SELECTION_RESERVATION_ABSENT"
+      ],
+      "head_sha": "a0887ba79b670e908b414123875cf81fda711a56",
+      "new_family_credit": 0,
+      "pre_training_selection_reservation": "ABSENT_FOR_REPLACEMENT_OBJECT",
+      "pull_request": 446,
+      "selection_validation_status": "NOT_GRANTED_BY_DATA324",
+      "source_family": "kubernetes.website.docs",
+      "source_status": "RETEST_RUNNER_QUEUE_ONLY_SAME_EVAL290_FAMILY",
+      "source_workflow_conclusion": null,
+      "source_workflow_run": 32998339895,
+      "source_workflow_status": "queued"
+    },
+    {
+      "admitted_to_v2": false,
+      "blockers": [
+        "EXACT_HEAD_SOURCE_AUTHORITY_NOT_TERMINAL_SUCCESS",
+        "SELECTION_VALIDATION_RIGHTS_NOT_ADMITTED",
+        "PRE_TRAINING_SELECTION_RESERVATION_ABSENT"
+      ],
+      "head_sha": "40950a950b60921fd856af2719e1ae2486d9e892",
+      "new_family_credit": 0,
+      "pre_training_selection_reservation": "ABSENT",
+      "pull_request": 449,
+      "selection_validation_status": "NOT_SEPARATELY_ADMITTED",
+      "source_family": "ua.kmu.portal.secretariat-news",
+      "source_status": "TRAINING_SOURCE_ADMIT_NONTERMINAL_WORKFLOW_AT_CUTOFF",
+      "source_workflow_conclusion": null,
+      "source_workflow_run": 32997970539,
+      "source_workflow_status": "queued"
+    },
+    {
+      "admitted_to_v2": false,
+      "blockers": [
+        "EXACT_HEAD_SOURCE_AUTHORITY_NOT_TERMINAL_SUCCESS",
+        "SELECTION_VALIDATION_RIGHTS_NOT_ADMITTED",
+        "PRE_TRAINING_SELECTION_RESERVATION_ABSENT"
+      ],
+      "head_sha": "e6b77bfc8b623f095cd5d1ca91edcd8e4734da63",
+      "new_family_credit": 0,
+      "pre_training_selection_reservation": "ABSENT",
+      "pull_request": 454,
+      "selection_validation_status": "NOT_SEPARATELY_ADMITTED",
+      "source_family": "php.manual.documentation",
+      "source_status": "RETEST_RUNNER_QUEUE_ONLY",
+      "source_workflow_conclusion": null,
+      "source_workflow_run": 32998632471,
+      "source_workflow_status": "queued"
+    },
+    {
+      "admitted_to_v2": false,
+      "blockers": [
+        "SELECTION_VALIDATION_RIGHTS_NOT_ADMITTED",
+        "PRE_TRAINING_SELECTION_RESERVATION_ABSENT"
+      ],
+      "head_sha": "84c51e42b6daa51796fd20d793b5ef1ff01cc9d2",
+      "new_family_credit": 0,
+      "pre_training_selection_reservation": "ABSENT",
+      "pull_request": 455,
+      "selection_validation_status": "NOT_SEPARATELY_ADMITTED",
+      "source_family": "ua.wikisource.pd-edition.lesya-ukrainka-1892",
+      "source_status": "TERMINAL_BOUNDED_PD_EDITION_SNAPSHOT",
+      "source_workflow_conclusion": "success",
+      "source_workflow_run": 32998002424,
+      "source_workflow_status": "completed"
+    },
+    {
+      "admitted_to_v2": false,
+      "blockers": [
+        "SELECTION_VALIDATION_RIGHTS_NOT_ADMITTED",
+        "PRE_TRAINING_SELECTION_RESERVATION_ABSENT"
+      ],
+      "head_sha": "0c5c8e039602cdc72f1dd205f83685936346d0d3",
+      "new_family_credit": 0,
+      "pre_training_selection_reservation": "ABSENT",
+      "pull_request": 462,
+      "selection_validation_status": "NOT_ADMITTED",
+      "source_family": "ua.verba.public-domain.nomis1864",
+      "source_status": "TERMINAL_BOUNDED_PUBLIC_DOMAIN_LITERATURE_SNAPSHOT",
+      "source_workflow_conclusion": "success",
+      "source_workflow_run": 32998180391,
+      "source_workflow_status": "completed"
+    },
+    {
+      "admitted_to_v2": false,
+      "blockers": [
+        "EXACT_HEAD_SOURCE_AUTHORITY_NOT_TERMINAL_SUCCESS",
+        "SELECTION_VALIDATION_RIGHTS_NOT_ADMITTED",
+        "PRE_TRAINING_SELECTION_RESERVATION_ABSENT"
+      ],
+      "head_sha": "2c202fa18d36cfb2c109110b92d322027309329a",
+      "new_family_credit": 0,
+      "pre_training_selection_reservation": "ABSENT",
+      "pull_request": 471,
+      "selection_validation_status": "NOT_ADMITTED",
+      "source_family": "ua.data-gov.derzhgeocadastre.dataset-register",
+      "source_status": "RETEST_PROBE_NOT_LOCKED",
+      "source_workflow_conclusion": null,
+      "source_workflow_run": 32998504158,
+      "source_workflow_status": "queued"
+    },
+    {
+      "admitted_to_v2": false,
+      "blockers": [
+        "EXACT_HEAD_SOURCE_AUTHORITY_NOT_TERMINAL_SUCCESS",
+        "SELECTION_VALIDATION_RIGHTS_NOT_ADMITTED",
+        "PRE_TRAINING_SELECTION_RESERVATION_ABSENT"
+      ],
+      "head_sha": "5e89eb05604e63beff4d54b477aedc3a2d085809",
+      "new_family_credit": 0,
+      "pre_training_selection_reservation": "ABSENT",
+      "pull_request": 478,
+      "selection_validation_status": "NOT_SEPARATELY_ADMITTED",
+      "source_family": "rust-lang-ua.rustbook-ukrainian.second-edition",
+      "source_status": "PROBE_ONLY",
+      "source_workflow_conclusion": null,
+      "source_workflow_run": 32999054473,
+      "source_workflow_status": "queued"
+    }
+  ],
+  "preserved_eval290": {
+    "artifact_digest": "sha256:0c5f9f8d938284a1358bfb77284814b1f0569b2d6d13938f415ba31db64a6c3b",
+    "dedicated_workflow_conclusion": "success",
+    "dedicated_workflow_run": 32968339064,
+    "deterministic_selector": true,
+    "final_test_eligible": false,
+    "head_sha": "029514654829cebc149cff6fc1fea2a8ba4fa566",
+    "independent_family_count": 2,
+    "records": 8,
+    "reservation_commit_sha": "8a393d98d37b2090d1ae3fe8be8d4e58f651159e",
+    "selection_only": true,
+    "set_identity_sha256": "c32320a706a283049e35eb537eb20a1e7f5865b86c24397c8b73d1e3d2014164",
+    "source_families": [
+      "kubernetes.website.docs",
+      "lang-uk.perestoroha-ocr"
+    ],
+    "status": "PRESERVE_AS_VALID_COMPONENT_EVIDENCE_NOT_PROMOTED_TO_V2_RELEASE",
+    "tokenizer_fit_eligible": false,
+    "training_eligible": false
+  },
+  "schema_version": "12-6.next100-058-ua-selection-validation-expansion.v2",
+  "status": "BLOCKED_NO_NEW_TERMINAL_PURPOSE_RESERVED_UA_SOURCE_AND_NO_NEAR_COPY_TRAINING_PROOF",
+  "training_exclusion_boundary": {
+    "data300_contract_identity_sha256": "07d7beaaff4616e839450de6af3d407855c832bf75a24a959d1a12de5d9364e5",
+    "data300_head_sha": "8ea7f830e50a23754d189dd4134f4afad76a7ee9",
+    "eval303_exact_exclusion_proof_identity_sha256": "ac9a0e2c3beab26c0d664b0006b11ec9fd155fa78be9f46d56ecb3ed336f2621",
+    "exact_overlap_count": 0,
+    "near_copy_cluster_proof": "ABSENT",
+    "reason": "EVAL-303 explicitly proves exact byte/object exclusion only and does not replace DATA-300 G07/G08 near-copy, mirror, fragment or connected-component decontamination.",
+    "release_effect": "V2 cannot claim all selected objects are outside training near-copy clusters."
+  },
+  "training_executed": false,
+  "unblock_contract": [
+    "Exact source object has terminal source and rights authority.",
+    "Separate selection-validation rights explicitly admit that exact object.",
+    "Immutable selection reservation precedes any model-training or tokenizer-fit exposure of the selected records.",
+    "A deterministic selector binds exact selected record identities and hashes and prohibits training, tokenizer fitting and final-test use.",
+    "A DATA-232/DATA-300-compatible exact, normalized, near-copy, fragment, mirror and connected-component scan against the exact training corpus proves zero selected-object training-cluster overlap.",
+    "Final-test separation is proved without reading or publishing final-test outcomes."
+  ],
+  "worker_id": "NEXT100-058-UA-SELECTION-V2"
+}
