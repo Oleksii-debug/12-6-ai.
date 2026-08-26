@@ -1,0 +1,97 @@
+name: TRAIN-194 10M Clipping Final
+
+on:
+  push:
+    branches:
+      - train194/10m-clipping-final-20260826
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  clipping-final:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Prove exact source checkout
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Universal bootstrap verification
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+        run: >-
+          python tools/verify_locked_environment.py
+          --profile linux-x86_64
+          --source-sha "$SOURCE_SHA"
+          --evidence-out locked-environment-linux-x86_64.json
+      - name: Create exact locked environment
+        run: |
+          python -m venv .train194-locked
+          .train194-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
+          .train194-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          .train194-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/dev.lock.txt
+          PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .train194-locked/bin/python -m pip install --no-deps --no-build-isolation -e .
+      - name: Scoped source checks
+        run: |
+          .train194-locked/bin/python -m py_compile src/twelve_six/training/clip_10m_final.py tools/run_clip_10m_final.py tests/test_clip_10m_final.py
+          .train194-locked/bin/python -m ruff check src/twelve_six/training/clip_10m_final.py tools/run_clip_10m_final.py tests/test_clip_10m_final.py
+          .train194-locked/bin/python -m pytest -q tests/test_clip_10m_final.py tests/test_clip_10m_transfer.py tests/test_training_engine.py
+      - name: Execute exact 10M clipping final matrix
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          .train194-locked/bin/python tools/run_clip_10m_final.py \
+            --repo-root . \
+            --source-sha "$SOURCE_SHA" \
+            --locked-environment-evidence locked-environment-linux-x86_64.json \
+            --preregistration-output train194-clip-preregistration.json \
+            --output train194-10m-clipping-final.json \
+            --torch-threads 2
+      - name: Print decision summary
+        run: |
+          .train194-locked/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path("train194-10m-clipping-final.json").read_text())
+          print(json.dumps({
+              "identity": report["identity"],
+              "diagnostic_global": report["preregistration"]["diagnostic_distribution"]["global_preclip"]["profile"],
+              "thresholds": report["preregistration"]["candidate_thresholds"],
+              "summaries": {
+                  label: {
+                      "final_bpb_by_seed": summary["final_bpb_by_seed"],
+                      "mean_final_bpb": summary["mean_final_bpb"],
+                      "clip_frequency_by_seed": summary["clip_frequency_by_seed"],
+                      "mean_clip_frequency": summary["mean_clip_frequency"],
+                      "post_pre_norm_ratio": summary["post_pre_norm_ratio"]["profile"],
+                      "update_weight_ratio": summary["update_weight_ratio"]["profile"],
+                      "loss_spikes": summary["loss_spike_count_by_seed"],
+                      "depth_warnings": summary["depth_warning_count_by_seed"],
+                      "numerical_failures": summary["numerical_failures"],
+                  }
+                  for label, summary in report["candidate_summaries"].items()
+              },
+              "decision": report["decision"],
+          }, indent=2, sort_keys=True))
+          PY
+      - name: Upload TRAIN-194 evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: train194-10m-clipping-final
+          path: |
+            locked-environment-linux-x86_64.json
+            train194-clip-preregistration.json
+            train194-10m-clipping-final.json
+            train194-real-source-intake/
+          if-no-files-found: error
+          retention-days: 30
