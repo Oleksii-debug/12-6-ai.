@@ -1,0 +1,13 @@
+{
+  "schema_version": "12-6.eval291-en-membership.v2",
+  "immutable": true,
+  "reservation_commit_sha": "d3f7fead8c04cafd535d1e574a7203523b54464d",
+  "selection_validation": [
+    {"membership_id":"httpx-timeouts-doc:b699f15c8df51d20","document_id":"eval291-en-httpx-timeouts-v1","source_family":"github:encode/httpx","source_revision":"b5addb64f0161ff6bfe94c124ef76f6a1fba5254","source_path":"docs/advanced/timeouts.md","git_blob_sha1":"aedcfb627f5139901638ebf8de30216c2640591e","raw_sha256":"48959a587ecc6430f9051ab1b1c76fcebc3f3e95ec01199281aab813a2dcfaa1","license_id":"BSD-3-Clause"},
+    {"membership_id":"requests-authentication-doc:96dc99e811e40013","document_id":"eval291-en-requests-authentication-v1","source_family":"github:psf/requests","source_revision":"5460f467b02e49471c0fd6cfc9ca0adab6351f98","source_path":"docs/user/authentication.rst","git_blob_sha1":"76be9cccafc0ce28a698672a128eac9d1f9bbe15","raw_sha256":"5878d62d3929b057f8a6008f21641ae9fae0515b5ed6174da7ac763e36ccdae6","license_id":"Apache-2.0"},
+    {"membership_id":"flask-requestchecksum-doc:25bc38b2a43b2205","document_id":"eval291-en-flask-requestchecksum-v2","source_family":"github:pallets/flask","source_revision":"22d924701a6ae2e4cd01e9a15bbaf3946094af65","source_path":"docs/patterns/requestchecksum.rst","git_blob_sha1":"25bc38b2a43b220597ca8c2e4a3b87730173a95a","raw_sha256":"de35760b81ceb3a402fba66ff4d899aa1efcfdf4f240ce3a075ea3b123aa4a3e","license_id":"BSD-3-Clause"}
+  ],
+  "final_test": [
+    {"membership_id":"pytest-capture-doc:5de89bc0e3fbd1a3","source_family":"github:pytest-dev/pytest","source_revision":"28549a5f6b82bc916bb2ec5cb9fbfffe9b79fc66","source_path":"doc/en/how-to/capture-stdout-stderr.rst","git_blob_sha1":"5de89bc0e3fbd1a35f5805a06d89c2b3c17eb937","license_id":"MIT","payload_present":false,"outcomes_read":false}
+  ]
+}
