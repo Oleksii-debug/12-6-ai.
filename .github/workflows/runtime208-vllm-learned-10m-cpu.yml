@@ -1,0 +1,300 @@
+name: RUNTIME-208 vLLM Learned 10M CPU Preparation
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/runtime208-vllm-learned-10m-cpu.yml"
+      - "src/twelve_six/inference/vllm_native_llama.py"
+      - "src/twelve_six/inference/llama_runtime_export.py"
+      - "src/twelve_six/inference/transformers_llama.py"
+      - "tools/prepare_vllm_learned_checkpoint.py"
+      - "tools/validate_vllm_learned_parity.py"
+      - "tools/runtime208_vllm_learned_10m.py"
+      - "tests/test_vllm_native_llama.py"
+      - "tests/test_vllm_learned_runtime.py"
+      - "tests/test_runtime208_vllm_learned_10m.py"
+      - "requirements/locks/transformers-linux-x86_64/**"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+env:
+  RUNTIME208_SOURCE_RUN_ID: "32938501819"
+  RUNTIME208_SOURCE_HEAD_SHA: "e055893808c3fa0f9c5deb1ab83203b82aabbd63"
+  RUNTIME208_SOURCE_ARTIFACT_NAME: "scale141-10m-learned-fallback"
+
+jobs:
+  vllm-10m-cpu-preparation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Prove exact RUNTIME-208 source checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected="${{ github.event.pull_request.head.sha || github.sha }}"
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$expected"
+          printf 'RUNTIME208_SOURCE_SHA=%s\n' "$actual"
+
+      - name: Query and fail-close on exact SCALE-141 producer
+        id: source_gate
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/runtime208-source
+          gh api \
+            "repos/${GITHUB_REPOSITORY}/actions/runs/${RUNTIME208_SOURCE_RUN_ID}" \
+            > artifacts/runtime208-source/source-run.json
+          python tools/runtime208_vllm_learned_10m.py source-gate \
+            --run-json artifacts/runtime208-source/source-run.json \
+            --output artifacts/runtime208-source/source-gate.json
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          from pathlib import Path
+
+          gate = json.loads(
+              Path("artifacts/runtime208-source/source-gate.json").read_text(encoding="utf-8")
+          )
+          print("ready=" + ("true" if gate["ready_for_preparation"] else "false"))
+          print("state=" + gate["state"])
+          PY
+
+      - name: Upload exact producer gate evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: runtime208-vllm-10m-source-gate
+          path: |
+            artifacts/runtime208-source/source-run.json
+            artifacts/runtime208-source/source-gate.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Report blocked producer without fabricating preparation
+        if: steps.source_gate.outputs.ready != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'RUNTIME-208 source gate: %s\n' '${{ steps.source_gate.outputs.state }}'
+          printf 'No artifact/checkpoint/export/runtime preparation is claimed.\n'
+
+      - name: Install exact incumbent vLLM CPU purpose runtime
+        if: steps.source_gate.outputs.ready == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libtcmalloc-minimal4
+          python -m pip install --upgrade pip
+          wheel="vllm-0.27.1+cpu-cp38-abi3-manylinux_2_34_x86_64.whl"
+          curl --fail --location --retry 3 \
+            "https://github.com/vllm-project/vllm/releases/download/v0.27.1/$wheel" \
+            --output "$wheel"
+          printf '%s  %s\n' \
+            '36f0e7b2031233ff09e521716723b0e05ab62054c9a9a05d873af43052140f33' \
+            "$wheel" | sha256sum --check --strict
+          sha256sum "$wheel" | tee runtime208-vllm-wheel.sha256
+          python -m pip install "$wheel" \
+            --extra-index-url https://download.pytorch.org/whl/cpu
+          python -m pip install -e . --no-deps
+          python -m pip install --disable-pip-version-check --require-hashes --no-deps \
+            -r requirements/locks/linux-x86_64/dev.lock.txt
+
+      - name: Configure documented CPU preload libraries
+        if: steps.source_gate.outputs.ready == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          site="$(python -c 'import site; print(site.getsitepackages()[0])')"
+          iomp="$(find "$site" -name libiomp5.so -print -quit || true)"
+          tcmalloc="$(ldconfig -p | awk '/libtcmalloc_minimal.so.4/{print $NF; exit}')"
+          preload="$tcmalloc"
+          if [ -n "$iomp" ]; then
+            preload="${preload:+$preload:}$iomp"
+          fi
+          test -n "$preload"
+          printf 'LD_PRELOAD=%s\n' "$preload" >> "$GITHUB_ENV"
+
+      - name: Verify exact vLLM CPU package identity
+        if: steps.source_gate.outputs.ready == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import importlib.metadata as metadata
+          import json
+          import platform
+
+          import torch
+          import vllm
+
+          versions = {
+              "python": platform.python_version(),
+              "vllm_import_version": vllm.__version__,
+              "vllm_distribution_version": metadata.version("vllm"),
+              "torch": torch.__version__,
+              "transformers": metadata.version("transformers"),
+              "safetensors": metadata.version("safetensors"),
+              "cuda_available": torch.cuda.is_available(),
+          }
+          expected = {
+              "python": "3.11.16",
+              "vllm_import_version": "0.27.1",
+              "vllm_distribution_version": "0.27.1+cpu",
+              "torch": "2.13.0+cpu",
+              "transformers": "5.15.1",
+              "safetensors": "0.8.0",
+              "cuda_available": False,
+          }
+          assert versions == expected, (versions, expected)
+          with open("runtime208-installed-versions.json", "w", encoding="utf-8") as handle:
+              json.dump(versions, handle, sort_keys=True, indent=2)
+              handle.write("\n")
+          print(json.dumps(versions, sort_keys=True))
+          PY
+
+      - name: Run native-vLLM and RUNTIME-208 contract tests
+        if: steps.source_gate.outputs.ready == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pytest -q \
+            tests/test_vllm_native_llama.py \
+            tests/test_vllm_learned_runtime.py \
+            tests/test_runtime208_vllm_learned_10m.py
+          python -m py_compile \
+            tools/prepare_vllm_learned_checkpoint.py \
+            tools/validate_vllm_learned_parity.py \
+            tools/runtime208_vllm_learned_10m.py
+
+      - name: Resolve exact terminal SCALE-141 retained artifact
+        if: steps.source_gate.outputs.ready == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api \
+            "repos/${GITHUB_REPOSITORY}/actions/runs/${RUNTIME208_SOURCE_RUN_ID}/artifacts?per_page=100" \
+            > artifacts/runtime208-source/source-artifacts.json
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          payload = json.loads(
+              Path("artifacts/runtime208-source/source-artifacts.json").read_text(encoding="utf-8")
+          )
+          matches = [
+              item for item in payload["artifacts"]
+              if item["name"] == os.environ["RUNTIME208_SOURCE_ARTIFACT_NAME"]
+          ]
+          if len(matches) != 1:
+              raise SystemExit(f"expected one exact SCALE-141 artifact, got {len(matches)}")
+          Path("artifacts/runtime208-source/artifact-id.txt").write_text(
+              str(matches[0]["id"]) + "\n", encoding="utf-8"
+          )
+          PY
+          artifact_id="$(cat artifacts/runtime208-source/artifact-id.txt)"
+          gh api \
+            "repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}" \
+            > artifacts/runtime208-source/source-artifact.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from tools.runtime208_vllm_learned_10m import validate_artifact_metadata
+
+          metadata = json.loads(
+              Path("artifacts/runtime208-source/source-artifact.json").read_text(encoding="utf-8")
+          )
+          validate_artifact_metadata(metadata)
+          PY
+
+      - name: Download exact recovered learned 10M artifact
+        if: steps.source_gate.outputs.ready == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          artifact_id="$(cat artifacts/runtime208-source/artifact-id.txt)"
+          digest="$(python - <<'PY'
+          import json
+          from pathlib import Path
+          metadata = json.loads(Path('artifacts/runtime208-source/source-artifact.json').read_text())
+          print(metadata['digest'])
+          PY
+          )"
+          curl --fail --location --retry 3 \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}/zip" \
+            --output artifacts/runtime208-source/source-artifact.zip
+          printf '%s  %s\n' "${digest#sha256:}" \
+            artifacts/runtime208-source/source-artifact.zip \
+            | sha256sum --check --strict
+          mkdir -p artifacts/runtime208-source/unpacked
+          unzip -q artifacts/runtime208-source/source-artifact.zip \
+            -d artifacts/runtime208-source/unpacked
+
+      - name: Prepare exact learned 10M through incumbent D07 native-Llama path
+        if: steps.source_gate.outputs.ready == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/runtime208_vllm_learned_10m.py prepare \
+            --artifact-root artifacts/runtime208-source/unpacked \
+            --artifact-json artifacts/runtime208-source/source-artifact.json \
+            --vllm-wheel-sha-file runtime208-vllm-wheel.sha256 \
+            --output-root artifacts/runtime208-prepared
+
+      - name: Verify CPU preparation did not claim GPU parity
+        if: steps.source_gate.outputs.ready == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          result = json.loads(
+              Path("artifacts/runtime208-prepared/runtime208.json").read_text(encoding="utf-8")
+          )
+          assert result["status"] == "PREPARED_NOT_GPU_EXECUTED"
+          assert result["checkpoint"]["parameter_count"] == 10_000_640
+          assert result["vllm_binding"]["implementation"] == "BUILTIN_LLAMA"
+          assert result["vllm_binding"]["custom_vllm_model_implemented"] is False
+          assert result["gpu_parity"]["status"] == "NOT_EXECUTED"
+          assert result["gpu_parity"]["runtime_package_contract_required"] is True
+          assert result["foreign_pretrained_weights_used"] is False
+          assert result["paid_compute"] is False
+          assert not (Path("artifacts/runtime208-prepared") / "gpu-parity.json").exists()
+          PY
+
+      - name: Upload launch-ready learned 10M vLLM evidence
+        if: steps.source_gate.outputs.ready == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: runtime208-vllm-learned-10m-cpu-ready
+          path: |
+            artifacts/runtime208-prepared/**
+            artifacts/runtime208-source/source-run.json
+            artifacts/runtime208-source/source-artifact.json
+            runtime208-installed-versions.json
+            runtime208-vllm-wheel.sha256
+          if-no-files-found: error
+          retention-days: 30
