@@ -14,10 +14,12 @@ import json
 import math
 import struct
 import subprocess
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 import torch
+import torch.nn.functional as F
 
 from twelve_six import milestone100_first_learned as m100
 from twelve_six.checkpoint import hash_json, verify_checkpoint
@@ -144,6 +146,101 @@ def _compare_common_eval(
         == actual.get("model_state_sha256_after"),
         f"{label} state hash changed",
     )
+
+
+def _model_state_sha256(model: TwelveSixDecoder) -> str:
+    """Hash model state without delegating to the producer evaluator."""
+
+    digest = hashlib.sha256()
+    for name, tensor in sorted(model.state_dict().items()):
+        value = tensor.detach().cpu().contiguous()
+        digest.update(name.encode("utf-8") + b"\0")
+        digest.update(str(value.dtype).encode("ascii") + b"\0")
+        digest.update(str(tuple(value.shape)).encode("ascii") + b"\0")
+        digest.update(value.numpy().tobytes())
+    return digest.hexdigest()
+
+
+def _independent_eval_batch(
+    model: TwelveSixDecoder, examples: list[Any]
+) -> tuple[float, int]:
+    """Compute one validation batch directly from logits and masked CE targets."""
+
+    ids = torch.tensor([example.input_ids for example in examples], dtype=torch.long)
+    labels = torch.tensor([example.labels for example in examples], dtype=torch.long)
+    logits = model(ids).logits[:, :-1, :].contiguous()
+    targets = labels[:, 1:].contiguous()
+    tokens = int(targets.ne(-100).sum().item())
+    nll = F.cross_entropy(
+        logits.reshape(-1, model.spec.vocab_size),
+        targets.reshape(-1),
+        ignore_index=-100,
+        reduction="sum",
+    )
+    return float(nll.item()), tokens
+
+
+def _independent_common_eval(
+    model: TwelveSixDecoder,
+    corpus: Path,
+    manifest: dict[str, Any],
+    tokenizer: ByteTokenizer,
+) -> dict[str, Any]:
+    """Recompute the common held-out metric without calling producer ``_evaluate``.
+
+    The packing contract is shared by design, but metric accumulation, masked
+    cross-entropy, state non-mutation, and aggregation are implemented here so
+    a systematic bug in the producer evaluator cannot simply self-confirm.
+    """
+
+    before = _model_state_sha256(model)
+    training = model.training
+    total_nll = 0.0
+    total_tokens = 0
+    by_stratum: dict[str, Any] = {}
+    model.eval()
+    try:
+        with torch.no_grad():
+            for stratum in ("uk", "en", "code"):
+                nll_sum = 0.0
+                tokens = 0
+                pending: list[Any] = []
+                for example in m100._packed(
+                    corpus, manifest, tokenizer, "validation", stratum
+                ):
+                    pending.append(example)
+                    if len(pending) == 32:
+                        nll, count = _independent_eval_batch(model, pending)
+                        nll_sum += nll
+                        tokens += count
+                        pending = []
+                if pending:
+                    nll, count = _independent_eval_batch(model, pending)
+                    nll_sum += nll
+                    tokens += count
+                _require(tokens > 0, f"no held-out target bytes for {stratum}")
+                loss = nll_sum / tokens
+                by_stratum[stratum] = {
+                    "loss": loss,
+                    "bits_per_byte": nll_sum / math.log(2.0) / tokens,
+                    "predicted_byte_tokens": tokens,
+                }
+                total_nll += nll_sum
+                total_tokens += tokens
+    finally:
+        model.train(training)
+    after = _model_state_sha256(model)
+    _require(after == before, "independent common evaluation mutated model state")
+    loss = total_nll / total_tokens
+    return {
+        "loss": loss,
+        "bits_per_byte": total_nll / math.log(2.0) / total_tokens,
+        "predicted_byte_tokens": total_tokens,
+        "by_stratum": by_stratum,
+        "model_state_sha256_before": before,
+        "model_state_sha256_after": after,
+        "non_mutation_passed": True,
+    }
 
 
 def _ladder_evaluation_identity(
@@ -429,7 +526,7 @@ def verify(
         "producer random-init common evaluation missing",
     )
     random_model = _reconstruct_random_init(run_manifest)
-    random_eval = m100._evaluate(
+    random_eval = _independent_common_eval(
         random_model, scratch / "corpus-a", manifest, tokenizer
     )
     _compare_common_eval(
@@ -468,7 +565,7 @@ def verify(
         )
 
         backend = load_first_party_backend(checkpoint)
-        common_eval = m100._evaluate(
+        common_eval = _independent_common_eval(
             backend.model,
             scratch / "corpus-a",
             manifest,
@@ -603,6 +700,8 @@ def verify(
             "final_common_evaluation": role_results["final"]["common_evaluation"],
             "best_improved_over_reconstructed_random_init": best_bpb < initial_bpb,
             "final_improved_over_reconstructed_random_init": final_bpb < initial_bpb,
+            "metric_implementation": "verify218_independent_masked_cross_entropy_v1",
+            "producer_evaluator_reused": False,
         },
         "checkpoints": role_results,
         "recovery": recovery_results,
