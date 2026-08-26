@@ -46,7 +46,7 @@
     "tokenizer_fit": "NOT_PERMITTED"
   },
   "evidence_identity_scope": "SHA256(canonical JSON with evidence_identity_sha256 omitted)",
-  "evidence_identity_sha256": "b9cb4f215e334ea4901b4e34bce3d432d3bc4c215df67db31f8f1193267835bf",
+  "evidence_identity_sha256": "af1b6a222ac2950386f63446c32ee383a6d7e7d19c66a15524aaf05787a4bb27",
   "execution_profile": "LOCAL_FREE",
   "purpose": "Fail-close Research Corpus V1 pre-decontamination candidate freeze until terminal source convergence and terminal successor global dedup are both available.",
   "repository": "Oleksii-debug/12-6-ai.",
@@ -54,28 +54,28 @@
     "base_head_sha": "b0523ccbc4b957615aac849d476cfa851be87578",
     "exact_head_ci_state": "QUEUED_NONTERMINAL",
     "issue": 530,
-    "observed_head_sha": "ec7ec036bde3b280043a93e064a0c8cb3416c2e4",
+    "observed_head_sha": "226cbc26710a75af4a864576220b270089e7c52b",
     "pr_state": "OPEN_DRAFT",
     "pull_request": 538,
     "reported_pre_successor_global_dedup_vector_non_authoritative_until_terminal": {
       "by_stratum": {
         "code": {
-          "bytes": 51875,
-          "families": 4
+          "bytes": 106031,
+          "families": 5
         },
         "en": {
-          "bytes": 150643,
-          "families": 3
+          "bytes": 1838293,
+          "families": 5
         },
         "uk": {
           "bytes": 100856,
           "families": 4
         }
       },
-      "independent_families": 11,
-      "source_capacity_bytes": 303374
+      "independent_families": 14,
+      "source_capacity_bytes": 2045180
     },
-    "reported_registry_identity_sha256_non_authoritative_until_terminal": "448dd61ed3e0d78d0bca9e202529a79c02811fd67beebe4833373d0c2ab0c0a7",
+    "reported_registry_identity_sha256_non_authoritative_until_terminal": "9fc400a3144b46c481e45d043b0a3365eb2129c83bbacde6f9e7af8a41fadc58",
     "supersedes_issue": 521,
     "supersedes_pull_request": 527,
     "terminal_authority_consumed": false
