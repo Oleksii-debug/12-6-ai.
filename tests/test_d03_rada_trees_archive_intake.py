@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import importlib.util
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -142,12 +143,46 @@ class RadaTreesArchiveIntakeTests(unittest.TestCase):
                 LISTING.replace("plain/1990/session-001.txt", "/tmp/escape.txt")
             )
 
+    def test_windows_drive_path_rejected(self) -> None:
+        with self.assertRaises(tool.IntakeError):
+            tool.parse_7z_slt(
+                LISTING.replace("plain/1990/session-001.txt", "C:/escape.txt")
+            )
+
+    def test_nfkc_path_collision_rejected(self) -> None:
+        listing = """7-Zip 24.09
+----------
+Path = café.txt
+Size = 1
+Attributes = A
+
+Path = café.txt
+Size = 1
+Attributes = A
+"""
+        with self.assertRaises(tool.IntakeError):
+            tool.parse_7z_slt(listing)
+
     def test_duplicate_normalized_path_rejected(self) -> None:
         listing = LISTING + """
 Path = plain/1990/session-001.txt
 Size = 1
 Attributes = A
 """
+        with self.assertRaises(tool.IntakeError):
+            tool.parse_7z_slt(listing)
+
+    def test_duplicate_listing_field_rejected(self) -> None:
+        listing = LISTING.replace(
+            "Size = 12\nPacked Size = 10",
+            "Size = 12\nSize = 12\nPacked Size = 10",
+            1,
+        )
+        with self.assertRaises(tool.IntakeError):
+            tool.parse_7z_slt(listing)
+
+    def test_regular_file_missing_size_rejected(self) -> None:
+        listing = LISTING.replace("Size = 12\n", "", 1)
         with self.assertRaises(tool.IntakeError):
             tool.parse_7z_slt(listing)
 
@@ -186,6 +221,15 @@ Attributes = A
                     r"plain\1990\session.txt",
                 )
             )
+
+    def test_extracted_special_file_rejected(self) -> None:
+        if not hasattr(os, "mkfifo"):
+            self.skipTest("FIFO creation unavailable on this platform")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            os.mkfifo(root / "unexpected-fifo")
+            with self.assertRaises(tool.IntakeError):
+                tool._collect_extracted_files(root)
 
 
 if __name__ == "__main__":
