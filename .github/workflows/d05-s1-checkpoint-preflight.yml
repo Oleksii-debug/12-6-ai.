@@ -4,12 +4,8 @@ on:
   pull_request:
     paths:
       - "src/twelve_six/checkpoint/s1_preflight.py"
+      - "tests/test_checkpoint*.py"
       - "tests/test_s1_checkpoint_preflight.py"
-      - "tests/test_checkpoint_corruption_fail_closed.py"
-      - "tests/test_checkpoint_transactional_safety.py"
-      - "tests/test_checkpoint_trainer_preflight.py"
-      - "tests/test_checkpoint_trainer_single_decode.py"
-      - "tests/test_checkpoint_trainer_target_fail_closed.py"
       - "tests/test_next100075_production_corruption_matrix.py"
       - "configs/stages/s1_100k.json"
       - "configs/candidates/model341_20m_candidate_a.json"
@@ -61,26 +57,32 @@ jobs:
           .d05-s1-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
           .d05-s1-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/dev.lock.txt
           PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .d05-s1-locked/bin/python -m pip install --no-deps --no-build-isolation -e .
+      - name: Discover checkpoint regression scope
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          tests = sorted(
+              path.as_posix()
+              for path in Path("tests").glob("test_checkpoint*.py")
+              if path.is_file()
+          )
+          s1 = Path("tests/test_s1_checkpoint_preflight.py")
+          if s1.is_file() and s1.as_posix() not in tests:
+              tests.append(s1.as_posix())
+          if not tests:
+              raise SystemExit("no checkpoint regression tests discovered")
+          Path(".d05-s1-tests.txt").write_text("\n".join(tests) + "\n", encoding="utf-8")
+          print("\n".join(tests))
+          PY
       - name: Focused D05 lint
-        run: >-
-          .d05-s1-locked/bin/python -m ruff check
-          src/twelve_six/checkpoint
-          tests/test_checkpoint_corruption_fail_closed.py
-          tests/test_checkpoint_transactional_safety.py
-          tests/test_checkpoint_trainer_preflight.py
-          tests/test_checkpoint_trainer_single_decode.py
-          tests/test_checkpoint_trainer_target_fail_closed.py
-          tests/test_next100075_production_corruption_matrix.py
-          tests/test_s1_checkpoint_preflight.py
+        run: |
+          mapfile -t TESTS < .d05-s1-tests.txt
+          .d05-s1-locked/bin/python -m ruff check src/twelve_six/checkpoint "${TESTS[@]}"
       - name: Focused D05 checkpoint integrity regression
-        run: >-
-          .d05-s1-locked/bin/python -m pytest -q
-          tests/test_checkpoint_corruption_fail_closed.py
-          tests/test_checkpoint_transactional_safety.py
-          tests/test_checkpoint_trainer_preflight.py
-          tests/test_checkpoint_trainer_single_decode.py
-          tests/test_checkpoint_trainer_target_fail_closed.py
-          tests/test_s1_checkpoint_preflight.py
+        run: |
+          mapfile -t TESTS < .d05-s1-tests.txt
+          .d05-s1-locked/bin/python -m pytest -q "${TESTS[@]}"
       - name: NEXT100-075 exact MODEL-341 production corruption matrix
         run: >-
           .d05-s1-locked/bin/python -m pytest -q
@@ -128,6 +130,7 @@ jobs:
           name: d05-s1-checkpoint-preflight-${{ env.SOURCE_SHA }}
           path: |
             locked-environment-linux-x86_64.json
+            .d05-s1-tests.txt
             ${{ runner.temp }}/next100075-production-corruption-matrix.xml
             ${{ runner.temp }}/d05-s1-checkpoint-preflight/s1-checkpoint-preflight.json
             ${{ runner.temp }}/d05-s1-checkpoint-preflight/checkpoint/
