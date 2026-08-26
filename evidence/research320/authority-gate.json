@@ -1,0 +1,150 @@
+{
+  "schema_version": "12-6.research320-authority-gate.v1",
+  "worker_id": "RESEARCH-320-DATA25-VS-EXTERNAL-CONTROL",
+  "repository": "Oleksii-debug/12-6-ai.",
+  "execution_profile": "LOCAL_FREE",
+  "recorded_at_utc": "2026-08-26T14:04:18Z",
+  "recorded_at_local": "2026-08-26T17:04:18+03:00",
+  "status": "BLOCKED_PRECONDITIONS_NOT_MET",
+  "experiment_started": false,
+  "optimizer_updates": 0,
+  "paid_compute": false,
+  "foreign_pretrained_weights": false,
+  "claim_boundary": "No cross-corpus quality, transfer, memorization, or source-family-generalization conclusion is authorized until both arms can be trained under the exact matched contract and common immutable selection is nonempty and frozen.",
+  "null_hypothesis": "Corpus origin alone does not determine quality; neither DATA-25 nor external-real receives a prior quality advantage.",
+  "matched_contract": {
+    "model": {
+      "parameters": 467808,
+      "model_spec_sha256": "208ac8ca113388e76f280d0154cae815785bee7705546f4d854d9447b9dd1f4a",
+      "init_spec_sha256": "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5",
+      "random_initialization_only": true,
+      "geometry": {
+        "d_model": 96,
+        "d_ff": 256,
+        "n_layers": 4,
+        "n_heads": 6,
+        "n_kv_heads": 6,
+        "head_dim": 16,
+        "vocab_size": 256
+      }
+    },
+    "tokenizer": {
+      "tokenizer_id": "s0-byte-v1",
+      "vocab_size": 256,
+      "special_tokens": [],
+      "config_sha256": "b04055c1061dd641dcab7cb9d62a931f09b8d1a070140a926ceb4e91d73ca8e1",
+      "vocab_sha256": "905ed40bb42cc4d550e228ff5f24158d504b38e8ed5974dfa3077bd5867ad571"
+    },
+    "optimizer": {
+      "name": "AdamW",
+      "learning_rate": 0.0003,
+      "betas": [0.9, 0.95],
+      "eps": 1e-08,
+      "weight_decay": 0.0,
+      "gradient_clip_norm": 1.0,
+      "schedule": "constant",
+      "warmup_steps": 0,
+      "precision": "fp32",
+      "batch_size": 8,
+      "sequence_length": 128
+    },
+    "seed_set": [1337],
+    "data25_anchor_optimized_tokens": 948504,
+    "matched_exposure_rule": "Use exactly the same nonpadding optimized causal loss-position count in both arms, with no replay or sampling with replacement. The preregistered maximum is min(948504, terminal_external_real_one_pass_unique_optimized_targets).",
+    "best_checkpoint_rule": "Minimum aggregate BPB on the frozen common immutable selection-validation set only.",
+    "retain_best_and_final_separately": true
+  },
+  "data25_arm": {
+    "corpus_identity_sha256": "422f545da93526ceba2c0ff738e0b9deac65f35bfb31d87d2aab068cda091fc8",
+    "train_byte_tokens": 20000775,
+    "train_documents": 43238,
+    "external_training_eligible_sources": 0,
+    "project_authored": true,
+    "anchor_optimized_tokens": 948504,
+    "anchor_best_final_bpb_reference_only": 0.2645455968814711,
+    "reference_only_warning": "The historical DATA-25 anchor is not a RESEARCH-320 matched result and cannot establish a corpus-origin winner by itself."
+  },
+  "external_real_arm": {
+    "data300_contract_identity_sha256": "07d7beaaff4616e839450de6af3d407855c832bf75a24a959d1a12de5d9364e5",
+    "contract_state": "FROZEN_EXECUTABLE_CONTRACT",
+    "corpus_state": "NOT_BUILT_NOT_FROZEN_NOT_TERMINAL",
+    "admitted_source_bytes": 183061,
+    "source_count": 5,
+    "independent_family_count": 4,
+    "families_by_stratum": {
+      "uk": 1,
+      "en": 1,
+      "code": 2
+    },
+    "family_constrained_no_replay_budget": 0,
+    "one_pass_unique_optimized_targets": null,
+    "terminal_corpus_identity": null,
+    "blocking_gates": [
+      "G05_QUALITY",
+      "G06_PRIVACY",
+      "G09_BALANCE_DIVERSITY",
+      "G10_SELECTION_VALIDATION",
+      "G12_UNIQUE_LOSS",
+      "G14_TWO_CLEAN_BUILDS"
+    ]
+  },
+  "evaluation": {
+    "common_selection_validation": {
+      "immutable": true,
+      "documents": 0,
+      "status": "BLOCKED_NO_IMMUTABLE_SELECTION_VALIDATION_AUTHORITY",
+      "required_before_any_checkpoint_or_hyperparameter_selection": true
+    },
+    "external_real_final_test": {
+      "authority": "EVAL-233-REAL-HOLDOUT-V2",
+      "documents": 16,
+      "immutable": true,
+      "selection_eligible": false,
+      "hyperparameter_selection_eligible": false,
+      "tokenizer_fit_eligible": false,
+      "evaluation_release_allowed_now": false,
+      "read_only_after_selection_freeze": true,
+      "read_during_research320_gate": false
+    }
+  },
+  "preregistered_measurements": {
+    "cross_corpus_transfer": [
+      "common_selection_aggregate_BPB",
+      "common_selection_UK_BPB",
+      "common_selection_EN_BPB",
+      "common_selection_code_BPB",
+      "external_final_test_aggregate_BPB_after_selection_lock",
+      "paired_delta_BPB_external_minus_data25"
+    ],
+    "memorization": [
+      "train_BPB_minus_common_selection_BPB_gap",
+      "train_BPB_minus_external_final_test_BPB_gap_after_selection_lock",
+      "exact_or_near_train_overlap_rate_for_evaluation_records_must_remain_zero",
+      "continuation_copy_diagnostics_if_authorized_without_exposing_reserved_text"
+    ],
+    "source_family_generalization": [
+      "selection_BPB_by_source_family",
+      "external_final_test_BPB_by_source_family_after_selection_lock",
+      "macro_average_family_BPB",
+      "worst_family_BPB",
+      "family_dispersion"
+    ]
+  },
+  "terminal_result": {
+    "matched_training_executed": false,
+    "selection_evaluation_executed": false,
+    "final_test_evaluation_executed": false,
+    "cross_corpus_transfer": null,
+    "memorization": null,
+    "source_family_generalization": null,
+    "winner": null,
+    "verdict": "NO_SCIENTIFIC_RESULT_BLOCKED"
+  },
+  "unblock_conditions": [
+    "Publish a terminal deterministic external-real corpus identity and final training shards.",
+    "Prove a positive one-pass unique optimized-loss-position capacity after all family/balance constraints, with no replay.",
+    "Publish a nonempty terminal immutable common selection-validation authority excluded from both training arms and final test.",
+    "Complete required quality, privacy, dedup/decontamination, diversity and two-clean-build gates.",
+    "Re-resolve all hashes and compute the exact common exposure before optimizer step 1."
+  ]
+}
