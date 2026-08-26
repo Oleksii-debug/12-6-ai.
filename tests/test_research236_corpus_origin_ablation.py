@@ -29,6 +29,8 @@ def _data230() -> dict:
         "deterministic_two_builds_identical": True,
         "train_loss_token_supply": 1_000_000,
         "artificial_repetition": False,
+        "corpus_identity": "external-real-id",
+        "selection_validation_identity": "external-selection-id",
     }
 
 
@@ -38,6 +40,8 @@ def _eval233() -> dict:
         "status": "PASS",
         "purposes": ["selection-validation", "final-test"],
         "final_test_exposed_to_selection": False,
+        "selection_validation_identity": "eval233-selection-id",
+        "final_test_identity": "eval233-final-id",
     }
 
 
@@ -55,6 +59,8 @@ def test_gate_accepts_terminal_deterministic_authorities() -> None:
     assert report["blockers"] == []
     assert report["frozen"]["matched_actual_optimized_tokens"] == MATCHED_OPTIMIZED_TOKENS
     assert report["frozen"]["source_loss_token_repetition_allowed"] is False
+    assert report["authorities"]["data230_corpus_identity"] == "external-real-id"
+    assert report["authorities"]["eval233_final_test_identity"] == "eval233-final-id"
 
 
 def _cell(scale: str, corpus: str, seed: int, base: float) -> dict:
@@ -76,6 +82,9 @@ def _cell(scale: str, corpus: str, seed: int, base: float) -> dict:
         "seed": seed,
         "tokenizer": "s0-byte-v1",
         "evaluation_identity": EVAL_ID,
+        "data25_selection_identity": "data25-selection-id",
+        "external_selection_identity": "external-selection-id",
+        "common_real_holdout_identity": "eval233-final-id",
         "parameters": spec["parameters"],
         "model_spec_sha256": spec["model_spec_sha256"],
         "actual_optimized_loss_tokens": MATCHED_OPTIMIZED_TOKENS,
@@ -96,7 +105,9 @@ def _payload() -> dict:
     return {
         "worker_id": "RESEARCH-236-CORPUS-ORIGIN-ABLATION",
         "data230_terminal_identity": "data230-terminal",
-        "common_real_holdout_identity": "eval233-common",
+        "data25_selection_identity": "data25-selection-id",
+        "external_selection_identity": "external-selection-id",
+        "common_real_holdout_identity": "eval233-final-id",
         "scales": {"500k": {"data25": data25, "external_real": ext}},
     }
 
@@ -132,4 +143,12 @@ def test_analyzer_rejects_noncommon_source_family_keys() -> None:
     broken = copy.deepcopy(payload)
     broken["scales"]["500k"]["external_real"][0]["source_family_bpb"] = {"different": 1.0}
     with pytest.raises(ValueError, match="source-family heldout key mismatch"):
+        analyze(broken)
+
+
+def test_analyzer_rejects_evaluation_byte_identity_drift() -> None:
+    payload = _payload()
+    broken = copy.deepcopy(payload)
+    broken["scales"]["500k"]["external_real"][0]["common_real_holdout_identity"] = "other-bytes"
+    with pytest.raises(ValueError, match="evaluation-set identity mismatch"):
         analyze(broken)
