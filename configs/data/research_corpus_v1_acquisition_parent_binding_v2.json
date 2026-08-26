@@ -1,0 +1,61 @@
+{
+  "schema_version": "12-6.research-corpus-v1-acquisition-parent-binding.v2",
+  "worker_id": "DATA-BULK-ACQ-V1-R1-PROVENANCE-HARDENING",
+  "issue": 629,
+  "execution_class": "LOCAL_FREE",
+  "base_acquisition": {
+    "pr": 594,
+    "head_sha": "613e1748f36e062499c1b7a1cecce5f0c14d19f9",
+    "plan_path": "configs/data/research_corpus_v1_acquisition_plan.json",
+    "plan_blob_sha1": "653473e72d8ea8627b8ab574505314484895c9bb"
+  },
+  "parent_convergence": {
+    "pr": 527,
+    "worker_id": "NEXT100-063-SOURCE-REGISTRY-CONVERGENCE",
+    "head_sha": "9a6b43849042a4c0dc60d6da5e341827ccf311e7",
+    "config_path": "configs/data/next100_063_source_registry_convergence_v1.json",
+    "config_blob_sha1": "d5b640b386219290f69d02a7f2e30a338c883009",
+    "safe_result": "SOURCE_AUTHORITY_VECTOR_CONVERGED_FOR_NEXT_DEDUP_ITERATION",
+    "observed_exact_head_workflow": {
+      "run_id": 33006168870,
+      "name": "NEXT100-063 Source Registry Convergence",
+      "status": "queued",
+      "conclusion": null
+    },
+    "terminal_for_capacity_authority": false
+  },
+  "expected_candidate_vector": {
+    "uk": 100856,
+    "en": 150643,
+    "code": 69133,
+    "total": 320632
+  },
+  "expected_family_vector": {
+    "uk": 4,
+    "en": 3,
+    "code": 4,
+    "total": 11
+  },
+  "expected_gap_vector": {
+    "uk": 8899144,
+    "en": 6849357,
+    "code": 3930867,
+    "total": 19679368
+  },
+  "expected_buffered_gross": {
+    "uk": 14831907,
+    "en": 11415595,
+    "code": 6551445,
+    "total": 32798947
+  },
+  "claim_boundary": {
+    "planning_binding_only": true,
+    "post_dedup_capacity_claimed": false,
+    "corpus_identity_created": false,
+    "training_exposure_loss_positions": 0,
+    "tokenizer_fit_authorized": false,
+    "model_training_authorized": false,
+    "paid_compute_authorized": false
+  },
+  "binding_identity_sha256": "cb83ff2104c2f56fcc8af1cb5790a005f10c366c9e21ffa036fe2344dde16f8c"
+}
