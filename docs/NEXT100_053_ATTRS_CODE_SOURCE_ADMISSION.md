@@ -6,7 +6,7 @@ Authority type: `EXTERNAL_REAL_CODE_SOURCE_ADMISSION`
 
 ## Terminal decision
 
-`ADMIT`, but only for the exact four-file snapshot bound below and only after the exact-head workflow passes and the final live registry refresh confirms that none of the selected path/blob identities has become evaluation-reserved.
+`ADMIT`, but only for the exact four-file snapshot bound below and only after the exact-head workflow passes both the source qualifier and the live DATA-287 registry seal.
 
 This authority does not admit the whole attrs repository and grants no evaluation-use authority.
 
@@ -41,6 +41,16 @@ Bounded capacity: **170,435 bytes**. Family credit: **1** (`github:python-attrs/
 
 `src/attrs/**` public forwarding shims are deliberately excluded, as are typing stubs, `py.typed`, tests, benchmarks, typing examples, docs, generated/build output, packaging metadata, lockfiles and license text. This prevents alias/re-export and non-implementation capacity inflation.
 
+## Live registry binding
+
+The terminal concurrency baseline is DATA-287 branch `data287/external-snapshot-registry-v2-20260826` at exact commit `b0523ccbc4b957615aac849d476cfa851be87578`, whose dedicated `DATA-287 External Snapshot Registry V2` workflow is terminal success.
+
+The exact registry is `data/registry/external_snapshots.v2.json`, semantic identity `917e9bc31b2fa040d25e807ae3c01aa2cce32420752a891caacfb6c830e6632c`. It contains five external-real source objects / four independent source families, with exactly two code objects: terminal HTTPX and Requests. Its evaluation-authorized source count is zero.
+
+`tools/validate_next100_053_live_registry.py` acquires both the exact pinned registry bytes and the current bytes through the live DATA-287 branch. It fails closed if those bytes differ, if the semantic registry identity or source/family counts drift, if the incumbent code object identities differ, if `github:python-attrs/attrs` is already registered, or if any selected attrs Git blob collides with the terminal registry.
+
+Parallel nonterminal code-source PRs do not become registry authority by observation alone. They are checked again for exact attrs-family/blob conflicts at the final concurrency sweep; a later convergence authority must recompute the global cross-source graph when composing terminal additions.
+
 ## Hard gates
 
 The stdlib-only qualifier downloads only pinned public GitHub objects and fails closed unless all of the following hold:
@@ -56,16 +66,17 @@ The stdlib-only qualifier downloads only pinned public GitHub objects and fails 
 - generated/vendor/build path and generated-marker gates pass;
 - substantive implementation thresholds pass;
 - no duplicate Git/raw identity exists inside the selection;
-- lowercased five-token shingle Jaccard is below `0.85` inside the selection and against incumbent HTTPX/Requests code objects;
-- the final live registry refresh finds no selected attrs path/blob reserved for evaluation.
+- lowercased five-token shingle Jaccard is below `0.85` inside the selection and against every code object in the bound DATA-287 registry;
+- the live DATA-287 bytes remain equal to the pinned terminal authority during the exact-head run;
+- the final concurrency sweep finds no exact selected attrs path/blob reserved for evaluation or duplicated by a second attrs authority.
 
-The execution emits exact raw SHA-256 values, quality metrics, privacy/secret results, dedup scores, materialized pinned source bytes, license evidence, and a self-hashed terminal JSON authority.
+The execution emits exact raw SHA-256 values, quality metrics, privacy/secret results, dedup scores, materialized pinned source bytes, license evidence, a self-hashed source-admission JSON authority, and a separately self-hashed live-registry seal.
 
 ## Evaluation boundary
 
 At the initial check, DATA-227 commit `8ebdb2e132ed7bae5245e9d4c140752640ab9885` bound `data/external/reserved_fingerprints.json` blob `a80d86ba4d60c45fca0cfab9d77743e2f7928ca6` with zero reservation sets, and repository PR search returned no existing `attrs` admission/evaluation authority.
 
-A later evaluation authority wins over this training admission. If any selected exact path/blob identity becomes reserved before sealing, that object is excluded and capacity must be recomputed. No benchmark or final-test object is admitted here.
+The later terminal DATA-287 registry remains evaluation-authorized-source count zero, while the current selection-validation composite has zero code records. This admission is training-only. A later evaluation authority wins over this training admission: if any selected exact path/blob identity becomes evaluation-reserved before sealing, that object is excluded and capacity must be recomputed. No benchmark or final-test object is admitted here.
 
 ## Claim boundary
 
