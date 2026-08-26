@@ -2,7 +2,7 @@
 
 Status: `QUALITY_PRIVACY_FILTERED_CANDIDATE_ONLY / ZERO_TRAINING_AUTHORIZATION`
 
-This successor is stacked exactly on PR #641 head `7802e94b4115db39e6ff59f1a4cff872c40c6347`. PR #641 deterministically converts the pinned Verkhovna Rada bulk HTML inventory into normalized visible-text records and now independently recomputes the parent probe inventory identity before binding provenance. This layer fills the next missing seam: deterministic chunking plus bounded quality/privacy filtering.
+This successor is bound to PR #641 head `ae79b078f849513dc202bcb723a4145455309e35`. PR #641 deterministically converts the pinned Verkhovna Rada bulk HTML inventory into normalized visible-text records, independently recomputes the parent probe inventory identity, and uses a fixed `UTF-8 -> Windows-1251 -> fail` decoding contract with per-record source-encoding provenance. This layer fills the next seam: deterministic chunking plus bounded quality/privacy filtering while preserving that provenance.
 
 It is not a corpus release, source-capacity promotion, tokenizer-fit authorization, or training campaign.
 
@@ -22,10 +22,12 @@ The bounded DATA-228/D03 quality/privacy predicate is then applied to each chunk
 The filter refuses to run unless all of the following remain true:
 
 - parent manifest schema and worker identity match PR #641;
-- the branch contract binds exact hardened parent head `7802e94b4115db39e6ff59f1a4cff872c40c6347`;
+- the branch contract binds exact parent head `ae79b078f849513dc202bcb723a4145455309e35`;
 - parent manifest self-hash is valid;
 - parent JSONL SHA-256 matches the manifest;
-- every JSONL record has exactly the expected normalization fields;
+- every JSONL record has exactly the current mixed-encoding normalization fields, including `source_encoding`;
+- every `source_encoding` is exactly `utf-8` or `windows-1251`;
+- observed per-record encoding counts equal the parent manifest `source_encoding_counts`;
 - every text byte count and normalized SHA-256 matches the text;
 - JSONL and manifest record inventories have exact one-to-one coverage;
 - parent normalization is `PASS` while quality/privacy/dedup/decontamination remain unexecuted;
@@ -52,8 +54,10 @@ Rejected text and rejected hashes are not emitted. The report stores only aggreg
 
 `tools/filter_d03_rada_bulk_quality_privacy.py` emits:
 
-1. accepted candidate JSONL containing deterministic child record IDs, parent record IDs, source paths, chunk indices, exact UTF-8 byte counts, SHA-256 identities and accepted text;
-2. a text-free audit report containing parent identities, policy, counts, accepted-record metadata, rejection-reason totals and a self SHA-256 identity.
+1. accepted candidate JSONL containing deterministic child record IDs, parent record IDs, source paths, preserved source encoding, chunk indices, exact UTF-8 byte counts, SHA-256 identities and accepted text;
+2. a text-free audit report containing parent identities, parent and accepted source-encoding counts, policy, counts, accepted-record metadata, rejection-reason totals and a self SHA-256 identity.
+
+The source-encoding label is provenance only; it does not create a second family or additional capacity credit.
 
 Exact duplicate accepted chunk hashes are measured but are intentionally not removed here. Global cross-source exact/near/lineage deduplication owns that decision and remains `NOT_RUN`.
 
