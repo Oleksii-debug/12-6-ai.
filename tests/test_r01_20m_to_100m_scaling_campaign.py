@@ -30,12 +30,57 @@ def test_paid_compute_cannot_be_silently_authorized() -> None:
     assert any("paid_compute_authorized" in error for error in errors)
 
 
+def test_readiness_checkpoint_retest_cannot_be_silently_promoted() -> None:
+    data = _load()
+    data["current_readiness"]["checkpoint_integrity_terminal_retest"] = True
+    errors = validator.validate_campaign(data)
+    assert any("checkpoint_integrity_terminal_retest" in error for error in errors)
+
+
+def test_readiness_selection_validation_cannot_be_silently_promoted() -> None:
+    data = _load()
+    data["current_readiness"]["selection_validation_terminal"] = True
+    errors = validator.validate_campaign(data)
+    assert any("selection_validation_terminal" in error for error in errors)
+
+
+def test_readiness_model_mechanics_authority_cannot_drift() -> None:
+    data = _load()
+    data["current_readiness"]["model_mechanics"] = "QUALIFIED_BY_PROSE_ONLY"
+    errors = validator.validate_campaign(data)
+    assert any("current_readiness.model_mechanics" in error for error in errors)
+
+
 def test_long_training_experiment_cannot_be_authorized_now() -> None:
     data = _load()
     experiment = next(item for item in data["experiment_matrix"] if item["id"] == "R01-E20")
     experiment["authorized_now"] = True
     errors = validator.validate_campaign(data)
-    assert any("R01-E20" in error for error in errors)
+    assert any("R01-E20.authorized_now" in error for error in errors)
+
+
+def test_tokenizer_calibration_cannot_be_authorized_without_corpus() -> None:
+    data = _load()
+    experiment = next(item for item in data["experiment_matrix"] if item["id"] == "R01-E10")
+    experiment["authorized_now"] = True
+    errors = validator.validate_campaign(data)
+    assert any("R01-E10.authorized_now" in error for error in errors)
+
+
+def test_learned_20m_cannot_drop_checkpoint_gate() -> None:
+    data = _load()
+    experiment = next(item for item in data["experiment_matrix"] if item["id"] == "R01-E20")
+    experiment["requires_checkpoint_integrity_terminal_retest"] = False
+    errors = validator.validate_campaign(data)
+    assert any("requires_checkpoint_integrity_terminal_retest" in error for error in errors)
+
+
+def test_100m_sweep_cannot_drop_learned_20m_gate() -> None:
+    data = _load()
+    experiment = next(item for item in data["experiment_matrix"] if item["id"] == "R01-E30")
+    experiment["requires_20m_learned_evidence"] = False
+    errors = validator.validate_campaign(data)
+    assert any("requires_20m_learned_evidence" in error for error in errors)
 
 
 def test_100m_modelspec_cannot_be_frozen_before_evidence() -> None:
