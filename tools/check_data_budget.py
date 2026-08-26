@@ -5,13 +5,17 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 from typing import Any
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO_ROOT / "src"))
 
 from twelve_six.data_budget import evaluate_data_budget, required_unique_loss_tokens
 
 
-DEFAULT_POLICY = Path(__file__).resolve().parents[1] / "configs/scaling/data_budget_v1.json"
+DEFAULT_POLICY = REPO_ROOT / "configs/scaling/data_budget_v1.json"
 TOKEN_FIELD_BY_TIER = {
     "pilot_5x": "pilot_5x_tokens",
     "compute_reference_20x": "compute_reference_20x_tokens",
