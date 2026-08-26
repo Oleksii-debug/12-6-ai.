@@ -1,0 +1,45 @@
+{
+  "schema_version": "12-6.d03-rada-trees-object-identity.v1",
+  "worker_id": "D03-RADA-TREES-OBJECT-IDENTITY-20260826-SOL",
+  "execution_profile": "LOCAL_FREE",
+  "purpose": "PIN_IMMUTABLE_ARCHIVE_OBJECT_METADATA_WITHOUT_DOWNLOADING_ARCHIVE_BODY",
+  "parent_probe": {
+    "pr": 638,
+    "head_sha": "b38e8e2cd78d3e30ccef2413f3c17d265c2aa3ce",
+    "config_path": "configs/data/d03_rada_trees_acquisition_probe_v1.json",
+    "config_git_blob_sha1": "bb5e37eb4aad9e31119ffef24a35e696dcb3e73e"
+  },
+  "source": {
+    "repo_type": "dataset",
+    "repo_id": "uacorpus/Rada_Trees",
+    "revision": "1b994a5804dcda122721e8d33a03fd172cf8d867",
+    "host": "huggingface.co",
+    "primary_archive_path": "Rada_Trees.7z",
+    "secondary_archive_path": "rada_xtag_texts.7z"
+  },
+  "discovery_contract": {
+    "tree_api_must_use_exact_revision": true,
+    "resolve_request_must_use_exact_revision": true,
+    "resolve_redirects_followed": false,
+    "archive_body_downloaded": false,
+    "require_file_type": "file",
+    "require_positive_size": true,
+    "require_git_blob_id": true,
+    "require_xet_or_lfs_object_identity": true,
+    "cross_check_tree_and_resolve_xet_hash_when_both_present": true,
+    "secondary_archive_training_credit_bytes": 0
+  },
+  "claim_boundary": {
+    "archive_downloaded": false,
+    "archive_content_sha256_verified": false,
+    "archive_members_inventoried": false,
+    "normalized_capacity_claimed": false,
+    "training_authorized_bytes": 0,
+    "training_exposure_authorized": false,
+    "tokenizer_fit_authorized": false,
+    "model_training_executed": false,
+    "optimizer_updates": 0,
+    "paid_compute_used": false,
+    "safe_result": "PIN_METADATA_ONLY_THEN_DOWNLOAD_EXACT_PRIMARY_ARCHIVE"
+  }
+}
