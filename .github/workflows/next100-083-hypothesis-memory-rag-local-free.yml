@@ -1,0 +1,24 @@
+name: NEXT100-083 Hypothesis Memory RAG LOCAL_FREE
+
+on:
+  push:
+    branches:
+      - next100-083/hypothesis-memory-rag-20260826
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  hypothesis-memory-rag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e .[dev]
+      - run: ruff check src/twelve_six/postbase_hypothesis.py src/twelve_six/postbase_hypothesis_memory.py tests/test_hypothesis_memory_rag_next100_083.py tools/run_next100_083_hypothesis_memory_rag.py
+      - run: pytest -q tests/test_hypothesis_memory_rag_next100_083.py tests/test_memory_rag_postbase358.py
+      - run: python tools/run_next100_083_hypothesis_memory_rag.py --output /tmp/next100-083-report.json
