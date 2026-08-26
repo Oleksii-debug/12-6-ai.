@@ -15,6 +15,8 @@ EXPECTED = {
     "verdict": "BLOCKED_NO_TERMINAL_FINAL_CORPUS_LEDGER",
     "data300_head_sha": "8ea7f830e50a23754d189dd4134f4afad76a7ee9",
     "data300_contract_identity_sha256": "07d7beaaff4616e839450de6af3d407855c832bf75a24a959d1a12de5d9364e5",
+    "data301_head_sha": "8820ba1b255f6bb95c7db0531fd846078a1aae01",
+    "data301_evidence_identity_sha256": "939065abeefff8aed924415589608ff3fc721fe4b0a57fc200146a4b6a137e81",
     "data294_ledger_identity_sha256": "9a1cd57c52459bdc6e4bb2d46047a47713e10d9a5be7b0a4b86f041ba6f62bd0",
     "text_unique_positions": 173355,
     "max_safe_positions_now": 0,
@@ -44,6 +46,12 @@ def validate() -> None:
         cutoff["data300_contract_identity_sha256"]
         == EXPECTED["data300_contract_identity_sha256"]
     )
+    assert cutoff["data301_head_sha"] == EXPECTED["data301_head_sha"]
+    assert (
+        cutoff["data301_evidence_identity_sha256"]
+        == EXPECTED["data301_evidence_identity_sha256"]
+    )
+    assert cutoff["data301_status"] == "TERMINAL_BLOCKED"
     assert (
         cutoff["data294_ledger_identity_sha256"]
         == EXPECTED["data294_ledger_identity_sha256"]
