@@ -1,0 +1,42 @@
+name: NEXT100-063 Research Corpus V1 Intake
+
+on:
+  push:
+    branches:
+      - next100063/research-corpus-v1-convergence-20260826
+  pull_request:
+    paths:
+      - configs/data/next100_063_research_corpus_v1_intake_v1.json
+      - tools/validate_next100_063_research_corpus_v1_intake.py
+      - tests/test_next100_063_research_corpus_v1_intake.py
+      - docs/NEXT100_063_RESEARCH_CORPUS_V1_INTAKE.md
+      - .github/workflows/next100-063-research-corpus-v1-intake.yml
+
+permissions:
+  contents: read
+
+jobs:
+  local-free-intake:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Verify DATA-301 ancestry
+        run: git merge-base --is-ancestor 8820ba1b255f6bb95c7db0531fd846078a1aae01 HEAD
+      - name: Fetch exact terminal source heads
+        run: |
+          git fetch --no-tags origin \
+            40950a950b60921fd856af2719e1ae2486d9e892 \
+            84c51e42b6daa51796fd20d793b5ef1ff01cc9d2 \
+            5a6a495a24bce449334cbc5126d0114f61a9f57c
+      - name: Validate intake and source authority blobs
+        run: python tools/validate_next100_063_research_corpus_v1_intake.py --verify-git-authorities
+      - name: Focused tests
+        run: python -m unittest tests.test_next100_063_research_corpus_v1_intake -v
+      - name: Compile validator
+        run: python -m py_compile tools/validate_next100_063_research_corpus_v1_intake.py tests/test_next100_063_research_corpus_v1_intake.py
