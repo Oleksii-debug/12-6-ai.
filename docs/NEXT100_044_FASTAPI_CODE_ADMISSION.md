@@ -18,11 +18,13 @@ Pinned upstream:
 
 Exact selected first-party Python implementation objects:
 
-1. `fastapi/encoders.py` — Git blob `e578768dac5b33556087b42bd6a2e0782a9d5379` — 11,713 bytes.
+1. `fastapi/sse.py` — Git blob `c31334835032570d8244526a623ac249ffc77284` — 7,083 bytes.
 2. `fastapi/exceptions.py` — Git blob `d7065c52fe20220e12b7d20db4da7cbeadaf171a` — 7,453 bytes.
 3. `fastapi/datastructures.py` — Git blob `1da784cf0927ed55ec6abeb051d89a6ce1e90630` — 5,321 bytes.
 
-Total bounded source bytes: 24,487.
+Total bounded source bytes: 19,857.
+
+`fastapi/encoders.py` is deliberately excluded because the exact file explicitly marks portions as “Taken from Pydantic v1 as is” and “Adapted from Pydantic v1”. This authority avoids that mixed-provenance fragment rather than treating the FastAPI root license alone as sufficient evidence for it.
 
 Tests, fixtures, docs, `docs_src`, generated/vendor material, metadata-only files and evaluation objects are excluded. In particular, no test fixture containing credentials, mock secrets, or private endpoints is part of this admission.
 
