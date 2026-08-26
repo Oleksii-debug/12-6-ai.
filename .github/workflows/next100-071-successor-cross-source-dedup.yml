@@ -1,0 +1,135 @@
+name: NEXT100-071 Successor Cross-Source Dedup
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/next100-071-successor-cross-source-dedup.yml"
+      - "configs/data/next100_071_successor_cross_source_dedup_v1.json"
+      - "src/twelve_six/data/successor_cross_source_dedup.py"
+      - "tests/test_next100_071_successor_cross_source_dedup.py"
+      - "tools/run_next100_071_successor_cross_source_dedup.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  successor-global-dedup:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Prove exact source checkout
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Install deterministic PDF extractor
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends poppler-utils
+          pdftotext -v
+
+      - name: Universal exact LOCAL_FREE bootstrap
+        uses: ./.github/actions/execution-bootstrap
+        with:
+          capabilities: runtime,tests,lint
+          venv: .next100-071
+          command: python -m pytest -q tests/test_next100_065_cross_source_dedup_v3.py tests/test_next100_071_successor_cross_source_dedup.py
+          manifest: next100-071-execution-environment.json
+
+      - name: Compile focused implementation
+        run: >-
+          PYTHONPATH=src .next100-071/bin/python -m compileall -q
+          src/twelve_six/data/cross_source_capacity_audit.py
+          src/twelve_six/data/cross_source_capacity_audit_v3.py
+          src/twelve_six/data/successor_cross_source_dedup.py
+          tools/run_next100_071_successor_cross_source_dedup.py
+
+      - name: Inherited V3 plus successor fail-closed tests
+        run: >-
+          PYTHONPATH=src .next100-071/bin/python -m pytest -q
+          tests/test_next100_065_cross_source_dedup_v3.py
+          tests/test_next100_071_successor_cross_source_dedup.py
+
+      - name: Focused lint
+        run: >-
+          .next100-071/bin/ruff check --select E4,E9,F
+          src/twelve_six/data/successor_cross_source_dedup.py
+          tools/run_next100_071_successor_cross_source_dedup.py
+          tests/test_next100_071_successor_cross_source_dedup.py
+
+      - name: Materialize converged terminal-source audit twice
+        env:
+          PYTHONPATH: src
+        run: |
+          mkdir -p evidence/next100_071/a evidence/next100_071/b
+          .next100-071/bin/python tools/run_next100_071_successor_cross_source_dedup.py run \
+            --base-inventory configs/data/next100_065_cross_source_dedup_v3.json \
+            --config configs/data/next100_071_successor_cross_source_dedup_v1.json \
+            --report evidence/next100_071/a/report.json
+          .next100-071/bin/python tools/run_next100_071_successor_cross_source_dedup.py run \
+            --base-inventory configs/data/next100_065_cross_source_dedup_v3.json \
+            --config configs/data/next100_071_successor_cross_source_dedup_v1.json \
+            --report evidence/next100_071/b/report.json
+          cmp evidence/next100_071/a/report.json evidence/next100_071/b/report.json
+
+      - name: Verify convergence vector and conservative handoff
+        env:
+          PYTHONPATH: src
+        run: |
+          .next100-071/bin/python tools/run_next100_071_successor_cross_source_dedup.py verify \
+            --report evidence/next100_071/a/report.json
+          .next100-071/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path("evidence/next100_071/a/report.json").read_text())
+          before = report["input_pre_dedup"]
+          assert report["source_count"] == 21
+          assert before["numeric_capacity_bytes"] == {
+              "uk": 100856,
+              "en": 144151,
+              "code": 69133,
+              "total": 314140,
+          }
+          assert before["independent_family_counts"] == {
+              "uk": 4,
+              "en": 2,
+              "code": 4,
+              "total": 10,
+          }
+          handoff = report["handoff"]
+          assert 0 <= handoff["post_dedup_capacity_bytes"]["total"] <= 314140
+          assert handoff["corpus_materialization_authorized"] is False
+          assert handoff["tokenizer_fit_authorized"] is False
+          assert handoff["learned_20m_campaign_authorized"] is False
+          assert report["model_training_executed"] is False
+          PY
+
+      - name: Prove text-free public evidence
+        run: |
+          ! grep -q '"text"' evidence/next100_071/a/report.json
+          ! grep -q '"acquisition_url"' evidence/next100_071/a/report.json
+
+      - name: Upload immutable NEXT100-071 evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: next100-071-successor-cross-source-dedup-${{ github.event.pull_request.head.sha || github.sha }}
+          if-no-files-found: error
+          retention-days: 90
+          path: |
+            configs/data/next100_071_successor_cross_source_dedup_v1.json
+            next100-071-execution-environment.json
+            evidence/next100_071/a/report.json
