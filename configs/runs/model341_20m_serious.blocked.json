@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "name": "model341-20m-serious-byte-baseline",
+  "stage_config": "configs/candidates/model341_20m_candidate_a.json",
+  "parameter_count": 20613440,
+  "device": "cuda",
+  "precision": "bf16",
+  "sequence_length": 1024,
+  "micro_batch_size": 1,
+  "gradient_accumulation_steps": 16,
+  "tokens_per_optimizer_step": 16384,
+  "target_training_byte_tokens": 412268800,
+  "sizing_basis": {
+    "kind": "RESEARCH_PLANNING_BASELINE_NOT_LAUNCH_AUTHORITY",
+    "tokens_per_parameter": 20,
+    "note": "Approximately 20 training tokens per parameter is used only as a first serious-pretraining planning baseline. Final budget must be selected from scaling experiments and data quality evidence."
+  },
+  "current_corpus_v01_target_byte_tokens": 20000000,
+  "minimum_capacity_gap_vs_corpus_v01_target": 392268800,
+  "data_mode": "FROZEN_TRAINING_AUTHORIZED_CORPUS_REQUIRED",
+  "tokenizer_mode": "CURRENT_BYTE_BASELINE_ENGINEERING_ONLY",
+  "capability_claim_allowed": false,
+  "launch_state": "BLOCKED_NOT_AUTHORIZED",
+  "launch_blockers": [
+    "Research Corpus V1 target is approximately 20M byte tokens, far below the 412,268,800-byte-token planning baseline for this 20,613,440-parameter candidate",
+    "training-authorized globally deduplicated corpus is not frozen",
+    "production tokenizer decision is not frozen; byte tokenizer remains an engineering baseline",
+    "held-out evaluation authority is not frozen for this exact 20M run",
+    "MODEL-341 D05 checkpoint corruption blockers require terminal independent verification",
+    "explicit compute authorization is absent"
+  ],
+  "compute_authorized": false,
+  "paid_compute_authorized": false,
+  "purpose": "machine-readable serious-training target for MODEL-341; remains fail-closed until data, tokenizer, evaluation, checkpoint and compute-authorization gates are terminal"
+}
