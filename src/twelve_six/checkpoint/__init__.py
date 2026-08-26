@@ -2,9 +2,11 @@
 
 from . import core as _core
 from .integrity_hardening import install as _install_integrity_hardening
+from .progress_binding import install as _install_progress_binding
 
 _install_integrity_hardening(_core)
-del _core, _install_integrity_hardening
+_install_progress_binding(_core)
+del _core, _install_integrity_hardening, _install_progress_binding
 
 from .core import (
     CheckpointCompatibilityError,
