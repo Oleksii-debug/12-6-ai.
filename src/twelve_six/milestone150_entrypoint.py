@@ -20,7 +20,6 @@ from typing import Any
 from twelve_six import milestone150_learned_base_ladder as ladder
 from twelve_six.launch_gate import require_launch_envelope_from_env
 
-
 _ORIGINAL_RUN_MANIFEST = ladder._run_manifest
 _LONG_TRAINING_COMMANDS = {"phase1", "resume"}
 

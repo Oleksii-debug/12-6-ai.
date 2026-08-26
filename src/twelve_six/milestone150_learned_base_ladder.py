@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import itertools
 import json
 import math
 import os
@@ -16,6 +17,7 @@ from typing import Any
 
 import torch
 
+from twelve_six import milestone100_first_learned as m100
 from twelve_six.checkpoint import (
     CheckpointIdentity,
     hash_json,
@@ -28,9 +30,6 @@ from twelve_six.model import InitSpec, ModelSpec, TwelveSixDecoder
 from twelve_six.tokenization import ByteTokenizer
 from twelve_six.training import Trainer, TrainerConfig
 from twelve_six.training.observability import TrainingObserver
-
-from twelve_six import milestone100_first_learned as m100
-
 
 SCHEMA = "12-6.learned-base-ladder.v1"
 RUN_SCHEMA = "12-6.learned-base-ladder-run.v1"
@@ -850,7 +849,7 @@ def verify_scale(repo: Path, source_sha: str, out: Path, scale: str) -> dict[str
         raise LadderError("scale report corpus identity mismatch")
 
     best_step = int(report["evaluation"]["best_step"])
-    steps = sorted(set((best_step, MAX_STEPS)))
+    steps = sorted({best_step, MAX_STEPS})
     fresh: dict[str, Any] = {}
 
     for step in steps:
@@ -991,7 +990,7 @@ def finalize(repo: Path, source_sha: str, out: Path) -> dict[str, Any]:
 
     by_scale = {r["scale"]: r for r in reports}
     scaling = []
-    for left, right in zip(SCALE_ORDER, SCALE_ORDER[1:]):
+    for left, right in itertools.pairwise(SCALE_ORDER):
         a = float(by_scale[left]["evaluation"]["best_bits_per_byte"])
         b = float(by_scale[right]["evaluation"]["best_bits_per_byte"])
         scaling.append(
