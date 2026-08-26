@@ -1,0 +1,22 @@
+{
+  "schema": "12-6.postbase-hypothesis-fixture.v1",
+  "worker_id": "POSTBASE-356-HYPOTHESIS-SEARCH-V1",
+  "provenance": "project_authored_deterministic_fixture",
+  "external_llm_used": false,
+  "unrestricted_runtime_shell_required": false,
+  "cases": [
+    {
+      "name": "unparenthesized_precedence",
+      "expression": "2 + 3 * 4",
+      "observed": 14,
+      "initially_preferred_wrong_prediction": 20,
+      "correct_prediction": 14
+    },
+    {
+      "name": "parenthesized_precedence",
+      "expression": "(2 + 3) * 4",
+      "observed": 20,
+      "branch_prediction": 20
+    }
+  ]
+}
