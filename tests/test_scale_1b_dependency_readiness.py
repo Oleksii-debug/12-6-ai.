@@ -23,15 +23,25 @@ SHA_B = "2" * 40
 SHA_C = "3" * 40
 SHA_D = "4" * 40
 SHA_E = "5" * 40
+SHA_F = "6" * 40
+SHA_G = "7" * 40
+SHA_H = "8" * 40
 ARTIFACT_SHA = "a" * 64
 
-ENGINEERING_AUTHORITIES = {
+LEGACY_SYSTEM_AUTHORITIES = {
     "preceding_stage_authority": f"github:stage-s5@{SHA_A}:admitted",
     "production_tokenizer_authority": f"artifact:tokenizer@{ARTIFACT_SHA}",
     "native_gqa_authority": f"github:perf-21@{SHA_B}:success",
     "distributed_checkpoint_authority": f"github:dist-18@{SHA_C}:success",
     "data_pipeline_authority": f"github:data-pipeline@{SHA_D}:qualified",
     "accelerator_runtime_authority": f"github:accelerator-runtime@{SHA_E}:pass",
+}
+
+ENGINEERING_AUTHORITIES = {
+    **LEGACY_SYSTEM_AUTHORITIES,
+    "stage_data_budget_authority": f"github:r01-1b-data-budget@{SHA_F}:qualified",
+    "training_recipe_authority": f"github:r01-1b-training-recipe@{SHA_G}:qualified",
+    "evaluation_firewall_authority": f"github:eval-1b-firewall@{SHA_H}:qualified",
 }
 
 
@@ -61,9 +71,24 @@ def test_scale_1b_default_assessment_is_fail_closed() -> None:
         "native_gqa_not_qualified",
         "distributed_checkpoint_not_qualified",
         "data_pipeline_not_qualified",
+        "stage_data_budget_not_qualified",
+        "training_recipe_not_qualified",
+        "evaluation_firewall_not_qualified",
         "accelerator_runtime_not_qualified",
     )
     assert report.authorization_blockers == ("material_compute_not_authorized",)
+
+
+def test_legacy_system_readiness_is_not_scientific_1b_readiness() -> None:
+    dependencies = Scale1BDependencies(**LEGACY_SYSTEM_AUTHORITIES)
+    report = assess_scale_1b_readiness(CANDIDATE, dependencies)
+    assert report.engineering_blockers == (
+        "stage_data_budget_not_qualified",
+        "training_recipe_not_qualified",
+        "evaluation_firewall_not_qualified",
+    )
+    assert report.ready_for_authorization_request is False
+    assert report.ready_for_material_compute is False
 
 
 def test_scale_1b_positive_evidence_requires_authority_references() -> None:
@@ -73,8 +98,14 @@ def test_scale_1b_positive_evidence_requires_authority_references() -> None:
     assert report.authorization_blockers == ("material_compute_not_authorized",)
     assert report.ready_for_authorization_request is True
     assert report.ready_for_material_compute is False
-    assert report.evidence_authorities["native_gqa_authority"] == ENGINEERING_AUTHORITIES[
-        "native_gqa_authority"
+    assert report.evidence_authorities["stage_data_budget_authority"] == ENGINEERING_AUTHORITIES[
+        "stage_data_budget_authority"
+    ]
+    assert report.evidence_authorities["training_recipe_authority"] == ENGINEERING_AUTHORITIES[
+        "training_recipe_authority"
+    ]
+    assert report.evidence_authorities["evaluation_firewall_authority"] == ENGINEERING_AUTHORITIES[
+        "evaluation_firewall_authority"
     ]
 
     fully_authorized = Scale1BDependencies(
@@ -85,6 +116,20 @@ def test_scale_1b_positive_evidence_requires_authority_references() -> None:
     assert report.engineering_blockers == ()
     assert report.authorization_blockers == ()
     assert report.ready_for_material_compute is True
+
+
+def test_each_new_scientific_authority_is_independently_required() -> None:
+    expected = {
+        "stage_data_budget_authority": "stage_data_budget_not_qualified",
+        "training_recipe_authority": "training_recipe_not_qualified",
+        "evaluation_firewall_authority": "evaluation_firewall_not_qualified",
+    }
+    for field, blocker in expected.items():
+        values = dict(ENGINEERING_AUTHORITIES)
+        values.pop(field)
+        report = assess_scale_1b_readiness(CANDIDATE, Scale1BDependencies(**values))
+        assert report.engineering_blockers == (blocker,)
+        assert report.ready_for_authorization_request is False
 
 
 def test_scale_1b_topology_estimates_shard_persistent_state() -> None:
@@ -128,6 +173,6 @@ def test_scale_1b_rejects_blank_padded_or_freeform_engineering_authorities() -> 
     with pytest.raises(ValueError, match="surrounding whitespace"):
         Scale1BDependencies(data_pipeline_authority=f" github:data@{SHA_D}:qualified ")
     with pytest.raises(ValueError, match="github:<scope>"):
-        Scale1BDependencies(native_gqa_authority="PR #163 is green")
+        Scale1BDependencies(training_recipe_authority="copied from 20M")
     with pytest.raises(ValueError, match="github:<scope>"):
         Scale1BDependencies(native_gqa_authority="github:perf-21@deadbeef:success")
