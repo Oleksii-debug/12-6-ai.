@@ -27,7 +27,7 @@
   "source_admission": {
     "registry_path": "data/external/external_sources.json",
     "registry_schema": "12-6.external-source-registry.v2",
-    "registry_identity_sha256": "b617b656de52012069ca5c8887e8c5243985f716c36dd7f881856b82a0954962",
+    "registry_identity_sha256": "82abd7dca04947d72a6d07d8228025c58373d17018fa8dc3a7bca30f7a2714c2",
     "eligibility_policy_ref": "policy://12-6/data/explicit-model-training-evidence-v1",
     "eligibility_resolver_required": true,
     "exact_source_id_and_version_required": true,
@@ -45,7 +45,7 @@
     "public_access_never_implies_model_training": true,
     "record_local_legacy_rights_fields_authoritative": false,
     "project_authored_synthetic_requires_registry_entry_and_evidence": true,
-    "registered_sources_training_approved_at_recipe_update": 0,
+    "registered_sources_training_approved_at_recipe_update": 3,
     "forbidden_train_splits": [
       "validation", "val", "evaluation", "eval", "test", "heldout", "benchmark"
     ],

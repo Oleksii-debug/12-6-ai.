@@ -1,0 +1,7 @@
+DATA-181 immutable terms excerpt snapshot
+Source: https://data.rada.gov.ua/open/data/laws-texts
+Captured: 2026-08-26T06:19:00Z
+Authority: source terms evidence retained for the already accepted DATA-21 rights decision; this file does not self-authorize from a license label.
+
+Умови використання
+Дані Порталу є доступними для їх подальшого вільного використання та поширення. Будь-яка особа може вільно копіювати, публікувати, поширювати, використовувати, у тому числі в комерційних цілях, у поєднанні з іншою інформацією або шляхом включення до складу власного продукту, публічну інформацію у формі відкритих даних з обов’язковим посиланням на джерело отримання такої інформації.

@@ -2,17 +2,75 @@
   "schema_version": "12-6.training-eligibility-inventory-run.v1",
   "policy_ref": "policy://12-6/data/explicit-model-training-evidence-v1",
   "source_registry_path": "data/external/external_sources.json",
-  "source_registry_identity_sha256": "b617b656de52012069ca5c8887e8c5243985f716c36dd7f881856b82a0954962",
+  "source_registry_identity_sha256": "82abd7dca04947d72a6d07d8228025c58373d17018fa8dc3a7bca30f7a2714c2",
   "registered_inventory": {
     "schema_version": "12-6.training-eligibility-inventory.v1",
     "policy_ref": "policy://12-6/data/explicit-model-training-evidence-v1",
-    "registry_identity_sha256": "b617b656de52012069ca5c8887e8c5243985f716c36dd7f881856b82a0954962",
-    "candidate_sources": 0,
-    "model_training_allowed": 0,
+    "registry_identity_sha256": "82abd7dca04947d72a6d07d8228025c58373d17018fa8dc3a7bca30f7a2714c2",
+    "candidate_sources": 3,
+    "model_training_allowed": 3,
     "model_training_blocked": 0,
     "unknown_or_review_required": 0,
-    "sources": [],
-    "inventory_sha256": "5fefe47bc4b985e9c619ed99dfb10eba1cdb1c73d1c5aafc6b084c029122f8c3"
+    "sources": [
+      {
+        "source_id": "en.standardebooks.manual.8-typography",
+        "source_version": "git:d1143a9b459b5e6f9cdda93a7c1e04676bff4f6b",
+        "source_manifest_sha256": "7be4e9ad119a4ae9e81f633c437a933c7673d9bbd6b9362ea8a598e8c187c97f",
+        "registry_identity_sha256": "82abd7dca04947d72a6d07d8228025c58373d17018fa8dc3a7bca30f7a2714c2",
+        "acquisition": "ALLOWED",
+        "storage": "ALLOWED",
+        "analysis": "ALLOWED",
+        "model_training": "ALLOWED",
+        "redistribution": "ALLOWED",
+        "model_training_eligible": true,
+        "source_purpose": "pretraining",
+        "synthetic": false,
+        "evidence_ids": [
+          "en.standardebooks.manual.8-typography-data21-22-policy-decision",
+          "en.standardebooks.manual.8-typography-source-rights"
+        ],
+        "reasons": []
+      },
+      {
+        "source_id": "en.standardebooks.manual.9-metadata",
+        "source_version": "git:d1143a9b459b5e6f9cdda93a7c1e04676bff4f6b",
+        "source_manifest_sha256": "f46b244d7036f98c818ebe3232f04ccf981a16818fd55307baaf63e5b78b1544",
+        "registry_identity_sha256": "82abd7dca04947d72a6d07d8228025c58373d17018fa8dc3a7bca30f7a2714c2",
+        "acquisition": "ALLOWED",
+        "storage": "ALLOWED",
+        "analysis": "ALLOWED",
+        "model_training": "ALLOWED",
+        "redistribution": "ALLOWED",
+        "model_training_eligible": true,
+        "source_purpose": "pretraining",
+        "synthetic": false,
+        "evidence_ids": [
+          "en.standardebooks.manual.9-metadata-data21-22-policy-decision",
+          "en.standardebooks.manual.9-metadata-source-rights"
+        ],
+        "reasons": []
+      },
+      {
+        "source_id": "ua.rada.open-data.laws-texts.d23314",
+        "source_version": "laws-texts/bounded-2026-08-25",
+        "source_manifest_sha256": "7227a1d7ccb5a71a7f4440d9b9d1bd82d293fd5bea7b09f71dc7339236e06d68",
+        "registry_identity_sha256": "82abd7dca04947d72a6d07d8228025c58373d17018fa8dc3a7bca30f7a2714c2",
+        "acquisition": "ALLOWED",
+        "storage": "ALLOWED",
+        "analysis": "ALLOWED",
+        "model_training": "ALLOWED",
+        "redistribution": "ALLOWED",
+        "model_training_eligible": true,
+        "source_purpose": "pretraining",
+        "synthetic": false,
+        "evidence_ids": [
+          "ua.rada.open-data.laws-texts.d23314-data21-22-policy-decision",
+          "ua.rada.open-data.laws-texts.d23314-source-rights"
+        ],
+        "reasons": []
+      }
+    ],
+    "inventory_sha256": "e08a7e621637aa351d93a6e48e9c32ebf1f7cdaece817a733fcf9629a3916f25"
   },
   "unregistered_training_artifacts": [
     {
@@ -23,8 +81,8 @@
     }
   ],
   "counts": {
-    "registered_candidate_sources": 0,
-    "registered_model_training_allowed": 0,
+    "registered_candidate_sources": 3,
+    "registered_model_training_allowed": 3,
     "registered_model_training_blocked": 0,
     "unregistered_training_artifacts": 1,
     "unregistered_training_artifacts_blocked": 1
