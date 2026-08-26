@@ -8,6 +8,9 @@ on:
       - "tests/test_scale_fsdp2_dcp_integration.py"
       - ".github/workflows/scale-fsdp2-dcp-integration.yml"
   workflow_dispatch:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
