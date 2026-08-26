@@ -14,9 +14,11 @@ def _alpha_word(index: int) -> str:
     return f"lexeme{first}{second}"
 
 
-def _cyclic_text(unique_words: int, total_tokens: int) -> str:
+def _cyclic_text(unique_words: int, total_tokens: int, *, suffix: str = "") -> str:
     vocabulary = [_alpha_word(index) for index in range(unique_words)]
-    return " ".join(vocabulary[index % unique_words] for index in range(total_tokens))
+    return " ".join(
+        f"{vocabulary[index % unique_words]}{suffix}" for index in range(total_tokens)
+    )
 
 
 def test_long_rich_document_is_not_rejected_only_because_global_ttr_shrinks() -> None:
@@ -37,6 +39,24 @@ def test_long_rich_document_is_not_rejected_only_because_global_ttr_shrinks() ->
     assert repaired.accepted is True
     assert repaired.reasons == ()
     assert "global_ttr_below_windowed_diversity_floor" in repaired.warnings
+
+
+def test_repaired_acceptance_preserves_incumbent_near_limit_warning_semantics() -> None:
+    text = _cyclic_text(unique_words=80, total_tokens=2048, suffix="....")
+
+    incumbent = assess_incumbent("long-rich-near-symbol", text, "en")
+    assert incumbent.reasons == ("low_token_diversity",)
+    assert incumbent.warnings == ()
+    assert 0.32 < incumbent.features.symbol_ratio < 0.40
+
+    repaired = assess_document("long-rich-near-symbol", text, "en")
+    assert repaired.accepted is True
+    assert repaired.reasons == ()
+    assert repaired.warnings == (
+        "global_ttr_below_windowed_diversity_floor",
+        "near_symbol_ratio_limit",
+    )
+    assert repaired.score == 90
 
 
 def test_systematically_repetitive_long_document_still_fails() -> None:
