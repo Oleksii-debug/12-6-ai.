@@ -1,9 +1,0 @@
-Kubernetes Ukrainian documentation snapshot
-Creator/attribution: Kubernetes Authors
-Source repository: https://github.com/kubernetes/website
-Exact revision: 25f3dcbed7429ebe20174ccc7000428d0f0aedda
-Source path: content/uk/docs/concepts/_index.md
-License: Creative Commons Attribution 4.0 International (CC BY 4.0)
-License URI: https://creativecommons.org/licenses/by/4.0/
-Project modification: normalized derivative removes YAML frontmatter, HTML comments, Hugo shortcodes and Markdown punctuation; applies Unicode NFKC and deterministic whitespace normalization.
-No endorsement by Kubernetes, CNCF, or contributors is implied.
