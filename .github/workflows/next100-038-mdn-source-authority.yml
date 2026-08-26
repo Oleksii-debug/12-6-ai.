@@ -1,0 +1,30 @@
+name: NEXT100-038 MDN Source Authority
+
+on:
+  push:
+    branches:
+      - next100-038/mdn-prose-source-authority-20260826
+
+permissions:
+  contents: read
+
+jobs:
+  qualify-mdn-prose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+      - name: Compile deterministic qualifier
+        run: python -m py_compile tools/qualify_next100_038_mdn.py
+      - name: Qualify bounded exact MDN revision
+        run: |
+          python tools/qualify_next100_038_mdn.py --output /tmp/mdn-source-authority.json > /tmp/mdn-source-authority.stdout.json
+          cmp /tmp/mdn-source-authority.json /tmp/mdn-source-authority.stdout.json
+          cat /tmp/mdn-source-authority.json
