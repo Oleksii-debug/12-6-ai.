@@ -1,0 +1,123 @@
+{
+  "authority_identity_sha256": "727f229c091f86748a4eee9ea5aec72bb65347b68d6b687fabbf33166b0eca1e",
+  "config": {
+    "path": "configs/evaluation/eval291_en_selection_validation_v1.json",
+    "sha256": "660647c5fa03457d293ac6b68c7b8979ccd5104a88133c8e97e50a5125005a19"
+  },
+  "documents": 2,
+  "execution_profile": "LOCAL_FREE",
+  "final_test_boundary": {
+    "admitted_source_ids": [
+      "en.standardebooks.manual",
+      "ua.rada.open-data.laws-texts"
+    ],
+    "authority": "EVAL-233-REAL-HOLDOUT-V2",
+    "base_sha": "b5512b4648cb09dd052b08884dc53f291e1ce935",
+    "outcomes_allowed_in_config": false,
+    "outcomes_read_for_construction": false,
+    "payload_read_for_construction": false,
+    "preserved_final_test_seed_git_blob_sha1": "4bfbfbf29fa9538cabda6068efd3a1fd036a9479",
+    "source_authority_git_blob_sha1": "3ba9f221a82468f971c17eda518cd6f1642fd311",
+    "source_authority_identity_sha256": "c7211b3e1e6a4f22463d0e6174f0d6162c2452585704efad5564a35de8de609f",
+    "source_authority_path": "configs/evaluation/recover174_source_authority_v1.json"
+  },
+  "firewalls": {
+    "data227_training_objects_reused": false,
+    "final_test_outcomes_influence_selection_construction": false,
+    "final_test_outcomes_inspected": false,
+    "final_test_payload_used_as_builder_input": false,
+    "offline_rebuild_requires_network": false,
+    "selection_bytes_are_final_test_eligible": false,
+    "selection_bytes_are_tokenizer_fit_eligible": false,
+    "selection_bytes_are_training_eligible": false
+  },
+  "language": "en",
+  "purpose": "selection_validation",
+  "schema_version": "12-6.eval291-en-selection-validation-authority.v1",
+  "selection_artifact": {
+    "bytes": 9652,
+    "canonical_jsonl": true,
+    "path": "data/evaluation/eval291/selection-validation/en.jsonl",
+    "sha256": "df20e3d3ec75208399039a283487c3b8958c80ec3f119cee278fcc09948c6bfb"
+  },
+  "source_families": [
+    "github:encode/httpx",
+    "github:psf/requests"
+  ],
+  "sources": [
+    {
+      "document_id": "eval291-en-httpx-timeouts-v1",
+      "git_blob_sha1": "aedcfb627f5139901638ebf8de30216c2640591e",
+      "path": "docs/advanced/timeouts.md",
+      "project_reservation": {
+        "final_test": false,
+        "selection_validation": true,
+        "tokenizer_fit": false,
+        "training": false,
+        "training_object_from_terminal_admission": {
+          "git_blob_sha1": "6f479a0885f723b7395843d41164a87041820776",
+          "path": "httpx/_content.py"
+        }
+      },
+      "raw_bytes": 2763,
+      "raw_sha256": "48959a587ecc6430f9051ab1b1c76fcebc3f3e95ec01199281aab813a2dcfaa1",
+      "repository_url": "https://github.com/encode/httpx",
+      "revision": "b5addb64f0161ff6bfe94c124ef76f6a1fba5254",
+      "rights": {
+        "decision": "APPROVED_FOR_SELECTION_VALIDATION_RESERVATION",
+        "license_id": "BSD-3-Clause",
+        "local_license_path": "data/evaluation/eval291/rights-evidence/httpx-LICENSE.md",
+        "local_license_sha256": "4ec59d544f12b5f539a3a716fd321ac58ccd8030b465221f2c880200cdf28d8d",
+        "upstream_license_git_blob_sha1": "ab79d16a3f4c6c894c028d1f7431811e8711b42b",
+        "upstream_license_path": "LICENSE.md"
+      },
+      "snapshot_path": "data/evaluation/eval291/source-snapshots/httpx-timeouts.md",
+      "source_family": "github:encode/httpx"
+    },
+    {
+      "document_id": "eval291-en-requests-authentication-v1",
+      "git_blob_sha1": "76be9cccafc0ce28a698672a128eac9d1f9bbe15",
+      "path": "docs/user/authentication.rst",
+      "project_reservation": {
+        "final_test": false,
+        "selection_validation": true,
+        "tokenizer_fit": false,
+        "training": false,
+        "training_object_from_terminal_admission": {
+          "git_blob_sha1": "0466a7d347db4ed34a37db51b75fc8e80bc06055",
+          "path": "src/requests/_internal_utils.py"
+        }
+      },
+      "raw_bytes": 5854,
+      "raw_sha256": "5878d62d3929b057f8a6008f21641ae9fae0515b5ed6174da7ac763e36ccdae6",
+      "repository_url": "https://github.com/psf/requests",
+      "revision": "5460f467b02e49471c0fd6cfc9ca0adab6351f98",
+      "rights": {
+        "decision": "APPROVED_FOR_SELECTION_VALIDATION_RESERVATION",
+        "license_id": "Apache-2.0",
+        "local_license_path": "data/evaluation/eval291/rights-evidence/requests-APACHE-2.0.txt",
+        "local_license_sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+        "local_notice_path": "data/evaluation/eval291/rights-evidence/requests-NOTICE",
+        "local_notice_sha256": "f5110972dedad2b4e9d314518daf3b7d72d6e02e499acd802181de6f74571dcc",
+        "upstream_license_git_blob_sha1": "67db8588217f266eb561f75fae738656325deac9",
+        "upstream_license_path": "LICENSE",
+        "upstream_notice_git_blob_sha1": "1ff62db688277b77c83c1766dac7f165364d3528",
+        "upstream_notice_path": "NOTICE"
+      },
+      "snapshot_path": "data/evaluation/eval291/source-snapshots/requests-authentication.rst",
+      "source_family": "github:psf/requests"
+    }
+  ],
+  "status": "IMMUTABLE_EXTERNAL_REAL_EN_SELECTION_VALIDATION",
+  "terminal_source_family_admission": {
+    "authority": "DATA-227-REAL-CODE-SOURCE-ADMISSION-V2",
+    "head_sha": "8ebdb2e132ed7bae5245e9d4c140752640ab9885",
+    "repo": "Oleksii-debug/12-6-ai.",
+    "rights_policy_git_blob_sha1": "0ce5223a1cade10031899bf27348a1a65121d4c6",
+    "rights_policy_path": "configs/data/data227_code_rights_policy_v1.json",
+    "terminal_conclusion": "success",
+    "workflow_name": "DATA-227 External Real Code Admission V2",
+    "workflow_run_id": 32956209865
+  },
+  "worker_id": "EVAL-291-EN-SELECTION-VALIDATION-V1"
+}
