@@ -1,0 +1,83 @@
+name: NEXT100-050 Pandas Code Source Admission
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qualify-pandas:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact source head
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+
+      - name: Compile qualifier
+        run: python -m py_compile tools/qualify_next100_050_pandas.py
+
+      - name: Qualify exact pandas source object
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          mkdir -p next100-050-evidence
+          python tools/qualify_next100_050_pandas.py \
+            --repo-root . \
+            --source-sha "$EXPECTED_SOURCE_SHA" \
+            --output next100-050-evidence/pandas-terminal-source-authority.json \
+            | tee next100-050-evidence/stdout.json
+
+      - name: Validate terminal invariants
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          path = Path("next100-050-evidence/pandas-terminal-source-authority.json")
+          report = json.loads(path.read_text(encoding="utf-8"))
+          digest = report.pop("report_sha256")
+          payload = (json.dumps(report, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n").encode()
+          assert hashlib.sha256(payload).hexdigest() == digest
+          assert report["verdict"] == "ADMIT"
+          assert report["terminal"] is True
+          assert report["source_sha"] == os.environ["EXPECTED_SOURCE_SHA"]
+          assert report["object"]["git_blob_sha1"] == "26560f84000f24aee377bc761db0d2686452f813"
+          assert report["license"]["git_blob_sha1"] == "bd1cc2a30c626d0bbe43ab6ec1c4744c2e2df831"
+          assert report["object"]["syntax"] == {"ast_parse": "PASS", "compile": "PASS"}
+          assert report["privacy_and_secrets"]["secret_patterns"] == "PASS"
+          assert report["deduplication"]["exact_duplicate"] is False
+          assert report["deduplication"]["near_duplicate"] is False
+          assert report["family_accounting"]["family_delta"] == 1
+          assert report["family_accounting"]["admitted_raw_code_bytes"] == 15837
+          assert report["rights"]["uses"]["model_training"] == "ALLOWED"
+          assert report["rights"]["uses"]["redistribution"] == "ALLOWED"
+          assert report["rights"]["uses"]["evaluation"] == "NOT_SEPARATELY_ADMITTED"
+          PY
+
+      - name: Upload immutable authority evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: next100-050-pandas-source-authority-${{ github.event.pull_request.head.sha || github.sha }}
+          if-no-files-found: error
+          retention-days: 90
+          path: next100-050-evidence/

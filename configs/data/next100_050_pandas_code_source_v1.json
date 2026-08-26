@@ -1,0 +1,62 @@
+{
+  "schema_version": "12-6.next100-050-pandas-code-source.v1",
+  "worker_id": "NEXT100-050-CODE-PANDAS",
+  "local_free_only": true,
+  "policy_ref": "policy://12-6/data/explicit-model-training-evidence-v1",
+  "upstream": {
+    "repository": "pandas-dev/pandas",
+    "repository_url": "https://github.com/pandas-dev/pandas",
+    "commit": "0b54092c19202b579a1114e2d74f4b8028d5d573",
+    "commit_observed_at_utc": "2026-08-26T18:03:27Z"
+  },
+  "object": {
+    "source_id": "code.pandas-dev.pandas.core.accessor",
+    "source_family": "github:pandas-dev/pandas",
+    "path": "pandas/core/accessor.py",
+    "language": "python",
+    "size_bytes": 15837,
+    "git_blob_sha1": "26560f84000f24aee377bc761db0d2686452f813",
+    "raw_url": "https://raw.githubusercontent.com/pandas-dev/pandas/0b54092c19202b579a1114e2d74f4b8028d5d573/pandas/core/accessor.py",
+    "normalization_policy": "STRICT_UTF8_IDENTITY_PRESERVE_V1"
+  },
+  "license": {
+    "license_id": "BSD-3-Clause",
+    "path": "LICENSE",
+    "git_blob_sha1": "bd1cc2a30c626d0bbe43ab6ec1c4744c2e2df831",
+    "url": "https://raw.githubusercontent.com/pandas-dev/pandas/0b54092c19202b579a1114e2d74f4b8028d5d573/LICENSE"
+  },
+  "rights_decision": {
+    "status": "APPROVED_FOR_MODEL_TRAINING",
+    "reviewer_ref": "NEXT100-050-CODE-PANDAS",
+    "reviewed_at_utc": "2026-08-26T18:03:27Z",
+    "uses": {
+      "acquisition": "ALLOWED",
+      "storage": "ALLOWED",
+      "analysis": "ALLOWED",
+      "model_training": "ALLOWED",
+      "redistribution": "ALLOWED",
+      "evaluation": "NOT_SEPARATELY_ADMITTED"
+    },
+    "basis": "BSD-3-Clause permits redistribution and use in source and binary forms, with or without modification, subject to notice/disclaimer and non-endorsement conditions. Under the project explicit-model-training-evidence policy, this reviewed permissive-use grant is accepted for bounded model-training use; public availability alone is not the basis.",
+    "redistribution_conditions": "Retain copyright notice, conditions, and disclaimer for source redistribution; reproduce them in documentation/materials for binary redistribution; do not use holder/contributor names for endorsement without permission."
+  },
+  "scope_exclusions": [
+    "all .pyx/.pxd/.pxi Cython sources and generated C/C++ outputs",
+    "pandas/_libs generated or compiled artifacts",
+    "vendored/third-party code",
+    "tests, fixtures, docs, benchmarks, data files, and evaluation-reserved objects",
+    "all pandas files other than pandas/core/accessor.py at the pinned commit"
+  ],
+  "dedup_baseline": {
+    "registry_path": "configs/data/data287_external_snapshot_registry_v2.json",
+    "registry_producer_head": "b0523ccbc4b957615aac849d476cfa851be87578",
+    "near_duplicate_policy": "5-token shingle Jaccard >= 0.85 rejects"
+  },
+  "evaluation_boundary": {
+    "authority": "EVAL-289",
+    "authority_head": "1c870e5e02bf48891ca599b0b3f3bfe6e84425bc",
+    "authority_identity_sha256": "de52b38690230bee8a912fc1265ad34b80a3abde46bd23401f15395749a4813c",
+    "reserved_code_objects_at_review": 0,
+    "training_must_not_consume_future_reserved_objects": true
+  }
+}
