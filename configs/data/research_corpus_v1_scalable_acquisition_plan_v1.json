@@ -1,0 +1,310 @@
+{
+  "schema_version": "12-6.research-corpus-v1-scalable-acquisition-plan.v1",
+  "worker_id": "AUTONOMOUS-CORPUS-V1-ACQUISITION-20260826",
+  "local_free_only": true,
+  "model_training_executed": false,
+  "created_utc": "2026-08-26",
+  "baseline": {
+    "source_convergence_pr": 527,
+    "source_convergence_head": "9ad8f74b12a2e991b7934356a88dd9a1f6ff3f41",
+    "status": "CANDIDATE_ONLY_PENDING_EXACT_HEAD_CI_AND_SUCCESSOR_GLOBAL_DEDUP",
+    "observed_pre_dedup_bytes": {
+      "ua": 100856,
+      "en": 144151,
+      "code": 69133,
+      "total": 314140
+    },
+    "observed_independent_families": {
+      "ua": 4,
+      "en": 2,
+      "code": 4,
+      "total": 10
+    },
+    "training_authorized_bytes": 0
+  },
+  "target": {
+    "policy": "DATA295_20MB_BALANCED_TARGET",
+    "bytes": {
+      "ua": 9000000,
+      "en": 7000000,
+      "code": 4000000,
+      "total": 20000000
+    },
+    "planning_gap_from_observed_pre_dedup": {
+      "ua": 8899144,
+      "en": 6855849,
+      "code": 3930867,
+      "total": 19685860
+    },
+    "warning": "PLANNING_GAP_ONLY_NOT_TRAINING_CAPACITY; GLOBAL_DEDUP_CAN_ONLY_REDUCE_CREDIT"
+  },
+  "candidate_streams": [
+    {
+      "candidate_id": "ua.rada.official-acts.expansion",
+      "stratum": "ua",
+      "family_candidate": "ua.rada.official-acts",
+      "planning_request_bytes": 4000000,
+      "credited_bytes": 0,
+      "status": "REQUIRES_DEDICATED_ADMISSION",
+      "source_scope": "Official Ukrainian state acts and official translations from Verkhovna Rada sources; exclude commentary, authored articles, user submissions, attachments with third-party rights, and non-official republications.",
+      "rights_anchor": "https://data.rada.gov.ua/ogd/zak/perv/text/d521966.htm",
+      "rights_basis_candidate": "Law of Ukraine No. 2811-IX excludes acts of state/local authorities and official political, legislative, administrative and judicial documents, including drafts and official translations, from copyright objects.",
+      "required_retests": [
+        "document_is_official_act_or_official_translation",
+        "acquisition_endpoint_terms_and_robots",
+        "third_party_embeds_absent_or_removed",
+        "privacy_and_sensitive_content",
+        "exact_revision_identity"
+      ]
+    },
+    {
+      "candidate_id": "ua.kmu.official-acts.expansion",
+      "stratum": "ua",
+      "family_candidate": "ua.kmu.official-acts",
+      "planning_request_bytes": 2500000,
+      "credited_bytes": 0,
+      "status": "REQUIRES_DEDICATED_ADMISSION",
+      "source_scope": "Cabinet of Ministers official acts only; do not infer that news, authored explainers, photos or attachments inherit the act-level copyright exclusion.",
+      "rights_anchor": "https://data.rada.gov.ua/ogd/zak/perv/text/d521966.htm",
+      "rights_basis_candidate": "Official acts may fall within the Ukrainian statutory exclusion, subject to per-object verification.",
+      "required_retests": [
+        "official_act_boundary",
+        "publisher_identity",
+        "third_party_material_exclusion",
+        "deterministic_normalization",
+        "privacy_and_quality"
+      ]
+    },
+    {
+      "candidate_id": "ua.president.official-acts.expansion",
+      "stratum": "ua",
+      "family_candidate": "ua.president.official-acts",
+      "planning_request_bytes": 2500000,
+      "credited_bytes": 0,
+      "status": "REQUIRES_DEDICATED_ADMISSION",
+      "source_scope": "Official decrees/orders and official translations only; exclude speeches, photographs, biographies, news/editorial pages and third-party attachments unless separately licensed.",
+      "rights_anchor": "https://data.rada.gov.ua/ogd/zak/perv/text/d521966.htm",
+      "rights_basis_candidate": "Official acts are candidate non-copyright objects under Ukrainian law; each selected object must prove it is an official act.",
+      "required_retests": [
+        "official_act_boundary",
+        "publisher_identity",
+        "third_party_material_exclusion",
+        "deterministic_normalization",
+        "privacy_and_quality"
+      ]
+    },
+    {
+      "candidate_id": "en.nist.technical-series.expansion",
+      "stratum": "en",
+      "family_candidate": "en.usgov.nist.technical-series",
+      "planning_request_bytes": 2000000,
+      "credited_bytes": 0,
+      "status": "REQUIRES_DEDICATED_ADMISSION",
+      "source_scope": "Final NIST Technical Series documents with employee-authored/document-specific rights evidence; exclude SRD and third-party-authored publications unless separately cleared.",
+      "rights_anchor": "https://www.nist.gov/open/copyright-fair-use-and-licensing-statements-srd-data-software-and-technical-series-publications",
+      "rights_basis_candidate": "NIST states employee-authored Technical Series works are not protected by US copyright and grants a worldwide royalty-free right to reprint and prepare derivative works, while warning that third-party works may be copyrighted.",
+      "required_retests": [
+        "final_version_of_record",
+        "employee_authorship_or_document_specific_grant",
+        "no_srd",
+        "third_party_material_exclusion",
+        "citation_provenance_retained"
+      ]
+    },
+    {
+      "candidate_id": "en.usgov.cisa.employee-authored-publications",
+      "stratum": "en",
+      "family_candidate": "en.usgov.cisa.publications",
+      "planning_request_bytes": 1750000,
+      "credited_bytes": 0,
+      "status": "RIGHTS_AND_AUTHORSHIP_RESEARCH_REQUIRED",
+      "source_scope": "Only works proven to be prepared by US Government officers/employees as part of official duties; exclude contractor, grantee, partner and copyrighted inserts.",
+      "rights_anchor": "https://uscode.house.gov/view.xhtml?req=(title:17%20section:105%20edition:prelim)",
+      "rights_basis_candidate": "17 USC 105 generally withholds US copyright protection from works of the United States Government, but this is not a blanket rule for contractors or transferred copyrights.",
+      "required_retests": [
+        "government_employee_authorship",
+        "official_duty_scope",
+        "contractor_and_partner_exclusion",
+        "foreign_rights_or_explicit_reuse_terms",
+        "document_specific_provenance"
+      ]
+    },
+    {
+      "candidate_id": "en.usgov.nasa.employee-authored-publications",
+      "stratum": "en",
+      "family_candidate": "en.usgov.nasa.publications",
+      "planning_request_bytes": 1750000,
+      "credited_bytes": 0,
+      "status": "RIGHTS_AND_AUTHORSHIP_RESEARCH_REQUIRED",
+      "source_scope": "Only NASA works with employee/official-duty provenance and no third-party copyrighted portions.",
+      "rights_anchor": "https://uscode.house.gov/view.xhtml?req=(title:17%20section:105%20edition:prelim)",
+      "rights_basis_candidate": "17 USC 105 is a candidate US-law basis only after per-document government-work verification.",
+      "required_retests": [
+        "government_employee_authorship",
+        "official_duty_scope",
+        "contractor_and_partner_exclusion",
+        "foreign_rights_or_explicit_reuse_terms",
+        "document_specific_provenance"
+      ]
+    },
+    {
+      "candidate_id": "en.standardebooks.public-domain-expansion",
+      "stratum": "en",
+      "family_candidate": "en.standardebooks.public-domain-prose",
+      "planning_request_bytes": 1500000,
+      "credited_bytes": 0,
+      "status": "WORK_LEVEL_PUBLIC_DOMAIN_REVIEW_REQUIRED",
+      "source_scope": "Selected public-domain prose only; every work must have edition/work-level rights evidence and deterministic boilerplate stripping.",
+      "rights_anchor": "EXISTING_REPOSITORY_STANDARD_EBOOKS_AUTHORITY_PLUS_WORK_LEVEL_RETEST",
+      "rights_basis_candidate": "No blanket corpus admission; reuse only after the exact work/edition is independently cleared.",
+      "required_retests": [
+        "work_level_public_domain_status",
+        "edition_and_translation_rights",
+        "jurisdiction_boundary",
+        "boilerplate_and_metadata_exclusion",
+        "source_revision_pin"
+      ]
+    },
+    {
+      "candidate_id": "code.cpython.stdlib-expansion",
+      "stratum": "code",
+      "family_candidate": "code.python.cpython",
+      "planning_request_bytes": 1200000,
+      "credited_bytes": 0,
+      "status": "REQUIRES_DEDICATED_ADMISSION",
+      "source_scope": "Pinned CPython source files under the applicable PSF/embedded license inventory; exclude vendored/incorporated components unless their exact licenses are admitted.",
+      "rights_anchor": "https://docs.python.org/3/license.html",
+      "rights_basis_candidate": "PSF License Version 2 grants worldwide rights to reproduce, analyze, prepare derivatives, distribute and otherwise use Python subject to its terms; incorporated software may use other licenses.",
+      "required_retests": [
+        "exact_commit_pin",
+        "file_level_incorporated_license_exclusion",
+        "license_notice_preservation",
+        "generated_and_test_fixture_policy",
+        "quality_and_secret_scan"
+      ]
+    },
+    {
+      "candidate_id": "code.django.expansion",
+      "stratum": "code",
+      "family_candidate": "code.django.django",
+      "planning_request_bytes": 900000,
+      "credited_bytes": 0,
+      "status": "REQUIRES_DEDICATED_ADMISSION",
+      "source_scope": "Pinned Django source modules under the repository license boundary; exclude third-party/vendor/generated material unless separately proven.",
+      "rights_anchor": "https://docs.djangoproject.com/en/6.0/faq/general/#how-is-django-licensed",
+      "rights_basis_candidate": "Django documents distribution under the 3-clause BSD license.",
+      "required_retests": [
+        "exact_commit_pin",
+        "license_file_hash",
+        "third_party_and_vendor_exclusion",
+        "generated_file_policy",
+        "quality_and_secret_scan"
+      ]
+    },
+    {
+      "candidate_id": "code.encode-httpx.expansion",
+      "stratum": "code",
+      "family_candidate": "code.encode.httpx",
+      "planning_request_bytes": 600000,
+      "credited_bytes": 0,
+      "status": "REUSE_EXISTING_TERMINAL_RIGHTS_BUT_NEW_BYTES_REQUIRE_ADMISSION",
+      "source_scope": "Expand the already admitted HTTPX family only through pinned files covered by the same verified repository license boundary.",
+      "rights_anchor": "EXISTING_REPOSITORY_TERMINAL_SOURCE_AUTHORITY",
+      "rights_basis_candidate": "Existing terminal authority may seed the rights analysis but cannot authorize newly selected bytes by implication.",
+      "required_retests": [
+        "exact_commit_pin",
+        "new_file_license_coverage",
+        "vendor_and_fixture_exclusion",
+        "quality_and_secret_scan"
+      ]
+    },
+    {
+      "candidate_id": "code.starlette.expansion",
+      "stratum": "code",
+      "family_candidate": "code.encode.starlette",
+      "planning_request_bytes": 500000,
+      "credited_bytes": 0,
+      "status": "REUSE_EXISTING_TERMINAL_RIGHTS_BUT_NEW_BYTES_REQUIRE_ADMISSION",
+      "source_scope": "Expand the already admitted Starlette family only through pinned files covered by verified rights evidence.",
+      "rights_anchor": "EXISTING_REPOSITORY_TERMINAL_SOURCE_AUTHORITY",
+      "rights_basis_candidate": "Existing terminal authority is not a blanket admission for unreviewed files.",
+      "required_retests": [
+        "exact_commit_pin",
+        "new_file_license_coverage",
+        "vendor_and_fixture_exclusion",
+        "quality_and_secret_scan"
+      ]
+    },
+    {
+      "candidate_id": "code.requests.expansion",
+      "stratum": "code",
+      "family_candidate": "code.psf.requests",
+      "planning_request_bytes": 400000,
+      "credited_bytes": 0,
+      "status": "REUSE_EXISTING_TERMINAL_RIGHTS_BUT_NEW_BYTES_REQUIRE_ADMISSION",
+      "source_scope": "Expand the already admitted Requests family through pinned source files only.",
+      "rights_anchor": "EXISTING_REPOSITORY_TERMINAL_SOURCE_AUTHORITY",
+      "rights_basis_candidate": "Existing terminal authority remains object-bounded; new bytes require exact provenance and rights verification.",
+      "required_retests": [
+        "exact_commit_pin",
+        "new_file_license_coverage",
+        "vendor_and_fixture_exclusion",
+        "quality_and_secret_scan"
+      ]
+    },
+    {
+      "candidate_id": "code.pydantic.expansion",
+      "stratum": "code",
+      "family_candidate": "code.pydantic.pydantic",
+      "planning_request_bytes": 400000,
+      "credited_bytes": 0,
+      "status": "RIGHTS_RESEARCH_REQUIRED",
+      "source_scope": "Candidate additional independent code family; no bytes may be counted until exact repository/version/license provenance is admitted.",
+      "rights_anchor": "UNRESOLVED_REQUIRE_OFFICIAL_REPOSITORY_LICENSE_EVIDENCE",
+      "rights_basis_candidate": "None yet; deliberately fail closed.",
+      "required_retests": [
+        "official_repository_identity",
+        "exact_commit_pin",
+        "license_file_hash",
+        "third_party_and_generated_exclusion",
+        "quality_and_secret_scan"
+      ]
+    }
+  ],
+  "mandatory_admission_gates": [
+    "exact_source_revision_and_raw_hash",
+    "source_or_object_specific_training_rights_basis",
+    "rights_evidence_snapshot_hash",
+    "deterministic_normalization_with_normalized_hash",
+    "private_user_generated_secret_and_sensitive_content_exclusion",
+    "minimum_quality_gate",
+    "cross_source_exact_and_near_duplicate_audit",
+    "lineage_family_independence_accounting",
+    "within_stratum_and_global_family_cap_retest",
+    "train_selection_final_eval_decontamination",
+    "immutable_candidate_inventory_identity",
+    "two_clean_build_determinism",
+    "unique_nonignored_causal_position_ledger",
+    "tokenizer_fit_after_corpus_freeze_only",
+    "dedicated_exact_head_workflow_success"
+  ],
+  "capacity_firewall": {
+    "candidate_planning_bytes_are_capacity": false,
+    "observed_pre_dedup_bytes_are_training_authorized": false,
+    "minimum_status_for_capacity_credit": "DEDICATED_TERMINAL_ADMISSION_PLUS_SUCCESSOR_GLOBAL_DEDUP",
+    "current_training_authorized_bytes": 0,
+    "long_training_authorized": false
+  },
+  "next_execution_order": [
+    "finish_pr527_exact_head_ci",
+    "materialize_late_terminal_source_bytes_under_pinned_normalizers",
+    "run_successor_global_exact_near_dedup",
+    "retest_data295_balance_and_family_caps",
+    "execute_high_yield_ua_official_act_admission_batches",
+    "execute_code_repository_expansion_batches",
+    "execute_nist_and_other_en_government_work_batches",
+    "freeze_research_corpus_v1_candidate_only_after_real_unique_bytes_meet_target",
+    "run_eval_decontamination_and_two_clean_builds",
+    "recompute_no_replay_capacity_and_only_then_reconsider_20m_training"
+  ]
+}
