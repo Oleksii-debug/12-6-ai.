@@ -291,3 +291,50 @@ def test_trainer_owned_component_corruption_fails_before_model_mutation(
     assert target_trainer.scaler is not None
     assert target_trainer.scheduler.loads == 0
     assert target_trainer.scaler.loads == 0
+
+
+def test_trainer_checkpoint_decodes_verified_payload_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import twelve_six.checkpoint.core as checkpoint_core
+    import twelve_six.checkpoint.trainer_adapter as trainer_adapter_module
+
+    torch = pytest.importorskip("torch")
+    torch.manual_seed(211)
+    source_model = torch.nn.Linear(3, 2, bias=False)
+    source_trainer = _TrainerProbe(source_model, populated=True)
+    checkpoint = tmp_path / "trainer-single-decode"
+    save_trainer_checkpoint(
+        checkpoint,
+        model=source_model,
+        trainer=source_trainer,
+        identity=_identity(sum(parameter.numel() for parameter in source_model.parameters())),
+    )
+
+    target_model = torch.nn.Linear(3, 2, bias=False)
+    target_trainer = _TrainerProbe(target_model, populated=False)
+
+    decode_calls = 0
+    original_decode = checkpoint_core._decode_verified_state
+
+    def counting_decode(verified: object) -> tuple[dict[str, Any], Any]:
+        nonlocal decode_calls
+        decode_calls += 1
+        return original_decode(verified)  # type: ignore[arg-type,return-value]
+
+    monkeypatch.setattr(checkpoint_core, "_decode_verified_state", counting_decode)
+    monkeypatch.setattr(trainer_adapter_module, "_decode_verified_state", counting_decode)
+
+    result = trainer_adapter_module.load_trainer_checkpoint(
+        checkpoint,
+        model=target_model,
+        trainer=target_trainer,
+        restore_rng=False,
+    )
+
+    assert decode_calls == 1
+    assert result.manifest["checkpoint_id"]
+    assert target_trainer.loads == 1
+    for name, tensor in target_model.state_dict().items():
+        torch.testing.assert_close(tensor, source_model.state_dict()[name], rtol=0, atol=0)
