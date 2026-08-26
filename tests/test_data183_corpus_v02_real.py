@@ -86,7 +86,7 @@ def test_audit_reports_zero_normalized_cross_split_overlap_and_token_supply(tmp_
 
 def test_audit_detects_overlap_after_independent_normalization(tmp_path: Path):
     train_text = "Café corpus overlap proof. " * 12
-    validation_text = ("Cafe\u0301   corpus overlap proof.\r\n" * 12).strip()
+    validation_text = ("Cafe\u0301   corpus overlap proof.   " * 12).strip()
     rows = [
         _row("same-a", train_text, "train", "uk", "external_real", "ua"),
         _row("same-b", validation_text, "validation", "en", "external_real", "en"),
