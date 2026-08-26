@@ -1,0 +1,232 @@
+{
+  "additive_terminal_authorities": [
+    {
+      "bounded_normalized_source_bytes": 9153,
+      "bounded_record_count": 6,
+      "dedicated_workflow_conclusion": "success",
+      "dedicated_workflow_run_id": 32997970539,
+      "evaluation_use": "NOT_SEPARATELY_ADMITTED",
+      "family_id": "ua.kmu.portal.secretariat-news",
+      "head_sha": "40950a950b60921fd856af2719e1ae2486d9e892",
+      "payload_identity": "1f068e6cc5ce3fc4a51d8477acee31fab5a0178e15f49225b57de94c5178f7d9",
+      "payload_identity_kind": "manifest_identity_sha256",
+      "pr": 449,
+      "requires_corpus_decontamination": true,
+      "stratum": "uk",
+      "training_use": "ALLOWED_PRETRAINING",
+      "verdict": "ADMIT",
+      "worker": "NEXT100-026-DATA-UA-CABINET-MINISTRY"
+    },
+    {
+      "bounded_normalized_source_bytes": 1659,
+      "bounded_record_count": 24,
+      "dedicated_workflow_conclusion": "success",
+      "dedicated_workflow_run_id": 32998503672,
+      "evaluation_use": "NOT_ADMITTED",
+      "family_id": "ua.verba.public-domain.nomis1864",
+      "head_sha": "d75edd497c7fb1054e86d892c9462f059c1f4aa9",
+      "payload_identity": "1eb91dbd631898c6a2efe274b700a5be0deaca243c0a9d5d30994ddadcf43598",
+      "payload_identity_kind": "normalized_sha256",
+      "pr": 462,
+      "requires_corpus_decontamination": true,
+      "stratum": "uk",
+      "training_use": "ADMITTED",
+      "verdict": "ADMIT",
+      "worker": "NEXT100-027-DATA-UA-PUBLIC-DOMAIN-LIT"
+    },
+    {
+      "bounded_normalized_source_bytes": 1479,
+      "bounded_record_count": 1,
+      "dedicated_workflow_conclusion": "success",
+      "dedicated_workflow_run_id": 32998002424,
+      "evaluation_use": "NOT_SEPARATELY_ADMITTED",
+      "family_id": "ua.literature.lesia-ukrainka.na-krylah-pisen.1892-lviv",
+      "head_sha": "84c51e42b6daa51796fd20d793b5ef1ff01cc9d2",
+      "payload_identity": "65e570c3cd954b595b586554b89a90da6efad0deca6a84d2316937745db17ef2",
+      "payload_identity_kind": "snapshot_sha256",
+      "pr": 455,
+      "requires_corpus_decontamination": true,
+      "stratum": "uk",
+      "training_use": "ALLOWED",
+      "verdict": "ADMIT_BOUNDED_PD_EDITION_SNAPSHOT",
+      "worker": "NEXT100-022-DATA-UA-WIKISOURCE"
+    },
+    {
+      "bounded_normalized_source_bytes": 17901,
+      "bounded_record_count": 14,
+      "dedicated_workflow_conclusion": "success",
+      "dedicated_workflow_run_id": 32998356906,
+      "evaluation_use": "NOT_SEPARATELY_ADMITTED",
+      "family_id": "python.cpython.documentation",
+      "head_sha": "5a6a495a24bce449334cbc5126d0114f61a9f57c",
+      "payload_identity": "46a00dc70db690ae2b3c4495a75283e7e752bdccb1047d4318c2ebadfa392f0d",
+      "payload_identity_kind": "authority_identity_sha256",
+      "pr": 467,
+      "requires_corpus_decontamination": true,
+      "source_object_record_note": "17,901 bytes is the normalized source object upper bound; only 14 enumerated accepted chunks are eligible for the next materializer, while 2 incumbent pii_phone rejects remain excluded.",
+      "stratum": "en",
+      "training_use": "ALLOWED",
+      "verdict": "ADMIT",
+      "worker": "NEXT100-037-DATA-EN-PYTHON-DOCS"
+    },
+    {
+      "bounded_normalized_source_bytes": 6492,
+      "bounded_record_count": 1,
+      "dedicated_workflow_conclusion": "success",
+      "dedicated_workflow_run_id": 32998544359,
+      "evaluation_use": "NOT_SEPARATELY_ADMITTED",
+      "family_id": "en.mdn.webdocs.prose",
+      "head_sha": "902eccc0b3efff09a38dc89cda789180b6c6e754",
+      "payload_identity": "10855740b0ed5588d133f421318c637be99d9e9f4921675af9f6dc8a5663507b",
+      "payload_identity_kind": "normalized_sha256",
+      "pr": 445,
+      "requires_corpus_decontamination": true,
+      "stratum": "en",
+      "training_use": "ALLOWED_UNDER_LICENSE_TERMS",
+      "verdict": "ADMIT_PROSE_ONLY",
+      "worker": "NEXT100-038-DATA-EN-MDN"
+    },
+    {
+      "bounded_normalized_source_bytes": 5274,
+      "bounded_record_count": 2,
+      "dedicated_workflow_conclusion": "success",
+      "dedicated_workflow_run_id": 32998101312,
+      "evaluation_use": "NOT_AUTHORIZED_BY_THIS_AUTHORITY",
+      "family_id": "github:Kludex/starlette",
+      "head_sha": "c6756b5ebb6eb1d3bf3de2499167833d99d99a72",
+      "payload_identity": [
+        "7cb67fa5195ca7ec0fe33122c9e5ce225edfa3297fcc82f9026e84f9c56583cb",
+        "175aec7b701a70df6bb1f2674deb839e36cde75affa2e1dcdd62f26248e45ffa"
+      ],
+      "payload_identity_kind": "object_sha256_set",
+      "pr": 458,
+      "requires_corpus_decontamination": true,
+      "stratum": "code",
+      "training_use": "ALLOW",
+      "verdict": "ADMIT",
+      "worker": "NEXT100-045-CODE-STARLETTE"
+    }
+  ],
+  "composition_contract": {
+    "family_identity_rule": "Canonical upstream/document lineage; mirrors, forks, translations or sibling objects do not manufacture family credit.",
+    "maximum_single_family_share_total": 0.25,
+    "maximum_single_family_share_within_stratum": 0.6,
+    "minimum_independent_families_per_stratum": 2,
+    "stratum_target_share": {
+      "code": 0.2,
+      "en": 0.35,
+      "uk": 0.45
+    }
+  },
+  "execution_profile": "LOCAL_FREE",
+  "intake_identity_sha256": "d2c87e89e4bab979f19a7cb373e5a00bad40b7f9e4b0ca856f8348ca347f91e1",
+  "local_free_only": true,
+  "next_required_gate": {
+    "name": "RESEARCH_CORPUS_V1_EXACT_RECORD_MATERIALIZATION_AND_IDENTITY",
+    "requirements": [
+      "Materialize only parent DATA-287 objects plus the six exact-head-success additive authorities listed here.",
+      "Preserve each authority's source/object/record exclusions and evaluation-use boundary.",
+      "Emit exact record ids, source-family ids, normalized content hashes, byte counts and provenance for every candidate record.",
+      "Freeze a canonical candidate-record inventory identity before any evaluation near-match scan.",
+      "Run the current hash-only/external evaluation decontamination authority without exposing final-test payload to training workers.",
+      "Only after decontamination run quality/privacy/exact+near dedup, stratified split, two-clean-build reproducibility and unique-loss-position accounting.",
+      "Do not start long 20M training while authorized_unique_loss_positions is zero."
+    ]
+  },
+  "observed_not_counted": [
+    {
+      "candidate_bytes": 46162,
+      "family_id": "github:Textualize/rich",
+      "head_sha": "78cada1d69b3f0c438012c4e6cf79143aae2f603",
+      "pr": 475,
+      "reason": "Component body reports terminal LOCAL_FREE byte-identical proof, but the final exact-head dedicated workflow is queued; this conservative convergence does not count it until executable exact-head status is terminal.",
+      "worker": "NEXT100-051-CODE-RICH"
+    },
+    {
+      "candidate_bytes": 59986,
+      "family_id": "php.manual.documentation",
+      "pr": 454,
+      "reason": "RETEST_RUNNER_QUEUE_ONLY; exact materialization is unsealed.",
+      "worker": "NEXT100-028-DATA-UA-TECH-GITHUB"
+    },
+    {
+      "candidate_bytes": null,
+      "family_id": "rust-book.documentation.uk-translation",
+      "pr": 478,
+      "reason": "PROBE with null lock values; not terminal ADMIT.",
+      "worker": "NEXT100-030-DATA-UA-OER"
+    },
+    {
+      "candidate_bytes": 0,
+      "family_id": "wikimedia:wikipedia:ukwiki",
+      "pr": 450,
+      "reason": "Terminal REJECT under current project ShareAlike policy; zero training credit.",
+      "worker": "NEXT100-021-DATA-UA-WIKIPEDIA"
+    }
+  ],
+  "parent_family_inventory": [
+    {
+      "family_id": "ua.rada.open-data.laws-texts",
+      "normalized_source_bytes": 88565,
+      "stratum": "uk"
+    },
+    {
+      "family_id": "en.standardebooks.manual",
+      "normalized_source_bytes": 84793,
+      "stratum": "en"
+    },
+    {
+      "family_id": "github:encode/httpx",
+      "normalized_source_bytes": 8161,
+      "stratum": "code"
+    },
+    {
+      "family_id": "github:psf/requests",
+      "normalized_source_bytes": 1542,
+      "stratum": "code"
+    }
+  ],
+  "parent_registry": {
+    "dedicated_workflow_conclusion": "success",
+    "dedicated_workflow_run_id": 32968622282,
+    "head_sha": "b0523ccbc4b957615aac849d476cfa851be87578",
+    "independent_family_count": 4,
+    "normalized_source_bytes": 183061,
+    "path": "data/registry/external_snapshots.v2.json",
+    "registry_identity_sha256": "917e9bc31b2fa040d25e807ae3c01aa2cce32420752a891caacfb6c830e6632c",
+    "source_count": 5,
+    "worker": "DATA-287-EXTERNAL-SNAPSHOT-REGISTRY-V2"
+  },
+  "purpose": "Freeze the exact terminal source-authority set that may enter the next pre-decontamination Research Corpus V1 materialization. This is not a corpus freeze and grants no optimizer-step authority.",
+  "readiness": {
+    "authorized_unique_loss_positions": 0,
+    "candidate_record_inventory_identity_sha256": null,
+    "evaluation_decontamination_passed": false,
+    "exact_candidate_record_inventory_materialized": false,
+    "final_corpus_identity_sha256": null,
+    "learned_20m_claim_authorized": false,
+    "long_training_authorized": false,
+    "quality_privacy_dedup_split_terminal": false,
+    "source_authority_intake_frozen": true,
+    "tokenizer_fit_authorized": false,
+    "two_clean_build_reproducibility_passed": false
+  },
+  "schema_version": "12-6.research-corpus-v1-source-intake.v1",
+  "source_level_diagnostics": {
+    "balanced_source_byte_upper_bound": 61455,
+    "balanced_source_byte_upper_bound_strata": {
+      "code": 12291.0,
+      "en": 21509.25,
+      "uk": 27654.75
+    },
+    "bounded_normalized_source_bytes_including_parent": 225019,
+    "diagnostic_only": true,
+    "family_counts_after_exact_head_success_additions": {
+      "code": 3,
+      "en": 3,
+      "uk": 4
+    },
+    "warning": "This is a source-byte feasibility ceiling under family/mixture caps, not tokens, not no-replay loss positions, and not training capacity. Record-level filters and decontamination can only reduce it."
+  },
+  "worker_id": "RESEARCH-CORPUS-V1-SOURCE-INTAKE-SUCCESSOR"
+}

@@ -1,0 +1,51 @@
+name: Research Corpus V1 Source Intake
+
+on:
+  push:
+    branches:
+      - data/research-corpus-v1-source-intake-20260826
+  pull_request:
+    paths:
+      - data/registry/research_corpus_v1_source_intake.v1.json
+      - tools/validate_research_corpus_v1_source_intake.py
+      - tests/test_research_corpus_v1_source_intake.py
+      - .github/workflows/research-corpus-v1-source-intake.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: research-corpus-v1-source-intake-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-source-intake:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact source head
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+
+      - name: Compile fail-closed validator
+        run: python -m py_compile tools/validate_research_corpus_v1_source_intake.py
+
+      - name: Validate committed intake
+        run: python tools/validate_research_corpus_v1_source_intake.py
+
+      - name: Run mutation regressions
+        run: python -m unittest tests.test_research_corpus_v1_source_intake -v
