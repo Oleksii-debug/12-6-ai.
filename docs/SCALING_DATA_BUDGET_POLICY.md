@@ -4,24 +4,26 @@
 
 The project must keep **model parameter count**, **source bytes**, **post-tokenization training tokens**, and **unique causal-loss positions** as separate quantities.
 
-The current primary architecture has 20,613,440 parameters. At the fail-closed live cutoff recorded by this policy, NEXT100-063 V2 / PR #538 reports 266,476 pre-global-dedup source bytes across 10 independent families and a separate frozen acquisition target of 20,000,000 source bytes. It authorizes zero balanced no-replay loss positions. None of those source-byte numbers is a training-token count, and none can authorize a learned-20M long run.
+The current primary architecture has 20,613,440 parameters. Source-registry capacity is owned by the data lane and changes as exact-head source admissions succeed, fail, or are corrected. This scaling policy therefore **does not embed a live source-byte snapshot**. A rapidly changing source registry is not a corpus identity, token count, or causal-loss ledger.
 
-The live source snapshot is provenance-bound in the machine policy to PR #538 V2 head `7da63b7d85b65b1508ef5c7d73bfa8d56e718c9f` and registry identity `934933896a4b3b01dd58cd18d13bcc36245913f83412c6b3f697c64dd03e4d4d`. V2 supersedes the earlier V1 vector because V1 incorrectly credited unsupported CPython accepted-byte capacity and exact-head-failed Pydantic/Rich admissions. A newer source authority requires an explicit policy refresh; stale numbers must not drift silently.
+That separation is deliberate: during active source qualification, an optimistic source vector can be superseded within minutes by a fail-closed audit. Copying the current byte count into a long-lived scaling contract creates a race and can turn stale planning data into false scientific authority.
 
 ## Research reference
 
 Hoffmann et al. (2022) found that compute-optimal model size and training-token count should scale together. The commonly used Chinchilla planning point is approximately 20 training tokens per parameter. This repository uses **20x only as a planning reference**, not as a universal optimum or a model-quality guarantee.
 
-Later work strengthens the reason not to treat 20x as a ceiling. Data-constrained scaling work shows that repeated data has diminishing value; inference-aware scaling and over-training studies show that smaller models can rationally be trained on substantially more tokens; Llama 3 reports continued gains far beyond its Chinchilla-optimal token count. DataComp-LM and FineWeb/FineWeb-Edu also show that curation and filtering quality materially change outcomes.
+Later work strengthens the reason not to treat 20x as a ceiling. Data-constrained scaling work shows that repeated data has diminishing value; inference-aware scaling and over-training studies show that smaller models can rationally be trained on substantially more tokens; Llama 3 reports continued gains far beyond its Chinchilla-optimal token count. DataComp-LM also shows that curation and filtering quality materially change outcomes.
 
 Therefore the 12-6 AI policy is:
 
 1. do not convert source bytes to tokens by assumption;
-2. do not count replayed tokens as unique loss positions;
-3. require exact corpus, split, tokenizer, post-tokenization token-count and loss-mask identities before long training;
-4. treat a run below the 20x planning reference as a bounded scaling/smoke experiment unless an explicit preregistered scaling experiment justifies a different budget;
-5. choose larger data budgets from small-scale scaling experiments, evaluation results and compute constraints rather than from an arbitrary fixed multiplier;
-6. keep paid compute authorization separate from scientific readiness.
+2. do not use a source-capacity acquisition target as a training-token budget;
+3. do not count replayed tokens as unique loss positions;
+4. keep live source-registry facts in the data authority rather than duplicating them in scaling policy;
+5. require exact corpus, split, tokenizer, post-tokenization token-count and loss-mask identities before long training;
+6. treat a run below the 20x planning reference as a bounded scaling/smoke experiment unless a preregistered scaling experiment justifies a different budget;
+7. choose larger data budgets from scaling experiments, evaluation results and compute constraints rather than from an arbitrary fixed multiplier;
+8. keep explicit compute authorization separate from scientific readiness.
 
 ## Current planning numbers
 
@@ -42,6 +44,14 @@ For future planning only:
 
 These numbers are planning references. They do not imply that 20x is enough for the desired downstream capability, that 100x is affordable, or that data repetition is equivalent to unique data.
 
+## Data-authority contract
+
+The live source registry may report bytes and independent source families for acquisition planning. Those values remain external to this policy because they are volatile and because source admission is earlier than corpus materialization.
+
+Promotion from source acquisition to learned-stage readiness requires terminal exact-head authority, an immutable materialized corpus, global deduplication, evaluation decontamination, quality/privacy review, deterministic split/shard/pack construction, tokenizer identity, exact post-tokenization token accounting and exact unique causal-loss accounting.
+
+No source-registry byte total, no source-capacity target, no queued CI run and no stale snapshot can substitute for those artifacts.
+
 ## Long-training gate
 
 A learned-stage long run remains fail-closed until the project has immutable evidence for:
@@ -54,7 +64,8 @@ A learned-stage long run remains fail-closed until the project has immutable evi
 - deduplication;
 - quality/privacy review;
 - checkpoint/resume integrity;
-- a preregistered token/step budget and stopping rule.
+- a preregistered token/step budget and stopping rule;
+- explicit compute authorization.
 
 The machine-readable policy and validator are in `configs/scaling/data_budget_policy_v1.json` and `tools/validate_scaling_data_budget_policy.py`.
 
