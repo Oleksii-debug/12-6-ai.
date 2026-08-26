@@ -62,7 +62,13 @@
     "compute_authorization": {
       "authority": null,
       "status": "NOT_AUTHORIZED",
+      "decision_ref": null,
       "maximum_cost_usd": null
+    },
+    "training_authorization": {
+      "authority": null,
+      "status": "NOT_AUTHORIZED",
+      "decision_ref": null
     }
   },
   "truth_boundary": {
