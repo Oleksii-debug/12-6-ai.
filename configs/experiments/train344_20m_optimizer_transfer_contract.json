@@ -1,0 +1,162 @@
+{
+  "authority": "LOCAL_FREE",
+  "bounded_stability_probe": {
+    "data": "deterministic synthetic byte-token IDs; mechanics only; no corpus-quality or language-learning claim",
+    "enabled_only_after_exact_20m_modelspec_gate": true,
+    "loss_tokens_per_full_sequence_step": 255,
+    "measure": [
+      "loss",
+      "global_preclip_grad_norm",
+      "clip_activation",
+      "optimizer_step",
+      "tokens_seen",
+      "parameter_finiteness",
+      "update_to_weight_ratio_sample",
+      "wall_time"
+    ],
+    "optimized_tokens_per_lr": 8160,
+    "optimizer_steps_per_lr": 32,
+    "permitted_result_labels": [
+      "STABLE_MECHANICS_ONLY",
+      "UNSTABLE_MECHANICS_ONLY",
+      "BLOCKED_MISSING_20M_MODELSPEC"
+    ],
+    "same_initial_weights_and_same_batch_trace_across_lr_arms": true,
+    "seed": 20260826,
+    "selection_authority": "NONE",
+    "stability_gate": [
+      "all losses finite",
+      "all gradients finite before clipping",
+      "all trainable parameters finite after every committed update",
+      "exactly 32 committed optimizer updates",
+      "exactly 8160 optimized causal targets per LR arm",
+      "no Trainer poisoned/failure state"
+    ],
+    "total_optimized_tokens_all_lr_arms": 24480,
+    "forbidden_claims": [
+      "best LR",
+      "quality win",
+      "20M learned checkpoint",
+      "stage promotion",
+      "corpus transfer",
+      "production readiness"
+    ]
+  },
+  "identity_sha256": "34b6a94fab016b36f1747287449b7cdadbd8ee36af5f650b26ff99f65f085519",
+  "learned_transfer_budget": {
+    "authority": "RESEARCH-313-20M-DATA-CAPACITY-GATE / PR #410",
+    "authorized_unique_nonignored_causal_loss_positions_now": 0,
+    "reason": "no terminal final corpus ledger; DATA-301 authorized balanced no-replay capacity is zero",
+    "rule": "TRAIN-344 executes no learned-corpus optimizer comparison. A successor must freeze a new exact corpus identity and one-pass loss ledger before any learned exposure."
+  },
+  "preregistered_optimizer": {
+    "batch_sweep": false,
+    "beta_sweep": false,
+    "betas": [
+      0.9,
+      0.95
+    ],
+    "clipping_sweep": false,
+    "deterministic_algorithms": true,
+    "eps": 1e-08,
+    "gradient_accumulation_steps": 1,
+    "gradient_clip_norm": 1.0,
+    "lr_transfer": {
+      "candidate_role": "mechanical stability probes only; no candidate can be called a quality winner from TRAIN-344",
+      "candidates": [
+        0.00016,
+        0.00022,
+        0.00026
+      ],
+      "no_post_result_grid_expansion": true,
+      "nominal_10m_to_20m_multiplier": 0.7262954159190345,
+      "parameter_ratio_rule_exponent": -0.4614142226617872,
+      "scaled_terminal_anchor": 0.00021788862477571032,
+      "terminal_10m_lr": 0.0003,
+      "train125_nominal_20m_point_prediction": 0.00015724805951153044
+    },
+    "micro_batch_size": 1,
+    "optimizer": "AdamW",
+    "precision": "fp32",
+    "scheduler": "constant",
+    "sequence_length": 256,
+    "warmup_steps": 0,
+    "weight_decay": 0.1,
+    "weight_decay_sweep": false
+  },
+  "purpose": "preregister a narrow ~20M AdamW transfer before any ~20M optimizer result",
+  "schema": "12-6.train344-20m-optimizer-transfer-contract.v1",
+  "scope": {
+    "dpo": false,
+    "foreign_pretrained_weights": false,
+    "huge_sweep": false,
+    "optimizer_candidate_count": 3,
+    "paid_compute": false,
+    "rlhf": false,
+    "sft": false
+  },
+  "target_20m_gate": {
+    "allowed_parameter_window": [
+      18000000,
+      22000000
+    ],
+    "architecture_expansion": false,
+    "exact_model_spec_required_before_optimizer_step_1": true,
+    "model_spec_source": "must be supplied by a mechanically qualified preregistered ~20M MODEL worker; TRAIN-344 invents no geometry",
+    "nominal_parameter_count": 20000000,
+    "tokenizer": "inherit mechanically qualified model candidate; no tokenizer experiment is authorized here"
+  },
+  "terminal_10m_evidence": {
+    "learn217": {
+      "actions_run_id": 32952787070,
+      "corpus_replay": false,
+      "gradient_accumulation_steps": 1,
+      "micro_batch_size": 1,
+      "model_spec_sha256": "61caa5469123e23b9b72fc2024140bfca84c4c480dcb0a7e712ba800a4f22998",
+      "optimized_tokens": 2000060,
+      "optimizer": {
+        "betas": [
+          0.9,
+          0.95
+        ],
+        "eps": 1e-08,
+        "gradient_clip_norm": 1.0,
+        "learning_rate": 0.0003,
+        "name": "AdamW",
+        "scheduler": "constant",
+        "warmup_steps": 0,
+        "weight_decay": 0.1
+      },
+      "parameter_count": 10000640,
+      "precision": "fp32",
+      "role": "direct executed 10M stability/learning anchor; not an LR optimum",
+      "sequence_length": 256,
+      "source_sha": "c02c8aa38e691521ae2ab6a4ff3ea1d643efd6ef"
+    },
+    "train125_lr_prior": {
+      "coefficient": 0.0018126471043504123,
+      "formula": "lr_best = 1.8126471043504123e-3 * (parameters / 100000)^(-0.4614142226617872)",
+      "leave_one_scale_out_max_relative_error": 0.12871032865205523,
+      "parameter_exponent": -0.4614142226617872,
+      "role": "bounded scaling prior only; never promoted as terminal 10M LR selection",
+      "source_sha": "ed7a7e0231dea89ef82a309c4c76014e20d14e4c"
+    },
+    "train243_train325_clipping": {
+      "actual_optimized_tokens_per_arm": 131294,
+      "final_decision": "FINAL_RETAIN_CLIP_1P0_FOR_TESTED_LEARNED_10M_IDENTITY",
+      "paired_seeds": [
+        20260825,
+        20260826,
+        20260827
+      ],
+      "scope_warning": "clip=1.0 is not claimed universal and must be revalidated when corpus identity changes",
+      "selected_gradient_clip_norm": 1.0,
+      "train243_actions_run_id": 32960810083,
+      "train243_artifact_digest": "sha256:d99bcf3bdc96556bb4e1da87333e08bcfeb759a1cc27c94bdddd926faab4a526",
+      "train243_artifact_id": 9604676694,
+      "train243_source_sha": "7ff794749a6c6f6f8f905314a29f64e6daaf2211",
+      "train325_source_sha": "c74f7ae00207f8eb107f5f3b756f0a2184a45a45"
+    }
+  },
+  "worker_id": "TRAIN-344-20M-OPTIMIZER-TRANSFER-CONTRACT"
+}
