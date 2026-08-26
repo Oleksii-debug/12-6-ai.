@@ -1,0 +1,219 @@
+name: RESEARCH-220 One Three Ten Million V2
+
+on:
+  pull_request:
+    branches: [research192/one-three-ten-million-20260826]
+
+concurrency:
+  group: research220-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+      - name: Prove frozen scientific producer bytes
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD:src/twelve_six/research192_scaling_transfer.py)" = "ae7a3eaab6e677fdb07cb2eae5373bb7198b49e0"
+          test "$(git rev-parse HEAD:src/twelve_six/research212_contract_recovery.py)" = "0775f348d8170951c6ba55242ac7c2e1557c8451"
+          test "$(git rev-parse HEAD:tests/test_research192_scaling_transfer.py)" = "bd9a9b951f037775ca1d9957bfd543ff7c3bbc0f"
+      - uses: ./.github/actions/execution-bootstrap
+        with:
+          capabilities: runtime,tests
+          venv: .research220-contract
+          command: python -m pytest -q tests/test_research192_scaling_transfer.py tests/test_research220_empirical_scaling.py
+          manifest: research220-contract/environment.json
+      - name: Independently revalidate frozen contract before training
+        env:
+          PYTHONPATH: src
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          PY=.research220-contract/bin/python
+          "$PY" -m py_compile \
+            src/twelve_six/research192_scaling_transfer.py \
+            src/twelve_six/research212_contract_recovery.py \
+            src/twelve_six/research220_empirical_scaling.py
+          "$PY" -m pytest -q tests/test_research192_scaling_transfer.py tests/test_research220_empirical_scaling.py
+          "$PY" -m twelve_six.research192_scaling_transfer validate-static
+          "$PY" -m twelve_six.research212_contract_recovery validate-static
+          "$PY" -m twelve_six.research212_contract_recovery diagnose-historical --json
+          "$PY" -m twelve_six.research212_contract_recovery preflight \
+            --repo . --source-sha "$SOURCE_SHA" --out research220-contract/preflight
+          "$PY" - <<'PY'
+          import json
+          from pathlib import Path
+          p=json.loads(Path('research220-contract/preflight/contract-preflight.json').read_text())
+          assert p['status']=='PASS'
+          assert p['corpus_identity_sha256']=='422f545da93526ceba2c0ff738e0b9deac65f35bfb31d87d2aab068cda091fc8'
+          assert p['evaluation_identity_sha256']=='7189e6df053574beb686727c94e684cdbaf08a34ef33aa953eff7cdae0320113'
+          assert p['frozen_contract_identity_sha256']=='458cbb22e43bb405029fc256f4d9f29f3ab6b81bcab0db69c9b8cde5d6d5798a'
+          assert p['resolved_contract_identity_sha256']==p['frozen_contract_identity_sha256']
+          assert p['optimized_token_ledger']=={'18':17125,'70':66417,'139':131938}
+          assert p['truth_boundary']['optimizer_updates']==0
+          assert p['truth_boundary']['training_matrix_executed'] is False
+          assert p['truth_boundary']['paid_compute'] is False
+          expected={
+            '1m':(1037696,'ff3cee542a1f75bb4e1eff8d7d24d72533af8f4f3d82bd064fb1cbfeba8c8d07'),
+            '3m':(3213120,'462c85da80a3c0d7d6a4f1a570b87d208b1847d8a57b12a4d9be7e36846b65dc'),
+            '10m':(10000640,'f01cf22d3a44bd72be74691ca4b4a75b093851f45fc2b252c5116eb72370dc53'),
+          }
+          actual={x['scale']:(x['parameter_count'],x['model_spec_sha256']) for x in p['model_construction']}
+          assert actual==expected
+          print(json.dumps({'status':'PASS','preflight_identity_sha256':p['identity_sha256']},sort_keys=True))
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: research220-contract
+          path: |
+            research220-contract/environment.json
+            research220-contract/preflight/contract-preflight.json
+          if-no-files-found: error
+          retention-days: 30
+
+  train:
+    needs: contract
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {scale: 1m, seed: 1337, arm: 1m-seed1337}
+          - {scale: 1m, seed: 1338, arm: 1m-seed1338}
+          - {scale: 3m, seed: 1337, arm: 3m-seed1337}
+          - {scale: 3m, seed: 1338, arm: 3m-seed1338}
+          - {scale: 10m, seed: 1337, arm: 10m-seed1337}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+      - name: Create arm directory
+        run: mkdir -p research220-evidence/${{ matrix.arm }}
+      - uses: ./.github/actions/execution-bootstrap
+        with:
+          capabilities: runtime,tests
+          venv: .research220
+          command: python -m pytest -q tests/test_research192_scaling_transfer.py tests/test_research220_empirical_scaling.py
+          manifest: research220-evidence/${{ matrix.arm }}/environment.json
+      - name: Execute frozen RESEARCH-192 arm with fresh-process resume and verification
+        env:
+          PYTHONPATH: src
+          SCALE: ${{ matrix.scale }}
+          SEED: ${{ matrix.seed }}
+          ARM: ${{ matrix.arm }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          OUT="research220-evidence/${ARM}"
+          PY=.research220/bin/python
+          "$PY" -m twelve_six.research192_scaling_transfer prepare \
+            --repo . --source-sha "$SOURCE_SHA" --out "$OUT" --scale "$SCALE" --seed "$SEED"
+          "$PY" -m twelve_six.research192_scaling_transfer phase1 \
+            --repo . --source-sha "$SOURCE_SHA" --out "$OUT" --scale "$SCALE" --seed "$SEED"
+          "$PY" -m twelve_six.research192_scaling_transfer resume \
+            --repo . --source-sha "$SOURCE_SHA" --out "$OUT" --scale "$SCALE" --seed "$SEED"
+          "$PY" -m twelve_six.research192_scaling_transfer verify \
+            --repo . --source-sha "$SOURCE_SHA" --out "$OUT" --scale "$SCALE" --seed "$SEED"
+          "$PY" -m twelve_six.research192_scaling_transfer summarize \
+            --out "$OUT" --scale "$SCALE" --seed "$SEED"
+      - name: Preserve exact arm evidence
+        env:
+          SCALE: ${{ matrix.scale }}
+          ARM: ${{ matrix.arm }}
+        run: |
+          set -euo pipefail
+          ROOT="research220-evidence/${ARM}"
+          DEST="research220-upload/${ARM}"
+          mkdir -p "$DEST/${SCALE}"
+          cp "$ROOT/environment.json" "$DEST/environment.json"
+          cp "$ROOT/truth.json" "$DEST/truth.json"
+          cp "$ROOT/run-manifest.json" "$DEST/run-manifest.json"
+          cp "$ROOT/research192-arm.json" "$DEST/research192-arm.json"
+          cp "$ROOT/${SCALE}/phase1.json" "$DEST/${SCALE}/phase1.json"
+          cp "$ROOT/${SCALE}/resume.json" "$DEST/${SCALE}/resume.json"
+          cp "$ROOT/${SCALE}/fresh-verify.json" "$DEST/${SCALE}/fresh-verify.json"
+          cp "$ROOT/${SCALE}/train-curve.jsonl" "$DEST/${SCALE}/train-curve.jsonl"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: research220-${{ matrix.arm }}
+          path: research220-upload/${{ matrix.arm }}
+          if-no-files-found: error
+          retention-days: 30
+
+  compare:
+    needs: train
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+      - uses: ./.github/actions/execution-bootstrap
+        with:
+          capabilities: runtime,tests
+          venv: .research220-compare
+          command: python -m pytest -q tests/test_research192_scaling_transfer.py tests/test_research220_empirical_scaling.py
+          manifest: research220-final/environment.json
+      - uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16
+        with:
+          pattern: research220-*-seed*
+          path: research220-collected
+      - uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16
+        with:
+          name: research220-contract
+          path: research220-contract-download
+      - name: Download and verify accepted exact M150 reproducibility control
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p m150-incumbent
+          curl --fail --location --silent --show-error \
+            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/Oleksii-debug/12-6-ai./actions/artifacts/9595677772/zip" \
+            -o m150.zip
+          echo "c00b7e9006320f8916c739a3311e8cc47ad0d0b16957f8ebd7d19233fd9f1c71  m150.zip" | sha256sum -c -
+          unzip -q m150.zip -d m150-incumbent
+      - name: Build base comparison and RESEARCH-220 V2 empirical report
+        env:
+          PYTHONPATH: src
+        run: |
+          set -euo pipefail
+          PY=.research220-compare/bin/python
+          "$PY" -m twelve_six.research192_scaling_transfer compare \
+            --arms-root research220-collected \
+            --m150-root m150-incumbent \
+            --out research220-final/base
+          "$PY" -m twelve_six.research220_empirical_scaling \
+            --comparison research220-final/base/research192-scaling-comparison.json \
+            --arms-root research220-collected \
+            --m150-root m150-incumbent \
+            --contract-preflight research220-contract-download/preflight/contract-preflight.json \
+            --out research220-final/research220-one-three-ten-million-v2.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: research220-one-three-ten-million-v2
+          path: research220-final
+          if-no-files-found: error
+          retention-days: 30
