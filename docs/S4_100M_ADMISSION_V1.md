@@ -10,6 +10,8 @@ The bound predecessor is MODEL-341 at `e4ff486fd90802fc123bebf60eed4e59196a98df`
 
 The live ~20M controller still blocks long training because the research corpus has no terminal corpus/shard identity and authorizes zero unique no-replay real loss positions. D05 corruption remediation is also nonterminal. S4 must inherit those fail-closed boundaries rather than interpreting a mechanically valid model as a scientifically admitted learned model.
 
+A newer upstream control-plane artifact, `configs/control/pretraining_token_budget_v1.json`, owns token-budget policy. It classifies the currently preregistered 20M-target campaign as `PIPELINE_PILOT_NOT_SCIENCE_COMPLETE_20M_BASELINE`: 20M requested unique targets are only about 0.97 target/parameter and about 4.85% of the 20-tokens/parameter planning reference. This S4 package binds that authority instead of creating a competing token-budget policy.
+
 ## Why the existing S4 candidate needs review
 
 `configs/stages/s4_100m_accelerator.candidate.json` is a useful engineering candidate, but its explicit selection rationale chooses MHA because the then-current GQA path expanded K/V heads before SDPA. That rationale predates MODEL-341, which now mechanically qualifies a 10-query/2-KV GQA model and a static KV cache.
@@ -55,7 +57,9 @@ No S4 learned run is admissible without:
 5. an exact unique no-replay causal-loss ledger;
 6. a preregistered optimized-target budget that the corpus can actually support.
 
-The contract records 20 tokens/parameter only as a research reference from compute-optimal scaling work, not as a required budget. That reference is about 412.3M tokens for MODEL-341 and about 2.0B tokens for the ~100M controls. The actual 12-6 budget must be chosen after corpus size/quality, tokenizer efficiency, pilot loss curves, hardware throughput, and cost are known. Repeating a small corpus to hit a scaling-law number is not an acceptable substitute for data.
+The canonical token-budget controller records 20 tokens/parameter only as a planning reference. That corresponds to about 412.3M tokens for MODEL-341, 2.0B for canonical 100M, and 20B for canonical 1B. The two provisional GQA geometries are slightly off exactly 100M, so this package records their arithmetic projections only; those numbers are not independent policy and never authorize compute.
+
+The actual 12-6 budget must be chosen after corpus size/quality, tokenizer efficiency, pilot loss curves, hardware throughput, and cost are known. Repeating a small corpus to hit a scaling-law number is not an acceptable substitute for data. The first 20M learned checkpoint may be a valuable pipeline/learning-signal pilot while still being scientifically insufficient as the final 20M quality baseline.
 
 ## Runtime and scale path
 
@@ -69,7 +73,7 @@ For GQA, the acceptance evidence must include the actual backend selected by PyT
 
 S4 remains blocked until all of the following are terminal and bound to exact identities:
 
-- learned predecessor evidence or an explicit owner-approved scientific exception;
+- a learned 20M predecessor and scaling-curve/data-budget evidence, or an explicit preregistered scientific exception;
 - final corpus/shards/decontamination/unique-loss ledger;
 - tokenizer decision;
 - one frozen S4 ModelSpec + init identity;
@@ -83,6 +87,7 @@ No item in this document authorizes paid compute.
 
 ## Sources
 
+- Canonical project token-budget policy: `configs/control/pretraining_token_budget_v1.json`
 - Google DeepMind, *An empirical analysis of compute-optimal large language model training*: https://deepmind.google/blog/an-empirical-analysis-of-compute-optimal-large-language-model-training/
 - Ainslie et al., *GQA: Training Generalized Multi-Query Transformer Models from Multi-Head Checkpoints*: https://aclanthology.org/2023.emnlp-main.298/
 - PyTorch SDPA documentation: https://docs.pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention
