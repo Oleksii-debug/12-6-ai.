@@ -13,8 +13,13 @@ on:
       - "tools/run_next100_065c_cross_source_dedup_v5.py"
       - "tools/run_next100_065d_cross_source_dedup_v6.py"
       - "tools/validate_next100_065c_authority_bindings.py"
+      - "tools/validate_next100_065d_authority_bindings.py"
       - "docs/NEXT100_065C_CROSS_SOURCE_DEDUP_V5.md"
   workflow_dispatch:
+
+concurrency:
+  group: next100-065d-dedup-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -52,33 +57,12 @@ jobs:
           sudo apt-get install -y --no-install-recommends poppler-utils
           pdftotext -v
 
-      - name: Hard-bind inherited static and live terminal authorities
+      - name: Hard-bind inherited and V6 live terminal authorities
         run: |
           python tools/validate_next100_065c_authority_bindings.py
           python tools/validate_next100_065c_authority_bindings.py --github-live
-
-      - name: Verify V6 additive authority metadata
-        run: |
-          python - <<'PY'
-          import json
-          from pathlib import Path
-
-          cfg = json.loads(Path("configs/data/next100_065d_cross_source_dedup_v6.json").read_text())
-          assert cfg["schema_version"] == "12-6.next100-065d-cross-source-dedup.v6"
-          np = cfg["numpy"]
-          pg = cfg["gutenberg"]
-          assert np["head_sha"] == "bca7a4c8afc5cb2546c35e3a0ebad9619cd3a4a8"
-          assert np["dedicated_workflow_run"] == 32998548535
-          assert np["dedicated_workflow_conclusion"] == "success"
-          assert np["exact_capacity_bytes"] == 36898
-          assert pg["head_sha"] == "c50b3f9cf871792c03886bdc1ccdc144812be88f"
-          assert pg["authority_identity_sha256"] == "1b1bad11b688826ee4f73701c08e3b5af76ba16e8d8a806e008d5b84bee0b97b"
-          assert pg["dedicated_workflow_run"] == 32998859164
-          assert pg["dedicated_workflow_conclusion"] == "success"
-          assert pg["exact_capacity_bytes"] == 1672110
-          assert cfg["expected_vector"]["expected_total_if_cpython_accepted_capacity_is_15540"] == 2045180
-          assert all(value is False for value in cfg["claim_boundary"].values())
-          PY
+          python tools/validate_next100_065d_authority_bindings.py
+          python tools/validate_next100_065d_authority_bindings.py --github-live
 
       - name: Universal exact LOCAL_FREE bootstrap
         uses: ./.github/actions/execution-bootstrap
@@ -99,6 +83,7 @@ jobs:
           tools/run_next100_065c_cross_source_dedup_v5.py
           tools/run_next100_065d_cross_source_dedup_v6.py
           tools/validate_next100_065c_authority_bindings.py
+          tools/validate_next100_065d_authority_bindings.py
           tests/test_next100_065c_cross_source_dedup_v5.py
           tests/test_next100_065d_cross_source_dedup_v6.py
 
@@ -119,6 +104,7 @@ jobs:
           tools/run_next100_065c_cross_source_dedup_v5.py
           tools/run_next100_065d_cross_source_dedup_v6.py
           tools/validate_next100_065c_authority_bindings.py
+          tools/validate_next100_065d_authority_bindings.py
           tests/test_next100_065c_cross_source_dedup_v5.py
           tests/test_next100_065d_cross_source_dedup_v6.py
 
