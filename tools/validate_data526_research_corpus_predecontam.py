@@ -17,16 +17,16 @@ EXPECTED_SUPERSEDED_ISSUE = 521
 EXPECTED_CONVERGENCE_PR = 538
 EXPECTED_SUPERSEDED_PR = 527
 EXPECTED_CONVERGENCE_BASE = "b0523ccbc4b957615aac849d476cfa851be87578"
-EXPECTED_OBSERVED_HEAD = "94dce83cbe611144f961b9f93b3be273345a7f62"
-EXPECTED_REPORTED_REGISTRY_ID = "77fb69c558df8c59fdae00583c955c62ad088cda98fd16b335eedb26fb2d7526"
+EXPECTED_OBSERVED_HEAD = "ec7ec036bde3b280043a93e064a0c8cb3416c2e4"
+EXPECTED_REPORTED_REGISTRY_ID = "448dd61ed3e0d78d0bca9e202529a79c02811fd67beebe4833373d0c2ab0c0a7"
 EXPECTED_VECTOR = {
     "by_stratum": {
-        "code": {"bytes": 296343, "families": 5},
-        "en": {"bytes": 168544, "families": 4},
+        "code": {"bytes": 51875, "families": 4},
+        "en": {"bytes": 150643, "families": 3},
         "uk": {"bytes": 100856, "families": 4},
     },
-    "independent_families": 13,
-    "source_capacity_bytes": 565743,
+    "independent_families": 11,
+    "source_capacity_bytes": 303374,
 }
 
 
@@ -70,14 +70,14 @@ def validate_doc(doc: dict[str, Any]) -> None:
     _require(conv.get("base_head_sha") == EXPECTED_CONVERGENCE_BASE, "source convergence base drift")
     _require(conv.get("observed_head_sha") == EXPECTED_OBSERVED_HEAD, "source convergence observed-head drift")
     _require(conv.get("pr_state") == "OPEN_DRAFT", "blocker snapshot expects open draft convergence PR")
-    _require(conv.get("exact_head_ci_state") == "NOT_PUBLISHED_NONTERMINAL", "nonterminal/no-CI truth weakened")
+    _require(conv.get("exact_head_ci_state") == "QUEUED_NONTERMINAL", "queued/nonterminal truth weakened")
     _require(conv.get("reported_registry_identity_sha256_non_authoritative_until_terminal") == EXPECTED_REPORTED_REGISTRY_ID, "reported registry identity drift")
     _require(conv.get("terminal_authority_consumed") is False, "nonterminal convergence must not be consumed")
 
     vector = conv["reported_pre_successor_global_dedup_vector_non_authoritative_until_terminal"]
     _require(vector == EXPECTED_VECTOR, "reported non-authoritative stratum vector drift")
-    _require(sum(item["bytes"] for item in vector["by_stratum"].values()) == 565743, "stratum byte vector does not sum")
-    _require(sum(item["families"] for item in vector["by_stratum"].values()) == 13, "stratum family vector does not sum")
+    _require(sum(item["bytes"] for item in vector["by_stratum"].values()) == 303374, "stratum byte vector does not sum")
+    _require(sum(item["families"] for item in vector["by_stratum"].values()) == 11, "stratum family vector does not sum")
 
     freeze = doc["candidate_freeze"]
     _require(freeze.get("frozen") is False, "candidate must not be frozen before source convergence")
