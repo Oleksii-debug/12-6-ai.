@@ -1,0 +1,92 @@
+name: NEXT100-025 Derzhgeocadastre Open Registry
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qualify-open-registry:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact source head
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+
+      - name: Static rights and family contract
+        run: |
+          python -m py_compile tools/next100_025_data_gov_registry_snapshot.py
+          python - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          cfg=json.loads(Path('configs/data/next100_025_derzhgeocadastre_open_registry_v1.json').read_text())
+          assert cfg['worker']=='NEXT100-025-DATA-UA-GOV-OPEN'
+          assert cfg['local_free_only'] is True
+          assert cfg['family']['family_id']=='ua.data-gov.derzhgeocadastre.dataset-register'
+          assert 'ua.rada.open-data.laws-texts' in cfg['family']['independent_from']
+          assert 'ua.kmu.portal.secretariat-news' in cfg['family']['independent_from']
+          assert cfg['rights']['uses']['model_training']=='ALLOWED'
+          assert cfg['rights']['uses']['redistribution']=='ALLOWED_WITH_ATTRIBUTION'
+          assert cfg['rights']['uses']['evaluation']=='NOT_ADMITTED'
+          p=Path(cfg['rights_evidence']['path'])
+          assert hashlib.sha256(p.read_bytes()).hexdigest()==cfg['rights_evidence']['sha256']
+          PY
+
+      - name: Acquire resource twice and enforce identity language privacy quality dedup
+        run: |
+          set -euo pipefail
+          mkdir -p next100-025-data-gov-evidence
+          python tools/next100_025_data_gov_registry_snapshot.py \
+            --config configs/data/next100_025_derzhgeocadastre_open_registry_v1.json \
+            --output next100-025-data-gov-evidence \
+            | tee next100-025-data-gov-evidence.stdout.json
+
+      - name: Assert training authority boundary
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          cfg=json.loads(Path('configs/data/next100_025_derzhgeocadastre_open_registry_v1.json').read_text())
+          report=json.loads(Path('next100-025-data-gov-evidence/report.json').read_text())
+          assert report['language']['passed'] is True
+          assert report['privacy']['passed'] is True
+          assert report['normalized']['accepted_records'] >= cfg['quality']['min_accepted_records']
+          assert report['normalized']['utf8_bytes'] >= cfg['quality']['min_total_normalized_utf8_bytes']
+          assert report['evaluation_authority']=='NOT_ADMITTED'
+          rows=[json.loads(line) for line in Path('next100-025-data-gov-evidence/train.jsonl').read_text().splitlines() if line.strip()]
+          assert rows
+          if cfg['mode']=='LOCKED':
+              assert report['status']=='PASS'
+              assert all(row['training_eligible'] is True for row in rows)
+          else:
+              assert report['status']=='PROBE_LOCK_REQUIRED'
+              assert all(row['training_eligible'] is False for row in rows)
+          assert all(row['evaluation_eligible'] is False for row in rows)
+          PY
+
+      - name: Upload bounded evidence package
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: next100-025-data-gov-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            configs/data/next100_025_derzhgeocadastre_open_registry_v1.json
+            data/external/rights-evidence/next100-025/data-gov-derzhgeocadastre-register-20260826.txt
+            next100-025-data-gov-evidence/**
+            next100-025-data-gov-evidence.stdout.json
+          if-no-files-found: warn
+          retention-days: 90
