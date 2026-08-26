@@ -1,35 +1,48 @@
-name: RESEARCH-123 Real T/N Scaling
+name: RECOVER-171 RESEARCH-123 DATA-25 T/N Matrix
 
 on:
   pull_request:
     paths:
       - "tools/research123_real_tn_scaling.py"
+      - "tools/research123_data25_adapter.py"
       - "tools/run_research123_real_tn_scaling.py"
+      - "tests/test_recover171_research123_data25.py"
       - ".github/workflows/research123-real-tn-scaling.yml"
+      - "src/twelve_six/milestone100_first_learned.py"
+      - "src/twelve_six/milestone150_learned_base_ladder.py"
+      - "data/corpus/v0.1/manifest.json"
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  real-bounded-tn-matrix:
+  data25-tn-matrix:
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
       - name: Prove exact source checkout
         env:
-          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.11.16"
+      - name: Scope-check only the new orchestration harness
+        run: |
+          python -m venv .recover171-preflight
+          .recover171-preflight/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/dev.lock.txt
+          .recover171-preflight/bin/python -m py_compile tools/research123_real_tn_scaling.py tools/research123_data25_adapter.py tools/run_research123_real_tn_scaling.py tests/test_recover171_research123_data25.py
+          .recover171-preflight/bin/ruff check tools/research123_data25_adapter.py tools/run_research123_real_tn_scaling.py tests/test_recover171_research123_data25.py
+          .recover171-preflight/bin/pytest -q tests/test_recover171_research123_data25.py
       - name: Verify exact locked runtime identity
         env:
-          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: >-
           python tools/verify_locked_environment.py
           --profile linux-x86_64
@@ -42,70 +55,47 @@ jobs:
           .research123-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
           .research123-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/dev.lock.txt
           PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .research123-locked/bin/python -m pip install --no-deps --no-build-isolation -e .
-      - name: Scope-check only the new orchestration harness
+      - name: Locked-runtime recovery smoke contract
         run: |
-          .research123-locked/bin/python -m py_compile tools/research123_real_tn_scaling.py tools/run_research123_real_tn_scaling.py
-          .research123-locked/bin/ruff check tools/research123_real_tn_scaling.py tools/run_research123_real_tn_scaling.py
-      - name: Execute fixed-family real bounded T/N matrix
+          .research123-locked/bin/python -m py_compile tools/research123_real_tn_scaling.py tools/research123_data25_adapter.py tools/run_research123_real_tn_scaling.py
+          .research123-locked/bin/python - <<'PY'
+          import sys
+          sys.path.insert(0, "tools")
+          import research123_data25_adapter as adapter
+          assert adapter.EXPECTED_CORPUS_ID == "422f545da93526ceba2c0ff738e0b9deac65f35bfb31d87d2aab068cda091fc8"
+          assert adapter.BATCH_SIZE == 8
+          assert adapter.SEQUENCE_LENGTH == 128
+          assert adapter.LOSS_TOKENS_PER_STEP == 1016
+          assert adapter.TARGET_TN_RATIOS == (1.0 / 32.0, 1.0 / 8.0, 1.0 / 2.0, 2.0)
+          PY
+      - name: Execute fixed-family DATA-25 T/N matrix
         env:
-          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           .research123-locked/bin/python tools/run_research123_real_tn_scaling.py \
             --source-sha "$SOURCE_SHA" \
-            --output-dir evidence/research123 \
-            --output evidence/research123/research123-real-tn-scaling.json \
+            --output-dir evidence/recover171-research123 \
+            --output evidence/recover171-research123/research123-data25-tn-scaling.json \
             --torch-threads 2
           .research123-locked/bin/python tools/run_research123_real_tn_scaling.py \
-            --validate evidence/research123/research123-real-tn-scaling.json
+            --validate evidence/recover171-research123/research123-data25-tn-scaling.json
       - name: Print decision ledger
         run: |
           .research123-locked/bin/python - <<'PY'
           import json
+          import sys
           from pathlib import Path
-          report = json.loads(Path("evidence/research123/research123-real-tn-scaling.json").read_text())
-          print(json.dumps({
-              "source": report["source"],
-              "data_truth_boundary": {
-                  "real_external_source_bytes": report["data"]["real_external_source_bytes"],
-                  "representative_broad_pretraining_corpus": report["data"]["representative_broad_pretraining_corpus"],
-                  "dataset_identity_sha256": report["data"]["dataset_identity_sha256"],
-                  "intake_manifest_sha256": report["data"]["intake_manifest_sha256"],
-              },
-              "models": [
-                  {
-                      "label": candidate["label"],
-                      "parameters": candidate["parameter_count"],
-                      "baseline_train_bpb": candidate["baseline"]["training_eval"]["bpb"],
-                      "baseline_val_bpb": candidate["baseline"]["validation_eval"]["bpb"],
-                      "points": [
-                          {
-                              "T_over_N": point["realized_t_per_n"],
-                              "optimized_tokens": point["optimized_tokens"],
-                              "train_bpb": point["training_eval"]["bpb"],
-                              "val_bpb": point["validation_eval"]["bpb"],
-                              "gap_bpb": point["generalization_gap_bpb"],
-                              "recycle_factor": point["memorization"]["corpus_recycle_factor"],
-                          }
-                          for point in candidate["points"]
-                      ],
-                      "overfit_reversals": candidate["overfit_reversals"],
-                  }
-                  for candidate in report["candidates"]
-              ],
-              "resume": report["fresh_process_resume"],
-              "selected": report["selected_learned_base_checkpoint"],
-              "recommendation": report["recommendation"],
-              "milestone100": report["milestone100_status"],
-              "machine": report["machine_manifest"],
-              "report_sha256": report["report_sha256"],
-          }, indent=2, sort_keys=True))
+          sys.path.insert(0, "tools")
+          import research123_data25_adapter as adapter
+          path = Path("evidence/recover171-research123/research123-data25-tn-scaling.json")
+          print(json.dumps(adapter.decision_ledger(path), indent=2, sort_keys=True))
           PY
-      - name: Upload exact RESEARCH-123 evidence and checkpoints
+      - name: Upload exact RECOVER-171 evidence and checkpoints
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: research123-real-tn-scaling
+          name: recover171-research123-data25-tn
           path: |
             locked-environment-linux-x86_64.json
-            evidence/research123/
+            evidence/recover171-research123/
           if-no-files-found: error
           retention-days: 30
