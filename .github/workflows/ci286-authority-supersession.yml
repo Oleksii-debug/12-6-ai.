@@ -1,0 +1,29 @@
+name: CI-286 Authority Supersession
+
+on:
+  pull_request:
+    paths:
+      - "evidence/ci286/**"
+      - "scripts/validate_authority_supersession.py"
+      - "tests/test_authority_supersession_graph.py"
+      - ".github/workflows/ci286-authority-supersession.yml"
+  push:
+    paths:
+      - "evidence/ci286/**"
+      - "scripts/validate_authority_supersession.py"
+      - "tests/test_authority_supersession_graph.py"
+      - ".github/workflows/ci286-authority-supersession.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate machine authority graph
+        run: python3 scripts/validate_authority_supersession.py
+      - name: Run fail-closed graph tests
+        run: python3 -m unittest tests.test_authority_supersession_graph
