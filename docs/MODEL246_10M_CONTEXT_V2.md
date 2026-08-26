@@ -8,7 +8,14 @@ Worker: `MODEL-246-10M-CONTEXT-V2`
 
 No MODEL-246 optimizer update was executed. This is intentional fail-closed behavior, not an unsuccessful numerical arm.
 
-At the execution cutoff the repository did not publish a terminal `TRAIN-243-10M-CLIPPING-AUTHORITY-V2` or `TRAIN-244-10M-LR-BETA-V2` branch/PR/commit/artifact. The visible `data230/corpus-v03-external-real-20260826` branch points to `6d994e2aece6c44e28c1a2c344ac98b5a8fd5e08`, whose commit message is `DATA-214 restore retained quality and privacy evidence`; it therefore cannot be treated as terminal DATA-230. `TRAIN-245-10M-EFFECTIVE-BATCH-V2` is also not published at this cutoff, so MODEL-246 does not guess an effective batch unless terminal TRAIN-244 explicitly freezes it.
+Live authority refresh after initial publication:
+
+- `TRAIN-243-10M-CLIPPING-AUTHORITY-V2` remains absent; branch search returns no matching branch.
+- `TRAIN-244-10M-LR-BETA-V2` is now published as draft PR #376 at `a4b0543738545bbb37d26446c56ab5056c982d86`, but its decision is `INSUFFICIENT_EVIDENCE`. It executed zero optimizer updates because TRAIN-243 is absent, so it selects no exact 10M optimizer recipe.
+- `TRAIN-245-10M-EFFECTIVE-BATCH-V2` is now published as draft PR #377 at `7269a96102ecaa9ecc44731abd94cd9a7252bc35`, but is `INSUFFICIENT_EVIDENCE / BLOCKED_MISSING_TRAIN244_AUTHORITY` and selects no effective batch.
+- `data230/corpus-v03-external-real-20260826` still points to `6d994e2aece6c44e28c1a2c344ac98b5a8fd5e08`, commit `DATA-214 restore retained quality and privacy evidence`; this is not terminal DATA-230.
+
+Therefore MODEL-246 cannot bind one immutable accepted optimizer/data contract without guessing scientific controls.
 
 ## Historical MODEL-197 evidence
 
@@ -38,4 +45,4 @@ No default context may move away from 256 on a single seed. A replacement requir
 
 ## Machine evidence
 
-`evidence/model246/readiness.json` is self-hashed and records the exact blocker state plus the predecessor control. `tools/validate_model246_readiness.py` rejects any mutation that silently turns the blocked report into a numerical V2 claim. The dedicated workflow is LOCAL_FREE only and performs no model training while prerequisites are absent.
+`evidence/model246/readiness.json` is self-hashed as `f504d4c751bb2572f9993f76ea0bf8f38e6f298c2176d8252813a820cbed182a` and records the live blocker state plus the predecessor control. `tools/validate_model246_readiness.py` binds the observed TRAIN-244/245 blocked heads and rejects any mutation that silently turns the blocked report into a numerical V2 claim. The dedicated workflow is LOCAL_FREE only and performs no model training while prerequisites are absent.
