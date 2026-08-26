@@ -1,0 +1,118 @@
+{
+  "schema_version": "12-6.next100-042-django-code-source.v1",
+  "authority_id": "NEXT100-042-CODE-DJANGO",
+  "captured_at": "2026-08-26T18:30:00Z",
+  "execution_profile": "LOCAL_FREE",
+  "upstream": {
+    "repository_url": "https://github.com/django/django",
+    "source_family": "github:django/django",
+    "tag": "6.0.8",
+    "tag_object_sha1": "22ab6cfe6bfcca9f5fbc1d14fe1b7cb3cf89f375",
+    "commit": "b2821457e8bfa9e9066837b9f9b3a3955224ab19",
+    "tree_sha1": "7811eb2a3bfbf7a606ae26212d59e3102048581a"
+  },
+  "licenses": [
+    {
+      "path": "LICENSE",
+      "spdx": "BSD-3-Clause",
+      "blob_sha1": "5f4f225dd282aa7e4361ec3c2750bbbaaed8ab1f",
+      "size_bytes": 1552,
+      "purpose": "primary Django copyright and redistribution terms"
+    },
+    {
+      "path": "LICENSE.python",
+      "spdx": "Python-2.0",
+      "blob_sha1": "2fc28e876fa1fc8c536f46b81789e2bb51b323c0",
+      "size_bytes": 14256,
+      "purpose": "conservative retention of upstream Python-derived-code compliance notice"
+    }
+  ],
+  "selected_files": [
+    {
+      "source_id": "code.django.core.signing",
+      "path": "django/core/signing.py",
+      "blob_sha1": "d6be4a5d804916e3d7705018f485c4c374d90cc3",
+      "size_bytes": 9594,
+      "language": "python",
+      "substantive_role": "cryptographic signing and timestamped serialization implementation"
+    },
+    {
+      "source_id": "code.django.db.transaction",
+      "path": "django/db/transaction.py",
+      "blob_sha1": "1710d1ef17497c4aef3f4b65498dd539d0ee0050",
+      "size_bytes": 12506,
+      "language": "python",
+      "substantive_role": "database transaction and atomic-context implementation"
+    },
+    {
+      "source_id": "code.django.urls.resolvers",
+      "path": "django/urls/resolvers.py",
+      "blob_sha1": "6c681f9d8d32a35ca512cf3d08b68ab5bc358777",
+      "size_bytes": 32056,
+      "language": "python",
+      "substantive_role": "URL pattern resolution and resolver graph implementation"
+    }
+  ],
+  "rights_decision": {
+    "policy_ref": "policy://12-6/data/explicit-model-training-evidence-v1",
+    "reviewer_ref": "NEXT100-042-CODE-DJANGO",
+    "reviewed_at": "2026-08-26",
+    "model_training": "ALLOWED",
+    "redistribution": "ALLOWED",
+    "evaluation_use": "NOT_SEPARATELY_AUTHORIZED",
+    "evaluation_reserved": false,
+    "basis": "The exact upstream BSD-3-Clause text permits redistribution and use in source and binary forms, with or without modification, subject to notice and non-endorsement conditions. The project therefore admits these exact pinned objects for model-training use. Public availability alone is not the basis. Because upstream states that Django includes some Python-standard-library-derived code without mapping that notice to every file, redistributed evidence retains both LICENSE and LICENSE.python as a conservative compliance boundary.",
+    "redistribution_obligations": [
+      "Retain the Django copyright notice, BSD-3-Clause conditions, and disclaimer with source redistribution.",
+      "For binary or transformed redistribution, reproduce the Django copyright notice, conditions, and disclaimer in documentation or accompanying materials.",
+      "Do not use the Django name or contributor names to endorse or promote derived products without prior written permission.",
+      "Retain LICENSE.python alongside the bounded snapshot evidence to avoid under-compliance with upstream Python-derived-code notice requirements."
+    ]
+  },
+  "quality_gates": {
+    "normalization": "STRICT_UTF8_IDENTITY_PRESERVE_V1",
+    "python_parse": "ast.parse exact decoded bytes",
+    "secret_scan": "private-key, GitHub token, OpenAI-like key, AWS access key, JWT-like bearer token patterns",
+    "privacy_scan": "email-address and obvious credential-literal heuristics; fail closed on hits",
+    "dedup": {
+      "exact": "raw SHA-256 equality",
+      "near": "5-token shingle Jaccard",
+      "threshold": 0.85
+    }
+  },
+  "incumbent_code_registry_anchor": {
+    "authority": "DATA-227-REAL-CODE-SOURCE-ADMISSION-V2",
+    "source_head": "8ebdb2e132ed7bae5245e9d4c140752640ab9885",
+    "families": [
+      "github:encode/httpx",
+      "github:psf/requests"
+    ],
+    "objects": [
+      {
+        "source_id": "code.encode.httpx._content",
+        "repository_url": "https://github.com/encode/httpx",
+        "commit": "b5addb64f0161ff6bfe94c124ef76f6a1fba5254",
+        "path": "httpx/_content.py",
+        "blob_sha1": "6f479a0885f723b7395843d41164a87041820776",
+        "size_bytes": 8161
+      },
+      {
+        "source_id": "code.psf.requests._internal_utils",
+        "repository_url": "https://github.com/psf/requests",
+        "commit": "5460f467b02e49471c0fd6cfc9ca0adab6351f98",
+        "path": "src/requests/_internal_utils.py",
+        "blob_sha1": "0466a7d347db4ed34a37db51b75fc8e80bc06055",
+        "size_bytes": 1542
+      }
+    ]
+  },
+  "scope_exclusions": [
+    "documentation",
+    "tests",
+    "generated assets",
+    "vendored assets",
+    "version metadata such as django/__init__.py",
+    "all Django files not explicitly listed in selected_files",
+    "all evaluation use unless separately authorized"
+  ]
+}
