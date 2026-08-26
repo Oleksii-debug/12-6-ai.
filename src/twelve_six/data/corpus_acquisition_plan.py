@@ -1,6 +1,6 @@
 """Fail-closed validation for the Research Corpus V1 scalable acquisition plan.
 
-Planning requests are deliberately not corpus capacity.  This module exists to
+Planning requests are deliberately not corpus capacity. This module exists to
 make that firewall machine-checkable while the project expands legal, diverse,
 reproducible source coverage toward the 20 MB balanced target.
 """
@@ -15,6 +15,13 @@ from typing import Any
 
 SCHEMA = "12-6.research-corpus-v1-scalable-acquisition-plan.v1"
 STRATA = ("ua", "en", "code")
+BASELINE_PR = 538
+BASELINE_HEAD = "226cbc26710a75af4a864576220b270089e7c52b"
+BASELINE_REGISTRY_PATH = "configs/data/next100_063_terminal_source_registry_v4.json"
+BASELINE_REGISTRY_SCHEMA = "12-6.next100-063-terminal-source-registry.v4"
+BASELINE_REGISTRY_IDENTITY = "9fc400a3144b46c481e45d043b0a3365eb2129c83bbacde6f9e7af8a41fadc58"
+BASELINE_BYTES = {"ua": 100_856, "en": 1_838_293, "code": 106_031, "total": 2_045_180}
+BASELINE_FAMILIES = {"ua": 4, "en": 5, "code": 5, "total": 14}
 ALLOWED_CANDIDATE_STATUSES = {
     "REQUIRES_DEDICATED_ADMISSION",
     "RIGHTS_AND_AUTHORSHIP_RESEARCH_REQUIRED",
@@ -58,6 +65,37 @@ def _validate_stratum_vector(
     return parsed
 
 
+def _validate_baseline_authority(baseline: Mapping[str, Any]) -> tuple[dict[str, int], dict[str, int]]:
+    if baseline.get("source_convergence_pr") != BASELINE_PR:
+        raise CorpusAcquisitionPlanError("baseline source-convergence PR must bind canonical V4")
+    if baseline.get("source_convergence_head") != BASELINE_HEAD:
+        raise CorpusAcquisitionPlanError("baseline source-convergence head drift")
+    if baseline.get("source_registry_path") != BASELINE_REGISTRY_PATH:
+        raise CorpusAcquisitionPlanError("baseline source-registry path must bind canonical V4")
+    if baseline.get("source_registry_schema") != BASELINE_REGISTRY_SCHEMA:
+        raise CorpusAcquisitionPlanError("baseline source-registry schema drift")
+    if baseline.get("source_registry_identity_sha256") != BASELINE_REGISTRY_IDENTITY:
+        raise CorpusAcquisitionPlanError("baseline source-registry identity drift")
+    if baseline.get("status") != "CANDIDATE_ONLY_PENDING_EXACT_HEAD_CI_AND_SUCCESSOR_GLOBAL_DEDUP":
+        raise CorpusAcquisitionPlanError("baseline status must remain candidate-only")
+
+    observed = _validate_stratum_vector(
+        baseline.get("observed_pre_dedup_bytes"),
+        field="baseline.observed_pre_dedup_bytes",
+        positive=True,
+    )
+    families = _validate_stratum_vector(
+        baseline.get("observed_independent_families"),
+        field="baseline.observed_independent_families",
+        positive=True,
+    )
+    if observed != BASELINE_BYTES:
+        raise CorpusAcquisitionPlanError("baseline observed byte vector drift from canonical V4")
+    if families != BASELINE_FAMILIES:
+        raise CorpusAcquisitionPlanError("baseline family vector drift from canonical V4")
+    return observed, families
+
+
 def validate_acquisition_plan(plan: Mapping[str, Any]) -> dict[str, Any]:
     """Validate one acquisition plan without granting any training capacity."""
 
@@ -76,11 +114,7 @@ def validate_acquisition_plan(plan: Mapping[str, Any]) -> dict[str, Any]:
     if not isinstance(firewall, Mapping):
         raise CorpusAcquisitionPlanError("capacity_firewall must be a mapping")
 
-    observed = _validate_stratum_vector(
-        baseline.get("observed_pre_dedup_bytes"),
-        field="baseline.observed_pre_dedup_bytes",
-        positive=True,
-    )
+    observed, observed_families = _validate_baseline_authority(baseline)
     targets = _validate_stratum_vector(target.get("bytes"), field="target.bytes", positive=True)
     gaps = _validate_stratum_vector(
         target.get("planning_gap_from_observed_pre_dedup"),
@@ -185,7 +219,9 @@ def validate_acquisition_plan(plan: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "schema_version": SCHEMA,
         "status": "VALID_PLANNING_ARTIFACT_CAPACITY_ZERO",
+        "baseline_source_registry_identity_sha256": BASELINE_REGISTRY_IDENTITY,
         "observed_pre_dedup_bytes": observed,
+        "observed_independent_families": observed_families,
         "target_bytes": targets,
         "planning_gap_bytes": gaps,
         "planning_request_bytes": {
