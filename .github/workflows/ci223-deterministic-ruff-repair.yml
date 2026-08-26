@@ -33,7 +33,40 @@ jobs:
       - name: Apply deterministic Ruff repairs
         run: |
           set -euo pipefail
-          .ci223-repair/bin/python -m ruff check --fix --unsafe-fixes src tests tools
+          .ci223-repair/bin/python -m ruff check --fix --unsafe-fixes src tests tools || true
+          .ci223-repair/bin/python - <<'PY'
+          from pathlib import Path
+
+          failure = Path("src/twelve_six/experiment_failure.py")
+          text = failure.read_text(encoding="utf-8")
+          text = text.replace(
+              'raise ValueError("experiment_started must be bool")',
+              'raise TypeError("experiment_started must be bool")',
+          )
+          text = text.replace(
+              'raise ValueError("diagnostics must be an object")',
+              'raise TypeError("diagnostics must be an object")',
+          )
+          failure.write_text(text, encoding="utf-8")
+
+          finalizer = Path("tools/evidence_finalizer.py")
+          text = finalizer.read_text(encoding="utf-8")
+          errors = "(OSError, ValueError, TypeError, subprocess.SubprocessError)"
+          text = text.replace(
+              "except Exception as exc:  # diagnostic rejection must not hide other evidence",
+              f"except {errors} as exc:  # diagnostic rejection must not hide other evidence",
+          )
+          text = text.replace(
+              "        except Exception as exc:\n            destination = payload_root / relative",
+              f"        except {errors} as exc:\n            destination = payload_root / relative",
+          )
+          text = text.replace(
+              "        except Exception as exc:\n            row[\"reason\"] = f\"{type(exc).__name__}: {exc}\"",
+              f"        except {errors} as exc:\n            row[\"reason\"] = f\"{{type(exc).__name__}}: {{exc}}\"",
+          )
+          finalizer.write_text(text, encoding="utf-8")
+          PY
+          chmod +x tools/build_ci161_historical_report.py tools/evidence_finalizer.py tools/run_classified_phase.py
           .ci223-repair/bin/python -m ruff check src tests tools
           git diff --check
       - name: Prove convergence-sensitive contracts
@@ -43,6 +76,7 @@ jobs:
             tests/test_execution_bootstrap.py \
             tests/test_ci161_failure_classification.py \
             tests/test_ci165_launch_gate.py \
+            tests/test_evidence_finalizer_ci162.py \
             tests/test_training_precision_runtime.py
       - name: Persist only tested repairs
         run: |
