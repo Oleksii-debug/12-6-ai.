@@ -260,12 +260,13 @@ def materialize_pinned_sources(
                 "authority_id": row["authority_id"],
                 "authority_identity_sha256": row["authority_identity_sha256"],
                 "source_locator": source_locator,
-                "transport_final_https_verified": provider != "https_exact" or True,
                 "raw_bytes": actual_bytes,
                 "raw_sha256": actual_sha,
                 "output_file": output_name,
                 "normalization_verification_status": "NOT_EXECUTED_BY_THIS_TOOL",
             }
+            if provider == "https_exact":
+                item["https_final_scheme_verified"] = True
             if row.get("authority_normalized_bytes") is not None:
                 item["authority_normalized_bytes"] = row["authority_normalized_bytes"]
                 item["authority_normalized_sha256"] = row["authority_normalized_sha256"]
