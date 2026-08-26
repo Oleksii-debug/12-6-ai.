@@ -1,0 +1,78 @@
+name: RESEARCH-236 Corpus Origin Ablation
+
+on:
+  pull_request:
+    paths:
+      - "tools/research236_*.py"
+      - "tests/test_research236_corpus_origin_ablation.py"
+      - "configs/experiments/research236_corpus_origin_ablation_v1.json"
+      - "docs/RESEARCH236_CORPUS_ORIGIN_ABLATION.md"
+      - ".github/workflows/research236-corpus-origin-ablation.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11.16"
+
+      - name: Create evidence directory
+        run: mkdir -p research236-evidence
+
+      - name: Universal exact bootstrap
+        uses: ./.github/actions/execution-bootstrap
+        with:
+          capabilities: runtime,tests
+          venv: .research236
+          manifest: research236-evidence/environment.json
+
+      - name: Compile and test contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          .research236/bin/python -m py_compile \
+            tools/research236_prerequisite_gate.py \
+            tools/research236_analyze.py \
+            tests/test_research236_corpus_origin_ablation.py
+          .research236/bin/python -m pytest -q tests/test_research236_corpus_origin_ablation.py
+
+      - name: Prove missing-authority state fails closed
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          .research236/bin/python tools/research236_prerequisite_gate.py \
+            --source-sha "$GITHUB_SHA" \
+            --output research236-evidence/prerequisite-gate.json
+          rc=$?
+          set -e
+          if [[ "$rc" -ne 2 ]]; then
+            echo "Expected blocked prerequisite exit 2, got $rc" >&2
+            exit 1
+          fi
+          .research236/bin/python - <<'PY'
+          import json
+          p = json.load(open("research236-evidence/prerequisite-gate.json", encoding="utf-8"))
+          assert p["status"] == "BLOCKED_MISSING_OR_INVALID_AUTHORITY"
+          assert p["claim_boundary"]["numerical_ablation_claim_permitted"] is False
+          assert any("DATA-230" in x for x in p["blockers"])
+          assert any("EVAL-233" in x for x in p["blockers"])
+          PY
+
+      - name: Upload contract evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: research236-contract-evidence
+          path: research236-evidence
+          retention-days: 30

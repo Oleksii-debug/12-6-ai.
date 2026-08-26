@@ -1,0 +1,59 @@
+{
+  "authorities": {
+    "data230_corpus_identity": null,
+    "data230_present": false,
+    "data230_selection_validation_identity": null,
+    "eval233_final_test_identity": null,
+    "eval233_present": false,
+    "eval233_selection_validation_identity": null
+  },
+  "blockers": [
+    "data230:missing:DATA-230-CORPUS-V03-EXTERNAL-REAL",
+    "eval233:missing:EVAL-233-REAL-HOLDOUT-V2"
+  ],
+  "claim_boundary": {
+    "external_real_automatically_better": false,
+    "foreign_pretrained_weights": false,
+    "numerical_ablation_claim_permitted": false,
+    "paid_compute": false
+  },
+  "frozen": {
+    "batch_size": 8,
+    "data25_corpus_identity": "422f545da93526ceba2c0ff738e0b9deac65f35bfb31d87d2aab068cda091fc8",
+    "evaluation_identity": "7189e6df053574beb686727c94e684cdbaf08a34ef33aa953eff7cdae0320113",
+    "exposure_accounting": "actual_unique_nonignored_causal_source_loss_tokens_only",
+    "matched_actual_optimized_tokens": 131938,
+    "model_specs": {
+      "1m": {
+        "model_spec_sha256": "ff3cee542a1f75bb4e1eff8d7d24d72533af8f4f3d82bd064fb1cbfeba8c8d07",
+        "parameters": 1037696
+      },
+      "500k": {
+        "model_spec_sha256": "208ac8ca113388e76f280d0154cae815785bee7705546f4d854d9447b9dd1f4a",
+        "parameters": 467808
+      }
+    },
+    "optimizer": {
+      "betas": [0.9, 0.95],
+      "eps": 1e-08,
+      "grad_clip": 1.0,
+      "lr": 0.0003,
+      "name": "AdamW",
+      "precision": "fp32_deterministic",
+      "schedule": "constant",
+      "warmup_steps": 0,
+      "weight_decay": 0.0
+    },
+    "padded_tensor_positions_count_as_exposure": false,
+    "paired_seeds": [1337, 1338, 7331],
+    "sequence_length": 128,
+    "source_loss_token_repetition_allowed": false,
+    "tokenizer": "s0-byte-v1"
+  },
+  "report_sha256": "e66ae4e246eb999644ec00413812198a27277d84eef76bb3a0d72774acbec8ec",
+  "repository": "Oleksii-debug/12-6-ai.",
+  "schema": "12-6.research236-prerequisite-gate.v1",
+  "source_sha": "6afaf5889f9898037b53e8b0bc2b731d77782111",
+  "status": "BLOCKED_MISSING_OR_INVALID_AUTHORITY",
+  "worker_id": "RESEARCH-236-CORPUS-ORIGIN-ABLATION"
+}
