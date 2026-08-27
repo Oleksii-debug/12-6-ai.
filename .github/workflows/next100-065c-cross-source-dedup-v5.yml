@@ -25,6 +25,7 @@ on:
       - "tools/validate_next100_065d_authority_bindings.py"
       - "tools/validate_next100_065d_registry_v4_guard.py"
       - "tools/validate_next100_065e_authority_bindings.py"
+      - "tools/validate_next100_065e_cpython_authority_rebind.py"
       - "docs/NEXT100_065C_CROSS_SOURCE_DEDUP_V5.md"
   workflow_dispatch:
 
@@ -71,7 +72,7 @@ jobs:
       - name: Hard-bind inherited V6 and current V7 terminal authorities
         run: |
           python tools/validate_next100_065c_authority_bindings.py
-          python tools/validate_next100_065c_authority_bindings.py --github-live
+          python tools/validate_next100_065e_cpython_authority_rebind.py --github-live
           python tools/validate_next100_065d_authority_bindings.py
           python tools/validate_next100_065d_authority_bindings.py --github-live
           python tools/validate_next100_065d_registry_v4_guard.py
@@ -104,6 +105,7 @@ jobs:
           tools/validate_next100_065d_authority_bindings.py
           tools/validate_next100_065d_registry_v4_guard.py
           tools/validate_next100_065e_authority_bindings.py
+          tools/validate_next100_065e_cpython_authority_rebind.py
           tests/test_next100_065c_cross_source_dedup_v5.py
           tests/test_next100_065d_cross_source_dedup_v6.py
           tests/test_next100_065d_exact_capacity_guard.py
@@ -136,6 +138,7 @@ jobs:
           tools/validate_next100_065d_authority_bindings.py
           tools/validate_next100_065d_registry_v4_guard.py
           tools/validate_next100_065e_authority_bindings.py
+          tools/validate_next100_065e_cpython_authority_rebind.py
           tests/test_next100_065c_cross_source_dedup_v5.py
           tests/test_next100_065d_cross_source_dedup_v6.py
           tests/test_next100_065d_exact_capacity_guard.py
