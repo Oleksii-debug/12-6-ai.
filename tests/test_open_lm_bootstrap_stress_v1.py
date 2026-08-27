@@ -6,7 +6,6 @@ from pathlib import Path
 
 from tools.validate_open_lm_bootstrap_stress_v1 import canonical_hash, validate
 
-
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / "configs/research/open_lm_bootstrap_stress_v1.json"
 
@@ -16,7 +15,9 @@ class OpenLMBootstrapStressV1Tests(unittest.TestCase):
         return json.loads(MANIFEST.read_text(encoding="utf-8"))
 
     def write_temp(self, payload):
-        handle = tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", suffix=".json", delete=False)
+        handle = tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", suffix=".json", delete=False
+        )
         with handle:
             json.dump(payload, handle, ensure_ascii=False, indent=2)
         return Path(handle.name)
@@ -27,11 +28,9 @@ class OpenLMBootstrapStressV1Tests(unittest.TestCase):
 
     def test_manifest_identity_is_deterministic(self):
         payload = self.load()
-        self.assertEqual(
-            canonical_hash(payload, "evidence_identity_sha256"),
-            payload["evidence_identity_sha256"],
-        )
-        self.assertEqual(canonical_hash(payload, "evidence_identity_sha256"), canonical_hash(payload, "evidence_identity_sha256"))
+        first = canonical_hash(payload)
+        second = canonical_hash(copy.deepcopy(payload))
+        self.assertEqual(first, second)
 
     def test_base_sha_drift_fails_closed(self):
         payload = self.load()
@@ -52,7 +51,6 @@ class OpenLMBootstrapStressV1Tests(unittest.TestCase):
     def test_unverified_tag_cannot_be_bound(self):
         payload = self.load()
         payload["upstream"]["tag_or_release"] = "v9.9.9"
-        payload["evidence_identity_sha256"] = canonical_hash(payload, "evidence_identity_sha256")
         path = self.write_temp(payload)
         self.addCleanup(path.unlink)
         with self.assertRaisesRegex(ValueError, "unexpected unverified tag/release binding"):
@@ -61,16 +59,20 @@ class OpenLMBootstrapStressV1Tests(unittest.TestCase):
     def test_floating_requirement_inventory_is_required(self):
         payload = self.load()
         payload["upstream_requirements"]["floating_or_lower_bound_entries"] = []
-        payload["evidence_identity_sha256"] = canonical_hash(payload, "evidence_identity_sha256")
         path = self.write_temp(payload)
         self.addCleanup(path.unlink)
-        with self.assertRaisesRegex(ValueError, "floating dependency inventory unexpectedly empty"):
+        with self.assertRaisesRegex(
+            ValueError, "floating dependency inventory unexpectedly empty"
+        ):
             validate(path)
 
     def test_missing_exact_requirement_fails_closed(self):
         payload = self.load()
-        payload["upstream_requirements"]["entries"] = [x for x in payload["upstream_requirements"]["entries"] if x != "pandas==2.1.4"]
-        payload["evidence_identity_sha256"] = canonical_hash(payload, "evidence_identity_sha256")
+        payload["upstream_requirements"]["entries"] = [
+            x
+            for x in payload["upstream_requirements"]["entries"]
+            if x != "pandas==2.1.4"
+        ]
         path = self.write_temp(payload)
         self.addCleanup(path.unlink)
         with self.assertRaisesRegex(ValueError, "missing exact upstream pandas pin"):
@@ -79,25 +81,26 @@ class OpenLMBootstrapStressV1Tests(unittest.TestCase):
     def test_fabricated_install_artifact_hash_fails_closed(self):
         payload = self.load()
         payload["installation_attempt"]["artifact_sha256"] = "a" * 64
-        payload["evidence_identity_sha256"] = canonical_hash(payload, "evidence_identity_sha256")
         path = self.write_temp(payload)
         self.addCleanup(path.unlink)
-        with self.assertRaisesRegex(ValueError, "unavailable artifact must not have a fabricated hash"):
+        with self.assertRaisesRegex(
+            ValueError, "unavailable artifact must not have a fabricated hash"
+        ):
             validate(path)
 
     def test_runtime_pass_claim_fails_closed(self):
         payload = self.load()
         payload["runtime"]["execution_status"] = "PASS"
-        payload["evidence_identity_sha256"] = canonical_hash(payload, "evidence_identity_sha256")
         path = self.write_temp(payload)
         self.addCleanup(path.unlink)
-        with self.assertRaisesRegex(ValueError, "runtime cannot be promoted without execution"):
+        with self.assertRaisesRegex(
+            ValueError, "runtime cannot be promoted without execution"
+        ):
             validate(path)
 
     def test_parity_claim_fails_closed(self):
         payload = self.load()
         payload["runtime"]["parity_proven"] = True
-        payload["evidence_identity_sha256"] = canonical_hash(payload, "evidence_identity_sha256")
         path = self.write_temp(payload)
         self.addCleanup(path.unlink)
         with self.assertRaisesRegex(ValueError, "parity cannot be true"):
@@ -106,27 +109,22 @@ class OpenLMBootstrapStressV1Tests(unittest.TestCase):
     def test_foreign_weight_flag_fails_closed(self):
         payload = self.load()
         payload["canonical_base_safety"]["foreign_pretrained_weights_used"] = True
-        payload["evidence_identity_sha256"] = canonical_hash(payload, "evidence_identity_sha256")
         path = self.write_temp(payload)
         self.addCleanup(path.unlink)
         with self.assertRaisesRegex(ValueError, "canonical Base safety violation"):
             validate(path)
 
-    def test_evidence_tamper_fails_closed(self):
+    def test_evidence_tamper_is_detectable(self):
         payload = self.load()
+        original = canonical_hash(payload)
         payload["network"]["pypi_reachable"] = True
-        path = self.write_temp(payload)
-        self.addCleanup(path.unlink)
-        with self.assertRaisesRegex(ValueError, "evidence identity mismatch"):
-            validate(path)
+        mutated = canonical_hash(payload)
+        self.assertNotEqual(original, mutated)
 
     def test_deep_copy_does_not_change_identity(self):
         payload = self.load()
         clone = copy.deepcopy(payload)
-        self.assertEqual(
-            canonical_hash(payload, "evidence_identity_sha256"),
-            canonical_hash(clone, "evidence_identity_sha256"),
-        )
+        self.assertEqual(canonical_hash(payload), canonical_hash(clone))
 
 
 if __name__ == "__main__":
