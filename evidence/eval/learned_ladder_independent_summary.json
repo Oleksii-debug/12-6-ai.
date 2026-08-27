@@ -1,0 +1,31 @@
+{
+  "schema": "12-6.learned-ladder-independent-summary.v1",
+  "worker": "SWARM-752",
+  "parent_issue": 548,
+  "status": "PASS_WITH_SCIENTIFIC_SCOPE",
+  "verify_219": "PASS_SCIENTIFIC_EVIDENCE_NOT_RELEASE_GATE",
+  "verify_218_learned_10m_independent": "PASS_SCIENTIFIC_EVIDENCE_NOT_RELEASE_GATE",
+  "three_m_actual_optimized_tokens": 131938,
+  "ten_m_actual_optimized_tokens": 2000060,
+  "matched_optimized_budget": false,
+  "direct_scale_ranking_authorized": false,
+  "learned_20m_training_authorized": false,
+  "recipe_conclusion": "Carry forward the verified process controls and actual-token accounting, but do not extrapolate a 20M token budget or expected metric from these unmatched endpoints.",
+  "process_controls_for_20m": [
+    "random-init Base only",
+    "exact Git/data/tokenizer/ModelSpec/run identities",
+    "fresh-process phase-boundary resume",
+    "preregistered selection validation with final-test firewall",
+    "best and chronological final checkpoint retention",
+    "checkpoint payload and identity verification",
+    "evaluation non-mutation",
+    "first-party inference evidence",
+    "train-probe exposure diagnostic without privacy overclaim",
+    "actual optimized tokens as exposure authority"
+  ],
+  "remaining_independent_blockers_outside_this_verifier": [
+    "generic release/CI convergence remains a separate #548 P0",
+    "Research Corpus V1 and non-zero training-authorized post-pack exposure remain separate #548 P0s",
+    "material 20M compute/training still requires explicit authorization"
+  ]
+}

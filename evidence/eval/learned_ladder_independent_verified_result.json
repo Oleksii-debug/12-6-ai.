@@ -1,0 +1,41 @@
+{
+  "comparison_boundary": {
+    "budget_ratio_ten_m_to_three_m": 15.159088508390303,
+    "direct_scale_ranking_authorized": false,
+    "matched_optimized_budget": false,
+    "note": "The verified rungs are real learned Base evidence but are not a matched-token scaling experiment. Do not fit or rank a scaling law from these two endpoints as if exposure were equal.",
+    "shared_corpus_identity": "422f545da93526ceba2c0ff738e0b9deac65f35bfb31d87d2aab068cda091fc8",
+    "shared_tokenizer_version": "s0-byte-v1",
+    "ten_m_actual_optimized_tokens": 2000060,
+    "three_m_actual_optimized_tokens": 131938
+  },
+  "results": [
+    {
+      "artifact_sha256": "f57bf36113a68fffd4bfcf877bf08762393479b9c09e6fd0fd613fbb91f044ee",
+      "final_actual_optimized_tokens": 131938,
+      "release_ci": {
+        "conclusion": "failure",
+        "failing_job": "locked-x86-64",
+        "failing_step": "Locked clean install, package smoke and full checks",
+        "run_id": 32940842230,
+        "scientific_workflow_not_reclassified": true
+      },
+      "result": "PASS_SCIENTIFIC_EVIDENCE",
+      "source_sha": "a75920cef8bde37a8c590e34095be83c97b75f1d",
+      "verify_id": "VERIFY-219"
+    },
+    {
+      "artifact_sha256": "8631e90417e40365b3fc0d6bc98ee6adda5a4ed24530e675d9a91c93219537ee",
+      "final_actual_optimized_tokens": 2000060,
+      "release_ci": {
+        "dedicated_terminal_run_is_scientific_authority": true,
+        "generic_release_ci_pass_not_inferred": true
+      },
+      "result": "PASS_SCIENTIFIC_EVIDENCE",
+      "source_sha": "c02c8aa38e691521ae2ab6a4ff3ea1d643efd6ef",
+      "verify_id": "VERIFY-218-LEARNED-10M-INDEPENDENT"
+    }
+  ],
+  "schema": "12-6.learned-ladder-independent-verify-result.v1",
+  "status": "PASS"
+}

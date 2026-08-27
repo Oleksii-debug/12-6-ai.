@@ -1,0 +1,49 @@
+{
+  "schema": "12-6.verify-219-independent.v1",
+  "verify_id": "VERIFY-219",
+  "worker": "SWARM-752",
+  "verified_at_utc": "2026-08-27T07:11:15Z",
+  "producer": "LEARN-191-REAL-3M",
+  "producer_pr": 348,
+  "producer_head_sha": "a75920cef8bde37a8c590e34095be83c97b75f1d",
+  "workflow_run_id": 32940842372,
+  "workflow_conclusion": "success",
+  "artifact_id": 9597788382,
+  "artifact_sha256": "f57bf36113a68fffd4bfcf877bf08762393479b9c09e6fd0fd613fbb91f044ee",
+  "verdict": "PASS_SCIENTIFIC_EVIDENCE_NOT_RELEASE_GATE",
+  "checks": {
+    "exact_head_bound": true,
+    "artifact_digest_matches_downloaded_zip": true,
+    "random_init": true,
+    "foreign_pretrained_weights": false,
+    "paid_compute": false,
+    "post_training": false,
+    "parameter_count": 3213120,
+    "model_spec_sha256": "462c85da80a3c0d7d6a4f1a570b87d208b1847d8a57b12a4d9be7e36846b65dc",
+    "corpus_identity_sha256": "422f545da93526ceba2c0ff738e0b9deac65f35bfb31d87d2aab068cda091fc8",
+    "fresh_process_resume": true,
+    "final_fresh_load_distinct_process": true,
+    "checkpoint_payload_hashes_verified": true,
+    "evaluation_non_mutation": true,
+    "first_party_generation_present": true
+  },
+  "optimized_token_accounting": {
+    "nominal_targets": [16632, 65772, 131292],
+    "actual_checkpoint_tokens": [17125, 66417, 131938],
+    "final_actual_tokens": 131938,
+    "interpretation": "Targets are threshold labels; actual optimized tokens cross them at indivisible optimizer-update boundaries. Comparisons use actual tokens."
+  },
+  "selection_validation_bpb": {
+    "initial": 7.995210405185286,
+    "at_17125": 5.697811934759831,
+    "at_66417": 3.486825260650889,
+    "at_131938": 2.2859499700392583
+  },
+  "release_ci": {
+    "run_id": 32940842230,
+    "conclusion": "failure",
+    "failing_job": "locked-x86-64",
+    "failing_step": "Locked clean install, package smoke and full checks",
+    "boundary": "This independent scientific PASS does not convert the generic release CI failure into PASS."
+  }
+}

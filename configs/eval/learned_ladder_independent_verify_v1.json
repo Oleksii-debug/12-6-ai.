@@ -1,0 +1,96 @@
+{
+  "schema": "12-6.learned-ladder-independent-verify.v1",
+  "worker": "SWARM-752",
+  "control_issue": 723,
+  "parent_issue": 548,
+  "base_sha": "5020afd671a3885c1b738c8b4eafe7525f630546",
+  "verifications": [
+    {
+      "verify_id": "VERIFY-219",
+      "producer": {
+        "producer_id": "LEARN-191-REAL-3M",
+        "pull_request": 348,
+        "head_sha": "a75920cef8bde37a8c590e34095be83c97b75f1d",
+        "dedicated_workflow": "LEARN-191 Real 3M Learned Base",
+        "dedicated_run_id": 32940842372,
+        "dedicated_run_conclusion": "success",
+        "artifact_id": 9597788382,
+        "artifact_name": "learn191-real-3m-a75920cef8bde37a8c590e34095be83c97b75f1d",
+        "artifact_sha256": "f57bf36113a68fffd4bfcf877bf08762393479b9c09e6fd0fd613fbb91f044ee",
+        "parameter_count": 3213120,
+        "model_spec_sha256": "462c85da80a3c0d7d6a4f1a570b87d208b1847d8a57b12a4d9be7e36846b65dc",
+        "corpus_sha256": "422f545da93526ceba2c0ff738e0b9deac65f35bfb31d87d2aab068cda091fc8",
+        "tokenizer_config_sha256": "b04055c1061dd641dcab7cb9d62a931f09b8d1a070140a926ceb4e91d73ca8e1",
+        "tokenizer_vocab_sha256": "905ed40bb42cc4d550e228ff5f24158d504b38e8ed5974dfa3077bd5867ad571",
+        "evaluation_targets": [0, 16632, 65772, 131292],
+        "evaluation_actual_tokens": [0, 17125, 66417, 131938],
+        "checkpoint_targets": [16632, 65772, 131292],
+        "checkpoint_actual_tokens": [17125, 66417, 131938],
+        "final_actual_tokens": 131938,
+        "final_checkpoint_id": "920283a052c6c7fbd2b66f8ce5f775e4747c3d459e539b3625e4bebf1b9a7a59"
+      },
+      "release_ci": {
+        "run_id": 32940842230,
+        "conclusion": "failure",
+        "failing_job": "locked-x86-64",
+        "failing_step": "Locked clean install, package smoke and full checks",
+        "scientific_workflow_not_reclassified": true
+      },
+      "verdict": "PASS_SCIENTIFIC_EVIDENCE_NOT_RELEASE_GATE"
+    },
+    {
+      "verify_id": "VERIFY-218-LEARNED-10M-INDEPENDENT",
+      "producer": {
+        "producer_id": "LEARN-217-TERMINAL-10M-BASE",
+        "pull_request": 355,
+        "head_sha": "c02c8aa38e691521ae2ab6a4ff3ea1d643efd6ef",
+        "dedicated_workflow": "LEARN-217 Terminal 10M Learned Base",
+        "dedicated_run_id": 32952787070,
+        "dedicated_run_conclusion": "success",
+        "artifact_id": 9602650341,
+        "artifact_name": "learn217-terminal-10m-learned-base",
+        "artifact_sha256": "8631e90417e40365b3fc0d6bc98ee6adda5a4ed24530e675d9a91c93219537ee",
+        "parameter_count": 10000640,
+        "model_spec_sha256": "61caa5469123e23b9b72fc2024140bfca84c4c480dcb0a7e712ba800a4f22998",
+        "corpus_sha256": "422f545da93526ceba2c0ff738e0b9deac65f35bfb31d87d2aab068cda091fc8",
+        "tokenizer_config_sha256": "b04055c1061dd641dcab7cb9d62a931f09b8d1a070140a926ceb4e91d73ca8e1",
+        "tokenizer_vocab_sha256": "905ed40bb42cc4d550e228ff5f24158d504b38e8ed5974dfa3077bd5867ad571",
+        "common_evaluation_sha256": "7189e6df053574beb686727c94e684cdbaf08a34ef33aa953eff7cdae0320113",
+        "phase1_actual_tokens": 1000133,
+        "final_actual_tokens": 2000060,
+        "best_checkpoint_id": "12f9edd88bf5e596ae6f985564a5dcff96033922100ba91678ef9a76c0df3156",
+        "final_checkpoint_id": "20fbb9ffe0e0ecb2b0098dd6f7c18e23cd6cfcc0a0e48cb25c73c26d2f50926d"
+      },
+      "release_ci": {
+        "dedicated_terminal_run_is_scientific_authority": true,
+        "generic_release_ci_pass_not_inferred": true
+      },
+      "verdict": "PASS_SCIENTIFIC_EVIDENCE_NOT_RELEASE_GATE"
+    }
+  ],
+  "comparison_boundary": {
+    "matched_optimized_budget": false,
+    "direct_scale_ranking_authorized": false,
+    "three_m_actual_optimized_tokens": 131938,
+    "ten_m_actual_optimized_tokens": 2000060,
+    "budget_ratio_ten_m_to_three_m": 15.159088508390303,
+    "shared_corpus_identity": "422f545da93526ceba2c0ff738e0b9deac65f35bfb31d87d2aab068cda091fc8",
+    "shared_tokenizer_version": "s0-byte-v1",
+    "note": "The verified rungs are real learned Base evidence but are not a matched-token scaling experiment. Do not fit or rank a scaling law from these two endpoints as if exposure were equal."
+  },
+  "twenty_m_recipe_boundary": {
+    "status": "EVIDENCE_INFORMS_RECIPE_WITHOUT_TOKEN_EXTRAPOLATION",
+    "requirements": [
+      "random initialization",
+      "fresh-process phase boundary resume",
+      "preregistered held-out checkpoint selection",
+      "best and chronological final checkpoint retention",
+      "checkpoint identity and payload-hash verification",
+      "evaluation non-mutation",
+      "first-party inference verification",
+      "separate train-probe exposure diagnostic",
+      "actual optimized-token accounting rather than nominal target labels"
+    ],
+    "forbidden_inference": "No 20M optimized-token budget or expected BPB is inferred from the unmatched 3M and 10M budgets."
+  }
+}

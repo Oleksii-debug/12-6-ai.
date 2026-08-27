@@ -1,0 +1,53 @@
+{
+  "schema": "12-6.verify-218-learned-10m-independent.v1",
+  "verify_id": "VERIFY-218-LEARNED-10M-INDEPENDENT",
+  "worker": "SWARM-752",
+  "verified_at_utc": "2026-08-27T07:11:15Z",
+  "producer": "LEARN-217-TERMINAL-10M-BASE",
+  "producer_pr": 355,
+  "producer_head_sha": "c02c8aa38e691521ae2ab6a4ff3ea1d643efd6ef",
+  "workflow_run_id": 32952787070,
+  "workflow_conclusion": "success",
+  "artifact_id": 9602650341,
+  "artifact_sha256": "8631e90417e40365b3fc0d6bc98ee6adda5a4ed24530e675d9a91c93219537ee",
+  "verdict": "PASS_SCIENTIFIC_EVIDENCE_NOT_RELEASE_GATE",
+  "checks": {
+    "exact_head_bound": true,
+    "artifact_digest_matches_downloaded_zip": true,
+    "random_init_run_manifest": true,
+    "foreign_pretrained_weights": false,
+    "paid_compute": false,
+    "post_training": false,
+    "parameter_count": 10000640,
+    "model_spec_sha256": "61caa5469123e23b9b72fc2024140bfca84c4c480dcb0a7e712ba800a4f22998",
+    "corpus_identity_sha256": "422f545da93526ceba2c0ff738e0b9deac65f35bfb31d87d2aab068cda091fc8",
+    "common_evaluation_identity_sha256": "7189e6df053574beb686727c94e684cdbaf08a34ef33aa953eff7cdae0320113",
+    "fresh_process_resume": true,
+    "fresh_d05_verification": true,
+    "checkpoint_payload_hashes_verified": true,
+    "evaluation_non_mutation": true,
+    "first_party_logits_and_generation": true,
+    "recovery_corruption_fail_closed": true,
+    "best_and_final_retained": true
+  },
+  "optimized_token_accounting": {
+    "phase1_actual_tokens": 1000133,
+    "final_target": 2000000,
+    "final_actual_tokens": 2000060,
+    "best_target_label": 1000000,
+    "interpretation": "Actual trainer tokens are authoritative; nominal checkpoint labels are not substituted for exposure."
+  },
+  "terminal_metrics": {
+    "campaign_validation_bpb_at_final": 0.08580920473294919,
+    "ua_bpb": 0.05292658247480186,
+    "en_bpb": 0.08778129281435168,
+    "code_bpb": 0.12695620479250153,
+    "train_probe_bpb": 0.08156674046349999,
+    "heldout_minus_train_bpb": 0.0042424642694492
+  },
+  "truth_boundary": {
+    "generic_release_ci_pass_inferred": false,
+    "learned_20m_training_authorized": false,
+    "matched_budget_scale_ranking_authorized": false
+  }
+}
