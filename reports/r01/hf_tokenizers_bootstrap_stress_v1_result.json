@@ -1,0 +1,94 @@
+{
+  "schema_version": 1,
+  "worker_id": "SWARM-793",
+  "claim_issue": 793,
+  "component": "HF_TOKENIZERS_BOOTSTRAP_STRESS_V1",
+  "lane_key": "R01|HF_TOKENIZERS|OPEN_SOURCE_REUSE_RESEARCH|BOOTSTRAP-STRESS-V1",
+  "base_main_sha": "5020afd671a3885c1b738c8b4eafe7525f630546",
+  "execution_profile": "LOCAL_FREE",
+  "upstream": {
+    "repository": "https://github.com/huggingface/tokenizers",
+    "release_tag": "v0.23.1",
+    "commit": "7f1623b90b5adfb9bc327d4c3468d2f70bbce262",
+    "license": "Apache-2.0",
+    "license_blob_sha256": "261eeb9e9f8b2b4b0d119366dda99c6fd7d35c64",
+    "notice_checked": true,
+    "notice_present_at_release_root": false,
+    "release_artifact": "tokenizers-0.23.1-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
+    "release_artifact_sha256": "5075b405006415ea148a992d093699c66eb01952bf59f4d5727089a98bda45a4"
+  },
+  "environment": {
+    "python": "3.13.5",
+    "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
+    "architecture": "x86_64",
+    "cpu_count": 5,
+    "gpu": "not_detected",
+    "pip": "25.1.1",
+    "uv": "0.10.0",
+    "poetry": "unavailable",
+    "pdm": "unavailable",
+    "conda": "unavailable",
+    "git": "2.47.3",
+    "pip_cache": "unavailable_or_disabled",
+    "environment_identity_sha256": "b74f26470c7e2adca7b992c8adad4d917794261326742fcc90fcd522a69abe55"
+  },
+  "bootstrap": {
+    "isolated_venv_created": true,
+    "isolated_prefix_distinct_from_base": true,
+    "initial_isolated_freeze": ["pip==25.1.1"],
+    "cache_first_search": true,
+    "exact_artifact_available_locally": false,
+    "source_fetch_attempted": true,
+    "source_fetch_success": false,
+    "source_fetch_failure": "DNS/network unavailable",
+    "install_attempted": true,
+    "install_success": false,
+    "install_policy": "--require-hashes --only-binary=:all: --no-deps; no version substitution",
+    "install_failure": "pip could not resolve tokenizers==0.23.1 because the package index was unreachable",
+    "runtime_import_attempted": false
+  },
+  "tests": {
+    "focused_adversarial_tests": "10 passed",
+    "test_runner": "Python standard-library unittest",
+    "real_runtime_tests": "NOT_EXECUTED"
+  },
+  "benchmark": {
+    "component_runtime": "NOT_EXECUTED",
+    "host_bootstrap_runs": [
+      {"run": 1, "elapsed_seconds": 1.772567, "isolated": true, "freeze": ["pip==25.1.1"]},
+      {"run": 2, "elapsed_seconds": 1.700282, "isolated": true, "freeze": ["pip==25.1.1"]}
+    ],
+    "interpretation": "host-local virtual-environment bootstrap telemetry only; no upstream speed claim"
+  },
+  "parity": {
+    "status": "NOT_EXECUTED",
+    "reason": "exact upstream runtime could not be installed"
+  },
+  "adversarial_contract": {
+    "floating_ref": "REJECTED",
+    "version_drift": "REJECTED",
+    "wheel_hash_drift": "REJECTED",
+    "global_install": "REJECTED",
+    "fabricated_success": "REJECTED",
+    "canonical_base_contamination": "REJECTED"
+  },
+  "canonical_base_firewall": {
+    "foreign_pretrained_weights": false,
+    "foreign_instruction_behavior": false,
+    "tokenizer_replaced": false,
+    "training_run": false,
+    "checkpoint_mutated": false,
+    "final_test_access": false,
+    "paid_compute": false
+  },
+  "promotion": "RETEST_RUNTIME_REQUIRED",
+  "evidence_identity_sha256": "d003e4157d15c86498b238751b68e62f134563dd3b9da4e7797e5d2a7f8da3ad",
+  "truth_note": "ADOPTABLE_COMPONENT is prohibited because exact installation and real runtime benchmark/parity were not executed on this offline host.",
+  "durable_artifacts": [
+    "tools/verify_hf_tokenizers_bootstrap_stress_v1.py",
+    "tests/test_verify_hf_tokenizers_bootstrap_stress_v1.py",
+    "configs/research/hf_tokenizers_bootstrap_stress_v1.json",
+    "docs/HF_TOKENIZERS_BOOTSTRAP_STRESS_V1.md",
+    "reports/r01/hf_tokenizers_bootstrap_stress_v1_result.json"
+  ]
+}
