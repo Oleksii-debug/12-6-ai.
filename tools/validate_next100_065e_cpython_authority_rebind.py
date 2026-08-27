@@ -23,7 +23,6 @@ import argparse
 import importlib.util
 from pathlib import Path
 from types import ModuleType
-from typing import Any
 
 LEGACY_VALIDATOR = Path(__file__).with_name("validate_next100_065c_authority_bindings.py")
 CPYTHON_PR = 467
