@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "worker_issue": 777,
+  "component": "OPEN_LM",
+  "project_base_sha": "5020afd671a3885c1b738c8b4eafe7525f630546",
+  "upstream_commit": "9bb92ef1689333534b7057942a20d18a46d1fa52",
+  "upstream_license": "MIT",
+  "environment": {
+    "python": "3.13.5",
+    "os": "Linux 6.18.35 x86_64",
+    "cpu_logical": 5,
+    "gpu": false,
+    "package_managers": ["pip", "uv", "git"]
+  },
+  "network": {
+    "pypi": "UNREACHABLE_DNS",
+    "github": "UNREACHABLE_DNS",
+    "upstream_git_fetch_local": false,
+    "control_plane_source_fetch": true
+  },
+  "installation": {
+    "isolated_env": "python -m venv /tmp/open_lm_bootstrap_stress_v1/.venv",
+    "exact_requirement_attempted": "pandas==2.1.4",
+    "result": "FAILED_ENVIRONMENT",
+    "return_code": 1,
+    "substitution_performed": false
+  },
+  "runtime": {
+    "status": "NOT_EXECUTED",
+    "benchmark": "NOT_EXECUTED",
+    "parity_proven": false
+  },
+  "canonical_base": {
+    "random_init_preserved": true,
+    "foreign_weights_used": false,
+    "training_started": false,
+    "paid_compute": false,
+    "data_or_tokenizer_changed": false
+  },
+  "evidence_identity_sha256": "8a51b8f22519f2cfbf43bb8b1f4c2c5b5dc45b3ccdc79d12f4a3a0b9ae3e6d2f"
+}
