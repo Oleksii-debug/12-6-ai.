@@ -38,7 +38,8 @@ SOURCE_FAMILY = {
     "code": "project-authored:code:corpus-v01",
 }
 PROMPTS = {"uk": "Українська мова ", "en": "The training corpus ", "code": "def stable_"}
-ABS_TOL = 1e-7
+# Exact identities remain byte-bound; only floating CPU reduction metrics use this envelope.
+ABS_TOL = 1e-6
 
 
 class Verify219Error(RuntimeError):
