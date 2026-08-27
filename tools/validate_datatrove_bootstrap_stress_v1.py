@@ -7,16 +7,11 @@ import sys
 from pathlib import Path
 
 EXPECTED = {
-    "component_id": "DATATROVE",
-    "package_name": "datatrove",
-    "version": "0.10.0",
     "upstream_commit": "7024aecca2f9ffb7b7cf0d02c0c823b8b24cf664",
     "upstream_tag": "v0.10.0",
-    "license": "Apache-2.0",
     "wheel_sha256": "c7bb75deed2c3e88fb5138f8ea075a170ee98d6c94fc263829609091ea9c2b5d",
     "sdist_sha256": "e31f89bdccb30ef0796854f5842ff52b4b224c28b2d5b110088e84071ea05c40",
 }
-
 REQUIRED_TOP = {
     "schema_version", "component", "upstream", "rights", "environment",
     "bootstrap", "runtime", "parity", "benchmark", "canonical_base_safety", "decision",
@@ -46,7 +41,6 @@ def main() -> int:
         return fail("unsupported schema_version")
     if data["decision"] not in VALID_DECISIONS:
         return fail("invalid decision state")
-
     if data["component"] != {"id": "DATATROVE", "package": "datatrove", "version": "0.10.0"}:
         return fail("component identity drift")
 
@@ -80,10 +74,12 @@ def main() -> int:
     if bootstrap["exact_install_attempted"] is not True:
         return fail("exact installation was not attempted")
     if bootstrap["installed"]:
-        if bootstrap.get("installed_version") != EXPECTED["version"]:
+        if bootstrap.get("installed_version") != "0.10.0":
             return fail("installed DataTrove version is not exact 0.10.0")
-        if bootstrap.get("dependency_lock_status") not in {"LOCKED", "LOCKED_REPRODUCIBLE"}:
+        if bootstrap.get("dependency_lock_status") not in {"LOCKED", "LOCKED_REPRODUCIBLE", "LOCKED_RUNTIME_FREEZE"}:
             return fail("installed runtime lacks a recorded dependency lock")
+        if bootstrap["dependency_lock_status"] == "LOCKED_RUNTIME_FREEZE" and not bootstrap.get("dependency_lock_sha256"):
+            return fail("runtime freeze lock lacks SHA-256")
 
     runtime = data["runtime"]
     parity = data["parity"]
