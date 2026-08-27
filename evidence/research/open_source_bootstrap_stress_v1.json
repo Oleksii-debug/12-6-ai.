@@ -81,9 +81,10 @@
     "type": "mechanics_only",
     "real_runtime_quality": "NOT_MEASURED",
     "mechanics_only_ms": [
-      0.0
+      1623.372,
+      1551.643
     ],
-    "note": "No dependency/runtime throughput claim is made; real bootstrap was unavailable."
+    "note": "Two local validator CLI runs. No dependency/runtime throughput claim is made; real bootstrap was unavailable."
   },
   "adversarial": {
     "contract_validator": "PASS",
@@ -116,5 +117,5 @@
   },
   "verdict": "RETEST_RUNTIME_REQUIRED",
   "next_action": "Re-run in an environment that has CPython 3.11.16 and exact locked artifacts available; execute ENV-151 in a fresh venv, then perform bounded real import/runtime, repeatability, failure-path, and parity tests before any promotion.",
-  "identity_sha256": "06beceea614e5fbee8bd783ec470871da99c70209e6e466bf4b016f4bba52665"
+  "identity_sha256": "17af8b6af13cc87fef5607ba039042d99e2129544b003ce87ba6054fcb418842"
 }
