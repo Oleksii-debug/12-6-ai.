@@ -144,6 +144,5 @@
     "tests": "tests/test_open_lm_bootstrap_stress_v1.py",
     "handoff": "docs/OPEN_LM_BOOTSTRAP_STRESS_V1.md",
     "evidence_identity_method": "sha256(canonical_json_without_evidence_identity_sha256)"
-  },
-  "evidence_identity_sha256": "d7ea3aa71889901b5a608c697f22a6892a9dbdf0b045e8c0a1c932c99dd2d0fc"
+  }
 }
