@@ -8,6 +8,7 @@ ownership inside the checkpoint API.
 
 from __future__ import annotations
 
+import copy
 from collections.abc import Mapping
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
@@ -17,9 +18,27 @@ from .core import (
     CheckpointCompatibilityError,
     CheckpointIdentity,
     LoadResult,
-    load_verified_checkpoint,
+    _apply_model_weights,
+    _decode_verified_state,
+    _preflight_optimizer_state,
+    _preflight_rng_state,
+    _prepare_model_weights,
+    assert_identity,
     prepare_checkpoint_load,
+    restore_rng_state,
     save_checkpoint,
+)
+
+_CANONICAL_TRAINER_STATE_FIELDS = frozenset(
+    {
+        "micro_step",
+        "optimizer_step",
+        "tokens_seen",
+        "optimizer",
+        "scheduler",
+        "scaler",
+        "config",
+    }
 )
 
 
@@ -100,6 +119,252 @@ def _assert_bound_metadata(
         raise CheckpointCompatibilityError(f"checkpoint canonical binding mismatch: {mismatches}")
 
 
+def _validate_state_schema(expected: Any, actual: Any, *, path: str) -> None:
+    """Validate a state-dict payload without mutating or copying model-scale objects."""
+
+    if isinstance(expected, Mapping):
+        if not isinstance(actual, Mapping):
+            raise CheckpointCompatibilityError(f"{path} must be a mapping")
+        expected_keys = set(expected)
+        actual_keys = set(actual)
+        if actual_keys != expected_keys:
+            missing = sorted(map(str, expected_keys - actual_keys))
+            unexpected = sorted(map(str, actual_keys - expected_keys))
+            raise CheckpointCompatibilityError(
+                f"{path} keys differ: missing={missing}, unexpected={unexpected}"
+            )
+        for key, expected_value in expected.items():
+            _validate_state_schema(
+                expected_value,
+                actual[key],
+                path=f"{path}.{key}",
+            )
+        return
+
+    if isinstance(expected, list):
+        if not isinstance(actual, list) or len(actual) != len(expected):
+            raise CheckpointCompatibilityError(
+                f"{path} list geometry mismatch: expected length {len(expected)}"
+            )
+        for index, (expected_value, actual_value) in enumerate(
+            zip(expected, actual, strict=True)
+        ):
+            _validate_state_schema(
+                expected_value,
+                actual_value,
+                path=f"{path}[{index}]",
+            )
+        return
+
+    if isinstance(expected, tuple):
+        if not isinstance(actual, tuple) or len(actual) != len(expected):
+            raise CheckpointCompatibilityError(
+                f"{path} tuple geometry mismatch: expected length {len(expected)}"
+            )
+        for index, (expected_value, actual_value) in enumerate(
+            zip(expected, actual, strict=True)
+        ):
+            _validate_state_schema(
+                expected_value,
+                actual_value,
+                path=f"{path}[{index}]",
+            )
+        return
+
+    expected_cls = expected.__class__ if expected is not None else None
+    actual_cls = actual.__class__ if actual is not None else None
+    expected_is_tensor = bool(
+        expected_cls is not None
+        and expected_cls.__module__.startswith("torch")
+        and expected_cls.__name__ in {"Tensor", "Parameter"}
+    )
+    actual_is_tensor = bool(
+        actual_cls is not None
+        and actual_cls.__module__.startswith("torch")
+        and actual_cls.__name__ in {"Tensor", "Parameter"}
+    )
+    if expected_is_tensor:
+        if not actual_is_tensor:
+            raise CheckpointCompatibilityError(f"{path} must be a torch tensor")
+        if tuple(actual.shape) != tuple(expected.shape) or actual.dtype != expected.dtype:
+            raise CheckpointCompatibilityError(
+                f"{path} tensor metadata mismatch: checkpoint "
+                f"shape={tuple(actual.shape)} dtype={actual.dtype}, live "
+                f"shape={tuple(expected.shape)} dtype={expected.dtype}"
+            )
+        return
+
+    if expected is None:
+        if actual is not None:
+            raise CheckpointCompatibilityError(f"{path} must be None")
+        return
+
+    if isinstance(expected, bool):
+        compatible = isinstance(actual, bool)
+    elif isinstance(expected, int):
+        compatible = isinstance(actual, int) and not isinstance(actual, bool)
+    elif isinstance(expected, float):
+        compatible = isinstance(actual, float)
+    else:
+        compatible = type(actual) is type(expected)
+    if not compatible:
+        raise CheckpointCompatibilityError(
+            f"{path} type mismatch: checkpoint {type(actual).__name__}, "
+            f"live {type(expected).__name__}"
+        )
+
+
+def _preflight_stateful_component(component: Any | None, state: Any, *, label: str) -> None:
+    """Check scheduler/scaler state schema without cloning model-scale optimizer state."""
+
+    if (state is None) != (component is None):
+        raise CheckpointCompatibilityError(f"{label} state/config mismatch")
+    if component is None:
+        return
+    if not hasattr(component, "state_dict") or not hasattr(component, "load_state_dict"):
+        raise CheckpointCompatibilityError(
+            f"{label} must provide state_dict/load_state_dict"
+        )
+    live_state = component.state_dict()
+    if not isinstance(live_state, Mapping):
+        raise CheckpointCompatibilityError(f"live {label} state must be a mapping")
+    _validate_state_schema(live_state, state, path=f"{label} state")
+
+
+def _preflight_trainer_target(trainer: Any) -> None:
+    """Reject a D02 trainer target that its own loader would refuse after mutation."""
+
+    if not (
+        hasattr(trainer, "_failure_reason")
+        and hasattr(trainer, "_update_incomplete")
+    ):
+        return
+    if trainer._failure_reason is not None:
+        raise CheckpointCompatibilityError(
+            "checkpoint restore requires a fresh trainer; target trainer is poisoned"
+        )
+    if trainer._update_incomplete:
+        raise CheckpointCompatibilityError(
+            "checkpoint restore requires a fresh trainer; target trainer has an incomplete update"
+        )
+
+
+def _preflight_trainer_state(
+    trainer: Any,
+    state: Any,
+    *,
+    manifest: Mapping[str, Any] | None = None,
+) -> None:
+    """Validate trainer-owned resume state before checkpoint model mutation.
+
+    ``Trainer.load_state_dict`` correctly rejects invalid counters/configuration,
+    but the adapter used to call it only after model weights had already been
+    restored. This mirrors those fail-closed checks and reuses D05 optimizer
+    geometry validation so a bad trainer-owned AdamW/SGD state cannot partially
+    restore a live model before failing.
+
+    Checkpoint-v1 also supports generic trainer-owned state adapters that do not
+    expose a public ``optimizer`` attribute. Those retain compatibility through
+    an isolated deep-copy load probe so the live trainer and model remain untouched.
+    """
+
+    if not isinstance(state, Mapping):
+        raise CheckpointCompatibilityError("checkpoint trainer state must be a mapping")
+
+    _preflight_trainer_target(trainer)
+
+    # Canonical D02 Trainer and its scale subclasses construct TrainerState(**state)
+    # during the real load. Extra keys therefore fail only at that final call unless
+    # the adapter mirrors the exact schema now, before model/RNG mutation.
+    if hasattr(trainer, "_failure_reason") and hasattr(trainer, "_update_incomplete"):
+        actual_fields = set(state)
+        if actual_fields != _CANONICAL_TRAINER_STATE_FIELDS:
+            missing = sorted(_CANONICAL_TRAINER_STATE_FIELDS - actual_fields)
+            unexpected = sorted(actual_fields - _CANONICAL_TRAINER_STATE_FIELDS)
+            raise CheckpointCompatibilityError(
+                "canonical trainer state keys differ: "
+                f"missing={missing}, unexpected={unexpected}"
+            )
+
+    for field in ("micro_step", "optimizer_step", "tokens_seen"):
+        value = state.get(field)
+        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+            raise CheckpointCompatibilityError(
+                f"trainer {field} must be a non-negative integer"
+            )
+
+    if manifest is not None:
+        identity = manifest.get("identity")
+        if not isinstance(identity, Mapping):
+            raise CheckpointCompatibilityError("verified checkpoint identity is missing")
+        if state["optimizer_step"] != identity.get("step"):
+            raise CheckpointCompatibilityError(
+                "trainer optimizer_step disagrees with checkpoint identity.step"
+            )
+        if state["tokens_seen"] != identity.get("tokens_seen"):
+            raise CheckpointCompatibilityError(
+                "trainer tokens_seen disagrees with checkpoint identity.tokens_seen"
+            )
+
+    live_config = getattr(trainer, "config", None)
+    if is_dataclass(live_config) and not isinstance(live_config, type):
+        live_config = asdict(live_config)
+    elif hasattr(live_config, "model_dump"):
+        live_config = live_config.model_dump(mode="python")
+
+    checkpoint_config = state.get("config")
+    if live_config is not None and checkpoint_config != live_config:
+        raise CheckpointCompatibilityError("trainer config mismatch; refusing unsafe resume")
+
+    if isinstance(live_config, Mapping):
+        accumulation = live_config.get("gradient_accumulation_steps")
+        max_steps = live_config.get("max_steps")
+        if (
+            isinstance(accumulation, int)
+            and not isinstance(accumulation, bool)
+            and accumulation > 0
+        ):
+            expected_micro_steps = state["optimizer_step"] * accumulation
+            if state["micro_step"] != expected_micro_steps:
+                raise CheckpointCompatibilityError(
+                    "checkpoint is not at a complete committed accumulation boundary: "
+                    f"micro_step={state['micro_step']}, expected={expected_micro_steps}"
+                )
+        if (
+            isinstance(max_steps, int)
+            and not isinstance(max_steps, bool)
+            and state["optimizer_step"] > max_steps
+        ):
+            raise CheckpointCompatibilityError(
+                "checkpoint optimizer_step exceeds configured max_steps"
+            )
+
+    optimizer = getattr(trainer, "optimizer", None)
+    if optimizer is None:
+        if not hasattr(trainer, "load_state_dict"):
+            raise CheckpointCompatibilityError("trainer must provide load_state_dict")
+        try:
+            probe = copy.deepcopy(trainer)
+            probe.load_state_dict(copy.deepcopy(state))
+        except Exception as exc:
+            raise CheckpointCompatibilityError(
+                "checkpoint trainer state failed isolated compatibility preflight"
+            ) from exc
+        return
+
+    _preflight_optimizer_state(optimizer, state.get("optimizer"))
+    _preflight_stateful_component(
+        getattr(trainer, "scheduler", None),
+        state.get("scheduler"),
+        label="scheduler",
+    )
+    _preflight_stateful_component(
+        getattr(trainer, "scaler", None),
+        state.get("scaler"),
+        label="scaler",
+    )
+
+
 def save_trainer_checkpoint(
     directory: str | Path,
     *,
@@ -143,19 +408,20 @@ def load_trainer_checkpoint(
     expected_environment_lock_hash: str | None = None,
     expected_seed: int | None = None,
 ) -> LoadResult:
-    """Verify one exact byte snapshot, bind it, then restore fresh D02 targets.
+    """Verify and decode one snapshot once, then restore fresh D02 targets.
 
-    The canonical nested identity checks and the actual load consume the same
-    verified byte snapshot. The source directory is never re-opened between
-    run-binding verification and model mutation.
+    Canonical identity checks, trainer-state preflight, model materialization,
+    RNG preflight, and the actual load all consume one decoded verified snapshot.
+    No checkpoint artifact is reopened or decoded a second time before mutation.
     """
 
     if not hasattr(trainer, "load_state_dict"):
         raise TypeError("trainer must provide load_state_dict()")
 
     verified = prepare_checkpoint_load(directory)
+    manifest = verified.manifest
     _assert_bound_metadata(
-        verified.manifest,
+        manifest,
         expected_init_spec_hash=expected_init_spec_hash,
         expected_split_identity=expected_split_identity,
         expected_packing_hash=expected_packing_hash,
@@ -164,18 +430,40 @@ def load_trainer_checkpoint(
         expected_environment_lock_hash=expected_environment_lock_hash,
         expected_seed=expected_seed,
     )
-
-    result = load_verified_checkpoint(
-        verified,
-        model=model,
-        strict_model=strict_model,
-        restore_rng=restore_rng,
-        expected_git_sha=expected_git_sha,
-        expected_model_spec_hash=expected_model_spec_hash,
-        expected_tokenizer_hash=expected_tokenizer_hash,
-        expected_tokenizer_vocab_hash=expected_tokenizer_vocab_hash,
-        expected_dataset_manifest_hash=expected_dataset_manifest_hash,
-        expected_run_manifest_hash=expected_run_manifest_hash,
+    assert_identity(
+        manifest,
+        git_sha=expected_git_sha,
+        model_spec_hash=expected_model_spec_hash,
+        tokenizer_hash=expected_tokenizer_hash,
+        tokenizer_vocab_hash=expected_tokenizer_vocab_hash,
+        dataset_manifest_hash=expected_dataset_manifest_hash,
+        run_manifest_hash=expected_run_manifest_hash,
     )
-    trainer.load_state_dict(result.trainer_state)
-    return result
+
+    arrays, combined_state = _decode_verified_state(verified)
+    del verified
+
+    trainer_state = combined_state.get("trainer")
+    _preflight_trainer_state(
+        trainer,
+        trainer_state,
+        manifest=manifest,
+    )
+    materialized = _prepare_model_weights(model, arrays, strict_model)
+    if restore_rng:
+        _preflight_rng_state(combined_state["rng"])
+
+    # The decoded source weights are no longer needed after target materialization.
+    # Releasing them before the first mutation keeps resume peak memory bounded as
+    # the same checkpoint path scales from 20M toward 100M and 1B parameters.
+    del arrays
+
+    _apply_model_weights(model, materialized, strict_model)
+    if restore_rng:
+        restore_rng_state(combined_state["rng"])
+    trainer.load_state_dict(trainer_state)
+    return LoadResult(
+        manifest=copy.deepcopy(manifest),
+        trainer_state=trainer_state,
+        rng_state=combined_state["rng"],
+    )
