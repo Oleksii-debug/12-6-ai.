@@ -1,0 +1,98 @@
+{
+  "schema_version": 1,
+  "worker": "SWARM-779",
+  "lane_key": "AUDIT-B|DATATROVE|INDEPENDENT-VERIFY|UPSTREAM-BOOTSTRAP-V1",
+  "project": "Oleksii-debug/12-6-ai.",
+  "project_main_sha_at_start": "5020afd671a3885c1b738c8b4eafe7525f630546",
+  "upstream": {
+    "repository": "huggingface/datatrove",
+    "release": "v0.10.0",
+    "release_published_at": "2026-08-13T16:08:07Z",
+    "tag_commit": "7024aecca2f9ffb7b7cf0d02c0c823b8b24cf664",
+    "license_file": "LICENSE",
+    "license": "Apache-2.0",
+    "license_git_blob_sha1": "261eeb9e9f8b2b4b0d119366dda99c6fd7d35c64",
+    "notice_file": "NOTICE",
+    "notice_present_at_pinned_commit": false,
+    "pyproject_git_blob_sha1": "fad8b1f20a2d48d4abbf27f6544d498b38981419",
+    "requires_python": ">=3.10.0",
+    "release_artifact_sha256": null,
+    "release_artifact_sha256_reason": "GitHub v0.10.0 release exposes no downloadable release assets/digests; the PyPI artifact could not be fetched because outbound DNS is unavailable in the worker environment."
+  },
+  "environment": {
+    "python": "3.13.5",
+    "pip": "25.1.1",
+    "uv": "/opt/pyvenv/bin/uv",
+    "git": "2.47.3",
+    "poetry": false,
+    "pdm": false,
+    "conda": false,
+    "os": "Linux x86_64",
+    "kernel": "6.18.35",
+    "cpu_model": "INTEL(R) XEON(R) PLATINUM 8573C",
+    "logical_cpu_count": 5,
+    "gpu": "none detected",
+    "global_datatrove_present": false,
+    "local_package_cache_evidence": "no uv/pip/wheel cache directory containing DataTrove was found under /home/oai/.cache",
+    "pypi_network": "FAIL_DNS_TEMPORARY_NAME_RESOLUTION",
+    "github_network_from_container": "FAIL_DNS_TEMPORARY_NAME_RESOLUTION"
+  },
+  "install_attempt": {
+    "isolated_environment": "uv venv /tmp/swarm779-datatrove-venv --python python",
+    "requested_distribution": "datatrove==0.10.0",
+    "index": "https://pypi.org/simple",
+    "install_command": "uv pip install --python /tmp/swarm779-datatrove-venv/bin/python datatrove==0.10.0 --index-url https://pypi.org/simple --no-cache",
+    "attempted": true,
+    "exit_code": 2,
+    "result": "BLOCKED_ENVIRONMENT",
+    "failure": "uv retried the PyPI request three times and failed DNS resolution for pypi.org",
+    "post_attempt_importable": false,
+    "post_attempt_metadata_version": null,
+    "global_environment_mutated": false
+  },
+  "runtime": {
+    "real_datatrove_import_executed": false,
+    "bounded_fixture_pipeline_executed": false,
+    "benchmark_executed": false,
+    "parity_proven": false,
+    "mock_runtime_used_as_evidence": false,
+    "reason": "exact pinned dependency could not be installed in the isolated environment"
+  },
+  "rights": {
+    "software_license": "Apache-2.0",
+    "notice_review": "NOTICE absent at exact pinned commit",
+    "dataset_rights": "not applicable to this software-only qualification",
+    "model_weight_rights": "not applicable; no foreign weights used",
+    "training_authority": false
+  },
+  "canonical_base_boundary": {
+    "canonical_base_changed": false,
+    "foreign_pretrained_weights_used": false,
+    "foreign_instruction_or_alignment_behavior_used": false,
+    "tokenizer_replaced": false,
+    "corpus_mutated": false,
+    "checkpoint_mutated": false,
+    "training_executed": false,
+    "paid_compute": false,
+    "final_test_payload_accessed": false
+  },
+  "promotion": {
+    "state": "CANDIDATE",
+    "adoptable": false,
+    "promotion_blocker": "runtime not executed because exact dependency was unavailable"
+  },
+  "deterministic_identity": {
+    "inputs_bound": [
+      "project_main_sha_at_start",
+      "upstream.release",
+      "upstream.tag_commit",
+      "upstream.license_git_blob_sha1",
+      "environment.python",
+      "environment.os",
+      "environment.cpu_model",
+      "install_attempt.requested_distribution",
+      "install_attempt.result",
+      "install_attempt.exit_code"
+    ]
+  }
+}
