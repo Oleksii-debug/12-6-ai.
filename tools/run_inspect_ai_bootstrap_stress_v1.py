@@ -1,13 +1,9 @@
 #!/usr/bin/env python3
-"""Real Inspect AI runtime qualification runner.
-
-This runner never calls a remote model provider. It constructs a tiny
-project-owned synthetic task, uses a deterministic local solver to set the
-model output, then executes Inspect AI's real scorer path and compares it to
-an independent exact-match oracle. Run twice in fresh processes for evidence.
-"""
+"""Real Inspect AI runtime qualification runner."""
 from __future__ import annotations
+
 import argparse
+import asyncio
 import json
 import os
 import platform
@@ -27,15 +23,23 @@ def run_once() -> dict:
     from inspect_ai.solver import solver
     from inspect_ai.solver._task_state import TaskState
 
-    sample = Sample(input="Return the exact token 12-6", target="12-6", id="synthetic-001")
+    sample = Sample(
+        input="Return the exact token 12-6",
+        target="12-6",
+        id="synthetic-001",
+    )
 
     @solver
     def deterministic_solver():
         async def solve(state: TaskState, generate):
-            state.output = ModelOutput.from_content("project-deterministic-local", sample.target)
+            state.output = ModelOutput.from_content(
+                "project-deterministic-local", sample.target
+            )
             return state
+
         return solve
 
+    _ = deterministic_solver
     state = TaskState(
         model="project-deterministic-local",
         sample_id=sample.id or "synthetic-001",
@@ -43,12 +47,14 @@ def run_once() -> dict:
         input=sample.input,
         messages=[],
         target=sample.target,
-        output=ModelOutput.from_content("project-deterministic-local", sample.target),
+        output=ModelOutput.from_content(
+            "project-deterministic-local", sample.target
+        ),
     )
 
     scorer = match(location="exact", ignore_case=False)
     started = time.perf_counter()
-    result = __import__("asyncio").run(scorer(state, state.target))
+    result = asyncio.run(scorer(state, state.target))
     elapsed_ms = (time.perf_counter() - started) * 1000.0
     value = state.output.completion
     oracle_value = oracle(value, sample.target)
@@ -73,15 +79,30 @@ def main() -> int:
     try:
         result = run_once()
     except Exception as exc:
-        result = {"runtime": "FAILED", "error_type": type(exc).__name__, "error": str(exc)}
+        result = {
+            "runtime": "FAILED",
+            "error_type": type(exc).__name__,
+            "error": str(exc),
+        }
     result["environment"] = {
         "python": platform.python_version(),
         "platform": platform.platform(),
-        "network_blocked": os.environ.get("INSPECT_AI_NETWORK_BLOCKED", "false") == "true",
+        "network_blocked": os.environ.get(
+            "INSPECT_AI_NETWORK_BLOCKED", "false"
+        )
+        == "true",
         "external_model_provider_used": False,
     }
-    args.out.write_text(json.dumps(result, indent=2, sort_keys=True), encoding="utf-8")
-    return 0 if result["runtime"] == "EXECUTED" and result.get("parity") == "PASS" else 2
+    args.out.write_text(
+        json.dumps(result, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+    return (
+        0
+        if result["runtime"] == "EXECUTED"
+        and result.get("parity") == "PASS"
+        else 2
+    )
 
 
 if __name__ == "__main__":
