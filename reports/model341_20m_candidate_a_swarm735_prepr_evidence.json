@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "worker": "SWARM-735",
+  "swarm_protocol": "SWARM-300-V2",
+  "lane_key": "D01|MODEL-341|INDEPENDENT-VERIFY|ARCH-IDENTITY",
+  "status": "PRE_PR_LOCAL_PASS_EXACT_REPO_RUNTIME_PENDING_SHARED_CI",
+  "candidate": {
+    "stage": "MODEL-341-20M-CANDIDATE-A",
+    "intentional_parent_sha": "e4ff486fd90802fc123bebf60eed4e59196a98df",
+    "config_blob_sha": "69e3cbd5f5c83c9d3d529a2a6376db3055979c40",
+    "model_py_blob_sha": "aacc0157cee08ceae5ef8a36e74bc90285c9b539",
+    "expected_parameters": 20613440,
+    "model_identity_sha256": "fbff24d561a2818453554d58ca23fc6ace3303b078f1935a8576c4565bd92441",
+    "init_identity_sha256": "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5"
+  },
+  "independent_static_recalculation": {
+    "model_identity_sha256_match": true,
+    "init_identity_sha256_match": true,
+    "q_dim": 320,
+    "kv_dim": 64,
+    "block_parameters": 1283200,
+    "total_parameters": 20613440,
+    "matches_candidate_expected_parameters": true
+  },
+  "local_independent_torch_reproduction": {
+    "torch_version": "2.10.0+cpu",
+    "seed": 341,
+    "parameter_count": 20613440,
+    "tied_embeddings": true,
+    "q_projection_shape": [320, 320],
+    "k_projection_shape": [64, 320],
+    "same_seed_state_sha256": "93e6bf1f4cb8515212ecfcd499917948e2114129e9c9941751f929424bb3078f",
+    "same_seed_reproduced": true,
+    "different_seed": 342,
+    "different_seed_state_sha256": "bcce89672f159cf790abdbc7fe7e22dce03d591b19cd45f91a680e781117470f",
+    "different_seed_changed": true,
+    "note": "Independent reconstruction from exact live config and inspected candidate source geometry; not a substitute for importing the exact repository module. The committed repo-level test performs that exact-module check under shared CI."
+  },
+  "local_verifier_tests": {
+    "command": "python -m py_compile verify.py test_verify.py && pytest -q test_verify.py",
+    "result": "PASS",
+    "tests_passed": 6,
+    "tests_failed": 0,
+    "coverage": [
+      "canonical ModelSpec and InitSpec SHA-256 identity",
+      "independent exact parameter arithmetic",
+      "expected q_dim and kv_dim",
+      "adversarial parameter-count drift",
+      "adversarial model-hash drift",
+      "adversarial canonical-base drift",
+      "adversarial tied-embedding drift",
+      "adversarial GQA drift",
+      "adversarial max-context drift",
+      "adversarial RoPE drift"
+    ]
+  },
+  "exact_repository_runtime_test": {
+    "path": "tests/test_model341_20m_independent_verify.py",
+    "state": "PENDING_SHARED_CI",
+    "reason": "The execution sandbox cannot resolve github.com for a clean git clone. Repository authority and writes were therefore kept on the connected GitHub surface; no PASS is inferred for the exact-module runtime test before CI executes it."
+  },
+  "truth_boundary": {
+    "local_free_cpu_only": true,
+    "random_init_only": true,
+    "training_performed": false,
+    "optimizer_update_performed": false,
+    "checkpoint_loaded": false,
+    "foreign_pretrained_weights_used": false,
+    "learned_20m_quality_claimed": false,
+    "gpu_or_runpod_used": false,
+    "paid_compute_used": false,
+    "stage_promotion_authorized": false,
+    "reserved_evaluation_data_accessed": false
+  }
+}
