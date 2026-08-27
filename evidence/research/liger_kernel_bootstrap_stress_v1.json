@@ -1,0 +1,97 @@
+{
+  "schema_version": 1,
+  "worker_id": "OPEN-SOURCE-BOOTSTRAP-STRESS-V1",
+  "lane_key": "D08|LIGER-KERNEL|OPEN-SOURCE-REUSE-RESEARCH|BOOTSTRAP-STRESS-V1",
+  "project_base_sha": "5020afd671a3885c1b738c8b4eafe7525f630546",
+  "upstream": {
+    "repository": "https://github.com/linkedin/Liger-Kernel",
+    "tag": "v0.8.2",
+    "commit": "000be60929938fd1358e03524c6ab398b6d421bd",
+    "release_artifact": "liger_kernel-0.8.2.tar.gz",
+    "release_artifact_sha256": "387673ed6bf64fc8150cc8315fed578d2fc717ec3450f53489f480880223c1b8",
+    "license": "BSD-2-Clause",
+    "license_blob": "d2fcc2b1c4384d0bcd1424b7f83db8e48fa753f6",
+    "notice_blob": "ea2881754f5b3e0eb9926dd9dc6c9d772f962911",
+    "package": "liger-kernel",
+    "package_version": "0.8.2"
+  },
+  "rights": {
+    "software_license": "BSD-2-Clause",
+    "dataset_rights_authorized": false,
+    "model_weight_rights": "not applicable to qualification; no weights used",
+    "documentation_rights": "reviewed via upstream NOTICE/acknowledgements",
+    "third_party_notice_required": true,
+    "third_party_notice_scope": [
+      "Unsloth Apache-2.0-derived code",
+      "Triton MIT-derived material",
+      "Efficient Cross Entropy MIT-derived material",
+      "Flash Attention BSD-3-Clause-derived ideas",
+      "AutoAWQ MIT-derived references",
+      "llm.c MIT-derived references",
+      "Tiny Shakespeare dataset referenced by upstream tests"
+    ]
+  },
+  "environment": {
+    "python_version": "3.13.5",
+    "python_executable": "/tmp/12-6-liger-bootstrap-v1/bin/python",
+    "os": "Linux-6.18.35-x86_64-with-glibc2.41",
+    "system": "Linux",
+    "machine": "x86_64",
+    "cpu_count": 5,
+    "cpu": "Intel(R) Xeon(R) Platinum 8573C",
+    "gpu": {"nvidia_smi": null, "rocm_smi": null},
+    "torch": {"version": "2.10.0+cpu", "cuda_version": null, "cuda_available": false, "device_count": 0},
+    "packages": {"torch": "2.10.0+cpu", "triton": null, "liger-kernel": null},
+    "package_manager": {"pip": "pip 25.1.1", "uv": "uv 0.10.0", "poetry": null, "pdm": null, "conda": null, "git": "git version 2.47.3"},
+    "network": {"pypi_dns": false, "github_dns": false},
+    "cache_hints": {"local_matches": ["/tmp/12-6-liger-bootstrap-v1", "/tmp/liger_pip_install.log", "/tmp/liger_uv_install.log"]}
+  },
+  "install_attempts": [
+    {
+      "command": ["/tmp/12-6-liger-bootstrap-v1/bin/python", "-m", "pip", "install", "--disable-pip-version-check", "--no-input", "--retries", "5", "--timeout", "5", "liger-kernel==0.8.2"],
+      "exit_code": 1,
+      "reason": "DNS_FAILURE",
+      "stderr_tail": "Temporary failure in name resolution; PyPI package index unreachable",
+      "identity_target": "liger-kernel==0.8.2"
+    },
+    {
+      "command": ["uv", "pip", "install", "--python", "/tmp/12-6-liger-bootstrap-v1/bin/python", "liger-kernel==0.8.2"],
+      "exit_code": 2,
+      "reason": "UV_CLI_OPTION_MISMATCH_ON_HOST",
+      "stderr_tail": "installed uv 0.10.0 does not accept --retries; no package installation occurred",
+      "identity_target": "liger-kernel==0.8.2"
+    }
+  ],
+  "runtime_probe": {
+    "status": "NOT_EXECUTED",
+    "reason": "EXACT_LIGER_DEPENDENCY_ABSENT_OR_DRIFTED",
+    "observed": {"liger-kernel": null, "triton": null, "cuda": false}
+  },
+  "benchmark": {
+    "executed": false,
+    "runs": 0,
+    "reason": "REAL_LIGER_GPU_RUNTIME_NOT_AVAILABLE",
+    "test_double_evidence": false
+  },
+  "parity": {
+    "proven": false,
+    "reason": "NO_REAL_UPSTREAM_RUNTIME_EXECUTION",
+    "required_ops": ["RMSNorm", "RoPE", "SwiGLU", "cross_entropy"]
+  },
+  "canonical_base_integrity": {
+    "foreign_weights_used": false,
+    "tokenizer_changed": false,
+    "checkpoint_changed": false,
+    "training_executed": false,
+    "paid_compute_used": false
+  },
+  "promotion_state": "RETEST_RUNTIME_REQUIRED",
+  "environment_hash": "a7f50ffc5020f77ad14ad0a12e839713675d32264d4a02693b8d967a5fca5a80",
+  "bootstrap_artifacts": {
+    "isolated_venv": "/tmp/12-6-liger-bootstrap-v1",
+    "pip_freeze": ["pip==25.1.1"],
+    "pip_install_log_sha256": "71da6ea834b2196dcdfdeb512d990afda5eadcd99f5ef0b21fc6081e69e190a6",
+    "uv_install_log_sha256": "4f24d50971787803b679897ed42b452fc52d354887348cb82d8220140d6c3897"
+  },
+  "evidence_identity": "099d429d4432ae49c73fd8746c468ecd260b9b5dd9009f12a34f63853729f39e"
+}
