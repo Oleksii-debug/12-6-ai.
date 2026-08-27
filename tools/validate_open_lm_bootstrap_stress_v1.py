@@ -14,6 +14,7 @@ EXPECTED = {
     "upstream_commit": "9bb92ef1689333534b7057942a20d18a46d1fa52",
     "license": "MIT",
     "base_sha": "5020afd671a3885c1b738c8b4eafe7525f630546",
+    "package_version": "0.0.34",
 }
 
 
@@ -42,6 +43,8 @@ def validate(path: Path) -> dict[str, Any]:
         fail("project repository drift")
     if payload.get("project_base_sha") != EXPECTED["base_sha"]:
         fail("project base SHA drift")
+    if payload.get("promotion_state") != "CANDIDATE":
+        fail("promotion state drift")
 
     upstream = payload.get("upstream")
     if not isinstance(upstream, dict):
@@ -50,6 +53,8 @@ def validate(path: Path) -> dict[str, Any]:
         fail("upstream commit drift")
     if upstream.get("license") != EXPECTED["license"]:
         fail("upstream license drift")
+    if upstream.get("package_version_at_commit") != EXPECTED["package_version"]:
+        fail("upstream package version drift")
     if upstream.get("source_head_observed") != EXPECTED["upstream_commit"]:
         fail("upstream source head drift")
     if upstream.get("tag_or_release") is not None:
@@ -111,8 +116,7 @@ def validate(path: Path) -> dict[str, Any]:
         if safety.get(key) is not False:
             fail(f"canonical Base safety violation: {key}")
 
-    evidence_identity = canonical_hash(payload)
-    return {"status": "PASS", "evidence_identity_sha256": evidence_identity}
+    return {"status": "PASS", "evidence_identity_sha256": canonical_hash(payload)}
 
 
 def main() -> int:
