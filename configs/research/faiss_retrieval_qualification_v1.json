@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "qualification_id": "FAISS-RETRIEVAL-QUALIFICATION-V1",
+  "authority": {
+    "repository": "Oleksii-debug/12-6-ai.",
+    "swarm_control_issue": 723,
+    "parent_issue": 720,
+    "worker_issue": 751,
+    "base_git_sha": "5020afd671a3885c1b738c8b4eafe7525f630546",
+    "registry_path": "configs/research/open_source_reuse_registry_v2.json",
+    "registry_git_blob_sha": "d80a60357c56eacac135f948b8a72556bb849e5a"
+  },
+  "upstream": {
+    "repository": "https://github.com/facebookresearch/faiss",
+    "release_tag": "v1.15.0",
+    "release_commit": "20f14b31a6d54e243a3d1de6ae193fc4c3ec18ed",
+    "license_spdx": "MIT",
+    "registry_decision": "P1_OPTIONAL_LOCAL_DENSE_RETRIEVAL"
+  },
+  "vector_source": {
+    "kind": "PROJECT_OWNED_NUMERIC_FIXTURE",
+    "identity": "SWARM-751-ORIGINAL-DENSE-FIXTURE-V1",
+    "foreign_pretrained_model": false
+  },
+  "index": {
+    "index_family": "FLAT_EXACT",
+    "dimension": 3,
+    "dtype": "float32",
+    "metric": "L2",
+    "deterministic_tie_break": "record_id_ascending"
+  },
+  "records": [
+    {"id": "doc-a", "vector": [1.0, 0.0, 0.0]},
+    {"id": "doc-b", "vector": [0.0, 1.0, 0.0]},
+    {"id": "doc-c", "vector": [0.0, 0.0, 1.0]},
+    {"id": "doc-d", "vector": [1.0, 1.0, 0.0]}
+  ],
+  "queries": [
+    {"id": "q-near-a", "vector": [0.9, 0.1, 0.0], "top_k": 3, "expected_record_ids": ["doc-a", "doc-d", "doc-b"]},
+    {"id": "q-near-b", "vector": [0.2, 0.8, 0.0], "top_k": 3, "expected_record_ids": ["doc-b", "doc-d", "doc-a"]}
+  ],
+  "persistence": {
+    "trust_policy": "HASH_BOUND_TRUSTED_LOCAL_ONLY",
+    "allow_untrusted_load": false,
+    "index_sha256": null
+  },
+  "backend_execution": {
+    "status": "NOT_EXECUTED_DEPENDENCY_ABSENT",
+    "import_version": null,
+    "reference_parity": false
+  },
+  "policy": {
+    "canonical_base_dependency": false,
+    "foreign_embedding_required": false,
+    "training_authorized": false,
+    "stage_promotion_authorized": false,
+    "benchmark_or_final_test_payload": false,
+    "requested_promotion_state": "CANDIDATE"
+  },
+  "package": {
+    "distribution": "faiss-cpu",
+    "version": "1.15.0",
+    "python_requires": ">=3.10",
+    "qualified_linux_x86_64_wheel": "faiss_cpu-1.15.0-cp310-abi3-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",
+    "qualified_linux_x86_64_wheel_sha256": "ec9b29aae29e428c085c2d49dbb02e4673cdea75db418d420f9e60e0b4184498",
+    "pypi_release_date": "2026-08-03",
+    "license_spdx": "MIT"
+  }
+}
