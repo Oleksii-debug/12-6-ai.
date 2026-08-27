@@ -57,10 +57,10 @@
       "learned_3m": {
         "authority": {
           "repository": "Oleksii-debug/12-6-ai.",
-          "git_sha": "65fee28807c6048bd113723c2da5277fcf6bf739",
-          "evidence_sha256": "68b3b193eb6d7d03cb57790992698b1e9c9581cf1950b02de83286494ad3574b",
+          "git_sha": "8a1c751b3a4879e46a38f130bdc782a187e19e18",
+          "evidence_sha256": "930b5f27a66a9e2013e0403b7d715232e0dbf87f7697079af4d6528a188c5d3d",
           "terminal": true,
-          "workflow_run_id": 33005987552,
+          "workflow_run_id": 33045520518,
           "workflow_conclusion": "success"
         },
         "status": "PASS"
