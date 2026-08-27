@@ -54,8 +54,28 @@
       "loss_trajectory_acceptable": false
     },
     "learned_scale_evidence": {
-      "learned_3m": {"authority": null, "status": "NOT_RUN"},
-      "learned_10m": {"authority": null, "status": "NOT_RUN"}
+      "learned_3m": {
+        "authority": {
+          "repository": "Oleksii-debug/12-6-ai.",
+          "git_sha": "65fee28807c6048bd113723c2da5277fcf6bf739",
+          "evidence_sha256": "68b3b193eb6d7d03cb57790992698b1e9c9581cf1950b02de83286494ad3574b",
+          "terminal": true,
+          "workflow_run_id": 33005987552,
+          "workflow_conclusion": "success"
+        },
+        "status": "PASS"
+      },
+      "learned_10m": {
+        "authority": {
+          "repository": "Oleksii-debug/12-6-ai.",
+          "git_sha": "9e7596707b63a8959efe56ca73b68cb0bf31499c",
+          "evidence_sha256": "8272a9ff3db01e568e0b4b272cd964952527d5aa0644dfe34bf1f1492481f4ad",
+          "terminal": true,
+          "workflow_run_id": 33009173269,
+          "workflow_conclusion": "success"
+        },
+        "status": "PASS"
+      }
     },
     "cost_envelope": {
       "authority": null,
