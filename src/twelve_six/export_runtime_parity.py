@@ -4,9 +4,10 @@ import hashlib
 import json
 import math
 import re
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any
 
 MANIFEST_SCHEMA = "12-6.export-runtime-targets.v1"
 EVIDENCE_SCHEMA = "12-6.export-runtime-parity-evidence.v1"
