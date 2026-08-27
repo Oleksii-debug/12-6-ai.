@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import importlib.metadata as metadata
 import json
 import math
 import platform
 import sys
+from collections.abc import Sequence
+from importlib import metadata
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 
 import torch
 
