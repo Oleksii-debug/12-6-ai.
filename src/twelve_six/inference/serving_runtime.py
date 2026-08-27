@@ -10,6 +10,8 @@ from concurrent.futures import (
     CancelledError,
     Future,
     ThreadPoolExecutor,
+)
+from concurrent.futures import (
     TimeoutError as FutureTimeoutError,
 )
 from typing import Any, Self
