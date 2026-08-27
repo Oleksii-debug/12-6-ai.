@@ -1,0 +1,136 @@
+{
+  "schema_version": 1,
+  "contract_id": "12-6.hydra-config-qualification.v1",
+  "status": "CANDIDATE_NOT_ADOPTED",
+  "authority": {
+    "project_base_git_sha": "5020afd671a3885c1b738c8b4eafe7525f630546",
+    "parent_issue": 720,
+    "claim_issue": 749,
+    "registry": {
+      "path": "configs/research/open_source_reuse_registry_v2.json",
+      "blob_sha": "d80a60357c56eacac135f948b8a72556bb849e5a",
+      "component_id": "HYDRA",
+      "decision": "P1_CONFIG_SYSTEM_CANDIDATE"
+    },
+    "canonical_lineage_authorities": [
+      "GITHUB_EXACT_SHA",
+      "D05_RUN_MANIFEST",
+      "D05_CHECKPOINT_MANIFEST"
+    ],
+    "hydra_is_canonical_lineage_authority": false,
+    "hydra_can_gate_stage_promotion": false
+  },
+  "upstream": {
+    "repository": "https://github.com/hydra-ecosystem/hydra",
+    "release_tag": "v1.3.5",
+    "commit_sha": "51647a2183512bc4e5556842c494e7efdbd75375",
+    "license": "MIT",
+    "release_published_at": "2026-08-05T18:32:10Z"
+  },
+  "execution_policy": {
+    "execution_class": "LOCAL_FREE",
+    "paid_compute_authorized": false,
+    "model_training_authorized": false,
+    "canonical_base_dependency": false,
+    "dependency_install_authorized_by_contract": false,
+    "final_test_access_authorized": false
+  },
+  "composition_contract": {
+    "identity_algorithm": "SHA256_CANONICAL_JSON_V1",
+    "defaults_entries_require_sha256": true,
+    "all_overrides_must_be_ordered_and_explicit": true,
+    "allowed_override_sources": [
+      "CLI_EXPLICIT",
+      "CONFIG_GROUP_SELECTION",
+      "SWEEP_PARAMETER_EXPLICIT"
+    ],
+    "hidden_or_implicit_overrides_forbidden": true,
+    "runtime_environment_interpolation_for_identity": "FORBIDDEN",
+    "resolved_config_must_be_exported": true,
+    "resolved_config_must_be_hashed": true,
+    "clean_rebuild_hash_must_match": true,
+    "portable_export_required": true,
+    "portable_export_format": "CANONICAL_JSON",
+    "hydra_runtime_output_directory_is_authority": false
+  },
+  "promotion": {
+    "states": [
+      "DISCOVERED",
+      "CANDIDATE",
+      "PARITY_PROVEN",
+      "ADOPTED"
+    ],
+    "current_state": "CANDIDATE",
+    "required_gates": [
+      "UPSTREAM_IDENTITY_BOUND",
+      "REGISTRY_BINDING_BOUND",
+      "CANONICAL_AUTHORITY_PRESERVED",
+      "EXPLICIT_OVERRIDE_LEDGER",
+      "RESOLVED_CONFIG_BOUND",
+      "DETERMINISTIC_REBUILD",
+      "PORTABLE_ROLLBACK_EXPORT",
+      "NO_SECRET_BEARING_METADATA"
+    ],
+    "this_contract_grants_adoption": false,
+    "this_contract_grants_stage_promotion": false
+  },
+  "project_owned_fixture": {
+    "fixture_id": "PROJECT_OWNED_HYDRA_QUALIFICATION_BASELINE",
+    "base_git_sha": "5020afd671a3885c1b738c8b4eafe7525f630546",
+    "defaults_trace": [
+      {
+        "path": "fixture://model/s0.json",
+        "sha256": "89a3f606ad4f69f590e9192d559c83acc26f679fc6f591ff7b42fcf7886574b3"
+      },
+      {
+        "path": "fixture://data/project-owned.json",
+        "sha256": "0922382162b05e58aec2bc6e00bcb858b48f61af16b82fa54ffdfaeb0756b7a6"
+      },
+      {
+        "path": "fixture://train/local-free.json",
+        "sha256": "ce29518d5e26a4b9f16a722d2bfbd7affdb7df55f1f294a3de043c84145bf607"
+      }
+    ],
+    "override_ledger": [
+      {
+        "source": "CLI_EXPLICIT",
+        "key": "training.steps",
+        "value": 16
+      }
+    ],
+    "resolved_config": {
+      "model": {
+        "architecture": "twelve-six-decoder",
+        "stage": "S0",
+        "random_init": true
+      },
+      "data": {
+        "dataset_id": "PROJECT_OWNED_SYNTHETIC_CONFIG_FIXTURE",
+        "split": "train"
+      },
+      "training": {
+        "seed": 1337,
+        "steps": 16,
+        "precision": "fp32",
+        "paid_compute": false
+      }
+    },
+    "resolved_config_sha256": "85999c70ab4dc8fd54ad4b636f39c7df4a9b45dc29518dc253128dbdf07c9dc6",
+    "clean_rebuild_resolved_config_sha256": "85999c70ab4dc8fd54ad4b636f39c7df4a9b45dc29518dc253128dbdf07c9dc6",
+    "portable_export_sha256": "c0c1b3eadeb11838bab17cc3f93349ff6ac3a088acedfdd2dc0a1c1cfb10a29b",
+    "hidden_overrides_detected": false,
+    "runtime_environment_interpolation_detected": false,
+    "secret_bearing_fields_present": false,
+    "hydra_runtime_output_is_lineage_authority": false
+  },
+  "truth_boundary": {
+    "hydra_executed": false,
+    "hydra_dependency_installed": false,
+    "evidence_scope": "CONTRACT_AND_IDENTITY_MECHANICS_ONLY",
+    "canonical_base_random_init_only": true,
+    "foreign_pretrained_weights_used": false,
+    "corpus_or_tokenizer_mutated": false,
+    "checkpoint_mutated": false,
+    "paid_compute_used": false
+  }
+}
