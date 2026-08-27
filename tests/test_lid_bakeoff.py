@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from copy import deepcopy
 import json
+from copy import deepcopy
 from pathlib import Path
 
 import pytest
@@ -13,7 +13,6 @@ from twelve_six.lid_bakeoff import (
     score_evidence,
     validate_contract,
 )
-
 
 ROOT = Path(__file__).parents[1]
 CONTRACT_PATH = ROOT / "configs/research/lid_bakeoff_v1.json"
