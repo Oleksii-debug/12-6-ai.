@@ -1,0 +1,48 @@
+{
+  "schema": "12-6.open-source-bootstrap-stress.v1",
+  "worker_id": "OPEN-SOURCE-BOOTSTRAP-STRESS-V1",
+  "lane_key": "D09|EXECUTION-BOOTSTRAP|INDEPENDENT-VERIFY|STRESS-V1",
+  "project_repository": "Oleksii-debug/12-6-ai.",
+  "base_branch": "main",
+  "base_sha": "5020afd671a3885c1b738c8b4eafe7525f630546",
+  "claim_issue": 773,
+  "incumbent_pr": 313,
+  "incumbent_pr_head": "bbca2101ea9409b47d844dd8292cd7f2290e3ff0",
+  "incumbent_branch": "env151/universal-execution-bootstrap-20260826",
+  "incumbent_pr_state_at_scout": "open",
+  "required_python": "3.11.16",
+  "required_python_implementation": "cpython",
+  "required_platform": "linux-x86_64",
+  "incumbent_changed_files": [
+    ".github/actions/execution-bootstrap/action.yml",
+    ".github/workflows/env151-execution-bootstrap.yml",
+    "docs/ENV151_EXECUTION_BOOTSTRAP.md",
+    "requirements/execution/capabilities.json",
+    "requirements/execution/linux-x86_64/cpu-runtime.lock.txt",
+    "requirements/execution/linux-x86_64/tokenizer-support.lock.txt",
+    "requirements/execution/linux-x86_64/transformers-support.lock.txt",
+    "tests/test_execution_bootstrap.py",
+    "tools/execution_bootstrap.py"
+  ],
+  "incumbent_identity": {
+    "bootstrap_source_blob": "86881ea145cb5faa4545cc7156fbb660ae9a33f0",
+    "capabilities_blob": "cd6fc00cb23ddb19b58fecab5c32a1a68224b144",
+    "cpu_lock_blob": "ca52939b8c4cdd1c06189ff861e0ddf056de83a7",
+    "toolchain_lock_blob": "2ed440524978b4559b1aec99650cacc1959992e6",
+    "tests_blob": "4636c8657ce6d1c696db2fe7bffc2e491f8eb595"
+  },
+  "expected_cpu_lock_sha256": "03e08dd06ff446651dcc6950d0f433325bb32261d3e2406b34506cd00e1be52a",
+  "expected_toolchain_lock_sha256": "06b3f872e648e0b7f3cc33a92bd8b04709dea5d9a9821df4f2e8141f646cdcf3",
+  "required_capabilities": ["runtime", "tests"],
+  "forbidden_mutation_prefixes": [
+    "src/twelve_six/",
+    "data/",
+    "tokenizer/",
+    "checkpoints/",
+    "training/",
+    "evaluation/",
+    "models/"
+  ],
+  "expected_no_new_workflow": true,
+  "local_free_only": true
+}
