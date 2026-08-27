@@ -7,7 +7,6 @@ from pathlib import Path
 
 import pytest
 
-
 ROOT = Path(__file__).resolve().parents[1]
 TOOL_PATH = ROOT / "tools" / "validate_culturax_ua_en_audit.py"
 AUDIT_PATH = ROOT / "configs" / "audit" / "culturax_ua_en_rights_provenance_v1.json"
