@@ -1,0 +1,57 @@
+{
+  "schema": "12-6.open-source-bootstrap-stress.v1",
+  "worker": "OPEN-SOURCE-BOOTSTRAP-STRESS-V1",
+  "ownership": {
+    "worker_issue": 773,
+    "lane_key": "D10|EXECUTION-BOOTSTRAP|INTEGRATION-CONVERGENCE|STRESS-V1",
+    "branch": "swarm/773-exec-bootstrap-stress-v1-main5020",
+    "base_sha": "5020afd671a3885c1b738c8b4eafe7525f630546",
+    "avoid": ["SWARM-774 DataTrove", "SWARM-778 Liger Kernel", "SWARM-777 OpenLM", "PR #313 ENV-151 Product implementation", ".github/workflows/*"]
+  },
+  "project_authority": {
+    "main_sha": "5020afd671a3885c1b738c8b4eafe7525f630546",
+    "control_issue": 723,
+    "control_status": "READY_V2_FOR_200_WORKER_TRIAL",
+    "registry_issue": 720
+  },
+  "canonical_base": {
+    "random_init_only": true,
+    "foreign_pretrained_weights_used": false,
+    "foreign_instruct_or_aligned_weights_used": false,
+    "tokenizer_replacement": false,
+    "training_allowed": false,
+    "paid_compute_allowed": false
+  },
+  "env151": {
+    "product_pr": 313,
+    "branch": "env151/universal-execution-bootstrap-20260826",
+    "head_sha": "bbca2101ea9409b47d844dd8292cd7f2290e3ff0",
+    "required_python": "3.11.16",
+    "bootstrap_schema": "12-6.execution-capabilities.v1",
+    "manifest_schema": "12-6.execution-environment-manifest.v1",
+    "cpu_runtime_lock": "requirements/execution/linux-x86_64/cpu-runtime.lock.txt",
+    "forbidden_cpu_packages": ["nvidia-*", "cuda-*", "triton"],
+    "files": {
+      "tools/execution_bootstrap.py": {
+        "git_blob_sha": "86881ea145cb5faa4545cc7156fbb660ae9a33f0"
+      },
+      "requirements/execution/capabilities.json": {
+        "git_blob_sha": "cd6fc00cb23ddb19b58fecab5c32a1a68224b144"
+      },
+      "requirements/execution/linux-x86_64/cpu-runtime.lock.txt": {
+        "git_blob_sha": "ca52939b8c4cdd1c06189ff861e0ddf056de83a7",
+        "content_sha256": "03e08dd06ff446651dcc6950d0f433325bb32261d3e2406b34506cd00e1be52a",
+        "artifact": "torch==2.13.0+cpu",
+        "artifact_sha256": "6746dbcbeb526eb61330b76b41ff1b4eb848951103a892eeb080dfa2b264667b"
+      }
+    }
+  },
+  "qualification": {
+    "real_dependency_execution_required": true,
+    "mock_execution_is_runtime_evidence": false,
+    "install_mode": "fresh_venv_only",
+    "pip_flags": ["--require-hashes", "--no-deps"],
+    "benchmark_mode": "mechanics_only_when_real_runtime_unavailable",
+    "promotion_gate": "real exact install + import/runtime probe + deterministic repeatability + adversarial pass + parity evidence"
+  }
+}
