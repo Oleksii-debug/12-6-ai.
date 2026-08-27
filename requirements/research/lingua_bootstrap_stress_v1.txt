@@ -1,0 +1,3 @@
+# Exact retry artifact for LOCAL_FREE Lingua 2.2.0 runtime qualification.
+# Target: CPython 3.13, Linux x86_64 glibc.
+lingua-language-detector==2.2.0 --hash=sha256:4fbf936b47ef4fdd7043ebb4159d4a5f1c3648028e19d6e3c60464abc5f5e195
