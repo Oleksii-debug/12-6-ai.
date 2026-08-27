@@ -146,8 +146,11 @@ def test_current_packet_is_blocked_at_all_three_phases() -> None:
     assert "data_budget_not_qualified" in result.local_free_pilot_blockers
     assert "checkpoint_integrity_not_terminal_pass" in result.local_free_pilot_blockers
     assert "requested_unique_loss_positions_not_positive" in result.local_free_pilot_blockers
-    assert "learned_3m_not_terminal_pass" in result.compute_request_blockers
-    assert "learned_10m_not_terminal_pass" in result.compute_request_blockers
+    assert "learned_3m_not_terminal_pass" not in result.compute_request_blockers
+    assert "learned_10m_not_terminal_pass" not in result.compute_request_blockers
+    assert "bounded_pilot_not_terminal_pass" in result.compute_request_blockers
+    assert "cost_envelope_not_estimated" in result.compute_request_blockers
+    assert "independent_audit_not_terminal_pass" in result.compute_request_blockers
     assert "compute_not_explicitly_authorized" in result.material_training_blockers
     assert "training_not_explicitly_authorized" in result.material_training_blockers
 
@@ -158,7 +161,8 @@ def test_local_pilot_ready_does_not_imply_compute_or_training_authority() -> Non
     assert not result.ready_for_compute_authorization_request
     assert not result.material_training_authorized
     assert "bounded_pilot_not_terminal_pass" in result.compute_request_blockers
-    assert "learned_3m_not_terminal_pass" in result.compute_request_blockers
+    assert "learned_3m_not_terminal_pass" not in result.compute_request_blockers
+    assert "learned_10m_not_terminal_pass" not in result.compute_request_blockers
 
 
 def test_learned_scale_evidence_is_required_before_compute_request() -> None:
