@@ -6,7 +6,8 @@ import pytest
 import torch
 
 from twelve_six.inference import FirstPartyInference, GenerationConfig, generate_token_ids
-from twelve_six.inference.cli import build_parser, main as cli_main
+from twelve_six.inference.cli import build_parser
+from twelve_six.inference.cli import main as cli_main
 
 ROOT = Path(__file__).resolve().parents[1]
 S0_STAGE = ROOT / "configs/stages/s0_10k.json"
