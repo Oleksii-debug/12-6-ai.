@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Fail-closed validator for NEXT100-063 terminal source registry V5."""
 from __future__ import annotations
 
@@ -35,7 +34,7 @@ def require(condition: bool, message: str) -> None:
 
 def git_blob_sha1(raw: bytes) -> str:
     header = f"blob {len(raw)}\0".encode("ascii")
-    return hashlib.sha1(header + raw).hexdigest()  # noqa: S324 - Git object identity
+    return hashlib.sha1(header + raw).hexdigest()
 
 
 def canonical_identity(data: dict[str, Any]) -> str:
