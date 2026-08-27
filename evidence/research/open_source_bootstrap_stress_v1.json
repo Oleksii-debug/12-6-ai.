@@ -1,0 +1,120 @@
+{
+  "schema": "12-6.open-source-bootstrap-stress-evidence.v1",
+  "worker_issue": 773,
+  "worker": "OPEN-SOURCE-BOOTSTRAP-STRESS-V1",
+  "branch": "swarm/773-execution-bootstrap-stress-v1",
+  "base_sha": "5020afd671a3885c1b738c8b4eafe7525f630546",
+  "observed_utc": "2026-08-27T07:53:46Z",
+  "authority": {
+    "control_issue": 723,
+    "control_status": "READY_V2_FOR_200_WORKER_TRIAL",
+    "env151_pr": 313,
+    "env151_head_sha": "bbca2101ea9409b47d844dd8292cd7f2290e3ff0",
+    "main_sha_at_probe": "5020afd671a3885c1b738c8b4eafe7525f630546"
+  },
+  "environment": {
+    "python": "3.13.5",
+    "python_implementation": "cpython",
+    "os": "Linux",
+    "kernel": "6.18.35",
+    "architecture": "x86_64",
+    "cpu_count": 5,
+    "gpu": {
+      "hardware_visible": false,
+      "nvidia_smi": "NOT_FOUND",
+      "torch_cuda_available": false,
+      "torch_cuda_version": null
+    },
+    "package_managers": {
+      "pip": "25.1.1",
+      "uv": "0.10.0",
+      "poetry": null,
+      "pdm": null,
+      "conda": null,
+      "git": "2.47.3"
+    },
+    "cache": {
+      "pip_cache": "DISABLED_NOT_WRITABLE",
+      "uv_cache": "/home/oai/.cache/uv",
+      "matching_exact_artifacts_found": []
+    },
+    "network": {
+      "github_dns": "UNAVAILABLE",
+      "pypi_dns": "UNAVAILABLE",
+      "pytorch_cpu_index_dns": "UNAVAILABLE"
+    },
+    "installed_exactness": {
+      "torch": "2.10.0+cpu",
+      "numpy": "2.3.5",
+      "safetensors": null,
+      "pytest": "9.0.2",
+      "tokenizers": null,
+      "transformers": null,
+      "ruff": null,
+      "datatrove": null,
+      "trafilatura": null,
+      "resiliparse": null,
+      "faiss": null
+    }
+  },
+  "installation_attempt": {
+    "attempted": true,
+    "environment": "fresh venv at /tmp/swarm773-exact-cpu-runtime",
+    "venv_python": "3.13.5",
+    "exact_requirement": "torch==2.13.0+cpu",
+    "exact_requirement_sha256": "6746dbcbeb526eb61330b76b41ff1b4eb848951103a892eeb080dfa2b264667b",
+    "lock_sha256": "03e08dd06ff446651dcc6950d0f433325bb32261d3e2406b34506cd00e1be52a",
+    "pip_mode": "--require-hashes --no-deps",
+    "result": "NOT_COMPLETED_NETWORK_UNAVAILABLE",
+    "network_error": "Temporary failure in name resolution",
+    "global_python_modified": false,
+    "substitution_made": false
+  },
+  "execution": {
+    "real_bootstrap_executed": false,
+    "real_dependency_import_executed": false,
+    "bounded_upstream_fixture_executed": false,
+    "reason": "exact_dependency_unavailable_and_required_python_mismatch",
+    "status": "NOT_EXECUTED"
+  },
+  "benchmark": {
+    "type": "mechanics_only",
+    "real_runtime_quality": "NOT_MEASURED",
+    "mechanics_only_ms": [
+      0.0
+    ],
+    "note": "No dependency/runtime throughput claim is made; real bootstrap was unavailable."
+  },
+  "adversarial": {
+    "contract_validator": "PASS",
+    "main_sha_drift_rejection": "PASS",
+    "cpu_lock_drift_rejection": "PASS",
+    "false_runtime_success_rejection": "PASS",
+    "global_python_mutation_rejection": "PASS",
+    "evidence_identity_drift_detection": "PASS",
+    "deterministic_cli_output": "PASS"
+  },
+  "parity": {
+    "status": "NOT_PROVEN",
+    "project_vs_upstream_runtime": "NOT_EXECUTED",
+    "reason": "ENV-151 implementation exists on open PR #313 and exact runtime closure could not be installed locally"
+  },
+  "rights": {
+    "project_bootstrap_license_status": "NOT_ASSERTED_NO_ROOT_LICENSE_FILE_FOUND",
+    "third_party_dependency_rights": "LOCK_IDENTITY_ONLY",
+    "third_party_training_authority": "NOT_ASSERTED",
+    "license_promotion": "BLOCKED_PENDING_SOURCE_LICENSE_AND_NOTICE_REVIEW"
+  },
+  "base_safety": {
+    "canonical_base_changed": false,
+    "foreign_weights_used": false,
+    "foreign_tokenizer_used": false,
+    "tokenizer_replaced": false,
+    "training_executed": false,
+    "evaluation_payload_accessed": false,
+    "paid_compute_used": false
+  },
+  "verdict": "RETEST_RUNTIME_REQUIRED",
+  "next_action": "Re-run in an environment that has CPython 3.11.16 and exact locked artifacts available; execute ENV-151 in a fresh venv, then perform bounded real import/runtime, repeatability, failure-path, and parity tests before any promotion.",
+  "identity_sha256": "06beceea614e5fbee8bd783ec470871da99c70209e6e466bf4b016f4bba52665"
+}
