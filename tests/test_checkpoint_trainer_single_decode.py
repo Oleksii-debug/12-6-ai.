@@ -3,7 +3,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import Any
 
-import twelve_six.checkpoint.trainer_adapter as trainer_adapter
+from twelve_six.checkpoint import trainer_adapter
 
 
 class _TrainerProbe:
