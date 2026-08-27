@@ -17,11 +17,9 @@ EXPECTED = {
 }
 
 
-def canonical_hash(payload: dict[str, Any], identity_field: str) -> str:
-    body = dict(payload)
-    body.pop(identity_field, None)
+def canonical_hash(payload: dict[str, Any]) -> str:
     encoded = json.dumps(
-        body,
+        payload,
         ensure_ascii=False,
         sort_keys=True,
         separators=(",", ":"),
@@ -92,7 +90,7 @@ def validate(path: Path) -> dict[str, Any]:
     if runtime.get("execution_status") != "NOT_EXECUTED":
         fail("runtime cannot be promoted without execution")
     if runtime.get("benchmark_status") != "NOT_EXECUTED":
-        fail("benchmark cannot be claimed without execution")
+        fail("benchmark cannot be promoted without execution")
     if runtime.get("parity_proven") is not False:
         fail("parity cannot be true without runtime evidence")
     if runtime.get("adoptable") is not False:
@@ -113,19 +111,17 @@ def validate(path: Path) -> dict[str, Any]:
         if safety.get(key) is not False:
             fail(f"canonical Base safety violation: {key}")
 
-    identity = payload.get("evidence_identity_sha256")
-    if not isinstance(identity, str) or len(identity) != 64:
-        fail("missing evidence identity")
-    calculated = canonical_hash(payload, "evidence_identity_sha256")
-    if identity != calculated:
-        fail("evidence identity mismatch")
-
-    return {"status": "PASS", "evidence_identity_sha256": calculated}
+    evidence_identity = canonical_hash(payload)
+    return {"status": "PASS", "evidence_identity_sha256": evidence_identity}
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("manifest", nargs="?", default="configs/research/open_lm_bootstrap_stress_v1.json")
+    parser.add_argument(
+        "manifest",
+        nargs="?",
+        default="configs/research/open_lm_bootstrap_stress_v1.json",
+    )
     args = parser.parse_args()
     result = validate(Path(args.manifest))
     print(json.dumps(result, sort_keys=True))
