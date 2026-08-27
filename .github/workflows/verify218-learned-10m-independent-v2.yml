@@ -1,0 +1,173 @@
+name: VERIFY-218 Independent Learned 10M V2
+run-name: VERIFY-218 V2 exact-artifact admission and resume proof
+
+on:
+  push:
+    branches:
+      - verify218/learned-10m-independent-v2-20260826
+  pull_request:
+    branches:
+      - learn217/terminal-10m-base-20260826
+  workflow_dispatch:
+
+concurrency:
+  group: verify218-v2-${{ github.event.pull_request.head.sha || github.sha }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  independent-learned-10m-v2:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      PYTHONPATH: src
+      VERIFY218_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      PRODUCER_SHA: c02c8aa38e691521ae2ab6a4ff3ea1d643efd6ef
+      PRODUCER_ARTIFACT_ID: "9602650341"
+      PRODUCER_ARTIFACT_NAME: learn217-terminal-10m-learned-base
+      PRODUCER_WORKFLOW_RUN_ID: "32952787070"
+      PRODUCER_ARTIFACT_ZIP_SHA256: 8631e90417e40365b3fc0d6bc98ee6adda5a4ed24530e675d9a91c93219537ee
+
+    steps:
+      - name: Checkout exact verifier head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.VERIFY218_HEAD_SHA }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set exact CPython 3.11.16
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Universal exact execution bootstrap
+        uses: ./.github/actions/execution-bootstrap
+        with:
+          capabilities: runtime,tests,lint
+          venv: .verify218
+          manifest: reports/verify218/environment.json
+          command: >-
+            python -m pytest -q
+            tests/test_verify218_learned_10m.py
+            tests/test_verify218_consumer_authority.py
+
+      - name: Bind exact verifier source and verification-only surface
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$VERIFY218_HEAD_SHA"
+          test "$VERIFY218_HEAD_SHA" != "$PRODUCER_SHA"
+          .verify218/bin/ruff check \
+            src/twelve_six/verify218_learned_10m.py \
+            src/twelve_six/verify218_consumer_authority.py \
+            tests/test_verify218_learned_10m.py \
+            tests/test_verify218_consumer_authority.py
+          .verify218/bin/python -m compileall -q \
+            src/twelve_six/verify218_learned_10m.py \
+            src/twelve_six/verify218_consumer_authority.py \
+            tests/test_verify218_learned_10m.py \
+            tests/test_verify218_consumer_authority.py
+          if grep -En \
+            '(optimizer\.step\(|\.backward\(|train_microbatch\(|save_checkpoint\(|save_trainer_checkpoint\()' \
+            src/twelve_six/verify218_learned_10m.py \
+            src/twelve_six/verify218_consumer_authority.py; then
+            echo "VERIFY-218 V2 must remain verification-only" >&2
+            exit 1
+          fi
+
+      - name: Run verifier unit and contract tests
+        run: |
+          set -euo pipefail
+          .verify218/bin/python -m pytest -q \
+            tests/test_verify218_learned_10m.py \
+            tests/test_verify218_consumer_authority.py
+
+      - name: Download exact immutable terminal LEARN-217 artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p learned-artifacts/zips learned-artifacts/learn217 reports/verify218
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${PRODUCER_ARTIFACT_ID}/zip" \
+            > learned-artifacts/zips/learn217.zip
+          echo "${PRODUCER_ARTIFACT_ZIP_SHA256}  learned-artifacts/zips/learn217.zip" \
+            | sha256sum -c -
+          unzip -q learned-artifacts/zips/learn217.zip -d learned-artifacts/learn217
+          test -f learned-artifacts/learn217/scale141-evidence/learn217-terminal-summary.json
+          test -d learned-artifacts/learn217/scale141-evidence/retained/best
+          test -d learned-artifacts/learn217/scale141-evidence/retained/final
+          test -d learned-artifacts/learn217/scale141-evidence/retained/recovery-phase1
+          test -d learned-artifacts/learn217/scale141-evidence/retained/recovery-current
+
+      - name: Execute independent scientific and fresh-resume verifier
+        run: |
+          set -euo pipefail
+          .verify218/bin/python -m twelve_six.verify218_consumer_authority \
+            --repo-root . \
+            --artifact-root learned-artifacts/learn217 \
+            --verifier-head-sha "$VERIFY218_HEAD_SHA" \
+            --rich-output reports/verify218/rich-authority.json \
+            --output reports/verify218/authority.json
+
+      - name: Enforce RUNTIME-225 consumable authority contract
+        run: |
+          set -euo pipefail
+          .verify218/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+          from twelve_six.checkpoint import hash_json
+
+          path = Path('reports/verify218/authority.json')
+          value = json.loads(path.read_text(encoding='utf-8'))
+          supplied = value.pop('identity_sha256')
+          assert supplied == hash_json(value)
+          assert value['worker_id'] == 'VERIFY-218-LEARNED-10M-INDEPENDENT'
+          assert value['status'] == 'VERIFIED_LEARNED_10M'
+          assert value['verified_learned_10m'] is True
+          assert value['foreign_pretrained_weights'] is False
+          assert value['mechanics_only_checkpoint'] is False
+          assert value['one_step_smoke'] is False
+          for gate in (
+              'checkpoint_integrity',
+              'fresh_process_resume',
+              'finite_first_party_logits',
+              'heldout_bpb',
+              'evaluation_non_mutation',
+              'greedy_generation',
+              'best_final_role_resolution',
+          ):
+              assert value['gates'][gate] is True
+          assert value['model']['parameter_count'] == 10000640
+          assert value['model']['model_spec_sha256'] == '61caa5469123e23b9b72fc2024140bfca84c4c480dcb0a7e712ba800a4f22998'
+          assert value['tokenizer']['version'] == 's0-byte-v1'
+          assert value['corpus_identity_sha256'] == '422f545da93526ceba2c0ff738e0b9deac65f35bfb31d87d2aab068cda091fc8'
+          assert value['source']['artifact_id'] == 9602650341
+          assert value['source']['artifact_name'] == 'learn217-terminal-10m-learned-base'
+          assert value['source']['artifact_digest'] == 'sha256:8631e90417e40365b3fc0d6bc98ee6adda5a4ed24530e675d9a91c93219537ee'
+          assert value['source']['workflow_run_id'] == 32952787070
+          assert value['source']['source_sha'] == 'c02c8aa38e691521ae2ab6a4ff3ea1d643efd6ef'
+          assert value['checkpoint']['role'] == 'best'
+          assert value['checkpoint']['step'] > 0
+          assert value['checkpoint']['tokens_seen'] > 0
+          assert value['fresh_resume_loads']['phase1']['status'] == 'PASS'
+          assert value['fresh_resume_loads']['current']['status'] == 'PASS'
+          assert value['truth_boundary']['training_executed'] is False
+          assert value['truth_boundary']['optimizer_updates'] == 0
+          assert value['truth_boundary']['paid_compute'] is False
+          print(supplied)
+          PY
+
+      - name: Upload independent VERIFY-218 V2 authority
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: verify218-learned-10m-independent-v2
+          if-no-files-found: warn
+          retention-days: 30
+          path: |
+            reports/verify218/environment.json
+            reports/verify218/rich-authority.json
+            reports/verify218/authority.json
