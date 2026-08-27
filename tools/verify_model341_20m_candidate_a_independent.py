@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Independent, fail-closed verification for MODEL-341 20M candidate A.
 
 The verifier deliberately recomputes candidate identity and parameter arithmetic
@@ -92,7 +91,7 @@ def validate_candidate_payload(payload: dict[str, Any]) -> dict[str, Any]:
     model = payload.get("model")
     init = payload.get("init")
     if not isinstance(model, dict) or not isinstance(init, dict):
-        raise ValueError("candidate must contain object-valued model and init")
+        raise TypeError("candidate must contain object-valued model and init")
 
     if payload.get("stage") != EXPECTED_STAGE:
         failures.append("stage_identity")
@@ -141,6 +140,7 @@ def _state_fingerprint(model: Any) -> str:
 
 def runtime_checks(payload: dict[str, Any], seed: int) -> dict[str, Any]:
     import torch
+
     from twelve_six.model import InitSpec, ModelSpec, TwelveSixDecoder, count_trainable_parameters
 
     spec = ModelSpec.from_dict(payload["model"])
