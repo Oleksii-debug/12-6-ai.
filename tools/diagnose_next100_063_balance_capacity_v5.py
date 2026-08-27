@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Project V5 terminal attrs authority through the frozen 45/35/20 balance policy."""
 from __future__ import annotations
 
