@@ -23,7 +23,8 @@
     "exact_requirement_attempted": "pandas==2.1.4",
     "result": "FAILED_ENVIRONMENT",
     "return_code": 1,
-    "substitution_performed": false
+    "substitution_performed": false,
+    "artifact_sha256": null
   },
   "runtime": {
     "status": "NOT_EXECUTED",
@@ -37,5 +38,5 @@
     "paid_compute": false,
     "data_or_tokenizer_changed": false
   },
-  "evidence_identity_sha256": "8a51b8f22519f2cfbf43bb8b1f4c2c5b5dc45b3ccdc79d12f4a3a0b9ae3e6d2f"
+  "evidence_identity_method": "sha256(canonical_json_without_evidence_identity_sha256)"
 }
