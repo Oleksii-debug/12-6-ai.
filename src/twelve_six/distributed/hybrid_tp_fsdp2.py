@@ -207,7 +207,7 @@ class HybridTPFSDP2Trainer(FSDP2Trainer):
                 continue
             found = True
             if not isinstance(grad, DTensor):
-                raise RuntimeError(
+                raise TypeError(
                     "hybrid TP+FSDP2 expected every materialized gradient to be a DTensor"
                 )
             placements = tuple(repr(placement) for placement in grad.placements)
