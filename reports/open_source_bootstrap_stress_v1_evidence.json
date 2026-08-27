@@ -13,7 +13,6 @@
     "ENV151_SOURCE_NOT_ON_CURRENT_MAIN"
   ],
   "canonical_base_contamination": false,
-  "claim_issue": 783,
   "environment": {
     "cache": {
       "artifact_count": 0,
@@ -61,7 +60,7 @@
     },
     "python311": {"available": false, "candidates": []}
   },
-  "evidence_identity_sha256": "e8f91f22255cbbd03b08dc6b5fc7a80b0ee42a3d2bc2fbe4a5d9dd5aa48b2253",
+  "evidence_identity_sha256": "356ecc3bdb5fe4011d184a485a8bb4a541480577574fc534acf461ab61b0d1b9",
   "foreign_weights": false,
   "lane_key": "D09|EXECUTION-BOOTSTRAP|INDEPENDENT-VERIFY|STRESS-V1",
   "missing_artifacts": [
