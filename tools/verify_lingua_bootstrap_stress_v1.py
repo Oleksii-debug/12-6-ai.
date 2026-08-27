@@ -36,9 +36,22 @@ def canonical_bytes(value: object) -> bytes:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()
 
 
-def run(args: list[str], cwd: Path | None = None) -> tuple[int, str, str]:
+def run(
+    args: list[str], cwd: Path | None = None, timeout: float | None = None
+) -> tuple[int, str, str]:
     try:
-        process = subprocess.run(args, cwd=cwd, text=True, capture_output=True, check=False)
+        process = subprocess.run(
+            args,
+            cwd=cwd,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as exc:
+        stdout = exc.stdout.decode() if isinstance(exc.stdout, bytes) else (exc.stdout or "")
+        stderr = exc.stderr.decode() if isinstance(exc.stderr, bytes) else (exc.stderr or "")
+        return 124, stdout.strip(), (stderr + " command timed out").strip()
     except FileNotFoundError as exc:
         return 127, "", str(exc)
     return process.returncode, process.stdout.strip(), process.stderr.strip()
@@ -63,7 +76,10 @@ def command_state() -> dict[str, str | None]:
 
 
 def installed() -> dict[str, str]:
-    return {distribution.metadata["Name"]: distribution.version for distribution in md.distributions()}
+    return {
+        distribution.metadata["Name"]: distribution.version
+        for distribution in md.distributions()
+    }
 
 
 def network_probe(url: str) -> dict[str, object]:
@@ -112,6 +128,7 @@ def install_exact(python: Path, workdir: Path) -> dict[str, object]:
             str(requirement),
         ],
         cwd=workdir,
+        timeout=3,
     )
     return {
         "status": "PASS" if returncode == 0 else "FAIL",
@@ -133,6 +150,7 @@ def import_probe(python: Path, cwd: Path) -> dict[str, object]:
             'import lingua; import importlib.metadata as m; print(m.version("lingua-language-detector"))',
         ],
         cwd=cwd,
+        timeout=5,
     )
     return {
         "status": "PASS" if returncode == 0 else "FAIL",
@@ -211,7 +229,10 @@ def main() -> int:
                 if path.exists()
             ],
         },
-        "network": [network_probe("https://pypi.org/simple/"), network_probe("https://github.com/")],
+        "network": [
+            network_probe("https://pypi.org/simple/"),
+            network_probe("https://github.com/"),
+        ],
         "negative_checks": {
             "selected_version_supports_cpython_311": True,
             "latest_2_2_0_selected": False,
@@ -222,7 +243,8 @@ def main() -> int:
             "canonical_base_touched": False,
         },
         "adversarial": {
-            "missing_command_is_nonzero": run(["__definitely_missing_swarm773_command__"])[0] == 127,
+            "missing_command_is_nonzero": run(["__definitely_missing_swarm773_command__"])[0]
+            == 127,
             "non_fresh_venv_is_rejected": True,
             "exact_hash_is_required": True,
             "only_binary_prevents_sdist_fallback": True,
@@ -251,18 +273,31 @@ def main() -> int:
         started = time.perf_counter()
         python = make_venv(venv_dir)
         returncode, stdout, stderr = run(
-            [str(python), "-c", "import platform,sys; print(platform.python_version()); print(sys.implementation.name)"]
+            [
+                str(python),
+                "-c",
+                "import platform,sys; print(platform.python_version()); print(sys.implementation.name)",
+            ],
+            timeout=3,
         )
         observed = stdout.splitlines()
         project_python_match = observed[:2] == ["3.11.16", "cpython"]
         install = install_exact(python, root)
-        runtime = import_probe(python, root) if install["status"] == "PASS" else {"status": "NOT_EXECUTED", "reason": "Exact install failed."}
+        runtime = (
+            import_probe(python, root)
+            if install["status"] == "PASS"
+            else {"status": "NOT_EXECUTED", "reason": "Exact install failed."}
+        )
         evidence["attempts"].append(
             {
                 "attempt": index,
                 "fresh": True,
                 "venv": str(venv_dir),
-                "venv_python_observed": {"returncode": returncode, "stdout": stdout, "stderr": stderr},
+                "venv_python_observed": {
+                    "returncode": returncode,
+                    "stdout": stdout,
+                    "stderr": stderr,
+                },
                 "project_python_match": project_python_match,
                 "install": install,
                 "runtime": runtime,
@@ -291,7 +326,16 @@ def main() -> int:
     destination = root / "evidence/lingua_bootstrap_stress_v1.json"
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text(json.dumps(evidence, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    print(json.dumps({"status": "PASS", "verdict": evidence["verdict"], "identity_sha256": evidence["identity_sha256"]}, sort_keys=True))
+    print(
+        json.dumps(
+            {
+                "status": "PASS",
+                "verdict": evidence["verdict"],
+                "identity_sha256": evidence["identity_sha256"],
+            },
+            sort_keys=True,
+        )
+    )
     return 0
 
 
