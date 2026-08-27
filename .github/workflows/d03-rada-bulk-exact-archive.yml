@@ -1,0 +1,173 @@
+name: D03 Rada Bulk Exact Archive Probe
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/d03-rada-bulk-exact-archive.yml"
+      - "configs/data/d03_rada_bulk_source_probe_v1.json"
+      - "tools/probe_d03_rada_bulk_source.py"
+      - "tests/test_d03_rada_bulk_source_probe.py"
+      - "tests/test_d03_rada_bulk_source_probe_authority.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  exact-rada-bulk-probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Prove exact source checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected="${{ github.event.pull_request.head.sha || github.sha }}"
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$expected"
+          printf 'D03_RADA_BULK_SOURCE_SHA=%s\n' "$actual"
+
+      - name: Install exact focused test runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check --require-hashes --no-deps \
+            -r requirements/locks/linux-x86_64/dev.lock.txt
+
+      - name: Focused probe regressions and lint
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pytest -q \
+            tests/test_d03_rada_bulk_source_probe.py \
+            tests/test_d03_rada_bulk_source_probe_authority.py
+          ruff check \
+            tools/probe_d03_rada_bulk_source.py \
+            tests/test_d03_rada_bulk_source_probe.py \
+            tests/test_d03_rada_bulk_source_probe_authority.py
+
+      - name: Acquire, revalidate and retain exact Rada bulk archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/d03-rada-bulk
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          from tools.probe_d03_rada_bulk_source import (
+              _download,
+              _load_config,
+              inventory_archive,
+          )
+
+          config = _load_config(Path("configs/data/d03_rada_bulk_source_probe_v1.json"))
+          policy = config["probe_policy"]
+          observed = config["discovery_observation"]
+          archive, headers = _download(
+              config["source"]["archive_url"],
+              max_bytes=int(policy["max_archive_bytes"]),
+          )
+          report = inventory_archive(
+              archive,
+              config,
+              expected_md5=str(observed["archive_md5"]),
+              expected_bytes=int(observed["archive_bytes"]),
+          )
+          report["http_response"] = headers
+          report["discovery_observation_revalidated"] = True
+
+          root = Path("artifacts/d03-rada-bulk")
+          archive_path = root / "texts.zip"
+          partial = root / "texts.zip.partial"
+          partial.write_bytes(archive)
+          partial.replace(archive_path)
+          (root / "probe.json").write_text(
+              json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          (root / "SOURCE_ATTRIBUTION.txt").write_text(
+              "Source: Тексти первинних законів бази даних \"Законодавство України\"\n"
+              "Publisher: Апарат Верховної Ради України\n"
+              "Source page: https://data.rada.gov.ua/open/data/en/laws-texts\n"
+              "Archive endpoint: https://data.rada.gov.ua/ogd/zak/perv/text/texts.zip\n"
+              "Project rights boundary: open-data reuse including commercial use with source attribution; "
+              "portal default CC BY 4.0 unless otherwise specified.\n"
+              "This retained archive is acquisition/inventory evidence only; training-authorized bytes remain zero.\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Verify retained archive and zero-training truth boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+
+          root = Path("artifacts/d03-rada-bulk")
+          archive = (root / "texts.zip").read_bytes()
+          report = json.loads((root / "probe.json").read_text(encoding="utf-8"))
+          assert len(archive) == 46_682_933
+          assert hashlib.md5(archive, usedforsecurity=False).hexdigest() == "06f239fd182e580ce22ab00dce867e31"
+          assert hashlib.sha256(archive).hexdigest() == report["archive"]["sha256"]
+          assert report["archive"]["bytes"] == len(archive)
+          assert report["archive"]["md5"] == "06f239fd182e580ce22ab00dce867e31"
+          assert len(report["archive"]["sha256"]) == 64
+          assert report["discovery_observation_revalidated"] is True
+          assert report["gates"]["exact_archive_identity"] == "PASS_PINNED_DISCOVERY_REVALIDATED"
+          assert report["gates"]["safe_zip_inventory"] == "PASS"
+          inventory = report["inventory"]
+          assert inventory["canonical_entry_count"] >= 5_000
+          assert inventory["canonical_raw_bytes"] > 0
+          assert len(inventory["entry_identity_sha256"]) == 64
+          assert len(inventory["entries"]) == inventory["canonical_entry_count"]
+          assert report["training_authorized_bytes"] == 0
+          assert report["corpus_admitted"] is False
+          assert report["tokenizer_fit_authorized"] is False
+          assert report["model_training_executed"] is False
+          assert report["paid_compute_used"] is False
+          assert report["safe_result"] == "PINNED_BULK_ARCHIVE_INVENTORIED_DOWNSTREAM_GATES_REQUIRED"
+
+          summary = {
+              "archive_bytes": report["archive"]["bytes"],
+              "archive_md5": report["archive"]["md5"],
+              "archive_sha256": report["archive"]["sha256"],
+              "canonical_entry_count": inventory["canonical_entry_count"],
+              "canonical_raw_bytes": inventory["canonical_raw_bytes"],
+              "entry_identity_sha256": inventory["entry_identity_sha256"],
+              "training_authorized_bytes": 0,
+              "corpus_admitted": False,
+              "model_training_executed": False,
+              "paid_compute_used": False,
+          }
+          (root / "summary.json").write_text(
+              json.dumps(summary, sort_keys=True, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(summary, sort_keys=True))
+          PY
+
+      - name: Upload exact archive and inventory evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: d03-rada-bulk-exact-archive
+          path: |
+            artifacts/d03-rada-bulk/texts.zip
+            artifacts/d03-rada-bulk/probe.json
+            artifacts/d03-rada-bulk/summary.json
+            artifacts/d03-rada-bulk/SOURCE_ATTRIBUTION.txt
+          if-no-files-found: error
+          retention-days: 30

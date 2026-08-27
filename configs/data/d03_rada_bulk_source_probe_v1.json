@@ -1,0 +1,79 @@
+{
+  "schema_version": "12-6.d03-rada-bulk-source-probe.v1",
+  "worker_id": "D03-RADA-BULK-SOURCE-PROBE-20260826",
+  "local_free_only": true,
+  "model_training_executed": false,
+  "tokenizer_fit_executed": false,
+  "paid_compute_used": false,
+  "training_authorized_bytes": 0,
+  "parent_authority": {
+    "name": "DATA-287-EXTERNAL-SNAPSHOT-REGISTRY-V2",
+    "head_sha": "b0523ccbc4b957615aac849d476cfa851be87578",
+    "registry_identity_sha256": "917e9bc31b2fa040d25e807ae3c01aa2cce32420752a891caacfb6c830e6632c",
+    "existing_source_id": "ua.rada.open-data.laws-texts.d23314",
+    "existing_family_id": "ua.rada.open-data.laws-texts",
+    "existing_family_identity_sha256": "b8f1d2f99a3db71d894a3233e9417d6283d11768c41b1634bc8b096ab77aba4e",
+    "existing_normalized_bytes": 88565,
+    "existing_rights_model_training": "ALLOWED"
+  },
+  "source": {
+    "dataset_id": "laws-texts",
+    "title": "Тексти первинних законів бази даних \"Законодавство України\"",
+    "publisher": "Апарат Верховної Ради України",
+    "page_url": "https://data.rada.gov.ua/open/data/en/laws-texts",
+    "archive_url": "https://data.rada.gov.ua/ogd/zak/perv/text/texts.zip",
+    "family_id": "ua.rada.open-data.laws-texts",
+    "language": "uk",
+    "modality": "text",
+    "upstream_mutability": "FREQUENTLY_UPDATED_REQUIRES_EXACT_ARCHIVE_REPIN"
+  },
+  "discovery_observation": {
+    "observed_on_utc": "2026-08-26",
+    "portal_publication_date": "2026-08-07T16:58:14+03:00",
+    "portal_file_count": 5926,
+    "archive_bytes": 46682933,
+    "archive_md5": "06f239fd182e580ce22ab00dce867e31",
+    "status": "DISCOVERY_ONLY_REVALIDATE_AT_PROBE"
+  },
+  "rights_boundary": {
+    "portal_terms": "OPEN_DATA_REUSE_INCLUDING_COMMERCIAL_WITH_SOURCE_ATTRIBUTION",
+    "portal_default_license": "CC-BY-4.0_UNLESS_OTHERWISE_SPECIFIED",
+    "existing_project_family_training_authority": "DATA-287 existing bounded Rada snapshot is ALLOWED for model training",
+    "bulk_extension_status": "NOT_ADMITTED_BY_THIS_PROBE",
+    "evaluation": "NOT_SEPARATELY_ADMITTED",
+    "final_test": "PROHIBITED",
+    "redistribution": "REQUIRES_SOURCE_ATTRIBUTION_AND_SUCCESSOR_RIGHTS_RECHECK"
+  },
+  "probe_policy": {
+    "canonical_entry_regex": "d[0-9]+\\.htm",
+    "min_canonical_entries": 5000,
+    "max_archive_bytes": 100000000,
+    "max_entry_bytes": 20000000,
+    "max_total_uncompressed_bytes": 1000000000,
+    "hash_every_canonical_entry": true,
+    "reject_path_traversal": true,
+    "reject_symlinks": true,
+    "require_unique_canonical_basenames": true
+  },
+  "downstream_required": [
+    "EXACT_ARCHIVE_SHA256_PIN_AND_SOURCE_MANIFEST",
+    "CANONICAL_HTML_EXTRACTION_AND_NORMALIZATION",
+    "QUALITY_FILTER",
+    "PRIVACY_PII_FILTER",
+    "GLOBAL_CROSS_SOURCE_EXACT_NEAR_DEDUP",
+    "EVALUATION_DECONTAMINATION",
+    "BALANCE_DIVERSITY_AND_FAMILY_CAP_RETEST",
+    "DETERMINISTIC_SPLIT_SHARD_PACK",
+    "UNIQUE_CAUSAL_LOSS_LEDGER",
+    "TOKENIZER_FIT_AUTHORIZATION",
+    "LEARNED_20M_COMPUTE_AUTHORIZATION"
+  ],
+  "claim_boundary": {
+    "bulk_source_admitted": false,
+    "normalized_capacity_claimed": false,
+    "training_exposure_authorized": false,
+    "research_corpus_v1_released": false,
+    "learned_20m_claimed": false,
+    "safe_result": "PROBE_ONLY"
+  }
+}
