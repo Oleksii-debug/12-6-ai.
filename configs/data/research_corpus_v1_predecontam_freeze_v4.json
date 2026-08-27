@@ -1,0 +1,115 @@
+{
+  "schema_version": "12-6.research-corpus-v1-predecontam-freeze.v4",
+  "worker_id": "DATA-526-RESEARCH-CORPUS-V1-PREDECONTAM-V4",
+  "repository": "Oleksii-debug/12-6-ai.",
+  "execution_profile": "LOCAL_FREE",
+  "status": "FROZEN_POST_GLOBAL_DEDUP_PREDECONTAM_CANDIDATE",
+  "purpose": "Freeze the exact text-free post-global-dedup source-object identity from terminal NEXT100-065E V7 so reserved-evaluation decontamination can execute without promoting source bytes to tokenizer/loss capacity.",
+  "historical_blocker_v3_identity_sha256": "4e98c74871f7299a3aa8074287099deca55c154ddf32a99fb55b11c3a0c14f25",
+  "source_registry_context": {
+    "pull_request": 538,
+    "head_sha": "10342d590d91b6999c42515cdf87fe31e2355844",
+    "v5_registry_git_blob_sha1": "2dcc57cfba8ab6d600bc431a8713f7b8e305dcbf",
+    "base_v4_registry_identity_sha256": "9fc400a3144b46c481e45d043b0a3365eb2129c83bbacde6f9e7af8a41fadc58",
+    "exact_head_ci_run": 33010079393,
+    "exact_head_ci_conclusion": "failure",
+    "role": "NONAUTHORITATIVE_COORDINATION_CONTEXT_ONLY",
+    "capacity_credit_granted_by_registry_tip": false
+  },
+  "terminal_global_dedup_authority": {
+    "pull_request": 632,
+    "head_sha": "d3333ec1b4a508df232a5aefccd6686adda745fb",
+    "worker_id": "NEXT100-065E-CROSSSOURCE-DEDUP-V7",
+    "workflow_name": "NEXT100-065E Cross-Source Dedup V7",
+    "workflow_run": 33045763964,
+    "workflow_conclusion": "success",
+    "artifact_id": 9635595510,
+    "artifact_name": "next100-065e-cross-source-dedup-d3333ec1b4a508df232a5aefccd6686adda745fb",
+    "artifact_zip_sha256": "sha256:cca6921a2093d4e033976b23b0af180e9dc1945b624b82e218780f8d20bafd18",
+    "artifact_report_path": "evidence/next100_065e/a/report.json",
+    "artifact_report_file_sha256": "a917a5f240e2eda0015fd09564b29430ca8c95a9916a03f734a4463fe458c08f",
+    "report_sha256": "80997ac88b9d604afaf652807cda2a2d9fd0f6cb75754460ae6f4aa7af6e0267",
+    "dedup_report_sha256": "c33e0d06a469473aac191e9b5bf7baec23322cd3e9200f0caab2633c921afd84",
+    "source_authority_mode": "DIRECT_TERMINAL_MATERIALIZATION_AND_LIVE_AUTHORITY_BINDING",
+    "materialized_twice_byte_identical": true,
+    "public_evidence_text_free": true
+  },
+  "dedup_result": {
+    "source_object_count": 35,
+    "source_family_counts": {
+      "uk": 4,
+      "en": 5,
+      "code": 6
+    },
+    "pre_dedup_capacity_bytes": 2215615,
+    "post_dedup_conservative_unique_capacity_bytes": 2215615,
+    "by_stratum_post_dedup_unique_capacity_bytes": {
+      "uk": 100856,
+      "en": 1838293,
+      "code": 276466
+    },
+    "capacity_collapsing_duplicate_cluster_count": 0,
+    "capacity_collapsing_duplicate_discount_bytes": 0,
+    "lineage_sibling_same_origin_edges": 4,
+    "effective_independent_origin_count": 15,
+    "capacity_policy": "lineage siblings collapse independence but retain capacity unless byte/copy/derivative evidence creates a capacity-collapsing edge"
+  },
+  "candidate_freeze": {
+    "frozen": true,
+    "record_granularity": "SOURCE_OBJECT_IDENTITY_NO_RAW_TEXT",
+    "record_count": 35,
+    "record_inventory_storage": {
+      "authority_artifact_id": 9635595510,
+      "artifact_report_path": "evidence/next100_065e/a/report.json",
+      "json_pointer": "/dedup_v3/sources",
+      "record_inventory_digest_sha256": "5e54c3587d6d2c0a7d540a1e8aefae77522c97a41c0033a05e78ce22a8e7c617",
+      "materialization_rule": "consumer must retrieve the exact retained V7 artifact, verify ZIP/report identities, then recompute SHA256(canonical JSON of /dedup_v3/sources)"
+    },
+    "record_inventory_digest_sha256": "5e54c3587d6d2c0a7d540a1e8aefae77522c97a41c0033a05e78ce22a8e7c617",
+    "candidate_identity_scope": "SHA256(canonical JSON over exact V7 head/run/artifact/report identities, record inventory digest/count, and post-dedup unique source capacity)",
+    "candidate_identity_sha256": "a33baaa3a7ff7a9622dc420c1d61b0d113ab0f11588a39674996bd198845efb6"
+  },
+  "claim_boundary": {
+    "source_bytes_are_training_tokens": false,
+    "authorized_unique_optimized_targets": 0,
+    "predecontam_candidate_frozen": true,
+    "research_corpus_v1_terminal": false,
+    "global_dedup_terminal": true,
+    "decontamination_executed": false,
+    "quality_privacy_revalidated_post_composition": false,
+    "balance_family_caps_passed": false,
+    "cluster_safe_split_published": false,
+    "two_clean_builds_passed": false,
+    "postpack_unique_loss_ledger_complete": false,
+    "final_test_payload_accessed": false,
+    "final_test_outcomes_read": false,
+    "tokenizer_fit_executed": false,
+    "training_executed": false,
+    "optimizer_updates": 0,
+    "long_training_authorized": false,
+    "paid_compute_used": false
+  },
+  "downstream_gates": {
+    "source_authority": "SATISFIED_BY_TERMINAL_V7_DIRECT_MATERIALIZATION",
+    "global_exact_near_fragment_lineage_dedup": "TERMINAL_SUCCESS",
+    "record_inventory_freeze": "FROZEN_EXACT_IDENTITY",
+    "reserved_evaluation_decontamination": "PERMITTED_ONLY_AGAINST_EXACT_CANDIDATE_IDENTITY",
+    "post_composition_quality_privacy": "WAIT_DECONTAMINATION_RESULT",
+    "balance_diversity_family_caps": "WAIT_DECONTAMINATION_AND_QUALITY_PRIVACY",
+    "cluster_safe_split_pack": "NOT_PERMITTED",
+    "two_clean_build_proof": "NOT_PERMITTED",
+    "postpack_unique_loss_ledger": "NOT_PERMITTED",
+    "tokenizer_fit": "NOT_PERMITTED",
+    "long_training": "NOT_PERMITTED",
+    "paid_compute": "NOT_PERMITTED"
+  },
+  "truth_notes": [
+    "The failed mutable NEXT100-063 V5 PR CI is not promoted; it is retained only as coordination context.",
+    "Terminal V7 independently validated live source authorities and re-materialized the complete 35-object graph twice byte-identically before this freeze.",
+    "The frozen record inventory lives inside the exact retained V7 artifact and is bound here by artifact ZIP digest, report file digest, semantic report identities and canonical inventory digest.",
+    "The 2,215,615-byte post-dedup source-capacity result is not tokenizer tokens, causal-loss positions, or authorization to train.",
+    "Four same-origin lineage sibling edges affect independence accounting but create zero capacity discount under the terminal V7 policy."
+  ],
+  "evidence_identity_scope": "SHA256(canonical JSON with evidence_identity_sha256 omitted)",
+  "evidence_identity_sha256": "dca1d00f45f53bd98c38e35cdc08dc7d9cdb25b99db611b3c7a940df41b5fdf9"
+}
