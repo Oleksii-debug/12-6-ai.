@@ -5,7 +5,7 @@
   "project_repository": "Oleksii-debug/12-6-ai.",
   "base_branch": "main",
   "base_sha": "5020afd671a3885c1b738c8b4eafe7525f630546",
-  "claim_issue": 773,
+  "claim_issue": 783,
   "incumbent_pr": 313,
   "incumbent_pr_head": "bbca2101ea9409b47d844dd8292cd7f2290e3ff0",
   "incumbent_branch": "env151/universal-execution-bootstrap-20260826",
