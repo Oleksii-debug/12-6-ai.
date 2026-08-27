@@ -239,11 +239,11 @@ def _preflight_trainer_target(trainer: Any) -> None:
         and hasattr(trainer, "_update_incomplete")
     ):
         return
-    if getattr(trainer, "_failure_reason") is not None:
+    if trainer._failure_reason is not None:
         raise CheckpointCompatibilityError(
             "checkpoint restore requires a fresh trainer; target trainer is poisoned"
         )
-    if getattr(trainer, "_update_incomplete"):
+    if trainer._update_incomplete:
         raise CheckpointCompatibilityError(
             "checkpoint restore requires a fresh trainer; target trainer has an incomplete update"
         )
