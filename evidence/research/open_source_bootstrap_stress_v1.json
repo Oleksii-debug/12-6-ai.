@@ -15,6 +15,10 @@
   "environment": {
     "python": "3.13.5",
     "python_implementation": "cpython",
+    "python_required_by_env151": "3.11.16",
+    "python_required_exact_local": "ABSENT",
+    "python_nearest_local_option": "3.11.14 downloadable via uv but unavailable offline",
+    "python_exact_install_offline": "FAILED_NO_DOWNLOAD_FOUND",
     "os": "Linux",
     "kernel": "6.18.35",
     "architecture": "x86_64",
