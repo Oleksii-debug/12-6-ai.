@@ -5,7 +5,6 @@ import json
 from pathlib import Path
 
 import pytest
-
 from twelve_six import html_extraction_bakeoff as bakeoff
 
 
