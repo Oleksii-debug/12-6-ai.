@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "component": {"id": "DATATROVE", "package": "datatrove", "version": "0.10.0"},
+  "upstream": {
+    "repository": "https://github.com/huggingface/datatrove",
+    "tag": "v0.10.0",
+    "commit": "7024aecca2f9ffb7b7cf0d02c0c823b8b24cf664",
+    "wheel_sha256": "c7bb75deed2c3e88fb5138f8ea075a170ee98d6c94fc263829609091ea9c2b5d",
+    "sdist_sha256": "e31f89bdccb30ef0796854f5842ff52b4b224c28b2d5b110088e84071ea05c40",
+    "release_date": "2026-08-13",
+    "pypi_attestation_source_commit": "7024aecca2f9ffb7b7cf0d02c0c823b8b24cf664"
+  },
+  "rights": {
+    "software_license": "Apache-2.0",
+    "license_source": "https://github.com/huggingface/datatrove/blob/v0.10.0/LICENSE",
+    "license_blob_sha": "261eeb9e9f8b2b4b0d119366dda99c6fd7d35c64",
+    "source_notice_present": false,
+    "dataset_rights_inherited": false,
+    "model_weight_rights_applicable": false,
+    "training_authority_from_code_license": false
+  },
+  "environment": {
+    "python": "3.13.5",
+    "os": "Linux 6.18.35",
+    "arch": "x86_64",
+    "cpu_count": 5,
+    "gpu_detected": false,
+    "package_managers": {
+      "python": {"version": "3.13.5"},
+      "pip": {"version": "25.1.1"},
+      "uv": {"version": "0.10.0"},
+      "poetry": {"available": false},
+      "pdm": {"available": false},
+      "conda": {"available": false},
+      "git": {"version": "2.47.3"}
+    },
+    "network_to_package_index": "FAIL",
+    "network_failure": "DNS resolution failure while fetching https://pypi.org/simple/datatrove/"
+  },
+  "bootstrap": {
+    "isolated_env_created": true,
+    "environment_path": "/tmp/dt774-venv",
+    "exact_install_attempted": true,
+    "install_command": ["uv", "pip", "install", "--python", "/tmp/dt774-venv/bin/python", "--no-cache", "--only-binary=:all:", "--no-deps", "datatrove==0.10.0"],
+    "result_code": 2,
+    "installed": false,
+    "installed_version": null,
+    "install_stdout": "",
+    "install_stderr": "Request failed after 3 retries: DNS failure resolving pypi.org",
+    "local_cache_checked": true,
+    "exact_cached_artifact_found": false,
+    "dependency_lock_status": "NOT_MATERIALIZED_NETWORK_BLOCK"
+  },
+  "runtime": {
+    "status": "NOT_EXECUTED",
+    "execution_mode": "real",
+    "reason": "Exact pinned DataTrove artifact was not available in local cache and package-index DNS failed"
+  },
+  "parity": {
+    "status": "NOT_EXECUTED",
+    "reason": "Project-vs-upstream parity requires real exact dependency execution"
+  },
+  "benchmark": {
+    "runs_required": 2,
+    "status": "NOT_EXECUTED",
+    "paid_compute": false
+  },
+  "canonical_base_safety": {
+    "canonical_base_modified": false,
+    "foreign_pretrained_weights_used": false,
+    "foreign_instruction_or_alignment_behavior_used": false,
+    "tokenizer_modified": false,
+    "training_executed": false,
+    "benchmark_final_test_data_accessed": false,
+    "model_checkpoint_modified": false
+  },
+  "decision": "RETEST_RUNTIME_REQUIRED",
+  "truth_boundary": "Runtime success is not inferred from source inspection, test doubles, or package metadata."
+}
