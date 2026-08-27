@@ -15,6 +15,15 @@ def mutated_manifest(tmp_path, mutate):
     return path
 
 
+def expect_error(path, expected):
+    try:
+        validate(path)
+    except ValueError as error:
+        assert str(error) == expected
+    else:
+        raise AssertionError(f"expected {expected}")
+
+
 def test_canonical_manifest_passes():
     assert validate(MANIFEST)["status"] == "PASS"
 
@@ -26,12 +35,7 @@ def test_manifest_identity_is_deterministic():
 
 def test_base_sha_drift_fails_closed(tmp_path):
     path = mutated_manifest(tmp_path, lambda p: p.update(project_base_sha="0" * 40))
-    try:
-        validate(path)
-    except ValueError as error:
-        assert str(error) == "project base SHA drift"
-    else:
-        raise AssertionError("base SHA drift was accepted")
+    expect_error(path, "project base SHA drift")
 
 
 def test_upstream_commit_drift_fails_closed(tmp_path):
@@ -39,12 +43,15 @@ def test_upstream_commit_drift_fails_closed(tmp_path):
         tmp_path,
         lambda p: p["upstream"].update(immutable_commit="1" * 40),
     )
-    try:
-        validate(path)
-    except ValueError as error:
-        assert str(error) == "upstream commit drift"
-    else:
-        raise AssertionError("upstream commit drift was accepted")
+    expect_error(path, "upstream commit drift")
+
+
+def test_package_version_drift_fails_closed(tmp_path):
+    path = mutated_manifest(
+        tmp_path,
+        lambda p: p["upstream"].update(package_version_at_commit="0.0.35"),
+    )
+    expect_error(path, "upstream package version drift")
 
 
 def test_unverified_tag_fails_closed(tmp_path):
@@ -52,12 +59,7 @@ def test_unverified_tag_fails_closed(tmp_path):
         tmp_path,
         lambda p: p["upstream"].update(tag_or_release="v9.9.9"),
     )
-    try:
-        validate(path)
-    except ValueError as error:
-        assert str(error) == "unexpected unverified tag/release binding"
-    else:
-        raise AssertionError("unverified tag was accepted")
+    expect_error(path, "unexpected unverified tag/release binding")
 
 
 def test_floating_requirement_inventory_is_required(tmp_path):
@@ -65,12 +67,7 @@ def test_floating_requirement_inventory_is_required(tmp_path):
         tmp_path,
         lambda p: p["upstream_requirements"].update(floating_or_lower_bound_entries=[]),
     )
-    try:
-        validate(path)
-    except ValueError as error:
-        assert str(error) == "floating dependency inventory unexpectedly empty"
-    else:
-        raise AssertionError("floating dependency inventory loss was accepted")
+    expect_error(path, "floating dependency inventory unexpectedly empty")
 
 
 def test_exact_requirement_is_required(tmp_path):
@@ -82,12 +79,7 @@ def test_exact_requirement_is_required(tmp_path):
         ]
 
     path = mutated_manifest(tmp_path, remove_pin)
-    try:
-        validate(path)
-    except ValueError as error:
-        assert str(error) == "missing exact upstream pandas pin"
-    else:
-        raise AssertionError("exact upstream pin loss was accepted")
+    expect_error(path, "missing exact upstream pandas pin")
 
 
 def test_fabricated_artifact_hash_fails_closed(tmp_path):
@@ -95,12 +87,7 @@ def test_fabricated_artifact_hash_fails_closed(tmp_path):
         tmp_path,
         lambda p: p["installation_attempt"].update(artifact_sha256="a" * 64),
     )
-    try:
-        validate(path)
-    except ValueError as error:
-        assert str(error) == "unavailable artifact must not have a fabricated hash"
-    else:
-        raise AssertionError("fabricated artifact hash was accepted")
+    expect_error(path, "unavailable artifact must not have a fabricated hash")
 
 
 def test_runtime_pass_claim_fails_closed(tmp_path):
@@ -108,12 +95,7 @@ def test_runtime_pass_claim_fails_closed(tmp_path):
         tmp_path,
         lambda p: p["runtime"].update(execution_status="PASS"),
     )
-    try:
-        validate(path)
-    except ValueError as error:
-        assert str(error) == "runtime cannot be promoted without execution"
-    else:
-        raise AssertionError("runtime PASS claim was accepted")
+    expect_error(path, "runtime cannot be promoted without execution")
 
 
 def test_parity_claim_fails_closed(tmp_path):
@@ -121,12 +103,7 @@ def test_parity_claim_fails_closed(tmp_path):
         tmp_path,
         lambda p: p["runtime"].update(parity_proven=True),
     )
-    try:
-        validate(path)
-    except ValueError as error:
-        assert str(error) == "parity cannot be true without runtime evidence"
-    else:
-        raise AssertionError("parity claim was accepted")
+    expect_error(path, "parity cannot be true without runtime evidence")
 
 
 def test_foreign_weight_flag_fails_closed(tmp_path):
@@ -134,12 +111,7 @@ def test_foreign_weight_flag_fails_closed(tmp_path):
         tmp_path,
         lambda p: p["canonical_base_safety"].update(foreign_pretrained_weights_used=True),
     )
-    try:
-        validate(path)
-    except ValueError as error:
-        assert str(error) == "canonical Base safety violation: foreign_pretrained_weights_used"
-    else:
-        raise AssertionError("foreign-weight flag was accepted")
+    expect_error(path, "canonical Base safety violation: foreign_pretrained_weights_used")
 
 
 def test_evidence_identity_changes_after_tamper():
