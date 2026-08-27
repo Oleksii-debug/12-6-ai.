@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "worker_id": "OPEN-SOURCE-BOOTSTRAP-STRESS-V1",
+  "lane_key": "D08|LIGER-KERNEL|OPEN-SOURCE-REUSE-RESEARCH|BOOTSTRAP-STRESS-V1",
+  "project": {
+    "repository": "Oleksii-debug/12-6-ai.",
+    "base_sha": "5020afd671a3885c1b738c8b4eafe7525f630546",
+    "canonical_base_random_init_only": true,
+    "canonical_tokenizer_authority": "project-owned"
+  },
+  "upstream": {
+    "repository": "https://github.com/linkedin/Liger-Kernel",
+    "tag": "v0.8.2",
+    "commit": "000be60929938fd1358e03524c6ab398b6d421bd",
+    "release_artifact": "liger_kernel-0.8.2.tar.gz",
+    "release_artifact_sha256": "387673ed6bf64fc8150cc8315fed578d2fc717ec3450f53489f480880223c1b8",
+    "license": "BSD-2-Clause",
+    "license_blob": "d2fcc2b1c4384d0bcd1424b7f83db8e48fa753f6",
+    "notice_blob": "ea2881754f5b3e0eb9926dd9dc6c9d772f962911",
+    "package": "liger-kernel",
+    "package_version": "0.8.2"
+  },
+  "rights": {
+    "software_license": "BSD-2-Clause",
+    "dataset_rights_authorized": false,
+    "model_weight_rights": "not applicable to qualification; no weights used",
+    "documentation_rights": "reviewed via upstream NOTICE/acknowledgements",
+    "third_party_notice_required": true,
+    "third_party_notice_scope": [
+      "Unsloth Apache-2.0-derived code",
+      "Triton MIT-derived material",
+      "Efficient Cross Entropy MIT-derived material",
+      "Flash Attention BSD-3-Clause-derived ideas",
+      "AutoAWQ MIT-derived references",
+      "llm.c MIT-derived references",
+      "Tiny Shakespeare dataset referenced by upstream tests"
+    ]
+  },
+  "dependencies": {
+    "python": ">=3.10",
+    "liger-kernel": "==0.8.2",
+    "torch": ">=2.1.2",
+    "triton": ">=2.3.1",
+    "project_runtime_exactness_required": true,
+    "no_floating_install_allowed": true
+  },
+  "qualification": {
+    "required_ops": ["RMSNorm", "RoPE", "SwiGLU", "cross_entropy"],
+    "requires_real_upstream_execution": true,
+    "requires_gpu_triton_runtime": true,
+    "benchmark_runs_required": 2,
+    "parity_requires_same_inputs": true,
+    "parity_requires_forward_and_backward": true,
+    "cpu_reference_is_not_runtime_evidence": true
+  },
+  "forbidden": {
+    "foreign_pretrained_weights": false,
+    "foreign_tokenizer": false,
+    "foreign_instruction_alignment": false,
+    "canonical_base_mutation": false,
+    "training": false,
+    "paid_compute": false,
+    "final_test_payload": false,
+    "dataset_ingestion": false
+  },
+  "promotion": {
+    "current_state": "RETEST_RUNTIME_REQUIRED",
+    "states": ["DISCOVERED", "CANDIDATE", "PARITY_PROVEN", "ADOPTED"],
+    "adoption_requires": [
+      "exact_dependency_install_verified",
+      "focused_tests_pass",
+      "adversarial_tests_pass",
+      "real_runtime_benchmark_twice",
+      "forward_backward_parity",
+      "rights_notice_recorded",
+      "rollback_path_recorded",
+      "no_canonical_base_contamination"
+    ]
+  }
+}
