@@ -1,0 +1,153 @@
+name: NEXT100-063 Canonical Source Registry V5
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/next100-063-source-registry-v5.yml"
+      - "configs/data/next100_063_terminal_source_registry_v4.json"
+      - "configs/data/next100_063_terminal_source_registry_v5.json"
+      - "tools/validate_next100_063_terminal_source_registry_v5.py"
+      - "tools/diagnose_next100_063_balance_capacity.py"
+      - "tools/diagnose_next100_063_balance_capacity_v5.py"
+      - "tests/test_next100_063_terminal_source_registry_v5.py"
+      - "tests/test_next100_063_balance_capacity_v5.py"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  terminal-source-registry-v5:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Prove exact V5 source checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected="${{ github.event.pull_request.head.sha || github.sha }}"
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$expected"
+          printf 'NEXT100_063_V5_SOURCE_SHA=%s\n' "$actual"
+
+      - name: Install exact focused test runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check --require-hashes --no-deps \
+            -r requirements/locks/linux-x86_64/dev.lock.txt
+
+      - name: Verify terminal attrs source authority live
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs/33006080831" > attrs-run.json
+          gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/9621650719" > attrs-artifact.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          run = json.loads(Path("attrs-run.json").read_text(encoding="utf-8"))
+          artifact = json.loads(Path("attrs-artifact.json").read_text(encoding="utf-8"))
+          assert run["head_sha"] == "cda0232d5574ef91eae0d7e0b7fa5efddcbe218b"
+          assert run["status"] == "completed"
+          assert run["conclusion"] == "success"
+          assert artifact["id"] == 9621650719
+          assert artifact["name"]
+          assert artifact["expired"] is False
+          assert artifact["digest"] == "sha256:a8176b50a2254fcb50a6f80ca82b63459ba8e9cfddba904b16e5ac79f9c55ff2"
+          assert artifact["workflow_run"]["head_sha"] == "cda0232d5574ef91eae0d7e0b7fa5efddcbe218b"
+          PY
+
+      - name: Validate immutable V4 plus exact V5 composition
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/validate_next100_063_terminal_source_registry_v5.py
+          python tools/diagnose_next100_063_balance_capacity_v5.py --json > next100-063-v5-balance.json
+
+      - name: Focused V5 regressions and lint
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pytest -q \
+            tests/test_next100_063_terminal_source_registry_v5.py \
+            tests/test_next100_063_balance_capacity_v5.py
+          ruff check \
+            tools/validate_next100_063_terminal_source_registry_v5.py \
+            tools/diagnose_next100_063_balance_capacity_v5.py \
+            tests/test_next100_063_terminal_source_registry_v5.py \
+            tests/test_next100_063_balance_capacity_v5.py
+
+      - name: Emit text-free V5 terminal authority summary
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+
+          v5_raw = Path("configs/data/next100_063_terminal_source_registry_v5.json").read_bytes()
+          v5 = json.loads(v5_raw)
+          balance = json.loads(Path("next100-063-v5-balance.json").read_text(encoding="utf-8"))
+          summary = {
+              "schema": "12-6.next100-063-source-registry-v5-terminal-evidence.v1",
+              "source_head_sha": "${{ github.event.pull_request.head.sha || github.sha }}",
+              "v4_registry_identity_sha256": "9fc400a3144b46c481e45d043b0a3365eb2129c83bbacde6f9e7af8a41fadc58",
+              "v5_config_git_blob_sha1": "2dcc57cfba8ab6d600bc431a8713f7b8e305dcbf",
+              "v5_config_sha256": hashlib.sha256(v5_raw).hexdigest(),
+              "source_object_vector_expected_downstream": 35,
+              "numeric_source_capacity_bytes": 2_215_615,
+              "source_normalized_envelope_bytes": 2_217_976,
+              "independent_family_count": 15,
+              "by_stratum": {
+                  "uk": {"bytes": 100_856, "families": 4},
+                  "en": {"bytes": 1_838_293, "families": 5},
+                  "code": {"bytes": 276_466, "families": 6},
+              },
+              "acquisition_planning_gap_bytes": 17_784_385,
+              "family_capped_45_35_20_diagnostic_bytes": balance["diagnostic_exact_mixture_family_capped_source_bytes"],
+              "limiting_strata": balance["next_20_byte_increment_limiting_strata"],
+              "attrs_terminal_run": 33006080831,
+              "attrs_terminal_artifact_id": 9621650719,
+              "attrs_terminal_artifact_digest": "sha256:a8176b50a2254fcb50a6f80ca82b63459ba8e9cfddba904b16e5ac79f9c55ff2",
+              "authorized_balanced_no_replay_loss_positions": 0,
+              "global_dedup_completed_here": False,
+              "tokenizer_fit_authorized": False,
+              "training_authorized": False,
+              "paid_compute_authorized": False,
+          }
+          assert v5["derived_pre_successor_global_dedup_inventory"]["candidate_numeric_training_capacity_bytes"] == summary["numeric_source_capacity_bytes"]
+          Path("next100-063-v5-terminal-summary.json").write_text(
+              json.dumps(summary, sort_keys=True, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(summary, sort_keys=True))
+          PY
+
+      - name: Upload V5 terminal source-registry evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: next100-063-source-registry-v5-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            next100-063-v5-terminal-summary.json
+            next100-063-v5-balance.json
+            attrs-run.json
+            attrs-artifact.json
+            configs/data/next100_063_terminal_source_registry_v5.json
+          if-no-files-found: error
+          retention-days: 90
