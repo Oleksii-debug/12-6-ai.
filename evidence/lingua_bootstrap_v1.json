@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "evidence_id": "LINGUA-BOOTSTRAP-STRESS-V1",
+  "worker_id": "SWARM-780",
+  "branch": "swarm/780-lingua-bootstrap-stress-v1",
+  "base_sha": "5020afd671a3885c1b738c8b4eafe7525f630546",
+  "result": "RETEST_RUNTIME_REQUIRED",
+  "upstream": {
+    "repository": "https://github.com/pemistahl/lingua-py",
+    "tag": "v2.2.0",
+    "annotated_tag_sha": "f43375cba13a2ee209d632febfe9e074f3ff1d91",
+    "resolved_commit_sha": "754ce21122c083a7200763015fdaf7cda8d85453",
+    "license": "Apache-2.0",
+    "license_blob_sha1": "261eeb9e9f8b2b4b0d119366dda99c6fd7d35c64"
+  },
+  "environment": {
+    "python": "3.13.5",
+    "os": "Debian GNU/Linux 13",
+    "kernel": "6.18.35",
+    "arch": "x86_64",
+    "cpu": "AMD EPYC 9V74 80-Core Processor",
+    "logical_cpus": 5,
+    "gpu": "none",
+    "pip": "25.1.1",
+    "uv": "0.10.0",
+    "git": "2.47.3",
+    "torch": "2.10.0+cpu",
+    "pytest": "9.0.2",
+    "lingua_language_detector": "missing",
+    "pip_cache": "disabled_unwritable",
+    "environment_hash_sha256": "096b639c0bdfd86e47cf503374a65d90563b83516e611bc1d53c140bdfdd8e05"
+  },
+  "network": {
+    "pypi_dns": "FAILED_EAI_NONAME",
+    "github_dns": "FAILED_EAI_NONAME",
+    "package_index_reachable": false,
+    "upstream_git_fetch_reachable": false
+  },
+  "bootstrap_attempt": {
+    "isolated_venv_created": true,
+    "command": "python -m pip install --disable-pip-version-check --no-cache-dir lingua-language-detector==2.2.0",
+    "version_exact": true,
+    "substitution": false,
+    "outcome": "TIMEOUT_AFTER_NETWORK_RESOLUTION_FAILURE",
+    "artifact_sha256": null,
+    "artifact_sha256_obtainable": false,
+    "artifact_target": "lingua_language_detector-2.2.0-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl"
+  },
+  "execution": {
+    "real_import": false,
+    "real_fixture_probe": false,
+    "benchmark": false,
+    "parity": false,
+    "reason": "Exact wheel/source unavailable locally; DNS to package and source hosts failed. No alternative version used."
+  },
+  "local_validation": {
+    "manifest_validator": "PASS",
+    "focused_pytest": "4 passed",
+    "runtime_probe": "FAIL_CLOSED_NOT_EXECUTED"
+  },
+  "canonical_base_guard": {
+    "canonical_base_modified": false,
+    "foreign_weights_used": false,
+    "tokenizer_modified": false,
+    "training_executed": false,
+    "paid_compute": false,
+    "final_test_access": false
+  },
+  "rights": {
+    "software_license": "Apache-2.0",
+    "notice_file_found": false,
+    "copying_file_found": false,
+    "dataset_rights": "not_inferred",
+    "neural_model_weight_license": "not_applicable"
+  }
+}
