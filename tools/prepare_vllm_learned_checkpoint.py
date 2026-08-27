@@ -56,13 +56,18 @@ def prepare(args: argparse.Namespace) -> dict[str, Any]:
     step = identity.get("step")
     tokens_seen = identity.get("tokens_seen")
     if not isinstance(step, int) or isinstance(step, bool) or step <= 0:
-        raise ValueError("RUNTIME-98 requires a learned checkpoint with step > 0")
+        raise ValueError("learned vLLM preparation requires a checkpoint with step > 0")
     if not isinstance(tokens_seen, int) or isinstance(tokens_seen, bool) or tokens_seen <= 0:
-        raise ValueError("RUNTIME-98 requires a learned checkpoint with tokens_seen > 0")
+        raise ValueError("learned vLLM preparation requires a checkpoint with tokens_seen > 0")
 
     _require_equal("checkpoint_id", diagnostics["checkpoint_id"], args.expected_checkpoint_id)
     _require_equal(
         "model_spec_sha256", diagnostics["model_spec_sha256"], args.expected_model_spec_sha256
+    )
+    _require_equal(
+        "parameter_count",
+        diagnostics["parameter_count"],
+        getattr(args, "expected_parameter_count", None),
     )
     _require_equal(
         "tokenizer_config_sha256",
@@ -126,9 +131,14 @@ def prepare(args: argparse.Namespace) -> dict[str, Any]:
         "1",
         "--gpu-memory-utilization",
         "0.5",
-        "--output",
-        str(logical_gpu_output),
     ]
+    expected_vllm_version = getattr(args, "expected_vllm_version", None)
+    if expected_vllm_version is not None:
+        parity_command.extend(["--expected-vllm-version", expected_vllm_version])
+    expected_vllm_dist_version = getattr(args, "expected_vllm_dist_version", None)
+    if expected_vllm_dist_version is not None:
+        parity_command.extend(["--expected-vllm-dist-version", expected_vllm_dist_version])
+    parity_command.extend(["--output", str(logical_gpu_output)])
 
     payload: dict[str, Any] = {
         "schema": SCHEMA,
@@ -189,6 +199,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output-root", type=Path, required=True)
     parser.add_argument("--expected-checkpoint-id", required=True)
     parser.add_argument("--expected-model-spec-sha256", required=True)
+    parser.add_argument("--expected-parameter-count", type=int)
     parser.add_argument("--expected-tokenizer-config-sha256", required=True)
     parser.add_argument("--expected-tokenizer-vocab-sha256", required=True)
     parser.add_argument("--source-repository", required=True)
@@ -196,6 +207,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--source-artifact-name", required=True)
     parser.add_argument("--source-artifact-digest", required=True)
     parser.add_argument("--source-artifact-head-sha", required=True)
+    parser.add_argument("--expected-vllm-version")
+    parser.add_argument("--expected-vllm-dist-version")
     return parser
 
 

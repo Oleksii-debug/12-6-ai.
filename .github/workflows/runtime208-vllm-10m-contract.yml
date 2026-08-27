@@ -1,0 +1,152 @@
+name: RUNTIME-208 vLLM 10M Exact Contract
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/runtime208-vllm-10m-contract.yml"
+      - "src/twelve_six/inference/vllm_native_llama.py"
+      - "src/twelve_six/inference/transformers_llama.py"
+      - "tools/prepare_vllm_learned_checkpoint.py"
+      - "tools/validate_vllm_learned_parity.py"
+      - "tools/runtime208_vllm_learned_10m.py"
+      - "tools/runtime208_vllm_10m_cpu_probe.py"
+      - "tests/test_runtime208_vllm_learned_10m.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: runtime208-vllm-10m-contract-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  exact-vllm-10m-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Bind exact RUNTIME-208 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected="${{ github.event.pull_request.head.sha || github.sha }}"
+          test "$(git rev-parse HEAD)" = "$expected"
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Install exact incumbent vLLM CPU purpose runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libtcmalloc-minimal4
+          python -m pip install --upgrade pip
+          wheel="vllm-0.27.1+cpu-cp38-abi3-manylinux_2_34_x86_64.whl"
+          curl --fail --location --retry 3 \
+            "https://github.com/vllm-project/vllm/releases/download/v0.27.1/$wheel" \
+            --output "$wheel"
+          printf '%s  %s\n' \
+            '36f0e7b2031233ff09e521716723b0e05ab62054c9a9a05d873af43052140f33' \
+            "$wheel" | sha256sum --check --strict
+          sha256sum "$wheel" | tee runtime208-vllm-wheel.sha256
+          python -m pip install "$wheel" \
+            --extra-index-url https://download.pytorch.org/whl/cpu
+          python -m pip install -e . --no-deps
+          python -m pip install --disable-pip-version-check --require-hashes --no-deps \
+            -r requirements/locks/linux-x86_64/dev.lock.txt
+
+      - name: Configure documented vLLM CPU preload libraries
+        shell: bash
+        run: |
+          set -euo pipefail
+          site="$(python -c 'import site; print(site.getsitepackages()[0])')"
+          iomp="$(find "$site" -name libiomp5.so -print -quit || true)"
+          tcmalloc="$(ldconfig -p | awk '/libtcmalloc_minimal.so.4/{print $NF; exit}')"
+          preload="$tcmalloc"
+          if [ -n "$iomp" ]; then
+            preload="${preload:+$preload:}$iomp"
+          fi
+          test -n "$preload"
+          printf 'LD_PRELOAD=%s\n' "$preload" >> "$GITHUB_ENV"
+
+      - name: Verify exact package identity and focused contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import importlib.metadata as metadata
+          import platform
+          import torch
+          import vllm
+
+          actual = {
+              "python": platform.python_version(),
+              "vllm_import_version": vllm.__version__,
+              "vllm_distribution_version": metadata.version("vllm"),
+              "torch": torch.__version__,
+              "transformers": metadata.version("transformers"),
+              "safetensors": metadata.version("safetensors"),
+              "cuda_available": torch.cuda.is_available(),
+          }
+          expected = {
+              "python": "3.11.16",
+              "vllm_import_version": "0.27.1",
+              "vllm_distribution_version": "0.27.1+cpu",
+              "torch": "2.13.0+cpu",
+              "transformers": "5.15.1",
+              "safetensors": "0.8.0",
+              "cuda_available": False,
+          }
+          assert actual == expected, (actual, expected)
+          PY
+          python -m ruff check \
+            tools/prepare_vllm_learned_checkpoint.py \
+            tools/validate_vllm_learned_parity.py \
+            tools/runtime208_vllm_learned_10m.py \
+            tools/runtime208_vllm_10m_cpu_probe.py \
+            tests/test_runtime208_vllm_learned_10m.py
+          python -m pytest -q tests/test_runtime208_vllm_learned_10m.py
+
+      - name: Prove exact 10M built-in-Llama CPU import and ModelConfig
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/runtime208_vllm_10m_cpu_probe.py \
+            --vllm-wheel-sha-file runtime208-vllm-wheel.sha256 \
+            --output runtime208-vllm-10m-cpu-config-probe.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          result = json.loads(
+              Path("runtime208-vllm-10m-cpu-config-probe.json").read_text(encoding="utf-8")
+          )
+          assert result["status"] == "PREPARED_REQUIRES_TERMINAL_GREEN_SCALE141_ARTIFACT"
+          assert result["model"]["parameter_count"] == 10_000_640
+          assert result["vllm"]["implementation"] == "BUILTIN_LLAMA"
+          assert result["vllm"]["custom_model_implemented"] is False
+          assert result["vllm"]["resolved_architecture"] == "LlamaForCausalLM"
+          assert result["vllm"]["max_model_len"] == 1024
+          assert result["checkpoint_bound"] is False
+          assert result["logits_generation_parity_executed"] is False
+          assert result["foreign_pretrained_weights_used"] is False
+          assert result["paid_compute"] is False
+          PY
+
+      - name: Upload exact RUNTIME-208 CPU contract evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: runtime208-vllm-10m-exact-contract-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            runtime208-vllm-10m-cpu-config-probe.json
+            runtime208-vllm-wheel.sha256
+          if-no-files-found: error
+          retention-days: 30
