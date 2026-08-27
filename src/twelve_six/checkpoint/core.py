@@ -496,6 +496,12 @@ def _preflight_optimizer_state(optimizer: Any, state: Any) -> None:
             "ax",
         }
     )
+    optimizer_class_names = {base.__name__ for base in optimizer.__class__.__mro__}
+    adam_moment_state_names = (
+        frozenset({"exp_avg", "exp_avg_sq", "max_exp_avg_sq"})
+        if optimizer_class_names & {"Adam", "AdamW"}
+        else frozenset()
+    )
     live_state = getattr(optimizer, "state", {})
     for source_id, parameter_state in source_state.items():
         if not isinstance(parameter_state, Mapping):
@@ -542,10 +548,13 @@ def _preflight_optimizer_state(optimizer: Any, state: Any) -> None:
                         "optimizer state tensor shape mismatch for "
                         f"{state_name!r}: checkpoint {value_shape} vs parameter {target_shape}"
                     )
-                if state_name == "momentum_buffer" and value.dtype != target_dtype:
+                requires_parameter_dtype = (
+                    state_name == "momentum_buffer" or state_name in adam_moment_state_names
+                )
+                if requires_parameter_dtype and value.dtype != target_dtype:
                     raise CheckpointCompatibilityError(
-                        "optimizer momentum_buffer dtype mismatch: "
-                        f"checkpoint {value.dtype} vs parameter {target_dtype}"
+                        "optimizer state tensor dtype mismatch for "
+                        f"{state_name!r}: checkpoint {value.dtype} vs parameter {target_dtype}"
                     )
 
 
