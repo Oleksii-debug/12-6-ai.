@@ -121,5 +121,5 @@
   },
   "verdict": "RETEST_RUNTIME_REQUIRED",
   "next_action": "Re-run in an environment that has CPython 3.11.16 and exact locked artifacts available; execute ENV-151 in a fresh venv, then perform bounded real import/runtime, repeatability, failure-path, and parity tests before any promotion.",
-  "identity_sha256": "17af8b6af13cc87fef5607ba039042d99e2129544b003ce87ba6054fcb418842"
+  "identity_sha256": "9674cf74272e0dd45f6df568d50a425347ad7b9e6f1a8e44c96cbbfed282d7c9"
 }
