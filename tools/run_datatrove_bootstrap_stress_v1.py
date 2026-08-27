@@ -42,6 +42,10 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def sha256_text(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
 def detect_environment() -> dict[str, Any]:
     managers: dict[str, Any] = {}
     for name in ("python", "pip", "uv", "poetry", "pdm", "conda", "git"):
@@ -135,9 +139,8 @@ def main() -> int:
         else:
             installed = False
 
-    runtime: dict[str, Any]
-    benchmark: dict[str, Any]
-    parity: dict[str, Any]
+    dependency_lock_sha256 = None
+    dependency_lock_lines: list[str] = []
     if installed and installed_version == VERSION:
         runtime = benchmark_runtime(env_python)
         benchmark = {"status": runtime["status"], "runs_required": 2, "paid_compute": False}
@@ -146,7 +149,10 @@ def main() -> int:
             "comparison": "Document id/text/metadata round-trip through real JsonlReader -> JsonlWriter",
             "reference": "project fixture JSON semantics",
         }
-        dependency_lock_status = "RUNTIME_FREEZE_REQUIRED_AFTER_RESOLUTION"
+        freeze = run(["uv", "pip", "freeze", "--python", str(env_python)], timeout=60)
+        dependency_lock_lines = sorted(line.strip() for line in freeze["stdout"].splitlines() if line.strip())
+        dependency_lock_sha256 = sha256_text("\n".join(dependency_lock_lines) + "\n") if freeze["return_code"] == 0 else None
+        dependency_lock_status = "LOCKED_RUNTIME_FREEZE" if dependency_lock_sha256 else "LOCK_FAILED"
     else:
         runtime = {"status": "NOT_EXECUTED", "execution_mode": "real", "reason": "exact DataTrove 0.10.0 was not installed"}
         benchmark = {"status": "NOT_EXECUTED", "runs_required": 2, "paid_compute": False}
@@ -190,6 +196,8 @@ def main() -> int:
             "local_cache_checked": True,
             "exact_cached_artifact_found": False,
             "dependency_lock_status": dependency_lock_status,
+            "dependency_lock_sha256": dependency_lock_sha256,
+            "dependency_lock_packages": dependency_lock_lines,
         },
         "runtime": runtime,
         "parity": parity,
