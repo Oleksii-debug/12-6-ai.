@@ -369,9 +369,12 @@ def assess_learned20m_readiness(
     authorized_limit = compute_auth.get("maximum_cost_usd")
     if isinstance(authorized_limit, bool) or not isinstance(authorized_limit, (int, float)):
         material.append("authorized_cost_limit_missing")
-    elif isinstance(maximum_cost, (int, float)) and not isinstance(maximum_cost, bool):
-        if authorized_limit < maximum_cost:
-            material.append("authorized_cost_below_estimated_maximum")
+    elif (
+        isinstance(maximum_cost, (int, float))
+        and not isinstance(maximum_cost, bool)
+        and authorized_limit < maximum_cost
+    ):
+        material.append("authorized_cost_below_estimated_maximum")
 
     training_auth = (
         evidence.get("training_authorization")
