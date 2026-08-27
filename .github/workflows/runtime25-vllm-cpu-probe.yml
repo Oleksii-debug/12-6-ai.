@@ -73,6 +73,11 @@ jobs:
           sha256sum "$wheel" | tee runtime98-vllm-wheel.sha256
           python -m pip install "$wheel" \
             --extra-index-url https://download.pytorch.org/whl/cpu
+          # vLLM's dependency range intentionally permits newer Transformers.
+          # Re-apply the terminal-green #135 purpose overlay so this probe cannot
+          # silently drift when PyPI publishes a newer compatible release.
+          python -m pip install --disable-pip-version-check --require-hashes --no-deps \
+            -r requirements/locks/transformers-linux-x86_64/runtime.lock.txt
           python -m pip install -e . --no-deps
           python -m pip install --disable-pip-version-check --require-hashes --no-deps \
             -r requirements/locks/linux-x86_64/dev.lock.txt
@@ -105,7 +110,7 @@ jobs:
           }
           assert versions["vllm"] == "0.27.1+cpu", versions
           assert versions["torch"] == "2.13.0+cpu", versions
-          assert versions["transformers"] == "5.15.1", versions
+          assert versions["transformers"] == "5.15.0", versions
           assert versions["safetensors"] == "0.8.0", versions
           with open("runtime98-installed-versions.json", "w", encoding="utf-8") as handle:
               json.dump(versions, handle, sort_keys=True, indent=2)
