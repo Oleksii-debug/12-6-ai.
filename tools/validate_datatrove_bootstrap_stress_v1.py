@@ -20,25 +20,13 @@ EXPECTED = {
 }
 
 
-def fail(message: str) -> int:
-    print(f"FAIL: {message}")
-    return 1
-
-
-def main() -> int:
-    path = Path(__file__).resolve().parents[1] / "evidence" / "audit" / "datatrove_bootstrap_stress_v1.json"
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        return fail(f"evidence unreadable or invalid JSON: {exc}")
-
+def validate(data: dict) -> list[str]:
     upstream = data.get("upstream", {})
     env = data.get("environment", {})
     install = data.get("install_attempt", {})
     runtime = data.get("runtime", {})
     base = data.get("canonical_base_boundary", {})
     promotion = data.get("promotion", {})
-
     checks = {
         "project": data.get("project") == EXPECTED["project"],
         "upstream_repository": upstream.get("repository") == EXPECTED["upstream_repository"],
@@ -71,13 +59,24 @@ def main() -> int:
         "promotion_not_adoptable": promotion.get("adoptable") is False,
         "promotion_candidate": promotion.get("state") == "CANDIDATE",
     }
+    return [name for name, ok in checks.items() if not ok]
 
-    failed = [name for name, ok in checks.items() if not ok]
+
+def main() -> int:
+    path = Path(__file__).resolve().parents[1] / "evidence" / "audit" / "datatrove_bootstrap_stress_v1.json"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"FAIL: evidence unreadable or invalid JSON: {exc}")
+        return 1
+
+    failed = validate(data)
     if failed:
-        return fail("; ".join(failed))
+        print("FAIL: " + "; ".join(failed))
+        return 1
 
     print("PASS: DataTrove bootstrap evidence is internally consistent and fail-closed")
-    print("NOTE: PASS here validates evidence mechanics only; DataTrove runtime itself was NOT_EXECUTED.")
+    print("NOTE: PASS validates evidence mechanics only; DataTrove runtime itself was NOT_EXECUTED.")
     return 0
 
 
