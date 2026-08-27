@@ -19,7 +19,7 @@ def sha256_hex(data: bytes) -> str:
 
 def git_blob_sha1(data: bytes) -> str:
     header = f"blob {len(data)}\0".encode()
-    return hashlib.sha1(header + data).hexdigest()  # noqa: S324 - Git object identity
+    return hashlib.sha1(header + data).hexdigest()
 
 
 def _require(condition: bool, message: str) -> None:
