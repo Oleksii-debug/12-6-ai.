@@ -60,6 +60,15 @@ def test_self_hash_fails_closed() -> None:
         _self_hash(corrupted, "identity_sha256", "fixture")
 
 
+def test_selection_comparison_accepts_cpu_reduction_roundoff() -> None:
+    expected = _evaluation()
+    actual = deepcopy(expected)
+    actual["bits_per_byte"] += 5e-7
+    actual["loss_nats_per_byte"] -= 5e-7
+    actual["by_stratum"]["uk"]["bits_per_byte"] += 5e-7
+    _compare_selection(actual, expected, "fixture")
+
+
 def test_selection_comparison_rejects_metric_drift() -> None:
     expected = _evaluation()
     _compare_selection(deepcopy(expected), expected, "fixture")
