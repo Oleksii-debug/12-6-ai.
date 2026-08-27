@@ -1,0 +1,129 @@
+{
+  "schema": "12-6.the-stack-v2-provenance-feasibility.v1",
+  "status": "FEASIBILITY_ONLY_NOT_TRAINING_AUTHORIZED",
+  "observed_at_utc": "2026-08-27T07:10:00Z",
+  "internal_authority": {
+    "control_issue": 723,
+    "research_issue": 720,
+    "registry_path": "configs/research/open_source_reuse_registry_v2.json",
+    "registry_blob_sha": "d80a60357c56eacac135f948b8a72556bb849e5a"
+  },
+  "upstream": {
+    "dataset_id": "bigcode/the-stack-v2",
+    "dataset_revision": "e565caa3a78c2423bd374333a472b049eb090e47",
+    "dataset_last_modified": "2026-08-03T13:24:25Z",
+    "dataset_license_label": "other",
+    "gated": true,
+    "bulk_access_requires_agreement": true,
+    "bulk_access_parties": [
+      "Software Heritage",
+      "Inria"
+    ],
+    "bulk_access_contact": "datasets@softwareheritage.org",
+    "bulk_content_location_template": "s3://softwareheritage/content/{blob_id}",
+    "source_licenses_control": true,
+    "removal_refresh_required": true,
+    "provenance_fields_observed": [
+      "repo_name",
+      "snapshot_id",
+      "revision_id",
+      "blob_id",
+      "content_id",
+      "directory_id",
+      "path",
+      "branch_name",
+      "visit_date"
+    ],
+    "license_signal_fields_observed": [
+      "detected_licenses",
+      "license_type",
+      "gha_license_id"
+    ],
+    "license_signal_is_legal_advice": false,
+    "source_graph_snapshot_observed": "Software Heritage graph dataset 2023-09-06",
+    "source_metadata_cutoff_observed": "GH Archive through 2023-09-14"
+  },
+  "primary_sources": [
+    {
+      "kind": "dataset_api",
+      "url": "https://huggingface.co/api/datasets/bigcode/the-stack-v2",
+      "supports": [
+        "dataset_revision",
+        "last_modified",
+        "gated_terms",
+        "source_license_obligation"
+      ]
+    },
+    {
+      "kind": "dataset_card",
+      "url": "https://huggingface.co/datasets/bigcode/the-stack-v2/blob/e565caa3a78c2423bd374333a472b049eb090e47/README.md",
+      "supports": [
+        "provenance_fields",
+        "license_signal_fields",
+        "swh_s3_content_location",
+        "bulk_agreement_requirement",
+        "validated_removal_refresh"
+      ]
+    },
+    {
+      "kind": "software_heritage_api_terms",
+      "url": "https://www.softwareheritage.org/legal/api-terms-of-use/",
+      "supports": [
+        "no_massive_api_extraction",
+        "privacy_restrictions",
+        "third_party_rights_disclaimer",
+        "license_detection_not_legal_advice"
+      ]
+    },
+    {
+      "kind": "software_heritage_bulk_terms",
+      "url": "https://www.softwareheritage.org/legal/bulk-access-terms-of-use/",
+      "supports": [
+        "bulk_access_restrictions",
+        "privacy_restrictions",
+        "source_license_obligations"
+      ]
+    }
+  ],
+  "truth_boundaries": {
+    "canonical_training_authorized": false,
+    "bulk_download_authorized": false,
+    "dataset_license_grants_source_rights": false,
+    "software_heritage_access_terms_grant_source_rights": false,
+    "inferred_license_grants_source_rights": false,
+    "source_license_review_required": true,
+    "privacy_review_required": true,
+    "evaluation_firewall_required": true,
+    "decontamination_required": true
+  },
+  "required_source_record_fields": [
+    "dataset_revision",
+    "repo_name",
+    "revision_id",
+    "snapshot_id",
+    "blob_id",
+    "content_id",
+    "path",
+    "source_license_spdx",
+    "source_license_review",
+    "access_evidence",
+    "privacy_review_status",
+    "evaluation_firewall_status",
+    "decontamination_status",
+    "removal_sync_revision"
+  ],
+  "admission": {
+    "approved_rights_decision": "APPROVED_FOR_MODEL_TRAINING_BY_PROJECT_REVIEW",
+    "project_bulk_access_agreement_ref": null,
+    "positive_result": "SOURCE_FEASIBLE_FOR_D03_ADMISSION_REVIEW",
+    "terminal_training_authority": "NEVER_GRANTED_BY_THIS_POLICY",
+    "current_project_state": "BLOCKED_PENDING_BULK_ACCESS_AGREEMENT_AND_SOURCE_BY_SOURCE_RIGHTS_REVIEW"
+  },
+  "execution": {
+    "class": "LOCAL_FREE",
+    "bulk_download_performed": false,
+    "source_content_downloaded": false,
+    "paid_compute_used": false,
+    "training_performed": false
+  }
+}
