@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -76,12 +77,16 @@ class LigerBootstrapContractTests(unittest.TestCase):
     def test_identity_tampering_fails(self) -> None:
         mutated = copy.deepcopy(self.evidence)
         mutated["environment"]["python_version"] = "0.0.0"
-        self.assertIn("environment identity mismatch", validate_evidence(mutated, self.manifest))
+        self.assertIn(
+            "environment identity mismatch", validate_evidence(mutated, self.manifest)
+        )
 
     def test_canonical_lineage_is_strict(self) -> None:
         mutated = copy.deepcopy(self.manifest)
         mutated["project"]["canonical_base_random_init_only"] = False
-        self.assertIn("canonical Base boundary not enforced", validate_manifest(mutated))
+        self.assertIn(
+            "canonical Base boundary not enforced", validate_manifest(mutated)
+        )
 
 
 if __name__ == "__main__":
