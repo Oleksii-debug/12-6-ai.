@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail-close NEXT100-065D against the exact current NEXT100-063 V4 authority."""
+"""Fail-close NEXT100-065D against the immutable NEXT100-063 V4 authority."""
 
 from __future__ import annotations
 
@@ -178,11 +178,26 @@ def _find_addition(live: Mapping[str, Any], *, pr: int) -> Mapping[str, Any]:
     return matches[0]
 
 
+def _require_descendant_or_same(frozen_head: str, live_head: str) -> None:
+    if live_head == frozen_head:
+        return
+    comparison = github_get(f"compare/{frozen_head}...{live_head}")
+    require(comparison.get("status") == "ahead", "canonical registry PR is not ahead of frozen V4 head")
+    require(comparison.get("behind_by") == 0, "canonical registry PR is not a descendant of frozen V4 head")
+    require(
+        mapping(comparison.get("merge_base_commit"), "registry compare merge base").get("sha")
+        == frozen_head,
+        "frozen V4 head is not the live registry merge base",
+    )
+
+
 def validate_live(data: Mapping[str, Any]) -> None:
     registry = mapping(data["canonical_registry"], "canonical_registry")
+    frozen_head = str(registry["head_sha"])
     pr = github_get(f"pulls/{registry['pr']}")
     live_head = pr.get("head", {}).get("sha")
-    require(live_head == registry["head_sha"], "canonical registry PR moved; refresh V4 guard before promotion")
+    require(isinstance(live_head, str) and len(live_head) == 40, "canonical registry live head invalid")
+    _require_descendant_or_same(frozen_head, live_head)
 
     payload = github_get(f"contents/{registry['path']}?ref={live_head}")
     require(payload.get("sha") == registry["git_blob_sha1"], "canonical V4 Git blob drift")
