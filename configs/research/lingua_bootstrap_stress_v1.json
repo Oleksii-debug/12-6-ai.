@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "component_id": "LINGUA",
+  "worker_id": "SWARM-780",
+  "lane_key": "D03|LINGUA|OPEN-SOURCE-REUSE-RESEARCH|BOOTSTRAP-STRESS-V1",
+  "status": "RETEST_RUNTIME_REQUIRED",
+  "canonical_base_impact": {
+    "canonical_base_modified": false,
+    "foreign_weights_used": false,
+    "foreign_alignment_used": false,
+    "tokenizer_replaced": false,
+    "training_executed": false,
+    "paid_compute": false,
+    "final_test_access": false
+  },
+  "upstream": {
+    "repository": "https://github.com/pemistahl/lingua-py",
+    "tag": "v2.2.0",
+    "annotated_tag_sha": "f43375cba13a2ee209d632febfe9e074f3ff1d91",
+    "commit_sha": "754ce21122c083a7200763015fdaf7cda8d85453",
+    "release_date": "2026-03-09",
+    "package": "lingua-language-detector==2.2.0",
+    "python_requirement": ">=3.12,<3.15",
+    "build_backend": "poetry-core>=1.0.0"
+  },
+  "rights": {
+    "software_license": "Apache-2.0",
+    "license_path": "LICENSE.txt",
+    "license_blob_sha1": "261eeb9e9f8b2b4b0d119366dda99c6fd7d35c64",
+    "notice_file_found": false,
+    "copying_file_found": false,
+    "model_weight_license": "NOT_APPLICABLE_TO_NEURAL_WEIGHTS",
+    "dataset_rights": "NOT_INFERRED",
+    "redistribution": "ALLOWED_WITH_APACHE_2_0_CONDITIONS"
+  },
+  "artifact": {
+    "target_wheel": "lingua_language_detector-2.2.0-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
+    "sha256": null,
+    "sha256_status": "NOT_OBTAINED_FROM_RETRIEVED_PUBLIC_METADATA"
+  },
+  "local_environment": {
+    "python": "3.13.5",
+    "python_executable": "/opt/pyvenv/bin/python3",
+    "os": "Debian GNU/Linux 13",
+    "kernel": "6.18.35",
+    "arch": "x86_64",
+    "cpu_model": "AMD EPYC 9V74 80-Core Processor",
+    "logical_cpus": 5,
+    "gpu": null,
+    "package_managers": {
+      "python": "available",
+      "pip": "25.1.1",
+      "uv": "0.10.0",
+      "poetry": "unavailable",
+      "pdm": "unavailable",
+      "conda": "unavailable",
+      "git": "2.47.3"
+    },
+    "packages": {
+      "torch": "2.10.0+cpu",
+      "pytest": "9.0.2",
+      "lingua-language-detector": null,
+      "ruff": null
+    },
+    "network": {
+      "pypi_dns": false,
+      "github_dns": false,
+      "pip_install_attempt": "started_in_isolated_venv_but_timed_out"
+    },
+    "pip_cache": "disabled_unwritable",
+    "environment_hash_sha256": "096b639c0bdfd86e47cf503374a65d90563b83516e611bc1d53c140bdfdd8e05",
+    "isolated_venv_created": true,
+    "exact_install_attempted": true,
+    "exact_install_result": "NOT_EXECUTED_NETWORK_BLOCKED_TIMEOUT"
+  },
+  "runtime": {
+    "real_import_executed": false,
+    "fixture_probe_executed": false,
+    "benchmark_executed": false,
+    "parity_executed": false,
+    "reason": "Exact package could not be obtained in isolated environment because outbound DNS to pypi.org/github.com failed and local pip cache is unavailable."
+  }
+}
