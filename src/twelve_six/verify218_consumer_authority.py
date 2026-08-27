@@ -9,9 +9,10 @@ from __future__ import annotations
 
 import argparse
 import json
+from collections.abc import Mapping
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 import torch
 
@@ -33,8 +34,8 @@ from twelve_six.verify218_learned_10m import (
     STATE,
     WORKER,
     Verify218Error,
-    verify as verify_rich,
 )
+from twelve_six.verify218_learned_10m import verify as verify_rich
 
 SCHEMA = "12-6.verify218-learned-10m-independent.v2"
 PRODUCER_ARTIFACT_NAME = "learn217-terminal-10m-learned-base"
