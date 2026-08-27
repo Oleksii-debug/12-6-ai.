@@ -1,0 +1,71 @@
+{
+  "worker_id": "SWARM-774",
+  "lane_key": "D03|DATATROVE|OPEN-SOURCE-REUSE-RESEARCH|BOOTSTRAP-STRESS-V1",
+  "status": "RETEST_RUNTIME_REQUIRED",
+  "base_sha": "5020afd671a3885c1b738c8b4eafe7525f630546",
+  "branch": "swarm/774-datatrove-bootstrap-stress",
+  "upstream": {
+    "repository": "https://github.com/huggingface/datatrove",
+    "tag": "v0.10.0",
+    "commit": "7024aecca2f9ffb7b7cf0d02c0c823b8b24cf664",
+    "license": "Apache-2.0",
+    "wheel_sha256": "c7bb75deed2c3e88fb5138f8ea075a170ee98d6c94fc263829609091ea9c2b5d",
+    "sdist_sha256": "e31f89bdccb30ef0796854f5842ff52b4b224c28b2d5b110088e84071ea05c40"
+  },
+  "machine": {
+    "python": "3.13.5",
+    "uv": "0.10.0",
+    "pip": "25.1.1",
+    "git": "2.47.3",
+    "os": "Linux 6.18.35",
+    "arch": "x86_64",
+    "cpu_count": 5,
+    "gpu_detected": false
+  },
+  "bootstrap": {
+    "isolated_env_created": true,
+    "local_exact_artifact_cache_hit": false,
+    "exact_install_attempted": true,
+    "install_tool": "uv pip",
+    "install_target": "datatrove==0.10.0",
+    "install_result": "FAILED_ENVIRONMENT",
+    "install_error": "Temporary failure in name resolution resolving pypi.org",
+    "dependency_lock": "NOT_MATERIALIZED_NETWORK_BLOCK"
+  },
+  "runtime": {
+    "import": "NOT_EXECUTED",
+    "pipeline": "NOT_EXECUTED",
+    "benchmark": "NOT_EXECUTED",
+    "repeatability": "NOT_EXECUTED",
+    "parity": "NOT_EXECUTED"
+  },
+  "tests": {
+    "validator_self_test": "PASS",
+    "focused_adversarial_tests": 7,
+    "focused_adversarial_passed": 7
+  },
+  "rights": {
+    "software_license_verified": true,
+    "notice_file_found": false,
+    "dataset_rights_inherited": false,
+    "model_weight_rights_applicable": false,
+    "code_license_grants_training_authority": false
+  },
+  "canonical_base": {
+    "modified": false,
+    "foreign_pretrained_weights_used": false,
+    "foreign_instruction_or_alignment_behavior_used": false,
+    "tokenizer_modified": false,
+    "training_executed": false,
+    "checkpoint_modified": false,
+    "benchmark_final_test_data_accessed": false
+  },
+  "next_safe_action": "Provision a LOCAL_FREE runner with package-index access or an exact cached datatrove-0.10.0 artifact, verify SHA-256, resolve and freeze the full dependency closure, then execute the real two-repeat fixture pipeline and parity gate.",
+  "evidence_files": [
+    "configs/research/datatrove_bootstrap_stress_v1.json",
+    "tools/run_datatrove_bootstrap_stress_v1.py",
+    "tools/validate_datatrove_bootstrap_stress_v1.py",
+    "tests/test_datatrove_bootstrap_stress_v1.py",
+    "docs/DATATROVE_BOOTSTRAP_STRESS_V1.md"
+  ]
+}
