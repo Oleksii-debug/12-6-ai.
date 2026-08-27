@@ -1,0 +1,55 @@
+{
+  "schema": "12-6.lingua-bootstrap-stress.v1",
+  "worker_id": "OPEN-SOURCE-BOOTSTRAP-STRESS-V1",
+  "swarm_lane_key": "D08|EXECUTION-BOOTSTRAP|INDEPENDENT-VERIFY|LINGUA-2.2.0-STRESS-V1",
+  "base_sha": "5020afd671a3885c1b738c8b4eafe7525f630546",
+  "parent_issue": 773,
+  "env151_pr": 313,
+  "upstream": {
+    "repository": "pemistahl/lingua-py",
+    "tag": "v2.2.0",
+    "commit": "754ce21122c083a7200763015fdaf7cda8d85453",
+    "license": "Apache-2.0",
+    "license_blob_sha": "261eeb9e9f8b2b4b0d119366dda99c6fd7d35c64",
+    "package": "lingua-language-detector",
+    "version": "2.2.0",
+    "python_requires": ">=3.12,<3.15",
+    "runtime_dependencies": [],
+    "target_wheel": {
+      "filename": "lingua_language_detector-2.2.0-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
+      "sha256": "4fbf936b47ef4fdd7043ebb4159d4a5f1c3648028e19d6e3c60464abc5f5e195",
+      "source": "PyPI",
+      "size_bytes": 178572288
+    }
+  },
+  "env151_compatibility": {
+    "env151_python": "3.11.16",
+    "env151_exact_bootstrap": "bbca2101ea9409b47d844dd8292cd7f2290e3ff0",
+    "compatible": false,
+    "reason": "Lingua 2.2.0 drops Python 3.11; ENV-151 exact runtime is CPython 3.11.16. Qualification therefore uses an independent fresh CPython 3.13 venv without modifying ENV-151."
+  },
+  "runtime_contract": {
+    "runtime_execution_required_for_promotion": true,
+    "benchmark_required_for_adoption": true,
+    "parity_required_for_adoption": true,
+    "allowed_compute": "LOCAL_FREE",
+    "foreign_weights": false,
+    "canonical_base_mutation": false,
+    "tokenizer_mutation": false,
+    "training": false,
+    "final_test_access": false
+  },
+  "benchmark_plan": {
+    "status_when_runtime_unavailable": "NOT_EXECUTED",
+    "modes": ["all_languages_high_accuracy", "all_languages_low_accuracy", "restricted_uk_en_code_fixture"],
+    "metrics": ["cold_start_seconds", "steady_state_texts_per_second", "rss_high_water_bytes", "deterministic_output_hash"],
+    "repeat_count": 2,
+    "parity_reference": "No project-owned LID implementation is replaced by this candidate; parity means contract-compatible outputs on the same fixed fixture once runtime is available."
+  },
+  "retry": {
+    "python": "3.13.x",
+    "platform": "linux_x86_64_glibc",
+    "install": "python -m pip install --require-hashes --no-deps lingua-language-detector==2.2.0 --hash=sha256:4fbf936b47ef4fdd7043ebb4159d4a5f1c3648028e19d6e3c60464abc5f5e195",
+    "expected_artifact_sha256": "4fbf936b47ef4fdd7043ebb4159d4a5f1c3648028e19d6e3c60464abc5f5e195"
+  }
+}
