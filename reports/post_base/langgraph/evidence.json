@@ -1,0 +1,68 @@
+{
+  "canonical_base": {
+    "changed": false,
+    "foreign_behavior": false,
+    "foreign_weights": false
+  },
+  "environment_probe": {
+    "arch": "x86_64",
+    "cache_dirs": [],
+    "cpu": "AMD EPYC 7763",
+    "git": "2.47.3",
+    "gpu": false,
+    "langgraph_installed": false,
+    "network_dns_github": false,
+    "network_dns_pypi": false,
+    "os": "Debian GNU/Linux 13 (trixie)",
+    "pip": "25.1.1",
+    "python": "3.13.5",
+    "uv": "0.10.0"
+  },
+  "evidence_self_sha256": "7aa5ce4cdef1510fcfbfb63afcb21d751d029afee6d7a346bb8cd6c6f23cf1ab",
+  "installation_attempt": {
+    "attempted": true,
+    "exact_requirement": "langgraph==1.2.11",
+    "global_mutation": false,
+    "install_log_sha256": "39bb4cee2ec1f8867962f4174feb0b450817a552cc13b97bd914a51104e6b902",
+    "isolated_venv_created": true,
+    "outcome": "FAILED_NETWORK_NAME_RESOLUTION",
+    "substitution": false,
+    "venv_freeze_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "venv_packages": []
+  },
+  "project_base_sha": "5020afd671a3885c1b738c8b4eafe7525f630546",
+  "project_side_benchmark": {
+    "elapsed_seconds": 1.2599867529999926,
+    "iterations": 200,
+    "ops_per_second": 158.7318275559689
+  },
+  "project_side_validation": {
+    "adversarial_schema_rejection": "PASS",
+    "atomic_checkpoint": "PASS",
+    "restart_readback": "PASS",
+    "task_schema": "PASS"
+  },
+  "qualification_id": "LANGGRAPH-DURABLE-RUNTIME-BOOTSTRAP-V1",
+  "runtime": {
+    "benchmark_status": "NOT_EXECUTED",
+    "executed": false,
+    "parity_status": "NOT_EXECUTED",
+    "reason": "EXACT_DEPENDENCY_UNAVAILABLE",
+    "status": "NOT_EXECUTED"
+  },
+  "schema_version": 1,
+  "tests": {
+    "compileall": "PASS",
+    "focused_pytest": "7 passed",
+    "validator": "PASS"
+  },
+  "upstream": {
+    "commit": "644815f9e5bc52ad8f7a5227a456227e9c3e639b",
+    "license": "MIT",
+    "license_blob_sha": "fc0602feecdd6748623c852ab534e1ca612673c7",
+    "pypi_sdist_sha256": "9ecfe11e50d338b34b15cf4d8a442642de103e8ae6971320efba84e4542eb363",
+    "repository": "https://github.com/langchain-ai/langgraph",
+    "tag": "1.2.11"
+  },
+  "worker": "SWARM-773"
+}
