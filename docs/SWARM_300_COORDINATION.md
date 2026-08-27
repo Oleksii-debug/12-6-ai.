@@ -1,250 +1,212 @@
-# SWARM-300 coordination protocol v1
+# SWARM-300 coordination protocol v2
 
-Status: `CANDIDATE_PROTOCOL_V1`
+Status: `CANDIDATE_PROTOCOL_V2_PENDING_EXACT_HEAD_CI`
 
 Canonical control issue: #723
-Implementation issue: #724
-Machine collision guard owner: PR #575 or its terminal successor
+Scale-audit issue: #732
+Machine collision guard owner: PR #575 or its terminal successor; it is not assumed deployed until merged/terminal on the active integration line.
 
-## Goal
+## Purpose
 
-Allow tens or hundreds of disposable ChatGPT workers to receive the exact same prompt and still distribute themselves across useful work without the owner manually preparing numbered prompts.
+Support identical-prompt autonomous development at 200-worker scale and remain structurally safe for later 500–1000-worker experiments without pretending GitHub itself has unlimited concurrent write or CI capacity.
 
-The protocol is deliberately decentralized. There is no scheduler that must assign 300 tasks in advance. Every worker reconstructs live GitHub, obtains a unique GitHub-issued worker identity, chooses a starting lane, claims one semantic work surface, verifies that it won the claim, and then works end-to-end.
+The system separates four concerns:
 
-## Single coordination authority
+1. **read-only discovery concurrency** — many workers can reconstruct live state in parallel;
+2. **ownership claims** — GitHub issues remain the single durable claim authority;
+3. **development concurrency** — workers may advance disjoint branches/packages in parallel;
+4. **validation concurrency** — remote PR/Actions fanout is pressure-controlled instead of scaling one-for-one with worker count.
 
-GitHub is the only ownership/claim authority.
+This distinction is mandatory. `1000 chats` must never be interpreted as `1000 simultaneous GitHub mutations plus 1000 CI runs`.
 
-Google Drive may contain canonical vision, long reports, research notes and backups, but it must not be used as a second lock registry. A worker may read Drive when relevant, but a Drive sentence such as "I am working on X" never reserves X unless the reservation is reflected in GitHub.
+## Truth and ownership
 
-Live-truth order remains:
-
-1. exact GitHub SHA / branch / PR / Actions;
-2. active GitHub claim/control/lane issues;
+Truth order:
+1. exact Git SHA / branch / PR / Actions;
+2. direct GitHub issue/PR collections and claim/control/lane state;
 3. independent audit evidence;
-4. Drive canonical reports/research;
+4. Drive reports/research/backups;
 5. chat prose.
 
-## Worker registration
+GitHub is the sole ownership registry. Drive is not a lock service.
 
-Each identical-prompt worker begins by creating exactly one GitHub issue in `Oleksii-debug/12-6-ai.`.
+## Startup read-first rule
 
-Initial title:
+Every worker performs a minimum read-only scout before its first GitHub mutation. It reads project rules, #723, current main, open P0/P1 surfaces and relevant lane state. Only then does it create one registration issue.
 
-`SWARM-REGISTER: autonomous worker`
+This reduces stale claims and naturally spreads mutative traffic across time.
 
-The issue number assigned by GitHub is the unique worker identity:
+## Worker identity and routing
 
-`SWARM_WORKER_ID = SWARM-<issue_number>`
+The registration issue number `N` becomes `SWARM-N`.
 
-The registration issue later becomes that worker's claim and final handoff issue. Do not create a second claim issue for the same chat unless the first issue is unusable.
+Coarse routing uses two dimensions:
 
-## Automatic diversification
+`preferred_lane = 2 + (N mod 15)`
 
-Permanent lanes are GitHub issues #2 through #16.
+and
 
-For worker registration issue number `N`, calculate:
+`preferred_work_kind = WORK_KINDS[(N div 15) mod 8]`
 
-`preferred_lane_issue = 2 + (N mod 15)`
+with eight work kinds:
+- PRODUCT_VERTICAL
+- INDEPENDENT_VERIFY
+- REDTEAM_AUDIT
+- INTEGRATION_CONVERGENCE
+- PERFORMANCE_RUNTIME
+- DATA_SOURCE_OR_PIPELINE
+- OPEN_SOURCE_REUSE_RESEARCH
+- REPRODUCIBILITY_RELEASE
 
-This spreads identical workers across the permanent lanes without requiring a different prompt for each chat.
+There are therefore 120 deterministic coarse routing slots before repetition. The slot is a starting bias, not ownership permission.
 
-The preferred lane is a starting point, not a prison. Read its contract and obey its ownership restrictions. If the lane has no substantial unclaimed work, is saturated, is blocked on another authority, or would create duplicate Product work, rotate through #2-#16 and current P0/P1 control issues until a substantial disjoint package is found.
+## Candidate selection
 
-Audit lanes must audit rather than silently patch Product code. Coordination lanes must coordinate rather than become the default implementation lane. Compute lanes must not infer paid-compute authorization.
+Before claim, a worker should compare at least three materially different candidates when possible and prefer the package with the best combination of:
+- P0/P1 blocker impact;
+- end-to-end closability;
+- LOCAL_FREE feasibility;
+- low collision risk;
+- independent validation value;
+- manageable CI cost.
 
-## Semantic lane key
+Do not simply choose the globally most obvious issue; identical workers must be diversified by lane/work-kind and live ownership.
 
-Every active worker must own one explicit semantic lane key.
+## Large-package gate
 
-Format:
+A normal claim must contain at least four of:
+- implementation or primary research;
+- focused tests;
+- adversarial/negative tests;
+- machine-readable evidence/validator;
+- docs/operator handoff;
+- live authority binding;
+- end-to-end/integration proof;
+- measured benchmark/reproducibility proof.
 
-`<PERMANENT-LANE>|<OBJECT-OR-SUBSYSTEM>|<WORK-KIND>`
+It must include primary work, real validation, and an evidence/closure dimension.
+
+A one-line lint fix, one config field, docs-only restatement, tiny helper, duplicate validator/readiness gate, status-only PR or cosmetic refactor is not a standalone swarm task when useful adjacent same-surface work exists.
+
+If a valid package shrinks to a micro-fix, the worker continues into safe adjacent work inside the same ownership surface rather than terminating early.
+
+## Semantic ownership key
+
+Canonical format:
+
+`<LANE>|<CANONICAL-OBJECT>|<WORK-KIND>|<QUALIFIER>`
+
+All fields use uppercase ASCII hyphenated terms. Known project identifiers are reused exactly rather than renamed with synonyms.
 
 Examples:
+- `D03|COMMON-PILE|SOURCE-RIGHTS-AUDIT|V1`
+- `D02|MODEL-341|OPTIMIZER-EXPERIMENT|MUON-VS-ADAMW`
+- `D05|MODEL-341|CHECKPOINT-REQUALIFICATION|CORRUPTION-MATRIX`
+- `R01|OLMO-LADDER|SCALING-FIT|20M-100M`
 
-- `D03|COMMON-PILE|SOURCE-RIGHTS-AUDIT`
-- `D02|MUON|20M-MATCHED-OPTIMIZER-ARM`
-- `D07|LLAMA-CPP|EXPORT-PARITY`
-- `D09|TOOL-PROTOCOL|REDTEAM`
-- `R01|OLMO-LADDER|20M-100M-SCALING-FIT`
-- `AUDIT-A|CHECKPOINT-346|INDEPENDENT-REQUALIFICATION`
+Semantic review against existing non-swarm ownership remains mandatory.
 
-The key must describe the real semantic ownership surface. A worker number alone is not an ownership key. Existing non-swarm issues/PRs may already own a surface even if they do not contain this key, so semantic collision review is mandatory.
+## Exact race arbitration
 
-## Claim body contract
+GitHub Search is allowed for discovery but is not the exact lock mechanism.
 
-After choosing a task, update the registration issue title to:
+After publishing a claim, a worker reads the direct paginated OPEN issue collection and extracts all active claim bodies carrying the same exact `SWARM_LANE_KEY`.
 
-`[ACTIVE] SWARM-CLAIM <SWARM_LANE_KEY> — <short objective>`
+Winner:
+1. earliest GitHub `created_at`;
+2. lowest issue number if timestamps tie.
 
-The body must contain at least:
+A losing worker changes the same registration issue to `ABANDONED_DUPLICATE`, records the winner, selects another package and reclaims. It does not create a new worker issue.
 
-```text
-SWARM_PROTOCOL: SWARM-300-V1
-SWARM_CONTROL: #723
-SWARM_WORKER_ID: SWARM-<issue_number>
-SWARM_LANE_KEY: <semantic key>
-PREFERRED_LANE: #<lane issue>
-PARENT_ISSUES: #...
-STATUS: ACTIVE
-BASE_SHA: <exact main or intentional parent SHA>
-CLAIMED_AT_UTC: <timestamp>
-LEASE_UNTIL_UTC: <timestamp, default +6h>
-OWNED_SURFACES:
-- <files/modules/contracts/research surface>
-AVOID_SURFACES:
-- <known active neighboring surfaces>
-OBJECTIVE:
-<large coherent end-to-end objective>
-ACCEPTANCE:
-- <evidence required>
-- <tests/CI required>
-FALLBACK:
-<what to do if the primary objective becomes terminal before edits>
-```
+Existing canonical semantic ownership beats a later swarm claim even without an exact key.
 
-## Two-phase collision check
+## Rate-limit behavior
 
-A worker does not own a task merely because it wrote a claim.
+GitHub API capacity is an external constraint. Workers must not hammer writes or create duplicate fallbacks after 403/429.
 
-### Phase A — semantic pre-claim review
+On rate limiting, honor `Retry-After` or rate-reset information when available. If durable mutation cannot safely resume, the worker owns no new Product surface and exits read-only as `RATE_LIMIT_DEFERRED_READ_ONLY`.
 
-Before updating the registration issue into an active claim, search live open issues, PRs, recent branches/commits and permanent lane logs for the same subsystem/objective. If an active canonical issue/PR already owns the same Product/research surface, do not create a duplicate implementation. Either:
+This status is intentionally non-owning and does not block another worker.
 
-- select a disjoint sub-surface;
-- consume/verify/red-team the existing work if that is genuinely independent and allowed by the lane;
-- or rotate to another task.
+## Claim lease
 
-### Phase B — exact-key post-claim arbitration
+Default lease is six hours. Takeover requires all of:
+- expiry;
+- no newer meaningful issue update;
+- no recent substantive branch/PR progress;
+- no active CI plausibly owned by the claimant;
+- explicit takeover evidence.
 
-Immediately after publishing `SWARM_LANE_KEY`, search open GitHub issues and PRs for that exact key again.
+## Branch discipline
 
-If two or more active swarm claims use the same exact semantic key, the claim with the earliest GitHub `created_at` wins. A later worker must not continue editing simply because it already thought about the task.
+One active branch per claim:
 
-The losing worker updates its issue to `ABANDONED_DUPLICATE`, records the winning claim, removes/closes any unnecessary duplicate PR/branch if already created, then returns to task discovery and updates the same issue with a different unclaimed lane key.
+`swarm/<claim-issue-number>-<slug>`
 
-Existing canonical ownership predating the swarm beats a new swarm claim even when an exact key is absent.
+Branch only after exact claim arbitration is won. Prefer substantial bundled commits over repeated trivial GitHub mutations.
 
-## Lease and stale recovery
+## CI pressure control
 
-Default lease: 6 hours from claim time.
+Development concurrency and validation concurrency are separate.
 
-Refresh the claim issue when a substantial commit/PR is published or before the lease expires. A worker may take over another claim only when all are true:
+Before opening a PR, workers inspect lightweight queued + in-progress Actions counts and classify:
 
-1. `LEASE_UNTIL_UTC` has passed;
-2. the claim issue has no newer meaningful update extending the lease;
-3. its branch/PR has no recent substantive progress;
-4. no active CI/run plausibly indicates the owner is still working;
-5. takeover is explicitly recorded with the old claim URL/number and evidence.
+- GREEN <= 25
+- AMBER 26..100
+- RED >= 101
 
-Do not steal active work merely because another chat is slower.
+GREEN: normal one-PR-per-claim behavior.
 
-## Branch and PR contract
+AMBER: PR only for substantial P0/P1 work or when exact-head remote evidence is materially needed.
 
-Only after winning the claim should a normal implementation worker create a branch.
+RED: routine work should stop adding PR/CI fanout. Prefer strong local validation followed by durable branch/SHA + claim-issue handoff. A new PR/remote run is reserved for critical terminal unblock, security/integrity, integration or similarly high-value authority.
 
-Recommended branch:
+No swarm worker creates a temporary Actions workflow. Shared `ci.yml` and existing scoped gates remain the validation surfaces.
 
-`swarm/<claim-issue-number>-<short-slug>`
+Queued/running/action-required never equals PASS.
 
-Every implementation PR body must repeat:
+## PR metadata
+
+Every swarm PR contains:
 
 ```text
-SWARM_PROTOCOL: SWARM-300-V1
+SWARM_PROTOCOL: SWARM-300-V2
 SWARM_CONTROL: #723
 SWARM_CLAIM_ISSUE: #<issue-number>
 SWARM_WORKER_ID: SWARM-<issue-number>
-SWARM_LANE_KEY: <exact semantic key>
+SWARM_LANE_KEY: <canonical key>
 PARENT_ISSUES: #...
+PACKAGE_DIMENSIONS: <dimensions>
 ```
 
-This metadata is intended to be consumed by the machine collision guard in PR #575 or a successor.
+One PR maximum per claim.
 
-## Work selection quality
+## Late binding
 
-Select the largest useful coherent P0/P1 package that is safe to own. Prefer vertical completion over helper-only churn.
+Workers refresh live authority at startup, before registration/claim, after claim, before material edits, before PR decisions and before final handoff.
 
-Good packages combine the implementation/research object with its validation, adversarial tests, documentation, machine-readable evidence and handoff where those belong to the same ownership surface.
+A blocker from startup must be reconsidered if a sibling/upstream authority terminalizes during execution.
 
-Do not create work merely to keep a worker busy. If no safe substantial implementation exists, prefer an independent audit, verifier, red-team, research comparison, source-rights investigation, reproducibility check or integration analysis that does not duplicate active Product ownership.
+If a better canonical implementation lands, converge/adapt/verify/supersede rather than force duplicate output.
 
-If no meaningful disjoint work remains, record `NO_SAFE_UNCLAIMED_WORK` rather than manufacturing a fake task.
+## Final statuses
 
-## Late-binding rule
+Allowed terminal handoff states include:
+- TERMINAL
+- BLOCKED
+- SUPERSEDED
+- REJECTED
+- NO_SAFE_UNCLAIMED_WORK
+- RATE_LIMIT_DEFERRED_READ_ONLY
 
-Workers are launched concurrently, so the state seen at startup can become stale during execution.
-
-Re-read live GitHub:
-
-1. at startup;
-2. immediately before claiming;
-3. immediately after claiming;
-4. immediately before material Product edits;
-5. before opening/updating a PR;
-6. before final verdict/handoff.
-
-If a relevant sibling/upstream authority became terminal while the worker was executing, consume it and rerun affected verification once when practical. Do not return a blocker solely from a stale startup cutoff.
-
-Do not wait for sibling workers. Work against current durable authority and late-bind available terminal evidence.
-
-## CI discipline
-
-Use `.github/workflows/ci.yml` as the shared broad CI surface and existing scoped scientific gates where appropriate.
-
-Normal swarm workers must not create one-off `.github/workflows/*` files. PR #575 or its successor owns machine collision-guard implementation; do not create a second guard merely because this protocol mentions collisions.
-
-Queued/in-progress/action-required CI is `NOT TESTED`, never PASS.
-
-CPU evidence is not CUDA/GPU evidence. Upstream benchmark claims are not local 12-6 evidence.
-
-## Handoff
-
-At the end, update the claim issue with:
-
-```text
-STATUS: TERMINAL | BLOCKED | SUPERSEDED | REJECTED
-BRANCH: <branch>
-HEAD_SHA: <sha>
-PR: #<number or none>
-CI: <run IDs and exact conclusions>
-CHANGED_SURFACES:
-- ...
-EVIDENCE:
-- tests / metrics / artifacts / hashes
-NOT_TESTED:
-- ...
-BLOCKERS:
-- ...
-NEXT_SAFE_ACTION:
-- ...
-LEASE: RELEASED
-```
-
-Also leave a concise pointer in the relevant permanent lane issue when the result materially changes that lane's state.
-
-Do not call a task terminal merely because code was written. State exactly what is proven, what is merely prepared, and what remains blocked.
-
-## Merge policy
-
-A worker normally opens a PR and leaves integration to the current integration/coordination authority. It must not merge its own Product PR merely because its scoped tests are green unless the live project policy explicitly grants merge authority for that surface.
-
-If the work becomes redundant because a better canonical PR landed, prefer closing/superseding rather than forcing a duplicate merge.
+Every handoff records lane key, package dimensions, branch, exact SHA, PR if any, CI pressure, CI results, changed surfaces, evidence, untested items, blockers, next safe action and released lease.
 
 ## Project hard boundaries
 
-- canonical Base remains random-init and pretraining-only unless explicit project authority changes that policy;
-- no foreign pretrained/instruct/aligned weights in canonical Base;
-- no benchmark/final-test leakage into training;
-- data licenses do not bypass source/provenance/privacy/decontamination gates;
-- no materially paid compute or long training without explicit `COMPUTE_AUTHORIZED` and required training authority;
-- no fabricated CI/GPU/data/training success;
-- post-Base agent/tool work remains isolated from canonical Base lineage;
-- exact GitHub evidence outranks stale reports/chat.
+Canonical Base remains random-init and pretraining-only until explicit authority changes it. No foreign pretrained weights enter canonical Base. No benchmark/final-test leakage. Data rights remain source/provenance-specific. No materially paid compute without explicit authorization. CPU evidence is not GPU evidence. Post-Base work does not mutate canonical Base lineage. No fabricated terminality.
 
-## Why this scales better than 300 numbered prompts
+## Scale interpretation
 
-The owner only pastes one prompt. GitHub supplies each worker a unique number. That number diversifies its starting lane. Semantic claims distribute sub-work dynamically as the repository changes. Earliest-claim arbitration resolves races, leases recover abandoned work, and late-binding keeps workers from returning stale blockers.
+The protocol is designed so the owner can paste one prompt repeatedly. It is expected to improve throughput by reducing manual assignment and duplicate work, but it is not a promise of linear speedup. GitHub writes, active Product surfaces, integration bandwidth and CI runners become bottlenecks as worker count rises.
 
-The universal prompt therefore acts as a decentralized scheduler rather than a static list of 300 tasks.
+A 200-worker trial is therefore an empirical scale test. Any move to 500–1000 workers should use measured claim collision rate, rate-limit events, useful-package yield, PR/CI pressure and integration throughput from the 200-worker run rather than assuming 5x more chats produces 5x more useful development.
