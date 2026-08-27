@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import importlib.metadata as metadata
 import json
 import platform
 import sys
+from importlib import metadata
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
