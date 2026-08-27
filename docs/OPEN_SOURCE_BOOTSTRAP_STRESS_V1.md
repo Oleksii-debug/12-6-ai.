@@ -4,11 +4,13 @@
 
 This package independently qualifies the existing ENV-151 universal exact execution bootstrap. It does not reimplement or modify ENV-151. The incumbent implementation remains PR #313 (`env151/universal-execution-bootstrap-20260826`) at the scout head `bbca2101ea9409b47d844dd8292cd7f2290e3ff0`.
 
-The worker owns only the additive verifier, tests, configuration, evidence and handoff listed by issue #773. The canonical Base, model/tokenizer/data/training/checkpoint/evaluation surfaces and shared workflow implementation are out of scope.
+The worker owns only the additive verifier, tests, configuration, evidence and handoff listed by issue #783. The canonical Base, model/tokenizer/data/training/checkpoint/evaluation surfaces and shared workflow implementation are out of scope.
 
 ## Exact binding
 
 Project main at qualification start: `5020afd671a3885c1b738c8b4eafe7525f630546`.
+
+D09 claim authority: issue #783, exact lane `D09|EXECUTION-BOOTSTRAP|INDEPENDENT-VERIFY|STRESS-V1`.
 
 ENV-151 incumbent: PR #313, branch `env151/universal-execution-bootstrap-20260826`, head `bbca2101ea9409b47d844dd8292cd7f2290e3ff0`.
 
@@ -16,7 +18,7 @@ The PR contains the reusable composite action, bootstrap implementation, capabil
 
 ## Environment result
 
-The actual LOCAL_FREE host is Debian 13 / Linux x86_64 with CPython 3.13.5. CPython 3.11.16 is not installed. Local package caches contain no wheel/sdist artifacts suitable to prove the exact ENV-151 stack. DNS resolution for both `pypi.org` and `github.com` is unavailable in the worker environment. No GPU is visible and no GPU compute was attempted.
+The actual LOCAL_FREE host is Debian 13 / Linux x86_64 with CPython 3.13.5. CPython 3.11.16 is not installed. The exact interpreter acquisition was explicitly attempted through `uv python install 3.11.16` and failed because the required download was unavailable. Local package caches contain no wheel/sdist artifacts suitable to prove the exact ENV-151 stack. DNS resolution for both `pypi.org` and `github.com` is unavailable in the worker environment. No GPU is visible and no GPU compute was attempted.
 
 Because ENV-151 source is not present on current main and the exact interpreter/artifacts are unavailable locally, the real ENV-151 dependency stack was **NOT EXECUTED**. No substituted package version is used.
 
