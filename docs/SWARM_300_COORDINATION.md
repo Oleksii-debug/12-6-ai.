@@ -1,10 +1,18 @@
 # SWARM-300 coordination protocol v2
 
-Status: `CANDIDATE_PROTOCOL_V2_PENDING_EXACT_HEAD_CI`
+Status: `READY_V2_FOR_200_WORKER_TRIAL`
 
 Canonical control issue: #723
 Scale-audit issue: #732
 Machine collision guard owner: PR #575 or its terminal successor; it is not assumed deployed until merged/terminal on the active integration line.
+
+## Owner launch entrypoint
+
+For repetitive manual launching, the preferred copy-paste entrypoint is `docs/SWARM_BOOTSTRAP_PROMPT.md` rather than copying this entire protocol or the full worker prompt into every chat.
+
+The bootstrap is intentionally short. Each new chat must read the current canonical `docs/UNIVERSAL_SWARM_PROMPT.md`, this coordination protocol, the machine-readable swarm protocol and issue #723 from live `main` before doing work. If those authorities conflict or cannot be read, the bootstrap forbids GitHub mutations and fails closed.
+
+This indirection means future READY swarm protocol upgrades can be picked up by newly launched chats without the owner manually replacing a long prompt in every launch.
 
 ## Purpose
 
