@@ -86,12 +86,12 @@
     "paid_compute_used": false
   },
   "promotion_state": "RETEST_RUNTIME_REQUIRED",
-  "environment_hash": "a7f50ffc5020f77ad14ad0a12e839713675d32264d4a02693b8d967a5fca5a80",
+  "environment_hash": "2ece49155319ead426969dd1c00ba36e75fce6aae17f198de1a21741ae9f9fe9",
   "bootstrap_artifacts": {
     "isolated_venv": "/tmp/12-6-liger-bootstrap-v1",
     "pip_freeze": ["pip==25.1.1"],
     "pip_install_log_sha256": "71da6ea834b2196dcdfdeb512d990afda5eadcd99f5ef0b21fc6081e69e190a6",
     "uv_install_log_sha256": "4f24d50971787803b679897ed42b452fc52d354887348cb82d8220140d6c3897"
   },
-  "evidence_identity": "099d429d4432ae49c73fd8746c468ecd260b9b5dd9009f12a34f63853729f39e"
+  "evidence_identity": "73b777fffc02f42f625caa7378f7a0fbdaf2ac3cd15f49d878084d5d1aa7d625"
 }
