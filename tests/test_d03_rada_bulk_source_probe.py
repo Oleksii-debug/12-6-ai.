@@ -179,13 +179,13 @@ def test_rejects_too_few_canonical_entries() -> None:
             lambda cfg: cfg["rights_boundary"].__setitem__(
                 "bulk_extension_status", "ADMITTED"
             ),
-            "bulk extension must remain not admitted",
+            r"rights_boundary\.bulk_extension_status drifted from the pinned v1 authority",
         ),
         (
             lambda cfg: cfg["claim_boundary"].__setitem__(
                 "training_exposure_authorized", True
             ),
-            "training_exposure_authorized must remain false",
+            r"claim_boundary\.training_exposure_authorized drifted from the pinned v1 authority",
         ),
     ],
 )
