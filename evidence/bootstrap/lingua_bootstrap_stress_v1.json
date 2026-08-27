@@ -44,5 +44,6 @@
   "safety": {"canonical_base_changed": false, "foreign_weights_used": false, "tokenizer_changed": false, "training_executed": false, "final_test_accessed": false, "paid_compute": false},
   "verdict": "RETEST_RUNTIME_REQUIRED",
   "retry": {"python": "3.13.x", "install": "python -m pip install --require-hashes --no-deps lingua-language-detector==2.2.0 --hash=sha256:4fbf936b47ef4fdd7043ebb4159d4a5f1c3648028e19d6e3c60464abc5f5e195", "required_artifact_sha256": "4fbf936b47ef4fdd7043ebb4159d4a5f1c3648028e19d6e3c60464abc5f5e195"},
-  "notes": ["Runtime intentionally not executed because exact dependency acquisition was impossible under LOCAL_FREE environment constraints.", "ENV-151 implementation was not modified."]
+  "notes": ["Runtime intentionally not executed because exact dependency acquisition was impossible under LOCAL_FREE environment constraints.", "ENV-151 implementation was not modified."],
+  "identity_sha256": "ee0da0b7fdc3487be96337bf909e8a4ad40ede66766a3ea9951a5f3465e02ea7"
 }
