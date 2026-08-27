@@ -14,5 +14,5 @@
   "canonical_base": {"mutated":false,"foreign_weights_loaded":false,"foreign_tokenizer_loaded":false,"training_launched":false,"checkpoint_mutated":false},
   "final_verdict":"RETEST_RUNTIME_REQUIRED",
   "next_safe_action":"Re-run on a network-enabled machine with a supported accelerator and exact dependency closure; preserve the same upstream ref and sdist hash.",
-  "evidence_sha256":"c04bc2df4ce8e7d20df1dbbc6e3a3d4e3126ebe2e6e13e3afe08dd9a34fdd10a"
+  "evidence_sha256":"545907b3f892607c3ad3778896c061645d4589bc23c9dc3a1c042a6cb1ad2a44"
 }
