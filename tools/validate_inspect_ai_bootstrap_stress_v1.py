@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Fail-closed validator for the Inspect AI bootstrap-stress evidence."""
+"""Fail-closed validator for Inspect AI bootstrap-stress evidence."""
 from __future__ import annotations
+
 import hashlib
 import json
-from pathlib import Path
 import sys
+from pathlib import Path
 
 EXPECTED = {
     "qualification_id": "INSPECT-AI-BOOTSTRAP-STRESS-V1",
@@ -21,11 +22,13 @@ def validate(data: dict) -> list[str]:
     errors: list[str] = []
     if data.get("qualification_id") != EXPECTED["qualification_id"]:
         errors.append("qualification_id_mismatch")
+
     project = data.get("project", {})
     upstream = data.get("upstream", {})
     for key in ("release", "tag", "commit", "license"):
         if upstream.get(key) != EXPECTED[key]:
             errors.append(f"upstream_{key}_mismatch")
+
     if project.get("base_sha") != EXPECTED["base_sha"]:
         errors.append("base_sha_mismatch")
     if project.get("canonical_base_contamination") is not False:
@@ -36,6 +39,7 @@ def validate(data: dict) -> list[str]:
         errors.append("tokenizer_changed")
     if upstream.get("pypi_wheel_sha256") != EXPECTED["wheel_sha256"]:
         errors.append("pypi_wheel_sha256_mismatch")
+
     if data.get("status") == "ADOPTABLE_COMPONENT":
         checks = [
             data.get("installation_attempt", {}).get("result") == "SUCCESS",
@@ -45,7 +49,11 @@ def validate(data: dict) -> list[str]:
         ]
         if not all(checks):
             errors.append("adoptable_without_real_runtime_evidence")
-    if data.get("status") == "RETEST_RUNTIME_REQUIRED" and data.get("runtime", {}).get("execution") != "NOT_EXECUTED":
+
+    if (
+        data.get("status") == "RETEST_RUNTIME_REQUIRED"
+        and data.get("runtime", {}).get("execution") != "NOT_EXECUTED"
+    ):
         errors.append("retest_runtime_state_inconsistent")
     return errors
 
@@ -56,7 +64,12 @@ def main() -> int:
     data = json.loads(path.read_text(encoding="utf-8"))
     errors = validate(data)
     digest = hashlib.sha256(path.read_bytes()).hexdigest()
-    print(json.dumps({"validation": "PASS" if not errors else "FAIL", "errors": errors, "manifest_sha256": digest}, sort_keys=True))
+    result = {
+        "validation": "PASS" if not errors else "FAIL",
+        "errors": errors,
+        "manifest_sha256": digest,
+    }
+    print(json.dumps(result, sort_keys=True))
     return 0 if not errors else 1
 
 
