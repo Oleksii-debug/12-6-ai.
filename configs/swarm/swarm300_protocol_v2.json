@@ -1,0 +1,186 @@
+{
+  "schema_version": 2,
+  "protocol_id": "SWARM-300-V2",
+  "control_issue": 723,
+  "scale_audit_issue": 732,
+  "repository": "Oleksii-debug/12-6-ai.",
+  "ownership_authority": "github_only",
+  "drive_role": "reports_and_backup_only_not_locking",
+  "machine_collision_guard": {
+    "current_owner": "PR-575-or-terminal-successor",
+    "deployed_on_main": false,
+    "worker_must_not_assume_machine_guard_is_active": true
+  },
+  "live_truth_order": [
+    "exact_git_sha_branch_pr_actions",
+    "direct_paginated_github_issue_and_pr_collections",
+    "github_claim_control_lane_issues",
+    "independent_audit_evidence",
+    "drive_canonical_reports_research",
+    "chat_prose"
+  ],
+  "startup": {
+    "read_only_scout_before_first_mutation": true,
+    "minimum_read_surfaces": [
+      "project_instructions",
+      "autopulse_control",
+      "ci_swarm_policy",
+      "swarm_coordination",
+      "control_issue_723",
+      "relevant_permanent_lane",
+      "relevant_open_issues_prs_actions"
+    ],
+    "do_not_register_until_candidate_package_selected": true
+  },
+  "worker_registration": {
+    "initial_issue_title": "SWARM-REGISTER: autonomous worker",
+    "worker_id_template": "SWARM-{issue_number}",
+    "reuse_same_issue_for_claim_and_handoff": true,
+    "registration_occurs_after_read_only_scout": true
+  },
+  "diversification": {
+    "permanent_lane_issue_min": 2,
+    "permanent_lane_issue_max": 16,
+    "lane_count": 15,
+    "work_kinds": [
+      "PRODUCT_VERTICAL",
+      "INDEPENDENT_VERIFY",
+      "REDTEAM_AUDIT",
+      "INTEGRATION_CONVERGENCE",
+      "PERFORMANCE_RUNTIME",
+      "DATA_SOURCE_OR_PIPELINE",
+      "OPEN_SOURCE_REUSE_RESEARCH",
+      "REPRODUCIBILITY_RELEASE"
+    ],
+    "work_kind_count": 8,
+    "preferred_lane_formula": "2 + (issue_number mod 15)",
+    "preferred_work_kind_formula": "work_kinds[(issue_number div 15) mod 8]",
+    "coarse_slot_count": 120,
+    "preferred_slot_is_hint_not_lock": true,
+    "rotate_when_saturated_blocked_or_low_value": true
+  },
+  "claim": {
+    "title_prefix": "[ACTIVE] SWARM-CLAIM",
+    "semantic_key_format": "<LANE>|<CANONICAL-OBJECT>|<WORK-KIND>|<QUALIFIER>",
+    "key_normalization": "uppercase_ascii_hyphenated_no_freeform_synonyms",
+    "required_fields": [
+      "SWARM_PROTOCOL",
+      "SWARM_CONTROL",
+      "SWARM_WORKER_ID",
+      "SWARM_LANE_KEY",
+      "PREFERRED_LANE",
+      "PREFERRED_WORK_KIND",
+      "PARENT_ISSUES",
+      "STATUS",
+      "BASE_SHA",
+      "CLAIMED_AT_UTC",
+      "LEASE_UNTIL_UTC",
+      "OWNED_SURFACES",
+      "AVOID_SURFACES",
+      "OBJECTIVE",
+      "PACKAGE_DIMENSIONS",
+      "ACCEPTANCE",
+      "FALLBACK"
+    ],
+    "default_lease_hours": 6,
+    "preclaim_semantic_collision_scan": true,
+    "postclaim_exact_key_collection_scan": true,
+    "exact_arbitration_source": "direct_paginated_open_issue_collection_not_search_index",
+    "exact_key_winner": "earliest_created_at_then_lowest_issue_number",
+    "older_canonical_semantic_owner_beats_new_swarm_claim": true,
+    "loser_action": "mark_abandoned_duplicate_rotate_and_reclaim_same_worker_issue"
+  },
+  "large_package_gate": {
+    "minimum_dimensions": 4,
+    "available_dimensions": [
+      "implementation_or_primary_research",
+      "focused_tests",
+      "adversarial_or_negative_tests",
+      "machine_readable_evidence_or_validator",
+      "documentation_or_operator_handoff",
+      "live_authority_binding",
+      "end_to_end_or_integration_proof",
+      "measured_benchmark_or_reproducibility_proof"
+    ],
+    "must_include_primary_work": true,
+    "must_include_validation": true,
+    "must_include_end_to_end_or_authority_binding_when_applicable": true,
+    "forbidden_as_standalone_when_adjacent_work_exists": [
+      "single_lint_fix",
+      "single_field_config_edit",
+      "docs_only_restatement",
+      "one_tiny_helper",
+      "duplicate_validator",
+      "status_only_pr",
+      "cosmetic_refactor"
+    ],
+    "expand_small_task_into_adjacent_same_surface_work": true
+  },
+  "api_backpressure": {
+    "avoid_concurrent_mutations_per_worker": true,
+    "on_403_or_429": "obey_retry_after_or_rate_reset_else_stop_mutations_and_record_rate_limit_deferred",
+    "never_hammer_retry": true,
+    "read_only_fallback_status": "RATE_LIMIT_DEFERRED_READ_ONLY",
+    "github_documented_secondary_limits_are_external_runtime_constraints_not_project_guarantees": true
+  },
+  "ci_backpressure": {
+    "shared_workflow": ".github/workflows/ci.yml",
+    "temporary_worker_workflow_creation_allowed": false,
+    "queued_or_running_equals_pass": false,
+    "measure_before_pr": true,
+    "pressure_metric": "queued_actions_plus_in_progress_actions",
+    "green_max": 25,
+    "amber_max": 100,
+    "red_min": 101,
+    "green_policy": "normal_one_pr_per_claim",
+    "amber_policy": "open_pr_only_for_substantial_p0_p1_code_or_terminal_evidence_need",
+    "red_policy": "prefer_branch_sha_issue_handoff_without_new_pr_unless_critical_terminal_unblock_security_or_integration",
+    "one_pr_per_claim_max": true
+  },
+  "stale_takeover": {
+    "allowed": true,
+    "all_required": [
+      "lease_expired",
+      "no_newer_meaningful_claim_update",
+      "no_recent_substantive_branch_or_pr_progress",
+      "no_active_ci_plausibly_owned_by_claimant",
+      "takeover_evidence_recorded"
+    ]
+  },
+  "branch": {
+    "template": "swarm/{claim_issue_number}-{short_slug}",
+    "create_only_after_claim_won": true,
+    "one_branch_per_active_claim": true
+  },
+  "refresh_points": [
+    "startup_read_only_scout",
+    "immediately_before_registration",
+    "immediately_before_claim_publish",
+    "direct_collection_race_check_after_claim",
+    "before_material_edits",
+    "before_pr_create_or_update",
+    "before_final_verdict"
+  ],
+  "claim_statuses": [
+    "REGISTERING",
+    "ACTIVE",
+    "BLOCKED",
+    "TERMINAL",
+    "SUPERSEDED",
+    "REJECTED",
+    "ABANDONED_DUPLICATE",
+    "NO_SAFE_UNCLAIMED_WORK",
+    "RATE_LIMIT_DEFERRED_READ_ONLY"
+  ],
+  "hard_boundaries": {
+    "canonical_base_random_init_only": true,
+    "canonical_base_pretraining_only_until_explicit_change": true,
+    "foreign_pretrained_weights_in_canonical_base": false,
+    "benchmark_or_final_test_training_leakage": false,
+    "dataset_package_license_bypasses_source_rights": false,
+    "paid_compute_without_explicit_authority": false,
+    "cpu_evidence_may_be_called_cuda_evidence": false,
+    "fabricated_ci_data_training_gpu_success": false,
+    "postbase_agent_work_may_mutate_canonical_base_lineage": false
+  }
+}
