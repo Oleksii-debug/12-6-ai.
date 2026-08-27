@@ -2,7 +2,21 @@ name: DATA-21-22 External Source Intake
 
 on:
   pull_request:
+    paths:
+      - "src/twelve_six/data/source_intake.py"
+      - "src/twelve_six/data/external_sources.py"
+      - "tools/run_external_source_intake.py"
+      - "configs/data/external_source_candidates_ua_en_v1.json"
+      - "tests/test_external_source_intake_ua_en.py"
+      - "tests/test_source_intake_reviewed_uk_lid.py"
+      - "docs/EXTERNAL_SOURCE_INTAKE_UA_EN.md"
+      - "docs/EXTERNAL_DATA_PROVENANCE.md"
+      - ".github/workflows/data21-22-external-source-intake.yml"
   workflow_dispatch:
+
+concurrency:
+  group: data21-22-intake-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read

@@ -1,0 +1,78 @@
+{
+  "schema_version": "12-6.next100-063-terminal-source-registry.v5",
+  "worker_id": "NEXT100-063-CANONICAL-SOURCE-REGISTRY-CONVERGENCE-V5",
+  "base_v4": {
+    "path": "configs/data/next100_063_terminal_source_registry_v4.json",
+    "registry_identity_sha256": "9fc400a3144b46c481e45d043b0a3365eb2129c83bbacde6f9e7af8a41fadc58",
+    "numeric_training_capacity_bytes": 2045180,
+    "source_normalized_envelope_bytes": 2047541,
+    "uncredited_source_normalized_bytes": 2361,
+    "independent_family_count": 14,
+    "by_stratum": {
+      "uk": {"family_count": 4, "numeric_training_capacity_bytes": 100856},
+      "en": {"family_count": 5, "numeric_training_capacity_bytes": 1838293},
+      "code": {"family_count": 5, "numeric_training_capacity_bytes": 106031}
+    }
+  },
+  "terminal_addition": {
+    "worker": "NEXT100-053-CODE-ATTRS",
+    "pr": 474,
+    "head": "cda0232d5574ef91eae0d7e0b7fa5efddcbe218b",
+    "dedicated_workflow_run": 33006080831,
+    "dedicated_workflow_name": "NEXT100-053 attrs Code Source Admission",
+    "dedicated_workflow_conclusion": "success",
+    "authority_identity": "151e593c3b67ae4c7686323983e6c45306a870b732573ee4820c0c017b65a7d4",
+    "artifact_id": 9621650719,
+    "artifact_name": "next100-053-attrs-admission-cda0232d5574ef91eae0d7e0b7fa5efddcbe218b",
+    "artifact_digest": "sha256:a8176b50a2254fcb50a6f80ca82b63459ba8e9cfddba904b16e5ac79f9c55ff2",
+    "family": "github:python-attrs/attrs",
+    "language": "python",
+    "modality": "code",
+    "numeric_training_capacity_bytes": 170435,
+    "source_normalized_bytes": 170435,
+    "source_file_count": 4,
+    "training": "ALLOWED",
+    "evaluation": "NOT_SEPARATELY_ADMITTED",
+    "redistribution": "ALLOWED_WITH_MIT_LICENSE_NOTICE",
+    "verdict": "ADMIT",
+    "exact_duplicates": [],
+    "near_duplicate_pairs": [],
+    "privacy_secrets": "PASS",
+    "syntax_parse_compile": "PASS",
+    "quality": "PASS"
+  },
+  "derived_pre_successor_global_dedup_inventory": {
+    "candidate_numeric_training_capacity_bytes": 2215615,
+    "candidate_source_normalized_envelope_bytes": 2217976,
+    "uncredited_source_normalized_bytes": 2361,
+    "candidate_independent_family_count": 15,
+    "by_stratum": {
+      "uk": {"family_count": 4, "numeric_training_capacity_bytes": 100856, "source_normalized_envelope_bytes": 100856},
+      "en": {"family_count": 5, "numeric_training_capacity_bytes": 1838293, "source_normalized_envelope_bytes": 1840654},
+      "code": {"family_count": 6, "numeric_training_capacity_bytes": 276466, "source_normalized_envelope_bytes": 276466}
+    },
+    "research_corpus_v1_acquisition_planning_target_bytes": 20000000,
+    "target_fraction_by_numeric_training_capacity": 0.11078075,
+    "target_gap_numeric_training_capacity_bytes": 17784385
+  },
+  "composition_policy": {
+    "base_v4_identity_must_validate": true,
+    "only_exact_head_scoped_success_authorities_counted": true,
+    "one_independent_family_credit_per_canonical_lineage": true,
+    "global_cross_source_dedup_required_before_corpus_identity": true,
+    "evaluation_permission_never_inferred_from_training_permission": true,
+    "terminal_artifact_success_may_resolve_stale_pr_prose": true
+  },
+  "downstream_gate_vector": {
+    "authorized_balanced_no_replay_loss_positions": 0,
+    "successor_global_cross_source_exact_near_dedup": "REQUIRED_NEXT",
+    "evaluation_decontamination": "REQUIRED_AFTER_EXACT_CANDIDATE_INVENTORY",
+    "quality_privacy_revalidation": "REQUIRED_AFTER_COMPOSITION",
+    "split_shard_pack_materialization": "BLOCKED_UNTIL_DEDUP_DECONTAMINATION",
+    "tokenizer_fit": "BLOCKED",
+    "long_training": "BLOCKED",
+    "paid_compute": "NOT_AUTHORIZED"
+  },
+  "observed_live_cutoff_utc": "2026-08-26T20:16:31Z",
+  "decision": "V5_CONSUMES_TERMINAL_ATTRS_REQUIRES_SUCCESSOR_GLOBAL_DEDUP_NOT_CORPUS_FREEZE"
+}

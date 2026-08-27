@@ -2,7 +2,20 @@ name: DATA-287 External Snapshot Registry V2
 
 on:
   pull_request:
+    paths:
+      - "src/twelve_six/data/external_snapshot_registry_v2.py"
+      - "tools/build_external_snapshot_registry_v2.py"
+      - "configs/data/data287_external_snapshot_registry_v2.json"
+      - "data/registry/external_snapshots.v2.json"
+      - "evidence/data229/**"
+      - "tests/test_external_snapshot_registry_v2.py"
+      - "docs/DATA287_EXTERNAL_SNAPSHOT_REGISTRY_V2.md"
+      - ".github/workflows/data287-external-snapshot-registry-v2.yml"
   workflow_dispatch:
+
+concurrency:
+  group: data287-registry-v2-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
