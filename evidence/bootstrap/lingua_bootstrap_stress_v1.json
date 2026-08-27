@@ -1,0 +1,48 @@
+{
+  "schema": "12-6.lingua-bootstrap-stress-evidence.v1",
+  "environment": {
+    "python": "3.13.5",
+    "python_implementation": "cpython",
+    "os": "Linux",
+    "kernel": "6.18.35",
+    "distribution": "Debian 13 environment",
+    "machine": "x86_64",
+    "cpu_cores": 5,
+    "gpu_visible": false,
+    "gpu_probe": "nvidia-smi unavailable",
+    "package_managers": {"python": true, "pip": true, "uv": true, "poetry": false, "pdm": false, "conda": false, "git": true},
+    "installed_reference_versions": {"torch": "2.10.0+cpu", "pytest": "9.0.2", "numpy": "2.3.5", "safetensors": "0.7.0", "lingua-language-detector": null},
+    "local_cache": {"matching_lingua_wheel": false},
+    "network": {"pypi_https": "DNS_FAILURE", "github_https": "DNS_FAILURE"}
+  },
+  "upstream": {
+    "repository": "pemistahl/lingua-py",
+    "tag": "v2.2.0",
+    "commit": "754ce21122c083a7200763015fdaf7cda8d85453",
+    "license": "Apache-2.0",
+    "license_blob_sha": "261eeb9e9f8b2b4b0d119366dda99c6fd7d35c64",
+    "package": "lingua-language-detector",
+    "version": "2.2.0",
+    "target_wheel": "lingua_language_detector-2.2.0-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
+    "target_wheel_sha256": "4fbf936b47ef4fdd7043ebb4159d4a5f1c3648028e19d6e3c60464abc5f5e195",
+    "target_wheel_bytes": 178572288
+  },
+  "compatibility": {"lingua_python_requires": ">=3.12,<3.15", "env151_python": "3.11.16", "env151_compatible": false},
+  "install": {
+    "isolated_venv": true,
+    "global_packages_modified": false,
+    "attempts": [
+      {"mode": "local_cache", "command": "pip install --no-index --require-hashes --no-deps -r lingua-runtime-requirements.txt", "exit_code": 1, "result": "NO_MATCHING_DISTRIBUTION"},
+      {"mode": "network_pypi", "command": "pip install --require-hashes --no-deps --only-binary=:all: -r lingua-runtime-requirements.txt", "exit_code": 1, "result": "DNS_FAILURE"}
+    ],
+    "runtime_executed": false
+  },
+  "runtime": {"status": "NOT_EXECUTED", "reason": "exact wheel unavailable in local cache and PyPI DNS unavailable"},
+  "benchmark": {"status": "NOT_EXECUTED", "reason": "real Lingua runtime absent; no benchmark substitute used"},
+  "parity": {"status": "NOT_EXECUTED", "reason": "real Lingua runtime absent; no project behavior was compared"},
+  "adversarial": {"negative_checks": "PASS", "checks": ["wrong commit rejected", "wrong wheel hash rejected", "fabricated runtime rejected", "adoption without benchmark/parity rejected", "evidence tamper rejected", "canonical Base mutation forbidden", "foreign weights forbidden"]},
+  "safety": {"canonical_base_changed": false, "foreign_weights_used": false, "tokenizer_changed": false, "training_executed": false, "final_test_accessed": false, "paid_compute": false},
+  "verdict": "RETEST_RUNTIME_REQUIRED",
+  "retry": {"python": "3.13.x", "install": "python -m pip install --require-hashes --no-deps lingua-language-detector==2.2.0 --hash=sha256:4fbf936b47ef4fdd7043ebb4159d4a5f1c3648028e19d6e3c60464abc5f5e195", "required_artifact_sha256": "4fbf936b47ef4fdd7043ebb4159d4a5f1c3648028e19d6e3c60464abc5f5e195"},
+  "notes": ["Runtime intentionally not executed because exact dependency acquisition was impossible under LOCAL_FREE environment constraints.", "ENV-151 implementation was not modified."]
+}
