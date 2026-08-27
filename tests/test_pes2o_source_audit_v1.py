@@ -1,15 +1,30 @@
 from __future__ import annotations
 
 import copy
+import importlib.util
 import json
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
-from tools.validate_pes2o_source_audit_v1 import AuditValidationError, validate_manifest
-
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = ROOT / "configs" / "data" / "pes2o_source_audit_v1.json"
+VALIDATOR = ROOT / "tools" / "validate_pes2o_source_audit_v1.py"
+
+
+def _load_validator() -> ModuleType:
+    spec = importlib.util.spec_from_file_location("pes2o_source_audit_validator", VALIDATOR)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"cannot load validator from {VALIDATOR}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+_VALIDATOR_MODULE = _load_validator()
+AuditValidationError = _VALIDATOR_MODULE.AuditValidationError
+validate_manifest = _VALIDATOR_MODULE.validate_manifest
 
 
 def _manifest() -> dict:
