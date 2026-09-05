@@ -60,6 +60,10 @@ jobs:
           import os
           from pathlib import Path
 
+          import torch
+
+          assert torch.cuda.is_available() is False
+          assert torch.cuda.device_count() == 0
           payload = json.loads(
               (Path(os.environ["RUNNER_TEMP"]) / "model341-independent-audit.json").read_text(
                   encoding="utf-8"
