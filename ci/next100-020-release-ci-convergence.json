@@ -25,6 +25,16 @@
     "component workflow success does not override a generic repository CI failure",
     "generic repository CI success does not promote or invalidate scientific evidence"
   ],
-  "post_wave_release_candidate": null,
-  "post_wave_release_candidate_reason": "No successor to INTEGRATE-282 was published at carrier creation cutoff; final live refresh is required before verdict."
+  "post_wave_release_candidate": {
+    "branch": "model341/20m-candidate-a-20260826",
+    "sha": "e4ff486fd90802fc123bebf60eed4e59196a98df",
+    "status": "PENDING_EXACT_HEAD_GENERIC_CI",
+    "reason": "Retargeted onto the exact MODEL-341 mechanics candidate so the existing shared Ruff repairs can be verified against the same candidate lineage that blocks independent runtime audit #757."
+  },
+  "prior_release_ci_evidence": {
+    "head_sha": "f91fa2e21cbadbed50d3c865eadfa7a19b5ab9f2",
+    "run_id": 33006819790,
+    "conclusion": "success",
+    "scope": "The prior generic CI success predates the MODEL-341 retarget and is historical evidence only; it is not reused as a verdict for the retargeted pull request."
+  }
 }
