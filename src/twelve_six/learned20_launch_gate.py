@@ -345,12 +345,18 @@ def assess_launch(
         requested_unique = recipe.get("requested_unique_loss_positions")
         requested_total = recipe.get("requested_total_training_exposures")
         max_exposures = recipe.get("max_exposures_per_unique_position")
-        if _positive_int(available) and _positive_int(requested_unique):
-            if requested_unique > available:
-                blockers.append("training_recipe.requests_more_unique_loss_than_authorized")
-        if _positive_int(requested_unique) and _positive_int(requested_total):
-            if requested_total < requested_unique:
-                blockers.append("training_recipe.total_exposure_below_unique_requirement")
+        if (
+            _positive_int(available)
+            and _positive_int(requested_unique)
+            and requested_unique > available
+        ):
+            blockers.append("training_recipe.requests_more_unique_loss_than_authorized")
+        if (
+            _positive_int(requested_unique)
+            and _positive_int(requested_total)
+            and requested_total < requested_unique
+        ):
+            blockers.append("training_recipe.total_exposure_below_unique_requirement")
         if (
             _positive_int(available)
             and _positive_int(requested_total)
@@ -382,9 +388,12 @@ def assess_launch(
                 long_blockers.append("compute_authorization.explicit_authorization_missing")
             if not _positive_number(authorization.get("max_budget_usd")):
                 long_blockers.append("compute_authorization.max_budget_usd_invalid")
-    elif isinstance(authorization, Mapping) and authorization.get("compute_authorized") is True:
-        if not _terminal_identity(evidence, "compute_authorization"):
-            long_blockers.append("compute_authorization_unbound_true")
+    elif (
+        isinstance(authorization, Mapping)
+        and authorization.get("compute_authorized") is True
+        and not _terminal_identity(evidence, "compute_authorization")
+    ):
+        long_blockers.append("compute_authorization_unbound_true")
 
     long_blockers = sorted(set(long_blockers))
     long_training_ready = not long_blockers
