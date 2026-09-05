@@ -3,7 +3,7 @@
   "worker": "SWARM-735",
   "swarm_protocol": "SWARM-300-V2",
   "lane_key": "D01|MODEL-341|INDEPENDENT-VERIFY|ARCH-IDENTITY",
-  "status": "PRE_PR_LOCAL_PASS_EXACT_REPO_RUNTIME_PENDING_SHARED_CI",
+  "status": "PENDING_SHARED_CI_ON_COMPOSED_MODEL341_RELEASE_CANDIDATE",
   "candidate": {
     "stage": "MODEL-341-20M-CANDIDATE-A",
     "intentional_parent_sha": "e4ff486fd90802fc123bebf60eed4e59196a98df",
@@ -12,6 +12,18 @@
     "expected_parameters": 20613440,
     "model_identity_sha256": "fbff24d561a2818453554d58ca23fc6ace3303b078f1935a8576c4565bd92441",
     "init_identity_sha256": "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5"
+  },
+  "composed_ci_target": {
+    "release_ci_pr": 442,
+    "release_ci_head": "4310b50767f33c5155e901f8751da2882cff8ecc",
+    "release_ci_base": "e4ff486fd90802fc123bebf60eed4e59196a98df",
+    "release_ci_run": 33996443147,
+    "release_ci_conclusion": "success",
+    "d05_preflight_run": 33996443120,
+    "d05_preflight_conclusion": "success",
+    "d04_exact_candidate_run": 33996443116,
+    "d04_exact_candidate_conclusion": "failure",
+    "d04_scope_note": "D04 policy, Ruff, focused negatives, real 40-step LOCAL_FREE evaluation, and machine-report checks passed. Its full-suite failure is separately attributed to ENV-151 test collection importing an uninstalled tools module; that defect is reported to incumbent ENV-151 PR #313 and is not relabeled as a MODEL-341 mechanics failure."
   },
   "independent_static_recalculation": {
     "model_identity_sha256_match": true,
@@ -57,7 +69,7 @@
   "exact_repository_runtime_test": {
     "path": "tests/test_model341_20m_independent_verify.py",
     "state": "PENDING_SHARED_CI",
-    "reason": "The execution sandbox cannot resolve github.com for a clean git clone. Repository authority and writes were therefore kept on the connected GitHub surface; no PASS is inferred for the exact-module runtime test before CI executes it."
+    "reason": "The original candidate-parent check was blocked before pytest by inherited Ruff. The audit PR is now retargeted onto the exact MODEL-341 plus release-CI composition so a new shared CI run can execute the committed repository-module test. No PASS is inferred until that new audit head is terminal green."
   },
   "truth_boundary": {
     "local_free_cpu_only": true,
