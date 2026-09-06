@@ -6,13 +6,16 @@ from types import SimpleNamespace
 import pytest
 
 from twelve_six.checkpoint.durability import (
+    _atomic_publish_directory_noreplace,
     fsync_checkpoint_tree,
     fsync_parent_directory,
     install,
 )
 
 
-def test_fsync_checkpoint_tree_flushes_exact_inventory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_fsync_checkpoint_tree_flushes_exact_inventory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     root = tmp_path / "checkpoint.tmp"
     root.mkdir()
     (root / "a").write_bytes(b"alpha")
@@ -50,7 +53,9 @@ def test_fsync_checkpoint_tree_rejects_symlink_artifact(tmp_path: Path) -> None:
         fsync_checkpoint_tree(root, expected_names=frozenset({"a"}))
 
 
-def test_fsync_parent_directory_flushes_parent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_fsync_parent_directory_flushes_parent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     destination = tmp_path / "checkpoint"
     calls: list[int] = []
     monkeypatch.setattr("twelve_six.checkpoint.durability.os.fsync", calls.append)
@@ -58,6 +63,22 @@ def test_fsync_parent_directory_flushes_parent(tmp_path: Path, monkeypatch: pyte
     fsync_parent_directory(destination)
 
     assert len(calls) == 1
+
+
+def test_atomic_publish_noreplace_preserves_existing_destination(tmp_path: Path) -> None:
+    source = tmp_path / "staged"
+    source.mkdir()
+    (source / "payload").write_text("new", encoding="utf-8")
+    destination = tmp_path / "final"
+    destination.mkdir()
+    (destination / "owner").write_text("keep", encoding="utf-8")
+
+    with pytest.raises(FileExistsError):
+        _atomic_publish_directory_noreplace(source, destination)
+
+    assert source.is_dir()
+    assert (source / "payload").read_text(encoding="utf-8") == "new"
+    assert (destination / "owner").read_text(encoding="utf-8") == "keep"
 
 
 def _fake_core(events: list[str]) -> SimpleNamespace:
@@ -80,22 +101,25 @@ def test_installed_save_orders_tree_fsync_rename_parent_fsync(
     events: list[str] = []
     core = _fake_core(events)
     install(core)
-    real_replace = __import__("os").replace
+    real_publish = _atomic_publish_directory_noreplace
 
     def tree_barrier(directory: Path, *, expected_names: frozenset[str]) -> None:
         assert {path.name for path in directory.iterdir()} == expected_names
         events.append("tree-fsync")
 
-    def replace(source: Path, destination: Path) -> None:
+    def publish(source: Path, destination: Path) -> None:
         events.append("rename")
-        real_replace(source, destination)
+        real_publish(source, destination)
 
     def parent_barrier(destination: Path) -> None:
         assert destination.exists()
         events.append("parent-fsync")
 
     monkeypatch.setattr("twelve_six.checkpoint.durability.fsync_checkpoint_tree", tree_barrier)
-    monkeypatch.setattr("twelve_six.checkpoint.durability.os.replace", replace)
+    monkeypatch.setattr(
+        "twelve_six.checkpoint.durability._atomic_publish_directory_noreplace",
+        publish,
+    )
     monkeypatch.setattr("twelve_six.checkpoint.durability.fsync_parent_directory", parent_barrier)
 
     destination = tmp_path / "final"
@@ -160,6 +184,31 @@ def test_destination_collision_after_staging_fails_without_overwrite(
         (destination / "owner").write_text("keep", encoding="utf-8")
 
     monkeypatch.setattr("twelve_six.checkpoint.durability.fsync_checkpoint_tree", inject_collision)
+
+    with pytest.raises(FileExistsError, match="appeared before publication"):
+        core.save_checkpoint(destination)
+
+    assert (destination / "owner").read_text(encoding="utf-8") == "keep"
+
+
+def test_destination_collision_in_atomic_publish_window_fails_without_overwrite(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    core = _fake_core([])
+    install(core)
+    destination = tmp_path / "final"
+    real_publish = _atomic_publish_directory_noreplace
+
+    def inject_collision(source: Path, target: Path) -> None:
+        assert target == destination
+        destination.mkdir()
+        (destination / "owner").write_text("keep", encoding="utf-8")
+        real_publish(source, target)
+
+    monkeypatch.setattr(
+        "twelve_six.checkpoint.durability._atomic_publish_directory_noreplace",
+        inject_collision,
+    )
 
     with pytest.raises(FileExistsError, match="appeared before publication"):
         core.save_checkpoint(destination)
