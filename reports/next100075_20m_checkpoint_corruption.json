@@ -1,0 +1,122 @@
+{
+  "worker": "NEXT100-075-20M-CHECKPOINT-CORRUPTION",
+  "verdict": "RETEST_REQUIRED",
+  "gate_pass": false,
+  "scope": "primary MODEL-341 D05 checkpoint corruption integrity",
+  "authority": {
+    "repository": "Oleksii-debug/12-6-ai.",
+    "primary_branch": "model341/20m-candidate-a-20260826",
+    "primary_head": "e4ff486fd90802fc123bebf60eed4e59196a98df",
+    "model_spec_sha256": "fbff24d561a2818453554d58ca23fc6ace3303b078f1935a8576c4565bd92441",
+    "init_spec_sha256": "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5",
+    "parameter_count": 20613440,
+    "checkpoint_core_blob": "4c4929503c825f2bf347079d7495af6f60a29e49",
+    "checkpoint_state_tree_blob": "87343298d15776a08b4840625c94afea1ad85595"
+  },
+  "execution": {
+    "mode": "LOCAL_FREE CPU source-audit plus semantic reproducer",
+    "torch": "2.10.0+cpu",
+    "cuda_available": false,
+    "long_training_performed": false,
+    "external_model_or_paid_compute": false,
+    "direct_repository_module_execution": false,
+    "direct_execution_blocker": "The local CPU runtime has no direct GitHub DNS/file bridge; repository source was inspected through the GitHub connector. The reproducer mirrored the production D05 load paths and exact primary parameter geometry. Because direct module import was not possible, this report cannot authorize PASS and deliberately returns RETEST_REQUIRED."
+  },
+  "valid_control": {
+    "random_init_one_step": true,
+    "parameter_count": 20613440,
+    "load_succeeded": true,
+    "weights_equal_after_load": true,
+    "probe_logits_bitwise_equal": true,
+    "checkpoint_id_equal": true
+  },
+  "cases": [
+    {
+      "case": "missing tensor",
+      "result": "REJECTED",
+      "before_target_mutation": true,
+      "production_path": "strict state_dict key-set comparison"
+    },
+    {
+      "case": "extra tensor",
+      "result": "REJECTED",
+      "before_target_mutation": true,
+      "production_path": "strict state_dict key-set comparison"
+    },
+    {
+      "case": "shape mismatch",
+      "result": "REJECTED",
+      "before_target_mutation": true,
+      "production_path": "_materialize_for_target shape check"
+    },
+    {
+      "case": "dtype mismatch",
+      "result": "ACCEPTED_BLOCKER",
+      "before_target_mutation": false,
+      "production_path": "_materialize_for_target casts torch.from_numpy(array).to(dtype=target.dtype) instead of requiring exact dtype compatibility",
+      "required_fix": "Reject source dtype mismatches before model mutation, with an explicit BF16 uint16-storage exception only."
+    },
+    {
+      "case": "manifest hash mismatch",
+      "result": "REJECTED",
+      "before_target_mutation": true,
+      "production_path": "MANIFEST.sha256 verification"
+    },
+    {
+      "case": "optimizer-state corruption",
+      "result": "ACCEPTED_BLOCKER",
+      "before_target_mutation": false,
+      "production_path": "model weights are applied before optimizer.load_state_dict; PyTorch SGD accepts a wrong-shaped momentum_buffer at load and fails only on the next optimizer.step",
+      "observed_deferred_error": "RuntimeError: output with shape [1] doesn't match the broadcast shape [256, 320]",
+      "required_fix": "Preflight optimizer state on an isolated copy and exercise optimizer compatibility, or otherwise prove state tensor shape/dtype compatibility, before first mutation of the live model/optimizer."
+    },
+    {
+      "case": "RNG corruption",
+      "result": "REJECTED",
+      "before_target_mutation": true,
+      "production_path": "_preflight_rng_state",
+      "observed_error": "TypeError: RNG state must be a torch.ByteTensor"
+    },
+    {
+      "case": "counter corruption",
+      "result": "ACCEPTED_BLOCKER",
+      "before_target_mutation": false,
+      "production_path": "_validate_manifest_identity validates derived hashes but does not validate step/tokens_seen types or non-negativity on load",
+      "corruption": {
+        "step": -1,
+        "tokens_seen": -32
+      },
+      "required_fix": "Validate parameter_count, seed, step, tokens_seen and other scalar identity invariants during load; optionally bind expected counters at resume authority."
+    },
+    {
+      "case": "ModelSpec mismatch",
+      "result": "REJECTED",
+      "before_target_mutation": true,
+      "production_path": "assert_identity expected_model_spec_hash binding"
+    },
+    {
+      "case": "tokenizer mismatch",
+      "result": "REJECTED",
+      "before_target_mutation": true,
+      "production_path": "assert_identity expected_tokenizer_hash binding"
+    },
+    {
+      "case": "partial write",
+      "result": "REJECTED",
+      "before_target_mutation": true,
+      "production_path": "payload byte-length/checksum verification before decode"
+    }
+  ],
+  "summary": {
+    "required_corruption_cases": 11,
+    "rejected": 8,
+    "accepted_blockers": 3,
+    "accepted_blocker_names": [
+      "dtype mismatch",
+      "optimizer-state corruption",
+      "counter corruption"
+    ],
+    "all_corruptions_fail_before_unsafe_continuation": false
+  },
+  "terminal_requirement": "Do not authorize MODEL-341 D05 continuation integrity until the three blockers are fixed and the same deterministic matrix is rerun directly against the production module on the late-bound primary ModelSpec."
+}
