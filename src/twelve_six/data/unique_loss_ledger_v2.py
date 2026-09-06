@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Iterable, Mapping, Sequence
 from copy import deepcopy
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any
 
 LEDGER_SCHEMA = "12-6.unique-loss-position-ledger.v2"
 MATERIALIZATION_SCHEMA = "12-6.postpack-loss-materialization.v2"
