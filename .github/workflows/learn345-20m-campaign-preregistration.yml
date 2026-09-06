@@ -1,0 +1,51 @@
+name: LEARN-345 20M campaign preregistration
+
+on:
+  push:
+    branches:
+      - "learn345/20m-campaign-preregistration-20260826"
+  pull_request:
+    paths:
+      - "evidence/learn345/**"
+      - "docs/LEARN345_20M_CAMPAIGN_PREREGISTRATION.md"
+      - "tools/validate_learn345_campaign_preregistration.py"
+      - "tools/validate_learn345_campaign_preregistration_v2.py"
+      - "tests/test_learn345_campaign_preregistration_v2.py"
+      - ".github/workflows/learn345-20m-campaign-preregistration.yml"
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Validate historical V1 and current V2 preregistration
+        run: |
+          python tools/validate_learn345_campaign_preregistration.py
+          python tools/validate_learn345_campaign_preregistration_v2.py
+          python -m unittest -v tests.test_learn345_campaign_preregistration_v2
+      - name: Assert LOCAL_FREE and zero execution
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          for name in (
+              "20m_campaign_preregistration_v1.json",
+              "20m_campaign_preregistration_v2.json",
+          ):
+              p = Path("evidence/learn345") / name
+              d = json.loads(p.read_text())
+              assert d["execution_profile"] == "LOCAL_FREE"
+              assert d["truth_boundary"]["long_training_started"] is False
+              if "optimizer_updates_executed" in d:
+                  assert d["optimizer_updates_executed"] == 0
+              else:
+                  assert d["truth_boundary"]["optimizer_updates_executed"] == 0
+          PY
