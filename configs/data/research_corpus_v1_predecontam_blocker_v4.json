@@ -1,0 +1,86 @@
+{
+  "schema_version": "12-6.research-corpus-v1-predecontam-blocker.v4",
+  "worker_id": "DATA-526-RESEARCH-CORPUS-V1-PREDECONTAM-V4",
+  "repository": "Oleksii-debug/12-6-ai.",
+  "execution_profile": "LOCAL_FREE",
+  "status": "BLOCKED_TERMINAL_SOURCE_DEDUP_NO_MATERIALIZED_RECORD_GRAPH",
+  "source_convergence_authority": {
+    "pull_request": 538,
+    "head_sha": "991a0b6e939cddeff16c075922f7c407fa1e86cb",
+    "registry_path": "configs/data/next100_063_terminal_source_registry_v5.json",
+    "registry_git_blob_sha1": "2dcc57cfba8ab6d600bc431a8713f7b8e305dcbf",
+    "dedicated_workflow_run": 33046314943,
+    "dedicated_workflow_conclusion": "success",
+    "terminal_authority_consumed": true,
+    "source_object_count": 35,
+    "independent_family_count": 15,
+    "numeric_training_capacity_bytes": 2215615,
+    "by_stratum": {
+      "uk": {"bytes": 100856, "families": 4},
+      "en": {"bytes": 1838293, "families": 5},
+      "code": {"bytes": 276466, "families": 6}
+    }
+  },
+  "global_dedup_authority": {
+    "pull_request": 632,
+    "head_sha": "d3333ec1b4a508df232a5aefccd6686adda745fb",
+    "dedicated_workflow_run": 33045763964,
+    "dedicated_workflow_conclusion": "success",
+    "artifact_id": 9635595510,
+    "artifact_digest": "sha256:cca6921a2093d4e033976b23b0af180e9dc1945b624b82e218780f8d20bafd18",
+    "report_sha256": "c33e0d06a469473aac191e9b5bf7baec23322cd3e9200f0caab2633c921afd84",
+    "terminal_authority_consumed": true,
+    "source_object_count": 35,
+    "conservative_unique_capacity_bytes_after": 2215615,
+    "by_stratum": {
+      "uk": {"bytes": 100856, "families": 4},
+      "en": {"bytes": 1838293, "families": 5},
+      "code": {"bytes": 276466, "families": 6}
+    },
+    "capacity_collapsing_matches": 0,
+    "corpus_materialized": false,
+    "record_inventory_digest_sha256": null
+  },
+  "candidate_freeze": {
+    "frozen": false,
+    "record_count": 0,
+    "record_inventory_digest_sha256": null,
+    "candidate_set_digest_sha256": null,
+    "reason": "Terminal source registry and source-level global dedup evidence exist, but the V7 artifact does not materialize an immutable record graph/corpus payload. Source-level capacity cannot be promoted to a pre-decontamination candidate identity."
+  },
+  "claim_boundary": {
+    "source_bytes_are_training_tokens": false,
+    "authorized_unique_optimized_targets": 0,
+    "corpus_frozen": false,
+    "decontamination_executed": false,
+    "tokenizer_fit_executed": false,
+    "training_executed": false,
+    "optimizer_updates": 0,
+    "paid_compute_used": false,
+    "long_training_authorized": false,
+    "final_test_payload_accessed": false
+  },
+  "downstream_gates": {
+    "source_convergence": "PASS_TERMINAL_SCOPED",
+    "global_cross_source_dedup": "PASS_TERMINAL_SOURCE_LEVEL",
+    "record_graph_materialization": "BLOCKED_REQUIRED_NEXT",
+    "record_inventory_freeze": "NOT_PERMITTED_NO_MATERIALIZED_RECORD_GRAPH",
+    "reserved_evaluation_decontamination": "NOT_PERMITTED_NO_FROZEN_CANDIDATE_IDENTITY",
+    "post_composition_quality_privacy": "NOT_PERMITTED",
+    "balance_diversity_family_caps": "NOT_PERMITTED",
+    "cluster_safe_split_pack": "NOT_PERMITTED",
+    "two_clean_build_proof": "NOT_PERMITTED",
+    "postpack_unique_loss_ledger": "NOT_PERMITTED",
+    "tokenizer_fit": "NOT_PERMITTED",
+    "long_training": "NOT_PERMITTED",
+    "paid_compute": "NOT_PERMITTED"
+  },
+  "unblock_rule": {
+    "required_next": "Materialize the exact 35-object terminal post-dedup record graph with immutable per-record source/content identities, then publish a deterministic record-inventory digest and candidate-set digest before any evaluation decontamination.",
+    "no_source_bytes_as_token_or_loss_capacity": true,
+    "no_replay_or_duplicate_quota_repair": true,
+    "no_final_test_payload_access": true
+  },
+  "evidence_identity_scope": "SHA256(canonical JSON with evidence_identity_sha256 omitted)",
+  "evidence_identity_sha256": "acc3f3deddc0e218da204023e72a3f2e15f5f15a450f1546a7e5556357188e6f"
+}
