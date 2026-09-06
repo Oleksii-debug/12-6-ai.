@@ -59,7 +59,22 @@ def _materialization() -> dict:
                 "evaluation_reserved": False,
                 "reserved_target_ranges": [],
                 "eligible_target_ranges": [[1, 5]],
-            }
+            },
+            {
+                "document_id": "selection-doc",
+                "language": "en",
+                "modality": "text",
+                "family_id": "family.selection",
+                "normalized_payload_sha256": _sha("selection-payload"),
+                "source_bytes": 7,
+                "token_count": 3,
+                "split": "selection",
+                "dedup_cluster_id": "cluster-selection",
+                "retained_after_dedup": True,
+                "evaluation_reserved": True,
+                "reserved_target_ranges": [],
+                "eligible_target_ranges": [],
+            },
         ],
         "packing": {
             "identity_sha256": _sha("packing-materialization"),
@@ -96,6 +111,13 @@ def _proof(build_a: dict, build_b: dict) -> dict:
     )
 
 
+def _rehash_pair(build_a: dict, build_b: dict) -> None:
+    for materialization in (build_a, build_b):
+        materialization["materialization_identity_sha256"] = _identity(
+            materialization, "materialization_identity_sha256"
+        )
+
+
 def _expect_failure(action: Callable[[], object], message: str) -> None:
     try:
         action()
@@ -116,10 +138,46 @@ def main() -> None:
         raise SystemExit("double-pack proof did not establish byte identity")
     if proof["one_pass_unique_nonignored_causal_loss_positions"] != 4:
         raise SystemExit("double-pack proof unique loss count mismatch")
+    if proof["retained_document_isolation_verified"] is not True:
+        raise SystemExit("retained-document isolation was not proven")
+    if proof["heldout_reservation_verified"] is not True:
+        raise SystemExit("held-out reservation was not proven")
     if proof["training_authorized_by_this_proof"] is not False:
         raise SystemExit("double-pack proof must never self-authorize training")
     if proof["build_a_canonical_sha256"] != proof["build_b_canonical_sha256"]:
         raise SystemExit("double-pack canonical hashes differ")
+
+    cluster_leak_a = _materialization()
+    cluster_leak_b = _materialization()
+    for materialization in (cluster_leak_a, cluster_leak_b):
+        materialization["documents"][1]["dedup_cluster_id"] = "cluster-uk"
+    _rehash_pair(cluster_leak_a, cluster_leak_b)
+    _expect_failure(
+        lambda: _proof(cluster_leak_a, cluster_leak_b),
+        "retained dedup cluster is shared across documents/splits",
+    )
+
+    payload_leak_a = _materialization()
+    payload_leak_b = _materialization()
+    for materialization in (payload_leak_a, payload_leak_b):
+        materialization["documents"][1]["normalized_payload_sha256"] = _sha(
+            "uk-payload"
+        )
+    _rehash_pair(payload_leak_a, payload_leak_b)
+    _expect_failure(
+        lambda: _proof(payload_leak_a, payload_leak_b),
+        "retained normalized payload is duplicated across documents/splits",
+    )
+
+    unreserved_a = _materialization()
+    unreserved_b = _materialization()
+    for materialization in (unreserved_a, unreserved_b):
+        materialization["documents"][1]["evaluation_reserved"] = False
+    _rehash_pair(unreserved_a, unreserved_b)
+    _expect_failure(
+        lambda: _proof(unreserved_a, unreserved_b),
+        "held-out retained document must be evaluation_reserved",
+    )
 
     reordered = _materialization()
     reordered["packing"]["packs"][0]["loss_spans"][0]["pack_target_start"] = 0
@@ -132,9 +190,7 @@ def main() -> None:
     tokenizer_drift_b = _materialization()
     for materialization in (tokenizer_drift_a, tokenizer_drift_b):
         materialization["tokenizer"]["identity_sha256"] = _sha("other-tokenizer")
-        materialization["materialization_identity_sha256"] = _identity(
-            materialization, "materialization_identity_sha256"
-        )
+    _rehash_pair(tokenizer_drift_a, tokenizer_drift_b)
     _expect_failure(
         lambda: _proof(tokenizer_drift_a, tokenizer_drift_b),
         "tokenizer identity does not match terminal handoff",
@@ -144,9 +200,7 @@ def main() -> None:
     split_drift_b = _materialization()
     for materialization in (split_drift_a, split_drift_b):
         materialization["stage_bindings"]["split"] = _sha("other-split")
-        materialization["materialization_identity_sha256"] = _identity(
-            materialization, "materialization_identity_sha256"
-        )
+    _rehash_pair(split_drift_a, split_drift_b)
     _expect_failure(
         lambda: _proof(split_drift_a, split_drift_b),
         "stage bindings do not match terminal handoff",
@@ -179,6 +233,8 @@ def main() -> None:
         "one_pass_unique_nonignored_causal_loss_positions="
         f"{proof['one_pass_unique_nonignored_causal_loss_positions']}"
     )
+    print("retained_document_isolation_verified=true")
+    print("heldout_reservation_verified=true")
     print("training_authorized_by_this_proof=false")
 
 
