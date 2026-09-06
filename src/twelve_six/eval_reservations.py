@@ -5,8 +5,9 @@ from __future__ import annotations
 import hashlib
 import json
 import unicodedata
+from collections.abc import Iterable, Mapping
 from pathlib import Path
-from typing import Any, Iterable, Mapping
+from typing import Any
 
 INDEX_SCHEMA = "12-6.reserved-evaluation-index.v1"
 RESERVATION_SCHEMA = "12-6.reserved-evaluation-material.v1"
