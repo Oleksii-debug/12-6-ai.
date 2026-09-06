@@ -10,8 +10,8 @@ import torch
 from torch import nn
 
 from twelve_six.checkpoint import (
-    CheckpointIdentity,
     D04_RESUME_BINDING_SCHEMA,
+    CheckpointIdentity,
     load_trainer_checkpoint,
     save_trainer_checkpoint,
 )
