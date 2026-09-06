@@ -214,8 +214,42 @@ def _validate_state_schema(expected: Any, actual: Any, *, path: str) -> None:
         )
 
 
+def _semantic_stateful_probe(component: Any, state: Any, *, label: str) -> None:
+    """Exercise component load semantics on an isolated target before live mutation.
+
+    Generic scheduler/scaler-like components are deep-copied. PyTorch LR schedulers
+    retain a reference to the model-scale optimizer, so they use a shallow scheduler
+    shell instead; PyTorch's scheduler ``load_state_dict`` only mutates scheduler
+    attributes and does not load optimizer state. Unknown optimizer-owning component
+    types fail closed rather than deep-copying model-scale optimizer/parameter state.
+    """
+
+    module_name = component.__class__.__module__
+    if hasattr(component, "optimizer"):
+        if not module_name.startswith("torch.optim.lr_scheduler"):
+            raise CheckpointCompatibilityError(
+                f"{label} cannot be safely semantically preflighted without cloning optimizer state"
+            )
+        probe = copy.copy(component)
+        probe.__dict__ = component.__dict__.copy()
+    else:
+        try:
+            probe = copy.deepcopy(component)
+        except Exception as exc:
+            raise CheckpointCompatibilityError(
+                f"{label} cannot be isolated for semantic compatibility preflight"
+            ) from exc
+
+    try:
+        probe.load_state_dict(copy.deepcopy(state))
+    except Exception as exc:
+        raise CheckpointCompatibilityError(
+            f"checkpoint {label} state failed isolated semantic compatibility preflight"
+        ) from exc
+
+
 def _preflight_stateful_component(component: Any | None, state: Any, *, label: str) -> None:
-    """Check scheduler/scaler state schema without cloning model-scale optimizer state."""
+    """Check scheduler/scaler schema and load semantics before live mutation."""
 
     if (state is None) != (component is None):
         raise CheckpointCompatibilityError(f"{label} state/config mismatch")
@@ -229,6 +263,7 @@ def _preflight_stateful_component(component: Any | None, state: Any, *, label: s
     if not isinstance(live_state, Mapping):
         raise CheckpointCompatibilityError(f"live {label} state must be a mapping")
     _validate_state_schema(live_state, state, path=f"{label} state")
+    _semantic_stateful_probe(component, state, label=label)
 
 
 def _preflight_trainer_target(trainer: Any) -> None:
