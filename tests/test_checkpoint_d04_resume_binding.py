@@ -6,9 +6,9 @@ from pathlib import Path
 import pytest
 
 from twelve_six.checkpoint import (
+    D04_RESUME_BINDING_SCHEMA,
     CheckpointCompatibilityError,
     CheckpointIdentity,
-    D04_RESUME_BINDING_SCHEMA,
     bind_d04_resume_identity,
     hash_json,
     load_trainer_checkpoint,
