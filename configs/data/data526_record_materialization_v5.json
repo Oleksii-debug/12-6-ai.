@@ -1,0 +1,127 @@
+{
+  "claim_boundary": {
+    "authorized_unique_optimized_targets": 0,
+    "decontamination_executed": false,
+    "final_test_payload_accessed": false,
+    "optimizer_updates": 0,
+    "paid_compute_used": false,
+    "predecontam_record_payloads_materialized_in_job_only": true,
+    "raw_payloads_committed_to_repository": false,
+    "raw_payloads_uploaded_as_public_evidence": false,
+    "tokenizer_fit_executed": false,
+    "training_executed": false
+  },
+  "cpython_authority": {
+    "accepted_capacity_bytes": 15540,
+    "accepted_chunk_count": 14,
+    "accepted_normalized_sha256": [
+      "604c7243b37696ca7173dbdf9dd2b5663f54075590e599b741243f882739e869",
+      "65eff0ae0fbb474ee32bc02f12111f57775474d1b6375c3dd0894ec666d05267",
+      "49771a2eedc6cae523e10e7fa04feac4e79713e324d7fe4d37577689ded1b279",
+      "1998f1a712c71a4cdec3d6f9693b0de79451004fcc5bdc78149d7d7a180427af",
+      "647bda8d594fec2c8be35b0505986f9f5e885d2fba8692838cb6f48494b8bc04",
+      "68bb8862c2b25dc702412cc1470410f7a218498dbbcdfb52a4db3269bd973d26",
+      "ab11186bb4c1fb0ddc849693cff0b4f230b162dc41d6908d6807f1f0f86ac6c2",
+      "aab52bdb384c5503d34d524edb06cacdc0c7ea03385c5413bd1db29cb7f7f388",
+      "bb78d8aad6fcd8ccf9408bd64a998aebedff14804aa79f78421cdd1fcdd91fef",
+      "a19741280be37f9268367aa31e8c3eedc1876b839b9aca4d13299f2872153b55",
+      "c9e8a1dc6709e6e50dadc9f22269f3ba149c2c4ba0f1b53ae32f0811acab79cb",
+      "e67ce9871a098147df5caa26900518e61422ce789252a766ae046a6eb4fde742",
+      "3b86d261ef94dd7b0deb0c577faaa41b9026f50cd18abee6c5eb84aa5aeb38ee",
+      "a09756447fdbd535629939d1bcaf8db5f6fba4b23bdc9468e27625f67c11e470"
+    ],
+    "comparison_separator": "DOUBLE_LF",
+    "head_sha": "5a6a495a24bce449334cbc5126d0114f61a9f57c",
+    "source_id": "en.python.docs.tutorial-introduction"
+  },
+  "data213_normalized_artifact": {
+    "artifact_id": 9600107886,
+    "artifact_zip_sha256": "927e10ccb83f919d57a8b78e3ea9cae72f9d4e0232401043234a35eec150074d",
+    "source_head_sha": "5ae74eb162641712ff97a326572bec5bfe2b0607",
+    "sources": {
+      "en.standardebooks.manual.8-typography": {
+        "path": "data181-evidence/normalized/ext-34108f6cb4826107ff3b53be7b172eb0.txt",
+        "payload_bytes": 48002,
+        "payload_sha256": "154fb4034929714087e75150d678bf65049ddac32e79dcdf97162c8972c2be83"
+      },
+      "en.standardebooks.manual.9-metadata": {
+        "path": "data181-evidence/normalized/ext-b47c3572ee24c4641b86e91804ed04fe.txt",
+        "payload_bytes": 36791,
+        "payload_sha256": "94eb2f529922d125b3bd40691778886f4d5d80b128b925d0274fb3d94646ec5a"
+      },
+      "ua.rada.open-data.laws-texts.d23314": {
+        "path": "data181-evidence/normalized/ext-ba861bf058ce23e02cc569d1a63de897.txt",
+        "payload_bytes": 88565,
+        "payload_sha256": "72c301db0b2539f3f7a73c9c15e2e425700a6b758a1114f1a861e2d60c704c50"
+      }
+    }
+  },
+  "evidence_identity_scope": "SHA256(canonical JSON with evidence_identity_sha256 omitted)",
+  "evidence_identity_sha256": "b3b1b74fc42beb7c17b689f18bb6ffaf0b30ac813564367b29d01148bbd154a3",
+  "execution_profile": "LOCAL_FREE",
+  "expected_materialization": {
+    "by_modality_payload_bytes": {
+      "code": 276466,
+      "en": 1838293,
+      "uk": 100856
+    },
+    "cpython_payload_bytes": 15540,
+    "cpython_record_count": 14,
+    "data213_payload_bytes": 173358,
+    "data213_source_count": 3,
+    "direct_v7_payload_bytes": 2017564,
+    "direct_v7_source_count": 25,
+    "kmu_payload_bytes": 9153,
+    "kmu_source_count": 6,
+    "record_count": 48,
+    "source_family_counts": {
+      "code": 6,
+      "en": 5,
+      "uk": 4
+    },
+    "source_object_count": 35,
+    "total_payload_bytes": 2215615
+  },
+  "kmu_authority": {
+    "head_sha": "40950a950b60921fd856af2719e1ae2486d9e892",
+    "manifest_identity_sha256": "1f068e6cc5ce3fc4a51d8477acee31fab5a0178e15f49225b57de94c5178f7d9",
+    "normalization_policy": "NFKC_LINE_WHITESPACE_DROP_EMPTY_TRAILING_LF_V1",
+    "sources": {
+      "ua.kmu.secretariat.2026-07-16-prime-minister-appointment": {
+        "payload_bytes": 2806,
+        "payload_sha256": "5597ee6700b170c0ed93fa9e6c318097634ce1ae00657a5592090373b0169874"
+      },
+      "ua.kmu.secretariat.2026-07-23-budget-2027": {
+        "payload_bytes": 949,
+        "payload_sha256": "2338bdb3adf3c70b70f77b8df0bef0c9e81b098697e32703ab2205475cb2ab85"
+      },
+      "ua.kmu.secretariat.2026-08-05-resilience-audit": {
+        "payload_bytes": 1890,
+        "payload_sha256": "6e1e1f134f9cf8e11d92891acbf014f0ee30ec9219f179a862d706b74dd877eb"
+      },
+      "ua.kmu.secretariat.2026-08-13-frontline-communities": {
+        "payload_bytes": 951,
+        "payload_sha256": "c3d3b823e03da0e8dcf09939b654a1038404fd5eae834789b6ad7c484eb7a346"
+      },
+      "ua.kmu.secretariat.2026-08-18-resilience-funding": {
+        "payload_bytes": 1281,
+        "payload_sha256": "e7393c379a383c7fd27e1105411cd0b3717f87b7c848bbfbda7ea54a6bd5ea27"
+      },
+      "ua.kmu.secretariat.2026-08-19-eib-community-recovery": {
+        "payload_bytes": 1276,
+        "payload_sha256": "6a5cf6b19feed67794caad09622a308e434c2997f01ddcadf2faa0ba35e61a6b"
+      }
+    }
+  },
+  "repository": "Oleksii-debug/12-6-ai.",
+  "schema_version": "12-6.data526-record-materialization.v5",
+  "v7_authority": {
+    "artifact_id": 9635595510,
+    "artifact_zip_sha256": "cca6921a2093d4e033976b23b0af180e9dc1945b624b82e218780f8d20bafd18",
+    "head_sha": "d3333ec1b4a508df232a5aefccd6686adda745fb",
+    "report_sha256": "80997ac88b9d604afaf652807cda2a2d9fd0f6cb75754460ae6f4aa7af6e0267",
+    "source_inventory_digest_sha256": "5e54c3587d6d2c0a7d540a1e8aefae77522c97a41c0033a05e78ce22a8e7c617",
+    "workflow_run": 33045763964
+  },
+  "worker_id": "DATA-526-RECORD-MATERIALIZATION-V5"
+}
