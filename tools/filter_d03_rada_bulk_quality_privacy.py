@@ -20,8 +20,9 @@ import json
 import re
 import unicodedata
 from collections import Counter
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 CONFIG_SCHEMA = "12-6.d03-rada-bulk-quality-privacy.v1"
 PARENT_MANIFEST_SCHEMA = "12-6.d03-rada-bulk-normalization-manifest.v1"
