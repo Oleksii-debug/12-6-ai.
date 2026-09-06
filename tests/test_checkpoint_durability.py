@@ -83,7 +83,7 @@ def test_installed_save_orders_tree_fsync_rename_parent_fsync(
     real_replace = __import__("os").replace
 
     def tree_barrier(directory: Path, *, expected_names: frozenset[str]) -> None:
-        assert set(path.name for path in directory.iterdir()) == expected_names
+        assert {path.name for path in directory.iterdir()} == expected_names
         events.append("tree-fsync")
 
     def replace(source: Path, destination: Path) -> None:
