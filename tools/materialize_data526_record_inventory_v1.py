@@ -61,7 +61,7 @@ def load_jsonl(path: Path) -> list[dict[str, Any]]:
             continue
         value = json.loads(raw)
         if not isinstance(value, dict):
-            raise ValueError(f"line {line_number} is not an object")
+            raise TypeError(f"line {line_number} is not an object")
         records.append(value)
     return records
 
