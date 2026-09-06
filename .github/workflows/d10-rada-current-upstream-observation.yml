@@ -1,0 +1,147 @@
+name: D10 Rada Current Upstream Observation
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/d10-rada-current-upstream-observation.yml"
+      - "tools/probe_d03_rada_bulk_source.py"
+      - "configs/data/d03_rada_bulk_source_probe_v1.json"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  observe-current-upstream:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Bind exact observation transport head
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+          printf 'D10_RADA_OBSERVATION_SOURCE_SHA=%s\n' "$EXPECTED_SOURCE_SHA"
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Compile exact existing D03 probe
+        run: |
+          set -euo pipefail
+          python -m compileall -q tools/probe_d03_rada_bulk_source.py
+
+      - name: Acquire current official archive once
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/d10-rada-current
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          from tools.probe_d03_rada_bulk_source import _download, _load_config
+
+          config = _load_config(Path("configs/data/d03_rada_bulk_source_probe_v1.json"))
+          archive, headers = _download(
+              config["source"]["archive_url"],
+              max_bytes=int(config["probe_policy"]["max_archive_bytes"]),
+          )
+          Path("/tmp/rada-texts.zip").write_bytes(archive)
+          Path("evidence/d10-rada-current/http_headers.json").write_text(
+              json.dumps(headers, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          Path("evidence/d10-rada-current/SOURCE_ATTRIBUTION.txt").write_text(
+              "Source: Тексти первинних законів бази даних 'Законодавство України'\n"
+              "Publisher: Апарат Верховної Ради України\n"
+              "Source page: https://data.rada.gov.ua/open/data/en/laws-texts\n"
+              "Archive endpoint: https://data.rada.gov.ua/ogd/zak/perv/text/texts.zip\n"
+              "Observation only: successor review/pinning is required before any corpus credit.\n",
+              encoding="utf-8",
+          )
+          PY
+          test -s /tmp/rada-texts.zip
+
+      - name: Reobserve current mutable upstream twice from one retained payload
+        run: |
+          set -euo pipefail
+          python tools/probe_d03_rada_bulk_source.py \
+            --archive /tmp/rada-texts.zip \
+            --accept-current-upstream \
+            --output evidence/d10-rada-current/observation-a.json
+          python tools/probe_d03_rada_bulk_source.py \
+            --archive /tmp/rada-texts.zip \
+            --accept-current-upstream \
+            --output evidence/d10-rada-current/observation-b.json
+          cmp evidence/d10-rada-current/observation-a.json evidence/d10-rada-current/observation-b.json
+
+      - name: Prove fail-closed observation boundary and payload identity
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+
+          archive = Path("/tmp/rada-texts.zip").read_bytes()
+          report = json.loads(Path("evidence/d10-rada-current/observation-a.json").read_text(encoding="utf-8"))
+
+          assert report["safe_result"] == "CURRENT_UPSTREAM_OBSERVED_SUCCESSOR_PIN_REQUIRED"
+          assert report["discovery_observation_revalidated"] is False
+          assert report["gates"]["exact_archive_identity"] == "OBSERVED_UNPINNED"
+          assert report["gates"]["safe_zip_inventory"] == "PASS"
+          assert report["archive"]["bytes"] == len(archive)
+          assert report["archive"]["sha256"] == hashlib.sha256(archive).hexdigest()
+          assert report["archive"]["md5"] == hashlib.md5(archive).hexdigest()  # nosec B324: source identity, not security
+          assert report["inventory"]["canonical_entry_count"] > 0
+          assert len(report["inventory"]["entry_identity_sha256"]) == 64
+          assert report["training_authorized_bytes"] == 0
+          assert report["corpus_admitted"] is False
+          assert report["tokenizer_fit_authorized"] is False
+          assert report["model_training_executed"] is False
+          assert report["paid_compute_used"] is False
+          for gate in (
+              "canonical_normalization",
+              "quality",
+              "privacy",
+              "global_cross_source_dedup",
+              "evaluation_decontamination",
+              "balance_diversity",
+              "corpus_materialization",
+              "unique_loss_ledger",
+          ):
+              assert report["gates"][gate] == "NOT_RUN"
+          PY
+
+      - name: Stage exact retained observation payload
+        run: |
+          set -euo pipefail
+          cp /tmp/rada-texts.zip evidence/d10-rada-current/texts.zip
+          sha256sum evidence/d10-rada-current/texts.zip > evidence/d10-rada-current/texts.zip.sha256
+          md5sum evidence/d10-rada-current/texts.zip > evidence/d10-rada-current/texts.zip.md5
+
+      - name: Upload observation-only archive and inventory evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: d10-rada-current-observation-${{ github.event.pull_request.head.sha || github.sha }}
+          if-no-files-found: error
+          retention-days: 30
+          path: |
+            configs/data/d03_rada_bulk_source_probe_v1.json
+            evidence/d10-rada-current/SOURCE_ATTRIBUTION.txt
+            evidence/d10-rada-current/http_headers.json
+            evidence/d10-rada-current/observation-a.json
+            evidence/d10-rada-current/observation-b.json
+            evidence/d10-rada-current/texts.zip
+            evidence/d10-rada-current/texts.zip.sha256
+            evidence/d10-rada-current/texts.zip.md5
