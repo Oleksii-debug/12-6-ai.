@@ -68,13 +68,17 @@ def fsync_parent_directory(path: str | Path) -> None:
         os.close(fd)
 
 
-def _raise_existing_destination(destination: Path, *, overwrite: bool) -> None:
+def _raise_existing_destination(
+    destination: Path, *, overwrite: bool, appeared_before_publication: bool = False
+) -> None:
     """Preserve checkpoint-v1's public immutable-destination error contract."""
     if overwrite:
         raise FileExistsError(
             "checkpoint-v1 is immutable and cannot overwrite existing destination: "
             f"{destination}"
         )
+    if appeared_before_publication:
+        raise FileExistsError(f"checkpoint destination appeared before publication: {destination}")
     raise FileExistsError(f"checkpoint already exists: {destination}")
 
 
@@ -106,7 +110,11 @@ def install(core: Any) -> None:
             manifest = original_save(staging, **kwargs)
             fsync_checkpoint_tree(staging, expected_names=core._DIRECTORY_NAMES)
             if destination.exists() or destination.is_symlink():
-                _raise_existing_destination(destination, overwrite=overwrite)
+                _raise_existing_destination(
+                    destination,
+                    overwrite=overwrite,
+                    appeared_before_publication=True,
+                )
             os.replace(staging, destination)
             fsync_parent_directory(destination)
             return manifest
