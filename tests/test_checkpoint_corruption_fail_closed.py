@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -15,6 +17,8 @@ from twelve_six.checkpoint.core import (
     CheckpointIntegrityError,
     hash_json,
     load_checkpoint,
+    load_verified_checkpoint,
+    prepare_checkpoint_load,
     save_checkpoint,
     verify_checkpoint,
 )
@@ -100,6 +104,81 @@ def test_dtype_corruption_fails_before_numpy_model_mutation(tmp_path: Path) -> N
 
     np.testing.assert_array_equal(target.weights, before)
     assert target.loads == 0
+
+
+class SemanticScheduler:
+    def __init__(self, value: float) -> None:
+        self.value = value
+        self.loads = 0
+
+    def state_dict(self) -> dict[str, float]:
+        return {"value": self.value}
+
+    def load_state_dict(self, state: dict[str, float]) -> None:
+        self.loads += 1
+        self.value = state["value"]
+        if self.value < 0:
+            raise ValueError("negative scheduler value")
+
+
+@pytest.mark.parametrize("verified_api", [False, True])
+@pytest.mark.parametrize("value", [-1.0, 2.0])
+def test_direct_scheduler_semantics_are_checked_before_live_mutation(
+    tmp_path: Path, verified_api: bool, value: float,
+) -> None:
+    checkpoint = tmp_path / "semantic-scheduler"
+    save_checkpoint(
+        checkpoint,
+        model=NumpyModel([1, 2, 3]),
+        scheduler=SemanticScheduler(value),
+        identity=replace(_identity(), scheduler={"name": "semantic-scheduler"}),
+    )
+    # The checksum-valid checkpoint has the same keys and types in both cases.
+    verified = prepare_checkpoint_load(checkpoint)
+    target = NumpyModel([9, 9, 9])
+    scheduler = SemanticScheduler(1.0)
+    loader = load_verified_checkpoint if verified_api else load_checkpoint
+    source = verified if verified_api else checkpoint
+    if value < 0:
+        with pytest.raises(CheckpointCompatibilityError, match="semantic"):
+            loader(source, model=target, scheduler=scheduler, restore_rng=False)
+        np.testing.assert_array_equal(target.weights, [9, 9, 9])
+        assert target.loads == scheduler.loads == 0
+        assert scheduler.value == 1.0
+    else:
+        loader(source, model=target, scheduler=scheduler, restore_rng=False)
+        np.testing.assert_array_equal(target.weights, [1, 2, 3])
+        assert target.loads == scheduler.loads == 1
+        assert scheduler.value == value
+
+
+@pytest.mark.parametrize("adapter", [False, True])
+def test_nested_scheduler_probe_is_isolated_without_cloning_optimizer(adapter: bool) -> None:
+    torch = pytest.importorskip("torch")
+    from twelve_six.checkpoint import core, trainer_adapter
+
+    class NoOptimizerCopy(torch.optim.SGD):
+        def __deepcopy__(self, memo):
+            raise AssertionError("model-scale optimizer must not be cloned")
+
+    parameter = torch.nn.Parameter(torch.ones(3))
+    optimizer = NoOptimizerCopy([parameter], lr=0.1, momentum=0.9)
+    first = torch.optim.lr_scheduler.StepLR(optimizer, step_size=2)
+    second = torch.optim.lr_scheduler.StepLR(optimizer, step_size=3)
+    scheduler = torch.optim.lr_scheduler.SequentialLR(
+        optimizer, schedulers=[first, second], milestones=[5],
+    )
+    before = copy.deepcopy(scheduler.state_dict())
+    optimizer_before = copy.deepcopy(optimizer.state_dict())
+    incoming = copy.deepcopy(before)
+    incoming["_schedulers"][0]["last_epoch"] += 7
+    incoming["_schedulers"][1]["last_epoch"] += 9
+    module = trainer_adapter if adapter else core
+    module._preflight_stateful_component(scheduler, incoming, label="scheduler")
+    assert scheduler.state_dict() == before
+    assert optimizer.state_dict() == optimizer_before
+    assert scheduler._schedulers == [first, second]
+    assert optimizer.param_groups[0]["params"][0] is parameter
 
 
 @pytest.mark.parametrize(

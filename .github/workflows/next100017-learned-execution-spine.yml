@@ -1,0 +1,53 @@
+name: NEXT100-017 Learned Execution Spine
+
+on:
+  push:
+    branches:
+      - next100-017/integrate282-refresh-20260826
+    paths:
+      - evidence/next100017/learned-execution-spine.v1.json
+      - scripts/validate_next100017_spine.py
+      - .github/workflows/next100017-learned-execution-spine.yml
+  pull_request:
+    paths:
+      - evidence/next100017/learned-execution-spine.v1.json
+      - scripts/validate_next100017_spine.py
+      - .github/workflows/next100017-learned-execution-spine.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-composition:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout exact event head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Assert exact checkout
+        env:
+          EXPECTED_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+
+      - name: Validate late-bound composition vector
+        run: python3 -S scripts/validate_next100017_spine.py
+
+      - name: Prove LOCAL_FREE no-training gate
+        run: |
+          python3 -S - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path('evidence/next100017/learned-execution-spine.v1.json')
+          d = json.loads(p.read_text(encoding='utf-8'))
+          c = d['constraints']
+          assert c['local_free_only'] is True
+          assert c['long_training_performed'] is False
+          assert c['training_authorized'] is False
+          assert c['mechanical_pr_merge'] is False
+          print('LOCAL_FREE / no-training / no-mechanical-merge: PASS')
+          PY

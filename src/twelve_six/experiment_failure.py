@@ -10,10 +10,11 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Iterable, Mapping
+from typing import Any
 
 SCHEMA = "12-6.experiment-failure-report.v1"
 TAXONOMY_VERSION = "ci161.v1"
@@ -109,7 +110,7 @@ class RunFailureTracker:
     def observe_metrics(self, metrics: Any) -> None:
         if not bool(getattr(metrics, "optimizer_stepped", False)):
             return
-        current = int(getattr(metrics, "optimizer_step"))
+        current = int(metrics.optimizer_step)
         if current < self.start_optimizer_step:
             raise ValueError("optimizer_step regressed below the process start step")
         self._highest_optimizer_step = max(self._highest_optimizer_step, current)
@@ -325,14 +326,14 @@ def validate_report(report: Mapping[str, Any]) -> None:
     started = report.get("experiment_started")
     steps = report.get("optimizer_steps_completed")
     if not isinstance(started, bool):
-        raise ValueError("experiment_started must be bool")
+        raise TypeError("experiment_started must be bool")
     if isinstance(steps, bool) or not isinstance(steps, int) or steps < 0:
         raise ValueError("optimizer_steps_completed must be non-negative int")
     if started != (steps > 0):
         raise ValueError("experiment_started must match optimizer_steps_completed > 0")
     diagnostics = report.get("diagnostics")
     if not isinstance(diagnostics, Mapping):
-        raise ValueError("diagnostics must be an object")
+        raise TypeError("diagnostics must be an object")
     if diagnostics.get("raw_output_retained") is not False:
         raise ValueError("raw output retention is forbidden")
     if diagnostics.get("environment_retained") is not False:

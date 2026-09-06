@@ -649,6 +649,49 @@ def _validate_state_schema(expected: Any, actual: Any, *, path: str) -> None:
         )
 
 
+def _semantic_stateful_probe(component: Any, state: Any, *, label: str) -> None:
+    """Load detached component state without copying model-scale optimizer state.
+
+    Built-in PyTorch scheduler loaders mutate scheduler attributes, including
+    nested schedulers and callable state. A shallow scheduler copy is insufficient.
+    Deep-copy that graph while retaining its optimizer reference only in the copy
+    memo; the supported loaders do not restore or step the optimizer.
+    """
+
+    memo: dict[int, Any] = {}
+    pending = [component]
+    seen: set[int] = set()
+    while pending:
+        current = pending.pop()
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        optimizer = getattr(current, "optimizer", None)
+        owns_torch_optimizer = any(
+            base.__module__.startswith("torch.optim") for base in type(optimizer).__mro__
+        )
+        if owns_torch_optimizer:
+            if current.__class__.__module__ != "torch.optim.lr_scheduler":
+                raise CheckpointCompatibilityError(
+                    f"{label} cannot be safely semantically preflighted "
+                    "without cloning optimizer state"
+                )
+            memo[id(optimizer)] = optimizer
+            pending.extend(getattr(current, "_schedulers", ()))
+    try:
+        probe = copy.deepcopy(component, memo)
+    except Exception as exc:
+        raise CheckpointCompatibilityError(
+            f"{label} cannot be isolated for semantic compatibility preflight"
+        ) from exc
+    try:
+        probe.load_state_dict(copy.deepcopy(state))
+    except Exception as exc:
+        raise CheckpointCompatibilityError(
+            f"checkpoint {label} state failed isolated semantic compatibility preflight"
+        ) from exc
+
+
 def _preflight_stateful_component(component: Any, state: Any, *, label: str) -> None:
     """Validate scheduler-like state before model/optimizer mutation."""
 
@@ -660,6 +703,7 @@ def _preflight_stateful_component(component: Any, state: Any, *, label: str) -> 
     if not isinstance(live_state, Mapping):
         raise CheckpointCompatibilityError(f"live {label} state must be a mapping")
     _validate_state_schema(live_state, state, path=f"{label} state")
+    _semantic_stateful_probe(component, state, label=label)
 
 
 def _apply_model_weights(model: Any, materialized: Mapping[str, Any], strict: bool) -> None:

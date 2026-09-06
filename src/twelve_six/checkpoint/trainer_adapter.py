@@ -23,6 +23,7 @@ from .core import (
     _preflight_optimizer_state,
     _preflight_rng_state,
     _prepare_model_weights,
+    _semantic_stateful_probe,
     assert_identity,
     prepare_checkpoint_load,
     restore_rng_state,
@@ -212,40 +213,6 @@ def _validate_state_schema(expected: Any, actual: Any, *, path: str) -> None:
             f"{path} type mismatch: checkpoint {type(actual).__name__}, "
             f"live {type(expected).__name__}"
         )
-
-
-def _semantic_stateful_probe(component: Any, state: Any, *, label: str) -> None:
-    """Exercise component load semantics on an isolated target before live mutation.
-
-    Generic scheduler/scaler-like components are deep-copied. PyTorch LR schedulers
-    retain a reference to the model-scale optimizer, so they use a shallow scheduler
-    shell instead; PyTorch's scheduler ``load_state_dict`` only mutates scheduler
-    attributes and does not load optimizer state. Unknown optimizer-owning component
-    types fail closed rather than deep-copying model-scale optimizer/parameter state.
-    """
-
-    module_name = component.__class__.__module__
-    if hasattr(component, "optimizer"):
-        if not module_name.startswith("torch.optim.lr_scheduler"):
-            raise CheckpointCompatibilityError(
-                f"{label} cannot be safely semantically preflighted without cloning optimizer state"
-            )
-        probe = copy.copy(component)
-        probe.__dict__ = component.__dict__.copy()
-    else:
-        try:
-            probe = copy.deepcopy(component)
-        except Exception as exc:
-            raise CheckpointCompatibilityError(
-                f"{label} cannot be isolated for semantic compatibility preflight"
-            ) from exc
-
-    try:
-        probe.load_state_dict(copy.deepcopy(state))
-    except Exception as exc:
-        raise CheckpointCompatibilityError(
-            f"checkpoint {label} state failed isolated semantic compatibility preflight"
-        ) from exc
 
 
 def _preflight_stateful_component(component: Any | None, state: Any, *, label: str) -> None:
