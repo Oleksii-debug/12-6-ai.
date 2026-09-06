@@ -16,6 +16,7 @@ on:
       - "tests/test_next100075_production_corruption_matrix.py"
       - "tests/test_scale141_recovery.py"
       - "tests/test_scale141_d04_sidecar.py"
+      - "tests/test_scale141_sidecar_snapshot.py"
       - "configs/stages/s1_100k.json"
       - "configs/candidates/model341_20m_candidate_a.json"
       - "src/twelve_six/checkpoint/**"
@@ -81,6 +82,7 @@ jobs:
           tests/test_next100075_production_corruption_matrix.py
           tests/test_scale141_recovery.py
           tests/test_scale141_d04_sidecar.py
+          tests/test_scale141_sidecar_snapshot.py
           tests/test_s1_checkpoint_preflight.py
       - name: Focused D05 checkpoint integrity regression
         run: >-
@@ -93,6 +95,7 @@ jobs:
           tests/test_checkpoint_trainer_target_fail_closed.py
           tests/test_scale141_recovery.py
           tests/test_scale141_d04_sidecar.py
+          tests/test_scale141_sidecar_snapshot.py
           tests/test_s1_checkpoint_preflight.py
       - name: NEXT100-075 exact MODEL-341 production corruption matrix
         run: >-
