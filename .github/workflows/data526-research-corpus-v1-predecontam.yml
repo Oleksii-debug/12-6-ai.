@@ -61,8 +61,33 @@ jobs:
 
       - name: Validate current V4 frozen candidate authority
         run: |
+          set -euo pipefail
           python tools/validate_data526_research_corpus_predecontam_v4.py
-          python tools/validate_data526_research_corpus_predecontam_v4.py --github-live
+          curl --fail --silent --show-error --location \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/Oleksii-debug/12-6-ai./actions/artifacts/9635595510/zip" \
+            -o /tmp/next100-065e.zip
+          python - <<'PY'
+          import hashlib
+          import json
+          import zipfile
+          from pathlib import Path
+
+          archive = Path("/tmp/next100-065e.zip").read_bytes()
+          assert hashlib.sha256(archive).hexdigest() == "cca6921a2093d4e033976b23b0af180e9dc1945b624b82e218780f8d20bafd18"
+          with zipfile.ZipFile("/tmp/next100-065e.zip") as package:
+              report_bytes = package.read("evidence/next100_065e/a/report.json")
+          assert hashlib.sha256(report_bytes).hexdigest() == "a917a5f240e2eda0015fd09564b29430ca8c95a9916a03f734a4463fe458c08f"
+          report = json.loads(report_bytes.decode("utf-8"))
+          assert report["report_sha256"] == "80997ac88b9d604afaf652807cda2a2d9fd0f6cb75754460ae6f4aa7af6e0267"
+          assert report["dedup_v3"]["report_sha256"] == "c33e0d06a469473aac191e9b5bf7baec23322cd3e9200f0caab2633c921afd84"
+          sources = report["dedup_v3"]["sources"]
+          canonical = json.dumps(sources, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+          assert len(sources) == 35
+          assert hashlib.sha256(canonical).hexdigest() == "5e54c3587d6d2c0a7d540a1e8aefae77522c97a41c0033a05e78ce22a8e7c617"
+          assert report["source_vector"]["conservative_unique_capacity_bytes_after_global_dedup"] == 2_215_615
+          PY
 
       - name: Run fail-closed mutation tests
         run: >-
