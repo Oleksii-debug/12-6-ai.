@@ -8,6 +8,7 @@ from typing import Any
 from twelve_six.learned20_checkpoint_authority import (
     assess_launch_with_checkpoint_provenance,
 )
+from twelve_six.learned20_pilot_evaluation import validate_terminal_pilot_evaluation
 
 
 def _nonempty_text(value: Any) -> bool:
@@ -53,7 +54,7 @@ def assess_launch_with_terminal_provenance(
     *,
     material_cost: bool,
 ) -> dict[str, Any]:
-    """Assess launch readiness with checkpoint and bounded-pilot provenance checks."""
+    """Assess launch readiness with checkpoint, pilot-provenance, and D06 evidence."""
 
     result = assess_launch_with_checkpoint_provenance(
         contract,
@@ -61,11 +62,18 @@ def assess_launch_with_terminal_provenance(
         material_cost=material_cost,
     )
     blockers = validate_bounded_pilot_authority(evidence)
-    if not blockers:
-        return result
+    d06_blockers = validate_terminal_pilot_evaluation(evidence)
 
-    result["long_training_blockers"] = sorted(
-        set(result["long_training_blockers"] + blockers)
-    )
-    result["long_training_ready"] = False
+    if blockers:
+        result["long_training_blockers"] = sorted(
+            set(result["long_training_blockers"] + blockers)
+        )
+        result["long_training_ready"] = False
+
+    if d06_blockers:
+        result["long_training_blockers"] = sorted(
+            set(result["long_training_blockers"] + d06_blockers)
+        )
+        result["long_training_ready"] = False
+
     return result
