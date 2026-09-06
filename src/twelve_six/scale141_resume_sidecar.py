@@ -7,6 +7,7 @@ verifies the sidecar before recovery can use it.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
@@ -278,19 +279,37 @@ def validate_resume_reference(value: Mapping[str, Any], *, generation: int) -> d
 
 
 def _read_payload(path: Path, expected_file_sha256: str) -> dict[str, Any]:
-    if path.is_symlink():
-        raise ResumeSidecarError("recovery resume sidecar must be a real file")
+    expected_hash = _require_sha256(expected_file_sha256, "recovery resume sidecar file hash")
     try:
         before = path.lstat()
     except FileNotFoundError as exc:
         raise ResumeSidecarError("recovery resume sidecar is missing") from exc
-    if not stat.S_ISREG(before.st_mode):
-        raise ResumeSidecarError("recovery resume sidecar must be a regular file")
-    if sha256_file(path) != expected_file_sha256:
+    if stat.S_ISLNK(before.st_mode) or not stat.S_ISREG(before.st_mode):
+        raise ResumeSidecarError("recovery resume sidecar must be a regular non-symlink file")
+
+    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        fd = os.open(path, flags)
+    except OSError as exc:
+        raise ResumeSidecarError("recovery resume sidecar cannot be opened safely") from exc
+    try:
+        opened = os.fstat(fd)
+        if not stat.S_ISREG(opened.st_mode):
+            raise ResumeSidecarError("recovery resume sidecar changed type while opening")
+        if (before.st_dev, before.st_ino) != (opened.st_dev, opened.st_ino):
+            raise ResumeSidecarError("recovery resume sidecar changed while opening")
+        with os.fdopen(fd, "rb", closefd=False) as handle:
+            data = handle.read()
+    except OSError as exc:
+        raise ResumeSidecarError("recovery resume sidecar is unreadable") from exc
+    finally:
+        os.close(fd)
+
+    if hashlib.sha256(data).hexdigest() != expected_hash:
         raise ResumeSidecarError("recovery resume sidecar file hash mismatch")
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+        value = json.loads(data.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ResumeSidecarError("recovery resume sidecar is unreadable") from exc
     if not isinstance(value, dict):
         raise ResumeSidecarError("recovery resume sidecar payload must be a JSON object")
