@@ -1,0 +1,119 @@
+{
+  "claim_boundary": {
+    "authorized_unique_optimized_targets": 0,
+    "final_test_outcomes_accessed": false,
+    "final_test_payload_accessed": false,
+    "optimizer_updates": 0,
+    "paid_compute_used": false,
+    "raw_selection_payloads_committed_to_repository": false,
+    "raw_training_payloads_committed_to_repository": false,
+    "selection_validation_payload_access_permitted_for_decontamination": true,
+    "tokenizer_fit_executed": false,
+    "training_executed": false
+  },
+  "evidence_identity_scope": "SHA256(canonical JSON with evidence_identity_sha256 omitted)",
+  "evidence_identity_sha256": "90306808ac61c18b02495d95acea5a08cf40901a955d0bfb7c1de74912062f02",
+  "execution_profile": "LOCAL_FREE",
+  "final_test_reservation": {
+    "authority": "EVAL-233-REAL-HOLDOUT-V2",
+    "data232_final_test_identity_sha256": "86d51eb106524cd8e4d0f94d4ff6e2e3426c6321e0698279877dfc4d5fce3116",
+    "exclusion_policy": "EXCLUDE_WHOLE_TRAINING_RECORD_WHEN_NORMALIZED_PAYLOAD_SHA256_IS_AN_ADMITTED_FINAL_TEST_SOURCE_SNAPSHOT",
+    "expected_excluded_payload_bytes": 173358,
+    "expected_excluded_records": 3,
+    "final_test_outcomes_accessed": false,
+    "final_test_payload_accessed": false,
+    "head_sha": "b5512b4648cb09dd052b08884dc53f291e1ce935",
+    "reserved_normalized_snapshot_sha256_by_family": {
+      "en.standardebooks.manual": [
+        "154fb4034929714087e75150d678bf65049ddac32e79dcdf97162c8972c2be83",
+        "94eb2f529922d125b3bd40691778886f4d5d80b128b925d0274fb3d94646ec5a"
+      ],
+      "ua.rada.open-data.laws-texts": [
+        "72c301db0b2539f3f7a73c9c15e2e425700a6b758a1114f1a861e2d60c704c50"
+      ]
+    },
+    "source_authority_git_blob_sha1": "3ba9f221a82468f971c17eda518cd6f1642fd311",
+    "source_authority_identity_sha256": "c7211b3e1e6a4f22463d0e6174f0d6162c2452585704efad5564a35de8de609f",
+    "source_authority_path": "configs/evaluation/recover174_source_authority_v1.json"
+  },
+  "matcher_authority": {
+    "algorithm": "data232-deterministic-overlap-cluster-v2",
+    "authority": "DATA-232-DECONTAMINATION-AUTHORITY-V2",
+    "head_sha": "4b9d7c2e1dc2806ca91e33e6570630b3f43af24a",
+    "matching_module_git_blob_sha1": "dab5da98dfc43133aa8f3c2e3c78c809252b741b",
+    "quarantine_cross_source_families": true,
+    "report_module_git_blob_sha1": "1cc851720e2ecfb524fd7d072b76317efb11e61d",
+    "thresholds": {
+      "code_copy_jaccard": 0.82,
+      "code_copy_min_tokens": 16,
+      "code_fragment_containment": 0.9,
+      "code_fragment_min_tokens": 16,
+      "code_near_jaccard": 0.86,
+      "code_shingle_tokens": 7,
+      "natural_fragment_containment": 0.88,
+      "natural_fragment_min_tokens": 18,
+      "natural_near_jaccard": 0.8,
+      "natural_shingle_tokens": 3
+    }
+  },
+  "post_final_test_reservation_expected": {
+    "by_modality_payload_bytes": {
+      "code": 276466,
+      "en": 1753500,
+      "uk": 12291
+    },
+    "independent_family_counts": {
+      "code": 6,
+      "en": 4,
+      "uk": 3
+    },
+    "payload_bytes": 2042257,
+    "record_count": 45
+  },
+  "record_materialization_authority": {
+    "config_identity_sha256": "d8be874488ad77f1873ab6920c8bb2c2973b0a5c5a05fa7f93f2e5832eb2cd5e",
+    "input_payload_bytes": 2215615,
+    "input_record_count": 48,
+    "schema_version": "12-6.data526-record-materialization.v5"
+  },
+  "repository": "Oleksii-debug/12-6-ai.",
+  "schema_version": "12-6.data526-evaluation-reservations-decontamination.v6",
+  "selection_validation": {
+    "authority": "EVAL-303-SELECTION-VALIDATION-COMPOSITE",
+    "components": {
+      "code": {
+        "head_sha": "2cbe2f2d9c74984baa69e49e520e2280fc76421b",
+        "records": 0,
+        "set_identity_sha256": "9fd52e879c388f06f0b103afa02d68678388867c81cfb0f27ddbf0ca18867054",
+        "status": "BLOCKED_NO_ELIGIBLE_CODE_OBJECTS"
+      },
+      "en": {
+        "artifact_id": 9606132134,
+        "artifact_zip_sha256": "3168a1c7884b10ba7a959c859c1539f2ad4957a852ad3f9aa3517df3c5110f94",
+        "head_sha": "fb268061300127b62cc2a262664b30c614559dac",
+        "jsonl_path": "data/evaluation/eval291/selection-validation/en.jsonl",
+        "jsonl_sha256": "df20e3d3ec75208399039a283487c3b8958c80ec3f119cee278fcc09948c6bfb",
+        "records": 2,
+        "set_identity_sha256": "727f229c091f86748a4eee9ea5aec72bb65347b68d6b687fabbf33166b0eca1e"
+      },
+      "ua": {
+        "artifact_id": 9606656857,
+        "artifact_zip_sha256": "0c5f9f8d938284a1358bfb77284814b1f0569b2d6d13938f415ba31db64a6c3b",
+        "head_sha": "029514654829cebc149cff6fc1fea2a8ba4fa566",
+        "jsonl_path": "tmp/eval290-a/eval290_ua_selection_validation_v1.jsonl",
+        "jsonl_sha256": "5400e37b8e8ddfdb9516a8b6eaa6fc01a8c5ec41811385d9f6907e6ef6d9614f",
+        "records": 8,
+        "set_identity_sha256": "c32320a706a283049e35eb537eb20a1e7f5865b86c24397c8b73d1e3d2014164"
+      }
+    },
+    "expected_payload_bytes": 16856,
+    "expected_records": 10,
+    "final_test_payload_accessed": false,
+    "head_sha": "5e5a1de3b594cee5612e63d3d4c2a70499740ac7",
+    "membership_path": "data/evaluation/eval303/selection-validation/composite-membership.jsonl",
+    "membership_sha256": "e4bb39dd7aa6a20c7ed34e093f563b5f4896ac16828151c6b375a83cd8a068c6",
+    "payload_access_scope": "SELECTION_VALIDATION_ONLY",
+    "selection_identity_sha256": "7b97a9ab04469236dc5bc17fc80155cb43430b01c443bb6209fac090557258fd"
+  },
+  "worker_id": "DATA-526-EVAL-RESERVATIONS-DECONTAMINATION-V6"
+}
