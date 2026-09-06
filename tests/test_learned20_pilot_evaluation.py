@@ -145,3 +145,35 @@ def test_pilot_and_firewall_identity_drift_is_rejected() -> None:
     blockers = validate_terminal_pilot_evaluation(evidence)
     assert "bounded_pilot.d06.pilot_identity_mismatch" in blockers
     assert "bounded_pilot.d06.evaluation_firewall_identity_mismatch" in blockers
+
+
+def test_terminal_provenance_wrapper_blocks_long_training_without_d06_evidence(
+    monkeypatch,
+) -> None:
+    import twelve_six.learned20_pilot_authority as pilot_authority
+
+    monkeypatch.setattr(
+        pilot_authority,
+        "assess_launch_with_checkpoint_provenance",
+        lambda contract, evidence, *, material_cost: {
+            "pilot_ready": True,
+            "long_training_ready": True,
+            "pilot_blockers": [],
+            "long_training_blockers": [],
+        },
+    )
+    monkeypatch.setattr(
+        pilot_authority,
+        "validate_bounded_pilot_authority",
+        lambda evidence: [],
+    )
+
+    result = pilot_authority.assess_launch_with_terminal_provenance(
+        {},
+        {"bounded_pilot": {"terminal": True, "identity": "pilot-v1"}},
+        material_cost=False,
+    )
+
+    assert result["pilot_ready"] is True
+    assert result["long_training_ready"] is False
+    assert "bounded_pilot.d06_evaluation_missing" in result["long_training_blockers"]
