@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Evaluate the learned ~20M launch gate from terminal evidence JSON."""
 
 from __future__ import annotations
@@ -23,7 +22,7 @@ MODEL341_INITSPEC_SHA256 = "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c134
 def _load(path: Path) -> dict:
     data = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(data, dict):
-        raise ValueError(f"{path} must contain a JSON object")
+        raise TypeError(f"{path} must contain a JSON object")
     return data
 
 
