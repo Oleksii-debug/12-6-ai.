@@ -6,11 +6,13 @@ on:
       - "src/twelve_six/data/unique_loss_ledger_v2.py"
       - "src/twelve_six/data/identity_safe_exposure_guard.py"
       - "src/twelve_six/data/deterministic_exposure_order.py"
+      - "src/twelve_six/data/deterministic_double_pack.py"
       - "tests/test_unique_loss_ledger_v2.py"
       - "tests/test_identity_safe_exposure_guard.py"
       - "tests/test_deterministic_exposure_order.py"
       - "tools/validate_next100_064_unique_loss_ledger_v2.py"
       - "tools/validate_d04_ordered_exposure_runtime.py"
+      - "tools/validate_d04_double_pack_binding.py"
       - "evidence/next100_064/unique_loss_ledger_v2_authority.json"
       - "docs/NEXT100_064_UNIQUE_LOSS_LEDGER_V2.md"
       - ".github/workflows/next100-064-unique-loss-ledger-v2.yml"
@@ -62,14 +64,16 @@ jobs:
               raise SystemExit("truncated V2 implementation; unexpectedly short source")
           print("complete_v2_surface=pass")
           PY
-      - name: Compile V2 implementation and deterministic ordering guard
+      - name: Compile V2 implementation and D04 deterministic guards
         run: |
           python -m py_compile \
             src/twelve_six/data/unique_loss_ledger_v2.py \
             src/twelve_six/data/identity_safe_exposure_guard.py \
             src/twelve_six/data/deterministic_exposure_order.py \
+            src/twelve_six/data/deterministic_double_pack.py \
             tools/validate_next100_064_unique_loss_ledger_v2.py \
-            tools/validate_d04_ordered_exposure_runtime.py
+            tools/validate_d04_ordered_exposure_runtime.py \
+            tools/validate_d04_double_pack_binding.py
       - name: Validate frozen authority twice
         run: |
           python tools/validate_next100_064_unique_loss_ledger_v2.py > /tmp/next100-064-a.txt
@@ -78,6 +82,8 @@ jobs:
           cat /tmp/next100-064-a.txt
       - name: Exercise ordered exposure success and fail-closed runtime
         run: python tools/validate_d04_ordered_exposure_runtime.py
+      - name: Validate terminal-handoff deterministic double-pack binding
+        run: python tools/validate_d04_double_pack_binding.py
       - name: Run additional pytest adversarial suite when pytest is present
         run: |
           if python -c 'import pytest' 2>/dev/null; then
@@ -87,7 +93,7 @@ jobs:
               tests/test_deterministic_exposure_order.py
           else
             echo 'pytest unavailable on this lightweight runner; optional pytest suite NOT EXECUTED'
-            echo 'unconditional stdlib authority and ordered-exposure runtime checks already executed above'
+            echo 'unconditional stdlib authority, ordered-exposure, and double-pack checks executed above'
           fi
       - name: Assert LOCAL_FREE no-training scope
         run: |
