@@ -124,9 +124,17 @@ def _validate_build(
     materialization: Mapping[str, Any],
     *,
     label: str,
+    expected_terminal_corpus_identity_sha256: str,
     expected_stage_bindings: Mapping[str, str],
     expected_tokenizer_identity_sha256: str,
 ) -> tuple[dict[str, Any], bytes]:
+    observed_terminal_corpus_identity = _require_sha256(
+        materialization.get("terminal_corpus_authority_identity_sha256"),
+        f"{label}.terminal_corpus_authority_identity_sha256",
+    )
+    if observed_terminal_corpus_identity != expected_terminal_corpus_identity_sha256:
+        raise LedgerError(f"{label} corpus identity does not match terminal handoff")
+
     observed_stage_bindings = materialization.get("stage_bindings")
     if not isinstance(observed_stage_bindings, Mapping):
         raise LedgerError(f"{label}.stage_bindings must be an object")
@@ -161,9 +169,9 @@ def verify_deterministic_double_pack(
 
     This function does not create corpus authority and does not authorize training.
     It consumes an externally terminal corpus authority identity plus exact D04 stage
-    and tokenizer bindings, validates retained-document isolation and both
-    materializations through the existing unique-loss ledger, and requires canonical
-    byte identity across the two builds.
+    and tokenizer bindings, requires both builds to carry that same corpus authority,
+    validates retained-document isolation and the existing unique-loss ledger, and
+    requires canonical byte identity across the two builds.
     """
     terminal_corpus_identity = _require_sha256(
         terminal_corpus_authority_identity_sha256,
@@ -183,12 +191,14 @@ def verify_deterministic_double_pack(
     ledger_a, bytes_a = _validate_build(
         build_a,
         label="build_a",
+        expected_terminal_corpus_identity_sha256=terminal_corpus_identity,
         expected_stage_bindings=stage_bindings,
         expected_tokenizer_identity_sha256=tokenizer_identity,
     )
     ledger_b, bytes_b = _validate_build(
         build_b,
         label="build_b",
+        expected_terminal_corpus_identity_sha256=terminal_corpus_identity,
         expected_stage_bindings=stage_bindings,
         expected_tokenizer_identity_sha256=tokenizer_identity,
     )
