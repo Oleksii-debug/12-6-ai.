@@ -25,7 +25,7 @@ class Data526RecordMaterializationV5Tests(unittest.TestCase):
         self.assertEqual(config["claim_boundary"]["authorized_unique_optimized_targets"], 0)
 
     def test_kmu_normalization_is_exact_and_trailing_lf_bounded(self) -> None:
-        raw = "  А\u0308  Б  \n\n  В\tГ \n".encode("utf-8")
+        raw = "  A\u0308  Б  \n\n  В\tГ \n".encode("utf-8")
         normalized = _normalize_kmu(raw)
         self.assertEqual(normalized.decode("utf-8"), "Ä Б\nВ Г\n")
         self.assertTrue(normalized.endswith(b"\n"))
