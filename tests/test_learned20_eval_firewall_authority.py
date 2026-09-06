@@ -61,3 +61,42 @@ def test_terminal_firewall_requires_terminal_corpus() -> None:
     assert validate_evaluation_firewall_provenance(evidence) == [
         "evaluation_firewall.training_corpus_not_terminal"
     ]
+
+
+def test_terminal_provenance_wrapper_blocks_pilot_on_cross_corpus_firewall(
+    monkeypatch,
+) -> None:
+    import twelve_six.learned20_pilot_authority as pilot_authority
+
+    evidence = _evidence()
+    evidence["evaluation_firewall"]["training_packing_identity"] = "other-packing"
+    monkeypatch.setattr(
+        pilot_authority,
+        "assess_launch_with_checkpoint_provenance",
+        lambda contract, evidence, *, material_cost: {
+            "pilot_ready": True,
+            "long_training_ready": True,
+            "pilot_blockers": [],
+            "long_training_blockers": [],
+        },
+    )
+    monkeypatch.setattr(
+        pilot_authority,
+        "validate_bounded_pilot_authority",
+        lambda evidence: [],
+    )
+    monkeypatch.setattr(
+        pilot_authority,
+        "validate_terminal_pilot_evaluation",
+        lambda evidence: [],
+    )
+
+    result = pilot_authority.assess_launch_with_terminal_provenance(
+        {}, evidence, material_cost=False
+    )
+
+    blocker = "evaluation_firewall.training_packing_identity_mismatch"
+    assert result["pilot_ready"] is False
+    assert result["long_training_ready"] is False
+    assert blocker in result["pilot_blockers"]
+    assert blocker in result["long_training_blockers"]
