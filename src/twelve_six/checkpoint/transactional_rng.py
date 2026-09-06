@@ -8,8 +8,8 @@ back if the underlying restore raises.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from typing import Any, Callable
+from collections.abc import Callable, Mapping
+from typing import Any
 
 
 def _transactional_restore(
