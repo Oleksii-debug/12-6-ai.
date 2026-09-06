@@ -13,10 +13,8 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from twelve_six.learned20_checkpoint_authority import (
-    assess_launch_with_checkpoint_provenance,
-)
 from twelve_six.learned20_launch_gate import validate_contract
+from twelve_six.learned20_pilot_authority import assess_launch_with_terminal_provenance
 
 DEFAULT_CONTRACT = ROOT / "configs/training/learned_20m_launch_gate_v1.json"
 
@@ -55,13 +53,14 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     evidence = _load(args.evidence)
-    result = assess_launch_with_checkpoint_provenance(
+    result = assess_launch_with_terminal_provenance(
         contract,
         evidence,
         material_cost=args.material_cost,
     )
     print(json.dumps(result, indent=2, sort_keys=True))
-    return 0 if result["pilot_ready"] else 2
+    ready = result["long_training_ready"] if args.material_cost else result["pilot_ready"]
+    return 0 if ready else 2
 
 
 if __name__ == "__main__":
