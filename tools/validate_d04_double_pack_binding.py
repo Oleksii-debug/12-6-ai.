@@ -32,6 +32,9 @@ def _identity(value: dict, field: str) -> str:
 def _materialization() -> dict:
     value = {
         "schema_version": "12-6.postpack-loss-materialization.v2",
+        "terminal_corpus_authority_identity_sha256": _sha(
+            "terminal-corpus-authority"
+        ),
         "stage_bindings": {
             "normalization": _sha("normalization"),
             "evaluation_reservations": _sha("reservations"),
@@ -146,6 +149,18 @@ def main() -> None:
         raise SystemExit("double-pack proof must never self-authorize training")
     if proof["build_a_canonical_sha256"] != proof["build_b_canonical_sha256"]:
         raise SystemExit("double-pack canonical hashes differ")
+
+    corpus_drift_a = _materialization()
+    corpus_drift_b = _materialization()
+    for materialization in (corpus_drift_a, corpus_drift_b):
+        materialization["terminal_corpus_authority_identity_sha256"] = _sha(
+            "other-terminal-corpus"
+        )
+    _rehash_pair(corpus_drift_a, corpus_drift_b)
+    _expect_failure(
+        lambda: _proof(corpus_drift_a, corpus_drift_b),
+        "corpus identity does not match terminal handoff",
+    )
 
     cluster_leak_a = _materialization()
     cluster_leak_b = _materialization()
