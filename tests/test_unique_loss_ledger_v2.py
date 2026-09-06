@@ -325,6 +325,59 @@ def test_guard_rejects_claim_count_different_from_actual_loss_mask() -> None:
     assert guard.consumed_loss_positions == 0
 
 
+def test_guard_rejects_claim_schema_smuggling_without_mutation() -> None:
+    ledger = build_ledger(_materialization())
+    guard = ExposureReplayGuard(
+        ledger,
+        authorized_budget=8,
+        trainer_state_binding=_binding(),
+    )
+    before = guard.state_dict()
+    segment = ledger["segments"][0]
+    with pytest.raises(LedgerError, match="must contain exactly"):
+        guard.authorize_batch(
+            [
+                {
+                    "segment_identity_sha256": segment["segment_identity_sha256"],
+                    "offset_start": 0,
+                    "offset_end": 1,
+                    "future_semantics": "ignored-before-hardening",
+                }
+            ],
+            actual_nonignored_targets=1,
+        )
+    assert guard.state_dict() == before
+
+
+def test_resume_rejects_self_hashed_unknown_state_field_without_mutation() -> None:
+    ledger = build_ledger(_materialization())
+    checkpoint_binding = _binding(target_count=0, generation="g000")
+    source = ExposureReplayGuard(
+        ledger,
+        authorized_budget=8,
+        trainer_state_binding=checkpoint_binding,
+    )
+    state = source.state_dict()
+    tampered = deepcopy(state)
+    tampered["future_semantics"] = {"replay_allowed": True}
+    tampered["state_identity_sha256"] = _identity(
+        tampered, "state_identity_sha256"
+    )
+
+    resumed = ExposureReplayGuard(
+        ledger,
+        authorized_budget=8,
+        trainer_state_binding=checkpoint_binding,
+    )
+    before = resumed.state_dict()
+    with pytest.raises(LedgerError, match="fields do not match"):
+        resumed.load_state_dict(
+            tampered,
+            expected_trainer_state_binding=checkpoint_binding,
+        )
+    assert resumed.state_dict() == before
+
+
 def test_count_nonignored_targets_is_strict() -> None:
     assert count_nonignored_targets([[1, 0], [True, False], [1.0, 0.0]]) == 3
     with pytest.raises(LedgerError):
