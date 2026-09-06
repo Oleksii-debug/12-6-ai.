@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "status": "CANDIDATE",
+  "protocol": "MCP",
+  "protocol_version": "2026-07-28",
+  "upstream": {
+    "repository": "modelcontextprotocol/modelcontextprotocol",
+    "tag": "2026-07-28",
+    "commit": "5f5440bb26a62e2cf3440b92da5a667efa03b267",
+    "release_state": "stable",
+    "license_state": "APACHE-2.0_MIT_TRANSITION;DOCS_CC-BY-4.0",
+    "license_note": "The exact tagged LICENSE states an Apache-2.0 transition for new code/spec contributions, retains MIT for unrelicensed historical contributions, and licenses non-spec documentation under CC-BY-4.0."
+  },
+  "project_profile": {
+    "name": "MCP_COMPAT_TOOL_CONTRACT_V1",
+    "schema_profile": "TWELVE_SIX_JSON_SCHEMA_SAFE_SUBSET_V1",
+    "supported_methods": [
+      "tools/list",
+      "tools/call"
+    ],
+    "full_mcp_conformance_claimed": false,
+    "list_pagination": false,
+    "multi_round_trip_tool_calls": false,
+    "protocol_sessions": false,
+    "wire_confirmation_evidence_accepted": false,
+    "backend_execution_in_contract_layer": false
+  },
+  "security_boundaries": [
+    "MCP tool annotations are display hints and never permission authority unless emitted from the project-owned trusted registry.",
+    "Every executable tool has a project-owned immutable contract identity, exact least-privilege permission set and side-effect class.",
+    "Irreversible writes require host-verified confirmation evidence bound to the exact authorized call identity.",
+    "Confirmation evidence is host-local authority and is never accepted from untrusted MCP wire fields or tool arguments.",
+    "Unknown tools, unsupported MCP extensions, undeclared arguments and over-granted permissions fail closed.",
+    "A validated tool call is an authorization artifact, not proof that any backend action ran or succeeded.",
+    "A successful backend result requires exact call binding and non-empty provenance/evidence references before MCP success serialization."
+  ],
+  "truth_boundaries": [
+    "This package establishes a project-owned compatibility contract; it does not claim full MCP conformance.",
+    "No external MCP server is contacted and no external tool backend is executed by the contract implementation.",
+    "No canonical Base weights, tokenizer, dataset, checkpoint, optimizer, training recipe or evaluation payload are changed.",
+    "No model training, optimizer update, GPU evidence, paid compute or final-test access is authorized or performed.",
+    "Protocol compatibility and security-shape validation do not constitute backend qualification, security certification or production readiness."
+  ]
+}
