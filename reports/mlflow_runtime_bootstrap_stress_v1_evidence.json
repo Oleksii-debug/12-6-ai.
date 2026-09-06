@@ -1,0 +1,63 @@
+{
+  "adversarial": {
+    "credential_uri_rejected": true,
+    "file_uri_allowed": true,
+    "remote_uri_rejected": true,
+    "secret_metadata_rejected": true,
+    "sqlite_uri_allowed": true
+  },
+  "benchmark": {
+    "executed": false,
+    "upstream_claims_reused": false
+  },
+  "component": "MLFLOW_RUNTIME",
+  "contract_validation": {"errors": [], "status": "PASS"},
+  "environment": {
+    "gpu": {"cuda_visible": false, "nvidia_smi": null},
+    "host": {"cpu_count": 5, "machine": "x86_64", "release": "6.18.35", "system": "Linux"},
+    "installed_packages": {"mlflow": null, "pytest": "9.0.2", "torch": "2.10.0+cpu"},
+    "network": {
+      "https://github.com/": {"error": "<urlopen error [Errno -3] Temporary failure in name resolution>", "error_type": "URLError", "status": "unreachable"},
+      "https://pypi.org/simple/": {"error": "<urlopen error [Errno -3] Temporary failure in name resolution>", "error_type": "URLError", "status": "unreachable"}
+    },
+    "package_managers": {"conda": null, "git": "/usr/bin/git", "pdm": null, "pip": "/opt/pyvenv/bin/pip", "poetry": null, "python": "/opt/pyvenv/bin/python", "uv": "/opt/pyvenv/bin/uv"},
+    "pip_cache": {"listing": "NOT_AVAILABLE", "path": null, "writable": false},
+    "python": {"executable": "/opt/pyvenv/bin/python", "implementation": "cpython", "version": "3.13.5"}
+  },
+  "evidence_identity_sha256": "fb09a69847fd5a07744881bbf38ba5525af86c2f4c4fa62e2fc6307d01e7ba61",
+  "evidence_sha256": "b4f0ce480f42ab298d8fa7f5bf232d428af1a6cfdd983075168a0ce50c1b78ca",
+  "installation": {
+    "attempted": true,
+    "classification": "RETEST_RUNTIME_REQUIRED",
+    "dependency_lock_status": "INCOMPLETE_UPSTREAM_SOURCE_HAS_VERSION_RANGES_ONLY",
+    "result": {
+      "elapsed_seconds": 0.707,
+      "freeze": [],
+      "freeze_returncode": 0,
+      "freeze_stderr_tail": "WARNING: The directory '/home/oai/.cache/pip' or its parent directory is not owned or is not writable by the current user. The cache has been disabled.",
+      "requirement": "mlflow @ git+https://github.com/mlflow/mlflow.git@0572b16ac9e9c98a02df9df40ad3e48ce3b7c588",
+      "returncode": 1,
+      "status": "FAIL",
+      "stderr_tail": "fatal: unable to access 'https://github.com/mlflow/mlflow.git/': Could not resolve host: github.com; git clone exit code 128",
+      "stdout_tail": "Collecting mlflow@ git+https://github.com/mlflow/mlflow.git@0572b16ac9e9c98a02df9df40ad3e48ce3b7c588",
+      "venv_python": "/tmp/mlflow-runtime-stress-9u4zqe_a/venv/bin/python"
+    }
+  },
+  "live_binding": {
+    "license_blob_sha": "db7cb10b5e330d56b40370bc178974ccabe71458",
+    "main_sha_at_claim": "5020afd671a3885c1b738c8b4eafe7525f630546",
+    "parent_head_sha": "56046888b95f4db35f9ca2f38d13dcc0c1fe11e1",
+    "parent_pr": 758,
+    "tracking_source_blob_sha": "1a672b170a49b800d420127de63cfff7b394065c",
+    "upstream_commit_sha": "0572b16ac9e9c98a02df9df40ad3e48ce3b7c588"
+  },
+  "next_action": "Re-run with network/package access, generate and retain a fully pinned dependency lock with artifact hashes, exact commit install, real local-file smoke, deterministic export/reconstruction, and no-network proof before PARITY_PROVEN or ADOPTED.",
+  "parity": {"project_contract_vs_runtime": "NOT_PROVEN", "same_inputs_required": true, "same_outputs_required": true, "unexplained_mismatch_blocks": true},
+  "rights": {"software_license_spdx": "Apache-2.0", "license_blob_sha": "db7cb10b5e330d56b40370bc178974ccabe71458", "notice_present_at_immutable_commit": false, "dataset_rights_inferred": false, "model_weight_rights_inferred": false},
+  "runtime": {"reason": "exact dependency not installed", "status": "NOT_EXECUTED"},
+  "schema_version": 1,
+  "status": "RETEST_RUNTIME_REQUIRED",
+  "truth_boundary": {"canonical_base_changed": false, "final_test_payload_read": false, "foreign_weights_used": false, "model_training_executed": false, "network_tracking_used": false, "paid_compute_used": false},
+  "worker_id": "OPEN-SOURCE-BOOTSTRAP-STRESS-V1",
+  "worker_issue": 781
+}
