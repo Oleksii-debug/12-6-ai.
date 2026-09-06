@@ -107,9 +107,9 @@ def validate_doc(doc: dict[str, Any]) -> None:
     )
     by = vector["by_stratum"]
     _require(set(by) == set(EXPECTED_BYTES), "source stratum set drift")
-    for stratum in EXPECTED_BYTES:
+    for stratum, expected_bytes in EXPECTED_BYTES.items():
         _require(
-            by[stratum].get("numeric_training_capacity_bytes") == EXPECTED_BYTES[stratum],
+            by[stratum].get("numeric_training_capacity_bytes") == expected_bytes,
             f"{stratum} bytes drift",
         )
         _require(
