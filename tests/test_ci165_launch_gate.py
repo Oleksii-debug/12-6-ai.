@@ -75,6 +75,7 @@ def test_envelope_hash_signature_source_config_and_binding(
     unsigned = {
         "schema": launch_gate.ENVELOPE_SCHEMA,
         "source_sha": "a" * 40,
+        "request_path": "request.json",
         "request_sha256": launch_gate._hash_json(request),
         "binding": request["binding"],
         "python": {

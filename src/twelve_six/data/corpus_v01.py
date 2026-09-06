@@ -1,11 +1,16 @@
 """Deterministic UK/EN/code corpus V0.1 assembly."""
 from __future__ import annotations
 
-import argparse, hashlib, json, shutil, unicodedata
+import argparse
+import hashlib
+import json
+import shutil
+import unicodedata
 from collections import Counter, defaultdict
+from collections.abc import Iterable, Mapping
 from itertools import chain
 from pathlib import Path
-from typing import Any, Iterable, Mapping
+from typing import Any
 
 CONFIG_SCHEMA = "12-6.corpus-build-config.v1"
 MANIFEST_SCHEMA = "12-6.corpus-manifest.v1"

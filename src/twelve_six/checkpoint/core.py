@@ -496,6 +496,12 @@ def _preflight_optimizer_state(optimizer: Any, state: Any) -> None:
             "ax",
         }
     )
+    optimizer_class_names = {base.__name__ for base in optimizer.__class__.__mro__}
+    adam_moment_state_names = (
+        frozenset({"exp_avg", "exp_avg_sq", "max_exp_avg_sq"})
+        if optimizer_class_names & {"Adam", "AdamW"}
+        else frozenset()
+    )
     live_state = getattr(optimizer, "state", {})
     for source_id, parameter_state in source_state.items():
         if not isinstance(parameter_state, Mapping):
@@ -542,11 +548,162 @@ def _preflight_optimizer_state(optimizer: Any, state: Any) -> None:
                         "optimizer state tensor shape mismatch for "
                         f"{state_name!r}: checkpoint {value_shape} vs parameter {target_shape}"
                     )
-                if state_name == "momentum_buffer" and value.dtype != target_dtype:
+                requires_parameter_dtype = (
+                    state_name == "momentum_buffer" or state_name in adam_moment_state_names
+                )
+                if requires_parameter_dtype and value.dtype != target_dtype:
                     raise CheckpointCompatibilityError(
-                        "optimizer momentum_buffer dtype mismatch: "
-                        f"checkpoint {value.dtype} vs parameter {target_dtype}"
+                        "optimizer state tensor dtype mismatch for "
+                        f"{state_name!r}: checkpoint {value.dtype} vs parameter {target_dtype}"
                     )
+
+
+def _validate_state_schema(expected: Any, actual: Any, *, path: str) -> None:
+    """Validate state-dict geometry and scalar types without mutating the target."""
+
+    if isinstance(expected, Mapping):
+        if not isinstance(actual, Mapping):
+            raise CheckpointCompatibilityError(f"{path} must be a mapping")
+        expected_keys = set(expected)
+        actual_keys = set(actual)
+        if actual_keys != expected_keys:
+            missing = sorted(map(str, expected_keys - actual_keys))
+            unexpected = sorted(map(str, actual_keys - expected_keys))
+            raise CheckpointCompatibilityError(
+                f"{path} keys differ: missing={missing}, unexpected={unexpected}"
+            )
+        for key, expected_value in expected.items():
+            _validate_state_schema(expected_value, actual[key], path=f"{path}.{key}")
+        return
+
+    if isinstance(expected, list):
+        if not isinstance(actual, list) or len(actual) != len(expected):
+            raise CheckpointCompatibilityError(
+                f"{path} list geometry mismatch: expected length {len(expected)}"
+            )
+        for index, (expected_value, actual_value) in enumerate(
+            zip(expected, actual, strict=True)
+        ):
+            _validate_state_schema(
+                expected_value,
+                actual_value,
+                path=f"{path}[{index}]",
+            )
+        return
+
+    if isinstance(expected, tuple):
+        if not isinstance(actual, tuple) or len(actual) != len(expected):
+            raise CheckpointCompatibilityError(
+                f"{path} tuple geometry mismatch: expected length {len(expected)}"
+            )
+        for index, (expected_value, actual_value) in enumerate(
+            zip(expected, actual, strict=True)
+        ):
+            _validate_state_schema(
+                expected_value,
+                actual_value,
+                path=f"{path}[{index}]",
+            )
+        return
+
+    expected_cls = expected.__class__ if expected is not None else None
+    actual_cls = actual.__class__ if actual is not None else None
+    expected_is_tensor = bool(
+        expected_cls is not None
+        and expected_cls.__module__.startswith("torch")
+        and expected_cls.__name__ in {"Tensor", "Parameter"}
+    )
+    actual_is_tensor = bool(
+        actual_cls is not None
+        and actual_cls.__module__.startswith("torch")
+        and actual_cls.__name__ in {"Tensor", "Parameter"}
+    )
+    if expected_is_tensor:
+        if not actual_is_tensor:
+            raise CheckpointCompatibilityError(f"{path} must be a torch tensor")
+        if tuple(actual.shape) != tuple(expected.shape) or actual.dtype != expected.dtype:
+            raise CheckpointCompatibilityError(
+                f"{path} tensor metadata mismatch: checkpoint "
+                f"shape={tuple(actual.shape)} dtype={actual.dtype}, live "
+                f"shape={tuple(expected.shape)} dtype={expected.dtype}"
+            )
+        return
+
+    if expected is None:
+        if actual is not None:
+            raise CheckpointCompatibilityError(f"{path} must be None")
+        return
+
+    if isinstance(expected, bool):
+        compatible = isinstance(actual, bool)
+    elif isinstance(expected, int):
+        compatible = isinstance(actual, int) and not isinstance(actual, bool)
+    elif isinstance(expected, float):
+        compatible = isinstance(actual, float)
+    else:
+        compatible = type(actual) is type(expected)
+    if not compatible:
+        raise CheckpointCompatibilityError(
+            f"{path} type mismatch: checkpoint {type(actual).__name__}, "
+            f"live {type(expected).__name__}"
+        )
+
+
+def _semantic_stateful_probe(component: Any, state: Any, *, label: str) -> None:
+    """Load detached component state without copying model-scale optimizer state.
+
+    Built-in PyTorch scheduler loaders mutate scheduler attributes, including
+    nested schedulers and callable state. A shallow scheduler copy is insufficient.
+    Deep-copy that graph while retaining its optimizer reference only in the copy
+    memo; the supported loaders do not restore or step the optimizer.
+    """
+
+    memo: dict[int, Any] = {}
+    pending = [component]
+    seen: set[int] = set()
+    while pending:
+        current = pending.pop()
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        optimizer = getattr(current, "optimizer", None)
+        owns_torch_optimizer = any(
+            base.__module__.startswith("torch.optim") for base in type(optimizer).__mro__
+        )
+        if owns_torch_optimizer:
+            if current.__class__.__module__ != "torch.optim.lr_scheduler":
+                raise CheckpointCompatibilityError(
+                    f"{label} cannot be safely semantically preflighted "
+                    "without cloning optimizer state"
+                )
+            memo[id(optimizer)] = optimizer
+            pending.extend(getattr(current, "_schedulers", ()))
+    try:
+        probe = copy.deepcopy(component, memo)
+    except Exception as exc:
+        raise CheckpointCompatibilityError(
+            f"{label} cannot be isolated for semantic compatibility preflight"
+        ) from exc
+    try:
+        probe.load_state_dict(copy.deepcopy(state))
+    except Exception as exc:
+        raise CheckpointCompatibilityError(
+            f"checkpoint {label} state failed isolated semantic compatibility preflight"
+        ) from exc
+
+
+def _preflight_stateful_component(component: Any, state: Any, *, label: str) -> None:
+    """Validate scheduler-like state before model/optimizer mutation."""
+
+    if not hasattr(component, "state_dict") or not hasattr(component, "load_state_dict"):
+        raise CheckpointCompatibilityError(
+            f"{label} must provide state_dict/load_state_dict"
+        )
+    live_state = component.state_dict()
+    if not isinstance(live_state, Mapping):
+        raise CheckpointCompatibilityError(f"live {label} state must be a mapping")
+    _validate_state_schema(live_state, state, path=f"{label} state")
+    _semantic_stateful_probe(component, state, label=label)
 
 
 def _apply_model_weights(model: Any, materialized: Mapping[str, Any], strict: bool) -> None:
@@ -981,12 +1138,18 @@ def load_verified_checkpoint(
         raise CheckpointCompatibilityError(
             "scheduler was requested but checkpoint has no scheduler state"
         )
+    if scheduler is not None:
+        _preflight_stateful_component(
+            scheduler,
+            combined_state["scheduler"],
+            label="scheduler",
+        )
     if restore_rng:
         _preflight_rng_state(combined_state["rng"])
 
     # No checkpoint byte is reopened after this point. All integrity, identity,
-    # payload decoding, model/optimizer compatibility and supported RNG checks
-    # completed before the first mutation.
+    # payload decoding, model/optimizer/scheduler compatibility and supported RNG
+    # checks completed before the first mutation.
     _apply_model_weights(model, materialized, strict_model)
     if optimizer is not None:
         optimizer.load_state_dict(combined_state["optimizer"])

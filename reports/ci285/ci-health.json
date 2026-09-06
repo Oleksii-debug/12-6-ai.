@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "worker_id": "CI-285-RELEASE-GATE-POST217",
+  "policy": {
+    "compute": "LOCAL_FREE",
+    "blanket_skips": false,
+    "long_learned_campaigns_retriggered_for_ci": false,
+    "scientific_evidence_reused_when_terminal": true
+  },
+  "integration_spine": {
+    "branch": "integrate282/post217-learned-spine-20260826",
+    "sha": "d84b6fdc26d041ceaac9569323b0e804e602dd50",
+    "state_at_ci285_start": "present_not_yet_ci_terminal",
+    "parents": {
+      "integrate222": "6afaf5889f9898037b53e8b0bc2b731d77782111",
+      "learn217": "c02c8aa38e691521ae2ab6a4ff3ea1d643efd6ef",
+      "perf250": "66f9be0c86a17568316e791dbf1890b238f114af",
+      "eval233": "b5512b4648cb09dd052b08884dc53f291e1ce935"
+    }
+  },
+  "source_head_panels": {
+    "learn217": {
+      "sha": "c02c8aa38e691521ae2ab6a4ff3ea1d643efd6ef",
+      "terminal_green": 4,
+      "terminal_red": 6,
+      "nonterminal": 0,
+      "red_root_cause": "shared_repository_ruff_preflight",
+      "ruff_findings": 9,
+      "scientific_regression_inferred": false,
+      "note": "All five non-CI red workflows failed at the same repository/preflight barrier before their scientific bodies; generic CI x86 failed at Ruff while arm64 package smoke and secret scanning passed."
+    },
+    "perf250": {
+      "sha": "66f9be0c86a17568316e791dbf1890b238f114af",
+      "generic_terminal_green": 4,
+      "generic_terminal_red": 0,
+      "scoped_perf_terminal_green": 1,
+      "scoped_perf_terminal_red": 0,
+      "nonterminal": 0,
+      "note": "Exact-head generic CI, repeatability, real S0 training and KV-cache generation were terminal green; dedicated PERF-250 convergence was also terminal green."
+    }
+  },
+  "root_cause_classes": [
+    {
+      "id": "shared_repository_ruff_preflight",
+      "scope": "generic_repository_health",
+      "affected_learn217_terminal_red_workflows": 6,
+      "distinct_ruff_findings": 9,
+      "classification": "shared_real_defect",
+      "blanket_skip_used": false
+    }
+  ],
+  "gates": {
+    "scoped_science": {
+      "learn217_terminal_10m": "PASS_REUSED",
+      "perf250_gqa_static_kv": "PASS_REUSED"
+    },
+    "full_release": {
+      "integrated_head": "d84b6fdc26d041ceaac9569323b0e804e602dd50",
+      "ci285_validation": "PENDING_PR_CHECKS",
+      "verdict": "BLOCKED_UNTIL_TERMINAL"
+    }
+  }
+}

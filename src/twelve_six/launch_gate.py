@@ -365,7 +365,7 @@ def _verify_project_contracts(
             raise LaunchGateError("critical_imports must contain non-empty strings")
         try:
             importlib.import_module(name)
-        except Exception as exc:  # noqa: BLE001 - gate must fail closed on import defects
+        except Exception as exc:
             raise LaunchGateError(f"critical import failed: {name}") from exc
         imported.append(name)
 
@@ -414,7 +414,7 @@ def _verify_gpu_if_required(request: dict[str, Any]) -> dict[str, Any]:
         return {"required": False, "checked": False}
     try:
         import torch
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise LaunchGateError("GPU required but torch cannot be imported") from exc
     if not torch.cuda.is_available() or torch.cuda.device_count() < 1:
         raise LaunchGateError("GPU required but no CUDA device is visible")

@@ -10,9 +10,10 @@ import os
 import platform
 import subprocess
 import sys
+from collections.abc import Iterator
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 
 import torch
 import torch.nn.functional as F
