@@ -1,0 +1,141 @@
+{
+  "schema": "12-6.learn345.20m-campaign-preregistration.v2",
+  "worker_id": "LEARN-345-20M-CAMPAIGN-PREREGISTRATION",
+  "execution_profile": "LOCAL_FREE",
+  "authority_cutoff": "2026-09-06T20:59:00Z",
+  "activation_state": "BLOCKED_MISSING_TERMINAL_CORPUS_PACKED_EXPOSURE_D05_D06_RECIPE",
+  "observed_authorities": {
+    "routing": {
+      "epoch": "EPOCH-0003",
+      "main_sha": "924394a28537e82b503d935fa61c44005648e147"
+    },
+    "primary_20m_model": {
+      "authority_sha": "e4ff486fd90802fc123bebf60eed4e59196a98df",
+      "parameter_count": 20613440,
+      "model_spec_sha256": "fbff24d561a2818453554d58ca23fc6ace3303b078f1935a8576c4565bd92441",
+      "init_spec_sha256": "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5",
+      "random_init": true,
+      "mechanics_authority_available": true
+    },
+    "optimizer_mechanics": {
+      "pr": 583,
+      "head_sha": "630e4cbbac1ba8fbdb12a4df701793047e068f29",
+      "contract_identity_sha256": "f212d051e80d65b9c731ea38dbe08b3e48d930f32caeb3da7becf68030613f21",
+      "scoped_ci_run": 33009390991,
+      "scoped_ci_conclusion": "success",
+      "generic_ci_run": 33009391022,
+      "generic_ci_conclusion": "failure",
+      "status": "MECHANICS_ONLY_NO_LR_SELECTION_AUTHORITY"
+    },
+    "d04_packed_exposure": {
+      "head_sha": "dc38ee03bc3cbdb908e418b964292aa55a85620d",
+      "real_postpack_unique_loss_positions": 0,
+      "status": "NOT_MATERIALIZED"
+    },
+    "d05_recovery": {
+      "head_sha": "d1cfe5091419c9174d2bc116977c89861a77cb25",
+      "status": "ACTIVE_REQUALIFICATION_NOT_CONSUMED_AS_TERMINAL"
+    },
+    "d06_evaluation": {
+      "status": "TERMINAL_CAMPAIGN_FIREWALL_REQUIRED_NOT_BOUND_HERE"
+    }
+  },
+  "campaign": {
+    "requested_optimized_target_budget": 20000000,
+    "meaningful_minimum_optimized_targets": 10000000,
+    "authorized_campaign_budget_rule": "min(20000000, terminal_postpack_unique_nonignored_causal_loss_positions)",
+    "replay_allowed": false,
+    "replacement_sampling_allowed": false,
+    "padding_counts_as_data": false,
+    "foreign_pretrained_weights_allowed": false,
+    "scratch_only": true,
+    "tokenizer_fit_on_selection_or_final_test": false
+  },
+  "recipe_contract": {
+    "optimizer_name": "AdamW",
+    "mechanics_candidate_learning_rates": [0.00016, 0.00022, 0.00026],
+    "learning_rate_selection_authority": "REQUIRED_SEPARATE_TERMINAL_RECIPE_AUTHORITY_BEFORE_STEP_1",
+    "mechanics_defaults_not_promoted_to_full_campaign": [
+      "learning_rate",
+      "scheduler",
+      "warmup_steps",
+      "sequence_length",
+      "micro_batch_size",
+      "gradient_accumulation_steps",
+      "precision"
+    ],
+    "frozen_mechanics": {
+      "betas": [0.9, 0.95],
+      "eps": 1e-08,
+      "weight_decay": 0.1,
+      "gradient_clip_norm": 1.0
+    },
+    "required_before_step_1": [
+      "exact_seed_vector",
+      "exact_learning_rate",
+      "exact_scheduler",
+      "exact_warmup",
+      "exact_precision",
+      "exact_sequence_length",
+      "exact_micro_batch_size",
+      "exact_gradient_accumulation",
+      "exact_stop_rules",
+      "exact_checkpoint_cadence",
+      "exact_validation_cadence",
+      "exact_train_trace_identity",
+      "exact_next_exposure_identity"
+    ]
+  },
+  "failure_semantics": {
+    "nan_or_inf_loss": "STOP_FAIL_CLOSED_NO_COMMIT",
+    "nan_or_inf_gradient": "STOP_FAIL_CLOSED_NO_COMMIT",
+    "ambiguous_optimizer_or_scheduler_failure": "RUN_INELIGIBLE_UNTIL_VERIFIED_FRESH_RESUME",
+    "silent_batch_replay_allowed": false,
+    "in_place_counter_repair_allowed": false
+  },
+  "checkpoint_and_resume": {
+    "mandatory_state": [
+      "model",
+      "optimizer",
+      "scheduler",
+      "scaler_if_used",
+      "counters",
+      "rng",
+      "dataloader",
+      "exposure_guard",
+      "next_exposure_identity"
+    ],
+    "mandatory_fresh_process_resume_fraction": "0.50",
+    "equivalence_gate": "uninterrupted_N_equals_K_checkpoint_fresh_resume_to_N_under_exact_train_trace",
+    "checkpoint_boundaries": ["0", "0.10", "0.25", "0.50", "0.75", "0.90", "1.00"],
+    "chronological_final_retained": true,
+    "best_selection_checkpoint_retained": true
+  },
+  "evaluation": {
+    "primary_selection_metric": "immutable_selection_validation_aggregate_BPB",
+    "per_stratum_required": ["UA", "EN", "code"],
+    "generation_probes_required": true,
+    "memorization_exposure_diagnostics_required": true,
+    "random_init_comparison_required": true,
+    "first_party_inference_fingerprint_required": true,
+    "final_test_sealed_until_selection_lock": true,
+    "final_test_may_influence_selection": false
+  },
+  "activation_requirements": {
+    "terminal_corpus_split_packing_identity": true,
+    "positive_unique_postpack_loss_positions": true,
+    "terminal_d05_fresh_process_resume_equivalence": true,
+    "terminal_d06_evaluation_firewall": true,
+    "terminal_recipe_authority": true,
+    "bounded_local_free_pilot_before_long_training": true
+  },
+  "truth_boundary": {
+    "authorized_optimized_targets": 0,
+    "optimizer_updates_executed": 0,
+    "campaign_runnable_now": false,
+    "long_training_started": false,
+    "paid_compute_authorized": false,
+    "final_test_payload_accessed": false
+  },
+  "evidence_identity_sha256": "5b8d6d01d417f3c31cd0e947a1e1139dbbc5b627601dc8e124703c270e9c55c5"
+}
