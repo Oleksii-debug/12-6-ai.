@@ -40,24 +40,33 @@
     "source_head_sha": "5ae74eb162641712ff97a326572bec5bfe2b0607",
     "sources": {
       "en.standardebooks.manual.8-typography": {
+        "artifact_file_bytes": 48003,
+        "artifact_file_sha256": "b5b9cb0b5b1ba44f73bdfde5ba0e6c6fa31f53137c9a94d20530cfd26d317adf",
         "path": "data181-evidence/normalized/ext-34108f6cb4826107ff3b53be7b172eb0.txt",
         "payload_bytes": 48002,
-        "payload_sha256": "154fb4034929714087e75150d678bf65049ddac32e79dcdf97162c8972c2be83"
+        "payload_sha256": "154fb4034929714087e75150d678bf65049ddac32e79dcdf97162c8972c2be83",
+        "payload_transform": "DROP_EXACT_ONE_TRAILING_LF"
       },
       "en.standardebooks.manual.9-metadata": {
+        "artifact_file_bytes": 36792,
+        "artifact_file_sha256": "b22cd18285eb9a187249aceca841cb6df05e2797141319b6c2c53052794bb80d",
         "path": "data181-evidence/normalized/ext-b47c3572ee24c4641b86e91804ed04fe.txt",
         "payload_bytes": 36791,
-        "payload_sha256": "94eb2f529922d125b3bd40691778886f4d5d80b128b925d0274fb3d94646ec5a"
+        "payload_sha256": "94eb2f529922d125b3bd40691778886f4d5d80b128b925d0274fb3d94646ec5a",
+        "payload_transform": "DROP_EXACT_ONE_TRAILING_LF"
       },
       "ua.rada.open-data.laws-texts.d23314": {
+        "artifact_file_bytes": 88566,
+        "artifact_file_sha256": "a87d78be8865637c26797ac4e080dc17fec94d21839d23d5a102d9b522e7b71c",
         "path": "data181-evidence/normalized/ext-ba861bf058ce23e02cc569d1a63de897.txt",
         "payload_bytes": 88565,
-        "payload_sha256": "72c301db0b2539f3f7a73c9c15e2e425700a6b758a1114f1a861e2d60c704c50"
+        "payload_sha256": "72c301db0b2539f3f7a73c9c15e2e425700a6b758a1114f1a861e2d60c704c50",
+        "payload_transform": "DROP_EXACT_ONE_TRAILING_LF"
       }
     }
   },
   "evidence_identity_scope": "SHA256(canonical JSON with evidence_identity_sha256 omitted)",
-  "evidence_identity_sha256": "b3b1b74fc42beb7c17b689f18bb6ffaf0b30ac813564367b29d01148bbd154a3",
+  "evidence_identity_sha256": "d8be874488ad77f1873ab6920c8bb2c2973b0a5c5a05fa7f93f2e5832eb2cd5e",
   "execution_profile": "LOCAL_FREE",
   "expected_materialization": {
     "by_modality_payload_bytes": {
