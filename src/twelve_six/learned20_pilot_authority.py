@@ -11,7 +11,9 @@ from twelve_six.learned20_checkpoint_authority import (
 from twelve_six.learned20_eval_firewall_authority import (
     validate_evaluation_firewall_provenance,
 )
-from twelve_six.learned20_pilot_evaluation import validate_terminal_pilot_evaluation
+from twelve_six.learned20_terminal_evaluation_authority import (
+    validate_terminal_pilot_evaluation,
+)
 
 
 def _nonempty_text(value: Any) -> bool:
