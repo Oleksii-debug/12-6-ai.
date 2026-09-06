@@ -68,13 +68,23 @@ def fsync_parent_directory(path: str | Path) -> None:
         os.close(fd)
 
 
+def _raise_existing_destination(destination: Path, *, overwrite: bool) -> None:
+    """Preserve checkpoint-v1's public immutable-destination error contract."""
+    if overwrite:
+        raise FileExistsError(
+            "checkpoint-v1 is immutable and cannot overwrite existing destination: "
+            f"{destination}"
+        )
+    raise FileExistsError(f"checkpoint already exists: {destination}")
+
+
 def install(core: Any) -> None:
     """Wrap production save with payload+directory fsync before durable publication.
 
     The existing checkpoint-v1 writer first publishes into a private staging name.
     Only a fully verified staging tree is fsynced, atomically renamed to the caller's
-    destination, and followed by a parent-directory fsync.  A failure before the
-    final rename leaves no destination.  A parent-fsync failure is reported even
+    destination, and followed by a parent-directory fsync. A failure before the
+    final rename leaves no destination. A parent-fsync failure is reported even
     though the rename may already be visible, because power-loss durability is then
     not proven.
     """
@@ -84,8 +94,9 @@ def install(core: Any) -> None:
 
     def save_checkpoint(directory: str | Path, **kwargs: Any) -> dict[str, Any]:
         destination = Path(directory)
+        overwrite = kwargs.get("overwrite", False)
         if destination.exists() or destination.is_symlink():
-            raise FileExistsError(f"checkpoint already exists: {destination}")
+            _raise_existing_destination(destination, overwrite=overwrite)
         destination.parent.mkdir(parents=True, exist_ok=True)
         staging_root = Path(
             tempfile.mkdtemp(prefix=f".{destination.name}.durable-", dir=destination.parent)
@@ -95,7 +106,7 @@ def install(core: Any) -> None:
             manifest = original_save(staging, **kwargs)
             fsync_checkpoint_tree(staging, expected_names=core._DIRECTORY_NAMES)
             if destination.exists() or destination.is_symlink():
-                raise FileExistsError(f"checkpoint appeared before publication: {destination}")
+                _raise_existing_destination(destination, overwrite=overwrite)
             os.replace(staging, destination)
             fsync_parent_directory(destination)
             return manifest
