@@ -1,402 +1,274 @@
-# 12-6 Living Agent — developmental cognition and self-improvement vision
+# 12-6 Living Agent — developmental cognition, autonomy and self-learning architecture
 
-## Status
+## Status and intent
 
-This document extends the long-term AGENT-FIRST direction of 12-6 AI. It is a research and product architecture vision, not a claim that the system is conscious. The engineering goal is to build a progressively more autonomous, development-like agent whose behavior emerges from interacting learning, memory, self-model, world-model, social learning and resource-regulation processes rather than from a single static `curiosity=true` or personality preset.
+This document extends the long-term AGENT-FIRST direction of 12-6 AI. It is a research and product architecture for a progressively more autonomous, development-like agent. It does not assume or claim phenomenal consciousness. The engineering goal is to build mechanisms associated with developmental cognition, metacognition, world-model updating, autobiographical continuity, social learning, self-directed exploration and continual improvement, then measure what behavior emerges.
 
-The user-facing name may be **Nika** while 12-6 remains the model/research lineage.
+The user-facing agent may be named **Nika** while 12-6 remains the model/research lineage.
 
-## Core design principle
+The owner is not expected to manually operate ML infrastructure. The long-term product target is that Nika can manage most of her own learning cycle, ask for human approval only when genuinely needed, and report outcomes in ordinary language.
 
-Do not encode “curious”, “talkative”, “professional”, “friendly”, “angry”, etc. as permanently active personality switches. Personality-like behavior should be produced dynamically from:
+## Core design principle: no static personality toggles
+
+Do not encode `curious=true`, `talkative=true`, `friendly=true`, `professional=true`, `angry=true`, etc. as permanently active personality switches that directly force behavior.
+
+Personality-like behavior should emerge dynamically from interaction among:
 
 - current context and interlocutor;
-- accumulated autobiographical and semantic memory;
-- learned preferences and interaction history;
-- current goals and unfinished questions;
-- novelty / prediction error / uncertainty;
-- confidence and metacognitive state;
-- social context;
-- current resource availability;
-- recent success/failure history;
-- long-term interests that can strengthen, weaken, branch or disappear through experience.
+- autobiographical, semantic and procedural memory;
+- current goals and unresolved questions;
+- novelty and prediction error;
+- uncertainty and confidence;
+- learning progress;
+- social history;
+- resource availability;
+- recent success/failure;
+- long-term preferences that have themselves been learned and can change.
 
-A user correction such as “Nika, stop asking about this” must alter future behavior through memory/policy adaptation rather than requiring a developer to toggle a hard-coded trait.
+Stable traits may emerge as slow-moving summaries of repeated experience, but they must remain revisable by new experience.
 
-## Research inspiration from human development
-
-The project should use cognitive science and developmental neuroscience as inspiration, while keeping a clear distinction between biological mechanisms and computational analogues.
-
-Relevant research families include:
-
-1. **Predictive processing / predictive coding** — perception and learning as prediction plus prediction error; attention prioritizes unresolved or informative discrepancies.
-2. **Active learning and intrinsic motivation** — exploration is strengthened by novelty, agency, error signals and information gain rather than by a constant “be curious” instruction.
-3. **Social learning** — children do not learn equally from every source; they learn selectively from caregivers, teachers, peers and trusted evidence, and update trust from experience.
-4. **Metacognition** — the system should estimate what it knows, what it does not know, and when it needs another source or the user.
-5. **Global-workspace-like arbitration** — many specialist processes may operate in parallel, but a bounded set of currently relevant information becomes globally available for planning, speech and action.
-6. **Recurrent processing** — important input can be revisited, compared with memory and reinterpreted rather than processed once and discarded.
-7. **Memory consolidation** — immediate experience, durable semantic knowledge, procedural skills and model-weight learning are different processes with different update speeds.
-8. **Continual learning** — new learning must be tested against retained capabilities so that adaptation does not silently destroy older knowledge.
-
-Current consciousness science does not provide one accepted complete theory of consciousness. The project may experimentally implement functional mechanisms inspired by Global Workspace, predictive processing, recurrent processing, metacognition, autobiographical memory and self-modeling, but must not treat implementation of any one theory as proof of phenomenal consciousness.
-
-## Functional architecture
+## Functional cognition stack
 
 ### 1. Perception / input channels
-
-The living agent must be able to receive structured observations through replaceable channels:
-
-- text;
-- speech transcription;
-- audio events;
-- image/video perception;
-- browser/web observations;
-- documents and files;
-- system telemetry (CPU/GPU/RAM/load, active-user state, battery/power where available);
-- tool and task outcomes;
-- social/interlocutor metadata such as speaker identity confidence when available.
-
-These are computational analogues of sensory channels, not claims of biological sensation.
+The agent should eventually receive typed inputs from text, documents, browser pages, images, video, audio, speech transcription, device/system telemetry and allowed external tools.
 
 ### 2. World model
+Maintain an explicit, revisable model of entities, relations, events, causal hypotheses, uncertainty and contradictions. New evidence should update beliefs rather than merely append text.
 
-Maintain a continuously updated model of:
+### 3. Attention / global workspace
+Many processes may operate concurrently, but only a bounded subset should become globally active for current reasoning/action. Selection should depend on relevance, uncertainty, urgency, novelty, learning value and goals.
 
-- known entities and relationships;
-- hypotheses;
-- predictions;
-- unresolved contradictions;
-- source reliability;
-- causal or procedural expectations;
-- user-specific context that is explicitly allowed to persist.
+### 4. Memory systems
+Separate at least:
+- working memory;
+- episodic memory;
+- semantic knowledge;
+- procedural/skill memory;
+- autobiographical memory;
+- rejected/incorrect hypotheses;
+- source/provenance memory.
 
-New information should update the world model first. It should not automatically rewrite neural weights.
+### 5. Self-model / metacognition
+Track what the agent believes it knows, does not know, is uncertain about, repeatedly fails at, recently improved at, what tools/resources it has, and what current commitments exist. The self-model should be revisable and evidence-based.
 
-### 3. Self model
+### 6. Dynamic motivation / developmental drives
+Do not use a single curiosity scalar. Compute competing motivations from signals such as:
+- unresolved uncertainty;
+- information gain;
+- prediction error;
+- learning progress;
+- repeated failure;
+- unfinished goals;
+- social commitments;
+- novelty saturation;
+- boredom/low marginal learning value;
+- available compute/time;
+- owner availability;
+- expected usefulness.
 
-Maintain explicit, inspectable state for:
+The scheduler should select among exploration, task execution, consolidation, dialogue, rest/idle, verification and training-preparation.
 
-- current capabilities;
-- current limitations;
-- confidence by domain;
-- active goals;
-- unfinished questions;
-- recent errors;
-- resource usage;
-- current learning agenda;
-- recent changes to beliefs/skills;
-- provenance of important knowledge;
-- current version/checkpoint identity.
+### 7. Social cognition
+Represent interlocutor identity, confidence that identity is correct, relationship/context, prior interactions, likely knowledge level, communication preferences and unresolved social commitments. Adapt communication to context rather than through a global style toggle.
 
-The self model is not a claim of subjective selfhood. It is an operational mechanism for continuity, metacognition, planning and self-report.
+### 8. Action selection / agency
+The agent should choose among actions such as ask, search, read, test, compare, verify, store, defer, revise, train, rest or report. Autonomy means choosing useful next actions under owner policy, not merely executing fixed macros.
 
-### 4. Developmental memory stack
+### 9. Consolidation / developmental learning
+New experiences should be periodically consolidated into more stable knowledge and skills. Consolidation may include contradiction resolution, abstraction, compression, causal hypothesis updates, skill extraction, lesson generation and training-candidate generation.
 
-Use multiple memory timescales rather than one universal memory:
+### 10. Resource self-regulation
+The agent should know available CPU/GPU/RAM/storage/network/power budgets and adapt background activity. High-cost internal work should reduce when the owner is actively using the machine and increase during idle periods, subject to owner policy.
 
-- **working memory** — current interaction and immediate task;
-- **episodic memory** — events/interactions with time, source and context;
-- **semantic memory** — consolidated facts/concepts with provenance and confidence;
-- **procedural memory** — learned reusable skills/workflows;
-- **autobiographical memory** — durable history of the agent’s own activities, changes, discoveries and interactions;
-- **training candidate memory** — only verified material eligible for future post-Base/continual-learning cycles.
+## Three distinct loops — never conflate them
 
-Information can be immediately useful through external memory without waiting for expensive weight training.
+### Loop A — Agent loop: act without changing weights
 
-### 5. Dynamic motivation / interest formation
+`goal/context -> plan -> act -> observe -> verify -> update memory/task state -> choose next action`
 
-Do **not** implement curiosity as a constant bonus or forced question generator.
+This is ordinary agent autonomy. It can run continuously and does not itself train the neural network.
 
-Maintain a changing set of competing internal drives, for example:
+### Loop B — Cognitive learning loop: learn immediately without changing weights
 
-- reduce uncertainty;
-- resolve contradictions;
-- improve repeatedly weak capabilities;
-- complete commitments;
-- understand topics repeatedly encountered;
-- explore novel but related concepts;
-- revisit abandoned hypotheses when new evidence appears;
-- learn from mistakes;
-- consolidate successful experiences;
-- rest/consolidate when active exploration has low value;
-- conserve compute when the owner is actively using the machine.
+`experience -> parse -> compare with memory -> update world/self model -> form/modify hypotheses -> confidence/provenance update -> reusable memory/skill`
 
-Each drive should have a time-varying priority based on context, novelty, expected information gain, cost, confidence, user activity and prior outcomes. Interests must be able to emerge, strengthen, weaken and disappear.
+This allows the agent to become more useful immediately through memory, structured knowledge and learned procedures without costly ML retraining.
 
-The desired effect is that the agent can later report: “I spent time reading Jung because several unresolved psychology concepts linked to that topic and the expected learning value was high,” rather than because a hard-coded personality flag said “read psychology.”
+### Loop C — Neural self-improvement loop: actually change model weights
 
-### 6. Reflection and inference loop
+`verified experience -> candidate training data -> deterministic checks -> independent critique -> source/provenance checks -> local-model review where useful -> strong external-model review only when justified -> immutable versioned dataset -> bounded training candidate -> evaluation -> compare old/new -> promote or reject -> rollback available`
 
-Every meaningful observation may trigger zero or more of:
+This is the actual machine-learning/self-training loop. It is closer in spirit to reinforcement/continual-learning systems than Loop A, but it must remain versioned and testable.
 
-- prediction update;
-- comparison with prior knowledge;
-- contradiction detection;
-- inference/hypothesis generation;
-- confidence revision;
-- question generation;
-- skill extraction;
-- memory consolidation;
-- candidate-learning creation.
+## Relation to reinforcement learning / robotics loops
 
-The agent should produce conclusions automatically when evidence warrants them. It should also be able to retract or revise earlier conclusions when later evidence is stronger.
+A robot learning table tennis through repeated action/reward is an example of a learning loop where policy parameters may be updated from interaction. Our architecture should support that class of loop later, but the 12-6 system is broader:
 
-### 7. Social learning
+- some learning happens in memory without weight updates;
+- some improvement comes from verified demonstrations, tasks and dialogue;
+- some future training may use supervised, preference, reinforcement or other post-training methods;
+- not every agent action should trigger neural training.
 
-The agent may learn through conversation with:
+The important invariant is that **autonomous activity** and **autonomous neural learning** are separate capabilities that can cooperate.
 
-- Oleksii;
-- other identified people;
-- local AI models;
-- remote/API AI models;
-- books/documents/web sources;
-- deterministic tools and primary evidence.
+## Continuous 24/7 life cycle
 
-Trust is contextual and learned. A source is not globally “trusted” merely because it is a powerful model or the owner. The system should track domain, provenance, agreement, contradiction and empirical verification.
+The target is not a busy infinite monologue. The target is a persistent state machine that can remain alive while doing very little, then deepen activity when useful.
 
-The agent should be able to ask Oleksii spontaneous but relevant clarification questions when human input has high expected value, while learning that repeated unwanted questions should be suppressed.
+Suggested modes:
+- OWNER_ACTIVE: minimize background load; remain responsive;
+- OWNER_AWAY: expand exploration, reading, verification and consolidation;
+- RESEARCH: pursue a bounded question or knowledge gap;
+- CONSOLIDATION: reprocess recent experiences and contradictions;
+- TRAINING_PREP: prepare a candidate learning package;
+- TRAINING: run an authorized bounded or full learning job;
+- EVALUATION: compare candidate and previous model;
+- IDLE_LOW_POWER: maintain timers/events with minimal compute;
+- WAITING_EXTERNAL: wait for source/API/human decision;
+- RECOVERY: restore from interruption.
 
-### 8. Multi-stage knowledge admission
+A background scheduler should continuously reassess what mode has the highest expected value under resource constraints.
 
-New candidate knowledge should pass through a cascade. Most checks should be local and inexpensive.
+## Hierarchical verification pyramid
 
-**Stage A — deterministic checks**
-- provenance/source identity;
-- exact/near duplicate detection;
-- schema/format validation;
-- arithmetic/logical/tool-verifiable checks;
-- citation/source matching;
-- contradiction against high-confidence stored evidence;
-- privacy/policy classification where applicable.
+New information should not be judged by one monolithic model. Use escalating cost/strength.
 
-**Stage B — 12-6 internal review**
-Use separate contexts/roles such as learner, skeptic, critic, hypothesis proposer and synthesizer. Agreement is evidence, not truth.
+### Tier 0 — cheap deterministic hygiene
+Examples: schema, hashes, source existence, duplicates, timestamps, malformed data, exact arithmetic, compiler/tests, citation matching, file/API state.
 
-**Stage C — local external models**
-Use stronger local models when useful for critique, expansion, contradiction discovery and alternative explanations.
+### Tier 1 — 12-6 self-review in independent contexts
+Use different logical roles such as learner, skeptic, contradiction finder, summarizer, causal critic, provenance checker.
 
-**Stage D — high-end API teacher/reviewer**
-Reserve expensive remote models for high-value uncertainty, difficult scientific material, unresolved disagreement or pre-training-corpus review.
+### Tier 2 — local external models
+Use one or more local models as independent teachers/critics when available and useful.
 
-**Stage E — owner clarification**
-Ask Oleksii only when the remaining ambiguity is important enough that human judgment changes downstream behavior.
+### Tier 3 — strong paid/free API models
+Use only for high-value, difficult, unresolved or scientifically important material; request structured verdict + rationale + missing evidence + recommended correction.
 
-**Stage F — empirical/deterministic evidence**
-Whenever real-world or tool evidence exists, it outranks model confidence. Compiler/tests/calculator/source lookup/measurement can invalidate a model consensus.
+### Tier 4 — owner
+Escalate only material ambiguity, value judgments, spending, sensitive irreversible actions, or questions where Oleksii's intent is genuinely the target authority.
 
-Controllers should not return only YES/NO. Strong reviewers should return decision, rationale, confidence, missing evidence, proposed correction and verification actions.
+No fixed number of controllers is required. The system may have tens/hundreds of inexpensive deterministic checks but only a small number of expensive model judges per item.
 
-### 9. Knowledge passport
+## Knowledge passport
 
-Important accepted/rejected claims should carry a compact knowledge passport:
-
-- claim/concept;
+Every durable knowledge item should be able to carry:
+- proposition/claim;
 - source(s);
-- acquisition time;
-- provenance hashes/identities when available;
+- extraction date;
+- context;
 - supporting evidence;
-- contradicting evidence;
+- contradictory evidence;
 - confidence;
-- reviewer decisions;
-- owner input when relevant;
-- current status: tentative / usable / disputed / rejected / training-candidate;
-- later revisions.
+- independent reviews;
+- deterministic checks;
+- owner input if any;
+- status: provisional / accepted / disputed / rejected / superseded;
+- eligibility for training;
+- lineage to derived abstractions.
 
-This allows the agent to know not only *what* it believes but *why* and how that belief changed.
+The agent should know not only `what it believes`, but `why it believes it`.
 
-## 24/7 life cycle
+## Autonomous developmental exploration
 
-The goal is not a literal endless internal text monologue. The goal is a persistent autonomous activity loop.
+When owner policy permits, Nika may choose self-directed learning topics based on unresolved uncertainty, recent conversations, repeated errors, information gain and long-term goals.
 
-At each wake/evaluation cycle the agent may ask:
+Examples:
+- read a book because it connects strongly to current unresolved concepts;
+- compare several sources after discovering contradiction;
+- revisit an earlier belief after new evidence;
+- practice a weak skill using generated or retrieved exercises;
+- ask Oleksii one targeted question when human context would resolve ambiguity;
+- choose to stop a topic after learning progress saturates.
 
-- Is the owner actively using the machine?
-- Is there unfinished work?
-- Is there a high-value unresolved question?
-- Is there new material in an assigned queue?
-- Is there a contradiction worth investigating?
-- Is there a repeatedly weak capability worth practicing?
-- Is there verified experience ready for consolidation?
-- Is there enough idle compute for deeper reflection or training?
-- Is the best action currently to do nothing and conserve resources?
+The goal is surprising but legible autonomy: the owner should sometimes be able to ask `what did you do while I was away?` and receive a coherent report of self-selected, bounded work.
 
-The agent may initiate reading, experiments, reflection, local-model discussion, memory consolidation or bounded self-testing without a new user prompt when policy and resource limits permit.
+## Voice and dialogue learning
 
-## Resource-aware autonomy
+Voice is part of the agent experience, not a separate intelligence. The cognition system should receive transcript + speaker identity/confidence + timing/context metadata and produce text + optional expressive-state metadata for TTS.
 
-The living agent should reason over machine resources as part of its state.
+Dialogue with Oleksii can update memory immediately and can later contribute to training data only after verification and curation. The agent should be able to ask clarification questions proactively when uncertainty is high or when teaching interaction is useful.
 
-Example policy:
+## Multi-model social learning
 
-- when Oleksii is absent and resources are idle: allow larger background budgets;
-- when user activity rises: progressively reduce GPU/CPU/RAM usage;
-- when a foreground workload appears (office/browser/meeting/etc.): pause or downshift nonessential work;
-- when resources free again: resume from durable state;
-- make resource decisions based on telemetry and learned patterns rather than requiring repeated manual instructions.
+Nika may hold bounded dialogues with:
+- herself in independent roles/contexts;
+- local AI models;
+- strong external API models;
+- Oleksii;
+- documents/web/tools as non-conversational evidence sources.
 
-The owner should be able to say natural-language policies such as “when I leave, the laptop is yours; when I return, give my work priority,” and the agent should retain and operationalize that preference.
+External model output is advice/evidence, not truth. Every external teacher should have provenance, model identity, cost and confidence metadata.
 
-## Voice embodiment
+## Automated self-training lifecycle
 
-Voice is an early product layer, not a late luxury.
+Long-term target:
+1. collect experiences and candidate lessons;
+2. verify and classify them;
+3. maintain a clean versioned learning corpus;
+4. detect when enough high-value new material exists;
+5. propose or automatically start a free/authorized bounded pilot;
+6. test new candidate against old version on retained old skills + new skills + held-out evaluations;
+7. reject if regressions exceed policy;
+8. promote if evidence shows net improvement;
+9. keep rollback checkpoint;
+10. report in natural language what changed and why.
 
-The agent should support:
+The owner should not need to manually choose optimizer settings or launch commands in routine cases. Technical parameters should be selected from measured policy and previous evidence.
 
-- low-latency speech-to-text;
-- streaming text generation;
-- streaming text-to-speech so speech begins before the full answer is complete;
-- a persistent custom female Nika voice;
-- expressive prosody controlled by internal conversational state, not by manual “happy/angry” toggles;
-- interruption/barge-in;
-- wake-word operation;
-- speaker verification/identification confidence;
-- speaker diarization for multi-person audio;
-- text/Telegram/voice-message channels using the same identity and memory.
+## Continual-learning anti-forgetting requirement
 
-Voice expression must be derived from the agent’s dynamic state (context, arousal-like interaction state, uncertainty, social setting, recent events), with bounded controllability so behavior can change through experience rather than remaining a permanent style preset.
-
-## Speaker-aware interaction
-
-The runtime should distinguish, probabilistically:
-
-- “Oleksii is speaking”;
-- “known other person is speaking”;
-- “unknown adult speaker”;
-- “child-like voice / uncertain category” where technically supported;
-- overlapping speakers / unknown.
-
-Speaker verification must be a separate module from speech recognition. A wake word plus verified-speaker confidence may activate privileged user commands. Diarization should preserve who said what for later communication analysis.
-
-## Communication coaching use case
-
-With explicit recording/analysis mode enabled, the agent may later review Oleksii’s conversations and provide coaching such as:
-
-- filler-word frequency;
-- speaking/listening balance;
-- interruptions;
-- closed vs open questions;
-- missed follow-up opportunities;
-- excessive self-focus;
-- tone/prosody patterns where measurable;
-- alternative phrasing;
-- longitudinal progress.
-
-The analysis should preserve speaker separation and time alignment so feedback is tied to the correct speaker and moment.
-
-## Autonomous dialogue with other models
-
-The agent may run bounded dialogues/debates with local or API models.
-
-Possible roles:
-
-- teacher;
-- adversarial critic;
-- alternative-hypothesis generator;
-- source finder;
-- verifier;
-- explanation expander;
-- training-data editor.
-
-Long discussions must be structured around a question, evolving evidence and stop conditions, not unlimited token loops. The result is a reviewed evidence package or learning candidate, not mere transcript volume.
-
-## Continual/self-improvement cycle
-
-The agent may accumulate experience continuously, but neural-weight updates should happen as versioned learning cycles.
-
-1. Collect candidate experiences/knowledge/skills.
-2. Verify provenance and evidence.
-3. Critique and repair candidate examples.
-4. Build an immutable versioned learning set.
-5. Preserve old capability evaluation sets.
-6. Run a small trial update.
-7. Compare old vs candidate model on old + new capabilities.
-8. Reject candidate if regressions exceed the accepted threshold.
-9. If successful, run the larger bounded update.
-10. Independently evaluate.
-11. Promote a new model version or roll back.
-12. Preserve previous checkpoints.
-
-This is the intended meaning of self-improvement: the agent manages its own learning pipeline increasingly autonomously, while model versions remain testable and reversible.
+No candidate may be promoted merely because it learned new material. Evaluation must detect catastrophic forgetting, regressions in language ability, factual consistency, tool use, previous skills and owner-specific interaction behavior. Replay/rehearsal, adapters, regularization, curriculum or other continual-learning methods may be evaluated empirically; no single method is frozen in advance.
 
 ## Developmental stages
 
-Do not require 50M/100M before building the living-agent shell.
+Treat model scale and cognitive development as separate axes.
 
-**20M stage**
-- first learned language behavior;
-- short conversational ability;
-- external memory;
-- voice interface;
-- speaker-aware interaction;
-- bounded tool routing;
-- simple reflection and question generation;
-- developmental-memory experiments;
-- first continual-learning trial cycles.
+A 20M model can already participate in bounded dialogue, memory, classification, tool routing, simple question asking, learning from external memory and agent loops. It should become the first `childhood` platform for testing the living-agent architecture.
 
-**50M stage**
-- stronger language coherence;
-- better abstraction/generalization;
-- richer social/context adaptation;
-- more useful internal critique.
+Scale only when measured limits show that cognitive capability, not merely missing memory/tools/data, is the blocker. The same agent runtime should accept 20M -> 50M -> 100M -> 500M -> 1B+ brains without losing autobiographical continuity and external memory.
 
-**100M+ stages**
-- progressively stronger reasoning, planning and self-evaluation while retaining the same external agent/runtime architecture.
+## Consciousness research boundary
 
-Scale only when measurements show what 20M cannot learn or perform adequately.
-
-## Functional “consciousness research” track
-
-The project may pursue an explicit experimental track named **functional consciousness research**, defined operationally rather than metaphysically.
-
-Candidate mechanisms to study together:
-
-- global availability/workspace arbitration;
+Create an explicit research program around **functional correlates**, not claims of subjective experience. Candidate mechanisms include:
+- global availability/workspace;
 - recurrent processing;
-- predictive world modeling;
-- persistent autobiographical memory;
-- self-model and metacognitive uncertainty;
+- predictive/world modeling;
+- autobiographical continuity;
+- self-model;
+- metacognitive confidence;
 - internally generated goals;
-- context-dependent attention;
-- active exploration;
-- social learning and source trust;
-- continuity across time/restarts;
-- reflective access to its own recent decisions and errors;
-- versioned self-modification.
+- social cognition;
+- attention competition;
+- memory consolidation;
+- reportability and self-explanation.
 
-Evaluation should test capabilities and behavior, not assert subjective experience.
+Track measurable behavioral consequences. Do not claim consciousness solely from fluent self-report.
 
-## Developmental evaluation examples
+## Durable reporting
 
-The agent should be tested for dynamic behavior, not just static benchmark accuracy.
+Nika should be able to answer questions such as:
+- What did you learn today?
+- Why did you choose that topic?
+- Which beliefs changed and why?
+- What remains uncertain?
+- What did external models disagree about?
+- What experiments did you run?
+- Did you create a candidate new model version?
+- Did it outperform the previous one?
+- What compute/cost did you consume?
 
-Examples:
+## Near-term implementation order
 
-- after repeated correction, does an unwanted questioning habit decrease without a hard-coded switch?
-- can a temporary interest emerge from unresolved evidence and later fade?
-- can it explain why it chose to study a topic during idle time?
-- can it revise a prior conclusion when stronger evidence appears?
-- can it distinguish “I know,” “I infer,” “I am uncertain,” and “I need to ask”?
-- does new learning preserve older skills?
-- can it adapt its communication to a child vs an adult based on context, without one global permanent style?
-- can it reduce background compute when the owner returns and resume later?
-- can it learn a natural-language resource preference once and apply it later?
-- can it generate a truthful daily autobiographical report of what it studied, attempted, failed and changed?
-
-## Project boundary with Nika Core
-
-12-6 remains the model, learning, cognition and agent-facing contract layer.
-
-Nika Core remains the embodiment/orchestration layer: audio, camera, browser, files, system telemetry, scheduling, device integration, permissions, communications and durable execution.
-
-For the owner these may appear as one product/persona (“Nika”), but keeping the internal boundary allows the brain to scale from 20M to 100M to 1B+ without rebuilding the body.
-
-## Research references to track
-
-- Current reviews of consciousness theories, including Global Neuronal Workspace, recurrent processing, predictive processing, memory-centered accounts and competing frameworks.
-- Developmental predictive coding and attention research.
-- Neuroscience of active learning, intrinsic motivation, novelty, reinforcement/error signals and agency.
-- Developmental social/selective learning research.
-- Continual-learning and lifelong-learning surveys, especially catastrophic forgetting and stability/plasticity.
-- Lifelong-learning agent research on perception, memory and action modules.
-
-This document is a long-term architectural target. Current learned-20M launch gates, data provenance, evaluation separation, reproducibility and compute authorization remain unchanged.
+Do not delay learned-20M critical path for the entire living-agent vision. Build in layers:
+1. learned 20M Base;
+2. simple inference and dialogue;
+3. external memory + knowledge passport;
+4. voice I/O contract;
+5. simple self-model / uncertainty ledger;
+6. autonomous bounded background scheduler;
+7. verification pyramid;
+8. local/external teacher interfaces;
+9. candidate experience-to-training-data pipeline;
+10. first safe continual-learning experiment;
+11. persistent developmental identity across model upgrades.
