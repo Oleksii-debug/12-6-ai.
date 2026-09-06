@@ -30,6 +30,33 @@ jobs:
       - name: Assert exact event head
         if: github.event_name == 'pull_request'
         run: test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+      - name: Assert complete V2 implementation surface
+        run: |
+          python - <<'PY'
+          import ast
+          from pathlib import Path
+
+          path = Path("src/twelve_six/data/unique_loss_ledger_v2.py")
+          source = path.read_text(encoding="utf-8")
+          tree = ast.parse(source, filename=str(path))
+          top_level = {
+              node.name
+              for node in tree.body
+              if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+          }
+          required = {
+              "build_ledger",
+              "verify_ledger",
+              "count_nonignored_targets",
+              "ExposureReplayGuard",
+          }
+          missing = sorted(required - top_level)
+          if missing:
+              raise SystemExit(f"truncated V2 implementation; missing top-level symbols: {missing}")
+          if source.count("\n") < 500:
+              raise SystemExit("truncated V2 implementation; unexpectedly short source")
+          print("complete_v2_surface=pass")
+          PY
       - name: Compile V2 implementation
         run: python -m py_compile src/twelve_six/data/unique_loss_ledger_v2.py tools/validate_next100_064_unique_loss_ledger_v2.py
       - name: Validate frozen authority twice
