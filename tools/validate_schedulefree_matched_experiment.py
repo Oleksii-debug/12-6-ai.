@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Fail-closed validator for the D02 Schedule-Free matched-arm contract."""
 
 from __future__ import annotations
