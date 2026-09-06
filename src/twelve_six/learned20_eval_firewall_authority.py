@@ -5,17 +5,29 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
+_HEX = frozenset("0123456789abcdef")
+
 
 def _nonempty_text(value: Any) -> bool:
     return isinstance(value, str) and bool(value.strip())
 
 
+def _sha256_text(value: Any) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) == 64
+        and value == value.lower()
+        and all(character in _HEX for character in value)
+    )
+
+
 def validate_evaluation_firewall_provenance(evidence: Mapping[str, Any]) -> list[str]:
     """Fail closed unless the terminal firewall is bound to the exact launch corpus.
 
-    The producer lanes own corpus/decontamination construction.  This verifier only
-    consumes their immutable identities and prevents a clean firewall from a
-    different corpus/split/packing graph from authorizing the learned-20M pilot.
+    Producer lanes own corpus/decontamination construction. This verifier consumes
+    their immutable identities and the canonical DATA-526 record/payload inventory
+    digests so a clean firewall from a different corpus/split/packing graph cannot
+    authorize the learned-20M pilot.
     """
 
     firewall = evidence.get("evaluation_firewall")
@@ -27,20 +39,33 @@ def validate_evaluation_firewall_provenance(evidence: Mapping[str, Any]) -> list
         return ["evaluation_firewall.training_corpus_not_terminal"]
 
     blockers: list[str] = []
-    links = {
+    identity_links = {
         "training_corpus_authority_identity": corpus.get("identity"),
         "training_corpus_identity": corpus.get("corpus_identity"),
         "training_split_identity": corpus.get("split_identity"),
         "training_packing_identity": corpus.get("packing_identity"),
-        "record_graph_identity": corpus.get("record_graph_identity"),
     }
-    for key, expected in links.items():
+    for key, expected in identity_links.items():
         if not _nonempty_text(expected):
             blockers.append(f"corpus.{key}_source_missing")
             continue
         observed = firewall.get(key)
         if not _nonempty_text(observed):
             blockers.append(f"evaluation_firewall.{key}_missing")
+        elif observed != expected:
+            blockers.append(f"evaluation_firewall.{key}_mismatch")
+
+    digest_links = {
+        "record_inventory_digest_sha256": corpus.get("record_inventory_digest_sha256"),
+        "payload_inventory_digest_sha256": corpus.get("payload_inventory_digest_sha256"),
+    }
+    for key, expected in digest_links.items():
+        if not _sha256_text(expected):
+            blockers.append(f"corpus.{key}_source_invalid")
+            continue
+        observed = firewall.get(key)
+        if not _sha256_text(observed):
+            blockers.append(f"evaluation_firewall.{key}_invalid")
         elif observed != expected:
             blockers.append(f"evaluation_firewall.{key}_mismatch")
 
@@ -54,9 +79,11 @@ def validate_evaluation_firewall_provenance(evidence: Mapping[str, Any]) -> list
     decontamination_identity = firewall.get("decontamination_identity")
     if not _nonempty_text(decontamination_identity):
         blockers.append("evaluation_firewall.decontamination_identity_missing")
-    if firewall.get("decontaminated_record_graph_identity") != corpus.get(
-        "record_graph_identity"
+    if firewall.get("decontaminated_record_inventory_digest_sha256") != corpus.get(
+        "record_inventory_digest_sha256"
     ):
-        blockers.append("evaluation_firewall.decontaminated_record_graph_identity_mismatch")
+        blockers.append(
+            "evaluation_firewall.decontaminated_record_inventory_digest_sha256_mismatch"
+        )
 
     return sorted(set(blockers))
