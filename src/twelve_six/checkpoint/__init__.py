@@ -1,5 +1,11 @@
 """Checkpointing, integrity, resume, and export primitives for 12-6 AI."""
 
+from . import core as _core
+from .progress_binding import install as _install_progress_binding
+
+_install_progress_binding(_core)
+del _core, _install_progress_binding
+
 from .core import (
     CheckpointCompatibilityError,
     CheckpointError,
@@ -21,8 +27,9 @@ from .core import (
     verify_checkpoint,
 )
 from .hf_export import export_hf_directory
+from .progress_trainer import load_trainer_checkpoint
 from .run_binding import bind_checkpoint_identity
-from .trainer_adapter import load_trainer_checkpoint, save_trainer_checkpoint
+from .trainer_adapter import save_trainer_checkpoint
 
 __all__ = [
     "CheckpointCompatibilityError",
