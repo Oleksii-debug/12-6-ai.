@@ -9,7 +9,7 @@ on:
       - "**/*.md"
 
 concurrency:
-  group: ci-${{ github.event.pull_request.number || github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -38,6 +38,12 @@ jobs:
           --profile linux-x86_64
           --source-sha "$SOURCE_SHA"
           --output ci-dependency-preflight.json
+      - name: Enforce shared CI workflow budget
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: python -m twelve_six.ci_workflow_policy --base "$BASE_SHA" --head "$HEAD_SHA"
       - id: scope
         name: Classify portability-sensitive changes
         env:
