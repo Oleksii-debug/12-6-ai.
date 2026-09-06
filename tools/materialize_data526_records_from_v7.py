@@ -137,7 +137,16 @@ def _load_data213_payloads(archive_path: Path, config: dict[str, Any]) -> dict[s
     result: dict[str, bytes] = {}
     with zipfile.ZipFile(archive_path) as package:
         for source_id, spec in authority["sources"].items():
-            payload = package.read(spec["path"])
+            artifact_payload = package.read(spec["path"])
+            if len(artifact_payload) != int(spec["artifact_file_bytes"]):
+                raise ValueError(f"DATA-213 artifact file byte-count drift: {source_id}")
+            if sha256(artifact_payload) != spec["artifact_file_sha256"]:
+                raise ValueError(f"DATA-213 artifact file SHA-256 drift: {source_id}")
+            if spec.get("payload_transform") != "DROP_EXACT_ONE_TRAILING_LF":
+                raise ValueError(f"unsupported DATA-213 payload transform: {source_id}")
+            if not artifact_payload.endswith(b"\n"):
+                raise ValueError(f"DATA-213 artifact trailing LF drift: {source_id}")
+            payload = artifact_payload[:-1]
             _verify_payload(payload, spec, source_id=source_id)
             result[source_id] = payload
     return result
