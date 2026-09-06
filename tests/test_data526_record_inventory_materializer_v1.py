@@ -6,7 +6,6 @@ import pytest
 
 from tools.materialize_data526_record_inventory_v1 import materialize
 
-
 RECORDS = [
     {
         "record_id": "r2",
