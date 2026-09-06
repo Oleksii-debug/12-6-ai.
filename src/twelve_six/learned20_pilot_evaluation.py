@@ -6,6 +6,8 @@ import math
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from twelve_six.metrics import bpb_from_aggregate
+
 REQUIRED_STRATA = ("UA", "EN", "CODE")
 
 
@@ -73,6 +75,56 @@ def _validate_heldout_metrics(d06: Mapping[str, Any], blockers: list[str]) -> No
         if not _nonnegative_number(after):
             blockers.append(f"{prefix}.trained_mean_nll_invalid")
             continue
+
+        scored_bytes = item.get("scored_utf8_bytes")
+        bpb_tokens = item.get("bpb_predicted_tokens")
+        before_bpb_nll = item.get("random_init_bpb_total_nll_nats")
+        after_bpb_nll = item.get("trained_bpb_total_nll_nats")
+        if not _positive_int(scored_bytes):
+            blockers.append(f"{prefix}.scored_utf8_bytes_invalid")
+        if not _positive_int(bpb_tokens) or (
+            _positive_int(bpb_tokens) and bpb_tokens > targets
+        ):
+            blockers.append(f"{prefix}.bpb_predicted_tokens_invalid")
+        if not _nonnegative_number(before_bpb_nll):
+            blockers.append(f"{prefix}.random_init_bpb_total_nll_nats_invalid")
+        if not _nonnegative_number(after_bpb_nll):
+            blockers.append(f"{prefix}.trained_bpb_total_nll_nats_invalid")
+
+        if (
+            _positive_int(scored_bytes)
+            and _positive_int(bpb_tokens)
+            and bpb_tokens <= targets
+            and _nonnegative_number(before_bpb_nll)
+            and _nonnegative_number(after_bpb_nll)
+        ):
+            before_bpb = bpb_from_aggregate(
+                total_nll_nats=before_bpb_nll,
+                total_utf8_bytes=scored_bytes,
+                predicted_tokens=bpb_tokens,
+            ).bits_per_byte
+            after_bpb = bpb_from_aggregate(
+                total_nll_nats=after_bpb_nll,
+                total_utf8_bytes=scored_bytes,
+                predicted_tokens=bpb_tokens,
+            ).bits_per_byte
+            claimed_before_bpb = item.get("random_init_bpb")
+            claimed_after_bpb = item.get("trained_bpb")
+            if not _nonnegative_number(claimed_before_bpb) or not math.isclose(
+                float(claimed_before_bpb),
+                before_bpb,
+                rel_tol=1e-12,
+                abs_tol=1e-12,
+            ):
+                blockers.append(f"{prefix}.random_init_bpb_mismatch")
+            if not _nonnegative_number(claimed_after_bpb) or not math.isclose(
+                float(claimed_after_bpb),
+                after_bpb,
+                rel_tol=1e-12,
+                abs_tol=1e-12,
+            ):
+                blockers.append(f"{prefix}.trained_bpb_mismatch")
+
         total_targets += targets
         weighted_before += float(before) * targets
         weighted_after += float(after) * targets
