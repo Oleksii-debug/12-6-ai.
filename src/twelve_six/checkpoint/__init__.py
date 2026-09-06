@@ -27,8 +27,9 @@ from .core import (
     verify_checkpoint,
 )
 from .hf_export import export_hf_directory
+from .progress_trainer import load_trainer_checkpoint
 from .run_binding import bind_checkpoint_identity
-from .trainer_adapter import load_trainer_checkpoint, save_trainer_checkpoint
+from .trainer_adapter import save_trainer_checkpoint
 
 __all__ = [
     "CheckpointCompatibilityError",
