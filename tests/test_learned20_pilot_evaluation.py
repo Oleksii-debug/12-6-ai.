@@ -21,16 +21,34 @@ def _evidence() -> dict:
                 "target_count": 100,
                 "random_init_mean_nll": 5.8,
                 "trained_mean_nll": 5.2,
+                "scored_utf8_bytes": 200,
+                "bpb_predicted_tokens": 100,
+                "random_init_bpb_total_nll_nats": 580.0,
+                "trained_bpb_total_nll_nats": 520.0,
+                "random_init_bpb": 4.183815618577994,
+                "trained_bpb": 3.7510071063113046,
             },
             "EN": {
                 "target_count": 200,
                 "random_init_mean_nll": 5.7,
                 "trained_mean_nll": 5.1,
+                "scored_utf8_bytes": 400,
+                "bpb_predicted_tokens": 200,
+                "random_init_bpb_total_nll_nats": 1140.0,
+                "trained_bpb_total_nll_nats": 1020.0,
+                "random_init_bpb": 4.111680866533546,
+                "trained_bpb": 3.678872354266856,
             },
             "CODE": {
                 "target_count": 100,
                 "random_init_mean_nll": 5.9,
                 "trained_mean_nll": 5.4,
+                "scored_utf8_bytes": 200,
+                "bpb_predicted_tokens": 100,
+                "random_init_bpb_total_nll_nats": 590.0,
+                "trained_bpb_total_nll_nats": 540.0,
+                "random_init_bpb": 4.2559503706224415,
+                "trained_bpb": 3.895276610400201,
             },
         },
         "weighted_random_init_mean_nll": 5.775,
@@ -88,6 +106,20 @@ def test_weighted_heldout_metrics_are_recomputed_and_must_improve() -> None:
     evidence["bounded_pilot"]["d06_evaluation"]["weighted_trained_mean_nll"] = 5.875
     blockers = validate_terminal_pilot_evaluation(evidence)
     assert "bounded_pilot.d06.heldout_not_better_than_random_init" in blockers
+
+
+def test_bpb_is_recomputed_from_additive_totals() -> None:
+    evidence = _evidence()
+    ua = evidence["bounded_pilot"]["d06_evaluation"]["heldout_metrics"]["UA"]
+    ua["trained_bpb"] = 0.01
+    blockers = validate_terminal_pilot_evaluation(evidence)
+    assert "bounded_pilot.d06.heldout_metrics.UA.trained_bpb_mismatch" in blockers
+
+    evidence = _evidence()
+    ua = evidence["bounded_pilot"]["d06_evaluation"]["heldout_metrics"]["UA"]
+    ua["scored_utf8_bytes"] = 0
+    blockers = validate_terminal_pilot_evaluation(evidence)
+    assert "bounded_pilot.d06.heldout_metrics.UA.scored_utf8_bytes_invalid" in blockers
 
 
 def test_all_three_heldout_strata_are_mandatory() -> None:
