@@ -6,11 +6,19 @@ on:
       - "configs/data/research_corpus_v1_predecontam_blocker_v1.json"
       - "configs/data/research_corpus_v1_predecontam_blocker_v2.json"
       - "configs/data/research_corpus_v1_predecontam_blocker_v3.json"
+      - "configs/data/research_corpus_v1_predecontam_blocker_v4.json"
       - "configs/data/research_corpus_v1_predecontam_freeze_v4.json"
+      - "configs/data/data526_record_materialization_v5.json"
+      - "tools/materialize_data526_record_inventory_v1.py"
+      - "tools/materialize_data526_records_from_v7.py"
+      - "tools/validate_data526_record_payload_gate_v4.py"
       - "tools/validate_data526_research_corpus_predecontam.py"
       - "tools/validate_data526_research_corpus_predecontam_v2.py"
       - "tools/validate_data526_research_corpus_predecontam_v3.py"
       - "tools/validate_data526_research_corpus_predecontam_v4.py"
+      - "tests/test_data526_record_inventory_materializer_v1.py"
+      - "tests/test_data526_record_materialization_v5.py"
+      - "tests/test_data526_record_payload_gate_v4.py"
       - "tests/test_data526_research_corpus_predecontam.py"
       - "tests/test_data526_research_corpus_predecontam_v2.py"
       - "tests/test_data526_research_corpus_predecontam_v3.py"
@@ -31,7 +39,7 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 40
     env:
       TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
       SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -63,6 +71,7 @@ jobs:
         run: |
           set -euo pipefail
           python tools/validate_data526_research_corpus_predecontam_v4.py
+          python tools/validate_data526_record_payload_gate_v4.py
           curl --fail --silent --show-error --location \
             -H "Authorization: Bearer $GITHUB_TOKEN" \
             -H "Accept: application/vnd.github+json" \
@@ -92,10 +101,86 @@ jobs:
       - name: Run fail-closed mutation tests
         run: >-
           python -m unittest -v
+          tests.test_data526_record_inventory_materializer_v1
+          tests.test_data526_record_materialization_v5
+          tests.test_data526_record_payload_gate_v4
           tests.test_data526_research_corpus_predecontam
           tests.test_data526_research_corpus_predecontam_v2
           tests.test_data526_research_corpus_predecontam_v3
           tests.test_data526_research_corpus_predecontam_v4
+
+      - name: Checkout exact terminal V7 materializer
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: d3333ec1b4a508df232a5aefccd6686adda745fb
+          path: _data526_v7
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Install deterministic NIST PDF extractor
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends poppler-utils
+          pdftotext -v
+
+      - name: Retrieve immutable DATA-213 normalized artifacts twice
+        run: |
+          set -euo pipefail
+          for build in a b; do
+            curl --fail --silent --show-error --location \
+              -H "Authorization: Bearer $GITHUB_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/Oleksii-debug/12-6-ai./actions/artifacts/9600107886/zip" \
+              -o "/tmp/data213-${build}.zip"
+          done
+          cmp /tmp/data213-a.zip /tmp/data213-b.zip
+
+      - name: Materialize exact 48-record graph twice
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/data526-a /tmp/data526-b
+          mkdir -p /tmp/data526-a /tmp/data526-b evidence/data526/v5
+          python tools/materialize_data526_records_from_v7.py \
+            --v7-root _data526_v7 \
+            --data213-zip /tmp/data213-a.zip \
+            --records-jsonl /tmp/data526-a/records.jsonl \
+            --inventory-json /tmp/data526-a/inventory.json \
+            --evidence-json /tmp/data526-a/evidence.json
+          python tools/materialize_data526_records_from_v7.py \
+            --v7-root _data526_v7 \
+            --data213-zip /tmp/data213-b.zip \
+            --records-jsonl /tmp/data526-b/records.jsonl \
+            --inventory-json /tmp/data526-b/inventory.json \
+            --evidence-json /tmp/data526-b/evidence.json
+          cmp /tmp/data526-a/records.jsonl /tmp/data526-b/records.jsonl
+          cmp /tmp/data526-a/inventory.json /tmp/data526-b/inventory.json
+          cmp /tmp/data526-a/evidence.json /tmp/data526-b/evidence.json
+          cp /tmp/data526-a/inventory.json evidence/data526/v5/record_inventory.json
+          cp /tmp/data526-a/evidence.json evidence/data526/v5/materialization_evidence.json
+          rm -f /tmp/data526-a/records.jsonl /tmp/data526-b/records.jsonl
+
+      - name: Assert V5 payload graph is text-free in durable evidence
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          config = json.loads(Path("configs/data/data526_record_materialization_v5.json").read_text())
+          inventory = json.loads(Path("evidence/data526/v5/record_inventory.json").read_text())
+          evidence = json.loads(Path("evidence/data526/v5/materialization_evidence.json").read_text())
+          assert inventory["record_count"] == config["expected_materialization"]["record_count"] == 48
+          assert inventory["total_payload_bytes"] == config["expected_materialization"]["total_payload_bytes"] == 2_215_615
+          assert evidence["record_count"] == 48
+          assert evidence["total_payload_bytes"] == 2_215_615
+          assert evidence["authorized_unique_optimized_targets"] == 0
+          assert evidence["decontamination_executed"] is False
+          assert evidence["tokenizer_fit_executed"] is False
+          assert evidence["training_executed"] is False
+          assert evidence["final_test_payload_accessed"] is False
+          assert "normalized_payload" not in Path("evidence/data526/v5/record_inventory.json").read_text()
+          assert "normalized_payload" not in Path("evidence/data526/v5/materialization_evidence.json").read_text()
+          PY
 
       - name: Assert V4 does not promote training or final-test access
         run: |
@@ -114,3 +199,14 @@ jobs:
           assert doc["claim_boundary"]["paid_compute_used"] is False
           assert doc["claim_boundary"]["long_training_authorized"] is False
           PY
+
+      - name: Upload text-free DATA-526 V5 record authority candidate
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: data526-record-materialization-${{ env.SOURCE_SHA }}
+          if-no-files-found: error
+          retention-days: 90
+          path: |
+            configs/data/data526_record_materialization_v5.json
+            evidence/data526/v5/record_inventory.json
+            evidence/data526/v5/materialization_evidence.json
