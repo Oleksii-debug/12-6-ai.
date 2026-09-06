@@ -41,11 +41,11 @@ from .run_binding import bind_checkpoint_identity
 from .trainer_adapter import save_trainer_checkpoint
 
 __all__ = [
+    "D04_RESUME_BINDING_SCHEMA",
     "CheckpointCompatibilityError",
     "CheckpointError",
     "CheckpointIdentity",
     "CheckpointIntegrityError",
-    "D04_RESUME_BINDING_SCHEMA",
     "LoadResult",
     "VerifiedCheckpoint",
     "assert_d04_resume_binding",
