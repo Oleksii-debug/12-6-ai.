@@ -3,10 +3,13 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 
 from tools.materialize_data526_records_from_v7 import (
+    _load_data213_payloads,
     _normalize_kmu,
     _split_cpython,
     materialize_records,
@@ -23,6 +26,35 @@ class Data526RecordMaterializationV5Tests(unittest.TestCase):
         self.assertEqual(config["expected_materialization"]["record_count"], 48)
         self.assertEqual(config["expected_materialization"]["total_payload_bytes"], 2_215_615)
         self.assertEqual(config["claim_boundary"]["authorized_unique_optimized_targets"], 0)
+
+    def test_data213_wrapper_drops_exactly_one_bound_trailing_lf(self) -> None:
+        artifact_payload = b"abc\n"
+        with tempfile.TemporaryDirectory() as temp_dir:
+            archive = Path(temp_dir) / "data213.zip"
+            with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_STORED) as package:
+                package.writestr("normalized/record.txt", artifact_payload)
+            archive_bytes = archive.read_bytes()
+            config = {
+                "data213_normalized_artifact": {
+                    "artifact_zip_sha256": hashlib.sha256(archive_bytes).hexdigest(),
+                    "sources": {
+                        "source": {
+                            "artifact_file_bytes": len(artifact_payload),
+                            "artifact_file_sha256": hashlib.sha256(artifact_payload).hexdigest(),
+                            "path": "normalized/record.txt",
+                            "payload_bytes": 3,
+                            "payload_sha256": hashlib.sha256(b"abc").hexdigest(),
+                            "payload_transform": "DROP_EXACT_ONE_TRAILING_LF",
+                        }
+                    },
+                }
+            }
+            self.assertEqual(_load_data213_payloads(archive, config), {"source": b"abc"})
+
+            weakened = copy.deepcopy(config)
+            weakened["data213_normalized_artifact"]["sources"]["source"]["payload_transform"] = "STRIP"
+            with self.assertRaisesRegex(ValueError, "unsupported DATA-213 payload transform"):
+                _load_data213_payloads(archive, weakened)
 
     def test_kmu_normalization_is_exact_and_trailing_lf_bounded(self) -> None:
         raw = "  A\u0308  Б  \n\n  В\tГ \n".encode("utf-8")
