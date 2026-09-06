@@ -17,6 +17,24 @@ REQUIRED_STAGE_BINDINGS = (
     "split",
     "packing",
 )
+EXPOSURE_STATE_KEYS = frozenset(
+    {
+        "schema_version",
+        "ledger_identity_sha256",
+        "materialization_identity_sha256",
+        "packing_identity_sha256",
+        "authorized_budget",
+        "one_pass_maximum",
+        "consumed_loss_positions",
+        "claim_sequence",
+        "claims",
+        "trainer_state_binding",
+        "state_identity_sha256",
+    }
+)
+CLAIM_KEYS = frozenset(
+    {"segment_identity_sha256", "offset_start", "offset_end"}
+)
 
 
 class LedgerError(ValueError):
@@ -583,6 +601,11 @@ class ExposureReplayGuard:
         for index, claim in enumerate(claims):
             if not isinstance(claim, Mapping):
                 raise LedgerError(f"claims[{index}] must be an object")
+            if set(claim) != CLAIM_KEYS:
+                raise LedgerError(
+                    f"claims[{index}] must contain exactly segment_identity_sha256, "
+                    "offset_start and offset_end"
+                )
             segment_id = _require_sha256(
                 claim.get("segment_identity_sha256"),
                 f"claims[{index}].segment_identity_sha256",
@@ -664,6 +687,10 @@ class ExposureReplayGuard:
         *,
         expected_trainer_state_binding: Mapping[str, Any],
     ) -> None:
+        if not isinstance(state, Mapping):
+            raise LedgerError("exposure state must be an object")
+        if set(state) != EXPOSURE_STATE_KEYS:
+            raise LedgerError("exposure state fields do not match the V2 schema")
         if state.get("schema_version") != EXPOSURE_STATE_SCHEMA:
             raise LedgerError("exposure state schema mismatch")
         state_copy = deepcopy(dict(state))
