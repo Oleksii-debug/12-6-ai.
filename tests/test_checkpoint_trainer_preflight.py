@@ -33,6 +33,8 @@ class _StateComponentProbe:
             raise ValueError("state keys mismatch")
         if not isinstance(state["history"], list) or len(state["history"]) != 2:
             raise ValueError("state history geometry mismatch")
+        if state["value"] < 0:
+            raise ValueError("state value is semantically invalid")
         self.loads += 1
         self.value = float(state["value"])
         self.history = list(state["history"])
@@ -348,3 +350,67 @@ def test_trainer_owned_component_corruption_fails_before_model_mutation(
     assert target_trainer.scaler is not None
     assert target_trainer.scheduler.loads == 0
     assert target_trainer.scaler.loads == 0
+
+
+@pytest.mark.parametrize("field", ["scheduler", "scaler"])
+def test_trainer_owned_component_semantic_rejection_is_transactional(
+    tmp_path: Path,
+    field: str,
+) -> None:
+    torch = pytest.importorskip("torch")
+    torch.manual_seed(23)
+    source_model = torch.nn.Linear(3, 2, bias=False)
+    source_trainer = _TrainerProbe(
+        source_model,
+        populated=True,
+        with_state_components=True,
+    )
+    checkpoint = tmp_path / f"trainer-{field}-semantic-corruption"
+    save_trainer_checkpoint(
+        checkpoint,
+        model=source_model,
+        trainer=source_trainer,
+        identity=_identity(sum(parameter.numel() for parameter in source_model.parameters())),
+    )
+
+    tree = json.loads((checkpoint / "state.json").read_text(encoding="utf-8"))
+    tensors = load_safetensors_bytes((checkpoint / "state.safetensors").read_bytes())
+    state = unpack_state_tree(tree, tensors)
+    state["trainer"][field]["value"] = -1.0
+    _rewrite_state(checkpoint, state)
+
+    torch.manual_seed(211)
+    target_model = torch.nn.Linear(3, 2, bias=False)
+    target_trainer = _TrainerProbe(
+        target_model,
+        populated=False,
+        with_state_components=True,
+    )
+    before_model = {
+        name: tensor.detach().clone() for name, tensor in target_model.state_dict().items()
+    }
+    before_optimizer = copy.deepcopy(target_trainer.optimizer.state_dict())
+    before_scheduler = copy.deepcopy(target_trainer.scheduler.state_dict())
+    before_scaler = copy.deepcopy(target_trainer.scaler.state_dict())
+
+    with pytest.raises(
+        CheckpointCompatibilityError,
+        match=rf"checkpoint {field} state failed isolated semantic compatibility preflight",
+    ):
+        load_trainer_checkpoint(
+            checkpoint,
+            model=target_model,
+            trainer=target_trainer,
+            restore_rng=False,
+        )
+
+    for name, tensor in target_model.state_dict().items():
+        torch.testing.assert_close(tensor, before_model[name], rtol=0, atol=0)
+    assert target_trainer.optimizer.state_dict() == before_optimizer
+    assert target_trainer.loads == 0
+    assert target_trainer.scheduler is not None
+    assert target_trainer.scaler is not None
+    assert target_trainer.scheduler.loads == 0
+    assert target_trainer.scaler.loads == 0
+    assert target_trainer.scheduler.state_dict() == before_scheduler
+    assert target_trainer.scaler.state_dict() == before_scaler
