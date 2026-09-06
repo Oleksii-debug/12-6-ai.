@@ -30,6 +30,11 @@ from .core import (
     sha256_file,
     verify_checkpoint,
 )
+from .d04_resume_binding import (
+    D04_RESUME_BINDING_SCHEMA,
+    assert_d04_resume_binding,
+    bind_d04_resume_identity,
+)
 from .hf_export import export_hf_directory
 from .progress_trainer import load_trainer_checkpoint
 from .run_binding import bind_checkpoint_identity
@@ -40,10 +45,13 @@ __all__ = [
     "CheckpointError",
     "CheckpointIdentity",
     "CheckpointIntegrityError",
+    "D04_RESUME_BINDING_SCHEMA",
     "LoadResult",
     "VerifiedCheckpoint",
+    "assert_d04_resume_binding",
     "assert_identity",
     "bind_checkpoint_identity",
+    "bind_d04_resume_identity",
     "capture_rng_state",
     "detect_git_sha",
     "environment_snapshot",
