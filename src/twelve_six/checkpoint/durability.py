@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import os
+import shutil
 import stat
+import tempfile
 from pathlib import Path
+from typing import Any
 
 
 def _fsync_regular_file(path: Path) -> None:
@@ -26,12 +29,7 @@ def _fsync_regular_file(path: Path) -> None:
 
 
 def fsync_checkpoint_tree(directory: str | Path, *, expected_names: frozenset[str]) -> None:
-    """Durably flush a fully verified unpublished checkpoint tree.
-
-    Call this after integrity verification and before the atomic directory rename.
-    The exact inventory is rechecked so an unexpected file cannot be silently
-    published between verification and the durability barrier.
-    """
+    """Durably flush a fully verified unpublished checkpoint tree."""
     root = Path(directory)
     before = root.lstat()
     if stat.S_ISLNK(before.st_mode) or not stat.S_ISDIR(before.st_mode):
@@ -68,3 +66,60 @@ def fsync_parent_directory(path: str | Path) -> None:
         os.fsync(fd)
     finally:
         os.close(fd)
+
+
+def _raise_existing_destination(
+    destination: Path, *, overwrite: bool, appeared_before_publication: bool = False
+) -> None:
+    """Preserve checkpoint-v1's public immutable-destination error contract."""
+    if overwrite:
+        raise FileExistsError(
+            "checkpoint-v1 is immutable and cannot overwrite existing destination: "
+            f"{destination}"
+        )
+    if appeared_before_publication:
+        raise FileExistsError(f"checkpoint destination appeared before publication: {destination}")
+    raise FileExistsError(f"checkpoint already exists: {destination}")
+
+
+def install(core: Any) -> None:
+    """Wrap production save with payload+directory fsync before durable publication.
+
+    The existing checkpoint-v1 writer first publishes into a private staging name.
+    Only a fully verified staging tree is fsynced, atomically renamed to the caller's
+    destination, and followed by a parent-directory fsync. A failure before the
+    final rename leaves no destination. A parent-fsync failure is reported even
+    though the rename may already be visible, because power-loss durability is then
+    not proven.
+    """
+    if getattr(core, "_D05_DURABLE_SAVE_INSTALLED", False):
+        return
+    original_save = core.save_checkpoint
+
+    def save_checkpoint(directory: str | Path, **kwargs: Any) -> dict[str, Any]:
+        destination = Path(directory)
+        overwrite = kwargs.get("overwrite", False)
+        if destination.exists() or destination.is_symlink():
+            _raise_existing_destination(destination, overwrite=overwrite)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        staging_root = Path(
+            tempfile.mkdtemp(prefix=f".{destination.name}.durable-", dir=destination.parent)
+        )
+        staging = staging_root / "checkpoint"
+        try:
+            manifest = original_save(staging, **kwargs)
+            fsync_checkpoint_tree(staging, expected_names=core._DIRECTORY_NAMES)
+            if destination.exists() or destination.is_symlink():
+                _raise_existing_destination(
+                    destination,
+                    overwrite=overwrite,
+                    appeared_before_publication=True,
+                )
+            os.replace(staging, destination)
+            fsync_parent_directory(destination)
+            return manifest
+        finally:
+            shutil.rmtree(staging_root, ignore_errors=True)
+
+    core.save_checkpoint = save_checkpoint
+    core._D05_DURABLE_SAVE_INSTALLED = True
