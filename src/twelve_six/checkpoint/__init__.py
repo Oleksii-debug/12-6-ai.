@@ -2,9 +2,11 @@
 
 from . import core as _core
 from .progress_binding import install as _install_progress_binding
+from .transactional_rng import install as _install_transactional_rng
 
 _install_progress_binding(_core)
-del _core, _install_progress_binding
+_install_transactional_rng(_core)
+del _core, _install_progress_binding, _install_transactional_rng
 
 from .core import (
     CheckpointCompatibilityError,
