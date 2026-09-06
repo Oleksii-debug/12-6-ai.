@@ -87,7 +87,10 @@ def _pilot_ready_evidence() -> dict:
         "terminal": True,
         "identity": "launch-binding-v1",
         "code_sha": "a" * 40,
+        "model341_sha": gate.MODEL341_SHA,
         "modelspec_sha256": gate.MODELSPEC_SHA256,
+        "initspec_identity": "initspec-v1-sha256:0123456789abcdef",
+        "parameter_count": gate.PARAMETER_COUNT,
         "config_sha256": "b" * 64,
         "corpus_identity": evidence["corpus"]["identity"],
         "loss_ledger_identity": evidence["unique_loss_ledger"]["identity"],
@@ -183,6 +186,18 @@ def test_launch_binding_must_match_terminal_authority_identities() -> None:
     result = gate.assess_launch(_contract(), evidence, material_cost=False)
     assert result["pilot_ready"] is False
     assert "launch_binding.tokenizer_identity_mismatch" in result["pilot_blockers"]
+
+
+def test_launch_binding_requires_exact_model_and_init_identity() -> None:
+    evidence = _pilot_ready_evidence()
+    evidence["launch_binding"]["model341_sha"] = "0" * 40
+    evidence["launch_binding"]["initspec_identity"] = ""
+    evidence["launch_binding"]["parameter_count"] = gate.PARAMETER_COUNT + 1
+    result = gate.assess_launch(_contract(), evidence, material_cost=False)
+    assert result["pilot_ready"] is False
+    assert "launch_binding.model341_sha_mismatch" in result["pilot_blockers"]
+    assert "launch_binding.initspec_identity_missing" in result["pilot_blockers"]
+    assert "launch_binding.parameter_count_mismatch" in result["pilot_blockers"]
 
 
 def test_evaluation_overlap_and_early_final_access_fail_closed() -> None:
