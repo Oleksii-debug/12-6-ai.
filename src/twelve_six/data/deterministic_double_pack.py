@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from twelve_six.data.unique_loss_ledger_v2 import LedgerError, build_ledger, verify_ledger
@@ -42,6 +42,12 @@ def _require_sha256(value: Any, label: str) -> str:
     return value.lower()
 
 
+def _require_nonempty_string(value: Any, label: str) -> str:
+    if not isinstance(value, str) or not value:
+        raise LedgerError(f"{label} must be a non-empty string")
+    return value
+
+
 def _normalize_expected_stage_bindings(value: Mapping[str, Any]) -> dict[str, str]:
     if set(value) != set(_REQUIRED_STAGE_BINDINGS):
         raise LedgerError(
@@ -52,6 +58,66 @@ def _normalize_expected_stage_bindings(value: Mapping[str, Any]) -> dict[str, st
         name: _require_sha256(value[name], f"expected_stage_bindings.{name}")
         for name in _REQUIRED_STAGE_BINDINGS
     }
+
+
+def _validate_retained_document_isolation(
+    materialization: Mapping[str, Any], *, label: str
+) -> None:
+    """Cross-validate upstream dedup/split isolation before terminal packing proof."""
+    documents = materialization.get("documents")
+    if not isinstance(documents, Sequence) or isinstance(documents, (str, bytes)):
+        raise LedgerError(f"{label}.documents must be a sequence")
+
+    retained_clusters: dict[str, tuple[str, str]] = {}
+    retained_payloads: dict[str, tuple[str, str]] = {}
+    for index, document in enumerate(documents):
+        if not isinstance(document, Mapping):
+            raise LedgerError(f"{label}.documents[{index}] must be an object")
+        retained = document.get("retained_after_dedup")
+        if not isinstance(retained, bool):
+            raise LedgerError(
+                f"{label}.documents[{index}].retained_after_dedup must be boolean"
+            )
+        if not retained:
+            continue
+
+        document_id = _require_nonempty_string(
+            document.get("document_id"), f"{label}.documents[{index}].document_id"
+        )
+        split = _require_nonempty_string(
+            document.get("split"), f"{label}.documents[{index}].split"
+        )
+        cluster_id = _require_nonempty_string(
+            document.get("dedup_cluster_id"),
+            f"{label}.documents[{index}].dedup_cluster_id",
+        )
+        payload_sha256 = _require_sha256(
+            document.get("normalized_payload_sha256"),
+            f"{label}.documents[{index}].normalized_payload_sha256",
+        )
+
+        previous_cluster_owner = retained_clusters.get(cluster_id)
+        if previous_cluster_owner is not None:
+            previous_document, previous_split = previous_cluster_owner
+            raise LedgerError(
+                "retained dedup cluster is shared across documents/splits: "
+                f"{previous_document}:{previous_split} and {document_id}:{split}"
+            )
+        retained_clusters[cluster_id] = (document_id, split)
+
+        previous_payload_owner = retained_payloads.get(payload_sha256)
+        if previous_payload_owner is not None:
+            previous_document, previous_split = previous_payload_owner
+            raise LedgerError(
+                "retained normalized payload is duplicated across documents/splits: "
+                f"{previous_document}:{previous_split} and {document_id}:{split}"
+            )
+        retained_payloads[payload_sha256] = (document_id, split)
+
+        if split != "train" and document.get("evaluation_reserved") is not True:
+            raise LedgerError(
+                "held-out retained document must be evaluation_reserved before packing"
+            )
 
 
 def _validate_build(
@@ -77,6 +143,7 @@ def _validate_build(
     if observed_tokenizer_identity != expected_tokenizer_identity_sha256:
         raise LedgerError(f"{label} tokenizer identity does not match terminal handoff")
 
+    _validate_retained_document_isolation(materialization, label=label)
     ledger = build_ledger(materialization)
     verify_ledger(materialization, ledger)
     return ledger, _canonical_json_bytes(materialization)
@@ -94,8 +161,9 @@ def verify_deterministic_double_pack(
 
     This function does not create corpus authority and does not authorize training.
     It consumes an externally terminal corpus authority identity plus exact D04 stage
-    and tokenizer bindings, validates both materializations through the existing
-    unique-loss ledger, and requires canonical byte identity across the two builds.
+    and tokenizer bindings, validates retained-document isolation and both
+    materializations through the existing unique-loss ledger, and requires canonical
+    byte identity across the two builds.
     """
     terminal_corpus_identity = _require_sha256(
         terminal_corpus_authority_identity_sha256,
@@ -164,6 +232,8 @@ def verify_deterministic_double_pack(
         "build_a_canonical_sha256": canonical_build_sha256,
         "build_b_canonical_sha256": _sha256_bytes(bytes_b),
         "one_pass_unique_nonignored_causal_loss_positions": unique_positions,
+        "retained_document_isolation_verified": True,
+        "heldout_reservation_verified": True,
         "independent_builds_byte_identical": True,
         "training_authorized_by_this_proof": False,
     }
