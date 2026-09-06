@@ -120,7 +120,10 @@ def ordered_next_exposure_identity(
     expected_plan_identity = plan["plan_identity_sha256"]
     unhashed = dict(plan)
     unhashed.pop("plan_identity_sha256")
-    if not isinstance(expected_plan_identity, str) or _canonical_sha256(unhashed) != expected_plan_identity:
+    if (
+        not isinstance(expected_plan_identity, str)
+        or _canonical_sha256(unhashed) != expected_plan_identity
+    ):
         raise LedgerError("exposure plan self-hash mismatch")
     batches = plan["batches"]
     if not isinstance(batches, Sequence) or index >= len(batches):
@@ -154,7 +157,10 @@ def authorize_ordered_batch(
     observed = ordered_next_exposure_identity(guard, plan, batch_index=batch_index)
     if observed != expected_ordered_next_exposure_identity_sha256:
         raise LedgerError("ordered next exposure identity does not match expected handoff")
-    batch = plan[batch_index]
+    batches = plan["batches"]
+    if not isinstance(batches, Sequence):
+        raise LedgerError("exposure plan batches must be a sequence")
+    batch = batches[batch_index]
     base_identity = guard.next_exposure_identity(
         batch["claims"], actual_nonignored_targets=batch["actual_nonignored_targets"]
     )
