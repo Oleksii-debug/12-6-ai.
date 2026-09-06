@@ -17,6 +17,7 @@ from twelve_six.learned20_launch_gate import validate_contract
 from twelve_six.learned20_pilot_authority import assess_launch_with_terminal_provenance
 
 DEFAULT_CONTRACT = ROOT / "configs/training/learned_20m_launch_gate_v1.json"
+MODEL341_INITSPEC_SHA256 = "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5"
 
 
 def _load(path: Path) -> dict:
@@ -24,6 +25,16 @@ def _load(path: Path) -> dict:
     if not isinstance(data, dict):
         raise ValueError(f"{path} must contain a JSON object")
     return data
+
+
+def _validate_exact_initspec(evidence: dict) -> list[str]:
+    """Fail closed unless launch evidence binds the canonical MODEL-341 InitSpec."""
+    binding = evidence.get("launch_binding")
+    if not isinstance(binding, dict):
+        return ["launch_binding.initspec_identity_missing"]
+    if binding.get("initspec_identity") != MODEL341_INITSPEC_SHA256:
+        return ["launch_binding.initspec_identity_mismatch"]
+    return []
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -53,6 +64,22 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     evidence = _load(args.evidence)
+    initspec_errors = _validate_exact_initspec(evidence)
+    if initspec_errors:
+        print(
+            json.dumps(
+                {
+                    "pilot_ready": False,
+                    "long_training_ready": False,
+                    "pilot_blockers": initspec_errors,
+                    "long_training_blockers": initspec_errors,
+                },
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return 2
+
     result = assess_launch_with_terminal_provenance(
         contract,
         evidence,
