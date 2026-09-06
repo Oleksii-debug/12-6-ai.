@@ -1,0 +1,81 @@
+{
+  "schema_version": "12-6.research-corpus-v1-bulk-rebind.v3",
+  "worker_id": "D10-DATA-BULK-ACQ-V3-V5-REBIND",
+  "local_free_only": true,
+  "model_training_executed": false,
+  "optimizer_update_executed": false,
+  "tokenizer_fit_executed": false,
+  "paid_compute_used": false,
+  "final_test_payload_read": false,
+  "parent_authority": {
+    "pr": 538,
+    "observed_head_sha": "991a0b6e939cddeff16c075922f7c407fa1e86cb",
+    "dedicated_workflow_run": 33046314943,
+    "dedicated_workflow_conclusion": "success",
+    "config_path": "configs/data/next100_063_terminal_source_registry_v5.json",
+    "config_blob_sha1": "2dcc57cfba8ab6d600bc431a8713f7b8e305dcbf",
+    "schema_version": "12-6.next100-063-terminal-source-registry.v5",
+    "decision": "V5_CONSUMES_TERMINAL_ATTRS_REQUIRES_SUCCESSOR_GLOBAL_DEDUP_NOT_CORPUS_FREEZE",
+    "base_v4_path": "configs/data/next100_063_terminal_source_registry_v4.json",
+    "base_v4_blob_sha1": "60924a7cb76dc76bbff26a340184f54a2c374c83",
+    "base_v4_registry_identity_sha256": "9fc400a3144b46c481e45d043b0a3365eb2129c83bbacde6f9e7af8a41fadc58"
+  },
+  "observed_successor_global_dedup": {
+    "pr": 632,
+    "observed_head_sha": "d3333ec1b4a508df232a5aefccd6686adda745fb",
+    "dedicated_workflow_run": 33045763964,
+    "dedicated_workflow_conclusion": "success",
+    "artifact_id": 9635595510,
+    "artifact_digest": "sha256:cca6921a2093d4e033976b23b0af180e9dc1945b624b82e218780f8d20bafd18",
+    "conservative_unique_capacity_bytes": 2215615,
+    "duplicate_discount_bytes": 0,
+    "corpus_materialized": false,
+    "training_authorized": false
+  },
+  "supersedes_planning_snapshot": {
+    "branch": "data/bulk-acq-v2-rebind-20260826",
+    "head_sha": "9452e328356a382192ed9f6da294426389515fc8",
+    "credited_total_bytes": 2045180,
+    "remaining_gap_total_bytes": 17954820,
+    "reason": "Rebind the existing bulk-acquisition controller to terminal NEXT100-063 V5 and terminal successor global-dedup evidence without granting corpus or training authority."
+  },
+  "frozen_targets_bytes": {"uk": 9000000, "en": 7000000, "code": 4000000, "total": 20000000},
+  "credited_post_successor_global_dedup_bytes": {"uk": 100856, "en": 1838293, "code": 276466, "total": 2215615},
+  "credited_independent_families": {"uk": 4, "en": 5, "code": 6, "total": 15},
+  "remaining_gap_bytes": {"uk": 8899144, "en": 5161707, "code": 3723534, "total": 17784385},
+  "planning_survival_ratio": {"numerator": 3, "denominator": 5, "is_measured_retention_evidence": false},
+  "buffered_gross_required_bytes": {"uk": 14831907, "en": 8602845, "code": 6205890, "total": 29640642},
+  "planned_gross_bytes": {"uk": 15000000, "en": 9000000, "code": 6700000, "total": 30700000},
+  "planning_headroom_bytes": {"uk": 168093, "en": 397155, "code": 494110, "total": 1059358},
+  "frozen_mixture_percent": {"uk": 45, "en": 35, "code": 20, "total": 100},
+  "current_balanced_source_ceiling_bytes": {"uk": 224124, "en": 5252265, "code": 1382330, "limiting_total": 224124},
+  "acquisition_priority": ["uk", "code", "en"],
+  "family_cap_policy": {
+    "max_global_family_share_percent": 25,
+    "max_within_stratum_family_share_percent": 60,
+    "replay_or_duplication_quota_repair_allowed": false,
+    "gutenberg_family": "en.project-gutenberg.public-domain-books",
+    "gutenberg_exact_bytes": 1672110,
+    "gutenberg_requires_downselection_or_en_family_diversification": true
+  },
+  "execution_policy": {
+    "priority_1": "Acquire multiple independent Ukrainian rights-clear families at bulk scale.",
+    "priority_2": "Expand multiple independent permissive code families while excluding tests, fixtures, vendored and generated material.",
+    "priority_3": "Add English families for diversity and cap feasibility rather than treating Gutenberg volume as directly consumable quota.",
+    "prospective_bytes_receive_capacity_credit": false,
+    "terminal_authority_required_before_capacity_credit": true,
+    "successor_global_dedup_required_before_corpus_identity": true,
+    "materialized_record_graph_required_before_corpus_identity": true
+  },
+  "claim_boundary": {
+    "successor_global_dedup_terminal_for_current_source_vector": true,
+    "corpus_materialized": false,
+    "research_corpus_v1_released": false,
+    "authorized_unique_loss_positions": 0,
+    "tokenizer_fit_authorized": false,
+    "model_training_authorized": false,
+    "paid_compute_authorized": false,
+    "learned_20m_checkpoint_claimed": false,
+    "learned_100m_checkpoint_claimed": false
+  }
+}
