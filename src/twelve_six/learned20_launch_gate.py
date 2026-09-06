@@ -253,8 +253,14 @@ def _validate_launch_binding(evidence: Mapping[str, Any], blockers: list[str]) -
         return
     if not _hex_text(binding.get("code_sha"), 40):
         blockers.append("launch_binding.code_sha_invalid")
+    if binding.get("model341_sha") != MODEL341_SHA:
+        blockers.append("launch_binding.model341_sha_mismatch")
     if binding.get("modelspec_sha256") != MODELSPEC_SHA256:
         blockers.append("launch_binding.modelspec_sha256_mismatch")
+    if not _nonempty_text(binding.get("initspec_identity")):
+        blockers.append("launch_binding.initspec_identity_missing")
+    if binding.get("parameter_count") != PARAMETER_COUNT:
+        blockers.append("launch_binding.parameter_count_mismatch")
     if not _hex_text(binding.get("config_sha256"), 64):
         blockers.append("launch_binding.config_sha256_invalid")
 
