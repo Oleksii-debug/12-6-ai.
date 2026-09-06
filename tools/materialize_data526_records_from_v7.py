@@ -113,7 +113,8 @@ def _capture_v7_materialization(v7: Any, root: Path) -> tuple[dict[str, Any], di
     captured: list[tuple[dict[str, Any], dict[str, bytes]]] = []
 
     def capture(inventory: dict[str, Any], payloads: dict[str, bytes]) -> dict[str, Any]:
-        captured.append((copy.deepcopy(inventory), dict(payloads)))
+        if len(inventory.get("sources", [])) == 35:
+            captured.append((copy.deepcopy(inventory), dict(payloads)))
         return original(inventory, payloads)
 
     v7.v6.v3.audit_payloads = capture
@@ -123,7 +124,7 @@ def _capture_v7_materialization(v7: Any, root: Path) -> tuple[dict[str, Any], di
     finally:
         v7.v6.v3.audit_payloads = original
     if len(captured) != 1:
-        raise ValueError(f"expected exactly one V7 payload audit call, got {len(captured)}")
+        raise ValueError(f"expected exactly one terminal 35-source V7 payload audit call, got {len(captured)}")
     inventory, payloads = captured[0]
     return inventory, payloads, report
 
