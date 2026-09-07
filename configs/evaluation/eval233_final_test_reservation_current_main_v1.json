@@ -1,0 +1,87 @@
+{
+  "authority_identity_sha256": "fcdac884a789a2c8f3107c00065f21c7a8af581fc5f279ab8568a1483489f3cc",
+  "current_main_port": {
+    "base_sha": "0a55a568bb78d89390087b1c6a2f274b67fa2812",
+    "historical_eval233_evidence_identity_sha256": "37473834df31c69faf39f5c1152e9fe1f7d4aeb1487fcf7489059e8ec444d4a7",
+    "historical_eval233_head_sha": "b5512b4648cb09dd052b08884dc53f291e1ce935",
+    "historical_eval233_pr": 365,
+    "recover174_head_sha": "976c101b20ad2e31b0b3e2dda2beed8e7b03c2f3",
+    "recover174_seed_git_blob_sha1": "4bfbfbf29fa9538cabda6068efd3a1fd036a9479",
+    "recover174_seed_sha256": "7e6827d22d573dda4c9ff2b5f0ab2b8fe3fdf5aa577970ecb77e94a10cf72367",
+    "recover174_source_authority_git_blob_sha1": "3ba9f221a82468f971c17eda518cd6f1642fd311",
+    "recover174_source_authority_identity_sha256": "c7211b3e1e6a4f22463d0e6174f0d6162c2452585704efad5564a35de8de609f"
+  },
+  "firewall": {
+    "authorized_training_exposure": 0,
+    "durable_evidence_hash_and_source_metadata_only": true,
+    "final_test_outcomes_published": false,
+    "final_test_outcomes_read": false,
+    "hyperparameter_selection_allowed": false,
+    "local_free_only": true,
+    "model_architecture_or_hyperparameters_selected": false,
+    "paid_compute": false,
+    "payload_access_for_decontamination_matching_only": true,
+    "payload_embedded": false,
+    "scoring_before_selection_lock_allowed": false,
+    "selection_allowed": false,
+    "tokenizer_fit_allowed": false,
+    "training_allowed": false,
+    "training_executed": false
+  },
+  "late_bound_decontamination": {
+    "consumer_pr": 874,
+    "expected_final_test_identity_sha256": "86d51eb106524cd8e4d0f94d4ff6e2e3426c6321e0698279877dfc4d5fce3116",
+    "final_test_outcomes_must_remain_unread": true,
+    "final_test_payload_may_be_read_for_matching": true,
+    "member_level_content_hashes_published_here": false,
+    "member_level_payload_binding_identity_sha256": null,
+    "note": "This authority does not fabricate the member-level binding required by the decontamination execution adapter. That binding is produced only when the reserved payload is lawfully resolved for contamination matching.",
+    "payload_resolution_status": "LATE_BOUND_DECONTAMINATION_ONLY"
+  },
+  "reservation": {
+    "classification": "final_test",
+    "documents": 16,
+    "final_test_identity_sha256": "86d51eb106524cd8e4d0f94d4ff6e2e3426c6321e0698279877dfc4d5fce3116",
+    "immutable": true,
+    "modality_documents": {
+      "code": 0,
+      "en": 8,
+      "ua": 8
+    },
+    "source_families": [
+      {
+        "admitted_source_snapshots_sha256": [
+          "154fb4034929714087e75150d678bf65049ddac32e79dcdf97162c8972c2be83",
+          "94eb2f529922d125b3bd40691778886f4d5d80b128b925d0274fb3d94646ec5a"
+        ],
+        "evaluation_status": "APPROVED_FOR_HELDOUT_EVALUATION",
+        "modality": "en",
+        "raw_sha256": [
+          "21582c7f0e4ad39f2b0ed97bbc2c082d275e898b7a63c28e6d9badb8ee0f7860",
+          "7ac53dfb4bf6f73f178560e09f33160d0250c69fb679802f3254dc0eb4c9f509"
+        ],
+        "source_family": "en.standardebooks.manual",
+        "source_id": "en.standardebooks.manual",
+        "source_identity_sha256": "ba622171b752c4d411bd0b93a94dad14b7ff0e5ac88064678d1b91a551c01be3",
+        "source_version": "d1143a9b459b5e6f9cdda93a7c1e04676bff4f6b"
+      },
+      {
+        "admitted_source_snapshots_sha256": [
+          "72c301db0b2539f3f7a73c9c15e2e425700a6b758a1114f1a861e2d60c704c50"
+        ],
+        "evaluation_status": "APPROVED_FOR_HELDOUT_EVALUATION",
+        "modality": "ua",
+        "raw_sha256": [
+          "36eae31c3b0676ea7c02236fa05bd695c240c9a8eade5febc00457b8103ee1a4"
+        ],
+        "source_family": "ua.rada.open-data.laws-texts",
+        "source_id": "ua.rada.open-data.laws-texts",
+        "source_identity_sha256": "b8f1d2f99a3db71d894a3233e9417d6283d11768c41b1634bc8b096ab77aba4e",
+        "source_version": "laws-texts/bounded-2026-08-25"
+      }
+    ],
+    "source_membership_identity_sha256": "6b012efc4d627b113b8adc2166e6ab50d9001284083f7a429c665b7752ca18d7"
+  },
+  "schema_version": "12-6.eval233-final-test-reservation-current-main.v1",
+  "worker_id": "EVAL-233-FINAL-TEST-RESERVATION-CURRENT-MAIN-20260907"
+}
