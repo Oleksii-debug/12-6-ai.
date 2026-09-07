@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -61,6 +60,11 @@ def _nonnegative_int(value: Any, label: str) -> int:
         f"{label} must be a non-negative integer",
     )
     return int(value)
+
+
+def _nonempty_text(value: Any, label: str) -> str:
+    _require(isinstance(value, str) and bool(value), f"{label} must be non-empty text")
+    return value
 
 
 def _self_hash_matches(value: Mapping[str, Any], label: str) -> str:
@@ -142,34 +146,42 @@ def _sources_by_id(dedup: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
     result: dict[str, dict[str, Any]] = {}
     for index, raw in enumerate(raw_sources):
         _require(isinstance(raw, Mapping), f"sources[{index}] must be an object")
-        source_id = raw.get("source_id")
-        _require(
-            isinstance(source_id, str) and source_id,
-            f"sources[{index}].source_id must be non-empty text",
-        )
+        source_id = _nonempty_text(raw.get("source_id"), f"sources[{index}].source_id")
         _require(source_id not in result, "nested V3 source_id is not unique")
-        capacity = _nonnegative_int(
-            raw.get("declared_capacity_bytes"),
-            f"sources[{index}].declared_capacity_bytes",
-        )
-        source_family = raw.get("source_family")
-        modality = raw.get("modality")
-        _require(
-            isinstance(source_family, str) and source_family,
-            f"sources[{index}].source_family must be non-empty text",
-        )
-        _require(
-            isinstance(modality, str) and modality,
-            f"sources[{index}].modality must be non-empty text",
-        )
         result[source_id] = {
             "source_id": source_id,
-            "source_family": source_family,
-            "modality": modality,
-            "declared_capacity_bytes": capacity,
+            "source_family": _nonempty_text(
+                raw.get("source_family"),
+                f"sources[{index}].source_family",
+            ),
+            "modality": _nonempty_text(raw.get("modality"), f"sources[{index}].modality"),
+            "declared_capacity_bytes": _nonnegative_int(
+                raw.get("declared_capacity_bytes"),
+                f"sources[{index}].declared_capacity_bytes",
+            ),
+            "stable_origin_id_sha256": _require_sha256(
+                raw.get("stable_origin_id_sha256"),
+                f"sources[{index}].stable_origin_id_sha256",
+            ),
+            "stable_object_id_sha256": _require_sha256(
+                raw.get("stable_object_id_sha256"),
+                f"sources[{index}].stable_object_id_sha256",
+            ),
+            "verified_raw_bytes": _nonnegative_int(
+                raw.get("verified_raw_bytes"),
+                f"sources[{index}].verified_raw_bytes",
+            ),
             "verified_raw_sha256": _require_sha256(
                 raw.get("verified_raw_sha256"),
                 f"sources[{index}].verified_raw_sha256",
+            ),
+            "comparison_policy": _nonempty_text(
+                raw.get("comparison_policy"),
+                f"sources[{index}].comparison_policy",
+            ),
+            "comparison_payload_bytes": _nonnegative_int(
+                raw.get("comparison_payload_bytes"),
+                f"sources[{index}].comparison_payload_bytes",
             ),
             "comparison_payload_sha256": _require_sha256(
                 raw.get("comparison_payload_sha256"),
@@ -280,6 +292,23 @@ def _validate_component_summary(
     return expected_after
 
 
+def _retained_summary(
+    retained: Sequence[Mapping[str, Any]],
+    *,
+    grouping_key: str,
+) -> dict[str, dict[str, int]]:
+    groups: dict[str, dict[str, int]] = {}
+    for row in retained:
+        group = str(row[grouping_key])
+        summary = groups.setdefault(
+            group,
+            {"retained_source_count": 0, "retained_capacity_bytes": 0},
+        )
+        summary["retained_source_count"] += 1
+        summary["retained_capacity_bytes"] += int(row["declared_capacity_bytes"])
+    return dict(sorted(groups.items()))
+
+
 def materialize_postdedup_inventory(
     v8_report: Mapping[str, Any],
     *,
@@ -308,12 +337,19 @@ def materialize_postdedup_inventory(
                 source_id,
             ),
         )
+        component_identity = _sha256_obj(
+            {
+                "selection_policy": SELECTION_POLICY,
+                "members": list(component),
+            }
+        )
         representative = source_by_id[representative_id]
         retained.append(
             {
                 **dict(representative),
                 "component_index": component_index,
                 "component_size": len(component),
+                "component_identity_sha256": component_identity,
             }
         )
         for source_id in component:
@@ -324,6 +360,7 @@ def materialize_postdedup_inventory(
                     "source_id": source_id,
                     "retained_source_id": representative_id,
                     "component_index": component_index,
+                    "component_identity_sha256": component_identity,
                     "reason": "GLOBAL_CAPACITY_COLLAPSING_COMPONENT",
                 }
             )
@@ -348,6 +385,11 @@ def materialize_postdedup_inventory(
         "retained_source_count": len(retained),
         "excluded_duplicate_source_count": len(excluded),
         "retained_unique_capacity_bytes": retained_capacity,
+        "retained_by_modality": _retained_summary(retained, grouping_key="modality"),
+        "retained_by_source_family": _retained_summary(
+            retained,
+            grouping_key="source_family",
+        ),
         "retained_sources": retained,
         "excluded_duplicate_sources": excluded,
         "raw_text_emitted": False,
