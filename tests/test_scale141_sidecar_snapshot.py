@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from twelve_six.checkpoint import recovery_lock
 import twelve_six.scale141_resume_sidecar as sidecar
+from twelve_six.checkpoint import recovery_lock
 from twelve_six.scale141_resume_sidecar import ResumeSidecarError, _read_payload
 
 
