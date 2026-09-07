@@ -52,6 +52,7 @@
     "loss_ledger": null,
     "checkpoint_integrity": null,
     "evaluation_firewall": null,
+    "decontamination": null,
     "backend": null,
     "parent_checkpoint": null
   },
