@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import gzip
 import json
 from pathlib import Path
 
@@ -9,9 +10,12 @@ import pytest
 from twelve_six.data.loc_public_domain_intake import (
     LocIntakeError,
     canonical_json,
+    git_blob_sha1_bytes,
+    iter_gzip_jsonl,
     materialize_records,
     self_identity,
     validate_config,
+    verify_local_rights_registry,
     verify_report,
 )
 
@@ -146,3 +150,33 @@ def test_field_schema_drift_is_quarantined() -> None:
     )
     assert len(rows) == 1
     assert report["rejected_counts"]["field_schema"] == 1
+
+
+def test_git_blob_sha1_matches_git_object_identity() -> None:
+    assert git_blob_sha1_bytes(b"hello\n") == "ce013625030ba8dba906f756967f9e9ca394464a"
+
+
+def test_local_rights_registry_substitution_fails_closed(tmp_path: Path) -> None:
+    config = load_config()
+    target = tmp_path / config["common_pile_audit"]["registry_path"]
+    target.parent.mkdir(parents=True)
+    target.write_text("{}\n", encoding="utf-8")
+    with pytest.raises(LocIntakeError, match="registry Git-blob identity mismatch"):
+        verify_local_rights_registry(config, tmp_path)
+
+
+def test_source_record_id_collision_fails_closed() -> None:
+    config = load_config()
+    with pytest.raises(LocIntakeError, match="record id maps to multiple payloads"):
+        materialize_records(
+            config,
+            [record("same", "A" * 2048), record("same", "B" * 2048)],
+        )
+
+
+def test_gzip_jsonl_reader_enforces_bounded_line_read(tmp_path: Path) -> None:
+    path = tmp_path / "oversized.jsonl.gz"
+    with gzip.open(path, "wb") as handle:
+        handle.write(b'{"text":"' + b"x" * 128 + b'"}\n')
+    with pytest.raises(LocIntakeError, match="exceeds safety limit"):
+        list(iter_gzip_jsonl(path, max_json_line_bytes=32))
