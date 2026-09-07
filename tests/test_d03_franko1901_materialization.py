@@ -28,11 +28,12 @@ def test_canonical_contract_validates() -> None:
 @pytest.mark.parametrize(
     ("mutation", "expected_message"),
     [
-        (("source", "source_git_blob_sha1", "0" * 40), "source blob drift"),
+        (("source", "source_git_blob_sha1", "0" * 40), "source authority drift"),
         (("rights_boundary", "modern_text_allowed", True), "LLM/enrichment fields"),
         (("truth_boundary", "training_authorized_bytes", 1), "truth boundary drift"),
         (("truth_boundary", "corpus_admitted", True), "truth boundary drift"),
-        (("acquisition", "fetch_count_required", 1), "two-fetch requirement drift"),
+        (("acquisition", "fetch_count_required", 1), "acquisition contract drift"),
+        (("filter", "min_cyrillic_share_of_alpha", 0.0), "filter policy drift"),
     ],
 )
 def test_contract_mutations_fail_closed(
