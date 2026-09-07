@@ -164,6 +164,7 @@ def main() -> None:
         ],
     )
     preflight = _preflight(ledger, plan, 4)
+    plan_identity = preflight["plan_identity_sha256"]
     if preflight["complete_one_pass"] is not True:
         raise SystemExit("full unique exposure plan did not prove complete one-pass coverage")
     if preflight["plan_unique_nonignored_targets"] != 4:
@@ -214,38 +215,32 @@ def main() -> None:
         "unique target count does not match expected budget",
     )
 
-    cardinality_plan = _plan(
-        ledger,
-        [
-            {
-                "global_batch_index": 0,
-                "shard_index": 0,
-                "worker_id": 0,
-                "claims": [_claim(ledger, 0, 2)],
-                "actual_nonignored_targets": 1,
-            }
-        ],
+    cardinality_plan = deepcopy(plan)
+    cardinality_plan["batches"][0]["actual_nonignored_targets"] = 1
+    cardinality_plan["plan_identity_sha256"] = _identity(
+        cardinality_plan, "plan_identity_sha256"
     )
     _expect_failure(
-        lambda: _preflight(ledger, cardinality_plan, 1),
+        lambda: _preflight(ledger, cardinality_plan, 4),
         "claim cardinality does not match actual nonignored targets",
     )
 
-    zero_target_plan = _plan(
-        ledger,
-        [
-            {
-                "global_batch_index": 0,
-                "shard_index": 0,
-                "worker_id": 0,
-                "claims": [],
-                "actual_nonignored_targets": 0,
-            }
-        ],
-    )
     _expect_failure(
-        lambda: _preflight(ledger, zero_target_plan, 0),
-        "must contain positive nonignored targets",
+        lambda: build_deterministic_exposure_plan(
+            [
+                {
+                    "global_batch_index": 0,
+                    "shard_index": 0,
+                    "worker_id": 0,
+                    "claims": [],
+                    "actual_nonignored_targets": 0,
+                }
+            ],
+            num_workers=1,
+            batches_per_shard=1,
+            shard_count=1,
+        ),
+        "actual_nonignored_targets must be positive",
     )
 
     _expect_failure(
@@ -253,23 +248,71 @@ def main() -> None:
         "exceeds ledger maximum",
     )
 
-    first = ordered_next_exposure_identity(guard, plan, batch_index=0)
+    worker_substitute = deepcopy(plan)
+    worker_substitute["batches"][0]["worker_id"] = 1
+    worker_substitute["plan_identity_sha256"] = _identity(
+        worker_substitute, "plan_identity_sha256"
+    )
+    _expect_failure(
+        lambda: ordered_next_exposure_identity(
+            guard,
+            worker_substitute,
+            batch_index=0,
+            expected_plan_identity_sha256=worker_substitute["plan_identity_sha256"],
+        ),
+        "worker assignment",
+    )
+
+    valid_substitute = deepcopy(plan)
+    valid_substitute["batches"][0]["claims"] = [_claim(ledger, 0, 1)]
+    valid_substitute["batches"][0]["actual_nonignored_targets"] = 1
+    valid_substitute["batches"][1]["claims"] = [_claim(ledger, 1, 4)]
+    valid_substitute["batches"][1]["actual_nonignored_targets"] = 3
+    valid_substitute["plan_identity_sha256"] = _identity(
+        valid_substitute, "plan_identity_sha256"
+    )
+    before_substitution = guard.state_dict()
+    _expect_failure(
+        lambda: ordered_next_exposure_identity(
+            guard,
+            valid_substitute,
+            batch_index=0,
+            expected_plan_identity_sha256=plan_identity,
+        ),
+        "plan identity does not match expected handoff",
+    )
+    if guard.state_dict() != before_substitution:
+        raise SystemExit("re-hashed plan substitution mutated replay state")
+
+    first = ordered_next_exposure_identity(
+        guard,
+        plan,
+        batch_index=0,
+        expected_plan_identity_sha256=plan_identity,
+    )
     observed = authorize_ordered_batch(
         guard,
         plan,
         batch_index=0,
+        expected_plan_identity_sha256=plan_identity,
         expected_ordered_next_exposure_identity_sha256=first,
     )
     if observed != first or guard.claim_sequence != 1:
         raise SystemExit("first ordered authorization did not advance exactly once")
 
-    second = ordered_next_exposure_identity(guard, plan, batch_index=1)
+    second = ordered_next_exposure_identity(
+        guard,
+        plan,
+        batch_index=1,
+        expected_plan_identity_sha256=plan_identity,
+    )
     before = guard.state_dict()
     try:
         authorize_ordered_batch(
             guard,
             plan,
             batch_index=1,
+            expected_plan_identity_sha256=plan_identity,
             expected_ordered_next_exposure_identity_sha256=_sha("wrong-handoff"),
         )
     except LedgerError as exc:
@@ -284,6 +327,7 @@ def main() -> None:
         guard,
         plan,
         batch_index=1,
+        expected_plan_identity_sha256=plan_identity,
         expected_ordered_next_exposure_identity_sha256=second,
     )
     if observed != second:
@@ -292,10 +336,11 @@ def main() -> None:
         raise SystemExit("ordered exposure accounting did not close exactly")
 
     print("D04 ORDERED EXPOSURE RUNTIME: PASS")
-    print(f"plan_identity_sha256={plan['plan_identity_sha256']}")
+    print(f"plan_identity_sha256={plan_identity}")
     print(f"preflight_identity_sha256={preflight['preflight_identity_sha256']}")
     print(f"consumed_loss_positions={guard.consumed_loss_positions}")
     print("padding_capacity_credit=0")
+    print("rehash_plan_substitution=REJECTED")
     print("training_authorized_by_this_preflight=false")
 
 
