@@ -7,7 +7,6 @@ from pathlib import Path
 
 import pytest
 
-
 ROOT = Path(__file__).resolve().parents[1]
 SRC_PACKAGE = ROOT / "src" / "twelve_six"
 DATA_PACKAGE = SRC_PACKAGE / "data"
