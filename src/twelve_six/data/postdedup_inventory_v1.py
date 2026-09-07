@@ -36,12 +36,29 @@ def _canonical_bytes(value: Any) -> bytes:
     ).encode("utf-8")
 
 
+def _v3_canonical_bytes(value: Any) -> bytes:
+    """Reproduce the incumbent DATA-298/V3 report serialization exactly."""
+    rendered = json.dumps(
+        value,
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return f"{rendered}\n".encode("utf-8")
+
+
 def _sha256_bytes(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
 
 
 def _sha256_obj(value: Any) -> str:
     return _sha256_bytes(_canonical_bytes(value))
+
+
+def _v3_report_sha256(value: Mapping[str, Any]) -> str:
+    core = dict(value)
+    core.pop("report_sha256", None)
+    return _sha256_bytes(_v3_canonical_bytes(core))
 
 
 def _require_sha256(value: Any, label: str) -> str:
@@ -67,11 +84,17 @@ def _nonempty_text(value: Any, label: str) -> str:
     return value
 
 
-def _self_hash_matches(value: Mapping[str, Any], label: str) -> str:
+def _v8_self_hash_matches(value: Mapping[str, Any], label: str) -> str:
     observed = _require_sha256(value.get("report_sha256"), f"{label}.report_sha256")
     core = dict(value)
     core.pop("report_sha256", None)
     _require(_sha256_obj(core) == observed, f"{label} self-hash mismatch")
+    return observed
+
+
+def _v3_self_hash_matches(value: Mapping[str, Any], label: str) -> str:
+    observed = _require_sha256(value.get("report_sha256"), f"{label}.report_sha256")
+    _require(_v3_report_sha256(value) == observed, f"{label} self-hash mismatch")
     return observed
 
 
@@ -82,7 +105,7 @@ def _validate_v8(
 ) -> Mapping[str, Any]:
     _require(isinstance(report, Mapping), "V8 report must be an object")
     _require(report.get("schema_version") == V8_SCHEMA, "unsupported V8 report schema")
-    observed_v8 = _self_hash_matches(report, "V8 report")
+    observed_v8 = _v8_self_hash_matches(report, "V8 report")
     expected_v8 = _require_sha256(
         expected_v8_report_sha256,
         "expected_v8_report_sha256",
@@ -108,7 +131,7 @@ def _validate_v8(
     dedup = report.get("dedup_v3")
     _require(isinstance(dedup, Mapping), "V8 report missing nested V3 dedup report")
     _require(dedup.get("schema_version") == V3_SCHEMA, "nested V3 report schema drift")
-    _self_hash_matches(dedup, "nested V3 report")
+    _v3_self_hash_matches(dedup, "nested V3 report")
     _require(dedup.get("raw_text_emitted") is False, "nested V3 report leaked raw text")
     _require(dedup.get("model_training_executed") is False, "nested V3 training boundary drift")
 
