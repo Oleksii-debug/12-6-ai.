@@ -1,0 +1,72 @@
+{
+  "schema_version": "12-6.d03-culturax-bounded-acquisition.v1",
+  "worker_id": "D03-CULTURAX-UA-EN-BOUNDED-20260907",
+  "execution_profile": "LOCAL_FREE",
+  "authority": {
+    "claim_issue": 853,
+    "base_main_sha": "56d708415e7f7a2ec72d4f80f1d571abdff428e3",
+    "parent_audit_pr": 762,
+    "parent_audit_head_sha": "b9a7feff80457848a623697514f4009f2b49ff3e",
+    "dataset_card_revision": "6a8734bc69fefcbb7735f4f9250f43e4cd7a442e"
+  },
+  "upstream": {
+    "dataset_id": "uonlp/CulturaX",
+    "repository_host": "huggingface.co",
+    "gated": true,
+    "access_acceptance_required": true,
+    "access_acceptance_observed": false,
+    "payload_download_executed": false,
+    "languages": {
+      "uk": {
+        "directory": "uk",
+        "checksum_file": "checksum.sha256"
+      },
+      "en": {
+        "directory": "en",
+        "checksum_file": "checksum.sha256"
+      }
+    },
+    "record_schema": [
+      "text",
+      "timestamp",
+      "url",
+      "source"
+    ],
+    "allowed_source_lineages": [
+      "mc4",
+      "OSCAR-20.19",
+      "OSCAR-21.09",
+      "OSCAR-22.01",
+      "OSCAR-23.01"
+    ]
+  },
+  "selection": {
+    "selection_rule": "lexicographically_first_shard_per_language",
+    "max_shards_per_language": 1,
+    "max_total_shards": 2,
+    "required_suffix": ".parquet",
+    "checksum_algorithm": "sha256",
+    "require_checksum_for_every_selected_shard": true,
+    "require_project_sha256_after_download": true
+  },
+  "downstream_gates": {
+    "source_level_rights": "BLOCKED",
+    "privacy_pii": "BLOCKED",
+    "reserved_evaluation_decontamination": "BLOCKED",
+    "global_cross_source_dedup": "BLOCKED",
+    "quality": "BLOCKED",
+    "balance_family_caps": "BLOCKED",
+    "deterministic_split": "BLOCKED",
+    "packing": "BLOCKED",
+    "unique_loss_ledger": "BLOCKED"
+  },
+  "claim_boundary": {
+    "training_authorized_bytes": 0,
+    "authorized_unique_causal_loss_positions": 0,
+    "tokenizer_fit_authorized": false,
+    "optimizer_updates": 0,
+    "model_training_executed": false,
+    "final_test_payload_accessed": false,
+    "paid_compute_used": false
+  }
+}
