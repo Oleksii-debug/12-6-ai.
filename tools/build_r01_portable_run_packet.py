@@ -21,7 +21,7 @@ DEFAULT_OVERLAY = Path("configs/research/r01_portable_session_overlay_v1.json")
 def _load_object(path: Path) -> dict[str, Any]:
     value = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(value, dict):
-        raise ValueError(f"{path}: JSON root must be an object")
+        raise TypeError(f"{path}: JSON root must be an object")
     return value
 
 
@@ -77,7 +77,7 @@ def main(argv: list[str] | None = None) -> int:
             report["output_path"] = None
         print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
         return 0 if result.binding_ready else 1
-    except (OSError, ValueError, json.JSONDecodeError) as exc:
+    except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
         print(json.dumps({"binding_ready": False, "error": str(exc)}, sort_keys=True))
         return 2
 
