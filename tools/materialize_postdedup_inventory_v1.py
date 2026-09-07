@@ -50,7 +50,11 @@ def main() -> int:
     if args.action == "materialize":
         inventory = materialize_postdedup_inventory(
             report,
+            survivor_authority,
             expected_v8_report_sha256=args.expected_v8_report_sha256,
+            expected_survivor_authority_sha256=(
+                args.expected_survivor_authority_sha256
+            ),
         )
         binding = build_survivor_inventory_binding(
             report,
