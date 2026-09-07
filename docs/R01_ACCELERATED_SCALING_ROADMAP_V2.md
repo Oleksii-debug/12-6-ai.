@@ -41,6 +41,21 @@ Every future run packet must bind exact code, ModelSpec, InitSpec, tokenizer, co
 
 Resource priority is owner laptop/LOCAL_FREE, free Kaggle GPU, other policy-compatible free GPU, then paid compute only after explicit authorization. An ephemeral session must checkpoint early and the same project-owned checkpoint lineage must resume across providers.
 
+The concrete blocked template is
+`configs/research/r01_portable_local_free_run_packet_v1.json`. Validate it with:
+
+```bash
+python tools/assess_r01_portable_run_packet.py
+```
+
+The validator separates initial LOCAL_FREE launch readiness from cross-provider resume
+readiness. It requires terminal authorities for code, model, tokenizer, data, loss ledger,
+checkpoint integrity, evaluation firewall and selected backend; exact runtime versions;
+content-addressed output; an early checkpoint deadline; and a one-exposure-per-unique-
+position budget. It rejects embedded credentials, final-test access, teacher logits,
+nonzero cost, paid resources and replay inflation. The checked-in template is
+deliberately blocked until the live D03/D04/D05/D06 authorities can fill its identities.
+
 ## Current live consequence
 
 No scale jump is currently permitted. The immediate critical path remains Research Corpus V1 capacity and terminalization, tokenizer identity, D05 save/load/resume integrity, evaluation/selection firewall, bounded LOCAL_FREE pilot and independent audit. Only that evidence can move the router from learned 20M to preparation of a 200M feasibility packet.

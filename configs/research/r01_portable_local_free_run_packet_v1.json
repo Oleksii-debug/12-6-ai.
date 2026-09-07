@@ -1,0 +1,113 @@
+{
+  "schema_version": 1,
+  "packet_id": "R01-LEARNED20M-PORTABLE-RUN-PACKET-V1",
+  "status": "BLOCKED_TEMPLATE",
+  "contract_fields": [
+    "source_git_sha",
+    "modelspec_sha256",
+    "initspec_sha256",
+    "tokenizer_sha256",
+    "corpus_manifest_sha256",
+    "split_sha256",
+    "packing_sha256",
+    "unique_loss_ledger_sha256",
+    "training_config_sha256",
+    "optimizer_scheduler_precision",
+    "seed",
+    "target_unique_loss_positions",
+    "maximum_total_exposures",
+    "checkpoint_lineage",
+    "stop_resume_policy_sha256",
+    "evaluation_schedule_sha256",
+    "resource_class",
+    "maximum_cost"
+  ],
+  "truth_boundary": {
+    "canonical_base": "RANDOM_INIT_PRETRAINING_ONLY",
+    "foreign_pretrained_or_aligned_weights_used": false,
+    "hidden_teacher_logits_used": false,
+    "selection_validation_used_for_training": false,
+    "final_test_payload_accessed": false,
+    "replay_or_padding_counted_as_unique_exposure": false,
+    "materially_paid_compute_authorized": false,
+    "materially_paid_compute_requested": false
+  },
+  "identities": {
+    "source_git_sha": null,
+    "modelspec_sha256": "fbff24d561a2818453554d58ca23fc6ace3303b078f1935a8576c4565bd92441",
+    "initspec_sha256": null,
+    "tokenizer_sha256": null,
+    "corpus_manifest_sha256": null,
+    "split_sha256": null,
+    "packing_sha256": null,
+    "unique_loss_ledger_sha256": null,
+    "canonical_base": "random_init",
+    "parameter_count": 20613440
+  },
+  "authorities": {
+    "code": null,
+    "model": null,
+    "tokenizer": null,
+    "data": null,
+    "loss_ledger": null,
+    "checkpoint_integrity": null,
+    "evaluation_firewall": null,
+    "backend": null,
+    "parent_checkpoint": null
+  },
+  "recipe": {
+    "training_config_sha256": null,
+    "optimizer_scheduler_precision": {
+      "optimizer": null,
+      "scheduler": null,
+      "precision": null
+    },
+    "seed": null,
+    "target_unique_loss_positions": null,
+    "maximum_total_exposures": null,
+    "available_unique_loss_positions": null,
+    "max_exposures_per_unique_position": 1
+  },
+  "checkpoint": {
+    "mode": "FRESH_START",
+    "lineage": {
+      "parent_checkpoint_sha256": null,
+      "parent_manifest_sha256": null,
+      "previous_run_id": null,
+      "source_provider": null,
+      "cross_provider_transfer": false,
+      "resume_validated": false
+    },
+    "stop_resume_policy_sha256": null,
+    "session_time_limit_minutes": null,
+    "first_checkpoint_deadline_minutes": null,
+    "checkpoint_every_steps": null,
+    "atomic_publish_required": true,
+    "fresh_process_resume_required": true,
+    "cross_provider_resume_required": true,
+    "checkpoint_early_in_ephemeral_session": true
+  },
+  "evaluation": {
+    "evaluation_schedule_sha256": null,
+    "selection_validation_only": true,
+    "final_test_payload_access": false
+  },
+  "runtime": {
+    "backend_id": null,
+    "python_version": null,
+    "framework_version": null,
+    "environment_lock_sha256": null,
+    "device_type": null
+  },
+  "resource": {
+    "resource_class": "LOCAL_FREE",
+    "provider": "UNBOUND",
+    "maximum_cost_usd": 0,
+    "materially_paid": false,
+    "paid_authorization_ref": null
+  },
+  "output": {
+    "artifact_store_uri": null,
+    "content_addressed": true
+  }
+}
