@@ -1,0 +1,45 @@
+{
+  "schema": "12-6.next100-066-decontamination-v4.blocker.v4",
+  "worker_id": "NEXT100-066-DECONTAMINATION-V4",
+  "repository": "Oleksii-debug/12-6-ai.",
+  "status": "BLOCKED_MATCHER_EXECUTION_PENDING",
+  "blocking_reason": "Reserved-evaluation authority is now identified and bound via DATA-526 V6. Exact/normalized/fragment/near/code-copy matchers have not yet executed against the frozen 48-record candidate; no PASS or exclusions are claimed.",
+  "candidate_corpus_identity": "a33baaa3a7ff7a9622dc420c1d61b0d113ab0f11588a39674996bd198845efb6",
+  "candidate_training_record_inventory_identity": "55f01d2027057f30cfc43d4ebe668779fc48413781d8146402dd53f81e2dbf31",
+  "candidate_record_payload_jsonl_sha256": "2f21f7655c9287bbc7424b410788f431f20f0936f445fefd26fcf6114b772dbd",
+  "reserved_evaluation": {
+    "data526_v6_evidence_identity_sha256": "90306808ac61c18b02495d95acea5a08cf40901a955d0bfb7c1de74912062f02",
+    "eval303_head_sha": "5e5a1de3b594cee5612e63d3d4c2a70499740ac7",
+    "eval303_selection_identity_sha256": "7b97a9ab04469236dc5bc17fc80155cb43430b01c443bb6209fac090557258fd",
+    "eval303_membership_sha256": "e4bb39dd7aa6a20c7ed34e093f563b5f4896ac16828151c6b375a83cd8a068c6",
+    "selection_records": 10,
+    "selection_payload_access_scope": "SELECTION_VALIDATION_ONLY",
+    "final_test_payload_accessed": false,
+    "final_test_outcomes_accessed": false
+  },
+  "matcher_authority": {
+    "authority": "DATA-232-DECONTAMINATION-AUTHORITY-V2",
+    "head_sha": "4b9d7c2e1dc2806ca91e33e6570630b3f43af24a",
+    "algorithm": "data232-deterministic-overlap-cluster-v2"
+  },
+  "matchers_executed": {
+    "exact_hashes": false,
+    "normalized_hashes": false,
+    "fragment_containment": false,
+    "near_copy_clusters": false,
+    "code_copy_detection": false
+  },
+  "scan_executed": false,
+  "exclusions_claimed": false,
+  "pass_verdict_emitted": false,
+  "truth_boundary": {
+    "authorized_unique_optimized_targets": 0,
+    "tokenizer_fit_executed": false,
+    "optimizer_updates": 0,
+    "training_executed": false,
+    "paid_compute_used": false
+  },
+  "execution_profile": "LOCAL_FREE",
+  "evidence_identity_algorithm": "sha256(canonical-json-without-evidence_identity_sha256)",
+  "evidence_identity_sha256": "31cd88ae159a456ec6420897b4217efe39adb85a95b760b38b9a1df1e7a04f84"
+}
