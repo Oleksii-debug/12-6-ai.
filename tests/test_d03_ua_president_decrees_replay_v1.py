@@ -39,6 +39,7 @@ def decree_html(
     )
     slug = number.replace("/", "")
     return f"""<html><body>
+<nav><a href="/documents/{slug}-61461">УКАЗ ПРЕЗИДЕНТА УКРАЇНИ №{number}</a></nav>
 <h1>УКАЗ ПРЕЗИДЕНТА УКРАЇНИ №{number}</h1>
 <div>{subject}</div>
 <article>
@@ -47,7 +48,6 @@ def decree_html(
 <p>4 вересня 2026 року</p>
 </article>
 <footer><h3>Новини</h3><p>неофіційний текст</p></footer>
-<a href="/documents/{slug}-61461">УКАЗ ПРЕЗИДЕНТА УКРАЇНИ №{number}</a>
 </body></html>""".encode()
 
 
