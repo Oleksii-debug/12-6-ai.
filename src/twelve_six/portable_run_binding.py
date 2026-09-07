@@ -233,6 +233,7 @@ def _build_candidate(
     ledger = _mapping(evidence.get("loss_ledger"))
     checkpoint_evidence = _mapping(evidence.get("checkpoint_integrity"))
     evaluation_evidence = _mapping(evidence.get("evaluation"))
+    decontamination_evidence = _mapping(evaluation_evidence.get("decontamination"))
     recipe_evidence = _mapping(evidence.get("training_recipe"))
 
     bindings = _mapping(overlay.get("scientific_bindings"))
@@ -265,8 +266,9 @@ def _build_candidate(
             "evaluation_firewall": copy.deepcopy(
                 evaluation_evidence.get("firewall_authority")
             ),
-            "decontamination": copy.deepcopy(
-                _mapping(evaluation_evidence.get("decontamination")).get("authority")
+            "decontamination": copy.deepcopy(decontamination_evidence.get("authority")),
+            "final_test_reservation": copy.deepcopy(
+                evaluation_evidence.get("final_test_reservation_authority")
             ),
             "backend": copy.deepcopy(binding_authorities.get("backend")),
             "parent_checkpoint": copy.deepcopy(
@@ -312,6 +314,9 @@ def _build_candidate(
                 "checkpoint_every_steps"
             ),
         }
+    )
+    packet["evaluation"]["final_test_reservation_sha256"] = (
+        decontamination_evidence.get("final_test_identity")
     )
     packet["evaluation"].update(copy.deepcopy(_mapping(overlay.get("evaluation"))))
     packet["runtime"].update(copy.deepcopy(_mapping(overlay.get("runtime"))))
