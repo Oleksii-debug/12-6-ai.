@@ -30,14 +30,14 @@
       "sha256": "06b3f872e648e0b7f3cc33a92bd8b04709dea5d9a9821df4f2e8141f646cdcf3"
     }
   },
-  "manifest_sha256": "695c990477bc0c16b7a208afe102a3a00b499245d63048bfba312bb6e88289ab",
+  "manifest_sha256": "ac9d64d117e86bf1911f421fa0d793f98f1d6e4887a8a06bef3ac46309e57165",
   "platform": {
     "machine": "aarch64",
     "system": "Linux"
   },
   "profile_id": "linux-aarch64",
   "project": "twelve-six-ai",
-  "pyproject_sha256": "2051db3adfcdd6da2e6a3cb17c8015135c9e100e222a79ebb877ab35b34e2a15",
+  "pyproject_sha256": "4d1a51431ded0a003d019f828ff15bec83173717414f340ed5ef43d04cbfac20",
   "python": {
     "implementation": "cpython",
     "requires_python": ">=3.11,<3.12",
