@@ -235,7 +235,7 @@ def normalize(text: str) -> str:
 
 
 def _validate_occurrences(row: Mapping[str, Any], text: str) -> None:
-    nonzero_types = 0
+    total_unique_entities = 0
     for count_field, occurrence_field, pattern in OCCURRENCE_FIELDS.values():
         count = row.get(count_field)
         occurrences = row.get(occurrence_field)
@@ -244,8 +244,6 @@ def _validate_occurrences(row: Mapping[str, Any], text: str) -> None:
             f"invalid_{count_field}",
         )
         _require(isinstance(occurrences, list), f"invalid_{occurrence_field}")
-        _require(len(occurrences) == count, f"occurrence_count_mismatch_{count_field}")
-        nonzero_types += int(count > 0)
 
         annotated: list[tuple[int, int, str]] = []
         for item in occurrences:
@@ -279,9 +277,20 @@ def _validate_occurrences(row: Mapping[str, Any], text: str) -> None:
             sorted(annotated) == expected,
             f"untracked_or_stale_occurrences_{occurrence_field}",
         )
+        unique_tokens = {token for _, _, token in annotated}
+        _require(
+            len(unique_tokens) == count,
+            f"unique_entity_count_mismatch_{count_field}",
+        )
+        total_unique_entities += count
 
+    total = row.get("sum_of_unique_entities")
     _require(
-        row.get("sum_of_unique_entities") == nonzero_types,
+        isinstance(total, int) and not isinstance(total, bool) and total >= 0,
+        "invalid_sum_of_unique_entities",
+    )
+    _require(
+        total == total_unique_entities,
         "sum_of_unique_entities_inconsistent",
     )
 
@@ -347,8 +356,8 @@ def select_rows(
     for numeric_id in sorted(by_id):
         row = by_id[numeric_id]
         ok, reason, text = assess_row(row, cfg)
-        reasons[reason] += 1
         if not ok:
+            reasons[reason] += 1
             continue
         digest = _sha256(text.encode("utf-8"))
         if digest in seen_hashes:
@@ -363,6 +372,7 @@ def select_rows(
                 "text": text,
             }
         )
+        reasons["accepted"] += 1
         if len(accepted) >= cfg["selection"]["max_records"]:
             break
     return accepted, reasons
@@ -391,6 +401,8 @@ def materialize(
     rows = table.to_pylist()
     accepted, reasons = select_rows(rows, cfg)
     _require(accepted, "privacy/quality retest retained zero rows")
+    rows_scanned = sum(reasons.values())
+    _require(rows_scanned <= table.num_rows, "disposition count exceeds parquet row count")
 
     output_jsonl.parent.mkdir(parents=True, exist_ok=True)
     report_path.parent.mkdir(parents=True, exist_ok=True)
@@ -404,6 +416,8 @@ def materialize(
         "config_identity_sha256": _sha256(_canonical(dict(cfg))),
         "parquet_columns": table.column_names,
         "parquet_rows": table.num_rows,
+        "rows_scanned": rows_scanned,
+        "rows_not_scanned_after_selection_cap": table.num_rows - rows_scanned,
         "retained_records": len(accepted),
         "retained_normalized_bytes": sum(row["normalized_bytes"] for row in accepted),
         "retained_jsonl_sha256": _sha256(payload),
@@ -411,6 +425,7 @@ def materialize(
         "exact_schema_validated": True,
         "occurrence_spans_validated": True,
         "complete_placeholder_annotation_validated": True,
+        "unique_placeholder_count_semantics_validated": True,
         "universal_pii_absence_claimed": False,
         "rejected_text_emitted": False,
         "rejected_hashes_emitted": False,
