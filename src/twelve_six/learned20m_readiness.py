@@ -62,13 +62,16 @@ def _is_positive_int(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value > 0
 
 
+def _is_finite_number(value: Any) -> bool:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    if isinstance(value, int):
+        return True
+    return math.isfinite(value)
+
+
 def _is_finite_positive_number(value: Any) -> bool:
-    return (
-        isinstance(value, (int, float))
-        and not isinstance(value, bool)
-        and math.isfinite(value)
-        and value > 0
-    )
+    return _is_finite_number(value) and value > 0
 
 
 def _valid_authority_ref(value: Any, *, require_workflow: bool = False) -> bool:
@@ -154,8 +157,7 @@ def _require_scientific_authority(
         require_workflow=require_workflow,
     )
     if token is None or token not in verified_authorities:
-        suffix = "_missing"
-        base = name[: -len(suffix)] if name.endswith(suffix) else name
+        base = name.removesuffix("_missing")
         blockers.append(f"{base}_unverified")
 
 
@@ -421,7 +423,7 @@ def assess_learned20m_readiness(
     maximum_cost = cost.get("maximum_cost_usd")
     if isinstance(maximum_cost, bool) or not isinstance(maximum_cost, (int, float)):
         compute.append("maximum_cost_missing")
-    elif not math.isfinite(maximum_cost):
+    elif not _is_finite_number(maximum_cost):
         compute.append("maximum_cost_not_finite")
     elif maximum_cost <= 0:
         compute.append("maximum_cost_not_positive")
@@ -472,7 +474,7 @@ def assess_learned20m_readiness(
     authorized_limit = compute_auth.get("maximum_cost_usd")
     if isinstance(authorized_limit, bool) or not isinstance(authorized_limit, (int, float)):
         material.append("authorized_cost_limit_missing")
-    elif not math.isfinite(authorized_limit):
+    elif not _is_finite_number(authorized_limit):
         material.append("authorized_cost_limit_not_finite")
     elif authorized_limit <= 0:
         material.append("authorized_cost_limit_not_positive")
