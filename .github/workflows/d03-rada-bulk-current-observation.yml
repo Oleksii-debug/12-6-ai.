@@ -1,0 +1,78 @@
+name: D03 Rada Bulk Current Observation
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "configs/data/d03_rada_bulk_source_probe_v1.json"
+      - "tools/probe_d03_rada_bulk_source.py"
+      - "tests/test_d03_rada_bulk_source_probe.py"
+      - "tests/test_d03_rada_bulk_source_probe_authority.py"
+      - ".github/workflows/d03-rada-bulk-current-observation.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: d03-rada-bulk-current-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  observe-current-upstream:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Prove exact checkout
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install focused test runtime
+        run: python -m pip install pytest
+      - name: Compile and test inherited fail-closed probe
+        run: |
+          python -m py_compile tools/probe_d03_rada_bulk_source.py tests/test_d03_rada_bulk_source_probe.py tests/test_d03_rada_bulk_source_probe_authority.py
+          PYTHONPATH=. pytest -q tests/test_d03_rada_bulk_source_probe.py tests/test_d03_rada_bulk_source_probe_authority.py
+      - name: Observe exact current official archive without granting credit
+        run: >-
+          python tools/probe_d03_rada_bulk_source.py
+          --accept-current-upstream
+          --output "$RUNNER_TEMP/rada-bulk-current-observation.json"
+      - name: Verify zero-credit current observation
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          report = json.loads((Path(os.environ["RUNNER_TEMP"]) / "rada-bulk-current-observation.json").read_text(encoding="utf-8"))
+          assert report["gates"]["exact_archive_identity"] == "OBSERVED_UNPINNED"
+          assert report["gates"]["safe_zip_inventory"] == "PASS"
+          assert report["training_authorized_bytes"] == 0
+          assert report["corpus_admitted"] is False
+          assert report["tokenizer_fit_authorized"] is False
+          assert report["model_training_executed"] is False
+          assert report["paid_compute_used"] is False
+          print("archive_bytes=", report["archive"]["bytes"])
+          print("archive_md5=", report["archive"]["md5"])
+          print("archive_sha256=", report["archive"]["sha256"])
+          print("canonical_entry_count=", report["inventory"]["canonical_entry_count"])
+          print("canonical_raw_bytes=", report["inventory"]["canonical_raw_bytes"])
+          print("entry_identity_sha256=", report["inventory"]["entry_identity_sha256"])
+          print("capacity_gate=", report["gates"]["discovery_capacity_threshold"])
+          print("safe_result=", report["safe_result"])
+          PY
+      - name: Upload text-free current observation
+        uses: actions/upload-artifact@v4
+        with:
+          name: d03-rada-bulk-current-${{ env.SOURCE_SHA }}
+          path: ${{ runner.temp }}/rada-bulk-current-observation.json
+          if-no-files-found: error
+          retention-days: 30
