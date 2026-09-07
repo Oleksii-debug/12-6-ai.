@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import copy
 import json
+import subprocess
+import sys
 from pathlib import Path
 
-from tools.build_r01_portable_run_packet import main as build_main
 from twelve_six.portable_run_binding import (
     bind_portable_run_packet,
     canonical_sha256,
@@ -138,6 +139,16 @@ def _ready_overlay() -> dict:
     return data
 
 
+def _run_builder(args: list[str]) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [sys.executable, str(ROOT / "tools/build_r01_portable_run_packet.py"), *args],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+
 def test_checked_in_overlay_contract_is_valid_but_deliberately_blocked() -> None:
     overlay = _load(OVERLAY)
     assert validate_session_overlay_contract(overlay) == []
@@ -264,9 +275,12 @@ def test_cli_writes_once_only_after_ready_binding(tmp_path: Path) -> None:
         "--output",
         str(output_path),
     ]
-    assert build_main(args) == 0
+    first = _run_builder(args)
+    assert first.returncode == 0, first.stderr or first.stdout
     assert json.loads(output_path.read_text(encoding="utf-8"))["status"] == "READY_CANDIDATE"
-    assert build_main(args) == 2
+    second = _run_builder(args)
+    assert second.returncode == 2
+    assert "refusing to overwrite existing output" in second.stdout
 
 
 def test_cli_never_writes_current_blocked_inputs(tmp_path: Path) -> None:
@@ -281,5 +295,6 @@ def test_cli_never_writes_current_blocked_inputs(tmp_path: Path) -> None:
         "--output",
         str(output_path),
     ]
-    assert build_main(args) == 1
+    result = _run_builder(args)
+    assert result.returncode == 1, result.stderr or result.stdout
     assert not output_path.exists()
