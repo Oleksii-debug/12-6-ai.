@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import importlib.util
+import json
 from pathlib import Path
 
 TOOLS = Path(__file__).resolve().parents[1] / "tools"
@@ -74,3 +75,17 @@ def test_exact_hash_survivor_is_lexicographic_path() -> None:
     finally:
         mod.EXPECTED_UNIQUE_COUNT = original_count
         mod.EXPECTED_UNIQUE_BYTES = original_bytes
+
+
+def test_retained_evidence_is_self_consistent_and_keeps_zero_credit() -> None:
+    evidence_path = Path(__file__).resolve().parents[1] / "evidence/d03-rada-trees/secondary-period-session-provenance-v1.json"
+    evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+    expected_identity = evidence.pop("evidence_identity_sha256")
+    assert mod.sha256_json(evidence) == expected_identity
+    disposition = evidence["provenance_disposition"]
+    assert disposition["rada_plenary_session_path_candidate_count"] == 4_384
+    assert disposition["rada_plenary_session_path_candidate_bytes"] == 877_899_128
+    assert disposition["quarantine_non_parliament_path_count"] == 1
+    assert disposition["quarantine_non_parliament_path_bytes"] == 84_781
+    assert evidence["claim_boundary"]["training_authorized_bytes"] == 0
+    assert evidence["claim_boundary"]["optimizer_updates"] == 0
