@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import copy
+import multiprocessing
+import os
 from dataclasses import asdict
 from pathlib import Path
 
@@ -16,6 +18,7 @@ from twelve_six.checkpoint import (
     sha256_file,
     verify_checkpoint,
 )
+from twelve_six.checkpoint.recovery_lock import exclusive_recovery_lock
 from twelve_six.scale141_recovery import (
     RecoveryLifecycleError,
     RecoveryPointerUpdateInterrupted,
@@ -124,6 +127,43 @@ def _file_hashes(path: Path) -> dict[str, str]:
         for child in path.iterdir()
         if child.is_file()
     }
+
+
+def _concurrent_publish_worker(
+    root: str,
+    steps: int,
+    entered: multiprocessing.synchronize.Event,
+    release: multiprocessing.synchronize.Event | None,
+    result_queue: multiprocessing.queues.Queue,
+) -> None:
+    model, trainer, cfg = _stack()
+    for index in range(steps):
+        _step(trainer, index)
+
+    def save_generation(path: Path):
+        entered.set()
+        if release is not None and not release.wait(20):
+            raise RuntimeError("timed out waiting to release concurrent publisher")
+        return _save(path, model, trainer, cfg)
+
+    try:
+        reference = publish_recovery_generation(
+            root,
+            save_generation=save_generation,
+            expected_source_sha=SOURCE_SHA,
+            expected_run_manifest_hash=RUN_HASH,
+            expected_step=trainer.optimizer_step,
+            expected_tokens_seen=trainer.tokens_seen,
+        )
+        result_queue.put(("ok", reference))
+    except BaseException as exc:
+        result_queue.put(("error", f"{type(exc).__name__}: {exc}"))
+
+
+def _crash_lock_holder(root: str, entered: multiprocessing.synchronize.Event) -> None:
+    with exclusive_recovery_lock(root):
+        entered.set()
+        os._exit(23)
 
 
 def test_historical_recovery_latest_overwrite_failure_is_reproduced(tmp_path: Path) -> None:
@@ -266,3 +306,57 @@ def test_pointer_binding_mismatch_fails_closed(tmp_path: Path) -> None:
     bad_reference["optimizer_step"] += 1
     with pytest.raises(RecoveryLifecycleError, match="phase boundary reference"):
         resolve_recovery_generation(root, expected_reference=bad_reference)
+
+
+def test_concurrent_publishers_are_serialized_before_generation_reservation(tmp_path: Path) -> None:
+    ctx = multiprocessing.get_context("spawn")
+    root = tmp_path / "recovery"
+    first_entered = ctx.Event()
+    first_release = ctx.Event()
+    second_entered = ctx.Event()
+    results = ctx.Queue()
+
+    first = ctx.Process(
+        target=_concurrent_publish_worker,
+        args=(str(root), 1, first_entered, first_release, results),
+    )
+    second = ctx.Process(
+        target=_concurrent_publish_worker,
+        args=(str(root), 2, second_entered, None, results),
+    )
+    first.start()
+    assert first_entered.wait(20), "first publisher did not reach save boundary"
+    second.start()
+    assert not second_entered.wait(0.75), "second publisher entered while first held lock"
+
+    first_release.set()
+    assert second_entered.wait(20), "second publisher did not proceed after lock release"
+    first.join(30)
+    second.join(30)
+    assert first.exitcode == 0
+    assert second.exitcode == 0
+
+    outcomes = [results.get(timeout=5), results.get(timeout=5)]
+    assert all(status == "ok" for status, _ in outcomes), outcomes
+    references = sorted((payload for _, payload in outcomes), key=lambda value: value["generation"])
+    assert [reference["generation"] for reference in references] == [1, 2]
+    assert references[0]["optimizer_step"] == 1
+    assert references[1]["optimizer_step"] == 2
+
+    resolved = resolve_recovery_generation(root, expected_reference=references[1])
+    assert resolved.reference["generation"] == 2
+    assert resolved.reference["optimizer_step"] == 2
+
+
+def test_publication_lock_is_released_when_holder_process_crashes(tmp_path: Path) -> None:
+    ctx = multiprocessing.get_context("spawn")
+    root = tmp_path / "recovery"
+    entered = ctx.Event()
+    holder = ctx.Process(target=_crash_lock_holder, args=(str(root), entered))
+    holder.start()
+    assert entered.wait(20), "crash fixture never acquired publication lock"
+    holder.join(20)
+    assert holder.exitcode == 23
+
+    with exclusive_recovery_lock(root):
+        assert root.is_dir()
