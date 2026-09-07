@@ -108,7 +108,8 @@ def _verify_training_handoff(
     *,
     expected_inventory_identity_sha256: str,
     expected_survivor_authority_sha256: str,
-) -> tuple[str, str]:
+    expected_handoff_identity_sha256: str,
+) -> tuple[str, str, str]:
     _require(isinstance(handoff, Mapping), "training handoff must be an object")
     _require(
         handoff.get("schema_version") == TRAINING_HANDOFF_SCHEMA,
@@ -143,6 +144,10 @@ def _verify_training_handoff(
         "training handoff persisted raw text",
     )
     _require(
+        handoff.get("final_test_payload_accessed") is False,
+        "training handoff accessed final-test payload before decontamination",
+    )
+    _require(
         handoff.get("final_test_outcomes_accessed") is False,
         "training handoff accessed final-test outcomes",
     )
@@ -153,6 +158,14 @@ def _verify_training_handoff(
     claimed = _require_sha256(
         handoff.get("handoff_identity_sha256"),
         "handoff_identity_sha256",
+    )
+    _require(
+        claimed
+        == _require_sha256(
+            expected_handoff_identity_sha256,
+            "expected_handoff_identity_sha256",
+        ),
+        "training handoff identity is not independently expected",
     )
     body = deepcopy(dict(handoff))
     body.pop("handoff_identity_sha256", None)
@@ -179,7 +192,7 @@ def _verify_training_handoff(
         == _sha256_bytes(_canonical_bytes(projection)),
         "training matcher projection identity mismatch",
     )
-    return inventory, survivor
+    return inventory, survivor, claimed
 
 
 def build_reserved_payload_binding(
@@ -479,17 +492,19 @@ def execute_reserved_decontamination(
     reserved_payload_binding: Mapping[str, Any],
     expected_inventory_identity_sha256: str,
     expected_survivor_authority_sha256: str,
+    expected_training_handoff_identity_sha256: str,
     expected_reserved_binding_identity_sha256: str,
     expected_selection_validation_identity_sha256: str,
     expected_final_test_identity_sha256: str,
     quarantine_cross_source_families: bool = True,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Run incumbent DATA-232 matching over externally bound current payloads."""
-    inventory, survivor = _verify_training_handoff(
+    inventory, survivor, handoff_identity = _verify_training_handoff(
         training_records,
         training_handoff_evidence,
         expected_inventory_identity_sha256=expected_inventory_identity_sha256,
         expected_survivor_authority_sha256=expected_survivor_authority_sha256,
+        expected_handoff_identity_sha256=expected_training_handoff_identity_sha256,
     )
     authorities, selection_identity, final_identity, final_record_count = (
         _verify_reserved_payloads(
@@ -557,9 +572,7 @@ def execute_reserved_decontamination(
         "status": report["status"],
         "training_corpus_identity_sha256": inventory,
         "input_survivor_authority_sha256": survivor,
-        "training_handoff_identity_sha256": training_handoff_evidence[
-            "handoff_identity_sha256"
-        ],
+        "training_handoff_identity_sha256": handoff_identity,
         "reserved_payload_binding_identity_sha256": reserved_payload_binding[
             "binding_identity_sha256"
         ],
