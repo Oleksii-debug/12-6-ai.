@@ -14,7 +14,7 @@ from urllib.request import Request, urlopen
 DEFAULT_CONFIG = Path("configs/data/d03_franko1901_exact_materialization_v1.json")
 USER_AGENT = "12-6-ai-D03-Franko1901/1.0"
 URL_RE = re.compile(r"(?:https?://|www\.)", re.IGNORECASE)
-EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
+EMAIL_RE = re.compile(r"[^@\s<>]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 
 
 def sha256_bytes(payload: bytes) -> str:
