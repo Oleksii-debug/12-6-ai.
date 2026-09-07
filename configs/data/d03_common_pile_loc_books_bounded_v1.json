@@ -1,0 +1,95 @@
+{
+  "schema_version": "12-6.d03-common-pile-loc-books-bounded.v1",
+  "execution_profile": "LOCAL_FREE",
+  "base_main_sha": "0a55a568bb78d89390087b1c6a2f274b67fa2812",
+  "claim_issue": 887,
+  "rights_authority": {
+    "merged_pr": 769,
+    "head_sha": "327a5364f7729f3ffdfc2f8079d02fb7a54638d2",
+    "registry_path": "configs/data/common_pile_source_rights_v1.json",
+    "source_key": "library_of_congress",
+    "required_rights_basis_class": "PUBLIC_DOMAIN_COLLECTION",
+    "required_license_signal": "PUBLIC_DOMAIN",
+    "required_project_review_status": "REVIEW_REQUIRED"
+  },
+  "collector_authority": {
+    "repository": "r-three/common-pile",
+    "revision": "9457f04a14cb2355ab00023420369d46ffd4a395",
+    "path": "sources/loc_books/books.py",
+    "git_blob_sha1": "0f8633d9a0c12bd04140420d74a95d82a065119f",
+    "readme_path": "sources/loc_books/README.md",
+    "readme_git_blob_sha1": "c364b6dec4232e128b7adee92747f0d728090714"
+  },
+  "source": {
+    "dataset": "common-pile/library_of_congress",
+    "revision": "d31bdba02cdad5104ccec2c02ae799c0bcb5a9a7",
+    "file": "data/00000_loc_books.jsonl.gz",
+    "url": "https://huggingface.co/datasets/common-pile/library_of_congress/resolve/d31bdba02cdad5104ccec2c02ae799c0bcb5a9a7/data/00000_loc_books.jsonl.gz",
+    "sha256": "a6a6023d9cae067b5531ba84537877c180ab3ff1579f99aeac446d65d465ae0f",
+    "bytes": 358594502,
+    "compression": "gzip",
+    "family": "en.common-pile.library-of-congress",
+    "expected_source_label": "loc_books",
+    "expected_metadata_license": "Public Domain"
+  },
+  "record_contract": {
+    "exact_fields": ["id", "text", "source", "added", "metadata"],
+    "required_metadata_fields": [
+      "license",
+      "title",
+      "author",
+      "year",
+      "language",
+      "item_url",
+      "text_file_url"
+    ],
+    "max_json_line_bytes": 20000000,
+    "require_unique_source_ids": true
+  },
+  "selection": {
+    "max_scanned_decompressed_bytes": 90000000,
+    "min_candidate_normalized_utf8_bytes": 5500000,
+    "max_candidate_normalized_utf8_bytes": 6500000,
+    "min_text_utf8_bytes": 2000,
+    "max_text_utf8_bytes": 1000000,
+    "min_alphabetic_chars": 1000,
+    "min_alpha_fraction": 0.55,
+    "min_latin_share_of_alpha": 0.9,
+    "normalization": "NFC_LF_OUTER_TRIM"
+  },
+  "privacy_quality": {
+    "reject_control_characters": true,
+    "reject_replacement_character": true,
+    "reject_email_like": true,
+    "reject_phone_like": true,
+    "deduplicate_exact_normalized_text": true,
+    "universal_pii_absence_claimed": false,
+    "ocr_gold_quality_claimed": false
+  },
+  "claim_boundary": {
+    "candidate_only": true,
+    "canonical_capacity_credited": 0,
+    "family_credit_added": 0,
+    "training_authorized_bytes": 0,
+    "authorized_unique_loss_positions": 0,
+    "corpus_admitted": false,
+    "training_eligible": false,
+    "evaluation_eligible": false,
+    "tokenizer_fit_authorized": false,
+    "optimizer_updates": 0,
+    "model_training_executed": false,
+    "final_test_accessed": false,
+    "paid_compute_used": false,
+    "learned_20m_promoted": false
+  },
+  "required_downstream_gates": [
+    "CURRENT_GLOBAL_EXACT_NEAR_FRAGMENT_LINEAGE_DEDUP",
+    "FRESH_RESERVED_EVALUATION_DECONTAMINATION",
+    "FINAL_SOURCE_RIGHTS_REVIEW",
+    "POST_COMPOSITION_QUALITY_PRIVACY",
+    "BALANCE_AND_FAMILY_CAPS",
+    "CLUSTER_SAFE_SPLIT",
+    "DETERMINISTIC_PACKING_TWO_CLEAN_BUILDS",
+    "POSITIVE_UNIQUE_LOSS_LEDGER"
+  ]
+}
