@@ -169,7 +169,6 @@ def test_plan_rejects_nondeterministic_shard_assignment() -> None:
 
 
 def test_plan_rejects_zero_target_batch_at_construction() -> None:
-    ledger, _ = _guard()
     with pytest.raises(LedgerError, match="actual_nonignored_targets must be positive"):
         build_deterministic_exposure_plan(
             [
