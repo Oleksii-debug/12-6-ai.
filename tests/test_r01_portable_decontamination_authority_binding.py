@@ -3,12 +3,23 @@ from __future__ import annotations
 from twelve_six.portable_run_binding import _build_candidate
 
 
+FINAL_TEST_IDENTITY = "f" * 64
+
+
 def test_portable_candidate_retains_verified_decontamination_authority() -> None:
     authority = {
         "repository": "Oleksii-debug/12-6-ai.",
         "git_sha": "a" * 40,
         "evidence_sha256": "b" * 64,
         "workflow_run_id": 123,
+        "workflow_conclusion": "success",
+        "terminal": True,
+    }
+    final_test_authority = {
+        "repository": "Oleksii-debug/12-6-ai.",
+        "git_sha": "9" * 40,
+        "evidence_sha256": FINAL_TEST_IDENTITY,
+        "workflow_run_id": 456,
         "workflow_conclusion": "success",
         "terminal": True,
     }
@@ -28,7 +39,11 @@ def test_portable_candidate_retains_verified_decontamination_authority() -> None
             "checkpoint_integrity": {"authority": authority},
             "evaluation": {
                 "firewall_authority": authority,
-                "decontamination": {"authority": authority},
+                "final_test_reservation_authority": final_test_authority,
+                "decontamination": {
+                    "authority": authority,
+                    "final_test_identity": FINAL_TEST_IDENTITY,
+                },
             },
             "training_recipe": {},
         },
@@ -65,3 +80,6 @@ def test_portable_candidate_retains_verified_decontamination_authority() -> None
 
     assert packet["authorities"]["decontamination"] == authority
     assert packet["authorities"]["decontamination"] is not authority
+    assert packet["authorities"]["final_test_reservation"] == final_test_authority
+    assert packet["authorities"]["final_test_reservation"] is not final_test_authority
+    assert packet["evaluation"]["final_test_reservation_sha256"] == FINAL_TEST_IDENTITY
