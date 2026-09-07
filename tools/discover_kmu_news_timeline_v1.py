@@ -16,7 +16,10 @@ import urllib.request
 from html.parser import HTMLParser
 
 ORIGIN = "https://www.kmu.gov.ua"
-SEED = f"{ORIGIN}/timeline?type=posts"
+# Live KMu exposes the news timeline through category_id=3. Pin it rather than
+# silently accepting arbitrary category filters from discovered links.
+NEWS_CATEGORY_ID = "3"
+SEED = f"{ORIGIN}/timeline?category_id={NEWS_CATEGORY_ID}&type=posts"
 USER_AGENT = "12-6-ai-kmu-timeline-discovery/1.0 (+LOCAL_FREE research)"
 EXCLUDED = ("/npas/", "/api/", "/contact", "/kontakt", "/zvernenn", "/appeal")
 
@@ -41,16 +44,18 @@ def canonical_timeline_page(raw: str, base: str = SEED) -> str | None:
     if parsed.path.rstrip("/") != "/timeline":
         return None
     query = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
-    if set(query) - {"type", "page"}:
+    if set(query) - {"type", "page", "category_id"}:
         return None
     if query.get("type") != ["posts"]:
+        return None
+    if query.get("category_id") != [NEWS_CATEGORY_ID]:
         return None
     page_values = query.get("page", [])
     if len(page_values) > 1:
         return None
     if page_values and (not page_values[0].isdigit() or int(page_values[0]) < 1):
         return None
-    normalized = [("type", "posts")]
+    normalized = [("category_id", NEWS_CATEGORY_ID), ("type", "posts")]
     if page_values:
         normalized.append(("page", str(int(page_values[0]))))
     return urllib.parse.urlunsplit(
@@ -114,6 +119,7 @@ def discover(max_pages: int, delay_seconds: float) -> dict[str, object]:
     core = {
         "schema_version": "12-6.kmu-timeline-discovery.v1",
         "seed": SEED,
+        "news_category_id": NEWS_CATEGORY_ID,
         "execution_profile": "LOCAL_FREE",
         "training_authorized_bytes": 0,
         "family_count_credit_added": 0,
