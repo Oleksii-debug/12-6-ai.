@@ -1,0 +1,52 @@
+{
+  "schema": "12-6.d03-ua-nbu-official-pdf-pin.v1",
+  "status": "PREPARED_PDF_BYTE_PIN_ZERO_CREDIT",
+  "base_authority": {
+    "repository": "Oleksii-debug/12-6-ai.",
+    "parent_pr": 898,
+    "parent_head_sha": "a196545b4200b23983820002c019fb9e964670e1",
+    "parent_contract_identity_sha256": "1885dfcdb590d15e0fc370a12d5869112832a1b66f36910d941a9704626db1b7",
+    "lane": "D03",
+    "control_issue": 548
+  },
+  "source": {
+    "source_id": "ua.nbu.official-resolutions",
+    "family_id": "ua.nbu.official-resolutions",
+    "allowed_origin": "https://bank.gov.ua",
+    "official_pdf_path_regex": "^/admin_uploads/law/[0-9A-Za-z_.-]+\\.pdf$"
+  },
+  "execution": {
+    "class": "LOCAL_FREE",
+    "fetches_per_pdf": 2,
+    "hard_max_documents": 120,
+    "hard_max_pdfs": 240,
+    "min_pdf_bytes": 256,
+    "hard_max_pdf_bytes": 25000000,
+    "hard_max_total_pdf_bytes": 300000000,
+    "request_timeout_seconds": 30,
+    "same_origin_redirects_only": true,
+    "byte_identical_replay_required": true,
+    "durable_evidence_body_free": true
+  },
+  "pdf_structure": {
+    "pdf_header_within_first_bytes": 1024,
+    "eof_marker_within_last_bytes": 2048,
+    "allowed_content_types": [
+      "application/pdf",
+      "application/octet-stream"
+    ]
+  },
+  "claims": {
+    "canonical_capacity_credit_bytes": 0,
+    "training_authorized_bytes": 0,
+    "authorized_unique_loss_positions": 0,
+    "text_materialized": false,
+    "tokenizer_fit_authorized": false,
+    "model_training_executed": false,
+    "optimizer_updates": 0,
+    "final_test_accessed": false,
+    "paid_compute_authorized": false,
+    "learned_20m_claim": false
+  },
+  "contract_identity_sha256": "7b032daf8200dc9acb3b066aa648463f772d90e9156804ebc3fbf79dbfe9fccd"
+}
