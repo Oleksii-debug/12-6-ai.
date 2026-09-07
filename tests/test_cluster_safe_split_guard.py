@@ -26,6 +26,7 @@ def _handoff() -> dict:
             "payload_bytes": 100,
             "independence_cluster_identity_sha256": _sha("origin-repo"),
             "evaluation_reserved": False,
+            "reserved_split": None,
         },
         {
             "record_id": "code-b",
@@ -36,6 +37,7 @@ def _handoff() -> dict:
             "payload_bytes": 120,
             "independence_cluster_identity_sha256": _sha("origin-repo"),
             "evaluation_reserved": False,
+            "reserved_split": None,
         },
         {
             "record_id": "selection-uk",
@@ -46,6 +48,7 @@ def _handoff() -> dict:
             "payload_bytes": 80,
             "independence_cluster_identity_sha256": _sha("origin-selection"),
             "evaluation_reserved": True,
+            "reserved_split": "selection",
         },
     ]
     value = {
@@ -92,7 +95,7 @@ def _verify(handoff: dict, manifest: dict) -> dict:
     )
 
 
-def test_accepts_complete_cluster_atomic_reserved_safe_split() -> None:
+def test_accepts_complete_cluster_atomic_purpose_locked_split() -> None:
     handoff = _handoff()
     manifest = _manifest(handoff)
     proof = _verify(handoff, manifest)
@@ -109,6 +112,7 @@ def test_accepts_complete_cluster_atomic_reserved_safe_split() -> None:
         "train": 220,
     }
     assert proof["independence_clusters_cross_splits"] is False
+    assert proof["evaluation_reservation_purpose_drift"] is False
     assert proof["authorized_training_exposure"] == 0
     assert proof["final_test_payload_read"] is False
 
@@ -116,6 +120,7 @@ def test_accepts_complete_cluster_atomic_reserved_safe_split() -> None:
 def test_same_origin_siblings_cannot_cross_split_even_when_both_survive_dedup() -> None:
     handoff = _handoff()
     handoff["records"][1]["evaluation_reserved"] = True
+    handoff["records"][1]["reserved_split"] = "selection"
     _rehash(handoff, "handoff_identity_sha256")
     manifest = _manifest(handoff)
     manifest["input_handoff_identity_sha256"] = handoff["handoff_identity_sha256"]
@@ -125,19 +130,44 @@ def test_same_origin_siblings_cannot_cross_split_even_when_both_survive_dedup() 
         _verify(handoff, manifest)
 
 
+def test_selection_reservation_cannot_be_reassigned_to_final_test() -> None:
+    handoff = _handoff()
+    manifest = _manifest(handoff)
+    manifest["assignments"][2]["split"] = "final_test"
+    _rehash(manifest, "split_manifest_identity_sha256")
+    with pytest.raises(guard.ClusterSafeSplitError, match="wrong held-out purpose"):
+        _verify(handoff, manifest)
+
+
 def test_evaluation_reserved_record_cannot_enter_train() -> None:
     handoff = _handoff()
     manifest = _manifest(handoff)
     manifest["assignments"][2]["split"] = "train"
     _rehash(manifest, "split_manifest_identity_sha256")
-    with pytest.raises(guard.ClusterSafeSplitError, match="evaluation-reserved"):
+    with pytest.raises(guard.ClusterSafeSplitError, match="wrong held-out purpose"):
+        _verify(handoff, manifest)
+
+
+def test_reserved_record_requires_exact_reserved_split_authority() -> None:
+    handoff = _handoff()
+    handoff["records"][2]["reserved_split"] = None
+    _rehash(handoff, "handoff_identity_sha256")
+    manifest = _manifest(handoff)
+    with pytest.raises(guard.ClusterSafeSplitError, match="reserved_split must be selection"):
+        _verify(handoff, manifest)
+
+
+def test_non_reserved_record_cannot_claim_held_out_reservation() -> None:
+    handoff = _handoff()
+    handoff["records"][0]["reserved_split"] = "selection"
+    _rehash(handoff, "handoff_identity_sha256")
+    manifest = _manifest(handoff)
+    with pytest.raises(guard.ClusterSafeSplitError, match="reserved_split must be null"):
         _verify(handoff, manifest)
 
 
 def test_non_reserved_record_cannot_be_used_as_held_out_quota_repair() -> None:
     handoff = _handoff()
-    # Give this record its own origin so the reservation firewall, not cluster atomicity,
-    # is the first failing rule.
     handoff["records"][1]["independence_cluster_identity_sha256"] = _sha("origin-code-b")
     _rehash(handoff, "handoff_identity_sha256")
     manifest = _manifest(handoff)
