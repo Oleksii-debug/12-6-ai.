@@ -38,11 +38,14 @@ def _inventory(payloads: dict[str, bytes]) -> dict:
     core = {
         "schema_version": postdedup.OUTPUT_SCHEMA,
         "selection_policy": postdedup.SELECTION_POLICY,
+        "upstream_survivor_selection_rule": postdedup.SURVIVOR_SELECTION_RULE,
         "input_v8_report_sha256": "1" * 64,
         "input_v3_dedup_report_sha256": "2" * 64,
+        "input_survivor_authority_sha256": "3" * 64,
         "input_source_count": len(retained),
         "capacity_component_count": len(retained),
         "duplicate_component_count": 0,
+        "independence_cluster_count": len(retained),
         "retained_source_count": len(retained),
         "excluded_duplicate_source_count": 0,
         "retained_unique_capacity_bytes": sum(len(payload) for payload in payloads.values()),
@@ -95,6 +98,10 @@ class PostDedupDecontamHandoffV1Tests(unittest.TestCase):
         self.assertEqual(
             evidence["postdedup_inventory_identity_sha256"],
             self.inventory["inventory_identity_sha256"],
+        )
+        self.assertEqual(
+            evidence["input_survivor_authority_sha256"],
+            self.inventory["input_survivor_authority_sha256"],
         )
         self.assertEqual(evidence["authorized_training_exposure"], 0)
         self.assertFalse(evidence["final_test_payload_accessed"])
@@ -153,6 +160,16 @@ class PostDedupDecontamHandoffV1Tests(unittest.TestCase):
                     "inventory_identity_sha256"
                 ],
             )
+
+    def test_rejects_inventory_without_survivor_authority_binding(self) -> None:
+        tampered = copy.deepcopy(self.inventory)
+        tampered.pop("input_survivor_authority_sha256")
+        _rehash(tampered)
+        with self.assertRaisesRegex(
+            handoff.PostDedupDecontamHandoffError,
+            "input_survivor_authority_sha256 must be",
+        ):
+            _prepare(tampered, self.payloads)
 
     def test_rejects_rehashed_final_test_boundary_weakening(self) -> None:
         tampered = copy.deepcopy(self.inventory)
