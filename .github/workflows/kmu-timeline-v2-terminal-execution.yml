@@ -1,0 +1,82 @@
+name: KMu Timeline V2 Terminal Execution
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/kmu-timeline-v2-terminal-execution.yml"
+      - "tools/discover_kmu_news_timeline_v1.py"
+      - "tools/probe_kmu_secretariat_timeline_v2.py"
+      - "tools/probe_kmu_secretariat_bulk_v1.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kmu-timeline-v2-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  execute:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Prove exact checkout
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Compile merged KMu V2 surface
+        run: >-
+          python -m py_compile
+          tools/discover_kmu_news_timeline_v1.py
+          tools/probe_kmu_secretariat_timeline_v2.py
+          tools/probe_kmu_secretariat_bulk_v1.py
+      - name: Execute bounded LOCAL_FREE timeline probe
+        run: >-
+          python tools/probe_kmu_secretariat_timeline_v2.py
+          --max-pages 5
+          --max-fetches 120
+          --delay-seconds 1.05
+          --output "$RUNNER_TEMP/kmu-timeline-v2-report.json"
+      - name: Assert evidence truth boundary and print measured yield
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          path = Path(os.environ["RUNNER_TEMP"]) / "kmu-timeline-v2-report.json"
+          report = json.loads(path.read_text(encoding="utf-8"))
+          boundary = report["probe_boundary"]
+          assert boundary["training_authorized_bytes"] == 0
+          assert boundary["family_count_credit_added"] == 0
+          assert boundary["tokenizer_fit_executed"] is False
+          assert boundary["optimizer_updates"] == 0
+          assert boundary["final_test_accessed"] is False
+          assert boundary["paid_compute_used"] is False
+          assert boundary["canonical_registry_mutated"] is False
+          assert boundary["probe_is_not_bulk_admission"] is True
+          print("probe_identity_sha256=", report["probe_identity_sha256"])
+          print("verdict=", report["verdict"])
+          print("discovered_news_urls=", len(report["discovery"]["news_urls"]))
+          print("attempted_pages=", report["sample"]["attempted_pages"])
+          print("eligible_pages=", report["sample"]["eligible_pages"])
+          print("duplicate_eligible_payloads=", report["sample"]["duplicate_eligible_payloads"])
+          print("observed_unique_probe_bytes=", report["sample"]["observed_unique_probe_bytes"])
+          print("family_cap_bytes=", report["sample"]["family_cap_bytes"])
+          PY
+      - name: Upload text-free KMu evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: kmu-timeline-v2-${{ env.SOURCE_SHA }}
+          path: ${{ runner.temp }}/kmu-timeline-v2-report.json
+          if-no-files-found: error
+          retention-days: 30
