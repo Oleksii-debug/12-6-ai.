@@ -3,7 +3,8 @@
 D04 does not decide decontamination truth and does not create a split here. The guard
 consumes one externally identified, text-free terminal decontamination handoff plus one
 complete split manifest. It proves that every independence/origin cluster is atomic
-across train/selection/final_test and preserves the evaluation-reservation firewall.
+across train/selection/final_test and preserves the exact evaluation-reservation
+purpose firewall.
 
 This package authorizes zero training exposure. It exists specifically because global
 dedup may retain multiple capacity-bearing sibling objects from one upstream origin;
@@ -22,6 +23,7 @@ SPLIT_MANIFEST_SCHEMA = "12-6.d04-cluster-safe-split-manifest.v1"
 PROOF_SCHEMA = "12-6.d04-cluster-safe-split-proof.v1"
 SPLIT_POLICY = "INDEPENDENCE_CLUSTER_ATOMIC_V1"
 ALLOWED_SPLITS = frozenset({"train", "selection", "final_test"})
+HELD_OUT_SPLITS = frozenset({"selection", "final_test"})
 
 _RECORD_KEYS = frozenset(
     {
@@ -33,6 +35,7 @@ _RECORD_KEYS = frozenset(
         "payload_bytes",
         "independence_cluster_identity_sha256",
         "evaluation_reserved",
+        "reserved_split",
     }
 )
 _ASSIGNMENT_KEYS = frozenset({"record_id", "split"})
@@ -156,10 +159,22 @@ def _validate_handoff(
             previous_cluster == cluster,
             "one source_id maps to multiple independence clusters",
         )
+        evaluation_reserved = raw["evaluation_reserved"]
         _require(
-            isinstance(raw["evaluation_reserved"], bool),
+            isinstance(evaluation_reserved, bool),
             f"records[{index}].evaluation_reserved must be boolean",
         )
+        reserved_split = raw["reserved_split"]
+        if evaluation_reserved:
+            _require(
+                isinstance(reserved_split, str) and reserved_split in HELD_OUT_SPLITS,
+                f"records[{index}].reserved_split must be selection or final_test",
+            )
+        else:
+            _require(
+                reserved_split is None,
+                f"records[{index}].reserved_split must be null for non-reserved records",
+            )
         records.append(
             {
                 "record_id": record_id,
@@ -173,7 +188,8 @@ def _validate_handoff(
                     raw["payload_bytes"], f"records[{index}].payload_bytes"
                 ),
                 "independence_cluster_identity_sha256": cluster,
-                "evaluation_reserved": raw["evaluation_reserved"],
+                "evaluation_reserved": evaluation_reserved,
+                "reserved_split": reserved_split,
             }
         )
     records.sort(key=lambda row: row["record_id"])
@@ -251,7 +267,7 @@ def verify_cluster_safe_split(
     expected_handoff_identity_sha256: str,
     expected_split_manifest_identity_sha256: str,
 ) -> dict[str, Any]:
-    """Verify complete, reservation-safe, independence-cluster-atomic splitting."""
+    """Verify complete, purpose-locked, independence-cluster-atomic splitting."""
     records = _validate_handoff(
         handoff,
         expected_decontamination_authority_sha256=expected_decontamination_authority_sha256,
@@ -272,12 +288,12 @@ def verify_cluster_safe_split(
         split = assignments[record["record_id"]]
         cluster = record["independence_cluster_identity_sha256"]
         previous = cluster_to_split.setdefault(cluster, split)
-        _require(
-            previous == split,
-            "independence cluster crosses split boundary",
-        )
+        _require(previous == split, "independence cluster crosses split boundary")
         if record["evaluation_reserved"]:
-            _require(split != "train", "evaluation-reserved record assigned to train")
+            _require(
+                split == record["reserved_split"],
+                "evaluation-reserved record assigned to wrong held-out purpose",
+            )
         else:
             _require(split == "train", "non-reserved record assigned to held-out split")
         split_record_counts[split] += 1
@@ -306,12 +322,11 @@ def verify_cluster_safe_split(
         "independence_cluster_count": len(cluster_to_split),
         "split_record_counts": split_record_counts,
         "split_payload_bytes": split_payload_bytes,
-        "cluster_assignment_identity_sha256": _sha256_bytes(
-            _canonical_bytes(cluster_projection)
-        ),
+        "cluster_assignment_identity_sha256": _sha256_bytes(_canonical_bytes(cluster_projection)),
         "complete_record_coverage": True,
         "independence_clusters_cross_splits": False,
         "evaluation_reserved_records_in_train": False,
+        "evaluation_reservation_purpose_drift": False,
         "raw_text_read": False,
         "final_test_payload_read": False,
         "authorized_training_exposure": 0,
