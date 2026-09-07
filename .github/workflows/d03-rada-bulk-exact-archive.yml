@@ -56,7 +56,7 @@ jobs:
             tests/test_d03_rada_bulk_source_probe.py \
             tests/test_d03_rada_bulk_source_probe_authority.py
 
-      - name: Acquire, revalidate and retain exact Rada bulk archive
+      - name: Acquire and retain current zero-credit Rada observation
         shell: bash
         run: |
           set -euo pipefail
@@ -73,19 +73,14 @@ jobs:
 
           config = _load_config(Path("configs/data/d03_rada_bulk_source_probe_v1.json"))
           policy = config["probe_policy"]
-          observed = config["discovery_observation"]
           archive, headers = _download(
               config["source"]["archive_url"],
               max_bytes=int(policy["max_archive_bytes"]),
           )
-          report = inventory_archive(
-              archive,
-              config,
-              expected_md5=str(observed["archive_md5"]),
-              expected_bytes=int(observed["archive_bytes"]),
-          )
+          report = inventory_archive(archive, config)
           report["http_response"] = headers
-          report["discovery_observation_revalidated"] = True
+          report["discovery_observation_revalidated"] = False
+          report["observation_mode"] = "CURRENT_MUTABLE_UPSTREAM_ZERO_CREDIT"
 
           root = Path("artifacts/d03-rada-bulk")
           archive_path = root / "texts.zip"
@@ -103,12 +98,12 @@ jobs:
               "Archive endpoint: https://data.rada.gov.ua/ogd/zak/perv/text/texts.zip\n"
               "Project rights boundary: open-data reuse including commercial use with source attribution; "
               "portal default CC BY 4.0 unless otherwise specified.\n"
-              "This retained archive is acquisition/inventory evidence only; training-authorized bytes remain zero.\n",
+              "This retained archive is a mutable-upstream acquisition observation only; training-authorized bytes remain zero.\n",
               encoding="utf-8",
           )
           PY
 
-      - name: Verify retained archive and zero-training truth boundary
+      - name: Verify current observation and zero-training truth boundary
         shell: bash
         run: |
           set -euo pipefail
@@ -120,14 +115,13 @@ jobs:
           root = Path("artifacts/d03-rada-bulk")
           archive = (root / "texts.zip").read_bytes()
           report = json.loads((root / "probe.json").read_text(encoding="utf-8"))
-          assert len(archive) == 46_682_933
-          assert hashlib.md5(archive, usedforsecurity=False).hexdigest() == "06f239fd182e580ce22ab00dce867e31"
+          assert hashlib.md5(archive, usedforsecurity=False).hexdigest() == report["archive"]["md5"]
           assert hashlib.sha256(archive).hexdigest() == report["archive"]["sha256"]
           assert report["archive"]["bytes"] == len(archive)
-          assert report["archive"]["md5"] == "06f239fd182e580ce22ab00dce867e31"
           assert len(report["archive"]["sha256"]) == 64
-          assert report["discovery_observation_revalidated"] is True
-          assert report["gates"]["exact_archive_identity"] == "PASS_PINNED_DISCOVERY_REVALIDATED"
+          assert report["discovery_observation_revalidated"] is False
+          assert report["observation_mode"] == "CURRENT_MUTABLE_UPSTREAM_ZERO_CREDIT"
+          assert report["gates"]["exact_archive_identity"] == "OBSERVED_UNPINNED"
           assert report["gates"]["safe_zip_inventory"] == "PASS"
           inventory = report["inventory"]
           assert inventory["canonical_entry_count"] >= 5_000
@@ -139,7 +133,7 @@ jobs:
           assert report["tokenizer_fit_authorized"] is False
           assert report["model_training_executed"] is False
           assert report["paid_compute_used"] is False
-          assert report["safe_result"] == "PINNED_BULK_ARCHIVE_INVENTORIED_DOWNSTREAM_GATES_REQUIRED"
+          assert report["safe_result"] == "CURRENT_UPSTREAM_OBSERVED_SUCCESSOR_PIN_REQUIRED"
 
           summary = {
               "archive_bytes": report["archive"]["bytes"],
@@ -148,6 +142,7 @@ jobs:
               "canonical_entry_count": inventory["canonical_entry_count"],
               "canonical_raw_bytes": inventory["canonical_raw_bytes"],
               "entry_identity_sha256": inventory["entry_identity_sha256"],
+              "exact_archive_identity": "OBSERVED_UNPINNED",
               "training_authorized_bytes": 0,
               "corpus_admitted": False,
               "model_training_executed": False,
@@ -160,10 +155,10 @@ jobs:
           print(json.dumps(summary, sort_keys=True))
           PY
 
-      - name: Upload exact archive and inventory evidence
+      - name: Upload current archive and inventory observation
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: d03-rada-bulk-exact-archive
+          name: d03-rada-bulk-current-observation
           path: |
             artifacts/d03-rada-bulk/texts.zip
             artifacts/d03-rada-bulk/probe.json
