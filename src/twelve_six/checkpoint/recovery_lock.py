@@ -19,6 +19,7 @@ def _open_lock_file(root: Path) -> tuple[int, os.stat_result]:
     path = root / LOCK_NAME
     flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
     fd = os.open(path, flags, 0o600)
+    keep_open = False
     try:
         opened = os.fstat(fd)
         if not stat.S_ISREG(opened.st_mode):
@@ -28,10 +29,11 @@ def _open_lock_file(root: Path) -> tuple[int, os.stat_result]:
             raise OSError("recovery publication lock path must be a regular non-symlink file")
         if not _same_object(opened, visible):
             raise OSError("recovery publication lock changed during open")
+        keep_open = True
         return fd, opened
-    except BaseException:
-        os.close(fd)
-        raise
+    finally:
+        if not keep_open:
+            os.close(fd)
 
 
 def _lock_fd(fd: int) -> None:
