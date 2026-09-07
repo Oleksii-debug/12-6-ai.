@@ -1,74 +1,45 @@
 {
-  "blocking_reason": "DATA-526 now has terminal exact-head record-level post-global-dedup pre-decontamination materialization authority. Decontamination still cannot execute until a current reserved-evaluation authority with exact permitted matcher inputs is identified and cryptographically bound; final-test payloads/outcomes remain prohibited.",
+  "schema": "12-6.next100-066-decontamination-v4.blocker.v4",
+  "worker_id": "NEXT100-066-DECONTAMINATION-V4",
+  "repository": "Oleksii-debug/12-6-ai.",
+  "status": "BLOCKED_MATCHER_EXECUTION_PENDING",
+  "blocking_reason": "Reserved-evaluation authority is now identified and bound via DATA-526 V6. Exact/normalized/fragment/near/code-copy matchers have not yet executed against the frozen 48-record candidate; no PASS or exclusions are claimed.",
   "candidate_corpus_identity": "a33baaa3a7ff7a9622dc420c1d61b0d113ab0f11588a39674996bd198845efb6",
-  "candidate_record_payload_jsonl_sha256": "2f21f7655c9287bbc7424b410788f431f20f0936f445fefd26fcf6114b772dbd",
-  "candidate_shard_identity": null,
   "candidate_training_record_inventory_identity": "55f01d2027057f30cfc43d4ebe668779fc48413781d8146402dd53f81e2dbf31",
-  "evaluation_payloads_read": false,
-  "evidence_identity_algorithm": "sha256(canonical-json-without-evidence_identity_sha256)",
-  "evidence_identity_sha256": "3c57ffef3f67720ece69f2d92241fc99b9d3e76f872467ad40fb7a607f0797fd",
-  "exclusions_claimed": false,
-  "execution_profile": "LOCAL_FREE",
-  "final_test_outcomes_read": false,
-  "final_test_payload_read": false,
-  "live_authority_check": {
-    "global_dedup": {
-      "conservative_unique_capacity_bytes_after_global_dedup": 2215615,
-      "head_sha": "d3333ec1b4a508df232a5aefccd6686adda745fb",
-      "pull_request": 632,
-      "terminal_authority_consumed": true,
-      "terminal_report_sha256": "80997ac88b9d604afaf652807cda2a2d9fd0f6cb75754460ae6f4aa7af6e0267"
-    },
-    "predecontamination_freeze": {
-      "artifact_digest_sha256": "9fb809ab0256d485d21a4e686e4e7d72d4c9b2d05adbc10a8b3f426ef19674ff",
-      "artifact_id": 10000091203,
-      "byte_identical_double_materialization": true,
-      "candidate_frozen": true,
-      "candidate_identity_sha256": "a33baaa3a7ff7a9622dc420c1d61b0d113ab0f11588a39674996bd198845efb6",
-      "candidate_record_count": 48,
-      "candidate_total_payload_bytes": 2215615,
-      "data213_artifact_zip_sha256": "927e10ccb83f919d57a8b78e3ea9cae72f9d4e0232401043234a35eec150074d",
-      "dedicated_workflow_run": 34069812891,
-      "exact_head_ci_state": "SUCCESS",
-      "head_sha": "70d6ccc87396d129d00771bbf0b6b29bc673bfc4",
-      "materialization_evidence_identity_sha256": "3af42654b71322256f7d134cfa6c5fc58c484db4c96a836dbf9e61373be2a7be",
-      "payload_inventory_digest_sha256": "c3ef21cc7a73df450798e422fb1e6d034c0d17ff38ba733cd9e25b93a31a770f",
-      "pull_request": 623,
-      "raw_payloads_emitted_to_public_evidence": false,
-      "record_inventory_digest_sha256": "55f01d2027057f30cfc43d4ebe668779fc48413781d8146402dd53f81e2dbf31",
-      "record_payload_jsonl_sha256": "2f21f7655c9287bbc7424b410788f431f20f0936f445fefd26fcf6114b772dbd",
-      "workflow_job": 101584953689
-    },
-    "reserved_evaluation": {
-      "authority_identified": false,
-      "authority_identity_sha256": null,
-      "owner_lane_issue": 7,
-      "permitted_matcher_inputs_bound": false
-    }
+  "candidate_record_payload_jsonl_sha256": "2f21f7655c9287bbc7424b410788f431f20f0936f445fefd26fcf6114b772dbd",
+  "reserved_evaluation": {
+    "data526_v6_evidence_identity_sha256": "90306808ac61c18b02495d95acea5a08cf40901a955d0bfb7c1de74912062f02",
+    "eval303_head_sha": "5e5a1de3b594cee5612e63d3d4c2a70499740ac7",
+    "eval303_selection_identity_sha256": "7b97a9ab04469236dc5bc17fc80155cb43430b01c443bb6209fac090557258fd",
+    "eval303_membership_sha256": "e4bb39dd7aa6a20c7ed34e093f563b5f4896ac16828151c6b375a83cd8a068c6",
+    "selection_records": 10,
+    "selection_payload_access_scope": "SELECTION_VALIDATION_ONLY",
+    "final_test_payload_accessed": false,
+    "final_test_outcomes_accessed": false
+  },
+  "matcher_authority": {
+    "authority": "DATA-232-DECONTAMINATION-AUTHORITY-V2",
+    "head_sha": "4b9d7c2e1dc2806ca91e33e6570630b3f43af24a",
+    "algorithm": "data232-deterministic-overlap-cluster-v2"
   },
   "matchers_executed": {
-    "code_copy_detection": false,
     "exact_hashes": false,
+    "normalized_hashes": false,
     "fragment_containment": false,
     "near_copy_clusters": false,
-    "normalized_hashes": false
+    "code_copy_detection": false
   },
-  "pass_verdict_emitted": false,
-  "repository": "Oleksii-debug/12-6-ai.",
   "scan_executed": false,
-  "schema": "12-6.next100-066-decontamination-v4.blocker.v3",
-  "status": "BLOCKED_WAIT_RESERVED_EVALUATION_AUTHORITY",
+  "exclusions_claimed": false,
+  "pass_verdict_emitted": false,
   "truth_boundary": {
     "authorized_unique_optimized_targets": 0,
-    "optimizer_updates": 0,
-    "paid_compute_used": false,
     "tokenizer_fit_executed": false,
-    "training_executed": false
+    "optimizer_updates": 0,
+    "training_executed": false,
+    "paid_compute_used": false
   },
-  "unblock_requires": [
-    "identify one current reserved-evaluation authority owned by D06 with exact immutable identities and an explicit matcher-input boundary",
-    "bind that authority to DATA-526 candidate identity a33baaa3a7ff7a9622dc420c1d61b0d113ab0f11588a39674996bd198845efb6 and record inventory 55f01d2027057f30cfc43d4ebe668779fc48413781d8146402dd53f81e2dbf31",
-    "execute exact/normalized/fragment/near-copy/code-copy decontamination without reading prohibited final-test outcomes or promoting source bytes to optimized targets"
-  ],
-  "worker_id": "NEXT100-066-DECONTAMINATION-V4"
+  "execution_profile": "LOCAL_FREE",
+  "evidence_identity_algorithm": "sha256(canonical-json-without-evidence_identity_sha256)",
+  "evidence_identity_sha256": "31cd88ae159a456ec6420897b4217efe39adb85a95b760b38b9a1df1e7a04f84"
 }
