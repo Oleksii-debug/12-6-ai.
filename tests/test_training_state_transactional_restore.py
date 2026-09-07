@@ -57,6 +57,31 @@ def test_scheduler_shape_mismatch_is_rejected_before_optimizer_mutation() -> Non
     assert target.tokens_seen == 0
 
 
+def test_scaler_presence_mismatch_is_rejected_before_optimizer_mutation() -> None:
+    config = TrainerConfig(
+        learning_rate=0.1,
+        max_steps=4,
+        scheduler="constant",
+        seed=19,
+    )
+    source = Trainer(TinyLM(), config)
+    incoming = source.state_dict()
+    incoming.optimizer["param_groups"][0]["lr"] = 0.654
+    incoming = replace(incoming, scaler=None)
+
+    target = Trainer(TinyLM(), config)
+    before_lr = target.optimizer.param_groups[0]["lr"]
+
+    with pytest.raises(ValueError, match="scaler state/runtime mismatch"):
+        target.load_state_dict(incoming)
+
+    assert target.optimizer.param_groups[0]["lr"] == before_lr
+    assert target.micro_step == 0
+    assert target.optimizer_step == 0
+    assert target.tokens_seen == 0
+    target.assert_checkpoint_safe()
+
+
 def test_optimizer_restore_exception_rolls_back_partial_optimizer_mutation() -> None:
     config = TrainerConfig(
         learning_rate=0.1,

@@ -605,6 +605,8 @@ class Trainer:
             raise ValueError("checkpoint optimizer_step exceeds configured max_steps")
         if (state.scheduler is None) != (self.scheduler is None):
             raise ValueError("scheduler state/config mismatch")
+        if (state.scaler is None) != (self.scaler is None):
+            raise ValueError("scaler state/runtime mismatch")
 
         optimizer_before = copy.deepcopy(self.optimizer.state_dict())
         scheduler_before = (
@@ -616,7 +618,7 @@ class Trainer:
             self.optimizer.load_state_dict(state.optimizer)
             if self.scheduler is not None and state.scheduler is not None:
                 self.scheduler.load_state_dict(state.scheduler)
-            if state.scaler is not None:
+            if self.scaler is not None and state.scaler is not None:
                 self.scaler.load_state_dict(state.scaler)
         except Exception:
             try:
