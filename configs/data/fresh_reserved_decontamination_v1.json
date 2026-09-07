@@ -1,0 +1,35 @@
+{
+  "schema_version": "12-6.fresh-reserved-decontamination-execution.v1",
+  "owner_issue": 870,
+  "execution_profile": "LOCAL_FREE",
+  "state": "AWAIT_TERMINAL_UPSTREAM",
+  "terminal_scientific_inputs": {
+    "global_dedup_v8_report_sha256": "942cc15af60ee36a79345beba77fec347e33ee919d8148fb319b19d9ee072e5a",
+    "global_dedup_v3_report_sha256": "e7244cb7f6df6062dc838112b1e3e6fe87e41644a9e8b0071e93c50f1166b67d",
+    "survivor_authority_sha256": "8115b35662fa89900b37f54f7cffd5f2fa8b2f8c60a72bcb18b89c92aaade0cf"
+  },
+  "claim_time_observations": {
+    "postdedup_inventory_pr": 832,
+    "postdedup_inventory_head_sha": "23406dc4ffb5ae25e2ad57658aedaca44fad6f10",
+    "postdedup_inventory_replay_identity_sha256": "30e1f260036f6e0334330eaf0500f832fdb63ac39ff015dd8b703b5ef1b4b7f9",
+    "data232_matcher_pr": 857,
+    "data232_matcher_head_sha": "90a1331e0c29763506af704ff27c8aa82f1912b8"
+  },
+  "execution_requires": {
+    "postdedup_inventory_exact_head_terminal": true,
+    "data232_matcher_exact_head_terminal": true,
+    "selection_validation_authority_exact": true,
+    "final_test_reservation_authority_exact": true,
+    "final_test_payload_access": false,
+    "final_test_outcome_access": false,
+    "two_clean_replays_required": true
+  },
+  "claims": {
+    "authorized_training_exposure": 0,
+    "tokenizer_fit_authorized": false,
+    "model_training_executed": false,
+    "optimizer_updates": 0,
+    "paid_compute_used": false,
+    "learned_20m_claim": false
+  }
+}
