@@ -1,0 +1,54 @@
+{
+  "schema_version": "12-6.data324-kubernetes-ua-current-main-port.v1",
+  "worker_id": "D03-DATA324-CURRENT-MAIN-CONVERGENCE-20260907",
+  "local_free_only": true,
+  "ported_from": {
+    "pr": 446,
+    "head_sha": "d2c5076e832d10721ceb333756bbbc1108b64658",
+    "tree_sha": "f980b54d861b38b77ba6129f61da5c9d514c80f0",
+    "verdict": "ADMIT"
+  },
+  "port_base_main_sha": "a53279292af68dc95e4e615542b6c8c2ea7f9ee5",
+  "source_authority": {
+    "source_family": "kubernetes.website.docs",
+    "canonical_upstream": "github:kubernetes/website",
+    "upstream_revision": "25f3dcbed7429ebe20174ccc7000428d0f0aedda",
+    "source_path": "content/uk/docs/concepts/overview/what-is-kubernetes.md",
+    "source_git_blob_sha1": "b3c52cab3be6a8efbc33e91893c653df5972a794",
+    "raw_sha256": "5c35e78f0a5f14210734e85778f13bd658ee4ea0640e356c99bb0b88eddd6e75",
+    "raw_bytes": 27134,
+    "normalized_sha256": "12abd14eff9018602ebb8ebb76ee2f60d1a178a2a6b5648d77e08d5e16f2e0b1",
+    "normalized_utf8_bytes": 17415,
+    "manifest_identity_sha256": "b957ab7f8d628ff1e71ae6c49c2297866fdb8de32cd322e5d0ad4ebccdbc7c38",
+    "report_identity_sha256": "a35cd748527f81675b106d07659446d489be9ac184fb2118e5b4fbf79cc125e7"
+  },
+  "rights_authority": {
+    "license_id": "CC-BY-4.0",
+    "license_git_blob_sha1": "da6ab6cc8f333d7e89a99812866df8f24374d47c",
+    "license_sha256": "9ba9550ad48438d0836ddab3da480b3b69ffa0aac7b7878b5a0039e7ab429411",
+    "model_training": "ALLOWED_WITH_ATTRIBUTION_RETAINED_IN_PROVENANCE",
+    "evaluation": "NOT_GRANTED_BY_DATA324"
+  },
+  "evaluation_firewall": {
+    "authority": "EVAL-290-UA-SELECTION-VALIDATION-V1",
+    "reservation_commit_sha": "8a393d98d37b2090d1ae3fe8be8d4e58f651159e",
+    "reserved_raw_sha256": [
+      "50a790e0ece091f13fe039b5e36a23431680dec035737f29b0029502f9b3a31",
+      "e44c27b6151a1fea68eeef1e73e4460391f82e0501571d8aa4d5a792fc448b12"
+    ],
+    "final_test_accessed": false
+  },
+  "current_main_truth_boundary": {
+    "source_level_training_eligible_snapshot": true,
+    "current_global_dedup": "NOT_RUN_REQUIRE_CURRENT_CANONICAL_OWNER",
+    "evaluation_decontamination": "NOT_RUN_REQUIRE_RESERVED_EVAL_AUTHORITY",
+    "post_composition_quality_privacy": "NOT_RUN_AT_COMPOSED_CORPUS_LEVEL",
+    "family_credit_authorized": false,
+    "corpus_admitted": false,
+    "training_authorized_bytes": 0,
+    "tokenizer_fit_authorized": false,
+    "model_training_executed": false,
+    "paid_compute_used": false,
+    "learned_20m_promoted": false
+  }
+}
