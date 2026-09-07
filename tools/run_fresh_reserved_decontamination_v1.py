@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """CLI for fresh reserved-evaluation decontamination over retained source payloads."""
 from __future__ import annotations
 
