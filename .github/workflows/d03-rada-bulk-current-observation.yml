@@ -8,6 +8,7 @@ on:
       - "tools/probe_d03_rada_bulk_source.py"
       - "tests/test_d03_rada_bulk_source_probe.py"
       - "tests/test_d03_rada_bulk_source_probe_authority.py"
+      - "tests/test_d03_rada_bulk_observation_cli.py"
       - ".github/workflows/d03-rada-bulk-current-observation.yml"
   workflow_dispatch:
 
@@ -39,8 +40,8 @@ jobs:
         run: python -m pip install pytest
       - name: Compile and test inherited fail-closed probe
         run: |
-          python -m py_compile tools/probe_d03_rada_bulk_source.py tests/test_d03_rada_bulk_source_probe.py tests/test_d03_rada_bulk_source_probe_authority.py
-          PYTHONPATH=. pytest -q tests/test_d03_rada_bulk_source_probe.py tests/test_d03_rada_bulk_source_probe_authority.py
+          python -m py_compile tools/probe_d03_rada_bulk_source.py tests/test_d03_rada_bulk_source_probe.py tests/test_d03_rada_bulk_source_probe_authority.py tests/test_d03_rada_bulk_observation_cli.py
+          PYTHONPATH=. pytest -q tests/test_d03_rada_bulk_source_probe.py tests/test_d03_rada_bulk_source_probe_authority.py tests/test_d03_rada_bulk_observation_cli.py
       - name: Observe exact current official archive without granting credit
         run: >-
           python tools/probe_d03_rada_bulk_source.py
@@ -55,6 +56,11 @@ jobs:
           report = json.loads((Path(os.environ["RUNNER_TEMP"]) / "rada-bulk-current-observation.json").read_text(encoding="utf-8"))
           assert report["gates"]["exact_archive_identity"] == "OBSERVED_UNPINNED"
           assert report["gates"]["safe_zip_inventory"] == "PASS"
+          assert report["gates"]["discovery_capacity_threshold"] in {"PASS", "FAIL_BELOW_MINIMUM"}
+          if report["gates"]["discovery_capacity_threshold"] == "FAIL_BELOW_MINIMUM":
+              assert report["safe_result"] == "CURRENT_UPSTREAM_OBSERVED_BELOW_DISCOVERY_MINIMUM_SUCCESSOR_TRIAGE_REQUIRED"
+          else:
+              assert report["safe_result"] == "CURRENT_UPSTREAM_OBSERVED_SUCCESSOR_PIN_REQUIRED"
           assert report["training_authorized_bytes"] == 0
           assert report["corpus_admitted"] is False
           assert report["tokenizer_fit_authorized"] is False
