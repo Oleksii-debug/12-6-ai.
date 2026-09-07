@@ -1,19 +1,28 @@
 from __future__ import annotations
 
 import copy
+import importlib.util
 import json
 from pathlib import Path
 
 import pytest
 
-from tools.snapshot_d03_hplt3_ukr_cyrl_controls import (
-    CONFIG,
-    HpltControlError,
-    build_report,
-    load_config,
-    parse_map,
-    parse_md5,
+ROOT = Path(__file__).resolve().parents[1]
+TOOL_PATH = ROOT / "tools" / "snapshot_d03_hplt3_ukr_cyrl_controls.py"
+SPEC = importlib.util.spec_from_file_location(
+    "snapshot_d03_hplt3_ukr_cyrl_controls",
+    TOOL_PATH,
 )
+assert SPEC is not None and SPEC.loader is not None
+TOOL = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(TOOL)
+
+CONFIG = TOOL.CONFIG
+HpltControlError = TOOL.HpltControlError
+build_report = TOOL.build_report
+load_config = TOOL.load_config
+parse_map = TOOL.parse_map
+parse_md5 = TOOL.parse_md5
 
 
 def _config() -> dict:
@@ -31,7 +40,12 @@ def _map(*filenames: str) -> bytes:
 
 
 def _md5(rows: dict[str, str]) -> bytes:
-    return ("\n".join(f"{digest}  ukr_Cyrl/{filename}" for filename, digest in rows.items()) + "\n").encode()
+    return (
+        "\n".join(
+            f"{digest}  ukr_Cyrl/{filename}" for filename, digest in rows.items()
+        )
+        + "\n"
+    ).encode()
 
 
 def test_control_snapshot_is_deterministic_zero_credit_and_selects_highest_bin() -> None:
@@ -134,7 +148,11 @@ def test_control_objects_respect_frozen_size_cap() -> None:
     config = _config()
     config["control_objects"]["max_each_bytes"] = 3
     with pytest.raises(HpltControlError, match="map control exceeds size cap"):
-        build_report(_map("10_1.jsonl.zst"), _md5({"10_1.jsonl.zst": "a" * 32}), config)
+        build_report(
+            _map("10_1.jsonl.zst"),
+            _md5({"10_1.jsonl.zst": "a" * 32}),
+            config,
+        )
 
 
 def test_source_audit_config_authority_drift_is_rejected(tmp_path: Path) -> None:
