@@ -1,0 +1,36 @@
+{
+  "schema_version": "12-6.data-ua-languk-concurrency-refresh.v1",
+  "worker_id": "NEXT100-029-DATA-UA-LANGUK",
+  "refreshed_utc": "2026-08-26T18:06:46Z",
+  "repository": "Oleksii-debug/12-6-ai.",
+  "live_refresh": {
+    "competing_worker_id": "NEXT100-024-DATA-UA-KUBERNETES-RECOVERY",
+    "pull_request": 446,
+    "pull_request_state": "open",
+    "pull_request_merged": false,
+    "pull_request_head_sha": "cc04aeb8b6ef7dc9c107112620f7944c8b091d7d",
+    "candidate_family_id": "kubernetes.website.docs",
+    "candidate_materialization": {
+      "raw_sha256": "50a790e0ece091f13fe039b5e36a23431680dec0357379f29b0029502f9b3a31",
+      "normalized_sha256": "32fccd0a0d2aa8a755a60e768443bdca1a743566b9482954031754a24a1f7bd5",
+      "normalized_bytes": 6810,
+      "license": "CC BY 4.0"
+    },
+    "current_exact_head_workflow": {
+      "workflow_name": "DATA-324 Kubernetes UA Recovery",
+      "run_id": 32997737935,
+      "status": "queued",
+      "conclusion": null
+    },
+    "terminal_family_credit_now": 0,
+    "reason": "Exact-head recovery workflow is not terminal-success at refresh cutoff; open candidate cannot be counted as terminal family authority."
+  },
+  "effect_on_next100_029": {
+    "languk_training_admission_changed": false,
+    "court_decisions_verdict": "RETEST_PRIVACY_AND_BYTE_MATERIALIZATION",
+    "new_uk_family_admitted_by_this_worker": false,
+    "registry_mutation_authorized_by_this_worker": false,
+    "dedup_note": "If DATA-324 later becomes terminal, a successor must refresh family counts and compare any court-decision subset against both Rada and all newly terminal Ukrainian families before family credit."
+  },
+  "evidence_identity_sha256": "10b779f24b23a305edb68aca23c484b93d3c04faa4b3c87f3f7bd1885e256842"
+}
