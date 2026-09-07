@@ -33,3 +33,74 @@ jobs:
         run: python -m twelve_six.ci_workflow_policy --base "$BASE_SHA" --head "$HEAD_SHA"
       - run: ruff check src tests
       - run: pytest -q
+
+  d03-kmu-timeline-v2-explicit-pages:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.head_ref == 'd03/kmu-timeline-v2-terminal-execution-20260907'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Prove exact checkout
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Compile bounded KMu discovery surface
+        run: >-
+          python -m py_compile
+          tools/discover_kmu_news_timeline_v1.py
+          tools/probe_kmu_secretariat_timeline_v2.py
+          tools/probe_kmu_secretariat_bulk_v1.py
+      - name: Execute explicit five-page KMu timeline probe
+        run: >-
+          python tools/probe_kmu_secretariat_timeline_v2.py
+          --max-pages 5
+          --max-fetches 120
+          --delay-seconds 1.05
+          --output "$RUNNER_TEMP/kmu-timeline-v2-explicit-pages.json"
+      - name: Assert discovery and zero-credit truth boundary
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          report = json.loads(
+              (Path(os.environ["RUNNER_TEMP"]) / "kmu-timeline-v2-explicit-pages.json")
+              .read_text(encoding="utf-8")
+          )
+          discovery = report["discovery"]
+          boundary = report["probe_boundary"]
+          assert discovery["pages_visited"] == 5
+          assert len(discovery["snapshots"]) == 5
+          assert boundary["training_authorized_bytes"] == 0
+          assert boundary["family_count_credit_added"] == 0
+          assert boundary["tokenizer_fit_executed"] is False
+          assert boundary["optimizer_updates"] == 0
+          assert boundary["final_test_accessed"] is False
+          assert boundary["paid_compute_used"] is False
+          assert boundary["canonical_registry_mutated"] is False
+          print("probe_identity_sha256=", report["probe_identity_sha256"])
+          print("discovery_identity_sha256=", discovery["identity_sha256"])
+          print("pages_visited=", discovery["pages_visited"])
+          print("news_urls=", len(discovery["news_urls"]))
+          print("attempted_pages=", report["sample"]["attempted_pages"])
+          print("eligible_pages=", report["sample"]["eligible_pages"])
+          print("observed_unique_probe_bytes=", report["sample"]["observed_unique_probe_bytes"])
+          print("verdict=", report["verdict"])
+          PY
+      - name: Upload text-free explicit-pagination evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: kmu-timeline-v2-explicit-pages-${{ env.SOURCE_SHA }}
+          path: ${{ runner.temp }}/kmu-timeline-v2-explicit-pages.json
+          if-no-files-found: error
+          retention-days: 30
