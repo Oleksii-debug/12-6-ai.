@@ -49,6 +49,7 @@ REQUIRED_AUTHORITIES = {
     "loss_ledger",
     "checkpoint_integrity",
     "evaluation_firewall",
+    "decontamination",
     "backend",
 }
 
