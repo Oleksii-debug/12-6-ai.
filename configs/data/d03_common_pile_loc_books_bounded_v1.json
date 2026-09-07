@@ -30,7 +30,9 @@
     "compression": "gzip",
     "family": "en.common-pile.library-of-congress",
     "expected_source_label": "loc_books",
-    "expected_metadata_license": "Public Domain"
+    "expected_metadata_license": "Public Domain",
+    "expected_metadata_language": "english",
+    "minimum_metadata_year": 1500
   },
   "record_contract": {
     "exact_fields": ["id", "text", "source", "added", "metadata"],
