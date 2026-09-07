@@ -70,6 +70,14 @@ def _rehash(inventory: dict) -> None:
     inventory["inventory_identity_sha256"] = postdedup._sha256_obj(core)
 
 
+def _prepare(inventory: dict, payloads: dict[str, bytes]):
+    return handoff.prepare_ephemeral_data232_rows(
+        inventory,
+        payloads,
+        expected_inventory_identity_sha256=inventory["inventory_identity_sha256"],
+    )
+
+
 class PostDedupDecontamHandoffV1Tests(unittest.TestCase):
     def setUp(self) -> None:
         self.payloads = {
@@ -79,14 +87,15 @@ class PostDedupDecontamHandoffV1Tests(unittest.TestCase):
         self.inventory = _inventory(self.payloads)
 
     def test_prepares_exact_ephemeral_rows_and_text_free_evidence(self) -> None:
-        rows, evidence = handoff.prepare_ephemeral_data232_rows(
-            self.inventory,
-            self.payloads,
-        )
+        rows, evidence = _prepare(self.inventory, self.payloads)
         self.assertEqual([row["record_id"] for row in rows], ["a", "b"])
         self.assertEqual(rows[0]["text"], "Україна\n")
         self.assertEqual(rows[1]["source_family"], "family.b")
         self.assertEqual(evidence["retained_source_count"], 2)
+        self.assertEqual(
+            evidence["postdedup_inventory_identity_sha256"],
+            self.inventory["inventory_identity_sha256"],
+        )
         self.assertEqual(evidence["authorized_training_exposure"], 0)
         self.assertFalse(evidence["final_test_payload_accessed"])
         durable = json.dumps(evidence, ensure_ascii=False)
@@ -98,18 +107,12 @@ class PostDedupDecontamHandoffV1Tests(unittest.TestCase):
             handoff.PostDedupDecontamHandoffError,
             "coverage must equal",
         ):
-            handoff.prepare_ephemeral_data232_rows(
-                self.inventory,
-                {"a": self.payloads["a"]},
-            )
+            _prepare(self.inventory, {"a": self.payloads["a"]})
         with self.assertRaisesRegex(
             handoff.PostDedupDecontamHandoffError,
             "coverage must equal",
         ):
-            handoff.prepare_ephemeral_data232_rows(
-                self.inventory,
-                {**self.payloads, "extra": b"x"},
-            )
+            _prepare(self.inventory, {**self.payloads, "extra": b"x"})
 
     def test_rejects_payload_identity_drift(self) -> None:
         tampered_payloads = dict(self.payloads)
@@ -118,10 +121,7 @@ class PostDedupDecontamHandoffV1Tests(unittest.TestCase):
             handoff.PostDedupDecontamHandoffError,
             "payload identity drift",
         ):
-            handoff.prepare_ephemeral_data232_rows(
-                self.inventory,
-                tampered_payloads,
-            )
+            _prepare(self.inventory, tampered_payloads)
 
     def test_rejects_inventory_self_hash_tamper(self) -> None:
         tampered = copy.deepcopy(self.inventory)
@@ -130,7 +130,29 @@ class PostDedupDecontamHandoffV1Tests(unittest.TestCase):
             handoff.PostDedupDecontamHandoffError,
             "inventory self-hash mismatch",
         ):
-            handoff.prepare_ephemeral_data232_rows(tampered, self.payloads)
+            handoff.prepare_ephemeral_data232_rows(
+                tampered,
+                self.payloads,
+                expected_inventory_identity_sha256=self.inventory[
+                    "inventory_identity_sha256"
+                ],
+            )
+
+    def test_rejects_self_consistent_substituted_inventory(self) -> None:
+        tampered = copy.deepcopy(self.inventory)
+        tampered["retained_sources"][0]["source_family"] = "forged.family"
+        _rehash(tampered)
+        with self.assertRaisesRegex(
+            handoff.PostDedupDecontamHandoffError,
+            "does not match expected terminal inventory identity",
+        ):
+            handoff.prepare_ephemeral_data232_rows(
+                tampered,
+                self.payloads,
+                expected_inventory_identity_sha256=self.inventory[
+                    "inventory_identity_sha256"
+                ],
+            )
 
     def test_rejects_rehashed_final_test_boundary_weakening(self) -> None:
         tampered = copy.deepcopy(self.inventory)
@@ -140,7 +162,7 @@ class PostDedupDecontamHandoffV1Tests(unittest.TestCase):
             handoff.PostDedupDecontamHandoffError,
             "boundary weakened: final_test_payload_read",
         ):
-            handoff.prepare_ephemeral_data232_rows(tampered, self.payloads)
+            _prepare(tampered, self.payloads)
 
     def test_rejects_non_utf8_comparison_payload(self) -> None:
         payloads = {"a": b"\xff"}
@@ -149,7 +171,7 @@ class PostDedupDecontamHandoffV1Tests(unittest.TestCase):
             handoff.PostDedupDecontamHandoffError,
             "not strict UTF-8",
         ):
-            handoff.prepare_ephemeral_data232_rows(inventory, payloads)
+            _prepare(inventory, payloads)
 
 
 if __name__ == "__main__":
