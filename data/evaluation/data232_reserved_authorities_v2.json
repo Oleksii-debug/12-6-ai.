@@ -17,8 +17,6 @@
   ],
   "payload_contract": {
     "selection_validation": "resolve only EVAL-290/EVAL-291 component payloads bound by EVAL-303 membership",
-    "final_test": "hash/source authority only; payload and outcome access forbidden"
-  },
-  "final_test_payload_accessed": false,
-  "final_test_outcomes_accessed": false
+    "final_test": "hash/source authority only; payload access forbidden; evaluation measurements are not represented in this metadata"
+  }
 }
