@@ -52,13 +52,50 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends poppler-utils
           pdftotext -v
+      - name: Prepare data-only V7 namespace shim
+        env:
+          V7_ROOT: ${{ github.workspace }}/_terminal_v7
+        run: |
+          mkdir -p "$RUNNER_TEMP/v7-data-only-shim"
+          cat > "$RUNNER_TEMP/v7-data-only-shim/sitecustomize.py" <<'PY'
+          import os
+          import sys
+          import types
+          from pathlib import Path
+
+          package_root = Path(os.environ["V7_ROOT"]).resolve() / "src" / "twelve_six"
+          data_root = package_root / "data"
+          if not package_root.is_dir() or not data_root.is_dir():
+              raise RuntimeError("terminal V7 data-only namespace roots are missing")
+
+          def install_namespace(name: str, path: Path) -> None:
+              module = types.ModuleType(name)
+              module.__path__ = [str(path)]
+              module.__package__ = name
+              sys.modules[name] = module
+
+          install_namespace("twelve_six", package_root)
+          install_namespace("twelve_six.data", data_root)
+          PY
+          PYTHONPATH="$RUNNER_TEMP/v7-data-only-shim" V7_ROOT="$V7_ROOT" \
+            python - <<'PY'
+          import importlib
+          module = importlib.import_module("twelve_six.data.cross_source_capacity_audit_v7")
+          print(f"data_only_v7_import={module.__name__}")
+          PY
       - name: Independent composed global dedup A
+        env:
+          PYTHONPATH: ${{ runner.temp }}/v7-data-only-shim
+          V7_ROOT: ${{ github.workspace }}/_terminal_v7
         run: >-
           python tools/run_next100_065f_global_dedup_v8.py run
           --v7-root _terminal_v7
           --workspace "$RUNNER_TEMP/v8-work-a"
           --report "$RUNNER_TEMP/v8-a.json"
       - name: Independent composed global dedup B
+        env:
+          PYTHONPATH: ${{ runner.temp }}/v7-data-only-shim
+          V7_ROOT: ${{ github.workspace }}/_terminal_v7
         run: >-
           python tools/run_next100_065f_global_dedup_v8.py run
           --v7-root _terminal_v7
