@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlsplit
 
-from twelve_six.accelerated_scaling import REQUIRED_RUN_PACKET_FIELDS, REPOSITORY
+from twelve_six.accelerated_scaling import REPOSITORY, REQUIRED_RUN_PACKET_FIELDS
 
 PACKET_ID = "R01-LEARNED20M-PORTABLE-RUN-PACKET-V1"
 PACKET_SCHEMA_VERSION = 1
