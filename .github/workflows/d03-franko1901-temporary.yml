@@ -1,0 +1,81 @@
+name: D03 Franko1901 Temporary
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "configs/data/d03_franko1901_exact_materialization_v1.json"
+      - "tools/materialize_d03_franko1901.py"
+      - "tests/test_d03_franko1901_materialization.py"
+      - ".github/workflows/d03-franko1901-temporary.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: d03-franko1901-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  exact-materialization:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Prove exact checkout
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run focused adversarial suite
+        run: pytest -q tests/test_d03_franko1901_materialization.py
+      - name: Independent exact materialization A
+        run: >-
+          python tools/materialize_d03_franko1901.py
+          --output-dir "$RUNNER_TEMP/franko-a"
+      - name: Independent exact materialization B
+        run: >-
+          python tools/materialize_d03_franko1901.py
+          --output-dir "$RUNNER_TEMP/franko-b"
+      - name: Require byte-identical candidate and report
+        run: |
+          cmp "$RUNNER_TEMP/franko-a/franko1901-candidate.jsonl" "$RUNNER_TEMP/franko-b/franko1901-candidate.jsonl"
+          cmp "$RUNNER_TEMP/franko-a/franko1901-report.json" "$RUNNER_TEMP/franko-b/franko1901-report.json"
+          cmp "$RUNNER_TEMP/franko-a/ATTRIBUTION.txt" "$RUNNER_TEMP/franko-b/ATTRIBUTION.txt"
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path(os.environ["RUNNER_TEMP"])
+          report = json.loads((root / "franko-a" / "franko1901-report.json").read_text(encoding="utf-8"))
+          assert report["decision"] == "CANDIDATE_MATERIALIZED_ZERO_CREDIT"
+          truth = report["truth_boundary"]
+          assert truth["canonical_capacity_credit_bytes"] == 0
+          assert truth["training_authorized_bytes"] == 0
+          assert truth["corpus_admitted"] is False
+          assert truth["model_training_executed"] is False
+          stats = report["materialization"]
+          print("accepted_rows=", stats["accepted_rows"])
+          print("accepted_text_utf8_bytes=", stats["accepted_text_utf8_bytes"])
+          print("candidate_sha256=", stats["accepted_payload_jsonl_sha256"])
+          print("inventory_sha256=", stats["record_inventory_identity_sha256"])
+          print("report_identity_sha256=", report["report_identity_sha256"])
+          PY
+      - name: Upload exact candidate evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: d03-franko1901-${{ env.SOURCE_SHA }}
+          path: |
+            ${{ runner.temp }}/franko-a/franko1901-candidate.jsonl
+            ${{ runner.temp }}/franko-a/franko1901-report.json
+            ${{ runner.temp }}/franko-a/ATTRIBUTION.txt
+          if-no-files-found: error
+          retention-days: 30
