@@ -8,10 +8,12 @@ on:
       - "src/twelve_six/data/deterministic_exposure_order.py"
       - "src/twelve_six/data/deterministic_double_pack.py"
       - "src/twelve_six/data/ordered_exposure_resume.py"
+      - "src/twelve_six/tokenization/migration_compatibility.py"
       - "tests/test_unique_loss_ledger_v2.py"
       - "tests/test_identity_safe_exposure_guard.py"
       - "tests/test_deterministic_exposure_order.py"
       - "tests/test_ordered_exposure_resume.py"
+      - "tests/test_tokenizer_migration_compatibility.py"
       - "tools/validate_next100_064_unique_loss_ledger_v2.py"
       - "tools/validate_d04_ordered_exposure_runtime.py"
       - "tools/validate_d04_double_pack_binding.py"
@@ -76,6 +78,7 @@ jobs:
             src/twelve_six/data/deterministic_exposure_order.py \
             src/twelve_six/data/deterministic_double_pack.py \
             src/twelve_six/data/ordered_exposure_resume.py \
+            src/twelve_six/tokenization/migration_compatibility.py \
             tools/validate_next100_064_unique_loss_ledger_v2.py \
             tools/validate_d04_ordered_exposure_runtime.py \
             tools/validate_d04_double_pack_binding.py
@@ -95,7 +98,8 @@ jobs:
             tests/test_unique_loss_ledger_v2.py \
             tests/test_identity_safe_exposure_guard.py \
             tests/test_deterministic_exposure_order.py \
-            tests/test_ordered_exposure_resume.py
+            tests/test_ordered_exposure_resume.py \
+            tests/test_tokenizer_migration_compatibility.py
       - name: Assert LOCAL_FREE no-training scope
         run: |
           test "$TWELVE_SIX_EXECUTION_PROFILE" = "LOCAL_FREE"
