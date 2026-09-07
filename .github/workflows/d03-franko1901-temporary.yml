@@ -24,16 +24,24 @@ jobs:
     env:
       SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 1
           persist-credentials: false
       - name: Prove exact checkout
         run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.11"
+          python-version: "3.11.16"
+      - name: Prove exact Python runtime
+        run: |
+          python - <<'PY'
+          import platform
+          assert platform.python_implementation() == "CPython"
+          assert platform.python_version() == "3.11.16"
+          print("python_runtime=", platform.python_version())
+          PY
       - name: Run focused adversarial suite
         run: pytest -q tests/test_d03_franko1901_materialization.py
       - name: Independent exact materialization A
@@ -74,7 +82,7 @@ jobs:
           print("report_identity_sha256=", report["report_identity_sha256"])
           PY
       - name: Upload exact candidate evidence
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: d03-franko1901-${{ env.SOURCE_SHA }}
           path: |
