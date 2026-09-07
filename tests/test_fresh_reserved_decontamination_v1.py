@@ -125,19 +125,29 @@ def _verify(report: dict[str, object]) -> None:
     )
 
 
-def test_clean_scan_is_zero_credit_and_verifiable() -> None:
+def _rehash(report: dict[str, object]) -> None:
+    core = dict(report)
+    core.pop("report_identity_sha256", None)
+    report["report_identity_sha256"] = hashlib.sha256(_canonical(core)).hexdigest()
+
+
+def test_clean_scan_is_source_object_only_zero_credit_and_verifiable() -> None:
     report = _run()
-    assert report["status"] == "PASS_CLEAN"
+    assert report["status"] == "SOURCE_OBJECT_PASS_CLEAN"
+    assert report["source_object_reserved_evaluation_screen_complete"] is True
+    assert report["record_level_training_inventory_materialized"] is False
+    assert report["record_level_reserved_evaluation_decontamination_required"] is True
+    assert report["reserved_evaluation_decontamination_complete"] is False
     assert report["authorized_training_exposure"] == 0
-    assert report["reserved_evaluation_decontamination_complete"] is True
     _verify(report)
 
 
 def test_overlap_is_excluded_without_granting_training_authority() -> None:
     report = _run("alpha beta gamma")
-    assert report["status"] == "PASS_WITH_EXCLUSIONS"
+    assert report["status"] == "SOURCE_OBJECT_PASS_WITH_EXCLUSIONS"
     assert report["counts"]["excluded_training_records"] == 1  # type: ignore[index]
     assert report["authorized_training_exposure"] == 0
+    assert report["reserved_evaluation_decontamination_complete"] is False
     _verify(report)
 
 
@@ -149,19 +159,9 @@ def test_external_survivor_authority_mismatch_fails_closed() -> None:
         execute_fresh_reserved_decontamination(
             inventory,
             {"source-1": payload},
-            [
-                {
-                    "record_id": "e",
-                    "source_id": "e",
-                    "source_family": "e",
-                    "modality": "en",
-                    "text": "x",
-                }
-            ],
+            [{"record_id": "e", "source_id": "e", "source_family": "e", "modality": "en", "text": "x"}],
             authorities,
-            expected_inventory_identity_sha256=str(
-                inventory["inventory_identity_sha256"]
-            ),
+            expected_inventory_identity_sha256=str(inventory["inventory_identity_sha256"]),
             expected_survivor_authority_sha256=_sha("other-survivor"),
             selection_validation_identity=selection,
             final_test_identity=final,
@@ -179,19 +179,9 @@ def test_outcome_bearing_evaluation_authority_fails_closed() -> None:
         execute_fresh_reserved_decontamination(
             inventory,
             {"source-1": payload},
-            [
-                {
-                    "record_id": "e",
-                    "source_id": "e",
-                    "source_family": "e",
-                    "modality": "en",
-                    "text": "x",
-                }
-            ],
+            [{"record_id": "e", "source_id": "e", "source_family": "e", "modality": "en", "text": "x"}],
             authorities,
-            expected_inventory_identity_sha256=str(
-                inventory["inventory_identity_sha256"]
-            ),
+            expected_inventory_identity_sha256=str(inventory["inventory_identity_sha256"]),
             expected_survivor_authority_sha256=_sha("survivor"),
             selection_validation_identity=selection,
             final_test_identity=final,
@@ -203,19 +193,25 @@ def test_outcome_bearing_evaluation_authority_fails_closed() -> None:
 def test_self_consistent_training_promotion_is_rejected() -> None:
     report = deepcopy(_run())
     report["authorized_training_exposure"] = 1
-    core = dict(report)
-    core.pop("report_identity_sha256")
-    report["report_identity_sha256"] = hashlib.sha256(_canonical(core)).hexdigest()
+    _rehash(report)
     with pytest.raises(FreshReservedDecontaminationError, match="training exposure"):
+        _verify(report)
+
+
+def test_self_consistent_record_level_promotion_is_rejected() -> None:
+    report = deepcopy(_run())
+    report["record_level_training_inventory_materialized"] = True
+    report["record_level_reserved_evaluation_decontamination_required"] = False
+    report["reserved_evaluation_decontamination_complete"] = True
+    _rehash(report)
+    with pytest.raises(FreshReservedDecontaminationError, match="record-level inventory"):
         _verify(report)
 
 
 def test_self_consistent_upstream_substitution_is_rejected() -> None:
     report = deepcopy(_run())
     report["upstream"]["data232_matcher_git_sha"] = "c" * 40  # type: ignore[index]
-    core = dict(report)
-    core.pop("report_identity_sha256")
-    report["report_identity_sha256"] = hashlib.sha256(_canonical(core)).hexdigest()
+    _rehash(report)
     with pytest.raises(FreshReservedDecontaminationError, match="data232_matcher_git_sha"):
         _verify(report)
 
@@ -235,19 +231,9 @@ def test_invalid_git_binding_is_rejected_before_execution() -> None:
         execute_fresh_reserved_decontamination(
             inventory,
             {"source-1": payload},
-            [
-                {
-                    "record_id": "e",
-                    "source_id": "e",
-                    "source_family": "e",
-                    "modality": "en",
-                    "text": "x",
-                }
-            ],
+            [{"record_id": "e", "source_id": "e", "source_family": "e", "modality": "en", "text": "x"}],
             authorities,
-            expected_inventory_identity_sha256=str(
-                inventory["inventory_identity_sha256"]
-            ),
+            expected_inventory_identity_sha256=str(inventory["inventory_identity_sha256"]),
             expected_survivor_authority_sha256=_sha("survivor"),
             selection_validation_identity=selection,
             final_test_identity=final,
