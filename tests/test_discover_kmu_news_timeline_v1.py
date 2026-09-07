@@ -99,9 +99,29 @@ class TimelineDiscoveryTests(unittest.TestCase):
         )
         self.assertEqual(report["news_category_id"], "3")
         self.assertEqual(report["pages_visited"], 2)
+        self.assertEqual(report["discovery_status"], "DISCOVERED_ARTICLE_URLS")
+        self.assertFalse(report["client_rendered_shell_detected"])
         self.assertEqual(report["training_authorized_bytes"], 0)
         self.assertEqual(report["family_count_credit_added"], 0)
         sleep.assert_called_once_with(1.05)
+
+    def test_client_rendered_shell_without_articles_is_explicitly_blocked(self):
+        html = "<main><h1>Таймлайн матеріалів Уряду</h1><p>Завантажуємо ще</p></main>".encode()
+        with patch.object(m, "fetch", return_value=html):
+            report = m.discover(1, 1.0)
+        self.assertEqual(report["news_urls"], [])
+        self.assertTrue(report["client_rendered_shell_detected"])
+        self.assertEqual(
+            report["discovery_status"],
+            "BLOCKED_CLIENT_RENDERED_TIMELINE_NO_ARTICLE_URLS",
+        )
+        self.assertEqual(report["training_authorized_bytes"], 0)
+
+    def test_empty_server_timeline_is_distinct_from_client_rendered_shell(self):
+        with patch.object(m, "fetch", return_value=b"<main>empty</main>"):
+            report = m.discover(1, 1.0)
+        self.assertFalse(report["client_rendered_shell_detected"])
+        self.assertEqual(report["discovery_status"], "BLOCKED_EMPTY_TIMELINE_NO_ARTICLE_URLS")
 
     def test_identity_is_deterministic(self):
         html = b'<a href="/news/a">A</a>'
