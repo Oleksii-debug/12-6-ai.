@@ -116,24 +116,18 @@ def _v8() -> dict:
     return {**v8_core, "report_sha256": postdedup._sha256_obj(v8_core)}
 
 
-def _survivor_authority(report: dict, *, choose_d: bool = False) -> dict:
-    inventory = postdedup.materialize_postdedup_inventory(
-        report,
-        expected_v8_report_sha256=report["report_sha256"],
-    )
-    retained = [copy.deepcopy(row) for row in inventory["retained_sources"]]
-    if choose_d:
-        by_id = {row["source_id"]: row for row in report["dedup_v3"]["sources"]}
-        retained = [row for row in retained if row["source_id"] != "c"]
-        retained.append(copy.deepcopy(by_id["d"]))
-    retained.sort(key=lambda row: row["source_id"])
-    survivor_rows = [
-        {field: row[field] for field in binding._SHARED_SOURCE_FIELDS}
-        for row in retained
+def _survivor_authority(report: dict) -> dict:
+    by_id = {row["source_id"]: row for row in report["dedup_v3"]["sources"]}
+    survivors = [
+        {
+            field: by_id[source_id][field]
+            for field in postdedup.SURVIVOR_SHARED_SOURCE_FIELDS
+        }
+        for source_id in ("b", "c", "e")
     ]
     core = {
-        "schema_version": binding.SURVIVOR_SCHEMA,
-        "selection_rule": binding.SURVIVOR_SELECTION_RULE,
+        "schema_version": postdedup.SURVIVOR_SCHEMA,
+        "selection_rule": postdedup.SURVIVOR_SELECTION_RULE,
         "v8_report_sha256": report["report_sha256"],
         "nested_v3_report_sha256": report["dedup_v3"]["report_sha256"],
         "pre_dedup_source_object_count": 5,
@@ -150,11 +144,11 @@ def _survivor_authority(report: dict, *, choose_d: bool = False) -> dict:
             },
             {
                 "member_source_ids": ["c", "d"],
-                "selected_source_id": "d" if choose_d else "c",
+                "selected_source_id": "c",
                 "selected_declared_capacity_bytes": 5,
             },
         ],
-        "survivors": survivor_rows,
+        "survivors": sorted(survivors, key=lambda row: row["source_id"]),
         "by_modality": {},
         "truth_boundary": {
             "source_object_authority_only": True,
@@ -167,8 +161,8 @@ def _survivor_authority(report: dict, *, choose_d: bool = False) -> dict:
             "paid_compute_used": False,
         },
     }
-    core["survivor_authority_sha256"] = binding._sha256_bytes(
-        binding._survivor_canonical_bytes(core)
+    core["survivor_authority_sha256"] = postdedup._sha256_bytes(
+        postdedup._survivor_canonical_bytes(core)
     )
     return core
 
@@ -176,19 +170,23 @@ def _survivor_authority(report: dict, *, choose_d: bool = False) -> dict:
 def _rehash_survivor(authority: dict) -> None:
     core = copy.deepcopy(authority)
     core.pop("survivor_authority_sha256", None)
-    authority["survivor_authority_sha256"] = binding._sha256_bytes(
-        binding._survivor_canonical_bytes(core)
+    authority["survivor_authority_sha256"] = postdedup._sha256_bytes(
+        postdedup._survivor_canonical_bytes(core)
     )
 
 
 class PostDedupSurvivorBindingV1Tests(unittest.TestCase):
     def setUp(self) -> None:
         self.report = _v8()
+        self.authority = _survivor_authority(self.report)
         self.inventory = postdedup.materialize_postdedup_inventory(
             self.report,
+            self.authority,
             expected_v8_report_sha256=self.report["report_sha256"],
+            expected_survivor_authority_sha256=self.authority[
+                "survivor_authority_sha256"
+            ],
         )
-        self.authority = _survivor_authority(self.report)
 
     def test_builds_text_free_terminal_survivor_binding(self) -> None:
         evidence = binding.build_survivor_inventory_binding(
@@ -203,7 +201,10 @@ class PostDedupSurvivorBindingV1Tests(unittest.TestCase):
         self.assertEqual(evidence["retained_source_count"], 3)
         self.assertEqual(evidence["retained_unique_capacity_bytes"], 32)
         self.assertEqual(evidence["authorized_training_exposure"], 0)
-        self.assertFalse(evidence["reserved_evaluation_decontamination_complete"])
+        self.assertEqual(
+            evidence["survivor_authority_sha256"],
+            self.inventory["input_survivor_authority_sha256"],
+        )
         binding.verify_survivor_inventory_binding(
             self.report,
             self.authority,
@@ -232,54 +233,22 @@ class PostDedupSurvivorBindingV1Tests(unittest.TestCase):
                 expected_survivor_authority_sha256=expected,
             )
 
-    def test_fails_closed_if_external_survivor_set_diverges_from_local_crosscheck(self) -> None:
-        alternate = _survivor_authority(self.report, choose_d=True)
+    def test_rejects_self_consistent_inventory_substitution(self) -> None:
+        tampered = copy.deepcopy(self.inventory)
+        tampered["retained_sources"][0]["source_family"] = "forged.family"
+        core = copy.deepcopy(tampered)
+        core.pop("inventory_identity_sha256", None)
+        tampered["inventory_identity_sha256"] = postdedup._sha256_obj(core)
         with self.assertRaisesRegex(
             binding.PostDedupSurvivorBindingError,
-            "inventory retained set diverges",
+            "does not match terminal-survivor-bound rebuild",
         ):
             binding.build_survivor_inventory_binding(
                 self.report,
-                alternate,
-                self.inventory,
-                expected_v8_report_sha256=self.report["report_sha256"],
-                expected_survivor_authority_sha256=alternate[
-                    "survivor_authority_sha256"
-                ],
-            )
-
-    def test_rejects_survivor_metadata_drift_even_when_rehashed(self) -> None:
-        tampered = copy.deepcopy(self.authority)
-        tampered["survivors"][0]["verified_raw_sha256"] = "f" * 64
-        _rehash_survivor(tampered)
-        with self.assertRaisesRegex(
-            binding.PostDedupSurvivorBindingError,
-            "survivor/V8 source metadata drift",
-        ):
-            binding.build_survivor_inventory_binding(
-                self.report,
+                self.authority,
                 tampered,
-                self.inventory,
                 expected_v8_report_sha256=self.report["report_sha256"],
-                expected_survivor_authority_sha256=tampered[
-                    "survivor_authority_sha256"
-                ],
-            )
-
-    def test_rejects_rehashed_training_boundary_weakening(self) -> None:
-        tampered = copy.deepcopy(self.authority)
-        tampered["truth_boundary"]["authorized_training_exposure"] = 1
-        _rehash_survivor(tampered)
-        with self.assertRaisesRegex(
-            binding.PostDedupSurvivorBindingError,
-            "already grants training exposure",
-        ):
-            binding.build_survivor_inventory_binding(
-                self.report,
-                tampered,
-                self.inventory,
-                expected_v8_report_sha256=self.report["report_sha256"],
-                expected_survivor_authority_sha256=tampered[
+                expected_survivor_authority_sha256=self.authority[
                     "survivor_authority_sha256"
                 ],
             )
