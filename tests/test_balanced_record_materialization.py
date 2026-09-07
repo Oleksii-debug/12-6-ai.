@@ -58,8 +58,20 @@ def _allocation(
     }
 
 
-def _balance_result(allocations: list[dict], *, status: str = "PARTIAL_MIX_FEASIBLE_ACQUIRE_MORE_DATA") -> dict:
+def _balance_result(
+    allocations: list[dict],
+    *,
+    status: str = "PARTIAL_MIX_FEASIBLE_ACQUIRE_MORE_DATA",
+) -> dict:
     maximum = sum(row["allocated_bytes"] for row in allocations)
+    maximum_by_stratum = {
+        stratum: sum(
+            row["allocated_bytes"]
+            for row in allocations
+            if row["stratum"] == stratum
+        )
+        for stratum in ("ua", "en", "code")
+    }
     body = {
         "schema_version": "12-6.next100-106-balance-gate-result.v1",
         "policy_identity_sha256": _sha("policy"),
@@ -72,9 +84,13 @@ def _balance_result(allocations: list[dict], *, status: str = "PARTIAL_MIX_FEASI
         "input_totals": {},
         "family_minimum": {},
         "maximum_feasible_total_source_bytes": maximum,
-        "maximum_feasible_stratum_bytes": {},
+        "maximum_feasible_stratum_bytes": maximum_by_stratum,
         "target_total_source_bytes": 20_000_000,
-        "target_stratum_bytes": {"ua": 9_000_000, "en": 7_000_000, "code": 4_000_000},
+        "target_stratum_bytes": {
+            "ua": 9_000_000,
+            "en": 7_000_000,
+            "code": 4_000_000,
+        },
         "raw_capacity_by_stratum": {},
         "raw_gap_to_target_by_stratum": {},
         "deterministic_maximum_allocation": allocations,
@@ -91,9 +107,15 @@ def _balance_result(allocations: list[dict], *, status: str = "PARTIAL_MIX_FEASI
         },
     }
     payload = json.dumps(
-        body, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        body,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
     ).encode("utf-8")
-    return {**body, "result_identity_sha256": hashlib.sha256(payload).hexdigest()}
+    return {
+        **body,
+        "result_identity_sha256": hashlib.sha256(payload).hexdigest(),
+    }
 
 
 def _bindings(balance_identity: str) -> dict[str, str]:
@@ -122,8 +144,18 @@ def test_exact_whole_record_allocation_is_deterministic_but_not_20m_terminal() -
         _record("ua-b", "b" * 6, family_id="family.ua", stratum="ua"),
         _record("en-a", "c" * 3, family_id="family.en", stratum="en"),
         _record("en-b", "d" * 7, family_id="family.en", stratum="en"),
-        _record("code-a", "e" * 5, family_id="family.code", stratum="code"),
-        _record("code-b", "f" * 5, family_id="family.code", stratum="code"),
+        _record(
+            "code-a",
+            "e" * 5,
+            family_id="family.code",
+            stratum="code",
+        ),
+        _record(
+            "code-b",
+            "f" * 5,
+            family_id="family.code",
+            stratum="code",
+        ),
     ]
     balance = _balance_result(
         [
@@ -140,9 +172,16 @@ def test_exact_whole_record_allocation_is_deterministic_but_not_20m_terminal() -
     assert selected_first == selected_second
     assert first["schema_version"] == MATERIALIZATION_SCHEMA
     assert first["selection_policy"] == SELECTION_POLICY
-    assert first["post_policy_record_graph_identity_sha256"] == record_graph_identity(records)
+    assert (
+        first["post_policy_record_graph_identity_sha256"]
+        == record_graph_identity(records)
+    )
     assert first["selected_source_bytes"] == 30
-    assert first["selected_source_bytes_by_stratum"] == {"ua": 10, "en": 10, "code": 10}
+    assert first["selected_source_bytes_by_stratum"] == {
+        "ua": 10,
+        "en": 10,
+        "code": 10,
+    }
     assert first["whole_record_granularity_gap_bytes"] == 0
     assert first["allocation_exact_at_record_boundaries"] is True
     assert first["terminal_for_learned20"] is False
@@ -155,7 +194,12 @@ def test_whole_record_granularity_gap_fails_closed_without_truncation() -> None:
         _record("ua-a", "a" * 6, family_id="family.ua", stratum="ua"),
         _record("ua-b", "b" * 6, family_id="family.ua", stratum="ua"),
         _record("en-a", "c" * 10, family_id="family.en", stratum="en"),
-        _record("code-a", "d" * 10, family_id="family.code", stratum="code"),
+        _record(
+            "code-a",
+            "d" * 10,
+            family_id="family.code",
+            stratum="code",
+        ),
     ]
     balance = _balance_result(
         [
@@ -172,30 +216,55 @@ def test_whole_record_granularity_gap_fails_closed_without_truncation() -> None:
     assert manifest["allocation_exact_at_record_boundaries"] is False
     assert manifest["terminal_for_learned20"] is False
     assert manifest["terminal_corpus_identity_sha256"] is None
-    ua_selected = [record for record in selected if record.family_id == "family.ua"]
+    ua_selected = [
+        record for record in selected if record.family_id == "family.ua"
+    ]
     assert len(ua_selected) == 1
     assert ua_selected[0].source_bytes == 6
 
 
 def test_allocated_family_capacity_must_equal_exact_record_graph() -> None:
-    records = [_record("ua-a", "a" * 12, family_id="family.ua", stratum="ua")]
-    balance = _balance_result([_allocation("family.ua", "ua", 10, available=11)])
-    with pytest.raises(BalancedMaterializationError, match="available_unique_bytes"):
+    records = [
+        _record(
+            "ua-a",
+            "a" * 12,
+            family_id="family.ua",
+            stratum="ua",
+        )
+    ]
+    balance = _balance_result(
+        [_allocation("family.ua", "ua", 10, available=11)]
+    )
+    with pytest.raises(
+        BalancedMaterializationError,
+        match="available_unique_bytes",
+    ):
         _materialize(records, balance)
 
 
 def test_balance_identity_and_stage_binding_are_fail_closed() -> None:
-    record = _record("ua-a", "a" * 10, family_id="family.ua", stratum="ua")
+    record = _record(
+        "ua-a",
+        "a" * 10,
+        family_id="family.ua",
+        stratum="ua",
+    )
     balance = _balance_result([_allocation("family.ua", "ua", 10)])
     tampered = dict(balance)
     tampered["status"] = "TARGET_20M_SOURCE_MIX_FEASIBLE"
-    with pytest.raises(BalancedMaterializationError, match="self-identity mismatch"):
+    with pytest.raises(
+        BalancedMaterializationError,
+        match="self-identity mismatch",
+    ):
         _materialize([record], tampered)
 
     identity = balance["result_identity_sha256"]
     bindings = _bindings(identity)
     bindings["balance"] = _sha("other-balance")
-    with pytest.raises(BalancedMaterializationError, match="stage_bindings.balance"):
+    with pytest.raises(
+        BalancedMaterializationError,
+        match="stage_bindings.balance",
+    ):
         materialize_balanced_record_set(
             [record],
             balance,
@@ -204,9 +273,45 @@ def test_balance_identity_and_stage_binding_are_fail_closed() -> None:
         )
 
 
+def test_target_status_requires_exact_45_35_20_mix() -> None:
+    record = _record(
+        "ua-a",
+        "a" * 10,
+        family_id="family.ua",
+        stratum="ua",
+    )
+    balance = _balance_result([_allocation("family.ua", "ua", 10)])
+    body = dict(balance)
+    body.pop("result_identity_sha256")
+    body["status"] = "TARGET_20M_SOURCE_MIX_FEASIBLE"
+    payload = json.dumps(
+        body,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    forged = {
+        **body,
+        "result_identity_sha256": hashlib.sha256(payload).hexdigest(),
+    }
+    with pytest.raises(
+        BalancedMaterializationError,
+        match="TARGET_20M status",
+    ):
+        _materialize([record], forged)
+
+
 def test_post_policy_record_flags_and_payload_identity_are_enforced() -> None:
-    record = _record("ua-a", "abcdefghij", family_id="family.ua", stratum="ua")
-    with pytest.raises(BalancedMaterializationError, match="evaluation-reserved"):
+    record = _record(
+        "ua-a",
+        "abcdefghij",
+        family_id="family.ua",
+        stratum="ua",
+    )
+    with pytest.raises(
+        BalancedMaterializationError,
+        match="evaluation-reserved",
+    ):
         replace(record, evaluation_reserved=True)
     with pytest.raises(BalancedMaterializationError, match="quality gate"):
         replace(record, quality_pass=False)
@@ -239,5 +344,8 @@ def test_selected_dedup_cluster_cannot_replay_across_families() -> None:
             _allocation("family.en", "en", 10),
         ]
     )
-    with pytest.raises(BalancedMaterializationError, match="dedup cluster replay"):
+    with pytest.raises(
+        BalancedMaterializationError,
+        match="dedup cluster replay",
+    ):
         _materialize(records, balance)
