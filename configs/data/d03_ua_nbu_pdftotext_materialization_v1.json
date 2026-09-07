@@ -8,6 +8,7 @@
     "parent_pdf_pin_contract_identity_sha256": "7b032daf8200dc9acb3b066aa648463f772d90e9156804ebc3fbf79dbfe9fccd",
     "discovery_pr": 898,
     "discovery_head_sha": "a196545b4200b23983820002c019fb9e964670e1",
+    "discovery_contract_identity_sha256": "1885dfcdb590d15e0fc370a12d5869112832a1b66f36910d941a9704626db1b7",
     "lane": "D03",
     "control_issue": 548
   },
@@ -64,5 +65,5 @@
     "paid_compute_authorized": false,
     "learned_20m_claim": false
   },
-  "contract_identity_sha256": "a49986120f6a3d3c198dcfa02cfdada5813e6f17eb8c000735ca053f0cb3245e"
+  "contract_identity_sha256": "1dde55017dfdf0ea616919af4310e195174f235e1270e607b20a3f9b35caae3f"
 }
