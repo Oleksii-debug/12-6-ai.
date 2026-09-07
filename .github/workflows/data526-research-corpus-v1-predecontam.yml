@@ -11,6 +11,7 @@ on:
       - "configs/data/data526_record_materialization_v5.json"
       - "tools/materialize_data526_record_inventory_v1.py"
       - "tools/materialize_data526_records_from_v7.py"
+      - "tools/run_data526_materializer_data_only.py"
       - "tools/validate_data526_record_payload_gate_v4.py"
       - "tools/validate_data526_research_corpus_predecontam.py"
       - "tools/validate_data526_research_corpus_predecontam_v2.py"
@@ -143,13 +144,13 @@ jobs:
           set -euo pipefail
           rm -rf /tmp/data526-a /tmp/data526-b
           mkdir -p /tmp/data526-a /tmp/data526-b evidence/data526/v5
-          python tools/materialize_data526_records_from_v7.py \
+          python tools/run_data526_materializer_data_only.py \
             --v7-root _data526_v7 \
             --data213-zip /tmp/data213-a.zip \
             --records-jsonl /tmp/data526-a/records.jsonl \
             --inventory-json /tmp/data526-a/inventory.json \
             --evidence-json /tmp/data526-a/evidence.json
-          python tools/materialize_data526_records_from_v7.py \
+          python tools/run_data526_materializer_data_only.py \
             --v7-root _data526_v7 \
             --data213-zip /tmp/data213-b.zip \
             --records-jsonl /tmp/data526-b/records.jsonl \
