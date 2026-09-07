@@ -57,13 +57,25 @@ def _nonnegative_int(value: Any, label: str) -> int:
     return int(value)
 
 
-def _validated_retained_rows(inventory: Mapping[str, Any]) -> list[dict[str, Any]]:
+def _validated_retained_rows(
+    inventory: Mapping[str, Any],
+    *,
+    expected_inventory_identity_sha256: str,
+) -> list[dict[str, Any]]:
     _require(isinstance(inventory, Mapping), "post-dedup inventory must be an object")
     _require(inventory.get("schema_version") == OUTPUT_SCHEMA, "post-dedup inventory schema drift")
 
     observed_identity = _require_sha256(
         inventory.get("inventory_identity_sha256"),
         "inventory_identity_sha256",
+    )
+    expected_identity = _require_sha256(
+        expected_inventory_identity_sha256,
+        "expected_inventory_identity_sha256",
+    )
+    _require(
+        observed_identity == expected_identity,
+        "post-dedup inventory does not match expected terminal inventory identity",
     )
     core = deepcopy(dict(inventory))
     core.pop("inventory_identity_sha256", None)
@@ -139,14 +151,21 @@ def _validated_retained_rows(inventory: Mapping[str, Any]) -> list[dict[str, Any
 def prepare_ephemeral_data232_rows(
     inventory: Mapping[str, Any],
     comparison_payloads: Mapping[str, bytes],
+    *,
+    expected_inventory_identity_sha256: str,
 ) -> tuple[list[dict[str, str]], dict[str, Any]]:
     """Verify exact retained payloads and return ephemeral DATA-232 matcher rows.
 
-    The returned rows contain text and must remain in an ephemeral execution context.
-    The companion evidence object is text-free and may be persisted by a successor.
+    The inventory must match an independently supplied terminal identity; its own
+    self-hash is necessary but is not treated as external authority. The returned
+    rows contain text and must remain in an ephemeral execution context. The
+    companion evidence object is text-free and may be persisted by a successor.
     """
     _require(isinstance(comparison_payloads, Mapping), "comparison_payloads must be an object")
-    retained = _validated_retained_rows(inventory)
+    retained = _validated_retained_rows(
+        inventory,
+        expected_inventory_identity_sha256=expected_inventory_identity_sha256,
+    )
     expected_ids = {row["source_id"] for row in retained}
     _require(
         set(comparison_payloads) == expected_ids,
@@ -210,8 +229,8 @@ def prepare_ephemeral_data232_rows(
     evidence_core: dict[str, Any] = {
         "schema_version": HANDOFF_SCHEMA,
         "postdedup_inventory_identity_sha256": _require_sha256(
-            inventory.get("inventory_identity_sha256"),
-            "inventory_identity_sha256",
+            expected_inventory_identity_sha256,
+            "expected_inventory_identity_sha256",
         ),
         "retained_source_count": len(retained),
         "comparison_payload_projection": projection,
