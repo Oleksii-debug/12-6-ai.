@@ -41,6 +41,8 @@ def canonical_timeline_page(raw: str, base: str = SEED) -> str | None:
     if parsed.path.rstrip("/") != "/timeline":
         return None
     query = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
+    if set(query) - {"type", "page"}:
+        return None
     if query.get("type") != ["posts"]:
         return None
     page_values = query.get("page", [])
@@ -70,11 +72,15 @@ class LinkParser(HTMLParser):
 
 
 def fetch(url: str, timeout: float = 20.0) -> bytes:
+    expected = canonical_timeline_page(url)
+    if expected is None:
+        raise RuntimeError("non-canonical timeline request rejected")
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": "text/html"})
     with urllib.request.urlopen(req, timeout=timeout) as response:
-        final = urllib.parse.urlsplit(response.geturl())
-        if final.scheme != "https" or final.netloc not in {"kmu.gov.ua", "www.kmu.gov.ua"}:
-            raise RuntimeError("cross-origin redirect rejected")
+        final_url = response.geturl()
+        final = canonical_timeline_page(final_url, url)
+        if final != expected:
+            raise RuntimeError(f"timeline redirect drift rejected: {final_url}")
         return response.read()
 
 
