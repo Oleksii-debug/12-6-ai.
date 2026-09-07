@@ -4,8 +4,11 @@ on:
   pull_request:
     paths:
       - "configs/data/next100_065f_global_dedup_v8.json"
+      - "configs/data/next100_063_terminal_source_registry_v6.json"
       - "tools/run_next100_065f_global_dedup_v8.py"
+      - "tools/verify_next100_065f_v8_authority.py"
       - "tests/test_next100_065f_global_dedup_v8.py"
+      - "tests/test_next100_065f_v8_authority_hardening.py"
       - "docs/NEXT100_065F_GLOBAL_DEDUP_V8.md"
       - ".github/workflows/next100-065f-global-dedup-v8.yml"
   workflow_dispatch:
@@ -38,8 +41,14 @@ jobs:
       - name: Check frozen bindings and focused regressions
         run: |
           python tools/run_next100_065f_global_dedup_v8.py check-config
-          python -m unittest tests.test_next100_065f_global_dedup_v8 -v
-          python -m py_compile tools/run_next100_065f_global_dedup_v8.py tests/test_next100_065f_global_dedup_v8.py
+          python -m unittest \
+            tests.test_next100_065f_global_dedup_v8 \
+            tests.test_next100_065f_v8_authority_hardening -v
+          python -m py_compile \
+            tools/run_next100_065f_global_dedup_v8.py \
+            tools/verify_next100_065f_v8_authority.py \
+            tests/test_next100_065f_global_dedup_v8.py \
+            tests/test_next100_065f_v8_authority_hardening.py
       - name: Checkout exact terminal V7 implementation only
         uses: actions/checkout@v4
         with:
@@ -101,10 +110,12 @@ jobs:
           --v7-root _terminal_v7
           --workspace "$RUNNER_TEMP/v8-work-b"
           --report "$RUNNER_TEMP/v8-b.json"
-      - name: Require byte-identical reports and revalidate
+      - name: Require byte-identical reports and exact nested authority
         run: |
           cmp "$RUNNER_TEMP/v8-a.json" "$RUNNER_TEMP/v8-b.json"
-          python tools/run_next100_065f_global_dedup_v8.py verify --report "$RUNNER_TEMP/v8-a.json"
+          python tools/verify_next100_065f_v8_authority.py \
+            --v7-root _terminal_v7 \
+            --report "$RUNNER_TEMP/v8-a.json"
           python - <<'PY'
           import json
           import os
@@ -112,6 +123,7 @@ jobs:
           report = json.loads((Path(os.environ["RUNNER_TEMP"]) / "v8-a.json").read_text())
           vector = report["source_vector"]
           print("report_sha256=", report["report_sha256"])
+          print("nested_v3_report_sha256=", report["dedup_v3"]["report_sha256"])
           print("pre_global_dedup_bytes=", vector["source_capacity_bytes_before_global_dedup"])
           print("post_global_dedup_unique_bytes=", vector["conservative_unique_capacity_bytes_after_global_dedup"])
           print("duplicate_discount_bytes=", vector["duplicate_discount_bytes"])
