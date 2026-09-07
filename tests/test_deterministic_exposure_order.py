@@ -168,35 +168,103 @@ def test_plan_rejects_nondeterministic_shard_assignment() -> None:
         )
 
 
-def test_ordered_identity_rejects_worker_or_shard_substitution() -> None:
+def test_plan_rejects_zero_target_batch_at_construction() -> None:
+    ledger, _ = _guard()
+    with pytest.raises(LedgerError, match="actual_nonignored_targets must be positive"):
+        build_deterministic_exposure_plan(
+            [
+                {
+                    "global_batch_index": 0,
+                    "shard_index": 0,
+                    "worker_id": 0,
+                    "claims": [],
+                    "actual_nonignored_targets": 0,
+                }
+            ],
+            num_workers=1,
+            batches_per_shard=1,
+            shard_count=1,
+        )
+
+
+def test_runtime_rejects_rehashed_nondeterministic_plan() -> None:
     ledger, guard = _guard()
     plan = _plan(ledger)
-    expected = ordered_next_exposure_identity(guard, plan, batch_index=0)
     tampered = deepcopy(plan)
     tampered["batches"][0]["worker_id"] = 1
     tampered["plan_identity_sha256"] = _identity(tampered, "plan_identity_sha256")
-    assert ordered_next_exposure_identity(guard, tampered, batch_index=0) != expected
+    before = guard.state_dict()
+    with pytest.raises(LedgerError, match="worker assignment"):
+        ordered_next_exposure_identity(
+            guard,
+            tampered,
+            batch_index=0,
+            expected_plan_identity_sha256=tampered["plan_identity_sha256"],
+        )
+    assert guard.state_dict() == before
+
+
+def test_runtime_rejects_rehashed_valid_plan_substitution() -> None:
+    ledger, guard = _guard()
+    plan = _plan(ledger)
+    expected_plan_identity = plan["plan_identity_sha256"]
+
+    substitute = deepcopy(plan)
+    substitute["batches"][0]["claims"] = [_claim(ledger, 0, 2)]
+    substitute["batches"][0]["actual_nonignored_targets"] = 2
+    substitute["batches"][1]["claims"] = [_claim(ledger, 2, 3)]
+    substitute["plan_identity_sha256"] = _identity(
+        substitute, "plan_identity_sha256"
+    )
+
+    before = guard.state_dict()
+    with pytest.raises(LedgerError, match="plan identity does not match expected handoff"):
+        ordered_next_exposure_identity(
+            guard,
+            substitute,
+            batch_index=0,
+            expected_plan_identity_sha256=expected_plan_identity,
+        )
+    assert guard.state_dict() == before
 
 
 def test_authorize_ordered_batch_is_resume_safe_and_sequence_strict() -> None:
     ledger, guard = _guard()
     plan = _plan(ledger)
-    first = ordered_next_exposure_identity(guard, plan, batch_index=0)
+    plan_identity = plan["plan_identity_sha256"]
+    first = ordered_next_exposure_identity(
+        guard,
+        plan,
+        batch_index=0,
+        expected_plan_identity_sha256=plan_identity,
+    )
     authorize_ordered_batch(
         guard,
         plan,
         batch_index=0,
+        expected_plan_identity_sha256=plan_identity,
         expected_ordered_next_exposure_identity_sha256=first,
     )
     with pytest.raises(LedgerError, match="next exposure sequence"):
-        ordered_next_exposure_identity(guard, plan, batch_index=2)
-    second = ordered_next_exposure_identity(guard, plan, batch_index=1)
+        ordered_next_exposure_identity(
+            guard,
+            plan,
+            batch_index=2,
+            expected_plan_identity_sha256=plan_identity,
+        )
+    second = ordered_next_exposure_identity(
+        guard,
+        plan,
+        batch_index=1,
+        expected_plan_identity_sha256=plan_identity,
+    )
     before = guard.state_dict()
     with pytest.raises(LedgerError, match="does not match expected handoff"):
         authorize_ordered_batch(
             guard,
             plan,
             batch_index=1,
+            expected_plan_identity_sha256=plan_identity,
             expected_ordered_next_exposure_identity_sha256=_sha("wrong"),
         )
     assert guard.state_dict() == before
@@ -204,6 +272,7 @@ def test_authorize_ordered_batch_is_resume_safe_and_sequence_strict() -> None:
         guard,
         plan,
         batch_index=1,
+        expected_plan_identity_sha256=plan_identity,
         expected_ordered_next_exposure_identity_sha256=second,
     )
     assert guard.claim_sequence == 2
