@@ -7,8 +7,10 @@ on:
       - "configs/data/next100_063_terminal_source_registry_v6.json"
       - "tools/run_next100_065f_global_dedup_v8.py"
       - "tools/verify_next100_065f_v8_authority.py"
+      - "tools/derive_next100_065f_v8_survivors.py"
       - "tests/test_next100_065f_global_dedup_v8.py"
       - "tests/test_next100_065f_v8_authority_hardening.py"
+      - "tests/test_next100_065f_v8_survivors.py"
       - "docs/NEXT100_065F_GLOBAL_DEDUP_V8.md"
       - ".github/workflows/next100-065f-global-dedup-v8.yml"
   workflow_dispatch:
@@ -43,12 +45,15 @@ jobs:
           python tools/run_next100_065f_global_dedup_v8.py check-config
           python -m unittest \
             tests.test_next100_065f_global_dedup_v8 \
-            tests.test_next100_065f_v8_authority_hardening -v
+            tests.test_next100_065f_v8_authority_hardening \
+            tests.test_next100_065f_v8_survivors -v
           python -m py_compile \
             tools/run_next100_065f_global_dedup_v8.py \
             tools/verify_next100_065f_v8_authority.py \
+            tools/derive_next100_065f_v8_survivors.py \
             tests/test_next100_065f_global_dedup_v8.py \
-            tests/test_next100_065f_v8_authority_hardening.py
+            tests/test_next100_065f_v8_authority_hardening.py \
+            tests/test_next100_065f_v8_survivors.py
       - name: Checkout exact terminal V7 implementation only
         uses: actions/checkout@v4
         with:
@@ -116,27 +121,44 @@ jobs:
           python tools/verify_next100_065f_v8_authority.py \
             --v7-root _terminal_v7 \
             --report "$RUNNER_TEMP/v8-a.json"
+          python tools/derive_next100_065f_v8_survivors.py derive \
+            --report "$RUNNER_TEMP/v8-a.json" \
+            --output "$RUNNER_TEMP/v8-survivors-a.json"
+          python tools/derive_next100_065f_v8_survivors.py derive \
+            --report "$RUNNER_TEMP/v8-b.json" \
+            --output "$RUNNER_TEMP/v8-survivors-b.json"
+          cmp "$RUNNER_TEMP/v8-survivors-a.json" "$RUNNER_TEMP/v8-survivors-b.json"
+          python tools/derive_next100_065f_v8_survivors.py verify \
+            --report "$RUNNER_TEMP/v8-a.json" \
+            --output "$RUNNER_TEMP/v8-survivors-a.json"
           python - <<'PY'
           import json
           import os
           from pathlib import Path
-          report = json.loads((Path(os.environ["RUNNER_TEMP"]) / "v8-a.json").read_text())
+          root = Path(os.environ["RUNNER_TEMP"])
+          report = json.loads((root / "v8-a.json").read_text())
+          survivors = json.loads((root / "v8-survivors-a.json").read_text())
           vector = report["source_vector"]
           print("report_sha256=", report["report_sha256"])
           print("nested_v3_report_sha256=", report["dedup_v3"]["report_sha256"])
+          print("survivor_authority_sha256=", survivors["survivor_authority_sha256"])
           print("pre_global_dedup_bytes=", vector["source_capacity_bytes_before_global_dedup"])
           print("post_global_dedup_unique_bytes=", vector["conservative_unique_capacity_bytes_after_global_dedup"])
+          print("post_dedup_survivor_source_objects=", survivors["post_dedup_survivor_source_object_count"])
           print("duplicate_discount_bytes=", vector["duplicate_discount_bytes"])
           print("duplicate_cluster_count=", vector["duplicate_cluster_count"])
           print("family_counts=", vector["source_family_counts"])
           assert report["claim_boundary"]["authorized_training_exposure"] == 0
           assert report["claim_boundary"]["tokenizer_fit_authorized"] is False
           assert report["claim_boundary"]["final_test_payload_read"] is False
+          assert survivors["truth_boundary"]["training_record_inventory_materialized"] is False
           PY
-      - name: Upload immutable V8 report
+      - name: Upload immutable V8 report and survivor authority
         uses: actions/upload-artifact@v4
         with:
           name: next100-065f-global-dedup-v8-${{ env.SOURCE_SHA }}
-          path: ${{ runner.temp }}/v8-a.json
+          path: |
+            ${{ runner.temp }}/v8-a.json
+            ${{ runner.temp }}/v8-survivors-a.json
           if-no-files-found: error
           retention-days: 90
