@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Execute a controlled NaN/Inf update against the real S1 decoder."""
 
 from __future__ import annotations
