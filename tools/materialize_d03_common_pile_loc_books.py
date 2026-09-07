@@ -24,7 +24,8 @@ DEFAULT_REGISTRY = ROOT / "configs/data/common_pile_source_rights_v1.json"
 USER_AGENT = "12-6-ai-D03-LoCBooks/1.0"
 EMAIL_RE = re.compile(r"[^@\s<>]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 PHONE_RE = re.compile(
-    r"(?<!\d)(?:\+?1[\s().-]*)?(?:\(?\d{3}\)?[\s.-]*)\d{3}[\s.-]*\d{4}(?!\d)"
+    r"(?<!\d)(?:\+?1[\s().-]*)?"
+    r"(?:\(?\d{3}\)?[\s.-]*)\d{3}[\s.-]*\d{4}(?!\d)"
 )
 
 
@@ -34,7 +35,12 @@ class MaterializationError(RuntimeError):
 
 def canonical_bytes(value: object) -> bytes:
     return (
-        json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        json.dumps(
+            value,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
         + "\n"
     ).encode("utf-8")
 
@@ -83,7 +89,10 @@ def validate_config(config: dict[str, Any]) -> None:
         "readme_path": "sources/loc_books/README.md",
         "readme_git_blob_sha1": "c364b6dec4232e128b7adee92747f0d728090714",
     }
-    if any(collector.get(key) != value for key, value in expected_collector.items()):
+    if any(
+        collector.get(key) != value
+        for key, value in expected_collector.items()
+    ):
         raise MaterializationError("collector authority drift")
 
     source = config.get("source", {})
@@ -103,17 +112,26 @@ def validate_config(config: dict[str, Any]) -> None:
     if any(source.get(key) != value for key, value in expected_source.items()):
         raise MaterializationError("source authority drift")
     expected_url = (
-        "https://huggingface.co/datasets/common-pile/library_of_congress/resolve/"
-        "d31bdba02cdad5104ccec2c02ae799c0bcb5a9a7/data/00000_loc_books.jsonl.gz"
+        "https://huggingface.co/datasets/common-pile/"
+        "library_of_congress/resolve/"
+        "d31bdba02cdad5104ccec2c02ae799c0bcb5a9a7/"
+        "data/00000_loc_books.jsonl.gz"
     )
     if source.get("url") != expected_url:
         raise MaterializationError("source URL drift")
 
     record = config.get("record_contract", {})
-    if record.get("exact_fields") != ["id", "text", "source", "added", "metadata"]:
+    exact_fields = ["id", "text", "source", "added", "metadata"]
+    if record.get("exact_fields") != exact_fields:
         raise MaterializationError("record schema drift")
     expected_metadata = [
-        "license", "title", "author", "year", "language", "item_url", "text_file_url"
+        "license",
+        "title",
+        "author",
+        "year",
+        "language",
+        "item_url",
+        "text_file_url",
     ]
     if record.get("required_metadata_fields") != expected_metadata:
         raise MaterializationError("metadata schema drift")
@@ -134,7 +152,10 @@ def validate_config(config: dict[str, Any]) -> None:
         "min_latin_share_of_alpha": 0.9,
         "normalization": "NFC_LF_OUTER_TRIM",
     }
-    if any(selection.get(key) != value for key, value in expected_selection.items()):
+    if any(
+        selection.get(key) != value
+        for key, value in expected_selection.items()
+    ):
         raise MaterializationError("selection policy drift")
 
     privacy = config.get("privacy_quality", {})
@@ -173,7 +194,10 @@ def validate_config(config: dict[str, Any]) -> None:
         raise MaterializationError("claim boundary drift")
 
 
-def load_rights_row(config: dict[str, Any], registry_path: Path) -> dict[str, Any]:
+def load_rights_row(
+    config: dict[str, Any],
+    registry_path: Path,
+) -> dict[str, Any]:
     registry = json.loads(registry_path.read_text(encoding="utf-8"))
     validate_registry(registry)
     source_key = config["rights_authority"]["source_key"]
@@ -186,14 +210,17 @@ def load_rights_row(config: dict[str, Any], registry_path: Path) -> dict[str, An
         raise MaterializationError("rights dataset mismatch")
     if row.get("rights_basis_class") != authority["required_rights_basis_class"]:
         raise MaterializationError("rights basis mismatch")
-    if authority["required_license_signal"] not in row.get("license_or_status_signals", []):
+    signals = row.get("license_or_status_signals", [])
+    if authority["required_license_signal"] not in signals:
         raise MaterializationError("rights signal missing")
     if row.get("project_review_status") != authority["required_project_review_status"]:
         raise MaterializationError("source review status drift")
     if row.get("canonical_training_authorized") is not False:
         raise MaterializationError("rights audit may not authorize training")
-    if row.get("credited_bytes") != 0 or row.get("authorized_loss_positions") != 0:
-        raise MaterializationError("rights audit credit must remain zero")
+    if row.get("credited_bytes") != 0:
+        raise MaterializationError("rights audit byte credit must remain zero")
+    if row.get("authorized_loss_positions") != 0:
+        raise MaterializationError("rights audit loss credit must remain zero")
     if row.get("final_test_excluded") is not True:
         raise MaterializationError("final-test firewall weakened")
     return row
@@ -205,13 +232,16 @@ def normalize_text(text: str) -> str:
 
 
 def _has_forbidden_control(text: str) -> bool:
-    return any(unicodedata.category(ch) == "Cc" and ch not in "\n\t" for ch in text)
+    return any(
+        unicodedata.category(char) == "Cc" and char not in "\n\t"
+        for char in text
+    )
 
 
 def _latin_share(alpha: list[str]) -> float:
     if not alpha:
         return 0.0
-    latin = sum("LATIN" in unicodedata.name(ch, "") for ch in alpha)
+    latin = sum("LATIN" in unicodedata.name(char, "") for char in alpha)
     return latin / len(alpha)
 
 
@@ -231,22 +261,28 @@ def classify_text(text: str, config: dict[str, Any]) -> str | None:
         return "email_like"
     if privacy["reject_phone_like"] and PHONE_RE.search(text):
         return "phone_like"
-    alpha = [ch for ch in text if ch.isalpha()]
+    alpha = [char for char in text if char.isalpha()]
     if len(alpha) < selection["min_alphabetic_chars"]:
         return "too_few_alphabetic"
-    nonspace = sum(not ch.isspace() for ch in text)
-    if not nonspace or len(alpha) / nonspace < selection["min_alpha_fraction"]:
+    nonspace = sum(not char.isspace() for char in text)
+    if not nonspace:
+        return "low_alpha_fraction"
+    if len(alpha) / nonspace < selection["min_alpha_fraction"]:
         return "low_alpha_fraction"
     if _latin_share(alpha) < selection["min_latin_share_of_alpha"]:
         return "low_latin_share"
     return None
 
 
-def validate_row(row: object, config: dict[str, Any]) -> tuple[str, str] | str:
+def validate_row(
+    row: object,
+    config: dict[str, Any],
+) -> tuple[str, str] | str:
     if not isinstance(row, dict):
         return "row_not_object"
     record = config["record_contract"]
-    if list(row.keys()) != record["exact_fields"]:
+    expected_fields = set(record["exact_fields"])
+    if set(row) != expected_fields or len(row) != len(expected_fields):
         return "row_schema_mismatch"
     source = config["source"]
     source_id = row.get("id")
@@ -260,16 +296,28 @@ def validate_row(row: object, config: dict[str, Any]) -> tuple[str, str] | str:
         return "source_label_mismatch"
     if not isinstance(metadata, dict):
         return "metadata_not_object"
-    if any(key not in metadata for key in record["required_metadata_fields"]):
+    required_metadata = record["required_metadata_fields"]
+    if any(key not in metadata for key in required_metadata):
         return "metadata_schema_mismatch"
     if metadata.get("license") != source["expected_metadata_license"]:
         return "rights_metadata_mismatch"
-    if str(metadata.get("language", "")).lower() != source["expected_metadata_language"]:
+    language = str(metadata.get("language", "")).lower()
+    if language != source["expected_metadata_language"]:
         return "language_metadata_mismatch"
     year = metadata.get("year")
     if not isinstance(year, int) or year < source["minimum_metadata_year"]:
         return "year_metadata_mismatch"
     return source_id.strip(), normalize_text(text)
+
+
+def _source_id_if_present(row: object) -> str | None:
+    if not isinstance(row, dict):
+        return None
+    source_id = row.get("id")
+    if not isinstance(source_id, str):
+        return None
+    source_id = source_id.strip()
+    return source_id or None
 
 
 def materialize_stream(
@@ -302,14 +350,21 @@ def materialize_stream(
             except (UnicodeDecodeError, json.JSONDecodeError):
                 rejected["invalid_json_utf8"] += 1
                 continue
+
+            source_id = _source_id_if_present(row)
+            if source_id is not None:
+                if source_id in seen_ids:
+                    raise MaterializationError(f"duplicate source id: {source_id}")
+                seen_ids.add(source_id)
+
             validated = validate_row(row, config)
             if isinstance(validated, str):
                 rejected[validated] += 1
                 continue
-            source_id, text = validated
-            if source_id in seen_ids:
-                raise MaterializationError(f"duplicate source id: {source_id}")
-            seen_ids.add(source_id)
+            validated_id, text = validated
+            if source_id != validated_id:
+                raise MaterializationError("source id normalization mismatch")
+
             reason = classify_text(text, config)
             if reason is not None:
                 rejected[reason] += 1
@@ -319,16 +374,18 @@ def materialize_stream(
             if text_hash in seen_text:
                 rejected["exact_normalized_duplicate"] += 1
                 continue
-            if accepted_bytes + len(text_bytes) > selection["max_candidate_normalized_utf8_bytes"]:
+            candidate_max = selection["max_candidate_normalized_utf8_bytes"]
+            if accepted_bytes + len(text_bytes) > candidate_max:
                 rejected["candidate_budget_exceeds"] += 1
                 continue
+
             seen_text.add(text_hash)
             payload = {
                 "language": "en",
                 "modality": "natural_text",
-                "record_id": f"loc:{source_id}",
+                "record_id": f"loc:{validated_id}",
                 "source_family": config["source"]["family"],
-                "source_id": source_id,
+                "source_id": validated_id,
                 "text": text,
                 "text_sha256": text_hash,
                 "text_utf8_bytes": len(text_bytes),
@@ -349,7 +406,8 @@ def materialize_stream(
 
     if accepted_bytes < selection["min_candidate_normalized_utf8_bytes"]:
         raise MaterializationError(
-            f"bounded scan retained only {accepted_bytes} normalized bytes; minimum not met"
+            "bounded scan retained only "
+            f"{accepted_bytes} normalized bytes; minimum not met"
         )
     return {
         "rows_seen": rows_seen,
@@ -365,17 +423,23 @@ def materialize_stream(
 
 def acquire_exact(config: dict[str, Any], destination: Path) -> None:
     source = config["source"]
-    request = Request(source["url"], headers={"User-Agent": USER_AGENT, "Accept-Encoding": "identity"})
-    with urlopen(request, timeout=60) as response, destination.open("wb") as output:
-        shutil.copyfileobj(response, output, length=1024 * 1024)
-    digest, size = sha256_file(destination)
-    if size != source["bytes"]:
-        raise MaterializationError(f"source byte-count mismatch: {size}")
-    if digest != source["sha256"]:
-        raise MaterializationError("source sha256 mismatch")
+    request = Request(
+        source["url"],
+        headers={
+            "User-Agent": USER_AGENT,
+            "Accept-Encoding": "identity",
+        },
+    )
+    with urlopen(request, timeout=60) as response:
+        with destination.open("wb") as output:
+            shutil.copyfileobj(response, output, length=1024 * 1024)
+    verify_exact_source(config, destination)
 
 
-def verify_exact_source(config: dict[str, Any], path: Path) -> tuple[str, int]:
+def verify_exact_source(
+    config: dict[str, Any],
+    path: Path,
+) -> tuple[str, int]:
     digest, size = sha256_file(path)
     source = config["source"]
     if size != source["bytes"]:
@@ -386,7 +450,10 @@ def verify_exact_source(config: dict[str, Any], path: Path) -> tuple[str, int]:
 
 
 def build_report(
-    config: dict[str, Any], rights_row: dict[str, Any], source_sha: str, source_size: int,
+    config: dict[str, Any],
+    rights_row: dict[str, Any],
+    source_sha: str,
+    source_size: int,
     stats: dict[str, Any],
 ) -> dict[str, Any]:
     core = {
@@ -402,7 +469,10 @@ def build_report(
         "required_downstream_gates": config["required_downstream_gates"],
         "execution_profile": "LOCAL_FREE",
     }
-    return {**core, "report_identity_sha256": sha256_bytes(canonical_bytes(core))}
+    return {
+        **core,
+        "report_identity_sha256": sha256_bytes(canonical_bytes(core)),
+    }
 
 
 def main() -> int:
@@ -420,28 +490,48 @@ def main() -> int:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     temporary: tempfile.TemporaryDirectory[str] | None = None
-    if args.input:
-        source_path = Path(args.input)
-        source_sha, source_size = verify_exact_source(config, source_path)
-    else:
-        temporary = tempfile.TemporaryDirectory(prefix="d03-loc-")
-        source_path = Path(temporary.name) / "source.jsonl.gz"
-        acquire_exact(config, source_path)
-        source_sha, source_size = verify_exact_source(config, source_path)
-
+    candidate_partial = output_dir / "loc-books-candidate.jsonl.partial"
     candidate_path = output_dir / "loc-books-candidate.jsonl"
-    with source_path.open("rb") as compressed, candidate_path.open("wb") as candidate:
-        stats = materialize_stream(compressed, config, candidate)
-    report = build_report(config, rights_row, source_sha, source_size, stats)
-    (output_dir / "loc-books-report.json").write_text(
-        json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-        newline="\n",
-    )
-    print(json.dumps(report, ensure_ascii=False, sort_keys=True))
-    if temporary is not None:
-        temporary.cleanup()
-    return 0
+    candidate_partial.unlink(missing_ok=True)
+    candidate_path.unlink(missing_ok=True)
+
+    try:
+        if args.input:
+            source_path = Path(args.input)
+            source_sha, source_size = verify_exact_source(config, source_path)
+        else:
+            temporary = tempfile.TemporaryDirectory(prefix="d03-loc-")
+            source_path = Path(temporary.name) / "source.jsonl.gz"
+            acquire_exact(config, source_path)
+            source_sha, source_size = verify_exact_source(config, source_path)
+
+        try:
+            with source_path.open("rb") as compressed:
+                with candidate_partial.open("wb") as candidate:
+                    stats = materialize_stream(compressed, config, candidate)
+            candidate_partial.replace(candidate_path)
+        except Exception:
+            candidate_partial.unlink(missing_ok=True)
+            raise
+
+        report = build_report(
+            config,
+            rights_row,
+            source_sha,
+            source_size,
+            stats,
+        )
+        report_path = output_dir / "loc-books-report.json"
+        report_path.write_text(
+            json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        print(json.dumps(report, ensure_ascii=False, sort_keys=True))
+        return 0
+    finally:
+        if temporary is not None:
+            temporary.cleanup()
 
 
 if __name__ == "__main__":
