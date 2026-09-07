@@ -31,6 +31,35 @@
       "data_budget_authority": null,
       "data_budget_status": "BLOCKED"
     },
+    "postpack_proof": {
+      "schema_version": "12-6.d04-deterministic-double-pack-proof.v1",
+      "authority": null,
+      "proof_identity_sha256": null,
+      "terminal_corpus_authority_identity_sha256": null,
+      "terminal_record_inventory_digest_sha256": null,
+      "terminal_payload_inventory_digest_sha256": null,
+      "stage_bindings": {
+        "normalization": null,
+        "evaluation_reservations": null,
+        "dedup": null,
+        "split": null,
+        "packing": null
+      },
+      "tokenizer_identity_sha256": null,
+      "materialization_identity_sha256": null,
+      "packing_identity_sha256": null,
+      "ledger_identity_sha256": null,
+      "canonical_build_sha256": null,
+      "build_a_canonical_sha256": null,
+      "build_b_canonical_sha256": null,
+      "one_pass_unique_nonignored_causal_loss_positions": 0,
+      "retained_train_records_matched_to_terminal_inventory": 0,
+      "retained_train_record_membership_verified": false,
+      "retained_document_isolation_verified": false,
+      "heldout_reservation_verified": false,
+      "independent_builds_byte_identical": false,
+      "training_authorized_by_this_proof": false
+    },
     "checkpoint_integrity": {"authority": null, "status": "RETEST_REQUIRED"},
     "evaluation": {
       "firewall_authority": null,
