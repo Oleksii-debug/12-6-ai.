@@ -241,7 +241,7 @@ def resolve_eval303_selection_payloads(
             "record_id": record_id,
             "source_id": source_id,
             "source_family": source_family,
-            "modality": "en",
+            "modality": "text",
             "text": str(row["text"]),
         }
     _require(len(payload_by_record) == EXPECTED_RECORDS, "resolved selection record count drift")
