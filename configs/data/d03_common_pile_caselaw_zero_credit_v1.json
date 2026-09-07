@@ -1,0 +1,67 @@
+{
+  "schema_version": "12-6.d03-common-pile-caselaw-zero-credit.v1",
+  "execution_profile": "LOCAL_FREE",
+  "rights_authority": {
+    "pr": 769,
+    "head_sha": "327a5364f7729f3ffdfc2f8079d02fb7a54638d2",
+    "registry_path": "configs/data/common_pile_source_rights_v1.json",
+    "source_key": "caselaw_access_project",
+    "required_rights_basis_class": "PUBLIC_DOMAIN_FILTER",
+    "required_license_signal": "PUBLIC_DOMAIN"
+  },
+  "source": {
+    "dataset": "common-pile/caselaw_access_project",
+    "revision": "31e65135501af50f8285b52489bc3b39fd0fc5d5",
+    "file": "cap_00044.jsonl.gz",
+    "url": "https://huggingface.co/datasets/common-pile/caselaw_access_project/resolve/31e65135501af50f8285b52489bc3b39fd0fc5d5/cap_00044.jsonl.gz",
+    "sha256": "e04bdff817b34d5fd2ab0b4aff272adfe6e863aacef7d4cd24db47e4b7c8db33",
+    "bytes": 9441419,
+    "family": "en.common-pile.caselaw",
+    "allowed_source_fields": ["Caselaw Access Project", "Court Listener", "CourtListener"]
+  },
+  "record_contract": {
+    "fields": ["id", "source", "added", "created", "metadata", "text"],
+    "metadata_license_exact": "Public Domain",
+    "max_json_line_bytes": 2000000
+  },
+  "selection": {
+    "max_candidate_normalized_utf8_bytes": 6500000,
+    "min_candidate_normalized_utf8_bytes": 5500000,
+    "max_scanned_decompressed_bytes": 80000000,
+    "min_text_chars": 200,
+    "min_latin_alpha_ratio": 0.80,
+    "max_cyrillic_alpha_ratio": 0.05
+  },
+  "privacy": {
+    "reject_email": true,
+    "reject_phone": true,
+    "reject_us_ssn_shape": true,
+    "reject_control_characters": true
+  },
+  "claim_boundary": {
+    "candidate_only": true,
+    "upstream_public_domain_metadata_is_project_rights_authority": false,
+    "source_level_project_review_complete": false,
+    "post_composition_privacy_complete": false,
+    "canonical_capacity_credited": 0,
+    "family_credit_added": 0,
+    "training_authorized_bytes": 0,
+    "training_eligible": false,
+    "evaluation_eligible": false,
+    "tokenizer_fit_authorized": false,
+    "optimizer_updates": 0,
+    "model_training_executed": false,
+    "final_test_accessed": false,
+    "paid_compute_used": false
+  },
+  "required_downstream_gates": [
+    "SOURCE_LEVEL_RIGHTS_AND_PROVENANCE_REVIEW",
+    "CURRENT_GLOBAL_EXACT_NEAR_LINEAGE_DEDUP",
+    "FRESH_RESERVED_EVALUATION_DECONTAMINATION",
+    "POST_COMPOSITION_QUALITY_PRIVACY",
+    "BALANCE_AND_FAMILY_CAPS",
+    "CLUSTER_SAFE_SPLIT",
+    "DETERMINISTIC_PACKING_TWO_CLEAN_BUILDS",
+    "POSITIVE_UNIQUE_LOSS_LEDGER"
+  ]
+}
