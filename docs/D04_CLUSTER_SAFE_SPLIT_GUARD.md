@@ -18,8 +18,8 @@ than treating per-file survivor identity as split independence.
 `cluster_safe_split_guard.py` consumes two externally identified, text-free objects:
 
 1. a **terminal post-decontamination handoff** containing only retained record
-   identities, payload hashes/bytes, family/modality, evaluation-reservation state and
-   `independence_cluster_identity_sha256`; and
+   identities, payload hashes/bytes, family/modality, exact evaluation-reservation
+   purpose (`reserved_split`) and `independence_cluster_identity_sha256`; and
 2. a **complete split manifest** assigning every retained record to exactly one of
    `train`, `selection`, or `final_test`.
 
@@ -34,11 +34,14 @@ The guard fails closed unless:
 - every retained record is assigned exactly once;
 - every source maps to exactly one independence cluster;
 - every independence cluster is wholly inside one split;
-- evaluation-reserved records are never assigned to train; and
-- non-reserved records are never used to fill held-out quotas.
+- every reserved record carries an exact `selection` or `final_test` purpose and is
+  assigned to exactly that split;
+- non-reserved records carry no held-out purpose and are assigned only to train; and
+- neither held-out quota repair nor selection/final-test role swapping is possible.
 
 The proof is hash-only and records split counts/bytes plus a deterministic cluster-to-
-split projection identity.
+split projection identity. It explicitly records that independence-cluster leakage,
+training use of reserved records, and reservation-purpose drift are all false.
 
 ## Scientific boundary
 
