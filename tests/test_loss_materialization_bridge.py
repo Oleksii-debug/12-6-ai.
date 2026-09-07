@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import hashlib
-from copy import deepcopy
+from dataclasses import replace
 
 import pytest
 
@@ -159,12 +159,7 @@ def test_bridge_allows_heldout_reservation_metadata_without_training_exposure() 
 def test_bridge_rejects_payload_or_stage_identity_drift() -> None:
     document = _document("doc", "abcdef")
     with pytest.raises(LossMaterializationError, match="payload hash"):
-        LossMaterializationDocument(
-            **{
-                **document.__dict__,
-                "normalized_payload_sha256": _sha("wrong"),
-            }
-        )
+        replace(document, normalized_payload_sha256=_sha("wrong"))
 
     bindings = _bindings()
     bindings["packing"] = "bad"
@@ -191,4 +186,4 @@ def test_materialization_identity_changes_on_policy_binding_change() -> None:
     assert first["materialization_identity_sha256"] != second[
         "materialization_identity_sha256"
     ]
-    assert deepcopy(first)["packing"] == deepcopy(second)["packing"]
+    assert first["packing"] == second["packing"]
