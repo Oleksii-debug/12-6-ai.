@@ -226,40 +226,17 @@ def _load_config(path: Path) -> dict[str, Any]:
     return raw
 
 
-def inventory_archive(
-    archive: bytes,
-    config: dict[str, Any],
-    *,
-    expected_md5: str | None = None,
-    expected_bytes: int | None = None,
-) -> dict[str, Any]:
-    """Hash and inventory a ZIP while retaining a zero-training truth boundary."""
-    if (expected_md5 is None) != (expected_bytes is None):
-        raise ProbeError("expected_md5 and expected_bytes must be supplied together")
-    strict_revalidation = expected_md5 is not None and expected_bytes is not None
-
+def _scan_archive(archive: bytes, config: dict[str, Any]) -> dict[str, Any]:
+    """Perform structural safety checks and deterministic member hashing only."""
     policy = config["probe_policy"]
     if len(archive) > int(policy["max_archive_bytes"]):
         raise ProbeError("archive exceeds configured size limit")
     if not archive.startswith(b"PK"):
         raise ProbeError("upstream payload is not a ZIP archive")
 
-    archive_md5 = hashlib.md5(archive, usedforsecurity=False).hexdigest()
-    archive_sha256 = hashlib.sha256(archive).hexdigest()
-    if expected_bytes is not None and len(archive) != expected_bytes:
-        raise ProbeError(
-            f"archive byte identity drift: expected {expected_bytes}, got {len(archive)}"
-        )
-    if expected_md5 is not None and archive_md5.lower() != expected_md5.lower():
-        raise ProbeError(
-            f"archive MD5 identity drift: expected {expected_md5}, got {archive_md5}"
-        )
-
     entry_re = re.compile(str(policy["canonical_entry_regex"]))
     max_entry_bytes = int(policy["max_entry_bytes"])
     max_total_uncompressed = int(policy["max_total_uncompressed_bytes"])
-    min_canonical_entries = int(policy["min_canonical_entries"])
-
     rows: list[dict[str, Any]] = []
     seen_basenames: set[str] = set()
     total_uncompressed = 0
@@ -276,6 +253,8 @@ def inventory_archive(
                 raise ProbeError(f"unsafe archive path: {info.filename!r}")
             if _zipinfo_is_symlink(info):
                 raise ProbeError(f"symlink entry rejected: {info.filename!r}")
+            if info.flag_bits & 0x1:
+                raise ProbeError(f"encrypted entry rejected: {info.filename!r}")
             if info.is_dir():
                 continue
             if info.file_size > max_entry_bytes:
@@ -297,7 +276,7 @@ def inventory_archive(
             try:
                 with zf.open(info, "r") as stream:
                     content_sha256, content_bytes = _sha256_stream(stream)
-            except zipfile.BadZipFile as exc:
+            except (RuntimeError, zipfile.BadZipFile) as exc:
                 raise ProbeError(f"ZIP integrity failure: {basename}") from exc
             if content_bytes != info.file_size:
                 raise ProbeError(f"entry size drift while reading {basename}")
@@ -311,11 +290,6 @@ def inventory_archive(
                 }
             )
 
-    if len(rows) < min_canonical_entries:
-        raise ProbeError(
-            f"canonical entry count {len(rows)} below minimum {min_canonical_entries}"
-        )
-
     rows.sort(key=lambda row: row["basename"])
     identity = hashlib.sha256()
     for row in rows:
@@ -326,15 +300,32 @@ def inventory_archive(
         identity.update(row["raw_sha256"].encode("ascii"))
         identity.update(b"\n")
 
-    canonical_raw_bytes = sum(int(row["raw_bytes"]) for row in rows)
-    identity_gate = (
-        "PASS_PINNED_DISCOVERY_REVALIDATED" if strict_revalidation else "OBSERVED_UNPINNED"
-    )
-    safe_result = (
-        "PINNED_BULK_ARCHIVE_INVENTORIED_DOWNSTREAM_GATES_REQUIRED"
-        if strict_revalidation
-        else "CURRENT_UPSTREAM_OBSERVED_SUCCESSOR_PIN_REQUIRED"
-    )
+    return {
+        "archive": {
+            "url": config["source"]["archive_url"],
+            "bytes": len(archive),
+            "md5": hashlib.md5(archive, usedforsecurity=False).hexdigest(),
+            "sha256": hashlib.sha256(archive).hexdigest(),
+        },
+        "inventory": {
+            "canonical_entry_count": len(rows),
+            "canonical_raw_bytes": sum(int(row["raw_bytes"]) for row in rows),
+            "ignored_file_count": ignored_files,
+            "total_zip_uncompressed_bytes": total_uncompressed,
+            "entry_identity_sha256": identity.hexdigest(),
+            "entries": rows,
+        },
+    }
+
+
+def _report(
+    config: dict[str, Any],
+    scan: dict[str, Any],
+    *,
+    identity_gate: str,
+    discovery_capacity_gate: str,
+    safe_result: str,
+) -> dict[str, Any]:
     return {
         "schema_version": SCHEMA,
         "worker_id": config["worker_id"],
@@ -347,23 +338,12 @@ def inventory_archive(
         },
         "source_family": config["source"]["family_id"],
         "source_dataset_id": config["source"]["dataset_id"],
-        "archive": {
-            "url": config["source"]["archive_url"],
-            "bytes": len(archive),
-            "md5": archive_md5,
-            "sha256": archive_sha256,
-        },
-        "inventory": {
-            "canonical_entry_count": len(rows),
-            "canonical_raw_bytes": canonical_raw_bytes,
-            "ignored_file_count": ignored_files,
-            "total_zip_uncompressed_bytes": total_uncompressed,
-            "entry_identity_sha256": identity.hexdigest(),
-            "entries": rows,
-        },
+        "archive": scan["archive"],
+        "inventory": scan["inventory"],
         "gates": {
             "exact_archive_identity": identity_gate,
             "safe_zip_inventory": "PASS",
+            "discovery_capacity_threshold": discovery_capacity_gate,
             "canonical_normalization": "NOT_RUN",
             "quality": "NOT_RUN",
             "privacy": "NOT_RUN",
@@ -380,6 +360,70 @@ def inventory_archive(
         "paid_compute_used": False,
         "safe_result": safe_result,
     }
+
+
+def inventory_archive(
+    archive: bytes,
+    config: dict[str, Any],
+    *,
+    expected_md5: str | None = None,
+    expected_bytes: int | None = None,
+) -> dict[str, Any]:
+    """Strictly inventory a qualifying ZIP while keeping training authority closed."""
+    if (expected_md5 is None) != (expected_bytes is None):
+        raise ProbeError("expected_md5 and expected_bytes must be supplied together")
+    strict_revalidation = expected_md5 is not None and expected_bytes is not None
+    scan = _scan_archive(archive, config)
+    archive_meta = scan["archive"]
+
+    if expected_bytes is not None and archive_meta["bytes"] != expected_bytes:
+        raise ProbeError(
+            f"archive byte identity drift: expected {expected_bytes}, got {archive_meta['bytes']}"
+        )
+    if expected_md5 is not None and archive_meta["md5"].lower() != expected_md5.lower():
+        raise ProbeError(
+            f"archive MD5 identity drift: expected {expected_md5}, got {archive_meta['md5']}"
+        )
+
+    minimum = int(config["probe_policy"]["min_canonical_entries"])
+    observed = int(scan["inventory"]["canonical_entry_count"])
+    if observed < minimum:
+        raise ProbeError(f"canonical entry count {observed} below minimum {minimum}")
+
+    identity_gate = (
+        "PASS_PINNED_DISCOVERY_REVALIDATED" if strict_revalidation else "OBSERVED_UNPINNED"
+    )
+    safe_result = (
+        "PINNED_BULK_ARCHIVE_INVENTORIED_DOWNSTREAM_GATES_REQUIRED"
+        if strict_revalidation
+        else "CURRENT_UPSTREAM_OBSERVED_SUCCESSOR_PIN_REQUIRED"
+    )
+    return _report(
+        config,
+        scan,
+        identity_gate=identity_gate,
+        discovery_capacity_gate="PASS",
+        safe_result=safe_result,
+    )
+
+
+def observe_archive_inventory(archive: bytes, config: dict[str, Any]) -> dict[str, Any]:
+    """Retain a safe mutable-upstream observation without waiving capacity gates."""
+    scan = _scan_archive(archive, config)
+    minimum = int(config["probe_policy"]["min_canonical_entries"])
+    observed = int(scan["inventory"]["canonical_entry_count"])
+    capacity_pass = observed >= minimum
+    return _report(
+        config,
+        scan,
+        identity_gate="OBSERVED_UNPINNED",
+        discovery_capacity_gate=("PASS" if capacity_pass else "FAIL_BELOW_MINIMUM"),
+        safe_result=(
+            "CURRENT_UPSTREAM_OBSERVED_SUCCESSOR_PIN_REQUIRED"
+            if capacity_pass
+            else "CURRENT_UPSTREAM_OBSERVED_BELOW_DISCOVERY_MINIMUM_SUCCESSOR_TRIAGE_REQUIRED"
+        ),
+    )
 
 
 def _parse_args() -> argparse.Namespace:
