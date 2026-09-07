@@ -1,0 +1,81 @@
+{
+  "schema_version": "12-6.d03-rada-trees-secondary-terminal-probe.v1",
+  "worker_id": "D03-RADA-TREES-SECONDARY-REAL-PROBE-20260907",
+  "repository": "Oleksii-debug/12-6-ai.",
+  "execution_profile": "LOCAL_FREE",
+  "source": {
+    "dataset": "uacorpus/Rada_Trees",
+    "dataset_revision": "1b994a5804dcda122721e8d33a03fd172cf8d867",
+    "archive_path": "rada_xtag_texts.7z",
+    "git_blob_oid": "2ddd106a0140b6980c9a6152406f40f1f9bd5c30",
+    "xet_hash": "46c56a953551f3d33800c8b50fbd355104197abec45c366f245103e830b17d30",
+    "content_sha256": "737fa5df061c55555a8c761023559a206cbcabf0299ae52d1ccae387f685803e",
+    "compressed_bytes": 697768591
+  },
+  "execution": {
+    "head_sha": "1b9140bd78374cfa010801c71d0784e1fd9a4f9d",
+    "workflow_run": 34119998742,
+    "workflow_job": 101735625798,
+    "conclusion": "success",
+    "artifact_id": 10017906020,
+    "artifact_digest": "sha256:6e2818943b0968fc690e8e6faa3b9752afa66b1db5ce1a76239af7f5a8856bb8"
+  },
+  "inventory": {
+    "member_count": 8782,
+    "uncompressed_bytes": 19711802635,
+    "full_extraction_performed": false,
+    "listing_identity_sha256": "9e5bad28b2455a0b1682b7c91d0f81f4113a928223898570c9800cf8af7ad15a",
+    "full_inventory_identity_sha256": null,
+    "member_suffixes": {
+      ".txt": 4391,
+      ".xtag": 4391
+    },
+    "member_suffix_bytes": {
+      ".txt": 879031855,
+      ".xtag": 18832770780
+    },
+    "top_level_paths": {
+      "texts": 4391,
+      "xtag": 4391
+    }
+  },
+  "bounded_classification": {
+    "full_member_classification_complete": false,
+    "sampled_member_count": 32,
+    "sampled_class_counts": {
+      "PLAIN_TEXT_CANDIDATE": 16,
+      "UNKNOWN_FORMAT_HOLD": 16
+    },
+    "sampled_class_bytes": {
+      "PLAIN_TEXT_CANDIDATE": 3236160,
+      "UNKNOWN_FORMAT_HOLD": 74434667
+    },
+    "plain_text_suffix_member_count": 4391,
+    "sampled_txt_members": 16,
+    "sampled_txt_plain_text_candidates": 16,
+    "sampled_xtag_members": 16,
+    "sampled_xtag_unknown_format_holds": 16,
+    "plain_text_candidate_members_full_archive": null,
+    "plain_text_candidate_bytes_full_archive": null,
+    "raw_member_text_emitted": false,
+    "sample_is_not_capacity_authority": true
+  },
+  "decision": {
+    "status": "SECONDARY_ARCHIVE_PLAIN_TEXT_LAYER_CONFIRMED_BY_SUFFIX_AND_BOUNDED_SAMPLE_FULL_STREAM_SCAN_REQUIRED",
+    "role_state": "PLAIN_TEXT_SUFFIX_PRESENT_BOUNDED_SAMPLE_COMPLETE_FULL_STREAM_SCAN_REQUIRED",
+    "plain_text_original_transcript_role_supported_by_dataset_card": true,
+    "full_txt_layer_training_admission_claimed": false,
+    "rerun_with_pinned_sha_required_before_any_capacity_credit": true,
+    "next_gate": "FULL_STREAM_SCAN_4391_TXT_MEMBERS_WITH_MEMBER_HASH_CLASSIFICATION_PROVENANCE_AND_RIGHTS_BINDING"
+  },
+  "claim_boundary": {
+    "training_authorized_bytes": 0,
+    "unique_causal_loss_positions_authorized": 0,
+    "tokenizer_fit_authorized": false,
+    "model_training_executed": false,
+    "optimizer_updates": 0,
+    "final_test_payload_accessed": false,
+    "paid_compute_used": false
+  },
+  "evidence_identity_sha256": "db19a06c55e71ac38bd2ddb35c30dc1c88b3209ca9d9e992104ef029802377fe"
+}
