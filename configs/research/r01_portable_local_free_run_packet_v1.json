@@ -53,6 +53,7 @@
     "checkpoint_integrity": null,
     "evaluation_firewall": null,
     "decontamination": null,
+    "final_test_reservation": null,
     "backend": null,
     "parent_checkpoint": null
   },
@@ -90,6 +91,7 @@
   },
   "evaluation": {
     "evaluation_schedule_sha256": null,
+    "final_test_reservation_sha256": null,
     "selection_validation_only": true,
     "final_test_payload_access": false
   },
