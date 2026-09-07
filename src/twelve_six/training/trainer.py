@@ -519,7 +519,7 @@ class Trainer:
                 self.scheduler.load_state_dict(state.scheduler)
             if state.scaler is not None:
                 self.scaler.load_state_dict(state.scaler)
-        except Exception as restore_error:
+        except Exception:
             try:
                 self.optimizer.load_state_dict(optimizer_before)
                 if self.scheduler is not None and scheduler_before is not None:
@@ -532,7 +532,7 @@ class Trainer:
                     "trainer state restore failed and rollback could not prove a clean state; "
                     "construct a fresh trainer and restore a verified checkpoint"
                 ) from rollback_error
-            raise restore_error
+            raise
 
         self.micro_step = state.micro_step
         self.optimizer_step = state.optimizer_step
@@ -541,3 +541,4 @@ class Trainer:
         self._pending_loss_sum = 0.0
         self._update_incomplete = False
         self._failure_reason = None
+        self.optimizer.zero_grad(set_to_none=True)
