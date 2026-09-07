@@ -23,9 +23,9 @@
     "ordering": "UPSTREAM_SHARD_ORDER",
     "required_source": "loc_books",
     "required_metadata_license": "Public Domain",
-    "max_examined_documents": 256,
+    "max_examined_documents": 512,
     "max_accepted_documents": 128,
-    "max_total_normalized_utf8_bytes": 5000000,
+    "max_total_normalized_utf8_bytes": 32000000,
     "max_document_normalized_utf8_bytes": 1000000,
     "max_json_line_bytes": 20000000,
     "min_document_normalized_utf8_bytes": 1024,
@@ -51,5 +51,5 @@
   "model_training_permitted": false,
   "paid_compute_authorized": false,
   "final_test_payload_accessed": false,
-  "contract_identity_sha256": "82662e2d08fdc66af84f8cd98baab17cd99ba9b8e621e28f054b647d0becce0a"
+  "contract_identity_sha256": "022fbdfe20a2056aaeb23c9b252b7889b8788e374e26c1efa6b2f1f176e93212"
 }
