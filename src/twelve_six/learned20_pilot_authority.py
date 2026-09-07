@@ -8,6 +8,12 @@ from typing import Any
 from twelve_six.learned20_checkpoint_authority import (
     assess_launch_with_checkpoint_provenance,
 )
+from twelve_six.learned20_eval_firewall_authority import (
+    validate_evaluation_firewall_provenance,
+)
+from twelve_six.learned20_terminal_evaluation_authority import (
+    validate_terminal_pilot_evaluation,
+)
 
 
 def _nonempty_text(value: Any) -> bool:
@@ -53,19 +59,37 @@ def assess_launch_with_terminal_provenance(
     *,
     material_cost: bool,
 ) -> dict[str, Any]:
-    """Assess launch readiness with checkpoint and bounded-pilot provenance checks."""
+    """Assess launch readiness with checkpoint, firewall, pilot, and D06 provenance."""
 
     result = assess_launch_with_checkpoint_provenance(
         contract,
         evidence,
         material_cost=material_cost,
     )
-    blockers = validate_bounded_pilot_authority(evidence)
-    if not blockers:
-        return result
+    firewall_blockers = validate_evaluation_firewall_provenance(evidence)
+    pilot_blockers = validate_bounded_pilot_authority(evidence)
+    d06_blockers = validate_terminal_pilot_evaluation(evidence)
 
-    result["long_training_blockers"] = sorted(
-        set(result["long_training_blockers"] + blockers)
-    )
-    result["long_training_ready"] = False
+    if firewall_blockers:
+        result["pilot_blockers"] = sorted(
+            set(result["pilot_blockers"] + firewall_blockers)
+        )
+        result["long_training_blockers"] = sorted(
+            set(result["long_training_blockers"] + firewall_blockers)
+        )
+        result["pilot_ready"] = False
+        result["long_training_ready"] = False
+
+    if pilot_blockers:
+        result["long_training_blockers"] = sorted(
+            set(result["long_training_blockers"] + pilot_blockers)
+        )
+        result["long_training_ready"] = False
+
+    if d06_blockers:
+        result["long_training_blockers"] = sorted(
+            set(result["long_training_blockers"] + d06_blockers)
+        )
+        result["long_training_ready"] = False
+
     return result
