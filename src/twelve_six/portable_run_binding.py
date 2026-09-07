@@ -265,6 +265,9 @@ def _build_candidate(
             "evaluation_firewall": copy.deepcopy(
                 evaluation_evidence.get("firewall_authority")
             ),
+            "decontamination": copy.deepcopy(
+                _mapping(evaluation_evidence.get("decontamination")).get("authority")
+            ),
             "backend": copy.deepcopy(binding_authorities.get("backend")),
             "parent_checkpoint": copy.deepcopy(
                 checkpoint_overlay.get("parent_checkpoint_authority")
