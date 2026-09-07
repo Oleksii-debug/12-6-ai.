@@ -1,0 +1,121 @@
+{
+  "base_v5": {
+    "authorized_balanced_no_replay_loss_positions": 0,
+    "by_stratum": {
+      "code": {
+        "family_count": 6,
+        "numeric_training_capacity_bytes": 276466
+      },
+      "en": {
+        "family_count": 5,
+        "numeric_training_capacity_bytes": 1838293
+      },
+      "uk": {
+        "family_count": 4,
+        "numeric_training_capacity_bytes": 100856
+      }
+    },
+    "code_family_ids": [
+      "github:encode/httpx",
+      "github:psf/requests",
+      "github:django/django",
+      "github:Kludex/starlette",
+      "github:numpy/numpy",
+      "github:python-attrs/attrs"
+    ],
+    "independent_family_count": 15,
+    "numeric_training_capacity_bytes": 2215615,
+    "source_normalized_envelope_bytes": 2217976,
+    "uncredited_source_normalized_bytes": 2361
+  },
+  "composition_policy": {
+    "evaluation_permission_never_inferred_from_training_permission": true,
+    "global_cross_source_dedup_required_before_corpus_identity": true,
+    "historical_v5_is_bound_by_exact_pr_head_and_git_blob": true,
+    "no_overlap_with_v5_family_ids_required": true,
+    "one_independent_family_credit_per_canonical_lineage": true,
+    "only_terminal_exact_source_intake_evidence_counted": true,
+    "source_intake_bytes_are_pre_dedup_planning_capacity_only": true
+  },
+  "decision": "V6_CONSUMES_TERMINAL_CODE_BUNDLE_REQUIRES_SUCCESSOR_GLOBAL_DEDUP_NOT_CORPUS_FREEZE",
+  "derived_pre_successor_global_dedup_inventory": {
+    "by_stratum": {
+      "code": {
+        "family_count": 12,
+        "numeric_training_capacity_bytes": 4156475,
+        "source_normalized_envelope_bytes": 4156475
+      },
+      "en": {
+        "family_count": 5,
+        "numeric_training_capacity_bytes": 1838293,
+        "source_normalized_envelope_bytes": 1840654
+      },
+      "uk": {
+        "family_count": 4,
+        "numeric_training_capacity_bytes": 100856,
+        "source_normalized_envelope_bytes": 100856
+      }
+    },
+    "candidate_independent_family_count": 21,
+    "candidate_numeric_training_capacity_bytes": 6095624,
+    "candidate_source_normalized_envelope_bytes": 6097985,
+    "research_corpus_v1_acquisition_planning_target_bytes": 20000000,
+    "target_fraction_by_numeric_training_capacity": 0.3047812,
+    "target_gap_numeric_training_capacity_bytes": 13904376,
+    "uncredited_source_normalized_bytes": 2361
+  },
+  "downstream_gate_vector": {
+    "authorized_balanced_no_replay_loss_positions": 0,
+    "balance_family_caps": "REQUIRED_AFTER_GLOBAL_DEDUP",
+    "evaluation_decontamination": "REQUIRED_AFTER_EXACT_POST_DEDUP_CANDIDATE_INVENTORY",
+    "long_training": "BLOCKED",
+    "paid_compute": "NOT_AUTHORIZED",
+    "quality_privacy_revalidation": "REQUIRED_AFTER_COMPOSITION",
+    "split_shard_pack_materialization": "BLOCKED_UNTIL_DEDUP_DECONTAMINATION",
+    "successor_global_cross_source_exact_near_dedup": "REQUIRED_NEXT",
+    "tokenizer_fit": "BLOCKED"
+  },
+  "observed_live_cutoff_utc": "2026-09-07T19:35:07Z",
+  "registry_identity_sha256": "57e26f58ee20498a702eea3e4feb36def8a74f8529165f23d5ad3a49248d027c",
+  "schema_version": "12-6.next100-063-terminal-source-registry.v6",
+  "supersedes": {
+    "head_sha": "991a0b6e939cddeff16c075922f7c407fa1e86cb",
+    "pr": 538,
+    "v5_git_blob_sha1": "2dcc57cfba8ab6d600bc431a8713f7b8e305dcbf",
+    "v5_path": "configs/data/next100_063_terminal_source_registry_v5.json"
+  },
+  "terminal_addition": {
+    "artifact_digest": "sha256:9febb6e4e900df63c58b1cb0ed2a7003df56d6e9bd593e4b4adbaa54496010ac",
+    "artifact_id": 10030825509,
+    "byte_identical_reports": true,
+    "contract_git_blob_sha1": "05d2f5e6a83d4a8cf8159f422bd9a66a9dd3f393",
+    "contract_identity_sha256": "7fd2228208f928859ebe68e947a72c977cda6952035a654d12923ce3a19a7dd6",
+    "contract_path": "configs/data/data_bulk_code1_permissive_python_bundle_v1.json",
+    "credential_scan": "PASS_NO_HIGH_CONFIDENCE_HITS",
+    "eligible_file_count": 229,
+    "execution_head_sha": "a045c602bfcead862f7852924fb78a5d78c992d6",
+    "families": [
+      "github:pallets/flask",
+      "github:pallets/click",
+      "github:pallets/jinja",
+      "github:pallets/werkzeug",
+      "github:agronholm/anyio",
+      "github:pytest-dev/pytest"
+    ],
+    "independent_materializations": 2,
+    "issue": 635,
+    "language": "python",
+    "main_merge_sha": "4fa4839f2882984e7bf148dc38ce315d51b60957",
+    "merged_pr": 818,
+    "modality": "code",
+    "numeric_training_capacity_bytes": 3880009,
+    "retained_report_identity_sha256": "80f3a8f20dfb82825e6c89ac1f76f2f41233296b8a426a1cf466b0fcc0892985",
+    "source": "DATA-BULK-CODE-1-PERMISSIVE-PYTHON-BUNDLE",
+    "source_family_count": 6,
+    "terminal_evidence_git_blob_sha1": "b2b9b361dbf0e6c883dca4d7f006812c69cdd4e0",
+    "terminal_evidence_path": "evidence/data_bulk_code1/permissive_python_bundle_v1_terminal.json",
+    "workflow_conclusion": "success",
+    "workflow_run_id": 34155446113
+  },
+  "worker_id": "NEXT100-063-CANONICAL-SOURCE-REGISTRY-CONVERGENCE-V6"
+}
