@@ -199,6 +199,25 @@ class PostDedupInventoryV1Tests(unittest.TestCase):
                 expected_v8_report_sha256=report["report_sha256"],
             )
 
+    def test_rejects_unknown_capacity_collapsing_match_type(self) -> None:
+        report = _v8()
+        dedup = report["dedup_v3"]
+        forged = _match("b", "e", collapsing=True)
+        forged["match_type"] = "future_unknown_copy_semantics"
+        dedup["matches"].append(forged)
+        dedup["report_sha256"] = postdedup._v3_report_sha256(dedup)
+        report_core = dict(report)
+        report_core.pop("report_sha256")
+        report["report_sha256"] = postdedup._sha256_obj(report_core)
+        with self.assertRaisesRegex(
+            postdedup.PostDedupInventoryError,
+            "unsupported capacity-collapsing match type",
+        ):
+            postdedup.materialize_postdedup_inventory(
+                report,
+                expected_v8_report_sha256=report["report_sha256"],
+            )
+
     def test_rejects_duplicate_cluster_summary_drift(self) -> None:
         report = _v8()
         dedup = report["dedup_v3"]
