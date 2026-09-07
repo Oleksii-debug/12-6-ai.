@@ -172,7 +172,7 @@ def _add_material_authorizations(
     *,
     compute_ref: str = COMPUTE_REF,
     training_ref: str = TRAINING_REF,
-    maximum_cost_usd: float | int = 50.0,
+    maximum_cost_usd: float = 50.0,
 ) -> None:
     evidence = data["evidence"]
     evidence["compute_authorization"].update(
