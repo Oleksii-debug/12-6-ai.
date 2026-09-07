@@ -42,6 +42,15 @@ EXPECTED = {
 }
 
 
+class Eval303ValidationError(RuntimeError):
+    """Fail-closed EVAL-303 immutable-authority validation error."""
+
+
+def _require(condition: bool, message: str) -> None:
+    if not condition:
+        raise Eval303ValidationError(message)
+
+
 def canonical(obj: object) -> str:
     return json.dumps(obj, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
 
@@ -57,18 +66,19 @@ def self_identity(obj: dict, field: str) -> str:
 
 
 def load_json(path: Path) -> dict:
-    return json.loads(path.read_text(encoding='utf-8'))
+    value = json.loads(path.read_text(encoding='utf-8'))
+    _require(isinstance(value, dict), f'{path} must contain a JSON object')
+    return value
 
 
 def load_records(path: Path) -> list[dict]:
     records = []
     raw = path.read_bytes()
-    if raw and not raw.endswith(b'\n'):
-        raise AssertionError(f'{path} must end with LF')
+    _require(not raw or raw.endswith(b'\n'), f'{path} must end with LF')
     for index, line in enumerate(raw.decode('utf-8').splitlines(), start=1):
         record = json.loads(line)
-        if line != canonical(record):
-            raise AssertionError(f'{path}:{index} is not canonical JSON')
+        _require(isinstance(record, dict), f'{path}:{index} must be a JSON object')
+        _require(line == canonical(record), f'{path}:{index} is not canonical JSON')
         records.append(record)
     return records
 
@@ -81,97 +91,114 @@ def verify(repo_root: Path) -> dict:
     proof = load_json(proof_path)
     records = load_records(membership_path)
 
-    assert manifest['schema_version'] == '12-6.eval303-selection-validation-composite.v1'
-    assert manifest['worker_id'] == 'EVAL-303-SELECTION-VALIDATION-COMPOSITE'
-    assert manifest['purpose'] == 'selection-validation'
-    assert manifest['execution_profile'] == 'LOCAL_FREE'
-    assert manifest['selection_identity_sha256'] == EXPECTED['selection_identity_sha256']
-    assert self_identity(manifest, 'selection_identity_sha256') == EXPECTED['selection_identity_sha256']
+    _require(manifest.get('schema_version') == '12-6.eval303-selection-validation-composite.v1', 'manifest schema drift')
+    _require(manifest.get('worker_id') == 'EVAL-303-SELECTION-VALIDATION-COMPOSITE', 'manifest worker drift')
+    _require(manifest.get('purpose') == 'selection-validation', 'manifest purpose drift')
+    _require(manifest.get('execution_profile') == 'LOCAL_FREE', 'execution profile drift')
+    _require(manifest.get('selection_identity_sha256') == EXPECTED['selection_identity_sha256'], 'selection identity drift')
+    _require(self_identity(manifest, 'selection_identity_sha256') == EXPECTED['selection_identity_sha256'], 'selection self-identity mismatch')
 
-    assert sha256_bytes(membership_path.read_bytes()) == EXPECTED['membership_sha256']
-    assert manifest['composite_membership']['sha256'] == EXPECTED['membership_sha256']
-    assert manifest['composite_membership']['bytes'] == len(membership_path.read_bytes())
-    assert manifest['composite_membership']['documents'] == EXPECTED['records'] == len(records)
-    assert manifest['composite_membership']['payload_bytes_copied_into_eval303'] is False
+    membership_raw = membership_path.read_bytes()
+    _require(sha256_bytes(membership_raw) == EXPECTED['membership_sha256'], 'membership file SHA-256 drift')
+    composite = manifest.get('composite_membership', {})
+    _require(composite.get('sha256') == EXPECTED['membership_sha256'], 'membership authority SHA-256 drift')
+    _require(composite.get('bytes') == len(membership_raw), 'membership byte-count drift')
+    _require(composite.get('documents') == EXPECTED['records'] == len(records), 'membership document-count drift')
+    _require(composite.get('payload_bytes_copied_into_eval303') is False, 'EVAL-303 unexpectedly copied selection payload bytes')
 
     content_hashes = []
     strata = Counter()
     families = Counter()
     record_ids = set()
-    for record in records:
-        record_id = record['record_id']
-        assert record_id not in record_ids
+    for index, record in enumerate(records):
+        record_id = record.get('record_id')
+        _require(isinstance(record_id, str) and bool(record_id), f'record[{index}] record_id invalid')
+        _require(record_id not in record_ids, f'duplicate record_id: {record_id}')
         record_ids.add(record_id)
-        assert 'text' not in record
-        content_hash = record['content_sha256']
-        assert len(content_hash) == 64 and all(c in '0123456789abcdef' for c in content_hash)
+        _require('text' not in record, f'record contains forbidden payload text: {record_id}')
+        content_hash = record.get('content_sha256')
+        _require(
+            isinstance(content_hash, str)
+            and len(content_hash) == 64
+            and all(c in '0123456789abcdef' for c in content_hash),
+            f'content SHA-256 invalid: {record_id}',
+        )
         content_hashes.append(content_hash)
-        strata[record['selection_stratum']] += 1
-        families[record['source_family']] += 1
-        assert record['purpose'] in {'selection-validation', 'selection_validation'}
-        assert record['selection_eligible'] is True
-        assert record['training_eligible'] is False
-        assert record['tokenizer_fit_eligible'] is False
-        assert record['final_test_eligible'] is False
-        assert record['final_reporting_eligible'] is False
-        assert record['future_training_prohibited'] is True
-    assert len(content_hashes) == len(set(content_hashes))
-    assert dict(strata) == {'en': 2, 'ua': 8}
-    assert manifest['strata']['code']['documents'] == 0
-    assert manifest['strata']['code']['selection_eligible'] is False
-    assert manifest['strata']['code']['status'] == 'BLOCKED_NO_ELIGIBLE_CODE_OBJECTS'
-    assert dict(sorted(families.items())) == EXPECTED['families']
+        strata[record.get('selection_stratum')] += 1
+        families[record.get('source_family')] += 1
+        _require(record.get('purpose') in {'selection-validation', 'selection_validation'}, f'purpose drift: {record_id}')
+        _require(record.get('selection_eligible') is True, f'selection eligibility drift: {record_id}')
+        _require(record.get('training_eligible') is False, f'training boundary weakened: {record_id}')
+        _require(record.get('tokenizer_fit_eligible') is False, f'tokenizer-fit boundary weakened: {record_id}')
+        _require(record.get('final_test_eligible') is False, f'final-test boundary weakened: {record_id}')
+        _require(record.get('final_reporting_eligible') is False, f'final-reporting boundary weakened: {record_id}')
+        _require(record.get('future_training_prohibited') is True, f'future-training prohibition missing: {record_id}')
+    _require(len(content_hashes) == len(set(content_hashes)), 'selection content hashes are not unique')
+    _require(dict(strata) == {'en': 2, 'ua': 8}, 'selection stratum vector drift')
+    code_stratum = manifest.get('strata', {}).get('code', {})
+    _require(code_stratum.get('documents') == 0, 'code stratum document-count drift')
+    _require(code_stratum.get('selection_eligible') is False, 'code stratum unexpectedly selection eligible')
+    _require(code_stratum.get('status') == 'BLOCKED_NO_ELIGIBLE_CODE_OBJECTS', 'code stratum fail-closed status drift')
+    _require(dict(sorted(families.items())) == EXPECTED['families'], 'selection source-family vector drift')
 
-    components = manifest['components']
+    components = manifest.get('components', {})
     for stratum, head in EXPECTED['component_heads'].items():
-        assert components[stratum]['head_sha'] == head
-        assert components[stratum]['dedicated_workflow_conclusion'] == 'success'
-    assert components['ua']['set_identity_sha256'] == EXPECTED['component_ids']['ua']
-    assert components['en']['authority_identity_sha256'] == EXPECTED['component_ids']['en']
-    assert components['code']['set_identity_sha256'] == EXPECTED['component_ids']['code']
-    assert components['code']['documents'] == 0
-    assert all(not c['selection_admitted'] for c in components['code']['rejected_candidates'])
-    assert all(not c['evaluation_use_explicitly_authorized'] for c in components['code']['rejected_candidates'])
-    assert all(not c['reserved_from_all_training'] for c in components['code']['rejected_candidates'])
+        component = components.get(stratum, {})
+        _require(component.get('head_sha') == head, f'{stratum} component head drift')
+        _require(component.get('dedicated_workflow_conclusion') == 'success', f'{stratum} component is not terminal-success')
+    _require(components.get('ua', {}).get('set_identity_sha256') == EXPECTED['component_ids']['ua'], 'UA component identity drift')
+    _require(components.get('en', {}).get('authority_identity_sha256') == EXPECTED['component_ids']['en'], 'EN component identity drift')
+    _require(components.get('code', {}).get('set_identity_sha256') == EXPECTED['component_ids']['code'], 'code component identity drift')
+    code_component = components.get('code', {})
+    _require(code_component.get('documents') == 0, 'code component document-count drift')
+    rejected = code_component.get('rejected_candidates', [])
+    _require(isinstance(rejected, list), 'code rejected_candidates must be a list')
+    _require(all(not c.get('selection_admitted') for c in rejected if isinstance(c, dict)), 'code rejected candidate was admitted')
+    _require(all(not c.get('evaluation_use_explicitly_authorized') for c in rejected if isinstance(c, dict)), 'code candidate unexpectedly has evaluation-use authorization')
+    _require(all(not c.get('reserved_from_all_training') for c in rejected if isinstance(c, dict)), 'code candidate unexpectedly claims all-training reservation')
 
-    assert proof['schema_version'] == '12-6.eval303-data300-exact-exclusion-proof.v1'
-    assert proof['proof_identity_sha256'] == EXPECTED['proof_identity_sha256']
-    assert self_identity(proof, 'proof_identity_sha256') == EXPECTED['proof_identity_sha256']
-    assert sha256_bytes(proof_path.read_bytes()) == EXPECTED['proof_file_sha256']
-    assert manifest['data300_exclusion_proof']['sha256'] == EXPECTED['proof_file_sha256']
-    assert manifest['data300_exclusion_proof']['proof_identity_sha256'] == EXPECTED['proof_identity_sha256']
-    assert proof['data300']['head_sha'] == EXPECTED['data300_head_sha']
-    assert proof['data300']['contract_identity_sha256'] == EXPECTED['data300_contract_identity']
-    assert proof['data300']['contract_git_blob_sha1'] == EXPECTED['data300_contract_blob_sha1']
-    assert sorted(proof['selection']['content_sha256']) == sorted(content_hashes)
-    assert proof['comparisons']['selected_content_vs_training_raw_or_normalized_sha256_overlap'] == []
-    assert proof['comparisons']['selected_git_blob_vs_training_git_blob_overlap'] == []
-    assert proof['verdict']['exact_byte_overlap_count'] == 0
-    assert proof['verdict']['pinned_git_object_overlap_count'] == 0
-    assert proof['verdict']['status'] == 'PASS_EXACT_DISTINCT_FROM_DATA300_TRAINING_PLAN'
-    assert proof['verdict']['near_copy_or_dedup_cluster_scan_claimed'] is False
-    assert proof['verdict']['wave3_data300_g07_g08_still_required'] is True
+    _require(proof.get('schema_version') == '12-6.eval303-data300-exact-exclusion-proof.v1', 'DATA-300 proof schema drift')
+    _require(proof.get('proof_identity_sha256') == EXPECTED['proof_identity_sha256'], 'DATA-300 proof identity drift')
+    _require(self_identity(proof, 'proof_identity_sha256') == EXPECTED['proof_identity_sha256'], 'DATA-300 proof self-identity mismatch')
+    _require(sha256_bytes(proof_path.read_bytes()) == EXPECTED['proof_file_sha256'], 'DATA-300 proof file SHA-256 drift')
+    exclusion = manifest.get('data300_exclusion_proof', {})
+    _require(exclusion.get('sha256') == EXPECTED['proof_file_sha256'], 'manifest DATA-300 proof file binding drift')
+    _require(exclusion.get('proof_identity_sha256') == EXPECTED['proof_identity_sha256'], 'manifest DATA-300 proof identity binding drift')
+    data300 = proof.get('data300', {})
+    _require(data300.get('head_sha') == EXPECTED['data300_head_sha'], 'DATA-300 head drift')
+    _require(data300.get('contract_identity_sha256') == EXPECTED['data300_contract_identity'], 'DATA-300 contract identity drift')
+    _require(data300.get('contract_git_blob_sha1') == EXPECTED['data300_contract_blob_sha1'], 'DATA-300 contract blob drift')
+    _require(sorted(proof.get('selection', {}).get('content_sha256', [])) == sorted(content_hashes), 'DATA-300 proof selection hashes drift')
+    comparisons = proof.get('comparisons', {})
+    _require(comparisons.get('selected_content_vs_training_raw_or_normalized_sha256_overlap') == [], 'selected content overlaps DATA-300 training bytes')
+    _require(comparisons.get('selected_git_blob_vs_training_git_blob_overlap') == [], 'selected Git objects overlap DATA-300 training objects')
+    verdict = proof.get('verdict', {})
+    _require(verdict.get('exact_byte_overlap_count') == 0, 'DATA-300 exact-byte overlap is non-zero')
+    _require(verdict.get('pinned_git_object_overlap_count') == 0, 'DATA-300 pinned-object overlap is non-zero')
+    _require(verdict.get('status') == 'PASS_EXACT_DISTINCT_FROM_DATA300_TRAINING_PLAN', 'DATA-300 scoped verdict drift')
+    _require(verdict.get('near_copy_or_dedup_cluster_scan_claimed') is False, 'historical proof falsely claims near-copy decontamination')
+    _require(verdict.get('wave3_data300_g07_g08_still_required') is True, 'historical proof erased remaining gates')
 
-    final_test = manifest['final_test_firewall']
-    assert final_test['head_sha'] == EXPECTED['eval233_head_sha']
-    assert final_test['outcomes_read_by_eval303'] is False
-    assert final_test['final_test_payload_read_by_eval303'] is False
-    assert final_test['final_test_bytes_copied_into_composite'] is False
-    assert final_test['ua_component_exact_content_hash_overlap'] == []
-    assert final_test['ua_component_source_family_overlap'] == []
-    assert final_test['en_component_payload_read_for_construction'] is False
-    assert final_test['en_component_outcomes_read_for_construction'] is False
+    final_test = manifest.get('final_test_firewall', {})
+    _require(final_test.get('head_sha') == EXPECTED['eval233_head_sha'], 'final-test authority head drift')
+    _require(final_test.get('outcomes_read_by_eval303') is False, 'EVAL-303 read final-test outcomes')
+    _require(final_test.get('final_test_payload_read_by_eval303') is False, 'EVAL-303 read final-test payload')
+    _require(final_test.get('final_test_bytes_copied_into_composite') is False, 'EVAL-303 copied final-test bytes')
+    _require(final_test.get('ua_component_exact_content_hash_overlap') == [], 'UA component overlaps final-test content hashes')
+    _require(final_test.get('ua_component_source_family_overlap') == [], 'UA component overlaps final-test source families')
+    _require(final_test.get('en_component_payload_read_for_construction') is False, 'EN component read final-test payload')
+    _require(final_test.get('en_component_outcomes_read_for_construction') is False, 'EN component read final-test outcomes')
 
-    usage = manifest['usage_contract']
-    assert usage['selection_only'] is True
-    assert usage['may_select_checkpoint'] is True
-    assert usage['may_select_hyperparameters'] is True
-    assert usage['may_select_tokenizer_configuration'] is True
-    assert usage['may_fit_tokenizer'] is False
-    assert usage['may_update_model'] is False
-    assert usage['may_train'] is False
-    assert usage['may_report_final_test'] is False
-    assert usage['code_aware_selection_available'] is False
+    usage = manifest.get('usage_contract', {})
+    _require(usage.get('selection_only') is True, 'selection-only boundary drift')
+    _require(usage.get('may_select_checkpoint') is True, 'checkpoint-selection contract drift')
+    _require(usage.get('may_select_hyperparameters') is True, 'hyperparameter-selection contract drift')
+    _require(usage.get('may_select_tokenizer_configuration') is True, 'tokenizer-configuration-selection contract drift')
+    _require(usage.get('may_fit_tokenizer') is False, 'selection set may not fit tokenizer')
+    _require(usage.get('may_update_model') is False, 'selection set may not update model')
+    _require(usage.get('may_train') is False, 'selection set may not train')
+    _require(usage.get('may_report_final_test') is False, 'selection set may not report final-test outcomes')
+    _require(usage.get('code_aware_selection_available') is False, 'code-aware selection is unavailable with empty code stratum')
 
     return {
         'status': 'PASS',
