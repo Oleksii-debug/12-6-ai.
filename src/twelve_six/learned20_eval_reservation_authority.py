@@ -107,8 +107,11 @@ def validate_evaluation_reservation_authority(evidence: Mapping[str, Any]) -> li
             blockers.append("evaluation_reservation_registry.selection_final_disjoint_not_proven")
 
     firewall = evidence.get("evaluation_firewall")
-    if isinstance(firewall, Mapping) and firewall.get("terminal") is True:
-        if firewall.get("reservation_registry_identity") != registry_identity:
-            blockers.append("evaluation_firewall.reservation_registry_identity_mismatch")
+    if (
+        isinstance(firewall, Mapping)
+        and firewall.get("terminal") is True
+        and firewall.get("reservation_registry_identity") != registry_identity
+    ):
+        blockers.append("evaluation_firewall.reservation_registry_identity_mismatch")
 
     return sorted(set(blockers))
