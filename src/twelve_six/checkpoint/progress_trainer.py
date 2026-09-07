@@ -1,8 +1,9 @@
-"""Trainer resume with exact positive-progress binding.
+"""Trainer resume with exact positive-progress and D04 exposure binding.
 
 This is the D05 convergence wrapper for the trainer-owned single-decode restore
 path. It deliberately reuses trainer_adapter preflight helpers rather than
-reimplementing D02 optimizer/scheduler/scaler semantics.
+reimplementing D02 optimizer/scheduler/scaler semantics, and consumes D04's
+ordered-exposure identities without recreating D04 dataloader semantics.
 """
 
 from __future__ import annotations
@@ -22,6 +23,7 @@ from .core import (
     prepare_checkpoint_load,
     restore_rng_state,
 )
+from .d04_resume_binding import assert_d04_resume_binding
 from .progress_binding import _assert_progress
 from .trainer_adapter import _assert_bound_metadata, _preflight_trainer_state
 
@@ -48,8 +50,13 @@ def load_trainer_checkpoint(
     expected_seed: int | None = None,
     expected_step: int | None = None,
     expected_tokens_seen: int | None = None,
+    expected_ledger_identity_sha256: str | None = None,
+    expected_materialization_identity_sha256: str | None = None,
+    expected_packing_identity_sha256: str | None = None,
+    expected_exposure_plan_identity_sha256: str | None = None,
+    expected_ordered_next_exposure_identity_sha256: str | None = None,
 ) -> LoadResult:
-    """Verify/decode once and reject wrong positive progress before mutation."""
+    """Verify/decode once and reject wrong progress/exposure before mutation."""
 
     if not hasattr(trainer, "load_state_dict"):
         raise TypeError("trainer must provide load_state_dict()")
@@ -71,6 +78,20 @@ def load_trainer_checkpoint(
         expected_training_config_hash=expected_training_config_hash,
         expected_environment_lock_hash=expected_environment_lock_hash,
         expected_seed=expected_seed,
+    )
+    assert_d04_resume_binding(
+        manifest,
+        expected_ledger_identity_sha256=expected_ledger_identity_sha256,
+        expected_materialization_identity_sha256=(
+            expected_materialization_identity_sha256
+        ),
+        expected_packing_identity_sha256=expected_packing_identity_sha256,
+        expected_exposure_plan_identity_sha256=(
+            expected_exposure_plan_identity_sha256
+        ),
+        expected_ordered_next_exposure_identity_sha256=(
+            expected_ordered_next_exposure_identity_sha256
+        ),
     )
     assert_identity(
         manifest,
