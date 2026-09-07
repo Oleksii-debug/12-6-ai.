@@ -5,9 +5,12 @@ on:
     paths:
       - "configs/data/next100_029_languk_rights_audit_v1.json"
       - "configs/data/next100_029_languk_concurrency_refresh_v1.json"
+      - "configs/data/d03_languk_supreme_court_retest_v1.json"
       - "docs/NEXT100_029_DATA_UA_LANGUK_RIGHTS_AUDIT.md"
       - "tools/validate_next100_029_languk_rights_audit.py"
+      - "tools/retest_d03_languk_supreme_court.py"
       - "tests/test_next100_029_languk_rights_audit.py"
+      - "tests/test_d03_languk_supreme_court_retest.py"
       - ".github/workflows/next100-029-languk-rights-audit.yml"
   workflow_dispatch:
 
@@ -21,7 +24,7 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -46,5 +49,41 @@ jobs:
         with:
           capabilities: tests
           venv: .next100-029
-          command: python -m pytest -q tests/test_next100_029_languk_rights_audit.py
+          command: python -m pytest -q tests/test_next100_029_languk_rights_audit.py tests/test_d03_languk_supreme_court_retest.py
           manifest: next100-029-execution-environment.json
+
+      - name: Install pinned parquet runtime
+        run: python -m pip install --only-binary=:all: pyarrow==17.0.0
+
+      - name: Download exact Supreme Court parquet and materialize twice
+        run: |
+          mkdir -p artifacts/languk/run-a artifacts/languk/run-b
+          python tools/retest_d03_languk_supreme_court.py \
+            --download \
+            --parquet artifacts/languk/source.parquet \
+            --output-jsonl artifacts/languk/run-a/retained.jsonl \
+            --report artifacts/languk/run-a/report.json
+          python tools/retest_d03_languk_supreme_court.py \
+            --parquet artifacts/languk/source.parquet \
+            --output-jsonl artifacts/languk/run-b/retained.jsonl \
+            --report artifacts/languk/run-b/report.json
+          cmp artifacts/languk/run-a/retained.jsonl artifacts/languk/run-b/retained.jsonl
+          cmp artifacts/languk/run-a/report.json artifacts/languk/run-b/report.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path("artifacts/languk/run-a/report.json").read_text())
+          assert 0 < report["retained_records"] <= 256
+          assert report["retained_normalized_bytes"] > 0
+          assert report["training_authorized_bytes"] == 0
+          assert report["canonical_capacity_credited"] == 0
+          assert report["family_credit_added"] == 0
+          assert report["tokenizer_fit_authorized"] is False
+          assert report["model_training_executed"] is False
+          assert report["optimizer_updates"] == 0
+          assert report["final_test_accessed"] is False
+          assert report["paid_compute_used"] is False
+          assert report["rejected_text_emitted"] is False
+          assert report["rejected_hashes_emitted"] is False
+          print(json.dumps(report, ensure_ascii=False, sort_keys=True))
+          PY
