@@ -26,16 +26,36 @@ class TimelineDiscoveryTests(unittest.TestCase):
         self.assertIsNone(m.canonical_news_url("/npas/x"))
         self.assertIsNone(m.canonical_news_url("/news"))
 
+    def test_timeline_page_is_strict_and_canonical(self):
+        self.assertEqual(
+            m.canonical_timeline_page("/timeline?type=posts&page=2"),
+            "https://www.kmu.gov.ua/timeline?type=posts&page=2",
+        )
+        self.assertEqual(
+            m.canonical_timeline_page("https://kmu.gov.ua/timeline?page=02&type=posts#x"),
+            "https://www.kmu.gov.ua/timeline?type=posts&page=2",
+        )
+        self.assertIsNone(m.canonical_timeline_page("/timeline?type=documents&page=2"))
+        self.assertIsNone(m.canonical_timeline_page("/timeline?type=posts&page=0"))
+        self.assertIsNone(m.canonical_timeline_page("https://evil.test/timeline?type=posts&page=2"))
+
     def test_delay_and_page_bounds_fail_closed(self):
         with self.assertRaises(ValueError):
             m.discover(1, 0.99)
         with self.assertRaises(ValueError):
             m.discover(21, 1.0)
 
-    def test_discovers_articles_and_follows_only_news_pagination(self):
+    def test_discovers_articles_and_follows_only_post_timeline_pagination(self):
         pages = {
-            m.SEED: b'<a href="/news/a">A</a><a href="/news?page=2">next</a><a href="/other?page=2">bad</a>',
-            f"{m.SEED}?page=2": b'<a href="https://kmu.gov.ua/news/b?x=1">B</a><a href="https://evil.test/news/c">C</a>',
+            m.SEED: (
+                b'<a href="/news/a">A</a>'
+                b'<a href="/timeline?type=posts&page=2">next</a>'
+                b'<a href="/timeline?type=documents&page=2">bad</a>'
+            ),
+            "https://www.kmu.gov.ua/timeline?type=posts&page=2": (
+                b'<a href="https://kmu.gov.ua/news/b?x=1">B</a>'
+                b'<a href="https://evil.test/news/c">C</a>'
+            ),
         }
 
         def fake_fetch(url: str, timeout: float = 20.0) -> bytes:
@@ -44,10 +64,10 @@ class TimelineDiscoveryTests(unittest.TestCase):
 
         with patch.object(m, "fetch", side_effect=fake_fetch), patch.object(m.time, "sleep") as sleep:
             report = m.discover(5, 1.05)
-        self.assertEqual(report["news_urls"], [
-            "https://www.kmu.gov.ua/news/a",
-            "https://www.kmu.gov.ua/news/b",
-        ])
+        self.assertEqual(
+            report["news_urls"],
+            ["https://www.kmu.gov.ua/news/a", "https://www.kmu.gov.ua/news/b"],
+        )
         self.assertEqual(report["pages_visited"], 2)
         self.assertEqual(report["training_authorized_bytes"], 0)
         self.assertEqual(report["family_count_credit_added"], 0)
