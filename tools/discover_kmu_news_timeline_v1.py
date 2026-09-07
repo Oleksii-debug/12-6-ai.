@@ -22,6 +22,7 @@ NEWS_CATEGORY_ID = "3"
 SEED = f"{ORIGIN}/timeline?category_id={NEWS_CATEGORY_ID}&type=posts"
 USER_AGENT = "12-6-ai-kmu-timeline-discovery/1.0 (+LOCAL_FREE research)"
 EXCLUDED = ("/npas/", "/api/", "/contact", "/kontakt", "/zvernenn", "/appeal")
+CLIENT_RENDERED_MARKERS = ("Завантажуємо ще", "Loading more")
 
 
 def canonical_news_url(raw: str, base: str = SEED) -> str | None:
@@ -98,6 +99,7 @@ def discover(max_pages: int, delay_seconds: float) -> dict[str, object]:
     visited: set[str] = set()
     news: set[str] = set()
     snapshots: list[dict[str, object]] = []
+    client_rendered_shell_detected = False
     while pending and len(visited) < max_pages:
         url = pending.pop(0)
         if url in visited:
@@ -107,8 +109,11 @@ def discover(max_pages: int, delay_seconds: float) -> dict[str, object]:
         data = fetch(url)
         visited.add(url)
         snapshots.append({"url": url, "bytes": len(data), "sha256": hashlib.sha256(data).hexdigest()})
+        text = data.decode("utf-8", errors="strict")
+        if any(marker in text for marker in CLIENT_RENDERED_MARKERS):
+            client_rendered_shell_detected = True
         parser = LinkParser()
-        parser.feed(data.decode("utf-8", errors="strict"))
+        parser.feed(text)
         for href in parser.links:
             candidate = canonical_news_url(href, url)
             if candidate:
@@ -116,6 +121,12 @@ def discover(max_pages: int, delay_seconds: float) -> dict[str, object]:
             timeline_page = canonical_timeline_page(href, url)
             if timeline_page and timeline_page not in visited and timeline_page not in pending:
                 pending.append(timeline_page)
+    if news:
+        discovery_status = "DISCOVERED_ARTICLE_URLS"
+    elif client_rendered_shell_detected:
+        discovery_status = "BLOCKED_CLIENT_RENDERED_TIMELINE_NO_ARTICLE_URLS"
+    else:
+        discovery_status = "BLOCKED_EMPTY_TIMELINE_NO_ARTICLE_URLS"
     core = {
         "schema_version": "12-6.kmu-timeline-discovery.v1",
         "seed": SEED,
@@ -124,6 +135,8 @@ def discover(max_pages: int, delay_seconds: float) -> dict[str, object]:
         "training_authorized_bytes": 0,
         "family_count_credit_added": 0,
         "pages_visited": len(visited),
+        "client_rendered_shell_detected": client_rendered_shell_detected,
+        "discovery_status": discovery_status,
         "snapshots": sorted(snapshots, key=lambda x: str(x["url"])),
         "news_urls": sorted(news),
     }
