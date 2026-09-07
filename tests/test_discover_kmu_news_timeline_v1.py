@@ -46,9 +46,11 @@ class TimelineDiscoveryTests(unittest.TestCase):
         response.__exit__.return_value = None
         response.geturl.return_value = "https://www.kmu.gov.ua/news/not-a-timeline"
         response.read.return_value = b"unexpected"
-        with patch.object(m.urllib.request, "urlopen", return_value=response):
-            with self.assertRaisesRegex(RuntimeError, "timeline redirect drift rejected"):
-                m.fetch(m.SEED)
+        with (
+            patch.object(m.urllib.request, "urlopen", return_value=response),
+            self.assertRaisesRegex(RuntimeError, "timeline redirect drift rejected"),
+        ):
+            m.fetch(m.SEED)
 
     def test_fetch_accepts_canonical_host_redirect_only(self):
         response = MagicMock()
