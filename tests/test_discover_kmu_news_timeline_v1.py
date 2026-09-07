@@ -28,17 +28,22 @@ class TimelineDiscoveryTests(unittest.TestCase):
 
     def test_timeline_page_is_strict_and_canonical(self):
         self.assertEqual(
-            m.canonical_timeline_page("/timeline?type=posts&page=2"),
-            "https://www.kmu.gov.ua/timeline?type=posts&page=2",
+            m.canonical_timeline_page("/timeline?category_id=3&type=posts&page=2"),
+            "https://www.kmu.gov.ua/timeline?category_id=3&type=posts&page=2",
         )
         self.assertEqual(
-            m.canonical_timeline_page("https://kmu.gov.ua/timeline?page=02&type=posts#x"),
-            "https://www.kmu.gov.ua/timeline?type=posts&page=2",
+            m.canonical_timeline_page("https://kmu.gov.ua/timeline?page=02&type=posts&category_id=3#x"),
+            "https://www.kmu.gov.ua/timeline?category_id=3&type=posts&page=2",
         )
-        self.assertIsNone(m.canonical_timeline_page("/timeline?type=documents&page=2"))
-        self.assertIsNone(m.canonical_timeline_page("/timeline?type=posts&page=0"))
-        self.assertIsNone(m.canonical_timeline_page("/timeline?type=posts&page=2&lang=en"))
-        self.assertIsNone(m.canonical_timeline_page("https://evil.test/timeline?type=posts&page=2"))
+        self.assertIsNone(m.canonical_timeline_page("/timeline?category_id=3&type=documents&page=2"))
+        self.assertIsNone(m.canonical_timeline_page("/timeline?category_id=3&type=posts&page=0"))
+        self.assertIsNone(m.canonical_timeline_page("/timeline?category_id=3&type=posts&page=2&lang=en"))
+        self.assertIsNone(m.canonical_timeline_page("https://evil.test/timeline?category_id=3&type=posts&page=2"))
+
+    def test_category_is_pinned_fail_closed(self):
+        self.assertIsNone(m.canonical_timeline_page("/timeline?type=posts&page=2"))
+        self.assertIsNone(m.canonical_timeline_page("/timeline?category_id=4&type=posts&page=2"))
+        self.assertIsNone(m.canonical_timeline_page("/timeline?category_id=3&category_id=4&type=posts&page=2"))
 
     def test_fetch_rejects_same_origin_redirect_route_drift(self):
         response = MagicMock()
@@ -56,7 +61,7 @@ class TimelineDiscoveryTests(unittest.TestCase):
         response = MagicMock()
         response.__enter__.return_value = response
         response.__exit__.return_value = None
-        response.geturl.return_value = "https://kmu.gov.ua/timeline?type=posts"
+        response.geturl.return_value = "https://kmu.gov.ua/timeline?category_id=3&type=posts"
         response.read.return_value = b"ok"
         with patch.object(m.urllib.request, "urlopen", return_value=response):
             self.assertEqual(m.fetch(m.SEED), b"ok")
@@ -67,15 +72,16 @@ class TimelineDiscoveryTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             m.discover(21, 1.0)
 
-    def test_discovers_articles_and_follows_only_post_timeline_pagination(self):
+    def test_discovers_articles_and_follows_only_pinned_news_category_pagination(self):
         pages = {
             m.SEED: (
                 b'<a href="/news/a">A</a>'
-                b'<a href="/timeline?type=posts&page=2">next</a>'
-                b'<a href="/timeline?type=documents&page=2">bad</a>'
-                b'<a href="/timeline?type=posts&page=3&lang=en">bad-extra</a>'
+                b'<a href="/timeline?category_id=3&type=posts&page=2">next</a>'
+                b'<a href="/timeline?category_id=4&type=posts&page=2">bad-category</a>'
+                b'<a href="/timeline?category_id=3&type=documents&page=2">bad</a>'
+                b'<a href="/timeline?category_id=3&type=posts&page=3&lang=en">bad-extra</a>'
             ),
-            "https://www.kmu.gov.ua/timeline?type=posts&page=2": (
+            "https://www.kmu.gov.ua/timeline?category_id=3&type=posts&page=2": (
                 b'<a href="https://kmu.gov.ua/news/b?x=1">B</a>'
                 b'<a href="https://evil.test/news/c">C</a>'
             ),
@@ -91,6 +97,7 @@ class TimelineDiscoveryTests(unittest.TestCase):
             report["news_urls"],
             ["https://www.kmu.gov.ua/news/a", "https://www.kmu.gov.ua/news/b"],
         )
+        self.assertEqual(report["news_category_id"], "3")
         self.assertEqual(report["pages_visited"], 2)
         self.assertEqual(report["training_authorized_bytes"], 0)
         self.assertEqual(report["family_count_credit_added"], 0)
