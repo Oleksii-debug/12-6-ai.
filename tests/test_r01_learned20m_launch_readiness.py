@@ -30,6 +30,38 @@ def _authority(*, workflow: bool = True) -> dict:
     return authority
 
 
+def _postpack_proof(positions: int) -> dict:
+    return {
+        "schema_version": "12-6.d04-deterministic-double-pack-proof.v1",
+        "authority": _authority(),
+        "proof_identity_sha256": SHA64,
+        "terminal_corpus_authority_identity_sha256": SHA64,
+        "terminal_record_inventory_digest_sha256": SHA64,
+        "terminal_payload_inventory_digest_sha256": SHA64,
+        "stage_bindings": {
+            "normalization": SHA64,
+            "evaluation_reservations": SHA64,
+            "dedup": SHA64,
+            "split": SHA64,
+            "packing": SHA64,
+        },
+        "tokenizer_identity_sha256": SHA64,
+        "materialization_identity_sha256": SHA64,
+        "packing_identity_sha256": SHA64,
+        "ledger_identity_sha256": SHA64,
+        "canonical_build_sha256": SHA64,
+        "build_a_canonical_sha256": SHA64,
+        "build_b_canonical_sha256": SHA64,
+        "one_pass_unique_nonignored_causal_loss_positions": positions,
+        "retained_train_records_matched_to_terminal_inventory": 1,
+        "retained_train_record_membership_verified": True,
+        "retained_document_isolation_verified": True,
+        "heldout_reservation_verified": True,
+        "independent_builds_byte_identical": True,
+        "training_authorized_by_this_proof": False,
+    }
+
+
 def _make_local_pilot_ready() -> dict:
     data = _load()
     evidence = data["evidence"]
@@ -59,6 +91,7 @@ def _make_local_pilot_ready() -> dict:
             "data_budget_status": "QUALIFIED",
         }
     )
+    evidence["postpack_proof"].update(_postpack_proof(412_268_800))
     evidence["checkpoint_integrity"].update(
         {"authority": _authority(), "status": "PASS"}
     )
@@ -144,6 +177,7 @@ def test_current_packet_is_blocked_at_all_three_phases() -> None:
     assert not result.ready_for_compute_authorization_request
     assert not result.material_training_authorized
     assert "data_budget_not_qualified" in result.local_free_pilot_blockers
+    assert "postpack_proof_authority_missing" in result.local_free_pilot_blockers
     assert "checkpoint_integrity_not_terminal_pass" in result.local_free_pilot_blockers
     assert "requested_unique_loss_positions_not_positive" in result.local_free_pilot_blockers
     assert "learned_3m_not_terminal_pass" not in result.compute_request_blockers
@@ -163,6 +197,30 @@ def test_local_pilot_ready_does_not_imply_compute_or_training_authority() -> Non
     assert "bounded_pilot_not_terminal_pass" in result.compute_request_blockers
     assert "learned_3m_not_terminal_pass" not in result.compute_request_blockers
     assert "learned_10m_not_terminal_pass" not in result.compute_request_blockers
+
+
+def test_postpack_proof_cannot_mix_lineages() -> None:
+    data = _make_local_pilot_ready()
+    data["evidence"]["postpack_proof"]["ledger_identity_sha256"] = "c" * 64
+    result = assess_learned20m_readiness(data)
+    assert not result.ready_for_local_free_pilot
+    assert "postpack_ledger_identity_mismatch" in result.local_free_pilot_blockers
+
+    data = _make_local_pilot_ready()
+    data["evidence"]["postpack_proof"]["authority"] = None
+    result = assess_learned20m_readiness(data)
+    assert not result.ready_for_local_free_pilot
+    assert "postpack_proof_authority_missing" in result.local_free_pilot_blockers
+
+
+def test_postpack_proof_positions_must_equal_terminal_ledger() -> None:
+    data = _make_local_pilot_ready()
+    data["evidence"]["postpack_proof"][
+        "one_pass_unique_nonignored_causal_loss_positions"
+    ] -= 1
+    result = assess_learned20m_readiness(data)
+    assert not result.ready_for_local_free_pilot
+    assert "postpack_unique_loss_positions_mismatch" in result.local_free_pilot_blockers
 
 
 def test_learned_scale_evidence_is_required_before_compute_request() -> None:
