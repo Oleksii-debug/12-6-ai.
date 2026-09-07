@@ -1,0 +1,69 @@
+{
+  "schema_version": "12-6.d03-common-pile-arxiv-abstracts-zero-credit.v1",
+  "execution_profile": "LOCAL_FREE",
+  "rights_authority": {
+    "pr": 769,
+    "head_sha": "327a5364f7729f3ffdfc2f8079d02fb7a54638d2",
+    "registry_path": "configs/data/common_pile_source_rights_v1.json",
+    "source_key": "arxiv_abstracts",
+    "required_rights_basis_class": "METADATA_OPEN_LICENSE",
+    "required_license_signal": "CC0"
+  },
+  "source": {
+    "dataset": "common-pile/arxiv_abstracts",
+    "revision": "828e35d1000f94579da8850f5f640c138279bdb5",
+    "file": "00000_arxiv-abstracts.jsonl.gz",
+    "url": "https://huggingface.co/datasets/common-pile/arxiv_abstracts/resolve/828e35d1000f94579da8850f5f640c138279bdb5/00000_arxiv-abstracts.jsonl.gz",
+    "sha256": "1a6c475ff4af00e9abaf57919d01c3f27ec04670370f79585db2debb2d3abdb8",
+    "bytes": 292027978,
+    "family": "en.common-pile.arxiv-abstracts",
+    "source_field": "arxiv-abstracts"
+  },
+  "record_contract": {
+    "fields": [
+      "id",
+      "text",
+      "source",
+      "created",
+      "added",
+      "metadata"
+    ],
+    "metadata_license_prefix": "Creative Commons Zero",
+    "max_json_line_bytes": 131072
+  },
+  "selection": {
+    "max_candidate_normalized_utf8_bytes": 6500000,
+    "min_candidate_normalized_utf8_bytes": 5500000,
+    "max_scanned_decompressed_bytes": 60000000,
+    "min_text_chars": 120,
+    "min_latin_alpha_ratio": 0.85,
+    "max_cyrillic_alpha_ratio": 0.05
+  },
+  "privacy": {
+    "reject_email": true,
+    "reject_phone": true,
+    "reject_control_characters": true
+  },
+  "claim_boundary": {
+    "candidate_only": true,
+    "canonical_capacity_credited": 0,
+    "family_credit_added": 0,
+    "training_authorized_bytes": 0,
+    "training_eligible": false,
+    "evaluation_eligible": false,
+    "tokenizer_fit_authorized": false,
+    "optimizer_updates": 0,
+    "model_training_executed": false,
+    "final_test_accessed": false,
+    "paid_compute_used": false
+  },
+  "required_downstream_gates": [
+    "CURRENT_GLOBAL_EXACT_NEAR_LINEAGE_DEDUP",
+    "FRESH_RESERVED_EVALUATION_DECONTAMINATION",
+    "POST_COMPOSITION_QUALITY_PRIVACY",
+    "BALANCE_AND_FAMILY_CAPS",
+    "CLUSTER_SAFE_SPLIT",
+    "DETERMINISTIC_PACKING_TWO_CLEAN_BUILDS",
+    "POSITIVE_UNIQUE_LOSS_LEDGER"
+  ]
+}
