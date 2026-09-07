@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import ctypes
+import errno
 import os
 import shutil
 import stat
 import tempfile
 from pathlib import Path
 from typing import Any
+
+_AT_FDCWD = -100
+_RENAME_NOREPLACE = 1
 
 
 def _fsync_regular_file(path: Path) -> None:
@@ -68,6 +73,63 @@ def fsync_parent_directory(path: str | Path) -> None:
         os.close(fd)
 
 
+def _atomic_publish_directory_noreplace(source: Path, destination: Path) -> None:
+    """Atomically publish one directory while refusing to replace any destination.
+
+    Linux/POSIX training hosts use renameat2(RENAME_NOREPLACE), which closes the
+    race between a final existence check and rename. Windows rename already fails
+    when the destination exists. Unsupported POSIX hosts fail closed instead of
+    silently falling back to a clobber-capable rename.
+    """
+    if os.name == "nt":
+        try:
+            os.rename(source, destination)
+        except OSError as exc:
+            if destination.exists() or destination.is_symlink():
+                raise FileExistsError(
+                    errno.EEXIST,
+                    os.strerror(errno.EEXIST),
+                    str(destination),
+                ) from exc
+            raise
+        return
+
+    if os.name != "posix":
+        raise OSError(
+            errno.ENOTSUP,
+            "atomic no-replace checkpoint publication is unsupported on this platform",
+        )
+
+    libc = ctypes.CDLL(None, use_errno=True)
+    renameat2 = getattr(libc, "renameat2", None)
+    if renameat2 is None:
+        raise OSError(
+            errno.ENOTSUP,
+            "atomic no-replace checkpoint publication requires renameat2",
+        )
+    renameat2.argtypes = [
+        ctypes.c_int,
+        ctypes.c_char_p,
+        ctypes.c_int,
+        ctypes.c_char_p,
+        ctypes.c_uint,
+    ]
+    renameat2.restype = ctypes.c_int
+    result = renameat2(
+        _AT_FDCWD,
+        os.fsencode(source),
+        _AT_FDCWD,
+        os.fsencode(destination),
+        _RENAME_NOREPLACE,
+    )
+    if result == 0:
+        return
+    error = ctypes.get_errno()
+    if error == errno.EEXIST:
+        raise FileExistsError(error, os.strerror(error), str(destination))
+    raise OSError(error, os.strerror(error), str(destination))
+
+
 def _raise_existing_destination(
     destination: Path, *, overwrite: bool, appeared_before_publication: bool = False
 ) -> None:
@@ -86,11 +148,11 @@ def install(core: Any) -> None:
     """Wrap production save with payload+directory fsync before durable publication.
 
     The existing checkpoint-v1 writer first publishes into a private staging name.
-    Only a fully verified staging tree is fsynced, atomically renamed to the caller's
-    destination, and followed by a parent-directory fsync. A failure before the
-    final rename leaves no destination. A parent-fsync failure is reported even
-    though the rename may already be visible, because power-loss durability is then
-    not proven.
+    Only a fully verified staging tree is fsynced, atomically renamed without
+    replacement to the caller's destination, and followed by a parent-directory
+    fsync. A failure before the final rename leaves no destination. A parent-fsync
+    failure is reported even though the rename may already be visible, because
+    power-loss durability is then not proven.
     """
     if getattr(core, "_D05_DURABLE_SAVE_INSTALLED", False):
         return
@@ -115,7 +177,14 @@ def install(core: Any) -> None:
                     overwrite=overwrite,
                     appeared_before_publication=True,
                 )
-            os.replace(staging, destination)
+            try:
+                _atomic_publish_directory_noreplace(staging, destination)
+            except FileExistsError:
+                _raise_existing_destination(
+                    destination,
+                    overwrite=overwrite,
+                    appeared_before_publication=True,
+                )
             fsync_parent_directory(destination)
             return manifest
         finally:
