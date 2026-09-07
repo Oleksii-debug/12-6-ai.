@@ -1,0 +1,64 @@
+{
+  "schema_version": "12-6.next100-065f-global-dedup-v8-terminal-evidence.v1",
+  "worker_id": "NEXT100-065F-CURRENT-MAIN-GLOBAL-DEDUP-V8",
+  "execution_profile": "LOCAL_FREE",
+  "scientific_execution": {
+    "head_sha": "bda544143e7625d9dc08344843bfa7c3e12f509b",
+    "workflow_run_id": 34159790818,
+    "job_id": 101859001222,
+    "workflow_conclusion": "success",
+    "two_independent_materializations_byte_identical": true,
+    "nested_v3_authority_verified": true,
+    "survivor_authority_verified": true,
+    "focused_tests_passed": 18
+  },
+  "artifact": {
+    "id": 10032510626,
+    "name": "next100-065f-global-dedup-v8-bda544143e7625d9dc08344843bfa7c3e12f509b",
+    "digest": "sha256:960c678fdbe6245658fa69c39edf355eb7b38ef39b7f8f833155c894dbd90385",
+    "size_bytes": 82040,
+    "expires_at": "2026-12-06T20:32:25Z",
+    "contains": [
+      "v8-a.json",
+      "v8-survivors-a.json"
+    ]
+  },
+  "authorities": {
+    "v8_report_sha256": "942cc15af60ee36a79345beba77fec347e33ee919d8148fb319b19d9ee072e5a",
+    "nested_v3_report_sha256": "e7244cb7f6df6062dc838112b1e3e6fe87e41644a9e8b0071e93c50f1166b67d",
+    "survivor_authority_sha256": "8115b35662fa89900b37f54f7cffd5f2fa8b2f8c60a72bcb18b89c92aaade0cf"
+  },
+  "measured_source_graph": {
+    "pre_global_dedup_source_objects": 264,
+    "post_dedup_survivor_source_objects": 262,
+    "pre_global_dedup_bytes": 6095624,
+    "post_global_dedup_conservative_unique_bytes": 6095321,
+    "duplicate_discount_bytes": 303,
+    "duplicate_cluster_count": 1,
+    "source_family_counts": {
+      "uk": 4,
+      "en": 5,
+      "code": 12
+    }
+  },
+  "integration_state": {
+    "temporary_dedicated_workflow_removed_in_successor_commit": true,
+    "shared_ci_required_on_workflow_free_head": true,
+    "shared_ci_terminal_success": false
+  },
+  "truth_boundary": {
+    "source_object_authority_only": true,
+    "training_record_inventory_materialized": false,
+    "evaluation_decontamination_passed_for_new_229_objects": false,
+    "post_composition_quality_privacy_passed": false,
+    "balance_and_family_caps_passed": false,
+    "split_pack_complete": false,
+    "tokenizer_fit_authorized": false,
+    "authorized_training_exposure": 0,
+    "model_training_executed": false,
+    "optimizer_updates": 0,
+    "final_test_payload_read": false,
+    "paid_compute_used": false
+  },
+  "decision": "SCOPED_V8_GLOBAL_DEDUP_TERMINAL_SUCCESS_RETAINED_AWAIT_WORKFLOW_FREE_SHARED_CI"
+}
