@@ -33,3 +33,98 @@ jobs:
         run: python -m twelve_six.ci_workflow_policy --base "$BASE_SHA" --head "$HEAD_SHA"
       - run: ruff check src tests
       - run: pytest -q
+
+  d03-rada-trees-secondary-plaintext-full-scan:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.head_ref == 'd03/rada-trees-secondary-plaintext-full-scan-20260907'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+      TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Prove exact checkout
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Qualify exact extractor runtime
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends 7zip
+          python - <<'PY'
+          import sys
+          sys.path.insert(0, "tools")
+          import inventory_d03_rada_trees_archive as inventory
+
+          assert sys.version_info[:3] == (3, 11, 16)
+          executable = inventory.find_extractor(None, ["7zz", "7z"])
+          version = inventory.extractor_version(executable)
+          expected = "7-Zip 23.01 (x64) : Copyright (c) 1999-2023 Igor Pavlov : 2023-06-20"
+          assert version == expected, (executable, version)
+          print("extractor=", executable)
+          print("extractor_version=", version)
+          PY
+      - name: Focused and adversarial scan regressions
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check pytest
+          python -m pytest -q tests/test_d03_rada_trees_secondary_plaintext_full_scan.py
+          python -m py_compile tools/scan_d03_rada_trees_secondary_plaintext.py
+      - name: Execute exact selective plaintext full scan
+        run: >-
+          python tools/scan_d03_rada_trees_secondary_plaintext.py
+          --archive "$RUNNER_TEMP/rada_xtag_texts.7z"
+          --download
+          --timeout 900
+          --output "$RUNNER_TEMP/rada-secondary-plaintext-full-scan.json"
+      - name: Assert scientific truth boundary
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          report = json.loads(
+              (Path(os.environ["RUNNER_TEMP"]) / "rada-secondary-plaintext-full-scan.json")
+              .read_text(encoding="utf-8")
+          )
+          assert report["state"] == "FULL_PLAINTEXT_LAYER_CLASSIFIED_ZERO_CREDIT"
+          assert report["terminal_listing"]["member_count"] == 8782
+          selected = report["selected_plaintext"]
+          assert selected["member_count"] == 4391
+          assert selected["listing_bytes"] == 879031855
+          assert selected["classification_complete"] is True
+          assert selected["raw_member_text_emitted"] is False
+          assert len(selected["members"]) == 4391
+          boundary = report["claim_boundary"]
+          assert boundary["training_authorized_bytes"] == 0
+          assert boundary["unique_causal_loss_positions_authorized"] == 0
+          assert boundary["family_credit_added"] == 0
+          assert boundary["tokenizer_fit_authorized"] is False
+          assert boundary["model_training_executed"] is False
+          assert boundary["final_test_payload_accessed"] is False
+          assert boundary["paid_compute_used"] is False
+          print("report_sha256=", report["report_sha256"])
+          print("class_counts=", selected["class_counts"])
+          print("candidate_bytes_before_exact_dedup=", selected[
+              "plain_text_candidate_bytes_before_exact_dedup"
+          ])
+          print("candidate_bytes_after_exact_dedup=", selected[
+              "plain_text_candidate_bytes_after_exact_dedup"
+          ])
+          PY
+      - name: Upload text-free full-scan evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: d03-rada-trees-secondary-plaintext-${{ env.SOURCE_SHA }}
+          path: ${{ runner.temp }}/rada-secondary-plaintext-full-scan.json
+          if-no-files-found: error
+          retention-days: 30
