@@ -45,6 +45,93 @@ jobs:
           --parquet "$RUNNER_TEMP/source-a.parquet"
           --output-jsonl "$RUNNER_TEMP/retained-a.jsonl"
           --report "$RUNNER_TEMP/report-a.json"
+      - name: Diagnose annotation-count contract without emitting text
+        if: failure()
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          import pyarrow.parquet as pq
+
+          source = Path(os.environ["RUNNER_TEMP"]) / "source-a.parquet"
+          if not source.exists():
+              print("annotation_diagnostic=source_absent")
+              raise SystemExit(0)
+
+          categories = {
+              "number": ("number_count", "number_occurrences", re.compile(r"НОМЕР_[1-9][0-9]*")),
+              "information": ("information_count", "information_occurrences", re.compile(r"ІНФОРМАЦІЯ_[1-9][0-9]*")),
+              "person": ("person_count", "person_occurrences", re.compile(r"ОСОБА_[1-9][0-9]*")),
+              "address": ("address_count", "address_occurrences", re.compile(r"АДРЕСА_[1-9][0-9]*")),
+          }
+          table = pq.read_table(source)
+          rows = table.to_pylist()
+          report = {
+              "rows": len(rows),
+              "schema_names": table.schema.names,
+              "categories": {},
+              "sum_of_unique_entities": {
+                  "equals_nonzero_category_count": 0,
+                  "equals_total_distinct_marker_labels": 0,
+              },
+          }
+          for category, (count_field, occurrence_field, pattern) in categories.items():
+              stats = {
+                  "declared_equals_annotation_len": 0,
+                  "declared_equals_regex_occurrences": 0,
+                  "declared_equals_distinct_marker_labels": 0,
+                  "annotation_len_equals_regex_occurrences": 0,
+                  "mismatch_rows": 0,
+                  "first_mismatch": None,
+              }
+              for row_index, row in enumerate(rows):
+                  text = row["text"]
+                  declared = row[count_field]
+                  annotations = row[occurrence_field]
+                  annotation_len = len(annotations)
+                  matches = pattern.findall(text)
+                  regex_occurrences = len(matches)
+                  distinct_marker_labels = len(set(matches))
+                  stats["declared_equals_annotation_len"] += int(declared == annotation_len)
+                  stats["declared_equals_regex_occurrences"] += int(declared == regex_occurrences)
+                  stats["declared_equals_distinct_marker_labels"] += int(
+                      declared == distinct_marker_labels
+                  )
+                  stats["annotation_len_equals_regex_occurrences"] += int(
+                      annotation_len == regex_occurrences
+                  )
+                  if declared != annotation_len:
+                      stats["mismatch_rows"] += 1
+                      if stats["first_mismatch"] is None:
+                          stats["first_mismatch"] = {
+                              "row_index": row_index,
+                              "declared": declared,
+                              "annotation_len": annotation_len,
+                              "regex_occurrences": regex_occurrences,
+                              "distinct_marker_labels": distinct_marker_labels,
+                          }
+              report["categories"][category] = stats
+
+          for row in rows:
+              distinct_by_category = []
+              for count_field, _, pattern in categories.values():
+                  matches = pattern.findall(row["text"])
+                  distinct_by_category.append(len(set(matches)))
+              nonzero_categories = sum(value > 0 for value in distinct_by_category)
+              total_distinct_labels = sum(distinct_by_category)
+              declared_sum = row["sum_of_unique_entities"]
+              report["sum_of_unique_entities"]["equals_nonzero_category_count"] += int(
+                  declared_sum == nonzero_categories
+              )
+              report["sum_of_unique_entities"]["equals_total_distinct_marker_labels"] += int(
+                  declared_sum == total_distinct_labels
+              )
+
+          print("annotation_contract_diagnostic=" + json.dumps(report, sort_keys=True))
+          PY
       - name: Independent exact acquisition and retest B
         run: >-
           python tools/retest_d03_languk_supreme_court.py
