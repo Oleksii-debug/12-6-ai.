@@ -12,7 +12,6 @@ import torch
 
 from twelve_six.checkpoint import (
     bind_checkpoint_identity,
-    capture_rng_state,
     detect_git_sha,
     hash_json,
     load_trainer_checkpoint,
