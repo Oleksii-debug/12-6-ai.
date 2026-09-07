@@ -480,7 +480,9 @@ class Trainer:
         A trainer that has entered a poisoned or ambiguous state cannot be repaired
         in place because trainer-only state cannot prove that model weights were also
         restored. Construct a fresh Trainer around the verified checkpoint model and
-        then load the trainer state.
+        then load the trainer state. Component restore is transactional: malformed
+        optimizer/scheduler/scaler state must not leave a clean trainer partially
+        mutated after a rejected resume.
         """
         if self._failure_reason is not None or self._update_incomplete:
             raise TrainingStateInvalidError(
@@ -502,14 +504,35 @@ class Trainer:
             )
         if state.optimizer_step > self.config.max_steps:
             raise ValueError("checkpoint optimizer_step exceeds configured max_steps")
-
-        self.optimizer.load_state_dict(state.optimizer)
         if (state.scheduler is None) != (self.scheduler is None):
             raise ValueError("scheduler state/config mismatch")
-        if self.scheduler is not None and state.scheduler is not None:
-            self.scheduler.load_state_dict(state.scheduler)
-        if state.scaler is not None:
-            self.scaler.load_state_dict(state.scaler)
+
+        optimizer_before = copy.deepcopy(self.optimizer.state_dict())
+        scheduler_before = (
+            None if self.scheduler is None else copy.deepcopy(self.scheduler.state_dict())
+        )
+        scaler_before = None if self.scaler is None else copy.deepcopy(self.scaler.state_dict())
+
+        try:
+            self.optimizer.load_state_dict(state.optimizer)
+            if self.scheduler is not None and state.scheduler is not None:
+                self.scheduler.load_state_dict(state.scheduler)
+            if state.scaler is not None:
+                self.scaler.load_state_dict(state.scaler)
+        except Exception:
+            try:
+                self.optimizer.load_state_dict(optimizer_before)
+                if self.scheduler is not None and scheduler_before is not None:
+                    self.scheduler.load_state_dict(scheduler_before)
+                if self.scaler is not None and scaler_before is not None:
+                    self.scaler.load_state_dict(scaler_before)
+            except Exception as rollback_error:
+                self._failure_reason = "trainer state restore rollback failed"
+                raise TrainingStateInvalidError(
+                    "trainer state restore failed and rollback could not prove a clean state; "
+                    "construct a fresh trainer and restore a verified checkpoint"
+                ) from rollback_error
+            raise
 
         self.micro_step = state.micro_step
         self.optimizer_step = state.optimizer_step
