@@ -37,6 +37,38 @@ def _authority(*, git_sha: str = SHA40, **extra: object) -> dict:
     return result
 
 
+def _postpack_proof() -> dict:
+    return {
+        "schema_version": "12-6.d04-deterministic-double-pack-proof.v1",
+        "authority": _authority(),
+        "proof_identity_sha256": SHA64,
+        "terminal_corpus_authority_identity_sha256": SHA64,
+        "terminal_record_inventory_digest_sha256": SHA64,
+        "terminal_payload_inventory_digest_sha256": SHA64,
+        "stage_bindings": {
+            "normalization": SHA64,
+            "evaluation_reservations": SHA64,
+            "dedup": SHA64,
+            "split": SHA64,
+            "packing": SHA64,
+        },
+        "tokenizer_identity_sha256": SHA64,
+        "materialization_identity_sha256": SHA64,
+        "packing_identity_sha256": SHA64,
+        "ledger_identity_sha256": SHA64,
+        "canonical_build_sha256": SHA64,
+        "build_a_canonical_sha256": SHA64,
+        "build_b_canonical_sha256": SHA64,
+        "one_pass_unique_nonignored_causal_loss_positions": 1000,
+        "retained_train_records_matched_to_terminal_inventory": 1,
+        "retained_train_record_membership_verified": True,
+        "retained_document_isolation_verified": True,
+        "heldout_reservation_verified": True,
+        "independent_builds_byte_identical": True,
+        "training_authorized_by_this_proof": False,
+    }
+
+
 def _ready_readiness() -> dict:
     data = _load(READINESS)
     evidence = data["evidence"]
@@ -66,6 +98,7 @@ def _ready_readiness() -> dict:
             "data_budget_status": "QUALIFIED",
         }
     )
+    evidence["postpack_proof"].update(_postpack_proof())
     evidence["checkpoint_integrity"].update(
         {"authority": _authority(), "status": "PASS"}
     )
@@ -157,6 +190,7 @@ def test_checked_in_overlay_contract_is_valid_but_deliberately_blocked() -> None
     assert result.packet is None
     assert "overlay:status_not_ready_candidate" in result.blockers
     assert "readiness:data_budget_not_qualified" in result.blockers
+    assert "readiness:postpack_proof_authority_missing" in result.blockers
 
 
 def test_ready_fresh_binding_is_exact_and_does_not_mutate_inputs() -> None:
@@ -173,6 +207,9 @@ def test_ready_fresh_binding_is_exact_and_does_not_mutate_inputs() -> None:
     assert result.packet["identities"]["source_git_sha"] == SHA40
     assert result.packet["binding"]["readiness_sha256"] == canonical_sha256(readiness)
     assert result.packet["binding"]["session_overlay_sha256"] == canonical_sha256(overlay)
+    assert result.packet["authorities"]["final_test_reservation"] == (
+        readiness["evidence"]["evaluation"]["final_test_reservation_authority"]
+    )
     assert result.packet_sha256 == canonical_sha256(result.packet)
     assert (readiness, template, overlay) == originals
 
