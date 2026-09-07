@@ -2,6 +2,8 @@
 
 D05 checkpoint-v1 directories remain immutable.  This module owns only the
 small mutable recovery index that selects one already-verified generation.
+Optional D04 replay state is published as an immutable sidecar only after the
+checkpoint manifest exists and before the current pointer advances.
 """
 from __future__ import annotations
 
@@ -16,6 +18,16 @@ from pathlib import Path
 from typing import Any
 
 from twelve_six.checkpoint import hash_json, verify_checkpoint
+from twelve_six.checkpoint.recovery_lock import exclusive_recovery_lock
+from twelve_six.scale141_resume_sidecar import (
+    ResumeSidecarContext,
+    ResumeSidecarError,
+    cleanup_orphan_resume_sidecars,
+    load_resume_sidecar,
+    publish_resume_sidecar,
+    remove_resume_sidecar,
+    validate_resume_reference,
+)
 
 POINTER_SCHEMA = "12-6.scale141-recovery-pointer.v1"
 _GENERATION = re.compile(r"^generation-(\d{8})$")
@@ -35,6 +47,7 @@ class RecoveryResolution:
     path: Path
     reference: dict[str, Any]
     manifest: dict[str, Any]
+    resume_state: dict[str, Any] | None = None
 
 
 def _generation_name(number: int) -> str:
@@ -70,6 +83,7 @@ def _pointer_payload(
     run_manifest_hash: str,
     optimizer_step: int,
     tokens_seen: int,
+    resume_state: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     value: dict[str, Any] = {
         "schema": POINTER_SCHEMA,
@@ -81,6 +95,13 @@ def _pointer_payload(
         "optimizer_step": optimizer_step,
         "tokens_seen": tokens_seen,
     }
+    if resume_state is not None:
+        try:
+            value["resume_state"] = validate_resume_reference(
+                resume_state, generation=generation
+            )
+        except ResumeSidecarError as exc:
+            raise RecoveryLifecycleError("recovery resume sidecar reference is invalid") from exc
     value["pointer_sha256"] = hash_json(value)
     return value
 
@@ -111,6 +132,13 @@ def _validate_pointer(value: Mapping[str, Any]) -> dict[str, Any]:
         value_at_key = pointer.get(key)
         if not isinstance(value_at_key, int) or isinstance(value_at_key, bool) or value_at_key < 0:
             raise RecoveryLifecycleError(f"recovery pointer {key} is invalid")
+    if "resume_state" in pointer:
+        try:
+            pointer["resume_state"] = validate_resume_reference(
+                pointer["resume_state"], generation=generation
+            )
+        except ResumeSidecarError as exc:
+            raise RecoveryLifecycleError("recovery pointer resume sidecar is invalid") from exc
     return pointer
 
 
@@ -222,6 +250,13 @@ def _assert_expected_reference(
         for key in required
         if expected_reference.get(key) != pointer.get(key)
     }
+    if "resume_state" in expected_reference and expected_reference.get("resume_state") != pointer.get(
+        "resume_state"
+    ):
+        mismatches["resume_state"] = {
+            "expected": expected_reference.get("resume_state"),
+            "actual": pointer.get("resume_state"),
+        }
     if mismatches:
         raise RecoveryLifecycleError(
             f"recovery pointer does not match phase boundary reference: {mismatches}"
@@ -230,7 +265,7 @@ def _assert_expected_reference(
 
 def recovery_reference(pointer: Mapping[str, Any]) -> dict[str, Any]:
     value = _validate_pointer(pointer)
-    return {
+    reference = {
         key: value[key]
         for key in (
             "generation",
@@ -242,6 +277,9 @@ def recovery_reference(pointer: Mapping[str, Any]) -> dict[str, Any]:
             "tokens_seen",
         )
     }
+    if "resume_state" in value:
+        reference["resume_state"] = dict(value["resume_state"])
+    return reference
 
 
 def resolve_recovery_generation(
@@ -266,14 +304,27 @@ def resolve_recovery_generation(
         expected_step=expected_step,
         expected_tokens_seen=expected_tokens_seen,
     )
+    resume_state = None
+    if "resume_state" in pointer:
+        try:
+            resume_state = load_resume_sidecar(
+                recovery_root,
+                generation=pointer["generation"],
+                checkpoint_path=generation_path,
+                manifest=manifest,
+                reference=pointer["resume_state"],
+            )
+        except ResumeSidecarError as exc:
+            raise RecoveryLifecycleError("recovery D04 resume sidecar failed validation") from exc
     return RecoveryResolution(
         path=generation_path,
         reference=recovery_reference(pointer),
         manifest=manifest,
+        resume_state=resume_state,
     )
 
 
-def publish_recovery_generation(
+def _publish_recovery_generation_unlocked(
     root: str | Path,
     *,
     save_generation: Callable[[Path], Mapping[str, Any] | None],
@@ -281,8 +332,14 @@ def publish_recovery_generation(
     expected_run_manifest_hash: str,
     expected_step: int,
     expected_tokens_seen: int,
+    build_resume_state: Callable[[ResumeSidecarContext], Mapping[str, Any]] | None = None,
     failpoint: str | None = None,
 ) -> dict[str, Any]:
+    if failpoint not in (None, "after_sidecar_before_pointer", "before_pointer_replace"):
+        raise RecoveryLifecycleError(f"unknown recovery publication failpoint: {failpoint}")
+    if failpoint == "after_sidecar_before_pointer" and build_resume_state is None:
+        raise RecoveryLifecycleError("after_sidecar_before_pointer requires a resume sidecar")
+
     recovery_root = Path(root)
     recovery_root.mkdir(parents=True, exist_ok=True)
 
@@ -320,11 +377,38 @@ def publish_recovery_generation(
         expected_step=expected_step,
         expected_tokens_seen=expected_tokens_seen,
     )
-    _atomic_publish_pointer(recovery_root, pointer, failpoint=failpoint)
+
+    if build_resume_state is not None:
+        try:
+            resume_reference = publish_resume_sidecar(
+                recovery_root,
+                generation=generation,
+                checkpoint_path=destination,
+                manifest=manifest,
+                build_exposure_state=build_resume_state,
+            )
+        except ResumeSidecarError as exc:
+            raise RecoveryLifecycleError("D04 resume sidecar publication failed") from exc
+        pointer = _pointer_payload(
+            generation=generation,
+            checkpoint_id=str(manifest["checkpoint_id"]),
+            source_sha=str(identity.get("git_sha")),
+            run_manifest_hash=str(identity.get("run_manifest_hash")),
+            optimizer_step=int(identity.get("step")),
+            tokens_seen=int(identity.get("tokens_seen")),
+            resume_state=resume_reference,
+        )
+        if failpoint == "after_sidecar_before_pointer":
+            raise RecoveryPointerUpdateInterrupted(
+                "injected interruption after D04 sidecar publication and before pointer update"
+            )
+
+    pointer_failpoint = failpoint if failpoint == "before_pointer_replace" else None
+    _atomic_publish_pointer(recovery_root, pointer, failpoint=pointer_failpoint)
     return recovery_reference(pointer)
 
 
-def cleanup_recovery_generations(root: str | Path, *, keep: int = 2) -> dict[str, Any]:
+def _cleanup_recovery_generations_unlocked(root: str | Path, *, keep: int = 2) -> dict[str, Any]:
     if not isinstance(keep, int) or isinstance(keep, bool) or keep < 1:
         raise ValueError("recovery cleanup keep must be >= 1")
     recovery_root = Path(root)
@@ -341,7 +425,20 @@ def cleanup_recovery_generations(root: str | Path, *, keep: int = 2) -> dict[str
         if path.is_symlink():
             raise RecoveryLifecycleError("refusing cleanup through recovery-generation symlink")
         shutil.rmtree(path)
+        try:
+            remove_resume_sidecar(recovery_root, generation=number)
+        except ResumeSidecarError as exc:
+            raise RecoveryLifecycleError("resume sidecar cleanup failed") from exc
         removed.append(path.name)
+
+    retained = set(_generation_numbers(recovery_root))
+    try:
+        removed_sidecars = cleanup_orphan_resume_sidecars(
+            recovery_root, retained_generations=retained
+        )
+    except ResumeSidecarError as exc:
+        raise RecoveryLifecycleError("orphan resume sidecar cleanup failed") from exc
+
     # Prove cleanup did not remove or corrupt the only authoritative generation.
     after = resolve_recovery_generation(
         recovery_root, expected_reference=current.reference
@@ -350,5 +447,39 @@ def cleanup_recovery_generations(root: str | Path, *, keep: int = 2) -> dict[str
         "current_generation": after.reference["generation"],
         "current_checkpoint_id": after.reference["checkpoint_id"],
         "removed": removed,
+        "removed_resume_sidecars": removed_sidecars,
         "retained_generation_count": len(_generation_numbers(recovery_root)),
     }
+
+
+def publish_recovery_generation(
+    root: str | Path,
+    *,
+    save_generation: Callable[[Path], Mapping[str, Any] | None],
+    expected_source_sha: str,
+    expected_run_manifest_hash: str,
+    expected_step: int,
+    expected_tokens_seen: int,
+    build_resume_state: Callable[[ResumeSidecarContext], Mapping[str, Any]] | None = None,
+    failpoint: str | None = None,
+) -> dict[str, Any]:
+    """Publish one generation under a crash-releasing cross-process lock."""
+
+    with exclusive_recovery_lock(root):
+        return _publish_recovery_generation_unlocked(
+            root,
+            save_generation=save_generation,
+            expected_source_sha=expected_source_sha,
+            expected_run_manifest_hash=expected_run_manifest_hash,
+            expected_step=expected_step,
+            expected_tokens_seen=expected_tokens_seen,
+            build_resume_state=build_resume_state,
+            failpoint=failpoint,
+        )
+
+
+def cleanup_recovery_generations(root: str | Path, *, keep: int = 2) -> dict[str, Any]:
+    """Clean immutable generations without racing an active publisher."""
+
+    with exclusive_recovery_lock(root):
+        return _cleanup_recovery_generations_unlocked(root, keep=keep)
