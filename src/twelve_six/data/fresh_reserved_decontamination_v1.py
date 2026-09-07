@@ -1,4 +1,10 @@
-"""Fresh reserved-evaluation decontamination over a survivor-bound corpus graph."""
+"""Source-object reserved-evaluation screen over the post-dedup survivor graph.
+
+This module deliberately does not claim final record-level corpus decontamination.
+#832 materializes one retained source object per terminal #824 survivor, while #548
+requires a later exact training-record inventory plus reserved-evaluation decontamination
+before split/training authority. This package is therefore an early conservative screen.
+"""
 from __future__ import annotations
 
 import hashlib
@@ -24,10 +30,14 @@ from twelve_six.data.postdedup_decontam_handoff_v1 import (
 
 SCHEMA = "12-6.fresh-reserved-decontamination.v1"
 EXECUTION_PROFILE = "LOCAL_FREE"
+STATUS_MAP = {
+    "PASS_CLEAN": "SOURCE_OBJECT_PASS_CLEAN",
+    "PASS_WITH_EXCLUSIONS": "SOURCE_OBJECT_PASS_WITH_EXCLUSIONS",
+}
 
 
 class FreshReservedDecontaminationError(RuntimeError):
-    """Fail-closed fresh decontamination integration error."""
+    """Fail-closed source-object contamination-screen integration error."""
 
 
 def _require(condition: bool, message: str) -> None:
@@ -73,7 +83,12 @@ def _authority_identity(
     expected: str,
 ) -> str:
     expected_sha = _require_sha256(expected, f"expected_{role}_identity")
-    observed = authority_composite_identity(authorities, {role})
+    try:
+        observed = authority_composite_identity(authorities, {role})
+    except (KeyError, TypeError) as exc:
+        raise FreshReservedDecontaminationError(
+            f"malformed {role} authority metadata"
+        ) from exc
     _require(observed == expected_sha, f"{role} authority identity mismatch")
     return expected_sha
 
@@ -95,18 +110,12 @@ def _validate_handoff(
         == expected_survivor_authority_sha256,
         "post-dedup handoff survivor authority mismatch",
     )
-    _require(
-        handoff.get("raw_text_persisted_in_evidence") is False,
-        "post-dedup handoff persisted raw text",
-    )
-    _require(
-        handoff.get("final_test_payload_accessed") is False,
-        "post-dedup handoff accessed final-test payload",
-    )
-    _require(
-        handoff.get("final_test_outcomes_accessed") is False,
-        "post-dedup handoff accessed final-test outcomes",
-    )
+    for key in (
+        "raw_text_persisted_in_evidence",
+        "final_test_payload_accessed",
+        "final_test_outcomes_accessed",
+    ):
+        _require(handoff.get(key) is False, f"post-dedup handoff boundary weakened: {key}")
     _require(
         handoff.get("authorized_training_exposure") == 0,
         "post-dedup handoff already grants training exposure",
@@ -128,7 +137,7 @@ def execute_fresh_reserved_decontamination(
     data232_matcher_git_sha: str,
     thresholds: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Run the incumbent matcher on the exact survivor-bound ephemeral corpus."""
+    """Run DATA-232 on exact retained source objects as a non-terminal early screen."""
     inventory_sha = _require_sha256(
         expected_inventory_identity_sha256,
         "expected_inventory_identity_sha256",
@@ -143,6 +152,10 @@ def execute_fresh_reserved_decontamination(
         inventory.get("input_survivor_authority_sha256") == survivor_sha,
         "inventory survivor authority does not match external terminal authority",
     )
+    _require(
+        inventory.get("reserved_evaluation_decontamination_complete") is False,
+        "input inventory already claims final decontamination",
+    )
 
     selection_sha = _authority_identity(
         authorities,
@@ -156,7 +169,7 @@ def execute_fresh_reserved_decontamination(
     )
 
     try:
-        training_records, handoff = prepare_ephemeral_data232_rows(
+        source_rows, handoff = prepare_ephemeral_data232_rows(
             inventory,
             comparison_payloads,
             expected_inventory_identity_sha256=inventory_sha,
@@ -167,7 +180,7 @@ def execute_fresh_reserved_decontamination(
             expected_survivor_authority_sha256=survivor_sha,
         )
         data232_report = build_data232_report(
-            training_records,
+            source_rows,
             evaluation_records,
             training_corpus_identity=inventory_sha,
             selection_validation_identity=selection_sha,
@@ -179,13 +192,11 @@ def execute_fresh_reserved_decontamination(
     except (PostDedupDecontamHandoffError, DecontaminationError) as exc:
         raise FreshReservedDecontaminationError(str(exc)) from exc
 
-    _require(
-        data232_report.get("status") in {"PASS_CLEAN", "PASS_WITH_EXCLUSIONS"},
-        "DATA-232 returned non-terminal decontamination status",
-    )
+    nested_status = data232_report.get("status")
+    _require(nested_status in STATUS_MAP, "DATA-232 returned non-terminal screen status")
     _require(
         data232_report.get("training_corpus_identity") == inventory_sha,
-        "DATA-232 training identity drift",
+        "DATA-232 source-object inventory identity drift",
     )
     _require(
         data232_report.get("selection_validation_identity") == selection_sha,
@@ -206,8 +217,9 @@ def execute_fresh_reserved_decontamination(
 
     core: dict[str, Any] = {
         "schema_version": SCHEMA,
-        "status": data232_report["status"],
+        "status": STATUS_MAP[str(nested_status)],
         "execution_profile": EXECUTION_PROFILE,
+        "screen_scope": "POST_GLOBAL_DEDUP_SOURCE_OBJECTS_NOT_FINAL_TRAINING_RECORDS",
         "upstream": {
             "postdedup_handoff_git_sha": handoff_git,
             "data232_matcher_git_sha": matcher_git,
@@ -223,7 +235,10 @@ def execute_fresh_reserved_decontamination(
         "raw_text_emitted": False,
         "final_test_payload_accessed": False,
         "final_test_outcomes_accessed": False,
-        "reserved_evaluation_decontamination_complete": True,
+        "source_object_reserved_evaluation_screen_complete": True,
+        "record_level_training_inventory_materialized": False,
+        "record_level_reserved_evaluation_decontamination_required": True,
+        "reserved_evaluation_decontamination_complete": False,
         "authorized_training_exposure": 0,
         "post_composition_quality_privacy_complete": False,
         "balance_family_caps_complete": False,
@@ -249,7 +264,7 @@ def verify_fresh_reserved_decontamination(
     postdedup_handoff_git_sha: str,
     data232_matcher_git_sha: str,
 ) -> None:
-    """Verify durable output without trusting a self-consistent substitute report."""
+    """Verify the source-object screen without allowing record-level promotion."""
     _require(isinstance(report, Mapping), "fresh decontamination report must be an object")
     _require(report.get("schema_version") == SCHEMA, "fresh decontamination schema drift")
     observed = _require_sha256(report.get("report_identity_sha256"), "report_identity_sha256")
@@ -259,35 +274,31 @@ def verify_fresh_reserved_decontamination(
 
     upstream = report.get("upstream")
     _require(isinstance(upstream, Mapping), "fresh decontamination upstream binding missing")
-    expected_inventory = _require_sha256(
-        expected_inventory_identity_sha256,
-        "expected_inventory_identity_sha256",
-    )
-    expected_survivor = _require_sha256(
-        expected_survivor_authority_sha256,
-        "expected_survivor_authority_sha256",
-    )
-    expected_selection = _require_sha256(
-        selection_validation_identity,
-        "selection_validation_identity",
-    )
-    expected_final = _require_sha256(final_test_identity, "final_test_identity")
-    expected_handoff_git = _require_git_sha(
-        postdedup_handoff_git_sha,
-        "postdedup_handoff_git_sha",
-    )
-    expected_matcher_git = _require_git_sha(
-        data232_matcher_git_sha,
-        "data232_matcher_git_sha",
-    )
-
     expected_bindings = {
-        "postdedup_handoff_git_sha": expected_handoff_git,
-        "data232_matcher_git_sha": expected_matcher_git,
-        "postdedup_inventory_identity_sha256": expected_inventory,
-        "survivor_authority_sha256": expected_survivor,
-        "selection_validation_identity_sha256": expected_selection,
-        "final_test_reservation_identity_sha256": expected_final,
+        "postdedup_handoff_git_sha": _require_git_sha(
+            postdedup_handoff_git_sha,
+            "postdedup_handoff_git_sha",
+        ),
+        "data232_matcher_git_sha": _require_git_sha(
+            data232_matcher_git_sha,
+            "data232_matcher_git_sha",
+        ),
+        "postdedup_inventory_identity_sha256": _require_sha256(
+            expected_inventory_identity_sha256,
+            "expected_inventory_identity_sha256",
+        ),
+        "survivor_authority_sha256": _require_sha256(
+            expected_survivor_authority_sha256,
+            "expected_survivor_authority_sha256",
+        ),
+        "selection_validation_identity_sha256": _require_sha256(
+            selection_validation_identity,
+            "selection_validation_identity",
+        ),
+        "final_test_reservation_identity_sha256": _require_sha256(
+            final_test_identity,
+            "final_test_identity",
+        ),
     }
     for key, value in expected_bindings.items():
         _require(upstream.get(key) == value, f"fresh decontamination upstream drift: {key}")
@@ -298,16 +309,24 @@ def verify_fresh_reserved_decontamination(
         verify_data232_report(nested)
     except DecontaminationError as exc:
         raise FreshReservedDecontaminationError(str(exc)) from exc
-    _require(nested.get("status") == report.get("status"), "nested DATA-232 status drift")
+    nested_status = nested.get("status")
+    _require(nested_status in STATUS_MAP, "nested DATA-232 status invalid")
+    _require(report.get("status") == STATUS_MAP[str(nested_status)], "screen status drift")
     _require(
-        nested.get("training_corpus_identity") == expected_inventory,
-        "training identity drift",
+        nested.get("training_corpus_identity")
+        == expected_bindings["postdedup_inventory_identity_sha256"],
+        "source-object inventory identity drift",
     )
     _require(
-        nested.get("selection_validation_identity") == expected_selection,
+        nested.get("selection_validation_identity")
+        == expected_bindings["selection_validation_identity_sha256"],
         "selection-validation identity drift",
     )
-    _require(nested.get("final_test_identity") == expected_final, "final-test identity drift")
+    _require(
+        nested.get("final_test_identity")
+        == expected_bindings["final_test_reservation_identity_sha256"],
+        "final-test identity drift",
+    )
     _require(
         upstream.get("data232_report_sha256") == nested.get("report_sha256"),
         "nested DATA-232 report identity drift",
@@ -315,15 +334,28 @@ def verify_fresh_reserved_decontamination(
     _require(report.get("counts") == nested.get("counts"), "fresh/nested count drift")
 
     _require(report.get("execution_profile") == EXECUTION_PROFILE, "execution profile drift")
-    _require(report.get("raw_text_emitted") is False, "durable report leaked raw text")
     _require(
-        report.get("final_test_payload_accessed") is False,
-        "final-test payload accessed",
+        report.get("screen_scope")
+        == "POST_GLOBAL_DEDUP_SOURCE_OBJECTS_NOT_FINAL_TRAINING_RECORDS",
+        "screen scope drift",
     )
-    _require(report.get("final_test_outcomes_accessed") is False, "final-test outcomes accessed")
+    for key in ("raw_text_emitted", "final_test_payload_accessed", "final_test_outcomes_accessed"):
+        _require(report.get(key) is False, f"screen safety boundary weakened: {key}")
     _require(
-        report.get("reserved_evaluation_decontamination_complete") is True,
-        "decontam not complete",
+        report.get("source_object_reserved_evaluation_screen_complete") is True,
+        "source-object screen not complete",
+    )
+    _require(
+        report.get("record_level_training_inventory_materialized") is False,
+        "record-level inventory fabricated",
+    )
+    _require(
+        report.get("record_level_reserved_evaluation_decontamination_required") is True,
+        "record-level rerun requirement weakened",
+    )
+    _require(
+        report.get("reserved_evaluation_decontamination_complete") is False,
+        "final record-level decontamination fabricated",
     )
     _require(report.get("authorized_training_exposure") == 0, "training exposure fabricated")
     _require(report.get("tokenizer_fit_authorized") is False, "tokenizer authority fabricated")
