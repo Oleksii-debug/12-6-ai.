@@ -33,7 +33,7 @@
     "authority": "EVAL-290-UA-SELECTION-VALIDATION-V1",
     "reservation_commit_sha": "8a393d98d37b2090d1ae3fe8be8d4e58f651159e",
     "reserved_raw_sha256": [
-      "50a790e0ece091f13fe039b5e36a23431680dec035737f29b0029502f9b3a31",
+      "50a790e0ece091f13fe039b5e36a23431680dec0357379f29b0029502f9b3a31",
       "e44c27b6151a1fea68eeef1e73e4460391f82e0501571d8aa4d5a792fc448b12"
     ],
     "final_test_accessed": false
