@@ -61,6 +61,13 @@ def build_report(max_pages: int, max_fetches: int, delay_seconds: float) -> dict
         unique.setdefault(digest, int(row["normalized_probe_bytes"]))
     observed_unique_bytes = sum(unique.values())
 
+    if not urls:
+        verdict = "PROBE_DISCOVERY_BLOCKED_NO_ARTICLE_URLS"
+    elif observed_unique_bytes > 0:
+        verdict = "PROBE_USEFUL_OBSERVED_YIELD"
+    else:
+        verdict = "PROBE_INSUFFICIENT_OBSERVED_YIELD"
+
     core: dict[str, Any] = {
         "schema_version": SCHEMA,
         "execution_profile": "LOCAL_FREE",
@@ -90,8 +97,8 @@ def build_report(max_pages: int, max_fetches: int, delay_seconds: float) -> dict
             "canonical_registry_mutated": False,
             "probe_is_not_bulk_admission": True,
         },
+        "verdict": verdict,
     }
-    core["verdict"] = "PROBE_USEFUL_OBSERVED_YIELD" if observed_unique_bytes > 0 else "PROBE_INSUFFICIENT_OBSERVED_YIELD"
     core["probe_identity_sha256"] = probe.canonical_sha256(core)
     return core
 
