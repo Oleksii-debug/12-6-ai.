@@ -1,5 +1,13 @@
 # R01 — Evidence-bound 20M to 100M scaling campaign
 
+> **Supersession notice (2026-09-07):** this V1 document remains historical evidence,
+> but its post-20M route is superseded by
+> `docs/R01_ACCELERATED_SCALING_ROADMAP_V2.md`. Terminal learned 20M remains
+> mandatory; full 50M/100M campaigns are now optional risk-reduction probes, and
+> ~200M is the first serious product-brain target subject to measured feasibility.
+> Every scientific, data, checkpoint, evaluation, audit and compute-authorization
+> gate below remains in force.
+
 Status: `CANDIDATE_PLANNING_ONLY`  
 Issue: #536  
 Execution boundary: `LOCAL_FREE`; no long training or materially paid compute is authorized by this package.
