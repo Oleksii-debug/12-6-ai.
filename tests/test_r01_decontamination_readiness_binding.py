@@ -108,13 +108,41 @@ def test_report_identity_must_match_terminal_authority() -> None:
     assert "decontamination_report_authority_mismatch" in result.local_free_pilot_blockers
 
 
-def test_decontamination_must_not_read_final_test_payload_or_outcomes() -> None:
-    for field in ("final_test_payload_accessed", "final_test_outcomes_read"):
+def test_decontamination_report_must_be_hash_only() -> None:
+    data = _local_ready()
+    data["evidence"]["evaluation"]["decontamination"]["hash_only_evidence"] = False
+    result = assess_learned20m_readiness(data)
+    assert not result.ready_for_local_free_pilot
+    assert "decontamination_report_must_be_hash_only" in result.local_free_pilot_blockers
+
+
+def test_decontamination_must_not_read_final_test_outcomes() -> None:
+    data = _local_ready()
+    data["evidence"]["evaluation"]["decontamination"]["final_test_outcomes_read"] = True
+    result = assess_learned20m_readiness(data)
+    assert not result.ready_for_local_free_pilot
+    assert (
+        "decontamination_final_test_outcomes_read_must_be_false"
+        in result.local_free_pilot_blockers
+    )
+
+
+def test_decontamination_must_not_select_model_or_hyperparameters() -> None:
+    data = _local_ready()
+    decontam = data["evidence"]["evaluation"]["decontamination"]
+    decontam["model_architecture_or_hyperparameters_selected"] = True
+    result = assess_learned20m_readiness(data)
+    assert not result.ready_for_local_free_pilot
+    assert "decontamination_model_selection_must_be_false" in result.local_free_pilot_blockers
+
+
+def test_decontamination_must_not_train_and_must_be_local_free() -> None:
+    for field, value, blocker in (
+        ("training_executed", True, "decontamination_training_executed_must_be_false"),
+        ("local_free_only", False, "decontamination_local_free_only_must_be_true"),
+    ):
         data = _local_ready()
-        data["evidence"]["evaluation"]["decontamination"][field] = True
+        data["evidence"]["evaluation"]["decontamination"][field] = value
         result = assess_learned20m_readiness(data)
         assert not result.ready_for_local_free_pilot
-        assert any(
-            "decontamination_final_test" in item
-            for item in result.local_free_pilot_blockers
-        )
+        assert blocker in result.local_free_pilot_blockers
