@@ -56,6 +56,30 @@ position budget. It rejects embedded credentials, final-test access, teacher log
 nonzero cost, paid resources and replay inflation. The checked-in template is
 deliberately blocked until the live D03/D04/D05/D06 authorities can fill its identities.
 
+## Evidence-to-session binding
+
+The builder below removes the final manual copy step between the learned-20M readiness
+gate and the portable packet:
+
+```bash
+PYTHONPATH=src python tools/build_r01_portable_run_packet.py \
+  --overlay configs/research/r01_portable_session_overlay_v1.json \
+  --output artifacts/r01/bound-run-packet.json
+```
+
+It imports corpus, tokenizer, unique-loss ledger, checkpoint, evaluation and recipe
+identities only from the existing readiness packet. A small session overlay supplies
+the InitSpec, exact seed, optimizer/scheduler/precision, runtime lock, zero-cost
+provider, checkpoint cadence, output URI, and terminal code/model/backend authorities.
+The builder verifies that code, ModelSpec, backend and environment identities agree
+across both inputs, records canonical SHA-256 hashes of both sources, and validates the
+resulting packet for either a fresh launch or cross-provider resume.
+
+The checked-in overlay is deliberately `BLOCKED_TEMPLATE`. With the current blocked
+readiness evidence, the command exits `1` and does **not** create the output file. A
+packet is atomically created only after every upstream and session gate passes, and an
+existing output is never overwritten.
+
 ## Current live consequence
 
 No scale jump is currently permitted. The immediate critical path remains Research Corpus V1 capacity and terminalization, tokenizer identity, D05 save/load/resume integrity, evaluation/selection firewall, bounded LOCAL_FREE pilot and independent audit. Only that evidence can move the router from learned 20M to preparation of a 200M feasibility packet.
