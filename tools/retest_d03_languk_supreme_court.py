@@ -235,7 +235,7 @@ def normalize(text: str) -> str:
 
 
 def _validate_occurrences(row: Mapping[str, Any], text: str) -> None:
-    total_unique_entities = 0
+    nonempty_categories = 0
     for count_field, occurrence_field, pattern in OCCURRENCE_FIELDS.values():
         count = row.get(count_field)
         occurrences = row.get(occurrence_field)
@@ -274,15 +274,14 @@ def _validate_occurrences(row: Mapping[str, Any], text: str) -> None:
 
         expected = [(m.start(), m.end(), m.group(0)) for m in pattern.finditer(text)]
         _require(
+            count == len(expected),
+            f"occurrence_count_mismatch_{count_field}",
+        )
+        _require(
             sorted(annotated) == expected,
             f"untracked_or_stale_occurrences_{occurrence_field}",
         )
-        unique_tokens = {token for _, _, token in annotated}
-        _require(
-            len(unique_tokens) == count,
-            f"unique_entity_count_mismatch_{count_field}",
-        )
-        total_unique_entities += count
+        nonempty_categories += int(count > 0)
 
     total = row.get("sum_of_unique_entities")
     _require(
@@ -290,7 +289,7 @@ def _validate_occurrences(row: Mapping[str, Any], text: str) -> None:
         "invalid_sum_of_unique_entities",
     )
     _require(
-        total == total_unique_entities,
+        total == nonempty_categories,
         "sum_of_unique_entities_inconsistent",
     )
 
@@ -309,7 +308,10 @@ def assess_row(row: Mapping[str, Any], cfg: Mapping[str, Any]) -> tuple[bool, st
     )
     text = row.get(cfg["selection"]["text_column"])
     _require(isinstance(text, str), "text field must be string")
-    _validate_occurrences(row, text)
+    try:
+        _validate_occurrences(row, text)
+    except RetestError:
+        return False, "annotation_contract_inconsistent", ""
 
     if CONTROL_RE.search(text):
         return False, "control_character", ""
@@ -422,10 +424,14 @@ def materialize(
         "retained_normalized_bytes": sum(row["normalized_bytes"] for row in accepted),
         "retained_jsonl_sha256": _sha256(payload),
         "disposition_counts": dict(sorted(reasons.items())),
+        "annotation_contract_quarantined_rows": reasons.get(
+            "annotation_contract_inconsistent", 0
+        ),
         "exact_schema_validated": True,
-        "occurrence_spans_validated": True,
-        "complete_placeholder_annotation_validated": True,
-        "unique_placeholder_count_semantics_validated": True,
+        "occurrence_spans_validated_for_retained_rows": True,
+        "complete_placeholder_annotation_validated_for_retained_rows": True,
+        "placeholder_occurrence_count_semantics_validated": True,
+        "sum_of_unique_entities_nonempty_category_semantics_validated": True,
         "universal_pii_absence_claimed": False,
         "rejected_text_emitted": False,
         "rejected_hashes_emitted": False,
