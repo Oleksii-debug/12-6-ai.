@@ -1,0 +1,51 @@
+{
+  "schema_version": "12-6.d03-loc-books-intake.v1",
+  "source_family": "en.books.loc.selected-digitized.public-domain",
+  "execution_profile": "LOCAL_FREE",
+  "upstream": {
+    "dataset": "common-pile/library_of_congress",
+    "revision": "d31bdba02cdad5104ccec2c02ae799c0bcb5a9a7",
+    "shard_path": "data/00000_loc_books.jsonl.gz",
+    "shard_sha256": "a6a6023d9cae067b5531ba84537877c180ab3ff1579f99aeac446d65d465ae0f",
+    "shard_compressed_bytes": 358594502,
+    "pinned_url": "https://huggingface.co/datasets/common-pile/library_of_congress/resolve/d31bdba02cdad5104ccec2c02ae799c0bcb5a9a7/data/00000_loc_books.jsonl.gz?download=true"
+  },
+  "common_pile_audit": {
+    "registry_path": "configs/data/common_pile_source_rights_v1.json",
+    "registry_blob_sha1": "7b4d6828288672bf25c551e85a5d7f7399e8ef0f",
+    "source_key": "library_of_congress",
+    "audited_collector_path": "sources/loc_books",
+    "audited_code_revision": "9457f04a14cb2355ab00023420369d46ffd4a395",
+    "collector_export_blob_sha1": "0f8633d9a0c12bd04140420d74a95d82a065119f",
+    "collector_metadata_blob_sha1": "a219f88cbe8f6cc33bd72eed6c9d75958a8efb08"
+  },
+  "selection_policy": {
+    "ordering": "SOURCE_STREAM_ORDER",
+    "normalization": "STRICT_UTF8_NFC_LF_OUTER_TRIM",
+    "max_accepted_documents": 256,
+    "max_examined_records": 1024,
+    "max_total_text_bytes": 4900000,
+    "stop_after_min_text_bytes": 4500000,
+    "min_record_text_bytes": 1024,
+    "max_record_text_bytes": 1000000,
+    "max_uncompressed_prefix_bytes": 67108864
+  },
+  "required_downstream_gates": [
+    "global_exact_near_fragment_lineage_dedup",
+    "reserved_evaluation_decontamination",
+    "quality_privacy",
+    "balance_family_caps",
+    "cluster_safe_split",
+    "deterministic_pack_two_clean_builds",
+    "positive_unique_loss_ledger"
+  ],
+  "training_authorized_bytes": 0,
+  "authorized_unique_loss_positions": 0,
+  "canonical_capacity_credit_bytes": 0,
+  "corpus_admitted": false,
+  "tokenizer_fit_permitted": false,
+  "model_training_permitted": false,
+  "evaluation_eligible": false,
+  "paid_compute_authorized": false,
+  "contract_identity_sha256": "35a5284570afa6aec78bda0a9d2f22d238f65d97231c67f131a493f14ecb0fef"
+}
