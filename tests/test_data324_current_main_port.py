@@ -1,12 +1,23 @@
 from __future__ import annotations
 
+import importlib.util
 import json
 import shutil
 from pathlib import Path
 
 import pytest
 
-from tools.validate_data324_current_main_port import PortValidationError, validate_snapshot
+REPO_ROOT = Path(__file__).resolve().parents[1]
+VALIDATOR_PATH = REPO_ROOT / "tools" / "validate_data324_current_main_port.py"
+VALIDATOR_SPEC = importlib.util.spec_from_file_location(
+    "data324_current_main_port_validator", VALIDATOR_PATH
+)
+if VALIDATOR_SPEC is None or VALIDATOR_SPEC.loader is None:
+    raise RuntimeError("cannot load DATA-324 current-main validator")
+VALIDATOR_MODULE = importlib.util.module_from_spec(VALIDATOR_SPEC)
+VALIDATOR_SPEC.loader.exec_module(VALIDATOR_MODULE)
+PortValidationError = VALIDATOR_MODULE.PortValidationError
+validate_snapshot = VALIDATOR_MODULE.validate_snapshot
 
 REQUIRED = (
     "configs/data/data324_kubernetes_ua_current_main_v1.json",
