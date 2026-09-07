@@ -1,334 +1,355 @@
 #!/usr/bin/env python3
-"""Bounded, fail-closed point-in-time eCFR materialization for D03.
-
-This tool proves transport and deterministic parsing only. It never grants corpus,
-family, tokenizer, training, loss-position, or paid-compute credit.
-"""
-
+"""Materialize exact point-in-time eCFR title XML with zero training credit."""
 from __future__ import annotations
 
 import argparse
 import copy
 import hashlib
 import json
+import os
 import re
+import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
-from collections.abc import Callable
-from io import BufferedIOBase
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, NamedTuple
+from typing import Any, BinaryIO, Mapping
 
-REQUEST_SCHEMA = "12-6.d03-ecfr-point-in-time-materialization-request.v1"
-REQUEST_STATUS = "READY_FOR_NETWORK_EXECUTION_ZERO_CREDIT"
-EVIDENCE_SCHEMA = "12-6.d03-ecfr-point-in-time-materialization-evidence.v1"
-SOURCE_ID = "en.us.ecfr.regulations"
-FAMILY_ID = "us.federal-regulations.ecfr"
-TITLES_ENDPOINT = "https://www.ecfr.gov/api/versioner/v1/titles.json"
-FULL_TITLE_RE = re.compile(
-    r"https://www\.ecfr\.gov/api/versioner/v1/full/(\d{4}-\d{2}-\d{2})/title-(\d+)\.xml"
-)
-ALLOWED_CONTENT_TYPES = {
-    "application/xml",
-    "text/xml",
-    "application/octet-stream",
-}
-ZERO_CLAIMS = {
-    "canonical_capacity_credit_bytes": 0,
-    "family_credit": 0,
-    "training_authorized_bytes": 0,
-    "authorized_unique_loss_positions": 0,
-    "tokenizer_fit_authorized": False,
-    "model_training_executed": False,
-    "optimizer_updates": 0,
-    "final_test_accessed": False,
-    "paid_compute_authorized": False,
-    "research_corpus_v1_released": False,
-    "learned_20m_claim": False,
-}
+import validate_d03_ecfr_point_in_time_contract as contract
 
-
-class MaterializationError(ValueError):
-    """Raised when a materialization request or acquisition fails closed."""
-
-
-class FetchResult(NamedTuple):
-    status: int
-    final_url: str
-    content_type: str
-    body: bytes
+DEFAULT_CONFIG = contract.DEFAULT_CONFIG
+REPORT_SCHEMA = "12-6.d03-ecfr-point-in-time-materialization-report.v1"
+CHUNK_BYTES = 1024 * 1024
+HEX64 = re.compile(r"^[0-9a-f]{64}$")
+XML_RUN = re.compile(r"\s+|[^\s]+", re.UNICODE)
+FORBIDDEN_XML = (b"<!doctype", b"<!entity")
+MaterializationError = contract.ContractError
+EXPECTED_CONTRACT_IDENTITY = contract.EXPECTED_CONTRACT_IDENTITY
 
 
 def _require(condition: bool, message: str) -> None:
-    if not condition:
-        raise MaterializationError(message)
+    contract.require(condition, message)
 
 
-def _canonical_sha256(payload: dict[str, Any], identity_field: str) -> str:
-    clone = copy.deepcopy(payload)
-    clone.pop(identity_field, None)
-    encoded = json.dumps(
-        clone,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode("utf-8")
-    return hashlib.sha256(encoded).hexdigest()
+def _report_identity(report: Mapping[str, Any]) -> str:
+    core = copy.deepcopy(dict(report))
+    core.pop("report_identity_sha256", None)
+    return contract.sha256(contract.canonical_bytes(core))
 
 
-def _is_lower_sha256(value: object) -> bool:
-    return (
-        isinstance(value, str)
-        and len(value) == 64
-        and all(ch in "0123456789abcdef" for ch in value)
-    )
+def load_contract(path: Path = DEFAULT_CONFIG) -> dict[str, Any]:
+    return contract.load_contract(path)
 
 
-def validate_request(request: dict[str, Any]) -> dict[str, Any]:
-    _require(isinstance(request, dict), "request must be a JSON object")
-    _require(request.get("schema") == REQUEST_SCHEMA, "unexpected request schema")
-    _require(request.get("status") == REQUEST_STATUS, "request status drift")
-
-    identity = request.get("request_identity_sha256")
-    _require(_is_lower_sha256(identity), "request identity must be lowercase SHA-256")
-    _require(
-        identity == _canonical_sha256(request, "request_identity_sha256"),
-        "request identity mismatch",
-    )
-
-    authority = request.get("authority")
-    _require(isinstance(authority, dict), "authority block missing")
-    _require(authority.get("source_id") == SOURCE_ID, "source identity drift")
-    _require(authority.get("family_id") == FAMILY_ID, "family identity drift")
-    _require(authority.get("stratum") == "en", "eCFR request must remain EN")
-    _require(authority.get("titles_endpoint") == TITLES_ENDPOINT, "titles endpoint drift")
-    metadata_date = authority.get("titles_metadata_date")
-    _require(isinstance(metadata_date, str), "titles metadata date missing")
-    _require(authority.get("import_in_progress") is False, "metadata import was in progress")
-    reserved = authority.get("reserved_titles")
-    _require(isinstance(reserved, list) and all(isinstance(x, int) for x in reserved), "reserved titles invalid")
-    _require(35 in reserved, "known reserved title 35 must remain excluded")
-    _require(
-        authority.get("metadata_observation_authority") == "DISCOVERY_ONLY",
-        "metadata observation cannot become training authority",
-    )
-
-    selection = request.get("selection")
-    _require(isinstance(selection, dict), "selection block missing")
-    date = selection.get("date")
-    title = selection.get("title")
-    url = selection.get("url")
-    _require(isinstance(date, str), "selection date missing")
-    _require(isinstance(title, int) and 1 <= title <= 50, "title must be in observed range 1..50")
-    _require(title not in reserved, "reserved title cannot be materialized")
-    _require(isinstance(url, str), "selection URL missing")
-    match = FULL_TITLE_RE.fullmatch(url)
-    _require(match is not None, "selection must use exact historical full-title URL without query/fragment")
-    assert match is not None
-    _require(match.group(1) == date, "URL date does not match selection date")
-    _require(int(match.group(2)) == title, "URL title does not match selection title")
-    _require(date <= metadata_date, "selection date exceeds frozen metadata availability")
-
-    bounds = request.get("bounds")
-    _require(isinstance(bounds, dict), "bounds block missing")
-    max_bytes = bounds.get("max_response_bytes")
-    _require(isinstance(max_bytes, int) and 1 <= max_bytes <= 32 * 1024 * 1024, "max_response_bytes out of bounded range")
-    _require(bounds.get("acquisitions_required") == 2, "exactly two acquisitions are required")
-    _require(bounds.get("timeout_seconds") in range(1, 121), "timeout_seconds out of range")
-    _require(bounds.get("allow_redirects") is False, "redirects must fail closed")
-    _require(bounds.get("require_identical_bytes") is True, "byte equality must be required")
-    _require(bounds.get("require_xml_parse") is True, "XML parse must be required")
-
-    claims = request.get("claims")
-    _require(claims == ZERO_CLAIMS, "materialization request cannot grant scientific/training credit")
-    return request
+def _validate_final_url(expected_url: str, final_url: str, allowed_hosts: list[str]) -> None:
+    expected = urllib.parse.urlsplit(expected_url)
+    observed = urllib.parse.urlsplit(final_url)
+    _require(observed.scheme == "https", "final URL must remain HTTPS")
+    _require(observed.port in (None, 443), "final URL used a non-default HTTPS port")
+    _require(observed.username is None and observed.password is None, "credentials in final URL")
+    _require(observed.fragment == "", "fragment in final URL")
+    _require((observed.hostname or "").lower() in allowed_hosts, "redirect left eCFR hosts")
+    _require(observed.path == expected.path, "redirect changed exact historical path")
+    _require(observed.query == expected.query, "redirect changed exact historical query")
 
 
-def _read_bounded(stream: BufferedIOBase | Any, max_bytes: int) -> bytes:
-    data = stream.read(max_bytes + 1)
-    _require(isinstance(data, bytes), "HTTP response body must be bytes")
-    _require(len(data) <= max_bytes, "HTTP response exceeds max_response_bytes")
-    return data
+def _stream_response(response: BinaryIO, destination: Path, max_bytes: int) -> tuple[int, str]:
+    digest = hashlib.sha256()
+    total = 0
+    with destination.open("xb") as output:
+        while True:
+            chunk = response.read(CHUNK_BYTES)
+            if not chunk:
+                break
+            total += len(chunk)
+            _require(total <= max_bytes, "eCFR object exceeded byte cap")
+            digest.update(chunk)
+            output.write(chunk)
+        output.flush()
+        os.fsync(output.fileno())
+    _require(total > 0, "eCFR object was empty")
+    return total, digest.hexdigest()
 
 
-def _fetch_once(url: str, max_bytes: int, timeout_seconds: int) -> FetchResult:
+def _download_once(
+    url: str,
+    destination: Path,
+    network: Mapping[str, Any],
+    *,
+    timeout: float,
+) -> dict[str, Any]:
+    _require(not destination.exists() and not destination.is_symlink(), "destination exists")
     request = urllib.request.Request(
         url,
-        headers={
-            "Accept": "application/xml,text/xml;q=0.9,application/octet-stream;q=0.5",
-            "User-Agent": "12-6-ai-d03-ecfr-materializer/1.0",
-        },
         method="GET",
+        headers={
+            "User-Agent": network["user_agent"],
+            "Accept": "application/xml,text/xml;q=0.9",
+            "Accept-Encoding": network["accept_encoding"],
+        },
     )
     try:
-        with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
-            status = int(response.getcode())
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            status = getattr(response, "status", None)
+            _require(status == 200, f"unexpected HTTP status: {status}")
             final_url = response.geturl()
-            content_type = response.headers.get_content_type().lower()
-            body = _read_bounded(response, max_bytes)
-    except urllib.error.HTTPError as exc:
-        raise MaterializationError(f"HTTP error {exc.code} for {url}") from exc
-    except urllib.error.URLError as exc:
-        raise MaterializationError(f"network error for {url}: {exc.reason}") from exc
-    return FetchResult(status=status, final_url=final_url, content_type=content_type, body=body)
-
-
-def _xml_stats(raw: bytes) -> dict[str, Any]:
-    try:
-        root = ET.fromstring(raw)
-    except ET.ParseError as exc:
-        raise MaterializationError(f"malformed XML: {exc}") from exc
-
-    element_count = 0
-    text_fragments: list[str] = []
-    for element in root.iter():
-        element_count += 1
-        for fragment in (element.text, element.tail):
-            if fragment:
-                normalized = " ".join(fragment.split())
-                if normalized:
-                    text_fragments.append(normalized)
-
-    normalized_text = "\n".join(text_fragments).encode("utf-8")
+            _validate_final_url(url, final_url, list(network["allowed_hosts"]))
+            encoding = response.headers.get("Content-Encoding")
+            _require(encoding in (None, "", "identity"), "content encoding must be identity")
+            kind = str(response.headers.get("Content-Type", "")).split(";", 1)[0].strip().lower()
+            _require(kind in network["allowed_content_types"], f"unexpected content type: {kind}")
+            length = response.headers.get("Content-Length")
+            declared = None
+            if length is not None:
+                try:
+                    declared = int(length)
+                except ValueError as exc:
+                    raise MaterializationError("malformed Content-Length") from exc
+                _require(0 < declared <= int(network["max_object_bytes"]), "Content-Length cap")
+            size_bytes, sha256 = _stream_response(
+                response,
+                destination,
+                int(network["max_object_bytes"]),
+            )
+            if declared is not None:
+                _require(size_bytes == declared, "download size differs from Content-Length")
+    except (OSError, urllib.error.URLError) as exc:
+        destination.unlink(missing_ok=True)
+        raise MaterializationError(f"eCFR acquisition failed: {exc}") from exc
     return {
-        "root_tag": root.tag,
-        "element_count": element_count,
-        "normalized_text_fragment_count": len(text_fragments),
-        "normalized_text_bytes": len(normalized_text),
-        "normalized_text_sha256": hashlib.sha256(normalized_text).hexdigest(),
+        "url": url,
+        "final_url": final_url,
+        "content_type": kind,
+        "size_bytes": size_bytes,
+        "sha256": sha256,
     }
+
+
+def _require_identical(first: Mapping[str, Any], second: Mapping[str, Any]) -> None:
+    for field, label in (
+        ("size_bytes", "size"),
+        ("sha256", "SHA-256"),
+        ("final_url", "final URL"),
+        ("content_type", "content type"),
+    ):
+        _require(first.get(field) == second.get(field), f"double-fetch {label} mismatch")
+
+
+def _scan_forbidden_xml(path: Path) -> None:
+    tail = b""
+    with path.open("rb") as handle:
+        while True:
+            chunk = handle.read(CHUNK_BYTES)
+            if not chunk:
+                break
+            probe = (tail + chunk).lower()
+            for marker in FORBIDDEN_XML:
+                _require(marker not in probe, f"forbidden XML declaration: {marker.decode()}")
+            tail = probe[-32:]
+
+
+@dataclass
+class _TextIdentityTarget:
+    digest: Any
+    byte_count: int = 0
+    character_count: int = 0
+    started: bool = False
+    pending_space: bool = False
+
+    def start(self, tag: str, attrs: Mapping[str, str]) -> None:
+        del tag, attrs
+
+    def end(self, tag: str) -> None:
+        del tag
+
+    def data(self, data: str) -> None:
+        for match in XML_RUN.finditer(data):
+            piece = match.group(0)
+            if piece.isspace():
+                self.pending_space = self.started
+                continue
+            if self.started and self.pending_space:
+                self.digest.update(b" ")
+                self.byte_count += 1
+                self.character_count += 1
+            raw = piece.encode("utf-8")
+            self.digest.update(raw)
+            self.byte_count += len(raw)
+            self.character_count += len(piece)
+            self.started = True
+            self.pending_space = False
+
+    def close(self) -> dict[str, Any]:
+        return {
+            "normalized_text_sha256": self.digest.hexdigest(),
+            "normalized_text_utf8_bytes": self.byte_count,
+            "normalized_text_characters": self.character_count,
+        }
+
+
+def extract_text_identity(path: Path) -> dict[str, Any]:
+    _scan_forbidden_xml(path)
+    parser = ET.XMLParser(target=_TextIdentityTarget(hashlib.sha256()))
+    try:
+        with path.open("rb") as handle:
+            while chunk := handle.read(CHUNK_BYTES):
+                parser.feed(chunk)
+        result = parser.close()
+    except ET.ParseError as exc:
+        raise MaterializationError(f"invalid XML payload: {exc}") from exc
+    _require(result["normalized_text_utf8_bytes"] > 0, "XML yielded no character data")
+    return result
 
 
 def materialize(
-    request: dict[str, Any],
+    config: Mapping[str, Any],
+    workspace: Path,
     *,
-    fetcher: Callable[[str, int, int], FetchResult] = _fetch_once,
-) -> tuple[bytes, dict[str, Any]]:
-    validate_request(request)
-    selection = request["selection"]
-    bounds = request["bounds"]
-    url = selection["url"]
-    max_bytes = bounds["max_response_bytes"]
-    timeout_seconds = bounds["timeout_seconds"]
-
-    first = fetcher(url, max_bytes, timeout_seconds)
-    second = fetcher(url, max_bytes, timeout_seconds)
-    acquisitions = [first, second]
-    for index, result in enumerate(acquisitions, start=1):
-        _require(result.status == 200, f"acquisition {index} returned HTTP {result.status}")
-        _require(result.final_url == url, f"acquisition {index} redirected or changed final URL")
-        _require(
-            result.content_type.lower() in ALLOWED_CONTENT_TYPES,
-            f"acquisition {index} unexpected content type {result.content_type!r}",
-        )
-        _require(len(result.body) <= max_bytes, f"acquisition {index} exceeded byte bound")
-
-    _require(first.body == second.body, "repeat acquisitions are not byte-identical")
-    raw_sha256 = hashlib.sha256(first.body).hexdigest()
-    stats = _xml_stats(first.body)
-    acquisition_records = [
-        {
-            "ordinal": index,
-            "http_status": result.status,
-            "final_url": result.final_url,
-            "content_type": result.content_type.lower(),
-            "raw_bytes": len(result.body),
-            "raw_sha256": hashlib.sha256(result.body).hexdigest(),
-        }
-        for index, result in enumerate(acquisitions, start=1)
-    ]
-
-    evidence: dict[str, Any] = {
-        "schema": EVIDENCE_SCHEMA,
-        "status": "TRANSPORT_AND_XML_PARSE_PASS_ZERO_CREDIT",
-        "request_identity_sha256": request["request_identity_sha256"],
-        "source_id": SOURCE_ID,
-        "family_id": FAMILY_ID,
-        "selection": copy.deepcopy(selection),
-        "acquisitions": acquisition_records,
-        "byte_identical": True,
-        "raw_bytes": len(first.body),
-        "raw_sha256": raw_sha256,
-        "xml": stats,
-        "record_extraction_status": "NOT_RUN",
-        "rights_and_provenance_status": "NOT_RUN",
-        "quality_language_privacy_status": "NOT_RUN",
-        "global_dedup_status": "NOT_RUN",
-        "evaluation_decontamination_status": "NOT_RUN",
-        "claims": copy.deepcopy(ZERO_CLAIMS),
+    timeout: float | None = None,
+) -> dict[str, Any]:
+    network = config["network_policy"]
+    effective_timeout = float(timeout if timeout is not None else network["timeout_seconds"])
+    _require(effective_timeout > 0, "timeout must be positive")
+    workspace.mkdir(parents=True, exist_ok=True)
+    objects: list[dict[str, Any]] = []
+    total_raw = 0
+    total_text = 0
+    for item in config["objects"]:
+        stem = f"ecfr-{item['date']}-title-{item['title']}"
+        first_path = workspace / f"{stem}-a.xml"
+        second_path = workspace / f"{stem}-b.xml"
+        first = _download_once(item["url"], first_path, network, timeout=effective_timeout)
+        second = _download_once(item["url"], second_path, network, timeout=effective_timeout)
+        _require_identical(first, second)
+        text = extract_text_identity(first_path)
+        total_raw += int(first["size_bytes"])
+        total_text += int(text["normalized_text_utf8_bytes"])
+        _require(total_raw <= int(network["max_total_bytes"]), "aggregate byte cap exceeded")
+        second_path.unlink(missing_ok=True)
+        objects.append({
+            "date": item["date"],
+            "title": item["title"],
+            "url": item["url"],
+            "final_url": first["final_url"],
+            "content_type": first["content_type"],
+            "raw_bytes": first["size_bytes"],
+            "raw_sha256": first["sha256"],
+            "two_byte_identical_acquisitions": True,
+            **text,
+        })
+    report: dict[str, Any] = {
+        "schema_version": REPORT_SCHEMA,
+        "worker_id": contract.WORKER_ID,
+        "execution_profile": "LOCAL_FREE",
+        "contract_identity_sha256": config["contract_identity_sha256"],
+        "parent": {
+            "pr": contract.PARENT_PR,
+            "head_sha": contract.PARENT_HEAD,
+            "main_merge_sha": contract.PARENT_MAIN,
+            "contract_identity_sha256": contract.PARENT_IDENTITY,
+        },
+        "source_id": contract.SOURCE_ID,
+        "family_id": contract.FAMILY_ID,
+        "objects": objects,
+        "aggregate": {
+            "object_count": len(objects),
+            "raw_bytes": total_raw,
+            "normalized_text_utf8_bytes": total_text,
+        },
+        "rights_boundary": {
+            "decision": "REVIEW_REQUIRED_ZERO_CREDIT",
+            "rights_and_provenance_complete": False,
+            "automatic_training_eligibility": False,
+        },
+        "claim_boundary": copy.deepcopy(config["claim_boundary"]),
+        "raw_text_emitted_in_report": False,
+        "next_gate": "RIGHTS_AND_PROVENANCE_CLASSIFICATION",
     }
-    evidence["evidence_identity_sha256"] = _canonical_sha256(
-        evidence, "evidence_identity_sha256"
+    report["report_identity_sha256"] = _report_identity(report)
+    return report
+
+
+def verify_report(config: Mapping[str, Any], report: Mapping[str, Any]) -> None:
+    _require(report.get("schema_version") == REPORT_SCHEMA, "report schema drift")
+    _require(report.get("worker_id") == contract.WORKER_ID, "report worker drift")
+    _require(report.get("execution_profile") == "LOCAL_FREE", "report profile drift")
+    _require(
+        report.get("contract_identity_sha256") == config["contract_identity_sha256"],
+        "report contract drift",
     )
-    return first.body, evidence
+    identity = report.get("report_identity_sha256")
+    _require(isinstance(identity, str) and HEX64.fullmatch(identity) is not None, "report hash")
+    _require(identity == _report_identity(report), "report self-hash mismatch")
+    _require(report.get("source_id") == contract.SOURCE_ID, "report source drift")
+    _require(report.get("family_id") == contract.FAMILY_ID, "report family drift")
+    _require(report.get("raw_text_emitted_in_report") is False, "raw text report forbidden")
+    objects = report.get("objects")
+    _require(isinstance(objects, list) and len(objects) == len(config["objects"]), "object count")
+    for expected, observed in zip(config["objects"], objects, strict=True):
+        for field in ("date", "title", "url"):
+            _require(observed.get(field) == expected[field], f"report {field} drift")
+        _require(observed.get("two_byte_identical_acquisitions") is True, "double-fetch proof")
+        _require(int(observed.get("raw_bytes", 0)) > 0, "raw bytes missing")
+        _require(HEX64.fullmatch(str(observed.get("raw_sha256", ""))) is not None, "raw hash")
+        _require(int(observed.get("normalized_text_utf8_bytes", 0)) > 0, "text bytes missing")
+        _require(
+            HEX64.fullmatch(str(observed.get("normalized_text_sha256", ""))) is not None,
+            "text hash",
+        )
+    _require(report.get("claim_boundary") == config["claim_boundary"], "claim boundary drift")
+    _require(report.get("next_gate") == "RIGHTS_AND_PROVENANCE_CLASSIFICATION", "next gate")
 
 
-def load_request(path: Path) -> dict[str, Any]:
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        raise MaterializationError(f"cannot read request: {exc}") from exc
-    validate_request(data)
-    return data
+def _write_report(path: Path, report: Mapping[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
+    with tempfile.NamedTemporaryFile(
+        "w",
+        encoding="utf-8",
+        dir=path.parent,
+        prefix=path.name + ".",
+        suffix=".tmp",
+        delete=False,
+    ) as handle:
+        handle.write(payload)
+        temp_name = handle.name
+    os.replace(temp_name, path)
 
 
-def _safe_output_stem(request: dict[str, Any]) -> str:
-    selection = request["selection"]
-    return f"ecfr-{selection['date']}-title-{selection['title']}"
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
+    parser.add_argument("--workspace", type=Path)
+    parser.add_argument("--report-output", type=Path)
+    parser.add_argument("--timeout", type=float)
+    parser.add_argument("--verify-report", type=Path)
+    return parser.parse_args()
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "request",
-        nargs="?",
-        type=Path,
-        default=Path("configs/data/d03_ecfr_point_in_time_request_v1.json"),
-    )
-    parser.add_argument("--output-dir", type=Path, required=True)
-    parser.add_argument(
-        "--retain-raw",
-        action="store_true",
-        help="Retain the verified XML locally; evidence JSON is always written.",
-    )
-    args = parser.parse_args()
-
+    args = parse_args()
     try:
-        request = load_request(args.request)
-        raw, evidence = materialize(request)
-        args.output_dir.mkdir(parents=True, exist_ok=True)
-        stem = _safe_output_stem(request)
-        evidence_path = args.output_dir / f"{stem}.evidence.json"
-        evidence_path.write_text(
-            json.dumps(evidence, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-            encoding="utf-8",
-        )
-        raw_path: Path | None = None
-        if args.retain_raw:
-            raw_path = args.output_dir / f"{stem}.xml"
-            raw_path.write_bytes(raw)
-    except (MaterializationError, OSError) as exc:
-        print(json.dumps({"valid": False, "error": str(exc)}, sort_keys=True))
-        return 1
-
-    print(
-        json.dumps(
-            {
-                "valid": True,
-                "status": evidence["status"],
-                "evidence_path": str(evidence_path),
-                "raw_path": str(raw_path) if raw_path is not None else None,
-                "raw_bytes": evidence["raw_bytes"],
-                "raw_sha256": evidence["raw_sha256"],
-                "evidence_identity_sha256": evidence["evidence_identity_sha256"],
-                "canonical_capacity_credit_bytes": 0,
-                "training_authorized": False,
-            },
-            sort_keys=True,
-        )
-    )
+        config = load_contract(args.config)
+        if args.verify_report is not None:
+            verify_report(config, json.loads(args.verify_report.read_text(encoding="utf-8")))
+            print("PASS_ECFR_POINT_IN_TIME_REPORT")
+            return 0
+        _require(args.workspace is not None, "--workspace is required")
+        _require(args.report_output is not None, "--report-output is required")
+        report = materialize(config, args.workspace, timeout=args.timeout)
+        verify_report(config, report)
+        _write_report(args.report_output, report)
+    except (MaterializationError, OSError, json.JSONDecodeError) as exc:
+        print(f"BLOCKED: {exc}")
+        return 2
+    print("D03_ECFR_POINT_IN_TIME=MATERIALIZED_ZERO_CREDIT")
+    print("REPORT_SHA256=" + report["report_identity_sha256"])
+    print("RAW_BYTES=" + str(report["aggregate"]["raw_bytes"]))
+    print("NORMALIZED_TEXT_BYTES=" + str(report["aggregate"]["normalized_text_utf8_bytes"]))
+    print("TRAINING_AUTHORIZED_BYTES=0")
+    print("NEXT=RIGHTS_AND_PROVENANCE_CLASSIFICATION")
     return 0
 
 
