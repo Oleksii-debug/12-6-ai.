@@ -5,7 +5,11 @@ import json
 import urllib.request
 from pathlib import Path
 
-from twelve_six.data.loc_public_domain_intake import materialize_shard, validate_config
+from twelve_six.data.loc_public_domain_intake import (
+    materialize_shard,
+    validate_config,
+    verify_local_rights_registry,
+)
 
 
 def load_config(path: Path) -> dict:
@@ -35,6 +39,7 @@ def main() -> int:
         type=Path,
         default=Path("configs/data/d03_loc_public_domain_intake_v1.json"),
     )
+    parser.add_argument("--repo-root", type=Path, default=Path("."))
     parser.add_argument("--shard", type=Path)
     parser.add_argument("--download-dir", type=Path)
     parser.add_argument("--candidate-jsonl", type=Path, required=True)
@@ -42,6 +47,7 @@ def main() -> int:
     args = parser.parse_args()
 
     config = load_config(args.config)
+    verify_local_rights_registry(config, args.repo_root)
     shard = args.shard
     created = False
     if shard is None:
