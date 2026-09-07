@@ -9,12 +9,16 @@ from __future__ import annotations
 
 import os
 import random
-import resource
 import sys
 import time
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from typing import Any
+
+try:
+    import resource as _resource
+except ImportError:  # pragma: no cover - Windows has no resource module
+    _resource = None
 
 import numpy as np
 import torch
@@ -217,9 +221,11 @@ def build_synthetic_lm_batch(
 
 
 def _process_rss_bytes() -> int | None:
+    if _resource is None:
+        return None
     try:
-        usage = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-    except (AttributeError, ValueError):
+        usage = _resource.getrusage(_resource.RUSAGE_SELF).ru_maxrss
+    except (AttributeError, OSError, ValueError):
         return None
     multiplier = 1 if sys.platform == "darwin" else 1024
     return int(usage * multiplier)
