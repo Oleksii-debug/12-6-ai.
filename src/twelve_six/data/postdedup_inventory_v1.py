@@ -1,22 +1,27 @@
-"""Deterministic retained-source inventory over terminal NEXT100-065F V8 evidence.
+"""Terminal-survivor-bound retained inventory for NEXT100-065F V8 evidence.
 
-This module does not perform matching and does not grant corpus/training authority. It
-turns the incumbent global-dedup report into one deterministic, text-free retained set
-so decontamination/split/packing successors cannot choose different representatives
-from the same capacity-collapsing duplicate component.
+NEXT100-065F owns physical source-object survivor selection. This module never chooses
+an alternative representative. It consumes an externally identified terminal survivor
+authority, uses the nested V3 graph only as a fail-closed scientific cross-check, and
+attaches the V8 comparison-payload metadata required by downstream DATA-232.
 """
 from __future__ import annotations
 
 import hashlib
 import json
 from collections.abc import Mapping, Sequence
+from copy import deepcopy
 from typing import Any
 
 V8_SCHEMA = "12-6.next100-065f-global-dedup-report.v8"
 V3_SCHEMA = "12-6.next100-065-cross-source-dedup-report.v3"
+SURVIVOR_SCHEMA = "12-6.next100-065f-post-dedup-survivors.v1"
+SURVIVOR_SELECTION_RULE = (
+    "largest_declared_capacity_then_lexicographically_smallest_source_id"
+)
 OUTPUT_SCHEMA = "12-6.postdedup-retained-source-inventory.v1"
 ORIGIN_CLUSTER_SCHEMA = "12-6.postdedup-origin-cluster.v1"
-SELECTION_POLICY = "MAX_DECLARED_CAPACITY_THEN_SOURCE_ID_ASC_V1"
+SELECTION_POLICY = "NEXT100_065F_TERMINAL_SURVIVOR_AUTHORITY_V1"
 CAPACITY_COLLAPSE_MATCH_TYPES = frozenset(
     {
         "origin_alias",
@@ -33,6 +38,16 @@ CAPACITY_COLLAPSE_MATCH_TYPES = frozenset(
         "lineage_generated_derivative",
     }
 )
+SURVIVOR_SHARED_SOURCE_FIELDS = (
+    "source_id",
+    "source_family",
+    "modality",
+    "declared_capacity_bytes",
+    "verified_raw_sha256",
+    "normalized_sha256",
+    "stable_origin_id_sha256",
+    "stable_object_id_sha256",
+)
 
 
 class PostDedupInventoryError(RuntimeError):
@@ -48,6 +63,16 @@ def _canonical_bytes(value: Any) -> bytes:
     return json.dumps(
         value,
         ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+
+
+def _survivor_canonical_bytes(value: Any) -> bytes:
+    """Reproduce NEXT100-065F survivor authority serialization exactly."""
+    return json.dumps(
+        value,
+        ensure_ascii=True,
         sort_keys=True,
         separators=(",", ":"),
     ).encode("utf-8")
@@ -173,6 +198,10 @@ def _validate_v8(
     _require(
         vector.get("duplicate_discount_bytes") == terminal.get("duplicate_discount_bytes"),
         "V8/V3 duplicate-discount mismatch",
+    )
+    _require(
+        vector.get("duplicate_cluster_count") == terminal.get("duplicate_cluster_count"),
+        "V8/V3 duplicate-cluster-count mismatch",
     )
     return dedup
 
@@ -395,9 +424,220 @@ def _origin_cluster_bindings(
 
     _require(
         observed_origin_hashes == expected_origin_hashes,
-        "nested V3 origin clusters do not cover the exact retained source origins",
+        "nested V3 origin clusters do not cover the exact source origins",
     )
     return bindings
+
+
+def _validate_survivor_truth_boundary(authority: Mapping[str, Any]) -> None:
+    boundary = authority.get("truth_boundary")
+    _require(isinstance(boundary, Mapping), "survivor truth boundary missing")
+    _require(
+        boundary.get("source_object_authority_only") is True,
+        "survivor authority scope drift",
+    )
+    _require(
+        boundary.get("training_record_inventory_materialized") is False,
+        "survivor authority falsely claims training-record materialization",
+    )
+    _require(
+        boundary.get("evaluation_decontamination_passed") is False,
+        "survivor authority falsely claims evaluation decontamination",
+    )
+    _require(
+        boundary.get("authorized_training_exposure") == 0,
+        "survivor authority already grants training exposure",
+    )
+    for key in (
+        "tokenizer_fit_authorized",
+        "model_training_executed",
+        "final_test_payload_read",
+        "paid_compute_used",
+    ):
+        _require(
+            boundary.get(key) is False,
+            f"survivor authority boundary weakened: {key}",
+        )
+
+
+def _validate_survivor_authority(
+    v8_report: Mapping[str, Any],
+    dedup: Mapping[str, Any],
+    survivor_authority: Mapping[str, Any],
+    source_by_id: Mapping[str, Mapping[str, Any]],
+    components: Sequence[Sequence[str]],
+    *,
+    expected_v8_report_sha256: str,
+    expected_survivor_authority_sha256: str,
+    expected_unique_capacity: int,
+) -> set[str]:
+    _require(isinstance(survivor_authority, Mapping), "survivor authority must be an object")
+    _require(
+        survivor_authority.get("schema_version") == SURVIVOR_SCHEMA,
+        "survivor authority schema drift",
+    )
+    _require(
+        survivor_authority.get("selection_rule") == SURVIVOR_SELECTION_RULE,
+        "survivor selection-rule drift",
+    )
+    expected_survivor = _require_sha256(
+        expected_survivor_authority_sha256,
+        "expected_survivor_authority_sha256",
+    )
+    observed_survivor = _require_sha256(
+        survivor_authority.get("survivor_authority_sha256"),
+        "survivor_authority_sha256",
+    )
+    _require(
+        observed_survivor == expected_survivor,
+        "survivor authority does not match expected terminal identity",
+    )
+    survivor_core = deepcopy(dict(survivor_authority))
+    survivor_core.pop("survivor_authority_sha256", None)
+    _require(
+        _sha256_bytes(_survivor_canonical_bytes(survivor_core)) == observed_survivor,
+        "survivor authority self-hash mismatch",
+    )
+
+    expected_v8 = _require_sha256(
+        expected_v8_report_sha256,
+        "expected_v8_report_sha256",
+    )
+    _require(
+        survivor_authority.get("v8_report_sha256") == expected_v8,
+        "survivor authority is not bound to expected V8 report",
+    )
+    nested_sha = _require_sha256(dedup.get("report_sha256"), "nested V3 report_sha256")
+    _require(
+        survivor_authority.get("nested_v3_report_sha256") == nested_sha,
+        "survivor authority nested V3 identity drift",
+    )
+    _validate_survivor_truth_boundary(survivor_authority)
+
+    raw_survivors = survivor_authority.get("survivors")
+    _require(
+        isinstance(raw_survivors, Sequence)
+        and not isinstance(raw_survivors, (str, bytes)),
+        "survivor rows must be a sequence",
+    )
+    survivor_ids: set[str] = set()
+    for index, raw in enumerate(raw_survivors):
+        _require(isinstance(raw, Mapping), f"survivors[{index}] must be an object")
+        source_id = _nonempty_text(raw.get("source_id"), f"survivors[{index}].source_id")
+        _require(source_id not in survivor_ids, "survivor source_id is not unique")
+        _require(source_id in source_by_id, "survivor authority references unknown V8 source")
+        survivor_ids.add(source_id)
+        v8_source = source_by_id[source_id]
+        for field in SURVIVOR_SHARED_SOURCE_FIELDS:
+            _require(field in raw, f"survivor row missing {field}: {source_id}")
+            _require(
+                raw.get(field) == v8_source.get(field),
+                f"survivor/V8 source metadata drift: {source_id}:{field}",
+            )
+
+    _require(
+        len(survivor_ids) == len(components),
+        "survivor count does not match capacity-component count",
+    )
+    for component in components:
+        selected = survivor_ids.intersection(component)
+        _require(
+            len(selected) == 1,
+            "terminal survivor authority must select exactly one source per capacity component",
+        )
+
+    selected_capacity = sum(source_by_id[source_id]["declared_capacity_bytes"] for source_id in survivor_ids)
+    _require(
+        selected_capacity == expected_unique_capacity,
+        "terminal survivor set does not reproduce V3 conservative capacity",
+    )
+
+    vector = v8_report.get("source_vector")
+    _require(isinstance(vector, Mapping), "V8 source vector missing")
+    _require(
+        survivor_authority.get("pre_dedup_source_object_count") == len(source_by_id),
+        "survivor pre-dedup source-count drift",
+    )
+    _require(
+        survivor_authority.get("post_dedup_survivor_source_object_count")
+        == len(survivor_ids),
+        "survivor post-dedup source-count drift",
+    )
+    _require(
+        survivor_authority.get("pre_dedup_declared_capacity_bytes")
+        == vector.get("source_capacity_bytes_before_global_dedup"),
+        "survivor pre-dedup capacity drift",
+    )
+    _require(
+        survivor_authority.get("post_dedup_declared_capacity_bytes")
+        == expected_unique_capacity,
+        "survivor post-dedup capacity drift",
+    )
+    _require(
+        survivor_authority.get("duplicate_discount_bytes")
+        == vector.get("duplicate_discount_bytes"),
+        "survivor duplicate-discount drift",
+    )
+    _require(
+        survivor_authority.get("duplicate_cluster_count")
+        == sum(len(component) > 1 for component in components),
+        "survivor duplicate-cluster-count drift",
+    )
+
+    raw_clusters = survivor_authority.get("duplicate_clusters")
+    _require(
+        isinstance(raw_clusters, Sequence) and not isinstance(raw_clusters, (str, bytes)),
+        "survivor duplicate_clusters must be a sequence",
+    )
+    observed_clusters: list[dict[str, Any]] = []
+    for index, raw in enumerate(raw_clusters):
+        _require(isinstance(raw, Mapping), f"survivor duplicate_clusters[{index}] must be an object")
+        raw_members = raw.get("member_source_ids")
+        _require(
+            isinstance(raw_members, Sequence)
+            and not isinstance(raw_members, (str, bytes)),
+            f"survivor duplicate_clusters[{index}].member_source_ids must be a sequence",
+        )
+        members = sorted(str(source_id) for source_id in raw_members)
+        selected_source_id = _nonempty_text(
+            raw.get("selected_source_id"),
+            f"survivor duplicate_clusters[{index}].selected_source_id",
+        )
+        selected_capacity_value = _nonnegative_int(
+            raw.get("selected_declared_capacity_bytes"),
+            f"survivor duplicate_clusters[{index}].selected_declared_capacity_bytes",
+        )
+        observed_clusters.append(
+            {
+                "member_source_ids": members,
+                "selected_source_id": selected_source_id,
+                "selected_declared_capacity_bytes": selected_capacity_value,
+            }
+        )
+    observed_clusters.sort(key=lambda row: tuple(row["member_source_ids"]))
+
+    expected_clusters: list[dict[str, Any]] = []
+    for component in components:
+        if len(component) == 1:
+            continue
+        selected = sorted(survivor_ids.intersection(component))
+        _require(len(selected) == 1, "duplicate component must have one terminal survivor")
+        selected_source_id = selected[0]
+        expected_clusters.append(
+            {
+                "member_source_ids": sorted(component),
+                "selected_source_id": selected_source_id,
+                "selected_declared_capacity_bytes": source_by_id[selected_source_id][
+                    "declared_capacity_bytes"
+                ],
+            }
+        )
+    expected_clusters.sort(key=lambda row: tuple(row["member_source_ids"]))
+    _require(
+        observed_clusters == expected_clusters,
+        "survivor duplicate-cluster selection does not match terminal V8 components",
+    )
+    return survivor_ids
 
 
 def _retained_summary(
@@ -419,10 +659,12 @@ def _retained_summary(
 
 def materialize_postdedup_inventory(
     v8_report: Mapping[str, Any],
+    survivor_authority: Mapping[str, Any],
     *,
     expected_v8_report_sha256: str,
+    expected_survivor_authority_sha256: str,
 ) -> dict[str, Any]:
-    """Materialize one deterministic retained source per capacity component."""
+    """Materialize exact physical survivors selected only by terminal NEXT100-065F."""
     dedup = _validate_v8(
         v8_report,
         expected_v8_report_sha256=expected_v8_report_sha256,
@@ -435,21 +677,32 @@ def materialize_postdedup_inventory(
         source_by_id,
     )
     origin_bindings = _origin_cluster_bindings(dedup, source_by_id)
+    survivor_ids = _validate_survivor_authority(
+        v8_report,
+        dedup,
+        survivor_authority,
+        source_by_id,
+        components,
+        expected_v8_report_sha256=expected_v8_report_sha256,
+        expected_survivor_authority_sha256=expected_survivor_authority_sha256,
+        expected_unique_capacity=expected_unique_capacity,
+    )
 
     retained: list[dict[str, Any]] = []
     excluded: list[dict[str, Any]] = []
     for component_index, component in enumerate(components):
-        representative_id = min(
-            component,
-            key=lambda source_id: (
-                -source_by_id[source_id]["declared_capacity_bytes"],
-                source_id,
-            ),
+        selected = sorted(survivor_ids.intersection(component))
+        _require(
+            len(selected) == 1,
+            "terminal survivor authority must select exactly one source per component",
         )
+        representative_id = selected[0]
         component_identity = _sha256_obj(
             {
                 "selection_policy": SELECTION_POLICY,
+                "survivor_authority_sha256": expected_survivor_authority_sha256,
                 "members": list(component),
+                "selected_source_id": representative_id,
             }
         )
         representative = source_by_id[representative_id]
@@ -484,15 +737,21 @@ def materialize_postdedup_inventory(
     retained_capacity = sum(row["declared_capacity_bytes"] for row in retained)
     _require(
         retained_capacity == expected_unique_capacity,
-        "retained representative capacity does not match V3 unique-capacity authority",
+        "retained terminal-survivor capacity does not match V3 unique-capacity authority",
     )
 
     nested_sha = _require_sha256(dedup.get("report_sha256"), "nested V3 report_sha256")
+    survivor_sha = _require_sha256(
+        expected_survivor_authority_sha256,
+        "expected_survivor_authority_sha256",
+    )
     core: dict[str, Any] = {
         "schema_version": OUTPUT_SCHEMA,
         "selection_policy": SELECTION_POLICY,
+        "upstream_survivor_selection_rule": SURVIVOR_SELECTION_RULE,
         "input_v8_report_sha256": expected_v8_report_sha256,
         "input_v3_dedup_report_sha256": nested_sha,
+        "input_survivor_authority_sha256": survivor_sha,
         "input_source_count": len(source_by_id),
         "capacity_component_count": len(components),
         "duplicate_component_count": sum(len(component) > 1 for component in components),
@@ -524,15 +783,19 @@ def materialize_postdedup_inventory(
 
 def verify_postdedup_inventory(
     v8_report: Mapping[str, Any],
+    survivor_authority: Mapping[str, Any],
     inventory: Mapping[str, Any],
     *,
     expected_v8_report_sha256: str,
+    expected_survivor_authority_sha256: str,
 ) -> None:
     rebuilt = materialize_postdedup_inventory(
         v8_report,
+        survivor_authority,
         expected_v8_report_sha256=expected_v8_report_sha256,
+        expected_survivor_authority_sha256=expected_survivor_authority_sha256,
     )
     _require(
         _canonical_bytes(rebuilt) == _canonical_bytes(dict(inventory)),
-        "post-dedup inventory does not match deterministic rebuild",
+        "post-dedup inventory does not match terminal-survivor-bound rebuild",
     )
