@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Callable
 from copy import deepcopy
-from typing import Callable
 
 from twelve_six.data.deterministic_double_pack import verify_deterministic_double_pack
 from twelve_six.data.unique_loss_ledger_v2 import LedgerError
