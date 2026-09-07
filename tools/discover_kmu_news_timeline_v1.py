@@ -16,7 +16,7 @@ import urllib.request
 from html.parser import HTMLParser
 
 ORIGIN = "https://www.kmu.gov.ua"
-SEED = f"{ORIGIN}/news"
+SEED = f"{ORIGIN}/timeline?type=posts"
 USER_AGENT = "12-6-ai-kmu-timeline-discovery/1.0 (+LOCAL_FREE research)"
 EXCLUDED = ("/npas/", "/api/", "/contact", "/kontakt", "/zvernenn", "/appeal")
 
@@ -31,6 +31,29 @@ def canonical_news_url(raw: str, base: str = SEED) -> str | None:
     if not low.startswith("/news/") or any(part in low for part in EXCLUDED):
         return None
     return urllib.parse.urlunsplit(("https", "www.kmu.gov.ua", path, "", ""))
+
+
+def canonical_timeline_page(raw: str, base: str = SEED) -> str | None:
+    absolute = urllib.parse.urljoin(base, raw)
+    parsed = urllib.parse.urlsplit(absolute)
+    if parsed.scheme != "https" or parsed.netloc not in {"kmu.gov.ua", "www.kmu.gov.ua"}:
+        return None
+    if parsed.path.rstrip("/") != "/timeline":
+        return None
+    query = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
+    if query.get("type") != ["posts"]:
+        return None
+    page_values = query.get("page", [])
+    if len(page_values) > 1:
+        return None
+    if page_values and (not page_values[0].isdigit() or int(page_values[0]) < 1):
+        return None
+    normalized = [("type", "posts")]
+    if page_values:
+        normalized.append(("page", str(int(page_values[0]))))
+    return urllib.parse.urlunsplit(
+        ("https", "www.kmu.gov.ua", "/timeline", urllib.parse.urlencode(normalized), "")
+    )
 
 
 class LinkParser(HTMLParser):
@@ -79,13 +102,9 @@ def discover(max_pages: int, delay_seconds: float) -> dict[str, object]:
             candidate = canonical_news_url(href, url)
             if candidate:
                 news.add(candidate)
-            absolute = urllib.parse.urljoin(url, href)
-            parsed = urllib.parse.urlsplit(absolute)
-            if parsed.scheme == "https" and parsed.netloc in {"kmu.gov.ua", "www.kmu.gov.ua"}:
-                path = parsed.path.rstrip("/")
-                query = parsed.query
-                if path == "/news" and query and absolute not in visited and absolute not in pending:
-                    pending.append(absolute)
+            timeline_page = canonical_timeline_page(href, url)
+            if timeline_page and timeline_page not in visited and timeline_page not in pending:
+                pending.append(timeline_page)
     core = {
         "schema_version": "12-6.kmu-timeline-discovery.v1",
         "seed": SEED,
