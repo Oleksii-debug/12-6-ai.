@@ -156,7 +156,7 @@ def _concurrent_publish_worker(
             expected_tokens_seen=trainer.tokens_seen,
         )
         result_queue.put(("ok", reference))
-    except BaseException as exc:
+    except Exception as exc:
         result_queue.put(("error", f"{type(exc).__name__}: {exc}"))
 
 
