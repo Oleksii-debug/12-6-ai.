@@ -70,7 +70,12 @@ def _ready_fresh_packet() -> dict:
             "checkpoint_every_steps": 50,
         }
     )
-    data["evaluation"]["evaluation_schedule_sha256"] = SHA64
+    data["evaluation"].update(
+        {
+            "evaluation_schedule_sha256": SHA64,
+            "final_test_reservation_sha256": SHA64,
+        }
+    )
     data["runtime"].update(
         {
             "backend_id": "PROJECT_NATIVE_PYTORCH",
@@ -113,6 +118,7 @@ def test_current_template_is_valid_but_not_launch_ready() -> None:
     assert not result.ready_for_cross_provider_resume
     assert "source_git_sha_invalid" in result.launch_blockers
     assert "resource_provider_unbound" in result.launch_blockers
+    assert "final_test_reservation_sha256_invalid" in result.launch_blockers
 
 
 def test_packet_fields_exactly_match_accelerated_roadmap() -> None:
@@ -129,6 +135,20 @@ def test_complete_fresh_packet_is_ready_only_for_initial_launch() -> None:
     assert not result.ready_for_cross_provider_resume
     assert result.launch_blockers == ()
     assert result.resume_blockers == ("checkpoint_mode_is_not_resume",)
+
+
+def test_final_test_reservation_authority_is_required_and_exact() -> None:
+    data = _ready_fresh_packet()
+    data["authorities"]["final_test_reservation"] = None
+    result = assess_portable_run_packet(data)
+    assert not result.ready_for_initial_local_free_launch
+    assert "final_test_reservation_authority_invalid" in result.launch_blockers
+
+    data = _ready_fresh_packet()
+    data["evaluation"]["final_test_reservation_sha256"] = "c" * 64
+    result = assess_portable_run_packet(data)
+    assert not result.ready_for_initial_local_free_launch
+    assert "final_test_reservation_authority_mismatch" in result.launch_blockers
 
 
 def test_unique_exposure_cannot_be_inflated_by_replay() -> None:
