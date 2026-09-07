@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Validate the D10 V5/dedup Research Corpus V1 bulk-acquisition rebind."""
 from __future__ import annotations
 
