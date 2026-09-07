@@ -28,6 +28,23 @@ def sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def git_blob_sha1_bytes(data: bytes) -> str:
+    header = f"blob {len(data)}\0".encode("ascii")
+    return hashlib.sha1(header + data).hexdigest()
+
+
+def verify_local_rights_registry(config: Mapping[str, Any], repo_root: Path) -> None:
+    validate_config(config)
+    audit = config["common_pile_audit"]
+    registry_path = repo_root / audit["registry_path"]
+    try:
+        payload = registry_path.read_bytes()
+    except OSError as exc:
+        raise LocIntakeError("Common Pile rights registry is not readable") from exc
+    if git_blob_sha1_bytes(payload) != audit["registry_blob_sha1"]:
+        raise LocIntakeError("Common Pile rights registry Git-blob identity mismatch")
+
+
 def self_identity(value: Mapping[str, Any], field: str) -> str:
     clone = deepcopy(dict(value))
     clone.pop(field, None)
@@ -187,6 +204,7 @@ def materialize_records(
     candidates: list[dict[str, Any]] = []
     inventory: list[dict[str, Any]] = []
     seen_payloads: set[str] = set()
+    seen_record_ids: dict[str, str] = {}
     rejected = {
         "field_schema": 0,
         "source": 0,
@@ -231,6 +249,13 @@ def materialize_records(
             rejected["document_too_large"] += 1
             continue
         payload_sha = sha256_bytes(payload)
+        clean_id = record_id.strip()
+        prior_payload_sha = seen_record_ids.get(clean_id)
+        if prior_payload_sha is not None:
+            if prior_payload_sha != payload_sha:
+                raise LocIntakeError("source record id maps to multiple payloads")
+            rejected["duplicate"] += 1
+            continue
         if payload_sha in seen_payloads:
             rejected["duplicate"] += 1
             continue
@@ -238,7 +263,6 @@ def materialize_records(
             rejected["budget"] += 1
             continue
 
-        clean_id = record_id.strip()
         row = {
             "record_id": f"loc:{clean_id}",
             "source_family": config["source_family"],
@@ -263,6 +287,7 @@ def materialize_records(
             }
         )
         seen_payloads.add(payload_sha)
+        seen_record_ids[clean_id] = payload_sha
         accepted_bytes += payload_bytes
         if len(candidates) >= policy["max_accepted_documents"]:
             break
@@ -301,7 +326,12 @@ def materialize_records(
 
 def iter_gzip_jsonl(path: Path, *, max_json_line_bytes: int) -> Iterable[Mapping[str, Any]]:
     with gzip.open(path, "rb") as handle:
-        for line_number, raw in enumerate(handle, start=1):
+        line_number = 0
+        while True:
+            raw = handle.readline(max_json_line_bytes + 1)
+            if not raw:
+                break
+            line_number += 1
             if len(raw) > max_json_line_bytes:
                 raise LocIntakeError(f"JSONL line {line_number} exceeds safety limit")
             try:
