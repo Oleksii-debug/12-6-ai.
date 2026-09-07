@@ -15,9 +15,10 @@ import json
 import re
 import unicodedata
 import zipfile
+from collections.abc import Mapping
 from html.parser import HTMLParser
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 CONFIG_SCHEMA = "12-6.d03-rada-bulk-normalization.v1"
 PROBE_SCHEMA = "12-6.d03-rada-bulk-source-probe-report.v1"
