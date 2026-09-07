@@ -20,7 +20,7 @@ class Data324ContractTests(unittest.TestCase):
         raw = (
             b'---\ntitle: test\n---\n'
             b'<!-- English original should disappear. -->\n'
-            + 'Український текст із Kubernetes та об’єктами API.\n'.encode('utf-8')
+            + 'Український текст із Kubernetes та об’єктами API.\n'.encode()
         )
         normalized = MODULE.normalize_markdown_uk(raw)
         self.assertNotIn('English original', normalized)
