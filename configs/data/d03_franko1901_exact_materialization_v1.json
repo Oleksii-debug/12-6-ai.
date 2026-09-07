@@ -1,0 +1,88 @@
+{
+  "schema_version": "12-6.d03-franko1901-exact-materialization.v1",
+  "worker_id": "D03-FRANKO1901-EXACT-MATERIALIZATION-20260907",
+  "local_free_only": true,
+  "base_main_sha": "56d708415e7f7a2ec72d4f80f1d571abdff428e3",
+  "source": {
+    "source_id": "ua.verba.franko1901",
+    "source_family": "ua.verba.public-domain.franko1901",
+    "language": "uk",
+    "modality": "natural_text",
+    "upstream_repository": "dmytro-yemelianov/verbacorpus",
+    "upstream_revision": "34a2c10ac35e1febad6c270a88fc8b83790407da",
+    "source_path": "data/sources/franko.csv",
+    "source_git_blob_sha1": "45f33ac620907e1d1ed727524975b3a0fd1a0994",
+    "source_bytes": 6225761,
+    "adapter_path": "adapters/franko.py",
+    "adapter_git_blob_sha1": "840f4970367879eff718def3842fc065614c8b25",
+    "datacard_path": "DATACARD.md",
+    "datacard_git_blob_sha1": "3c880b7b6f891c4b0b6aa8ced367bbd5f7280fe3",
+    "source_registry_path": "sources.csv",
+    "source_registry_git_blob_sha1": "6d1ec72fb41f580557adf91152f6b0c9d08937b5",
+    "raw_url": "https://raw.githubusercontent.com/dmytro-yemelianov/verbacorpus/34a2c10ac35e1febad6c270a88fc8b83790407da/data/sources/franko.csv"
+  },
+  "historical_work": {
+    "creator": "Ivan Franko",
+    "title": "Halytsko-ruski narodni prypovidky",
+    "publication_year_start": 1901,
+    "publication_year_end": 1910,
+    "creator_death_year": 1916,
+    "upstream_source_registry_note": "public_domain"
+  },
+  "rights_boundary": {
+    "historical_source_text": "PUBLIC_DOMAIN",
+    "verba_compilation_layer": "CC-BY-4.0",
+    "required_attribution": "Yemelianov, Dmytro (2026). verba — Ukrainian Proverbs Corpus (v1.0.2). https://verbacorpus.org",
+    "training_purpose_source_candidate": "ALLOWED_PENDING_PROJECT_CORPUS_GATES",
+    "evaluation": "NOT_GRANTED",
+    "modern_text_allowed": false,
+    "category_allowed": false,
+    "cleaned_explanation_allowed": false,
+    "variant_group_allowed": false,
+    "payload_field_allowed": "prov_clean_only"
+  },
+  "acquisition": {
+    "fetch_count_required": 2,
+    "byte_identical_fetches_required": true,
+    "max_source_bytes": 7000000,
+    "strict_utf8": true,
+    "accept_encoding": "identity",
+    "required_csv_columns": [
+      "prov_clean",
+      "term",
+      "letter",
+      "description"
+    ],
+    "max_rows": 40000
+  },
+  "filter": {
+    "unicode_normalization": "NFC",
+    "strip_outer_whitespace": true,
+    "min_alphabetic_chars": 3,
+    "min_cyrillic_share_of_alpha": 0.65,
+    "max_text_utf8_bytes": 4096,
+    "reject_control_characters": true,
+    "reject_replacement_character": true,
+    "reject_url_like": true,
+    "reject_email_like": true,
+    "deduplicate_exact_normalized_text": true
+  },
+  "truth_boundary": {
+    "candidate_only": true,
+    "canonical_capacity_credit_bytes": 0,
+    "family_credit_authorized": false,
+    "corpus_admitted": false,
+    "global_dedup": "NOT_RUN",
+    "evaluation_decontamination": "NOT_RUN",
+    "post_composition_quality_privacy": "NOT_RUN",
+    "balance_family_caps": "NOT_RUN_FOR_THIS_ADDITION",
+    "tokenizer_fit_authorized": false,
+    "training_authorized_bytes": 0,
+    "authorized_unique_loss_positions": 0,
+    "model_training_executed": false,
+    "optimizer_updates": 0,
+    "final_test_accessed": false,
+    "paid_compute_used": false,
+    "learned_20m_promoted": false
+  }
+}
