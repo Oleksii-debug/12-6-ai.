@@ -14,6 +14,7 @@ from tools.probe_d03_rada_bulk_source import (
     ProbeError,
     _load_config,
     inventory_archive,
+    observe_archive_inventory,
 )
 
 
@@ -93,6 +94,7 @@ def test_inventory_is_deterministic_and_keeps_training_closed() -> None:
     assert report_a["training_authorized_bytes"] == 0
     assert report_a["corpus_admitted"] is False
     assert report_a["gates"]["canonical_normalization"] == "NOT_RUN"
+    assert report_a["gates"]["discovery_capacity_threshold"] == "PASS"
     assert report_a["gates"]["exact_archive_identity"] == (
         "PASS_PINNED_DISCOVERY_REVALIDATED"
     )
@@ -108,8 +110,38 @@ def test_unpinned_observation_is_machine_distinct_from_strict_pass() -> None:
     report = inventory_archive(archive, _config())
 
     assert report["gates"]["exact_archive_identity"] == "OBSERVED_UNPINNED"
+    assert report["gates"]["discovery_capacity_threshold"] == "PASS"
     assert report["safe_result"] == "CURRENT_UPSTREAM_OBSERVED_SUCCESSOR_PIN_REQUIRED"
     assert report["training_authorized_bytes"] == 0
+
+
+def test_forensic_observation_retains_below_minimum_without_waiving_gate() -> None:
+    archive = _archive({"d1.htm": b"a", "readme.txt": b"x"})
+
+    first = observe_archive_inventory(archive, _config(min_entries=2))
+    second = observe_archive_inventory(archive, _config(min_entries=2))
+
+    assert first == second
+    assert first["inventory"]["canonical_entry_count"] == 1
+    assert first["gates"]["safe_zip_inventory"] == "PASS"
+    assert first["gates"]["discovery_capacity_threshold"] == "FAIL_BELOW_MINIMUM"
+    assert first["gates"]["exact_archive_identity"] == "OBSERVED_UNPINNED"
+    assert first["training_authorized_bytes"] == 0
+    assert first["corpus_admitted"] is False
+    assert first["tokenizer_fit_authorized"] is False
+    assert first["model_training_executed"] is False
+    assert first["safe_result"] == (
+        "CURRENT_UPSTREAM_OBSERVED_BELOW_DISCOVERY_MINIMUM_SUCCESSOR_TRIAGE_REQUIRED"
+    )
+    assert len(first["archive"]["sha256"]) == 64
+    assert len(first["inventory"]["entry_identity_sha256"]) == 64
+
+
+def test_forensic_observation_does_not_bypass_structural_safety() -> None:
+    archive = _archive({"../d1.htm": b"a"})
+
+    with pytest.raises(ProbeError, match="unsafe archive path"):
+        observe_archive_inventory(archive, _config(min_entries=2))
 
 
 def test_rejects_archive_identity_drift() -> None:
