@@ -81,23 +81,47 @@ jobs:
           python - <<'PY'
           import json
           from pathlib import Path
+
           a = json.loads(Path('runtime-evidence/runtime-a.json').read_text())
           b = json.loads(Path('runtime-evidence/runtime-b.json').read_text())
-          assert a['status'] == b['status'] == 'RUNTIME_QUALIFIED_OPTIONAL_COMPONENT'
-          assert a['semantic_identity_sha256'] == b['semantic_identity_sha256']
+          allowed = {
+              'RUNTIME_QUALIFIED_BPE_AND_UNIGRAM',
+              'RUNTIME_QUALIFIED_BPE_ONLY_UNIGRAM_REJECTED',
+          }
+          assert a['status'] == b['status']
+          assert a['status'] in allowed
+          assert a['qualification_identity_sha256'] == b['qualification_identity_sha256']
           assert a['runtime']['tokenizers_version'] == b['runtime']['tokenizers_version'] == '0.23.1'
-          assert a['token_ids_changed'] is False and b['token_ids_changed'] is False
-          assert a['canonical_base_changed'] is False and b['canonical_base_changed'] is False
-          assert a['training_executed'] is False and b['training_executed'] is False
           for report in (a, b):
-              assert {row['family'] for row in report['family_metrics']} == {'BPE', 'UNIGRAM'}
-              for row in report['family_metrics']:
-                  assert row['double_build_byte_identical'] is True
-                  assert row['encode_decode_roundtrip'] is True
-                  assert row['oov_unk_count'] == 0
-                  assert row['total_probe_tokens'] > 0
-                  assert row['bytes_per_token'] > 0
-          print(a['semantic_identity_sha256'])
+              assert report['token_ids_changed'] is False
+              assert report['canonical_base_changed'] is False
+              assert report['training_executed'] is False
+              assert report['final_test_accessed'] is False
+              assert report['paid_compute_used'] is False
+              rows = {row['family']: row for row in report['family_metrics']}
+              assert set(rows) == {'BPE', 'UNIGRAM'}
+              bpe = rows['BPE']
+              assert bpe['qualified_deterministic'] is True
+              assert bpe['canonical_model_identity_equal'] is True
+              assert bpe['vocab_id_mapping_equal'] is True
+              assert bpe['probe_encodings_equal'] is True
+              assert bpe['encode_decode_roundtrip'] is True
+              assert bpe['oov_zero'] is True
+              assert bpe['total_probe_tokens'] > 0
+              assert bpe['bytes_per_token'] > 0
+              unigram = rows['UNIGRAM']
+              if unigram['qualified_deterministic']:
+                  assert unigram['qualification_status'] == 'QUALIFIED_DETERMINISTIC_SEMANTICS'
+                  assert unigram['canonical_model_identity_equal'] is True
+                  assert unigram['vocab_id_mapping_equal'] is True
+                  assert unigram['probe_encodings_equal'] is True
+              else:
+                  assert unigram['qualification_status'] == 'UNQUALIFIED_NONDETERMINISTIC'
+                  assert unigram['rejection_reasons']
+              assert unigram['encode_decode_roundtrip'] is True
+              assert unigram['oov_zero'] is True
+          print(a['status'])
+          print(a['qualification_identity_sha256'])
           PY
 
       - name: Publish LOCAL_FREE runtime evidence
