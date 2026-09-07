@@ -1,0 +1,56 @@
+{
+  "schema_version": "12-6.d03-kmu-timeline-v2-terminal-evidence.v1",
+  "worker_id": "D03-KMU-TIMELINE-V2-TERMINAL-EXECUTION-20260907",
+  "execution_profile": "LOCAL_FREE",
+  "execution_head_sha": "f3d4b969e84e134b6cf8be5ec42168449456ec42",
+  "workflow_run_id": 34156356548,
+  "workflow_conclusion": "success",
+  "artifact": {
+    "id": 10031215186,
+    "name": "kmu-timeline-v2-f3d4b969e84e134b6cf8be5ec42168449456ec42",
+    "digest": "sha256:358e24ec247d31c92f35401c8da0a89293095611e23ba90e88ca29ac7afaff3e",
+    "retained_report_bytes": 1818,
+    "retained_probe_identity_sha256": "f6b695b5a6f86b3a736016a2d643ac6c197e3f35ce37b399d44ff6584f76237d",
+    "retained_discovery_identity_sha256": "f1eb96926b4c854be956ddaaa3b606e499ff71a40eab8a6ce01b32ab59513f35"
+  },
+  "parent_authority": {
+    "family_id": "ua.kmu.portal.secretariat-news",
+    "head_sha": "40950a950b60921fd856af2719e1ae2486d9e892",
+    "manifest_identity_sha256": "1f068e6cc5ce3fc4a51d8477acee31fab5a0178e15f49225b57de94c5178f7d9",
+    "pr": 449
+  },
+  "discovery": {
+    "status": "BLOCKED_CLIENT_RENDERED_TIMELINE_NO_ARTICLE_URLS",
+    "client_rendered_shell_detected": true,
+    "seed": "https://www.kmu.gov.ua/timeline?category_id=3&type=posts",
+    "pages_visited": 1,
+    "news_urls": 0,
+    "snapshot_bytes": 248990,
+    "snapshot_sha256": "8c1e44c8bb3dc86e029aeb9fe7270dff8be8d015948089e42e96d3431117d478"
+  },
+  "sample": {
+    "requested_fetch_limit": 120,
+    "attempted_pages": 0,
+    "eligible_pages": 0,
+    "duplicate_eligible_payloads": 0,
+    "observed_unique_probe_bytes": 0,
+    "family_cap_bytes": 5400000
+  },
+  "verdict": "PROBE_DISCOVERY_BLOCKED_NO_ARTICLE_URLS",
+  "claim_boundary": {
+    "canonical_registry_mutated": false,
+    "family_count_credit_added": 0,
+    "training_authorized_bytes": 0,
+    "tokenizer_fit_executed": false,
+    "optimizer_updates": 0,
+    "final_test_accessed": false,
+    "paid_compute_used": false,
+    "probe_is_not_bulk_admission": true
+  },
+  "terminal_interpretation": {
+    "same_http_timeline_probe_is_terminal": true,
+    "repeat_without_discovery_mechanism_change_required": false,
+    "capacity_credit_added": 0,
+    "successor_requires_new_server_or_api_discovery_evidence": true
+  }
+}
