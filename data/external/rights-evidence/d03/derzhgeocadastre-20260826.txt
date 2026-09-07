@@ -1,0 +1,28 @@
+D03 Derzhgeocadastre source-rights evidence
+Captured from incumbent NEXT100-025 authority on 2026-08-26.
+
+Dataset:
+https://data.gov.ua/dataset/644b424e-9884-43cb-8204-0214657f2248
+
+Publisher:
+Державна служба України з питань геодезії, картографії та кадастру
+
+Dataset title:
+Реєстр наборів даних, що перебувають у володінні розпорядника інформації
+
+Recorded upstream reuse statement:
+- open data may be freely copied, published, distributed, used including commercially,
+  combined with other information, or included in an own product;
+- attribution/link to the source is mandatory;
+- dataset license label: Creative Commons Attribution.
+
+Project interpretation:
+- acquisition/storage/analysis: allowed;
+- model-training purpose rights: allowed, subject to the project's separate corpus gates;
+- redistribution: allowed with attribution;
+- evaluation: not admitted by this authority;
+- government provenance alone is not a rights grant;
+- only the exact machine-readable resource selected and hash-bound by this lane is in scope.
+
+This evidence carries forward the incumbent #471 rights finding only. It does not grant
+canonical corpus admission, family credit, tokenizer fit, optimized-target exposure, or model training.
