@@ -1,0 +1,144 @@
+name: D03 Rada Bulk Normalization Exact Execution
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/d03-rada-bulk-normalization-exec.yml"
+      - "configs/data/d03_rada_bulk_observation_pin_v1.json"
+      - "configs/data/d03_rada_bulk_normalization_v1.json"
+      - "tools/pin_d03_rada_bulk_observation.py"
+      - "tools/normalize_d03_rada_bulk_html.py"
+      - "tests/test_d03_rada_bulk_observation_pin.py"
+      - "tests/test_d03_rada_bulk_normalization.py"
+      - "tests/test_d03_rada_bulk_probe_inventory_integrity.py"
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  exact-normalization:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Prove exact source checkout and focused regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+          python -m pip install --disable-pip-version-check --require-hashes --no-deps \
+            -r requirements/locks/linux-x86_64/dev.lock.txt
+          python -m pytest -q \
+            tests/test_d03_rada_bulk_observation_pin.py \
+            tests/test_d03_rada_bulk_normalization.py \
+            tests/test_d03_rada_bulk_probe_inventory_integrity.py
+          ruff check \
+            tools/pin_d03_rada_bulk_observation.py \
+            tools/normalize_d03_rada_bulk_html.py \
+            tests/test_d03_rada_bulk_observation_pin.py \
+            tests/test_d03_rada_bulk_normalization.py \
+            tests/test_d03_rada_bulk_probe_inventory_integrity.py
+
+      - name: Fetch exact zero-credit observation artifact
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/observation
+          curl --fail --location --silent --show-error \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/Oleksii-debug/12-6-ai./actions/artifacts/10030785621/zip" \
+            -o evidence/observation.zip
+          echo "66abcc85b83a01f556ae622633a22446a88342029ee9babf8133a7b52075e3a2  evidence/observation.zip" \
+            | sha256sum --check --strict
+          unzip -q evidence/observation.zip -d evidence/observation
+          echo "9f43da3ffe0855e49ca47ddf906da9e7c40644a845b345f6c4a19b39ef5eaf22  evidence/observation/texts.zip" \
+            | sha256sum --check --strict
+          echo "16b03cfbfcd92609f2e8e4ef7d9ee1b20e5ec3065555ec79c275832c41f7253e  evidence/observation/probe.json" \
+            | sha256sum --check --strict
+
+      - name: Pin exact observation for normalization only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/pin_d03_rada_bulk_observation.py \
+            --archive evidence/observation/texts.zip \
+            --probe-report evidence/observation/probe.json \
+            --config configs/data/d03_rada_bulk_observation_pin_v1.json \
+            --output evidence/pinned_probe.json
+          echo "b7c98ec54cd628fef68af5a771fbdf2d803367de7f8567aa09b20b924af62581  evidence/pinned_probe.json" \
+            | sha256sum --check --strict
+
+      - name: Materialize twice and require byte identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/build-a evidence/build-b evidence/final
+          for build in a b; do
+            python tools/normalize_d03_rada_bulk_html.py \
+              --archive evidence/observation/texts.zip \
+              --probe-report evidence/pinned_probe.json \
+              --config configs/data/d03_rada_bulk_normalization_v1.json \
+              --output-jsonl "evidence/build-${build}/records.jsonl" \
+              --output-manifest "evidence/build-${build}/manifest.json"
+          done
+          cmp evidence/build-a/records.jsonl evidence/build-b/records.jsonl
+          cmp evidence/build-a/manifest.json evidence/build-b/manifest.json
+          cp evidence/build-a/records.jsonl evidence/final/records.jsonl
+          cp evidence/build-a/manifest.json evidence/final/manifest.json
+          python - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+
+          root = Path("evidence/final")
+          manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
+          summary = {
+              "source_head_sha": "${{ github.event.pull_request.head.sha }}",
+              "parent_probe_head_sha": "52bc92bfb35581f6968af558148bb364f8ddbb9b",
+              "observation_archive_sha256": "9f43da3ffe0855e49ca47ddf906da9e7c40644a845b345f6c4a19b39ef5eaf22",
+              "observation_entry_identity_sha256": "766e54cf706453de30136e02f0361c549c2b96aba9855ee0573d28b354ad077b",
+              "discovery_capacity_threshold": "FAIL_BELOW_MINIMUM",
+              "records_jsonl_sha256": hashlib.sha256((root / "records.jsonl").read_bytes()).hexdigest(),
+              "manifest_sha256": hashlib.sha256((root / "manifest.json").read_bytes()).hexdigest(),
+              "record_count": manifest["record_count"],
+              "normalized_utf8_bytes": manifest["normalized_utf8_bytes"],
+              "source_encoding_counts": manifest["source_encoding_counts"],
+              "training_authorized_bytes": 0,
+              "normalized_capacity_credited": 0,
+              "quality": "NOT_RUN",
+              "privacy": "NOT_RUN",
+              "global_dedup": "NOT_RUN",
+              "evaluation_decontamination": "NOT_RUN",
+          }
+          (root / "summary.json").write_text(
+              json.dumps(summary, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(summary, sort_keys=True))
+          PY
+
+      - name: Upload deterministic normalization evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: d03-rada-bulk-normalization-exact
+          path: |
+            evidence/final/records.jsonl
+            evidence/final/manifest.json
+            evidence/final/summary.json
+            evidence/pinned_probe.json
+          if-no-files-found: error
+          retention-days: 30
