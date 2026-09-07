@@ -69,7 +69,23 @@ class TimelineProbeCompositionTests(unittest.TestCase):
         self.assertEqual(report["sample"]["eligible_pages"], 0)
         self.assertEqual(report["sample"]["observed_unique_probe_bytes"], 0)
         self.assertEqual(report["verdict"], "PROBE_INSUFFICIENT_OBSERVED_YIELD")
-        self.assertIn("fetch_or_parse_error:UnicodeDecodeError", report["sample"]["rows"][0]["rejection_reasons"])
+        self.assertIn(
+            "fetch_or_parse_error:UnicodeDecodeError",
+            report["sample"]["rows"][0]["rejection_reasons"],
+        )
+
+    def test_empty_discovery_is_not_misclassified_as_zero_capacity(self):
+        inventory = {
+            "identity_sha256": "f" * 64,
+            "news_urls": [],
+            "training_authorized_bytes": 0,
+            "family_count_credit_added": 0,
+        }
+        with patch.object(m.discovery, "discover", return_value=inventory):
+            report = m.build_report(1, 1, 1.0)
+        self.assertEqual(report["sample"]["attempted_pages"], 0)
+        self.assertEqual(report["verdict"], "PROBE_DISCOVERY_BLOCKED_NO_ARTICLE_URLS")
+        self.assertEqual(report["probe_boundary"]["training_authorized_bytes"], 0)
 
     def test_identity_is_deterministic(self):
         inventory = {
