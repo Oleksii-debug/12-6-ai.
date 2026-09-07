@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+import twelve_six.checkpoint.recovery_lock as recovery_lock
 import twelve_six.scale141_resume_sidecar as sidecar
 from twelve_six.scale141_resume_sidecar import ResumeSidecarError, _read_payload
 
@@ -82,3 +83,66 @@ def test_read_payload_rejects_symlink_even_when_target_hash_matches(tmp_path: Pa
 
     with pytest.raises(ResumeSidecarError, match="regular non-symlink"):
         _read_payload(link, expected_hash)
+
+
+def test_publication_lock_rejects_symlink_path(tmp_path: Path) -> None:
+    root = tmp_path / "recovery"
+    root.mkdir()
+    target = tmp_path / "outside.lock"
+    target.write_bytes(b"")
+    link = root / recovery_lock.LOCK_NAME
+    try:
+        link.symlink_to(target)
+    except OSError:
+        pytest.skip("symlinks unavailable on this platform")
+
+    with pytest.raises(OSError):
+        with recovery_lock.exclusive_recovery_lock(root):
+            pytest.fail("symlinked publication lock must never be acquired")
+
+
+def test_publication_lock_rejects_path_replacement_after_fd_lock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "recovery"
+    real_lock_fd = recovery_lock._lock_fd
+    swapped = False
+
+    def lock_then_replace(fd: int) -> None:
+        nonlocal swapped
+        real_lock_fd(fd)
+        lock_path = root / recovery_lock.LOCK_NAME
+        replacement = root / ".replacement.lock"
+        replacement.write_bytes(b"")
+        os.replace(replacement, lock_path)
+        swapped = True
+
+    monkeypatch.setattr(recovery_lock, "_lock_fd", lock_then_replace)
+
+    with pytest.raises(OSError, match="lock path changed while locked"):
+        with recovery_lock.exclusive_recovery_lock(root):
+            pytest.fail("replaced publication lock path must never enter critical section")
+    assert swapped is True
+
+
+def test_publication_lock_rejects_recovery_root_replacement_while_locking(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "recovery"
+    real_lock_fd = recovery_lock._lock_fd
+    swapped = False
+
+    def lock_then_replace_root(fd: int) -> None:
+        nonlocal swapped
+        real_lock_fd(fd)
+        moved = tmp_path / "moved-recovery"
+        os.replace(root, moved)
+        root.mkdir()
+        swapped = True
+
+    monkeypatch.setattr(recovery_lock, "_lock_fd", lock_then_replace_root)
+
+    with pytest.raises(OSError, match="recovery root changed while publication lock was acquired"):
+        with recovery_lock.exclusive_recovery_lock(root):
+            pytest.fail("replaced recovery root must never enter critical section")
+    assert swapped is True
