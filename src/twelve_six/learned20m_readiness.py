@@ -10,6 +10,14 @@ from typing import Any
 REPOSITORY = "Oleksii-debug/12-6-ai."
 CAMPAIGN_ID = "R01-LEARNED-20M-LAUNCH-V1"
 R01_CAMPAIGN_BLOB_SHA1 = "c50154db609d41eceb2ffc97912360df567bcc04"
+POSTPACK_PROOF_SCHEMA = "12-6.d04-deterministic-double-pack-proof.v1"
+POSTPACK_STAGE_BINDINGS = {
+    "normalization",
+    "evaluation_reservations",
+    "dedup",
+    "split",
+    "packing",
+}
 
 MODEL341_AUTHORITY = {
     "branch": "model341/20m-candidate-a-20260826",
@@ -225,6 +233,130 @@ def _validate_decontamination(
         blockers.append("decontamination_local_free_only_must_be_true")
 
 
+def _validate_postpack_proof(
+    blockers: list[str],
+    evidence: dict[str, Any],
+    corpus: dict[str, Any],
+    tokenizer: dict[str, Any],
+    ledger: dict[str, Any],
+) -> None:
+    """Require one terminal proof to bind split, packing, tokenizer and loss ledger."""
+    proof = (
+        evidence.get("postpack_proof")
+        if isinstance(evidence.get("postpack_proof"), dict)
+        else {}
+    )
+    if proof.get("schema_version") != POSTPACK_PROOF_SCHEMA:
+        blockers.append("postpack_proof_schema_mismatch")
+
+    proof_identity = proof.get("proof_identity_sha256")
+    _require_identity(blockers, proof_identity, "postpack_proof_identity_missing")
+    authority = proof.get("authority")
+    _require_authority(
+        blockers,
+        authority,
+        "postpack_proof_authority_missing",
+        require_workflow=True,
+    )
+    if (
+        isinstance(authority, dict)
+        and _is_sha256(proof_identity)
+        and authority.get("evidence_sha256") != proof_identity
+    ):
+        blockers.append("postpack_proof_authority_mismatch")
+
+    for key in (
+        "terminal_corpus_authority_identity_sha256",
+        "terminal_record_inventory_digest_sha256",
+        "terminal_payload_inventory_digest_sha256",
+        "materialization_identity_sha256",
+        "packing_identity_sha256",
+        "ledger_identity_sha256",
+        "canonical_build_sha256",
+        "build_a_canonical_sha256",
+        "build_b_canonical_sha256",
+        "tokenizer_identity_sha256",
+    ):
+        _require_identity(blockers, proof.get(key), f"postpack_{key}_missing")
+
+    stage_bindings = proof.get("stage_bindings")
+    if not isinstance(stage_bindings, dict) or set(stage_bindings) != POSTPACK_STAGE_BINDINGS:
+        blockers.append("postpack_stage_bindings_invalid")
+        stage_bindings = {}
+    else:
+        for key in sorted(POSTPACK_STAGE_BINDINGS):
+            _require_identity(
+                blockers,
+                stage_bindings.get(key),
+                f"postpack_stage_binding_{key}_missing",
+            )
+
+    positions = proof.get("one_pass_unique_nonignored_causal_loss_positions")
+    if not _is_positive_int(positions):
+        blockers.append("postpack_unique_loss_positions_not_positive")
+    matched_records = proof.get("retained_train_records_matched_to_terminal_inventory")
+    if not _is_positive_int(matched_records):
+        blockers.append("postpack_train_record_membership_count_not_positive")
+
+    required_true = (
+        "retained_train_record_membership_verified",
+        "retained_document_isolation_verified",
+        "heldout_reservation_verified",
+        "independent_builds_byte_identical",
+    )
+    for key in required_true:
+        if proof.get(key) is not True:
+            blockers.append(f"postpack_{key}_not_proven")
+    if proof.get("training_authorized_by_this_proof") is not False:
+        blockers.append("postpack_proof_must_not_self_authorize_training")
+
+    if (
+        _is_sha256(stage_bindings.get("split"))
+        and _is_sha256(corpus.get("split_sha256"))
+        and stage_bindings.get("split") != corpus.get("split_sha256")
+    ):
+        blockers.append("postpack_split_identity_mismatch")
+    if (
+        _is_sha256(proof.get("packing_identity_sha256"))
+        and _is_sha256(corpus.get("packing_sha256"))
+        and proof.get("packing_identity_sha256") != corpus.get("packing_sha256")
+    ):
+        blockers.append("postpack_packing_identity_mismatch")
+    if (
+        _is_sha256(proof.get("tokenizer_identity_sha256"))
+        and _is_sha256(tokenizer.get("identity_sha256"))
+        and proof.get("tokenizer_identity_sha256") != tokenizer.get("identity_sha256")
+    ):
+        blockers.append("postpack_tokenizer_identity_mismatch")
+    if (
+        _is_sha256(proof.get("ledger_identity_sha256"))
+        and _is_sha256(ledger.get("identity_sha256"))
+        and proof.get("ledger_identity_sha256") != ledger.get("identity_sha256")
+    ):
+        blockers.append("postpack_ledger_identity_mismatch")
+    if (
+        _is_positive_int(positions)
+        and _is_positive_int(ledger.get("unique_causal_loss_positions"))
+        and positions != ledger.get("unique_causal_loss_positions")
+    ):
+        blockers.append("postpack_unique_loss_positions_mismatch")
+    if (
+        proof.get("independent_builds_byte_identical") is True
+        and corpus.get("two_clean_builds_identical") is not True
+    ):
+        blockers.append("postpack_two_clean_build_claim_mismatch")
+
+    canonical = proof.get("canonical_build_sha256")
+    if (
+        _is_sha256(canonical)
+        and (
+            proof.get("build_a_canonical_sha256") != canonical
+            or proof.get("build_b_canonical_sha256") != canonical
+        )
+    ):
+        blockers.append("postpack_canonical_build_identity_mismatch")
+
+
 def assess_learned20m_readiness(
     data: dict[str, Any],
     *,
@@ -286,6 +418,8 @@ def assess_learned20m_readiness(
     )
     if ledger.get("data_budget_status") != "QUALIFIED":
         local.append("data_budget_not_qualified")
+
+    _validate_postpack_proof(local, evidence, corpus, tokenizer, ledger)
 
     checkpoint = (
         evidence.get("checkpoint_integrity")
