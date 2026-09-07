@@ -70,22 +70,84 @@ def _require_sha256(value: Any, label: str) -> str:
 
 def _validated_plan_batches(
     plan: Mapping[str, Any],
+    *,
+    expected_plan_identity_sha256: str | None = None,
 ) -> tuple[Sequence[Mapping[str, Any]], str]:
+    """Validate the complete deterministic plan before any runtime exposure.
+
+    A self-hash proves internal consistency, not external authority. Runtime callers
+    can additionally bind the exact plan identity supplied by a prior preflight /
+    checkpoint handoff so a re-hashed substitute plan cannot be accepted on resume.
+    """
     if not isinstance(plan, Mapping) or set(plan) != _PLAN_KEYS:
         raise LedgerError("exposure plan fields do not match schema")
     if plan["schema_version"] != _PLAN_SCHEMA:
         raise LedgerError("unsupported exposure plan schema")
-    expected_plan_identity = _require_sha256(
+
+    observed_plan_identity = _require_sha256(
         plan["plan_identity_sha256"], "plan_identity_sha256"
     )
     unhashed = dict(plan)
     unhashed.pop("plan_identity_sha256")
-    if _canonical_sha256(unhashed) != expected_plan_identity:
+    if _canonical_sha256(unhashed) != observed_plan_identity:
         raise LedgerError("exposure plan self-hash mismatch")
+    if expected_plan_identity_sha256 is not None:
+        expected_plan_identity = _require_sha256(
+            expected_plan_identity_sha256, "expected_plan_identity_sha256"
+        )
+        if observed_plan_identity != expected_plan_identity:
+            raise LedgerError("exposure plan identity does not match expected handoff")
+
+    workers = _positive_int(plan["num_workers"], "num_workers")
+    per_shard = _positive_int(plan["batches_per_shard"], "batches_per_shard")
+    shards = _positive_int(plan["shard_count"], "shard_count")
     batches = plan["batches"]
     if not isinstance(batches, Sequence) or isinstance(batches, (str, bytes)):
         raise LedgerError("exposure plan batches must be a sequence")
-    return batches, expected_plan_identity
+
+    for expected_index, batch in enumerate(batches):
+        if not isinstance(batch, Mapping) or set(batch) != _BATCH_KEYS:
+            raise LedgerError(f"batches[{expected_index}] fields do not match schema")
+        index = _nonnegative_int(batch["global_batch_index"], "global_batch_index")
+        shard = _nonnegative_int(batch["shard_index"], "shard_index")
+        worker = _nonnegative_int(batch["worker_id"], "worker_id")
+        targets = _positive_int(
+            batch["actual_nonignored_targets"], "actual_nonignored_targets"
+        )
+        if index != expected_index:
+            raise LedgerError("global batch indexes must be contiguous from zero")
+        if worker != index % workers:
+            raise LedgerError("worker assignment is not deterministic round-robin")
+        expected_shard = index // per_shard
+        if shard != expected_shard or shard >= shards:
+            raise LedgerError("shard assignment does not match deterministic plan")
+
+        claims = batch["claims"]
+        if not isinstance(claims, Sequence) or isinstance(claims, (str, bytes)):
+            raise LedgerError("claims must be a sequence")
+        claimed_count = 0
+        for claim_index, claim in enumerate(claims):
+            if not isinstance(claim, Mapping) or set(claim) != _CLAIM_KEYS:
+                raise LedgerError(
+                    f"batches[{expected_index}].claims[{claim_index}] fields do not "
+                    "match schema"
+                )
+            _require_sha256(
+                claim["segment_identity_sha256"],
+                f"batches[{expected_index}].claims[{claim_index}]"
+                ".segment_identity_sha256",
+            )
+            start = _nonnegative_int(claim["offset_start"], "offset_start")
+            end = _nonnegative_int(claim["offset_end"], "offset_end")
+            if start >= end:
+                raise LedgerError("claim interval must be non-empty")
+            claimed_count += end - start
+        if claimed_count != targets:
+            raise LedgerError(
+                "batch claim cardinality does not match actual nonignored targets"
+            )
+
+    return batches, observed_plan_identity
 
 
 def build_deterministic_exposure_plan(
@@ -100,6 +162,8 @@ def build_deterministic_exposure_plan(
     Worker assignment is round-robin by global batch index. Shard assignment is
     contiguous by ``batches_per_shard``. This makes the intended order explicit
     and hashable instead of inheriting process scheduling or iterator timing.
+    Padding-only / zero-target batches are rejected so they cannot advance the
+    exposure sequence without consuming unique causal targets.
     """
     workers = _positive_int(num_workers, "num_workers")
     per_shard = _positive_int(batches_per_shard, "batches_per_shard")
@@ -111,7 +175,7 @@ def build_deterministic_exposure_plan(
         index = _nonnegative_int(batch["global_batch_index"], "global_batch_index")
         shard = _nonnegative_int(batch["shard_index"], "shard_index")
         worker = _nonnegative_int(batch["worker_id"], "worker_id")
-        targets = _nonnegative_int(
+        targets = _positive_int(
             batch["actual_nonignored_targets"], "actual_nonignored_targets"
         )
         claims = batch["claims"]
@@ -124,12 +188,43 @@ def build_deterministic_exposure_plan(
         expected_shard = index // per_shard
         if shard != expected_shard or shard >= shards:
             raise LedgerError("shard assignment does not match deterministic plan")
+
+        normalized_claims: list[dict[str, Any]] = []
+        claimed_count = 0
+        for claim_index, claim in enumerate(claims):
+            if not isinstance(claim, Mapping) or set(claim) != _CLAIM_KEYS:
+                raise LedgerError(
+                    f"batches[{expected_index}].claims[{claim_index}] fields do not "
+                    "match schema"
+                )
+            segment_id = _require_sha256(
+                claim["segment_identity_sha256"],
+                f"batches[{expected_index}].claims[{claim_index}]"
+                ".segment_identity_sha256",
+            )
+            start = _nonnegative_int(claim["offset_start"], "offset_start")
+            end = _nonnegative_int(claim["offset_end"], "offset_end")
+            if start >= end:
+                raise LedgerError("claim interval must be non-empty")
+            normalized_claims.append(
+                {
+                    "segment_identity_sha256": segment_id,
+                    "offset_start": start,
+                    "offset_end": end,
+                }
+            )
+            claimed_count += end - start
+        if claimed_count != targets:
+            raise LedgerError(
+                "batch claim cardinality does not match actual nonignored targets"
+            )
+
         normalized.append(
             {
                 "global_batch_index": index,
                 "shard_index": shard,
                 "worker_id": worker,
-                "claims": [dict(claim) for claim in claims],
+                "claims": normalized_claims,
                 "actual_nonignored_targets": targets,
             }
         )
@@ -173,9 +268,6 @@ def validate_exposure_plan_preflight(
         raise LedgerError("expected unique exposure budget exceeds ledger maximum")
 
     batches, plan_identity = _validated_plan_batches(plan)
-    workers = _positive_int(plan["num_workers"], "num_workers")
-    per_shard = _positive_int(plan["batches_per_shard"], "batches_per_shard")
-    shards = _positive_int(plan["shard_count"], "shard_count")
 
     raw_segments = ledger.get("segments")
     if not isinstance(raw_segments, Sequence) or isinstance(raw_segments, (str, bytes)):
@@ -198,54 +290,24 @@ def validate_exposure_plan_preflight(
         claimed_intervals[segment_id] = []
 
     total_claimed = 0
-    for expected_index, batch in enumerate(batches):
-        if not isinstance(batch, Mapping) or set(batch) != _BATCH_KEYS:
-            raise LedgerError(f"batches[{expected_index}] fields do not match schema")
-        index = _nonnegative_int(batch["global_batch_index"], "global_batch_index")
-        shard = _nonnegative_int(batch["shard_index"], "shard_index")
-        worker = _nonnegative_int(batch["worker_id"], "worker_id")
-        if index != expected_index:
-            raise LedgerError("global batch indexes must be contiguous from zero")
-        if worker != index % workers:
-            raise LedgerError("worker assignment is not deterministic round-robin")
-        expected_shard = index // per_shard
-        if shard != expected_shard or shard >= shards:
-            raise LedgerError("shard assignment does not match deterministic plan")
-
-        actual_targets = _nonnegative_int(
-            batch["actual_nonignored_targets"], "actual_nonignored_targets"
-        )
-        if actual_targets == 0:
-            raise LedgerError(
-                "exposure plan batches must contain positive nonignored targets"
-            )
-        claims = batch["claims"]
-        if not isinstance(claims, Sequence) or isinstance(claims, (str, bytes)):
-            raise LedgerError("claims must be a sequence")
+    for batch in batches:
         batch_claimed = 0
-        for claim_index, claim in enumerate(claims):
-            if not isinstance(claim, Mapping) or set(claim) != _CLAIM_KEYS:
-                raise LedgerError(
-                    f"batches[{expected_index}].claims[{claim_index}] fields do not "
-                    "match schema"
-                )
+        for claim in batch["claims"]:
             segment_id = _require_sha256(
-                claim["segment_identity_sha256"],
-                f"batches[{expected_index}].claims[{claim_index}]"
-                ".segment_identity_sha256",
+                claim["segment_identity_sha256"], "segment_identity_sha256"
             )
             if segment_id not in segment_lengths:
                 raise LedgerError("claim references unknown ledger segment")
             start = _nonnegative_int(claim["offset_start"], "offset_start")
             end = _nonnegative_int(claim["offset_end"], "offset_end")
-            if start >= end or end > segment_lengths[segment_id]:
+            if end > segment_lengths[segment_id]:
                 raise LedgerError("claim interval is outside ledger segment")
             for old_start, old_end in claimed_intervals[segment_id]:
                 if start < old_end and old_start < end:
                     raise LedgerError("exposure plan replays/overlaps unique loss positions")
             claimed_intervals[segment_id].append((start, end))
             batch_claimed += end - start
-        if batch_claimed != actual_targets:
+        if batch_claimed != batch["actual_nonignored_targets"]:
             raise LedgerError(
                 "batch claim cardinality does not match actual nonignored targets"
             )
@@ -289,10 +351,14 @@ def ordered_next_exposure_identity(
     plan: Mapping[str, Any],
     *,
     batch_index: int,
+    expected_plan_identity_sha256: str,
 ) -> str:
-    """Bind the guard's next exposure to exact deterministic scheduling context."""
+    """Bind the next exposure to the externally authorized deterministic plan."""
     index = _nonnegative_int(batch_index, "batch_index")
-    batches, expected_plan_identity = _validated_plan_batches(plan)
+    batches, plan_identity = _validated_plan_batches(
+        plan,
+        expected_plan_identity_sha256=expected_plan_identity_sha256,
+    )
     if index >= len(batches):
         raise LedgerError("batch_index is outside exposure plan")
     if index != guard.claim_sequence:
@@ -304,7 +370,7 @@ def ordered_next_exposure_identity(
     return _canonical_sha256(
         {
             "schema_version": "12-6.ordered-next-exposure.v1",
-            "plan_identity_sha256": expected_plan_identity,
+            "plan_identity_sha256": plan_identity,
             "base_next_exposure_identity_sha256": base_identity,
             "global_batch_index": batch["global_batch_index"],
             "shard_index": batch["shard_index"],
@@ -318,13 +384,22 @@ def authorize_ordered_batch(
     plan: Mapping[str, Any],
     *,
     batch_index: int,
+    expected_plan_identity_sha256: str,
     expected_ordered_next_exposure_identity_sha256: str,
 ) -> str:
-    """Authorize one deterministic scheduled batch without mutation on mismatch."""
-    observed = ordered_next_exposure_identity(guard, plan, batch_index=batch_index)
+    """Authorize one exact planned batch without mutation on any identity mismatch."""
+    observed = ordered_next_exposure_identity(
+        guard,
+        plan,
+        batch_index=batch_index,
+        expected_plan_identity_sha256=expected_plan_identity_sha256,
+    )
     if observed != expected_ordered_next_exposure_identity_sha256:
         raise LedgerError("ordered next exposure identity does not match expected handoff")
-    batches, _ = _validated_plan_batches(plan)
+    batches, _ = _validated_plan_batches(
+        plan,
+        expected_plan_identity_sha256=expected_plan_identity_sha256,
+    )
     batch = batches[batch_index]
     base_identity = guard.next_exposure_identity(
         batch["claims"], actual_nonignored_targets=batch["actual_nonignored_targets"]
