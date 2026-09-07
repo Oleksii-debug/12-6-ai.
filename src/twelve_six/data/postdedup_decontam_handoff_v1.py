@@ -1,4 +1,4 @@
-"""Ephemeral retained-payload handoff from post-dedup inventory to DATA-232.
+"""Ephemeral retained-payload handoff from survivor-bound inventory to DATA-232.
 
 Durable evidence remains text-free. Callers reconstruct authority-approved comparison
 payloads in an ephemeral workspace, and this module proves exact coverage/hash/size
@@ -12,7 +12,11 @@ from collections.abc import Mapping, Sequence
 from copy import deepcopy
 from typing import Any
 
-from twelve_six.data.postdedup_inventory_v1 import OUTPUT_SCHEMA
+from twelve_six.data.postdedup_inventory_v1 import (
+    OUTPUT_SCHEMA,
+    SELECTION_POLICY,
+    SURVIVOR_SELECTION_RULE,
+)
 
 HANDOFF_SCHEMA = "12-6.postdedup-decontam-handoff.v1"
 
@@ -82,6 +86,18 @@ def _validated_retained_rows(
     _require(
         _sha256_bytes(_canonical_bytes(core)) == observed_identity,
         "post-dedup inventory self-hash mismatch",
+    )
+    _require(
+        inventory.get("selection_policy") == SELECTION_POLICY,
+        "post-dedup inventory survivor-selection authority drift",
+    )
+    _require(
+        inventory.get("upstream_survivor_selection_rule") == SURVIVOR_SELECTION_RULE,
+        "post-dedup inventory upstream survivor rule drift",
+    )
+    _require_sha256(
+        inventory.get("input_survivor_authority_sha256"),
+        "input_survivor_authority_sha256",
     )
     _require(inventory.get("raw_text_emitted") is False, "post-dedup inventory raw-text boundary drift")
     _require(
@@ -166,6 +182,10 @@ def prepare_ephemeral_data232_rows(
         inventory,
         expected_inventory_identity_sha256=expected_inventory_identity_sha256,
     )
+    survivor_authority_sha = _require_sha256(
+        inventory.get("input_survivor_authority_sha256"),
+        "input_survivor_authority_sha256",
+    )
     expected_ids = {row["source_id"] for row in retained}
     _require(
         set(comparison_payloads) == expected_ids,
@@ -232,6 +252,7 @@ def prepare_ephemeral_data232_rows(
             expected_inventory_identity_sha256,
             "expected_inventory_identity_sha256",
         ),
+        "input_survivor_authority_sha256": survivor_authority_sha,
         "retained_source_count": len(retained),
         "comparison_payload_projection": projection,
         "matcher_input_projection": matcher_projection,
