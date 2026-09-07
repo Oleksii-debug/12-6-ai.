@@ -1,8 +1,8 @@
 """Current-main successor for deterministic two-clean-build verification.
 
 This module deliberately does not build, tokenize, split, pack, or authorize a corpus.
-It compares two independently produced build roots byte-for-byte and binds the result
-to exact upstream scientific identities.  The historical NEXT100-070 comparator
+It compares two caller-supplied clean build roots byte-for-byte and binds the result
+to exact upstream scientific identities. The historical NEXT100-070 comparator
 semantics are retained without importing its stale corpus/gate snapshot.
 """
 
@@ -250,7 +250,7 @@ def _build_report(binding: dict[str, Any], tree: BuildTree) -> dict[str, Any]:
 def compare_clean_builds(
     binding: dict[str, Any], root_a: Path, root_b: Path
 ) -> CleanBuildAssessment:
-    """Compare two independent roots and retain only root-independent evidence."""
+    """Compare two clean roots and retain only root-independent evidence."""
     binding_errors = validate_binding(binding)
     if binding_errors:
         return CleanBuildAssessment(False, tuple(binding_errors), None)
@@ -262,6 +262,8 @@ def compare_clean_builds(
         resolved_b = root_b.resolve(strict=True)
         if resolved_a == resolved_b:
             raise CleanBuildError("clean_build_roots_must_be_distinct")
+        if resolved_a in resolved_b.parents or resolved_b in resolved_a.parents:
+            raise CleanBuildError("clean_build_roots_must_not_be_nested")
         tree_a = scan_build_root(root_a)
         tree_b = scan_build_root(root_b)
     except (CleanBuildError, FileNotFoundError) as exc:
@@ -270,16 +272,43 @@ def compare_clean_builds(
     if tree_a.entries != tree_b.entries:
         paths_a = {row["path"] for row in tree_a.entries}
         paths_b = {row["path"] for row in tree_b.entries}
-        blockers: list[str] = []
-        if paths_a != paths_b:
-            blockers.append("build_path_set_mismatch")
-        if paths_a == paths_b:
-            blockers.append("build_content_mismatch")
-        return CleanBuildAssessment(False, tuple(blockers), None)
+        blocker = (
+            "build_path_set_mismatch" if paths_a != paths_b else "build_content_mismatch"
+        )
+        return CleanBuildAssessment(False, (blocker,), None)
     if tree_a.tree_sha256 != tree_b.tree_sha256:
         return CleanBuildAssessment(False, ("build_tree_identity_mismatch",), None)
 
     return CleanBuildAssessment(True, (), _build_report(binding, tree_a))
+
+
+def _validate_report_entries(entries: Any, errors: list[str]) -> list[dict[str, Any]]:
+    if not isinstance(entries, list) or not entries:
+        errors.append("report_entries_missing")
+        return []
+
+    valid_rows: list[dict[str, Any]] = []
+    for index, row in enumerate(entries):
+        if not isinstance(row, dict) or set(row) != {"path", "bytes", "sha256"}:
+            errors.append(f"report_entry_{index}_invalid")
+            continue
+        path = row.get("path")
+        byte_count = row.get("bytes")
+        digest = row.get("sha256")
+        if not isinstance(path, str) or not path or path.startswith("/") or "\\" in path:
+            errors.append(f"report_entry_{index}_path_invalid")
+            continue
+        if any(part in {"", ".", ".."} for part in path.split("/")):
+            errors.append(f"report_entry_{index}_path_invalid")
+            continue
+        if isinstance(byte_count, bool) or not isinstance(byte_count, int) or byte_count < 0:
+            errors.append(f"report_entry_{index}_bytes_invalid")
+            continue
+        if not _is_sha256(digest):
+            errors.append(f"report_entry_{index}_sha256_invalid")
+            continue
+        valid_rows.append(row)
+    return valid_rows
 
 
 def validate_report(report: Any) -> list[str]:
@@ -301,25 +330,24 @@ def validate_report(report: Any) -> list[str]:
         errors.append("report_sha256_invalid")
 
     entries = report.get("entries")
-    if not isinstance(entries, list) or not entries:
-        errors.append("report_entries_missing")
-    else:
+    valid_rows = _validate_report_entries(entries, errors)
+    if valid_rows and isinstance(entries, list) and len(valid_rows) == len(entries):
         if report.get("file_count") != len(entries):
             errors.append("report_file_count_mismatch")
-        if entries != sorted(entries, key=lambda row: row.get("path", "")):
+        if entries != sorted(entries, key=lambda row: row["path"]):
             errors.append("report_entries_not_sorted")
-        if report.get("total_bytes") != sum(
-            row.get("bytes", -1) for row in entries if isinstance(row, dict)
-        ):
+        paths = [row["path"] for row in entries]
+        if len(paths) != len(set(paths)):
+            errors.append("report_entry_paths_not_unique")
+        if report.get("total_bytes") != sum(row["bytes"] for row in entries):
             errors.append("report_total_bytes_mismatch")
         tree_payload = {
             "entries": entries,
             "file_count": report.get("file_count"),
             "total_bytes": report.get("total_bytes"),
         }
-        if report.get("build_tree_sha256") != sha256_bytes(
-            canonical_json_bytes(tree_payload)
-        ):
+        expected_tree_sha = sha256_bytes(canonical_json_bytes(tree_payload))
+        if report.get("build_tree_sha256") != expected_tree_sha:
             errors.append("report_build_tree_identity_mismatch")
 
     reconstructed_binding = {
