@@ -7,6 +7,8 @@ from typing import Any
 
 from twelve_six.learned20m_readiness import (
     assess_learned20m_readiness as _assess_impl,
+)
+from twelve_six.learned20m_readiness import (
     scientific_authority_token,
 )
 
@@ -170,7 +172,7 @@ def _add_material_authorizations(
     *,
     compute_ref: str = COMPUTE_REF,
     training_ref: str = TRAINING_REF,
-    maximum_cost_usd: float = 50.0,
+    maximum_cost_usd: float | int = 50.0,
 ) -> None:
     evidence = data["evidence"]
     evidence["compute_authorization"].update(
@@ -472,3 +474,18 @@ def test_nonfinite_authorized_cost_limit_fails_closed() -> None:
         result = _assess(data, verified_authorization_refs=verified)
         assert not result.material_training_authorized
         assert "authorized_cost_limit_not_finite" in result.material_training_blockers
+
+
+def test_extreme_integer_costs_remain_deterministic_and_do_not_crash() -> None:
+    huge = 10**10_000
+    data = _make_compute_request_ready()
+    data["evidence"]["cost_envelope"]["maximum_cost_usd"] = huge
+    result = _assess(data)
+    assert result.ready_for_compute_authorization_request
+
+    _add_material_authorizations(data, maximum_cost_usd=huge)
+    result = _assess(
+        data,
+        verified_authorization_refs={COMPUTE_REF, TRAINING_REF},
+    )
+    assert result.material_training_authorized
