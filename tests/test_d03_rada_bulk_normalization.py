@@ -179,7 +179,7 @@ def test_two_clean_materializations_are_byte_identical_and_zero_credit() -> None
 def test_mixed_utf8_and_windows_1251_archive_records_decode_authority() -> None:
     archive = _archive(
         {
-            "d1.htm": "<p>Новий акт</p>".encode("utf-8"),
+            "d1.htm": "<p>Новий акт</p>".encode(),
             "d2.htm": "<p>Старий акт</p>".encode("cp1251"),
         }
     )
