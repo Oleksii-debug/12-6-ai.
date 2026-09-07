@@ -244,7 +244,6 @@ def _validate_occurrences(row: Mapping[str, Any], text: str) -> None:
             f"invalid_{count_field}",
         )
         _require(isinstance(occurrences, list), f"invalid_{occurrence_field}")
-        _require(len(occurrences) == count, f"occurrence_count_mismatch_{count_field}")
         nonzero_types += int(count > 0)
 
         annotated: list[tuple[int, int, str]] = []
@@ -278,6 +277,11 @@ def _validate_occurrences(row: Mapping[str, Any], text: str) -> None:
         _require(
             sorted(annotated) == expected,
             f"untracked_or_stale_occurrences_{occurrence_field}",
+        )
+        unique_labels = {token for _, _, token in expected}
+        _require(
+            count == len(unique_labels),
+            f"unique_placeholder_count_mismatch_{count_field}",
         )
 
     _require(
@@ -411,6 +415,7 @@ def materialize(
         "exact_schema_validated": True,
         "occurrence_spans_validated": True,
         "complete_placeholder_annotation_validated": True,
+        "unique_placeholder_count_semantics_validated": True,
         "universal_pii_absence_claimed": False,
         "rejected_text_emitted": False,
         "rejected_hashes_emitted": False,
