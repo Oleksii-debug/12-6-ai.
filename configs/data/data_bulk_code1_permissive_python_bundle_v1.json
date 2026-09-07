@@ -1,0 +1,115 @@
+{
+  "schema_version": "12-6.data-bulk-code1-permissive-python-bundle.v1",
+  "worker_id": "DATA-BULK-CODE-1-PERMISSIVE-PYTHON-BUNDLE",
+  "issue": 635,
+  "parent": {
+    "pr": 594,
+    "head_sha": "a546a1cb1434bee7db09d8fc8eff6040491de8ff",
+    "package_id": "code-permissive-python-implementation-pool"
+  },
+  "execution_profile": "LOCAL_FREE",
+  "rights_boundary": {
+    "model_training_source_use": "ELIGIBLE_AFTER_THIS_EXACT_SOURCE_MATERIALIZATION_AND_DOWNSTREAM_GATES",
+    "evaluation": "NOT_SEPARATELY_ADMITTED",
+    "final_test": "PROHIBITED",
+    "automatic_canonical_capacity_credit": false
+  },
+  "selection_policy": {
+    "extensions": [".py"],
+    "strict_utf8": true,
+    "python_ast_parse": true,
+    "max_file_bytes": 524288,
+    "exclude_directory_components": [
+      ".git",
+      "__pycache__",
+      "build",
+      "dist",
+      "docs",
+      "doc",
+      "examples",
+      "example",
+      "tests",
+      "test",
+      "testing",
+      "vendor",
+      "vendored",
+      "_vendor",
+      "generated"
+    ],
+    "reject_symlinks": true,
+    "secret_scan": "BOUND_CREDENTIAL_PATTERNS_V1"
+  },
+  "sources": [
+    {
+      "repository": "pallets/flask",
+      "family_id": "github:pallets/flask",
+      "commit": "d318b683471101618febed18996405ad26462110",
+      "source_root": "src/flask",
+      "license_id": "BSD-3-Clause",
+      "license_path": "LICENSE.txt",
+      "license_git_blob_sha1": "9d227a0cc43c3268d15722b763bd94ad298645a1"
+    },
+    {
+      "repository": "pallets/click",
+      "family_id": "github:pallets/click",
+      "commit": "68e7ea7228ca144c52e4d1d282cc09da59f7771f",
+      "source_root": "src/click",
+      "license_id": "BSD-3-Clause",
+      "license_path": "LICENSE.txt",
+      "license_git_blob_sha1": "d12a849186982399c537c5b9a8fd77bf2edd5eab"
+    },
+    {
+      "repository": "pallets/jinja",
+      "family_id": "github:pallets/jinja",
+      "commit": "5ef70112a1ff19c05324ff889dd30405b1002044",
+      "source_root": "src/jinja2",
+      "license_id": "BSD-3-Clause",
+      "license_path": "LICENSE.txt",
+      "license_git_blob_sha1": "c37cae49ec77ad6ebb25568c1605f1fee5313cfb"
+    },
+    {
+      "repository": "pallets/werkzeug",
+      "family_id": "github:pallets/werkzeug",
+      "commit": "0005c79e09bae5f4cc2bd8ccd468d7dafe24a455",
+      "source_root": "src/werkzeug",
+      "license_id": "BSD-3-Clause",
+      "license_path": "LICENSE.txt",
+      "license_git_blob_sha1": "c37cae49ec77ad6ebb25568c1605f1fee5313cfb"
+    },
+    {
+      "repository": "agronholm/anyio",
+      "family_id": "github:agronholm/anyio",
+      "commit": "ae250440c90020b030ba4e83cccc37e9a84512c5",
+      "source_root": "src/anyio",
+      "license_id": "MIT",
+      "license_path": "LICENSE",
+      "license_git_blob_sha1": "104eebf5a3002fccdaceef3a4cb936173c1c2035"
+    },
+    {
+      "repository": "pytest-dev/pytest",
+      "family_id": "github:pytest-dev/pytest",
+      "commit": "28549a5f6b82bc916bb2ec5cb9fbfffe9b79fc66",
+      "source_root": "src/_pytest",
+      "license_id": "MIT",
+      "license_path": "LICENSE",
+      "license_git_blob_sha1": "c3f1657fce94589bd1ec7cead810639047f3d359"
+    }
+  ],
+  "downstream_required": [
+    "global_cross_source_exact_and_near_dedup",
+    "reserved_evaluation_decontamination",
+    "post_composition_quality_privacy_revalidation",
+    "cluster_safe_split_and_deterministic_sharding",
+    "two_clean_builds",
+    "post_pack_unique_loss_ledger"
+  ],
+  "truth_boundary": {
+    "corpus_identity": null,
+    "shard_identity": null,
+    "authorized_training_exposure": 0,
+    "tokenizer_fit_authorized": false,
+    "long_training_authorized": false,
+    "paid_compute_authorized": false
+  },
+  "contract_identity_sha256": "7fd2228208f928859ebe68e947a72c977cda6952035a654d12923ce3a19a7dd6"
+}
