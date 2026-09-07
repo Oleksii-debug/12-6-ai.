@@ -13,6 +13,15 @@ def _sha(label: str) -> str:
     return hashlib.sha256(label.encode("utf-8")).hexdigest()
 
 
+def _canonical_no_lf(value: object) -> bytes:
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+
+
 def _identity(value: dict, field: str) -> str:
     payload = deepcopy(value)
     payload.pop(field, None)
@@ -27,6 +36,39 @@ def _identity(value: dict, field: str) -> str:
             + "\n"
         ).encode("utf-8")
     ).hexdigest()
+
+
+def _terminal_record_inventory() -> dict:
+    records = [
+        {
+            "record_id": "uk-doc",
+            "source_id": "source.uk.synthetic",
+            "family": "family.uk",
+            "modality": "text",
+            "payload_sha256": _sha("uk-payload"),
+            "payload_bytes": 12,
+        }
+    ]
+    payload_projection = [
+        {
+            "record_id": item["record_id"],
+            "payload_sha256": item["payload_sha256"],
+            "payload_bytes": item["payload_bytes"],
+        }
+        for item in records
+    ]
+    return {
+        "schema_version": "12-6.data526-record-inventory.v1",
+        "record_count": len(records),
+        "total_payload_bytes": sum(item["payload_bytes"] for item in records),
+        "record_inventory_digest_sha256": hashlib.sha256(
+            _canonical_no_lf(records)
+        ).hexdigest(),
+        "payload_inventory_digest_sha256": hashlib.sha256(
+            _canonical_no_lf(payload_projection)
+        ).hexdigest(),
+        "records": records,
+    }
 
 
 def _materialization() -> dict:
@@ -50,6 +92,7 @@ def _materialization() -> dict:
         "documents": [
             {
                 "document_id": "uk-doc",
+                "source_id": "source.uk.synthetic",
                 "language": "uk",
                 "modality": "text",
                 "family_id": "family.uk",
@@ -104,11 +147,19 @@ def _materialization() -> dict:
     return value
 
 
-def _proof(build_a: dict, build_b: dict) -> dict:
+def _proof(build_a: dict, build_b: dict, *, inventory: dict | None = None) -> dict:
+    record_inventory = inventory or _terminal_record_inventory()
     return verify_deterministic_double_pack(
         build_a,
         build_b,
         terminal_corpus_authority_identity_sha256=_sha("terminal-corpus-authority"),
+        terminal_record_inventory=record_inventory,
+        expected_record_inventory_digest_sha256=(
+            _terminal_record_inventory()["record_inventory_digest_sha256"]
+        ),
+        expected_payload_inventory_digest_sha256=(
+            _terminal_record_inventory()["payload_inventory_digest_sha256"]
+        ),
         expected_stage_bindings=_materialization()["stage_bindings"],
         expected_tokenizer_identity_sha256=_sha("tokenizer"),
     )
@@ -141,6 +192,10 @@ def main() -> None:
         raise SystemExit("double-pack proof did not establish byte identity")
     if proof["one_pass_unique_nonignored_causal_loss_positions"] != 4:
         raise SystemExit("double-pack proof unique loss count mismatch")
+    if proof["retained_train_record_membership_verified"] is not True:
+        raise SystemExit("terminal train-record membership was not proven")
+    if proof["retained_train_records_matched_to_terminal_inventory"] != 1:
+        raise SystemExit("terminal train-record membership count mismatch")
     if proof["retained_document_isolation_verified"] is not True:
         raise SystemExit("retained-document isolation was not proven")
     if proof["heldout_reservation_verified"] is not True:
@@ -160,6 +215,48 @@ def main() -> None:
     _expect_failure(
         lambda: _proof(corpus_drift_a, corpus_drift_b),
         "corpus identity does not match terminal handoff",
+    )
+
+    forged_payload_a = _materialization()
+    forged_payload_b = _materialization()
+    for materialization in (forged_payload_a, forged_payload_b):
+        materialization["documents"][0]["normalized_payload_sha256"] = _sha(
+            "forged-train-payload"
+        )
+    _rehash_pair(forged_payload_a, forged_payload_b)
+    _expect_failure(
+        lambda: _proof(forged_payload_a, forged_payload_b),
+        "train document payload does not match terminal D03 inventory",
+    )
+
+    invented_record_a = _materialization()
+    invented_record_b = _materialization()
+    for materialization in (invented_record_a, invented_record_b):
+        materialization["documents"][0]["document_id"] = "invented-train-record"
+    _rehash_pair(invented_record_a, invented_record_b)
+    _expect_failure(
+        lambda: _proof(invented_record_a, invented_record_b),
+        "retained train document is absent from terminal D03 inventory",
+    )
+
+    source_drift_a = _materialization()
+    source_drift_b = _materialization()
+    for materialization in (source_drift_a, source_drift_b):
+        materialization["documents"][0]["source_id"] = "other.source"
+    _rehash_pair(source_drift_a, source_drift_b)
+    _expect_failure(
+        lambda: _proof(source_drift_a, source_drift_b),
+        "train document source_id does not match terminal D03 inventory",
+    )
+
+    inventory_drift = _terminal_record_inventory()
+    inventory_drift["records"][0]["family"] = "forged.family"
+    inventory_drift["record_inventory_digest_sha256"] = hashlib.sha256(
+        _canonical_no_lf(inventory_drift["records"])
+    ).hexdigest()
+    _expect_failure(
+        lambda: _proof(build_a, build_b, inventory=inventory_drift),
+        "terminal record inventory does not match expected D03 handoff",
     )
 
     cluster_leak_a = _materialization()
@@ -199,7 +296,10 @@ def main() -> None:
     reordered["materialization_identity_sha256"] = _identity(
         reordered, "materialization_identity_sha256"
     )
-    _expect_failure(lambda: _proof(build_a, reordered), "loss span exceeds pack target slots")
+    _expect_failure(
+        lambda: _proof(build_a, reordered),
+        "loss span exceeds pack target slots",
+    )
 
     tokenizer_drift_a = _materialization()
     tokenizer_drift_b = _materialization()
@@ -222,7 +322,7 @@ def main() -> None:
     )
 
     build_drift = _materialization()
-    build_drift["documents"][0]["source_bytes"] += 1
+    build_drift["documents"][1]["source_bytes"] += 1
     build_drift["materialization_identity_sha256"] = _identity(
         build_drift, "materialization_identity_sha256"
     )
@@ -236,6 +336,13 @@ def main() -> None:
             build_a,
             build_b,
             terminal_corpus_authority_identity_sha256="not-a-hash",
+            terminal_record_inventory=_terminal_record_inventory(),
+            expected_record_inventory_digest_sha256=(
+                _terminal_record_inventory()["record_inventory_digest_sha256"]
+            ),
+            expected_payload_inventory_digest_sha256=(
+                _terminal_record_inventory()["payload_inventory_digest_sha256"]
+            ),
             expected_stage_bindings=build_a["stage_bindings"],
             expected_tokenizer_identity_sha256=_sha("tokenizer"),
         ),
@@ -248,6 +355,7 @@ def main() -> None:
         "one_pass_unique_nonignored_causal_loss_positions="
         f"{proof['one_pass_unique_nonignored_causal_loss_positions']}"
     )
+    print("retained_train_record_membership_verified=true")
     print("retained_document_isolation_verified=true")
     print("heldout_reservation_verified=true")
     print("training_authorized_by_this_proof=false")
