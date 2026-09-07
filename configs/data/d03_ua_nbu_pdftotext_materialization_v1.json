@@ -1,0 +1,68 @@
+{
+  "schema": "12-6.d03-ua-nbu-pdftotext-materialization.v1",
+  "status": "PREPARED_TEXT_MATERIALIZATION_ZERO_CREDIT",
+  "base_authority": {
+    "repository": "Oleksii-debug/12-6-ai.",
+    "parent_pr": 912,
+    "parent_head_sha": "45d72f6bb60ceaf6ff426b26dfc0226479d51cec",
+    "parent_pdf_pin_contract_identity_sha256": "7b032daf8200dc9acb3b066aa648463f772d90e9156804ebc3fbf79dbfe9fccd",
+    "discovery_pr": 898,
+    "discovery_head_sha": "a196545b4200b23983820002c019fb9e964670e1",
+    "lane": "D03",
+    "control_issue": 548
+  },
+  "source": {
+    "source_id": "ua.nbu.official-resolutions",
+    "family_id": "ua.nbu.official-resolutions"
+  },
+  "extractor": {
+    "backend": "poppler-pdftotext",
+    "executable": "pdftotext",
+    "required_version": "25.06.0",
+    "arguments": [
+      "-enc",
+      "UTF-8",
+      "-nopgbrk"
+    ],
+    "ocr_allowed": false,
+    "shell_allowed": false,
+    "network_allowed_by_extractor": false,
+    "double_extract_required": true,
+    "exact_output_bytes_required": true
+  },
+  "materialization": {
+    "class": "LOCAL_FREE",
+    "one_record_per_pdf": true,
+    "hard_max_records": 240,
+    "min_text_bytes": 32,
+    "hard_max_text_bytes_per_record": 10000000,
+    "hard_max_total_text_bytes": 100000000,
+    "utf8_strict": true,
+    "nul_forbidden": true,
+    "durable_evidence_body_free": true,
+    "text_artifact_is_training_authority": false
+  },
+  "required_downstream_gates": [
+    "DOCUMENT_LEVEL_RIGHTS_CONFIRMATION",
+    "QUALITY_AND_PRIVACY",
+    "GLOBAL_EXACT_NEAR_FRAGMENT_LINEAGE_DEDUP",
+    "RESERVED_EVALUATION_DECONTAMINATION",
+    "POST_COMPOSITION_BALANCE_FAMILY_CAPS",
+    "CLUSTER_SAFE_SPLIT",
+    "DETERMINISTIC_TOKENIZER_PACKING_DOUBLE_BUILD",
+    "POSITIVE_EXACT_UNIQUE_CAUSAL_LOSS_LEDGER"
+  ],
+  "claims": {
+    "canonical_capacity_credit_bytes": 0,
+    "training_authorized_bytes": 0,
+    "authorized_unique_loss_positions": 0,
+    "text_materialization_execution_authorized": true,
+    "tokenizer_fit_authorized": false,
+    "model_training_executed": false,
+    "optimizer_updates": 0,
+    "final_test_accessed": false,
+    "paid_compute_authorized": false,
+    "learned_20m_claim": false
+  },
+  "contract_identity_sha256": "a49986120f6a3d3c198dcfa02cfdada5813e6f17eb8c000735ca053f0cb3245e"
+}
