@@ -2,8 +2,8 @@
 """Derive a deterministic hash-only post-dedup source survivor authority for V8.
 
 The incumbent V3 matcher accounts each capacity-collapsing connected component at
-at most its largest declared-capacity member.  This tool does not change that
-scientific rule.  It makes the implied representative set explicit so the next
+at most its largest declared-capacity member. This tool does not change that
+scientific rule. It makes the implied representative set explicit so the next
 record-materialization stage has an unambiguous source-object input authority.
 
 This is still source-object authority, not a training-record inventory, tokenizer
@@ -32,7 +32,9 @@ def _require(condition: bool, message: str) -> None:
 
 
 def _canonical_bytes(value: Any) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode(
+        "utf-8"
+    )
 
 
 def _sha256(value: bytes) -> str:
@@ -56,8 +58,14 @@ def _source_rows(report: Mapping[str, Any]) -> list[dict[str, Any]]:
         _require(isinstance(raw, Mapping), "nested source row must be an object")
         source_id = raw.get("source_id")
         capacity = raw.get("declared_capacity_bytes")
-        _require(isinstance(source_id, str) and source_id and source_id not in seen, "invalid/duplicate source_id")
-        _require(isinstance(capacity, int) and capacity > 0, f"invalid declared capacity: {source_id}")
+        _require(
+            isinstance(source_id, str) and source_id and source_id not in seen,
+            "invalid/duplicate source_id",
+        )
+        _require(
+            isinstance(capacity, int) and capacity > 0,
+            f"invalid declared capacity: {source_id}",
+        )
         for key in (
             "source_family",
             "modality",
@@ -66,7 +74,10 @@ def _source_rows(report: Mapping[str, Any]) -> list[dict[str, Any]]:
             "stable_origin_id_sha256",
             "stable_object_id_sha256",
         ):
-            _require(isinstance(raw.get(key), str) and raw.get(key), f"missing {key}: {source_id}")
+            _require(
+                isinstance(raw.get(key), str) and raw.get(key),
+                f"missing {key}: {source_id}",
+            )
         seen.add(source_id)
         normalized.append(dict(raw))
     return normalized
@@ -74,13 +85,19 @@ def _source_rows(report: Mapping[str, Any]) -> list[dict[str, Any]]:
 
 def derive_survivor_authority(report: Mapping[str, Any]) -> dict[str, Any]:
     outer_hash = report.get("report_sha256")
-    _require(isinstance(outer_hash, str) and len(outer_hash) == 64, "missing V8 report identity")
+    _require(
+        isinstance(outer_hash, str) and len(outer_hash) == 64,
+        "missing V8 report identity",
+    )
     vector = report.get("source_vector")
     _require(isinstance(vector, Mapping), "V8 report missing source vector")
     nested = report.get("dedup_v3")
     _require(isinstance(nested, Mapping), "V8 report missing nested V3 report")
     nested_hash = nested.get("report_sha256")
-    _require(isinstance(nested_hash, str) and len(nested_hash) == 64, "missing nested V3 report identity")
+    _require(
+        isinstance(nested_hash, str) and len(nested_hash) == 64,
+        "missing nested V3 report identity",
+    )
 
     rows = _source_rows(report)
     by_id = {row["source_id"]: row for row in rows}
@@ -93,14 +110,22 @@ def derive_survivor_authority(report: Mapping[str, Any]) -> dict[str, Any]:
     _require(isinstance(clusters, list), "nested V3 duplicate clusters missing")
 
     cluster_members: set[str] = set()
-    representatives: dict[str, str] = {}
     dropped: set[str] = set()
     normalized_clusters: list[dict[str, Any]] = []
     for raw_cluster in clusters:
-        _require(isinstance(raw_cluster, Sequence) and not isinstance(raw_cluster, (str, bytes)), "invalid duplicate cluster")
+        _require(
+            isinstance(raw_cluster, Sequence) and not isinstance(raw_cluster, (str, bytes)),
+            "invalid duplicate cluster",
+        )
         cluster = sorted(str(value) for value in raw_cluster)
-        _require(len(cluster) >= 2 and len(cluster) == len(set(cluster)), "duplicate cluster must contain >=2 unique ids")
-        _require(all(source_id in by_id for source_id in cluster), "duplicate cluster references unknown source")
+        _require(
+            len(cluster) >= 2 and len(cluster) == len(set(cluster)),
+            "duplicate cluster must contain >=2 unique ids",
+        )
+        _require(
+            all(source_id in by_id for source_id in cluster),
+            "duplicate cluster references unknown source",
+        )
         _require(not (cluster_members & set(cluster)), "duplicate clusters overlap")
         cluster_members.update(cluster)
 
@@ -111,7 +136,6 @@ def derive_survivor_authority(report: Mapping[str, Any]) -> dict[str, Any]:
             if int(by_id[source_id]["declared_capacity_bytes"]) == maximum
         )
         survivor = tied[0]
-        representatives["\x1f".join(cluster)] = survivor
         dropped.update(source_id for source_id in cluster if source_id != survivor)
         normalized_clusters.append(
             {
@@ -120,6 +144,7 @@ def derive_survivor_authority(report: Mapping[str, Any]) -> dict[str, Any]:
                 "selected_declared_capacity_bytes": maximum,
             }
         )
+    normalized_clusters.sort(key=lambda item: tuple(item["member_source_ids"]))
 
     survivors = sorted(source_id for source_id in by_id if source_id not in dropped)
     survivor_rows = [
@@ -137,17 +162,30 @@ def derive_survivor_authority(report: Mapping[str, Any]) -> dict[str, Any]:
     ]
     survivor_capacity = sum(int(row["declared_capacity_bytes"]) for row in survivor_rows)
     expected_post = vector.get("conservative_unique_capacity_bytes_after_global_dedup")
-    _require(survivor_capacity == expected_post, "survivor capacity does not reproduce V3 conservative capacity")
+    _require(
+        survivor_capacity == expected_post,
+        "survivor capacity does not reproduce V3 conservative capacity",
+    )
     expected_discount = vector.get("duplicate_discount_bytes")
     pre = vector.get("source_capacity_bytes_before_global_dedup")
-    _require(isinstance(pre, int) and pre - survivor_capacity == expected_discount, "survivor discount does not reproduce V8 summary")
-    _require(len(normalized_clusters) == vector.get("duplicate_cluster_count"), "survivor cluster count does not reproduce V8 summary")
+    _require(
+        isinstance(pre, int) and pre - survivor_capacity == expected_discount,
+        "survivor discount does not reproduce V8 summary",
+    )
+    _require(
+        len(normalized_clusters) == vector.get("duplicate_cluster_count"),
+        "survivor cluster count does not reproduce V8 summary",
+    )
 
     modality_counts = {
         modality: {
-            "source_object_count": sum(1 for row in survivor_rows if row["modality"] == modality),
+            "source_object_count": sum(
+                1 for row in survivor_rows if row["modality"] == modality
+            ),
             "declared_capacity_bytes": sum(
-                int(row["declared_capacity_bytes"]) for row in survivor_rows if row["modality"] == modality
+                int(row["declared_capacity_bytes"])
+                for row in survivor_rows
+                if row["modality"] == modality
             ),
         }
         for modality in ("uk", "en", "code")
@@ -182,13 +220,21 @@ def derive_survivor_authority(report: Mapping[str, Any]) -> dict[str, Any]:
     return core
 
 
-def verify_survivor_authority(report: Mapping[str, Any], authority: Mapping[str, Any]) -> None:
+def verify_survivor_authority(
+    report: Mapping[str, Any], authority: Mapping[str, Any]
+) -> None:
     expected = derive_survivor_authority(report)
-    _require(dict(authority) == expected, "survivor authority is not the exact deterministic derivation")
+    _require(
+        dict(authority) == expected,
+        "survivor authority is not the exact deterministic derivation",
+    )
     identity = authority.get("survivor_authority_sha256")
     body = dict(authority)
     body.pop("survivor_authority_sha256", None)
-    _require(identity == _sha256(_canonical_bytes(body)), "survivor authority self-hash mismatch")
+    _require(
+        identity == _sha256(_canonical_bytes(body)),
+        "survivor authority self-hash mismatch",
+    )
 
 
 def main() -> int:
@@ -201,9 +247,15 @@ def main() -> int:
     if args.command == "derive":
         authority = derive_survivor_authority(report)
         args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(json.dumps(authority, sort_keys=True, separators=(",", ":")) + "\n", encoding="utf-8")
+        args.output.write_text(
+            json.dumps(authority, sort_keys=True, separators=(",", ":")) + "\n",
+            encoding="utf-8",
+        )
         print(f"survivor_authority_sha256={authority['survivor_authority_sha256']}")
-        print(f"post_dedup_survivor_source_object_count={authority['post_dedup_survivor_source_object_count']}")
+        print(
+            "post_dedup_survivor_source_object_count="
+            f"{authority['post_dedup_survivor_source_object_count']}"
+        )
         return 0
     authority = _read_json(args.output)
     verify_survivor_authority(report, authority)
