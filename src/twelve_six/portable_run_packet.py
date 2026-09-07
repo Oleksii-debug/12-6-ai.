@@ -50,6 +50,7 @@ REQUIRED_AUTHORITIES = {
     "checkpoint_integrity",
     "evaluation_firewall",
     "decontamination",
+    "final_test_reservation",
     "backend",
 }
 
@@ -318,6 +319,20 @@ def _launch_blockers(data: dict[str, Any]) -> list[str]:
 
     for name in REQUIRED_AUTHORITIES:
         _require_authority(blockers, authorities.get(name), name)
+
+    final_test_identity = evaluation.get("final_test_reservation_sha256")
+    _require_sha256(
+        blockers,
+        final_test_identity,
+        "final_test_reservation_sha256",
+    )
+    final_test_authority = authorities.get("final_test_reservation")
+    if (
+        isinstance(final_test_authority, dict)
+        and _is_sha256(final_test_identity)
+        and final_test_authority.get("evidence_sha256") != final_test_identity
+    ):
+        blockers.append("final_test_reservation_authority_mismatch")
 
     _require_sha256(
         blockers,
