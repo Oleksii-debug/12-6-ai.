@@ -191,13 +191,22 @@ def _validate_decontamination(
     if _is_sha256(predecontam) and decontam.get("training_corpus_identity") != predecontam:
         blockers.append("decontamination_training_corpus_identity_mismatch")
     authority = decontam.get("authority")
-    if isinstance(authority, dict) and _is_sha256(decontam.get("report_sha256")):
-        if authority.get("evidence_sha256") != decontam.get("report_sha256"):
-            blockers.append("decontamination_report_authority_mismatch")
-    if decontam.get("final_test_payload_accessed") is not False:
-        blockers.append("decontamination_final_test_payload_access_must_be_false")
+    if (
+        isinstance(authority, dict)
+        and _is_sha256(decontam.get("report_sha256"))
+        and authority.get("evidence_sha256") != decontam.get("report_sha256")
+    ):
+        blockers.append("decontamination_report_authority_mismatch")
+    if decontam.get("hash_only_evidence") is not True:
+        blockers.append("decontamination_report_must_be_hash_only")
     if decontam.get("final_test_outcomes_read") is not False:
         blockers.append("decontamination_final_test_outcomes_read_must_be_false")
+    if decontam.get("model_architecture_or_hyperparameters_selected") is not False:
+        blockers.append("decontamination_model_selection_must_be_false")
+    if decontam.get("training_executed") is not False:
+        blockers.append("decontamination_training_executed_must_be_false")
+    if decontam.get("local_free_only") is not True:
+        blockers.append("decontamination_local_free_only_must_be_true")
 
 
 def assess_learned20m_readiness(
