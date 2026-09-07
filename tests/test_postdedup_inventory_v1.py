@@ -88,7 +88,7 @@ def _v3() -> dict:
         "capacity_policy": {},
         "raw_text_emitted": False,
     }
-    return {**core, "report_sha256": postdedup._sha256_obj(core)}
+    return {**core, "report_sha256": postdedup._v3_report_sha256(core)}
 
 
 def _v8() -> dict:
@@ -125,6 +125,18 @@ def _v8() -> dict:
 
 
 class PostDedupInventoryV1Tests(unittest.TestCase):
+    def test_incumbent_v3_hash_serialization_is_distinct_from_v8(self) -> None:
+        core = {"label": "Україна", "value": 1}
+        self.assertNotEqual(
+            postdedup._sha256_obj(core),
+            postdedup._sha256_bytes(postdedup._v3_canonical_bytes(core)),
+        )
+        report = {**core, "report_sha256": postdedup._v3_report_sha256(core)}
+        self.assertEqual(
+            postdedup._v3_self_hash_matches(report, "synthetic V3"),
+            report["report_sha256"],
+        )
+
     def test_selects_largest_then_lexical_representative(self) -> None:
         report = _v8()
         inventory = postdedup.materialize_postdedup_inventory(
@@ -191,9 +203,7 @@ class PostDedupInventoryV1Tests(unittest.TestCase):
         report = _v8()
         dedup = report["dedup_v3"]
         dedup["terminal_candidates"]["duplicate_clusters"] = [["a", "b"]]
-        dedup_core = dict(dedup)
-        dedup_core.pop("report_sha256")
-        dedup["report_sha256"] = postdedup._sha256_obj(dedup_core)
+        dedup["report_sha256"] = postdedup._v3_report_sha256(dedup)
         report_core = dict(report)
         report_core.pop("report_sha256")
         report["report_sha256"] = postdedup._sha256_obj(report_core)
@@ -207,9 +217,7 @@ class PostDedupInventoryV1Tests(unittest.TestCase):
         report = _v8()
         dedup = report["dedup_v3"]
         dedup["terminal_candidates"]["conservative_unique_capacity_bytes_after"] = 31
-        dedup_core = dict(dedup)
-        dedup_core.pop("report_sha256")
-        dedup["report_sha256"] = postdedup._sha256_obj(dedup_core)
+        dedup["report_sha256"] = postdedup._v3_report_sha256(dedup)
         report["source_vector"]["conservative_unique_capacity_bytes_after_global_dedup"] = 31
         report_core = dict(report)
         report_core.pop("report_sha256")
