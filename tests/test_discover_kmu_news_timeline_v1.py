@@ -4,7 +4,7 @@ import importlib.util
 import sys
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 MODULE_PATH = Path(__file__).resolve().parents[1] / "tools" / "discover_kmu_news_timeline_v1.py"
 SPEC = importlib.util.spec_from_file_location("discover_kmu_news_timeline_v1", MODULE_PATH)
@@ -37,7 +37,27 @@ class TimelineDiscoveryTests(unittest.TestCase):
         )
         self.assertIsNone(m.canonical_timeline_page("/timeline?type=documents&page=2"))
         self.assertIsNone(m.canonical_timeline_page("/timeline?type=posts&page=0"))
+        self.assertIsNone(m.canonical_timeline_page("/timeline?type=posts&page=2&lang=en"))
         self.assertIsNone(m.canonical_timeline_page("https://evil.test/timeline?type=posts&page=2"))
+
+    def test_fetch_rejects_same_origin_redirect_route_drift(self):
+        response = MagicMock()
+        response.__enter__.return_value = response
+        response.__exit__.return_value = None
+        response.geturl.return_value = "https://www.kmu.gov.ua/news/not-a-timeline"
+        response.read.return_value = b"unexpected"
+        with patch.object(m.urllib.request, "urlopen", return_value=response):
+            with self.assertRaisesRegex(RuntimeError, "timeline redirect drift rejected"):
+                m.fetch(m.SEED)
+
+    def test_fetch_accepts_canonical_host_redirect_only(self):
+        response = MagicMock()
+        response.__enter__.return_value = response
+        response.__exit__.return_value = None
+        response.geturl.return_value = "https://kmu.gov.ua/timeline?type=posts"
+        response.read.return_value = b"ok"
+        with patch.object(m.urllib.request, "urlopen", return_value=response):
+            self.assertEqual(m.fetch(m.SEED), b"ok")
 
     def test_delay_and_page_bounds_fail_closed(self):
         with self.assertRaises(ValueError):
@@ -51,6 +71,7 @@ class TimelineDiscoveryTests(unittest.TestCase):
                 b'<a href="/news/a">A</a>'
                 b'<a href="/timeline?type=posts&page=2">next</a>'
                 b'<a href="/timeline?type=documents&page=2">bad</a>'
+                b'<a href="/timeline?type=posts&page=3&lang=en">bad-extra</a>'
             ),
             "https://www.kmu.gov.ua/timeline?type=posts&page=2": (
                 b'<a href="https://kmu.gov.ua/news/b?x=1">B</a>'
