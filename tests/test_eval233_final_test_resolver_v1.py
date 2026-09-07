@@ -38,7 +38,7 @@ def test_exact_terminal_final_test_resolves_to_16_bound_matcher_rows():
     assert evidence["authorized_training_exposure"] == 0
 
 
-def test_resolver_durable_outputs_do_not_contain_final_test_text():
+def test_resolver_durable_outputs_do_not_contain_final_test_text_or_outcome_values():
     rows, reserved_set, evidence = resolve_eval233_final_test(ROOT)
     durable = json.dumps(
         {"reserved_set": reserved_set, "evidence": evidence},
@@ -48,7 +48,22 @@ def test_resolver_durable_outputs_do_not_contain_final_test_text():
     for row in rows:
         assert row["text"] not in durable
     assert '"text"' not in durable
-    assert "outcome" not in durable.lower()
+    assert evidence["final_test_outcomes_read"] is False
+    assert evidence["selection_or_hyperparameter_use"] is False
+    expected_member_keys = {
+        "record_id",
+        "source_id",
+        "source_family",
+        "modality",
+        "content_sha256",
+        "utf8_bytes",
+        "training_prohibited",
+        "outcomes_included",
+    }
+    for member in reserved_set["members"]:
+        assert set(member) == expected_member_keys
+        assert member["outcomes_included"] is False
+        assert member["training_prohibited"] is True
 
 
 def _copy_inputs(tmp_path: Path) -> Path:
