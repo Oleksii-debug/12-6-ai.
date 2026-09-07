@@ -1,0 +1,69 @@
+{
+  "schema_version": "12-6.research-corpus-v1-predecontam-blocker.v4",
+  "worker_id": "DATA-526-RESEARCH-CORPUS-V1-PREDECONTAM-V4",
+  "repository": "Oleksii-debug/12-6-ai.",
+  "execution_profile": "LOCAL_FREE",
+  "status": "BLOCKED_WAIT_RECORD_GRANULARITY_MATERIALIZATION",
+  "source_convergence_terminal": {
+    "pull_request": 538,
+    "head_sha": "991a0b6e939cddeff16c075922f7c407fa1e86cb",
+    "workflow": "NEXT100-063 Canonical Source Registry V5",
+    "run_id": 33046314943,
+    "conclusion": "success",
+    "source_object_count": 35,
+    "numeric_capacity_bytes": 2215615,
+    "families": {"uk": 4, "en": 5, "code": 6}
+  },
+  "global_dedup_terminal": {
+    "pull_request": 632,
+    "head_sha": "d3333ec1b4a508df232a5aefccd6686adda745fb",
+    "workflow": "NEXT100-065E Cross-Source Dedup V7",
+    "run_id": 33045763964,
+    "conclusion": "success",
+    "artifact_id": 9635595510,
+    "artifact_digest": "sha256:cca6921a2093d4e033976b23b0af180e9dc1945b624b82e218780f8d20bafd18",
+    "report_sha256": "80997ac88b9d604afaf652807cda2a2d9fd0f6cb75754460ae6f4aa7af6e0267",
+    "conservative_unique_capacity_bytes_after_global_dedup": 2215615,
+    "capacity_collapsing_duplicate_clusters": 0
+  },
+  "record_materialization_gate": {
+    "frozen": false,
+    "record_count": 0,
+    "record_inventory_digest_sha256": null,
+    "payload_inventory_digest_sha256": null,
+    "reason": "Terminal V7 artifact is intentionally text-free/source-object evidence and does not cryptographically bind an exact materialized training-record payload inventory for downstream decontamination."
+  },
+  "claim_boundary": {
+    "source_bytes_are_training_tokens": false,
+    "authorized_unique_optimized_targets": 0,
+    "corpus_frozen": false,
+    "global_dedup_terminal": true,
+    "decontamination_executed": false,
+    "tokenizer_fit_executed": false,
+    "training_executed": false,
+    "optimizer_updates": 0,
+    "paid_compute_used": false,
+    "final_test_payload_accessed": false
+  },
+  "downstream_gates": {
+    "source_convergence": "TERMINAL_SUCCESS",
+    "global_exact_near_fragment_lineage_dedup": "TERMINAL_SUCCESS",
+    "record_inventory_freeze": "BLOCKED_MISSING_EXACT_RECORD_PAYLOAD_MATERIALIZATION",
+    "reserved_evaluation_decontamination": "NOT_PERMITTED_NO_FROZEN_RECORD_INVENTORY",
+    "post_composition_quality_privacy": "NOT_PERMITTED",
+    "balance_diversity_family_caps": "NOT_PERMITTED",
+    "cluster_safe_split_pack": "NOT_PERMITTED",
+    "two_clean_build_proof": "NOT_PERMITTED",
+    "postpack_unique_loss_ledger": "NOT_PERMITTED",
+    "tokenizer_fit": "NOT_PERMITTED",
+    "long_training": "NOT_PERMITTED"
+  },
+  "required_next_contract": [
+    "Materialize every dedup-surviving training candidate at record granularity with deterministic record_id, source_id, family, modality, normalized payload bytes and payload SHA-256.",
+    "Bind a canonical sorted inventory digest over exact record metadata plus payload SHA-256; raw payload need not be committed to GitHub.",
+    "Rebuild independently and require byte-identical inventory/manifests before freezing the pre-decontamination identity.",
+    "Hand only the frozen identity to reserved-evaluation exact/normalized/fragment/near/code-copy decontamination."
+  ],
+  "evidence_identity_scope": "SHA256(canonical JSON with evidence_identity_sha256 omitted)",
+  "evidence_identity_sha256": "01cc40b2a01c5b2f4da9a32b02ab650646c61080a508178922a7730820f1b1df"
+}
