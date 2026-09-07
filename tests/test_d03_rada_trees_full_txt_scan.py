@@ -138,14 +138,15 @@ def test_summary_never_persists_raw_text() -> None:
         [_classified("a/plain.txt", 100, "4" * 64)]
     )
     assert summary["raw_member_text_emitted"] is False
-    serialized = repr(summary)
-    assert "text_emitted" not in serialized
-    assert "raw_text" not in serialized
+    survivor = summary["candidate_survivors"][0]
+    assert "text" not in survivor
+    assert "raw_text" not in survivor
+    assert survivor["sha256"] == "4" * 64
 
 
 def test_member_list_rejects_non_txt_and_newline_paths(tmp_path: Path) -> None:
     output = tmp_path / "members.list"
     with pytest.raises(tool.FullTxtScanError, match="non-.txt"):
         tool._write_member_list(output, [{"path": "a/data.xml", "size_bytes": 1}])
-    with pytest.raises(ValueError, match="unsafe member path"):
+    with pytest.raises(tool.FullTxtScanError, match="newline in member path"):
         tool._write_member_list(output, [{"path": "a/bad\nname.txt", "size_bytes": 1}])
