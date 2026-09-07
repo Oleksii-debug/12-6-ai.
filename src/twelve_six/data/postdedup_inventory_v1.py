@@ -16,6 +16,22 @@ V8_SCHEMA = "12-6.next100-065f-global-dedup-report.v8"
 V3_SCHEMA = "12-6.next100-065-cross-source-dedup-report.v3"
 OUTPUT_SCHEMA = "12-6.postdedup-retained-source-inventory.v1"
 SELECTION_POLICY = "MAX_DECLARED_CAPACITY_THEN_SOURCE_ID_ASC_V1"
+CAPACITY_COLLAPSE_MATCH_TYPES = frozenset(
+    {
+        "origin_alias",
+        "raw_exact",
+        "normalized_exact",
+        "near_match",
+        "document_fragment",
+        "code_fork_copy",
+        "lineage_mirror",
+        "lineage_same_origin_alias",
+        "lineage_repository_transfer_alias",
+        "lineage_fork",
+        "lineage_vendor",
+        "lineage_generated_derivative",
+    }
+)
 
 
 class PostDedupInventoryError(RuntimeError):
@@ -240,12 +256,17 @@ def _capacity_components(
             left in source_by_id and right in source_by_id and left != right,
             f"matches[{index}] endpoints must be distinct known sources",
         )
+        match_type = _nonempty_text(raw.get("match_type"), f"matches[{index}].match_type")
         capacity_collapsing = raw.get("capacity_collapsing")
         _require(
             isinstance(capacity_collapsing, bool),
             f"matches[{index}].capacity_collapsing must be boolean",
         )
         if capacity_collapsing:
+            _require(
+                match_type in CAPACITY_COLLAPSE_MATCH_TYPES,
+                f"unsupported capacity-collapsing match type: {match_type}",
+            )
             adjacency[str(left)].add(str(right))
             adjacency[str(right)].add(str(left))
 
