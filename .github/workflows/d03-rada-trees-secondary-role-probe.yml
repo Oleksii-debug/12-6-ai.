@@ -1,0 +1,87 @@
+name: D03 Rada Trees Secondary Role Probe
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "d03/rada-trees-archive-inventory-20260826-sol"
+    paths:
+      - ".github/workflows/d03-rada-trees-secondary-role-probe.yml"
+      - "configs/data/d03_rada_trees_secondary_role_probe_v1.json"
+      - "configs/data/d03_rada_trees_member_classification_v1.json"
+      - "tools/probe_d03_rada_trees_secondary_role.py"
+      - "tools/classify_d03_rada_trees_members.py"
+      - "tools/inventory_d03_rada_trees_archive.py"
+      - "tools/download_d03_rada_trees_from_hf_snapshot.py"
+
+permissions:
+  contents: read
+
+jobs:
+  secondary-role-probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Bind exact checkout
+        run: test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+
+      - name: Compile probe
+        run: |
+          python -m py_compile \
+            tools/probe_d03_rada_trees_secondary_role.py \
+            tools/classify_d03_rada_trees_members.py \
+            tools/inventory_d03_rada_trees_archive.py
+
+      - name: Install bounded archive extractor
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends p7zip-full
+
+      - name: Probe exact secondary archive role
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/rada-secondary-evidence
+          python tools/probe_d03_rada_trees_secondary_role.py \
+            --archive-output /tmp/rada_xtag_texts.7z \
+            --report-output /tmp/rada-secondary-evidence/secondary-role-probe.json \
+            --timeout 600
+
+      - name: Enforce zero exposure and text-free evidence
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path('/tmp/rada-secondary-evidence/secondary-role-probe.json')
+          report = json.loads(path.read_text(encoding='utf-8'))
+          boundary = report['claim_boundary']
+          assert boundary['training_authorized_bytes'] == 0
+          assert boundary['unique_causal_loss_positions_authorized'] == 0
+          assert boundary['tokenizer_fit_authorized'] is False
+          assert boundary['model_training_executed'] is False
+          assert boundary['paid_compute_used'] is False
+          assert report['classification']['raw_member_text_emitted'] is False
+          encoded = path.read_text(encoding='utf-8').lower()
+          assert '"text":' not in encoded
+          assert '"preview":' not in encoded
+          print('D03_RADA_TREES_SECONDARY_ZERO_EXPOSURE=PASS')
+          PY
+          test ! -e /tmp/rada_xtag_texts.7z
+
+      - name: Upload text-free role evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: d03-rada-trees-secondary-role-${{ github.sha }}
+          path: /tmp/rada-secondary-evidence/secondary-role-probe.json
+          if-no-files-found: error
+          retention-days: 30
