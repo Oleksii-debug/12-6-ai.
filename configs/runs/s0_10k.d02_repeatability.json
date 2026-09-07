@@ -1,0 +1,19 @@
+{
+  "schema_version": "12-6.s0-repeatability-run-config.v1",
+  "authority": "LOCAL_FREE_OR_FREE_HOSTED_CPU_EVIDENCE_NOT_PROMOTION",
+  "stage": "S0",
+  "parent_d02_evidence_sha": "e5a3b551fa509fd6d36f51915cd887f5cc352f69",
+  "source_sha_resolution": "github.event.pull_request.head.sha",
+  "environment_profile": "linux-x86_64",
+  "python_version": "3.11.16",
+  "device": "cpu",
+  "precision": "fp32",
+  "same_seed": 1337,
+  "different_seed": 1338,
+  "same_seed_fresh_runs": 2,
+  "different_seed_runs": 1,
+  "max_steps": 40,
+  "batch_size_examples": 3,
+  "validation_optimized_tokens": 0,
+  "promotion_authority": false
+}

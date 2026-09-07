@@ -1,0 +1,32 @@
+{"id":"en-sva-001","phenomenon":"subject_verb_agreement","context":"The brass key beside the notes","preferred":" fits the lock.","dispreferred":" fit the lock."}
+{"id":"en-sva-002","phenomenon":"subject_verb_agreement","context":"The brass keys beside the note","preferred":" fit the lock.","dispreferred":" fits the lock."}
+{"id":"en-sva-003","phenomenon":"subject_verb_agreement","context":"Each quiet drummer","preferred":" keeps the beat.","dispreferred":" keep the beat."}
+{"id":"en-sva-004","phenomenon":"subject_verb_agreement","context":"The quiet drummers","preferred":" keep the beat.","dispreferred":" keeps the beat."}
+{"id":"en-art-001","phenomenon":"article_noun_compatibility","context":"Mira peeled","preferred":" an orange slowly.","dispreferred":" a orange slowly."}
+{"id":"en-art-002","phenomenon":"article_noun_compatibility","context":"Tomas carried","preferred":" a useful tool.","dispreferred":" an useful tool."}
+{"id":"en-art-003","phenomenon":"article_noun_compatibility","context":"They waited for","preferred":" an hour outside.","dispreferred":" a hour outside."}
+{"id":"en-art-004","phenomenon":"article_noun_compatibility","context":"She adopted","preferred":" a young cat.","dispreferred":" an young cat."}
+{"id":"en-pro-001","phenomenon":"pronoun_agreement","context":"After the spill, the boy blamed","preferred":" himself for the mess.","dispreferred":" themselves for the mess."}
+{"id":"en-pro-002","phenomenon":"pronoun_agreement","context":"After the spill, the boys blamed","preferred":" themselves for the mess.","dispreferred":" himself for the mess."}
+{"id":"en-pro-003","phenomenon":"pronoun_agreement","context":"The lantern lost its cover, so","preferred":" it looked bare.","dispreferred":" they looked bare."}
+{"id":"en-pro-004","phenomenon":"pronoun_agreement","context":"The lanterns lost their covers, so","preferred":" they looked bare.","dispreferred":" it looked bare."}
+{"id":"en-ten-001","phenomenon":"basic_tense_consistency","context":"Yesterday the baker","preferred":" opened early.","dispreferred":" opens early."}
+{"id":"en-ten-002","phenomenon":"basic_tense_consistency","context":"Every weekday the baker","preferred":" opens early.","dispreferred":" opened early."}
+{"id":"en-ten-003","phenomenon":"basic_tense_consistency","context":"Last night the child","preferred":" walked home.","dispreferred":" walks home."}
+{"id":"en-ten-004","phenomenon":"basic_tense_consistency","context":"Usually the child","preferred":" walks home.","dispreferred":" walked home."}
+{"id":"en-neg-001","phenomenon":"negation","context":"The gate is locked, so visitors","preferred":" cannot enter.","dispreferred":" can enter."}
+{"id":"en-neg-002","phenomenon":"negation","context":"The gate is open, so visitors","preferred":" can enter.","dispreferred":" cannot enter."}
+{"id":"en-neg-003","phenomenon":"negation","context":"The lamp is not broken; it still","preferred":" works.","dispreferred":" fails."}
+{"id":"en-neg-004","phenomenon":"negation","context":"The freezer is not warm; inside it stays","preferred":" cold.","dispreferred":" warm."}
+{"id":"en-loc-001","phenomenon":"local_syntactic_dependencies","context":"The scientist both measured the sample","preferred":" and recorded the result.","dispreferred":" but recorded the result."}
+{"id":"en-loc-002","phenomenon":"local_syntactic_dependencies","context":"Either the blue folder is here","preferred":" or the red folder is here.","dispreferred":" and the red folder is here."}
+{"id":"en-loc-003","phenomenon":"local_syntactic_dependencies","context":"The outcome depends","preferred":" on the final count.","dispreferred":" at the final count."}
+{"id":"en-loc-004","phenomenon":"local_syntactic_dependencies","context":"The child listened","preferred":" to the quiet song.","dispreferred":" at the quiet song."}
+{"id":"en-sem-001","phenomenon":"simple_semantic_plausibility","context":"For breakfast, Nia spread butter on","preferred":" the toast.","dispreferred":" the clock."}
+{"id":"en-sem-002","phenomenon":"simple_semantic_plausibility","context":"The carpenter cut the plank with","preferred":" a saw.","dispreferred":" a cup."}
+{"id":"en-sem-003","phenomenon":"simple_semantic_plausibility","context":"The thirsty runner drank","preferred":" cold water.","dispreferred":" cold metal."}
+{"id":"en-sem-004","phenomenon":"simple_semantic_plausibility","context":"The gardener planted the seeds in","preferred":" rich soil.","dispreferred":" rich soup."}
+{"id":"en-coh-001","phenomenon":"continuation_coherence","context":"Nora packed a raincoat. Dark clouds covered the sky. Before leaving,","preferred":" she checked the umbrella.","dispreferred":" she baked the umbrella."}
+{"id":"en-coh-002","phenomenon":"continuation_coherence","context":"Eli finished the letter and placed it in an envelope. Then","preferred":" he sealed the envelope.","dispreferred":" he watered the envelope."}
+{"id":"en-coh-003","phenomenon":"continuation_coherence","context":"The kettle began to whistle. Priya walked into the kitchen and","preferred":" turned off the stove.","dispreferred":" folded the sidewalk."}
+{"id":"en-coh-004","phenomenon":"continuation_coherence","context":"A page tore loose from the notebook. Sam found a strip of tape and","preferred":" fixed the torn page.","dispreferred":" drank the torn page."}

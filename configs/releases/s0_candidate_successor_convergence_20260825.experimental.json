@@ -1,0 +1,111 @@
+{
+  "schema_version": 4,
+  "run_id": "12-6-AI-SWARM-EXP-01",
+  "repository": "Oleksii-debug/12-6-ai.",
+  "stage": "S0",
+  "status": "experimental",
+  "canonical_base": "random_init_pretraining_only",
+  "composition_complete": true,
+  "promotion_eligible": false,
+  "integration_branch": "d01/s0-successor-convergence-r2-20260825",
+  "authority_snapshot": {
+    "main_sha": "f2e94c7212888cdb960bb66154d56d210e9b27ab",
+    "main_protected": false,
+    "prior_d01_candidate_pr": 88,
+    "prior_d01_candidate_sha": "59193ada9586d0542b027f46d32ac923841fae7f",
+    "prior_d01_candidate_ci_runs": [32778283257, 32778283116, 32778283094],
+    "prior_d01_candidate_ci_conclusion": "success"
+  },
+  "candidate_sha_policy": "exact git HEAD at validation time; this manifest intentionally does not self-reference its containing commit",
+  "model_spec_sha256": "86c75b31dff05b7b5db9f6ed068c571a6ead01ba663412fe630f5e52b09d9b6b",
+  "init_spec_sha256": "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5",
+  "tokenizer_config_sha256": "b04055c1061dd641dcab7cb9d62a931f09b8d1a070140a926ceb4e91d73ca8e1",
+  "tokenizer_vocab_sha256": "905ed40bb42cc4d550e228ff5f24158d504b38e8ed5974dfa3077bd5867ad571",
+  "dataset_manifest_sha256": "b085a7ab56510575a11a80824fcff3a95a17f237d46d1be820e59d1289f220c2",
+  "environment_lock_index_sha256": "61fa31fbb5da7a4289cccce5abfcebde943664f5318b0ce3d69ae9bb3db852ac",
+  "required_git_ancestry": [
+    "e5a3b551fa509fd6d36f51915cd887f5cc352f69",
+    "c23b14c7fc23f089309926e2870d6c32d0cd7f02",
+    "e9ecbccafaf2e9191e946b819319caf191f31353",
+    "11755855fd136709599ff13e514c9cc8256df011",
+    "c631c024e641dac102036fafee6d78ba31c067cd"
+  ],
+  "base_components": [
+    {"lane":"D01","source_sha":"d646d417feca3409269518af6d66ac3455d9f2f3","pr_number":35,"component_kind":"random_init_model"},
+    {"lane":"D02","source_sha":"403831cf623120da18f0f4c62e830a352afcef91","pr_number":60,"component_kind":"training_engine_plus_real_s0_training_evidence"},
+    {"lane":"D03","source_sha":"f0e31d4200cb348f770346be9ab22ad450227f2d","pr_number":27,"component_kind":"controlled_s0_data"},
+    {"lane":"D04","source_sha":"967ed1e8ab1c227139e6a03e50f5d8ed180380ed","pr_number":23,"component_kind":"byte_tokenizer_and_packing"},
+    {"lane":"D05","source_sha":"fa5e8365ae56c22da761e2183a4c71a0212a2aef","pr_number":61,"component_kind":"strict_run_bound_checkpoint_resume"},
+    {"lane":"D06","source_sha":"89fa0b2c17ef78ba202d019a8959aa1a19377391","pr_number":65,"component_kind":"evaluation_and_integrated_stage_gates"},
+    {"lane":"D07","source_sha":"9a1a6f8494b5d5dd9346afb644fc84de2e39d5e0","pr_number":63,"component_kind":"first_party_checkpoint_inference"},
+    {"lane":"D08","source_sha":"b8e01a38bfba18176e36c34b1530839ccaea4b21","pr_number":20,"component_kind":"distributed_scale_readiness"}
+  ],
+  "late_wave_intake": [
+    {"lane":"D02","pr_number":82,"source_sha":"e5a3b551fa509fd6d36f51915cd887f5cc352f69","ci_runs":[32767318377,32767318397],"ci_conclusion":"success","disposition":"accepted","surface":"candidate_locked_training_evidence"},
+    {"lane":"D04","pr_number":84,"source_sha":"c23b14c7fc23f089309926e2870d6c32d0cd7f02","ci_runs":[32767769767,32767769645,32767769768],"ci_conclusion":"success","disposition":"accepted","surface":"strict_exact_candidate_evaluation"},
+    {"lane":"D05","pr_number":85,"source_sha":"e9ecbccafaf2e9191e946b819319caf191f31353","ci_runs":[32768711482,32768711381],"ci_conclusion":"success","disposition":"accepted","surface":"transactional_checkpoint_safety"},
+    {"lane":"D07","pr_number":86,"source_sha":"11755855fd136709599ff13e514c9cc8256df011","ci_runs":[32768895105,32768895081],"ci_conclusion":"success","disposition":"accepted","surface":"local_raw_base_completions_server"},
+    {"lane":"D02","pr_number":89,"source_sha":"c631c024e641dac102036fafee6d78ba31c067cd","ci_runs":[32778688829,32778688832,32778688844,32778688850],"ci_conclusion":"success","disposition":"accepted","surface":"fresh_run_repeatability_and_seed_causality"}
+  ],
+  "integration_method": {
+    "kind": "multi_parent_exact_head_composition_plus_stacked_green_evidence_intake",
+    "initial_multi_parent_composition_commit": "629bc7c226093a5b83a38c6e861087ef237e1501",
+    "previous_verified_d01_head": "59193ada9586d0542b027f46d32ac923841fae7f",
+    "follow_on_exact_green_head": "c631c024e641dac102036fafee6d78ba31c067cd",
+    "follow_on_delta_added_files": 8,
+    "changed_path_overlap": 0,
+    "ancestry_verified": true,
+    "history_destroyed": false
+  },
+  "repeatability_evidence": {
+    "source_sha": "c631c024e641dac102036fafee6d78ba31c067cd",
+    "workflow_run": 32778688829,
+    "artifact_id": 9539007219,
+    "artifact_zip_sha256": "bf04e840eef4ddf6a0eecbe91224d426ed2aaa05fd7bb88c4db32d7aef11d45d",
+    "evidence_sha256": "263e372d413ca8be98f2ee20210b6ce5a6bed0e25a068519362fa181e519e1f1",
+    "environment_evidence_sha256": "ad3c66e2c7cf1ebf94209f040fd160fa5cc6b70691cf14aeb4da52dc56516fd5",
+    "same_seed": 1337,
+    "different_seed": 1338,
+    "same_seed_exact_equivalence": true,
+    "same_seed_initial_model_sha256": "fb1b30726c6e3d70f88fdab009fa323f3b29e79ce1ea3f8079a88fcd0916f5e0",
+    "same_seed_final_model_sha256": "06d15760a1e54c3e746335ffb9f3883e347a3bf3752c9be68b1214bc7253a8c5",
+    "same_seed_final_trainer_state_sha256": "8d090bfcec1bd2a745c54a902888d7fc3efca9258c235392463024e0a8cd1af0",
+    "same_seed_step_trace_sha256": "b9e48ebf714d30705298d6a6c17373ff30c94111853098630f1bccd8b6d8c226",
+    "different_seed_initialization_diverges": true,
+    "different_seed_training_diverges": true,
+    "validation_optimized_tokens": 0,
+    "cross_hardware_bitwise_reproducibility_claimed": false,
+    "distributed_reproducibility_claimed": false,
+    "gpu_reproducibility_claimed": false,
+    "promotion_claimed": false
+  },
+  "intake_disposition": {
+    "accepted": ["PR #82", "PR #84", "PR #85", "PR #86", "PR #89"],
+    "inherited": ["PR #81 and PR #88 convergence ancestry"],
+    "held": [
+      {"surface":"PR #79/#80/#87 governance, release and supply-chain control plane","reason":"actively owned D10/D06 governance surface; not required to change Product candidate semantics"},
+      {"surface":"older D01 wrapper/handoff branches and PR #77/#83 evidence surfaces","reason":"historical/control evidence retained; not candidate source of truth"},
+      {"surface":"PR #81 previously held stale D06 collector and stale D07 helper","reason":"strict checkpoint contract remains authoritative; exact green D04 implementation is accepted through PR #84"}
+    ],
+    "rejected": [],
+    "history_destroyed": false
+  },
+  "package_reconciliation": {
+    "dependency_surface_changed_by_late_wave": false,
+    "pyproject_source": "inherited locked D05/D08 lineage",
+    "requires_python": ">=3.11,<3.12",
+    "dependencies": ["numpy>=1.26", "safetensors>=0.5", "torch>=2.5"],
+    "note": "PR #89 is additive evidence-only and introduces no dependency/package/config collision."
+  },
+  "audits": {
+    "AUDIT-A": {"issue":13,"verdict":"CHANGES_REQUIRED","candidate_sha":"not_retested_on_this_composition"},
+    "AUDIT-B": {"issue":14,"verdict":"CHANGES_REQUIRED","candidate_sha":"not_retested_on_this_composition"}
+  },
+  "promotion_blockers": [
+    "exact r2 convergence head CI must complete successfully",
+    "AUDIT-A must independently retest the exact final r2 head",
+    "AUDIT-B must independently retest the exact final r2 head",
+    "main branch protection is currently disabled and release/governance authority remains separate"
+  ],
+  "next_handoff": "On the exact final r2 head, preserve LOCAL_FREE train -> transactional checkpoint -> reload/resume -> strict exact-candidate eval -> first-party raw Base inference/server evidence and the fresh-run same-seed/different-seed repeatability proof; bind all reports and audit retests to that exact SHA."
+}

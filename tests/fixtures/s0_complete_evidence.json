@@ -1,0 +1,55 @@
+{
+  "candidate": {
+    "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "id": "synthetic-s0-evidence-fixture",
+    "random_init": true,
+    "model_constructed": true,
+    "parameter_count": 10140,
+    "model_vocab_size": 256
+  },
+  "tokenizer": {
+    "identity": "s0-byte-v1@synthetic-fixture",
+    "vocab_size": 256,
+    "max_token_id": 255
+  },
+  "eval_config": {
+    "id": "synthetic-s0-eval-fixture-v1"
+  },
+  "dataset": {
+    "identity": "synthetic-fixture-only-not-training-data",
+    "heldout_used_for_training": false,
+    "train_validation_overlap": 0,
+    "validation_examples": 16,
+    "distinct_train_batches": 4
+  },
+  "metrics": {
+    "train_loss_before": 5.0,
+    "train_loss_after": 2.5,
+    "validation_loss_before": 5.1,
+    "validation_loss_after": 3.2,
+    "random_validation_loss": 5.1,
+    "trained_validation_loss": 3.2
+  },
+  "generation_probes": [
+    {
+      "id": "synthetic-fixed-prompt-1",
+      "token_count": 8,
+      "output_sha256": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+      "seed": 123,
+      "sampler": "greedy"
+    }
+  ],
+  "checkpoint": {
+    "save_load_verified": true,
+    "resume_verified": true
+  },
+  "contamination": {
+    "checked": true,
+    "benchmark_overlap_count": 0,
+    "heldout_overlap_count": 0
+  },
+  "regressions": {
+    "executed": true,
+    "failures": 0
+  }
+}

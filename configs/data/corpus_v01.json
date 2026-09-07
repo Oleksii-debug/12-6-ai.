@@ -1,0 +1,18 @@
+{
+  "schema_version": "12-6.corpus-build-config.v1",
+  "corpus_version": "0.1.0",
+  "external_registry": "data/external/external_sources.json",
+  "reserved_registry": "data/external/reserved_fingerprints.json",
+  "output_dir": "data/build/corpus_v01",
+  "mixture_target_percent": {"uk": 45, "en": 35, "code": 20},
+  "target_train_byte_tokens": {"uk": 9000000, "en": 7000000, "code": 4000000},
+  "validation_basis_points": 500,
+  "split_salt": "data25-corpus-v01-20260825",
+  "shard_target_bytes": 1048576,
+  "project_authored": {
+    "enabled": true,
+    "source_version": "0.1.0",
+    "max_candidates_per_stratum": 200000,
+    "declaration": "PROJECT_AUTHORED_SYNTHETIC_ONLY_WHEN_EXTERNAL_REGISTRY_HAS_NO_TRAINING_ELIGIBLE_SOURCES"
+  }
+}

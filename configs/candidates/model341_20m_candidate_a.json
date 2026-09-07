@@ -1,0 +1,38 @@
+{
+  "stage": "MODEL-341-20M-CANDIDATE-A",
+  "target_parameters": 20000000,
+  "expected_parameters": 20613440,
+  "canonical_base": "random_init",
+  "expected_model_identity_sha256": "fbff24d561a2818453554d58ca23fc6ace3303b078f1935a8576c4565bd92441",
+  "expected_init_identity_sha256": "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5",
+  "model": {
+    "schema_version": 1,
+    "vocab_size": 256,
+    "max_seq_len": 1024,
+    "d_model": 320,
+    "n_layers": 16,
+    "n_heads": 10,
+    "n_kv_heads": 2,
+    "head_dim": 32,
+    "d_ff": 1080,
+    "activation": "swiglu",
+    "norm_kind": "rmsnorm",
+    "norm_placement": "pre",
+    "norm_eps": 1e-5,
+    "position_embedding": "rope",
+    "rope_theta": 10000.0,
+    "rope_rotary_dim": 32,
+    "attention_bias": false,
+    "mlp_bias": false,
+    "attention_dropout": 0.0,
+    "final_norm": true,
+    "tie_word_embeddings": true,
+    "lm_head_bias": false
+  },
+  "init": {
+    "schema_version": 1,
+    "family": "normal",
+    "std": 0.02,
+    "residual_branch_scale": "sqrt_2_layers"
+  }
+}

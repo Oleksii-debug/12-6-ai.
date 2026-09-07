@@ -1,0 +1,46 @@
+{
+  "schema_version": "12-6.purpose-environment-specs.v1",
+  "canonical_lock_index": "requirements/locks/index.json",
+  "profiles": {
+    "linux-x86_64-tokenizer-experiment": {
+      "kind": "linux-overlay",
+      "base_profile": "linux-x86_64",
+      "python_version": "3.11.16",
+      "requirements": [
+        "tokenizers==0.23.1"
+      ],
+      "purpose": "D04 tokenizer experiment training and fertility/round-trip evidence"
+    },
+    "linux-x86_64-transformers-interop": {
+      "kind": "linux-overlay",
+      "base_profile": "linux-x86_64",
+      "python_version": "3.11.16",
+      "requirements": [
+        "transformers==5.15.1"
+      ],
+      "purpose": "D07 Transformers Llama runtime parity without foreign pretrained weights"
+    },
+    "linux-x86_64-cuda-training": {
+      "kind": "linux-base-role",
+      "base_profile": "linux-x86_64",
+      "python_version": "3.11.16",
+      "requirements": [],
+      "purpose": "future CUDA training using the already locked PyTorch/CUDA closure",
+      "runtime_expectations": {
+        "torch": "2.13.0",
+        "torch_cuda": "13.0",
+        "gpu_execution_required_for_runtime_pass": true
+      }
+    },
+    "windows-x86_64-runtime": {
+      "kind": "windows-runtime",
+      "python_version": "3.11.9",
+      "direct_versions_from_linux_base": [
+        "numpy",
+        "safetensors",
+        "torch"
+      ],
+      "purpose": "artifact-only first-party checkpoint and raw inference runtime on Windows x86_64"
+    }
+  }
+}

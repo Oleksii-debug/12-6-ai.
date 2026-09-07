@@ -1,0 +1,48 @@
+{
+  "canonical_lock": {
+    "file_sha256": "61fa31fbb5da7a4289cccce5abfcebde943664f5318b0ce3d69ae9bb3db852ac",
+    "index_sha256": "5de40d40012123ccf654b3e29d9cd47df814978e4155ca9dde232b61e9cd6341",
+    "path": "requirements/locks/index.json"
+  },
+  "direct_requirements": [
+    "numpy==2.4.6",
+    "safetensors==0.8.0",
+    "torch==2.13.0"
+  ],
+  "direct_versions": {
+    "numpy": "2.4.6",
+    "safetensors": "0.8.0",
+    "torch": "2.13.0"
+  },
+  "kind": "windows-runtime",
+  "locks": {
+    "runtime": {
+      "package_count": 12,
+      "path": "requirements/profiles/windows-x86_64-runtime/runtime.lock.txt",
+      "sha256": "8137aef4e1d276c945445d0ecb12f6632c1a3deb1a4bf98ddf88996d58a546dd"
+    },
+    "toolchain": {
+      "package_count": 4,
+      "path": "requirements/profiles/windows-x86_64-runtime/toolchain.lock.txt",
+      "sha256": "473ae8ce44b39aa75961918cc99775405abdaf60e5dc61a83c958b8a95fd0f53"
+    }
+  },
+  "platform": {
+    "machine": "x86_64",
+    "system": "Windows"
+  },
+  "profile_id": "windows-x86_64-runtime",
+  "profile_sha256": "9b76f1b1acf086bc4ad2f177f5354dc8cfbf6ab18f1cec5027734564dd45fb7c",
+  "purpose": "artifact-only first-party checkpoint and raw inference runtime on Windows x86_64",
+  "python": {
+    "implementation": "cpython",
+    "version": "3.11.9"
+  },
+  "schema_version": "12-6.purpose-environment-profile.v1",
+  "version_source_profile": {
+    "file_sha256": "0dbd74f05d2824082d378aa9031141c864f6a092f950d63ccfae0ade4d76e121",
+    "manifest_sha256": "283ca83571e527babda700e0c66ed03fb1c2aa4674bee0dba2272f64f344e1bf",
+    "path": "requirements/locks/linux-x86_64/profile.json",
+    "profile_id": "linux-x86_64"
+  }
+}

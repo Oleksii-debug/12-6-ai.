@@ -1,0 +1,12 @@
+{"document_id":"doc-001","language_hint":"en","text":"A small language model learns by predicting the next symbol from earlier context. This sentence exists only to validate the training factory."}
+{"document_id":"doc-002","language_hint":"en","text":"Deterministic data preparation makes repeated experiments comparable. Every source and transformation should leave a durable identity."}
+{"document_id":"doc-003","language_hint":"en","text":"A manifest records where text came from, how it was filtered, and which split received each accepted document."}
+{"document_id":"doc-004","language_hint":"en","text":"Exact duplicates should not silently increase the weight of repeated text. Near duplicates should also be measured and handled explicitly."}
+{"document_id":"doc-005","language_hint":"en","text":"Validation examples must remain outside the training split so that loss measurements are not computed on examples the model optimized directly."}
+{"document_id":"doc-006","language_hint":"en","text":"Tokenizer code consumes normalized text after provenance, quality, deduplication, contamination checks, and deterministic splitting are complete."}
+{"document_id":"doc-007","language_hint":"uk","text":"Мала мовна модель навчається передбачати наступний символ за попереднім контекстом. Це речення існує лише для перевірки навчального конвеєра."}
+{"document_id":"doc-008","language_hint":"uk","text":"Детермінована підготовка даних робить повторні експерименти порівнюваними. Кожне джерело та перетворення повинні мати сталу ідентичність."}
+{"document_id":"doc-009","language_hint":"uk","text":"Маніфест зберігає походження тексту, правила фільтрації та інформацію про те, до якої вибірки потрапив кожен прийнятий документ."}
+{"document_id":"doc-010","language_hint":"uk","text":"Точні дублікати не повинні непомітно збільшувати вагу повтореного тексту. Майже однакові документи також треба виявляти окремо."}
+{"document_id":"doc-011","language_hint":"uk","text":"Валідаційні приклади залишаються поза тренувальною вибіркою, щоб оцінка втрат не виконувалась на текстах, які модель безпосередньо оптимізувала."}
+{"document_id":"doc-012","language_hint":"uk","text":"Токенізатор отримує нормалізований текст лише після перевірки походження, якості, дедуплікації, забруднення та детермінованого поділу."}

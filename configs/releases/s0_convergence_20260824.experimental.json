@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "run_id": "12-6-AI-SWARM-EXP-01",
+  "repository": "Oleksii-debug/12-6-ai.",
+  "stage": "S0",
+  "status": "experimental",
+  "base_lineage": true,
+  "integration_branch": "d01/s0-d05-c01-intake-20260824",
+  "integration_anchor_sha": "b001adfcbe2dbe0187df09f42f2d61abe6a24f3b",
+  "model_spec_sha256": "86c75b31dff05b7b5db9f6ed068c571a6ead01ba663412fe630f5e52b09d9b6b",
+  "init_spec_sha256": "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5",
+  "tokenizer_config_sha256": "b04055c1061dd641dcab7cb9d62a931f09b8d1a070140a926ceb4e91d73ca8e1",
+  "tokenizer_vocab_sha256": "905ed40bb42cc4d550e228ff5f24158d504b38e8ed5974dfa3077bd5867ad571",
+  "dataset_manifest_sha256": "b085a7ab56510575a11a80824fcff3a95a17f237d46d1be820e59d1289f220c2",
+  "components": [
+    {"lane":"D01","source_sha":"d646d417feca3409269518af6d66ac3455d9f2f3","disposition":"accepted","component_kind":"random_init_model","pr_number":35,"ci_run_id":32646829442,"ci_conclusion":"success","contains_behavioral_weights":false,"contains_foreign_pretrained_weights":false},
+    {"lane":"D02","source_sha":"06575872fb48c52a8f615082796aa80700c8aa5e","disposition":"accepted","component_kind":"training_engine","pr_number":22,"ci_run_id":32646813012,"ci_conclusion":"success","contains_behavioral_weights":false,"contains_foreign_pretrained_weights":false},
+    {"lane":"D03","source_sha":"f0e31d4200cb348f770346be9ab22ad450227f2d","disposition":"accepted","component_kind":"controlled_s0_data","pr_number":27,"ci_run_id":32643041174,"ci_conclusion":"success","contains_behavioral_weights":false,"contains_foreign_pretrained_weights":false},
+    {"lane":"D04","source_sha":"967ed1e8ab1c227139e6a03e50f5d8ed180380ed","disposition":"accepted","component_kind":"byte_tokenizer_and_packing","pr_number":23,"ci_run_id":32646641453,"ci_conclusion":"success","contains_behavioral_weights":false,"contains_foreign_pretrained_weights":false},
+    {"lane":"D05","source_sha":"31084f8fdecde200486dad6363b60d43fc9a58b6","disposition":"accepted","component_kind":"checkpoint_and_resume","pr_number":54,"ci_run_id":32736001108,"ci_conclusion":"success","contains_behavioral_weights":false,"contains_foreign_pretrained_weights":false},
+    {"lane":"D06","source_sha":"914973502ab92a925a5cc29d72e4b3cce0e81c80","disposition":"held","component_kind":"evaluation_stage_gates","pr_number":28,"ci_run_id":32646767818,"ci_conclusion":"failure","hold_reason":"exact-head Ruff I001 in D06-owned tests/test_integrated_stage_gates.py; pytest skipped; dedicated D06 gate 32646767856 also failed"},
+    {"lane":"D07","source_sha":"e59aee3e02ade84b76d4d44f8ec923d5786caae6","disposition":"accepted","component_kind":"inference_harness","pr_number":17,"ci_run_id":32646091451,"ci_conclusion":"success","contains_behavioral_weights":false,"contains_foreign_pretrained_weights":false},
+    {"lane":"D08","source_sha":"b8e01a38bfba18176e36c34b1530839ccaea4b21","disposition":"accepted","component_kind":"distributed_scale_readiness","pr_number":20,"ci_run_id":32646152647,"ci_conclusion":"success","contains_behavioral_weights":false,"contains_foreign_pretrained_weights":false}
+  ],
+  "integration_infrastructure": [
+    {"source_sha":"d3ec8a3df336227a6a9a9c7c9a8eb099844a1f1c","kind":"D10 evidence binding parent","source_ci_conclusion":"failure","resolution":"integration-owned Ruff defects repaired on convergence lineage"},
+    {"source_sha":"4f76ebecbb106e44f357a2e2387a6ede029e3e4e","kind":"D10 CI supply-chain hardening","ci_run_id":32647291105,"ci_conclusion":"success"},
+    {"source_sha":"3c819579a3aa6991456c75ebef2e58e26361c972","kind":"C01 tokenizer vocabulary run-manifest binding","pr_number":55,"ci_run_id":32736159775,"ci_conclusion":"success"}
+  ],
+  "accepted_package_reconciliation": {
+    "dependencies": ["numpy>=1.26", "safetensors>=0.5", "torch>=2.5"],
+    "scripts": {"twelve-six-generate":"twelve_six.inference.cli:main"},
+    "provenance": "Union of D02/D07 convergence metadata with exact-green D05 requirements; C01 run-manifest vocab identity selectively admitted. D05 and C01 source SHAs are explicit merge parents of this intake commit."
+  },
+  "pending_package_reconciliation": [
+    {"lane":"D06","when_green":"review and preserve evaluation-specific Ruff compatibility settings","required_config":"[tool.ruff.lint.per-file-ignores] src/twelve_six/evaluation.py = UP035, UP037, TRY004","must_preserve":["accepted dependencies","accepted scripts"]}
+  ],
+  "stale_or_duplicate_intake": [
+    {"surface":"PR #51 / direct D02 intake","disposition":"superseded_by_ancestry_reconciliation","replacement":"PR #52 ancestry-preserving pyproject reconciliation"},
+    {"surface":"d10/s0-experimental-compose-v1","disposition":"held_stale","reason":"partial pre-convergence composition"},
+    {"surface":"d10/intake-d05-selective-v2","disposition":"superseded","reason":"older D05 source; replaced by exact-green PR #54 lineage"},
+    {"surface":"d10/intake-d05-reconciled","disposition":"rejected_history_retained","reason":"previous ancestry/reconciliation path rejected; history preserved"}
+  ],
+  "audits": {"AUDIT-A":"CHANGES_REQUIRED","AUDIT-B":"CHANGES_REQUIRED"},
+  "promotion_blockers": [
+    "D06 current exact head is not CI-green",
+    "exact combined D01-D05/D07/D08 intake head still requires its own CI and integrated train-checkpoint-reload evidence",
+    "real integrated evaluation gate is not integrated",
+    "AUDIT-A and AUDIT-B have not passed this exact composition"
+  ]
+}
