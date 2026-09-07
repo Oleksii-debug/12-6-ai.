@@ -147,7 +147,7 @@ def _validate_decontamination(
     corpus: dict[str, Any],
     evaluation: dict[str, Any],
 ) -> None:
-    """Bind terminal decontamination to the exact pre-decontamination candidate."""
+    """Bind terminal decontamination to exact corpus and reserved-evaluation authorities."""
     predecontam = corpus.get("pre_decontamination_identity_sha256")
     _require_identity(
         blockers,
@@ -178,9 +178,10 @@ def _validate_decontamination(
         decontam.get("selection_validation_identity"),
         "decontamination_selection_validation_identity_missing",
     )
+    final_test_identity = decontam.get("final_test_identity")
     _require_identity(
         blockers,
-        decontam.get("final_test_identity"),
+        final_test_identity,
         "decontamination_final_test_identity_missing",
     )
     _require_identity(
@@ -197,6 +198,21 @@ def _validate_decontamination(
         and authority.get("evidence_sha256") != decontam.get("report_sha256")
     ):
         blockers.append("decontamination_report_authority_mismatch")
+
+    final_test_authority = evaluation.get("final_test_reservation_authority")
+    _require_authority(
+        blockers,
+        final_test_authority,
+        "final_test_reservation_authority_missing",
+        require_workflow=True,
+    )
+    if (
+        isinstance(final_test_authority, dict)
+        and _is_sha256(final_test_identity)
+        and final_test_authority.get("evidence_sha256") != final_test_identity
+    ):
+        blockers.append("final_test_reservation_authority_mismatch")
+
     if decontam.get("hash_only_evidence") is not True:
         blockers.append("decontamination_report_must_be_hash_only")
     if decontam.get("final_test_outcomes_read") is not False:
