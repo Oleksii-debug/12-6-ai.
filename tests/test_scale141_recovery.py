@@ -146,18 +146,15 @@ def _concurrent_publish_worker(
             raise RuntimeError("timed out waiting to release concurrent publisher")
         return _save(path, model, trainer, cfg)
 
-    try:
-        reference = publish_recovery_generation(
-            root,
-            save_generation=save_generation,
-            expected_source_sha=SOURCE_SHA,
-            expected_run_manifest_hash=RUN_HASH,
-            expected_step=trainer.optimizer_step,
-            expected_tokens_seen=trainer.tokens_seen,
-        )
-        result_queue.put(("ok", reference))
-    except Exception as exc:
-        result_queue.put(("error", f"{type(exc).__name__}: {exc}"))
+    reference = publish_recovery_generation(
+        root,
+        save_generation=save_generation,
+        expected_source_sha=SOURCE_SHA,
+        expected_run_manifest_hash=RUN_HASH,
+        expected_step=trainer.optimizer_step,
+        expected_tokens_seen=trainer.tokens_seen,
+    )
+    result_queue.put(("ok", reference))
 
 
 def _crash_lock_holder(root: str, entered: multiprocessing.synchronize.Event) -> None:
