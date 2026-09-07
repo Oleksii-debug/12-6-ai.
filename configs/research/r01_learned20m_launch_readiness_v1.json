@@ -12,6 +12,7 @@
   "evidence": {
     "code": {"git_sha": null},
     "corpus": {
+      "pre_decontamination_identity_sha256": "a33baaa3a7ff7a9622dc420c1d61b0d113ab0f11588a39674996bd198845efb6",
       "manifest_sha256": null,
       "split_sha256": null,
       "packing_sha256": null,
@@ -34,6 +35,23 @@
     "evaluation": {
       "firewall_authority": null,
       "selection_validation_authority": null,
+      "decontamination": {
+        "authority": {
+          "repository": "Oleksii-debug/12-6-ai.",
+          "git_sha": "50fc25c02164c3a0a4ccb94aba961e1cdb0764a3",
+          "evidence_sha256": "8b45147b44d6cbfadb7feb73b7719c4f0c497f1874f7b31b897fea8022ce95cc",
+          "terminal": true,
+          "workflow_run_id": 34100920038,
+          "workflow_conclusion": "success"
+        },
+        "status": "PASS_CLEAN",
+        "training_corpus_identity": "a33baaa3a7ff7a9622dc420c1d61b0d113ab0f11588a39674996bd198845efb6",
+        "selection_validation_identity": "7b97a9ab04469236dc5bc17fc80155cb43430b01c443bb6209fac090557258fd",
+        "final_test_identity": "86d51eb106524cd8e4d0f94d4ff6e2e3426c6321e0698279877dfc4d5fce3116",
+        "report_sha256": "8b45147b44d6cbfadb7feb73b7719c4f0c497f1874f7b31b897fea8022ce95cc",
+        "final_test_payload_accessed": false,
+        "final_test_outcomes_read": false
+      },
       "status": "BLOCKED"
     },
     "training_recipe": {
