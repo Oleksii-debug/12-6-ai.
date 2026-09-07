@@ -149,7 +149,7 @@ def _sanitize_activation_health(
         return None
     try:
         payload = provider()
-    except Exception:
+    except Exception:  # noqa: BLE001 - optional diagnostics must not mask training failure
         return {"provider_error": True}
     if payload is None:
         return None
@@ -162,9 +162,7 @@ def _sanitize_activation_health(
         if len(key) > 128:
             continue
         value = payload[key]
-        if isinstance(value, bool):
-            safe[key] = value
-        elif isinstance(value, int) and not isinstance(value, bool):
+        if isinstance(value, (bool, int)):
             safe[key] = value
         elif isinstance(value, float):
             safe[key] = value if math.isfinite(value) else "nonfinite"
