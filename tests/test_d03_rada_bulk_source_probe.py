@@ -4,12 +4,16 @@ import copy
 import hashlib
 import io
 import json
+import sys
 import zipfile
 from pathlib import Path
 
 import pytest
 
-from tools.probe_d03_rada_bulk_source import (
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+from tools.probe_d03_rada_bulk_source import (  # noqa: E402
     DEFAULT_CONFIG,
     ProbeError,
     _load_config,
