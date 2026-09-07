@@ -44,10 +44,10 @@ def fetch_bounded(url: str, max_bytes: int) -> bytes:
             raise RuntimeError(f"unexpected redirect: {final_url}")
         length = response.headers.get("Content-Length")
         if length is not None and int(length) > max_bytes:
-            raise RuntimeError("source exceeds configured bound before read")
+            raise RuntimeError("object exceeds configured bound before read")
         payload = response.read(max_bytes + 1)
     if len(payload) > max_bytes:
-        raise RuntimeError("source exceeds configured bound")
+        raise RuntimeError("object exceeds configured bound")
     return payload
 
 
@@ -126,16 +126,23 @@ def validate_contract(config: dict[str, object]) -> None:
         "source_git_blob_sha1": "45f33ac620907e1d1ed727524975b3a0fd1a0994",
         "source_bytes": 6225761,
         "license_id": "CC0-1.0",
+        "license_path": "LICENSE",
         "license_git_blob_sha1": "0e259d42c996742e9e3cba14c677129b2c1b6311",
         "raw_url": (
             "https://raw.githubusercontent.com/MurzikVasilyevich/"
             "ukr-proverbs-franko/7f62a9d8f0673d325b0a565d508461f4b44dae5b/"
             "franko.csv"
         ),
+        "license_url": (
+            "https://raw.githubusercontent.com/MurzikVasilyevich/"
+            "ukr-proverbs-franko/7f62a9d8f0673d325b0a565d508461f4b44dae5b/"
+            "LICENSE"
+        ),
     }
     for key, expected in expected_source.items():
         if source.get(key) != expected:
             raise RuntimeError(f"source authority drift: {key}")
+
     corroborating = config["corroborating_verba_authority"]
     expected_corroborating = {
         "repository": "dmytro-yemelianov/verbacorpus",
@@ -152,14 +159,21 @@ def validate_contract(config: dict[str, object]) -> None:
     for key, expected in expected_corroborating.items():
         if corroborating.get(key) != expected:
             raise RuntimeError(f"corroborating Verba authority drift: {key}")
+
     rights = config["rights_boundary"]
     if rights.get("historical_source_text") != "PUBLIC_DOMAIN":
         raise RuntimeError("historical source rights drift")
     if rights.get("primary_dataset_layer") != "CC0-1.0":
         raise RuntimeError("primary dataset rights drift")
-    if rights.get("primary_dataset_license_git_blob_sha1") != source["license_git_blob_sha1"]:
+    if (
+        rights.get("primary_dataset_license_git_blob_sha1")
+        != source["license_git_blob_sha1"]
+    ):
         raise RuntimeError("primary dataset license identity drift")
-    if rights.get("verba_compilation_enrichment_layer") != "CC-BY-4.0_CORROBORATING_ONLY":
+    if (
+        rights.get("verba_compilation_enrichment_layer")
+        != "CC-BY-4.0_CORROBORATING_ONLY"
+    ):
         raise RuntimeError("Verba rights-layer drift")
     if rights["payload_field_allowed"] != "prov_clean_only":
         raise RuntimeError("payload field expansion is forbidden")
@@ -171,11 +185,14 @@ def validate_contract(config: dict[str, object]) -> None:
     )
     if any(rights[key] is not False for key in forbidden):
         raise RuntimeError("LLM/enrichment fields must remain excluded")
+
     acquisition = config["acquisition"]
     expected_acquisition = {
         "fetch_count_required": 2,
         "byte_identical_fetches_required": True,
         "max_source_bytes": 7000000,
+        "max_license_bytes": 20000,
+        "max_source_plus_license_bytes": 6300000,
         "strict_utf8": True,
         "accept_encoding": "identity",
         "required_csv_columns": ["prov_clean", "term", "letter", "description"],
@@ -184,6 +201,7 @@ def validate_contract(config: dict[str, object]) -> None:
     for key, expected in expected_acquisition.items():
         if acquisition.get(key) != expected:
             raise RuntimeError(f"acquisition contract drift: {key}")
+
     policy = config["filter"]
     expected_filter = {
         "unicode_normalization": "NFC",
@@ -201,6 +219,27 @@ def validate_contract(config: dict[str, object]) -> None:
         if policy.get(key) != expected:
             raise RuntimeError(f"filter policy drift: {key}")
     validate_truth_boundary(config)
+
+
+def validate_license_bytes(config: dict[str, object], license_raw: bytes) -> dict[str, object]:
+    source = config["source"]
+    acquisition = config["acquisition"]
+    if len(license_raw) > int(acquisition["max_license_bytes"]):
+        raise RuntimeError("license exceeds configured bound")
+    if git_blob_sha1(license_raw) != source["license_git_blob_sha1"]:
+        raise RuntimeError("license Git-blob identity mismatch")
+    try:
+        license_text = license_raw.decode("utf-8", errors="strict")
+    except UnicodeDecodeError as exc:
+        raise RuntimeError("license is not strict UTF-8") from exc
+    if "CC0 1.0 Universal" not in license_text:
+        raise RuntimeError("license semantic marker mismatch")
+    return {
+        "license_id": source["license_id"],
+        "license_git_blob_sha1": git_blob_sha1(license_raw),
+        "license_sha256": sha256_bytes(license_raw),
+        "license_bytes": len(license_raw),
+    }
 
 
 def parse_and_filter(
@@ -303,9 +342,11 @@ def parse_and_filter(
 def build_report(
     config: dict[str, object],
     raw: bytes,
+    license_raw: bytes,
     stats: dict[str, object],
 ) -> dict[str, object]:
     source = config["source"]
+    license_evidence = validate_license_bytes(config, license_raw)
     core = {
         "schema_version": "12-6.d03-franko1901-materialization-report.v1",
         "worker_id": config["worker_id"],
@@ -316,6 +357,7 @@ def build_report(
         "source_git_blob_sha1": git_blob_sha1(raw),
         "source_sha256": sha256_bytes(raw),
         "source_bytes": len(raw),
+        "license_evidence": license_evidence,
         "materialization": stats,
         "rights_boundary": config["rights_boundary"],
         "truth_boundary": config["truth_boundary"],
@@ -330,39 +372,56 @@ def build_report(
 def materialize_from_bytes(
     config: dict[str, object],
     raw: bytes,
+    license_raw: bytes,
 ) -> tuple[bytes, dict[str, object]]:
     validate_contract(config)
     source = config["source"]
+    acquisition = config["acquisition"]
     if len(raw) != int(source["source_bytes"]):
         raise RuntimeError("source byte-count mismatch")
     if git_blob_sha1(raw) != source["source_git_blob_sha1"]:
         raise RuntimeError("source Git-blob identity mismatch")
+    if len(raw) + len(license_raw) > int(acquisition["max_source_plus_license_bytes"]):
+        raise RuntimeError("source plus license exceeds configured aggregate bound")
+    validate_license_bytes(config, license_raw)
     jsonl, stats = parse_and_filter(config, raw)
-    return jsonl, build_report(config, raw, stats)
+    return jsonl, build_report(config, raw, license_raw, stats)
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default=str(DEFAULT_CONFIG))
     parser.add_argument("--input", default=None)
+    parser.add_argument("--license-input", default=None)
     parser.add_argument("--output-dir", required=True)
     args = parser.parse_args()
 
     config = json.loads(Path(args.config).read_text(encoding="utf-8"))
     validate_contract(config)
     source = config["source"]
-    max_bytes = int(config["acquisition"]["max_source_bytes"])
+    acquisition = config["acquisition"]
+    max_source_bytes = int(acquisition["max_source_bytes"])
+    max_license_bytes = int(acquisition["max_license_bytes"])
 
-    if args.input:
+    if args.input or args.license_input:
+        if not (args.input and args.license_input):
+            raise RuntimeError("--input and --license-input must be supplied together")
         raw_a = Path(args.input).read_bytes()
         raw_b = raw_a
+        license_a = Path(args.license_input).read_bytes()
+        license_b = license_a
     else:
-        raw_a = fetch_bounded(source["raw_url"], max_bytes)
-        raw_b = fetch_bounded(source["raw_url"], max_bytes)
+        raw_a = fetch_bounded(source["raw_url"], max_source_bytes)
+        raw_b = fetch_bounded(source["raw_url"], max_source_bytes)
+        license_a = fetch_bounded(source["license_url"], max_license_bytes)
+        license_b = fetch_bounded(source["license_url"], max_license_bytes)
+
     if raw_a != raw_b:
         raise RuntimeError("two exact source acquisitions are not byte-identical")
+    if license_a != license_b:
+        raise RuntimeError("two exact license acquisitions are not byte-identical")
 
-    candidate_jsonl, report = materialize_from_bytes(config, raw_a)
+    candidate_jsonl, report = materialize_from_bytes(config, raw_a, license_a)
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "franko1901-candidate.jsonl").write_bytes(candidate_jsonl)
@@ -371,6 +430,7 @@ def main() -> int:
         encoding="utf-8",
         newline="\n",
     )
+    (output_dir / "LICENSE.cc0.txt").write_bytes(license_a)
     (output_dir / "ATTRIBUTION.txt").write_text(
         config["rights_boundary"]["required_attribution"] + "\n",
         encoding="utf-8",
