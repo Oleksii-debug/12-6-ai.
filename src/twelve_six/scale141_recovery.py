@@ -179,7 +179,7 @@ def _atomic_publish_pointer(
     temp = Path(raw_temp)
     try:
         with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
-            json.dump(value, handle, ensure_ascii=False, sort_keys=True, separators=(",", ","))
+            json.dump(value, handle, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
             handle.write("\n")
             handle.flush()
             os.fsync(handle.fileno())
