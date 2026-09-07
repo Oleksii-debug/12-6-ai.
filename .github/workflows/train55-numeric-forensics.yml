@@ -50,6 +50,7 @@ jobs:
           python -m venv .train55-locked
           .train55-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/toolchain.lock.txt
           .train55-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/runtime.lock.txt
+          .train55-locked/bin/python -m pip install --disable-pip-version-check --require-hashes --no-deps -r requirements/locks/linux-x86_64/dev.lock.txt
           PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 .train55-locked/bin/python -m pip install --no-deps --no-build-isolation -e .
       - name: Run focused Trainer and checkpoint regressions
         run: >-
