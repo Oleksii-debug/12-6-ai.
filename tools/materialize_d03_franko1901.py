@@ -119,13 +119,48 @@ def validate_contract(config: dict[str, object]) -> None:
     if config.get("local_free_only") is not True:
         raise RuntimeError("LOCAL_FREE boundary is not asserted")
     source = config["source"]
-    if source["upstream_revision"] != "34a2c10ac35e1febad6c270a88fc8b83790407da":
-        raise RuntimeError("upstream revision drift")
-    if source["source_path"] != "data/sources/franko.csv":
-        raise RuntimeError("source path drift")
-    if source["source_git_blob_sha1"] != "45f33ac620907e1d1ed727524975b3a0fd1a0994":
-        raise RuntimeError("source blob drift")
+    expected_source = {
+        "upstream_repository": "MurzikVasilyevich/ukr-proverbs-franko",
+        "upstream_revision": "7f62a9d8f0673d325b0a565d508461f4b44dae5b",
+        "source_path": "franko.csv",
+        "source_git_blob_sha1": "45f33ac620907e1d1ed727524975b3a0fd1a0994",
+        "source_bytes": 6225761,
+        "license_id": "CC0-1.0",
+        "license_git_blob_sha1": "0e259d42c996742e9e3cba14c677129b2c1b6311",
+        "raw_url": (
+            "https://raw.githubusercontent.com/MurzikVasilyevich/"
+            "ukr-proverbs-franko/7f62a9d8f0673d325b0a565d508461f4b44dae5b/"
+            "franko.csv"
+        ),
+    }
+    for key, expected in expected_source.items():
+        if source.get(key) != expected:
+            raise RuntimeError(f"source authority drift: {key}")
+    corroborating = config["corroborating_verba_authority"]
+    expected_corroborating = {
+        "repository": "dmytro-yemelianov/verbacorpus",
+        "revision": "34a2c10ac35e1febad6c270a88fc8b83790407da",
+        "vendored_source_path": "data/sources/franko.csv",
+        "vendored_source_git_blob_sha1": source["source_git_blob_sha1"],
+        "adapter_git_blob_sha1": "840f4970367879eff718def3842fc065614c8b25",
+        "datacard_git_blob_sha1": "3c880b7b6f891c4b0b6aa8ced367bbd5f7280fe3",
+        "source_registry_git_blob_sha1": "6d1ec72fb41f580557adf91152f6b0c9d08937b5",
+        "same_source_blob_as_primary": True,
+        "data_card_classification": "EXISTING_DIGITAL_TRANSCRIPTION",
+        "data_card_text_boundary": "VERBATIM_SOURCE_ORTHOGRAPHY_NEVER_MODIFIED",
+    }
+    for key, expected in expected_corroborating.items():
+        if corroborating.get(key) != expected:
+            raise RuntimeError(f"corroborating Verba authority drift: {key}")
     rights = config["rights_boundary"]
+    if rights.get("historical_source_text") != "PUBLIC_DOMAIN":
+        raise RuntimeError("historical source rights drift")
+    if rights.get("primary_dataset_layer") != "CC0-1.0":
+        raise RuntimeError("primary dataset rights drift")
+    if rights.get("primary_dataset_license_git_blob_sha1") != source["license_git_blob_sha1"]:
+        raise RuntimeError("primary dataset license identity drift")
+    if rights.get("verba_compilation_enrichment_layer") != "CC-BY-4.0_CORROBORATING_ONLY":
+        raise RuntimeError("Verba rights-layer drift")
     if rights["payload_field_allowed"] != "prov_clean_only":
         raise RuntimeError("payload field expansion is forbidden")
     forbidden = (
@@ -137,10 +172,34 @@ def validate_contract(config: dict[str, object]) -> None:
     if any(rights[key] is not False for key in forbidden):
         raise RuntimeError("LLM/enrichment fields must remain excluded")
     acquisition = config["acquisition"]
-    if acquisition["fetch_count_required"] != 2:
-        raise RuntimeError("two-fetch requirement drift")
-    if acquisition["byte_identical_fetches_required"] is not True:
-        raise RuntimeError("byte identity requirement drift")
+    expected_acquisition = {
+        "fetch_count_required": 2,
+        "byte_identical_fetches_required": True,
+        "max_source_bytes": 7000000,
+        "strict_utf8": True,
+        "accept_encoding": "identity",
+        "required_csv_columns": ["prov_clean", "term", "letter", "description"],
+        "max_rows": 40000,
+    }
+    for key, expected in expected_acquisition.items():
+        if acquisition.get(key) != expected:
+            raise RuntimeError(f"acquisition contract drift: {key}")
+    policy = config["filter"]
+    expected_filter = {
+        "unicode_normalization": "NFC",
+        "strip_outer_whitespace": True,
+        "min_alphabetic_chars": 3,
+        "min_cyrillic_share_of_alpha": 0.65,
+        "max_text_utf8_bytes": 4096,
+        "reject_control_characters": True,
+        "reject_replacement_character": True,
+        "reject_url_like": True,
+        "reject_email_like": True,
+        "deduplicate_exact_normalized_text": True,
+    }
+    for key, expected in expected_filter.items():
+        if policy.get(key) != expected:
+            raise RuntimeError(f"filter policy drift: {key}")
     validate_truth_boundary(config)
 
 
