@@ -13,21 +13,45 @@
   },
   "selection": {
     "max_records": 256,
-    "order": "stable_id_ascending_after_privacy_pass",
+    "order": "numeric_id_ascending_after_privacy_pass",
     "text_column": "text",
-    "id_candidates": ["id", "decision_id", "doc_id"]
+    "id_column": "id"
+  },
+  "parquet_schema": {
+    "required_fields": [
+      "id",
+      "text",
+      "number_count",
+      "information_count",
+      "person_count",
+      "address_count",
+      "sum_of_unique_entities",
+      "number_occurrences",
+      "information_occurrences",
+      "person_occurrences",
+      "address_occurrences",
+      "__index_level_0__"
+    ],
+    "reject_extra_fields": true
   },
   "privacy": {
     "reject_email": true,
     "reject_phone": true,
     "reject_control_characters": true,
     "require_anonymization_marker_consistency": true,
-    "marker_prefixes": ["ОСОБА_", "АДРЕСА_", "ІНФОРМАЦІЯ_", "НОМЕР_"]
+    "verify_occurrence_spans": true,
+    "require_complete_occurrence_annotation": true,
+    "marker_prefixes": ["ОСОБА_", "АДРЕСА_", "ІНФОРМАЦІЯ_", "НОМЕР_"],
+    "rejected_text_emitted": false,
+    "rejected_hashes_emitted": false
   },
   "quality": {
     "min_chars": 200,
     "min_cyrillic_alpha_ratio": 0.70,
     "require_ukrainian_specific_letter": true
+  },
+  "runtime": {
+    "pyarrow": "17.0.0"
   },
   "claim_boundary": {
     "training_authorized_bytes": 0,

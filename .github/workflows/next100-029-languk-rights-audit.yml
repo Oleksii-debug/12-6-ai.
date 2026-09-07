@@ -75,6 +75,10 @@ jobs:
           report = json.loads(Path("artifacts/languk/run-a/report.json").read_text())
           assert 0 < report["retained_records"] <= 256
           assert report["retained_normalized_bytes"] > 0
+          assert report["exact_schema_validated"] is True
+          assert report["occurrence_spans_validated"] is True
+          assert report["complete_placeholder_annotation_validated"] is True
+          assert report["universal_pii_absence_claimed"] is False
           assert report["training_authorized_bytes"] == 0
           assert report["canonical_capacity_credited"] == 0
           assert report["family_credit_added"] == 0
@@ -87,3 +91,11 @@ jobs:
           assert report["rejected_hashes_emitted"] is False
           print(json.dumps(report, ensure_ascii=False, sort_keys=True))
           PY
+
+      - name: Retain text-free exact retest report
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: next100-029-languk-court-retest-report
+          path: artifacts/languk/run-a/report.json
+          if-no-files-found: error
+          retention-days: 30
