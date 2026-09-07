@@ -62,7 +62,7 @@ def make_row(record_id: str = "116075957", repeats: int = 3) -> dict:
     }
     for token, count_field, occurrence_field in specs.values():
         occurrences = _occurrences(text, token)
-        row[count_field] = len({str(item["text"]) for item in occurrences})
+        row[count_field] = len(occurrences)
         row[occurrence_field] = occurrences
     return row
 
@@ -75,9 +75,9 @@ def test_load_config_preserves_exact_schema_and_zero_credit() -> None:
     assert value["claim_boundary"]["model_training_executed"] is False
 
 
-def test_repeated_placeholder_occurrences_preserve_unique_entity_count() -> None:
+def test_repeated_placeholder_count_is_occurrence_count() -> None:
     row = make_row(repeats=3)
-    assert row["person_count"] == 1
+    assert row["person_count"] == 3
     assert len(row["person_occurrences"]) == 3
     ok, reason, text = mod.assess_row(row, CONFIG)
     assert ok is True
@@ -85,14 +85,25 @@ def test_repeated_placeholder_occurrences_preserve_unique_entity_count() -> None
     assert text.count("ОСОБА_1") == 3
 
 
-def test_unique_entity_count_mismatch_fails_closed() -> None:
+def test_occurrence_count_mismatch_fails_closed_in_validator() -> None:
     row = make_row()
     row["person_count"] += 1
-    with pytest.raises(mod.RetestError, match="unique_entity_count_mismatch_person_count"):
-        mod.assess_row(row, CONFIG)
+    with pytest.raises(mod.RetestError, match="occurrence_count_mismatch_person_count"):
+        mod._validate_occurrences(row, row["text"])
 
 
-def test_two_distinct_person_markers_count_as_two_unique_entities() -> None:
+def test_occurrence_count_mismatch_is_quarantined_by_selection() -> None:
+    good = make_row("2")
+    bad = make_row("3")
+    bad["person_count"] += 1
+    accepted, reasons = mod.select_rows([good, bad], CONFIG)
+    assert [row["record_id"] for row in accepted] == ["2"]
+    assert reasons["accepted"] == 1
+    assert reasons["annotation_contract_inconsistent"] == 1
+    assert sum(reasons.values()) == 2
+
+
+def test_two_distinct_person_markers_keep_nonempty_category_sum() -> None:
     row = make_row(repeats=1)
     row["text"] += " Додатково у справі згадано ОСОБА_2 як учасника провадження."
     row["person_occurrences"] = [
@@ -100,52 +111,56 @@ def test_two_distinct_person_markers_count_as_two_unique_entities() -> None:
         *_occurrences(row["text"], "ОСОБА_2"),
     ]
     row["person_count"] = 2
-    row["sum_of_unique_entities"] = 5
+    row["sum_of_unique_entities"] = 4
     ok, reason, text = mod.assess_row(row, CONFIG)
     assert ok is True
     assert reason == "accepted"
     assert "ОСОБА_2" in text
 
 
-def test_stale_occurrence_span_fails_closed() -> None:
+def test_stale_occurrence_span_is_quarantined() -> None:
     row = make_row()
     row["person_occurrences"][0]["start"] += 1
-    with pytest.raises(
-        mod.RetestError, match="occurrence_span_text_mismatch_person_occurrences"
-    ):
-        mod.assess_row(row, CONFIG)
+    assert mod.assess_row(row, CONFIG)[:2] == (
+        False,
+        "annotation_contract_inconsistent",
+    )
 
 
-def test_untracked_placeholder_fails_closed() -> None:
+def test_untracked_placeholder_is_quarantined() -> None:
     row = make_row()
     row["text"] += " ОСОБА_99"
-    with pytest.raises(
-        mod.RetestError, match="untracked_or_stale_occurrences_person_occurrences"
-    ):
-        mod.assess_row(row, CONFIG)
+    assert mod.assess_row(row, CONFIG)[:2] == (
+        False,
+        "annotation_contract_inconsistent",
+    )
 
 
-def test_occurrence_token_must_match_its_category() -> None:
+def test_occurrence_token_category_mismatch_is_quarantined() -> None:
     row = make_row()
     row["person_occurrences"][0]["text"] = "АДРЕСА_1"
-    with pytest.raises(
-        mod.RetestError, match="invalid_occurrence_token_person_occurrences"
-    ):
-        mod.assess_row(row, CONFIG)
+    assert mod.assess_row(row, CONFIG)[:2] == (
+        False,
+        "annotation_contract_inconsistent",
+    )
 
 
-def test_sum_of_unique_entities_is_bound() -> None:
+def test_sum_of_unique_entities_is_bound_to_nonempty_categories() -> None:
     row = make_row()
     row["sum_of_unique_entities"] = 3
-    with pytest.raises(mod.RetestError, match="sum_of_unique_entities_inconsistent"):
-        mod.assess_row(row, CONFIG)
+    assert mod.assess_row(row, CONFIG)[:2] == (
+        False,
+        "annotation_contract_inconsistent",
+    )
 
 
 def test_sum_of_unique_entities_rejects_malformed_value() -> None:
     row = make_row()
     row["sum_of_unique_entities"] = True
-    with pytest.raises(mod.RetestError, match="invalid_sum_of_unique_entities"):
-        mod.assess_row(row, CONFIG)
+    assert mod.assess_row(row, CONFIG)[:2] == (
+        False,
+        "annotation_contract_inconsistent",
+    )
 
 
 def test_schema_missing_or_extra_field_fails_closed() -> None:
