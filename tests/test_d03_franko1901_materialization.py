@@ -29,10 +29,13 @@ def test_canonical_contract_validates() -> None:
     ("mutation", "expected_message"),
     [
         (("source", "source_git_blob_sha1", "0" * 40), "source authority drift"),
+        (("source", "license_url", "https://example.invalid/LICENSE"), "source authority drift"),
         (("rights_boundary", "modern_text_allowed", True), "LLM/enrichment fields"),
         (("truth_boundary", "training_authorized_bytes", 1), "truth boundary drift"),
         (("truth_boundary", "corpus_admitted", True), "truth boundary drift"),
         (("acquisition", "fetch_count_required", 1), "acquisition contract drift"),
+        (("acquisition", "max_license_bytes", 999999), "acquisition contract drift"),
+        (("acquisition", "max_source_plus_license_bytes", 9999999), "acquisition contract drift"),
         (("filter", "min_cyrillic_share_of_alpha", 0.0), "filter policy drift"),
     ],
 )
@@ -45,6 +48,25 @@ def test_contract_mutations_fail_closed(
     config[section][key] = value
     with pytest.raises(RuntimeError, match=expected_message):
         MODULE.validate_contract(config)
+
+
+def test_license_bytes_are_content_bound_and_semantically_marked() -> None:
+    config = canonical_config()
+    license_raw = b"Creative Commons Legal Code\nCC0 1.0 Universal\n"
+    config["source"]["license_git_blob_sha1"] = MODULE.git_blob_sha1(license_raw)
+    evidence = MODULE.validate_license_bytes(config, license_raw)
+    assert evidence["license_id"] == "CC0-1.0"
+    assert evidence["license_git_blob_sha1"] == MODULE.git_blob_sha1(license_raw)
+    assert evidence["license_sha256"] == MODULE.sha256_bytes(license_raw)
+    assert evidence["license_bytes"] == len(license_raw)
+
+    with pytest.raises(RuntimeError, match="license Git-blob identity mismatch"):
+        MODULE.validate_license_bytes(config, license_raw + b"tamper")
+
+    wrong_semantics = b"Creative Commons but not the expected license marker\n"
+    config["source"]["license_git_blob_sha1"] = MODULE.git_blob_sha1(wrong_semantics)
+    with pytest.raises(RuntimeError, match="license semantic marker mismatch"):
+        MODULE.validate_license_bytes(config, wrong_semantics)
 
 
 def test_text_classifier_rejects_non_uk_and_payload_anomalies() -> None:
@@ -101,9 +123,11 @@ def test_git_blob_identity_is_content_bound() -> None:
     assert MODULE.git_blob_sha1(b"test\n") != MODULE.git_blob_sha1(b"test")
 
 
-def test_report_keeps_zero_credit_boundary() -> None:
+def test_report_keeps_zero_credit_boundary_and_binds_license() -> None:
     config = canonical_config()
     raw = b"small synthetic bytes"
+    license_raw = b"Creative Commons Legal Code\nCC0 1.0 Universal\n"
+    config["source"]["license_git_blob_sha1"] = MODULE.git_blob_sha1(license_raw)
     stats = {
         "rows_seen": 1,
         "accepted_rows": 1,
@@ -117,9 +141,10 @@ def test_report_keeps_zero_credit_boundary() -> None:
         "aggregate_cyrillic_chars": 10,
         "aggregate_cyrillic_share_of_alpha": 1.0,
     }
-    report = MODULE.build_report(config, raw, stats)
+    report = MODULE.build_report(config, raw, license_raw, stats)
     truth = report["truth_boundary"]
     assert report["decision"] == "CANDIDATE_MATERIALIZED_ZERO_CREDIT"
+    assert report["license_evidence"]["license_git_blob_sha1"] == MODULE.git_blob_sha1(license_raw)
     assert truth["canonical_capacity_credit_bytes"] == 0
     assert truth["training_authorized_bytes"] == 0
     assert truth["corpus_admitted"] is False
