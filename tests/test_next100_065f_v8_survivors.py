@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import copy
 import importlib.util
+import unittest
 from pathlib import Path
-
-import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULE_PATH = ROOT / "tools/derive_next100_065f_v8_survivors.py"
@@ -20,8 +19,8 @@ def _source(source_id: str, capacity: int, modality: str = "code") -> dict[str, 
         "source_family": f"family:{source_id}",
         "modality": modality,
         "declared_capacity_bytes": capacity,
-        "verified_raw_sha256": (source_id[0] * 64),
-        "normalized_sha256": (source_id[-1] * 64),
+        "verified_raw_sha256": source_id[0] * 64,
+        "normalized_sha256": source_id[-1] * 64,
         "stable_origin_id_sha256": "1" * 64,
         "stable_object_id_sha256": "2" * 64,
     }
@@ -54,53 +53,57 @@ def _report() -> dict[str, object]:
     }
 
 
-def test_survivor_authority_uses_v3_capacity_rule_and_stable_tie_break() -> None:
-    authority = MODULE.derive_survivor_authority(_report())
-    assert [row["source_id"] for row in authority["survivors"]] == ["b", "c", "e"]
-    assert authority["post_dedup_declared_capacity_bytes"] == 65
-    assert authority["duplicate_discount_bytes"] == 30
-    assert authority["duplicate_clusters"] == [
-        {
-            "member_source_ids": ["a", "b"],
-            "selected_source_id": "b",
-            "selected_declared_capacity_bytes": 15,
-        },
-        {
-            "member_source_ids": ["c", "d"],
-            "selected_source_id": "c",
-            "selected_declared_capacity_bytes": 20,
-        },
-    ]
-    assert authority["truth_boundary"]["training_record_inventory_materialized"] is False
-    assert authority["truth_boundary"]["authorized_training_exposure"] == 0
+class V8SurvivorAuthorityTests(unittest.TestCase):
+    def test_uses_v3_capacity_rule_and_stable_tie_break(self) -> None:
+        authority = MODULE.derive_survivor_authority(_report())
+        self.assertEqual([row["source_id"] for row in authority["survivors"]], ["b", "c", "e"])
+        self.assertEqual(authority["post_dedup_declared_capacity_bytes"], 65)
+        self.assertEqual(authority["duplicate_discount_bytes"], 30)
+        self.assertEqual(
+            authority["duplicate_clusters"],
+            [
+                {
+                    "member_source_ids": ["a", "b"],
+                    "selected_source_id": "b",
+                    "selected_declared_capacity_bytes": 15,
+                },
+                {
+                    "member_source_ids": ["c", "d"],
+                    "selected_source_id": "c",
+                    "selected_declared_capacity_bytes": 20,
+                },
+            ],
+        )
+        self.assertFalse(authority["truth_boundary"]["training_record_inventory_materialized"])
+        self.assertEqual(authority["truth_boundary"]["authorized_training_exposure"], 0)
+
+    def test_deterministic_under_cluster_member_and_cluster_order(self) -> None:
+        report = _report()
+        first = MODULE.derive_survivor_authority(report)
+        report["dedup_v3"]["terminal_candidates"]["duplicate_clusters"] = [["d", "c"], ["b", "a"]]
+        second = MODULE.derive_survivor_authority(report)
+        self.assertEqual(first, second)
+
+    def test_rejects_overlapping_clusters(self) -> None:
+        report = _report()
+        report["dedup_v3"]["terminal_candidates"]["duplicate_clusters"] = [["a", "b"], ["b", "c"]]
+        with self.assertRaisesRegex(MODULE.SurvivorAuthorityError, "overlap"):
+            MODULE.derive_survivor_authority(report)
+
+    def test_rejects_capacity_not_reproducing_v3_summary(self) -> None:
+        report = _report()
+        report["source_vector"]["conservative_unique_capacity_bytes_after_global_dedup"] = 66
+        with self.assertRaisesRegex(MODULE.SurvivorAuthorityError, "does not reproduce"):
+            MODULE.derive_survivor_authority(report)
+
+    def test_verifier_rejects_mutated_selected_source(self) -> None:
+        report = _report()
+        authority = MODULE.derive_survivor_authority(report)
+        mutated = copy.deepcopy(authority)
+        mutated["duplicate_clusters"][0]["selected_source_id"] = "a"
+        with self.assertRaisesRegex(MODULE.SurvivorAuthorityError, "exact deterministic derivation"):
+            MODULE.verify_survivor_authority(report, mutated)
 
 
-def test_survivor_authority_is_deterministic_under_cluster_member_order() -> None:
-    report = _report()
-    first = MODULE.derive_survivor_authority(report)
-    report["dedup_v3"]["terminal_candidates"]["duplicate_clusters"] = [["d", "c"], ["b", "a"]]
-    second = MODULE.derive_survivor_authority(report)
-    assert first == second
-
-
-def test_survivor_authority_rejects_overlapping_clusters() -> None:
-    report = _report()
-    report["dedup_v3"]["terminal_candidates"]["duplicate_clusters"] = [["a", "b"], ["b", "c"]]
-    with pytest.raises(MODULE.SurvivorAuthorityError, match="overlap"):
-        MODULE.derive_survivor_authority(report)
-
-
-def test_survivor_authority_rejects_capacity_not_reproducing_v3_summary() -> None:
-    report = _report()
-    report["source_vector"]["conservative_unique_capacity_bytes_after_global_dedup"] = 66
-    with pytest.raises(MODULE.SurvivorAuthorityError, match="does not reproduce"):
-        MODULE.derive_survivor_authority(report)
-
-
-def test_verifier_rejects_mutated_selected_source() -> None:
-    report = _report()
-    authority = MODULE.derive_survivor_authority(report)
-    mutated = copy.deepcopy(authority)
-    mutated["duplicate_clusters"][0]["selected_source_id"] = "a"
-    with pytest.raises(MODULE.SurvivorAuthorityError, match="exact deterministic derivation"):
-        MODULE.verify_survivor_authority(report, mutated)
+if __name__ == "__main__":
+    unittest.main()
