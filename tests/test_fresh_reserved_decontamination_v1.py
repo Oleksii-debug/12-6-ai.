@@ -32,6 +32,16 @@ def _canonical(value: object) -> bytes:
     ).encode()
 
 
+def _evaluation_record(text: str = "x") -> dict[str, str]:
+    return {
+        "record_id": "e",
+        "source_id": "e",
+        "source_family": "e",
+        "modality": "en",
+        "text": text,
+    }
+
+
 def _inventory(payload: bytes = b"alpha beta gamma") -> dict[str, object]:
     core: dict[str, object] = {
         "schema_version": OUTPUT_SCHEMA,
@@ -91,17 +101,11 @@ def _run(eval_text: str = "totally unrelated evaluation sentence") -> dict[str, 
     return execute_fresh_reserved_decontamination(
         inventory,
         {"source-1": payload},
-        [
-            {
-                "record_id": "eval-1",
-                "source_id": "eval-source",
-                "source_family": "eval-family",
-                "modality": "en",
-                "text": eval_text,
-            }
-        ],
+        [_evaluation_record(eval_text)],
         authorities,
-        expected_inventory_identity_sha256=str(inventory["inventory_identity_sha256"]),
+        expected_inventory_identity_sha256=str(
+            inventory["inventory_identity_sha256"]
+        ),
         expected_survivor_authority_sha256=_sha("survivor"),
         selection_validation_identity=selection,
         final_test_identity=final,
@@ -121,6 +125,35 @@ def _verify(report: dict[str, object]) -> None:
         selection_validation_identity=selection,
         final_test_identity=final,
         postdedup_handoff_git_sha="a" * 40,
+        data232_matcher_git_sha="b" * 40,
+    )
+
+
+def _execute_for_failure(
+    *,
+    expected_survivor_sha: str | None = None,
+    authorities_override: dict[str, object] | None = None,
+    postdedup_sha: str = "a" * 40,
+) -> None:
+    payload = b"alpha beta gamma"
+    inventory = _inventory(payload)
+    authorities, selection, final = _authorities()
+    if authorities_override is not None:
+        authorities = authorities_override
+    execute_fresh_reserved_decontamination(
+        inventory,
+        {"source-1": payload},
+        [_evaluation_record()],
+        authorities,
+        expected_inventory_identity_sha256=str(
+            inventory["inventory_identity_sha256"]
+        ),
+        expected_survivor_authority_sha256=(
+            expected_survivor_sha or _sha("survivor")
+        ),
+        selection_validation_identity=selection,
+        final_test_identity=final,
+        postdedup_handoff_git_sha=postdedup_sha,
         data232_matcher_git_sha="b" * 40,
     )
 
@@ -152,42 +185,15 @@ def test_overlap_is_excluded_without_granting_training_authority() -> None:
 
 
 def test_external_survivor_authority_mismatch_fails_closed() -> None:
-    payload = b"alpha beta gamma"
-    inventory = _inventory(payload)
-    authorities, selection, final = _authorities()
     with pytest.raises(FreshReservedDecontaminationError, match="survivor authority"):
-        execute_fresh_reserved_decontamination(
-            inventory,
-            {"source-1": payload},
-            [{"record_id": "e", "source_id": "e", "source_family": "e", "modality": "en", "text": "x"}],
-            authorities,
-            expected_inventory_identity_sha256=str(inventory["inventory_identity_sha256"]),
-            expected_survivor_authority_sha256=_sha("other-survivor"),
-            selection_validation_identity=selection,
-            final_test_identity=final,
-            postdedup_handoff_git_sha="a" * 40,
-            data232_matcher_git_sha="b" * 40,
-        )
+        _execute_for_failure(expected_survivor_sha=_sha("other-survivor"))
 
 
 def test_outcome_bearing_evaluation_authority_fails_closed() -> None:
-    payload = b"alpha beta gamma"
-    inventory = _inventory(payload)
-    authorities, selection, final = _authorities()
+    authorities, _, _ = _authorities()
     authorities["benchmark_score"] = 0.9
     with pytest.raises(FreshReservedDecontaminationError, match="outcome-bearing"):
-        execute_fresh_reserved_decontamination(
-            inventory,
-            {"source-1": payload},
-            [{"record_id": "e", "source_id": "e", "source_family": "e", "modality": "en", "text": "x"}],
-            authorities,
-            expected_inventory_identity_sha256=str(inventory["inventory_identity_sha256"]),
-            expected_survivor_authority_sha256=_sha("survivor"),
-            selection_validation_identity=selection,
-            final_test_identity=final,
-            postdedup_handoff_git_sha="a" * 40,
-            data232_matcher_git_sha="b" * 40,
-        )
+        _execute_for_failure(authorities_override=authorities)
 
 
 def test_self_consistent_training_promotion_is_rejected() -> None:
@@ -224,19 +230,5 @@ def test_report_tamper_without_rehash_is_rejected() -> None:
 
 
 def test_invalid_git_binding_is_rejected_before_execution() -> None:
-    payload = b"alpha beta gamma"
-    inventory = _inventory(payload)
-    authorities, selection, final = _authorities()
     with pytest.raises(FreshReservedDecontaminationError, match="Git SHA"):
-        execute_fresh_reserved_decontamination(
-            inventory,
-            {"source-1": payload},
-            [{"record_id": "e", "source_id": "e", "source_family": "e", "modality": "en", "text": "x"}],
-            authorities,
-            expected_inventory_identity_sha256=str(inventory["inventory_identity_sha256"]),
-            expected_survivor_authority_sha256=_sha("survivor"),
-            selection_validation_identity=selection,
-            final_test_identity=final,
-            postdedup_handoff_git_sha="not-a-sha",
-            data232_matcher_git_sha="b" * 40,
-        )
+        _execute_for_failure(postdedup_sha="not-a-sha")
