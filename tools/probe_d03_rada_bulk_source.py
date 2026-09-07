@@ -459,16 +459,17 @@ def main() -> None:
             max_bytes=int(policy["max_archive_bytes"]),
         )
 
-    observed = config["discovery_observation"]
     strict_revalidation = not args.accept_current_upstream
-    expected_md5 = str(observed["archive_md5"]) if strict_revalidation else None
-    expected_bytes = int(observed["archive_bytes"]) if strict_revalidation else None
-    report = inventory_archive(
-        archive,
-        config,
-        expected_md5=expected_md5,
-        expected_bytes=expected_bytes,
-    )
+    if strict_revalidation:
+        observed = config["discovery_observation"]
+        report = inventory_archive(
+            archive,
+            config,
+            expected_md5=str(observed["archive_md5"]),
+            expected_bytes=int(observed["archive_bytes"]),
+        )
+    else:
+        report = observe_archive_inventory(archive, config)
     report["http_response"] = response_headers
     report["discovery_observation_revalidated"] = strict_revalidation
 
