@@ -4,12 +4,23 @@
   "local_free_only": true,
   "parent_probe": {
     "pr": 618,
-    "head_sha": "bed8c3237379194b90e54d558697a0ddc7ea4f95",
+    "head_sha": "52bc92bfb35581f6968af558148bb364f8ddbb9b",
     "probe_report_schema": "12-6.d03-rada-bulk-source-probe-report.v1",
     "probe_worker_id": "D03-RADA-BULK-SOURCE-PROBE-20260826",
     "probe_config_identity_sha256": "c2f198120cae00ba247c4eaad36d2a357770a47c7fa9a7608cc5ec182971b82b",
     "source_family": "ua.rada.open-data.laws-texts",
     "source_family_identity_sha256": "b8f1d2f99a3db71d894a3233e9417d6283d11768c41b1634bc8b096ab77aba4e"
+  },
+  "successor_observation_pin": {
+    "config_path": "configs/data/d03_rada_bulk_observation_pin_v1.json",
+    "config_identity_sha256": "f2280ba716b2ead40e290d307dbace3b2ccc297f5fdf36221c8d244afb2a2fdf",
+    "pinned_probe_report_sha256": "b7c98ec54cd628fef68af5a771fbdf2d803367de7f8567aa09b20b924af62581",
+    "archive_sha256": "9f43da3ffe0855e49ca47ddf906da9e7c40644a845b345f6c4a19b39ef5eaf22",
+    "entry_identity_sha256": "766e54cf706453de30136e02f0361c549c2b96aba9855ee0573d28b354ad077b",
+    "discovery_capacity_threshold": "FAIL_BELOW_MINIMUM",
+    "normalization_input_only": true,
+    "normalized_capacity_credited": 0,
+    "training_authorized_bytes": 0
   },
   "normalization": {
     "name": "RADA_VISIBLE_TEXT_HTML_UTF8_CP1251_NFKC_V1",
