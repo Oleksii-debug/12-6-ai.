@@ -1,15 +1,15 @@
 {
-  "index_sha256": "5de40d40012123ccf654b3e29d9cd47df814978e4155ca9dde232b61e9cd6341",
+  "index_sha256": "977dc42d00d03e766c34edc8467aaa7d462e32e6bbafdab1bdc89a02388f47fa",
   "profiles": {
     "linux-aarch64": {
-      "manifest_sha256": "695c990477bc0c16b7a208afe102a3a00b499245d63048bfba312bb6e88289ab",
+      "manifest_sha256": "ac9d64d117e86bf1911f421fa0d793f98f1d6e4887a8a06bef3ac46309e57165",
       "path": "requirements/locks/linux-aarch64/profile.json",
-      "sha256": "0cd7944f5a5f5d76fc1e1fd6478010b3c603278d228dbb7409e49f828a0da7e4"
+      "sha256": "94bdce4e46ac040fca72d22bd55cff4ef7f7678eb4cc1679fcda2019ecf01030"
     },
     "linux-x86_64": {
-      "manifest_sha256": "283ca83571e527babda700e0c66ed03fb1c2aa4674bee0dba2272f64f344e1bf",
+      "manifest_sha256": "d2f4864500743922965ccd2ec1df51aa599f7c657129e55c5d184cddc7c14a0b",
       "path": "requirements/locks/linux-x86_64/profile.json",
-      "sha256": "0dbd74f05d2824082d378aa9031141c864f6a092f950d63ccfae0ade4d76e121"
+      "sha256": "94c8ae86932e894bbf5f39960ae32da0e2e4358935d098fce5937f096b8d74ba"
     }
   },
   "project": "twelve-six-ai",
