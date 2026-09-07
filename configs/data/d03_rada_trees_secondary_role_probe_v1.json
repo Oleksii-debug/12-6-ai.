@@ -14,15 +14,19 @@
   "inventory_policy": {
     "accepted_extractors": ["7zz", "7z"],
     "max_single_member_bytes": 50000000,
-    "max_total_uncompressed_bytes": 10000000000,
-    "require_member_sha256": true,
+    "max_listing_total_uncompressed_bytes": 50000000000,
+    "max_full_extract_total_uncompressed_bytes": 10000000000,
+    "max_stream_sample_members": 32,
+    "require_member_sha256_for_full_classification": true,
     "reject_symlinks_and_special_files": true,
-    "require_listing_extraction_exact_match": true
+    "require_listing_extraction_exact_match_for_full_classification": true
   },
   "role_question": {
     "plain_text_original_transcripts_possible": true,
     "annotation_derivatives_possible": true,
-    "no_role_assumed_before_member_probe": true
+    "no_role_assumed_before_member_probe": true,
+    "listing_only_may_reject_known_annotation_only_archive": true,
+    "plain_text_suffix_requires_bounded_content_sample_when_full_extract_is_unsafe": true
   },
   "claim_boundary": {
     "archive_downloaded": false,
