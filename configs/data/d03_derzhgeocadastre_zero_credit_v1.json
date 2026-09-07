@@ -1,0 +1,120 @@
+{
+  "schema_version": "12-6.d03-derzhgeocadastre-zero-credit.v1",
+  "execution_profile": "LOCAL_FREE",
+  "incumbent_authority": {
+    "pr": 471,
+    "head_sha": "73fc25ea9d30756af7410ba52462d0b4faa9e11b",
+    "worker": "NEXT100-025-DATA-UA-GOV-OPEN"
+  },
+  "dataset": {
+    "dataset_id": "644b424e-9884-43cb-8204-0214657f2248",
+    "dataset_page": "https://data.gov.ua/dataset/644b424e-9884-43cb-8204-0214657f2248",
+    "package_api": "https://data.gov.ua/api/3/action/package_show?id=644b424e-9884-43cb-8204-0214657f2248",
+    "publisher": "Державна служба України з питань геодезії, картографії та кадастру",
+    "title": "Реєстр наборів даних, що перебувають у володінні розпорядника інформації"
+  },
+  "family": {
+    "family_id": "ua.data-gov.derzhgeocadastre.dataset-register",
+    "lineage": "publisher:derzhgeocadastre|portal:data.gov.ua|dataset:644b424e-9884-43cb-8204-0214657f2248|class:open-dataset-register"
+  },
+  "rights": {
+    "dataset_license_label": "Creative Commons Attribution",
+    "model_training_purpose_rights": "ALLOWED_WITH_ATTRIBUTION",
+    "evaluation": "NOT_ADMITTED",
+    "rights_evidence_path": "data/external/rights-evidence/d03/derzhgeocadastre-20260826.txt",
+    "rights_evidence_sha256": "07294c601b1ccfbf2d6938c72629a52030e1c9f6e69bea65f6ba068d70570d93"
+  },
+  "resource_selection": {
+    "allowed_formats": [
+      "json"
+    ],
+    "exclude_name_fragments": [
+      "structure",
+      "структур",
+      "працівник",
+      "employee"
+    ],
+    "prefer_name_fragments": [
+      "register",
+      "реєстр"
+    ],
+    "max_download_bytes": 10000000,
+    "lock": {
+      "resource_id": null,
+      "resource_url": null,
+      "resource_last_modified": null,
+      "raw_sha256": null,
+      "raw_bytes": null,
+      "normalized_sha256": null,
+      "normalized_utf8_bytes": null
+    }
+  },
+  "safe_text": {
+    "allow_key_fragments": [
+      "title",
+      "name",
+      "description",
+      "desc",
+      "назв",
+      "опис",
+      "keyword",
+      "ключ",
+      "frequency",
+      "period",
+      "частот",
+      "purpose",
+      "basis",
+      "підстав",
+      "признач",
+      "format",
+      "theme",
+      "category",
+      "категор"
+    ],
+    "deny_key_fragments": [
+      "email",
+      "mail",
+      "phone",
+      "tel",
+      "contact",
+      "person",
+      "responsible",
+      "address",
+      "відповід",
+      "телефон",
+      "пошта",
+      "адрес"
+    ]
+  },
+  "quality": {
+    "min_accepted_records": 12,
+    "min_record_utf8_bytes": 80,
+    "min_total_normalized_utf8_bytes": 12000,
+    "min_cyrillic_alpha_ratio": 0.78,
+    "min_uk_specific_chars": 20,
+    "min_uk_lexical_hits": 3,
+    "near_duplicate_5token_jaccard": 0.92
+  },
+  "claim_boundary": {
+    "candidate_only": true,
+    "canonical_capacity_credited": 0,
+    "family_credit_added": 0,
+    "training_authorized_bytes": 0,
+    "training_eligible": false,
+    "evaluation_eligible": false,
+    "tokenizer_fit_authorized": false,
+    "optimizer_updates": 0,
+    "model_training_executed": false,
+    "final_test_accessed": false,
+    "paid_compute_used": false
+  },
+  "required_downstream_gates": [
+    "CURRENT_GLOBAL_EXACT_NEAR_LINEAGE_DEDUP",
+    "FRESH_RESERVED_EVALUATION_DECONTAMINATION",
+    "POST_COMPOSITION_QUALITY_PRIVACY",
+    "BALANCE_AND_FAMILY_CAPS",
+    "CLUSTER_SAFE_SPLIT",
+    "DETERMINISTIC_PACKING_TWO_CLEAN_BUILDS",
+    "POSITIVE_UNIQUE_LOSS_LEDGER"
+  ]
+}
