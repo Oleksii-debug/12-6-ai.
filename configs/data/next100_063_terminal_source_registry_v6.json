@@ -1,0 +1,101 @@
+{
+  "schema_version": "12-6.next100-063-terminal-source-registry.v6",
+  "worker_id": "NEXT100-063-CANONICAL-SOURCE-REGISTRY-CONVERGENCE-V6",
+  "prior_registry_authority": {
+    "pr": 538,
+    "branch": "next100-063/canonical-source-registry-convergence-20260826",
+    "observed_head_sha": "991a0b6e939cddeff16c075922f7c407fa1e86cb",
+    "config_path": "configs/data/next100_063_terminal_source_registry_v5.json",
+    "config_git_blob_sha1": "2dcc57cfba8ab6d600bc431a8713f7b8e305dcbf",
+    "candidate_numeric_training_capacity_bytes": 2215615,
+    "candidate_source_normalized_envelope_bytes": 2217976,
+    "uncredited_source_normalized_bytes": 2361,
+    "candidate_independent_family_count": 15,
+    "by_stratum": {
+      "uk": {
+        "family_count": 4,
+        "numeric_training_capacity_bytes": 100856
+      },
+      "en": {
+        "family_count": 5,
+        "numeric_training_capacity_bytes": 1838293
+      },
+      "code": {
+        "family_count": 6,
+        "numeric_training_capacity_bytes": 276466
+      }
+    },
+    "code_families": [
+      "github:encode/httpx",
+      "github:psf/requests",
+      "github:django/django",
+      "github:Kludex/starlette",
+      "github:numpy/numpy",
+      "github:python-attrs/attrs"
+    ]
+  },
+  "terminal_intake_addition": {
+    "source_pr": 818,
+    "merge_commit": "4fa4839f2882984e7bf148dc38ce315d51b60957",
+    "evidence_path": "evidence/data_bulk_code1/permissive_python_bundle_v1_terminal.json",
+    "evidence_git_blob_sha1": "b2b9b361dbf0e6c883dca4d7f006812c69cdd4e0",
+    "execution_head_sha": "a045c602bfcead862f7852924fb78a5d78c992d6",
+    "workflow_run_id": 34155446113,
+    "workflow_conclusion": "success",
+    "artifact_id": 10030825509,
+    "artifact_digest": "sha256:9febb6e4e900df63c58b1cb0ed2a7003df56d6e9bd593e4b4adbaa54496010ac",
+    "retained_report_identity_sha256": "80f3a8f20dfb82825e6c89ac1f76f2f41233296b8a426a1cf466b0fcc0892985",
+    "source_family_count": 6,
+    "eligible_file_count": 229,
+    "eligible_utf8_bytes": 3880009,
+    "families": [
+      "github:pallets/flask",
+      "github:pallets/click",
+      "github:pallets/jinja",
+      "github:pallets/werkzeug",
+      "github:agronholm/anyio",
+      "github:pytest-dev/pytest"
+    ],
+    "family_overlap_with_prior_code_families": [],
+    "canonical_capacity_credit_bytes": 0,
+    "reason_credit_is_zero": "TERMINAL_SOURCE_INTAKE_REQUIRES_GLOBAL_CROSS_SOURCE_DEDUP_BEFORE_CAPACITY_PROMOTION"
+  },
+  "live_pre_global_dedup_state": {
+    "credited_candidate_numeric_training_capacity_bytes": 2215615,
+    "credited_code_numeric_training_capacity_bytes": 276466,
+    "credited_independent_family_count": 15,
+    "terminal_intake_eligible_bytes_pending_global_dedup": 3880009,
+    "terminal_intake_family_count_pending_global_dedup": 6,
+    "potential_numeric_capacity_if_all_pending_intake_survives_dedup": 6095624,
+    "potential_code_capacity_if_all_pending_intake_survives_dedup": 4156475,
+    "potential_independent_family_count_if_all_pending_intake_survives_dedup": 21,
+    "research_corpus_v1_acquisition_planning_target_bytes": 20000000,
+    "credited_gap_to_planning_target_bytes": 17784385,
+    "potential_gap_if_all_pending_intake_survives_dedup": 13904376,
+    "code_planning_target_bytes": 4000000,
+    "code_target_state": "POTENTIALLY_MET_PRE_DEDUP_NOT_CANONICAL"
+  },
+  "required_next_authority": {
+    "incumbent_global_dedup_pr": 632,
+    "must_consume_prior_registry_v5_blob": "2dcc57cfba8ab6d600bc431a8713f7b8e305dcbf",
+    "must_consume_terminal_intake_evidence_blob": "b2b9b361dbf0e6c883dca4d7f006812c69cdd4e0",
+    "must_reconstruct_or_fetch_exact_229_file_payload_graph": true,
+    "must_apply_global_exact_near_fragment_lineage_dedup": true,
+    "must_publish_post_dedup_record_inventory_identity": true,
+    "must_publish_post_dedup_capacity_by_stratum_and_family": true
+  },
+  "truth_boundary": {
+    "corpus_identity": null,
+    "post_global_dedup_capacity_bytes": null,
+    "authorized_balanced_no_replay_loss_positions": 0,
+    "evaluation_decontamination": "NOT_RUN_FOR_NEW_INTAKE",
+    "split_shard_pack_materialization": "BLOCKED",
+    "tokenizer_fit": "BLOCKED",
+    "model_training_executed": false,
+    "optimizer_updates": 0,
+    "final_test_accessed": false,
+    "paid_compute_authorized": false
+  },
+  "decision": "V6_RECORDS_TERMINAL_CODE_INTAKE_PENDING_GLOBAL_DEDUP_NO_CAPACITY_PROMOTION",
+  "registry_identity_sha256": "c7b988081a270cd53c37f22721499568ec44f67daa998c87573b43c463642eae"
+}

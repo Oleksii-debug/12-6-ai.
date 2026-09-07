@@ -1,0 +1,189 @@
+{
+  "schema_version": 1,
+  "audit_id": "AUDIT-B-CULTURAX-UA-EN-RIGHTS-PROVENANCE-V1",
+  "audit_date": "2026-08-27",
+  "verdict": "CHANGES_REQUIRED",
+  "execution_profile": "LOCAL_FREE",
+  "swarm": {
+    "protocol": "SWARM-300-V2",
+    "control_issue": 723,
+    "worker_id": "SWARM-747",
+    "claim_issue": 747,
+    "lane_key": "AUDIT-B|CULTURAX|INDEPENDENT-VERIFY|UA-EN-RIGHTS-PROVENANCE-V1",
+    "base_main_sha": "5020afd671a3885c1b738c8b4eafe7525f630546"
+  },
+  "project_authority": {
+    "registry_path": "configs/research/open_source_reuse_registry_v2.json",
+    "registry_blob_sha": "d80a60357c56eacac135f948b8a72556bb849e5a",
+    "component_id": "CULTURAX",
+    "expected_component": {
+      "id": "CULTURAX",
+      "kind": "dataset_candidate",
+      "upstream": "https://huggingface.co/datasets/uonlp/CulturaX",
+      "license": "inherits mC4 and OSCAR terms",
+      "decision": "P0_UA_EN_COMPARISON_ACQUISITION",
+      "canonical_training_authorized": false,
+      "value": "large cleaned 167-language web corpus with Ukrainian stratum"
+    },
+    "required_canonical_policy": {
+      "canonical_base_random_init_only": true,
+      "dataset_package_license_is_training_authority": false,
+      "source_level_rights_and_provenance_required": true,
+      "paid_compute_authorized": false
+    }
+  },
+  "upstream_observation": {
+    "dataset_id": "uonlp/CulturaX",
+    "dataset_card_readme_revision": "6a8734bc69fefcbb7735f4f9250f43e4cd7a442e",
+    "dataset_card_readme_url": "https://huggingface.co/datasets/uonlp/CulturaX/blob/6a8734bc69fefcbb7735f4f9250f43e4cd7a442e/README.md",
+    "paper": "https://arxiv.org/abs/2309.09400",
+    "project_repository": "https://github.com/nlp-uoregon/CulturaX",
+    "declared_total_scale": "6.3 trillion tokens across 167 languages",
+    "declared_packaging": "16TB parquet; 27TB unpacked",
+    "declared_sources": {
+      "mc4_version": "3.1.0",
+      "oscar_releases": ["20.19", "21.09", "22.01", "23.01"],
+      "common_crawl_origin": true
+    },
+    "record_provenance_fields": ["timestamp", "url", "source"],
+    "record_source_values": ["mc4", "OSCAR-xxxx"],
+    "languages": {
+      "en": {
+        "config_present": true,
+        "config_glob": "en/*.parquet",
+        "declared_documents": 3241065682,
+        "declared_tokens": 2846970578793,
+        "declared_token_share_percent": 45.13,
+        "project_admitted_bytes": 0,
+        "project_authorized_unique_causal_loss_positions": 0
+      },
+      "uk": {
+        "config_present": true,
+        "config_glob": "uk/*.parquet",
+        "declared_documents": 44740545,
+        "declared_tokens": 38226128686,
+        "declared_token_share_percent": 0.61,
+        "project_admitted_bytes": 0,
+        "project_authorized_unique_causal_loss_positions": 0
+      }
+    },
+    "observation_limit": "Upstream aggregate counts are descriptive only and are not 12-6 corpus evidence."
+  },
+  "primary_rights_and_privacy_evidence": [
+    {
+      "id": "CULTURAX_DATASET_CARD",
+      "url": "https://huggingface.co/datasets/uonlp/CulturaX/blob/6a8734bc69fefcbb7735f4f9250f43e4cd7a442e/README.md",
+      "facts": [
+        "CulturaX combines mC4 3.1.0 and OSCAR 20.19/21.09/22.01/23.01.",
+        "CulturaX says its license terms strictly follow mC4 and OSCAR.",
+        "Records expose timestamp, url, and source provenance fields.",
+        "The card warns personal and sensitive information may remain.",
+        "The gated access text requires a jurisdiction/use-case legality confirmation and no re-identification."
+      ]
+    },
+    {
+      "id": "MC4_DATASET_CARD",
+      "url": "https://huggingface.co/datasets/allenai/c4",
+      "facts": [
+        "mC4 is derived from Common Crawl.",
+        "The dataset card states ODC-BY terms and also binds use to Common Crawl terms for contained content."
+      ]
+    },
+    {
+      "id": "OSCAR_2301_DATASET_CARD",
+      "url": "https://huggingface.co/datasets/oscar-corpus/OSCAR-2301",
+      "facts": [
+        "OSCAR states CC0 applies to packaging, metadata and annotations.",
+        "OSCAR states its authors do not own the crawled text.",
+        "OSCAR exposes jurisdiction/copyright-use caveats rather than blanket text ownership."
+      ]
+    },
+    {
+      "id": "COMMON_CRAWL_TERMS",
+      "url": "https://commoncrawl.org/terms-of-use",
+      "terms_last_updated": "2024-03-07",
+      "facts": [
+        "Crawled Content may be subject to separate terms from content owners.",
+        "Use must comply with applicable law and respect third-party rights.",
+        "The terms include privacy-related restrictions for Crawled Content."
+      ]
+    }
+  ],
+  "rights_and_privacy_conclusions": {
+    "package_or_dataset_card_license_is_blanket_source_training_authority": false,
+    "source_level_rights_review_required": true,
+    "common_crawl_terms_required": true,
+    "mc4_odc_by_is_sufficient_source_rights_by_itself": false,
+    "oscar_cc0_metadata_packaging_is_crawled_text_ownership": false,
+    "culturax_public_availability_is_training_authority": false,
+    "jurisdiction_and_use_case_review_required": true,
+    "personal_or_sensitive_information_may_remain": true,
+    "reidentification_attempt_allowed": false,
+    "retain_url_timestamp_source_provenance_through_intake": true
+  },
+  "ua_en_feasibility": {
+    "candidate_value": "HIGH_FOR_SOURCE_QUALIFICATION",
+    "en_upstream_presence": true,
+    "uk_upstream_presence": true,
+    "relative_scale_observation": "English is far larger than Ukrainian in CulturaX declared token counts; both are only upstream descriptive capacity.",
+    "current_training_admission": "ZERO_CREDIT_PENDING_SOURCE_LEVEL_QUALIFICATION",
+    "cannot_claim": [
+      "downloaded or validated CulturaX source bytes",
+      "project corpus capacity",
+      "tokenizer-fit tokens",
+      "unique causal-loss positions",
+      "Research Corpus V1 readiness",
+      "legal clearance for all underlying web text"
+    ]
+  },
+  "project_training_credit": {
+    "canonical_training_authorized": false,
+    "admitted_source_bytes": 0,
+    "admitted_tokenizer_tokens": 0,
+    "authorized_unique_causal_loss_positions": 0,
+    "bulk_download_performed": false,
+    "corpus_payload_accessed": false,
+    "credit_basis": "AUDIT_ONLY_NO_CORPUS_PAYLOAD"
+  },
+  "evaluation_and_lineage_firewall": {
+    "benchmark_or_final_test_payload_accessed": false,
+    "benchmark_or_final_test_payload_used_for_training": false,
+    "foreign_pretrained_weights_imported": false,
+    "foreign_pretrained_tokenizer_imported": false,
+    "foreign_teacher_logits_or_synthetic_pretraining_imported": false,
+    "base_lineage_changed": false
+  },
+  "compute_truth": {
+    "paid_compute_authorized": false,
+    "paid_compute_used": false,
+    "gpu_provisioned": false,
+    "model_training_executed": false,
+    "tokenizer_fit_executed": false
+  },
+  "successor_acquisition_contract": {
+    "required_before_any_training_credit": [
+      "Pin an immutable CulturaX dataset revision and enumerate exact selected en/uk files.",
+      "Record exact file identities, sizes and checksums before preprocessing.",
+      "Retain per-record source, url and timestamp provenance into immutable intake manifests.",
+      "Partition and report mC4 versus each OSCAR release instead of collapsing inherited source authority.",
+      "Apply source-level rights/terms classification; never infer text ownership from CulturaX, ODC-BY or CC0 packaging metadata.",
+      "Re-check current Common Crawl, mC4, OSCAR, CulturaX access, jurisdiction and use-case terms at acquisition time.",
+      "Run privacy/PII risk processing and preserve evidence of removals/quarantine without asserting perfect PII elimination.",
+      "Apply reserved-evaluation decontamination before any training eligibility decision.",
+      "Run exact/near cross-source deduplication and no-replay accounting against the terminal corpus lineage.",
+      "Compute admitted source bytes and unique causal-loss positions only from locally verified, rights-approved, decontaminated terminal artifacts.",
+      "Freeze machine-readable manifests and two-clean-build determinism evidence before Research Corpus V1 promotion."
+    ],
+    "promotion_rule": "No CulturaX byte receives canonical training credit until every required gate is terminal and fail-closed.",
+    "owner_handoff": "D03 may build an acquisition/qualification package; AUDIT-B independently rechecks the resulting exact artifacts."
+  },
+  "forbidden_overclaims": [
+    "CulturaX is training-authorized because it is public.",
+    "CulturaX is training-authorized because the dataset card has a license label.",
+    "OSCAR CC0 grants ownership of the crawled text.",
+    "mC4 ODC-BY eliminates underlying Common Crawl/source obligations.",
+    "Upstream CulturaX token counts equal 12-6 authorized tokens.",
+    "Presence of Ukrainian/English configs proves Research Corpus V1 readiness.",
+    "Cleaning/deduplication guarantees absence of private or copyrighted material."
+  ]
+}
