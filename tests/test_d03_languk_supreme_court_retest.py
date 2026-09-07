@@ -57,7 +57,7 @@ def make_row(record_id: str = "116075957", repeats: int = 3) -> dict:
                 break
             occurrences.append({"start": idx, "end": idx + len(token), "text": token})
             start = idx + len(token)
-        row[count_field] = len(occurrences)
+        row[count_field] = len({item["text"] for item in occurrences})
         row[occurrence_field] = occurrences
     return row
 
@@ -70,20 +70,44 @@ def test_load_config_preserves_exact_schema_and_zero_credit() -> None:
     assert value["claim_boundary"]["model_training_executed"] is False
 
 
-def test_repeated_placeholder_occurrences_use_occurrence_count_not_unique_labels(
-) -> None:
+def test_repeated_occurrences_preserve_unique_placeholder_count() -> None:
     row = make_row(repeats=3)
-    assert row["person_count"] == 3
+    assert row["person_count"] == 1
+    assert len(row["person_occurrences"]) == 3
     ok, reason, text = mod.assess_row(row, CONFIG)
     assert ok is True
     assert reason == "accepted"
     assert text.count("ОСОБА_1") == 3
 
 
-def test_occurrence_count_mismatch_fails_closed() -> None:
+def test_multiple_distinct_placeholder_labels_are_counted_once_each() -> None:
+    row = make_row(repeats=2)
+    token = "ОСОБА_2"
+    addition = f" Додатково суд згадав {token} двічі: {token}."
+    start = len(row["text"])
+    row["text"] += addition
+    occurrences = row["person_occurrences"]
+    search = start
+    while True:
+        idx = row["text"].find(token, search)
+        if idx < 0:
+            break
+        occurrences.append({"start": idx, "end": idx + len(token), "text": token})
+        search = idx + len(token)
+    row["person_count"] = 2
+
+    ok, reason, _ = mod.assess_row(row, CONFIG)
+    assert ok is True
+    assert reason == "accepted"
+    assert len(row["person_occurrences"]) == 4
+
+
+def test_unique_placeholder_count_mismatch_fails_closed() -> None:
     row = make_row()
     row["person_count"] += 1
-    with pytest.raises(mod.RetestError, match="occurrence_count_mismatch_person_count"):
+    with pytest.raises(
+        mod.RetestError, match="unique_placeholder_count_mismatch_person_count"
+    ):
         mod.assess_row(row, CONFIG)
 
 
