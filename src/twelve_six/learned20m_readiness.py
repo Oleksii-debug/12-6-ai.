@@ -37,9 +37,7 @@ class ReadinessAssessment:
     def as_dict(self) -> dict[str, Any]:
         return {
             "ready_for_local_free_pilot": self.ready_for_local_free_pilot,
-            "ready_for_compute_authorization_request": (
-                self.ready_for_compute_authorization_request
-            ),
+            "ready_for_compute_authorization_request": self.ready_for_compute_authorization_request,
             "material_training_authorized": self.material_training_authorized,
             "local_free_pilot_blockers": list(self.local_free_pilot_blockers),
             "compute_request_blockers": list(self.compute_request_blockers),
@@ -93,10 +91,7 @@ def _require_authority(
 
 
 def _verified_ref(
-    blockers: list[str],
-    value: Any,
-    name: str,
-    verified_refs: set[str],
+    blockers: list[str], value: Any, name: str, verified_refs: set[str]
 ) -> str | None:
     if not isinstance(value, str) or not value.strip():
         blockers.append(f"{name}_missing")
@@ -147,6 +142,64 @@ def _validate_envelope(data: dict[str, Any]) -> list[str]:
     return errors
 
 
+def _validate_decontamination(
+    blockers: list[str],
+    corpus: dict[str, Any],
+    evaluation: dict[str, Any],
+) -> None:
+    """Bind terminal decontamination to the exact pre-decontamination candidate."""
+    predecontam = corpus.get("pre_decontamination_identity_sha256")
+    _require_identity(
+        blockers,
+        predecontam,
+        "corpus_pre_decontamination_identity_missing",
+    )
+
+    decontam = (
+        evaluation.get("decontamination")
+        if isinstance(evaluation.get("decontamination"), dict)
+        else {}
+    )
+    _require_authority(
+        blockers,
+        decontam.get("authority"),
+        "decontamination_authority_missing",
+        require_workflow=True,
+    )
+    if decontam.get("status") not in {"PASS_CLEAN", "PASS_WITH_EXCLUSIONS"}:
+        blockers.append("decontamination_not_terminal_pass")
+    _require_identity(
+        blockers,
+        decontam.get("training_corpus_identity"),
+        "decontamination_training_corpus_identity_missing",
+    )
+    _require_identity(
+        blockers,
+        decontam.get("selection_validation_identity"),
+        "decontamination_selection_validation_identity_missing",
+    )
+    _require_identity(
+        blockers,
+        decontam.get("final_test_identity"),
+        "decontamination_final_test_identity_missing",
+    )
+    _require_identity(
+        blockers,
+        decontam.get("report_sha256"),
+        "decontamination_report_identity_missing",
+    )
+    if _is_sha256(predecontam) and decontam.get("training_corpus_identity") != predecontam:
+        blockers.append("decontamination_training_corpus_identity_mismatch")
+    authority = decontam.get("authority")
+    if isinstance(authority, dict) and _is_sha256(decontam.get("report_sha256")):
+        if authority.get("evidence_sha256") != decontam.get("report_sha256"):
+            blockers.append("decontamination_report_authority_mismatch")
+    if decontam.get("final_test_payload_accessed") is not False:
+        blockers.append("decontamination_final_test_payload_access_must_be_false")
+    if decontam.get("final_test_outcomes_read") is not False:
+        blockers.append("decontamination_final_test_outcomes_read_must_be_false")
+
+
 def assess_learned20m_readiness(
     data: dict[str, Any],
     *,
@@ -178,9 +231,7 @@ def assess_learned20m_readiness(
         require_workflow=True,
     )
 
-    tokenizer = (
-        evidence.get("tokenizer") if isinstance(evidence.get("tokenizer"), dict) else {}
-    )
+    tokenizer = evidence.get("tokenizer") if isinstance(evidence.get("tokenizer"), dict) else {}
     _require_identity(local, tokenizer.get("identity_sha256"), "tokenizer_identity_missing")
     if tokenizer.get("decision") not in {"TRAINED_TOKENIZER", "BYTE_BASELINE_RETAINED"}:
         local.append("tokenizer_decision_not_terminal")
@@ -225,9 +276,7 @@ def assess_learned20m_readiness(
     if checkpoint.get("status") != "PASS":
         local.append("checkpoint_integrity_not_terminal_pass")
 
-    evaluation = (
-        evidence.get("evaluation") if isinstance(evidence.get("evaluation"), dict) else {}
-    )
+    evaluation = evidence.get("evaluation") if isinstance(evidence.get("evaluation"), dict) else {}
     _require_authority(
         local,
         evaluation.get("firewall_authority"),
@@ -242,12 +291,9 @@ def assess_learned20m_readiness(
     )
     if evaluation.get("status") != "PASS":
         local.append("evaluation_boundary_not_terminal_pass")
+    _validate_decontamination(local, corpus, evaluation)
 
-    recipe = (
-        evidence.get("training_recipe")
-        if isinstance(evidence.get("training_recipe"), dict)
-        else {}
-    )
+    recipe = evidence.get("training_recipe") if isinstance(evidence.get("training_recipe"), dict) else {}
     _require_authority(
         local,
         recipe.get("authority"),
@@ -325,11 +371,7 @@ def assess_learned20m_readiness(
     elif maximum_cost <= 0:
         compute.append("maximum_cost_not_positive")
 
-    audit = (
-        evidence.get("independent_audit")
-        if isinstance(evidence.get("independent_audit"), dict)
-        else {}
-    )
+    audit = evidence.get("independent_audit") if isinstance(evidence.get("independent_audit"), dict) else {}
     _require_authority(
         compute,
         audit.get("authority"),
