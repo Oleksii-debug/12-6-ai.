@@ -1,0 +1,98 @@
+name: NEXT100-064 Unique Loss Ledger V2
+
+on:
+  pull_request:
+    paths:
+      - "src/twelve_six/data/unique_loss_ledger_v2.py"
+      - "src/twelve_six/data/identity_safe_exposure_guard.py"
+      - "src/twelve_six/data/deterministic_exposure_order.py"
+      - "src/twelve_six/data/deterministic_double_pack.py"
+      - "tests/test_unique_loss_ledger_v2.py"
+      - "tests/test_identity_safe_exposure_guard.py"
+      - "tests/test_deterministic_exposure_order.py"
+      - "tools/validate_next100_064_unique_loss_ledger_v2.py"
+      - "tools/validate_d04_ordered_exposure_runtime.py"
+      - "tools/validate_d04_double_pack_binding.py"
+      - "evidence/next100_064/unique_loss_ledger_v2_authority.json"
+      - "docs/NEXT100_064_UNIQUE_LOSS_LEDGER_V2.md"
+      - ".github/workflows/next100-064-unique-loss-ledger-v2.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    env:
+      TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
+      PYTHONPATH: src
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Assert exact event head
+        if: github.event_name == 'pull_request'
+        run: test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+      - name: Install qualified runtime dependencies
+        run: python -m pip install --disable-pip-version-check "torch==2.8.0" "pytest==8.4.2"
+      - name: Assert complete V2 implementation surface
+        run: |
+          python - <<'PY'
+          import ast
+          from pathlib import Path
+
+          path = Path("src/twelve_six/data/unique_loss_ledger_v2.py")
+          source = path.read_text(encoding="utf-8")
+          tree = ast.parse(source, filename=str(path))
+          top_level = {
+              node.name
+              for node in tree.body
+              if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+          }
+          required = {
+              "build_ledger",
+              "verify_ledger",
+              "count_nonignored_targets",
+              "ExposureReplayGuard",
+          }
+          missing = sorted(required - top_level)
+          if missing:
+              raise SystemExit(f"truncated V2 implementation; missing top-level symbols: {missing}")
+          if source.count("\n") < 500:
+              raise SystemExit("truncated V2 implementation; unexpectedly short source")
+          print("complete_v2_surface=pass")
+          PY
+      - name: Compile V2 implementation and D04 deterministic guards
+        run: |
+          python -m py_compile \
+            src/twelve_six/data/unique_loss_ledger_v2.py \
+            src/twelve_six/data/identity_safe_exposure_guard.py \
+            src/twelve_six/data/deterministic_exposure_order.py \
+            src/twelve_six/data/deterministic_double_pack.py \
+            tools/validate_next100_064_unique_loss_ledger_v2.py \
+            tools/validate_d04_ordered_exposure_runtime.py \
+            tools/validate_d04_double_pack_binding.py
+      - name: Validate frozen authority twice
+        run: |
+          python tools/validate_next100_064_unique_loss_ledger_v2.py > /tmp/next100-064-a.txt
+          python tools/validate_next100_064_unique_loss_ledger_v2.py > /tmp/next100-064-b.txt
+          cmp /tmp/next100-064-a.txt /tmp/next100-064-b.txt
+          cat /tmp/next100-064-a.txt
+      - name: Exercise ordered exposure success and fail-closed runtime
+        run: python tools/validate_d04_ordered_exposure_runtime.py
+      - name: Validate terminal-handoff deterministic double-pack binding
+        run: python tools/validate_d04_double_pack_binding.py
+      - name: Run D04 adversarial pytest suite
+        run: |
+          python -m pytest -q \
+            tests/test_unique_loss_ledger_v2.py \
+            tests/test_identity_safe_exposure_guard.py \
+            tests/test_deterministic_exposure_order.py
+      - name: Assert LOCAL_FREE no-training scope
+        run: |
+          test "$TWELVE_SIX_EXECUTION_PROFILE" = "LOCAL_FREE"
+          grep -q '"training_executed": false' evidence/next100_064/unique_loss_ledger_v2_authority.json
