@@ -2,15 +2,28 @@
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
+import sys
+import types
 from pathlib import Path
 
-from twelve_six.data.decontamination_authority_v2 import (
-    build_blocker_report,
-    build_report,
-    verify_report,
-    write_immutable_report,
-)
+ROOT = Path(__file__).resolve().parents[1]
+SRC_PACKAGE = ROOT / "src" / "twelve_six"
+DATA_PACKAGE = SRC_PACKAGE / "data"
+
+
+def _install_namespace(name: str, path: Path) -> None:
+    module = types.ModuleType(name)
+    module.__path__ = [str(path)]
+    module.__package__ = name
+    sys.modules[name] = module
+
+
+def _authority_api():
+    _install_namespace("twelve_six", SRC_PACKAGE)
+    _install_namespace("twelve_six.data", DATA_PACKAGE)
+    return importlib.import_module("twelve_six.data.decontamination_authority_v2")
 
 
 def _json(path: Path):
@@ -29,6 +42,7 @@ def _jsonl(path: Path):
 
 
 def main() -> int:
+    authority = _authority_api()
     parser = argparse.ArgumentParser()
     parser.add_argument("action", choices=("scan", "blocker", "verify"))
     parser.add_argument("--config", type=Path)
@@ -39,14 +53,14 @@ def main() -> int:
     args = parser.parse_args()
 
     if args.action == "verify":
-        verify_report(_json(args.report))
+        authority.verify_report(_json(args.report))
         print(json.dumps({"status": "PASS", "report": str(args.report)}, sort_keys=True))
         return 0
     if args.authorities is None:
         parser.error("blocker/scan requires --authorities")
     authorities = _json(args.authorities)
     if args.action == "blocker":
-        report = build_blocker_report(
+        report = authority.build_blocker_report(
             authorities,
             reason="No terminal DATA-230 corpus identity/inventory is published at this worker cutoff.",
         )
@@ -54,7 +68,7 @@ def main() -> int:
         if args.config is None or args.training_jsonl is None or args.evaluation_jsonl is None:
             parser.error("scan requires --config, --training-jsonl, and --evaluation-jsonl")
         config = _json(args.config)
-        report = build_report(
+        report = authority.build_report(
             _jsonl(args.training_jsonl),
             _jsonl(args.evaluation_jsonl),
             training_corpus_identity=config["training_corpus_identity"],
@@ -64,7 +78,7 @@ def main() -> int:
             thresholds=config.get("thresholds"),
             quarantine_cross_source_families=bool(config.get("quarantine_cross_source_families", True)),
         )
-    write_immutable_report(args.report, report)
+    authority.write_immutable_report(args.report, report)
     print(json.dumps({"status": report["status"], "report_sha256": report["report_sha256"]}, sort_keys=True))
     return 0
 
