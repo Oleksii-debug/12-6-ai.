@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Callable
 from copy import deepcopy
-from typing import Callable
 
 from twelve_six.data.deterministic_exposure_order import (
     authorize_ordered_batch,
