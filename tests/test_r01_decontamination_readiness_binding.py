@@ -108,6 +108,31 @@ def test_report_identity_must_match_terminal_authority() -> None:
     assert "decontamination_report_authority_mismatch" in result.local_free_pilot_blockers
 
 
+def test_missing_final_test_reservation_authority_fails_closed() -> None:
+    data = _local_ready()
+    data["evidence"]["evaluation"]["final_test_reservation_authority"] = None
+    result = assess_learned20m_readiness(data)
+    assert not result.ready_for_local_free_pilot
+    assert "final_test_reservation_authority_missing" in result.local_free_pilot_blockers
+
+
+def test_final_test_identity_must_match_terminal_reservation_authority() -> None:
+    data = _local_ready()
+    data["evidence"]["evaluation"]["decontamination"]["final_test_identity"] = SHA64
+    result = assess_learned20m_readiness(data)
+    assert not result.ready_for_local_free_pilot
+    assert "final_test_reservation_authority_mismatch" in result.local_free_pilot_blockers
+
+
+def test_failed_final_test_reservation_workflow_fails_closed() -> None:
+    data = _local_ready()
+    authority = data["evidence"]["evaluation"]["final_test_reservation_authority"]
+    authority["workflow_conclusion"] = "failure"
+    result = assess_learned20m_readiness(data)
+    assert not result.ready_for_local_free_pilot
+    assert "final_test_reservation_authority_missing" in result.local_free_pilot_blockers
+
+
 def test_decontamination_report_must_be_hash_only() -> None:
     data = _local_ready()
     data["evidence"]["evaluation"]["decontamination"]["hash_only_evidence"] = False
