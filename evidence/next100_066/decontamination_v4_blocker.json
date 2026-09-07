@@ -1,63 +1,50 @@
 {
-  "blocking_reason": "Current live chain still has no terminal immutable post-global-dedup candidate corpus identity or exact bound training-record inventory. NEXT100-063 V5 source convergence and NEXT100-065E V7 global dedup are nonterminal, and DATA-526 V3 correctly refuses record freeze until that exact same-vector global-dedup authority is terminal. Therefore decontamination matching is not authorized to start.",
-  "candidate_corpus_identity": null,
+  "blocking_reason": "DATA-526 now has terminal exact-head record-level post-global-dedup pre-decontamination materialization authority. Decontamination still cannot execute until a current reserved-evaluation authority with exact permitted matcher inputs is identified and cryptographically bound; final-test payloads/outcomes remain prohibited.",
+  "candidate_corpus_identity": "a33baaa3a7ff7a9622dc420c1d61b0d113ab0f11588a39674996bd198845efb6",
+  "candidate_record_payload_jsonl_sha256": "2f21f7655c9287bbc7424b410788f431f20f0936f445fefd26fcf6114b772dbd",
   "candidate_shard_identity": null,
-  "candidate_training_record_inventory_identity": null,
+  "candidate_training_record_inventory_identity": "55f01d2027057f30cfc43d4ebe668779fc48413781d8146402dd53f81e2dbf31",
   "evaluation_payloads_read": false,
   "evidence_identity_algorithm": "sha256(canonical-json-without-evidence_identity_sha256)",
-  "evidence_identity_sha256": "027f1efb9d8bc69aafb3ec7ec80330999735689ed91c4100b1676b2ddcfdcc1a",
+  "evidence_identity_sha256": "3c57ffef3f67720ece69f2d92241fc99b9d3e76f872467ad40fb7a607f0797fd",
   "exclusions_claimed": false,
   "execution_profile": "LOCAL_FREE",
   "final_test_outcomes_read": false,
   "final_test_payload_read": false,
   "live_authority_check": {
-    "source_convergence": {
-      "pull_request": 538,
-      "head_sha": "10342d590d91b6999c42515cdf87fe31e2355844",
-      "registry": "configs/data/next100_063_terminal_source_registry_v5.json",
-      "pre_global_dedup_source_objects": 35,
-      "pre_global_dedup_numeric_source_bytes": 2215615,
-      "family_counts": {
-        "uk": 4,
-        "en": 5,
-        "code": 6
-      },
-      "exact_head_ci_run": 33010079393,
-      "exact_head_ci_state": "QUEUED_NONTERMINAL",
-      "terminal_authority_consumed": false
-    },
     "global_dedup": {
+      "conservative_unique_capacity_bytes_after_global_dedup": 2215615,
+      "head_sha": "d3333ec1b4a508df232a5aefccd6686adda745fb",
       "pull_request": 632,
-      "head_sha": "055d45ae08e055ecaeba638c7eaed5b41720e1bf",
-      "worker_id": "NEXT100-065E-CROSSSOURCE-DEDUP-V7",
-      "dedicated_workflow_run": 33012342294,
-      "exact_head_ci_state": "QUEUED_NONTERMINAL",
-      "expected_pre_dedup_source_objects": 35,
-      "expected_pre_dedup_numeric_source_bytes": 2215615,
-      "expected_family_counts": {
-        "uk": 4,
-        "en": 5,
-        "code": 6
-      },
-      "post_dedup_report_sha256": null,
-      "post_dedup_record_inventory_digest_sha256": null,
-      "terminal_authority_consumed": false
+      "terminal_authority_consumed": true,
+      "terminal_report_sha256": "80997ac88b9d604afaf652807cda2a2d9fd0f6cb75754460ae6f4aa7af6e0267"
     },
     "predecontamination_freeze": {
+      "artifact_digest_sha256": "9fb809ab0256d485d21a4e686e4e7d72d4c9b2d05adbc10a8b3f426ef19674ff",
+      "artifact_id": 10000091203,
+      "byte_identical_double_materialization": true,
+      "candidate_frozen": true,
+      "candidate_identity_sha256": "a33baaa3a7ff7a9622dc420c1d61b0d113ab0f11588a39674996bd198845efb6",
+      "candidate_record_count": 48,
+      "candidate_total_payload_bytes": 2215615,
+      "data213_artifact_zip_sha256": "927e10ccb83f919d57a8b78e3ea9cae72f9d4e0232401043234a35eec150074d",
+      "dedicated_workflow_run": 34069812891,
+      "exact_head_ci_state": "SUCCESS",
+      "head_sha": "70d6ccc87396d129d00771bbf0b6b29bc673bfc4",
+      "materialization_evidence_identity_sha256": "3af42654b71322256f7d134cfa6c5fc58c484db4c96a836dbf9e61373be2a7be",
+      "payload_inventory_digest_sha256": "c3ef21cc7a73df450798e422fb1e6d034c0d17ff38ba733cd9e25b93a31a770f",
       "pull_request": 623,
-      "head_sha": "3c08f5c1b1f559f19cbc138dc1592300ec377d0d",
-      "machine_authority": "configs/data/research_corpus_v1_predecontam_blocker_v3.json",
-      "machine_authority_identity_sha256": "4e98c74871f7299a3aa8074287099deca55c154ddf32a99fb55b11c3a0c14f25",
-      "dedicated_workflow_run": 33012815318,
-      "exact_head_ci_state": "QUEUED_NONTERMINAL",
-      "candidate_frozen": false,
-      "candidate_record_count": 0,
-      "candidate_record_inventory_digest_sha256": null,
-      "candidate_set_digest_sha256": null
+      "raw_payloads_emitted_to_public_evidence": false,
+      "record_inventory_digest_sha256": "55f01d2027057f30cfc43d4ebe668779fc48413781d8146402dd53f81e2dbf31",
+      "record_payload_jsonl_sha256": "2f21f7655c9287bbc7424b410788f431f20f0936f445fefd26fcf6114b772dbd",
+      "workflow_job": 101584953689
     },
-    "source_registry_and_dedup_same_vector_required": true,
-    "cross_source_dedup_audit_is_not_candidate_corpus_identity": true,
-    "external_snapshot_registry_is_not_candidate_corpus_identity": true
+    "reserved_evaluation": {
+      "authority_identified": false,
+      "authority_identity_sha256": null,
+      "owner_lane_issue": 7,
+      "permitted_matcher_inputs_bound": false
+    }
   },
   "matchers_executed": {
     "code_copy_detection": false,
@@ -69,13 +56,19 @@
   "pass_verdict_emitted": false,
   "repository": "Oleksii-debug/12-6-ai.",
   "scan_executed": false,
-  "schema": "12-6.next100-066-decontamination-v4.blocker.v2",
-  "status": "BLOCKED_NO_EXACT_CANDIDATE_CORPUS_IDENTITY",
+  "schema": "12-6.next100-066-decontamination-v4.blocker.v3",
+  "status": "BLOCKED_WAIT_RESERVED_EVALUATION_AUTHORITY",
+  "truth_boundary": {
+    "authorized_unique_optimized_targets": 0,
+    "optimizer_updates": 0,
+    "paid_compute_used": false,
+    "tokenizer_fit_executed": false,
+    "training_executed": false
+  },
   "unblock_requires": [
-    "terminal source convergence and terminal global dedup over the same exact composed source vector",
-    "terminal immutable post-global-dedup candidate corpus identity",
-    "exact training-record inventory cryptographically bound to that candidate identity",
-    "reserved-evaluation authority may be read only after the frozen candidate identity exists; final-test payloads remain prohibited"
+    "identify one current reserved-evaluation authority owned by D06 with exact immutable identities and an explicit matcher-input boundary",
+    "bind that authority to DATA-526 candidate identity a33baaa3a7ff7a9622dc420c1d61b0d113ab0f11588a39674996bd198845efb6 and record inventory 55f01d2027057f30cfc43d4ebe668779fc48413781d8146402dd53f81e2dbf31",
+    "execute exact/normalized/fragment/near-copy/code-copy decontamination without reading prohibited final-test outcomes or promoting source bytes to optimized targets"
   ],
   "worker_id": "NEXT100-066-DECONTAMINATION-V4"
 }
