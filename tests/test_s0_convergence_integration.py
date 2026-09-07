@@ -317,7 +317,7 @@ def test_s0_release_candidate_manifest_is_explicitly_experimental() -> None:
     assert d01.ci_evidence is not None and d01.ci_evidence.passes
     assert d06.disposition is ComponentDisposition.HELD
     assert d06.ci_evidence is not None and not d06.ci_evidence.passes
-    assert manifest.missing_required_lanes() == ["D06"]
+    assert manifest.missing_required_lanes() == ("D06",)
     assert manifest.ready_for_candidate() is False
     assert manifest.audits_pass() is False
     assert manifest.candidate_sha is None
