@@ -4,7 +4,7 @@
   "execution_profile": "LOCAL_FREE",
   "authority": {
     "claim_issue": 853,
-    "base_main_sha": "56d708415e7f7a2ec72d4f80f1d571abdff428e3",
+    "base_main_sha": "08a59d77b916de78f8371b6aef8c8b23d1ff8840",
     "parent_audit_pr": 762,
     "parent_audit_head_sha": "b9a7feff80457848a623697514f4009f2b49ff3e",
     "dataset_card_revision": "6a8734bc69fefcbb7735f4f9250f43e4cd7a442e"
