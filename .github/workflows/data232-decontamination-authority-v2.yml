@@ -1,0 +1,180 @@
+name: DATA-232 Decontamination Authority V2
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/data232-decontamination-authority-v2.yml"
+      - "configs/data/data232_decontamination_v2.json"
+      - "configs/data/data232_decontamination_v3.json"
+      - "data/evaluation/data232_reserved_authorities_v1.json"
+      - "data/evaluation/data232_reserved_authorities_v2.json"
+      - "docs/DATA232_DECONTAMINATION_AUTHORITY_V2.md"
+      - "evidence/data232/**"
+      - "src/twelve_six/data/_data232_decontamination_matching.py"
+      - "src/twelve_six/data/decontamination_authority_v2.py"
+      - "tests/fixtures/data232_decontamination_adversarial_v1.json"
+      - "tests/test_data232_decontamination_authority_v2.py"
+      - "tools/prepare_data232_matcher_inputs.py"
+      - "tools/run_data232_decontamination.py"
+      - "tools/run_data232_tests_data_only.py"
+  workflow_dispatch:
+
+concurrency:
+  group: data232-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  authority:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Prove exact source checkout
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Universal exact execution bootstrap
+        uses: ./.github/actions/execution-bootstrap
+        with:
+          capabilities: tests,lint
+          venv: .data232-venv
+          command: python tools/run_data232_tests_data_only.py
+          manifest: evidence/data232/execution-environment.json
+      - name: Compile focused implementation
+        run: >-
+          PYTHONPATH=src .data232-venv/bin/python -m compileall -q
+          src/twelve_six/data/_data232_decontamination_matching.py
+          src/twelve_six/data/decontamination_authority_v2.py
+          tools/prepare_data232_matcher_inputs.py
+          tools/run_data232_decontamination.py
+          tools/run_data232_tests_data_only.py
+      - name: Focused adversarial tests
+        run: .data232-venv/bin/python tools/run_data232_tests_data_only.py
+      - name: Focused lint
+        run: >-
+          .data232-venv/bin/ruff check
+          src/twelve_six/data/_data232_decontamination_matching.py
+          src/twelve_six/data/decontamination_authority_v2.py
+          tools/prepare_data232_matcher_inputs.py
+          tools/run_data232_decontamination.py
+          tools/run_data232_tests_data_only.py
+          tests/test_data232_decontamination_authority_v2.py
+
+      - name: Checkout frozen DATA-526 materializer authority
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: 70d6ccc87396d129d00771bbf0b6b29bc673bfc4
+          path: _data526
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Checkout terminal V7 source authority
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: d3333ec1b4a508df232a5aefccd6686adda745fb
+          path: _data526_v7
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Checkout immutable EVAL-303 membership authority
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: 5e5a1de3b594cee5612e63d3d4c2a70499740ac7
+          path: _eval303
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Install deterministic NIST PDF extractor
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends poppler-utils
+          pdftotext -v
+      - name: Retrieve immutable matcher inputs twice
+        run: |
+          set -euo pipefail
+          for build in a b; do
+            curl --fail --silent --show-error --location -H "Authorization: Bearer $GITHUB_TOKEN" -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/Oleksii-debug/12-6-ai./actions/artifacts/9600107886/zip" -o "/tmp/data213-${build}.zip"
+            curl --fail --silent --show-error --location -H "Authorization: Bearer $GITHUB_TOKEN" -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/Oleksii-debug/12-6-ai./actions/artifacts/9606656857/zip" -o "/tmp/eval290-${build}.zip"
+            curl --fail --silent --show-error --location -H "Authorization: Bearer $GITHUB_TOKEN" -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/Oleksii-debug/12-6-ai./actions/artifacts/9606132134/zip" -o "/tmp/eval291-${build}.zip"
+          done
+          cmp /tmp/data213-a.zip /tmp/data213-b.zip
+          cmp /tmp/eval290-a.zip /tmp/eval290-b.zip
+          cmp /tmp/eval291-a.zip /tmp/eval291-b.zip
+
+      - name: Reconstruct and scan twice
+        run: |
+          set -euo pipefail
+          for build in a b; do
+            rm -rf "/tmp/data232-${build}"
+            mkdir -p "/tmp/data232-${build}"
+            (
+              cd _data526
+              python tools/run_data526_materializer_data_only.py \
+                --v7-root ../_data526_v7 \
+                --data213-zip "/tmp/data213-${build}.zip" \
+                --records-jsonl "/tmp/data232-${build}/records.jsonl" \
+                --inventory-json "/tmp/data232-${build}/inventory.json" \
+                --evidence-json "/tmp/data232-${build}/materialization-evidence.json"
+            )
+            .data232-venv/bin/python tools/prepare_data232_matcher_inputs.py \
+              --training-jsonl "/tmp/data232-${build}/records.jsonl" \
+              --training-inventory "/tmp/data232-${build}/inventory.json" \
+              --eval290-zip "/tmp/eval290-${build}.zip" \
+              --eval291-zip "/tmp/eval291-${build}.zip" \
+              --eval303-membership _eval303/data/evaluation/eval303/selection-validation/composite-membership.jsonl \
+              --training-out "/tmp/data232-${build}/training.jsonl" \
+              --evaluation-out "/tmp/data232-${build}/evaluation.jsonl"
+            .data232-venv/bin/python tools/run_data232_decontamination.py scan \
+              --config configs/data/data232_decontamination_v3.json \
+              --authorities data/evaluation/data232_reserved_authorities_v2.json \
+              --training-jsonl "/tmp/data232-${build}/training.jsonl" \
+              --evaluation-jsonl "/tmp/data232-${build}/evaluation.jsonl" \
+              --report "/tmp/data232-${build}/report.json"
+            .data232-venv/bin/python tools/run_data232_decontamination.py verify --report "/tmp/data232-${build}/report.json"
+          done
+          cmp /tmp/data232-a/records.jsonl /tmp/data232-b/records.jsonl
+          cmp /tmp/data232-a/inventory.json /tmp/data232-b/inventory.json
+          cmp /tmp/data232-a/training.jsonl /tmp/data232-b/training.jsonl
+          cmp /tmp/data232-a/evaluation.jsonl /tmp/data232-b/evaluation.jsonl
+          cmp /tmp/data232-a/report.json /tmp/data232-b/report.json
+
+      - name: Enforce exposure and text-free durable evidence boundary
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/data232/v3
+          cp /tmp/data232-a/report.json evidence/data232/v3/decontamination-report.json
+          .data232-venv/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path("evidence/data232/v3/decontamination-report.json").read_text())
+          assert report["training_corpus_identity"] == "a33baaa3a7ff7a9622dc420c1d61b0d113ab0f11588a39674996bd198845efb6"
+          assert report["selection_validation_identity"] == "7b97a9ab04469236dc5bc17fc80155cb43430b01c443bb6209fac090557258fd"
+          assert report["final_test_identity"] == "86d51eb106524cd8e4d0f94d4ff6e2e3426c6321e0698279877dfc4d5fce3116"
+          assert report["counts"]["training_records"] == 48
+          assert report["counts"]["evaluation_records"] == 10
+          assert report["hash_only_evidence"] is True
+          assert report["final_test_outcomes_read"] is False
+          assert report["training_executed"] is False
+          raw = Path("evidence/data232/v3/decontamination-report.json").read_text()
+          assert '"text"' not in raw
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: data232-decontamination-authority-v3
+          path: |
+            evidence/data232/v3/decontamination-report.json
+            evidence/data232/execution-environment.json
+          if-no-files-found: error
+          retention-days: 30

@@ -1,0 +1,48 @@
+{
+  "authorities": [
+    {
+      "authority_id": "DATA-31-D06-DECONTAMINATION",
+      "identity_sha256": "10f7454f77eb2dc3871eeafa5055b1969eab42954eb8e19e61565f217c67df31",
+      "role": "auxiliary_reserved",
+      "source_sha": "6b1c7f3418357e0ea1cfc6ab5ceda6a740dc5921"
+    },
+    {
+      "authority_id": "EVAL-131-RECOVER174-PARTIAL-REAL-HOLDOUT",
+      "identity_sha256": "c7211b3e1e6a4f22463d0e6174f0d6162c2452585704efad5564a35de8de609f",
+      "role": "final_test",
+      "source_sha": "976c101b20ad2e31b0b3e2dda2beed8e7b03c2f3"
+    },
+    {
+      "authority_id": "EVAL-132-UA-RAW-BASE-V1",
+      "identity_sha256": "ca8d9c9d97c854127e0209871e8929f19e06ec91f3f19902bc8fda33481691ff",
+      "role": "final_test",
+      "source_sha": "82e837c1053d6a77c4d1eb86cfaa7dfb521e2e63"
+    },
+    {
+      "authority_id": "EVAL-133-EN-RAW-V1",
+      "identity_sha256": "f9e713ff336e6189f7aa0ddbb21303431ab2041b6700ed38243eaf65865805cb",
+      "role": "final_test",
+      "source_sha": "d10cdac1f6e2ff04196dbe39b0fb0095c4c6be6f"
+    },
+    {
+      "authority_id": "EVAL-134-CODE-DIAGNOSTIC-V1",
+      "identity_sha256": "df18192f6190cc5d8be9492103a15097daaaf31afdd1cd45b2f4c21af5721105",
+      "role": "final_test",
+      "source_sha": "74fee51945c83ebdf39e171a894741964ba51b6d"
+    },
+    {
+      "authority_id": "EVAL-136-MEMORIZATION-HASH-ONLY",
+      "identity_sha256": "bba24085b45f1c73f7f4735b7cbef9994d4c1a6f1d585921641a2a271375b665",
+      "role": "auxiliary_reserved",
+      "source_sha": "fc4b3a1ed39216ee8e4cc938283ece2bd44f4d68"
+    }
+  ],
+  "notes": [
+    "RECOVER-174/EVAL-131 partial real UA+EN heldout authority is reserved; code remains blocked by its own authority and is not invented here.",
+    "EVAL-132/133/134 are frozen as no-training final diagnostic authorities for DATA-232 without reading their outcomes.",
+    "EVAL-136 is hash-only auxiliary memorization authority; nonzero canaries are experiment-local and are not reclassified as ordinary final-test records.",
+    "Selection-validation identity is intentionally not invented while terminal DATA-230 is absent."
+  ],
+  "schema": "12-6.data232-reserved-authorities.v1",
+  "worker_id": "DATA-232-DECONTAMINATION-AUTHORITY-V2"
+}
