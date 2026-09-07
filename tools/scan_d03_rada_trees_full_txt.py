@@ -13,7 +13,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
 import subprocess
 import sys
 import tempfile
@@ -223,6 +222,7 @@ def extract_selected_txt(
     archive: Path,
     destination: Path,
     selected: list[dict[str, Any]],
+    policy: dict[str, Any],
     *,
     timeout_seconds: int = 7200,
 ) -> list[dict[str, Any]]:
@@ -261,7 +261,6 @@ def extract_selected_txt(
     finally:
         list_path.unlink(missing_ok=True)
 
-    policy = load_config()["scan_policy"]
     return inventory.inventory_extracted_tree(
         destination,
         selected,
@@ -270,17 +269,41 @@ def extract_selected_txt(
     )
 
 
+def _text_free_member_metadata(classified: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    result: list[dict[str, Any]] = []
+    for item in classified:
+        result.append(
+            {
+                "path": item["path"],
+                "size_bytes": int(item["size_bytes"]),
+                "sha256": item["sha256"],
+                "classification": item["classification"],
+                "decoded_encoding": item["decoded_encoding"],
+                "text_metrics": item["text_metrics"],
+                "path_year_hints": item["path_year_hints"],
+            }
+        )
+    result.sort(key=lambda item: str(item["path"]))
+    return result
+
+
 def summarize_classification(classified: list[dict[str, Any]]) -> dict[str, Any]:
     require(bool(classified), "classification result is empty")
-    class_counts = Counter(str(item["classification"]) for item in classified)
+    member_metadata = _text_free_member_metadata(classified)
+    require(len(member_metadata) == len(classified), "member metadata coverage drift")
+    require(
+        len({str(item["path"]) for item in member_metadata}) == len(member_metadata),
+        "classified member path is not unique",
+    )
+
+    class_counts = Counter(str(item["classification"]) for item in member_metadata)
     class_bytes: Counter[str] = Counter()
-    for item in classified:
+    for item in member_metadata:
         class_bytes[str(item["classification"])] += int(item["size_bytes"])
 
-    candidates = sorted(
-        (item for item in classified if item["classification"] == "PLAIN_TEXT_CANDIDATE"),
-        key=lambda item: str(item["path"]),
-    )
+    candidates = [
+        item for item in member_metadata if item["classification"] == "PLAIN_TEXT_CANDIDATE"
+    ]
     by_hash: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for item in candidates:
         by_hash[str(item["sha256"])].append(item)
@@ -315,8 +338,10 @@ def summarize_classification(classified: list[dict[str, Any]]) -> dict[str, Any]
     after = sum(int(item["size_bytes"]) for item in survivors)
     require(before >= after, "exact duplicate collapse increased candidate capacity")
     return {
-        "full_txt_member_count": len(classified),
-        "full_txt_bytes": sum(int(item["size_bytes"]) for item in classified),
+        "full_txt_member_count": len(member_metadata),
+        "full_txt_bytes": sum(int(item["size_bytes"]) for item in member_metadata),
+        "full_txt_member_inventory_sha256": canonical_sha256(member_metadata),
+        "full_txt_member_metadata": member_metadata,
         "class_counts": dict(sorted(class_counts.items())),
         "class_bytes": dict(sorted(class_bytes.items())),
         "plain_text_candidate_members_before_exact_duplicate_collapse": len(candidates),
@@ -344,7 +369,13 @@ def build_report(config: dict[str, Any], archive: Path) -> dict[str, Any]:
 
     with tempfile.TemporaryDirectory(prefix="rada-full-txt-") as tmp:
         extracted_root = Path(tmp)
-        extracted = extract_selected_txt(extractor, archive, extracted_root, selected)
+        extracted = extract_selected_txt(
+            extractor,
+            archive,
+            extracted_root,
+            selected,
+            policy,
+        )
         classified = parent_probe.classify_extracted(
             extracted_root,
             extracted,
