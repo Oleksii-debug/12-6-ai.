@@ -41,6 +41,7 @@
     "min_text_bytes": 32,
     "hard_max_text_bytes_per_record": 10000000,
     "hard_max_total_text_bytes": 100000000,
+    "source_fetch_timeout_seconds": 30,
     "utf8_strict": true,
     "nul_forbidden": true,
     "durable_evidence_body_free": true,
@@ -68,5 +69,5 @@
     "paid_compute_authorized": false,
     "learned_20m_claim": false
   },
-  "contract_identity_sha256": "bfa512e2e28fed2a0ce46b0bfa938b8bf8e4fce96019f7f20a0c5c71d96cfa70"
+  "contract_identity_sha256": "98646e6e7686b1dd89ea4e6f25cd2e315b1bf9fa070d8d48ad0ff1696a908ca1"
 }
