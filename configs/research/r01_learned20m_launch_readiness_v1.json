@@ -35,6 +35,14 @@
     "evaluation": {
       "firewall_authority": null,
       "selection_validation_authority": null,
+      "final_test_reservation_authority": {
+        "repository": "Oleksii-debug/12-6-ai.",
+        "git_sha": "b5512b4648cb09dd052b08884dc53f291e1ce935",
+        "evidence_sha256": "86d51eb106524cd8e4d0f94d4ff6e2e3426c6321e0698279877dfc4d5fce3116",
+        "terminal": true,
+        "workflow_run_id": 32957254139,
+        "workflow_conclusion": "success"
+      },
       "decontamination": {
         "authority": {
           "repository": "Oleksii-debug/12-6-ai.",
