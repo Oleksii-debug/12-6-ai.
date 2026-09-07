@@ -32,6 +32,30 @@ def safe_resource(resource: dict) -> dict:
     }
 
 
+def zero_credit_boundary() -> dict[str, object]:
+    return {
+        "candidate_snapshot_only": True,
+        "canonical_corpus_admitted": False,
+        "family_credit": False,
+        "source_capacity_bytes_credited": 0,
+        "training_authorized_bytes": 0,
+        "authorized_optimized_target_exposure": 0,
+        "evaluation_authorized_bytes": 0,
+        "global_dedup_complete": False,
+        "reserved_evaluation_decontamination_complete": False,
+        "post_composition_quality_privacy_complete": False,
+        "balance_family_caps_complete": False,
+        "cluster_safe_split_complete": False,
+        "deterministic_packing_complete": False,
+        "postpack_unique_loss_ledger_complete": False,
+        "tokenizer_fit_authorized": False,
+        "optimizer_updates": 0,
+        "model_training_executed": False,
+        "final_test_payload_accessed": False,
+        "paid_compute_used": False,
+    }
+
+
 def observe(package: dict, cfg: dict, rights_sha256: str) -> dict:
     organization = package.get("organization") or {}
     publisher = organization.get("title") if isinstance(organization, dict) else None
@@ -70,20 +94,15 @@ def observe(package: dict, cfg: dict, rights_sha256: str) -> dict:
         "rights_evidence_sha256": rights_sha256,
         "resource_count": len(resource_metadata),
         "resources": resource_metadata,
-        "claim_boundary": {
-            "source_capacity_bytes_credited": 0,
-            "training_authorized_bytes": 0,
-            "evaluation_authorized_bytes": 0,
-            "tokenizer_fit_authorized": False,
-            "optimizer_updates": 0,
-            "model_training_executed": False,
-            "final_test_payload_accessed": False,
-            "paid_compute_used": False,
-        },
+        "claim_boundary": zero_credit_boundary(),
         "next": (
-            "Do not mutate the configured identity from observation alone. "
-            "First reconcile public dataset identifier, CKAN package identity, publisher, "
-            "license, and selected resource identity; only then rerun the incumbent locked materializer."
+            "Do not mutate the configured identity from observation alone. First reconcile "
+            "public dataset identifier, CKAN package identity, publisher, license, and "
+            "selected resource identity. A later LOCKED source snapshot remains zero-credit "
+            "and must still pass current global dedup, fresh reserved-evaluation "
+            "decontamination, quality/privacy, balance/family caps, cluster-safe split, "
+            "deterministic packing/two-clean-build, and positive unique-loss accounting "
+            "before any training authorization."
         ),
     }
     digest = hashlib.sha256(canonical_json(core_observation)).hexdigest()
@@ -93,6 +112,7 @@ def observe(package: dict, cfg: dict, rights_sha256: str) -> dict:
 def validate_static_contract(cfg: dict) -> str:
     if cfg["local_free_only"] is not True:
         raise RuntimeError("LOCAL_FREE gate is not true")
+    core.validate_mode(cfg.get("mode"))
     api = urlparse(cfg["dataset"]["package_api"])
     if api.scheme != "https" or api.hostname not in {"data.gov.ua", "www.data.gov.ua"}:
         raise RuntimeError("package API escaped data.gov.ua boundary")
