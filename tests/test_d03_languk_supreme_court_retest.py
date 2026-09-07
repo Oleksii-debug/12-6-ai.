@@ -20,6 +20,18 @@ CONFIG = json.loads(
 )
 
 
+def _occurrences(text: str, token: str) -> list[dict[str, int | str]]:
+    result: list[dict[str, int | str]] = []
+    start = 0
+    while True:
+        idx = text.find(token, start)
+        if idx < 0:
+            break
+        result.append({"start": idx, "end": idx + len(token), "text": token})
+        start = idx + len(token)
+    return result
+
+
 def make_row(record_id: str = "116075957", repeats: int = 3) -> dict:
     sentence = (
         "Верховний Суд України розглянув матеріали ОСОБА_1 за адресою АДРЕСА_1, "
@@ -49,15 +61,8 @@ def make_row(record_id: str = "116075957", repeats: int = 3) -> dict:
         "__index_level_0__": int(record_id) % 1000,
     }
     for token, count_field, occurrence_field in specs.values():
-        occurrences = []
-        start = 0
-        while True:
-            idx = text.find(token, start)
-            if idx < 0:
-                break
-            occurrences.append({"start": idx, "end": idx + len(token), "text": token})
-            start = idx + len(token)
-        row[count_field] = len(occurrences)
+        occurrences = _occurrences(text, token)
+        row[count_field] = len({str(item["text"]) for item in occurrences})
         row[occurrence_field] = occurrences
     return row
 
@@ -70,21 +75,36 @@ def test_load_config_preserves_exact_schema_and_zero_credit() -> None:
     assert value["claim_boundary"]["model_training_executed"] is False
 
 
-def test_repeated_placeholder_occurrences_use_occurrence_count_not_unique_labels(
-) -> None:
+def test_repeated_placeholder_occurrences_preserve_unique_entity_count() -> None:
     row = make_row(repeats=3)
-    assert row["person_count"] == 3
+    assert row["person_count"] == 1
+    assert len(row["person_occurrences"]) == 3
     ok, reason, text = mod.assess_row(row, CONFIG)
     assert ok is True
     assert reason == "accepted"
     assert text.count("ОСОБА_1") == 3
 
 
-def test_occurrence_count_mismatch_fails_closed() -> None:
+def test_unique_entity_count_mismatch_fails_closed() -> None:
     row = make_row()
     row["person_count"] += 1
-    with pytest.raises(mod.RetestError, match="occurrence_count_mismatch_person_count"):
+    with pytest.raises(mod.RetestError, match="unique_entity_count_mismatch_person_count"):
         mod.assess_row(row, CONFIG)
+
+
+def test_two_distinct_person_markers_count_as_two_unique_entities() -> None:
+    row = make_row(repeats=1)
+    row["text"] += " Додатково у справі згадано ОСОБА_2 як учасника провадження."
+    row["person_occurrences"] = [
+        *_occurrences(row["text"], "ОСОБА_1"),
+        *_occurrences(row["text"], "ОСОБА_2"),
+    ]
+    row["person_count"] = 2
+    row["sum_of_unique_entities"] = 5
+    ok, reason, text = mod.assess_row(row, CONFIG)
+    assert ok is True
+    assert reason == "accepted"
+    assert "ОСОБА_2" in text
 
 
 def test_stale_occurrence_span_fails_closed() -> None:
@@ -114,10 +134,17 @@ def test_occurrence_token_must_match_its_category() -> None:
         mod.assess_row(row, CONFIG)
 
 
-def test_sum_of_unique_entity_categories_is_bound() -> None:
+def test_sum_of_unique_entities_is_bound() -> None:
     row = make_row()
     row["sum_of_unique_entities"] = 3
     with pytest.raises(mod.RetestError, match="sum_of_unique_entities_inconsistent"):
+        mod.assess_row(row, CONFIG)
+
+
+def test_sum_of_unique_entities_rejects_malformed_value() -> None:
+    row = make_row()
+    row["sum_of_unique_entities"] = True
+    with pytest.raises(mod.RetestError, match="invalid_sum_of_unique_entities"):
         mod.assess_row(row, CONFIG)
 
 
@@ -158,7 +185,7 @@ def test_selection_order_is_numeric_not_lexicographic() -> None:
     assert [row["record_id"] for row in accepted] == ["2", "10", "100"]
 
 
-def test_exact_normalized_duplicate_is_removed() -> None:
+def test_exact_normalized_duplicate_is_removed_with_one_disposition_per_row() -> None:
     first = make_row("2")
     second = make_row("3")
     second["text"] = first["text"]
@@ -171,7 +198,20 @@ def test_exact_normalized_duplicate_is_removed() -> None:
             second[field] = copy.deepcopy(first[field])
     accepted, reasons = mod.select_rows([first, second], CONFIG)
     assert len(accepted) == 1
+    assert reasons["accepted"] == 1
     assert reasons["exact_normalized_duplicate"] == 1
+    assert sum(reasons.values()) == 2
+
+
+def test_rejected_row_gets_one_terminal_disposition() -> None:
+    accepted_row = make_row("2")
+    rejected_row = make_row("3")
+    rejected_row["text"] += " test@example.org"
+    accepted, reasons = mod.select_rows([accepted_row, rejected_row], CONFIG)
+    assert len(accepted) == 1
+    assert reasons["accepted"] == 1
+    assert reasons["email"] == 1
+    assert sum(reasons.values()) == 2
 
 
 def test_config_mutations_fail_closed() -> None:
