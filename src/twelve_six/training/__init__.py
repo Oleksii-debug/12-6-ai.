@@ -2,6 +2,7 @@
 
 from .config import PrecisionMode, SchedulerKind, TrainerConfig
 from .loss import causal_lm_loss, causal_pair_loss
+from .numeric_forensics import NumericFailureDiagnostics, batch_identity_sha256
 from .precision import PrecisionRuntime, autocast_dtype, resolve_precision_runtime
 from .trainer import (
     CheckpointHookError,
@@ -18,6 +19,7 @@ from .trainer import (
 __all__ = [
     "CheckpointHookError",
     "NonFiniteTrainingError",
+    "NumericFailureDiagnostics",
     "PrecisionMode",
     "PrecisionRuntime",
     "SchedulerKind",
@@ -28,6 +30,7 @@ __all__ = [
     "TrainingRunResult",
     "TrainingStateInvalidError",
     "autocast_dtype",
+    "batch_identity_sha256",
     "build_optimizer",
     "build_scheduler",
     "causal_lm_loss",
