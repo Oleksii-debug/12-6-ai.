@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from twelve_six.checkpoint import hash_json, verify_checkpoint
+from twelve_six.checkpoint.recovery_lock import exclusive_recovery_lock
 from twelve_six.scale141_resume_sidecar import (
     ResumeSidecarContext,
     ResumeSidecarError,
@@ -178,7 +179,7 @@ def _atomic_publish_pointer(
     temp = Path(raw_temp)
     try:
         with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
-            json.dump(value, handle, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+            json.dump(value, handle, ensure_ascii=False, sort_keys=True, separators=(",", ","))
             handle.write("\n")
             handle.flush()
             os.fsync(handle.fileno())
@@ -323,7 +324,7 @@ def resolve_recovery_generation(
     )
 
 
-def publish_recovery_generation(
+def _publish_recovery_generation_unlocked(
     root: str | Path,
     *,
     save_generation: Callable[[Path], Mapping[str, Any] | None],
@@ -407,7 +408,7 @@ def publish_recovery_generation(
     return recovery_reference(pointer)
 
 
-def cleanup_recovery_generations(root: str | Path, *, keep: int = 2) -> dict[str, Any]:
+def _cleanup_recovery_generations_unlocked(root: str | Path, *, keep: int = 2) -> dict[str, Any]:
     if not isinstance(keep, int) or isinstance(keep, bool) or keep < 1:
         raise ValueError("recovery cleanup keep must be >= 1")
     recovery_root = Path(root)
@@ -449,3 +450,36 @@ def cleanup_recovery_generations(root: str | Path, *, keep: int = 2) -> dict[str
         "removed_resume_sidecars": removed_sidecars,
         "retained_generation_count": len(_generation_numbers(recovery_root)),
     }
+
+
+def publish_recovery_generation(
+    root: str | Path,
+    *,
+    save_generation: Callable[[Path], Mapping[str, Any] | None],
+    expected_source_sha: str,
+    expected_run_manifest_hash: str,
+    expected_step: int,
+    expected_tokens_seen: int,
+    build_resume_state: Callable[[ResumeSidecarContext], Mapping[str, Any]] | None = None,
+    failpoint: str | None = None,
+) -> dict[str, Any]:
+    """Publish one generation under a crash-releasing cross-process lock."""
+
+    with exclusive_recovery_lock(root):
+        return _publish_recovery_generation_unlocked(
+            root,
+            save_generation=save_generation,
+            expected_source_sha=expected_source_sha,
+            expected_run_manifest_hash=expected_run_manifest_hash,
+            expected_step=expected_step,
+            expected_tokens_seen=expected_tokens_seen,
+            build_resume_state=build_resume_state,
+            failpoint=failpoint,
+        )
+
+
+def cleanup_recovery_generations(root: str | Path, *, keep: int = 2) -> dict[str, Any]:
+    """Clean immutable generations without racing an active publisher."""
+
+    with exclusive_recovery_lock(root):
+        return _cleanup_recovery_generations_unlocked(root, keep=keep)
