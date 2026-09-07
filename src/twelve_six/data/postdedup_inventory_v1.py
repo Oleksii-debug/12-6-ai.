@@ -15,6 +15,7 @@ from typing import Any
 V8_SCHEMA = "12-6.next100-065f-global-dedup-report.v8"
 V3_SCHEMA = "12-6.next100-065-cross-source-dedup-report.v3"
 OUTPUT_SCHEMA = "12-6.postdedup-retained-source-inventory.v1"
+ORIGIN_CLUSTER_SCHEMA = "12-6.postdedup-origin-cluster.v1"
 SELECTION_POLICY = "MAX_DECLARED_CAPACITY_THEN_SOURCE_ID_ASC_V1"
 CAPACITY_COLLAPSE_MATCH_TYPES = frozenset(
     {
@@ -336,6 +337,69 @@ def _validate_component_summary(
     return expected_after
 
 
+def _origin_cluster_bindings(
+    dedup: Mapping[str, Any],
+    source_by_id: Mapping[str, Mapping[str, Any]],
+) -> dict[str, tuple[int, str]]:
+    """Bind retained sources to V3 independence clusters without exposing origin text."""
+    terminal = dedup.get("terminal_candidates")
+    _require(isinstance(terminal, Mapping), "nested V3 terminal candidate summary missing")
+    raw_clusters = terminal.get("origin_clusters")
+    _require(
+        isinstance(raw_clusters, Sequence) and not isinstance(raw_clusters, (str, bytes)),
+        "nested V3 origin_clusters must be a sequence",
+    )
+    expected_count = _nonnegative_int(
+        terminal.get("effective_independent_origin_count"),
+        "terminal_candidates.effective_independent_origin_count",
+    )
+    _require(
+        len(raw_clusters) == expected_count,
+        "nested V3 origin cluster count does not match independence summary",
+    )
+
+    expected_origin_hashes = {
+        row["stable_origin_id_sha256"] for row in source_by_id.values()
+    }
+    observed_origin_hashes: set[str] = set()
+    bindings: dict[str, tuple[int, str]] = {}
+    normalized_clusters: list[tuple[list[str], list[str]]] = []
+    for cluster in raw_clusters:
+        _require(
+            isinstance(cluster, Sequence) and not isinstance(cluster, (str, bytes)) and cluster,
+            "nested V3 origin cluster must be a non-empty sequence",
+        )
+        raw_members = sorted(_nonempty_text(member, "origin cluster member") for member in cluster)
+        member_hashes = sorted(_sha256_bytes(member.encode("utf-8")) for member in raw_members)
+        _require(
+            len(member_hashes) == len(set(member_hashes)),
+            "nested V3 origin cluster contains duplicate members",
+        )
+        normalized_clusters.append((raw_members, member_hashes))
+
+    normalized_clusters.sort(key=lambda item: item[1])
+    for cluster_index, (_, member_hashes) in enumerate(normalized_clusters):
+        cluster_identity = _sha256_obj(
+            {
+                "schema_version": ORIGIN_CLUSTER_SCHEMA,
+                "stable_origin_id_sha256_members": member_hashes,
+            }
+        )
+        for origin_hash in member_hashes:
+            _require(
+                origin_hash not in observed_origin_hashes,
+                "stable origin appears in multiple nested V3 origin clusters",
+            )
+            observed_origin_hashes.add(origin_hash)
+            bindings[origin_hash] = (cluster_index, cluster_identity)
+
+    _require(
+        observed_origin_hashes == expected_origin_hashes,
+        "nested V3 origin clusters do not cover the exact retained source origins",
+    )
+    return bindings
+
+
 def _retained_summary(
     retained: Sequence[Mapping[str, Any]],
     *,
@@ -370,6 +434,7 @@ def materialize_postdedup_inventory(
         components,
         source_by_id,
     )
+    origin_bindings = _origin_cluster_bindings(dedup, source_by_id)
 
     retained: list[dict[str, Any]] = []
     excluded: list[dict[str, Any]] = []
@@ -388,12 +453,17 @@ def materialize_postdedup_inventory(
             }
         )
         representative = source_by_id[representative_id]
+        origin_cluster_index, origin_cluster_identity = origin_bindings[
+            representative["stable_origin_id_sha256"]
+        ]
         retained.append(
             {
                 **dict(representative),
                 "component_index": component_index,
                 "component_size": len(component),
                 "component_identity_sha256": component_identity,
+                "independence_cluster_index": origin_cluster_index,
+                "independence_cluster_identity_sha256": origin_cluster_identity,
             }
         )
         for source_id in component:
@@ -426,6 +496,7 @@ def materialize_postdedup_inventory(
         "input_source_count": len(source_by_id),
         "capacity_component_count": len(components),
         "duplicate_component_count": sum(len(component) > 1 for component in components),
+        "independence_cluster_count": len(set(origin_bindings.values())),
         "retained_source_count": len(retained),
         "excluded_duplicate_source_count": len(excluded),
         "retained_unique_capacity_bytes": retained_capacity,
