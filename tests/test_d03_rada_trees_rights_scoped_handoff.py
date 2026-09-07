@@ -184,7 +184,7 @@ def test_candidate_record_hash_drift_fails_closed() -> None:
 
 
 def test_candidate_record_encoding_drift_fails_closed() -> None:
-    payload = "Україна".encode("utf-8")
+    payload = "Україна".encode()
     row = {
         "path": "texts/2020-01-01__fixture.txt",
         "size_bytes": len(payload),
