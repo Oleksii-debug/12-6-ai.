@@ -33,3 +33,219 @@ jobs:
         run: python -m twelve_six.ci_workflow_policy --base "$BASE_SHA" --head "$HEAD_SHA"
       - run: ruff check src tests
       - run: pytest -q
+
+  d03-rada-trees-full-txt-scan:
+    if: github.event_name == 'pull_request' && github.head_ref == 'd03/rada-trees-full-txt-scan-20260907'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Prove exact checkout
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Bind exact scan runtime
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          import platform
+          import sys
+          from pathlib import Path
+
+          sys.path.insert(0, "tools")
+          import inventory_d03_rada_trees_archive as inventory
+
+          assert platform.python_implementation() == "CPython"
+          assert platform.python_version() == "3.11.16"
+          config = json.loads(
+              Path("configs/data/d03_rada_trees_full_txt_scan_v1.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          accepted = list(config["scan_policy"]["accepted_extractors"])
+          extractor = inventory.find_extractor(None, accepted)
+          version = inventory.extractor_version(extractor)
+          assert version and version != "UNKNOWN"
+          core = {
+              "schema_version": "12-6.d03-rada-trees-full-txt-runtime.v1",
+              "source_sha": os.environ["SOURCE_SHA"],
+              "python_implementation": platform.python_implementation(),
+              "python_version": platform.python_version(),
+              "accepted_extractors": accepted,
+              "extractor_command": extractor,
+              "extractor_version": version,
+          }
+          encoded = json.dumps(
+              core,
+              ensure_ascii=False,
+              sort_keys=True,
+              separators=(",", ":"),
+          ).encode("utf-8")
+          evidence = {
+              **core,
+              "runtime_identity_sha256": hashlib.sha256(encoded).hexdigest(),
+          }
+          output = Path(os.environ["RUNNER_TEMP"]) / "rada-full-txt-runtime.json"
+          output.write_text(
+              json.dumps(evidence, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          print("python_runtime=", platform.python_version())
+          print("extractor_command=", extractor)
+          print("extractor_version=", version)
+          print("runtime_identity_sha256=", evidence["runtime_identity_sha256"])
+          PY
+      - name: Compile full scan surface
+        run: >-
+          python -m py_compile
+          tools/scan_d03_rada_trees_full_txt.py
+          tools/probe_d03_rada_trees_secondary_role.py
+          tools/classify_d03_rada_trees_members.py
+          tools/download_d03_rada_trees_from_hf_snapshot.py
+          tools/inventory_d03_rada_trees_archive.py
+      - name: Execute exact full txt scan
+        run: >-
+          python tools/scan_d03_rada_trees_full_txt.py
+          --archive-output "$RUNNER_TEMP/rada_xtag_texts.7z"
+          --report-output "$RUNNER_TEMP/rada-full-txt-report.json"
+          --timeout 900
+      - name: Assert full coverage and zero-credit truth boundary
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          import platform
+          import sys
+          from pathlib import Path
+
+          sys.path.insert(0, "tools")
+          import inventory_d03_rada_trees_archive as inventory
+
+          temp = Path(os.environ["RUNNER_TEMP"])
+          report_path = temp / "rada-full-txt-report.json"
+          report = json.loads(report_path.read_text(encoding="utf-8"))
+          runtime = json.loads((temp / "rada-full-txt-runtime.json").read_text(encoding="utf-8"))
+          classification = report["classification"]
+          boundary = report["claim_boundary"]
+
+          assert report["schema_version"] == "12-6.d03-rada-trees-full-txt-scan-report.v1"
+          assert report["source"]["content_sha256"] == "737fa5df061c55555a8c761023559a206cbcabf0299ae52d1ccae387f685803e"
+          assert report["terminal_listing"]["listing_identity_sha256"] == "9e5bad28b2455a0b1682b7c91d0f81f4113a928223898570c9800cf8af7ad15a"
+          assert classification["full_txt_member_count"] == 4391
+          assert len(classification["full_txt_member_metadata"]) == 4391
+          assert classification["raw_member_text_emitted"] is False
+          assert classification["plain_text_candidate_bytes_after_exact_duplicate_collapse"] >= 0
+          assert boundary["training_authorized_bytes"] == 0
+          assert boundary["unique_causal_loss_positions_authorized"] == 0
+          assert boundary["tokenizer_fit_authorized"] is False
+          assert boundary["optimizer_updates"] == 0
+          assert boundary["model_training_executed"] is False
+          assert boundary["final_test_payload_accessed"] is False
+          assert boundary["paid_compute_used"] is False
+          assert boundary["training_admission_claimed"] is False
+          assert report["decision"]["training_admission_claimed"] is False
+
+          metadata = classification["full_txt_member_metadata"]
+          encoded_metadata = json.dumps(
+              metadata,
+              ensure_ascii=False,
+              sort_keys=True,
+              separators=(",", ":"),
+          ).encode("utf-8")
+          assert hashlib.sha256(encoded_metadata).hexdigest() == classification[
+              "full_txt_member_inventory_sha256"
+          ]
+          assert all("text" not in item and "raw_text" not in item for item in metadata)
+
+          assert runtime["source_sha"] == os.environ["SOURCE_SHA"]
+          assert runtime["python_implementation"] == "CPython"
+          assert runtime["python_version"] == "3.11.16"
+          assert platform.python_version() == runtime["python_version"]
+          extractor = inventory.find_extractor(None, runtime["accepted_extractors"])
+          assert extractor == runtime["extractor_command"]
+          assert inventory.extractor_version(extractor) == runtime["extractor_version"]
+          runtime_core = {
+              key: value for key, value in runtime.items() if key != "runtime_identity_sha256"
+          }
+          encoded_runtime = json.dumps(
+              runtime_core,
+              ensure_ascii=False,
+              sort_keys=True,
+              separators=(",", ":"),
+          ).encode("utf-8")
+          assert hashlib.sha256(encoded_runtime).hexdigest() == runtime[
+              "runtime_identity_sha256"
+          ]
+
+          report_file_sha256 = hashlib.sha256(report_path.read_bytes()).hexdigest()
+          authority_core = {
+              "schema_version": "12-6.d03-rada-trees-full-txt-execution-authority.v1",
+              "source_sha": os.environ["SOURCE_SHA"],
+              "conclusion": "success",
+              "report_sha256": report["report_sha256"],
+              "report_file_sha256": report_file_sha256,
+              "runtime_identity_sha256": runtime["runtime_identity_sha256"],
+              "archive_content_sha256": report["source"]["content_sha256"],
+              "listing_identity_sha256": report["terminal_listing"][
+                  "listing_identity_sha256"
+              ],
+              "full_txt_member_inventory_sha256": classification[
+                  "full_txt_member_inventory_sha256"
+              ],
+              "full_txt_member_count": classification["full_txt_member_count"],
+              "plain_text_candidate_members_after_exact_duplicate_collapse": classification[
+                  "plain_text_candidate_members_after_exact_duplicate_collapse"
+              ],
+              "plain_text_candidate_bytes_after_exact_duplicate_collapse": classification[
+                  "plain_text_candidate_bytes_after_exact_duplicate_collapse"
+              ],
+              "training_authorized_bytes": 0,
+              "unique_causal_loss_positions_authorized": 0,
+          }
+          authority_encoded = json.dumps(
+              authority_core,
+              ensure_ascii=False,
+              sort_keys=True,
+              separators=(",", ":"),
+          ).encode("utf-8")
+          authority = {
+              **authority_core,
+              "authority_identity_sha256": hashlib.sha256(authority_encoded).hexdigest(),
+          }
+          (temp / "rada-full-txt-execution-authority.json").write_text(
+              json.dumps(authority, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          print("report_sha256=", report["report_sha256"])
+          print("report_file_sha256=", report_file_sha256)
+          print("member_inventory_sha256=", classification["full_txt_member_inventory_sha256"])
+          print("candidate_members_after_exact_dup=", authority[
+              "plain_text_candidate_members_after_exact_duplicate_collapse"
+          ])
+          print("candidate_bytes_after_exact_dup=", authority[
+              "plain_text_candidate_bytes_after_exact_duplicate_collapse"
+          ])
+          print("authority_identity_sha256=", authority["authority_identity_sha256"])
+          PY
+      - name: Upload text-free full-scan authority
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: rada-trees-full-txt-${{ env.SOURCE_SHA }}
+          path: |
+            ${{ runner.temp }}/rada-full-txt-report.json
+            ${{ runner.temp }}/rada-full-txt-runtime.json
+            ${{ runner.temp }}/rada-full-txt-execution-authority.json
+          if-no-files-found: error
+          retention-days: 30
