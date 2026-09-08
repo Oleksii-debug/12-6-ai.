@@ -1,14 +1,14 @@
 """Deterministic, fail-closed retention planning for immutable checkpoints.
 
-This module never deletes checkpoint artifacts.  It produces a plan only after
+This module never deletes checkpoint artifacts. It produces a plan only after
 selection authority has been validated, so a caller cannot prune through an
 ambiguous lineage/progress set.
 """
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Any
 
 from .core import CheckpointCompatibilityError
 from .selection import (
@@ -32,7 +32,7 @@ class CheckpointRetentionPlan:
 
 
 def plan_checkpoint_retention(
-    candidates: list[CheckpointCandidate] | tuple[CheckpointCandidate, ...],
+    candidates: Iterable[CheckpointCandidate],
     *,
     keep_recent: int,
     best_metric_name: str | None = None,
@@ -40,11 +40,11 @@ def plan_checkpoint_retention(
 ) -> CheckpointRetentionPlan:
     """Plan retention without mutating storage.
 
-    The latest checkpoint is always kept.  The newest ``keep_recent`` progress
-    points are kept as rollback windows.  If any checkpoint claims completion,
+    The latest checkpoint is always kept. The newest ``keep_recent`` progress
+    points are kept as rollback windows. If any checkpoint claims completion,
     selection must resolve one valid terminal ``final`` checkpoint and it is
-    kept.  When best-metric authority is supplied, the unique best checkpoint
-    is also kept.  Every ambiguity inherited from checkpoint selection fails
+    kept. When best-metric authority is supplied, the unique best checkpoint
+    is also kept. Every ambiguity inherited from checkpoint selection fails
     closed before a deletion candidate is emitted.
     """
 
