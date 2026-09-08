@@ -30,6 +30,20 @@ def _require_sha256(value: Any, *, field: str) -> str:
     return value
 
 
+def _require_finite_metric_value(value: Any) -> float:
+    """Normalize metric evidence without leaking numeric conversion failures."""
+
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise CheckpointCompatibilityError("metric_value must be numeric")
+    try:
+        normalized = float(value)
+    except (OverflowError, ValueError):
+        raise CheckpointCompatibilityError("metric_value must be finite") from None
+    if not isfinite(normalized):
+        raise CheckpointCompatibilityError("metric_value must be finite")
+    return normalized
+
+
 @dataclass(frozen=True)
 class CheckpointCandidate:
     """Selection facts for one already-verified immutable checkpoint."""
@@ -83,7 +97,11 @@ class CheckpointCandidate:
             tokens_seen=candidate.tokens_seen,
             completed=candidate.completed,
             metric_name=candidate.metric_name,
-            metric_value=None if candidate.metric_value is None else float(candidate.metric_value),
+            metric_value=(
+                None
+                if candidate.metric_value is None
+                else _require_finite_metric_value(candidate.metric_value)
+            ),
         )
 
     @property
@@ -130,10 +148,7 @@ def _validate_candidate(item: CheckpointCandidate) -> None:
     if item.metric_name is not None:
         if not isinstance(item.metric_name, str) or not item.metric_name.strip():
             raise CheckpointCompatibilityError("metric_name must be a non-empty string")
-        if isinstance(item.metric_value, bool) or not isinstance(item.metric_value, (int, float)):
-            raise CheckpointCompatibilityError("metric_value must be numeric")
-        if not isfinite(float(item.metric_value)):
-            raise CheckpointCompatibilityError("metric_value must be finite")
+        _require_finite_metric_value(item.metric_value)
 
 
 def _materialize(candidates: Iterable[CheckpointCandidate]) -> list[CheckpointCandidate]:
@@ -248,8 +263,7 @@ def select_best(
             raise CheckpointCompatibilityError(
                 "every candidate must carry the requested best-checkpoint metric"
             )
-        if not isfinite(item.metric_value):
-            raise CheckpointCompatibilityError("best-checkpoint metric must be finite")
+        _require_finite_metric_value(item.metric_value)
         eligible.append(item)
     return _unique_extreme(
         eligible,
