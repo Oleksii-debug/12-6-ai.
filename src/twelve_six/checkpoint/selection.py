@@ -58,9 +58,7 @@ class CheckpointCandidate:
         identity = manifest.get("identity")
         if not isinstance(identity, Mapping):
             raise CheckpointCompatibilityError("checkpoint manifest identity must be a mapping")
-        checkpoint_id = manifest.get("checkpoint_id")
-        if not isinstance(checkpoint_id, str) or not checkpoint_id:
-            raise CheckpointCompatibilityError("checkpoint_id must be a non-empty string")
+        checkpoint_id = _require_sha256(manifest.get("checkpoint_id"), field="checkpoint_id")
         required = {
             "run_manifest_hash": identity.get("run_manifest_hash"),
             "model_spec_hash": identity.get("model_spec_hash"),
