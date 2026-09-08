@@ -50,6 +50,24 @@ def _candidate(
     )
 
 
+def _direct_candidate(**overrides: object) -> CheckpointCandidate:
+    values: dict[str, object] = {
+        "checkpoint_id": _sha("direct"),
+        "run_manifest_hash": _sha("r"),
+        "model_spec_hash": _sha("model"),
+        "tokenizer_hash": _sha("tokenizer"),
+        "dataset_manifest_hash": _sha("dataset"),
+        "training_config_hash": _sha("training"),
+        "step": 1,
+        "tokens_seen": 10,
+        "completed": False,
+        "metric_name": None,
+        "metric_value": None,
+    }
+    values.update(overrides)
+    return CheckpointCandidate(**values)  # type: ignore[arg-type]
+
+
 def test_candidate_requires_canonical_sha256_checkpoint_id() -> None:
     for bad_hash in ("a" * 63, "A" * 64, "g" * 64, ""):
         manifest = _manifest(checkpoint_id="checkpoint", step=1, tokens_seen=10)
@@ -64,6 +82,27 @@ def test_candidate_requires_canonical_sha256_lineage_identities() -> None:
         manifest["identity"]["run_manifest_hash"] = bad_hash
         with pytest.raises(CheckpointCompatibilityError, match="run_manifest_hash"):
             CheckpointCandidate.from_manifest(manifest)
+
+
+@pytest.mark.parametrize(
+    ("overrides", "match"),
+    [
+        ({"checkpoint_id": "a" * 63}, "checkpoint_id"),
+        ({"run_manifest_hash": "A" * 64}, "run_manifest_hash"),
+        ({"model_spec_hash": "g" * 64}, "model_spec_hash"),
+        ({"step": -1}, "progress"),
+        ({"tokens_seen": True}, "progress"),
+        ({"completed": 1}, "completed"),
+        ({"metric_name": "validation_loss", "metric_value": None}, "both be present"),
+        ({"metric_name": "validation_loss", "metric_value": float("nan")}, "finite"),
+    ],
+)
+def test_selection_revalidates_directly_constructed_candidates(
+    overrides: dict[str, object], match: str
+) -> None:
+    candidate = _direct_candidate(**overrides)
+    with pytest.raises(CheckpointCompatibilityError, match=match):
+        select_chronological([candidate])
 
 
 def test_chronological_uses_training_progress_not_publication_order() -> None:
