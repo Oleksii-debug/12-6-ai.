@@ -1,0 +1,65 @@
+name: D03 Rada Trees quality privacy terminal
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/d03-rada-trees-quality-privacy-terminal.yml"
+      - "tools/materialize_d03_rada_trees_rights_scoped_handoff.py"
+      - "tools/run_d03_rada_trees_quality_privacy_gate.py"
+      - "src/twelve_six/data/document_quality.py"
+      - "src/twelve_six/data/quality_granularity.py"
+      - "src/twelve_six/data/privacy_filter_v3.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  terminal-scan:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.number == 916
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install data-only runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y p7zip-full
+      - name: Acquire exact immutable archive
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 4 --retry-all-errors \
+            --output "$RUNNER_TEMP/rada_xtag_texts.7z" \
+            "https://huggingface.co/datasets/uacorpus/Rada_Trees/resolve/1b994a5804dcda122721e8d33a03fd172cf8d867/rada_xtag_texts.7z?download=true"
+          test "$(stat -c %s "$RUNNER_TEMP/rada_xtag_texts.7z")" = "697768591"
+          echo "737fa5df061c55555a8c761023559a206cbcabf0299ae52d1ccae387f685803e  $RUNNER_TEMP/rada_xtag_texts.7z" | sha256sum -c -
+      - name: Materialize rights-scoped records
+        env:
+          PYTHONPATH: src
+        run: |
+          python tools/materialize_d03_rada_trees_rights_scoped_handoff.py \
+            --archive "$RUNNER_TEMP/rada_xtag_texts.7z" \
+            --candidate-jsonl "$RUNNER_TEMP/rada-candidate.jsonl" \
+            --report "$RUNNER_TEMP/rada-handoff-report.json"
+      - name: Run incumbent quality and privacy gates
+        env:
+          PYTHONPATH: src
+        run: |
+          python tools/run_d03_rada_trees_quality_privacy_gate.py \
+            --candidate-jsonl "$RUNNER_TEMP/rada-candidate.jsonl" \
+            --output-jsonl "$RUNNER_TEMP/rada-quality-privacy.jsonl" \
+            --report "$RUNNER_TEMP/rada-quality-privacy-report.json"
+      - name: Publish text-free terminal evidence to log
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          root = Path(os.environ["RUNNER_TEMP"])
+          for name in ("rada-handoff-report.json", "rada-quality-privacy-report.json"):
+              report = json.loads((root / name).read_text(encoding="utf-8"))
+              print(name)
+              print(json.dumps(report, sort_keys=True, separators=(",", ":")))
+          PY
