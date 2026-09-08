@@ -1,0 +1,66 @@
+name: D03 Rada Trees survivor replay
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/d03-rada-trees-survivor-replay.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  survivor-replay:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.number == 916
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install data-only runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y p7zip-full
+      - name: Acquire exact immutable archive
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 4 --retry-all-errors \
+            --output "$RUNNER_TEMP/rada_xtag_texts.7z" \
+            "https://huggingface.co/datasets/uacorpus/Rada_Trees/resolve/1b994a5804dcda122721e8d33a03fd172cf8d867/rada_xtag_texts.7z?download=true"
+          test "$(stat -c %s "$RUNNER_TEMP/rada_xtag_texts.7z")" = "697768591"
+          echo "737fa5df061c55555a8c761023559a206cbcabf0299ae52d1ccae387f685803e  $RUNNER_TEMP/rada_xtag_texts.7z" | sha256sum -c -
+      - name: Materialize exact rights-scoped records
+        env:
+          PYTHONPATH: src
+        run: |
+          python tools/materialize_d03_rada_trees_rights_scoped_handoff.py \
+            --archive "$RUNNER_TEMP/rada_xtag_texts.7z" \
+            --candidate-jsonl "$RUNNER_TEMP/rada-candidate.jsonl" \
+            --report "$RUNNER_TEMP/rada-handoff-report.json"
+      - name: Replay incumbent quality and privacy gates
+        env:
+          PYTHONPATH: src
+        run: |
+          python tools/run_d03_rada_trees_quality_privacy_gate.py \
+            --candidate-jsonl "$RUNNER_TEMP/rada-candidate.jsonl" \
+            --output-jsonl "$RUNNER_TEMP/rada-quality-privacy.jsonl" \
+            --report "$RUNNER_TEMP/rada-quality-privacy-report.json"
+          echo "80f4090fd52fe729a48b63528eef0b30406d5643de632e1617f9e29bbbac78df  $RUNNER_TEMP/rada-quality-privacy.jsonl" | sha256sum -c -
+          echo "a8080934f1762a093a26f45f0460dcbd103cdb4a720f1d5307da72ebf81decaf  $RUNNER_TEMP/rada-quality-privacy-report.json" | sha256sum -c -
+      - name: Stage identity-bound survivor artifact
+        run: |
+          mkdir -p "$RUNNER_TEMP/rada-survivor-artifact"
+          cp "$RUNNER_TEMP/rada-quality-privacy.jsonl" "$RUNNER_TEMP/rada-survivor-artifact/"
+          cp "$RUNNER_TEMP/rada-quality-privacy-report.json" "$RUNNER_TEMP/rada-survivor-artifact/"
+          cp "$RUNNER_TEMP/rada-handoff-report.json" "$RUNNER_TEMP/rada-survivor-artifact/"
+          sha256sum "$RUNNER_TEMP/rada-survivor-artifact/"* > "$RUNNER_TEMP/rada-survivor-artifact/SHA256SUMS"
+      - name: Upload ephemeral exact survivor artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: d03-rada-trees-4282-survivors
+          path: ${{ runner.temp }}/rada-survivor-artifact
+          retention-days: 1
+          compression-level: 9
+          if-no-files-found: error
