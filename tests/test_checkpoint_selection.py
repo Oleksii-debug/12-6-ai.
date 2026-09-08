@@ -95,6 +95,7 @@ def test_candidate_requires_canonical_sha256_lineage_identities() -> None:
         ({"completed": 1}, "completed"),
         ({"metric_name": "validation_loss", "metric_value": None}, "both be present"),
         ({"metric_name": "validation_loss", "metric_value": float("nan")}, "finite"),
+        ({"metric_name": "validation_loss", "metric_value": 10**10000}, "finite"),
     ],
 )
 def test_selection_revalidates_directly_constructed_candidates(
@@ -199,3 +200,9 @@ def test_candidate_rejects_partial_metric_and_non_finite_metric() -> None:
         _candidate("a", 1, 10, metric_name="validation_loss")
     with pytest.raises(CheckpointCompatibilityError, match="finite"):
         _candidate("a", 1, 10, metric_name="validation_loss", metric_value=float("nan"))
+    with pytest.raises(CheckpointCompatibilityError, match="finite"):
+        CheckpointCandidate.from_manifest(
+            _manifest(checkpoint_id="overflow", step=1, tokens_seen=10),
+            metric_name="validation_loss",
+            metric_value=10**10000,  # type: ignore[arg-type]
+        )
