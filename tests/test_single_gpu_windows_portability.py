@@ -17,3 +17,9 @@ def test_unavailable_resource_metric_is_nonfatal(monkeypatch) -> None:
     )
     monkeypatch.setattr(single_gpu, "_resource", failing_resource)
     assert single_gpu._process_rss_bytes() is None
+
+
+def test_incomplete_resource_api_is_nonfatal(monkeypatch) -> None:
+    incomplete_resource = SimpleNamespace(RUSAGE_SELF=0)
+    monkeypatch.setattr(single_gpu, "_resource", incomplete_resource)
+    assert single_gpu._process_rss_bytes() is None
