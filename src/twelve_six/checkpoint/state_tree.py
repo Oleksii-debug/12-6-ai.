@@ -211,13 +211,14 @@ def _unpack(
             key = _unpack(pair[0], tensors, used, f"{path}.<key:{index}>")
             item = _unpack(pair[1], tensors, used, f"{path}[{index}]")
             try:
-                if key in restored:
-                    raise StateTreeError(f"duplicate mapping key at {path}: {key!r}")
-                restored[key] = item
+                duplicate = key in restored
             except TypeError as exc:
                 raise StateTreeError(
                     f"unhashable mapping key at {path}: {type(key)!r}"
                 ) from exc
+            if duplicate:
+                raise StateTreeError(f"duplicate mapping key at {path}: {key!r}")
+            restored[key] = item
         return restored
     raise StateTreeError(f"unknown state-tree kind {kind!r}")
 
