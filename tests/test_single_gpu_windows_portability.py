@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-import twelve_six.training.single_gpu as single_gpu
+from twelve_six.training import single_gpu
 
 
 def test_missing_resource_module_disables_rss_without_blocking_training(monkeypatch) -> None:
