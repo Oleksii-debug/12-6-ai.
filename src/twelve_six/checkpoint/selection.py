@@ -30,6 +30,21 @@ def _require_sha256(value: Any, *, field: str) -> str:
     return value
 
 
+def _require_metric_name(value: Any) -> str:
+    """Require an unambiguous metric authority name without hidden whitespace/control bytes."""
+
+    if (
+        not isinstance(value, str)
+        or not value
+        or value != value.strip()
+        or any(ch.isspace() or not ch.isprintable() for ch in value)
+    ):
+        raise CheckpointCompatibilityError(
+            "metric_name must be a canonical non-empty printable string without whitespace"
+        )
+    return value
+
+
 def _require_finite_metric_value(value: Any) -> float:
     """Normalize metric evidence without leaking numeric conversion failures."""
 
@@ -146,8 +161,7 @@ def _validate_candidate(item: CheckpointCandidate) -> None:
             "metric_name and metric_value must either both be present or both be absent"
         )
     if item.metric_name is not None:
-        if not isinstance(item.metric_name, str) or not item.metric_name.strip():
-            raise CheckpointCompatibilityError("metric_name must be a non-empty string")
+        _require_metric_name(item.metric_name)
         _require_finite_metric_value(item.metric_value)
 
 
@@ -253,8 +267,7 @@ def select_best(
     """Return the unique best evaluation-bound checkpoint."""
 
     items = _materialize(candidates)
-    if not isinstance(metric_name, str) or not metric_name.strip():
-        raise CheckpointCompatibilityError("metric_name must be a non-empty string")
+    metric_name = _require_metric_name(metric_name)
     if mode not in {"min", "max"}:
         raise CheckpointCompatibilityError("best-checkpoint mode must be exactly 'min' or 'max'")
     eligible = []
