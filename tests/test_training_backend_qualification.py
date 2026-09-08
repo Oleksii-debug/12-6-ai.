@@ -63,6 +63,11 @@ def _complete_report() -> dict:
             "authority": _authority(),
         },
         "fresh_process_recovery": {
+            "backend_id": REFERENCE_BACKEND,
+            "exact_version": runtime["exact_version"],
+            "device": "cpu",
+            "fresh_process_only": True,
+            "model_is_test_fixture_only": True,
             "proven": True,
             "authority": _authority(),
         },
@@ -142,6 +147,25 @@ def test_inprocess_resume_cannot_impersonate_fresh_process_authority() -> None:
     assert not result.fresh_process_recovery_proven
     assert not result.ready_for_candidate_parity_comparison
     assert "fresh_process_recovery_authority_missing" in result.blockers
+    assert "fresh_process_recovery_scope_mismatch" in result.blockers
+
+
+def test_fresh_process_recovery_cannot_impersonate_other_backend_device_or_scope() -> None:
+    for key, value in (
+        ("backend_id", "FOREIGN_BACKEND"),
+        ("exact_version", "different-runtime"),
+        ("device", "cuda"),
+        ("fresh_process_only", False),
+        ("model_is_test_fixture_only", False),
+    ):
+        report = _complete_report()
+        report["fresh_process_recovery"][key] = value
+        _rehash(report)
+        result = assess_backend_qualification(report)
+        assert result.mechanics_reference_proven
+        assert not result.fresh_process_recovery_proven
+        assert not result.ready_for_candidate_parity_comparison
+        assert "fresh_process_recovery_scope_mismatch" in result.blockers
 
 
 def test_missing_real_benchmark_fails_closed_without_erasing_mechanics() -> None:
