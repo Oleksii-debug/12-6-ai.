@@ -48,6 +48,7 @@ from .d04_resume_binding import (
 )
 from .hf_export import export_hf_directory
 from .progress_trainer import load_trainer_checkpoint
+from .retention import CheckpointRetentionPlan, plan_checkpoint_retention
 from .run_binding import bind_checkpoint_identity
 from .trainer_adapter import save_trainer_checkpoint
 
@@ -57,6 +58,7 @@ __all__ = [
     "CheckpointError",
     "CheckpointIdentity",
     "CheckpointIntegrityError",
+    "CheckpointRetentionPlan",
     "LoadResult",
     "VerifiedCheckpoint",
     "assert_d04_resume_binding",
@@ -71,6 +73,7 @@ __all__ = [
     "load_checkpoint",
     "load_trainer_checkpoint",
     "load_verified_checkpoint",
+    "plan_checkpoint_retention",
     "prepare_checkpoint_load",
     "restore_rng_state",
     "save_checkpoint",
