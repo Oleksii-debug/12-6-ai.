@@ -1,13 +1,13 @@
 {
   "base_profile": {
-    "file_sha256": "0dbd74f05d2824082d378aa9031141c864f6a092f950d63ccfae0ade4d76e121",
-    "manifest_sha256": "283ca83571e527babda700e0c66ed03fb1c2aa4674bee0dba2272f64f344e1bf",
+    "file_sha256": "94c8ae86932e894bbf5f39960ae32da0e2e4358935d098fce5937f096b8d74ba",
+    "manifest_sha256": "d2f4864500743922965ccd2ec1df51aa599f7c657129e55c5d184cddc7c14a0b",
     "path": "requirements/locks/linux-x86_64/profile.json",
     "profile_id": "linux-x86_64"
   },
   "canonical_lock": {
-    "file_sha256": "61fa31fbb5da7a4289cccce5abfcebde943664f5318b0ce3d69ae9bb3db852ac",
-    "index_sha256": "5de40d40012123ccf654b3e29d9cd47df814978e4155ca9dde232b61e9cd6341",
+    "file_sha256": "c50841c05f66ae2f3f2bbf08f407de5ac484b0ce83113989bfec19077a0fd268",
+    "index_sha256": "977dc42d00d03e766c34edc8467aaa7d462e32e6bbafdab1bdc89a02388f47fa",
     "path": "requirements/locks/index.json"
   },
   "direct_requirements": [
@@ -26,7 +26,7 @@
     "system": "Linux"
   },
   "profile_id": "linux-x86_64-tokenizer-experiment",
-  "profile_sha256": "e368fa4c9fb2fc924482de32d5057837959111e958649663813cb46dddf6b5e4",
+  "profile_sha256": "b2db5661f23666923f20baa77b037f86ae90369e66ffec9195f3581cb93b45c3",
   "purpose": "D04 tokenizer experiment training and fertility/round-trip evidence",
   "python": {
     "implementation": "cpython",
