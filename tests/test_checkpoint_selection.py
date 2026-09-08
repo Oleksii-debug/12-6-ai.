@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+
 import pytest
 
 from twelve_six.checkpoint.core import CheckpointCompatibilityError
@@ -11,15 +13,19 @@ from twelve_six.checkpoint.selection import (
 )
 
 
+def _sha(label: str) -> str:
+    return hashlib.sha256(label.encode("utf-8")).hexdigest()
+
+
 def _manifest(*, checkpoint_id: str, step: int, tokens_seen: int, run: str = "r") -> dict:
     return {
         "checkpoint_id": checkpoint_id,
         "identity": {
-            "run_manifest_hash": run,
-            "model_spec_hash": "m",
-            "tokenizer_hash": "t",
-            "dataset_manifest_hash": "d",
-            "training_config_hash": "c",
+            "run_manifest_hash": _sha(run),
+            "model_spec_hash": _sha("model"),
+            "tokenizer_hash": _sha("tokenizer"),
+            "dataset_manifest_hash": _sha("dataset"),
+            "training_config_hash": _sha("training"),
             "step": step,
             "tokens_seen": tokens_seen,
         },
@@ -42,6 +48,14 @@ def _candidate(
         metric_name=metric_name,
         metric_value=metric_value,
     )
+
+
+def test_candidate_requires_canonical_sha256_lineage_identities() -> None:
+    for bad_hash in ("a" * 63, "A" * 64, "g" * 64):
+        manifest = _manifest(checkpoint_id="a", step=1, tokens_seen=10)
+        manifest["identity"]["run_manifest_hash"] = bad_hash
+        with pytest.raises(CheckpointCompatibilityError, match="run_manifest_hash"):
+            CheckpointCandidate.from_manifest(manifest)
 
 
 def test_chronological_uses_training_progress_not_publication_order() -> None:
