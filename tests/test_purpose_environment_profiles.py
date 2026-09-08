@@ -22,8 +22,8 @@ EXPECTED_PROFILES = {
     "linux-x86_64-cuda-training",
     "windows-x86_64-runtime",
 }
-CANONICAL_INDEX_FILE_SHA256 = "61fa31fbb5da7a4289cccce5abfcebde943664f5318b0ce3d69ae9bb3db852ac"
-CANONICAL_INDEX_SEMANTIC_SHA256 = "5de40d40012123ccf654b3e29d9cd47df814978e4155ca9dde232b61e9cd6341"
+CANONICAL_INDEX_FILE_SHA256 = "c50841c05f66ae2f3f2bbf08f407de5ac484b0ce83113989bfec19077a0fd268"
+CANONICAL_INDEX_SEMANTIC_SHA256 = "977dc42d00d03e766c34edc8467aaa7d462e32e6bbafdab1bdc89a02388f47fa"
 
 
 def _canonical_hash(value: dict[str, object]) -> str:
