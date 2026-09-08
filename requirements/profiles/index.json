@@ -1,10 +1,10 @@
 {
   "canonical_lock": {
-    "file_sha256": "61fa31fbb5da7a4289cccce5abfcebde943664f5318b0ce3d69ae9bb3db852ac",
-    "index_sha256": "5de40d40012123ccf654b3e29d9cd47df814978e4155ca9dde232b61e9cd6341",
+    "file_sha256": "c50841c05f66ae2f3f2bbf08f407de5ac484b0ce83113989bfec19077a0fd268",
+    "index_sha256": "977dc42d00d03e766c34edc8467aaa7d462e32e6bbafdab1bdc89a02388f47fa",
     "path": "requirements/locks/index.json"
   },
-  "index_sha256": "561f070c1792ddde5cf7a6b8df6beacfe93622b201d791939bf77b5c0b3f29c0",
+  "index_sha256": "02a4a38788bde050b4cb20ac8ff8e366e60a4b6e3f11100668cefb063a6416da",
   "profiles": {
     "linux-x86_64-cuda-training": {
       "path": "requirements/profiles/linux-x86_64-cuda-training/profile.json",
