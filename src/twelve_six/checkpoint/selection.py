@@ -1,6 +1,6 @@
 """Fail-closed checkpoint selection semantics for immutable D05 checkpoints.
 
-Selection is deliberately separate from checkpoint publication.  It consumes
+Selection is deliberately separate from checkpoint publication. It consumes
 verified manifest facts and external evaluation evidence, never rewrites a
 checkpoint directory, and refuses ambiguous or cross-lineage comparisons.
 """
@@ -13,6 +13,21 @@ from math import isfinite
 from typing import Any
 
 from .core import CheckpointCompatibilityError
+
+_HEX = frozenset("0123456789abcdef")
+
+
+def _require_sha256(value: Any, *, field: str) -> str:
+    """Require a canonical lowercase SHA-256 identity at the selection boundary."""
+
+    if (
+        not isinstance(value, str)
+        or len(value) != 64
+        or value != value.lower()
+        or any(ch not in _HEX for ch in value)
+    ):
+        raise CheckpointCompatibilityError(f"{field} must be exact lowercase 64-hex")
+    return value
 
 
 @dataclass(frozen=True)
@@ -44,17 +59,18 @@ class CheckpointCandidate:
         if not isinstance(identity, Mapping):
             raise CheckpointCompatibilityError("checkpoint manifest identity must be a mapping")
         checkpoint_id = manifest.get("checkpoint_id")
+        if not isinstance(checkpoint_id, str) or not checkpoint_id:
+            raise CheckpointCompatibilityError("checkpoint_id must be a non-empty string")
         required = {
-            "checkpoint_id": checkpoint_id,
             "run_manifest_hash": identity.get("run_manifest_hash"),
             "model_spec_hash": identity.get("model_spec_hash"),
             "tokenizer_hash": identity.get("tokenizer_hash"),
             "dataset_manifest_hash": identity.get("dataset_manifest_hash"),
             "training_config_hash": identity.get("training_config_hash"),
         }
-        for field, value in required.items():
-            if not isinstance(value, str) or not value:
-                raise CheckpointCompatibilityError(f"{field} must be a non-empty string")
+        normalized_hashes = {
+            field: _require_sha256(value, field=field) for field, value in required.items()
+        }
         step = identity.get("step")
         tokens_seen = identity.get("tokens_seen")
         if (
@@ -83,11 +99,11 @@ class CheckpointCandidate:
                 raise CheckpointCompatibilityError("metric_value must be finite")
         return cls(
             checkpoint_id=checkpoint_id,
-            run_manifest_hash=required["run_manifest_hash"],
-            model_spec_hash=required["model_spec_hash"],
-            tokenizer_hash=required["tokenizer_hash"],
-            dataset_manifest_hash=required["dataset_manifest_hash"],
-            training_config_hash=required["training_config_hash"],
+            run_manifest_hash=normalized_hashes["run_manifest_hash"],
+            model_spec_hash=normalized_hashes["model_spec_hash"],
+            tokenizer_hash=normalized_hashes["tokenizer_hash"],
+            dataset_manifest_hash=normalized_hashes["dataset_manifest_hash"],
+            training_config_hash=normalized_hashes["training_config_hash"],
             step=step,
             tokens_seen=tokens_seen,
             completed=completed,
@@ -172,7 +188,7 @@ def select_chronological(candidates: Iterable[CheckpointCandidate]) -> Checkpoin
     """Return the unique checkpoint with greatest tokens_seen then step.
 
     Equal progress with distinct checkpoint identities is corruption/authority
-    ambiguity, not a timestamp tie-break.  Wall-clock creation time is excluded
+    ambiguity, not a timestamp tie-break. Wall-clock creation time is excluded
     intentionally because retries can publish later artifacts for older progress.
     """
 
@@ -219,7 +235,7 @@ def select_best(
 ) -> CheckpointCandidate:
     """Return the unique best evaluation-bound checkpoint.
 
-    ``mode`` is exactly ``min`` or ``max``.  Missing metrics, mixed metric names,
+    ``mode`` is exactly ``min`` or ``max``. Missing metrics, mixed metric names,
     non-finite values, and equal best values across different checkpoint IDs are
     rejected instead of being resolved by arbitrary filesystem/timestamp order.
     """
