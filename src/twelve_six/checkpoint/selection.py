@@ -7,9 +7,10 @@ checkpoint directory, and refuses ambiguous or cross-lineage comparisons.
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from math import isfinite
-from typing import Any, Iterable, Mapping
+from typing import Any
 
 from .core import CheckpointCompatibilityError
 
@@ -38,7 +39,7 @@ class CheckpointCandidate:
         completed: bool = False,
         metric_name: str | None = None,
         metric_value: float | None = None,
-    ) -> "CheckpointCandidate":
+    ) -> CheckpointCandidate:
         identity = manifest.get("identity")
         if not isinstance(identity, Mapping):
             raise CheckpointCompatibilityError("checkpoint manifest identity must be a mapping")
