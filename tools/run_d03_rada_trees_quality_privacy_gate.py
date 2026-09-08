@@ -7,6 +7,12 @@ privacy algorithms. Instead it late-binds the incumbent reusable mechanics from
 `twelve_six.data.privacy_filter_v3` (#849 lineage), fails closed when either is
 unavailable, preserves source-native record identity, and emits only zero-credit
 candidate output plus hash-safe evidence.
+
+Important: this gate does not own the independent Ukrainian language authority
+from #917. Therefore it may mark quality/privacy complete for retained records,
+but it must never promote the combined language+quality+privacy completion bit.
+That combined bit can be set only by a later convergence step that binds both
+independent authorities to the same immutable inventory.
 """
 from __future__ import annotations
 
@@ -18,7 +24,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
-SCHEMA = "12-6.d03-rada-trees-quality-privacy-gate.v1"
+SCHEMA = "12-6.d03-rada-trees-quality-privacy-gate.v2"
 EXPECTED_FAMILY = "ua.rada.open-data.plenary-transcripts"
 EXPECTED_DATASET = "uacorpus/Rada_Trees"
 EXPECTED_REVISION = "1b994a5804dcda122721e8d33a03fd172cf8d867"
@@ -89,7 +95,11 @@ def _read_records(path: Path) -> tuple[list[dict[str, Any]], str]:
         require(row.get("evaluation_eligible") is False, f"premature evaluation credit: {record_id}")
         require(
             row.get("language_quality_privacy_complete") is False,
-            f"pre-completed gate flag is forbidden: {record_id}",
+            f"pre-completed combined gate flag is forbidden: {record_id}",
+        )
+        require(
+            row.get("quality_privacy_complete", False) is False,
+            f"pre-completed quality/privacy flag is forbidden: {record_id}",
         )
         records.append(row)
     return records, sha256_bytes(raw)
@@ -152,7 +162,10 @@ def run_gate(candidate_jsonl: Path, output_jsonl: Path, report_path: Path) -> di
             continue
 
         clean = dict(row)
-        clean["language_quality_privacy_complete"] = True
+        clean["quality_privacy_complete"] = True
+        # Language is independently terminalized by #917. This gate does not bind
+        # that evidence, so the combined completion bit must remain false.
+        clean["language_quality_privacy_complete"] = False
         clean["quality_gate_status"] = "RETAIN_ALL"
         clean["privacy_gate_action"] = "ALLOW"
         clean["training_eligible"] = False
@@ -196,7 +209,10 @@ def run_gate(candidate_jsonl: Path, output_jsonl: Path, report_path: Path) -> di
             "evidence_is_hash_safe": True,
         },
         "claim_boundary": {
-            "language_quality_privacy_complete_only_for_output_records": True,
+            "quality_privacy_complete_only_for_output_records": True,
+            "language_authority_bound": False,
+            "language_quality_privacy_complete": False,
+            "combined_gate_requires_independent_language_authority": True,
             "candidate_jsonl_is_canonical_corpus": False,
             "global_dedup_complete": False,
             "reserved_evaluation_decontamination_complete": False,
