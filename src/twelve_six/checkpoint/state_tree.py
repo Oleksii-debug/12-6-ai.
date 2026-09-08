@@ -8,6 +8,7 @@ back to pickle so checkpoint loading remains data-only.
 from __future__ import annotations
 
 import base64
+import binascii
 import importlib
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -38,7 +39,6 @@ def _tensor_to_numpy(value: Any) -> tuple[np.ndarray, str, str | None]:
         return np.ascontiguousarray(value), "numpy", None
     if _is_torch_tensor(value):
         detached = value.detach().cpu().contiguous()
-        # bfloat16 cannot be converted directly to NumPy. Store raw uint16 bits.
         if str(detached.dtype) == "torch.bfloat16":
             array = detached.view(importlib.import_module("torch").uint16).numpy().copy()
             return array, "torch_bfloat16", str(value.device)
@@ -52,21 +52,12 @@ def _pack(value: Any, tensors: dict[str, np.ndarray], path: str) -> Any:
     if isinstance(value, bytes):
         return {"__kind__": "bytes", "base64": base64.b64encode(value).decode("ascii")}
     if isinstance(value, np.generic):
-        return {
-            "__kind__": "numpy_scalar",
-            "dtype": str(value.dtype),
-            "value": value.item(),
-        }
+        return {"__kind__": "numpy_scalar", "dtype": str(value.dtype), "value": value.item()}
     if isinstance(value, np.ndarray) or _is_torch_tensor(value):
         key = f"tensor_{len(tensors):08d}"
         array, backend, device = _tensor_to_numpy(value)
         tensors[key] = array
-        return {
-            "__kind__": "tensor",
-            "key": key,
-            "backend": backend,
-            "device": device,
-        }
+        return {"__kind__": "tensor", "key": key, "backend": backend, "device": device}
     if isinstance(value, tuple):
         return {"__kind__": "tuple", "items": [_pack(v, tensors, f"{path}[]") for v in value]}
     if isinstance(value, list):
@@ -74,18 +65,22 @@ def _pack(value: Any, tensors: dict[str, np.ndarray], path: str) -> Any:
     if isinstance(value, Mapping):
         items = []
         for key, item in value.items():
-            packed_key = _pack(key, tensors, f"{path}.<key>")
-            packed_value = _pack(item, tensors, f"{path}.{key!r}")
-            items.append([packed_key, packed_value])
+            items.append([_pack(key, tensors, f"{path}.<key>"), _pack(item, tensors, f"{path}.{key!r}")])
         return {"__kind__": "mapping", "items": items}
     raise StateTreeError(f"unsupported state value at {path}: {type(value)!r}")
 
 
 def pack_state_tree(value: Any) -> PackedStateTree:
-    """Split a nested state object into JSON-safe structure and tensor leaves."""
-
     tensors: dict[str, np.ndarray] = {}
     return PackedStateTree(tree=_pack(value, tensors, "$"), tensors=tensors)
+
+
+def _require_keys(value: dict[str, Any], kind: str, exact: set[str]) -> None:
+    actual = set(value)
+    if actual != exact:
+        raise StateTreeError(
+            f"noncanonical {kind} node fields: missing={sorted(exact - actual)}, unknown={sorted(actual - exact)}"
+        )
 
 
 def _restore_tensor(array: np.ndarray, backend: str, device: str | None) -> Any:
@@ -98,40 +93,104 @@ def _restore_tensor(array: np.ndarray, backend: str, device: str | None) -> Any:
             raise StateTreeError("torch is required to restore torch tensor state") from exc
         tensor = torch.from_numpy(array.copy())
         if backend == "torch_bfloat16":
+            if array.dtype != np.uint16:
+                raise StateTreeError("torch_bfloat16 tensor payload must use uint16 storage")
             tensor = tensor.view(torch.bfloat16)
         if device and device != "cpu":
             try:
                 tensor = tensor.to(device=device)
             except (RuntimeError, AssertionError):
-                # Checkpoints remain portable when the recorded accelerator is unavailable.
                 tensor = tensor.cpu()
         return tensor
     raise StateTreeError(f"unknown tensor backend {backend!r}")
 
 
-def _unpack(value: Any, tensors: Mapping[str, np.ndarray]) -> Any:
-    if not isinstance(value, dict) or "__kind__" not in value:
+def _unpack(value: Any, tensors: Mapping[str, np.ndarray], used: set[str], path: str) -> Any:
+    if value is None or isinstance(value, (bool, int, float, str)):
         return value
+    if not isinstance(value, dict):
+        raise StateTreeError(f"noncanonical raw container at {path}: {type(value)!r}")
+    if "__kind__" not in value:
+        raise StateTreeError(f"noncanonical mapping node without __kind__ at {path}")
     kind = value["__kind__"]
+    if not isinstance(kind, str):
+        raise StateTreeError(f"state-tree kind must be a string at {path}")
     if kind == "bytes":
-        return base64.b64decode(value["base64"].encode("ascii"))
+        _require_keys(value, kind, {"__kind__", "base64"})
+        encoded = value["base64"]
+        if not isinstance(encoded, str):
+            raise StateTreeError("bytes base64 payload must be a string")
+        try:
+            return base64.b64decode(encoded.encode("ascii"), validate=True)
+        except (UnicodeEncodeError, binascii.Error, ValueError) as exc:
+            raise StateTreeError("bytes base64 payload is invalid") from exc
     if kind == "numpy_scalar":
-        return np.asarray(value["value"], dtype=value["dtype"])[()]
+        _require_keys(value, kind, {"__kind__", "dtype", "value"})
+        dtype_name = value["dtype"]
+        if not isinstance(dtype_name, str):
+            raise StateTreeError("numpy scalar dtype must be a string")
+        try:
+            dtype = np.dtype(dtype_name)
+        except TypeError as exc:
+            raise StateTreeError(f"invalid numpy scalar dtype {dtype_name!r}") from exc
+        if dtype.hasobject:
+            raise StateTreeError("object numpy scalar dtype is not permitted")
+        try:
+            return np.asarray(value["value"], dtype=dtype)[()]
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise StateTreeError("numpy scalar payload is incompatible with its dtype") from exc
     if kind == "tensor":
-        key = value["key"]
+        _require_keys(value, kind, {"__kind__", "key", "backend", "device"})
+        key, backend, device = value["key"], value["backend"], value["device"]
+        if not isinstance(key, str) or not key:
+            raise StateTreeError("tensor key must be a non-empty string")
+        if not isinstance(backend, str):
+            raise StateTreeError("tensor backend must be a string")
+        if device is not None and not isinstance(device, str):
+            raise StateTreeError("tensor device must be a string or None")
         if key not in tensors:
             raise StateTreeError(f"missing tensor payload {key!r}")
-        return _restore_tensor(tensors[key], value["backend"], value.get("device"))
-    if kind == "tuple":
-        return tuple(_unpack(item, tensors) for item in value["items"])
-    if kind == "list":
-        return [_unpack(item, tensors) for item in value["items"]]
+        if key in used:
+            raise StateTreeError(f"tensor payload {key!r} is referenced more than once")
+        used.add(key)
+        return _restore_tensor(tensors[key], backend, device)
+    if kind in {"tuple", "list"}:
+        _require_keys(value, kind, {"__kind__", "items"})
+        items = value["items"]
+        if not isinstance(items, list):
+            raise StateTreeError(f"{kind} items must be a list")
+        restored = [_unpack(item, tensors, used, f"{path}[{index}]") for index, item in enumerate(items)]
+        return tuple(restored) if kind == "tuple" else restored
     if kind == "mapping":
-        return {_unpack(key, tensors): _unpack(item, tensors) for key, item in value["items"]}
+        _require_keys(value, kind, {"__kind__", "items"})
+        items = value["items"]
+        if not isinstance(items, list):
+            raise StateTreeError("mapping items must be a list")
+        restored: dict[Any, Any] = {}
+        for index, pair in enumerate(items):
+            if not isinstance(pair, list) or len(pair) != 2:
+                raise StateTreeError(f"mapping item {index} must be an exact key/value pair")
+            key = _unpack(pair[0], tensors, used, f"{path}.<key:{index}>")
+            item = _unpack(pair[1], tensors, used, f"{path}[{index}]")
+            try:
+                if key in restored:
+                    raise StateTreeError(f"duplicate mapping key at {path}: {key!r}")
+                restored[key] = item
+            except TypeError as exc:
+                raise StateTreeError(f"unhashable mapping key at {path}: {type(key)!r}") from exc
+        return restored
     raise StateTreeError(f"unknown state-tree kind {kind!r}")
 
 
 def unpack_state_tree(tree: Any, tensors: Mapping[str, np.ndarray]) -> Any:
-    """Reconstruct a nested state object from its JSON structure and tensor leaves."""
-
-    return _unpack(tree, tensors)
+    """Reconstruct a nested state object from its canonical JSON/tensor encoding."""
+    if not isinstance(tensors, Mapping):
+        raise StateTreeError("tensor payload collection must be a mapping")
+    if any(not isinstance(key, str) or not key for key in tensors):
+        raise StateTreeError("tensor payload keys must be non-empty strings")
+    used: set[str] = set()
+    restored = _unpack(tree, tensors, used, "$")
+    unreferenced = sorted(set(tensors) - used)
+    if unreferenced:
+        raise StateTreeError(f"unreferenced tensor payloads: {unreferenced}")
+    return restored
