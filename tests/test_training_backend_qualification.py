@@ -179,6 +179,23 @@ def test_cpu_fixture_benchmark_cannot_impersonate_gpu_or_model_scale_evidence() 
         assert "bounded_benchmark_scope_mismatch" in result.blockers
 
 
+def test_runtime_probe_cannot_impersonate_other_device_backend_or_scope() -> None:
+    for key, value in (
+        ("backend_id", "FOREIGN_BACKEND"),
+        ("exact_version", "different-runtime"),
+        ("device", "cuda"),
+        ("fresh_instance_only", False),
+        ("model_is_test_fixture_only", False),
+    ):
+        report = _complete_report()
+        report["runtime_probe"][key] = value
+        _rehash(report)
+        result = assess_backend_qualification(report)
+        assert not result.mechanics_reference_proven
+        assert not result.ready_for_candidate_parity_comparison
+        assert "runtime_probe_scope_mismatch" in result.blockers
+
+
 def test_optimizer_semantics_drift_invalidates_reference_mechanics() -> None:
     report = _complete_report()
     report["parity"]["optimizer_semantics_parity"] = False

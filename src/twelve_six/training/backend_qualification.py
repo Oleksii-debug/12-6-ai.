@@ -144,6 +144,15 @@ def assess_backend_qualification(report: Mapping[str, Any]) -> BackendQualificat
         blockers.append("runtime_resume_equivalence_not_proven")
     if runtime.get("finite_loss") is not True:
         blockers.append("runtime_finite_loss_not_proven")
+    runtime_scope_valid = (
+        runtime.get("backend_id") == REFERENCE_BACKEND
+        and runtime.get("exact_version") == version
+        and runtime.get("device") == "cpu"
+        and runtime.get("fresh_instance_only") is True
+        and runtime.get("model_is_test_fixture_only") is True
+    )
+    if not runtime_scope_valid:
+        blockers.append("runtime_probe_scope_mismatch")
 
     benchmark = report.get("bounded_benchmark")
     if not isinstance(benchmark, Mapping):
