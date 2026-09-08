@@ -11,7 +11,7 @@ import numpy as np
 import torch
 
 from twelve_six.checkpoint import (
-    bind_checkpoint_identity,
+    CheckpointIdentity,
     detect_git_sha,
     hash_json,
     load_trainer_checkpoint,
@@ -184,23 +184,55 @@ def test_s0_interrupted_save_destroy_verify_fresh_trainer_resume_matches_control
     for _ in range(split_step):
         interrupted_trainer.train_microbatch(batch)
 
+    source_git_sha = detect_git_sha(ROOT)
+    assert source_git_sha is not None
+    training_config = {
+        "integration_test": "s0_convergence_resume",
+        "init_spec_sha256": stage.expected_init_identity_sha256,
+        "trainer": asdict(trainer_config),
+        "data": {
+            "split_identity": DATASET_IDENTITY_SHA256,
+            "packing_sha256": PACKING_CONFIG_HASH,
+            "packing_version": PACKING_VERSION,
+        },
+    }
+    identity = CheckpointIdentity(
+        git_sha=source_git_sha,
+        model_spec=stage.model.to_dict(),
+        parameter_count=stage.expected_parameters,
+        tokenizer_hash=tokenizer.identity.config_sha256,
+        tokenizer_vocab_hash=tokenizer.identity.vocab_sha256,
+        dataset_manifest_hash=DATASET_MANIFEST_SHA256,
+        run_manifest_hash=hash_json(
+            {
+                "integration_test": "s0_convergence_resume",
+                "dataset_identity_sha256": DATASET_IDENTITY_SHA256,
+                "packing_sha256": PACKING_CONFIG_HASH,
+                "packing_version": PACKING_VERSION,
+            }
+        ),
+        training_config=training_config,
+        seed=seed,
+        precision=trainer_config.precision,
+        step=interrupted_trainer.optimizer_step,
+        tokens_seen=interrupted_trainer.tokens_seen,
+        optimizer={"name": interrupted_trainer.optimizer.__class__.__name__},
+        scheduler={"name": trainer_config.scheduler},
+        environment_lock_hash=ENVIRONMENT_LOCK_SHA256,
+    )
+
     checkpoint_dir = tmp_path / "checkpoint"
     checkpoint = save_trainer_checkpoint(
         checkpoint_dir,
-        interrupted_model,
-        interrupted_trainer,
-        tokenizer_config_hash=tokenizer.identity.config_sha256,
-        dataset_identity=DATASET_IDENTITY_SHA256,
-        packing_version=PACKING_VERSION,
-        packing_config_hash=PACKING_CONFIG_HASH,
-        source_git_sha=detect_git_sha(ROOT),
-        environment_lock_sha256=ENVIRONMENT_LOCK_SHA256,
+        model=interrupted_model,
+        trainer=interrupted_trainer,
+        identity=identity,
     )
-    checkpoint = bind_checkpoint_identity(checkpoint_dir)
-    verify_checkpoint(checkpoint_dir)
-    assert checkpoint["checkpoint_identity_sha256"] == hash_json(
-        {key: value for key, value in checkpoint.items() if key != "checkpoint_identity_sha256"}
-    )
+    verified = verify_checkpoint(checkpoint_dir)
+    assert verified["checkpoint_id"] == checkpoint["checkpoint_id"]
+    assert checkpoint["identity"]["git_sha"] == source_git_sha
+    assert checkpoint["identity"]["model_spec_hash"] == stage.expected_model_identity_sha256
+    assert checkpoint["identity"]["training_config_hash"] == hash_json(training_config)
 
     del interrupted_trainer
     del interrupted_model
@@ -209,16 +241,23 @@ def test_s0_interrupted_save_destroy_verify_fresh_trainer_resume_matches_control
     fresh_trainer = Trainer(fresh_model, trainer_config, device="cpu")
     loaded = load_trainer_checkpoint(
         checkpoint_dir,
-        fresh_model,
-        fresh_trainer,
-        expected_tokenizer_config_hash=tokenizer.identity.config_sha256,
-        expected_dataset_identity=DATASET_IDENTITY_SHA256,
+        model=fresh_model,
+        trainer=fresh_trainer,
+        expected_git_sha=source_git_sha,
+        expected_model_spec_hash=stage.expected_model_identity_sha256,
+        expected_init_spec_hash=stage.expected_init_identity_sha256,
+        expected_tokenizer_hash=tokenizer.identity.config_sha256,
+        expected_tokenizer_vocab_hash=tokenizer.identity.vocab_sha256,
+        expected_dataset_manifest_hash=DATASET_MANIFEST_SHA256,
+        expected_split_identity=DATASET_IDENTITY_SHA256,
+        expected_packing_hash=PACKING_CONFIG_HASH,
         expected_packing_version=PACKING_VERSION,
-        expected_packing_config_hash=PACKING_CONFIG_HASH,
-        expected_source_git_sha=detect_git_sha(ROOT),
-        expected_environment_lock_sha256=ENVIRONMENT_LOCK_SHA256,
+        expected_run_manifest_hash=identity.run_manifest_hash,
+        expected_training_config_hash=hash_json(training_config),
+        expected_environment_lock_hash=ENVIRONMENT_LOCK_SHA256,
+        expected_seed=seed,
     )
-    assert loaded["checkpoint_identity_sha256"] == checkpoint["checkpoint_identity_sha256"]
+    assert loaded.manifest["checkpoint_id"] == checkpoint["checkpoint_id"]
 
     for _ in range(split_step, total_steps):
         fresh_trainer.train_microbatch(batch)
@@ -231,18 +270,55 @@ def test_s0_interrupted_save_destroy_verify_fresh_trainer_resume_matches_control
 def test_s0_release_candidate_manifest_is_explicitly_experimental() -> None:
     payload = json.loads(EVIDENCE_PATH.read_text(encoding="utf-8"))
     assert payload["status"] == CandidateStatus.EXPERIMENTAL.value
-    assert payload["canonical_base"] == "random_init"
-    assert payload["environment_lock_sha256"] == ENVIRONMENT_LOCK_SHA256
-    manifest = StageCandidateManifest.from_json(payload)
-    assert manifest.status is CandidateStatus.EXPERIMENTAL
-    assert manifest.ci.status == "success"
-    assert manifest.ci.exact_head is True
-    assert manifest.components
-    assert all(component.disposition is ComponentDisposition.ACCEPTED for component in manifest.components)
-    assert manifest.ci == CIEvidence(
-        run_id=payload["ci"]["run_id"],
-        status="success",
-        tested_sha=payload["ci"]["tested_sha"],
-        exact_head=True,
+    assert payload["base_lineage"] is True
+    assert payload["model_spec_sha256"] == "86c75b31dff05b7b5db9f6ed068c571a6ead01ba663412fe630f5e52b09d9b6b"
+    assert payload["init_spec_sha256"] == "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5"
+    assert payload["tokenizer_config_sha256"] == BYTE_TOKENIZER_HASH
+    assert payload["dataset_manifest_sha256"] == DATASET_MANIFEST_SHA256
+
+    components = []
+    for item in payload["components"]:
+        components.append(
+            ComponentRef(
+                lane=item["lane"],
+                source_sha=item["source_sha"],
+                disposition=ComponentDisposition(item["disposition"]),
+                component_kind=item["component_kind"],
+                pr_number=item.get("pr_number"),
+                ci_evidence=CIEvidence(
+                    run_id=item["ci_run_id"],
+                    head_sha=item["source_sha"],
+                    conclusion=item["ci_conclusion"],
+                    evidence_ref=f"pr://{item.get('pr_number', 'unknown')}#ci-{item['ci_run_id']}",
+                ),
+                contains_behavioral_weights=item.get("contains_behavioral_weights"),
+                contains_foreign_pretrained_weights=item.get(
+                    "contains_foreign_pretrained_weights"
+                ),
+                notes=item.get("hold_reason", ""),
+            )
+        )
+
+    manifest = StageCandidateManifest.compose(
+        stage=payload["stage"],
+        integration_anchor_sha=payload["integration_anchor_sha"],
+        status=CandidateStatus(payload["status"]),
+        base_lineage=payload["base_lineage"],
+        components=components,
     )
-    assert manifest.components[0] == ComponentRef.from_json(payload["components"][0])
+    d01 = next(component for component in manifest.components if component.lane == "D01")
+    d06 = next(component for component in manifest.components if component.lane == "D06")
+
+    assert manifest.status is CandidateStatus.EXPERIMENTAL
+    assert manifest.base_lineage is True
+    assert d01.component_kind == "random_init_model"
+    assert d01.contains_behavioral_weights is False
+    assert d01.contains_foreign_pretrained_weights is False
+    assert d01.ci_evidence is not None and d01.ci_evidence.passes
+    assert d06.disposition is ComponentDisposition.HELD
+    assert d06.ci_evidence is not None and not d06.ci_evidence.passes
+    assert manifest.missing_required_lanes() == ("D06",)
+    assert manifest.ready_for_candidate() is False
+    assert manifest.audits_pass() is False
+    assert manifest.candidate_sha is None
+    assert manifest.release_artifact is None
