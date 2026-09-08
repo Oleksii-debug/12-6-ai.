@@ -80,7 +80,9 @@ def fake_mechanics(*, quality_status: str = "RETAIN_ALL", privacy_action: str = 
     return quality, privacy, policy
 
 
-def test_gate_retains_only_fully_allowed_records(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_gate_retains_only_fully_allowed_records_without_claiming_language(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     candidate = tmp_path / "candidate.jsonl"
     output = tmp_path / "clean.jsonl"
     report = tmp_path / "report.json"
@@ -93,12 +95,45 @@ def test_gate_retains_only_fully_allowed_records(tmp_path: Path, monkeypatch: py
     assert result["output_records"] == 1
     assert result["claim_boundary"]["training_authorized_bytes"] == 0
     assert result["claim_boundary"]["unique_causal_loss_positions_authorized"] == 0
+    assert result["claim_boundary"]["language_authority_bound"] is False
+    assert result["claim_boundary"]["language_quality_privacy_complete"] is False
     row = json.loads(output.read_text(encoding="utf-8"))
-    assert row["language_quality_privacy_complete"] is True
+    assert row["quality_privacy_complete"] is True
+    assert row["language_quality_privacy_complete"] is False
     assert row["quality_gate_status"] == "RETAIN_ALL"
     assert row["privacy_gate_action"] == "ALLOW"
     assert row["training_eligible"] is False
     assert row["evaluation_eligible"] is False
+
+
+def test_premature_quality_privacy_completion_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    candidate = tmp_path / "candidate.jsonl"
+    output = tmp_path / "clean.jsonl"
+    report = tmp_path / "report.json"
+    row = record()
+    row["quality_privacy_complete"] = True
+    write_jsonl(candidate, [row])
+    monkeypatch.setattr(MODULE, "_load_mechanics", lambda: fake_mechanics())
+
+    with pytest.raises(MODULE.GateError, match="pre-completed quality/privacy"):
+        MODULE.run_gate(candidate, output, report)
+
+
+def test_premature_combined_completion_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    candidate = tmp_path / "candidate.jsonl"
+    output = tmp_path / "clean.jsonl"
+    report = tmp_path / "report.json"
+    row = record()
+    row["language_quality_privacy_complete"] = True
+    write_jsonl(candidate, [row])
+    monkeypatch.setattr(MODULE, "_load_mechanics", lambda: fake_mechanics())
+
+    with pytest.raises(MODULE.GateError, match="pre-completed combined gate"):
+        MODULE.run_gate(candidate, output, report)
 
 
 def test_partial_quality_is_held_until_window_materialization(
