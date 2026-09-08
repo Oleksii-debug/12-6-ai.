@@ -1,324 +1,297 @@
 # 12-6 AI — current autonomous routing
 
-EPOCH: EPOCH-0004
+EPOCH: EPOCH-0005
 STATUS: ACTIVE_AUDITED_ACCELERATED
-LAST_GLOBAL_AUDIT: 2026-09-07T11:50:00Z
-AUDIT_BASE_MAIN: a52c0e621c8127c0c906ab4eef82dfd295b539ee
-CURRENT_STAGE: PRE_LEARNED_20M / DATA_CAPACITY_EXPANSION
+LAST_GLOBAL_AUDIT: 2026-09-07T22:08:00Z
+AUDIT_BASE_MAIN: e7379f31c4d5909b997cd4dc8d99155bc9a9764e
+CURRENT_STAGE: PRE_LEARNED_20M / RADA_ADMISSIBILITY_AND_CURRENT_GRAPH_REBUILD
 STRATEGY: TERMINAL_20M_PROOF_THEN_MEASURED_200M_FEASIBILITY
+PRODUCT_SCALE_DEFAULT: DIRECT_APPROX_200M_IF_MEASURED_FEASIBILITY_PASSES
+100M_POLICY: OPTIONAL_BOUNDED_ENGINEERING_PROBE_ONLY_WHEN_IT_REDUCES_RISK
 NEXT_AUDIT_RULE: first capable worker after >=6h since LAST_GLOBAL_AUDIT, or immediately after a major-change trigger; failover audit allowed after ~8h without a valid refresh
 
 ## Authority and startup rule
 
-Every scheduled worker, Codex Cloud run and Work run MUST read this file first, then read `docs/TRAINING_COMPUTE_AND_SCALING_STRATEGY_2026-09-07.md`, then reconstruct live GitHub before substantive work. Exact live GitHub evidence overrides stale text here.
+Every scheduled worker, Codex Cloud run and Work run MUST, before substantive work:
 
-Do not continue an old task merely because a Scheduled Task prompt names it. Stable prompts define home lanes and recovery behavior; this routing epoch defines the current targets.
+1. recover exact repository `Oleksii-debug/12-6-ai.` (the trailing period is part of the repository name);
+2. read this file;
+3. read `docs/TRAINING_COMPUTE_AND_SCALING_STRATEGY_2026-09-07.md`;
+4. recover current `main`, #548, its home lane, relevant open/recent PRs, exact-head CI and active Work/Codex claims;
+5. perform exact + semantic collision/ownership review before mutation, before PR/merge action and before final verdict.
 
-Before mutation, before PR/update/merge action and before final verdict: perform exact + semantic ownership/collision review. Reuse canonical branches/PRs. The five persistent workers do not create hourly registration issues. A blocker in one package means rotate to the next useful unowned package in the same mission, not stop.
+Live exact GitHub evidence overrides stale text in this routing file. If a named PR/head below moved, was merged, closed or superseded, follow the current canonical successor instead of reviving stale lineage.
 
-## 2026-09-07 scaling reconciliation
+A blocker is never permission to idle or disable an automation. Rotate to the next useful unowned package in the same mission. The five persistent scheduled workers must remain enabled unless Oleksii explicitly orders otherwise. Do not create hourly registration issues or duplicate active producer branches.
 
-The accelerated scaling strategy is now executable on `main` through the terminal-green R01 router merged on 2026-09-07. This formally reconciles older 20M→100M roadmaps.
+## Scaling reconciliation — permanent policy
 
 ### KEEP
 
-These gates remain mandatory and are NOT weakened:
+The following gates remain mandatory:
 
 - canonical Base starts from random initialization; no foreign pretrained/instruct/aligned Base weights or teacher logits;
-- learned ~20M remains a mandatory terminal end-to-end proof before product-scale training;
-- exact data/tokenizer/corpus/split/packing/unique-loss identities;
+- learned ~20M is the mandatory terminal end-to-end proof before product-scale training;
+- exact data/tokenizer/corpus/split/packing/unique-loss/exposure identities;
 - global dedup, evaluation decontamination and final-test firewall;
-- checkpoint/save/load/fresh-process resume/recovery truth;
-- reproducible training recipe, optimizer/scheduler/precision/seed/exposure identities;
-- independent evaluation, loss trajectory, held-out UA/EN/code evidence, inference reload and memorization/exposure checks;
+- checkpoint save/load/fresh-process resume/recovery truth;
+- exact training recipe, optimizer/scheduler/precision/seed/accumulation identities;
+- independent held-out evaluation, loss trajectory, UA/EN/code evidence, generation, memorization/exposure checks and inference reload;
 - measured compute/resource evidence rather than paper estimates alone;
-- materially paid compute requires explicit owner `COMPUTE_AUTHORIZED` authority.
+- materially paid compute requires explicit Oleksii `COMPUTE_AUTHORIZED` authority.
 
 ### CHANGE
 
-- Learned 20M is the cheapest trustworthy full-pipeline qualification model, not a final product brain to polish indefinitely.
-- Immediately after terminal learned 20M, automatically build a measured ~200M feasibility packet.
-- If direct ~200M feasibility is demonstrated by real data/compute/memory/checkpoint/backend evidence, ~200M becomes the first serious product-brain campaign.
-- 50M/100M remain available as bounded engineering probes only when they materially reduce risk, e.g. memory scaling, optimizer stability, throughput extrapolation or architecture/runtime transition.
-- Commodity trainer mechanics should default to qualified reuse/adaptation rather than repeated custom reinvention. Project-owned scientific truth remains authoritative.
+Learned ~20M is the cheapest trustworthy full-pipeline qualification model, not the final product brain. Immediately after terminal learned-20M, automatically build a measured ~200M feasibility packet covering data capacity, RAM/VRAM, model/optimizer state, activations, gradient accumulation/checkpointing, throughput, checkpoint transport, backend qualification and available compute.
+
+If direct ~200M feasibility passes, ~200M becomes the first serious product-brain campaign. A ~100M model is still available and useful, but only as a bounded engineering/scaling probe when measurements show it materially reduces risk before ~200M.
 
 ### SUPERSEDE
 
-The old rule “terminal learned 20M must be followed by a full learned 100M campaign before a serious product-scale brain” is superseded.
+The historical rule “terminal learned-20M must be followed by a full learned-100M campaign” is superseded. Do not launch full 50M/100M campaigns merely because an old roadmap listed them.
 
-Do NOT automatically run full 50M or 100M campaigns merely because an older roadmap listed them in sequence. Their scientific/data/checkpoint/evaluation/compute safety gates are preserved and apply whenever those scales are used as probes.
+Default route:
 
-The new default route is:
+`terminal learned-20M -> measured ~200M feasibility -> direct ~200M if feasible OR bounded 50M/100M probe if specifically needed -> terminal learned ~200M -> measured ~1B feasibility`
 
-`terminal learned 20M -> measured ~200M feasibility -> direct ~200M if feasible OR bounded 50M/100M probe only if needed -> terminal learned ~200M -> measured ~1B feasibility`
+All scientific/data/checkpoint/evaluation/compute gates still apply at any scale.
 
-## Live audit — decisive current facts
+## Live audit — decisive state
 
-### Learned 20M
+### Main / integration
 
-- Random-init MODEL-341 mechanics remain established at 20,613,440 parameters.
-- No terminal learned 20M checkpoint exists.
-- Training-authorized post-pack optimized-target exposure remains exactly 0.
-- The launch/readiness/evaluation/recovery control surfaces are substantially built; another launch-gate implementation is not a priority.
+At audit cutoff current `main` is `e7379f31c4d5909b997cd4dc8d99155bc9a9764e`, merging #857 DATA-232 matcher mechanics. Live main also already contains the current global-dedup/unique-loss/CulturaX convergence surfaces from #824/#835/#859. This is mechanics/integration progress, not learned-training authority.
 
-### Data is now the dominant blocker
+Canonical D10 current-main/carrier reconciliation remains an active moving lineage around #831/#802. Never transfer green across moved heads. D10 must use exact current-main ancestry, expected-head protection and fresh exact-head CI after every material intake.
 
-The previous routing state saying “record-level materialization is missing” is stale.
+### Learned ~20M
 
-- DATA-526 now has a real frozen 48-record materialization over 2,215,615 normalized payload bytes with exact record/payload identities and two byte-identical materializations. Its dedicated DATA-526 evidence is terminal-success; generic release CI remains separate debt.
-- The incumbent decontamination line has a terminal dedicated run that reconstructed the frozen inputs twice, scanned twice, preserved the final-test firewall and produced a clean scoped result over the small candidate.
-- This proves the small corpus plumbing, but the corpus is scientifically far too small for the frozen 20M source-floor plan.
-- Current source-capacity vector remains approximately UA 100,856 bytes / EN 1,838,293 / code 276,466 = 2,215,615 total.
-- Frozen 45/35/20 family-capped no-replay envelope is only 61,440 bytes. Ukrainian is the limiting stratum.
-- Raw planning gaps to the current 20,000,000-byte source-floor composition are approximately UA 8,899,144 / EN 5,161,707 / code 3,723,534 bytes.
-- Replay/padding may not manufacture capacity.
-- High-yield UA acquisition incumbent Rada_Trees has terminal shared-CI metadata/object-pinning evidence, but admitted archive-content bytes remain 0 until actual archive/member provenance/quality/dedup/decontamination gates execute.
+- MODEL-341 random-init mechanics remain approximately 20.6M parameters (`20,613,440`).
+- No terminal learned-20M checkpoint exists.
+- Training-authorized post-pack optimized-target exposure remains exactly `0`.
+- No optimizer update, tokenizer fit, final-test outcome access or paid training is authorized by this audit.
+- Another launch-gate abstraction is not the priority; the remaining job is to make the real data/exposure/recovery/evaluation chain terminal and then actually run the bounded pilot.
 
-Therefore the current P0 is **rapid unique data-capacity expansion, UA first**, not repeatedly rebuilding the same 2.2MB candidate.
+### Major new DATA fact — Rada_Trees capacity breakthrough
 
-Every newly admitted source must re-enter:
+The old EPOCH-0004 statement that Rada_Trees had only metadata/sample evidence is stale.
 
-`source authority -> global dedup -> exact record materialization -> evaluation decontamination -> post-composition quality/privacy/balance -> cluster-safe split`
+Canonical PR #820 executed the full selective plaintext scan of exact immutable `uacorpus/Rada_Trees@1b994a5804dcda122721e8d33a03fd172cf8d867/rada_xtag_texts.7z`.
 
-Only after the target composition is genuinely feasible should D04 publish real positive post-pack exposure.
+Terminal scientific execution on source head `2773e24f943c52caa75b15b6ab162945411a0697`:
 
-### Tokenizer / packing
+- workflow `34162348408` = SUCCESS;
+- two independent processing passes were byte-identical;
+- archive SHA-256 `737fa5df061c55555a8c761023559a206cbcabf0299ae52d1ccae387f685803e`;
+- archive inventory: 8,782 members / 19,711,802,635 unpacked bytes;
+- selected `.txt`: 4,391 / 4,391 plaintext candidates;
+- selected listed bytes: 879,031,855;
+- exact unique payloads after exact-duplicate collapse: 4,385;
+- source-candidate bytes after exact-duplicate collapse: **877,983,909**;
+- six exact duplicate groups; 1,047,946-byte exact-duplicate discount;
+- terminal evidence is text-free.
 
-- Canonical D04 packing/unique-loss lineage has terminal scoped ledger/tokenizer evidence.
-- Real target-corpus-bound packing remains `NOT_MATERIALIZED`; authorized exposure = 0.
-- D04 should preserve byte-baseline/token-ID safety, deterministic shard/multiworker/resume semantics and become ready to pack immediately when a terminal balanced split arrives.
-- Do not churn a learned tokenizer merely because data acquisition is still incomplete.
+Duplicate successor #860 was correctly closed because #820 became the single incumbent authority. DO NOT run another equivalent full Rada_Trees plaintext scanner.
 
-### Trainer / checkpoint / recovery
+This is a very large acceleration opportunity, but these are SOURCE-CANDIDATE BYTES, not training-authorized corpus bytes. They grant exactly zero optimized targets until downstream admission gates pass.
 
-- D02 transactional trainer restore and scaler-presence parity have been integrated into the canonical carrier.
-- D05 has already demonstrated terminal generic + scoped evidence on a recent exact head; the active D05 line has since advanced again with further hardening and new exact-head CI is nonterminal at this audit cutoff.
-- The former standalone checkpoint worker is folded into the Training mission from the next scheduled run onward.
-- Exact uninterrupted `N` versus `K + checkpoint + fresh-process resume -> N`, including exact next-exposure identity, remains a terminal campaign proof requirement.
+### Data bottleneck has changed
 
-### Evaluation
+The previous 6.095MB global-dedup V8 graph is now a predecessor graph, not the target campaign graph. Its terminal evidence remains useful as machinery/earlier authority but must be recomputed after admissible Rada_Trees intake.
 
-- D06 terminal-pilot numeric evidence and evaluation-firewall logic are already integrated on the canonical carrier.
-- A dedicated persistent independent Evaluation worker is now required so producer evidence is not self-certified.
-- The worker will verify decontamination/split isolation, held-out UA/EN/code NLL/BPB, selection trajectory, generation, memorization/exposure diagnostics, fresh reload/inference fingerprint and compute benchmark evidence.
+The P0 is no longer “find enough potential Ukrainian bytes.” The P0 is now **convert the already measured ~878MB Rada_Trees candidate into scientifically admissible current-corpus capacity as quickly as possible**.
 
-### Integration / Work
+Required sequence for the 4,385 exact-unique Rada payloads:
 
-- Canonical integration carrier has already absorbed the new accelerated 20M→200M strategy and recent D02/D05/D06 work; its newest exact generic CI is still running at this audit cutoff, so no fresh terminal claim is made for that exact head yet.
-- Active Work is already building the provider-neutral learned-20M portable run binding after the newly merged strategy router. Its first exact-head CI is red at this cutoff. This package is ACTIVE/COLLISION-RESERVED for Work; scheduled workers and Codex must not duplicate it.
+`period/session provenance -> rights-scope revalidation -> Ukrainian/language evidence -> quality/privacy -> global exact+near+lineage dedup with current graph -> deterministic record materialization -> reserved-evaluation decontamination -> post-composition balance/family caps -> cluster-safe split`
 
-## Trainer/backend reuse policy
+Only survivors of that chain may enter tokenizer/packing/exposure accounting.
 
-12-6 owns:
+Search for additional sources only if the admissibility result proves Rada_Trees cannot satisfy the needed independent-family/mix/capacity envelope or if another large independent source closes a demonstrable remaining stratum gap faster than processing the incumbent.
 
-- architecture and initialization;
-- tokenizer/data/corpus authority;
-- training recipe decisions;
-- scientific gates and evaluation;
-- checkpoint/recovery truth and lineage;
-- provenance/reproducibility;
-- promotion/rollback and future self-learning policy.
+### Tokenizer / packing / exposure
 
-Commodity mechanics may be reused only after exact qualification.
+Old PR #498 is CLOSED and must not be resurrected as the live owner. Its useful mechanics have successors/current-main convergence.
 
-Current qualification order:
+At audit cutoff:
 
-1. **Plain PyTorch / current project trainer = control baseline.** It is already integrated enough to remain the reference until another backend proves parity.
-2. **LitGPT candidate:** qualify as a compact from-scratch runner/reference; no adoption exists yet.
-3. **Hugging Face Accelerate/Trainer candidate:** qualify only if its abstractions preserve exact project-owned identities/checkpoint semantics; no adoption exists yet.
-4. **PyTorch FSDP / DeepSpeed:** qualify when ~200M/1B memory/distributed requirements justify them; do not force distributed complexity into the 20M proof without measured need.
+- #835 unique-loss/exposure runtime is already integrated on main;
+- #843 is the active current-main byte-tokenizer/deterministic-packing convergence owner;
+- Work created a non-duplicative split->packing materialization bridge around #856; always re-check its current live state before touching that seam;
+- authorized positive real-corpus post-pack exposure remains `0` until a terminal decontaminated/balanced/split corpus is packed.
 
-A backend may become selectable only after exact version/license/dependency identity, real runtime, same-workload output/loss semantics, checkpoint/resume parity, reproducibility, rollback and measured resource evidence. Framework-local metadata never overrides project manifests.
+Do not create a second tokenizer architecture. Keep the byte-tokenizer control stable unless measured evidence justifies BPE/Unigram. Prioritize scalable deterministic sharding/packing, double-build reproducibility and exact positive unique-loss accounting.
 
-## LOCAL_FREE / free-GPU compute policy
+### Training / backend qualification
 
-Owner laptop is a first-class LOCAL_FREE target:
+Current project-native PyTorch/Trainer remains the semantic control baseline. PR #850 owns a fail-closed backend qualification contract and bounded tiny-CPU reference benchmark; it is not permission to call MODEL-341 throughput measured.
+
+No LitGPT, Hugging Face Accelerate/Trainer, FSDP or DeepSpeed backend is adopted by this audit. A candidate must prove exact version/license/dependency identity, real runtime, same-workload semantics, checkpoint/resume parity, reproducibility, rollback and resource measurement before becoming selectable.
+
+Prefer REUSE -> ADAPT -> CUSTOM(thin). Do not spend recurring cycles reimplementing commodity trainer mechanics that a qualified backend can safely provide.
+
+### Checkpoint / recovery
+
+PR #590 remains the current D05 checkpoint/recovery convergence line on the MODEL-341 carrier and has materially advanced. It owns transactional save/load, namespace/path race hardening, strict manifests, D04 ordered-exposure binding and fresh recovery semantics.
+
+The terminal campaign still requires uninterrupted `N` steps versus `K + save + fresh process + resume -> N`, including exact next-exposure identity, no skipped/replayed batch and chronological/final/best checkpoint truth.
+
+D05 is now part of the Training worker mission, not a separate scheduled-development lane.
+
+### Independent evaluation
+
+D06 mechanics exist, but the scheduled worker topology previously lacked a truly dedicated persistent independent Evaluation lane. EPOCH-0005 assigns one scheduled worker exclusively to independent scientific QA so Training cannot self-certify its own producer evidence.
+
+### Compute
+
+Owner laptop remains a first-class LOCAL_FREE target:
 
 - ASUS Vivobook M1505YA;
-- Ryzen 5 7430U, 6 cores / 12 threads;
-- 16 GB RAM;
-- integrated AMD Radeon graphics.
+- Ryzen 5 7430U, 6C/12T;
+- 16 GB RAM.
 
-Use it for 24/7 data processing, tokenizer/packing, evaluation, checkpoint/recovery, CPU smoke/training/benchmarks and learned-20M work if measured throughput is acceptable.
+Do not call it too slow without a bounded same-workload benchmark. Use it for data processing, tokenizer/packing, evaluation, checkpoint/recovery, CPU training/smokes and learned-20M work if measured throughput is acceptable.
 
-Do not claim the laptop is “too slow” without executing the same bounded benchmark workload and recording evidence. Do not assume integrated Radeon acceleration; GPU support requires actual runtime proof.
+Free GPU sessions (Kaggle/Colab/other policy-compatible temporary accelerators) are first-class acceleration lanes. Scientific runs must be portable/resumable between environments through exact run-packet + checkpoint identities.
 
-Free GPU sessions such as Kaggle/Colab or other policy-compatible temporary accelerators are first-class acceleration lanes. The scientific job must remain provider-neutral and resumable between LOCAL_FREE and free GPU sessions.
+For every actual environment measure the same bounded workload:
 
-For each execution environment, use the same bounded workload and record at minimum:
-
-- tokens/second;
+- optimized targets/tokens per second;
 - step time;
 - peak RAM/VRAM;
-- checkpoint size and checkpoint save/load time;
-- projected wall-clock to the target exposure;
+- checkpoint size + save/load time;
+- projected target wall-clock;
 - exact runtime/backend/environment identity.
 
-Checkpoint early enough on ephemeral services that session expiry does not erase useful progress. Paid compute remains forbidden without explicit owner authorization.
+Paid compute remains forbidden without explicit owner authorization.
 
 ## Current critical path
 
-`high-yield unique data acquisition (UA dominant) -> global dedup -> deterministic record materialization -> evaluation decontamination -> quality/privacy + 45/35/20 family caps -> cluster-safe split -> tokenizer decision + deterministic packing -> positive exact unique causal-loss ledger -> portable training/checkpoint/resume -> independent evaluation -> bounded LOCAL_FREE/free-GPU 20M pilot -> prove real learning/reload/resume -> terminal learned 20M -> automatic ~200M feasibility packet -> direct learned ~200M if feasible OR bounded 50M/100M risk probe only if required -> terminal learned ~200M -> ~1B feasibility`
+`Rada_Trees #820 admissibility -> current-graph global dedup -> exact record materialization -> #857-compatible evaluation decontamination -> quality/privacy + 45/35/20 family caps -> cluster-safe split -> #843/current packing -> two clean pack builds -> #835 positive unique-loss/exposure authority -> #590 checkpoint/fresh-resume + #850 training/backend authority -> independent D06 acceptance -> bounded LOCAL_FREE/free-GPU learned-20M pilot -> real learning/reload/resume -> terminal learned-20M -> automatic ~200M feasibility -> direct ~200M if feasible OR bounded ~100M probe if needed`
 
-Source bytes are not tokenizer tokens or optimized targets. Replay/padding must never manufacture unique capacity.
+Source bytes are never tokenizer tokens or optimized targets. Replay/padding may never manufacture unique capacity.
 
 ## Worker 1 — DATA
 
-HOME: D03 / sources / corpus / provenance / dedup / decontamination.
+HOME: D03 / #4 / data acquisition, provenance, rights, language, quality/privacy, global dedup, record materialization and decontamination handoff.
 
-CURRENT NEXT:
+CURRENT NEXT, in priority order:
 
-1. Maximize **new, independently admissible unique corpus capacity per run**, prioritizing Ukrainian until the limiting-stratum gap materially closes; then code/EN as required by balance.
-2. Continue existing high-yield source owners instead of cloning them. Current primary UA lineage is Rada_Trees; move it from metadata pinning to real bounded archive/member materialization, provenance, LID/privacy/quality, dedup and decontamination.
-3. Search/qualify additional rights-clear independent UA families when the incumbent path cannot supply enough capacity. Prefer large legitimate sources over dozens of micro-admissions.
-4. Reuse the already-proven DATA-526/decontamination machinery; do not spend runs proving the unchanged 2.2MB candidate again.
-5. Every accepted delta re-enters global dedup -> record freeze -> decontamination -> quality/privacy/balance before split.
-6. Track both the learned-20M source-floor gap and future ~200M data feasibility, but never steal capacity from scientific gates or count replay as unique supply.
+1. Reconstruct live #820 first. Do not repeat the already-successful full plaintext scan and do not revive #860.
+2. Terminalize the current #820 branch/release evidence if its latest exact-head CI is nonterminal/red; repair only concrete D03-owned failures.
+3. Move the 4,385 exact-unique Rada payloads through period/session provenance and exact source/member lineage.
+4. Revalidate rights scope for the exact plaintext layer, then execute Ukrainian/language, quality and privacy screening with text-safe durable evidence.
+5. Feed only admissible survivors into current global exact/near/lineage dedup; produce exact survivor identity and deterministic payload record inventory.
+6. Run reserved-evaluation decontamination using the current integrated DATA-232 matcher; final-test payload/outcome access stays forbidden.
+7. Recompute post-composition quality/privacy, 45% UA / 35% EN / 20% code, family caps and independent-family requirements; then publish cluster-safe split input.
+8. If Rada survivors still leave a real capacity/family deficit, qualify the largest rights-clear independent source that closes that exact gap. Do not return to dozens of micro-source churn by default.
+9. Track future ~200M data feasibility in parallel, but never count candidate/replay bytes as training capacity.
 
-PRIMARY PRODUCTIVITY METRIC: newly terminal/admissible unique bytes + independent families, with exact provenance and zero evaluation leakage.
+PRIMARY PRODUCTIVITY METRIC: newly terminal **admissible post-gate unique bytes and independent families**, not raw/candidate bytes or number of PRs.
 
 ## Worker 2 — TOKENIZER / DATA PIPELINE
 
-HOME: D04.
+HOME: D04 / #5.
 
 CURRENT NEXT:
 
-1. Preserve the existing canonical packing/unique-loss lineage; do not restart tokenizer/ledger design.
-2. While Worker 1 expands data, harden and benchmark scalable deterministic sharding/packing, multiworker ordering, boundary/truncation/padding/loss-mask semantics, resume-state serialization and portable artifact identities.
-3. Keep the byte tokenizer/control usable unless measured evidence justifies BPE/Unigram; never silently change token IDs.
-4. Prepare for large-corpus throughput so the same pipeline can grow from terminal 20M qualification toward ~200M without architectural rewrite.
-5. Immediately after terminal balanced split identity exists: perform two independent pack builds, require byte-identical outputs, publish exact positive unique nonignored causal-loss positions and resume-safe next-exposure identity.
-6. Record measured pipeline throughput/RAM on available LOCAL_FREE resources when executable; do not fabricate laptop measurements from estimates.
+1. Recover live D04 ownership every run. #498 is historical/closed; do not resurrect it. At this audit #835 is merged runtime and #843 is the active current-main tokenizer/packer owner; inspect #856/current successors before mutation.
+2. Terminalize current-main packing mechanics and current-head CI without creating a second tokenizer/ledger architecture.
+3. Harden scalable deterministic sharding, multiworker ordering, document/cluster boundaries, truncation/padding/loss-mask semantics, stream resume state and portable artifact identities.
+4. Benchmark pipeline throughput/RAM on actual available LOCAL_FREE environments when executable.
+5. Keep the frozen byte-tokenizer control unless measured fertility/throughput/quality evidence justifies a migration; never silently change IDs.
+6. The instant Worker 1 publishes terminal decontaminated/balanced/split identities, run two independent deterministic pack builds, require byte-identical outputs and publish exact positive unique nonignored causal-loss positions plus resume-safe next-exposure identity.
+7. Make the pipeline usable without rewrite for the later ~200M campaign.
 
-DO NOT: pack the known under-capacity 2.2MB graph as if it satisfied the 20M campaign; fit tokenizers to evade the source-capacity blocker; patch unrelated shared CI.
+DO NOT: fabricate positive capacity from source bytes; fit a tokenizer to evade data gates; patch unrelated D03/D10 debt.
 
 ## Worker 3 — TRAINING + CHECKPOINT / RECOVERY
 
-HOME: D02 + D05 + C01 execution seams.
+HOME: D02 + D05 + C01 / #3 + #6.
 
 CURRENT NEXT:
 
-1. Absorb the former standalone D05 scheduled-worker mission. Continue the canonical D05 line and finish its currently active exact-head hardening/CI before taking a new overlapping checkpoint patch.
-2. Terminalize fresh-process deterministic resume: uninterrupted `N` vs `K + save + fresh process + resume -> N`, binding model/optimizer/scheduler/scaler/RNG/dataloader/counters and Worker 2 exact next-exposure identity.
-3. Keep plain PyTorch/current Trainer as the control. Consume independent backend qualification evidence rather than rebuilding every commodity primitive.
-4. Integrate a **provider-neutral portable run packet** after active Work's current package becomes exact-green; do not duplicate Work while it is active.
-5. Build/execute the same bounded compute benchmark workload on every actually available environment and record tokens/s, step time, memory, checkpoint time and projected wall-clock.
-6. Use the owner laptop as a real LOCAL_FREE target whenever the execution environment actually has access to it; no unmeasured “too slow” conclusion.
-7. Free GPU sessions are valid acceleration. Resume the same scientific job through exact checkpoint/run-packet identities rather than restarting per provider.
-8. As soon as terminal D03/D04/D05/D06 launch inputs exist, execute the bounded learned-20M pilot; do not add another readiness layer merely to delay training.
-9. Terminal learned 20M requires real optimizer updates, sane loss, exact exposure, reload/resume, independent evaluation and measured compute evidence.
-10. After terminal 20M, hand measurements to Worker 5 for ~200M feasibility; do not automatically launch full 50M/100M campaigns.
+1. Absorb all former standalone Checkpoint-worker duties. Recover and continue canonical #590 rather than creating a parallel D05 branch.
+2. Terminalize #590 current-head CI/convergence against the current D04 exposure runtime, repairing only D02/D05-owned defects.
+3. Recover and continue #850 backend-qualification work. Project-native PyTorch/Trainer stays the control until a candidate proves parity.
+4. Finish true fresh-process `N` vs `K + checkpoint + resume -> N` equivalence, binding model/optimizer/scheduler/scaler/RNG/dataloader/counters and Worker 2 exact next-exposure identity.
+5. Maintain provider-neutral portable run/checkpoint identities; if Work already owns a live portable-run package, consume it after terminal evidence rather than duplicate it.
+6. Execute the same bounded benchmark on every genuinely available environment and record tokens/s, step time, RAM/VRAM, checkpoint time and projected wall-clock.
+7. Qualify LitGPT and/or HF Accelerate/Trainer only when that scope is not already owned and only through real runtime/parity evidence. FSDP/DeepSpeed wait for measured ~200M/1B memory/distributed need.
+8. As soon as D03/D04/D05/D06 scientific inputs are terminal, execute the bounded learned-20M pilot. Do not add another readiness abstraction merely to postpone training.
+9. Terminal learned-20M requires real optimizer updates, sane loss trajectory, exact exposure, checkpoint/reload/resume and independent Evaluation acceptance.
+10. After terminal 20M, provide measurements to Worker 5; do not auto-launch full 100M.
 
-DO NOT: self-authorize paid compute; adopt LitGPT/Accelerate/FSDP/DeepSpeed without qualification; claim GPU evidence from CPU.
+DO NOT: self-authorize paid compute; call tiny-fixture throughput MODEL-341 throughput; claim GPU evidence from CPU.
 
 ## Worker 4 — INDEPENDENT EVALUATION / SCIENTIFIC QA
 
-HOME: D06 + independent verification. Organizationally separate from Training producer evidence.
+HOME: D06 / #7. This worker must remain organizationally separate from Training producer evidence.
 
 CURRENT NEXT:
 
-1. Independently verify the full pretraining/evaluation isolation chain after each materially new corpus freeze: reservations -> decontamination -> split -> packing, with final-test firewall intact.
-2. Reuse the already-integrated BPB and D06 pilot-evidence machinery; do not create another metric layer.
-3. Define and execute terminal learned-20M acceptance: held-out UA/EN/code NLL/BPB, matched random-init comparison, selection trajectory, generation, memorization/exposure diagnostics, fresh-process inference reload/fingerprint and no final-test recipe tuning.
-4. Independently verify Worker 3 checkpoint/resume and compute benchmark evidence without changing producer implementation just to make verification pass.
-5. Verify backend parity/reproducibility evidence produced by Codex/Training before any backend adoption decision.
-6. For the same bounded compute benchmark, check measurement comparability across laptop/free-GPU environments and reject mismatched workload identities.
-7. After terminal 20M, independently audit inputs to the ~200M feasibility decision. A paper memory estimate alone is not enough.
+1. Independently verify every materially new corpus authority: source/member identity -> global dedup -> record materialization -> reserved-evaluation decontamination -> balance/family caps -> split -> packing, with final-test firewall intact.
+2. Independently audit the Rada_Trees admission evidence; candidate bytes are not corpus bytes until exact gates pass.
+3. Reuse existing BPB/evaluation primitives instead of creating another metrics stack.
+4. Define and execute terminal learned-20M acceptance: held-out UA/EN/code NLL/BPB, matched random-init control, selection trajectory, generation probes, memorization/exposure diagnostics and fresh-process inference reload/fingerprint.
+5. Independently verify Worker 3 fresh-resume/checkpoint evidence and reject producer self-certification.
+6. Independently verify same-workload compute benchmark comparability across laptop/free-GPU environments.
+7. Review #850/backend candidate parity before any backend adoption.
+8. After terminal learned-20M, independently audit the ~200M feasibility inputs and any proposed 100M probe rationale.
 
-DO NOT: run the same producer code then call it independent audit; use final-test outcomes for recipe tuning; lower gates to accelerate schedule.
+DO NOT: change producer code merely to make evaluation pass; use final-test outcomes for recipe tuning; weaken a scientific gate for schedule speed.
 
 ## Worker 5 — INTEGRATION / COORDINATOR / COMPUTE FEASIBILITY
 
-HOME: D10 + COORD.
+HOME: D10 + COORD / #11 + #12.
 
 CURRENT NEXT:
 
-1. Keep a single current-main-ancestor integration carrier and obtain fresh exact-head CI after each material intake.
-2. Integrate only collision-safe terminal deltas; no stale-green transfer or wholesale divergent merges.
-3. Maintain exact strategy reconciliation: terminal20 mandatory; 50/100 optional probes; ~200M feasibility next; 1B only after terminal200.
-4. Track active Work/Codex packages before taking cross-lane work. Active Work currently owns portable run binding and must not be duplicated.
-5. Repair shared CI/fanout/bootstrap debt centrally when it actually blocks the critical path.
-6. Own the cross-environment compute benchmark matrix and, after terminal20, the automatic ~200M feasibility decision using measured data capacity, memory, optimizer state, activations, gradient accumulation/checkpointing, throughput, checkpoint transport and available LOCAL_FREE/free-GPU compute.
-7. A ~200M GO decision must name the qualified backend and measured evidence. If direct ~200M is not yet defensible, choose the smallest bounded 50M/100M probe that resolves the specific uncertainty; do not default to a full intermediate campaign.
-8. Perform global routing audit only when >=6h old or a major-change trigger fires. After audit, return to productive integration/feasibility work.
+1. Recover live main and current canonical carrier/reconciliation line each run. Around this audit #831/#802 are the D10 ancestry surfaces; follow the live successor if they move.
+2. Keep one current-main-ancestor carrier, integrate only terminal collision-safe deltas and require fresh exact-head CI after every material intake.
+3. Do not transfer stale green across main/head movement. Repair shared Ruff/bootstrap/workflow/API drift centrally rather than making every domain branch patch it.
+4. Track active Work/Codex claims before taking cross-lane code. Assign them the largest unowned packages, not scheduled-worker duplicates.
+5. Maintain the exact strategy: terminal20 mandatory; ~100M optional risk probe; measured ~200M default next product-scale feasibility; 1B only after terminal~200M.
+6. Own the cross-environment compute matrix and automatic post-terminal20 ~200M feasibility packet.
+7. A ~200M GO must include measured data capacity, memory, optimizer state, activation/accumulation/checkpoint plan, throughput, checkpoint transport, exact backend/runtime and available compute.
+8. If direct ~200M is uncertain, define the smallest bounded 50M/100M probe that resolves a named uncertainty. Never run a full campaign only to satisfy old sequencing.
+9. Perform global audit when >=6h old OR immediately after a major change such as terminal Rada admission, positive pack ledger, first optimizer update, terminal20, major Work/Codex result or active-owner collision. Update this routing file, then immediately return to productive integration work.
 
-## Work — active and next
+## Work / Codex routing
 
-ACTIVE / RESERVED:
+Before taking work, both must read live routing and all active claims. A long Work/Codex run should take the largest **unowned** cross-lane package and leave durable GitHub state; it must not duplicate one of the five scheduled producers.
 
-`PORTABLE-LEARNED20-RUN-BINDING` — current Work/R01 follow-up binds terminal learned-20M authorities into a provider-neutral LOCAL_FREE/free-GPU run packet with fresh/resume semantics. Its first exact-head CI is red at this audit cutoff. Work owns repair/terminalization of that same package. Do not duplicate it.
+At EPOCH-0005 the high-value package families are:
 
-WORK NEXT AFTER CURRENT PACKAGE:
+- current-corpus cross-lane composition after Rada admissibility;
+- shared carrier/CI convergence that blocks multiple terminal lane heads;
+- external training-backend real-runtime qualification (LitGPT / HF Accelerate) when #850 establishes the reference and no other owner is active;
+- portable compute/run integration if no active Work package already owns it;
+- post-terminal20 measured ~200M feasibility.
 
-`COMPUTE-BENCHMARK-AND-200M-FEASIBILITY-INTEGRATION` — only after checking current routing/ownership. Connect the portable packet to a single bounded benchmark protocol, measured laptop/free-GPU evidence and fail-closed ~200M feasibility inputs. If another worker/Codex already owns an equivalent package, take the largest disjoint cross-lane blocker instead.
+Never assume a Work/Codex package named in this file is still active hours later. Reconstruct live ownership first.
 
-A major Work result triggers immediate routing refresh; do not wait six hours.
+## Worker scheduling topology
 
-## Codex Cloud — next large disjoint package
+For minimum dependency latency, scheduled worker order is:
 
-NEXT RECOMMENDED PACKAGE:
+`DATA -> TOKENIZER/DATA PIPELINE -> TRAINING+CHECKPOINT -> INDEPENDENT EVALUATION -> INTEGRATION/COORDINATOR`
 
-`TRAINING-BACKEND-QUALIFICATION-MATRIX-V1`
+Use one run of each per hour, staggered by 12 minutes. Each downstream worker consumes any terminal upstream change from the preceding slot; if upstream has not produced a usable handoff, it executes its own highest-value fallback instead of idling.
 
-Goal: independently qualify commodity trainer reuse without changing the canonical trainer or active Work portable-run binder.
+## Current stage verdict
 
-Required arms:
+- learned-20M mechanics: READY ENOUGH TO CONVERGE, not terminal learned evidence;
+- learned-20M data/exposure: BLOCKED, authorized optimized-target exposure = 0;
+- Rada_Trees source-candidate supply: LARGE POSITIVE MEASURED (~877.98MB after exact duplicate collapse), NOT YET TRAINING-ADMISSIBLE;
+- bounded learned-20M pilot: NOT READY until real current corpus -> split -> pack -> positive exposure + recovery/eval composition becomes terminal;
+- full learned-20M: NOT AUTHORIZED yet;
+- learned-100M: OPTIONAL PROBE ONLY after terminal20 when a named risk requires it;
+- learned-~200M: DEFAULT SERIOUS PRODUCT-BRAIN TARGET after terminal20 if measured feasibility says GO;
+- 1B: future systems gate after terminal~200M measurements.
 
-- project current plain PyTorch Trainer = control;
-- LitGPT candidate;
-- Hugging Face Accelerate/Trainer candidate;
-- record FSDP/DeepSpeed as future ~200M/1B candidates unless the bounded environment makes a meaningful qualification possible now.
+## Owner authorization
 
-For each executable candidate: pin exact version/source/license/dependency identity; run the exact same project-owned bounded workload; compare loss/update semantics, state serialization, fresh-process resume, deterministic/reproducible outputs, checkpoint portability, tokens/s, step time, peak RAM/VRAM and checkpoint time; verify rollback to the project control. If runtime/dependency is unavailable, record `RETEST_RUNTIME_REQUIRED`, not PASS. No canonical adoption, model training campaign, final-test access or paid compute authority is granted by the qualification package.
+No Oleksii action and no paid-compute authorization is required at this audit state. Continue LOCAL_FREE engineering, CI, data admission, reproducibility, backend qualification and bounded benchmarks autonomously.
 
-Codex must NOT take Worker 1 source acquisition, Worker 2 packing, Worker 3 canonical checkpoint/pilot, Worker 4 independent stage verdict, Worker 5 carrier/feasibility orchestration, or active Work portable-run binding.
-
-## Integration queue
-
-1. Keep the current carrier reconciled with live main and exact-head CI.
-2. Let active Work repair/terminalize portable run binding; consume it only after exact evidence.
-3. Grow real corpus capacity aggressively, especially UA, and rerun the existing dedup/decontamination/balance chain on each material source expansion.
-4. Once terminal balanced corpus/split exists: immediate deterministic pack -> positive unique-loss ledger.
-5. Complete fresh-process checkpoint/resume and portable provider-neutral run authority.
-6. Independent evaluation verifies isolation and pilot acceptance.
-7. Execute bounded LOCAL_FREE/free-GPU learned-20M pilot as soon as gates permit.
-8. Finish terminal learned-20M end-to-end proof; do not over-polish it as the final product model.
-9. Automatically build the measured ~200M feasibility packet.
-10. Direct ~200M if feasible; otherwise only the smallest useful 50M/100M probe that resolves a named risk.
-11. Terminal learned ~200M -> measured ~1B feasibility.
-
-## Scale state
-
-- 20M mechanics: READY / random-init mechanics only.
-- 20M corpus target: BLOCKED primarily on unique data capacity, UA dominant.
-- 20M post-pack exposure: 0 / NOT MATERIALIZED for the target campaign.
-- 20M bounded pilot: NOT READY until terminal corpus/split/packing/recovery/evaluation composition.
-- 20M learned terminal proof: NOT COMPLETE.
-- ~200M: FEASIBILITY PREPARATION ONLY before terminal20; no learned campaign authority yet.
-- 50M/100M: OPTIONAL BOUNDED ENGINEERING PROBES ONLY after terminal20 when a specific risk justifies them; no automatic full campaigns.
-- ~1B: CLOSED until terminal independently verified learned~200M + measured data/compute/checkpoint/evaluation feasibility.
-
-## Owner compute / authorization state
-
-LOCAL_FREE engineering is authorized by project policy. Owner laptop and free GPU services may be used only when actually accessible to the executing environment and measurements are recorded truthfully.
-
-Materially paid cloud/GPU compute remains NOT AUTHORIZED. No owner action is currently required because paid compute is not the sole blocker.
-
-## Acceleration objective
-
-The owner wants a major speedup in project progress. Do not promise a synthetic multiplier. Achieve acceleration by removing structural waste:
-
-- pipeline-ordered worker starts: Data -> Pipeline -> Training -> Independent Evaluation -> Integration;
-- stable prompts that always read this live plan;
-- no repeated terminal proofs;
-- no duplicate branches/PRs;
-- large high-yield data sources instead of micro-task churn;
-- qualified commodity backend reuse;
-- portable LOCAL_FREE/free-GPU checkpoint/resume;
-- same-workload compute benchmarking before provider decisions;
-- skip unnecessary full 50M/100M campaigns;
-- immediate 200M feasibility after terminal20.
-
-## Short owner-readable state
-
-20M remains mandatory and is still blocked, now mainly by insufficient unique corpus capacity rather than missing plumbing. The small record/decontamination path works; Ukrainian data supply is the largest gap. The project has formally changed the post-20M route: measured ~200M feasibility is next, while 50M/100M are optional probes. Work is actively building portable LOCAL_FREE/free-GPU run binding. No third-party high-level trainer is adopted yet; plain PyTorch/current Trainer remains the control while LitGPT/Accelerate are qualified independently. No paid compute or owner action is required now.
+Ask Oleksii only for a genuinely material decision that cannot be resolved from project authority, especially a concrete paid-compute request with measured reason/budget or an irreversible rights/product policy decision.
