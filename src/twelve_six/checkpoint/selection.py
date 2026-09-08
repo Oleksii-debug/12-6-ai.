@@ -124,6 +124,29 @@ def _materialize(candidates: Iterable[CheckpointCandidate]) -> list[CheckpointCa
     ids = [item.checkpoint_id for item in items]
     if len(set(ids)) != len(ids):
         raise CheckpointCompatibilityError("duplicate checkpoint_id in selection set")
+
+    progress_owners: dict[tuple[int, int], str] = {}
+    for item in items:
+        prior_id = progress_owners.setdefault(item.progress_key, item.checkpoint_id)
+        if prior_id != item.checkpoint_id:
+            raise CheckpointCompatibilityError(
+                "ambiguous checkpoint selection at equal training progress: "
+                f"{sorted((prior_id, item.checkpoint_id))}"
+            )
+
+    for index, left in enumerate(items):
+        for right in items[index + 1 :]:
+            if left.progress_key == right.progress_key:
+                continue
+            step_order = (left.step > right.step) - (left.step < right.step)
+            token_order = (left.tokens_seen > right.tokens_seen) - (
+                left.tokens_seen < right.tokens_seen
+            )
+            if step_order == 0 or token_order == 0 or step_order != token_order:
+                raise CheckpointCompatibilityError(
+                    "inconsistent checkpoint progress counters: step and tokens_seen must "
+                    "advance together within one lineage"
+                )
     return items
 
 
