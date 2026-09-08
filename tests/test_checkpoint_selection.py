@@ -96,6 +96,8 @@ def test_candidate_requires_canonical_sha256_lineage_identities() -> None:
         ({"metric_name": "validation_loss", "metric_value": None}, "both be present"),
         ({"metric_name": "validation_loss", "metric_value": float("nan")}, "finite"),
         ({"metric_name": "validation_loss", "metric_value": 10**10000}, "finite"),
+        ({"metric_name": " validation_loss", "metric_value": 1.0}, "canonical"),
+        ({"metric_name": "validation\nloss", "metric_value": 1.0}, "canonical"),
     ],
 )
 def test_selection_revalidates_directly_constructed_candidates(
@@ -179,6 +181,13 @@ def test_best_min_and_max_are_explicit() -> None:
     b = _candidate("b", 5, 500, metric_name="validation_loss", metric_value=1.10)
     assert select_best([a, b], metric_name="validation_loss", mode="min") is b
     assert select_best([a, b], metric_name="validation_loss", mode="max") is a
+
+
+def test_best_rejects_noncanonical_metric_authority() -> None:
+    candidate = _candidate("a", 4, 400, metric_name="validation_loss", metric_value=1.25)
+    for bad_name in (" validation_loss", "validation_loss ", "validation loss", "validation\nloss"):
+        with pytest.raises(CheckpointCompatibilityError, match="canonical"):
+            select_best([candidate], metric_name=bad_name, mode="min")
 
 
 def test_best_rejects_missing_or_mixed_metric_authority() -> None:
