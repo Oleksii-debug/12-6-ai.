@@ -15,8 +15,9 @@ import importlib
 import importlib.util
 import json
 import sys
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 SCHEMA = "12-6.next100-065f-global-dedup.v8"
 REPORT_SCHEMA = "12-6.next100-065f-global-dedup-report.v8"
