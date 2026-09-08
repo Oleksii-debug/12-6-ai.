@@ -82,9 +82,10 @@ def _positive_finite(value: Any) -> bool:
     )
 
 
-def _valid_terminal_authority(value: Any) -> bool:
+def _valid_terminal_authority(value: Any, *, expected_claim: str) -> bool:
     return (
         isinstance(value, Mapping)
+        and value.get("claim") == expected_claim
         and value.get("repository") == REPOSITORY
         and isinstance(value.get("git_sha"), str)
         and _SHA40.fullmatch(value["git_sha"]) is not None
@@ -125,7 +126,7 @@ def assess_backend_qualification(report: Mapping[str, Any]) -> BackendQualificat
     for key in _REQUIRED_PARITY:
         if parity.get(key) is not True:
             blockers.append(f"{key}_not_proven")
-        if not _valid_terminal_authority(parity_authorities.get(key)):
+        if not _valid_terminal_authority(parity_authorities.get(key), expected_claim=key):
             blockers.append(f"{key}_authority_missing")
 
     runtime = report.get("runtime_probe")
@@ -172,7 +173,9 @@ def assess_backend_qualification(report: Mapping[str, Any]) -> BackendQualificat
             _positive_finite(benchmark.get(key))
             for key in ("tokens_per_second", "step_time_seconds", "peak_ram_bytes")
         )
-        and _valid_terminal_authority(benchmark.get("authority"))
+        and _valid_terminal_authority(
+            benchmark.get("authority"), expected_claim="bounded_benchmark"
+        )
         and benchmark_scope_valid
     )
     if not benchmark_complete:
@@ -184,7 +187,9 @@ def assess_backend_qualification(report: Mapping[str, Any]) -> BackendQualificat
     fresh_process_authority_valid = (
         isinstance(fresh_process, Mapping)
         and fresh_process.get("proven") is True
-        and _valid_terminal_authority(fresh_process.get("authority"))
+        and _valid_terminal_authority(
+            fresh_process.get("authority"), expected_claim="fresh_process_recovery"
+        )
     )
     fresh_process_scope_valid = (
         isinstance(fresh_process, Mapping)

@@ -16,8 +16,9 @@ SHA40 = "a" * 40
 SHA64 = "b" * 64
 
 
-def _authority() -> dict:
+def _authority(claim: str) -> dict:
     return {
+        "claim": claim,
         "repository": "Oleksii-debug/12-6-ai.",
         "git_sha": SHA40,
         "evidence_sha256": SHA64,
@@ -48,7 +49,7 @@ def _complete_report() -> dict:
         "exact_version": runtime["exact_version"],
         "license": "BSD-3-Clause",
         "parity": parity,
-        "parity_authorities": {key: _authority() for key in parity},
+        "parity_authorities": {key: _authority(key) for key in parity},
         "runtime_probe": runtime,
         "bounded_benchmark": {
             "backend_id": REFERENCE_BACKEND,
@@ -60,7 +61,7 @@ def _complete_report() -> dict:
             "measurement_method": "TEST_TERMINAL_MEASUREMENT_FIXTURE",
             "model_is_test_fixture_only": True,
             "model_scale_throughput_claimed": False,
-            "authority": _authority(),
+            "authority": _authority("bounded_benchmark"),
         },
         "fresh_process_recovery": {
             "backend_id": REFERENCE_BACKEND,
@@ -69,7 +70,7 @@ def _complete_report() -> dict:
             "fresh_process_only": True,
             "model_is_test_fixture_only": True,
             "proven": True,
-            "authority": _authority(),
+            "authority": _authority("fresh_process_recovery"),
         },
         "truth_boundary": {
             "canonical_base_random_init_only": True,
@@ -240,6 +241,32 @@ def test_nonterminal_parity_authority_invalidates_mechanics() -> None:
     assert not result.mechanics_reference_proven
     assert not result.ready_for_candidate_parity_comparison
     assert "optimizer_semantics_parity_authority_missing" in result.blockers
+
+
+def test_terminal_authority_cannot_be_reused_for_a_different_parity_claim() -> None:
+    report = _complete_report()
+    report["parity_authorities"]["optimizer_semantics_parity"] = copy.deepcopy(
+        report["parity_authorities"]["modelspec_parity"]
+    )
+    _rehash(report)
+    result = assess_backend_qualification(report)
+    assert not result.mechanics_reference_proven
+    assert not result.ready_for_candidate_parity_comparison
+    assert "optimizer_semantics_parity_authority_missing" in result.blockers
+
+
+def test_benchmark_and_recovery_require_role_bound_authorities() -> None:
+    report = _complete_report()
+    report["bounded_benchmark"]["authority"]["claim"] = "fresh_process_recovery"
+    report["fresh_process_recovery"]["authority"]["claim"] = "bounded_benchmark"
+    _rehash(report)
+    result = assess_backend_qualification(report)
+    assert result.mechanics_reference_proven
+    assert not result.benchmark_complete
+    assert not result.fresh_process_recovery_proven
+    assert not result.ready_for_candidate_parity_comparison
+    assert "bounded_throughput_memory_benchmark_missing" in result.blockers
+    assert "fresh_process_recovery_authority_missing" in result.blockers
 
 
 def test_report_identity_is_immutable() -> None:
