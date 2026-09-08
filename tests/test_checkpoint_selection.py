@@ -19,7 +19,7 @@ def _sha(label: str) -> str:
 
 def _manifest(*, checkpoint_id: str, step: int, tokens_seen: int, run: str = "r") -> dict:
     return {
-        "checkpoint_id": checkpoint_id,
+        "checkpoint_id": _sha(checkpoint_id),
         "identity": {
             "run_manifest_hash": _sha(run),
             "model_spec_hash": _sha("model"),
@@ -48,6 +48,14 @@ def _candidate(
         metric_name=metric_name,
         metric_value=metric_value,
     )
+
+
+def test_candidate_requires_canonical_sha256_checkpoint_id() -> None:
+    for bad_hash in ("a" * 63, "A" * 64, "g" * 64, ""):
+        manifest = _manifest(checkpoint_id="checkpoint", step=1, tokens_seen=10)
+        manifest["checkpoint_id"] = bad_hash
+        with pytest.raises(CheckpointCompatibilityError, match="checkpoint_id"):
+            CheckpointCandidate.from_manifest(manifest)
 
 
 def test_candidate_requires_canonical_sha256_lineage_identities() -> None:
