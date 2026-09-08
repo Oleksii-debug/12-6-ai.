@@ -27,9 +27,13 @@ EVIDENCE_SCHEMA = "12-6.d03-ecfr-point-in-time-materialization-evidence.v1"
 SOURCE_ID = "en.us.ecfr.regulations"
 FAMILY_ID = "us.federal-regulations.ecfr"
 TITLES_ENDPOINT = "https://www.ecfr.gov/api/versioner/v1/titles.json"
+EXPECTED_REQUEST_IDENTITY_SHA256 = (
+    "d9955ff11713a358164513d912d39ba107f0073c75bed15be64afe2cc8c3a2e4"
+)
 FULL_TITLE_RE = re.compile(
     r"https://www\.ecfr\.gov/api/versioner/v1/full/(\d{4}-\d{2}-\d{2})/title-(\d+)\.xml"
 )
+FORBIDDEN_XML_DECL_RE = re.compile(br"<!\s*(?:DOCTYPE|ENTITY)\b", re.IGNORECASE)
 ALLOWED_CONTENT_TYPES = {
     "application/xml",
     "text/xml",
@@ -108,7 +112,10 @@ def validate_request(request: dict[str, Any]) -> dict[str, Any]:
     _require(isinstance(metadata_date, str), "titles metadata date missing")
     _require(authority.get("import_in_progress") is False, "metadata import was in progress")
     reserved = authority.get("reserved_titles")
-    _require(isinstance(reserved, list) and all(isinstance(x, int) for x in reserved), "reserved titles invalid")
+    _require(
+        isinstance(reserved, list) and all(isinstance(x, int) for x in reserved),
+        "reserved titles invalid",
+    )
     _require(35 in reserved, "known reserved title 35 must remain excluded")
     _require(
         authority.get("metadata_observation_authority") == "DISCOVERY_ONLY",
@@ -121,11 +128,17 @@ def validate_request(request: dict[str, Any]) -> dict[str, Any]:
     title = selection.get("title")
     url = selection.get("url")
     _require(isinstance(date, str), "selection date missing")
-    _require(isinstance(title, int) and 1 <= title <= 50, "title must be in observed range 1..50")
+    _require(
+        isinstance(title, int) and 1 <= title <= 50,
+        "title must be in observed range 1..50",
+    )
     _require(title not in reserved, "reserved title cannot be materialized")
     _require(isinstance(url, str), "selection URL missing")
     match = FULL_TITLE_RE.fullmatch(url)
-    _require(match is not None, "selection must use exact historical full-title URL without query/fragment")
+    _require(
+        match is not None,
+        "selection must use exact historical full-title URL without query/fragment",
+    )
     assert match is not None
     _require(match.group(1) == date, "URL date does not match selection date")
     _require(int(match.group(2)) == title, "URL title does not match selection title")
@@ -134,15 +147,34 @@ def validate_request(request: dict[str, Any]) -> dict[str, Any]:
     bounds = request.get("bounds")
     _require(isinstance(bounds, dict), "bounds block missing")
     max_bytes = bounds.get("max_response_bytes")
-    _require(isinstance(max_bytes, int) and 1 <= max_bytes <= 32 * 1024 * 1024, "max_response_bytes out of bounded range")
-    _require(bounds.get("acquisitions_required") == 2, "exactly two acquisitions are required")
-    _require(bounds.get("timeout_seconds") in range(1, 121), "timeout_seconds out of range")
+    _require(
+        isinstance(max_bytes, int) and 1 <= max_bytes <= 32 * 1024 * 1024,
+        "max_response_bytes out of bounded range",
+    )
+    _require(
+        bounds.get("acquisitions_required") == 2,
+        "exactly two acquisitions are required",
+    )
+    _require(
+        bounds.get("timeout_seconds") in range(1, 121),
+        "timeout_seconds out of range",
+    )
     _require(bounds.get("allow_redirects") is False, "redirects must fail closed")
-    _require(bounds.get("require_identical_bytes") is True, "byte equality must be required")
+    _require(
+        bounds.get("require_identical_bytes") is True,
+        "byte equality must be required",
+    )
     _require(bounds.get("require_xml_parse") is True, "XML parse must be required")
 
     claims = request.get("claims")
-    _require(claims == ZERO_CLAIMS, "materialization request cannot grant scientific/training credit")
+    _require(
+        claims == ZERO_CLAIMS,
+        "materialization request cannot grant scientific/training credit",
+    )
+    _require(
+        identity == EXPECTED_REQUEST_IDENTITY_SHA256,
+        "request identity drifted from pinned v1 authority",
+    )
     return request
 
 
@@ -176,6 +208,10 @@ def _fetch_once(url: str, max_bytes: int, timeout_seconds: int) -> FetchResult:
 
 
 def _xml_stats(raw: bytes) -> dict[str, Any]:
+    _require(
+        FORBIDDEN_XML_DECL_RE.search(raw) is None,
+        "XML DTD/entity declarations are prohibited",
+    )
     try:
         root = ET.fromstring(raw)
     except ET.ParseError as exc:
@@ -218,7 +254,10 @@ def materialize(
     acquisitions = [first, second]
     for index, result in enumerate(acquisitions, start=1):
         _require(result.status == 200, f"acquisition {index} returned HTTP {result.status}")
-        _require(result.final_url == url, f"acquisition {index} redirected or changed final URL")
+        _require(
+            result.final_url == url,
+            f"acquisition {index} redirected or changed final URL",
+        )
         _require(
             result.content_type.lower() in ALLOWED_CONTENT_TYPES,
             f"acquisition {index} unexpected content type {result.content_type!r}",
