@@ -53,8 +53,15 @@ def test_chronological_uses_training_progress_not_publication_order() -> None:
 def test_chronological_rejects_equal_progress_distinct_artifacts() -> None:
     a = _candidate("a", 4, 400)
     b = _candidate("b", 4, 400)
-    with pytest.raises(CheckpointCompatibilityError, match="ambiguous chronological"):
+    with pytest.raises(CheckpointCompatibilityError, match="equal training progress"):
         select_chronological([a, b])
+
+
+def test_selection_rejects_equal_progress_distinct_artifacts_for_best_too() -> None:
+    a = _candidate("a", 4, 400, metric_name="validation_loss", metric_value=1.1)
+    b = _candidate("b", 4, 400, metric_name="validation_loss", metric_value=1.0)
+    with pytest.raises(CheckpointCompatibilityError, match="equal training progress"):
+        select_best([a, b], metric_name="validation_loss", mode="min")
 
 
 def test_selection_rejects_cross_lineage_candidates() -> None:
@@ -69,6 +76,27 @@ def test_selection_rejects_duplicate_checkpoint_ids() -> None:
     b = _candidate("same", 5, 500)
     with pytest.raises(CheckpointCompatibilityError, match="duplicate checkpoint_id"):
         select_chronological([a, b])
+
+
+@pytest.mark.parametrize(
+    ("left_step", "left_tokens", "right_step", "right_tokens"),
+    [
+        (5, 400, 4, 500),
+        (4, 500, 5, 400),
+        (4, 400, 4, 500),
+        (4, 400, 5, 400),
+    ],
+)
+def test_selection_rejects_inconsistent_progress_counters(
+    left_step: int,
+    left_tokens: int,
+    right_step: int,
+    right_tokens: int,
+) -> None:
+    left = _candidate("left", left_step, left_tokens)
+    right = _candidate("right", right_step, right_tokens)
+    with pytest.raises(CheckpointCompatibilityError, match="progress counters"):
+        select_chronological([left, right])
 
 
 def test_final_requires_explicit_completion_at_latest_progress() -> None:
