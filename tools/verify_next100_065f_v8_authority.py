@@ -16,8 +16,9 @@ import importlib.util
 import json
 import sys
 import types
+from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import Any, Callable, Mapping
+from typing import Any
 
 EXPECTED_CURRENT_MAIN = "09cfeb6da190e41e32d4476aa17d05d203e6e340"
 EXPECTED_V6_REGISTRY_BLOB = "13789effe506a815e92e4f0e22ada773d366f316"
