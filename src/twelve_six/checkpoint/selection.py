@@ -58,55 +58,32 @@ class CheckpointCandidate:
         identity = manifest.get("identity")
         if not isinstance(identity, Mapping):
             raise CheckpointCompatibilityError("checkpoint manifest identity must be a mapping")
-        checkpoint_id = _require_sha256(manifest.get("checkpoint_id"), field="checkpoint_id")
-        required = {
-            "run_manifest_hash": identity.get("run_manifest_hash"),
-            "model_spec_hash": identity.get("model_spec_hash"),
-            "tokenizer_hash": identity.get("tokenizer_hash"),
-            "dataset_manifest_hash": identity.get("dataset_manifest_hash"),
-            "training_config_hash": identity.get("training_config_hash"),
-        }
-        normalized_hashes = {
-            field: _require_sha256(value, field=field) for field, value in required.items()
-        }
-        step = identity.get("step")
-        tokens_seen = identity.get("tokens_seen")
-        if (
-            not isinstance(step, int)
-            or isinstance(step, bool)
-            or step < 0
-            or not isinstance(tokens_seen, int)
-            or isinstance(tokens_seen, bool)
-            or tokens_seen < 0
-        ):
-            raise CheckpointCompatibilityError(
-                "checkpoint progress must contain non-negative integer step/tokens_seen"
-            )
-        if not isinstance(completed, bool):
-            raise CheckpointCompatibilityError("completed must be boolean")
-        if (metric_name is None) != (metric_value is None):
-            raise CheckpointCompatibilityError(
-                "metric_name and metric_value must either both be present or both be absent"
-            )
-        if metric_name is not None:
-            if not isinstance(metric_name, str) or not metric_name.strip():
-                raise CheckpointCompatibilityError("metric_name must be a non-empty string")
-            if isinstance(metric_value, bool) or not isinstance(metric_value, (int, float)):
-                raise CheckpointCompatibilityError("metric_value must be numeric")
-            if not isfinite(float(metric_value)):
-                raise CheckpointCompatibilityError("metric_value must be finite")
-        return cls(
-            checkpoint_id=checkpoint_id,
-            run_manifest_hash=normalized_hashes["run_manifest_hash"],
-            model_spec_hash=normalized_hashes["model_spec_hash"],
-            tokenizer_hash=normalized_hashes["tokenizer_hash"],
-            dataset_manifest_hash=normalized_hashes["dataset_manifest_hash"],
-            training_config_hash=normalized_hashes["training_config_hash"],
-            step=step,
-            tokens_seen=tokens_seen,
+        candidate = cls(
+            checkpoint_id=manifest.get("checkpoint_id"),
+            run_manifest_hash=identity.get("run_manifest_hash"),
+            model_spec_hash=identity.get("model_spec_hash"),
+            tokenizer_hash=identity.get("tokenizer_hash"),
+            dataset_manifest_hash=identity.get("dataset_manifest_hash"),
+            training_config_hash=identity.get("training_config_hash"),
+            step=identity.get("step"),
+            tokens_seen=identity.get("tokens_seen"),
             completed=completed,
             metric_name=metric_name,
-            metric_value=None if metric_value is None else float(metric_value),
+            metric_value=metric_value,
+        )
+        _validate_candidate(candidate)
+        return cls(
+            checkpoint_id=candidate.checkpoint_id,
+            run_manifest_hash=candidate.run_manifest_hash,
+            model_spec_hash=candidate.model_spec_hash,
+            tokenizer_hash=candidate.tokenizer_hash,
+            dataset_manifest_hash=candidate.dataset_manifest_hash,
+            training_config_hash=candidate.training_config_hash,
+            step=candidate.step,
+            tokens_seen=candidate.tokens_seen,
+            completed=candidate.completed,
+            metric_name=candidate.metric_name,
+            metric_value=None if candidate.metric_value is None else float(candidate.metric_value),
         )
 
     @property
@@ -124,6 +101,41 @@ class CheckpointCandidate:
         return (self.tokens_seen, self.step)
 
 
+def _validate_candidate(item: CheckpointCandidate) -> None:
+    """Revalidate candidates so direct dataclass construction cannot bypass authority checks."""
+
+    _require_sha256(item.checkpoint_id, field="checkpoint_id")
+    _require_sha256(item.run_manifest_hash, field="run_manifest_hash")
+    _require_sha256(item.model_spec_hash, field="model_spec_hash")
+    _require_sha256(item.tokenizer_hash, field="tokenizer_hash")
+    _require_sha256(item.dataset_manifest_hash, field="dataset_manifest_hash")
+    _require_sha256(item.training_config_hash, field="training_config_hash")
+    if (
+        not isinstance(item.step, int)
+        or isinstance(item.step, bool)
+        or item.step < 0
+        or not isinstance(item.tokens_seen, int)
+        or isinstance(item.tokens_seen, bool)
+        or item.tokens_seen < 0
+    ):
+        raise CheckpointCompatibilityError(
+            "checkpoint progress must contain non-negative integer step/tokens_seen"
+        )
+    if not isinstance(item.completed, bool):
+        raise CheckpointCompatibilityError("completed must be boolean")
+    if (item.metric_name is None) != (item.metric_value is None):
+        raise CheckpointCompatibilityError(
+            "metric_name and metric_value must either both be present or both be absent"
+        )
+    if item.metric_name is not None:
+        if not isinstance(item.metric_name, str) or not item.metric_name.strip():
+            raise CheckpointCompatibilityError("metric_name must be a non-empty string")
+        if isinstance(item.metric_value, bool) or not isinstance(item.metric_value, (int, float)):
+            raise CheckpointCompatibilityError("metric_value must be numeric")
+        if not isfinite(float(item.metric_value)):
+            raise CheckpointCompatibilityError("metric_value must be finite")
+
+
 def _materialize(candidates: Iterable[CheckpointCandidate]) -> list[CheckpointCandidate]:
     items = list(candidates)
     if not items:
@@ -132,6 +144,8 @@ def _materialize(candidates: Iterable[CheckpointCandidate]) -> list[CheckpointCa
         raise CheckpointCompatibilityError(
             "checkpoint selection accepts only verified CheckpointCandidate records"
         )
+    for item in items:
+        _validate_candidate(item)
     lineage = items[0].lineage_key
     if any(item.lineage_key != lineage for item in items[1:]):
         raise CheckpointCompatibilityError("cannot select checkpoints across different lineages")
@@ -183,12 +197,7 @@ def _unique_extreme(
 
 
 def select_chronological(candidates: Iterable[CheckpointCandidate]) -> CheckpointCandidate:
-    """Return the unique checkpoint with greatest tokens_seen then step.
-
-    Equal progress with distinct checkpoint identities is corruption/authority
-    ambiguity, not a timestamp tie-break. Wall-clock creation time is excluded
-    intentionally because retries can publish later artifacts for older progress.
-    """
+    """Return the unique checkpoint with greatest tokens_seen then step."""
 
     items = _materialize(candidates)
     return _unique_extreme(
@@ -200,12 +209,7 @@ def select_chronological(candidates: Iterable[CheckpointCandidate]) -> Checkpoin
 
 
 def select_final(candidates: Iterable[CheckpointCandidate]) -> CheckpointCandidate:
-    """Return the unique completed checkpoint at terminal progress.
-
-    A completed checkpoint behind a newer non-completed checkpoint is rejected:
-    callers must not silently call an older artifact "final" once later training
-    progress exists in the same run lineage.
-    """
+    """Return the unique completed checkpoint at terminal progress."""
 
     items = _materialize(candidates)
     latest = select_chronological(items)
@@ -231,12 +235,7 @@ def select_best(
     metric_name: str,
     mode: str,
 ) -> CheckpointCandidate:
-    """Return the unique best evaluation-bound checkpoint.
-
-    ``mode`` is exactly ``min`` or ``max``. Missing metrics, mixed metric names,
-    non-finite values, and equal best values across different checkpoint IDs are
-    rejected instead of being resolved by arbitrary filesystem/timestamp order.
-    """
+    """Return the unique best evaluation-bound checkpoint."""
 
     items = _materialize(candidates)
     if not isinstance(metric_name, str) or not metric_name.strip():
