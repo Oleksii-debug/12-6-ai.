@@ -181,13 +181,24 @@ def assess_backend_qualification(report: Mapping[str, Any]) -> BackendQualificat
         blockers.append("bounded_benchmark_scope_mismatch")
 
     fresh_process = report.get("fresh_process_recovery")
-    fresh_process_proven = (
+    fresh_process_authority_valid = (
         isinstance(fresh_process, Mapping)
         and fresh_process.get("proven") is True
         and _valid_terminal_authority(fresh_process.get("authority"))
     )
-    if not fresh_process_proven:
+    fresh_process_scope_valid = (
+        isinstance(fresh_process, Mapping)
+        and fresh_process.get("backend_id") == REFERENCE_BACKEND
+        and fresh_process.get("exact_version") == version
+        and fresh_process.get("device") == "cpu"
+        and fresh_process.get("fresh_process_only") is True
+        and fresh_process.get("model_is_test_fixture_only") is True
+    )
+    fresh_process_proven = fresh_process_authority_valid and fresh_process_scope_valid
+    if not fresh_process_authority_valid:
         blockers.append("fresh_process_recovery_authority_missing")
+    if not fresh_process_scope_valid:
+        blockers.append("fresh_process_recovery_scope_mismatch")
 
     boundaries = report.get("truth_boundary")
     if not isinstance(boundaries, Mapping):
@@ -213,6 +224,7 @@ def assess_backend_qualification(report: Mapping[str, Any]) -> BackendQualificat
             "bounded_throughput_memory_benchmark_missing",
             "bounded_benchmark_scope_mismatch",
             "fresh_process_recovery_authority_missing",
+            "fresh_process_recovery_scope_mismatch",
         }
     }
     mechanics_reference_proven = not mechanics_blockers
