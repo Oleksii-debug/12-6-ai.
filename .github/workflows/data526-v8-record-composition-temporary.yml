@@ -101,15 +101,13 @@ jobs:
           mkdir -p /tmp/historical-a /tmp/historical-b
           (
             cd _data526_hist
-            python tools/materialize_data526_records_from_v7.py \
-              --config configs/data/data526_record_materialization_v5.json \
+            python tools/run_data526_materializer_data_only.py \
               --v7-root ../_data526_v7 \
               --data213-zip /tmp/data213-a.zip \
               --records-jsonl /tmp/historical-a/records.jsonl \
               --inventory-json /tmp/historical-a/inventory.json \
               --evidence-json /tmp/historical-a/evidence.json
-            python tools/materialize_data526_records_from_v7.py \
-              --config configs/data/data526_record_materialization_v5.json \
+            python tools/run_data526_materializer_data_only.py \
               --v7-root ../_data526_v7 \
               --data213-zip /tmp/data213-b.zip \
               --records-jsonl /tmp/historical-b/records.jsonl \
