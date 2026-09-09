@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
+import math
 import re
 from collections.abc import Collection
 from dataclasses import dataclass
@@ -59,6 +62,18 @@ def _is_positive_int(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value > 0
 
 
+def _is_finite_number(value: Any) -> bool:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    if isinstance(value, int):
+        return True
+    return math.isfinite(value)
+
+
+def _is_finite_positive_number(value: Any) -> bool:
+    return _is_finite_number(value) and value > 0
+
+
 def _valid_authority_ref(value: Any, *, require_workflow: bool = False) -> bool:
     """Require a machine-addressable exact-head GitHub evidence reference."""
     if not isinstance(value, dict):
@@ -80,6 +95,38 @@ def _valid_authority_ref(value: Any, *, require_workflow: bool = False) -> bool:
     return True
 
 
+def scientific_authority_token(
+    role: str,
+    authority: Any,
+    *,
+    require_workflow: bool = False,
+) -> str | None:
+    """Return the role-bound digest a trusted live resolver may verify out of packet."""
+    if not isinstance(role, str) or not role.strip():
+        return None
+    if not _valid_authority_ref(authority, require_workflow=require_workflow):
+        return None
+
+    payload = {
+        "role": role.strip(),
+        "repository": authority["repository"],
+        "git_sha": authority["git_sha"],
+        "evidence_sha256": authority["evidence_sha256"],
+        "terminal": True,
+        "workflow_run_id": authority.get("workflow_run_id") if require_workflow else None,
+        "workflow_conclusion": (
+            authority.get("workflow_conclusion") if require_workflow else None
+        ),
+    }
+    encoded = json.dumps(
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
 def _require_identity(blockers: list[str], value: Any, name: str) -> None:
     if not _is_sha256(value):
         blockers.append(name)
@@ -90,6 +137,28 @@ def _require_authority(
 ) -> None:
     if not _valid_authority_ref(value, require_workflow=require_workflow):
         blockers.append(name)
+
+
+def _require_scientific_authority(
+    blockers: list[str],
+    value: Any,
+    name: str,
+    role: str,
+    verified_authorities: set[str],
+    *,
+    require_workflow: bool = False,
+) -> None:
+    if not _valid_authority_ref(value, require_workflow=require_workflow):
+        blockers.append(name)
+        return
+    token = scientific_authority_token(
+        role,
+        value,
+        require_workflow=require_workflow,
+    )
+    if token is None or token not in verified_authorities:
+        base = name.removesuffix("_missing")
+        blockers.append(f"{base}_unverified")
 
 
 def _verified_ref(
@@ -150,9 +219,15 @@ def _validate_envelope(data: dict[str, Any]) -> list[str]:
 def assess_learned20m_readiness(
     data: dict[str, Any],
     *,
+    verified_scientific_authorities: Collection[str] = (),
     verified_authorization_refs: Collection[str] = (),
 ) -> ReadinessAssessment:
-    """Assess launch readiness; packet contents alone cannot grant paid authority."""
+    """Assess launch readiness; packet contents alone cannot grant scientific trust."""
+    verified_scientific = {
+        value.strip()
+        for value in verified_scientific_authorities
+        if isinstance(value, str) and value.strip()
+    }
     envelope_errors = _validate_envelope(data)
     evidence = data.get("evidence")
     if not isinstance(evidence, dict):
@@ -171,10 +246,12 @@ def assess_learned20m_readiness(
     _require_identity(local, corpus.get("packing_sha256"), "packing_identity_missing")
     if corpus.get("two_clean_builds_identical") is not True:
         local.append("two_clean_builds_not_proven")
-    _require_authority(
+    _require_scientific_authority(
         local,
         corpus.get("authority"),
         "terminal_corpus_authority_missing",
+        "corpus",
+        verified_scientific,
         require_workflow=True,
     )
 
@@ -184,10 +261,12 @@ def assess_learned20m_readiness(
     _require_identity(local, tokenizer.get("identity_sha256"), "tokenizer_identity_missing")
     if tokenizer.get("decision") not in {"TRAINED_TOKENIZER", "BYTE_BASELINE_RETAINED"}:
         local.append("tokenizer_decision_not_terminal")
-    _require_authority(
+    _require_scientific_authority(
         local,
         tokenizer.get("authority"),
         "terminal_tokenizer_authority_missing",
+        "tokenizer",
+        verified_scientific,
         require_workflow=True,
     )
 
@@ -196,16 +275,20 @@ def assess_learned20m_readiness(
     positions = ledger.get("unique_causal_loss_positions")
     if not _is_positive_int(positions):
         local.append("unique_loss_positions_not_positive")
-    _require_authority(
+    _require_scientific_authority(
         local,
         ledger.get("authority"),
         "terminal_unique_loss_ledger_authority_missing",
+        "loss_ledger",
+        verified_scientific,
         require_workflow=True,
     )
-    _require_authority(
+    _require_scientific_authority(
         local,
         ledger.get("data_budget_authority"),
         "data_budget_authority_missing",
+        "data_budget",
+        verified_scientific,
         require_workflow=True,
     )
     if ledger.get("data_budget_status") != "QUALIFIED":
@@ -216,10 +299,12 @@ def assess_learned20m_readiness(
         if isinstance(evidence.get("checkpoint_integrity"), dict)
         else {}
     )
-    _require_authority(
+    _require_scientific_authority(
         local,
         checkpoint.get("authority"),
         "checkpoint_integrity_authority_missing",
+        "checkpoint_integrity",
+        verified_scientific,
         require_workflow=True,
     )
     if checkpoint.get("status") != "PASS":
@@ -228,16 +313,20 @@ def assess_learned20m_readiness(
     evaluation = (
         evidence.get("evaluation") if isinstance(evidence.get("evaluation"), dict) else {}
     )
-    _require_authority(
+    _require_scientific_authority(
         local,
         evaluation.get("firewall_authority"),
         "evaluation_firewall_authority_missing",
+        "evaluation_firewall",
+        verified_scientific,
         require_workflow=True,
     )
-    _require_authority(
+    _require_scientific_authority(
         local,
         evaluation.get("selection_validation_authority"),
         "selection_validation_authority_missing",
+        "selection_validation",
+        verified_scientific,
         require_workflow=True,
     )
     if evaluation.get("status") != "PASS":
@@ -248,15 +337,17 @@ def assess_learned20m_readiness(
         if isinstance(evidence.get("training_recipe"), dict)
         else {}
     )
-    _require_authority(
+    _require_scientific_authority(
         local,
         recipe.get("authority"),
         "training_recipe_authority_missing",
+        "training_recipe",
+        verified_scientific,
         require_workflow=True,
     )
     if recipe.get("status") != "QUALIFIED":
         local.append("training_recipe_not_qualified")
-    if recipe.get("seed_count", 0) < 1:
+    if not _is_positive_int(recipe.get("seed_count")):
         local.append("training_seed_plan_missing")
     _require_identity(local, recipe.get("config_sha256"), "training_config_identity_missing")
     _require_identity(local, recipe.get("stopping_policy_sha256"), "stopping_policy_missing")
@@ -287,10 +378,12 @@ def assess_learned20m_readiness(
 
     compute = list(local)
     pilot = evidence.get("bounded_pilot") if isinstance(evidence.get("bounded_pilot"), dict) else {}
-    _require_authority(
+    _require_scientific_authority(
         compute,
         pilot.get("authority"),
         "bounded_pilot_authority_missing",
+        "bounded_pilot",
+        verified_scientific,
         require_workflow=True,
     )
     if pilot.get("status") != "PASS":
@@ -306,22 +399,32 @@ def assess_learned20m_readiness(
     )
     for label in ("learned_3m", "learned_10m"):
         item = scale.get(label) if isinstance(scale.get(label), dict) else {}
-        _require_authority(
+        _require_scientific_authority(
             compute,
             item.get("authority"),
             f"{label}_authority_missing",
+            label,
+            verified_scientific,
             require_workflow=True,
         )
         if item.get("status") != "PASS":
             compute.append(f"{label}_not_terminal_pass")
 
     cost = evidence.get("cost_envelope") if isinstance(evidence.get("cost_envelope"), dict) else {}
-    _require_authority(compute, cost.get("authority"), "cost_envelope_authority_missing")
+    _require_scientific_authority(
+        compute,
+        cost.get("authority"),
+        "cost_envelope_authority_missing",
+        "cost_envelope",
+        verified_scientific,
+    )
     if cost.get("status") != "ESTIMATED":
         compute.append("cost_envelope_not_estimated")
     maximum_cost = cost.get("maximum_cost_usd")
     if isinstance(maximum_cost, bool) or not isinstance(maximum_cost, (int, float)):
         compute.append("maximum_cost_missing")
+    elif not _is_finite_number(maximum_cost):
+        compute.append("maximum_cost_not_finite")
     elif maximum_cost <= 0:
         compute.append("maximum_cost_not_positive")
 
@@ -330,10 +433,12 @@ def assess_learned20m_readiness(
         if isinstance(evidence.get("independent_audit"), dict)
         else {}
     )
-    _require_authority(
+    _require_scientific_authority(
         compute,
         audit.get("authority"),
         "independent_audit_authority_missing",
+        "independent_audit",
+        verified_scientific,
         require_workflow=True,
     )
     if audit.get("status") not in {"PASS", "PASS_WITH_NOTES"}:
@@ -369,11 +474,11 @@ def assess_learned20m_readiness(
     authorized_limit = compute_auth.get("maximum_cost_usd")
     if isinstance(authorized_limit, bool) or not isinstance(authorized_limit, (int, float)):
         material.append("authorized_cost_limit_missing")
-    elif (
-        isinstance(maximum_cost, (int, float))
-        and not isinstance(maximum_cost, bool)
-        and authorized_limit < maximum_cost
-    ):
+    elif not _is_finite_number(authorized_limit):
+        material.append("authorized_cost_limit_not_finite")
+    elif authorized_limit <= 0:
+        material.append("authorized_cost_limit_not_positive")
+    elif _is_finite_positive_number(maximum_cost) and authorized_limit < maximum_cost:
         material.append("authorized_cost_below_estimated_maximum")
 
     training_auth = (
