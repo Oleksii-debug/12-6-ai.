@@ -4,7 +4,6 @@ import hashlib
 import json
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = ROOT / "configs" / "data" / "d03_rada_trees_provenance_rights_v1.json"
 EVIDENCE = (
