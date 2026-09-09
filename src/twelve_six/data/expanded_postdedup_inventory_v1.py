@@ -3,8 +3,9 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+from collections.abc import Iterable, Mapping
 from pathlib import Path
-from typing import Any, Iterable, Mapping
+from typing import Any
 
 SCHEMA = "twelve-six.expanded-postdedup-inventory.v1"
 UPSTREAM_SURVIVOR_SCHEMA = "twelve-six.expanded-global-dedup-survivors.v1"
@@ -230,7 +231,10 @@ def prepare_ephemeral_data232_rows(
             raise ValueError(f"payload row {record_id} must contain string payloads")
         payload_bytes = normalized_payload.encode("utf-8")
         comparison_bytes = comparison_payload.encode("utf-8")
-        if len(payload_bytes) != expected["payload_bytes"] or hashlib.sha256(payload_bytes).hexdigest() != expected["payload_sha256"]:
+        if (
+            len(payload_bytes) != expected["payload_bytes"]
+            or hashlib.sha256(payload_bytes).hexdigest() != expected["payload_sha256"]
+        ):
             raise ValueError(f"payload identity mismatch for {record_id}")
         if (
             len(comparison_bytes) != expected["comparison_bytes"]
