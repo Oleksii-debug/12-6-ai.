@@ -47,5 +47,14 @@ Use shared repository CI for normal swarm work. Do not create one-off Actions wo
 
 CI pressure for universal swarm work is measured from queued + in-progress Actions: GREEN <=25, AMBER 26..100, RED >=101. RED routine work prefers strong local validation plus branch/SHA/issue handoff rather than adding remote fanout; critical terminal unblock/integrity/integration evidence may still justify a remote run.
 
+### Stable validation heads
+A live-main advance alone is not a reason to merge/rebase `main` into every open PR. Once exact-head CI is queued or running, keep that PR head stable unless an actual integration requirement appears. Any PR-head change invalidates prior exact-head CI authority.
+
+A bridge/rebase plus fresh exact-head CI is required for an actual conflict/non-mergeable PR, overlap with owned or declared dependency/test/workflow/authority surfaces, an exact-base scientific/release binding, changed dependency semantics, or unresolved integration uncertainty. If live-main movement is safely disjoint, let the current exact-head CI finish and perform the full late integration check without moving the head.
+
+Before intake of a stable green head, refresh live main and PR head, require the successful CI SHA to equal the current head, require current mergeability, audit main-since-tested-base for owned and declared dependency/authority overlap, require no exact-base mismatch, and use expected-head protection or an equivalent compare-and-swap guard. If any condition is uncertain, bridge once late and rerun exact-head CI.
+
+At AMBER or RED pressure, a bridge/requeue justified only by `main moved` is prohibited. Do not repeatedly chase additional disjoint main commits while replacement CI is queued/running. Canonical detail: `docs/SWARM_VALIDATION_HEAD_STABILITY.md`.
+
 ## Scale rule
 S0-S3 prioritize proving the reusable factory. S4+ increasingly prioritize data quality, throughput, distributed training and evaluation. Post-training/reasoning infrastructure may be built early, but must not alter the clean Base lineage until the project explicitly enables it.

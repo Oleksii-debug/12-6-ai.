@@ -135,7 +135,33 @@
     "green_policy": "normal_one_pr_per_claim",
     "amber_policy": "open_pr_only_for_substantial_p0_p1_code_or_terminal_evidence_need",
     "red_policy": "prefer_branch_sha_issue_handoff_without_new_pr_unless_critical_terminal_unblock_security_or_integration",
-    "one_pr_per_claim_max": true
+    "one_pr_per_claim_max": true,
+    "validation_head_stability": {
+      "main_advance_alone_requires_bridge": false,
+      "do_not_chase_live_main_while_exact_head_ci_queued_or_running": true,
+      "pr_head_change_invalidates_prior_ci_authority": true,
+      "bridge_required_when_any": [
+        "github_reports_non_mergeable_or_conflict",
+        "live_main_changes_overlap_owned_surfaces",
+        "live_main_changes_overlap_declared_dependency_test_workflow_or_authority_surfaces",
+        "exact_scientific_or_release_authority_requires_new_base_sha",
+        "dependency_semantics_changed_or_integration_is_uncertain"
+      ],
+      "disjoint_main_advance_merge_checks": [
+        "refresh_live_main",
+        "refresh_pr_head",
+        "exact_pr_head_ci_success",
+        "successful_ci_sha_equals_current_pr_head",
+        "current_pr_mergeable",
+        "no_owned_surface_overlap",
+        "no_declared_dependency_test_workflow_or_authority_overlap",
+        "no_exact_base_authority_mismatch",
+        "expected_head_sha_or_equivalent_compare_and_swap_protection"
+      ],
+      "uncertainty_policy": "bridge_once_late_then_rerun_exact_head_ci",
+      "do_not_chase_further_disjoint_main_commits_during_replacement_ci": true,
+      "amber_red_gratuitous_bridge_requeue_prohibited": true
+    }
   },
   "stale_takeover": {
     "allowed": true,
