@@ -104,8 +104,12 @@ def _validated_retained_rows(
         inventory.get("reserved_evaluation_decontamination_complete") is False,
         "post-dedup inventory falsely claims decontamination complete",
     )
+    authorized_training_exposure = _nonnegative_int(
+        inventory.get("authorized_training_exposure"),
+        "authorized_training_exposure",
+    )
     _require(
-        inventory.get("authorized_training_exposure") == 0,
+        authorized_training_exposure == 0,
         "post-dedup inventory already grants training exposure",
     )
     for key in (
@@ -157,8 +161,12 @@ def _validated_retained_rows(
                 ),
             }
         )
+    retained_source_count = _nonnegative_int(
+        inventory.get("retained_source_count"),
+        "retained_source_count",
+    )
     _require(
-        len(rows) == inventory.get("retained_source_count"),
+        len(rows) == retained_source_count,
         "retained_source_count does not match retained_sources",
     )
     return sorted(rows, key=lambda row: row["source_id"])
