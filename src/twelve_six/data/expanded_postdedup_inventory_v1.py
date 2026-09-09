@@ -38,7 +38,13 @@ REQUIRED_ROW_KEYS = (
 
 
 def _canonical_bytes(value: Any) -> bytes:
-    return (json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8")
+    text = json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return (text + "\n").encode("utf-8")
 
 
 def _self_hash(document: Mapping[str, Any], key: str) -> str:
@@ -48,7 +54,12 @@ def _self_hash(document: Mapping[str, Any], key: str) -> str:
 
 
 def _require_hex64(value: Any, label: str) -> str:
-    if not isinstance(value, str) or len(value) != 64 or any(ch not in HEX64 for ch in value):
+    valid = (
+        isinstance(value, str)
+        and len(value) == 64
+        and not any(ch not in HEX64 for ch in value)
+    )
+    if not valid:
         raise ValueError(f"{label} must be a lowercase 64-hex SHA-256")
     return value
 
@@ -88,27 +99,38 @@ def _validate_row(row: Any, index: int) -> dict[str, Any]:
     if missing:
         raise ValueError(f"survivors[{index}] missing keys: {', '.join(missing)}")
 
+    prefix = f"survivors[{index}]"
     normalized = {
-        "record_id": _require_nonempty_string(row["record_id"], f"survivors[{index}].record_id"),
-        "source_id": _require_nonempty_string(row["source_id"], f"survivors[{index}].source_id"),
-        "family": _require_nonempty_string(row["family"], f"survivors[{index}].family"),
-        "modality": _require_nonempty_string(row["modality"], f"survivors[{index}].modality"),
-        "payload_sha256": _require_hex64(row["payload_sha256"], f"survivors[{index}].payload_sha256"),
-        "payload_bytes": _require_int(row["payload_bytes"], f"survivors[{index}].payload_bytes", minimum=1),
+        "record_id": _require_nonempty_string(row["record_id"], f"{prefix}.record_id"),
+        "source_id": _require_nonempty_string(row["source_id"], f"{prefix}.source_id"),
+        "family": _require_nonempty_string(row["family"], f"{prefix}.family"),
+        "modality": _require_nonempty_string(row["modality"], f"{prefix}.modality"),
+        "payload_sha256": _require_hex64(row["payload_sha256"], f"{prefix}.payload_sha256"),
+        "payload_bytes": _require_int(
+            row["payload_bytes"],
+            f"{prefix}.payload_bytes",
+            minimum=1,
+        ),
         "comparison_policy_id": _require_nonempty_string(
-            row["comparison_policy_id"], f"survivors[{index}].comparison_policy_id"
+            row["comparison_policy_id"],
+            f"{prefix}.comparison_policy_id",
         ),
         "comparison_sha256": _require_hex64(
-            row["comparison_sha256"], f"survivors[{index}].comparison_sha256"
+            row["comparison_sha256"],
+            f"{prefix}.comparison_sha256",
         ),
         "comparison_bytes": _require_int(
-            row["comparison_bytes"], f"survivors[{index}].comparison_bytes", minimum=0
+            row["comparison_bytes"],
+            f"{prefix}.comparison_bytes",
+            minimum=0,
         ),
         "training_eligible": row["training_eligible"],
         "evaluation_eligible": row["evaluation_eligible"],
     }
-    if normalized["training_eligible"] is not False or normalized["evaluation_eligible"] is not False:
-        raise ValueError(f"survivors[{index}] widens training/evaluation eligibility")
+    if normalized["training_eligible"] is not False:
+        raise ValueError(f"survivors[{index}] widens training eligibility")
+    if normalized["evaluation_eligible"] is not False:
+        raise ValueError(f"survivors[{index}] widens evaluation eligibility")
     return normalized
 
 
@@ -119,14 +141,22 @@ def freeze_expanded_inventory(
     expected_report_sha256: str,
     expected_survivor_authority_sha256: str,
 ) -> dict[str, Any]:
-    """Freeze an externally selected expanded-dedup survivor set without re-selecting survivors."""
-    expected_report_sha256 = _require_hex64(expected_report_sha256, "expected_report_sha256")
+    """Freeze an externally selected expanded-dedup survivor set."""
+    expected_report_sha256 = _require_hex64(
+        expected_report_sha256,
+        "expected_report_sha256",
+    )
     expected_survivor_authority_sha256 = _require_hex64(
-        expected_survivor_authority_sha256, "expected_survivor_authority_sha256"
+        expected_survivor_authority_sha256,
+        "expected_survivor_authority_sha256",
     )
 
-    report_sha = _require_hex64(report.get("report_sha256"), "report.report_sha256")
-    if report_sha != _self_hash(report, "report_sha256") or report_sha != expected_report_sha256:
+    report_sha = _require_hex64(
+        report.get("report_sha256"),
+        "report.report_sha256",
+    )
+    report_hash_matches = report_sha == _self_hash(report, "report_sha256")
+    if not report_hash_matches or report_sha != expected_report_sha256:
         raise ValueError("expanded-dedup report identity mismatch")
     _verify_zero_truth(report.get("truth_boundary"), "report.truth_boundary")
 
@@ -142,7 +172,10 @@ def freeze_expanded_inventory(
         raise ValueError("unexpected survivor authority schema")
     if report.get("survivor_authority_sha256") != survivor_sha:
         raise ValueError("report/survivor authority binding mismatch")
-    _verify_zero_truth(survivor_authority.get("truth_boundary"), "survivor_authority.truth_boundary")
+    _verify_zero_truth(
+        survivor_authority.get("truth_boundary"),
+        "survivor_authority.truth_boundary",
+    )
 
     raw_rows = survivor_authority.get("survivors")
     if not isinstance(raw_rows, list) or not raw_rows:
@@ -153,12 +186,22 @@ def freeze_expanded_inventory(
     if len(set(record_ids)) != len(record_ids):
         raise ValueError("duplicate record_id in survivor authority")
 
-    survivor_count = _require_int(report.get("survivor_count"), "report.survivor_count", minimum=1)
-    retained_bytes = _require_int(report.get("retained_payload_bytes"), "report.retained_payload_bytes", minimum=1)
-    if survivor_count != len(rows) or survivor_authority.get("survivor_count") != survivor_count:
+    survivor_count = _require_int(
+        report.get("survivor_count"),
+        "report.survivor_count",
+        minimum=1,
+    )
+    retained_bytes = _require_int(
+        report.get("retained_payload_bytes"),
+        "report.retained_payload_bytes",
+        minimum=1,
+    )
+    authority_count = survivor_authority.get("survivor_count")
+    if survivor_count != len(rows) or authority_count != survivor_count:
         raise ValueError("survivor count arithmetic mismatch")
     payload_sum = sum(row["payload_bytes"] for row in rows)
-    if retained_bytes != payload_sum or survivor_authority.get("retained_payload_bytes") != retained_bytes:
+    authority_bytes = survivor_authority.get("retained_payload_bytes")
+    if retained_bytes != payload_sum or authority_bytes != retained_bytes:
         raise ValueError("retained payload byte arithmetic mismatch")
 
     sorted_rows = sorted(rows, key=lambda row: row["record_id"])
@@ -172,13 +215,26 @@ def freeze_expanded_inventory(
         "records": sorted_rows,
         "truth_boundary": dict(ZERO_TRUTH),
     }
-    inventory["inventory_identity_sha256"] = _self_hash(inventory, "inventory_identity_sha256")
+    inventory["inventory_identity_sha256"] = _self_hash(
+        inventory,
+        "inventory_identity_sha256",
+    )
     return inventory
 
 
-def verify_inventory(inventory: Mapping[str, Any], *, expected_inventory_identity_sha256: str) -> None:
-    expected = _require_hex64(expected_inventory_identity_sha256, "expected_inventory_identity_sha256")
-    actual = _require_hex64(inventory.get("inventory_identity_sha256"), "inventory.inventory_identity_sha256")
+def verify_inventory(
+    inventory: Mapping[str, Any],
+    *,
+    expected_inventory_identity_sha256: str,
+) -> None:
+    expected = _require_hex64(
+        expected_inventory_identity_sha256,
+        "expected_inventory_identity_sha256",
+    )
+    actual = _require_hex64(
+        inventory.get("inventory_identity_sha256"),
+        "inventory.inventory_identity_sha256",
+    )
     if actual != _self_hash(inventory, "inventory_identity_sha256") or actual != expected:
         raise ValueError("retained inventory identity mismatch")
     if inventory.get("schema") != SCHEMA:
@@ -195,9 +251,11 @@ def verify_inventory(inventory: Mapping[str, Any], *, expected_inventory_identit
         raise ValueError("duplicate record_id in retained inventory")
     if inventory.get("record_count") != len(validated):
         raise ValueError("inventory record_count mismatch")
-    if inventory.get("source_count") != len({row["source_id"] for row in validated}):
+    source_count = len({row["source_id"] for row in validated})
+    if inventory.get("source_count") != source_count:
         raise ValueError("inventory source_count mismatch")
-    if inventory.get("retained_payload_bytes") != sum(row["payload_bytes"] for row in validated):
+    retained_payload_bytes = sum(row["payload_bytes"] for row in validated)
+    if inventory.get("retained_payload_bytes") != retained_payload_bytes:
         raise ValueError("inventory retained_payload_bytes mismatch")
 
 
@@ -207,8 +265,11 @@ def prepare_ephemeral_data232_rows(
     *,
     expected_inventory_identity_sha256: str,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    """Bind ephemeral payload/comparison text to the frozen inventory; evidence remains text-free."""
-    verify_inventory(inventory, expected_inventory_identity_sha256=expected_inventory_identity_sha256)
+    """Bind ephemeral payload text to a frozen inventory with text-free evidence."""
+    verify_inventory(
+        inventory,
+        expected_inventory_identity_sha256=expected_inventory_identity_sha256,
+    )
     inventory_by_id = {row["record_id"]: row for row in inventory["records"]}
 
     seen: set[str] = set()
@@ -217,7 +278,10 @@ def prepare_ephemeral_data232_rows(
     for index, payload_row in enumerate(payload_rows):
         if not isinstance(payload_row, Mapping):
             raise ValueError(f"payload_rows[{index}] must be an object")
-        record_id = _require_nonempty_string(payload_row.get("record_id"), f"payload_rows[{index}].record_id")
+        record_id = _require_nonempty_string(
+            payload_row.get("record_id"),
+            f"payload_rows[{index}].record_id",
+        )
         if record_id in seen:
             raise ValueError(f"duplicate payload row {record_id}")
         seen.add(record_id)
@@ -227,19 +291,21 @@ def prepare_ephemeral_data232_rows(
 
         normalized_payload = payload_row.get("normalized_payload")
         comparison_payload = payload_row.get("comparison_payload")
-        if not isinstance(normalized_payload, str) or not isinstance(comparison_payload, str):
+        if not isinstance(normalized_payload, str):
+            raise ValueError(f"payload row {record_id} must contain string payloads")
+        if not isinstance(comparison_payload, str):
             raise ValueError(f"payload row {record_id} must contain string payloads")
         payload_bytes = normalized_payload.encode("utf-8")
         comparison_bytes = comparison_payload.encode("utf-8")
-        if (
-            len(payload_bytes) != expected["payload_bytes"]
-            or hashlib.sha256(payload_bytes).hexdigest() != expected["payload_sha256"]
-        ):
+        payload_hash = hashlib.sha256(payload_bytes).hexdigest()
+        if len(payload_bytes) != expected["payload_bytes"]:
             raise ValueError(f"payload identity mismatch for {record_id}")
-        if (
-            len(comparison_bytes) != expected["comparison_bytes"]
-            or hashlib.sha256(comparison_bytes).hexdigest() != expected["comparison_sha256"]
-        ):
+        if payload_hash != expected["payload_sha256"]:
+            raise ValueError(f"payload identity mismatch for {record_id}")
+        comparison_hash = hashlib.sha256(comparison_bytes).hexdigest()
+        if len(comparison_bytes) != expected["comparison_bytes"]:
+            raise ValueError(f"comparison payload identity mismatch for {record_id}")
+        if comparison_hash != expected["comparison_sha256"]:
             raise ValueError(f"comparison payload identity mismatch for {record_id}")
 
         ephemeral.append(
@@ -276,10 +342,15 @@ def prepare_ephemeral_data232_rows(
         "inventory_identity_sha256": expected_inventory_identity_sha256,
         "record_count": len(binding_rows),
         "retained_payload_bytes": sum(row["payload_bytes"] for row in binding_rows),
-        "payload_binding_sha256": hashlib.sha256(_canonical_bytes(binding_rows)).hexdigest(),
+        "payload_binding_sha256": hashlib.sha256(
+            _canonical_bytes(binding_rows)
+        ).hexdigest(),
         "truth_boundary": dict(ZERO_TRUTH),
     }
-    evidence["handoff_identity_sha256"] = _self_hash(evidence, "handoff_identity_sha256")
+    evidence["handoff_identity_sha256"] = _self_hash(
+        evidence,
+        "handoff_identity_sha256",
+    )
     return ephemeral, evidence
 
 
@@ -289,7 +360,9 @@ def _write_json(path: Path, value: Mapping[str, Any]) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Freeze externally selected expanded post-dedup survivors")
+    parser = argparse.ArgumentParser(
+        description="Freeze externally selected expanded post-dedup survivors"
+    )
     parser.add_argument("--report", type=Path, required=True)
     parser.add_argument("--survivor-authority", type=Path, required=True)
     parser.add_argument("--expected-report-sha256", required=True)
