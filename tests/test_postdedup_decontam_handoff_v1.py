@@ -181,6 +181,26 @@ class PostDedupDecontamHandoffV1Tests(unittest.TestCase):
         ):
             _prepare(tampered, self.payloads)
 
+    def test_rejects_boolean_training_exposure_type_drift(self) -> None:
+        tampered = copy.deepcopy(self.inventory)
+        tampered["authorized_training_exposure"] = False
+        _rehash(tampered)
+        with self.assertRaisesRegex(
+            handoff.PostDedupDecontamHandoffError,
+            "authorized_training_exposure must be a non-negative integer",
+        ):
+            _prepare(tampered, self.payloads)
+
+    def test_rejects_float_retained_source_count_type_drift(self) -> None:
+        tampered = copy.deepcopy(self.inventory)
+        tampered["retained_source_count"] = 2.0
+        _rehash(tampered)
+        with self.assertRaisesRegex(
+            handoff.PostDedupDecontamHandoffError,
+            "retained_source_count must be a non-negative integer",
+        ):
+            _prepare(tampered, self.payloads)
+
     def test_rejects_non_utf8_comparison_payload(self) -> None:
         payloads = {"a": b"\xff"}
         inventory = _inventory(payloads)
