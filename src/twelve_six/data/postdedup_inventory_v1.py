@@ -86,7 +86,7 @@ def _v3_canonical_bytes(value: Any) -> bytes:
         sort_keys=True,
         separators=(",", ":"),
     )
-    return f"{rendered}\n".encode("utf-8")
+    return f"{rendered}\n".encode()
 
 
 def _sha256_bytes(value: bytes) -> str:

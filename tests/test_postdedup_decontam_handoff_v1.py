@@ -84,7 +84,7 @@ def _prepare(inventory: dict, payloads: dict[str, bytes]):
 class PostDedupDecontamHandoffV1Tests(unittest.TestCase):
     def setUp(self) -> None:
         self.payloads = {
-            "a": "Україна\n".encode("utf-8"),
+            "a": "Україна\n".encode(),
             "b": b"def f():\n    return 1\n",
         }
         self.inventory = _inventory(self.payloads)
