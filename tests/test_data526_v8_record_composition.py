@@ -1,3 +1,4 @@
+import importlib
 import json
 import sys
 from pathlib import Path
@@ -7,7 +8,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 
-import compose_data526_records_from_v8 as composer
+composer = importlib.import_module("compose_data526_records_from_v8")
 
 
 CONFIG = ROOT / "configs" / "data" / "data526_v8_record_composition_v1.json"
