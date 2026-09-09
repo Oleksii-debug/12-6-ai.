@@ -9,8 +9,9 @@ import hashlib
 import json
 import re
 from collections import Counter
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from typing import Any, Iterable, Literal, Mapping
+from typing import Any, Literal
 
 POLICY_VERSION = "12-6.privacy-filter-v3.frozen-20260826"
 MANIFEST_SCHEMA = "12-6.privacy-filter-v3.scan-manifest.v1"
@@ -45,7 +46,7 @@ EXAMPLE_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "example.com", "exam
 EMAIL_RE = re.compile(
     r"(?<![\w.+-])[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@"
     r"(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+[A-Z]{2,63}(?![\w.-])",
-    re.I,
+    re.IGNORECASE,
 )
 PHONE_RE = re.compile(r"(?<![\w.])(?:\+\d{1,3}[\s().-]*)?(?:\(?\d{2,4}\)?[\s.-]*){2,4}\d{2,4}(?!\w)")
 SSN_RE = re.compile(r"(?<!\d)(\d{3})-(\d{2})-(\d{4})(?!\d)")
@@ -81,7 +82,7 @@ CREDENTIAL_URL_RE = re.compile(
 UNIX_HOME_RE = re.compile(r"(?<![\w.])(?P<path>/(?:home|Users)/(?P<user>[^/\s]{1,64})/(?:[^\s\x00]{1,512}))")
 ROOT_PATH_RE = re.compile(r"(?<![\w.])(?P<path>/root/(?:[^\s\x00]{1,512}))")
 WINDOWS_HOME_RE = re.compile(r"(?i)(?<![\w])(?P<path>[A-Z]:\\Users\\(?P<user>[^\\\s]{1,64})\\[^\r\n\t\x00]{1,512})")
-SSH_PRIVATE_RE = re.compile(r"-----BEGIN (?:OPENSSH |RSA |EC |DSA |PGP )?PRIVATE KEY-----", re.I)
+SSH_PRIVATE_RE = re.compile(r"-----BEGIN (?:OPENSSH |RSA |EC |DSA |PGP )?PRIVATE KEY-----", re.IGNORECASE)
 SSH_PUBLIC_RE = re.compile(r"(?m)^\s*(?:ssh-rsa|ssh-ed25519|ecdsa-sha2-nistp\d+)\s+[A-Za-z0-9+/]{40,}={0,3}(?:\s+\S+)?\s*$")
 DB_URL_RE = re.compile(
     r"(?i)\b(?P<scheme>postgres(?:ql)?|mysql|mariadb|mongodb(?:\+srv)?|redis(?:s)?|mssql|sqlserver)://"
@@ -251,9 +252,13 @@ def detect(text: str) -> tuple[Finding, ...]:
             _append(out, "environment_secret_assignment", m.start(), m.end())
 
     for m in GENERIC_SECRET_ASSIGN_RE.finditer(text):
-        if _secretish(m.group("value"), min_len=8):
-            if not _overlaps(out, m.start(), m.end(), {"api_token", "cloud_credential", "authorization_header", "environment_secret_assignment"}):
-                _append(out, "environment_secret_assignment", m.start(), m.end())
+        if _secretish(m.group("value"), min_len=8) and not _overlaps(
+            out,
+            m.start(),
+            m.end(),
+            {"api_token", "cloud_credential", "authorization_header", "environment_secret_assignment"},
+        ):
+            _append(out, "environment_secret_assignment", m.start(), m.end())
 
     unique = {(f.detector_id, f.start, f.end): f for f in out}
     return tuple(sorted(unique.values(), key=lambda f: (f.start, f.end, f.detector_id)))
