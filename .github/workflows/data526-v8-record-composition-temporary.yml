@@ -32,8 +32,11 @@ jobs:
           fetch-depth: 1
           persist-credentials: true
 
-      - name: Prove exact current checkout
-        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - name: Prove exact current checkout and execution binding
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          echo "EXECUTION_SHA=$SOURCE_SHA" >> "$GITHUB_ENV"
 
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
@@ -56,105 +59,12 @@ jobs:
           sudo apt-get install -y --no-install-recommends poppler-utils
           pdftotext -v
 
-      - name: Bind terminal evidence to exact execution Git head
+      - name: Validate sealed current-head composer and focused regressions
         run: |
           set -euo pipefail
-          python - <<'PY'
-          from pathlib import Path
-
-          composer = Path("tools/compose_data526_records_from_v8.py")
-          text = composer.read_text(encoding="utf-8")
-          old = '''def _sha256(raw: bytes) -> str:
-              return hashlib.sha256(raw).hexdigest()
-
-
-          def _canonical_ascii(value: Any) -> bytes:
-          '''
-          new = '''def _sha256(raw: bytes) -> str:
-              return hashlib.sha256(raw).hexdigest()
-
-
-          def _validated_git_sha(value: str) -> str:
-              _require(
-                  len(value) == 40 and all(ch in "0123456789abcdef" for ch in value),
-                  "execution head SHA must be lowercase 40-hex",
-              )
-              return value
-
-
-          def _canonical_ascii(value: Any) -> bytes:
-          '''
-          if text.count(old) != 1:
-              raise SystemExit("unexpected composer SHA-helper shape")
-          text = text.replace(old, new, 1)
-
-          old = '''    parser.add_argument("--evidence-json", type=Path, required=True)
-              args = parser.parse_args()
-
-              config = _read_json(args.config)
-          '''
-          new = '''    parser.add_argument("--evidence-json", type=Path, required=True)
-              parser.add_argument("--execution-head-sha", required=True)
-              args = parser.parse_args()
-              execution_head_sha = _validated_git_sha(args.execution_head_sha)
-
-              config = _read_json(args.config)
-          '''
-          if text.count(old) != 1:
-              raise SystemExit("unexpected composer parser shape")
-          text = text.replace(old, new, 1)
-
-          old = '''        "paid_compute_used": False,
-              }
-          '''
-          new = '''        "paid_compute_used": False,
-                  "execution_head_sha": execution_head_sha,
-              }
-          '''
-          if text.count(old) != 1:
-              raise SystemExit("unexpected composer evidence shape")
-          text = text.replace(old, new, 1)
-          composer.write_text(text, encoding="utf-8")
-
-          tests = Path("tests/test_data526_v8_record_composition.py")
-          test_text = tests.read_text(encoding="utf-8")
-          if "import pytest\n" not in test_text:
-              test_text = test_text.replace(
-                  "from pathlib import Path\n\n",
-                  "from pathlib import Path\n\nimport pytest\n\n",
-                  1,
-              )
-          marker = "def test_execution_head_sha_binding_is_fail_closed():"
-          if marker not in test_text:
-              test_text += '''
-
-          def test_execution_head_sha_binding_is_fail_closed():
-              exact = "a" * 40
-              assert composer._validated_git_sha(exact) == exact
-              for invalid in ("", "a" * 39, "a" * 41, "A" * 40, "g" * 40):
-                  with pytest.raises(composer.Data526V8Error):
-                      composer._validated_git_sha(invalid)
-          '''
-          tests.write_text(test_text, encoding="utf-8")
-          PY
-          python -m compileall -q tools/compose_data526_records_from_v8.py
           python -m pytest -q tests/test_data526_v8_record_composition.py
+          python -m compileall -q tools/compose_data526_records_from_v8.py tools/materialize_data526_record_inventory_v1.py
           git diff --check
-
-      - name: Commit and publish exact execution-bound materializer
-        run: |
-          set -euo pipefail
-          test -n "${GITHUB_HEAD_REF:-}"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add tools/compose_data526_records_from_v8.py tests/test_data526_v8_record_composition.py
-          git diff --cached --quiet && { echo "expected execution-binding delta missing" >&2; exit 1; }
-          git commit -m "DATA-526: bind materialization evidence to execution head"
-          EXECUTION_SHA="$(git rev-parse HEAD)"
-          echo "EXECUTION_SHA=$EXECUTION_SHA" >> "$GITHUB_ENV"
-          git fetch --no-tags origin "$GITHUB_HEAD_REF"
-          test "$(git rev-parse FETCH_HEAD)" = "$SOURCE_SHA"
-          git push origin "HEAD:$GITHUB_HEAD_REF"
 
       - name: Checkout exact terminal V7 source materializer
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -310,6 +220,8 @@ jobs:
       - name: Commit exact terminal text-free evidence
         run: |
           set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add evidence/data526/v8/record_inventory.json evidence/data526/v8/materialization_evidence.json
           git diff --cached --quiet && { echo "expected terminal evidence delta missing" >&2; exit 1; }
           git commit -m "DATA-526: record exact V8 materialization authority"
