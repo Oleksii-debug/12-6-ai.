@@ -36,10 +36,27 @@
     "pr": 824,
     "required_report_schema": "12-6.next100-065f-global-dedup-report.v8",
     "required_survivor_schema": "12-6.next100-065f-post-dedup-survivors.v1",
-    "report_sha256": null,
-    "nested_v3_report_sha256": null,
-    "survivor_authority_sha256": null,
-    "status": "WAIT_EXACT_TERMINAL_V8_EVIDENCE"
+    "report_sha256": "942cc15af60ee36a79345beba77fec347e33ee919d8148fb319b19d9ee072e5a",
+    "nested_v3_report_sha256": "e7244cb7f6df6062dc838112b1e3e6fe87e41644a9e8b0071e93c50f1166b67d",
+    "survivor_authority_sha256": "8115b35662fa89900b37f54f7cffd5f2fa8b2f8c60a72bcb18b89c92aaade0cf",
+    "workflow_run_id": 34159790818,
+    "workflow_conclusion": "success",
+    "artifact_id": 10032510626,
+    "artifact_digest": "sha256:960c678fdbe6245658fa69c39edf355eb7b38ef39b7f8f833155c894dbd90385",
+    "status": "TERMINAL_EXACT_V8_EVIDENCE"
+  },
+  "expected_terminal_composition": {
+    "pre_dedup_source_object_count": 264,
+    "post_dedup_survivor_source_object_count": 262,
+    "historical_record_count": 48,
+    "bulk_eligible_file_count": 229,
+    "bulk_removed_record_count": 2,
+    "post_v8_record_count": 275,
+    "post_v8_payload_bytes": 6095321,
+    "removed_bulk_source_ids": [
+      "data-bulk-code1:pallets/werkzeug:src/werkzeug/__init__.py",
+      "data-bulk-code1:pallets/werkzeug:src/werkzeug/wrappers/__init__.py"
+    ]
   },
   "composition_rule": {
     "historical_records_are_selected_by_source_id": true,
