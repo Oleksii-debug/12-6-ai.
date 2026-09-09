@@ -19,7 +19,13 @@ from twelve_six.data.expanded_postdedup_inventory_v1 import (  # noqa: E402
 
 
 def canonical(value):
-    return (json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n").encode()
+    text = json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return (text + "\n").encode()
 
 
 def self_hash(value, key):
@@ -72,7 +78,10 @@ def build_valid():
         ],
         "truth_boundary": dict(ZERO_TRUTH),
     }
-    survivors["survivor_authority_sha256"] = self_hash(survivors, "survivor_authority_sha256")
+    survivors["survivor_authority_sha256"] = self_hash(
+        survivors,
+        "survivor_authority_sha256",
+    )
     report = {
         "schema": "twelve-six.expanded-global-dedup-report.v9",
         "survivor_authority_sha256": survivors["survivor_authority_sha256"],
@@ -82,8 +91,16 @@ def build_valid():
     }
     report["report_sha256"] = self_hash(report, "report_sha256")
     payloads = [
-        {"record_id": "r1", "normalized_payload": "alpha", "comparison_payload": "ALPHA"},
-        {"record_id": "r2", "normalized_payload": "beta", "comparison_payload": "BETA"},
+        {
+            "record_id": "r1",
+            "normalized_payload": "alpha",
+            "comparison_payload": "ALPHA",
+        },
+        {
+            "record_id": "r2",
+            "normalized_payload": "beta",
+            "comparison_payload": "BETA",
+        },
     ]
     return report, survivors, payloads
 
@@ -103,7 +120,7 @@ def test_freeze_consumes_external_survivors_without_local_reselection():
     _, survivors, inventory, _ = freeze_valid()
     assert [row["record_id"] for row in survivors["survivors"]] == ["r2", "r1"]
     assert [row["record_id"] for row in inventory["records"]] == ["r1", "r2"]
-    assert set(row["record_id"] for row in inventory["records"]) == {"r1", "r2"}
+    assert {row["record_id"] for row in inventory["records"]} == {"r1", "r2"}
     assert inventory["record_count"] == 2
     assert inventory["source_count"] == 1
     assert inventory["truth_boundary"] == ZERO_TRUTH
@@ -127,7 +144,10 @@ def test_survivor_authority_substitution_fails_even_when_self_consistent():
     report, survivors, _ = build_valid()
     expected = survivors["survivor_authority_sha256"]
     survivors["survivors"][0]["family"] = "substitute"
-    survivors["survivor_authority_sha256"] = self_hash(survivors, "survivor_authority_sha256")
+    survivors["survivor_authority_sha256"] = self_hash(
+        survivors,
+        "survivor_authority_sha256",
+    )
     report["survivor_authority_sha256"] = survivors["survivor_authority_sha256"]
     report["report_sha256"] = self_hash(report, "report_sha256")
     with pytest.raises(ValueError, match="external identity mismatch"):
@@ -142,7 +162,10 @@ def test_survivor_authority_substitution_fails_even_when_self_consistent():
 def test_duplicate_record_id_fails_closed():
     report, survivors, _ = build_valid()
     survivors["survivors"][1]["record_id"] = survivors["survivors"][0]["record_id"]
-    survivors["survivor_authority_sha256"] = self_hash(survivors, "survivor_authority_sha256")
+    survivors["survivor_authority_sha256"] = self_hash(
+        survivors,
+        "survivor_authority_sha256",
+    )
     report["survivor_authority_sha256"] = survivors["survivor_authority_sha256"]
     report["report_sha256"] = self_hash(report, "report_sha256")
     with pytest.raises(ValueError, match="duplicate record_id"):
@@ -157,7 +180,10 @@ def test_duplicate_record_id_fails_closed():
 def test_missing_comparison_metadata_fails_closed():
     report, survivors, _ = build_valid()
     del survivors["survivors"][0]["comparison_sha256"]
-    survivors["survivor_authority_sha256"] = self_hash(survivors, "survivor_authority_sha256")
+    survivors["survivor_authority_sha256"] = self_hash(
+        survivors,
+        "survivor_authority_sha256",
+    )
     report["survivor_authority_sha256"] = survivors["survivor_authority_sha256"]
     report["report_sha256"] = self_hash(report, "report_sha256")
     with pytest.raises(ValueError, match="missing keys"):
@@ -185,10 +211,13 @@ def test_count_and_byte_drift_fail_closed():
 def test_truth_boundary_cannot_be_widened():
     report, survivors, _ = build_valid()
     survivors["truth_boundary"]["training_eligible"] = True
-    survivors["survivor_authority_sha256"] = self_hash(survivors, "survivor_authority_sha256")
+    survivors["survivor_authority_sha256"] = self_hash(
+        survivors,
+        "survivor_authority_sha256",
+    )
     report["survivor_authority_sha256"] = survivors["survivor_authority_sha256"]
     report["report_sha256"] = self_hash(report, "report_sha256")
-    with pytest.raises(ValueError, match="training_eligible"):
+    with pytest.raises(ValueError, match="training_eligible|training eligibility"):
         freeze_expanded_inventory(
             report,
             survivors,
@@ -201,7 +230,10 @@ def test_inventory_is_deterministic_and_self_hashed():
     report, survivors, inventory1, _ = freeze_valid()
     survivors2 = copy.deepcopy(survivors)
     survivors2["survivors"].reverse()
-    survivors2["survivor_authority_sha256"] = self_hash(survivors2, "survivor_authority_sha256")
+    survivors2["survivor_authority_sha256"] = self_hash(
+        survivors2,
+        "survivor_authority_sha256",
+    )
     report2 = copy.deepcopy(report)
     report2["survivor_authority_sha256"] = survivors2["survivor_authority_sha256"]
     report2["report_sha256"] = self_hash(report2, "report_sha256")
@@ -211,9 +243,12 @@ def test_inventory_is_deterministic_and_self_hashed():
         expected_report_sha256=report2["report_sha256"],
         expected_survivor_authority_sha256=survivors2["survivor_authority_sha256"],
     )
-    assert [r["record_id"] for r in inventory1["records"]] == ["r1", "r2"]
-    assert [r["record_id"] for r in inventory2["records"]] == ["r1", "r2"]
-    verify_inventory(inventory1, expected_inventory_identity_sha256=inventory1["inventory_identity_sha256"])
+    assert [row["record_id"] for row in inventory1["records"]] == ["r1", "r2"]
+    assert [row["record_id"] for row in inventory2["records"]] == ["r1", "r2"]
+    verify_inventory(
+        inventory1,
+        expected_inventory_identity_sha256=inventory1["inventory_identity_sha256"],
+    )
 
 
 def test_ephemeral_handoff_rejects_self_consistent_inventory_substitution():
@@ -221,7 +256,10 @@ def test_ephemeral_handoff_rejects_self_consistent_inventory_substitution():
     expected = inventory["inventory_identity_sha256"]
     substituted = copy.deepcopy(inventory)
     substituted["records"][0]["family"] = "substitute"
-    substituted["inventory_identity_sha256"] = self_hash(substituted, "inventory_identity_sha256")
+    substituted["inventory_identity_sha256"] = self_hash(
+        substituted,
+        "inventory_identity_sha256",
+    )
     with pytest.raises(ValueError, match="retained inventory identity mismatch"):
         prepare_ephemeral_data232_rows(
             substituted,
@@ -230,7 +268,7 @@ def test_ephemeral_handoff_rejects_self_consistent_inventory_substitution():
         )
 
 
-def test_ephemeral_handoff_binds_payload_and_comparison_bytes_without_durable_text():
+def test_ephemeral_handoff_binds_payload_without_durable_text():
     _, _, inventory, payloads = freeze_valid()
     rows, evidence = prepare_ephemeral_data232_rows(
         inventory,
@@ -273,7 +311,13 @@ def test_missing_or_extra_payload_rows_fail_closed():
             payloads[:1],
             expected_inventory_identity_sha256=inventory["inventory_identity_sha256"],
         )
-    extra = payloads + [{"record_id": "r3", "normalized_payload": "x", "comparison_payload": "x"}]
+    extra = payloads + [
+        {
+            "record_id": "r3",
+            "normalized_payload": "x",
+            "comparison_payload": "x",
+        }
+    ]
     with pytest.raises(ValueError, match="unexpected payload row"):
         prepare_ephemeral_data232_rows(
             inventory,
