@@ -1,6 +1,11 @@
 name: D03 PR832 exact-head lint repair temporary
 
 on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/d03-pr832-lint-repair-temporary.yml"
   push:
     branches:
       - data/postdedup-inventory-v1-20260907
@@ -23,6 +28,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: true
 
@@ -42,8 +48,9 @@ jobs:
           git diff --check
 
       - name: Commit repaired source and remove temporary workflow
+        if: github.event.pull_request.head.repo.full_name == github.repository
         env:
-          TARGET_BRANCH: data/postdedup-inventory-v1-20260907
+          TARGET_BRANCH: ${{ github.event.pull_request.head.ref || github.ref_name }}
         run: |
           set -euo pipefail
           git rm .github/workflows/d03-pr832-lint-repair-temporary.yml
