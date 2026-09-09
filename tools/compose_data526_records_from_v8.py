@@ -50,6 +50,14 @@ def _sha256(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
 
 
+def _validated_git_sha(value: str) -> str:
+    _require(
+        len(value) == 40 and all(ch in "0123456789abcdef" for ch in value),
+        "execution head SHA must be lowercase 40-hex",
+    )
+    return value
+
+
 def _canonical_ascii(value: Any) -> bytes:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
 
@@ -306,7 +314,9 @@ def main() -> int:
     parser.add_argument("--records-jsonl", type=Path, required=True)
     parser.add_argument("--inventory-json", type=Path, required=True)
     parser.add_argument("--evidence-json", type=Path, required=True)
+    parser.add_argument("--execution-head-sha", required=True)
     args = parser.parse_args()
+    execution_head_sha = _validated_git_sha(args.execution_head_sha)
 
     config = _read_json(args.config)
     verify_config(config, require_terminal_v8=True)
@@ -351,6 +361,7 @@ def main() -> int:
         "optimizer_updates": 0,
         "final_test_payload_accessed": False,
         "paid_compute_used": False,
+        "execution_head_sha": execution_head_sha,
     }
     evidence = {**core, "evidence_identity_sha256": _sha256(canonical_json(core))}
     args.evidence_json.parent.mkdir(parents=True, exist_ok=True)

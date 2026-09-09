@@ -2,6 +2,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 
@@ -63,3 +65,11 @@ def test_record_count_math_tracks_only_the_two_terminal_bulk_eliminations():
         - target["bulk_removed_record_count"]
     )
     assert expected == target["post_v8_record_count"] == 275
+
+
+def test_execution_head_sha_binding_is_fail_closed():
+    exact = "a" * 40
+    assert composer._validated_git_sha(exact) == exact
+    for invalid in ("", "a" * 39, "a" * 41, "A" * 40, "g" * 40):
+        with pytest.raises(composer.Data526V8Error):
+            composer._validated_git_sha(invalid)
