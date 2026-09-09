@@ -11,8 +11,9 @@ import json
 import re
 import unicodedata
 from collections import Counter
+from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass
-from typing import Any, Literal, Mapping, Sequence
+from typing import Any, Literal
 
 QUALITY_POLICY_SCHEMA = "12-6.document-quality-policy.v1"
 QUALITY_DECISION_SCHEMA = "12-6.document-quality-decision.v1"
@@ -161,19 +162,19 @@ class QualityPolicy:
 
 def default_quality_policy() -> QualityPolicy:
     """Conservative v1 thresholds calibrated for false-removal avoidance."""
-    natural = dict(
-        min_chars=60,
-        max_chars=250_000,
-        max_symbol_ratio=0.40,
-        max_repeated_line_ratio=0.60,
-        max_url_char_ratio=0.25,
-        max_template_line_ratio=0.50,
-        max_boilerplate_line_ratio=0.50,
-        min_distinct_token_ratio=0.20,
-        max_dominant_token_ratio=0.22,
-        diversity_min_tokens=30,
-        max_other_script_letter_ratio=0.20,
-    )
+    natural = {
+        "min_chars": 60,
+        "max_chars": 250_000,
+        "max_symbol_ratio": 0.40,
+        "max_repeated_line_ratio": 0.60,
+        "max_url_char_ratio": 0.25,
+        "max_template_line_ratio": 0.50,
+        "max_boilerplate_line_ratio": 0.50,
+        "min_distinct_token_ratio": 0.20,
+        "max_dominant_token_ratio": 0.22,
+        "diversity_min_tokens": 30,
+        "max_other_script_letter_ratio": 0.20,
+    }
     return QualityPolicy(
         policy_id="d03-lightweight-uk-en-code-v1",
         uk=ModeThresholds(**natural),
