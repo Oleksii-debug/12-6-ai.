@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import re
 from collections import defaultdict
 from pathlib import Path
@@ -174,8 +175,16 @@ def assess_metrics(
     )
     for field in required:
         value = metrics.get(field)
-        if isinstance(value, bool) or not isinstance(value, (int, float)):
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(float(value))
+        ):
             raise LanguageGateError(f"missing/invalid language metric: {field}")
+    for field in ("cyrillic_letter_fraction", "tab_fraction"):
+        value = float(metrics[field])
+        if not 0.0 <= value <= 1.0:
+            raise LanguageGateError(f"out-of-range language metric: {field}")
     reasons: list[str] = []
     if float(metrics["cyrillic_letter_fraction"]) < float(
         policy["minimum_cyrillic_letter_fraction"]
