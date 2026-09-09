@@ -39,8 +39,16 @@ jobs:
         with:
           python-version: "3.11.16"
 
-      - name: Install locked validation dependencies
-        run: python -m pip install --require-hashes --no-deps -r requirements/locks/linux-x86_64/dev.lock.txt
+      - name: Checkout exact historical DATA-526 materializer
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: 70d6ccc87396d129d00771bbf0b6b29bc673bfc4
+          path: _data526_hist
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Install exact historical validation dependencies
+        run: python -m pip install --require-hashes --no-deps -r _data526_hist/requirements/locks/linux-x86_64/dev.lock.txt
 
       - name: Install deterministic PDF extractor used by historical V7 acquisition
         run: |
@@ -52,14 +60,6 @@ jobs:
         run: |
           python -m pytest -q tests/test_data526_v8_record_composition.py
           python -m compileall -q tools/compose_data526_records_from_v8.py tools/materialize_data526_record_inventory_v1.py
-
-      - name: Checkout exact historical DATA-526 materializer
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: 70d6ccc87396d129d00771bbf0b6b29bc673bfc4
-          path: _data526_hist
-          fetch-depth: 1
-          persist-credentials: false
 
       - name: Checkout exact terminal V7 source materializer
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
