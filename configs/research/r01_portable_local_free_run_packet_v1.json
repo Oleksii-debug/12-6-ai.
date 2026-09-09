@@ -52,8 +52,32 @@
     "loss_ledger": null,
     "checkpoint_integrity": null,
     "evaluation_firewall": null,
+    "decontamination": null,
+    "final_test_reservation": null,
+    "postpack_proof": null,
     "backend": null,
     "parent_checkpoint": null
+  },
+  "postpack": {
+    "schema_version": "12-6.d04-deterministic-double-pack-proof.v1",
+    "proof_identity_sha256": null,
+    "terminal_corpus_authority_identity_sha256": null,
+    "terminal_record_inventory_digest_sha256": null,
+    "terminal_payload_inventory_digest_sha256": null,
+    "stage_bindings": {
+      "normalization": null,
+      "evaluation_reservations": null,
+      "dedup": null,
+      "split": null,
+      "packing": null
+    },
+    "tokenizer_identity_sha256": null,
+    "packing_identity_sha256": null,
+    "ledger_identity_sha256": null,
+    "canonical_build_sha256": null,
+    "one_pass_unique_loss_positions": null,
+    "independent_builds_byte_identical": false,
+    "training_authorized_by_proof": false
   },
   "recipe": {
     "training_config_sha256": null,
@@ -89,6 +113,7 @@
   },
   "evaluation": {
     "evaluation_schedule_sha256": null,
+    "final_test_reservation_sha256": null,
     "selection_validation_only": true,
     "final_test_payload_access": false
   },

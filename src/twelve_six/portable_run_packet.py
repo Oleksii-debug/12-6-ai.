@@ -12,6 +12,14 @@ from twelve_six.accelerated_scaling import REPOSITORY, REQUIRED_RUN_PACKET_FIELD
 PACKET_ID = "R01-LEARNED20M-PORTABLE-RUN-PACKET-V1"
 PACKET_SCHEMA_VERSION = 1
 MODEL341_PARAMETER_COUNT = 20_613_440
+POSTPACK_PROOF_SCHEMA = "12-6.d04-deterministic-double-pack-proof.v1"
+POSTPACK_STAGE_BINDINGS = {
+    "normalization",
+    "evaluation_reservations",
+    "dedup",
+    "split",
+    "packing",
+}
 
 _GIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -49,6 +57,9 @@ REQUIRED_AUTHORITIES = {
     "loss_ledger",
     "checkpoint_integrity",
     "evaluation_firewall",
+    "decontamination",
+    "final_test_reservation",
+    "postpack_proof",
     "backend",
 }
 
@@ -157,7 +168,11 @@ def _get_mapping(data: dict[str, Any], key: str, errors: list[str]) -> dict[str,
 def validate_portable_run_contract(data: dict[str, Any]) -> list[str]:
     """Validate immutable safety/shape rules without claiming launch readiness."""
     errors: list[str] = []
-    _expect(errors, data.get("schema_version") == PACKET_SCHEMA_VERSION, "schema_version_mismatch")
+    _expect(
+        errors,
+        data.get("schema_version") == PACKET_SCHEMA_VERSION,
+        "schema_version_mismatch",
+    )
     _expect(errors, data.get("packet_id") == PACKET_ID, "packet_id_mismatch")
     _expect(
         errors,
@@ -265,6 +280,25 @@ def validate_portable_run_contract(data: dict[str, Any]) -> list[str]:
         "required_authority_slots_missing",
     )
 
+    postpack = _get_mapping(data, "postpack", errors)
+    _expect(
+        errors,
+        postpack.get("schema_version") == POSTPACK_PROOF_SCHEMA,
+        "postpack_schema_version_mismatch",
+    )
+    stage_bindings = postpack.get("stage_bindings")
+    _expect(
+        errors,
+        isinstance(stage_bindings, dict)
+        and set(stage_bindings) == POSTPACK_STAGE_BINDINGS,
+        "postpack_stage_binding_keys_invalid",
+    )
+    _expect(
+        errors,
+        postpack.get("training_authorized_by_proof") is False,
+        "postpack_proof_must_not_self_authorize_training",
+    )
+
     for key in ("recipe", "runtime", "output"):
         _get_mapping(data, key, errors)
 
@@ -289,6 +323,79 @@ def _artifact_uri_valid(value: Any) -> bool:
     if parsed.scheme not in {"file", "https", "s3", "gs", "hf"}:
         return False
     return parsed.username is None and parsed.password is None and not parsed.query
+
+
+def _validate_postpack_binding(
+    blockers: list[str],
+    data: dict[str, Any],
+) -> None:
+    identities = data.get("identities", {})
+    recipe = data.get("recipe", {})
+    authorities = data.get("authorities", {})
+    postpack = data.get("postpack", {})
+
+    proof_identity = postpack.get("proof_identity_sha256")
+    _require_sha256(blockers, proof_identity, "postpack_proof_identity_sha256")
+    proof_authority = authorities.get("postpack_proof")
+    if (
+        isinstance(proof_authority, dict)
+        and _is_sha256(proof_identity)
+        and proof_authority.get("evidence_sha256") != proof_identity
+    ):
+        blockers.append("postpack_proof_authority_mismatch")
+
+    for name in (
+        "terminal_corpus_authority_identity_sha256",
+        "terminal_record_inventory_digest_sha256",
+        "terminal_payload_inventory_digest_sha256",
+        "tokenizer_identity_sha256",
+        "packing_identity_sha256",
+        "ledger_identity_sha256",
+        "canonical_build_sha256",
+    ):
+        _require_sha256(blockers, postpack.get(name), f"postpack_{name}")
+
+    stage_bindings = postpack.get("stage_bindings")
+    if not isinstance(stage_bindings, dict) or set(stage_bindings) != POSTPACK_STAGE_BINDINGS:
+        blockers.append("postpack_stage_bindings_invalid")
+        stage_bindings = {}
+    else:
+        for name in sorted(POSTPACK_STAGE_BINDINGS):
+            _require_sha256(
+                blockers,
+                stage_bindings.get(name),
+                f"postpack_stage_binding_{name}",
+            )
+
+    positions = postpack.get("one_pass_unique_loss_positions")
+    if not _is_positive_int(positions):
+        blockers.append("postpack_one_pass_unique_loss_positions_invalid")
+    if postpack.get("independent_builds_byte_identical") is not True:
+        blockers.append("postpack_independent_builds_not_proven")
+    if postpack.get("training_authorized_by_proof") is not False:
+        blockers.append("postpack_proof_must_not_self_authorize_training")
+
+    comparisons = (
+        (stage_bindings.get("split"), identities.get("split_sha256"), "split"),
+        (postpack.get("packing_identity_sha256"), identities.get("packing_sha256"), "packing"),
+        (
+            postpack.get("tokenizer_identity_sha256"),
+            identities.get("tokenizer_sha256"),
+            "tokenizer",
+        ),
+        (
+            postpack.get("ledger_identity_sha256"),
+            identities.get("unique_loss_ledger_sha256"),
+            "ledger",
+        ),
+    )
+    for observed, expected, label in comparisons:
+        if _is_sha256(observed) and _is_sha256(expected) and observed != expected:
+            blockers.append(f"postpack_{label}_identity_mismatch")
+
+    available = recipe.get("available_unique_loss_positions")
+    if _is_positive_int(positions) and _is_positive_int(available) and positions != available:
+        blockers.append("postpack_unique_loss_positions_mismatch")
 
 
 def _launch_blockers(data: dict[str, Any]) -> list[str]:
@@ -317,6 +424,22 @@ def _launch_blockers(data: dict[str, Any]) -> list[str]:
 
     for name in REQUIRED_AUTHORITIES:
         _require_authority(blockers, authorities.get(name), name)
+
+    final_test_identity = evaluation.get("final_test_reservation_sha256")
+    _require_sha256(
+        blockers,
+        final_test_identity,
+        "final_test_reservation_sha256",
+    )
+    final_test_authority = authorities.get("final_test_reservation")
+    if (
+        isinstance(final_test_authority, dict)
+        and _is_sha256(final_test_identity)
+        and final_test_authority.get("evidence_sha256") != final_test_identity
+    ):
+        blockers.append("final_test_reservation_authority_mismatch")
+
+    _validate_postpack_binding(blockers, data)
 
     _require_sha256(
         blockers,

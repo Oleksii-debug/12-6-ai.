@@ -10,6 +10,14 @@ from typing import Any
 REPOSITORY = "Oleksii-debug/12-6-ai."
 CAMPAIGN_ID = "R01-LEARNED-20M-LAUNCH-V1"
 R01_CAMPAIGN_BLOB_SHA1 = "c50154db609d41eceb2ffc97912360df567bcc04"
+POSTPACK_PROOF_SCHEMA = "12-6.d04-deterministic-double-pack-proof.v1"
+POSTPACK_STAGE_BINDINGS = {
+    "normalization",
+    "evaluation_reservations",
+    "dedup",
+    "split",
+    "packing",
+}
 
 MODEL341_AUTHORITY = {
     "branch": "model341/20m-candidate-a-20260826",
@@ -37,9 +45,7 @@ class ReadinessAssessment:
     def as_dict(self) -> dict[str, Any]:
         return {
             "ready_for_local_free_pilot": self.ready_for_local_free_pilot,
-            "ready_for_compute_authorization_request": (
-                self.ready_for_compute_authorization_request
-            ),
+            "ready_for_compute_authorization_request": self.ready_for_compute_authorization_request,
             "material_training_authorized": self.material_training_authorized,
             "local_free_pilot_blockers": list(self.local_free_pilot_blockers),
             "compute_request_blockers": list(self.compute_request_blockers),
@@ -93,10 +99,7 @@ def _require_authority(
 
 
 def _verified_ref(
-    blockers: list[str],
-    value: Any,
-    name: str,
-    verified_refs: set[str],
+    blockers: list[str], value: Any, name: str, verified_refs: set[str]
 ) -> str | None:
     if not isinstance(value, str) or not value.strip():
         blockers.append(f"{name}_missing")
@@ -147,6 +150,213 @@ def _validate_envelope(data: dict[str, Any]) -> list[str]:
     return errors
 
 
+def _validate_decontamination(
+    blockers: list[str],
+    corpus: dict[str, Any],
+    evaluation: dict[str, Any],
+) -> None:
+    """Bind terminal decontamination to exact corpus and reserved-evaluation authorities."""
+    predecontam = corpus.get("pre_decontamination_identity_sha256")
+    _require_identity(
+        blockers,
+        predecontam,
+        "corpus_pre_decontamination_identity_missing",
+    )
+
+    decontam = (
+        evaluation.get("decontamination")
+        if isinstance(evaluation.get("decontamination"), dict)
+        else {}
+    )
+    _require_authority(
+        blockers,
+        decontam.get("authority"),
+        "decontamination_authority_missing",
+        require_workflow=True,
+    )
+    if decontam.get("status") not in {"PASS_CLEAN", "PASS_WITH_EXCLUSIONS"}:
+        blockers.append("decontamination_not_terminal_pass")
+    _require_identity(
+        blockers,
+        decontam.get("training_corpus_identity"),
+        "decontamination_training_corpus_identity_missing",
+    )
+    _require_identity(
+        blockers,
+        decontam.get("selection_validation_identity"),
+        "decontamination_selection_validation_identity_missing",
+    )
+    final_test_identity = decontam.get("final_test_identity")
+    _require_identity(
+        blockers,
+        final_test_identity,
+        "decontamination_final_test_identity_missing",
+    )
+    _require_identity(
+        blockers,
+        decontam.get("report_sha256"),
+        "decontamination_report_identity_missing",
+    )
+    if _is_sha256(predecontam) and decontam.get("training_corpus_identity") != predecontam:
+        blockers.append("decontamination_training_corpus_identity_mismatch")
+    authority = decontam.get("authority")
+    if (
+        isinstance(authority, dict)
+        and _is_sha256(decontam.get("report_sha256"))
+        and authority.get("evidence_sha256") != decontam.get("report_sha256")
+    ):
+        blockers.append("decontamination_report_authority_mismatch")
+
+    final_test_authority = evaluation.get("final_test_reservation_authority")
+    _require_authority(
+        blockers,
+        final_test_authority,
+        "final_test_reservation_authority_missing",
+        require_workflow=True,
+    )
+    if (
+        isinstance(final_test_authority, dict)
+        and _is_sha256(final_test_identity)
+        and final_test_authority.get("evidence_sha256") != final_test_identity
+    ):
+        blockers.append("final_test_reservation_authority_mismatch")
+
+    if decontam.get("hash_only_evidence") is not True:
+        blockers.append("decontamination_report_must_be_hash_only")
+    if decontam.get("final_test_outcomes_read") is not False:
+        blockers.append("decontamination_final_test_outcomes_read_must_be_false")
+    if decontam.get("model_architecture_or_hyperparameters_selected") is not False:
+        blockers.append("decontamination_model_selection_must_be_false")
+    if decontam.get("training_executed") is not False:
+        blockers.append("decontamination_training_executed_must_be_false")
+    if decontam.get("local_free_only") is not True:
+        blockers.append("decontamination_local_free_only_must_be_true")
+
+
+def _validate_postpack_proof(
+    blockers: list[str],
+    evidence: dict[str, Any],
+    corpus: dict[str, Any],
+    tokenizer: dict[str, Any],
+    ledger: dict[str, Any],
+) -> None:
+    """Require one terminal proof to bind split, packing, tokenizer and loss ledger."""
+    proof = (
+        evidence.get("postpack_proof")
+        if isinstance(evidence.get("postpack_proof"), dict)
+        else {}
+    )
+    if proof.get("schema_version") != POSTPACK_PROOF_SCHEMA:
+        blockers.append("postpack_proof_schema_mismatch")
+
+    proof_identity = proof.get("proof_identity_sha256")
+    _require_identity(blockers, proof_identity, "postpack_proof_identity_missing")
+    authority = proof.get("authority")
+    _require_authority(
+        blockers,
+        authority,
+        "postpack_proof_authority_missing",
+        require_workflow=True,
+    )
+    if (
+        isinstance(authority, dict)
+        and _is_sha256(proof_identity)
+        and authority.get("evidence_sha256") != proof_identity
+    ):
+        blockers.append("postpack_proof_authority_mismatch")
+
+    for key in (
+        "terminal_corpus_authority_identity_sha256",
+        "terminal_record_inventory_digest_sha256",
+        "terminal_payload_inventory_digest_sha256",
+        "materialization_identity_sha256",
+        "packing_identity_sha256",
+        "ledger_identity_sha256",
+        "canonical_build_sha256",
+        "build_a_canonical_sha256",
+        "build_b_canonical_sha256",
+        "tokenizer_identity_sha256",
+    ):
+        _require_identity(blockers, proof.get(key), f"postpack_{key}_missing")
+
+    stage_bindings = proof.get("stage_bindings")
+    if not isinstance(stage_bindings, dict) or set(stage_bindings) != POSTPACK_STAGE_BINDINGS:
+        blockers.append("postpack_stage_bindings_invalid")
+        stage_bindings = {}
+    else:
+        for key in sorted(POSTPACK_STAGE_BINDINGS):
+            _require_identity(
+                blockers,
+                stage_bindings.get(key),
+                f"postpack_stage_binding_{key}_missing",
+            )
+
+    positions = proof.get("one_pass_unique_nonignored_causal_loss_positions")
+    if not _is_positive_int(positions):
+        blockers.append("postpack_unique_loss_positions_not_positive")
+    matched_records = proof.get("retained_train_records_matched_to_terminal_inventory")
+    if not _is_positive_int(matched_records):
+        blockers.append("postpack_train_record_membership_count_not_positive")
+
+    required_true = (
+        "retained_train_record_membership_verified",
+        "retained_document_isolation_verified",
+        "heldout_reservation_verified",
+        "independent_builds_byte_identical",
+    )
+    for key in required_true:
+        if proof.get(key) is not True:
+            blockers.append(f"postpack_{key}_not_proven")
+    if proof.get("training_authorized_by_this_proof") is not False:
+        blockers.append("postpack_proof_must_not_self_authorize_training")
+
+    if (
+        _is_sha256(stage_bindings.get("split"))
+        and _is_sha256(corpus.get("split_sha256"))
+        and stage_bindings.get("split") != corpus.get("split_sha256")
+    ):
+        blockers.append("postpack_split_identity_mismatch")
+    if (
+        _is_sha256(proof.get("packing_identity_sha256"))
+        and _is_sha256(corpus.get("packing_sha256"))
+        and proof.get("packing_identity_sha256") != corpus.get("packing_sha256")
+    ):
+        blockers.append("postpack_packing_identity_mismatch")
+    if (
+        _is_sha256(proof.get("tokenizer_identity_sha256"))
+        and _is_sha256(tokenizer.get("identity_sha256"))
+        and proof.get("tokenizer_identity_sha256") != tokenizer.get("identity_sha256")
+    ):
+        blockers.append("postpack_tokenizer_identity_mismatch")
+    if (
+        _is_sha256(proof.get("ledger_identity_sha256"))
+        and _is_sha256(ledger.get("identity_sha256"))
+        and proof.get("ledger_identity_sha256") != ledger.get("identity_sha256")
+    ):
+        blockers.append("postpack_ledger_identity_mismatch")
+    if (
+        _is_positive_int(positions)
+        and _is_positive_int(ledger.get("unique_causal_loss_positions"))
+        and positions != ledger.get("unique_causal_loss_positions")
+    ):
+        blockers.append("postpack_unique_loss_positions_mismatch")
+    if (
+        proof.get("independent_builds_byte_identical") is True
+        and corpus.get("two_clean_builds_identical") is not True
+    ):
+        blockers.append("postpack_two_clean_build_claim_mismatch")
+
+    canonical = proof.get("canonical_build_sha256")
+    if (
+        _is_sha256(canonical)
+        and (
+            proof.get("build_a_canonical_sha256") != canonical
+            or proof.get("build_b_canonical_sha256") != canonical
+        )
+    ):
+        blockers.append("postpack_canonical_build_identity_mismatch")
+
+
 def assess_learned20m_readiness(
     data: dict[str, Any],
     *,
@@ -178,9 +388,7 @@ def assess_learned20m_readiness(
         require_workflow=True,
     )
 
-    tokenizer = (
-        evidence.get("tokenizer") if isinstance(evidence.get("tokenizer"), dict) else {}
-    )
+    tokenizer = evidence.get("tokenizer") if isinstance(evidence.get("tokenizer"), dict) else {}
     _require_identity(local, tokenizer.get("identity_sha256"), "tokenizer_identity_missing")
     if tokenizer.get("decision") not in {"TRAINED_TOKENIZER", "BYTE_BASELINE_RETAINED"}:
         local.append("tokenizer_decision_not_terminal")
@@ -211,6 +419,8 @@ def assess_learned20m_readiness(
     if ledger.get("data_budget_status") != "QUALIFIED":
         local.append("data_budget_not_qualified")
 
+    _validate_postpack_proof(local, evidence, corpus, tokenizer, ledger)
+
     checkpoint = (
         evidence.get("checkpoint_integrity")
         if isinstance(evidence.get("checkpoint_integrity"), dict)
@@ -225,9 +435,7 @@ def assess_learned20m_readiness(
     if checkpoint.get("status") != "PASS":
         local.append("checkpoint_integrity_not_terminal_pass")
 
-    evaluation = (
-        evidence.get("evaluation") if isinstance(evidence.get("evaluation"), dict) else {}
-    )
+    evaluation = evidence.get("evaluation") if isinstance(evidence.get("evaluation"), dict) else {}
     _require_authority(
         local,
         evaluation.get("firewall_authority"),
@@ -242,12 +450,9 @@ def assess_learned20m_readiness(
     )
     if evaluation.get("status") != "PASS":
         local.append("evaluation_boundary_not_terminal_pass")
+    _validate_decontamination(local, corpus, evaluation)
 
-    recipe = (
-        evidence.get("training_recipe")
-        if isinstance(evidence.get("training_recipe"), dict)
-        else {}
-    )
+    recipe = evidence.get("training_recipe") if isinstance(evidence.get("training_recipe"), dict) else {}
     _require_authority(
         local,
         recipe.get("authority"),
@@ -325,11 +530,7 @@ def assess_learned20m_readiness(
     elif maximum_cost <= 0:
         compute.append("maximum_cost_not_positive")
 
-    audit = (
-        evidence.get("independent_audit")
-        if isinstance(evidence.get("independent_audit"), dict)
-        else {}
-    )
+    audit = evidence.get("independent_audit") if isinstance(evidence.get("independent_audit"), dict) else {}
     _require_authority(
         compute,
         audit.get("authority"),

@@ -12,6 +12,7 @@
   "evidence": {
     "code": {"git_sha": null},
     "corpus": {
+      "pre_decontamination_identity_sha256": "a33baaa3a7ff7a9622dc420c1d61b0d113ab0f11588a39674996bd198845efb6",
       "manifest_sha256": null,
       "split_sha256": null,
       "packing_sha256": null,
@@ -30,10 +31,67 @@
       "data_budget_authority": null,
       "data_budget_status": "BLOCKED"
     },
+    "postpack_proof": {
+      "schema_version": "12-6.d04-deterministic-double-pack-proof.v1",
+      "authority": null,
+      "proof_identity_sha256": null,
+      "terminal_corpus_authority_identity_sha256": null,
+      "terminal_record_inventory_digest_sha256": null,
+      "terminal_payload_inventory_digest_sha256": null,
+      "stage_bindings": {
+        "normalization": null,
+        "evaluation_reservations": null,
+        "dedup": null,
+        "split": null,
+        "packing": null
+      },
+      "tokenizer_identity_sha256": null,
+      "materialization_identity_sha256": null,
+      "packing_identity_sha256": null,
+      "ledger_identity_sha256": null,
+      "canonical_build_sha256": null,
+      "build_a_canonical_sha256": null,
+      "build_b_canonical_sha256": null,
+      "one_pass_unique_nonignored_causal_loss_positions": 0,
+      "retained_train_records_matched_to_terminal_inventory": 0,
+      "retained_train_record_membership_verified": false,
+      "retained_document_isolation_verified": false,
+      "heldout_reservation_verified": false,
+      "independent_builds_byte_identical": false,
+      "training_authorized_by_this_proof": false
+    },
     "checkpoint_integrity": {"authority": null, "status": "RETEST_REQUIRED"},
     "evaluation": {
       "firewall_authority": null,
       "selection_validation_authority": null,
+      "final_test_reservation_authority": {
+        "repository": "Oleksii-debug/12-6-ai.",
+        "git_sha": "b5512b4648cb09dd052b08884dc53f291e1ce935",
+        "evidence_sha256": "86d51eb106524cd8e4d0f94d4ff6e2e3426c6321e0698279877dfc4d5fce3116",
+        "terminal": true,
+        "workflow_run_id": 32957254139,
+        "workflow_conclusion": "success"
+      },
+      "decontamination": {
+        "authority": {
+          "repository": "Oleksii-debug/12-6-ai.",
+          "git_sha": "50fc25c02164c3a0a4ccb94aba961e1cdb0764a3",
+          "evidence_sha256": "8b45147b44d6cbfadb7feb73b7719c4f0c497f1874f7b31b897fea8022ce95cc",
+          "terminal": true,
+          "workflow_run_id": 34100920038,
+          "workflow_conclusion": "success"
+        },
+        "status": "PASS_CLEAN",
+        "training_corpus_identity": "a33baaa3a7ff7a9622dc420c1d61b0d113ab0f11588a39674996bd198845efb6",
+        "selection_validation_identity": "7b97a9ab04469236dc5bc17fc80155cb43430b01c443bb6209fac090557258fd",
+        "final_test_identity": "86d51eb106524cd8e4d0f94d4ff6e2e3426c6321e0698279877dfc4d5fce3116",
+        "report_sha256": "8b45147b44d6cbfadb7feb73b7719c4f0c497f1874f7b31b897fea8022ce95cc",
+        "hash_only_evidence": true,
+        "final_test_outcomes_read": false,
+        "model_architecture_or_hyperparameters_selected": false,
+        "training_executed": false,
+        "local_free_only": true
+      },
       "status": "BLOCKED"
     },
     "training_recipe": {

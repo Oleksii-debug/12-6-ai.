@@ -231,8 +231,10 @@ def _build_candidate(
     corpus = _mapping(evidence.get("corpus"))
     tokenizer = _mapping(evidence.get("tokenizer"))
     ledger = _mapping(evidence.get("loss_ledger"))
+    postpack_evidence = _mapping(evidence.get("postpack_proof"))
     checkpoint_evidence = _mapping(evidence.get("checkpoint_integrity"))
     evaluation_evidence = _mapping(evidence.get("evaluation"))
+    decontamination_evidence = _mapping(evaluation_evidence.get("decontamination"))
     recipe_evidence = _mapping(evidence.get("training_recipe"))
 
     bindings = _mapping(overlay.get("scientific_bindings"))
@@ -265,9 +267,45 @@ def _build_candidate(
             "evaluation_firewall": copy.deepcopy(
                 evaluation_evidence.get("firewall_authority")
             ),
+            "decontamination": copy.deepcopy(decontamination_evidence.get("authority")),
+            "final_test_reservation": copy.deepcopy(
+                evaluation_evidence.get("final_test_reservation_authority")
+            ),
+            "postpack_proof": copy.deepcopy(postpack_evidence.get("authority")),
             "backend": copy.deepcopy(binding_authorities.get("backend")),
             "parent_checkpoint": copy.deepcopy(
                 checkpoint_overlay.get("parent_checkpoint_authority")
+            ),
+        }
+    )
+    packet["postpack"].update(
+        {
+            "schema_version": postpack_evidence.get("schema_version"),
+            "proof_identity_sha256": postpack_evidence.get("proof_identity_sha256"),
+            "terminal_corpus_authority_identity_sha256": postpack_evidence.get(
+                "terminal_corpus_authority_identity_sha256"
+            ),
+            "terminal_record_inventory_digest_sha256": postpack_evidence.get(
+                "terminal_record_inventory_digest_sha256"
+            ),
+            "terminal_payload_inventory_digest_sha256": postpack_evidence.get(
+                "terminal_payload_inventory_digest_sha256"
+            ),
+            "stage_bindings": copy.deepcopy(postpack_evidence.get("stage_bindings")),
+            "tokenizer_identity_sha256": postpack_evidence.get(
+                "tokenizer_identity_sha256"
+            ),
+            "packing_identity_sha256": postpack_evidence.get("packing_identity_sha256"),
+            "ledger_identity_sha256": postpack_evidence.get("ledger_identity_sha256"),
+            "canonical_build_sha256": postpack_evidence.get("canonical_build_sha256"),
+            "one_pass_unique_loss_positions": postpack_evidence.get(
+                "one_pass_unique_nonignored_causal_loss_positions"
+            ),
+            "independent_builds_byte_identical": postpack_evidence.get(
+                "independent_builds_byte_identical"
+            ),
+            "training_authorized_by_proof": postpack_evidence.get(
+                "training_authorized_by_this_proof"
             ),
         }
     )
@@ -309,6 +347,9 @@ def _build_candidate(
                 "checkpoint_every_steps"
             ),
         }
+    )
+    packet["evaluation"]["final_test_reservation_sha256"] = (
+        decontamination_evidence.get("final_test_identity")
     )
     packet["evaluation"].update(copy.deepcopy(_mapping(overlay.get("evaluation"))))
     packet["runtime"].update(copy.deepcopy(_mapping(overlay.get("runtime"))))
@@ -383,8 +424,14 @@ def bind_portable_run_packet(
     desired_packet_ready = bool(
         packet_assessment is not None
         and (
-            (mode == "FRESH_START" and packet_assessment.ready_for_initial_local_free_launch)
-            or (mode == "RESUME" and packet_assessment.ready_for_cross_provider_resume)
+            (
+                mode == "FRESH_START"
+                and packet_assessment.ready_for_initial_local_free_launch
+            )
+            or (
+                mode == "RESUME"
+                and packet_assessment.ready_for_cross_provider_resume
+            )
         )
     )
     ready = bool(

@@ -32,6 +32,30 @@ def _authority() -> dict:
     }
 
 
+def _ready_postpack() -> dict:
+    return {
+        "schema_version": "12-6.d04-deterministic-double-pack-proof.v1",
+        "proof_identity_sha256": SHA64,
+        "terminal_corpus_authority_identity_sha256": SHA64,
+        "terminal_record_inventory_digest_sha256": SHA64,
+        "terminal_payload_inventory_digest_sha256": SHA64,
+        "stage_bindings": {
+            "normalization": SHA64,
+            "evaluation_reservations": SHA64,
+            "dedup": SHA64,
+            "split": SHA64,
+            "packing": SHA64,
+        },
+        "tokenizer_identity_sha256": SHA64,
+        "packing_identity_sha256": SHA64,
+        "ledger_identity_sha256": SHA64,
+        "canonical_build_sha256": SHA64,
+        "one_pass_unique_loss_positions": 1000,
+        "independent_builds_byte_identical": True,
+        "training_authorized_by_proof": False,
+    }
+
+
 def _ready_fresh_packet() -> dict:
     data = _load()
     identities = data["identities"]
@@ -48,6 +72,7 @@ def _ready_fresh_packet() -> dict:
     for field in data["authorities"]:
         if field != "parent_checkpoint":
             data["authorities"][field] = _authority()
+    data["postpack"].update(_ready_postpack())
     data["recipe"].update(
         {
             "training_config_sha256": SHA64,
@@ -70,7 +95,12 @@ def _ready_fresh_packet() -> dict:
             "checkpoint_every_steps": 50,
         }
     )
-    data["evaluation"]["evaluation_schedule_sha256"] = SHA64
+    data["evaluation"].update(
+        {
+            "evaluation_schedule_sha256": SHA64,
+            "final_test_reservation_sha256": SHA64,
+        }
+    )
     data["runtime"].update(
         {
             "backend_id": "PROJECT_NATIVE_PYTORCH",
@@ -113,6 +143,9 @@ def test_current_template_is_valid_but_not_launch_ready() -> None:
     assert not result.ready_for_cross_provider_resume
     assert "source_git_sha_invalid" in result.launch_blockers
     assert "resource_provider_unbound" in result.launch_blockers
+    assert "final_test_reservation_sha256_invalid" in result.launch_blockers
+    assert "postpack_proof_authority_invalid" in result.launch_blockers
+    assert "postpack_proof_identity_sha256_invalid" in result.launch_blockers
 
 
 def test_packet_fields_exactly_match_accelerated_roadmap() -> None:
@@ -129,6 +162,47 @@ def test_complete_fresh_packet_is_ready_only_for_initial_launch() -> None:
     assert not result.ready_for_cross_provider_resume
     assert result.launch_blockers == ()
     assert result.resume_blockers == ("checkpoint_mode_is_not_resume",)
+
+
+def test_final_test_reservation_authority_is_required_and_exact() -> None:
+    data = _ready_fresh_packet()
+    data["authorities"]["final_test_reservation"] = None
+    result = assess_portable_run_packet(data)
+    assert not result.ready_for_initial_local_free_launch
+    assert "final_test_reservation_authority_invalid" in result.launch_blockers
+
+    data = _ready_fresh_packet()
+    data["evaluation"]["final_test_reservation_sha256"] = "c" * 64
+    result = assess_portable_run_packet(data)
+    assert not result.ready_for_initial_local_free_launch
+    assert "final_test_reservation_authority_mismatch" in result.launch_blockers
+
+
+def test_postpack_proof_authority_and_lineage_must_match_packet() -> None:
+    data = _ready_fresh_packet()
+    data["authorities"]["postpack_proof"] = None
+    result = assess_portable_run_packet(data)
+    assert not result.ready_for_initial_local_free_launch
+    assert "postpack_proof_authority_invalid" in result.launch_blockers
+
+    data = _ready_fresh_packet()
+    data["postpack"]["ledger_identity_sha256"] = "c" * 64
+    result = assess_portable_run_packet(data)
+    assert not result.ready_for_initial_local_free_launch
+    assert "postpack_ledger_identity_mismatch" in result.launch_blockers
+
+    data = _ready_fresh_packet()
+    data["postpack"]["one_pass_unique_loss_positions"] = 999
+    result = assess_portable_run_packet(data)
+    assert not result.ready_for_initial_local_free_launch
+    assert "postpack_unique_loss_positions_mismatch" in result.launch_blockers
+
+
+def test_postpack_proof_cannot_self_authorize_training() -> None:
+    data = _ready_fresh_packet()
+    data["postpack"]["training_authorized_by_proof"] = True
+    errors = validate_portable_run_contract(data)
+    assert "postpack_proof_must_not_self_authorize_training" in errors
 
 
 def test_unique_exposure_cannot_be_inflated_by_replay() -> None:
