@@ -4,7 +4,7 @@ from tools.validate_eval303_selection_validation_composite import EXPECTED, load
 
 
 def test_eval303_composite_verifies():
-    result = verify(Path('.').resolve())
+    result = verify(Path.cwd())
     assert result['status'] == 'PASS'
     assert result['selection_identity_sha256'] == EXPECTED['selection_identity_sha256']
     assert result['documents'] == 10
