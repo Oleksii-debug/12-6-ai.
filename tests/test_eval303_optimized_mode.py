@@ -6,10 +6,11 @@ import subprocess
 import sys
 from pathlib import Path
 
-from tools.validate_eval303_selection_validation_composite import MANIFEST, MEMBERSHIP, PROOF
-
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "tools" / "validate_eval303_selection_validation_composite.py"
+MANIFEST = Path("configs/evaluation/eval303_selection_validation_composite_v1.json")
+MEMBERSHIP = Path("data/evaluation/eval303/selection-validation/composite-membership.jsonl")
+PROOF = Path("evidence/eval303/data300-exact-exclusion-proof-v1.json")
 
 
 def _copy_authority(tmp_path: Path) -> None:
