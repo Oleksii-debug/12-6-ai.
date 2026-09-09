@@ -1,7 +1,6 @@
 import json
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = ROOT / "configs" / "swarm" / "swarm300_protocol_v2.json"
 AUTOPULSE = ROOT / "docs" / "AUTOPULSE_CONTROL.md"
