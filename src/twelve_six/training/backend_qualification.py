@@ -102,6 +102,7 @@ def _valid_terminal_authority(value: Any, *, expected_claim: str) -> bool:
 def assess_backend_qualification(report: Mapping[str, Any]) -> BackendQualificationAssessment:
     """Fail closed unless a report preserves the project-owned training semantics."""
     blockers: list[str] = []
+    authority_git_shas: set[str] = set()
     if report.get("schema") != SCHEMA:
         blockers.append("schema_mismatch")
     if report.get("backend_id") != REFERENCE_BACKEND:
@@ -126,8 +127,11 @@ def assess_backend_qualification(report: Mapping[str, Any]) -> BackendQualificat
     for key in _REQUIRED_PARITY:
         if parity.get(key) is not True:
             blockers.append(f"{key}_not_proven")
-        if not _valid_terminal_authority(parity_authorities.get(key), expected_claim=key):
+        authority = parity_authorities.get(key)
+        if not _valid_terminal_authority(authority, expected_claim=key):
             blockers.append(f"{key}_authority_missing")
+        else:
+            authority_git_shas.add(authority["git_sha"])
 
     runtime = report.get("runtime_probe")
     if not isinstance(runtime, Mapping):
@@ -159,6 +163,12 @@ def assess_backend_qualification(report: Mapping[str, Any]) -> BackendQualificat
     if not isinstance(benchmark, Mapping):
         benchmark = {}
     method = benchmark.get("measurement_method")
+    benchmark_authority = benchmark.get("authority")
+    benchmark_authority_valid = _valid_terminal_authority(
+        benchmark_authority, expected_claim="bounded_benchmark"
+    )
+    if benchmark_authority_valid:
+        authority_git_shas.add(benchmark_authority["git_sha"])
     benchmark_scope_valid = (
         benchmark.get("backend_id") == REFERENCE_BACKEND
         and benchmark.get("exact_version") == version
@@ -173,9 +183,7 @@ def assess_backend_qualification(report: Mapping[str, Any]) -> BackendQualificat
             _positive_finite(benchmark.get(key))
             for key in ("tokens_per_second", "step_time_seconds", "peak_ram_bytes")
         )
-        and _valid_terminal_authority(
-            benchmark.get("authority"), expected_claim="bounded_benchmark"
-        )
+        and benchmark_authority_valid
         and benchmark_scope_valid
     )
     if not benchmark_complete:
@@ -184,13 +192,18 @@ def assess_backend_qualification(report: Mapping[str, Any]) -> BackendQualificat
         blockers.append("bounded_benchmark_scope_mismatch")
 
     fresh_process = report.get("fresh_process_recovery")
+    fresh_process_authority = (
+        fresh_process.get("authority") if isinstance(fresh_process, Mapping) else None
+    )
     fresh_process_authority_valid = (
         isinstance(fresh_process, Mapping)
         and fresh_process.get("proven") is True
         and _valid_terminal_authority(
-            fresh_process.get("authority"), expected_claim="fresh_process_recovery"
+            fresh_process_authority, expected_claim="fresh_process_recovery"
         )
     )
+    if fresh_process_authority_valid:
+        authority_git_shas.add(fresh_process_authority["git_sha"])
     fresh_process_scope_valid = (
         isinstance(fresh_process, Mapping)
         and fresh_process.get("backend_id") == REFERENCE_BACKEND
@@ -204,6 +217,9 @@ def assess_backend_qualification(report: Mapping[str, Any]) -> BackendQualificat
         blockers.append("fresh_process_recovery_authority_missing")
     if not fresh_process_scope_valid:
         blockers.append("fresh_process_recovery_scope_mismatch")
+
+    if len(authority_git_shas) > 1:
+        blockers.append("authority_git_sha_cohort_mismatch")
 
     boundaries = report.get("truth_boundary")
     if not isinstance(boundaries, Mapping):
