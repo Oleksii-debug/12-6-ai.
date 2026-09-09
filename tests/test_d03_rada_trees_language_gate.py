@@ -68,6 +68,50 @@ def test_language_metrics_fail_closed_at_each_boundary(
     assert reason in reasons
 
 
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("letters", float("nan")),
+        ("cyrillic_letter_fraction", float("nan")),
+        ("ukrainian_specific_letter_count", float("inf")),
+        ("tab_fraction", float("-inf")),
+    ],
+)
+def test_non_finite_language_metrics_fail_closed(field: str, value: float) -> None:
+    metrics = {
+        "letters": 1000,
+        "cyrillic_letter_fraction": 0.99,
+        "ukrainian_specific_letter_count": 40,
+        "tab_fraction": 0.0,
+    }
+    metrics[field] = value
+    with pytest.raises(mod.LanguageGateError, match="missing/invalid language metric"):
+        mod.assess_metrics(metrics, policy())
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("cyrillic_letter_fraction", -0.01),
+        ("cyrillic_letter_fraction", 1.01),
+        ("tab_fraction", -0.01),
+        ("tab_fraction", 1.01),
+    ],
+)
+def test_fraction_metrics_outside_unit_interval_fail_closed(
+    field: str, value: float
+) -> None:
+    metrics = {
+        "letters": 1000,
+        "cyrillic_letter_fraction": 0.99,
+        "ukrainian_specific_letter_count": 40,
+        "tab_fraction": 0.0,
+    }
+    metrics[field] = value
+    with pytest.raises(mod.LanguageGateError, match="out-of-range language metric"):
+        mod.assess_metrics(metrics, policy())
+
+
 def test_missing_metric_fails_closed() -> None:
     with pytest.raises(mod.LanguageGateError, match="missing/invalid language metric"):
         mod.assess_metrics(
