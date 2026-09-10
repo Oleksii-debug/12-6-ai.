@@ -9,7 +9,7 @@ import json
 import re
 import unicodedata
 import urllib.request
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -20,9 +20,19 @@ RIGHTS_PR = 769
 RIGHTS_HEAD = "327a5364f7729f3ffdfc2f8079d02fb7a54638d2"
 SOURCE_DATASET = "common-pile/caselaw_access_project"
 SOURCE_REVISION = "31e65135501af50f8285b52489bc3b39fd0fc5d5"
-SOURCE_FILE = "cap_00044.jsonl.gz"
-SOURCE_SHA256 = "e04bdff817b34d5fd2ab0b4aff272adfe6e863aacef7d4cd24db47e4b7c8db33"
-SOURCE_BYTES = 9_441_419
+SOURCE_OBJECTS = (
+    {
+        "file": "cap_00044.jsonl.gz",
+        "sha256": "e04bdff817b34d5fd2ab0b4aff272adfe6e863aacef7d4cd24db47e4b7c8db33",
+        "bytes": 9_441_419,
+    },
+    {
+        "file": "cap_00043.jsonl.gz",
+        "sha256": "f299c45effc957e1e02d3930e68c5d6dc643eb9d585093ff7445f36095c8531f",
+        "bytes": 10_476_512,
+    },
+)
+SOURCE_ORDERING_POLICY = "PRESERVE_ORIGINAL_CAP_00044_THEN_APPEND_CAP_00043"
 SOURCE_FAMILY = "en.common-pile.caselaw"
 SOURCE_FIELDS = ("Caselaw Access Project", "Court Listener", "CourtListener")
 EXPECTED_FIELDS = ("id", "source", "added", "created", "metadata", "text")
@@ -84,6 +94,31 @@ def canonical(value: Any) -> bytes:
     return (
         json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n"
     ).encode("utf-8")
+
+
+def _expected_source() -> dict[str, Any]:
+    objects = []
+    for source_object in SOURCE_OBJECTS:
+        name = str(source_object["file"])
+        objects.append(
+            {
+                "file": name,
+                "url": (
+                    f"https://huggingface.co/datasets/{SOURCE_DATASET}/resolve/"
+                    f"{SOURCE_REVISION}/{name}"
+                ),
+                "sha256": source_object["sha256"],
+                "bytes": source_object["bytes"],
+            }
+        )
+    return {
+        "dataset": SOURCE_DATASET,
+        "revision": SOURCE_REVISION,
+        "ordering_policy": SOURCE_ORDERING_POLICY,
+        "objects": objects,
+        "family": SOURCE_FAMILY,
+        "allowed_source_fields": list(SOURCE_FIELDS),
+    }
 
 
 def _validate_rights_registry(cfg: Mapping[str, Any]) -> dict[str, Any]:
@@ -149,20 +184,7 @@ def load_config(path: Path = CONFIG) -> dict[str, Any]:
     require(isinstance(cfg, dict), "config root must be object")
     require(cfg.get("schema_version") == SCHEMA, "schema drift")
     require(cfg.get("execution_profile") == "LOCAL_FREE", "LOCAL_FREE boundary drift")
-    expected_source = {
-        "dataset": SOURCE_DATASET,
-        "revision": SOURCE_REVISION,
-        "file": SOURCE_FILE,
-        "url": (
-            "https://huggingface.co/datasets/common-pile/caselaw_access_project/resolve/"
-            f"{SOURCE_REVISION}/{SOURCE_FILE}"
-        ),
-        "sha256": SOURCE_SHA256,
-        "bytes": SOURCE_BYTES,
-        "family": SOURCE_FAMILY,
-        "allowed_source_fields": list(SOURCE_FIELDS),
-    }
-    require(cfg["source"] == expected_source, "source identity drift")
+    require(cfg["source"] == _expected_source(), "source identity/order drift")
     contract = cfg["record_contract"]
     require(contract["fields"] == list(EXPECTED_FIELDS), "record field contract drift")
     require(contract["metadata_license_exact"] == LICENSE_EXACT, "license contract drift")
@@ -281,74 +303,129 @@ def _source_file_identity(path: Path) -> tuple[int, str]:
     return size, digest.hexdigest()
 
 
+def _validate_source_vector(
+    source_gzips: Sequence[Path], cfg: Mapping[str, Any]
+) -> list[dict[str, Any]]:
+    expected = cfg["source"]["objects"]
+    require(len(source_gzips) == len(expected), "source vector cardinality drift")
+    identities: list[dict[str, Any]] = []
+    for path, source_object in zip(source_gzips, expected, strict=True):
+        require(path.name == source_object["file"], f"source order/file drift: {path.name}")
+        source_size, source_hash = _source_file_identity(path)
+        require(
+            source_size == source_object["bytes"],
+            f"source byte count mismatch for {source_object['file']}: {source_size}",
+        )
+        require(
+            source_hash == source_object["sha256"],
+            f"source SHA-256 mismatch: {source_object['file']}",
+        )
+        identities.append(
+            {
+                "file": source_object["file"],
+                "bytes": source_size,
+                "sha256": source_hash,
+            }
+        )
+    return identities
+
+
 def materialize(
-    source_gzip: Path,
+    source_gzips: Sequence[Path],
     candidate_jsonl: Path,
     report_path: Path,
     cfg: Mapping[str, Any],
 ) -> dict[str, Any]:
-    source_size, source_hash = _source_file_identity(source_gzip)
-    require(source_size == SOURCE_BYTES, f"source byte count mismatch: {source_size}")
-    require(source_hash == SOURCE_SHA256, "source SHA-256 mismatch")
+    source_gzips = list(source_gzips)
+    source_identities = _validate_source_vector(source_gzips, cfg)
 
     seen_ids: set[str] = set()
     seen_text_hashes: set[str] = set()
     retained: list[dict[str, Any]] = []
     dispositions: dict[str, int] = {}
     source_kind_counts: dict[str, int] = {}
+    per_source: dict[str, dict[str, int]] = {}
     candidate_text_bytes = 0
     decompressed_bytes = 0
     rows_scanned = 0
-    cap_reached = False
+    candidate_cap_reached = False
+    scan_budget_reached = False
+    next_scan_bytes_if_budget_exceeded: int | None = None
+    stop = False
 
     try:
-        with gzip.open(source_gzip, "rb") as handle:
-            while True:
-                line = handle.readline(MAX_LINE_BYTES + 1)
-                if not line:
-                    break
-                decompressed_bytes += len(line)
-                require(len(line) <= MAX_LINE_BYTES, "JSONL line exceeds safety envelope")
-                require(
-                    decompressed_bytes <= MAX_SCANNED_BYTES,
-                    "decompressed scan envelope exceeded",
-                )
-                rows_scanned += 1
-                try:
-                    record = json.loads(line.decode("utf-8"))
-                except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-                    raise CandidateError(f"invalid UTF-8 JSONL at row {rows_scanned}") from exc
-                require(isinstance(record, Mapping), "JSONL row must be object")
-                raw_id = record.get("id")
-                require(isinstance(raw_id, str), "record id missing")
-                require(raw_id not in seen_ids, f"duplicate source record id: {raw_id}")
-                seen_ids.add(raw_id)
-                ok, reason, candidate = assess_record(record, cfg)
-                if not ok:
-                    dispositions[reason] = dispositions.get(reason, 0) + 1
-                    continue
-                require(candidate is not None, "accepted row missing candidate payload")
-                digest = candidate["normalized_sha256"]
-                if digest in seen_text_hashes:
-                    dispositions["exact_normalized_duplicate"] = (
-                        dispositions.get("exact_normalized_duplicate", 0) + 1
-                    )
-                    continue
-                next_bytes = candidate_text_bytes + candidate["normalized_utf8_bytes"]
-                if next_bytes > MAX_CANDIDATE_BYTES:
-                    cap_reached = True
-                    break
-                seen_text_hashes.add(digest)
-                retained.append(candidate)
-                candidate_text_bytes = next_bytes
-                dispositions["accepted"] = dispositions.get("accepted", 0) + 1
-                kind = str(candidate["source_kind"])
-                source_kind_counts[kind] = source_kind_counts.get(kind, 0) + 1
-                if candidate_text_bytes >= MAX_CANDIDATE_BYTES - 8_192:
-                    cap_reached = True
-                    break
+        for source_gzip, source_object in zip(
+            source_gzips, cfg["source"]["objects"], strict=True
+        ):
+            source_stats = {
+                "rows": 0,
+                "decompressed_bytes": 0,
+                "accepted": 0,
+                "accepted_normalized_utf8_bytes": 0,
+            }
+            with gzip.open(source_gzip, "rb") as handle:
+                while not stop:
+                    line = handle.readline(MAX_LINE_BYTES + 1)
+                    if not line:
+                        break
+                    require(len(line) <= MAX_LINE_BYTES, "JSONL line exceeds safety envelope")
+                    prospective = decompressed_bytes + len(line)
+                    if prospective > MAX_SCANNED_BYTES:
+                        scan_budget_reached = True
+                        next_scan_bytes_if_budget_exceeded = prospective
+                        stop = True
+                        break
+                    decompressed_bytes = prospective
+                    source_stats["decompressed_bytes"] += len(line)
+                    rows_scanned += 1
+                    source_stats["rows"] += 1
+                    try:
+                        record = json.loads(line.decode("utf-8"))
+                    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                        raise CandidateError(
+                            f"invalid UTF-8 JSONL at source {source_object['file']} "
+                            f"row {source_stats['rows']}"
+                        ) from exc
+                    require(isinstance(record, Mapping), "JSONL row must be object")
+                    raw_id = record.get("id")
+                    require(isinstance(raw_id, str), "record id missing")
+                    require(raw_id not in seen_ids, f"duplicate source record id: {raw_id}")
+                    seen_ids.add(raw_id)
+                    ok, reason, candidate = assess_record(record, cfg)
+                    if not ok:
+                        dispositions[reason] = dispositions.get(reason, 0) + 1
+                        continue
+                    require(candidate is not None, "accepted row missing candidate payload")
+                    digest = candidate["normalized_sha256"]
+                    if digest in seen_text_hashes:
+                        dispositions["exact_normalized_duplicate"] = (
+                            dispositions.get("exact_normalized_duplicate", 0) + 1
+                        )
+                        continue
+                    next_bytes = candidate_text_bytes + candidate["normalized_utf8_bytes"]
+                    if next_bytes > MAX_CANDIDATE_BYTES:
+                        candidate_cap_reached = True
+                        stop = True
+                        break
+                    seen_text_hashes.add(digest)
+                    retained.append(candidate)
+                    candidate_text_bytes = next_bytes
+                    dispositions["accepted"] = dispositions.get("accepted", 0) + 1
+                    kind = str(candidate["source_kind"])
+                    source_kind_counts[kind] = source_kind_counts.get(kind, 0) + 1
+                    source_stats["accepted"] += 1
+                    source_stats["accepted_normalized_utf8_bytes"] += candidate[
+                        "normalized_utf8_bytes"
+                    ]
+                    if candidate_text_bytes >= MAX_CANDIDATE_BYTES - 8_192:
+                        candidate_cap_reached = True
+                        stop = True
+                        break
+            per_source[str(source_object["file"])] = source_stats
+            if stop:
+                break
     except (OSError, EOFError) as exc:
-        raise CandidateError("cannot decode pinned gzip shard") from exc
+        raise CandidateError("cannot decode pinned gzip source vector") from exc
 
     require(candidate_text_bytes >= MIN_CANDIDATE_BYTES, "candidate byte floor not reached")
     require(bool(retained), "candidate retained zero rows")
@@ -361,9 +438,8 @@ def materialize(
         "schema_version": REPORT_SCHEMA,
         "source_dataset": SOURCE_DATASET,
         "source_revision": SOURCE_REVISION,
-        "source_file": SOURCE_FILE,
-        "source_sha256": SOURCE_SHA256,
-        "source_bytes": SOURCE_BYTES,
+        "source_ordering_policy": SOURCE_ORDERING_POLICY,
+        "source_objects": source_identities,
         "source_family": SOURCE_FAMILY,
         "rights_authority_pr": RIGHTS_PR,
         "rights_authority_head": RIGHTS_HEAD,
@@ -373,12 +449,15 @@ def materialize(
         "upstream_license_signal": LICENSE_EXACT,
         "source_rows_scanned": rows_scanned,
         "decompressed_bytes_scanned": decompressed_bytes,
-        "candidate_cap_reached": cap_reached,
+        "next_scan_bytes_if_budget_exceeded": next_scan_bytes_if_budget_exceeded,
+        "scan_budget_reached": scan_budget_reached,
+        "candidate_cap_reached": candidate_cap_reached,
         "retained_records": len(retained),
         "retained_normalized_utf8_bytes": candidate_text_bytes,
         "candidate_jsonl_sha256": sha256(payload),
         "source_kind_counts": dict(sorted(source_kind_counts.items())),
         "disposition_counts": dict(sorted(dispositions.items())),
+        "per_source": per_source,
         "source_level_project_review_complete": False,
         "global_dedup_completed": False,
         "reserved_evaluation_decontamination_completed": False,
@@ -401,41 +480,57 @@ def materialize(
     return report
 
 
-def download_exact(cfg: Mapping[str, Any], output: Path) -> None:
-    request = urllib.request.Request(
-        cfg["source"]["url"],
-        headers={"User-Agent": "12-6-ai-D03-CommonPile-Caselaw/1"},
-    )
-    partial = output.with_suffix(output.suffix + ".partial")
-    digest = hashlib.sha256()
-    total = 0
-    try:
-        output.parent.mkdir(parents=True, exist_ok=True)
-        with (
-            urllib.request.urlopen(request, timeout=120) as response,
-            partial.open("wb") as destination,
-        ):
-            while True:
-                chunk = response.read(1024 * 1024)
-                if not chunk:
-                    break
-                total += len(chunk)
-                require(total <= SOURCE_BYTES, "download exceeds pinned source size")
-                digest.update(chunk)
-                destination.write(chunk)
-        require(total == SOURCE_BYTES, f"downloaded source size mismatch: {total}")
-        require(digest.hexdigest() == SOURCE_SHA256, "downloaded source SHA-256 mismatch")
-        partial.replace(output)
-    except OSError as exc:
-        raise CandidateError("exact source download failed") from exc
-    finally:
-        if partial.exists():
-            partial.unlink()
+def download_exact(cfg: Mapping[str, Any], outputs: Sequence[Path]) -> None:
+    outputs = list(outputs)
+    objects = cfg["source"]["objects"]
+    require(len(outputs) == len(objects), "download target vector cardinality drift")
+    for source_object, output in zip(objects, outputs, strict=True):
+        require(output.name == source_object["file"], f"download target order/file drift: {output}")
+        request = urllib.request.Request(
+            source_object["url"],
+            headers={"User-Agent": "12-6-ai-D03-CommonPile-Caselaw/2"},
+        )
+        partial = output.with_suffix(output.suffix + ".partial")
+        digest = hashlib.sha256()
+        total = 0
+        try:
+            output.parent.mkdir(parents=True, exist_ok=True)
+            with (
+                urllib.request.urlopen(request, timeout=120) as response,
+                partial.open("wb") as destination,
+            ):
+                while True:
+                    chunk = response.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    total += len(chunk)
+                    require(
+                        total <= source_object["bytes"],
+                        f"download exceeds pinned source size: {source_object['file']}",
+                    )
+                    digest.update(chunk)
+                    destination.write(chunk)
+            require(
+                total == source_object["bytes"],
+                f"downloaded source size mismatch for {source_object['file']}: {total}",
+            )
+            require(
+                digest.hexdigest() == source_object["sha256"],
+                f"downloaded source SHA-256 mismatch: {source_object['file']}",
+            )
+            partial.replace(output)
+        except OSError as exc:
+            raise CandidateError(
+                f"exact source download failed: {source_object['file']}"
+            ) from exc
+        finally:
+            if partial.exists():
+                partial.unlink()
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--source-gzip", type=Path, required=True)
+    parser.add_argument("--source-gzip", type=Path, action="append", required=True)
     parser.add_argument("--candidate-jsonl", type=Path, required=True)
     parser.add_argument("--report", type=Path, required=True)
     parser.add_argument("--config", type=Path, default=CONFIG)

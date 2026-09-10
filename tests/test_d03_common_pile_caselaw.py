@@ -23,9 +23,9 @@ def make_record(record_id: str, text: str | None = None, source: str | None = No
         text = (
             "This court opinion explains the procedural history, governing legal standard, "
             "record evidence, judicial reasoning, and final disposition in a public case. "
-            "The synthetic fixture contains ordinary English prose to exercise "
-            "deterministic normalization and candidate selection without private "
-            f"information. Record {record_id}."
+            "The synthetic fixture contains ordinary English prose to exercise deterministic "
+            "normalization and candidate selection without private information. "
+            f"Record {record_id}."
         )
     return {
         "id": record_id,
@@ -42,15 +42,46 @@ def make_record(record_id: str, text: str | None = None, source: str | None = No
 
 
 def write_gzip(path: Path, records: list[dict]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
     with gzip.open(path, "wb") as handle:
         for row in records:
             handle.write(json.dumps(row, ensure_ascii=False, sort_keys=True).encode() + b"\n")
 
 
-def test_checked_in_config_binds_exact_source_and_zero_credit() -> None:
+def source_paths(tmp_path: Path, first: list[dict], second: list[dict]) -> list[Path]:
+    paths = [
+        tmp_path / "cap_00044.jsonl.gz",
+        tmp_path / "cap_00043.jsonl.gz",
+    ]
+    write_gzip(paths[0], first)
+    write_gzip(paths[1], second)
+    return paths
+
+
+def fake_identities(monkeypatch: pytest.MonkeyPatch) -> None:
+    expected = {
+        item["file"]: (item["bytes"], item["sha256"]) for item in mod.SOURCE_OBJECTS
+    }
+    monkeypatch.setattr(mod, "_source_file_identity", lambda path: expected[path.name])
+
+
+def relax_capacity(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(mod, "MIN_CANDIDATE_BYTES", 1)
+    monkeypatch.setattr(mod, "MAX_CANDIDATE_BYTES", 100_000)
+    monkeypatch.setattr(mod, "MAX_SCANNED_BYTES", 100_000)
+
+
+def test_checked_in_config_binds_exact_ordered_source_vector_and_zero_credit() -> None:
     cfg = load()
-    assert cfg["source"]["sha256"] == mod.SOURCE_SHA256
-    assert cfg["source"]["bytes"] == 9_441_419
+    assert cfg["source"]["ordering_policy"] == mod.SOURCE_ORDERING_POLICY
+    assert [row["file"] for row in cfg["source"]["objects"]] == [
+        "cap_00044.jsonl.gz",
+        "cap_00043.jsonl.gz",
+    ]
+    assert cfg["source"]["objects"][0]["bytes"] == 9_441_419
+    assert cfg["source"]["objects"][1]["bytes"] == 10_476_512
+    assert cfg["source"]["objects"][0]["sha256"] == mod.SOURCE_OBJECTS[0]["sha256"]
+    assert cfg["source"]["objects"][1]["sha256"] == mod.SOURCE_OBJECTS[1]["sha256"]
     assert cfg["claim_boundary"]["training_authorized_bytes"] == 0
     assert cfg["claim_boundary"]["source_level_project_review_complete"] is False
     assert cfg["claim_boundary"]["training_eligible"] is False
@@ -79,6 +110,15 @@ def test_policy_mutation_fails_closed(
         mod.load_config(path)
 
 
+def test_source_order_mutation_fails_closed(tmp_path: Path) -> None:
+    cfg = load()
+    cfg["source"]["objects"].reverse()
+    path = tmp_path / "reordered.json"
+    path.write_text(json.dumps(cfg), encoding="utf-8")
+    with pytest.raises(mod.CandidateError, match="source identity/order drift"):
+        mod.load_config(path)
+
+
 def test_rights_registry_cannot_self_authorize_training(tmp_path: Path) -> None:
     cfg = load()
     registry_path = Path(cfg["rights_authority"]["registry_path"])
@@ -94,12 +134,12 @@ def test_rights_registry_cannot_self_authorize_training(tmp_path: Path) -> None:
 
 
 def test_valid_record_is_candidate_only() -> None:
-    cfg = load()
-    ok, reason, candidate = mod.assess_record(make_record("case/0001.html"), cfg)
+    ok, reason, candidate = mod.assess_record(make_record("case/0001.html"), load())
     assert ok is True
     assert reason == "accepted"
     assert candidate is not None
     assert candidate["training_eligible"] is False
+    assert candidate["evaluation_eligible"] is False
     assert candidate["rights_basis"].endswith("REVIEW_REQUIRED")
 
 
@@ -153,25 +193,21 @@ def test_non_english_record_is_rejected() -> None:
     assert reason in {"low_latin_ratio", "high_cyrillic_ratio"}
 
 
-def test_materialization_is_deterministic_and_zero_credit(
+def test_materialization_is_deterministic_across_ordered_vector(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     cfg = load()
-    records = [make_record(f"case/{index:04d}.html") for index in range(1, 12)]
-    source = tmp_path / "source.jsonl.gz"
-    write_gzip(source, records)
-    monkeypatch.setattr(
-        mod,
-        "_source_file_identity",
-        lambda _: (mod.SOURCE_BYTES, mod.SOURCE_SHA256),
+    paths = source_paths(
+        tmp_path,
+        [make_record(f"case/a-{index}") for index in range(5)],
+        [make_record(f"case/b-{index}") for index in range(5)],
     )
-    monkeypatch.setattr(mod, "MIN_CANDIDATE_BYTES", 500)
-    monkeypatch.setattr(mod, "MAX_CANDIDATE_BYTES", 20_000)
-    monkeypatch.setattr(mod, "MAX_SCANNED_BYTES", 100_000)
+    fake_identities(monkeypatch)
+    relax_capacity(monkeypatch)
     candidate_a, candidate_b = tmp_path / "a.jsonl", tmp_path / "b.jsonl"
     report_a, report_b = tmp_path / "a.json", tmp_path / "b.json"
-    first = mod.materialize(source, candidate_a, report_a, cfg)
-    second = mod.materialize(source, candidate_b, report_b, cfg)
+    first = mod.materialize(paths, candidate_a, report_a, cfg)
+    second = mod.materialize(paths, candidate_b, report_b, cfg)
     assert first == second
     assert candidate_a.read_bytes() == candidate_b.read_bytes()
     assert report_a.read_bytes() == report_b.read_bytes()
@@ -179,75 +215,109 @@ def test_materialization_is_deterministic_and_zero_credit(
     assert first["source_level_project_review_complete"] is False
     assert first["global_dedup_completed"] is False
     assert first["reserved_evaluation_decontamination_completed"] is False
+    assert first["source_objects"][0]["file"] == "cap_00044.jsonl.gz"
+    assert first["source_objects"][1]["file"] == "cap_00043.jsonl.gz"
     rows = [json.loads(line) for line in candidate_a.read_bytes().splitlines()]
     assert rows and all(row["training_eligible"] is False for row in rows)
     assert all("metadata" not in row for row in rows)
 
 
-def test_duplicate_source_id_fails_closed(
+def test_reversed_runtime_source_order_fails_closed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    cfg = load()
-    source = tmp_path / "source.jsonl.gz"
-    write_gzip(source, [make_record("case/dup"), make_record("case/dup")])
-    monkeypatch.setattr(
-        mod,
-        "_source_file_identity",
-        lambda _: (mod.SOURCE_BYTES, mod.SOURCE_SHA256),
+    paths = source_paths(tmp_path, [make_record("case/a")], [make_record("case/b")])
+    fake_identities(monkeypatch)
+    with pytest.raises(mod.CandidateError, match="source order/file drift"):
+        mod.materialize(
+            list(reversed(paths)),
+            tmp_path / "candidate.jsonl",
+            tmp_path / "report.json",
+            load(),
+        )
+
+
+def test_duplicate_source_id_across_shards_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    paths = source_paths(
+        tmp_path,
+        [make_record("case/dup")],
+        [make_record("case/dup")],
     )
-    monkeypatch.setattr(mod, "MIN_CANDIDATE_BYTES", 1)
-    monkeypatch.setattr(mod, "MAX_CANDIDATE_BYTES", 20_000)
-    monkeypatch.setattr(mod, "MAX_SCANNED_BYTES", 100_000)
+    cfg = load()
+    fake_identities(monkeypatch)
+    relax_capacity(monkeypatch)
     with pytest.raises(mod.CandidateError, match="duplicate source record id"):
-        mod.materialize(source, tmp_path / "candidate.jsonl", tmp_path / "report.json", cfg)
+        mod.materialize(paths, tmp_path / "candidate.jsonl", tmp_path / "report.json", cfg)
 
 
-def test_exact_normalized_duplicate_is_discounted(
+def test_exact_normalized_duplicate_across_shards_is_discounted(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    cfg = load()
     first = make_record("case/a")
     second = make_record("case/b", first["text"])
     third = make_record("case/c")
-    source = tmp_path / "source.jsonl.gz"
-    write_gzip(source, [first, second, third])
-    monkeypatch.setattr(
-        mod,
-        "_source_file_identity",
-        lambda _: (mod.SOURCE_BYTES, mod.SOURCE_SHA256),
+    paths = source_paths(tmp_path, [first], [second, third])
+    cfg = load()
+    fake_identities(monkeypatch)
+    relax_capacity(monkeypatch)
+    report = mod.materialize(
+        paths, tmp_path / "candidate.jsonl", tmp_path / "report.json", cfg
     )
-    monkeypatch.setattr(mod, "MIN_CANDIDATE_BYTES", 1)
-    monkeypatch.setattr(mod, "MAX_CANDIDATE_BYTES", 20_000)
-    monkeypatch.setattr(mod, "MAX_SCANNED_BYTES", 100_000)
-    report = mod.materialize(source, tmp_path / "candidate.jsonl", tmp_path / "report.json", cfg)
     assert report["disposition_counts"]["exact_normalized_duplicate"] == 1
     assert report["retained_records"] == 2
 
 
 def test_wrong_source_identity_fails_before_decode(tmp_path: Path) -> None:
     cfg = load()
-    source = tmp_path / "wrong.gz"
-    source.write_bytes(b"not the source")
+    paths = [
+        tmp_path / "cap_00044.jsonl.gz",
+        tmp_path / "cap_00043.jsonl.gz",
+    ]
+    for path in paths:
+        path.write_bytes(b"not the source")
     with pytest.raises(mod.CandidateError, match="source byte count mismatch"):
-        mod.materialize(source, tmp_path / "candidate.jsonl", tmp_path / "report.json", cfg)
+        mod.materialize(paths, tmp_path / "candidate.jsonl", tmp_path / "report.json", cfg)
 
 
 def test_oversize_json_line_fails_closed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    cfg = load()
-    source = tmp_path / "source.jsonl.gz"
-    write_gzip(source, [make_record("case/huge", "A" * 5000)])
-    monkeypatch.setattr(
-        mod,
-        "_source_file_identity",
-        lambda _: (mod.SOURCE_BYTES, mod.SOURCE_SHA256),
+    paths = source_paths(
+        tmp_path,
+        [make_record("case/huge", "A" * 5000)],
+        [make_record("case/other")],
     )
+    cfg = load()
+    fake_identities(monkeypatch)
+    relax_capacity(monkeypatch)
     monkeypatch.setattr(mod, "MAX_LINE_BYTES", 1000)
-    monkeypatch.setattr(mod, "MIN_CANDIDATE_BYTES", 1)
-    monkeypatch.setattr(mod, "MAX_SCANNED_BYTES", 100_000)
     with pytest.raises(mod.CandidateError, match="safety envelope"):
-        mod.materialize(source, tmp_path / "candidate.jsonl", tmp_path / "report.json", cfg)
+        mod.materialize(paths, tmp_path / "candidate.jsonl", tmp_path / "report.json", cfg)
+
+
+def test_scan_budget_stops_before_crossing_envelope(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    paths = source_paths(
+        tmp_path,
+        [make_record("case/a")],
+        [make_record("case/b"), make_record("case/c")],
+    )
+    cfg = load()
+    fake_identities(monkeypatch)
+    monkeypatch.setattr(mod, "MIN_CANDIDATE_BYTES", 1)
+    monkeypatch.setattr(mod, "MAX_CANDIDATE_BYTES", 100_000)
+    first_size = len(gzip.open(paths[0], "rb").read())
+    second_first_line = gzip.open(paths[1], "rb").readline()
+    monkeypatch.setattr(mod, "MAX_SCANNED_BYTES", first_size + len(second_first_line) - 1)
+    report = mod.materialize(
+        paths, tmp_path / "candidate.jsonl", tmp_path / "report.json", cfg
+    )
+    assert report["scan_budget_reached"] is True
+    assert report["decompressed_bytes_scanned"] == first_size
+    assert report["next_scan_bytes_if_budget_exceeded"] > mod.MAX_SCANNED_BYTES
+    assert report["per_source"]["cap_00043.jsonl.gz"]["rows"] == 0
 
 
 def test_missing_downstream_gate_fails_closed(tmp_path: Path) -> None:

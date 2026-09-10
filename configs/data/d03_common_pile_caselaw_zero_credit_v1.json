@@ -12,10 +12,21 @@
   "source": {
     "dataset": "common-pile/caselaw_access_project",
     "revision": "31e65135501af50f8285b52489bc3b39fd0fc5d5",
-    "file": "cap_00044.jsonl.gz",
-    "url": "https://huggingface.co/datasets/common-pile/caselaw_access_project/resolve/31e65135501af50f8285b52489bc3b39fd0fc5d5/cap_00044.jsonl.gz",
-    "sha256": "e04bdff817b34d5fd2ab0b4aff272adfe6e863aacef7d4cd24db47e4b7c8db33",
-    "bytes": 9441419,
+    "ordering_policy": "PRESERVE_ORIGINAL_CAP_00044_THEN_APPEND_CAP_00043",
+    "objects": [
+      {
+        "file": "cap_00044.jsonl.gz",
+        "url": "https://huggingface.co/datasets/common-pile/caselaw_access_project/resolve/31e65135501af50f8285b52489bc3b39fd0fc5d5/cap_00044.jsonl.gz",
+        "sha256": "e04bdff817b34d5fd2ab0b4aff272adfe6e863aacef7d4cd24db47e4b7c8db33",
+        "bytes": 9441419
+      },
+      {
+        "file": "cap_00043.jsonl.gz",
+        "url": "https://huggingface.co/datasets/common-pile/caselaw_access_project/resolve/31e65135501af50f8285b52489bc3b39fd0fc5d5/cap_00043.jsonl.gz",
+        "sha256": "f299c45effc957e1e02d3930e68c5d6dc643eb9d585093ff7445f36095c8531f",
+        "bytes": 10476512
+      }
+    ],
     "family": "en.common-pile.caselaw",
     "allowed_source_fields": ["Caselaw Access Project", "Court Listener", "CourtListener"]
   },
