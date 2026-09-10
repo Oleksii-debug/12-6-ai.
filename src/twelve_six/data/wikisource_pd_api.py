@@ -5,9 +5,10 @@ from __future__ import annotations
 import json
 import urllib.parse
 import urllib.request
+from collections.abc import Callable
 from dataclasses import dataclass
 from html.parser import HTMLParser
-from typing import Any, Callable
+from typing import Any
 
 from twelve_six.data.wikisource_pd_contract import (
     API_URL,
@@ -32,8 +33,8 @@ class PageSnapshot:
 
 
 class _VisibleTextParser(HTMLParser):
-    _HIDDEN = {"script", "style", "noscript", "template", "svg", "math"}
-    _BLOCK = {"p", "div", "br", "li", "poem", "section", "h1", "h2", "h3"}
+    _HIDDEN = frozenset({"script", "style", "noscript", "template", "svg", "math"})
+    _BLOCK = frozenset({"p", "div", "br", "li", "poem", "section", "h1", "h2", "h3"})
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
@@ -73,7 +74,7 @@ def request_json(params: dict[str, str], *, timeout: float = 30.0) -> dict[str, 
         f"{API_URL}?{query}",
         headers={"User-Agent": "12-6-ai-local-free-wikisource-intake/1.0"},
     )
-    with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310
+    with urllib.request.urlopen(request, timeout=timeout) as response:
         payload = response.read()
     value = json.loads(payload.decode("utf-8"))
     if not isinstance(value, dict) or "error" in value:
