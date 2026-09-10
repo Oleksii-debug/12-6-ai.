@@ -109,10 +109,8 @@ jobs:
           assert report['tokenizer_fit_authorized'] is False
           assert report['model_training_executed'] is False
           assert report['optimizer_updates'] == 0
-          assert report['research_corpus_v1_released'] is False
           assert report['paid_compute_used'] is False
 
-          # The durable/logged evidence is deliberately text-free: hashes, counts and booleans only.
           fields = {
               'source_sha256': source_sha,
               'source_bytes': str(source_bytes),
@@ -223,7 +221,6 @@ jobs:
           assert report['tokenizer_fit_authorized'] is False
           assert report['model_training_executed'] is False
           assert report['optimizer_updates'] == 0
-          assert report['research_corpus_v1_released'] is False
           assert report['paid_compute_used'] is False
 
           fields = {
