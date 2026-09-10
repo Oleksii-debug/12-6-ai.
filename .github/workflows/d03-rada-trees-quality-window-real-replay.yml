@@ -19,10 +19,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Bind repaired privacy V3 implementation
+      - name: Bind canonical privacy V3 implementation
         run: |
           set -euo pipefail
-          test "$(git hash-object src/twelve_six/data/privacy_filter_v3.py)" = "0d4c1fc82dba66532208c533e85cb0e322634e28"
+          test "$(git hash-object src/twelve_six/data/privacy_filter_v3.py)" = "a84395daf6f07726d6a730cf6ccb04c35bdc4e67"
       - name: Install data-only runtime
         run: |
           sudo apt-get update
@@ -104,8 +104,8 @@ jobs:
               "execution_profile": "LOCAL_FREE",
               "execution_head_sha": os.environ["GITHUB_SHA"],
               "workflow_run_id": int(os.environ["GITHUB_RUN_ID"]),
-              "required_privacy_repair_main_sha": "984aafd08c8224531b2547221991916ea0456753",
-              "privacy_filter_v3_blob_sha": "0d4c1fc82dba66532208c533e85cb0e322634e28",
+              "required_privacy_repair_main_sha": "82a2cacfec2670feff957d64904f1b8fe310dbd4",
+              "privacy_filter_v3_blob_sha": "a84395daf6f07726d6a730cf6ccb04c35bdc4e67",
               "source_archive_sha256": "737fa5df061c55555a8c761023559a206cbcabf0299ae52d1ccae387f685803e",
               "source_archive_bytes": 697768591,
               "candidate_jsonl_sha256": report["input_candidate_jsonl_sha256"],
