@@ -46,8 +46,10 @@ PLACEHOLDER_PATTERNS = (
     re.compile(r"%[a-z_][a-z0-9_]*%"),
     re.compile(r"\{\{[a-z_][a-z0-9_.-]*\}\}"),
     re.compile(r"process\.env\.[a-z_][a-z0-9_]*"),
-    re.compile(r"process\.env\[['\"][a-z_][a-z0-9_]*['\"]\]"),
-    re.compile(r"(?:os\.getenv|env)\(\s*['\"][a-z_][a-z0-9_]*['\"]\s*\)"),
+    re.compile(r"process\.env\[(?P<quote>['\"])[a-z_][a-z0-9_]*(?P=quote)\]"),
+    re.compile(
+        r"(?:os\.getenv|env)\(\s*(?P<quote>['\"])[a-z_][a-z0-9_]*(?P=quote)\s*\)"
+    ),
 )
 GENERIC_USER_SEGMENTS = frozenset({"user", "users", "username", "name", "example", "demo", "test", "rootfs"})
 EXAMPLE_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "example.com", "example.org", "example.net", "db.example.com"})
@@ -104,7 +106,7 @@ GENERIC_SECRET_ASSIGN_RE = re.compile(
     r"(?im)(?P<name_quote>['\"]?)\b"
     r"(?P<name>password|passwd|pwd|client_secret|api_secret|secret|token|api_key|access_token)\b"
     r"(?P=name_quote)\s*[:=]\s*(?P<quote>['\"]?)"
-    r"(?P<value>[^\s;,]{1,256})(?P=quote)"
+    r"(?P<value>[^\s;,]{1,256})(?P=quote)(?=$|[\s;,])"
 )
 SENSITIVE_ENV_NAMES = re.compile(
     r"(?i)(?:^|_)(?:PASSWORD|PASSWD|PWD|SECRET|TOKEN|API_KEY|ACCESS_KEY|PRIVATE_KEY|CLIENT_SECRET|DATABASE_URL|DB_URL|CONNECTION_STRING|AUTH)(?:$|_)"
