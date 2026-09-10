@@ -42,6 +42,17 @@ ZERO_TRUTH = {
     "authorized_optimized_target_exposure": 0,
 }
 
+INVENTORY_ZERO_TRUTH = {
+    "training_eligible": False,
+    "evaluation_eligible": False,
+    "authorized_optimized_target_exposure": 0,
+    "tokenizer_fit": False,
+    "optimizer_updates": 0,
+    "model_training": False,
+    "final_test_outcomes_accessed": False,
+    "paid_compute_used": False,
+}
+
 
 class CoverageError(ValueError):
     """Raised when a G05/G06 coverage claim is not externally bound."""
@@ -104,12 +115,28 @@ def _require_false(value: Any, field: str) -> None:
         raise CoverageError(f"{field} must be false")
 
 
-def _verify_zero_truth(value: Any, field: str) -> None:
+def _verify_truth(value: Any, expected_values: Mapping[str, Any], field: str) -> None:
     if not isinstance(value, Mapping):
         raise CoverageError(f"{field} must be an object")
-    for key, expected in ZERO_TRUTH.items():
+    for key, expected in expected_values.items():
         if value.get(key) != expected:
             raise CoverageError(f"{field}.{key} must remain {expected!r}")
+
+
+def _verify_zero_truth(value: Any, field: str) -> None:
+    _verify_truth(value, ZERO_TRUTH, field)
+
+
+def _decontam_identity(document: Mapping[str, Any]) -> str:
+    payload = dict(document)
+    payload.pop("decontamination_authority_sha256", None)
+    raw = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()
 
 
 def _verify_external_self_hash(
@@ -146,7 +173,11 @@ def _inventory_records(
         expected_identity=expected_inventory_identity_sha256,
         label="inventory",
     )
-    _verify_zero_truth(inventory.get("truth_boundary"), "inventory.truth_boundary")
+    _verify_truth(
+        inventory.get("truth_boundary"),
+        INVENTORY_ZERO_TRUTH,
+        "inventory.truth_boundary",
+    )
 
     raw_rows = inventory.get("records")
     if not isinstance(raw_rows, list) or not raw_rows:
@@ -157,10 +188,7 @@ def _inventory_records(
     for index, row in enumerate(raw_rows):
         if not isinstance(row, Mapping):
             raise CoverageError(f"inventory.records[{index}] must be an object")
-        record_id = _require_nonempty(
-            row.get("record_id"),
-            f"inventory.records[{index}].record_id",
-        )
+        record_id = _require_nonempty(row.get("record_id"), f"inventory.records[{index}].record_id")
         if record_id in raw_ids:
             raise CoverageError("duplicate record_id in retained inventory")
         raw_ids.add(record_id)
@@ -207,12 +235,18 @@ def _decontam_survivors(
 ) -> tuple[dict[str, dict[str, Any]], str]:
     if decontam.get("schema") != DECONTAM_SCHEMA:
         raise CoverageError("unsupported decontamination binding schema")
-    identity = _verify_external_self_hash(
-        decontam,
-        identity_field="decontamination_authority_sha256",
-        expected_identity=expected_decontamination_authority_sha256,
-        label="decontamination",
+    expected_decontam = _require_sha256(
+        expected_decontamination_authority_sha256,
+        "expected_decontamination_authority_sha256",
     )
+    identity = _require_sha256(
+        decontam.get("decontamination_authority_sha256"),
+        "decontamination.decontamination_authority_sha256",
+    )
+    if identity != _decontam_identity(decontam):
+        raise CoverageError("decontamination self-hash mismatch")
+    if identity != expected_decontam:
+        raise CoverageError("decontamination external identity mismatch")
     if decontam.get("retained_inventory_identity_sha256") != inventory_identity_sha256:
         raise CoverageError("decontamination/inventory identity mismatch")
     if decontam.get("verdict") not in ALLOWED_DECONTAM_VERDICTS:
@@ -327,10 +361,7 @@ def _verify_authority_coverage(
     if scope not in ALLOWED_SCOPES:
         raise CoverageError(f"unsupported {label} coverage_scope")
     if scope == FINAL_SCOPE:
-        if (
-            authority.get("decontamination_authority_sha256")
-            != decontamination_authority_sha256
-        ):
+        if authority.get("decontamination_authority_sha256") != decontamination_authority_sha256:
             raise CoverageError(f"{label} decontamination binding mismatch")
         required = survivor_rows
         subset_proved = False
@@ -423,10 +454,7 @@ def bind_final_g05_g06_coverage(
         accepted_decision="ALLOW",
     )
 
-    sorted_survivors = sorted(
-        survivors.values(),
-        key=lambda row: row["record_id_sha256"],
-    )
+    sorted_survivors = sorted(survivors.values(), key=lambda row: row["record_id_sha256"])
     report: dict[str, Any] = {
         "schema": COVERAGE_SCHEMA,
         "status": "PASS",
@@ -443,9 +471,7 @@ def bind_final_g05_g06_coverage(
         "quality_subset_preservation_proved": quality_subset,
         "privacy_subset_preservation_proved": privacy_subset,
         "survivor_record_count": len(sorted_survivors),
-        "survivor_payload_bytes": sum(
-            row["payload_bytes"] for row in sorted_survivors
-        ),
+        "survivor_payload_bytes": sum(row["payload_bytes"] for row in sorted_survivors),
         "survivor_record_id_membership_sha256": sha256_json(
             [row["record_id_sha256"] for row in sorted_survivors]
         ),
@@ -504,16 +530,8 @@ def verify_coverage_report(
     if report.get("next_gate") != "POSTDECONTAM_BALANCE_FAMILY_CAP":
         raise CoverageError("coverage report next_gate mismatch")
     _verify_zero_truth(report.get("truth_boundary"), "coverage.truth_boundary")
-    _require_int(
-        report.get("survivor_record_count"),
-        "survivor_record_count",
-        minimum=1,
-    )
-    _require_int(
-        report.get("survivor_payload_bytes"),
-        "survivor_payload_bytes",
-        minimum=1,
-    )
+    _require_int(report.get("survivor_record_count"), "survivor_record_count", minimum=1)
+    _require_int(report.get("survivor_payload_bytes"), "survivor_payload_bytes", minimum=1)
     _require_sha256(
         report.get("survivor_record_id_membership_sha256"),
         "survivor_record_id_membership_sha256",
