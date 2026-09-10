@@ -1,0 +1,147 @@
+name: D03 Common Pile Caselaw Temporary
+
+on:
+  push:
+    branches:
+      - d03/common-pile-caselaw-zero-credit-20260907
+    paths:
+      - "configs/data/d03_common_pile_caselaw_zero_credit_v1.json"
+      - "tools/materialize_d03_common_pile_caselaw.py"
+      - "tests/test_d03_common_pile_caselaw.py"
+      - ".github/workflows/d03-common-pile-caselaw-temporary.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: d03-common-pile-caselaw-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  exact-materialization:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      SOURCE_SHA: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Prove exact checkout
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+          cache: pip
+      - name: Install project dev environment
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .[dev]
+      - name: Run focused adversarial suite
+        run: pytest -q tests/test_d03_common_pile_caselaw.py
+      - name: Independent exact materialization A
+        run: >-
+          python tools/materialize_d03_common_pile_caselaw.py
+          --source-gzip "$RUNNER_TEMP/caselaw-a/source.jsonl.gz"
+          --candidate-jsonl "$RUNNER_TEMP/caselaw-a/candidate.jsonl"
+          --report "$RUNNER_TEMP/caselaw-a/report.json"
+          --download
+      - name: Independent exact materialization B
+        run: >-
+          python tools/materialize_d03_common_pile_caselaw.py
+          --source-gzip "$RUNNER_TEMP/caselaw-b/source.jsonl.gz"
+          --candidate-jsonl "$RUNNER_TEMP/caselaw-b/candidate.jsonl"
+          --report "$RUNNER_TEMP/caselaw-b/report.json"
+          --download
+      - name: Require exact reproducibility and emit text-free evidence
+        run: |
+          cmp "$RUNNER_TEMP/caselaw-a/source.jsonl.gz" "$RUNNER_TEMP/caselaw-b/source.jsonl.gz"
+          cmp "$RUNNER_TEMP/caselaw-a/candidate.jsonl" "$RUNNER_TEMP/caselaw-b/candidate.jsonl"
+          cmp "$RUNNER_TEMP/caselaw-a/report.json" "$RUNNER_TEMP/caselaw-b/report.json"
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path(os.environ["RUNNER_TEMP"])
+          a = root / "caselaw-a"
+          b = root / "caselaw-b"
+          report = json.loads((a / "report.json").read_text(encoding="utf-8"))
+
+          def file_sha(path: Path) -> str:
+              h = hashlib.sha256()
+              with path.open("rb") as f:
+                  for chunk in iter(lambda: f.read(1024 * 1024), b""):
+                      h.update(chunk)
+              return h.hexdigest()
+
+          assert report["safe_result"] == "COMMON_PILE_CASELAW_CANDIDATE_ONLY_ZERO_CREDIT"
+          assert report["source_sha256"] == "e04bdff817b34d5fd2ab0b4aff272adfe6e863aacef7d4cd24db47e4b7c8db33"
+          assert report["source_bytes"] == 9441419
+          assert report["training_authorized_bytes"] == 0
+          assert report["canonical_capacity_credited"] == 0
+          assert report["family_credit_added"] == 0
+          assert report["training_eligible"] is False
+          assert report["evaluation_eligible"] is False
+          assert report["model_training_executed"] is False
+          assert report["paid_compute_used"] is False
+          assert report["retained_normalized_utf8_bytes"] >= 5_500_000
+          assert report["retained_normalized_utf8_bytes"] <= 6_500_000
+          assert file_sha(a / "source.jsonl.gz") == report["source_sha256"]
+          assert file_sha(b / "source.jsonl.gz") == report["source_sha256"]
+          assert file_sha(a / "candidate.jsonl") == report["candidate_jsonl_sha256"]
+          assert file_sha(b / "candidate.jsonl") == report["candidate_jsonl_sha256"]
+
+          evidence = {
+              "schema_version": "12-6.d03-common-pile-caselaw-local-free-execution.v1",
+              "execution_profile": "LOCAL_FREE",
+              "source_git_sha": os.environ["SOURCE_SHA"],
+              "source_dataset": report["source_dataset"],
+              "source_revision": report["source_revision"],
+              "source_file": report["source_file"],
+              "source_bytes": report["source_bytes"],
+              "source_sha256": report["source_sha256"],
+              "two_independent_downloads_byte_identical": True,
+              "two_independent_materializations_byte_identical": True,
+              "retained_records": report["retained_records"],
+              "retained_normalized_utf8_bytes": report["retained_normalized_utf8_bytes"],
+              "candidate_jsonl_sha256": report["candidate_jsonl_sha256"],
+              "report_identity_sha256": report["report_identity_sha256"],
+              "source_rows_scanned": report["source_rows_scanned"],
+              "decompressed_bytes_scanned": report["decompressed_bytes_scanned"],
+              "candidate_cap_reached": report["candidate_cap_reached"],
+              "source_kind_counts": report["source_kind_counts"],
+              "disposition_counts": report["disposition_counts"],
+              "safe_result": report["safe_result"],
+              "raw_source_uploaded": False,
+              "candidate_payload_uploaded": False,
+              "source_level_project_review_complete": False,
+              "canonical_capacity_credited": 0,
+              "family_credit_added": 0,
+              "training_authorized_bytes": 0,
+              "tokenizer_fit_authorized": False,
+              "optimizer_updates": 0,
+              "model_training_executed": False,
+              "final_test_accessed": False,
+              "paid_compute_used": False,
+          }
+          payload = (json.dumps(evidence, sort_keys=True, separators=(",", ":")) + "\n").encode()
+          evidence["evidence_identity_sha256"] = hashlib.sha256(payload).hexdigest()
+          out = root / "caselaw-evidence"
+          out.mkdir()
+          (out / "execution_evidence.json").write_text(
+              json.dumps(evidence, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+          )
+          (out / "report.json").write_bytes((a / "report.json").read_bytes())
+          print(json.dumps(evidence, sort_keys=True))
+          PY
+      - name: Upload text-free execution evidence only
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: d03-common-pile-caselaw-${{ env.SOURCE_SHA }}
+          path: ${{ runner.temp }}/caselaw-evidence/
+          if-no-files-found: error
+          retention-days: 30
