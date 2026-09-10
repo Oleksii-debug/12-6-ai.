@@ -1,0 +1,174 @@
+name: D03 PDR attribution provenance replay temporary
+
+on:
+  push:
+    branches:
+      - d03/pdr-attribution-provenance-1071
+    paths:
+      - .github/workflows/d03_pdr_attribution_replay_tmp.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: d03-pdr-attribution-replay-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  replay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install focused test dependency
+        run: python -m pip install pytest
+      - name: Focused and adversarial tests
+        run: >-
+          python -m pytest -q
+          tests/test_d03_common_pile_public_domain_review.py
+          tests/test_d03_pdr_attribution_sidecar_v1.py
+      - name: Two exact source downloads and attribution replays
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .pdr-src-a .pdr-src-b .pdr-build-a .pdr-build-b
+          mkdir -p .pdr-src-a/v0 .pdr-src-b/v0 .pdr-build-a .pdr-build-b
+          python - <<'PY'
+          import hashlib
+          import urllib.request
+          from pathlib import Path
+
+          revision = '177f70f044bd7a347616727c0f33ab4af9baa495'
+          files = {
+              'v0/00000_collections.jsonl.gz': (
+                  '0a5cbe305d7f468aad95a8cfc4d5fae14132bc359ccf92fc3705072db33a46fd',
+                  2_000_000,
+              ),
+              'v0/00000_essays.jsonl.gz': (
+                  '825aed6a66ab14f89e1fe3110f67265d511994c52e5aed48b866a9e8a1bdeb4d',
+                  2_500_000,
+              ),
+          }
+          for root in (Path('.pdr-src-a'), Path('.pdr-src-b')):
+              for rel, (expected_sha, limit) in files.items():
+                  url = (
+                      'https://huggingface.co/datasets/common-pile/'
+                      f'public_domain_review/resolve/{revision}/{rel}?download=true'
+                  )
+                  request = urllib.request.Request(
+                      url,
+                      headers={
+                          'User-Agent': '12-6-ai-D03-PDR-attribution/1.0',
+                          'Accept': 'application/octet-stream',
+                      },
+                  )
+                  with urllib.request.urlopen(request, timeout=120) as response:
+                      payload = response.read(limit + 1)
+                  assert len(payload) <= limit
+                  assert hashlib.sha256(payload).hexdigest() == expected_sha
+                  target = root / rel
+                  target.parent.mkdir(parents=True, exist_ok=True)
+                  target.write_bytes(payload)
+          PY
+          python tools/materialize_d03_common_pile_public_domain_review.py \
+            --config configs/data/d03_common_pile_public_domain_review_v1.json \
+            --input-dir .pdr-src-a \
+            --output .pdr-build-a/materialized
+          python tools/materialize_d03_common_pile_public_domain_review.py \
+            --config configs/data/d03_common_pile_public_domain_review_v1.json \
+            --input-dir .pdr-src-b \
+            --output .pdr-build-b/materialized
+          cmp \
+            .pdr-build-a/materialized/candidate.jsonl \
+            .pdr-build-b/materialized/candidate.jsonl
+          cmp \
+            .pdr-build-a/materialized/report.json \
+            .pdr-build-b/materialized/report.json
+          cmp \
+            .pdr-build-a/materialized/manifest.json \
+            .pdr-build-b/materialized/manifest.json
+          python tools/build_d03_pdr_attribution_sidecar_v1.py \
+            --config configs/data/d03_common_pile_public_domain_review_v1.json \
+            --candidate .pdr-build-a/materialized/candidate.jsonl \
+            --input-dir .pdr-src-a \
+            --sidecar .pdr-build-a/attribution.jsonl \
+            --report .pdr-build-a/attribution-report.json
+          python tools/build_d03_pdr_attribution_sidecar_v1.py \
+            --config configs/data/d03_common_pile_public_domain_review_v1.json \
+            --candidate .pdr-build-b/materialized/candidate.jsonl \
+            --input-dir .pdr-src-b \
+            --sidecar .pdr-build-b/attribution.jsonl \
+            --report .pdr-build-b/attribution-report.json
+          cmp .pdr-build-a/attribution.jsonl .pdr-build-b/attribution.jsonl
+          cmp \
+            .pdr-build-a/attribution-report.json \
+            .pdr-build-b/attribution-report.json
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          build = Path('.pdr-build-a')
+          materialized = build / 'materialized'
+          report = json.loads((build / 'attribution-report.json').read_text())
+          candidate = materialized / 'candidate.jsonl'
+          sidecar = build / 'attribution.jsonl'
+          assert hashlib.sha256(candidate.read_bytes()).hexdigest() == (
+              '38b0ef94062b80ae1cb8055fe897feb10a1e8d04a9b17340cbc080d4bfb21591'
+          )
+          assert candidate.stat().st_size == 5_630_935
+          assert report['selected_record_count'] == 1_166
+          assert report['selected_normalized_utf8_bytes'] == 4_795_007
+          assert report['candidate_projection_identity_sha256'] == (
+              'bf9f7896fc2c940458916184b1b702f443d72290e286ee16b24da4088b2aa4ab'
+          )
+          assert report['training_text_modified'] is False
+          assert report['source_rights_review_status'] == 'REVIEW_REQUIRED'
+          assert report['training_authorized_bytes'] == 0
+          assert report['authorized_optimized_target_exposure'] == 0
+          evidence = {
+              'schema_version': '12-6.d03-pdr-attribution-replay-evidence.v1',
+              'status': 'TWO_INDEPENDENT_ATTRIBUTION_REPLAYS_BYTE_IDENTICAL',
+              'git_sha': os.environ['GITHUB_SHA'],
+              'github_run_id': int(os.environ['GITHUB_RUN_ID']),
+              'source_revision': report['source_revision'],
+              'source_sha256': [
+                  '0a5cbe305d7f468aad95a8cfc4d5fae14132bc359ccf92fc3705072db33a46fd',
+                  '825aed6a66ab14f89e1fe3110f67265d511994c52e5aed48b866a9e8a1bdeb4d',
+              ],
+              'candidate_jsonl_sha256': hashlib.sha256(candidate.read_bytes()).hexdigest(),
+              'candidate_jsonl_bytes': candidate.stat().st_size,
+              'selected_record_count': report['selected_record_count'],
+              'selected_normalized_utf8_bytes': report[
+                  'selected_normalized_utf8_bytes'
+              ],
+              'candidate_projection_identity_sha256': report[
+                  'candidate_projection_identity_sha256'
+              ],
+              'attribution_sidecar_jsonl_sha256': hashlib.sha256(
+                  sidecar.read_bytes()
+              ).hexdigest(),
+              'attribution_sidecar_jsonl_bytes': sidecar.stat().st_size,
+              'attribution_report_identity_sha256': report[
+                  'report_identity_sha256'
+              ],
+              'author_values_logged': False,
+              'training_text_modified': False,
+              'source_rights_review_status': 'REVIEW_REQUIRED',
+              'training_authorized_bytes': 0,
+              'authorized_optimized_target_exposure': 0,
+              'model_training_executed': False,
+              'final_test_payload_accessed': False,
+              'paid_compute_used': False,
+              'foreign_pretrained_weights': False,
+          }
+          print(
+              'PDR_ATTRIBUTION_REPLAY_EVIDENCE='
+              + json.dumps(evidence, sort_keys=True, separators=(',', ':'))
+          )
+          PY
+          rm -rf .pdr-src-a .pdr-src-b .pdr-build-a .pdr-build-b
