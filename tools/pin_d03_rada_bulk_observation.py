@@ -26,12 +26,12 @@ CANONICAL_BASENAME = re.compile(r"d[0-9]+\.htm")
 DERIVED_ARCHIVE_GATE = "PASS_PINNED_DISCOVERY_REVALIDATED"
 DERIVED_SAFE_RESULT = "PINNED_BULK_ARCHIVE_INVENTORIED_DOWNSTREAM_GATES_REQUIRED"
 EXPECTED_PARENT = {
-    "pr": 830,
-    "head_sha": "077f45fea310ecbc50b87801ff916502aa7f11f9",
-    "workflow_run_id": 34159688896,
-    "artifact_id": 10032567466,
-    "artifact_digest": "sha256:5d95cffacd815f2ca2afbd657d2ad04145a4e51303b63513b863eb897fa1f4dd",
-    "probe_report_sha256": "1c33b31844b11822479adb1382a683a430cee470bbdf23f259084f8b5ebf0458",
+    "pr": 864,
+    "head_sha": "538fb05699fd9f61b31c0e3552faf9b144a6d3bb",
+    "workflow_run_id": 34535608294,
+    "artifact_id": 10175280333,
+    "artifact_digest": "sha256:dba1429ae36456a8cb080ef7f42648b643c45bbc2585fcc133051bdf79632b32",
+    "probe_report_sha256": "e2ad0d8a4fce01d2da03fc93d636354253beaaf563db43968b11b600e26d0cdf",
     "probe_config_identity_sha256": "c2f198120cae00ba247c4eaad36d2a357770a47c7fa9a7608cc5ec182971b82b",
 }
 
@@ -91,7 +91,7 @@ def _validate_config(config: Mapping[str, Any]) -> None:
 
     for field, expected in EXPECTED_PARENT.items():
         if parent.get(field) != expected:
-            raise ObservationPinError(f"parent_probe.{field} drifted from terminal #830 authority")
+            raise ObservationPinError(f"parent_probe.{field} drifted from current Rada observation authority")
 
     if (
         isinstance(snapshot.get("archive_bytes"), bool)

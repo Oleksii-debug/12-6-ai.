@@ -10,12 +10,12 @@
     "training_authorized_bytes": 0
   },
   "exact_snapshot": {
-    "archive_bytes": 46700063,
-    "archive_md5": "f97c8b2d6b4db59d151323c3a8bf2fcc",
-    "archive_sha256": "9f43da3ffe0855e49ca47ddf906da9e7c40644a845b345f6c4a19b39ef5eaf22",
+    "archive_bytes": 46709153,
+    "archive_md5": "7ca9726549958ed8b8b54e6562c15da5",
+    "archive_sha256": "0b9e8ed8fe8aa663a68d2bc4eba858a754c626391dd7b5c461d50c3b6260df63",
     "canonical_entry_count": 3052,
-    "canonical_raw_bytes": 353354780,
-    "entry_identity_sha256": "766e54cf706453de30136e02f0361c549c2b96aba9855ee0573d28b354ad077b"
+    "canonical_raw_bytes": 353426370,
+    "entry_identity_sha256": "3939c8a407a910222173bba5a2df1b9c7d2edce1503c13b31a9c293d61c3a603"
   },
   "expected_observation": {
     "discovery_capacity_threshold": "FAIL_BELOW_MINIMUM",
@@ -27,13 +27,13 @@
   },
   "local_free_only": true,
   "parent_probe": {
-    "artifact_digest": "sha256:5d95cffacd815f2ca2afbd657d2ad04145a4e51303b63513b863eb897fa1f4dd",
-    "artifact_id": 10032567466,
-    "head_sha": "077f45fea310ecbc50b87801ff916502aa7f11f9",
-    "pr": 830,
+    "artifact_digest": "sha256:dba1429ae36456a8cb080ef7f42648b643c45bbc2585fcc133051bdf79632b32",
+    "artifact_id": 10175280333,
+    "head_sha": "538fb05699fd9f61b31c0e3552faf9b144a6d3bb",
+    "pr": 864,
     "probe_config_identity_sha256": "c2f198120cae00ba247c4eaad36d2a357770a47c7fa9a7608cc5ec182971b82b",
-    "probe_report_sha256": "1c33b31844b11822479adb1382a683a430cee470bbdf23f259084f8b5ebf0458",
-    "workflow_run_id": 34159688896
+    "probe_report_sha256": "e2ad0d8a4fce01d2da03fc93d636354253beaaf563db43968b11b600e26d0cdf",
+    "workflow_run_id": 34535608294
   },
   "pin_policy": {
     "derived_exact_archive_identity": "PASS_SUCCESSOR_EXACT_ARTIFACT_PIN",
