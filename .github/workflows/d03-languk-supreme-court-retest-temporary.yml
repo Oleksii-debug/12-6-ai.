@@ -24,16 +24,24 @@ jobs:
     env:
       SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 1
           persist-credentials: false
       - name: Prove exact checkout
         run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.11"
+          python-version: "3.11.16"
+      - name: Prove exact Python runtime
+        run: |
+          python - <<'PY'
+          import platform
+          assert platform.python_implementation() == "CPython"
+          assert platform.python_version() == "3.11.16"
+          print("python_runtime=", platform.python_version())
+          PY
       - name: Install frozen focused runtime
         run: python -m pip install "pyarrow==17.0.0" pytest
       - name: Run inherited adversarial suite
@@ -45,92 +53,46 @@ jobs:
           --parquet "$RUNNER_TEMP/source-a.parquet"
           --output-jsonl "$RUNNER_TEMP/retained-a.jsonl"
           --report "$RUNNER_TEMP/report-a.json"
-      - name: Diagnose annotation-count contract without emitting text
+      - name: Diagnose fail-closed row reasons without emitting text
         if: failure()
         run: |
           python - <<'PY'
+          import importlib.util
           import json
           import os
-          import re
+          from collections import Counter
           from pathlib import Path
 
           import pyarrow.parquet as pq
 
           source = Path(os.environ["RUNNER_TEMP"]) / "source-a.parquet"
           if not source.exists():
-              print("annotation_diagnostic=source_absent")
+              print("row_diagnostic=source_absent")
               raise SystemExit(0)
 
-          categories = {
-              "number": ("number_count", "number_occurrences", re.compile(r"НОМЕР_[1-9][0-9]*")),
-              "information": ("information_count", "information_occurrences", re.compile(r"ІНФОРМАЦІЯ_[1-9][0-9]*")),
-              "person": ("person_count", "person_occurrences", re.compile(r"ОСОБА_[1-9][0-9]*")),
-              "address": ("address_count", "address_occurrences", re.compile(r"АДРЕСА_[1-9][0-9]*")),
-          }
-          table = pq.read_table(source)
-          rows = table.to_pylist()
-          report = {
-              "rows": len(rows),
-              "schema_names": table.schema.names,
-              "categories": {},
-              "sum_of_unique_entities": {
-                  "equals_nonzero_category_count": 0,
-                  "equals_total_distinct_marker_labels": 0,
-              },
-          }
-          for category, (count_field, occurrence_field, pattern) in categories.items():
-              stats = {
-                  "declared_equals_annotation_len": 0,
-                  "declared_equals_regex_occurrences": 0,
-                  "declared_equals_distinct_marker_labels": 0,
-                  "annotation_len_equals_regex_occurrences": 0,
-                  "mismatch_rows": 0,
-                  "first_mismatch": None,
-              }
-              for row_index, row in enumerate(rows):
-                  text = row["text"]
-                  declared = row[count_field]
-                  annotations = row[occurrence_field]
-                  annotation_len = len(annotations)
-                  matches = pattern.findall(text)
-                  regex_occurrences = len(matches)
-                  distinct_marker_labels = len(set(matches))
-                  stats["declared_equals_annotation_len"] += int(declared == annotation_len)
-                  stats["declared_equals_regex_occurrences"] += int(declared == regex_occurrences)
-                  stats["declared_equals_distinct_marker_labels"] += int(
-                      declared == distinct_marker_labels
-                  )
-                  stats["annotation_len_equals_regex_occurrences"] += int(
-                      annotation_len == regex_occurrences
-                  )
-                  if declared != annotation_len:
-                      stats["mismatch_rows"] += 1
-                      if stats["first_mismatch"] is None:
-                          stats["first_mismatch"] = {
-                              "row_index": row_index,
-                              "declared": declared,
-                              "annotation_len": annotation_len,
-                              "regex_occurrences": regex_occurrences,
-                              "distinct_marker_labels": distinct_marker_labels,
-                          }
-              report["categories"][category] = stats
+          tool_path = Path("tools/retest_d03_languk_supreme_court.py")
+          spec = importlib.util.spec_from_file_location("languk_retest", tool_path)
+          assert spec is not None and spec.loader is not None
+          module = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(module)
+          cfg = module.load_config()
+          rows = pq.read_table(source).to_pylist()
 
+          annotation = Counter()
+          assessed = Counter()
           for row in rows:
-              distinct_by_category = []
-              for count_field, _, pattern in categories.values():
-                  matches = pattern.findall(row["text"])
-                  distinct_by_category.append(len(set(matches)))
-              nonzero_categories = sum(value > 0 for value in distinct_by_category)
-              total_distinct_labels = sum(distinct_by_category)
-              declared_sum = row["sum_of_unique_entities"]
-              report["sum_of_unique_entities"]["equals_nonzero_category_count"] += int(
-                  declared_sum == nonzero_categories
-              )
-              report["sum_of_unique_entities"]["equals_total_distinct_marker_labels"] += int(
-                  declared_sum == total_distinct_labels
-              )
+              try:
+                  module._validate_occurrences(row, row["text"])
+              except module.RetestError as exc:
+                  annotation[str(exc)] += 1
+              else:
+                  annotation["PASS"] += 1
+              ok, reason, _ = module.assess_row(row, cfg)
+              assessed[reason if not ok else "accepted"] += 1
 
-          print("annotation_contract_diagnostic=" + json.dumps(report, sort_keys=True))
+          print("annotation_failure_counts=" + json.dumps(dict(sorted(annotation.items())), sort_keys=True))
+          print("assess_reason_counts=" + json.dumps(dict(sorted(assessed.items())), sort_keys=True))
+          print("rows_diagnosed=", len(rows))
           PY
       - name: Independent exact acquisition and retest B
         run: >-
@@ -165,7 +127,7 @@ jobs:
           print("disposition_counts=", report["disposition_counts"])
           PY
       - name: Upload text-free evidence only
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: d03-languk-supreme-retest-${{ env.SOURCE_SHA }}
           path: ${{ runner.temp }}/report-a.json
