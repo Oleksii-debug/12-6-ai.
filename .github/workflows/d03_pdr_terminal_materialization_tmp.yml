@@ -1,0 +1,86 @@
+name: D03 PDR terminal materialization temporary
+
+on:
+  push:
+    branches:
+      - d03/common-pile-public-domain-review-20260907
+    paths:
+      - .github/workflows/d03_pdr_terminal_materialization_tmp.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: d03-pdr-terminal-materialization-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  materialize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install focused test dependency
+        run: python -m pip install pytest
+      - name: Focused and adversarial tests
+        run: python -m pytest -q tests/test_d03_common_pile_public_domain_review.py
+      - name: Two independent exact source materializations
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .pdr-build-a .pdr-build-b
+          python tools/materialize_d03_common_pile_public_domain_review.py \
+            --config configs/data/d03_common_pile_public_domain_review_v1.json \
+            --output .pdr-build-a
+          python tools/materialize_d03_common_pile_public_domain_review.py \
+            --config configs/data/d03_common_pile_public_domain_review_v1.json \
+            --output .pdr-build-b
+          cmp .pdr-build-a/candidate.jsonl .pdr-build-b/candidate.jsonl
+          cmp .pdr-build-a/report.json .pdr-build-b/report.json
+          cmp .pdr-build-a/manifest.json .pdr-build-b/manifest.json
+          python - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+
+          a = Path('.pdr-build-a')
+          report = json.loads((a / 'report.json').read_text(encoding='utf-8'))
+          manifest = json.loads((a / 'manifest.json').read_text(encoding='utf-8'))
+          boundary = report['truth_boundary']
+          assert report['status'] == 'CANDIDATE_MATERIALIZED_ZERO_CREDIT'
+          assert boundary['canonical_corpus_admitted'] is False
+          assert boundary['family_credit'] is False
+          assert boundary['training_authorized_bytes'] == 0
+          assert boundary['authorized_optimized_target_exposure'] == 0
+          assert boundary['tokenizer_fit_authorized'] is False
+          assert boundary['model_training_executed'] is False
+          assert boundary['paid_compute_used'] is False
+          summary = {
+              'schema_version': '12-6.d03-pdr-terminal-execution-evidence.v1',
+              'status': 'TWO_INDEPENDENT_MATERIALIZATIONS_BYTE_IDENTICAL',
+              'source_revision': manifest['source_revision'],
+              'source_files': report['source_files'],
+              'source_row_count': report['source_row_count'],
+              'selected_record_count': report['selected_record_count'],
+              'selected_normalized_utf8_bytes': report['selected_normalized_utf8_bytes'],
+              'rejected': report['rejected'],
+              'record_projection_identity_sha256': report['record_projection_identity_sha256'],
+              'report_identity_sha256': report['report_identity_sha256'],
+              'manifest_identity_sha256': manifest['manifest_identity_sha256'],
+              'candidate_jsonl_sha256': manifest['candidate_jsonl_sha256'],
+              'candidate_jsonl_bytes': manifest['candidate_jsonl_bytes'],
+              'build_files_sha256': {
+                  name: hashlib.sha256((a / name).read_bytes()).hexdigest()
+                  for name in ('candidate.jsonl', 'report.json', 'manifest.json')
+              },
+              'raw_text_persisted_in_evidence': False,
+              'training_authorized_bytes': 0,
+              'authorized_optimized_target_exposure': 0,
+              'paid_compute_used': False,
+          }
+          print('PDR_TERMINAL_EVIDENCE=' + json.dumps(summary, sort_keys=True, separators=(',', ':')))
+          PY
+          rm -rf .pdr-build-a .pdr-build-b
