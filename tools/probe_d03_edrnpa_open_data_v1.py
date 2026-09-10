@@ -18,8 +18,8 @@ from typing import Any
 SCHEMA = "12-6.d03-edrnpa-open-data-candidate.v1"
 DATASET_ID = "c98e830c-e39e-4da6-a13c-f9ba32a79bec"
 RESOURCE_ID = "5616dd04-949a-489c-8efc-54004293b238"
-RESOURCE_UPDATED = "2026-09-01T22:09:00+03:00"
-RESOURCE_MD5 = "97e0625b214d2ea3c70f407c5b06d138"
+RESOURCE_UPDATED = "2026-09-08T15:02:00+03:00"
+RESOURCE_MD5 = "0ea96e1582e5584ced79be1027f0ae55"
 DATASET_PAGE = f"https://data.gov.ua/dataset/{DATASET_ID}"
 RESOURCE_PAGE = (
     f"https://data.gov.ua/dataset/{DATASET_ID}/resource/{RESOURCE_ID}"
