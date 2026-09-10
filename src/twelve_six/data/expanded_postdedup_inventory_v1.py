@@ -79,22 +79,33 @@ def _require_int(value: Any, label: str, *, minimum: int = 0) -> int:
 def _load_json(path: Path) -> dict[str, Any]:
     value = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(value, dict):
-        raise ValueError(f"{path} must contain a JSON object")
+        raise TypeError(f"{path} must contain a JSON object")
     return value
 
 
 def _verify_zero_truth(value: Any, label: str) -> dict[str, Any]:
     if not isinstance(value, dict):
-        raise ValueError(f"{label} must be an object")
+        raise TypeError(f"{label} must be an object")
+    if set(value) != set(ZERO_TRUTH):
+        raise ValueError(f"{label} must contain exactly the canonical zero-truth keys")
     for key, expected in ZERO_TRUTH.items():
-        if value.get(key) != expected:
+        actual = value[key]
+        if isinstance(expected, bool):
+            matches = actual is expected
+        else:
+            matches = (
+                isinstance(actual, int)
+                and not isinstance(actual, bool)
+                and actual == expected
+            )
+        if not matches:
             raise ValueError(f"{label}.{key} must remain {expected!r}")
     return {key: ZERO_TRUTH[key] for key in ZERO_TRUTH}
 
 
 def _validate_row(row: Any, index: int) -> dict[str, Any]:
     if not isinstance(row, dict):
-        raise ValueError(f"survivors[{index}] must be an object")
+        raise TypeError(f"survivors[{index}] must be an object")
     missing = [key for key in REQUIRED_ROW_KEYS if key not in row]
     if missing:
         raise ValueError(f"survivors[{index}] missing keys: {', '.join(missing)}")
@@ -196,11 +207,19 @@ def freeze_expanded_inventory(
         "report.retained_payload_bytes",
         minimum=1,
     )
-    authority_count = survivor_authority.get("survivor_count")
+    authority_count = _require_int(
+        survivor_authority.get("survivor_count"),
+        "survivor_authority.survivor_count",
+        minimum=1,
+    )
     if survivor_count != len(rows) or authority_count != survivor_count:
         raise ValueError("survivor count arithmetic mismatch")
     payload_sum = sum(row["payload_bytes"] for row in rows)
-    authority_bytes = survivor_authority.get("retained_payload_bytes")
+    authority_bytes = _require_int(
+        survivor_authority.get("retained_payload_bytes"),
+        "survivor_authority.retained_payload_bytes",
+        minimum=1,
+    )
     if retained_bytes != payload_sum or authority_bytes != retained_bytes:
         raise ValueError("retained payload byte arithmetic mismatch")
 
@@ -239,6 +258,14 @@ def verify_inventory(
         raise ValueError("retained inventory identity mismatch")
     if inventory.get("schema") != SCHEMA:
         raise ValueError("unexpected retained inventory schema")
+    _require_hex64(
+        inventory.get("input_report_sha256"),
+        "inventory.input_report_sha256",
+    )
+    _require_hex64(
+        inventory.get("input_survivor_authority_sha256"),
+        "inventory.input_survivor_authority_sha256",
+    )
     _verify_zero_truth(inventory.get("truth_boundary"), "inventory.truth_boundary")
 
     rows = inventory.get("records")
@@ -249,13 +276,28 @@ def verify_inventory(
         raise ValueError("inventory records must be sorted by record_id")
     if len({row["record_id"] for row in validated}) != len(validated):
         raise ValueError("duplicate record_id in retained inventory")
-    if inventory.get("record_count") != len(validated):
+    record_count = _require_int(
+        inventory.get("record_count"),
+        "inventory.record_count",
+        minimum=1,
+    )
+    if record_count != len(validated):
         raise ValueError("inventory record_count mismatch")
     source_count = len({row["source_id"] for row in validated})
-    if inventory.get("source_count") != source_count:
+    inventory_source_count = _require_int(
+        inventory.get("source_count"),
+        "inventory.source_count",
+        minimum=1,
+    )
+    if inventory_source_count != source_count:
         raise ValueError("inventory source_count mismatch")
     retained_payload_bytes = sum(row["payload_bytes"] for row in validated)
-    if inventory.get("retained_payload_bytes") != retained_payload_bytes:
+    inventory_retained_payload_bytes = _require_int(
+        inventory.get("retained_payload_bytes"),
+        "inventory.retained_payload_bytes",
+        minimum=1,
+    )
+    if inventory_retained_payload_bytes != retained_payload_bytes:
         raise ValueError("inventory retained_payload_bytes mismatch")
 
 
@@ -277,7 +319,7 @@ def prepare_ephemeral_data232_rows(
     binding_rows: list[dict[str, Any]] = []
     for index, payload_row in enumerate(payload_rows):
         if not isinstance(payload_row, Mapping):
-            raise ValueError(f"payload_rows[{index}] must be an object")
+            raise TypeError(f"payload_rows[{index}] must be an object")
         record_id = _require_nonempty_string(
             payload_row.get("record_id"),
             f"payload_rows[{index}].record_id",
@@ -287,36 +329,36 @@ def prepare_ephemeral_data232_rows(
         seen.add(record_id)
         if record_id not in inventory_by_id:
             raise ValueError(f"unexpected payload row {record_id}")
-        expected = inventory_by_id[record_id]
+        expected_row = inventory_by_id[record_id]
 
         normalized_payload = payload_row.get("normalized_payload")
         comparison_payload = payload_row.get("comparison_payload")
         if not isinstance(normalized_payload, str):
-            raise ValueError(f"payload row {record_id} must contain string payloads")
+            raise TypeError(f"payload row {record_id} must contain string payloads")
         if not isinstance(comparison_payload, str):
-            raise ValueError(f"payload row {record_id} must contain string payloads")
+            raise TypeError(f"payload row {record_id} must contain string payloads")
         payload_bytes = normalized_payload.encode("utf-8")
         comparison_bytes = comparison_payload.encode("utf-8")
         payload_hash = hashlib.sha256(payload_bytes).hexdigest()
-        if len(payload_bytes) != expected["payload_bytes"]:
+        if len(payload_bytes) != expected_row["payload_bytes"]:
             raise ValueError(f"payload identity mismatch for {record_id}")
-        if payload_hash != expected["payload_sha256"]:
+        if payload_hash != expected_row["payload_sha256"]:
             raise ValueError(f"payload identity mismatch for {record_id}")
         comparison_hash = hashlib.sha256(comparison_bytes).hexdigest()
-        if len(comparison_bytes) != expected["comparison_bytes"]:
+        if len(comparison_bytes) != expected_row["comparison_bytes"]:
             raise ValueError(f"comparison payload identity mismatch for {record_id}")
-        if comparison_hash != expected["comparison_sha256"]:
+        if comparison_hash != expected_row["comparison_sha256"]:
             raise ValueError(f"comparison payload identity mismatch for {record_id}")
 
         ephemeral.append(
             {
                 "record_id": record_id,
-                "source_id": expected["source_id"],
-                "family": expected["family"],
-                "modality": expected["modality"],
+                "source_id": expected_row["source_id"],
+                "family": expected_row["family"],
+                "modality": expected_row["modality"],
                 "normalized_payload": normalized_payload,
                 "comparison_payload": comparison_payload,
-                "comparison_policy_id": expected["comparison_policy_id"],
+                "comparison_policy_id": expected_row["comparison_policy_id"],
                 "training_eligible": False,
                 "evaluation_eligible": False,
             }
@@ -324,10 +366,10 @@ def prepare_ephemeral_data232_rows(
         binding_rows.append(
             {
                 "record_id": record_id,
-                "payload_sha256": expected["payload_sha256"],
-                "payload_bytes": expected["payload_bytes"],
-                "comparison_sha256": expected["comparison_sha256"],
-                "comparison_bytes": expected["comparison_bytes"],
+                "payload_sha256": expected_row["payload_sha256"],
+                "payload_bytes": expected_row["payload_bytes"],
+                "comparison_sha256": expected_row["comparison_sha256"],
+                "comparison_bytes": expected_row["comparison_bytes"],
             }
         )
 
