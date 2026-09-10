@@ -146,7 +146,7 @@ class ModelSpec:
             "attention_per_layer": attention_per_layer,
             "mlp_weights_per_layer": mlp_weights_per_layer,
             "mlp_biases_per_layer": mlp_biases_per_layer,
-            "mlp_per_layer": mlp_weights_per_layer + mlp_biases_per_layer,
+            "mlp_per_layer": mlp_per_layer,
             "norms_per_layer": norms_per_layer,
             "block_per_layer": block_per_layer,
             "blocks_total": self.n_layers * block_per_layer,
