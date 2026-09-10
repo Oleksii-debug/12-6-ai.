@@ -35,6 +35,8 @@ EXPECTED_RIGHTS_CONFIG_SHA256 = "34da44a047c5e0d562ee6a86987cb66e3ed266e1c1f09af
 EXPECTED_RIGHTS_REPORT_SHA256 = "7eea6d0b79353ef565910738dce9de93008a961059cab503b6f05686c0f27a7d"
 EXPECTED_ACCEPTED_INVENTORY_SHA256 = "7b93056f38fbc87c11e14df9069066e21380db1f1b8d8016314330f841bfa6fc"
 EXPECTED_HELD_INVENTORY_SHA256 = "566760e10157cd835ed0879abb37f052b57d31cff6af358a81ff717f4f7f59d9"
+EXPECTED_PRIVACY_IMPLEMENTATION_GIT_BLOB_SHA = "0d4c1fc82dba66532208c533e85cb0e322634e28"
+PRIVACY_REPAIR_REFERENCE_MERGE_SHA = "984aafd08c8224531b2547221991916ea0456753"
 
 EXPECTED_CANDIDATE_KEYS = frozenset(
     {
@@ -73,6 +75,25 @@ def require(condition: bool, message: str) -> None:
 
 def _is_sha256(value: Any) -> bool:
     return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value) is not None
+
+
+def _git_blob_sha(path: Path) -> str:
+    require(path.is_file() and not path.is_symlink(), "privacy implementation must be a regular file")
+    payload = path.read_bytes()
+    digest = hashlib.sha1(usedforsecurity=False)
+    digest.update(f"blob {len(payload)}\0".encode("ascii"))
+    digest.update(payload)
+    return digest.hexdigest()
+
+
+def _bind_canonical_privacy_repair() -> str:
+    privacy_impl = TOOLS.parent / "src" / "twelve_six" / "data" / "privacy_filter_v3.py"
+    observed = _git_blob_sha(privacy_impl)
+    require(
+        observed == EXPECTED_PRIVACY_IMPLEMENTATION_GIT_BLOB_SHA,
+        "canonical privacy repair implementation drift",
+    )
+    return observed
 
 
 def _load_json(path: Path, label: str) -> dict[str, Any]:
@@ -216,7 +237,7 @@ def materialize_authoritative(
     *,
     expected_upstream_report_sha256: str,
 ) -> dict[str, Any]:
-    """Bind exact #916 handoff evidence, then delegate incumbent materialization."""
+    """Bind exact upstream and repaired privacy evidence, then delegate incumbent materialization."""
     require(not output.exists(), "output JSONL already exists")
     require(not report_path.exists(), "authority-bound report already exists")
     require(not output.is_symlink(), "output JSONL path must not be a symlink")
@@ -229,6 +250,7 @@ def materialize_authoritative(
     }
     require(len(resolved) == 4, "candidate, upstream report, output, and report paths must be distinct")
 
+    privacy_blob_sha = _bind_canonical_privacy_repair()
     upstream_sha, expected_candidate_sha = _validate_upstream_report(
         upstream_report, expected_upstream_report_sha256
     )
@@ -276,13 +298,15 @@ def materialize_authoritative(
             "candidate_exact_keyset_enforced": True,
             "unknown_candidate_fields_rejected": True,
             "incumbent_materializer_report_sha256": claimed_mechanics_sha,
+            "privacy_repair_reference_merge_sha": PRIVACY_REPAIR_REFERENCE_MERGE_SHA,
+            "privacy_filter_v3_git_blob_sha": privacy_blob_sha,
         }
         boundary = dict(_mapping(core.get("claim_boundary"), "materializer claim boundary"))
         boundary["upstream_handoff_authority_bound"] = True
         boundary["candidate_schema_exact"] = True
-        boundary["canonical_privacy_repair_bound"] = False
+        boundary["canonical_privacy_repair_bound"] = True
         core["claim_boundary"] = boundary
-        core["safe_result"] = "RADA_TREES_QUALITY_WINDOWS_AUTHORITY_BOUND_PRIVACY_REPAIR_PENDING_ZERO_CREDIT"
+        core["safe_result"] = "RADA_TREES_QUALITY_WINDOWS_AUTHORITY_BOUND_ZERO_CREDIT"
         report = {**core, "report_sha256": base.sha256_bytes(base.canonical_bytes(core))}
         final_partial.write_bytes(base.canonical_bytes(report))
         final_partial.replace(report_path)
@@ -316,9 +340,10 @@ def main() -> int:
     except (AuthorityBindingError, base.MaterializationError, OSError, ValueError, TypeError, KeyError) as exc:
         print(f"BLOCKED: {exc}")
         return 2
-    print("D03_RADA_TREES_QUALITY_WINDOWS_AUTHORITY_BOUND=PASS_ZERO_CREDIT_PRIVACY_REPAIR_PENDING")
+    print("D03_RADA_TREES_QUALITY_WINDOWS_AUTHORITY_BOUND=PASS_ZERO_CREDIT")
     print("OUTPUT_RECORDS=" + str(report["output_records"]))
     print("UPSTREAM_REPORT_SHA256=" + report["authority_binding"]["upstream_handoff_report_sha256"])
+    print("PRIVACY_IMPLEMENTATION_GIT_BLOB_SHA=" + report["authority_binding"]["privacy_filter_v3_git_blob_sha"])
     print("REPORT_SHA256=" + report["report_sha256"])
     return 0
 
