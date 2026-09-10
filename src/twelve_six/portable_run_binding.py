@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+from collections.abc import Collection
 from dataclasses import dataclass
 from typing import Any
 
@@ -327,6 +328,9 @@ def bind_portable_run_packet(
     readiness: Any,
     template: Any,
     overlay: Any,
+    *,
+    verified_scientific_authorities: Collection[str] = (),
+    verified_authorization_refs: Collection[str] = (),
 ) -> PortableRunBinding:
     """Return a runnable packet only when upstream readiness and session binding pass."""
     blockers: list[str] = []
@@ -337,7 +341,11 @@ def bind_portable_run_packet(
     readiness_hash = canonical_sha256(readiness) if isinstance(readiness, dict) else None
     overlay_hash = canonical_sha256(overlay) if isinstance(overlay, dict) else None
 
-    readiness_result = assess_learned20m_readiness(readiness_data)
+    readiness_result = assess_learned20m_readiness(
+        readiness_data,
+        verified_scientific_authorities=verified_scientific_authorities,
+        verified_authorization_refs=verified_authorization_refs,
+    )
     if not readiness_result.ready_for_local_free_pilot:
         blockers.extend(
             f"readiness:{item}" for item in readiness_result.local_free_pilot_blockers

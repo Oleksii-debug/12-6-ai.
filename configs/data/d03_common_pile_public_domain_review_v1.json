@@ -1,0 +1,66 @@
+{
+  "base_main_sha": "a55c6ea34566faae6f82a506d8e0f8691ddea716",
+  "common_pile_rights_authority": {
+    "merge_commit_sha": "45e27ac2d32008dd99338d30ec3429dc0d964477",
+    "project_review_status": "REVIEW_REQUIRED",
+    "registry_id": "COMMON-PILE-SOURCE-RIGHTS-V1",
+    "registry_identity_sha256": "b279c4a7404e0e501acd0c77842d1f71c43ea1dbcd611acab18163c64b060d4e",
+    "source_key": "public_domain_review"
+  },
+  "execution_profile": "LOCAL_FREE",
+  "files": [
+    {
+      "max_compressed_bytes": 2000000,
+      "max_uncompressed_bytes": 12000000,
+      "path": "v0/00000_collections.jsonl.gz",
+      "sha256": "0a5cbe305d7f468aad95a8cfc4d5fae14132bc359ccf92fc3705072db33a46fd"
+    },
+    {
+      "max_compressed_bytes": 2500000,
+      "max_uncompressed_bytes": 14000000,
+      "path": "v0/00000_essays.jsonl.gz",
+      "sha256": "825aed6a66ab14f89e1fe3110f67265d511994c52e5aed48b866a9e8a1bdeb4d"
+    }
+  ],
+  "schema_version": "12-6.d03-common-pile-public-domain-review-source-v1",
+  "selection": {
+    "max_normalized_utf8_bytes": 4800000,
+    "max_record_utf8_bytes": 200000,
+    "min_alpha_chars": 80,
+    "min_english_lexical_hits": 3,
+    "min_latin_alpha_ratio": 0.9,
+    "min_record_utf8_bytes": 120
+  },
+  "source": {
+    "attribution_required": true,
+    "dataset": "common-pile/public_domain_review",
+    "expected_record_license": "Creative Commons - Attribution Share-Alike - https://creativecommons.org/licenses/by-sa/4.0/",
+    "family_id": "en.common-pile.public-domain-review",
+    "origin_host": "publicdomainreview.org",
+    "revision": "177f70f044bd7a347616727c0f33ab4af9baa495",
+    "source_value": "public-domain-review"
+  },
+  "truth_boundary": {
+    "authorized_optimized_target_exposure": 0,
+    "balance_family_caps_complete": false,
+    "candidate_snapshot_only": true,
+    "canonical_corpus_admitted": false,
+    "cluster_safe_split_complete": false,
+    "deterministic_packing_complete": false,
+    "evaluation_authorized_bytes": 0,
+    "family_credit": false,
+    "final_test_payload_accessed": false,
+    "global_dedup_complete": false,
+    "model_training_executed": false,
+    "optimizer_updates": 0,
+    "paid_compute_used": false,
+    "post_composition_quality_privacy_complete": false,
+    "postpack_unique_loss_ledger_complete": false,
+    "reserved_evaluation_decontamination_complete": false,
+    "source_capacity_bytes_credited": 0,
+    "tokenizer_fit_authorized": false,
+    "training_authorized_bytes": 0,
+    "two_clean_builds_complete": false
+  },
+  "worker": "D03-COMMON-PILE-PUBLIC-DOMAIN-REVIEW-EN"
+}
