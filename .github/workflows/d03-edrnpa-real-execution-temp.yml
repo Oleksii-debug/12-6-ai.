@@ -1,0 +1,147 @@
+name: TEMP D03 EDRNPA real execution
+
+on:
+  push:
+    branches:
+      - d03/edrnpa-open-data-probe-20260907
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  execute-real-edrnpa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out exact Product head
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Compile exact materializer
+        run: python -m py_compile tools/probe_d03_edrnpa_open_data_v1.py
+
+      - name: Acquire exact current resource twice
+        run: |
+          python - <<'PY'
+          import hashlib
+          import importlib.util
+          from pathlib import Path
+
+          tool = Path('tools/probe_d03_edrnpa_open_data_v1.py')
+          spec = importlib.util.spec_from_file_location('edrnpa_probe', tool)
+          assert spec is not None and spec.loader is not None
+          mod = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(mod)
+
+          out = Path('/tmp/edrnpa-execution')
+          out.mkdir(parents=True, exist_ok=True)
+          acquired = []
+          for label in ('a', 'b'):
+              data = mod.download_archive(timeout=240.0)
+              if mod.md5(data) != mod.RESOURCE_MD5:
+                  raise SystemExit(f'{label}: exact current resource MD5 mismatch')
+              path = out / f'source-{label}.zip'
+              path.write_bytes(data)
+              digest = hashlib.sha256(data).hexdigest()
+              print(f'{label}: bytes={len(data)} md5={mod.md5(data)} sha256={digest}')
+              acquired.append((data, digest))
+          if acquired[0][0] != acquired[1][0]:
+              raise SystemExit('independent source acquisitions are not byte-identical')
+          PY
+
+      - name: Materialize exact source twice
+        run: |
+          mkdir -p /tmp/edrnpa-execution/out
+          python tools/probe_d03_edrnpa_open_data_v1.py \
+            --archive /tmp/edrnpa-execution/source-a.zip \
+            --records /tmp/edrnpa-execution/records-a.jsonl \
+            --report /tmp/edrnpa-execution/out/report-a.json
+          python tools/probe_d03_edrnpa_open_data_v1.py \
+            --archive /tmp/edrnpa-execution/source-b.zip \
+            --records /tmp/edrnpa-execution/records-b.jsonl \
+            --report /tmp/edrnpa-execution/out/report-b.json
+          cmp /tmp/edrnpa-execution/records-a.jsonl /tmp/edrnpa-execution/records-b.jsonl
+          cmp /tmp/edrnpa-execution/out/report-a.json /tmp/edrnpa-execution/out/report-b.json
+
+      - name: Build text-free reproducibility evidence
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import platform
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          root = Path('/tmp/edrnpa-execution')
+          out = root / 'out'
+          source = (root / 'source-a.zip').read_bytes()
+          records = (root / 'records-a.jsonl').read_bytes()
+          report_bytes = (out / 'report-a.json').read_bytes()
+          report = json.loads(report_bytes)
+
+          def sha256(data: bytes) -> str:
+              return hashlib.sha256(data).hexdigest()
+
+          def cjson(value: object) -> bytes:
+              return (json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(',', ':')) + '\n').encode('utf-8')
+
+          summary = {
+              'schema_version': '12-6.d03-edrnpa-real-execution-evidence.v1',
+              'execution_profile': 'LOCAL_FREE',
+              'execution_head_sha': subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(),
+              'materializer_git_blob_sha': subprocess.check_output(['git', 'hash-object', 'tools/probe_d03_edrnpa_open_data_v1.py'], text=True).strip(),
+              'python_version': sys.version.split()[0],
+              'platform': platform.platform(),
+              'source': {
+                  'dataset_id': report['source']['dataset_id'],
+                  'resource_id': report['source']['resource_id'],
+                  'resource_updated': report['source']['resource_updated'],
+                  'resource_md5': report['source']['resource_md5'],
+                  'archive_sha256': sha256(source),
+                  'archive_bytes': len(source),
+                  'independent_acquisitions_byte_identical': True,
+              },
+              'materialization': {
+                  'independent_builds_byte_identical': True,
+                  'candidate_jsonl_sha256': sha256(records),
+                  'candidate_jsonl_bytes': len(records),
+                  'report_file_sha256': sha256(report_bytes),
+                  'report_identity_sha256': report['report_identity_sha256'],
+                  'inventory_identity_sha256': report['selection']['inventory_identity_sha256'],
+                  'candidate_objects_after_quality': report['selection']['candidate_objects_after_quality'],
+                  'selected_objects': report['selection']['selected_objects'],
+                  'selected_text_utf8_bytes': report['selection']['selected_bytes'],
+                  'quarantined_email_or_phone': report['selection']['quarantined_email_or_phone'],
+                  'ignored_nontext_or_schema_members': report['selection']['ignored_nontext_or_schema_members'],
+                  'skipped_for_cap': report['selection']['skipped_for_cap'],
+              },
+              'rights_boundary': {
+                  'portal_license': report['rights']['portal_license'],
+                  'open_data_free_reuse': report['rights']['open_data_free_reuse'],
+                  'attribution_required': report['rights']['attribution_required'],
+                  'object_level_rights_and_provenance_retest_complete': False,
+                  'training_rights_admitted': False,
+              },
+              'truth_boundary': report['truth_boundary'],
+              'candidate_payload_persisted_in_evidence': False,
+              'source_archive_persisted_in_evidence': False,
+          }
+          summary['summary_identity_sha256'] = sha256(cjson(summary))
+          (out / 'execution-summary.json').write_bytes(cjson(summary))
+          PY
+
+      - name: Upload text-free execution evidence only
+        uses: actions/upload-artifact@v4
+        with:
+          name: d03-edrnpa-real-execution-zero-credit
+          path: |
+            /tmp/edrnpa-execution/out/report-a.json
+            /tmp/edrnpa-execution/out/execution-summary.json
+          if-no-files-found: error
+          retention-days: 7
