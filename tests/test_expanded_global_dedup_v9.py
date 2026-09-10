@@ -224,7 +224,7 @@ def test_rada_report_requires_independent_expected_identity() -> None:
 
 
 def test_partial_raw_parent_substitution_fails_closed() -> None:
-    rows, raw, report, report_sha = qp_fixture()
+    rows, _, report, report_sha = qp_fixture()
     validate_rada_quality_privacy_report(report, expected_report_sha256=report_sha)
     bad = copy.deepcopy(rows)
     bad[1]["record_id"] = bad[1]["quality_parent_record_id"]
