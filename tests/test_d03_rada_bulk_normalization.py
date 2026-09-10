@@ -111,10 +111,10 @@ def test_production_contract_binds_hardened_probe_and_current_observation() -> N
         == "c2f198120cae00ba247c4eaad36d2a357770a47c7fa9a7608cc5ec182971b82b"
     )
     successor = CONFIG["successor_observation_pin"]
-    assert successor["source_pr"] == 830
-    assert successor["source_head_sha"] == "077f45fea310ecbc50b87801ff916502aa7f11f9"
+    assert successor["source_pr"] == 864
+    assert successor["source_head_sha"] == "538fb05699fd9f61b31c0e3552faf9b144a6d3bb"
     assert successor["source_observation_report_sha256"] == (
-        "1c33b31844b11822479adb1382a683a430cee470bbdf23f259084f8b5ebf0458"
+        "e2ad0d8a4fce01d2da03fc93d636354253beaaf563db43968b11b600e26d0cdf"
     )
     assert successor["discovery_capacity_threshold"] == "FAIL_BELOW_MINIMUM"
     assert successor["training_authorized_bytes"] == 0
