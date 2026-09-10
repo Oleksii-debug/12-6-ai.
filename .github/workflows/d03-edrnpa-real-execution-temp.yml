@@ -1,4 +1,4 @@
-name: TEMP D03 EDRNPA structural diagnosis
+name: TEMP D03 EDRNPA XML schema diagnosis
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 jobs:
-  inspect-current-edrnpa:
+  inspect-current-edrnpa-xml:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -22,13 +22,13 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Acquire exact current resource once and inventory archive structure
+      - name: Inspect nested text XML structure without payload text
         run: |
           python - <<'PY'
           import collections
-          import hashlib
           import importlib.util
           import shutil
+          import xml.etree.ElementTree as ET
           import zipfile
           from pathlib import Path
 
@@ -38,61 +38,69 @@ jobs:
           mod = importlib.util.module_from_spec(spec)
           spec.loader.exec_module(mod)
 
-          root = Path('/tmp/edrnpa-structure')
+          root = Path('/tmp/edrnpa-schema')
           root.mkdir(parents=True, exist_ok=True)
           source = mod.download_archive(timeout=240.0)
           if mod.md5(source) != mod.RESOURCE_MD5:
               raise SystemExit('exact current resource MD5 mismatch')
-          source_path = root / 'source.zip'
-          source_path.write_bytes(source)
-          print(
-              'SOURCE '
-              f'bytes={len(source)} md5={mod.md5(source)} '
-              f'sha256={hashlib.sha256(source).hexdigest()}'
-          )
+          outer_path = root / 'source.zip'
+          outer_path.write_bytes(source)
 
-          nested_budget = 1400 * 1024 * 1024
-          nested_copied = 0
-          with zipfile.ZipFile(source_path) as outer:
-              infos = outer.infolist()
-              total = sum(i.file_size for i in infos if not i.is_dir())
-              print(f'OUTER members={len(infos)} total_uncompressed_bytes={total}')
-              for info in infos:
-                  print(
-                      'OUTER_MEMBER '
-                      f'name={info.filename!r} size={info.file_size} '
-                      f'compressed={info.compress_size} flags={info.flag_bits}'
-                  )
-              for index, info in enumerate(infos):
-                  if info.is_dir() or not info.filename.casefold().endswith('.zip'):
-                      continue
-                  if info.file_size > 700 * 1024 * 1024:
-                      raise SystemExit(f'nested archive too large for diagnostic: {info.filename}')
-                  nested_copied += info.file_size
-                  if nested_copied > nested_budget:
-                      raise SystemExit('nested diagnostic byte budget exceeded')
-                  nested_path = root / f'nested-{index}.zip'
-                  with outer.open(info) as src, nested_path.open('wb') as dst:
-                      shutil.copyfileobj(src, dst, length=1024 * 1024)
-                  with zipfile.ZipFile(nested_path) as nested:
-                      ninfos = nested.infolist()
-                      suffixes = collections.Counter(
-                          Path(i.filename).suffix.casefold() or '<none>'
-                          for i in ninfos if not i.is_dir()
-                      )
-                      sizes = [i.file_size for i in ninfos if not i.is_dir()]
-                      print(
-                          'NESTED '
-                          f'outer_name={info.filename!r} members={len(ninfos)} '
-                          f'total_uncompressed_bytes={sum(sizes)} '
-                          f'max_member_bytes={max(sizes, default=0)} '
-                          f'suffixes={dict(sorted(suffixes.items()))}'
-                      )
-                      for sample in ninfos[:25]:
+          def local(tag: str) -> str:
+              return tag.rsplit('}', 1)[-1] if '}' in tag else tag
+
+          with zipfile.ZipFile(outer_path) as outer:
+              info = outer.getinfo('25.2-edrnpa_text.zip')
+              nested_path = root / 'texts.zip'
+              with outer.open(info) as src, nested_path.open('wb') as dst:
+                  shutil.copyfileobj(src, dst, length=1024 * 1024)
+
+          with zipfile.ZipFile(nested_path) as nested:
+              ninfos = [i for i in nested.infolist() if not i.is_dir()]
+              if len(ninfos) != 1 or not ninfos[0].filename.casefold().endswith('.xml'):
+                  raise SystemExit('unexpected nested text ZIP shape')
+              info = ninfos[0]
+              print(f'XML_MEMBER name={info.filename!r} size={info.file_size} compressed={info.compress_size}')
+              with nested.open(info) as stream:
+                  depth = 0
+                  root_tag = None
+                  direct_child_count = 0
+                  tag_counts = collections.Counter()
+                  for event, elem in ET.iterparse(stream, events=('start', 'end')):
+                      tag = local(elem.tag)
+                      if event == 'start':
+                          if root_tag is None:
+                              root_tag = tag
+                              print(f'ROOT tag={tag!r} attrs={sorted(local(k) for k in elem.attrib)}')
+                          if depth <= 3 and sum(tag_counts.values()) < 120:
+                              print(
+                                  f'START depth={depth} tag={tag!r} '
+                                  f'attrs={sorted(local(k) for k in elem.attrib)}'
+                              )
+                          depth += 1
+                          tag_counts[tag] += 1
+                          continue
+
+                      depth -= 1
+                      text_chars = len(elem.text or '')
+                      if depth == 1:
+                          direct_child_count += 1
+                          child_shapes = []
+                          for child in list(elem)[:40]:
+                              child_shapes.append(
+                                  (local(child.tag), len(child.text or ''), sorted(local(k) for k in child.attrib))
+                              )
                           print(
-                              'NESTED_SAMPLE '
-                              f'outer_name={info.filename!r} name={sample.filename!r} '
-                              f'size={sample.file_size} compressed={sample.compress_size} '
-                              f'flags={sample.flag_bits}'
+                              f'ROOT_CHILD index={direct_child_count} tag={tag!r} '
+                              f'attrs={sorted(local(k) for k in elem.attrib)} '
+                              f'text_chars={text_chars} child_shapes={child_shapes}'
                           )
+                          elem.clear()
+                          if direct_child_count >= 5:
+                              break
+                      elif depth >= 1:
+                          # Keep the first root-child subtree intact until its end,
+                          # then clear it as a unit. No payload text is printed.
+                          pass
+                  print(f'OBSERVED_TAG_COUNTS {dict(tag_counts)}')
           PY
