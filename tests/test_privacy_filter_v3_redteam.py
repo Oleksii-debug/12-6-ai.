@@ -133,3 +133,49 @@ def test_manifest_policy_binding_and_zero_value_retention() -> None:
     assert manifest["detector_counts"]["email"] == 1
     assert manifest["public_evidence_policy"]["matched_value_hashes_retained"] is False
     assert_hash_safe_evidence(manifest)
+
+
+def test_quoted_sensitive_keys_are_detected_without_widening_key_vocabulary() -> None:
+    secret = S("AbCd", "1234!fixture")
+    cases = [
+        '{"password": "' + secret + '"}',
+        '{"api_key": "' + secret + '"}',
+        "{'client_secret': '" + secret + "'}",
+        '"client_secret" = "' + secret + '"',
+    ]
+    for text in cases:
+        ids = {finding.detector_id for finding in detect(text)}
+        assert "environment_secret_assignment" in ids
+
+    assert detect('{"ordinary_key": "' + secret + '"}') == ()
+
+
+def test_complete_placeholder_grammars_stay_negative() -> None:
+    cases = [
+        '{"password": "changeme"}',
+        '"api_key" = "<redacted>"',
+        "password=${PASSWORD}",
+        "password=$PASSWORD",
+        "password=%PASSWORD%",
+        "password={{PASSWORD}}",
+        "password=process.env.PASSWORD",
+        "password=os.getenv(PASSWORD)",
+        "password=env(PASSWORD)",
+    ]
+    for text in cases:
+        assert detect(text) == ()
+
+
+def test_malformed_placeholder_prefixes_do_not_suppress_secret_literals() -> None:
+    literal = S("unterminated", "Secret123")
+    cases = [
+        "password=%" + literal,
+        "password={{" + literal,
+        "password=process.envBROKEN" + S("Secret", "123"),
+        "password=os.getenvBROKEN" + S("Secret", "123"),
+        "password=env(" + S("BROKEN", "Secret123"),
+        "password=$" + S("literal-", "secret-123"),
+    ]
+    for text in cases:
+        ids = {finding.detector_id for finding in detect(text)}
+        assert "environment_secret_assignment" in ids
