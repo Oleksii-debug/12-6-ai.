@@ -25,6 +25,29 @@ jobs:
       - name: Compile exact materializer
         run: python -m py_compile tools/probe_d03_edrnpa_open_data_v1.py
 
+      - name: Observe exact remote envelope
+        run: |
+          python - <<'PY'
+          import importlib.util
+          import urllib.request
+          from pathlib import Path
+
+          tool = Path('tools/probe_d03_edrnpa_open_data_v1.py')
+          spec = importlib.util.spec_from_file_location('edrnpa_probe', tool)
+          assert spec is not None and spec.loader is not None
+          mod = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(mod)
+          request = urllib.request.Request(
+              mod.DOWNLOAD_URL,
+              method='HEAD',
+              headers={'User-Agent': '12-6-ai-edrnpa-open-data/1.0 (+LOCAL_FREE research)'},
+          )
+          with urllib.request.urlopen(request, timeout=60.0) as response:
+              print(f'final_url={response.geturl()}')
+              print(f'content_length={response.headers.get("Content-Length")}')
+              print(f'content_type={response.headers.get("Content-Type")}')
+          PY
+
       - name: Acquire exact current resource twice
         run: |
           python - <<'PY'
