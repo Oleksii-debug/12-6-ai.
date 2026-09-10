@@ -32,7 +32,7 @@ NAIS_METADATA_PAGE = (
     "https://nais.gov.ua/m/ediniy-derjavniy-reestr-normativno-pravovih-aktiv-196"
 )
 FAMILY_ID = "ua.minjust.edrnpa.open-data"
-MAX_ARCHIVE_BYTES = 300 * 1024 * 1024
+MAX_ARCHIVE_BYTES = 640 * 1024 * 1024
 MAX_MEMBER_BYTES = 32 * 1024 * 1024
 MAX_TOTAL_UNCOMPRESSED_BYTES = 2 * 1024 * 1024 * 1024
 MAX_MEMBERS = 300_000
