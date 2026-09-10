@@ -1,0 +1,102 @@
+{
+  "schema_version": "12-6.d03-common-pile-caselaw-source-admission.v1",
+  "execution_profile": "LOCAL_FREE",
+  "project_authority": {
+    "swarm_control_issue": 723,
+    "takeover_issue": 1075,
+    "superseded_expired_claim_issue": 982,
+    "generic_rights_pr": 769,
+    "generic_rights_head_sha": "327a5364f7729f3ffdfc2f8079d02fb7a54638d2",
+    "generic_registry_path": "configs/data/common_pile_source_rights_v1.json",
+    "generic_registry_id": "COMMON-PILE-SOURCE-RIGHTS-V1",
+    "generic_source_key": "caselaw_access_project"
+  },
+  "candidate_binding": {
+    "product_pr": 904,
+    "materializer_product_head_sha": "e63f2fd4eddbd348b57a42e1fb41cb658d0c3a82",
+    "dataset": "common-pile/caselaw_access_project",
+    "revision": "31e65135501af50f8285b52489bc3b39fd0fc5d5",
+    "ordering_policy": "PRESERVE_ORIGINAL_CAP_00044_THEN_APPEND_CAP_00043",
+    "objects": [
+      {
+        "file": "cap_00044.jsonl.gz",
+        "bytes": 9441419,
+        "sha256": "e04bdff817b34d5fd2ab0b4aff272adfe6e863aacef7d4cd24db47e4b7c8db33"
+      },
+      {
+        "file": "cap_00043.jsonl.gz",
+        "bytes": 10476512,
+        "sha256": "f299c45effc957e1e02d3930e68c5d6dc643eb9d585093ff7445f36095c8531f"
+      }
+    ],
+    "family": "en.common-pile.caselaw"
+  },
+  "primary_public_evidence": [
+    {
+      "authority": "Harvard Caselaw Access Project",
+      "title": "Terms of Use",
+      "url": "https://case.law/terms/",
+      "accessed_utc": "2026-09-10",
+      "supported_fact": "CAP states that Caselaw Data and metadata made available on its site are made available under CC0 1.0; the terms also disclaim warranties and third-party-rights representations."
+    },
+    {
+      "authority": "Common Pile",
+      "title": "caselaw_access_project dataset card",
+      "url": "https://huggingface.co/datasets/common-pile/caselaw_access_project/blob/main/README.md",
+      "accessed_utc": "2026-09-10",
+      "supported_fact": "The source card describes public-domain filtering and also warns that license laundering or inaccurate metadata can yield incorrect license assignments."
+    },
+    {
+      "authority": "Common Pile",
+      "title": "caselaw_access_project dataset",
+      "url": "https://huggingface.co/datasets/common-pile/caselaw_access_project",
+      "accessed_utc": "2026-09-10",
+      "supported_fact": "The dataset surface exposes id/source/metadata/text-style provenance fields used by the project record contract."
+    },
+    {
+      "authority": "Free Law Project",
+      "title": "CourtListener.com Terms of Service and Policies",
+      "url": "https://wiki.free.law/c/terms/courtlistener/courtlistenercom-terms-of-service-and-policies",
+      "accessed_utc": "2026-09-10",
+      "supported_fact": "Court materials can include third-party copyrighted works, so CourtListener provenance is not treated as blanket source admission by this project."
+    }
+  ],
+  "admission_policy": {
+    "decision_class": "CONDITIONAL_CAP_RECORD_SOURCE_ADMISSION",
+    "common_pile_license_metadata_sufficient_alone": false,
+    "accepted_source_exact": "Caselaw Access Project",
+    "required_metadata_license_exact": "Public Domain",
+    "required_url_scheme": "https",
+    "allowed_metadata_url_hosts": ["case.law", "static.case.law"],
+    "explicitly_not_source_admitted": ["Court Listener", "CourtListener"],
+    "forbidden_editorial_metadata_keys": [
+      "annotation",
+      "annotations",
+      "editorial",
+      "editorial_summary",
+      "headnote",
+      "headnotes",
+      "key_number",
+      "syllabus"
+    ],
+    "legal_conclusion_claimed": false,
+    "record_level_policy_required": true,
+    "payload_source_admission_executed": false,
+    "admitted_payload_records": 0,
+    "admitted_payload_bytes": 0
+  },
+  "truth_boundary": {
+    "source_policy_review_complete": true,
+    "canonical_capacity_credited": 0,
+    "family_credit_added": 0,
+    "training_authorized_bytes": 0,
+    "unique_causal_loss_positions_authorized": 0,
+    "tokenizer_fit_authorized": false,
+    "training_eligible": false,
+    "evaluation_eligible": false,
+    "optimizer_updates": 0,
+    "model_training_executed": false,
+    "final_test_accessed": false,
+    "paid_compute_used": false
+  }
+}
