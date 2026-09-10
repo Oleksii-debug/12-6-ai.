@@ -1,0 +1,220 @@
+name: D03 Lesia 1892 real LOCAL_FREE execution
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/d03_lesia1892_real_execution.yml"
+      - "configs/data/d03_wikisource_lesia1892_current_main_v1.json"
+      - "src/twelve_six/data/wikisource_pd_api.py"
+      - "src/twelve_six/data/wikisource_pd_contract.py"
+      - "src/twelve_six/data/wikisource_pd_edition.py"
+      - "tools/materialize_d03_wikisource_lesia1892.py"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: d03-lesia1892-real-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  acquire-a:
+    name: independent acquisition A
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    outputs:
+      candidate_sha256: ${{ steps.evidence.outputs.candidate_sha256 }}
+      report_sha256: ${{ steps.evidence.outputs.report_sha256 }}
+      inventory_sha256: ${{ steps.evidence.outputs.inventory_sha256 }}
+      page_count: ${{ steps.evidence.outputs.page_count }}
+      normalized_utf8_bytes: ${{ steps.evidence.outputs.normalized_utf8_bytes }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Bind exact Product head
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+      - name: Materialize pinned edition from official Wikisource
+        run: |
+          mkdir -p /tmp/lesia-a
+          PYTHONPATH=src python tools/materialize_d03_wikisource_lesia1892.py \
+            --candidate-out /tmp/lesia-a/candidate.jsonl \
+            --report-out /tmp/lesia-a/report.json \
+            --max-pages 112
+      - name: Emit text-free cryptographic evidence
+        id: evidence
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          candidate_path = Path('/tmp/lesia-a/candidate.jsonl')
+          report_path = Path('/tmp/lesia-a/report.json')
+          report = json.loads(report_path.read_text(encoding='utf-8'))
+          candidate_sha = hashlib.sha256(candidate_path.read_bytes()).hexdigest()
+          inventory = report['candidate']['inventory']
+          inventory_bytes = json.dumps(inventory, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode('utf-8')
+          inventory_sha = hashlib.sha256(inventory_bytes).hexdigest()
+          expected_authority = '6b443faa7fef777214022028d5fdb356dae0ab1a9b71822b4e16bea8f92cd0d6'
+          source = report['source_authority']
+          truth = report['truth_boundary']
+          assert source['incumbent_next100022_authority_sha256'] == expected_authority
+          assert source['index_revision_id'] == 729499
+          assert source['source_family_id'] == 'ua.literature.lesia-ukrainka.na-krylah-pisen.1892-lviv'
+          assert source['family_credit_added'] is False
+          assert truth['canonical_capacity_credit_bytes'] == 0
+          assert truth['training_authorized_bytes'] == 0
+          assert truth['authorized_unique_loss_positions'] == 0
+          assert truth['tokenizer_fit_authorized'] is False
+          assert truth['optimizer_updates'] == 0
+          assert truth['model_training_executed'] is False
+          assert truth['final_test_outcomes_read'] is False
+          assert truth['paid_compute_used'] is False
+
+          def assert_text_free(value):
+              if isinstance(value, dict):
+                  assert 'text' not in value
+                  for child in value.values():
+                      assert_text_free(child)
+              elif isinstance(value, list):
+                  for child in value:
+                      assert_text_free(child)
+          assert_text_free(report)
+
+          fields = {
+              'candidate_sha256': candidate_sha,
+              'report_sha256': report['report_sha256'],
+              'inventory_sha256': inventory_sha,
+              'page_count': str(report['candidate']['page_count']),
+              'normalized_utf8_bytes': str(report['candidate']['normalized_utf8_bytes']),
+          }
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as handle:
+              for key, value in fields.items():
+                  handle.write(f'{key}={value}\n')
+          print('TEXT_FREE_EVIDENCE ' + json.dumps(fields, sort_keys=True))
+          PY
+      - name: Ensure execution did not mutate repository
+        run: test -z "$(git status --porcelain --untracked-files=no)"
+
+  acquire-b:
+    name: independent acquisition B
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    outputs:
+      candidate_sha256: ${{ steps.evidence.outputs.candidate_sha256 }}
+      report_sha256: ${{ steps.evidence.outputs.report_sha256 }}
+      inventory_sha256: ${{ steps.evidence.outputs.inventory_sha256 }}
+      page_count: ${{ steps.evidence.outputs.page_count }}
+      normalized_utf8_bytes: ${{ steps.evidence.outputs.normalized_utf8_bytes }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Bind exact Product head
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+      - name: Materialize pinned edition from official Wikisource
+        run: |
+          mkdir -p /tmp/lesia-b
+          PYTHONPATH=src python tools/materialize_d03_wikisource_lesia1892.py \
+            --candidate-out /tmp/lesia-b/candidate.jsonl \
+            --report-out /tmp/lesia-b/report.json \
+            --max-pages 112
+      - name: Emit text-free cryptographic evidence
+        id: evidence
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          candidate_path = Path('/tmp/lesia-b/candidate.jsonl')
+          report_path = Path('/tmp/lesia-b/report.json')
+          report = json.loads(report_path.read_text(encoding='utf-8'))
+          candidate_sha = hashlib.sha256(candidate_path.read_bytes()).hexdigest()
+          inventory = report['candidate']['inventory']
+          inventory_bytes = json.dumps(inventory, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode('utf-8')
+          inventory_sha = hashlib.sha256(inventory_bytes).hexdigest()
+          expected_authority = '6b443faa7fef777214022028d5fdb356dae0ab1a9b71822b4e16bea8f92cd0d6'
+          source = report['source_authority']
+          truth = report['truth_boundary']
+          assert source['incumbent_next100022_authority_sha256'] == expected_authority
+          assert source['index_revision_id'] == 729499
+          assert source['source_family_id'] == 'ua.literature.lesia-ukrainka.na-krylah-pisen.1892-lviv'
+          assert source['family_credit_added'] is False
+          assert truth['canonical_capacity_credit_bytes'] == 0
+          assert truth['training_authorized_bytes'] == 0
+          assert truth['authorized_unique_loss_positions'] == 0
+          assert truth['tokenizer_fit_authorized'] is False
+          assert truth['optimizer_updates'] == 0
+          assert truth['model_training_executed'] is False
+          assert truth['final_test_outcomes_read'] is False
+          assert truth['paid_compute_used'] is False
+
+          def assert_text_free(value):
+              if isinstance(value, dict):
+                  assert 'text' not in value
+                  for child in value.values():
+                      assert_text_free(child)
+              elif isinstance(value, list):
+                  for child in value:
+                      assert_text_free(child)
+          assert_text_free(report)
+
+          fields = {
+              'candidate_sha256': candidate_sha,
+              'report_sha256': report['report_sha256'],
+              'inventory_sha256': inventory_sha,
+              'page_count': str(report['candidate']['page_count']),
+              'normalized_utf8_bytes': str(report['candidate']['normalized_utf8_bytes']),
+          }
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as handle:
+              for key, value in fields.items():
+                  handle.write(f'{key}={value}\n')
+          print('TEXT_FREE_EVIDENCE ' + json.dumps(fields, sort_keys=True))
+          PY
+      - name: Ensure execution did not mutate repository
+        run: test -z "$(git status --porcelain --untracked-files=no)"
+
+  compare-independent-acquisitions:
+    name: compare independent acquisitions
+    needs: [acquire-a, acquire-b]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: Require byte-identical deterministic evidence
+        env:
+          A_CANDIDATE: ${{ needs.acquire-a.outputs.candidate_sha256 }}
+          B_CANDIDATE: ${{ needs.acquire-b.outputs.candidate_sha256 }}
+          A_REPORT: ${{ needs.acquire-a.outputs.report_sha256 }}
+          B_REPORT: ${{ needs.acquire-b.outputs.report_sha256 }}
+          A_INVENTORY: ${{ needs.acquire-a.outputs.inventory_sha256 }}
+          B_INVENTORY: ${{ needs.acquire-b.outputs.inventory_sha256 }}
+          A_PAGES: ${{ needs.acquire-a.outputs.page_count }}
+          B_PAGES: ${{ needs.acquire-b.outputs.page_count }}
+          A_BYTES: ${{ needs.acquire-a.outputs.normalized_utf8_bytes }}
+          B_BYTES: ${{ needs.acquire-b.outputs.normalized_utf8_bytes }}
+        run: |
+          test -n "$A_CANDIDATE" && test "$A_CANDIDATE" = "$B_CANDIDATE"
+          test -n "$A_REPORT" && test "$A_REPORT" = "$B_REPORT"
+          test -n "$A_INVENTORY" && test "$A_INVENTORY" = "$B_INVENTORY"
+          test -n "$A_PAGES" && test "$A_PAGES" = "$B_PAGES"
+          test -n "$A_BYTES" && test "$A_BYTES" = "$B_BYTES"
+          printf 'DETERMINISTIC_REAL_EXECUTION candidate_sha256=%s report_sha256=%s inventory_sha256=%s page_count=%s normalized_utf8_bytes=%s\n' \
+            "$A_CANDIDATE" "$A_REPORT" "$A_INVENTORY" "$A_PAGES" "$A_BYTES"
