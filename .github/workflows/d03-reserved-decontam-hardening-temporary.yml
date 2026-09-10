@@ -1,0 +1,407 @@
+name: D03 reserved decontamination hardening temporary
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/d03-reserved-decontam-hardening-temporary.yml"
+
+concurrency:
+  group: d03-reserved-decontam-hardening-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  harden-and-persist:
+    if: github.event.pull_request.number == 874 && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      EXPECTED_PARENT_SHA: 17af6112cb1ce47060ec00c4dc3b6c3d5a608244
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+      PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Prove collision-free starting parent
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT_SHA"
+
+      - name: Apply narrow fail-closed hardening
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected one replacement target, found {count}: {old[:100]!r}")
+              p.write_text(text.replace(old, new))
+
+          source = "src/twelve_six/data/current_reserved_decontamination_v1.py"
+          tests = "tests/test_current_reserved_decontamination_v1.py"
+
+          replace_once(
+              source,
+              '_ALLOWED_MODALITIES = {"uk", "ua", "en", "code", "text"}\n',
+              '_ALLOWED_MODALITIES = {"uk", "ua", "en", "code", "text"}\n'
+              'SOURCE_OBJECT_SCREEN_SCOPE = "SOURCE_OBJECT_SCREEN_ONLY"\n',
+          )
+          replace_once(
+              source,
+              '    expected_selection_validation_identity_sha256: str,\n'
+              '    expected_final_test_identity_sha256: str,\n'
+              ') -> tuple[dict[str, Any], str, str, int]:\n',
+              '    expected_selection_validation_identity_sha256: str,\n'
+              '    expected_final_test_identity_sha256: str,\n'
+              '    expected_selection_membership_identity_sha256: str,\n'
+              '    expected_final_membership_identity_sha256: str,\n'
+              ') -> tuple[dict[str, Any], str, str, str, str, int]:\n',
+          )
+          replace_once(
+              source,
+              '    membership: dict[str, dict[str, Any]] = {}\n'
+              '    roles: dict[str, str] = {}\n',
+              '    membership: dict[str, dict[str, Any]] = {}\n'
+              '    roles: dict[str, str] = {}\n'
+              '    membership_identities: dict[str, str] = {}\n',
+          )
+          replace_once(
+              source,
+              '        _require_sha256(\n'
+              '            raw_set.get("source_membership_identity_sha256"),\n'
+              '            "source_membership_identity_sha256",\n'
+              '        )\n',
+              '        source_membership_identity = _require_sha256(\n'
+              '            raw_set.get("source_membership_identity_sha256"),\n'
+              '            "source_membership_identity_sha256",\n'
+              '        )\n',
+          )
+          replace_once(
+              source,
+              '        roles[role] = identity\n'
+              '        members = raw_set.get("members")\n',
+              '        roles[role] = identity\n'
+              '        membership_identities[role] = source_membership_identity\n'
+              '        members = raw_set.get("members")\n',
+          )
+          replace_once(
+              source,
+              '    _require(\n'
+              '        roles.get("final_test") == final_identity,\n'
+              '        "final-test authority identity drift",\n'
+              '    )\n\n'
+              '    projection = _record_projection(evaluation_records)\n',
+              '    _require(\n'
+              '        roles.get("final_test") == final_identity,\n'
+              '        "final-test authority identity drift",\n'
+              '    )\n'
+              '    selection_membership_identity = _require_sha256(\n'
+              '        expected_selection_membership_identity_sha256,\n'
+              '        "expected_selection_membership_identity_sha256",\n'
+              '    )\n'
+              '    final_membership_identity = _require_sha256(\n'
+              '        expected_final_membership_identity_sha256,\n'
+              '        "expected_final_membership_identity_sha256",\n'
+              '    )\n'
+              '    _require(\n'
+              '        membership_identities.get("selection_validation")\n'
+              '        == selection_membership_identity,\n'
+              '        "selection-validation membership identity drift",\n'
+              '    )\n'
+              '    _require(\n'
+              '        membership_identities.get("final_test") == final_membership_identity,\n'
+              '        "final-test membership identity drift",\n'
+              '    )\n\n'
+              '    projection = _record_projection(evaluation_records)\n',
+          )
+          replace_once(
+              source,
+              '    return authority_metadata, selection_identity, final_identity, final_record_count\n',
+              '    return (\n'
+              '        authority_metadata,\n'
+              '        selection_identity,\n'
+              '        final_identity,\n'
+              '        selection_membership_identity,\n'
+              '        final_membership_identity,\n'
+              '        final_record_count,\n'
+              '    )\n',
+          )
+          replace_once(
+              source,
+              '    expected_selection_validation_identity_sha256: str,\n'
+              '    expected_final_test_identity_sha256: str,\n'
+              '    quarantine_cross_source_families: bool = True,\n',
+              '    expected_selection_validation_identity_sha256: str,\n'
+              '    expected_final_test_identity_sha256: str,\n'
+              '    expected_selection_membership_identity_sha256: str,\n'
+              '    expected_final_membership_identity_sha256: str,\n'
+              '    quarantine_cross_source_families: bool = True,\n',
+          )
+          replace_once(
+              source,
+              '    authorities, selection_identity, final_identity, final_record_count = (\n'
+              '        _verify_reserved_payloads(\n',
+              '    (\n'
+              '        authorities,\n'
+              '        selection_identity,\n'
+              '        final_identity,\n'
+              '        selection_membership_identity,\n'
+              '        final_membership_identity,\n'
+              '        final_record_count,\n'
+              '    ) = _verify_reserved_payloads(\n',
+          )
+          replace_once(
+              source,
+              '            expected_final_test_identity_sha256=expected_final_test_identity_sha256,\n'
+              '        )\n'
+              '    )\n',
+              '            expected_final_test_identity_sha256=expected_final_test_identity_sha256,\n'
+              '            expected_selection_membership_identity_sha256=(\n'
+              '                expected_selection_membership_identity_sha256\n'
+              '            ),\n'
+              '            expected_final_membership_identity_sha256=(\n'
+              '                expected_final_membership_identity_sha256\n'
+              '            ),\n'
+              '        )\n',
+          )
+          replace_once(
+              source,
+              '        "selection_validation_identity_sha256": selection_identity,\n'
+              '        "final_test_identity_sha256": final_identity,\n'
+              '        "decontamination_report_sha256": report["report_sha256"],\n',
+              '        "selection_validation_identity_sha256": selection_identity,\n'
+              '        "final_test_identity_sha256": final_identity,\n'
+              '        "selection_validation_membership_identity_sha256": (\n'
+              '            selection_membership_identity\n'
+              '        ),\n'
+              '        "final_test_membership_identity_sha256": final_membership_identity,\n'
+              '        "execution_scope": SOURCE_OBJECT_SCREEN_SCOPE,\n'
+              '        "record_level_training_inventory_materialized": False,\n'
+              '        "final_record_level_decontamination_required": True,\n'
+              '        "terminal_decontamination_authority": False,\n'
+              '        "decontamination_report_sha256": report["report_sha256"],\n',
+          )
+          replace_once(
+              source,
+              '    _require(\n'
+              '        evidence.get("durable_evidence_hash_only") is True,\n'
+              '        "durable text boundary weakened",\n'
+              '    )\n',
+              '    _require(\n'
+              '        evidence.get("durable_evidence_hash_only") is True,\n'
+              '        "durable text boundary weakened",\n'
+              '    )\n'
+              '    _require(\n'
+              '        evidence.get("execution_scope") == SOURCE_OBJECT_SCREEN_SCOPE,\n'
+              '        "source-object screen scope drift",\n'
+              '    )\n'
+              '    _require(\n'
+              '        evidence.get("record_level_training_inventory_materialized") is False,\n'
+              '        "source-object screen fabricated record-level inventory materialization",\n'
+              '    )\n'
+              '    _require(\n'
+              '        evidence.get("final_record_level_decontamination_required") is True,\n'
+              '        "source-object screen erased final record-level decontamination requirement",\n'
+              '    )\n'
+              '    _require(\n'
+              '        evidence.get("terminal_decontamination_authority") is False,\n'
+              '        "source-object screen fabricated terminal decontamination authority",\n'
+              '    )\n',
+          )
+
+          replace_once(
+              tests,
+              'SELECTION = "3" * 64\nFINAL = "4" * 64\n',
+              'SELECTION = "3" * 64\nFINAL = "4" * 64\n'
+              'SELECTION_MEMBERSHIP = "5" * 64\nFINAL_MEMBERSHIP = "6" * 64\n',
+          )
+          replace_once(
+              tests,
+              '                "source_membership_identity_sha256": "5" * 64,\n',
+              '                "source_membership_identity_sha256": SELECTION_MEMBERSHIP,\n',
+          )
+          replace_once(
+              tests,
+              '                "source_membership_identity_sha256": "6" * 64,\n',
+              '                "source_membership_identity_sha256": FINAL_MEMBERSHIP,\n',
+          )
+          replace_once(
+              tests,
+              '    expected_handoff_identity: str | None = None,\n):\n',
+              '    expected_handoff_identity: str | None = None,\n'
+              '    expected_binding_identity: str | None = None,\n'
+              '    expected_selection_membership_identity: str = SELECTION_MEMBERSHIP,\n'
+              '    expected_final_membership_identity: str = FINAL_MEMBERSHIP,\n'
+              '):\n',
+          )
+          replace_once(
+              tests,
+              '        expected_reserved_binding_identity_sha256=str(\n'
+              '            actual_binding["binding_identity_sha256"]\n'
+              '        ),\n'
+              '        expected_selection_validation_identity_sha256=SELECTION,\n'
+              '        expected_final_test_identity_sha256=FINAL,\n',
+              '        expected_reserved_binding_identity_sha256=(\n'
+              '            expected_binding_identity\n'
+              '            or str(actual_binding["binding_identity_sha256"])\n'
+              '        ),\n'
+              '        expected_selection_validation_identity_sha256=SELECTION,\n'
+              '        expected_final_test_identity_sha256=FINAL,\n'
+              '        expected_selection_membership_identity_sha256=(\n'
+              '            expected_selection_membership_identity\n'
+              '        ),\n'
+              '        expected_final_membership_identity_sha256=(\n'
+              '            expected_final_membership_identity\n'
+              '        ),\n',
+          )
+          replace_once(
+              tests,
+              '    assert evidence["authorized_training_exposure"] == 0\n'
+              '    verify_execution_evidence(evidence, report)\n',
+              '    assert evidence["authorized_training_exposure"] == 0\n'
+              '    assert evidence["selection_validation_membership_identity_sha256"] == (\n'
+              '        SELECTION_MEMBERSHIP\n'
+              '    )\n'
+              '    assert evidence["final_test_membership_identity_sha256"] == FINAL_MEMBERSHIP\n'
+              '    assert evidence["execution_scope"] == "SOURCE_OBJECT_SCREEN_ONLY"\n'
+              '    assert evidence["record_level_training_inventory_materialized"] is False\n'
+              '    assert evidence["final_record_level_decontamination_required"] is True\n'
+              '    assert evidence["terminal_decontamination_authority"] is False\n'
+              '    verify_execution_evidence(evidence, report)\n',
+          )
+          replace_once(
+              tests,
+              '            expected_selection_validation_identity_sha256=SELECTION,\n'
+              '            expected_final_test_identity_sha256=FINAL,\n'
+              '        )\n\n\ndef test_binding_requires_nonempty_selection_and_final_test_sets():\n',
+              '            expected_selection_validation_identity_sha256=SELECTION,\n'
+              '            expected_final_test_identity_sha256=FINAL,\n'
+              '            expected_selection_membership_identity_sha256=SELECTION_MEMBERSHIP,\n'
+              '            expected_final_membership_identity_sha256=FINAL_MEMBERSHIP,\n'
+              '        )\n\n\n'
+              'def test_rehashed_reserved_membership_substitution_is_rejected_by_external_membership_identity():\n'
+              '    training = [\n'
+              '        _row(\n'
+              '            "train-1",\n'
+              '            "training payload",\n'
+              '            source="train-source",\n'
+              '            family="train-family",\n'
+              '        )\n'
+              '    ]\n'
+              '    selection, final = _reserved_rows()\n'
+              '    substituted_selection = copy.deepcopy(selection)\n'
+              '    substituted_selection[0]["source_id"] = "substituted-selection-source"\n'
+              '    substituted = _reserved_binding(substituted_selection, final)\n'
+              '    substituted["reserved_sets"][0]["source_membership_identity_sha256"] = "8" * 64\n'
+              '    substituted.pop("binding_identity_sha256")\n'
+              '    substituted["binding_identity_sha256"] = _sha(_canonical_bytes(substituted))\n'
+              '    with pytest.raises(\n'
+              '        CurrentDecontaminationExecutionError,\n'
+              '        match="selection-validation membership identity drift",\n'
+              '    ):\n'
+              '        _execute(\n'
+              '            training,\n'
+              '            substituted_selection,\n'
+              '            final,\n'
+              '            binding=substituted,\n'
+              '            expected_binding_identity=str(substituted["binding_identity_sha256"]),\n'
+              '        )\n\n\n'
+              'def test_binding_requires_nonempty_selection_and_final_test_sets():\n',
+          )
+          replace_once(
+              tests,
+              'def test_execution_evidence_tamper_is_rejected():\n',
+              'def test_source_object_screen_cannot_be_rehashed_as_terminal_record_authority():\n'
+              '    training = [\n'
+              '        _row(\n'
+              '            "train-1",\n'
+              '            "independent training payload",\n'
+              '            source="train-source",\n'
+              '            family="train-family",\n'
+              '        )\n'
+              '    ]\n'
+              '    selection, final = _reserved_rows()\n'
+              '    report, evidence = _execute(training, selection, final)\n'
+              '    tampered = copy.deepcopy(evidence)\n'
+              '    tampered["execution_scope"] = "FINAL_RECORD_GRAPH"\n'
+              '    tampered["record_level_training_inventory_materialized"] = True\n'
+              '    tampered["final_record_level_decontamination_required"] = False\n'
+              '    tampered["terminal_decontamination_authority"] = True\n'
+              '    tampered.pop("execution_identity_sha256")\n'
+              '    tampered["execution_identity_sha256"] = _sha(_canonical_bytes(tampered))\n'
+              '    with pytest.raises(\n'
+              '        CurrentDecontaminationExecutionError,\n'
+              '        match="source-object screen scope drift",\n'
+              '    ):\n'
+              '        verify_execution_evidence(tampered, report)\n\n\n'
+              'def test_execution_evidence_tamper_is_rejected():\n',
+          )
+          PY
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Install exact development dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .[dev]
+
+      - name: Validate narrow hardening and repository regression suite
+        run: |
+          set -euo pipefail
+          python -m compileall -q src/twelve_six/data/current_reserved_decontamination_v1.py
+          ruff check src tests
+          pytest -q
+          git diff --check
+
+      - name: Persist only validated branch delta and retire temporary workflow
+        run: |
+          set -euo pipefail
+          git rm .github/workflows/d03-reserved-decontam-hardening-temporary.yml
+          git add src/twelve_six/data/current_reserved_decontamination_v1.py tests/test_current_reserved_decontamination_v1.py
+          git diff --cached --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "D03: harden reserved membership and scope boundary"
+          FINAL_SHA="$(git rev-parse HEAD)"
+          git fetch --no-tags origin "refs/heads/${PR_HEAD_REF}"
+          test "$(git rev-parse FETCH_HEAD)" = "$SOURCE_SHA"
+          git push origin "HEAD:refs/heads/${PR_HEAD_REF}"
+          echo "FINAL_SHA=$FINAL_SHA" >> "$GITHUB_ENV"
+
+      - name: Leave durable checkpoint
+        run: |
+          set -euo pipefail
+          python - <<'PY' > /tmp/comment.json
+          import json, os
+          body = f'''AUTONOMOUS COMPLETION checkpoint — reserved-decontamination hardening persisted on `{os.environ["FINAL_SHA"]}`.
+
+Closed without a second matcher architecture:
+- reserved `source_membership_identity_sha256` is now independently bound for both selection-validation and final-test roles, and both identities are retained in durable execution evidence;
+- source-object execution is explicitly `SOURCE_OBJECT_SCREEN_ONLY`; evidence must state record-level inventory is not materialized, final record-level decontamination is still required, and terminal authority is false;
+- adversarial regressions cover a fully rehashed outer reserved binding with substituted member coverage and a rehashed attempt to promote the source-object screen into terminal record authority.
+
+Validation executed before the persisted commit: `compileall`, `ruff check src tests`, full `pytest -q`, and `git diff --check` all PASS. This scoped runner is removed in the persisted commit. Shared-CI validation on the new exact head is still required before intake; no training/tokenizer/final-test outcomes/paid compute were used.'''
+          print(json.dumps({"body": body}))
+          PY
+          curl --fail --silent --show-error \
+            -X POST \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/874/comments" \
+            --data-binary @/tmp/comment.json
