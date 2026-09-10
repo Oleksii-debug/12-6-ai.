@@ -83,7 +83,8 @@ jobs:
           assessed = Counter()
           control_rows = Counter()
           control_occurrences = Counter()
-          after_c0_to_lf = Counter()
+          nul_position = Counter()
+          after_terminal_nul_strip = Counter()
           for row in rows:
               try:
                   module._validate_occurrences(row, row["text"])
@@ -94,22 +95,31 @@ jobs:
               ok, reason, _ = module.assess_row(row, cfg)
               assessed[reason if not ok else "accepted"] += 1
 
-              matches = module.CONTROL_RE.findall(row["text"])
+              text = row["text"]
+              matches = module.CONTROL_RE.findall(text)
               for ch in set(matches):
                   control_rows[f"U+{ord(ch):04X}"] += 1
               for ch in matches:
                   control_occurrences[f"U+{ord(ch):04X}"] += 1
+              if text.endswith("\x00"):
+                  nul_position["terminal_nul_rows"] += 1
+              if "\x00" in text[:-1]:
+                  nul_position["internal_nul_rows"] += 1
+              if text.count("\x00") == 1:
+                  nul_position["exactly_one_nul_rows"] += 1
 
               simulated = copy.deepcopy(row)
-              simulated["text"] = module.CONTROL_RE.sub("\n", row["text"])
+              if text.endswith("\x00"):
+                  simulated["text"] = text[:-1]
               ok2, reason2, _ = module.assess_row(simulated, cfg)
-              after_c0_to_lf[reason2 if not ok2 else "accepted"] += 1
+              after_terminal_nul_strip[reason2 if not ok2 else "accepted"] += 1
 
           print("annotation_failure_counts=" + json.dumps(dict(sorted(annotation.items())), sort_keys=True))
           print("assess_reason_counts=" + json.dumps(dict(sorted(assessed.items())), sort_keys=True))
           print("control_codepoint_row_counts=" + json.dumps(dict(sorted(control_rows.items())), sort_keys=True))
           print("control_codepoint_occurrence_counts=" + json.dumps(dict(sorted(control_occurrences.items())), sort_keys=True))
-          print("assess_after_one_char_c0_to_lf=" + json.dumps(dict(sorted(after_c0_to_lf.items())), sort_keys=True))
+          print("nul_position_counts=" + json.dumps(dict(sorted(nul_position.items())), sort_keys=True))
+          print("assess_after_terminal_nul_strip=" + json.dumps(dict(sorted(after_terminal_nul_strip.items())), sort_keys=True))
           print("rows_diagnosed=", len(rows))
           PY
       - name: Independent exact acquisition and retest B
