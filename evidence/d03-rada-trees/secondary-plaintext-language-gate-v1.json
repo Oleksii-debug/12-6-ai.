@@ -1,0 +1,80 @@
+{
+  "claim_boundary": {
+    "evaluation_decontamination_complete": false,
+    "family_cap_mix_complete": false,
+    "final_test_payload_accessed": false,
+    "global_dedup_complete": false,
+    "language_gate_pass_is_training_credit": false,
+    "model_training_executed": false,
+    "optimizer_updates": 0,
+    "paid_compute_used": false,
+    "privacy_complete": false,
+    "quality_complete": false,
+    "tokenizer_fit_authorized": false,
+    "training_authorized_bytes": 0,
+    "unique_causal_loss_positions_authorized": 0
+  },
+  "config_sha256": "fe8528d25ccd4393760238da1f17077b7fe94d21aa35426bbd057a30403311e9",
+  "decision": {
+    "next_required": [
+      "QUALITY_PRIVACY_PAYLOAD_SCAN",
+      "GLOBAL_EXACT_NEAR_LINEAGE_DEDUP",
+      "RESERVED_EVALUATION_DECONTAMINATION",
+      "FAMILY_CAP_MIX_RECOMPUTE"
+    ],
+    "privacy_complete": false,
+    "quality_complete": false,
+    "raw_text_emitted": false,
+    "status": "UKRAINIAN_LANGUAGE_METRICS_PASS_ZERO_CREDIT",
+    "training_credit_granted": false
+  },
+  "execution_profile": "LOCAL_FREE",
+  "language_policy": {
+    "maximum_tab_fraction": 0.1,
+    "metric_authority": "FULL_SCAN_TEXT_DERIVED_METRICS_TEXT_NOT_RETAINED",
+    "minimum_cyrillic_letter_fraction": 0.9,
+    "minimum_letters": 100,
+    "minimum_ukrainian_specific_letter_count": 1,
+    "missing_metric_action": "FAIL_CLOSED",
+    "mode": "uk"
+  },
+  "language_result": {
+    "language_decision_inventory_sha256": "7b0c722ed53283decb5248e1ee2d28ff943f258ea98c3112e36dd843ae1c1e90",
+    "language_pass_bytes": 877899128,
+    "language_pass_members": 4384,
+    "language_reject_bytes": 0,
+    "language_reject_members": 0,
+    "maximum_observed_tab_fraction": 0.0,
+    "minimum_observed_cyrillic_letter_fraction": 0.975214869453606,
+    "minimum_observed_letters": 355,
+    "minimum_observed_ukrainian_specific_letter_count": 28
+  },
+  "parent_full_scan": {
+    "artifact_digest": "sha256:ac52bf2aaeffc166c681181ee542626d621ee9a273540a8c24b8240f4931b56c",
+    "artifact_id": 10033726682,
+    "exact_unique_bytes": 877983909,
+    "exact_unique_payload_count": 4385,
+    "member_metadata_identity_sha256": "9d6ba19977d91a0cd8068b7921790daa9c13e6040a797e4f5fb683d4fca40008",
+    "pr": 820,
+    "report_file_sha256": "30150f6d4c33095faf2e42c4e0723ae01983b78980c606a498096347a598b2d3",
+    "report_sha256": "689dbea2b5975c1d073dde7fefa814af694378d12a88adcb33b1caf2e0ffa291"
+  },
+  "parent_provenance_rights": {
+    "accepted_exact_unique_bytes": 877899128,
+    "accepted_exact_unique_members": 4384,
+    "accepted_path_inventory_sha256": "7b93056f38fbc87c11e14df9069066e21380db1f1b8d8016314330f841bfa6fc",
+    "dated_plenary_path_regex": "^texts/(?P<date>[0-9]{4}-[0-9]{2}-[0-9]{2})__.+\\.txt$",
+    "held_bytes": 84781,
+    "held_path": "texts/stenogramy-zasidannya-rnbo-vid-28-lyutogo-2014-roku.txt",
+    "held_sha256": "0f199cdf0f7e24d87d78835ed4cd8d4c4d53e3e90db4d5bc9a5dfe523e9d8ffd",
+    "report_sha256": "7eea6d0b79353ef565910738dce9de93008a961059cab503b6f05686c0f27a7d"
+  },
+  "report_sha256": "adb89b227d2b0631ca7b35ba59ff744d2efa74ec9c9f6f2f8334738213074291",
+  "schema_version": "12-6.d03-rada-trees-language-gate-report.v1",
+  "source": {
+    "archive_path": "rada_xtag_texts.7z",
+    "content_sha256": "737fa5df061c55555a8c761023559a206cbcabf0299ae52d1ccae387f685803e",
+    "dataset": "uacorpus/Rada_Trees",
+    "dataset_revision": "1b994a5804dcda122721e8d33a03fd172cf8d867"
+  }
+}
