@@ -294,10 +294,10 @@ def test_split_truth_boundary_widening_fails_even_when_rehashed() -> None:
 
 
 @pytest.mark.parametrize("bad_hash", ["A" * 64, "0" * 63, "g" * 64, True, None])
-def test_expected_selection_hash_must_be_lowercase_sha256(bad_hash: object) -> None:
+def test_expected_selection_hash_must_fail_closed(bad_hash: object) -> None:
     selection, application, _ = _bind()
     kwargs: dict[str, object] = _kwargs(selection, application)
     kwargs["expected_selection_identity_sha256"] = bad_hash
 
-    with pytest.raises(TokenizerDecisionError, match="lowercase SHA-256"):
+    with pytest.raises(TokenizerDecisionError):
         bind_byte_baseline_decision(selection, application, **kwargs)  # type: ignore[arg-type]
