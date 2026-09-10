@@ -37,6 +37,7 @@ DETECTOR_ACTIONS: dict[str, Action] = {
 PLACEHOLDERS = frozenset({
     "changeme", "change_me", "example", "example123", "dummy", "placeholder",
     "notsecret", "not_secret", "redacted", "masked", "your_token", "your_api_key",
+    "your_secret", "your_password", "token_here", "your_api_key",
     "your_secret", "your_password", "token_here", "secret_here", "password_here",
     "xxxxxxxx", "********", "<secret>", "<token>", "<password>", "<redacted>",
 })
@@ -103,9 +104,9 @@ SENSITIVE_ENV_RE = re.compile(
     r"(?im)^\s*(?:export\s+|set\s+)?(?P<name>[A-Z][A-Z0-9_]{2,80})\s*=\s*(?P<quote>['\"]?)(?P<value>[^\r\n'\"]{1,2048})(?P=quote)\s*$"
 )
 GENERIC_SECRET_ASSIGN_RE = re.compile(
-    r"(?im)(?P<name_quote>['\"]?)\b"
+    r"(?im)['\"]?\b"
     r"(?P<name>password|passwd|pwd|client_secret|api_secret|secret|token|api_key|access_token)\b"
-    r"(?P=name_quote)\s*[:=]\s*(?P<quote>['\"]?)"
+    r"['\"]?\s*[:=]\s*(?P<quote>['\"]?)"
     r"(?P<value>[^\s;,]{1,256})(?P=quote)(?=$|[\s;,])"
 )
 SENSITIVE_ENV_NAMES = re.compile(
