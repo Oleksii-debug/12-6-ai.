@@ -5,7 +5,6 @@ import json
 import subprocess
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 EVIDENCE = ROOT / "evidence" / "checkpoint346"
 
@@ -29,8 +28,13 @@ def test_checkpoint346_execution_receipt_binds_real_run_to_current_runner() -> N
     assert receipt["model341_carrier_sha"] == "133867d21a94637920b7a24dfc046dc09371ab5c"
 
     assert _sha256("model341_recovery_result_v4.json") == receipt["artifact"]["result_file_sha256"]
-    assert _sha256("model341_recovery_environment_v4.json") == receipt["artifact"]["environment_file_sha256"]
-    assert receipt["artifact"]["zip_sha256"] == "ab5f91407cb4a98470dca143b35c91cbb2dbdc7897c441e14cab08d213452636"
+    assert (
+        _sha256("model341_recovery_environment_v4.json")
+        == receipt["artifact"]["environment_file_sha256"]
+    )
+    assert receipt["artifact"]["zip_sha256"] == (
+        "ab5f91407cb4a98470dca143b35c91cbb2dbdc7897c441e14cab08d213452636"
+    )
 
     runner_blob = subprocess.check_output(
         ["git", "hash-object", receipt["runner_path"]],
