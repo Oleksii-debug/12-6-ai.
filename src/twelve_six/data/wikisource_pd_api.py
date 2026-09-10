@@ -14,6 +14,7 @@ from twelve_six.data.wikisource_pd_contract import (
     API_URL,
     APPROVED_CATEGORY,
     INDEX_REVISION_ID,
+    INDEX_TITLE,
     PAGE_PREFIX,
     WikisourceIntakeError,
     normalize_rendered_text,
@@ -82,6 +83,83 @@ def request_json(params: dict[str, str], *, timeout: float = 30.0) -> dict[str, 
     return value
 
 
+def _validated_sorted_page_titles(rows: Any, *, source: str) -> list[str]:
+    if not isinstance(rows, list):
+        raise WikisourceIntakeError(f"{source} page list is missing")
+    titles: list[tuple[int, str]] = []
+    for row in rows:
+        if not isinstance(row, dict) or not isinstance(row.get("title"), str):
+            raise WikisourceIntakeError(f"{source} page list contains malformed entry")
+        title = row["title"]
+        if not title.startswith(PAGE_PREFIX):
+            continue
+        titles.append((validate_page_title(title), title))
+    if not titles:
+        raise WikisourceIntakeError(f"{source} contains no numeric page links")
+    if len({number for number, _ in titles}) != len(titles):
+        raise WikisourceIntakeError(f"{source} contains duplicate numeric page links")
+    return [title for _, title in sorted(titles)]
+
+
+def _current_index_revision_id(
+    get_json: Callable[[dict[str, str]], dict[str, Any]],
+) -> int:
+    response = get_json(
+        {
+            "action": "query",
+            "titles": INDEX_TITLE,
+            "prop": "revisions",
+            "rvprop": "ids",
+        }
+    )
+    query = response.get("query")
+    pages = query.get("pages") if isinstance(query, dict) else None
+    if not isinstance(pages, list) or len(pages) != 1 or not isinstance(pages[0], dict):
+        raise WikisourceIntakeError("index revision response is ambiguous")
+    page = pages[0]
+    if page.get("missing") is True or page.get("title") != INDEX_TITLE:
+        raise WikisourceIntakeError("pinned index title is missing or drifted")
+    revisions = page.get("revisions")
+    if not isinstance(revisions, list) or len(revisions) != 1:
+        raise WikisourceIntakeError("index revision identity is ambiguous")
+    revision = revisions[0]
+    revision_id = revision.get("revid") if isinstance(revision, dict) else None
+    if not isinstance(revision_id, int) or isinstance(revision_id, bool) or revision_id <= 0:
+        raise WikisourceIntakeError("invalid index revision id")
+    return revision_id
+
+
+def _discover_proofread_index_titles(
+    *,
+    get_json: Callable[[dict[str, str]], dict[str, Any]],
+) -> list[str]:
+    before_revision = _current_index_revision_id(get_json)
+    if before_revision != INDEX_REVISION_ID:
+        raise WikisourceIntakeError(
+            "current index revision drifted from pinned authority; refusing live pagination"
+        )
+    response = get_json(
+        {
+            "action": "query",
+            "list": "proofreadpagesinindex",
+            "prppiititle": INDEX_TITLE,
+            "prppiilimit": "500",
+            "prppiiprop": "title",
+        }
+    )
+    if response.get("continue") is not None:
+        raise WikisourceIntakeError("qualified index pagination unexpectedly exceeds one bounded page")
+    query = response.get("query")
+    rows = query.get("proofreadpagesinindex") if isinstance(query, dict) else None
+    titles = _validated_sorted_page_titles(rows, source="qualified proofread index")
+    after_revision = _current_index_revision_id(get_json)
+    if after_revision != INDEX_REVISION_ID:
+        raise WikisourceIntakeError(
+            "index revision changed during live pagination; refusing materialization"
+        )
+    return titles
+
+
 def discover_index_titles(
     *,
     get_json: Callable[[dict[str, str]], dict[str, Any]] = request_json,
@@ -90,21 +168,20 @@ def discover_index_titles(
     parse = response.get("parse")
     if not isinstance(parse, dict):
         raise WikisourceIntakeError("index parse response missing")
+    parsed_revision = parse.get("revid")
+    if parsed_revision is not None and parsed_revision != INDEX_REVISION_ID:
+        raise WikisourceIntakeError("parsed index revision does not match pinned authority")
     links = parse.get("links")
     if not isinstance(links, list):
         raise WikisourceIntakeError("index links missing")
-    titles: list[tuple[int, str]] = []
-    for row in links:
-        if not isinstance(row, dict) or not isinstance(row.get("title"), str):
-            continue
-        title = row["title"]
-        if title.startswith(PAGE_PREFIX):
-            titles.append((validate_page_title(title), title))
-    if not titles:
-        raise WikisourceIntakeError("qualified index contains no numeric page links")
-    if len({number for number, _ in titles}) != len(titles):
-        raise WikisourceIntakeError("qualified index contains duplicate numeric page links")
-    return [title for _, title in sorted(titles)]
+    if any(
+        isinstance(row, dict)
+        and isinstance(row.get("title"), str)
+        and row["title"].startswith(PAGE_PREFIX)
+        for row in links
+    ):
+        return _validated_sorted_page_titles(links, source="qualified index")
+    return _discover_proofread_index_titles(get_json=get_json)
 
 
 def _category_names(rows: Any) -> set[str]:
