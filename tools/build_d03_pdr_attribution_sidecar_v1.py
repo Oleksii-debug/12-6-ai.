@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build a text-free training companion sidecar for PDR attribution provenance."""
+"""Build a fail-closed attribution sidecar for the exact executed PDR candidate."""
 from __future__ import annotations
 
 import argparse
@@ -35,6 +35,22 @@ EXPECTED_FILES = {
         "type": "essay",
     },
 }
+EXPECTED_EXECUTION_RUN_ID = 34478508878
+EXPECTED_CANDIDATE_JSONL_BYTES = 5_630_935
+EXPECTED_CANDIDATE_JSONL_SHA256 = (
+    "38b0ef94062b80ae1cb8055fe897feb10a1e8d04a9b17340cbc080d4bfb21591"
+)
+EXPECTED_SELECTED_RECORD_COUNT = 1_166
+EXPECTED_SELECTED_NORMALIZED_UTF8_BYTES = 4_795_007
+EXPECTED_CANDIDATE_PROJECTION_SHA256 = (
+    "bf9f7896fc2c940458916184b1b702f443d72290e286ee16b24da4088b2aa4ab"
+)
+EXPECTED_HISTORICAL_REPORT_ID = (
+    "a295de32115a3378beecf8f5f5066fa0f35ea136631473df3ad5bd082c12a88c"
+)
+EXPECTED_HISTORICAL_MANIFEST_ID = (
+    "49000a9dd6dbb56dd222992b5802b21f8d33d6393024f1c8d03e035372c48f7b"
+)
 CANDIDATE_KEYS = frozenset(
     {
         "artifact_role",
@@ -212,6 +228,18 @@ def _validate_candidate(row: dict[str, Any]) -> tuple[str, str]:
     return record_id.strip(), origin_url
 
 
+def _candidate_projection(candidate_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        {
+            "record_id": row["record_id"],
+            "normalized_sha256": row["normalized_sha256"],
+            "normalized_utf8_bytes": row["normalized_utf8_bytes"],
+            "origin_url_sha256": _sha256(row["origin_url"].encode("utf-8")),
+        }
+        for row in candidate_rows
+    ]
+
+
 def build_sidecar(
     candidate_rows: list[dict[str, Any]],
     raw_rows_by_type: dict[str, list[dict[str, Any]]],
@@ -259,29 +287,26 @@ def build_sidecar(
             }
         )
 
-    sidecar.sort(key=lambda item: (item["record_id"], item["origin_url"]))
     sidecar_bytes = b"".join(
         json.dumps(row, ensure_ascii=False, sort_keys=True).encode("utf-8") + b"\n"
         for row in sidecar
     )
-    candidate_projection = [
-        {
-            "record_id": row["record_id"],
-            "normalized_sha256": row["normalized_sha256"],
-            "normalized_utf8_bytes": row["normalized_utf8_bytes"],
-            "origin_url_sha256": _sha256(row["origin_url"].encode("utf-8")),
-        }
-        for row in sidecar
-    ]
+    projection = _candidate_projection(candidate_rows)
     report_core = {
         "schema_version": REPORT_SCHEMA,
         "status": "ATTRIBUTION_PROVENANCE_BOUND_ZERO_CREDIT",
         "source_dataset": SOURCE_DATASET,
         "source_revision": SOURCE_REVISION,
+        "historical_execution_run_id": EXPECTED_EXECUTION_RUN_ID,
+        "historical_candidate_jsonl_sha256": EXPECTED_CANDIDATE_JSONL_SHA256,
+        "historical_candidate_jsonl_bytes": EXPECTED_CANDIDATE_JSONL_BYTES,
+        "historical_report_identity_sha256": EXPECTED_HISTORICAL_REPORT_ID,
+        "historical_manifest_identity_sha256": EXPECTED_HISTORICAL_MANIFEST_ID,
         "selected_record_count": len(sidecar),
-        "candidate_projection_identity_sha256": _sha256(
-            _canonical_bytes(candidate_projection)
+        "selected_normalized_utf8_bytes": sum(
+            int(row["normalized_utf8_bytes"]) for row in candidate_rows
         ),
+        "candidate_projection_identity_sha256": _sha256(_canonical_bytes(projection)),
         "attribution_sidecar_jsonl_sha256": _sha256(sidecar_bytes),
         "author_strings_persisted_in_report": False,
         "training_text_modified": False,
@@ -302,18 +327,53 @@ def build_sidecar(
     return sidecar, report
 
 
-def _read_jsonl(path: Path) -> list[dict[str, Any]]:
+def _read_jsonl_bytes(payload: bytes, *, label: str) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
-    with path.open("r", encoding="utf-8") as handle:
-        for number, line in enumerate(handle, start=1):
-            _require(len(line.encode("utf-8")) <= 2_500_000, f"JSONL line too large: {number}")
-            value = json.loads(line)
-            _require(isinstance(value, dict), f"JSONL row must be object: {number}")
-            rows.append(dict(value))
+    for number, raw_line in enumerate(payload.splitlines(), start=1):
+        _require(len(raw_line) <= 2_500_000, f"{label} line too large: {number}")
+        try:
+            value = json.loads(raw_line.decode("utf-8", errors="strict"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise AttributionError(f"invalid {label} JSONL row: {number}") from exc
+        _require(isinstance(value, dict), f"{label} row must be object: {number}")
+        rows.append(dict(value))
     return rows
 
 
-def _read_raw_rows(config: dict[str, Any], input_dir: Path) -> dict[str, list[dict[str, Any]]]:
+def _read_exact_candidate(path: Path) -> list[dict[str, Any]]:
+    payload = path.read_bytes()
+    _require(
+        len(payload) == EXPECTED_CANDIDATE_JSONL_BYTES,
+        "historical candidate byte count mismatch",
+    )
+    _require(
+        _sha256(payload) == EXPECTED_CANDIDATE_JSONL_SHA256,
+        "historical candidate SHA-256 mismatch",
+    )
+    rows = _read_jsonl_bytes(payload, label="candidate")
+    _require(
+        len(rows) == EXPECTED_SELECTED_RECORD_COUNT,
+        "historical candidate record count mismatch",
+    )
+    for row in rows:
+        _validate_candidate(row)
+    normalized_bytes = sum(int(row["normalized_utf8_bytes"]) for row in rows)
+    _require(
+        normalized_bytes == EXPECTED_SELECTED_NORMALIZED_UTF8_BYTES,
+        "historical candidate normalized byte count mismatch",
+    )
+    projection = _candidate_projection(rows)
+    _require(
+        _sha256(_canonical_bytes(projection)) == EXPECTED_CANDIDATE_PROJECTION_SHA256,
+        "historical candidate projection mismatch",
+    )
+    return rows
+
+
+def _read_raw_rows(
+    config: dict[str, Any],
+    input_dir: Path,
+) -> dict[str, list[dict[str, Any]]]:
     result: dict[str, list[dict[str, Any]]] = {"collection": [], "essay": []}
     entries = {entry["path"]: entry for entry in config["files"]}
     for path, expected in EXPECTED_FILES.items():
@@ -321,12 +381,14 @@ def _read_raw_rows(config: dict[str, Any], input_dir: Path) -> dict[str, list[di
         _require(source_path.is_file(), f"missing exact PDR source file: {path}")
         payload = source_path.read_bytes()
         _require(_sha256(payload) == expected["sha256"], f"source payload drift: {path}")
-        with gzip.GzipFile(fileobj=None, filename=str(source_path), mode="rb") as handle:
-            for number, raw_line in enumerate(handle, start=1):
-                _require(len(raw_line) <= 2_500_000, f"raw PDR line too large: {path}:{number}")
-                value = json.loads(raw_line.decode("utf-8", errors="strict"))
-                _require(isinstance(value, dict), f"raw PDR row must be object: {path}:{number}")
-                result[expected["type"]].append(dict(value))
+        try:
+            raw_payload = gzip.decompress(payload)
+        except (OSError, EOFError) as exc:
+            raise AttributionError(f"invalid PDR gzip payload: {path}") from exc
+        rows = _read_jsonl_bytes(raw_payload, label=f"raw PDR {path}")
+        for row in rows:
+            _validate_raw_row(row, expected_type=expected["type"])
+            result[expected["type"]].append(row)
         _require(entries[path].get("sha256") == expected["sha256"], "config/source hash mismatch")
     return result
 
@@ -350,9 +412,23 @@ def main() -> int:
     config = json.loads(args.config.read_text(encoding="utf-8"))
     _require(isinstance(config, dict), "config root must be object")
     _validate_config(config)
-    candidate_rows = _read_jsonl(args.candidate)
+    candidate_rows = _read_exact_candidate(args.candidate)
     raw_rows = _read_raw_rows(config, args.input_dir)
     sidecar, report = build_sidecar(candidate_rows, raw_rows)
+    _require(
+        report["candidate_projection_identity_sha256"]
+        == EXPECTED_CANDIDATE_PROJECTION_SHA256,
+        "sidecar projection binding mismatch",
+    )
+    _require(
+        report["selected_record_count"] == EXPECTED_SELECTED_RECORD_COUNT,
+        "sidecar record count mismatch",
+    )
+    _require(
+        report["selected_normalized_utf8_bytes"]
+        == EXPECTED_SELECTED_NORMALIZED_UTF8_BYTES,
+        "sidecar normalized byte count mismatch",
+    )
     _write_jsonl(args.sidecar, sidecar)
     args.report.parent.mkdir(parents=True, exist_ok=True)
     args.report.write_text(
