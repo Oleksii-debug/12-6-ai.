@@ -196,10 +196,20 @@ def test_authoritative_materialization_binds_upstream_and_exact_schema(
     assert report["authority_binding"]["upstream_handoff_report_sha256"] == expected_upstream_sha
     assert report["authority_binding"]["candidate_jsonl_sha256"] == file_sha(candidate)
     assert report["authority_binding"]["candidate_exact_keyset_enforced"] is True
+    assert (
+        report["authority_binding"]["privacy_filter_v3_git_blob_sha"]
+        == MODULE.EXPECTED_PRIVACY_IMPLEMENTATION_GIT_BLOB_SHA
+    )
     assert report["claim_boundary"]["upstream_handoff_authority_bound"] is True
     assert report["claim_boundary"]["candidate_schema_exact"] is True
-    assert report["claim_boundary"]["canonical_privacy_repair_bound"] is False
+    assert report["claim_boundary"]["canonical_privacy_repair_bound"] is True
     assert report["claim_boundary"]["training_authorized_bytes"] == 0
+    assert report["safe_result"] == "RADA_TREES_QUALITY_WINDOWS_AUTHORITY_BOUND_ZERO_CREDIT"
+    rows = [json.loads(line) for line in output.read_text(encoding="utf-8").splitlines()]
+    assert rows
+    assert all(row["quality_privacy_complete"] is True for row in rows)
+    assert all(row["training_eligible"] is False for row in rows)
+    assert all(row["evaluation_eligible"] is False for row in rows)
     assert "raw_secret" not in output.read_text(encoding="utf-8")
 
 
@@ -256,3 +266,22 @@ def test_unknown_candidate_payload_field_fails_even_with_matching_upstream_hash(
             tmp_path / "report.json",
             expected_upstream_report_sha256=str(value["report_sha256"]),
         )
+
+
+def test_privacy_repair_implementation_drift_fails_before_publication(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    candidate, upstream, expected_upstream_sha = prepare(tmp_path, monkeypatch)
+    monkeypatch.setattr(MODULE, "EXPECTED_PRIVACY_IMPLEMENTATION_GIT_BLOB_SHA", "0" * 40)
+    output = tmp_path / "out.jsonl"
+    report = tmp_path / "report.json"
+    with pytest.raises(MODULE.AuthorityBindingError, match="privacy repair implementation drift"):
+        MODULE.materialize_authoritative(
+            candidate,
+            upstream,
+            output,
+            report,
+            expected_upstream_report_sha256=expected_upstream_sha,
+        )
+    assert not output.exists()
+    assert not report.exists()
