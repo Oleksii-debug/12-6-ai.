@@ -56,6 +56,18 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--template", type=Path, default=DEFAULT_TEMPLATE)
     parser.add_argument("--overlay", type=Path, default=DEFAULT_OVERLAY)
     parser.add_argument("--output", type=Path)
+    parser.add_argument(
+        "--verified-scientific-authority-token",
+        action="append",
+        default=[],
+        help="Repeatable out-of-packet verified scientific authority token.",
+    )
+    parser.add_argument(
+        "--verified-authorization-ref",
+        action="append",
+        default=[],
+        help="Repeatable out-of-packet verified explicit authorization reference.",
+    )
     return parser
 
 
@@ -65,7 +77,13 @@ def main(argv: list[str] | None = None) -> int:
         readiness = _load_object(args.readiness)
         template = _load_object(args.template)
         overlay = _load_object(args.overlay)
-        result = bind_portable_run_packet(readiness, template, overlay)
+        result = bind_portable_run_packet(
+            readiness,
+            template,
+            overlay,
+            verified_scientific_authorities=args.verified_scientific_authority_token,
+            verified_authorization_refs=args.verified_authorization_ref,
+        )
         report = result.as_dict()
         report["output_written"] = False
         if result.binding_ready and args.output is not None:
