@@ -18,7 +18,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  exact-materialization:
+  exact-capacity-diagnostic:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
@@ -41,62 +41,56 @@ jobs:
           pip install -e .[dev]
       - name: Run focused adversarial suite
         run: pytest -q tests/test_d03_common_pile_caselaw.py
-      - name: Independent exact materialization A
-        run: >-
-          python tools/materialize_d03_common_pile_caselaw.py
-          --source-gzip "$RUNNER_TEMP/caselaw-a/source.jsonl.gz"
-          --candidate-jsonl "$RUNNER_TEMP/caselaw-a/candidate.jsonl"
-          --report "$RUNNER_TEMP/caselaw-a/report.json"
-          --download
-      - name: Independent exact materialization B
-        run: >-
-          python tools/materialize_d03_common_pile_caselaw.py
-          --source-gzip "$RUNNER_TEMP/caselaw-b/source.jsonl.gz"
-          --candidate-jsonl "$RUNNER_TEMP/caselaw-b/candidate.jsonl"
-          --report "$RUNNER_TEMP/caselaw-b/report.json"
-          --download
-      - name: Require exact reproducibility and emit text-free evidence
+      - name: Download exact source twice and measure below-floor capacity
         run: |
-          cmp "$RUNNER_TEMP/caselaw-a/source.jsonl.gz" "$RUNNER_TEMP/caselaw-b/source.jsonl.gz"
-          cmp "$RUNNER_TEMP/caselaw-a/candidate.jsonl" "$RUNNER_TEMP/caselaw-b/candidate.jsonl"
-          cmp "$RUNNER_TEMP/caselaw-a/report.json" "$RUNNER_TEMP/caselaw-b/report.json"
           python - <<'PY'
           import hashlib
+          import importlib.util
           import json
           import os
           from pathlib import Path
 
+          module_path = Path("tools/materialize_d03_common_pile_caselaw.py")
+          spec = importlib.util.spec_from_file_location("caselaw", module_path)
+          assert spec and spec.loader
+          mod = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(mod)
+          cfg = mod.load_config()
+          pinned_floor = mod.MIN_CANDIDATE_BYTES
           root = Path(os.environ["RUNNER_TEMP"])
+
+          reports = []
+          for label in ("a", "b"):
+              out = root / f"caselaw-{label}"
+              source = out / "source.jsonl.gz"
+              candidate = out / "candidate.jsonl"
+              report_path = out / "report.json"
+              mod.download_exact(cfg, source)
+              original_floor = mod.MIN_CANDIDATE_BYTES
+              mod.MIN_CANDIDATE_BYTES = 0
+              try:
+                  report = mod.materialize(source, candidate, report_path, cfg)
+              finally:
+                  mod.MIN_CANDIDATE_BYTES = original_floor
+              reports.append(report)
+
           a = root / "caselaw-a"
           b = root / "caselaw-b"
-          report = json.loads((a / "report.json").read_text(encoding="utf-8"))
-
-          def file_sha(path: Path) -> str:
-              h = hashlib.sha256()
-              with path.open("rb") as f:
-                  for chunk in iter(lambda: f.read(1024 * 1024), b""):
-                      h.update(chunk)
-              return h.hexdigest()
-
-          assert report["safe_result"] == "COMMON_PILE_CASELAW_CANDIDATE_ONLY_ZERO_CREDIT"
-          assert report["source_sha256"] == "e04bdff817b34d5fd2ab0b4aff272adfe6e863aacef7d4cd24db47e4b7c8db33"
-          assert report["source_bytes"] == 9441419
-          assert report["training_authorized_bytes"] == 0
+          assert (a / "source.jsonl.gz").read_bytes() == (b / "source.jsonl.gz").read_bytes()
+          assert (a / "candidate.jsonl").read_bytes() == (b / "candidate.jsonl").read_bytes()
+          assert (a / "report.json").read_bytes() == (b / "report.json").read_bytes()
+          report = reports[0]
+          assert report == reports[1]
+          assert report["source_sha256"] == mod.SOURCE_SHA256
+          assert report["source_bytes"] == mod.SOURCE_BYTES
+          assert report["retained_normalized_utf8_bytes"] < pinned_floor
           assert report["canonical_capacity_credited"] == 0
-          assert report["family_credit_added"] == 0
-          assert report["training_eligible"] is False
-          assert report["evaluation_eligible"] is False
+          assert report["training_authorized_bytes"] == 0
           assert report["model_training_executed"] is False
           assert report["paid_compute_used"] is False
-          assert report["retained_normalized_utf8_bytes"] >= 5_500_000
-          assert report["retained_normalized_utf8_bytes"] <= 6_500_000
-          assert file_sha(a / "source.jsonl.gz") == report["source_sha256"]
-          assert file_sha(b / "source.jsonl.gz") == report["source_sha256"]
-          assert file_sha(a / "candidate.jsonl") == report["candidate_jsonl_sha256"]
-          assert file_sha(b / "candidate.jsonl") == report["candidate_jsonl_sha256"]
 
           evidence = {
-              "schema_version": "12-6.d03-common-pile-caselaw-local-free-execution.v1",
+              "schema_version": "12-6.d03-common-pile-caselaw-capacity-diagnostic.v1",
               "execution_profile": "LOCAL_FREE",
               "source_git_sha": os.environ["SOURCE_SHA"],
               "source_dataset": report["source_dataset"],
@@ -105,7 +99,12 @@ jobs:
               "source_bytes": report["source_bytes"],
               "source_sha256": report["source_sha256"],
               "two_independent_downloads_byte_identical": True,
-              "two_independent_materializations_byte_identical": True,
+              "two_diagnostic_materializations_byte_identical": True,
+              "pinned_min_candidate_bytes": pinned_floor,
+              "terminal_materialization_pass": False,
+              "terminal_failure": "candidate byte floor not reached",
+              "diagnostic_floor_override_bytes": 0,
+              "diagnostic_override_is_training_authority": False,
               "retained_records": report["retained_records"],
               "retained_normalized_utf8_bytes": report["retained_normalized_utf8_bytes"],
               "candidate_jsonl_sha256": report["candidate_jsonl_sha256"],
@@ -115,7 +114,6 @@ jobs:
               "candidate_cap_reached": report["candidate_cap_reached"],
               "source_kind_counts": report["source_kind_counts"],
               "disposition_counts": report["disposition_counts"],
-              "safe_result": report["safe_result"],
               "raw_source_uploaded": False,
               "candidate_payload_uploaded": False,
               "source_level_project_review_complete": False,
@@ -128,20 +126,33 @@ jobs:
               "final_test_accessed": False,
               "paid_compute_used": False,
           }
-          payload = (json.dumps(evidence, sort_keys=True, separators=(",", ":")) + "\n").encode()
-          evidence["evidence_identity_sha256"] = hashlib.sha256(payload).hexdigest()
+          canonical = (json.dumps(evidence, sort_keys=True, separators=(",", ":")) + "\n").encode()
+          evidence["evidence_identity_sha256"] = hashlib.sha256(canonical).hexdigest()
           out = root / "caselaw-evidence"
           out.mkdir()
-          (out / "execution_evidence.json").write_text(
+          (out / "capacity_diagnostic.json").write_text(
               json.dumps(evidence, indent=2, sort_keys=True) + "\n", encoding="utf-8"
           )
-          (out / "report.json").write_bytes((a / "report.json").read_bytes())
+          (out / "diagnostic_report.json").write_bytes((a / "report.json").read_bytes())
           print(json.dumps(evidence, sort_keys=True))
           PY
-      - name: Upload text-free execution evidence only
+      - name: Prove unchanged terminal materializer still fails closed
+        run: |
+          set +e
+          python tools/materialize_d03_common_pile_caselaw.py \
+            --source-gzip "$RUNNER_TEMP/caselaw-a/source.jsonl.gz" \
+            --candidate-jsonl "$RUNNER_TEMP/terminal/candidate.jsonl" \
+            --report "$RUNNER_TEMP/terminal/report.json" \
+            > "$RUNNER_TEMP/terminal.log" 2>&1
+          status=$?
+          set -e
+          test "$status" -ne 0
+          grep -F "CandidateError: candidate byte floor not reached" "$RUNNER_TEMP/terminal.log"
+          test ! -e "$RUNNER_TEMP/terminal/report.json"
+      - name: Upload text-free diagnostic evidence only
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: d03-common-pile-caselaw-${{ env.SOURCE_SHA }}
+          name: d03-common-pile-caselaw-diagnostic-${{ env.SOURCE_SHA }}
           path: ${{ runner.temp }}/caselaw-evidence/
           if-no-files-found: error
           retention-days: 30
