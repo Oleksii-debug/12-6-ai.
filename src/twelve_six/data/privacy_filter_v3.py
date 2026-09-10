@@ -37,7 +37,6 @@ DETECTOR_ACTIONS: dict[str, Action] = {
 PLACEHOLDERS = frozenset({
     "changeme", "change_me", "example", "example123", "dummy", "placeholder",
     "notsecret", "not_secret", "redacted", "masked", "your_token", "your_api_key",
-    "your_secret", "your_password", "token_here", "your_api_key",
     "your_secret", "your_password", "token_here", "secret_here", "password_here",
     "xxxxxxxx", "********", "<secret>", "<token>", "<password>", "<redacted>",
 })
