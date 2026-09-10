@@ -10,6 +10,10 @@ import pytest
 from twelve_six.data.postdecontam_balance_projection_v1 import (
     BINDING_SCHEMA,
     FAMILY_MAP_SCHEMA,
+    FAMILY_PROVENANCE_SCHEMA,
+    G05_G06_COVERAGE_SCHEMA,
+    QUALITY_GRANULARITY_IDENTITY_SHA256,
+    QUALITY_POLICY_IDENTITY_SHA256,
     ProjectionError,
     build_family_vector,
     read_records_jsonl,
@@ -18,12 +22,16 @@ from twelve_six.data.postdecontam_balance_projection_v1 import (
 
 
 SHA = "a" * 64
+PRIVACY_SHA = "e" * 64
 GIT_SHA = "b" * 40
 
 
 def _canonical(value: object) -> bytes:
     return json.dumps(
-        value, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
     ).encode("utf-8")
 
 
@@ -32,6 +40,10 @@ def _with_hash(document: dict, field: str) -> dict:
     result.pop(field, None)
     result[field] = hashlib.sha256(_canonical(result)).hexdigest()
     return result
+
+
+def _record_hash(record_id: str) -> str:
+    return hashlib.sha256(record_id.encode("utf-8")).hexdigest()
 
 
 def _records(tmp_path: Path) -> tuple[list, str]:
@@ -73,27 +85,8 @@ def _records(tmp_path: Path) -> tuple[list, str]:
     return read_records_jsonl(path)
 
 
-def _family_map() -> dict:
-    return _with_hash(
-        {
-            "schema": FAMILY_MAP_SCHEMA,
-            "families": [
-                {"family": "ua.family.a", "stratum": "uk"},
-                {"family": "ua.family.b", "stratum": "uk"},
-                {"family": "en.family.a", "stratum": "en"},
-                {"family": "code.family.a", "stratum": "code"},
-            ],
-            "training_authorized_by_this_mapping": False,
-        },
-        "family_map_identity_sha256",
-    )
-
-
 def _binding(records: list, records_sha: str, excluded_ids: list[str]) -> dict:
-    excluded_hashes = [
-        hashlib.sha256(record_id.encode("utf-8")).hexdigest()
-        for record_id in excluded_ids
-    ]
+    excluded_hashes = [_record_hash(record_id) for record_id in excluded_ids]
     survivor_bytes = sum(
         record.payload_bytes for record in records if record.record_id not in excluded_ids
     )
@@ -117,15 +110,129 @@ def _binding(records: list, records_sha: str, excluded_ids: list[str]) -> dict:
     )
 
 
-def _build(tmp_path: Path, excluded_ids: list[str] | None = None) -> dict:
-    records, records_sha = _records(tmp_path)
-    return build_family_vector(
-        records=records,
-        records_jsonl_sha256=records_sha,
-        decontamination_binding=_binding(records, records_sha, excluded_ids or []),
-        family_map=_family_map(),
-        source_git_sha=GIT_SHA,
+def _survivors(records: list, excluded_ids: list[str]) -> list:
+    return [record for record in records if record.record_id not in excluded_ids]
+
+
+def _family_map(survivors: list) -> dict:
+    stratum_by_family = {
+        "ua.family.a": "uk",
+        "ua.family.b": "uk",
+        "en.family.a": "en",
+        "code.family.a": "code",
+    }
+    families = sorted({record.family for record in survivors})
+    return _with_hash(
+        {
+            "schema": FAMILY_MAP_SCHEMA,
+            "families": [
+                {"family": family, "stratum": stratum_by_family[family]}
+                for family in families
+            ],
+            "training_authorized_by_this_mapping": False,
+        },
+        "family_map_identity_sha256",
     )
+
+
+def _family_provenance(survivors: list) -> dict:
+    semantics = {
+        "ua.family.a": ("uk", "uk", ["text"]),
+        "ua.family.b": ("uk", "uk", ["text"]),
+        "en.family.a": ("en", "en", ["text"]),
+        "code.family.a": ("und", "code", ["code"]),
+    }
+    families = sorted({record.family for record in survivors})
+    return _with_hash(
+        {
+            "schema": FAMILY_PROVENANCE_SCHEMA,
+            "families": [
+                {
+                    "family": family,
+                    "source_family_identity_sha256": hashlib.sha256(
+                        f"authority:{family}".encode("utf-8")
+                    ).hexdigest(),
+                    "language": semantics[family][0],
+                    "modalities": semantics[family][2],
+                    "stratum": semantics[family][1],
+                }
+                for family in families
+            ],
+            "training_authorized_by_this_provenance": False,
+        },
+        "family_provenance_identity_sha256",
+    )
+
+
+def _coverage(records: list, records_sha: str, binding: dict, excluded_ids: list[str]) -> dict:
+    survivors = _survivors(records, excluded_ids)
+    covered_rows = sorted(
+        [
+            {
+                "record_id_sha256": _record_hash(record.record_id),
+                "payload_sha256": record.payload_sha256,
+                "payload_bytes": record.payload_bytes,
+            }
+            for record in survivors
+        ],
+        key=lambda row: row["record_id_sha256"],
+    )
+    return _with_hash(
+        {
+            "schema": G05_G06_COVERAGE_SCHEMA,
+            "status": "PASS",
+            "records_jsonl_sha256": records_sha,
+            "retained_inventory_identity_sha256": SHA,
+            "decontamination_authority_sha256": binding[
+                "decontamination_authority_sha256"
+            ],
+            "quality_policy_identity_sha256": QUALITY_POLICY_IDENTITY_SHA256,
+            "quality_granularity_identity_sha256": (
+                QUALITY_GRANULARITY_IDENTITY_SHA256
+            ),
+            "privacy_policy_identity_sha256": PRIVACY_SHA,
+            "covered_records": covered_rows,
+            "covered_record_count": len(covered_rows),
+            "covered_payload_bytes": sum(record.payload_bytes for record in survivors),
+            "final_test_outcomes_read": False,
+            "authorized_optimized_target_exposure": 0,
+            "training_authorized_by_this_coverage": False,
+        },
+        "g05_g06_coverage_identity_sha256",
+    )
+
+
+def _inputs(tmp_path: Path, excluded_ids: list[str] | None = None) -> dict:
+    excluded = excluded_ids or []
+    records, records_sha = _records(tmp_path)
+    binding = _binding(records, records_sha, excluded)
+    survivors = _survivors(records, excluded)
+    family_map = _family_map(survivors)
+    provenance = _family_provenance(survivors)
+    coverage = _coverage(records, records_sha, binding, excluded)
+    return {
+        "records": records,
+        "records_jsonl_sha256": records_sha,
+        "decontamination_binding": binding,
+        "g05_g06_coverage": coverage,
+        "expected_g05_g06_coverage_identity_sha256": coverage[
+            "g05_g06_coverage_identity_sha256"
+        ],
+        "expected_privacy_policy_identity_sha256": PRIVACY_SHA,
+        "family_map": family_map,
+        "expected_family_map_identity_sha256": family_map[
+            "family_map_identity_sha256"
+        ],
+        "family_provenance": provenance,
+        "expected_family_provenance_identity_sha256": provenance[
+            "family_provenance_identity_sha256"
+        ],
+        "source_git_sha": GIT_SHA,
+    }
+
+
+def _build(tmp_path: Path, excluded_ids: list[str] | None = None) -> dict:
+    return build_family_vector(**_inputs(tmp_path, excluded_ids))
 
 
 def test_builds_deterministic_text_free_projection(tmp_path: Path) -> None:
@@ -136,6 +243,8 @@ def test_builds_deterministic_text_free_projection(tmp_path: Path) -> None:
     assert first["excluded_record_count"] == 1
     assert first["survivor_record_count"] == 3
     assert first["authorized_optimized_target_exposure"] == 0
+    assert first["g05_g06_coverage_identity_sha256"]
+    assert first["family_provenance_identity_sha256"]
     serialized = _canonical(first).decode("utf-8")
     assert "Привіт" not in serialized
     assert "Hello world" not in serialized
@@ -143,21 +252,16 @@ def test_builds_deterministic_text_free_projection(tmp_path: Path) -> None:
 
 
 def test_unknown_decontamination_exclusion_fails_closed(tmp_path: Path) -> None:
-    records, records_sha = _records(tmp_path)
-    binding = _binding(records, records_sha, [])
-    binding["excluded_record_id_sha256"] = [
-        hashlib.sha256(b"not-a-record").hexdigest()
-    ]
-    binding["survivor_record_count"] = len(records) - 1
-    binding = _with_hash(binding, "decontamination_authority_sha256")
+    inputs = _inputs(tmp_path)
+    binding = inputs["decontamination_binding"]
+    binding["excluded_record_id_sha256"] = [_record_hash("not-a-record")]
+    binding["survivor_record_count"] = len(inputs["records"]) - 1
+    inputs["decontamination_binding"] = _with_hash(
+        binding,
+        "decontamination_authority_sha256",
+    )
     with pytest.raises(ProjectionError, match="unknown records"):
-        build_family_vector(
-            records=records,
-            records_jsonl_sha256=records_sha,
-            decontamination_binding=binding,
-            family_map=_family_map(),
-            source_git_sha=GIT_SHA,
-        )
+        build_family_vector(**inputs)
 
 
 @pytest.mark.parametrize(
@@ -171,35 +275,32 @@ def test_unknown_decontamination_exclusion_fails_closed(tmp_path: Path) -> None:
     ],
 )
 def test_nonterminal_or_widened_decontamination_fails_closed(
-    tmp_path: Path, field: str, value: object, match: str
+    tmp_path: Path,
+    field: str,
+    value: object,
+    match: str,
 ) -> None:
-    records, records_sha = _records(tmp_path)
-    binding = _binding(records, records_sha, [])
+    inputs = _inputs(tmp_path)
+    binding = inputs["decontamination_binding"]
     binding[field] = value
-    binding = _with_hash(binding, "decontamination_authority_sha256")
+    inputs["decontamination_binding"] = _with_hash(
+        binding,
+        "decontamination_authority_sha256",
+    )
     with pytest.raises(ProjectionError, match=match):
-        build_family_vector(
-            records=records,
-            records_jsonl_sha256=records_sha,
-            decontamination_binding=binding,
-            family_map=_family_map(),
-            source_git_sha=GIT_SHA,
-        )
+        build_family_vector(**inputs)
 
 
 def test_records_file_substitution_fails_closed(tmp_path: Path) -> None:
-    records, records_sha = _records(tmp_path)
-    binding = _binding(records, records_sha, [])
+    inputs = _inputs(tmp_path)
+    binding = inputs["decontamination_binding"]
     binding["records_jsonl_sha256"] = "c" * 64
-    binding = _with_hash(binding, "decontamination_authority_sha256")
+    inputs["decontamination_binding"] = _with_hash(
+        binding,
+        "decontamination_authority_sha256",
+    )
     with pytest.raises(ProjectionError, match="different records"):
-        build_family_vector(
-            records=records,
-            records_jsonl_sha256=records_sha,
-            decontamination_binding=binding,
-            family_map=_family_map(),
-            source_git_sha=GIT_SHA,
-        )
+        build_family_vector(**inputs)
 
 
 def test_duplicate_record_id_fails_closed(tmp_path: Path) -> None:
@@ -238,38 +339,18 @@ def test_payload_byte_or_hash_drift_fails_closed(tmp_path: Path) -> None:
         read_records_jsonl(path)
 
 
-def test_unmapped_surviving_family_fails_closed(tmp_path: Path) -> None:
-    records, records_sha = _records(tmp_path)
-    family_map = _family_map()
-    family_map["families"] = [
-        row for row in family_map["families"] if row["family"] != "en.family.a"
-    ]
-    family_map = _with_hash(family_map, "family_map_identity_sha256")
-    with pytest.raises(ProjectionError, match="unmapped surviving family"):
-        build_family_vector(
-            records=records,
-            records_jsonl_sha256=records_sha,
-            decontamination_binding=_binding(records, records_sha, []),
-            family_map=family_map,
-            source_git_sha=GIT_SHA,
-        )
-
-
 def test_decontamination_survivor_bytes_must_match_record_reconstruction(
     tmp_path: Path,
 ) -> None:
-    records, records_sha = _records(tmp_path)
-    binding = _binding(records, records_sha, ["ua-1"])
+    inputs = _inputs(tmp_path, ["ua-1"])
+    binding = inputs["decontamination_binding"]
     binding["survivor_payload_bytes"] += 1
-    binding = _with_hash(binding, "decontamination_authority_sha256")
+    inputs["decontamination_binding"] = _with_hash(
+        binding,
+        "decontamination_authority_sha256",
+    )
     with pytest.raises(ProjectionError, match="survivor payload bytes mismatch"):
-        build_family_vector(
-            records=records,
-            records_jsonl_sha256=records_sha,
-            decontamination_binding=binding,
-            family_map=_family_map(),
-            source_git_sha=GIT_SHA,
-        )
+        build_family_vector(**inputs)
 
 
 def test_family_vector_self_hash_and_arithmetic_are_fail_closed(tmp_path: Path) -> None:
@@ -300,3 +381,157 @@ def test_input_cannot_preclaim_training_or_evaluation(tmp_path: Path) -> None:
     path.write_bytes(_canonical(row) + b"\n")
     with pytest.raises(ProjectionError, match="training eligibility"):
         read_records_jsonl(path)
+
+
+def test_self_consistent_coverage_substitution_rejected_by_external_identity(
+    tmp_path: Path,
+) -> None:
+    inputs = _inputs(tmp_path)
+    original_expected = inputs["expected_g05_g06_coverage_identity_sha256"]
+    coverage = inputs["g05_g06_coverage"]
+    coverage["covered_payload_bytes"] += 1
+    coverage = _with_hash(coverage, "g05_g06_coverage_identity_sha256")
+    inputs["g05_g06_coverage"] = coverage
+    inputs["expected_g05_g06_coverage_identity_sha256"] = original_expected
+    with pytest.raises(ProjectionError, match="independently expected identity"):
+        build_family_vector(**inputs)
+
+
+def test_coverage_must_exactly_cover_survivor_payload_pairs(tmp_path: Path) -> None:
+    inputs = _inputs(tmp_path)
+    coverage = inputs["g05_g06_coverage"]
+    coverage["covered_records"] = coverage["covered_records"][:-1]
+    coverage["covered_record_count"] -= 1
+    coverage = _with_hash(coverage, "g05_g06_coverage_identity_sha256")
+    inputs["g05_g06_coverage"] = coverage
+    inputs["expected_g05_g06_coverage_identity_sha256"] = coverage[
+        "g05_g06_coverage_identity_sha256"
+    ]
+    with pytest.raises(ProjectionError, match="does not exactly cover"):
+        build_family_vector(**inputs)
+
+
+def test_coverage_lineage_is_bound_to_decontam_and_inventory(tmp_path: Path) -> None:
+    inputs = _inputs(tmp_path)
+    coverage = inputs["g05_g06_coverage"]
+    coverage["retained_inventory_identity_sha256"] = "f" * 64
+    coverage = _with_hash(coverage, "g05_g06_coverage_identity_sha256")
+    inputs["g05_g06_coverage"] = coverage
+    inputs["expected_g05_g06_coverage_identity_sha256"] = coverage[
+        "g05_g06_coverage_identity_sha256"
+    ]
+    with pytest.raises(ProjectionError, match="retained-inventory lineage mismatch"):
+        build_family_vector(**inputs)
+
+
+def test_coverage_rejects_noncanonical_quality_or_privacy_policy(tmp_path: Path) -> None:
+    inputs = _inputs(tmp_path)
+    coverage = inputs["g05_g06_coverage"]
+    coverage["quality_policy_identity_sha256"] = "f" * 64
+    coverage = _with_hash(coverage, "g05_g06_coverage_identity_sha256")
+    inputs["g05_g06_coverage"] = coverage
+    inputs["expected_g05_g06_coverage_identity_sha256"] = coverage[
+        "g05_g06_coverage_identity_sha256"
+    ]
+    with pytest.raises(ProjectionError, match="noncanonical quality policy"):
+        build_family_vector(**inputs)
+
+    inputs = _inputs(tmp_path)
+    inputs["expected_privacy_policy_identity_sha256"] = "f" * 64
+    with pytest.raises(ProjectionError, match="privacy policy identity mismatch"):
+        build_family_vector(**inputs)
+
+
+def test_self_consistent_family_map_reclassification_rejected_by_expected_identity(
+    tmp_path: Path,
+) -> None:
+    inputs = _inputs(tmp_path)
+    original_expected = inputs["expected_family_map_identity_sha256"]
+    family_map = inputs["family_map"]
+    target = next(row for row in family_map["families"] if row["family"] == "en.family.a")
+    target["stratum"] = "uk"
+    family_map = _with_hash(family_map, "family_map_identity_sha256")
+    inputs["family_map"] = family_map
+    inputs["expected_family_map_identity_sha256"] = original_expected
+    with pytest.raises(ProjectionError, match="independently expected identity"):
+        build_family_vector(**inputs)
+
+
+def test_map_cannot_reclassify_bound_family_provenance(tmp_path: Path) -> None:
+    inputs = _inputs(tmp_path)
+    family_map = inputs["family_map"]
+    target = next(row for row in family_map["families"] if row["family"] == "en.family.a")
+    target["stratum"] = "uk"
+    family_map = _with_hash(family_map, "family_map_identity_sha256")
+    inputs["family_map"] = family_map
+    inputs["expected_family_map_identity_sha256"] = family_map[
+        "family_map_identity_sha256"
+    ]
+    with pytest.raises(ProjectionError, match="reclassifies canonical provenance"):
+        build_family_vector(**inputs)
+
+
+def test_family_map_rejects_missing_or_extra_survivor_families(tmp_path: Path) -> None:
+    inputs = _inputs(tmp_path)
+    family_map = inputs["family_map"]
+    family_map["families"] = family_map["families"][:-1]
+    family_map = _with_hash(family_map, "family_map_identity_sha256")
+    inputs["family_map"] = family_map
+    inputs["expected_family_map_identity_sha256"] = family_map[
+        "family_map_identity_sha256"
+    ]
+    with pytest.raises(ProjectionError, match="exactly cover surviving families"):
+        build_family_vector(**inputs)
+
+    inputs = _inputs(tmp_path)
+    family_map = inputs["family_map"]
+    family_map["families"].append({"family": "extra.family", "stratum": "en"})
+    family_map = _with_hash(family_map, "family_map_identity_sha256")
+    inputs["family_map"] = family_map
+    inputs["expected_family_map_identity_sha256"] = family_map[
+        "family_map_identity_sha256"
+    ]
+    with pytest.raises(ProjectionError, match="exactly cover surviving families"):
+        build_family_vector(**inputs)
+
+
+def test_family_provenance_is_externally_bound_and_modality_checked(tmp_path: Path) -> None:
+    inputs = _inputs(tmp_path)
+    original_expected = inputs["expected_family_provenance_identity_sha256"]
+    provenance = inputs["family_provenance"]
+    target = next(
+        row for row in provenance["families"] if row["family"] == "en.family.a"
+    )
+    target["language"] = "uk"
+    provenance = _with_hash(provenance, "family_provenance_identity_sha256")
+    inputs["family_provenance"] = provenance
+    inputs["expected_family_provenance_identity_sha256"] = original_expected
+    with pytest.raises(ProjectionError, match="independently expected identity"):
+        build_family_vector(**inputs)
+
+    inputs = _inputs(tmp_path)
+    provenance = inputs["family_provenance"]
+    target = next(
+        row for row in provenance["families"] if row["family"] == "en.family.a"
+    )
+    target["modalities"] = ["code"]
+    provenance = _with_hash(provenance, "family_provenance_identity_sha256")
+    inputs["family_provenance"] = provenance
+    inputs["expected_family_provenance_identity_sha256"] = provenance[
+        "family_provenance_identity_sha256"
+    ]
+    with pytest.raises(ProjectionError, match="modality is not admitted"):
+        build_family_vector(**inputs)
+
+
+def test_coverage_truth_boundary_cannot_widen(tmp_path: Path) -> None:
+    inputs = _inputs(tmp_path)
+    coverage = inputs["g05_g06_coverage"]
+    coverage["training_authorized_by_this_coverage"] = True
+    coverage = _with_hash(coverage, "g05_g06_coverage_identity_sha256")
+    inputs["g05_g06_coverage"] = coverage
+    inputs["expected_g05_g06_coverage_identity_sha256"] = coverage[
+        "g05_g06_coverage_identity_sha256"
+    ]
+    with pytest.raises(ProjectionError, match="must be false"):
+        build_family_vector(**inputs)
