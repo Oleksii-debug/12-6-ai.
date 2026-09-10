@@ -87,11 +87,11 @@ class ModelSpec:
             raise ValueError("ModelSpec v1 supports norm_placement='pre' only")
         if self.position_embedding != "rope":
             raise ValueError("ModelSpec v1 supports position_embedding='rope' only")
-        if not math.isfinite(self.rope_theta):
+        if isinstance(self.rope_theta, bool) or not math.isfinite(self.rope_theta):
             raise ValueError("rope_theta must be finite")
         if self.rope_theta <= 0:
             raise ValueError("rope_theta must be positive")
-        if not math.isfinite(self.norm_eps):
+        if isinstance(self.norm_eps, bool) or not math.isfinite(self.norm_eps):
             raise ValueError("norm_eps must be finite")
         if self.norm_eps <= 0:
             raise ValueError("norm_eps must be positive")
@@ -146,7 +146,7 @@ class ModelSpec:
             "attention_per_layer": attention_per_layer,
             "mlp_weights_per_layer": mlp_weights_per_layer,
             "mlp_biases_per_layer": mlp_biases_per_layer,
-            "mlp_per_layer": mlp_per_layer,
+            "mlp_per_layer": mlp_weights_per_layer + mlp_biases_per_layer,
             "norms_per_layer": norms_per_layer,
             "block_per_layer": block_per_layer,
             "blocks_total": self.n_layers * block_per_layer,
@@ -173,7 +173,7 @@ class InitSpec:
             raise ValueError(f"unsupported InitSpec schema_version: {self.schema_version}")
         if self.family != "normal":
             raise ValueError("InitSpec v1 supports family='normal' only")
-        if not math.isfinite(self.std):
+        if isinstance(self.std, bool) or not math.isfinite(self.std):
             raise ValueError("InitSpec std must be finite")
         if self.std <= 0:
             raise ValueError("InitSpec std must be positive")
