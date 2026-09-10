@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib
 import json
 import re
 import sys
@@ -37,6 +38,7 @@ EXPECTED_ACCEPTED_INVENTORY_SHA256 = "7b93056f38fbc87c11e14df9069066e21380db1f1b
 EXPECTED_HELD_INVENTORY_SHA256 = "566760e10157cd835ed0879abb37f052b57d31cff6af358a81ff717f4f7f59d9"
 EXPECTED_PRIVACY_IMPLEMENTATION_GIT_BLOB_SHA = "a84395daf6f07726d6a730cf6ccb04c35bdc4e67"
 PRIVACY_REPAIR_REFERENCE_MERGE_SHA = "82a2cacfec2670feff957d64904f1b8fe310dbd4"
+PRIVACY_SOURCE_RELATIVE_PATH = Path("src/twelve_six/data/privacy_filter_v3.py")
 
 EXPECTED_CANDIDATE_KEYS = frozenset(
     {
@@ -86,14 +88,39 @@ def _git_blob_sha(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _bind_canonical_privacy_repair() -> str:
-    privacy_impl = TOOLS.parent / "src" / "twelve_six" / "data" / "privacy_filter_v3.py"
-    observed = _git_blob_sha(privacy_impl)
+def _load_bound_mechanics() -> tuple[tuple[Any, ...], str]:
+    """Load incumbent mechanics once and bind the exact imported privacy source."""
+    mechanics = base._load_mechanics()
+    require(len(mechanics) == 4, "incumbent mechanics tuple drift")
+    scan_privacy = mechanics[2]
+    privacy_policy = mechanics[3]
+
+    privacy_module = importlib.import_module(base.PRIVACY_MODULE)
+    module_file = getattr(privacy_module, "__file__", None)
+    require(isinstance(module_file, str) and module_file, "imported privacy module has no source path")
+    try:
+        observed_path = Path(module_file).resolve(strict=True)
+        expected_path = (TOOLS.parent / PRIVACY_SOURCE_RELATIVE_PATH).resolve(strict=True)
+    except OSError as exc:
+        raise AuthorityBindingError("cannot resolve imported privacy implementation path") from exc
     require(
-        observed == EXPECTED_PRIVACY_IMPLEMENTATION_GIT_BLOB_SHA,
+        observed_path == expected_path,
+        "imported privacy implementation resolved outside canonical repository source",
+    )
+    observed_blob = _git_blob_sha(observed_path)
+    require(
+        observed_blob == EXPECTED_PRIVACY_IMPLEMENTATION_GIT_BLOB_SHA,
         "canonical privacy repair implementation drift",
     )
-    return observed
+    require(
+        scan_privacy is getattr(privacy_module, "hash_safe_scan", None),
+        "executed privacy scan is not from the bound canonical module",
+    )
+    require(
+        privacy_policy is getattr(privacy_module, "policy_manifest", None),
+        "executed privacy policy provider is not from the bound canonical module",
+    )
+    return mechanics, observed_blob
 
 
 def _load_json(path: Path, label: str) -> dict[str, Any]:
@@ -237,7 +264,7 @@ def materialize_authoritative(
     *,
     expected_upstream_report_sha256: str,
 ) -> dict[str, Any]:
-    """Bind exact upstream and repaired privacy evidence, then delegate incumbent materialization."""
+    """Bind exact upstream and executed privacy mechanics, then materialize."""
     require(not output.exists(), "output JSONL already exists")
     require(not report_path.exists(), "authority-bound report already exists")
     require(not output.is_symlink(), "output JSONL path must not be a symlink")
@@ -250,7 +277,7 @@ def materialize_authoritative(
     }
     require(len(resolved) == 4, "candidate, upstream report, output, and report paths must be distinct")
 
-    privacy_blob_sha = _bind_canonical_privacy_repair()
+    bound_mechanics, privacy_blob_sha = _load_bound_mechanics()
     upstream_sha, expected_candidate_sha = _validate_upstream_report(
         upstream_report, expected_upstream_report_sha256
     )
@@ -266,7 +293,9 @@ def materialize_authoritative(
     require(not mechanics_report.exists(), "stale mechanics partial report exists")
     require(not final_partial.exists(), "stale authority-bound partial report exists")
     published_output = False
+    original_loader = base._load_mechanics
     try:
+        base._load_mechanics = lambda: bound_mechanics
         mechanics = base.materialize(
             candidate,
             output,
@@ -300,6 +329,8 @@ def materialize_authoritative(
             "incumbent_materializer_report_sha256": claimed_mechanics_sha,
             "privacy_repair_reference_merge_sha": PRIVACY_REPAIR_REFERENCE_MERGE_SHA,
             "privacy_filter_v3_git_blob_sha": privacy_blob_sha,
+            "privacy_filter_v3_resolved_path": PRIVACY_SOURCE_RELATIVE_PATH.as_posix(),
+            "executed_privacy_mechanics_pinned": True,
         }
         boundary = dict(_mapping(core.get("claim_boundary"), "materializer claim boundary"))
         boundary["upstream_handoff_authority_bound"] = True
@@ -319,6 +350,8 @@ def materialize_authoritative(
             output.unlink(missing_ok=True)
         report_path.unlink(missing_ok=True)
         raise
+    finally:
+        base._load_mechanics = original_loader
 
 
 def main() -> int:
