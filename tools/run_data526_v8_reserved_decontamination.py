@@ -1,21 +1,22 @@
 #!/usr/bin/env python3
-"""Execute exact DATA-526 V8 reserved-evaluation decontamination from local payloads.
+"""Execute terminal DATA-526 V8 reserved-evaluation decontamination locally.
 
-All payload-bearing inputs are ephemeral runtime files. Only the incumbent DATA-232
-hash-only report and the DATA-526 wrapper evidence are written as durable outputs.
-The caller must provide every independently expected authority identity explicitly;
-this runner never upgrades a self-consistent input into external authority.
+Payload-bearing inputs stay ephemeral. The canonical runner has no quarantine bypass,
+requires independently expected reserved membership identities, verifies that the
+checked-out Git head is exactly the expected implementation head, and couples the
+hash-only decontamination report to terminal execution evidence before writing either.
 """
 from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 from pathlib import Path
 from typing import Any
 
-from twelve_six.data.data526_v8_reserved_decontamination_v1 import (
-    execute_data526_v8_reserved_decontamination,
-    verify_data526_v8_execution_evidence,
+from twelve_six.data.data526_v8_reserved_decontamination_terminal_v1 import (
+    execute_terminal_data526_v8_reserved_decontamination,
+    verify_terminal_data526_v8_execution_evidence,
 )
 
 
@@ -46,10 +47,22 @@ def _write_json(path: Path, value: dict[str, Any]) -> None:
     )
 
 
+def _git_head(repo_root: Path) -> str:
+    completed = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo_root,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return completed.stdout.strip()
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Run record-bound DATA-526 V8 reserved-evaluation decontamination"
+        description="Run terminal record-bound DATA-526 V8 reserved-evaluation decontamination"
     )
+    parser.add_argument("--repo-root", type=Path, default=Path("."))
     parser.add_argument("--training-records-jsonl", type=Path, required=True)
     parser.add_argument("--record-inventory-json", type=Path, required=True)
     parser.add_argument("--materialization-evidence-json", type=Path, required=True)
@@ -64,17 +77,22 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--expected-reserved-binding-identity-sha256", required=True)
     parser.add_argument("--expected-selection-validation-identity-sha256", required=True)
     parser.add_argument("--expected-final-test-identity-sha256", required=True)
-    parser.add_argument(
-        "--allow-cross-source-family-without-quarantine",
-        action="store_true",
-        help="Disable incumbent conservative cross-source-family quarantine (test/debug only).",
-    )
+    parser.add_argument("--expected-selection-membership-identity-sha256", required=True)
+    parser.add_argument("--expected-final-membership-identity-sha256", required=True)
+    parser.add_argument("--expected-decontamination-implementation-git-sha", required=True)
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    report, evidence = execute_data526_v8_reserved_decontamination(
+    actual_head = _git_head(args.repo_root)
+    if actual_head != args.expected_decontamination_implementation_git_sha:
+        raise RuntimeError(
+            "checked-out decontamination implementation Git head differs from independent expectation: "
+            f"expected={args.expected_decontamination_implementation_git_sha} actual={actual_head}"
+        )
+
+    report, evidence = execute_terminal_data526_v8_reserved_decontamination(
         _load_jsonl(args.training_records_jsonl),
         _load_jsonl(args.evaluation_records_jsonl),
         record_inventory=_load_json(args.record_inventory_json),
@@ -97,11 +115,27 @@ def main(argv: list[str] | None = None) -> int:
             args.expected_selection_validation_identity_sha256
         ),
         expected_final_test_identity_sha256=args.expected_final_test_identity_sha256,
-        quarantine_cross_source_families=(
-            not args.allow_cross_source_family_without_quarantine
+        expected_selection_membership_identity_sha256=(
+            args.expected_selection_membership_identity_sha256
+        ),
+        expected_final_membership_identity_sha256=(
+            args.expected_final_membership_identity_sha256
+        ),
+        decontamination_implementation_git_sha=actual_head,
+    )
+    verify_terminal_data526_v8_execution_evidence(
+        evidence,
+        report,
+        expected_decontamination_implementation_git_sha=(
+            args.expected_decontamination_implementation_git_sha
+        ),
+        expected_selection_membership_identity_sha256=(
+            args.expected_selection_membership_identity_sha256
+        ),
+        expected_final_membership_identity_sha256=(
+            args.expected_final_membership_identity_sha256
         ),
     )
-    verify_data526_v8_execution_evidence(evidence)
     _write_json(args.report_json, report)
     _write_json(args.execution_evidence_json, evidence)
     print(evidence["execution_identity_sha256"])
