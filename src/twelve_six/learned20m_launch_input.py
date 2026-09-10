@@ -57,6 +57,8 @@ _CARRIER_OUTPUT_KEYS = frozenset(
         "modelspec_sha256",
         "initialization_identity_sha256",
         "canonical_base",
+        "foreign_pretrained_weights_used",
+        "terminal",
         "workflow_run_id",
         "workflow_status",
         "workflow_conclusion",
@@ -502,6 +504,8 @@ def build_launch_input_authority(
                 "initialization_identity_sha256"
             ],
             "canonical_base": "random_init",
+            "foreign_pretrained_weights_used": False,
+            "terminal": True,
             "workflow_run_id": carrier["workflow_run_id"],
             "workflow_status": "completed",
             "workflow_conclusion": "success",
@@ -515,7 +519,7 @@ def build_launch_input_authority(
 
 
 def verify_launch_input_authority(authority: Mapping[str, Any]) -> None:
-    """Verify deterministic identity and the immutable closed-world boundary."""
+    """Verify identity, semantic invariants, and the closed-world boundary."""
     value = dict(authority)
     if set(value) != set(_AUTHORITY_KEYS):
         raise LaunchInputAuthorityError(
@@ -523,15 +527,6 @@ def verify_launch_input_authority(authority: Mapping[str, Any]) -> None:
         )
     if value.get("schema_version") != LAUNCH_INPUT_SCHEMA:
         raise LaunchInputAuthorityError("unexpected launch-input authority schema")
-    observed = _require_sha256(
-        value.get("authority_identity_sha256"), "authority_identity_sha256"
-    )
-    body = dict(value)
-    body.pop("authority_identity_sha256", None)
-    if _sha256_obj(body) != observed:
-        raise LaunchInputAuthorityError(
-            "launch-input authority self-identity mismatch"
-        )
     if value.get("binding_status") != "READY_FOR_READINESS_BINDING":
         raise LaunchInputAuthorityError("launch-input binding status drift")
 
@@ -542,6 +537,31 @@ def verify_launch_input_authority(authority: Mapping[str, Any]) -> None:
         raise LaunchInputAuthorityError(
             "launch-input data spine has unexpected or missing fields"
         )
+    for field in (
+        "terminal_corpus_authority_identity_sha256",
+        "two_clean_proof_identity_sha256",
+        "two_clean_input_packet_identity_sha256",
+        "two_clean_runtime_identity_sha256",
+        "materialization_identity_sha256",
+        "unique_loss_ledger_identity_sha256",
+        "tokenizer_identity_sha256",
+        "packing_identity_sha256",
+    ):
+        _require_sha256(data_spine.get(field), f"data_spine.{field}")
+    _normalize_stage_bindings(data_spine.get("stage_bindings"), "data_spine.stage_bindings")
+    capacity = _require_positive_int(
+        data_spine.get("one_pass_unique_nonignored_causal_loss_positions"),
+        "data_spine.one_pass_unique_nonignored_causal_loss_positions",
+    )
+    requested = _require_positive_int(
+        data_spine.get("requested_unique_loss_positions"),
+        "data_spine.requested_unique_loss_positions",
+    )
+    if requested > capacity:
+        raise LaunchInputAuthorityError(
+            "launch-input requested unique exposure exceeds one-pass unique capacity"
+        )
+
     carrier = value.get("carrier")
     if not isinstance(carrier, Mapping) or set(carrier) != set(
         _CARRIER_OUTPUT_KEYS
@@ -549,5 +569,43 @@ def verify_launch_input_authority(authority: Mapping[str, Any]) -> None:
         raise LaunchInputAuthorityError(
             "launch-input carrier has unexpected or missing fields"
         )
+    if carrier.get("repository") != REPOSITORY:
+        raise LaunchInputAuthorityError("launch-input carrier repository mismatch")
+    git_sha = _require_git_sha(carrier.get("git_sha"), "carrier.git_sha")
+    _require_sha256(carrier.get("modelspec_sha256"), "carrier.modelspec_sha256")
+    _require_sha256(
+        carrier.get("initialization_identity_sha256"),
+        "carrier.initialization_identity_sha256",
+    )
+    if carrier.get("canonical_base") != "random_init":
+        raise LaunchInputAuthorityError("launch-input carrier is not random initialization")
+    if carrier.get("foreign_pretrained_weights_used") is not False:
+        raise LaunchInputAuthorityError("launch-input carrier foreign pretrained drift")
+    if carrier.get("terminal") is not True:
+        raise LaunchInputAuthorityError("launch-input carrier terminality drift")
+    _require_positive_int(carrier.get("workflow_run_id"), "carrier.workflow_run_id")
+    if carrier.get("workflow_status") != "completed":
+        raise LaunchInputAuthorityError("launch-input carrier workflow is not completed")
+    if carrier.get("workflow_conclusion") != "success":
+        raise LaunchInputAuthorityError("launch-input carrier workflow is not success")
+    workflow_head = _require_git_sha(
+        carrier.get("workflow_head_sha"), "carrier.workflow_head_sha"
+    )
+    if workflow_head != git_sha:
+        raise LaunchInputAuthorityError(
+            "launch-input carrier workflow head does not match carrier Git SHA"
+        )
+    _require_sha256(carrier.get("evidence_sha256"), "carrier.evidence_sha256")
+
     if value.get("claim_boundary") != _CLAIM_BOUNDARY:
         raise LaunchInputAuthorityError("launch-input claim boundary drift")
+
+    observed = _require_sha256(
+        value.get("authority_identity_sha256"), "authority_identity_sha256"
+    )
+    body = dict(value)
+    body.pop("authority_identity_sha256", None)
+    if _sha256_obj(body) != observed:
+        raise LaunchInputAuthorityError(
+            "launch-input authority self-identity mismatch"
+        )
