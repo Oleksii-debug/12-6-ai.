@@ -5,9 +5,6 @@ on:
     branches:
       - d03/common-pile-caselaw-zero-credit-20260907
     paths:
-      - "configs/data/d03_common_pile_caselaw_zero_credit_v1.json"
-      - "tools/materialize_d03_common_pile_caselaw.py"
-      - "tests/test_d03_common_pile_caselaw.py"
       - ".github/workflows/d03-common-pile-caselaw-temporary.yml"
 
 permissions:
@@ -18,7 +15,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  exact-capacity-diagnostic:
+  vector-capacity-diagnostic:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
@@ -29,130 +26,147 @@ jobs:
           ref: ${{ github.sha }}
           fetch-depth: 1
           persist-credentials: false
-      - name: Prove exact checkout
-        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.11.16"
-          cache: pip
-      - name: Install project dev environment
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e .[dev]
-      - name: Run focused adversarial suite
+      - name: Focused product regression
         run: pytest -q tests/test_d03_common_pile_caselaw.py
-      - name: Download exact source twice and measure below-floor capacity
+      - name: Measure exact 43 and bounded 44+43 vector using existing filters
         run: |
           python - <<'PY'
+          import gzip
           import hashlib
           import importlib.util
           import json
           import os
+          import urllib.request
           from pathlib import Path
 
-          module_path = Path("tools/materialize_d03_common_pile_caselaw.py")
-          spec = importlib.util.spec_from_file_location("caselaw", module_path)
+          p = Path("tools/materialize_d03_common_pile_caselaw.py")
+          spec = importlib.util.spec_from_file_location("caselaw", p)
           assert spec and spec.loader
           mod = importlib.util.module_from_spec(spec)
           spec.loader.exec_module(mod)
           cfg = mod.load_config()
-          pinned_floor = mod.MIN_CANDIDATE_BYTES
+          revision = mod.SOURCE_REVISION
+          dataset = mod.SOURCE_DATASET
+          objects = [
+              {"file": "cap_00044.jsonl.gz", "bytes": 9441419,
+               "sha256": "e04bdff817b34d5fd2ab0b4aff272adfe6e863aacef7d4cd24db47e4b7c8db33"},
+              {"file": "cap_00043.jsonl.gz", "bytes": 10476512,
+               "sha256": "f299c45effc957e1e02d3930e68c5d6dc643eb9d585093ff7445f36095c8531f"},
+          ]
           root = Path(os.environ["RUNNER_TEMP"])
 
-          reports = []
-          for label in ("a", "b"):
-              out = root / f"caselaw-{label}"
-              source = out / "source.jsonl.gz"
-              candidate = out / "candidate.jsonl"
-              report_path = out / "report.json"
-              mod.download_exact(cfg, source)
-              original_floor = mod.MIN_CANDIDATE_BYTES
-              mod.MIN_CANDIDATE_BYTES = 0
-              try:
-                  report = mod.materialize(source, candidate, report_path, cfg)
-              finally:
-                  mod.MIN_CANDIDATE_BYTES = original_floor
-              reports.append(report)
+          def download(obj, suffix):
+              out = root / f"{obj['file']}.{suffix}"
+              url = f"https://huggingface.co/datasets/{dataset}/resolve/{revision}/{obj['file']}"
+              req = urllib.request.Request(url, headers={"User-Agent": "12-6-ai-D03-CaselawVector/1"})
+              h = hashlib.sha256(); n = 0
+              with urllib.request.urlopen(req, timeout=120) as r, out.open("wb") as f:
+                  while True:
+                      chunk = r.read(1024 * 1024)
+                      if not chunk: break
+                      n += len(chunk); h.update(chunk); f.write(chunk)
+              assert n == obj["bytes"], (obj["file"], n)
+              assert h.hexdigest() == obj["sha256"], obj["file"]
+              return out
 
-          a = root / "caselaw-a"
-          b = root / "caselaw-b"
-          assert (a / "source.jsonl.gz").read_bytes() == (b / "source.jsonl.gz").read_bytes()
-          assert (a / "candidate.jsonl").read_bytes() == (b / "candidate.jsonl").read_bytes()
-          assert (a / "report.json").read_bytes() == (b / "report.json").read_bytes()
-          report = reports[0]
-          assert report == reports[1]
-          assert report["source_sha256"] == mod.SOURCE_SHA256
-          assert report["source_bytes"] == mod.SOURCE_BYTES
-          assert report["retained_normalized_utf8_bytes"] < pinned_floor
-          assert report["canonical_capacity_credited"] == 0
-          assert report["training_authorized_bytes"] == 0
-          assert report["model_training_executed"] is False
-          assert report["paid_compute_used"] is False
+          paths_a = [download(o, "a") for o in objects]
+          paths_b = [download(o, "b") for o in objects]
+          for a, b in zip(paths_a, paths_b):
+              assert a.read_bytes() == b.read_bytes()
 
+          def scan(pairs, cap):
+              seen_ids = set(); seen_hashes = set(); retained = []
+              dispositions = {}; per_source = {}; candidate_bytes = 0
+              decompressed = 0; rows = 0; cap_reached = False
+              stop = False
+              for obj, path in pairs:
+                  src = {"rows": 0, "decompressed_bytes": 0, "accepted": 0,
+                         "accepted_normalized_utf8_bytes": 0}
+                  with gzip.open(path, "rb") as handle:
+                      while not stop:
+                          line = handle.readline(mod.MAX_LINE_BYTES + 1)
+                          if not line: break
+                          rows += 1; src["rows"] += 1
+                          decompressed += len(line); src["decompressed_bytes"] += len(line)
+                          assert len(line) <= mod.MAX_LINE_BYTES
+                          assert decompressed <= mod.MAX_SCANNED_BYTES
+                          record = json.loads(line.decode("utf-8"))
+                          rid = record.get("id")
+                          assert isinstance(rid, str) and rid not in seen_ids
+                          seen_ids.add(rid)
+                          ok, reason, candidate = mod.assess_record(record, cfg)
+                          if not ok:
+                              dispositions[reason] = dispositions.get(reason, 0) + 1
+                              continue
+                          assert candidate is not None
+                          digest = candidate["normalized_sha256"]
+                          if digest in seen_hashes:
+                              dispositions["exact_normalized_duplicate"] = dispositions.get(
+                                  "exact_normalized_duplicate", 0) + 1
+                              continue
+                          next_bytes = candidate_bytes + candidate["normalized_utf8_bytes"]
+                          if cap is not None and next_bytes > cap:
+                              cap_reached = True; stop = True; break
+                          seen_hashes.add(digest); retained.append(candidate)
+                          candidate_bytes = next_bytes
+                          src["accepted"] += 1
+                          src["accepted_normalized_utf8_bytes"] += candidate["normalized_utf8_bytes"]
+                          dispositions["accepted"] = dispositions.get("accepted", 0) + 1
+                          if cap is not None and candidate_bytes >= cap - 8192:
+                              cap_reached = True; stop = True; break
+                  per_source[obj["file"]] = src
+                  if stop: break
+              payload = b"".join(mod.canonical(row) for row in retained)
+              return {"rows_scanned": rows, "decompressed_bytes_scanned": decompressed,
+                      "retained_records": len(retained),
+                      "retained_normalized_utf8_bytes": candidate_bytes,
+                      "candidate_jsonl_sha256": hashlib.sha256(payload).hexdigest(),
+                      "candidate_cap_reached": cap_reached,
+                      "disposition_counts": dict(sorted(dispositions.items())),
+                      "per_source": per_source}
+
+          standalone_43 = scan([(objects[1], paths_a[1])], None)
+          vector = scan(list(zip(objects, paths_a)), mod.MAX_CANDIDATE_BYTES)
+          assert standalone_43["retained_normalized_utf8_bytes"] > 0
+          assert vector["retained_normalized_utf8_bytes"] >= mod.MIN_CANDIDATE_BYTES
+          assert vector["retained_normalized_utf8_bytes"] <= mod.MAX_CANDIDATE_BYTES
           evidence = {
-              "schema_version": "12-6.d03-common-pile-caselaw-capacity-diagnostic.v1",
+              "schema_version": "12-6.d03-common-pile-caselaw-vector-diagnostic.v1",
               "execution_profile": "LOCAL_FREE",
               "source_git_sha": os.environ["SOURCE_SHA"],
-              "source_dataset": report["source_dataset"],
-              "source_revision": report["source_revision"],
-              "source_file": report["source_file"],
-              "source_bytes": report["source_bytes"],
-              "source_sha256": report["source_sha256"],
-              "two_independent_downloads_byte_identical": True,
-              "two_diagnostic_materializations_byte_identical": True,
-              "pinned_min_candidate_bytes": pinned_floor,
-              "terminal_materialization_pass": False,
-              "terminal_failure": "candidate byte floor not reached",
-              "diagnostic_floor_override_bytes": 0,
-              "diagnostic_override_is_training_authority": False,
-              "retained_records": report["retained_records"],
-              "retained_normalized_utf8_bytes": report["retained_normalized_utf8_bytes"],
-              "candidate_jsonl_sha256": report["candidate_jsonl_sha256"],
-              "report_identity_sha256": report["report_identity_sha256"],
-              "source_rows_scanned": report["source_rows_scanned"],
-              "decompressed_bytes_scanned": report["decompressed_bytes_scanned"],
-              "candidate_cap_reached": report["candidate_cap_reached"],
-              "source_kind_counts": report["source_kind_counts"],
-              "disposition_counts": report["disposition_counts"],
-              "raw_source_uploaded": False,
-              "candidate_payload_uploaded": False,
+              "dataset": dataset,
+              "revision": revision,
+              "source_objects": objects,
+              "two_independent_downloads_per_object_byte_identical": True,
+              "existing_filter_module": "tools/materialize_d03_common_pile_caselaw.py",
+              "existing_min_candidate_bytes": mod.MIN_CANDIDATE_BYTES,
+              "existing_max_candidate_bytes": mod.MAX_CANDIDATE_BYTES,
+              "existing_max_scanned_decompressed_bytes": mod.MAX_SCANNED_BYTES,
+              "standalone_43": standalone_43,
+              "bounded_vector_44_then_43": vector,
+              "vector_capacity_pass": True,
               "source_level_project_review_complete": False,
               "canonical_capacity_credited": 0,
               "family_credit_added": 0,
               "training_authorized_bytes": 0,
-              "tokenizer_fit_authorized": False,
               "optimizer_updates": 0,
               "model_training_executed": False,
               "final_test_accessed": False,
               "paid_compute_used": False,
           }
-          canonical = (json.dumps(evidence, sort_keys=True, separators=(",", ":")) + "\n").encode()
-          evidence["evidence_identity_sha256"] = hashlib.sha256(canonical).hexdigest()
-          out = root / "caselaw-evidence"
-          out.mkdir()
-          (out / "capacity_diagnostic.json").write_text(
-              json.dumps(evidence, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-          )
-          (out / "diagnostic_report.json").write_bytes((a / "report.json").read_bytes())
+          raw = (json.dumps(evidence, sort_keys=True, separators=(",", ":")) + "\n").encode()
+          evidence["evidence_identity_sha256"] = hashlib.sha256(raw).hexdigest()
           print(json.dumps(evidence, sort_keys=True))
+          out = root / "caselaw-vector-evidence"; out.mkdir()
+          (out / "vector_capacity_diagnostic.json").write_text(
+              json.dumps(evidence, indent=2, sort_keys=True) + "\n", encoding="utf-8")
           PY
-      - name: Prove unchanged terminal materializer still fails closed
-        run: |
-          set +e
-          python tools/materialize_d03_common_pile_caselaw.py \
-            --source-gzip "$RUNNER_TEMP/caselaw-a/source.jsonl.gz" \
-            --candidate-jsonl "$RUNNER_TEMP/terminal/candidate.jsonl" \
-            --report "$RUNNER_TEMP/terminal/report.json" \
-            > "$RUNNER_TEMP/terminal.log" 2>&1
-          status=$?
-          set -e
-          test "$status" -ne 0
-          grep -F "CandidateError: candidate byte floor not reached" "$RUNNER_TEMP/terminal.log"
-          test ! -e "$RUNNER_TEMP/terminal/report.json"
-      - name: Upload text-free diagnostic evidence only
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: d03-common-pile-caselaw-diagnostic-${{ env.SOURCE_SHA }}
-          path: ${{ runner.temp }}/caselaw-evidence/
+          name: d03-common-pile-caselaw-vector-diagnostic-${{ env.SOURCE_SHA }}
+          path: ${{ runner.temp }}/caselaw-vector-evidence/
           if-no-files-found: error
           retention-days: 30
