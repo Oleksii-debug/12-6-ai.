@@ -84,7 +84,7 @@ class SplitRecord:
             raise SplitRobustnessError(f"{self.id}: forbidden/non-training purpose {self.purpose!r}")
 
     @classmethod
-    def from_mapping(cls, value: Mapping[str, Any]) -> "SplitRecord":
+    def from_mapping(cls, value: Mapping[str, Any]) -> SplitRecord:
         return cls(**dict(value))
 
     def identity_mapping(self) -> dict[str, Any]:
@@ -167,7 +167,7 @@ def _choose_validation_clusters(
     ranked = sorted(
         groups,
         key=lambda cluster_id: hashlib.sha256(
-            f"{seed}\0{cluster_id}".encode("utf-8")
+            f"{seed}\0{cluster_id}".encode()
         ).hexdigest(),
     )
     selected: list[str] = []
@@ -226,7 +226,7 @@ def legacy_record_hash_assignments(
     threshold = round(validation_fraction * 10_000)
     output: dict[str, str] = {}
     for record in records:
-        digest = hashlib.sha256(f"{seed}\0{record.id}".encode("utf-8")).digest()
+        digest = hashlib.sha256(f"{seed}\0{record.id}".encode()).digest()
         bucket = int.from_bytes(digest[:8], "big") % 10_000
         output[record.id] = "validation" if bucket < threshold else "train"
     return output
