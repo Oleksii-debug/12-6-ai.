@@ -1,0 +1,280 @@
+name: D03 overthelex EDRSR real LOCAL_FREE execution
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/d03_overthelex_edrsr_real_execution.yml"
+      - "configs/data/d03_overthelex_edrsr_train_candidate_v1.json"
+      - "tools/qualify_d03_overthelex_edrsr_train.py"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: d03-overthelex-edrsr-real-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  execute-a:
+    name: independent execution A
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    outputs:
+      source_sha256: ${{ steps.evidence.outputs.source_sha256 }}
+      source_bytes: ${{ steps.evidence.outputs.source_bytes }}
+      candidate_sha256: ${{ steps.evidence.outputs.candidate_sha256 }}
+      report_file_sha256: ${{ steps.evidence.outputs.report_file_sha256 }}
+      disposition_sha256: ${{ steps.evidence.outputs.disposition_sha256 }}
+      retained_records: ${{ steps.evidence.outputs.retained_records }}
+      retained_bytes: ${{ steps.evidence.outputs.retained_bytes }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Bind exact Product head
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+      - name: Install exact parquet runtime
+        run: python -m pip install --disable-pip-version-check --no-input "pyarrow==17.0.0"
+      - name: Download and qualify exact train split only
+        run: |
+          mkdir -p /tmp/edrsr-a
+          python tools/qualify_d03_overthelex_edrsr_train.py \
+            --parquet /tmp/edrsr-a/train.parquet \
+            --output-jsonl /tmp/edrsr-a/candidate.jsonl \
+            --report /tmp/edrsr-a/report.json \
+            --download > /tmp/edrsr-a/run-stdout.json
+          test ! -e /tmp/edrsr-a/validation.parquet
+          test ! -e /tmp/edrsr-a/test.parquet
+      - name: Emit hash-safe text-free evidence
+        id: evidence
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path('/tmp/edrsr-a')
+          source = root / 'train.parquet'
+          candidate = root / 'candidate.jsonl'
+          report_path = root / 'report.json'
+          report = json.loads(report_path.read_text(encoding='utf-8'))
+
+          def sha_file(path: Path) -> str:
+              h = hashlib.sha256()
+              with path.open('rb') as f:
+                  for chunk in iter(lambda: f.read(1024 * 1024), b''):
+                      h.update(chunk)
+              return h.hexdigest()
+
+          source_sha = sha_file(source)
+          source_bytes = source.stat().st_size
+          candidate_sha = sha_file(candidate)
+          report_file_sha = sha_file(report_path)
+          disposition_bytes = json.dumps(
+              report['disposition_counts'], sort_keys=True, separators=(',', ':')
+          ).encode('utf-8')
+          disposition_sha = hashlib.sha256(disposition_bytes).hexdigest()
+
+          assert source_sha == 'e5706a2a35a0131224dc75eac8345296e11518688c4072dc996b25a55a5b7793'
+          assert source_bytes == 49826322
+          assert report['source_revision'] == 'a175ffa122b1f5b04d25ed415a30a925d692b5a9'
+          assert report['source_sha256'] == source_sha
+          assert report['source_bytes'] == source_bytes
+          assert report['source_rows'] == 11561
+          assert report['source_family'] == 'ua.edrsr.case-outcome.train'
+          assert report['source_license'] == 'CC-BY-4.0'
+          assert report['training_split_only'] is True
+          assert report['excluded_evaluation_splits'] == ['validation', 'test']
+          assert report['retained_jsonl_sha256'] == candidate_sha
+          assert report['facts_column_only'] is True
+          assert report['dispositive_emitted'] is False
+          assert report['outcome_emitted'] is False
+          assert report['judge_metadata_emitted'] is False
+          assert report['universal_pii_absence_claimed'] is False
+          assert report['rejected_text_emitted'] is False
+          assert report['rejected_hashes_emitted'] is False
+          assert report['reserved_evaluation_decontamination_complete'] is False
+          assert report['training_authorized_bytes'] == 0
+          assert report['canonical_capacity_credited'] == 0
+          assert report['family_credit_added'] == 0
+          assert report['tokenizer_fit_authorized'] is False
+          assert report['model_training_executed'] is False
+          assert report['optimizer_updates'] == 0
+          assert report['research_corpus_v1_released'] is False
+          assert report['paid_compute_used'] is False
+
+          # The durable/logged evidence is deliberately text-free: hashes, counts and booleans only.
+          fields = {
+              'source_sha256': source_sha,
+              'source_bytes': str(source_bytes),
+              'candidate_sha256': candidate_sha,
+              'report_file_sha256': report_file_sha,
+              'disposition_sha256': disposition_sha,
+              'retained_records': str(report['retained_records']),
+              'retained_bytes': str(report['retained_normalized_bytes']),
+          }
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as handle:
+              for key, value in fields.items():
+                  handle.write(f'{key}={value}\n')
+          print('TEXT_FREE_EVIDENCE ' + json.dumps(fields, sort_keys=True))
+          print('DISPOSITION_COUNTS ' + json.dumps(report['disposition_counts'], sort_keys=True))
+          PY
+      - name: Ensure execution did not mutate tracked repository files
+        run: test -z "$(git status --porcelain --untracked-files=no)"
+
+  execute-b:
+    name: independent execution B
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    outputs:
+      source_sha256: ${{ steps.evidence.outputs.source_sha256 }}
+      source_bytes: ${{ steps.evidence.outputs.source_bytes }}
+      candidate_sha256: ${{ steps.evidence.outputs.candidate_sha256 }}
+      report_file_sha256: ${{ steps.evidence.outputs.report_file_sha256 }}
+      disposition_sha256: ${{ steps.evidence.outputs.disposition_sha256 }}
+      retained_records: ${{ steps.evidence.outputs.retained_records }}
+      retained_bytes: ${{ steps.evidence.outputs.retained_bytes }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Bind exact Product head
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+      - name: Install exact parquet runtime
+        run: python -m pip install --disable-pip-version-check --no-input "pyarrow==17.0.0"
+      - name: Download and qualify exact train split only
+        run: |
+          mkdir -p /tmp/edrsr-b
+          python tools/qualify_d03_overthelex_edrsr_train.py \
+            --parquet /tmp/edrsr-b/train.parquet \
+            --output-jsonl /tmp/edrsr-b/candidate.jsonl \
+            --report /tmp/edrsr-b/report.json \
+            --download > /tmp/edrsr-b/run-stdout.json
+          test ! -e /tmp/edrsr-b/validation.parquet
+          test ! -e /tmp/edrsr-b/test.parquet
+      - name: Emit hash-safe text-free evidence
+        id: evidence
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path('/tmp/edrsr-b')
+          source = root / 'train.parquet'
+          candidate = root / 'candidate.jsonl'
+          report_path = root / 'report.json'
+          report = json.loads(report_path.read_text(encoding='utf-8'))
+
+          def sha_file(path: Path) -> str:
+              h = hashlib.sha256()
+              with path.open('rb') as f:
+                  for chunk in iter(lambda: f.read(1024 * 1024), b''):
+                      h.update(chunk)
+              return h.hexdigest()
+
+          source_sha = sha_file(source)
+          source_bytes = source.stat().st_size
+          candidate_sha = sha_file(candidate)
+          report_file_sha = sha_file(report_path)
+          disposition_bytes = json.dumps(
+              report['disposition_counts'], sort_keys=True, separators=(',', ':')
+          ).encode('utf-8')
+          disposition_sha = hashlib.sha256(disposition_bytes).hexdigest()
+
+          assert source_sha == 'e5706a2a35a0131224dc75eac8345296e11518688c4072dc996b25a55a5b7793'
+          assert source_bytes == 49826322
+          assert report['source_revision'] == 'a175ffa122b1f5b04d25ed415a30a925d692b5a9'
+          assert report['source_sha256'] == source_sha
+          assert report['source_bytes'] == source_bytes
+          assert report['source_rows'] == 11561
+          assert report['source_family'] == 'ua.edrsr.case-outcome.train'
+          assert report['source_license'] == 'CC-BY-4.0'
+          assert report['training_split_only'] is True
+          assert report['excluded_evaluation_splits'] == ['validation', 'test']
+          assert report['retained_jsonl_sha256'] == candidate_sha
+          assert report['facts_column_only'] is True
+          assert report['dispositive_emitted'] is False
+          assert report['outcome_emitted'] is False
+          assert report['judge_metadata_emitted'] is False
+          assert report['universal_pii_absence_claimed'] is False
+          assert report['rejected_text_emitted'] is False
+          assert report['rejected_hashes_emitted'] is False
+          assert report['reserved_evaluation_decontamination_complete'] is False
+          assert report['training_authorized_bytes'] == 0
+          assert report['canonical_capacity_credited'] == 0
+          assert report['family_credit_added'] == 0
+          assert report['tokenizer_fit_authorized'] is False
+          assert report['model_training_executed'] is False
+          assert report['optimizer_updates'] == 0
+          assert report['research_corpus_v1_released'] is False
+          assert report['paid_compute_used'] is False
+
+          fields = {
+              'source_sha256': source_sha,
+              'source_bytes': str(source_bytes),
+              'candidate_sha256': candidate_sha,
+              'report_file_sha256': report_file_sha,
+              'disposition_sha256': disposition_sha,
+              'retained_records': str(report['retained_records']),
+              'retained_bytes': str(report['retained_normalized_bytes']),
+          }
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as handle:
+              for key, value in fields.items():
+                  handle.write(f'{key}={value}\n')
+          print('TEXT_FREE_EVIDENCE ' + json.dumps(fields, sort_keys=True))
+          print('DISPOSITION_COUNTS ' + json.dumps(report['disposition_counts'], sort_keys=True))
+          PY
+      - name: Ensure execution did not mutate tracked repository files
+        run: test -z "$(git status --porcelain --untracked-files=no)"
+
+  compare-independent-executions:
+    name: compare independent executions
+    needs: [execute-a, execute-b]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: Require byte-identical deterministic source/candidate/report evidence
+        env:
+          A_SOURCE_SHA: ${{ needs.execute-a.outputs.source_sha256 }}
+          B_SOURCE_SHA: ${{ needs.execute-b.outputs.source_sha256 }}
+          A_SOURCE_BYTES: ${{ needs.execute-a.outputs.source_bytes }}
+          B_SOURCE_BYTES: ${{ needs.execute-b.outputs.source_bytes }}
+          A_CANDIDATE: ${{ needs.execute-a.outputs.candidate_sha256 }}
+          B_CANDIDATE: ${{ needs.execute-b.outputs.candidate_sha256 }}
+          A_REPORT: ${{ needs.execute-a.outputs.report_file_sha256 }}
+          B_REPORT: ${{ needs.execute-b.outputs.report_file_sha256 }}
+          A_DISPOSITION: ${{ needs.execute-a.outputs.disposition_sha256 }}
+          B_DISPOSITION: ${{ needs.execute-b.outputs.disposition_sha256 }}
+          A_RECORDS: ${{ needs.execute-a.outputs.retained_records }}
+          B_RECORDS: ${{ needs.execute-b.outputs.retained_records }}
+          A_BYTES: ${{ needs.execute-a.outputs.retained_bytes }}
+          B_BYTES: ${{ needs.execute-b.outputs.retained_bytes }}
+        run: |
+          test -n "$A_SOURCE_SHA" && test "$A_SOURCE_SHA" = "$B_SOURCE_SHA"
+          test "$A_SOURCE_SHA" = "e5706a2a35a0131224dc75eac8345296e11518688c4072dc996b25a55a5b7793"
+          test -n "$A_SOURCE_BYTES" && test "$A_SOURCE_BYTES" = "$B_SOURCE_BYTES"
+          test "$A_SOURCE_BYTES" = "49826322"
+          test -n "$A_CANDIDATE" && test "$A_CANDIDATE" = "$B_CANDIDATE"
+          test -n "$A_REPORT" && test "$A_REPORT" = "$B_REPORT"
+          test -n "$A_DISPOSITION" && test "$A_DISPOSITION" = "$B_DISPOSITION"
+          test -n "$A_RECORDS" && test "$A_RECORDS" = "$B_RECORDS"
+          test -n "$A_BYTES" && test "$A_BYTES" = "$B_BYTES"
+          printf 'DETERMINISTIC_REAL_EXECUTION source_sha256=%s source_bytes=%s candidate_sha256=%s report_file_sha256=%s disposition_sha256=%s retained_records=%s retained_bytes=%s\n' \
+            "$A_SOURCE_SHA" "$A_SOURCE_BYTES" "$A_CANDIDATE" "$A_REPORT" "$A_DISPOSITION" "$A_RECORDS" "$A_BYTES"
