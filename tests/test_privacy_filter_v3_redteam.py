@@ -115,6 +115,51 @@ def test_synthetic_adversarial_metrics_gate() -> None:
     assert all(row["positive"] >= 2 for row in metrics["per_class"].values())
 
 
+def test_quoted_structured_secret_keys_are_detected() -> None:
+    secret = S("AbCd", "1234!", "fixture")
+    cases = (
+        '"password": "' + secret + '"',
+        '"api_key" = "' + secret + '"',
+        "'client_secret': '" + secret + "'",
+    )
+    for text in cases:
+        assert "environment_secret_assignment" in {f.detector_id for f in detect(text)}
+
+
+def test_complete_placeholder_grammars_remain_negative() -> None:
+    cases = (
+        "password=${SERVICE_TOKEN}",
+        "password=$SERVICE_TOKEN",
+        "password=%SERVICE_TOKEN%",
+        "password={{SERVICE_TOKEN}}",
+        "password=process.env.SERVICE_TOKEN",
+        'password=process.env["SERVICE_TOKEN"]',
+        'password=os.getenv("SERVICE_TOKEN")',
+        "password=env('SERVICE_TOKEN')",
+        '"password": "${SERVICE_TOKEN}"',
+        "'client_secret': '$CLIENT_SECRET'",
+        '"api_key" = "%API_KEY%"',
+    )
+    for text in cases:
+        assert detect(text) == ()
+
+
+def test_malformed_placeholder_prefixes_fail_closed() -> None:
+    suffix = S("Ab12", "!fixture")
+    values = (
+        "%SERVICE_" + suffix,
+        "{{SERVICE_" + suffix,
+        "process.env.SERVICE_" + suffix,
+        "os.getenv(" + suffix,
+        "env(" + suffix,
+        "$SERVICE_" + suffix,
+        '"$SERVICE_TOKEN',
+    )
+    for value in values:
+        findings = {f.detector_id for f in detect("password=" + value)}
+        assert "environment_secret_assignment" in findings
+
+
 def test_hash_safe_evidence_never_contains_match_values_or_hashes() -> None:
     raw = ("Authorization: Basic " + S("QWxpY2U6", "UzNjcjN0IQ==")).encode()
     result = hash_safe_scan(raw)
