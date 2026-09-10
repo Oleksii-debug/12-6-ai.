@@ -263,6 +263,7 @@ def test_replay_refuses_zero_yield_terminal_evidence():
     identity_view = dict(evidence)
     identity_view.pop("generated_at_utc")
     identity_view.pop("materialization_identity_sha256")
+    identity_view.pop("evidence_identity_sha256", None)
     evidence["evidence_identity_sha256"] = validator.sha256(
         json.dumps(
             identity_view,
