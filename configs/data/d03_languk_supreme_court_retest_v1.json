@@ -34,6 +34,13 @@
     ],
     "reject_extra_fields": true
   },
+  "source_text_framing": {
+    "terminal_codepoint": "U+0000",
+    "required_count_per_row": 1,
+    "require_terminal_position": true,
+    "strip_after_annotation_validation": true,
+    "reject_internal_terminal_codepoint": true
+  },
   "privacy": {
     "reject_email": true,
     "reject_phone": true,

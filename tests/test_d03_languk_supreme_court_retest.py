@@ -32,6 +32,11 @@ def _occurrences(text: str, token: str) -> list[dict[str, int | str]]:
     return result
 
 
+def _append_before_terminal_nul(row: dict, suffix: str) -> None:
+    assert row["text"].endswith("\x00")
+    row["text"] = row["text"][:-1] + suffix + "\x00"
+
+
 def make_row(record_id: str = "116075957", repeats: int = 3) -> dict:
     sentence = (
         "Верховний Суд України розглянув матеріали ОСОБА_1 за адресою АДРЕСА_1, "
@@ -64,12 +69,18 @@ def make_row(record_id: str = "116075957", repeats: int = 3) -> dict:
         occurrences = _occurrences(text, token)
         row[count_field] = len(occurrences)
         row[occurrence_field] = occurrences
+    row["text"] = text + "\x00"
     return row
 
 
-def test_load_config_preserves_exact_schema_and_zero_credit() -> None:
+def test_load_config_preserves_exact_schema_framing_and_zero_credit() -> None:
     value = mod.load_config()
     assert value["parquet_schema"]["required_fields"] == list(mod.EXPECTED_FIELDS)
+    assert value["source_text_framing"]["terminal_codepoint"] == "U+0000"
+    assert value["source_text_framing"]["required_count_per_row"] == 1
+    assert value["source_text_framing"]["require_terminal_position"] is True
+    assert value["source_text_framing"]["strip_after_annotation_validation"] is True
+    assert value["source_text_framing"]["reject_internal_terminal_codepoint"] is True
     assert value["privacy"]["verify_occurrence_spans"] is True
     assert value["claim_boundary"]["training_authorized_bytes"] == 0
     assert value["claim_boundary"]["model_training_executed"] is False
@@ -83,6 +94,33 @@ def test_repeated_placeholder_count_is_occurrence_count() -> None:
     assert ok is True
     assert reason == "accepted"
     assert text.count("ОСОБА_1") == 3
+    assert "\x00" not in text
+
+
+def test_terminal_nul_framing_is_required_and_stripped() -> None:
+    row = make_row()
+    assert row["text"].count("\x00") == 1
+    assert row["text"].endswith("\x00")
+    ok, reason, text = mod.assess_row(row, CONFIG)
+    assert (ok, reason) == (True, "accepted")
+    assert not text.endswith("\x00")
+    assert "\x00" not in text
+
+
+def test_missing_or_internal_nul_framing_is_quarantined() -> None:
+    missing = make_row()
+    missing["text"] = missing["text"][:-1]
+    assert mod.assess_row(missing, CONFIG)[:2] == (
+        False,
+        "source_text_framing_inconsistent",
+    )
+
+    internal = make_row()
+    internal["text"] = internal["text"][:-1] + "\x00X\x00"
+    assert mod.assess_row(internal, CONFIG)[:2] == (
+        False,
+        "source_text_framing_inconsistent",
+    )
 
 
 def test_occurrence_count_mismatch_fails_closed_in_validator() -> None:
@@ -105,7 +143,9 @@ def test_occurrence_count_mismatch_is_quarantined_by_selection() -> None:
 
 def test_two_distinct_person_markers_keep_nonempty_category_sum() -> None:
     row = make_row(repeats=1)
-    row["text"] += " Додатково у справі згадано ОСОБА_2 як учасника провадження."
+    _append_before_terminal_nul(
+        row, " Додатково у справі згадано ОСОБА_2 як учасника провадження."
+    )
     row["person_occurrences"] = [
         *_occurrences(row["text"], "ОСОБА_1"),
         *_occurrences(row["text"], "ОСОБА_2"),
@@ -129,7 +169,7 @@ def test_stale_occurrence_span_is_quarantined() -> None:
 
 def test_untracked_placeholder_is_quarantined() -> None:
     row = make_row()
-    row["text"] += " ОСОБА_99"
+    _append_before_terminal_nul(row, " ОСОБА_99")
     assert mod.assess_row(row, CONFIG)[:2] == (
         False,
         "annotation_contract_inconsistent",
@@ -176,13 +216,13 @@ def test_schema_missing_or_extra_field_fails_closed() -> None:
 
 def test_email_phone_and_control_char_quarantine() -> None:
     email = make_row()
-    email["text"] += " test@example.org"
+    _append_before_terminal_nul(email, " test@example.org")
     assert mod.assess_row(email, CONFIG)[1] == "email"
     phone = make_row()
-    phone["text"] += " +380 67 123 45 67"
+    _append_before_terminal_nul(phone, " +380 67 123 45 67")
     assert mod.assess_row(phone, CONFIG)[1] == "phone"
     control = make_row()
-    control["text"] += "\x00"
+    _append_before_terminal_nul(control, "\x01")
     assert mod.assess_row(control, CONFIG)[1] == "control_character"
 
 
@@ -195,7 +235,9 @@ def test_duplicate_source_id_fails_closed() -> None:
 def test_selection_order_is_numeric_not_lexicographic() -> None:
     rows = [make_row("10"), make_row("2"), make_row("100")]
     for row in rows:
-        row["text"] += f" Унікальний український додаток {row['id']}."
+        _append_before_terminal_nul(
+            row, f" Унікальний український додаток {row['id']}."
+        )
     accepted, _ = mod.select_rows(rows, CONFIG)
     assert [row["record_id"] for row in accepted] == ["2", "10", "100"]
 
@@ -221,7 +263,7 @@ def test_exact_normalized_duplicate_is_removed_with_one_disposition_per_row() ->
 def test_rejected_row_gets_one_terminal_disposition() -> None:
     accepted_row = make_row("2")
     rejected_row = make_row("3")
-    rejected_row["text"] += " test@example.org"
+    _append_before_terminal_nul(rejected_row, " test@example.org")
     accepted, reasons = mod.select_rows([accepted_row, rejected_row], CONFIG)
     assert len(accepted) == 1
     assert reasons["accepted"] == 1
@@ -232,6 +274,8 @@ def test_rejected_row_gets_one_terminal_disposition() -> None:
 def test_config_mutations_fail_closed() -> None:
     mutations = [
         ("parquet_schema", "reject_extra_fields", False),
+        ("source_text_framing", "require_terminal_position", False),
+        ("source_text_framing", "strip_after_annotation_validation", False),
         ("privacy", "verify_occurrence_spans", False),
         ("privacy", "require_complete_occurrence_annotation", False),
         ("runtime", "pyarrow", "latest"),

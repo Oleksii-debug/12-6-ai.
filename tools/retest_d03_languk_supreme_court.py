@@ -20,6 +20,7 @@ SOURCE_FILE = "2024-5K-supreme-court-decisions-deduplicated.parquet"
 SOURCE_SHA256 = "9b8870d10695715e4a0540c6f8fdca381599c0e6cdbaf3ecdf3c0782207b6597"
 SOURCE_BYTES = 20_220_778
 PYARROW_VERSION = "17.0.0"
+TERMINAL_NUL = "\x00"
 EXPECTED_FIELDS = (
     "id",
     "text",
@@ -137,6 +138,20 @@ def load_config(path: Path = CONFIG) -> dict[str, Any]:
     _require(
         schema.get("reject_extra_fields") is True,
         "extra-field rejection disabled",
+    )
+
+    framing = cfg.get("source_text_framing")
+    _require(isinstance(framing, Mapping), "source text framing contract missing")
+    expected_framing = {
+        "terminal_codepoint": "U+0000",
+        "required_count_per_row": 1,
+        "require_terminal_position": True,
+        "strip_after_annotation_validation": True,
+        "reject_internal_terminal_codepoint": True,
+    }
+    _require(
+        dict(framing) == expected_framing,
+        "source text framing contract drift",
     )
 
     privacy = cfg.get("privacy")
@@ -313,6 +328,14 @@ def assess_row(row: Mapping[str, Any], cfg: Mapping[str, Any]) -> tuple[bool, st
     except RetestError:
         return False, "annotation_contract_inconsistent", ""
 
+    framing = cfg["source_text_framing"]
+    if (
+        text.count(TERMINAL_NUL) != framing["required_count_per_row"]
+        or not text.endswith(TERMINAL_NUL)
+    ):
+        return False, "source_text_framing_inconsistent", ""
+    text = text[:-1]
+
     if CONTROL_RE.search(text):
         return False, "control_character", ""
     if EMAIL_RE.search(text):
@@ -428,6 +451,8 @@ def materialize(
             "annotation_contract_inconsistent", 0
         ),
         "exact_schema_validated": True,
+        "source_text_framing_validated_for_retained_rows": True,
+        "terminal_nul_sentinel_stripped_for_retained_rows": True,
         "occurrence_spans_validated_for_retained_rows": True,
         "complete_placeholder_annotation_validated_for_retained_rows": True,
         "placeholder_occurrence_count_semantics_validated": True,
