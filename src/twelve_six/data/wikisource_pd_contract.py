@@ -9,6 +9,7 @@ from typing import Any
 
 API_URL = "https://uk.wikisource.org/w/api.php"
 SOURCE_FAMILY_ID = "ua.literature.lesia-ukrainka.na-krylah-pisen.1892-lviv"
+INDEX_TITLE = "Індекс:Леся Українка. На крилах пісень. 1892.pdf"
 INDEX_REVISION_ID = 729499
 INCUMBENT_HEAD_SHA = "84c51e42b6daa51796fd20d793b5ef1ff01cc9d2"
 INCUMBENT_AUTHORITY_SHA256 = (
