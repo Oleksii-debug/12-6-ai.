@@ -103,13 +103,19 @@ def test_opl_only_has_authority_inside_copyright_section() -> None:
     assert classify_license(opl().decode()).status == "EXCLUDE"
 
 
-def test_missing_or_ambiguous_copyright_is_quarantined() -> None:
+def test_missing_ambiguous_or_negated_copyright_is_quarantined() -> None:
     assert classify_license("PEP\n===\n\nNo rights section.\n").status == "QUARANTINE"
     duplicate = (
         "Copyright\n=========\n\nThis document is in the public domain.\n\n"
         "Copyright\n=========\n\nThis document is in the public domain.\n"
     )
     assert classify_license(duplicate).status == "QUARANTINE"
+    negated = (
+        "PEP\n===\n\n"
+        "Copyright\n=========\n\n"
+        "This document is not in the public domain.\n"
+    )
+    assert classify_license(negated).status == "QUARANTINE"
 
 
 def test_tree_requires_all_five_opl_sentinels() -> None:
@@ -172,6 +178,78 @@ def test_bounded_selection_prefers_larger_documents_then_path() -> None:
         "peps/pep-0003.rst",
         "peps/pep-0002.rst",
     ]
+
+
+def test_self_consistent_upstream_revision_substitution_fails_closed() -> None:
+    config = load_config()
+    config["upstream"]["revision"] = "0" * 40
+    config["upstream"]["raw_url_template"] = (
+        "https://raw.githubusercontent.com/python/peps/" + "0" * 40 + "/{path}"
+    )
+    config = with_identity(config)
+    with pytest.raises(PepIntakeError, match=r"upstream\.revision drift"):
+        validate_config(config)
+
+
+def test_self_consistent_upstream_tree_substitution_fails_closed() -> None:
+    config = load_config()
+    config["upstream"]["tree_sha1"] = "1" * 40
+    config["upstream"]["tree_url"] = (
+        "https://api.github.com/repos/python/peps/git/trees/"
+        + "1" * 40
+        + "?recursive=1"
+    )
+    config = with_identity(config)
+    with pytest.raises(PepIntakeError, match=r"upstream\.tree_sha1 drift"):
+        validate_config(config)
+
+
+def test_self_consistent_rights_authority_substitution_fails_closed() -> None:
+    config = load_config()
+    config["common_pile_audit"]["registry_blob_sha1"] = "2" * 40
+    config = with_identity(config)
+    with pytest.raises(
+        PepIntakeError,
+        match=r"common_pile_audit\.registry_blob_sha1 drift",
+    ):
+        validate_config(config)
+
+
+def test_sentinel_and_rights_policy_substitution_fail_closed() -> None:
+    config = load_config()
+    config["known_opl_sentinels"][0] = "peps/pep-0001.rst"
+    config = with_identity(config)
+    with pytest.raises(PepIntakeError, match="known_opl_sentinels drift"):
+        validate_config(config)
+
+    config = load_config()
+    config["rights_policy"]["blanket_repository_rights_claimed"] = True
+    config = with_identity(config)
+    with pytest.raises(
+        PepIntakeError,
+        match=r"rights_policy\.blanket_repository_rights_claimed drift",
+    ):
+        validate_config(config)
+
+
+def test_selection_limits_reject_widening_bool_and_unknown_fields() -> None:
+    config = load_config()
+    config["selection_policy"]["max_documents"] = 129
+    config = with_identity(config)
+    with pytest.raises(PepIntakeError, match="invalid max_documents"):
+        validate_config(config)
+
+    config = load_config()
+    config["selection_policy"]["max_documents"] = True
+    config = with_identity(config)
+    with pytest.raises(PepIntakeError, match="invalid max_documents"):
+        validate_config(config)
+
+    config = load_config()
+    config["unexpected_authority"] = "self-authored"
+    config = with_identity(config)
+    with pytest.raises(PepIntakeError, match="config keys drift"):
+        validate_config(config)
 
 
 def test_training_credit_or_gate_removal_invalidates_contract() -> None:
