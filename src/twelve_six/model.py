@@ -20,6 +20,7 @@ def canonical_json_sha256(payload: dict[str, Any]) -> str:
         sort_keys=True,
         separators=(",", ":"),
         ensure_ascii=False,
+        allow_nan=False,
     ).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
 
@@ -86,8 +87,12 @@ class ModelSpec:
             raise ValueError("ModelSpec v1 supports norm_placement='pre' only")
         if self.position_embedding != "rope":
             raise ValueError("ModelSpec v1 supports position_embedding='rope' only")
+        if isinstance(self.rope_theta, bool) or not math.isfinite(self.rope_theta):
+            raise ValueError("rope_theta must be finite")
         if self.rope_theta <= 0:
             raise ValueError("rope_theta must be positive")
+        if isinstance(self.norm_eps, bool) or not math.isfinite(self.norm_eps):
+            raise ValueError("norm_eps must be finite")
         if self.norm_eps <= 0:
             raise ValueError("norm_eps must be positive")
         if not 0.0 <= self.attention_dropout < 1.0:
@@ -168,6 +173,8 @@ class InitSpec:
             raise ValueError(f"unsupported InitSpec schema_version: {self.schema_version}")
         if self.family != "normal":
             raise ValueError("InitSpec v1 supports family='normal' only")
+        if isinstance(self.std, bool) or not math.isfinite(self.std):
+            raise ValueError("InitSpec std must be finite")
         if self.std <= 0:
             raise ValueError("InitSpec std must be positive")
         if self.residual_branch_scale not in {"none", "sqrt_2_layers"}:
