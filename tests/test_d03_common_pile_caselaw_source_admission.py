@@ -115,7 +115,7 @@ def test_candidate_identity_substitution_fails_closed() -> None:
         ("admission_policy", "admitted_payload_bytes", 1),
         ("truth_boundary", "training_authorized_bytes", 1),
         ("truth_boundary", "training_eligible", True),
-        ("truth_boundary", "legal_conclusion_claimed", True),
+        ("truth_boundary", "source_policy_review_complete", False),
     ],
 )
 def test_policy_truth_or_admission_mutation_fails_closed(
