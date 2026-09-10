@@ -282,8 +282,8 @@ def test_imported_privacy_module_path_substitution_fails(
 ) -> None:
     fake_path = tmp_path / "privacy_filter_v3.py"
     fake_path.write_text("# stale installed substitute\n", encoding="utf-8")
-    fake_scan = lambda text: FakePrivacyResult(text)  # noqa: E731
-    fake_policy = lambda: {"policy_sha256": "d" * 64}  # noqa: E731
+    fake_scan = lambda text: FakePrivacyResult(text)
+    fake_policy = lambda: {"policy_sha256": "d" * 64}
 
     class FakeModule:
         __file__ = str(fake_path)
@@ -300,7 +300,7 @@ def test_imported_privacy_module_path_substitution_fails(
 
 def test_executed_privacy_function_substitution_fails(monkeypatch: pytest.MonkeyPatch) -> None:
     real_module = MODULE.importlib.import_module(MODULE.base.PRIVACY_MODULE)
-    fake_scan = lambda text: FakePrivacyResult(text)  # noqa: E731
+    fake_scan = lambda text: FakePrivacyResult(text)
     mechanics = (
         fake_quality,
         lambda: {"policy_sha256": "e" * 64},
