@@ -7,8 +7,12 @@ def _has_secret_assignment(text: str) -> bool:
     return any(finding.detector_id == "environment_secret_assignment" for finding in detect(text))
 
 
+def _fixture(*parts: str) -> str:
+    return "".join(parts)
+
+
 def test_malformed_sensitive_key_quotes_fail_closed() -> None:
-    secret = "".join(("AbCd", "1234!", "fixture"))
+    secret = _fixture("AbCd", "1234!", "fixture")
     cases = (
         '"password\': "' + secret + '"',
         "password': " + secret,
@@ -22,7 +26,7 @@ def test_malformed_sensitive_key_quotes_fail_closed() -> None:
 
 
 def test_valid_sensitive_key_quote_forms_still_detect() -> None:
-    secret = "".join(("AbCd", "1234!", "fixture"))
+    secret = _fixture("AbCd", "1234!", "fixture")
     cases = (
         "password=" + secret,
         '"password": "' + secret + '"',
@@ -46,5 +50,5 @@ def test_matching_placeholder_controls_remain_suppressed() -> None:
 
 
 def test_non_sensitive_malformed_key_is_not_widened() -> None:
-    secret = "".join(("AbCd", "1234!", "fixture"))
+    secret = _fixture("AbCd", "1234!", "fixture")
     assert not _has_secret_assignment('"username\': "' + secret + '"')
