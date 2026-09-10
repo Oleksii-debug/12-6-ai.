@@ -1,84 +1,142 @@
-name: D03 Rada laws current-source observation
+name: D03 Rada laws rebind live observation
 
 on:
   pull_request:
     paths:
       - ".github/workflows/d03-rada-laws-normalization-real.yml"
-  workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
+  actions: read
 
 jobs:
-  observe-current-source:
-    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.ref == 'd03/rada-bulk-normalization-current-main-20260907'
+  rebind-live-observation:
+    if: github.event.pull_request.head.ref == 'd03/rada-bulk-normalization-current-main-20260907'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Checkout exact incumbent head
+      - name: Checkout incumbent branch for atomic rebind
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: d03/rada-bulk-normalization-current-main-20260907
           fetch-depth: 1
-          persist-credentials: false
+          persist-credentials: true
 
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Re-acquire current official archive
-        run: |
-          set -euo pipefail
-          curl --fail --location --retry 4 --retry-all-errors \
-            --output "$RUNNER_TEMP/texts.zip" \
-            "https://data.rada.gov.ua/ogd/zak/perv/text/texts.zip"
-          echo "LIVE_ARCHIVE_BYTES=$(stat -c %s "$RUNNER_TEMP/texts.zip")"
-          echo "LIVE_ARCHIVE_MD5=$(md5sum "$RUNNER_TEMP/texts.zip" | awk '{print $1}')"
-          echo "LIVE_ARCHIVE_SHA256=$(sha256sum "$RUNNER_TEMP/texts.zip" | awk '{print $1}')"
+      - name: Retrieve and verify live observation authority
+        uses: actions/download-artifact@v4
+        with:
+          name: d03-rada-laws-current-observation-zero-credit
+          github-token: ${{ github.token }}
+          repository: Oleksii-debug/12-6-ai.
+          run-id: 34535608294
+          path: ${{ runner.temp }}/observation
 
-      - name: Observe current archive without granting corpus or training credit
-        run: |
-          set -euo pipefail
-          python tools/probe_d03_rada_bulk_source.py \
-            --archive "$RUNNER_TEMP/texts.zip" \
-            --accept-current-upstream \
-            --output "$RUNNER_TEMP/current-observation.json"
-
-      - name: Prove zero-credit observation and publish exact identities
+      - name: Rebind exact source authority without changing normalization semantics
+        env:
+          OBS_REPORT: ${{ runner.temp }}/observation/current-observation.json
         run: |
           set -euo pipefail
           python - <<'PY'
-          import hashlib, json, os, subprocess
+          import hashlib, json, os
           from pathlib import Path
-          p = Path(os.environ["RUNNER_TEMP"]) / "current-observation.json"
-          raw = p.read_bytes()
-          r = json.loads(raw)
-          assert r["gates"]["exact_archive_identity"] == "OBSERVED_UNPINNED"
-          assert r["gates"]["safe_zip_inventory"] == "PASS"
-          assert r["training_authorized_bytes"] == 0
-          assert r["corpus_admitted"] is False
-          assert r["tokenizer_fit_authorized"] is False
-          assert r["model_training_executed"] is False
-          assert r["paid_compute_used"] is False
-          for gate in ("canonical_normalization", "quality", "privacy", "global_cross_source_dedup", "evaluation_decontamination", "balance_diversity", "corpus_materialization", "unique_loss_ledger"):
-              assert r["gates"][gate] == "NOT_RUN"
-          print("OBSERVATION_EXECUTION_HEAD=" + subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip())
-          print("OBSERVATION_REPORT_SHA256=" + hashlib.sha256(raw).hexdigest())
-          print("ARCHIVE_BYTES=" + str(r["archive"]["bytes"]))
-          print("ARCHIVE_MD5=" + r["archive"]["md5"])
-          print("ARCHIVE_SHA256=" + r["archive"]["sha256"])
-          print("CANONICAL_ENTRY_COUNT=" + str(r["inventory"]["canonical_entry_count"]))
-          print("CANONICAL_RAW_BYTES=" + str(r["inventory"]["canonical_raw_bytes"]))
-          print("ENTRY_IDENTITY_SHA256=" + r["inventory"]["entry_identity_sha256"])
-          print("DISCOVERY_CAPACITY_GATE=" + r["gates"]["discovery_capacity_threshold"])
-          print("SAFE_RESULT=" + r["safe_result"])
+
+          report_path = Path(os.environ["OBS_REPORT"])
+          report_raw = report_path.read_bytes()
+          report = json.loads(report_raw)
+          assert hashlib.sha256(report_raw).hexdigest() == "e2ad0d8a4fce01d2da03fc93d636354253beaaf563db43968b11b600e26d0cdf"
+          assert report["archive"] == {
+              "bytes": 46709153,
+              "md5": "7ca9726549958ed8b8b54e6562c15da5",
+              "sha256": "0b9e8ed8fe8aa663a68d2bc4eba858a754c626391dd7b5c461d50c3b6260df63",
+              "url": "https://data.rada.gov.ua/ogd/zak/perv/text/texts.zip",
+          }
+          assert report["inventory"]["canonical_entry_count"] == 3052
+          assert report["inventory"]["canonical_raw_bytes"] == 353426370
+          assert report["inventory"]["entry_identity_sha256"] == "3939c8a407a910222173bba5a2df1b9c7d2edce1503c13b31a9c293d61c3a603"
+          assert report["gates"]["discovery_capacity_threshold"] == "FAIL_BELOW_MINIMUM"
+          assert report["training_authorized_bytes"] == 0
+          assert report["corpus_admitted"] is False
+          assert report["tokenizer_fit_authorized"] is False
+          assert report["model_training_executed"] is False
+          assert report["paid_compute_used"] is False
+
+          def replace_exact(path: Path, old: str, new: str, *, count: int = 1) -> None:
+              text = path.read_text(encoding="utf-8")
+              observed = text.count(old)
+              if observed != count:
+                  raise SystemExit(f"{path}: expected {count} occurrences of {old!r}, got {observed}")
+              path.write_text(text.replace(old, new, count), encoding="utf-8")
+
+          pin_tool = Path("tools/pin_d03_rada_bulk_observation.py")
+          replacements = [
+              ('"pr": 830', '"pr": 864'),
+              ('"head_sha": "077f45fea310ecbc50b87801ff916502aa7f11f9"', '"head_sha": "538fb05699fd9f61b31c0e3552faf9b144a6d3bb"'),
+              ('"workflow_run_id": 34159688896', '"workflow_run_id": 34535608294'),
+              ('"artifact_id": 10032567466', '"artifact_id": 10175280333'),
+              ('"artifact_digest": "sha256:5d95cffacd815f2ca2afbd657d2ad04145a4e51303b63513b863eb897fa1f4dd"', '"artifact_digest": "sha256:dba1429ae36456a8cb080ef7f42648b643c45bbc2585fcc133051bdf79632b32"'),
+              ('"probe_report_sha256": "1c33b31844b11822479adb1382a683a430cee470bbdf23f259084f8b5ebf0458"', '"probe_report_sha256": "e2ad0d8a4fce01d2da03fc93d636354253beaaf563db43968b11b600e26d0cdf"'),
+              ('drifted from terminal #830 authority', 'drifted from current Rada observation authority'),
+          ]
+          for old, new in replacements:
+              replace_exact(pin_tool, old, new)
+
+          pin_cfg = Path("configs/data/d03_rada_bulk_observation_pin_v1.json")
+          for old, new in [
+              ('"archive_bytes": 46700063', '"archive_bytes": 46709153'),
+              ('"archive_md5": "f97c8b2d6b4db59d151323c3a8bf2fcc"', '"archive_md5": "7ca9726549958ed8b8b54e6562c15da5"'),
+              ('"archive_sha256": "9f43da3ffe0855e49ca47ddf906da9e7c40644a845b345f6c4a19b39ef5eaf22"', '"archive_sha256": "0b9e8ed8fe8aa663a68d2bc4eba858a754c626391dd7b5c461d50c3b6260df63"'),
+              ('"canonical_raw_bytes": 353354780', '"canonical_raw_bytes": 353426370'),
+              ('"entry_identity_sha256": "766e54cf706453de30136e02f0361c549c2b96aba9855ee0573d28b354ad077b"', '"entry_identity_sha256": "3939c8a407a910222173bba5a2df1b9c7d2edce1503c13b31a9c293d61c3a603"'),
+              ('"artifact_digest": "sha256:5d95cffacd815f2ca2afbd657d2ad04145a4e51303b63513b863eb897fa1f4dd"', '"artifact_digest": "sha256:dba1429ae36456a8cb080ef7f42648b643c45bbc2585fcc133051bdf79632b32"'),
+              ('"artifact_id": 10032567466', '"artifact_id": 10175280333'),
+              ('"head_sha": "077f45fea310ecbc50b87801ff916502aa7f11f9"', '"head_sha": "538fb05699fd9f61b31c0e3552faf9b144a6d3bb"'),
+              ('"pr": 830', '"pr": 864'),
+              ('"probe_report_sha256": "1c33b31844b11822479adb1382a683a430cee470bbdf23f259084f8b5ebf0458"', '"probe_report_sha256": "e2ad0d8a4fce01d2da03fc93d636354253beaaf563db43968b11b600e26d0cdf"'),
+              ('"workflow_run_id": 34159688896', '"workflow_run_id": 34535608294'),
+          ]:
+              replace_exact(pin_cfg, old, new)
+
+          pin_value = json.loads(pin_cfg.read_text(encoding="utf-8"))
+          canonical_pin = (json.dumps(pin_value, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8")
+          pin_identity = hashlib.sha256(canonical_pin).hexdigest()
+          print("NEW_PIN_CONFIG_IDENTITY=" + pin_identity)
+
+          norm_cfg = Path("configs/data/d03_rada_bulk_normalization_v1.json")
+          for old, new in [
+              ('"source_pr": 830', '"source_pr": 864'),
+              ('"source_head_sha": "077f45fea310ecbc50b87801ff916502aa7f11f9"', '"source_head_sha": "538fb05699fd9f61b31c0e3552faf9b144a6d3bb"'),
+              ('"config_identity_sha256": "6b6f5b33a0be8d87a4cfc99852b91da278a3363515127e2880019f1ec9bbe9e1"', f'"config_identity_sha256": "{pin_identity}"'),
+              ('"source_observation_report_sha256": "1c33b31844b11822479adb1382a683a430cee470bbdf23f259084f8b5ebf0458"', '"source_observation_report_sha256": "e2ad0d8a4fce01d2da03fc93d636354253beaaf563db43968b11b600e26d0cdf"'),
+              ('"archive_sha256": "9f43da3ffe0855e49ca47ddf906da9e7c40644a845b345f6c4a19b39ef5eaf22"', '"archive_sha256": "0b9e8ed8fe8aa663a68d2bc4eba858a754c626391dd7b5c461d50c3b6260df63"'),
+              ('"entry_identity_sha256": "766e54cf706453de30136e02f0361c549c2b96aba9855ee0573d28b354ad077b"', '"entry_identity_sha256": "3939c8a407a910222173bba5a2df1b9c7d2edce1503c13b31a9c293d61c3a603"'),
+          ]:
+              replace_exact(norm_cfg, old, new)
           PY
 
-      - name: Upload text-free current observation
-        uses: actions/upload-artifact@v4
-        with:
-          name: d03-rada-laws-current-observation-zero-credit
-          path: ${{ runner.temp }}/current-observation.json
-          retention-days: 2
-          compression-level: 9
-          if-no-files-found: error
+      - name: Focused regression proof
+        run: |
+          set -euo pipefail
+          python -m pip install pytest
+          python -m py_compile tools/pin_d03_rada_bulk_observation.py tools/normalize_d03_rada_bulk_html.py
+          PYTHONPATH=. pytest -q \
+            tests/test_d03_rada_bulk_observation_pin.py \
+            tests/test_d03_rada_bulk_normalization.py \
+            tests/test_d03_rada_bulk_probe_inventory_integrity.py
+          git diff --check
+
+      - name: Commit exact authority rebind onto incumbent branch
+        run: |
+          set -euo pipefail
+          test -n "$(git status --porcelain)"
+          git config user.name "SWARM-1049"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            tools/pin_d03_rada_bulk_observation.py \
+            configs/data/d03_rada_bulk_observation_pin_v1.json \
+            configs/data/d03_rada_bulk_normalization_v1.json
+          git commit -m "D03: rebind Rada normalization to live exact observation"
+          git push origin HEAD:d03/rada-bulk-normalization-current-main-20260907
