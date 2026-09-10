@@ -88,15 +88,18 @@ jobs:
           ]
           assert report["source_objects"] == expected_sources
           assert [row["file"] for row in report["source_objects"]] == expected_order
-          assert report["source_rows_scanned"] == 71258
+          # These values are the first exact Product-path observation from
+          # e63f2fd4eddbd348b57a42e1fb41cb658d0c3a82.  This run is a
+          # reproducibility replay; selection/filter thresholds are unchanged.
+          assert report["source_rows_scanned"] == 75518
           assert report["decompressed_bytes_scanned"] == 79993495
-          assert report["next_scan_bytes_if_budget_exceeded"] == 80087426
+          assert report["next_scan_bytes_if_budget_exceeded"] == 80045392
           assert report["scan_budget_reached"] is True
           assert report["candidate_cap_reached"] is False
           assert report["retained_records"] == 5658
           assert report["retained_normalized_utf8_bytes"] == 5962147
           assert report["candidate_jsonl_sha256"] == (
-              "45043fccacd16640dd5dbaa7ec505631573679b8f6c8d81efdf9cdd97722892c"
+              "45043f528ee83cb87a94f42ca9164c16463502308bf849a6736498d3b8caa273"
           )
           assert report["per_source"]["cap_00044.jsonl.gz"] == {
               "rows": 40000,
@@ -105,7 +108,7 @@ jobs:
               "accepted_normalized_utf8_bytes": 3567518,
           }
           assert report["per_source"]["cap_00043.jsonl.gz"] == {
-              "rows": 31258,
+              "rows": 35518,
               "decompressed_bytes": 39232846,
               "accepted": 2913,
               "accepted_normalized_utf8_bytes": 2394629,
