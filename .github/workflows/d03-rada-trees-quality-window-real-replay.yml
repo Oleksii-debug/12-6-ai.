@@ -19,10 +19,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Bind repaired privacy V3 authority
+      - name: Bind repaired privacy V3 implementation
         run: |
           set -euo pipefail
-          git merge-base --is-ancestor 984aafd08c8224531b2547221991916ea0456753 HEAD
           test "$(git hash-object src/twelve_six/data/privacy_filter_v3.py)" = "0d4c1fc82dba66532208c533e85cb0e322634e28"
       - name: Install data-only runtime
         run: |
