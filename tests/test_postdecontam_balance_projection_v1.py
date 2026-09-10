@@ -12,9 +12,9 @@ from twelve_six.data.postdecontam_balance_projection_v1 import (
     FAMILY_MAP_SCHEMA,
     FAMILY_PROVENANCE_SCHEMA,
     G05_G06_COVERAGE_SCHEMA,
+    ProjectionError,
     QUALITY_GRANULARITY_IDENTITY_SHA256,
     QUALITY_POLICY_IDENTITY_SHA256,
-    ProjectionError,
     build_family_vector,
     read_records_jsonl,
     verify_family_vector,
@@ -150,7 +150,7 @@ def _family_provenance(survivors: list) -> dict:
                 {
                     "family": family,
                     "source_family_identity_sha256": hashlib.sha256(
-                        f"authority:{family}".encode("utf-8")
+                        f"authority:{family}".encode()
                     ).hexdigest(),
                     "language": semantics[family][0],
                     "modalities": semantics[family][2],
