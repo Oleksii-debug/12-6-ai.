@@ -139,15 +139,31 @@ def materialize_live(
     max_pages: int = 112,
     cadence_seconds: float = 0.55,
     get_json: Callable[[dict[str, str]], dict[str, Any]] = request_json,
+    sleep_fn: Callable[[float], None] = time.sleep,
+    monotonic_fn: Callable[[], float] = time.monotonic,
 ) -> Materialization:
     if isinstance(max_pages, bool) or not isinstance(max_pages, int) or not 1 <= max_pages <= 112:
         raise WikisourceIntakeError("max_pages must be an integer in [1, 112]")
-    if cadence_seconds < 0.5:
+    if (
+        isinstance(cadence_seconds, bool)
+        or not isinstance(cadence_seconds, (int, float))
+        or cadence_seconds < 0.5
+    ):
         raise WikisourceIntakeError("network request cadence must be at least 0.5 seconds")
-    titles = discover_index_titles(get_json=get_json)[:max_pages]
-    snapshots: list[PageSnapshot] = []
-    for index, title in enumerate(titles):
-        if index:
-            time.sleep(cadence_seconds)
-        snapshots.append(fetch_page_snapshot(title, get_json=get_json))
+
+    last_request_completed_at: float | None = None
+
+    def paced_get_json(params: dict[str, str]) -> dict[str, Any]:
+        nonlocal last_request_completed_at
+        if last_request_completed_at is not None:
+            elapsed = monotonic_fn() - last_request_completed_at
+            remaining = cadence_seconds - elapsed
+            if remaining > 0:
+                sleep_fn(remaining)
+        result = get_json(params)
+        last_request_completed_at = monotonic_fn()
+        return result
+
+    titles = discover_index_titles(get_json=paced_get_json)[:max_pages]
+    snapshots = [fetch_page_snapshot(title, get_json=paced_get_json) for title in titles]
     return materialize_snapshots(snapshots)
