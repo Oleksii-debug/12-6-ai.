@@ -81,17 +81,23 @@ jobs:
           assert report["carrier"]["canonical_base"] == "random_init"
           execution = report["execution"]
           assert execution["local_free"] is True
+          assert execution["synthetic_mechanics_only"] is True
           assert execution["optimizer_updates_total"] == 3
           assert execution["fresh_process_distinct"] is True
           assert execution["same_next_step_equal"] is True
           assert execution["binding_mismatch_failed_closed"] is True
           credit = report["scientific_credit"]
+          assert credit["real_corpus_used"] is False
+          assert credit["training_authorized_corpus_used"] is False
           assert credit["optimized_target_exposure"] == 0
           assert credit["model_training_credit"] is False
           assert credit["learned_weights_created"] is False
           assert credit["final_test_read"] is False
           assert credit["paid_compute_used"] is False
           assert credit["foreign_pretrained_weights"] is False
+          assert report["limits"]["maximum_optimizer_updates"] == 3
+          assert report["limits"]["long_campaign"] is False
+          assert report["limits"]["selection_or_recipe_tuning"] is False
           print("CHECKPOINT346_MODEL341_RECOVERY=PASS_ZERO_CREDIT")
           print("RESULT_IDENTITY_SHA256=" + report["identity_sha256"])
           PY
