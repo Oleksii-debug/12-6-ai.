@@ -36,8 +36,8 @@ EXPECTED_RIGHTS_CONFIG_SHA256 = "34da44a047c5e0d562ee6a86987cb66e3ed266e1c1f09af
 EXPECTED_RIGHTS_REPORT_SHA256 = "7eea6d0b79353ef565910738dce9de93008a961059cab503b6f05686c0f27a7d"
 EXPECTED_ACCEPTED_INVENTORY_SHA256 = "7b93056f38fbc87c11e14df9069066e21380db1f1b8d8016314330f841bfa6fc"
 EXPECTED_HELD_INVENTORY_SHA256 = "566760e10157cd835ed0879abb37f052b57d31cff6af358a81ff717f4f7f59d9"
-EXPECTED_PRIVACY_IMPLEMENTATION_GIT_BLOB_SHA = "a84395daf6f07726d6a730cf6ccb04c35bdc4e67"
-PRIVACY_REPAIR_REFERENCE_MERGE_SHA = "82a2cacfec2670feff957d64904f1b8fe310dbd4"
+EXPECTED_PRIVACY_IMPLEMENTATION_GIT_BLOB_SHA = "bcc5938395724f6728ab212f98b39f2334b0f37d"
+PRIVACY_REPAIR_REFERENCE_MERGE_SHA = "c5b9d0922cd63ade1a90c7f0163325dcf35d0b41"
 PRIVACY_SOURCE_RELATIVE_PATH = Path("src/twelve_six/data/privacy_filter_v3.py")
 
 EXPECTED_CANDIDATE_KEYS = frozenset(
@@ -268,7 +268,7 @@ def materialize_authoritative(
     require(not output.exists(), "output JSONL already exists")
     require(not report_path.exists(), "authority-bound report already exists")
     require(not output.is_symlink(), "output JSONL path must not be a symlink")
-    require(not report_path.is_symlink(), "report path must not be a symlink")
+    require(not report_path.is_symlink(), "authority-bound report path must not be a symlink")
     resolved = {
         candidate.resolve(strict=False),
         upstream_report.resolve(strict=False),
