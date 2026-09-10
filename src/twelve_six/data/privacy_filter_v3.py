@@ -92,11 +92,21 @@ SENSITIVE_ENV_RE = re.compile(
     r"(?im)^\s*(?:export\s+|set\s+)?(?P<name>[A-Z][A-Z0-9_]{2,80})\s*=\s*(?P<quote>['\"]?)(?P<value>[^\r\n'\"]{1,2048})(?P=quote)\s*$"
 )
 GENERIC_SECRET_ASSIGN_RE = re.compile(
-    r"(?im)\b(?P<name>password|passwd|pwd|client_secret|api_secret|secret|token|api_key|access_token)\b"
-    r"\s*[:=]\s*(?P<quote>['\"]?)(?P<value>[^\s'\";,}]{8,256})(?P=quote)"
+    r"(?im)(?P<key_quote>['\"]?)\b"
+    r"(?P<name>password|passwd|pwd|client_secret|api_secret|secret|token|api_key|access_token)\b"
+    r"(?P=key_quote)\s*[:=]\s*"
+    r"(?P<quote>['\"]?)(?P<value>[^\s'\";,]{8,256})(?P=quote)"
 )
 SENSITIVE_ENV_NAMES = re.compile(
     r"(?i)(?:^|_)(?:PASSWORD|PASSWD|PWD|SECRET|TOKEN|API_KEY|ACCESS_KEY|PRIVATE_KEY|CLIENT_SECRET|DATABASE_URL|DB_URL|CONNECTION_STRING|AUTH)(?:$|_)"
+)
+_PLACEHOLDER_PATTERNS = (
+    re.compile(r"\$\{[a-z_][a-z0-9_]*\}"),
+    re.compile(r"\$[a-z_][a-z0-9_]*"),
+    re.compile(r"%[a-z_][a-z0-9_]*%"),
+    re.compile(r"\{\{\s*[a-z_][a-z0-9_.-]*\s*\}\}"),
+    re.compile(r"process\.env\.[a-z_][a-z0-9_]*"),
+    re.compile(r"(?:os\.getenv|env)\(\s*['\"]?[a-z_][a-z0-9_]*['\"]?\s*\)"),
 )
 
 
@@ -149,10 +159,9 @@ def _placeholder(value: str) -> bool:
     v = value.strip().strip("'\"").casefold()
     if v in PLACEHOLDERS:
         return True
-    return (
-        v.startswith(("${", "{{", "$", "%", "process.env", "os.getenv", "env("))
-        or (v.startswith("<") and v.endswith(">"))
-    )
+    if any(pattern.fullmatch(v) for pattern in _PLACEHOLDER_PATTERNS):
+        return True
+    return v.startswith("<") and v.endswith(">")
 
 
 def _secretish(value: str, *, min_len: int = 8) -> bool:
