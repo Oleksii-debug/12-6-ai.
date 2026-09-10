@@ -1,0 +1,94 @@
+{
+  "schema_version": "12-6.next100-067-quality-granularity.v1",
+  "worker_id": "NEXT100-067-CORPUS-QUALITY-GRANULARITY",
+  "local_free_only": true,
+  "model_results_may_be_read": false,
+  "final_test_outcomes_may_be_read": false,
+  "threshold_tuning_from_outcomes": "FORBIDDEN",
+  "authority_boundary": {
+    "data296_branch_head": "e44ac40c071834d677e00255d4f8e862f4a7ac4b",
+    "data296_preregistration_sha256": "bc4d3f61b9fdf593538e776ddcb82164cc616c77f230ea5de016128436e3ffb3",
+    "incumbent_quality_policy_id": "d03-lightweight-uk-en-code-v1",
+    "incumbent_quality_policy_sha256": "97b9fe1452b22c6275a27f85524f670253a7f4012377361c4cb007004aeccd1d",
+    "thresholds_changed_by_next100_067": false
+  },
+  "predeclared_metrics": [
+    "retained_unique_utf8_bytes",
+    "rejected_unique_utf8_bytes",
+    "document_acceptance_rate",
+    "bounded_window_acceptance_rate",
+    "granularity_disagreement_count",
+    "partition_exact_reconstruction_failures",
+    "family_soft_quality_eviction_count",
+    "source_total_loss_from_soft_quality_count",
+    "maximum_soft_quality_blast_radius_utf8_bytes",
+    "code_authoritative_parse_preservation"
+  ],
+  "selection_invariants": [
+    "SOFT_QUALITY_METRICS_MUST_NEVER_EVICT_A_SOURCE_OR_FAMILY",
+    "SOURCE_NATIVE_DOCUMENT_BOUNDARIES_TAKE_PRECEDENCE_OVER_PACK_BOUNDARIES",
+    "LARGE_UK_EN_DOCUMENTS_MUST_USE_EXACT_NONOVERLAPPING_LOCAL_WINDOWS",
+    "A_REJECTED_NATURAL_LANGUAGE_WINDOW_MUST_NOT_REJECT_SIBLING_WINDOWS",
+    "ARBITRARY_CODE_PACKS_MUST_NEVER_HAVE_REJECTION_AUTHORITY",
+    "POST_PACKING_QUALITY_FILTERING_IS_FORBIDDEN",
+    "QUALITY_THRESHOLDS_ARE_IDENTICAL_TO_THE_DATA296_INCUMBENT",
+    "NO_MODEL_OR_FINAL_TEST_RESULT_CAN_SELECT_OR_TUNE_GRANULARITY"
+  ],
+  "comparison": {
+    "whole_source": {
+      "run_for_diagnostics": true,
+      "soft_quality_rejection_authority": false
+    },
+    "document": {
+      "run_for_diagnostics": true,
+      "source_native_boundary_required": true,
+      "soft_quality_rejection_authority": true
+    },
+    "bounded_chunk_pack": {
+      "run_for_diagnostics": true,
+      "natural_language_large_document_salvage_authority": true,
+      "code_rejection_authority": false,
+      "training_pack_rejection_authority": false
+    }
+  },
+  "frozen_policy": {
+    "schema_version": "12-6.quality-filter-granularity-policy.v1",
+    "policy_id": "next100-067-document-first-local-window-salvage-v1",
+    "policy_sha256": "e8685c2c6b265b9b289ded7a5245888d8d16ae4d6e881f6229f3bc777601f857",
+    "quality_threshold_policy_id": "d03-lightweight-uk-en-code-v1",
+    "quality_threshold_policy_sha256": "97b9fe1452b22c6275a27f85524f670253a7f4012377361c4cb007004aeccd1d",
+    "whole_source": {
+      "soft_quality_rejection_authority": false,
+      "purpose": "DIAGNOSTIC_ONLY",
+      "family_eviction_authority": false
+    },
+    "document": {
+      "primary_quality_unit": true,
+      "require_source_native_boundary": true,
+      "soft_quality_rejection_authority": true,
+      "family_eviction_authority": false
+    },
+    "natural_language_large_document": {
+      "modes": ["uk", "en"],
+      "window_trigger_chars": 16384,
+      "window_target_chars": 8192,
+      "window_max_chars": 12288,
+      "window_min_tail_chars": 2048,
+      "partition": "ORDERED_LINE_PREFERRED_NO_OVERLAP_EXACT_RECONSTRUCTION_V1",
+      "accepted_windows_are_retained_independently": true,
+      "rejected_windows_do_not_reject_siblings": true,
+      "family_eviction_authority": false
+    },
+    "code": {
+      "atomic_unit": "SOURCE_NATIVE_FILE_OR_SYNTAX_AWARE_UPSTREAM_UNIT",
+      "arbitrary_bounded_pack_soft_rejection_authority": false,
+      "arbitrary_bounded_pack_purpose": "DIAGNOSTIC_ONLY",
+      "oversized_without_syntax_aware_split": "QUARANTINE_DOCUMENT_NOT_FAMILY",
+      "family_eviction_authority": false
+    },
+    "post_packing": {
+      "quality_rejection_authority": false,
+      "reason": "TRAINING_PACK_BOUNDARIES_ARE_NOT_QUALITY_OR_SEMANTIC_BOUNDARIES"
+    }
+  }
+}
