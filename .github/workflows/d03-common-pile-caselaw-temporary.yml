@@ -36,7 +36,7 @@ jobs:
           pip install -e .[dev]
       - name: Focused product regression
         run: pytest -q tests/test_d03_common_pile_caselaw.py
-      - name: Measure bounded 44+43 vector using existing filters and product envelope
+      - name: Measure both source orders at unchanged product gates
         run: |
           python - <<'PY'
           import gzip
@@ -66,7 +66,7 @@ jobs:
           def download(obj, suffix):
               out = root / f"{obj['file']}.{suffix}"
               url = f"https://huggingface.co/datasets/{dataset}/resolve/{revision}/{obj['file']}"
-              req = urllib.request.Request(url, headers={"User-Agent": "12-6-ai-D03-CaselawVector/1"})
+              req = urllib.request.Request(url, headers={"User-Agent": "12-6-ai-D03-CaselawOrder/1"})
               h = hashlib.sha256(); n = 0
               with urllib.request.urlopen(req, timeout=120) as r, out.open("wb") as f:
                   while True:
@@ -78,17 +78,21 @@ jobs:
               assert h.hexdigest() == obj["sha256"], ("source_sha256", obj["file"])
               return out
 
-          paths_a = [download(o, "a") for o in objects]
-          paths_b = [download(o, "b") for o in objects]
-          for obj, a, b in zip(objects, paths_a, paths_b):
-              assert a.read_bytes() == b.read_bytes(), ("download_mismatch", obj["file"])
+          paths_a = {o["file"]: download(o, "a") for o in objects}
+          paths_b = {o["file"]: download(o, "b") for o in objects}
+          for obj in objects:
+              name = obj["file"]
+              assert paths_a[name].read_bytes() == paths_b[name].read_bytes(), ("download_mismatch", name)
 
-          def scan(pairs, cap):
+          by_name = {o["file"]: o for o in objects}
+
+          def scan(order):
               seen_ids = set(); seen_hashes = set(); retained = []
               dispositions = {}; per_source = {}; candidate_bytes = 0
-              decompressed = 0; rows = 0; cap_reached = False
-              stop = False
-              for obj, path in pairs:
+              decompressed = 0; rows = 0; candidate_cap_reached = False
+              scan_budget_reached = False; stop = False; next_scan_bytes = None
+              for name in order:
+                  obj = by_name[name]; path = paths_a[name]
                   src = {"rows": 0, "decompressed_bytes": 0, "accepted": 0,
                          "accepted_normalized_utf8_bytes": 0}
                   with gzip.open(path, "rb") as handle:
@@ -96,53 +100,60 @@ jobs:
                           line = handle.readline(mod.MAX_LINE_BYTES + 1)
                           if not line:
                               break
+                          assert len(line) <= mod.MAX_LINE_BYTES, ("line_budget", name, src["rows"] + 1)
+                          prospective = decompressed + len(line)
+                          if prospective > mod.MAX_SCANNED_BYTES:
+                              scan_budget_reached = True; next_scan_bytes = prospective; stop = True; break
                           rows += 1; src["rows"] += 1
-                          decompressed += len(line); src["decompressed_bytes"] += len(line)
-                          assert len(line) <= mod.MAX_LINE_BYTES, ("line_budget", obj["file"], src["rows"])
-                          assert decompressed <= mod.MAX_SCANNED_BYTES, ("scan_budget", obj["file"], src["rows"], decompressed)
+                          decompressed = prospective; src["decompressed_bytes"] += len(line)
                           record = json.loads(line.decode("utf-8"))
                           rid = record.get("id")
-                          assert isinstance(rid, str), ("missing_id", obj["file"], src["rows"])
-                          assert rid not in seen_ids, ("duplicate_id", obj["file"], src["rows"])
+                          assert isinstance(rid, str), ("missing_id", name, src["rows"])
+                          assert rid not in seen_ids, ("duplicate_id", name, src["rows"])
                           seen_ids.add(rid)
                           ok, reason, candidate = mod.assess_record(record, cfg)
                           if not ok:
                               dispositions[reason] = dispositions.get(reason, 0) + 1
                               continue
-                          assert candidate is not None, ("accepted_without_candidate", obj["file"], src["rows"])
+                          assert candidate is not None
                           digest = candidate["normalized_sha256"]
                           if digest in seen_hashes:
                               dispositions["exact_normalized_duplicate"] = dispositions.get(
                                   "exact_normalized_duplicate", 0) + 1
                               continue
                           next_bytes = candidate_bytes + candidate["normalized_utf8_bytes"]
-                          if next_bytes > cap:
-                              cap_reached = True; stop = True; break
+                          if next_bytes > mod.MAX_CANDIDATE_BYTES:
+                              candidate_cap_reached = True; stop = True; break
                           seen_hashes.add(digest); retained.append(candidate)
                           candidate_bytes = next_bytes
                           src["accepted"] += 1
                           src["accepted_normalized_utf8_bytes"] += candidate["normalized_utf8_bytes"]
                           dispositions["accepted"] = dispositions.get("accepted", 0) + 1
-                          if candidate_bytes >= cap - 8192:
-                              cap_reached = True; stop = True; break
-                  per_source[obj["file"]] = src
+                          if candidate_bytes >= mod.MAX_CANDIDATE_BYTES - 8192:
+                              candidate_cap_reached = True; stop = True; break
+                  per_source[name] = src
                   if stop:
                       break
               payload = b"".join(mod.canonical(row) for row in retained)
-              return {"rows_scanned": rows, "decompressed_bytes_scanned": decompressed,
-                      "retained_records": len(retained),
-                      "retained_normalized_utf8_bytes": candidate_bytes,
-                      "candidate_jsonl_sha256": hashlib.sha256(payload).hexdigest(),
-                      "candidate_cap_reached": cap_reached,
-                      "disposition_counts": dict(sorted(dispositions.items())),
-                      "per_source": per_source}
+              return {
+                  "source_order": order,
+                  "rows_scanned": rows,
+                  "decompressed_bytes_scanned": decompressed,
+                  "next_scan_bytes_if_budget_exceeded": next_scan_bytes,
+                  "scan_budget_reached": scan_budget_reached,
+                  "retained_records": len(retained),
+                  "retained_normalized_utf8_bytes": candidate_bytes,
+                  "candidate_jsonl_sha256": hashlib.sha256(payload).hexdigest(),
+                  "candidate_cap_reached": candidate_cap_reached,
+                  "candidate_floor_reached": candidate_bytes >= mod.MIN_CANDIDATE_BYTES,
+                  "disposition_counts": dict(sorted(dispositions.items())),
+                  "per_source": per_source,
+              }
 
-          vector = scan(list(zip(objects, paths_a)), mod.MAX_CANDIDATE_BYTES)
-          assert vector["retained_normalized_utf8_bytes"] >= mod.MIN_CANDIDATE_BYTES, (
-              "vector_floor", vector["retained_normalized_utf8_bytes"])
-          assert vector["retained_normalized_utf8_bytes"] <= mod.MAX_CANDIDATE_BYTES
+          order_44_43 = scan(["cap_00044.jsonl.gz", "cap_00043.jsonl.gz"])
+          order_43_44 = scan(["cap_00043.jsonl.gz", "cap_00044.jsonl.gz"])
           evidence = {
-              "schema_version": "12-6.d03-common-pile-caselaw-vector-diagnostic.v2",
+              "schema_version": "12-6.d03-common-pile-caselaw-order-capacity-diagnostic.v1",
               "execution_profile": "LOCAL_FREE",
               "source_git_sha": os.environ["SOURCE_SHA"],
               "dataset": dataset,
@@ -153,8 +164,10 @@ jobs:
               "existing_min_candidate_bytes": mod.MIN_CANDIDATE_BYTES,
               "existing_max_candidate_bytes": mod.MAX_CANDIDATE_BYTES,
               "existing_max_scanned_decompressed_bytes": mod.MAX_SCANNED_BYTES,
-              "bounded_vector_44_then_43": vector,
-              "vector_capacity_pass": True,
+              "order_44_then_43": order_44_43,
+              "order_43_then_44": order_43_44,
+              "any_order_reaches_candidate_floor": (
+                  order_44_43["candidate_floor_reached"] or order_43_44["candidate_floor_reached"]),
               "source_level_project_review_complete": False,
               "canonical_capacity_credited": 0,
               "family_credit_added": 0,
@@ -168,13 +181,13 @@ jobs:
           raw = (json.dumps(evidence, sort_keys=True, separators=(",", ":")) + "\n").encode()
           evidence["evidence_identity_sha256"] = hashlib.sha256(raw).hexdigest()
           print(json.dumps(evidence, sort_keys=True))
-          out = root / "caselaw-vector-evidence"; out.mkdir()
-          (out / "vector_capacity_diagnostic.json").write_text(
+          out = root / "caselaw-order-evidence"; out.mkdir()
+          (out / "order_capacity_diagnostic.json").write_text(
               json.dumps(evidence, indent=2, sort_keys=True) + "\n", encoding="utf-8")
           PY
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: d03-common-pile-caselaw-vector-diagnostic-${{ env.SOURCE_SHA }}
-          path: ${{ runner.temp }}/caselaw-vector-evidence/
+          name: d03-common-pile-caselaw-order-diagnostic-${{ env.SOURCE_SHA }}
+          path: ${{ runner.temp }}/caselaw-order-evidence/
           if-no-files-found: error
           retention-days: 30
