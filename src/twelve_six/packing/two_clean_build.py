@@ -1,9 +1,8 @@
 """Fresh-process two-clean proof for canonical post-pack loss materialization.
 
-The proof deliberately reuses :mod:`twelve_six.packing.loss_materialization`.
-It does not tokenize, pack, or assign loss spans independently. Raw document
-text exists only in the ephemeral input packet and is never copied into the
-returned durable proof.
+The proof reuses :mod:`twelve_six.packing.loss_materialization`; it does not
+tokenize, pack, or assign loss spans independently. Raw document text exists
+only in the ephemeral input packet and is never copied into the durable proof.
 """
 
 from __future__ import annotations
@@ -27,8 +26,8 @@ from .loss_materialization import (
     build_postpack_loss_materialization,
 )
 
-INPUT_SCHEMA = "12-6.postpack-two-clean-input.v1"
-PROOF_SCHEMA = "12-6.postpack-two-clean-proof.v1"
+INPUT_SCHEMA = "12-6.postpack-two-clean-input.v2"
+PROOF_SCHEMA = "12-6.postpack-two-clean-proof.v2"
 _REQUIRED_BINDINGS = (
     "normalization",
     "evaluation_reservations",
@@ -52,6 +51,13 @@ _DOCUMENT_KEYS = {
     "evaluation_reserved",
     "reserved_target_ranges",
 }
+_CLEAN_ENV_KEYS = frozenset(
+    {
+        "PYTHONPATH",
+        "PYTHONNOUSERSITE",
+        "PYTHONDONTWRITEBYTECODE",
+    }
+)
 
 
 class TwoCleanBuildError(ValueError):
@@ -73,6 +79,17 @@ def _sha256_obj(value: Any) -> str:
     return _sha256_bytes(_canonical_json_bytes(value))
 
 
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    try:
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+    except OSError as exc:
+        raise TwoCleanBuildError("trusted Python executable cannot be hashed") from exc
+    return digest.hexdigest()
+
+
 def _require_sha256(value: Any, field: str) -> str:
     if (
         not isinstance(value, str)
@@ -91,6 +108,67 @@ def _normalize_bindings(value: Mapping[str, str]) -> dict[str, str]:
         name: _require_sha256(value[name], f"stage_bindings.{name}")
         for name in _REQUIRED_BINDINGS
     }
+
+
+def _trusted_python_executable(requested: str | None = None) -> Path:
+    if not sys.executable:
+        raise TwoCleanBuildError("python executable is unavailable")
+    try:
+        trusted = Path(sys.executable).resolve(strict=True)
+        candidate = Path(requested or sys.executable).resolve(strict=True)
+    except OSError as exc:
+        raise TwoCleanBuildError("python executable cannot be resolved") from exc
+    try:
+        same_runtime = candidate.samefile(trusted)
+    except OSError as exc:
+        raise TwoCleanBuildError("python executable cannot be compared") from exc
+    if not same_runtime:
+        raise TwoCleanBuildError(
+            "python_executable must resolve to the trusted current runtime"
+        )
+    return trusted
+
+
+def _runtime_descriptor(executable: Path | None = None) -> dict[str, Any]:
+    trusted = executable or _trusted_python_executable()
+    cache_tag = getattr(sys.implementation, "cache_tag", None)
+    if not isinstance(cache_tag, str) or not cache_tag:
+        raise TwoCleanBuildError("Python runtime cache tag is unavailable")
+    return {
+        "implementation": sys.implementation.name,
+        "version": [
+            sys.version_info.major,
+            sys.version_info.minor,
+            sys.version_info.micro,
+        ],
+        "cache_tag": cache_tag,
+        "executable_sha256": _sha256_file(trusted),
+    }
+
+
+def current_runtime_identity_sha256() -> str:
+    """Return a path-independent identity for the exact trusted Python runtime."""
+    return _sha256_obj(_runtime_descriptor())
+
+
+def _trusted_source_root() -> Path:
+    source_root = Path(__file__).resolve().parents[2]
+    expected = source_root / "twelve_six" / "packing" / "two_clean_build.py"
+    if not expected.is_file():
+        raise TwoCleanBuildError("trusted twelve_six source root cannot be resolved")
+    return source_root
+
+
+def _clean_child_env(source_root: Path) -> dict[str, str]:
+    """Build a minimal child environment instead of inheriting caller Python hooks."""
+    env = {
+        "PYTHONPATH": str(source_root),
+        "PYTHONNOUSERSITE": "1",
+        "PYTHONDONTWRITEBYTECODE": "1",
+    }
+    if set(env) != set(_CLEAN_ENV_KEYS):
+        raise AssertionError("clean child environment key drift")
+    return env
 
 
 def _document_row(document: LossMaterializationDocument) -> dict[str, Any]:
@@ -116,8 +194,11 @@ def make_input_packet(
     *,
     terminal_corpus_authority_identity_sha256: str,
     stage_bindings: Mapping[str, str],
+    expected_tokenizer_identity_sha256: str,
+    expected_packing_identity_sha256: str,
+    expected_runtime_identity_sha256: str,
 ) -> dict[str, Any]:
-    """Freeze one ephemeral build request and give it a deterministic identity."""
+    """Freeze one externally bound ephemeral build request."""
     if not documents:
         raise TwoCleanBuildError("documents must not be empty")
     ordered = sorted(documents, key=lambda item: item.document_id)
@@ -130,6 +211,18 @@ def make_input_packet(
             "terminal_corpus_authority_identity_sha256",
         ),
         "stage_bindings": _normalize_bindings(stage_bindings),
+        "expected_tokenizer_identity_sha256": _require_sha256(
+            expected_tokenizer_identity_sha256,
+            "expected_tokenizer_identity_sha256",
+        ),
+        "expected_packing_identity_sha256": _require_sha256(
+            expected_packing_identity_sha256,
+            "expected_packing_identity_sha256",
+        ),
+        "expected_runtime_identity_sha256": _require_sha256(
+            expected_runtime_identity_sha256,
+            "expected_runtime_identity_sha256",
+        ),
         "documents": [_document_row(item) for item in ordered],
         "claim_boundary": {
             "ephemeral_input_contains_source_text": True,
@@ -145,19 +238,25 @@ def make_input_packet(
 def _verify_input_packet(
     packet: Mapping[str, Any], *, expected_identity_sha256: str
 ) -> dict[str, Any]:
-    expected = _require_sha256(expected_identity_sha256, "expected_input_packet_identity_sha256")
+    expected = _require_sha256(
+        expected_identity_sha256,
+        "expected_input_packet_identity_sha256",
+    )
     value = dict(packet)
     if value.get("schema_version") != INPUT_SCHEMA:
         raise TwoCleanBuildError("unexpected input packet schema")
     observed = _require_sha256(
-        value.get("input_packet_identity_sha256"), "input_packet_identity_sha256"
+        value.get("input_packet_identity_sha256"),
+        "input_packet_identity_sha256",
     )
     body = dict(value)
     body.pop("input_packet_identity_sha256", None)
     if _sha256_obj(body) != observed:
         raise TwoCleanBuildError("input packet self-identity mismatch")
     if observed != expected:
-        raise TwoCleanBuildError("input packet does not match independently expected identity")
+        raise TwoCleanBuildError(
+            "input packet does not match independently expected identity"
+        )
     _require_sha256(
         value.get("terminal_corpus_authority_identity_sha256"),
         "terminal_corpus_authority_identity_sha256",
@@ -165,7 +264,13 @@ def _verify_input_packet(
     bindings = value.get("stage_bindings")
     if not isinstance(bindings, Mapping):
         raise TwoCleanBuildError("stage_bindings must be an object")
-    _normalize_bindings(bindings)
+    value["stage_bindings"] = _normalize_bindings(bindings)
+    for field in (
+        "expected_tokenizer_identity_sha256",
+        "expected_packing_identity_sha256",
+        "expected_runtime_identity_sha256",
+    ):
+        value[field] = _require_sha256(value.get(field), field)
     boundary = value.get("claim_boundary")
     if boundary != {
         "ephemeral_input_contains_source_text": True,
@@ -189,7 +294,9 @@ def _document_from_row(row: Mapping[str, Any]) -> LossMaterializationDocument:
     normalized_ranges: list[tuple[int, int]] = []
     for item in ranges:
         if not isinstance(item, list) or len(item) != 2:
-            raise TwoCleanBuildError("reserved_target_ranges entries must be two-item lists")
+            raise TwoCleanBuildError(
+                "reserved_target_ranges entries must be two-item lists"
+            )
         normalized_ranges.append((item[0], item[1]))
     return LossMaterializationDocument(
         document_id=row["document_id"],
@@ -226,6 +333,8 @@ def _verify_materialization_bytes(
     *,
     expected_corpus_identity_sha256: str,
     expected_stage_bindings: Mapping[str, str],
+    expected_tokenizer_identity_sha256: str,
+    expected_packing_identity_sha256: str,
 ) -> dict[str, Any]:
     try:
         value = json.loads(payload.decode("utf-8"))
@@ -234,7 +343,8 @@ def _verify_materialization_bytes(
     if not isinstance(value, dict) or value.get("schema_version") != MATERIALIZATION_SCHEMA:
         raise TwoCleanBuildError("unexpected post-pack materialization schema")
     observed_identity = _require_sha256(
-        value.get("materialization_identity_sha256"), "materialization_identity_sha256"
+        value.get("materialization_identity_sha256"),
+        "materialization_identity_sha256",
     )
     body = dict(value)
     body.pop("materialization_identity_sha256", None)
@@ -243,13 +353,42 @@ def _verify_materialization_bytes(
     if _canonical_json_bytes(value) != payload:
         raise TwoCleanBuildError("post-pack materialization bytes are not canonical")
     expected_corpus = _require_sha256(
-        expected_corpus_identity_sha256, "expected_corpus_identity_sha256"
+        expected_corpus_identity_sha256,
+        "expected_corpus_identity_sha256",
     )
     if value.get("terminal_corpus_authority_identity_sha256") != expected_corpus:
         raise TwoCleanBuildError("terminal corpus authority drifted during clean build")
     expected_bindings = _normalize_bindings(expected_stage_bindings)
     if value.get("stage_bindings") != expected_bindings:
         raise TwoCleanBuildError("stage binding drifted during clean build")
+
+    tokenizer = value.get("tokenizer")
+    if not isinstance(tokenizer, Mapping):
+        raise TwoCleanBuildError("materialization tokenizer authority is missing")
+    expected_tokenizer = _require_sha256(
+        expected_tokenizer_identity_sha256,
+        "expected_tokenizer_identity_sha256",
+    )
+    observed_tokenizer = _require_sha256(
+        tokenizer.get("identity_sha256"),
+        "materialization.tokenizer.identity_sha256",
+    )
+    if observed_tokenizer != expected_tokenizer:
+        raise TwoCleanBuildError("tokenizer identity drifted during clean build")
+
+    packing = value.get("packing")
+    if not isinstance(packing, Mapping):
+        raise TwoCleanBuildError("materialization packing authority is missing")
+    expected_packing = _require_sha256(
+        expected_packing_identity_sha256,
+        "expected_packing_identity_sha256",
+    )
+    observed_packing = _require_sha256(
+        packing.get("identity_sha256"),
+        "materialization.packing.identity_sha256",
+    )
+    if observed_packing != expected_packing:
+        raise TwoCleanBuildError("packing identity drifted during clean build")
     return value
 
 
@@ -259,17 +398,23 @@ def compare_clean_build_bytes(
     *,
     expected_corpus_identity_sha256: str,
     expected_stage_bindings: Mapping[str, str],
+    expected_tokenizer_identity_sha256: str,
+    expected_packing_identity_sha256: str,
 ) -> dict[str, Any]:
     """Require literal equality of two independently produced canonical outputs."""
     first_value = _verify_materialization_bytes(
         first,
         expected_corpus_identity_sha256=expected_corpus_identity_sha256,
         expected_stage_bindings=expected_stage_bindings,
+        expected_tokenizer_identity_sha256=expected_tokenizer_identity_sha256,
+        expected_packing_identity_sha256=expected_packing_identity_sha256,
     )
     second_value = _verify_materialization_bytes(
         second,
         expected_corpus_identity_sha256=expected_corpus_identity_sha256,
         expected_stage_bindings=expected_stage_bindings,
+        expected_tokenizer_identity_sha256=expected_tokenizer_identity_sha256,
+        expected_packing_identity_sha256=expected_packing_identity_sha256,
     )
     if first != second:
         raise TwoCleanBuildError("independent post-pack materialization bytes differ")
@@ -280,11 +425,26 @@ def compare_clean_build_bytes(
     return first_value
 
 
+def _verify_runtime_binding(packet: Mapping[str, Any]) -> str:
+    expected = _require_sha256(
+        packet.get("expected_runtime_identity_sha256"),
+        "expected_runtime_identity_sha256",
+    )
+    observed = current_runtime_identity_sha256()
+    if observed != expected:
+        raise TwoCleanBuildError("runtime identity does not match trusted current runtime")
+    return observed
+
+
 def _run_child(input_path: Path, output_path: Path, expected_identity: str) -> None:
     packet = json.loads(input_path.read_text(encoding="utf-8"))
     if not isinstance(packet, dict):
         raise TwoCleanBuildError("input packet must be a JSON object")
-    verified = _verify_input_packet(packet, expected_identity_sha256=expected_identity)
+    verified = _verify_input_packet(
+        packet,
+        expected_identity_sha256=expected_identity,
+    )
+    _verify_runtime_binding(verified)
     output_path.write_bytes(_canonical_json_bytes(_build_one(verified)))
 
 
@@ -295,20 +455,24 @@ def prove_two_clean_build(
     python_executable: str | None = None,
     timeout_seconds: int = 120,
 ) -> dict[str, Any]:
-    """Run two fresh Python processes and emit a text-free equality proof."""
+    """Run two isolated fresh Python processes and emit a text-free equality proof."""
     if isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, int):
         raise TwoCleanBuildError("timeout_seconds must be a positive integer")
     if timeout_seconds <= 0:
         raise TwoCleanBuildError("timeout_seconds must be a positive integer")
+
     verified = _verify_input_packet(
-        packet, expected_identity_sha256=expected_input_packet_identity_sha256
+        packet,
+        expected_identity_sha256=expected_input_packet_identity_sha256,
     )
+    runtime_identity = _verify_runtime_binding(verified)
+    executable = _trusted_python_executable(python_executable)
     packet_identity = verified["input_packet_identity_sha256"]
     corpus_identity = verified["terminal_corpus_authority_identity_sha256"]
+    tokenizer_identity = verified["expected_tokenizer_identity_sha256"]
+    packing_identity = verified["expected_packing_identity_sha256"]
     bindings = verified["stage_bindings"]
-    executable = python_executable or sys.executable
-    if not executable:
-        raise TwoCleanBuildError("python executable is unavailable")
+    source_root = _trusted_source_root()
 
     with tempfile.TemporaryDirectory(prefix="twelve-six-two-clean-") as directory:
         root = Path(directory)
@@ -321,7 +485,9 @@ def prove_two_clean_build(
             work.mkdir()
             output_path = work / "postpack.json"
             command = [
-                executable,
+                str(executable),
+                "-S",
+                "-B",
                 "-m",
                 "twelve_six.packing.two_clean_build",
                 "--child",
@@ -330,12 +496,10 @@ def prove_two_clean_build(
                 "--expected-input-identity",
                 packet_identity,
             ]
-            env = dict(os.environ)
-            env["PYTHONDONTWRITEBYTECODE"] = "1"
             completed = subprocess.run(
                 command,
                 cwd=work,
-                env=env,
+                env=_clean_child_env(source_root),
                 capture_output=True,
                 text=True,
                 timeout=timeout_seconds,
@@ -344,6 +508,10 @@ def prove_two_clean_build(
             if completed.returncode != 0:
                 detail = (completed.stderr or completed.stdout).strip()[-1000:]
                 raise TwoCleanBuildError(f"{name} fresh process failed: {detail}")
+            if completed.stdout or completed.stderr:
+                raise TwoCleanBuildError(
+                    f"{name} fresh process emitted unexpected output"
+                )
             if not output_path.is_file():
                 raise TwoCleanBuildError(f"{name} did not produce postpack.json")
             payload = output_path.read_bytes()
@@ -355,12 +523,17 @@ def prove_two_clean_build(
         outputs[1],
         expected_corpus_identity_sha256=corpus_identity,
         expected_stage_bindings=bindings,
+        expected_tokenizer_identity_sha256=tokenizer_identity,
+        expected_packing_identity_sha256=packing_identity,
     )
     proof: dict[str, Any] = {
         "schema_version": PROOF_SCHEMA,
         "input_packet_identity_sha256": packet_identity,
         "terminal_corpus_authority_identity_sha256": corpus_identity,
         "stage_bindings": dict(bindings),
+        "tokenizer_identity_sha256": tokenizer_identity,
+        "packing_identity_sha256": packing_identity,
+        "runtime_identity_sha256": runtime_identity,
         "fresh_process_count": 2,
         "byte_identical": True,
         "build_a_sha256": output_hashes[0],
@@ -377,6 +550,74 @@ def prove_two_clean_build(
     }
     proof["proof_identity_sha256"] = _sha256_obj(proof)
     return proof
+
+
+def verify_proof(
+    proof: Mapping[str, Any],
+    *,
+    expected_proof_identity_sha256: str,
+    expected_input_packet_identity_sha256: str,
+    expected_terminal_corpus_identity_sha256: str,
+    expected_stage_bindings: Mapping[str, str],
+    expected_tokenizer_identity_sha256: str,
+    expected_packing_identity_sha256: str,
+    expected_runtime_identity_sha256: str,
+) -> dict[str, Any]:
+    """Independently verify the durable V2 proof without trusting producer prose."""
+    value = dict(proof)
+    if value.get("schema_version") != PROOF_SCHEMA:
+        raise TwoCleanBuildError("unexpected two-clean proof schema")
+    observed = _require_sha256(
+        value.get("proof_identity_sha256"),
+        "proof_identity_sha256",
+    )
+    body = dict(value)
+    body.pop("proof_identity_sha256", None)
+    if _sha256_obj(body) != observed:
+        raise TwoCleanBuildError("two-clean proof self-identity mismatch")
+    expected_proof = _require_sha256(
+        expected_proof_identity_sha256,
+        "expected_proof_identity_sha256",
+    )
+    if observed != expected_proof:
+        raise TwoCleanBuildError("two-clean proof does not match expected identity")
+
+    exact_fields = {
+        "input_packet_identity_sha256": expected_input_packet_identity_sha256,
+        "terminal_corpus_authority_identity_sha256": (
+            expected_terminal_corpus_identity_sha256
+        ),
+        "tokenizer_identity_sha256": expected_tokenizer_identity_sha256,
+        "packing_identity_sha256": expected_packing_identity_sha256,
+        "runtime_identity_sha256": expected_runtime_identity_sha256,
+    }
+    for field, expected_value in exact_fields.items():
+        expected = _require_sha256(expected_value, f"expected_{field}")
+        if value.get(field) != expected:
+            raise TwoCleanBuildError(f"two-clean proof {field} mismatch")
+    expected_bindings = _normalize_bindings(expected_stage_bindings)
+    if value.get("stage_bindings") != expected_bindings:
+        raise TwoCleanBuildError("two-clean proof stage binding mismatch")
+    if value.get("fresh_process_count") != 2:
+        raise TwoCleanBuildError("two-clean proof must bind exactly two fresh processes")
+    if value.get("byte_identical") is not True:
+        raise TwoCleanBuildError("two-clean proof does not establish byte identity")
+    build_a = _require_sha256(value.get("build_a_sha256"), "build_a_sha256")
+    build_b = _require_sha256(value.get("build_b_sha256"), "build_b_sha256")
+    if build_a != build_b:
+        raise TwoCleanBuildError("two-clean proof build hashes differ")
+    _require_sha256(
+        value.get("materialization_identity_sha256"),
+        "materialization_identity_sha256",
+    )
+    if value.get("claim_boundary") != {
+        "contains_source_text": False,
+        "authorizes_training": False,
+        "authorizes_paid_compute": False,
+        "creates_positive_unique_loss_authority": False,
+    }:
+        raise TwoCleanBuildError("two-clean proof claim boundary drift")
+    return value
 
 
 def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
