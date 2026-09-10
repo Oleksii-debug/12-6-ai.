@@ -292,6 +292,30 @@ def test_durable_proof_is_independently_verifiable_and_tamper_fails() -> None:
         )
 
 
+def test_proof_rejects_unknown_fields_even_after_self_hash_recomputation() -> None:
+    packet = _packet()
+    proof = two_clean.prove_two_clean_build(
+        packet,
+        expected_input_packet_identity_sha256=packet["input_packet_identity_sha256"],
+    )
+    injected = copy.deepcopy(proof)
+    injected["source_text"] = "must never survive durable proof verification"
+    injected.pop("proof_identity_sha256")
+    injected["proof_identity_sha256"] = two_clean._sha256_obj(injected)
+
+    with pytest.raises(two_clean.TwoCleanBuildError, match="unexpected or missing fields"):
+        two_clean.verify_proof(
+            injected,
+            expected_proof_identity_sha256=injected["proof_identity_sha256"],
+            expected_input_packet_identity_sha256=packet["input_packet_identity_sha256"],
+            expected_terminal_corpus_identity_sha256="f" * 64,
+            expected_stage_bindings=_bindings(),
+            expected_tokenizer_identity_sha256=_tokenizer_identity(),
+            expected_packing_identity_sha256=PACKING_CONFIG_HASH,
+            expected_runtime_identity_sha256=_runtime_identity(),
+        )
+
+
 def test_ephemeral_packet_contains_text_but_claims_zero_training_authority() -> None:
     packet = _packet()
     assert any("text" in row for row in packet["documents"])
