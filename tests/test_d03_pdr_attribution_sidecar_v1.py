@@ -96,6 +96,13 @@ def _config() -> dict:
     }
 
 
+def _candidate_payload(rows: list[dict]) -> bytes:
+    return b"".join(
+        json.dumps(row, ensure_ascii=False, sort_keys=True).encode("utf-8") + b"\n"
+        for row in rows
+    )
+
+
 def test_author_is_preserved_only_in_sidecar_and_report_is_text_free() -> None:
     candidate = _candidate()
     sidecar, report = pdr.build_sidecar([candidate], _raw_vector(_raw()))
@@ -112,7 +119,7 @@ def test_author_is_preserved_only_in_sidecar_and_report_is_text_free() -> None:
     assert report["authorized_optimized_target_exposure"] == 0
 
 
-def test_sidecar_is_deterministic_and_ordered() -> None:
+def test_sidecar_is_deterministic_and_preserves_candidate_order() -> None:
     candidates = [_candidate("essay-b", "Text B"), _candidate("essay-a", "Text A")]
     raw = _raw_vector(_raw("essay-a"), _raw("essay-b"))
 
@@ -120,7 +127,50 @@ def test_sidecar_is_deterministic_and_ordered() -> None:
     second = pdr.build_sidecar(copy.deepcopy(candidates), copy.deepcopy(raw))
 
     assert first == second
-    assert [row["record_id"] for row in first[0]] == ["essay-a", "essay-b"]
+    assert [row["record_id"] for row in first[0]] == ["essay-b", "essay-a"]
+
+
+def test_exact_candidate_reader_binds_bytes_hash_count_and_projection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    rows = [_candidate("essay-a", "Text A"), _candidate("essay-b", "Text B")]
+    payload = _candidate_payload(rows)
+    candidate_path = tmp_path / "candidate.jsonl"
+    candidate_path.write_bytes(payload)
+    projection = pdr._candidate_projection(rows)
+
+    monkeypatch.setattr(pdr, "EXPECTED_CANDIDATE_JSONL_BYTES", len(payload))
+    monkeypatch.setattr(pdr, "EXPECTED_CANDIDATE_JSONL_SHA256", hashlib.sha256(payload).hexdigest())
+    monkeypatch.setattr(pdr, "EXPECTED_SELECTED_RECORD_COUNT", len(rows))
+    monkeypatch.setattr(
+        pdr,
+        "EXPECTED_SELECTED_NORMALIZED_UTF8_BYTES",
+        sum(row["normalized_utf8_bytes"] for row in rows),
+    )
+    monkeypatch.setattr(
+        pdr,
+        "EXPECTED_CANDIDATE_PROJECTION_SHA256",
+        hashlib.sha256(pdr._canonical_bytes(projection)).hexdigest(),
+    )
+
+    assert pdr._read_exact_candidate(candidate_path) == rows
+
+
+def test_exact_candidate_reader_rejects_substitution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    rows = [_candidate()]
+    payload = _candidate_payload(rows)
+    candidate_path = tmp_path / "candidate.jsonl"
+    candidate_path.write_bytes(payload)
+
+    monkeypatch.setattr(pdr, "EXPECTED_CANDIDATE_JSONL_BYTES", len(payload))
+    monkeypatch.setattr(pdr, "EXPECTED_CANDIDATE_JSONL_SHA256", "f" * 64)
+
+    with pytest.raises(pdr.AttributionError, match="candidate SHA-256 mismatch"):
+        pdr._read_exact_candidate(candidate_path)
 
 
 @pytest.mark.parametrize("author", [None, "", "   ", 123])
