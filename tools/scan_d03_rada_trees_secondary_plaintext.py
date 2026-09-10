@@ -19,8 +19,9 @@ import subprocess
 import sys
 import tempfile
 from collections import Counter, defaultdict
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 TOOLS = Path(__file__).resolve().parent
 if str(TOOLS) not in sys.path:
