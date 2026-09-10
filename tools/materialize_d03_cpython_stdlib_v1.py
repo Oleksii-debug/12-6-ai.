@@ -222,7 +222,7 @@ def _read_members(archive_bytes: bytes) -> list[tuple[str, bytes]]:
                 continue
             if not member.isfile() or not _allowed_path(path):
                 continue
-            if member.size < 1 or member.size > 1_000_000:
+            if member.size > 1_000_000:
                 raise CandidateError(f"{path}: invalid source size")
             stream = archive.extractfile(member)
             if stream is None:
@@ -261,6 +261,8 @@ def materialize_archive_bytes(
         observed_blob = git_blob_sha1(raw)
         if observed_blob != expected_blob:
             raise CandidateError(f"{path}: Git blob does not match pinned tree")
+        if not raw:
+            continue
         _validate_source(path, raw)
         digest = sha256_bytes(raw)
         if digest in seen_payloads:

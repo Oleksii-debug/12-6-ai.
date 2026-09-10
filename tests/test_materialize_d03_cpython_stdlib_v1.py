@@ -69,6 +69,30 @@ def test_materializes_only_allowlisted_source_and_keeps_zero_credit() -> None:
     assert report["rights"]["file_level_incorporated_license_retest_required"] is True
 
 
+def test_exact_empty_allowed_blob_is_verified_then_skipped() -> None:
+    files = {
+        "Lib/argparse.py": _good("argparse"),
+        "Lib/email/mime/__init__.py": b"",
+    }
+    rows, report = mod.materialize_archive_bytes(
+        _archive(files),
+        expected_blobs=_blobs(files),
+        byte_cap=10_000,
+    )
+    assert [row["source_path"] for row in rows] == ["Lib/argparse.py"]
+    assert report["selection"]["eligible_archive_objects"] == 2
+    assert report["selection"]["selected_objects"] == 1
+
+
+def test_empty_substitution_for_nonempty_pinned_blob_fails_closed() -> None:
+    files = {"Lib/argparse.py": b""}
+    with pytest.raises(mod.CandidateError, match="Git blob does not match"):
+        mod.materialize_archive_bytes(
+            _archive(files),
+            expected_blobs={"Lib/argparse.py": mod.git_blob_sha1(_good("argparse"))},
+        )
+
+
 def test_deterministic_identity_and_byte_cap() -> None:
     files = {
         "Lib/argparse.py": _good("a"),
