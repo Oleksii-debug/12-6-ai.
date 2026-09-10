@@ -172,7 +172,11 @@ def prepare(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path
     source_bytes = int(row["source_payload_bytes"])
     monkeypatch.setattr(MODULE, "EXPECTED_RECORDS", 1)
     monkeypatch.setattr(MODULE, "EXPECTED_SOURCE_BYTES", source_bytes)
-    monkeypatch.setattr(MODULE.base, "_load_mechanics", fake_mechanics)
+    monkeypatch.setattr(
+        MODULE,
+        "_load_bound_mechanics",
+        lambda: (fake_mechanics(), MODULE.EXPECTED_PRIVACY_IMPLEMENTATION_GIT_BLOB_SHA),
+    )
     value = upstream_report(candidate, source_bytes)
     report = tmp_path / "upstream.json"
     report.write_bytes(MODULE.base.canonical_bytes(value))
@@ -200,6 +204,7 @@ def test_authoritative_materialization_binds_upstream_and_exact_schema(
         report["authority_binding"]["privacy_filter_v3_git_blob_sha"]
         == MODULE.EXPECTED_PRIVACY_IMPLEMENTATION_GIT_BLOB_SHA
     )
+    assert report["authority_binding"]["executed_privacy_mechanics_pinned"] is True
     assert report["claim_boundary"]["upstream_handoff_authority_bound"] is True
     assert report["claim_boundary"]["candidate_schema_exact"] is True
     assert report["claim_boundary"]["canonical_privacy_repair_bound"] is True
@@ -254,7 +259,11 @@ def test_unknown_candidate_payload_field_fails_even_with_matching_upstream_hash(
     source_bytes = int(row["source_payload_bytes"])
     monkeypatch.setattr(MODULE, "EXPECTED_RECORDS", 1)
     monkeypatch.setattr(MODULE, "EXPECTED_SOURCE_BYTES", source_bytes)
-    monkeypatch.setattr(MODULE.base, "_load_mechanics", fake_mechanics)
+    monkeypatch.setattr(
+        MODULE,
+        "_load_bound_mechanics",
+        lambda: (fake_mechanics(), MODULE.EXPECTED_PRIVACY_IMPLEMENTATION_GIT_BLOB_SHA),
+    )
     value = upstream_report(candidate, source_bytes)
     upstream = tmp_path / "upstream.json"
     upstream.write_bytes(MODULE.base.canonical_bytes(value))
@@ -268,20 +277,42 @@ def test_unknown_candidate_payload_field_fails_even_with_matching_upstream_hash(
         )
 
 
-def test_privacy_repair_implementation_drift_fails_before_publication(
+def test_imported_privacy_module_path_substitution_fails(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    candidate, upstream, expected_upstream_sha = prepare(tmp_path, monkeypatch)
+    fake_path = tmp_path / "privacy_filter_v3.py"
+    fake_path.write_text("# stale installed substitute\n", encoding="utf-8")
+    fake_scan = lambda text: FakePrivacyResult(text)  # noqa: E731
+    fake_policy = lambda: {"policy_sha256": "d" * 64}  # noqa: E731
+
+    class FakeModule:
+        __file__ = str(fake_path)
+        hash_safe_scan = staticmethod(fake_scan)
+        policy_manifest = staticmethod(fake_policy)
+
+    fake_module = FakeModule()
+    mechanics = (fake_quality, lambda: {"policy_sha256": "e" * 64}, fake_scan, fake_policy)
+    monkeypatch.setattr(MODULE.base, "_load_mechanics", lambda: mechanics)
+    monkeypatch.setattr(MODULE.importlib, "import_module", lambda name: fake_module)
+    with pytest.raises(MODULE.AuthorityBindingError, match="outside canonical repository source"):
+        MODULE._load_bound_mechanics()
+
+
+def test_executed_privacy_function_substitution_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    real_module = MODULE.importlib.import_module(MODULE.base.PRIVACY_MODULE)
+    fake_scan = lambda text: FakePrivacyResult(text)  # noqa: E731
+    mechanics = (
+        fake_quality,
+        lambda: {"policy_sha256": "e" * 64},
+        fake_scan,
+        real_module.policy_manifest,
+    )
+    monkeypatch.setattr(MODULE.base, "_load_mechanics", lambda: mechanics)
+    with pytest.raises(MODULE.AuthorityBindingError, match="executed privacy scan"):
+        MODULE._load_bound_mechanics()
+
+
+def test_privacy_repair_blob_drift_fails(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(MODULE, "EXPECTED_PRIVACY_IMPLEMENTATION_GIT_BLOB_SHA", "0" * 40)
-    output = tmp_path / "out.jsonl"
-    report = tmp_path / "report.json"
     with pytest.raises(MODULE.AuthorityBindingError, match="privacy repair implementation drift"):
-        MODULE.materialize_authoritative(
-            candidate,
-            upstream,
-            output,
-            report,
-            expected_upstream_report_sha256=expected_upstream_sha,
-        )
-    assert not output.exists()
-    assert not report.exists()
+        MODULE._load_bound_mechanics()
