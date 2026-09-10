@@ -10,7 +10,6 @@ import pytest
 from twelve_six.data.expanded_global_dedup_v9 import (
     DATA526_BYTES,
     DATA526_SOURCES,
-    ExpandedDedupError,
     RADA_DATASET,
     RADA_FAMILY,
     RADA_INPUT_RECORDS,
@@ -18,6 +17,7 @@ from twelve_six.data.expanded_global_dedup_v9 import (
     RADA_QP_SCHEMA,
     RADA_REVISION,
     RADA_SOURCE_BYTES,
+    ExpandedDedupError,
     _derive_survivors,
     build_rada_matcher_inputs,
     filter_v8_survivor_inputs,
