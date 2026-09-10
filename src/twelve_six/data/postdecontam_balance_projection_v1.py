@@ -10,9 +10,10 @@ from __future__ import annotations
 import hashlib
 import json
 from collections import defaultdict
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any
 
 SCHEMA = "12-6.d03-postdecontam-family-vector.v1"
 BINDING_SCHEMA = "12-6.d03-final-record-decontamination-binding.v1"
