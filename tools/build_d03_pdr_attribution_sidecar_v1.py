@@ -69,8 +69,12 @@ CANDIDATE_KEYS = frozenset(
         "evaluation_eligible",
     }
 )
-RAW_KEYS = frozenset({"id", "text", "source", "created", "added", "metadata"})
-RAW_METADATA_KEYS = frozenset({"license", "url", "type", "author"})
+# The immutable HF raw snapshot normalizes scraper fields into top-level date,
+# author and type columns; metadata retains only the source URL and license.
+RAW_KEYS = frozenset(
+    {"id", "text", "source", "date", "author", "type", "added", "metadata"}
+)
+RAW_METADATA_KEYS = frozenset({"license", "url"})
 
 
 class AttributionError(RuntimeError):
@@ -186,13 +190,15 @@ def _validate_raw_row(
     _require(isinstance(record_id, str) and record_id.strip(), "raw PDR id missing")
     _require(row.get("source") == SOURCE_VALUE, "raw PDR source drift")
     _require(isinstance(row.get("text"), str), "raw PDR text missing")
+    _require(isinstance(row.get("date"), str), "raw PDR date must be a string")
+    _require(isinstance(row.get("added"), str), "raw PDR added must be a string")
+    _require(row.get("type") == expected_type, "raw PDR type drift")
+    author = _validate_author(row.get("author"))
     metadata = row.get("metadata")
     _require(isinstance(metadata, dict), "raw PDR metadata missing")
     _require(set(metadata) == RAW_METADATA_KEYS, "raw PDR metadata schema drift")
     _require(metadata.get("license") == EXPECTED_LICENSE, "raw PDR license drift")
-    _require(metadata.get("type") == expected_type, "raw PDR type drift")
     origin_url = _validate_pdr_url(metadata.get("url"))
-    author = _validate_author(metadata.get("author"))
     return _raw_key(record_id.strip(), origin_url), author
 
 
@@ -389,7 +395,10 @@ def _read_raw_rows(
         for row in rows:
             _validate_raw_row(row, expected_type=expected["type"])
             result[expected["type"]].append(row)
-        _require(entries[path].get("sha256") == expected["sha256"], "config/source hash mismatch")
+        _require(
+            entries[path].get("sha256") == expected["sha256"],
+            "config/source hash mismatch",
+        )
     return result
 
 
