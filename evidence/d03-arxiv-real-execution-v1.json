@@ -1,0 +1,119 @@
+{
+  "schema_version": "12-6.d03-arxiv-real-execution.v1",
+  "execution_profile": "LOCAL_FREE",
+  "product_pr": 1078,
+  "owner_issue": 1077,
+  "execution_head_sha": "9867a951d56f585daf62097db5aa773c94b46b16",
+  "specialist_workflow": {
+    "run_id": 34538086132,
+    "conclusion": "success",
+    "execution_a_job_id": 103074245730,
+    "execution_b_job_id": 103074245963,
+    "compare_job_id": 103074711119
+  },
+  "source": {
+    "dataset": "common-pile/arxiv_abstracts",
+    "revision": "46de78c48636c0b46f60049dfd1c5a3710d233f9",
+    "file": "00003_arxiv-abstracts.jsonl.gz",
+    "bytes": 232616926,
+    "sha256": "3d781bf7617fd9a6840211227c6c8831280dba457a6d9c79a2a5a357e025a8b7",
+    "source_key": "arxiv_abstracts",
+    "rights_parent_pr": 769,
+    "rights_status": "REVIEW_REQUIRED"
+  },
+  "runtime": {
+    "runner_image": "ubuntu-24.04",
+    "runner_image_version": "20260907.300.1",
+    "os": "Ubuntu 24.04.5 LTS",
+    "python": "3.11.16",
+    "execution_a_region": "westcentralus",
+    "execution_b_region": "centralus"
+  },
+  "independent_execution_a": {
+    "source_sha256": "3d781bf7617fd9a6840211227c6c8831280dba457a6d9c79a2a5a357e025a8b7",
+    "source_bytes": 232616926,
+    "candidate_sha256": "21304338039306b2df175bbb71a1aed9a443c2416f3858f3cc63ca208e9c7327",
+    "report_file_sha256": "1b94e8ea09f90f53fe86188e62e69f0469e96ef08d042c2fa1b88c69c24869c2",
+    "report_identity_sha256": "4251b0b593500e3f91fd4c534873bbecd05992efca60d0d43d4e46c83edf6a2a",
+    "disposition_sha256": "e308ae28167c9fe92abc5de1c22f53852336877d677623ce6aab075b67e0ed17",
+    "rows_scanned": 4096,
+    "retained_records": 1024,
+    "retained_normalized_bytes": 1139552
+  },
+  "independent_execution_b": {
+    "source_sha256": "3d781bf7617fd9a6840211227c6c8831280dba457a6d9c79a2a5a357e025a8b7",
+    "source_bytes": 232616926,
+    "candidate_sha256": "21304338039306b2df175bbb71a1aed9a443c2416f3858f3cc63ca208e9c7327",
+    "report_file_sha256": "1b94e8ea09f90f53fe86188e62e69f0469e96ef08d042c2fa1b88c69c24869c2",
+    "report_identity_sha256": "4251b0b593500e3f91fd4c534873bbecd05992efca60d0d43d4e46c83edf6a2a",
+    "disposition_sha256": "e308ae28167c9fe92abc5de1c22f53852336877d677623ce6aab075b67e0ed17",
+    "rows_scanned": 4096,
+    "retained_records": 1024,
+    "retained_normalized_bytes": 1139552
+  },
+  "determinism": {
+    "source_identity_equal": true,
+    "candidate_identity_equal": true,
+    "report_file_identity_equal": true,
+    "report_semantic_identity_equal": true,
+    "disposition_identity_equal": true,
+    "counts_equal": true,
+    "retained_bytes_equal": true
+  },
+  "disposition_counts": {
+    "accepted": 1024,
+    "phone": 82,
+    "retained_cap_reached": 2961,
+    "too_short": 29
+  },
+  "selection_note": "The materializer deterministically assesses at most the first 4096 exact-shard-order records and retains at most 1024 passing unique records. These dispositions therefore describe that bounded execution window, not the whole shard.",
+  "current_main_relevance": {
+    "main_at_pr_open": "6ac04664a6a1a8e14be8ed9a8032cf99099503b0",
+    "stale_incumbent_repair_commit": "6fb5199a6166a3f69376a000b325cc2383ebfcba",
+    "stale_incumbent_parent": "4d8e968ec9fe5184deb0268a2cc4c486d3b50b6c",
+    "materializer_commits_since_incumbent_repair": 0,
+    "config_commits_since_incumbent_repair": 0,
+    "rights_registry_commits_since_incumbent_repair": 0,
+    "rights_validator_commits_since_incumbent_repair": 0,
+    "semantic_delta_from_current_main_for_source_execution": "regex_flag_alias_only_re.I_to_re.IGNORECASE"
+  },
+  "content_boundary": {
+    "durable_source_payload_retained_in_git": false,
+    "durable_candidate_text_retained_in_git": false,
+    "source_and_candidate_deleted_after_hashing": true,
+    "universal_pii_absence_claimed": false,
+    "rejected_text_emitted": false,
+    "rejected_hashes_emitted": false
+  },
+  "evaluation_boundary": {
+    "evaluation_payload_accessed": false,
+    "final_test_payload_accessed": false,
+    "final_test_outcomes_read": false,
+    "reserved_evaluation_decontamination_complete": false
+  },
+  "claim_boundary": {
+    "real_data_executed": true,
+    "canonical_capacity_credited": 0,
+    "training_authorized_bytes": 0,
+    "authorized_unique_loss_positions": 0,
+    "family_credit_added": 0,
+    "tokenizer_fit_authorized": false,
+    "optimizer_updates": 0,
+    "model_training_executed": false,
+    "learned_weights_created": false,
+    "research_corpus_released": false,
+    "paid_compute_used": false,
+    "foreign_pretrained_weights_used": false
+  },
+  "next_required_before_any_training_credit": [
+    "final_source_rights_review",
+    "current_global_exact_near_lineage_dedup",
+    "reserved_evaluation_decontamination",
+    "canonical_quality_privacy",
+    "family_balance_caps",
+    "cluster_safe_split",
+    "deterministic_packing",
+    "two_clean_build_reproducibility",
+    "positive_unique_loss_accounting"
+  ]
+}
