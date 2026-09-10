@@ -27,6 +27,37 @@ from .loss_materialization import (
 
 INPUT_SCHEMA = "12-6.postpack-two-clean-input.v2"
 PROOF_SCHEMA = "12-6.postpack-two-clean-proof.v2"
+_INPUT_KEYS = frozenset(
+    {
+        "schema_version",
+        "terminal_corpus_authority_identity_sha256",
+        "stage_bindings",
+        "expected_tokenizer_identity_sha256",
+        "expected_packing_identity_sha256",
+        "expected_runtime_identity_sha256",
+        "documents",
+        "claim_boundary",
+        "input_packet_identity_sha256",
+    }
+)
+_PROOF_KEYS = frozenset(
+    {
+        "schema_version",
+        "input_packet_identity_sha256",
+        "terminal_corpus_authority_identity_sha256",
+        "stage_bindings",
+        "tokenizer_identity_sha256",
+        "packing_identity_sha256",
+        "runtime_identity_sha256",
+        "fresh_process_count",
+        "byte_identical",
+        "build_a_sha256",
+        "build_b_sha256",
+        "materialization_identity_sha256",
+        "claim_boundary",
+        "proof_identity_sha256",
+    }
+)
 _REQUIRED_BINDINGS = (
     "normalization",
     "evaluation_reservations",
@@ -242,6 +273,8 @@ def _verify_input_packet(
         "expected_input_packet_identity_sha256",
     )
     value = dict(packet)
+    if set(value) != _INPUT_KEYS:
+        raise TwoCleanBuildError("input packet has unexpected or missing fields")
     if value.get("schema_version") != INPUT_SCHEMA:
         raise TwoCleanBuildError("unexpected input packet schema")
     observed = _require_sha256(
@@ -564,6 +597,8 @@ def verify_proof(
 ) -> dict[str, Any]:
     """Independently verify the durable V2 proof without trusting producer prose."""
     value = dict(proof)
+    if set(value) != _PROOF_KEYS:
+        raise TwoCleanBuildError("two-clean proof has unexpected or missing fields")
     if value.get("schema_version") != PROOF_SCHEMA:
         raise TwoCleanBuildError("unexpected two-clean proof schema")
     observed = _require_sha256(
