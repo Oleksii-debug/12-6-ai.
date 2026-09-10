@@ -31,42 +31,50 @@ def _write(path: Path, value: dict[str, Any]) -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--corpus-authority", type=Path, required=True)
-    parser.add_argument("--split-authority", type=Path, required=True)
-    parser.add_argument("--expected-corpus-sha256", required=True)
-    parser.add_argument("--expected-split-sha256", required=True)
-    parser.add_argument("--corpus-terminal-status", required=True)
-    parser.add_argument("--split-terminal-status", required=True)
+    parser.add_argument("--balanced-selection", type=Path, required=True)
+    parser.add_argument("--split-application", type=Path, required=True)
+    parser.add_argument("--expected-selection-identity-sha256", required=True)
+    parser.add_argument("--expected-application-identity-sha256", required=True)
+    parser.add_argument("--expected-retained-inventory-identity-sha256", required=True)
+    parser.add_argument("--expected-decontamination-authority-sha256", required=True)
+    parser.add_argument("--expected-dedup-authority-sha256", required=True)
+    parser.add_argument("--expected-balance-policy-identity-sha256", required=True)
+    parser.add_argument("--expected-balance-result-identity-sha256", required=True)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--verify-report", type=Path)
     return parser.parse_args()
 
 
+def _kwargs(args: argparse.Namespace) -> dict[str, str]:
+    return {
+        "expected_selection_identity_sha256": args.expected_selection_identity_sha256,
+        "expected_application_identity_sha256": args.expected_application_identity_sha256,
+        "expected_retained_inventory_identity_sha256": (
+            args.expected_retained_inventory_identity_sha256
+        ),
+        "expected_decontamination_authority_sha256": (
+            args.expected_decontamination_authority_sha256
+        ),
+        "expected_dedup_authority_sha256": args.expected_dedup_authority_sha256,
+        "expected_balance_policy_identity_sha256": (
+            args.expected_balance_policy_identity_sha256
+        ),
+        "expected_balance_result_identity_sha256": (
+            args.expected_balance_result_identity_sha256
+        ),
+    }
+
+
 def main() -> int:
     args = parse_args()
-    corpus = _load(args.corpus_authority)
-    split = _load(args.split_authority)
+    selection = _load(args.balanced_selection)
+    application = _load(args.split_application)
 
     if args.verify_report is not None:
         report = _load(args.verify_report)
-        verify_byte_baseline_decision(
-            report,
-            corpus,
-            split,
-            expected_corpus_sha256=args.expected_corpus_sha256,
-            expected_split_sha256=args.expected_split_sha256,
-            corpus_terminal_status=args.corpus_terminal_status,
-            split_terminal_status=args.split_terminal_status,
-        )
+        verify_byte_baseline_decision(report, selection, application, **_kwargs(args))
     else:
-        report = bind_byte_baseline_decision(
-            corpus,
-            split,
-            expected_corpus_sha256=args.expected_corpus_sha256,
-            expected_split_sha256=args.expected_split_sha256,
-            corpus_terminal_status=args.corpus_terminal_status,
-            split_terminal_status=args.split_terminal_status,
-        )
+        report = bind_byte_baseline_decision(selection, application, **_kwargs(args))
 
     if args.output is not None:
         _write(args.output, report)
