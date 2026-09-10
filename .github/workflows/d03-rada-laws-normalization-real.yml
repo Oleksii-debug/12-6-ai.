@@ -1,0 +1,239 @@
+name: D03 Rada laws normalization real execution
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/d03-rada-laws-normalization-real.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  normalize-real-payload:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.ref == 'd03/rada-bulk-normalization-current-main-20260907'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact incumbent head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Bind exact implementation blobs
+        run: |
+          set -euo pipefail
+          echo "EXECUTION_HEAD=$(git rev-parse HEAD)"
+          test "$(git hash-object tools/pin_d03_rada_bulk_observation.py)" = "1fd2a04458be857ecd153e5b95aacd7bf87faf1a"
+          test "$(git hash-object tools/normalize_d03_rada_bulk_html.py)" = "2aa4ef576946fb526fbb66cc3b42176f9b393616"
+          test "$(git hash-object configs/data/d03_rada_bulk_observation_pin_v1.json)" = "39de5cafc69da79dab4d5c8ce74d9903eaebec94"
+          test "$(git hash-object configs/data/d03_rada_bulk_normalization_v1.json)" = "13740c5bae155c74096ebbacd9a433f76bb860e1"
+
+      - name: Retrieve exact terminal observation report from PR 830
+        uses: actions/download-artifact@v4
+        with:
+          name: d03-rada-bulk-current-077f45fea310ecbc50b87801ff916502aa7f11f9
+          github-token: ${{ github.token }}
+          repository: Oleksii-debug/12-6-ai.
+          run-id: 34159688896
+          path: ${{ runner.temp }}/observation
+
+      - name: Verify exact observation authority
+        run: |
+          set -euo pipefail
+          REPORT="$RUNNER_TEMP/observation/rada-bulk-current-observation.json"
+          test -f "$REPORT"
+          echo "1c33b31844b11822479adb1382a683a430cee470bbdf23f259084f8b5ebf0458  $REPORT" | sha256sum -c -
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          p = Path(os.environ["RUNNER_TEMP"]) / "observation" / "rada-bulk-current-observation.json"
+          r = json.loads(p.read_text(encoding="utf-8"))
+          assert r["archive"]["bytes"] == 46700063
+          assert r["archive"]["sha256"] == "9f43da3ffe0855e49ca47ddf906da9e7c40644a845b345f6c4a19b39ef5eaf22"
+          assert r["inventory"]["canonical_entry_count"] == 3052
+          assert r["inventory"]["canonical_raw_bytes"] == 353354780
+          assert r["inventory"]["entry_identity_sha256"] == "766e54cf706453de30136e02f0361c549c2b96aba9855ee0573d28b354ad077b"
+          assert r["gates"]["discovery_capacity_threshold"] == "FAIL_BELOW_MINIMUM"
+          assert r["training_authorized_bytes"] == 0
+          assert r["corpus_admitted"] is False
+          assert r["tokenizer_fit_authorized"] is False
+          assert r["model_training_executed"] is False
+          assert r["paid_compute_used"] is False
+          PY
+
+      - name: Re-acquire exact official archive and prove identity
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 4 --retry-all-errors \
+            --output "$RUNNER_TEMP/texts.zip" \
+            "https://data.rada.gov.ua/ogd/zak/perv/text/texts.zip"
+          test "$(stat -c %s "$RUNNER_TEMP/texts.zip")" = "46700063"
+          echo "9f43da3ffe0855e49ca47ddf906da9e7c40644a845b345f6c4a19b39ef5eaf22  $RUNNER_TEMP/texts.zip" | sha256sum -c -
+
+      - name: Produce fail-closed normalization-only successor pin
+        run: |
+          set -euo pipefail
+          python tools/pin_d03_rada_bulk_observation.py \
+            --archive "$RUNNER_TEMP/texts.zip" \
+            --probe-report "$RUNNER_TEMP/observation/rada-bulk-current-observation.json" \
+            --config configs/data/d03_rada_bulk_observation_pin_v1.json \
+            --output "$RUNNER_TEMP/pinned-probe.json"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          p = Path(os.environ["RUNNER_TEMP"]) / "pinned-probe.json"
+          r = json.loads(p.read_text(encoding="utf-8"))
+          assert r["gates"]["exact_archive_identity"] == "PASS_PINNED_DISCOVERY_REVALIDATED"
+          assert r["gates"]["discovery_capacity_threshold"] == "FAIL_BELOW_MINIMUM"
+          assert r["safe_result"] == "PINNED_BULK_ARCHIVE_INVENTORIED_DOWNSTREAM_GATES_REQUIRED"
+          assert r["successor_pin"]["purpose"] == "NORMALIZATION_INPUT_ONLY"
+          assert r["successor_pin"]["normalized_capacity_credited"] == 0
+          assert r["successor_pin"]["training_authorized_bytes"] == 0
+          assert r["corpus_admitted"] is False
+          assert r["tokenizer_fit_authorized"] is False
+          assert r["model_training_executed"] is False
+          assert r["paid_compute_used"] is False
+          PY
+
+      - name: Clean normalization execution A
+        run: |
+          set -euo pipefail
+          rm -rf "$RUNNER_TEMP/run-a"
+          mkdir -p "$RUNNER_TEMP/run-a"
+          python tools/normalize_d03_rada_bulk_html.py \
+            --archive "$RUNNER_TEMP/texts.zip" \
+            --probe-report "$RUNNER_TEMP/pinned-probe.json" \
+            --config configs/data/d03_rada_bulk_normalization_v1.json \
+            --output-jsonl "$RUNNER_TEMP/run-a/normalized.jsonl" \
+            --output-manifest "$RUNNER_TEMP/run-a/manifest.json"
+
+      - name: Independent clean normalization execution B
+        run: |
+          set -euo pipefail
+          rm -rf "$RUNNER_TEMP/run-b"
+          mkdir -p "$RUNNER_TEMP/run-b"
+          python tools/normalize_d03_rada_bulk_html.py \
+            --archive "$RUNNER_TEMP/texts.zip" \
+            --probe-report "$RUNNER_TEMP/pinned-probe.json" \
+            --config configs/data/d03_rada_bulk_normalization_v1.json \
+            --output-jsonl "$RUNNER_TEMP/run-b/normalized.jsonl" \
+            --output-manifest "$RUNNER_TEMP/run-b/manifest.json"
+
+      - name: Prove byte-identical two-clean execution and emit hash-safe summary
+        env:
+          SUMMARY: ${{ runner.temp }}/normalization-execution-summary.json
+        run: |
+          set -euo pipefail
+          cmp "$RUNNER_TEMP/run-a/normalized.jsonl" "$RUNNER_TEMP/run-b/normalized.jsonl"
+          cmp "$RUNNER_TEMP/run-a/manifest.json" "$RUNNER_TEMP/run-b/manifest.json"
+          python - <<'PY'
+          import hashlib, json, os, subprocess
+          from pathlib import Path
+
+          rt = Path(os.environ["RUNNER_TEMP"])
+          out_a = rt / "run-a" / "normalized.jsonl"
+          out_b = rt / "run-b" / "normalized.jsonl"
+          man_a = rt / "run-a" / "manifest.json"
+          man_b = rt / "run-b" / "manifest.json"
+          pin = rt / "pinned-probe.json"
+          obs = rt / "observation" / "rada-bulk-current-observation.json"
+
+          def sha(path: Path) -> str:
+              h = hashlib.sha256()
+              with path.open("rb") as f:
+                  while chunk := f.read(8 * 1024 * 1024):
+                      h.update(chunk)
+              return h.hexdigest()
+
+          m = json.loads(man_a.read_text(encoding="utf-8"))
+          p = json.loads(pin.read_text(encoding="utf-8"))
+          assert m["gates"]["canonical_normalization"] == "PASS"
+          for gate in ("quality", "privacy", "global_cross_source_dedup", "evaluation_decontamination", "balance_diversity", "corpus_materialization", "unique_loss_ledger"):
+              assert m["gates"][gate] == "NOT_RUN"
+          assert m["training_authorized_bytes"] == 0
+          assert m["normalized_capacity_credited"] == 0
+          assert m["tokenizer_fit_authorized"] is False
+          assert m["model_training_executed"] is False
+          assert m["paid_compute_used"] is False
+          assert sha(out_a) == sha(out_b)
+          assert sha(man_a) == sha(man_b)
+
+          execution_head = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+          core = {
+              "schema_version": "12-6.d03-rada-laws-normalization-real-execution.v1",
+              "execution_profile": "LOCAL_FREE",
+              "producer_pr": 864,
+              "execution_head_sha": execution_head,
+              "workflow_run_id": int(os.environ["GITHUB_RUN_ID"]),
+              "source_archive_bytes": 46700063,
+              "source_archive_sha256": "9f43da3ffe0855e49ca47ddf906da9e7c40644a845b345f6c4a19b39ef5eaf22",
+              "source_observation_report_sha256": sha(obs),
+              "source_inventory_sha256": "766e54cf706453de30136e02f0361c549c2b96aba9855ee0573d28b354ad077b",
+              "successor_pin_report_sha256": sha(pin),
+              "successor_pin_capacity_gate": p["gates"]["discovery_capacity_threshold"],
+              "pin_tool_blob_sha": subprocess.check_output(["git", "hash-object", "tools/pin_d03_rada_bulk_observation.py"], text=True).strip(),
+              "normalizer_blob_sha": subprocess.check_output(["git", "hash-object", "tools/normalize_d03_rada_bulk_html.py"], text=True).strip(),
+              "normalization_record_count": m["normalization"]["record_count"],
+              "normalization_raw_bytes": m["normalization"]["raw_bytes"],
+              "normalized_bytes_observed_not_credited": m["normalization"]["normalized_bytes_observed_not_credited"],
+              "source_encoding_counts": m["normalization"]["source_encoding_counts"],
+              "normalized_record_inventory_sha256": m["normalization"]["normalized_record_inventory_sha256"],
+              "normalized_jsonl_sha256": sha(out_a),
+              "normalized_jsonl_file_bytes": out_a.stat().st_size,
+              "manifest_identity_sha256": m["manifest_identity_sha256"],
+              "manifest_file_sha256": sha(man_a),
+              "two_clean_executions_byte_identical": True,
+              "quality_complete": False,
+              "privacy_complete": False,
+              "global_dedup_complete": False,
+              "reserved_evaluation_decontamination_complete": False,
+              "training_authorized_bytes": 0,
+              "unique_causal_loss_positions_authorized": 0,
+              "tokenizer_fit_authorized": False,
+              "optimizer_updates": 0,
+              "model_training_executed": False,
+              "final_test_payload_accessed": False,
+              "paid_compute_used": False,
+              "foreign_pretrained_weights_used": False,
+              "safe_result": "NORMALIZED_CANDIDATE_ZERO_CREDIT_DOWNSTREAM_GATES_REQUIRED",
+          }
+          canonical = lambda value: (json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8")
+          summary = {**core, "summary_identity_sha256": hashlib.sha256(canonical(core)).hexdigest()}
+          Path(os.environ["SUMMARY"]).write_bytes(canonical(summary))
+          print("RADA_LAWS_NORMALIZATION_REAL_EXECUTION=PASS_ZERO_CREDIT")
+          print("RECORDS=" + str(core["normalization_record_count"]))
+          print("NORMALIZED_BYTES=" + str(core["normalized_bytes_observed_not_credited"]))
+          print("JSONL_SHA256=" + core["normalized_jsonl_sha256"])
+          print("MANIFEST_SHA256=" + core["manifest_file_sha256"])
+          print("PIN_SHA256=" + core["successor_pin_report_sha256"])
+          print("SUMMARY_IDENTITY=" + summary["summary_identity_sha256"])
+          PY
+
+      - name: Stage one exact downstream candidate plus hash-safe evidence
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/artifact"
+          cp "$RUNNER_TEMP/run-a/normalized.jsonl" "$RUNNER_TEMP/artifact/rada-laws-normalized.jsonl"
+          cp "$RUNNER_TEMP/run-a/manifest.json" "$RUNNER_TEMP/artifact/normalization-manifest.json"
+          cp "$RUNNER_TEMP/pinned-probe.json" "$RUNNER_TEMP/artifact/pinned-probe.json"
+          cp "$RUNNER_TEMP/normalization-execution-summary.json" "$RUNNER_TEMP/artifact/normalization-execution-summary.json"
+          sha256sum "$RUNNER_TEMP/artifact/"* > "$RUNNER_TEMP/artifact/SHA256SUMS"
+          rm -rf "$RUNNER_TEMP/run-b"
+
+      - name: Upload ephemeral exact normalized candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: d03-rada-laws-normalized-candidate-zero-credit
+          path: ${{ runner.temp }}/artifact
+          retention-days: 2
+          compression-level: 9
+          if-no-files-found: error
