@@ -48,14 +48,35 @@ jobs:
           test "$(stat -c %s "$RUNNER_TEMP/cpython-run1/source.tar.gz")" -le $((80 * 1024 * 1024))
           test "$(stat -c %s "$RUNNER_TEMP/cpython-run2/source.tar.gz")" -le $((80 * 1024 * 1024))
           sha256sum "$RUNNER_TEMP/cpython-run1/source.tar.gz" "$RUNNER_TEMP/cpython-run2/source.tar.gz"
-      - name: Materialize independently twice
+          cmp "$RUNNER_TEMP/cpython-run1/source.tar.gz" "$RUNNER_TEMP/cpython-run2/source.tar.gz"
+      - name: Build exact pinned source grammar interpreter
+        shell: bash
         run: |
           set -euo pipefail
-          python tools/materialize_d03_cpython_stdlib_v1.py \
+          mkdir -p "$RUNNER_TEMP/cpython-build"
+          tar -xzf "$RUNNER_TEMP/cpython-run1/source.tar.gz" --strip-components=1 -C "$RUNNER_TEMP/cpython-build"
+          cd "$RUNNER_TEMP/cpython-build"
+          ./configure --without-ensurepip > "$RUNNER_TEMP/cpython-configure.log"
+          make -j2 > "$RUNNER_TEMP/cpython-make.log"
+          ./python - <<'PY'
+          import ast
+          import ssl
+          import sys
+          assert sys.version_info[:2] == (3, 16), sys.version
+          ast.parse('lazy import example')
+          print(sys.version)
+          print(ssl.OPENSSL_VERSION)
+          PY
+      - name: Materialize independently twice under pinned grammar
+        shell: bash
+        run: |
+          set -euo pipefail
+          PY="$RUNNER_TEMP/cpython-build/python"
+          "$PY" tools/materialize_d03_cpython_stdlib_v1.py \
             --archive "$RUNNER_TEMP/cpython-run1/source.tar.gz" \
             --records "$RUNNER_TEMP/cpython-run1/records.jsonl" \
             --report "$RUNNER_TEMP/cpython-run1/report.json"
-          python tools/materialize_d03_cpython_stdlib_v1.py \
+          "$PY" tools/materialize_d03_cpython_stdlib_v1.py \
             --archive "$RUNNER_TEMP/cpython-run2/source.tar.gz" \
             --records "$RUNNER_TEMP/cpython-run2/records.jsonl" \
             --report "$RUNNER_TEMP/cpython-run2/report.json"
@@ -69,6 +90,7 @@ jobs:
           import os
           import pathlib
           import re
+          import subprocess
 
           root = pathlib.Path(os.environ['RUNNER_TEMP'])
           r1 = root / 'cpython-run1'
@@ -85,6 +107,8 @@ jobs:
           records2 = digest(r2 / 'records.jsonl')
           report1_file = digest(r1 / 'report.json')
           report2_file = digest(r2 / 'report.json')
+          if source1 != source2:
+              raise SystemExit('archives are not byte-identical')
           if records1 != records2:
               raise SystemExit('records are not byte-identical across independent materializations')
           if report1_file != report2_file:
@@ -147,12 +171,21 @@ jobs:
           if row_count != report['selection']['selected_objects']:
               raise SystemExit('record/report count mismatch')
 
+          parser_version = subprocess.check_output(
+              [str(root / 'cpython-build' / 'python'), '-c', 'import sys; print(sys.version)'],
+              text=True,
+          ).strip()
           receipt = {
               'schema_version': '12-6.d03-cpython-stdlib-terminal-execution-receipt.v1',
               'product_pr': 903,
               'product_head_executed': os.environ['PRODUCT_HEAD'],
               'execution_class': 'LOCAL_FREE_GITHUB_HOSTED_PUBLIC_RUNNER',
               'source': expected_source,
+              'source_parser': {
+                  'authority': 'BUILT_FROM_SAME_PINNED_CPYTHON_ARCHIVE',
+                  'expected_version': '3.16.0a0',
+                  'observed_version': parser_version,
+              },
               'acquisition': {
                   'run1_archive': source1,
                   'run2_archive': source2,
@@ -181,7 +214,7 @@ jobs:
                   'explicit_spdx_object_count': len(explicit_spdx),
                   'explicit_non_allowlisted_spdx_object_count': 0,
                   'objects_with_copyright_or_license_notice_in_first_12k': ambiguous_notice_objects,
-                  'conclusion': 'ZERO_CREDIT_PENDING_HUMAN_OR_BINDING_RIGHTS_AUTHORITY',
+                  'conclusion': 'ZERO_CREDIT_PENDING_BINDING_RIGHTS_AUTHORITY',
               },
               'truth_boundary': {
                   'real_source_bytes_executed': True,
