@@ -9,7 +9,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from twelve_six.data.expanded_postdedup_inventory_v1 import (  # noqa: E402
+from twelve_six.data.expanded_postdedup_inventory_v1 import (
     UPSTREAM_SURVIVOR_SCHEMA,
     ZERO_TRUTH,
     freeze_expanded_inventory,
@@ -226,6 +226,54 @@ def test_truth_boundary_cannot_be_widened():
         )
 
 
+def test_zero_truth_rejects_bool_alias_for_integer_zero():
+    report, survivors, _ = build_valid()
+    report["truth_boundary"]["authorized_optimized_target_exposure"] = False
+    report["report_sha256"] = self_hash(report, "report_sha256")
+    with pytest.raises(ValueError, match="authorized_optimized_target_exposure"):
+        freeze_expanded_inventory(
+            report,
+            survivors,
+            expected_report_sha256=report["report_sha256"],
+            expected_survivor_authority_sha256=survivors["survivor_authority_sha256"],
+        )
+
+
+def test_zero_truth_rejects_unknown_keys():
+    report, survivors, _ = build_valid()
+    report["truth_boundary"]["future_training_authorized"] = False
+    report["report_sha256"] = self_hash(report, "report_sha256")
+    with pytest.raises(ValueError, match="exactly the canonical zero-truth keys"):
+        freeze_expanded_inventory(
+            report,
+            survivors,
+            expected_report_sha256=report["report_sha256"],
+            expected_survivor_authority_sha256=survivors["survivor_authority_sha256"],
+        )
+
+
+def test_survivor_authority_bool_count_fails_before_alias_equality():
+    report, survivors, _ = build_valid()
+    survivors["survivors"] = survivors["survivors"][:1]
+    survivors["survivor_count"] = True
+    survivors["retained_payload_bytes"] = survivors["survivors"][0]["payload_bytes"]
+    survivors["survivor_authority_sha256"] = self_hash(
+        survivors,
+        "survivor_authority_sha256",
+    )
+    report["survivor_count"] = 1
+    report["retained_payload_bytes"] = survivors["retained_payload_bytes"]
+    report["survivor_authority_sha256"] = survivors["survivor_authority_sha256"]
+    report["report_sha256"] = self_hash(report, "report_sha256")
+    with pytest.raises(ValueError, match="survivor_authority.survivor_count"):
+        freeze_expanded_inventory(
+            report,
+            survivors,
+            expected_report_sha256=report["report_sha256"],
+            expected_survivor_authority_sha256=survivors["survivor_authority_sha256"],
+        )
+
+
 def test_inventory_is_deterministic_and_self_hashed():
     report, survivors, inventory1, _ = freeze_valid()
     survivors2 = copy.deepcopy(survivors)
@@ -249,6 +297,34 @@ def test_inventory_is_deterministic_and_self_hashed():
         inventory1,
         expected_inventory_identity_sha256=inventory1["inventory_identity_sha256"],
     )
+
+
+def test_inventory_bool_alias_counts_fail_closed():
+    _, _, inventory, _ = freeze_valid()
+    inventory["source_count"] = True
+    inventory["inventory_identity_sha256"] = self_hash(
+        inventory,
+        "inventory_identity_sha256",
+    )
+    with pytest.raises(ValueError, match="inventory.source_count"):
+        verify_inventory(
+            inventory,
+            expected_inventory_identity_sha256=inventory["inventory_identity_sha256"],
+        )
+
+
+def test_inventory_ancestry_sha_must_be_lowercase_hex64():
+    _, _, inventory, _ = freeze_valid()
+    inventory["input_report_sha256"] = "A" * 64
+    inventory["inventory_identity_sha256"] = self_hash(
+        inventory,
+        "inventory_identity_sha256",
+    )
+    with pytest.raises(ValueError, match="inventory.input_report_sha256"):
+        verify_inventory(
+            inventory,
+            expected_inventory_identity_sha256=inventory["inventory_identity_sha256"],
+        )
 
 
 def test_ephemeral_handoff_rejects_self_consistent_inventory_substitution():
