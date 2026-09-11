@@ -147,6 +147,15 @@ def _build() -> dict:
     return build_launch_input_authority(proof, ledger, carrier, **expected)
 
 
+def _verify_authority(authority: dict, *, expected_identity: str | None = None) -> None:
+    if expected_identity is None:
+        expected_identity = authority["authority_identity_sha256"]
+    verify_launch_input_authority(
+        authority,
+        expected_authority_identity_sha256=expected_identity,
+    )
+
+
 def test_binds_v2_chain_deterministically_without_authorization() -> None:
     first = _build()
     second = _build()
@@ -159,14 +168,14 @@ def test_binds_v2_chain_deterministically_without_authorization() -> None:
     assert first["carrier"]["workflow_head_sha"] == first["carrier"]["git_sha"]
     assert "doc-1" not in json.dumps(first)
     assert "segments" not in json.dumps(first)
-    verify_launch_input_authority(first)
+    _verify_authority(first)
 
 
 def test_launch_authority_tamper_fails_self_hash() -> None:
     authority = _build()
     authority["data_spine"]["requested_unique_loss_positions"] = 6
     with pytest.raises(LaunchInputAuthorityError, match="self-identity mismatch"):
-        verify_launch_input_authority(authority)
+        _verify_authority(authority)
 
 
 def test_rehashed_extra_final_test_field_fails_closed_world() -> None:
@@ -174,7 +183,7 @@ def test_rehashed_extra_final_test_field_fails_closed_world() -> None:
     authority["final_test_result"] = "forbidden"
     _rehash(authority, "authority_identity_sha256")
     with pytest.raises(LaunchInputAuthorityError, match="unexpected or missing fields"):
-        verify_launch_input_authority(authority)
+        _verify_authority(authority)
 
 
 def test_rehashed_extra_candidate_text_fails_closed_world() -> None:
@@ -182,7 +191,7 @@ def test_rehashed_extra_candidate_text_fails_closed_world() -> None:
     authority["data_spine"]["candidate_text"] = "forbidden"
     _rehash(authority, "authority_identity_sha256")
     with pytest.raises(LaunchInputAuthorityError, match="data spine"):
-        verify_launch_input_authority(authority)
+        _verify_authority(authority)
 
 
 def test_v1_two_clean_proof_is_rejected() -> None:
@@ -310,6 +319,44 @@ def test_replayed_logical_range_cannot_manufacture_capacity() -> None:
     ]
     with pytest.raises(LaunchInputAuthorityError, match="duplicate logical range"):
         build_launch_input_authority(proof, ledger, carrier, **expected)
+
+
+def test_partially_overlapping_logical_ranges_cannot_manufacture_capacity() -> None:
+    proof, ledger, carrier, expected = _fixture()
+    overlapping = copy.deepcopy(ledger["segments"][0])
+    overlapping["segment_identity_sha256"] = _sha("overlapping-segment-id")
+    overlapping["target_start"] = 5
+    overlapping["target_end"] = 10
+    overlapping["loss_position_count"] = 5
+    ledger["segments"].append(overlapping)
+    ledger["one_pass_unique_nonignored_causal_loss_positions"] = 12
+    _rehash(ledger, "ledger_identity_sha256")
+    expected["expected_unique_loss_ledger_identity_sha256"] = ledger[
+        "ledger_identity_sha256"
+    ]
+    with pytest.raises(LaunchInputAuthorityError, match="overlapping logical ranges"):
+        build_launch_input_authority(proof, ledger, carrier, **expected)
+
+
+def test_adjacent_same_document_logical_ranges_remain_valid() -> None:
+    proof, ledger, carrier, expected = _fixture()
+    first = copy.deepcopy(ledger["segments"][0])
+    first["segment_identity_sha256"] = _sha("adjacent-first")
+    first["target_end"] = 4
+    first["loss_position_count"] = 3
+    second = copy.deepcopy(ledger["segments"][0])
+    second["segment_identity_sha256"] = _sha("adjacent-second")
+    second["target_start"] = 4
+    second["loss_position_count"] = 4
+    ledger["segments"] = [first, second]
+    _rehash(ledger, "ledger_identity_sha256")
+    expected["expected_unique_loss_ledger_identity_sha256"] = ledger[
+        "ledger_identity_sha256"
+    ]
+    authority = build_launch_input_authority(proof, ledger, carrier, **expected)
+    assert authority["data_spine"][
+        "one_pass_unique_nonignored_causal_loss_positions"
+    ] == 7
 
 
 @pytest.mark.parametrize("conclusion", ["failure", "cancelled", "queued", None])
