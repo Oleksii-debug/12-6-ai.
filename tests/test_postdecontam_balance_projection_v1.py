@@ -13,9 +13,9 @@ from twelve_six.data.postdecontam_balance_projection_v1 import (
     FAMILY_MAP_SCHEMA,
     FAMILY_PROVENANCE_SCHEMA,
     G05_G06_COVERAGE_SCHEMA,
-    ProjectionError,
     QUALITY_GRANULARITY_IDENTITY_SHA256,
     QUALITY_POLICY_IDENTITY_SHA256,
+    ProjectionError,
     build_family_vector,
     read_records_jsonl,
     verify_family_vector,
@@ -375,19 +375,25 @@ def test_family_vector_self_hash_and_arithmetic_are_fail_closed(tmp_path: Path) 
         verify_family_vector(tampered)
 
 
-def test_input_cannot_preclaim_training_or_evaluation(tmp_path: Path) -> None:
+@pytest.mark.parametrize("field", ["training_eligible", "evaluation_eligible"])
+@pytest.mark.parametrize("value", [0, 0.0, None, "false", True])
+def test_input_eligibility_markers_require_exact_false(
+    tmp_path: Path,
+    field: str,
+    value: object,
+) -> None:
     row = {
         "record_id": "r",
         "source_id": "s",
         "family": "f",
         "modality": "text",
         "normalized_payload": "abc",
-        "training_eligible": True,
-        "evaluation_eligible": False,
     }
+    row[field] = value
     path = tmp_path / "eligible.jsonl"
     path.write_bytes(_canonical(row) + b"\n")
-    with pytest.raises(ProjectionError, match="training eligibility"):
+    match = "training eligibility" if field == "training_eligible" else "evaluation eligibility"
+    with pytest.raises(ProjectionError, match=match):
         read_records_jsonl(path)
 
 
@@ -707,4 +713,3 @@ def test_adapter_output_executes_through_canonical_next100_gate(
     )
     assert result["claim_boundary"]["tokenizer_fit_authorized"] is False
     assert result["claim_boundary"]["model_training_authorized"] is False
-
