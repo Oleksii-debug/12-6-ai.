@@ -1,0 +1,81 @@
+{
+  "schema_version": "12-6.d03-common-pile-arxiv-abstracts-source-admission.v1",
+  "execution_profile": "LOCAL_FREE",
+  "project_authority": {
+    "swarm_control_issue": 723,
+    "claim_issue": 1119,
+    "generic_rights_pr": 769,
+    "generic_rights_head_sha": "327a5364f7729f3ffdfc2f8079d02fb7a54638d2",
+    "generic_registry_path": "configs/data/common_pile_source_rights_v1.json",
+    "generic_registry_id": "COMMON-PILE-SOURCE-RIGHTS-V1",
+    "generic_registry_identity_sha256": "b279c4a7404e0e501acd0c77842d1f71c43ea1dbcd611acab18163c64b060d4e",
+    "generic_source_key": "arxiv_abstracts"
+  },
+  "candidate_binding": {
+    "materializer_pr": 879,
+    "materializer_product_head_sha": "3a238e461adfacf5b87d6a7078bf51462825a268",
+    "materializer_merge_commit_sha": "32ca583e5377991bd5c0bb259436266e95e9c0d6",
+    "dataset": "common-pile/arxiv_abstracts",
+    "revision": "46de78c48636c0b46f60049dfd1c5a3710d233f9",
+    "file": "00003_arxiv-abstracts.jsonl.gz",
+    "bytes": 232616926,
+    "sha256": "3d781bf7617fd9a6840211227c6c8831280dba457a6d9c79a2a5a357e025a8b7",
+    "source_label": "arxiv-abstracts",
+    "record_fields": ["id", "text", "source", "created", "added", "metadata"],
+    "required_metadata_license_exact": "Creative Commons Zero - Public Domain - https://creativecommons.org/publicdomain/zero/1.0/"
+  },
+  "primary_public_evidence": [
+    {
+      "authority": "arXiv",
+      "title": "arXiv License Information",
+      "url": "https://info.arxiv.org/help/license/index.html",
+      "accessed_utc": "2026-09-11",
+      "supported_fact": "arXiv states that CC0 1.0 applies to all metadata."
+    },
+    {
+      "authority": "arXiv",
+      "title": "Metadata for Required and Optional Fields",
+      "url": "https://info.arxiv.org/help/prep.html",
+      "accessed_utc": "2026-09-11",
+      "supported_fact": "arXiv documents Abstract as a required metadata field."
+    },
+    {
+      "authority": "Common Pile",
+      "title": "ArXiv Abstracts dataset card at immutable revision 46de78c48636c0b46f60049dfd1c5a3710d233f9",
+      "url": "https://huggingface.co/datasets/common-pile/arxiv_abstracts/blob/46de78c48636c0b46f60049dfd1c5a3710d233f9/README.md",
+      "accessed_utc": "2026-09-11",
+      "supported_fact": "The pinned dataset card describes abstracts as arXiv metadata, says they are harvested through OAI-PMH and reproduced as-is, and warns that inaccurate licensing metadata can occur."
+    }
+  ],
+  "admission_policy": {
+    "decision_class": "CONDITIONAL_ARXIV_METADATA_CC0_SOURCE_ADMISSION",
+    "project_source_policy_review_complete": true,
+    "legal_conclusion_claimed": false,
+    "common_pile_license_metadata_sufficient_alone": false,
+    "primary_arxiv_policy_evidence_required": true,
+    "record_level_policy_required": true,
+    "accepted_source_exact": "arxiv-abstracts",
+    "required_metadata_license_exact": "Creative Commons Zero - Public Domain - https://creativecommons.org/publicdomain/zero/1.0/",
+    "abstract_is_arxiv_metadata_required_field": true,
+    "arxiv_all_metadata_cc0": true,
+    "pinned_common_pile_harvest_method": "OAI_PMH_REPRODUCED_AS_IS",
+    "payload_source_admission_executed": false,
+    "admitted_payload_records": 0,
+    "admitted_payload_bytes": 0
+  },
+  "truth_boundary": {
+    "canonical_capacity_credited": 0,
+    "family_credit_added": 0,
+    "training_authorized_bytes": 0,
+    "unique_causal_loss_positions_authorized": 0,
+    "tokenizer_fit_authorized": false,
+    "training_eligible": false,
+    "evaluation_eligible": false,
+    "optimizer_updates": 0,
+    "model_training_executed": false,
+    "learned_weights_created": false,
+    "final_test_accessed": false,
+    "paid_compute_used": false,
+    "foreign_pretrained_weights_used": false
+  }
+}
