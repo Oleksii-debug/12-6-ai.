@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import time
+import urllib.error
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from typing import Any
@@ -134,10 +135,28 @@ def materialize_snapshots(snapshots: Iterable[PageSnapshot]) -> Materialization:
     return Materialization(candidate_jsonl=candidate_jsonl, report=report)
 
 
+def _retry_after_seconds(error: urllib.error.HTTPError) -> float:
+    value = error.headers.get("Retry-After") if error.headers is not None else None
+    if value is None:
+        return 0.0
+    try:
+        seconds = float(value)
+    except ValueError:
+        return 0.0
+    if seconds < 0:
+        return 0.0
+    if seconds > 60:
+        raise WikisourceIntakeError(
+            "Wikisource Retry-After exceeds bounded LOCAL_FREE execution window"
+        ) from error
+    return seconds
+
+
 def materialize_live(
     *,
     max_pages: int = 112,
-    cadence_seconds: float = 0.55,
+    cadence_seconds: float = 1.1,
+    max_429_attempts: int = 5,
     get_json: Callable[[dict[str, str]], dict[str, Any]] = request_json,
     sleep_fn: Callable[[float], None] = time.sleep,
     monotonic_fn: Callable[[], float] = time.monotonic,
@@ -150,19 +169,36 @@ def materialize_live(
         or cadence_seconds < 0.5
     ):
         raise WikisourceIntakeError("network request cadence must be at least 0.5 seconds")
+    if (
+        isinstance(max_429_attempts, bool)
+        or not isinstance(max_429_attempts, int)
+        or not 1 <= max_429_attempts <= 5
+    ):
+        raise WikisourceIntakeError("max_429_attempts must be an integer in [1, 5]")
 
     last_request_completed_at: float | None = None
 
     def paced_get_json(params: dict[str, str]) -> dict[str, Any]:
         nonlocal last_request_completed_at
-        if last_request_completed_at is not None:
-            elapsed = monotonic_fn() - last_request_completed_at
-            remaining = cadence_seconds - elapsed
-            if remaining > 0:
-                sleep_fn(remaining)
-        result = get_json(params)
-        last_request_completed_at = monotonic_fn()
-        return result
+        for attempt in range(max_429_attempts):
+            if last_request_completed_at is not None:
+                elapsed = monotonic_fn() - last_request_completed_at
+                remaining = cadence_seconds - elapsed
+                if remaining > 0:
+                    sleep_fn(remaining)
+            try:
+                result = get_json(params)
+            except urllib.error.HTTPError as exc:
+                last_request_completed_at = monotonic_fn()
+                if exc.code != 429 or attempt + 1 >= max_429_attempts:
+                    raise
+                retry_after = _retry_after_seconds(exc)
+                exponential_backoff = min(30.0, float(2 ** (attempt + 1)))
+                sleep_fn(max(cadence_seconds, retry_after, exponential_backoff))
+                continue
+            last_request_completed_at = monotonic_fn()
+            return result
+        raise WikisourceIntakeError("unreachable bounded 429 retry state")
 
     titles = discover_index_titles(get_json=paced_get_json)[:max_pages]
     snapshots = [fetch_page_snapshot(title, get_json=paced_get_json) for title in titles]
