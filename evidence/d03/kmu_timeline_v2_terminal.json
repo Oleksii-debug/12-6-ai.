@@ -2,16 +2,18 @@
   "schema_version": "12-6.d03-kmu-timeline-v2-terminal-evidence.v1",
   "worker_id": "D03-KMU-TIMELINE-V2-TERMINAL-EXECUTION-20260907",
   "execution_profile": "LOCAL_FREE",
-  "execution_head_sha": "f3d4b969e84e134b6cf8be5ec42168449456ec42",
-  "workflow_run_id": 34156356548,
+  "execution_head_sha": "0464618d0099e9792c34128f0727b14ad77b293f",
+  "workflow_run_id": 34159249597,
+  "workflow_job_id": 101857434610,
   "workflow_conclusion": "success",
   "artifact": {
-    "id": 10031215186,
-    "name": "kmu-timeline-v2-f3d4b969e84e134b6cf8be5ec42168449456ec42",
-    "digest": "sha256:358e24ec247d31c92f35401c8da0a89293095611e23ba90e88ca29ac7afaff3e",
-    "retained_report_bytes": 1818,
-    "retained_probe_identity_sha256": "f6b695b5a6f86b3a736016a2d643ac6c197e3f35ce37b399d44ff6584f76237d",
-    "retained_discovery_identity_sha256": "f1eb96926b4c854be956ddaaa3b606e499ff71a40eab8a6ce01b32ab59513f35"
+    "id": 10032495499,
+    "name": "kmu-timeline-v2-explicit-pages-0464618d0099e9792c34128f0727b14ad77b293f",
+    "digest": "sha256:b7bd7f0f78d5e829c2e9931a154ec6deaae638bdd2e1f945d25bf8c7d2998f75",
+    "retained_report_bytes": 2654,
+    "retained_report_sha256": "7e2c71d31524254642f39b204133283bbe248e08a44641ed32af3c5fa57ccef0",
+    "retained_probe_identity_sha256": "4246345a4b9ebed8df08ce3d5915e66ef4d54c1dc1e3754d107621bc56204993",
+    "retained_discovery_identity_sha256": "866b991fa22c90ef089217a6b797e09922765f5875448bbdcba58c2cba59d8fc"
   },
   "parent_authority": {
     "family_id": "ua.kmu.portal.secretariat-news",
@@ -23,10 +25,35 @@
     "status": "BLOCKED_CLIENT_RENDERED_TIMELINE_NO_ARTICLE_URLS",
     "client_rendered_shell_detected": true,
     "seed": "https://www.kmu.gov.ua/timeline?category_id=3&type=posts",
-    "pages_visited": 1,
+    "pages_visited": 5,
     "news_urls": 0,
-    "snapshot_bytes": 248990,
-    "snapshot_sha256": "8c1e44c8bb3dc86e029aeb9fe7270dff8be8d015948089e42e96d3431117d478"
+    "snapshots": [
+      {
+        "bytes": 248990,
+        "sha256": "7df8b2c505020fae5c85d420604bde1dbef5cccc01a9f41068cfedbd9002eebf",
+        "url": "https://www.kmu.gov.ua/timeline?category_id=3&type=posts"
+      },
+      {
+        "bytes": 249001,
+        "sha256": "48755c6fcdfae622bf33e9307b79c30b5f6c1e9fc47092f5af101868fd4a99dc",
+        "url": "https://www.kmu.gov.ua/timeline?category_id=3&type=posts&page=2"
+      },
+      {
+        "bytes": 249001,
+        "sha256": "0d8df0d2a336a6de72a84289442dc4ef8f491fffaad31d1f17fe32d34d3f6c12",
+        "url": "https://www.kmu.gov.ua/timeline?category_id=3&type=posts&page=3"
+      },
+      {
+        "bytes": 249001,
+        "sha256": "5e14bf3382bea290f7abc41cd1e64f7082f087d0744818023e08ff14c5f5a792",
+        "url": "https://www.kmu.gov.ua/timeline?category_id=3&type=posts&page=4"
+      },
+      {
+        "bytes": 249001,
+        "sha256": "783c8d3e286b87baffbd2819eb4f7f2baf763c694f3e39cee9c72d0f4050168c",
+        "url": "https://www.kmu.gov.ua/timeline?category_id=3&type=posts&page=5"
+      }
+    ]
   },
   "sample": {
     "requested_fetch_limit": 120,
