@@ -4,16 +4,22 @@
   "project_authority": {
     "swarm_control_issue": 723,
     "takeover_issue": 1075,
+    "repair_issue": 1209,
     "superseded_expired_claim_issue": 982,
     "generic_rights_pr": 769,
     "generic_rights_head_sha": "327a5364f7729f3ffdfc2f8079d02fb7a54638d2",
     "generic_registry_path": "configs/data/common_pile_source_rights_v1.json",
+    "generic_registry_git_blob_sha1": "7b4d6828288672bf25c551e85a5d7f7399e8ef0f",
     "generic_registry_id": "COMMON-PILE-SOURCE-RIGHTS-V1",
     "generic_source_key": "caselaw_access_project"
   },
   "candidate_binding": {
     "product_pr": 904,
-    "materializer_product_head_sha": "e63f2fd4eddbd348b57a42e1fb41cb658d0c3a82",
+    "product_semantic_commit_sha": "e63f2fd4eddbd348b57a42e1fb41cb658d0c3a82",
+    "product_config_path": "configs/data/d03_common_pile_caselaw_zero_credit_v1.json",
+    "product_config_git_blob_sha1": "e8b7e29ce2ab4e634c5f8c056eecb6b0c2579467",
+    "product_materializer_path": "tools/materialize_d03_common_pile_caselaw.py",
+    "product_materializer_git_blob_sha1": "a7fcaeee0302c46c43e5a6ae43da16363810f14a",
     "dataset": "common-pile/caselaw_access_project",
     "revision": "31e65135501af50f8285b52489bc3b39fd0fc5d5",
     "ordering_policy": "PRESERVE_ORIGINAL_CAP_00044_THEN_APPEND_CAP_00043",
