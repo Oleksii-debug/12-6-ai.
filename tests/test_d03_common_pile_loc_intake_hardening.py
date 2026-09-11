@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 import gzip
-import io
 import json
 from copy import deepcopy
-from types import SimpleNamespace
+from pathlib import Path
 
 import pytest
 
@@ -13,11 +12,14 @@ from twelve_six.data.common_pile_loc_intake import (
     LocIntakeError,
     iter_gzip_jsonl_bytes,
     materialize,
+    materialize_verified_shard,
     self_identity,
     validate_config,
+    verify_full_shard,
 )
 
 CONFIG_PATH = "configs/data/d03_common_pile_loc_intake_v1.json"
+TOOL_PATH = Path("tools/materialize_d03_common_pile_loc.py")
 
 
 def load_config() -> dict:
@@ -30,13 +32,13 @@ def reseal(config: dict) -> dict:
     return config
 
 
-def valid_record() -> dict:
+def valid_record(record_id: str = "abc123") -> dict:
     paragraph = (
         "This public volume records historical institutions, communities, and events. "
         "The scanned pages preserve ordinary prose for research and reading. "
     )
     return {
-        "id": "abc123",
+        "id": record_id,
         "text": paragraph * 18,
         "source": "loc_books",
         "added": "2024-05-13T00:00:00",
@@ -46,10 +48,27 @@ def valid_record() -> dict:
             "author": "Metadata only",
             "year": 1901,
             "language": "english",
-            "item_url": "https://www.loc.gov/item/abc123",
-            "text_file_url": "https://tile.loc.gov/storage-services/abc123_djvu.txt",
+            "item_url": f"https://www.loc.gov/item/{record_id}",
+            "text_file_url": (
+                f"https://tile.loc.gov/storage-services/{record_id}_djvu.txt"
+            ),
         },
     }
+
+
+def tiny_full_shard_config(
+    monkeypatch: pytest.MonkeyPatch,
+    raw_gzip: bytes,
+) -> dict:
+    config = load_config()
+    digest = loc_intake.sha256_bytes(raw_gzip)
+    expected_upstream = deepcopy(loc_intake._EXPECTED_UPSTREAM)
+    expected_upstream["shard_compressed_bytes"] = len(raw_gzip)
+    expected_upstream["shard_lfs_sha256"] = digest
+    monkeypatch.setattr(loc_intake, "_EXPECTED_UPSTREAM", expected_upstream)
+    config["upstream"]["shard_compressed_bytes"] = len(raw_gzip)
+    config["upstream"]["shard_lfs_sha256"] = digest
+    return reseal(config)
 
 
 @pytest.mark.parametrize(
@@ -127,68 +146,85 @@ def test_materialization_report_carries_final_test_false() -> None:
     candidates, report = materialize(load_config(), [valid_record()])
     assert len(candidates) == 1
     assert report["final_test_payload_accessed"] is False
+    assert report["full_shard_hash_verified"] is False
 
 
-def test_direct_caller_cannot_forge_full_shard_verification() -> None:
-    config = load_config()
-    forged_receipt = {
-        "source_revision": config["upstream"]["revision"],
-        "source_shard_path": config["upstream"]["shard_path"],
-        "observed_bytes": config["upstream"]["shard_compressed_bytes"],
-        "observed_sha256": config["upstream"]["shard_lfs_sha256"],
-    }
-    with pytest.raises(LocIntakeError, match="verifier-produced receipt"):
+def test_old_module_receipt_capability_is_structurally_gone() -> None:
+    assert not hasattr(loc_intake, "_FullShardVerificationReceipt")
+    assert not hasattr(loc_intake, "_FULL_SHARD_RECEIPT_SEAL")
+
+    with pytest.raises(TypeError, match="unexpected keyword"):
         materialize(
-            config,
+            load_config(),
             [valid_record()],
-            full_shard_verification=forged_receipt,
-        )
-    with pytest.raises(LocIntakeError, match="verifier-produced receipt"):
-        materialize(
-            config,
-            [valid_record()],
-            full_shard_verification=True,
+            full_shard_verification=True,  # type: ignore[call-arg]
         )
 
 
-def test_successful_verifier_receipt_is_bound_to_exact_shard(
+def test_verified_shard_positive_fact_is_derived_from_same_exact_bytes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    config = load_config()
-    expected_sha = config["upstream"]["shard_lfs_sha256"]
-    real_sha256 = loc_intake.hashlib.sha256
-    missing = object()
+    payload = (json.dumps(valid_record()) + "\n").encode("utf-8")
+    raw_gzip = gzip.compress(payload, mtime=0)
+    config = tiny_full_shard_config(monkeypatch, raw_gzip)
 
-    class VerifiedDigest:
-        def update(self, data: bytes) -> None:
-            assert isinstance(data, bytes)
+    candidates, report = materialize_verified_shard(config, raw_gzip)
+    assert [row["source_record_id"] for row in candidates] == ["abc123"]
+    assert report["full_shard_hash_verified"] is True
 
-        def hexdigest(self) -> str:
-            return expected_sha
+    unrelated_candidates, unrelated_report = materialize(
+        config,
+        [valid_record("unrelated")],
+    )
+    assert [row["source_record_id"] for row in unrelated_candidates] == ["unrelated"]
+    assert unrelated_report["full_shard_hash_verified"] is False
 
-    def controlled_sha256(data: object = missing) -> object:
-        if data is missing:
-            return VerifiedDigest()
-        assert isinstance(data, bytes)
-        return real_sha256(data)
+    with pytest.raises(TypeError, match="unexpected keyword"):
+        materialize_verified_shard(
+            config,
+            raw_gzip,
+            records=[valid_record("unrelated")],  # type: ignore[call-arg]
+        )
+
+
+def test_verified_shard_rejects_same_length_byte_substitution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = (json.dumps(valid_record()) + "\n").encode("utf-8")
+    raw_gzip = gzip.compress(payload, mtime=0)
+    config = tiny_full_shard_config(monkeypatch, raw_gzip)
+    mutated = raw_gzip[:-1] + bytes([raw_gzip[-1] ^ 1])
+
+    with pytest.raises(LocIntakeError, match="SHA-256 mismatch"):
+        materialize_verified_shard(config, mutated)
+
+
+def test_verify_full_shard_reads_once_and_returns_verified_snapshot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = (json.dumps(valid_record()) + "\n").encode("utf-8")
+    raw_gzip = gzip.compress(payload, mtime=0)
+    config = tiny_full_shard_config(monkeypatch, raw_gzip)
 
     class FakePath:
-        def stat(self) -> SimpleNamespace:
-            return SimpleNamespace(st_size=config["upstream"]["shard_compressed_bytes"])
+        reads = 0
 
-        def open(self, mode: str) -> io.BytesIO:
-            assert mode == "rb"
-            return io.BytesIO(b"independently observed shard bytes")
+        def read_bytes(self) -> bytes:
+            self.reads += 1
+            return raw_gzip
 
-    monkeypatch.setattr(loc_intake.hashlib, "sha256", controlled_sha256)
-    receipt = loc_intake.verify_full_shard(FakePath(), config)
-    candidates, report = materialize(
-        config,
-        [valid_record()],
-        full_shard_verification=receipt,
-    )
-    assert len(candidates) == 1
-    assert report["full_shard_hash_verified"] is True
+    path = FakePath()
+    snapshot = verify_full_shard(path, config)  # type: ignore[arg-type]
+    assert snapshot == raw_gzip
+    assert path.reads == 1
+
+
+def test_canonical_cli_has_one_shard_read_and_no_receipt_handoff() -> None:
+    source = TOOL_PATH.read_text(encoding="utf-8")
+    assert source.count(".read_bytes()") == 1
+    assert "verify_full_shard" not in source
+    assert "full_shard_verification" not in source
+    assert "materialize_verified_shard(config, raw)" in source
 
 
 def test_canonical_parser_skips_oversize_row_without_truncation() -> None:
