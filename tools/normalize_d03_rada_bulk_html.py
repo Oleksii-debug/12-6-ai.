@@ -30,6 +30,8 @@ PINNED_PROBE_GATE = "PASS_PINNED_DISCOVERY_REVALIDATED"
 PINNED_PROBE_RESULT = "PINNED_BULK_ARCHIVE_INVENTORIED_DOWNSTREAM_GATES_REQUIRED"
 DECODE_POLICY = "STRICT_UTF8_THEN_WINDOWS_1251_FALLBACK"
 LEGACY_FALLBACK_ENCODING = "windows-1251"
+UNBOUND_SAFE_RESULT = "UNBOUND_NORMALIZATION_MECHANICS_ONLY_NOT_SOURCE_AUTHORITY"
+AUTHORITATIVE_SAFE_RESULT = "NORMALIZED_RECORD_MATERIALIZATION_ONLY_DOWNSTREAM_GATES_REQUIRED"
 
 
 class NormalizationError(RuntimeError):
@@ -130,7 +132,12 @@ def _validate_config(config: Mapping[str, Any]) -> None:
     for key in required_false:
         if boundary.get(key) is not False:
             raise NormalizationError(f"truth boundary weakened: {key}")
-    if boundary.get("training_authorized_bytes") != 0:
+    training_authorized_bytes = boundary.get("training_authorized_bytes")
+    if (
+        isinstance(training_authorized_bytes, bool)
+        or not isinstance(training_authorized_bytes, int)
+        or training_authorized_bytes != 0
+    ):
         raise NormalizationError("normalization must authorize zero training bytes")
 
 
@@ -300,7 +307,12 @@ def _validate_probe(
         raise NormalizationError("probe config identity drift")
     if probe.get("source_family") != parent["source_family"]:
         raise NormalizationError("probe source-family drift")
-    if probe.get("training_authorized_bytes") != 0:
+    training_authorized_bytes = probe.get("training_authorized_bytes")
+    if (
+        isinstance(training_authorized_bytes, bool)
+        or not isinstance(training_authorized_bytes, int)
+        or training_authorized_bytes != 0
+    ):
         raise NormalizationError("probe unexpectedly grants training capacity")
     if probe.get("corpus_admitted") is not False:
         raise NormalizationError("probe unexpectedly claims corpus admission")
@@ -370,49 +382,52 @@ def _validate_successor_observation_pin(
     pin = config.get("successor_observation_pin")
     if not isinstance(pin, Mapping):
         raise NormalizationError("successor observation pin missing")
-    if pin.get("source_pr") != 864:
-        raise NormalizationError("successor observation source PR drift")
-    source_head = pin.get("source_head_sha")
-    if not isinstance(source_head, str) or not re.fullmatch(r"[0-9a-f]{40}", source_head):
-        raise NormalizationError("successor observation head must be an exact commit SHA")
-    if pin.get("config_path") != "configs/data/d03_rada_bulk_observation_pin_v1.json":
-        raise NormalizationError("successor observation config path drift")
-    for field in (
-        "config_identity_sha256",
-        "source_observation_report_sha256",
-        "pinned_probe_report_sha256",
-        "archive_sha256",
-        "entry_identity_sha256",
-    ):
-        value = pin.get(field)
-        if not isinstance(value, str) or not SHA256_RE.fullmatch(value):
-            raise NormalizationError(f"successor observation {field} must be SHA-256")
-    if pin.get("pin_status") != "PASS_EXACT_EXECUTION":
-        raise NormalizationError("successor observation pin is not exact-execution PASS")
-    if pin.get("discovery_capacity_threshold") != "FAIL_BELOW_MINIMUM":
-        raise NormalizationError("successor observation discovery threshold drift")
-    if pin.get("normalization_input_only") is not True:
-        raise NormalizationError("successor observation must remain normalization-input-only")
-    for field in ("normalized_capacity_credited", "training_authorized_bytes"):
-        value = pin.get(field)
-        if isinstance(value, bool) or not isinstance(value, int) or value != 0:
-            raise NormalizationError(
-                f"successor observation {field} must be exact integer zero"
-            )
 
-    if probe_report_sha256 != pin["pinned_probe_report_sha256"]:
+    expected_pin: dict[str, Any] = {
+        "source_pr": 864,
+        "source_head_sha": "538fb05699fd9f61b31c0e3552faf9b144a6d3bb",
+        "config_path": "configs/data/d03_rada_bulk_observation_pin_v1.json",
+        "config_identity_sha256": "aed83e5569f2cfcad9b8ea92ecee4c7b141c254dd92dc3bfc9721cf18b842237",
+        "source_observation_report_sha256": "e2ad0d8a4fce01d2da03fc93d636354253beaaf563db43968b11b600e26d0cdf",
+        "pinned_probe_report_sha256": "9d94674323414d30f18517a71edbfee839a27a09a076eb94fe94d74cbaab53c8",
+        "pin_status": "PASS_EXACT_EXECUTION",
+        "archive_sha256": "0b9e8ed8fe8aa663a68d2bc4eba858a754c626391dd7b5c461d50c3b6260df63",
+        "entry_identity_sha256": "3939c8a407a910222173bba5a2df1b9c7d2edce1503c13b31a9c293d61c3a603",
+        "discovery_capacity_threshold": "FAIL_BELOW_MINIMUM",
+        "normalization_input_only": True,
+        "normalized_capacity_credited": 0,
+        "training_authorized_bytes": 0,
+    }
+    if set(pin) != set(expected_pin):
+        raise NormalizationError("successor observation authority keys drift")
+    for field, expected in expected_pin.items():
+        actual = pin.get(field)
+        if isinstance(expected, bool):
+            matches = actual is expected
+        elif isinstance(expected, int):
+            matches = (
+                not isinstance(actual, bool)
+                and isinstance(actual, int)
+                and actual == expected
+            )
+        else:
+            matches = type(actual) is type(expected) and actual == expected
+        if not matches:
+            raise NormalizationError(f"successor observation authority drift: {field}")
+
+    if probe_report_sha256 != expected_pin["pinned_probe_report_sha256"]:
         raise NormalizationError(
             "probe report identity does not match successor observation pin"
         )
     archive_sha256 = _sha256(archive)
-    if archive_sha256 != pin["archive_sha256"]:
+    if archive_sha256 != expected_pin["archive_sha256"]:
         raise NormalizationError(
             "archive SHA-256 does not match successor observation pin"
         )
     archive_meta = probe.get("archive")
     if (
         not isinstance(archive_meta, Mapping)
-        or archive_meta.get("sha256") != pin["archive_sha256"]
+        or archive_meta.get("sha256") != expected_pin["archive_sha256"]
     ):
         raise NormalizationError(
             "probe archive identity does not match successor observation pin"
@@ -420,21 +435,22 @@ def _validate_successor_observation_pin(
     inventory = probe.get("inventory")
     if (
         not isinstance(inventory, Mapping)
-        or inventory.get("entry_identity_sha256") != pin["entry_identity_sha256"]
+        or inventory.get("entry_identity_sha256")
+        != expected_pin["entry_identity_sha256"]
     ):
         raise NormalizationError(
             "probe inventory identity does not match successor observation pin"
         )
 
 
-def materialize_normalized_records(
+def _materialize_normalized_records_unbound(
     archive: bytes,
     probe: Mapping[str, Any],
     config: Mapping[str, Any],
     *,
     probe_report_sha256: str,
 ) -> tuple[bytes, dict[str, Any]]:
-    """Verify the exact probe inventory and return deterministic JSONL + manifest."""
+    """Materialize deterministic mechanics without granting source authority."""
     _validate_config(config)
     if not isinstance(probe_report_sha256, str) or not SHA256_RE.fullmatch(
         probe_report_sha256
@@ -446,12 +462,6 @@ def materialize_normalized_records(
             "probe report identity does not match deterministic report bytes"
         )
     expected = _validate_probe(probe, config, archive)
-    _validate_successor_observation_pin(
-        probe,
-        config,
-        archive,
-        probe_report_sha256=observed_probe_report_sha256,
-    )
     normalizer = config["normalization"]
     prefix = str(normalizer["record_id_prefix"])
 
@@ -570,8 +580,47 @@ def materialize_normalized_records(
         "model_training_executed": False,
         "paid_compute_used": False,
         "research_corpus_v1_released": False,
-        "safe_result": "NORMALIZED_RECORD_MATERIALIZATION_ONLY_DOWNSTREAM_GATES_REQUIRED",
+        "safe_result": UNBOUND_SAFE_RESULT,
     }
+    manifest["manifest_identity_sha256"] = _sha256(_canonical_json_bytes(manifest))
+    return jsonl, manifest
+
+
+def materialize_normalized_records(
+    archive: bytes,
+    probe: Mapping[str, Any],
+    config: Mapping[str, Any],
+    *,
+    probe_report_sha256: str,
+) -> tuple[bytes, dict[str, Any]]:
+    """Materialize only after binding the immutable canonical successor authority."""
+    _validate_config(config)
+    if not isinstance(probe_report_sha256, str) or not SHA256_RE.fullmatch(
+        probe_report_sha256
+    ):
+        raise NormalizationError("probe report identity must be SHA-256")
+    observed_probe_report_sha256 = _sha256(_serialized_probe_report_bytes(probe))
+    if probe_report_sha256 != observed_probe_report_sha256:
+        raise NormalizationError(
+            "probe report identity does not match deterministic report bytes"
+        )
+    _validate_probe(probe, config, archive)
+    _validate_successor_observation_pin(
+        probe,
+        config,
+        archive,
+        probe_report_sha256=observed_probe_report_sha256,
+    )
+    jsonl, manifest = _materialize_normalized_records_unbound(
+        archive,
+        probe,
+        config,
+        probe_report_sha256=probe_report_sha256,
+    )
+    if manifest.get("safe_result") != UNBOUND_SAFE_RESULT:
+        raise NormalizationError("unbound mechanics result unexpectedly claims authority")
+    manifest["safe_result"] = AUTHORITATIVE_SAFE_RESULT
+    manifest.pop("manifest_identity_sha256", None)
     manifest["manifest_identity_sha256"] = _sha256(_canonical_json_bytes(manifest))
     return jsonl, manifest
 
