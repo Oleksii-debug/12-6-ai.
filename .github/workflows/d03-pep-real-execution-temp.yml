@@ -99,8 +99,8 @@ jobs:
           assert report["status"] == "CANDIDATE_MATERIALIZED_ZERO_CREDIT"
           assert report["training_authorized_bytes"] == 0 and type(report["training_authorized_bytes"]) is int
           assert report["authorized_unique_loss_positions"] == 0 and type(report["authorized_unique_loss_positions"]) is int
-          assert report["canonical_capacity_credit_bytes"] == 0 and type(report["canonical_capacity_credit_bytes"]) is int
-          assert report["model_training_permitted"] is False
+          assert report["corpus_admitted"] is False
+          assert report["model_training_executed"] is False
           assert report["paid_compute_used"] is False
 
           def sha256(data: bytes) -> str:
