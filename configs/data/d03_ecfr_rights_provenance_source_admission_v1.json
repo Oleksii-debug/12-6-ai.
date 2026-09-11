@@ -1,0 +1,82 @@
+{
+  "schema_version": "12-6.d03-ecfr-rights-provenance-source-admission.v1",
+  "execution_profile": "LOCAL_FREE",
+  "project_authority": {
+    "swarm_control_issue": 723,
+    "ownership_issue": 1111,
+    "parent_issue": 672,
+    "source_request_pr": 707,
+    "active_execution_issue": 1103,
+    "request_path": "configs/data/d03_ecfr_point_in_time_request_v1.json",
+    "request_git_blob_sha1": "92fb471260020dffc3b9d53ca98581cf700b0916",
+    "materializer_path": "tools/materialize_d03_ecfr_point_in_time.py",
+    "materializer_git_blob_sha1": "226fa5a089985451b49239e5e02b1fd059095fa7"
+  },
+  "candidate_binding": {
+    "request_identity_sha256": "d9955ff11713a358164513d912d39ba107f0073c75bed15be64afe2cc8c3a2e4",
+    "date": "2026-09-03",
+    "title": 1,
+    "title_name": "General Provisions",
+    "url": "https://www.ecfr.gov/api/versioner/v1/full/2026-09-03/title-1.xml",
+    "source_id": "en.us.ecfr.regulations",
+    "family_id": "us.federal-regulations.ecfr",
+    "stratum": "en"
+  },
+  "primary_public_evidence": [
+    {
+      "authority": "Office of the Law Revision Counsel, U.S. House of Representatives",
+      "title": "17 U.S.C. § 105 — Subject matter of copyright: United States Government works",
+      "url": "https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title17-section105&num=0&edition=prelim",
+      "accessed_utc": "2026-09-11",
+      "supported_fact": "Section 105 states that copyright protection under Title 17 is not available for a work of the United States Government while allowing the Government to receive and hold transferred copyrights."
+    },
+    {
+      "authority": "National Archives and Records Administration",
+      "title": "Code of Federal Regulations",
+      "url": "https://www.archives.gov/federal-register/cfr",
+      "accessed_utc": "2026-09-11",
+      "supported_fact": "NARA describes the CFR as the codification of general and permanent rules published in the Federal Register by executive departments and agencies."
+    },
+    {
+      "authority": "National Archives and Records Administration",
+      "title": "Incorporation by Reference in the CFR",
+      "url": "https://www.archives.gov/federal-register/cfr/ibr-locations",
+      "accessed_utc": "2026-09-11",
+      "supported_fact": "NARA explains that incorporation by reference gives legal effect to material published elsewhere and its IBR locations page does not provide the text of the incorporated standards themselves."
+    }
+  ],
+  "admission_policy": {
+    "decision_class": "CONDITIONAL_US_FEDERAL_REGULATORY_TEXT_SOURCE_ADMISSION",
+    "hosting_or_public_availability_sufficient_alone": false,
+    "blanket_section_105_for_hosted_objects": false,
+    "requires_exact_point_in_time_request": true,
+    "requires_embedded_federal_regulatory_text": true,
+    "external_ibr_content_source_admitted": false,
+    "contractor_or_private_authorship_source_admitted": false,
+    "transferred_copyright_content_source_admitted": false,
+    "image_or_media_source_admitted": false,
+    "ambiguous_provenance_source_admitted": false,
+    "record_level_provenance_classification_required": true,
+    "legal_conclusion_claimed": false,
+    "payload_source_admission_executed": false,
+    "admitted_payload_records": 0,
+    "admitted_payload_bytes": 0
+  },
+  "truth_boundary": {
+    "source_policy_review_complete": true,
+    "payload_source_admission_executed": false,
+    "canonical_capacity_credited": 0,
+    "family_credit_added": 0,
+    "training_authorized_bytes": 0,
+    "authorized_unique_loss_positions": 0,
+    "tokenizer_fit_authorized": false,
+    "training_eligible": false,
+    "evaluation_eligible": false,
+    "optimizer_updates": 0,
+    "model_training_executed": false,
+    "final_test_accessed": false,
+    "paid_compute_used": false,
+    "foreign_pretrained_weights": false,
+    "external_llm_api_data_or_intelligence": false
+  }
+}
