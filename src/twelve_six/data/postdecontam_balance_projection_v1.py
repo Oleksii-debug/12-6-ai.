@@ -179,9 +179,9 @@ def read_records_jsonl(path: Path) -> tuple[list[Record], str]:
             if declared_sha != payload_sha256:
                 raise ProjectionError(f"normalized_payload_sha256 drift for {record_id}")
 
-        if row.get("training_eligible") not in (None, False):
+        if "training_eligible" in row and row["training_eligible"] is not False:
             raise ProjectionError("input record cannot already claim training eligibility")
-        if row.get("evaluation_eligible") not in (None, False):
+        if "evaluation_eligible" in row and row["evaluation_eligible"] is not False:
             raise ProjectionError("input record cannot claim evaluation eligibility")
 
         records.append(
