@@ -23,6 +23,7 @@ _SECRET_RE = re.compile(
 _ALLOWED_TEXT_CONTROLS = {"\n", "\r", "\t"}
 _ALLOWED_TILE_HOSTS = {"tile.loc.gov", "tiles.loc.gov"}
 _EXPECTED_AUDIT = {
+    "registry_path": "configs/data/common_pile_source_rights_v1.json",
     "registry_blob_sha1": "7b4d6828288672bf25c551e85a5d7f7399e8ef0f",
     "source_key": "library_of_congress",
     "audited_code_revision": "9457f04a14cb2355ab00023420369d46ffd4a395",
@@ -39,6 +40,29 @@ _EXPECTED_UPSTREAM = {
     "shard_compressed_bytes": 358594502,
     "source_name": "loc_books",
 }
+_EXPECTED_RIGHTS = {
+    "dataset_package_license_is_training_authority": False,
+    "expected_language": "english",
+    "expected_license": "Public Domain",
+    "legal_conclusion_claimed": False,
+    "official_rights_url": (
+        "https://www.loc.gov/collections/selected-digitized-books/"
+        "about-this-collection/rights-and-access/"
+    ),
+    "require_exact_item_url": True,
+    "require_loc_text_file_url": True,
+    "source_collection": "Library of Congress Selected Digitized Books",
+}
+_SELECTION_KEYS = {
+    "max_documents",
+    "max_examined_documents",
+    "max_jsonl_line_bytes",
+    "max_remote_compressed_prefix_bytes",
+    "max_single_normalized_utf8_bytes",
+    "max_total_normalized_utf8_bytes",
+    "min_single_normalized_utf8_bytes",
+    "ordering",
+}
 _REQUIRED_GATES = [
     "privacy",
     "quality",
@@ -49,6 +73,26 @@ _REQUIRED_GATES = [
     "deterministic_pack_two_clean_builds",
     "positive_unique_loss_ledger",
 ]
+_ROOT_KEYS = {
+    "authorized_unique_loss_positions",
+    "canonical_capacity_credit_bytes",
+    "common_pile_audit",
+    "contract_identity_sha256",
+    "corpus_admitted",
+    "evaluation_eligible",
+    "execution_profile",
+    "final_test_payload_accessed",
+    "model_training_permitted",
+    "paid_compute_authorized",
+    "required_downstream_gates",
+    "rights_policy",
+    "schema_version",
+    "selection_policy",
+    "source_family",
+    "tokenizer_fit_permitted",
+    "training_authorized_bytes",
+    "upstream",
+}
 
 
 class LocIntakeError(ValueError):
@@ -81,7 +125,24 @@ def _require_hex(value: object, length: int, field: str) -> str:
     return value
 
 
+def _require_exact_scalar(actual: object, expected: object, field: str) -> None:
+    _require(type(actual) is type(expected) and actual == expected, f"{field} drift")
+
+
+def _require_exact_mapping(
+    actual: object,
+    expected: Mapping[str, object],
+    field: str,
+) -> Mapping[str, object]:
+    _require(isinstance(actual, Mapping), f"{field} missing")
+    _require(set(actual) == set(expected), f"{field} schema drift")
+    for key, wanted in expected.items():
+        _require_exact_scalar(actual[key], wanted, f"{field} {key}")
+    return actual
+
+
 def validate_config(config: Mapping[str, Any]) -> None:
+    _require(set(config) == _ROOT_KEYS, "config schema drift")
     expected = {
         "schema_version": "12-6.d03-common-pile-loc-intake.v1",
         "source_family": "en.loc.selected-digitized-books",
@@ -94,56 +155,46 @@ def validate_config(config: Mapping[str, Any]) -> None:
         "model_training_permitted": False,
         "evaluation_eligible": False,
         "paid_compute_authorized": False,
+        "final_test_payload_accessed": False,
     }
     for field, value in expected.items():
-        _require(config.get(field) == value, f"{field} drift")
+        _require_exact_scalar(config.get(field), value, field)
 
-    audit = config.get("common_pile_audit")
-    _require(isinstance(audit, Mapping), "common_pile_audit missing")
-    _require(
-        audit.get("registry_path") == "configs/data/common_pile_source_rights_v1.json",
-        "common_pile registry path drift",
+    audit = _require_exact_mapping(
+        config.get("common_pile_audit"),
+        _EXPECTED_AUDIT,
+        "common_pile_audit",
     )
     _require_hex(audit.get("registry_blob_sha1"), 40, "common_pile registry blob")
     _require_hex(audit.get("audited_code_revision"), 40, "audited code revision")
     _require_hex(audit.get("collector_blob_sha1"), 40, "collector blob")
-    for field, expected_value in _EXPECTED_AUDIT.items():
-        _require(audit.get(field) == expected_value, f"Common Pile audit {field} drift")
 
-    upstream = config.get("upstream")
-    _require(isinstance(upstream, Mapping), "upstream missing")
+    upstream = _require_exact_mapping(
+        config.get("upstream"),
+        {
+            **_EXPECTED_UPSTREAM,
+            "resolve_url": (
+                "https://huggingface.co/datasets/common-pile/library_of_congress/"
+                "resolve/d31bdba02cdad5104ccec2c02ae799c0bcb5a9a7/"
+                "data/00000_loc_books.jsonl.gz"
+            ),
+        },
+        "upstream",
+    )
     _require_hex(upstream.get("revision"), 40, "upstream revision")
     _require_hex(upstream.get("shard_lfs_sha256"), 64, "shard LFS sha256")
-    for field, expected_value in _EXPECTED_UPSTREAM.items():
-        _require(upstream.get(field) == expected_value, f"upstream {field} drift")
-    revision = upstream["revision"]
     size = upstream.get("shard_compressed_bytes")
     _require(
         isinstance(size, int) and not isinstance(size, bool) and size > 0,
         "invalid shard size",
     )
-    expected_url = (
-        "https://huggingface.co/datasets/common-pile/library_of_congress/resolve/"
-        f"{revision}/data/00000_loc_books.jsonl.gz"
-    )
-    _require(upstream.get("resolve_url") == expected_url, "resolve URL is not revision-pinned")
-    _require(upstream.get("source_name") == "loc_books", "source name drift")
 
-    rights = config.get("rights_policy")
-    _require(isinstance(rights, Mapping), "rights_policy missing")
-    _require(rights.get("expected_license") == "Public Domain", "license authority drift")
-    _require(rights.get("expected_language") == "english", "language authority drift")
-    _require(rights.get("require_exact_item_url") is True, "item URL requirement removed")
-    _require(rights.get("require_loc_text_file_url") is True, "text URL requirement removed")
-    _require(
-        rights.get("dataset_package_license_is_training_authority") is False,
-        "dataset package license may not authorize training",
-    )
-    _require(rights.get("legal_conclusion_claimed") is False, "legal conclusion may not be claimed")
+    _require_exact_mapping(config.get("rights_policy"), _EXPECTED_RIGHTS, "rights_policy")
 
     selection = config.get("selection_policy")
     _require(isinstance(selection, Mapping), "selection_policy missing")
-    _require(selection.get("ordering") == "SOURCE_ORDER", "selection ordering drift")
+    _require(set(selection) == _SELECTION_KEYS, "selection_policy schema drift")
+    _require_exact_scalar(selection.get("ordering"), "SOURCE_ORDER", "selection ordering")
     for field in (
         "max_documents",
         "max_examined_documents",
@@ -270,6 +321,10 @@ def materialize(
     full_shard_hash_verified: bool = False,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     validate_config(config)
+    _require(
+        type(full_shard_hash_verified) is bool,
+        "full_shard_hash_verified must be an exact bool",
+    )
     selection = config["selection_policy"]
     max_docs = selection["max_documents"]
     max_examined = selection["max_examined_documents"]
@@ -374,6 +429,7 @@ def materialize(
         "packing_two_clean_builds_gate": "NOT_RUN",
         "positive_unique_loss_ledger_gate": "NOT_RUN",
         "model_training_executed": False,
+        "final_test_payload_accessed": False,
         "paid_compute_used": False,
     }
     return candidates, report
@@ -391,18 +447,38 @@ def verify_full_shard(path: Path, config: Mapping[str, Any]) -> None:
     _require(digest.hexdigest() == upstream["shard_lfs_sha256"], "full shard SHA-256 mismatch")
 
 
+def _drain_oversized_line(handle: gzip.GzipFile, max_jsonl_line_bytes: int) -> None:
+    while True:
+        chunk = handle.readline(max_jsonl_line_bytes + 1)
+        if not chunk or chunk.endswith(b"\n"):
+            return
+
+
 def iter_gzip_jsonl_bytes(
     raw_gzip: bytes,
     *,
     max_jsonl_line_bytes: int,
+    skip_oversize_lines: bool = False,
 ) -> Iterable[dict[str, Any]]:
     _require(isinstance(raw_gzip, bytes) and bool(raw_gzip), "gzip input is empty")
+    _require(
+        isinstance(max_jsonl_line_bytes, int)
+        and not isinstance(max_jsonl_line_bytes, bool)
+        and max_jsonl_line_bytes > 0,
+        "invalid JSONL line bound",
+    )
+    _require(type(skip_oversize_lines) is bool, "skip_oversize_lines must be an exact bool")
     with gzip.GzipFile(fileobj=io.BytesIO(raw_gzip), mode="rb") as handle:
         while True:
             raw_line = handle.readline(max_jsonl_line_bytes + 1)
             if not raw_line:
                 return
-            _require(len(raw_line) <= max_jsonl_line_bytes, "JSONL line exceeds safety bound")
+            if len(raw_line) > max_jsonl_line_bytes:
+                if not skip_oversize_lines:
+                    raise LocIntakeError("JSONL line exceeds safety bound")
+                if not raw_line.endswith(b"\n"):
+                    _drain_oversized_line(handle, max_jsonl_line_bytes)
+                continue
             _require(raw_line.endswith(b"\n"), "truncated JSONL line")
             try:
                 line = raw_line.decode("utf-8")
