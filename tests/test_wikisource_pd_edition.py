@@ -16,6 +16,7 @@ from twelve_six.data.wikisource_pd_api import (
 from twelve_six.data.wikisource_pd_contract import (
     APPROVED_CATEGORY,
     INDEX_REVISION_ID,
+    INDEX_TITLE,
     PAGE_PREFIX,
     SOURCE_FAMILY_ID,
     WikisourceIntakeError,
@@ -68,6 +69,70 @@ def test_index_discovery_is_numeric_sorted_and_pinned() -> None:
 
     assert discover_index_titles(get_json=fake) == [f"{PAGE_PREFIX}3", f"{PAGE_PREFIX}13"]
     assert calls == [{"action": "parse", "oldid": str(INDEX_REVISION_ID), "prop": "links"}]
+
+
+def _index_revision_metadata() -> dict:
+    return {
+        "query": {
+            "pages": [
+                {
+                    "title": INDEX_TITLE,
+                    "revisions": [{"revid": INDEX_REVISION_ID}],
+                }
+            ]
+        }
+    }
+
+
+def test_index_fallback_selects_only_native_validated_pages() -> None:
+    responses = iter(
+        [
+            {"parse": {"revid": INDEX_REVISION_ID, "links": []}},
+            _index_revision_metadata(),
+            {
+                "query": {
+                    "pages": [
+                        {
+                            "title": f"{PAGE_PREFIX}3",
+                            "proofread": {"quality": 3, "quality_text": "Proofread"},
+                        },
+                        {
+                            "title": f"{PAGE_PREFIX}13",
+                            "proofread": {"quality": 4, "quality_text": APPROVED_CATEGORY},
+                        },
+                        {
+                            "title": f"{PAGE_PREFIX}14",
+                            "missing": True,
+                        },
+                    ]
+                }
+            },
+            _index_revision_metadata(),
+        ]
+    )
+    assert discover_index_titles(get_json=lambda _: next(responses)) == [f"{PAGE_PREFIX}13"]
+
+
+def test_index_fallback_fails_if_no_validated_page_exists() -> None:
+    responses = iter(
+        [
+            {"parse": {"revid": INDEX_REVISION_ID, "links": []}},
+            _index_revision_metadata(),
+            {
+                "query": {
+                    "pages": [
+                        {
+                            "title": f"{PAGE_PREFIX}3",
+                            "proofread": {"quality": 3, "quality_text": "Proofread"},
+                        }
+                    ]
+                }
+            },
+            _index_revision_metadata(),
+        ]
+    )
+    with pytest.raises(WikisourceIntakeError, match="no validated numeric page"):
+        discover_index_titles(get_json=lambda _: next(responses))
 
 
 def _approved_metadata(title: str, revision_id: int) -> dict:
