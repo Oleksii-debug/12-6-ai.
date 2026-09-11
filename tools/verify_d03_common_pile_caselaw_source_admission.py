@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from collections.abc import Mapping
 from pathlib import Path
@@ -11,11 +12,22 @@ from urllib.parse import urlparse
 
 CONFIG = Path("configs/data/d03_common_pile_caselaw_source_admission_v1.json")
 SCHEMA = "12-6.d03-common-pile-caselaw-source-admission.v1"
+SWARM_CONTROL_ISSUE = 723
+ORIGINAL_TAKEOVER_ISSUE = 1075
+REPAIR_ISSUE = 1209
+SUPERSEDED_CLAIM_ISSUE = 982
+GENERIC_RIGHTS_PR = 769
+GENERIC_RIGHTS_HEAD = "327a5364f7729f3ffdfc2f8079d02fb7a54638d2"
+GENERIC_REGISTRY_PATH = Path("configs/data/common_pile_source_rights_v1.json")
+GENERIC_REGISTRY_BLOB_SHA1 = "7b4d6828288672bf25c551e85a5d7f7399e8ef0f"
 REGISTRY_ID = "COMMON-PILE-SOURCE-RIGHTS-V1"
 GENERIC_SOURCE_KEY = "caselaw_access_project"
-GENERIC_RIGHTS_HEAD = "327a5364f7729f3ffdfc2f8079d02fb7a54638d2"
 PRODUCT_PR = 904
-PRODUCT_HEAD = "e63f2fd4eddbd348b57a42e1fb41cb658d0c3a82"
+PRODUCT_SEMANTIC_COMMIT = "e63f2fd4eddbd348b57a42e1fb41cb658d0c3a82"
+PRODUCT_CONFIG_PATH = "configs/data/d03_common_pile_caselaw_zero_credit_v1.json"
+PRODUCT_CONFIG_BLOB_SHA1 = "e8b7e29ce2ab4e634c5f8c056eecb6b0c2579467"
+PRODUCT_MATERIALIZER_PATH = "tools/materialize_d03_common_pile_caselaw.py"
+PRODUCT_MATERIALIZER_BLOB_SHA1 = "a7fcaeee0302c46c43e5a6ae43da16363810f14a"
 DATASET = "common-pile/caselaw_access_project"
 REVISION = "31e65135501af50f8285b52489bc3b39fd0fc5d5"
 ORDERING_POLICY = "PRESERVE_ORIGINAL_CAP_00044_THEN_APPEND_CAP_00043"
@@ -62,6 +74,96 @@ FALSE_KEYS = (
     "final_test_accessed",
     "paid_compute_used",
 )
+ROOT_KEYS = {
+    "schema_version",
+    "execution_profile",
+    "project_authority",
+    "candidate_binding",
+    "primary_public_evidence",
+    "admission_policy",
+    "truth_boundary",
+}
+PROJECT_AUTHORITY_KEYS = {
+    "swarm_control_issue",
+    "takeover_issue",
+    "repair_issue",
+    "superseded_expired_claim_issue",
+    "generic_rights_pr",
+    "generic_rights_head_sha",
+    "generic_registry_path",
+    "generic_registry_git_blob_sha1",
+    "generic_registry_id",
+    "generic_source_key",
+}
+ADMISSION_POLICY_KEYS = {
+    "decision_class",
+    "common_pile_license_metadata_sufficient_alone",
+    "accepted_source_exact",
+    "required_metadata_license_exact",
+    "required_url_scheme",
+    "allowed_metadata_url_hosts",
+    "explicitly_not_source_admitted",
+    "forbidden_editorial_metadata_keys",
+    "legal_conclusion_claimed",
+    "record_level_policy_required",
+    "payload_source_admission_executed",
+    "admitted_payload_records",
+    "admitted_payload_bytes",
+}
+TRUTH_BOUNDARY_KEYS = {
+    "source_policy_review_complete",
+    *ZERO_KEYS,
+    *FALSE_KEYS,
+}
+PUBLIC_EVIDENCE = (
+    {
+        "authority": "Harvard Caselaw Access Project",
+        "title": "Terms of Use",
+        "url": "https://case.law/terms/",
+        "accessed_utc": "2026-09-10",
+        "supported_fact": (
+            "CAP states that Caselaw Data and metadata made available on its site are made "
+            "available under CC0 1.0; the terms also disclaim warranties and "
+            "third-party-rights representations."
+        ),
+    },
+    {
+        "authority": "Common Pile",
+        "title": "caselaw_access_project dataset card",
+        "url": (
+            "https://huggingface.co/datasets/common-pile/caselaw_access_project/"
+            "blob/main/README.md"
+        ),
+        "accessed_utc": "2026-09-10",
+        "supported_fact": (
+            "The source card describes public-domain filtering and also warns that license "
+            "laundering or inaccurate metadata can yield incorrect license assignments."
+        ),
+    },
+    {
+        "authority": "Common Pile",
+        "title": "caselaw_access_project dataset",
+        "url": "https://huggingface.co/datasets/common-pile/caselaw_access_project",
+        "accessed_utc": "2026-09-10",
+        "supported_fact": (
+            "The dataset surface exposes id/source/metadata/text-style provenance fields "
+            "used by the project record contract."
+        ),
+    },
+    {
+        "authority": "Free Law Project",
+        "title": "CourtListener.com Terms of Service and Policies",
+        "url": (
+            "https://wiki.free.law/c/terms/courtlistener/"
+            "courtlistenercom-terms-of-service-and-policies"
+        ),
+        "accessed_utc": "2026-09-10",
+        "supported_fact": (
+            "Court materials can include third-party copyrighted works, so CourtListener "
+            "provenance is not treated as blanket source admission by this project."
+        ),
+    },
+)
 
 
 class AdmissionError(RuntimeError):
@@ -73,10 +175,34 @@ def require(condition: bool, message: str) -> None:
         raise AdmissionError(message)
 
 
+def require_mapping(value: object, message: str) -> Mapping[str, Any]:
+    require(isinstance(value, Mapping), message)
+    return value  # type: ignore[return-value]
+
+
+def require_exact_keys(
+    value: Mapping[str, Any], expected: set[str], label: str
+) -> None:
+    require(set(value) == expected, f"{label} key drift")
+
+
+def require_exact_zero(value: object, label: str) -> None:
+    require(type(value) is int and value == 0, f"numeric zero boundary drift: {label}")
+
+
+def git_blob_sha1(raw: bytes) -> str:
+    header = f"blob {len(raw)}\0".encode("ascii")
+    return hashlib.sha1(header + raw, usedforsecurity=False).hexdigest()
+
+
 def _expected_binding() -> dict[str, Any]:
     return {
         "product_pr": PRODUCT_PR,
-        "materializer_product_head_sha": PRODUCT_HEAD,
+        "product_semantic_commit_sha": PRODUCT_SEMANTIC_COMMIT,
+        "product_config_path": PRODUCT_CONFIG_PATH,
+        "product_config_git_blob_sha1": PRODUCT_CONFIG_BLOB_SHA1,
+        "product_materializer_path": PRODUCT_MATERIALIZER_PATH,
+        "product_materializer_git_blob_sha1": PRODUCT_MATERIALIZER_BLOB_SHA1,
         "dataset": DATASET,
         "revision": REVISION,
         "ordering_policy": ORDERING_POLICY,
@@ -85,23 +211,52 @@ def _expected_binding() -> dict[str, Any]:
     }
 
 
-def _validate_generic_registry(policy: Mapping[str, Any]) -> dict[str, Any]:
-    authority = policy["project_authority"]
-    require(authority["generic_rights_pr"] == 769, "generic rights PR drift")
+def _validate_project_authority(policy: Mapping[str, Any]) -> Mapping[str, Any]:
+    authority = require_mapping(policy.get("project_authority"), "project authority missing")
+    require_exact_keys(authority, PROJECT_AUTHORITY_KEYS, "project authority")
+    require(authority["swarm_control_issue"] == SWARM_CONTROL_ISSUE, "swarm control drift")
+    require(authority["takeover_issue"] == ORIGINAL_TAKEOVER_ISSUE, "takeover issue drift")
+    require(authority["repair_issue"] == REPAIR_ISSUE, "repair issue drift")
+    require(
+        authority["superseded_expired_claim_issue"] == SUPERSEDED_CLAIM_ISSUE,
+        "superseded claim drift",
+    )
+    require(authority["generic_rights_pr"] == GENERIC_RIGHTS_PR, "generic rights PR drift")
     require(
         authority["generic_rights_head_sha"] == GENERIC_RIGHTS_HEAD,
         "generic rights head drift",
+    )
+    require(
+        authority["generic_registry_path"] == str(GENERIC_REGISTRY_PATH),
+        "generic registry path drift",
+    )
+    require(
+        authority["generic_registry_git_blob_sha1"] == GENERIC_REGISTRY_BLOB_SHA1,
+        "generic registry blob binding drift",
     )
     require(authority["generic_registry_id"] == REGISTRY_ID, "registry id binding drift")
     require(
         authority["generic_source_key"] == GENERIC_SOURCE_KEY,
         "generic source key binding drift",
     )
-    path = Path(authority["generic_registry_path"])
+    return authority
+
+
+def _validate_generic_registry(policy: Mapping[str, Any]) -> dict[str, Any]:
+    _validate_project_authority(policy)
     try:
-        registry = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raw = GENERIC_REGISTRY_PATH.read_bytes()
+    except OSError as exc:
         raise AdmissionError("cannot load generic Common Pile rights registry") from exc
+    require(
+        git_blob_sha1(raw) == GENERIC_REGISTRY_BLOB_SHA1,
+        "generic registry blob identity drift",
+    )
+    try:
+        registry = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise AdmissionError("cannot parse generic Common Pile rights registry") from exc
+    require(isinstance(registry, Mapping), "generic registry root drift")
     require(registry.get("registry_id") == REGISTRY_ID, "generic registry drift")
     sources = registry.get("sources")
     require(isinstance(sources, list), "generic rights source vector missing")
@@ -116,8 +271,8 @@ def _validate_generic_registry(policy: Mapping[str, Any]) -> dict[str, Any]:
     require(row.get("rights_basis_class") == "PUBLIC_DOMAIN_FILTER", "rights basis drift")
     require(row.get("project_review_status") == "REVIEW_REQUIRED", "generic review drift")
     require(row.get("canonical_training_authorized") is False, "generic registry self-authorized")
-    require(row.get("credited_bytes") == 0, "generic registry credited bytes")
-    require(row.get("authorized_loss_positions") == 0, "generic registry credited loss")
+    require_exact_zero(row.get("credited_bytes"), "generic credited_bytes")
+    require_exact_zero(row.get("authorized_loss_positions"), "generic authorized_loss_positions")
     require(row.get("evaluation_role") == "TRAINING_CANDIDATE_ONLY", "evaluation role drift")
     require(row.get("final_test_excluded") is True, "final-test boundary drift")
     return row
@@ -129,50 +284,62 @@ def load_policy(path: Path = CONFIG) -> dict[str, Any]:
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise AdmissionError(f"cannot load source-admission policy: {path}") from exc
     require(isinstance(policy, dict), "policy root must be object")
-    require(policy.get("schema_version") == SCHEMA, "source-admission schema drift")
-    require(policy.get("execution_profile") == "LOCAL_FREE", "LOCAL_FREE boundary drift")
-    require(policy.get("candidate_binding") == _expected_binding(), "candidate identity drift")
+    require_exact_keys(policy, ROOT_KEYS, "policy root")
+    require(policy["schema_version"] == SCHEMA, "source-admission schema drift")
+    require(policy["execution_profile"] == "LOCAL_FREE", "LOCAL_FREE boundary drift")
+    _validate_project_authority(policy)
 
-    admission = policy["admission_policy"]
+    binding = require_mapping(policy["candidate_binding"], "candidate binding missing")
+    require(dict(binding) == _expected_binding(), "candidate identity drift")
+
+    evidence = policy["primary_public_evidence"]
+    require(isinstance(evidence, list), "public evidence vector missing")
+    require(evidence == [dict(item) for item in PUBLIC_EVIDENCE], "public evidence drift")
+
+    admission = require_mapping(policy["admission_policy"], "admission policy missing")
+    require_exact_keys(admission, ADMISSION_POLICY_KEYS, "admission policy")
     require(
-        admission.get("decision_class") == "CONDITIONAL_CAP_RECORD_SOURCE_ADMISSION",
+        admission["decision_class"] == "CONDITIONAL_CAP_RECORD_SOURCE_ADMISSION",
         "decision class drift",
     )
     require(
-        admission.get("common_pile_license_metadata_sufficient_alone") is False,
+        admission["common_pile_license_metadata_sufficient_alone"] is False,
         "license-laundering guard disabled",
     )
-    require(admission.get("accepted_source_exact") == ACCEPTED_SOURCE, "accepted source drift")
+    require(admission["accepted_source_exact"] == ACCEPTED_SOURCE, "accepted source drift")
     require(
-        admission.get("required_metadata_license_exact") == REQUIRED_LICENSE,
+        admission["required_metadata_license_exact"] == REQUIRED_LICENSE,
         "required license drift",
     )
-    require(admission.get("required_url_scheme") == "https", "URL scheme policy drift")
+    require(admission["required_url_scheme"] == "https", "URL scheme policy drift")
     require(
-        tuple(admission.get("allowed_metadata_url_hosts", [])) == ALLOWED_HOSTS,
+        tuple(admission["allowed_metadata_url_hosts"]) == ALLOWED_HOSTS,
         "allowed CAP hosts drift",
     )
     require(
-        tuple(admission.get("explicitly_not_source_admitted", [])) == DENIED_SOURCE_LABELS,
+        tuple(admission["explicitly_not_source_admitted"]) == DENIED_SOURCE_LABELS,
         "denied source labels drift",
     )
     require(
-        tuple(admission.get("forbidden_editorial_metadata_keys", []))
-        == FORBIDDEN_EDITORIAL_KEYS,
+        tuple(admission["forbidden_editorial_metadata_keys"]) == FORBIDDEN_EDITORIAL_KEYS,
         "editorial exclusion drift",
     )
-    require(admission.get("legal_conclusion_claimed") is False, "legal conclusion boundary drift")
-    require(admission.get("record_level_policy_required") is True, "record policy disabled")
-    require(admission.get("payload_source_admission_executed") is False, "payload execution fabricated")
-    require(admission.get("admitted_payload_records") == 0, "payload records self-credited")
-    require(admission.get("admitted_payload_bytes") == 0, "payload bytes self-credited")
+    require(admission["legal_conclusion_claimed"] is False, "legal conclusion boundary drift")
+    require(admission["record_level_policy_required"] is True, "record policy disabled")
+    require(
+        admission["payload_source_admission_executed"] is False,
+        "payload execution fabricated",
+    )
+    require_exact_zero(admission["admitted_payload_records"], "admitted_payload_records")
+    require_exact_zero(admission["admitted_payload_bytes"], "admitted_payload_bytes")
 
-    truth = policy["truth_boundary"]
-    require(truth.get("source_policy_review_complete") is True, "policy review not terminal")
+    truth = require_mapping(policy["truth_boundary"], "truth boundary missing")
+    require_exact_keys(truth, TRUTH_BOUNDARY_KEYS, "truth boundary")
+    require(truth["source_policy_review_complete"] is True, "policy review not terminal")
     for key in ZERO_KEYS:
-        require(truth.get(key) == 0, f"zero-credit boundary drift: {key}")
+        require_exact_zero(truth[key], key)
     for key in FALSE_KEYS:
-        require(truth.get(key) is False, f"false truth boundary drift: {key}")
+        require(truth[key] is False, f"false truth boundary drift: {key}")
     _validate_generic_registry(policy)
     return policy
 
