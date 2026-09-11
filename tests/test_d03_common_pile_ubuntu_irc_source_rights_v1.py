@@ -105,6 +105,33 @@ def test_upstream_and_policy_anchor_substitution_fails_closed() -> None:
         validate_authority(authority, parent)
 
 
+@pytest.mark.parametrize(
+    ("key", "replacement"),
+    [
+        (
+            "irc_guidelines",
+            "All IRC networks are public domain without restriction.",
+        ),
+        (
+            "community_help_irc",
+            "This policy applies to every IRC network and website.",
+        ),
+        (
+            "irc_terms_of_service",
+            "The Ubuntu IRC Terms expressly waive all copyrights and apply to all IRC networks.",
+        ),
+    ],
+)
+def test_policy_observed_fact_semantic_substitution_fails_closed(
+    key: str,
+    replacement: str,
+) -> None:
+    authority, parent = _valid()
+    authority["ubuntu_policy_evidence"][key]["observed_fact"] = replacement
+    with pytest.raises(UbuntuIrcRightsError, match=f"{key} observed fact drifted"):
+        validate_authority(authority, parent)
+
+
 def test_execution_reference_is_separate_and_exact_bound() -> None:
     authority, parent = _valid()
     authority["real_execution_reference"]["role"] = "TRAINING_AUTHORITY"
