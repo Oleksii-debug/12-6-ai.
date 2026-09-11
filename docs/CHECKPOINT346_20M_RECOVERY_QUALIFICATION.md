@@ -1,21 +1,24 @@
 # CHECKPOINT-346 — MODEL-341 bounded recovery qualification
 
-Worker lane: `D05|CHECKPOINT-346|MODEL341-RECOVERY-QUALIFICATION|V4`
+Worker lane: `D05|CHECKPOINT346|PR426|CURRENT-MODEL341-REBIND|V6`
 
 Execution profile: `LOCAL_FREE`, CPU-only, deterministic synthetic recovery mechanics.
 
-## Qualified execution
+## Current-carrier qualified execution
 
-The incumbent MODEL-341 recovery runner was executed on PR #426 head
-`cda305f06b90b3d17a28b3c928771f726b03eec3` in GitHub Actions run
-`34536431404`, job `103069022528`.
+The recovery runner was re-executed on PR #426 head
+`c49bea6caf2858a4bf63203f6d85f05ca9aa8af7` in GitHub Actions run
+`34538615652`, job `103075876817`.
 
-The executed runner blob is:
+The exact executed runner blob is:
 
-`524ae13a6f9ad51de50157295b7d3fb525dcbc5b`
+`2d0098e6914a1ec90091f1455736d42d8107d7ed`
 (`tools/run_checkpoint346_model341_recovery.py`)
 
-It is the same runner blob retained by this integration candidate.
+The execution workflow itself had Git blob
+`30a92252f57d9407b846ee35326b83a06a419059`. It pinned the exact current
+MODEL-341 carrier and was removed from the final candidate after the successful
+run so the repository returns to the shared-workflow budget.
 
 Observed verdict:
 
@@ -23,12 +26,23 @@ Observed verdict:
 
 Observed result identity:
 
-`e47e1ac21db3a7e5528aab84f5de8b6496b2a3152b75d7dadb92c7db9db775e1`
+`19b232ce895b9059a766a77bed9f0fd23e00fafb7cc6b1e599f83eab05b022f3`
+
+Observed environment identity:
+
+`bd236abf8f1bdb7a53c41be029afc5c84485643e313ae3f52ccd100378f4e299`
 
 The run used canonical MODEL-341 carrier
-`133867d21a94637920b7a24dfc046dc09371ab5c`, exactly `20,613,440`
+`82c43005bb5db153482ae5b20a31d59240faaebc`, exactly `20,613,440`
 parameters, `canonical_base=random_init`, CPython `3.11.16`, and
 `torch==2.13.0+cpu`.
+
+Carrier Git-object bindings enforced by the successful execution were:
+
+- candidate config: `69e3cbd5f5c83c9d3d529a2a6376db3055979c40`
+- `src/twelve_six/model.py`: `d0823aa666883ddb5c445a438730043ef8b50ff1`
+- `src/twelve_six/training/trainer.py`: `049394ae119a5a5ac301ceded6ae6dfcae66c020`
+- `src/twelve_six/checkpoint/core.py`: `8bff5f2cad79f64532f60dce3b413aa5e385d97a`
 
 It executed exactly three optimizer updates over deterministic **synthetic**
 tokens: parent step 1 followed by checkpoint publication, uninterrupted parent
@@ -37,33 +51,46 @@ step-1 checkpoint. The resumed step matched the uninterrupted reference for
 loss, counters, model state, optimizer state, trainer state, and RNG probe.
 An intentionally wrong run-manifest binding failed closed.
 
-## Durable evidence
+These three synthetic updates are recovery-mechanics evidence only. They are
+not learned-model training.
 
-The compact output and environment manifests from the successful run are
-retained verbatim under `evidence/checkpoint346/`:
+## Durable V5 evidence
 
-- `model341_recovery_result_v4.json`
-- `model341_recovery_environment_v4.json`
-- `model341_recovery_execution_receipt_v4.json`
+The successful current-carrier outputs are retained verbatim under
+`evidence/checkpoint346/`:
 
-Actions artifact `10175586048` had ZIP digest
-`sha256:ab5f91407cb4a98470dca143b35c91cbb2dbdc7897c441e14cab08d213452636`.
+- `model341_recovery_result_v5.json`
+- `model341_recovery_environment_v5.json`
+- `model341_recovery_execution_receipt_v5.json`
 
-The receipt binds the executed head, run/job/artifact identities, the exact
-runner Git blob, the exact MODEL-341 carrier, result/environment file hashes,
-and the zero-credit scientific boundary. Shared CI validates those bindings
-without repeating the expensive 20.6M-parameter recovery run.
+Actions artifact `10176452651` has ZIP digest
+`sha256:a29e2944def1ed11940f16ea740ca0d81a8ac5610906f1f199572c41cd63b268`.
 
-## Workflow-budget convergence
+The retained result file SHA-256 is
+`1c3040dbbec8887df2595ccb4789e66cc2608fe379b91b3ee813dcbebb9e7bd8`;
+the environment file SHA-256 is
+`59ce6298fe03214a1f0e872efc379e398b40eefc975e241bbfdbd114b0a3b718`.
 
-The one-off dedicated workflow that produced run `34536431404` is **not**
-retained in the candidate. Live `main` permits only the shared
-`.github/workflows/ci.yml`; its workflow-budget policy prohibits new permanent
-dedicated workflows. The D05 candidate therefore retains the executable runner
-and real execution artifacts, while shared CI checks the evidence-to-runner
-binding.
+The receipt binds the executed PR/head, run/job/artifact identities, exact
+runner and execution-workflow Git blobs, exact carrier/source blobs,
+result/environment file hashes, and the zero-credit scientific boundary.
+Shared CI validates those durable bindings without repeating the 20.6M-parameter
+recovery run.
 
-This is a governance repair, not deletion of execution evidence.
+## Historical V4 evidence is immutable
+
+The earlier V4 evidence remains retained exactly as historical proof for its
+then-current carrier. It is intentionally **not** rebound to the V5 runner:
+
+- run `34536431404`, job `103069022528`
+- executed head `cda305f06b90b3d17a28b3c928771f726b03eec3`
+- carrier `133867d21a94637920b7a24dfc046dc09371ab5c`
+- runner blob `524ae13a6f9ad51de50157295b7d3fb525dcbc5b`
+- artifact ZIP `sha256:ab5f91407cb4a98470dca143b35c91cbb2dbdc7897c441e14cab08d213452636`
+
+Tests validate the V4 bytes against the V4 receipt, while only V5 is required
+to match the current retained runner. This prevents historical evidence from
+being silently rewritten when the carrier advances.
 
 ## Scientific credit boundary
 
@@ -83,9 +110,10 @@ learned model and cannot satisfy the learned-20M milestone.
 
 ## Integration gate
 
-CHECKPOINT-346 is integration-qualified when shared repository CI succeeds on
-the final candidate head and the evidence-binding test confirms that the final
-runner blob is exactly the blob that produced the successful recovery result.
+The producer package becomes ready for independent audit only after shared
+repository CI succeeds on the final workflow-budget-clean candidate head.
+A fresh different-worker exact-head audit is still required before the live
+integration owner may consume PR #426.
 
 No corpus, tokenizer, training authorization, learned-model, selection, or
 final-test authority is granted by this D05 evidence.
