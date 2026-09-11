@@ -15,6 +15,7 @@ from twelve_six.learned20m_recipe import (
     readiness_fragment,
     validate_policy,
 )
+from twelve_six.packing.core import DEFAULT_SEQUENCE_LENGTH, PACKING_CONFIG_HASH
 
 ROOT = Path(__file__).resolve().parents[1]
 POLICY_PATH = ROOT / "configs/research/r01_learned20m_recipe_authority_v1.json"
@@ -51,22 +52,55 @@ def bindings(capacity: int = 15_000_000):
             "train_trace_identity_sha256": "5" * 64,
             "corpus_manifest_sha256": "6" * 64,
             "split_sha256": "7" * 64,
-            "packing_sha256": "8" * 64,
+            "packing_sha256": PACKING_CONFIG_HASH,
+            "sequence_length": DEFAULT_SEQUENCE_LENGTH,
+            "tokenizer_identity_sha256": "2" * 64,
         },
         "d05": {
             "authority": authority("9"),
             "status": "PASS",
             "checkpoint_contract_identity_sha256": "a" * 64,
             "fresh_process_resume_equivalence": True,
+            "next_exposure_identity_sha256": "4" * 64,
+            "train_trace_identity_sha256": "5" * 64,
         },
         "d06": {
             "authority": authority("b"),
             "status": "PASS",
             "evaluation_firewall_identity_sha256": "c" * 64,
             "selection_validation_identity_sha256": "d" * 64,
+            "primary_selection_metric": "BITS_PER_BYTE",
+            "required_held_out_strata": ["ua", "en", "code"],
             "final_test_sealed": True,
+            "final_test_may_influence_selection": False,
         },
     }
+
+
+def trusted_authorities(data=None):
+    data = data or bindings()
+    return {
+        role: copy.deepcopy(data[role]["authority"])
+        for role in ("tokenizer", "d04", "d05", "d06")
+    }
+
+
+def bind_with_trust(data, trusted=None, expected_identity=None):
+    trusted = trusted if trusted is not None else trusted_authorities(data)
+    expected_identity = (
+        expected_identity if expected_identity is not None else identity_sha256(trusted)
+    )
+    return bind_terminal_authorities(
+        load_policy(),
+        data,
+        trusted_authorities=trusted,
+        expected_trusted_authorities_identity_sha256=expected_identity,
+    )
+
+
+def bind(data=None, capacity: int = 15_000_000):
+    data = data or bindings(capacity)
+    return bind_with_trust(data)
 
 
 def test_checked_in_policy_is_self_hashed_and_valid():
@@ -74,12 +108,14 @@ def test_checked_in_policy_is_self_hashed_and_valid():
     body = {k: v for k, v in policy.items() if k != "policy_identity_sha256"}
     assert policy["policy_identity_sha256"] == identity_sha256(body)
     assert policy["recipe"]["learning_rate"] == 0.00022
+    assert policy["recipe"]["sequence_length"] == DEFAULT_SEQUENCE_LENGTH
     assert policy["truth_boundary"]["authorized_optimized_targets"] == 0
 
 
 def test_template_is_blocked_and_cannot_self_authorize():
     template = blocked_template(load_policy())
     assert template["status"] == "BLOCKED_TEMPLATE"
+    assert template["trusted_authorities_identity_sha256"] is None
     assert template["training_authorized"] is False
     assert template["compute_authorized"] is False
     assert template["authorized_optimized_targets"] == 0
@@ -87,9 +123,10 @@ def test_template_is_blocked_and_cannot_self_authorize():
 
 
 def test_terminal_binding_qualifies_recipe_but_not_training():
-    session = bind_terminal_authorities(load_policy(), bindings())
+    session = bind()
     assert session["status"] == "QUALIFIED_RECIPE_ONLY"
     assert session["qualified_runtime_unique_loss_positions"] == 15_000_000
+    assert len(session["trusted_authorities_identity_sha256"]) == 64
     assert session["training_recipe_status"] == "QUALIFIED"
     assert session["training_authorized"] is False
     assert session["compute_authorized"] is False
@@ -97,20 +134,21 @@ def test_terminal_binding_qualifies_recipe_but_not_training():
 
 
 def test_runtime_budget_caps_at_twenty_million():
-    session = bind_terminal_authorities(load_policy(), bindings(25_000_000))
+    session = bind(capacity=25_000_000)
     assert session["qualified_runtime_unique_loss_positions"] == 20_000_000
 
 
 def test_capacity_below_meaningful_floor_fails_closed():
+    data = bindings(9_999_999)
     with pytest.raises(RecipeValidationError, match="below LEARN-345 meaningful floor"):
-        bind_terminal_authorities(load_policy(), bindings(9_999_999))
+        bind_with_trust(data)
 
 
 def test_bool_capacity_is_not_an_integer_alias():
     data = bindings()
     data["d04"]["unique_nonignored_causal_loss_positions"] = True
     with pytest.raises(RecipeValidationError, match="positive integer"):
-        bind_terminal_authorities(load_policy(), data)
+        bind_with_trust(data)
 
 
 @pytest.mark.parametrize(
@@ -120,7 +158,7 @@ def test_bool_capacity_is_not_an_integer_alias():
         (("recipe", "scheduler"), "cosine"),
         (("recipe", "warmup_steps"), 1),
         (("recipe", "precision"), "bf16"),
-        (("recipe", "sequence_length"), 1024),
+        (("recipe", "sequence_length"), 256),
         (("recipe", "gradient_accumulation_steps"), 2),
         (("truth_boundary", "training_authorized"), True),
         (("truth_boundary", "compute_authorized"), True),
@@ -152,47 +190,143 @@ def test_substituted_model_fails_closed():
     data = bindings()
     data["model"]["parameter_count"] += 1
     with pytest.raises(RecipeValidationError, match="MODEL-341"):
-        bind_terminal_authorities(load_policy(), data)
+        bind_with_trust(data)
 
 
 def test_nonterminal_or_failed_authority_fails_closed():
     data = bindings()
+    expected = trusted_authorities(data)
     data["d04"]["authority"]["terminal"] = False
     with pytest.raises(RecipeValidationError, match="terminal"):
-        bind_terminal_authorities(load_policy(), data)
+        bind_with_trust(data, trusted=expected)
 
     data = bindings()
+    expected = trusted_authorities(data)
     data["d04"]["authority"]["workflow_conclusion"] = "failure"
     with pytest.raises(RecipeValidationError, match="success"):
-        bind_terminal_authorities(load_policy(), data)
+        bind_with_trust(data, trusted=expected)
+
+
+def test_self_consistent_packet_authority_substitution_fails_against_trusted_set():
+    data = bindings()
+    expected = trusted_authorities(data)
+    data["d04"]["authority"] = authority("e")
+    with pytest.raises(RecipeValidationError, match="trusted role-bound"):
+        bind_with_trust(data, trusted=expected)
+
+
+def test_coherent_packet_and_trusted_set_substitution_fails_against_external_identity():
+    original = bindings()
+    frozen_external_identity = identity_sha256(trusted_authorities(original))
+
+    forged = bindings()
+    forged["d04"]["authority"] = authority("e")
+    forged_trusted = trusted_authorities(forged)
+
+    with pytest.raises(RecipeValidationError, match="external expectation"):
+        bind_with_trust(
+            forged,
+            trusted=forged_trusted,
+            expected_identity=frozen_external_identity,
+        )
+
+
+def test_malformed_external_trusted_identity_fails_closed():
+    data = bindings()
+    with pytest.raises(
+        RecipeValidationError,
+        match="expected_trusted_authorities_identity_sha256",
+    ):
+        bind_with_trust(data, expected_identity="not-a-sha256")
+
+
+def test_trusted_role_set_is_closed_world_and_mandatory():
+    data = bindings()
+    expected = trusted_authorities(data)
+    expected["extra"] = authority("e")
+    with pytest.raises(RecipeValidationError, match="trusted_authorities keys mismatch"):
+        bind_with_trust(data, trusted=expected)
+    with pytest.raises(RecipeValidationError, match="out-of-packet role map"):
+        bind_terminal_authorities(
+            load_policy(),
+            data,
+            trusted_authorities=None,
+            expected_trusted_authorities_identity_sha256="0" * 64,
+        )
 
 
 def test_tokenizer_substitution_or_unresolved_decision_fails_closed():
     data = bindings()
     data["tokenizer"]["decision"] = "UNRESOLVED"
     with pytest.raises(RecipeValidationError, match="tokenizer decision"):
-        bind_terminal_authorities(load_policy(), data)
+        bind_with_trust(data)
 
 
-def test_d05_resume_equivalence_is_mandatory():
+def test_d04_sequence_and_packing_must_match_canonical_contract():
+    data = bindings()
+    data["d04"]["sequence_length"] = 256
+    with pytest.raises(RecipeValidationError, match="sequence length"):
+        bind_with_trust(data)
+
+    data = bindings()
+    data["d04"]["packing_sha256"] = "8" * 64
+    with pytest.raises(RecipeValidationError, match="packing identity"):
+        bind_with_trust(data)
+
+
+def test_d04_tokenizer_identity_must_match_terminal_tokenizer():
+    data = bindings()
+    data["d04"]["tokenizer_identity_sha256"] = "e" * 64
+    with pytest.raises(RecipeValidationError, match="tokenizer identity"):
+        bind_with_trust(data)
+
+
+def test_d05_resume_equivalence_and_d04_identity_coherence_are_mandatory():
     data = bindings()
     data["d05"]["fresh_process_resume_equivalence"] = False
     with pytest.raises(RecipeValidationError, match="resume equivalence"):
-        bind_terminal_authorities(load_policy(), data)
+        bind_with_trust(data)
+
+    data = bindings()
+    data["d05"]["next_exposure_identity_sha256"] = "e" * 64
+    with pytest.raises(RecipeValidationError, match="next-exposure"):
+        bind_with_trust(data)
+
+    data = bindings()
+    data["d05"]["train_trace_identity_sha256"] = "e" * 64
+    with pytest.raises(RecipeValidationError, match="train-trace"):
+        bind_with_trust(data)
 
 
-def test_d06_final_test_must_remain_sealed():
+def test_d06_binds_bpb_ua_en_code_and_final_test_firewall():
+    data = bindings()
+    data["d06"]["primary_selection_metric"] = "LOSS"
+    with pytest.raises(RecipeValidationError, match="primary selection metric"):
+        bind_with_trust(data)
+
+    data = bindings()
+    data["d06"]["required_held_out_strata"] = ["ua", "en"]
+    with pytest.raises(RecipeValidationError, match="ua/en/code"):
+        bind_with_trust(data)
+
     data = bindings()
     data["d06"]["final_test_sealed"] = False
     with pytest.raises(RecipeValidationError, match="final test"):
-        bind_terminal_authorities(load_policy(), data)
+        bind_with_trust(data)
+
+    data = bindings()
+    data["d06"]["final_test_may_influence_selection"] = True
+    with pytest.raises(RecipeValidationError, match="may not influence"):
+        bind_with_trust(data)
 
 
 def test_exact_next_exposure_and_trace_are_identity_bound():
-    first = bind_terminal_authorities(load_policy(), bindings())
+    first_data = bindings()
+    first = bind(first_data)
     changed = bindings()
     changed["d04"]["next_exposure_identity_sha256"] = "e" * 64
-    second = bind_terminal_authorities(load_policy(), changed)
+    changed["d05"]["next_exposure_identity_sha256"] = "e" * 64
+    second = bind(changed)
     assert first["bindings_identity_sha256"] != second["bindings_identity_sha256"]
     assert first["session_identity_sha256"] != second["session_identity_sha256"]
 
@@ -201,11 +335,12 @@ def test_unknown_binding_field_fails_closed():
     data = bindings()
     data["d04"]["extra"] = "not allowed"
     with pytest.raises(RecipeValidationError, match="keys mismatch"):
-        bind_terminal_authorities(load_policy(), data)
+        bind_with_trust(data)
 
 
 def test_readiness_fragment_matches_existing_training_recipe_shape():
-    session = bind_terminal_authorities(load_policy(), bindings(12_345_678))
+    data = bindings(12_345_678)
+    session = bind(data)
     fragment = readiness_fragment(session, authority("e"))
     assert fragment["status"] == "QUALIFIED"
     assert fragment["seed_count"] == 1
@@ -217,7 +352,7 @@ def test_readiness_fragment_matches_existing_training_recipe_shape():
 
 
 def test_readiness_fragment_rejects_session_self_authorization():
-    session = bind_terminal_authorities(load_policy(), bindings())
+    session = bind()
     session["training_authorized"] = True
-    with pytest.raises(RecipeValidationError, match="training_authorized"):
+    with pytest.raises(RecipeValidationError, match="session identity drift"):
         readiness_fragment(session, authority("e"))
