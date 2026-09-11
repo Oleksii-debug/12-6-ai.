@@ -86,6 +86,7 @@ def test_load_config_preserves_exact_schema_framing_and_zero_credit() -> None:
     assert value["source_text_framing"]["strip_after_annotation_validation"] is True
     assert value["source_text_framing"]["reject_internal_terminal_codepoint"] is True
     assert value["privacy"]["verify_occurrence_spans"] is True
+    assert type(value["claim_boundary"]["training_authorized_bytes"]) is int
     assert value["claim_boundary"]["training_authorized_bytes"] == 0
     assert value["claim_boundary"]["model_training_executed"] is False
 
@@ -282,6 +283,7 @@ def test_config_mutations_fail_closed() -> None:
         ("runtime", "pyarrow", "latest"),
         ("selection", "order", "lexicographic"),
         ("claim_boundary", "training_authorized_bytes", 1),
+        ("claim_boundary", "training_authorized_bytes", False),
     ]
     for section, key, value in mutations:
         cfg = copy.deepcopy(CONFIG)
