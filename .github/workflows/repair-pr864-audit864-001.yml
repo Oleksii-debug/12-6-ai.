@@ -18,6 +18,8 @@ jobs:
         with:
           ref: d03/rada-bulk-normalization-current-main-20260907
           fetch-depth: 0
+      - name: Bootstrap repository dev tools
+        run: python -m pip install -e '.[dev]'
       - name: Apply exact in-place repair
         run: python tools/_repair_pr864_audit864_001.py
       - name: Focused validation
