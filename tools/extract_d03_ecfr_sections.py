@@ -19,7 +19,11 @@ REQUEST_ID = "d9955ff11713a358164513d912d39ba107f0073c75bed15be64afe2cc8c3a2e4"
 SOURCE_ID = "en.us.ecfr.regulations"
 FAMILY_ID = "us.federal-regulations.ecfr"
 MAX_INPUT_BYTES = 8 * 1024 * 1024
-FORBIDDEN_DECL_RE = re.compile(br"<!\s*(?:DOCTYPE|ENTITY)\b", re.IGNORECASE)
+FORBIDDEN_DECL_TEXT_RE = re.compile(r"<!\s*(?:DOCTYPE|ENTITY)\b", re.IGNORECASE)
+XML_DECL_ENCODING_RE = re.compile(
+    r"^\ufeff?\s*<\?xml\b[^>]*\bencoding\s*=\s*['\"]([^'\"]+)['\"]",
+    re.IGNORECASE,
+)
 
 ROOT_KEYS = {
     "schema_version", "execution_profile", "project_authority",
@@ -192,40 +196,78 @@ def _norm(text: str | None) -> str:
     return " ".join((text or "").split())
 
 
+def _decode_xml_text(raw: bytes) -> str:
+    _require(b"\x00" not in raw, "XML input must be canonical UTF-8 without NUL bytes")
+    try:
+        text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise ExtractionError("XML input must be canonical UTF-8") from exc
+    declaration = XML_DECL_ENCODING_RE.search(text)
+    if declaration is not None:
+        encoding = declaration.group(1).lower().replace("_", "-")
+        _require(encoding in {"utf-8", "utf8"}, "XML declaration must specify UTF-8")
+    _require(
+        FORBIDDEN_DECL_TEXT_RE.search(text) is None,
+        "DTD/entity declarations are prohibited",
+    )
+    return text
+
+
 def _head(element: ET.Element) -> str:
     direct = [child for child in element if child.tag == "HEAD"]
     _require(len(direct) <= 1, "multiple direct HEAD elements")
     return _norm(" ".join(direct[0].itertext())) if direct else ""
 
 
-def _ancestor_provenance(
-    element: ET.Element, parent: dict[ET.Element, ET.Element]
-) -> list[dict[str, Any]]:
-    chain: list[dict[str, Any]] = []
-    cur = parent.get(element)
-    while cur is not None:
-        if cur.tag in EXPECTED_XML["ancestor_tags"]:
-            chain.append(
-                {
-                    "tag": cur.tag,
-                    "type": cur.attrib.get("TYPE"),
-                    "n": cur.attrib.get("N"),
-                    "node": cur.attrib.get("NODE"),
-                    "head": _head(cur),
-                }
-            )
-        cur = parent.get(cur)
+def _structural_ancestors(
+    element: ET.Element,
+    parent: dict[ET.Element, ET.Element],
+    root: ET.Element,
+) -> list[ET.Element]:
+    allowed = set(EXPECTED_XML["ancestor_tags"])
+    direct_parent = parent.get(element)
+    _require(
+        direct_parent is not None and direct_parent.tag in allowed,
+        "DIV8 direct parent must be DIV1..DIV7",
+    )
+
+    chain: list[ET.Element] = []
+    current = direct_parent
+    while current is not root:
+        _require(current.tag in allowed, "section ancestor chain must contain only DIV1..DIV7")
+        chain.append(current)
+        current = parent.get(current)
+        _require(current is not None, "section ancestor chain does not terminate at title root")
     chain.reverse()
+    _require(bool(chain), "section structural ancestry is empty")
+    levels = [int(node.tag[3:]) for node in chain]
+    _require(
+        all(left < right for left, right in zip(levels, levels[1:])),
+        "section DIV ancestor levels must be strictly increasing",
+    )
     return chain
+
+
+def _ancestor_provenance(chain: list[ET.Element]) -> list[dict[str, Any]]:
+    return [
+        {
+            "tag": element.tag,
+            "type": element.attrib.get("TYPE"),
+            "n": element.attrib.get("N"),
+            "node": element.attrib.get("NODE"),
+            "head": _head(element),
+        }
+        for element in chain
+    ]
 
 
 def extract_sections(raw: bytes, config: dict[str, Any]) -> tuple[bytes, dict[str, Any]]:
     validate_config(config)
     _require(type(raw) is bytes, "raw XML must be bytes")
     _require(0 < len(raw) <= MAX_INPUT_BYTES, "raw XML byte bound violated")
-    _require(FORBIDDEN_DECL_RE.search(raw) is None, "DTD/entity declarations are prohibited")
+    xml_text = _decode_xml_text(raw)
     try:
-        root = ET.fromstring(raw)
+        root = ET.fromstring(xml_text)
     except ET.ParseError as exc:
         raise ExtractionError(f"malformed XML: {exc}") from exc
     _require(root.tag == "DLPSTEXTCLASS", "unexpected eCFR root tag")
@@ -239,6 +281,7 @@ def extract_sections(raw: bytes, config: dict[str, Any]) -> tuple[bytes, dict[st
         if element.tag != "DIV8":
             continue
         _require(element.attrib.get("TYPE") == "SECTION", "DIV8 must have TYPE=SECTION")
+        ancestors = _structural_ancestors(element, parent, root)
         number = _norm(element.attrib.get("N"))
         node = _norm(element.attrib.get("NODE"))
         _require(bool(number), "section N missing")
@@ -267,7 +310,7 @@ def extract_sections(raw: bytes, config: dict[str, Any]) -> tuple[bytes, dict[st
                 "section_n": number,
                 "node": node,
                 "head": _head(element),
-                "ancestors": _ancestor_provenance(element, parent),
+                "ancestors": _ancestor_provenance(ancestors),
                 "embedded_in_ecfr_xml": True,
                 "normalized_text": text,
                 "normalized_text_bytes": len(text_raw),
