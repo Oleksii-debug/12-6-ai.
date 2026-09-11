@@ -335,7 +335,8 @@ def materialize_authoritative(
         boundary = dict(_mapping(core.get("claim_boundary"), "materializer claim boundary"))
         boundary["upstream_handoff_authority_bound"] = True
         boundary["candidate_schema_exact"] = True
-        boundary["canonical_privacy_repair_bound"] = True
+        boundary["privacy_filter_v3_exact_implementation_bound"] = True
+        boundary["canonical_privacy_repair_bound"] = False
         core["claim_boundary"] = boundary
         core["safe_result"] = "RADA_TREES_QUALITY_WINDOWS_AUTHORITY_BOUND_ZERO_CREDIT"
         report = {**core, "report_sha256": base.sha256_bytes(base.canonical_bytes(core))}
