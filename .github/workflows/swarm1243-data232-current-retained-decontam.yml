@@ -33,17 +33,21 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          fetch-depth: 1
+          fetch-depth: 0
           persist-credentials: false
 
-      - name: Bind exact execution head and current-main parent
+      - name: Bind exact execution head and current-main product tree
         shell: bash
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test "$(git rev-parse HEAD^)" = "$EXPECTED_MAIN_SHA"
+          git merge-base --is-ancestor "$EXPECTED_MAIN_SHA" HEAD
+          mapfile -t changed < <(git diff --name-only "$EXPECTED_MAIN_SHA" HEAD)
+          test "${#changed[@]}" -eq 1
+          test "${changed[0]}" = ".github/workflows/swarm1243-data232-current-retained-decontam.yml"
           echo "execution_head=$GITHUB_SHA"
           echo "base_main=$EXPECTED_MAIN_SHA"
+          echo "product_tree_delta=TEMPORARY_WORKFLOW_ONLY"
 
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
@@ -440,7 +444,6 @@ jobs:
           if execution_a["paid_compute_used"] is not False or execution_a["training_executed"] is not False:
               raise RuntimeError("scientific execution boundary weakened")
 
-          # Persist only text-free/hash-only reports and compact resolver identities.
           write_json(evidence_dir / "decontamination-report-a.json", report_a)
           write_json(evidence_dir / "decontamination-report-b.json", report_b)
           write_json(evidence_dir / "execution-evidence-a.json", execution_a)
