@@ -161,8 +161,15 @@ def git_blob_sha1(data: bytes) -> str:
     return hashlib.sha1(prefix + data, usedforsecurity=False).hexdigest()
 
 
+def _is_exact_type(value: object, expected_type: type[object]) -> bool:
+    return value.__class__ is expected_type
+
+
 def _require_exact_scalar(actual: object, expected: object, field: str) -> None:
-    _require(type(actual) is type(expected) and actual == expected, f"{field} drift")
+    _require(
+        _is_exact_type(actual, expected.__class__) and actual == expected,
+        f"{field} drift",
+    )
 
 
 def _require_exact_mapping(
@@ -170,13 +177,13 @@ def _require_exact_mapping(
     expected: Mapping[str, object],
     field: str,
 ) -> Mapping[str, object]:
-    _require(type(actual) is dict, f"{field} must be an object")
+    _require(_is_exact_type(actual, dict), f"{field} must be an object")
     assert isinstance(actual, dict)
     _require(set(actual) == set(expected), f"{field} schema drift")
     for key, wanted in expected.items():
         value = actual[key]
         if isinstance(wanted, list):
-            _require(type(value) is list, f"{field}.{key} must be a list")
+            _require(_is_exact_type(value, list), f"{field}.{key} must be a list")
             _require(value == wanted, f"{field}.{key} drift")
         else:
             _require_exact_scalar(value, wanted, f"{field}.{key}")
@@ -184,7 +191,7 @@ def _require_exact_mapping(
 
 
 def _require_exact_evidence(actual: object) -> None:
-    _require(type(actual) is list, "primary_evidence must be a list")
+    _require(_is_exact_type(actual, list), "primary_evidence must be a list")
     assert isinstance(actual, list)
     _require(len(actual) == len(PRIMARY_EVIDENCE), "primary_evidence count drift")
     for index, wanted in enumerate(PRIMARY_EVIDENCE):
@@ -198,7 +205,7 @@ def _require_exact_evidence(actual: object) -> None:
 
 def validate_policy(payload: Mapping[str, Any]) -> str:
     """Validate the immutable, zero-credit LoC source-rights qualification."""
-    _require(type(payload) is dict, "policy root must be an object")
+    _require(_is_exact_type(payload, dict), "policy root must be an object")
     _require(set(payload) == ROOT_KEYS, "policy schema drift")
     _require_exact_scalar(payload.get("schema_version"), SCHEMA_VERSION, "schema_version")
     _require_exact_scalar(payload.get("authority_id"), AUTHORITY_ID, "authority_id")
@@ -224,13 +231,16 @@ def validate_policy(payload: Mapping[str, Any]) -> str:
         "dataset_contract.shard_lfs_sha256 must be sha256",
     )
     _require(
-        type(dataset["shard_compressed_bytes"]) is int
+        _is_exact_type(dataset["shard_compressed_bytes"], int)
         and dataset["shard_compressed_bytes"] > 0,
         "dataset_contract.shard_compressed_bytes must be a positive exact int",
     )
 
     identity = payload.get("policy_identity_sha256")
-    _require(type(identity) is str and bool(HEX64.fullmatch(identity)), "invalid policy identity")
+    _require(
+        _is_exact_type(identity, str) and bool(HEX64.fullmatch(identity)),
+        "invalid policy identity",
+    )
     _require(identity == POLICY_IDENTITY, "policy identity constant drift")
     _require(policy_identity(payload) == identity, "policy identity mismatch")
     return identity
@@ -238,12 +248,12 @@ def validate_policy(payload: Mapping[str, Any]) -> str:
 
 def _find_registry_row(registry: Mapping[str, Any]) -> Mapping[str, Any]:
     rows = registry.get("sources")
-    _require(type(rows) is list, "generic registry sources missing")
+    _require(_is_exact_type(rows, list), "generic registry sources missing")
     assert isinstance(rows, list)
     matches = [
         row
         for row in rows
-        if type(row) is dict and row.get("key") == GENERIC_REGISTRY["source_key"]
+        if _is_exact_type(row, dict) and row.get("key") == GENERIC_REGISTRY["source_key"]
     ]
     _require(len(matches) == 1, "generic registry LoC row missing or duplicated")
     return matches[0]
@@ -260,7 +270,7 @@ def validate_repository_bindings(
     raw = registry_path.read_bytes()
     _require(git_blob_sha1(raw) == GENERIC_REGISTRY["blob_sha1"], "generic registry blob drift")
     registry = json.loads(raw.decode("utf-8"))
-    _require(type(registry) is dict, "generic registry root must be an object")
+    _require(_is_exact_type(registry, dict), "generic registry root must be an object")
     row = _find_registry_row(registry)
 
     expected_row_fields = {
@@ -285,7 +295,7 @@ def load_and_validate(
 ) -> dict[str, Any]:
     """Load JSON, validate exact policy, and optionally validate repository bindings."""
     payload = json.loads(Path(path).read_text(encoding="utf-8"))
-    _require(type(payload) is dict, "policy root must be an object")
+    _require(_is_exact_type(payload, dict), "policy root must be an object")
     validate_policy(payload)
     if repo_root is not None:
         validate_repository_bindings(payload, repo_root)
