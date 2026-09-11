@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from copy import deepcopy
 
-from twelve_six.learned20_pilot_evaluation import validate_terminal_pilot_evaluation
+from twelve_six.learned20_pilot_evaluation import (
+    MEMORIZATION_POLICY_V1_IDENTITY,
+    validate_terminal_pilot_evaluation,
+)
 
 
 def _evidence() -> dict:
@@ -83,7 +86,7 @@ def _evidence() -> dict:
             "checkpoint_identity": pilot["result_checkpoint_identity"],
         },
         "memorization_diagnostic": {
-            "policy_identity": "d06-memorization-v1",
+            "policy_identity": MEMORIZATION_POLICY_V1_IDENTITY,
             "training_sample_count": 100,
             "training_exact_match_count": 3,
             "training_exact_match_rate": 0.03,
@@ -197,7 +200,46 @@ def test_memorization_summary_boolean_cannot_override_policy_thresholds() -> Non
     diagnostic["max_training_exact_match_rate"] = 0.02
     diagnostic["passed"] = True
     blockers = validate_terminal_pilot_evaluation(evidence)
-    assert "bounded_pilot.d06.memorization_diagnostic.passed_mismatch" in blockers
+    assert (
+        "bounded_pilot.d06.memorization_diagnostic.max_training_exact_match_rate_policy_mismatch"
+        in blockers
+    )
+    assert "bounded_pilot.d06.memorization_diagnostic_not_passed" in blockers
+
+
+def test_memorization_policy_cannot_be_weakened_by_candidate() -> None:
+    evidence = _evidence()
+    diagnostic = evidence["bounded_pilot"]["d06_evaluation"]["memorization_diagnostic"]
+    diagnostic["training_exact_match_count"] = 100
+    diagnostic["training_exact_match_rate"] = 1.0
+    diagnostic["max_training_exact_match_rate"] = 1.0
+    diagnostic["passed"] = True
+    blockers = validate_terminal_pilot_evaluation(evidence)
+    assert (
+        "bounded_pilot.d06.memorization_diagnostic.max_training_exact_match_rate_policy_mismatch"
+        in blockers
+    )
+    assert "bounded_pilot.d06.memorization_diagnostic_not_passed" in blockers
+
+
+def test_memorization_policy_identity_substitution_is_rejected() -> None:
+    evidence = _evidence()
+    diagnostic = evidence["bounded_pilot"]["d06_evaluation"]["memorization_diagnostic"]
+    diagnostic["policy_identity"] = "sha256:" + "f" * 64
+    blockers = validate_terminal_pilot_evaluation(evidence)
+    assert "bounded_pilot.d06.memorization_diagnostic.policy_identity_mismatch" in blockers
+
+
+def test_memorization_threshold_bool_alias_is_rejected() -> None:
+    evidence = _evidence()
+    diagnostic = evidence["bounded_pilot"]["d06_evaluation"]["memorization_diagnostic"]
+    diagnostic["max_training_exact_match_rate"] = True
+    diagnostic["passed"] = True
+    blockers = validate_terminal_pilot_evaluation(evidence)
+    assert (
+        "bounded_pilot.d06.memorization_diagnostic.max_training_exact_match_rate_invalid"
+        in blockers
+    )
     assert "bounded_pilot.d06.memorization_diagnostic_not_passed" in blockers
 
 
