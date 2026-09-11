@@ -77,14 +77,14 @@ def _approved_metadata(title: str, revision_id: int) -> dict:
                 {
                     "title": title,
                     "revisions": [{"revid": revision_id}],
-                    "categories": [{"title": f"Категорія:{APPROVED_CATEGORY}"}],
+                    "proofread": {"quality": 4, "quality_text": APPROVED_CATEGORY},
                 }
             ]
         }
     }
 
 
-def test_fetch_page_requires_approved_category_and_seals_revision() -> None:
+def test_fetch_page_requires_validated_quality_and_seals_revision() -> None:
     title = f"{PAGE_PREFIX}13"
     responses = iter(
         [
@@ -119,7 +119,7 @@ def test_fetch_page_rejects_unapproved_page_before_render() -> None:
                     {
                         "title": title,
                         "revisions": [{"revid": 1}],
-                        "categories": [],
+                        "proofread": {"quality": 3, "quality_text": "Proofread"},
                     }
                 ]
             }
@@ -154,7 +154,10 @@ def test_fetch_page_rejects_revision_drift_after_exact_render() -> None:
 def test_fetch_page_rejects_approval_loss_after_exact_render() -> None:
     title = f"{PAGE_PREFIX}13"
     after = _approved_metadata(title, 560107)
-    after["query"]["pages"][0]["categories"] = []
+    after["query"]["pages"][0]["proofread"] = {
+        "quality": 3,
+        "quality_text": "Proofread",
+    }
     responses = iter(
         [
             _approved_metadata(title, 560107),
