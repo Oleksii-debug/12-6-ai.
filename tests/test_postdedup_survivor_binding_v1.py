@@ -64,7 +64,11 @@ def _v8() -> dict:
         "duplicate_discount_fraction": round(15 / 47, 12),
         "duplicate_cluster_count": 2,
         "duplicate_clusters": [["a", "b"], ["c", "d"]],
-        "origin_clusters": [["a", "b"], ["c", "d"], ["e"]],
+        "origin_clusters": [
+            ["origin:a", "origin:b"],
+            ["origin:c", "origin:d"],
+            ["origin:e"],
+        ],
         "by_modality": {},
     }
     v3_core = {
