@@ -181,6 +181,43 @@ def test_untracked_placeholder_is_quarantined() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    "token",
+    [
+        "ОСОБА_X",
+        "ОСОБА_0",
+        "ОСОБА_",
+        "АДРЕСА_X",
+        "ІНФОРМАЦІЯ_0",
+        "НОМЕР_1X",
+        "ОСОБА_1_2",
+    ],
+)
+def test_malformed_anonymization_marker_prefix_is_quarantined(token: str) -> None:
+    row = make_row()
+    _append_before_terminal_nul(row, f" {token}")
+    assert mod.assess_row(row, CONFIG)[:2] == (
+        False,
+        "annotation_contract_inconsistent",
+    )
+
+
+def test_new_canonical_marker_with_complete_annotation_is_accepted() -> None:
+    row = make_row(repeats=1)
+    _append_before_terminal_nul(
+        row, " Додатково у справі згадано ОСОБА_99 як учасника провадження."
+    )
+    row["person_occurrences"] = [
+        *_occurrences(row["text"], "ОСОБА_1"),
+        *_occurrences(row["text"], "ОСОБА_99"),
+    ]
+    row["person_count"] = len(row["person_occurrences"])
+    ok, reason, text = mod.assess_row(row, CONFIG)
+    assert ok is True
+    assert reason == "accepted"
+    assert "ОСОБА_99" in text
+
+
 def test_occurrence_token_category_mismatch_is_quarantined() -> None:
     row = make_row()
     row["person_occurrences"][0]["text"] = "АДРЕСА_1"

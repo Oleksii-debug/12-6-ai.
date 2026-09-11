@@ -49,6 +49,12 @@ OCCURRENCE_FIELDS = {
         re.compile(r"АДРЕСА_[1-9][0-9]*"),
     ),
 }
+MARKER_PREFIX_PATTERNS = {
+    "ОСОБА_": OCCURRENCE_FIELDS["person"][2],
+    "АДРЕСА_": OCCURRENCE_FIELDS["address"][2],
+    "ІНФОРМАЦІЯ_": OCCURRENCE_FIELDS["information"][2],
+    "НОМЕР_": OCCURRENCE_FIELDS["number"][2],
+}
 EMAIL_RE = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.I)
 PHONE_RE = re.compile(r"(?<!\w)(?:\+?\d[\d ()-]{7,}\d)(?!\w)")
 CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
@@ -253,6 +259,33 @@ def normalize(text: str) -> str:
     return "\n".join(line for line in lines if line).strip()
 
 
+def _validate_marker_prefix_consistency(
+    text: str, cfg: Mapping[str, Any]
+) -> None:
+    prefixes = cfg["privacy"]["marker_prefixes"]
+    _require(
+        set(prefixes) == set(MARKER_PREFIX_PATTERNS),
+        "marker-prefix runtime contract drift",
+    )
+    for prefix in prefixes:
+        pattern = MARKER_PREFIX_PATTERNS[prefix]
+        cursor = 0
+        while True:
+            start = text.find(prefix, cursor)
+            if start < 0:
+                break
+            match = pattern.match(text, start)
+            _require(match is not None, f"malformed_anonymization_marker_{prefix}")
+            end = match.end()
+            if end < len(text):
+                continuation = text[end]
+                _require(
+                    not (continuation.isalnum() or continuation == "_"),
+                    f"malformed_anonymization_marker_{prefix}",
+                )
+            cursor = end
+
+
 def _validate_occurrences(row: Mapping[str, Any], text: str) -> None:
     nonempty_categories = 0
     for count_field, occurrence_field, pattern in OCCURRENCE_FIELDS.values():
@@ -328,6 +361,7 @@ def assess_row(row: Mapping[str, Any], cfg: Mapping[str, Any]) -> tuple[bool, st
     text = row.get(cfg["selection"]["text_column"])
     _require(isinstance(text, str), "text field must be string")
     try:
+        _validate_marker_prefix_consistency(text, cfg)
         _validate_occurrences(row, text)
     except RetestError:
         return False, "annotation_contract_inconsistent", ""
@@ -459,6 +493,7 @@ def materialize(
         "terminal_nul_sentinel_stripped_for_retained_rows": True,
         "occurrence_spans_validated_for_retained_rows": True,
         "complete_placeholder_annotation_validated_for_retained_rows": True,
+        "anonymization_marker_prefix_consistency_validated_for_retained_rows": True,
         "placeholder_occurrence_count_semantics_validated": True,
         "sum_of_unique_entities_nonempty_category_semantics_validated": True,
         "universal_pii_absence_claimed": False,
