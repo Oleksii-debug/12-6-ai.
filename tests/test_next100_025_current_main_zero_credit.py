@@ -18,6 +18,26 @@ snapshot = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(snapshot)
 
 
+class _FakeResponse:
+    def __init__(self, final_url: str, payload: bytes = b"payload") -> None:
+        self.final_url = final_url
+        self.payload = payload
+        self.read_called = False
+
+    def __enter__(self) -> _FakeResponse:
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, tb: object) -> bool:
+        return False
+
+    def geturl(self) -> str:
+        return self.final_url
+
+    def read(self, limit: int) -> bytes:
+        self.read_called = True
+        return self.payload[:limit]
+
+
 def _config() -> dict:
     return {
         "family": {"family_id": "ua.data-gov.derzhgeocadastre.dataset-register"},
@@ -171,6 +191,24 @@ def test_locked_expected_id_cannot_bypass_schema_exclusion() -> None:
         snapshot.pick_resource(package, cfg)
 
 
+def test_fetch_rejects_final_redirect_outside_data_gov(monkeypatch: pytest.MonkeyPatch) -> None:
+    response = _FakeResponse("https://example.org/redirected.csv")
+    monkeypatch.setattr(snapshot.urllib.request, "urlopen", lambda req, timeout: response)
+
+    with pytest.raises(RuntimeError, match="final response URL escaped data.gov.ua boundary"):
+        snapshot.fetch("https://data.gov.ua/resource.csv", 100)
+
+    assert response.read_called is False
+
+
+def test_fetch_accepts_same_origin_final_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    response = _FakeResponse("https://www.data.gov.ua/redirected.csv", b"ok")
+    monkeypatch.setattr(snapshot.urllib.request, "urlopen", lambda req, timeout: response)
+
+    assert snapshot.fetch("https://data.gov.ua/resource.csv", 100) == b"ok"
+    assert response.read_called is True
+
+
 def test_csv_records_support_utf8_bom_and_comma_delimiter() -> None:
     payload = (
         "\ufeffname,description,email\r\n"
@@ -218,5 +256,12 @@ def test_csv_records_fail_closed_on_duplicate_headers() -> None:
 def test_csv_records_fail_closed_on_ragged_extra_columns() -> None:
     payload = "name,description\nРеєстр,Опис,EXTRA\n".encode()
 
-    with pytest.raises(RuntimeError):
+    with pytest.raises(RuntimeError, match="CSV row has unexpected extra columns"):
+        snapshot.load_csv_records(payload)
+
+
+def test_csv_records_fail_closed_on_ragged_missing_columns() -> None:
+    payload = "name,description,format\nРеєстр,Опис\n".encode()
+
+    with pytest.raises(RuntimeError, match="CSV row has missing columns"):
         snapshot.load_csv_records(payload)
