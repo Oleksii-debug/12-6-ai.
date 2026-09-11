@@ -80,14 +80,24 @@ def test_two_clean_extractions_are_byte_identical() -> None:
     assert first_summary == second_summary
 
 
+def test_utf8_xml_declaration_is_accepted() -> None:
+    raw = b"""<?xml version="1.0" encoding="UTF-8"?>
+<DLPSTEXTCLASS><DIV1 N="Title 1" NODE="1" TYPE="TITLE">
+<DIV8 N="1.1" NODE="1:1" TYPE="SECTION"><P>text</P></DIV8>
+</DIV1></DLPSTEXTCLASS>"""
+    payload, summary = extract_local(raw)
+    assert summary["record_count"] == 1
+    assert b'"section_n":"1.1"' in payload
+
+
 @pytest.mark.parametrize(
     "raw",
     [
-        b"<OTHER><DIV8 N='1.1' NODE='x' TYPE='SECTION'><P>x</P></DIV8></OTHER>",
-        b"<DLPSTEXTCLASS><DIV8 N='1.1' NODE='x' TYPE='OTHER'><P>x</P></DIV8></DLPSTEXTCLASS>",
-        b"<DLPSTEXTCLASS><DIV8 NODE='x' TYPE='SECTION'><P>x</P></DIV8></DLPSTEXTCLASS>",
-        b"<DLPSTEXTCLASS><DIV8 N='1.1' TYPE='SECTION'><P>x</P></DIV8></DLPSTEXTCLASS>",
-        b"<DLPSTEXTCLASS><DIV8 N='1.1' NODE='x' TYPE='SECTION'></DIV8></DLPSTEXTCLASS>",
+        b"<OTHER><DIV1><DIV8 N='1.1' NODE='x' TYPE='SECTION'><P>x</P></DIV8></DIV1></OTHER>",
+        b"<DLPSTEXTCLASS><DIV1><DIV8 N='1.1' NODE='x' TYPE='OTHER'><P>x</P></DIV8></DIV1></DLPSTEXTCLASS>",
+        b"<DLPSTEXTCLASS><DIV1><DIV8 NODE='x' TYPE='SECTION'><P>x</P></DIV8></DIV1></DLPSTEXTCLASS>",
+        b"<DLPSTEXTCLASS><DIV1><DIV8 N='1.1' TYPE='SECTION'><P>x</P></DIV8></DIV1></DLPSTEXTCLASS>",
+        b"<DLPSTEXTCLASS><DIV1><DIV8 N='1.1' NODE='x' TYPE='SECTION'></DIV8></DIV1></DLPSTEXTCLASS>",
         b"<DLPSTEXTCLASS>",
         b"",
     ],
@@ -100,28 +110,80 @@ def test_malformed_or_structurally_invalid_xml_fails_closed(raw: bytes) -> None:
 @pytest.mark.parametrize(
     "raw",
     [
-        b"<!DOCTYPE DLPSTEXTCLASS><DLPSTEXTCLASS><DIV8 N='1.1' NODE='x' TYPE='SECTION'><P>x</P></DIV8></DLPSTEXTCLASS>",
-        b"<!ENTITY x 'y'><DLPSTEXTCLASS><DIV8 N='1.1' NODE='x' TYPE='SECTION'><P>x</P></DIV8></DLPSTEXTCLASS>",
+        b"<!DOCTYPE DLPSTEXTCLASS><DLPSTEXTCLASS><DIV1><DIV8 N='1.1' NODE='x' TYPE='SECTION'><P>x</P></DIV8></DIV1></DLPSTEXTCLASS>",
+        b"<!ENTITY x 'y'><DLPSTEXTCLASS><DIV1><DIV8 N='1.1' NODE='x' TYPE='SECTION'><P>x</P></DIV8></DIV1></DLPSTEXTCLASS>",
     ],
 )
-def test_dtd_and_entity_declarations_fail_closed(raw: bytes) -> None:
+def test_utf8_dtd_and_entity_declarations_fail_closed(raw: bytes) -> None:
     with pytest.raises(mod.ExtractionError, match="DTD/entity"):
         extract_local(raw)
 
 
+@pytest.mark.parametrize("encoding", ["utf-16", "utf-16-be", "utf-32"])
+def test_alternate_encoding_dtd_entity_bypass_fails_closed(encoding: str) -> None:
+    text = (
+        '<?xml version="1.0" encoding="UTF-16"?>'
+        '<!DOCTYPE DLPSTEXTCLASS [<!ENTITY x "EXPANDED">]>'
+        '<DLPSTEXTCLASS><DIV1>'
+        '<DIV8 N="1.1" NODE="x" TYPE="SECTION"><P>&x;</P></DIV8>'
+        '</DIV1></DLPSTEXTCLASS>'
+    )
+    with pytest.raises(mod.ExtractionError, match="canonical UTF-8"):
+        extract_local(text.encode(encoding))
+
+
+def test_non_utf8_xml_declaration_fails_closed() -> None:
+    raw = b"""<?xml version="1.0" encoding="ISO-8859-1"?>
+<DLPSTEXTCLASS><DIV1><DIV8 N="1.1" NODE="x" TYPE="SECTION"><P>x</P></DIV8></DIV1></DLPSTEXTCLASS>"""
+    with pytest.raises(mod.ExtractionError, match="declaration must specify UTF-8"):
+        extract_local(raw)
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        b"<DLPSTEXTCLASS><DIV8 N='1.1' NODE='x' TYPE='SECTION'><P>orphan</P></DIV8></DLPSTEXTCLASS>",
+        b"<DLPSTEXTCLASS><DIV1><WRAP><DIV8 N='1.1' NODE='x' TYPE='SECTION'><P>wrapped</P></DIV8></WRAP></DIV1></DLPSTEXTCLASS>",
+    ],
+)
+def test_section_direct_parent_must_be_div1_through_div7(raw: bytes) -> None:
+    with pytest.raises(mod.ExtractionError, match="direct parent"):
+        extract_local(raw)
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        b"<DLPSTEXTCLASS><DIV4><DIV2><DIV8 N='1.1' NODE='x' TYPE='SECTION'><P>x</P></DIV8></DIV2></DIV4></DLPSTEXTCLASS>",
+        b"<DLPSTEXTCLASS><DIV3><DIV3><DIV8 N='1.1' NODE='x' TYPE='SECTION'><P>x</P></DIV8></DIV3></DIV3></DLPSTEXTCLASS>",
+    ],
+)
+def test_section_ancestor_levels_must_strictly_increase(raw: bytes) -> None:
+    with pytest.raises(mod.ExtractionError, match="strictly increasing"):
+        extract_local(raw)
+
+
+def test_non_div_wrapper_in_ancestor_chain_fails_closed() -> None:
+    raw = b"""<DLPSTEXTCLASS><WRAP><DIV3>
+    <DIV8 N="1.1" NODE="x" TYPE="SECTION"><P>x</P></DIV8>
+    </DIV3></WRAP></DLPSTEXTCLASS>"""
+    with pytest.raises(mod.ExtractionError, match="only DIV1..DIV7"):
+        extract_local(raw)
+
+
 def test_duplicate_section_node_fails_closed() -> None:
-    raw = b"""<DLPSTEXTCLASS>
+    raw = b"""<DLPSTEXTCLASS><DIV1>
     <DIV8 N="1.1" NODE="same" TYPE="SECTION"><P>a</P></DIV8>
     <DIV8 N="1.2" NODE="same" TYPE="SECTION"><P>b</P></DIV8>
-    </DLPSTEXTCLASS>"""
+    </DIV1></DLPSTEXTCLASS>"""
     with pytest.raises(mod.ExtractionError, match="duplicate section NODE"):
         extract_local(raw)
 
 
 def test_multiple_direct_heads_fail_closed() -> None:
-    raw = b"""<DLPSTEXTCLASS>
+    raw = b"""<DLPSTEXTCLASS><DIV1>
     <DIV8 N="1.1" NODE="x" TYPE="SECTION"><HEAD>a</HEAD><HEAD>b</HEAD><P>c</P></DIV8>
-    </DLPSTEXTCLASS>"""
+    </DIV1></DLPSTEXTCLASS>"""
     with pytest.raises(mod.ExtractionError, match="multiple direct HEAD"):
         extract_local(raw)
 
