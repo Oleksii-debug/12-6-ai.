@@ -91,19 +91,28 @@ def _verify_matcher_semantic_closure(
     _require(getattr(v3, "audit_payloads", None) is matcher_audit, "matcher audit callback was replaced")
     _require(getattr(v3, "verify_report", None) is matcher_verify, "matcher verifier callback was replaced")
 
+    canonical_v1_name = "twelve_six.data.cross_source_capacity_audit"
+    canonical_data232_name = "twelve_six.data._data232_decontamination_matching"
     v1 = getattr(v3, "v1", None)
+    canonical_v1 = sys.modules.get(canonical_v1_name)
+    _require(isinstance(canonical_v1, ModuleType), "canonical V1 matcher module is not loaded")
     _require(
-        isinstance(v1, ModuleType) and v1.__name__ == "twelve_six.data.cross_source_capacity_audit",
-        "terminal V3 base matcher dependency drift",
+        v1 is canonical_v1,
+        "terminal V3 base matcher dependency object replaced",
     )
-    dependency_names = {
-        getattr(getattr(v1, name, None), "__module__", None)
-        for name in ("normalize_for_contamination", "code_skeleton_tokens")
-    }
-    _require(
-        dependency_names == {"twelve_six.data._data232_decontamination_matching"},
-        "terminal V3 DATA-232 matcher dependency drift",
-    )
+
+    canonical_data232 = sys.modules.get(canonical_data232_name)
+    _require(isinstance(canonical_data232, ModuleType), "canonical DATA-232 matcher module is not loaded")
+    for name in (
+        "normalize_for_contamination",
+        "code_skeleton_tokens",
+        "DEFAULT_THRESHOLDS",
+        "TOKEN_RE",
+    ):
+        _require(
+            getattr(canonical_v1, name, None) is getattr(canonical_data232, name, None),
+            f"terminal V1 DATA-232 dependency object replaced: {name}",
+        )
 
     for module_name, expected_blob in _EXPECTED_MATCHER_BLOBS.items():
         module = sys.modules.get(module_name)
