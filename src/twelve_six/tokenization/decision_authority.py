@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Mapping
+from pathlib import Path
 from typing import Any
 
 from twelve_six.data.balanced_split_application_v1 import (
@@ -25,6 +26,8 @@ from .byte import (
 SCHEMA = "12-6.d04-learned20m-tokenizer-decision.v1"
 DECISION = "RETAIN_BYTE_BASELINE"
 STATUS = "TERMINAL_TOKENIZER_DECISION_ZERO_CREDIT"
+CANONICAL_BYTE_TOKENIZER_GIT_BLOB_SHA1 = "ee21cc40ba07d6e3bc82b20a8642658284f74959"
+_BYTE_TOKENIZER_SOURCE_PATH = Path(__file__).with_name("byte.py")
 
 _UPSTREAM_IDENTITY_FIELDS = (
     "retained_inventory_identity_sha256",
@@ -55,6 +58,7 @@ _REPORT_KEYS = {
     "split_application_identity_sha256",
     *_UPSTREAM_IDENTITY_FIELDS,
     "canonical_split_git_blob_sha1",
+    "canonical_byte_tokenizer_git_blob_sha1",
     "tokenizer_version",
     "tokenizer_config_sha256",
     "tokenizer_vocab_sha256",
@@ -107,6 +111,26 @@ def _require_sha256(value: object, *, field: str) -> str:
     if value != value.lower() or any(ch not in "0123456789abcdef" for ch in value):
         raise TokenizerDecisionError(f"{field} must be a lowercase SHA-256 hex string")
     return value
+
+
+def _git_blob_sha1(payload: bytes) -> str:
+    header = f"blob {len(payload)}\0".encode("ascii")
+    return hashlib.sha1(header + payload, usedforsecurity=False).hexdigest()
+
+
+def _canonical_byte_tokenizer_git_blob_sha1() -> str:
+    try:
+        payload = _BYTE_TOKENIZER_SOURCE_PATH.read_bytes()
+    except OSError as exc:
+        raise TokenizerDecisionError("cannot read canonical byte tokenizer implementation") from exc
+    return _git_blob_sha1(payload)
+
+
+def _verify_canonical_byte_tokenizer_implementation() -> str:
+    observed = _canonical_byte_tokenizer_git_blob_sha1()
+    if observed != CANONICAL_BYTE_TOKENIZER_GIT_BLOB_SHA1:
+        raise TokenizerDecisionError("canonical byte tokenizer implementation identity drift")
+    return observed
 
 
 def _verify_selection(
@@ -276,6 +300,7 @@ def bind_byte_baseline_decision(
         expected_balance_result_identity_sha256=expected_balance_result_identity_sha256,
     )
 
+    tokenizer_implementation_git_blob_sha1 = _verify_canonical_byte_tokenizer_implementation()
     tokenizer = ByteTokenizer().identity
     if tokenizer.version != BYTE_TOKENIZER_VERSION:
         raise TokenizerDecisionError("canonical byte tokenizer version drift")
@@ -292,6 +317,7 @@ def bind_byte_baseline_decision(
         "split_application_identity_sha256": application_identity,
         **{field: selection[field] for field in _UPSTREAM_IDENTITY_FIELDS},
         "canonical_split_git_blob_sha1": CANONICAL_SPLIT_GIT_BLOB_SHA1,
+        "canonical_byte_tokenizer_git_blob_sha1": tokenizer_implementation_git_blob_sha1,
         "tokenizer_version": tokenizer.version,
         "tokenizer_config_sha256": tokenizer.config_sha256,
         "tokenizer_vocab_sha256": tokenizer.vocab_sha256,
@@ -349,8 +375,10 @@ def verify_byte_baseline_decision(
     if report.get("canonical_split_git_blob_sha1") != CANONICAL_SPLIT_GIT_BLOB_SHA1:
         raise TokenizerDecisionError("report split mechanics identity drift")
 
+    tokenizer_implementation_git_blob_sha1 = _verify_canonical_byte_tokenizer_implementation()
     tokenizer = ByteTokenizer().identity
     expected_tokenizer = {
+        "canonical_byte_tokenizer_git_blob_sha1": tokenizer_implementation_git_blob_sha1,
         "tokenizer_version": tokenizer.version,
         "tokenizer_config_sha256": tokenizer.config_sha256,
         "tokenizer_vocab_sha256": tokenizer.vocab_sha256,
