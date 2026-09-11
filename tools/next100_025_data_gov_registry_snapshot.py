@@ -120,13 +120,6 @@ def current_main_claim_boundary(mode: str) -> dict[str, object]:
 
 def pick_resource(package: dict, cfg: dict) -> dict:
     resources = package.get("resources") or []
-    expected_id = cfg["resource_selection"].get("expected_resource_id")
-    if expected_id:
-        matches = [resource for resource in resources if resource.get("id") == expected_id]
-        if len(matches) != 1:
-            raise RuntimeError(f"locked resource id missing or ambiguous: {expected_id}")
-        return matches[0]
-
     allowed = {
         value.casefold().lstrip(".")
         for value in cfg["resource_selection"]["allowed_formats"]
@@ -139,16 +132,31 @@ def pick_resource(package: dict, cfg: dict) -> dict:
         value.casefold()
         for value in cfg["resource_selection"]["prefer_name_fragments"]
     ]
-    candidates = []
-    for resource in resources:
+
+    def is_admissible(resource: dict) -> bool:
         fmt = str(resource.get("format") or "").casefold().lstrip(".")
         name = str(resource.get("name") or "")
         url = str(resource.get("url") or "")
         if fmt not in allowed or not url:
-            continue
+            return False
         folded = name.casefold()
-        if any(fragment in folded for fragment in excluded):
+        return not any(fragment in folded for fragment in excluded)
+
+    expected_id = cfg["resource_selection"].get("expected_resource_id")
+    if expected_id:
+        matches = [resource for resource in resources if resource.get("id") == expected_id]
+        if len(matches) != 1:
+            raise RuntimeError(f"locked resource id missing or ambiguous: {expected_id}")
+        if not is_admissible(matches[0]):
+            raise RuntimeError(f"locked resource id is not admissible: {expected_id}")
+        return matches[0]
+
+    candidates = []
+    for resource in resources:
+        if not is_admissible(resource):
             continue
+        name = str(resource.get("name") or "")
+        folded = name.casefold()
         preference = int(any(fragment in folded for fragment in preferred))
         stamp = str(resource.get("last_modified") or resource.get("created") or "")
         candidates.append((preference, stamp, name, resource))
