@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-import twelve_six.tokenization.decision_authority as decision_authority
+from twelve_six.tokenization import decision_authority
 from twelve_six.tokenization.byte import (
     BYTE_TOKENIZER_HASH,
     BYTE_TOKENIZER_VERSION,
