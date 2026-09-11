@@ -34,6 +34,7 @@ UA_LEXEMES = (
     "послуг",
 )
 VALID_MODES = frozenset({"PROBE", "LOCKED"})
+DATA_GOV_HOSTS = frozenset({"data.gov.ua", "www.data.gov.ua"})
 
 
 def sha256(data: bytes) -> str:
@@ -50,7 +51,14 @@ def canonical_json(obj: object) -> bytes:
     return (rendered + "\n").encode("utf-8")
 
 
+def _require_data_gov_https(url: str, *, label: str) -> None:
+    parsed = urlparse(url)
+    if parsed.scheme != "https" or parsed.hostname not in DATA_GOV_HOSTS:
+        raise RuntimeError(f"{label} escaped data.gov.ua boundary: {url}")
+
+
 def fetch(url: str, max_bytes: int) -> bytes:
+    _require_data_gov_https(url, label="requested URL")
     req = urllib.request.Request(
         url,
         headers={
@@ -60,6 +68,8 @@ def fetch(url: str, max_bytes: int) -> bytes:
         },
     )
     with urllib.request.urlopen(req, timeout=45) as response:
+        final_url = response.geturl()
+        _require_data_gov_https(final_url, label="final response URL")
         payload = response.read(max_bytes + 1)
     if len(payload) > max_bytes:
         raise RuntimeError(f"response exceeds max bytes: {url}")
@@ -99,7 +109,8 @@ def load_csv_records(payload: bytes) -> list[dict[str, str]]:
     reader = csv.DictReader(stream, dialect=dialect)
     if reader.fieldnames is None:
         raise RuntimeError("CSV header is missing")
-    headers = [str(header).strip() for header in reader.fieldnames]
+    fieldnames = list(reader.fieldnames)
+    headers = [str(header).strip() for header in fieldnames]
     if not headers or any(not header for header in headers) or len(headers) != len(set(headers)):
         raise RuntimeError("CSV headers are blank or duplicated")
     if len(headers) > 256:
@@ -108,9 +119,11 @@ def load_csv_records(payload: bytes) -> list[dict[str, str]]:
     for row in reader:
         if None in row:
             raise RuntimeError("CSV row has unexpected extra columns")
+        if any(row.get(original) is None for original in fieldnames):
+            raise RuntimeError("CSV row has missing columns")
         clean = {
-            header: "" if row.get(original) is None else str(row.get(original))
-            for header, original in zip(headers, reader.fieldnames, strict=True)
+            header: str(row.get(original))
+            for header, original in zip(headers, fieldnames, strict=True)
         }
         if not any(value.strip() for value in clean.values()):
             continue
@@ -402,12 +415,7 @@ def main() -> int:
 
     resource = pick_resource(package, cfg)
     resource_url = str(resource.get("url") or "")
-    parsed = urlparse(resource_url)
-    if parsed.scheme != "https" or parsed.hostname not in {
-        "data.gov.ua",
-        "www.data.gov.ua",
-    }:
-        raise RuntimeError(f"resource escaped data.gov.ua boundary: {resource_url}")
+    _require_data_gov_https(resource_url, label="resource")
 
     max_bytes = cfg["resource_selection"]["max_download_bytes"]
     raw_a = fetch(resource_url, max_bytes)
