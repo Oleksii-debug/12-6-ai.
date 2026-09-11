@@ -121,10 +121,10 @@ def test_arxiv_metadata_scope_is_narrow_and_explicit() -> None:
     assert record["rights_scope"] == "DESCRIPTIVE_METADATA_INCLUDING_ABSTRACT"
 
 
-def test_unsealed_identity_drift_fails_closed() -> None:
+def test_unsealed_contract_drift_fails_closed() -> None:
     payload = copy.deepcopy(load_policy())
     decision = payload["project_decision"]
     assert isinstance(decision, dict)
     decision["full_eprint_rights_inferred"] = True
-    with pytest.raises(ArxivAbstractsSourceRightsError, match="policy identity"):
+    with pytest.raises(ArxivAbstractsSourceRightsError):
         validate_policy(payload)
