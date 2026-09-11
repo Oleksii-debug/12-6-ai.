@@ -6,11 +6,15 @@ import subprocess
 import sys
 from pathlib import Path
 
-from twelve_six.learned20m_readiness import scientific_authority_token
+from twelve_six.learned20m_readiness import scientific_role_metadata
 from twelve_six.portable_run_binding import (
     bind_portable_run_packet,
     canonical_sha256,
     validate_session_overlay_contract,
+)
+from twelve_six.readiness_trust_root import (
+    authenticated_trusted_readiness_inputs,
+    trusted_readiness_bundle_sha256,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -19,6 +23,18 @@ PACKET = ROOT / "configs/research/r01_portable_local_free_run_packet_v1.json"
 OVERLAY = ROOT / "configs/research/r01_portable_session_overlay_v1.json"
 SHA40 = "a" * 40
 SHA64 = "b" * 64
+
+_SCIENTIFIC_AUTHORITIES = (
+    ("code", ("code", "authority")),
+    ("corpus", ("corpus", "authority")),
+    ("tokenizer", ("tokenizer", "authority")),
+    ("loss_ledger", ("loss_ledger", "authority")),
+    ("data_budget", ("loss_ledger", "data_budget_authority")),
+    ("checkpoint_integrity", ("checkpoint_integrity", "authority")),
+    ("evaluation_firewall", ("evaluation", "firewall_authority")),
+    ("selection_validation", ("evaluation", "selection_validation_authority")),
+    ("training_recipe", ("training_recipe", "authority")),
+)
 
 
 def _load(path: Path) -> dict:
@@ -41,7 +57,7 @@ def _authority(*, git_sha: str = SHA40, **extra: object) -> dict:
 def _ready_readiness() -> dict:
     data = _load(READINESS)
     evidence = data["evidence"]
-    evidence["code"]["git_sha"] = SHA40
+    evidence["code"].update({"git_sha": SHA40, "authority": _authority()})
     evidence["corpus"].update(
         {
             "manifest_sha256": SHA64,
@@ -92,27 +108,41 @@ def _ready_readiness() -> dict:
     return data
 
 
-def _verified_tokens(readiness: dict) -> list[str]:
+def _authority_at(readiness: dict, path: tuple[str, ...]) -> object:
+    value: object = readiness["evidence"]
+    for key in path:
+        if not isinstance(value, dict):
+            return None
+        value = value.get(key)
+    return value
+
+
+def _trusted_bundle(readiness: dict) -> dict:
     evidence = readiness["evidence"]
-    role_authorities = (
-        ("corpus", evidence["corpus"]["authority"]),
-        ("tokenizer", evidence["tokenizer"]["authority"]),
-        ("loss_ledger", evidence["loss_ledger"]["authority"]),
-        ("data_budget", evidence["loss_ledger"]["data_budget_authority"]),
-        ("checkpoint_integrity", evidence["checkpoint_integrity"]["authority"]),
-        ("evaluation_firewall", evidence["evaluation"]["firewall_authority"]),
-        (
-            "selection_validation",
-            evidence["evaluation"]["selection_validation_authority"],
-        ),
-        ("training_recipe", evidence["training_recipe"]["authority"]),
+    scientific: dict[str, object] = {}
+    for role, path in _SCIENTIFIC_AUTHORITIES:
+        scientific[role] = {
+            "authority": copy.deepcopy(_authority_at(readiness, path)),
+            "metadata": scientific_role_metadata(role, evidence),
+        }
+    return {
+        "schema_version": 1,
+        "scientific_authorities": scientific,
+        "verified_authorization_refs": [],
+    }
+
+
+def _verified_inputs(readiness: dict) -> tuple[set[str], set[str], dict, str]:
+    bundle = _trusted_bundle(readiness)
+    expected = trusted_readiness_bundle_sha256(bundle)
+    assert expected is not None
+    resolved = authenticated_trusted_readiness_inputs(
+        bundle,
+        expected_identity_sha256=expected,
     )
-    tokens: list[str] = []
-    for role, authority in role_authorities:
-        token = scientific_authority_token(role, authority, require_workflow=True)
-        assert token is not None
-        tokens.append(token)
-    return tokens
+    assert resolved is not None
+    scientific, refs = resolved
+    return scientific, refs, bundle, expected
 
 
 def _ready_overlay() -> dict:
@@ -198,11 +228,13 @@ def test_ready_fresh_binding_is_exact_and_does_not_mutate_inputs() -> None:
     template = _load(PACKET)
     overlay = _ready_overlay()
     originals = copy.deepcopy((readiness, template, overlay))
+    tokens, refs, _, _ = _verified_inputs(readiness)
     result = bind_portable_run_packet(
         readiness,
         template,
         overlay,
-        verified_scientific_authorities=_verified_tokens(readiness),
+        verified_scientific_authorities=tokens,
+        verified_authorization_refs=refs,
     )
     assert result.binding_ready
     assert result.mode == "FRESH_START"
@@ -236,11 +268,13 @@ def test_ready_cross_provider_resume_binds_parent_lineage() -> None:
     overlay["resource"].update({"resource_class": "FREE_GPU", "provider": "KAGGLE"})
     overlay["runtime"]["device_type"] = "cuda"
     overlay["output"]["artifact_store_uri"] = "https://artifacts.example/sha256"
+    tokens, refs, _, _ = _verified_inputs(readiness)
     result = bind_portable_run_packet(
         readiness,
         _load(PACKET),
         overlay,
-        verified_scientific_authorities=_verified_tokens(readiness),
+        verified_scientific_authorities=tokens,
+        verified_authorization_refs=refs,
     )
     assert result.binding_ready
     assert result.mode == "RESUME"
@@ -253,11 +287,13 @@ def test_authority_identity_mismatch_fails_closed() -> None:
     overlay = _ready_overlay()
     overlay["scientific_bindings"]["authorities"]["code"]["git_sha"] = "c" * 40
     overlay["scientific_bindings"]["authorities"]["model"]["modelspec_sha256"] = "d" * 64
+    tokens, refs, _, _ = _verified_inputs(readiness)
     result = bind_portable_run_packet(
         readiness,
         _load(PACKET),
         overlay,
-        verified_scientific_authorities=_verified_tokens(readiness),
+        verified_scientific_authorities=tokens,
+        verified_authorization_refs=refs,
     )
     assert not result.binding_ready
     assert result.packet is None
@@ -271,11 +307,13 @@ def test_backend_authority_must_bind_backend_and_environment() -> None:
     authority = overlay["scientific_bindings"]["authorities"]["backend"]
     authority["backend_id"] = "LITGPT"
     authority["environment_lock_sha256"] = "c" * 64
+    tokens, refs, _, _ = _verified_inputs(readiness)
     result = bind_portable_run_packet(
         readiness,
         _load(PACKET),
         overlay,
-        verified_scientific_authorities=_verified_tokens(readiness),
+        verified_scientific_authorities=tokens,
+        verified_authorization_refs=refs,
     )
     assert not result.binding_ready
     assert "binding:backend_authority_backend_id_mismatch" in result.blockers
@@ -284,7 +322,7 @@ def test_backend_authority_must_bind_backend_and_environment() -> None:
 
 def test_embedded_secret_and_overlay_drift_are_rejected() -> None:
     readiness = _ready_readiness()
-    tokens = _verified_tokens(readiness)
+    tokens, refs, _, _ = _verified_inputs(readiness)
 
     secret = _ready_overlay()
     secret["scientific_bindings"]["authorities"]["code"]["api_key"] = "forbidden"
@@ -293,6 +331,7 @@ def test_embedded_secret_and_overlay_drift_are_rejected() -> None:
         _load(PACKET),
         secret,
         verified_scientific_authorities=tokens,
+        verified_authorization_refs=refs,
     )
     assert not result.binding_ready
     assert not result.packet_contract_valid
@@ -305,6 +344,7 @@ def test_embedded_secret_and_overlay_drift_are_rejected() -> None:
         _load(PACKET),
         drift,
         verified_scientific_authorities=tokens,
+        verified_authorization_refs=refs,
     )
     assert not result.binding_ready
     assert "overlay:overlay_runtime_container_image_unexpected" in result.blockers
@@ -316,11 +356,13 @@ def test_binding_does_not_relax_one_pass_unique_exposure_rule() -> None:
     recipe["requested_unique_loss_positions"] = 500
     recipe["requested_total_training_exposures"] = 1000
     recipe["max_exposures_per_unique_position"] = 2
+    tokens, refs, _, _ = _verified_inputs(readiness)
     result = bind_portable_run_packet(
         readiness,
         _load(PACKET),
         _ready_overlay(),
-        verified_scientific_authorities=_verified_tokens(readiness),
+        verified_scientific_authorities=tokens,
+        verified_authorization_refs=refs,
     )
     assert result.readiness_ready
     assert not result.binding_ready
@@ -330,15 +372,17 @@ def test_binding_does_not_relax_one_pass_unique_exposure_rule() -> None:
 
 def test_cli_writes_once_only_after_ready_binding(tmp_path: Path) -> None:
     readiness = _ready_readiness()
-    tokens = _verified_tokens(readiness)
+    tokens, _, bundle, expected = _verified_inputs(readiness)
     readiness_path = tmp_path / "readiness.json"
     template_path = tmp_path / "packet.json"
     overlay_path = tmp_path / "overlay.json"
+    bindings_path = tmp_path / "trusted-bindings.json"
     output_path = tmp_path / "bound.json"
     for path, value in (
         (readiness_path, readiness),
         (template_path, _load(PACKET)),
         (overlay_path, _ready_overlay()),
+        (bindings_path, bundle),
     ):
         path.write_text(json.dumps(value), encoding="utf-8")
 
@@ -349,11 +393,13 @@ def test_cli_writes_once_only_after_ready_binding(tmp_path: Path) -> None:
         str(template_path),
         "--overlay",
         str(overlay_path),
+        "--trusted-bindings",
+        str(bindings_path),
+        "--expected-trusted-bindings-sha256",
+        expected,
         "--output",
         str(output_path),
     ]
-    for token in tokens:
-        args.extend(["--verified-scientific-authority-token", token])
 
     first = _run_builder(args)
     assert first.returncode == 0, first.stderr or first.stdout
@@ -365,6 +411,35 @@ def test_cli_writes_once_only_after_ready_binding(tmp_path: Path) -> None:
     second = _run_builder(args)
     assert second.returncode == 2
     assert "refusing to overwrite existing output" in second.stdout
+
+
+def test_cli_rejects_trusted_bundle_without_external_expected_root(tmp_path: Path) -> None:
+    readiness = _ready_readiness()
+    _, _, bundle, _ = _verified_inputs(readiness)
+    readiness_path = tmp_path / "readiness.json"
+    bindings_path = tmp_path / "trusted-bindings.json"
+    readiness_path.write_text(json.dumps(readiness), encoding="utf-8")
+    bindings_path.write_text(json.dumps(bundle), encoding="utf-8")
+    result = _run_builder(
+        [
+            "--readiness",
+            str(readiness_path),
+            "--template",
+            str(PACKET),
+            "--overlay",
+            str(OVERLAY),
+            "--trusted-bindings",
+            str(bindings_path),
+        ]
+    )
+    assert result.returncode == 2
+    assert "--expected-trusted-bindings-sha256" in result.stdout
+
+
+def test_cli_no_longer_accepts_raw_verified_token_injection() -> None:
+    result = _run_builder(["--verified-scientific-authority-token", "a" * 64])
+    assert result.returncode == 2
+    assert "unrecognized arguments" in result.stderr
 
 
 def test_cli_never_writes_current_blocked_inputs(tmp_path: Path) -> None:

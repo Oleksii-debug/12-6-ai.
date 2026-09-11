@@ -8,10 +8,8 @@ import json
 from pathlib import Path
 from typing import Any
 
-from twelve_six.learned20m_readiness import (
-    assess_learned20m_readiness,
-    trusted_readiness_inputs,
-)
+from twelve_six.learned20m_readiness import assess_learned20m_readiness
+from twelve_six.readiness_trust_root import authenticated_trusted_readiness_inputs
 
 DEFAULT_PATH = Path("configs/research/r01_learned20m_launch_readiness_v1.json")
 
@@ -34,17 +32,39 @@ def main(argv: list[str]) -> int:
             "from the candidate packet under assessment"
         ),
     )
+    parser.add_argument(
+        "--expected-trusted-bindings-sha256",
+        help=(
+            "independently supplied SHA-256 identity for --trusted-bindings; "
+            "never derive this expectation from either JSON input"
+        ),
+    )
     args = parser.parse_args(argv[1:])
 
     try:
         payload = _load_json_object(args.packet, "launch packet")
         verified_scientific: set[str] = set()
         verified_refs: set[str] = set()
-        if args.trusted_bindings is not None:
+        if args.trusted_bindings is None:
+            if args.expected_trusted_bindings_sha256 is not None:
+                raise ValueError(
+                    "--expected-trusted-bindings-sha256 requires --trusted-bindings"
+                )
+        else:
+            if args.expected_trusted_bindings_sha256 is None:
+                raise ValueError(
+                    "--trusted-bindings requires --expected-trusted-bindings-sha256"
+                )
             bindings = _load_json_object(args.trusted_bindings, "trusted bindings")
-            resolved = trusted_readiness_inputs(bindings)
+            resolved = authenticated_trusted_readiness_inputs(
+                bindings,
+                expected_identity_sha256=args.expected_trusted_bindings_sha256,
+            )
             if resolved is None:
-                raise ValueError("trusted bindings are malformed or fail closed")
+                raise ValueError(
+                    "trusted bindings are malformed or do not match the independent "
+                    "expected identity"
+                )
             verified_scientific, verified_refs = resolved
     except (OSError, json.JSONDecodeError, ValueError) as exc:
         print(json.dumps({"error": str(exc)}, sort_keys=True))

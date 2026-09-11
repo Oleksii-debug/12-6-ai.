@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from twelve_six.portable_run_binding import bind_portable_run_packet
+from twelve_six.readiness_trust_root import authenticated_trusted_readiness_inputs
 
 DEFAULT_READINESS = Path("configs/research/r01_learned20m_launch_readiness_v1.json")
 DEFAULT_TEMPLATE = Path("configs/research/r01_portable_local_free_run_packet_v1.json")
@@ -57,16 +58,19 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--overlay", type=Path, default=DEFAULT_OVERLAY)
     parser.add_argument("--output", type=Path)
     parser.add_argument(
-        "--verified-scientific-authority-token",
-        action="append",
-        default=[],
-        help="Repeatable out-of-packet verified scientific authority token.",
+        "--trusted-bindings",
+        type=Path,
+        help=(
+            "separate trusted readiness bundle; this is only accepted with an "
+            "independently supplied expected SHA-256"
+        ),
     )
     parser.add_argument(
-        "--verified-authorization-ref",
-        action="append",
-        default=[],
-        help="Repeatable out-of-packet verified explicit authorization reference.",
+        "--expected-trusted-bindings-sha256",
+        help=(
+            "independently supplied SHA-256 identity for --trusted-bindings; "
+            "never derive this expectation from readiness or bundle input"
+        ),
     )
     return parser
 
@@ -77,12 +81,37 @@ def main(argv: list[str] | None = None) -> int:
         readiness = _load_object(args.readiness)
         template = _load_object(args.template)
         overlay = _load_object(args.overlay)
+
+        verified_scientific: set[str] = set()
+        verified_refs: set[str] = set()
+        if args.trusted_bindings is None:
+            if args.expected_trusted_bindings_sha256 is not None:
+                raise ValueError(
+                    "--expected-trusted-bindings-sha256 requires --trusted-bindings"
+                )
+        else:
+            if args.expected_trusted_bindings_sha256 is None:
+                raise ValueError(
+                    "--trusted-bindings requires --expected-trusted-bindings-sha256"
+                )
+            bindings = _load_object(args.trusted_bindings)
+            resolved = authenticated_trusted_readiness_inputs(
+                bindings,
+                expected_identity_sha256=args.expected_trusted_bindings_sha256,
+            )
+            if resolved is None:
+                raise ValueError(
+                    "trusted bindings are malformed or do not match the independent "
+                    "expected identity"
+                )
+            verified_scientific, verified_refs = resolved
+
         result = bind_portable_run_packet(
             readiness,
             template,
             overlay,
-            verified_scientific_authorities=args.verified_scientific_authority_token,
-            verified_authorization_refs=args.verified_authorization_ref,
+            verified_scientific_authorities=verified_scientific,
+            verified_authorization_refs=verified_refs,
         )
         report = result.as_dict()
         report["output_written"] = False
