@@ -15,7 +15,6 @@ JOB_IDS = {
     "execution_b_job_id": 103150553064,
     "compare_job_id": 103150607200,
 }
-
 SOURCE = {
     "dataset": "common-pile/arxiv_abstracts",
     "revision": "46de78c48636c0b46f60049dfd1c5a3710d233f9",
@@ -26,7 +25,6 @@ SOURCE = {
     "rights_parent_pr": 769,
     "rights_status": "REVIEW_REQUIRED",
 }
-
 OUTPUT = {
     "source_sha256": SOURCE["sha256"],
     "source_bytes": SOURCE["bytes"],
@@ -38,7 +36,6 @@ OUTPUT = {
     "retained_records": 1024,
     "retained_normalized_bytes": 1139552,
 }
-
 ARTIFACTS = {
     "execution_a": {
         "id": 10185121514,
@@ -62,7 +59,6 @@ ARTIFACTS = {
         "expires_at": "2026-10-11T04:46:04Z",
     },
 }
-
 ZERO_INT_FIELDS = {
     "canonical_capacity_credited",
     "training_authorized_bytes",
@@ -81,7 +77,7 @@ FALSE_BOOL_FIELDS = {
 
 
 def _is_exact_int(value: Any, expected: int) -> bool:
-    return type(value) is int and value == expected
+    return isinstance(value, int) and not isinstance(value, bool) and value == expected
 
 
 def _is_sha256(value: Any, *, prefixed: bool = False) -> bool:
@@ -91,14 +87,12 @@ def _is_sha256(value: Any, *, prefixed: bool = False) -> bool:
         if not value.startswith("sha256:"):
             return False
         value = value.removeprefix("sha256:")
-    return len(value) == 64 and all(ch in "0123456789abcdef" for ch in value)
+    return len(value) == 64 and all(char in "0123456789abcdef" for char in value)
 
 
 def canonical_json_line_sha256(value: Any) -> str:
-    payload = (
-        json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n"
-    ).encode("utf-8")
-    return hashlib.sha256(payload).hexdigest()
+    text = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256((text + "\n").encode()).hexdigest()
 
 
 def _validate_artifact(errors: list[str], name: str, value: Any) -> None:
@@ -111,19 +105,16 @@ def _validate_artifact(errors: list[str], name: str, value: Any) -> None:
         return
     for key, expected_value in expected.items():
         actual = value.get(key)
-        if key == "id" and not _is_exact_int(actual, expected_value):
+        if key == "id":
+            valid = _is_exact_int(actual, expected_value)
+        elif key == "api_digest":
+            valid = actual == expected_value and _is_sha256(actual, prefixed=True)
+        elif key.endswith("sha256"):
+            valid = actual == expected_value and _is_sha256(actual)
+        else:
+            valid = actual == expected_value
+        if not valid:
             errors.append(f"artifact_{name}_{key}_mismatch")
-        elif key == "api_digest" and (
-            actual != expected_value or not _is_sha256(actual, prefixed=True)
-        ):
-            errors.append(f"artifact_{name}_{key}_mismatch")
-        elif key.endswith("sha256") and (
-            actual != expected_value or not _is_sha256(actual)
-        ):
-            errors.append(f"artifact_{name}_{key}_mismatch")
-        elif key not in {"id", "api_digest"} and not key.endswith("sha256"):
-            if actual != expected_value:
-                errors.append(f"artifact_{name}_{key}_mismatch")
 
 
 def _validate_claim_boundary(errors: list[str], value: Any) -> None:
@@ -144,8 +135,54 @@ def _validate_claim_boundary(errors: list[str], value: Any) -> None:
             errors.append(f"{key}_must_be_false")
 
 
-def _compare_artifact_digest(receipt_value: str, manifest_value: Any) -> bool:
-    return isinstance(manifest_value, str) and receipt_value.removeprefix("sha256:") == manifest_value
+def _validate_compare_manifest(errors: list[str], manifest: Any) -> None:
+    if not isinstance(manifest, dict):
+        errors.append("compare_manifest_root_must_be_object")
+        return
+    if manifest.get("schema_version") != "12-6.d03-arxiv-run-bound-compare.v1":
+        errors.append("compare_manifest_schema_mismatch")
+    if not _is_exact_int(manifest.get("run_id"), RUN_ID):
+        errors.append("compare_manifest_run_id_mismatch")
+    if not _is_exact_int(manifest.get("run_attempt"), RUN_ATTEMPT):
+        errors.append("compare_manifest_run_attempt_mismatch")
+    if manifest.get("execution_head_sha") != EXECUTION_HEAD_SHA:
+        errors.append("compare_manifest_execution_head_mismatch")
+
+    for name in ("execution_a", "execution_b"):
+        artifact = manifest.get(f"{name}_artifact")
+        expected = ARTIFACTS[name]
+        if not isinstance(artifact, dict):
+            errors.append(f"compare_manifest_{name}_artifact_missing")
+            continue
+        if not _is_exact_int(artifact.get("id"), expected["id"]):
+            errors.append(f"compare_manifest_{name}_artifact_id_mismatch")
+        expected_digest = expected["api_digest"].removeprefix("sha256:")
+        if artifact.get("digest") != expected_digest:
+            errors.append(f"compare_manifest_{name}_artifact_digest_mismatch")
+        if artifact.get("evidence_sha256") != expected["evidence_sha256"]:
+            errors.append(f"compare_manifest_{name}_evidence_sha256_mismatch")
+
+    deterministic = manifest.get("deterministic_evidence")
+    if not isinstance(deterministic, dict):
+        errors.append("compare_manifest_deterministic_evidence_missing")
+    else:
+        source = deterministic.get("source")
+        manifest_output = {
+            "source_sha256": source.get("sha256") if isinstance(source, dict) else None,
+            "source_bytes": source.get("bytes") if isinstance(source, dict) else None,
+            "candidate_sha256": deterministic.get("candidate_sha256"),
+            "report_file_sha256": deterministic.get("report_file_sha256"),
+            "report_identity_sha256": deterministic.get("report_identity_sha256"),
+            "disposition_sha256": deterministic.get("disposition_sha256"),
+            "rows_scanned": deterministic.get("rows_scanned"),
+            "retained_records": deterministic.get("retained_records"),
+            "retained_normalized_bytes": deterministic.get("retained_normalized_bytes"),
+        }
+        if manifest_output != OUTPUT:
+            errors.append("compare_manifest_output_mismatch")
+
+    if canonical_json_line_sha256(manifest) != ARTIFACTS["compare"]["manifest_sha256"]:
+        errors.append("compare_manifest_content_sha256_mismatch")
 
 
 def validate_d03_arxiv_receipt(
@@ -158,57 +195,63 @@ def validate_d03_arxiv_receipt(
         return ["receipt_root_must_be_object"]
 
     errors: list[str] = []
-    if receipt.get("schema_version") != SCHEMA_VERSION:
-        errors.append("schema_version_mismatch")
-    if receipt.get("execution_profile") != "LOCAL_FREE":
-        errors.append("execution_profile_mismatch")
-    if not _is_exact_int(receipt.get("product_pr"), 1078):
-        errors.append("product_pr_mismatch")
-    if not _is_exact_int(receipt.get("owner_issue"), 1199):
-        errors.append("owner_issue_mismatch")
-    if not _is_exact_int(receipt.get("predecessor_owner_issue"), 1077):
-        errors.append("predecessor_owner_issue_mismatch")
-    if receipt.get("execution_head_sha") != EXECUTION_HEAD_SHA:
-        errors.append("execution_head_sha_mismatch")
+    scalar_expectations = {
+        "schema_version": SCHEMA_VERSION,
+        "execution_profile": "LOCAL_FREE",
+        "product_pr": 1078,
+        "owner_issue": 1199,
+        "predecessor_owner_issue": 1077,
+        "execution_head_sha": EXECUTION_HEAD_SHA,
+    }
+    for key, expected in scalar_expectations.items():
+        actual = receipt.get(key)
+        if isinstance(expected, int):
+            valid = _is_exact_int(actual, expected)
+        else:
+            valid = actual == expected
+        if not valid:
+            errors.append(f"{key}_mismatch")
 
     workflow = receipt.get("specialist_workflow")
+    expected_workflow = {
+        "run_id": RUN_ID,
+        "run_attempt": RUN_ATTEMPT,
+        "conclusion": "success",
+        **JOB_IDS,
+    }
     if not isinstance(workflow, dict):
         errors.append("specialist_workflow_missing")
+    elif set(workflow) != set(expected_workflow):
+        errors.append("specialist_workflow_keys_mismatch")
     else:
-        expected_workflow = {
-            "run_id": RUN_ID,
-            "run_attempt": RUN_ATTEMPT,
-            "conclusion": "success",
-            **JOB_IDS,
-        }
-        if set(workflow) != set(expected_workflow):
-            errors.append("specialist_workflow_keys_mismatch")
         for key, expected in expected_workflow.items():
             actual = workflow.get(key)
-            if isinstance(expected, int):
-                if not _is_exact_int(actual, expected):
-                    errors.append(f"specialist_workflow_{key}_mismatch")
-            elif actual != expected:
+            valid = _is_exact_int(actual, expected) if isinstance(expected, int) else actual == expected
+            if not valid:
                 errors.append(f"specialist_workflow_{key}_mismatch")
 
     if receipt.get("source") != SOURCE:
         errors.append("source_identity_mismatch")
 
+    numeric_output_keys = {
+        "source_bytes",
+        "rows_scanned",
+        "retained_records",
+        "retained_normalized_bytes",
+    }
     for slot in ("independent_execution_a", "independent_execution_b"):
         value = receipt.get(slot)
         if value != OUTPUT:
             errors.append(f"{slot}_mismatch")
-        elif any(
-            not _is_exact_int(value[key], OUTPUT[key])
-            for key in ("source_bytes", "rows_scanned", "retained_records", "retained_normalized_bytes")
-        ):
+        elif any(not _is_exact_int(value[key], OUTPUT[key]) for key in numeric_output_keys):
             errors.append(f"{slot}_numeric_type_mismatch")
 
     artifacts = receipt.get("run_bound_artifacts")
     if not isinstance(artifacts, dict):
         errors.append("run_bound_artifacts_missing")
     else:
-        if set(artifacts) != {"retention_days", "execution_a", "execution_b", "compare"}:
+        expected_keys = {"retention_days", "execution_a", "execution_b", "compare"}
+        if set(artifacts) != expected_keys:
             errors.append("run_bound_artifacts_keys_mismatch")
         if not _is_exact_int(artifacts.get("retention_days"), 30):
             errors.append("artifact_retention_days_mismatch")
@@ -218,7 +261,7 @@ def validate_d03_arxiv_receipt(
     _validate_claim_boundary(errors, receipt.get("claim_boundary"))
 
     evaluation = receipt.get("evaluation_boundary")
-    if not isinstance(evaluation, dict) or any(value is not False for value in evaluation.values()):
+    if not isinstance(evaluation, dict) or any(item is not False for item in evaluation.values()):
         errors.append("evaluation_boundary_must_remain_false")
 
     content = receipt.get("content_boundary")
@@ -233,55 +276,6 @@ def validate_d03_arxiv_receipt(
             errors.append("payload_deletion_claim_invalid")
 
     if compare_manifest is not None:
-        if not isinstance(compare_manifest, dict):
-            errors.append("compare_manifest_root_must_be_object")
-        else:
-            if compare_manifest.get("schema_version") != "12-6.d03-arxiv-run-bound-compare.v1":
-                errors.append("compare_manifest_schema_mismatch")
-            if not _is_exact_int(compare_manifest.get("run_id"), RUN_ID):
-                errors.append("compare_manifest_run_id_mismatch")
-            if not _is_exact_int(compare_manifest.get("run_attempt"), RUN_ATTEMPT):
-                errors.append("compare_manifest_run_attempt_mismatch")
-            if compare_manifest.get("execution_head_sha") != EXECUTION_HEAD_SHA:
-                errors.append("compare_manifest_execution_head_mismatch")
-
-            for name, key in (("execution_a", "execution_a_artifact"), ("execution_b", "execution_b_artifact")):
-                artifact = compare_manifest.get(key)
-                expected = ARTIFACTS[name]
-                if not isinstance(artifact, dict):
-                    errors.append(f"compare_manifest_{name}_artifact_missing")
-                    continue
-                if not _is_exact_int(artifact.get("id"), expected["id"]):
-                    errors.append(f"compare_manifest_{name}_artifact_id_mismatch")
-                if not _compare_artifact_digest(expected["api_digest"], artifact.get("digest")):
-                    errors.append(f"compare_manifest_{name}_artifact_digest_mismatch")
-                if artifact.get("evidence_sha256") != expected["evidence_sha256"]:
-                    errors.append(f"compare_manifest_{name}_evidence_sha256_mismatch")
-
-            deterministic = compare_manifest.get("deterministic_evidence")
-            if not isinstance(deterministic, dict):
-                errors.append("compare_manifest_deterministic_evidence_missing")
-            else:
-                manifest_output = {
-                    "source_sha256": deterministic.get("source", {}).get("sha256")
-                    if isinstance(deterministic.get("source"), dict)
-                    else None,
-                    "source_bytes": deterministic.get("source", {}).get("bytes")
-                    if isinstance(deterministic.get("source"), dict)
-                    else None,
-                    "candidate_sha256": deterministic.get("candidate_sha256"),
-                    "report_file_sha256": deterministic.get("report_file_sha256"),
-                    "report_identity_sha256": deterministic.get("report_identity_sha256"),
-                    "disposition_sha256": deterministic.get("disposition_sha256"),
-                    "rows_scanned": deterministic.get("rows_scanned"),
-                    "retained_records": deterministic.get("retained_records"),
-                    "retained_normalized_bytes": deterministic.get("retained_normalized_bytes"),
-                }
-                if manifest_output != OUTPUT:
-                    errors.append("compare_manifest_output_mismatch")
-
-            expected_manifest_sha = ARTIFACTS["compare"]["manifest_sha256"]
-            if canonical_json_line_sha256(compare_manifest) != expected_manifest_sha:
-                errors.append("compare_manifest_content_sha256_mismatch")
+        _validate_compare_manifest(errors, compare_manifest)
 
     return sorted(set(errors))
