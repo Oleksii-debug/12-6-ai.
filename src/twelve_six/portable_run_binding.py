@@ -135,8 +135,55 @@ def _exact_mapping(
     return value
 
 
+def _is_nonnegative_int(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
+def _is_positive_int(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value > 0
+
+
+def _is_zero_number(value: Any) -> bool:
+    return (
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and value == 0
+    )
+
+
+def _validate_ready_candidate_scalars(
+    errors: list[str],
+    scientific: dict[str, Any],
+    checkpoint: dict[str, Any],
+    lineage: dict[str, Any],
+    resource: dict[str, Any],
+    output: dict[str, Any],
+) -> None:
+    if not _is_nonnegative_int(scientific.get("seed")):
+        errors.append("overlay_seed_invalid")
+
+    for name in (
+        "session_time_limit_minutes",
+        "first_checkpoint_deadline_minutes",
+        "checkpoint_every_steps",
+    ):
+        if not _is_positive_int(checkpoint.get(name)):
+            errors.append(f"overlay_{name}_invalid")
+
+    for name in ("cross_provider_transfer", "resume_validated"):
+        if type(lineage.get(name)) is not bool:
+            errors.append(f"overlay_lineage_{name}_must_be_boolean")
+
+    if not _is_zero_number(resource.get("maximum_cost_usd")):
+        errors.append("overlay_resource_maximum_cost_usd_must_be_zero")
+    if resource.get("materially_paid") is not False:
+        errors.append("overlay_resource_materially_paid_must_be_false")
+    if output.get("content_addressed") is not True:
+        errors.append("overlay_output_content_addressed_must_be_true")
+
+
 def validate_session_overlay_contract(value: Any) -> list[str]:
-    """Reject drift and extra fields before they can influence a run packet."""
+    """Reject drift and scalar coercions before they can influence a run packet."""
     if not isinstance(value, dict):
         return ["overlay_root_must_be_object"]
 
@@ -145,7 +192,13 @@ def validate_session_overlay_contract(value: Any) -> list[str]:
     unexpected = set(value) - _ROOT_KEYS
     errors.extend(f"overlay_root_{name}_missing" for name in sorted(missing))
     errors.extend(f"overlay_root_{name}_unexpected" for name in sorted(unexpected))
-    if value.get("schema_version") != OVERLAY_SCHEMA_VERSION:
+
+    schema_version = value.get("schema_version")
+    if (
+        not isinstance(schema_version, int)
+        or isinstance(schema_version, bool)
+        or schema_version != OVERLAY_SCHEMA_VERSION
+    ):
         errors.append("overlay_schema_version_mismatch")
     if value.get("overlay_id") != OVERLAY_ID:
         errors.append("overlay_id_mismatch")
@@ -176,9 +229,21 @@ def validate_session_overlay_contract(value: Any) -> list[str]:
         "checkpoint",
         _SECTION_KEYS["checkpoint"],
     )
-    _exact_mapping(errors, checkpoint, "lineage", _SECTION_KEYS["lineage"])
-    for section in ("evaluation", "runtime", "resource", "output"):
+    lineage = _exact_mapping(errors, checkpoint, "lineage", _SECTION_KEYS["lineage"])
+    resource = _exact_mapping(errors, value, "resource", _SECTION_KEYS["resource"])
+    output = _exact_mapping(errors, value, "output", _SECTION_KEYS["output"])
+    for section in ("evaluation", "runtime"):
         _exact_mapping(errors, value, section, _SECTION_KEYS[section])
+
+    if value.get("status") == "READY_CANDIDATE":
+        _validate_ready_candidate_scalars(
+            errors,
+            scientific,
+            checkpoint,
+            lineage,
+            resource,
+            output,
+        )
     return sorted(set(errors))
 
 
