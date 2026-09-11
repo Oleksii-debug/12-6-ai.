@@ -83,6 +83,7 @@ def normalize_rendered_text(text: str) -> str:
             if lines and lines[-1] != "":
                 lines.append("")
             line = line.lstrip("\u00a0 ")
+        line = line.replace("\u00a0", " ")
         lines.append(line)
     while lines and not lines[0]:
         lines.pop(0)
