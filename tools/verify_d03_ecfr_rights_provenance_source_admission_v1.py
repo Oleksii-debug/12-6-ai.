@@ -42,7 +42,7 @@ AUTHORITY_KEYS = {
     "ownership_issue",
     "parent_issue",
     "source_request_pr",
-    "active_execution_issue",
+    "terminal_execution_evidence_issue",
     "request_path",
     "request_git_blob_sha1",
     "materializer_path",
@@ -108,10 +108,10 @@ UNIT_KEYS = {
 
 EXPECTED_AUTHORITY = {
     "swarm_control_issue": 723,
-    "ownership_issue": 1111,
+    "ownership_issue": 1234,
     "parent_issue": 672,
     "source_request_pr": 707,
-    "active_execution_issue": 1103,
+    "terminal_execution_evidence_issue": 1103,
     "request_path": str(EXPECTED_REQUEST_PATH),
     "request_git_blob_sha1": EXPECTED_REQUEST_BLOB_SHA1,
     "materializer_path": str(EXPECTED_MATERIALIZER_PATH),
@@ -319,7 +319,7 @@ def validate_policy(policy: dict[str, Any], *, verify_incumbent: bool = True) ->
         "ownership_issue",
         "parent_issue",
         "source_request_pr",
-        "active_execution_issue",
+        "terminal_execution_evidence_issue",
     ):
         _require_int(authority[key], label=f"project_authority.{key}", expected=EXPECTED_AUTHORITY[key])
     for key in (
