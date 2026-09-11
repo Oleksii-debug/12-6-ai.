@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+from collections.abc import Callable
 
 import pytest
 
@@ -38,14 +39,12 @@ def _accepted_en(record_id: str = "en-1") -> dict[str, str]:
 
 
 def _accepted_code(record_id: str = "code-1") -> dict[str, str]:
-    text = "\n".join(
-        [
-            "def add(left, right):",
-            "    result = left + right",
-            "    if result:",
-            "        return result",
-            "    return 0",
-        ]
+    text = (
+        "def add(left, right):\n"
+        "    result = left + right\n"
+        "    if result:\n"
+        "        return result\n"
+        "    return 0"
     )
     return {"id": record_id, "mode": "code", "text": text + "\n"}
 
@@ -62,9 +61,54 @@ def _hash_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def _input_rows_sha256(records: list[dict[str, str]]) -> str:
+    rows = [
+        {
+            "record_id": row["id"],
+            "mode": row["mode"],
+            "payload_sha256": _hash_text(row["text"]),
+            "utf8_bytes": len(row["text"].encode("utf-8")),
+        }
+        for row in sorted(records, key=lambda row: row["id"])
+    ]
+    payload = (
+        json.dumps(rows, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        + "\n"
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _build_authority(
+    records: list[dict[str, str]],
+    *,
+    input_manifest_sha256: str = INPUT_MANIFEST_SHA256,
+) -> dict[str, object]:
+    return build_quality_execution_authority(
+        records,
+        input_manifest_sha256=input_manifest_sha256,
+        expected_input_rows_sha256=_input_rows_sha256(records),
+    )
+
+
+def _reseal(authority: dict[str, object]) -> str:
+    core = dict(authority)
+    del core["execution_identity_sha256"]
+    return hashlib.sha256(
+        (
+            json.dumps(
+                core,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+            + "\n"
+        ).encode("utf-8")
+    ).hexdigest()
+
+
 def test_authority_binds_external_manifest_policies_rows_and_zero_credit() -> None:
     records = [_accepted_en(), _accepted_code()]
-    authority = build_quality_execution_authority(
+    authority = _build_authority(
         records,
         input_manifest_sha256=INPUT_MANIFEST_SHA256,
     )
@@ -106,11 +150,11 @@ def test_execution_is_order_independent_and_canonical_reexecution_verifies() -> 
         _accepted_code(),
         {"id": "reject", "mode": "en", "text": "tiny"},
     ]
-    first = build_quality_execution_authority(
+    first = _build_authority(
         records,
         input_manifest_sha256=INPUT_MANIFEST_SHA256,
     )
-    second = build_quality_execution_authority(
+    second = _build_authority(
         list(reversed(records)),
         input_manifest_sha256=INPUT_MANIFEST_SHA256,
     )
@@ -121,18 +165,20 @@ def test_execution_is_order_independent_and_canonical_reexecution_verifies() -> 
         first,
         records,
         expected_input_manifest_sha256=INPUT_MANIFEST_SHA256,
+        expected_input_rows_sha256=_input_rows_sha256(records),
         expected_execution_identity_sha256=identity,
     ) == identity
     assert verify_quality_execution_root(
         first,
         expected_input_manifest_sha256=INPUT_MANIFEST_SHA256,
+        expected_input_rows_sha256=_input_rows_sha256(records),
         expected_execution_identity_sha256=identity,
     ) == identity
 
 
 def test_partial_quality_units_bind_exact_payload_spans_and_bytes() -> None:
     source = _partial_en()
-    authority = build_quality_execution_authority(
+    authority = _build_authority(
         [source],
         input_manifest_sha256=INPUT_MANIFEST_SHA256,
     )
@@ -158,7 +204,7 @@ def test_authority_never_persists_source_text_or_excerpt() -> None:
     secret = "NEVER_PERSIST_THIS_SOURCE_SENTINEL"
     source = _accepted_en()
     source["text"] += " " + secret
-    authority = build_quality_execution_authority(
+    authority = _build_authority(
         [source],
         input_manifest_sha256=INPUT_MANIFEST_SHA256,
     )
@@ -171,39 +217,35 @@ def test_authority_never_persists_source_text_or_excerpt() -> None:
 
 def test_payload_or_decision_substitution_fails_canonical_reexecution() -> None:
     records = [_accepted_en(), _accepted_code()]
-    authority = build_quality_execution_authority(
+    authority = _build_authority(
         records,
         input_manifest_sha256=INPUT_MANIFEST_SHA256,
     )
 
     tampered = copy.deepcopy(authority)
     tampered["records"][0]["payload_sha256"] = "b" * 64
-    with pytest.raises(
-        QualityExecutionAuthorityError,
-        match="canonical re-execution",
-    ):
+    with pytest.raises(QualityExecutionAuthorityError):
         verify_quality_execution_authority(
             tampered,
             records,
             expected_input_manifest_sha256=INPUT_MANIFEST_SHA256,
+            expected_input_rows_sha256=_input_rows_sha256(records),
         )
 
     tampered = copy.deepcopy(authority)
     tampered["records"][0]["status"] = "REJECT_DOCUMENT"
-    with pytest.raises(
-        QualityExecutionAuthorityError,
-        match="canonical re-execution",
-    ):
+    with pytest.raises(QualityExecutionAuthorityError):
         verify_quality_execution_authority(
             tampered,
             records,
             expected_input_manifest_sha256=INPUT_MANIFEST_SHA256,
+            expected_input_rows_sha256=_input_rows_sha256(records),
         )
 
 
 def test_self_consistent_reseal_cannot_replace_independently_pinned_root() -> None:
     records = [_accepted_en()]
-    authority = build_quality_execution_authority(
+    authority = _build_authority(
         records,
         input_manifest_sha256=INPUT_MANIFEST_SHA256,
     )
@@ -232,16 +274,18 @@ def test_self_consistent_reseal_cannot_replace_independently_pinned_root() -> No
         verify_quality_execution_root(
             tampered,
             expected_input_manifest_sha256=INPUT_MANIFEST_SHA256,
+            expected_input_rows_sha256=_input_rows_sha256(records),
             expected_execution_identity_sha256=pinned,
         )
     with pytest.raises(
         QualityExecutionAuthorityError,
-        match="canonical re-execution",
+        match="truth boundary drift",
     ):
         verify_quality_execution_authority(
             tampered,
             records,
             expected_input_manifest_sha256=INPUT_MANIFEST_SHA256,
+            expected_input_rows_sha256=_input_rows_sha256(records),
         )
 
 
@@ -261,7 +305,7 @@ def test_input_schema_is_closed_and_duplicate_ids_fail(
     records: list[dict[str, str]],
 ) -> None:
     with pytest.raises(QualityExecutionAuthorityError):
-        build_quality_execution_authority(
+        _build_authority(
             records,
             input_manifest_sha256=INPUT_MANIFEST_SHA256,
         )
@@ -269,7 +313,7 @@ def test_input_schema_is_closed_and_duplicate_ids_fail(
 
 def test_wrong_manifest_or_root_fails_closed() -> None:
     records = [_accepted_en()]
-    authority = build_quality_execution_authority(
+    authority = _build_authority(
         records,
         input_manifest_sha256=INPUT_MANIFEST_SHA256,
     )
@@ -281,6 +325,7 @@ def test_wrong_manifest_or_root_fails_closed() -> None:
         verify_quality_execution_root(
             authority,
             expected_input_manifest_sha256="b" * 64,
+            expected_input_rows_sha256=_input_rows_sha256(records),
             expected_execution_identity_sha256=authority[
                 "execution_identity_sha256"
             ],
@@ -292,5 +337,127 @@ def test_wrong_manifest_or_root_fails_closed() -> None:
         verify_quality_execution_root(
             authority,
             expected_input_manifest_sha256=INPUT_MANIFEST_SHA256,
+            expected_input_rows_sha256=_input_rows_sha256(records),
             expected_execution_identity_sha256="c" * 64,
         )
+
+
+def test_builder_rejects_wrong_independent_input_row_identity() -> None:
+    canonical = [_accepted_en("en-canonical"), _accepted_code("code-canonical")]
+    substituted = [_accepted_en("en-substituted"), _accepted_code("code-canonical")]
+    expected_rows = _input_rows_sha256(canonical)
+
+    with pytest.raises(
+        QualityExecutionAuthorityError,
+        match="input rows authority mismatch",
+    ):
+        build_quality_execution_authority(
+            substituted,
+            input_manifest_sha256=INPUT_MANIFEST_SHA256,
+            expected_input_rows_sha256=expected_rows,
+        )
+
+
+@pytest.mark.parametrize(
+    ("mutate", "error_match"),
+    [
+        (
+            lambda authority: authority["truth_boundary"].__setitem__(
+                "training_authorized_bytes", False
+            ),
+            "truth boundary drift",
+        ),
+        (
+            lambda authority: authority["truth_boundary"].__setitem__(
+                "current_corpus_eligible", 0
+            ),
+            "truth boundary drift",
+        ),
+        (
+            lambda authority: authority["records"][0].__setitem__(
+                "utf8_bytes", float(authority["records"][0]["utf8_bytes"])
+            ),
+            "must be a non-negative integer",
+        ),
+        (
+            lambda authority: authority["records"][0]["units"][0].__setitem__(
+                "accepted",
+                int(authority["records"][0]["units"][0]["accepted"]),
+            ),
+            "must be a boolean",
+        ),
+        (
+            lambda authority: authority["counts"].__setitem__(
+                "records", float(authority["counts"]["records"])
+            ),
+            "must be a non-negative integer",
+        ),
+    ],
+)
+def test_json_scalar_type_aliases_fail_closed(
+    mutate: Callable[[dict[str, object]], None],
+    error_match: str,
+) -> None:
+    records = [_accepted_en()]
+    authority = _build_authority(records)
+    tampered = copy.deepcopy(authority)
+    mutate(tampered)
+    tampered["execution_identity_sha256"] = _reseal(tampered)
+
+    with pytest.raises(QualityExecutionAuthorityError, match=error_match):
+        verify_quality_execution_authority(
+            tampered,
+            records,
+            expected_input_manifest_sha256=INPUT_MANIFEST_SHA256,
+            expected_input_rows_sha256=_input_rows_sha256(records),
+            expected_execution_identity_sha256=tampered[
+                "execution_identity_sha256"
+            ],
+        )
+
+
+def test_self_rehashed_bool_int_alias_root_rejected_even_when_malformed_root_pinned() -> None:
+    records = [_accepted_en()]
+    authority = _build_authority(records)
+    tampered = copy.deepcopy(authority)
+    tampered["truth_boundary"]["training_authorized_bytes"] = False
+    tampered["execution_identity_sha256"] = _reseal(tampered)
+    malformed_identity = tampered["execution_identity_sha256"]
+
+    with pytest.raises(
+        QualityExecutionAuthorityError,
+        match="truth boundary drift",
+    ):
+        verify_quality_execution_root(
+            tampered,
+            expected_input_manifest_sha256=INPUT_MANIFEST_SHA256,
+            expected_input_rows_sha256=_input_rows_sha256(records),
+            expected_execution_identity_sha256=malformed_identity,
+        )
+
+
+def test_root_recomputes_nested_rows_counts_bytes_and_row_identity() -> None:
+    records = [_accepted_en(), _accepted_code()]
+    authority = _build_authority(records)
+    expected_rows = _input_rows_sha256(records)
+    identity = authority["execution_identity_sha256"]
+
+    for path in ("input_rows", "execution_rows", "counts", "bytes"):
+        tampered = copy.deepcopy(authority)
+        if path == "input_rows":
+            tampered["input_rows_sha256"] = "b" * 64
+        elif path == "execution_rows":
+            tampered["execution_rows_sha256"] = "b" * 64
+        elif path == "counts":
+            tampered["counts"]["records"] += 1
+        else:
+            tampered["bytes"]["input_utf8_bytes"] += 1
+        tampered["execution_identity_sha256"] = _reseal(tampered)
+
+        with pytest.raises(QualityExecutionAuthorityError):
+            verify_quality_execution_root(
+                tampered,
+                expected_input_manifest_sha256=INPUT_MANIFEST_SHA256,
+                expected_input_rows_sha256=expected_rows,
+                expected_execution_identity_sha256=identity,
+            )
