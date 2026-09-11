@@ -17,6 +17,7 @@ from twelve_six.learned20m_readiness import (
     scientific_role_metadata,
     trusted_readiness_inputs,
 )
+from twelve_six.readiness_trust_root import trusted_readiness_bundle_sha256
 
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = ROOT / "configs/research/r01_learned20m_launch_readiness_v1.json"
@@ -530,7 +531,6 @@ def test_extreme_integer_costs_remain_deterministic_and_do_not_crash() -> None:
     assert result.material_training_authorized
 
 
-
 def test_legacy_authority_only_tokens_cannot_satisfy_readiness() -> None:
     data = _make_local_pilot_ready()
     legacy: set[str] = set()
@@ -689,16 +689,49 @@ def test_canonical_cli_accepts_separate_trusted_binding_bundle(tmp_path: Path) -
     _add_material_authorizations(data)
     packet_path = tmp_path / "packet.json"
     bindings_path = tmp_path / "bindings.json"
-    packet_path.write_text(json.dumps(data), encoding="utf-8")
-    bindings_path.write_text(
-        json.dumps(
-            _trusted_bundle(
-                data,
-                verified_authorization_refs=(COMPUTE_REF, TRAINING_REF),
-            )
-        ),
-        encoding="utf-8",
+    bundle = _trusted_bundle(
+        data,
+        verified_authorization_refs=(COMPUTE_REF, TRAINING_REF),
     )
+    expected = trusted_readiness_bundle_sha256(bundle)
+    assert expected is not None
+    packet_path.write_text(json.dumps(data), encoding="utf-8")
+    bindings_path.write_text(json.dumps(bundle), encoding="utf-8")
+    tool = ROOT / "tools/assess_r01_learned20m_launch_readiness.py"
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(ROOT / "src")
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(tool),
+            str(packet_path),
+            "--trusted-bindings",
+            str(bindings_path),
+            "--expected-trusted-bindings-sha256",
+            expected,
+        ],
+        cwd=ROOT,
+        env=env,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, completed.stderr or completed.stdout
+    output = json.loads(completed.stdout)
+    assert output["material_training_authorized"] is True
+
+
+def test_canonical_cli_rejects_unpinned_trusted_binding_bundle(tmp_path: Path) -> None:
+    data = _make_compute_request_ready()
+    _add_material_authorizations(data)
+    packet_path = tmp_path / "packet.json"
+    bindings_path = tmp_path / "bindings.json"
+    bundle = _trusted_bundle(
+        data,
+        verified_authorization_refs=(COMPUTE_REF, TRAINING_REF),
+    )
+    packet_path.write_text(json.dumps(data), encoding="utf-8")
+    bindings_path.write_text(json.dumps(bundle), encoding="utf-8")
     tool = ROOT / "tools/assess_r01_learned20m_launch_readiness.py"
     env = dict(os.environ)
     env["PYTHONPATH"] = str(ROOT / "src")
@@ -716,9 +749,8 @@ def test_canonical_cli_accepts_separate_trusted_binding_bundle(tmp_path: Path) -
         capture_output=True,
         text=True,
     )
-    assert completed.returncode == 0, completed.stderr or completed.stdout
-    output = json.loads(completed.stdout)
-    assert output["material_training_authorized"] is True
+    assert completed.returncode == 2
+    assert "--expected-trusted-bindings-sha256" in completed.stdout
 
 
 def test_canonical_cli_without_trusted_bindings_remains_fail_closed(tmp_path: Path) -> None:
