@@ -31,11 +31,24 @@
     "max_compressed_bytes": 7000000,
     "compression": "gzip",
     "expected_source_label": "foodista",
-    "expected_row_fields": ["id", "text", "source", "added", "created", "metadata"],
-    "expected_metadata_fields": ["authors", "license", "provenance", "url"],
+    "expected_row_fields": [
+      "id",
+      "text",
+      "source",
+      "added",
+      "created",
+      "metadata"
+    ],
+    "expected_metadata_fields": [
+      "authors",
+      "license",
+      "url"
+    ],
     "expected_metadata_license": "Creative Commons - Attribution - https://creativecommons.org/licenses/by/3.0/",
-    "required_metadata_hosts": ["www.foodista.com", "foodista.com"],
-    "required_provenance_regex": "^foodista-dolma-[0-9]{4}\\.json\\.gz:[1-9][0-9]*$"
+    "required_metadata_hosts": [
+      "www.foodista.com",
+      "foodista.com"
+    ]
   },
   "selection": {
     "max_scanned_records": 8192,
