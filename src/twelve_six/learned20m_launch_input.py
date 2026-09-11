@@ -616,8 +616,30 @@ def verify_launch_input_authority(
         )
     _require_sha256(carrier.get("evidence_sha256"), "carrier.evidence_sha256")
 
-    if value.get("claim_boundary") != _CLAIM_BOUNDARY:
-        raise LaunchInputAuthorityError("launch-input claim boundary drift")
+    claim_boundary = value.get("claim_boundary")
+    if not isinstance(claim_boundary, Mapping) or set(claim_boundary) != set(
+        _CLAIM_BOUNDARY
+    ):
+        raise LaunchInputAuthorityError(
+            "launch-input claim boundary has unexpected or missing fields"
+        )
+    for field in (
+        "contains_source_text",
+        "final_test_payload_consumed",
+        "authorizes_training",
+        "authorizes_compute",
+        "replay_padding_or_replacement_can_increase_unique_capacity",
+    ):
+        if claim_boundary.get(field) is not False:
+            raise LaunchInputAuthorityError(
+                f"launch-input claim boundary {field} must be exact false boolean"
+            )
+    exposure = claim_boundary.get("authorized_optimized_target_exposure")
+    if isinstance(exposure, bool) or not isinstance(exposure, int) or exposure != 0:
+        raise LaunchInputAuthorityError(
+            "launch-input claim boundary authorized_optimized_target_exposure "
+            "must be exact integer zero"
+        )
 
     observed = _require_sha256(
         value.get("authority_identity_sha256"), "authority_identity_sha256"
