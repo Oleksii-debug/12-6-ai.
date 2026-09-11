@@ -283,7 +283,7 @@ def validate_repository_bindings(
         "evaluation_role": "TRAINING_CANDIDATE_ONLY",
         "final_test_excluded": True,
         "collector_path_status": "PRESENT_AT_AUDITED_CODE_COMMIT",
-        "audited_collector_path": "sources/loc_books/books.py",
+        "audited_collector_path": "sources/loc_books",
     }
     for field, expected in expected_row_fields.items():
         _require_exact_scalar(row.get(field), expected, f"generic registry row.{field}")
