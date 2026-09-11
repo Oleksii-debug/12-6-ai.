@@ -1,0 +1,60 @@
+name: D03 eCFR 1170 temporary execution
+
+on:
+  push:
+    branches:
+      - swarm/1170-ecfr-exec-v2
+
+permissions:
+  contents: read
+
+jobs:
+  materialize-windows:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify pinned request and materializer tests
+        shell: pwsh
+        run: python -m pytest -q tests/test_d03_ecfr_point_in_time_materialization.py
+      - name: Execute exact merged materializer
+        shell: pwsh
+        run: |
+          $out = Join-Path $env:RUNNER_TEMP 'ecfr1170'
+          python tools/materialize_d03_ecfr_point_in_time.py configs/data/d03_ecfr_point_in_time_request_v1.json --output-dir $out
+          Get-Content (Join-Path $out 'ecfr-2026-09-03-title-1.evidence.json')
+      - name: Retain text-free evidence only
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ecfr1170-windows-evidence
+          path: ${{ runner.temp }}/ecfr1170/*.evidence.json
+          if-no-files-found: error
+          retention-days: 1
+
+  materialize-macos:
+    runs-on: macos-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify pinned request and materializer tests
+        run: python -m pytest -q tests/test_d03_ecfr_point_in_time_materialization.py
+      - name: Execute exact merged materializer
+        run: |
+          out="$RUNNER_TEMP/ecfr1170"
+          python tools/materialize_d03_ecfr_point_in_time.py configs/data/d03_ecfr_point_in_time_request_v1.json --output-dir "$out"
+          cat "$out/ecfr-2026-09-03-title-1.evidence.json"
+      - name: Retain text-free evidence only
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ecfr1170-macos-evidence
+          path: ${{ runner.temp }}/ecfr1170/*.evidence.json
+          if-no-files-found: error
+          retention-days: 1
