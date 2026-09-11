@@ -32,7 +32,7 @@ EXPECTED_EVIDENCE_ID = "23ad2d93d3e4f1d830feeed0ef446e52bffa201ae517590accf08c67
 def _git_blob_sha1(path: Path) -> str:
     payload = path.read_bytes()
     header = f"blob {len(payload)}\0".encode("ascii")
-    return hashlib.sha1(header + payload).hexdigest()  # noqa: S324
+    return hashlib.sha1(header + payload).hexdigest()
 
 
 def _canonical(value: object) -> bytes:
