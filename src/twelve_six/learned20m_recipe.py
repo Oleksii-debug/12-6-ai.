@@ -505,11 +505,21 @@ def bind_terminal_authorities(
     bindings: Any,
     *,
     trusted_authorities: Any,
+    expected_trusted_authorities_identity_sha256: Any,
 ) -> dict[str, Any]:
-    """Bind externally trusted terminal roles and qualify only the frozen recipe."""
+    """Bind externally anchored terminal roles and qualify only the frozen recipe."""
     valid_policy = validate_policy(policy)
-    valid_bindings = _validate_bindings(bindings, trusted_authorities)
     validated_trusted = _validate_trusted_authorities(trusted_authorities)
+    expected_trusted_identity = _sha256(
+        expected_trusted_authorities_identity_sha256,
+        "expected_trusted_authorities_identity_sha256",
+    )
+    trusted_identity = identity_sha256(validated_trusted)
+    if trusted_identity != expected_trusted_identity:
+        raise RecipeValidationError(
+            "trusted authorities identity does not match external expectation"
+        )
+    valid_bindings = _validate_bindings(bindings, validated_trusted)
 
     available = valid_bindings["d04"]["unique_nonignored_causal_loss_positions"]
     runtime_budget = min(REQUESTED_TARGETS, available)
@@ -517,7 +527,6 @@ def bind_terminal_authorities(
         raise RecipeValidationError("terminal D04 capacity is below LEARN-345 meaningful floor")
 
     bindings_identity = identity_sha256(valid_bindings)
-    trusted_identity = identity_sha256(validated_trusted)
     core = {
         "schema": SESSION_SCHEMA,
         "status": "QUALIFIED_RECIPE_ONLY",
