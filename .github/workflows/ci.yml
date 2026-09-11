@@ -9,6 +9,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
+  actions: read
   contents: read
 
 jobs:
@@ -31,5 +32,219 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: python -m twelve_six.ci_workflow_policy --base "$BASE_SHA" --head "$HEAD_SHA"
-      - run: ruff check src tests
+      - run: ruff check src tests tools/execute_current_survivor_privacy_g06.py
       - run: pytest -q
+
+      - name: G06 replay — checkout exact terminal survivor Product
+        if: github.event_name == 'pull_request' && github.head_ref == 'd03/g06-privacy-execution-authority-1365-v1'
+        uses: actions/checkout@v4
+        with:
+          ref: e3f0ead971091bd4a42316dfcc97aa1c3b116f66
+          path: _survivor_product
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: G06 replay — checkout exact historical DATA526 materializers
+        if: github.event_name == 'pull_request' && github.head_ref == 'd03/g06-privacy-execution-authority-1365-v1'
+        run: |
+          set -euo pipefail
+          git clone --no-checkout --filter=blob:none https://github.com/Oleksii-debug/12-6-ai..git _survivor_product/_data526_hist
+          git -C _survivor_product/_data526_hist fetch --depth=1 origin 70d6ccc87396d129d00771bbf0b6b29bc673bfc4
+          git -C _survivor_product/_data526_hist checkout --detach FETCH_HEAD
+          test "$(git -C _survivor_product/_data526_hist rev-parse HEAD)" = "70d6ccc87396d129d00771bbf0b6b29bc673bfc4"
+          git clone --no-checkout --filter=blob:none https://github.com/Oleksii-debug/12-6-ai..git _survivor_product/_data526_v7
+          git -C _survivor_product/_data526_v7 fetch --depth=1 origin d3333ec1b4a508df232a5aefccd6686adda745fb
+          git -C _survivor_product/_data526_v7 checkout --detach FETCH_HEAD
+          test "$(git -C _survivor_product/_data526_v7 rev-parse HEAD)" = "d3333ec1b4a508df232a5aefccd6686adda745fb"
+
+      - name: G06 replay — install exact historical extraction dependencies
+        if: github.event_name == 'pull_request' && github.head_ref == 'd03/g06-privacy-execution-authority-1365-v1'
+        run: |
+          set -euo pipefail
+          python -m pip install --require-hashes --no-deps \
+            -r _survivor_product/_data526_hist/requirements/locks/linux-x86_64/dev.lock.txt
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends poppler-utils
+          pdftotext -v
+
+      - name: G06 replay — retrieve immutable upstream artifacts twice
+        if: github.event_name == 'pull_request' && github.head_ref == 'd03/g06-privacy-execution-authority-1365-v1'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          for build in a b; do
+            curl --fail --silent --show-error --location \
+              -H "Authorization: Bearer $GITHUB_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/Oleksii-debug/12-6-ai./actions/artifacts/9600107886/zip" \
+              -o "/tmp/data213-${build}.zip"
+            curl --fail --silent --show-error --location \
+              -H "Authorization: Bearer $GITHUB_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/Oleksii-debug/12-6-ai./actions/artifacts/10032510626/zip" \
+              -o "/tmp/v8-${build}.zip"
+          done
+          test "$(sha256sum /tmp/data213-a.zip | cut -d' ' -f1)" = \
+            "927e10ccb83f919d57a8b78e3ea9cae72f9d4e0232401043234a35eec150074d"
+          test "$(sha256sum /tmp/data213-b.zip | cut -d' ' -f1)" = \
+            "927e10ccb83f919d57a8b78e3ea9cae72f9d4e0232401043234a35eec150074d"
+          test "$(sha256sum /tmp/v8-a.zip | cut -d' ' -f1)" = \
+            "960c678fdbe6245658fa69c39edf355eb7b38ef39b7f8f833155c894dbd90385"
+          test "$(sha256sum /tmp/v8-b.zip | cut -d' ' -f1)" = \
+            "960c678fdbe6245658fa69c39edf355eb7b38ef39b7f8f833155c894dbd90385"
+          cmp /tmp/data213-a.zip /tmp/data213-b.zip
+          cmp /tmp/v8-a.zip /tmp/v8-b.zip
+          rm -rf /tmp/v8-a /tmp/v8-b
+          mkdir -p /tmp/v8-a /tmp/v8-b
+          unzip -q /tmp/v8-a.zip -d /tmp/v8-a
+          unzip -q /tmp/v8-b.zip -d /tmp/v8-b
+
+      - name: G06 replay — rebuild exact post-1247 survivor graph
+        if: github.event_name == 'pull_request' && github.head_ref == 'd03/g06-privacy-execution-authority-1365-v1'
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/historical-a /tmp/historical-b /tmp/bulk-a /tmp/bulk-b \
+            /tmp/current-a /tmp/current-b /tmp/post1247
+          mkdir -p /tmp/historical-a /tmp/historical-b /tmp/bulk-a /tmp/bulk-b \
+            /tmp/current-a /tmp/current-b /tmp/post1247
+
+          (
+            cd _survivor_product/_data526_hist
+            python tools/run_data526_materializer_data_only.py \
+              --v7-root ../_data526_v7 \
+              --data213-zip /tmp/data213-a.zip \
+              --records-jsonl /tmp/historical-a/records.jsonl \
+              --inventory-json /tmp/historical-a/inventory.json \
+              --evidence-json /tmp/historical-a/evidence.json
+            python tools/run_data526_materializer_data_only.py \
+              --v7-root ../_data526_v7 \
+              --data213-zip /tmp/data213-b.zip \
+              --records-jsonl /tmp/historical-b/records.jsonl \
+              --inventory-json /tmp/historical-b/inventory.json \
+              --evidence-json /tmp/historical-b/evidence.json
+          )
+          cmp /tmp/historical-a/records.jsonl /tmp/historical-b/records.jsonl
+          test "$(sha256sum /tmp/historical-a/records.jsonl | cut -d' ' -f1)" = \
+            "2f21f7655c9287bbc7424b410788f431f20f0936f445fefd26fcf6114b772dbd"
+
+          (
+            cd _survivor_product
+            python tools/materialize_data_bulk_code1_permissive_python_bundle.py \
+              --workspace /tmp/bulk-a --output /tmp/bulk-a-report.json
+            python tools/materialize_data_bulk_code1_permissive_python_bundle.py \
+              --workspace /tmp/bulk-b --output /tmp/bulk-b-report.json
+          )
+          cmp /tmp/bulk-a-report.json /tmp/bulk-b-report.json
+
+          (
+            cd _survivor_product
+            python tools/compose_data526_records_from_v8.py \
+              --historical-records-jsonl /tmp/historical-a/records.jsonl \
+              --bulk-report /tmp/bulk-a-report.json \
+              --bulk-workspace /tmp/bulk-a \
+              --v8-report /tmp/v8-a/v8-a.json \
+              --v8-survivors /tmp/v8-a/v8-survivors-a.json \
+              --records-jsonl /tmp/current-a/records.jsonl \
+              --inventory-json /tmp/current-a/inventory.json \
+              --evidence-json /tmp/current-a/evidence.json \
+              --execution-head-sha b5bf78ce8e74e74876838b80294a0a7e1ee1281b
+            python tools/compose_data526_records_from_v8.py \
+              --historical-records-jsonl /tmp/historical-b/records.jsonl \
+              --bulk-report /tmp/bulk-b-report.json \
+              --bulk-workspace /tmp/bulk-b \
+              --v8-report /tmp/v8-b/v8-a.json \
+              --v8-survivors /tmp/v8-b/v8-survivors-a.json \
+              --records-jsonl /tmp/current-b/records.jsonl \
+              --inventory-json /tmp/current-b/inventory.json \
+              --evidence-json /tmp/current-b/evidence.json \
+              --execution-head-sha b5bf78ce8e74e74876838b80294a0a7e1ee1281b
+          )
+          cmp /tmp/current-a/records.jsonl /tmp/current-b/records.jsonl
+          test "$(sha256sum /tmp/current-a/records.jsonl | cut -d' ' -f1)" = \
+            "18a933b2e637b4cff497f4acfbff31041d4c0ba21fba397af53d213edfd7a1b7"
+
+          (
+            cd _survivor_product
+            python tools/materialize_post1247_data526_survivors_v1.py \
+              --records-jsonl-a /tmp/current-a/records.jsonl \
+              --records-jsonl-b /tmp/current-b/records.jsonl \
+              --pre-materialization-evidence evidence/data526/v8/materialization_evidence.json \
+              --decontamination-evidence evidence/data232/current_reserved_decontamination_v1_terminal.json \
+              --survivor-records-jsonl /tmp/post1247/survivors.jsonl \
+              --inventory-json /tmp/post1247/record_inventory.json \
+              --evidence-json /tmp/post1247/materialization_evidence.json \
+              --execution-head-sha b5bf78ce8e74e74876838b80294a0a7e1ee1281b
+          )
+          test "$(sha256sum /tmp/post1247/survivors.jsonl | cut -d' ' -f1)" = \
+            "3f60cfe55435daf53908c492be358f36d7ebbc2ebee532c921a69ba92b2f6b25"
+
+      - name: G06 replay — execute canonical privacy twice and retain text-free evidence
+        if: github.event_name == 'pull_request' && github.head_ref == 'd03/g06-privacy-execution-authority-1365-v1'
+        run: |
+          set -euo pipefail
+          rm -rf artifacts/g06-current-survivor
+          mkdir -p artifacts/g06-current-survivor
+          python tools/execute_current_survivor_privacy_g06.py \
+            --survivor-records-jsonl /tmp/post1247/survivors.jsonl \
+            --inventory-json /tmp/post1247/record_inventory.json \
+            --output artifacts/g06-current-survivor/execution-a.json
+          python tools/execute_current_survivor_privacy_g06.py \
+            --survivor-records-jsonl /tmp/post1247/survivors.jsonl \
+            --inventory-json /tmp/post1247/record_inventory.json \
+            --output artifacts/g06-current-survivor/execution-b.json
+          cmp artifacts/g06-current-survivor/execution-a.json \
+            artifacts/g06-current-survivor/execution-b.json
+          python - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+
+          p = Path("artifacts/g06-current-survivor/execution-a.json")
+          raw = p.read_bytes()
+          evidence = json.loads(raw)
+          authority = evidence["privacy_execution_authority"]
+          assert evidence["execution_profile"] == "LOCAL_FREE"
+          assert evidence["dependency"]["survivor_record_count"] == 272
+          assert evidence["dependency"]["survivor_total_payload_bytes"] == 5_921_963
+          assert authority["counts"]["records"] == 272
+          assert sum(authority["counts"][key] for key in ("allow", "redact", "quarantine", "exclude")) == 272
+          assert authority["total_input_utf8_bytes"] == 5_921_963
+          assert evidence["truth_boundary"]["canonical_current_corpus_g06"] is False
+          assert evidence["truth_boundary"]["authorized_optimized_target_exposure"] == 0
+          assert evidence["truth_boundary"]["training_executed"] is False
+          assert evidence["truth_boundary"]["learned_weights_created"] is False
+          assert "normalized_payload" not in raw.decode("utf-8")
+          proof = {
+              "schema_version": "12-6.g06-current-survivor-repeat-proof.v1",
+              "execution_evidence_sha256": hashlib.sha256(raw).hexdigest(),
+              "evidence_identity_sha256": evidence["evidence_identity_sha256"],
+              "privacy_execution_identity_sha256": authority["execution_identity_sha256"],
+              "g06_input_rows_sha256": evidence["g06_input_rows_sha256"],
+              "counts": authority["counts"],
+              "detector_counts": authority["detector_counts"],
+              "total_input_utf8_bytes": authority["total_input_utf8_bytes"],
+              "repeat_execution_byte_identical": True,
+              "raw_payloads_retained": False,
+              "canonical_current_corpus_g06": False,
+              "authorized_optimized_target_exposure": 0,
+              "training_executed": False,
+              "learned_weights_created": False,
+          }
+          Path("artifacts/g06-current-survivor/repeat-proof.json").write_text(
+              json.dumps(proof, sort_keys=True, separators=(",", ":")) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          rm -f artifacts/g06-current-survivor/execution-b.json
+          rm -rf /tmp/post1247 /tmp/current-a /tmp/current-b /tmp/historical-a \
+            /tmp/historical-b /tmp/bulk-a /tmp/bulk-b
+
+      - name: G06 replay — upload text-free real execution evidence
+        if: github.event_name == 'pull_request' && github.head_ref == 'd03/g06-privacy-execution-authority-1365-v1'
+        uses: actions/upload-artifact@v4
+        with:
+          name: g06-current-survivor-real-${{ github.event.pull_request.head.sha }}
+          if-no-files-found: error
+          retention-days: 90
+          path: artifacts/g06-current-survivor/
