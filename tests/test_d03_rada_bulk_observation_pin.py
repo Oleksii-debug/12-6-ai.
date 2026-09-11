@@ -259,10 +259,40 @@ def test_training_credit_attack_fails(monkeypatch: pytest.MonkeyPatch) -> None:
     archive, probe, _, config = _fixture()
     probe = copy.deepcopy(probe)
     config = copy.deepcopy(config)
-    _bind_fixture_authority(monkeypatch, config)
     probe["training_authorized_bytes"] = 1
     probe_bytes = _rehash_probe(probe, config)
-    with pytest.raises(mod.ObservationPinError):
+    _bind_fixture_authority(monkeypatch, config)
+    with pytest.raises(
+        mod.ObservationPinError, match="probe unexpectedly grants training bytes"
+    ):
+        mod.pin_observation(archive, probe, probe_bytes, config)
+
+
+def test_claim_boundary_training_bytes_false_alias_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    archive, probe, probe_bytes, config = _fixture()
+    config = copy.deepcopy(config)
+    config["claim_boundary"]["training_authorized_bytes"] = False
+    _bind_fixture_authority(monkeypatch, config)
+    with pytest.raises(
+        mod.ObservationPinError, match="pin must authorize zero training bytes"
+    ):
+        mod.pin_observation(archive, probe, probe_bytes, config)
+
+
+def test_probe_training_bytes_false_alias_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    archive, probe, _, config = _fixture()
+    probe = copy.deepcopy(probe)
+    config = copy.deepcopy(config)
+    probe["training_authorized_bytes"] = False
+    probe_bytes = _rehash_probe(probe, config)
+    _bind_fixture_authority(monkeypatch, config)
+    with pytest.raises(
+        mod.ObservationPinError, match="probe unexpectedly grants training bytes"
+    ):
         mod.pin_observation(archive, probe, probe_bytes, config)
 
 
