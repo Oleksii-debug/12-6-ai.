@@ -71,6 +71,8 @@ CANDIDATE_KEYS = frozenset(
 )
 # The immutable HF raw snapshot normalizes scraper fields into top-level date,
 # author and type columns; metadata retains only the source URL and license.
+# A raw author may be missing on rows that are never retained. Attribution is
+# required fail-closed only after an exact raw row is matched to a candidate.
 RAW_KEYS = frozenset(
     {"id", "text", "source", "date", "author", "type", "added", "metadata"}
 )
@@ -84,6 +86,10 @@ class AttributionError(RuntimeError):
 def _require(condition: bool, message: str) -> None:
     if not condition:
         raise AttributionError(message)
+
+
+def _require_zero_int(value: Any, message: str) -> None:
+    _require(type(value) is int and value == 0, message)
 
 
 def _canonical_bytes(value: Any) -> bytes:
@@ -165,9 +171,9 @@ def _validate_config(config: dict[str, Any]) -> None:
     boundary = config.get("truth_boundary")
     _require(isinstance(boundary, dict), "truth boundary missing")
     _require(boundary.get("canonical_corpus_admitted") is False, "corpus admission drift")
-    _require(boundary.get("training_authorized_bytes") == 0, "training credit drift")
-    _require(
-        boundary.get("authorized_optimized_target_exposure") == 0,
+    _require_zero_int(boundary.get("training_authorized_bytes"), "training credit drift")
+    _require_zero_int(
+        boundary.get("authorized_optimized_target_exposure"),
         "optimized-target exposure drift",
     )
     _require(boundary.get("tokenizer_fit_authorized") is False, "tokenizer gate drift")
@@ -184,7 +190,7 @@ def _validate_raw_row(
     row: dict[str, Any],
     *,
     expected_type: str,
-) -> tuple[tuple[str, str], str]:
+) -> tuple[tuple[str, str], Any]:
     _require(set(row) == RAW_KEYS, "raw PDR row schema drift")
     record_id = row.get("id")
     _require(isinstance(record_id, str) and record_id.strip(), "raw PDR id missing")
@@ -193,13 +199,12 @@ def _validate_raw_row(
     _require(isinstance(row.get("date"), str), "raw PDR date must be a string")
     _require(isinstance(row.get("added"), str), "raw PDR added must be a string")
     _require(row.get("type") == expected_type, "raw PDR type drift")
-    author = _validate_author(row.get("author"))
     metadata = row.get("metadata")
     _require(isinstance(metadata, dict), "raw PDR metadata missing")
     _require(set(metadata) == RAW_METADATA_KEYS, "raw PDR metadata schema drift")
     _require(metadata.get("license") == EXPECTED_LICENSE, "raw PDR license drift")
     origin_url = _validate_pdr_url(metadata.get("url"))
-    return _raw_key(record_id.strip(), origin_url), author
+    return _raw_key(record_id.strip(), origin_url), row.get("author")
 
 
 def _validate_candidate(row: dict[str, Any]) -> tuple[str, str]:
@@ -251,15 +256,15 @@ def build_sidecar(
     raw_rows_by_type: dict[str, list[dict[str, Any]]],
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     _require(bool(candidate_rows), "candidate rows must be nonempty")
-    raw_index: dict[tuple[str, str], str] = {}
+    raw_index: dict[tuple[str, str], Any] = {}
     for source_type in ("collection", "essay"):
         rows = raw_rows_by_type.get(source_type)
         _require(isinstance(rows, list), f"raw {source_type} rows missing")
         for row in rows:
             _require(isinstance(row, dict), "raw PDR row must be an object")
-            key, author = _validate_raw_row(row, expected_type=source_type)
+            key, author_value = _validate_raw_row(row, expected_type=source_type)
             _require(key not in raw_index, "duplicate raw PDR record identity")
-            raw_index[key] = author
+            raw_index[key] = author_value
 
     sidecar: list[dict[str, Any]] = []
     seen_candidate_keys: set[tuple[str, str]] = set()
@@ -269,7 +274,7 @@ def build_sidecar(
         _require(key not in seen_candidate_keys, "duplicate candidate record identity")
         seen_candidate_keys.add(key)
         _require(key in raw_index, "candidate has no exact raw attribution record")
-        author = raw_index[key]
+        author = _validate_author(raw_index[key])
         sidecar.append(
             {
                 "schema_version": SCHEMA,

@@ -130,6 +130,20 @@ def test_sidecar_is_deterministic_and_preserves_candidate_order() -> None:
     assert [row["record_id"] for row in first[0]] == ["essay-b", "essay-a"]
 
 
+def test_unselected_missing_author_does_not_block_retained_candidate() -> None:
+    raw = _raw_vector(
+        _raw("essay-unselected", author=None),
+        _raw("essay-a", author="Ada Example"),
+    )
+
+    sidecar, report = pdr.build_sidecar([_candidate("essay-a")], raw)
+
+    assert [row["record_id"] for row in sidecar] == ["essay-a"]
+    assert sidecar[0]["attribution"]["author"] == "Ada Example"
+    assert report["selected_record_count"] == 1
+    assert report["training_authorized_bytes"] == 0
+
+
 def test_exact_candidate_reader_binds_bytes_hash_count_and_projection(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -219,7 +233,9 @@ def test_candidate_training_promotion_fails_closed() -> None:
     [
         (("common_pile_rights_authority", "project_review_status"), "PASS", "REVIEW_REQUIRED"),
         (("truth_boundary", "training_authorized_bytes"), 1, "training credit drift"),
+        (("truth_boundary", "training_authorized_bytes"), False, "training credit drift"),
         (("truth_boundary", "authorized_optimized_target_exposure"), 1, "exposure drift"),
+        (("truth_boundary", "authorized_optimized_target_exposure"), False, "exposure drift"),
         (("source", "revision"), "0" * 40, "source revision drift"),
     ],
 )
