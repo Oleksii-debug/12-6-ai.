@@ -33,6 +33,7 @@ from twelve_six.scale141_resume_sidecar import (
 POINTER_SCHEMA = "12-6.scale141-recovery-pointer.v1"
 _GENERATION = re.compile(r"^generation-(\d{8})$")
 CURRENT_NAME = "current.json"
+MAX_POINTER_BYTES = 64 * 1024
 
 
 class RecoveryLifecycleError(RuntimeError):
@@ -169,13 +170,21 @@ def _read_pointer_snapshot(path: Path) -> bytes:
             raise RecoveryLifecycleError("recovery pointer must be a regular non-symlink file")
         if (before.st_dev, before.st_ino) != (opened.st_dev, opened.st_ino):
             raise RecoveryLifecycleError("recovery pointer changed while opening")
+        if opened.st_size > MAX_POINTER_BYTES:
+            raise RecoveryLifecycleError("recovery pointer exceeds maximum supported size")
+
+        remaining = MAX_POINTER_BYTES + 1
         chunks: list[bytes] = []
-        while True:
-            chunk = os.read(fd, 1024 * 1024)
+        while remaining > 0:
+            chunk = os.read(fd, min(1024 * 1024, remaining))
             if not chunk:
                 break
             chunks.append(chunk)
-        return b"".join(chunks)
+            remaining -= len(chunk)
+        snapshot = b"".join(chunks)
+        if len(snapshot) > MAX_POINTER_BYTES:
+            raise RecoveryLifecycleError("recovery pointer exceeds maximum supported size")
+        return snapshot
     except OSError as exc:
         raise RecoveryLifecycleError("recovery pointer is unreadable") from exc
     finally:
