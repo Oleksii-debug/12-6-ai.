@@ -8,8 +8,8 @@ import pytest
 
 from twelve_six.common_pile_loc_rights import (
     DATASET_CONTRACT,
-    LocSourceRightsError,
     POLICY_IDENTITY,
+    LocSourceRightsError,
     git_blob_sha1,
     policy_identity,
     validate_policy,
