@@ -74,6 +74,7 @@ _RESUME_REFERENCE_KEYS = frozenset(
         "schema",
         "directory",
         "file",
+        "file_bytes",
         "file_sha256",
         "payload_sha256",
         "checkpoint_manifest_sha256",
@@ -114,6 +115,13 @@ def _require_nonnegative_int(value: Any, label: str) -> int:
     if not isinstance(value, int) or isinstance(value, bool) or value < 0:
         raise ResumeSidecarError(f"{label} must be a non-negative integer")
     return value
+
+
+def _require_positive_int(value: Any, label: str) -> int:
+    observed = _require_nonnegative_int(value, label)
+    if observed == 0:
+        raise ResumeSidecarError(f"{label} must be a positive integer")
+    return observed
 
 
 def _d04_state_hash(value: Mapping[str, Any]) -> str:
@@ -368,10 +376,14 @@ def publish_resume_sidecar(
     )
     directory = _write_payload_directory(recovery_root, generation, payload)
     file_path = directory / SIDECAR_FILE
+    file_bytes = file_path.stat().st_size
+    if file_bytes <= 0:
+        raise ResumeSidecarError("published recovery resume sidecar has invalid byte length")
     return {
         "schema": SIDECAR_SCHEMA,
         "directory": f"{SIDECAR_ROOT}/{context.generation}",
         "file": SIDECAR_FILE,
+        "file_bytes": file_bytes,
         "file_sha256": sha256_file(file_path),
         "payload_sha256": payload["payload_sha256"],
         "checkpoint_manifest_sha256": context.checkpoint_manifest_sha256,
@@ -401,6 +413,9 @@ def validate_resume_reference(
         )
     if reference.get("file") != SIDECAR_FILE:
         raise ResumeSidecarError("recovery resume sidecar file mismatch")
+    _require_positive_int(
+        reference.get("file_bytes"), "recovery resume sidecar file_bytes"
+    )
     for field in (
         "file_sha256",
         "payload_sha256",
@@ -412,9 +427,16 @@ def validate_resume_reference(
     return reference
 
 
-def _read_payload(path: Path, expected_file_sha256: str) -> dict[str, Any]:
+def _read_payload(
+    path: Path,
+    expected_file_sha256: str,
+    expected_file_bytes: int,
+) -> dict[str, Any]:
     expected_hash = _require_sha256(
         expected_file_sha256, "recovery resume sidecar file hash"
+    )
+    expected_bytes = _require_positive_int(
+        expected_file_bytes, "recovery resume sidecar file_bytes"
     )
     try:
         before = path.lstat()
@@ -446,8 +468,24 @@ def _read_payload(path: Path, expected_file_sha256: str) -> dict[str, Any]:
             raise ResumeSidecarError(
                 "recovery resume sidecar changed while opening"
             )
-        with os.fdopen(fd, "rb", closefd=False) as handle:
-            data = handle.read()
+        if opened.st_size != expected_bytes:
+            raise ResumeSidecarError(
+                "recovery resume sidecar byte length mismatches immutable reference"
+            )
+
+        remaining = expected_bytes + 1
+        chunks: list[bytes] = []
+        while remaining > 0:
+            chunk = os.read(fd, min(1024 * 1024, remaining))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        data = b"".join(chunks)
+        if len(data) != expected_bytes:
+            raise ResumeSidecarError(
+                "recovery resume sidecar changed size while reading"
+            )
     except OSError as exc:
         raise ResumeSidecarError("recovery resume sidecar is unreadable") from exc
     finally:
@@ -482,7 +520,9 @@ def load_resume_sidecar(
             "recovery resume sidecar directory is missing or unsafe"
         )
     payload = _read_payload(
-        directory / SIDECAR_FILE, checked_reference["file_sha256"]
+        directory / SIDECAR_FILE,
+        checked_reference["file_sha256"],
+        checked_reference["file_bytes"],
     )
     if set(payload) != _SIDECAR_PAYLOAD_KEYS:
         raise ResumeSidecarError(
