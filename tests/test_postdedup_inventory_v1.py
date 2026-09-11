@@ -68,7 +68,11 @@ def _v3() -> dict:
         "duplicate_discount_fraction": round(15 / 47, 12),
         "duplicate_cluster_count": 2,
         "duplicate_clusters": [["a", "b"], ["c", "d"]],
-        "origin_clusters": [["a", "b"], ["c", "d"], ["e"]],
+        "origin_clusters": [
+            ["origin:a", "origin:b"],
+            ["origin:c", "origin:d"],
+            ["origin:e"],
+        ],
         "by_modality": {},
     }
     core = {
