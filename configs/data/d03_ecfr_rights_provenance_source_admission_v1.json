@@ -3,10 +3,10 @@
   "execution_profile": "LOCAL_FREE",
   "project_authority": {
     "swarm_control_issue": 723,
-    "ownership_issue": 1111,
+    "ownership_issue": 1234,
     "parent_issue": 672,
     "source_request_pr": 707,
-    "active_execution_issue": 1103,
+    "terminal_execution_evidence_issue": 1103,
     "request_path": "configs/data/d03_ecfr_point_in_time_request_v1.json",
     "request_git_blob_sha1": "92fb471260020dffc3b9d53ca98581cf700b0916",
     "materializer_path": "tools/materialize_d03_ecfr_point_in_time.py",
