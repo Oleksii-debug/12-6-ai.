@@ -1,0 +1,96 @@
+name: D03 Franko1901 Temporary
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "configs/data/d03_franko1901_exact_materialization_v1.json"
+      - "tools/materialize_d03_franko1901.py"
+      - "tests/test_d03_franko1901_materialization.py"
+      - ".github/workflows/d03-franko1901-temporary.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: d03-franko1901-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  exact-materialization:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Prove exact checkout
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Prove exact Python runtime
+        run: |
+          python - <<'PY'
+          import platform
+          assert platform.python_implementation() == "CPython"
+          assert platform.python_version() == "3.11.16"
+          print("python_runtime=", platform.python_version())
+          PY
+      - name: Install test dependencies
+        run: python -m pip install -e .[dev]
+      - name: Run focused adversarial suite
+        run: python -m pytest -q tests/test_d03_franko1901_materialization.py
+      - name: Independent exact materialization A
+        run: >-
+          python tools/materialize_d03_franko1901.py
+          --output-dir "$RUNNER_TEMP/franko-a"
+      - name: Independent exact materialization B
+        run: >-
+          python tools/materialize_d03_franko1901.py
+          --output-dir "$RUNNER_TEMP/franko-b"
+      - name: Require byte-identical candidate, rights evidence and report
+        run: |
+          cmp "$RUNNER_TEMP/franko-a/franko1901-candidate.jsonl" "$RUNNER_TEMP/franko-b/franko1901-candidate.jsonl"
+          cmp "$RUNNER_TEMP/franko-a/franko1901-report.json" "$RUNNER_TEMP/franko-b/franko1901-report.json"
+          cmp "$RUNNER_TEMP/franko-a/LICENSE.cc0.txt" "$RUNNER_TEMP/franko-b/LICENSE.cc0.txt"
+          cmp "$RUNNER_TEMP/franko-a/ATTRIBUTION.txt" "$RUNNER_TEMP/franko-b/ATTRIBUTION.txt"
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path(os.environ["RUNNER_TEMP"])
+          report = json.loads((root / "franko-a" / "franko1901-report.json").read_text(encoding="utf-8"))
+          assert report["decision"] == "CANDIDATE_MATERIALIZED_ZERO_CREDIT"
+          assert report["license_evidence"]["license_id"] == "CC0-1.0"
+          assert report["license_evidence"]["license_git_blob_sha1"] == "0e259d42c996742e9e3cba14c677129b2c1b6311"
+          truth = report["truth_boundary"]
+          assert truth["canonical_capacity_credit_bytes"] == 0
+          assert truth["training_authorized_bytes"] == 0
+          assert truth["corpus_admitted"] is False
+          assert truth["model_training_executed"] is False
+          stats = report["materialization"]
+          print("accepted_rows=", stats["accepted_rows"])
+          print("accepted_text_utf8_bytes=", stats["accepted_text_utf8_bytes"])
+          print("candidate_sha256=", stats["accepted_payload_jsonl_sha256"])
+          print("inventory_sha256=", stats["record_inventory_identity_sha256"])
+          print("license_sha256=", report["license_evidence"]["license_sha256"])
+          print("report_identity_sha256=", report["report_identity_sha256"])
+          PY
+      - name: Upload exact candidate evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: d03-franko1901-${{ env.SOURCE_SHA }}
+          path: |
+            ${{ runner.temp }}/franko-a/franko1901-candidate.jsonl
+            ${{ runner.temp }}/franko-a/franko1901-report.json
+            ${{ runner.temp }}/franko-a/LICENSE.cc0.txt
+            ${{ runner.temp }}/franko-a/ATTRIBUTION.txt
+          if-no-files-found: error
+          retention-days: 30
