@@ -555,3 +555,153 @@ def verify_final_g05_g06_coverage(
         == sum(row["payload_bytes"] for row in normalized),
         "covered byte total drift",
     )
+
+
+# AUD1041-001 hardening: verify every durable semantic field independently before
+# delegating to the original exact-identity/self-hash verifier above.
+_legacy_verify_final_g05_g06_coverage = verify_final_g05_g06_coverage
+_COVERAGE_ROOT_KEYS = frozenset(
+    {
+        "schema",
+        "status",
+        "records_jsonl_sha256",
+        "retained_inventory_identity_sha256",
+        "decontamination_authority_sha256",
+        "quality_policy_identity_sha256",
+        "quality_granularity_identity_sha256",
+        "privacy_policy_identity_sha256",
+        "privacy_implementation_git_blob_sha",
+        "qualification_authority_identities_sha256",
+        "qualification_authority_set_identity_sha256",
+        "projection_rule",
+        "predecontam_record_count",
+        "predecontam_payload_bytes",
+        "excluded_record_count",
+        "excluded_payload_bytes",
+        "covered_record_count",
+        "covered_payload_bytes",
+        "covered_records",
+        "final_test_outcomes_read",
+        "training_authorized_by_this_coverage",
+        "tokenizer_fit_authorized",
+        "model_training_authorized",
+        "authorized_optimized_target_exposure",
+        "paid_compute_used",
+        "g05_g06_coverage_identity_sha256",
+    }
+)
+
+
+def verify_final_g05_g06_coverage(
+    document: Mapping[str, Any],
+    *,
+    expected_identity_sha256: str,
+    expected_retained_inventory_identity_sha256: str,
+    expected_decontamination_authority_sha256: str,
+    expected_records_jsonl_sha256: str,
+    expected_privacy_policy_identity_sha256: str,
+    expected_privacy_implementation_git_blob_sha: str,
+) -> None:
+    """Verify durable G05/G06 coverage with closed-world provenance accounting."""
+    _require(set(document) == _COVERAGE_ROOT_KEYS, "coverage root schema drift")
+    _require(
+        document.get("projection_rule") == QUALIFICATION_SCOPE,
+        "coverage projection rule drift",
+    )
+
+    raw_authority_ids = document.get("qualification_authority_identities_sha256")
+    _require(
+        isinstance(raw_authority_ids, list) and bool(raw_authority_ids),
+        "qualification authority roots missing",
+    )
+    authority_ids = [
+        _sha256(value, f"qualification authority identity[{index}]")
+        for index, value in enumerate(raw_authority_ids)
+    ]
+    _require(
+        authority_ids == sorted(authority_ids),
+        "qualification authority roots are not sorted",
+    )
+    _require(
+        len(authority_ids) == len(set(authority_ids)),
+        "duplicate qualification authority root",
+    )
+    authority_set_identity = _sha256(
+        document.get("qualification_authority_set_identity_sha256"),
+        "qualification authority set identity",
+    )
+    _require(
+        authority_set_identity == _sha(_cjson(authority_ids)),
+        "qualification authority set identity drift",
+    )
+
+    pre_count = _nonnegative_int(
+        document.get("predecontam_record_count"),
+        "predecontam_record_count",
+    )
+    pre_bytes = _nonnegative_int(
+        document.get("predecontam_payload_bytes"),
+        "predecontam_payload_bytes",
+    )
+    excluded_count = _nonnegative_int(
+        document.get("excluded_record_count"),
+        "excluded_record_count",
+    )
+    excluded_bytes = _nonnegative_int(
+        document.get("excluded_payload_bytes"),
+        "excluded_payload_bytes",
+    )
+    covered_count = _nonnegative_int(
+        document.get("covered_record_count"),
+        "covered_record_count",
+    )
+    covered_bytes = _nonnegative_int(
+        document.get("covered_payload_bytes"),
+        "covered_payload_bytes",
+    )
+    _require(pre_count > 0 and pre_bytes > 0, "predecontam accounting must be positive")
+    _require(excluded_count <= pre_count, "excluded record accounting exceeds input")
+    _require(excluded_bytes <= pre_bytes, "excluded byte accounting exceeds input")
+    _require(covered_count > 0 and covered_bytes > 0, "coverage accounting must be positive")
+    _require(
+        pre_count - excluded_count == covered_count,
+        "record projection accounting drift",
+    )
+    _require(
+        pre_bytes - excluded_bytes == covered_bytes,
+        "byte projection accounting drift",
+    )
+
+    exposure = _nonnegative_int(
+        document.get("authorized_optimized_target_exposure"),
+        "authorized_optimized_target_exposure",
+    )
+    _require(exposure == 0, "coverage grants optimized-target exposure")
+
+    rows = document.get("covered_records")
+    _require(isinstance(rows, list) and bool(rows), "covered records missing")
+    for index, row in enumerate(rows):
+        _require(isinstance(row, Mapping), f"covered row[{index}] not an object")
+        payload_bytes = _nonnegative_int(
+            row.get("payload_bytes"),
+            f"covered row[{index}].payload_bytes",
+        )
+        _require(payload_bytes > 0, f"covered row[{index}] payload_bytes must be positive")
+
+    _legacy_verify_final_g05_g06_coverage(
+        document,
+        expected_identity_sha256=expected_identity_sha256,
+        expected_retained_inventory_identity_sha256=(
+            expected_retained_inventory_identity_sha256
+        ),
+        expected_decontamination_authority_sha256=(
+            expected_decontamination_authority_sha256
+        ),
+        expected_records_jsonl_sha256=expected_records_jsonl_sha256,
+        expected_privacy_policy_identity_sha256=(
+            expected_privacy_policy_identity_sha256
+        ),
+        expected_privacy_implementation_git_blob_sha=(
+            expected_privacy_implementation_git_blob_sha
+        ),
+    )
