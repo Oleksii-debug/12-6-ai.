@@ -1,0 +1,76 @@
+name: Repair PR864 AUDIT864-001
+
+on:
+  push:
+    branches:
+      - d03/rada-bulk-normalization-current-main-20260907
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: ${{ !contains(github.event.head_commit.message, 'D03: bind Rada normalizer to successor observation pin') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: d03/rada-bulk-normalization-current-main-20260907
+          fetch-depth: 0
+      - name: Apply exact in-place repair
+        shell: python
+        run: |
+          from pathlib import Path
+
+          source_path = Path('tools/normalize_d03_rada_bulk_html.py')
+          source = source_path.read_text(encoding='utf-8')
+
+          anchor = '''def _canonical_json_bytes(data: Mapping[str, Any]) -> bytes:\n    return json.dumps(\n        data,\n        ensure_ascii=False,\n        sort_keys=True,\n        separators=(",", ":"),\n    ).encode("utf-8")\n\n\ndef _load_json'''
+          replacement = '''def _canonical_json_bytes(data: Mapping[str, Any]) -> bytes:\n    return json.dumps(\n        data,\n        ensure_ascii=False,\n        sort_keys=True,\n        separators=(",", ":"),\n    ).encode("utf-8")\n\n\ndef _serialized_probe_report_bytes(data: Mapping[str, Any]) -> bytes:\n    """Reproduce the exact deterministic bytes emitted by the pinning CLI."""\n    return (\n        json.dumps(data, ensure_ascii=False, sort_keys=True, indent=2) + "\\n"\n    ).encode("utf-8")\n\n\ndef _load_json'''
+          if anchor not in source:
+              raise SystemExit('source anchor 1 not found')
+          source = source.replace(anchor, replacement, 1)
+
+          anchor = '''    if inventory.get("canonical_raw_bytes") != computed_raw_total:\n        raise NormalizationError("probe canonical raw-byte total drift")\n    return by_basename\n\n\ndef materialize_normalized_records('''
+          replacement = '''    if inventory.get("canonical_raw_bytes") != computed_raw_total:\n        raise NormalizationError("probe canonical raw-byte total drift")\n    return by_basename\n\n\ndef _validate_successor_observation_pin(\n    probe: Mapping[str, Any],\n    config: Mapping[str, Any],\n    archive: bytes,\n    *,\n    probe_report_sha256: str,\n) -> None:\n    pin = config.get("successor_observation_pin")\n    if not isinstance(pin, Mapping):\n        raise NormalizationError("successor observation pin missing")\n    if pin.get("source_pr") != 864:\n        raise NormalizationError("successor observation source PR drift")\n    source_head = pin.get("source_head_sha")\n    if not isinstance(source_head, str) or not re.fullmatch(r"[0-9a-f]{40}", source_head):\n        raise NormalizationError("successor observation head must be an exact commit SHA")\n    if pin.get("config_path") != "configs/data/d03_rada_bulk_observation_pin_v1.json":\n        raise NormalizationError("successor observation config path drift")\n    for field in (\n        "config_identity_sha256",\n        "source_observation_report_sha256",\n        "pinned_probe_report_sha256",\n        "archive_sha256",\n        "entry_identity_sha256",\n    ):\n        value = pin.get(field)\n        if not isinstance(value, str) or not SHA256_RE.fullmatch(value):\n            raise NormalizationError(f"successor observation {field} must be SHA-256")\n    if pin.get("pin_status") != "PASS_EXACT_EXECUTION":\n        raise NormalizationError("successor observation pin is not exact-execution PASS")\n    if pin.get("discovery_capacity_threshold") != "FAIL_BELOW_MINIMUM":\n        raise NormalizationError("successor observation discovery threshold drift")\n    if pin.get("normalization_input_only") is not True:\n        raise NormalizationError("successor observation must remain normalization-input-only")\n    for field in ("normalized_capacity_credited", "training_authorized_bytes"):\n        value = pin.get(field)\n        if isinstance(value, bool) or not isinstance(value, int) or value != 0:\n            raise NormalizationError(f"successor observation {field} must be exact integer zero")\n\n    if probe_report_sha256 != pin["pinned_probe_report_sha256"]:\n        raise NormalizationError("probe report identity does not match successor observation pin")\n    archive_sha256 = _sha256(archive)\n    if archive_sha256 != pin["archive_sha256"]:\n        raise NormalizationError("archive SHA-256 does not match successor observation pin")\n    archive_meta = probe.get("archive")\n    if not isinstance(archive_meta, Mapping) or archive_meta.get("sha256") != pin["archive_sha256"]:\n        raise NormalizationError("probe archive identity does not match successor observation pin")\n    inventory = probe.get("inventory")\n    if (\n        not isinstance(inventory, Mapping)\n        or inventory.get("entry_identity_sha256") != pin["entry_identity_sha256"]\n    ):\n        raise NormalizationError("probe inventory identity does not match successor observation pin")\n\n\ndef materialize_normalized_records('''
+          if anchor not in source:
+              raise SystemExit('source anchor 2 not found')
+          source = source.replace(anchor, replacement, 1)
+
+          anchor = '''    if not isinstance(probe_report_sha256, str) or not SHA256_RE.fullmatch(\n        probe_report_sha256\n    ):\n        raise NormalizationError("probe report identity must be SHA-256")\n    expected = _validate_probe(probe, config, archive)\n    normalizer = config["normalization"]'''
+          replacement = '''    if not isinstance(probe_report_sha256, str) or not SHA256_RE.fullmatch(\n        probe_report_sha256\n    ):\n        raise NormalizationError("probe report identity must be SHA-256")\n    observed_probe_report_sha256 = _sha256(_serialized_probe_report_bytes(probe))\n    if probe_report_sha256 != observed_probe_report_sha256:\n        raise NormalizationError(\n            "probe report identity does not match deterministic report bytes"\n        )\n    expected = _validate_probe(probe, config, archive)\n    _validate_successor_observation_pin(\n        probe,\n        config,\n        archive,\n        probe_report_sha256=observed_probe_report_sha256,\n    )\n    normalizer = config["normalization"]'''
+          if anchor not in source:
+              raise SystemExit('source anchor 3 not found')
+          source = source.replace(anchor, replacement, 1)
+          source_path.write_text(source, encoding='utf-8')
+
+          test_path = Path('tests/test_d03_rada_bulk_normalization.py')
+          tests = test_path.read_text(encoding='utf-8')
+          anchor = '''def _report_sha(report: dict) -> str:\n    encoded = json.dumps(\n        report,\n        ensure_ascii=False,\n        sort_keys=True,\n        separators=(",", ":"),\n    ).encode("utf-8")\n    return hashlib.sha256(encoded).hexdigest()'''
+          replacement = '''def _report_sha(report: dict) -> str:\n    encoded = (\n        json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2) + "\\n"\n    ).encode("utf-8")\n    return hashlib.sha256(encoded).hexdigest()'''
+          if anchor not in tests:
+              raise SystemExit('test anchor 1 not found')
+          tests = tests.replace(anchor, replacement, 1)
+
+          anchor = '''    config["parent_probe"]["probe_config_identity_sha256"] = report[\n        "config_identity_sha256"\n    ]\n    return config'''
+          replacement = '''    config["parent_probe"]["probe_config_identity_sha256"] = report[\n        "config_identity_sha256"\n    ]\n    successor = config["successor_observation_pin"]\n    successor["pinned_probe_report_sha256"] = _report_sha(report)\n    successor["archive_sha256"] = report["archive"]["sha256"]\n    successor["entry_identity_sha256"] = report["inventory"]["entry_identity_sha256"]\n    return config'''
+          if anchor not in tests:
+              raise SystemExit('test anchor 2 not found')
+          tests = tests.replace(anchor, replacement, 1)
+
+          marker = 'def test_frozen_successor_pin_rejects_coherent_report_substitution()'
+          if marker not in tests:
+              tests += '''\n\n\ndef test_frozen_successor_pin_rejects_coherent_report_substitution() -> None:\n    archive = _archive({"d1.htm": b"<p>coherent substitute</p>"})\n    report = _strict_probe(archive, 1)\n    config = _normalizer_config_for_report(report)\n    config["successor_observation_pin"] = copy.deepcopy(\n        CONFIG["successor_observation_pin"]\n    )\n    with pytest.raises(\n        NormalizationError,\n        match="probe report identity does not match successor observation pin",\n    ):\n        materialize_normalized_records(\n            archive,\n            report,\n            config,\n            probe_report_sha256=_report_sha(report),\n        )\n\n\ndef test_successor_pin_rejects_archive_substitution_after_report_binding() -> None:\n    archive = _archive({"d1.htm": b"<p>coherent substitute</p>"})\n    report = _strict_probe(archive, 1)\n    config = _normalizer_config_for_report(report)\n    config["successor_observation_pin"]["archive_sha256"] = "0" * 64\n    with pytest.raises(\n        NormalizationError,\n        match="archive SHA-256 does not match successor observation pin",\n    ):\n        materialize_normalized_records(\n            archive,\n            report,\n            config,\n            probe_report_sha256=_report_sha(report),\n        )\n\n\ndef test_successor_pin_rejects_inventory_substitution_after_report_and_archive_binding() -> None:\n    archive = _archive({"d1.htm": b"<p>coherent substitute</p>"})\n    report = _strict_probe(archive, 1)\n    config = _normalizer_config_for_report(report)\n    config["successor_observation_pin"]["entry_identity_sha256"] = "0" * 64\n    with pytest.raises(\n        NormalizationError,\n        match="probe inventory identity does not match successor observation pin",\n    ):\n        materialize_normalized_records(\n            archive,\n            report,\n            config,\n            probe_report_sha256=_report_sha(report),\n        )\n\n\ndef test_direct_api_cannot_forge_report_digest_for_changed_report_object() -> None:\n    archive = _archive({"d1.htm": b"<p>one</p>"})\n    report = _strict_probe(archive, 1)\n    config = _normalizer_config_for_report(report)\n    forged = copy.deepcopy(report)\n    forged["ignored_attacker_field"] = "coherent-rehash-substitute"\n    with pytest.raises(\n        NormalizationError,\n        match="probe report identity does not match deterministic report bytes",\n    ):\n        materialize_normalized_records(\n            archive,\n            forged,\n            config,\n            probe_report_sha256=_report_sha(report),\n        )\n'''
+          test_path.write_text(tests, encoding='utf-8')
+      - name: Focused validation
+        run: |
+          python -m pytest tests/test_d03_rada_bulk_normalization.py -q
+          python -m ruff check tools/normalize_d03_rada_bulk_html.py tests/test_d03_rada_bulk_normalization.py
+      - name: Commit repaired product head
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add tools/normalize_d03_rada_bulk_html.py tests/test_d03_rada_bulk_normalization.py
+          git diff --cached --quiet && exit 0
+          git commit -m "D03: bind Rada normalizer to successor observation pin"
+          git push origin HEAD:d03/rada-bulk-normalization-current-main-20260907
