@@ -93,38 +93,10 @@ _ROOT_KEYS = {
     "training_authorized_bytes",
     "upstream",
 }
-_FULL_SHARD_RECEIPT_SEAL = object()
 
 
 class LocIntakeError(ValueError):
     """Fail-closed violation in the bounded Library of Congress source intake."""
-
-
-class _FullShardVerificationReceipt:
-    __slots__ = (
-        "_seal",
-        "observed_bytes",
-        "observed_sha256",
-        "source_revision",
-        "source_shard_path",
-    )
-
-    def __init__(
-        self,
-        *,
-        source_revision: str,
-        source_shard_path: str,
-        observed_bytes: int,
-        observed_sha256: str,
-        seal: object,
-    ) -> None:
-        if seal is not _FULL_SHARD_RECEIPT_SEAL:
-            raise LocIntakeError("full shard verification receipt is verifier-only")
-        self._seal = seal
-        self.source_revision = source_revision
-        self.source_shard_path = source_shard_path
-        self.observed_bytes = observed_bytes
-        self.observed_sha256 = observed_sha256
 
 
 def canonical_json(value: object) -> str:
@@ -223,7 +195,6 @@ def validate_config(config: Mapping[str, Any]) -> None:
         _EXPECTED_SELECTION_POLICY,
         "selection_policy",
     )
-
     _require(config.get("required_downstream_gates") == _REQUIRED_GATES, "required gates drift")
     identity = _require_hex(config.get("contract_identity_sha256"), 64, "contract identity")
     _require(
@@ -315,56 +286,12 @@ def _inventory_identity(rows: Sequence[Mapping[str, Any]]) -> str:
     return sha256_bytes((canonical_json(list(rows)) + "\n").encode("utf-8"))
 
 
-def _validate_full_shard_receipt(
-    receipt: object | None,
-    config: Mapping[str, Any],
-) -> bool:
-    if receipt is None:
-        return False
-    _require(
-        type(receipt) is _FullShardVerificationReceipt,
-        "full shard verification requires verifier-produced receipt",
-    )
-    assert isinstance(receipt, _FullShardVerificationReceipt)
-    _require(
-        receipt._seal is _FULL_SHARD_RECEIPT_SEAL,
-        "full shard verification receipt seal mismatch",
-    )
-    upstream = config["upstream"]
-    _require_exact_scalar(
-        receipt.source_revision,
-        upstream["revision"],
-        "receipt source revision",
-    )
-    _require_exact_scalar(
-        receipt.source_shard_path,
-        upstream["shard_path"],
-        "receipt shard path",
-    )
-    _require_exact_scalar(
-        receipt.observed_bytes,
-        upstream["shard_compressed_bytes"],
-        "receipt observed bytes",
-    )
-    _require_exact_scalar(
-        receipt.observed_sha256,
-        upstream["shard_lfs_sha256"],
-        "receipt observed sha256",
-    )
-    return True
-
-
 def materialize(
     config: Mapping[str, Any],
     records: Iterable[Mapping[str, Any]],
-    *,
-    full_shard_verification: object | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Materialize an arbitrary record stream without claiming full-shard verification."""
     validate_config(config)
-    full_shard_hash_verified = _validate_full_shard_receipt(
-        full_shard_verification,
-        config,
-    )
     selection = config["selection_policy"]
     max_docs = selection["max_documents"]
     max_examined = selection["max_examined_documents"]
@@ -448,7 +375,7 @@ def materialize(
         "upstream_revision": config["upstream"]["revision"],
         "source_shard_path": config["upstream"]["shard_path"],
         "source_shard_lfs_sha256": config["upstream"]["shard_lfs_sha256"],
-        "full_shard_hash_verified": full_shard_hash_verified,
+        "full_shard_hash_verified": False,
         "examined_documents": examined,
         "accepted_documents": len(candidates),
         "accepted_normalized_utf8_bytes": accepted_bytes,
@@ -475,27 +402,42 @@ def materialize(
     return candidates, report
 
 
-def verify_full_shard(
-    path: Path,
-    config: Mapping[str, Any],
-) -> object:
+def _verify_full_shard_bytes(raw_gzip: bytes, config: Mapping[str, Any]) -> None:
     validate_config(config)
+    _require(type(raw_gzip) is bytes and bool(raw_gzip), "full shard bytes are empty")
     upstream = config["upstream"]
-    raw_size = path.stat().st_size
-    _require(raw_size == upstream["shard_compressed_bytes"], "full shard size mismatch")
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(chunk)
-    observed_sha256 = digest.hexdigest()
-    _require(observed_sha256 == upstream["shard_lfs_sha256"], "full shard SHA-256 mismatch")
-    return _FullShardVerificationReceipt(
-        source_revision=upstream["revision"],
-        source_shard_path=upstream["shard_path"],
-        observed_bytes=raw_size,
-        observed_sha256=observed_sha256,
-        seal=_FULL_SHARD_RECEIPT_SEAL,
+    _require(
+        len(raw_gzip) == upstream["shard_compressed_bytes"],
+        "full shard size mismatch",
     )
+    _require(
+        sha256_bytes(raw_gzip) == upstream["shard_lfs_sha256"],
+        "full shard SHA-256 mismatch",
+    )
+
+
+def verify_full_shard(path: Path, config: Mapping[str, Any]) -> bytes:
+    """Read a shard once and return the exact verified immutable byte snapshot."""
+    raw_gzip = path.read_bytes()
+    _verify_full_shard_bytes(raw_gzip, config)
+    return raw_gzip
+
+
+def materialize_verified_shard(
+    config: Mapping[str, Any],
+    raw_gzip: bytes,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Verify and materialize the same immutable full-shard byte snapshot."""
+    _verify_full_shard_bytes(raw_gzip, config)
+    selection = config["selection_policy"]
+    records = iter_gzip_jsonl_bytes(
+        raw_gzip,
+        max_jsonl_line_bytes=selection["max_jsonl_line_bytes"],
+        skip_oversize_lines=True,
+    )
+    candidates, report = materialize(config, records)
+    report["full_shard_hash_verified"] = True
+    return candidates, report
 
 
 def _drain_oversized_line(handle: gzip.GzipFile, max_jsonl_line_bytes: int) -> None:
