@@ -1,0 +1,89 @@
+{
+  "schema_version": "12-6.d03-common-pile-ubuntu-irc-real-execution.v1",
+  "worker_issue": 1096,
+  "incumbent_pr": 913,
+  "execution_profile": "LOCAL_FREE_GITHUB_HOSTED_UBUNTU",
+  "execution_head_sha": "3400e2cd3c62a360b25282310390640a7f20fbc9",
+  "workflow_run_id": 34549598850,
+  "workflow_job_id": 103109520811,
+  "workflow_run_attempt": 1,
+  "workflow_conclusion": "success",
+  "runner": {
+    "os": "Ubuntu 24.04.5 LTS",
+    "image": "ubuntu-24.04",
+    "image_version": "20260907.300.1",
+    "python_version": "3.11.16"
+  },
+  "focused_adversarial_tests": {
+    "conclusion": "success",
+    "passed": 22
+  },
+  "materialization": {
+    "status": "TWO_INDEPENDENT_MATERIALIZATIONS_BYTE_IDENTICAL",
+    "independent_build_count": 2,
+    "independent_acquisition_count": 2,
+    "candidate_byte_identical": true,
+    "report_byte_identical": true,
+    "source_dataset": "common-pile/ubuntu_irc",
+    "source_revision": "47d55b0534a62bf0766c621297165451969f3de9",
+    "source_file": "v0/documents/00007_ubuntu.jsonl.gz",
+    "source_sha256": "75e38bffcaceb00ed9ce9a63b1d9e74a70f5582b3e3f763a7ec573c7fd6c1e60",
+    "observed_source_bytes": 154409587,
+    "scanned_records": 4096,
+    "retained_records": 972,
+    "retained_normalized_utf8_bytes": 4799981,
+    "candidate_payload_bytes": 5133301,
+    "selection_reasons": {
+      "accepted": 972,
+      "control_character": 673,
+      "email": 116,
+      "high_cyrillic_alpha_ratio": 1,
+      "ipv4": 229,
+      "low_latin_alpha_ratio": 79,
+      "phone": 433,
+      "retained_byte_cap_reached": 745,
+      "secret_marker": 1,
+      "too_long": 29,
+      "too_short": 818
+    },
+    "candidate_payload_sha256": "d6a0eaea27313e0d5146bc2a0624104541923ef06b12f01c22b3ccf6956eb6c2",
+    "candidate_file_sha256": "d6a0eaea27313e0d5146bc2a0624104541923ef06b12f01c22b3ccf6956eb6c2",
+    "report_file_sha256": "0fac5af5f2b72af91a4b83cc0ec10ccd737903ea2d4983c26903b3e4d9d95253"
+  },
+  "artifact": {
+    "name": "d03-ubuntu-irc-real-execution-1096",
+    "artifact_id": 10180292836,
+    "zip_size_bytes": 1065,
+    "zip_sha256": "17a9da055c99f54d9bec3a7afcb1521a19c68c0fea26485e7cbc11a8512fbeb6",
+    "expires_at_utc": "2026-09-18T01:11:16Z"
+  },
+  "truth_boundary": {
+    "durable_evidence_contains_source_text": false,
+    "source_rights_review_status": "REVIEW_REQUIRED",
+    "canonical_corpus_admitted": false,
+    "training_eligible": false,
+    "evaluation_eligible": false,
+    "training_authorized_bytes": 0,
+    "canonical_capacity_credited": 0,
+    "family_credit_added": 0,
+    "unique_causal_loss_positions_authorized": 0,
+    "tokenizer_fit_authorized": false,
+    "optimizer_updates": 0,
+    "model_training_executed": false,
+    "learned_weights_created": false,
+    "final_test_accessed": false,
+    "paid_compute_used": false,
+    "foreign_pretrained_weights_used": false,
+    "external_llm_or_api_used_for_data_or_intelligence": false
+  },
+  "next_required_gates": [
+    "final_source_rights_review",
+    "current_global_cross_source_dedup",
+    "fresh_reserved_evaluation_decontamination",
+    "post_composition_quality_privacy",
+    "balance_and_family_caps",
+    "cluster_safe_split",
+    "deterministic_packing_two_clean_builds",
+    "positive_exact_unique_loss_ledger"
+  ]
+}
