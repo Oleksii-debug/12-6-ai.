@@ -144,6 +144,7 @@ def _reference() -> dict[str, object]:
         "schema": sidecar.SIDECAR_SCHEMA,
         "directory": "resume-states/generation-00000001",
         "file": sidecar.SIDECAR_FILE,
+        "file_bytes": 123,
         "file_sha256": "1" * 64,
         "payload_sha256": "2" * 64,
         "checkpoint_manifest_sha256": CHECKPOINT_MANIFEST_HASH,
@@ -157,6 +158,15 @@ def test_rehashed_unknown_resume_reference_field_requires_schema_bump() -> None:
     reference["future_reference"] = "5" * 64
 
     with pytest.raises(ResumeSidecarError, match="fields do not match the V1 schema"):
+        sidecar.validate_resume_reference(reference, generation=1)
+
+
+@pytest.mark.parametrize("bad_bytes", [0, -1, True, 1.5, "123"])
+def test_resume_reference_requires_positive_nonbool_file_bytes(bad_bytes: object) -> None:
+    reference = _reference()
+    reference["file_bytes"] = bad_bytes
+
+    with pytest.raises(ResumeSidecarError, match="file_bytes"):
         sidecar.validate_resume_reference(reference, generation=1)
 
 
