@@ -41,6 +41,9 @@ def unit(**overrides: object) -> dict:
 def test_policy_binds_exact_incumbent_and_remains_zero_credit() -> None:
     policy = load()
     authority = policy["project_authority"]
+    assert authority["ownership_issue"] == 1234
+    assert authority["terminal_execution_evidence_issue"] == 1103
+    assert "active_execution_issue" not in authority
     assert authority["request_path"] == str(mod.EXPECTED_REQUEST_PATH)
     assert authority["request_git_blob_sha1"] == mod.EXPECTED_REQUEST_BLOB_SHA1
     assert authority["materializer_path"] == str(mod.EXPECTED_MATERIALIZER_PATH)
@@ -49,6 +52,26 @@ def test_policy_binds_exact_incumbent_and_remains_zero_credit() -> None:
     assert policy["admission_policy"]["payload_source_admission_executed"] is False
     assert policy["truth_boundary"]["training_authorized_bytes"] == 0
     assert policy["truth_boundary"]["training_eligible"] is False
+
+
+def test_stale_active_execution_issue_key_fails_closed(tmp_path: Path) -> None:
+    policy = load()
+    authority = policy["project_authority"]
+    terminal_issue = authority.pop("terminal_execution_evidence_issue")
+    authority["active_execution_issue"] = terminal_issue
+    path = tmp_path / "stale-active-owner.json"
+    path.write_text(json.dumps(policy), encoding="utf-8")
+    with pytest.raises(mod.AdmissionError, match="project_authority keys must be exact"):
+        mod.load_policy(path)
+
+
+def test_terminal_execution_evidence_issue_bool_alias_fails_closed(tmp_path: Path) -> None:
+    policy = load()
+    policy["project_authority"]["terminal_execution_evidence_issue"] = False
+    path = tmp_path / "terminal-evidence-bool-alias.json"
+    path.write_text(json.dumps(policy), encoding="utf-8")
+    with pytest.raises(mod.AdmissionError, match="strict integer"):
+        mod.load_policy(path)
 
 
 def test_embedded_attributed_federal_regulatory_text_is_conditional_only() -> None:
@@ -145,6 +168,8 @@ def test_unit_missing_field_fails_closed() -> None:
 @pytest.mark.parametrize(
     ("section", "key", "value"),
     [
+        ("project_authority", "ownership_issue", 1111),
+        ("project_authority", "terminal_execution_evidence_issue", 1230),
         ("project_authority", "request_path", "configs/data/forged.json"),
         ("project_authority", "request_git_blob_sha1", "0" * 40),
         ("project_authority", "materializer_path", "tools/forged.py"),
