@@ -4,6 +4,26 @@
   "incumbent_pr": 913,
   "execution_profile": "LOCAL_FREE_GITHUB_HOSTED_UBUNTU",
   "execution_head_sha": "3400e2cd3c62a360b25282310390640a7f20fbc9",
+  "execution_binding": {
+    "repository_commit": "3400e2cd3c62a360b25282310390640a7f20fbc9",
+    "repository_tree_sha1": "6bb849adf3f480fcce4e48ddc4361f2bb8e29dd8",
+    "workflow": {
+      "path": ".github/workflows/temp-d03-ubuntu-irc-real-exec-1096.yml",
+      "git_blob_sha1": "f6268b728809850059eabf71d7389f322737f924"
+    },
+    "config": {
+      "path": "configs/data/d03_common_pile_ubuntu_irc_bounded_v1.json",
+      "git_blob_sha1": "5a92b605325d16572321ee1c04aed8dcc6e660ea"
+    },
+    "materializer": {
+      "path": "tools/materialize_d03_common_pile_ubuntu_irc_v1.py",
+      "git_blob_sha1": "3c945c004a4a53ff6342dc6e08eda0eb1d9ceae2"
+    },
+    "focused_test": {
+      "path": "tests/test_d03_common_pile_ubuntu_irc_v1.py",
+      "git_blob_sha1": "4cbbf442d21ff7c7ac1762e7d1049433894a9e45"
+    }
+  },
   "workflow_run_id": 34549598850,
   "workflow_job_id": 103109520811,
   "workflow_run_attempt": 1,
@@ -55,6 +75,7 @@
     "artifact_id": 10180292836,
     "zip_size_bytes": 1065,
     "zip_sha256": "17a9da055c99f54d9bec3a7afcb1521a19c68c0fea26485e7cbc11a8512fbeb6",
+    "api_digest": "sha256:17a9da055c99f54d9bec3a7afcb1521a19c68c0fea26485e7cbc11a8512fbeb6",
     "expires_at_utc": "2026-09-18T01:11:16Z"
   },
   "truth_boundary": {
