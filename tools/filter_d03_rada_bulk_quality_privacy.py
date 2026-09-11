@@ -1,15 +1,11 @@
 #!/usr/bin/env python3
-"""Filter normalized Rada bulk records through the incumbent quality/privacy seam.
+"""Deterministically quality/privacy-filter the exact current Rada normalization.
 
-This successor consumes the exact deterministic normalization output from PR #641,
-verifies its manifest and JSONL byte-for-byte, chunks long legal documents with the
-existing DATA-228/DATA-181 natural-text mechanics, and applies the bounded
-DATA-228/D03 quality/privacy predicates per chunk.
-
-It deliberately grants zero canonical capacity and zero training exposure. Global
-cross-source deduplication, evaluation decontamination, balance/family caps,
-packing, unique-loss accounting, tokenizer authorization, D05 requalification and
-material-compute authorization remain downstream gates.
+This is a candidate-only gate. It consumes the exact PR #864 normalization
+authority, verifies the parent manifest/JSONL and its frozen identities, chunks
+long legal text deterministically, and applies the incumbent bounded quality and
+privacy predicates. It never grants corpus capacity, tokenizer fit, evaluation,
+or model-training authority.
 """
 from __future__ import annotations
 
@@ -27,17 +23,54 @@ from typing import Any
 CONFIG_SCHEMA = "12-6.d03-rada-bulk-quality-privacy.v1"
 PARENT_MANIFEST_SCHEMA = "12-6.d03-rada-bulk-normalization-manifest.v1"
 REPORT_SCHEMA = "12-6.d03-rada-bulk-quality-privacy-report.v1"
-WORKER_ID = "D03-RADA-BULK-QUALITY-PRIVACY-20260826"
-PARENT_WORKER_ID = "D03-RADA-BULK-NORMALIZATION-20260826"
-PARENT_PR = 641
-PARENT_HEAD = "ae79b078f849513dc202bcb723a4145455309e35"
-PARENT_BRANCH = "gpt56/d03-rada-bulk-normalization-20260826"
+WORKER_ID = "D03-RADA-BULK-QUALITY-PRIVACY-20260911"
+PARENT_WORKER_ID = "D03-RADA-BULK-NORMALIZATION-20260907"
 SOURCE_FAMILY = "ua.rada.open-data.laws-texts"
 PARENT_SAFE_RESULT = "NORMALIZED_RECORD_MATERIALIZATION_ONLY_DOWNSTREAM_GATES_REQUIRED"
 PARENT_NORMALIZER_NAME = "RADA_VISIBLE_TEXT_HTML_UTF8_CP1251_NFKC_V1"
 SAFE_RESULT = "QUALITY_PRIVACY_FILTERED_CANDIDATE_ONLY_DOWNSTREAM_GATES_REQUIRED"
 DEFAULT_CONFIG = Path("configs/data/d03_rada_bulk_quality_privacy_v1.json")
 ALLOWED_SOURCE_ENCODINGS = {"utf-8", "windows-1251"}
+
+EXPECTED_PARENT_BINDING: dict[str, Any] = {
+    "pr": 864,
+    "head_sha": "50069882dfb5866946626720a997a2c35458df7c",
+    "branch": "d03/rada-bulk-normalization-current-main-20260907",
+    "execution_head_sha": "b2088754aa2d5ed6059d89587bbbf08437ba0f55",
+    "execution_run_id": 34561144712,
+    "execution_evidence_identity_sha256": (
+        "663a8d60b595a6a57fc5fb5be631ce4ebb791e00ffc2bb6de8eae8d2c9743d30"
+    ),
+    "manifest_schema": PARENT_MANIFEST_SCHEMA,
+    "manifest_worker_id": PARENT_WORKER_ID,
+    "source_family": SOURCE_FAMILY,
+    "safe_result": PARENT_SAFE_RESULT,
+    "manifest_identity_sha256": (
+        "ee1c59dbc481b83bffb1380f751880e5fa6e64d654b5abad266c3e2c4d18293b"
+    ),
+    "manifest_transport_sha256": (
+        "8923d26024ba396db14e6afeb367a5d3c54de573019252083aec88f2082bb119"
+    ),
+    "jsonl_sha256": (
+        "b46baa0f1c5087f4a9772ee273da459e87c0e82111dd5e51b22fc0b85cde840e"
+    ),
+    "record_count": 3052,
+    "nonempty_record_count": 3052,
+    "normalized_bytes_observed_not_credited": 211176449,
+    "normalized_record_inventory_sha256": (
+        "bd790b51809018950fcf8d9919f62920ab79aee64f8d73e131cbe16772554495"
+    ),
+    "source_encoding_counts": {"utf-8": 884, "windows-1251": 2168},
+    "pinned_probe_report_sha256": (
+        "9d94674323414d30f18517a71edbfee839a27a09a076eb94fe94d74cbaab53c8"
+    ),
+    "archive_sha256": (
+        "0b9e8ed8fe8aa663a68d2bc4eba858a754c626391dd7b5c461d50c3b6260df63"
+    ),
+    "entry_identity_sha256": (
+        "3939c8a407a910222173bba5a2df1b9c7d2edce1503c13b31a9c293d61c3a603"
+    ),
+}
 
 EMAIL_RE = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE)
 PHONE_RE = re.compile(r"(?<!\w)(?:\+?\d[\d ()-]{7,}\d)(?!\w)")
@@ -105,36 +138,23 @@ def _validate_config(config: Mapping[str, Any]) -> None:
 
     parent = config.get("parent_normalization")
     _require(isinstance(parent, Mapping), "parent_normalization missing")
-    expected_parent = {
-        "pr": PARENT_PR,
-        "head_sha": PARENT_HEAD,
-        "branch": PARENT_BRANCH,
-        "manifest_schema": PARENT_MANIFEST_SCHEMA,
-        "manifest_worker_id": PARENT_WORKER_ID,
-        "source_family": SOURCE_FAMILY,
-        "safe_result": PARENT_SAFE_RESULT,
-    }
-    for key, expected in expected_parent.items():
-        _require(
-            parent.get(key) == expected,
-            f"parent normalization binding drift: {key}",
-        )
+    _require(dict(parent) == EXPECTED_PARENT_BINDING, "parent authority binding drift")
 
     chunking = config.get("chunking")
     _require(isinstance(chunking, Mapping), "chunking policy missing")
     _require(
-        chunking.get("name") == "DATA228_DATA181_GENERIC_NATURAL_TEXT_V1",
-        "chunking algorithm drift",
+        dict(chunking)
+        == {
+            "name": "DATA228_DATA181_GENERIC_NATURAL_TEXT_V1",
+            "max_chars": 1200,
+            "min_chars": 80,
+        },
+        "chunking policy drift",
     )
-    _require(chunking.get("max_chars") == 1200, "chunk max_chars drift")
-    _require(chunking.get("min_chars") == 80, "chunk min_chars drift")
 
     quality = config.get("quality_privacy")
     _require(isinstance(quality, Mapping), "quality/privacy policy missing")
-    _require(
-        quality.get("name") == "DATA228_D03_PREVIEW_V1",
-        "quality algorithm drift",
-    )
+    _require(quality.get("name") == "DATA228_D03_PREVIEW_V1", "quality policy drift")
     _require(quality.get("min_chars") == 60, "quality min_chars drift")
     _require(quality.get("max_chars") == 1600, "quality max_chars drift")
     _require(quality.get("min_alpha_ratio") == 0.35, "alpha-ratio threshold drift")
@@ -156,14 +176,8 @@ def _validate_config(config: Mapping[str, Any]) -> None:
         output.get("preserve_source_encoding_provenance") is True,
         "source-encoding provenance disabled",
     )
-    _require(
-        output.get("rejected_text_emitted") is False,
-        "rejected text emission enabled",
-    )
-    _require(
-        output.get("rejected_hashes_emitted") is False,
-        "rejected hash emission enabled",
-    )
+    _require(output.get("rejected_text_emitted") is False, "rejected text enabled")
+    _require(output.get("rejected_hashes_emitted") is False, "rejected hashes enabled")
     for key in (
         "deterministic_json_serialization",
         "self_hashed_report",
@@ -185,10 +199,7 @@ def _validate_config(config: Mapping[str, Any]) -> None:
     downstream = config.get("downstream_required")
     _require(isinstance(downstream, list), "downstream_required missing")
     _require(set(downstream) == required_downstream, "downstream gate set drift")
-    _require(
-        len(downstream) == len(required_downstream),
-        "duplicate downstream gates",
-    )
+    _require(len(downstream) == len(required_downstream), "duplicate downstream gates")
 
     boundary = config.get("claim_boundary")
     _require(isinstance(boundary, Mapping), "claim_boundary missing")
@@ -204,14 +215,8 @@ def _validate_config(config: Mapping[str, Any]) -> None:
         "learned_20m_claimed",
     ):
         _require(boundary.get(key) is False, f"truth boundary weakened: {key}")
-    _require(
-        boundary.get("training_authorized_bytes") == 0,
-        "training bytes must remain zero",
-    )
-    _require(
-        boundary.get("optimizer_updates") == 0,
-        "optimizer updates must remain zero",
-    )
+    _require(boundary.get("training_authorized_bytes") == 0, "training bytes nonzero")
+    _require(boundary.get("optimizer_updates") == 0, "optimizer updates nonzero")
     _require(boundary.get("safe_result") == SAFE_RESULT, "safe result drift")
 
 
@@ -220,84 +225,47 @@ def _verify_parent_manifest(manifest: Mapping[str, Any]) -> None:
         manifest.get("schema_version") == PARENT_MANIFEST_SCHEMA,
         "parent manifest schema drift",
     )
-    _require(
-        manifest.get("worker_id") == PARENT_WORKER_ID,
-        "parent manifest worker drift",
-    )
-    _require(
-        manifest.get("local_free_only") is True,
-        "parent LOCAL_FREE boundary weakened",
-    )
-    _require(
-        manifest.get("safe_result") == PARENT_SAFE_RESULT,
-        "parent safe result drift",
-    )
-    _require(
-        manifest.get("training_authorized_bytes") == 0,
-        "parent grants training bytes",
-    )
-    _require(
-        manifest.get("normalized_capacity_credited") == 0,
-        "parent grants canonical capacity",
-    )
-    _require(
-        manifest.get("tokenizer_fit_authorized") is False,
-        "parent authorizes tokenizer fit",
-    )
-    _require(
-        manifest.get("model_training_executed") is False,
-        "parent claims model training",
-    )
-    _require(
-        manifest.get("paid_compute_used") is False,
-        "parent claims paid compute",
-    )
-    _require(
-        manifest.get("research_corpus_v1_released") is False,
-        "parent claims corpus release",
-    )
+    _require(manifest.get("worker_id") == PARENT_WORKER_ID, "parent worker drift")
+    _require(manifest.get("local_free_only") is True, "parent LOCAL_FREE weakened")
+    _require(manifest.get("safe_result") == PARENT_SAFE_RESULT, "parent result drift")
+    _require(manifest.get("training_authorized_bytes") == 0, "parent grants training")
+    _require(manifest.get("normalized_capacity_credited") == 0, "parent grants capacity")
+    _require(manifest.get("tokenizer_fit_authorized") is False, "parent tokenizer open")
+    _require(manifest.get("model_training_executed") is False, "parent training claim")
+    _require(manifest.get("paid_compute_used") is False, "parent paid compute claim")
+    _require(manifest.get("research_corpus_v1_released") is False, "parent release claim")
 
     gates = manifest.get("gates")
     _require(isinstance(gates, Mapping), "parent gates missing")
-    _require(
-        gates.get("exact_probe_inventory") == "PASS",
-        "parent probe inventory not PASS",
-    )
-    _require(
-        gates.get("canonical_normalization") == "PASS",
-        "parent normalization not PASS",
-    )
-    _require(gates.get("quality") == "NOT_RUN", "parent quality gate already changed")
-    _require(gates.get("privacy") == "NOT_RUN", "parent privacy gate already changed")
-    _require(
-        gates.get("global_cross_source_dedup") == "NOT_RUN",
-        "parent dedup state drift",
-    )
-    _require(
-        gates.get("evaluation_decontamination") == "NOT_RUN",
-        "parent decontamination state drift",
-    )
+    _require(gates.get("exact_probe_inventory") == "PASS", "parent probe not PASS")
+    _require(gates.get("canonical_normalization") == "PASS", "parent norm not PASS")
+    for key in (
+        "quality",
+        "privacy",
+        "global_cross_source_dedup",
+        "evaluation_decontamination",
+        "balance_diversity",
+        "corpus_materialization",
+        "unique_loss_ledger",
+    ):
+        _require(gates.get(key) == "NOT_RUN", f"parent downstream gate drift: {key}")
 
     normalization = manifest.get("normalization")
-    _require(isinstance(normalization, Mapping), "parent normalization section missing")
+    _require(isinstance(normalization, Mapping), "parent normalization missing")
     _require(
         normalization.get("name") == PARENT_NORMALIZER_NAME,
-        "parent normalizer identity drift",
+        "parent normalizer drift",
     )
-    source_encoding_counts = normalization.get("source_encoding_counts")
-    _require(
-        isinstance(source_encoding_counts, Mapping),
-        "parent source-encoding counts missing",
-    )
-    for key, value in source_encoding_counts.items():
+    counts = normalization.get("source_encoding_counts")
+    _require(isinstance(counts, Mapping), "parent encoding counts missing")
+    for key, value in counts.items():
         _require(key in ALLOWED_SOURCE_ENCODINGS, "parent source encoding drift")
         _require(
             isinstance(value, int) and not isinstance(value, bool) and value >= 0,
             "parent source-encoding count invalid",
         )
     _require(
-        sum(int(value) for value in source_encoding_counts.values())
-        == normalization.get("record_count"),
+        sum(int(value) for value in counts.values()) == normalization.get("record_count"),
         "parent source-encoding count total drift",
     )
 
@@ -308,10 +276,7 @@ def _verify_parent_manifest(manifest: Mapping[str, Any]) -> None:
     )
     unsigned = copy.deepcopy(dict(manifest))
     unsigned.pop("manifest_identity_sha256", None)
-    _require(
-        _sha256(_canonical_bytes(unsigned)) == identity,
-        "parent manifest self-hash mismatch",
-    )
+    _require(_sha256(_canonical_bytes(unsigned)) == identity, "parent manifest self-hash mismatch")
 
     parent_probe = manifest.get("parent_probe")
     _require(isinstance(parent_probe, Mapping), "parent probe binding missing")
@@ -333,37 +298,80 @@ def _verify_parent_manifest(manifest: Mapping[str, Any]) -> None:
         )
 
 
+def _verify_exact_parent_authority(
+    parent_jsonl: bytes,
+    manifest: Mapping[str, Any],
+    *,
+    parent_manifest_sha256: str,
+) -> None:
+    expected = EXPECTED_PARENT_BINDING
+    _require(
+        parent_manifest_sha256 == expected["manifest_transport_sha256"],
+        "exact parent manifest transport SHA-256 mismatch",
+    )
+    _require(
+        manifest.get("manifest_identity_sha256") == expected["manifest_identity_sha256"],
+        "exact parent manifest identity mismatch",
+    )
+    normalization = manifest["normalization"]
+    _require(
+        _sha256(parent_jsonl) == expected["jsonl_sha256"],
+        "exact parent JSONL SHA-256 mismatch",
+    )
+    _require(normalization.get("jsonl_sha256") == expected["jsonl_sha256"], "parent JSONL binding drift")
+    _require(normalization.get("record_count") == expected["record_count"], "parent record count drift")
+    _require(
+        normalization.get("nonempty_record_count") == expected["nonempty_record_count"],
+        "parent nonempty record count drift",
+    )
+    _require(
+        normalization.get("normalized_bytes_observed_not_credited")
+        == expected["normalized_bytes_observed_not_credited"],
+        "parent normalized byte total drift",
+    )
+    _require(
+        normalization.get("normalized_record_inventory_sha256")
+        == expected["normalized_record_inventory_sha256"],
+        "parent normalized inventory drift",
+    )
+    _require(
+        dict(normalization.get("source_encoding_counts", {}))
+        == expected["source_encoding_counts"],
+        "parent source-encoding distribution drift",
+    )
+    probe = manifest["parent_probe"]
+    _require(
+        probe.get("probe_report_sha256") == expected["pinned_probe_report_sha256"],
+        "parent pinned probe identity drift",
+    )
+    _require(probe.get("archive_sha256") == expected["archive_sha256"], "parent archive identity drift")
+    _require(
+        probe.get("entry_identity_sha256") == expected["entry_identity_sha256"],
+        "parent entry inventory identity drift",
+    )
+
+
 def _parse_parent_records(
     parent_jsonl: bytes,
     manifest: Mapping[str, Any],
 ) -> list[dict[str, Any]]:
-    normalization = manifest.get("normalization")
-    _require(isinstance(normalization, Mapping), "parent normalization section missing")
+    normalization = manifest["normalization"]
     expected_jsonl_sha = normalization.get("jsonl_sha256")
     _require(
         isinstance(expected_jsonl_sha, str)
         and SHA256_RE.fullmatch(expected_jsonl_sha) is not None,
         "parent JSONL identity invalid",
     )
-    _require(
-        _sha256(parent_jsonl) == expected_jsonl_sha,
-        "parent JSONL SHA-256 mismatch",
-    )
+    _require(_sha256(parent_jsonl) == expected_jsonl_sha, "parent JSONL SHA-256 mismatch")
 
     manifest_records = manifest.get("records")
     _require(isinstance(manifest_records, list), "parent record manifest missing")
     expected_by_id: dict[str, Mapping[str, Any]] = {}
     for metadata in manifest_records:
-        _require(
-            isinstance(metadata, Mapping),
-            "parent record metadata must be an object",
-        )
+        _require(isinstance(metadata, Mapping), "parent metadata must be object")
         record_id = metadata.get("record_id")
         _require(isinstance(record_id, str) and record_id, "parent record_id invalid")
-        _require(
-            record_id not in expected_by_id,
-            f"duplicate manifest record_id: {record_id}",
-        )
+        _require(record_id not in expected_by_id, f"duplicate manifest record_id: {record_id}")
         expected_by_id[record_id] = metadata
 
     records: list[dict[str, Any]] = []
@@ -373,56 +381,32 @@ def _parse_parent_records(
         decoded = parent_jsonl.decode("utf-8", errors="strict")
     except UnicodeDecodeError as exc:
         raise QualityPrivacyError("parent JSONL is not strict UTF-8") from exc
+
     for line_number, line in enumerate(decoded.splitlines(), start=1):
         if not line:
             continue
         try:
             row = json.loads(line)
         except json.JSONDecodeError as exc:
-            raise QualityPrivacyError(
-                f"parent JSONL line {line_number} is invalid"
-            ) from exc
-        _require(
-            isinstance(row, dict),
-            f"parent JSONL line {line_number} must be an object",
-        )
-        _require(
-            set(row) == PARENT_RECORD_FIELDS,
-            f"parent record field drift at line {line_number}",
-        )
+            raise QualityPrivacyError(f"parent JSONL line {line_number} is invalid") from exc
+        _require(isinstance(row, dict), f"parent line {line_number} must be object")
+        _require(set(row) == PARENT_RECORD_FIELDS, f"parent record field drift at line {line_number}")
         record_id = row.get("record_id")
         _require(isinstance(record_id, str) and record_id, "parent record_id missing")
         _require(record_id not in seen, f"duplicate parent record_id: {record_id}")
         seen.add(record_id)
         source_encoding = row.get("source_encoding")
-        _require(
-            source_encoding in ALLOWED_SOURCE_ENCODINGS,
-            f"parent source encoding invalid: {record_id}",
-        )
+        _require(source_encoding in ALLOWED_SOURCE_ENCODINGS, f"parent source encoding invalid: {record_id}")
         observed_encodings[str(source_encoding)] += 1
         metadata = expected_by_id.get(record_id)
-        _require(
-            metadata is not None,
-            f"parent record absent from manifest: {record_id}",
-        )
-        expected_metadata = {
-            key: value for key, value in row.items() if key != "text"
-        }
-        _require(
-            dict(metadata) == expected_metadata,
-            f"parent metadata mismatch: {record_id}",
-        )
+        _require(metadata is not None, f"parent record absent from manifest: {record_id}")
+        expected_metadata = {key: value for key, value in row.items() if key != "text"}
+        _require(dict(metadata) == expected_metadata, f"parent metadata mismatch: {record_id}")
         text = row.get("text")
         _require(isinstance(text, str), f"parent text is not a string: {record_id}")
         encoded = text.encode("utf-8")
-        _require(
-            row.get("normalized_bytes") == len(encoded),
-            f"parent normalized byte drift: {record_id}",
-        )
-        _require(
-            row.get("normalized_sha256") == _sha256(encoded),
-            f"parent normalized hash drift: {record_id}",
-        )
+        _require(row.get("normalized_bytes") == len(encoded), f"parent normalized byte drift: {record_id}")
+        _require(row.get("normalized_sha256") == _sha256(encoded), f"parent normalized hash drift: {record_id}")
         raw_sha = row.get("raw_sha256")
         _require(
             isinstance(raw_sha, str) and SHA256_RE.fullmatch(raw_sha) is not None,
@@ -430,17 +414,10 @@ def _parse_parent_records(
         )
         records.append(row)
 
+    _require(seen == set(expected_by_id), "parent JSONL/manifest record coverage mismatch")
+    _require(normalization.get("record_count") == len(records), "parent record count drift")
     _require(
-        seen == set(expected_by_id),
-        "parent JSONL/manifest record coverage mismatch",
-    )
-    _require(
-        normalization.get("record_count") == len(records),
-        "parent record count drift",
-    )
-    _require(
-        dict(sorted(observed_encodings.items()))
-        == dict(normalization.get("source_encoding_counts", {})),
+        dict(sorted(observed_encodings.items())) == dict(normalization.get("source_encoding_counts", {})),
         "parent source-encoding counts do not match records",
     )
     _require(
@@ -452,7 +429,6 @@ def _parse_parent_records(
 
 
 def _chunk_text(text: str, *, max_chars: int, min_chars: int) -> tuple[str, ...]:
-    """DATA-228/DATA-181 generic natural-text chunking semantics."""
     _require(max_chars >= min_chars >= 20, "invalid chunk limits")
     paragraphs = [part.strip() for part in text.split("\n") if part.strip()]
     chunks: list[str] = []
@@ -505,15 +481,11 @@ def _quality_reason(
     max_chars: int,
     min_alpha_ratio: float,
 ) -> str | None:
-    """Bounded DATA-228/D03 quality/privacy predicate."""
     if len(text) < min_chars:
         return "too_short"
     if len(text) > max_chars:
         return "too_long"
-    if any(
-        unicodedata.category(char) == "Cc" and char not in "\n\t"
-        for char in text
-    ):
+    if any(unicodedata.category(char) == "Cc" and char not in "\n\t" for char in text):
         return "control_character"
     if EMAIL_RE.search(text):
         return "pii_email"
@@ -528,14 +500,14 @@ def _quality_reason(
     return None
 
 
-def materialize_quality_privacy_candidate(
+def _materialize_quality_privacy_candidate(
     parent_jsonl: bytes,
     parent_manifest: Mapping[str, Any],
     config: Mapping[str, Any],
     *,
     parent_manifest_sha256: str,
+    enforce_exact_parent: bool,
 ) -> tuple[bytes, dict[str, Any]]:
-    """Return deterministic accepted-chunk JSONL plus a text-free audit report."""
     _validate_config(config)
     _verify_parent_manifest(parent_manifest)
     _require(
@@ -543,6 +515,12 @@ def materialize_quality_privacy_candidate(
         and SHA256_RE.fullmatch(parent_manifest_sha256) is not None,
         "parent manifest transport SHA-256 invalid",
     )
+    if enforce_exact_parent:
+        _verify_exact_parent_authority(
+            parent_jsonl,
+            parent_manifest,
+            parent_manifest_sha256=parent_manifest_sha256,
+        )
     records = _parse_parent_records(parent_jsonl, parent_manifest)
 
     chunking = config["chunking"]
@@ -585,18 +563,12 @@ def materialize_quality_privacy_candidate(
                 }
             )
 
-    accepted.sort(
-        key=lambda row: (row["parent_record_id"], int(row["chunk_index"]))
-    )
+    accepted.sort(key=lambda row: (row["parent_record_id"], int(row["chunk_index"])))
     accepted_ids = [str(row["record_id"]) for row in accepted]
-    _require(
-        len(accepted_ids) == len(set(accepted_ids)),
-        "accepted record_id collision",
-    )
+    _require(len(accepted_ids) == len(set(accepted_ids)), "accepted record_id collision")
     accepted_jsonl = b"".join(_canonical_bytes(row) + b"\n" for row in accepted)
     accepted_metadata = [
-        {key: value for key, value in row.items() if key != "text"}
-        for row in accepted
+        {key: value for key, value in row.items() if key != "text"} for row in accepted
     ]
     inventory_hasher = hashlib.sha256()
     for row in accepted_metadata:
@@ -608,28 +580,30 @@ def materialize_quality_privacy_candidate(
     accepted_bytes = sum(int(row["normalized_bytes"]) for row in accepted)
     accepted_encoding_counts = Counter(str(row["source_encoding"]) for row in accepted)
     rejected_count = sum(rejected_reasons.values())
-    _require(
-        total_chunks == len(accepted) + rejected_count,
-        "chunk accounting mismatch",
-    )
+    _require(total_chunks == len(accepted) + rejected_count, "chunk accounting mismatch")
 
+    parent_binding = config["parent_normalization"]
     report: dict[str, Any] = {
         "schema_version": REPORT_SCHEMA,
         "worker_id": WORKER_ID,
         "local_free_only": True,
         "parent_normalization": {
-            "pr": PARENT_PR,
-            "head_sha": PARENT_HEAD,
-            "branch": PARENT_BRANCH,
-            "manifest_identity_sha256": parent_manifest[
-                "manifest_identity_sha256"
+            "pr": parent_binding["pr"],
+            "head_sha": parent_binding["head_sha"],
+            "branch": parent_binding["branch"],
+            "execution_head_sha": parent_binding["execution_head_sha"],
+            "execution_run_id": parent_binding["execution_run_id"],
+            "execution_evidence_identity_sha256": parent_binding[
+                "execution_evidence_identity_sha256"
             ],
+            "manifest_identity_sha256": parent_manifest["manifest_identity_sha256"],
             "manifest_transport_sha256": parent_manifest_sha256,
             "jsonl_sha256": parent_manifest["normalization"]["jsonl_sha256"],
             "source_family": SOURCE_FAMILY,
             "source_encoding_counts": dict(
                 parent_manifest["normalization"]["source_encoding_counts"]
             ),
+            "exact_parent_authority_enforced": enforce_exact_parent,
         },
         "policy": {
             "chunking": dict(chunking),
@@ -639,9 +613,7 @@ def materialize_quality_privacy_candidate(
         },
         "input": {
             "parent_record_count": len(records),
-            "parent_normalized_bytes": sum(
-                int(row["normalized_bytes"]) for row in records
-            ),
+            "parent_normalized_bytes": sum(int(row["normalized_bytes"]) for row in records),
             "zero_chunk_parent_count": zero_chunk_parent_count,
         },
         "filter_result": {
@@ -650,20 +622,17 @@ def materialize_quality_privacy_candidate(
             "rejected_chunk_count": rejected_count,
             "rejection_reasons": dict(sorted(rejected_reasons.items())),
             "accepted_bytes_observed_not_credited": accepted_bytes,
-            "accepted_source_encoding_counts": dict(
-                sorted(accepted_encoding_counts.items())
-            ),
+            "accepted_source_encoding_counts": dict(sorted(accepted_encoding_counts.items())),
             "accepted_jsonl_sha256": _sha256(accepted_jsonl),
             "accepted_inventory_sha256": inventory_hasher.hexdigest(),
-            "exact_duplicate_accepted_hashes_observed_not_removed": (
-                exact_duplicate_observations
-            ),
+            "exact_duplicate_accepted_hashes_observed_not_removed": exact_duplicate_observations,
             "rejected_text_emitted": False,
             "rejected_hashes_emitted": False,
         },
         "gates": {
             "parent_manifest_integrity": "PASS",
             "parent_jsonl_integrity": "PASS",
+            "exact_parent_authority": "PASS" if enforce_exact_parent else "TEST_FIXTURE_ONLY",
             "deterministic_chunking": "PASS",
             "bounded_quality_privacy_filter_execution": "PASS",
             "global_cross_source_dedup": "NOT_RUN",
@@ -690,6 +659,40 @@ def materialize_quality_privacy_candidate(
     return accepted_jsonl, report
 
 
+def materialize_quality_privacy_candidate(
+    parent_jsonl: bytes,
+    parent_manifest: Mapping[str, Any],
+    config: Mapping[str, Any],
+    *,
+    parent_manifest_sha256: str,
+) -> tuple[bytes, dict[str, Any]]:
+    """Production API: exact current parent authority is always enforced."""
+    return _materialize_quality_privacy_candidate(
+        parent_jsonl,
+        parent_manifest,
+        config,
+        parent_manifest_sha256=parent_manifest_sha256,
+        enforce_exact_parent=True,
+    )
+
+
+def _materialize_quality_privacy_candidate_for_test(
+    parent_jsonl: bytes,
+    parent_manifest: Mapping[str, Any],
+    config: Mapping[str, Any],
+    *,
+    parent_manifest_sha256: str,
+) -> tuple[bytes, dict[str, Any]]:
+    """Synthetic unit-fixture seam; never used by CLI or production execution."""
+    return _materialize_quality_privacy_candidate(
+        parent_jsonl,
+        parent_manifest,
+        config,
+        parent_manifest_sha256=parent_manifest_sha256,
+        enforce_exact_parent=False,
+    )
+
+
 def _atomic_write(path: Path, payload: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(path.name + ".tmp")
@@ -714,9 +717,7 @@ def main() -> int:
     try:
         parent_jsonl = args.parent_jsonl.read_bytes()
     except OSError as exc:
-        raise QualityPrivacyError(
-            f"cannot read parent JSONL: {args.parent_jsonl}"
-        ) from exc
+        raise QualityPrivacyError(f"cannot read parent JSONL: {args.parent_jsonl}") from exc
 
     accepted_jsonl, report = materialize_quality_privacy_candidate(
         parent_jsonl,
@@ -736,15 +737,11 @@ def main() -> int:
         json.dumps(
             {
                 "status": "PASS_QUALITY_PRIVACY_FILTERED_CANDIDATE_ONLY",
-                "accepted_chunk_count": report["filter_result"][
-                    "accepted_chunk_count"
+                "accepted_chunk_count": report["filter_result"]["accepted_chunk_count"],
+                "rejected_chunk_count": report["filter_result"]["rejected_chunk_count"],
+                "accepted_bytes_observed_not_credited": report["filter_result"][
+                    "accepted_bytes_observed_not_credited"
                 ],
-                "rejected_chunk_count": report["filter_result"][
-                    "rejected_chunk_count"
-                ],
-                "accepted_bytes_observed_not_credited": report[
-                    "filter_result"
-                ]["accepted_bytes_observed_not_credited"],
                 "accepted_source_encoding_counts": report["filter_result"][
                     "accepted_source_encoding_counts"
                 ],
