@@ -30,6 +30,14 @@ for _name in dir(_impl):
     if not _name.startswith("__") and _name not in {"validate_rada_rows", "run_expanded_dedup"}:
         globals()[_name] = getattr(_impl, _name)
 
+# Static aliases for the authority primitives used by this facade.  The loop above
+# keeps the incumbent import surface intact; these aliases keep Ruff/F821 honest.
+ExpandedDedupError = _impl.ExpandedDedupError
+V8_NESTED_V3_SHA256 = _impl.V8_NESTED_V3_SHA256
+_canonical = _impl._canonical
+_require = _impl._require
+_sha256 = _impl._sha256
+
 _LEGACY_VALIDATE_RADA_ROWS = _impl.validate_rada_rows
 _LEGACY_RUN_EXPANDED_DEDUP = _impl.run_expanded_dedup
 
