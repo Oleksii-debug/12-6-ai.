@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from twelve_six import ubuntu_irc_execution_rights_crossbind as mod
+from twelve_six.ubuntu_irc_rights import UbuntuIrcRightsError
 
 REPO_ROOT = Path(__file__).parents[1]
 CROSSBIND_PATH = (
@@ -92,7 +93,7 @@ def test_rights_and_repaired_source_identity_must_cross_match() -> None:
     crossbind, rights, parent, rights_bytes = load_inputs()
     rights = copy.deepcopy(rights)
     rights["real_execution_reference"]["candidate_payload_sha256"] = "0" * 64
-    with pytest.raises(Exception):
+    with pytest.raises(UbuntuIrcRightsError, match="candidate payload hash drifted"):
         validate(crossbind, rights, parent, rights_bytes)
 
 
