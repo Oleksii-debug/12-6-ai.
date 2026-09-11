@@ -49,6 +49,13 @@ def _canonical_json_bytes(data: Mapping[str, Any]) -> bytes:
     ).encode("utf-8")
 
 
+def _serialized_probe_report_bytes(data: Mapping[str, Any]) -> bytes:
+    """Reproduce the exact deterministic bytes emitted by the pinning CLI."""
+    return (
+        json.dumps(data, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
+    ).encode("utf-8")
+
+
 def _load_json(path: Path) -> tuple[dict[str, Any], bytes]:
     try:
         raw_bytes = path.read_bytes()
@@ -353,6 +360,73 @@ def _validate_probe(
     return by_basename
 
 
+def _validate_successor_observation_pin(
+    probe: Mapping[str, Any],
+    config: Mapping[str, Any],
+    archive: bytes,
+    *,
+    probe_report_sha256: str,
+) -> None:
+    pin = config.get("successor_observation_pin")
+    if not isinstance(pin, Mapping):
+        raise NormalizationError("successor observation pin missing")
+    if pin.get("source_pr") != 864:
+        raise NormalizationError("successor observation source PR drift")
+    source_head = pin.get("source_head_sha")
+    if not isinstance(source_head, str) or not re.fullmatch(r"[0-9a-f]{40}", source_head):
+        raise NormalizationError("successor observation head must be an exact commit SHA")
+    if pin.get("config_path") != "configs/data/d03_rada_bulk_observation_pin_v1.json":
+        raise NormalizationError("successor observation config path drift")
+    for field in (
+        "config_identity_sha256",
+        "source_observation_report_sha256",
+        "pinned_probe_report_sha256",
+        "archive_sha256",
+        "entry_identity_sha256",
+    ):
+        value = pin.get(field)
+        if not isinstance(value, str) or not SHA256_RE.fullmatch(value):
+            raise NormalizationError(f"successor observation {field} must be SHA-256")
+    if pin.get("pin_status") != "PASS_EXACT_EXECUTION":
+        raise NormalizationError("successor observation pin is not exact-execution PASS")
+    if pin.get("discovery_capacity_threshold") != "FAIL_BELOW_MINIMUM":
+        raise NormalizationError("successor observation discovery threshold drift")
+    if pin.get("normalization_input_only") is not True:
+        raise NormalizationError("successor observation must remain normalization-input-only")
+    for field in ("normalized_capacity_credited", "training_authorized_bytes"):
+        value = pin.get(field)
+        if isinstance(value, bool) or not isinstance(value, int) or value != 0:
+            raise NormalizationError(
+                f"successor observation {field} must be exact integer zero"
+            )
+
+    if probe_report_sha256 != pin["pinned_probe_report_sha256"]:
+        raise NormalizationError(
+            "probe report identity does not match successor observation pin"
+        )
+    archive_sha256 = _sha256(archive)
+    if archive_sha256 != pin["archive_sha256"]:
+        raise NormalizationError(
+            "archive SHA-256 does not match successor observation pin"
+        )
+    archive_meta = probe.get("archive")
+    if (
+        not isinstance(archive_meta, Mapping)
+        or archive_meta.get("sha256") != pin["archive_sha256"]
+    ):
+        raise NormalizationError(
+            "probe archive identity does not match successor observation pin"
+        )
+    inventory = probe.get("inventory")
+    if (
+        not isinstance(inventory, Mapping)
+        or inventory.get("entry_identity_sha256") != pin["entry_identity_sha256"]
+    ):
+        raise NormalizationError(
+            "probe inventory identity does not match successor observation pin"
+        )
+
+
 def materialize_normalized_records(
     archive: bytes,
     probe: Mapping[str, Any],
@@ -366,7 +440,18 @@ def materialize_normalized_records(
         probe_report_sha256
     ):
         raise NormalizationError("probe report identity must be SHA-256")
+    observed_probe_report_sha256 = _sha256(_serialized_probe_report_bytes(probe))
+    if probe_report_sha256 != observed_probe_report_sha256:
+        raise NormalizationError(
+            "probe report identity does not match deterministic report bytes"
+        )
     expected = _validate_probe(probe, config, archive)
+    _validate_successor_observation_pin(
+        probe,
+        config,
+        archive,
+        probe_report_sha256=observed_probe_report_sha256,
+    )
     normalizer = config["normalization"]
     prefix = str(normalizer["record_id_prefix"])
 

@@ -74,11 +74,8 @@ def _observation_probe(archive: bytes, min_entries: int) -> dict:
 
 
 def _report_sha(report: dict) -> str:
-    encoded = json.dumps(
-        report,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
+    encoded = (
+        json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
     ).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
 
@@ -89,6 +86,10 @@ def _normalizer_config_for_report(report: dict) -> dict:
     config["parent_probe"]["probe_config_identity_sha256"] = report[
         "config_identity_sha256"
     ]
+    successor = config["successor_observation_pin"]
+    successor["pinned_probe_report_sha256"] = _report_sha(report)
+    successor["archive_sha256"] = report["archive"]["sha256"]
+    successor["entry_identity_sha256"] = report["inventory"]["entry_identity_sha256"]
     return config
 
 
@@ -302,6 +303,78 @@ def test_truth_boundary_mutation_is_rejected() -> None:
         materialize_normalized_records(
             archive,
             report,
+            config,
+            probe_report_sha256=_report_sha(report),
+        )
+
+
+
+def test_frozen_successor_pin_rejects_coherent_report_substitution() -> None:
+    archive = _archive({"d1.htm": b"<p>coherent substitute</p>"})
+    report = _strict_probe(archive, 1)
+    config = _normalizer_config_for_report(report)
+    config["successor_observation_pin"] = copy.deepcopy(
+        CONFIG["successor_observation_pin"]
+    )
+    with pytest.raises(
+        NormalizationError,
+        match="probe report identity does not match successor observation pin",
+    ):
+        materialize_normalized_records(
+            archive,
+            report,
+            config,
+            probe_report_sha256=_report_sha(report),
+        )
+
+
+def test_successor_pin_rejects_archive_substitution_after_report_binding() -> None:
+    archive = _archive({"d1.htm": b"<p>coherent substitute</p>"})
+    report = _strict_probe(archive, 1)
+    config = _normalizer_config_for_report(report)
+    config["successor_observation_pin"]["archive_sha256"] = "0" * 64
+    with pytest.raises(
+        NormalizationError,
+        match="archive SHA-256 does not match successor observation pin",
+    ):
+        materialize_normalized_records(
+            archive,
+            report,
+            config,
+            probe_report_sha256=_report_sha(report),
+        )
+
+
+def test_successor_pin_rejects_inventory_substitution_after_report_and_archive_binding() -> None:
+    archive = _archive({"d1.htm": b"<p>coherent substitute</p>"})
+    report = _strict_probe(archive, 1)
+    config = _normalizer_config_for_report(report)
+    config["successor_observation_pin"]["entry_identity_sha256"] = "0" * 64
+    with pytest.raises(
+        NormalizationError,
+        match="probe inventory identity does not match successor observation pin",
+    ):
+        materialize_normalized_records(
+            archive,
+            report,
+            config,
+            probe_report_sha256=_report_sha(report),
+        )
+
+
+def test_direct_api_cannot_forge_report_digest_for_changed_report_object() -> None:
+    archive = _archive({"d1.htm": b"<p>one</p>"})
+    report = _strict_probe(archive, 1)
+    config = _normalizer_config_for_report(report)
+    forged = copy.deepcopy(report)
+    forged["ignored_attacker_field"] = "coherent-rehash-substitute"
+    with pytest.raises(
+        NormalizationError,
+        match="probe report identity does not match deterministic report bytes",
+    ):
+        materialize_normalized_records(
+            archive,
+            forged,
             config,
             probe_report_sha256=_report_sha(report),
         )
