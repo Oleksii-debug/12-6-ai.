@@ -225,21 +225,24 @@ def validate_authority(authority: dict[str, Any], parent_registry: dict[str, Any
             "IRC/Guidelines - Ubuntu Wiki",
             "2021-09-05",
             "UBUNTU_CHANNEL_PUBLIC_DOMAIN_POLICY",
+            "The published Ubuntu IRC guidelines state that Ubuntu channels are logged and their channel contents are considered public domain.",
         ),
         "community_help_irc": (
             "https://help.ubuntu.com/community/InternetRelayChat",
             "InternetRelayChat - Community Help Wiki",
             "2024-03-28",
             "UBUNTU_CHANNEL_PUBLIC_DOMAIN_POLICY",
+            "The Ubuntu Community Help Wiki states that Ubuntu channel content, whether officially logged or otherwise, is considered public domain.",
         ),
         "irc_terms_of_service": (
             "https://wiki.ubuntu.com/IRC/TermsOfService",
             "IRC/TermsOfService - Ubuntu Wiki",
             "2025-01-24",
             "PUBLIC_LOGGING_AND_STORAGE_CONSENT",
+            "The Ubuntu IRC terms state that participation in a publicly logged channel agrees to public storage or processing of messages on irclogs.ubuntu.com or other external sites.",
         ),
     }
-    for key, (url, title, last_edited, role) in expected_evidence.items():
+    for key, (url, title, last_edited, role, observed_fact) in expected_evidence.items():
         item = _require_exact_keys(
             evidence[key],
             {"url", "title", "last_edited", "evidence_role", "observed_fact"},
@@ -250,8 +253,8 @@ def validate_authority(authority: dict[str, Any], parent_registry: dict[str, Any
         _require(item["last_edited"] == last_edited, f"{key} edit date drifted")
         _require(item["evidence_role"] == role, f"{key} evidence role drifted")
         _require(
-            type(item["observed_fact"]) is str and bool(item["observed_fact"].strip()),
-            f"{key} fact missing",
+            type(item["observed_fact"]) is str and item["observed_fact"] == observed_fact,
+            f"{key} observed fact drifted",
         )
 
     scope = _require_exact_keys(
