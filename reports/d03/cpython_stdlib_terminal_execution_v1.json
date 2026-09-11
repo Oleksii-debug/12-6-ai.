@@ -11,6 +11,10 @@
     "workflow": "D03 CPython stdlib terminal execution",
     "workflow_conclusion": "success"
   },
+  "materializer_observation": {
+    "rejected_by_source_policy": 5,
+    "report_identity_sha256": "1ae69b91ad0eb2e99592563814b054cfe16b3f3800604d9dee54e6184a89b75a"
+  },
   "receipt": {
     "acquisition": {
       "archive_bytes_identical": true,
