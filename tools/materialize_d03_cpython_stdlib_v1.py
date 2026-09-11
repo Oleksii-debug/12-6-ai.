@@ -254,6 +254,8 @@ def materialize_archive_bytes(
     seen_payloads: dict[str, str] = {}
     retained = 0
     skipped_for_cap = 0
+    rejected_by_source_policy = 0
+    first_source_policy_error: CandidateError | None = None
     for path, raw in members:
         expected_blob = expected_blobs.get(path)
         if expected_blob is None:
@@ -263,7 +265,13 @@ def materialize_archive_bytes(
             raise CandidateError(f"{path}: Git blob does not match pinned tree")
         if not raw:
             continue
-        _validate_source(path, raw)
+        try:
+            _validate_source(path, raw)
+        except CandidateError as exc:
+            rejected_by_source_policy += 1
+            if first_source_policy_error is None:
+                first_source_policy_error = exc
+            continue
         digest = sha256_bytes(raw)
         if digest in seen_payloads:
             raise CandidateError(
@@ -289,6 +297,8 @@ def materialize_archive_bytes(
             }
         )
     if not selected:
+        if first_source_policy_error is not None:
+            raise first_source_policy_error
         raise CandidateError("byte cap retained no source objects")
     projection = [
         {key: value for key, value in row.items() if key != "text"}
@@ -311,6 +321,7 @@ def materialize_archive_bytes(
             "eligible_archive_objects": len(members),
             "selected_objects": len(selected),
             "selected_bytes": retained,
+            "rejected_by_source_policy": rejected_by_source_policy,
             "skipped_for_cap": skipped_for_cap,
             "inventory_identity_sha256": inventory_identity,
             "pinned_tree_verified_for_every_selected_object": True,
