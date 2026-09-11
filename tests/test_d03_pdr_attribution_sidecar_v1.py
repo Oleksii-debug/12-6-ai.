@@ -50,13 +50,13 @@ def _raw(
         "id": record_id,
         "text": "Raw source text with the original byline.",
         "source": pdr.SOURCE_VALUE,
-        "created": "2024-01-01T00:00:00",
+        "date": "2024-01-01T00:00:00",
+        "author": author,
+        "type": source_type,
         "added": "2026-01-01T00:00:00",
         "metadata": {
             "license": pdr.EXPECTED_LICENSE,
             "url": f"https://publicdomainreview.org/essay/{record_id}/",
-            "type": source_type,
-            "author": author,
         },
     }
 
