@@ -1,0 +1,124 @@
+{
+  "authority_identity_sha256": "1b1bad11b688826ee4f73701c08e3b5af76ba16e8d8a806e008d5b84bee0b97b",
+  "capacity": {
+    "corpus_training_capacity_claimed": false,
+    "exact_source_level_normalized_bytes": 1672110,
+    "exact_source_level_record_count": 3,
+    "unique_loss_positions_authorized": 0
+  },
+  "claim_boundary": {
+    "corpus_identity": null,
+    "learned_20m_claim": false,
+    "long_training_authorized": false,
+    "optimizer_updates": 0,
+    "paid_compute_authorized": false,
+    "research_corpus_v1_frozen": false,
+    "shard_identity": null,
+    "source_terminal_admit": true,
+    "training_executed": false
+  },
+  "decision": "TERMINAL_SOURCE_ADMIT",
+  "downstream_requirements": [
+    "compose into successor terminal source registry",
+    "run global exact/near/fragment/lineage dedup on composed bytes",
+    "run reserved-evaluation decontamination on exact candidate bytes",
+    "rerun post-composition quality and privacy gates",
+    "enforce 45/35/20 mixture and family caps without replay",
+    "build cluster-safe splits and deterministic packed shards",
+    "prove two clean byte-identical builds",
+    "build post-pack unique causal-loss ledger before training authorization"
+  ],
+  "exact_head_execution": {
+    "artifact_digest": "sha256:63fa5d9b403432074193e290beb0473b5a1f7b74de1ac30bad71b9ec8405e006",
+    "artifact_id": 9618402768,
+    "artifact_name": "next100-033-gutenberg-en-terminal-evidence",
+    "report_corpus_evidence_identity_sha256": "e454d9b1a94497aec95776c8b9b6318b73647bc3248f62da70e45a7c369f637e",
+    "report_schema_version": "12-6.next100-033.gutenberg-en-terminal-evidence.v1",
+    "report_sha256": "2d1e99f0cb41a1b90ce995076d88bffa7435b151f6036dea0a54552d89556cd0",
+    "report_terminal_decision": "ADMIT",
+    "workflow_conclusion": "success",
+    "workflow_name": "NEXT100-033 Gutenberg EN qualification",
+    "workflow_run_id": 32998859164
+  },
+  "execution_profile": "LOCAL_FREE",
+  "machine_gates": {
+    "evaluation_reservation": "PASS_NO_MATCHES",
+    "exact_normalized_dedup_against_parent_registry": "PASS",
+    "normalization": "PASS",
+    "pairwise_candidate_near_overlap": "PASS_THRESHOLD_8TOKEN_JACCARD_LE_0_05",
+    "quality": "PASS",
+    "transport_identity": "PASS"
+  },
+  "parent_authority": {
+    "branch": "next100/033-data-en-gutenberg-20260826",
+    "head_sha": "3f4ad26e1e8f3406a1274418cf5f485814ce3032",
+    "pr": 470,
+    "worker_id": "NEXT100-033-DATA-EN-GUTENBERG"
+  },
+  "records": [
+    {
+      "author": "Simon Christian Hammer",
+      "ebook_id": 37177,
+      "normalized_sha256": "533f768fa90bd6fac90951760f12b1b70777ae3c147dbb053deb86ddf04860ba",
+      "normalized_utf8_bytes": 66612,
+      "raw_bytes": 87742,
+      "raw_sha256": "cb88e93e292a743cdc7476f9cd8ea12ac85b0896023d5b6814bd82779f3faf96",
+      "source_id": "en.project-gutenberg.37177",
+      "source_manifest_sha256": "d543a637dc2db4143b9da7dbbbcd1eb70b9ab1ca0c5b3dcd7e8210bf12747daa",
+      "title": "Ludvig Holberg, The Founder of Norwegian Literature and an Oxford Student",
+      "transport_commit": "6ba1ee491cfba2aa56729967b48886bf71b20ac7",
+      "transport_git_blob_sha1": "cc35bab195c6d55b14568cd3da8fecfd0499f868",
+      "transport_path": "37177.txt",
+      "transport_repo": "GITenberg/Ludvig-Holberg-The-Founder-of-Norwegian-Literature-and-an-Oxford-Student_37177"
+    },
+    {
+      "author": "Reynold Alleyne Nicholson",
+      "ebook_id": 37985,
+      "normalized_sha256": "6c4cd7d1fa4ef2340fe94a3ec737c72a55658ea3fb2bb19e5f5859eb8d8e3810",
+      "normalized_utf8_bytes": 1158509,
+      "raw_bytes": 1203657,
+      "raw_sha256": "e356cd7d2e57677d48413768956fa9b517ed8f28d9ff8ff63b3651cfa0893066",
+      "source_id": "en.project-gutenberg.37985",
+      "source_manifest_sha256": "137e9330f1562a7da99f2530dc5f1f0736ab7a16e25d854d24784225d16db504",
+      "title": "A Literary History of the Arabs",
+      "transport_commit": "b8477090720ab89858bfed937f799760cb4f23e3",
+      "transport_git_blob_sha1": "cd62e73adf6d502823c4b59de304212cc3d63361",
+      "transport_path": "37985-0.txt",
+      "transport_repo": "GITenberg/A-Literary-History-of-the-Arabs_37985"
+    },
+    {
+      "author": "Ebenezer Cobham Brewer",
+      "ebook_id": 40652,
+      "normalized_sha256": "e0e7095ba7ac0f1478d18feb4d87be1ed21be37e472fa4203bb92b43f9e593b4",
+      "normalized_utf8_bytes": 446989,
+      "raw_bytes": 482371,
+      "raw_sha256": "654ca36825a6bc0c80f7126983b53501d1087047b28d889affefb710eb2820c8",
+      "source_id": "en.project-gutenberg.40652",
+      "source_manifest_sha256": "919c07512ba94d7f8c13bff0434dd5c98e3560ce1d52a03fabc041c90510c91c",
+      "title": "A Guide to the Scientific Knowledge of Things Familiar",
+      "transport_commit": "4d69c9e1daad0951f2baecbae2709e72d8d7d53f",
+      "transport_git_blob_sha1": "52c517db02e5e5a7f5bfef806cf98dd8c92e06e1",
+      "transport_path": "40652-8.txt",
+      "transport_repo": "GITenberg/A-Guide-to-the-Scientific-Knowledge-of-Things-Familiar_40652"
+    }
+  ],
+  "rights": {
+    "evaluation": "NOT_AUTHORIZED",
+    "model_training": "ALLOWED_FOR_EXACT_ADMITTED_NORMALIZED_BODIES",
+    "redistribution": "RIGHTS_CLEARED_JURISDICTIONS_ONLY",
+    "rights_evidence_sha256": "81e3b6351b284af3b3ad622532288d62ebce427d62b5c2b2586100b9df0659b5",
+    "trademark_boundary": "PROJECT_GUTENBERG_MARKS_LICENSE_ENVELOPE_REMOVED_FROM_TRAINING_BODY",
+    "worldwide_public_domain_claim": false
+  },
+  "schema_version": "12-6.next100-107-gutenberg-terminal-seal.v1",
+  "source_family": {
+    "family_id": "en.project-gutenberg.public-domain-books",
+    "family_identity_sha256": "5798a9625d3b7f111de28851f7ef57d2a4f60d7b508987d24ce5905f0093fa12",
+    "independent_family_credit": 1,
+    "language": "en",
+    "modality": "text",
+    "normalized_utf8_bytes": 1672110,
+    "record_count": 3
+  },
+  "worker_id": "NEXT100-107-DATA-EN-GUTENBERG-TERMINAL-SEAL"
+}
