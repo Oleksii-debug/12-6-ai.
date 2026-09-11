@@ -6,6 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from twelve_six.learned20m_readiness import scientific_authority_token
 from twelve_six.portable_run_binding import (
     bind_portable_run_packet,
     canonical_sha256,
@@ -91,6 +92,29 @@ def _ready_readiness() -> dict:
     return data
 
 
+def _verified_tokens(readiness: dict) -> list[str]:
+    evidence = readiness["evidence"]
+    role_authorities = (
+        ("corpus", evidence["corpus"]["authority"]),
+        ("tokenizer", evidence["tokenizer"]["authority"]),
+        ("loss_ledger", evidence["loss_ledger"]["authority"]),
+        ("data_budget", evidence["loss_ledger"]["data_budget_authority"]),
+        ("checkpoint_integrity", evidence["checkpoint_integrity"]["authority"]),
+        ("evaluation_firewall", evidence["evaluation"]["firewall_authority"]),
+        (
+            "selection_validation",
+            evidence["evaluation"]["selection_validation_authority"],
+        ),
+        ("training_recipe", evidence["training_recipe"]["authority"]),
+    )
+    tokens: list[str] = []
+    for role, authority in role_authorities:
+        token = scientific_authority_token(role, authority, require_workflow=True)
+        assert token is not None
+        tokens.append(token)
+    return tokens
+
+
 def _ready_overlay() -> dict:
     data = _load(OVERLAY)
     model = _load(READINESS)["model_authority"]
@@ -159,12 +183,27 @@ def test_checked_in_overlay_contract_is_valid_but_deliberately_blocked() -> None
     assert "readiness:data_budget_not_qualified" in result.blockers
 
 
+def test_ready_looking_packet_without_external_verification_remains_blocked() -> None:
+    readiness = _ready_readiness()
+    result = bind_portable_run_packet(readiness, _load(PACKET), _ready_overlay())
+    assert not result.readiness_ready
+    assert not result.binding_ready
+    assert result.packet is None
+    assert "readiness:terminal_corpus_authority_unverified" in result.blockers
+    assert "readiness:training_recipe_authority_unverified" in result.blockers
+
+
 def test_ready_fresh_binding_is_exact_and_does_not_mutate_inputs() -> None:
     readiness = _ready_readiness()
     template = _load(PACKET)
     overlay = _ready_overlay()
     originals = copy.deepcopy((readiness, template, overlay))
-    result = bind_portable_run_packet(readiness, template, overlay)
+    result = bind_portable_run_packet(
+        readiness,
+        template,
+        overlay,
+        verified_scientific_authorities=_verified_tokens(readiness),
+    )
     assert result.binding_ready
     assert result.mode == "FRESH_START"
     assert result.packet_contract_valid
@@ -178,6 +217,7 @@ def test_ready_fresh_binding_is_exact_and_does_not_mutate_inputs() -> None:
 
 
 def test_ready_cross_provider_resume_binds_parent_lineage() -> None:
+    readiness = _ready_readiness()
     overlay = _ready_overlay()
     overlay["checkpoint"].update(
         {
@@ -196,7 +236,12 @@ def test_ready_cross_provider_resume_binds_parent_lineage() -> None:
     overlay["resource"].update({"resource_class": "FREE_GPU", "provider": "KAGGLE"})
     overlay["runtime"]["device_type"] = "cuda"
     overlay["output"]["artifact_store_uri"] = "https://artifacts.example/sha256"
-    result = bind_portable_run_packet(_ready_readiness(), _load(PACKET), overlay)
+    result = bind_portable_run_packet(
+        readiness,
+        _load(PACKET),
+        overlay,
+        verified_scientific_authorities=_verified_tokens(readiness),
+    )
     assert result.binding_ready
     assert result.mode == "RESUME"
     assert result.packet is not None
@@ -204,10 +249,16 @@ def test_ready_cross_provider_resume_binds_parent_lineage() -> None:
 
 
 def test_authority_identity_mismatch_fails_closed() -> None:
+    readiness = _ready_readiness()
     overlay = _ready_overlay()
     overlay["scientific_bindings"]["authorities"]["code"]["git_sha"] = "c" * 40
     overlay["scientific_bindings"]["authorities"]["model"]["modelspec_sha256"] = "d" * 64
-    result = bind_portable_run_packet(_ready_readiness(), _load(PACKET), overlay)
+    result = bind_portable_run_packet(
+        readiness,
+        _load(PACKET),
+        overlay,
+        verified_scientific_authorities=_verified_tokens(readiness),
+    )
     assert not result.binding_ready
     assert result.packet is None
     assert "binding:code_authority_git_sha_mismatch" in result.blockers
@@ -215,27 +266,46 @@ def test_authority_identity_mismatch_fails_closed() -> None:
 
 
 def test_backend_authority_must_bind_backend_and_environment() -> None:
+    readiness = _ready_readiness()
     overlay = _ready_overlay()
     authority = overlay["scientific_bindings"]["authorities"]["backend"]
     authority["backend_id"] = "LITGPT"
     authority["environment_lock_sha256"] = "c" * 64
-    result = bind_portable_run_packet(_ready_readiness(), _load(PACKET), overlay)
+    result = bind_portable_run_packet(
+        readiness,
+        _load(PACKET),
+        overlay,
+        verified_scientific_authorities=_verified_tokens(readiness),
+    )
     assert not result.binding_ready
     assert "binding:backend_authority_backend_id_mismatch" in result.blockers
     assert "binding:backend_authority_environment_lock_sha256_mismatch" in result.blockers
 
 
 def test_embedded_secret_and_overlay_drift_are_rejected() -> None:
+    readiness = _ready_readiness()
+    tokens = _verified_tokens(readiness)
+
     secret = _ready_overlay()
     secret["scientific_bindings"]["authorities"]["code"]["api_key"] = "forbidden"
-    result = bind_portable_run_packet(_ready_readiness(), _load(PACKET), secret)
+    result = bind_portable_run_packet(
+        readiness,
+        _load(PACKET),
+        secret,
+        verified_scientific_authorities=tokens,
+    )
     assert not result.binding_ready
     assert not result.packet_contract_valid
     assert any("embedded_secret_forbidden" in blocker for blocker in result.blockers)
 
     drift = _ready_overlay()
     drift["runtime"]["container_image"] = "unreviewed:latest"
-    result = bind_portable_run_packet(_ready_readiness(), _load(PACKET), drift)
+    result = bind_portable_run_packet(
+        readiness,
+        _load(PACKET),
+        drift,
+        verified_scientific_authorities=tokens,
+    )
     assert not result.binding_ready
     assert "overlay:overlay_runtime_container_image_unexpected" in result.blockers
 
@@ -246,7 +316,12 @@ def test_binding_does_not_relax_one_pass_unique_exposure_rule() -> None:
     recipe["requested_unique_loss_positions"] = 500
     recipe["requested_total_training_exposures"] = 1000
     recipe["max_exposures_per_unique_position"] = 2
-    result = bind_portable_run_packet(readiness, _load(PACKET), _ready_overlay())
+    result = bind_portable_run_packet(
+        readiness,
+        _load(PACKET),
+        _ready_overlay(),
+        verified_scientific_authorities=_verified_tokens(readiness),
+    )
     assert result.readiness_ready
     assert not result.binding_ready
     assert "packet:max_exposures_per_unique_position_must_be_one" in result.blockers
@@ -254,12 +329,14 @@ def test_binding_does_not_relax_one_pass_unique_exposure_rule() -> None:
 
 
 def test_cli_writes_once_only_after_ready_binding(tmp_path: Path) -> None:
+    readiness = _ready_readiness()
+    tokens = _verified_tokens(readiness)
     readiness_path = tmp_path / "readiness.json"
     template_path = tmp_path / "packet.json"
     overlay_path = tmp_path / "overlay.json"
     output_path = tmp_path / "bound.json"
     for path, value in (
-        (readiness_path, _ready_readiness()),
+        (readiness_path, readiness),
         (template_path, _load(PACKET)),
         (overlay_path, _ready_overlay()),
     ):
@@ -275,9 +352,16 @@ def test_cli_writes_once_only_after_ready_binding(tmp_path: Path) -> None:
         "--output",
         str(output_path),
     ]
+    for token in tokens:
+        args.extend(["--verified-scientific-authority-token", token])
+
     first = _run_builder(args)
     assert first.returncode == 0, first.stderr or first.stdout
-    assert json.loads(output_path.read_text(encoding="utf-8"))["status"] == "READY_CANDIDATE"
+    output_text = output_path.read_text(encoding="utf-8")
+    assert json.loads(output_text)["status"] == "READY_CANDIDATE"
+    assert all(token not in output_text for token in tokens)
+    assert all(token not in first.stdout for token in tokens)
+
     second = _run_builder(args)
     assert second.returncode == 2
     assert "refusing to overwrite existing output" in second.stdout

@@ -1,0 +1,79 @@
+{
+  "schema_version": "12-6.d03-pdr-terminal-execution-evidence.v1",
+  "worker_issue": 979,
+  "incumbent_pr": 886,
+  "execution_profile": "LOCAL_FREE",
+  "execution_head_sha": "426c557351591766b5ca090ef26850cd37ce9295",
+  "workflow_run_id": 34478508878,
+  "workflow_job_id": 102875109332,
+  "workflow_conclusion": "success",
+  "focused_adversarial_tests": {
+    "conclusion": "success",
+    "passed": 13
+  },
+  "materialization": {
+    "status": "TWO_INDEPENDENT_MATERIALIZATIONS_BYTE_IDENTICAL",
+    "independent_build_count": 2,
+    "candidate_byte_identical": true,
+    "report_byte_identical": true,
+    "manifest_byte_identical": true,
+    "source_revision": "177f70f044bd7a347616727c0f33ab4af9baa495",
+    "source_files": [
+      {
+        "path": "v0/00000_collections.jsonl.gz",
+        "compressed_bytes": 1184685,
+        "row_count": 1127,
+        "sha256": "0a5cbe305d7f468aad95a8cfc4d5fae14132bc359ccf92fc3705072db33a46fd"
+      },
+      {
+        "path": "v0/00000_essays.jsonl.gz",
+        "compressed_bytes": 1561643,
+        "row_count": 266,
+        "sha256": "825aed6a66ab14f89e1fe3110f67265d511994c52e5aed48b866a9e8a1bdeb4d"
+      }
+    ],
+    "source_row_count": 1393,
+    "selected_record_count": 1166,
+    "selected_normalized_utf8_bytes": 4795007,
+    "candidate_jsonl_bytes": 5630935,
+    "rejected": {
+      "english_lexical_gate": 3,
+      "family_byte_cap": 77,
+      "privacy_or_secret": 140,
+      "too_short": 7
+    },
+    "candidate_jsonl_sha256": "38b0ef94062b80ae1cb8055fe897feb10a1e8d04a9b17340cbc080d4bfb21591",
+    "record_projection_identity_sha256": "bf9f7896fc2c940458916184b1b702f443d72290e286ee16b24da4088b2aa4ab",
+    "report_identity_sha256": "a295de32115a3378beecf8f5f5066fa0f35ea136631473df3ad5bd082c12a88c",
+    "manifest_identity_sha256": "49000a9dd6dbb56dd222992b5802b21f8d33d6393024f1c8d03e035372c48f7b",
+    "durable_file_sha256": {
+      "candidate.jsonl": "38b0ef94062b80ae1cb8055fe897feb10a1e8d04a9b17340cbc080d4bfb21591",
+      "manifest.json": "43f843649bbc86a1bd8199d7e3b46056ec11dbc29cc1943f4a81162a10c80bef",
+      "report.json": "da7832b2ea8b6aa6610382d8b021e7577ef786ad1b65436434855a4b5b9c82ab"
+    }
+  },
+  "truth_boundary": {
+    "raw_text_persisted_in_evidence": false,
+    "canonical_corpus_admitted": false,
+    "family_credit": false,
+    "source_capacity_bytes_credited": 0,
+    "training_authorized_bytes": 0,
+    "authorized_optimized_target_exposure": 0,
+    "tokenizer_fit_authorized": false,
+    "optimizer_updates": 0,
+    "model_training_executed": false,
+    "paid_compute_used": false,
+    "rights_review_status": "REVIEW_REQUIRED",
+    "downstream_global_gates_complete": false
+  },
+  "next_required_gates": [
+    "source_rights_review",
+    "current_global_cross_family_dedup",
+    "fresh_reserved_evaluation_decontamination",
+    "post_composition_quality_privacy",
+    "balance_and_family_caps",
+    "cluster_safe_split",
+    "deterministic_packing_and_two_clean_builds",
+    "positive_exact_postpack_unique_loss_ledger"
+  ]
+}
