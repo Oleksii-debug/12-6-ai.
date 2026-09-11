@@ -143,3 +143,37 @@ def test_rehashed_nonterminal_carrier_fails_semantically() -> None:
     _rehash(value)
     with pytest.raises(LaunchInputAuthorityError, match="terminality"):
         _verify(value)
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "contains_source_text",
+        "final_test_payload_consumed",
+        "authorizes_training",
+        "authorizes_compute",
+        "replay_padding_or_replacement_can_increase_unique_capacity",
+    ],
+)
+def test_rehashed_numeric_alias_for_false_claim_boundary_fails(field: str) -> None:
+    value = _authority()
+    value["claim_boundary"][field] = 0
+    _rehash(value)
+    with pytest.raises(LaunchInputAuthorityError, match="exact false boolean"):
+        _verify(value)
+
+
+def test_rehashed_false_alias_for_zero_exposure_fails() -> None:
+    value = _authority()
+    value["claim_boundary"]["authorized_optimized_target_exposure"] = False
+    _rehash(value)
+    with pytest.raises(LaunchInputAuthorityError, match="exact integer zero"):
+        _verify(value)
+
+
+def test_rehashed_extra_claim_boundary_field_fails_closed_world() -> None:
+    value = _authority()
+    value["claim_boundary"]["training_authorized"] = False
+    _rehash(value)
+    with pytest.raises(LaunchInputAuthorityError, match="unexpected or missing fields"):
+        _verify(value)
