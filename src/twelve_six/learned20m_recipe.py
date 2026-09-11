@@ -81,6 +81,11 @@ def identity_sha256(value: Any) -> str:
     return hashlib.sha256(canonical_json_bytes(value)).hexdigest()
 
 
+def _json_contract_equal(value: Any, expected: Any) -> bool:
+    """Compare JSON contracts without Python bool/int/float equality aliases."""
+    return canonical_json_bytes(value) == canonical_json_bytes(expected)
+
+
 def _exact_keys(value: Mapping[str, Any], expected: set[str], label: str) -> None:
     actual = set(value)
     if actual != expected:
@@ -161,9 +166,9 @@ def _validate_policy_without_identity(policy: dict[str, Any]) -> None:
     if not isinstance(sources, dict):
         raise RecipeValidationError("source_authorities must be object")
     _exact_keys(sources, {"model341", "train344b"}, "source_authorities")
-    if sources["model341"] != MODEL341:
+    if not _json_contract_equal(sources["model341"], MODEL341):
         raise RecipeValidationError("MODEL-341 authority drift")
-    if sources["train344b"] != TRAIN344B:
+    if not _json_contract_equal(sources["train344b"], TRAIN344B):
         raise RecipeValidationError("TRAIN-344B authority drift")
 
     recipe = policy["recipe"]
@@ -212,7 +217,7 @@ def _validate_policy_without_identity(policy: dict[str, Any]) -> None:
             "dataloader": 20260826,
         },
     }
-    if recipe != frozen:
+    if not _json_contract_equal(recipe, frozen):
         raise RecipeValidationError("frozen recipe drift")
 
     budget = policy["runtime_budget"]
@@ -231,15 +236,18 @@ def _validate_policy_without_identity(policy: dict[str, Any]) -> None:
         },
         "runtime_budget",
     )
-    if budget != {
-        "requested_unique_loss_positions": REQUESTED_TARGETS,
-        "meaningful_minimum_unique_loss_positions": MEANINGFUL_FLOOR,
-        "rule": "min(20000000, terminal_d04_unique_nonignored_causal_loss_positions)",
-        "replay_allowed": False,
-        "replacement_sampling_allowed": False,
-        "padding_counts_as_capacity": False,
-        "max_exposures_per_unique_position": 1,
-    }:
+    if not _json_contract_equal(
+        budget,
+        {
+            "requested_unique_loss_positions": REQUESTED_TARGETS,
+            "meaningful_minimum_unique_loss_positions": MEANINGFUL_FLOOR,
+            "rule": "min(20000000, terminal_d04_unique_nonignored_causal_loss_positions)",
+            "replay_allowed": False,
+            "replacement_sampling_allowed": False,
+            "padding_counts_as_capacity": False,
+            "max_exposures_per_unique_position": 1,
+        },
+    ):
         raise RecipeValidationError("runtime budget drift")
 
     cadence = policy["checkpoint_and_evaluation"]
@@ -259,35 +267,44 @@ def _validate_policy_without_identity(policy: dict[str, Any]) -> None:
         },
         "checkpoint_and_evaluation",
     )
-    if cadence != {
-        "boundaries": list(BOUNDARIES),
-        "mandatory_fresh_process_resume_fraction": "0.50",
-        "train_trace_frozen_before_step_1": True,
-        "next_exposure_identity_required_before_step_1": True,
-        "chronological_final_retained": True,
-        "best_selection_checkpoint_retained": True,
-        "final_test_sealed_until_selection_lock": True,
-        "final_test_may_influence_selection": False,
-    }:
+    if not _json_contract_equal(
+        cadence,
+        {
+            "boundaries": list(BOUNDARIES),
+            "mandatory_fresh_process_resume_fraction": "0.50",
+            "train_trace_frozen_before_step_1": True,
+            "next_exposure_identity_required_before_step_1": True,
+            "chronological_final_retained": True,
+            "best_selection_checkpoint_retained": True,
+            "final_test_sealed_until_selection_lock": True,
+            "final_test_may_influence_selection": False,
+        },
+    ):
         raise RecipeValidationError("checkpoint/evaluation cadence drift")
 
     failure = policy["failure_semantics"]
-    if failure != {
-        "nan_or_inf_loss": "STOP_FAIL_CLOSED_NO_COMMIT",
-        "nan_or_inf_gradient": "STOP_FAIL_CLOSED_NO_COMMIT",
-        "silent_replay_allowed": False,
-        "in_place_counter_repair_allowed": False,
-    }:
+    if not _json_contract_equal(
+        failure,
+        {
+            "nan_or_inf_loss": "STOP_FAIL_CLOSED_NO_COMMIT",
+            "nan_or_inf_gradient": "STOP_FAIL_CLOSED_NO_COMMIT",
+            "silent_replay_allowed": False,
+            "in_place_counter_repair_allowed": False,
+        },
+    ):
         raise RecipeValidationError("failure semantics drift")
 
     truth = policy["truth_boundary"]
-    if truth != {
-        "training_authorized": False,
-        "compute_authorized": False,
-        "authorized_optimized_targets": 0,
-        "optimizer_updates_executed": 0,
-        "final_test_payload_accessed": False,
-    }:
+    if not _json_contract_equal(
+        truth,
+        {
+            "training_authorized": False,
+            "compute_authorized": False,
+            "authorized_optimized_targets": 0,
+            "optimizer_updates_executed": 0,
+            "final_test_payload_accessed": False,
+        },
+    ):
         raise RecipeValidationError("truth boundary drift")
 
 
@@ -365,7 +382,7 @@ def _validate_bindings(bindings: Any, trusted_authorities: Any) -> dict[str, Any
         },
         "model",
     )
-    if model != MODEL341:
+    if not _json_contract_equal(model, MODEL341):
         raise RecipeValidationError("model binding does not equal exact MODEL-341 authority")
 
     tok = bindings["tokenizer"]
@@ -409,7 +426,7 @@ def _validate_bindings(bindings: Any, trusted_authorities: Any) -> dict[str, Any
         "tokenizer_identity_sha256",
     ):
         _sha256(d04[key], f"d04.{key}")
-    if d04["sequence_length"] != DEFAULT_SEQUENCE_LENGTH:
+    if not _json_contract_equal(d04["sequence_length"], DEFAULT_SEQUENCE_LENGTH):
         raise RecipeValidationError("d04 sequence length does not equal canonical packing contract")
     if d04["packing_sha256"] != PACKING_CONFIG_HASH:
         raise RecipeValidationError("d04 packing identity does not equal canonical packing contract")
