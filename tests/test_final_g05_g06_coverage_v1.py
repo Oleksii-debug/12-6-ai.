@@ -339,3 +339,80 @@ def test_verifier_rejects_privacy_implementation_substitution():
             expected_privacy_policy_identity_sha256=PRIVACY_POLICY,
             expected_privacy_implementation_git_blob_sha="7" * 40,
         )
+
+
+def _verify_durable(result):
+    m.verify_final_g05_g06_coverage(
+        result,
+        expected_identity_sha256=result["g05_g06_coverage_identity_sha256"],
+        expected_retained_inventory_identity_sha256=(
+            result["retained_inventory_identity_sha256"]
+        ),
+        expected_decontamination_authority_sha256=(
+            result["decontamination_authority_sha256"]
+        ),
+        expected_records_jsonl_sha256=RECORDS_SHA,
+        expected_privacy_policy_identity_sha256=PRIVACY_POLICY,
+        expected_privacy_implementation_git_blob_sha=PRIVACY_IMPL,
+    )
+
+
+def _reseal_durable(result):
+    result["g05_g06_coverage_identity_sha256"] = _hash(
+        result,
+        "g05_g06_coverage_identity_sha256",
+    )
+
+
+def test_durable_verifier_accepts_builder_output_after_aud1041_hardening():
+    _verify_durable(_build())
+
+
+@pytest.mark.parametrize(
+    ("case", "message"),
+    [
+        ("projection", "projection rule drift"),
+        ("empty_roots", "roots missing"),
+        ("duplicate_roots", "duplicate qualification authority root"),
+        ("set_identity", "set identity drift"),
+        ("record_accounting", "record projection accounting drift"),
+        ("byte_accounting", "byte projection accounting drift"),
+        ("bool_excluded_count", "non-negative integer"),
+        ("bool_zero_exposure", "non-negative integer"),
+        ("unknown_root", "root schema drift"),
+    ],
+)
+def test_self_consistent_durable_semantic_rehash_fails_closed(case, message):
+    result = _build()
+    if case == "projection":
+        result["projection_rule"] = "FORGED_PROJECTION_RULE"
+    elif case == "empty_roots":
+        result["qualification_authority_identities_sha256"] = []
+        result["qualification_authority_set_identity_sha256"] = hashlib.sha256(
+            b"[]"
+        ).hexdigest()
+    elif case == "duplicate_roots":
+        root = result["qualification_authority_identities_sha256"][0]
+        roots = [root, root]
+        result["qualification_authority_identities_sha256"] = roots
+        payload = json.dumps(roots, sort_keys=True, separators=(",", ":")).encode()
+        result["qualification_authority_set_identity_sha256"] = hashlib.sha256(
+            payload
+        ).hexdigest()
+    elif case == "set_identity":
+        result["qualification_authority_set_identity_sha256"] = "f" * 64
+    elif case == "record_accounting":
+        result["predecontam_record_count"] += 1
+    elif case == "byte_accounting":
+        result["predecontam_payload_bytes"] += 1
+    elif case == "bool_excluded_count":
+        result["excluded_record_count"] = True
+    elif case == "bool_zero_exposure":
+        result["authorized_optimized_target_exposure"] = False
+    elif case == "unknown_root":
+        result["unsealed_semantic_field"] = "forged"
+    else:  # pragma: no cover - parameterization is closed above.
+        raise AssertionError(case)
+    _reseal_durable(result)
+    with pytest.raises(m.CoverageError, match=message):
+        _verify_durable(result)
