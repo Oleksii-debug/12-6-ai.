@@ -68,6 +68,7 @@ def main() -> int:
     records = iter_gzip_jsonl_bytes(
         raw,
         max_jsonl_line_bytes=selection["max_jsonl_line_bytes"],
+        skip_oversize_lines=True,
     )
     candidates, report = materialize(
         config,
