@@ -86,12 +86,53 @@ def classify_text(text: str, policy: dict[str, object]) -> str | None:
     return None
 
 
+def _exact_value(actual: object, expected: object) -> bool:
+    if type(actual) is not type(expected):
+        return False
+    if type(expected) is dict:
+        actual_dict = actual
+        expected_dict = expected
+        if set(actual_dict) != set(expected_dict):
+            return False
+        return all(
+            _exact_value(actual_dict[key], expected_dict[key])
+            for key in expected_dict
+        )
+    if type(expected) is list:
+        actual_list = actual
+        expected_list = expected
+        return len(actual_list) == len(expected_list) and all(
+            _exact_value(left, right)
+            for left, right in zip(actual_list, expected_list, strict=True)
+        )
+    return actual == expected
+
+
+def _require_exact_mapping(
+    name: str,
+    actual: object,
+    expected: dict[str, object],
+) -> dict[str, object]:
+    if type(actual) is not dict:
+        raise RuntimeError(f"{name} must be an exact object")
+    if set(actual) != set(expected):
+        raise RuntimeError(f"{name} key-set drift")
+    for key, expected_value in expected.items():
+        if not _exact_value(actual[key], expected_value):
+            raise RuntimeError(f"{name} drift: {key}")
+    return actual
+
+
 def validate_truth_boundary(config: dict[str, object]) -> None:
-    truth = config["truth_boundary"]
-    required_zero_false = {
+    expected_truth = {
+        "candidate_only": True,
         "canonical_capacity_credit_bytes": 0,
         "family_credit_authorized": False,
         "corpus_admitted": False,
+        "global_dedup": "NOT_RUN",
+        "evaluation_decontamination": "NOT_RUN",
+        "post_composition_quality_privacy": "NOT_RUN",
+        "balance_family_caps": "NOT_RUN_FOR_THIS_ADDITION",
         "tokenizer_fit_authorized": False,
         "training_authorized_bytes": 0,
         "authorized_unique_loss_positions": 0,
@@ -101,25 +142,43 @@ def validate_truth_boundary(config: dict[str, object]) -> None:
         "paid_compute_used": False,
         "learned_20m_promoted": False,
     }
-    if truth.get("candidate_only") is not True:
-        raise RuntimeError("candidate-only boundary is not asserted")
-    for key, expected in required_zero_false.items():
-        if truth.get(key) != expected:
-            raise RuntimeError(f"truth boundary drift: {key}")
-    for key in (
-        "global_dedup",
-        "evaluation_decontamination",
-        "post_composition_quality_privacy",
-    ):
-        if truth.get(key) != "NOT_RUN":
-            raise RuntimeError(f"downstream gate must remain NOT_RUN: {key}")
+    _require_exact_mapping(
+        "truth boundary",
+        config.get("truth_boundary"),
+        expected_truth,
+    )
 
 
 def validate_contract(config: dict[str, object]) -> None:
+    expected_top_level_keys = {
+        "schema_version",
+        "worker_id",
+        "local_free_only",
+        "base_main_sha",
+        "source",
+        "corroborating_verba_authority",
+        "historical_work",
+        "rights_boundary",
+        "acquisition",
+        "filter",
+        "truth_boundary",
+    }
+    if set(config) != expected_top_level_keys:
+        raise RuntimeError("top-level contract key-set drift")
+    if config.get("schema_version") != "12-6.d03-franko1901-exact-materialization.v1":
+        raise RuntimeError("schema version drift")
+    if config.get("worker_id") != "D03-FRANKO1901-EXACT-MATERIALIZATION-20260907":
+        raise RuntimeError("worker identity drift")
     if config.get("local_free_only") is not True:
         raise RuntimeError("LOCAL_FREE boundary is not asserted")
-    source = config["source"]
+    if config.get("base_main_sha") != "56d708415e7f7a2ec72d4f80f1d571abdff428e3":
+        raise RuntimeError("base-main authority drift")
+
     expected_source = {
+        "source_id": "ua.verba.franko1901",
+        "source_family": "ua.verba.public-domain.franko1901",
+        "language": "uk",
+        "modality": "natural_text",
         "upstream_repository": "MurzikVasilyevich/ukr-proverbs-franko",
         "upstream_revision": "7f62a9d8f0673d325b0a565d508461f4b44dae5b",
         "source_path": "franko.csv",
@@ -138,55 +197,76 @@ def validate_contract(config: dict[str, object]) -> None:
             "ukr-proverbs-franko/7f62a9d8f0673d325b0a565d508461f4b44dae5b/"
             "LICENSE"
         ),
+        "commit_message": (
+            "Simplifying structure / Reducing amount of columns and leaving only "
+            "clear proverbs"
+        ),
     }
-    for key, expected in expected_source.items():
-        if source.get(key) != expected:
-            raise RuntimeError(f"source authority drift: {key}")
+    source = _require_exact_mapping(
+        "source authority",
+        config.get("source"),
+        expected_source,
+    )
 
-    corroborating = config["corroborating_verba_authority"]
     expected_corroborating = {
         "repository": "dmytro-yemelianov/verbacorpus",
         "revision": "34a2c10ac35e1febad6c270a88fc8b83790407da",
         "vendored_source_path": "data/sources/franko.csv",
         "vendored_source_git_blob_sha1": source["source_git_blob_sha1"],
+        "adapter_path": "adapters/franko.py",
         "adapter_git_blob_sha1": "840f4970367879eff718def3842fc065614c8b25",
+        "datacard_path": "DATACARD.md",
         "datacard_git_blob_sha1": "3c880b7b6f891c4b0b6aa8ced367bbd5f7280fe3",
+        "source_registry_path": "sources.csv",
         "source_registry_git_blob_sha1": "6d1ec72fb41f580557adf91152f6b0c9d08937b5",
         "same_source_blob_as_primary": True,
         "data_card_classification": "EXISTING_DIGITAL_TRANSCRIPTION",
         "data_card_text_boundary": "VERBATIM_SOURCE_ORTHOGRAPHY_NEVER_MODIFIED",
     }
-    for key, expected in expected_corroborating.items():
-        if corroborating.get(key) != expected:
-            raise RuntimeError(f"corroborating Verba authority drift: {key}")
-
-    rights = config["rights_boundary"]
-    if rights.get("historical_source_text") != "PUBLIC_DOMAIN":
-        raise RuntimeError("historical source rights drift")
-    if rights.get("primary_dataset_layer") != "CC0-1.0":
-        raise RuntimeError("primary dataset rights drift")
-    if (
-        rights.get("primary_dataset_license_git_blob_sha1")
-        != source["license_git_blob_sha1"]
-    ):
-        raise RuntimeError("primary dataset license identity drift")
-    if (
-        rights.get("verba_compilation_enrichment_layer")
-        != "CC-BY-4.0_CORROBORATING_ONLY"
-    ):
-        raise RuntimeError("Verba rights-layer drift")
-    if rights["payload_field_allowed"] != "prov_clean_only":
-        raise RuntimeError("payload field expansion is forbidden")
-    forbidden = (
-        "modern_text_allowed",
-        "category_allowed",
-        "cleaned_explanation_allowed",
-        "variant_group_allowed",
+    _require_exact_mapping(
+        "corroborating Verba authority",
+        config.get("corroborating_verba_authority"),
+        expected_corroborating,
     )
-    if any(rights[key] is not False for key in forbidden):
-        raise RuntimeError("LLM/enrichment fields must remain excluded")
 
-    acquisition = config["acquisition"]
+    expected_historical_work = {
+        "creator": "Ivan Franko",
+        "title": "Halytsko-ruski narodni prypovidky",
+        "publication_year_start": 1901,
+        "publication_year_end": 1910,
+        "creator_death_year": 1916,
+        "verba_source_registry_note": "public_domain",
+    }
+    _require_exact_mapping(
+        "historical-work authority",
+        config.get("historical_work"),
+        expected_historical_work,
+    )
+
+    expected_rights = {
+        "historical_source_text": "PUBLIC_DOMAIN",
+        "primary_dataset_layer": "CC0-1.0",
+        "primary_dataset_license_git_blob_sha1": source["license_git_blob_sha1"],
+        "verba_compilation_enrichment_layer": "CC-BY-4.0_CORROBORATING_ONLY",
+        "required_attribution": (
+            "Ivan Franko, Halytsko-ruski narodni prypovidky (1901-1910); "
+            "digital transcription dataset MurzikVasilyevich/ukr-proverbs-franko; "
+            "corroborated by Yemelianov, Dmytro (2026), verba v1.0.2"
+        ),
+        "training_purpose_source_candidate": "ALLOWED_PENDING_PROJECT_CORPUS_GATES",
+        "evaluation": "NOT_GRANTED",
+        "modern_text_allowed": False,
+        "category_allowed": False,
+        "cleaned_explanation_allowed": False,
+        "variant_group_allowed": False,
+        "payload_field_allowed": "prov_clean_only",
+    }
+    _require_exact_mapping(
+        "rights boundary",
+        config.get("rights_boundary"),
+        expected_rights,
+    )
+
     expected_acquisition = {
         "fetch_count_required": 2,
         "byte_identical_fetches_required": True,
@@ -198,11 +278,12 @@ def validate_contract(config: dict[str, object]) -> None:
         "required_csv_columns": ["prov_clean", "term", "letter", "description"],
         "max_rows": 40000,
     }
-    for key, expected in expected_acquisition.items():
-        if acquisition.get(key) != expected:
-            raise RuntimeError(f"acquisition contract drift: {key}")
+    _require_exact_mapping(
+        "acquisition contract",
+        config.get("acquisition"),
+        expected_acquisition,
+    )
 
-    policy = config["filter"]
     expected_filter = {
         "unicode_normalization": "NFC",
         "strip_outer_whitespace": True,
@@ -215,13 +296,18 @@ def validate_contract(config: dict[str, object]) -> None:
         "reject_email_like": True,
         "deduplicate_exact_normalized_text": True,
     }
-    for key, expected in expected_filter.items():
-        if policy.get(key) != expected:
-            raise RuntimeError(f"filter policy drift: {key}")
+    _require_exact_mapping(
+        "filter policy",
+        config.get("filter"),
+        expected_filter,
+    )
     validate_truth_boundary(config)
 
 
-def validate_license_bytes(config: dict[str, object], license_raw: bytes) -> dict[str, object]:
+def validate_license_bytes(
+    config: dict[str, object],
+    license_raw: bytes,
+) -> dict[str, object]:
     source = config["source"]
     acquisition = config["acquisition"]
     if len(license_raw) > int(acquisition["max_license_bytes"]):
