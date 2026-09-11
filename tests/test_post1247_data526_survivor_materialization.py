@@ -22,7 +22,14 @@ def _sha(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def _record(record_id: str, source_id: str, payload: str, *, family: str = "family", modality: str = "en") -> dict:
+def _record(
+    record_id: str,
+    source_id: str,
+    payload: str,
+    *,
+    family: str = "family",
+    modality: str = "en",
+) -> dict:
     return {
         "record_id": record_id,
         "source_id": source_id,
@@ -33,8 +40,14 @@ def _record(record_id: str, source_id: str, payload: str, *, family: str = "fami
 
 
 def test_checked_in_authority_blobs_are_exactly_pinned():
-    assert materializer._git_blob_sha1(PRE_EVIDENCE.read_bytes()) == materializer.PRE_EVIDENCE_GIT_BLOB_SHA1
-    assert materializer._git_blob_sha1(DECONTAM_EVIDENCE.read_bytes()) == materializer.DECONTAM_EVIDENCE_GIT_BLOB_SHA1
+    assert (
+        materializer._git_blob_sha1(PRE_EVIDENCE.read_bytes())
+        == materializer.PRE_EVIDENCE_GIT_BLOB_SHA1
+    )
+    assert (
+        materializer._git_blob_sha1(DECONTAM_EVIDENCE.read_bytes())
+        == materializer.DECONTAM_EVIDENCE_GIT_BLOB_SHA1
+    )
 
 
 def test_checked_in_pre_materialization_authority_is_exact_and_zero_credit():
@@ -61,7 +74,8 @@ def test_current_text_free_inventory_recomputes_exact_post1247_projection():
     inventory = json.loads(PRE_INVENTORY.read_text(encoding="utf-8"))
     decontam = json.loads(DECONTAM_EVIDENCE.read_text(encoding="utf-8"))
     excluded_rows = {
-        row["source_id_sha256"]: row for row in decontam["execution"]["excluded_records"]
+        row["source_id_sha256"]: row
+        for row in decontam["execution"]["excluded_records"]
     }
     matched = []
     survivors = []
@@ -75,7 +89,7 @@ def test_current_text_free_inventory_recomputes_exact_post1247_projection():
         else:
             survivors.append(row)
 
-    assert { _sha(row["source_id"]) for row in matched } == set(excluded_rows)
+    assert {_sha(row["source_id"]) for row in matched} == set(excluded_rows)
     assert len(matched) == 3
     assert sum(row["payload_bytes"] for row in matched) == 173_358
     assert len(survivors) == 272
@@ -95,8 +109,14 @@ def test_derive_survivors_removes_every_child_of_an_excluded_source():
 
 
 def test_derive_survivors_fails_closed_if_exclusion_hash_has_no_child():
-    with pytest.raises(materializer.Post1247MaterializationError, match="not every decontamination source hash"):
-        materializer.derive_survivors([_record("r1", "source-a", "one")], {_sha("missing")})
+    with pytest.raises(
+        materializer.Post1247MaterializationError,
+        match="not every decontamination source hash",
+    ):
+        materializer.derive_survivors(
+            [_record("r1", "source-a", "one")],
+            {_sha("missing")},
+        )
 
 
 def test_record_schema_rejects_extra_or_non_text_fields():
@@ -106,7 +126,10 @@ def test_record_schema_rejects_extra_or_non_text_fields():
 
     bad = _record("r1", "source-a", "one")
     bad["modality"] = 1
-    with pytest.raises(materializer.Post1247MaterializationError, match="non-empty string modality"):
+    with pytest.raises(
+        materializer.Post1247MaterializationError,
+        match="non-empty string modality",
+    ):
         materializer._validate_record_shape([bad])
 
 
