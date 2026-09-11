@@ -1,0 +1,178 @@
+name: D03 Franko1901 Repaired Head Execution 1151
+
+on:
+  push:
+    branches:
+      - exec/franko1025-5816f0f-localfree-20260911
+    paths:
+      - ".github/workflows/d03-franko1901-exec-1151.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: d03-franko1901-exec-1151
+  cancel-in-progress: false
+
+jobs:
+  exact-real-execution:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      PRODUCT_SHA: 5816f0ff4ca2f53053123063cd2471442a07d974
+    steps:
+      - name: Checkout exact repaired Product head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: 5816f0ff4ca2f53053123063cd2471442a07d974
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Prove exact Product checkout
+        run: test "$(git rev-parse HEAD)" = "$PRODUCT_SHA"
+      - name: Set up exact Python runtime
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Prove runtime and install declared dev environment
+        run: |
+          python - <<'PY'
+          import platform
+          assert platform.python_implementation() == "CPython"
+          assert platform.python_version() == "3.11.16"
+          print("python_runtime=CPython", platform.python_version())
+          PY
+          python -m pip install -e .[dev]
+      - name: Run repaired-head focused and evidence-boundary tests
+        run: >-
+          python -m pytest -q
+          tests/test_d03_franko1901_materialization.py
+          tests/test_d03_franko1901_terminal_execution.py
+      - name: Independent exact materialization A
+        run: >-
+          python tools/materialize_d03_franko1901.py
+          --output-dir "$RUNNER_TEMP/franko-a"
+      - name: Independent exact materialization B
+        run: >-
+          python tools/materialize_d03_franko1901.py
+          --output-dir "$RUNNER_TEMP/franko-b"
+      - name: Require byte-identical outputs and emit text-free receipt
+        run: |
+          set -euo pipefail
+          cmp "$RUNNER_TEMP/franko-a/franko1901-candidate.jsonl" "$RUNNER_TEMP/franko-b/franko1901-candidate.jsonl"
+          cmp "$RUNNER_TEMP/franko-a/franko1901-report.json" "$RUNNER_TEMP/franko-b/franko1901-report.json"
+          cmp "$RUNNER_TEMP/franko-a/LICENSE.cc0.txt" "$RUNNER_TEMP/franko-b/LICENSE.cc0.txt"
+          cmp "$RUNNER_TEMP/franko-a/ATTRIBUTION.txt" "$RUNNER_TEMP/franko-b/ATTRIBUTION.txt"
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          import platform
+          import subprocess
+          from pathlib import Path
+
+          product_sha = os.environ["PRODUCT_SHA"]
+          root = Path(os.environ["RUNNER_TEMP"])
+          a = root / "franko-a"
+          b = root / "franko-b"
+
+          def sha256(path: Path) -> str:
+              return hashlib.sha256(path.read_bytes()).hexdigest()
+
+          def git_blob(path: str) -> str:
+              return subprocess.check_output(["git", "hash-object", path], text=True).strip()
+
+          report_a = json.loads((a / "franko1901-report.json").read_text(encoding="utf-8"))
+          report_b = json.loads((b / "franko1901-report.json").read_text(encoding="utf-8"))
+          assert report_a == report_b
+          assert report_a["decision"] == "CANDIDATE_MATERIALIZED_ZERO_CREDIT"
+          assert report_a["source_git_blob_sha1"] == "45f33ac620907e1d1ed727524975b3a0fd1a0994"
+          assert report_a["license_evidence"]["license_git_blob_sha1"] == "0e259d42c996742e9e3cba14c677129b2c1b6311"
+          assert report_a["license_evidence"]["license_id"] == "CC0-1.0"
+          truth = report_a["truth_boundary"]
+          assert truth["candidate_only"] is True
+          assert truth["canonical_capacity_credit_bytes"] == 0
+          assert truth["family_credit_authorized"] is False
+          assert truth["corpus_admitted"] is False
+          assert truth["global_dedup"] == "NOT_RUN"
+          assert truth["evaluation_decontamination"] == "NOT_RUN"
+          assert truth["post_composition_quality_privacy"] == "NOT_RUN"
+          assert truth["balance_family_caps"] == "NOT_RUN_FOR_THIS_ADDITION"
+          assert truth["tokenizer_fit_authorized"] is False
+          assert truth["training_authorized_bytes"] == 0
+          assert truth["authorized_unique_loss_positions"] == 0
+          assert truth["model_training_executed"] is False
+          assert truth["optimizer_updates"] == 0
+          assert truth["final_test_accessed"] is False
+          assert truth["paid_compute_used"] is False
+          assert truth["learned_20m_promoted"] is False
+
+          candidate = a / "franko1901-candidate.jsonl"
+          report_path = a / "franko1901-report.json"
+          license_path = a / "LICENSE.cc0.txt"
+          attribution_path = a / "ATTRIBUTION.txt"
+          stats = report_a["materialization"]
+          assert sha256(candidate) == stats["accepted_payload_jsonl_sha256"]
+
+          receipt = {
+              "schema_version": "12-6.d03-franko1901-repaired-real-execution-receipt.v1",
+              "decision": "REAL_LOCAL_FREE_EXECUTION_ZERO_CREDIT",
+              "product_exact_head": product_sha,
+              "execution_profile": "LOCAL_FREE_GITHUB_PUBLIC_RUNNER",
+              "runtime": {
+                  "python_implementation": platform.python_implementation(),
+                  "python_version": platform.python_version(),
+                  "platform": platform.platform(),
+                  "runner_os": os.environ.get("RUNNER_OS"),
+                  "image_os": os.environ.get("ImageOS"),
+              },
+              "product_git_blobs": {
+                  "config": git_blob("configs/data/d03_franko1901_exact_materialization_v1.json"),
+                  "materializer": git_blob("tools/materialize_d03_franko1901.py"),
+                  "focused_tests": git_blob("tests/test_d03_franko1901_materialization.py"),
+                  "terminal_evidence_tests": git_blob("tests/test_d03_franko1901_terminal_execution.py"),
+                  "terminal_evidence": git_blob("configs/data/d03_franko1901_terminal_execution_v1.json"),
+              },
+              "acquisition": {
+                  "independent_materializations": 2,
+                  "source_fetches_per_materialization": 2,
+                  "license_fetches_per_materialization": 2,
+                  "source_git_blob_sha1": report_a["source_git_blob_sha1"],
+                  "source_sha256": report_a["source_sha256"],
+                  "source_bytes": report_a["source_bytes"],
+                  "license_git_blob_sha1": report_a["license_evidence"]["license_git_blob_sha1"],
+                  "license_sha256": report_a["license_evidence"]["license_sha256"],
+                  "license_bytes": report_a["license_evidence"]["license_bytes"],
+                  "byte_identical_materializations": True,
+              },
+              "materialization": {
+                  "rows_seen": stats["rows_seen"],
+                  "accepted_rows": stats["accepted_rows"],
+                  "rejected_rows": stats["rejected_rows"],
+                  "rejected_by_reason": stats["rejected_by_reason"],
+                  "accepted_text_utf8_bytes": stats["accepted_text_utf8_bytes"],
+                  "candidate_jsonl_bytes": candidate.stat().st_size,
+                  "candidate_jsonl_sha256": sha256(candidate),
+                  "record_inventory_identity_sha256": stats["record_inventory_identity_sha256"],
+                  "report_identity_sha256": report_a["report_identity_sha256"],
+                  "report_file_sha256": sha256(report_path),
+                  "license_file_sha256": sha256(license_path),
+                  "attribution_file_sha256": sha256(attribution_path),
+              },
+              "truth_boundary": truth,
+              "training_executed": False,
+              "learned_weights_created": False,
+              "authorized_optimized_target_exposure": 0,
+              "foreign_pretrained_weights": False,
+          }
+          receipt_path = root / "franko-repaired-execution-receipt.json"
+          receipt_path.write_text(json.dumps(receipt, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+          print(receipt_path.read_text(encoding="utf-8"))
+          PY
+      - name: Upload compact text-free execution receipt
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: d03-franko1901-repaired-receipt-5816f0f
+          path: ${{ runner.temp }}/franko-repaired-execution-receipt.json
+          if-no-files-found: error
+          retention-days: 30
