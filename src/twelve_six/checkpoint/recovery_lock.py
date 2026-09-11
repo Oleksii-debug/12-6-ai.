@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 import stat
 from collections.abc import Iterator
@@ -10,6 +11,7 @@ from pathlib import Path
 
 LOCK_NAME = ".publication.lock"
 _PATH_LOCK_SUFFIX = ".publication-path.lock"
+_NAMESPACE_LOCK_SUFFIX = ".publication-namespace.lock"
 
 
 def _same_object(left: os.stat_result, right: os.stat_result) -> bool:
@@ -140,39 +142,100 @@ def _path_guard_name(root: Path) -> str:
     return f".{root.name}{_PATH_LOCK_SUFFIX}"
 
 
+def _namespace_guard_name(root: Path) -> str:
+    """Return a bounded guard name for the logical parent/root component pair."""
+
+    if not root.name:
+        raise OSError("recovery root must have a stable basename")
+    parent_bytes = os.fsencode(root.parent.name)
+    root_bytes = os.fsencode(root.name)
+    payload = (
+        b"twelve-six-recovery-namespace-v1\0"
+        + len(parent_bytes).to_bytes(4, "big")
+        + parent_bytes
+        + len(root_bytes).to_bytes(4, "big")
+        + root_bytes
+    )
+    digest = hashlib.sha256(payload).hexdigest()
+    return f".{digest}{_NAMESPACE_LOCK_SUFFIX}"
+
+
+def _real_directory(path: Path, *, role: str) -> os.stat_result:
+    observed = path.lstat()
+    if stat.S_ISLNK(observed.st_mode) or not stat.S_ISDIR(observed.st_mode):
+        raise OSError(f"{role} must be a real directory")
+    return observed
+
+
+def _verify_visible_directory(
+    path: Path, expected: os.stat_result, *, role: str, phase: str
+) -> None:
+    observed = path.lstat()
+    if stat.S_ISLNK(observed.st_mode) or not stat.S_ISDIR(observed.st_mode):
+        raise OSError(f"{role} changed type {phase}")
+    if not _same_object(expected, observed):
+        raise OSError(f"{role} changed {phase}")
+
+
 @contextmanager
 def exclusive_recovery_lock(root: str | Path) -> Iterator[Path]:
     """Serialize publication/cleanup and pin the root for the full critical section.
 
-    Two locks are deliberate.  The sibling path guard is outside the replaceable
-    recovery directory, so replacing that directory cannot create a second lock
-    lane for the same logical pathname.  The historical in-root lock remains the
-    durable per-root lock.  On POSIX, mutation callers receive a directory-fd
-    alias, so all descendant path operations stay on the opened root inode even
-    if the visible pathname is renamed after this context yields.
+    The outer namespace guard is stored one level above the replaceable recovery
+    parent and is keyed by the logical `(parent basename, recovery basename)` pair.
+    It is acquired before the mutable parent/root is created or opened, so replacing
+    the immediate parent cannot mint a second logical-path lock lane.  The existing
+    sibling path guard and in-root lock remain in place below that authority.
 
-    Both lock files are intentionally persistent. Kernel advisory locks are
-    released when the owning process exits, including abnormal termination.
+    On POSIX, mutation callers receive a directory-fd alias, so descendant path
+    operations stay on the opened root inode even if the visible pathname is renamed
+    after this context yields.  The guarantee is intentionally scoped to immediate
+    recovery-parent replacement under a stable containing namespace; it does not
+    claim safety against replacement of that containing namespace itself.
+
+    All lock files are intentionally persistent. Kernel advisory locks are released
+    when the owning process exits, including abnormal termination.
     """
 
     recovery_root = Path(root)
-    recovery_root.mkdir(parents=True, exist_ok=True)
     parent = recovery_root.parent
-    parent.mkdir(parents=True, exist_ok=True)
+    guard_namespace = parent.parent
+    guard_namespace.mkdir(parents=True, exist_ok=True)
 
-    path_guard_fd, _ = _open_lock_file(parent, name=_path_guard_name(recovery_root))
+    namespace_guard_fd, _ = _open_lock_file(
+        guard_namespace, name=_namespace_guard_name(recovery_root)
+    )
+    namespace_guard_locked = False
+    parent_fd: int | None = None
+    path_guard_fd: int | None = None
     path_guard_locked = False
     root_fd: int | None = None
     lock_fd: int | None = None
     lock_locked = False
     try:
+        _lock_path_guard_fd(namespace_guard_fd)
+        namespace_guard_locked = True
+
+        parent.mkdir(parents=True, exist_ok=True)
+        parent_before = _real_directory(parent, role="recovery parent")
+        if os.name == "posix":
+            parent_fd = _open_root_fd(parent, parent_before)
+
+        recovery_root.mkdir(exist_ok=True)
+        _verify_visible_directory(
+            parent,
+            parent_before,
+            role="recovery parent",
+            phase="while recovery root was prepared",
+        )
+
+        path_guard_fd, _ = _open_lock_file(
+            parent, name=_path_guard_name(recovery_root)
+        )
         _lock_path_guard_fd(path_guard_fd)
         path_guard_locked = True
 
-        before = recovery_root.lstat()
-        if stat.S_ISLNK(before.st_mode) or not stat.S_ISDIR(before.st_mode):
-            raise OSError("recovery root must be a real directory before locking")
-
+        before = _real_directory(recovery_root, role="recovery root")
         if os.name == "posix":
             root_fd = _open_root_fd(recovery_root, before)
             mutation_root = _stable_root_alias(root_fd, before)
@@ -183,26 +246,36 @@ def exclusive_recovery_lock(root: str | Path) -> Iterator[Path]:
         _lock_fd(lock_fd)
         lock_locked = True
 
-        after = recovery_root.lstat()
-        if stat.S_ISLNK(after.st_mode) or not stat.S_ISDIR(after.st_mode):
-            raise OSError("recovery root changed type while publication lock was acquired")
-        if not _same_object(before, after):
-            raise OSError("recovery root changed while publication lock was acquired")
+        _verify_visible_directory(
+            parent,
+            parent_before,
+            role="recovery parent",
+            phase="while publication lock was acquired",
+        )
+        _verify_visible_directory(
+            recovery_root,
+            before,
+            role="recovery root",
+            phase="while publication lock was acquired",
+        )
         visible = (mutation_root / LOCK_NAME).lstat()
         if stat.S_ISLNK(visible.st_mode) or not _same_object(opened, visible):
             raise OSError("recovery publication lock path changed while locked")
 
         yield mutation_root
 
-        # A rename/replacement during the yielded critical section cannot redirect
-        # writes because mutation_root is pinned.  Still fail the operation rather
-        # than reporting successful publication at a pathname that no longer names
-        # the mutated root.
-        completed = recovery_root.lstat()
-        if stat.S_ISLNK(completed.st_mode) or not stat.S_ISDIR(completed.st_mode):
-            raise OSError("recovery root changed type during publication critical section")
-        if not _same_object(before, completed):
-            raise OSError("recovery root changed during publication critical section")
+        _verify_visible_directory(
+            parent,
+            parent_before,
+            role="recovery parent",
+            phase="during publication critical section",
+        )
+        _verify_visible_directory(
+            recovery_root,
+            before,
+            role="recovery root",
+            phase="during publication critical section",
+        )
     finally:
         try:
             if lock_fd is not None and lock_locked:
@@ -213,7 +286,15 @@ def exclusive_recovery_lock(root: str | Path) -> Iterator[Path]:
             if root_fd is not None:
                 os.close(root_fd)
             try:
-                if path_guard_locked:
+                if path_guard_fd is not None and path_guard_locked:
                     _unlock_path_guard_fd(path_guard_fd)
             finally:
-                os.close(path_guard_fd)
+                if path_guard_fd is not None:
+                    os.close(path_guard_fd)
+                if parent_fd is not None:
+                    os.close(parent_fd)
+                try:
+                    if namespace_guard_locked:
+                        _unlock_path_guard_fd(namespace_guard_fd)
+                finally:
+                    os.close(namespace_guard_fd)
