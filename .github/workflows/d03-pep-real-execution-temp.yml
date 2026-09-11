@@ -42,9 +42,35 @@ jobs:
       - name: Focused qualified mechanics regression
         run: pytest -q tests/test_d03_pep_intake.py
       - name: Independent materialization A
-        run: python tools/materialize_d03_peps.py --repo-root . --output-dir "$RUNNER_TEMP/pep-a"
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/pep-a"
+          for attempt in 1 2 3; do
+            rm -rf "$out"
+            echo "A transport attempt ${attempt}/3"
+            if python tools/materialize_d03_peps.py --repo-root . --output-dir "$out"; then
+              echo "$attempt" > "$RUNNER_TEMP/pep-a-attempts"
+              exit 0
+            fi
+            sleep $((attempt * 3))
+          done
+          exit 1
       - name: Independent materialization B
-        run: python tools/materialize_d03_peps.py --repo-root . --output-dir "$RUNNER_TEMP/pep-b"
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/pep-b"
+          for attempt in 1 2 3; do
+            rm -rf "$out"
+            echo "B transport attempt ${attempt}/3"
+            if python tools/materialize_d03_peps.py --repo-root . --output-dir "$out"; then
+              echo "$attempt" > "$RUNNER_TEMP/pep-b-attempts"
+              exit 0
+            fi
+            sleep $((attempt * 3))
+          done
+          exit 1
       - name: Verify two-clean equality and emit text-free evidence
         shell: bash
         run: |
@@ -60,8 +86,9 @@ jobs:
           import sys
           from pathlib import Path
 
-          a = Path(os.environ["RUNNER_TEMP"]) / "pep-a"
-          b = Path(os.environ["RUNNER_TEMP"]) / "pep-b"
+          root = Path(os.environ["RUNNER_TEMP"])
+          a = root / "pep-a"
+          b = root / "pep-b"
           report_a_bytes = (a / "pep-report.json").read_bytes()
           report_b_bytes = (b / "pep-report.json").read_bytes()
           candidate_a = (a / "pep-candidate.jsonl").read_bytes()
@@ -100,6 +127,8 @@ jobs:
               "python_version": sys.version.split()[0],
               "platform": platform.platform(),
               "product_git_blobs": blobs,
+              "acquisition_attempts_a": int((root / "pep-a-attempts").read_text().strip()),
+              "acquisition_attempts_b": int((root / "pep-b-attempts").read_text().strip()),
               "two_independent_materializations_byte_identical": True,
               "candidate_file_bytes": len(candidate_a),
               "candidate_file_sha256": sha256(candidate_a),
