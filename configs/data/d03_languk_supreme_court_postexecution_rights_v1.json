@@ -32,7 +32,10 @@
     "workflow_run": 34601996401,
     "workflow_job": 103271308318,
     "independent_audit_issue": 1269,
-    "independent_audit_status": "TERMINAL_PASS"
+    "independent_audit_status": "TERMINAL_PASS",
+    "independent_audit_target_head_sha": "5d38a32b37490b11f6fa77b3bcd21855f3e28605",
+    "independent_audit_verdict": "PASS_FOR_INTEGRATION_MECHANICS_AND_REAL_EXECUTION",
+    "independent_audit_shared_ci_run": 34602453161
   },
   "source_scope": {
     "dataset": "lang-uk/court-decisions-uk",
