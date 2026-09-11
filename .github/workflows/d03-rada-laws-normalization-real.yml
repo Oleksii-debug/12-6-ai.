@@ -1,4 +1,4 @@
-name: D03 Rada laws rebind live observation
+name: D03 Rada laws pinned normalization real execution
 
 on:
   pull_request:
@@ -6,27 +6,27 @@ on:
       - ".github/workflows/d03-rada-laws-normalization-real.yml"
 
 permissions:
-  contents: write
+  contents: read
   actions: read
 
 jobs:
-  rebind-live-observation:
+  execute-pinned-normalization-twice:
     if: github.event.pull_request.head.ref == 'd03/rada-bulk-normalization-current-main-20260907'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
-      - name: Checkout incumbent branch for atomic rebind
+      - name: Checkout exact Product head
         uses: actions/checkout@v4
         with:
-          ref: d03/rada-bulk-normalization-current-main-20260907
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 1
-          persist-credentials: true
+          persist-credentials: false
 
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Retrieve and verify live observation authority
+      - name: Retrieve exact live observation authority
         uses: actions/download-artifact@v4
         with:
           name: d03-rada-laws-current-observation-zero-credit
@@ -35,19 +35,17 @@ jobs:
           run-id: 34535608294
           path: ${{ runner.temp }}/observation
 
-      - name: Rebind exact source authority without changing normalization semantics
-        env:
-          OBS_REPORT: ${{ runner.temp }}/observation/current-observation.json
+      - name: Verify authority and focused mechanics
         run: |
           set -euo pipefail
           python - <<'PY'
-          import hashlib, json, os
+          import hashlib, json
           from pathlib import Path
 
-          report_path = Path(os.environ["OBS_REPORT"])
-          report_raw = report_path.read_bytes()
-          report = json.loads(report_raw)
-          assert hashlib.sha256(report_raw).hexdigest() == "e2ad0d8a4fce01d2da03fc93d636354253beaaf563db43968b11b600e26d0cdf"
+          path = Path("${{ runner.temp }}/observation/current-observation.json")
+          raw = path.read_bytes()
+          report = json.loads(raw)
+          assert hashlib.sha256(raw).hexdigest() == "e2ad0d8a4fce01d2da03fc93d636354253beaaf563db43968b11b600e26d0cdf"
           assert report["archive"] == {
               "bytes": 46709153,
               "md5": "7ca9726549958ed8b8b54e6562c15da5",
@@ -63,63 +61,7 @@ jobs:
           assert report["tokenizer_fit_authorized"] is False
           assert report["model_training_executed"] is False
           assert report["paid_compute_used"] is False
-
-          def replace_exact(path: Path, old: str, new: str, *, count: int = 1) -> None:
-              text = path.read_text(encoding="utf-8")
-              observed = text.count(old)
-              if observed != count:
-                  raise SystemExit(f"{path}: expected {count} occurrences of {old!r}, got {observed}")
-              path.write_text(text.replace(old, new, count), encoding="utf-8")
-
-          pin_tool = Path("tools/pin_d03_rada_bulk_observation.py")
-          replacements = [
-              ('"pr": 830', '"pr": 864'),
-              ('"head_sha": "077f45fea310ecbc50b87801ff916502aa7f11f9"', '"head_sha": "538fb05699fd9f61b31c0e3552faf9b144a6d3bb"'),
-              ('"workflow_run_id": 34159688896', '"workflow_run_id": 34535608294'),
-              ('"artifact_id": 10032567466', '"artifact_id": 10175280333'),
-              ('"artifact_digest": "sha256:5d95cffacd815f2ca2afbd657d2ad04145a4e51303b63513b863eb897fa1f4dd"', '"artifact_digest": "sha256:dba1429ae36456a8cb080ef7f42648b643c45bbc2585fcc133051bdf79632b32"'),
-              ('"probe_report_sha256": "1c33b31844b11822479adb1382a683a430cee470bbdf23f259084f8b5ebf0458"', '"probe_report_sha256": "e2ad0d8a4fce01d2da03fc93d636354253beaaf563db43968b11b600e26d0cdf"'),
-              ('drifted from terminal #830 authority', 'drifted from current Rada observation authority'),
-          ]
-          for old, new in replacements:
-              replace_exact(pin_tool, old, new)
-
-          pin_cfg = Path("configs/data/d03_rada_bulk_observation_pin_v1.json")
-          for old, new in [
-              ('"archive_bytes": 46700063', '"archive_bytes": 46709153'),
-              ('"archive_md5": "f97c8b2d6b4db59d151323c3a8bf2fcc"', '"archive_md5": "7ca9726549958ed8b8b54e6562c15da5"'),
-              ('"archive_sha256": "9f43da3ffe0855e49ca47ddf906da9e7c40644a845b345f6c4a19b39ef5eaf22"', '"archive_sha256": "0b9e8ed8fe8aa663a68d2bc4eba858a754c626391dd7b5c461d50c3b6260df63"'),
-              ('"canonical_raw_bytes": 353354780', '"canonical_raw_bytes": 353426370'),
-              ('"entry_identity_sha256": "766e54cf706453de30136e02f0361c549c2b96aba9855ee0573d28b354ad077b"', '"entry_identity_sha256": "3939c8a407a910222173bba5a2df1b9c7d2edce1503c13b31a9c293d61c3a603"'),
-              ('"artifact_digest": "sha256:5d95cffacd815f2ca2afbd657d2ad04145a4e51303b63513b863eb897fa1f4dd"', '"artifact_digest": "sha256:dba1429ae36456a8cb080ef7f42648b643c45bbc2585fcc133051bdf79632b32"'),
-              ('"artifact_id": 10032567466', '"artifact_id": 10175280333'),
-              ('"head_sha": "077f45fea310ecbc50b87801ff916502aa7f11f9"', '"head_sha": "538fb05699fd9f61b31c0e3552faf9b144a6d3bb"'),
-              ('"pr": 830', '"pr": 864'),
-              ('"probe_report_sha256": "1c33b31844b11822479adb1382a683a430cee470bbdf23f259084f8b5ebf0458"', '"probe_report_sha256": "e2ad0d8a4fce01d2da03fc93d636354253beaaf563db43968b11b600e26d0cdf"'),
-              ('"workflow_run_id": 34159688896', '"workflow_run_id": 34535608294'),
-          ]:
-              replace_exact(pin_cfg, old, new)
-
-          pin_value = json.loads(pin_cfg.read_text(encoding="utf-8"))
-          canonical_pin = (json.dumps(pin_value, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8")
-          pin_identity = hashlib.sha256(canonical_pin).hexdigest()
-          print("NEW_PIN_CONFIG_IDENTITY=" + pin_identity)
-
-          norm_cfg = Path("configs/data/d03_rada_bulk_normalization_v1.json")
-          for old, new in [
-              ('"source_pr": 830', '"source_pr": 864'),
-              ('"source_head_sha": "077f45fea310ecbc50b87801ff916502aa7f11f9"', '"source_head_sha": "538fb05699fd9f61b31c0e3552faf9b144a6d3bb"'),
-              ('"config_identity_sha256": "6b6f5b33a0be8d87a4cfc99852b91da278a3363515127e2880019f1ec9bbe9e1"', f'"config_identity_sha256": "{pin_identity}"'),
-              ('"source_observation_report_sha256": "1c33b31844b11822479adb1382a683a430cee470bbdf23f259084f8b5ebf0458"', '"source_observation_report_sha256": "e2ad0d8a4fce01d2da03fc93d636354253beaaf563db43968b11b600e26d0cdf"'),
-              ('"archive_sha256": "9f43da3ffe0855e49ca47ddf906da9e7c40644a845b345f6c4a19b39ef5eaf22"', '"archive_sha256": "0b9e8ed8fe8aa663a68d2bc4eba858a754c626391dd7b5c461d50c3b6260df63"'),
-              ('"entry_identity_sha256": "766e54cf706453de30136e02f0361c549c2b96aba9855ee0573d28b354ad077b"', '"entry_identity_sha256": "3939c8a407a910222173bba5a2df1b9c7d2edce1503c13b31a9c293d61c3a603"'),
-          ]:
-              replace_exact(norm_cfg, old, new)
           PY
-
-      - name: Focused regression proof
-        run: |
-          set -euo pipefail
           python -m pip install pytest
           python -m py_compile tools/pin_d03_rada_bulk_observation.py tools/normalize_d03_rada_bulk_html.py
           PYTHONPATH=. pytest -q \
@@ -128,15 +70,152 @@ jobs:
             tests/test_d03_rada_bulk_probe_inventory_integrity.py
           git diff --check
 
-      - name: Commit exact authority rebind onto incumbent branch
+      - name: Acquire exact current archive twice
         run: |
           set -euo pipefail
-          test -n "$(git status --porcelain)"
-          git config user.name "SWARM-1049"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add \
-            tools/pin_d03_rada_bulk_observation.py \
-            configs/data/d03_rada_bulk_observation_pin_v1.json \
-            configs/data/d03_rada_bulk_normalization_v1.json
-          git commit -m "D03: rebind Rada normalization to live exact observation"
-          git push origin HEAD:d03/rada-bulk-normalization-current-main-20260907
+          curl --fail --location --retry 3 --retry-all-errors \
+            --output "${RUNNER_TEMP}/source-a.zip" \
+            "https://data.rada.gov.ua/ogd/zak/perv/text/texts.zip"
+          curl --fail --location --retry 3 --retry-all-errors \
+            --output "${RUNNER_TEMP}/source-b.zip" \
+            "https://data.rada.gov.ua/ogd/zak/perv/text/texts.zip"
+          python - <<'PY'
+          import hashlib, os
+          from pathlib import Path
+
+          expected_bytes = 46709153
+          expected_sha = "0b9e8ed8fe8aa663a68d2bc4eba858a754c626391dd7b5c461d50c3b6260df63"
+          expected_md5 = "7ca9726549958ed8b8b54e6562c15da5"
+          for name in ("source-a.zip", "source-b.zip"):
+              raw = (Path(os.environ["RUNNER_TEMP"]) / name).read_bytes()
+              assert len(raw) == expected_bytes, (name, len(raw))
+              assert hashlib.sha256(raw).hexdigest() == expected_sha, name
+              assert hashlib.md5(raw, usedforsecurity=False).hexdigest() == expected_md5, name
+          assert (Path(os.environ["RUNNER_TEMP"]) / "source-a.zip").read_bytes() == (Path(os.environ["RUNNER_TEMP"]) / "source-b.zip").read_bytes()
+          PY
+
+      - name: Pin and normalize two clean acquisitions independently
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/run-a" "${RUNNER_TEMP}/run-b"
+          for run in a b; do
+            python tools/pin_d03_rada_bulk_observation.py \
+              --archive "${RUNNER_TEMP}/source-${run}.zip" \
+              --probe-report "${RUNNER_TEMP}/observation/current-observation.json" \
+              --config configs/data/d03_rada_bulk_observation_pin_v1.json \
+              --output "${RUNNER_TEMP}/run-${run}/pinned-report.json"
+            python tools/normalize_d03_rada_bulk_html.py \
+              --archive "${RUNNER_TEMP}/source-${run}.zip" \
+              --probe-report "${RUNNER_TEMP}/run-${run}/pinned-report.json" \
+              --config configs/data/d03_rada_bulk_normalization_v1.json \
+              --output-jsonl "${RUNNER_TEMP}/run-${run}/normalized.jsonl" \
+              --output-manifest "${RUNNER_TEMP}/run-${run}/manifest.json"
+          done
+          cmp "${RUNNER_TEMP}/run-a/pinned-report.json" "${RUNNER_TEMP}/run-b/pinned-report.json"
+          cmp "${RUNNER_TEMP}/run-a/normalized.jsonl" "${RUNNER_TEMP}/run-b/normalized.jsonl"
+          cmp "${RUNNER_TEMP}/run-a/manifest.json" "${RUNNER_TEMP}/run-b/manifest.json"
+
+      - name: Build compact text-free execution evidence
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib, json, os, platform, sys
+          from pathlib import Path
+
+          root = Path(os.environ["RUNNER_TEMP"])
+          manifest_raw_a = (root / "run-a/manifest.json").read_bytes()
+          manifest_raw_b = (root / "run-b/manifest.json").read_bytes()
+          manifest_a = json.loads(manifest_raw_a)
+          manifest_b = json.loads(manifest_raw_b)
+          assert manifest_a == manifest_b
+          assert manifest_a["training_authorized_bytes"] == 0
+          assert manifest_a["normalized_capacity_credited"] == 0
+          assert manifest_a["tokenizer_fit_authorized"] is False
+          assert manifest_a["model_training_executed"] is False
+          assert manifest_a["paid_compute_used"] is False
+          assert all(manifest_a["gates"][gate] == "NOT_RUN" for gate in (
+              "quality", "privacy", "global_cross_source_dedup",
+              "evaluation_decontamination", "balance_diversity",
+              "corpus_materialization", "unique_loss_ledger",
+          ))
+
+          def sha(path: Path) -> str:
+              return hashlib.sha256(path.read_bytes()).hexdigest()
+
+          source_a = root / "source-a.zip"
+          source_b = root / "source-b.zip"
+          pin_a = root / "run-a/pinned-report.json"
+          pin_b = root / "run-b/pinned-report.json"
+          jsonl_a = root / "run-a/normalized.jsonl"
+          jsonl_b = root / "run-b/normalized.jsonl"
+
+          evidence = {
+              "schema_version": "12-6.d03-rada-bulk-normalization-real-execution-evidence.v1",
+              "execution_class": "LOCAL_FREE_GITHUB_HOSTED_ACTIONS",
+              "product_head_sha": os.environ["GITHUB_SHA"],
+              "workflow_run_id": int(os.environ["GITHUB_RUN_ID"]),
+              "workflow_run_attempt": int(os.environ["GITHUB_RUN_ATTEMPT"]),
+              "source_authority": {
+                  "observation_run_id": 34535608294,
+                  "observation_artifact_id": 10175280333,
+                  "observation_artifact_digest": "sha256:dba1429ae36456a8cb080ef7f42648b643c45bbc2585fcc133051bdf79632b32",
+                  "observation_report_sha256": "e2ad0d8a4fce01d2da03fc93d636354253beaaf563db43968b11b600e26d0cdf",
+                  "archive_bytes": source_a.stat().st_size,
+                  "archive_sha256": sha(source_a),
+                  "archive_md5": hashlib.md5(source_a.read_bytes(), usedforsecurity=False).hexdigest(),
+                  "canonical_entry_count": 3052,
+                  "canonical_raw_bytes": 353426370,
+                  "entry_identity_sha256": "3939c8a407a910222173bba5a2df1b9c7d2edce1503c13b31a9c293d61c3a603",
+              },
+              "two_clean_reproducibility": {
+                  "independent_source_downloads_identical": sha(source_a) == sha(source_b),
+                  "pinned_reports_identical": sha(pin_a) == sha(pin_b),
+                  "normalized_jsonl_identical": sha(jsonl_a) == sha(jsonl_b),
+                  "manifests_identical": sha(root / "run-a/manifest.json") == sha(root / "run-b/manifest.json"),
+                  "pinned_report_sha256": sha(pin_a),
+                  "normalized_jsonl_sha256": sha(jsonl_a),
+                  "manifest_file_sha256": sha(root / "run-a/manifest.json"),
+                  "manifest_identity_sha256": manifest_a["manifest_identity_sha256"],
+              },
+              "observed_normalization": {
+                  "record_count": manifest_a["normalization"]["record_count"],
+                  "nonempty_record_count": manifest_a["normalization"]["nonempty_record_count"],
+                  "raw_bytes": manifest_a["normalization"]["raw_bytes"],
+                  "normalized_bytes_observed_not_credited": manifest_a["normalization"]["normalized_bytes_observed_not_credited"],
+                  "source_encoding_counts": manifest_a["normalization"]["source_encoding_counts"],
+                  "normalized_record_inventory_sha256": manifest_a["normalization"]["normalized_record_inventory_sha256"],
+              },
+              "environment": {
+                  "python": sys.version.split()[0],
+                  "platform": platform.platform(),
+                  "runner_os": os.environ.get("RUNNER_OS"),
+                  "runner_arch": os.environ.get("RUNNER_ARCH"),
+              },
+              "truth_boundary": {
+                  "current_corpus_eligible": False,
+                  "training_authorized": False,
+                  "training_authorized_bytes": 0,
+                  "tokenizer_fit_authorized": False,
+                  "authorized_optimized_target_exposure": 0,
+                  "model_training_executed": False,
+                  "learned_weights_created": False,
+                  "final_test_accessed": False,
+                  "paid_compute_used": False,
+                  "foreign_pretrained_weights": False,
+              },
+              "safe_result": "NORMALIZED_CANDIDATE_ZERO_CREDIT_TWO_CLEAN_REAL_EXECUTION",
+          }
+          canonical = json.dumps(evidence, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+          evidence["evidence_identity_sha256"] = hashlib.sha256(canonical).hexdigest()
+          out = root / "d03-rada-laws-normalization-real-execution-v1.json"
+          out.write_text(json.dumps(evidence, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+          print("EVIDENCE_JSON=" + json.dumps(evidence, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
+          PY
+
+      - name: Upload text-free execution evidence only
+        uses: actions/upload-artifact@v4
+        with:
+          name: d03-rada-laws-normalization-real-zero-credit
+          path: ${{ runner.temp }}/d03-rada-laws-normalization-real-execution-v1.json
+          if-no-files-found: error
+          retention-days: 2
