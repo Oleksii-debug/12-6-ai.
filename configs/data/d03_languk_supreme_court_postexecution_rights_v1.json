@@ -1,0 +1,100 @@
+{
+  "schema_version": "12-6.d03-languk-postexecution-rights-admission.v1",
+  "authority_id": "D03-LANGUK-SUPREME-COURT-POSTEXEC-RIGHTS-V1",
+  "status": "SOURCE_RIGHTS_POSTEXEC_ADMISSION_EXECUTED_ZERO_CREDIT",
+  "execution_profile": "LOCAL_FREE",
+  "swarm": {
+    "control_issue": 723,
+    "worker_issue": 1379,
+    "lane_key": "D03|LANGUK-SUPREME-COURT|POST-REAL-EXECUTION-RIGHTS-PROVENANCE-ADMISSION|V1"
+  },
+  "rights_authority": {
+    "historical_pr": 447,
+    "historical_head_sha": "0e682d8a63719063b7661600bf46e775b58ce823",
+    "manifest_path": "configs/data/next100_029_languk_rights_audit_v1.json",
+    "manifest_blob_sha1": "c88a2884f77f2c9747b56d7f08edfdf7b6478af2",
+    "evidence_identity_sha256": "96e1c85bdeaad908689b47252832ab9674897d3a3dff3e73804ca80b492ad9be",
+    "historical_verdict": "RETEST_LANGUK_COURT_DECISIONS_ONLY",
+    "candidate_verdict": "RETEST_PRIVACY_AND_BYTE_MATERIALIZATION",
+    "rights_layer_training_status": "RIGHTS_LAYER_PLAUSIBLY_ALLOWED_BUT_NOT_ADMITTED_UNTIL_PRIVACY_AND_EXACT_LOCAL_MATERIALIZATION_PASS",
+    "license_label": "MIT",
+    "underlying_work_basis": "Ukraine Law No. 2811-IX Article 8(1)(3): official documents of judicial character are not protected by copyright"
+  },
+  "execution_authority": {
+    "product_pr": 833,
+    "product_final_head_sha": "5d38a32b37490b11f6fa77b3bcd21855f3e28605",
+    "execution_evidence_path": "evidence/d03-languk-supreme-court-real-execution-v2.json",
+    "execution_evidence_blob_sha1": "a1f013c4ad9dfeacf3e92cea2378767b239647a2",
+    "retest_config_path": "configs/data/d03_languk_supreme_court_retest_v1.json",
+    "retest_config_blob_sha1": "b4ee7b0f698660145cb3c1db0f8ccb690c255a5e",
+    "repaired_product_semantic_head": "d8136e07e5bcdd81b889a3211c7f40521af97b5c",
+    "execution_head_sha": "75121d8408bbb2413013063829ea6ad43451719a",
+    "workflow_run": 34601996401,
+    "workflow_job": 103271308318,
+    "independent_audit_issue": 1269,
+    "independent_audit_status": "TERMINAL_PASS"
+  },
+  "source_scope": {
+    "dataset": "lang-uk/court-decisions-uk",
+    "revision": "2dcac4c941b87bf9c242bdc919cef4b40f4a4813",
+    "file": "2024-5K-supreme-court-decisions-deduplicated.parquet",
+    "bytes": 20220778,
+    "sha256": "9b8870d10695715e4a0540c6f8fdca381599c0e6cdbaf3ecdf3c0782207b6597",
+    "excluded_file": "250-deanonymized-court-cases.parquet",
+    "family": "ua.languk.supreme-court-decisions"
+  },
+  "admitted_rights_candidate": {
+    "retained_records": 256,
+    "retained_normalized_bytes": 2809632,
+    "retained_jsonl_sha256": "03bf5089bb6ff4c304e3a299e2480b263a161aad8abe831db0b196af7c585db3",
+    "report_identity_sha256": "91c83f200293695c6f28085712b8398246af2422e48d26ca43a62a50568ed479",
+    "config_identity_sha256": "d9e826f3d316426807aa57f381edf200970086a5d688e5b94f6da3124648421b",
+    "two_clean_materializations_equal": true,
+    "privacy_quality_retest_passed_for_retained_rows": true,
+    "universal_pii_absence_claimed": false,
+    "payload_rematerialized_in_this_package": false
+  },
+  "proof": {
+    "historical_rights_manifest_blob_verified": true,
+    "historical_rights_candidate_scope_verified": true,
+    "repaired_execution_evidence_blob_verified": true,
+    "repaired_retest_config_blob_verified": true,
+    "exact_source_identity_equal_across_rights_and_execution": true,
+    "historical_privacy_materialization_blocker_consumed": true,
+    "other_languk_families_admitted": false,
+    "deanonymized_file_admitted": false,
+    "rights_layer_admitted_for_exact_repaired_candidate": true,
+    "training_source_admitted": false
+  },
+  "truth_boundary": {
+    "source_rights_postexecution_admitted": true,
+    "source_admitted_candidate_records": 256,
+    "source_admitted_candidate_bytes": 2809632,
+    "canonical_capacity_credited": 0,
+    "training_authorized_bytes": 0,
+    "family_credit_added": 0,
+    "authorized_unique_loss_positions": 0,
+    "authorized_optimized_target_exposure": 0,
+    "tokenizer_fit_authorized": false,
+    "model_training_executed": false,
+    "optimizer_updates": 0,
+    "learned_weights_created": false,
+    "evaluation_authorized_bytes": 0,
+    "final_test_payload_accessed": false,
+    "final_test_outcomes_read": false,
+    "paid_compute_used": false,
+    "foreign_pretrained_weights_used": false,
+    "external_llm_or_api_used_for_data_or_intelligence": false
+  },
+  "downstream_required": [
+    "current_global_exact_near_lineage_dedup_including_rada_overlap",
+    "reserved_evaluation_decontamination",
+    "canonical_quality_privacy_consumer",
+    "family_balance_caps",
+    "cluster_safe_split",
+    "deterministic_packing",
+    "two_clean_build_reproducibility",
+    "positive_unique_loss_accounting",
+    "positive_training_authority"
+  ]
+}
