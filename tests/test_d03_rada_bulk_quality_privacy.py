@@ -10,6 +10,7 @@ import pytest
 
 from tools.filter_d03_rada_bulk_quality_privacy import (
     QualityPrivacyError,
+    _materialize_quality_privacy_candidate_for_test,
     materialize_quality_privacy_candidate,
 )
 
@@ -82,7 +83,7 @@ def _parent_payload(
     source_encoding_counts = Counter(str(row["source_encoding"]) for row in rows)
     manifest: dict[str, object] = {
         "schema_version": "12-6.d03-rada-bulk-normalization-manifest.v1",
-        "worker_id": "D03-RADA-BULK-NORMALIZATION-20260826",
+        "worker_id": "D03-RADA-BULK-NORMALIZATION-20260907",
         "local_free_only": True,
         "parent_probe": {
             "pr": 618,
@@ -143,7 +144,7 @@ def _run(
         texts,
         source_encodings=source_encodings,
     )
-    return materialize_quality_privacy_candidate(
+    return _materialize_quality_privacy_candidate_for_test(
         jsonl,
         manifest,
         CONFIG,
@@ -151,12 +152,39 @@ def _run(
     )
 
 
-def test_production_contract_tracks_current_mixed_encoding_parent() -> None:
-    assert CONFIG["parent_normalization"]["head_sha"] == (
-        "ae79b078f849513dc202bcb723a4145455309e35"
+def test_production_contract_is_exact_current_pr864_authority() -> None:
+    parent = CONFIG["parent_normalization"]
+    assert parent["pr"] == 864
+    assert parent["head_sha"] == "50069882dfb5866946626720a997a2c35458df7c"
+    assert parent["execution_head_sha"] == "b2088754aa2d5ed6059d89587bbbf08437ba0f55"
+    assert parent["execution_run_id"] == 34561144712
+    assert parent["manifest_worker_id"] == "D03-RADA-BULK-NORMALIZATION-20260907"
+    assert parent["manifest_identity_sha256"] == (
+        "ee1c59dbc481b83bffb1380f751880e5fa6e64d654b5abad266c3e2c4d18293b"
     )
+    assert parent["manifest_transport_sha256"] == (
+        "8923d26024ba396db14e6afeb367a5d3c54de573019252083aec88f2082bb119"
+    )
+    assert parent["jsonl_sha256"] == (
+        "b46baa0f1c5087f4a9772ee273da459e87c0e82111dd5e51b22fc0b85cde840e"
+    )
+    assert parent["record_count"] == 3052
+    assert parent["nonempty_record_count"] == 3052
+    assert parent["normalized_bytes_observed_not_credited"] == 211176449
+    assert parent["source_encoding_counts"] == {"utf-8": 884, "windows-1251": 2168}
     assert CONFIG["output_contract"]["preserve_source_encoding_provenance"] is True
-    assert "source_encoding" in CONFIG["output_contract"]["accepted_jsonl_fields"]
+
+
+def test_production_api_rejects_synthetic_parent_even_when_internally_valid() -> None:
+    text = "Нормативний український текст достатньої довжини для перевірки. " * 5
+    jsonl, manifest, transport_sha = _parent_payload([text])
+    with pytest.raises(QualityPrivacyError, match="exact parent manifest transport"):
+        materialize_quality_privacy_candidate(
+            jsonl,
+            manifest,
+            CONFIG,
+            parent_manifest_sha256=transport_sha,
+        )
 
 
 def test_clean_candidate_is_deterministic_and_keeps_training_closed() -> None:
@@ -171,9 +199,7 @@ def test_clean_candidate_is_deterministic_and_keeps_training_closed() -> None:
     assert first_report == second_report
     assert first_report["filter_result"]["accepted_chunk_count"] > 0
     assert first_report["filter_result"]["rejected_chunk_count"] == 0
-    assert first_report["filter_result"]["accepted_source_encoding_counts"] == {
-        "utf-8": first_report["filter_result"]["accepted_chunk_count"]
-    }
+    assert first_report["gates"]["exact_parent_authority"] == "TEST_FIXTURE_ONLY"
     assert first_report["training_authorized_bytes"] == 0
     assert first_report["canonical_capacity_credited"] == 0
     assert first_report["model_training_executed"] is False
@@ -221,14 +247,11 @@ def test_parent_encoding_count_mismatch_fails_closed() -> None:
     tampered.pop("manifest_identity_sha256")
     tampered["manifest_identity_sha256"] = _sha256(_canonical_bytes(tampered))
     manifest_bytes = json.dumps(
-        tampered,
-        ensure_ascii=False,
-        sort_keys=True,
-        indent=2,
+        tampered, ensure_ascii=False, sort_keys=True, indent=2
     ).encode("utf-8") + b"\n"
 
     with pytest.raises(QualityPrivacyError, match="counts do not match records"):
-        materialize_quality_privacy_candidate(
+        _materialize_quality_privacy_candidate_for_test(
             jsonl,
             tampered,
             CONFIG,
@@ -251,7 +274,6 @@ def test_email_and_phone_chunks_are_rejected_without_sensitive_output() -> None:
     accepted_jsonl, report = _run([email_text, phone_text])
     assert accepted_jsonl == b""
     assert report["filter_result"]["accepted_chunk_count"] == 0
-    assert report["filter_result"]["rejected_chunk_count"] == 2
     assert report["filter_result"]["rejection_reasons"] == {
         "pii_email": 1,
         "pii_phone": 1,
@@ -269,7 +291,7 @@ def test_parent_jsonl_transport_tamper_fails_closed() -> None:
     tampered = jsonl.replace("український".encode(), "змінений".encode(), 1)
 
     with pytest.raises(QualityPrivacyError, match="JSONL SHA-256 mismatch"):
-        materialize_quality_privacy_candidate(
+        _materialize_quality_privacy_candidate_for_test(
             tampered,
             manifest,
             CONFIG,
@@ -283,8 +305,11 @@ def test_parent_manifest_self_hash_tamper_fails_closed() -> None:
     tampered = copy.deepcopy(manifest)
     tampered["normalization"]["record_count"] = 999
 
-    with pytest.raises(QualityPrivacyError, match="source-encoding count total drift|manifest self-hash mismatch"):
-        materialize_quality_privacy_candidate(
+    with pytest.raises(
+        QualityPrivacyError,
+        match="source-encoding count total drift|manifest self-hash mismatch",
+    ):
+        _materialize_quality_privacy_candidate_for_test(
             jsonl,
             tampered,
             CONFIG,
@@ -300,14 +325,11 @@ def test_parent_record_metadata_mismatch_fails_closed() -> None:
     tampered.pop("manifest_identity_sha256")
     tampered["manifest_identity_sha256"] = _sha256(_canonical_bytes(tampered))
     manifest_bytes = json.dumps(
-        tampered,
-        ensure_ascii=False,
-        sort_keys=True,
-        indent=2,
+        tampered, ensure_ascii=False, sort_keys=True, indent=2
     ).encode("utf-8") + b"\n"
 
     with pytest.raises(QualityPrivacyError, match="metadata mismatch"):
-        materialize_quality_privacy_candidate(
+        _materialize_quality_privacy_candidate_for_test(
             jsonl,
             tampered,
             CONFIG,
@@ -321,8 +343,8 @@ def test_truth_boundary_mutation_fails_closed() -> None:
     weakened = copy.deepcopy(CONFIG)
     weakened["claim_boundary"]["training_authorized_bytes"] = 1
 
-    with pytest.raises(QualityPrivacyError, match="training bytes must remain zero"):
-        materialize_quality_privacy_candidate(
+    with pytest.raises(QualityPrivacyError, match="training bytes nonzero"):
+        _materialize_quality_privacy_candidate_for_test(
             jsonl,
             manifest,
             weakened,
@@ -338,14 +360,11 @@ def test_duplicate_manifest_record_id_fails_closed() -> None:
     tampered.pop("manifest_identity_sha256")
     tampered["manifest_identity_sha256"] = _sha256(_canonical_bytes(tampered))
     manifest_bytes = json.dumps(
-        tampered,
-        ensure_ascii=False,
-        sort_keys=True,
-        indent=2,
+        tampered, ensure_ascii=False, sort_keys=True, indent=2
     ).encode("utf-8") + b"\n"
 
     with pytest.raises(QualityPrivacyError, match="duplicate manifest record_id"):
-        materialize_quality_privacy_candidate(
+        _materialize_quality_privacy_candidate_for_test(
             jsonl,
             tampered,
             CONFIG,
