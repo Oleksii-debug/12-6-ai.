@@ -38,6 +38,63 @@ _TRUTH_BOUNDARY = {
 _INPUT_KEYS = frozenset({"id", "text", "mode"})
 _MODES = frozenset({"uk", "en", "code"})
 _SHA256_RE = re.compile(r"[0-9a-f]{64}")
+_AUTHORITY_KEYS = frozenset(
+    {
+        "schema_version",
+        "authority_class",
+        "input_manifest_sha256",
+        "input_rows_sha256",
+        "quality_threshold_policy",
+        "quality_granularity_policy",
+        "execution_rows_sha256",
+        "counts",
+        "bytes",
+        "records",
+        "truth_boundary",
+        "execution_identity_sha256",
+    }
+)
+_POLICY_KEYS = frozenset({"policy_id", "policy_sha256"})
+_COUNTS_KEYS = frozenset(
+    {
+        "records",
+        "retain_all",
+        "retain_partial",
+        "reject_document",
+        "quality_units",
+        "accepted_quality_units",
+        "rejected_quality_units",
+    }
+)
+_BYTES_KEYS = frozenset(
+    {"input_utf8_bytes", "retained_utf8_bytes", "rejected_utf8_bytes"}
+)
+_EXECUTION_ROW_KEYS = frozenset(
+    {
+        "record_id",
+        "mode",
+        "payload_sha256",
+        "utf8_bytes",
+        "authoritative_unit",
+        "status",
+        "retained_utf8_bytes",
+        "rejected_utf8_bytes",
+        "quality_result_sha256",
+        "units",
+    }
+)
+_UNIT_KEYS = frozenset(
+    {
+        "unit_id",
+        "start_char",
+        "end_char",
+        "payload_sha256",
+        "utf8_bytes",
+        "accepted",
+        "decision_sha256",
+    }
+)
+_STATUSES = frozenset({"RETAIN_ALL", "RETAIN_PARTIAL", "REJECT_DOCUMENT"})
 
 
 class QualityExecutionAuthorityError(ValueError):
@@ -68,6 +125,35 @@ def _require_exact_int(value: Any, field: str) -> int:
         raise QualityExecutionAuthorityError(
             f"{field} must be a non-negative integer"
         )
+    return value
+
+
+def _require_exact_bool(value: Any, field: str) -> bool:
+    if type(value) is not bool:
+        raise QualityExecutionAuthorityError(f"{field} must be a boolean")
+    return value
+
+
+def _require_nonempty_str(value: Any, field: str) -> str:
+    if type(value) is not str or not value:
+        raise QualityExecutionAuthorityError(f"{field} must be a non-empty string")
+    return value
+
+
+def _require_exact_dict(
+    value: Any,
+    *,
+    field: str,
+    keys: frozenset[str],
+) -> dict[str, Any]:
+    if type(value) is not dict or set(value) != keys:
+        raise QualityExecutionAuthorityError(f"{field} schema is not closed")
+    return value
+
+
+def _require_exact_list(value: Any, field: str) -> list[Any]:
+    if type(value) is not list:
+        raise QualityExecutionAuthorityError(f"{field} must be a JSON list")
     return value
 
 
@@ -114,6 +200,20 @@ def _normalize_inputs(
         seen.add(record_id)
         normalized.append({"id": record_id, "text": text, "mode": mode})
     return sorted(normalized, key=lambda row: row["id"])
+
+
+def _input_row_projection(
+    rows: Sequence[Mapping[str, str]],
+) -> list[dict[str, Any]]:
+    return [
+        {
+            "record_id": row["id"],
+            "mode": row["mode"],
+            "payload_sha256": _sha256(row["text"].encode("utf-8")),
+            "utf8_bytes": len(row["text"].encode("utf-8")),
+        }
+        for row in rows
+    ]
 
 
 def _quality_units(
@@ -177,12 +277,20 @@ def build_quality_execution_authority(
     records: Sequence[Mapping[str, Any]],
     *,
     input_manifest_sha256: str,
+    expected_input_rows_sha256: str,
 ) -> dict[str, Any]:
-    """Run frozen G05 quality semantics and return text-free authority."""
+    """Run frozen G05 quality semantics over an independently bound row set."""
     input_manifest = _require_sha256(
         input_manifest_sha256, "input_manifest_sha256"
     )
+    expected_input_rows = _require_sha256(
+        expected_input_rows_sha256, "expected_input_rows_sha256"
+    )
     rows = _normalize_inputs(records)
+    input_rows = _input_row_projection(rows)
+    input_rows_sha256 = _sha256(_cjson(input_rows))
+    if input_rows_sha256 != expected_input_rows:
+        raise QualityExecutionAuthorityError("input rows authority mismatch")
     quality = default_quality_policy()
     granularity = frozen_granularity_policy()
     quality_manifest = quality.manifest()
@@ -195,7 +303,6 @@ def build_quality_execution_authority(
             "quality threshold/granularity policy binding drift"
         )
 
-    input_rows: list[dict[str, Any]] = []
     execution_rows: list[dict[str, Any]] = []
     status_counts = {
         "RETAIN_ALL": 0,
@@ -211,15 +318,6 @@ def build_quality_execution_authority(
         mode = row["mode"]
         payload = text.encode("utf-8")
         payload_sha256 = _sha256(payload)
-        input_rows.append(
-            {
-                "record_id": record_id,
-                "mode": mode,
-                "payload_sha256": payload_sha256,
-                "utf8_bytes": len(payload),
-            }
-        )
-
         result = apply_frozen_granularity(
             record_id,
             text,
@@ -294,7 +392,7 @@ def build_quality_execution_authority(
         "schema_version": QUALITY_EXECUTION_SCHEMA,
         "authority_class": QUALITY_EXECUTION_AUTHORITY_CLASS,
         "input_manifest_sha256": input_manifest,
-        "input_rows_sha256": _sha256(_cjson(input_rows)),
+        "input_rows_sha256": input_rows_sha256,
         "quality_threshold_policy": {
             "policy_id": quality.policy_id,
             "policy_sha256": quality_manifest["policy_sha256"],
@@ -315,82 +413,299 @@ def build_quality_execution_authority(
     }
 
 
-def verify_quality_execution_root(
+def _verify_quality_execution_structure(
     authority: Mapping[str, Any],
     *,
     expected_input_manifest_sha256: str,
-    expected_execution_identity_sha256: str,
+    expected_input_rows_sha256: str,
 ) -> str:
-    """Verify a text-free root already pinned by an independent executor/auditor."""
     expected_input = _require_sha256(
         expected_input_manifest_sha256, "expected_input_manifest_sha256"
     )
-    expected_identity = _require_sha256(
-        expected_execution_identity_sha256,
-        "expected_execution_identity_sha256",
+    expected_input_rows = _require_sha256(
+        expected_input_rows_sha256, "expected_input_rows_sha256"
     )
-    required = {
-        "schema_version",
-        "authority_class",
-        "input_manifest_sha256",
-        "input_rows_sha256",
-        "quality_threshold_policy",
-        "quality_granularity_policy",
-        "execution_rows_sha256",
-        "counts",
-        "bytes",
-        "records",
-        "truth_boundary",
-        "execution_identity_sha256",
-    }
-    if not isinstance(authority, Mapping) or set(authority) != required:
-        raise QualityExecutionAuthorityError(
-            "quality execution root schema is not closed"
-        )
-    if authority["schema_version"] != QUALITY_EXECUTION_SCHEMA:
-        raise QualityExecutionAuthorityError(
-            "quality execution schema drift"
-        )
-    if authority["authority_class"] != QUALITY_EXECUTION_AUTHORITY_CLASS:
+    root = _require_exact_dict(
+        authority,
+        field="quality execution root",
+        keys=_AUTHORITY_KEYS,
+    )
+    if type(root["schema_version"]) is not str or (
+        root["schema_version"] != QUALITY_EXECUTION_SCHEMA
+    ):
+        raise QualityExecutionAuthorityError("quality execution schema drift")
+    if type(root["authority_class"]) is not str or (
+        root["authority_class"] != QUALITY_EXECUTION_AUTHORITY_CLASS
+    ):
         raise QualityExecutionAuthorityError(
             "quality execution authority class drift"
         )
-    if authority["input_manifest_sha256"] != expected_input:
-        raise QualityExecutionAuthorityError(
-            "input manifest authority mismatch"
-        )
+    if _require_sha256(
+        root["input_manifest_sha256"], "input_manifest_sha256"
+    ) != expected_input:
+        raise QualityExecutionAuthorityError("input manifest authority mismatch")
+    if _require_sha256(
+        root["input_rows_sha256"], "input_rows_sha256"
+    ) != expected_input_rows:
+        raise QualityExecutionAuthorityError("input rows authority mismatch")
+
     quality = default_quality_policy()
     granularity = frozen_granularity_policy()
-    if authority["quality_threshold_policy"] != {
+    expected_quality_policy = {
         "policy_id": quality.policy_id,
         "policy_sha256": quality.manifest()["policy_sha256"],
-    }:
+    }
+    expected_granularity_policy = {
+        "policy_id": granularity.policy_id,
+        "policy_sha256": granularity.manifest()["policy_sha256"],
+    }
+    _require_exact_dict(
+        root["quality_threshold_policy"],
+        field="quality_threshold_policy",
+        keys=_POLICY_KEYS,
+    )
+    if _cjson(root["quality_threshold_policy"]) != _cjson(
+        expected_quality_policy
+    ):
         raise QualityExecutionAuthorityError(
             "quality threshold policy identity drift"
         )
-    if authority["quality_granularity_policy"] != {
-        "policy_id": granularity.policy_id,
-        "policy_sha256": granularity.manifest()["policy_sha256"],
-    }:
+    _require_exact_dict(
+        root["quality_granularity_policy"],
+        field="quality_granularity_policy",
+        keys=_POLICY_KEYS,
+    )
+    if _cjson(root["quality_granularity_policy"]) != _cjson(
+        expected_granularity_policy
+    ):
         raise QualityExecutionAuthorityError(
             "quality granularity policy identity drift"
         )
-    if authority["truth_boundary"] != _TRUTH_BOUNDARY:
+
+    truth_boundary = _require_exact_dict(
+        root["truth_boundary"],
+        field="truth_boundary",
+        keys=frozenset(_TRUTH_BOUNDARY),
+    )
+    if _cjson(truth_boundary) != _cjson(_TRUTH_BOUNDARY):
         raise QualityExecutionAuthorityError("quality execution truth boundary drift")
-    _require_sha256(authority["input_rows_sha256"], "input_rows_sha256")
-    _require_sha256(
-        authority["execution_rows_sha256"], "execution_rows_sha256"
+
+    records = _require_exact_list(root["records"], "records")
+    if not records:
+        raise QualityExecutionAuthorityError("records must not be empty")
+
+    input_rows: list[dict[str, Any]] = []
+    status_counts = {status: 0 for status in _STATUSES}
+    input_bytes = retained_bytes = rejected_bytes = 0
+    accepted_units = rejected_units = 0
+    previous_record_id: str | None = None
+
+    for row_index, raw_row in enumerate(records):
+        row = _require_exact_dict(
+            raw_row,
+            field=f"records[{row_index}]",
+            keys=_EXECUTION_ROW_KEYS,
+        )
+        record_id = _require_nonempty_str(
+            row["record_id"], f"records[{row_index}].record_id"
+        )
+        if previous_record_id is not None and record_id <= previous_record_id:
+            raise QualityExecutionAuthorityError(
+                "records must be strictly ordered by unique record_id"
+            )
+        previous_record_id = record_id
+        mode = _require_nonempty_str(
+            row["mode"], f"records[{row_index}].mode"
+        )
+        if mode not in _MODES:
+            raise QualityExecutionAuthorityError(
+                f"records[{row_index}].mode must be uk/en/code"
+            )
+        payload_sha256 = _require_sha256(
+            row["payload_sha256"],
+            f"records[{row_index}].payload_sha256",
+        )
+        utf8_bytes = _require_exact_int(
+            row["utf8_bytes"], f"records[{row_index}].utf8_bytes"
+        )
+        _require_nonempty_str(
+            row["authoritative_unit"],
+            f"records[{row_index}].authoritative_unit",
+        )
+        status = _require_nonempty_str(
+            row["status"], f"records[{row_index}].status"
+        )
+        if status not in _STATUSES:
+            raise QualityExecutionAuthorityError(
+                f"records[{row_index}].status is unsupported"
+            )
+        retained = _require_exact_int(
+            row["retained_utf8_bytes"],
+            f"records[{row_index}].retained_utf8_bytes",
+        )
+        rejected = _require_exact_int(
+            row["rejected_utf8_bytes"],
+            f"records[{row_index}].rejected_utf8_bytes",
+        )
+        if retained + rejected != utf8_bytes:
+            raise QualityExecutionAuthorityError(
+                f"records[{row_index}] byte accounting drift"
+            )
+        _require_sha256(
+            row["quality_result_sha256"],
+            f"records[{row_index}].quality_result_sha256",
+        )
+
+        units = _require_exact_list(
+            row["units"], f"records[{row_index}].units"
+        )
+        if not units:
+            raise QualityExecutionAuthorityError(
+                f"records[{row_index}].units must not be empty"
+            )
+        row_unit_bytes = row_accepted_bytes = row_rejected_bytes = 0
+        unit_ids: set[str] = set()
+        for unit_index, raw_unit in enumerate(units):
+            unit = _require_exact_dict(
+                raw_unit,
+                field=f"records[{row_index}].units[{unit_index}]",
+                keys=_UNIT_KEYS,
+            )
+            unit_id = _require_nonempty_str(
+                unit["unit_id"],
+                f"records[{row_index}].units[{unit_index}].unit_id",
+            )
+            if unit_id in unit_ids:
+                raise QualityExecutionAuthorityError(
+                    f"records[{row_index}] has duplicate unit_id"
+                )
+            unit_ids.add(unit_id)
+            start_char = _require_exact_int(
+                unit["start_char"],
+                f"records[{row_index}].units[{unit_index}].start_char",
+            )
+            end_char = _require_exact_int(
+                unit["end_char"],
+                f"records[{row_index}].units[{unit_index}].end_char",
+            )
+            if end_char < start_char:
+                raise QualityExecutionAuthorityError(
+                    f"records[{row_index}] has invalid unit character span"
+                )
+            _require_sha256(
+                unit["payload_sha256"],
+                f"records[{row_index}].units[{unit_index}].payload_sha256",
+            )
+            unit_bytes = _require_exact_int(
+                unit["utf8_bytes"],
+                f"records[{row_index}].units[{unit_index}].utf8_bytes",
+            )
+            accepted = _require_exact_bool(
+                unit["accepted"],
+                f"records[{row_index}].units[{unit_index}].accepted",
+            )
+            _require_sha256(
+                unit["decision_sha256"],
+                f"records[{row_index}].units[{unit_index}].decision_sha256",
+            )
+            row_unit_bytes += unit_bytes
+            if accepted:
+                row_accepted_bytes += unit_bytes
+                accepted_units += 1
+            else:
+                row_rejected_bytes += unit_bytes
+                rejected_units += 1
+
+        if row_unit_bytes != utf8_bytes:
+            raise QualityExecutionAuthorityError(
+                f"records[{row_index}] quality-unit byte accounting drift"
+            )
+        if row_accepted_bytes != retained or row_rejected_bytes != rejected:
+            raise QualityExecutionAuthorityError(
+                f"records[{row_index}] quality-unit disposition accounting drift"
+            )
+
+        input_rows.append(
+            {
+                "record_id": record_id,
+                "mode": mode,
+                "payload_sha256": payload_sha256,
+                "utf8_bytes": utf8_bytes,
+            }
+        )
+        status_counts[status] += 1
+        input_bytes += utf8_bytes
+        retained_bytes += retained
+        rejected_bytes += rejected
+
+    observed_input_rows = _sha256(_cjson(input_rows))
+    if observed_input_rows != root["input_rows_sha256"]:
+        raise QualityExecutionAuthorityError("input rows self-hash mismatch")
+    observed_execution_rows = _sha256(_cjson(records))
+    if _require_sha256(
+        root["execution_rows_sha256"], "execution_rows_sha256"
+    ) != observed_execution_rows:
+        raise QualityExecutionAuthorityError("execution rows self-hash mismatch")
+
+    expected_counts = {
+        "records": len(records),
+        "retain_all": status_counts["RETAIN_ALL"],
+        "retain_partial": status_counts["RETAIN_PARTIAL"],
+        "reject_document": status_counts["REJECT_DOCUMENT"],
+        "quality_units": accepted_units + rejected_units,
+        "accepted_quality_units": accepted_units,
+        "rejected_quality_units": rejected_units,
+    }
+    counts = _require_exact_dict(
+        root["counts"], field="counts", keys=_COUNTS_KEYS
     )
+    for key in _COUNTS_KEYS:
+        _require_exact_int(counts[key], f"counts.{key}")
+    if _cjson(counts) != _cjson(expected_counts):
+        raise QualityExecutionAuthorityError("quality execution count accounting drift")
+
+    expected_bytes = {
+        "input_utf8_bytes": input_bytes,
+        "retained_utf8_bytes": retained_bytes,
+        "rejected_utf8_bytes": rejected_bytes,
+    }
+    byte_summary = _require_exact_dict(
+        root["bytes"], field="bytes", keys=_BYTES_KEYS
+    )
+    for key in _BYTES_KEYS:
+        _require_exact_int(byte_summary[key], f"bytes.{key}")
+    if _cjson(byte_summary) != _cjson(expected_bytes):
+        raise QualityExecutionAuthorityError("quality execution byte accounting drift")
+
     observed = _require_sha256(
-        authority["execution_identity_sha256"],
-        "execution_identity_sha256",
+        root["execution_identity_sha256"], "execution_identity_sha256"
     )
-    core = dict(authority)
+    core = dict(root)
     del core["execution_identity_sha256"]
     if observed != _sha256(_cjson(core)):
         raise QualityExecutionAuthorityError(
             "quality execution self-hash mismatch"
         )
+    return observed
+
+
+def verify_quality_execution_root(
+    authority: Mapping[str, Any],
+    *,
+    expected_input_manifest_sha256: str,
+    expected_input_rows_sha256: str,
+    expected_execution_identity_sha256: str,
+) -> str:
+    """Verify a text-free root already pinned by an independent executor/auditor."""
+    expected_identity = _require_sha256(
+        expected_execution_identity_sha256,
+        "expected_execution_identity_sha256",
+    )
+    observed = _verify_quality_execution_structure(
+        authority,
+        expected_input_manifest_sha256=expected_input_manifest_sha256,
+        expected_input_rows_sha256=expected_input_rows_sha256,
+    )
     if observed != expected_identity:
         raise QualityExecutionAuthorityError(
             "quality execution authority root mismatch"
@@ -403,25 +718,31 @@ def verify_quality_execution_authority(
     records: Sequence[Mapping[str, Any]],
     *,
     expected_input_manifest_sha256: str,
+    expected_input_rows_sha256: str,
     expected_execution_identity_sha256: str | None = None,
 ) -> str:
-    """Re-execute frozen quality semantics and require exact authority equality."""
+    """Re-execute frozen quality semantics and require byte-exact JSON equality."""
     expected = build_quality_execution_authority(
         records,
         input_manifest_sha256=expected_input_manifest_sha256,
+        expected_input_rows_sha256=expected_input_rows_sha256,
     )
-    if authority != expected:
+    observed = _verify_quality_execution_structure(
+        authority,
+        expected_input_manifest_sha256=expected_input_manifest_sha256,
+        expected_input_rows_sha256=expected_input_rows_sha256,
+    )
+    if _cjson(authority) != _cjson(expected):
         raise QualityExecutionAuthorityError(
             "quality execution authority does not match canonical re-execution"
         )
-    identity = expected["execution_identity_sha256"]
     if expected_execution_identity_sha256 is not None:
-        _require_sha256(
+        expected_identity = _require_sha256(
             expected_execution_identity_sha256,
             "expected_execution_identity_sha256",
         )
-        if identity != expected_execution_identity_sha256:
+        if observed != expected_identity:
             raise QualityExecutionAuthorityError(
                 "quality execution authority root mismatch"
             )
-    return identity
+    return observed
