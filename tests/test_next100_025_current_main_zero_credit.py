@@ -209,14 +209,14 @@ def test_csv_records_support_cp1251_semicolon_delimiter() -> None:
 
 
 def test_csv_records_fail_closed_on_duplicate_headers() -> None:
-    payload = "name,name\nРеєстр,Інша назва\n".encode("utf-8")
+    payload = "name,name\nРеєстр,Інша назва\n".encode()
 
     with pytest.raises(RuntimeError, match="CSV headers are blank or duplicated"):
         snapshot.load_csv_records(payload)
 
 
 def test_csv_records_fail_closed_on_ragged_extra_columns() -> None:
-    payload = "name,description\nРеєстр,Опис,EXTRA\n".encode("utf-8")
+    payload = "name,description\nРеєстр,Опис,EXTRA\n".encode()
 
     with pytest.raises(RuntimeError, match="CSV row has unexpected extra columns"):
         snapshot.load_csv_records(payload)
