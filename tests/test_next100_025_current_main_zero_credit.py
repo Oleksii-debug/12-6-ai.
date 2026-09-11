@@ -45,6 +45,13 @@ def _live_drift_resources() -> list[dict]:
             "last_modified": "2026-09-03T11:38:00",
         },
         {
+            "id": "schema-csv",
+            "name": "Структура набора даних",
+            "format": ".csv",
+            "url": "https://data.gov.ua/dataset/x/resource/schema-csv/download/schema.csv",
+            "last_modified": "2026-09-03T11:38:00",
+        },
+        {
             "id": "archived-json",
             "name": "Архівний - Реєстр наборів даних, які перебувають у володінні розпорядника інформації",
             "format": "JSON",
@@ -134,12 +141,14 @@ def test_direct_mode_based_training_eligibility_regression_is_absent() -> None:
     assert '"training_eligible": False' in source
 
 
-def test_archived_json_resource_cannot_be_locked_as_current_snapshot() -> None:
+def test_current_csv_register_is_admissible_but_schema_and_archived_json_are_not() -> None:
     cfg = json.loads(CONFIG.read_text(encoding="utf-8"))
     package = {"resources": _live_drift_resources()}
 
-    with pytest.raises(RuntimeError, match="no admissible JSON resource candidate"):
-        snapshot.pick_resource(package, cfg)
+    selected = snapshot.pick_resource(package, cfg)
+
+    assert selected["id"] == "current-csv"
+    assert selected["format"] == ".csv"
 
 
 def test_locked_expected_id_cannot_bypass_archive_admissibility() -> None:
@@ -150,3 +159,64 @@ def test_locked_expected_id_cannot_bypass_archive_admissibility() -> None:
 
     with pytest.raises(RuntimeError, match="locked resource id is not admissible"):
         snapshot.pick_resource(package, cfg)
+
+
+def test_locked_expected_id_cannot_bypass_schema_exclusion() -> None:
+    cfg = json.loads(CONFIG.read_text(encoding="utf-8"))
+    cfg["mode"] = "LOCKED"
+    cfg["resource_selection"]["expected_resource_id"] = "schema-csv"
+    package = {"resources": _live_drift_resources()}
+
+    with pytest.raises(RuntimeError, match="locked resource id is not admissible"):
+        snapshot.pick_resource(package, cfg)
+
+
+def test_csv_records_support_utf8_bom_and_comma_delimiter() -> None:
+    payload = (
+        "\ufeffname,description,email\r\n"
+        "Набір даних,Опис державного набору,private@example.gov.ua\r\n"
+        "Реєстр,Опис реєстру,other@example.gov.ua\r\n"
+    ).encode("utf-8")
+
+    records = snapshot.load_csv_records(payload)
+
+    assert records == [
+        {
+            "name": "Набір даних",
+            "description": "Опис державного набору",
+            "email": "private@example.gov.ua",
+        },
+        {
+            "name": "Реєстр",
+            "description": "Опис реєстру",
+            "email": "other@example.gov.ua",
+        },
+    ]
+
+
+def test_csv_records_support_cp1251_semicolon_delimiter() -> None:
+    payload = (
+        "name;description;format\r\n"
+        "Реєстр;Опис набору даних;CSV\r\n"
+        "Набір;Опис державних даних;JSON\r\n"
+    ).encode("cp1251")
+
+    records = snapshot.load_csv_records(payload)
+
+    assert records[0]["name"] == "Реєстр"
+    assert records[0]["description"] == "Опис набору даних"
+    assert records[1]["format"] == "JSON"
+
+
+def test_csv_records_fail_closed_on_duplicate_headers() -> None:
+    payload = "name,name\nРеєстр,Інша назва\n".encode("utf-8")
+
+    with pytest.raises(RuntimeError, match="CSV headers are blank or duplicated"):
+        snapshot.load_csv_records(payload)
+
+
+def test_csv_records_fail_closed_on_ragged_extra_columns() -> None:
+    payload = "name,description\nРеєстр,Опис,EXTRA\n".encode("utf-8")
+
+    with pytest.raises(RuntimeError, match="CSV row has unexpected extra columns"):
+        snapshot.load_csv_records(payload)

@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import hashlib
+import io
 import json
 import re
 import time
@@ -53,7 +55,7 @@ def fetch(url: str, max_bytes: int) -> bytes:
         url,
         headers={
             "User-Agent": "12-6-ai-NEXT100-025/1.0 (bounded open-data snapshot)",
-            "Accept": "application/json,text/plain;q=0.9,*/*;q=0.1",
+            "Accept": "application/json,text/csv;q=0.95,text/plain;q=0.9,*/*;q=0.1",
             "Cache-Control": "no-cache",
         },
     )
@@ -71,6 +73,51 @@ def load_json_bytes(payload: bytes) -> object:
         except (UnicodeDecodeError, json.JSONDecodeError):
             continue
     raise RuntimeError("resource is not decodable JSON")
+
+
+def decode_text_bytes(payload: bytes) -> str:
+    for encoding in ("utf-8-sig", "utf-8", "cp1251"):
+        try:
+            text = payload.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+        if "\x00" in text:
+            raise RuntimeError("CSV contains NUL bytes")
+        return text
+    raise RuntimeError("resource is not decodable text")
+
+
+def load_csv_records(payload: bytes) -> list[dict[str, str]]:
+    text = decode_text_bytes(payload)
+    if not text.strip():
+        raise RuntimeError("CSV resource is empty")
+    try:
+        dialect = csv.Sniffer().sniff(text[:8192], delimiters=",;\t")
+    except csv.Error as exc:
+        raise RuntimeError("CSV delimiter is not recognized") from exc
+    stream = io.StringIO(text, newline="")
+    reader = csv.DictReader(stream, dialect=dialect)
+    if reader.fieldnames is None:
+        raise RuntimeError("CSV header is missing")
+    headers = [str(header).strip() for header in reader.fieldnames]
+    if not headers or any(not header for header in headers) or len(headers) != len(set(headers)):
+        raise RuntimeError("CSV headers are blank or duplicated")
+    if len(headers) > 256:
+        raise RuntimeError(f"CSV has too many columns: {len(headers)}")
+    records: list[dict[str, str]] = []
+    for row in reader:
+        if None in row:
+            raise RuntimeError("CSV row has unexpected extra columns")
+        clean = {
+            header: "" if row.get(original) is None else str(row.get(original))
+            for header, original in zip(headers, reader.fieldnames, strict=True)
+        }
+        if not any(value.strip() for value in clean.values()):
+            continue
+        records.append(clean)
+    if not records:
+        raise RuntimeError("CSV resource contains no data records")
+    return records
 
 
 def validate_mode(mode: object) -> str:
@@ -161,7 +208,7 @@ def pick_resource(package: dict, cfg: dict) -> dict:
         stamp = str(resource.get("last_modified") or resource.get("created") or "")
         candidates.append((preference, stamp, name, resource))
     if not candidates:
-        raise RuntimeError("no admissible JSON resource candidate")
+        raise RuntimeError("no admissible resource candidate")
     candidates.sort(key=lambda item: (item[0], item[1], item[2]), reverse=True)
     return candidates[0][3]
 
@@ -178,6 +225,19 @@ def candidate_record_lists(value: object) -> list[list[dict]]:
         for item in value.values():
             out.extend(candidate_record_lists(item))
     return out
+
+
+def resource_records(payload: bytes, resource: dict) -> list[dict]:
+    fmt = str(resource.get("format") or "").casefold().lstrip(".")
+    if fmt == "csv":
+        return list(load_csv_records(payload))
+    if fmt == "json":
+        root = load_json_bytes(payload)
+        lists = candidate_record_lists(root)
+        if not lists:
+            raise RuntimeError("no record list found in JSON resource")
+        return max(lists, key=len)
+    raise RuntimeError(f"unsupported admitted resource format: {fmt!r}")
 
 
 def flatten_scalars(value: object, prefix: str = "") -> list[tuple[str, str]]:
@@ -356,12 +416,7 @@ def main() -> int:
     if raw_a != raw_b:
         raise RuntimeError("repeat acquisition raw bytes differ")
     raw_hash = sha256(raw_a)
-    root = load_json_bytes(raw_a)
-
-    lists = candidate_record_lists(root)
-    if not lists:
-        raise RuntimeError("no record list found in JSON resource")
-    records = max(lists, key=len)
+    records = resource_records(raw_a, resource)
 
     accepted: list[dict] = []
     normalized_seen: set[str] = set()

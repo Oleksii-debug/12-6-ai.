@@ -58,7 +58,7 @@
     "min_total_normalized_utf8_bytes": 12000
   },
   "resource_selection": {
-    "allowed_formats": ["JSON", ".JSON", "json"],
+    "allowed_formats": ["JSON", ".JSON", "json", "CSV", ".CSV", "csv"],
     "exclude_name_fragments": [
       "structure",
       "структур",
