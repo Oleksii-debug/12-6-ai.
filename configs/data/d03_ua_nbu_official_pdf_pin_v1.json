@@ -4,8 +4,8 @@
   "base_authority": {
     "repository": "Oleksii-debug/12-6-ai.",
     "parent_pr": 898,
-    "parent_head_sha": "a196545b4200b23983820002c019fb9e964670e1",
-    "parent_contract_identity_sha256": "1885dfcdb590d15e0fc370a12d5869112832a1b66f36910d941a9704626db1b7",
+    "parent_head_sha": "86a8a2a6f91eb4093bee414aaa8e8bbd3d895761",
+    "parent_contract_identity_sha256": "2e04335a2e6e665167b63f392d09756ae52e4f65f5253d9a037c48f5d191d9ec",
     "lane": "D03",
     "control_issue": 548
   },
@@ -48,5 +48,5 @@
     "paid_compute_authorized": false,
     "learned_20m_claim": false
   },
-  "contract_identity_sha256": "7b032daf8200dc9acb3b066aa648463f772d90e9156804ebc3fbf79dbfe9fccd"
+  "contract_identity_sha256": "0532eea5d03014473a30cf78d19da5670530759d4cd4b15dda2c9fb7ac30912f"
 }
