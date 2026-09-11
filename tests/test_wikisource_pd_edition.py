@@ -70,54 +70,108 @@ def test_index_discovery_is_numeric_sorted_and_pinned() -> None:
     assert calls == [{"action": "parse", "oldid": str(INDEX_REVISION_ID), "prop": "links"}]
 
 
+def _approved_metadata(title: str, revision_id: int) -> dict:
+    return {
+        "query": {
+            "pages": [
+                {
+                    "title": title,
+                    "revisions": [{"revid": revision_id}],
+                    "categories": [{"title": f"Категорія:{APPROVED_CATEGORY}"}],
+                }
+            ]
+        }
+    }
+
+
 def test_fetch_page_requires_approved_category_and_seals_revision() -> None:
+    title = f"{PAGE_PREFIX}13"
     responses = iter(
         [
-            {
-                "query": {
-                    "pages": [
-                        {
-                            "revisions": [{"revid": 560107}],
-                        }
-                    ]
-                }
-            },
+            _approved_metadata(title, 560107),
             {
                 "parse": {
                     "revid": 560107,
-                    "categories": [{"category": APPROVED_CATEGORY}],
                     "text": (
                         "<div><p>Український літературний текст достатньої "
                         "довжини для сторінки.</p></div>"
                     ),
                 }
             },
+            _approved_metadata(title, 560107),
         ]
     )
-    snapshot = fetch_page_snapshot(f"{PAGE_PREFIX}13", get_json=lambda _: next(responses))
+    snapshot = fetch_page_snapshot(title, get_json=lambda _: next(responses))
     assert snapshot.revision_id == 560107
     assert snapshot.page_number == 13
     assert snapshot.utf8_bytes > 64
 
 
-def test_fetch_page_rejects_unapproved_page() -> None:
+def test_fetch_page_rejects_unapproved_page_before_render() -> None:
+    title = f"{PAGE_PREFIX}13"
+    calls = []
+
+    def fake(params):
+        calls.append(params)
+        return {
+            "query": {
+                "pages": [
+                    {
+                        "title": title,
+                        "revisions": [{"revid": 1}],
+                        "categories": [],
+                    }
+                ]
+            }
+        }
+
+    with pytest.raises(WikisourceIntakeError, match="approved"):
+        fetch_page_snapshot(title, get_json=fake)
+    assert len(calls) == 1
+
+
+def test_fetch_page_rejects_revision_drift_after_exact_render() -> None:
+    title = f"{PAGE_PREFIX}13"
     responses = iter(
         [
-            {"query": {"pages": [{"revisions": [{"revid": 1}]}]}},
+            _approved_metadata(title, 560107),
             {
                 "parse": {
-                    "revid": 1,
-                    "categories": [],
+                    "revid": 560107,
                     "text": (
-                        "<p>Український текст достатньої довжини для "
-                        "перевірки сторінки.</p>"
+                        "<div><p>Український літературний текст достатньої "
+                        "довжини для сторінки.</p></div>"
                     ),
                 }
             },
+            _approved_metadata(title, 560108),
         ]
     )
-    with pytest.raises(WikisourceIntakeError, match="approved"):
-        fetch_page_snapshot(f"{PAGE_PREFIX}13", get_json=lambda _: next(responses))
+    with pytest.raises(WikisourceIntakeError, match="changed during exact render"):
+        fetch_page_snapshot(title, get_json=lambda _: next(responses))
+
+
+def test_fetch_page_rejects_approval_loss_after_exact_render() -> None:
+    title = f"{PAGE_PREFIX}13"
+    after = _approved_metadata(title, 560107)
+    after["query"]["pages"][0]["categories"] = []
+    responses = iter(
+        [
+            _approved_metadata(title, 560107),
+            {
+                "parse": {
+                    "revid": 560107,
+                    "text": (
+                        "<div><p>Український літературний текст достатньої "
+                        "довжини для сторінки.</p></div>"
+                    ),
+                }
+            },
+            after,
+        ]
+    )
+    with pytest.raises(WikisourceIntakeError, match="approval changed"):
+        fetch_page_snapshot(title, get_json=lambda _: next(responses))
 
 
 def test_materialization_is_deterministic_and_zero_credit() -> None:
