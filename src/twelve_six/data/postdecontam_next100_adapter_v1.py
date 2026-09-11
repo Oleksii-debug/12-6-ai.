@@ -114,6 +114,13 @@ def adapt_family_vector_to_next100_106(
         expected_head_sha=expected_dedup_head_sha,
         expected_evidence_identity_sha256=expected_dedup_evidence_identity_sha256,
     )
+    if (
+        family_vector["dedup_evidence_identity_sha256"]
+        != normalized_authority["evidence_identity_sha256"]
+    ):
+        raise ProjectionError(
+            "dedup authority evidence does not match family-vector lineage"
+        )
 
     rows: list[dict[str, Any]] = []
     by_stratum = defaultdict(int)

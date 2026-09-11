@@ -166,8 +166,13 @@ def read_records_jsonl(path: Path) -> tuple[list[Record], str]:
         payload_sha256 = _sha256_bytes(payload.encode("utf-8"))
 
         declared_bytes = row.get("normalized_payload_bytes")
-        if declared_bytes is not None and declared_bytes != payload_bytes:
-            raise ProjectionError(f"normalized_payload_bytes drift for {record_id}")
+        if declared_bytes is not None:
+            declared_bytes = _require_nonnegative_int(
+                declared_bytes,
+                "normalized_payload_bytes",
+            )
+            if declared_bytes != payload_bytes:
+                raise ProjectionError(f"normalized_payload_bytes drift for {record_id}")
         declared_sha = row.get("normalized_payload_sha256")
         if declared_sha is not None:
             _require_sha256(declared_sha, "normalized_payload_sha256")
@@ -316,7 +321,7 @@ def verify_decontamination_binding(
     expected_records_sha256: str,
     expected_record_count: int,
     expected_input_payload_bytes: int,
-) -> tuple[set[str], str, str]:
+) -> tuple[set[str], str, str, str]:
     if document.get("schema") != BINDING_SCHEMA:
         raise ProjectionError("unsupported decontamination binding schema")
 
@@ -325,13 +330,25 @@ def verify_decontamination_binding(
         document.get("retained_inventory_identity_sha256"),
         "retained_inventory_identity_sha256",
     )
+    dedup_evidence = _require_sha256(
+        document.get("dedup_evidence_identity_sha256"),
+        "dedup_evidence_identity_sha256",
+    )
     if document.get("verdict") not in ALLOWED_VERDICTS:
         raise ProjectionError("decontamination verdict is not terminal PASS")
     if document.get("records_jsonl_sha256") != expected_records_sha256:
         raise ProjectionError("decontamination binding references different records JSONL")
-    if document.get("input_record_count") != expected_record_count:
+    input_record_count = _require_nonnegative_int(
+        document.get("input_record_count"),
+        "input_record_count",
+    )
+    if input_record_count != expected_record_count:
         raise ProjectionError("decontamination input record count mismatch")
-    if document.get("input_payload_bytes") != expected_input_payload_bytes:
+    input_payload_bytes = _require_nonnegative_int(
+        document.get("input_payload_bytes"),
+        "input_payload_bytes",
+    )
+    if input_payload_bytes != expected_input_payload_bytes:
         raise ProjectionError("decontamination input payload bytes mismatch")
 
     _require_bool_false(
@@ -346,7 +363,11 @@ def verify_decontamination_binding(
         document.get("training_authorized_by_this_report"),
         "training_authorized_by_this_report",
     )
-    if document.get("authorized_optimized_target_exposure") != 0:
+    optimized_target_exposure = _require_nonnegative_int(
+        document.get("authorized_optimized_target_exposure"),
+        "authorized_optimized_target_exposure",
+    )
+    if optimized_target_exposure != 0:
         raise ProjectionError("decontamination binding must keep optimized-target exposure at zero")
 
     excluded = document.get("excluded_record_id_sha256")
@@ -360,10 +381,14 @@ def verify_decontamination_binding(
         excluded_set.add(value)
 
     expected_survivors = expected_record_count - len(excluded_set)
-    if document.get("survivor_record_count") != expected_survivors:
+    survivor_record_count = _require_nonnegative_int(
+        document.get("survivor_record_count"),
+        "survivor_record_count",
+    )
+    if survivor_record_count != expected_survivors:
         raise ProjectionError("survivor record count mismatch")
 
-    return excluded_set, authority, retained_inventory
+    return excluded_set, authority, retained_inventory, dedup_evidence
 
 
 def _record_id_hash(record_id: str) -> str:
@@ -436,7 +461,11 @@ def verify_final_g05_g06_coverage(
         document.get("training_authorized_by_this_coverage"),
         "training_authorized_by_this_coverage",
     )
-    if document.get("authorized_optimized_target_exposure") != 0:
+    optimized_target_exposure = _require_nonnegative_int(
+        document.get("authorized_optimized_target_exposure"),
+        "authorized_optimized_target_exposure",
+    )
+    if optimized_target_exposure != 0:
         raise ProjectionError("G05/G06 coverage must keep optimized-target exposure at zero")
 
     expected_rows = _coverage_rows(survivor_records)
@@ -474,10 +503,18 @@ def verify_final_g05_g06_coverage(
     normalized_rows.sort(key=lambda row: row["record_id_sha256"])
     if normalized_rows != expected_rows:
         raise ProjectionError("G05/G06 coverage does not exactly cover final survivors")
-    if document.get("covered_record_count") != len(expected_rows):
+    covered_record_count = _require_nonnegative_int(
+        document.get("covered_record_count"),
+        "covered_record_count",
+    )
+    if covered_record_count != len(expected_rows):
         raise ProjectionError("G05/G06 covered record count mismatch")
     expected_bytes = sum(record.payload_bytes for record in survivor_records)
-    if document.get("covered_payload_bytes") != expected_bytes:
+    covered_payload_bytes = _require_nonnegative_int(
+        document.get("covered_payload_bytes"),
+        "covered_payload_bytes",
+    )
+    if covered_payload_bytes != expected_bytes:
         raise ProjectionError("G05/G06 covered payload bytes mismatch")
     return identity
 
@@ -500,7 +537,12 @@ def build_family_vector(
     _require_sha256(records_jsonl_sha256, "records_jsonl_sha256")
 
     input_payload_bytes = sum(record.payload_bytes for record in records)
-    excluded_hashes, decontam_authority, retained_inventory = verify_decontamination_binding(
+    (
+        excluded_hashes,
+        decontam_authority,
+        retained_inventory,
+        dedup_evidence,
+    ) = verify_decontamination_binding(
         decontamination_binding,
         expected_records_sha256=records_jsonl_sha256,
         expected_record_count=len(records),
@@ -518,7 +560,10 @@ def build_family_vector(
     if not survivor_records:
         raise ProjectionError("decontamination left no surviving records")
     survivor_payload_bytes = sum(record.payload_bytes for record in survivor_records)
-    declared_survivor_bytes = decontamination_binding.get("survivor_payload_bytes")
+    declared_survivor_bytes = _require_nonnegative_int(
+        decontamination_binding.get("survivor_payload_bytes"),
+        "survivor_payload_bytes",
+    )
     if declared_survivor_bytes != survivor_payload_bytes:
         raise ProjectionError("survivor payload bytes mismatch")
 
@@ -589,6 +634,7 @@ def build_family_vector(
         "records_jsonl_sha256": records_jsonl_sha256,
         "retained_inventory_identity_sha256": retained_inventory,
         "decontamination_authority_sha256": decontam_authority,
+        "dedup_evidence_identity_sha256": dedup_evidence,
         "g05_g06_coverage_identity_sha256": g05_g06_coverage_identity,
         "quality_policy_identity_sha256": QUALITY_POLICY_IDENTITY_SHA256,
         "quality_granularity_identity_sha256": QUALITY_GRANULARITY_IDENTITY_SHA256,
@@ -649,13 +695,18 @@ def verify_family_vector(document: Mapping[str, Any]) -> str:
         document.get("training_authorized_by_this_report"),
         "training_authorized_by_this_report",
     )
-    if document.get("authorized_optimized_target_exposure") != 0:
+    optimized_target_exposure = _require_nonnegative_int(
+        document.get("authorized_optimized_target_exposure"),
+        "authorized_optimized_target_exposure",
+    )
+    if optimized_target_exposure != 0:
         raise ProjectionError("family vector must keep optimized-target exposure at zero")
 
     for field in (
         "records_jsonl_sha256",
         "retained_inventory_identity_sha256",
         "decontamination_authority_sha256",
+        "dedup_evidence_identity_sha256",
         "g05_g06_coverage_identity_sha256",
         "privacy_policy_identity_sha256",
         "family_map_identity_sha256",

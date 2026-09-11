@@ -7,23 +7,30 @@ from pathlib import Path
 
 import pytest
 
+import tools.next100_106_balance_gate as next100_gate
 from twelve_six.data.postdecontam_balance_projection_v1 import (
     BINDING_SCHEMA,
     FAMILY_MAP_SCHEMA,
     FAMILY_PROVENANCE_SCHEMA,
     G05_G06_COVERAGE_SCHEMA,
-    ProjectionError,
     QUALITY_GRANULARITY_IDENTITY_SHA256,
     QUALITY_POLICY_IDENTITY_SHA256,
+    ProjectionError,
     build_family_vector,
     read_records_jsonl,
     verify_family_vector,
+)
+from twelve_six.data.postdecontam_next100_adapter_v1 import (
+    adapt_family_vector_to_next100_106,
 )
 
 
 SHA = "a" * 64
 PRIVACY_SHA = "e" * 64
+DEDUP_EVIDENCE_SHA = "d" * 64
 GIT_SHA = "b" * 40
+DEDUP_HEAD_SHA = "c" * 40
+DEDUP_WORKER_ID = "D03-GLOBAL-DEDUP"
 
 
 def _canonical(value: object) -> bytes:
@@ -95,6 +102,7 @@ def _binding(records: list, records_sha: str, excluded_ids: list[str]) -> dict:
             "schema": BINDING_SCHEMA,
             "verdict": "PASS_WITH_EXCLUSIONS" if excluded_ids else "PASS_CLEAN",
             "retained_inventory_identity_sha256": SHA,
+            "dedup_evidence_identity_sha256": DEDUP_EVIDENCE_SHA,
             "records_jsonl_sha256": records_sha,
             "input_record_count": len(records),
             "input_payload_bytes": sum(record.payload_bytes for record in records),
@@ -535,3 +543,168 @@ def test_coverage_truth_boundary_cannot_widen(tmp_path: Path) -> None:
     ]
     with pytest.raises(ProjectionError, match="must be false"):
         build_family_vector(**inputs)
+
+
+def _one_byte_inputs(tmp_path: Path) -> dict:
+    row = {
+        "record_id": "en-one",
+        "source_id": "src-en-one",
+        "family": "en.family.a",
+        "modality": "text",
+        "normalized_payload": "x",
+    }
+    path = tmp_path / "one-byte.jsonl"
+    path.write_bytes(_canonical(row) + b"\n")
+    records, records_sha = read_records_jsonl(path)
+    binding = _binding(records, records_sha, [])
+    survivors = _survivors(records, [])
+    family_map = _family_map(survivors)
+    provenance = _family_provenance(survivors)
+    coverage = _coverage(records, records_sha, binding, [])
+    return {
+        "records": records,
+        "records_jsonl_sha256": records_sha,
+        "decontamination_binding": binding,
+        "g05_g06_coverage": coverage,
+        "expected_g05_g06_coverage_identity_sha256": coverage[
+            "g05_g06_coverage_identity_sha256"
+        ],
+        "expected_privacy_policy_identity_sha256": PRIVACY_SHA,
+        "family_map": family_map,
+        "expected_family_map_identity_sha256": family_map[
+            "family_map_identity_sha256"
+        ],
+        "family_provenance": provenance,
+        "expected_family_provenance_identity_sha256": provenance[
+            "family_provenance_identity_sha256"
+        ],
+        "source_git_sha": GIT_SHA,
+    }
+
+
+def _dedup_authority(evidence_identity_sha256: str = DEDUP_EVIDENCE_SHA) -> dict:
+    return {
+        "worker_id": DEDUP_WORKER_ID,
+        "head_sha": DEDUP_HEAD_SHA,
+        "evidence_identity_sha256": evidence_identity_sha256,
+        "terminal_verdict": "PASS",
+    }
+
+
+def test_declared_one_byte_bool_alias_fails_closed(tmp_path: Path) -> None:
+    row = {
+        "record_id": "r",
+        "source_id": "s",
+        "family": "en.family.a",
+        "modality": "text",
+        "normalized_payload": "x",
+        "normalized_payload_bytes": True,
+    }
+    path = tmp_path / "bool-byte.jsonl"
+    path.write_bytes(_canonical(row) + b"\n")
+    with pytest.raises(ProjectionError, match="non-negative integer"):
+        read_records_jsonl(path)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("input_record_count", True),
+        ("input_payload_bytes", True),
+        ("survivor_record_count", True),
+        ("survivor_payload_bytes", True),
+        ("authorized_optimized_target_exposure", False),
+    ],
+)
+def test_decontamination_bool_integer_aliases_fail_closed(
+    tmp_path: Path,
+    field: str,
+    value: object,
+) -> None:
+    inputs = _one_byte_inputs(tmp_path)
+    binding = inputs["decontamination_binding"]
+    binding[field] = value
+    inputs["decontamination_binding"] = _with_hash(
+        binding,
+        "decontamination_authority_sha256",
+    )
+    with pytest.raises(ProjectionError, match="non-negative integer"):
+        build_family_vector(**inputs)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("covered_record_count", True),
+        ("covered_payload_bytes", True),
+        ("authorized_optimized_target_exposure", False),
+    ],
+)
+def test_coverage_bool_integer_aliases_fail_closed(
+    tmp_path: Path,
+    field: str,
+    value: object,
+) -> None:
+    inputs = _one_byte_inputs(tmp_path)
+    coverage = inputs["g05_g06_coverage"]
+    coverage[field] = value
+    coverage = _with_hash(coverage, "g05_g06_coverage_identity_sha256")
+    inputs["g05_g06_coverage"] = coverage
+    inputs["expected_g05_g06_coverage_identity_sha256"] = coverage[
+        "g05_g06_coverage_identity_sha256"
+    ]
+    with pytest.raises(ProjectionError, match="non-negative integer"):
+        build_family_vector(**inputs)
+
+
+def test_adapter_binds_dedup_evidence_to_family_vector_lineage(
+    tmp_path: Path,
+) -> None:
+    family_vector = _build(tmp_path)
+    mismatched_evidence = "f" * 64
+    with pytest.raises(ProjectionError, match="family-vector lineage"):
+        adapt_family_vector_to_next100_106(
+            family_vector,
+            expected_family_vector_identity_sha256=family_vector[
+                "family_vector_identity_sha256"
+            ],
+            dedup_authority=_dedup_authority(mismatched_evidence),
+            expected_dedup_worker_id=DEDUP_WORKER_ID,
+            expected_dedup_head_sha=DEDUP_HEAD_SHA,
+            expected_dedup_evidence_identity_sha256=mismatched_evidence,
+        )
+
+
+def test_adapter_output_executes_through_canonical_next100_gate(
+    tmp_path: Path,
+) -> None:
+    family_vector = _build(tmp_path)
+    adapted = adapt_family_vector_to_next100_106(
+        family_vector,
+        expected_family_vector_identity_sha256=family_vector[
+            "family_vector_identity_sha256"
+        ],
+        dedup_authority=_dedup_authority(),
+        expected_dedup_worker_id=DEDUP_WORKER_ID,
+        expected_dedup_head_sha=DEDUP_HEAD_SHA,
+        expected_dedup_evidence_identity_sha256=DEDUP_EVIDENCE_SHA,
+    )
+
+    normalized = next100_gate.validate_vector(adapted)
+    assert {row["family_id"] for row in normalized} == {
+        "ua.family.a",
+        "ua.family.b",
+        "en.family.a",
+        "code.family.a",
+    }
+
+    policy = next100_gate.load_json(next100_gate.POLICY_PATH)
+    result = next100_gate.evaluate(policy, adapted)
+    assert result["dedup_authority"] == _dedup_authority()
+    assert (
+        result["claim_boundary"]["authorized_training_exposure_loss_positions"]
+        == 0
+    )
+    assert result["claim_boundary"]["tokenizer_fit_authorized"] is False
+    assert result["claim_boundary"]["model_training_authorized"] is False
+
