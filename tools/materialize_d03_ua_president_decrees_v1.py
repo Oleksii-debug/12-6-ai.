@@ -131,6 +131,14 @@ class FetchResult:
     body: bytes
 
 
+def require_exact_final_url(result: FetchResult, expected_url: str, *, label: str) -> None:
+    """Bind fetched bytes to the exact requested authority URL, not only its origin."""
+    if result.final_url != expected_url:
+        raise RuntimeError(
+            f"{label} final URL drift: requested {expected_url}, got {result.final_url}"
+        )
+
+
 class Fetcher:
     def __init__(self, delay_seconds: float, max_bytes: int = 8_000_000) -> None:
         self.delay_seconds = delay_seconds
@@ -290,6 +298,8 @@ def sha256(data: bytes) -> str:
 def probe_document(fetcher: Fetcher, url: str) -> dict[str, object]:
     first = fetcher.fetch(url)
     second = fetcher.fetch(url)
+    require_exact_final_url(first, url, label="first document fetch")
+    require_exact_final_url(second, url, label="second document fetch")
     title1, subject1, lines1 = extract_document(first.body)
     title2, subject2, lines2 = extract_document(second.body)
     payload1 = normalize_document(lines1)
@@ -331,6 +341,8 @@ def run(max_pages: int, max_documents: int, delay_seconds: float) -> dict[str, o
     for _ in range(max_pages):
         a = fetcher.fetch(current_url)
         b = fetcher.fetch(current_url)
+        require_exact_final_url(a, current_url, label="first catalogue fetch")
+        require_exact_final_url(b, current_url, label="second catalogue fetch")
         urls_a = discover_document_urls(a.body, a.final_url)
         urls_b = discover_document_urls(b.body, b.final_url)
         if urls_a != urls_b:
