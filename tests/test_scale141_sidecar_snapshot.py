@@ -336,3 +336,34 @@ def test_publication_lock_pins_mutations_after_context_entry_root_replacement(
 
     assert not (root / "pinned-write.txt").exists()
     assert (moved / "pinned-write.txt").read_text(encoding="utf-8") == "old-root\n"
+
+
+def test_root_replacement_does_not_create_second_publication_lock_lane(
+    tmp_path: Path,
+) -> None:
+    if os.name != "posix":
+        pytest.skip("nonblocking flock regression is POSIX-specific")
+    import fcntl
+
+    root = tmp_path / "recovery"
+    root.mkdir()
+    moved = tmp_path / "moved-recovery"
+    guard = root.parent / recovery_lock._path_guard_name(root)
+
+    with (
+        pytest.raises(
+            OSError,
+            match="recovery root changed during publication critical section",
+        ),
+        recovery_lock.exclusive_recovery_lock(root),
+    ):
+        os.replace(root, moved)
+        root.mkdir()
+
+        flags = os.O_RDWR | getattr(os, "O_NOFOLLOW", 0)
+        competing_fd = os.open(guard, flags)
+        try:
+            with pytest.raises(BlockingIOError):
+                fcntl.flock(competing_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        finally:
+            os.close(competing_fd)
