@@ -35,7 +35,7 @@ jobs:
           run-id: 34535608294
           path: ${{ runner.temp }}/observation
 
-      - name: Verify authority and focused mechanics
+      - name: Verify frozen authority and focused mechanics
         run: |
           set -euo pipefail
           python - <<'PY'
@@ -61,6 +61,15 @@ jobs:
           assert report["tokenizer_fit_authorized"] is False
           assert report["model_training_executed"] is False
           assert report["paid_compute_used"] is False
+
+          norm_cfg = json.loads(Path("configs/data/d03_rada_bulk_normalization_v1.json").read_text(encoding="utf-8"))
+          successor = norm_cfg["successor_observation_pin"]
+          assert successor["pin_status"] == "PASS_EXACT_EXECUTION"
+          assert successor["pinned_probe_report_sha256"] == "9d94674323414d30f18517a71edbfee839a27a09a076eb94fe94d74cbaab53c8"
+          assert successor["archive_sha256"] == report["archive"]["sha256"]
+          assert successor["entry_identity_sha256"] == report["inventory"]["entry_identity_sha256"]
+          assert successor["training_authorized_bytes"] == 0
+          assert successor["normalized_capacity_credited"] == 0
           PY
           python -m pip install pytest
           python -m py_compile tools/pin_d03_rada_bulk_observation.py tools/normalize_d03_rada_bulk_html.py
@@ -104,6 +113,7 @@ jobs:
               --probe-report "${RUNNER_TEMP}/observation/current-observation.json" \
               --config configs/data/d03_rada_bulk_observation_pin_v1.json \
               --output "${RUNNER_TEMP}/run-${run}/pinned-report.json"
+            test "$(sha256sum "${RUNNER_TEMP}/run-${run}/pinned-report.json" | awk '{print $1}')" = "9d94674323414d30f18517a71edbfee839a27a09a076eb94fe94d74cbaab53c8"
             python tools/normalize_d03_rada_bulk_html.py \
               --archive "${RUNNER_TEMP}/source-${run}.zip" \
               --probe-report "${RUNNER_TEMP}/run-${run}/pinned-report.json" \
@@ -119,10 +129,11 @@ jobs:
         run: |
           set -euo pipefail
           python - <<'PY'
-          import hashlib, json, os, platform, sys
+          import hashlib, json, os, platform, subprocess, sys
           from pathlib import Path
 
           root = Path(os.environ["RUNNER_TEMP"])
+          product_head_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
           manifest_raw_a = (root / "run-a/manifest.json").read_bytes()
           manifest_raw_b = (root / "run-b/manifest.json").read_bytes()
           manifest_a = json.loads(manifest_raw_a)
@@ -152,7 +163,7 @@ jobs:
           evidence = {
               "schema_version": "12-6.d03-rada-bulk-normalization-real-execution-evidence.v1",
               "execution_class": "LOCAL_FREE_GITHUB_HOSTED_ACTIONS",
-              "product_head_sha": os.environ["GITHUB_SHA"],
+              "product_head_sha": product_head_sha,
               "workflow_run_id": int(os.environ["GITHUB_RUN_ID"]),
               "workflow_run_attempt": int(os.environ["GITHUB_RUN_ATTEMPT"]),
               "source_authority": {
