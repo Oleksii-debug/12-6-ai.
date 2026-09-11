@@ -2,13 +2,39 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import math
 from collections.abc import Mapping, Sequence
+from types import MappingProxyType
 from typing import Any
 
 from twelve_six.metrics import bpb_from_aggregate
 
 REQUIRED_STRATA = ("UA", "EN", "CODE")
+
+_MEMORIZATION_POLICY_V1 = MappingProxyType(
+    {
+        "schema": "twelve_six.d06_memorization_policy.v1",
+        "training_sample_semantics": (
+            "exact_output_match_on_declared_training_diagnostic_sample"
+        ),
+        "heldout_sample_semantics": (
+            "exact_output_match_on_declared_heldout_diagnostic_sample"
+        ),
+        "max_training_exact_match_rate": 0.05,
+        "max_heldout_exact_match_rate": 0.0,
+    }
+)
+_MEMORIZATION_POLICY_V1_CANONICAL_JSON = json.dumps(
+    dict(_MEMORIZATION_POLICY_V1),
+    sort_keys=True,
+    separators=(",", ":"),
+    ensure_ascii=True,
+)
+MEMORIZATION_POLICY_V1_IDENTITY = "sha256:" + hashlib.sha256(
+    _MEMORIZATION_POLICY_V1_CANONICAL_JSON.encode("ascii")
+).hexdigest()
 
 
 def _nonempty_text(value: Any) -> bool:
@@ -17,6 +43,10 @@ def _nonempty_text(value: Any) -> bool:
 
 def _positive_int(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value > 0
+
+
+def _nonnegative_int(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
 
 def _positive_number(value: Any) -> bool:
@@ -53,6 +83,9 @@ def _validate_heldout_metrics(d06: Mapping[str, Any], blockers: list[str]) -> No
     if not isinstance(heldout, Mapping):
         blockers.append("bounded_pilot.d06.heldout_metrics_missing")
         return
+
+    if set(heldout) != set(REQUIRED_STRATA):
+        blockers.append("bounded_pilot.d06.heldout_metrics.strata_set_mismatch")
 
     total_targets = 0
     weighted_before = 0.0
@@ -218,12 +251,105 @@ def _validate_memorization(d06: Mapping[str, Any], blockers: list[str]) -> None:
     if not isinstance(diagnostic, Mapping):
         blockers.append("bounded_pilot.d06.memorization_diagnostic_missing")
         return
-    if not _nonempty_text(diagnostic.get("policy_identity")):
-        blockers.append("bounded_pilot.d06.memorization_diagnostic.policy_identity_missing")
+
+    if diagnostic.get("policy_identity") != MEMORIZATION_POLICY_V1_IDENTITY:
+        blockers.append("bounded_pilot.d06.memorization_diagnostic.policy_identity_mismatch")
+
+    counts_valid = True
+    count_fields = (
+        ("training_sample_count", True),
+        ("training_exact_match_count", False),
+        ("heldout_sample_count", True),
+        ("heldout_exact_match_count", False),
+    )
+    for key, positive in count_fields:
+        value = diagnostic.get(key)
+        valid = _positive_int(value) if positive else _nonnegative_int(value)
+        if not valid:
+            blockers.append(f"bounded_pilot.d06.memorization_diagnostic.{key}_invalid")
+            counts_valid = False
+
+    training_samples = diagnostic.get("training_sample_count")
+    training_matches = diagnostic.get("training_exact_match_count")
+    heldout_samples = diagnostic.get("heldout_sample_count")
+    heldout_matches = diagnostic.get("heldout_exact_match_count")
+    if (
+        _positive_int(training_samples)
+        and _nonnegative_int(training_matches)
+        and training_matches > training_samples
+    ):
+        blockers.append(
+            "bounded_pilot.d06.memorization_diagnostic.training_exact_match_count_exceeds_samples"
+        )
+        counts_valid = False
+    if (
+        _positive_int(heldout_samples)
+        and _nonnegative_int(heldout_matches)
+        and heldout_matches > heldout_samples
+    ):
+        blockers.append(
+            "bounded_pilot.d06.memorization_diagnostic.heldout_exact_match_count_exceeds_samples"
+        )
+        counts_valid = False
+
+    rates_valid = True
     for key in ("training_exact_match_rate", "heldout_exact_match_rate"):
         if not _unit_interval(diagnostic.get(key)):
             blockers.append(f"bounded_pilot.d06.memorization_diagnostic.{key}_invalid")
-    if diagnostic.get("passed") is not True:
+            rates_valid = False
+
+    if counts_valid and rates_valid:
+        expected_training_rate = training_matches / training_samples
+        expected_heldout_rate = heldout_matches / heldout_samples
+        tolerance = 1e-12
+        if not math.isclose(
+            float(diagnostic["training_exact_match_rate"]),
+            expected_training_rate,
+            rel_tol=tolerance,
+            abs_tol=tolerance,
+        ):
+            blockers.append(
+                "bounded_pilot.d06.memorization_diagnostic.training_exact_match_rate_mismatch"
+            )
+        if not math.isclose(
+            float(diagnostic["heldout_exact_match_rate"]),
+            expected_heldout_rate,
+            rel_tol=tolerance,
+            abs_tol=tolerance,
+        ):
+            blockers.append(
+                "bounded_pilot.d06.memorization_diagnostic.heldout_exact_match_rate_mismatch"
+            )
+
+    threshold_fields = (
+        "max_training_exact_match_rate",
+        "max_heldout_exact_match_rate",
+    )
+    thresholds_valid = True
+    for key in threshold_fields:
+        value = diagnostic.get(key)
+        if not _unit_interval(value):
+            blockers.append(f"bounded_pilot.d06.memorization_diagnostic.{key}_invalid")
+            thresholds_valid = False
+            continue
+        if float(value) != float(_MEMORIZATION_POLICY_V1[key]):
+            blockers.append(
+                f"bounded_pilot.d06.memorization_diagnostic.{key}_policy_mismatch"
+            )
+            thresholds_valid = False
+
+    expected_pass: bool | None = None
+    if counts_valid and rates_valid and thresholds_valid:
+        expected_pass = (
+            training_matches / training_samples
+            <= float(_MEMORIZATION_POLICY_V1["max_training_exact_match_rate"])
+            and heldout_matches / heldout_samples
+            <= float(_MEMORIZATION_POLICY_V1["max_heldout_exact_match_rate"])
+        )
+        if diagnostic.get("passed") is not expected_pass:
+            blockers.append("bounded_pilot.d06.memorization_diagnostic.passed_mismatch")
+
+    if expected_pass is not True:
         blockers.append("bounded_pilot.d06.memorization_diagnostic_not_passed")
 
 

@@ -10,8 +10,20 @@ def _evidence() -> tuple[dict, dict]:
     }
     d06 = {
         "selection_trajectory": [
-            {"optimizer_step": 10, "optimized_target_exposure": 40_000, "mean_nll": 5.4},
-            {"optimizer_step": 20, "optimized_target_exposure": 80_000, "mean_nll": 5.1},
+            {
+                "event_identity": "selection-event-10",
+                "checkpoint_identity": "checkpoint-best-v1",
+                "optimizer_step": 10,
+                "optimized_target_exposure": 40_000,
+                "mean_nll": 5.4,
+            },
+            {
+                "event_identity": "selection-event-20",
+                "checkpoint_identity": "checkpoint-final-v1",
+                "optimizer_step": 20,
+                "optimized_target_exposure": 80_000,
+                "mean_nll": 5.1,
+            },
         ],
         "exposure_accounting": {
             "loss_ledger_identity": "ledger-v1",
@@ -26,9 +38,9 @@ def _evidence() -> tuple[dict, dict]:
             "selection_metric_identity": "selection-bpb-v1",
             "selection_locked": True,
             "final_test_accessed_during_selection": False,
-            "best_optimizer_step": 18,
+            "best_optimizer_step": 10,
             "final_optimizer_step": 20,
-            "best_optimized_target_exposure": 72_000,
+            "best_optimized_target_exposure": 40_000,
             "final_optimized_target_exposure": 80_000,
         },
     }
@@ -38,6 +50,38 @@ def _evidence() -> tuple[dict, dict]:
 def test_terminal_run_keeps_best_and_chronological_final_with_exact_accounting() -> None:
     pilot, d06 = _evidence()
     assert validate_terminal_run_evidence(pilot, d06) == []
+
+
+def test_best_checkpoint_must_be_a_recorded_selection_event() -> None:
+    pilot, d06 = _evidence()
+    selection = d06["checkpoint_selection"]
+    selection["best_optimizer_step"] = 18
+    selection["best_optimized_target_exposure"] = 72_000
+    assert (
+        "bounded_pilot.d06.checkpoint_selection.best_event_not_recorded"
+        in validate_terminal_run_evidence(pilot, d06)
+    )
+
+
+def test_chronological_final_checkpoint_must_be_terminal_recorded_event() -> None:
+    pilot, d06 = _evidence()
+    d06["checkpoint_selection"]["chronological_final_checkpoint_identity"] = (
+        "checkpoint-unrecorded-v1"
+    )
+    assert (
+        "bounded_pilot.d06.checkpoint_selection.chronological_final_event_not_terminal"
+        in validate_terminal_run_evidence(pilot, d06)
+    )
+
+
+def test_selection_events_require_unique_event_and_checkpoint_identities() -> None:
+    pilot, d06 = _evidence()
+    trajectory = d06["selection_trajectory"]
+    trajectory[1]["event_identity"] = trajectory[0]["event_identity"]
+    trajectory[1]["checkpoint_identity"] = trajectory[0]["checkpoint_identity"]
+    blockers = validate_terminal_run_evidence(pilot, d06)
+    assert "bounded_pilot.d06.selection_trajectory.event_identity_duplicate" in blockers
+    assert "bounded_pilot.d06.selection_trajectory.checkpoint_identity_duplicate" in blockers
 
 
 def test_replay_cannot_silently_manufacture_terminal_exposure() -> None:
