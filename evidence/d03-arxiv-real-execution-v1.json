@@ -2,14 +2,40 @@
   "schema_version": "12-6.d03-arxiv-real-execution.v1",
   "execution_profile": "LOCAL_FREE",
   "product_pr": 1078,
-  "owner_issue": 1077,
-  "execution_head_sha": "9867a951d56f585daf62097db5aa773c94b46b16",
+  "owner_issue": 1199,
+  "predecessor_owner_issue": 1077,
+  "execution_head_sha": "37289b5af224c58f0b169f55f4e0f8b466b90f6d",
   "specialist_workflow": {
-    "run_id": 34538086132,
+    "run_id": 34563405053,
+    "run_attempt": 1,
     "conclusion": "success",
-    "execution_a_job_id": 103074245730,
-    "execution_b_job_id": 103074245963,
-    "compare_job_id": 103074711119
+    "execution_a_job_id": 103150553265,
+    "execution_b_job_id": 103150553064,
+    "compare_job_id": 103150607200
+  },
+  "run_bound_artifacts": {
+    "retention_days": 30,
+    "execution_a": {
+      "id": 10185121514,
+      "name": "d03-arxiv-evidence-a-34563405053",
+      "api_digest": "sha256:6e3be902b1ea414ca6d916a2a1c027737408c64b1a6738a9cdc01dd9b98f2283",
+      "evidence_sha256": "fce52b5adaa1504d601d447951720d52651817a979471b9954e96f0cbbfbcc95",
+      "expires_at": "2026-10-11T04:45:53Z"
+    },
+    "execution_b": {
+      "id": 10185121867,
+      "name": "d03-arxiv-evidence-b-34563405053",
+      "api_digest": "sha256:3d1449f1b8355a2abc0e87921d0d32dbaa258099daacdd1b3957fdd1d11620c1",
+      "evidence_sha256": "5435a33fcc9bd4e75ef29656e0ab05c033750ced041e6e0502cd7026dddafc18",
+      "expires_at": "2026-10-11T04:45:53Z"
+    },
+    "compare": {
+      "id": 10185125828,
+      "name": "d03-arxiv-compare-34563405053",
+      "api_digest": "sha256:c4059b3c8bd5fc4d2aad51e6cf8a0d025c0ded418389980916a8cc730f135211",
+      "manifest_sha256": "61b5c8fe61b33ac60f211a12676afa9b92fbd86e9db411a7dcada9926aaea4ad",
+      "expires_at": "2026-10-11T04:46:04Z"
+    }
   },
   "source": {
     "dataset": "common-pile/arxiv_abstracts",
@@ -22,12 +48,13 @@
     "rights_status": "REVIEW_REQUIRED"
   },
   "runtime": {
-    "runner_image": "ubuntu-24.04",
-    "runner_image_version": "20260907.300.1",
-    "os": "Ubuntu 24.04.5 LTS",
-    "python": "3.11.16",
-    "execution_a_region": "westcentralus",
-    "execution_b_region": "centralus"
+    "runner_label": "ubuntu-24.04",
+    "python_setup_request": "3.11",
+    "exact_runner_image_version_claimed": false,
+    "runner_region_claimed": false,
+    "execution_a_runner_id": 1000037421,
+    "execution_b_runner_id": 1000037419,
+    "compare_runner_id": 1000037423
   },
   "independent_execution_a": {
     "source_sha256": "3d781bf7617fd9a6840211227c6c8831280dba457a6d9c79a2a5a357e025a8b7",
@@ -60,22 +87,12 @@
     "counts_equal": true,
     "retained_bytes_equal": true
   },
-  "disposition_counts": {
-    "accepted": 1024,
-    "phone": 82,
-    "retained_cap_reached": 2961,
-    "too_short": 29
-  },
-  "selection_note": "The materializer deterministically assesses at most the first 4096 exact-shard-order records and retains at most 1024 passing unique records. These dispositions therefore describe that bounded execution window, not the whole shard.",
+  "selection_note": "The materializer deterministically assesses at most the first 4096 exact-shard-order records and retains at most 1024 passing unique records. The retained evidence describes that bounded execution window, not the whole shard.",
   "current_main_relevance": {
-    "main_at_pr_open": "6ac04664a6a1a8e14be8ed9a8032cf99099503b0",
-    "stale_incumbent_repair_commit": "6fb5199a6166a3f69376a000b325cc2383ebfcba",
-    "stale_incumbent_parent": "4d8e968ec9fe5184deb0268a2cc4c486d3b50b6c",
-    "materializer_commits_since_incumbent_repair": 0,
-    "config_commits_since_incumbent_repair": 0,
-    "rights_registry_commits_since_incumbent_repair": 0,
-    "rights_validator_commits_since_incumbent_repair": 0,
-    "semantic_delta_from_current_main_for_source_execution": "regex_flag_alias_only_re.I_to_re.IGNORECASE"
+    "live_main_at_receipt": "7c14db5f6e43d369bf859cb5c6803024c929943c",
+    "execution_head_merge_base": "4d8e968ec9fe5184deb0268a2cc4c486d3b50b6c",
+    "source_execution_semantic_delta_from_live_main": "regex_flag_alias_only_re.I_to_re.IGNORECASE",
+    "run_bound_receipt_is_zero_credit": true
   },
   "content_boundary": {
     "durable_source_payload_retained_in_git": false,
