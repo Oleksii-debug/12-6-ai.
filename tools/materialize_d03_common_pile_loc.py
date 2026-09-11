@@ -53,12 +53,11 @@ def main() -> int:
     validate_config(config)
     selection = config["selection_policy"]
 
-    full_verified = False
+    full_shard_verification = None
     if args.shard is not None:
         shard = args.shard.resolve()
-        verify_full_shard(shard, config)
+        full_shard_verification = verify_full_shard(shard, config)
         raw = shard.read_bytes()
-        full_verified = True
     else:
         raw = fetch_remote_prefix(
             config["upstream"]["resolve_url"],
@@ -73,7 +72,7 @@ def main() -> int:
     candidates, report = materialize(
         config,
         records,
-        full_shard_hash_verified=full_verified,
+        full_shard_verification=full_shard_verification,
     )
     write_materialization(args.output_dir.resolve(), candidates, report)
     print(json.dumps(report, sort_keys=True))

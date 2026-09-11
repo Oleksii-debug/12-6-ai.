@@ -168,15 +168,11 @@ def test_duplicate_record_id_fails_closed() -> None:
         materialize(config, [record("same"), record("same", good_text("other"))])
 
 
-def test_family_byte_cap_is_deterministic() -> None:
+def test_resealed_family_byte_cap_drift_is_rejected() -> None:
     config = load_config()
-    sample = good_text("cap")
-    sample_bytes = len(sample.encode("utf-8"))
-    config["selection_policy"]["max_total_normalized_utf8_bytes"] = sample_bytes + 100
-    config = reseal(config)
-    candidates, report = materialize(config, [record("a1", sample), record("b2", good_text("b"))])
-    assert [row["source_record_id"] for row in candidates] == ["a1"]
-    assert report["rejection_counts"] == {"family_byte_cap": 1}
+    config["selection_policy"]["max_total_normalized_utf8_bytes"] = 5_000_000
+    with pytest.raises(LocIntakeError, match="max_total_normalized_utf8_bytes drift"):
+        validate_config(reseal(config))
 
 
 def test_gzip_jsonl_parser_is_bounded_and_strict() -> None:

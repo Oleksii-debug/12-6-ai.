@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import gzip
+import io
 import json
 from copy import deepcopy
+from types import SimpleNamespace
 
 import pytest
 
+import twelve_six.data.common_pile_loc_intake as loc_intake
 from twelve_six.data.common_pile_loc_intake import (
     LocIntakeError,
     iter_gzip_jsonl_bytes,
@@ -25,6 +28,28 @@ def reseal(config: dict) -> dict:
     config = deepcopy(config)
     config["contract_identity_sha256"] = self_identity(config, "contract_identity_sha256")
     return config
+
+
+def valid_record() -> dict:
+    paragraph = (
+        "This public volume records historical institutions, communities, and events. "
+        "The scanned pages preserve ordinary prose for research and reading. "
+    )
+    return {
+        "id": "abc123",
+        "text": paragraph * 18,
+        "source": "loc_books",
+        "added": "2024-05-13T00:00:00",
+        "metadata": {
+            "license": "Public Domain",
+            "title": "Metadata only",
+            "author": "Metadata only",
+            "year": 1901,
+            "language": "english",
+            "item_url": "https://www.loc.gov/item/abc123",
+            "text_file_url": "https://tile.loc.gov/storage-services/abc123_djvu.txt",
+        },
+    }
 
 
 @pytest.mark.parametrize(
@@ -76,30 +101,94 @@ def test_authority_subobjects_are_closed_world() -> None:
             validate_config(reseal(config))
 
 
-def test_materialization_report_carries_final_test_false() -> None:
+@pytest.mark.parametrize(
+    ("field", "bad_value"),
+    [
+        ("max_total_normalized_utf8_bytes", 5_000_000),
+        ("max_remote_compressed_prefix_bytes", 67_108_864),
+        ("max_jsonl_line_bytes", 8_388_608),
+        ("max_documents", 129),
+        ("max_examined_documents", 257),
+        ("max_single_normalized_utf8_bytes", 1_100_000),
+        ("min_single_normalized_utf8_bytes", 1_023),
+    ],
+)
+def test_selection_policy_drift_is_rejected_even_when_resealed(
+    field: str,
+    bad_value: int,
+) -> None:
     config = load_config()
-    paragraph = (
-        "This public volume records historical institutions, communities, and events. "
-        "The scanned pages preserve ordinary prose for research and reading. "
-    )
-    record = {
-        "id": "abc123",
-        "text": paragraph * 18,
-        "source": "loc_books",
-        "added": "2024-05-13T00:00:00",
-        "metadata": {
-            "license": "Public Domain",
-            "title": "Metadata only",
-            "author": "Metadata only",
-            "year": 1901,
-            "language": "english",
-            "item_url": "https://www.loc.gov/item/abc123",
-            "text_file_url": "https://tile.loc.gov/storage-services/abc123_djvu.txt",
-        },
-    }
-    candidates, report = materialize(config, [record])
+    config["selection_policy"][field] = bad_value
+    with pytest.raises(LocIntakeError, match=rf"selection_policy {field} drift"):
+        validate_config(reseal(config))
+
+
+def test_materialization_report_carries_final_test_false() -> None:
+    candidates, report = materialize(load_config(), [valid_record()])
     assert len(candidates) == 1
     assert report["final_test_payload_accessed"] is False
+
+
+def test_direct_caller_cannot_forge_full_shard_verification() -> None:
+    config = load_config()
+    forged_receipt = {
+        "source_revision": config["upstream"]["revision"],
+        "source_shard_path": config["upstream"]["shard_path"],
+        "observed_bytes": config["upstream"]["shard_compressed_bytes"],
+        "observed_sha256": config["upstream"]["shard_lfs_sha256"],
+    }
+    with pytest.raises(LocIntakeError, match="verifier-produced receipt"):
+        materialize(
+            config,
+            [valid_record()],
+            full_shard_verification=forged_receipt,
+        )
+    with pytest.raises(LocIntakeError, match="verifier-produced receipt"):
+        materialize(
+            config,
+            [valid_record()],
+            full_shard_verification=True,
+        )
+
+
+def test_successful_verifier_receipt_is_bound_to_exact_shard(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = load_config()
+    expected_sha = config["upstream"]["shard_lfs_sha256"]
+    real_sha256 = loc_intake.hashlib.sha256
+    missing = object()
+
+    class VerifiedDigest:
+        def update(self, data: bytes) -> None:
+            assert isinstance(data, bytes)
+
+        def hexdigest(self) -> str:
+            return expected_sha
+
+    def controlled_sha256(data: object = missing) -> object:
+        if data is missing:
+            return VerifiedDigest()
+        assert isinstance(data, bytes)
+        return real_sha256(data)
+
+    class FakePath:
+        def stat(self) -> SimpleNamespace:
+            return SimpleNamespace(st_size=config["upstream"]["shard_compressed_bytes"])
+
+        def open(self, mode: str) -> io.BytesIO:
+            assert mode == "rb"
+            return io.BytesIO(b"independently observed shard bytes")
+
+    monkeypatch.setattr(loc_intake.hashlib, "sha256", controlled_sha256)
+    receipt = loc_intake.verify_full_shard(FakePath(), config)
+    candidates, report = materialize(
+        config,
+        [valid_record()],
+        full_shard_verification=receipt,
+    )
+    assert len(candidates) == 1
+    assert report["full_shard_hash_verified"] is True
 
 
 def test_canonical_parser_skips_oversize_row_without_truncation() -> None:

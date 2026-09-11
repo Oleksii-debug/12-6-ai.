@@ -1,0 +1,95 @@
+{
+  "schema_version": "12-6.d03-common-pile-loc-source-rights.v1",
+  "authority_id": "D03-COMMON-PILE-LOC-SOURCE-RIGHTS-V1",
+  "status": "SOURCE_POLICY_QUALIFIED_CONDITIONAL",
+  "execution_profile": "LOCAL_FREE",
+  "generic_registry": {
+    "path": "configs/data/common_pile_source_rights_v1.json",
+    "blob_sha1": "7b4d6828288672bf25c551e85a5d7f7399e8ef0f",
+    "source_key": "library_of_congress",
+    "expected_project_review_status": "REVIEW_REQUIRED"
+  },
+  "upstream_code": {
+    "repository": "https://github.com/r-three/common-pile",
+    "revision": "9457f04a14cb2355ab00023420369d46ffd4a395",
+    "collector_path": "sources/loc_books/books.py",
+    "collector_blob_sha1": "0f8633d9a0c12bd04140420d74a95d82a065119f",
+    "metadata_path": "sources/loc_books/metadata.py",
+    "metadata_blob_sha1": "a219f88cbe8f6cc33bd72eed6c9d75958a8efb08",
+    "readme_path": "sources/loc_books/README.md",
+    "readme_blob_sha1": "c364b6dec4232e128b7adee92747f0d728090714",
+    "collection_url": "https://www.loc.gov/collections/selected-digitized-books/?fa=language:english"
+  },
+  "dataset_contract": {
+    "origin_pr": 1135,
+    "origin_head": "c72bef68127c82abd70016eeaf6070ff4fe096aa",
+    "origin_config_blob_sha1": "958339654703f3aab4ea9cc3686e4e4fd44a7e09",
+    "dataset": "common-pile/library_of_congress",
+    "revision": "d31bdba02cdad5104ccec2c02ae799c0bcb5a9a7",
+    "shard_path": "data/00000_loc_books.jsonl.gz",
+    "shard_compressed_bytes": 358594502,
+    "shard_lfs_sha256": "a6a6023d9cae067b5531ba84537877c180ab3ff1579f99aeac446d65d465ae0f",
+    "source_family": "en.loc.selected-digitized-books"
+  },
+  "record_contract": {
+    "source_value": "loc_books",
+    "expected_license": "Public Domain",
+    "expected_language": "english",
+    "record_id_role": "LCCN",
+    "item_url_template": "https://www.loc.gov/item/{lccn}",
+    "text_file_url_allowed_hosts": [
+      "tile.loc.gov",
+      "tiles.loc.gov"
+    ],
+    "required_metadata_fields": [
+      "license",
+      "language",
+      "year",
+      "item_url",
+      "text_file_url"
+    ]
+  },
+  "primary_evidence": [
+    {
+      "authority": "Library of Congress",
+      "url": "https://www.loc.gov/collections/selected-digitized-books/about-this-collection/rights-and-access/",
+      "title": "Rights and Access | Selected Digitized Books | Digital Collections | Library of Congress",
+      "accessed_utc": "2026-09-11T03:10:00Z",
+      "supported_fact": "Selected Digitized Books are identified by the Library of Congress as public-domain books that are free to use and reuse; the Library requests a Library of Congress credit line."
+    },
+    {
+      "authority": "Library of Congress",
+      "url": "https://www.loc.gov/collections/selected-digitized-books/?fa=language:english",
+      "title": "Selected Digitized Books | Digital Collections | Library of Congress",
+      "accessed_utc": "2026-09-11T03:10:00Z",
+      "supported_fact": "The audited Common Pile metadata collector enumerates the official Selected Digitized Books collection through this English-filtered loc.gov collection endpoint."
+    }
+  ],
+  "project_decision": {
+    "decision": "CONDITIONAL_SOURCE_ADMISSION",
+    "scope": "SOURCE_POLICY_ONLY",
+    "legal_conclusion_claimed": false,
+    "dataset_package_license_is_training_authority": false,
+    "repository_code_license_is_dataset_license": false,
+    "conditional_admission_requires_all_record_contract_checks": true,
+    "collector_or_revision_drift_fails_closed": true,
+    "rights_or_language_or_url_drift_fails_closed": true
+  },
+  "truth_boundary": {
+    "payload_source_admission_executed": false,
+    "source_capacity_bytes_credited": 0,
+    "canonical_corpus_admitted": false,
+    "family_credit": false,
+    "training_authorized_bytes": 0,
+    "authorized_optimized_target_exposure": 0,
+    "tokenizer_fit_authorized": false,
+    "evaluation_authorized_bytes": 0,
+    "final_test_payload_accessed": false,
+    "model_training_executed": false,
+    "optimizer_updates": 0,
+    "paid_compute_used": false,
+    "foreign_pretrained_weights_used": false,
+    "external_llm_or_api_used_for_data_or_intelligence": false
+  },
+  "policy_identity_sha256": "1a140049b83da211e54003da8fa48fdd3e688eb30abed4bd3c327e2d64f36c1a"
+}
