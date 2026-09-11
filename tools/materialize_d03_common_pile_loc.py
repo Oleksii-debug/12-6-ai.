@@ -11,8 +11,8 @@ from twelve_six.data.common_pile_loc_intake import (
     LocIntakeError,
     iter_gzip_jsonl_bytes,
     materialize,
+    materialize_verified_shard,
     validate_config,
-    verify_full_shard,
     write_materialization,
 )
 
@@ -53,27 +53,24 @@ def main() -> int:
     validate_config(config)
     selection = config["selection_policy"]
 
-    full_shard_verification = None
     if args.shard is not None:
-        shard = args.shard.resolve()
-        full_shard_verification = verify_full_shard(shard, config)
-        raw = shard.read_bytes()
+        # Read exactly once. The verified entrypoint hashes and materializes this
+        # same immutable byte snapshot, eliminating receipt/record substitution
+        # and verify-then-read TOCTOU seams.
+        raw = args.shard.resolve().read_bytes()
+        candidates, report = materialize_verified_shard(config, raw)
     else:
         raw = fetch_remote_prefix(
             config["upstream"]["resolve_url"],
             selection["max_remote_compressed_prefix_bytes"],
         )
+        records = iter_gzip_jsonl_bytes(
+            raw,
+            max_jsonl_line_bytes=selection["max_jsonl_line_bytes"],
+            skip_oversize_lines=True,
+        )
+        candidates, report = materialize(config, records)
 
-    records = iter_gzip_jsonl_bytes(
-        raw,
-        max_jsonl_line_bytes=selection["max_jsonl_line_bytes"],
-        skip_oversize_lines=True,
-    )
-    candidates, report = materialize(
-        config,
-        records,
-        full_shard_verification=full_shard_verification,
-    )
     write_materialization(args.output_dir.resolve(), candidates, report)
     print(json.dumps(report, sort_keys=True))
     return 0
