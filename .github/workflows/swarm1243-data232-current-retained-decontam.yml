@@ -1,0 +1,517 @@
+name: SWARM1243 DATA232 Current Retained Decontamination
+
+on:
+  push:
+    branches:
+      - "swarm1243/data232-real-current-retained-decontam"
+    paths:
+      - ".github/workflows/swarm1243-data232-current-retained-decontam.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: swarm1243-data232-current-retained-decontam
+  cancel-in-progress: false
+
+env:
+  TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
+  PYTHONPATH: src
+  EXPECTED_MAIN_SHA: 7accc766d76693a69dabb5ff853cb35040ec4728
+  EXPECTED_V8_REPORT: 942cc15af60ee36a79345beba77fec347e33ee919d8148fb319b19d9ee072e5a
+  EXPECTED_V8_DEDUP: e7244cb7f6df6062dc838112b1e3e6fe87e41644a9e8b0071e93c50f1166b67d
+  EXPECTED_SURVIVOR: 8115b35662fa89900b37f54f7cffd5f2fa8b2f8c60a72bcb18b89c92aaade0cf
+  EXPECTED_INVENTORY: 30e1f260036f6e0334330eaf0500f832fdb63ac39ff015dd8b703b5ef1b4b7f9
+  EXPECTED_INVENTORY_BINDING: d0ea17b704d5cec13671d3b08d2330c34af2eeb7d2310df0e2410b2add3e2486
+
+jobs:
+  real-data232-execution:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Bind exact execution head and current-main parent
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_MAIN_SHA"
+          echo "execution_head=$GITHUB_SHA"
+          echo "base_main=$EXPECTED_MAIN_SHA"
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+
+      - name: Verify current execution adapters compile
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            src/twelve_six/data/current_reserved_decontamination_v1.py \
+            src/twelve_six/data/postdedup_decontam_handoff_v1.py \
+            src/twelve_six/data/eval303_selection_payload_resolver_v1.py \
+            src/twelve_six/data/eval233_final_test_resolver_v1.py \
+            tools/run_next100_065f_global_dedup_v8.py \
+            tools/materialize_postdedup_inventory_v1.py
+
+      - name: Checkout exact terminal V7 implementation only
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: d3333ec1b4a508df232a5aefccd6686adda745fb
+          path: _terminal_v7
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Install deterministic terminal V7 PDF extractor
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends poppler-utils
+          pdftotext -v
+
+      - name: Prepare terminal V7 data-only namespace
+        shell: bash
+        env:
+          V7_ROOT: ${{ github.workspace }}/_terminal_v7
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/v7-data-only-shim"
+          cat > "$RUNNER_TEMP/v7-data-only-shim/sitecustomize.py" <<'PY'
+          import os
+          import sys
+          import types
+          from pathlib import Path
+
+          package_root = Path(os.environ["V7_ROOT"]).resolve() / "src" / "twelve_six"
+          data_root = package_root / "data"
+          if not package_root.is_dir() or not data_root.is_dir():
+              raise RuntimeError("terminal V7 data-only namespace roots are missing")
+
+          def install_namespace(name: str, path: Path) -> None:
+              module = types.ModuleType(name)
+              module.__path__ = [str(path)]
+              module.__package__ = name
+              sys.modules[name] = module
+
+          install_namespace("twelve_six", package_root)
+          install_namespace("twelve_six.data", data_root)
+          PY
+          PYTHONPATH="$RUNNER_TEMP/v7-data-only-shim" V7_ROOT="$V7_ROOT" python - <<'PY'
+          import importlib
+          module = importlib.import_module("twelve_six.data.cross_source_capacity_audit_v7")
+          print(f"terminal_v7_import={module.__name__}")
+          PY
+
+      - name: Reproduce exact terminal V8 and survivor authority
+        shell: bash
+        env:
+          PYTHONPATH: ${{ runner.temp }}/v7-data-only-shim
+          V7_ROOT: ${{ github.workspace }}/_terminal_v7
+        run: |
+          set -euo pipefail
+          python tools/run_next100_065f_global_dedup_v8.py run \
+            --v7-root _terminal_v7 \
+            --workspace "$RUNNER_TEMP/v8-work-authority" \
+            --report "$RUNNER_TEMP/v8.json"
+          python tools/verify_next100_065f_v8_authority.py \
+            --v7-root _terminal_v7 \
+            --report "$RUNNER_TEMP/v8.json"
+          python tools/derive_next100_065f_v8_survivors.py derive \
+            --report "$RUNNER_TEMP/v8.json" \
+            --output "$RUNNER_TEMP/v8-survivors.json"
+          python tools/derive_next100_065f_v8_survivors.py verify \
+            --report "$RUNNER_TEMP/v8.json" \
+            --output "$RUNNER_TEMP/v8-survivors.json"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          root = Path(os.environ["RUNNER_TEMP"])
+          report = json.loads((root / "v8.json").read_text())
+          survivor = json.loads((root / "v8-survivors.json").read_text())
+          assert report["report_sha256"] == os.environ["EXPECTED_V8_REPORT"]
+          assert report["dedup_v3"]["report_sha256"] == os.environ["EXPECTED_V8_DEDUP"]
+          assert survivor["survivor_authority_sha256"] == os.environ["EXPECTED_SURVIVOR"]
+          assert survivor["post_dedup_survivor_source_object_count"] == 262
+          assert report["claim_boundary"]["authorized_training_exposure"] == 0
+          assert report["claim_boundary"]["final_test_payload_read"] is False
+          print("PASS_EXACT_V8_AND_SURVIVOR_AUTHORITY")
+          PY
+
+      - name: Independently reconstruct exact comparison payloads in ephemeral storage
+        shell: bash
+        env:
+          PYTHONPATH: ${{ runner.temp }}/v7-data-only-shim
+          V7_ROOT: ${{ github.workspace }}/_terminal_v7
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import copy
+          import hashlib
+          import importlib.util
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path(os.environ["GITHUB_WORKSPACE"])
+          tmp = Path(os.environ["RUNNER_TEMP"])
+          spec = importlib.util.spec_from_file_location(
+              "swarm1243_v8_runner", root / "tools/run_next100_065f_global_dedup_v8.py"
+          )
+          if spec is None or spec.loader is None:
+              raise RuntimeError("cannot load incumbent V8 runner")
+          runner = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(runner)
+          config = runner.load_config(root / "configs/data/next100_065f_global_dedup_v8.json")
+          v7, _, inventory, payloads = runner._capture_terminal_v7(root / "_terminal_v7", config)
+          _, bulk_rows, bulk_payloads = runner._materialize_bulk(
+              root, tmp / "v8-work-payload-reconstruction", config
+          )
+          combined_inventory = copy.deepcopy(inventory)
+          existing_ids = {row.get("source_id") for row in combined_inventory.get("sources", [])}
+          if existing_ids & set(bulk_payloads):
+              raise RuntimeError("bulk source collision during independent reconstruction")
+          combined_inventory["sources"] = [*combined_inventory["sources"], *bulk_rows]
+          combined_inventory["final_refresh_required"] = False
+          combined_inventory["terminal_refresh_cutoff_utc"] = "2026-09-07T19:35:07Z"
+          combined_inventory["terminal_refresh_rule"] = (
+              "V8 composes exact terminal V7 payloads with merged DATA-BULK-CODE-1 source-intake payloads; "
+              "all capacity remains pre-decontamination/pre-pack and grants zero training exposure."
+          )
+          combined_payloads = dict(payloads)
+          combined_payloads.update(bulk_payloads)
+          dedup = v7.v6.v3.audit_payloads(combined_inventory, combined_payloads)
+          v7.v6.v3.verify_report(dedup)
+          expected_v8 = json.loads((tmp / "v8.json").read_text())
+          if dedup != expected_v8["dedup_v3"]:
+              raise RuntimeError("independent reconstructed payload graph does not reproduce V8 dedup report")
+          if dedup.get("report_sha256") != os.environ["EXPECTED_V8_DEDUP"]:
+              raise RuntimeError("independent reconstructed V8 dedup identity drift")
+
+          rows = {str(row["source_id"]): row for row in combined_inventory["sources"]}
+          out = tmp / "comparison-payloads"
+          out.mkdir(parents=True, exist_ok=False)
+          manifest = {}
+          for source_id in sorted(combined_payloads):
+              raw = combined_payloads[source_id]
+              transformed = v7.v6.v3._comparison_payload(rows[source_id], raw)
+              comparison = raw if transformed is None else transformed
+              name = hashlib.sha256(source_id.encode("utf-8")).hexdigest() + ".bin"
+              (out / name).write_bytes(comparison)
+              manifest[source_id] = {
+                  "file": name,
+                  "sha256": hashlib.sha256(comparison).hexdigest(),
+                  "bytes": len(comparison),
+              }
+          (tmp / "comparison-payload-manifest.json").write_text(
+              json.dumps(manifest, sort_keys=True, separators=(",", ":")) + "\n"
+          )
+          print(f"PASS_EPHEMERAL_COMPARISON_RECONSTRUCTION objects={len(manifest)}")
+          PY
+
+      - name: Materialize exact retained inventory and survivor binding
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/materialize_postdedup_inventory_v1.py materialize \
+            --v8-report "$RUNNER_TEMP/v8.json" \
+            --expected-v8-report-sha256 "$EXPECTED_V8_REPORT" \
+            --survivor-authority "$RUNNER_TEMP/v8-survivors.json" \
+            --expected-survivor-authority-sha256 "$EXPECTED_SURVIVOR" \
+            --inventory "$RUNNER_TEMP/postdedup-inventory.json" \
+            --binding-evidence "$RUNNER_TEMP/postdedup-binding.json"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          root = Path(os.environ["RUNNER_TEMP"])
+          inventory = json.loads((root / "postdedup-inventory.json").read_text())
+          binding = json.loads((root / "postdedup-binding.json").read_text())
+          assert inventory["inventory_identity_sha256"] == os.environ["EXPECTED_INVENTORY"]
+          assert binding["binding_identity_sha256"] == os.environ["EXPECTED_INVENTORY_BINDING"]
+          assert inventory["retained_source_count"] == 262
+          assert inventory["retained_unique_capacity_bytes"] == 6095321
+          assert inventory["authorized_training_exposure"] == 0
+          print("PASS_EXACT_POSTDEDUP_INVENTORY")
+          PY
+
+      - name: Download immutable EVAL-290 and EVAL-291 payload artifacts
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            -o "$RUNNER_TEMP/eval290.zip" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/9606656857/zip"
+          curl --fail --location --retry 3 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            -o "$RUNNER_TEMP/eval291.zip" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/9606132134/zip"
+          test -s "$RUNNER_TEMP/eval290.zip"
+          test -s "$RUNNER_TEMP/eval291.zip"
+
+      - name: Execute real current retained DATA-232 decontamination twice
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/terminal-evidence"
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          from twelve_six.data.current_reserved_decontamination_v1 import (
+              build_reserved_payload_binding,
+              execute_reserved_decontamination,
+              verify_execution_evidence,
+          )
+          from twelve_six.data.eval233_final_test_resolver_v1 import (
+              DATA232_FINAL_TEST_ID,
+              resolve_eval233_final_test,
+          )
+          from twelve_six.data.eval303_selection_payload_resolver_v1 import (
+              EVAL303_SELECTION_ID,
+              resolve_eval303_selection_payloads,
+          )
+          from twelve_six.data.postdedup_decontam_handoff_v1 import (
+              HANDOFF_SCHEMA,
+              prepare_ephemeral_data232_rows,
+          )
+
+          def canonical(value):
+              return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+
+          def sha(value):
+              return hashlib.sha256(value).hexdigest()
+
+          def write_json(path, value):
+              Path(path).write_bytes(canonical(value) + b"\n")
+
+          def expected_handoff_from_inventory(inventory):
+              retained = sorted(inventory["retained_sources"], key=lambda row: row["source_id"])
+              projection = [
+                  {
+                      "source_id": row["source_id"],
+                      "source_family": row["source_family"],
+                      "modality": row["modality"],
+                      "comparison_policy": row["comparison_policy"],
+                      "comparison_payload_bytes": row["comparison_payload_bytes"],
+                      "comparison_payload_sha256": row["comparison_payload_sha256"],
+                  }
+                  for row in retained
+              ]
+              matcher_projection = [
+                  {
+                      "record_id": row["source_id"],
+                      "source_id": row["source_id"],
+                      "source_family": row["source_family"],
+                      "modality": row["modality"],
+                      "text_sha256": row["comparison_payload_sha256"],
+                      "text_utf8_bytes": row["comparison_payload_bytes"],
+                  }
+                  for row in retained
+              ]
+              core = {
+                  "schema_version": HANDOFF_SCHEMA,
+                  "postdedup_inventory_identity_sha256": inventory["inventory_identity_sha256"],
+                  "input_survivor_authority_sha256": inventory["input_survivor_authority_sha256"],
+                  "retained_source_count": len(retained),
+                  "comparison_payload_projection": projection,
+                  "matcher_input_projection": matcher_projection,
+                  "matcher_input_projection_sha256": sha(canonical(matcher_projection)),
+                  "raw_text_persisted_in_evidence": False,
+                  "final_test_payload_accessed": False,
+                  "final_test_outcomes_accessed": False,
+                  "authorized_training_exposure": 0,
+              }
+              return sha(canonical(core))
+
+          def expected_reserved_binding(reserved_sets):
+              normalized_sets = []
+              for raw_set in reserved_sets:
+                  members = []
+                  for member in raw_set["members"]:
+                      members.append({
+                          "record_id": member["record_id"],
+                          "source_id": member["source_id"],
+                          "source_family": member["source_family"],
+                          "modality": member["modality"].lower(),
+                          "content_sha256": member["content_sha256"],
+                          "utf8_bytes": member["utf8_bytes"],
+                          "training_prohibited": True,
+                          "outcomes_included": False,
+                      })
+                  members.sort(key=lambda row: row["record_id"])
+                  normalized_sets.append({
+                      "authority_id": raw_set["authority_id"],
+                      "identity_sha256": raw_set["identity_sha256"],
+                      "role": raw_set["role"],
+                      "source_sha": raw_set["source_sha"],
+                      "source_membership_identity_sha256": raw_set["source_membership_identity_sha256"],
+                      "members": members,
+                  })
+              normalized_sets.sort(key=lambda row: row["authority_id"])
+              core = {
+                  "schema_version": "12-6.reserved-evaluation-payload-binding.v1",
+                  "reserved_sets": normalized_sets,
+                  "raw_text_persisted": False,
+                  "outcomes_included": False,
+              }
+              return sha(canonical(core))
+
+          root = Path(os.environ["GITHUB_WORKSPACE"])
+          tmp = Path(os.environ["RUNNER_TEMP"])
+          evidence_dir = tmp / "terminal-evidence"
+          inventory = json.loads((tmp / "postdedup-inventory.json").read_text())
+          payload_manifest = json.loads((tmp / "comparison-payload-manifest.json").read_text())
+          retained_ids = {row["source_id"] for row in inventory["retained_sources"]}
+          comparison_payloads = {}
+          for source_id in sorted(retained_ids):
+              item = payload_manifest[source_id]
+              raw = (tmp / "comparison-payloads" / item["file"]).read_bytes()
+              if len(raw) != item["bytes"] or sha(raw) != item["sha256"]:
+                  raise RuntimeError(f"ephemeral comparison payload drift: {source_id}")
+              comparison_payloads[source_id] = raw
+          if set(comparison_payloads) != retained_ids:
+              raise RuntimeError("retained comparison payload coverage drift")
+
+          training_rows, handoff = prepare_ephemeral_data232_rows(
+              inventory,
+              comparison_payloads,
+              expected_inventory_identity_sha256=os.environ["EXPECTED_INVENTORY"],
+          )
+          independently_expected_handoff = expected_handoff_from_inventory(inventory)
+          if handoff["handoff_identity_sha256"] != independently_expected_handoff:
+              raise RuntimeError("handoff identity does not match independent inventory-only derivation")
+
+          selection_rows, selection_set, selection_evidence = resolve_eval303_selection_payloads(
+              tmp / "eval290.zip",
+              tmp / "eval291.zip",
+              root / "data/evaluation/eval303/selection-validation/composite-membership.jsonl",
+          )
+          final_rows, final_set, final_evidence = resolve_eval233_final_test(root)
+          evaluation_rows = [*selection_rows, *final_rows]
+          reserved_sets = [selection_set, final_set]
+          binding = build_reserved_payload_binding(reserved_sets)
+          independently_expected_binding = expected_reserved_binding(reserved_sets)
+          if binding["binding_identity_sha256"] != independently_expected_binding:
+              raise RuntimeError("reserved binding identity does not match independent derivation")
+
+          kwargs = dict(
+              training_handoff_evidence=handoff,
+              reserved_payload_binding=binding,
+              expected_inventory_identity_sha256=os.environ["EXPECTED_INVENTORY"],
+              expected_survivor_authority_sha256=os.environ["EXPECTED_SURVIVOR"],
+              expected_training_handoff_identity_sha256=independently_expected_handoff,
+              expected_reserved_binding_identity_sha256=independently_expected_binding,
+              expected_selection_validation_identity_sha256=EVAL303_SELECTION_ID,
+              expected_final_test_identity_sha256=DATA232_FINAL_TEST_ID,
+              quarantine_cross_source_families=True,
+          )
+          report_a, execution_a = execute_reserved_decontamination(training_rows, evaluation_rows, **kwargs)
+          report_b, execution_b = execute_reserved_decontamination(training_rows, evaluation_rows, **kwargs)
+          verify_execution_evidence(execution_a, report_a)
+          verify_execution_evidence(execution_b, report_b)
+          if canonical(report_a) != canonical(report_b):
+              raise RuntimeError("DATA-232 reports are not byte-identical across repeated execution")
+          if canonical(execution_a) != canonical(execution_b):
+              raise RuntimeError("DATA-232 execution evidence is not byte-identical across repeated execution")
+          if execution_a["training_corpus_identity_sha256"] != os.environ["EXPECTED_INVENTORY"]:
+              raise RuntimeError("execution training corpus identity drift")
+          if execution_a["input_survivor_authority_sha256"] != os.environ["EXPECTED_SURVIVOR"]:
+              raise RuntimeError("execution survivor authority drift")
+          if execution_a["authorized_training_exposure"] != 0:
+              raise RuntimeError("decontamination fabricated training exposure")
+          if execution_a["final_test_outcomes_read"] is not False:
+              raise RuntimeError("final-test outcomes were read")
+          if execution_a["paid_compute_used"] is not False or execution_a["training_executed"] is not False:
+              raise RuntimeError("scientific execution boundary weakened")
+
+          # Persist only text-free/hash-only reports and compact resolver identities.
+          write_json(evidence_dir / "decontamination-report-a.json", report_a)
+          write_json(evidence_dir / "decontamination-report-b.json", report_b)
+          write_json(evidence_dir / "execution-evidence-a.json", execution_a)
+          write_json(evidence_dir / "execution-evidence-b.json", execution_b)
+          resolver_summary = {
+              "selection_resolver_identity_sha256": selection_evidence["resolver_identity_sha256"],
+              "selection_identity_sha256": EVAL303_SELECTION_ID,
+              "selection_documents": selection_evidence["documents"],
+              "final_resolver_identity_sha256": final_evidence["resolver_identity_sha256"],
+              "final_test_identity_sha256": DATA232_FINAL_TEST_ID,
+              "final_documents": final_evidence["documents"],
+              "reserved_binding_identity_sha256": independently_expected_binding,
+              "training_handoff_identity_sha256": independently_expected_handoff,
+              "raw_text_persisted": False,
+              "final_test_outcomes_read": False,
+              "authorized_training_exposure": 0,
+          }
+          write_json(evidence_dir / "resolver-summary.json", resolver_summary)
+          terminal = {
+              "schema_version": "12-6.swarm1243-current-retained-decontamination-terminal.v1",
+              "status": "REAL_DATA232_EXECUTION_COMPLETE",
+              "source_execution_head_sha": os.environ["GITHUB_SHA"],
+              "base_main_sha": os.environ["EXPECTED_MAIN_SHA"],
+              "execution_profile": "LOCAL_FREE",
+              "v8_report_sha256": os.environ["EXPECTED_V8_REPORT"],
+              "v8_dedup_report_sha256": os.environ["EXPECTED_V8_DEDUP"],
+              "survivor_authority_sha256": os.environ["EXPECTED_SURVIVOR"],
+              "postdedup_inventory_identity_sha256": os.environ["EXPECTED_INVENTORY"],
+              "postdedup_inventory_binding_identity_sha256": os.environ["EXPECTED_INVENTORY_BINDING"],
+              "training_handoff_identity_sha256": independently_expected_handoff,
+              "reserved_binding_identity_sha256": independently_expected_binding,
+              "selection_validation_identity_sha256": EVAL303_SELECTION_ID,
+              "final_test_identity_sha256": DATA232_FINAL_TEST_ID,
+              "decontamination_status": execution_a["status"],
+              "decontamination_report_sha256": report_a["report_sha256"],
+              "execution_identity_sha256": execution_a["execution_identity_sha256"],
+              "counts": execution_a["counts"],
+              "retained_training_source_objects_scanned": len(training_rows),
+              "reserved_evaluation_records_scanned": len(evaluation_rows),
+              "repeat_execution_byte_identical": True,
+              "durable_evidence_hash_only": True,
+              "raw_text_persisted": False,
+              "final_test_payload_accessed_for_decontamination": True,
+              "final_test_outcomes_read": False,
+              "model_architecture_or_hyperparameters_selected": False,
+              "authorized_training_exposure": 0,
+              "tokenizer_fit_authorized": False,
+              "training_executed": False,
+              "learned_weights_created": False,
+              "paid_compute_used": False,
+              "foreign_pretrained_weights_used": False,
+              "external_llm_or_api_used_for_data_or_intelligence": False,
+          }
+          terminal["terminal_identity_sha256"] = sha(canonical(terminal))
+          write_json(evidence_dir / "terminal-summary.json", terminal)
+          print(json.dumps({
+              "status": terminal["status"],
+              "decontamination_status": terminal["decontamination_status"],
+              "decontamination_report_sha256": terminal["decontamination_report_sha256"],
+              "execution_identity_sha256": terminal["execution_identity_sha256"],
+              "terminal_identity_sha256": terminal["terminal_identity_sha256"],
+              "counts": terminal["counts"],
+              "authorized_training_exposure": 0,
+              "final_test_outcomes_read": False,
+          }, sort_keys=True))
+          PY
+
+      - name: Upload text-free terminal evidence only
+        uses: actions/upload-artifact@v4
+        with:
+          name: swarm1243-data232-current-retained-decontam-${{ github.sha }}
+          path: ${{ runner.temp }}/terminal-evidence
+          if-no-files-found: error
+          retention-days: 90
