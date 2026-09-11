@@ -28,15 +28,60 @@ def test_canonical_contract_validates() -> None:
 @pytest.mark.parametrize(
     ("mutation", "expected_message"),
     [
+        (("source", "source_id", "ua.attacker.relabel"), "source authority drift"),
+        (("source", "source_family", "ua.attacker.family"), "source authority drift"),
+        (("source", "language", "en"), "source authority drift"),
+        (("source", "modality", "code"), "source authority drift"),
         (("source", "source_git_blob_sha1", "0" * 40), "source authority drift"),
-        (("source", "license_url", "https://example.invalid/LICENSE"), "source authority drift"),
-        (("rights_boundary", "modern_text_allowed", True), "LLM/enrichment fields"),
-        (("truth_boundary", "training_authorized_bytes", 1), "truth boundary drift"),
+        (
+            ("source", "license_url", "https://example.invalid/LICENSE"),
+            "source authority drift",
+        ),
+        (
+            ("rights_boundary", "modern_text_allowed", True),
+            "rights boundary drift",
+        ),
+        (
+            ("rights_boundary", "evaluation", "GRANTED"),
+            "rights boundary drift",
+        ),
+        (
+            (
+                "rights_boundary",
+                "training_purpose_source_candidate",
+                "ALLOWED",
+            ),
+            "rights boundary drift",
+        ),
+        (
+            ("rights_boundary", "required_attribution", "attacker attribution"),
+            "rights boundary drift",
+        ),
+        (
+            ("truth_boundary", "training_authorized_bytes", 1),
+            "truth boundary drift",
+        ),
         (("truth_boundary", "corpus_admitted", True), "truth boundary drift"),
-        (("acquisition", "fetch_count_required", 1), "acquisition contract drift"),
-        (("acquisition", "max_license_bytes", 999999), "acquisition contract drift"),
-        (("acquisition", "max_source_plus_license_bytes", 9999999), "acquisition contract drift"),
-        (("filter", "min_cyrillic_share_of_alpha", 0.0), "filter policy drift"),
+        (
+            ("truth_boundary", "balance_family_caps", "PASS"),
+            "truth boundary drift",
+        ),
+        (
+            ("acquisition", "fetch_count_required", 1),
+            "acquisition contract drift",
+        ),
+        (
+            ("acquisition", "max_license_bytes", 999999),
+            "acquisition contract drift",
+        ),
+        (
+            ("acquisition", "max_source_plus_license_bytes", 9999999),
+            "acquisition contract drift",
+        ),
+        (
+            ("filter", "min_cyrillic_share_of_alpha", 0.0),
+            "filter policy drift",
+        ),
     ],
 )
 def test_contract_mutations_fail_closed(
@@ -47,6 +92,48 @@ def test_contract_mutations_fail_closed(
     section, key, value = mutation
     config[section][key] = value
     with pytest.raises(RuntimeError, match=expected_message):
+        MODULE.validate_contract(config)
+
+
+@pytest.mark.parametrize(
+    ("section", "key"),
+    [
+        ("source", "attacker_source_claim"),
+        ("corroborating_verba_authority", "attacker_corroboration"),
+        ("historical_work", "attacker_work_claim"),
+        ("rights_boundary", "attacker_right"),
+        ("acquisition", "attacker_fetch_rule"),
+        ("filter", "attacker_filter_rule"),
+        ("truth_boundary", "attacker_gate"),
+    ],
+)
+def test_contract_sections_are_closed_world(section: str, key: str) -> None:
+    config = canonical_config()
+    config[section][key] = "self-consistent-extra-field"
+    with pytest.raises(RuntimeError, match="key-set drift"):
+        MODULE.validate_contract(config)
+
+
+@pytest.mark.parametrize(
+    ("key", "alias"),
+    [
+        ("canonical_capacity_credit_bytes", False),
+        ("training_authorized_bytes", False),
+        ("authorized_unique_loss_positions", False),
+        ("optimizer_updates", False),
+    ],
+)
+def test_truth_numeric_zero_rejects_bool_aliases(key: str, alias: object) -> None:
+    config = canonical_config()
+    config["truth_boundary"][key] = alias
+    with pytest.raises(RuntimeError, match="truth boundary drift"):
+        MODULE.validate_contract(config)
+
+
+def test_top_level_contract_is_closed_world() -> None:
+    config = canonical_config()
+    config["attacker_authority"] = {"training_authorized": True}
+    with pytest.raises(RuntimeError, match="top-level contract key-set drift"):
         MODULE.validate_contract(config)
 
 
@@ -111,6 +198,8 @@ def test_parse_filter_is_deterministic_and_excludes_metadata() -> None:
     assert "duplicate note" not in payload
     assert '"text":"Добра рада краща за золото."' in payload
     assert '"text":"Без праці нема добра."' in payload
+    assert '"source_id":"ua.verba.franko1901"' in payload
+    assert '"source_family":"ua.verba.public-domain.franko1901"' in payload
 
 
 def test_normalization_preserves_historical_spelling() -> None:
@@ -143,12 +232,21 @@ def test_report_keeps_zero_credit_boundary_and_binds_license() -> None:
     }
     report = MODULE.build_report(config, raw, license_raw, stats)
     truth = report["truth_boundary"]
+    rights = report["rights_boundary"]
     assert report["decision"] == "CANDIDATE_MATERIALIZED_ZERO_CREDIT"
-    assert report["license_evidence"]["license_git_blob_sha1"] == MODULE.git_blob_sha1(license_raw)
+    assert report["license_evidence"]["license_git_blob_sha1"] == MODULE.git_blob_sha1(
+        license_raw
+    )
     assert truth["canonical_capacity_credit_bytes"] == 0
     assert truth["training_authorized_bytes"] == 0
     assert truth["corpus_admitted"] is False
     assert truth["model_training_executed"] is False
+    assert truth["balance_family_caps"] == "NOT_RUN_FOR_THIS_ADDITION"
+    assert rights["evaluation"] == "NOT_GRANTED"
+    assert (
+        rights["training_purpose_source_candidate"]
+        == "ALLOWED_PENDING_PROJECT_CORPUS_GATES"
+    )
 
     tampered = copy.deepcopy(report)
     tampered["truth_boundary"]["training_authorized_bytes"] = 1
