@@ -510,9 +510,9 @@ def publish_recovery_generation(
 ) -> dict[str, Any]:
     """Publish one generation under a crash-releasing cross-process lock."""
 
-    with exclusive_recovery_lock(root):
+    with exclusive_recovery_lock(root) as locked_root:
         return _publish_recovery_generation_unlocked(
-            root,
+            locked_root,
             save_generation=save_generation,
             expected_source_sha=expected_source_sha,
             expected_run_manifest_hash=expected_run_manifest_hash,
@@ -526,5 +526,5 @@ def publish_recovery_generation(
 def cleanup_recovery_generations(root: str | Path, *, keep: int = 2) -> dict[str, Any]:
     """Clean immutable generations without racing an active publisher."""
 
-    with exclusive_recovery_lock(root):
-        return _cleanup_recovery_generations_unlocked(root, keep=keep)
+    with exclusive_recovery_lock(root) as locked_root:
+        return _cleanup_recovery_generations_unlocked(locked_root, keep=keep)
