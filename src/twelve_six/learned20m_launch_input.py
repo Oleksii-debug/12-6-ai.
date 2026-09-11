@@ -276,6 +276,7 @@ def _verify_ledger(
     counted = 0
     segment_ids: set[str] = set()
     logical_ranges: set[tuple[str, int, int]] = set()
+    ranges_by_document: dict[str, list[tuple[int, int]]] = {}
     for index, raw_segment in enumerate(segments):
         if not isinstance(raw_segment, Mapping):
             raise LaunchInputAuthorityError(f"segments[{index}] must be an object")
@@ -312,6 +313,7 @@ def _verify_ledger(
                 "duplicate logical range in unique-loss ledger"
             )
         logical_ranges.add(logical_range)
+        ranges_by_document.setdefault(document_id, []).append((start, end))
         count = _require_positive_int(
             raw_segment.get("loss_position_count"),
             f"segments[{index}].loss_position_count",
@@ -321,6 +323,15 @@ def _verify_ledger(
                 "segment loss count does not match target range"
             )
         counted += count
+    for document_ranges in ranges_by_document.values():
+        document_ranges.sort()
+        previous_end: int | None = None
+        for start, end in document_ranges:
+            if previous_end is not None and start < previous_end:
+                raise LaunchInputAuthorityError(
+                    "overlapping logical ranges in unique-loss ledger"
+                )
+            previous_end = end
     if counted != positions:
         raise LaunchInputAuthorityError(
             "segment counts do not match unique-loss capacity"
@@ -518,8 +529,16 @@ def build_launch_input_authority(
     return authority
 
 
-def verify_launch_input_authority(authority: Mapping[str, Any]) -> None:
-    """Verify identity, semantic invariants, and the closed-world boundary."""
+def verify_launch_input_authority(
+    authority: Mapping[str, Any],
+    *,
+    expected_authority_identity_sha256: str,
+) -> None:
+    """Verify an authority against an independently supplied expected identity."""
+    expected_identity = _require_sha256(
+        expected_authority_identity_sha256,
+        "expected_authority_identity_sha256",
+    )
     value = dict(authority)
     if set(value) != set(_AUTHORITY_KEYS):
         raise LaunchInputAuthorityError(
@@ -608,4 +627,8 @@ def verify_launch_input_authority(authority: Mapping[str, Any]) -> None:
     if _sha256_obj(body) != observed:
         raise LaunchInputAuthorityError(
             "launch-input authority self-identity mismatch"
+        )
+    if observed != expected_identity:
+        raise LaunchInputAuthorityError(
+            "launch-input authority does not match independently expected identity"
         )
