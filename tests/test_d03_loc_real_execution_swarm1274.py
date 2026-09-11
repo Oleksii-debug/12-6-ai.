@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import atexit
 import hashlib
 import json
 import os
@@ -35,9 +36,11 @@ def _download(url: str, destination: Path) -> None:
         url,
         headers={"User-Agent": "12-6-ai-swarm-1274-loc-real-execution-v1"},
     )
-    with urllib.request.urlopen(request, timeout=300) as response:
-        with destination.open("wb") as output:
-            shutil.copyfileobj(response, output, length=1024 * 1024)
+    with (
+        urllib.request.urlopen(request, timeout=300) as response,
+        destination.open("wb") as output,
+    ):
+        shutil.copyfileobj(response, output, length=1024 * 1024)
 
 
 def _run_materializer(repo_root: Path, source: Path, output_dir: Path) -> None:
@@ -76,6 +79,15 @@ def test_swarm1274_real_loc_two_clean_execution(tmp_path: Path) -> None:
     upstream = config["upstream"]
     assert upstream["shard_compressed_bytes"] == EXPECTED_SOURCE_BYTES
     assert upstream["shard_lfs_sha256"] == EXPECTED_SOURCE_SHA256
+
+    event = _load_json(Path(os.environ["GITHUB_EVENT_PATH"]))
+    pull_request = event["pull_request"]
+    assert isinstance(pull_request, dict)
+    head = pull_request["head"]
+    base = pull_request["base"]
+    assert isinstance(head, dict)
+    assert isinstance(base, dict)
+    assert head["ref"] == BRANCH
 
     subprocess.run(
         [
@@ -134,6 +146,16 @@ def test_swarm1274_real_loc_two_clean_execution(tmp_path: Path) -> None:
     evidence = {
         "schema_version": "12-6.d03-loc-real-execution-evidence.v1",
         "execution_class": "LOCAL_FREE_GITHUB_ACTIONS_PUBLIC_REPO",
+        "github_pr_number": pull_request["number"],
+        "github_head_ref": head["ref"],
+        "github_head_sha": head["sha"],
+        "github_base_ref": base["ref"],
+        "github_base_sha": base["sha"],
+        "github_merge_sha": os.environ["GITHUB_SHA"],
+        "github_run_id": int(os.environ["GITHUB_RUN_ID"]),
+        "github_run_attempt": int(os.environ["GITHUB_RUN_ATTEMPT"]),
+        "github_run_number": int(os.environ["GITHUB_RUN_NUMBER"]),
+        "github_job": os.environ["GITHUB_JOB"],
         "source_acquisitions": 2,
         "source_bytes_a": source_a.stat().st_size,
         "source_bytes_b": source_b.stat().st_size,
@@ -172,4 +194,5 @@ def test_swarm1274_real_loc_two_clean_execution(tmp_path: Path) -> None:
         "python_version": platform.python_version(),
         "platform": platform.platform(),
     }
-    print("SWARM1274_LOC_REAL_EXECUTION=" + json.dumps(evidence, sort_keys=True))
+    receipt = "SWARM1274_LOC_REAL_EXECUTION=" + json.dumps(evidence, sort_keys=True)
+    atexit.register(print, receipt)
