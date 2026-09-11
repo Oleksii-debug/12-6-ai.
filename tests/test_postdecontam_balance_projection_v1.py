@@ -13,9 +13,9 @@ from twelve_six.data.postdecontam_balance_projection_v1 import (
     FAMILY_MAP_SCHEMA,
     FAMILY_PROVENANCE_SCHEMA,
     G05_G06_COVERAGE_SCHEMA,
+    ProjectionError,
     QUALITY_GRANULARITY_IDENTITY_SHA256,
     QUALITY_POLICY_IDENTITY_SHA256,
-    ProjectionError,
     build_family_vector,
     read_records_jsonl,
     verify_family_vector,
@@ -707,4 +707,3 @@ def test_adapter_output_executes_through_canonical_next100_gate(
     )
     assert result["claim_boundary"]["tokenizer_fit_authorized"] is False
     assert result["claim_boundary"]["model_training_authorized"] is False
-
