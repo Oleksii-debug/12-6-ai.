@@ -205,6 +205,50 @@ def _verify_runtime_functions(
         )
 
 
+def _exact_builtin_value_equal(current: Any, expected: Any) -> bool:
+    """Compare semantic values without invoking attacker-controlled equality/coercion."""
+
+    if type(current) is not type(expected):
+        return False
+    value_type = type(expected)
+    if value_type in {type(None), bool, int, str, bytes}:
+        return bool(current == expected)
+    if value_type is float:
+        return current.hex() == expected.hex()
+    if value_type in {list, tuple}:
+        return len(current) == len(expected) and all(
+            _exact_builtin_value_equal(current_item, expected_item)
+            for current_item, expected_item in zip(current, expected, strict=True)
+        )
+    if value_type is dict:
+        if len(current) != len(expected):
+            return False
+        remaining = list(current.items())
+        for expected_key, expected_value in expected.items():
+            for index, (current_key, current_value) in enumerate(remaining):
+                if _exact_builtin_value_equal(
+                    current_key, expected_key
+                ) and _exact_builtin_value_equal(current_value, expected_value):
+                    remaining.pop(index)
+                    break
+            else:
+                return False
+        return not remaining
+    if value_type in {set, frozenset}:
+        if len(current) != len(expected):
+            return False
+        remaining = list(current)
+        for expected_item in expected:
+            for index, current_item in enumerate(remaining):
+                if _exact_builtin_value_equal(current_item, expected_item):
+                    remaining.pop(index)
+                    break
+            else:
+                return False
+        return not remaining
+    return False
+
+
 def _verify_runtime_values(
     module: ModuleType,
     reference: ModuleType,
@@ -216,7 +260,7 @@ def _verify_runtime_values(
         current = getattr(module, name, None)
         expected = getattr(reference, name, None)
         _require(
-            type(current) is type(expected) and current == expected,
+            _exact_builtin_value_equal(current, expected),
             f"{label} runtime value replaced: {name}",
         )
 
@@ -343,9 +387,14 @@ def _verify_matcher_semantic_closure(
     _verify_runtime_functions(v3, reference_v3, _V3_RUNTIME_FUNCTIONS, label="V3")
     _verify_runtime_values(v3, reference_v3, _V3_VALUE_GLOBALS, label="V3")
     _verify_identity_globals(v3, reference_v3, _V3_IDENTITY_GLOBALS, label="V3")
+    expected_capacity_collapse_match_types = set(reference_v1.COLLAPSE_MATCH_TYPES) | set(
+        reference_v3.LINEAGE_COLLAPSE_MATCH_TYPES
+    )
     _require(
-        getattr(v3, "CAPACITY_COLLAPSE_MATCH_TYPES", None)
-        == set(reference_v1.COLLAPSE_MATCH_TYPES) | set(reference_v3.LINEAGE_COLLAPSE_MATCH_TYPES),
+        _exact_builtin_value_equal(
+            getattr(v3, "CAPACITY_COLLAPSE_MATCH_TYPES", None),
+            expected_capacity_collapse_match_types,
+        ),
         "V3 runtime value replaced: CAPACITY_COLLAPSE_MATCH_TYPES",
     )
 
