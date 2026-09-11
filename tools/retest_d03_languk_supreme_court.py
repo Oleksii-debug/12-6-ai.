@@ -198,7 +198,11 @@ def load_config(path: Path = CONFIG) -> dict[str, Any]:
         "family_credit_added",
         "optimizer_updates",
     ):
-        _require(boundary.get(key) == 0, f"zero-credit boundary drift: {key}")
+        value = boundary.get(key)
+        _require(
+            type(value) is int and value == 0,
+            f"zero-credit boundary drift: {key}",
+        )
     for key in (
         "tokenizer_fit_authorized",
         "model_training_executed",
