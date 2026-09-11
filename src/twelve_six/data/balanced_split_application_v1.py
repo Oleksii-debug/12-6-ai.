@@ -25,7 +25,7 @@ from twelve_six.split_robustness import (
 
 SELECTION_SCHEMA = "12-6.d03-balanced-selection-authority.v1"
 APPLICATION_SCHEMA = "12-6.d03-balanced-split-application.v1"
-CANONICAL_SPLIT_GIT_BLOB_SHA1 = "76f18ad4dea7439e20312289d1d259b773e36d26"
+CANONICAL_SPLIT_GIT_BLOB_SHA1 = "5a5395748bed6b666391268b605e428af18baf0c"
 _ALLOWED_PURPOSES = frozenset({"pretraining", "pretraining_eligible", "training_eligible"})
 _FORBIDDEN_PURPOSES = frozenset(
     {"benchmark", "evaluation", "evaluation_test", "heldout_test", "test", "probe_test"}
@@ -129,6 +129,16 @@ def _require_nonnegative_int(value: Any, field: str) -> int:
     return value
 
 
+def _require_nonnegative_int_map(value: Any, field: str) -> dict[str, int]:
+    if not isinstance(value, Mapping):
+        raise BalancedSplitApplicationError(f"{field} must be a mapping")
+    validated: dict[str, int] = {}
+    for key, count in value.items():
+        _require_text(key, f"{field}.key")
+        validated[key] = _require_nonnegative_int(count, f"{field}[{key!r}]")
+    return validated
+
+
 def _self_hash(document: Mapping[str, Any], identity_field: str) -> str:
     core = dict(document)
     core.pop(identity_field, None)
@@ -148,17 +158,27 @@ def _verify_expected_identity(
 
 
 def _require_zero_credit_boundary(boundary: Any) -> None:
-    expected = {
-        "training_eligible": False,
-        "evaluation_eligible": False,
-        "tokenizer_fit_authorized": False,
-        "model_training_authorized": False,
-        "paid_compute_authorized": False,
-        "final_test_outcomes_read": False,
-        "authorized_optimized_target_exposure": 0,
+    expected_boolean_fields = {
+        "training_eligible",
+        "evaluation_eligible",
+        "tokenizer_fit_authorized",
+        "model_training_authorized",
+        "paid_compute_authorized",
+        "final_test_outcomes_read",
     }
-    if boundary != expected:
-        raise BalancedSplitApplicationError("balanced selection claim boundary widened")
+    expected_fields = expected_boolean_fields | {"authorized_optimized_target_exposure"}
+    if not isinstance(boundary, Mapping) or set(boundary) != expected_fields:
+        raise BalancedSplitApplicationError("balanced selection claim boundary is not closed-world")
+    for field in expected_boolean_fields:
+        value = boundary.get(field)
+        if not isinstance(value, bool) or value is not False:
+            raise BalancedSplitApplicationError(f"balanced selection claim boundary {field} widened")
+    exposure = _require_nonnegative_int(
+        boundary.get("authorized_optimized_target_exposure"),
+        "claim_boundary.authorized_optimized_target_exposure",
+    )
+    if exposure != 0:
+        raise BalancedSplitApplicationError("balanced selection claim boundary exposure widened")
 
 
 def _record_id(row: Mapping[str, Any], index: int) -> str:
@@ -250,11 +270,21 @@ def verify_balanced_selection(
         "stratum_source_bytes",
     }:
         raise BalancedSplitApplicationError("balanced selection totals are not closed-world")
-    if totals.get("record_count") != len(by_id) or totals.get("source_bytes") != source_bytes:
+    record_count = _require_nonnegative_int(totals.get("record_count"), "totals.record_count")
+    declared_source_bytes = _require_nonnegative_int(
+        totals.get("source_bytes"), "totals.source_bytes"
+    )
+    declared_family_bytes = _require_nonnegative_int_map(
+        totals.get("family_source_bytes"), "totals.family_source_bytes"
+    )
+    declared_stratum_bytes = _require_nonnegative_int_map(
+        totals.get("stratum_source_bytes"), "totals.stratum_source_bytes"
+    )
+    if record_count != len(by_id) or declared_source_bytes != source_bytes:
         raise BalancedSplitApplicationError("balanced selection total count/bytes mismatch")
-    if totals.get("family_source_bytes") != dict(sorted(family_bytes.items())):
+    if declared_family_bytes != dict(sorted(family_bytes.items())):
         raise BalancedSplitApplicationError("balanced selection family byte accounting mismatch")
-    if totals.get("stratum_source_bytes") != dict(sorted(stratum_bytes.items())):
+    if declared_stratum_bytes != dict(sorted(stratum_bytes.items())):
         raise BalancedSplitApplicationError("balanced selection stratum byte accounting mismatch")
     return by_id, dict(totals)
 
@@ -411,6 +441,7 @@ def verify_balanced_split_application(
     claimed = _require_sha256(application.get("application_identity_sha256"), "application_identity_sha256")
     if claimed != _self_hash(application, "application_identity_sha256"):
         raise BalancedSplitApplicationError("split application self-hash mismatch")
+    _require_zero_credit_boundary(application.get("claim_boundary"))
     expected = build_balanced_split_application(
         selection,
         raw_records,
@@ -424,7 +455,7 @@ def verify_balanced_split_application(
         variant_seeds=variant_seeds,
         validation_fraction=validation_fraction,
     )
-    if dict(application) != expected:
+    if _canonical_bytes(dict(application)) != _canonical_bytes(expected):
         raise BalancedSplitApplicationError("split application semantic content mismatch")
 
 
