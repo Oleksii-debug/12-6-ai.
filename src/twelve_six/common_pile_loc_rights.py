@@ -5,8 +5,9 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 from urllib.parse import urlsplit
 
 AUTHORITY_ID = "D03-COMMON-PILE-LOC-SOURCE-RIGHTS-V1"
