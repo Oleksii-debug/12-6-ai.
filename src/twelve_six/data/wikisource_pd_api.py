@@ -12,7 +12,6 @@ from typing import Any
 
 from twelve_six.data.wikisource_pd_contract import (
     API_URL,
-    APPROVED_CATEGORY,
     INDEX_REVISION_ID,
     INDEX_TITLE,
     PAGE_PREFIX,
@@ -21,6 +20,8 @@ from twelve_six.data.wikisource_pd_contract import (
     validate_page_title,
     validate_ua_page_text,
 )
+
+VALIDATED_PROOFREAD_QUALITY = 4
 
 
 @dataclass(frozen=True)
@@ -184,20 +185,6 @@ def discover_index_titles(
     return _discover_proofread_index_titles(get_json=get_json)
 
 
-def _category_names(rows: Any) -> set[str]:
-    if not isinstance(rows, list):
-        raise WikisourceIntakeError("exact revision categories are missing")
-    names: set[str] = set()
-    for row in rows:
-        if isinstance(row, str):
-            names.add(row.removeprefix("Категорія:").replace("_", " "))
-        elif isinstance(row, dict):
-            value = row.get("category", row.get("*", row.get("title")))
-            if isinstance(value, str):
-                names.add(value.removeprefix("Категорія:").replace("_", " "))
-    return names
-
-
 def _current_page_revision_and_approval(
     title: str,
     *,
@@ -207,13 +194,10 @@ def _current_page_revision_and_approval(
         {
             "action": "query",
             "titles": title,
-            "prop": "revisions|categories",
+            "prop": "revisions|proofread",
             "rvprop": "ids",
-            "cllimit": "max",
         }
     )
-    if response.get("continue") is not None:
-        raise WikisourceIntakeError("page category response is unexpectedly truncated")
     query_root = response.get("query")
     pages = query_root.get("pages") if isinstance(query_root, dict) else None
     if not isinstance(pages, list) or len(pages) != 1 or not isinstance(pages[0], dict):
@@ -228,8 +212,13 @@ def _current_page_revision_and_approval(
     revision_id = revision.get("revid") if isinstance(revision, dict) else None
     if not isinstance(revision_id, int) or isinstance(revision_id, bool) or revision_id <= 0:
         raise WikisourceIntakeError("invalid page revision id")
-    approved = APPROVED_CATEGORY in _category_names(page.get("categories"))
-    return revision_id, approved
+    proofread = page.get("proofread")
+    if not isinstance(proofread, dict):
+        raise WikisourceIntakeError("native ProofreadPage quality is missing")
+    quality = proofread.get("quality")
+    if not isinstance(quality, int) or isinstance(quality, bool) or not 0 <= quality <= 4:
+        raise WikisourceIntakeError("native ProofreadPage quality is invalid")
+    return revision_id, quality == VALIDATED_PROOFREAD_QUALITY
 
 
 def fetch_page_snapshot(
