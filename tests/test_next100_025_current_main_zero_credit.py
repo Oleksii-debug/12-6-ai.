@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
 
 import pytest
 
-TOOLS = Path(__file__).resolve().parents[1] / "tools"
+ROOT = Path(__file__).resolve().parents[1]
+TOOLS = ROOT / "tools"
+CONFIG = ROOT / "configs/data/next100_025_derzhgeocadastre_open_registry_v1.json"
 SPEC = importlib.util.spec_from_file_location(
     "derzh_snapshot",
     TOOLS / "next100_025_data_gov_registry_snapshot.py",
@@ -110,3 +113,28 @@ def test_direct_mode_based_training_eligibility_regression_is_absent() -> None:
     )
     assert '"training_eligible": cfg["mode"] == "LOCKED"' not in source
     assert '"training_eligible": False' in source
+
+
+def test_archived_json_resource_cannot_be_locked_as_current_snapshot() -> None:
+    cfg = json.loads(CONFIG.read_text(encoding="utf-8"))
+    package = {
+        "resources": [
+            {
+                "id": "current-csv",
+                "name": "register",
+                "format": ".csv",
+                "url": "https://data.gov.ua/dataset/x/resource/current-csv/download/register.csv",
+                "last_modified": "2026-09-03T11:38:00",
+            },
+            {
+                "id": "archived-json",
+                "name": "Архівний - Реєстр наборів даних, які перебувають у володінні розпорядника інформації",
+                "format": "JSON",
+                "url": "https://data.gov.ua/dataset/x/resource/archived-json/download/register.json",
+                "last_modified": "2025-01-01T00:00:00",
+            },
+        ]
+    }
+
+    with pytest.raises(RuntimeError, match="no admissible JSON resource candidate"):
+        snapshot.pick_resource(package, cfg)
