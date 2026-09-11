@@ -35,6 +35,25 @@ def _item() -> dict:
     }
 
 
+def _live_drift_resources() -> list[dict]:
+    return [
+        {
+            "id": "current-csv",
+            "name": "register",
+            "format": ".csv",
+            "url": "https://data.gov.ua/dataset/x/resource/current-csv/download/register.csv",
+            "last_modified": "2026-09-03T11:38:00",
+        },
+        {
+            "id": "archived-json",
+            "name": "Архівний - Реєстр наборів даних, які перебувають у володінні розпорядника інформації",
+            "format": "JSON",
+            "url": "https://data.gov.ua/dataset/x/resource/archived-json/download/register.json",
+            "last_modified": "2025-01-01T00:00:00",
+        },
+    ]
+
+
 def test_locked_snapshot_is_identity_lock_not_training_authority() -> None:
     boundary = snapshot.current_main_claim_boundary("LOCKED")
 
@@ -117,24 +136,17 @@ def test_direct_mode_based_training_eligibility_regression_is_absent() -> None:
 
 def test_archived_json_resource_cannot_be_locked_as_current_snapshot() -> None:
     cfg = json.loads(CONFIG.read_text(encoding="utf-8"))
-    package = {
-        "resources": [
-            {
-                "id": "current-csv",
-                "name": "register",
-                "format": ".csv",
-                "url": "https://data.gov.ua/dataset/x/resource/current-csv/download/register.csv",
-                "last_modified": "2026-09-03T11:38:00",
-            },
-            {
-                "id": "archived-json",
-                "name": "Архівний - Реєстр наборів даних, які перебувають у володінні розпорядника інформації",
-                "format": "JSON",
-                "url": "https://data.gov.ua/dataset/x/resource/archived-json/download/register.json",
-                "last_modified": "2025-01-01T00:00:00",
-            },
-        ]
-    }
+    package = {"resources": _live_drift_resources()}
 
     with pytest.raises(RuntimeError, match="no admissible JSON resource candidate"):
+        snapshot.pick_resource(package, cfg)
+
+
+def test_locked_expected_id_cannot_bypass_archive_admissibility() -> None:
+    cfg = json.loads(CONFIG.read_text(encoding="utf-8"))
+    cfg["mode"] = "LOCKED"
+    cfg["resource_selection"]["expected_resource_id"] = "archived-json"
+    package = {"resources": _live_drift_resources()}
+
+    with pytest.raises(RuntimeError, match="locked resource id is not admissible"):
         snapshot.pick_resource(package, cfg)
