@@ -9,6 +9,7 @@ from twelve_six.learned20m_readiness import (
     assess_learned20m_readiness as _assess_impl,
 )
 from twelve_six.learned20m_readiness import (
+    scientific_authority_binding,
     scientific_authority_token,
 )
 
@@ -20,6 +21,7 @@ COMPUTE_REF = "issue:1#compute-authorized-example"
 TRAINING_REF = "issue:1#training-authorized-example"
 
 _SCIENTIFIC_AUTHORITIES = (
+    ("code", ("code", "authority"), True),
     ("corpus", ("corpus", "authority"), True),
     ("tokenizer", ("tokenizer", "authority"), True),
     ("loss_ledger", ("loss_ledger", "authority"), True),
@@ -61,10 +63,13 @@ def _authority_at(data: dict[str, Any], path: tuple[str, ...]) -> Any:
 
 def _verified_scientific(data: dict[str, Any]) -> set[str]:
     verified: set[str] = set()
+    evidence = data["evidence"]
     for role, path, require_workflow in _SCIENTIFIC_AUTHORITIES:
+        binding = scientific_authority_binding(role, evidence)
         token = scientific_authority_token(
             role,
             _authority_at(data, path),
+            binding=binding,
             require_workflow=require_workflow,
         )
         if token is not None:
@@ -87,7 +92,7 @@ def _assess(
 def _make_local_pilot_ready() -> dict[str, Any]:
     data = _load()
     evidence = data["evidence"]
-    evidence["code"]["git_sha"] = SHA40
+    evidence["code"].update({"git_sha": SHA40, "authority": _authority()})
     evidence["corpus"].update(
         {
             "manifest_sha256": SHA64,
@@ -418,11 +423,13 @@ def test_scientific_authority_tokens_are_role_and_payload_bound() -> None:
     tokenizer_token = scientific_authority_token(
         "tokenizer",
         tokenizer,
+        binding=scientific_authority_binding("tokenizer", data["evidence"]),
         require_workflow=True,
     )
     corpus_token = scientific_authority_token(
         "corpus",
         data["evidence"]["corpus"]["authority"],
+        binding=scientific_authority_binding("corpus", data["evidence"]),
         require_workflow=True,
     )
     assert tokenizer_token is not None
@@ -446,6 +453,74 @@ def test_scientific_authority_tokens_are_role_and_payload_bound() -> None:
     )
     assert not result.ready_for_local_free_pilot
     assert "terminal_tokenizer_authority_unverified" in result.local_free_pilot_blockers
+
+
+def test_scientific_authority_token_requires_metadata_binding() -> None:
+    data = _make_local_pilot_ready()
+    assert (
+        scientific_authority_token(
+            "corpus",
+            data["evidence"]["corpus"]["authority"],
+            require_workflow=True,
+        )
+        is None
+    )
+
+
+def test_verified_corpus_token_rejects_neighbor_metadata_substitution() -> None:
+    data = _make_local_pilot_ready()
+    verified = _verified_scientific(data)
+    data["evidence"]["corpus"]["manifest_sha256"] = "c" * 64
+    result = _assess_impl(data, verified_scientific_authorities=verified)
+    assert not result.ready_for_local_free_pilot
+    assert "terminal_corpus_authority_unverified" in result.local_free_pilot_blockers
+
+
+def test_verified_loss_tokens_reject_unique_count_inflation() -> None:
+    data = _make_local_pilot_ready()
+    verified = _verified_scientific(data)
+    inflated = data["evidence"]["loss_ledger"]["unique_causal_loss_positions"] + 1_000_000
+    data["evidence"]["loss_ledger"]["unique_causal_loss_positions"] = inflated
+    recipe = data["evidence"]["training_recipe"]
+    recipe["requested_unique_loss_positions"] = inflated
+    recipe["requested_total_training_exposures"] = inflated
+    result = _assess_impl(data, verified_scientific_authorities=verified)
+    assert not result.ready_for_local_free_pilot
+    assert (
+        "terminal_unique_loss_ledger_authority_unverified"
+        in result.local_free_pilot_blockers
+    )
+    assert "data_budget_authority_unverified" in result.local_free_pilot_blockers
+    assert "training_recipe_authority_unverified" in result.local_free_pilot_blockers
+
+
+def test_verified_recipe_token_rejects_exposure_substitution() -> None:
+    data = _make_local_pilot_ready()
+    verified = _verified_scientific(data)
+    recipe = data["evidence"]["training_recipe"]
+    recipe["requested_unique_loss_positions"] -= 1
+    recipe["requested_total_training_exposures"] -= 1
+    result = _assess_impl(data, verified_scientific_authorities=verified)
+    assert not result.ready_for_local_free_pilot
+    assert "training_recipe_authority_unverified" in result.local_free_pilot_blockers
+
+
+def test_code_sha_requires_matching_verified_terminal_ci_authority() -> None:
+    data = _make_local_pilot_ready()
+    verified = _verified_scientific(data)
+    data["evidence"]["code"]["git_sha"] = "c" * 40
+    result = _assess_impl(data, verified_scientific_authorities=verified)
+    assert not result.ready_for_local_free_pilot
+    assert "exact_code_authority_unverified" in result.local_free_pilot_blockers
+    assert "exact_code_authority_sha_mismatch" in result.local_free_pilot_blockers
+
+
+def test_code_authority_requires_terminal_success_workflow() -> None:
+    data = _make_local_pilot_ready()
+    data["evidence"]["code"]["authority"]["workflow_conclusion"] = "failure"
+    result = _assess(data)
+    assert not result.ready_for_local_free_pilot
+    assert "exact_code_authority_missing" in result.local_free_pilot_blockers
 
 
 def test_seed_count_rejects_bool_and_malformed_values() -> None:
