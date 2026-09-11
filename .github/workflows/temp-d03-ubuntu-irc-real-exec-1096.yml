@@ -1,0 +1,115 @@
+name: TEMP D03 Ubuntu IRC real execution 1096
+
+on:
+  push:
+    branches:
+      - d03/ubuntu-irc-real-exec-1096
+
+permissions:
+  contents: read
+
+jobs:
+  execute:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Focused adversarial tests
+        run: |
+          python -m pip install --disable-pip-version-check pytest
+          python -m pytest -q tests/test_d03_common_pile_ubuntu_irc_v1.py
+      - name: Two independent exact acquisitions and materializations
+        env:
+          EXPECTED_SOURCE_SHA256: 75e38bffcaceb00ed9ce9a63b1d9e74a70f5582b3e3f763a7ec573c7fd6c1e60
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ubuntu-a /tmp/ubuntu-b execution-evidence
+          python tools/materialize_d03_common_pile_ubuntu_irc_v1.py \
+            --download \
+            --shard /tmp/ubuntu-a/source.jsonl.gz \
+            --output-jsonl /tmp/ubuntu-a/candidate.jsonl \
+            --report /tmp/ubuntu-a/report.json \
+            > /tmp/ubuntu-a/stdout.json
+          python tools/materialize_d03_common_pile_ubuntu_irc_v1.py \
+            --download \
+            --shard /tmp/ubuntu-b/source.jsonl.gz \
+            --output-jsonl /tmp/ubuntu-b/candidate.jsonl \
+            --report /tmp/ubuntu-b/report.json \
+            > /tmp/ubuntu-b/stdout.json
+          printf '%s  %s\n' "$EXPECTED_SOURCE_SHA256" /tmp/ubuntu-a/source.jsonl.gz | sha256sum -c -
+          printf '%s  %s\n' "$EXPECTED_SOURCE_SHA256" /tmp/ubuntu-b/source.jsonl.gz | sha256sum -c -
+          cmp /tmp/ubuntu-a/candidate.jsonl /tmp/ubuntu-b/candidate.jsonl
+          cmp /tmp/ubuntu-a/report.json /tmp/ubuntu-b/report.json
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          import platform
+          from pathlib import Path
+
+          def sha(path: str) -> str:
+              return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+          a = json.loads(Path('/tmp/ubuntu-a/report.json').read_text(encoding='utf-8'))
+          b = json.loads(Path('/tmp/ubuntu-b/report.json').read_text(encoding='utf-8'))
+          assert a == b
+          assert a['source_sha256'] == os.environ['EXPECTED_SOURCE_SHA256']
+          assert a['training_eligible'] is False
+          assert a['evaluation_eligible'] is False
+          assert a['training_authorized_bytes'] == 0
+          assert a['canonical_capacity_credited'] == 0
+          assert a['family_credit_added'] == 0
+          assert a['unique_causal_loss_positions_authorized'] == 0
+          assert a['optimizer_updates'] == 0
+          assert a['model_training_executed'] is False
+          assert a['final_test_accessed'] is False
+          assert a['paid_compute_used'] is False
+          receipt = {
+              'schema_version': '12-6.d03-common-pile-ubuntu-irc-real-execution.v1',
+              'claim_issue': 1096,
+              'execution_profile': 'LOCAL_FREE_GITHUB_HOSTED_UBUNTU',
+              'repository_commit': os.environ['GITHUB_SHA'],
+              'workflow_run_id': int(os.environ['GITHUB_RUN_ID']),
+              'workflow_run_attempt': int(os.environ['GITHUB_RUN_ATTEMPT']),
+              'python_version': platform.python_version(),
+              'source_revision': a['source_revision'],
+              'source_file': a['source_file'],
+              'source_sha256': a['source_sha256'],
+              'observed_source_bytes': a['observed_source_bytes'],
+              'scanned_records': a['scanned_records'],
+              'retained_records': a['retained_records'],
+              'retained_normalized_bytes': a['retained_normalized_bytes'],
+              'selection_reasons': a['selection_reasons'],
+              'candidate_payload_sha256': a['candidate_payload_sha256'],
+              'candidate_payload_bytes': a['candidate_payload_bytes'],
+              'candidate_file_sha256': sha('/tmp/ubuntu-a/candidate.jsonl'),
+              'report_file_sha256': sha('/tmp/ubuntu-a/report.json'),
+              'independent_builds_byte_identical': True,
+              'durable_evidence_contains_source_text': False,
+              'training_eligible': False,
+              'evaluation_eligible': False,
+              'training_authorized_bytes': 0,
+              'canonical_capacity_credited': 0,
+              'family_credit_added': 0,
+              'unique_causal_loss_positions_authorized': 0,
+              'optimizer_updates': 0,
+              'model_training_executed': False,
+              'final_test_accessed': False,
+              'paid_compute_used': False,
+              'foreign_pretrained_weights_used': False,
+          }
+          out = Path('execution-evidence/ubuntu-irc-real-execution-v1.json')
+          out.write_text(json.dumps(receipt, sort_keys=True, indent=2) + '\n', encoding='utf-8')
+          print(json.dumps(receipt, sort_keys=True))
+          PY
+          rm -rf /tmp/ubuntu-a /tmp/ubuntu-b
+      - name: Upload text-free receipt only
+        uses: actions/upload-artifact@v4
+        with:
+          name: d03-ubuntu-irc-real-execution-1096
+          path: execution-evidence/ubuntu-irc-real-execution-v1.json
+          if-no-files-found: error
+          retention-days: 7
