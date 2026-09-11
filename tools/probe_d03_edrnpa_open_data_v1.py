@@ -16,7 +16,7 @@ import zipfile
 from pathlib import Path
 from typing import Any, BinaryIO
 
-SCHEMA = "12-6.d03-edrnpa-open-data-candidate.v2"
+SCHEMA = "12-6.d03-edrnpa-open-data-candidate.v3"
 DATASET_ID = "c98e830c-e39e-4da6-a13c-f9ba32a79bec"
 RESOURCE_ID = "5616dd04-949a-489c-8efc-54004293b238"
 RESOURCE_UPDATED = "2026-09-08T15:02:00+03:00"
@@ -50,6 +50,10 @@ PHONE = re.compile(r"(?<!\d)(?:\+?38)?0\d{2}[\s().-]*\d{3}[\s.-]*\d{2}[\s.-]*\d{
 UK_LETTER = re.compile(r"[А-Яа-яІіЇїЄєҐґ]")
 ALPHA = re.compile(r"[A-Za-zА-Яа-яІіЇїЄєҐґ]")
 XML_DANGER = (b"<!DOCTYPE", b"<!ENTITY")
+XML10_FORBIDDEN_ASCII_CONTROLS = bytes(
+    list(range(0x00, 0x09)) + [0x0B, 0x0C] + list(range(0x0E, 0x20))
+)
+XML10_FORBIDDEN_ASCII_SET = frozenset(XML10_FORBIDDEN_ASCII_CONTROLS)
 
 
 class ProbeError(RuntimeError):
@@ -145,7 +149,7 @@ def _quality(text: str) -> dict[str, Any]:
 
 
 class _GuardedXMLReader:
-    """Stream wrapper that enforces exact size and rejects DTD/entity markers."""
+    """Bound XML stream, rejecting entities and removing only illegal XML-1.0 C0 bytes."""
 
     def __init__(self, source: BinaryIO, *, expected_size: int) -> None:
         self._source = source
@@ -153,25 +157,49 @@ class _GuardedXMLReader:
         self._seen = 0
         self._tail = b""
         self._max_marker = max(len(marker) for marker in XML_DANGER)
+        self._removed_controls = 0
+        self._removal_hash = hashlib.sha256()
 
     @property
     def bytes_seen(self) -> int:
         return self._seen
 
+    @property
+    def removed_control_bytes(self) -> int:
+        return self._removed_controls
+
+    @property
+    def removal_identity_sha256(self) -> str:
+        return self._removal_hash.hexdigest()
+
+    def _sanitize(self, chunk: bytes, *, original_offset: int) -> bytes:
+        sanitized = chunk.translate(None, XML10_FORBIDDEN_ASCII_CONTROLS)
+        if len(sanitized) != len(chunk):
+            for relative, value in enumerate(chunk):
+                if value in XML10_FORBIDDEN_ASCII_SET:
+                    self._removed_controls += 1
+                    absolute = original_offset + relative
+                    self._removal_hash.update(f"{absolute}:{value:02x}\n".encode("ascii"))
+        return sanitized
+
     def read(self, size: int = -1) -> bytes:
-        chunk = self._source.read(size)
-        if chunk:
+        while True:
+            chunk = self._source.read(size)
+            if not chunk:
+                if self._seen != self._expected_size:
+                    raise ProbeError("nested XML byte count mismatch")
+                return b""
+            start = self._seen
             self._seen += len(chunk)
             if self._seen > self._expected_size:
                 raise ProbeError("nested XML exceeded declared member size")
-            probe = (self._tail + chunk).upper()
+            sanitized = self._sanitize(chunk, original_offset=start)
+            probe = self._tail + sanitized.upper()
             if any(marker in probe for marker in XML_DANGER):
                 raise ProbeError("nested XML DTD/entity declarations forbidden")
             self._tail = probe[-(self._max_marker - 1) :]
-            return chunk
-        if self._seen != self._expected_size:
-            raise ProbeError("nested XML byte count mismatch")
-        return b""
+            if sanitized:
+                return sanitized
 
 
 def download_archive_to(
@@ -184,7 +212,7 @@ def download_archive_to(
     request = urllib.request.Request(
         url,
         headers={
-            "User-Agent": "12-6-ai-edrnpa-open-data/2.0 (+LOCAL_FREE research)",
+            "User-Agent": "12-6-ai-edrnpa-open-data/3.0 (+LOCAL_FREE research)",
             "Accept": "application/zip,application/octet-stream",
         },
     )
@@ -210,11 +238,7 @@ def download_archive_to(
     if observed_md5 != RESOURCE_MD5:
         path.unlink(missing_ok=True)
         raise ProbeError("EDRNPA resource MD5 mismatch")
-    return {
-        "bytes": total,
-        "md5": observed_md5,
-        "sha256": sha_hash.hexdigest(),
-    }
+    return {"bytes": total, "md5": observed_md5, "sha256": sha_hash.hexdigest()}
 
 
 def download_archive(url: str = DOWNLOAD_URL, *, timeout: float = 240.0) -> bytes:
@@ -334,8 +358,8 @@ def _stream_documents_to_db(
     *,
     source_sha256: str,
     byte_cap: int,
-) -> dict[str, int]:
-    counters = {
+) -> dict[str, Any]:
+    counters: dict[str, Any] = {
         "source_documents": 0,
         "documents_without_text": 0,
         "documents_too_short": 0,
@@ -384,7 +408,7 @@ def _stream_documents_to_db(
                     chunk = "".join(elem.itertext())
                     if len(chunk) > MAX_PARAGRAPH_CHARS:
                         current_chars = MAX_DOCUMENT_CHARS + 1
-                    elif chunk.strip():
+                    elif current_chars <= MAX_DOCUMENT_CHARS and chunk.strip():
                         current_chunks.append(chunk)
                         current_chars += len(chunk)
                     current_has_par = True
@@ -393,7 +417,7 @@ def _stream_documents_to_db(
                     chunk = "".join(elem.itertext())
                     if len(chunk) > MAX_DOCUMENT_CHARS:
                         current_chars = MAX_DOCUMENT_CHARS + 1
-                    elif chunk.strip():
+                    elif current_chars <= MAX_DOCUMENT_CHARS and chunk.strip():
                         current_chunks.append(chunk)
                         current_chars += len(chunk)
                     elem.clear()
@@ -463,9 +487,15 @@ def _stream_documents_to_db(
                     elem.clear()
                 stack.pop()
         except ET.ParseError as exc:
-            raise ProbeError("malformed nested EDRNPA XML") from exc
+            raise ProbeError(
+                "malformed nested EDRNPA XML after "
+                f"xml10_control_removals={guarded.removed_control_bytes} "
+                f"removal_identity={guarded.removal_identity_sha256}: {exc}"
+            ) from exc
         if guarded.bytes_seen != info.file_size:
             raise ProbeError("nested XML was not fully consumed")
+        counters["xml10_control_bytes_removed"] = guarded.removed_control_bytes
+        counters["xml10_control_removal_identity_sha256"] = guarded.removal_identity_sha256
     if stack:
         raise ProbeError("unterminated XML element stack")
     if root_tag != "rna" or database_depth != 0:
@@ -577,6 +607,16 @@ def materialize_archive_path(
                 "nested_xml_bytes": xml_info.file_size,
                 "family_id": FAMILY_ID,
             },
+            "normalization": {
+                "unicode": "NFKC",
+                "whitespace": "deterministic-collapse-v1",
+                "xml10_forbidden_ascii_control_policy": "remove-and-bind-offset-value-v1",
+                "xml10_control_bytes_removed": counters["xml10_control_bytes_removed"],
+                "xml10_control_removal_identity_sha256": counters[
+                    "xml10_control_removal_identity_sha256"
+                ],
+                "generic_xml_recovery_enabled": False,
+            },
             "rights": {
                 "portal_license": "CC-BY-4.0",
                 "open_data_free_reuse": True,
@@ -585,7 +625,7 @@ def materialize_archive_path(
                 "training_rights_admitted_by_this_probe": False,
             },
             "selection": {
-                "policy": "EDRNPA_UK_DOCUMENT_TEXT_ZERO_CREDIT_V2",
+                "policy": "EDRNPA_UK_DOCUMENT_TEXT_ZERO_CREDIT_V3",
                 "byte_cap": byte_cap,
                 **counters,
                 "selected_objects": len(selected),

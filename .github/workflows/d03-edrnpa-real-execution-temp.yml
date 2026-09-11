@@ -22,14 +22,16 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Compile repaired materializer
-        run: python -m py_compile tools/probe_d03_edrnpa_open_data_v1.py
+      - name: Run focused structural regressions
+        run: |
+          python -m pip install pytest
+          python -m pytest -q tests/test_probe_d03_edrnpa_open_data_v1.py
+          python -m py_compile tools/probe_d03_edrnpa_open_data_v1.py
 
       - name: Acquire and materialize exact current source twice
         run: |
           python - <<'PY'
           import importlib.util
-          import json
           import os
           import shutil
           from pathlib import Path
@@ -90,6 +92,12 @@ jobs:
                       'quarantined_email_or_phone': report['selection'][
                           'quarantined_email_or_phone'
                       ],
+                      'xml10_control_bytes_removed': report['selection'][
+                          'xml10_control_bytes_removed'
+                      ],
+                      'xml10_control_removal_identity_sha256': report['selection'][
+                          'xml10_control_removal_identity_sha256'
+                      ],
                       'inventory_identity_sha256': report['selection'][
                           'inventory_identity_sha256'
                       ],
@@ -100,30 +108,14 @@ jobs:
               del report
               shutil.rmtree(run_root)
 
-          comparable_keys = (
-              'source',
-              'source_report_sha256',
-              'source_report_bytes',
-              'nested_zip_member',
-              'nested_zip_bytes',
-              'nested_xml_member',
-              'nested_xml_bytes',
-              'source_documents',
-              'candidate_objects_after_quality',
-              'selected_objects',
-              'selected_bytes',
-              'duplicate_normalized_objects',
-              'quarantined_email_or_phone',
-              'inventory_identity_sha256',
-              'report_identity_sha256',
-          )
+          comparable_keys = tuple(key for key in results[0] if key != 'run_index')
           left = {key: results[0][key] for key in comparable_keys}
           right = {key: results[1][key] for key in comparable_keys}
           if left != right:
               raise SystemExit('two independent current-source executions are not identical')
 
           evidence = {
-              'schema_version': '12-6.d03-edrnpa-real-execution-evidence.v1',
+              'schema_version': '12-6.d03-edrnpa-real-execution-evidence.v2',
               'execution_profile': 'LOCAL_FREE',
               'product_head': os.environ['GITHUB_SHA'],
               'resource_id': mod.RESOURCE_ID,
@@ -147,12 +139,14 @@ jobs:
           evidence['evidence_identity_sha256'] = mod.sha256(mod.cjson(evidence))
           evidence_dir = Path('evidence')
           evidence_dir.mkdir(exist_ok=True)
-          path = evidence_dir / 'edrnpa-current-real-execution-v1.json'
+          path = evidence_dir / 'edrnpa-current-real-execution-v2.json'
           path.write_bytes(mod.cjson(evidence))
           print(
               'REAL_EXECUTION_OK '
               f"selected_objects={results[0]['selected_objects']} "
               f"selected_bytes={results[0]['selected_bytes']} "
+              f"xml10_controls={results[0]['xml10_control_bytes_removed']} "
+              f"control_identity={results[0]['xml10_control_removal_identity_sha256']} "
               f"inventory={results[0]['inventory_identity_sha256']} "
               f"evidence={evidence['evidence_identity_sha256']}"
           )
@@ -162,6 +156,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: edrnpa-current-real-execution-${{ github.sha }}
-          path: evidence/edrnpa-current-real-execution-v1.json
+          path: evidence/edrnpa-current-real-execution-v2.json
           retention-days: 7
           if-no-files-found: error

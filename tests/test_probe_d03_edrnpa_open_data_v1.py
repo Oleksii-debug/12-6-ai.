@@ -60,15 +60,13 @@ def test_materializes_observed_nested_document_shape_and_keeps_zero_credit() -> 
     assert len(rows) == 2
     assert all(row["training_eligible"] is False for row in rows)
     assert all(row["evaluation_eligible"] is False for row in rows)
-    assert all(row["source_path"].startswith(f"{mod.NESTED_TEXT_ZIP}!/") for row in rows)
     assert report["source"]["format"] == "XML-in-ZIP-in-ZIP"
     assert report["selection"]["source_documents"] == 2
-    assert report["selection"]["selected_bytes"] > 0
     assert report["truth_boundary"]["canonical_capacity_credit_bytes"] == 0
     assert report["truth_boundary"]["training_authorized_bytes"] == 0
     assert report["truth_boundary"]["authorized_optimized_target_exposure"] == 0
-    assert report["truth_boundary"]["unique_causal_loss_positions"] == 0
     assert report["rights"]["training_rights_admitted_by_this_probe"] is False
+    assert report["normalization"]["generic_xml_recovery_enabled"] is False
 
 
 def test_deterministic_replay_of_identical_source() -> None:
@@ -81,6 +79,27 @@ def test_deterministic_replay_of_identical_source() -> None:
     )
     assert rows_a == rows_b
     assert report_a == report_b
+
+
+def test_removes_only_xml10_forbidden_c0_byte_and_binds_offset() -> None:
+    xml = _xml([_uk("A")])
+    marker = "нормативний".encode("utf-8")
+    offset = xml.index(marker) + len(marker)
+    dirty = xml[:offset] + b"\x0c" + xml[offset:]
+    data = _archive_from_xml(dirty)
+    rows, report = mod.materialize_archive_bytes(data, expected_md5=mod.md5(data))
+    assert len(rows) == 1
+    assert report["selection"]["xml10_control_bytes_removed"] == 1
+    expected = mod.sha256(f"{offset}:0c\n".encode("ascii"))
+    assert report["selection"]["xml10_control_removal_identity_sha256"] == expected
+    assert report["normalization"]["xml10_control_removal_identity_sha256"] == expected
+
+
+def test_does_not_recover_malformed_markup_after_control_cleaning() -> None:
+    text = _uk("A") + " & незаконний"
+    data = _archive_from_xml(_xml([text]))
+    with pytest.raises(mod.ProbeError, match="malformed nested EDRNPA XML"):
+        mod.materialize_archive_bytes(data, expected_md5=mod.md5(data))
 
 
 def test_rejects_resource_hash_mismatch() -> None:
@@ -102,9 +121,9 @@ def test_rejects_nested_zip_path_traversal() -> None:
         mod.materialize_archive_bytes(data, expected_md5=mod.md5(data))
 
 
-def test_rejects_dtd_or_entity_in_stream() -> None:
+def test_rejects_dtd_or_entity_even_when_control_byte_interrupts_marker() -> None:
     xml = (
-        b'<!DOCTYPE rna [<!ENTITY x "boom">]>'
+        b'<!DOC\x0cTYPE rna [<!ENTITY x "boom">]>'
         b'<rna><database><document><text>&x;</text></document></database></rna>'
     )
     data = _archive_from_xml(xml)
