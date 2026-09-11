@@ -13,6 +13,8 @@ from typing import Any
 from twelve_six.common_pile_arxiv_abstracts_rights import (
     POLICY_IDENTITY,
     RECORD_CONTRACT,
+)
+from twelve_six.common_pile_arxiv_abstracts_rights import (
     load_and_validate as load_rights_policy,
 )
 from twelve_six.d03_arxiv_execution_receipt import (
@@ -122,8 +124,7 @@ def _git_show_bytes(root: Path, revision: str, relpath: str) -> bytes:
         result = subprocess.run(
             ["git", "-C", str(root), "show", f"{revision}:{relpath}"],
             check=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            capture_output=True,
         )
     except (OSError, subprocess.CalledProcessError) as exc:
         raise ArxivPostRightsAdmissionError(
