@@ -15,11 +15,13 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import importlib.util
 import json
+import marshal
 import sys
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
-from types import ModuleType
+from types import FunctionType, ModuleType
 from typing import Any
 
 from twelve_six.data import _expanded_global_dedup_v9_impl as _impl
@@ -49,6 +51,82 @@ _EXPECTED_MATCHER_BLOBS = {
     "twelve_six.data.cross_source_capacity_audit": "84cdf00b2d468d2709a542ac3ee2ea372aae5716",
     "twelve_six.data._data232_decontamination_matching": "dab5da98dfc43133aa8f3c2e3c78c809252b741b",
 }
+_V3_RUNTIME_FUNCTIONS = (
+    "_validate_inventory",
+    "_as_v1_inventory",
+    "_strip_fenced_code",
+    "_rust_book_prose_payload",
+    "_comparison_payload",
+    "_fingerprint",
+    "_lineage_matches",
+    "_summary_for_ids",
+    "audit_payloads",
+    "verify_report",
+)
+_V1_RUNTIME_FUNCTIONS = (
+    "_canonical_bytes",
+    "_sha256",
+    "_git_blob_sha1",
+    "_shingles",
+    "_jaccard",
+    "_containment",
+    "_validate_inventory",
+    "_verify_payload",
+    "_fingerprint",
+    "_publisher_boilerplate",
+    "_pair_matches",
+    "_components",
+)
+_DATA232_RUNTIME_FUNCTIONS = (
+    "normalize_for_contamination",
+    "code_skeleton_tokens",
+)
+_DATA232_VALUE_GLOBALS = (
+    "DEFAULT_THRESHOLDS",
+    "INVISIBLE",
+    "KEYWORDS",
+)
+_DATA232_REGEX_GLOBALS = (
+    "TOKEN_RE",
+    "CODE_TOKEN_RE",
+    "LINE_COMMENT",
+    "BLOCK_COMMENT",
+    "STRING",
+)
+_V3_VALUE_GLOBALS = (
+    "SCHEMA",
+    "INVENTORY_SCHEMA",
+    "ALGORITHM",
+    "TERMINAL_STATUSES",
+    "RUST_BOOK_PROSE_POLICY",
+    "RELATION_MATCH_TYPES",
+    "LINEAGE_COLLAPSE_MATCH_TYPES",
+)
+_V1_VALUE_GLOBALS = (
+    "SCHEMA",
+    "ALGORITHM",
+    "COLLAPSE_MATCH_TYPES",
+    "STATUS_SCOPES",
+)
+_V3_IDENTITY_GLOBALS = (
+    "html",
+    "re",
+    "unicodedata",
+    "Counter",
+    "defaultdict",
+    "Mapping",
+)
+_V1_IDENTITY_GLOBALS = (
+    "hashlib",
+    "json",
+    "re",
+    "defaultdict",
+    "Mapping",
+)
+_DATA232_IDENTITY_GLOBALS = (
+    "re",
+    "unicodedata",
+)
 _V8_SURVIVOR_BINDING_FIELDS = (
     "source_family",
     "modality",
@@ -71,6 +149,108 @@ def _module_source_blob(module: ModuleType) -> str:
     path = Path(source)
     _require(path.is_file() and not path.is_symlink(), f"matcher module source is not a regular file: {path}")
     return _git_blob_sha1(path.read_bytes())
+
+
+def _load_reference_module(module: ModuleType, *, label: str) -> ModuleType:
+    """Execute verified source bytes in a fresh namespace for runtime-code comparison."""
+
+    source = getattr(module, "__file__", None)
+    _require(isinstance(source, str) and source, f"{label} module has no source")
+    path = Path(source)
+    _require(path.is_file() and not path.is_symlink(), f"{label} source is not a regular file")
+    spec = importlib.util.spec_from_file_location(f"_twelve_six_{label}_reference", path)
+    _require(spec is not None and spec.loader is not None, f"cannot load {label} reference module")
+    reference = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(reference)
+    except Exception as exc:
+        raise ExpandedDedupError(f"cannot execute {label} reference module: {exc}") from exc
+    return reference
+
+
+def _runtime_code_identity(function: FunctionType) -> str:
+    return hashlib.sha256(marshal.dumps(function.__code__)).hexdigest()
+
+
+def _verify_runtime_functions(
+    module: ModuleType,
+    reference: ModuleType,
+    names: Sequence[str],
+    *,
+    label: str,
+) -> None:
+    for name in names:
+        current = getattr(module, name, None)
+        expected = getattr(reference, name, None)
+        _require(
+            isinstance(current, FunctionType) and isinstance(expected, FunctionType),
+            f"{label} runtime function missing/replaced: {name}",
+        )
+        _require(
+            current.__globals__ is module.__dict__,
+            f"{label} runtime function globals replaced: {name}",
+        )
+        _require(
+            current.__module__ == module.__name__,
+            f"{label} runtime function module replaced: {name}",
+        )
+        _require(
+            _runtime_code_identity(current) == _runtime_code_identity(expected),
+            f"{label} runtime function code replaced: {name}",
+        )
+        _require(
+            current.__defaults__ == expected.__defaults__
+            and current.__kwdefaults__ == expected.__kwdefaults__,
+            f"{label} runtime function defaults replaced: {name}",
+        )
+
+
+def _verify_runtime_values(
+    module: ModuleType,
+    reference: ModuleType,
+    names: Sequence[str],
+    *,
+    label: str,
+) -> None:
+    for name in names:
+        current = getattr(module, name, None)
+        expected = getattr(reference, name, None)
+        _require(
+            type(current) is type(expected) and current == expected,
+            f"{label} runtime value replaced: {name}",
+        )
+
+
+def _verify_regex_values(
+    module: ModuleType,
+    reference: ModuleType,
+    names: Sequence[str],
+    *,
+    label: str,
+) -> None:
+    for name in names:
+        current = getattr(module, name, None)
+        expected = getattr(reference, name, None)
+        _require(
+            type(current) is type(expected)
+            and getattr(current, "pattern", None) == getattr(expected, "pattern", None)
+            and getattr(current, "flags", None) == getattr(expected, "flags", None),
+            f"{label} runtime regex replaced: {name}",
+        )
+
+
+def _verify_identity_globals(
+    module: ModuleType,
+    reference: ModuleType,
+    names: Sequence[str],
+    *,
+    label: str,
+) -> None:
+    for name in names:
+        _require(
+            getattr(module, name, None) is getattr(reference, name, None),
+            f"{label} runtime dependency object replaced: {name}",
+        )
 
 
 def _verify_matcher_semantic_closure(
@@ -121,6 +301,53 @@ def _verify_matcher_semantic_closure(
             _module_source_blob(module) == expected_blob,
             f"matcher implementation authority drift: {module_name}",
         )
+
+    # AUDIT1055-003: file identity is not executable-object identity.  Re-execute
+    # only the already hash-verified source files in fresh private namespaces and
+    # compare the complete V3/V1 runtime closure that can affect audit_payloads()
+    # or verify_report().  This adds no matcher behavior; it rejects in-memory
+    # monkeypatches before the sealed-V8 preflight or any Rada-containing pair.
+    reference_data232 = _load_reference_module(canonical_data232, label="data232")
+    reference_v1 = _load_reference_module(canonical_v1, label="v1")
+    reference_v3 = _load_reference_module(v3, label="v3")
+
+    _verify_runtime_functions(
+        canonical_data232,
+        reference_data232,
+        _DATA232_RUNTIME_FUNCTIONS,
+        label="DATA-232",
+    )
+    _verify_runtime_values(
+        canonical_data232,
+        reference_data232,
+        _DATA232_VALUE_GLOBALS,
+        label="DATA-232",
+    )
+    _verify_regex_values(
+        canonical_data232,
+        reference_data232,
+        _DATA232_REGEX_GLOBALS,
+        label="DATA-232",
+    )
+    _verify_identity_globals(
+        canonical_data232,
+        reference_data232,
+        _DATA232_IDENTITY_GLOBALS,
+        label="DATA-232",
+    )
+
+    _verify_runtime_functions(canonical_v1, reference_v1, _V1_RUNTIME_FUNCTIONS, label="V1")
+    _verify_runtime_values(canonical_v1, reference_v1, _V1_VALUE_GLOBALS, label="V1")
+    _verify_identity_globals(canonical_v1, reference_v1, _V1_IDENTITY_GLOBALS, label="V1")
+
+    _verify_runtime_functions(v3, reference_v3, _V3_RUNTIME_FUNCTIONS, label="V3")
+    _verify_runtime_values(v3, reference_v3, _V3_VALUE_GLOBALS, label="V3")
+    _verify_identity_globals(v3, reference_v3, _V3_IDENTITY_GLOBALS, label="V3")
+    _require(
+        getattr(v3, "CAPACITY_COLLAPSE_MATCH_TYPES", None)
+        == set(reference_v1.COLLAPSE_MATCH_TYPES) | set(reference_v3.LINEAGE_COLLAPSE_MATCH_TYPES),
+        "V3 runtime value replaced: CAPACITY_COLLAPSE_MATCH_TYPES",
+    )
 
 
 def _parse_authenticated_rada_jsonl(raw_jsonl: bytes) -> list[dict[str, Any]]:
