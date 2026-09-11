@@ -173,9 +173,9 @@ def test_catalog_discovers_only_decree_title_links():
 
 def test_pagination_chooses_nearest_forward_page():
     html = (
-        '<a href="/documents/decrees?date-from=x&date-to=y&page=5">5</a>'
-        '<a href="/documents/decrees?date-from=x&date-to=y&page=3">3</a>'
-    ).encode()
+        b'<a href="/documents/decrees?date-from=x&date-to=y&page=5">5</a>'
+        b'<a href="/documents/decrees?date-from=x&date-to=y&page=3">3</a>'
+    )
     assert producer.discover_next_catalog_url(html, producer.CATALOG, 2).endswith("page=3")
 
 
@@ -202,9 +202,7 @@ def test_contact_data_is_quarantined():
 
 
 def test_many_initialized_names_are_quarantined():
-    text = " ".join(
-        ["Іваненко І. І.", "Петренко П. П.", "Сидоренко С. С.", "Коваленко К. К."]
-    )
+    text = "Іваненко І. І. Петренко П. П. Сидоренко С. С. Коваленко К. К."
     assert "high_person_name_density" in producer.privacy_reasons("Про Концепцію", text)
 
 
