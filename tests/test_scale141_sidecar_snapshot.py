@@ -261,3 +261,28 @@ def test_publication_lock_rejects_recovery_root_replacement_while_locking(
     ):
         pytest.fail("replaced recovery root must never enter critical section")
     assert swapped is True
+
+
+def test_publication_lock_pins_mutations_after_context_entry_root_replacement(
+    tmp_path: Path,
+) -> None:
+    if os.name != "posix":
+        pytest.skip("directory-fd pinning regression is POSIX-specific")
+
+    root = tmp_path / "recovery"
+    root.mkdir()
+    moved = tmp_path / "moved-recovery"
+
+    with pytest.raises(
+        OSError,
+        match="recovery root changed during publication critical section",
+    ):
+        with recovery_lock.exclusive_recovery_lock(root) as locked_root:
+            os.replace(root, moved)
+            root.mkdir()
+            (locked_root / "pinned-write.txt").write_text("old-root\n", encoding="utf-8")
+            assert not (root / "pinned-write.txt").exists()
+            assert (moved / "pinned-write.txt").read_text(encoding="utf-8") == "old-root\n"
+
+    assert not (root / "pinned-write.txt").exists()
+    assert (moved / "pinned-write.txt").read_text(encoding="utf-8") == "old-root\n"
