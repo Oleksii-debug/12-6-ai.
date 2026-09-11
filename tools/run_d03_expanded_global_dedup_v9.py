@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Run expanded D03 global dedup with the merged #824 matcher and exact authorities."""
+"""Run expanded D03 global dedup with the exact terminal #824 matcher authority."""
 from __future__ import annotations
 
 import argparse
 import copy
 import json
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -19,6 +20,81 @@ for location in (str(TOOLS), str(SRC)):
 import compose_data526_records_from_v8 as data526
 import run_next100_065f_global_dedup_v8 as v8
 from twelve_six.data.expanded_global_dedup_v9 import ExpandedDedupError, run_expanded_dedup
+
+_V7_TRACKED_AUTHORITY_PATHS = (
+    "src/twelve_six/data/cross_source_capacity_audit_v7.py",
+    "src/twelve_six/data/cross_source_capacity_audit_v6.py",
+    "src/twelve_six/data/cross_source_capacity_audit_v5.py",
+    "src/twelve_six/data/cross_source_capacity_audit_v4.py",
+    "src/twelve_six/data/cross_source_capacity_audit_v3.py",
+    "src/twelve_six/data/cross_source_capacity_audit.py",
+    "src/twelve_six/data/_data232_decontamination_matching.py",
+    "src/twelve_six/data/pipeline.py",
+    "configs/data/next100_065_cross_source_dedup_v3.json",
+    "configs/data/next100_065b_cross_source_dedup_v4.json",
+    "configs/data/next100_065c_cross_source_dedup_v5.json",
+    "configs/data/next100_065d_cross_source_dedup_v6.json",
+    "configs/data/next100_065e_cross_source_dedup_v7.json",
+)
+
+
+def _git(root: Path, *args: str) -> str:
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(root), *args],
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=20,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise ExpandedDedupError(f"cannot execute git for V7 authority: {exc}") from exc
+    if proc.returncode != 0:
+        detail = proc.stderr.strip() or proc.stdout.strip() or f"exit {proc.returncode}"
+        raise ExpandedDedupError(f"V7 git authority check failed: {detail}")
+    return proc.stdout.strip()
+
+
+def validate_v7_checkout(v7_root: Path) -> Path:
+    """Require an exact clean terminal V7 checkout before any historical replay."""
+
+    if v7_root.is_symlink():
+        raise ExpandedDedupError("V7 root must not be a symlink")
+    try:
+        root = v7_root.resolve(strict=True)
+    except OSError as exc:
+        raise ExpandedDedupError(f"V7 root cannot be resolved: {exc}") from exc
+    if not root.is_dir():
+        raise ExpandedDedupError("V7 root must be a directory")
+
+    top = Path(_git(root, "rev-parse", "--show-toplevel")).resolve()
+    if top != root:
+        raise ExpandedDedupError("V7 root must be the Git worktree root")
+    head = _git(root, "rev-parse", "HEAD")
+    if head != v8.EXPECTED_V7_HEAD:
+        raise ExpandedDedupError(
+            f"V7 checkout head drift: expected {v8.EXPECTED_V7_HEAD}, observed {head}"
+        )
+    dirty = _git(root, "status", "--porcelain=v1", "--untracked-files=all")
+    if dirty:
+        raise ExpandedDedupError("V7 checkout must be clean with no untracked files")
+
+    # HEAD+clean binds the complete tracked tree.  Explicitly re-hash the executable
+    # matcher/reconstruction/config closure so ignored/shadow artifacts cannot stand
+    # in for any authority-bearing path.
+    for relative in _V7_TRACKED_AUTHORITY_PATHS:
+        path = root / relative
+        if not path.is_file() or path.is_symlink():
+            raise ExpandedDedupError(f"V7 authority path is not a regular file: {relative}")
+        tracked = _git(root, "ls-files", "--error-unmatch", "--", relative)
+        if tracked != relative:
+            raise ExpandedDedupError(f"V7 authority path is not tracked exactly: {relative}")
+        expected_blob = _git(root, "rev-parse", f"HEAD:{relative}")
+        observed_blob = _git(root, "hash-object", str(path))
+        if observed_blob != expected_blob:
+            raise ExpandedDedupError(f"V7 authority blob drift: {relative}")
+    return root
 
 
 def read_json(path: Path) -> dict[str, Any]:
@@ -51,7 +127,8 @@ def reconstruct_v8_source_inputs(
     bulk_workspace: Path,
     v8_config: dict[str, Any],
 ) -> tuple[Any, dict[str, Any], dict[str, bytes]]:
-    v7, _, inventory, payloads = v8._capture_terminal_v7(v7_root, v8_config)
+    exact_v7_root = validate_v7_checkout(v7_root)
+    v7, _, inventory, payloads = v8._capture_terminal_v7(exact_v7_root, v8_config)
     _, bulk_rows, bulk_payloads = v8._materialize_bulk(ROOT, bulk_workspace, v8_config)
     combined_inventory = copy.deepcopy(inventory)
     existing = {str(row["source_id"]) for row in combined_inventory.get("sources", [])}
@@ -61,7 +138,7 @@ def reconstruct_v8_source_inputs(
     combined_inventory["final_refresh_required"] = False
     combined_inventory["terminal_refresh_rule"] = (
         "Reconstructed exact V8 input graph solely to recover sealed V8 survivor payloads; "
-        "expanded matching is performed once by the incumbent #824 V3 matcher."
+        "expanded matching is performed once by the exact terminal #824 V3 semantic closure."
     )
     combined_payloads = dict(payloads)
     combined_payloads.update(bulk_payloads)
