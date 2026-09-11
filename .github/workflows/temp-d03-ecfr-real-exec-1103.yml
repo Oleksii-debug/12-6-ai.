@@ -28,12 +28,18 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p /tmp/ecfr-a /tmp/ecfr-b execution-evidence
-          python tools/materialize_d03_ecfr_point_in_time.py \
+          if ! python tools/materialize_d03_ecfr_point_in_time.py \
             --output-dir /tmp/ecfr-a \
-            > /tmp/ecfr-a/stdout.json
-          python tools/materialize_d03_ecfr_point_in_time.py \
+            > /tmp/ecfr-a/stdout.json 2>&1; then
+            cat /tmp/ecfr-a/stdout.json
+            exit 1
+          fi
+          if ! python tools/materialize_d03_ecfr_point_in_time.py \
             --output-dir /tmp/ecfr-b \
-            > /tmp/ecfr-b/stdout.json
+            > /tmp/ecfr-b/stdout.json 2>&1; then
+            cat /tmp/ecfr-b/stdout.json
+            exit 1
+          fi
           cmp /tmp/ecfr-a/ecfr-2026-09-03-title-1.evidence.json \
               /tmp/ecfr-b/ecfr-2026-09-03-title-1.evidence.json
           python - <<'PY'
