@@ -59,7 +59,14 @@
   },
   "resource_selection": {
     "allowed_formats": ["JSON", ".JSON", "json"],
-    "exclude_name_fragments": ["structure", "структур", "працівник", "employee"],
+    "exclude_name_fragments": [
+      "structure",
+      "структур",
+      "працівник",
+      "employee",
+      "archive",
+      "архівн"
+    ],
     "prefer_name_fragments": ["register", "реєстр"],
     "max_download_bytes": 10000000,
     "expected_resource_id": null,
