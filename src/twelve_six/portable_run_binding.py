@@ -171,7 +171,7 @@ def _validate_ready_candidate_scalars(
             errors.append(f"overlay_{name}_invalid")
 
     for name in ("cross_provider_transfer", "resume_validated"):
-        if type(lineage.get(name)) is not bool:
+        if not isinstance(lineage.get(name), bool):
             errors.append(f"overlay_lineage_{name}_must_be_boolean")
 
     if not _is_zero_number(resource.get("maximum_cost_usd")):
