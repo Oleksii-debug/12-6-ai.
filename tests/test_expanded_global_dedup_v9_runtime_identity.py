@@ -79,6 +79,18 @@ def _conditional_pair_matches(*args, **kwargs):
     return []
 
 
+class _EqualitySpoofFloat:
+    def __eq__(self, other: object) -> bool:
+        return True
+
+    def __float__(self) -> float:
+        return 0.0
+
+
+class _CapacityMatchSpoof(str):
+    pass
+
+
 def _bind_function(module: ModuleType, name: str, template) -> object:
     function = FunctionType(template.__code__, module.__dict__, name)
     function.__module__ = module.__name__
@@ -133,7 +145,7 @@ def _install_full_runtime(
         setattr(current_v3, name, sentinel)
         setattr(reference_v3, name, sentinel)
 
-    thresholds = {"sentinel": 1.0}
+    thresholds = {"natural_near_jaccard": 0.80}
     invisible = {1: None}
     keywords = {"if"}
     current_data232.DEFAULT_THRESHOLDS = thresholds
@@ -238,5 +250,41 @@ def test_conditional_v1_pair_matches_substitution_is_rejected_before_matcher_exe
     with pytest.raises(
         ExpandedDedupError,
         match="V1 runtime function code replaced: _pair_matches",
+    ):
+        _verify_matcher_semantic_closure(audit, verify)
+
+
+def test_in_place_threshold_equality_spoof_is_rejected_before_matcher_execution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, _, data232, audit, verify = _install_full_runtime(monkeypatch)
+    spoof = _EqualitySpoofFloat()
+    data232.DEFAULT_THRESHOLDS["natural_near_jaccard"] = spoof
+
+    assert spoof == 0.80
+    assert float(spoof) == 0.0
+    assert data232.DEFAULT_THRESHOLDS == {"natural_near_jaccard": 0.80}
+
+    with pytest.raises(
+        ExpandedDedupError,
+        match="DATA-232 runtime value replaced: DEFAULT_THRESHOLDS",
+    ):
+        _verify_matcher_semantic_closure(audit, verify)
+
+
+def test_capacity_collapse_member_type_spoof_is_rejected_before_matcher_execution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    v3, _, _, audit, verify = _install_full_runtime(monkeypatch)
+    v3.CAPACITY_COLLAPSE_MATCH_TYPES = {
+        _CapacityMatchSpoof("raw_exact"),
+        "lineage_mirror",
+    }
+
+    assert v3.CAPACITY_COLLAPSE_MATCH_TYPES == {"raw_exact", "lineage_mirror"}
+
+    with pytest.raises(
+        ExpandedDedupError,
+        match="V3 runtime value replaced: CAPACITY_COLLAPSE_MATCH_TYPES",
     ):
         _verify_matcher_semantic_closure(audit, verify)
