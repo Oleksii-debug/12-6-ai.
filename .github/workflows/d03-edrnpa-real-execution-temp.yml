@@ -1,4 +1,4 @@
-name: TEMP D03 EDRNPA XML schema diagnosis
+name: TEMP D03 EDRNPA substantive real execution
 
 on:
   push:
@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 jobs:
-  inspect-current-edrnpa-xml:
+  execute-current-edrnpa-twice:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
     steps:
       - name: Check out exact Product head
         uses: actions/checkout@v4
@@ -22,14 +22,16 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Inspect nested text XML structure without payload text
+      - name: Compile repaired materializer
+        run: python -m py_compile tools/probe_d03_edrnpa_open_data_v1.py
+
+      - name: Acquire and materialize exact current source twice
         run: |
           python - <<'PY'
-          import collections
           import importlib.util
+          import json
+          import os
           import shutil
-          import xml.etree.ElementTree as ET
-          import zipfile
           from pathlib import Path
 
           tool = Path('tools/probe_d03_edrnpa_open_data_v1.py')
@@ -38,69 +40,128 @@ jobs:
           mod = importlib.util.module_from_spec(spec)
           spec.loader.exec_module(mod)
 
-          root = Path('/tmp/edrnpa-schema')
+          root = Path('/tmp/edrnpa-real-execution')
           root.mkdir(parents=True, exist_ok=True)
-          source = mod.download_archive(timeout=240.0)
-          if mod.md5(source) != mod.RESOURCE_MD5:
-              raise SystemExit('exact current resource MD5 mismatch')
-          outer_path = root / 'source.zip'
-          outer_path.write_bytes(source)
+          results = []
+          for run_index in (1, 2):
+              run_root = root / f'run-{run_index}'
+              source_path = run_root / 'source.zip'
+              source_identity = mod.download_archive_to(source_path, timeout=240.0)
+              rows, report = mod.materialize_archive_path(
+                  source_path,
+                  work_dir=run_root / 'work',
+              )
+              if not rows:
+                  raise SystemExit('real materialization returned zero selected rows')
+              if any(row['training_eligible'] or row['evaluation_eligible'] for row in rows):
+                  raise SystemExit('candidate eligibility widened unexpectedly')
+              truth = report['truth_boundary']
+              zero_fields = (
+                  'canonical_capacity_credit_bytes',
+                  'family_count_credit_added',
+                  'training_authorized_bytes',
+                  'unique_causal_loss_positions',
+                  'authorized_optimized_target_exposure',
+                  'optimizer_updates',
+              )
+              if any(truth[field] != 0 for field in zero_fields):
+                  raise SystemExit('zero-credit truth boundary widened unexpectedly')
+              if truth['model_training_executed'] or truth['final_test_accessed']:
+                  raise SystemExit('training/final-test truth boundary widened unexpectedly')
+              results.append(
+                  {
+                      'run_index': run_index,
+                      'source': source_identity,
+                      'source_report_sha256': report['source']['source_sha256'],
+                      'source_report_bytes': report['source']['source_bytes'],
+                      'nested_zip_member': report['source']['nested_zip_member'],
+                      'nested_zip_bytes': report['source']['nested_zip_bytes'],
+                      'nested_xml_member': report['source']['nested_xml_member'],
+                      'nested_xml_bytes': report['source']['nested_xml_bytes'],
+                      'source_documents': report['selection']['source_documents'],
+                      'candidate_objects_after_quality': report['selection'][
+                          'candidate_objects_after_quality'
+                      ],
+                      'selected_objects': report['selection']['selected_objects'],
+                      'selected_bytes': report['selection']['selected_bytes'],
+                      'duplicate_normalized_objects': report['selection'][
+                          'duplicate_normalized_objects'
+                      ],
+                      'quarantined_email_or_phone': report['selection'][
+                          'quarantined_email_or_phone'
+                      ],
+                      'inventory_identity_sha256': report['selection'][
+                          'inventory_identity_sha256'
+                      ],
+                      'report_identity_sha256': report['report_identity_sha256'],
+                  }
+              )
+              del rows
+              del report
+              shutil.rmtree(run_root)
 
-          def local(tag: str) -> str:
-              return tag.rsplit('}', 1)[-1] if '}' in tag else tag
+          comparable_keys = (
+              'source',
+              'source_report_sha256',
+              'source_report_bytes',
+              'nested_zip_member',
+              'nested_zip_bytes',
+              'nested_xml_member',
+              'nested_xml_bytes',
+              'source_documents',
+              'candidate_objects_after_quality',
+              'selected_objects',
+              'selected_bytes',
+              'duplicate_normalized_objects',
+              'quarantined_email_or_phone',
+              'inventory_identity_sha256',
+              'report_identity_sha256',
+          )
+          left = {key: results[0][key] for key in comparable_keys}
+          right = {key: results[1][key] for key in comparable_keys}
+          if left != right:
+              raise SystemExit('two independent current-source executions are not identical')
 
-          with zipfile.ZipFile(outer_path) as outer:
-              info = outer.getinfo('25.2-edrnpa_text.zip')
-              nested_path = root / 'texts.zip'
-              with outer.open(info) as src, nested_path.open('wb') as dst:
-                  shutil.copyfileobj(src, dst, length=1024 * 1024)
-
-          with zipfile.ZipFile(nested_path) as nested:
-              ninfos = [i for i in nested.infolist() if not i.is_dir()]
-              if len(ninfos) != 1 or not ninfos[0].filename.casefold().endswith('.xml'):
-                  raise SystemExit('unexpected nested text ZIP shape')
-              info = ninfos[0]
-              print(f'XML_MEMBER name={info.filename!r} size={info.file_size} compressed={info.compress_size}')
-              with nested.open(info) as stream:
-                  depth = 0
-                  root_tag = None
-                  direct_child_count = 0
-                  tag_counts = collections.Counter()
-                  for event, elem in ET.iterparse(stream, events=('start', 'end')):
-                      tag = local(elem.tag)
-                      if event == 'start':
-                          if root_tag is None:
-                              root_tag = tag
-                              print(f'ROOT tag={tag!r} attrs={sorted(local(k) for k in elem.attrib)}')
-                          if depth <= 3 and sum(tag_counts.values()) < 120:
-                              print(
-                                  f'START depth={depth} tag={tag!r} '
-                                  f'attrs={sorted(local(k) for k in elem.attrib)}'
-                              )
-                          depth += 1
-                          tag_counts[tag] += 1
-                          continue
-
-                      depth -= 1
-                      text_chars = len(elem.text or '')
-                      if depth == 1:
-                          direct_child_count += 1
-                          child_shapes = []
-                          for child in list(elem)[:40]:
-                              child_shapes.append(
-                                  (local(child.tag), len(child.text or ''), sorted(local(k) for k in child.attrib))
-                              )
-                          print(
-                              f'ROOT_CHILD index={direct_child_count} tag={tag!r} '
-                              f'attrs={sorted(local(k) for k in elem.attrib)} '
-                              f'text_chars={text_chars} child_shapes={child_shapes}'
-                          )
-                          elem.clear()
-                          if direct_child_count >= 5:
-                              break
-                      elif depth >= 1:
-                          # Keep the first root-child subtree intact until its end,
-                          # then clear it as a unit. No payload text is printed.
-                          pass
-                  print(f'OBSERVED_TAG_COUNTS {dict(tag_counts)}')
+          evidence = {
+              'schema_version': '12-6.d03-edrnpa-real-execution-evidence.v1',
+              'execution_profile': 'LOCAL_FREE',
+              'product_head': os.environ['GITHUB_SHA'],
+              'resource_id': mod.RESOURCE_ID,
+              'resource_updated': mod.RESOURCE_UPDATED,
+              'expected_resource_md5': mod.RESOURCE_MD5,
+              'runs': results,
+              'replay_identical': True,
+              'truth_boundary': {
+                  'status': 'CANDIDATE_MATERIALIZED_ZERO_CREDIT',
+                  'canonical_corpus_admitted': False,
+                  'training_authorized_bytes': 0,
+                  'unique_causal_loss_positions': 0,
+                  'authorized_optimized_target_exposure': 0,
+                  'optimizer_updates': 0,
+                  'model_training_executed': False,
+                  'final_test_accessed': False,
+                  'paid_compute_used': False,
+                  'foreign_pretrained_weights_used': False,
+              },
+          }
+          evidence['evidence_identity_sha256'] = mod.sha256(mod.cjson(evidence))
+          evidence_dir = Path('evidence')
+          evidence_dir.mkdir(exist_ok=True)
+          path = evidence_dir / 'edrnpa-current-real-execution-v1.json'
+          path.write_bytes(mod.cjson(evidence))
+          print(
+              'REAL_EXECUTION_OK '
+              f"selected_objects={results[0]['selected_objects']} "
+              f"selected_bytes={results[0]['selected_bytes']} "
+              f"inventory={results[0]['inventory_identity_sha256']} "
+              f"evidence={evidence['evidence_identity_sha256']}"
+          )
           PY
+
+      - name: Upload text-free execution evidence only
+        uses: actions/upload-artifact@v4
+        with:
+          name: edrnpa-current-real-execution-${{ github.sha }}
+          path: evidence/edrnpa-current-real-execution-v1.json
+          retention-days: 7
+          if-no-files-found: error
