@@ -190,12 +190,46 @@ def _category_names(rows: Any) -> set[str]:
     names: set[str] = set()
     for row in rows:
         if isinstance(row, str):
-            names.add(row.removeprefix("Категорія:"))
+            names.add(row.removeprefix("Категорія:").replace("_", " "))
         elif isinstance(row, dict):
             value = row.get("category", row.get("*", row.get("title")))
             if isinstance(value, str):
-                names.add(value.removeprefix("Категорія:"))
+                names.add(value.removeprefix("Категорія:").replace("_", " "))
     return names
+
+
+def _current_page_revision_and_approval(
+    title: str,
+    *,
+    get_json: Callable[[dict[str, str]], dict[str, Any]],
+) -> tuple[int, bool]:
+    response = get_json(
+        {
+            "action": "query",
+            "titles": title,
+            "prop": "revisions|categories",
+            "rvprop": "ids",
+            "cllimit": "max",
+        }
+    )
+    if response.get("continue") is not None:
+        raise WikisourceIntakeError("page category response is unexpectedly truncated")
+    query_root = response.get("query")
+    pages = query_root.get("pages") if isinstance(query_root, dict) else None
+    if not isinstance(pages, list) or len(pages) != 1 or not isinstance(pages[0], dict):
+        raise WikisourceIntakeError("page metadata response is ambiguous")
+    page = pages[0]
+    if page.get("missing") is True or page.get("title") != title:
+        raise WikisourceIntakeError("linked page is missing or title drifted")
+    revisions = page.get("revisions")
+    if not isinstance(revisions, list) or len(revisions) != 1:
+        raise WikisourceIntakeError("page revision identity is ambiguous")
+    revision = revisions[0]
+    revision_id = revision.get("revid") if isinstance(revision, dict) else None
+    if not isinstance(revision_id, int) or isinstance(revision_id, bool) or revision_id <= 0:
+        raise WikisourceIntakeError("invalid page revision id")
+    approved = APPROVED_CATEGORY in _category_names(page.get("categories"))
+    return revision_id, approved
 
 
 def fetch_page_snapshot(
@@ -206,34 +240,27 @@ def fetch_page_snapshot(
     import hashlib
 
     page_number = validate_page_title(title)
-    query = get_json(
-        {"action": "query", "titles": title, "prop": "revisions", "rvprop": "ids"}
+    revision_id, approved_before = _current_page_revision_and_approval(
+        title, get_json=get_json
     )
-    query_root = query.get("query")
-    pages = query_root.get("pages") if isinstance(query_root, dict) else None
-    if not isinstance(pages, list) or len(pages) != 1 or not isinstance(pages[0], dict):
-        raise WikisourceIntakeError("page metadata response is ambiguous")
-    page = pages[0]
-    if page.get("missing") is True:
-        raise WikisourceIntakeError("linked page is missing")
-    revisions = page.get("revisions")
-    if not isinstance(revisions, list) or len(revisions) != 1:
-        raise WikisourceIntakeError("page revision identity is ambiguous")
-    revision = revisions[0]
-    revision_id = revision.get("revid") if isinstance(revision, dict) else None
-    if not isinstance(revision_id, int) or isinstance(revision_id, bool) or revision_id <= 0:
-        raise WikisourceIntakeError("invalid page revision id")
+    if not approved_before:
+        raise WikisourceIntakeError("exact page revision is not approved")
     rendered = get_json(
-        {"action": "parse", "oldid": str(revision_id), "prop": "text|categories"}
+        {"action": "parse", "oldid": str(revision_id), "prop": "text|revid"}
     )
     parse = rendered.get("parse")
     if not isinstance(parse, dict) or not isinstance(parse.get("text"), str):
         raise WikisourceIntakeError("page rendered text is missing")
     parsed_revision = parse.get("revid")
-    if parsed_revision is not None and parsed_revision != revision_id:
+    if parsed_revision != revision_id:
         raise WikisourceIntakeError("parsed revision does not match sealed page revision")
-    if APPROVED_CATEGORY not in _category_names(parse.get("categories")):
-        raise WikisourceIntakeError("exact page revision is not approved")
+    after_revision_id, approved_after = _current_page_revision_and_approval(
+        title, get_json=get_json
+    )
+    if after_revision_id != revision_id:
+        raise WikisourceIntakeError("page revision changed during exact render")
+    if not approved_after:
+        raise WikisourceIntakeError("page approval changed during exact render")
     normalized = rendered_html_to_text(parse["text"])
     validate_ua_page_text(normalized)
     payload = normalized.encode("utf-8")
