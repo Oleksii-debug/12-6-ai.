@@ -707,3 +707,4 @@ def test_adapter_output_executes_through_canonical_next100_gate(
     )
     assert result["claim_boundary"]["tokenizer_fit_authorized"] is False
     assert result["claim_boundary"]["model_training_authorized"] is False
+
