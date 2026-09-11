@@ -25,6 +25,80 @@ MODEL341_AUTHORITY = {
 _GIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
+_SCIENTIFIC_BINDING_SPECS: dict[str, tuple[tuple[str, tuple[str, ...]], ...]] = {
+    "code": (
+        ("git_sha", ("code", "git_sha")),
+    ),
+    "corpus": (
+        ("manifest_sha256", ("corpus", "manifest_sha256")),
+        ("split_sha256", ("corpus", "split_sha256")),
+        ("packing_sha256", ("corpus", "packing_sha256")),
+        ("two_clean_builds_identical", ("corpus", "two_clean_builds_identical")),
+    ),
+    "tokenizer": (
+        ("identity_sha256", ("tokenizer", "identity_sha256")),
+        ("decision", ("tokenizer", "decision")),
+    ),
+    "loss_ledger": (
+        ("identity_sha256", ("loss_ledger", "identity_sha256")),
+        ("unique_causal_loss_positions", ("loss_ledger", "unique_causal_loss_positions")),
+    ),
+    "data_budget": (
+        ("loss_ledger_identity_sha256", ("loss_ledger", "identity_sha256")),
+        ("unique_causal_loss_positions", ("loss_ledger", "unique_causal_loss_positions")),
+        ("data_budget_status", ("loss_ledger", "data_budget_status")),
+    ),
+    "checkpoint_integrity": (
+        ("status", ("checkpoint_integrity", "status")),
+    ),
+    "evaluation_firewall": (
+        ("status", ("evaluation", "status")),
+    ),
+    "selection_validation": (
+        ("status", ("evaluation", "status")),
+    ),
+    "training_recipe": (
+        ("status", ("training_recipe", "status")),
+        ("seed_count", ("training_recipe", "seed_count")),
+        ("config_sha256", ("training_recipe", "config_sha256")),
+        ("stopping_policy_sha256", ("training_recipe", "stopping_policy_sha256")),
+        (
+            "requested_unique_loss_positions",
+            ("training_recipe", "requested_unique_loss_positions"),
+        ),
+        (
+            "requested_total_training_exposures",
+            ("training_recipe", "requested_total_training_exposures"),
+        ),
+        (
+            "max_exposures_per_unique_position",
+            ("training_recipe", "max_exposures_per_unique_position"),
+        ),
+    ),
+    "bounded_pilot": (
+        ("status", ("bounded_pilot", "status")),
+        ("numerics_finite", ("bounded_pilot", "numerics_finite")),
+        ("resume_equivalent", ("bounded_pilot", "resume_equivalent")),
+        (
+            "loss_trajectory_acceptable",
+            ("bounded_pilot", "loss_trajectory_acceptable"),
+        ),
+    ),
+    "learned_3m": (
+        ("status", ("learned_scale_evidence", "learned_3m", "status")),
+    ),
+    "learned_10m": (
+        ("status", ("learned_scale_evidence", "learned_10m", "status")),
+    ),
+    "cost_envelope": (
+        ("status", ("cost_envelope", "status")),
+        ("maximum_cost_usd", ("cost_envelope", "maximum_cost_usd")),
+    ),
+    "independent_audit": (
+        ("status", ("independent_audit", "status")),
+    ),
+}
+
 
 @dataclass(frozen=True)
 class ReadinessAssessment:
@@ -95,16 +169,41 @@ def _valid_authority_ref(value: Any, *, require_workflow: bool = False) -> bool:
     return True
 
 
+def _path_value(root: dict[str, Any], path: tuple[str, ...]) -> Any:
+    value: Any = root
+    for key in path:
+        if not isinstance(value, dict):
+            return None
+        value = value.get(key)
+    return value
+
+
+def scientific_authority_binding(
+    role: str,
+    evidence: Any,
+) -> dict[str, Any] | None:
+    """Return the exact readiness metadata that a trusted role authority must certify."""
+    if not isinstance(role, str) or not role.strip() or not isinstance(evidence, dict):
+        return None
+    spec = _SCIENTIFIC_BINDING_SPECS.get(role.strip())
+    if spec is None:
+        return None
+    return {name: _path_value(evidence, path) for name, path in spec}
+
+
 def scientific_authority_token(
     role: str,
     authority: Any,
     *,
+    binding: Any = None,
     require_workflow: bool = False,
 ) -> str | None:
-    """Return the role-bound digest a trusted live resolver may verify out of packet."""
+    """Return a role-, authority-, and scientific-metadata-bound resolver digest."""
     if not isinstance(role, str) or not role.strip():
         return None
     if not _valid_authority_ref(authority, require_workflow=require_workflow):
+        return None
+    if binding is None:
         return None
 
     payload = {
@@ -117,13 +216,18 @@ def scientific_authority_token(
         "workflow_conclusion": (
             authority.get("workflow_conclusion") if require_workflow else None
         ),
+        "binding": binding,
     }
-    encoded = json.dumps(
-        payload,
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=True,
-    ).encode("utf-8")
+    try:
+        encoded = json.dumps(
+            payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=True,
+            allow_nan=False,
+        ).encode("utf-8")
+    except (TypeError, ValueError):
+        return None
     return hashlib.sha256(encoded).hexdigest()
 
 
@@ -145,15 +249,18 @@ def _require_scientific_authority(
     name: str,
     role: str,
     verified_authorities: set[str],
+    evidence: dict[str, Any],
     *,
     require_workflow: bool = False,
 ) -> None:
     if not _valid_authority_ref(value, require_workflow=require_workflow):
         blockers.append(name)
         return
+    binding = scientific_authority_binding(role, evidence)
     token = scientific_authority_token(
         role,
         value,
+        binding=binding,
         require_workflow=require_workflow,
     )
     if token is None or token not in verified_authorities:
@@ -237,8 +344,26 @@ def assess_learned20m_readiness(
     local = list(envelope_errors)
 
     code = evidence.get("code") if isinstance(evidence.get("code"), dict) else {}
-    if not _is_git_sha(code.get("git_sha")):
+    code_sha = code.get("git_sha")
+    if not _is_git_sha(code_sha):
         local.append("exact_code_sha_missing")
+    code_authority = code.get("authority")
+    _require_scientific_authority(
+        local,
+        code_authority,
+        "exact_code_authority_missing",
+        "code",
+        verified_scientific,
+        evidence,
+        require_workflow=True,
+    )
+    if (
+        _is_git_sha(code_sha)
+        and isinstance(code_authority, dict)
+        and _is_git_sha(code_authority.get("git_sha"))
+        and code_authority["git_sha"] != code_sha
+    ):
+        local.append("exact_code_authority_sha_mismatch")
 
     corpus = evidence.get("corpus") if isinstance(evidence.get("corpus"), dict) else {}
     _require_identity(local, corpus.get("manifest_sha256"), "corpus_manifest_missing")
@@ -252,6 +377,7 @@ def assess_learned20m_readiness(
         "terminal_corpus_authority_missing",
         "corpus",
         verified_scientific,
+        evidence,
         require_workflow=True,
     )
 
@@ -267,6 +393,7 @@ def assess_learned20m_readiness(
         "terminal_tokenizer_authority_missing",
         "tokenizer",
         verified_scientific,
+        evidence,
         require_workflow=True,
     )
 
@@ -281,6 +408,7 @@ def assess_learned20m_readiness(
         "terminal_unique_loss_ledger_authority_missing",
         "loss_ledger",
         verified_scientific,
+        evidence,
         require_workflow=True,
     )
     _require_scientific_authority(
@@ -289,6 +417,7 @@ def assess_learned20m_readiness(
         "data_budget_authority_missing",
         "data_budget",
         verified_scientific,
+        evidence,
         require_workflow=True,
     )
     if ledger.get("data_budget_status") != "QUALIFIED":
@@ -305,6 +434,7 @@ def assess_learned20m_readiness(
         "checkpoint_integrity_authority_missing",
         "checkpoint_integrity",
         verified_scientific,
+        evidence,
         require_workflow=True,
     )
     if checkpoint.get("status") != "PASS":
@@ -319,6 +449,7 @@ def assess_learned20m_readiness(
         "evaluation_firewall_authority_missing",
         "evaluation_firewall",
         verified_scientific,
+        evidence,
         require_workflow=True,
     )
     _require_scientific_authority(
@@ -327,6 +458,7 @@ def assess_learned20m_readiness(
         "selection_validation_authority_missing",
         "selection_validation",
         verified_scientific,
+        evidence,
         require_workflow=True,
     )
     if evaluation.get("status") != "PASS":
@@ -343,6 +475,7 @@ def assess_learned20m_readiness(
         "training_recipe_authority_missing",
         "training_recipe",
         verified_scientific,
+        evidence,
         require_workflow=True,
     )
     if recipe.get("status") != "QUALIFIED":
@@ -384,6 +517,7 @@ def assess_learned20m_readiness(
         "bounded_pilot_authority_missing",
         "bounded_pilot",
         verified_scientific,
+        evidence,
         require_workflow=True,
     )
     if pilot.get("status") != "PASS":
@@ -405,6 +539,7 @@ def assess_learned20m_readiness(
             f"{label}_authority_missing",
             label,
             verified_scientific,
+            evidence,
             require_workflow=True,
         )
         if item.get("status") != "PASS":
@@ -417,6 +552,7 @@ def assess_learned20m_readiness(
         "cost_envelope_authority_missing",
         "cost_envelope",
         verified_scientific,
+        evidence,
     )
     if cost.get("status") != "ESTIMATED":
         compute.append("cost_envelope_not_estimated")
@@ -439,6 +575,7 @@ def assess_learned20m_readiness(
         "independent_audit_authority_missing",
         "independent_audit",
         verified_scientific,
+        evidence,
         require_workflow=True,
     )
     if audit.get("status") not in {"PASS", "PASS_WITH_NOTES"}:
