@@ -113,6 +113,9 @@ def test_author_is_preserved_only_in_sidecar_and_report_is_text_free() -> None:
     assert sidecar[0]["attribution_metadata_in_training_text"] is False
     assert candidate["text"] == "A stable candidate text."
     assert report["training_text_modified"] is False
+    assert report["attributable_record_count"] == 1
+    assert report["excluded_record_count"] == 0
+    assert report["attribution_coverage_complete"] is True
     durable = json.dumps(report, ensure_ascii=False, sort_keys=True)
     assert "Ada Example" not in durable
     assert report["training_authorized_bytes"] == 0
@@ -141,7 +144,33 @@ def test_unselected_missing_author_does_not_block_retained_candidate() -> None:
     assert [row["record_id"] for row in sidecar] == ["essay-a"]
     assert sidecar[0]["attribution"]["author"] == "Ada Example"
     assert report["selected_record_count"] == 1
+    assert report["attributable_record_count"] == 1
+    assert report["excluded_record_count"] == 0
     assert report["training_authorized_bytes"] == 0
+
+
+def test_retained_missing_author_is_excluded_fail_closed_without_id_leak() -> None:
+    candidates = [_candidate("essay-missing", "Text missing"), _candidate("essay-a", "Text A")]
+    raw = _raw_vector(
+        _raw("essay-missing", author="   "),
+        _raw("essay-a", author="Ada Example"),
+    )
+
+    sidecar, report = pdr.build_sidecar(candidates, raw)
+
+    assert [row["record_id"] for row in sidecar] == ["essay-a"]
+    assert report["status"] == "ATTRIBUTION_PARTIAL_FAIL_CLOSED_ZERO_CREDIT"
+    assert report["selected_record_count"] == 2
+    assert report["attributable_record_count"] == 1
+    assert report["excluded_record_count"] == 1
+    assert report["excluded_reason_counts"] == {"missing": 1}
+    assert report["attribution_coverage_complete"] is False
+    assert report["canonical_corpus_admitted"] is False
+    assert report["training_authorized_bytes"] == 0
+    assert report["authorized_optimized_target_exposure"] == 0
+    durable = json.dumps(report, ensure_ascii=False, sort_keys=True)
+    assert "essay-missing" not in durable
+    assert "Ada Example" not in durable
 
 
 def test_exact_candidate_reader_binds_bytes_hash_count_and_projection(
@@ -187,10 +216,18 @@ def test_exact_candidate_reader_rejects_substitution(
         pdr._read_exact_candidate(candidate_path)
 
 
-@pytest.mark.parametrize("author", [None, "", "   ", 123])
-def test_missing_or_invalid_author_fails_closed(author: object) -> None:
-    with pytest.raises(pdr.AttributionError, match="author"):
-        pdr.build_sidecar([_candidate()], _raw_vector(_raw(author=author)))
+@pytest.mark.parametrize("author", [None, "", "   ", 123, "x\x00y", "a" * 513])
+def test_invalid_retained_author_never_enters_sidecar(author: object) -> None:
+    sidecar, report = pdr.build_sidecar([_candidate()], _raw_vector(_raw(author=author)))
+
+    assert sidecar == []
+    assert report["selected_record_count"] == 1
+    assert report["attributable_record_count"] == 0
+    assert report["excluded_record_count"] == 1
+    assert report["attribution_coverage_complete"] is False
+    assert report["canonical_corpus_admitted"] is False
+    assert report["training_authorized_bytes"] == 0
+    assert report["authorized_optimized_target_exposure"] == 0
 
 
 def test_raw_metadata_schema_drift_fails_closed() -> None:

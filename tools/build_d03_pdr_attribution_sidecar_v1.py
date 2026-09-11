@@ -125,15 +125,22 @@ def _validate_pdr_url(value: Any) -> str:
     return value
 
 
-def _validate_author(value: Any) -> str:
-    _require(isinstance(value, str), "PDR author must be a string")
+def _author_value_or_reason(value: Any) -> tuple[str | None, str | None]:
+    if not isinstance(value, str):
+        return None, "non_string"
     author = value.strip()
-    _require(bool(author), "PDR author missing")
-    _require(len(author) <= 512, "PDR author exceeds safety bound")
-    _require(
-        not any(ord(ch) < 32 for ch in author),
-        "PDR author contains control character",
-    )
+    if not author:
+        return None, "missing"
+    if len(author) > 512:
+        return None, "too_long"
+    if any(ord(ch) < 32 for ch in author):
+        return None, "control_character"
+    return author, None
+
+
+def _validate_author(value: Any) -> str:
+    author, reason = _author_value_or_reason(value)
+    _require(author is not None, f"PDR author invalid: {reason}")
     return author
 
 
@@ -267,6 +274,8 @@ def build_sidecar(
             raw_index[key] = author_value
 
     sidecar: list[dict[str, Any]] = []
+    exclusions: list[dict[str, str]] = []
+    excluded_reason_counts: dict[str, int] = {}
     seen_candidate_keys: set[tuple[str, str]] = set()
     for row in candidate_rows:
         _require(isinstance(row, dict), "candidate row must be an object")
@@ -274,7 +283,18 @@ def build_sidecar(
         _require(key not in seen_candidate_keys, "duplicate candidate record identity")
         seen_candidate_keys.add(key)
         _require(key in raw_index, "candidate has no exact raw attribution record")
-        author = _validate_author(raw_index[key])
+        author, exclusion_reason = _author_value_or_reason(raw_index[key])
+        if author is None:
+            reason = str(exclusion_reason)
+            excluded_reason_counts[reason] = excluded_reason_counts.get(reason, 0) + 1
+            exclusions.append(
+                {
+                    "record_id_sha256": _sha256(row["record_id"].encode("utf-8")),
+                    "origin_url_sha256": _sha256(row["origin_url"].encode("utf-8")),
+                    "reason": reason,
+                }
+            )
+            continue
         sidecar.append(
             {
                 "schema_version": SCHEMA,
@@ -303,9 +323,15 @@ def build_sidecar(
         for row in sidecar
     )
     projection = _candidate_projection(candidate_rows)
+    attribution_coverage_complete = not exclusions
+    status = (
+        "ATTRIBUTION_PROVENANCE_BOUND_ZERO_CREDIT"
+        if attribution_coverage_complete
+        else "ATTRIBUTION_PARTIAL_FAIL_CLOSED_ZERO_CREDIT"
+    )
     report_core = {
         "schema_version": REPORT_SCHEMA,
-        "status": "ATTRIBUTION_PROVENANCE_BOUND_ZERO_CREDIT",
+        "status": status,
         "source_dataset": SOURCE_DATASET,
         "source_revision": SOURCE_REVISION,
         "historical_execution_run_id": EXPECTED_EXECUTION_RUN_ID,
@@ -313,13 +339,19 @@ def build_sidecar(
         "historical_candidate_jsonl_bytes": EXPECTED_CANDIDATE_JSONL_BYTES,
         "historical_report_identity_sha256": EXPECTED_HISTORICAL_REPORT_ID,
         "historical_manifest_identity_sha256": EXPECTED_HISTORICAL_MANIFEST_ID,
-        "selected_record_count": len(sidecar),
+        "selected_record_count": len(candidate_rows),
+        "attributable_record_count": len(sidecar),
+        "excluded_record_count": len(exclusions),
+        "excluded_reason_counts": dict(sorted(excluded_reason_counts.items())),
+        "excluded_candidate_identity_sha256": _sha256(_canonical_bytes(exclusions)),
+        "attribution_coverage_complete": attribution_coverage_complete,
         "selected_normalized_utf8_bytes": sum(
             int(row["normalized_utf8_bytes"]) for row in candidate_rows
         ),
         "candidate_projection_identity_sha256": _sha256(_canonical_bytes(projection)),
         "attribution_sidecar_jsonl_sha256": _sha256(sidecar_bytes),
         "author_strings_persisted_in_report": False,
+        "excluded_record_ids_persisted_in_report": False,
         "training_text_modified": False,
         "canonical_corpus_admitted": False,
         "training_authorized_bytes": 0,
@@ -436,7 +468,12 @@ def main() -> int:
     )
     _require(
         report["selected_record_count"] == EXPECTED_SELECTED_RECORD_COUNT,
-        "sidecar record count mismatch",
+        "sidecar candidate record count mismatch",
+    )
+    _require(
+        report["attributable_record_count"] + report["excluded_record_count"]
+        == EXPECTED_SELECTED_RECORD_COUNT,
+        "sidecar attribution accounting mismatch",
     )
     _require(
         report["selected_normalized_utf8_bytes"]
@@ -455,6 +492,12 @@ def main() -> int:
             {
                 "status": report["status"],
                 "selected_record_count": report["selected_record_count"],
+                "attributable_record_count": report["attributable_record_count"],
+                "excluded_record_count": report["excluded_record_count"],
+                "excluded_reason_counts": report["excluded_reason_counts"],
+                "excluded_candidate_identity_sha256": report[
+                    "excluded_candidate_identity_sha256"
+                ],
                 "attribution_sidecar_jsonl_sha256": report[
                     "attribution_sidecar_jsonl_sha256"
                 ],
