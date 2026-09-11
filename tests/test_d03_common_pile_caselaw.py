@@ -308,8 +308,10 @@ def test_scan_budget_stops_before_crossing_envelope(
     fake_identities(monkeypatch)
     monkeypatch.setattr(mod, "MIN_CANDIDATE_BYTES", 1)
     monkeypatch.setattr(mod, "MAX_CANDIDATE_BYTES", 100_000)
-    first_size = len(gzip.open(paths[0], "rb").read())
-    second_first_line = gzip.open(paths[1], "rb").readline()
+    with gzip.open(paths[0], "rb") as first_handle:
+        first_size = len(first_handle.read())
+    with gzip.open(paths[1], "rb") as second_handle:
+        second_first_line = second_handle.readline()
     monkeypatch.setattr(mod, "MAX_SCANNED_BYTES", first_size + len(second_first_line) - 1)
     report = mod.materialize(
         paths, tmp_path / "candidate.jsonl", tmp_path / "report.json", cfg
