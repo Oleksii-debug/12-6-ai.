@@ -321,16 +321,18 @@ def test_publication_lock_pins_mutations_after_context_entry_root_replacement(
     root.mkdir()
     moved = tmp_path / "moved-recovery"
 
-    with pytest.raises(
-        OSError,
-        match="recovery root changed during publication critical section",
+    with (
+        pytest.raises(
+            OSError,
+            match="recovery root changed during publication critical section",
+        ),
+        recovery_lock.exclusive_recovery_lock(root) as locked_root,
     ):
-        with recovery_lock.exclusive_recovery_lock(root) as locked_root:
-            os.replace(root, moved)
-            root.mkdir()
-            (locked_root / "pinned-write.txt").write_text("old-root\n", encoding="utf-8")
-            assert not (root / "pinned-write.txt").exists()
-            assert (moved / "pinned-write.txt").read_text(encoding="utf-8") == "old-root\n"
+        os.replace(root, moved)
+        root.mkdir()
+        (locked_root / "pinned-write.txt").write_text("old-root\n", encoding="utf-8")
+        assert not (root / "pinned-write.txt").exists()
+        assert (moved / "pinned-write.txt").read_text(encoding="utf-8") == "old-root\n"
 
     assert not (root / "pinned-write.txt").exists()
     assert (moved / "pinned-write.txt").read_text(encoding="utf-8") == "old-root\n"
