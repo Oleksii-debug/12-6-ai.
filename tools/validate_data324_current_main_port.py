@@ -24,6 +24,57 @@ MATERIALIZER = Path(__file__).with_name("materialize_data324_kubernetes_ua.py")
 HEX40 = re.compile(r"[0-9a-f]{40}")
 HEX64 = re.compile(r"[0-9a-f]{64}")
 
+EXPECTED_TOP_LEVEL_KEYS = frozenset(
+    {
+        "schema_version",
+        "worker_id",
+        "local_free_only",
+        "ported_from",
+        "port_base_main_sha",
+        "source_authority",
+        "rights_authority",
+        "evaluation_firewall",
+        "current_main_truth_boundary",
+    }
+)
+EXPECTED_WORKER_ID = "D03-DATA324-CURRENT-MAIN-CONVERGENCE-20260907"
+EXPECTED_PORTED_FROM = {
+    "pr": 446,
+    "head_sha": "d2c5076e832d10721ceb333756bbbc1108b64658",
+    "tree_sha": "f980b54d861b38b77ba6129f61da5c9d514c80f0",
+    "verdict": "ADMIT",
+}
+EXPECTED_PORT_BASE_MAIN_SHA = "a53279292af68dc95e4e615542b6c8c2ea7f9ee5"
+EXPECTED_SOURCE_AUTHORITY = {
+    "source_family": "kubernetes.website.docs",
+    "canonical_upstream": "github:kubernetes/website",
+    "upstream_revision": "25f3dcbed7429ebe20174ccc7000428d0f0aedda",
+    "source_path": "content/uk/docs/concepts/overview/what-is-kubernetes.md",
+    "source_git_blob_sha1": "b3c52cab3be6a8efbc33e91893c653df5972a794",
+    "raw_sha256": "5c35e78f0a5f14210734e85778f13bd658ee4ea0640e356c99bb0b88eddd6e75",
+    "raw_bytes": 27134,
+    "normalized_sha256": "12abd14eff9018602ebb8ebb76ee2f60d1a178a2a6b5648d77e08d5e16f2e0b1",
+    "normalized_utf8_bytes": 17415,
+    "manifest_identity_sha256": "b957ab7f8d628ff1e71ae6c49c2297866fdb8de32cd322e5d0ad4ebccdbc7c38",
+    "report_identity_sha256": "a35cd748527f81675b106d07659446d489be9ac184fb2118e5b4fbf79cc125e7",
+}
+EXPECTED_RIGHTS_AUTHORITY = {
+    "license_id": "CC-BY-4.0",
+    "license_git_blob_sha1": "da6ab6cc8f333d7e89a99812866df8f24374d47c",
+    "license_sha256": "9ba9550ad48438d0836ddab3da480b3b69ffa0aac7b7878b5a0039e7ab429411",
+    "model_training": "ALLOWED_WITH_ATTRIBUTION_RETAINED_IN_PROVENANCE",
+    "evaluation": "NOT_GRANTED_BY_DATA324",
+}
+EXPECTED_EVALUATION_FIREWALL = {
+    "authority": "EVAL-290-UA-SELECTION-VALIDATION-V1",
+    "reservation_commit_sha": "8a393d98d37b2090d1ae3fe8be8d4e58f651159e",
+    "reserved_raw_sha256": [
+        "50a790e0ece091f13fe039b5e36a23431680dec0357379f29b0029502f9b3a31",
+        "e44c27b6151a1fea68eeef1e73e4460391f82e0501571d8aa4d5a792fc448b12",
+    ],
+    "final_test_accessed": False,
+}
+
 
 class PortValidationError(RuntimeError):
     pass
@@ -83,16 +134,31 @@ def validate_snapshot(root: Path) -> dict[str, Any]:
     report = _load_json(root, REPORT)
     materializer = _load_materializer()
 
+    if set(port) != EXPECTED_TOP_LEVEL_KEYS:
+        raise PortValidationError("current-main port top-level schema drift")
     if port.get("schema_version") != "12-6.data324-kubernetes-ua-current-main-port.v1":
         raise PortValidationError("current-main port schema drift")
+    if port.get("worker_id") != EXPECTED_WORKER_ID:
+        raise PortValidationError("current-main worker identity drift")
     if port.get("local_free_only") is not True:
         raise PortValidationError("current-main port must remain LOCAL_FREE")
+    if port.get("ported_from") != EXPECTED_PORTED_FROM:
+        raise PortValidationError("ported-from provenance drift")
+    if port.get("port_base_main_sha") != EXPECTED_PORT_BASE_MAIN_SHA:
+        raise PortValidationError("historical port base drift")
+
     source = port.get("source_authority")
     rights = port.get("rights_authority")
     firewall = port.get("evaluation_firewall")
     truth = port.get("current_main_truth_boundary")
     if not all(isinstance(v, dict) for v in (source, rights, firewall, truth)):
         raise PortValidationError("current-main authority objects missing")
+    if source != EXPECTED_SOURCE_AUTHORITY:
+        raise PortValidationError("source authority drift")
+    if rights != EXPECTED_RIGHTS_AUTHORITY:
+        raise PortValidationError("rights authority drift")
+    if firewall != EXPECTED_EVALUATION_FIREWALL:
+        raise PortValidationError("evaluation firewall drift")
 
     for field in ("upstream_revision",):
         if not isinstance(source.get(field), str) or not HEX40.fullmatch(source[field]):
