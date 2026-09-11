@@ -45,6 +45,7 @@ def test_read_payload_uses_exact_opened_snapshot_when_path_changes_after_open(
     path = tmp_path / "state.json"
     expected_payload = {"generation": "generation-00000001", "value": "verified"}
     expected_hash = _write(path, expected_payload)
+    expected_bytes = path.stat().st_size
     replacement = tmp_path / "replacement.json"
     _write(replacement, {"generation": "generation-00000001", "value": "tampered"})
     real_open = sidecar.os.open
@@ -60,7 +61,7 @@ def test_read_payload_uses_exact_opened_snapshot_when_path_changes_after_open(
 
     monkeypatch.setattr(sidecar.os, "open", open_then_swap)
 
-    observed = _read_payload(path, expected_hash)
+    observed = _read_payload(path, expected_hash, expected_bytes)
 
     assert swapped is True
     assert observed == expected_payload
@@ -72,6 +73,7 @@ def test_read_payload_rejects_path_swap_between_lstat_and_open(
 ) -> None:
     path = tmp_path / "state.json"
     expected_hash = _write(path, {"value": "verified"})
+    expected_bytes = path.stat().st_size
     replacement = tmp_path / "replacement.json"
     _write(replacement, {"value": "tampered"})
     real_open = sidecar.os.open
@@ -87,12 +89,13 @@ def test_read_payload_rejects_path_swap_between_lstat_and_open(
     monkeypatch.setattr(sidecar.os, "open", swap_then_open)
 
     with pytest.raises(ResumeSidecarError, match="changed while opening"):
-        _read_payload(path, expected_hash)
+        _read_payload(path, expected_hash, expected_bytes)
 
 
 def test_read_payload_rejects_symlink_even_when_target_hash_matches(tmp_path: Path) -> None:
     target = tmp_path / "target.json"
     expected_hash = _write(target, {"value": "verified"})
+    expected_bytes = target.stat().st_size
     link = tmp_path / "state.json"
     try:
         link.symlink_to(target)
@@ -100,7 +103,52 @@ def test_read_payload_rejects_symlink_even_when_target_hash_matches(tmp_path: Pa
         pytest.skip("symlinks unavailable on this platform")
 
     with pytest.raises(ResumeSidecarError, match="regular non-symlink"):
-        _read_payload(link, expected_hash)
+        _read_payload(link, expected_hash, expected_bytes)
+
+
+def test_read_payload_rejects_opened_size_mismatch_before_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "state.json"
+    expected_hash = _write(path, {"value": "verified"})
+    actual_bytes = path.stat().st_size
+
+    def forbidden_read(_fd: int, _size: int) -> bytes:
+        pytest.fail("sidecar bytes must not be read after opened-size mismatch")
+
+    monkeypatch.setattr(sidecar.os, "read", forbidden_read)
+    with pytest.raises(ResumeSidecarError, match="byte length mismatches immutable reference"):
+        _read_payload(path, expected_hash, actual_bytes - 1)
+
+
+def test_read_payload_detects_growth_after_fstat_with_bounded_accumulation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "state.json"
+    expected_hash = _write(path, {"value": "verified"})
+    expected_bytes = path.stat().st_size
+    real_read = sidecar.os.read
+    grown = False
+    returned = 0
+
+    def read_then_grow(fd: int, size: int) -> bytes:
+        nonlocal grown, returned
+        chunk = real_read(fd, size)
+        returned += len(chunk)
+        if not grown:
+            with path.open("ab") as handle:
+                handle.write(b"x")
+                handle.flush()
+                os.fsync(handle.fileno())
+            grown = True
+        return chunk
+
+    monkeypatch.setattr(sidecar.os, "read", read_then_grow)
+    with pytest.raises(ResumeSidecarError, match="changed size while reading"):
+        _read_payload(path, expected_hash, expected_bytes)
+
+    assert grown is True
+    assert returned <= expected_bytes + 1
 
 
 def test_recovery_pointer_uses_exact_opened_snapshot_when_path_changes_after_open(
