@@ -47,7 +47,11 @@ def make_row(record_id: str = "116075957", repeats: int = 3) -> dict:
     )
     specs = {
         "number": ("НОМЕР_1", "number_count", "number_occurrences"),
-        "information": ("ІНФОРМАЦІЯ_1", "information_count", "information_occurrences"),
+        "information": (
+            "ІНФОРМАЦІЯ_1",
+            "information_count",
+            "information_occurrences",
+        ),
         "person": ("ОСОБА_1", "person_count", "person_occurrences"),
         "address": ("АДРЕСА_1", "address_count", "address_occurrences"),
     }
@@ -235,9 +239,7 @@ def test_duplicate_source_id_fails_closed() -> None:
 def test_selection_order_is_numeric_not_lexicographic() -> None:
     rows = [make_row("10"), make_row("2"), make_row("100")]
     for row in rows:
-        _append_before_terminal_nul(
-            row, f" Унікальний український додаток {row['id']}."
-        )
+        _append_before_terminal_nul(row, f" Унікальний український додаток {row['id']}.")
     accepted, _ = mod.select_rows(rows, CONFIG)
     assert [row["record_id"] for row in accepted] == ["2", "10", "100"]
 
@@ -248,8 +250,7 @@ def test_exact_normalized_duplicate_is_removed_with_one_disposition_per_row() ->
     second["text"] = first["text"]
     for field in mod.EXPECTED_FIELDS:
         if (
-            field.endswith("_occurrences")
-            or field.endswith("_count")
+            field.endswith(("_occurrences", "_count"))
             or field == "sum_of_unique_entities"
         ):
             second[field] = copy.deepcopy(first[field])
