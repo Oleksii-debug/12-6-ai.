@@ -90,7 +90,7 @@ def test_convergence_evidence_is_self_bound_and_zero_credit() -> None:
         "authorized_optimized_target_exposure",
         "optimizer_updates",
     ):
-        assert type(boundary[key]) is int
+        assert boundary[key].__class__ is int
         assert boundary[key] == 0
     for key in (
         "corpus_frozen",
