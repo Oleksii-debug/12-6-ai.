@@ -30,8 +30,6 @@ def _parent_replacement_holder(
                 raise RuntimeError("timed out waiting to release holder")
     except OSError as exc:
         result_queue.put(("drift", str(exc)))
-    except Exception as exc:  # pragma: no cover - diagnostic transport
-        result_queue.put(("error", repr(exc)))
     else:
         result_queue.put(("unexpected-success", ""))
 
@@ -41,12 +39,9 @@ def _parent_replacement_contender(
     acquired: multiprocessing.synchronize.Event,
     result_queue: multiprocessing.queues.Queue,
 ) -> None:
-    try:
-        with exclusive_recovery_lock(root):
-            acquired.set()
-        result_queue.put(("ok", ""))
-    except Exception as exc:  # pragma: no cover - diagnostic transport
-        result_queue.put(("error", repr(exc)))
+    with exclusive_recovery_lock(root):
+        acquired.set()
+    result_queue.put(("ok", ""))
 
 
 def test_parent_replacement_cannot_create_second_logical_lock_lane(
