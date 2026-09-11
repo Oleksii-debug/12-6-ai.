@@ -1,0 +1,173 @@
+name: TEMP D03 Foodista text-free schema probe
+
+on:
+  push:
+    branches:
+      - d03/foodista-bounded-1168
+
+permissions:
+  contents: write
+
+jobs:
+  probe-exact-shard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Probe exact immutable shard without emitting corpus text
+        shell: bash
+        run: |
+          mkdir -p evidence "$RUNNER_TEMP/foodista-probe"
+          python - <<'PY'
+          import gzip
+          import hashlib
+          import json
+          import os
+          import re
+          import urllib.request
+          from collections import Counter
+          from pathlib import Path
+          from urllib.parse import urlsplit
+
+          revision = "04d1b7a6562c6d6459426d2a3b88184b8a98f7b6"
+          file = "v0/documents/00000_foodista.jsonl.gz"
+          expected_sha = "286b801bc826f161efad892af5529b201f91f42c5a932e3962d74d24037fe087"
+          expected_bytes = 6_760_466
+          url = f"https://huggingface.co/datasets/common-pile/foodista/resolve/{revision}/{file}"
+          target = Path(os.environ["RUNNER_TEMP"]) / "foodista-probe" / "source.jsonl.gz"
+          digest = hashlib.sha256()
+          total = 0
+          request = urllib.request.Request(url, headers={"User-Agent": "12-6-ai-foodista-schema-probe/1"})
+          with urllib.request.urlopen(request, timeout=120) as response, target.open("wb") as out:
+              while True:
+                  chunk = response.read(1024 * 1024)
+                  if not chunk:
+                      break
+                  total += len(chunk)
+                  if total > 7_000_000:
+                      raise RuntimeError("source exceeded safety cap")
+                  digest.update(chunk)
+                  out.write(chunk)
+          observed_sha = digest.hexdigest()
+          if total != expected_bytes or observed_sha != expected_sha:
+              raise RuntimeError("immutable source identity mismatch")
+
+          top_key_signatures = Counter()
+          metadata_key_signatures = Counter()
+          metadata_type_signatures = Counter()
+          source_labels = Counter()
+          license_values = Counter()
+          url_hosts = Counter()
+          provenance_shapes = Counter()
+          id_types = Counter()
+          text_types = Counter()
+          created_types = Counter()
+          added_types = Counter()
+          authors_types = Counter()
+          text_min = None
+          text_max = None
+          scanned = 0
+          provenance_re = re.compile(r"^foodista-dolma-[0-9]{4}\.json\.gz:[1-9][0-9]*$")
+
+          with gzip.open(target, "rt", encoding="utf-8", errors="strict") as handle:
+              for line in handle:
+                  if scanned >= 8192:
+                      break
+                  row = json.loads(line)
+                  if not isinstance(row, dict):
+                      raise RuntimeError("non-object row")
+                  scanned += 1
+                  top_key_signatures[json.dumps(sorted(row.keys()), separators=(",", ":"))] += 1
+                  id_types[type(row.get("id")).__name__] += 1
+                  text = row.get("text")
+                  text_types[type(text).__name__] += 1
+                  if isinstance(text, str):
+                      n = len(text)
+                      text_min = n if text_min is None else min(text_min, n)
+                      text_max = n if text_max is None else max(text_max, n)
+                  source = row.get("source")
+                  source_labels[str(source) if isinstance(source, str) else f"<{type(source).__name__}>"] += 1
+                  created_types[type(row.get("created")).__name__] += 1
+                  added_types[type(row.get("added")).__name__] += 1
+                  metadata = row.get("metadata")
+                  if not isinstance(metadata, dict):
+                      metadata_key_signatures[f"<{type(metadata).__name__}>"] += 1
+                      continue
+                  metadata_key_signatures[json.dumps(sorted(metadata.keys()), separators=(",", ":"))] += 1
+                  type_sig = {key: type(metadata.get(key)).__name__ for key in sorted(metadata)}
+                  metadata_type_signatures[json.dumps(type_sig, sort_keys=True, separators=(",", ":"))] += 1
+                  authors_types[type(metadata.get("authors")).__name__] += 1
+                  license_value = metadata.get("license")
+                  license_values[str(license_value) if isinstance(license_value, str) else f"<{type(license_value).__name__}>"] += 1
+                  raw_url = metadata.get("url")
+                  if isinstance(raw_url, str):
+                      try:
+                          host = urlsplit(raw_url).hostname or "<no-host>"
+                      except ValueError:
+                          host = "<malformed>"
+                      url_hosts[host] += 1
+                  else:
+                      url_hosts[f"<{type(raw_url).__name__}>"] += 1
+                  provenance = metadata.get("provenance")
+                  if isinstance(provenance, str):
+                      provenance_shapes["expected_regex" if provenance_re.fullmatch(provenance) else "other_string"] += 1
+                  else:
+                      provenance_shapes[f"<{type(provenance).__name__}>"] += 1
+
+          evidence = {
+              "schema_version": "12-6.d03-common-pile-foodista-text-free-schema-probe.v1",
+              "status": "SUCCESS_TEXT_FREE_SCHEMA_PROBE",
+              "claim_issue": 1168,
+              "pr": 1174,
+              "executed_product_head": os.environ["GITHUB_SHA"],
+              "github_run_id": int(os.environ["GITHUB_RUN_ID"]),
+              "execution_profile": "LOCAL_FREE_GITHUB_HOSTED_PUBLIC_REPO",
+              "source_revision": revision,
+              "source_file": file,
+              "source_bytes": total,
+              "source_sha256": observed_sha,
+              "scanned_records": scanned,
+              "top_key_signatures": dict(top_key_signatures),
+              "metadata_key_signatures": dict(metadata_key_signatures),
+              "metadata_type_signatures": dict(metadata_type_signatures),
+              "source_labels": dict(source_labels),
+              "license_values": dict(license_values),
+              "url_hosts": dict(url_hosts),
+              "provenance_shapes": dict(provenance_shapes),
+              "id_types": dict(id_types),
+              "text_types": dict(text_types),
+              "created_types": dict(created_types),
+              "added_types": dict(added_types),
+              "authors_types": dict(authors_types),
+              "text_length_min": text_min,
+              "text_length_max": text_max,
+              "corpus_text_emitted": False,
+              "author_values_emitted": False,
+              "training_authorized_bytes": 0,
+              "authorized_optimized_target_exposure": 0,
+              "training_executed": False,
+              "learned_weights_created": False,
+              "final_test_accessed": False,
+              "paid_compute_used": False,
+              "foreign_pretrained_weights": False,
+          }
+          Path("evidence/d03_common_pile_foodista_schema_probe_v1.json").write_text(
+              json.dumps(evidence, sort_keys=True, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(evidence, sort_keys=True))
+          PY
+      - name: Retain schema evidence and remove temporary workflow
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add evidence/d03_common_pile_foodista_schema_probe_v1.json
+          git rm .github/workflows/d03-foodista-schema-probe-temporary.yml
+          git commit -m "[foodista-schema] D03: retain text-free real schema probe"
+          git push origin HEAD:d03/foodista-bounded-1168
