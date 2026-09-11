@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Execute dependency-bound G06 privacy evidence on the exact #1366 survivor graph.
 
 Raw payloads are read only to verify the independently retained text-free
@@ -156,7 +155,9 @@ def _validate_inventory(path: Path) -> tuple[dict[str, Any], str]:
             raise CurrentSurvivorG06Error(
                 f"inventory row {index} payload hash malformed"
             )
-        payload_bytes = _strict_int(row["payload_bytes"], f"inventory[{index}].payload_bytes")
+        payload_bytes = _strict_int(
+            row["payload_bytes"], f"inventory[{index}].payload_bytes"
+        )
         normalized.append(
             {
                 "record_id": record_id,
