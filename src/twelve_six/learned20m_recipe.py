@@ -563,6 +563,11 @@ def readiness_fragment(session: Any, authority: Any) -> dict[str, Any]:
         "session_identity_sha256",
     ):
         _sha256(session[key], f"session.{key}")
+    session_core = {
+        key: value for key, value in session.items() if key != "session_identity_sha256"
+    }
+    if identity_sha256(session_core) != session["session_identity_sha256"]:
+        raise RecipeValidationError("session identity drift")
     if session["training_recipe_status"] != "QUALIFIED":
         raise RecipeValidationError("session training recipe not qualified")
     runtime_budget = _positive_int(
