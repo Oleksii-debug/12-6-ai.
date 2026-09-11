@@ -1,0 +1,178 @@
+name: D03 NBU pdftotext real execution
+
+on:
+  push:
+    branches:
+      - d03/nbu-pdftotext-materialization-20260907
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  execute-nbu-chain:
+    runs-on: ubuntu-24.04
+    container: ubuntu:25.10
+    timeout-minutes: 45
+    steps:
+      - name: Install exact local-free runtime
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates git python3 poppler-utils
+          python3 --version
+          pdftotext -v 2>&1 | tee /tmp/pdftotext-version.txt
+
+      - name: Checkout incumbent successor
+        uses: actions/checkout@v4
+
+      - name: Build live body-free NBU discovery evidence twice
+        run: |
+          python3 - <<'PY'
+          from __future__ import annotations
+          import importlib.util
+          import json
+          import sys
+          import urllib.request
+          from pathlib import Path
+
+          root = Path.cwd()
+          tool_path = root / "tools/validate_d03_ua_nbu_official_resolutions_intake_v1.py"
+          spec = importlib.util.spec_from_file_location("nbu_intake_live", tool_path)
+          if spec is None or spec.loader is None:
+              raise RuntimeError("cannot load NBU discovery authority")
+          module = importlib.util.module_from_spec(spec)
+          sys.modules[spec.name] = module
+          spec.loader.exec_module(module)
+          config = module.load_config()
+
+          def fetch_text(url: str) -> str:
+              request = urllib.request.Request(
+                  url,
+                  headers={"User-Agent": "12-6-ai-d03-nbu-live-execution/1.0 (+source-audit)"},
+                  method="GET",
+              )
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  final = response.geturl()
+                  if not final.startswith("https://bank.gov.ua/"):
+                      raise RuntimeError(f"NBU fetch escaped origin: {final}")
+                  body = response.read(8_000_001)
+              if len(body) > 8_000_000:
+                  raise RuntimeError(f"NBU HTML response exceeded bound: {url}")
+              return body.decode("utf-8", errors="strict")
+
+          catalog_url = config["source"]["catalog_url"]
+          catalog_fetches = [fetch_text(catalog_url), fetch_text(catalog_url)]
+          sets = [module.discover_resolution_urls(body, config) for body in catalog_fetches]
+          if sets[0] != sets[1]:
+              raise RuntimeError("NBU catalogue discovery changed between independent fetches")
+          urls = sets[0]
+          print(f"LIVE_DISCOVERY documents={len(urls)}")
+          if not urls:
+              raise RuntimeError("NBU catalogue yielded zero canonical resolution documents")
+          if len(urls) > config["discovery_contract"]["hard_max_documents"]:
+              raise RuntimeError(
+                  f"NBU catalogue yielded {len(urls)} documents, exceeds hard bound "
+                  f"{config['discovery_contract']['hard_max_documents']}"
+              )
+
+          document_fetches: dict[str, list[str]] = {}
+          for index, url in enumerate(urls, start=1):
+              document_fetches[url] = [fetch_text(url), fetch_text(url)]
+              print(f"LIVE_DOCUMENT {index}/{len(urls)} url={url}")
+
+          evidence = module.build_body_free_discovery_evidence(config, catalog_fetches, document_fetches)
+          module.validate_evidence(evidence, config)
+          Path("/tmp/nbu-discovery-evidence.json").write_text(
+              json.dumps(evidence, ensure_ascii=False, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          print(
+              "DISCOVERY_PASS "
+              f"documents={evidence['discovered_documents']} "
+              f"evidence_identity_sha256={evidence['evidence_identity_sha256']}"
+          )
+          PY
+
+      - name: Pin exact official NBU PDF bytes with independent refetch
+        run: |
+          python3 tools/materialize_d03_ua_nbu_official_pdf_pins_v1.py \
+            /tmp/nbu-discovery-evidence.json \
+            --output /tmp/nbu-pdf-pin-evidence.json
+
+      - name: Materialize exact text twice with qualified extractor
+        run: |
+          python3 tools/materialize_d03_ua_nbu_pdftotext_v1.py \
+            /tmp/nbu-discovery-evidence.json \
+            /tmp/nbu-pdf-pin-evidence.json \
+            --text-output /tmp/nbu-text-a.jsonl \
+            --evidence-output /tmp/nbu-text-evidence-a.json
+          python3 tools/materialize_d03_ua_nbu_pdftotext_v1.py \
+            /tmp/nbu-discovery-evidence.json \
+            /tmp/nbu-pdf-pin-evidence.json \
+            --text-output /tmp/nbu-text-b.jsonl \
+            --evidence-output /tmp/nbu-text-evidence-b.json
+          cmp /tmp/nbu-text-a.jsonl /tmp/nbu-text-b.jsonl
+          cmp /tmp/nbu-text-evidence-a.json /tmp/nbu-text-evidence-b.json
+          sha256sum /tmp/nbu-text-a.jsonl /tmp/nbu-text-b.jsonl
+
+      - name: Write body-free execution summary
+        if: success()
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+
+          discovery = json.loads(Path("/tmp/nbu-discovery-evidence.json").read_text(encoding="utf-8"))
+          pins = json.loads(Path("/tmp/nbu-pdf-pin-evidence.json").read_text(encoding="utf-8"))
+          text = json.loads(Path("/tmp/nbu-text-evidence-a.json").read_text(encoding="utf-8"))
+          summary = {
+              "schema": "12-6.d03-ua-nbu-pdftotext-real-execution-summary.v1",
+              "status": "REAL_TEXT_MATERIALIZED_ZERO_CREDIT",
+              "source_id": text["source_id"],
+              "discovered_documents": discovery["discovered_documents"],
+              "pinned_pdfs": pins["pinned_pdfs"],
+              "observed_pdf_bytes": pins["observed_pdf_bytes"],
+              "materialized_records": text["materialized_records"],
+              "observed_text_bytes": text["observed_text_bytes"],
+              "text_artifact_bytes": text["text_artifact_bytes"],
+              "text_artifact_sha256": text["text_artifact_sha256"],
+              "discovery_evidence_identity_sha256": discovery["evidence_identity_sha256"],
+              "pdf_pin_evidence_identity_sha256": pins["evidence_identity_sha256"],
+              "text_evidence_identity_sha256": text["evidence_identity_sha256"],
+              "two_full_materializations_byte_identical": True,
+              "canonical_capacity_credit_bytes": 0,
+              "training_authorized_bytes": 0,
+              "authorized_unique_loss_positions": 0,
+              "tokenizer_fit_authorized": False,
+              "model_training_executed": False,
+              "optimizer_updates": 0,
+              "final_test_accessed": False,
+              "paid_compute_used": False,
+              "foreign_pretrained_weights_used": False,
+          }
+          payload = json.dumps(summary, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n"
+          summary["summary_identity_sha256"] = hashlib.sha256(payload.encode("utf-8")).hexdigest()
+          Path("/tmp/nbu-real-execution-summary.json").write_text(
+              json.dumps(summary, ensure_ascii=False, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(summary, ensure_ascii=False, sort_keys=True))
+          PY
+
+      - name: Upload execution evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: d03-nbu-pdftotext-real-execution-${{ github.sha }}
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            /tmp/pdftotext-version.txt
+            /tmp/nbu-discovery-evidence.json
+            /tmp/nbu-pdf-pin-evidence.json
+            /tmp/nbu-text-evidence-a.json
+            /tmp/nbu-text-evidence-b.json
+            /tmp/nbu-real-execution-summary.json
+            /tmp/nbu-text-a.jsonl
+            /tmp/nbu-text-b.jsonl
