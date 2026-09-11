@@ -1,15 +1,32 @@
 {
   "schema_version": "12-6.d03-rada-bulk-quality-privacy.v1",
-  "worker_id": "D03-RADA-BULK-QUALITY-PRIVACY-20260826",
+  "worker_id": "D03-RADA-BULK-QUALITY-PRIVACY-20260911",
   "local_free_only": true,
   "parent_normalization": {
-    "pr": 641,
-    "head_sha": "ae79b078f849513dc202bcb723a4145455309e35",
-    "branch": "gpt56/d03-rada-bulk-normalization-20260826",
+    "pr": 864,
+    "head_sha": "50069882dfb5866946626720a997a2c35458df7c",
+    "branch": "d03/rada-bulk-normalization-current-main-20260907",
+    "execution_head_sha": "b2088754aa2d5ed6059d89587bbbf08437ba0f55",
+    "execution_run_id": 34561144712,
+    "execution_evidence_identity_sha256": "663a8d60b595a6a57fc5fb5be631ce4ebb791e00ffc2bb6de8eae8d2c9743d30",
     "manifest_schema": "12-6.d03-rada-bulk-normalization-manifest.v1",
-    "manifest_worker_id": "D03-RADA-BULK-NORMALIZATION-20260826",
+    "manifest_worker_id": "D03-RADA-BULK-NORMALIZATION-20260907",
     "source_family": "ua.rada.open-data.laws-texts",
-    "safe_result": "NORMALIZED_RECORD_MATERIALIZATION_ONLY_DOWNSTREAM_GATES_REQUIRED"
+    "safe_result": "NORMALIZED_RECORD_MATERIALIZATION_ONLY_DOWNSTREAM_GATES_REQUIRED",
+    "manifest_identity_sha256": "ee1c59dbc481b83bffb1380f751880e5fa6e64d654b5abad266c3e2c4d18293b",
+    "manifest_transport_sha256": "8923d26024ba396db14e6afeb367a5d3c54de573019252083aec88f2082bb119",
+    "jsonl_sha256": "b46baa0f1c5087f4a9772ee273da459e87c0e82111dd5e51b22fc0b85cde840e",
+    "record_count": 3052,
+    "nonempty_record_count": 3052,
+    "normalized_bytes_observed_not_credited": 211176449,
+    "normalized_record_inventory_sha256": "bd790b51809018950fcf8d9919f62920ab79aee64f8d73e131cbe16772554495",
+    "source_encoding_counts": {
+      "utf-8": 884,
+      "windows-1251": 2168
+    },
+    "pinned_probe_report_sha256": "9d94674323414d30f18517a71edbfee839a27a09a076eb94fe94d74cbaab53c8",
+    "archive_sha256": "0b9e8ed8fe8aa663a68d2bc4eba858a754c626391dd7b5c461d50c3b6260df63",
+    "entry_identity_sha256": "3939c8a407a910222173bba5a2df1b9c7d2edce1503c13b31a9c293d61c3a603"
   },
   "chunking": {
     "name": "DATA228_DATA181_GENERIC_NATURAL_TEXT_V1",
