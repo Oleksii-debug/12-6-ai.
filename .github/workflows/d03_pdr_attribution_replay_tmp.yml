@@ -1,0 +1,284 @@
+name: D03 PDR attribution provenance replay temporary
+
+on:
+  push:
+    branches:
+      - d03/pdr-attribution-provenance-1071
+    paths:
+      - .github/workflows/d03_pdr_attribution_replay_tmp.yml
+      - tools/build_d03_pdr_attribution_sidecar_v1.py
+      - tools/materialize_d03_common_pile_public_domain_review.py
+      - configs/data/d03_common_pile_public_domain_review_v1.json
+      - tests/test_d03_pdr_attribution_sidecar_v1.py
+      - tests/test_d03_common_pile_public_domain_review.py
+
+permissions:
+  contents: read
+
+concurrency:
+  group: d03-pdr-attribution-replay-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  replay:
+    name: independent replay ${{ matrix.slot }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        slot: [a, b]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Bind exact execution head
+        run: test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+      - name: Focused and adversarial tests
+        run: |
+          python -m pip install pytest
+          python -m pytest -q \
+            tests/test_d03_common_pile_public_domain_review.py \
+            tests/test_d03_pdr_attribution_sidecar_v1.py
+      - name: Download exact sources and build attribution replay
+        env:
+          SLOT: ${{ matrix.slot }}
+        run: |
+          set -euo pipefail
+          root="/tmp/pdr-${SLOT}"
+          rm -rf "$root"
+          mkdir -p "$root/src/v0" "$root/build"
+          ROOT="$root" python - <<'PY'
+          import hashlib
+          import os
+          import urllib.request
+          from pathlib import Path
+
+          revision = '177f70f044bd7a347616727c0f33ab4af9baa495'
+          files = {
+              'v0/00000_collections.jsonl.gz': (
+                  '0a5cbe305d7f468aad95a8cfc4d5fae14132bc359ccf92fc3705072db33a46fd',
+                  2_000_000,
+              ),
+              'v0/00000_essays.jsonl.gz': (
+                  '825aed6a66ab14f89e1fe3110f67265d511994c52e5aed48b866a9e8a1bdeb4d',
+                  2_500_000,
+              ),
+          }
+          root = Path(os.environ['ROOT']) / 'src'
+          for rel, (expected_sha, limit) in files.items():
+              url = (
+                  'https://huggingface.co/datasets/common-pile/public_domain_review/'
+                  f'resolve/{revision}/{rel}?download=true'
+              )
+              request = urllib.request.Request(
+                  url,
+                  headers={
+                      'User-Agent': '12-6-ai-D03-PDR-attribution/2.1',
+                      'Accept': 'application/octet-stream',
+                  },
+              )
+              with urllib.request.urlopen(request, timeout=120) as response:
+                  payload = response.read(limit + 1)
+              assert len(payload) <= limit
+              assert hashlib.sha256(payload).hexdigest() == expected_sha
+              target = root / rel
+              target.parent.mkdir(parents=True, exist_ok=True)
+              target.write_bytes(payload)
+          PY
+          python tools/materialize_d03_common_pile_public_domain_review.py \
+            --config configs/data/d03_common_pile_public_domain_review_v1.json \
+            --input-dir "$root/src" \
+            --output "$root/build/materialized"
+          python tools/build_d03_pdr_attribution_sidecar_v1.py \
+            --config configs/data/d03_common_pile_public_domain_review_v1.json \
+            --candidate "$root/build/materialized/candidate.jsonl" \
+            --input-dir "$root/src" \
+            --sidecar "$root/build/attribution.jsonl" \
+            --report "$root/build/attribution-report.json"
+      - name: Build text-free run-bound evidence
+        env:
+          SLOT: ${{ matrix.slot }}
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          slot = os.environ['SLOT']
+          root = Path(f'/tmp/pdr-{slot}/build')
+          materialized = root / 'materialized'
+          candidate = materialized / 'candidate.jsonl'
+          materialization_report = materialized / 'report.json'
+          materialization_manifest = materialized / 'manifest.json'
+          sidecar = root / 'attribution.jsonl'
+          report_path = root / 'attribution-report.json'
+          report = json.loads(report_path.read_text(encoding='utf-8'))
+
+          def sha(path: Path) -> str:
+              h = hashlib.sha256()
+              with path.open('rb') as handle:
+                  for chunk in iter(lambda: handle.read(1024 * 1024), b''):
+                      h.update(chunk)
+              return h.hexdigest()
+
+          assert candidate.stat().st_size == 5_630_935
+          assert sha(candidate) == '38b0ef94062b80ae1cb8055fe897feb10a1e8d04a9b17340cbc080d4bfb21591'
+          assert report['selected_record_count'] == 1_166
+          assert report['selected_normalized_utf8_bytes'] == 4_795_007
+          assert report['candidate_projection_identity_sha256'] == 'bf9f7896fc2c940458916184b1b702f443d72290e286ee16b24da4088b2aa4ab'
+          assert report['training_text_modified'] is False
+          assert report['source_rights_review_status'] == 'REVIEW_REQUIRED'
+          for key in ('training_authorized_bytes', 'authorized_optimized_target_exposure'):
+              value = report[key]
+              assert isinstance(value, int) and not isinstance(value, bool) and value == 0
+          for key in (
+              'tokenizer_fit_authorized',
+              'model_training_executed',
+              'final_test_payload_accessed',
+              'paid_compute_used',
+          ):
+              assert report[key] is False
+
+          evidence = {
+              'schema_version': '12-6.d03-pdr-attribution-run-bound-evidence.v1',
+              'execution_slot': slot,
+              'source_revision': report['source_revision'],
+              'source_sha256': [
+                  '0a5cbe305d7f468aad95a8cfc4d5fae14132bc359ccf92fc3705072db33a46fd',
+                  '825aed6a66ab14f89e1fe3110f67265d511994c52e5aed48b866a9e8a1bdeb4d',
+              ],
+              'candidate_jsonl_sha256': sha(candidate),
+              'candidate_jsonl_bytes': candidate.stat().st_size,
+              'materialization_report_file_sha256': sha(materialization_report),
+              'materialization_manifest_file_sha256': sha(materialization_manifest),
+              'selected_record_count': report['selected_record_count'],
+              'selected_normalized_utf8_bytes': report['selected_normalized_utf8_bytes'],
+              'candidate_projection_identity_sha256': report['candidate_projection_identity_sha256'],
+              'attribution_sidecar_jsonl_sha256': sha(sidecar),
+              'attribution_sidecar_jsonl_bytes': sidecar.stat().st_size,
+              'attribution_report_file_sha256': sha(report_path),
+              'attribution_report_identity_sha256': report['report_identity_sha256'],
+              'claim_boundary': {
+                  'author_values_persisted_in_evidence': False,
+                  'training_text_modified': False,
+                  'source_rights_review_status': 'REVIEW_REQUIRED',
+                  'canonical_corpus_admitted': False,
+                  'training_authorized_bytes': 0,
+                  'authorized_optimized_target_exposure': 0,
+                  'tokenizer_fit_authorized': False,
+                  'model_training_executed': False,
+                  'final_test_payload_accessed': False,
+                  'paid_compute_used': False,
+                  'foreign_pretrained_weights_used': False,
+              },
+          }
+          Path(f'/tmp/pdr-{slot}-evidence.json').write_text(
+              json.dumps(evidence, sort_keys=True, separators=(',', ':')) + '\n',
+              encoding='utf-8',
+          )
+          PY
+      - name: Upload text-free replay evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: d03-pdr-attribution-evidence-${{ matrix.slot }}-${{ github.run_id }}
+          path: /tmp/pdr-${{ matrix.slot }}-evidence.json
+          if-no-files-found: error
+          retention-days: 30
+      - name: Delete source, candidate, and attribution payloads
+        if: always()
+        env:
+          SLOT: ${{ matrix.slot }}
+        run: rm -rf "/tmp/pdr-${SLOT}" "/tmp/pdr-${SLOT}-evidence.json"
+      - name: Keep tracked repository clean
+        run: test -z "$(git status --porcelain --untracked-files=no)"
+
+  compare:
+    name: compare independent replays
+    needs: replay
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Download replay A evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: d03-pdr-attribution-evidence-a-${{ github.run_id }}
+          path: /tmp/compare/a
+      - name: Download replay B evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: d03-pdr-attribution-evidence-b-${{ github.run_id }}
+          path: /tmp/compare/b
+      - name: Require deterministic replay evidence
+        env:
+          EXECUTION_HEAD: ${{ github.sha }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          a_path = next(Path('/tmp/compare/a').glob('*.json'))
+          b_path = next(Path('/tmp/compare/b').glob('*.json'))
+          a_raw = a_path.read_bytes()
+          b_raw = b_path.read_bytes()
+          a = json.loads(a_raw)
+          b = json.loads(b_raw)
+          assert a['execution_slot'] == 'a'
+          assert b['execution_slot'] == 'b'
+          a_cmp = dict(a)
+          b_cmp = dict(b)
+          a_cmp.pop('execution_slot')
+          b_cmp.pop('execution_slot')
+          assert a_cmp == b_cmp
+          assert a_cmp['candidate_jsonl_sha256'] == '38b0ef94062b80ae1cb8055fe897feb10a1e8d04a9b17340cbc080d4bfb21591'
+          assert a_cmp['candidate_jsonl_bytes'] == 5_630_935
+          assert a_cmp['selected_record_count'] == 1_166
+          assert a_cmp['selected_normalized_utf8_bytes'] == 4_795_007
+          assert a_cmp['candidate_projection_identity_sha256'] == 'bf9f7896fc2c940458916184b1b702f443d72290e286ee16b24da4088b2aa4ab'
+          boundary = a_cmp['claim_boundary']
+          for key in ('training_authorized_bytes', 'authorized_optimized_target_exposure'):
+              value = boundary[key]
+              assert isinstance(value, int) and not isinstance(value, bool) and value == 0
+          assert boundary['source_rights_review_status'] == 'REVIEW_REQUIRED'
+          for key in (
+              'author_values_persisted_in_evidence',
+              'training_text_modified',
+              'canonical_corpus_admitted',
+              'tokenizer_fit_authorized',
+              'model_training_executed',
+              'final_test_payload_accessed',
+              'paid_compute_used',
+              'foreign_pretrained_weights_used',
+          ):
+              assert boundary[key] is False
+
+          manifest = {
+              'schema_version': '12-6.d03-pdr-attribution-run-bound-compare.v1',
+              'run_id': int(os.environ['RUN_ID']),
+              'run_attempt': int(os.environ['RUN_ATTEMPT']),
+              'execution_head_sha': os.environ['EXECUTION_HEAD'],
+              'execution_a_evidence_sha256': hashlib.sha256(a_raw).hexdigest(),
+              'execution_b_evidence_sha256': hashlib.sha256(b_raw).hexdigest(),
+              'deterministic_evidence': a_cmp,
+          }
+          Path('/tmp/compare/compare-manifest.json').write_text(
+              json.dumps(manifest, sort_keys=True, separators=(',', ':')) + '\n',
+              encoding='utf-8',
+          )
+          print('PDR_ATTRIBUTION_RUN_BOUND_COMPARE=' + json.dumps(manifest, sort_keys=True))
+          PY
+      - name: Upload run-bound compare manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: d03-pdr-attribution-compare-${{ github.run_id }}
+          path: /tmp/compare/compare-manifest.json
+          if-no-files-found: error
+          retention-days: 30
