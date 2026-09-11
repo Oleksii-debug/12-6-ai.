@@ -130,6 +130,16 @@ def _current_index_revision_id(
     return revision_id
 
 
+def _proofread_quality(row: dict[str, Any], *, source: str) -> int:
+    proofread = row.get("proofread")
+    if not isinstance(proofread, dict):
+        raise WikisourceIntakeError(f"{source} native ProofreadPage quality is missing")
+    quality = proofread.get("quality")
+    if not isinstance(quality, int) or isinstance(quality, bool) or not 0 <= quality <= 4:
+        raise WikisourceIntakeError(f"{source} native ProofreadPage quality is invalid")
+    return quality
+
+
 def _discover_proofread_index_titles(
     *,
     get_json: Callable[[dict[str, str]], dict[str, Any]],
@@ -142,17 +152,33 @@ def _discover_proofread_index_titles(
     response = get_json(
         {
             "action": "query",
-            "list": "proofreadpagesinindex",
-            "prppiititle": INDEX_TITLE,
-            "prppiilimit": "500",
-            "prppiiprop": "title",
+            "generator": "proofreadpagesinindex",
+            "gprppiititle": INDEX_TITLE,
+            "gprppiilimit": "500",
+            "prop": "proofread",
         }
     )
     if response.get("continue") is not None:
         raise WikisourceIntakeError("qualified index pagination unexpectedly exceeds one bounded page")
     query = response.get("query")
-    rows = query.get("proofreadpagesinindex") if isinstance(query, dict) else None
-    titles = _validated_sorted_page_titles(rows, source="qualified proofread index")
+    rows = query.get("pages") if isinstance(query, dict) else None
+    if not isinstance(rows, list):
+        raise WikisourceIntakeError("qualified proofread index page list is missing")
+    validated_rows: list[dict[str, Any]] = []
+    for row in rows:
+        if not isinstance(row, dict) or not isinstance(row.get("title"), str):
+            raise WikisourceIntakeError("qualified proofread index contains malformed entry")
+        title = row["title"]
+        if not title.startswith(PAGE_PREFIX):
+            continue
+        validate_page_title(title)
+        if row.get("missing") is True:
+            continue
+        if _proofread_quality(row, source="qualified proofread index") == VALIDATED_PROOFREAD_QUALITY:
+            validated_rows.append(row)
+    if not validated_rows:
+        raise WikisourceIntakeError("qualified proofread index contains no validated numeric page")
+    titles = _validated_sorted_page_titles(validated_rows, source="qualified proofread index")
     after_revision = _current_index_revision_id(get_json)
     if after_revision != INDEX_REVISION_ID:
         raise WikisourceIntakeError(
@@ -212,13 +238,7 @@ def _current_page_revision_and_approval(
     revision_id = revision.get("revid") if isinstance(revision, dict) else None
     if not isinstance(revision_id, int) or isinstance(revision_id, bool) or revision_id <= 0:
         raise WikisourceIntakeError("invalid page revision id")
-    proofread = page.get("proofread")
-    if not isinstance(proofread, dict):
-        raise WikisourceIntakeError("native ProofreadPage quality is missing")
-    quality = proofread.get("quality")
-    if not isinstance(quality, int) or isinstance(quality, bool) or not 0 <= quality <= 4:
-        raise WikisourceIntakeError("native ProofreadPage quality is invalid")
-    return revision_id, quality == VALIDATED_PROOFREAD_QUALITY
+    return revision_id, _proofread_quality(page, source="page metadata") == VALIDATED_PROOFREAD_QUALITY
 
 
 def fetch_page_snapshot(
