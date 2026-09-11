@@ -82,6 +82,7 @@ def test_terminal_execution_evidence_is_exact_and_zero_credit() -> None:
     assert truth["global_dedup"] == "NOT_RUN"
     assert truth["evaluation_decontamination"] == "NOT_RUN"
     assert truth["post_composition_quality_privacy"] == "NOT_RUN"
+    assert truth["balance_family_caps"] == "NOT_RUN_FOR_THIS_ADDITION"
     assert truth["tokenizer_fit_authorized"] is False
     assert truth["training_authorized_bytes"] == 0
     assert truth["authorized_unique_loss_positions"] == 0
@@ -92,9 +93,9 @@ def test_terminal_execution_evidence_is_exact_and_zero_credit() -> None:
     assert truth["learned_20m_promoted"] is False
 
 
-def test_terminal_execution_evidence_binds_executed_product_blobs() -> None:
+def test_terminal_execution_evidence_is_scoped_to_old_exact_product_blobs() -> None:
     identity = evidence()["executed_product_identity"]
-    expected = {
+    expected_old = {
         "configs/data/d03_franko1901_exact_materialization_v1.json": (
             "90d6f1f56ad572bbd81f1e3cf87098e2304f7784"
         ),
@@ -105,11 +106,29 @@ def test_terminal_execution_evidence_binds_executed_product_blobs() -> None:
             "7916ff6ccf9c7609041b20c570c8f916f5eb12a3"
         ),
     }
-    assert identity["config_path"] in expected
-    assert identity["materializer_path"] in expected
-    assert identity["focused_test_path"] in expected
+    assert identity["config_path"] in expected_old
+    assert identity["materializer_path"] in expected_old
+    assert identity["focused_test_path"] in expected_old
     assert identity["temporary_evidence_workflow_git_blob_sha1"] == (
         "bd09988b7789db6fdca07f63a41710e5b30dfa2f"
     )
-    for relative_path, expected_sha in expected.items():
-        assert git_blob_sha1(ROOT / relative_path) == expected_sha
+
+    assert identity["config_git_blob_sha1"] == expected_old[identity["config_path"]]
+    assert (
+        identity["materializer_git_blob_sha1"]
+        == expected_old[identity["materializer_path"]]
+    )
+    assert (
+        identity["focused_test_git_blob_sha1"]
+        == expected_old[identity["focused_test_path"]]
+    )
+
+    # AUDIT1025 repair changes Product validation semantics. The historical
+    # execution remains valid only for the exact old blobs above and must not
+    # silently certify the repaired materializer/tests.
+    assert git_blob_sha1(ROOT / identity["materializer_path"]) != (
+        identity["materializer_git_blob_sha1"]
+    )
+    assert git_blob_sha1(ROOT / identity["focused_test_path"]) != (
+        identity["focused_test_git_blob_sha1"]
+    )
