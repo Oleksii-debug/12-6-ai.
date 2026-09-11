@@ -37,7 +37,7 @@ EXPECTED_RIGHTS_REPORT_SHA256 = "7eea6d0b79353ef565910738dce9de93008a961059cab50
 EXPECTED_ACCEPTED_INVENTORY_SHA256 = "7b93056f38fbc87c11e14df9069066e21380db1f1b8d8016314330f841bfa6fc"
 EXPECTED_HELD_INVENTORY_SHA256 = "566760e10157cd835ed0879abb37f052b57d31cff6af358a81ff717f4f7f59d9"
 EXPECTED_PRIVACY_IMPLEMENTATION_GIT_BLOB_SHA = "bcc5938395724f6728ab212f98b39f2334b0f37d"
-PRIVACY_REPAIR_REFERENCE_MERGE_SHA = "c5b9d0922cd63ade1a90c7f0163325dcf35d0b41"
+PRIVACY_REPAIR_FEATURE_BRANCH_SYNC_MERGE_SHA = "c5b9d0922cd63ade1a90c7f0163325dcf35d0b41"
 PRIVACY_SOURCE_RELATIVE_PATH = Path("src/twelve_six/data/privacy_filter_v3.py")
 
 EXPECTED_CANDIDATE_KEYS = frozenset(
@@ -327,7 +327,7 @@ def materialize_authoritative(
             "candidate_exact_keyset_enforced": True,
             "unknown_candidate_fields_rejected": True,
             "incumbent_materializer_report_sha256": claimed_mechanics_sha,
-            "privacy_repair_reference_merge_sha": PRIVACY_REPAIR_REFERENCE_MERGE_SHA,
+            "privacy_repair_feature_branch_sync_merge_sha": PRIVACY_REPAIR_FEATURE_BRANCH_SYNC_MERGE_SHA,
             "privacy_filter_v3_git_blob_sha": privacy_blob_sha,
             "privacy_filter_v3_resolved_path": PRIVACY_SOURCE_RELATIVE_PATH.as_posix(),
             "executed_privacy_mechanics_pinned": True,
