@@ -47,6 +47,9 @@ EXECUTION_HEAD = "75121d8408bbb2413013063829ea6ad43451719a"
 WORKFLOW_RUN = 34601996401
 WORKFLOW_JOB = 103271308318
 INDEPENDENT_AUDIT_ISSUE = 1269
+INDEPENDENT_AUDIT_STATUS = "TERMINAL_PASS"
+INDEPENDENT_AUDIT_VERDICT = "PASS_FOR_INTEGRATION_MECHANICS_AND_REAL_EXECUTION"
+INDEPENDENT_AUDIT_SHARED_CI = 34602453161
 
 SOURCE = {
     "dataset": "lang-uk/court-decisions-uk",
@@ -247,7 +250,10 @@ def _validate_repaired_execution(root: Path) -> Mapping[str, Any]:
 
     source = evidence.get("source")
     _require(isinstance(source, Mapping), "execution source missing")
-    expected_execution_source = {key: SOURCE[key] for key in ("dataset", "revision", "file", "bytes", "sha256", "excluded_file")}
+    expected_execution_source = {
+        key: SOURCE[key]
+        for key in ("dataset", "revision", "file", "bytes", "sha256", "excluded_file")
+    }
     _require_exact(source, expected_execution_source, "execution source")
     config_source = config.get("source")
     _require(isinstance(config_source, Mapping), "retest config source missing")
@@ -263,17 +269,38 @@ def _validate_repaired_execution(root: Path) -> Mapping[str, Any]:
     _require(isinstance(clean, Mapping), "two-clean execution proof missing")
     for key in ("acquisition_a", "materialization_a", "acquisition_b", "materialization_b"):
         _require(clean.get(key) == "success", f"{key} not successful")
-    _require(clean.get("report_a_equals_report_b_byte_for_byte") is True, "report reproducibility failed")
-    _require(clean.get("retained_jsonl_a_equals_b_byte_for_byte") is True, "payload reproducibility failed")
+    _require(
+        clean.get("report_a_equals_report_b_byte_for_byte") is True,
+        "report reproducibility failed",
+    )
+    _require(
+        clean.get("retained_jsonl_a_equals_b_byte_for_byte") is True,
+        "payload reproducibility failed",
+    )
 
     measured = evidence.get("measured_result")
     _require(isinstance(measured, Mapping), "measured result missing")
     _require(measured.get("retained_records") == 256, "retained records drift")
     _require(measured.get("retained_normalized_bytes") == 2809632, "retained bytes drift")
-    _require(measured.get("retained_jsonl_sha256") == ADMITTED_RIGHTS_CANDIDATE["retained_jsonl_sha256"], "retained hash drift")
-    _require(measured.get("report_identity_sha256") == ADMITTED_RIGHTS_CANDIDATE["report_identity_sha256"], "report identity drift")
-    _require(measured.get("config_identity_sha256") == ADMITTED_RIGHTS_CANDIDATE["config_identity_sha256"], "config identity drift")
-    _require(measured.get("anonymization_marker_prefix_consistency_validated_for_retained_rows") is True, "privacy marker proof missing")
+    _require(
+        measured.get("retained_jsonl_sha256")
+        == ADMITTED_RIGHTS_CANDIDATE["retained_jsonl_sha256"],
+        "retained hash drift",
+    )
+    _require(
+        measured.get("report_identity_sha256")
+        == ADMITTED_RIGHTS_CANDIDATE["report_identity_sha256"],
+        "report identity drift",
+    )
+    _require(
+        measured.get("config_identity_sha256")
+        == ADMITTED_RIGHTS_CANDIDATE["config_identity_sha256"],
+        "config identity drift",
+    )
+    _require(
+        measured.get("anonymization_marker_prefix_consistency_validated_for_retained_rows") is True,
+        "privacy marker proof missing",
+    )
     _require(measured.get("universal_pii_absence_claimed") is False, "privacy claim improperly widened")
     _require(measured.get("rejected_text_emitted") is False, "rejected text was emitted")
     _require(measured.get("rejected_hashes_emitted") is False, "rejected hashes were emitted")
@@ -293,7 +320,10 @@ def _validate_repaired_execution(root: Path) -> Mapping[str, Any]:
         "optimizer_updates",
     )
     for key in zero_fields:
-        _require(type(boundary.get(key)) is int and boundary[key] == 0, f"execution {key} widened")
+        _require(
+            type(boundary.get(key)) is int and boundary[key] == 0,
+            f"execution {key} widened",
+        )
     false_fields = (
         "current_corpus_eligible",
         "tokenizer_fit_authorized",
@@ -337,7 +367,10 @@ def _expected_execution_authority() -> dict[str, Any]:
         "workflow_run": WORKFLOW_RUN,
         "workflow_job": WORKFLOW_JOB,
         "independent_audit_issue": INDEPENDENT_AUDIT_ISSUE,
-        "independent_audit_status": "TERMINAL_PASS",
+        "independent_audit_status": INDEPENDENT_AUDIT_STATUS,
+        "independent_audit_target_head_sha": PRODUCT_HEAD,
+        "independent_audit_verdict": INDEPENDENT_AUDIT_VERDICT,
+        "independent_audit_shared_ci_run": INDEPENDENT_AUDIT_SHARED_CI,
     }
 
 
@@ -364,9 +397,15 @@ def validate_languk_postexecution_rights(
         {"control_issue": SWARM_CONTROL_ISSUE, "worker_issue": SWARM_ISSUE, "lane_key": LANE_KEY},
         "swarm binding",
     )
-    _require_exact(admission.get("rights_authority"), _expected_rights_authority(), "rights authority")
     _require_exact(
-        admission.get("execution_authority"), _expected_execution_authority(), "execution authority"
+        admission.get("rights_authority"),
+        _expected_rights_authority(),
+        "rights authority",
+    )
+    _require_exact(
+        admission.get("execution_authority"),
+        _expected_execution_authority(),
+        "execution authority",
     )
     _require_exact(admission.get("source_scope"), SOURCE, "source scope")
     _require_exact(
@@ -399,8 +438,15 @@ def validate_languk_postexecution_rights(
         rights_candidate["selected_file_origin_commit"] == SOURCE["revision"],
         "rights/execution revision mismatch",
     )
-    _require(rights_candidate["selected_file_raw_sha256"] == SOURCE["sha256"], "rights/execution hash mismatch")
-    _require(measured["retained_normalized_bytes"] == ADMITTED_RIGHTS_CANDIDATE["retained_normalized_bytes"], "admitted/executed byte mismatch")
+    _require(
+        rights_candidate["selected_file_raw_sha256"] == SOURCE["sha256"],
+        "rights/execution hash mismatch",
+    )
+    _require(
+        measured["retained_normalized_bytes"]
+        == ADMITTED_RIGHTS_CANDIDATE["retained_normalized_bytes"],
+        "admitted/executed byte mismatch",
+    )
     return dict(admission)
 
 
