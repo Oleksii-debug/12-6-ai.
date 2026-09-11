@@ -9,7 +9,6 @@ from twelve_six.tokenization.byte import (
     BYTE_VOCAB_HASH,
 )
 
-
 _UPSTREAMS = {
     "retained_inventory_identity_sha256": "1" * 64,
     "decontamination_authority_sha256": "2" * 64,
