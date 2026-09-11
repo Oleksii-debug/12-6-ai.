@@ -24,104 +24,60 @@ jobs:
             tests/test_materialize_d03_ecfr_point_in_time.py \
             tests/test_d03_ecfr_incumbent_hardening.py \
             tests/test_d03_ecfr_acquisition_probe.py
-      - name: Two independent canonical materializations
+      - name: Diagnose exact eCFR 406 header contract without retention
+        run: |
+          python - <<'PY'
+          import hashlib
+          import urllib.error
+          import urllib.request
+
+          url = 'https://www.ecfr.gov/api/versioner/v1/full/2026-09-03/title-1.xml'
+          max_bytes = 8 * 1024 * 1024
+          variants = {
+              'canonical': {
+                  'Accept': 'application/xml,text/xml;q=0.9,application/octet-stream;q=0.5',
+                  'User-Agent': '12-6-ai-d03-ecfr-materializer/1.0',
+              },
+              'wildcard_accept_same_ua': {
+                  'Accept': '*/*',
+                  'User-Agent': '12-6-ai-d03-ecfr-materializer/1.0',
+              },
+              'canonical_accept_neutral_ua': {
+                  'Accept': 'application/xml,text/xml;q=0.9,application/octet-stream;q=0.5',
+                  'User-Agent': '12-6-ecfr-research/1.0',
+              },
+              'wildcard_accept_neutral_ua': {
+                  'Accept': '*/*',
+                  'User-Agent': '12-6-ecfr-research/1.0',
+              },
+          }
+          for name, headers in variants.items():
+              req = urllib.request.Request(url, headers=headers, method='GET')
+              try:
+                  with urllib.request.urlopen(req, timeout=60) as response:
+                      body = response.read(max_bytes + 1)
+                      if len(body) > max_bytes:
+                          raise RuntimeError(f'{name}: response exceeds byte bound')
+                      print(
+                          f'{name}: status={response.getcode()} '
+                          f'final_url={response.geturl()} '
+                          f'content_type={response.headers.get_content_type().lower()} '
+                          f'bytes={len(body)} sha256={hashlib.sha256(body).hexdigest()}'
+                      )
+              except urllib.error.HTTPError as exc:
+                  print(f'{name}: HTTP={exc.code}')
+              except urllib.error.URLError as exc:
+                  print(f'{name}: URLERROR={exc.reason}')
+          PY
+      - name: Canonical materialization after diagnostics
         run: |
           set -euo pipefail
-          mkdir -p /tmp/ecfr-a /tmp/ecfr-b execution-evidence
+          mkdir -p /tmp/ecfr execution-evidence
           if ! python tools/materialize_d03_ecfr_point_in_time.py \
-            --output-dir /tmp/ecfr-a \
-            > /tmp/ecfr-a/stdout.json 2>&1; then
-            cat /tmp/ecfr-a/stdout.json
+            --output-dir /tmp/ecfr \
+            > /tmp/ecfr/stdout.json 2>&1; then
+            cat /tmp/ecfr/stdout.json
             exit 1
           fi
-          if ! python tools/materialize_d03_ecfr_point_in_time.py \
-            --output-dir /tmp/ecfr-b \
-            > /tmp/ecfr-b/stdout.json 2>&1; then
-            cat /tmp/ecfr-b/stdout.json
-            exit 1
-          fi
-          cmp /tmp/ecfr-a/ecfr-2026-09-03-title-1.evidence.json \
-              /tmp/ecfr-b/ecfr-2026-09-03-title-1.evidence.json
-          python - <<'PY'
-          import json
-          import os
-          import platform
-          from pathlib import Path
-
-          a_path = Path('/tmp/ecfr-a/ecfr-2026-09-03-title-1.evidence.json')
-          b_path = Path('/tmp/ecfr-b/ecfr-2026-09-03-title-1.evidence.json')
-          a = json.loads(a_path.read_text(encoding='utf-8'))
-          b = json.loads(b_path.read_text(encoding='utf-8'))
-          assert a == b
-          assert a['status'] == 'TRANSPORT_AND_XML_PARSE_PASS_ZERO_CREDIT'
-          assert a['request_identity_sha256'] == 'd9955ff11713a358164513d912d39ba107f0073c75bed15be64afe2cc8c3a2e4'
-          assert a['selection']['date'] == '2026-09-03'
-          assert a['selection']['title'] == 1
-          assert a['selection']['url'] == 'https://www.ecfr.gov/api/versioner/v1/full/2026-09-03/title-1.xml'
-          assert a['byte_identical'] is True
-          assert len(a['acquisitions']) == 2
-          assert a['acquisitions'][0]['raw_sha256'] == a['acquisitions'][1]['raw_sha256'] == a['raw_sha256']
-          assert a['acquisitions'][0]['raw_bytes'] == a['acquisitions'][1]['raw_bytes'] == a['raw_bytes']
-          assert a['record_extraction_status'] == 'NOT_RUN'
-          assert a['rights_and_provenance_status'] == 'NOT_RUN'
-          assert a['quality_language_privacy_status'] == 'NOT_RUN'
-          assert a['global_dedup_status'] == 'NOT_RUN'
-          assert a['evaluation_decontamination_status'] == 'NOT_RUN'
-          claims = a['claims']
-          assert claims['canonical_capacity_credit_bytes'] == 0
-          assert claims['family_credit'] == 0
-          assert claims['training_authorized_bytes'] == 0
-          assert claims['authorized_unique_loss_positions'] == 0
-          assert claims['tokenizer_fit_authorized'] is False
-          assert claims['model_training_executed'] is False
-          assert claims['optimizer_updates'] == 0
-          assert claims['final_test_accessed'] is False
-          assert claims['paid_compute_authorized'] is False
-          receipt = {
-              'schema_version': '12-6.d03-ecfr-real-execution.v1',
-              'claim_issue': 1103,
-              'incumbent_pr': 707,
-              'execution_profile': 'LOCAL_FREE_GITHUB_HOSTED_UBUNTU',
-              'repository_commit': os.environ['GITHUB_SHA'],
-              'workflow_run_id': int(os.environ['GITHUB_RUN_ID']),
-              'workflow_run_attempt': int(os.environ['GITHUB_RUN_ATTEMPT']),
-              'python_version': platform.python_version(),
-              'request_identity_sha256': a['request_identity_sha256'],
-              'source_id': a['source_id'],
-              'family_id': a['family_id'],
-              'selection': a['selection'],
-              'canonical_materializer_status': a['status'],
-              'independent_cli_materializations': 2,
-              'total_network_acquisitions': 4,
-              'independent_evidence_byte_identical': True,
-              'within_materializer_acquisitions_byte_identical': a['byte_identical'],
-              'raw_bytes': a['raw_bytes'],
-              'raw_sha256': a['raw_sha256'],
-              'xml': a['xml'],
-              'evidence_identity_sha256': a['evidence_identity_sha256'],
-              'record_extraction_status': a['record_extraction_status'],
-              'rights_and_provenance_status': a['rights_and_provenance_status'],
-              'quality_language_privacy_status': a['quality_language_privacy_status'],
-              'global_dedup_status': a['global_dedup_status'],
-              'evaluation_decontamination_status': a['evaluation_decontamination_status'],
-              'claims': claims,
-              'durable_evidence_contains_source_text': False,
-              'raw_source_retained': False,
-              'learned_weights_created': False,
-              'foreign_pretrained_weights_used': False,
-              'external_llm_or_api_used_for_data_or_intelligence': False,
-          }
-          Path('execution-evidence/ecfr-real-execution-v1.json').write_text(
-              json.dumps(receipt, sort_keys=True, indent=2) + '\n',
-              encoding='utf-8',
-          )
-          print(json.dumps(receipt, sort_keys=True))
-          PY
-          rm -rf /tmp/ecfr-a /tmp/ecfr-b
-      - name: Upload text-free receipt only
-        uses: actions/upload-artifact@v4
-        with:
-          name: d03-ecfr-real-execution-1103
-          path: execution-evidence/ecfr-real-execution-v1.json
-          if-no-files-found: error
-          retention-days: 7
+          cat /tmp/ecfr/stdout.json
+          rm -rf /tmp/ecfr
