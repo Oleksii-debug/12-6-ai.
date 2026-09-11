@@ -1,4 +1,4 @@
-name: D03 PDR raw schema diagnostic temporary
+name: D03 PDR attribution provenance replay temporary
 
 on:
   push:
@@ -15,81 +15,362 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  schema-diagnostic:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
+  execute-a:
+    name: independent replay A
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      artifact_id: ${{ steps.upload.outputs.artifact-id }}
+      artifact_digest: ${{ steps.upload.outputs.artifact-digest }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Download exact source files and print schema names only
-        shell: bash
+      - name: Bind exact execution head
+        run: test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+      - name: Focused and adversarial tests
+        run: |
+          python -m pip install pytest
+          python -m pytest -q tests/test_d03_common_pile_public_domain_review.py tests/test_d03_pdr_attribution_sidecar_v1.py
+      - name: Download exact sources and build replay A
         run: |
           set -euo pipefail
-          rm -rf .pdr-src
-          mkdir -p .pdr-src/v0
+          rm -rf /tmp/pdr-a
+          mkdir -p /tmp/pdr-a/src/v0 /tmp/pdr-a/build
           python - <<'PY'
-          import gzip
           import hashlib
-          import json
           import urllib.request
           from pathlib import Path
 
           revision = '177f70f044bd7a347616727c0f33ab4af9baa495'
           files = {
-              'v0/00000_collections.jsonl.gz': (
-                  '0a5cbe305d7f468aad95a8cfc4d5fae14132bc359ccf92fc3705072db33a46fd',
-                  2_000_000,
-              ),
-              'v0/00000_essays.jsonl.gz': (
-                  '825aed6a66ab14f89e1fe3110f67265d511994c52e5aed48b866a9e8a1bdeb4d',
-                  2_500_000,
-              ),
+              'v0/00000_collections.jsonl.gz': ('0a5cbe305d7f468aad95a8cfc4d5fae14132bc359ccf92fc3705072db33a46fd', 2_000_000),
+              'v0/00000_essays.jsonl.gz': ('825aed6a66ab14f89e1fe3110f67265d511994c52e5aed48b866a9e8a1bdeb4d', 2_500_000),
           }
+          root = Path('/tmp/pdr-a/src')
           for rel, (expected_sha, limit) in files.items():
-              url = (
-                  'https://huggingface.co/datasets/common-pile/'
-                  f'public_domain_review/resolve/{revision}/{rel}?download=true'
-              )
-              request = urllib.request.Request(
-                  url,
-                  headers={
-                      'User-Agent': '12-6-ai-D03-PDR-schema/1.0',
-                      'Accept': 'application/octet-stream',
-                  },
-              )
+              url = f'https://huggingface.co/datasets/common-pile/public_domain_review/resolve/{revision}/{rel}?download=true'
+              request = urllib.request.Request(url, headers={'User-Agent': '12-6-ai-D03-PDR-attribution/2.0', 'Accept': 'application/octet-stream'})
               with urllib.request.urlopen(request, timeout=120) as response:
                   payload = response.read(limit + 1)
               assert len(payload) <= limit
               assert hashlib.sha256(payload).hexdigest() == expected_sha
-              target = Path('.pdr-src') / rel
+              target = root / rel
               target.parent.mkdir(parents=True, exist_ok=True)
               target.write_bytes(payload)
-              with gzip.open(target, 'rt', encoding='utf-8') as handle:
-                  row = json.loads(next(handle))
-              metadata = row.get('metadata')
-              diagnostic = {
-                  'file': rel,
-                  'top_level_keys': sorted(row),
-                  'top_level_types': {
-                      key: type(row[key]).__name__ for key in sorted(row)
-                  },
-                  'metadata_keys': (
-                      sorted(metadata) if isinstance(metadata, dict) else None
-                  ),
-                  'metadata_types': (
-                      {
-                          key: type(metadata[key]).__name__
-                          for key in sorted(metadata)
-                      }
-                      if isinstance(metadata, dict)
-                      else None
-                  ),
-              }
-              print(
-                  'PDR_RAW_SCHEMA='
-                  + json.dumps(diagnostic, sort_keys=True, separators=(',', ':'))
-              )
           PY
-          rm -rf .pdr-src
+          python tools/materialize_d03_common_pile_public_domain_review.py \
+            --config configs/data/d03_common_pile_public_domain_review_v1.json \
+            --input-dir /tmp/pdr-a/src \
+            --output /tmp/pdr-a/build/materialized
+          python tools/build_d03_pdr_attribution_sidecar_v1.py \
+            --config configs/data/d03_common_pile_public_domain_review_v1.json \
+            --candidate /tmp/pdr-a/build/materialized/candidate.jsonl \
+            --input-dir /tmp/pdr-a/src \
+            --sidecar /tmp/pdr-a/build/attribution.jsonl \
+            --report /tmp/pdr-a/build/attribution-report.json
+      - name: Build text-free replay A evidence
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+
+          root = Path('/tmp/pdr-a/build')
+          materialized = root / 'materialized'
+          candidate = materialized / 'candidate.jsonl'
+          report_path = materialized / 'report.json'
+          manifest_path = materialized / 'manifest.json'
+          sidecar = root / 'attribution.jsonl'
+          attribution_report_path = root / 'attribution-report.json'
+          attribution_report = json.loads(attribution_report_path.read_text(encoding='utf-8'))
+
+          def sha(path: Path) -> str:
+              return hashlib.sha256(path.read_bytes()).hexdigest()
+
+          assert candidate.stat().st_size == 5_630_935
+          assert sha(candidate) == '38b0ef94062b80ae1cb8055fe897feb10a1e8d04a9b17340cbc080d4bfb21591'
+          assert attribution_report['selected_record_count'] == 1_166
+          assert attribution_report['selected_normalized_utf8_bytes'] == 4_795_007
+          assert attribution_report['candidate_projection_identity_sha256'] == 'bf9f7896fc2c940458916184b1b702f443d72290e286ee16b24da4088b2aa4ab'
+          assert attribution_report['training_text_modified'] is False
+          assert attribution_report['source_rights_review_status'] == 'REVIEW_REQUIRED'
+          for key in ('training_authorized_bytes', 'authorized_optimized_target_exposure'):
+              assert isinstance(attribution_report[key], int) and not isinstance(attribution_report[key], bool) and attribution_report[key] == 0
+          for key in ('tokenizer_fit_authorized', 'model_training_executed', 'final_test_payload_accessed', 'paid_compute_used'):
+              assert attribution_report[key] is False
+
+          evidence = {
+              'schema_version': '12-6.d03-pdr-attribution-run-bound-evidence.v1',
+              'execution_slot': 'A',
+              'source_revision': attribution_report['source_revision'],
+              'source_sha256': [
+                  '0a5cbe305d7f468aad95a8cfc4d5fae14132bc359ccf92fc3705072db33a46fd',
+                  '825aed6a66ab14f89e1fe3110f67265d511994c52e5aed48b866a9e8a1bdeb4d',
+              ],
+              'candidate_jsonl_sha256': sha(candidate),
+              'candidate_jsonl_bytes': candidate.stat().st_size,
+              'materialization_report_file_sha256': sha(report_path),
+              'materialization_manifest_file_sha256': sha(manifest_path),
+              'selected_record_count': attribution_report['selected_record_count'],
+              'selected_normalized_utf8_bytes': attribution_report['selected_normalized_utf8_bytes'],
+              'candidate_projection_identity_sha256': attribution_report['candidate_projection_identity_sha256'],
+              'attribution_sidecar_jsonl_sha256': sha(sidecar),
+              'attribution_sidecar_jsonl_bytes': sidecar.stat().st_size,
+              'attribution_report_file_sha256': sha(attribution_report_path),
+              'attribution_report_identity_sha256': attribution_report['report_identity_sha256'],
+              'claim_boundary': {
+                  'author_values_persisted_in_evidence': False,
+                  'training_text_modified': False,
+                  'source_rights_review_status': 'REVIEW_REQUIRED',
+                  'canonical_corpus_admitted': False,
+                  'training_authorized_bytes': 0,
+                  'authorized_optimized_target_exposure': 0,
+                  'tokenizer_fit_authorized': False,
+                  'model_training_executed': False,
+                  'final_test_payload_accessed': False,
+                  'paid_compute_used': False,
+                  'foreign_pretrained_weights_used': False,
+              },
+          }
+          Path('/tmp/pdr-a/evidence.json').write_text(json.dumps(evidence, sort_keys=True, separators=(',', ':')) + '\n', encoding='utf-8')
+          PY
+      - name: Upload text-free replay A evidence
+        id: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: d03-pdr-attribution-evidence-a-${{ github.run_id }}
+          path: /tmp/pdr-a/evidence.json
+          if-no-files-found: error
+          retention-days: 30
+      - name: Delete replay A payloads
+        if: always()
+        run: rm -rf /tmp/pdr-a
+      - name: Keep tracked repository clean
+        run: test -z "$(git status --porcelain --untracked-files=no)"
+
+  execute-b:
+    name: independent replay B
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      artifact_id: ${{ steps.upload.outputs.artifact-id }}
+      artifact_digest: ${{ steps.upload.outputs.artifact-digest }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Bind exact execution head
+        run: test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+      - name: Focused and adversarial tests
+        run: |
+          python -m pip install pytest
+          python -m pytest -q tests/test_d03_common_pile_public_domain_review.py tests/test_d03_pdr_attribution_sidecar_v1.py
+      - name: Download exact sources and build replay B
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/pdr-b
+          mkdir -p /tmp/pdr-b/src/v0 /tmp/pdr-b/build
+          python - <<'PY'
+          import hashlib
+          import urllib.request
+          from pathlib import Path
+
+          revision = '177f70f044bd7a347616727c0f33ab4af9baa495'
+          files = {
+              'v0/00000_collections.jsonl.gz': ('0a5cbe305d7f468aad95a8cfc4d5fae14132bc359ccf92fc3705072db33a46fd', 2_000_000),
+              'v0/00000_essays.jsonl.gz': ('825aed6a66ab14f89e1fe3110f67265d511994c52e5aed48b866a9e8a1bdeb4d', 2_500_000),
+          }
+          root = Path('/tmp/pdr-b/src')
+          for rel, (expected_sha, limit) in files.items():
+              url = f'https://huggingface.co/datasets/common-pile/public_domain_review/resolve/{revision}/{rel}?download=true'
+              request = urllib.request.Request(url, headers={'User-Agent': '12-6-ai-D03-PDR-attribution/2.0', 'Accept': 'application/octet-stream'})
+              with urllib.request.urlopen(request, timeout=120) as response:
+                  payload = response.read(limit + 1)
+              assert len(payload) <= limit
+              assert hashlib.sha256(payload).hexdigest() == expected_sha
+              target = root / rel
+              target.parent.mkdir(parents=True, exist_ok=True)
+              target.write_bytes(payload)
+          PY
+          python tools/materialize_d03_common_pile_public_domain_review.py \
+            --config configs/data/d03_common_pile_public_domain_review_v1.json \
+            --input-dir /tmp/pdr-b/src \
+            --output /tmp/pdr-b/build/materialized
+          python tools/build_d03_pdr_attribution_sidecar_v1.py \
+            --config configs/data/d03_common_pile_public_domain_review_v1.json \
+            --candidate /tmp/pdr-b/build/materialized/candidate.jsonl \
+            --input-dir /tmp/pdr-b/src \
+            --sidecar /tmp/pdr-b/build/attribution.jsonl \
+            --report /tmp/pdr-b/build/attribution-report.json
+      - name: Build text-free replay B evidence
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+
+          root = Path('/tmp/pdr-b/build')
+          materialized = root / 'materialized'
+          candidate = materialized / 'candidate.jsonl'
+          report_path = materialized / 'report.json'
+          manifest_path = materialized / 'manifest.json'
+          sidecar = root / 'attribution.jsonl'
+          attribution_report_path = root / 'attribution-report.json'
+          attribution_report = json.loads(attribution_report_path.read_text(encoding='utf-8'))
+
+          def sha(path: Path) -> str:
+              return hashlib.sha256(path.read_bytes()).hexdigest()
+
+          assert candidate.stat().st_size == 5_630_935
+          assert sha(candidate) == '38b0ef94062b80ae1cb8055fe897feb10a1e8d04a9b17340cbc080d4bfb21591'
+          assert attribution_report['selected_record_count'] == 1_166
+          assert attribution_report['selected_normalized_utf8_bytes'] == 4_795_007
+          assert attribution_report['candidate_projection_identity_sha256'] == 'bf9f7896fc2c940458916184b1b702f443d72290e286ee16b24da4088b2aa4ab'
+          assert attribution_report['training_text_modified'] is False
+          assert attribution_report['source_rights_review_status'] == 'REVIEW_REQUIRED'
+          for key in ('training_authorized_bytes', 'authorized_optimized_target_exposure'):
+              assert isinstance(attribution_report[key], int) and not isinstance(attribution_report[key], bool) and attribution_report[key] == 0
+          for key in ('tokenizer_fit_authorized', 'model_training_executed', 'final_test_payload_accessed', 'paid_compute_used'):
+              assert attribution_report[key] is False
+
+          evidence = {
+              'schema_version': '12-6.d03-pdr-attribution-run-bound-evidence.v1',
+              'execution_slot': 'B',
+              'source_revision': attribution_report['source_revision'],
+              'source_sha256': [
+                  '0a5cbe305d7f468aad95a8cfc4d5fae14132bc359ccf92fc3705072db33a46fd',
+                  '825aed6a66ab14f89e1fe3110f67265d511994c52e5aed48b866a9e8a1bdeb4d',
+              ],
+              'candidate_jsonl_sha256': sha(candidate),
+              'candidate_jsonl_bytes': candidate.stat().st_size,
+              'materialization_report_file_sha256': sha(report_path),
+              'materialization_manifest_file_sha256': sha(manifest_path),
+              'selected_record_count': attribution_report['selected_record_count'],
+              'selected_normalized_utf8_bytes': attribution_report['selected_normalized_utf8_bytes'],
+              'candidate_projection_identity_sha256': attribution_report['candidate_projection_identity_sha256'],
+              'attribution_sidecar_jsonl_sha256': sha(sidecar),
+              'attribution_sidecar_jsonl_bytes': sidecar.stat().st_size,
+              'attribution_report_file_sha256': sha(attribution_report_path),
+              'attribution_report_identity_sha256': attribution_report['report_identity_sha256'],
+              'claim_boundary': {
+                  'author_values_persisted_in_evidence': False,
+                  'training_text_modified': False,
+                  'source_rights_review_status': 'REVIEW_REQUIRED',
+                  'canonical_corpus_admitted': False,
+                  'training_authorized_bytes': 0,
+                  'authorized_optimized_target_exposure': 0,
+                  'tokenizer_fit_authorized': False,
+                  'model_training_executed': False,
+                  'final_test_payload_accessed': False,
+                  'paid_compute_used': False,
+                  'foreign_pretrained_weights_used': False,
+              },
+          }
+          Path('/tmp/pdr-b/evidence.json').write_text(json.dumps(evidence, sort_keys=True, separators=(',', ':')) + '\n', encoding='utf-8')
+          PY
+      - name: Upload text-free replay B evidence
+        id: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: d03-pdr-attribution-evidence-b-${{ github.run_id }}
+          path: /tmp/pdr-b/evidence.json
+          if-no-files-found: error
+          retention-days: 30
+      - name: Delete replay B payloads
+        if: always()
+        run: rm -rf /tmp/pdr-b
+      - name: Keep tracked repository clean
+        run: test -z "$(git status --porcelain --untracked-files=no)"
+
+  compare-independent-replays:
+    name: compare independent replays
+    needs: [execute-a, execute-b]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      artifact_id: ${{ steps.upload.outputs.artifact-id }}
+      artifact_digest: ${{ steps.upload.outputs.artifact-digest }}
+    steps:
+      - name: Download replay A evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: d03-pdr-attribution-evidence-a-${{ github.run_id }}
+          path: /tmp/pdr-compare/a
+      - name: Download replay B evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: d03-pdr-attribution-evidence-b-${{ github.run_id }}
+          path: /tmp/pdr-compare/b
+      - name: Require deterministic replay evidence
+        env:
+          EXECUTION_HEAD: ${{ github.sha }}
+          A_ARTIFACT_ID: ${{ needs.execute-a.outputs.artifact_id }}
+          A_ARTIFACT_DIGEST: ${{ needs.execute-a.outputs.artifact_digest }}
+          B_ARTIFACT_ID: ${{ needs.execute-b.outputs.artifact_id }}
+          B_ARTIFACT_DIGEST: ${{ needs.execute-b.outputs.artifact_digest }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          a_raw = Path('/tmp/pdr-compare/a/evidence.json').read_bytes()
+          b_raw = Path('/tmp/pdr-compare/b/evidence.json').read_bytes()
+          a = json.loads(a_raw)
+          b = json.loads(b_raw)
+          assert a['execution_slot'] == 'A'
+          assert b['execution_slot'] == 'B'
+          a_cmp = dict(a); b_cmp = dict(b)
+          a_cmp.pop('execution_slot'); b_cmp.pop('execution_slot')
+          assert a_cmp == b_cmp
+          assert a_cmp['candidate_jsonl_sha256'] == '38b0ef94062b80ae1cb8055fe897feb10a1e8d04a9b17340cbc080d4bfb21591'
+          assert a_cmp['candidate_jsonl_bytes'] == 5_630_935
+          assert a_cmp['selected_record_count'] == 1_166
+          assert a_cmp['selected_normalized_utf8_bytes'] == 4_795_007
+          assert a_cmp['candidate_projection_identity_sha256'] == 'bf9f7896fc2c940458916184b1b702f443d72290e286ee16b24da4088b2aa4ab'
+          boundary = a_cmp['claim_boundary']
+          for key in ('training_authorized_bytes', 'authorized_optimized_target_exposure'):
+              assert isinstance(boundary[key], int) and not isinstance(boundary[key], bool) and boundary[key] == 0
+          for key in ('author_values_persisted_in_evidence', 'training_text_modified', 'canonical_corpus_admitted', 'tokenizer_fit_authorized', 'model_training_executed', 'final_test_payload_accessed', 'paid_compute_used', 'foreign_pretrained_weights_used'):
+              assert boundary[key] is False
+          assert boundary['source_rights_review_status'] == 'REVIEW_REQUIRED'
+
+          manifest = {
+              'schema_version': '12-6.d03-pdr-attribution-run-bound-compare.v1',
+              'run_id': int(os.environ['RUN_ID']),
+              'run_attempt': int(os.environ['RUN_ATTEMPT']),
+              'execution_head_sha': os.environ['EXECUTION_HEAD'],
+              'execution_a_artifact': {
+                  'id': int(os.environ['A_ARTIFACT_ID']),
+                  'digest': os.environ['A_ARTIFACT_DIGEST'],
+                  'evidence_sha256': hashlib.sha256(a_raw).hexdigest(),
+              },
+              'execution_b_artifact': {
+                  'id': int(os.environ['B_ARTIFACT_ID']),
+                  'digest': os.environ['B_ARTIFACT_DIGEST'],
+                  'evidence_sha256': hashlib.sha256(b_raw).hexdigest(),
+              },
+              'deterministic_evidence': a_cmp,
+          }
+          output = Path('/tmp/pdr-compare/compare-manifest.json')
+          output.write_text(json.dumps(manifest, sort_keys=True, separators=(',', ':')) + '\n', encoding='utf-8')
+          print('PDR_ATTRIBUTION_RUN_BOUND_COMPARE=' + json.dumps(manifest, sort_keys=True, separators=(',', ':')))
+          PY
+      - name: Upload run-bound compare manifest
+        id: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: d03-pdr-attribution-compare-${{ github.run_id }}
+          path: /tmp/pdr-compare/compare-manifest.json
+          if-no-files-found: error
+          retention-days: 30
