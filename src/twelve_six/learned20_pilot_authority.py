@@ -59,7 +59,7 @@ def assess_launch_with_terminal_provenance(
     *,
     material_cost: bool,
 ) -> dict[str, Any]:
-    """Assess launch readiness with checkpoint, firewall, pilot, and D06 provenance."""
+    """Assess launch readiness with checkpoint, firewall, pilot, and D06/D07 provenance."""
 
     result = assess_launch_with_checkpoint_provenance(
         contract,
@@ -68,7 +68,15 @@ def assess_launch_with_terminal_provenance(
     )
     firewall_blockers = validate_evaluation_firewall_provenance(evidence)
     pilot_blockers = validate_bounded_pilot_authority(evidence)
-    d06_blockers = validate_terminal_pilot_evaluation(evidence)
+    trusted_fresh_process_expectations = contract.get(
+        "d07_fresh_process_expectations"
+    )
+    if not isinstance(trusted_fresh_process_expectations, Mapping):
+        trusted_fresh_process_expectations = None
+    d06_blockers = validate_terminal_pilot_evaluation(
+        evidence,
+        fresh_process_expectations=trusted_fresh_process_expectations,
+    )
 
     if firewall_blockers:
         result["pilot_blockers"] = sorted(
