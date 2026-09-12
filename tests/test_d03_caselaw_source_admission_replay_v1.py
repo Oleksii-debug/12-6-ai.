@@ -142,7 +142,7 @@ def test_filter_candidate_keeps_only_source_admitted_rows(
     }
     summary = mod.filter_candidate(candidate, admitted, decisions)
     assert summary["source_admitted_records"] == 1
-    assert summary["source_admitted_normalized_utf8_bytes"] == len("alpha".encode())
+    assert summary["source_admitted_normalized_utf8_bytes"] == len(b"alpha")
     assert summary["candidate_denied_reason_counts"] == {
         "unsupported_courtlistener_source": 1
     }
