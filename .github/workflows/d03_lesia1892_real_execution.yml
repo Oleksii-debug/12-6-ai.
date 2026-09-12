@@ -23,7 +23,7 @@ jobs:
   acquire-a:
     name: independent acquisition A
     runs-on: ubuntu-24.04
-    timeout-minutes: 12
+    timeout-minutes: 30
     outputs:
       candidate_sha256: ${{ steps.evidence.outputs.candidate_sha256 }}
       report_sha256: ${{ steps.evidence.outputs.report_sha256 }}
@@ -110,7 +110,7 @@ jobs:
     name: independent acquisition B
     needs: acquire-a
     runs-on: ubuntu-24.04
-    timeout-minutes: 12
+    timeout-minutes: 30
     outputs:
       candidate_sha256: ${{ steps.evidence.outputs.candidate_sha256 }}
       report_sha256: ${{ steps.evidence.outputs.report_sha256 }}
