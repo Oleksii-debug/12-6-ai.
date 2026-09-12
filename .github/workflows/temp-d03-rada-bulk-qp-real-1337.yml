@@ -31,8 +31,8 @@ jobs:
           EXPECTED_PARENT_HEAD: 656dd4abe7bdf9c379a86ac9a19f046d5b0d8538
         run: |
           set -euo pipefail
-          git config user.name "SWARM-1337"
-          git config user.email "swarm-1337@users.noreply.github.com"
+          git config user.name "SWARM-1441"
+          git config user.email "swarm-1441@users.noreply.github.com"
           git fetch --no-tags origin d03/rada-bulk-normalization-current-main-20260907
           test "$(git rev-parse FETCH_HEAD)" = "$EXPECTED_PARENT_HEAD"
           git merge --no-edit "$EXPECTED_PARENT_HEAD"
@@ -103,14 +103,15 @@ jobs:
 
           tests = Path("tests/test_d03_rada_bulk_quality_privacy.py")
           text = tests.read_text(encoding="utf-8")
-          import_needle = "    QualityPrivacyError,\n"
-          if text.count(import_needle) != 1:
-              raise SystemExit("test import seam drift")
-          text = text.replace(
-              import_needle,
-              import_needle + "    _validate_config,\n    _verify_parent_manifest,\n",
-              1,
-          )
+          if "    _validate_config,\n" not in text or "    _verify_parent_manifest,\n" not in text:
+              import_block = "from tools.filter_d03_rada_bulk_quality_privacy import (\n"
+              if text.count(import_block) != 1:
+                  raise SystemExit("test import block seam drift")
+              text = text.replace(
+                  import_block,
+                  import_block + "    _validate_config,\n    _verify_parent_manifest,\n",
+                  1,
+              )
           test_marker = "def test_zero_credit_integer_fields_reject_bool_aliases()"
           if test_marker not in text:
               text += '''\n\ndef test_zero_credit_integer_fields_reject_bool_aliases() -> None:\n    for key, message in (("training_authorized_bytes", "training bytes nonzero"), ("optimizer_updates", "optimizer updates nonzero")):\n        tampered = copy.deepcopy(CONFIG)\n        tampered["claim_boundary"][key] = False\n        with pytest.raises(QualityPrivacyError, match=message):\n            _validate_config(tampered)\n\n\ndef test_parent_zero_credit_integer_fields_reject_bool_aliases() -> None:\n    text = "Нормативний український текст достатньої довжини для strict-zero перевірки. " * 5\n    _, manifest, _ = _parent_payload([text])\n    for key, message in (("training_authorized_bytes", "parent grants training"), ("normalized_capacity_credited", "parent grants capacity")):\n        tampered = copy.deepcopy(manifest)\n        tampered[key] = False\n        with pytest.raises(QualityPrivacyError, match=message):\n            _verify_parent_manifest(tampered)\n\n\ndef test_stale_parent_product_identity_cannot_reseal_current_config() -> None:\n    tampered = copy.deepcopy(CONFIG)\n    tampered["parent_normalization"]["head_sha"] = "50069882dfb5866946626720a997a2c35458df7c"\n    with pytest.raises(QualityPrivacyError, match="parent authority binding drift"):\n        _validate_config(tampered)\n'''
