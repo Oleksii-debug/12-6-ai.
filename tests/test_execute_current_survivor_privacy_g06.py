@@ -2,12 +2,21 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import importlib.util
 import json
 from pathlib import Path
 
 import pytest
 
-import tools.execute_current_survivor_privacy_g06 as runner
+_RUNNER_PATH = (
+    Path(__file__).resolve().parents[1] / "tools" / "execute_current_survivor_privacy_g06.py"
+)
+_RUNNER_SPEC = importlib.util.spec_from_file_location(
+    "execute_current_survivor_privacy_g06", _RUNNER_PATH
+)
+assert _RUNNER_SPEC is not None and _RUNNER_SPEC.loader is not None
+runner = importlib.util.module_from_spec(_RUNNER_SPEC)
+_RUNNER_SPEC.loader.exec_module(runner)
 
 
 def _root_bytes(value: object) -> bytes:
