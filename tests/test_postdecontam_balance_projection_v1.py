@@ -13,9 +13,9 @@ from twelve_six.data.postdecontam_balance_projection_v1 import (
     FAMILY_MAP_SCHEMA,
     FAMILY_PROVENANCE_SCHEMA,
     G05_G06_COVERAGE_SCHEMA,
-    ProjectionError,
     QUALITY_GRANULARITY_IDENTITY_SHA256,
     QUALITY_POLICY_IDENTITY_SHA256,
+    ProjectionError,
     build_family_vector,
     read_records_jsonl,
     verify_family_vector,
@@ -27,7 +27,6 @@ from twelve_six.data.trusted_family_authority_v1 import (
     TRUSTED_FAMILY_SEMANTICS,
     trusted_family_authority_root_sha256,
 )
-
 
 SHA = "a" * 64
 PRIVACY_SHA = "e" * 64
