@@ -44,10 +44,12 @@ jobs:
           fetch-depth: 0
       - name: Bind execution to canonical privacy authority
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
+          BASE_SHA="$(git rev-parse HEAD^1)"
+          CHECKOUT_HEAD_SHA="$(git rev-parse HEAD^2)"
+          test "$CHECKOUT_HEAD_SHA" = "$PR_HEAD_SHA"
           git merge-base --is-ancestor 317d73e2b83b5d9ca75bbf912d633d81f654d777 "$BASE_SHA"
           test "$(git rev-parse "$BASE_SHA:src/twelve_six/data/privacy_filter_v3.py")" = "bcc5938395724f6728ab212f98b39f2334b0f37d"
           test "$(git rev-parse "$BASE_SHA:tools/materialize_d03_rada_trees_quality_windows_authoritative.py")" = "e6789f82301dc9e559a431a6b776097bef28d393"
