@@ -39,6 +39,7 @@ _SPLIT_APPLICATION_FIELDS = frozenset(
         "balance_policy_identity_sha256",
         "balance_result_identity_sha256",
         "canonical_split_git_blob_sha1",
+        "split_spec_identity_sha256",
         "selected_record_count",
         "selected_source_bytes",
         "selected_family_source_bytes",
@@ -138,7 +139,7 @@ def _validate_terminal_split_application(
     application: Mapping[str, Any],
     *,
     expected_terminal_split_application_identity_sha256: str,
-) -> tuple[str, tuple[str, ...]]:
+) -> tuple[str, str, tuple[str, ...]]:
     """Authenticate a text-free terminal split application and derive train IDs.
 
     The expected application identity is an independent trust root. The application
@@ -174,6 +175,10 @@ def _validate_terminal_split_application(
     if application.get("claim_boundary") != _ZERO_CREDIT_SPLIT_CLAIM_BOUNDARY:
         raise LedgerError("terminal split application claim boundary widened")
 
+    split_spec_identity = _require_sha256(
+        application.get("split_spec_identity_sha256"),
+        "terminal_split_application.split_spec_identity_sha256",
+    )
     split_family = application.get("split_family")
     if not isinstance(split_family, Mapping):
         raise LedgerError("terminal split application split_family must be an object")
@@ -218,7 +223,7 @@ def _validate_terminal_split_application(
     if set(train_record_ids) & set(validation_union):
         raise LedgerError("terminal split-family shared train overlaps validation union")
 
-    return observed_identity, train_record_ids
+    return observed_identity, split_spec_identity, train_record_ids
 
 
 def _validate_terminal_record_inventory(
@@ -539,7 +544,11 @@ def verify_deterministic_double_pack(
     if not isinstance(expected_stage_bindings, Mapping):
         raise LedgerError("expected_stage_bindings must be an object")
     stage_bindings = _normalize_expected_stage_bindings(expected_stage_bindings)
-    split_application_identity, train_record_ids = _validate_terminal_split_application(
+    (
+        split_application_identity,
+        split_spec_identity,
+        train_record_ids,
+    ) = _validate_terminal_split_application(
         terminal_split_application,
         expected_terminal_split_application_identity_sha256=(
             expected_terminal_split_application_identity_sha256
@@ -624,6 +633,7 @@ def verify_deterministic_double_pack(
         "terminal_record_inventory_digest_sha256": record_inventory_digest,
         "terminal_payload_inventory_digest_sha256": payload_inventory_digest,
         "terminal_split_application_identity_sha256": split_application_identity,
+        "terminal_split_spec_identity_sha256": split_spec_identity,
         "terminal_split_train_record_membership_sha256": train_membership_digest,
         "stage_bindings": stage_bindings,
         "tokenizer_identity_sha256": tokenizer_identity,

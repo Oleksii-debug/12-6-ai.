@@ -8,6 +8,10 @@ from copy import deepcopy
 from twelve_six.data.deterministic_double_pack import verify_deterministic_double_pack
 from twelve_six.data.unique_loss_ledger_v2 import LedgerError
 
+_CANONICAL_SPLIT_SPEC_IDENTITY_SHA256 = (
+    "b0b745ab890343b705c7f02222b3541058513fdaaf5813940b7f8ac9c7bf63e7"
+)
+
 
 def _sha(label: str) -> str:
     return hashlib.sha256(label.encode("utf-8")).hexdigest()
@@ -190,6 +194,7 @@ def _terminal_split_application(
         "balance_policy_identity_sha256": _sha("balance-policy"),
         "balance_result_identity_sha256": _sha("balance-result"),
         "canonical_split_git_blob_sha1": hashlib.sha1(b"canonical-split").hexdigest(),
+        "split_spec_identity_sha256": _CANONICAL_SPLIT_SPEC_IDENTITY_SHA256,
         "selected_record_count": len(train_ids) + len(validation_ids),
         "selected_source_bytes": 1,
         "selected_family_source_bytes": {"family.synthetic": 1},
@@ -373,6 +378,11 @@ def main() -> None:
         _terminal_split_application()["application_identity_sha256"]
     ):
         raise SystemExit("terminal split application identity mismatch")
+    if (
+        proof["terminal_split_spec_identity_sha256"]
+        != _CANONICAL_SPLIT_SPEC_IDENTITY_SHA256
+    ):
+        raise SystemExit("terminal split spec identity mismatch")
     if proof["retained_document_isolation_verified"] is not True:
         raise SystemExit("retained-document isolation was not proven")
     if proof["heldout_reservation_verified"] is not True:
@@ -462,6 +472,21 @@ def main() -> None:
             expected_inventory=closed_world_inventory,
             split_application=resealed_smaller_split,
             expected_split_application=authoritative_split,
+        ),
+        "terminal split application does not match expected identity",
+    )
+
+    split_spec_substitution = _terminal_split_application()
+    split_spec_substitution["split_spec_identity_sha256"] = _sha("other-split-spec")
+    split_spec_substitution["application_identity_sha256"] = _identity_no_lf(
+        split_spec_substitution, "application_identity_sha256"
+    )
+    _expect_failure(
+        lambda: _proof(
+            build_a,
+            build_b,
+            split_application=split_spec_substitution,
+            expected_split_application=_terminal_split_application(),
         ),
         "terminal split application does not match expected identity",
     )
@@ -613,6 +638,10 @@ def main() -> None:
     print(
         "terminal_split_application_identity_sha256="
         f"{proof['terminal_split_application_identity_sha256']}"
+    )
+    print(
+        "terminal_split_spec_identity_sha256="
+        f"{proof['terminal_split_spec_identity_sha256']}"
     )
     print(
         "terminal_split_train_record_membership_sha256="
