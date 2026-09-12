@@ -7,14 +7,18 @@ import gzip
 import hashlib
 import importlib.util
 import json
+import subprocess
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from types import ModuleType
 from typing import Any
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
 PRODUCT_PR = 904
 PRODUCT_SEMANTIC_COMMIT = "e63f2fd4eddbd348b57a42e1fb41cb658d0c3a82"
+PRODUCT_CONFIG_PATH = Path("configs/data/d03_common_pile_caselaw_zero_credit_v1.json")
 PRODUCT_CONFIG_BLOB_SHA1 = "e8b7e29ce2ab4e634c5f8c056eecb6b0c2579467"
+PRODUCT_MATERIALIZER_PATH = Path("tools/materialize_d03_common_pile_caselaw.py")
 PRODUCT_TOOL_BLOB_SHA1 = "a7fcaeee0302c46c43e5a6ae43da16363810f14a"
 ADMISSION_PR = 1079
 ADMISSION_MERGE_COMMIT = "b482d345867779fb8226726d73f11ec8aedd6e27"
@@ -29,7 +33,7 @@ HISTORICAL_RETAINED_RECORDS = 5_658
 HISTORICAL_RETAINED_NORMALIZED_BYTES = 5_962_147
 HISTORICAL_ROWS_SCANNED = 75_518
 HISTORICAL_DECOMPRESSED_BYTES = 79_993_495
-REPORT_SCHEMA = "12-6.d03-caselaw-source-admission-real-replay.v1"
+REPORT_SCHEMA = "12-6.d03-caselaw-source-admission-real-replay.v2"
 ADMITTED_DECISION = "CONDITIONAL_SOURCE_ADMISSION"
 REQUIRED_DOWNSTREAM_GATES = (
     "CURRENT_GLOBAL_EXACT_NEAR_LINEAGE_DEDUP",
@@ -86,6 +90,38 @@ def _verify_blob(path: Path, expected: str, label: str) -> bytes:
     return raw
 
 
+def _git(repo_root: Path, *args: str, text: bool = False) -> bytes | str:
+    try:
+        completed = subprocess.run(
+            ["git", "-C", str(repo_root), *args],
+            check=True,
+            capture_output=True,
+            text=text,
+        )
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise ReplayError(f"git provenance query failed: {' '.join(args)}") from exc
+    return completed.stdout
+
+
+def read_commit_file(repo_root: Path, commit: str, path: Path) -> bytes:
+    raw = _git(repo_root, "show", f"{commit}:{path.as_posix()}")
+    require(isinstance(raw, bytes), "git show returned non-bytes")
+    return raw
+
+
+def _verify_commit_path_blob(
+    repo_root: Path,
+    commit: str,
+    path: Path,
+    expected_blob_sha1: str,
+    label: str,
+) -> None:
+    raw = _git(repo_root, "rev-parse", f"{commit}:{path.as_posix()}", text=True)
+    require(isinstance(raw, str), f"{label} git identity returned non-text")
+    actual = raw.strip()
+    require(actual == expected_blob_sha1, f"{label} commit/path/blob provenance drift")
+
+
 def _load_module(path: Path, name: str) -> ModuleType:
     spec = importlib.util.spec_from_file_location(name, path)
     require(spec is not None and spec.loader is not None, f"cannot load module: {path}")
@@ -99,8 +135,104 @@ def _record_id_digest(record_id: str) -> str:
 
 
 def _inventory_identity(record_ids: Sequence[str]) -> str:
-    digests = [_record_id_digest(item) for item in record_ids]
-    return sha256(canonical(digests))
+    return sha256(canonical([_record_id_digest(item) for item in record_ids]))
+
+
+def _require_mapping(value: object, label: str) -> Mapping[str, Any]:
+    require(isinstance(value, Mapping), f"{label} must be object")
+    return value
+
+
+def build_observed_product_binding(product_cfg: Mapping[str, Any]) -> dict[str, Any]:
+    """Derive #1079's candidate identity from authenticated #904 Product config bytes."""
+    source = _require_mapping(product_cfg.get("source"), "historical Product source")
+    objects = source.get("objects")
+    require(isinstance(objects, list) and len(objects) == 2, "historical source vector drift")
+    projected_objects: list[dict[str, Any]] = []
+    for index, item in enumerate(objects):
+        obj = _require_mapping(item, f"historical source object {index}")
+        require(
+            set(obj) == {"file", "url", "sha256", "bytes"},
+            f"historical source object {index} key drift",
+        )
+        file_name = obj.get("file")
+        digest = obj.get("sha256")
+        size = obj.get("bytes")
+        require(isinstance(file_name, str) and file_name, "source object file drift")
+        require(isinstance(digest, str) and len(digest) == 64, "source object SHA-256 drift")
+        require(type(size) is int and size > 0, "source object byte-size drift")
+        projected_objects.append({"file": file_name, "bytes": size, "sha256": digest})
+
+    dataset = source.get("dataset")
+    revision = source.get("revision")
+    ordering = source.get("ordering_policy")
+    family = source.get("family")
+    for value, label in (
+        (dataset, "dataset"),
+        (revision, "revision"),
+        (ordering, "ordering policy"),
+        (family, "family"),
+    ):
+        require(isinstance(value, str) and value, f"historical Product {label} drift")
+
+    return {
+        "product_pr": PRODUCT_PR,
+        "product_semantic_commit_sha": PRODUCT_SEMANTIC_COMMIT,
+        "product_config_path": PRODUCT_CONFIG_PATH.as_posix(),
+        "product_config_git_blob_sha1": PRODUCT_CONFIG_BLOB_SHA1,
+        "product_materializer_path": PRODUCT_MATERIALIZER_PATH.as_posix(),
+        "product_materializer_git_blob_sha1": PRODUCT_TOOL_BLOB_SHA1,
+        "dataset": dataset,
+        "revision": revision,
+        "ordering_policy": ordering,
+        "objects": projected_objects,
+        "family": family,
+    }
+
+
+def bind_authenticated_product_identity(
+    product_cfg: Mapping[str, Any],
+    admission_module: ModuleType,
+    policy: Mapping[str, Any],
+) -> dict[str, Any]:
+    observed = build_observed_product_binding(product_cfg)
+    try:
+        admission_module.validate_candidate_identity(observed, policy)
+    except RuntimeError as exc:
+        raise ReplayError("authenticated Product identity does not match admission authority") from exc
+    return observed
+
+
+def verify_authority_provenance(repo_root: Path = REPO_ROOT) -> None:
+    """Prove both claimed commits map canonical paths to the exact executed blobs."""
+    bindings = (
+        (
+            PRODUCT_SEMANTIC_COMMIT,
+            PRODUCT_CONFIG_PATH,
+            PRODUCT_CONFIG_BLOB_SHA1,
+            "historical Product config",
+        ),
+        (
+            PRODUCT_SEMANTIC_COMMIT,
+            PRODUCT_MATERIALIZER_PATH,
+            PRODUCT_TOOL_BLOB_SHA1,
+            "historical Product materializer",
+        ),
+        (
+            ADMISSION_MERGE_COMMIT,
+            ADMISSION_POLICY,
+            ADMISSION_POLICY_BLOB_SHA1,
+            "source-admission policy",
+        ),
+        (
+            ADMISSION_MERGE_COMMIT,
+            ADMISSION_TOOL,
+            ADMISSION_TOOL_BLOB_SHA1,
+            "source-admission verifier",
+        ),
+    )
+    for commit, path, blob, label in bindings:
+        _verify_commit_path_blob(repo_root, commit, path, blob, label)
 
 
 def scan_source_admission(
@@ -158,7 +290,7 @@ def scan_source_admission(
     except (OSError, EOFError) as exc:
         raise ReplayError("cannot decode exact Caselaw source vector") from exc
 
-    summary = {
+    return decisions, {
         "rows_scanned": rows_scanned,
         "decompressed_bytes_scanned": decompressed_bytes,
         "next_scan_bytes_if_budget_exceeded": next_scan_bytes_if_budget_exceeded,
@@ -166,7 +298,6 @@ def scan_source_admission(
         "decision_reason_counts": dict(sorted(dispositions.items())),
         "raw_source_label_counts": dict(sorted(source_counts.items())),
     }
-    return decisions, summary
 
 
 def filter_candidate(
@@ -185,9 +316,9 @@ def filter_candidate(
     retained_lines: list[bytes] = []
     retained_normalized_bytes = 0
     denied_by_reason: dict[str, int] = {}
-
     lines = raw.splitlines(keepends=True)
     require(len(lines) == HISTORICAL_RETAINED_RECORDS, "historical candidate row count drift")
+
     for line in lines:
         require(line.endswith(b"\n"), "candidate JSONL newline drift")
         try:
@@ -200,18 +331,17 @@ def filter_candidate(
         require(isinstance(record_id, str), "candidate record id missing")
         require(record_id not in input_ids, f"duplicate candidate record id: {record_id}")
         input_ids.append(record_id)
-        require(
-            record_id in decisions,
-            f"candidate row lacks raw source-admission decision: {record_id}",
-        )
+        require(record_id in decisions, f"candidate row lacks raw source-admission decision: {record_id}")
         decision = decisions[record_id]
         if decision.get("decision") != ADMITTED_DECISION:
             reason = decision.get("reason")
             require(isinstance(reason, str), "denied candidate reason missing")
             denied_by_reason[reason] = denied_by_reason.get(reason, 0) + 1
             continue
-        source_kind = row.get("source_kind")
-        require(source_kind == "Caselaw Access Project", "admitted candidate source-kind drift")
+        require(
+            row.get("source_kind") == "Caselaw Access Project",
+            "admitted candidate source-kind drift",
+        )
         normalized_bytes = row.get("normalized_utf8_bytes")
         require(
             type(normalized_bytes) is int and normalized_bytes > 0,
@@ -260,17 +390,19 @@ def execute(
     materializer_report_path: Path,
     report_path: Path,
     download: bool,
+    repo_root: Path = REPO_ROOT,
 ) -> dict[str, Any]:
     _verify_blob(product_tool_path, PRODUCT_TOOL_BLOB_SHA1, "historical Product materializer")
     _verify_blob(product_config_path, PRODUCT_CONFIG_BLOB_SHA1, "historical Product config")
     _verify_blob(admission_tool_path, ADMISSION_TOOL_BLOB_SHA1, "source-admission verifier")
     _verify_blob(admission_policy_path, ADMISSION_POLICY_BLOB_SHA1, "source-admission policy")
+    verify_authority_provenance(repo_root)
 
     product = _load_module(product_tool_path, "caselaw_product_exact")
     admission = _load_module(admission_tool_path, "caselaw_admission_exact")
     product_cfg = product.load_config(product_config_path)
     policy = admission.load_policy(admission_policy_path)
-    admission.validate_candidate_identity(policy["candidate_binding"], policy)
+    observed_binding = bind_authenticated_product_identity(product_cfg, admission, policy)
 
     source_gzips = list(source_gzips)
     require(len(source_gzips) == 2, "exact two-object source vector required")
@@ -303,6 +435,15 @@ def execute(
         materializer_report.get("decompressed_bytes_scanned") == HISTORICAL_DECOMPRESSED_BYTES,
         "historical Product scan-byte drift",
     )
+    require(
+        materializer_report.get("source_objects") == observed_binding["objects"],
+        "executed Product source-object identity drift",
+    )
+    require(
+        materializer_report.get("source_ordering_policy") == observed_binding["ordering_policy"],
+        "executed Product source-ordering identity drift",
+    )
+
     decisions, raw_summary = scan_source_admission(
         source_gzips,
         admission,
@@ -325,12 +466,20 @@ def execute(
         "execution_profile": "LOCAL_FREE",
         "product_pr": PRODUCT_PR,
         "product_semantic_commit_sha": PRODUCT_SEMANTIC_COMMIT,
+        "product_config_path": PRODUCT_CONFIG_PATH.as_posix(),
         "product_config_git_blob_sha1": PRODUCT_CONFIG_BLOB_SHA1,
+        "product_materializer_path": PRODUCT_MATERIALIZER_PATH.as_posix(),
         "product_materializer_git_blob_sha1": PRODUCT_TOOL_BLOB_SHA1,
+        "product_commit_path_membership_verified": True,
+        "product_binding_observed_from_authenticated_config": True,
+        "observed_product_binding_sha256": sha256(canonical(observed_binding)),
         "source_admission_pr": ADMISSION_PR,
         "source_admission_merge_commit_sha": ADMISSION_MERGE_COMMIT,
+        "source_admission_policy_path": ADMISSION_POLICY.as_posix(),
         "source_admission_policy_git_blob_sha1": ADMISSION_POLICY_BLOB_SHA1,
+        "source_admission_verifier_path": ADMISSION_TOOL.as_posix(),
         "source_admission_verifier_git_blob_sha1": ADMISSION_TOOL_BLOB_SHA1,
+        "source_admission_commit_path_membership_verified": True,
         "source_objects": materializer_report["source_objects"],
         "source_ordering_policy": materializer_report["source_ordering_policy"],
         "historical_product_replay_reproduced": True,
