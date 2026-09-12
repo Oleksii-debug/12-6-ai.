@@ -1,8 +1,8 @@
 """Fail-closed record-to-family-vector bridge for the learned-20M data spine.
 
-This module deliberately does not implement balance allocation. It converts an exact
-post-decontamination record graph into a text-free family/stratum capacity authority
-that the already-canonical NEXT100-106 balance gate can consume.
+Candidate family-map/provenance documents are integrity-bearing projections only.
+Family identity/language/modality/stratum authority is independently rooted in the
+immutable DATA526/V8 source-authority chain.
 """
 
 from __future__ import annotations
@@ -14,6 +14,12 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+from twelve_six.data.trusted_family_authority_v1 import (
+    TRUSTED_FAMILY_SEMANTICS,
+    trusted_family_authority_root_sha256,
+    trusted_family_projection,
+)
 
 SCHEMA = "12-6.d03-postdecontam-family-vector.v1"
 BINDING_SCHEMA = "12-6.d03-final-record-decontamination-binding.v1"
@@ -162,8 +168,9 @@ def read_records_jsonl(path: Path) -> tuple[list[Record], str]:
             raise ProjectionError(f"duplicate record_id: {record_id}")
         seen_record_ids.add(record_id)
 
-        payload_bytes = len(payload.encode("utf-8"))
-        payload_sha256 = _sha256_bytes(payload.encode("utf-8"))
+        payload_raw = payload.encode("utf-8")
+        payload_bytes = len(payload_raw)
+        payload_sha256 = _sha256_bytes(payload_raw)
 
         declared_bytes = row.get("normalized_payload_bytes")
         if declared_bytes is not None:
@@ -200,6 +207,23 @@ def read_records_jsonl(path: Path) -> tuple[list[Record], str]:
     return records, file_sha256
 
 
+def _trusted_semantics(expected_families: set[str]) -> dict[str, FamilyProvenance]:
+    try:
+        rows = trusted_family_projection(expected_families)
+    except ValueError as exc:
+        raise ProjectionError(str(exc)) from exc
+    return {
+        row["family"]: FamilyProvenance(
+            family=row["family"],
+            source_family_identity_sha256=row["source_family_identity_sha256"],
+            language=row["language"],
+            modalities=frozenset(row["modalities"]),
+            stratum=row["stratum"],
+        )
+        for row in rows
+    }
+
+
 def verify_family_map(
     document: Mapping[str, Any],
     *,
@@ -219,6 +243,7 @@ def verify_family_map(
         "training_authorized_by_this_mapping",
     )
 
+    trusted = _trusted_semantics(expected_families)
     entries = document.get("families")
     if not isinstance(entries, list) or not entries:
         raise ProjectionError("family map must contain families")
@@ -227,7 +252,9 @@ def verify_family_map(
         if not isinstance(entry, dict):
             raise ProjectionError("family map entries must be objects")
         if set(entry) != {"family", "stratum"}:
-            raise ProjectionError("family map entries must contain only family and stratum")
+            raise ProjectionError(
+                "family map entries must contain only family and stratum"
+            )
         family = _require_nonempty_string(entry.get("family"), "family")
         stratum = entry.get("stratum")
         if stratum not in ALLOWED_STRATA:
@@ -237,6 +264,11 @@ def verify_family_map(
         mapping[family] = stratum
     if set(mapping) != expected_families:
         raise ProjectionError("family map must exactly cover surviving families")
+    for family, stratum in mapping.items():
+        if stratum != trusted[family].stratum:
+            raise ProjectionError(
+                f"family map differs from trusted source-family authority for {family}"
+            )
     return mapping, identity
 
 
@@ -260,6 +292,7 @@ def verify_family_provenance(
         "training_authorized_by_this_provenance",
     )
 
+    trusted = _trusted_semantics(expected_families)
     entries = document.get("families")
     if not isinstance(entries, list) or not entries:
         raise ProjectionError("family provenance must contain families")
@@ -286,10 +319,14 @@ def verify_family_provenance(
         language = _require_nonempty_string(entry.get("language"), "language")
         stratum = entry.get("stratum")
         if stratum not in ALLOWED_STRATA:
-            raise ProjectionError(f"unsupported provenance stratum for family {family}")
+            raise ProjectionError(
+                f"unsupported provenance stratum for family {family}"
+            )
         raw_modalities = entry.get("modalities")
         if not isinstance(raw_modalities, list) or not raw_modalities:
-            raise ProjectionError("family provenance modalities must be a non-empty list")
+            raise ProjectionError(
+                "family provenance modalities must be a non-empty list"
+            )
         modalities: set[str] = set()
         for raw_modality in raw_modalities:
             modality = _require_nonempty_string(raw_modality, "modality")
@@ -306,6 +343,11 @@ def verify_family_provenance(
 
     if set(provenance) != expected_families:
         raise ProjectionError("family provenance must exactly cover surviving families")
+    for family, candidate in provenance.items():
+        if candidate != trusted[family]:
+            raise ProjectionError(
+                f"family provenance differs from trusted source-family authority for {family}"
+            )
     for record in survivor_records:
         authority = provenance[record.family]
         if record.modality not in authority.modalities:
@@ -337,7 +379,9 @@ def verify_decontamination_binding(
     if document.get("verdict") not in ALLOWED_VERDICTS:
         raise ProjectionError("decontamination verdict is not terminal PASS")
     if document.get("records_jsonl_sha256") != expected_records_sha256:
-        raise ProjectionError("decontamination binding references different records JSONL")
+        raise ProjectionError(
+            "decontamination binding references different records JSONL"
+        )
     input_record_count = _require_nonnegative_int(
         document.get("input_record_count"),
         "input_record_count",
@@ -368,7 +412,9 @@ def verify_decontamination_binding(
         "authorized_optimized_target_exposure",
     )
     if optimized_target_exposure != 0:
-        raise ProjectionError("decontamination binding must keep optimized-target exposure at zero")
+        raise ProjectionError(
+            "decontamination binding must keep optimized-target exposure at zero"
+        )
 
     excluded = document.get("excluded_record_id_sha256")
     if not isinstance(excluded, list):
@@ -380,12 +426,11 @@ def verify_decontamination_binding(
             raise ProjectionError("duplicate excluded record hash")
         excluded_set.add(value)
 
-    expected_survivors = expected_record_count - len(excluded_set)
     survivor_record_count = _require_nonnegative_int(
         document.get("survivor_record_count"),
         "survivor_record_count",
     )
-    if survivor_record_count != expected_survivors:
+    if survivor_record_count != expected_record_count - len(excluded_set):
         raise ProjectionError("survivor record count mismatch")
 
     return excluded_set, authority, retained_inventory, dedup_evidence
@@ -466,7 +511,9 @@ def verify_final_g05_g06_coverage(
         "authorized_optimized_target_exposure",
     )
     if optimized_target_exposure != 0:
-        raise ProjectionError("G05/G06 coverage must keep optimized-target exposure at zero")
+        raise ProjectionError(
+            "G05/G06 coverage must keep optimized-target exposure at zero"
+        )
 
     expected_rows = _coverage_rows(survivor_records)
     covered_rows = document.get("covered_records")
@@ -502,7 +549,9 @@ def verify_final_g05_g06_coverage(
         )
     normalized_rows.sort(key=lambda row: row["record_id_sha256"])
     if normalized_rows != expected_rows:
-        raise ProjectionError("G05/G06 coverage does not exactly cover final survivors")
+        raise ProjectionError(
+            "G05/G06 coverage does not exactly cover final survivors"
+        )
     covered_record_count = _require_nonnegative_int(
         document.get("covered_record_count"),
         "covered_record_count",
@@ -550,12 +599,13 @@ def build_family_vector(
     )
 
     known_record_hashes = {_record_id_hash(record.record_id) for record in records}
-    unknown_exclusions = excluded_hashes - known_record_hashes
-    if unknown_exclusions:
+    if excluded_hashes - known_record_hashes:
         raise ProjectionError("decontamination binding excludes unknown records")
 
     survivor_records = [
-        record for record in records if _record_id_hash(record.record_id) not in excluded_hashes
+        record
+        for record in records
+        if _record_id_hash(record.record_id) not in excluded_hashes
     ]
     if not survivor_records:
         raise ProjectionError("decontamination left no surviving records")
@@ -578,6 +628,13 @@ def build_family_vector(
     )
 
     survivor_families = {record.family for record in survivor_records}
+    try:
+        trusted_family_root = trusted_family_authority_root_sha256(
+            survivor_families
+        )
+    except ValueError as exc:
+        raise ProjectionError(str(exc)) from exc
+
     family_to_stratum, family_map_identity = verify_family_map(
         family_map,
         expected_identity_sha256=expected_family_map_identity_sha256,
@@ -591,7 +648,9 @@ def build_family_vector(
     )
     for family, stratum in family_to_stratum.items():
         if provenance[family].stratum != stratum:
-            raise ProjectionError(f"family map reclassifies canonical provenance for {family}")
+            raise ProjectionError(
+                f"family map reclassifies canonical provenance for {family}"
+            )
 
     family_bytes: dict[tuple[str, str], int] = defaultdict(int)
     family_records: dict[tuple[str, str], int] = defaultdict(int)
@@ -611,19 +670,22 @@ def build_family_vector(
             "stratum": stratum,
             "family": family,
             "record_count": family_records[(stratum, family)],
-            "capacity_bytes": capacity_bytes,
+            "capacity_bytes": family_bytes[(stratum, family)],
         }
         for stratum, family in sorted(family_bytes)
-        for capacity_bytes in [family_bytes[(stratum, family)]]
     ]
     stratum_bytes = {
         stratum: sum(
-            row["capacity_bytes"] for row in family_rows if row["stratum"] == stratum
+            row["capacity_bytes"]
+            for row in family_rows
+            if row["stratum"] == stratum
         )
         for stratum in sorted(ALLOWED_STRATA)
     }
     stratum_family_counts = {
-        stratum: sum(1 for row in family_rows if row["stratum"] == stratum)
+        stratum: sum(
+            1 for row in family_rows if row["stratum"] == stratum
+        )
         for stratum in sorted(ALLOWED_STRATA)
     }
 
@@ -637,13 +699,16 @@ def build_family_vector(
         "dedup_evidence_identity_sha256": dedup_evidence,
         "g05_g06_coverage_identity_sha256": g05_g06_coverage_identity,
         "quality_policy_identity_sha256": QUALITY_POLICY_IDENTITY_SHA256,
-        "quality_granularity_identity_sha256": QUALITY_GRANULARITY_IDENTITY_SHA256,
+        "quality_granularity_identity_sha256": (
+            QUALITY_GRANULARITY_IDENTITY_SHA256
+        ),
         "privacy_policy_identity_sha256": _require_sha256(
             expected_privacy_policy_identity_sha256,
             "expected_privacy_policy_identity_sha256",
         ),
         "family_map_identity_sha256": family_map_identity,
         "family_provenance_identity_sha256": family_provenance_identity,
+        "trusted_family_authority_root_sha256": trusted_family_root,
         "input_record_count": len(records),
         "input_payload_bytes": input_payload_bytes,
         "excluded_record_count": len(excluded_hashes),
@@ -700,7 +765,9 @@ def verify_family_vector(document: Mapping[str, Any]) -> str:
         "authorized_optimized_target_exposure",
     )
     if optimized_target_exposure != 0:
-        raise ProjectionError("family vector must keep optimized-target exposure at zero")
+        raise ProjectionError(
+            "family vector must keep optimized-target exposure at zero"
+        )
 
     for field in (
         "records_jsonl_sha256",
@@ -711,6 +778,7 @@ def verify_family_vector(document: Mapping[str, Any]) -> str:
         "privacy_policy_identity_sha256",
         "family_map_identity_sha256",
         "family_provenance_identity_sha256",
+        "trusted_family_authority_root_sha256",
         "survivor_record_id_membership_sha256",
         "survivor_payload_membership_sha256",
     ):
@@ -731,6 +799,7 @@ def verify_family_vector(document: Mapping[str, Any]) -> str:
     total = 0
     by_stratum: dict[str, int] = defaultdict(int)
     count_by_stratum: dict[str, int] = defaultdict(int)
+    family_names: set[str] = set()
     for row in families:
         if not isinstance(row, dict):
             raise ProjectionError("family rows must be objects")
@@ -738,22 +807,42 @@ def verify_family_vector(document: Mapping[str, Any]) -> str:
         if stratum not in ALLOWED_STRATA:
             raise ProjectionError("invalid family stratum")
         family = _require_nonempty_string(row.get("family"), "family")
+        if family not in TRUSTED_FAMILY_SEMANTICS:
+            raise ProjectionError(
+                f"family vector contains family absent from trusted authority: {family}"
+            )
+        if TRUSTED_FAMILY_SEMANTICS[family]["stratum"] != stratum:
+            raise ProjectionError(
+                f"family vector stratum differs from trusted authority for {family}"
+            )
         key = (stratum, family)
         if key in seen:
             raise ProjectionError("duplicate family row")
         seen.add(key)
-        record_count = _require_nonnegative_int(row.get("record_count"), "record_count")
-        capacity = _require_nonnegative_int(row.get("capacity_bytes"), "capacity_bytes")
+        family_names.add(family)
+        record_count = _require_nonnegative_int(
+            row.get("record_count"),
+            "record_count",
+        )
+        capacity = _require_nonnegative_int(
+            row.get("capacity_bytes"),
+            "capacity_bytes",
+        )
         if record_count == 0 or capacity == 0:
             raise ProjectionError("surviving family rows must be positive")
         total += capacity
         by_stratum[stratum] += capacity
         count_by_stratum[stratum] += 1
 
+    expected_trusted_root = trusted_family_authority_root_sha256(family_names)
+    if document.get("trusted_family_authority_root_sha256") != expected_trusted_root:
+        raise ProjectionError("trusted family authority root mismatch")
+
     if total != document.get("survivor_payload_bytes"):
         raise ProjectionError("family vector total bytes mismatch")
-    family_record_total = sum(row["record_count"] for row in families)
-    if family_record_total != document.get("survivor_record_count"):
+    if sum(row["record_count"] for row in families) != document.get(
+        "survivor_record_count"
+    ):
         raise ProjectionError("family vector record-count mismatch")
     input_record_count = _require_nonnegative_int(
         document.get("input_record_count"),
@@ -780,12 +869,14 @@ def verify_family_vector(document: Mapping[str, Any]) -> str:
     if survivor_payload_bytes > input_payload_bytes:
         raise ProjectionError("survivor payload bytes exceed input payload bytes")
     expected_strata = {
-        stratum: by_stratum.get(stratum, 0) for stratum in sorted(ALLOWED_STRATA)
+        stratum: by_stratum.get(stratum, 0)
+        for stratum in sorted(ALLOWED_STRATA)
     }
     if document.get("stratum_capacity_bytes") != expected_strata:
         raise ProjectionError("stratum capacity arithmetic mismatch")
     expected_counts = {
-        stratum: count_by_stratum.get(stratum, 0) for stratum in sorted(ALLOWED_STRATA)
+        stratum: count_by_stratum.get(stratum, 0)
+        for stratum in sorted(ALLOWED_STRATA)
     }
     if document.get("stratum_family_counts") != expected_counts:
         raise ProjectionError("stratum family-count arithmetic mismatch")
