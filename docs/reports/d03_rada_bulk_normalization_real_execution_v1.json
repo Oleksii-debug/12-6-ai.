@@ -1,10 +1,10 @@
 {
   "artifact": {
-    "id": 10184406901,
+    "id": 10186031748,
     "name": "d03-rada-laws-normalization-real-zero-credit",
-    "retention_expires_at": "2026-09-13T04:12:55Z",
+    "retention_expires_at": "2026-09-13T05:27:43Z",
     "size_bytes": 1521,
-    "zip_digest": "sha256:13e344a5a630f6260fdfa09684dbe73abe3ab0d30b724809938d51b03bfa2f1e"
+    "zip_digest": "sha256:12380c97e8b7ef3b45dc36d26411152861fe5cd44d5700613b3062e81bc0a581"
   },
   "environment": {
     "platform": "Linux-6.17.0-1022-azure-x86_64-with-glibc2.39",
@@ -14,9 +14,9 @@
     "runner_image_version": "20260907.300.1",
     "runner_os": "Linux"
   },
-  "evidence_identity_sha256": "663a8d60b595a6a57fc5fb5be631ce4ebb791e00ffc2bb6de8eae8d2c9743d30",
+  "evidence_identity_sha256": "e1633070beaff596ae11f4974bd9662785723618f502f382850f7e3bea27ab6a",
   "execution_class": "LOCAL_FREE_GITHUB_HOSTED_ACTIONS",
-  "execution_head_sha": "b2088754aa2d5ed6059d89587bbbf08437ba0f55",
+  "execution_head_sha": "f62670084f80041757e162743356ac16e0fd81a7",
   "final_pr_head_requirement": "TEMPORARY_EXECUTION_WORKFLOW_ABSENT_AND_SHARED_CI_SUCCESS",
   "observed_normalization": {
     "nonempty_record_count": 3052,
@@ -66,5 +66,5 @@
     "pinned_reports_identical": true
   },
   "workflow_run_attempt": 1,
-  "workflow_run_id": 34561144712
+  "workflow_run_id": 34565921713
 }

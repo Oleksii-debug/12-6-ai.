@@ -11,6 +11,7 @@ import pytest
 
 from tools.normalize_d03_rada_bulk_html import (
     NormalizationError,
+    _materialize_normalized_records_unbound,
     materialize_normalized_records,
     normalize_html_bytes,
     normalize_html_bytes_with_encoding,
@@ -74,11 +75,8 @@ def _observation_probe(archive: bytes, min_entries: int) -> dict:
 
 
 def _report_sha(report: dict) -> str:
-    encoded = json.dumps(
-        report,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
+    encoded = (
+        json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
     ).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
 
@@ -89,11 +87,15 @@ def _normalizer_config_for_report(report: dict) -> dict:
     config["parent_probe"]["probe_config_identity_sha256"] = report[
         "config_identity_sha256"
     ]
+    successor = config["successor_observation_pin"]
+    successor["pinned_probe_report_sha256"] = _report_sha(report)
+    successor["archive_sha256"] = report["archive"]["sha256"]
+    successor["entry_identity_sha256"] = report["inventory"]["entry_identity_sha256"]
     return config
 
 
 def _materialize(archive: bytes, report: dict) -> tuple[bytes, dict]:
-    return materialize_normalized_records(
+    return _materialize_normalized_records_unbound(
         archive,
         report,
         _normalizer_config_for_report(report),
@@ -166,6 +168,9 @@ def test_two_clean_materializations_are_byte_identical_and_zero_credit() -> None
 
     assert jsonl_a == jsonl_b
     assert manifest_a == manifest_b
+    assert manifest_a["safe_result"] == (
+        "UNBOUND_NORMALIZATION_MECHANICS_ONLY_NOT_SOURCE_AUTHORITY"
+    )
     assert manifest_a["normalization"]["record_count"] == 2
     assert manifest_a["normalization"]["source_encoding_counts"] == {"utf-8": 2}
     assert manifest_a["training_authorized_bytes"] == 0
@@ -299,6 +304,141 @@ def test_truth_boundary_mutation_is_rejected() -> None:
     config = _normalizer_config_for_report(report)
     config["claim_boundary"]["training_authorized_bytes"] = 1
     with pytest.raises(NormalizationError, match="authorize zero training bytes"):
+        materialize_normalized_records(
+            archive,
+            report,
+            config,
+            probe_report_sha256=_report_sha(report),
+        )
+
+
+def test_frozen_successor_pin_rejects_coherent_report_substitution() -> None:
+    archive = _archive({"d1.htm": b"<p>coherent substitute</p>"})
+    report = _strict_probe(archive, 1)
+    config = _normalizer_config_for_report(report)
+    config["successor_observation_pin"] = copy.deepcopy(
+        CONFIG["successor_observation_pin"]
+    )
+    with pytest.raises(
+        NormalizationError,
+        match="probe report identity does not match successor observation pin",
+    ):
+        materialize_normalized_records(
+            archive,
+            report,
+            config,
+            probe_report_sha256=_report_sha(report),
+        )
+
+
+def test_successor_pin_rejects_archive_substitution_after_report_binding() -> None:
+    archive = _archive({"d1.htm": b"<p>coherent substitute</p>"})
+    report = _strict_probe(archive, 1)
+    config = _normalizer_config_for_report(report)
+    config["successor_observation_pin"]["archive_sha256"] = "0" * 64
+    with pytest.raises(
+        NormalizationError,
+        match="successor observation authority drift",
+    ):
+        materialize_normalized_records(
+            archive,
+            report,
+            config,
+            probe_report_sha256=_report_sha(report),
+        )
+
+
+def test_successor_pin_rejects_inventory_substitution_after_report_and_archive_binding() -> None:
+    archive = _archive({"d1.htm": b"<p>coherent substitute</p>"})
+    report = _strict_probe(archive, 1)
+    config = _normalizer_config_for_report(report)
+    config["successor_observation_pin"]["entry_identity_sha256"] = "0" * 64
+    with pytest.raises(
+        NormalizationError,
+        match="successor observation authority drift",
+    ):
+        materialize_normalized_records(
+            archive,
+            report,
+            config,
+            probe_report_sha256=_report_sha(report),
+        )
+
+
+def test_direct_api_cannot_forge_report_digest_for_changed_report_object() -> None:
+    archive = _archive({"d1.htm": b"<p>one</p>"})
+    report = _strict_probe(archive, 1)
+    config = _normalizer_config_for_report(report)
+    forged = copy.deepcopy(report)
+    forged["ignored_attacker_field"] = "coherent-rehash-substitute"
+    with pytest.raises(
+        NormalizationError,
+        match="probe report identity does not match deterministic report bytes",
+    ):
+        materialize_normalized_records(
+            archive,
+            forged,
+            config,
+            probe_report_sha256=_report_sha(report),
+        )
+
+
+def test_coherent_resealed_successor_config_is_rejected_by_authoritative_api() -> None:
+    archive = _archive({"d1.htm": b"<p>fully coherent substitute</p>"})
+    report = _strict_probe(archive, 1)
+    config = _normalizer_config_for_report(report)
+    with pytest.raises(
+        NormalizationError,
+        match="successor observation authority drift",
+    ):
+        materialize_normalized_records(
+            archive,
+            report,
+            config,
+            probe_report_sha256=_report_sha(report),
+        )
+
+
+def test_successor_authority_rejects_extra_resealed_keys() -> None:
+    archive = _archive({"d1.htm": b"<p>fully coherent substitute</p>"})
+    report = _strict_probe(archive, 1)
+    config = _normalizer_config_for_report(report)
+    config["successor_observation_pin"]["attacker_extension"] = "resealed"
+    with pytest.raises(
+        NormalizationError,
+        match="successor observation authority keys drift",
+    ):
+        materialize_normalized_records(
+            archive,
+            report,
+            config,
+            probe_report_sha256=_report_sha(report),
+        )
+
+
+def test_truth_boundary_false_alias_is_rejected() -> None:
+    archive = _archive({"d1.htm": b"<p>one</p>"})
+    report = _strict_probe(archive, 1)
+    config = _normalizer_config_for_report(report)
+    config["claim_boundary"]["training_authorized_bytes"] = False
+    with pytest.raises(NormalizationError, match="authorize zero training bytes"):
+        materialize_normalized_records(
+            archive,
+            report,
+            config,
+            probe_report_sha256=_report_sha(report),
+        )
+
+
+def test_probe_training_bytes_false_alias_is_rejected() -> None:
+    archive = _archive({"d1.htm": b"<p>one</p>"})
+    report = _strict_probe(archive, 1)
+    report["training_authorized_bytes"] = False
+    config = _normalizer_config_for_report(report)
+    with pytest.raises(
+        NormalizationError,
+        match="probe unexpectedly grants training capacity",
+    ):
         materialize_normalized_records(
             archive,
             report,

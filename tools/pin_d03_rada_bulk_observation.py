@@ -91,7 +91,9 @@ def _validate_config(config: Mapping[str, Any]) -> None:
 
     for field, expected in EXPECTED_PARENT.items():
         if parent.get(field) != expected:
-            raise ObservationPinError(f"parent_probe.{field} drifted from current Rada observation authority")
+            raise ObservationPinError(
+                f"parent_probe.{field} drifted from current Rada observation authority"
+            )
 
     if (
         isinstance(snapshot.get("archive_bytes"), bool)
@@ -155,7 +157,12 @@ def _validate_config(config: Mapping[str, Any]) -> None:
         "research_corpus_v1_released",
         "learned_20m_claimed",
     )
-    if boundary.get("training_authorized_bytes") != 0:
+    training_authorized_bytes = boundary.get("training_authorized_bytes")
+    if (
+        isinstance(training_authorized_bytes, bool)
+        or not isinstance(training_authorized_bytes, int)
+        or training_authorized_bytes != 0
+    ):
         raise ObservationPinError("pin must authorize zero training bytes")
     for field in required_false:
         if boundary.get(field) is not False:
@@ -218,7 +225,9 @@ def pin_observation(
     if probe.get("source_family") != expected["source_family"]:
         raise ObservationPinError("source family drift")
     if probe.get("discovery_observation_revalidated") is not False:
-        raise ObservationPinError("observation must be the zero-credit mutable-upstream run")
+        raise ObservationPinError(
+            "observation must be the zero-credit mutable-upstream run"
+        )
     if probe.get("safe_result") != expected["safe_result"]:
         raise ObservationPinError("observation safe result drift")
 
@@ -245,7 +254,12 @@ def pin_observation(
         if gates.get(field) != "NOT_RUN":
             raise ObservationPinError(f"unexpected downstream gate state: {field}")
 
-    if probe.get("training_authorized_bytes") != 0:
+    training_authorized_bytes = probe.get("training_authorized_bytes")
+    if (
+        isinstance(training_authorized_bytes, bool)
+        or not isinstance(training_authorized_bytes, int)
+        or training_authorized_bytes != 0
+    ):
         raise ObservationPinError("probe unexpectedly grants training bytes")
     for field in (
         "corpus_admitted",

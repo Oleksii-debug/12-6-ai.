@@ -76,11 +76,8 @@ def _normalizer_config(report: dict) -> dict:
 
 
 def _report_sha(report: dict) -> str:
-    encoded = json.dumps(
-        report,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
+    encoded = (
+        json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
     ).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
 
