@@ -129,30 +129,82 @@ def _authority() -> tuple[dict, dict, dict]:
     return materialization, ledger, manifest
 
 
-def test_exact_aligned_and_shifted_live_targets_match_authority() -> None:
+def test_exact_aligned_live_predictor_and_targets_match_authority() -> None:
     _materialization_value, _ledger, manifest = _authority()
     root = manifest["manifest_identity_sha256"]
 
-    aligned = verify_live_loss_bearing_batch(
+    observed = verify_live_loss_bearing_batch(
         manifest,
         expected_manifest_identity_sha256=root,
         batch_index=0,
+        input_ids=[[10, 11, 12, 13]],
         target_ids=[[11, 12, 13, 14]],
         loss_mask=[[1, 1, 1, 1]],
     )
-    shifted = verify_live_loss_bearing_batch(
+
+    assert observed == manifest["batches"][0]["batch_content_identity_sha256"]
+    assert manifest["loss_bearing_target_count"] == 4
+    assert manifest["live_input_binding"] == "canonical_predictor_context_and_targets_v2"
+    assert manifest["training_authorized_by_this_manifest"] is False
+
+
+def test_exact_shifted_live_sequence_matches_authority() -> None:
+    _materialization_value, _ledger, manifest = _authority()
+    root = manifest["manifest_identity_sha256"]
+
+    observed = verify_live_loss_bearing_batch(
         manifest,
         expected_manifest_identity_sha256=root,
         batch_index=0,
+        input_ids=[[10, 11, 12, 13, 14]],
         target_ids=[[10, 11, 12, 13, 14]],
         shifted=True,
     )
 
-    assert aligned == shifted == manifest["batches"][0][
-        "batch_content_identity_sha256"
-    ]
-    assert manifest["loss_bearing_target_count"] == 4
-    assert manifest["training_authorized_by_this_manifest"] is False
+    assert observed == manifest["batches"][0]["batch_content_identity_sha256"]
+
+
+@pytest.mark.parametrize("column", [0, 1, 2, 3])
+def test_same_targets_with_any_predictor_context_substitution_fails_closed(
+    column: int,
+) -> None:
+    _materialization_value, _ledger, manifest = _authority()
+    inputs = [[10, 11, 12, 13]]
+    inputs[0][column] = 99
+
+    with pytest.raises(
+        LedgerError,
+        match="live predictor/context input differs from D04 content authority",
+    ):
+        verify_live_loss_bearing_batch(
+            manifest,
+            expected_manifest_identity_sha256=manifest[
+                "manifest_identity_sha256"
+            ],
+            batch_index=0,
+            input_ids=inputs,
+            target_ids=[[11, 12, 13, 14]],
+            loss_mask=[[1, 1, 1, 1]],
+        )
+
+
+def test_shifted_input_substitution_fails_even_when_labels_stay_canonical() -> None:
+    _materialization_value, _ledger, manifest = _authority()
+
+    with pytest.raises(
+        LedgerError,
+        match="live predictor/context input differs from D04 content authority",
+    ):
+        verify_live_loss_bearing_batch(
+            manifest,
+            expected_manifest_identity_sha256=manifest[
+                "manifest_identity_sha256"
+            ],
+            batch_index=0,
+            input_ids=[[99, 11, 12, 13, 14]],
+            target_ids=[[10, 11, 12, 13, 14]],
+            shifted=True,
+        )
 
 
 def test_same_cardinality_target_substitution_fails_closed() -> None:
@@ -168,6 +220,7 @@ def test_same_cardinality_target_substitution_fails_closed() -> None:
                 "manifest_identity_sha256"
             ],
             batch_index=0,
+            input_ids=[[10, 11, 12, 13]],
             target_ids=[[11, 12, 99, 14]],
             loss_mask=[[1, 1, 1, 1]],
         )
@@ -186,8 +239,42 @@ def test_effective_loss_mask_change_fails_closed() -> None:
                 "manifest_identity_sha256"
             ],
             batch_index=0,
+            input_ids=[[10, 11, 12, 13]],
             target_ids=[[11, 12, 13, 14]],
             loss_mask=[[1, 1, 0, 1]],
+        )
+
+
+def test_ignore_index_removal_fails_closed() -> None:
+    _materialization_value, _ledger, manifest = _authority()
+
+    with pytest.raises(
+        LedgerError,
+        match="live loss-bearing target count differs from D04 content authority",
+    ):
+        verify_live_loss_bearing_batch(
+            manifest,
+            expected_manifest_identity_sha256=manifest[
+                "manifest_identity_sha256"
+            ],
+            batch_index=0,
+            input_ids=[[10, 11, 12, 13]],
+            target_ids=[[11, -100, 13, 14]],
+        )
+
+
+def test_boolean_input_token_fails_closed() -> None:
+    _materialization_value, _ledger, manifest = _authority()
+
+    with pytest.raises(LedgerError, match=r"input_ids\[0\]\[0\] must be an integer"):
+        verify_live_loss_bearing_batch(
+            manifest,
+            expected_manifest_identity_sha256=manifest[
+                "manifest_identity_sha256"
+            ],
+            batch_index=0,
+            input_ids=[[True, 11, 12, 13]],
+            target_ids=[[11, 12, 13, 14]],
         )
 
 
@@ -195,7 +282,7 @@ def test_resealed_pack_content_cannot_reuse_frozen_materialization_root() -> Non
     materialization, _ledger, _manifest = _authority()
     frozen_materialization_root = materialization["materialization_identity_sha256"]
     mutated = deepcopy(materialization)
-    mutated["packing"]["packs"][0]["token_ids"][2] = 99
+    mutated["packing"]["packs"][0]["token_ids"][0] = 99
     _rehash_materialization(mutated)
     mutated_ledger = build_ledger(mutated)
     segment = mutated_ledger["segments"][0]
@@ -242,10 +329,8 @@ def test_coherently_resealed_manifest_cannot_replace_external_root() -> None:
     _materialization_value, _ledger, manifest = _authority()
     frozen_root = manifest["manifest_identity_sha256"]
     substituted = deepcopy(manifest)
-    substituted["batches"][0]["claims"][0][
-        "target_token_ids_sha256"
-    ] = _sha("substituted-targets")
     claim = substituted["batches"][0]["claims"][0]
+    claim["aligned_input_token_ids_sha256"] = _sha("substituted-input")
     claim_core = deepcopy(claim)
     claim_core.pop("claim_content_identity_sha256", None)
     claim["claim_content_identity_sha256"] = _canonical_sha(claim_core)
@@ -265,6 +350,7 @@ def test_coherently_resealed_manifest_cannot_replace_external_root() -> None:
             substituted,
             expected_manifest_identity_sha256=frozen_root,
             batch_index=0,
+            input_ids=[[10, 11, 12, 13]],
             target_ids=[[11, 12, 13, 14]],
             loss_mask=[[1, 1, 1, 1]],
         )
