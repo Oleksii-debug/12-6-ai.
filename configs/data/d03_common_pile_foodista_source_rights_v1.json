@@ -1,0 +1,113 @@
+{
+  "schema_version": "12-6.d03-common-pile-foodista-source-rights.v1",
+  "authority_id": "D03-COMMON-PILE-FOODISTA-SOURCE-RIGHTS-V1",
+  "status": "SOURCE_POLICY_REVIEW_BLOCKED_ZERO_CREDIT",
+  "execution_profile": "LOCAL_FREE",
+  "project_authority": {
+    "swarm_protocol": "SWARM-300-V2",
+    "control_issue": 723,
+    "worker_issue": 1217,
+    "base_main_sha": "7c14db5f6e43d369bf859cb5c6803024c929943c"
+  },
+  "parent_registry": {
+    "path": "configs/data/common_pile_source_rights_v1.json",
+    "blob_sha1": "7b4d6828288672bf25c551e85a5d7f7399e8ef0f",
+    "registry_id": "COMMON-PILE-SOURCE-RIGHTS-V1",
+    "source_key": "foodista",
+    "hf_dataset": "common-pile/foodista",
+    "rights_basis_class": "SITEWIDE_OPEN_LICENSE",
+    "rights_signal": "CC-BY",
+    "required_parent_review_status": "REVIEW_REQUIRED"
+  },
+  "upstream_collector": {
+    "repository": "https://github.com/r-three/common-pile",
+    "audited_commit": "9457f04a14cb2355ab00023420369d46ffd4a395",
+    "collector_path": "sources/food",
+    "readme_path": "sources/food/README.md",
+    "readme_blob_sha1": "155d861c68194b68a18df1fcfa3c32e9105c645d",
+    "preprocess_path": "sources/food/preprocess.py",
+    "preprocess_blob_sha1": "e557449432851e4d18a76a76f23f9eedf1a6b830",
+    "to_dolma_path": "sources/food/to_dolma.py",
+    "to_dolma_blob_sha1": "7823c9dd05e2a0f4fb4e302df701332f430f16c4"
+  },
+  "product_contract": {
+    "product_pr": 1174,
+    "product_issue": 1168,
+    "product_head_sha": "0b94ff93fc7860833ed24faa40a7d3e185740547",
+    "config_path": "configs/data/d03_common_pile_foodista_bounded_v1.json",
+    "config_blob_sha1": "9d960fa62ceaa5d2cf1804ccd3f52b5beaef2836",
+    "dataset": "common-pile/foodista",
+    "dataset_revision": "04d1b7a6562c6d6459426d2a3b88184b8a98f7b6",
+    "shard_path": "v0/documents/00000_foodista.jsonl.gz",
+    "shard_sha256": "286b801bc826f161efad892af5529b201f91f42c5a932e3962d74d24037fe087",
+    "shard_compressed_bytes": 6760466,
+    "required_source_label": "foodista",
+    "required_metadata_license": "Creative Commons - Attribution - https://creativecommons.org/licenses/by/3.0/",
+    "required_metadata_hosts": [
+      "www.foodista.com",
+      "foodista.com"
+    ]
+  },
+  "primary_evidence": [
+    {
+      "authority": "Foodista",
+      "url": "https://www.foodista.com/static/help",
+      "accessed_utc": "2026-09-11T05:28:00Z",
+      "supported_fact": "Foodista invites copying/reuse with attribution and says its content is provided under a Creative Commons attribution license.",
+      "countervailing_fact": "The same Foodista Help page says its recipe database is developed from both user submissions and an automated crawl of the Web."
+    },
+    {
+      "authority": "Foodista",
+      "url": "https://www.foodista.com/blog/2009/01/29/secret-recipes",
+      "accessed_utc": "2026-09-11T05:28:00Z",
+      "supported_fact": "Foodista states that it adopted a Creative Commons license intended to give broad reuse rights to Foodista content.",
+      "countervailing_fact": "Foodista also says it does not condone violation of anyone's rights; this does not establish an original-rights grant for every externally crawled work."
+    },
+    {
+      "authority": "Common Pile",
+      "url": "https://huggingface.co/datasets/common-pile/foodista/blob/main/README.md",
+      "accessed_utc": "2026-09-11T05:28:00Z",
+      "supported_fact": "The Foodista dataset card labels the corpus CC BY.",
+      "countervailing_fact": "The dataset card explicitly warns that license laundering or inaccurate metadata can cause incorrect license assignment for some documents."
+    }
+  ],
+  "risk_assessment": {
+    "sitewide_cc_attribution_signal_observed": true,
+    "exact_payload_metadata_cc_by_3_observed": true,
+    "foodista_origin_host_observed": true,
+    "automated_web_crawl_declared_by_primary_source": true,
+    "dataset_card_license_laundering_warning_observed": true,
+    "record_level_original_rights_provenance_available": false,
+    "sitewide_license_alone_resolves_third_party_origin_rights": false,
+    "package_metadata_alone_is_training_authority": false
+  },
+  "decision": {
+    "source_scope_qualified": false,
+    "decision_class": "PROJECT_POLICY_BLOCKED_ORIGINAL_RIGHTS_PROVENANCE_UNRESOLVED",
+    "legal_conclusion_claimed": false,
+    "canonical_payload_admission_permitted": false,
+    "zero_credit_mechanics_may_continue": true,
+    "required_resolution": "Provide record-level original-rights provenance or equivalent primary-source grant that resolves the automated-Web-crawl origin risk for every retained record.",
+    "policy_revalidation_required_on_product_or_rights_drift": true,
+    "canonical_training_authorized": false,
+    "corpus_credit_bytes": 0,
+    "authorized_loss_positions": 0,
+    "tokenizer_fit_authorized": false,
+    "optimizer_updates_authorized": false,
+    "evaluation_eligible": false,
+    "final_test_accessed": false
+  },
+  "truth_boundary": {
+    "real_data_executed_by_this_package": false,
+    "canonical_corpus_admitted": false,
+    "training_authorized_bytes": 0,
+    "authorized_optimized_target_exposure": 0,
+    "training_executed": false,
+    "learned_weights_created": false,
+    "final_test_payload_accessed": false,
+    "paid_compute_used": false,
+    "foreign_pretrained_weights_used": false,
+    "external_llm_or_api_used_for_data_or_intelligence": false
+  },
+  "policy_identity_sha256": "8f2f981ce4ed2c6d1010569cf686b053a15735d9650e902768368aa689432c1c"
+}
