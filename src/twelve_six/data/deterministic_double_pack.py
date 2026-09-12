@@ -86,6 +86,23 @@ def _normalize_expected_stage_bindings(value: Mapping[str, Any]) -> dict[str, st
     }
 
 
+def _normalize_expected_train_record_ids(value: Sequence[Any]) -> tuple[str, ...]:
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
+        raise LedgerError("expected_train_record_ids must be a sequence")
+
+    normalized = tuple(
+        _require_nonempty_string(item, f"expected_train_record_ids[{index}]")
+        for index, item in enumerate(value)
+    )
+    if len(set(normalized)) != len(normalized):
+        raise LedgerError("expected_train_record_ids contains duplicate record_id")
+    if normalized != tuple(sorted(normalized)):
+        raise LedgerError(
+            "expected_train_record_ids must be in canonical record_id order"
+        )
+    return normalized
+
+
 def _validate_terminal_record_inventory(
     inventory: Mapping[str, Any],
     *,
@@ -265,13 +282,14 @@ def _validate_train_record_membership(
     record_by_id: Mapping[str, Mapping[str, Any]],
     *,
     label: str,
-) -> int:
-    """Require every retained train document to derive from the terminal D03 inventory."""
+) -> tuple[str, ...]:
+    """Validate present train records against D03 and return their canonical IDs."""
     documents = materialization.get("documents")
     if not isinstance(documents, Sequence) or isinstance(documents, (str, bytes)):
         raise LedgerError(f"{label}.documents must be a sequence")
 
-    matched = 0
+    matched_ids: list[str] = []
+    seen_ids: set[str] = set()
     for index, document in enumerate(documents):
         if not isinstance(document, Mapping):
             raise LedgerError(f"{label}.documents[{index}] must be an object")
@@ -281,6 +299,10 @@ def _validate_train_record_membership(
         record_id = _require_nonempty_string(
             document.get("document_id"), f"{label}.documents[{index}].document_id"
         )
+        if record_id in seen_ids:
+            raise LedgerError("duplicate retained train document_id")
+        seen_ids.add(record_id)
+
         authority = record_by_id.get(record_id)
         if authority is None:
             raise LedgerError("retained train document is absent from terminal D03 inventory")
@@ -312,9 +334,9 @@ def _validate_train_record_membership(
             raise LedgerError("train document payload does not match terminal D03 inventory")
         if source_bytes != authority["payload_bytes"]:
             raise LedgerError("train document byte count does not match terminal D03 inventory")
-        matched += 1
+        matched_ids.append(record_id)
 
-    return matched
+    return tuple(sorted(matched_ids))
 
 
 def _validate_build(
@@ -325,6 +347,7 @@ def _validate_build(
     expected_stage_bindings: Mapping[str, str],
     expected_tokenizer_identity_sha256: str,
     terminal_record_by_id: Mapping[str, Mapping[str, Any]],
+    expected_train_record_ids: tuple[str, ...],
 ) -> tuple[dict[str, Any], bytes, int]:
     observed_terminal_corpus_identity = _require_sha256(
         materialization.get("terminal_corpus_authority_identity_sha256"),
@@ -350,14 +373,20 @@ def _validate_build(
         raise LedgerError(f"{label} tokenizer identity does not match terminal handoff")
 
     _validate_retained_document_isolation(materialization, label=label)
-    matched_train_records = _validate_train_record_membership(
+    matched_train_record_ids = _validate_train_record_membership(
         materialization,
         terminal_record_by_id,
         label=label,
     )
+    if matched_train_record_ids != expected_train_record_ids:
+        raise LedgerError(
+            f"{label} retained train record membership does not match "
+            "expected terminal split authority"
+        )
+
     ledger = build_ledger(materialization)
     verify_ledger(materialization, ledger)
-    return ledger, _canonical_json_bytes(materialization), matched_train_records
+    return ledger, _canonical_json_bytes(materialization), len(matched_train_record_ids)
 
 
 def verify_deterministic_double_pack(
@@ -370,13 +399,15 @@ def verify_deterministic_double_pack(
     expected_payload_inventory_digest_sha256: str,
     expected_stage_bindings: Mapping[str, Any],
     expected_tokenizer_identity_sha256: str,
+    expected_train_record_ids: Sequence[Any],
 ) -> dict[str, Any]:
     """Bind two independent post-pack builds to one immutable terminal handoff.
 
-    The proof consumes the existing text-free DATA-526 record inventory and requires
-    every retained train document to be a payload/source/family/modality/byte-exact
-    member of it. This prevents two mutually identical, self-rehashed builds from
-    manufacturing a different training corpus behind a copied corpus identity.
+    The proof consumes the existing text-free DATA-526 record inventory, validates
+    every retained train document against it, and also requires the exact retained
+    train record set to equal an independently supplied terminal split membership.
+    This prevents two mutually identical, self-rehashed builds from omitting a
+    split-authoritative training record behind otherwise valid corpus/split labels.
     """
     terminal_corpus_identity = _require_sha256(
         terminal_corpus_authority_identity_sha256,
@@ -389,6 +420,7 @@ def verify_deterministic_double_pack(
     if not isinstance(expected_stage_bindings, Mapping):
         raise LedgerError("expected_stage_bindings must be an object")
     stage_bindings = _normalize_expected_stage_bindings(expected_stage_bindings)
+    train_record_ids = _normalize_expected_train_record_ids(expected_train_record_ids)
 
     if not isinstance(build_a, Mapping) or not isinstance(build_b, Mapping):
         raise LedgerError("independent builds must be mapping materializations")
@@ -398,6 +430,12 @@ def verify_deterministic_double_pack(
         expected_record_inventory_digest_sha256=expected_record_inventory_digest_sha256,
         expected_payload_inventory_digest_sha256=expected_payload_inventory_digest_sha256,
     )
+    for record_id in train_record_ids:
+        if record_id not in record_by_id:
+            raise LedgerError(
+                "expected terminal split train record is absent from terminal D03 inventory"
+            )
+
     record_inventory_digest = _require_sha256(
         terminal_record_inventory.get("record_inventory_digest_sha256"),
         "terminal_record_inventory.record_inventory_digest_sha256",
@@ -406,6 +444,7 @@ def verify_deterministic_double_pack(
         terminal_record_inventory.get("payload_inventory_digest_sha256"),
         "terminal_record_inventory.payload_inventory_digest_sha256",
     )
+    train_membership_digest = _sha256_obj(list(train_record_ids))
 
     ledger_a, bytes_a, matched_a = _validate_build(
         build_a,
@@ -414,6 +453,7 @@ def verify_deterministic_double_pack(
         expected_stage_bindings=stage_bindings,
         expected_tokenizer_identity_sha256=tokenizer_identity,
         terminal_record_by_id=record_by_id,
+        expected_train_record_ids=train_record_ids,
     )
     ledger_b, bytes_b, matched_b = _validate_build(
         build_b,
@@ -422,6 +462,7 @@ def verify_deterministic_double_pack(
         expected_stage_bindings=stage_bindings,
         expected_tokenizer_identity_sha256=tokenizer_identity,
         terminal_record_by_id=record_by_id,
+        expected_train_record_ids=train_record_ids,
     )
 
     if bytes_a != bytes_b:
@@ -458,6 +499,7 @@ def verify_deterministic_double_pack(
         "terminal_corpus_authority_identity_sha256": terminal_corpus_identity,
         "terminal_record_inventory_digest_sha256": record_inventory_digest,
         "terminal_payload_inventory_digest_sha256": payload_inventory_digest,
+        "terminal_split_train_record_membership_sha256": train_membership_digest,
         "stage_bindings": stage_bindings,
         "tokenizer_identity_sha256": tokenizer_identity,
         "materialization_identity_sha256": materialization_identity,
