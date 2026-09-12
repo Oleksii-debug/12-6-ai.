@@ -36,13 +36,20 @@ def _authority() -> dict:
         "data_spine": {
             "terminal_corpus_authority_identity_sha256": "6" * 64,
             "stage_bindings": stages,
-            "two_clean_proof_identity_sha256": "7" * 64,
-            "two_clean_input_packet_identity_sha256": "8" * 64,
-            "two_clean_runtime_identity_sha256": "9" * 64,
-            "materialization_identity_sha256": "a" * 64,
-            "unique_loss_ledger_identity_sha256": "b" * 64,
-            "tokenizer_identity_sha256": "c" * 64,
-            "packing_identity_sha256": "d" * 64,
+            "deterministic_double_pack_proof_identity_sha256": "7" * 64,
+            "terminal_record_inventory_digest_sha256": "8" * 64,
+            "terminal_payload_inventory_digest_sha256": "9" * 64,
+            "terminal_split_application_identity_sha256": "a" * 64,
+            "terminal_split_spec_identity_sha256": "b" * 64,
+            "terminal_split_train_record_membership_sha256": "c" * 64,
+            "deterministic_double_pack_canonical_build_sha256": "d" * 64,
+            "two_clean_proof_identity_sha256": "e" * 64,
+            "two_clean_input_packet_identity_sha256": "f" * 64,
+            "two_clean_runtime_identity_sha256": "0" * 64,
+            "materialization_identity_sha256": "1" * 64,
+            "unique_loss_ledger_identity_sha256": "2" * 64,
+            "tokenizer_identity_sha256": "3" * 64,
+            "packing_identity_sha256": "4" * 64,
             "one_pass_unique_nonignored_causal_loss_positions": 7,
             "requested_unique_loss_positions": 7,
         },
@@ -94,7 +101,9 @@ def test_rehashed_coherent_substitution_fails_external_identity() -> None:
     value = _authority()
     expected_identity = value["authority_identity_sha256"]
     value["data_spine"]["terminal_corpus_authority_identity_sha256"] = "a" * 64
-    value["data_spine"]["tokenizer_identity_sha256"] = "b" * 64
+    value["data_spine"]["terminal_split_application_identity_sha256"] = "b" * 64
+    value["data_spine"]["terminal_split_train_record_membership_sha256"] = "c" * 64
+    value["data_spine"]["tokenizer_identity_sha256"] = "d" * 64
     value["carrier"]["git_sha"] = "c" * 40
     value["carrier"]["workflow_head_sha"] = "c" * 40
     value["carrier"]["modelspec_sha256"] = "d" * 64
@@ -103,6 +112,14 @@ def test_rehashed_coherent_substitution_fails_external_identity() -> None:
     _rehash(value)
     with pytest.raises(LaunchInputAuthorityError, match="independently expected"):
         _verify(value, expected_identity_sha256=expected_identity)
+
+
+def test_rehashed_removed_d04_membership_root_fails_closed_world() -> None:
+    value = _authority()
+    del value["data_spine"]["terminal_split_train_record_membership_sha256"]
+    _rehash(value)
+    with pytest.raises(LaunchInputAuthorityError, match="data spine"):
+        _verify(value)
 
 
 def test_rehashed_oversubscription_fails_semantically() -> None:
