@@ -49,7 +49,7 @@ def test_checked_in_resource_envelope_validates_exact_current_blobs() -> None:
 def test_bool_int_alias_cannot_fake_zero_optimizer_updates() -> None:
     report = _load()
     report["measurement"]["optimizer_updates"] = False
-    with pytest.raises(ValueError, match="type mismatch"):
+    with pytest.raises(ValueError, match="measurement authority tuple mismatch"):
         validate_report(_reseal(report))
 
 
