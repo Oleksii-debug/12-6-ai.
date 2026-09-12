@@ -34,12 +34,12 @@ ALLOWED_SOURCE_ENCODINGS = {"utf-8", "windows-1251"}
 
 EXPECTED_PARENT_BINDING: dict[str, Any] = {
     "pr": 864,
-    "head_sha": "50069882dfb5866946626720a997a2c35458df7c",
+    "head_sha": "656dd4abe7bdf9c379a86ac9a19f046d5b0d8538",
     "branch": "d03/rada-bulk-normalization-current-main-20260907",
-    "execution_head_sha": "b2088754aa2d5ed6059d89587bbbf08437ba0f55",
-    "execution_run_id": 34561144712,
+    "execution_head_sha": "f62670084f80041757e162743356ac16e0fd81a7",
+    "execution_run_id": 34565921713,
     "execution_evidence_identity_sha256": (
-        "663a8d60b595a6a57fc5fb5be631ce4ebb791e00ffc2bb6de8eae8d2c9743d30"
+        "e1633070beaff596ae11f4974bd9662785723618f502f382850f7e3bea27ab6a"
     ),
     "manifest_schema": PARENT_MANIFEST_SCHEMA,
     "manifest_worker_id": PARENT_WORKER_ID,
@@ -106,6 +106,10 @@ class QualityPrivacyError(RuntimeError):
 def _require(condition: bool, message: str) -> None:
     if not condition:
         raise QualityPrivacyError(message)
+
+
+def _require_exact_int(value: Any, expected: int, message: str) -> None:
+    _require(type(value) is int and value == expected, message)
 
 
 def _sha256(payload: bytes) -> str:
@@ -215,8 +219,8 @@ def _validate_config(config: Mapping[str, Any]) -> None:
         "learned_20m_claimed",
     ):
         _require(boundary.get(key) is False, f"truth boundary weakened: {key}")
-    _require(boundary.get("training_authorized_bytes") == 0, "training bytes nonzero")
-    _require(boundary.get("optimizer_updates") == 0, "optimizer updates nonzero")
+    _require_exact_int(boundary.get("training_authorized_bytes"), 0, "training bytes nonzero")
+    _require_exact_int(boundary.get("optimizer_updates"), 0, "optimizer updates nonzero")
     _require(boundary.get("safe_result") == SAFE_RESULT, "safe result drift")
 
 
@@ -228,8 +232,8 @@ def _verify_parent_manifest(manifest: Mapping[str, Any]) -> None:
     _require(manifest.get("worker_id") == PARENT_WORKER_ID, "parent worker drift")
     _require(manifest.get("local_free_only") is True, "parent LOCAL_FREE weakened")
     _require(manifest.get("safe_result") == PARENT_SAFE_RESULT, "parent result drift")
-    _require(manifest.get("training_authorized_bytes") == 0, "parent grants training")
-    _require(manifest.get("normalized_capacity_credited") == 0, "parent grants capacity")
+    _require_exact_int(manifest.get("training_authorized_bytes"), 0, "parent grants training")
+    _require_exact_int(manifest.get("normalized_capacity_credited"), 0, "parent grants capacity")
     _require(manifest.get("tokenizer_fit_authorized") is False, "parent tokenizer open")
     _require(manifest.get("model_training_executed") is False, "parent training claim")
     _require(manifest.get("paid_compute_used") is False, "parent paid compute claim")

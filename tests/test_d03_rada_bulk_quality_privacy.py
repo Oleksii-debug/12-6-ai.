@@ -9,6 +9,8 @@ from pathlib import Path
 import pytest
 
 from tools.filter_d03_rada_bulk_quality_privacy import (
+    _validate_config,
+    _verify_parent_manifest,
     QualityPrivacyError,
     _materialize_quality_privacy_candidate_for_test,
     materialize_quality_privacy_candidate,
@@ -155,9 +157,9 @@ def _run(
 def test_production_contract_is_exact_current_pr864_authority() -> None:
     parent = CONFIG["parent_normalization"]
     assert parent["pr"] == 864
-    assert parent["head_sha"] == "50069882dfb5866946626720a997a2c35458df7c"
-    assert parent["execution_head_sha"] == "b2088754aa2d5ed6059d89587bbbf08437ba0f55"
-    assert parent["execution_run_id"] == 34561144712
+    assert parent["head_sha"] == "656dd4abe7bdf9c379a86ac9a19f046d5b0d8538"
+    assert parent["execution_head_sha"] == "f62670084f80041757e162743356ac16e0fd81a7"
+    assert parent["execution_run_id"] == 34565921713
     assert parent["manifest_worker_id"] == "D03-RADA-BULK-NORMALIZATION-20260907"
     assert parent["manifest_identity_sha256"] == (
         "ee1c59dbc481b83bffb1380f751880e5fa6e64d654b5abad266c3e2c4d18293b"
@@ -379,3 +381,28 @@ def test_exact_duplicate_chunks_are_observed_but_left_for_global_dedup() -> None
     assert report["filter_result"]["exact_duplicate_accepted_hashes_observed_not_removed"] > 0
     assert report["gates"]["global_cross_source_dedup"] == "NOT_RUN"
     assert report["training_authorized_bytes"] == 0
+
+
+def test_zero_credit_integer_fields_reject_bool_aliases() -> None:
+    for key, message in (("training_authorized_bytes", "training bytes nonzero"), ("optimizer_updates", "optimizer updates nonzero")):
+        tampered = copy.deepcopy(CONFIG)
+        tampered["claim_boundary"][key] = False
+        with pytest.raises(QualityPrivacyError, match=message):
+            _validate_config(tampered)
+
+
+def test_parent_zero_credit_integer_fields_reject_bool_aliases() -> None:
+    text = "Нормативний український текст достатньої довжини для strict-zero перевірки. " * 5
+    _, manifest, _ = _parent_payload([text])
+    for key, message in (("training_authorized_bytes", "parent grants training"), ("normalized_capacity_credited", "parent grants capacity")):
+        tampered = copy.deepcopy(manifest)
+        tampered[key] = False
+        with pytest.raises(QualityPrivacyError, match=message):
+            _verify_parent_manifest(tampered)
+
+
+def test_stale_parent_product_identity_cannot_reseal_current_config() -> None:
+    tampered = copy.deepcopy(CONFIG)
+    tampered["parent_normalization"]["head_sha"] = "50069882dfb5866946626720a997a2c35458df7c"
+    with pytest.raises(QualityPrivacyError, match="parent authority binding drift"):
+        _validate_config(tampered)

@@ -2,7 +2,9 @@
 
 Status: `QUALITY_PRIVACY_FILTERED_CANDIDATE_ONLY / ZERO_TRAINING_AUTHORIZATION`
 
-This successor is bound to PR #641 head `ae79b078f849513dc202bcb723a4145455309e35`. PR #641 deterministically converts the pinned Verkhovna Rada bulk HTML inventory into normalized visible-text records, independently recomputes the parent probe inventory identity, and uses a fixed `UTF-8 -> Windows-1251 -> fail` decoding contract with per-record source-encoding provenance. This layer fills the next seam: deterministic chunking plus bounded quality/privacy filtering while preserving that provenance.
+Current parent authority: final merged PR #864 head `656dd4abe7bdf9c379a86ac9a19f046d5b0d8538`; repaired real execution head `f62670084f80041757e162743356ac16e0fd81a7`; run `34565921713`.
+
+This successor is bound to PR #864 head `656dd4abe7bdf9c379a86ac9a19f046d5b0d8538`. PR #864 deterministically converts the pinned Verkhovna Rada bulk HTML inventory into normalized visible-text records, independently recomputes the parent probe inventory identity, and uses a fixed `UTF-8 -> Windows-1251 -> fail` decoding contract with per-record source-encoding provenance. This layer fills the next seam: deterministic chunking plus bounded quality/privacy filtering while preserving that provenance.
 
 It is not a corpus release, source-capacity promotion, tokenizer-fit authorization, or training campaign.
 
@@ -21,8 +23,8 @@ The bounded DATA-228/D03 quality/privacy predicate is then applied to each chunk
 
 The filter refuses to run unless all of the following remain true:
 
-- parent manifest schema and worker identity match PR #641;
-- the branch contract binds exact parent head `ae79b078f849513dc202bcb723a4145455309e35`;
+- parent manifest schema and worker identity match PR #864;
+- the branch contract binds exact parent head `656dd4abe7bdf9c379a86ac9a19f046d5b0d8538`;
 - parent manifest self-hash is valid;
 - parent JSONL SHA-256 matches the manifest;
 - every JSONL record has exactly the current mixed-encoding normalization fields, including `source_encoding`;
