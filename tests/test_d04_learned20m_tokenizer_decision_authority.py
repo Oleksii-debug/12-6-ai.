@@ -10,6 +10,7 @@ import pytest
 from twelve_six.data.balanced_split_application_v1 import (
     APPLICATION_SCHEMA,
     CANONICAL_SPLIT_GIT_BLOB_SHA1,
+    CANONICAL_SPLIT_SPEC_IDENTITY_SHA256,
     SELECTION_SCHEMA,
 )
 from twelve_six.tokenization.byte import (
@@ -103,6 +104,7 @@ def _application(selection: dict[str, Any]) -> dict[str, Any]:
         ],
         **{field: selection[field] for field in _UPSTREAMS},
         "canonical_split_git_blob_sha1": CANONICAL_SPLIT_GIT_BLOB_SHA1,
+        "split_spec_identity_sha256": CANONICAL_SPLIT_SPEC_IDENTITY_SHA256,
         "selected_record_count": totals["record_count"],
         "selected_source_bytes": totals["source_bytes"],
         "selected_family_source_bytes": totals["family_source_bytes"],
@@ -161,6 +163,7 @@ def test_terminal_decision_binds_canonical_lineage_and_zero_authority() -> None:
 
     assert report["status"] == STATUS
     assert report["decision"] == DECISION
+    assert report["split_spec_identity_sha256"] == CANONICAL_SPLIT_SPEC_IDENTITY_SHA256
     assert report["tokenizer_version"] == BYTE_TOKENIZER_VERSION
     assert report["tokenizer_config_sha256"] == BYTE_TOKENIZER_HASH
     assert report["tokenizer_vocab_sha256"] == BYTE_VOCAB_HASH
@@ -216,10 +219,48 @@ def test_split_rehash_cannot_replace_external_expected_identity() -> None:
         bind_byte_baseline_decision(selection, application, **expected)
 
 
+def test_missing_split_spec_identity_fails_closed() -> None:
+    selection, application, _ = _bind()
+    del application["split_spec_identity_sha256"]
+
+    with pytest.raises(TokenizerDecisionError, match="closed-world"):
+        bind_byte_baseline_decision(
+            selection,
+            application,
+            **_kwargs(selection, application),
+        )
+
+
+@pytest.mark.parametrize("bad_value", ["a" * 64, "A" * 64, "0" * 63, True, None])
+def test_split_spec_identity_is_canonical_not_caller_selected(bad_value: object) -> None:
+    selection, application, _ = _bind()
+    application["split_spec_identity_sha256"] = bad_value
+    application["application_identity_sha256"] = _self_hash(
+        application, "application_identity_sha256"
+    )
+    kwargs = _kwargs(selection, application)
+
+    with pytest.raises(TokenizerDecisionError):
+        bind_byte_baseline_decision(selection, application, **kwargs)
+
+
+def test_self_resealed_split_spec_substitution_fails_against_canonical_authority() -> None:
+    selection, application, _ = _bind()
+    application["split_spec_identity_sha256"] = "a" * 64
+    application["application_identity_sha256"] = _self_hash(
+        application, "application_identity_sha256"
+    )
+    kwargs = _kwargs(selection, application)
+
+    with pytest.raises(TokenizerDecisionError, match="canonical split spec authority"):
+        bind_byte_baseline_decision(selection, application, **kwargs)
+
+
 @pytest.mark.parametrize(
     ("field", "value"),
     [
         ("decision", "FIT_BPE"),
+        ("split_spec_identity_sha256", "0" * 64),
         ("tokenizer_version", "forged"),
         ("tokenizer_config_sha256", "0" * 64),
         ("tokenizer_vocab_sha256", "1" * 64),
@@ -245,6 +286,15 @@ def test_report_self_hash_tamper_fails_closed() -> None:
     report["decision_identity_sha256"] = "f" * 64
 
     with pytest.raises(TokenizerDecisionError, match="identity mismatch"):
+        _verify(report, selection, application)
+
+
+def test_report_reseal_cannot_replace_canonical_split_spec_identity() -> None:
+    selection, application, report = _bind()
+    report["split_spec_identity_sha256"] = "a" * 64
+    report["decision_identity_sha256"] = _self_hash(report, "decision_identity_sha256")
+
+    with pytest.raises(TokenizerDecisionError, match="split-spec authority identity drift"):
         _verify(report, selection, application)
 
 
