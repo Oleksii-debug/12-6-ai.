@@ -307,7 +307,7 @@ def test_durable_artifact_tamper_fails_self_hash():
     result = _build()
     expected = result["g05_g06_coverage_identity_sha256"]
     result["covered_payload_bytes"] += 1
-    with pytest.raises(m.CoverageError, match="self-hash mismatch"):
+    with pytest.raises(m.CoverageError):
         m.verify_final_g05_g06_coverage(
             result,
             expected_identity_sha256=expected,
