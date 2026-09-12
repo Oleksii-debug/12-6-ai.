@@ -400,12 +400,14 @@ def verify_deterministic_double_pack(
     expected_stage_bindings: Mapping[str, Any],
     expected_tokenizer_identity_sha256: str,
     expected_train_record_ids: Sequence[Any],
+    expected_train_record_membership_digest_sha256: str,
 ) -> dict[str, Any]:
     """Bind two independent post-pack builds to one immutable terminal handoff.
 
     The proof consumes the existing text-free DATA-526 record inventory, validates
     every retained train document against it, and also requires the exact retained
-    train record set to equal an independently supplied terminal split membership.
+    train record set to equal an independently supplied terminal split membership,
+    whose canonical record-id digest must also match an independently expected digest.
     This prevents two mutually identical, self-rehashed builds from omitting a
     split-authoritative training record behind otherwise valid corpus/split labels.
     """
@@ -421,6 +423,16 @@ def verify_deterministic_double_pack(
         raise LedgerError("expected_stage_bindings must be an object")
     stage_bindings = _normalize_expected_stage_bindings(expected_stage_bindings)
     train_record_ids = _normalize_expected_train_record_ids(expected_train_record_ids)
+    expected_train_membership_digest = _require_sha256(
+        expected_train_record_membership_digest_sha256,
+        "expected_train_record_membership_digest_sha256",
+    )
+    computed_train_membership_digest = _sha256_obj(list(train_record_ids))
+    if computed_train_membership_digest != expected_train_membership_digest:
+        raise LedgerError(
+            "expected_train_record_ids do not match expected terminal split "
+            "membership digest"
+        )
 
     if not isinstance(build_a, Mapping) or not isinstance(build_b, Mapping):
         raise LedgerError("independent builds must be mapping materializations")
@@ -444,7 +456,7 @@ def verify_deterministic_double_pack(
         terminal_record_inventory.get("payload_inventory_digest_sha256"),
         "terminal_record_inventory.payload_inventory_digest_sha256",
     )
-    train_membership_digest = _sha256_obj(list(train_record_ids))
+    train_membership_digest = expected_train_membership_digest
 
     ledger_a, bytes_a, matched_a = _validate_build(
         build_a,
