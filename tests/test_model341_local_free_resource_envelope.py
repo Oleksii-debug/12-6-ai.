@@ -11,8 +11,8 @@ from tools.model341_local_free_resource_envelope import (
     EXPECTED_BLOBS,
     canonical_json_sha256,
     run_probe,
-    validate_report,
     validate_repo_execution_blobs,
+    validate_report,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
