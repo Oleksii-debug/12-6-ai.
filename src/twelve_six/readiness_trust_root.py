@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import hmac
 import json
@@ -11,11 +12,41 @@ from typing import Any
 from twelve_six.learned20m_readiness import trusted_readiness_inputs
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+_V1_KEYS = {
+    "schema_version",
+    "scientific_authorities",
+    "verified_authorization_refs",
+}
+_V2_KEYS = _V1_KEYS | {"portable_execution"}
+
+
+def _readiness_projection(bindings: Any) -> dict[str, Any] | None:
+    """Project v1/v2 bundles onto the incumbent readiness trust-input schema."""
+    if not isinstance(bindings, dict):
+        return None
+    keys = set(bindings)
+    version = bindings.get("schema_version")
+    if version == 1 and keys == _V1_KEYS:
+        return bindings
+    if version == 2 and keys == _V2_KEYS and isinstance(bindings.get("portable_execution"), dict):
+        return {
+            "schema_version": 1,
+            "scientific_authorities": bindings.get("scientific_authorities"),
+            "verified_authorization_refs": bindings.get("verified_authorization_refs"),
+        }
+    return None
 
 
 def trusted_readiness_bundle_sha256(bindings: Any) -> str | None:
-    """Return the canonical identity of a structurally valid trusted bundle."""
-    if trusted_readiness_inputs(bindings) is None:
+    """Return the canonical identity of a structurally valid trusted bundle.
+
+    Version 2 deliberately extends the same externally pinned root with one
+    ``portable_execution`` object.  That object is not trusted merely because
+    it exists: the full bundle bytes, including the execution projection, must
+    still match an independently supplied expected SHA-256.
+    """
+    readiness_projection = _readiness_projection(bindings)
+    if readiness_projection is None or trusted_readiness_inputs(readiness_projection) is None:
         return None
     try:
         payload = json.dumps(
@@ -30,12 +61,12 @@ def trusted_readiness_bundle_sha256(bindings: Any) -> str | None:
     return hashlib.sha256(payload).hexdigest()
 
 
-def authenticated_trusted_readiness_inputs(
+def authenticated_trusted_readiness_bundle(
     bindings: Any,
     *,
     expected_identity_sha256: Any,
-) -> tuple[set[str], set[str]] | None:
-    """Resolve trust inputs only after an independent expected root matches.
+) -> tuple[set[str], set[str], dict[str, Any] | None] | None:
+    """Resolve readiness inputs plus the root-authenticated execution projection.
 
     The expected identity is deliberately a separate input. Callers must obtain
     it from an authority surface independent of both the candidate packet and
@@ -51,4 +82,34 @@ def authenticated_trusted_readiness_inputs(
     observed = trusted_readiness_bundle_sha256(bindings)
     if observed is None or not hmac.compare_digest(observed, expected_identity_sha256):
         return None
-    return trusted_readiness_inputs(bindings)
+
+    readiness_projection = _readiness_projection(bindings)
+    if readiness_projection is None:
+        return None
+    resolved = trusted_readiness_inputs(readiness_projection)
+    if resolved is None:
+        return None
+    scientific, refs = resolved
+    portable_execution = None
+    if isinstance(bindings, dict) and bindings.get("schema_version") == 2:
+        value = bindings.get("portable_execution")
+        if not isinstance(value, dict):
+            return None
+        portable_execution = copy.deepcopy(value)
+    return scientific, refs, portable_execution
+
+
+def authenticated_trusted_readiness_inputs(
+    bindings: Any,
+    *,
+    expected_identity_sha256: Any,
+) -> tuple[set[str], set[str]] | None:
+    """Compatibility resolver for readiness-only consumers of the same root."""
+    resolved = authenticated_trusted_readiness_bundle(
+        bindings,
+        expected_identity_sha256=expected_identity_sha256,
+    )
+    if resolved is None:
+        return None
+    scientific, refs, _ = resolved
+    return scientific, refs
