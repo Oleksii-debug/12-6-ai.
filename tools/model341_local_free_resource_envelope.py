@@ -20,14 +20,22 @@ CURRENT_CARRIER_PR = 802
 MODEL_SPEC_SHA256 = "fbff24d561a2818453554d58ca23fc6ace3303b078f1935a8576c4565bd92441"
 INIT_SPEC_SHA256 = "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5"
 EXPECTED_PARAMETER_COUNT = 20_613_440
-MEASUREMENT_AUTHORITY_SCHEMA = "12-6.model341.local-free-cpu-measurement-authority.v1"
+MEASUREMENT_AUTHORITY_SCHEMA = (
+    "12-6.model341.local-free-cpu-measurement-authority.v1"
+)
 MEASUREMENT_AUTHORITY_SOURCE_ISSUE = 1262
 MEASUREMENT_AUTHORITY_SOURCE_COMMENT_ID = 5634725801
-MEASUREMENT_AUTHORITY_SHA256 = "5090abe87bdad694274c4a183117e41a35869ab852301048a81f244e39c89965"
+MEASUREMENT_AUTHORITY_SHA256 = (
+    "5090abe87bdad694274c4a183117e41a35869ab852301048a81f244e39c89965"
+)
 EXPECTED_BLOBS = {
-    "configs/candidates/model341_20m_candidate_a.json": "69e3cbd5f5c83c9d3d529a2a6376db3055979c40",
+    "configs/candidates/model341_20m_candidate_a.json": (
+        "69e3cbd5f5c83c9d3d529a2a6376db3055979c40"
+    ),
     "src/twelve_six/__init__.py": "2ce6d14cbdfd23573abf1c47d0a770e5a719de46",
-    "src/twelve_six/attention_perf.py": "2323a709bf8f94047ffddc2de707b57d6edb8efd",
+    "src/twelve_six/attention_perf.py": (
+        "2323a709bf8f94047ffddc2de707b57d6edb8efd"
+    ),
     "src/twelve_six/model.py": "d0823aa666883ddb5c445a438730043ef8b50ff1",
 }
 EXPECTED_MODEL_AUTHORITY = {
@@ -79,10 +87,18 @@ EXPECTED_TRUTH_BOUNDARY = {
 }
 EXPECTED_LEGACY = {
     "schema": "12-6.model341.local-free-cpu-resource-envelope.v1",
-    "report_identity_sha256": "4b8b3965ece6301629eba2f4b90c38bde3334bccb14aa8d08bfee33ad3a9567f",
-    "report_file_sha256": "6158a8c763143b1fe34e1484b4f0f471d8a3f85ab936873e8373eda1ab64e0c2",
-    "measurement_validator_harness_sha256": "bba3d47b70d9a6abf594493abd97da29ee6c2ff000b5363e07ab611e5c31e35a",
-    "focused_adversarial_tests_sha256": "149d5c5c96f92c015d4d01ba7d177cf270755611f712e3942c26c2a29afb6310",
+    "report_identity_sha256": (
+        "4b8b3965ece6301629eba2f4b90c38bde3334bccb14aa8d08bfee33ad3a9567f"
+    ),
+    "report_file_sha256": (
+        "6158a8c763143b1fe34e1484b4f0f471d8a3f85ab936873e8373eda1ab64e0c2"
+    ),
+    "measurement_validator_harness_sha256": (
+        "bba3d47b70d9a6abf594493abd97da29ee6c2ff000b5363e07ab611e5c31e35a"
+    ),
+    "focused_adversarial_tests_sha256": (
+        "149d5c5c96f92c015d4d01ba7d177cf270755611f712e3942c26c2a29afb6310"
+    ),
     "focused_adversarial_tests_passed": 7,
 }
 EXPECTED_REBIND = {
@@ -101,22 +117,35 @@ EXPECTED_EXCLUDED = [
     "real_pilot_overhead",
 ]
 TOP_LEVEL_KEYS = {
-    "schema", "status", "measurement_origin", "model_authority", "runtime",
-    "measurement", "planning", "legacy_package", "rebind", "truth_boundary",
+    "schema",
+    "status",
+    "measurement_origin",
+    "model_authority",
+    "runtime",
+    "measurement",
+    "planning",
+    "legacy_package",
+    "rebind",
+    "truth_boundary",
     "report_identity_sha256",
 }
 
 
 def canonical_json_sha256(payload: dict[str, Any]) -> str:
     encoded = json.dumps(
-        payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
     ).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
 
 
 def git_blob_sha1(path: Path) -> str:
     content = path.read_bytes()
-    return hashlib.sha1(f"blob {len(content)}\0".encode("ascii") + content).hexdigest()
+    header = f"blob {len(content)}\0".encode("ascii")
+    return hashlib.sha1(header + content).hexdigest()
 
 
 def _exact_keys(payload: Any, expected: set[str], name: str) -> None:
@@ -160,7 +189,9 @@ def _measurement_authority_payload(report: dict[str, Any]) -> dict[str, Any]:
         "seed": authority["seed"],
         "sequence_length": authority["sequence_length"],
         "micro_batch_size": authority["micro_batch_size"],
-        "causal_targets_per_microbatch": authority["causal_targets_per_microbatch"],
+        "causal_targets_per_microbatch": authority[
+            "causal_targets_per_microbatch"
+        ],
         "precision": authority["precision"],
         "runtime": {key: runtime[key] for key in EXPECTED_RUNTIME},
         "measurement": {
@@ -179,27 +210,46 @@ def validate_report(report: dict[str, Any]) -> None:
         "MEASURED_MECHANICS_REBOUND_TO_CURRENT_CARRIER",
         "status",
     )
-    if type(report["report_identity_sha256"]) is not str or len(report["report_identity_sha256"]) != 64:
+    claimed = report["report_identity_sha256"]
+    if type(claimed) is not str or len(claimed) != 64:
         raise ValueError("report_identity_sha256 must be 64 hex characters")
     payload = copy.deepcopy(report)
-    claimed_identity = payload.pop("report_identity_sha256")
-    if canonical_json_sha256(payload) != claimed_identity:
+    payload.pop("report_identity_sha256")
+    if canonical_json_sha256(payload) != claimed:
         raise ValueError("report identity mismatch")
 
     origin = report["measurement_origin"]
     _exact_keys(
         origin,
-        {"issue", "measured_carrier_head", "current_carrier_pr", "current_carrier_head", "execution_bearing_blobs"},
+        {
+            "issue",
+            "measured_carrier_head",
+            "current_carrier_pr",
+            "current_carrier_head",
+            "execution_bearing_blobs",
+        },
         "measurement_origin",
     )
     _exact_value(origin["issue"], 1262, "measurement_origin.issue")
-    _exact_value(origin["measured_carrier_head"], MEASURED_CARRIER_HEAD, "measured_carrier_head")
-    _exact_value(origin["current_carrier_pr"], CURRENT_CARRIER_PR, "current_carrier_pr")
-    _exact_value(origin["current_carrier_head"], CURRENT_CARRIER_HEAD, "current_carrier_head")
+    _exact_value(
+        origin["measured_carrier_head"],
+        MEASURED_CARRIER_HEAD,
+        "measured_carrier_head",
+    )
+    _exact_value(
+        origin["current_carrier_pr"], CURRENT_CARRIER_PR, "current_carrier_pr"
+    )
+    _exact_value(
+        origin["current_carrier_head"],
+        CURRENT_CARRIER_HEAD,
+        "current_carrier_head",
+    )
     blobs = origin["execution_bearing_blobs"]
     _exact_keys(blobs, set(EXPECTED_BLOBS), "execution_bearing_blobs")
     for path, expected_sha in EXPECTED_BLOBS.items():
-        _exact_value(blobs[path], expected_sha, f"execution_bearing_blobs.{path}")
+        _exact_value(
+            blobs[path], expected_sha, f"execution_bearing_blobs.{path}"
+        )
 
     authority = report["model_authority"]
     _exact_keys(authority, set(EXPECTED_MODEL_AUTHORITY), "model_authority")
@@ -216,7 +266,9 @@ def validate_report(report: dict[str, Any]) -> None:
     if type(measurement["raw_measured_seconds"]) is not list:
         raise ValueError("raw_measured_seconds must be an array")
     if measurement["raw_measured_seconds"]:
-        raise ValueError("raw samples were not retained by the prepublished authority")
+        raise ValueError(
+            "raw samples were not retained by the prepublished authority"
+        )
     median_ms = _finite_positive(
         measurement["median_forward_loss_backward_ms"],
         "measurement.median_forward_loss_backward_ms",
@@ -225,15 +277,24 @@ def validate_report(report: dict[str, Any]) -> None:
         measurement["median_causal_targets_per_second"],
         "measurement.median_causal_targets_per_second",
     )
-    expected_throughput = authority["causal_targets_per_microbatch"] / (median_ms / 1000.0)
-    if not math.isclose(throughput, expected_throughput, rel_tol=1e-15, abs_tol=1e-12):
+    expected_throughput = authority["causal_targets_per_microbatch"] / (
+        median_ms / 1000.0
+    )
+    if not math.isclose(
+        throughput,
+        expected_throughput,
+        rel_tol=1e-15,
+        abs_tol=1e-12,
+    ):
         raise ValueError("median/throughput arithmetic mismatch")
-    authority_sha256 = canonical_json_sha256(_measurement_authority_payload(report))
+    authority_sha256 = canonical_json_sha256(
+        _measurement_authority_payload(report)
+    )
     if authority_sha256 != MEASUREMENT_AUTHORITY_SHA256:
         raise ValueError(
-            "measurement authority tuple mismatch: historical telemetry must match "
-            f"prepublished issue #{MEASUREMENT_AUTHORITY_SOURCE_ISSUE} comment "
-            f"#{MEASUREMENT_AUTHORITY_SOURCE_COMMENT_ID}"
+            "measurement authority tuple mismatch: historical telemetry must "
+            f"match prepublished issue #{MEASUREMENT_AUTHORITY_SOURCE_ISSUE} "
+            f"comment #{MEASUREMENT_AUTHORITY_SOURCE_COMMENT_ID}"
         )
     for key, expected in EXPECTED_MEASUREMENT.items():
         _exact_value(measurement[key], expected, f"measurement.{key}")
@@ -241,19 +302,50 @@ def validate_report(report: dict[str, Any]) -> None:
     planning = report["planning"]
     _exact_keys(
         planning,
-        {"target_positions", "mechanics_only_lower_bound_seconds", "mechanics_only_lower_bound_hours", "scope", "excluded", "cross_host_extrapolation_allowed"},
+        {
+            "target_positions",
+            "mechanics_only_lower_bound_seconds",
+            "mechanics_only_lower_bound_hours",
+            "scope",
+            "excluded",
+            "cross_host_extrapolation_allowed",
+        },
         "planning",
     )
-    _exact_value(planning["target_positions"], 20_000_000, "planning.target_positions")
-    seconds = _finite_positive(planning["mechanics_only_lower_bound_seconds"], "planning.seconds")
-    hours = _finite_positive(planning["mechanics_only_lower_bound_hours"], "planning.hours")
-    if not math.isclose(seconds, 20_000_000 / throughput, rel_tol=1e-15, abs_tol=1e-12):
+    _exact_value(
+        planning["target_positions"], 20_000_000, "planning.target_positions"
+    )
+    seconds = _finite_positive(
+        planning["mechanics_only_lower_bound_seconds"], "planning.seconds"
+    )
+    hours = _finite_positive(
+        planning["mechanics_only_lower_bound_hours"], "planning.hours"
+    )
+    if not math.isclose(
+        seconds,
+        20_000_000 / throughput,
+        rel_tol=1e-15,
+        abs_tol=1e-12,
+    ):
         raise ValueError("planning seconds arithmetic mismatch")
-    if not math.isclose(hours, seconds / 3600.0, rel_tol=1e-15, abs_tol=1e-12):
+    if not math.isclose(
+        hours,
+        seconds / 3600.0,
+        rel_tol=1e-15,
+        abs_tol=1e-12,
+    ):
         raise ValueError("planning hours arithmetic mismatch")
-    _exact_value(planning["scope"], "forward+causal_ce+backward_only", "planning.scope")
+    _exact_value(
+        planning["scope"],
+        "forward+causal_ce+backward_only",
+        "planning.scope",
+    )
     _exact_value(planning["excluded"], EXPECTED_EXCLUDED, "planning.excluded")
-    _exact_value(planning["cross_host_extrapolation_allowed"], False, "planning.cross_host_extrapolation_allowed")
+    _exact_value(
+        planning["cross_host_extrapolation_allowed"],
+        False,
+        "planning.cross_host_extrapolation_allowed",
+    )
 
     legacy = report["legacy_package"]
     _exact_keys(legacy, set(EXPECTED_LEGACY), "legacy_package")
@@ -279,7 +371,8 @@ def validate_repo_execution_blobs(repo_root: Path) -> None:
         actual_sha = git_blob_sha1(path)
         if actual_sha != expected_sha:
             raise ValueError(
-                f"execution-bearing blob mismatch for {relative_path}: {actual_sha} != {expected_sha}"
+                f"execution-bearing blob mismatch for {relative_path}: "
+                f"{actual_sha} != {expected_sha}"
             )
 
 
@@ -289,7 +382,9 @@ def _parameter_fingerprint(model: Any) -> str:
         tensor = parameter.detach().cpu().contiguous()
         digest.update(name.encode("utf-8"))
         digest.update(str(tensor.dtype).encode("ascii"))
-        digest.update(json.dumps(list(tensor.shape), separators=(",", ":")).encode("ascii"))
+        digest.update(
+            json.dumps(list(tensor.shape), separators=(",", ":")).encode("ascii")
+        )
         digest.update(tensor.numpy().tobytes(order="C"))
     return digest.hexdigest()
 
@@ -308,8 +403,10 @@ def run_probe(
         (intraop_threads, "intraop_threads", False),
         (interop_threads, "interop_threads", False),
     ):
-        if type(value) is not int or value < (0 if allow_zero else 1):
+        minimum = 0 if allow_zero else 1
+        if type(value) is not int or value < minimum:
             raise ValueError(f"{name} has invalid type/value")
+
     validate_repo_execution_blobs(repo_root)
     src_dir = str(repo_root / "src")
     if src_dir not in sys.path:
@@ -317,26 +414,47 @@ def run_probe(
 
     import torch
     import torch.nn.functional as F
-    from twelve_six import TwelveSixDecoder, count_trainable_parameters, load_stage_config
+
+    from twelve_six import (
+        TwelveSixDecoder,
+        count_trainable_parameters,
+        load_stage_config,
+    )
 
     torch.set_num_threads(intraop_threads)
     try:
         torch.set_num_interop_threads(interop_threads)
     except RuntimeError:
         pass
-    config = load_stage_config(repo_root / "configs/candidates/model341_20m_candidate_a.json")
-    if config.model.identity_sha256() != MODEL_SPEC_SHA256 or config.init.identity_sha256() != INIT_SPEC_SHA256:
-        raise ValueError("fresh probe model/init identity mismatch")
+
+    config = load_stage_config(
+        repo_root / "configs/candidates/model341_20m_candidate_a.json"
+    )
+    if config.model.identity_sha256() != MODEL_SPEC_SHA256:
+        raise ValueError("fresh probe model identity mismatch")
+    if config.init.identity_sha256() != INIT_SPEC_SHA256:
+        raise ValueError("fresh probe init identity mismatch")
+
     torch.manual_seed(341)
     model = TwelveSixDecoder(config.model, config.init)
     model.train()
     if count_trainable_parameters(model) != EXPECTED_PARAMETER_COUNT:
         raise ValueError("fresh probe parameter count mismatch")
+
     generator = torch.Generator(device="cpu")
     generator.manual_seed(341)
-    input_ids = torch.randint(0, config.model.vocab_size, (1, 128), generator=generator, dtype=torch.long)
+    input_ids = torch.randint(
+        0,
+        config.model.vocab_size,
+        (1, 128),
+        generator=generator,
+        dtype=torch.long,
+    )
     before = _parameter_fingerprint(model)
-    parameter_bytes = sum(p.numel() * p.element_size() for p in model.parameters())
+    parameter_bytes = sum(
+        parameter.numel() * parameter.element_size()
+        for parameter in model.parameters()
+    )
 
     def one_pass() -> tuple[float, float]:
         model.zero_grad(set_to_none=True)
@@ -351,19 +469,25 @@ def run_probe(
 
     for _ in range(warmup_samples):
         one_pass()
+
     samples: list[float] = []
     losses: list[float] = []
     for _ in range(measured_samples):
         elapsed, loss = one_pass()
-        if not math.isfinite(elapsed) or elapsed <= 0 or not math.isfinite(loss):
-            raise ValueError("fresh probe produced invalid timing/loss")
+        if not math.isfinite(elapsed) or elapsed <= 0:
+            raise ValueError("fresh probe produced invalid timing")
+        if not math.isfinite(loss):
+            raise ValueError("fresh probe produced invalid loss")
         samples.append(elapsed)
         losses.append(loss)
+
     after = _parameter_fingerprint(model)
     if before != after:
         raise ValueError("fresh probe mutated model parameters")
     gradient_bytes = sum(
-        p.grad.numel() * p.grad.element_size() for p in model.parameters() if p.grad is not None
+        parameter.grad.numel() * parameter.grad.element_size()
+        for parameter in model.parameters()
+        if parameter.grad is not None
     )
     median_seconds = statistics.median(samples)
     payload: dict[str, Any] = {
@@ -416,7 +540,11 @@ def load_report(path: Path) -> dict[str, Any]:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--report", type=Path, default=Path("reports/model341_local_free_resource_envelope_v4.json"))
+    parser.add_argument(
+        "--report",
+        type=Path,
+        default=Path("reports/model341_local_free_resource_envelope_v4.json"),
+    )
     parser.add_argument("--repo-root", type=Path, default=Path("."))
     parser.add_argument("--probe", action="store_true")
     parser.add_argument("--probe-warmups", type=int, default=3)
@@ -424,10 +552,12 @@ def main() -> int:
     parser.add_argument("--probe-intraop-threads", type=int, default=4)
     parser.add_argument("--probe-interop-threads", type=int, default=1)
     args = parser.parse_args()
+
     repo_root = args.repo_root.resolve()
     report = load_report(repo_root / args.report)
     validate_report(report)
     validate_repo_execution_blobs(repo_root)
+
     if args.probe:
         result = run_probe(
             repo_root,
@@ -438,17 +568,27 @@ def main() -> int:
         )
         print(json.dumps(result, sort_keys=True, indent=2, allow_nan=False))
     else:
-        print(json.dumps({
-            "validation": "PASS",
-            "schema": report["schema"],
-            "report_identity_sha256": report["report_identity_sha256"],
-            "current_carrier_head": CURRENT_CARRIER_HEAD,
-            "measurement_authority_source_issue": MEASUREMENT_AUTHORITY_SOURCE_ISSUE,
-            "measurement_authority_source_comment_id": MEASUREMENT_AUTHORITY_SOURCE_COMMENT_ID,
-            "measurement_authority_sha256": MEASUREMENT_AUTHORITY_SHA256,
-            "scientific_authority": "mechanics-only",
-            "authorizes_training": False,
-        }, sort_keys=True, allow_nan=False))
+        print(
+            json.dumps(
+                {
+                    "validation": "PASS",
+                    "schema": report["schema"],
+                    "report_identity_sha256": report["report_identity_sha256"],
+                    "current_carrier_head": CURRENT_CARRIER_HEAD,
+                    "measurement_authority_source_issue": (
+                        MEASUREMENT_AUTHORITY_SOURCE_ISSUE
+                    ),
+                    "measurement_authority_source_comment_id": (
+                        MEASUREMENT_AUTHORITY_SOURCE_COMMENT_ID
+                    ),
+                    "measurement_authority_sha256": MEASUREMENT_AUTHORITY_SHA256,
+                    "scientific_authority": "mechanics-only",
+                    "authorizes_training": False,
+                },
+                sort_keys=True,
+                allow_nan=False,
+            )
+        )
     return 0
 
 
