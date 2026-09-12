@@ -43,6 +43,7 @@ def _fixture() -> tuple[dict, dict, dict, dict]:
     packing_identity = _sha("packing")
     runtime_identity = _sha("runtime")
     materialization = _sha("materialization")
+    canonical_build = _sha("same-output")
     proof = {
         "schema_version": "12-6.postpack-two-clean-proof.v2",
         "input_packet_identity_sha256": _sha("input"),
@@ -53,8 +54,8 @@ def _fixture() -> tuple[dict, dict, dict, dict]:
         "runtime_identity_sha256": runtime_identity,
         "fresh_process_count": 2,
         "byte_identical": True,
-        "build_a_sha256": _sha("same-output"),
-        "build_b_sha256": _sha("same-output"),
+        "build_a_sha256": canonical_build,
+        "build_b_sha256": canonical_build,
         "materialization_identity_sha256": materialization,
         "claim_boundary": {
             "contains_source_text": False,
@@ -105,6 +106,32 @@ def _fixture() -> tuple[dict, dict, dict, dict]:
     }
     ledger["ledger_identity_sha256"] = _identity(ledger, "ledger_identity_sha256")
 
+    d04 = {
+        "schema_version": "12-6.d04-deterministic-double-pack-proof.v1",
+        "terminal_corpus_authority_identity_sha256": _sha("corpus"),
+        "terminal_record_inventory_digest_sha256": _sha("record-inventory"),
+        "terminal_payload_inventory_digest_sha256": _sha("payload-inventory"),
+        "terminal_split_application_identity_sha256": _sha("split-application"),
+        "terminal_split_spec_identity_sha256": _sha("split-spec"),
+        "terminal_split_train_record_membership_sha256": _sha("train-membership"),
+        "stage_bindings": copy.deepcopy(stages),
+        "tokenizer_identity_sha256": tokenizer_identity,
+        "materialization_identity_sha256": materialization,
+        "packing_identity_sha256": packing_identity,
+        "ledger_identity_sha256": ledger["ledger_identity_sha256"],
+        "canonical_build_sha256": canonical_build,
+        "build_a_canonical_sha256": canonical_build,
+        "build_b_canonical_sha256": canonical_build,
+        "one_pass_unique_nonignored_causal_loss_positions": 7,
+        "retained_train_records_matched_to_terminal_inventory": 1,
+        "retained_train_record_membership_verified": True,
+        "retained_document_isolation_verified": True,
+        "heldout_reservation_verified": True,
+        "independent_builds_byte_identical": True,
+        "training_authorized_by_this_proof": False,
+    }
+    d04["proof_identity_sha256"] = _identity(d04, "proof_identity_sha256")
+
     carrier = {
         "repository": "Oleksii-debug/12-6-ai.",
         "git_sha": "a" * 40,
@@ -120,6 +147,10 @@ def _fixture() -> tuple[dict, dict, dict, dict]:
         "evidence_sha256": _sha("carrier-evidence"),
     }
     expected = {
+        "deterministic_double_pack_proof": d04,
+        "expected_deterministic_double_pack_proof_identity_sha256": d04[
+            "proof_identity_sha256"
+        ],
         "expected_two_clean_proof_identity_sha256": proof["proof_identity_sha256"],
         "expected_two_clean_input_packet_identity_sha256": proof[
             "input_packet_identity_sha256"
@@ -142,6 +173,18 @@ def _fixture() -> tuple[dict, dict, dict, dict]:
     return proof, ledger, carrier, expected
 
 
+def _sync_d04(expected: dict, ledger: dict) -> None:
+    d04 = expected["deterministic_double_pack_proof"]
+    d04["ledger_identity_sha256"] = ledger["ledger_identity_sha256"]
+    d04["one_pass_unique_nonignored_causal_loss_positions"] = ledger[
+        "one_pass_unique_nonignored_causal_loss_positions"
+    ]
+    _rehash(d04, "proof_identity_sha256")
+    expected["expected_deterministic_double_pack_proof_identity_sha256"] = d04[
+        "proof_identity_sha256"
+    ]
+
+
 def _build() -> dict:
     proof, ledger, carrier, expected = _fixture()
     return build_launch_input_authority(proof, ledger, carrier, **expected)
@@ -156,12 +199,23 @@ def _verify_authority(authority: dict, *, expected_identity: str | None = None) 
     )
 
 
-def test_binds_v2_chain_deterministically_without_authorization() -> None:
+def test_binds_authenticated_d04_and_v2_freshness_without_authorization() -> None:
     first = _build()
     second = _build()
     assert first == second
     assert first["binding_status"] == "READY_FOR_READINESS_BINDING"
-    assert first["data_spine"]["one_pass_unique_nonignored_causal_loss_positions"] == 7
+    spine = first["data_spine"]
+    assert spine["one_pass_unique_nonignored_causal_loss_positions"] == 7
+    assert spine["terminal_split_application_identity_sha256"] == _sha(
+        "split-application"
+    )
+    assert spine["terminal_split_spec_identity_sha256"] == _sha("split-spec")
+    assert spine["terminal_split_train_record_membership_sha256"] == _sha(
+        "train-membership"
+    )
+    assert spine["deterministic_double_pack_canonical_build_sha256"] == _sha(
+        "same-output"
+    )
     assert first["claim_boundary"]["authorized_optimized_target_exposure"] == 0
     assert first["claim_boundary"]["authorizes_training"] is False
     assert first["claim_boundary"]["authorizes_compute"] is False
@@ -169,6 +223,85 @@ def test_binds_v2_chain_deterministically_without_authorization() -> None:
     assert "doc-1" not in json.dumps(first)
     assert "segments" not in json.dumps(first)
     _verify_authority(first)
+
+
+def test_old_v2_only_path_is_not_a_valid_builder_call() -> None:
+    proof, ledger, carrier, expected = _fixture()
+    expected.pop("deterministic_double_pack_proof")
+    with pytest.raises(TypeError, match="deterministic_double_pack_proof"):
+        build_launch_input_authority(proof, ledger, carrier, **expected)
+
+
+def test_d04_proof_is_independently_expected() -> None:
+    proof, ledger, carrier, expected = _fixture()
+    expected["expected_deterministic_double_pack_proof_identity_sha256"] = _sha(
+        "other-d04-proof"
+    )
+    with pytest.raises(LaunchInputAuthorityError, match="independently expected"):
+        build_launch_input_authority(proof, ledger, carrier, **expected)
+
+
+def test_coherently_resealed_d04_membership_substitution_fails_external_root() -> None:
+    proof, ledger, carrier, expected = _fixture()
+    d04 = expected["deterministic_double_pack_proof"]
+    d04["terminal_split_train_record_membership_sha256"] = _sha("smaller-universe")
+    _rehash(d04, "proof_identity_sha256")
+    with pytest.raises(LaunchInputAuthorityError, match="independently expected"):
+        build_launch_input_authority(proof, ledger, carrier, **expected)
+
+
+def test_d04_canonical_build_must_parent_bind_fresh_process_output() -> None:
+    proof, ledger, carrier, expected = _fixture()
+    d04 = expected["deterministic_double_pack_proof"]
+    replacement = _sha("different-build")
+    d04["canonical_build_sha256"] = replacement
+    d04["build_a_canonical_sha256"] = replacement
+    d04["build_b_canonical_sha256"] = replacement
+    _rehash(d04, "proof_identity_sha256")
+    expected["expected_deterministic_double_pack_proof_identity_sha256"] = d04[
+        "proof_identity_sha256"
+    ]
+    with pytest.raises(LaunchInputAuthorityError, match="fresh-process two-clean"):
+        build_launch_input_authority(proof, ledger, carrier, **expected)
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement", "message"),
+    [
+        ("ledger_identity_sha256", _sha("other-ledger"), "ledger substitution"),
+        (
+            "materialization_identity_sha256",
+            _sha("other-materialization"),
+            "materialization substitution",
+        ),
+        ("tokenizer_identity_sha256", _sha("other-tokenizer"), "tokenizer authority"),
+        ("packing_identity_sha256", _sha("other-packing"), "packing authority"),
+    ],
+)
+def test_d04_mixed_lineage_roots_fail(
+    field: str, replacement: str, message: str
+) -> None:
+    proof, ledger, carrier, expected = _fixture()
+    d04 = expected["deterministic_double_pack_proof"]
+    d04[field] = replacement
+    _rehash(d04, "proof_identity_sha256")
+    expected["expected_deterministic_double_pack_proof_identity_sha256"] = d04[
+        "proof_identity_sha256"
+    ]
+    with pytest.raises(LaunchInputAuthorityError, match=message):
+        build_launch_input_authority(proof, ledger, carrier, **expected)
+
+
+def test_d04_training_authorization_widening_fails() -> None:
+    proof, ledger, carrier, expected = _fixture()
+    d04 = expected["deterministic_double_pack_proof"]
+    d04["training_authorized_by_this_proof"] = True
+    _rehash(d04, "proof_identity_sha256")
+    expected["expected_deterministic_double_pack_proof_identity_sha256"] = d04[
+        "proof_identity_sha256"
+    ]
+    with pytest.raises(LaunchInputAuthorityError, match="cannot authorize training"):
+        build_launch_input_authority(proof, ledger, carrier, **expected)
 
 
 def test_launch_authority_tamper_fails_self_hash() -> None:
@@ -198,8 +331,12 @@ def test_v1_two_clean_proof_is_rejected() -> None:
     proof, ledger, carrier, expected = _fixture()
     proof["schema_version"] = "12-6.postpack-two-clean-proof.v1"
     _rehash(proof, "proof_identity_sha256")
-    expected["expected_two_clean_proof_identity_sha256"] = proof["proof_identity_sha256"]
-    with pytest.raises(LaunchInputAuthorityError, match="canonical two-clean proof rejected"):
+    expected["expected_two_clean_proof_identity_sha256"] = proof[
+        "proof_identity_sha256"
+    ]
+    with pytest.raises(
+        LaunchInputAuthorityError, match="canonical two-clean proof rejected"
+    ):
         build_launch_input_authority(proof, ledger, carrier, **expected)
 
 
@@ -207,7 +344,9 @@ def test_v2_two_clean_proof_rejects_rehashed_extra_field() -> None:
     proof, ledger, carrier, expected = _fixture()
     proof["candidate_text"] = "forbidden"
     _rehash(proof, "proof_identity_sha256")
-    expected["expected_two_clean_proof_identity_sha256"] = proof["proof_identity_sha256"]
+    expected["expected_two_clean_proof_identity_sha256"] = proof[
+        "proof_identity_sha256"
+    ]
     with pytest.raises(LaunchInputAuthorityError, match="unexpected or missing fields"):
         build_launch_input_authority(proof, ledger, carrier, **expected)
 
@@ -252,7 +391,9 @@ def test_two_clean_build_hash_mismatch_fails() -> None:
     proof, ledger, carrier, expected = _fixture()
     proof["build_b_sha256"] = _sha("different")
     _rehash(proof, "proof_identity_sha256")
-    expected["expected_two_clean_proof_identity_sha256"] = proof["proof_identity_sha256"]
+    expected["expected_two_clean_proof_identity_sha256"] = proof[
+        "proof_identity_sha256"
+    ]
     with pytest.raises(LaunchInputAuthorityError, match="build hashes differ"):
         build_launch_input_authority(proof, ledger, carrier, **expected)
 
@@ -283,7 +424,9 @@ def test_nonpositive_or_nonintegral_unique_capacity_fails(value: object) -> None
 def test_requested_unique_exposure_cannot_exceed_supply() -> None:
     proof, ledger, carrier, expected = _fixture()
     expected["requested_unique_loss_positions"] = 8
-    with pytest.raises(LaunchInputAuthorityError, match="exceeds one-pass unique capacity"):
+    with pytest.raises(
+        LaunchInputAuthorityError, match="exceeds one-pass unique capacity"
+    ):
         build_launch_input_authority(proof, ledger, carrier, **expected)
 
 
@@ -353,6 +496,7 @@ def test_adjacent_same_document_logical_ranges_remain_valid() -> None:
     expected["expected_unique_loss_ledger_identity_sha256"] = ledger[
         "ledger_identity_sha256"
     ]
+    _sync_d04(expected, ledger)
     authority = build_launch_input_authority(proof, ledger, carrier, **expected)
     assert authority["data_spine"][
         "one_pass_unique_nonignored_causal_loss_positions"
