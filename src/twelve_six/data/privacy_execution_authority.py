@@ -12,6 +12,8 @@ import hashlib
 import importlib
 import json
 import re
+import sys
+import types
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -247,6 +249,25 @@ def input_rows_sha256_from_text_free_inventory(
 
 
 def _privacy_binding() -> tuple[Any, dict[str, str]]:
+    try:
+        expected_path = Path(__file__).with_name(PRIVACY_SOURCE_RELATIVE_PATH).resolve(
+            strict=True
+        )
+    except OSError as exc:
+        raise PrivacyExecutionAuthorityError(
+            "cannot resolve canonical privacy implementation"
+        ) from exc
+
+    source = expected_path.read_bytes()
+    observed_blob = _git_blob_sha1(source)
+    if observed_blob != EXPECTED_PRIVACY_IMPLEMENTATION_GIT_BLOB_SHA1:
+        raise PrivacyExecutionAuthorityError(
+            "canonical privacy implementation Git blob drift"
+        )
+
+    # Preserve the prior fail-closed live-import/path/provenance guard, but do not
+    # execute through the mutable live module. A forged __module__ therefore cannot
+    # redirect the scanner or policy provider used for authority construction.
     module = importlib.import_module(PRIVACY_MODULE)
     module_file = getattr(module, "__file__", None)
     if not isinstance(module_file, str) or not module_file:
@@ -255,35 +276,58 @@ def _privacy_binding() -> tuple[Any, dict[str, str]]:
         )
     try:
         observed_path = Path(module_file).resolve(strict=True)
-        expected_path = Path(__file__).with_name(PRIVACY_SOURCE_RELATIVE_PATH).resolve(
-            strict=True
-        )
     except OSError as exc:
         raise PrivacyExecutionAuthorityError(
-            "cannot resolve canonical privacy implementation"
+            "cannot resolve live privacy implementation"
         ) from exc
     if observed_path != expected_path:
         raise PrivacyExecutionAuthorityError(
             "privacy implementation resolved outside canonical repository path"
         )
-    observed_blob = _git_blob_sha1(observed_path.read_bytes())
-    if observed_blob != EXPECTED_PRIVACY_IMPLEMENTATION_GIT_BLOB_SHA1:
-        raise PrivacyExecutionAuthorityError(
-            "canonical privacy implementation Git blob drift"
-        )
-
-    scan = getattr(module, "hash_safe_scan", None)
-    policy_provider = getattr(module, "policy_manifest", None)
-    if not callable(scan) or getattr(scan, "__module__", None) != PRIVACY_MODULE:
+    live_scan = getattr(module, "hash_safe_scan", None)
+    live_policy_provider = getattr(module, "policy_manifest", None)
+    if (
+        not callable(live_scan)
+        or getattr(live_scan, "__module__", None) != PRIVACY_MODULE
+    ):
         raise PrivacyExecutionAuthorityError(
             "privacy scanner callable provenance drift"
         )
     if (
-        not callable(policy_provider)
-        or getattr(policy_provider, "__module__", None) != PRIVACY_MODULE
+        not callable(live_policy_provider)
+        or getattr(live_policy_provider, "__module__", None) != PRIVACY_MODULE
     ):
         raise PrivacyExecutionAuthorityError(
             "privacy policy callable provenance drift"
+        )
+
+    # Execute the exact bytes whose Git blob was verified above. The private
+    # namespace exists only while executing the source so dataclass/annotation
+    # machinery can resolve its module; live helper/global mutations are irrelevant.
+    private_name = f"_twelve_six_g06_privacy_{observed_blob}"
+    verified_module = types.ModuleType(private_name)
+    verified_module.__file__ = str(expected_path)
+    previous = sys.modules.get(private_name)
+    if previous is not None:
+        raise PrivacyExecutionAuthorityError(
+            "verified privacy private namespace collision"
+        )
+    sys.modules[private_name] = verified_module
+    try:
+        exec(compile(source, str(expected_path), "exec"), verified_module.__dict__)
+    finally:
+        sys.modules.pop(private_name, None)
+
+    scan = verified_module.__dict__.get("hash_safe_scan")
+    policy_provider = verified_module.__dict__.get("policy_manifest")
+    if (
+        not callable(scan)
+        or getattr(scan, "__module__", None) != private_name
+        or not callable(policy_provider)
+        or getattr(policy_provider, "__module__", None) != private_name
+    ):
+        raise PrivacyExecutionAuthorityError(
+            "verified privacy source API/provenance drift"
         )
 
     manifest = policy_provider()
