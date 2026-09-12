@@ -9,9 +9,19 @@ from collections.abc import Mapping, Sequence
 from types import MappingProxyType
 from typing import Any
 
+from twelve_six.inference.fresh_process import validate_fresh_process_receipt
 from twelve_six.metrics import bpb_from_aggregate
 
 REQUIRED_STRATA = ("UA", "EN", "CODE")
+_FRESH_PROCESS_EXPECTATION_KEYS = frozenset(
+    {
+        "receipt_identity",
+        "checkpoint_identity",
+        "prompt_suite_identity",
+        "prompt_payload_sha256",
+        "generation_config_identity",
+    }
+)
 
 _MEMORIZATION_POLICY_V1 = MappingProxyType(
     {
@@ -76,6 +86,15 @@ def _sha256_digest(value: Any) -> bool:
         return False
     digest = value[7:]
     return len(digest) == 64 and all(char in "0123456789abcdef" for char in digest)
+
+
+def _raw_sha256_digest(value: Any) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) == 64
+        and value == value.lower()
+        and all(char in "0123456789abcdef" for char in value)
+    )
 
 
 def _validate_heldout_metrics(d06: Mapping[str, Any], blockers: list[str]) -> None:
@@ -229,13 +248,51 @@ def _validate_selection_trajectory(d06: Mapping[str, Any], blockers: list[str]) 
         blockers.append("bounded_pilot.d06.selection_trajectory_not_improving")
 
 
+def _validate_fresh_process_expectations(
+    pilot: Mapping[str, Any],
+    expectations: Mapping[str, Any] | None,
+    blockers: list[str],
+) -> Mapping[str, Any] | None:
+    prefix = "bounded_pilot.d06.inference_probe.fresh_process_expectations"
+    if not isinstance(expectations, Mapping):
+        blockers.append(f"{prefix}_missing")
+        return None
+    keys = set(expectations)
+    if keys != _FRESH_PROCESS_EXPECTATION_KEYS:
+        if missing := sorted(_FRESH_PROCESS_EXPECTATION_KEYS - keys):
+            blockers.append(f"{prefix}.keys_missing:" + ",".join(missing))
+        if extra := sorted(keys - _FRESH_PROCESS_EXPECTATION_KEYS):
+            blockers.append(f"{prefix}.keys_unknown:" + ",".join(extra))
+
+    if not _sha256_digest(expectations.get("receipt_identity")):
+        blockers.append(f"{prefix}.receipt_identity_invalid")
+    if not _raw_sha256_digest(expectations.get("checkpoint_identity")):
+        blockers.append(f"{prefix}.checkpoint_identity_invalid")
+    if expectations.get("checkpoint_identity") != pilot.get("result_checkpoint_identity"):
+        blockers.append(f"{prefix}.checkpoint_identity_pilot_mismatch")
+    if not _nonempty_text(expectations.get("prompt_suite_identity")):
+        blockers.append(f"{prefix}.prompt_suite_identity_invalid")
+    if not _sha256_digest(expectations.get("prompt_payload_sha256")):
+        blockers.append(f"{prefix}.prompt_payload_sha256_invalid")
+    if not _sha256_digest(expectations.get("generation_config_identity")):
+        blockers.append(f"{prefix}.generation_config_identity_invalid")
+    return expectations
+
+
 def _validate_inference_probe(
-    pilot: Mapping[str, Any], d06: Mapping[str, Any], blockers: list[str]
+    pilot: Mapping[str, Any],
+    d06: Mapping[str, Any],
+    blockers: list[str],
+    *,
+    fresh_process_expectations: Mapping[str, Any] | None,
 ) -> None:
     probe = d06.get("inference_probe")
     if not isinstance(probe, Mapping):
         blockers.append("bounded_pilot.d06.inference_probe_missing")
         return
+
+    # Retain the legacy summary checks only as additional consistency checks.
+    # They can block terminality, but they never grant terminal fresh-process credit.
     if not _nonempty_text(probe.get("prompt_suite_identity")):
         blockers.append("bounded_pilot.d06.inference_probe.prompt_suite_identity_missing")
     if not _sha256_digest(probe.get("output_fingerprint")):
@@ -244,6 +301,30 @@ def _validate_inference_probe(
         blockers.append("bounded_pilot.d06.inference_probe.fresh_process_reload_not_proven")
     if probe.get("checkpoint_identity") != pilot.get("result_checkpoint_identity"):
         blockers.append("bounded_pilot.d06.inference_probe.checkpoint_identity_mismatch")
+
+    expectations = _validate_fresh_process_expectations(
+        pilot, fresh_process_expectations, blockers
+    )
+    receipt = probe.get("fresh_process_receipt")
+    if not isinstance(receipt, Mapping):
+        blockers.append("bounded_pilot.d06.inference_probe.fresh_process_receipt_missing")
+        return
+    if expectations is None:
+        return
+
+    d07_blockers = validate_fresh_process_receipt(
+        receipt,
+        expected_receipt_identity=expectations.get("receipt_identity"),
+        expected_checkpoint_identity=expectations.get("checkpoint_identity"),
+        expected_prompt_suite_identity=expectations.get("prompt_suite_identity"),
+        expected_prompt_payload_sha256=expectations.get("prompt_payload_sha256"),
+        expected_generation_config_identity=expectations.get(
+            "generation_config_identity"
+        ),
+    )
+    blockers.extend(
+        "bounded_pilot.d06.inference_probe." + blocker for blocker in d07_blockers
+    )
 
 
 def _validate_memorization(d06: Mapping[str, Any], blockers: list[str]) -> None:
@@ -353,8 +434,12 @@ def _validate_memorization(d06: Mapping[str, Any], blockers: list[str]) -> None:
         blockers.append("bounded_pilot.d06.memorization_diagnostic_not_passed")
 
 
-def validate_terminal_pilot_evaluation(evidence: Mapping[str, Any]) -> list[str]:
-    """Require numeric D06 evidence before a terminal pilot can unlock long training."""
+def validate_terminal_pilot_evaluation(
+    evidence: Mapping[str, Any],
+    *,
+    fresh_process_expectations: Mapping[str, Any] | None = None,
+) -> list[str]:
+    """Require terminal D06 evidence bound to trusted D07 fresh-process expectations."""
 
     pilot = evidence.get("bounded_pilot")
     if not isinstance(pilot, Mapping) or pilot.get("terminal") is not True:
@@ -376,7 +461,12 @@ def validate_terminal_pilot_evaluation(evidence: Mapping[str, Any]) -> list[str]
 
     _validate_heldout_metrics(d06, blockers)
     _validate_selection_trajectory(d06, blockers)
-    _validate_inference_probe(pilot, d06, blockers)
+    _validate_inference_probe(
+        pilot,
+        d06,
+        blockers,
+        fresh_process_expectations=fresh_process_expectations,
+    )
     _validate_memorization(d06, blockers)
 
     throughput = d06.get("throughput_optimized_targets_per_second")
