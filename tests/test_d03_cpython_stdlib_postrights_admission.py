@@ -85,6 +85,16 @@ def test_direct_rights_notice_fails_closed() -> None:
     assert decision["reason"] == "DIRECT_RIGHTS_NOTICE_PRESENT"
 
 
+def test_direct_rights_notice_after_evidence_window_fails_closed() -> None:
+    text = "# " + ("x" * 12_001) + "\n# SPDX-License-Identifier: MIT\nvalue = 3\n"
+    row = _row("Lib/example.py", text)
+    decision = classify_row(row, _tree(row), _policy())
+    assert decision["admitted"] is False
+    assert decision["license_id"] is None
+    assert decision["reason"] == "DIRECT_RIGHTS_NOTICE_PRESENT"
+    assert decision["direct_notice_marker"] == "spdx-license-identifier"
+
+
 def test_ancestor_license_marker_fails_closed() -> None:
     row = _row("Lib/example/module.py", "value = 3\n")
     decision = classify_row(
