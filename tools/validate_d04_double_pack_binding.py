@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from copy import deepcopy
 
 from twelve_six.data.deterministic_double_pack import verify_deterministic_double_pack
@@ -38,7 +38,7 @@ def _identity(value: dict, field: str) -> str:
     ).hexdigest()
 
 
-def _terminal_record_inventory() -> dict:
+def _terminal_record_inventory(*, include_en_train: bool = False) -> dict:
     records = [
         {
             "record_id": "uk-doc",
@@ -49,6 +49,18 @@ def _terminal_record_inventory() -> dict:
             "payload_bytes": 12,
         }
     ]
+    if include_en_train:
+        records.append(
+            {
+                "record_id": "en-doc",
+                "source_id": "source.en.synthetic",
+                "family": "family.en",
+                "modality": "text",
+                "payload_sha256": _sha("en-payload"),
+                "payload_bytes": 11,
+            }
+        )
+    records.sort(key=lambda item: item["record_id"])
     payload_projection = [
         {
             "record_id": item["record_id"],
@@ -69,6 +81,10 @@ def _terminal_record_inventory() -> dict:
         ).hexdigest(),
         "records": records,
     }
+
+
+def _expected_train_record_ids() -> list[str]:
+    return ["uk-doc"]
 
 
 def _materialization() -> dict:
@@ -147,21 +163,35 @@ def _materialization() -> dict:
     return value
 
 
-def _proof(build_a: dict, build_b: dict, *, inventory: dict | None = None) -> dict:
+def _proof(
+    build_a: dict,
+    build_b: dict,
+    *,
+    inventory: dict | None = None,
+    expected_inventory: dict | None = None,
+    expected_train_record_ids: Sequence[str] | None = None,
+) -> dict:
     record_inventory = inventory or _terminal_record_inventory()
+    expected_record_inventory = expected_inventory or _terminal_record_inventory()
+    train_record_ids = (
+        list(expected_train_record_ids)
+        if expected_train_record_ids is not None
+        else _expected_train_record_ids()
+    )
     return verify_deterministic_double_pack(
         build_a,
         build_b,
         terminal_corpus_authority_identity_sha256=_sha("terminal-corpus-authority"),
         terminal_record_inventory=record_inventory,
         expected_record_inventory_digest_sha256=(
-            _terminal_record_inventory()["record_inventory_digest_sha256"]
+            expected_record_inventory["record_inventory_digest_sha256"]
         ),
         expected_payload_inventory_digest_sha256=(
-            _terminal_record_inventory()["payload_inventory_digest_sha256"]
+            expected_record_inventory["payload_inventory_digest_sha256"]
         ),
         expected_stage_bindings=_materialization()["stage_bindings"],
         expected_tokenizer_identity_sha256=_sha("tokenizer"),
+        expected_train_record_ids=train_record_ids,
     )
 
 
@@ -196,6 +226,22 @@ def main() -> None:
         raise SystemExit("terminal train-record membership was not proven")
     if proof["retained_train_records_matched_to_terminal_inventory"] != 1:
         raise SystemExit("terminal train-record membership count mismatch")
+    expected_membership_digest = hashlib.sha256(
+        (
+            json.dumps(
+                _expected_train_record_ids(),
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+            + "\n"
+        ).encode("utf-8")
+    ).hexdigest()
+    if (
+        proof["terminal_split_train_record_membership_sha256"]
+        != expected_membership_digest
+    ):
+        raise SystemExit("terminal split train-membership digest mismatch")
     if proof["retained_document_isolation_verified"] is not True:
         raise SystemExit("retained-document isolation was not proven")
     if proof["heldout_reservation_verified"] is not True:
@@ -257,6 +303,37 @@ def main() -> None:
     _expect_failure(
         lambda: _proof(build_a, build_b, inventory=inventory_drift),
         "terminal record inventory does not match expected D03 handoff",
+    )
+
+    closed_world_inventory = _terminal_record_inventory(include_en_train=True)
+    omitted_authoritative_train_a = _materialization()
+    omitted_authoritative_train_b = _materialization()
+    _expect_failure(
+        lambda: _proof(
+            omitted_authoritative_train_a,
+            omitted_authoritative_train_b,
+            inventory=closed_world_inventory,
+            expected_inventory=closed_world_inventory,
+            expected_train_record_ids=["en-doc", "uk-doc"],
+        ),
+        "retained train record membership does not match expected terminal split authority",
+    )
+
+    _expect_failure(
+        lambda: _proof(
+            build_a,
+            build_b,
+            expected_train_record_ids=["uk-doc", "uk-doc"],
+        ),
+        "expected_train_record_ids contains duplicate record_id",
+    )
+    _expect_failure(
+        lambda: _proof(
+            build_a,
+            build_b,
+            expected_train_record_ids=["uk-doc", "en-doc"],
+        ),
+        "expected_train_record_ids must be in canonical record_id order",
     )
 
     cluster_leak_a = _materialization()
@@ -345,6 +422,7 @@ def main() -> None:
             ),
             expected_stage_bindings=build_a["stage_bindings"],
             expected_tokenizer_identity_sha256=_sha("tokenizer"),
+            expected_train_record_ids=_expected_train_record_ids(),
         ),
         "terminal_corpus_authority_identity_sha256 must be a 64-hex",
     )
@@ -354,6 +432,10 @@ def main() -> None:
     print(
         "one_pass_unique_nonignored_causal_loss_positions="
         f"{proof['one_pass_unique_nonignored_causal_loss_positions']}"
+    )
+    print(
+        "terminal_split_train_record_membership_sha256="
+        f"{proof['terminal_split_train_record_membership_sha256']}"
     )
     print("retained_train_record_membership_verified=true")
     print("retained_document_isolation_verified=true")
