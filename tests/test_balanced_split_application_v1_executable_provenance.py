@@ -7,9 +7,8 @@ import types
 from typing import Any
 
 import pytest
-
-from twelve_six.data import balanced_split_application_v1 as split_application
 import twelve_six.split_robustness as ambient_split
+from twelve_six.data import balanced_split_application_v1 as split_application
 
 IDS = {
     "inventory": hashlib.sha256(b"inventory").hexdigest(),
