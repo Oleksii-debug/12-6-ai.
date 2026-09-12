@@ -1,0 +1,25 @@
+{
+  "authorized_optimized_target_exposure": 0,
+  "canonical_capacity_credit": 0,
+  "combined_incumbent_all_pair_dispatches": 5183707110,
+  "combined_source_objects": 101821,
+  "current_v8_survivor_objects": 262,
+  "evidence_sha256": "b5c3b8258470426d5e19187fe256e92e5091cd811a48d95e5d8cb4a3d9be1dcf",
+  "final_test_outcomes_read": false,
+  "focused_local_tests": {
+    "failed": 0,
+    "passed": 5
+  },
+  "incumbent_v1_git_blob_sha1": "84cdf00b2d468d2709a542ac3ee2ea372aae5716",
+  "incumbent_v3_git_blob_sha1": "11490b1803e0aa2266d8ac0053676efcfb0f91ba",
+  "learned_weights_created": false,
+  "local_free_only": true,
+  "main_at_claim": "f250f24fd0004c5021ecbc637ab17d959c266e1d",
+  "model_training_executed": false,
+  "paid_compute_used": false,
+  "rada_accepted_source_objects": 101559,
+  "rada_incumbent_all_pair_dispatches": 5157064461,
+  "real_rada_indexed_execution_completed": false,
+  "schema_version": "12-6.d03-incumbent-dedup-indexed-prequal.v1",
+  "swarm_issue": 1453
+}
