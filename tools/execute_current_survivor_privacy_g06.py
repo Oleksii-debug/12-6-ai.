@@ -104,6 +104,13 @@ def _cjson(value: Any) -> bytes:
     ).encode("utf-8")
 
 
+def _canonical_root_json(value: Any) -> bytes:
+    """Match DATA526 inventory-root canonicalization exactly (no trailing LF)."""
+    return json.dumps(
+        value, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+
+
 def _sha256(payload: bytes) -> str:
     return hashlib.sha256(payload).hexdigest()
 
@@ -172,7 +179,7 @@ def _validate_inventory(path: Path) -> tuple[dict[str, Any], str]:
         source_ids.add(row["source_id"])
 
     normalized.sort(key=lambda row: row["record_id"])
-    full_root = _sha256(_cjson(normalized))
+    full_root = _sha256(_canonical_root_json(normalized))
     payload_projection = [
         {
             "record_id": row["record_id"],
@@ -181,7 +188,7 @@ def _validate_inventory(path: Path) -> tuple[dict[str, Any], str]:
         }
         for row in normalized
     ]
-    payload_root = _sha256(_cjson(payload_projection))
+    payload_root = _sha256(_canonical_root_json(payload_projection))
     record_count = _strict_int(value["record_count"], "inventory.record_count")
     total_bytes = _strict_int(
         value["total_payload_bytes"], "inventory.total_payload_bytes"
