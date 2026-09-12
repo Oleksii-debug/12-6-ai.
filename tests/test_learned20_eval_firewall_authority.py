@@ -99,7 +99,7 @@ def test_terminal_provenance_wrapper_blocks_pilot_on_cross_corpus_firewall(
     monkeypatch.setattr(
         pilot_authority,
         "validate_terminal_pilot_evaluation",
-        lambda evidence: [],
+        lambda evidence, **_kwargs: [],
     )
 
     result = pilot_authority.assess_launch_with_terminal_provenance(
