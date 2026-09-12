@@ -12,9 +12,9 @@ from __future__ import annotations
 from copy import deepcopy
 
 import pytest
+import test_bounded_pilot as product_fixture
 import torch
 
-import test_bounded_pilot as product_fixture
 from twelve_six.training.bounded_pilot import (
     BoundedPilotAuthorizationError,
     BoundedPilotStepRunner,
