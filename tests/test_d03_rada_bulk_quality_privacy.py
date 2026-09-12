@@ -9,10 +9,10 @@ from pathlib import Path
 import pytest
 
 from tools.filter_d03_rada_bulk_quality_privacy import (
-    _validate_config,
-    _verify_parent_manifest,
     QualityPrivacyError,
     _materialize_quality_privacy_candidate_for_test,
+    _validate_config,
+    _verify_parent_manifest,
     materialize_quality_privacy_candidate,
 )
 
