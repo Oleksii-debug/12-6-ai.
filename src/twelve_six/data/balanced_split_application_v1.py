@@ -210,7 +210,7 @@ def _load_canonical_split_module(expected_blob_sha1: str) -> types.ModuleType:
             "exec",
             dont_inherit=True,
         )
-        exec(code, module.__dict__)
+        exec(code, module.__dict__)  # noqa: S102
     except Exception as exc:
         raise BalancedSplitApplicationError(
             "canonical split mechanics exact-byte execution failed"
