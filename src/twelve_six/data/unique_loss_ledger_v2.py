@@ -12,6 +12,14 @@ for _name in dir(_core):
     if not _name.startswith("__") and _name != "ExposureReplayGuard":
         globals()[_name] = getattr(_core, _name)
 
+# Explicit aliases keep static analysis honest while the compatibility loop above
+# preserves the complete pre-existing module surface for repository callers.
+LedgerError = _core.LedgerError
+LEDGER_SCHEMA = _core.LEDGER_SCHEMA
+EXPOSURE_STATE_KEYS = _core.EXPOSURE_STATE_KEYS
+_require_sha256 = _core._require_sha256
+_sha256_obj = _core._sha256_obj
+
 LEDGER_KEYS = frozenset(
     {
         "schema_version",
