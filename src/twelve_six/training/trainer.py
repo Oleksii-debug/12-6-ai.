@@ -91,6 +91,21 @@ class TrainerState:
     config: dict[str, Any]
 
 
+def _typed_state_equal(left: Any, right: Any) -> bool:
+    """Compare checkpoint metadata without Python numeric/bool equality aliases."""
+    if type(left) is not type(right):
+        return False
+    if isinstance(left, Mapping):
+        if left.keys() != right.keys():
+            return False
+        return all(_typed_state_equal(left[key], right[key]) for key in left)
+    if isinstance(left, (list, tuple)):
+        if len(left) != len(right):
+            return False
+        return all(_typed_state_equal(a, b) for a, b in zip(left, right, strict=True))
+    return bool(left == right)
+
+
 def _lr_lambda(config: TrainerConfig):
     def factor(step: int) -> float:
         if config.warmup_steps and step < config.warmup_steps:
@@ -579,9 +594,9 @@ class Trainer:
         A trainer that has entered a poisoned or ambiguous state cannot be repaired
         in place because trainer-only state cannot prove that model weights were also
         restored. Construct a fresh Trainer around the verified checkpoint model and
-        then load the trainer state. Component restore is transactional: malformed
-        optimizer/scheduler/scaler state must not leave a clean trainer partially
-        mutated after a rejected resume.
+        then load the trainer state. Component restore including gradient cleanup is
+        transactional: a rejected resume either restores the exact prior component
+        and gradient state or poisons the Trainer so it cannot continue training.
         """
         if self._failure_reason is not None or self._update_incomplete:
             raise TrainingStateInvalidError(
@@ -591,7 +606,15 @@ class Trainer:
         if isinstance(state, Mapping):
             state = TrainerState(**state)
 
-        if state.config != asdict(self.config):
+        counters = {
+            "micro_step": state.micro_step,
+            "optimizer_step": state.optimizer_step,
+            "tokens_seen": state.tokens_seen,
+        }
+        for name, value in counters.items():
+            if type(value) is not int:
+                raise ValueError(f"trainer checkpoint {name} must be an exact integer")
+        if not _typed_state_equal(state.config, asdict(self.config)):
             raise ValueError("trainer config mismatch; refusing unsafe resume")
         if state.micro_step < 0 or state.optimizer_step < 0 or state.tokens_seen < 0:
             raise ValueError("trainer counters must be non-negative")
@@ -613,6 +636,21 @@ class Trainer:
             None if self.scheduler is None else copy.deepcopy(self.scheduler.state_dict())
         )
         scaler_before = None if self.scaler is None else copy.deepcopy(self.scaler.state_dict())
+        gradients_before: list[tuple[Tensor, Tensor | None]] = []
+        seen_parameters: set[int] = set()
+        for group in self.optimizer.param_groups:
+            for parameter in group["params"]:
+                parameter_id = id(parameter)
+                if parameter_id in seen_parameters:
+                    continue
+                seen_parameters.add(parameter_id)
+                gradient = parameter.grad
+                gradients_before.append(
+                    (
+                        parameter,
+                        None if gradient is None else gradient.detach().clone(),
+                    )
+                )
 
         try:
             self.optimizer.load_state_dict(state.optimizer)
@@ -620,19 +658,34 @@ class Trainer:
                 self.scheduler.load_state_dict(state.scheduler)
             if self.scaler is not None and state.scaler is not None:
                 self.scaler.load_state_dict(state.scaler)
-        except Exception:
+            self.optimizer.zero_grad(set_to_none=True)
+        except Exception as restore_error:
+            rollback_errors: list[BaseException] = []
             try:
                 self.optimizer.load_state_dict(optimizer_before)
-                if self.scheduler is not None and scheduler_before is not None:
-                    self.scheduler.load_state_dict(scheduler_before)
-                if self.scaler is not None and scaler_before is not None:
-                    self.scaler.load_state_dict(scaler_before)
             except Exception as rollback_error:
+                rollback_errors.append(rollback_error)
+            if self.scheduler is not None and scheduler_before is not None:
+                try:
+                    self.scheduler.load_state_dict(scheduler_before)
+                except Exception as rollback_error:
+                    rollback_errors.append(rollback_error)
+            if self.scaler is not None and scaler_before is not None:
+                try:
+                    self.scaler.load_state_dict(scaler_before)
+                except Exception as rollback_error:
+                    rollback_errors.append(rollback_error)
+            for parameter, gradient in gradients_before:
+                try:
+                    parameter.grad = gradient
+                except Exception as rollback_error:
+                    rollback_errors.append(rollback_error)
+            if rollback_errors:
                 self._failure_reason = "trainer state restore rollback failed"
                 raise TrainingStateInvalidError(
                     "trainer state restore failed and rollback could not prove a clean state; "
                     "construct a fresh trainer and restore a verified checkpoint"
-                ) from rollback_error
+                ) from restore_error
             raise
 
         self.micro_step = state.micro_step
@@ -643,4 +696,3 @@ class Trainer:
         self._update_incomplete = False
         self._failure_reason = None
         self._failure_diagnostics = None
-        self.optimizer.zero_grad(set_to_none=True)
