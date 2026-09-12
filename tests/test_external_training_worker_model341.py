@@ -80,8 +80,7 @@ def test_model341_subprocess_commits_one_real_optimizer_step_and_replays(
     first = subprocess.run(
         [sys.executable, str(tool)],
         input=payload,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
         cwd=repository_root,
         env=environment,
         check=False,
@@ -126,8 +125,7 @@ def test_model341_subprocess_commits_one_real_optimizer_step_and_replays(
     second = subprocess.run(
         [sys.executable, str(tool)],
         input=payload,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
         cwd=repository_root,
         env=environment,
         check=False,
