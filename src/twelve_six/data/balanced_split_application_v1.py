@@ -12,16 +12,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sys
+import types
 from collections import Counter, defaultdict
 from collections.abc import Mapping, Sequence
+from pathlib import Path
 from typing import Any
-
-from twelve_six.split_robustness import (
-    SplitFamilySpec,
-    SplitRecord,
-    build_split_family,
-    verify_split_family_manifest,
-)
 
 SELECTION_SCHEMA = "12-6.d03-balanced-selection-authority.v1"
 APPLICATION_SCHEMA = "12-6.d03-balanced-split-application.v1"
@@ -39,6 +35,21 @@ _FORBIDDEN_PURPOSES = frozenset(
 )
 _ALLOWED_STRATA = frozenset({"uk", "ua", "en", "code"})
 _HEX = frozenset("0123456789abcdef")
+_CANONICAL_SPLIT_SOURCE_PATH = Path(__file__).resolve().parents[1] / "split_robustness.py"
+_REQUIRED_SPLIT_EXPORTS = (
+    "SplitRecord",
+    "SplitFamilySpec",
+    "eligible_corpus_identity",
+    "dedup_relations_identity",
+    "build_split_family",
+    "verify_split_family_manifest",
+)
+_SPLIT_FUNCTION_EXPORTS = (
+    "eligible_corpus_identity",
+    "dedup_relations_identity",
+    "build_split_family",
+    "verify_split_family_manifest",
+)
 _SELECTION_FIELDS = frozenset(
     {
         "schema",
@@ -111,6 +122,11 @@ def _sha256_bytes(payload: bytes) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
+def _git_blob_sha1(payload: bytes) -> str:
+    header = f"blob {len(payload)}\0".encode("ascii")
+    return hashlib.sha1(header + payload, usedforsecurity=False).hexdigest()
+
+
 def _canonical_split_spec_authority() -> dict[str, Any]:
     return {
         "schema": SPLIT_SPEC_SCHEMA,
@@ -160,6 +176,63 @@ def _require_sha1(value: Any, field: str) -> str:
     if len(text) != 40 or text != text.lower() or any(ch not in _HEX for ch in text):
         raise BalancedSplitApplicationError(f"{field} must be lowercase SHA-1 hex")
     return text
+
+
+def _read_canonical_split_source() -> bytes:
+    try:
+        return _CANONICAL_SPLIT_SOURCE_PATH.read_bytes()
+    except OSError as exc:
+        raise BalancedSplitApplicationError(
+            "canonical split mechanics source bytes are unavailable"
+        ) from exc
+
+
+def _load_canonical_split_module(expected_blob_sha1: str) -> types.ModuleType:
+    """Execute only split mechanics whose actual checkout bytes match the expected Git blob."""
+
+    expected = _require_sha1(expected_blob_sha1, "expected_split_git_blob_sha1")
+    source = _read_canonical_split_source()
+    actual = _git_blob_sha1(source)
+    if actual != expected or actual != CANONICAL_SPLIT_GIT_BLOB_SHA1:
+        raise BalancedSplitApplicationError(
+            "canonical split mechanics executable provenance mismatch"
+        )
+
+    module_name = f"_twelve_six_authenticated_split_robustness_{actual}"
+    module = types.ModuleType(module_name)
+    module.__file__ = str(_CANONICAL_SPLIT_SOURCE_PATH)
+    previous = sys.modules.get(module_name)
+    sys.modules[module_name] = module
+    try:
+        code = compile(
+            source,
+            str(_CANONICAL_SPLIT_SOURCE_PATH),
+            "exec",
+            dont_inherit=True,
+        )
+        exec(code, module.__dict__)
+    except Exception as exc:
+        raise BalancedSplitApplicationError(
+            "canonical split mechanics exact-byte execution failed"
+        ) from exc
+    finally:
+        if previous is None:
+            sys.modules.pop(module_name, None)
+        else:
+            sys.modules[module_name] = previous
+
+    for name in _REQUIRED_SPLIT_EXPORTS:
+        if not callable(module.__dict__.get(name)):
+            raise BalancedSplitApplicationError(
+                f"canonical split mechanics export missing or not callable: {name}"
+            )
+    for name in _SPLIT_FUNCTION_EXPORTS:
+        function = module.__dict__[name]
+        if getattr(function, "__globals__", None) is not module.__dict__:
+            raise BalancedSplitApplicationError(
+                f"canonical split mechanics export escaped authenticated namespace: {name}"
+            )
+    return module
 
 
 def _require_nonnegative_int(value: Any, field: str) -> int:
@@ -329,10 +402,13 @@ def verify_balanced_selection(
 
 
 def _project_records(
-    selected_by_id: Mapping[str, Mapping[str, Any]], raw_records: Sequence[Mapping[str, Any]]
-) -> list[SplitRecord]:
+    selected_by_id: Mapping[str, Mapping[str, Any]],
+    raw_records: Sequence[Mapping[str, Any]],
+    *,
+    split_record_type: type[Any],
+) -> list[Any]:
     seen: set[str] = set()
-    projected: list[SplitRecord] = []
+    projected: list[Any] = []
     for index, raw in enumerate(raw_records):
         if not isinstance(raw, Mapping):
             raise BalancedSplitApplicationError(f"raw_records[{index}] must be an object")
@@ -370,7 +446,7 @@ def _project_records(
         # Canonical #938 uses this flag as a mechanics precondition. It is an in-memory
         # projection only; the returned authority below explicitly remains zero-credit.
         projected.append(
-            SplitRecord(
+            split_record_type(
                 id=record_id,
                 text=payload,
                 source_id=selected["source_id"],
@@ -409,6 +485,7 @@ def build_balanced_split_application(
     if expected_split_blob != CANONICAL_SPLIT_GIT_BLOB_SHA1:
         raise BalancedSplitApplicationError("canonical split mechanics blob does not match merged #938")
     split_spec_identity = _require_canonical_split_spec(variant_seeds, validation_fraction)
+    split_module = _load_canonical_split_module(expected_split_blob)
     selected_by_id, totals = verify_balanced_selection(
         selection,
         expected_selection_identity_sha256=expected_selection_identity_sha256,
@@ -418,19 +495,21 @@ def build_balanced_split_application(
         expected_balance_policy_identity_sha256=expected_balance_policy_identity_sha256,
         expected_balance_result_identity_sha256=expected_balance_result_identity_sha256,
     )
-    projected = _project_records(selected_by_id, raw_records)
+    projected = _project_records(
+        selected_by_id,
+        raw_records,
+        split_record_type=split_module.SplitRecord,
+    )
 
-    from twelve_six.split_robustness import dedup_relations_identity, eligible_corpus_identity
-
-    spec = SplitFamilySpec(
-        eligible_corpus_sha256=eligible_corpus_identity(projected),
-        dedup_relations_sha256=dedup_relations_identity(projected),
+    spec = split_module.SplitFamilySpec(
+        eligible_corpus_sha256=split_module.eligible_corpus_identity(projected),
+        dedup_relations_sha256=split_module.dedup_relations_identity(projected),
         variant_seeds=CANONICAL_SPLIT_VARIANT_SEEDS,
         validation_fraction=CANONICAL_SPLIT_VALIDATION_FRACTION,
         algorithm=CANONICAL_SPLIT_ALGORITHM,
     )
-    split_family = build_split_family(projected, spec)
-    verify_split_family_manifest(projected, split_family)
+    split_family = split_module.build_split_family(projected, spec)
+    split_module.verify_split_family_manifest(projected, split_family)
 
     core: dict[str, Any] = {
         "schema": APPLICATION_SCHEMA,
