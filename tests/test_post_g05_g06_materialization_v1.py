@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+import twelve_six.data.post_g05_g06_materialization_v1 as materializer_module
 from twelve_six.data.post_g05_g06_materialization_v1 import (
     PostG05G06MaterializationError,
     canonical_record_bytes,
@@ -30,7 +31,10 @@ HEAD = "b" * 40
 
 def cjson(value: object) -> bytes:
     text = json.dumps(
-        value, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
     ) + "\n"
     return text.encode()
 
@@ -43,7 +47,14 @@ def seal(value: dict[str, object], field: str) -> dict[str, object]:
 
 
 def blob_sha(raw: bytes) -> str:
-    return hashlib.sha1(f"blob {len(raw)}\0".encode() + raw).hexdigest()
+    return hashlib.sha1(
+        f"blob {len(raw)}\0".encode() + raw,
+        usedforsecurity=False,
+    ).hexdigest()
+
+
+def running_materializer_blob() -> str:
+    return blob_sha(Path(materializer_module.__file__).read_bytes())
 
 
 def privacy_source(*, reject_redacted: bool = False) -> bytes:
@@ -88,7 +99,22 @@ def hash_safe_scan(data):
     return source.encode()
 
 
-def authorities(records: list[dict[str, str]], actions: dict[str, str], statuses: dict[str, str]):
+def privacy_binding(source: bytes) -> dict[str, str]:
+    return {
+        "module": "twelve_six.data.privacy_filter_v3",
+        "relative_path": "privacy_filter_v3.py",
+        "implementation_git_blob_sha1": blob_sha(source),
+        "policy_schema_version": "test-policy.v1",
+        "policy_sha256": POLICY,
+    }
+
+
+def authorities(
+    records: list[dict[str, str]],
+    actions: dict[str, str],
+    statuses: dict[str, str],
+    binding: dict[str, str],
+):
     g05_rows = []
     g06_rows = []
     for record in sorted(records, key=lambda row: row["record_id"]):
@@ -100,12 +126,14 @@ def authorities(records: list[dict[str, str]], actions: dict[str, str], statuses
             "utf8_bytes": len(raw),
         }
         status = statuses[record["record_id"]]
-        g05_rows.append({
-            **common,
-            "status": status,
-            "retained_utf8_bytes": 0 if status == "REJECT_DOCUMENT" else len(raw),
-            "rejected_utf8_bytes": len(raw) if status == "REJECT_DOCUMENT" else 0,
-        })
+        g05_rows.append(
+            {
+                **common,
+                "status": status,
+                "retained_utf8_bytes": 0 if status == "REJECT_DOCUMENT" else len(raw),
+                "rejected_utf8_bytes": len(raw) if status == "REJECT_DOCUMENT" else 0,
+            }
+        )
         g06_rows.append({**common, "action": actions[record["record_id"]]})
     g05 = {
         "schema_version": "12-6.g05-quality-execution-authority.v1",
@@ -118,6 +146,7 @@ def authorities(records: list[dict[str, str]], actions: dict[str, str], statuses
     g06 = {
         "schema_version": "12-6.g06-privacy-execution-authority.v1",
         "authority_class": "G06_PRIVACY_EXECUTION_ZERO_CREDIT",
+        "privacy_binding": dict(binding),
         "execution_rows_sha256": hashlib.sha256(cjson(g06_rows)).hexdigest(),
         "records": g06_rows,
         "truth_boundary": dict(ZERO),
@@ -217,11 +246,12 @@ def setup_case(tmp_path: Path, *, reject_redacted: bool = False, terminal: bool 
     ]
     actions = {"r1": "ALLOW", "r2": "REDACT", "r3": "QUARANTINE"}
     statuses = {rid: "RETAIN_ALL" for rid in actions}
-    g05, envelope = authorities(records, actions, statuses)
-    pf = preflight(records, g05, envelope, actions, statuses, terminal=terminal)
     source = privacy_source(reject_redacted=reject_redacted)
-    path = tmp_path / "privacy.py"
+    path = tmp_path / "privacy_filter_v3.py"
     path.write_bytes(source)
+    binding = privacy_binding(source)
+    g05, envelope = authorities(records, actions, statuses, binding)
+    pf = preflight(records, g05, envelope, actions, statuses, terminal=terminal)
     kwargs = {
         "records": records,
         "composition_preflight": pf,
@@ -236,9 +266,8 @@ def setup_case(tmp_path: Path, *, reject_redacted: bool = False, terminal: bool 
             envelope["privacy_execution_authority"]["execution_identity_sha256"]
         ),
         "privacy_source_path": path,
-        "expected_privacy_implementation_git_blob_sha1": blob_sha(source),
-        "expected_privacy_policy_sha256": POLICY,
         "execution_head_sha": HEAD,
+        "expected_materializer_implementation_git_blob_sha1": running_materializer_blob(),
     }
     return kwargs
 
@@ -255,6 +284,13 @@ def test_materializes_drop_redact_and_unchanged_deterministically(tmp_path):
     assert out_a[1]["normalized_payload"] == "mail <redacted> now"
     assert evidence_a["transform"]["drop_record_count"] == 1
     assert evidence_a["transform"]["redact_record_count"] == 1
+    assert (
+        evidence_a["materializer_implementation_git_blob_sha1"]
+        == kwargs["expected_materializer_implementation_git_blob_sha1"]
+    )
+    assert evidence_a["input"]["privacy_binding"] == (
+        kwargs["g06_execution_envelope"]["privacy_execution_authority"]["privacy_binding"]
+    )
     assert evidence_a["truth_boundary"]["authorized_optimized_target_exposure"] == 0
     assert evidence_a["truth_boundary"]["training_executed"] is False
     assert evidence_a["result"]["record_payload_jsonl_sha256"] == hashlib.sha256(
@@ -275,10 +311,41 @@ def test_payload_substitution_fails_closed(tmp_path):
         materialize_post_g05_g06(**kwargs)
 
 
-def test_privacy_blob_substitution_fails_closed(tmp_path):
+def test_g06_authenticated_privacy_blob_controls_runtime(tmp_path):
     kwargs = setup_case(tmp_path)
-    kwargs["expected_privacy_implementation_git_blob_sha1"] = "c" * 40
+    alternate = privacy_source(reject_redacted=True)
+    kwargs["privacy_source_path"].write_bytes(alternate)
     with pytest.raises(PostG05G06MaterializationError, match="privacy source Git blob drift"):
+        materialize_post_g05_g06(**kwargs)
+
+
+def test_materializer_implementation_substitution_fails_before_transform(tmp_path):
+    kwargs = setup_case(tmp_path)
+    kwargs["expected_materializer_implementation_git_blob_sha1"] = "c" * 40
+    with pytest.raises(
+        PostG05G06MaterializationError,
+        match="materializer implementation Git blob drift",
+    ):
+        materialize_post_g05_g06(**kwargs)
+
+
+def test_privacy_binding_unknown_field_fails_closed(tmp_path):
+    kwargs = setup_case(tmp_path)
+    envelope = kwargs["g06_execution_envelope"]
+    g06 = envelope["privacy_execution_authority"]
+    g06["privacy_binding"]["unexpected"] = "x"
+    seal(g06, "execution_identity_sha256")
+    seal(envelope, "evidence_identity_sha256")
+    kwargs["expected_g06_execution_identity_sha256"] = g06["execution_identity_sha256"]
+    kwargs["expected_g06_envelope_identity_sha256"] = envelope["evidence_identity_sha256"]
+    actions = {"r1": "ALLOW", "r2": "REDACT", "r3": "QUARANTINE"}
+    statuses = {rid: "RETAIN_ALL" for rid in actions}
+    pf = preflight(kwargs["records"], kwargs["g05_authority"], envelope, actions, statuses)
+    kwargs["composition_preflight"] = pf
+    kwargs["expected_composition_preflight_identity_sha256"] = (
+        pf["composition_preflight_identity_sha256"]
+    )
+    with pytest.raises(PostG05G06MaterializationError, match="privacy_binding schema drift"):
         materialize_post_g05_g06(**kwargs)
 
 
@@ -293,20 +360,25 @@ def test_partial_g05_has_no_materialization_authority(tmp_path):
     records = kwargs["records"]
     actions = {"r1": "ALLOW", "r2": "REDACT", "r3": "QUARANTINE"}
     statuses = {"r1": "RETAIN_PARTIAL", "r2": "RETAIN_ALL", "r3": "RETAIN_ALL"}
-    g05, envelope = authorities(records, actions, statuses)
+    binding = kwargs["g06_execution_envelope"]["privacy_execution_authority"][
+        "privacy_binding"
+    ]
+    g05, envelope = authorities(records, actions, statuses, binding)
     pf = preflight(records, g05, envelope, actions, statuses)
-    kwargs.update({
-        "composition_preflight": pf,
-        "expected_composition_preflight_identity_sha256": (
-            pf["composition_preflight_identity_sha256"]
-        ),
-        "g05_authority": g05,
-        "expected_g05_execution_identity_sha256": g05["execution_identity_sha256"],
-        "g06_execution_envelope": envelope,
-        "expected_g06_envelope_identity_sha256": envelope["evidence_identity_sha256"],
-        "expected_g06_execution_identity_sha256": (
-            envelope["privacy_execution_authority"]["execution_identity_sha256"]
-        ),
-    })
+    kwargs.update(
+        {
+            "composition_preflight": pf,
+            "expected_composition_preflight_identity_sha256": (
+                pf["composition_preflight_identity_sha256"]
+            ),
+            "g05_authority": g05,
+            "expected_g05_execution_identity_sha256": g05["execution_identity_sha256"],
+            "g06_execution_envelope": envelope,
+            "expected_g06_envelope_identity_sha256": envelope["evidence_identity_sha256"],
+            "expected_g06_execution_identity_sha256": (
+                envelope["privacy_execution_authority"]["execution_identity_sha256"]
+            ),
+        }
+    )
     with pytest.raises(PostG05G06MaterializationError, match="partial materialization"):
         materialize_post_g05_g06(**kwargs)

@@ -2,7 +2,7 @@
 
 This module does not define quality/privacy policy. It consumes exact upstream
 G05/G06 decisions, physically omits excluded records, applies REDACT spans from
-an independently pinned privacy-filter source blob, and emits a text-free
+the exact privacy implementation authenticated by G06, and emits a text-free
 zero-credit materialization receipt.
 """
 from __future__ import annotations
@@ -23,6 +23,15 @@ G05_CLASS = "G05_QUALITY_EXECUTION_ZERO_CREDIT"
 G06_ENVELOPE_SCHEMA = "12-6.current-survivor-g06-dependency-bound-execution.v1"
 G06_SCHEMA = "12-6.g06-privacy-execution-authority.v1"
 G06_CLASS = "G06_PRIVACY_EXECUTION_ZERO_CREDIT"
+PRIVACY_MODULE = "twelve_six.data.privacy_filter_v3"
+PRIVACY_SOURCE_RELATIVE_PATH = "privacy_filter_v3.py"
+PRIVACY_BINDING_KEYS = {
+    "module",
+    "relative_path",
+    "implementation_git_blob_sha1",
+    "policy_schema_version",
+    "policy_sha256",
+}
 RECORD_KEYS = {"record_id", "source_id", "family", "modality", "normalized_payload"}
 REDACTION_MARKER = "<redacted>"
 _HEX64 = re.compile(r"[0-9a-f]{64}\Z")
@@ -54,7 +63,7 @@ def _sha256(raw: bytes) -> str:
 
 def _git_blob_sha1(raw: bytes) -> str:
     header = f"blob {len(raw)}\0".encode("ascii")
-    return hashlib.sha1(header + raw).hexdigest()
+    return hashlib.sha1(header + raw, usedforsecurity=False).hexdigest()
 
 
 def _hash64(value: Any, field: str) -> str:
@@ -74,7 +83,10 @@ def _hash40(value: Any, field: str) -> str:
 
 
 def _int(value: Any, field: str, *, minimum: int = 0) -> int:
-    _need(type(value) is int and value >= minimum, f"{field} must be an exact integer >= {minimum}")
+    _need(
+        type(value) is int and value >= minimum,
+        f"{field} must be an exact integer >= {minimum}",
+    )
     return value
 
 
@@ -165,7 +177,9 @@ def materialize_record_inventory(records: Sequence[Mapping[str, Any]]) -> dict[s
         "record_count": len(rows),
         "total_payload_bytes": sum(row["payload_bytes"] for row in rows),
         "record_inventory_digest_sha256": _sha256(_cjson(rows, newline=False)),
-        "payload_inventory_digest_sha256": _sha256(_cjson(payload_projection, newline=False)),
+        "payload_inventory_digest_sha256": _sha256(
+            _cjson(payload_projection, newline=False)
+        ),
         "records": rows,
     }
 
@@ -236,6 +250,36 @@ def _validate_preflight(
     _zero_credit(value.get("truth_boundary"), "preflight truth")
 
 
+def _validate_privacy_binding(value: Any) -> dict[str, str]:
+    binding = _obj(value, "G06 privacy_binding")
+    _need(set(binding) == PRIVACY_BINDING_KEYS, "G06 privacy_binding schema drift")
+    module = binding.get("module")
+    relative_path = binding.get("relative_path")
+    policy_schema = binding.get("policy_schema_version")
+    _need(module == PRIVACY_MODULE, "G06 privacy_binding module drift")
+    _need(
+        relative_path == PRIVACY_SOURCE_RELATIVE_PATH,
+        "G06 privacy_binding relative path drift",
+    )
+    _need(
+        isinstance(policy_schema, str) and bool(policy_schema),
+        "G06 privacy_binding policy schema malformed",
+    )
+    return {
+        "module": module,
+        "relative_path": relative_path,
+        "implementation_git_blob_sha1": _hash40(
+            binding.get("implementation_git_blob_sha1"),
+            "G06 privacy_binding implementation blob",
+        ),
+        "policy_schema_version": policy_schema,
+        "policy_sha256": _hash64(
+            binding.get("policy_sha256"),
+            "G06 privacy_binding policy identity",
+        ),
+    }
+
+
 def _rows_from_authorities(
     g05: Mapping[str, Any],
     g06_envelope: Mapping[str, Any],
@@ -243,14 +287,21 @@ def _rows_from_authorities(
     expected_g05_identity: str,
     expected_g06_envelope_identity: str,
     expected_g06_identity: str,
-) -> tuple[dict[str, Mapping[str, Any]], dict[str, Mapping[str, Any]]]:
+) -> tuple[
+    dict[str, Mapping[str, Any]],
+    dict[str, Mapping[str, Any]],
+    dict[str, str],
+]:
     _need(g05.get("schema_version") == G05_SCHEMA, "G05 schema drift")
     _need(g05.get("authority_class") == G05_CLASS, "G05 authority class drift")
     _identity(g05, "execution_identity_sha256", expected_g05_identity)
     _zero_credit(g05.get("truth_boundary"), "G05 truth")
     g05_rows = g05.get("records")
     _need(type(g05_rows) is list and bool(g05_rows), "G05 records missing")
-    _need(g05.get("execution_rows_sha256") == _sha256(_cjson(g05_rows)), "G05 rows root drift")
+    _need(
+        g05.get("execution_rows_sha256") == _sha256(_cjson(g05_rows)),
+        "G05 rows root drift",
+    )
 
     _need(g06_envelope.get("schema_version") == G06_ENVELOPE_SCHEMA, "G06 envelope schema drift")
     _need(g06_envelope.get("execution_profile") == "LOCAL_FREE", "G06 execution profile drift")
@@ -261,9 +312,13 @@ def _rows_from_authorities(
     _need(g06.get("authority_class") == G06_CLASS, "G06 authority class drift")
     _identity(g06, "execution_identity_sha256", expected_g06_identity)
     _zero_credit(g06.get("truth_boundary"), "G06 truth")
+    privacy_binding = _validate_privacy_binding(g06.get("privacy_binding"))
     g06_rows = g06.get("records")
     _need(type(g06_rows) is list and bool(g06_rows), "G06 records missing")
-    _need(g06.get("execution_rows_sha256") == _sha256(_cjson(g06_rows)), "G06 rows root drift")
+    _need(
+        g06.get("execution_rows_sha256") == _sha256(_cjson(g06_rows)),
+        "G06 rows root drift",
+    )
 
     def index(rows: list[Any], label: str) -> dict[str, Mapping[str, Any]]:
         result: dict[str, Mapping[str, Any]] = {}
@@ -279,17 +334,33 @@ def _rows_from_authorities(
     g05_by_id = index(g05_rows, "G05")
     g06_by_id = index(g06_rows, "G06")
     _need(set(g05_by_id) == set(g06_by_id), "G05/G06 record-set drift")
-    return g05_by_id, g06_by_id
+    return g05_by_id, g06_by_id, privacy_binding
+
+
+def _materializer_implementation_blob(expected_git_blob_sha1: str) -> str:
+    expected_blob = _hash40(
+        expected_git_blob_sha1,
+        "expected materializer implementation Git blob",
+    )
+    try:
+        source = Path(__file__).resolve(strict=True).read_bytes()
+    except OSError as exc:
+        raise PostG05G06MaterializationError(
+            "cannot resolve running materializer implementation"
+        ) from exc
+    actual_blob = _git_blob_sha1(source)
+    _need(actual_blob == expected_blob, "materializer implementation Git blob drift")
+    return actual_blob
 
 
 def _privacy_runtime(
     path: Path,
     *,
-    expected_git_blob_sha1: str,
-    expected_policy_sha256: str,
+    privacy_binding: Mapping[str, str],
 ) -> tuple[Callable[[str], Sequence[Any]], Callable[[bytes | str], Any], str]:
+    _need(path.name == privacy_binding["relative_path"], "privacy source path drift")
     source = path.read_bytes()
-    expected_blob = _hash40(expected_git_blob_sha1, "expected privacy source blob")
+    expected_blob = privacy_binding["implementation_git_blob_sha1"]
     actual_blob = _git_blob_sha1(source)
     _need(actual_blob == expected_blob, "privacy source Git blob drift")
     private_name = f"_twelve_six_privacy_{actual_blob}"
@@ -299,7 +370,9 @@ def _privacy_runtime(
     _need(previous is None, "private privacy namespace collision")
     sys.modules[private_name] = module
     try:
-        exec(compile(source, str(path), "exec"), module.__dict__)
+        exec(  # noqa: S102 - exact G06-authenticated Git-blob-verified source bytes
+            compile(source, str(path), "exec"), module.__dict__
+        )
     finally:
         sys.modules.pop(private_name, None)
     detect = module.__dict__.get("detect")
@@ -308,8 +381,10 @@ def _privacy_runtime(
     _need(callable(detect) and callable(scan) and callable(manifest), "privacy source API drift")
     policy = manifest()
     _need(isinstance(policy, Mapping), "privacy policy manifest missing")
-    expected_policy = _hash64(expected_policy_sha256, "expected privacy policy")
-    _need(policy.get("policy_sha256") == expected_policy, "privacy policy identity drift")
+    _need(
+        policy.get("policy_sha256") == privacy_binding["policy_sha256"],
+        "privacy policy identity drift",
+    )
     return detect, scan, actual_blob
 
 
@@ -361,15 +436,18 @@ def materialize_post_g05_g06(
     expected_g06_envelope_identity_sha256: str,
     expected_g06_execution_identity_sha256: str,
     privacy_source_path: Path,
-    expected_privacy_implementation_git_blob_sha1: str,
-    expected_privacy_policy_sha256: str,
     execution_head_sha: str,
+    expected_materializer_implementation_git_blob_sha1: str,
 ) -> tuple[list[dict[str, Any]], dict[str, Any], dict[str, Any]]:
     """Materialize exact post-G05/G06 records and a text-free zero-credit receipt."""
     execution_head_sha = _hash40(execution_head_sha, "execution head SHA")
+    materializer_blob = _materializer_implementation_blob(
+        expected_materializer_implementation_git_blob_sha1
+    )
     expected_g05 = _hash64(expected_g05_execution_identity_sha256, "expected G05 identity")
     expected_g06_envelope = _hash64(
-        expected_g06_envelope_identity_sha256, "expected G06 envelope identity"
+        expected_g06_envelope_identity_sha256,
+        "expected G06 envelope identity",
     )
     expected_g06 = _hash64(expected_g06_execution_identity_sha256, "expected G06 identity")
     _validate_preflight(
@@ -380,7 +458,7 @@ def materialize_post_g05_g06(
         expected_g06_identity=expected_g06,
     )
     by_id, input_inventory = _validate_input_records(records)
-    g05_rows, g06_rows = _rows_from_authorities(
+    g05_rows, g06_rows, privacy_binding = _rows_from_authorities(
         g05_authority,
         g06_execution_envelope,
         expected_g05_identity=expected_g05,
@@ -414,8 +492,7 @@ def materialize_post_g05_g06(
 
     detect, scan, privacy_blob = _privacy_runtime(
         privacy_source_path,
-        expected_git_blob_sha1=expected_privacy_implementation_git_blob_sha1,
-        expected_policy_sha256=expected_privacy_policy_sha256,
+        privacy_binding=privacy_binding,
     )
     output: list[dict[str, Any]] = []
     drop_ids: list[str] = []
@@ -456,7 +533,10 @@ def materialize_post_g05_g06(
             action in {"ALLOW", "REDACT", "QUARANTINE", "EXCLUDE"},
             f"G06 action drift: {record_id}",
         )
-        _need(status != "RETAIN_PARTIAL", f"G05 partial row lacks byte-span authority: {record_id}")
+        _need(
+            status != "RETAIN_PARTIAL",
+            f"G05 partial row lacks byte-span authority: {record_id}",
+        )
         if status == "REJECT_DOCUMENT" or action in {"QUARANTINE", "EXCLUDE"}:
             drop_ids.append(record_id)
             dropped_bytes += payload_bytes
@@ -474,7 +554,10 @@ def materialize_post_g05_g06(
             redact_ids.append(record_id)
             redacted_input_bytes += payload_bytes
             continue
-        _need(status == "RETAIN_ALL" and action == "ALLOW", f"unhandled decision pair: {record_id}")
+        _need(
+            status == "RETAIN_ALL" and action == "ALLOW",
+            f"unhandled decision pair: {record_id}",
+        )
         output.append(dict(record))
         unchanged_ids.append(record_id)
         unchanged_bytes += payload_bytes
@@ -531,18 +614,23 @@ def materialize_post_g05_g06(
         "status": "MATERIALIZED_ZERO_CREDIT",
         "execution_profile": "LOCAL_FREE",
         "execution_head_sha": execution_head_sha,
+        "materializer_implementation_git_blob_sha1": materializer_blob,
         "input": {
-            "composition_preflight_identity_sha256": expected_composition_preflight_identity_sha256,
+            "composition_preflight_identity_sha256": (
+                expected_composition_preflight_identity_sha256
+            ),
             "g05_execution_identity_sha256": expected_g05,
             "g06_envelope_identity_sha256": expected_g06_envelope,
             "g06_execution_identity_sha256": expected_g06,
-            "privacy_policy_sha256": _hash64(
-                expected_privacy_policy_sha256, "expected privacy policy"
-            ),
+            "privacy_binding": dict(privacy_binding),
             "privacy_implementation_git_blob_sha1": privacy_blob,
             "record_payload_jsonl_sha256": _sha256(input_raw),
-            "record_inventory_digest_sha256": input_inventory["record_inventory_digest_sha256"],
-            "payload_inventory_digest_sha256": input_inventory["payload_inventory_digest_sha256"],
+            "record_inventory_digest_sha256": input_inventory[
+                "record_inventory_digest_sha256"
+            ],
+            "payload_inventory_digest_sha256": input_inventory[
+                "payload_inventory_digest_sha256"
+            ],
             "record_count": input_inventory["record_count"],
             "source_object_count": len({record["source_id"] for record in records}),
             "total_payload_bytes": input_inventory["total_payload_bytes"],
@@ -557,12 +645,18 @@ def materialize_post_g05_g06(
             "unchanged_input_payload_bytes": unchanged_bytes,
             "drop_record_id_sha256": sorted(_record_hash(value) for value in drop_ids),
             "redact_record_id_sha256": sorted(_record_hash(value) for value in redact_ids),
-            "unchanged_record_id_sha256": sorted(_record_hash(value) for value in unchanged_ids),
+            "unchanged_record_id_sha256": sorted(
+                _record_hash(value) for value in unchanged_ids
+            ),
         },
         "result": {
             "record_payload_jsonl_sha256": _sha256(output_raw),
-            "record_inventory_digest_sha256": output_inventory["record_inventory_digest_sha256"],
-            "payload_inventory_digest_sha256": output_inventory["payload_inventory_digest_sha256"],
+            "record_inventory_digest_sha256": output_inventory[
+                "record_inventory_digest_sha256"
+            ],
+            "payload_inventory_digest_sha256": output_inventory[
+                "payload_inventory_digest_sha256"
+            ],
             "record_count": output_inventory["record_count"],
             "source_object_count": len({record["source_id"] for record in output}),
             "total_payload_bytes": output_inventory["total_payload_bytes"],

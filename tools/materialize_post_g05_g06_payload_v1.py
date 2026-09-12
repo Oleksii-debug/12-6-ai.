@@ -58,9 +58,11 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--expected-g06-envelope-identity", required=True)
     parser.add_argument("--expected-g06-execution-identity", required=True)
     parser.add_argument("--privacy-source", required=True, type=Path)
-    parser.add_argument("--expected-privacy-implementation-git-blob-sha1", required=True)
-    parser.add_argument("--expected-privacy-policy-sha256", required=True)
     parser.add_argument("--execution-head-sha", required=True)
+    parser.add_argument(
+        "--expected-materializer-implementation-git-blob-sha1",
+        required=True,
+    )
     parser.add_argument("--output-jsonl", required=True, type=Path)
     parser.add_argument("--output-inventory", required=True, type=Path)
     parser.add_argument("--output-evidence", required=True, type=Path)
@@ -83,11 +85,10 @@ def main() -> int:
         "expected_g06_envelope_identity_sha256": args.expected_g06_envelope_identity,
         "expected_g06_execution_identity_sha256": args.expected_g06_execution_identity,
         "privacy_source_path": args.privacy_source,
-        "expected_privacy_implementation_git_blob_sha1": (
-            args.expected_privacy_implementation_git_blob_sha1
-        ),
-        "expected_privacy_policy_sha256": args.expected_privacy_policy_sha256,
         "execution_head_sha": args.execution_head_sha,
+        "expected_materializer_implementation_git_blob_sha1": (
+            args.expected_materializer_implementation_git_blob_sha1
+        ),
     }
     records_a, inventory_a, evidence_a = materialize_post_g05_g06(**kwargs)
     records_b, inventory_b, evidence_b = materialize_post_g05_g06(**kwargs)
