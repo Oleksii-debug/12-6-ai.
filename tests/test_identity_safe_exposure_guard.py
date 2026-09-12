@@ -208,6 +208,7 @@ def test_next_exposure_identity_is_stable_after_fresh_resume() -> None:
     resumed = _guard(ledger)
     resumed.load_state_dict(
         state,
+        expected_state_identity_sha256=state["state_identity_sha256"],
         expected_trainer_state_binding=checkpoint_binding,
     )
     assert resumed.next_exposure_identity(
