@@ -96,6 +96,26 @@ def _exact_int(value: object) -> bool:
     return isinstance(value, int) and not isinstance(value, bool)
 
 
+def _validated_policy_snapshot(policy: Mapping[str, Any]) -> tuple[dict[str, Any], str]:
+    _require(type(policy) is dict, "rights policy root must be an object")
+    _require(
+        policy.get("policy_identity_sha256") == EXPECTED_POLICY_IDENTITY_SHA256,
+        "rights policy identity drift",
+    )
+    raw_policy = dict(policy)
+    raw_policy.pop("policy_identity_sha256")
+    try:
+        canonical = canonical_json_bytes(raw_policy)
+    except (TypeError, ValueError) as exc:
+        raise CPythonRightsAdmissionError("rights policy identity drift") from exc
+    identity = sha256_bytes(canonical)
+    _require(identity == EXPECTED_POLICY_IDENTITY_SHA256, "rights policy identity drift")
+    snapshot = json.loads(canonical)
+    _require(type(snapshot) is dict, "rights policy root must be an object")
+    snapshot["policy_identity_sha256"] = identity
+    return snapshot, identity
+
+
 def load_and_validate_policy(path: str | Path = POLICY_PATH) -> dict[str, Any]:
     try:
         payload = json.loads(Path(path).read_text())
@@ -133,6 +153,7 @@ def load_and_validate_policy(path: str | Path = POLICY_PATH) -> dict[str, Any]:
         payload["truth_boundary"] == {"source_admission_only": True, **TRUTH_BOUNDARY},
         "rights policy truth boundary drift",
     )
+    payload["policy_identity_sha256"] = identity
     return payload
 
 
@@ -333,13 +354,14 @@ def build_admission(
     *,
     require_historical_identity: bool = True,
 ) -> dict[str, Any]:
+    verified_policy, verified_policy_identity = _validated_policy_snapshot(policy)
     if require_historical_identity:
         validate_historical_candidate(rows, tree_blobs)
     else:
         _require(type(rows) is list and rows, "candidate rows must be non-empty")
         for row in rows:
             _validate_row(row, tree_blobs)
-    decisions = [classify_row(row, tree_blobs, policy) for row in rows]
+    decisions = [classify_row(row, tree_blobs, verified_policy) for row in rows]
     admitted = [item for item in decisions if item["admitted"]]
     held = [item for item in decisions if not item["admitted"]]
     reasons: dict[str, int] = {}
@@ -363,7 +385,7 @@ def build_admission(
             "historical_inventory_identity_sha256": HISTORICAL_INVENTORY_IDENTITY_SHA256,
         },
         "rights_authority": {
-            "policy_identity_sha256": EXPECTED_POLICY_IDENTITY_SHA256,
+            "policy_identity_sha256": verified_policy_identity,
             "root_default_license": "PSF-2.0",
             "blanket_incorporated_software_admission": False,
             "ambiguous_objects_fail_closed": True,
