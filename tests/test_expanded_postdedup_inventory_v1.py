@@ -462,7 +462,7 @@ def test_missing_extra_and_duplicate_payload_rows_fail_closed(monkeypatch):
         )
 
     duplicate = [bundle["payloads"][0], bundle["payloads"][0], bundle["payloads"][1]]
-    with pytest.raises(ValueError, match="duplicate payload record_id"):
+    with pytest.raises(ValueError, match="duplicate payload row"):
         target.prepare_ephemeral_data232_rows(
             inventory,
             duplicate,
