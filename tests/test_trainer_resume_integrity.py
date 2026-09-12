@@ -47,9 +47,13 @@ class CleanupFailOptimizer(SGD):
         super().load_state_dict(state_dict)
 
 
-def _trainer(*, optimizer_cls=SGD) -> Trainer:
+def _trainer(*, cleanup_optimizer: bool = False) -> Trainer:
     model = TinyModel()
-    optimizer = optimizer_cls(model.parameters(), lr=0.1, momentum=0.9)
+    optimizer = (
+        CleanupFailOptimizer(model.parameters())
+        if cleanup_optimizer
+        else SGD(model.parameters(), lr=0.1, momentum=0.9)
+    )
     return Trainer(
         model,
         TrainerConfig(max_steps=4),
@@ -97,17 +101,14 @@ def test_resume_rejects_numeric_alias_counters_before_mutation(
     [
         ("max_steps", 4.0),
         ("deterministic_algorithms", 1),
-        ("learning_rate", 0.0003 if False else 3e-4),
+        ("weight_decay", False),
     ],
 )
 def test_resume_config_identity_is_type_aware(field: str, bad_value: object) -> None:
     trainer = _trainer()
     state = _state(trainer)
     config = copy.deepcopy(state.config)
-    if field == "learning_rate":
-        config[field] = int(config[field] == 3e-4)
-    else:
-        config[field] = bad_value
+    config[field] = bad_value
 
     with pytest.raises(ValueError, match="trainer config mismatch"):
         trainer.load_state_dict(replace(state, config=config))
@@ -118,7 +119,7 @@ def test_resume_config_identity_is_type_aware(field: str, bad_value: object) -> 
 
 
 def test_resume_cleanup_failure_rolls_back_components_and_gradients() -> None:
-    trainer = _trainer(optimizer_cls=CleanupFailOptimizer)
+    trainer = _trainer(cleanup_optimizer=True)
     state = _state(trainer)
     parameter = next(trainer.model.parameters())
     parameter.grad = torch.tensor([7.0, 8.0])
@@ -139,7 +140,7 @@ def test_resume_cleanup_failure_rolls_back_components_and_gradients() -> None:
 
 
 def test_resume_cleanup_with_unprovable_rollback_poisons_trainer() -> None:
-    trainer = _trainer(optimizer_cls=CleanupFailOptimizer)
+    trainer = _trainer(cleanup_optimizer=True)
     state = _state(trainer)
     parameter = next(trainer.model.parameters())
     parameter.grad = torch.tensor([3.0, 4.0])
