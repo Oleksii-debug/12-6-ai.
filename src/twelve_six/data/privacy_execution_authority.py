@@ -314,7 +314,9 @@ def _privacy_binding() -> tuple[Any, dict[str, str]]:
         )
     sys.modules[private_name] = verified_module
     try:
-        exec(compile(source, str(expected_path), "exec"), verified_module.__dict__)
+        exec(  # noqa: S102 - executes only the exact Git-blob-verified source bytes
+            compile(source, str(expected_path), "exec"), verified_module.__dict__
+        )
     finally:
         sys.modules.pop(private_name, None)
 
