@@ -7,9 +7,9 @@ from pathlib import Path
 import pytest
 
 from twelve_six.d03_cpython_stdlib_postrights_admission import (
-    CPythonRightsAdmissionError,
     EXPECTED_POLICY_IDENTITY_SHA256,
     ROOT_LICENSE_BLOB_SHA1,
+    CPythonRightsAdmissionError,
     build_admission,
     git_blob_sha1,
     load_and_validate_policy,
