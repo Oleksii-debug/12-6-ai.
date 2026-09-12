@@ -290,9 +290,9 @@ def classify_row(
 ) -> dict[str, Any]:
     raw = _validate_row(row, tree_blobs)
     rule = policy["policy"]
-    head = raw.decode()[: rule["evidence_window_chars"]].casefold()
+    text = raw.decode().casefold()
     notice = next(
-        (item for item in rule["direct_notice_markers"] if item.casefold() in head),
+        (item for item in rule["direct_notice_markers"] if item.casefold() in text),
         None,
     )
     ancestor = _ancestor_marker(row["source_path"], tree_blobs, rule["ancestor_marker_names"])
