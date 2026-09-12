@@ -108,6 +108,7 @@ class IdentitySafeExposureReplayGuard(ExposureReplayGuard):
         )
         super().__init__(
             ledger,
+            expected_ledger_identity_sha256=expected_ledger_identity_sha256,
             authorized_budget=authorized_budget,
             trainer_state_binding=trainer_state_binding,
         )
