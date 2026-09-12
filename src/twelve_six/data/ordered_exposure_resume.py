@@ -192,6 +192,10 @@ def load_ordered_resume_state(
         batches,
         next_batch_index=next_batch_index,
     )
+    expected_guard_state_identity = _require_sha256(
+        guard_state.get("state_identity_sha256"),
+        "guard_state.state_identity_sha256",
+    )
 
     saved_next_identity = state.get("next_ordered_exposure_identity_sha256")
     if complete:
@@ -207,6 +211,7 @@ def load_ordered_resume_state(
     try:
         guard.load_state_dict(
             guard_state,
+            expected_state_identity_sha256=expected_guard_state_identity,
             expected_trainer_state_binding=expected_trainer_state_binding,
         )
         if guard.claim_sequence != next_batch_index:
@@ -223,6 +228,7 @@ def load_ordered_resume_state(
     except LedgerError:
         guard.load_state_dict(
             before,
+            expected_state_identity_sha256=before["state_identity_sha256"],
             expected_trainer_state_binding=before["trainer_state_binding"],
         )
         raise
