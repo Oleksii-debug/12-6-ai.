@@ -2,7 +2,9 @@
 
 This module does not tokenize, pack, count source bytes as loss positions, authorize
 training, or inspect final-test payloads. It binds independently expected identities
-from the canonical D03/D04/D10 authorities and the canonical V2 two-clean verifier.
+from the canonical D03/D04/D10 authorities. The fresh-process two-clean proof is a
+freshness child of the authenticated deterministic D04 proof, never a substitute for
+its exact split-membership authority.
 """
 
 from __future__ import annotations
@@ -13,6 +15,7 @@ import re
 from collections.abc import Mapping
 from typing import Any
 
+from twelve_six.data.deterministic_double_pack import DOUBLE_PACK_PROOF_SCHEMA
 from twelve_six.data.unique_loss_ledger_v2 import (
     LEDGER_SCHEMA,
     POSITION_POLICY,
@@ -39,6 +42,13 @@ _DATA_SPINE_KEYS = frozenset(
     {
         "terminal_corpus_authority_identity_sha256",
         "stage_bindings",
+        "deterministic_double_pack_proof_identity_sha256",
+        "terminal_record_inventory_digest_sha256",
+        "terminal_payload_inventory_digest_sha256",
+        "terminal_split_application_identity_sha256",
+        "terminal_split_spec_identity_sha256",
+        "terminal_split_train_record_membership_sha256",
+        "deterministic_double_pack_canonical_build_sha256",
         "two_clean_proof_identity_sha256",
         "two_clean_input_packet_identity_sha256",
         "two_clean_runtime_identity_sha256",
@@ -48,6 +58,33 @@ _DATA_SPINE_KEYS = frozenset(
         "packing_identity_sha256",
         "one_pass_unique_nonignored_causal_loss_positions",
         "requested_unique_loss_positions",
+    }
+)
+_D04_PROOF_KEYS = frozenset(
+    {
+        "schema_version",
+        "terminal_corpus_authority_identity_sha256",
+        "terminal_record_inventory_digest_sha256",
+        "terminal_payload_inventory_digest_sha256",
+        "terminal_split_application_identity_sha256",
+        "terminal_split_spec_identity_sha256",
+        "terminal_split_train_record_membership_sha256",
+        "stage_bindings",
+        "tokenizer_identity_sha256",
+        "materialization_identity_sha256",
+        "packing_identity_sha256",
+        "ledger_identity_sha256",
+        "canonical_build_sha256",
+        "build_a_canonical_sha256",
+        "build_b_canonical_sha256",
+        "one_pass_unique_nonignored_causal_loss_positions",
+        "retained_train_records_matched_to_terminal_inventory",
+        "retained_train_record_membership_verified",
+        "retained_document_isolation_verified",
+        "heldout_reservation_verified",
+        "independent_builds_byte_identical",
+        "training_authorized_by_this_proof",
+        "proof_identity_sha256",
     }
 )
 _CARRIER_OUTPUT_KEYS = frozenset(
@@ -161,7 +198,7 @@ def _verify_two_clean_proof(
     expected_packing_identity_sha256: str,
     expected_runtime_identity_sha256: str,
 ) -> dict[str, Any]:
-    """Delegate the V2 closed-world contract to its canonical verifier."""
+    """Delegate the V2 fresh-process closed-world contract to its canonical verifier."""
     try:
         return verify_proof(
             proof,
@@ -339,6 +376,141 @@ def _verify_ledger(
     return value, positions
 
 
+def _verify_d04_double_pack_proof(
+    proof: Mapping[str, Any],
+    *,
+    expected_identity_sha256: str,
+    expected_corpus_identity_sha256: str,
+    expected_stage_bindings: Mapping[str, str],
+    expected_tokenizer_identity_sha256: str,
+    expected_packing_identity_sha256: str,
+    expected_materialization_identity_sha256: str,
+    expected_ledger_identity_sha256: str,
+    expected_canonical_build_sha256: str,
+    expected_unique_positions: int,
+) -> dict[str, Any]:
+    """Authenticate and cross-bind the durable PR1410 D04 membership proof.
+
+    This consumer intentionally does not reconstruct producer inputs. The independent
+    expected whole-proof identity is the trust root; the closed-world projected roots
+    are then required to match the separately verified launch chain exactly.
+    """
+    if not isinstance(proof, Mapping):
+        raise LaunchInputAuthorityError(
+            "deterministic double-pack proof must be an object"
+        )
+    if set(proof) != set(_D04_PROOF_KEYS):
+        raise LaunchInputAuthorityError(
+            "deterministic double-pack proof has unexpected or missing fields"
+        )
+    value = _verify_self_hash(
+        proof,
+        identity_field="proof_identity_sha256",
+        expected_identity_sha256=expected_identity_sha256,
+        label="deterministic_double_pack_proof",
+    )
+    if value.get("schema_version") != DOUBLE_PACK_PROOF_SCHEMA:
+        raise LaunchInputAuthorityError(
+            "unexpected deterministic double-pack proof schema"
+        )
+
+    sha_fields = (
+        "terminal_corpus_authority_identity_sha256",
+        "terminal_record_inventory_digest_sha256",
+        "terminal_payload_inventory_digest_sha256",
+        "terminal_split_application_identity_sha256",
+        "terminal_split_spec_identity_sha256",
+        "terminal_split_train_record_membership_sha256",
+        "tokenizer_identity_sha256",
+        "materialization_identity_sha256",
+        "packing_identity_sha256",
+        "ledger_identity_sha256",
+        "canonical_build_sha256",
+        "build_a_canonical_sha256",
+        "build_b_canonical_sha256",
+    )
+    observed_sha = {
+        field: _require_sha256(value.get(field), f"d04_proof.{field}")
+        for field in sha_fields
+    }
+    expected_corpus = _require_sha256(
+        expected_corpus_identity_sha256,
+        "expected_terminal_corpus_authority_identity_sha256",
+    )
+    if observed_sha["terminal_corpus_authority_identity_sha256"] != expected_corpus:
+        raise LaunchInputAuthorityError("D04 terminal corpus authority substitution")
+
+    expected_bindings = _normalize_stage_bindings(
+        expected_stage_bindings, "expected_stage_bindings"
+    )
+    observed_bindings = _normalize_stage_bindings(
+        value.get("stage_bindings"), "d04_proof.stage_bindings"
+    )
+    if observed_bindings != expected_bindings:
+        raise LaunchInputAuthorityError("D04 stage authority substitution")
+
+    expected_tokenizer = _require_sha256(
+        expected_tokenizer_identity_sha256,
+        "expected_tokenizer_identity_sha256",
+    )
+    if observed_sha["tokenizer_identity_sha256"] != expected_tokenizer:
+        raise LaunchInputAuthorityError("D04 tokenizer authority substitution")
+    expected_packing = _require_sha256(
+        expected_packing_identity_sha256,
+        "expected_packing_identity_sha256",
+    )
+    if observed_sha["packing_identity_sha256"] != expected_packing:
+        raise LaunchInputAuthorityError("D04 packing authority substitution")
+    expected_materialization = _require_sha256(
+        expected_materialization_identity_sha256,
+        "expected_materialization_identity_sha256",
+    )
+    if observed_sha["materialization_identity_sha256"] != expected_materialization:
+        raise LaunchInputAuthorityError("D04 materialization substitution")
+    expected_ledger = _require_sha256(
+        expected_ledger_identity_sha256,
+        "expected_unique_loss_ledger_identity_sha256",
+    )
+    if observed_sha["ledger_identity_sha256"] != expected_ledger:
+        raise LaunchInputAuthorityError("D04 unique-loss ledger substitution")
+
+    expected_build = _require_sha256(
+        expected_canonical_build_sha256,
+        "expected_two_clean_canonical_build_sha256",
+    )
+    for field in (
+        "canonical_build_sha256",
+        "build_a_canonical_sha256",
+        "build_b_canonical_sha256",
+    ):
+        if observed_sha[field] != expected_build:
+            raise LaunchInputAuthorityError(
+                "D04 canonical build does not match fresh-process two-clean output"
+            )
+
+    unique_positions = _require_positive_int(
+        value.get("one_pass_unique_nonignored_causal_loss_positions"),
+        "d04_proof.one_pass_unique_nonignored_causal_loss_positions",
+    )
+    if unique_positions != expected_unique_positions:
+        raise LaunchInputAuthorityError("D04 unique-loss capacity substitution")
+    _require_positive_int(
+        value.get("retained_train_records_matched_to_terminal_inventory"),
+        "d04_proof.retained_train_records_matched_to_terminal_inventory",
+    )
+    for field in (
+        "retained_train_record_membership_verified",
+        "retained_document_isolation_verified",
+        "heldout_reservation_verified",
+        "independent_builds_byte_identical",
+    ):
+        if value.get(field) is not True:
+            raise LaunchInputAuthorityError(f"D04 {field} must be exact true boolean")
+    if value.get("training_authorized_by_this_proof") is not False:
+        raise LaunchInputAuthorityError("D04 proof cannot authorize training")
+    return value
+
+
 def _verify_carrier(
     carrier: Mapping[str, Any],
     *,
@@ -351,12 +523,10 @@ def _verify_carrier(
     value = dict(carrier)
     if value.get("repository") != REPOSITORY:
         raise LaunchInputAuthorityError("carrier repository mismatch")
-
     expected_git = _require_git_sha(expected_git_sha, "expected_carrier_git_sha")
     git_sha = _require_git_sha(value.get("git_sha"), "carrier.git_sha")
     if git_sha != expected_git:
         raise LaunchInputAuthorityError("carrier Git SHA substitution")
-
     model = _require_sha256(
         value.get("modelspec_sha256"), "carrier.modelspec_sha256"
     )
@@ -365,7 +535,6 @@ def _verify_carrier(
     )
     if model != expected_model:
         raise LaunchInputAuthorityError("ModelSpec authority substitution")
-
     initialization = _require_sha256(
         value.get("initialization_identity_sha256"),
         "carrier.initialization_identity_sha256",
@@ -376,7 +545,6 @@ def _verify_carrier(
     )
     if initialization != expected_initialization:
         raise LaunchInputAuthorityError("initialization authority substitution")
-
     if value.get("canonical_base") != "random_init":
         raise LaunchInputAuthorityError(
             "carrier is not canonical random initialization"
@@ -385,7 +553,6 @@ def _verify_carrier(
         raise LaunchInputAuthorityError("foreign pretrained weights are forbidden")
     if value.get("terminal") is not True:
         raise LaunchInputAuthorityError("carrier authority is nonterminal")
-
     run_id = _require_positive_int(
         value.get("workflow_run_id"), "carrier.workflow_run_id"
     )
@@ -397,9 +564,7 @@ def _verify_carrier(
     if value.get("workflow_status") != "completed":
         raise LaunchInputAuthorityError("carrier workflow is not terminal completed")
     if value.get("workflow_conclusion") != "success":
-        raise LaunchInputAuthorityError(
-            "carrier exact-head CI is not terminal success"
-        )
+        raise LaunchInputAuthorityError("carrier exact-head CI is not terminal success")
     workflow_head = _require_git_sha(
         value.get("workflow_head_sha"), "carrier.workflow_head_sha"
     )
@@ -407,7 +572,6 @@ def _verify_carrier(
         raise LaunchInputAuthorityError(
             "carrier workflow head does not match exact carrier Git SHA"
         )
-
     evidence = _require_sha256(
         value.get("evidence_sha256"), "carrier.evidence_sha256"
     )
@@ -425,6 +589,8 @@ def build_launch_input_authority(
     unique_loss_ledger: Mapping[str, Any],
     carrier_authority: Mapping[str, Any],
     *,
+    deterministic_double_pack_proof: Mapping[str, Any],
+    expected_deterministic_double_pack_proof_identity_sha256: str,
     expected_two_clean_proof_identity_sha256: str,
     expected_two_clean_input_packet_identity_sha256: str,
     expected_unique_loss_ledger_identity_sha256: str,
@@ -441,7 +607,7 @@ def build_launch_input_authority(
     requested_unique_loss_positions: int,
 ) -> dict[str, Any]:
     """Bind terminal upstream identities without authorizing an optimizer step."""
-    proof = _verify_two_clean_proof(
+    two_clean = _verify_two_clean_proof(
         two_clean_proof,
         expected_identity_sha256=expected_two_clean_proof_identity_sha256,
         expected_input_packet_identity_sha256=(
@@ -459,18 +625,37 @@ def build_launch_input_authority(
         unique_loss_ledger,
         expected_identity_sha256=expected_unique_loss_ledger_identity_sha256,
         expected_materialization_identity_sha256=(
-            proof["materialization_identity_sha256"]
+            two_clean["materialization_identity_sha256"]
         ),
         expected_stage_bindings=expected_stage_bindings,
         expected_tokenizer_identity_sha256=expected_tokenizer_identity_sha256,
         expected_packing_identity_sha256=expected_packing_identity_sha256,
+    )
+    d04 = _verify_d04_double_pack_proof(
+        deterministic_double_pack_proof,
+        expected_identity_sha256=(
+            expected_deterministic_double_pack_proof_identity_sha256
+        ),
+        expected_corpus_identity_sha256=(
+            expected_terminal_corpus_authority_identity_sha256
+        ),
+        expected_stage_bindings=expected_stage_bindings,
+        expected_tokenizer_identity_sha256=expected_tokenizer_identity_sha256,
+        expected_packing_identity_sha256=expected_packing_identity_sha256,
+        expected_materialization_identity_sha256=(
+            two_clean["materialization_identity_sha256"]
+        ),
+        expected_ledger_identity_sha256=ledger["ledger_identity_sha256"],
+        expected_canonical_build_sha256=two_clean["build_a_sha256"],
+        expected_unique_positions=one_pass_capacity,
     )
     requested = _require_positive_int(
         requested_unique_loss_positions, "requested_unique_loss_positions"
     )
     if requested > one_pass_capacity:
         raise LaunchInputAuthorityError(
-            "requested unique optimized-target exposure exceeds one-pass unique capacity"
+            "requested unique optimized-target exposure exceeds "
+            "one-pass unique capacity"
         )
     carrier = _verify_carrier(
         carrier_authority,
@@ -491,14 +676,35 @@ def build_launch_input_authority(
                 expected_terminal_corpus_authority_identity_sha256
             ),
             "stage_bindings": stage_bindings,
-            "two_clean_proof_identity_sha256": proof["proof_identity_sha256"],
-            "two_clean_input_packet_identity_sha256": (
-                proof["input_packet_identity_sha256"]
-            ),
-            "two_clean_runtime_identity_sha256": proof["runtime_identity_sha256"],
-            "materialization_identity_sha256": (
-                proof["materialization_identity_sha256"]
-            ),
+            "deterministic_double_pack_proof_identity_sha256": d04[
+                "proof_identity_sha256"
+            ],
+            "terminal_record_inventory_digest_sha256": d04[
+                "terminal_record_inventory_digest_sha256"
+            ],
+            "terminal_payload_inventory_digest_sha256": d04[
+                "terminal_payload_inventory_digest_sha256"
+            ],
+            "terminal_split_application_identity_sha256": d04[
+                "terminal_split_application_identity_sha256"
+            ],
+            "terminal_split_spec_identity_sha256": d04[
+                "terminal_split_spec_identity_sha256"
+            ],
+            "terminal_split_train_record_membership_sha256": d04[
+                "terminal_split_train_record_membership_sha256"
+            ],
+            "deterministic_double_pack_canonical_build_sha256": d04[
+                "canonical_build_sha256"
+            ],
+            "two_clean_proof_identity_sha256": two_clean["proof_identity_sha256"],
+            "two_clean_input_packet_identity_sha256": two_clean[
+                "input_packet_identity_sha256"
+            ],
+            "two_clean_runtime_identity_sha256": two_clean["runtime_identity_sha256"],
+            "materialization_identity_sha256": two_clean[
+                "materialization_identity_sha256"
+            ],
             "unique_loss_ledger_identity_sha256": ledger[
                 "ledger_identity_sha256"
             ],
@@ -550,14 +756,19 @@ def verify_launch_input_authority(
         raise LaunchInputAuthorityError("launch-input binding status drift")
 
     data_spine = value.get("data_spine")
-    if not isinstance(data_spine, Mapping) or set(data_spine) != set(
-        _DATA_SPINE_KEYS
-    ):
+    if not isinstance(data_spine, Mapping) or set(data_spine) != set(_DATA_SPINE_KEYS):
         raise LaunchInputAuthorityError(
             "launch-input data spine has unexpected or missing fields"
         )
     for field in (
         "terminal_corpus_authority_identity_sha256",
+        "deterministic_double_pack_proof_identity_sha256",
+        "terminal_record_inventory_digest_sha256",
+        "terminal_payload_inventory_digest_sha256",
+        "terminal_split_application_identity_sha256",
+        "terminal_split_spec_identity_sha256",
+        "terminal_split_train_record_membership_sha256",
+        "deterministic_double_pack_canonical_build_sha256",
         "two_clean_proof_identity_sha256",
         "two_clean_input_packet_identity_sha256",
         "two_clean_runtime_identity_sha256",
@@ -567,7 +778,9 @@ def verify_launch_input_authority(
         "packing_identity_sha256",
     ):
         _require_sha256(data_spine.get(field), f"data_spine.{field}")
-    _normalize_stage_bindings(data_spine.get("stage_bindings"), "data_spine.stage_bindings")
+    _normalize_stage_bindings(
+        data_spine.get("stage_bindings"), "data_spine.stage_bindings"
+    )
     capacity = _require_positive_int(
         data_spine.get("one_pass_unique_nonignored_causal_loss_positions"),
         "data_spine.one_pass_unique_nonignored_causal_loss_positions",
@@ -582,9 +795,7 @@ def verify_launch_input_authority(
         )
 
     carrier = value.get("carrier")
-    if not isinstance(carrier, Mapping) or set(carrier) != set(
-        _CARRIER_OUTPUT_KEYS
-    ):
+    if not isinstance(carrier, Mapping) or set(carrier) != set(_CARRIER_OUTPUT_KEYS):
         raise LaunchInputAuthorityError(
             "launch-input carrier has unexpected or missing fields"
         )
@@ -597,14 +808,20 @@ def verify_launch_input_authority(
         "carrier.initialization_identity_sha256",
     )
     if carrier.get("canonical_base") != "random_init":
-        raise LaunchInputAuthorityError("launch-input carrier is not random initialization")
+        raise LaunchInputAuthorityError(
+            "launch-input carrier is not random initialization"
+        )
     if carrier.get("foreign_pretrained_weights_used") is not False:
-        raise LaunchInputAuthorityError("launch-input carrier foreign pretrained drift")
+        raise LaunchInputAuthorityError(
+            "launch-input carrier foreign pretrained drift"
+        )
     if carrier.get("terminal") is not True:
         raise LaunchInputAuthorityError("launch-input carrier terminality drift")
     _require_positive_int(carrier.get("workflow_run_id"), "carrier.workflow_run_id")
     if carrier.get("workflow_status") != "completed":
-        raise LaunchInputAuthorityError("launch-input carrier workflow is not completed")
+        raise LaunchInputAuthorityError(
+            "launch-input carrier workflow is not completed"
+        )
     if carrier.get("workflow_conclusion") != "success":
         raise LaunchInputAuthorityError("launch-input carrier workflow is not success")
     workflow_head = _require_git_sha(
@@ -647,9 +864,7 @@ def verify_launch_input_authority(
     body = dict(value)
     body.pop("authority_identity_sha256", None)
     if _sha256_obj(body) != observed:
-        raise LaunchInputAuthorityError(
-            "launch-input authority self-identity mismatch"
-        )
+        raise LaunchInputAuthorityError("launch-input authority self-identity mismatch")
     if observed != expected_identity:
         raise LaunchInputAuthorityError(
             "launch-input authority does not match independently expected identity"
