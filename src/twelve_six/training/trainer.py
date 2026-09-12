@@ -661,24 +661,25 @@ class Trainer:
             self.optimizer.zero_grad(set_to_none=True)
         except Exception as restore_error:
             rollback_errors: list[BaseException] = []
+            # Rollback must catch every failure to prove or deny a clean restore.
             try:
                 self.optimizer.load_state_dict(optimizer_before)
-            except Exception as rollback_error:
+            except Exception as rollback_error:  # noqa: BLE001
                 rollback_errors.append(rollback_error)
             if self.scheduler is not None and scheduler_before is not None:
                 try:
                     self.scheduler.load_state_dict(scheduler_before)
-                except Exception as rollback_error:
+                except Exception as rollback_error:  # noqa: BLE001
                     rollback_errors.append(rollback_error)
             if self.scaler is not None and scaler_before is not None:
                 try:
                     self.scaler.load_state_dict(scaler_before)
-                except Exception as rollback_error:
+                except Exception as rollback_error:  # noqa: BLE001
                     rollback_errors.append(rollback_error)
             for parameter, gradient in gradients_before:
                 try:
                     parameter.grad = gradient
-                except Exception as rollback_error:
+                except Exception as rollback_error:  # noqa: BLE001
                     rollback_errors.append(rollback_error)
             if rollback_errors:
                 self._failure_reason = "trainer state restore rollback failed"
