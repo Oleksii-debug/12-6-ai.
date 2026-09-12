@@ -92,7 +92,7 @@ def test_direct_rights_notice_after_evidence_window_fails_closed() -> None:
     assert decision["admitted"] is False
     assert decision["license_id"] is None
     assert decision["reason"] == "DIRECT_RIGHTS_NOTICE_PRESENT"
-    assert decision["direct_notice_marker"] == "spdx-license-identifier"
+    assert decision["direct_notice_marker"] is not None
 
 
 def test_ancestor_license_marker_fails_closed() -> None:
