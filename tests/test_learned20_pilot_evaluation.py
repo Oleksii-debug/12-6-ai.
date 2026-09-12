@@ -5,8 +5,8 @@ import json
 from copy import deepcopy
 from typing import Any
 
+from twelve_six.learned20_pilot_evaluation import MEMORIZATION_POLICY_V1_IDENTITY
 from twelve_six.learned20_pilot_evaluation import (
-    MEMORIZATION_POLICY_V1_IDENTITY,
     validate_terminal_pilot_evaluation as _validate_terminal_pilot_evaluation,
 )
 
