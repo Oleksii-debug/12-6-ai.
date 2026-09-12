@@ -504,7 +504,7 @@ def test_terminal_provenance_wrapper_blocks_long_training_without_d06_evidence(
     assert "bounded_pilot.d06_evaluation_missing" in result["long_training_blockers"]
 
 
-def test_launch_contract_is_the_only_source_of_d07_expectations(monkeypatch) -> None:
+def test_launch_contract_cannot_supply_trusted_d07_expectations(monkeypatch) -> None:
     import twelve_six.learned20_pilot_authority as pilot_authority
 
     expected = _evidence()["_test_fresh_process_expectations"]
@@ -543,5 +543,13 @@ def test_launch_contract_is_the_only_source_of_d07_expectations(monkeypatch) -> 
         {"d07_fresh_process_expectations": expected},
         {"d07_fresh_process_expectations": {"receipt_identity": "attacker"}},
         material_cost=False,
+    )
+    assert captured["expectations"] is None
+
+    pilot_authority.assess_launch_with_terminal_provenance(
+        {"d07_fresh_process_expectations": expected},
+        {"d07_fresh_process_expectations": {"receipt_identity": "attacker"}},
+        material_cost=False,
+        trusted_fresh_process_expectations=expected,
     )
     assert captured["expectations"] == expected
