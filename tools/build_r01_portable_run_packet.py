@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from twelve_six.portable_run_binding import bind_portable_run_packet
-from twelve_six.readiness_trust_root import authenticated_trusted_readiness_inputs
+from twelve_six.readiness_trust_root import authenticated_trusted_readiness_bundle
 
 DEFAULT_READINESS = Path("configs/research/r01_learned20m_launch_readiness_v1.json")
 DEFAULT_TEMPLATE = Path("configs/research/r01_portable_local_free_run_packet_v1.json")
@@ -84,6 +84,7 @@ def main(argv: list[str] | None = None) -> int:
 
         verified_scientific: set[str] = set()
         verified_refs: set[str] = set()
+        portable_execution: dict[str, Any] | None = None
         if args.trusted_bindings is None:
             if args.expected_trusted_bindings_sha256 is not None:
                 raise ValueError(
@@ -95,7 +96,7 @@ def main(argv: list[str] | None = None) -> int:
                     "--trusted-bindings requires --expected-trusted-bindings-sha256"
                 )
             bindings = _load_object(args.trusted_bindings)
-            resolved = authenticated_trusted_readiness_inputs(
+            resolved = authenticated_trusted_readiness_bundle(
                 bindings,
                 expected_identity_sha256=args.expected_trusted_bindings_sha256,
             )
@@ -104,12 +105,13 @@ def main(argv: list[str] | None = None) -> int:
                     "trusted bindings are malformed or do not match the independent "
                     "expected identity"
                 )
-            verified_scientific, verified_refs = resolved
+            verified_scientific, verified_refs, portable_execution = resolved
 
         result = bind_portable_run_packet(
             readiness,
             template,
             overlay,
+            expected_portable_execution=portable_execution,
             verified_scientific_authorities=verified_scientific,
             verified_authorization_refs=verified_refs,
         )
