@@ -10,6 +10,7 @@ concurrency:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   bootstrap:
@@ -33,3 +34,73 @@ jobs:
         run: python -m twelve_six.ci_workflow_policy --base "$BASE_SHA" --head "$HEAD_SHA"
       - run: ruff check src tests
       - run: pytest -q
+
+  expanded-v9-real-execution:
+    if: github.event_name == 'pull_request' && github.head_ref == 'swarm-1485/expanded-v9-real-execution-20260912'
+    needs: bootstrap
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      GH_TOKEN: ${{ github.token }}
+      V7_HEAD: d3333ec1b4a508df232a5aefccd6686adda745fb
+      V8_RUN_ID: "34159790818"
+      V8_ARTIFACT_ID: "10032510626"
+      V8_ARTIFACT_NAME: next100-065f-global-dedup-v8-bda544143e7625d9dc08344843bfa7c3e12f509b
+      V8_ARTIFACT_DIGEST: sha256:960c678fdbe6245658fa69c39edf355eb7b38ef39b7f8f833155c894dbd90385
+      V8_REPORT_SHA256: 942cc15af60ee36a79345beba77fec347e33ee919d8148fb319b19d9ee072e5a
+      V8_SURVIVOR_AUTHORITY_SHA256: 8115b35662fa89900b37f54f7cffd5f2fa8b2f8c60a72bcb18b89c92aaade0cf
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install data-only runtime
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .[dev]
+      - name: Bind sealed V8 artifact metadata
+        run: |
+          set -euo pipefail
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/${V8_ARTIFACT_ID}" --jq '.name')" = "$V8_ARTIFACT_NAME"
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/${V8_ARTIFACT_ID}" --jq '.workflow_run.id')" = "$V8_RUN_ID"
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/${V8_ARTIFACT_ID}" --jq '.digest')" = "$V8_ARTIFACT_DIGEST"
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/${V8_ARTIFACT_ID}" --jq '.expired')" = "false"
+      - name: Download and verify sealed V8 authorities
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/v8-authority"
+          gh run download "$V8_RUN_ID" --name "$V8_ARTIFACT_NAME" --dir "$RUNNER_TEMP/v8-authority"
+          test -f "$RUNNER_TEMP/v8-authority/v8-a.json"
+          test -f "$RUNNER_TEMP/v8-authority/v8-survivors-a.json"
+          python tools/run_next100_065f_global_dedup_v8.py verify \
+            --report "$RUNNER_TEMP/v8-authority/v8-a.json"
+          python tools/derive_next100_065f_v8_survivors.py verify \
+            --report "$RUNNER_TEMP/v8-authority/v8-a.json" \
+            --output "$RUNNER_TEMP/v8-authority/v8-survivors-a.json"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          root = Path(os.environ["RUNNER_TEMP"]) / "v8-authority"
+          report = json.loads((root / "v8-a.json").read_text(encoding="utf-8"))
+          survivors = json.loads((root / "v8-survivors-a.json").read_text(encoding="utf-8"))
+          assert report["report_sha256"] == os.environ["V8_REPORT_SHA256"]
+          assert survivors["survivor_authority_sha256"] == os.environ["V8_SURVIVOR_AUTHORITY_SHA256"]
+          assert report["claim_boundary"]["authorized_training_exposure"] == 0
+          assert report["claim_boundary"]["model_training_executed"] is False
+          assert survivors["truth_boundary"]["authorized_training_exposure"] == 0
+          print("PASS_SEALED_V8_AUTHORITIES")
+          PY
+      - name: Validate current config and exact clean terminal V7 checkout
+        run: |
+          set -euo pipefail
+          python tools/run_next100_065f_global_dedup_v8.py check-config --current-root .
+          git cat-file -e "${V7_HEAD}^{commit}"
+          git worktree add --detach "$RUNNER_TEMP/v7-root" "$V7_HEAD"
+          test "$(git -C "$RUNNER_TEMP/v7-root" rev-parse HEAD)" = "$V7_HEAD"
+          test -z "$(git -C "$RUNNER_TEMP/v7-root" status --porcelain --untracked-files=all)"
+          echo "EXPANDED_V9_EXECUTION_CARRIER_PREFLIGHT=PASS_ZERO_CREDIT"
+          echo "REAL_EXPANDED_V9_EXECUTED=false"
+          echo "AUTHORIZED_TRAINING_EXPOSURE=0"
