@@ -1,0 +1,314 @@
+name: Current survivor G05 real LOCAL_FREE temporary
+
+on:
+  pull_request:
+    paths:
+      - "tools/run_current_survivor_g05_quality_v2.py"
+      - "tests/test_current_survivor_g05_quality_v2.py"
+      - ".github/workflows/current-survivor-g05-real-temporary.yml"
+
+concurrency:
+  group: current-survivor-g05-real-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  real-g05:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    env:
+      TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Prove exact Product checkout
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Checkout exact historical DATA-526 materializer
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: 70d6ccc87396d129d00771bbf0b6b29bc673bfc4
+          path: _data526_hist
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Install exact historical validation dependencies and current package
+        run: |
+          python -m pip install --require-hashes --no-deps \
+            -r _data526_hist/requirements/locks/linux-x86_64/dev.lock.txt
+          python -m pip install --no-deps -e .
+
+      - name: Install deterministic PDF extractor used by historical V7 acquisition
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends poppler-utils
+          pdftotext -v
+
+      - name: Validate trust-root repair before source work
+        run: |
+          python -m pytest -q \
+            tests/test_current_survivor_g05_quality_v2.py \
+            tests/test_quality_execution_authority.py \
+            tests/test_post1247_data526_survivor_materialization.py \
+            tests/test_data526_v8_record_composition.py
+          python -m compileall -q \
+            tools/run_current_survivor_g05_quality_v2.py \
+            tools/materialize_post1247_data526_survivors_v1.py \
+            tools/compose_data526_records_from_v8.py \
+            tools/materialize_data526_record_inventory_v1.py
+
+      - name: Checkout exact terminal V7 source materializer
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: d3333ec1b4a508df232a5aefccd6686adda745fb
+          path: _data526_v7
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Retrieve immutable DATA-213 and V8 authority artifacts twice
+        run: |
+          set -euo pipefail
+          for build in a b; do
+            curl --fail --silent --show-error --location \
+              -H "Authorization: Bearer $GITHUB_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/Oleksii-debug/12-6-ai./actions/artifacts/9600107886/zip" \
+              -o "/tmp/data213-${build}.zip"
+            curl --fail --silent --show-error --location \
+              -H "Authorization: Bearer $GITHUB_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/Oleksii-debug/12-6-ai./actions/artifacts/10032510626/zip" \
+              -o "/tmp/v8-${build}.zip"
+          done
+          test "$(sha256sum /tmp/data213-a.zip | cut -d' ' -f1)" = \
+            "927e10ccb83f919d57a8b78e3ea9cae72f9d4e0232401043234a35eec150074d"
+          test "$(sha256sum /tmp/data213-b.zip | cut -d' ' -f1)" = \
+            "927e10ccb83f919d57a8b78e3ea9cae72f9d4e0232401043234a35eec150074d"
+          test "$(sha256sum /tmp/v8-a.zip | cut -d' ' -f1)" = \
+            "960c678fdbe6245658fa69c39edf355eb7b38ef39b7f8f833155c894dbd90385"
+          test "$(sha256sum /tmp/v8-b.zip | cut -d' ' -f1)" = \
+            "960c678fdbe6245658fa69c39edf355eb7b38ef39b7f8f833155c894dbd90385"
+          cmp /tmp/data213-a.zip /tmp/data213-b.zip
+          cmp /tmp/v8-a.zip /tmp/v8-b.zip
+          mkdir -p /tmp/v8-a /tmp/v8-b
+          unzip -q /tmp/v8-a.zip -d /tmp/v8-a
+          unzip -q /tmp/v8-b.zip -d /tmp/v8-b
+
+      - name: Rebuild exact historical 48-record graph twice
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/historical-a /tmp/historical-b
+          mkdir -p /tmp/historical-a /tmp/historical-b
+          (
+            cd _data526_hist
+            python tools/run_data526_materializer_data_only.py \
+              --v7-root ../_data526_v7 \
+              --data213-zip /tmp/data213-a.zip \
+              --records-jsonl /tmp/historical-a/records.jsonl \
+              --inventory-json /tmp/historical-a/inventory.json \
+              --evidence-json /tmp/historical-a/evidence.json
+            python tools/run_data526_materializer_data_only.py \
+              --v7-root ../_data526_v7 \
+              --data213-zip /tmp/data213-b.zip \
+              --records-jsonl /tmp/historical-b/records.jsonl \
+              --inventory-json /tmp/historical-b/inventory.json \
+              --evidence-json /tmp/historical-b/evidence.json
+          )
+          cmp /tmp/historical-a/records.jsonl /tmp/historical-b/records.jsonl
+          test "$(sha256sum /tmp/historical-a/records.jsonl | cut -d' ' -f1)" = \
+            "2f21f7655c9287bbc7424b410788f431f20f0936f445fefd26fcf6114b772dbd"
+
+      - name: Freshly acquire exact six-family bulk code twice
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/bulk-a /tmp/bulk-b
+          mkdir -p /tmp/bulk-a /tmp/bulk-b
+          python tools/materialize_data_bulk_code1_permissive_python_bundle.py \
+            --workspace /tmp/bulk-a \
+            --output /tmp/bulk-a-report.json
+          python tools/materialize_data_bulk_code1_permissive_python_bundle.py \
+            --workspace /tmp/bulk-b \
+            --output /tmp/bulk-b-report.json
+          cmp /tmp/bulk-a-report.json /tmp/bulk-b-report.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          for name in ("a", "b"):
+              report = json.loads(Path(f"/tmp/bulk-{name}-report.json").read_text())
+              assert report["report_identity_sha256"] == (
+                  "80f3a8f20dfb82825e6c89ac1f76f2f41233296b8a426a1cf466b0fcc0892985"
+              )
+              assert report["eligible_file_count"] == 229
+              assert report["eligible_utf8_bytes"] == 3_880_009
+              assert report["security"]["credential_scan"] == "PASS_NO_HIGH_CONFIDENCE_HITS"
+          PY
+
+      - name: Rebuild exact canonical 275-record pre-decontamination graph twice
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/current-a /tmp/current-b
+          mkdir -p /tmp/current-a /tmp/current-b
+          python tools/compose_data526_records_from_v8.py \
+            --historical-records-jsonl /tmp/historical-a/records.jsonl \
+            --bulk-report /tmp/bulk-a-report.json \
+            --bulk-workspace /tmp/bulk-a \
+            --v8-report /tmp/v8-a/v8-a.json \
+            --v8-survivors /tmp/v8-a/v8-survivors-a.json \
+            --records-jsonl /tmp/current-a/records.jsonl \
+            --inventory-json /tmp/current-a/inventory.json \
+            --evidence-json /tmp/current-a/evidence.json \
+            --execution-head-sha "$SOURCE_SHA"
+          python tools/compose_data526_records_from_v8.py \
+            --historical-records-jsonl /tmp/historical-b/records.jsonl \
+            --bulk-report /tmp/bulk-b-report.json \
+            --bulk-workspace /tmp/bulk-b \
+            --v8-report /tmp/v8-b/v8-a.json \
+            --v8-survivors /tmp/v8-b/v8-survivors-a.json \
+            --records-jsonl /tmp/current-b/records.jsonl \
+            --inventory-json /tmp/current-b/inventory.json \
+            --evidence-json /tmp/current-b/evidence.json \
+            --execution-head-sha "$SOURCE_SHA"
+          cmp /tmp/current-a/records.jsonl /tmp/current-b/records.jsonl
+          test "$(sha256sum /tmp/current-a/records.jsonl | cut -d' ' -f1)" = \
+            "18a933b2e637b4cff497f4acfbff31041d4c0ba21fba397af53d213edfd7a1b7"
+
+      - name: Rebuild exact post-1247 survivor payload twice
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/survivor-a /tmp/survivor-b
+          mkdir -p /tmp/survivor-a /tmp/survivor-b
+          python tools/materialize_post1247_data526_survivors_v1.py \
+            --records-jsonl-a /tmp/current-a/records.jsonl \
+            --records-jsonl-b /tmp/current-b/records.jsonl \
+            --pre-materialization-evidence evidence/data526/v8/materialization_evidence.json \
+            --decontamination-evidence evidence/data232/current_reserved_decontamination_v1_terminal.json \
+            --survivor-records-jsonl /tmp/survivor-a/survivors.jsonl \
+            --inventory-json /tmp/survivor-a/inventory.json \
+            --evidence-json /tmp/survivor-a/evidence.json \
+            --execution-head-sha "$SOURCE_SHA"
+          python tools/materialize_post1247_data526_survivors_v1.py \
+            --records-jsonl-a /tmp/current-b/records.jsonl \
+            --records-jsonl-b /tmp/current-a/records.jsonl \
+            --pre-materialization-evidence evidence/data526/v8/materialization_evidence.json \
+            --decontamination-evidence evidence/data232/current_reserved_decontamination_v1_terminal.json \
+            --survivor-records-jsonl /tmp/survivor-b/survivors.jsonl \
+            --inventory-json /tmp/survivor-b/inventory.json \
+            --evidence-json /tmp/survivor-b/evidence.json \
+            --execution-head-sha "$SOURCE_SHA"
+          cmp /tmp/survivor-a/survivors.jsonl /tmp/survivor-b/survivors.jsonl
+          test "$(sha256sum /tmp/survivor-a/survivors.jsonl | cut -d' ' -f1)" = \
+            "3f60cfe55435daf53908c492be358f36d7ebbc2ebee532c921a69ba92b2f6b25"
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          for name in ("a", "b"):
+              evidence = json.loads(Path(f"/tmp/survivor-{name}/evidence.json").read_text())
+              result = evidence["result"]
+              assert type(result["record_count"]) is int and result["record_count"] == 272
+              assert type(result["total_payload_bytes"]) is int and result["total_payload_bytes"] == 5_921_963
+              assert type(result["source_object_count"]) is int and result["source_object_count"] == 259
+              assert result["record_payload_jsonl_sha256"] == "3f60cfe55435daf53908c492be358f36d7ebbc2ebee532c921a69ba92b2f6b25"
+              assert type(evidence["authorized_optimized_target_exposure"]) is int
+              assert evidence["authorized_optimized_target_exposure"] == 0
+              assert type(evidence["optimizer_updates_executed"]) is int
+              assert evidence["optimizer_updates_executed"] == 0
+              assert evidence["training_executed"] is False
+              assert evidence["learned_weights_created"] is False
+              assert evidence["final_test_outcomes_read"] is False
+              assert evidence["paid_compute_used"] is False
+          PY
+
+      - name: Execute canonical G05 twice over the real survivor payload
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/g05-a /tmp/g05-b
+          mkdir -p /tmp/g05-a /tmp/g05-b
+          python tools/run_current_survivor_g05_quality_v2.py \
+            --records-jsonl /tmp/survivor-a/survivors.jsonl \
+            --independent-records-jsonl /tmp/survivor-b/survivors.jsonl \
+            --output-authority /tmp/g05-a/authority.json \
+            --output-evidence /tmp/g05-a/evidence.json
+          python tools/run_current_survivor_g05_quality_v2.py \
+            --records-jsonl /tmp/survivor-b/survivors.jsonl \
+            --independent-records-jsonl /tmp/survivor-a/survivors.jsonl \
+            --output-authority /tmp/g05-b/authority.json \
+            --output-evidence /tmp/g05-b/evidence.json
+          cmp /tmp/g05-a/authority.json /tmp/g05-b/authority.json
+          cmp /tmp/g05-a/evidence.json /tmp/g05-b/evidence.json
+
+      - name: Assert exact zero-credit G05 result and emit compact durable evidence
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          authority_path = Path("/tmp/g05-a/authority.json")
+          evidence_path = Path("/tmp/g05-a/evidence.json")
+          authority = json.loads(authority_path.read_text())
+          evidence = json.loads(evidence_path.read_text())
+          counts = evidence["counts"]
+          bytes_ = evidence["bytes"]
+          assert counts["records"] == 272
+          assert bytes_["input_utf8_bytes"] == 5_921_963
+          assert bytes_["retained_utf8_bytes"] + bytes_["rejected_utf8_bytes"] == 5_921_963
+          assert evidence["current_corpus_eligible"] is False
+          assert type(evidence["training_authorized_bytes"]) is int and evidence["training_authorized_bytes"] == 0
+          assert type(evidence["authorized_optimized_target_exposure"]) is int and evidence["authorized_optimized_target_exposure"] == 0
+          assert evidence["tokenizer_fit_authorized"] is False
+          assert type(evidence["optimizer_updates_executed"]) is int and evidence["optimizer_updates_executed"] == 0
+          assert evidence["training_executed"] is False
+          assert evidence["learned_weights_created"] is False
+          assert evidence["final_test_outcomes_read"] is False
+          assert evidence["paid_compute_used"] is False
+          assert evidence["foreign_pretrained_weights_used"] is False
+          assert evidence["external_llm_or_api_used_for_data_or_intelligence"] is False
+          assert evidence["raw_payloads_retained_in_evidence"] is False
+          assert "normalized_payload" not in authority_path.read_text()
+          assert "normalized_payload" not in evidence_path.read_text()
+          print("G05_COMPACT_EVIDENCE_BEGIN")
+          print(evidence_path.read_text().strip())
+          print("G05_COMPACT_EVIDENCE_END")
+          PY
+          echo "authority_sha256=$(sha256sum /tmp/g05-a/authority.json | cut -d' ' -f1)"
+          echo "evidence_sha256=$(sha256sum /tmp/g05-a/evidence.json | cut -d' ' -f1)"
+          echo "survivor_a_evidence_sha256=$(sha256sum /tmp/survivor-a/evidence.json | cut -d' ' -f1)"
+          echo "survivor_b_evidence_sha256=$(sha256sum /tmp/survivor-b/evidence.json | cut -d' ' -f1)"
+
+      - name: Upload text-free real G05 evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: current-survivor-g05-real-${{ env.SOURCE_SHA }}
+          if-no-files-found: error
+          retention-days: 90
+          path: |
+            /tmp/g05-a/authority.json
+            /tmp/g05-a/evidence.json
+            /tmp/g05-b/authority.json
+            /tmp/g05-b/evidence.json
+            /tmp/survivor-a/inventory.json
+            /tmp/survivor-a/evidence.json
+            /tmp/survivor-b/inventory.json
+            /tmp/survivor-b/evidence.json
+
+      - name: Destroy job-local raw payloads
+        if: always()
+        run: |
+          rm -f /tmp/survivor-a/survivors.jsonl /tmp/survivor-b/survivors.jsonl
+          rm -f /tmp/current-a/records.jsonl /tmp/current-b/records.jsonl
+          rm -f /tmp/historical-a/records.jsonl /tmp/historical-b/records.jsonl
