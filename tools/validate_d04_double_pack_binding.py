@@ -87,6 +87,20 @@ def _expected_train_record_ids() -> list[str]:
     return ["uk-doc"]
 
 
+def _train_membership_digest(record_ids: Sequence[str]) -> str:
+    return hashlib.sha256(
+        (
+            json.dumps(
+                list(record_ids),
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+            + "\n"
+        ).encode("utf-8")
+    ).hexdigest()
+
+
 def _materialization() -> dict:
     value = {
         "schema_version": "12-6.postpack-loss-materialization.v2",
@@ -170,6 +184,7 @@ def _proof(
     inventory: dict | None = None,
     expected_inventory: dict | None = None,
     expected_train_record_ids: Sequence[str] | None = None,
+    expected_train_record_membership_digest_sha256: str | None = None,
 ) -> dict:
     record_inventory = inventory or _terminal_record_inventory()
     expected_record_inventory = expected_inventory or _terminal_record_inventory()
@@ -177,6 +192,11 @@ def _proof(
         list(expected_train_record_ids)
         if expected_train_record_ids is not None
         else _expected_train_record_ids()
+    )
+    train_membership_digest = (
+        expected_train_record_membership_digest_sha256
+        if expected_train_record_membership_digest_sha256 is not None
+        else _train_membership_digest(_expected_train_record_ids())
     )
     return verify_deterministic_double_pack(
         build_a,
@@ -192,6 +212,7 @@ def _proof(
         expected_stage_bindings=_materialization()["stage_bindings"],
         expected_tokenizer_identity_sha256=_sha("tokenizer"),
         expected_train_record_ids=train_record_ids,
+        expected_train_record_membership_digest_sha256=train_membership_digest,
     )
 
 
@@ -226,17 +247,7 @@ def main() -> None:
         raise SystemExit("terminal train-record membership was not proven")
     if proof["retained_train_records_matched_to_terminal_inventory"] != 1:
         raise SystemExit("terminal train-record membership count mismatch")
-    expected_membership_digest = hashlib.sha256(
-        (
-            json.dumps(
-                _expected_train_record_ids(),
-                ensure_ascii=False,
-                sort_keys=True,
-                separators=(",", ":"),
-            )
-            + "\n"
-        ).encode("utf-8")
-    ).hexdigest()
+    expected_membership_digest = _train_membership_digest(_expected_train_record_ids())
     if (
         proof["terminal_split_train_record_membership_sha256"]
         != expected_membership_digest
@@ -315,8 +326,20 @@ def main() -> None:
             inventory=closed_world_inventory,
             expected_inventory=closed_world_inventory,
             expected_train_record_ids=["en-doc", "uk-doc"],
+            expected_train_record_membership_digest_sha256=_train_membership_digest(
+                ["en-doc", "uk-doc"]
+            ),
         ),
         "retained train record membership does not match expected terminal split authority",
+    )
+
+    _expect_failure(
+        lambda: _proof(
+            build_a,
+            build_b,
+            expected_train_record_ids=[],
+        ),
+        "expected_train_record_ids do not match expected terminal split membership digest",
     )
 
     _expect_failure(
@@ -423,6 +446,9 @@ def main() -> None:
             expected_stage_bindings=build_a["stage_bindings"],
             expected_tokenizer_identity_sha256=_sha("tokenizer"),
             expected_train_record_ids=_expected_train_record_ids(),
+            expected_train_record_membership_digest_sha256=(
+                _train_membership_digest(_expected_train_record_ids())
+            ),
         ),
         "terminal_corpus_authority_identity_sha256 must be a 64-hex",
     )
