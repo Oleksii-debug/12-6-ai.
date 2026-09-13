@@ -46,7 +46,7 @@ jobs:
       - name: Bind execution to exact scientific source closure
         env:
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          EXPECTED_LAUNCHER_BLOB: "2e225e44746c60ea7c383cef323b1f17c332d774"
+          EXPECTED_LAUNCHER_BLOB: "9276f45847fbb6c9e6729ab469f1731829295977"
         run: |
           set -euo pipefail
           BASE_SHA="$(git rev-parse HEAD^1)"

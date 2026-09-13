@@ -13,7 +13,7 @@ assert SPEC is not None and SPEC.loader is not None
 runner = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(runner)
 
-EXPECTED_LAUNCHER_BLOB = "2e225e44746c60ea7c383cef323b1f17c332d774"
+EXPECTED_LAUNCHER_BLOB = "9276f45847fbb6c9e6729ab469f1731829295977"
 
 
 def _blob(payload: bytes) -> str:
