@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -65,6 +66,25 @@ def _request() -> tuple[dict[str, object], str]:
     )
 
 
+def _run_worker(
+    *,
+    tool: Path,
+    payload: bytes,
+    repository_root: Path,
+    environment: dict[str, str],
+    timeout: int,
+) -> subprocess.CompletedProcess[bytes]:
+    return subprocess.run(
+        [sys.executable, str(tool)],
+        input=payload,
+        capture_output=True,
+        cwd=repository_root,
+        env=environment,
+        check=False,
+        timeout=timeout,
+    )
+
+
 def test_model341_subprocess_commits_one_real_optimizer_step_and_replays(
     tmp_path: Path,
 ) -> None:
@@ -77,13 +97,11 @@ def test_model341_subprocess_commits_one_real_optimizer_step_and_replays(
     environment["TWELVE_SIX_EXTERNAL_TRAINING_ROOT"] = str(state_root)
     environment["TWELVE_SIX_TRAINER_AUTHORITY_SHA256"] = TRAINER_SHA
 
-    first = subprocess.run(
-        [sys.executable, str(tool)],
-        input=payload,
-        capture_output=True,
-        cwd=repository_root,
-        env=environment,
-        check=False,
+    first = _run_worker(
+        tool=tool,
+        payload=payload,
+        repository_root=repository_root,
+        environment=environment,
         timeout=300,
     )
 
@@ -122,13 +140,11 @@ def test_model341_subprocess_commits_one_real_optimizer_step_and_replays(
     assert manifest["identity"]["training_config"]["mode"] == "synthetic-mechanics"
 
     checkpoint_inventory_before = sorted(path.name for path in (job_root / "checkpoints").iterdir())
-    second = subprocess.run(
-        [sys.executable, str(tool)],
-        input=payload,
-        capture_output=True,
-        cwd=repository_root,
-        env=environment,
-        check=False,
+    second = _run_worker(
+        tool=tool,
+        payload=payload,
+        repository_root=repository_root,
+        environment=environment,
         timeout=60,
     )
 
@@ -137,3 +153,51 @@ def test_model341_subprocess_commits_one_real_optimizer_step_and_replays(
     assert sorted(path.name for path in (job_root / "checkpoints").iterdir()) == (
         checkpoint_inventory_before
     )
+
+    with weights.open("r+b") as handle:
+        original_byte = handle.read(1)
+        assert original_byte
+        handle.seek(0)
+        handle.write(bytes([original_byte[0] ^ 1]))
+        handle.flush()
+        os.fsync(handle.fileno())
+
+    corrupted_replay = _run_worker(
+        tool=tool,
+        payload=payload,
+        repository_root=repository_root,
+        environment=environment,
+        timeout=60,
+    )
+    assert corrupted_replay.returncode == 2
+    assert b"failed physical verification" in corrupted_replay.stderr
+
+    with weights.open("r+b") as handle:
+        handle.seek(0)
+        handle.write(original_byte)
+        handle.flush()
+        os.fsync(handle.fileno())
+
+    restored_replay = _run_worker(
+        tool=tool,
+        payload=payload,
+        repository_root=repository_root,
+        environment=environment,
+        timeout=60,
+    )
+    assert restored_replay.returncode == 0, restored_replay.stderr.decode(
+        "utf-8", errors="replace"
+    )
+    assert restored_replay.stdout == first.stdout
+
+    shutil.rmtree(checkpoint)
+    deleted_replay = _run_worker(
+        tool=tool,
+        payload=payload,
+        repository_root=repository_root,
+        environment=environment,
+        timeout=60,
+    )
+    assert deleted_replay.returncode == 2
+    assert b"checkpoint is unavailable" in deleted_replay.stderr
+    assert not checkpoint.exists()
