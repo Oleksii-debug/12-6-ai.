@@ -1,0 +1,137 @@
+{
+  "schema": "12-6.pretraining-token-budget.v1",
+  "semantics_revision": 2,
+  "status": "ACTIVE_FAIL_CLOSED_UNIT_CORRECTED",
+  "repository": "Oleksii-debug/12-6-ai.",
+  "execution_profile": "LOCAL_FREE",
+  "training_executed": false,
+  "paid_compute_used": false,
+  "compute_authorized": false,
+  "tokenizer_authority": {
+    "path": "configs/s0/tokenizer_byte_v1.json",
+    "tokenizer_version": "s0-byte-v1",
+    "type": "utf8-byte",
+    "encoding": "utf-8",
+    "vocab_size": 256,
+    "byte_values": 256,
+    "model_loss_position_unit": "UTF8_BYTE_POSITION"
+  },
+  "unit_policy": {
+    "external_scaling_reference_unit": "SOURCE_REPORTED_TOKEN",
+    "current_model_training_unit": "UTF8_BYTE_POSITION",
+    "cross_tokenizer_numeric_conversion_allowed": false,
+    "direct_chinchilla_reference_as_byte_budget_allowed": false,
+    "reason": "Source-reported language-model tokens and s0-byte-v1 UTF-8 byte loss positions are not the same unit. Non-ASCII text can consume multiple bytes per character and sequence/FLOP cost depends on tokenization and architecture."
+  },
+  "current_decision": {
+    "20m_architecture_ready_for_pilot_after_blockers": true,
+    "20m_engineering_pilot_budget_unit": "UNIQUE_AUTHORIZED_UTF8_BYTE_LOSS_POSITIONS",
+    "20m_engineering_pilot_requested_positions": 20000000,
+    "20m_quality_baseline_data_budget_ready": false,
+    "20m_science_complete_byte_budget": null,
+    "100m_training_ready": false,
+    "1b_training_ready": false,
+    "reason": "The preregistered 20M byte-position campaign is an engineering and early-learning pilot. No science-complete byte budget exists until tokenizer-efficiency and FLOP-normalized scaling calibration are terminal."
+  },
+  "policy": {
+    "no_replay_for_budget_credit": true,
+    "count_only_training_authorized_loss_positions": true,
+    "tokenizer_identity_must_be_bound": true,
+    "corpus_identity_must_be_bound": true,
+    "checkpoint_integrity_must_be_terminal": true,
+    "quality_claim_requires_held_out_evaluation": true,
+    "larger_scale_requires_measured_scaling_curve": true,
+    "paid_compute_requires_explicit_authorization": true
+  },
+  "external_research_anchors": [
+    {
+      "name": "Hoffmann et al. 2022 / Chinchilla",
+      "reference": "arXiv:2203.15556",
+      "reported_model_parameters": 70000000000,
+      "reported_training_tokens": 1400000000000,
+      "rounded_reference_tokens_per_parameter": 20,
+      "use": "EXTERNAL_SAME_UNIT_PLANNING_ANCHOR_ONLY",
+      "direct_conversion_to_utf8_byte_positions": false
+    },
+    {
+      "name": "ByT5",
+      "reference": "arXiv:2105.13626",
+      "use": "BYTE_SEQUENCE_EFFICIENCY_AND_ROBUSTNESS_CONTEXT",
+      "direct_budget_prescription": false
+    },
+    {
+      "name": "Byte Latent Transformer",
+      "reference": "arXiv:2412.09871",
+      "use": "BYTE_LEVEL_FLOP_CONTROL_AND_PATCH_ARCHITECTURE_CONTEXT",
+      "direct_budget_prescription": false
+    }
+  ],
+  "stages": [
+    {
+      "name": "MODEL-341-20M",
+      "parameter_count": 20613440,
+      "tokenizer_type": "utf8-byte",
+      "current_preregistered_unique_byte_positions": 20000000,
+      "current_request_byte_positions_per_parameter": 0.970241,
+      "external_hypothetical_reference_tokens_at_20_per_parameter": 412268800,
+      "external_reference_unit": "SOURCE_REPORTED_TOKEN",
+      "direct_reference_byte_positions": null,
+      "current_request_fraction_of_external_reference": null,
+      "current_request_classification": "ENGINEERING_PILOT_NOT_SCIENCE_COMPLETE_20M_BASELINE",
+      "promotion_requires": [
+        "TERMINAL_CORPUS_AND_SHARD_IDENTITY",
+        "TERMINAL_CHECKPOINT_INTEGRITY",
+        "TOKENIZER_EFFICIENCY_CALIBRATION",
+        "FLOP_NORMALIZED_LEARNING_CURVE",
+        "HELD_OUT_QUALITY_EVALUATION"
+      ]
+    },
+    {
+      "name": "100M",
+      "parameter_count": 100000000,
+      "external_hypothetical_reference_tokens_at_20_per_parameter": 2000000000,
+      "external_reference_unit": "SOURCE_REPORTED_TOKEN",
+      "direct_reference_byte_positions": null,
+      "status": "FUTURE_SCALE_STAGE_BLOCKED",
+      "promotion_requires": "Measured 20M scaling evidence, tokenizer and architecture decision, data budget, hardware/FLOP plan and explicit compute authorization."
+    },
+    {
+      "name": "1B",
+      "parameter_count": 1000000000,
+      "external_hypothetical_reference_tokens_at_20_per_parameter": 20000000000,
+      "external_reference_unit": "SOURCE_REPORTED_TOKEN",
+      "direct_reference_byte_positions": null,
+      "status": "FUTURE_SCALE_STAGE_BLOCKED",
+      "promotion_requires": "Measured 100M scaling evidence, distributed-training qualification, tokenizer and architecture decision, data budget and explicit compute authorization."
+    }
+  ],
+  "mandatory_calibration_before_science_budget": [
+    "MEASURE_BYTES_CHARACTERS_AND_SUBWORD_TOKENS_PER_DOCUMENT_BY_UA_EN_CODE",
+    "COMPARE_BYTE_VS_LEARNED_SUBWORD_ON_IDENTICAL_CLEAN_CORPUS_SLICE",
+    "REPORT_HELD_OUT_NLL_NORMALIZED_BY_BYTE_AND_BY_CHARACTER",
+    "MEASURE_TRAINING_FLOPS_OR_WALLCLOCK_PER_EFFECTIVE_TEXT_UNIT",
+    "MEASURE_CONTEXT_SEMANTIC_SPAN_BY_LANGUAGE_AND_DOMAIN",
+    "FIT_FLOP_NORMALIZED_LEARNING_CURVE_BEFORE_100M_PARAMETER_PROMOTION"
+  ],
+  "promotion_rules": {
+    "first_learned_checkpoint": {
+      "purpose": "mechanics, recovery and early learning-signal qualification",
+      "quality_claim_allowed": false
+    },
+    "science_complete_size_baseline": {
+      "numeric_byte_budget": null,
+      "status": "UNDEFINED_PENDING_CALIBRATION",
+      "quality_claim_allowed": false,
+      "override": "A numeric byte-position budget may be introduced only by an explicit preregistered calibration and scaling experiment with held-out evaluation and FLOP accounting."
+    },
+    "larger_model_scale_up": {
+      "requires_previous_stage_learned": true,
+      "requires_terminal_checkpoint_integrity": true,
+      "requires_tokenizer_efficiency_evidence": true,
+      "requires_flop_normalized_scaling_curve": true,
+      "requires_data_budget": true,
+      "requires_compute_budget": true
+    }
+  },
+  "evidence_identity": "GIT_COMMIT_AND_BLOB_BOUND"
+}

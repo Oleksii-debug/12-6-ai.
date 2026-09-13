@@ -1,0 +1,113 @@
+{
+  "schema": "12-6.20m-training-ladder.v1",
+  "semantics_revision": 2,
+  "status": "ACTIVE_FAIL_CLOSED_UNIT_CORRECTED",
+  "authority": {
+    "readiness_pr": 519,
+    "model_branch": "model341/20m-candidate-a-20260826",
+    "model_head_sha": "e4ff486fd90802fc123bebf60eed4e59196a98df",
+    "model_spec_sha256": "fbff24d561a2818453554d58ca23fc6ace3303b078f1935a8576c4565bd92441",
+    "parameter_count": 20613440,
+    "random_init_only": true,
+    "tokenizer_path": "configs/s0/tokenizer_byte_v1.json",
+    "tokenizer_version": "s0-byte-v1",
+    "tokenizer_type": "utf8-byte",
+    "vocab_size": 256,
+    "loss_position_unit": "UTF8_BYTE_POSITION"
+  },
+  "research_basis": [
+    {
+      "id": "HOFFMANN_2022_CHINCHILLA",
+      "reference": "arXiv:2203.15556",
+      "use": "EXTERNAL_SCALING_ANCHOR_NOT_BYTE_BUDGET",
+      "note": "The often-used approximately 20 source-reported tokens per parameter reference is not directly convertible to s0-byte-v1 UTF-8 byte positions."
+    },
+    {
+      "id": "BYT5_2021",
+      "reference": "arXiv:2105.13626",
+      "use": "BYTE_SEQUENCE_EFFICIENCY_CONTEXT",
+      "note": "Byte-level modeling changes sequence length and compute tradeoffs relative to tokenized models."
+    },
+    {
+      "id": "BLT_2024",
+      "reference": "arXiv:2412.09871",
+      "use": "BYTE_LEVEL_FLOP_SCALING_CONTEXT",
+      "note": "Competitive large-scale byte modeling uses explicit FLOP-controlled design and dynamic patching; MODEL-341 is a conventional decoder and requires its own measured curve."
+    },
+    {
+      "id": "MOBILELLM_2024",
+      "reference": "arXiv:2402.14905",
+      "use": "SUB_BILLION_ARCHITECTURE_EVIDENCE",
+      "note": "Deep-thin designs and GQA are relevant controlled ablations for later 100M-1B stages."
+    }
+  ],
+  "training_ladder": {
+    "engineering_pilot": {
+      "requested_unique_optimized_byte_positions": 20000000,
+      "purpose": "END_TO_END_LEARNING_AND_RECOVERY_PILOT",
+      "claim_ceiling": "PIPELINE_AND_LEARNING_SIGNAL_ONLY_NO_GENERAL_BASE_QUALITY_CLAIM",
+      "runnable_now": false
+    },
+    "science_complete_20m_budget": {
+      "unit": "UTF8_BYTE_POSITION",
+      "value": null,
+      "status": "UNDEFINED_PENDING_TOKENIZER_AND_FLOP_CALIBRATION"
+    },
+    "external_chinchilla_style_anchor": {
+      "rounded_source_reported_tokens_per_parameter": 20,
+      "hypothetical_source_reported_tokens_for_same_parameter_count": 412268800,
+      "direct_conversion_to_byte_positions": false,
+      "status": "REFERENCE_ONLY_NOT_TRAINING_TARGET_NOT_COMPUTE_AUTHORIZATION"
+    },
+    "decision_sequence": [
+      "L0_20M_BYTE_POSITION_ENGINEERING_PILOT",
+      "L1_TOKENIZER_EFFICIENCY_AND_CONTEXT_SPAN_CALIBRATION",
+      "L2_FLOP_NORMALIZED_BYTE_VS_SUBWORD_ABLATION",
+      "L3_HELD_OUT_LEARNING_CURVE_AND_DATA_MIXTURE_EVALUATION",
+      "L4_DEFINE_20M_SCIENCE_BUDGET_OR_PREREGISTERED_OVERRIDE",
+      "L5_CONSIDER_100M_PARAMETER_PROMOTION_ONLY_FROM_MEASURED_EVIDENCE"
+    ]
+  },
+  "future_scale_reference": [
+    {
+      "nominal_parameters": 100000000,
+      "external_hypothetical_source_reported_tokens_at_20_per_parameter": 2000000000,
+      "direct_reference_byte_positions": null,
+      "status": "EXTERNAL_ANCHOR_ONLY_FUTURE_STAGE_BLOCKED"
+    },
+    {
+      "nominal_parameters": 1000000000,
+      "external_hypothetical_source_reported_tokens_at_20_per_parameter": 20000000000,
+      "direct_reference_byte_positions": null,
+      "status": "EXTERNAL_ANCHOR_ONLY_FUTURE_STAGE_BLOCKED"
+    }
+  ],
+  "current_data_gate": {
+    "corpus_identity": null,
+    "shard_identity": null,
+    "authorized_unique_optimized_byte_positions": 0,
+    "long_training_runnable": false,
+    "primary_blocker": "NO_TERMINAL_CORPUS_IDENTITY_AND_ZERO_AUTHORIZED_UNIQUE_LOSS_CAPACITY"
+  },
+  "promotion_requirements": [
+    "TERMINAL_EXACT_CORPUS_AND_SHARD_IDENTITIES",
+    "PURPOSE_SPECIFIC_RIGHTS_AND_PROVENANCE_PASS",
+    "QUALITY_PRIVACY_DEDUP_AND_EVAL_DECONTAMINATION_PASS",
+    "TOKENIZER_IDENTITY_LOCKED_TO_CHECKPOINT_LINEAGE",
+    "D05_CORRUPTION_MATRIX_PASS_BEFORE_TARGET_MUTATION",
+    "CHECKPOINT_SAVE_LOAD_RESUME_AND_RNG_CONTINUATION_REQUALIFIED_ON_MODEL341",
+    "BOUNDED_TRAINING_PROBE_SHOWS_EXPECTED_FINITE_LOSS_AND_UPDATE_BEHAVIOR",
+    "HELD_OUT_EVALUATION_SEPARATION_AND_NONEMPTY_SELECTION_AUTHORITY",
+    "TOKENIZER_EFFICIENCY_CALIBRATION_BY_UA_EN_CODE",
+    "FLOP_NORMALIZED_BYTE_VS_SUBWORD_SCALING_CURVE",
+    "CONTEXT_SEMANTIC_SPAN_CALIBRATION_BY_LANGUAGE",
+    "EXACT_RUN_CONFIG_HARDWARE_PROFILE_COST_ESTIMATE_AND_ARTIFACT_DESTINATION",
+    "EXPLICIT_COMPUTE_AUTHORIZATION_FOR_ANY_MATERIALLY_PAID_LONG_RUN"
+  ],
+  "compute_boundary": {
+    "execution_profile_now": "LOCAL_FREE",
+    "material_paid_compute_authorized": false,
+    "long_training_authorized": false,
+    "training_executed_by_this_change": false
+  }
+}

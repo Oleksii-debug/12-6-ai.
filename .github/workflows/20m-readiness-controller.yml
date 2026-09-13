@@ -1,0 +1,52 @@
+name: 20M readiness controller
+
+on:
+  pull_request:
+    paths:
+      - "configs/control/20m_readiness_controller_v1.json"
+      - "tools/validate_20m_readiness_controller.py"
+      - "tools/build_predecontam_candidate_identity.py"
+      - "docs/20M_READINESS_CONTROLLER.md"
+      - ".github/workflows/20m-readiness-controller.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Validate live readiness authority
+        run: python tools/validate_20m_readiness_controller.py
+      - name: Prove validator remains fail-closed under Python optimization
+        run: python -O tools/validate_20m_readiness_controller.py
+      - name: Exercise immutable pre-decontamination identity builder
+        run: python tools/build_predecontam_candidate_identity.py --self-test
+      - name: Enforce LOCAL_FREE truth boundary without assert semantics
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          d = json.loads(
+              Path("configs/control/20m_readiness_controller_v1.json").read_text()
+          )
+          checks = {
+              "execution_profile": d["execution_profile"] == "LOCAL_FREE",
+              "training_executed": d["training_executed"] is False,
+              "paid_compute_used": d["paid_compute_used"] is False,
+              "long_training_authorized": d["long_training_authorized"] is False,
+              "campaign_runnable_now": d["campaign"]["campaign_runnable_now"] is False,
+          }
+          failed = [name for name, passed in checks.items() if not passed]
+          if failed:
+              raise SystemExit("LOCAL_FREE truth-boundary failure: " + ", ".join(failed))
+          PY

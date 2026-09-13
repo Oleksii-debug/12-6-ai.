@@ -1,0 +1,217 @@
+{
+  "authorities": {
+    "campaign_preregistration": {
+      "branch": "learn345/20m-campaign-preregistration-20260826",
+      "campaign_runnable_now": false,
+      "head_sha": "234e538b94331993c74535831fc72841c3b9aaba",
+      "requested_optimized_targets": 20000000,
+      "state": "STALE_FAIL_CLOSED_REQUIRES_LIVE_REBIND"
+    },
+    "checkpoint_corruption_audit": {
+      "base_model_sha": "e4ff486fd90802fc123bebf60eed4e59196a98df",
+      "blocking_cases": [
+        "MODEL_DTYPE_MISMATCH_SILENT_CAST",
+        "WRONG_SHAPED_SGD_MOMENTUM_ACCEPTED_BEFORE_DEFERRED_FAILURE",
+        "NEGATIVE_STEP_OR_TOKENS_SEEN_ACCEPTED_AFTER_CONSISTENT_MANIFEST_REBIND"
+      ],
+      "branch": "next100/075-20m-checkpoint-corruption-20260826",
+      "direct_production_module_rerun_required": true,
+      "head_sha": "5c3d3d93cb035c05ad2045a243d722a4ad1dce60",
+      "rejected_before_mutation": 8,
+      "required_cases": 11,
+      "verdict": "RETEST_REQUIRED"
+    },
+    "code_selection_validation_v2": {
+      "branch": "next100-057/code-selection-validation-v2-20260826",
+      "eligible_families": 0,
+      "eligible_objects": 0,
+      "head_sha": "6713fe972b875b8a516122bda347264fb4099b2b",
+      "state": "BLOCKED_NO_PRISTINE_CODE_OBJECTS_WITH_EXPLICIT_EVALUATION_RESERVATION"
+    },
+    "d05_remediation_convergence": {
+      "branch": "dev/d05-checkpoint-fail-closed-20260826",
+      "current_exact_head_d05_run": 33005737951,
+      "current_exact_head_d05_status": "QUEUED_AT_REFRESH",
+      "current_head_sha": "5c4bdf3faa31397fef65b800d00ff95483be3aac",
+      "previous_exact_head_green_run": 33005163523,
+      "previous_green_head_sha": "397ba857f08b08eb1363a634597a757d25e8fd68",
+      "preferred_candidate_pr": 504,
+      "selection_basis": "PR504 preserves generic optimizer and trainer compatibility, separates focused D05 authority from repository-wide lint debt, and adds scheduler/scaler preflight on the latest head",
+      "state": "NONTERMINAL_CURRENT_HEAD_QUEUED_REQUIRES_EXACT_HEAD_GREEN_AND_INDEPENDENT_11_CASE_RERUN",
+      "terminal_authority": false
+    },
+    "decontamination_v4": {
+      "branch": "next100-066/decontamination-v4-20260826",
+      "head_sha": "80e8fc9828214ce86e16b5c7f2fdec9107b4df43",
+      "scan_executed": false,
+      "state": "BLOCKED_NO_EXACT_CANDIDATE_CORPUS_IDENTITY"
+    },
+    "en_python_docs_source": {
+      "accepted_chunks": 14,
+      "authority_identity_sha256": "46a00dc70db690ae2b3c4495a75283e7e752bdccb1047d4318c2ebadfa392f0d",
+      "branch": "next100037/python-docs-source-authority-v2-20260826",
+      "family_id": "python.cpython.documentation",
+      "head_sha": "5a6a495a24bce449334cbc5126d0114f61a9f57c",
+      "normalized_bytes": 17901,
+      "terminal_verdict": "ADMIT",
+      "training_use": "ALLOWED"
+    },
+    "optimizer_transfer": {
+      "branch": "train344/20m-optimizer-transfer-contract-20260826",
+      "head_sha": "c0dcdd8ea5b8e974a262bc8f4dacb6589763a608",
+      "learned_20m_comparison_authorized": false,
+      "lr_candidates": [
+        0.00016,
+        0.00022,
+        0.00026
+      ],
+      "state": "PREREGISTERED_MECHANICS_ONLY"
+    },
+    "primary_20m_model": {
+      "branch": "model341/20m-candidate-a-20260826",
+      "head_sha": "e4ff486fd90802fc123bebf60eed4e59196a98df",
+      "long_training_performed": false,
+      "mechanics": {
+        "context_1024": "PASS",
+        "d05_save_load": "PASS",
+        "forward_backward_update": "PASS",
+        "static_kv": "PASS"
+      },
+      "model_spec_sha256": "fbff24d561a2818453554d58ca23fc6ace3303b078f1935a8576c4565bd92441",
+      "parameter_count": 20613440,
+      "qualification": "PASS",
+      "random_init_only": true
+    },
+    "recovery_qualification": {
+      "branch": "checkpoint346/20m-recovery-qualification-20260826",
+      "head_sha": "b252ad8765124bfe9695895058e9e4b90830239b",
+      "state": "SUPERSEDED_BY_D05_CORRUPTION_RETEST_REQUIRED"
+    },
+    "research_corpus_v03": {
+      "authorized_balanced_no_replay_capacity": 0,
+      "branch": "data301/corpus-v03-terminal-build-20260826",
+      "corpus_identity": null,
+      "head_sha": "8820ba1b255f6bb95c7db0531fd846078a1aae01",
+      "shard_identity": null,
+      "state": "TERMINAL_BLOCKED"
+    },
+    "selection_validation_composite": {
+      "branch": "eval303/selection-validation-composite-20260826",
+      "head_sha": "5e5a1de3b594cee5612e63d3d4c2a70499740ac7",
+      "records": {
+        "code": 0,
+        "en": 2,
+        "ua": 8
+      },
+      "state": "NONEMPTY_SELECTION_AUTHORITY"
+    },
+    "source_registry_convergence_candidate": {
+      "branch": "next100-063/canonical-source-registry-convergence-20260826",
+      "candidate_independent_family_count": 10,
+      "candidate_normalized_bytes": 266476,
+      "candidate_source_authority_count": 11,
+      "correction": "V2 removes unsupported full CPython accepted-byte credit and failed exact-head Pydantic/Rich admissions from capacity credit.",
+      "draft": true,
+      "family_minimum_gate": "PASS_PRE_GLOBAL_DEDUP",
+      "head_sha": "7da63b7d85b65b1508ef5c7d73bfa8d56e718c9f",
+      "pre_global_dedup_by_stratum": {
+        "code": {
+          "family_count": 3,
+          "normalized_bytes": 14977
+        },
+        "en": {
+          "family_count": 3,
+          "normalized_bytes": 150643
+        },
+        "uk": {
+          "family_count": 4,
+          "normalized_bytes": 100856
+        }
+      },
+      "registry_identity_sha256": "934933896a4b3b01dd58cd18d13bcc36245913f83412c6b3f697c64dd03e4d4d",
+      "research_corpus_v1_target_gap_normalized_bytes": 19733524,
+      "schema_version": "12-6.next100-063-terminal-source-registry.v2",
+      "source_registry_decision": "CONVERGED_FAIL_CLOSED_TERMINAL_SOURCE_VECTOR_PRE_GLOBAL_DEDUP_NOT_CORPUS_FREEZE",
+      "supersedes_registry_identity_sha256": "77fb69c558df8c59fdae00583c955c62ad088cda98fd16b335eedb26fb2d7526",
+      "terminal_authority": false,
+      "training_authorized_loss_positions": 0
+    },
+    "ua_wikisource_source": {
+      "authority_identity_sha256": "6b443faa7fef777214022028d5fdb356dae0ab1a9b71822b4e16bea8f92cd0d6",
+      "authority_state": "TERMINAL_RIGHTS_AND_IMMUTABLE_SNAPSHOT",
+      "branch": "next100022/data-ua-wikisource-20260826",
+      "family_id": "ua.literature.lesia-ukrainka.na-krylah-pisen.1892-lviv",
+      "head_sha": "84c51e42b6daa51796fd20d793b5ef1ff01cc9d2",
+      "snapshot_bytes": 1479,
+      "training_selection": "BLOCKED_UNTIL_STANDARD_NEAR_MATCH_DECONTAMINATION"
+    }
+  },
+  "authority_refresh": {
+    "checkpoint_audit_refreshed": true,
+    "drive_consulted": true,
+    "main_refreshed": true,
+    "minimum_cutoff_utc": "2026-08-26T19:36:00Z",
+    "source_registry_refreshed": true,
+    "specialist_branches_refreshed": true,
+    "truth_rule": "exact live GitHub authority outranks stale worker cutoff and Drive narrative"
+  },
+  "base_main_sha": "7cba7648ef7f3d6e76fc0c43d848aa52db848ab4",
+  "campaign": {
+    "authorized_unique_optimized_targets": 0,
+    "campaign_runnable_now": false,
+    "decision": "DO_NOT_START_LONG_TRAINING",
+    "long_training_started": false,
+    "requested_optimized_targets": 20000000
+  },
+  "evidence_identity_sha256": "ecb71e0acf7a9c366d2847358d64da62f9af88f27875d915da4e9b5b31394b4a",
+  "execution_profile": "LOCAL_FREE",
+  "gates": {
+    "checkpoint_integrity_20m": "BLOCKED_PENDING_CURRENT_HEAD_GREEN_AND_11_OF_11_RERUN",
+    "checkpoint_recovery_20m": "BLOCKED_D05_CORRUPTION_RETEST_REQUIRED",
+    "code_selection_validation": "BLOCKED",
+    "code_training_family_diversity": "PASS_INCUMBENT_TWO_FAMILIES",
+    "decontamination": "BLOCKED_NO_CANDIDATE_IDENTITY",
+    "en_training_family_diversity": "PASS_PRE_GLOBAL_DEDUP_CANDIDATE",
+    "exact_candidate_corpus_identity": "BLOCKED_NOT_MATERIALIZED",
+    "final_corpus_identity": "BLOCKED",
+    "optimizer_mechanics_20m": "READY_FOR_BOUNDED_LOCAL_FREE_REBIND",
+    "primary_20m_mechanics": "PASS",
+    "real_20m_training": "BLOCKED",
+    "source_registry_convergence": "CANDIDATE_V2_FAIL_CLOSED_266476_BYTES_10_FAMILIES",
+    "ua_training_family_diversity": "PASS_PRE_GLOBAL_DEDUP_CANDIDATE",
+    "unique_no_replay_loss_capacity": "BLOCKED_ZERO"
+  },
+  "long_training_authorized": false,
+  "ordered_next_campaign": [
+    "TERMINALIZE_NEXT100_063_SOURCE_REGISTRY_CONVERGENCE",
+    "MATERIALIZE_EXACT_PRE_DECONTAMINATION_CANDIDATE_RECORD_INVENTORY_AND_IDENTITY",
+    "RUN_STANDARD_EXACT_NEAR_MATCH_EVALUATION_DECONTAMINATION",
+    "RUN_QUALITY_PRIVACY_DEDUP_SPLIT_TWO_CLEAN_BUILDS_AND_UNIQUE_LOSS_LEDGER",
+    "RERUN_NEXT100_075_FULL_11_CASE_CORRUPTION_MATRIX_ON_EXACT_D05_REMEDIATED_PRODUCTION_HEAD",
+    "REQUALIFY_CHECKPOINT346_AND_RUN_BOUNDED_TRAIN344_MECHANICS_ON_MODEL341",
+    "REFRESH_LEARN345_AGAINST_TERMINAL_CORPUS_MODEL_OPTIMIZER_AND_RECOVERY_AUTHORITIES",
+    "REQUEST_EXPLICIT_COMPUTE_AUTHORIZATION_ONLY_AFTER_CAMPAIGN_IS_DATA_READY"
+  ],
+  "paid_compute_used": false,
+  "parallel_local_free_tracks": [
+    "TERMINALIZE_NEXT100_063_AND_MATERIALIZE_EXACT_CANDIDATE_CORPUS_IDENTITY",
+    "WAIT_FOR_PR504_CURRENT_EXACT_HEAD_D05_AND_THEN_RERUN_NEXT100_075_11_CASE_MATRIX",
+    "CONTINUE_TERMINAL_RIGHTS_CLEARED_SOURCE_ACQUISITION_TO_CLOSE_20M_BYTE_GAP",
+    "CONVERGE_REPOSITORY_WIDE_LINT_AND_CI_QUEUE_CONTROL_SEPARATELY_FROM_D05_AUTHORITY"
+  ],
+  "repository": "Oleksii-debug/12-6-ai.",
+  "schema": "12-6.autonomous-20m-readiness-controller.v1",
+  "terminal_decision": {
+    "primary_blocker": "RESEARCH_CORPUS_V1_NOT_TERMINAL_AND_ZERO_AUTHORIZED_UNIQUE_LOSS_CAPACITY",
+    "secondary_blockers": [
+      "SOURCE_REGISTRY_V2_VECTOR_EXISTS_BUT_CORPUS_NOT_YET_MATERIALIZED",
+      "NO_EXACT_CANDIDATE_CORPUS_IDENTITY_FOR_DECONTAMINATION",
+      "D05_REMEDIATION_CURRENT_HEAD_NOT_YET_GREEN",
+      "NEXT100_075_FULL_11_CASE_PRODUCTION_RERUN_NOT_YET_GREEN",
+      "CODE_SELECTION_VALIDATION_REMAINS_ZERO"
+    ],
+    "status": "BLOCK_LONG_TRAINING_CONTINUE_LOCAL_FREE_ENGINEERING"
+  },
+  "training_executed": false,
+  "worker_id": "AUTONOMOUS-20M-READINESS-CONTROLLER-20260826"
+}

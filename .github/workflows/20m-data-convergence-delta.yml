@@ -1,0 +1,39 @@
+name: 20M Data Convergence Delta
+
+on:
+  pull_request:
+    paths:
+      - "configs/control/20m_data_convergence_delta_v1.json"
+      - "tools/validate_20m_data_convergence_delta.py"
+      - ".github/workflows/20m-data-convergence-delta.yml"
+  push:
+    branches:
+      - "coord/20m-readiness-controller-20260826"
+    paths:
+      - "configs/control/20m_data_convergence_delta_v1.json"
+      - "tools/validate_20m_data_convergence_delta.py"
+      - ".github/workflows/20m-data-convergence-delta.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: 20m-data-convergence-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Prove exact checkout
+        run: test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+      - name: Validate live 20M data convergence delta
+        run: python tools/validate_20m_data_convergence_delta.py

@@ -1,0 +1,88 @@
+{
+  "schema": "12-6.20m-data-convergence-delta.v1",
+  "worker_id": "AUTONOMOUS-20M-DATA-CONVERGENCE-20260826",
+  "execution_profile": "LOCAL_FREE",
+  "source_registry_snapshot": {
+    "pr": 538,
+    "branch": "next100-063/canonical-source-registry-convergence-20260826",
+    "pr_head_sha_at_snapshot": "33017f1e344534841b31df5a6e0bfaf5b7cb2bcc",
+    "registry_path": "configs/data/next100_063_terminal_source_registry_v2.json",
+    "registry_blob_sha": "ba25cc1d4e4acca71752408db4fd0437ea1a07ae",
+    "schema_version": "12-6.next100-063-terminal-source-registry.v2",
+    "registry_identity_sha256": "448dd61ed3e0d78d0bca9e202529a79c02811fd67beebe4833373d0c2ab0c0a7",
+    "observed_live_cutoff_utc": "2026-08-26T19:37:00Z",
+    "supersedes_registry_identity_sha256": "77fb69c558df8c59fdae00583c955c62ad088cda98fd16b335eedb26fb2d7526",
+    "replaces_draft_v2_registry_identity_sha256": "934933896a4b3b01dd58cd18d13bcc36245913f83412c6b3f697c64dd03e4d4d",
+    "parent_data287_head_sha": "b0523ccbc4b957615aac849d476cfa851be87578",
+    "parent_registry_identity_sha256": "917e9bc31b2fa040d25e807ae3c01aa2cce32420752a891caacfb6c830e6632c",
+    "state": "NONTERMINAL_POINT_IN_TIME_FAIL_CLOSED_SNAPSHOT",
+    "terminal_authority": false,
+    "snapshot_only": true,
+    "refresh_required_before_downstream_materialization": true,
+    "terminal_addition_count": 7,
+    "candidate_source_authority_count": 12,
+    "candidate_normalized_bytes": 303374,
+    "target_normalized_bytes": 20000000,
+    "target_gap_normalized_bytes": 19696626,
+    "independent_family_count": 11,
+    "family_minimum_gate": "PASS_PRE_GLOBAL_DEDUP",
+    "by_stratum": {
+      "ua": {"normalized_bytes": 100856, "family_count": 4},
+      "en": {"normalized_bytes": 150643, "family_count": 3},
+      "code": {"normalized_bytes": 51875, "family_count": 4}
+    },
+    "zero_credit_corrections": [
+      "CPYTHON_DOCS_NO_EXACT_ELIGIBLE_SUBRECORD_BYTE_LEDGER",
+      "PYDANTIC_DEDICATED_EXACT_HEAD_SOURCE_ADMISSION_NOT_GREEN",
+      "RICH_DEDICATED_EXACT_HEAD_SOURCE_ADMISSION_NOT_GREEN"
+    ]
+  },
+  "record_inventory_gate": {
+    "state": "BLOCKED_UNTIL_SOURCE_REGISTRY_TERMINAL_AND_EXACT_RECORD_INVENTORY_BOUND",
+    "snapshot_parent_registry_identity_sha256": "448dd61ed3e0d78d0bca9e202529a79c02811fd67beebe4833373d0c2ab0c0a7",
+    "must_refresh_source_registry_before_materialization": true,
+    "required_record_fields": [
+      "source_id",
+      "source_family",
+      "stratum",
+      "raw_sha256",
+      "normalized_sha256",
+      "normalized_utf8_bytes",
+      "authority_head_sha",
+      "authority_identity_sha256",
+      "source_rights_training_allowed",
+      "evaluation_reserved"
+    ],
+    "must_cover_every_counted_authority_or_explicitly_defer_with_reason": true,
+    "duplicate_normalized_content_forbidden": true,
+    "training_authorized": false
+  },
+  "decontamination_gate": {
+    "state": "BLOCKED_UNTIL_TERMINAL_EXACT_RECORD_INVENTORY_IDENTITY",
+    "next100_066_scan_executed": false,
+    "exact_and_near_match_required": true,
+    "evaluation_payload_must_remain_reserved": true,
+    "training_authorized": false
+  },
+  "ordered_next_actions": [
+    "TERMINALIZE_OR_REFRESH_NEXT100_063_SOURCE_REGISTRY",
+    "FREEZE_EXACT_RECORD_INVENTORY_BOUND_TO_TERMINAL_NEXT100_063_IDENTITY",
+    "VERIFY_RECORD_INVENTORY_INDEPENDENTLY",
+    "RUN_NEXT100_066_EXACT_NEAR_MATCH_EVALUATION_DECONTAMINATION",
+    "RUN_GLOBAL_CROSS_SOURCE_DEDUP_AND_QUALITY_PRIVACY_REVALIDATION",
+    "RUN_CLUSTER_SAFE_SPLIT_DETERMINISTIC_PACKING_TWO_CLEAN_BUILDS",
+    "COMPUTE_POSTPACK_UNIQUE_NONIGNORED_CAUSAL_LOSS_LEDGER",
+    "REQUALIFY_MODEL341_CHECKPOINT_AND_BOUNDED_TRAINING_MECHANICS",
+    "REQUEST_MATERIAL_COMPUTE_AUTHORIZATION_ONLY_AFTER_ALL_DATA_GATES_PASS"
+  ],
+  "truth_boundary": {
+    "final_corpus_identity": null,
+    "shard_identity": null,
+    "authorized_unique_loss_positions": 0,
+    "long_training_authorized": false,
+    "long_training_executed": false,
+    "paid_compute_authorized": false,
+    "paid_compute_used": false,
+    "learned_20m_claimed": false
+  }
+}
