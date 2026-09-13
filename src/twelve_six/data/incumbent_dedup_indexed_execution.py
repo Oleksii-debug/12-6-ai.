@@ -86,26 +86,17 @@ def _canonical_namespace(module: Any, label: str) -> dict[str, Any]:
     return namespace
 
 
-def _attest_executable_module(module: Any, label: str) -> dict[str, Any]:
-    """Reconstruct exact source and bind all source-defined live function objects to it."""
-    canonical = _canonical_namespace(module, label)
-    for name, expected in canonical.items():
-        if not inspect.isfunction(expected) or expected.__globals__ is not canonical:
-            continue
-        live = getattr(module, name, None)
-        if not inspect.isfunction(live):
-            raise IndexedExecutionError(f"{label} executable closure missing function {name}")
-        if live.__globals__ is not vars(module):
-            raise IndexedExecutionError(f"{label} callable global ownership drift: {name}")
-        if _code_digest(live.__code__) != _code_digest(expected.__code__):
-            raise IndexedExecutionError(f"{label} callable code drift: {name}")
-        if live.__defaults__ != expected.__defaults__ or live.__kwdefaults__ != expected.__kwdefaults__:
-            raise IndexedExecutionError(f"{label} callable default drift: {name}")
-    return canonical
+def _referenced_global_names(code: CodeType) -> set[str]:
+    """Collect runtime global names, including names used by nested code objects."""
+    names = set(code.co_names)
+    for value in code.co_consts:
+        if isinstance(value, CodeType):
+            names.update(_referenced_global_names(value))
+    return names
 
 
 def _semantic_snapshot(value: Any) -> Any:
-    if value is None or type(value) in {bool, int, float, str}:
+    if value is None or type(value) in {bool, int, float, str, bytes}:
         return value
     if isinstance(value, re.Pattern):
         return ("regex", value.pattern, value.flags)
@@ -119,6 +110,66 @@ def _semantic_snapshot(value: Any) -> Any:
     if isinstance(value, (list, tuple)):
         return ("sequence", tuple(_semantic_snapshot(child) for child in value))
     raise IndexedExecutionError(f"unsupported semantic global type: {type(value).__name__}")
+
+
+def _attest_referenced_globals(
+    module: Any,
+    canonical: Mapping[str, Any],
+    label: str,
+    names: Sequence[str],
+) -> None:
+    canonical_module_name = canonical.get("__name__")
+    live_namespace = vars(module)
+    for name in sorted(set(names)):
+        if name not in canonical:
+            continue
+        expected = canonical[name]
+        if inspect.isfunction(expected) and expected.__globals__ is canonical:
+            continue
+        if name not in live_namespace:
+            raise IndexedExecutionError(f"{label} referenced global missing: {name}")
+        live = live_namespace[name]
+        if live is expected:
+            continue
+
+        if (
+            inspect.isclass(expected)
+            and expected.__module__ == canonical_module_name
+            and inspect.isclass(live)
+            and live.__module__ == getattr(module, "__name__", None)
+            and live.__qualname__ == expected.__qualname__
+            and live.__bases__ == expected.__bases__
+        ):
+            continue
+
+        try:
+            live_snapshot = _semantic_snapshot(live)
+            expected_snapshot = _semantic_snapshot(expected)
+        except IndexedExecutionError:
+            raise IndexedExecutionError(f"{label} referenced global drift: {name}") from None
+        if live_snapshot != expected_snapshot:
+            raise IndexedExecutionError(f"{label} referenced global drift: {name}")
+
+
+def _attest_executable_module(module: Any, label: str) -> dict[str, Any]:
+    """Reconstruct source and bind its live executable global closure."""
+    canonical = _canonical_namespace(module, label)
+    referenced_globals: set[str] = set()
+    for name, expected in canonical.items():
+        if not inspect.isfunction(expected) or expected.__globals__ is not canonical:
+            continue
+        live = getattr(module, name, None)
+        if not inspect.isfunction(live):
+            raise IndexedExecutionError(f"{label} executable closure missing function {name}")
+        if live.__globals__ is not vars(module):
+            raise IndexedExecutionError(f"{label} callable global ownership drift: {name}")
+        if _code_digest(live.__code__) != _code_digest(expected.__code__):
+            raise IndexedExecutionError(f"{label} callable code drift: {name}")
+        if live.__defaults__ != expected.__defaults__ or live.__kwdefaults__ != expected.__kwdefaults__:
+            raise IndexedExecutionError(f"{label} callable default drift: {name}")
+        referenced_globals.update(_referenced_global_names(expected.__code__))
+    _attest_referenced_globals(module, canonical, label, tuple(referenced_globals))
+    return canonical
 
 
 def _attest_globals(module: Any, canonical: Mapping[str, Any], label: str, names: Sequence[str]) -> None:

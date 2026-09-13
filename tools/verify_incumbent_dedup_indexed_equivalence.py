@@ -17,6 +17,7 @@ except ImportError:  # pragma: no cover - non-POSIX local verifier fallback
 from twelve_six.data.incumbent_dedup_indexed_execution import (
     DEFAULT_MAX_INDEX_POSTINGS,
     DEFAULT_MAX_PAIR_EXPANSIONS,
+    attest_incumbent_runtime,
     audit_payloads_indexed,
     candidate_pair_indices_with_stats,
     execution_stats,
@@ -46,6 +47,7 @@ def main() -> int:
     args = parser.parse_args()
 
     v3 = importlib.import_module(args.v3_module)
+    attest_incumbent_runtime(v3)
     inventory = _json(args.inventory)
     mapping = _json(args.payload_map)
     if not isinstance(mapping, dict) or not all(
