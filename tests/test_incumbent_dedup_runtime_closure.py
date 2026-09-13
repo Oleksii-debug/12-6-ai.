@@ -29,30 +29,38 @@ def _load_source_module(tmp_path: Path, name: str, source: str) -> ModuleType:
     (
         (
             "DATA232",
-            "import re\nimport unicodedata\n"
-            "def normalize(value):\n"
-            "    return re.sub(r'\\\\s+', ' ', unicodedata.normalize('NFKC', value))\n",
+            (
+                "import re\nimport unicodedata\n"
+                "def normalize(value):\n"
+                "    return re.sub(r'\\\\s+', ' ', unicodedata.normalize('NFKC', value))\n"
+            ),
             "unicodedata",
         ),
         (
             "DATA232",
-            "import re\nimport unicodedata\n"
-            "def normalize(value):\n"
-            "    return re.sub(r'\\\\s+', ' ', unicodedata.normalize('NFKC', value))\n",
+            (
+                "import re\nimport unicodedata\n"
+                "def normalize(value):\n"
+                "    return re.sub(r'\\\\s+', ' ', unicodedata.normalize('NFKC', value))\n"
+            ),
             "re",
         ),
         (
             "V1",
-            "import hashlib\n"
-            "def digest(value):\n"
-            "    return hashlib.sha256(value).hexdigest()\n",
+            (
+                "import hashlib\n"
+                "def digest(value):\n"
+                "    return hashlib.sha256(value).hexdigest()\n"
+            ),
             "hashlib",
         ),
         (
             "V3",
-            "import html\n"
-            "def normalize(value):\n"
-            "    return html.unescape(value)\n",
+            (
+                "import html\n"
+                "def normalize(value):\n"
+                "    return html.unescape(value)\n"
+            ),
             "html",
         ),
     ),
