@@ -1,0 +1,68 @@
+{
+  "acquisition_a_exit": 2,
+  "acquisition_b_exit": 2,
+  "authorized_optimized_target_exposure": 0,
+  "candidate_a": {
+    "bytes": 0,
+    "exists": false,
+    "sha256": null
+  },
+  "candidate_b": {
+    "bytes": 0,
+    "exists": false,
+    "sha256": null
+  },
+  "candidate_byte_identical": false,
+  "candidate_payload_sha256": null,
+  "claim_issue": 1168,
+  "executed_product_head": "3336634973c454ecd05b6db939d1b9c9db896820",
+  "execution_profile": "LOCAL_FREE_GITHUB_HOSTED_PUBLIC_REPO",
+  "expected_source_bytes": 6760466,
+  "expected_source_sha256": "286b801bc826f161efad892af5529b201f91f42c5a932e3962d74d24037fe087",
+  "final_test_accessed": false,
+  "foreign_pretrained_weights": false,
+  "github_run_attempt": 1,
+  "github_run_id": 34559753022,
+  "learned_weights_created": false,
+  "paid_compute_used": false,
+  "pr": 1174,
+  "python_version": "3.11.16",
+  "real_data_executed": false,
+  "report_byte_identical": false,
+  "report_file_a": {
+    "bytes": 0,
+    "exists": false,
+    "sha256": null
+  },
+  "report_file_b": {
+    "bytes": 0,
+    "exists": false,
+    "sha256": null
+  },
+  "report_truth_ok": false,
+  "retained_normalized_bytes": 0,
+  "retained_records": 0,
+  "runner_os": "Linux",
+  "scanned_records": 0,
+  "schema_version": "12-6.d03-common-pile-foodista-real-execution.v1",
+  "selection_reasons": {},
+  "source_a": {
+    "bytes": 6760466,
+    "exists": true,
+    "sha256": "286b801bc826f161efad892af5529b201f91f42c5a932e3962d74d24037fe087"
+  },
+  "source_b": {
+    "bytes": 6760466,
+    "exists": true,
+    "sha256": "286b801bc826f161efad892af5529b201f91f42c5a932e3962d74d24037fe087"
+  },
+  "source_byte_identical": true,
+  "source_file": "v0/documents/00000_foodista.jsonl.gz",
+  "source_identity_ok": true,
+  "source_revision": "04d1b7a6562c6d6459426d2a3b88184b8a98f7b6",
+  "status": "BLOCKED_OR_FAILED_REAL_EXECUTION",
+  "stderr_a": "ERROR: metadata field drift\n",
+  "stderr_b": "ERROR: metadata field drift\n",
+  "training_authorized_bytes": 0,
+  "training_executed": false
+}
