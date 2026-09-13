@@ -333,7 +333,7 @@ def _verify_storage(repo: Path, request: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _verify_corpus(repo: Path, request: dict[str, Any]) -> dict[str, str]:
+def _verify_corpus(repo: Path, request: dict[str, Any]) -> dict[str, Any]:
     corpus = request.get("corpus")
     if not isinstance(corpus, dict):
         raise LaunchGateError("corpus must be an object")
@@ -344,11 +344,137 @@ def _verify_corpus(repo: Path, request: dict[str, Any]) -> dict[str, str]:
     expected = corpus.get("expected_identity_sha256")
     if not isinstance(actual, str) or actual != expected:
         raise LaunchGateError("corpus identity mismatch")
-    return {
+
+    result: dict[str, Any] = {
         "manifest_path": _relative(repo, manifest_path),
         "manifest_file_sha256": _hash_file(manifest_path),
         "identity_key": identity_key,
         "identity_sha256": actual,
+    }
+    by_split = manifest.get("by_split")
+    if isinstance(by_split, dict):
+        train = by_split.get("train")
+        if isinstance(train, dict) and "byte_tokens" in train:
+            train_byte_tokens = train["byte_tokens"]
+            if (
+                isinstance(train_byte_tokens, bool)
+                or not isinstance(train_byte_tokens, int)
+                or train_byte_tokens < 0
+            ):
+                raise LaunchGateError("corpus train byte token count is invalid")
+            result["train_byte_tokens"] = train_byte_tokens
+
+    if "external_training_eligible_sources" in manifest:
+        external_sources = manifest["external_training_eligible_sources"]
+        if (
+            isinstance(external_sources, bool)
+            or not isinstance(external_sources, int)
+            or external_sources < 0
+        ):
+            raise LaunchGateError("corpus external training source count is invalid")
+        result["external_training_eligible_sources"] = external_sources
+    return result
+
+
+def _verify_training_scale(
+    request: dict[str, Any], corpus: dict[str, Any], budget: dict[str, int]
+) -> dict[str, Any]:
+    """Separate mechanics runs from capability training before expensive compute."""
+    intent = request.get("training_intent")
+    if intent not in {"mechanics", "capability"}:
+        raise LaunchGateError("training_intent must be explicitly mechanics or capability")
+    if intent == "mechanics":
+        return {
+            "intent": "mechanics",
+            "capability_scale_checks": False,
+        }
+
+    policy = request.get("training_scale")
+    if not isinstance(policy, dict):
+        raise LaunchGateError("capability training requires training_scale policy")
+
+    parameter_count = request.get("parameter_count")
+    if (
+        isinstance(parameter_count, bool)
+        or not isinstance(parameter_count, int)
+        or parameter_count <= 0
+    ):
+        raise LaunchGateError("capability training requires positive parameter_count")
+
+    unique_ratio = policy.get("minimum_unique_train_tokens_per_parameter")
+    if (
+        isinstance(unique_ratio, bool)
+        or not isinstance(unique_ratio, int)
+        or unique_ratio <= 0
+    ):
+        raise LaunchGateError(
+            "minimum_unique_train_tokens_per_parameter must be a positive integer"
+        )
+    optimized_ratio = policy.get(
+        "minimum_optimized_tokens_per_parameter", unique_ratio
+    )
+    if (
+        isinstance(optimized_ratio, bool)
+        or not isinstance(optimized_ratio, int)
+        or optimized_ratio <= 0
+    ):
+        raise LaunchGateError(
+            "minimum_optimized_tokens_per_parameter must be a positive integer"
+        )
+
+    available_unique_tokens = corpus.get("train_byte_tokens")
+    if (
+        isinstance(available_unique_tokens, bool)
+        or not isinstance(available_unique_tokens, int)
+        or available_unique_tokens <= 0
+    ):
+        raise LaunchGateError(
+            "capability training requires corpus by_split.train.byte_tokens accounting"
+        )
+    target_optimized_tokens = budget.get("target_optimized_tokens")
+    if target_optimized_tokens is None:
+        raise LaunchGateError(
+            "capability training requires explicit target_optimized_tokens budget"
+        )
+
+    required_unique_tokens = parameter_count * unique_ratio
+    required_optimized_tokens = parameter_count * optimized_ratio
+    if available_unique_tokens < required_unique_tokens:
+        raise LaunchGateError(
+            "capability corpus below unique token floor: "
+            f"{available_unique_tokens} < {required_unique_tokens}"
+        )
+    if target_optimized_tokens < required_optimized_tokens:
+        raise LaunchGateError(
+            "capability optimized-token budget below floor: "
+            f"{target_optimized_tokens} < {required_optimized_tokens}"
+        )
+
+    require_external = policy.get("require_external_training_sources", False)
+    if not isinstance(require_external, bool):
+        raise LaunchGateError("require_external_training_sources must be boolean")
+    external_sources = corpus.get("external_training_eligible_sources")
+    if require_external and (
+        isinstance(external_sources, bool)
+        or not isinstance(external_sources, int)
+        or external_sources < 1
+    ):
+        raise LaunchGateError(
+            "capability training requires at least one eligible external training source"
+        )
+
+    return {
+        "intent": "capability",
+        "capability_scale_checks": True,
+        "parameter_count": parameter_count,
+        "minimum_unique_train_tokens_per_parameter": unique_ratio,
+        "minimum_optimized_tokens_per_parameter": optimized_ratio,
+        "required_unique_train_tokens": required_unique_tokens,
+        "available_unique_train_tokens": available_unique_tokens,
+        "required_optimized_tokens": required_optimized_tokens,
+        "target_optimized_tokens": target_optimized_tokens,
+        "require_external_training_sources": require_external,
+        "external_training_eligible_sources": external_sources,
     }
 
 
@@ -443,6 +569,7 @@ def create_launch_envelope(repo: Path, request_path: Path, output_path: Path) ->
     budget = _verify_budget(request)
     storage = _verify_storage(repo, request)
     corpus = _verify_corpus(repo, request)
+    training_scale = _verify_training_scale(request, corpus, budget)
     model, tokenizer, imports = _verify_project_contracts(request)
     gpu = _verify_gpu_if_required(request)
 
@@ -464,6 +591,7 @@ def create_launch_envelope(repo: Path, request_path: Path, output_path: Path) ->
             "budget": budget,
             "storage": storage,
             "corpus": corpus,
+            "training_scale": training_scale,
             "model": model,
             "tokenizer": tokenizer,
             "critical_imports": imports,
@@ -477,6 +605,7 @@ def create_launch_envelope(repo: Path, request_path: Path, output_path: Path) ->
             "run_budget",
             "disk_and_checkpoint_writability",
             "corpus_identity",
+            "training_intent_and_scale",
             "critical_imports_modelspec_tokenizer",
             "gpu_if_required",
         ],
