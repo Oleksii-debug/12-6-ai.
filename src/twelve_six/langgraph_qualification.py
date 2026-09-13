@@ -134,7 +134,13 @@ def environment_snapshot() -> dict[str, Any]:
     commands = {}
     for name in ("python", "pip", "uv", "poetry", "pdm", "conda", "git", "nvidia-smi"):
         try:
-            completed = subprocess.run([name, "--version"], capture_output=True, text=True, timeout=5)
+            completed = subprocess.run(
+                [name, "--version"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                check=False,
+            )
             commands[name] = {"available": completed.returncode == 0, "version": (completed.stdout or completed.stderr).strip()}
         except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
             commands[name] = {"available": False, "version": str(exc)}
@@ -143,16 +149,16 @@ def environment_snapshot() -> dict[str, Any]:
         try:
             module = __import__(package)
             packages[package] = getattr(module, "__version__", "unknown")
-        except Exception:
+        except Exception:  # noqa: BLE001 -- environment inventory must not abort on a broken optional import.
             packages[package] = None
     return {"python": sys.version, "platform": platform.platform(), "machine": platform.machine(), "processor": platform.processor(), "commands": commands, "packages": packages}
 
 
 def run_real_langgraph_probe() -> dict[str, Any]:
     try:
-        from typing_extensions import TypedDict
         from langgraph.graph import END, START, StateGraph
-    except Exception as exc:
+        from typing_extensions import TypedDict
+    except Exception as exc:  # noqa: BLE001 -- optional runtime import failure is evidence, not a verifier crash.
         return {"executed": False, "status": "NOT_EXECUTED", "reason": "LANGGRAPH_IMPORT_UNAVAILABLE", "error": repr(exc)}
 
     class State(TypedDict):
