@@ -1,0 +1,29 @@
+{
+  "dataset_id": "s0-tiny-controlled-v1",
+  "schema_version": 1,
+  "sources": [
+    {
+      "content_sha256": "72d6eca189a9cab43ae15d9daeba4da1c0d023310f6ca54f27cda9dff08c22bf",
+      "languages": [
+        "en",
+        "uk"
+      ],
+      "license": {
+        "note": "Purpose-written project fixture; no external source license-clean claim is made.",
+        "spdx": "NOASSERTION",
+        "status": "PROJECT_FIXTURE_NO_EXTERNAL_LICENSE_ASSERTION"
+      },
+      "provenance": {
+        "benchmark_material": false,
+        "created_for": "12-6 AI S0 deterministic factory validation",
+        "external_source": false,
+        "origin_type": "project_authored_fixture",
+        "synthetic": true,
+        "synthetic_kind": "purpose_written_training_factory_fixture"
+      },
+      "purpose": "pretraining_factory_smoke",
+      "raw_path": "raw/project_authored.jsonl",
+      "source_id": "project-authored-s0-fixture-v1"
+    }
+  ]
+}

@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
 import re
 import shutil
 import stat
@@ -154,23 +153,39 @@ def validate_config(config: dict[str, Any]) -> None:
 def verify_parent_report(report: dict[str, Any]) -> list[dict[str, Any]]:
     require(report.get("schema_version") == PARENT_REPORT_SCHEMA, "parent report schema mismatch")
     require(report.get("dataset_head_sha") == DATASET_HEAD, "parent dataset head mismatch")
-    require(report.get("parent_probe_head_sha") == "92c1fd05d4399b0f0c4a35f0689160383f963c9c", "probe head drift")
-    require(report.get("state") == "EXACT_ARCHIVE_AND_MEMBER_INVENTORY_MATERIALIZED_CLASSIFICATION_NOT_RUN", "parent state drift")
+    require(
+        report.get("parent_probe_head_sha") == "92c1fd05d4399b0f0c4a35f0689160383f963c9c",
+        "probe head drift",
+    )
+    require(
+        report.get("state")
+        == "EXACT_ARCHIVE_AND_MEMBER_INVENTORY_MATERIALIZED_CLASSIFICATION_NOT_RUN",
+        "parent state drift",
+    )
 
     archive = report.get("archive")
     require(isinstance(archive, dict), "parent archive block missing")
     require(archive.get("path") == PRIMARY_ARCHIVE, "parent archive filename mismatch")
     require(archive.get("sha256") == PINNED_SHA256, "parent archive SHA-256 mismatch")
     require(archive.get("upstream_object_identity") == PINNED_XET, "parent Xet mismatch")
-    require(isinstance(archive.get("size_bytes"), int) and archive["size_bytes"] > 0, "parent archive size invalid")
+    require(
+        isinstance(archive.get("size_bytes"), int) and archive["size_bytes"] > 0,
+        "parent archive size invalid",
+    )
 
     require(report.get("training_authorized_bytes") == 0, "parent training credit must remain zero")
-    require(report.get("training_exposure_authorized") is False, "parent exposure boundary weakened")
+    require(
+        report.get("training_exposure_authorized") is False,
+        "parent exposure boundary weakened",
+    )
     require(report.get("tokenizer_fit_authorized") is False, "parent tokenizer boundary weakened")
     require(report.get("model_training_executed") is False, "parent model boundary weakened")
     require(report.get("optimizer_updates") == 0, "parent optimizer boundary weakened")
     require(report.get("paid_compute_used") is False, "parent compute boundary weakened")
-    require(report.get("member_payload_classification") == "NOT_RUN_SUCCESSOR_REQUIRED", "parent already classified")
+    require(
+        report.get("member_payload_classification") == "NOT_RUN_SUCCESSOR_REQUIRED",
+        "parent already classified",
+    )
 
     members = report.get("members")
     require(isinstance(members, list) and members, "parent member vector missing")
@@ -187,8 +202,14 @@ def verify_parent_report(report: dict[str, Any]) -> list[dict[str, Any]]:
         seen.add(path)
         size = raw.get("size_bytes")
         digest = raw.get("sha256")
-        require(isinstance(size, int) and not isinstance(size, bool) and size >= 0, f"invalid member size: {path}")
-        require(isinstance(digest, str) and HEX64.fullmatch(digest), f"invalid member hash: {path}")
+        require(
+            isinstance(size, int) and not isinstance(size, bool) and size >= 0,
+            f"invalid member size: {path}",
+        )
+        require(
+            isinstance(digest, str) and HEX64.fullmatch(digest),
+            f"invalid member hash: {path}",
+        )
         files.append({"path": path, "size_bytes": size, "sha256": digest})
         total += size
     require(report.get("uncompressed_bytes_observed") == total, "parent byte total mismatch")
@@ -202,11 +223,17 @@ def verify_parent_report(report: dict[str, Any]) -> list[dict[str, Any]]:
         "members": files,
     }
     expected_inventory_id = inventory.sha256_bytes(inventory.canonical_json(payload))
-    require(report.get("inventory_identity_sha256") == expected_inventory_id, "parent inventory identity mismatch")
+    require(
+        report.get("inventory_identity_sha256") == expected_inventory_id,
+        "parent inventory identity mismatch",
+    )
 
     stable = dict(report)
     extractor = report.get("extractor")
-    require(isinstance(extractor, dict) and isinstance(extractor.get("name"), str), "parent extractor missing")
+    require(
+        isinstance(extractor, dict) and isinstance(extractor.get("name"), str),
+        "parent extractor missing",
+    )
     stable["extractor"] = {"name": extractor["name"]}
     expected_report_id = inventory.sha256_bytes(inventory.canonical_json(stable))
     claimed = report.get("report_identity_sha256")
@@ -262,11 +289,19 @@ def classify_content(path: str, data: bytes, policy: dict[str, Any]) -> dict[str
         return {"class": "UNDECODABLE_TEXT_HOLD", "encoding": None, "metrics": None}
     stripped = text.strip()
     if not stripped and policy["plain_text_requires_nonempty"]:
-        return {"class": "EMPTY_TEXT_HOLD", "encoding": encoding, "metrics": {"characters": len(text)}}
+        return {
+            "class": "EMPTY_TEXT_HOLD",
+            "encoding": encoding,
+            "metrics": {"characters": len(text)},
+        }
     prefix = stripped[:256].lower()
     if any(prefix.startswith(item) for item in policy["markup_prefixes"]):
         return {"class": "MARKUP_ANNOTATION_HOLD", "encoding": encoding, "metrics": None}
-    if looks_like_conllu(text, int(policy["conllu_min_noncomment_rows"]), int(policy["conllu_required_columns"])):
+    if looks_like_conllu(
+        text,
+        int(policy["conllu_min_noncomment_rows"]),
+        int(policy["conllu_required_columns"]),
+    ):
         return {"class": "DERIVED_UD_HOLD", "encoding": encoding, "metrics": None}
 
     lines = text.splitlines()
@@ -311,7 +346,9 @@ def extract_verify_classify(
             timeout=3600,
         )
         if proc.returncode != 0:
-            raise ClassificationError(f"7z extraction failed rc={proc.returncode}: {proc.stderr[-500:]}")
+            raise ClassificationError(
+                f"7z extraction failed rc={proc.returncode}: {proc.stderr[-500:]}"
+            )
 
         actual: dict[str, Path] = {}
         for path in sorted(root.rglob("*"), key=lambda item: item.relative_to(root).as_posix()):
@@ -359,8 +396,14 @@ def build_report(
     validate_config(config)
     files = verify_parent_report(parent_report)
     require(archive.name == PRIMARY_ARCHIVE, "archive filename mismatch")
-    require(not archive.is_symlink() and archive.is_file(), "archive must be a regular non-symlink file")
-    require(archive.stat().st_size == parent_report["archive"]["size_bytes"], "archive byte-count drift")
+    require(
+        not archive.is_symlink() and archive.is_file(),
+        "archive must be a regular non-symlink file",
+    )
+    require(
+        archive.stat().st_size == parent_report["archive"]["size_bytes"],
+        "archive byte-count drift",
+    )
     require(inventory.sha256_file(archive) == PINNED_SHA256, "archive SHA-256 drift")
 
     members = extract_verify_classify(archive, files, config["classification_policy"], executable)
@@ -405,11 +448,15 @@ def build_report(
             "class_counts": dict(sorted(class_counts.items())),
             "class_bytes": dict(sorted(class_bytes.items())),
             "plain_text_candidate_member_count": len(candidates),
-            "plain_text_candidate_bytes_before_exact_duplicate_collapse": sum(item["bytes"] for item in candidates),
+            "plain_text_candidate_bytes_before_exact_duplicate_collapse": sum(
+                item["bytes"] for item in candidates
+            ),
             "plain_text_candidate_bytes_after_exact_duplicate_collapse": unique_exact_bytes,
             "exact_duplicate_group_count": len(duplicate_groups),
             "exact_duplicate_groups": duplicate_groups,
-            "candidate_path_year_hint_counts": {str(year): count for year, count in sorted(year_counts.items())},
+            "candidate_path_year_hint_counts": {
+                str(year): count for year, count in sorted(year_counts.items())
+            },
             "members": members,
         },
         "interpretation": {
@@ -435,7 +482,9 @@ def build_report(
             "optimizer_updates": 0,
             "paid_compute_used": False,
             "research_corpus_v1_released": False,
-            "safe_result": "MEMBERS_CLASSIFIED_PLAIN_TEXT_CANDIDATES_REQUIRE_PROVENANCE_QUALITY_AND_LINEAGE_DEDUP",
+            "safe_result": (
+                "MEMBERS_CLASSIFIED_PLAIN_TEXT_CANDIDATES_REQUIRE_PROVENANCE_QUALITY_AND_LINEAGE_DEDUP"
+            ),
         },
         "raw_member_text_emitted": False,
     }
@@ -463,9 +512,15 @@ def verify_report(report: dict[str, Any]) -> None:
         require("text" not in item and "preview" not in item, "forbidden member text field")
     boundary = report.get("claim_boundary")
     require(isinstance(boundary, dict), "report claim boundary missing")
-    require(boundary.get("plain_text_member_classification_complete") is True, "classification not terminal")
+    require(
+        boundary.get("plain_text_member_classification_complete") is True,
+        "classification not terminal",
+    )
     require(boundary.get("training_authorized_bytes") == 0, "report granted training bytes")
-    require(boundary.get("unique_causal_loss_positions_authorized") == 0, "report granted loss positions")
+    require(
+        boundary.get("unique_causal_loss_positions_authorized") == 0,
+        "report granted loss positions",
+    )
     require(boundary.get("tokenizer_fit_authorized") is False, "report granted tokenizer fit")
     require(boundary.get("model_training_executed") is False, "report claimed training")
     require(boundary.get("optimizer_updates") == 0, "report claimed optimizer updates")
@@ -478,7 +533,11 @@ def main() -> int:
     run = sub.add_parser("run")
     run.add_argument("archive", type=Path)
     run.add_argument("--parent-report", type=Path, required=True)
-    run.add_argument("--config", type=Path, default=Path("configs/data/d03_rada_trees_member_classification_v1.json"))
+    run.add_argument(
+        "--config",
+        type=Path,
+        default=Path("configs/data/d03_rada_trees_member_classification_v1.json"),
+    )
     run.add_argument("--seven-zip", default="7z")
     run.add_argument("--output", type=Path, required=True)
     verify = sub.add_parser("verify")
@@ -497,7 +556,10 @@ def main() -> int:
         )
         verify_report(report)
         args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        args.output.write_text(
+            json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
         print(report["claim_boundary"]["safe_result"])
         print("REPORT_SHA256=" + report["report_sha256"])
         print("TRAINING_AUTHORIZED_BYTES=0")

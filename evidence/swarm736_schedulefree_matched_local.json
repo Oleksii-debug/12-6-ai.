@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "worker": "SWARM-736",
+  "swarm_lane_key": "D02|SCHEDULE-FREE|OPTIMIZER-EXPERIMENT|ADAMW-MATCHED",
+  "status": "LOCAL_SOURCE_LEVEL_PASS_UPSTREAM_NUMERIC_NOT_RUN",
+  "product_parent_sha": "e4ff486fd90802fc123bebf60eed4e59196a98df",
+  "observed_control_plane_main_sha": "5020afd671a3885c1b738c8b4eafe7525f630546",
+  "branch": "swarm736/schedulefree-matched-optimizer-20260827",
+  "upstream": {
+    "package": "schedulefree",
+    "package_version": "1.4.1",
+    "source_repo": "facebookresearch/schedule_free",
+    "source_commit": "70785b53e778d0e872c0bbb75ff4ee54ee10c291",
+    "license": "Apache-2.0",
+    "optimizer_class_export_verified_from_source": true,
+    "upstream_numeric_execution_performed": false,
+    "reason_not_run": "schedulefree package is not installed in the local execution runtime"
+  },
+  "environment": {
+    "python": "3.13.5",
+    "torch": "2.10.0+cpu",
+    "schedulefree_installed": false,
+    "ruff_available": false,
+    "gpu_used": false,
+    "paid_compute_used": false
+  },
+  "validation": {
+    "python_compile": {
+      "status": "PASS",
+      "scope": [
+        "src/twelve_six/training/schedulefree.py",
+        "tools/validate_schedulefree_matched_experiment.py",
+        "tests/test_schedulefree_optimizer.py"
+      ],
+      "limitation": "compile runtime is Python 3.13.5, while the project declares Python 3.11"
+    },
+    "matched_contract_validator": {
+      "status": "PASS",
+      "experiment_identity_sha256": "a947b79552d7c864a6e7e9d27e8620e7fb26f8bbfcef3efab18cfd6bb4ab7d91"
+    },
+    "focused_cpu_harness": {
+      "status": "PASS",
+      "pytest": "10 passed",
+      "tests": 10,
+      "test_double": true,
+      "scope": "mode-faithful Schedule-Free optimizer double plus a minimal Trainer API harness",
+      "proves": [
+        "missing dependency fails closed",
+        "wrong dependency version fails closed",
+        "matched scheduler and warmup restrictions fail closed",
+        "candidate-only optimizer knobs are frozen",
+        "optimizer train mode precedes optimizer step",
+        "checkpoint state is emitted in optimizer eval mode",
+        "exact optimizer provenance binding is serialized",
+        "fresh-object resume produces the same next update in the harness",
+        "malformed train-mode checkpoint state is rejected before load",
+        "wrong binding and plain-Trainer cross-load are rejected"
+      ],
+      "does_not_prove": [
+        "upstream Schedule-Free numerical equivalence",
+        "full Product repository integration under Python 3.11",
+        "GPU behavior",
+        "learned-model quality",
+        "optimizer superiority"
+      ]
+    },
+    "ruff": {
+      "status": "NOT_RUN",
+      "reason": "ruff executable unavailable in local runtime"
+    }
+  },
+  "scientific_truth": {
+    "learned_training_performed": false,
+    "long_training_performed": false,
+    "stage_promotion_claimed": false,
+    "optimizer_winner_claimed": false,
+    "conclusion": "candidate integration mechanics are locally source-level qualified; real-package and exact-repository CI evidence remains pending"
+  }
+}

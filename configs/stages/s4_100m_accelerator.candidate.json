@@ -1,0 +1,57 @@
+{
+  "stage": "S4",
+  "candidate_id": "S4-SCALE04-BYTE-MHA-v1",
+  "target_parameters": 100000000,
+  "expected_parameters": 99897600,
+  "canonical_base": "random_init",
+  "status": "engineering_candidate_not_frozen",
+  "promotion_allowed": false,
+  "requires_preceding_stage_pass": true,
+  "selection_basis": "Current exact Product tokenizer is s0-byte-v1 vocab 256. MHA avoids the current GQA implementation's explicit K/V head expansion before SDPA. Width/head geometry remains 768/12x64; depth 13 and SwiGLU d_ff 2304 restore a balanced ~100M block budget under the much smaller current vocabulary.",
+  "tokenizer_contract": {
+    "version": "s0-byte-v1",
+    "vocab_size": 256,
+    "config_sha256": "b04055c1061dd641dcab7cb9d62a931f09b8d1a070140a926ceb4e91d73ca8e1",
+    "vocab_sha256": "905ed40bb42cc4d550e228ff5f24158d504b38e8ed5974dfa3077bd5867ad571"
+  },
+  "runtime_contract": {
+    "preferred_precision": "bf16",
+    "parallelism": "single_gpu",
+    "fsdp_required": false,
+    "torch_compile_required": false,
+    "attention": "sdpa_mha",
+    "context_tokens": 4096
+  },
+  "expected_model_identity_sha256": "6103d0d457e25206c11871f09aef1f2e23860329c060379c9f956b3851740170",
+  "expected_init_identity_sha256": "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5",
+  "model": {
+    "schema_version": 1,
+    "vocab_size": 256,
+    "max_seq_len": 4096,
+    "d_model": 768,
+    "n_layers": 13,
+    "n_heads": 12,
+    "n_kv_heads": 12,
+    "head_dim": 64,
+    "d_ff": 2304,
+    "activation": "swiglu",
+    "norm_kind": "rmsnorm",
+    "norm_placement": "pre",
+    "norm_eps": 1e-05,
+    "position_embedding": "rope",
+    "rope_theta": 10000.0,
+    "rope_rotary_dim": 64,
+    "attention_bias": false,
+    "mlp_bias": false,
+    "attention_dropout": 0.0,
+    "final_norm": true,
+    "tie_word_embeddings": true,
+    "lm_head_bias": false
+  },
+  "init": {
+    "schema_version": 1,
+    "family": "normal",
+    "std": 0.02,
+    "residual_branch_scale": "sqrt_2_layers"
+  }
+}

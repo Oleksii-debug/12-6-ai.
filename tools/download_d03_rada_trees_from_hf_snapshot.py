@@ -17,8 +17,9 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, BinaryIO, Mapping
+from typing import Any, BinaryIO
 
 TOOLS = Path(__file__).resolve().parent
 sys.path.insert(0, str(TOOLS))

@@ -1,0 +1,26 @@
+{
+  "schema": "12-6.data232-decontamination-config.v2",
+  "worker_id": "DATA-232-DECONTAMINATION-AUTHORITY-V2",
+  "training_corpus_identity": "REQUIRED_TERMINAL_DATA230_IDENTITY",
+  "selection_validation_identity": "REQUIRED_IMMUTABLE_DATA230_SELECTION_VALIDATION_IDENTITY",
+  "final_test_identity": "DERIVE_FROM_RESERVED_AUTHORITIES_BEFORE_SCAN",
+  "quarantine_cross_source_families": true,
+  "thresholds": {
+    "natural_shingle_tokens": 3,
+    "natural_near_jaccard": 0.8,
+    "natural_fragment_containment": 0.88,
+    "natural_fragment_min_tokens": 18,
+    "code_shingle_tokens": 7,
+    "code_near_jaccard": 0.86,
+    "code_fragment_containment": 0.9,
+    "code_fragment_min_tokens": 16,
+    "code_copy_jaccard": 0.82,
+    "code_copy_min_tokens": 16
+  },
+  "policy": {
+    "cluster": "exclude every training node connected to any reserved evaluation record",
+    "cross_source_family": "quarantine implicated training source family for mirror/copy evidence",
+    "outcome_isolation": "reject evaluation metadata containing score/result/metric/loss/BPB/accuracy/perplexity/margin/outcome fields",
+    "public_evidence": "hash-only"
+  }
+}

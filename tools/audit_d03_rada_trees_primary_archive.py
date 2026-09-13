@@ -41,7 +41,7 @@ def normalize_member_path(raw: str) -> str:
     if not raw or "\x00" in raw:
         raise AuditError("empty/NUL archive member path")
     replaced = raw.replace("\\", "/")
-    if replaced.startswith("/") or replaced.startswith("//"):
+    if replaced.startswith("/"):
         raise AuditError(f"absolute archive member path: {raw!r}")
     if len(replaced) >= 2 and replaced[1] == ":" and replaced[0].isalpha():
         raise AuditError(f"drive-qualified archive member path: {raw!r}")

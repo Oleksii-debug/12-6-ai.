@@ -17,8 +17,9 @@ import stat
 import subprocess
 import tempfile
 import unicodedata
+from collections.abc import Iterable
 from pathlib import Path, PurePosixPath
-from typing import Any, Iterable
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = ROOT / "configs/data/d03_rada_trees_archive_inventory_v1.json"

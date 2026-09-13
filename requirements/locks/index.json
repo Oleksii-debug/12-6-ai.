@@ -1,0 +1,18 @@
+{
+  "index_sha256": "977dc42d00d03e766c34edc8467aaa7d462e32e6bbafdab1bdc89a02388f47fa",
+  "profiles": {
+    "linux-aarch64": {
+      "manifest_sha256": "ac9d64d117e86bf1911f421fa0d793f98f1d6e4887a8a06bef3ac46309e57165",
+      "path": "requirements/locks/linux-aarch64/profile.json",
+      "sha256": "94bdce4e46ac040fca72d22bd55cff4ef7f7678eb4cc1679fcda2019ecf01030"
+    },
+    "linux-x86_64": {
+      "manifest_sha256": "d2f4864500743922965ccd2ec1df51aa599f7c657129e55c5d184cddc7c14a0b",
+      "path": "requirements/locks/linux-x86_64/profile.json",
+      "sha256": "94c8ae86932e894bbf5f39960ae32da0e2e4358935d098fce5937f096b8d74ba"
+    }
+  },
+  "project": "twelve-six-ai",
+  "python_version": "3.11.16",
+  "schema_version": "12-6.dependency-lock-index.v1"
+}

@@ -1,0 +1,67 @@
+{
+  "schema": "12-6.ci156-actions-fanout-queue-control.v1",
+  "repository": "Oleksii-debug/12-6-ai.",
+  "baseline": {
+    "representative_sha": "c6e8ac2784920cb96b9b34d26cd68cf9468bd5f0",
+    "observed_pull_request_workflow_count": 8,
+    "workflows": [
+      {"name": "MILESTONE-150 Learned Base Ladder V1", "run_id": 32902234495, "conclusion": "failure", "runner_seconds": 136, "classification": "retained_research_evidence"},
+      {"name": "CI", "run_id": 32902234471, "conclusion": "failure", "runner_seconds": 211, "jobs": {"locked_x86_64": 81, "locked_arm64": 130}, "classification": "integration_spine"},
+      {"name": "D02 S1 Numerical Preflight", "run_id": 32902234451, "conclusion": "failure", "runner_seconds": 79, "classification": "unrelated_experiment"},
+      {"name": "D02 Real S0 Training", "run_id": 32902234455, "conclusion": "failure", "runner_seconds": 73, "classification": "unrelated_experiment"},
+      {"name": "SCALE-02 S2 1M Executable Preflight", "run_id": 32902234453, "conclusion": "failure", "runner_seconds": 83, "classification": "unrelated_experiment"},
+      {"name": "TRAIN-29 S1 Training Observability", "run_id": 32902234448, "conclusion": "failure", "runner_seconds": 82, "classification": "unrelated_experiment"},
+      {"name": "D02 S0 Determinism Repeatability", "run_id": 32902234480, "conclusion": "failure", "runner_seconds": 85, "classification": "unrelated_experiment"},
+      {"name": "D08 Purpose Environments", "run_id": 32902234442, "conclusion": "success", "runner_seconds": 392, "jobs": {"windows_bundle_producer": 14, "linux_purpose_runtimes": 292, "windows_runtime": 86}, "classification": "unrelated_portability_matrix"}
+    ],
+    "duplicate_environment_pattern": {
+      "verify_locked_environment_runtime_installs_per_call": 2,
+      "additional_execution_runtime_install_in_legacy_experiment_jobs": 1,
+      "effective_runtime_installs_before_experiment_execution": 3,
+      "observed_multi_gigabyte_components": [
+        "nvidia-cublas 423.1 MB",
+        "nvidia-cudnn-cu13 366.2 MB",
+        "nvidia-cufft 214.1 MB",
+        "nvidia-cusolver 200.9 MB",
+        "nvidia-cusparse 145.9 MB",
+        "nvidia-cusparselt-cu13 170.1 MB",
+        "nvidia-nccl-cu13 206.0 MB",
+        "torch 526.6 MB",
+        "triton 197.7 MB"
+      ],
+      "note": "Package sizes are observed download sizes from the SCALE-141 runner log; no billing inference is made."
+    }
+  },
+  "after_policy": {
+    "integration_spine": "CI remains the repository integration gate; x86_64 remains the normal required execution path.",
+    "arm_portability": "ARM64 runs only for dependency, packaging, lock, or portability-sensitive changes.",
+    "experiment_workflows": "D02, SCALE-02, TRAIN-29, and D08 use scientifically scoped pull_request paths and retain workflow_dispatch.",
+    "milestone150": "Runs automatically only for its target branch and ladder-relevant paths; workflow_dispatch remains available.",
+    "cheap_preflight": "Python, Git source identity, lock index/profile and lock-file hashes are validated before expensive tests or dependency installs.",
+    "concurrency": "Superseded pull-request SHA runs cancel within their workflow; manually dispatched historical evidence runs are not grouped for cancellation."
+  },
+  "representative_trigger_simulation": [
+    {"scenario": "milestone150_research_sha", "before_workflows": 8, "after_workflows": 2, "after": ["CI", "MILESTONE-150 Learned Base Ladder V1"], "workflow_runs_avoided": 6, "arm_portability_job_after": false},
+    {"scenario": "d02_real_training_change", "before_workflows": 7, "after_workflows": 2, "after": ["CI", "D02 Real S0 Training"], "workflow_runs_avoided": 5},
+    {"scenario": "dependency_lock_change", "before_workflows": 7, "after_workflows": 2, "after": ["CI", "D08 Purpose Environments"], "workflow_runs_avoided": 5, "arm_portability_job_after": true},
+    {"scenario": "docs_only", "before_workflows": 7, "after_workflows": 0, "workflow_runs_avoided": 7}
+  ],
+  "observed_runner_savings_estimate": {
+    "basis": "sum of completed job wall durations on baseline SHA c6e8ac2784920cb96b9b34d26cd68cf9468bd5f0 that the after-policy would not schedule for a representative MILESTONE-150-only PR",
+    "unrelated_workflow_runner_seconds_avoided": 794,
+    "ci_arm_runner_seconds_avoided": 130,
+    "gross_runner_seconds_avoided": 924,
+    "gross_runner_minutes_avoided": 15.4,
+    "billing_numbers_claimed": false
+  },
+  "migration_rules": [
+    "Never remove an integration-spine required gate merely to make a branch green.",
+    "A path filter is allowed only when the workflow's scientific evidence cannot be affected by changes outside the declared scope.",
+    "Expensive experimental campaigns retain workflow_dispatch so historical evidence can be intentionally regenerated.",
+    "Concurrency cancellation applies to superseded pull-request SHA runs, not intentionally dispatched historical experiment runs.",
+    "Dependency or packaging changes must still fan into portability validation, including ARM64 and D08 purpose environments.",
+    "A branch-specific experiment workflow must not trigger solely because an unrelated PR targets an experiment branch.",
+    "Cheap source/dependency preflight must precede tests and multi-gigabyte environment installation.",
+    "The current full locked-environment verifier remains authoritative; eliminating its internal duplicate clean installs requires a separate evidence-schema migration rather than silently weakening verification."
+  ]
+}
