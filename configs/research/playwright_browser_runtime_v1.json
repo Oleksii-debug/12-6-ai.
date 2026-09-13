@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "component_id": "PLAYWRIGHT_BROWSER_RUNTIME_V1",
+  "status": "CANDIDATE",
+  "project_authority": {"parent_issue": 720, "lane_issue": 8, "canonical_base_dependency": false, "canonical_base_random_init_only": true, "post_base_only": true},
+  "upstream": {
+    "repository": "https://github.com/microsoft/playwright",
+    "tag": "v1.62.0",
+    "commit": "e3950d9c140d007bd52853b45813c6274b24e36f",
+    "license": "Apache-2.0",
+    "license_blob_sha1": "df112373eb2e23e459bf93ec412be1764dc5a38b",
+    "notice_blob_sha1": "814ec1696f7ad36c1b524fb6adeef14b4b367fec"
+  },
+  "package": {"name": "playwright", "version": "1.62.0", "python": ">=3.10", "linux_x86_64_wheel_sha256": "ba33bae6a13b3d9d354c751cb618af357d20fe1d57767cbcce52079bbef17ad3"},
+  "dependency_closure": {"pyee": "13.0.1", "greenlet": "3.2.3", "typing-extensions": "4.16.0"},
+  "browser": {"name": "chromium", "revision": "1234"},
+  "allowed_actions": ["open_page", "read_page", "click_element", "type_text", "select_option", "wait_for_element"],
+  "forbidden": ["arbitrary_shell", "custom_browser_executable", "coordinate_clicking", "wildcard_filesystem", "wildcard_network", "implicit_credentials", "arbitrary_javascript_execution", "implicit_downloads"],
+  "runtime_gate": {"exact_dependency_required": true, "browser_binary_required": true, "not_executed_state": "NOT_EXECUTED_DEPENDENCY_ABSENT", "promotion_requires_real_runtime": true, "parity_proven": false, "adopted": false},
+  "benchmark": {"kind": "bounded_real_runtime_smoke", "data_source": "data: URI fixture", "network_mode": "deny", "runs_required": 2},
+  "truth_boundary": {"model_training": false, "paid_compute": false, "foreign_weights": false, "tokenizer_changed": false, "corpus_changed": false, "checkpoint_changed": false}
+}

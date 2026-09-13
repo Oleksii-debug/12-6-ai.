@@ -1,0 +1,22 @@
+{
+  "component_id": "PLAYWRIGHT_BROWSER_RUNTIME_V1",
+  "git_blob_sha1": {
+    "src/twelve_six/playwright_browser.py": "f608854517df645e6351145da5c47520bdb2ec7a",
+    "configs/research/playwright_browser_runtime_v1.json": "11b5899c81c7332539022f2820ed33f31ee172ef",
+    "configs/research/playwright_browser_rights_v1.json": "9f2ea33cd35ffde6e6cd06bf5418fe76fcd5704a",
+    "configs/research/playwright_browser_runtime_lock_linux_x86_64.txt": "b2a41469e176a95522b54483e7affcace57fcbe6",
+    "tools/validate_playwright_browser_runtime_v1.py": "7d7dce4959a35944ec6d6483856b2364757c2659",
+    "tools/run_playwright_browser_smoke_v1.py": "1cfba65920a22f5b6e0113de13cf369a83b329cd",
+    "tests/test_playwright_browser_runtime_v1.py": "e07a9b33009204af870f4bbbff87210f223df4ce",
+    "docs/PLAYWRIGHT_BROWSER_RUNTIME_V1.md": "276aafff258d85e3907548c26981a09b4d8b8a64",
+    "evidence/research/playwright_browser_runtime_v1.json": "fdee21b53cacce5c5e11cc121335784d95841be3"
+  },
+  "upstream_identity": {
+    "repository": "https://github.com/microsoft/playwright",
+    "tag": "v1.62.0",
+    "commit": "e3950d9c140d007bd52853b45813c6274b24e36f"
+  },
+  "promotion_state": "CANDIDATE",
+  "runtime_state": "NOT_EXECUTED_DEPENDENCY_ABSENT",
+  "parity_proven": false
+}
