@@ -1,0 +1,97 @@
+{
+  "legacy_package": {
+    "focused_adversarial_tests_passed": 7,
+    "focused_adversarial_tests_sha256": "149d5c5c96f92c015d4d01ba7d177cf270755611f712e3942c26c2a29afb6310",
+    "measurement_validator_harness_sha256": "bba3d47b70d9a6abf594493abd97da29ee6c2ff000b5363e07ab611e5c31e35a",
+    "report_file_sha256": "6158a8c763143b1fe34e1484b4f0f471d8a3f85ab936873e8373eda1ab64e0c2",
+    "report_identity_sha256": "4b8b3965ece6301629eba2f4b90c38bde3334bccb14aa8d08bfee33ad3a9567f",
+    "schema": "12-6.model341.local-free-cpu-resource-envelope.v1"
+  },
+  "measurement": {
+    "gradient_bytes": 82453760,
+    "measured_samples": 7,
+    "median_causal_targets_per_second": 609.5197637935258,
+    "median_forward_loss_backward_ms": 208.360758,
+    "model_updates": 0,
+    "optimizer_object_created": false,
+    "optimizer_updates": 0,
+    "parameter_bytes": 82453760,
+    "parameter_fingerprint_unchanged": true,
+    "process_hwm_mib_approx": 478.56,
+    "raw_measured_seconds": [],
+    "raw_samples_retained": false,
+    "synthetic_loss": 5.628034591674805,
+    "warmup_samples": 3
+  },
+  "measurement_origin": {
+    "current_carrier_head": "61aa37b340565dd1ba791adc16ce430f9b17fbaf",
+    "current_carrier_pr": 802,
+    "execution_bearing_blobs": {
+      "configs/candidates/model341_20m_candidate_a.json": "69e3cbd5f5c83c9d3d529a2a6376db3055979c40",
+      "src/twelve_six/__init__.py": "2ce6d14cbdfd23573abf1c47d0a770e5a719de46",
+      "src/twelve_six/attention_perf.py": "2323a709bf8f94047ffddc2de707b57d6edb8efd",
+      "src/twelve_six/model.py": "d0823aa666883ddb5c445a438730043ef8b50ff1"
+    },
+    "issue": 1262,
+    "measured_carrier_head": "82c43005bb5db153482ae5b20a31d59240faaebc"
+  },
+  "model_authority": {
+    "canonical_base": "random_init",
+    "causal_targets_per_microbatch": 127,
+    "init_spec_sha256": "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5",
+    "micro_batch_size": 1,
+    "model_spec_sha256": "fbff24d561a2818453554d58ca23fc6ace3303b078f1935a8576c4565bd92441",
+    "parameter_count": 20613440,
+    "precision": "fp32",
+    "seed": 341,
+    "sequence_length": 128,
+    "vocab_size": 256
+  },
+  "planning": {
+    "cross_host_extrapolation_allowed": false,
+    "excluded": [
+      "optimizer.step",
+      "checkpoint_io",
+      "evaluation",
+      "packing_data_io",
+      "real_pilot_overhead"
+    ],
+    "mechanics_only_lower_bound_hours": 9.114643832020997,
+    "mechanics_only_lower_bound_seconds": 32812.71779527559,
+    "scope": "forward+causal_ce+backward_only",
+    "target_positions": 20000000
+  },
+  "rebind": {
+    "ahead_by": 16,
+    "authorizes_training": false,
+    "changed_surface_families": [
+      "inference",
+      "evaluation"
+    ],
+    "execution_bearing_blobs_unchanged": true,
+    "measured_to_current_compare_status": "ahead",
+    "scientific_authority": "mechanics-only"
+  },
+  "report_identity_sha256": "d0668818a32434c5f454fa78d37eb682d24ccbde50a2a6a9b02995f9817497fc",
+  "runtime": {
+    "cpu": "Intel Xeon Platinum 8370C",
+    "cuda_available": false,
+    "interop_threads": 1,
+    "intraop_threads": 4,
+    "python": "3.13.5",
+    "torch": "2.10.0+cpu"
+  },
+  "schema": "12-6.model341.local-free-cpu-resource-envelope.v4",
+  "status": "MEASURED_MECHANICS_REBOUND_TO_CURRENT_CARRIER",
+  "truth_boundary": {
+    "authorized_optimized_target_exposure": 0,
+    "external_llm_or_api_used_for_data_or_intelligence": false,
+    "final_test_outcomes_read": false,
+    "foreign_pretrained_weights": false,
+    "learned_weights_created": false,
+    "optimizer_updates_executed_on_real_targets": 0,
+    "paid_compute_used": false,
+    "tokenizer_fit_authorized": false,
+    "training_executed": false
+  }
+}
