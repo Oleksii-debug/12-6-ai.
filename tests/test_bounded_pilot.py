@@ -417,7 +417,7 @@ def test_fresh_start_rejects_same_architecture_mutated_weights() -> None:
     guard, plan, manifest = _authority(batch_count=1)
     trainer = _trainer(max_steps=1)
     with torch.no_grad():
-        next(trainer.model.parameters()).view(1)[0].add_(0.25)
+        next(trainer.model.parameters()).view(-1)[0].add_(0.25)
     with pytest.raises(BoundedPilotAuthorizationError, match="canonical random initialization"):
         _gate(trainer, guard, plan, manifest)
 
@@ -487,6 +487,68 @@ def test_stale_live_trainer_replay_state_is_rechecked_per_step() -> None:
             expected_next_exposure_identity_sha256=_next(guard, plan, 0),
         )
     gate.close()
+    assert guard.consumed_loss_positions == 0
+
+
+def test_prehook_rejects_target_drift_beyond_one_pending_batch() -> None:
+    guard, plan, manifest = _authority(batch_count=1)
+    trainer = _trainer(max_steps=1)
+
+    def inject_extra_target_drift(
+        _optimizer: torch.optim.Optimizer,
+        _args: tuple,
+        _kwargs: dict,
+    ) -> None:
+        trainer.tokens_seen += 1
+
+    drift_handle = trainer.optimizer.register_step_pre_hook(inject_extra_target_drift)
+    gate = _gate(trainer, guard, plan, manifest)
+    try:
+        with pytest.raises(BoundedPilotRecoveryRequiredError, match="fresh verified recovery"):
+            gate.train_authorized_microbatch(
+                _batch(0),
+                batch_index=0,
+                expected_next_exposure_identity_sha256=_next(guard, plan, 0),
+            )
+    finally:
+        gate.close()
+        drift_handle.remove()
+    assert trainer.optimizer_step == 0
+    assert guard.consumed_loss_positions == 0
+
+
+def test_d10_requested_budget_must_equal_packet_and_d04_budget() -> None:
+    guard, plan, manifest = _authority(batch_count=2)
+    trainer = _trainer(max_steps=2)
+    launch = _launch_authority(trainer, guard)
+    launch["data_spine"]["requested_unique_loss_positions"] = 2
+    launch["authority_identity_sha256"] = _rehash(
+        launch,
+        "authority_identity_sha256",
+    )
+    launch_root = launch["authority_identity_sha256"]
+    binding, portable_execution = _binding(trainer, guard, launch_root)
+    assert binding.packet_sha256 is not None
+    with pytest.raises(
+        BoundedPilotAuthorizationError,
+        match="D10 requested unique-loss budget differs from runtime packet",
+    ):
+        BoundedPilotStepRunner(
+            SingleDeviceStepRunner(trainer),
+            binding=binding,
+            expected_packet_sha256=binding.packet_sha256,
+            expected_portable_execution_sha256=portable_execution,
+            launch_input_authority=launch,
+            expected_launch_input_authority_identity_sha256=launch_root,
+            replay_guard=guard,
+            loss_bearing_content_manifest=manifest,
+            expected_loss_bearing_manifest_identity_sha256=manifest[
+                "manifest_identity_sha256"
+            ],
+            exposure_plan=plan,
+            expected_plan_identity_sha256=plan["plan_identity_sha256"],
+        )
+    assert trainer.optimizer_step == 0
     assert guard.consumed_loss_positions == 0
 
 

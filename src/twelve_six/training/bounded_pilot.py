@@ -175,6 +175,7 @@ def _verify_launch_input_v2_authority(
     expected_modelspec_sha256: str,
     expected_initspec_sha256: str,
     expected_ledger_sha256: str,
+    expected_requested_unique_loss_positions: int,
 ) -> None:
     expected = _require_sha256(expected_identity_sha256, label="external D10 launch-input root")
     if not isinstance(authority, Mapping) or set(authority) != set(_LAUNCH_ROOT_KEYS):
@@ -249,6 +250,10 @@ def _verify_launch_input_v2_authority(
     ):
         raise BoundedPilotAuthorizationError(
             "BLOCKED_PRE_STEP_1: D10 unique-loss capacity/request is invalid"
+        )
+    if requested != expected_requested_unique_loss_positions:
+        raise BoundedPilotAuthorizationError(
+            "BLOCKED_PRE_STEP_1: D10 requested unique-loss budget differs from runtime packet"
         )
 
 
@@ -567,7 +572,17 @@ def _require_actual_execution_matches_packet(
 def _require_live_replay_state_consistency(
     trainer: Trainer,
     replay_guard: IdentitySafeExposureReplayGuard,
+    *,
+    expected_inflight_targets: int = 0,
 ) -> None:
+    if (
+        isinstance(expected_inflight_targets, bool)
+        or not isinstance(expected_inflight_targets, int)
+        or expected_inflight_targets < 0
+    ):
+        raise BoundedPilotAuthorizationError(
+            "BLOCKED_PRE_STEP_1: expected in-flight target count is invalid"
+        )
     if replay_guard.trainer_state_binding.get("optimizer_step") != trainer.optimizer_step:
         raise BoundedPilotAuthorizationError("BLOCKED_PRE_STEP_1: replay optimizer state stale")
     if (
@@ -575,9 +590,10 @@ def _require_live_replay_state_consistency(
         != replay_guard.consumed_loss_positions
     ):
         raise BoundedPilotAuthorizationError("BLOCKED_PRE_STEP_1: replay target counter stale")
-    if replay_guard.consumed_loss_positions != trainer.tokens_seen:
+    expected_tokens_seen = replay_guard.consumed_loss_positions + expected_inflight_targets
+    if trainer.tokens_seen != expected_tokens_seen:
         raise BoundedPilotAuthorizationError(
-            "BLOCKED_PRE_STEP_1: Trainer target counter differs from D04 replay state"
+            "BLOCKED_PRE_STEP_1: Trainer target counter differs from phase-aware D04 replay state"
         )
 
 
@@ -655,6 +671,7 @@ class BoundedPilotStepRunner:
             expected_modelspec_sha256=str(identities.get("modelspec_sha256")),
             expected_initspec_sha256=str(identities.get("initspec_sha256")),
             expected_ledger_sha256=replay_guard.ledger_identity_sha256,
+            expected_requested_unique_loss_positions=recipe["target_unique_loss_positions"],
         )
         if identities.get("unique_loss_ledger_sha256") != replay_guard.ledger_identity_sha256:
             raise BoundedPilotAuthorizationError("BLOCKED_PRE_STEP_1: D04 ledger differs")
@@ -688,14 +705,18 @@ class BoundedPilotStepRunner:
             "BLOCKED_RECOVERY_REQUIRED: fresh verified recovery required; " + reason
         )
 
-    def _require_live_execution_chain(self) -> None:
+    def _require_live_execution_chain(self, *, expected_inflight_targets: int = 0) -> None:
         if self.trainer.optimizer is not self._optimizer_object:
             raise BoundedPilotAuthorizationError(
                 "BLOCKED_PRE_STEP_1: optimizer object replaced after "
                 "authorization hook installation"
             )
         _require_actual_execution_matches_packet(self.trainer, self.packet)
-        _require_live_replay_state_consistency(self.trainer, self.replay_guard)
+        _require_live_replay_state_consistency(
+            self.trainer,
+            self.replay_guard,
+            expected_inflight_targets=expected_inflight_targets,
+        )
         observed_state = _model_state_sha256(self.trainer.model)
         if observed_state != self._expected_model_state_sha256:
             raise BoundedPilotAuthorizationError(
@@ -726,8 +747,11 @@ class BoundedPilotStepRunner:
         batch_index: int,
         expected_identity: str,
         actual_targets: int,
+        expected_inflight_targets: int = 0,
     ) -> None:
-        self._require_live_execution_chain()
+        self._require_live_execution_chain(
+            expected_inflight_targets=expected_inflight_targets,
+        )
         self._verify_live_content(batch, batch_index=batch_index)
         observed = ordered_next_exposure_identity(
             self.replay_guard,
@@ -770,6 +794,7 @@ class BoundedPilotStepRunner:
             batch_index=pending.batch_index,
             expected_identity=pending.expected_identity,
             actual_targets=pending.actual_targets,
+            expected_inflight_targets=pending.actual_targets,
         )
         plan_batch = self.exposure_plan["batches"][pending.batch_index]
         input_ids, targets, loss_mask, shifted = _batch_projection(pending.batch)
