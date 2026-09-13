@@ -1,9 +1,12 @@
 import json
+import sys
 from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 
 from tools.validate_open_lm_bootstrap_stress_v1 import canonical_hash, validate
 
-ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / "configs/research/open_lm_bootstrap_stress_v1.json"
 
 
