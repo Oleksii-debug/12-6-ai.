@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "experiment_id": "DCLM-SYNTHETIC-CALIBRATION-V1",
+  "purpose": "SYNTHETIC_CALIBRATION_ONLY_NON_TRAINING",
+  "training_authorized": false,
+  "requested_promotion_state": "CANDIDATE",
+  "arms": [
+    {
+      "arm_id": "BASELINE_SYNTHETIC",
+      "config_sha256": "d2cf702fee562bfbabb17441c48e5829d6d8a35e1b07f1f4d92dd4989d74e89f",
+      "input_snapshot_sha256": "23cd4b14f3c27b2f43687d3e630d5f10e809603390404305bfd6c7f144e2064b",
+      "budget": {"unit": "synthetic_comparison_units", "value": 1000},
+      "metric": {"name": "synthetic_quality_score", "direction": "maximize", "score": 0.61},
+      "hard_gates": {"rights": "PASS", "provenance": "PASS", "privacy": "PASS", "contamination": "PASS"},
+      "training_authorized": false,
+      "promotion_state": "CANDIDATE"
+    },
+    {
+      "arm_id": "FILTER_A_SYNTHETIC",
+      "config_sha256": "4d6c5fcbd9e900f0538b24ca262e36059b9aa76619d93a856589fbdb35c1f4af",
+      "input_snapshot_sha256": "23cd4b14f3c27b2f43687d3e630d5f10e809603390404305bfd6c7f144e2064b",
+      "budget": {"unit": "synthetic_comparison_units", "value": 1000},
+      "metric": {"name": "synthetic_quality_score", "direction": "maximize", "score": 0.67},
+      "hard_gates": {"rights": "PASS", "provenance": "PASS", "privacy": "PASS", "contamination": "PASS"},
+      "training_authorized": false,
+      "promotion_state": "CANDIDATE"
+    },
+    {
+      "arm_id": "MIXTURE_B_SYNTHETIC",
+      "config_sha256": "9422967dd5be858b60a50a0b8438e3f680cf5d8752c09c41207339b94147a97a",
+      "input_snapshot_sha256": "23cd4b14f3c27b2f43687d3e630d5f10e809603390404305bfd6c7f144e2064b",
+      "budget": {"unit": "synthetic_comparison_units", "value": 1000},
+      "metric": {"name": "synthetic_quality_score", "direction": "maximize", "score": 0.64},
+      "hard_gates": {"rights": "PASS", "provenance": "PASS", "privacy": "PASS", "contamination": "PASS"},
+      "training_authorized": false,
+      "promotion_state": "CANDIDATE"
+    }
+  ]
+}
