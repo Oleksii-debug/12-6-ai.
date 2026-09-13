@@ -13,7 +13,7 @@ assert SPEC is not None and SPEC.loader is not None
 runner = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(runner)
 
-EXPECTED_LAUNCHER_BLOB = "9276f45847fbb6c9e6729ab469f1731829295977"
+EXPECTED_LAUNCHER_BLOB = "5f6688cc45a0fea5fe2c2690252a2a2db756af57"
 
 
 def _blob(payload: bytes) -> str:
@@ -45,12 +45,12 @@ def test_staged_tree_tamper_fails_closed(tmp_path: Path) -> None:
     runner._stage_authenticated_tree(staged, collected)
     runner._verify_staged_tree(staged, expected)
 
-    (staged / "src" / "victim.py").write_bytes(payload + b"# one byte family tamper\n")
+    (staged / "src" / "victim.py").write_bytes(payload + b"# tamper\n")
     with pytest.raises(runner.IsolatedAuthorityError, match="Git blob drift"):
         runner._verify_staged_tree(staged, expected)
 
 
-def test_fresh_isolated_child_ignores_parent_poison_hostile_pythonpath_and_checkout_mutation(
+def test_fresh_no_site_child_ignores_parent_poison_hostile_pythonpath_and_checkout_mutation(
     tmp_path: Path,
 ) -> None:
     source = tmp_path / "source"
@@ -63,7 +63,9 @@ def test_fresh_isolated_child_ignores_parent_poison_hostile_pythonpath_and_check
         b"import sys\n"
         b"from pathlib import Path\n"
         b"import victim\n"
-        b"Path(sys.argv[1]).write_text(victim.VALUE, encoding='utf-8')\n"
+        b"Path(sys.argv[1]).write_text("
+        b"victim.VALUE + '|' + str('site' in sys.modules) + '|' + str('sitecustomize' in sys.modules), "
+        b"encoding='utf-8')\n"
     )
     victim.write_bytes(victim_payload)
     probe.write_bytes(probe_payload)
@@ -77,10 +79,7 @@ def test_fresh_isolated_child_ignores_parent_poison_hostile_pythonpath_and_check
     runner._stage_authenticated_tree(staged, collected)
     runner._verify_staged_tree(staged, expected)
 
-    # Mutate the live source after authentication/staging. The child must still
-    # execute the already-authenticated bytes.
     victim.write_text("VALUE = 'mutated-live-checkout'\n", encoding="utf-8")
-
     hostile = tmp_path / "hostile"
     hostile.mkdir()
     (hostile / "victim.py").write_text("VALUE = 'hostile-pythonpath'\n", encoding="utf-8")
@@ -108,7 +107,7 @@ def test_fresh_isolated_child_ignores_parent_poison_hostile_pythonpath_and_check
             sys.modules["victim"] = previous
 
     assert result.returncode == 0, (result.stdout, result.stderr)
-    assert output.read_text(encoding="utf-8") == "authenticated"
+    assert output.read_text(encoding="utf-8") == "authenticated|False|False"
 
 
 def test_isolated_environment_strips_python_import_injection(monkeypatch: pytest.MonkeyPatch) -> None:
