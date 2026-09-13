@@ -499,6 +499,19 @@ class Trainer:
                 self.optimizer.zero_grad(set_to_none=True)
                 if self.scheduler is not None:
                     self.scheduler.step()
+                if not self._optimizer_state_is_finite():
+                    diagnostics = self._diagnostics(
+                        kind="update",
+                        batch=batch,
+                        batch_tokens=tokens,
+                        gradient_norm=grad_norm_value,
+                        gradient_norm_finite=True,
+                        affected=nonfinite_update_parameters(self.model, self.optimizer),
+                    )
+                    self._raise_nonfinite(
+                        f"non-finite optimizer/scheduler state at micro_step={self.micro_step}",
+                        diagnostics,
+                    )
             except Exception:
                 self._mark_failed(
                     f"optimizer/scheduler update failed at micro_step={self.micro_step}"
