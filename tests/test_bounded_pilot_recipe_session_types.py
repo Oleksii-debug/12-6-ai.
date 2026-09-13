@@ -7,6 +7,7 @@ import pytest
 from test_bounded_pilot import _authority, _batch, _next
 from test_bounded_pilot_durable_attempt import _constructor_inputs, _gate, _trainer
 
+from twelve_six.checkpoint import CheckpointIdentity, save_checkpoint
 from twelve_six.learned20m_recipe import identity_sha256
 from twelve_six.portable_run_binding import PortableRunBinding, canonical_sha256
 from twelve_six.training.bounded_pilot import (
@@ -146,3 +147,73 @@ def test_durable_attempt_change_after_first_handoff_blocks_optimizer_hook(
     state = store.open()
     assert state["attempt"] == 1
     assert state["phase"] in {"RECOVERING", "FAILED"}
+
+
+def test_same_attempt_checkpoint_state_evolution_remains_authorized(
+    tmp_path: Path,
+) -> None:
+    guard, plan, manifest = _authority(batch_count=2)
+    trainer = _trainer(max_steps=2)
+    gate, store = _gate(
+        tmp_path / "checkpoint-evolution",
+        trainer,
+        guard,
+        plan,
+        manifest,
+    )
+
+    _metrics, first_receipt = gate.train_authorized_microbatch(
+        _batch(0),
+        batch_index=0,
+        expected_next_exposure_identity_sha256=_next(guard, plan, 0),
+    )
+    assert first_receipt.attempt == 1
+    state_before_checkpoint = store.open()
+    assert state_before_checkpoint["phase"] == "RUNNING"
+    assert state_before_checkpoint["checkpoint_count"] == 0
+
+    def save(path: Path):
+        identity = CheckpointIdentity(
+            git_sha=store.source_sha,
+            model_spec={"identity_sha256": trainer.model.spec.identity_sha256()},
+            parameter_count=sum(parameter.numel() for parameter in trainer.model.parameters()),
+            tokenizer_hash="a" * 64,
+            tokenizer_vocab_hash="b" * 64,
+            dataset_manifest_hash="c" * 64,
+            run_manifest_hash=store.run_manifest_sha256,
+            training_config={"kind": "bounded-pilot-checkpoint-evolution"},
+            seed=trainer.config.seed,
+            precision=trainer.config.precision,
+            step=trainer.optimizer_step,
+            tokens_seen=trainer.tokens_seen,
+            optimizer={"name": trainer.optimizer.__class__.__name__},
+            scheduler=None,
+            environment_lock_hash="d" * 64,
+        )
+        return save_checkpoint(
+            path,
+            model=trainer.model,
+            trainer_state={"optimizer_step": trainer.optimizer_step},
+            identity=identity,
+        )
+
+    record = store.commit_checkpoint(trainer, save)
+    state_after_checkpoint = store.open()
+    assert record.attempt == 1
+    assert state_after_checkpoint["phase"] == "RUNNING"
+    assert state_after_checkpoint["attempt"] == 1
+    assert state_after_checkpoint["checkpoint_count"] == 1
+    assert state_after_checkpoint["state_sha256"] != first_receipt.attempt_state_sha256
+
+    _metrics, second_receipt = gate.train_authorized_microbatch(
+        _batch(1),
+        batch_index=1,
+        expected_next_exposure_identity_sha256=_next(guard, plan, 1),
+    )
+    gate.close()
+
+    assert second_receipt.attempt == 1
+    assert trainer.optimizer_step == 2
+    assert trainer.tokens_seen == 4
+    assert guard.consumed_loss_positions == 4
+    assert store.open()["phase"] == "COMPLETED"
