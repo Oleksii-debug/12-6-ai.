@@ -21,13 +21,16 @@ def _source(
     manifest: dict,
     *,
     materialization: dict | None = None,
+    ledger: dict | None = None,
     expected_materialization_identity_sha256: str | None = None,
 ) -> AuthenticatedD04BatchSource:
-    selected = copy.deepcopy(materialization if materialization is not None else _materialization())
-    ledger = build_ledger(selected)
+    selected = copy.deepcopy(
+        materialization if materialization is not None else _materialization()
+    )
+    selected_ledger = copy.deepcopy(ledger) if ledger is not None else build_ledger(selected)
     return AuthenticatedD04BatchSource(
         materialization=selected,
-        ledger=ledger,
+        ledger=selected_ledger,
         exposure_plan=plan,
         loss_bearing_content_manifest=manifest,
         expected_materialization_identity_sha256=(
@@ -35,7 +38,7 @@ def _source(
             if expected_materialization_identity_sha256 is not None
             else selected["materialization_identity_sha256"]
         ),
-        expected_ledger_identity_sha256=ledger["ledger_identity_sha256"],
+        expected_ledger_identity_sha256=selected_ledger["ledger_identity_sha256"],
         expected_plan_identity_sha256=plan["plan_identity_sha256"],
         expected_loss_bearing_manifest_identity_sha256=manifest[
             "manifest_identity_sha256"
@@ -83,8 +86,8 @@ def test_source_derives_exact_predictor_and_target_rows_from_postpack_tokens() -
     assert first["target_ids"].tolist() == [[2, 3]]
     assert second["input_ids"].tolist() == [[3, 4]]
     assert second["target_ids"].tolist() == [[4, 5]]
-    assert first["input_ids"].dtype is torch.int64
-    assert first["target_ids"].dtype is torch.int64
+    assert first["input_ids"].dtype == torch.int64
+    assert first["target_ids"].dtype == torch.int64
 
 
 def test_authenticated_runner_executes_derived_batch_and_returns_ordered_identity(
@@ -165,6 +168,7 @@ def test_postpack_predictor_or_target_token_mutation_cannot_rebuild_authorized_m
     _guard, plan, manifest = _authority(batch_count=1)
     original = _materialization()
     original_root = original["materialization_identity_sha256"]
+    original_ledger = build_ledger(original)
 
     for token_index in (0, 1):
         mutated = copy.deepcopy(original)
@@ -177,6 +181,7 @@ def test_postpack_predictor_or_target_token_mutation_cannot_rebuild_authorized_m
                 plan,
                 manifest,
                 materialization=mutated,
+                ledger=original_ledger,
                 expected_materialization_identity_sha256=original_root,
             )
 
@@ -199,22 +204,22 @@ def test_stale_content_manifest_fails_before_batch_source_is_usable() -> None:
     _guard, plan, manifest = _authority(batch_count=1)
     stale = copy.deepcopy(manifest)
     stale["batches"][0]["claims"][0]["target_count"] += 1
+    materialization = _materialization()
+    ledger = build_ledger(materialization)
 
     with pytest.raises(
         BoundedPilotAuthorizationError,
         match="supplied D04 content manifest differs|content manifest",
     ):
         AuthenticatedD04BatchSource(
-            materialization=_materialization(),
-            ledger=build_ledger(_materialization()),
+            materialization=materialization,
+            ledger=ledger,
             exposure_plan=plan,
             loss_bearing_content_manifest=stale,
-            expected_materialization_identity_sha256=_materialization()[
+            expected_materialization_identity_sha256=materialization[
                 "materialization_identity_sha256"
             ],
-            expected_ledger_identity_sha256=build_ledger(_materialization())[
-                "ledger_identity_sha256"
-            ],
+            expected_ledger_identity_sha256=ledger["ledger_identity_sha256"],
             expected_plan_identity_sha256=plan["plan_identity_sha256"],
             expected_loss_bearing_manifest_identity_sha256=manifest[
                 "manifest_identity_sha256"
