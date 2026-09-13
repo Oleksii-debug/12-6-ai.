@@ -28,7 +28,7 @@
       "repository": "jd/tenacity",
       "release": "9.2.0",
       "revision": "a2af454834c6bb5a1e39d67334031cdaf0f475b5",
-      "tree_sha1": "8ac992632c2c1d38741d9fad90a12759d32cb4",
+      "tree_sha1": "8ac992632c2c1c2d38741d9fad90a12759d32cb4",
       "path": "tenacity/wait.py",
       "git_blob_sha1": "18fb6ea7b610f71f17cff7ea25de63177856dfbe",
       "expected_raw_bytes": 10438,
