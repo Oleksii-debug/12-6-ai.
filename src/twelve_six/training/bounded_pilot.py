@@ -21,8 +21,8 @@ from typing import Any
 from torch import Tensor
 
 from twelve_six.learned20m_recipe import (
-    RecipeValidationError,
     SESSION_SCHEMA,
+    RecipeValidationError,
     identity_sha256,
     validate_policy,
 )
@@ -448,9 +448,9 @@ class BoundedPilotStepRunner(_core.BoundedPilotStepRunner):
         expected_identity: str,
         actual_targets: int,
         expected_inflight_targets: int = 0,
-    ) -> None:
+    ) -> str:
         self._require_live_batch_recipe_semantics(batch)
-        super()._preflight_handoff(
+        return super()._preflight_handoff(
             batch=batch,
             batch_index=batch_index,
             expected_identity=expected_identity,
@@ -521,6 +521,7 @@ class BoundedPilotStepRunner(_core.BoundedPilotStepRunner):
         *args: Any,
         **kwargs: Any,
     ) -> tuple[Any, BoundedPilotStepReceipt]:
+        self._require_live_recipe_matches_authority()
         self._ensure_durable_attempt()
         try:
             metrics, core_receipt = super().train_authorized_microbatch(*args, **kwargs)
