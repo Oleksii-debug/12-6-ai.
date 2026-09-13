@@ -28,7 +28,7 @@
     "gradient_clip_norm": 1.0,
     "scheduler": "constant",
     "warmup_steps": 0,
-    "sequence_length": 256,
+    "sequence_length": 128,
     "micro_batch_size": 1,
     "gradient_accumulation_steps": 1,
     "precision": "fp32",
@@ -78,5 +78,5 @@
     "optimizer_updates_executed": 0,
     "final_test_payload_accessed": false
   },
-  "policy_identity_sha256": "e39ba4f9933d92fd00916b6af2130b80c051cfcb5d4307f5a88ea6c348f2bef9"
+  "policy_identity_sha256": "84152a673c4ed8fd34f4b81b03a96b4a3f5b40a22d961f436cbed11af23000e7"
 }
