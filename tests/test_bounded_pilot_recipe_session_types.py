@@ -181,7 +181,10 @@ def test_same_attempt_checkpoint_state_evolution_remains_authorized(
             tokenizer_vocab_hash="b" * 64,
             dataset_manifest_hash="c" * 64,
             run_manifest_hash=store.run_manifest_sha256,
-            training_config={"kind": "bounded-pilot-checkpoint-evolution"},
+            training_config={
+                "kind": "bounded-pilot-checkpoint-evolution",
+                "run_id": store.run_id,
+            },
             seed=trainer.config.seed,
             precision=trainer.config.precision,
             step=trainer.optimizer_step,
