@@ -1,0 +1,54 @@
+name: Swarm Collision Guard
+
+on:
+  issues:
+    types: [opened, edited, reopened]
+  pull_request:
+    types: [opened, edited, reopened]
+  workflow_dispatch:
+
+concurrency:
+  group: swarm-collision-guard
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+
+jobs:
+  detect-duplicate-ownership:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout exact event revision
+        uses: actions/checkout@v4
+
+      - name: Run focused regression tests
+        run: python3 -m unittest tests/test_swarm_collision_report.py
+
+      - name: Build strict collision report
+        id: collision_guard
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >-
+          python3 tools/swarm_collision_report.py
+          --repo "$GITHUB_REPOSITORY"
+          --json-output swarm-collision-report.json
+          --strict
+
+      - name: Upload collision report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: swarm-collision-report
+          path: swarm-collision-report.json
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Enforce collision verdict
+        if: steps.collision_guard.outcome == 'failure'
+        run: |
+          echo "Duplicate ephemeral swarm task ownership detected. See swarm-collision-report artifact."
+          exit 1
