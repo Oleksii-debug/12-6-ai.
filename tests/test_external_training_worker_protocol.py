@@ -174,6 +174,7 @@ def test_confirmed_step_replays_without_second_optimizer_effect(
     root = tmp_path / "state"
     _configure(monkeypatch, root)
     calls = 0
+    replay_verifications = 0
 
     def confirmed_effect(
         request: dict[str, object], *, job_root: Path
@@ -201,7 +202,17 @@ def test_confirmed_step_replays_without_second_optimizer_effect(
         }
         return {"response": response, "record": record}
 
+    def verified_replay(**kwargs: object) -> None:
+        nonlocal replay_verifications
+        assert kwargs["job_root"] == root / _fingerprint(_job())
+        replay_verifications += 1
+
     monkeypatch.setattr(external_worker, "_execute_training_step", confirmed_effect)
+    monkeypatch.setattr(
+        external_worker,
+        "_verify_confirmed_replay_checkpoint",
+        verified_replay,
+    )
     payload = _canonical(_request())
 
     first = handle_request(payload)
@@ -209,6 +220,7 @@ def test_confirmed_step_replays_without_second_optimizer_effect(
 
     assert first == second
     assert calls == 1
+    assert replay_verifications == 1
     parsed = json.loads(first)
     assert parsed["candidate_sha256"] == WEIGHTS_SHA
     assert parsed["completed"] is True
