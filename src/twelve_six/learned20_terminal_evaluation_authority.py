@@ -12,10 +12,19 @@ from twelve_six.learned20_pilot_evaluation import (
 from twelve_six.learned20_terminal_run_evidence import validate_terminal_run_evidence
 
 
-def validate_terminal_pilot_evaluation(evidence: Mapping[str, Any]) -> list[str]:
+def validate_terminal_pilot_evaluation(
+    evidence: Mapping[str, Any],
+    *,
+    fresh_process_expectations: Mapping[str, Any] | None = None,
+) -> list[str]:
     """Require terminal measurements, run accounting, checkpoints, and ladder context."""
 
-    blockers = list(_validate_pilot_evaluation(evidence))
+    blockers = list(
+        _validate_pilot_evaluation(
+            evidence,
+            fresh_process_expectations=fresh_process_expectations,
+        )
+    )
     pilot = evidence.get("bounded_pilot")
     if not isinstance(pilot, Mapping) or pilot.get("terminal") is not True:
         return sorted(set(blockers))

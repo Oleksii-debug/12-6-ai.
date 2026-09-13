@@ -53,13 +53,49 @@ def validate_bounded_pilot_authority(evidence: Mapping[str, Any]) -> list[str]:
     return sorted(set(blockers))
 
 
+def validate_d06_d07_summary_consistency(evidence: Mapping[str, Any]) -> list[str]:
+    """Bind legacy D06 summary identities to the validated D07 receipt.
+
+    These fields remain redundant summaries only.  They can block terminality when
+    they disagree with the receipt, but they never create fresh-process authority.
+    """
+
+    pilot = evidence.get("bounded_pilot")
+    if not isinstance(pilot, Mapping) or pilot.get("terminal") is not True:
+        return []
+    d06 = pilot.get("d06_evaluation")
+    if not isinstance(d06, Mapping):
+        return []
+    probe = d06.get("inference_probe")
+    if not isinstance(probe, Mapping):
+        return []
+    receipt = probe.get("fresh_process_receipt")
+    if not isinstance(receipt, Mapping):
+        return []
+
+    blockers: list[str] = []
+    for key in ("prompt_suite_identity", "output_fingerprint", "checkpoint_identity"):
+        if key in probe and key in receipt and probe.get(key) != receipt.get(key):
+            blockers.append(
+                f"bounded_pilot.d06.inference_probe.{key}_receipt_mismatch"
+            )
+    return sorted(set(blockers))
+
+
 def assess_launch_with_terminal_provenance(
     contract: Mapping[str, Any],
     evidence: Mapping[str, Any],
     *,
     material_cost: bool,
+    trusted_fresh_process_expectations: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Assess launch readiness with checkpoint, firewall, pilot, and D06 provenance."""
+    """Assess launch readiness with checkpoint, firewall, pilot, and D06/D07 provenance.
+
+    ``trusted_fresh_process_expectations`` is an explicit trust-boundary input.  A
+    caller may provide it only after authenticating the expected D07 receipt bundle
+    independently of both ``contract`` and candidate ``evidence``.  This function
+    intentionally never reads D07 expectations from either caller-controlled object.
+    """
 
     result = assess_launch_with_checkpoint_provenance(
         contract,
@@ -68,7 +104,13 @@ def assess_launch_with_terminal_provenance(
     )
     firewall_blockers = validate_evaluation_firewall_provenance(evidence)
     pilot_blockers = validate_bounded_pilot_authority(evidence)
-    d06_blockers = validate_terminal_pilot_evaluation(evidence)
+    d06_blockers = validate_terminal_pilot_evaluation(
+        evidence,
+        fresh_process_expectations=trusted_fresh_process_expectations,
+    )
+    d06_blockers = sorted(
+        set(d06_blockers + validate_d06_d07_summary_consistency(evidence))
+    )
 
     if firewall_blockers:
         result["pilot_blockers"] = sorted(
