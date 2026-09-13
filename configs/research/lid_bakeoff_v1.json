@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "contract_id": "D03-LID-BAKEOFF-V1",
+  "status": "PREPARED_NOT_EXECUTED",
+  "authority": {
+    "swarm_protocol": "SWARM-300-V2",
+    "swarm_control_issue": 723,
+    "swarm_claim_issue": 737,
+    "lane_issue": 4,
+    "research_issue": 720,
+    "base_main_sha": "5020afd671a3885c1b738c8b4eafe7525f630546",
+    "open_source_registry_path": "configs/research/open_source_reuse_registry_v2.json",
+    "open_source_registry_blob_sha1": "d80a60357c56eacac135f948b8a72556bb849e5a"
+  },
+  "comparison_candidates": [
+    {
+      "id": "FASTTEXT_LID176",
+      "kind": "language_id",
+      "upstream": "https://fasttext.cc/docs/en/language-identification.html",
+      "license": "model/data attribution review required",
+      "decision": "P0_LID_BASELINE"
+    },
+    {
+      "id": "OPENLID_V3",
+      "kind": "language_id",
+      "upstream": "https://github.com/hplt-project/openlid",
+      "license": "GPL-3.0 code/model context; training-data terms tracked separately",
+      "decision": "P0_LID_BAKEOFF"
+    },
+    {
+      "id": "GLOTLID",
+      "kind": "language_id",
+      "upstream": "https://github.com/cisnlp/GlotLID",
+      "license": "model/code permissive surfaces; training-data rights require review",
+      "decision": "P0_LID_BAKEOFF"
+    },
+    {
+      "id": "LINGUA",
+      "kind": "language_id",
+      "upstream": "https://github.com/pemistahl/lingua-py",
+      "license": "Apache-2.0",
+      "decision": "P0_LIGHTWEIGHT_LID_CROSSCHECK"
+    }
+  ],
+  "excluded_candidates": [
+    {
+      "id": "NLLB_LID218E",
+      "decision": "DO_NOT_USE_AS_HIDDEN_UNRESTRICTED_DEPENDENCY",
+      "unrestricted_adoption_allowed": false,
+      "reason": "registry records CC-BY-NC-4.0 model-family context"
+    }
+  ],
+  "required_categories": ["uk", "en", "code", "mixed", "noise"],
+  "allowed_labels": ["uk", "en", "code", "mixed", "noise", "unknown"],
+  "fixture": {
+    "path": "tests/fixtures/lid_bakeoff_v1.jsonl",
+    "sha256": "b3038a10963308a24a2228f561a34787ed03be0991ff89231428be2c85bbadd3",
+    "minimum_cases_per_category": 4,
+    "purpose": "project-authored LID calibration; never training or tokenizer-fit authority"
+  },
+  "evidence_contract": {
+    "required_evidence_kind": "EXTERNAL_CANDIDATE_EXECUTION",
+    "require_all_candidates": true,
+    "require_all_cases": true,
+    "require_exact_runtime_identity": true,
+    "require_raw_label": true,
+    "confidence_optional_but_bounded_if_present": true,
+    "license_review_status": "REVIEWED_FOR_BAKEOFF",
+    "automatic_adoption": false
+  },
+  "automatic_adoption_allowed": false,
+  "scientific_decision": "report deterministic aggregate and per-category accuracy; D03 owner must review measured evidence and license/runtime constraints before any production choice",
+  "truth_boundaries": {
+    "external_lid_model_executed": false,
+    "corpus_mutated": false,
+    "tokenizer_fit_executed": false,
+    "model_training_executed": false,
+    "final_test_accessed": false,
+    "paid_compute_used": false
+  }
+}
