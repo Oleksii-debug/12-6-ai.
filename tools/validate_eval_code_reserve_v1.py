@@ -21,7 +21,7 @@ EXPECTED = [
         "path": "tenacity/wait.py",
         "git_blob_sha1": "18fb6ea7b610f71f17cff7ea25de63177856dfbe",
         "expected_raw_bytes": 10438,
-        "raw_sha256": "ed8fec5e66288a92f67a378611111865da025c26edee07ab1b8c88642e0dd0c0",
+        "raw_sha256": "ed8fecab2e515676af051d00098b0f043c6d30ca56480d85d00902a49ae5d0c0",
         "license_spdx": "Apache-2.0",
     },
     {
@@ -33,11 +33,23 @@ EXPECTED = [
         "path": "more_itertools/recipes.py",
         "git_blob_sha1": "b984d86f2341b9fb74801d9b173f5e0fd00632f3",
         "expected_raw_bytes": 45752,
-        "raw_sha256": "6aff1fac06b82008f90440892536195fc1a3fd0d933c59ee45cc0f6e007b4828",
+        "raw_sha256": "6aff1f84b0a70b96c102e3b92a70539255f1489765fc54140b1c1478f95b4828",
         "license_spdx": "MIT",
     },
 ]
-EXPECTED_EVIDENCE_IDENTITY = "ecde57cc0865e71f85dc4bce88bb17b0661fdf9d29e353a57b35ea4e04a7b6cc"
+EXPECTED_LICENSES = {
+    "jd/tenacity": {
+        "license_path": "LICENSE",
+        "license_git_blob_sha1": "7a4a3ea2424c09fbe48d455aed1eaa94d9124835",
+        "license_raw_sha256": "58d1e17ffe5109a7ae296caafcadfdbe6a7d176f0bc4ab01e12a689b0499d8bd",
+    },
+    "more-itertools/more-itertools": {
+        "license_path": "LICENSE",
+        "license_git_blob_sha1": "0a523bece3e50519653c4d7a38399baa487fefa1",
+        "license_raw_sha256": "09f1c8c9e941af3e584d59641ea9b87d83c0cb0fd007eb5ef391a7e2643c1a46",
+    },
+}
+EXPECTED_EVIDENCE_IDENTITY = "3401db10bad35fd1c6fac2839413fc6afffac58fa5f2135d2202b944bc2fda82"
 
 
 def _require(condition: bool, message: str) -> None:
@@ -129,10 +141,21 @@ def validate_materialization_evidence(doc: dict[str, Any], evidence: dict[str, A
         _require(expected is not None, "unexpected evidence repository")
         for key in ("source_family", "repository", "revision", "path", "git_blob_sha1", "raw_sha256", "license_spdx"):
             _require(row.get(key) == expected.get(key), f"evidence identity drift: {key}")
+        license_expected = EXPECTED_LICENSES[row["repository"]]
+        for key, value in license_expected.items():
+            _require(row.get(key) == value, f"evidence license identity drift: {key}")
         _require(row.get("raw_bytes") == expected["expected_raw_bytes"], "evidence raw byte-count drift")
         _require(row.get("training_allowed") is False, "evidence training boundary widened")
         _require(row.get("tokenizer_fit_allowed") is False, "evidence tokenizer boundary widened")
         _require(row.get("permanent_future_training_exclusion") is True, "evidence future exclusion missing")
+    identity_payload = {
+        "reservation_effective_at_utc": doc["reservation"]["effective_at_utc"],
+        "objects": observed,
+    }
+    _require(
+        evidence.get("object_set_identity_sha256") == hashlib.sha256(_canonical_bytes(identity_payload)).hexdigest(),
+        "evidence object-set identity drift",
+    )
     truth = evidence.get("truth_boundary", {})
     for key in ("final_test_outcomes_read", "final_test_payload_accessed", "model_training_authorized", "tokenizer_fit_authorized", "training_executed", "learned_weights_created", "paid_compute_used", "foreign_pretrained_weights_used", "external_llm_or_api_used_for_data_or_intelligence"):
         _require(truth.get(key) is False, f"evidence truth boundary widened: {key}")

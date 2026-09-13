@@ -81,6 +81,30 @@ def test_source_evidence_tamper_fails_closed() -> None:
         validator.validate_materialization_evidence(_manifest(), mutated)
 
 
+def test_license_evidence_tamper_fails_closed() -> None:
+    mutated = copy.deepcopy(_evidence())
+    mutated["objects"][0]["license_raw_sha256"] = "0" * 64
+    with pytest.raises(ValueError):
+        validator.validate_materialization_evidence(_manifest(), mutated)
+
+
+def test_object_set_identity_tamper_fails_closed() -> None:
+    mutated = copy.deepcopy(_evidence())
+    mutated["object_set_identity_sha256"] = "0" * 64
+    body = copy.deepcopy(mutated)
+    body.pop("evidence_identity_sha256")
+    mutated["evidence_identity_sha256"] = validator.hashlib.sha256(
+        validator._canonical_bytes(body)
+    ).hexdigest()
+    original_identity = validator.EXPECTED_EVIDENCE_IDENTITY
+    validator.EXPECTED_EVIDENCE_IDENTITY = mutated["evidence_identity_sha256"]
+    try:
+        with pytest.raises(ValueError, match="object-set identity drift"):
+            validator.validate_materialization_evidence(_manifest(), mutated)
+    finally:
+        validator.EXPECTED_EVIDENCE_IDENTITY = original_identity
+
+
 def test_wrong_source_bytes_fail_before_credit(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(materializer, "_fetch", lambda *_: b"wrong")
     with pytest.raises(RuntimeError, match="raw byte-size drift"):
@@ -92,6 +116,8 @@ def test_live_pinned_source_materialization_is_deterministic() -> None:
     first = materializer.materialize(_manifest())
     second = materializer.materialize(_manifest())
     assert first == second
+    assert first["objects"] == _evidence()["objects"]
+    assert first["object_set_identity_sha256"] == _evidence()["object_set_identity_sha256"]
     assert first["reserved_object_count"] == 2
     assert first["independent_family_count"] == 2
     assert first["raw_payload_persisted_in_repository"] is False
