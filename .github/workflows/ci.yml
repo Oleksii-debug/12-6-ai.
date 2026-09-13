@@ -9,6 +9,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
+  actions: read
   contents: read
 
 jobs:
@@ -33,3 +34,346 @@ jobs:
         run: python -m twelve_six.ci_workflow_policy --base "$BASE_SHA" --head "$HEAD_SHA"
       - run: ruff check src tests
       - run: pytest -q
+
+      - name: Post-G05/G06 real execution — checkout exact carrier head
+        if: github.event_name == 'pull_request' && github.head_ref == 'exec/1630-post-g05-g06-real-20260913'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Post-G05/G06 real execution — prove CI-only carrier
+        if: github.event_name == 'pull_request' && github.head_ref == 'exec/1630-post-g05-g06-real-20260913'
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+          test "$(git diff --name-only 2da11c62f066671a1122888ec116242502f4fb9c HEAD)" = ".github/workflows/ci.yml"
+          test "$(git hash-object src/twelve_six/data/post_g05_g06_materialization_v1.py)" = "830087f91d1fa24385c5cbc8d2f687e4cc46b419"
+          test "$(git hash-object src/twelve_six/data/privacy_filter_v3.py)" = "bcc5938395724f6728ab212f98b39f2334b0f37d"
+
+      - name: Post-G05/G06 real execution — checkout exact terminal survivor Product
+        if: github.event_name == 'pull_request' && github.head_ref == 'exec/1630-post-g05-g06-real-20260913'
+        uses: actions/checkout@v4
+        with:
+          ref: e3f0ead971091bd4a42316dfcc97aa1c3b116f66
+          path: _survivor_product
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Post-G05/G06 real execution — checkout exact historical DATA526 materializers
+        if: github.event_name == 'pull_request' && github.head_ref == 'exec/1630-post-g05-g06-real-20260913'
+        run: |
+          set -euo pipefail
+          git clone --no-checkout --filter=blob:none https://github.com/Oleksii-debug/12-6-ai..git _survivor_product/_data526_hist
+          git -C _survivor_product/_data526_hist fetch --depth=1 origin 70d6ccc87396d129d00771bbf0b6b29bc673bfc4
+          git -C _survivor_product/_data526_hist checkout --detach FETCH_HEAD
+          test "$(git -C _survivor_product/_data526_hist rev-parse HEAD)" = "70d6ccc87396d129d00771bbf0b6b29bc673bfc4"
+          git clone --no-checkout --filter=blob:none https://github.com/Oleksii-debug/12-6-ai..git _survivor_product/_data526_v7
+          git -C _survivor_product/_data526_v7 fetch --depth=1 origin d3333ec1b4a508df232a5aefccd6686adda745fb
+          git -C _survivor_product/_data526_v7 checkout --detach FETCH_HEAD
+          test "$(git -C _survivor_product/_data526_v7 rev-parse HEAD)" = "d3333ec1b4a508df232a5aefccd6686adda745fb"
+
+      - name: Post-G05/G06 real execution — install exact historical extraction dependencies
+        if: github.event_name == 'pull_request' && github.head_ref == 'exec/1630-post-g05-g06-real-20260913'
+        run: |
+          set -euo pipefail
+          python -m pip install --require-hashes --no-deps \
+            -r _survivor_product/_data526_hist/requirements/locks/linux-x86_64/dev.lock.txt
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends poppler-utils
+          pdftotext -v
+
+      - name: Post-G05/G06 real execution — retrieve immutable artifacts
+        if: github.event_name == 'pull_request' && github.head_ref == 'exec/1630-post-g05-g06-real-20260913'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          for build in a b; do
+            curl --fail --silent --show-error --location \
+              -H "Authorization: Bearer $GITHUB_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/Oleksii-debug/12-6-ai./actions/artifacts/9600107886/zip" \
+              -o "/tmp/data213-${build}.zip"
+            curl --fail --silent --show-error --location \
+              -H "Authorization: Bearer $GITHUB_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/Oleksii-debug/12-6-ai./actions/artifacts/10032510626/zip" \
+              -o "/tmp/v8-${build}.zip"
+          done
+          curl --fail --silent --show-error --location \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/Oleksii-debug/12-6-ai./actions/artifacts/10292063266/zip" \
+            -o /tmp/g05.zip
+          curl --fail --silent --show-error --location \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/Oleksii-debug/12-6-ai./actions/artifacts/10297428350/zip" \
+            -o /tmp/g06.zip
+
+          test "$(sha256sum /tmp/data213-a.zip | cut -d' ' -f1)" = "927e10ccb83f919d57a8b78e3ea9cae72f9d4e0232401043234a35eec150074d"
+          test "$(sha256sum /tmp/data213-b.zip | cut -d' ' -f1)" = "927e10ccb83f919d57a8b78e3ea9cae72f9d4e0232401043234a35eec150074d"
+          test "$(sha256sum /tmp/v8-a.zip | cut -d' ' -f1)" = "960c678fdbe6245658fa69c39edf355eb7b38ef39b7f8f833155c894dbd90385"
+          test "$(sha256sum /tmp/v8-b.zip | cut -d' ' -f1)" = "960c678fdbe6245658fa69c39edf355eb7b38ef39b7f8f833155c894dbd90385"
+          test "$(sha256sum /tmp/g06.zip | cut -d' ' -f1)" = "d9b8237a5f70bffe447185a299e9f7bbb9659149e6cae1d18bb157a235ac9993"
+          cmp /tmp/data213-a.zip /tmp/data213-b.zip
+          cmp /tmp/v8-a.zip /tmp/v8-b.zip
+
+          rm -rf /tmp/v8-a /tmp/v8-b /tmp/g05 /tmp/g06
+          mkdir -p /tmp/v8-a /tmp/v8-b /tmp/g05 /tmp/g06
+          unzip -q /tmp/v8-a.zip -d /tmp/v8-a
+          unzip -q /tmp/v8-b.zip -d /tmp/v8-b
+          unzip -q /tmp/g05.zip -d /tmp/g05
+          unzip -q /tmp/g06.zip -d /tmp/g06
+          test "$(sha256sum /tmp/g05/g05-a/authority.json | cut -d' ' -f1)" = "e796e5150bfcc68ea47023a03636fffff3003970602cd2fd310181a14db71fda"
+          test "$(sha256sum /tmp/g05/g05-b/authority.json | cut -d' ' -f1)" = "e796e5150bfcc68ea47023a03636fffff3003970602cd2fd310181a14db71fda"
+          cmp /tmp/g05/g05-a/authority.json /tmp/g05/g05-b/authority.json
+          test "$(sha256sum /tmp/g06/execution-a.json | cut -d' ' -f1)" = "225d6cb0b8a02b06dd989fd7a8eb6d8b7e3f17f1302bab13ea2428f56df4cb40"
+
+      - name: Post-G05/G06 real execution — rebuild exact post-1247 survivor graph
+        if: github.event_name == 'pull_request' && github.head_ref == 'exec/1630-post-g05-g06-real-20260913'
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/historical-a /tmp/historical-b /tmp/bulk-a /tmp/bulk-b \
+            /tmp/current-a /tmp/current-b /tmp/post1247
+          mkdir -p /tmp/historical-a /tmp/historical-b /tmp/bulk-a /tmp/bulk-b \
+            /tmp/current-a /tmp/current-b /tmp/post1247
+
+          (
+            cd _survivor_product/_data526_hist
+            python tools/run_data526_materializer_data_only.py \
+              --v7-root ../_data526_v7 \
+              --data213-zip /tmp/data213-a.zip \
+              --records-jsonl /tmp/historical-a/records.jsonl \
+              --inventory-json /tmp/historical-a/inventory.json \
+              --evidence-json /tmp/historical-a/evidence.json
+            python tools/run_data526_materializer_data_only.py \
+              --v7-root ../_data526_v7 \
+              --data213-zip /tmp/data213-b.zip \
+              --records-jsonl /tmp/historical-b/records.jsonl \
+              --inventory-json /tmp/historical-b/inventory.json \
+              --evidence-json /tmp/historical-b/evidence.json
+          )
+          cmp /tmp/historical-a/records.jsonl /tmp/historical-b/records.jsonl
+          test "$(sha256sum /tmp/historical-a/records.jsonl | cut -d' ' -f1)" = "2f21f7655c9287bbc7424b410788f431f20f0936f445fefd26fcf6114b772dbd"
+
+          (
+            cd _survivor_product
+            python tools/materialize_data_bulk_code1_permissive_python_bundle.py \
+              --workspace /tmp/bulk-a --output /tmp/bulk-a-report.json
+            python tools/materialize_data_bulk_code1_permissive_python_bundle.py \
+              --workspace /tmp/bulk-b --output /tmp/bulk-b-report.json
+          )
+          cmp /tmp/bulk-a-report.json /tmp/bulk-b-report.json
+
+          (
+            cd _survivor_product
+            python tools/compose_data526_records_from_v8.py \
+              --historical-records-jsonl /tmp/historical-a/records.jsonl \
+              --bulk-report /tmp/bulk-a-report.json \
+              --bulk-workspace /tmp/bulk-a \
+              --v8-report /tmp/v8-a/v8-a.json \
+              --v8-survivors /tmp/v8-a/v8-survivors-a.json \
+              --records-jsonl /tmp/current-a/records.jsonl \
+              --inventory-json /tmp/current-a/inventory.json \
+              --evidence-json /tmp/current-a/evidence.json \
+              --execution-head-sha b5bf78ce8e74e74876838b80294a0a7e1ee1281b
+            python tools/compose_data526_records_from_v8.py \
+              --historical-records-jsonl /tmp/historical-b/records.jsonl \
+              --bulk-report /tmp/bulk-b-report.json \
+              --bulk-workspace /tmp/bulk-b \
+              --v8-report /tmp/v8-b/v8-a.json \
+              --v8-survivors /tmp/v8-b/v8-survivors-a.json \
+              --records-jsonl /tmp/current-b/records.jsonl \
+              --inventory-json /tmp/current-b/inventory.json \
+              --evidence-json /tmp/current-b/evidence.json \
+              --execution-head-sha b5bf78ce8e74e74876838b80294a0a7e1ee1281b
+          )
+          cmp /tmp/current-a/records.jsonl /tmp/current-b/records.jsonl
+          test "$(sha256sum /tmp/current-a/records.jsonl | cut -d' ' -f1)" = "18a933b2e637b4cff497f4acfbff31041d4c0ba21fba397af53d213edfd7a1b7"
+
+          (
+            cd _survivor_product
+            python tools/materialize_post1247_data526_survivors_v1.py \
+              --records-jsonl-a /tmp/current-a/records.jsonl \
+              --records-jsonl-b /tmp/current-b/records.jsonl \
+              --pre-materialization-evidence evidence/data526/v8/materialization_evidence.json \
+              --decontamination-evidence evidence/data232/current_reserved_decontamination_v1_terminal.json \
+              --survivor-records-jsonl /tmp/post1247/survivors.jsonl \
+              --inventory-json /tmp/post1247/record_inventory.json \
+              --evidence-json /tmp/post1247/materialization_evidence.json \
+              --execution-head-sha b5bf78ce8e74e74876838b80294a0a7e1ee1281b
+          )
+          test "$(sha256sum /tmp/post1247/survivors.jsonl | cut -d' ' -f1)" = "3f60cfe55435daf53908c492be358f36d7ebbc2ebee532c921a69ba92b2f6b25"
+          test "$(wc -l < /tmp/post1247/survivors.jsonl | tr -d ' ')" = "272"
+          test "$(python - <<'PY'
+          from pathlib import Path
+          import json
+          total = 0
+          for line in Path("/tmp/post1247/survivors.jsonl").read_text(encoding="utf-8").splitlines():
+              if line.strip():
+                  total += len(json.loads(line)["normalized_payload"].encode("utf-8"))
+          print(total)
+          PY
+          )" = "5921963"
+
+      - name: Post-G05/G06 real execution — regenerate terminal composition preflight
+        if: github.event_name == 'pull_request' && github.head_ref == 'exec/1630-post-g05-g06-real-20260913'
+        run: |
+          set -euo pipefail
+          identity="$(
+            python tools/materialize_d03_final_g05_g06_coverage_v1.py \
+              --native-current-execution-preflight \
+              --g05-authority /tmp/g05/g05-a/authority.json \
+              --expected-g05-execution-identity 415e8b5aec57150facd5b8fc081d00a856033597ecf7607e94f1c10224999bfa \
+              --g06-execution-envelope /tmp/g06/execution-a.json \
+              --expected-g06-envelope-identity 696a8d264f1449b944fe8261a2c57ad856f6c44bbe14e29e2e2085f0e96a3451 \
+              --expected-g06-execution-identity f0633cb40ae933774e161d001c097878fd1bd4399e6d7da9f44099610e5ae0cd \
+              --g06-terminal-qualification evidence/data526/post1247/g06_terminal_qualification_receipt_v1.json \
+              --expected-g06-terminal-qualification-identity c5f99dd4385a8400402a1b46abeea4bede58202a68521dbdce19cf702e6c4464 \
+              --expected-input-rows-sha256 7abf25e62075b6e01f7bafa0892fd57d8bae393576782ac023d3a894f829f62c \
+              --expected-survivor-evidence-identity 284d122a9afd4e5d4676d78a202d3001e5cf87438776022d3004d61fdf10e579 \
+              --expected-survivor-jsonl-sha256 3f60cfe55435daf53908c492be358f36d7ebbc2ebee532c921a69ba92b2f6b25 \
+              --expected-survivor-record-inventory-sha256 90e306ce74a82016c835a5e106088f7bdb586e13010301b5002ce5d55e11e27c \
+              --expected-survivor-payload-inventory-sha256 36e30427a8f6bc089c911690af82b1c59bfec1c883f3107597ca7fb07838b8df \
+              --expected-survivor-record-count 272 \
+              --expected-survivor-payload-bytes 5921963 \
+              --expected-survivor-source-object-count 259 \
+              --expected-privacy-policy-sha256 66f94332ecc6fd59727b8a840e458255b65566b4cc6ca3f149586ac4232eaf90 \
+              --expected-privacy-implementation-git-blob-sha1 bcc5938395724f6728ab212f98b39f2334b0f37d \
+              --output /tmp/post1247/current-preflight.json
+          )"
+          test "$identity" = "703cba4fab46c6dad12cc2c3f916a9c47aa6ed59ff0a5d7acff92a43eafd64e2"
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p = json.loads(Path("/tmp/post1247/current-preflight.json").read_text())
+          assert p["composition_preflight_identity_sha256"] == "703cba4fab46c6dad12cc2c3f916a9c47aa6ed59ff0a5d7acff92a43eafd64e2"
+          assert p["g05_partial_record_count"] == 0
+          assert p["drop_record_count"] == 17
+          assert p["g06_redaction_record_count"] == 9
+          assert p["unchanged_allow_record_count"] == 246
+          assert p["blockers"] == [
+              "G06_REDACTION_MATERIALIZATION_REQUIRED",
+              "POST_G05_G06_EXCLUSION_MATERIALIZATION_REQUIRED",
+          ]
+          PY
+
+      - name: Post-G05/G06 real execution — materialize twice and retain text-free proof
+        if: github.event_name == 'pull_request' && github.head_ref == 'exec/1630-post-g05-g06-real-20260913'
+        env:
+          CARRIER_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/post-g05-g06-a /tmp/post-g05-g06-b artifacts/post-g05-g06-real
+          mkdir -p /tmp/post-g05-g06-a /tmp/post-g05-g06-b artifacts/post-g05-g06-real
+
+          for build in a b; do
+            python tools/materialize_post_g05_g06_payload_v1.py \
+              --input-jsonl /tmp/post1247/survivors.jsonl \
+              --composition-preflight /tmp/post1247/current-preflight.json \
+              --expected-composition-preflight-identity 703cba4fab46c6dad12cc2c3f916a9c47aa6ed59ff0a5d7acff92a43eafd64e2 \
+              --g05-authority /tmp/g05/g05-a/authority.json \
+              --expected-g05-execution-identity 415e8b5aec57150facd5b8fc081d00a856033597ecf7607e94f1c10224999bfa \
+              --g06-execution-envelope /tmp/g06/execution-a.json \
+              --expected-g06-envelope-identity 696a8d264f1449b944fe8261a2c57ad856f6c44bbe14e29e2e2085f0e96a3451 \
+              --expected-g06-execution-identity f0633cb40ae933774e161d001c097878fd1bd4399e6d7da9f44099610e5ae0cd \
+              --g06-terminal-qualification evidence/data526/post1247/g06_terminal_qualification_receipt_v1.json \
+              --expected-g06-terminal-qualification-identity c5f99dd4385a8400402a1b46abeea4bede58202a68521dbdce19cf702e6c4464 \
+              --privacy-source src/twelve_six/data/privacy_filter_v3.py \
+              --execution-head-sha "$CARRIER_HEAD" \
+              --expected-materializer-implementation-git-blob-sha1 830087f91d1fa24385c5cbc8d2f687e4cc46b419 \
+              --output-jsonl "/tmp/post-g05-g06-${build}/records.jsonl" \
+              --output-inventory "/tmp/post-g05-g06-${build}/inventory.json" \
+              --output-evidence "/tmp/post-g05-g06-${build}/evidence.json"
+          done
+
+          cmp /tmp/post-g05-g06-a/records.jsonl /tmp/post-g05-g06-b/records.jsonl
+          cmp /tmp/post-g05-g06-a/inventory.json /tmp/post-g05-g06-b/inventory.json
+          cmp /tmp/post-g05-g06-a/evidence.json /tmp/post-g05-g06-b/evidence.json
+
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          raw_path = Path("/tmp/post-g05-g06-a/records.jsonl")
+          inventory_path = Path("/tmp/post-g05-g06-a/inventory.json")
+          evidence_path = Path("/tmp/post-g05-g06-a/evidence.json")
+          raw = raw_path.read_bytes()
+          lines = [line for line in raw.decode("utf-8").splitlines() if line.strip()]
+          inventory_raw = inventory_path.read_bytes()
+          evidence_raw = evidence_path.read_bytes()
+          inventory = json.loads(inventory_raw)
+          evidence = json.loads(evidence_raw)
+
+          assert len(lines) == 255
+          assert evidence["repeat_materialization_byte_identical"] is True
+          assert evidence["truth_boundary"]["authorized_optimized_target_exposure"] == 0
+          assert evidence["truth_boundary"]["training_executed"] is False
+          assert evidence["truth_boundary"]["learned_weights_created"] is False
+          assert evidence["truth_boundary"]["final_test_outcomes_read"] is False
+
+          proof = {
+              "schema": "12-6.d03-post-g05-g06-real-execution-proof.v1",
+              "authoritative_main_sha": "2da11c62f066671a1122888ec116242502f4fb9c",
+              "execution_carrier_head_sha": os.environ["CARRIER_HEAD"],
+              "carrier_product_diff_is_ci_only": True,
+              "input_jsonl_sha256": "3f60cfe55435daf53908c492be358f36d7ebbc2ebee532c921a69ba92b2f6b25",
+              "input_record_count": 272,
+              "input_payload_bytes": 5921963,
+              "input_rows_sha256": "7abf25e62075b6e01f7bafa0892fd57d8bae393576782ac023d3a894f829f62c",
+              "composition_preflight_identity_sha256": "703cba4fab46c6dad12cc2c3f916a9c47aa6ed59ff0a5d7acff92a43eafd64e2",
+              "g05_execution_identity_sha256": "415e8b5aec57150facd5b8fc081d00a856033597ecf7607e94f1c10224999bfa",
+              "g06_envelope_identity_sha256": "696a8d264f1449b944fe8261a2c57ad856f6c44bbe14e29e2e2085f0e96a3451",
+              "g06_execution_identity_sha256": "f0633cb40ae933774e161d001c097878fd1bd4399e6d7da9f44099610e5ae0cd",
+              "g06_terminal_qualification_identity_sha256": "c5f99dd4385a8400402a1b46abeea4bede58202a68521dbdce19cf702e6c4464",
+              "materializer_implementation_git_blob_sha1": "830087f91d1fa24385c5cbc8d2f687e4cc46b419",
+              "privacy_implementation_git_blob_sha1": "bcc5938395724f6728ab212f98b39f2334b0f37d",
+              "retained_record_count": len(lines),
+              "output_jsonl_sha256": hashlib.sha256(raw).hexdigest(),
+              "output_jsonl_bytes": len(raw),
+              "output_inventory_file_sha256": hashlib.sha256(inventory_raw).hexdigest(),
+              "output_evidence_file_sha256": hashlib.sha256(evidence_raw).hexdigest(),
+              "materialization_identity_sha256": evidence["materialization_identity_sha256"],
+              "repeat_cli_byte_identical": True,
+              "internal_repeat_materialization_byte_identical": True,
+              "raw_payload_retained": False,
+              "inventory_identity_sha256": inventory.get("inventory_identity_sha256"),
+              "truth_boundary": {
+                  "authorized_optimized_target_exposure": 0,
+                  "tokenizer_fit_authorized": False,
+                  "optimizer_updates_executed_on_real_targets": 0,
+                  "training_executed": False,
+                  "learned_weights_created": False,
+                  "final_test_outcomes_read": False,
+                  "paid_compute_used": False,
+                  "foreign_pretrained_weights": False,
+                  "external_llm_or_api_used_for_data_or_intelligence": False,
+              },
+          }
+          out = Path("artifacts/post-g05-g06-real")
+          out.mkdir(parents=True, exist_ok=True)
+          (out / "inventory.json").write_bytes(inventory_raw)
+          (out / "evidence.json").write_bytes(evidence_raw)
+          (out / "repeat-proof.json").write_text(
+              json.dumps(proof, sort_keys=True, separators=(",", ":")) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(proof, sort_keys=True))
+          PY
+
+          rm -rf /tmp/post-g05-g06-a /tmp/post-g05-g06-b /tmp/post1247 \
+            /tmp/current-a /tmp/current-b /tmp/historical-a /tmp/historical-b \
+            /tmp/bulk-a /tmp/bulk-b
+
+      - name: Post-G05/G06 real execution — upload text-free evidence
+        if: github.event_name == 'pull_request' && github.head_ref == 'exec/1630-post-g05-g06-real-20260913'
+        uses: actions/upload-artifact@v4
+        with:
+          name: post-g05-g06-real-${{ github.event.pull_request.head.sha }}
+          if-no-files-found: error
+          retention-days: 90
+          path: artifacts/post-g05-g06-real/
