@@ -5,13 +5,22 @@ from dataclasses import replace
 
 import pytest
 
+from twelve_six.data.deterministic_exposure_order import (
+    build_deterministic_exposure_plan,
+)
+from twelve_six.data.loss_bearing_content_binding_v1 import (
+    build_loss_bearing_content_manifest,
+)
+from twelve_six.data.unique_loss_ledger_v2 import build_ledger
 from twelve_six.packing import (
     DEFAULT_SEQUENCE_LENGTH,
     MATERIALIZATION_SCHEMA,
     PACKING_CONFIG_HASH,
     LossMaterializationDocument,
     LossMaterializationError,
+    TextRecord,
     build_postpack_loss_materialization,
+    iter_packed_examples,
     tokenizer_identity_sha256,
 )
 from twelve_six.tokenization import BYTE_TOKENIZER_VERSION, ByteTokenizer
@@ -82,7 +91,18 @@ def test_bridge_emits_complete_v2_spans_from_canonical_overlap_packing() -> None
     assert document["token_count"] == len(text)
     assert document["eligible_target_ranges"] == [[1, len(text)]]
 
+    canonical_examples = tuple(
+        iter_packed_examples(
+            (TextRecord("doc", text, "train"),),
+            ByteTokenizer(),
+            expected_split="train",
+            sequence_length=DEFAULT_SEQUENCE_LENGTH,
+        )
+    )
     first, second = materialization["packing"]["packs"]
+    assert [pack["token_ids"] for pack in materialization["packing"]["packs"]] == [
+        list(example.input_ids) for example in canonical_examples
+    ]
     assert first["token_count"] == DEFAULT_SEQUENCE_LENGTH
     assert first["loss_spans"] == [
         {
@@ -105,6 +125,54 @@ def test_bridge_emits_complete_v2_spans_from_canonical_overlap_packing() -> None
         for pack in materialization["packing"]["packs"]
         for span in pack["loss_spans"]
     ) == len(text) - 1
+
+
+def test_canonical_bridge_composes_into_loss_bearing_content_authority() -> None:
+    materialization = _build([_document("doc", "abcdef")])
+    ledger = build_ledger(materialization)
+    [segment] = ledger["segments"]
+    loss_positions = segment["loss_position_count"]
+    plan = build_deterministic_exposure_plan(
+        [
+            {
+                "global_batch_index": 0,
+                "shard_index": 0,
+                "worker_id": 0,
+                "claims": [
+                    {
+                        "segment_identity_sha256": segment[
+                            "segment_identity_sha256"
+                        ],
+                        "offset_start": 0,
+                        "offset_end": loss_positions,
+                    }
+                ],
+                "actual_nonignored_targets": loss_positions,
+            }
+        ],
+        num_workers=1,
+        batches_per_shard=1,
+        shard_count=1,
+    )
+
+    manifest = build_loss_bearing_content_manifest(
+        materialization,
+        ledger,
+        plan,
+        expected_materialization_identity_sha256=materialization[
+            "materialization_identity_sha256"
+        ],
+        expected_ledger_identity_sha256=ledger["ledger_identity_sha256"],
+        expected_plan_identity_sha256=plan["plan_identity_sha256"],
+    )
+
+    assert manifest["materialization_identity_sha256"] == materialization[
+        "materialization_identity_sha256"
+    ]
+    assert manifest["ledger_identity_sha256"] == ledger["ledger_identity_sha256"]
+    assert manifest["exposure_plan_identity_sha256"] == plan["plan_identity_sha256"]
+    assert manifest["loss_bearing_target_count"] == loss_positions
+    assert manifest["training_authorized_by_this_manifest"] is False
 
 
 def test_bridge_is_order_independent_and_keeps_heldout_documents_unpacked() -> None:
