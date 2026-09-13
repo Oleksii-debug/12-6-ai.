@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "qualification_id": "INSPECT-AI-BOOTSTRAP-STRESS-V1",
+  "worker": "SWARM-784",
+  "swarm_lane_key": "D06|INSPECT_AI|PERFORMANCE_RUNTIME|BOOTSTRAP-STRESS-V1",
+  "status": "RETEST_RUNTIME_REQUIRED",
+  "project": {
+    "repository": "Oleksii-debug/12-6-ai.",
+    "base_sha": "5020afd671a3885c1b738c8b4eafe7525f630546",
+    "canonical_base_contamination": false,
+    "foreign_weights_used": false,
+    "tokenizer_changed": false,
+    "training_executed": false,
+    "benchmark_payload_accessed": false,
+    "paid_compute": false,
+    "external_model_provider_used": false
+  },
+  "upstream": {
+    "repository": "https://github.com/UKGovernmentBEIS/inspect_ai",
+    "package": "inspect-ai",
+    "release": "0.3.260",
+    "tag": "0.3.260",
+    "commit": "3f294e61b823d6bad5fc16706fc5825ea980c8ee",
+    "license": "MIT",
+    "license_blob_sha": "72fc87742ef8a944fab4f28fe6231696c62f2fa4",
+    "pypi_wheel": "inspect_ai-0.3.260-py3-none-any.whl",
+    "pypi_wheel_sha256": "3da1dd4e4cbaec248b507799beb71eb9917eee1062eab1d9aeb6a8b5a03a386a",
+    "pypi_sdist": "inspect_ai-0.3.260.tar.gz",
+    "pypi_sdist_sha256": "5f6fbd7bc1fae0a770dc04e208daa9275de71f6d6b85b5fb68c162a1c4e0496f",
+    "rights_note": "Code is MIT-licensed. Dataset/evaluation-content rights are not inferred from the code license; this worker uses only a project-authored synthetic fixture."
+  },
+  "environment": {
+    "python": "3.13.5",
+    "python_executable": "/opt/pyvenv/bin/python",
+    "os": "Debian GNU/Linux 13.3 (trixie)",
+    "kernel": "6.18.35",
+    "arch": "x86_64",
+    "cpu_count": 5,
+    "cpu_model": "AMD EPYC 9V74 80-Core Processor",
+    "gpu": "NOT_PRESENT_OR_NOT_VISIBLE",
+    "package_managers": {"python": true, "pip": true, "uv": true, "poetry": false, "pdm": false, "conda": false, "git": true},
+    "local_package_cache": "NO_MATCHING_INSPECT_AI_ARTIFACT_FOUND",
+    "exact_version_preinstalled": false,
+    "network": {"pypi_index": "DNS_FAILURE", "github_git": "DNS_FAILURE"}
+  },
+  "installation_attempt": {
+    "isolated_environment": "/tmp/inspect-bootstrap-env",
+    "created": true,
+    "command": "python -m pip install --disable-pip-version-check --no-input --no-cache-dir inspect-ai==0.3.260",
+    "result": "FAILED_EXACT_ARTIFACT_UNAVAILABLE",
+    "exit_code": 1,
+    "stderr_classification": "NETWORK_DNS_UNAVAILABLE",
+    "global_python_modified": false
+  },
+  "offline_validation": {
+    "tests": 4,
+    "result": "PASS"
+  },
+  "runtime": {
+    "execution": "NOT_EXECUTED",
+    "reason": "The exact pinned package could not be downloaded and no matching local artifact existed.",
+    "real_upstream_runtime_claimed": false
+  },
+  "benchmark": {
+    "execution": "NOT_EXECUTED",
+    "clean_runs_required": 2,
+    "metrics": ["wall_time_ms", "rss_max_kib_delta"]
+  },
+  "parity": {
+    "execution": "NOT_EXECUTED",
+    "reference": "project-owned exact string scorer oracle",
+    "tolerance": "exact_boolean_match"
+  },
+  "adversarial": {
+    "offline": "PASS",
+    "runtime_dependent": "NOT_EXECUTED",
+    "cases": ["upstream_identity_drift", "fixture_tamper", "unsupported_schema", "false_adoption_claim"]
+  },
+  "next_safe_action": "Re-run exact inspect-ai==0.3.260 from the recorded wheel hash in LOCAL_FREE, execute the real task/scorer path twice without external model/provider calls, then compare against the independent oracle and refresh live ownership before promotion."
+}
