@@ -1,0 +1,152 @@
+name: TEMP D03 EDRNPA substantive real execution
+
+on:
+  push:
+    branches:
+      - d03/edrnpa-open-data-probe-20260907
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose-current-edrnpa-filter-boundary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out exact Product head
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Run focused structural regressions
+        run: |
+          python -m pip install pytest
+          python -m pytest -q tests/test_probe_d03_edrnpa_open_data_v1.py
+          python -m py_compile tools/probe_d03_edrnpa_open_data_v1.py
+
+      - name: Diagnose real aggregate extraction and filter counts without payload text
+        run: |
+          python - <<'PY'
+          import importlib.util
+          import tempfile
+          import xml.etree.ElementTree as ET
+          from collections import Counter
+          from pathlib import Path
+
+          tool = Path('tools/probe_d03_edrnpa_open_data_v1.py')
+          spec = importlib.util.spec_from_file_location('edrnpa_probe', tool)
+          assert spec is not None and spec.loader is not None
+          mod = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(mod)
+
+          counts = Counter()
+          item_attribute_names = set()
+          text_attribute_names = set()
+          richtext_attribute_names = set()
+          par_attribute_names = set()
+
+          with tempfile.TemporaryDirectory(prefix='edrnpa-diagnose-') as tmp:
+              root = Path(tmp)
+              source = root / 'source.zip'
+              source_identity = mod.download_archive_to(source, timeout=240.0)
+              nested_path = root / 'nested.zip'
+              mod._extract_nested_zip(source, nested_path)
+              nested, info, xml_path = mod._nested_xml_info(nested_path)
+              stack = []
+              database_depth = 0
+              chunks = None
+              chars = 0
+              has_par = False
+              with nested:
+                  with nested.open(info) as raw:
+                      guarded = mod._GuardedXMLReader(raw, expected_size=info.file_size)
+                      for event, elem in ET.iterparse(guarded, events=('start', 'end')):
+                          tag = mod._local_tag(elem.tag)
+                          if event == 'start':
+                              stack.append(tag)
+                              if tag == 'database':
+                                  database_depth += 1
+                              elif tag == 'document':
+                                  counts['documents'] += 1
+                                  chunks = []
+                                  chars = 0
+                                  has_par = False
+                              elif tag == 'item':
+                                  item_attribute_names.update(elem.attrib)
+                              elif tag == 'text':
+                                  text_attribute_names.update(elem.attrib)
+                              elif tag == 'richtext':
+                                  richtext_attribute_names.update(elem.attrib)
+                              elif tag == 'par':
+                                  par_attribute_names.update(elem.attrib)
+                              continue
+
+                          if chunks is not None and tag == 'par' and 'text' in stack:
+                              counts['par_elements'] += 1
+                              chunk = ''.join(elem.itertext())
+                              if chunk.strip():
+                                  counts['par_nonempty'] += 1
+                                  counts['par_chars'] += len(chunk)
+                                  if chars <= mod.MAX_DOCUMENT_CHARS:
+                                      chunks.append(chunk)
+                                      chars += len(chunk)
+                              has_par = True
+                              elem.clear()
+                          elif chunks is not None and tag == 'text' and not has_par:
+                              counts['text_without_par'] += 1
+                              chunk = ''.join(elem.itertext())
+                              if chunk.strip():
+                                  chunks.append(chunk)
+                                  chars += len(chunk)
+                              elem.clear()
+                          elif tag == 'document':
+                              text = mod._normalize_text(chunks or [])
+                              encoded = text.encode('utf-8')
+                              if not text:
+                                  counts['documents_without_text'] += 1
+                              else:
+                                  counts['documents_with_text'] += 1
+                                  counts['normalized_bytes'] += len(encoded)
+                                  if len(encoded) < mod.MIN_NORMALIZED_BYTES:
+                                      counts['documents_too_short'] += 1
+                                  elif len(encoded) > mod.MAX_SELECTED_BYTES:
+                                      counts['documents_over_single_object_cap'] += 1
+                                  else:
+                                      quality = mod._quality(text)
+                                      if quality['ukrainian_alpha_ratio'] < mod.MIN_UKRAINIAN_ALPHA_RATIO:
+                                          counts['documents_non_ukrainian'] += 1
+                                      elif quality['has_email'] or quality['has_phone']:
+                                          counts['documents_pii_quarantined'] += 1
+                                      else:
+                                          counts['documents_eligible_by_current_filter'] += 1
+                                          counts['eligible_bytes'] += len(encoded)
+                              chunks = None
+                              elem.clear()
+                          elif tag == 'database':
+                              database_depth -= 1
+                              elem.clear()
+                          stack.pop()
+
+                      if guarded.bytes_seen != info.file_size:
+                          raise SystemExit('diagnostic did not consume full XML')
+                      counts['xml10_control_bytes_removed'] = guarded.removed_control_bytes
+                      control_identity = guarded.removal_identity_sha256
+
+              safe = {
+                  'source_identity': source_identity,
+                  'nested_xml_member': xml_path,
+                  'nested_xml_bytes': info.file_size,
+                  'counts': dict(sorted(counts.items())),
+                  'xml10_control_removal_identity_sha256': control_identity,
+                  'item_attribute_names': sorted(item_attribute_names),
+                  'text_attribute_names': sorted(text_attribute_names),
+                  'richtext_attribute_names': sorted(richtext_attribute_names),
+                  'par_attribute_names': sorted(par_attribute_names),
+                  'payload_text_printed': False,
+              }
+              print('SAFE_REAL_DIAGNOSIS', mod.cjson(safe).decode('utf-8').strip())
+          PY
