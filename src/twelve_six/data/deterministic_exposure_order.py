@@ -410,3 +410,54 @@ def authorize_ordered_batch(
         expected_next_exposure_identity_sha256=base_identity,
     )
     return observed
+
+
+def authorize_ordered_live_batch(
+    guard: IdentitySafeExposureReplayGuard,
+    plan: Mapping[str, Any],
+    *,
+    batch_index: int,
+    expected_plan_identity_sha256: str,
+    expected_ordered_next_exposure_identity_sha256: str,
+    input_ids: Any,
+    target_ids: Any,
+    loss_mask: Any | None = None,
+    shifted: bool = False,
+    ignore_index: int = -100,
+) -> str:
+    """Authorize one planned batch only after exact live-content verification.
+
+    The deterministic plan is the sole source of the batch claims and target
+    cardinality. The ordered handoff is verified before delegating to the existing
+    content-bound guard transition, which rechecks the same claims against the
+    independently rooted loss-bearing content manifest, authenticates predictor
+    context and targets, and mutates exposure state exactly once.
+    """
+    observed = ordered_next_exposure_identity(
+        guard,
+        plan,
+        batch_index=batch_index,
+        expected_plan_identity_sha256=expected_plan_identity_sha256,
+    )
+    if observed != expected_ordered_next_exposure_identity_sha256:
+        raise LedgerError("ordered next exposure identity does not match expected handoff")
+    batches, _ = _validated_plan_batches(
+        plan,
+        expected_plan_identity_sha256=expected_plan_identity_sha256,
+    )
+    batch = batches[batch_index]
+    base_identity = guard.next_exposure_identity(
+        batch["claims"], actual_nonignored_targets=batch["actual_nonignored_targets"]
+    )
+    guard.authorize_live_batch_with_identity(
+        batch["claims"],
+        actual_nonignored_targets=batch["actual_nonignored_targets"],
+        expected_next_exposure_identity_sha256=base_identity,
+        batch_index=batch_index,
+        input_ids=input_ids,
+        target_ids=target_ids,
+        loss_mask=loss_mask,
+        shifted=shifted,
+        ignore_index=ignore_index,
+    )
+    return observed
