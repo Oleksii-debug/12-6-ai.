@@ -48,6 +48,7 @@
     "parameter_count_is_not_training_authorization": true,
     "data_quality_and_mixture_are_independent_axes": true,
     "tokenizer_identity_must_be_bound_before_learned_campaign": true,
+    "cross_scale_hyperparameters_require_evidence": true,
     "cross_tokenizer_primary_metric": "bits_per_byte",
     "same_tokenizer_secondary_metrics": [
       "validation_nll",
@@ -58,6 +59,7 @@
       "grouped_query_attention",
       "tied_embeddings"
     ],
+    "primary_scale_measurement": "measured_non_embedding_flops_per_token_with_parameter_count_reported",
     "distributed_bias_at_or_below_100m": "prefer_single_device_or_data_parallel_before_tensor_pipeline_context_parallelism"
   },
   "experiment_matrix": [
@@ -123,6 +125,7 @@
       "requires_corpus_identity": true,
       "requires_tokenizer_fit_identity": true,
       "requires_20m_learned_evidence": true,
+      "requires_cross_scale_hyperparameter_evidence": true,
       "requires_compute_authorization_if_material_cost": true,
       "long_training": true,
       "authorized_now": false
@@ -137,8 +140,53 @@
       0.999
     ],
     "scheduler_policy": "compare_incumbent_against_evidence_backed_alternatives_on_bounded_pilots",
+    "silent_cross_scale_hyperparameter_copy_allowed": false,
     "gradient_clipping_required": true,
     "nan_inf_fail_closed": true
+  },
+  "cross_scale_hyperparameter_transfer": {
+    "status": "EXPERIMENT_PROPOSAL_ONLY",
+    "silent_20m_to_50m_or_100m_copy_allowed": false,
+    "required_policy": "either_scale_specific_retuning_or_validated_transfer_parameterization",
+    "allowed_evidence_paths": [
+      "scale_specific_retuning_on_matched_data_tokenizer_metric_contract",
+      "u_mup_proxy_transfer_with_matched_standard_parameterization_control"
+    ],
+    "u_mup_adopted_now": false,
+    "u_mup_reference": "https://arxiv.org/abs/2407.17465",
+    "proxy_parameter_candidates": [
+      3000000,
+      10000000,
+      20000000
+    ],
+    "transfer_parameter_targets": [
+      50000000,
+      100000000
+    ],
+    "must_record": [
+      "learning_rate",
+      "optimizer_betas",
+      "weight_decay",
+      "warmup",
+      "scheduler",
+      "batch_tokens",
+      "gradient_clip",
+      "precision",
+      "initialization_or_parameterization",
+      "seed",
+      "loss_curve",
+      "gradient_health"
+    ],
+    "promotion_rule": "100m_freeze_requires_measured_cross_scale_recipe_evidence_not_assumed_hyperparameter_transfer"
+  },
+  "compute_accounting": {
+    "parameter_count_report_required": true,
+    "measured_or_exact_non_embedding_flops_per_token_required": true,
+    "attention_compute_must_be_included": true,
+    "vocabulary_projection_compute_reported_separately": true,
+    "parameter_only_6nd_is_primary_scale_axis": false,
+    "tokens_per_parameter_grid_is_declared_optimum": false,
+    "tokens_per_parameter_grid_is_measurement_grid": true
   },
   "metric_contract": {
     "required": [
@@ -148,6 +196,7 @@
       "gradient_health",
       "tokens_per_second",
       "peak_memory_bytes",
+      "non_embedding_flops_per_token",
       "checkpoint_resume_equivalence",
       "deterministic_rebuild_or_seed_evidence"
     ],
@@ -163,6 +212,7 @@
     "checkpoint_integrity_terminal_retest",
     "selection_validation_terminal",
     "exact_code_model_tokenizer_data_config_hashes",
+    "cross_scale_hyperparameter_evidence",
     "bounded_pilot_loss_and_numerics",
     "compute_authorization_for_material_cost",
     "independent_audit"
@@ -170,10 +220,10 @@
   "handoff": {
     "DATA": "materialize Research Corpus V1 and immutable candidate identity before learned runs",
     "TOK": "fit and reproduce corpus-bound tokenizer candidates and report BPB fertility roundtrip throughput",
-    "TRAIN": "run bounded optimizer and token-budget pilots only after data tokenizer checkpoint gates",
-    "D06": "compare contamination-safe metrics and fit empirical scaling curves",
+    "TRAIN": "run bounded optimizer and token-budget pilots only after data tokenizer checkpoint gates; do not silently copy 20M hyperparameters to larger scales",
+    "D06": "compare contamination-safe metrics and fit empirical scaling curves using BPB plus compute-normalized scale evidence",
     "C01": "estimate cost and request explicit authorization before materially paid runs",
-    "D01": "freeze 100M ModelSpec only from measured sweep evidence"
+    "D01": "freeze 100M ModelSpec only from measured sweep and cross-scale recipe evidence"
   },
   "research_sources": [
     {
@@ -190,6 +240,21 @@
       "title": "SmolLM2: When Smol Goes Big -- Data-Centric Training of a Small Language Model",
       "url": "https://arxiv.org/abs/2502.02737",
       "use": "evidence for data-centric small-model training and small-scale ablations before large runs"
+    },
+    {
+      "title": "u-muP: The Unit-Scaled Maximal Update Parametrization",
+      "url": "https://arxiv.org/abs/2407.17465",
+      "use": "evidence that cross-scale hyperparameter transfer is an engineered parameterization property to validate rather than assume"
+    },
+    {
+      "title": "DeepSeek LLM: Scaling Open-Source Language Models with Longtermism",
+      "url": "https://arxiv.org/abs/2401.02954",
+      "use": "evidence that parameter-count proxies can materially misstate compute at smaller scales when attention and vocabulary costs differ"
+    },
+    {
+      "title": "TokEval: A Tokenizer Evaluation Suite",
+      "url": "https://arxiv.org/abs/2608.18062",
+      "use": "current evidence for tokenizer-aware intrinsic diagnostics and BPB as a tokenizer-agnostic language-model metric"
     }
   ]
 }
