@@ -3,7 +3,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-
 from test_bounded_pilot import _authority, _batch, _next
 from test_bounded_pilot_durable_attempt import _gate, _trainer
 
