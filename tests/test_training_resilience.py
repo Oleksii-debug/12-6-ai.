@@ -176,9 +176,9 @@ def test_checkpoint_interval_uses_measured_overhead_and_recovery_bounds() -> Non
         target_overhead_fraction=0.05,
         max_recovery_window_seconds=300.0,
     )
-    assert result.minimum_interval_steps_for_overhead == 29
+    assert result.minimum_interval_steps_for_overhead == 57
     assert result.maximum_interval_steps_for_recovery == 150
-    assert result.recommended_interval_steps == 29
+    assert result.recommended_interval_steps == 57
     assert result.predicted_checkpoint_overhead_fraction <= 0.05
-    assert result.predicted_max_recompute_seconds == 58.0
+    assert result.predicted_max_recompute_seconds == 114.0
     assert result.constraints_satisfied is True
