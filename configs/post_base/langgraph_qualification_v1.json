@@ -1,0 +1,96 @@
+{
+  "canonical_base": {
+    "changed": false,
+    "evaluation_payload_accessed": false,
+    "foreign_instruction_alignment": false,
+    "foreign_pretrained_weights": false,
+    "paid_compute": false,
+    "tokenizer_changed": false,
+    "training_executed": false
+  },
+  "environment": {
+    "arch": "x86_64",
+    "cache_dirs_found": [],
+    "conda": false,
+    "cpu": "AMD EPYC 7763",
+    "cpu_count_visible": 5,
+    "git": "2.47.3",
+    "gpu": false,
+    "network_dns_github": false,
+    "network_dns_pypi": false,
+    "os": "Debian GNU/Linux 13 (trixie)",
+    "package_manager": ["pip 25.1.1", "uv 0.10.0"],
+    "pdm": false,
+    "poetry": false,
+    "python_full_version": "3.13.5",
+    "python_global_langgraph_before": false,
+    "runtime_python": "3.13.5"
+  },
+  "installation": {
+    "attempted": true,
+    "command": "python -m pip install --only-binary=:all: --no-input langgraph==1.2.11",
+    "global_packages_modified": false,
+    "install_log_sha256": "39bb4cee2ec1f8867962f4174feb0b450817a552cc13b97bd914a51104e6b902",
+    "isolated_venv": true,
+    "result": "FAILED_NETWORK_NAME_RESOLUTION",
+    "substitution_used": false,
+    "venv_freeze_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "venv_path": "/tmp/swarm773-langgraph-venv"
+  },
+  "lane_key": "D09|LANGGRAPH|OPEN_SOURCE_REUSE_RESEARCH|DURABLE-RUNTIME-BOOTSTRAP-V1",
+  "project_base_sha": "5020afd671a3885c1b738c8b4eafe7525f630546",
+  "project_task_fixture": {
+    "checkpoint_seq": 0,
+    "completed_steps": [],
+    "evidence": [],
+    "goal": "bounded durable task qualification",
+    "pending_steps": ["step-a", "step-b"],
+    "schema_version": 1,
+    "status": "READY",
+    "task_id": "qualification-demo"
+  },
+  "qualification_id": "LANGGRAPH-DURABLE-RUNTIME-BOOTSTRAP-V1",
+  "rights": {
+    "dataset_rights": "not applicable to this software qualification",
+    "license_blob_sha": "fc0602feecdd6748623c852ab534e1ca612673c7",
+    "license_source": "immutable upstream tag 1.2.11 / libs/langgraph/LICENSE",
+    "model_weight_rights": "not applicable; no model weights consumed",
+    "notice_or_copying_found": false,
+    "software_license": "MIT"
+  },
+  "runtime": {
+    "benchmark_status": "NOT_EXECUTED",
+    "execution_status": "NOT_EXECUTED",
+    "parity_status": "NOT_EXECUTED",
+    "project_owned_state_checkpoint_mechanics_tested": true,
+    "real_runtime_probe_defined": true,
+    "reason": "EXACT_LANGGRAPH_PACKAGE_AND_TRANSITIVE_DEPENDENCIES_NOT_RETRIEVABLE_WITHOUT_NETWORK"
+  },
+  "schema_version": 1,
+  "upstream": {
+    "artifact_note": "wheel SHA-256 was not independently captured in this run; runtime installation was blocked by unavailable package-index DNS.",
+    "commit": "644815f9e5bc52ad8f7a5227a456227e9c3e639b",
+    "direct_runtime_dependencies": [
+      "langchain-core>=1.4.7,<2",
+      "langgraph-checkpoint>=4.1.0,<5.0.0",
+      "langgraph-sdk>=0.4.2,<0.5.0",
+      "langgraph-prebuilt>=1.1.0,<1.2.0",
+      "xxhash>=3.5.0",
+      "pydantic>=2.7.4"
+    ],
+    "package": "langgraph==1.2.11",
+    "pypi_sdist_sha256": "9ecfe11e50d338b34b15cf4d8a442642de103e8ae6971320efba84e4542eb363",
+    "repository": "https://github.com/langchain-ai/langgraph",
+    "requires_python": ">=3.10",
+    "tag": "1.2.11",
+    "upstream_lib_pyproject_blob_sha": "e3d95cfec83fb9ce4a887c264a060f4513be2e9d",
+    "upstream_lib_uv_lock_blob_sha": "a3d49f446adc664140e8fca0a8f6318be05a8dd7"
+  },
+  "validation": {
+    "compileall": "PASS",
+    "focused_pytest_passed": 7,
+    "project_side_checkpoint_benchmark_iterations": 200,
+    "validator": "PASS"
+  },
+  "worker": "SWARM-773"
+}
