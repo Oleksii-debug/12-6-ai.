@@ -5,10 +5,11 @@ loaded lazily and only after exact-version verification.
 """
 from __future__ import annotations
 
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from importlib import metadata
 from time import perf_counter
-from typing import Any, Callable, Mapping
+from typing import Any, Self
 from urllib.parse import urlparse
 
 UPSTREAM_REPOSITORY = "https://github.com/microsoft/playwright"
@@ -74,7 +75,7 @@ def validate_url(
 
 def validate_selector(selector: str) -> None:
     selector = _require_string(selector, "selector")
-    if selector.startswith("xpath=") or selector.startswith("coordinates:"):
+    if selector.startswith(("xpath=", "coordinates:")):
         raise ContractError("coordinate/XPath targeting is outside the bounded semantic surface")
 
 
@@ -123,7 +124,7 @@ def require_exact_runtime() -> Any:
     """Import the real dependency only after exact version verification."""
     installed_identity()
     try:
-        import playwright.sync_api as sync_api  # type: ignore[import-not-found]
+        from playwright import sync_api  # type: ignore[import-not-found]
     except ImportError as exc:
         raise ContractError(
             "Playwright package metadata is present but runtime import failed"
@@ -142,7 +143,7 @@ class PlaywrightBrowserSession:
         self._browser = None
         self._page = None
 
-    def __enter__(self) -> "PlaywrightBrowserSession":
+    def __enter__(self) -> Self:
         self._pw = self._sync_api.sync_playwright().start()
         self._browser = self._pw.chromium.launch(headless=True)
         self._page = self._browser.new_page()
