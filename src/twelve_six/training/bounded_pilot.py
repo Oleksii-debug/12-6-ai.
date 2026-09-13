@@ -259,9 +259,10 @@ class BoundedPilotStepRunner(_core.BoundedPilotStepRunner):
                     f"BLOCKED_PRE_STEP_1: LEARN-345 session {key} widened"
                 )
         for key in ("authorized_optimized_targets", "optimizer_updates_executed"):
-            if value.get(key) != 0 or isinstance(value.get(key), bool):
+            item = value.get(key)
+            if isinstance(item, bool) or not isinstance(item, int) or item != 0:
                 raise BoundedPilotAuthorizationError(
-                    f"BLOCKED_PRE_STEP_1: LEARN-345 session {key} must remain zero"
+                    f"BLOCKED_PRE_STEP_1: LEARN-345 session {key} must remain exact integer zero"
                 )
         for key in (
             "policy_identity_sha256",
