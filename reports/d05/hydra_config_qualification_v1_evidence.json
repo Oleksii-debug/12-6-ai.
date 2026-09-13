@@ -1,0 +1,37 @@
+{
+  "contract_id": "12-6.hydra-config-qualification.v1",
+  "contract_sha256": "b33b41960c62c91ea146b1840a3beef6eebc189b21b8fe3584adf56217762b56",
+  "defaults_count": 3,
+  "evidence_id": "12-6.hydra-config-qualification-evidence.v1",
+  "evidence_sha256": "5ce10b2ba63ae0075982af546c7bd21a398fd0ff2f8efb7ede32ff21c8e1f700",
+  "experiment_identity_sha256": "516985cb6ff268a2e32d7cd99ec116437eeac002271be6d965fbae2308827f8e",
+  "fixture_id": "PROJECT_OWNED_HYDRA_QUALIFICATION_BASELINE",
+  "gates": {
+    "CANONICAL_AUTHORITY_PRESERVED": true,
+    "DETERMINISTIC_REBUILD": true,
+    "EXPLICIT_OVERRIDE_LEDGER": true,
+    "NO_SECRET_BEARING_METADATA": true,
+    "PORTABLE_ROLLBACK_EXPORT": true,
+    "REGISTRY_BINDING_BOUND": true,
+    "RESOLVED_CONFIG_BOUND": true,
+    "UPSTREAM_IDENTITY_BOUND": true
+  },
+  "hydra_adopted": false,
+  "hydra_executed": false,
+  "override_count": 1,
+  "paid_compute_used": false,
+  "portable_export_sha256": "c0c1b3eadeb11838bab17cc3f93349ff6ac3a088acedfdd2dc0a1c1cfb10a29b",
+  "project_base_git_sha": "5020afd671a3885c1b738c8b4eafe7525f630546",
+  "registry_blob_sha": "d80a60357c56eacac135f948b8a72556bb849e5a",
+  "resolved_config_sha256": "85999c70ab4dc8fd54ad4b636f39c7df4a9b45dc29518dc253128dbdf07c9dc6",
+  "schema_version": 1,
+  "stage_promotion_granted": false,
+  "upstream": {
+    "commit_sha": "51647a2183512bc4e5556842c494e7efdbd75375",
+    "license": "MIT",
+    "release_published_at": "2026-08-05T18:32:10Z",
+    "release_tag": "v1.3.5",
+    "repository": "https://github.com/hydra-ecosystem/hydra"
+  },
+  "verdict": "PASS_CONTRACT_MECHANICS_CANDIDATE_NOT_ADOPTED"
+}
