@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """Execute the authoritative Rada quality/privacy replay from exact authenticated source bytes.
 
-This launcher is intentionally stdlib-only.  It does not define quality/privacy
-policy.  It verifies the exact behavior-bearing project source closure, stages
+This launcher is intentionally stdlib-only. It does not define quality/privacy
+policy. It verifies the exact behavior-bearing project source closure, stages
 those already-verified bytes into a fresh temporary tree, verifies the staged
 tree again immediately before execution, and invokes the incumbent authoritative
-materializer in a fresh ``python -I`` process whose import roots are only the
-authenticated tree plus the interpreter standard-library/site roots.
+materializer in a fresh ``python -I -S`` process whose import roots are only the
+authenticated tree plus the interpreter standard-library roots.
 
-The durable output is a hash-safe execution-closure receipt.  It grants zero
+The durable output is a hash-safe execution-closure receipt. It grants zero
 corpus/training authority by itself.
 """
 from __future__ import annotations
@@ -29,7 +29,7 @@ SCHEMA = "12-6.d03-rada-trees-isolated-source-closure.v1"
 ENTRYPOINT = "tools/materialize_d03_rada_trees_quality_windows_authoritative.py"
 
 # Exact source closure composed on the current #1017 lineage after the
-# 58711afe... main bridge.  Only stdlib dependencies exist outside this tree.
+# 58711afe... main bridge. Only stdlib dependencies exist outside this tree.
 AUTHENTICATED_SOURCE_CLOSURE: dict[str, str] = {
     "tools/materialize_d03_rada_trees_quality_windows_authoritative.py": "e6789f82301dc9e559a431a6b776097bef28d393",
     "tools/materialize_d03_rada_trees_quality_windows.py": "5958e4b859902b60e06ba6a4019974ee1088e093",
@@ -136,7 +136,8 @@ def _verify_staged_tree(
 
 def _isolated_environment(extra: Mapping[str, str] | None = None) -> dict[str, str]:
     # Preserve the runner/toolchain environment while explicitly dropping Python
-    # import-injection variables.  ``-I`` also implies ``-E -s -P``.
+    # import-injection variables. ``-I`` also implies ``-E -s -P`` and ``-S``
+    # prevents ``site``/``sitecustomize``/``usercustomize`` execution entirely.
     environment = dict(os.environ)
     if extra:
         environment.update(extra)
@@ -161,6 +162,7 @@ def _run_isolated_entrypoint(
     command = [
         sys.executable,
         "-I",
+        "-S",
         "-c",
         _CHILD_BOOTSTRAP,
         str(authenticated_root),
@@ -186,8 +188,10 @@ def _runtime_identity() -> dict[str, Any]:
         "executable_sha256": _sha256_file(executable),
         "unicode_database_version": unicodedata.unidata_version,
         "isolated_flag": "-I",
+        "no_site_flag": "-S",
         "ignore_environment": True,
         "no_user_site": True,
+        "no_system_site_initialization": True,
         "safe_path": True,
     }
 
@@ -325,6 +329,7 @@ def execute(
         "staged_tree_reverified_before_child": True,
         "child_fresh_process": True,
         "child_python_isolated_mode": True,
+        "child_python_no_site_mode": True,
         "child_inherited_pythonpath": False,
         "child_authenticated_import_roots_only": True,
         "runtime": _runtime_identity(),
