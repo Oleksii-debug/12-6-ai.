@@ -65,6 +65,17 @@ def test_checkpoint_publication_rejects_nonfinite_optimizer_state(
         trainer.assert_checkpoint_safe()
 
 
+def test_checkpoint_publication_rejects_nonfinite_optimizer_param_group() -> None:
+    trainer = _trainer()
+    trainer.optimizer.param_groups[0]["lr"] = float("inf")
+
+    with pytest.raises(
+        NonFiniteTrainingError,
+        match="non-finite optimizer state blocks checkpoint publication",
+    ):
+        trainer.state_dict()
+
+
 def test_clean_finite_optimizer_state_save_and_restore_passes() -> None:
     source = _trainer()
     _install_finite_adamw_state(source)
@@ -108,6 +119,25 @@ def test_restore_rejects_rehashed_nonfinite_optimizer_payload_without_mutation(
     assert destination.optimizer_step == 0
     assert destination.micro_step == 0
     destination.assert_checkpoint_safe()
+
+
+def test_restore_cannot_repair_live_nonfinite_trainer_in_place() -> None:
+    source = _trainer()
+    _install_finite_adamw_state(source)
+    checkpoint = source.state_dict()
+
+    destination = _trainer()
+    optimizer_state = _install_finite_adamw_state(destination)
+    optimizer_state["exp_avg"].view(-1)[0] = float("nan")
+
+    with pytest.raises(
+        TrainingStateInvalidError,
+        match="non-finite live Trainer cannot be repaired in place",
+    ):
+        destination.load_state_dict(checkpoint)
+
+    with pytest.raises(TrainingStateInvalidError):
+        destination.assert_checkpoint_safe()
 
 
 def test_post_step_optimizer_poison_never_commits_trainer_step() -> None:
