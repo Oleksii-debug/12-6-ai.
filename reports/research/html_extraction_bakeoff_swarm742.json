@@ -1,0 +1,23 @@
+{
+  "base_sha": "5020afd671a3885c1b738c8b4eafe7525f630546",
+  "contract_sha256": "5e6134eebd75738ac5dc116ebcbc4fae4d67045cf3e0e6df5268d164c8940d48",
+  "corpus_capacity_credited": 0,
+  "deterministic_evidence_sha256": "b1fa9e9ea1c58d5eab672d8196d105d1b24eee7afa193d7988eda3eb4fe81842",
+  "evidence_id": "D03-HTML-EXTRACTION-BAKEOFF-EVIDENCE-V1",
+  "execution_profile": "LOCAL_FREE",
+  "final_test_payload_accessed": false,
+  "model_training_executed": false,
+  "paid_compute_used": false,
+  "production_extractor_replacement_authorized": false,
+  "reason": "pinned extractor runtime unavailable or identity-invalid",
+  "results": {},
+  "runtime_errors": {
+    "resiliparse": "missing runtime distribution: resiliparse",
+    "trafilatura": "missing runtime distribution: trafilatura"
+  },
+  "schema_version": 1,
+  "swarm_lane_key": "D03|HTML-EXTRACTION|INDEPENDENT-VERIFY|TRAFILATURA-VS-RESILIPARSE",
+  "swarm_worker_id": "SWARM-742",
+  "terminal_state": "RETEST_RUNTIME_REQUIRED",
+  "training_authorized_bytes": 0
+}
