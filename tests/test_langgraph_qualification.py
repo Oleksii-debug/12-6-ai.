@@ -1,11 +1,11 @@
-from pathlib import Path
 import sys
+from pathlib import Path
 
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from twelve_six.langgraph_qualification import (  # noqa: E402
+from twelve_six.langgraph_qualification import (
     ContractError,
     atomic_write_json,
     benchmark_project_checkpoint,
@@ -58,7 +58,7 @@ def test_schema_rejects_duplicate_or_overlapping_steps():
 def test_corrupt_json_fails(tmp_path):
     path = tmp_path / "state.json"
     path.write_text('{"schema_version":1}', encoding="utf-8")
-    with pytest.raises(Exception):
+    with pytest.raises(ContractError):
         read_json(path)
 
 
