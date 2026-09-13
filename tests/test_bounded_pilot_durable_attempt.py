@@ -47,7 +47,11 @@ def _policy() -> dict[str, Any]:
     return json.loads(_POLICY_PATH.read_text(encoding="utf-8"))
 
 
-def _trainer(*, max_steps: int = 1) -> Trainer:
+def _trainer(
+    *,
+    max_steps: int = 1,
+    config_overrides: dict[str, Any] | None = None,
+) -> Trainer:
     seed = 20260826
     torch.manual_seed(seed)
     model = TwelveSixDecoder(
@@ -65,23 +69,26 @@ def _trainer(*, max_steps: int = 1) -> Trainer:
         ),
         InitSpec(),
     )
+    config_values: dict[str, Any] = {
+        "learning_rate": 0.00022,
+        "weight_decay": 0.1,
+        "betas": (0.9, 0.95),
+        "eps": 1e-8,
+        "max_steps": max_steps,
+        "warmup_steps": 0,
+        "scheduler": "constant",
+        "gradient_accumulation_steps": 1,
+        "gradient_clip_norm": 1.0,
+        "precision": "fp32",
+        "seed": seed,
+        "deterministic_algorithms": True,
+        "deterministic_warn_only": False,
+    }
+    if config_overrides:
+        config_values.update(config_overrides)
     return Trainer(
         model,
-        TrainerConfig(
-            learning_rate=0.00022,
-            weight_decay=0.1,
-            betas=(0.9, 0.95),
-            eps=1e-8,
-            max_steps=max_steps,
-            warmup_steps=0,
-            scheduler="constant",
-            gradient_accumulation_steps=1,
-            gradient_clip_norm=1.0,
-            precision="fp32",
-            seed=seed,
-            deterministic_algorithms=True,
-            deterministic_warn_only=False,
-        ),
+        TrainerConfig(**config_values),
         device="cpu",
     )
 
@@ -400,6 +407,42 @@ def test_rehashed_recipe_policy_mutation_is_rejected_before_step(
         BoundedPilotAuthorizationError,
         match="canonical LEARN-345 policy rejected",
     ):
+        BoundedPilotStepRunner(runner, **kwargs)
+    assert trainer.optimizer_step == 0
+    assert guard.consumed_loss_positions == 0
+    assert store.open()["attempt"] == 0
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement"),
+    [
+        ("learning_rate", 0.00021),
+        ("weight_decay", 0.0),
+        ("betas", (0.9, 0.94)),
+        ("eps", 1e-7),
+        ("gradient_clip_norm", 0.5),
+        ("scheduler", "cosine"),
+        ("warmup_steps", 1),
+        ("seed", 20260827),
+        ("max_steps", 2),
+    ],
+)
+def test_self_consistent_initial_trainer_drift_rejected_by_authenticated_recipe(
+    tmp_path: Path,
+    field: str,
+    replacement: Any,
+) -> None:
+    guard, plan, manifest = _authority(batch_count=1)
+    overrides = {field: replacement}
+    trainer = _trainer(max_steps=1, config_overrides=overrides)
+    runner, kwargs, store = _constructor_inputs(
+        tmp_path / f"self-consistent-{field}",
+        trainer,
+        guard,
+        plan,
+        manifest,
+    )
+    with pytest.raises(BoundedPilotAuthorizationError):
         BoundedPilotStepRunner(runner, **kwargs)
     assert trainer.optimizer_step == 0
     assert guard.consumed_loss_positions == 0
