@@ -435,11 +435,34 @@ class BoundedPilotStepRunner(_core.BoundedPilotStepRunner):
                 "BLOCKED_PRE_STEP_1: durable run manifest does not bind exact bounded-pilot start state"
             )
 
+    def _require_current_durable_attempt(self) -> None:
+        if not self._attempt_started or self._attempt <= 0:
+            raise BoundedPilotAuthorizationError(
+                "BLOCKED_PRE_STEP_1: durable attempt is not established"
+            )
+        try:
+            state = self.recovery_store.open()
+        except (OSError, ValueError, RecoveryStateError) as exc:
+            self._poison(f"durable attempt state cannot be verified: {exc}")
+            self._raise_recovery_required()
+        state_root = _require_sha256(
+            state.get("state_sha256"),
+            label="current durable attempt state root",
+        )
+        if (
+            state.get("attempt") != self._attempt
+            or state.get("phase") != RunPhase.RUNNING.value
+            or state_root != self._attempt_state_sha256
+        ):
+            self._poison("durable attempt changed before optimizer authorization")
+            self._raise_recovery_required()
+
     def _require_live_execution_chain(self, *, expected_inflight_targets: int = 0) -> None:
         super()._require_live_execution_chain(
             expected_inflight_targets=expected_inflight_targets,
         )
         self._require_live_recipe_matches_authority()
+        self._require_current_durable_attempt()
 
     def _preflight_handoff(
         self,
@@ -461,14 +484,7 @@ class BoundedPilotStepRunner(_core.BoundedPilotStepRunner):
 
     def _ensure_durable_attempt(self) -> None:
         if self._attempt_started:
-            try:
-                state = self.recovery_store.open()
-            except (OSError, ValueError, RecoveryStateError) as exc:
-                self._poison(f"durable attempt state cannot be verified: {exc}")
-                self._raise_recovery_required()
-            if state.get("attempt") != self._attempt or state.get("phase") != RunPhase.RUNNING.value:
-                self._poison("durable attempt is no longer uniquely RUNNING")
-                self._raise_recovery_required()
+            self._require_current_durable_attempt()
             return
 
         try:
