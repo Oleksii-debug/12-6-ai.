@@ -34,17 +34,25 @@ def validate_terminal_run_evidence(
         replay_value = accounting.get("replay_exposure_count")
         padding_value = accounting.get("padding_loss_positions")
         if not _positive_int(optimized_value):
-            blockers.append("bounded_pilot.d06.exposure_accounting.optimized_target_exposure_invalid")
+            blockers.append(
+                "bounded_pilot.d06.exposure_accounting.optimized_target_exposure_invalid"
+            )
         else:
             optimized = optimized_value
         if not _positive_int(unique_value):
-            blockers.append("bounded_pilot.d06.exposure_accounting.unique_loss_positions_consumed_invalid")
+            blockers.append(
+                "bounded_pilot.d06.exposure_accounting.unique_loss_positions_consumed_invalid"
+            )
         if not _nonnegative_int(replay_value):
-            blockers.append("bounded_pilot.d06.exposure_accounting.replay_exposure_count_invalid")
+            blockers.append(
+                "bounded_pilot.d06.exposure_accounting.replay_exposure_count_invalid"
+            )
         elif replay_value != 0:
             blockers.append("bounded_pilot.d06.exposure_accounting.replay_forbidden")
         if padding_value != 0:
-            blockers.append("bounded_pilot.d06.exposure_accounting.padding_loss_positions_nonzero")
+            blockers.append(
+                "bounded_pilot.d06.exposure_accounting.padding_loss_positions_nonzero"
+            )
         if (
             _positive_int(optimized_value)
             and _positive_int(unique_value)
@@ -53,13 +61,9 @@ def validate_terminal_run_evidence(
         ):
             blockers.append("bounded_pilot.d06.exposure_accounting.total_mismatch")
         if accounting.get("loss_ledger_identity") != pilot.get("loss_ledger_identity"):
-            blockers.append("bounded_pilot.d06.exposure_accounting.loss_ledger_identity_mismatch")
-
-    trajectory = d06.get("selection_trajectory")
-    if optimized is not None and isinstance(trajectory, Sequence) and trajectory:
-        last = trajectory[-1]
-        if not isinstance(last, Mapping) or last.get("optimized_target_exposure") != optimized:
-            blockers.append("bounded_pilot.d06.selection_trajectory_terminal_exposure_mismatch")
+            blockers.append(
+                "bounded_pilot.d06.exposure_accounting.loss_ledger_identity_mismatch"
+            )
 
     selection = d06.get("checkpoint_selection")
     if not isinstance(selection, Mapping):
@@ -104,7 +108,94 @@ def validate_terminal_run_evidence(
         blockers.append("bounded_pilot.d06.checkpoint_selection.final_exposure_mismatch")
 
     best_identity = selection.get("best_checkpoint_identity")
+    final_identity = selection.get("chronological_final_checkpoint_identity")
     if _nonempty_text(best_identity) and best_identity != pilot.get("result_checkpoint_identity"):
         blockers.append("bounded_pilot.d06.checkpoint_selection.result_not_best_checkpoint")
+
+    trajectory = d06.get("selection_trajectory")
+    recorded_events: list[tuple[int, int, str]] = []
+    if (
+        not isinstance(trajectory, Sequence)
+        or isinstance(trajectory, (str, bytes))
+        or not trajectory
+    ):
+        blockers.append("bounded_pilot.d06.selection_trajectory_missing")
+    else:
+        seen_event_identities: set[str] = set()
+        seen_checkpoint_identities: set[str] = set()
+        seen_step_exposure: set[tuple[int, int]] = set()
+        for index, point in enumerate(trajectory):
+            prefix = f"bounded_pilot.d06.selection_trajectory.{index}"
+            if not isinstance(point, Mapping):
+                blockers.append(f"{prefix}_invalid")
+                continue
+
+            event_identity = point.get("event_identity")
+            checkpoint_identity = point.get("checkpoint_identity")
+            step = point.get("optimizer_step")
+            exposure = point.get("optimized_target_exposure")
+
+            event_valid = _nonempty_text(event_identity)
+            checkpoint_valid = _nonempty_text(checkpoint_identity)
+            step_valid = _nonnegative_int(step)
+            exposure_valid = _nonnegative_int(exposure)
+
+            if not event_valid:
+                blockers.append(f"{prefix}.event_identity_invalid")
+            elif event_identity in seen_event_identities:
+                blockers.append("bounded_pilot.d06.selection_trajectory.event_identity_duplicate")
+            else:
+                seen_event_identities.add(event_identity)
+
+            if not checkpoint_valid:
+                blockers.append(f"{prefix}.checkpoint_identity_invalid")
+            elif checkpoint_identity in seen_checkpoint_identities:
+                blockers.append(
+                    "bounded_pilot.d06.selection_trajectory.checkpoint_identity_duplicate"
+                )
+            else:
+                seen_checkpoint_identities.add(checkpoint_identity)
+
+            if not step_valid:
+                blockers.append(f"{prefix}.optimizer_step_invalid")
+            if not exposure_valid:
+                blockers.append(f"{prefix}.optimized_target_exposure_invalid")
+
+            if step_valid and exposure_valid:
+                key = (step, exposure)
+                if key in seen_step_exposure:
+                    blockers.append(
+                        "bounded_pilot.d06.selection_trajectory.step_exposure_duplicate"
+                    )
+                else:
+                    seen_step_exposure.add(key)
+
+            if event_valid and checkpoint_valid and step_valid and exposure_valid:
+                recorded_events.append((step, exposure, checkpoint_identity))
+
+        last = trajectory[-1]
+        if not isinstance(last, Mapping) or last.get("optimized_target_exposure") != optimized:
+            blockers.append(
+                "bounded_pilot.d06.selection_trajectory_terminal_exposure_mismatch"
+            )
+
+    if (
+        _positive_int(best_step)
+        and _positive_int(best_exposure)
+        and _nonempty_text(best_identity)
+        and (best_step, best_exposure, best_identity) not in recorded_events
+    ):
+        blockers.append("bounded_pilot.d06.checkpoint_selection.best_event_not_recorded")
+
+    if (
+        _positive_int(final_step)
+        and _positive_int(final_exposure)
+        and _nonempty_text(final_identity)
+    ):
+        final_event = (final_step, final_exposure, final_identity)
+        if not recorded_events or recorded_events[-1] != final_event:
+            blockers.append(
+                "bounded_pilot.d06.checkpoint_selection.chronological_final_event_not_terminal"
+            )
 
     return sorted(set(blockers))
