@@ -748,7 +748,7 @@ class BoundedPilotStepRunner:
         expected_identity: str,
         actual_targets: int,
         expected_inflight_targets: int = 0,
-    ) -> None:
+    ) -> str:
         self._require_live_execution_chain(
             expected_inflight_targets=expected_inflight_targets,
         )
@@ -768,6 +768,10 @@ class BoundedPilotStepRunner:
             raise BoundedPilotAuthorizationError(
                 "BLOCKED_PRE_STEP_1: D04 cardinality differs from Trainer batch"
             )
+        return self.replay_guard.next_exposure_identity(
+            plan_batch["claims"],
+            actual_nonignored_targets=actual_targets,
+        )
 
     def _authorize_immediately_before_optimizer_step(
         self,
@@ -789,7 +793,7 @@ class BoundedPilotStepRunner:
                 "BLOCKED_PRE_STEP_1: optimizer object differs from authorized hook target"
             )
         pending = self._pending
-        self._preflight_handoff(
+        base_expected_identity = self._preflight_handoff(
             batch=pending.batch,
             batch_index=pending.batch_index,
             expected_identity=pending.expected_identity,
@@ -802,7 +806,7 @@ class BoundedPilotStepRunner:
             self._authorized_identity = self.replay_guard.authorize_live_batch_with_identity(
                 plan_batch["claims"],
                 actual_nonignored_targets=pending.actual_targets,
-                expected_next_exposure_identity_sha256=pending.expected_identity,
+                expected_next_exposure_identity_sha256=base_expected_identity,
                 batch_index=pending.batch_index,
                 input_ids=input_ids,
                 target_ids=targets,
