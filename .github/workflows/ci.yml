@@ -33,3 +33,202 @@ jobs:
         run: python -m twelve_six.ci_workflow_policy --base "$BASE_SHA" --head "$HEAD_SHA"
       - run: ruff check src tests
       - run: pytest -q
+
+  rada-authoritative-replay:
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'work/925-rada-quality-window-real-replay-20260910'
+    needs: bootstrap
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      RADA_LAUNCHER_BLOB: 5f6688cc45a0fea5fe2c2690252a2a2db756af57
+      RADA_ARCHIVE_SHA256: 737fa5df061c55555a8c761023559a206cbcabf0299ae52d1ccae387f685803e
+      RADA_CANDIDATE_SHA256: 778be40135facef3b86168643673cb1df819e81a376679ac8418130f3104f59a
+      RADA_UPSTREAM_REPORT_SHA256: 83b2cc636aa4cf9a754cd55534035c44782722d2b457755c00f6780112ebfffa
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Bind exact execution closure
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          BASE_SHA="$(git rev-parse HEAD^1)"
+          CHECKOUT_HEAD_SHA="$(git rev-parse HEAD^2)"
+          test "$CHECKOUT_HEAD_SHA" = "$PR_HEAD_SHA"
+          git merge-base --is-ancestor 317d73e2b83b5d9ca75bbf912d633d81f654d777 "$BASE_SHA"
+          test "$(git hash-object tools/materialize_d03_rada_trees_quality_windows_authoritative.py)" = "e6789f82301dc9e559a431a6b776097bef28d393"
+          test "$(git hash-object tools/materialize_d03_rada_trees_quality_windows.py)" = "5958e4b859902b60e06ba6a4019974ee1088e093"
+          test "$(git hash-object src/twelve_six/__init__.py)" = "5433166c507bc845bd12d8d5c4145f1fbedda204"
+          test "$(git hash-object src/twelve_six/data/document_quality.py)" = "b1461263034b4fb9510479b20c9697e22faa5f97"
+          test "$(git hash-object src/twelve_six/data/quality_granularity.py)" = "513523b86824c423cad97352b3abb3d1241531b9"
+          test "$(git hash-object src/twelve_six/data/privacy_filter_v3.py)" = "bcc5938395724f6728ab212f98b39f2334b0f37d"
+          test "$(git hash-object tools/run_d03_rada_trees_quality_windows_isolated.py)" = "$RADA_LAUNCHER_BLOB"
+          echo "RADA_EXECUTION_BASE_SHA=$BASE_SHA" >> "$GITHUB_ENV"
+          echo "RADA_PR_HEAD_SHA=$PR_HEAD_SHA" >> "$GITHUB_ENV"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11.16"
+      - name: Install data-only runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y p7zip-full
+      - name: Acquire exact immutable Rada_Trees archive
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 4 --retry-all-errors \
+            --output "$RUNNER_TEMP/rada_xtag_texts.7z" \
+            "https://huggingface.co/datasets/uacorpus/Rada_Trees/resolve/1b994a5804dcda122721e8d33a03fd172cf8d867/rada_xtag_texts.7z?download=true"
+          test "$(stat -c %s "$RUNNER_TEMP/rada_xtag_texts.7z")" = "697768591"
+          echo "$RADA_ARCHIVE_SHA256  $RUNNER_TEMP/rada_xtag_texts.7z" | sha256sum -c -
+      - name: Materialize exact rights-scoped candidate
+        env:
+          PYTHONPATH: src
+        run: |
+          set -euo pipefail
+          python tools/materialize_d03_rada_trees_rights_scoped_handoff.py \
+            --archive "$RUNNER_TEMP/rada_xtag_texts.7z" \
+            --candidate-jsonl "$RUNNER_TEMP/rada-candidate.jsonl" \
+            --report "$RUNNER_TEMP/rada-handoff-report.json"
+          test "$(wc -l < "$RUNNER_TEMP/rada-candidate.jsonl")" = "4384"
+          echo "$RADA_CANDIDATE_SHA256  $RUNNER_TEMP/rada-candidate.jsonl" | sha256sum -c -
+          python - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          report = json.loads((Path(os.environ["RUNNER_TEMP"]) / "rada-handoff-report.json").read_text(encoding="utf-8"))
+          core = dict(report); claimed = core.pop("report_sha256")
+          raw = (json.dumps(core, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n").encode()
+          assert hashlib.sha256(raw).hexdigest() == claimed == os.environ["RADA_UPSTREAM_REPORT_SHA256"]
+          assert report["materialization"]["candidate_jsonl_sha256"] == os.environ["RADA_CANDIDATE_SHA256"]
+          assert report["materialization"]["candidate_records"] == 4384
+          print("RADA_UPSTREAM_HANDOFF_AUTHORITY=PASS")
+          PY
+      - name: Execute two fresh no-site isolated quality/privacy passes
+        run: |
+          set -euo pipefail
+          for RUN in a b; do
+            mkdir -p "$RUNNER_TEMP/authoritative-$RUN"
+            python tools/run_d03_rada_trees_quality_windows_isolated.py \
+              --candidate-jsonl "$RUNNER_TEMP/rada-candidate.jsonl" \
+              --upstream-handoff-report "$RUNNER_TEMP/rada-handoff-report.json" \
+              --output-jsonl "$RUNNER_TEMP/authoritative-$RUN/rada-quality-window-survivors.jsonl" \
+              --report "$RUNNER_TEMP/authoritative-$RUN/rada-quality-window-authoritative-report.json" \
+              --closure-receipt "$RUNNER_TEMP/authoritative-$RUN/rada-source-closure-receipt.json" \
+              --expected-launcher-git-blob-sha "$RADA_LAUNCHER_BLOB"
+          done
+          cmp "$RUNNER_TEMP/authoritative-a/rada-quality-window-survivors.jsonl" "$RUNNER_TEMP/authoritative-b/rada-quality-window-survivors.jsonl"
+          cmp "$RUNNER_TEMP/authoritative-a/rada-quality-window-authoritative-report.json" "$RUNNER_TEMP/authoritative-b/rada-quality-window-authoritative-report.json"
+          cmp "$RUNNER_TEMP/authoritative-a/rada-source-closure-receipt.json" "$RUNNER_TEMP/authoritative-b/rada-source-closure-receipt.json"
+      - name: Verify zero-credit authority and emit hash-safe summary
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          root = Path(os.environ["RUNNER_TEMP"])
+          report_path = root / "authoritative-a/rada-quality-window-authoritative-report.json"
+          output_path = root / "authoritative-a/rada-quality-window-survivors.jsonl"
+          closure_path = root / "authoritative-a/rada-source-closure-receipt.json"
+          second_report = root / "authoritative-b/rada-quality-window-authoritative-report.json"
+          second_output = root / "authoritative-b/rada-quality-window-survivors.jsonl"
+          second_closure = root / "authoritative-b/rada-source-closure-receipt.json"
+          def canonical(value):
+              return (json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n").encode()
+          def sha(path):
+              h = hashlib.sha256()
+              with path.open("rb") as f:
+                  for chunk in iter(lambda: f.read(8 * 1024 * 1024), b""): h.update(chunk)
+              return h.hexdigest()
+          report = json.loads(report_path.read_text(encoding="utf-8"))
+          core = dict(report); claimed_report = core.pop("report_sha256")
+          assert hashlib.sha256(canonical(core)).hexdigest() == claimed_report
+          closure = json.loads(closure_path.read_text(encoding="utf-8"))
+          ccore = dict(closure); claimed_closure = ccore.pop("receipt_sha256")
+          assert hashlib.sha256(canonical(ccore)).hexdigest() == claimed_closure
+          assert sha(report_path) == sha(second_report)
+          assert sha(output_path) == sha(second_output)
+          assert sha(closure_path) == sha(second_closure)
+          assert closure["launcher_git_blob_sha"] == os.environ["RADA_LAUNCHER_BLOB"]
+          assert closure["child_python_isolated_mode"] is True
+          assert closure["child_python_no_site_mode"] is True
+          assert closure["child_authenticated_import_roots_only"] is True
+          assert closure["runtime"]["implementation"] == "CPython"
+          assert closure["runtime"]["version"] == "3.11.16"
+          assert closure["runtime"]["isolated_flag"] == "-I"
+          assert closure["runtime"]["no_site_flag"] == "-S"
+          assert closure["runtime"]["no_system_site_initialization"] is True
+          assert closure["candidate_jsonl_sha256"] == os.environ["RADA_CANDIDATE_SHA256"]
+          assert closure["upstream_handoff_report_sha256"] == os.environ["RADA_UPSTREAM_REPORT_SHA256"]
+          claim = report["claim_boundary"]
+          assert claim["training_authorized_bytes"] == 0
+          assert claim["unique_causal_loss_positions_authorized"] == 0
+          assert claim["tokenizer_fit_authorized"] is False
+          assert claim["optimizer_updates"] == 0
+          assert claim["model_training_executed"] is False
+          assert claim["final_test_payload_accessed"] is False
+          assert claim["paid_compute_used"] is False
+          assert report["output_jsonl_sha256"] == sha(output_path)
+          assert closure["authority_report_sha256"] == report["report_sha256"]
+          assert closure["survivor_jsonl_sha256"] == report["output_jsonl_sha256"]
+          summary_core = {
+              "schema_version": "12-6.d03-rada-trees-authoritative-real-replay.v4",
+              "classification": "CURRENT_AUTHORITY_NO_SITE_ISOLATED_REAL_REPLAY_ZERO_CREDIT",
+              "execution_profile": "LOCAL_FREE",
+              "workflow_run_id": int(os.environ["GITHUB_RUN_ID"]),
+              "pr_head_sha": os.environ["RADA_PR_HEAD_SHA"],
+              "execution_base_sha": os.environ["RADA_EXECUTION_BASE_SHA"],
+              "source_archive_sha256": os.environ["RADA_ARCHIVE_SHA256"],
+              "source_archive_bytes": 697768591,
+              "candidate_jsonl_sha256": os.environ["RADA_CANDIDATE_SHA256"],
+              "candidate_records": report["input_records"],
+              "candidate_source_payload_bytes": report["authority_binding"]["candidate_source_payload_bytes"],
+              "upstream_handoff_report_sha256": os.environ["RADA_UPSTREAM_REPORT_SHA256"],
+              "isolated_launcher_git_blob_sha": closure["launcher_git_blob_sha"],
+              "authenticated_source_closure_git_blobs": closure["authenticated_source_closure_git_blobs"],
+              "python_runtime": closure["runtime"],
+              "source_closure_receipt_sha256": closure["receipt_sha256"],
+              "source_closure_receipt_file_sha256": sha(closure_path),
+              "authority_report_sha256": report["report_sha256"],
+              "authority_report_file_sha256": sha(report_path),
+              "survivor_jsonl_sha256": report["output_jsonl_sha256"],
+              "survivor_records": report["output_records"],
+              "survivor_text_utf8_bytes": report["output_text_utf8_bytes"],
+              "quality_statuses": report["quality"]["statuses"],
+              "privacy_actions": report["privacy"]["actions"],
+              "privacy_held_units": report["privacy"]["held_units"],
+              "privacy_held_utf8_bytes": report["privacy"]["held_utf8_bytes"],
+              "two_fresh_isolated_outputs_byte_identical": True,
+              "two_fresh_isolated_reports_byte_identical": True,
+              "two_fresh_isolated_closure_receipts_byte_identical": True,
+              "training_authorized_bytes": 0,
+              "unique_causal_loss_positions_authorized": 0,
+              "authorized_optimized_target_exposure": 0,
+              "tokenizer_fit_authorized": False,
+              "optimizer_updates": 0,
+              "model_training_executed": False,
+              "learned_weights_created": False,
+              "final_test_outcomes_read": False,
+              "paid_compute_used": False,
+              "foreign_pretrained_weights": False,
+              "external_llm_or_api_data_or_intelligence": False,
+          }
+          summary = {**summary_core, "summary_sha256": hashlib.sha256(canonical(summary_core)).hexdigest()}
+          summary_path = root / "rada-authoritative-execution-summary.json"
+          summary_path.write_bytes(canonical(summary))
+          print("RADA_NO_SITE_ISOLATED_REAL_REPLAY=PASS_ZERO_CREDIT")
+          for key in ("survivor_records", "survivor_text_utf8_bytes", "survivor_jsonl_sha256", "authority_report_sha256", "source_closure_receipt_sha256", "summary_sha256"):
+              print(f"{key.upper()}={summary[key]}")
+          PY
+      - name: Upload ephemeral exact authoritative survivor artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: d03-rada-trees-authoritative-no-site-isolated-current-survivors
+          path: |
+            ${{ runner.temp }}/authoritative-a/rada-quality-window-survivors.jsonl
+            ${{ runner.temp }}/authoritative-a/rada-quality-window-authoritative-report.json
+            ${{ runner.temp }}/authoritative-a/rada-source-closure-receipt.json
+            ${{ runner.temp }}/rada-handoff-report.json
+            ${{ runner.temp }}/rada-authoritative-execution-summary.json
+          retention-days: 1
+          compression-level: 9
+          if-no-files-found: error
