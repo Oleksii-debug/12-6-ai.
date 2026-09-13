@@ -1,0 +1,78 @@
+{
+  "schema": "12-6.d03-ua-president-decrees-source-contract.v1",
+  "status": "BOUNDED_INTAKE_ZERO_CREDIT",
+  "base_authority": {
+    "repository": "Oleksii-debug/12-6-ai.",
+    "git_sha": "a53279292af68dc95e4e615542b6c8c2ea7f9ee5",
+    "lane": "D03",
+    "control_issue": 548
+  },
+  "source": {
+    "source_id": "ua.president.official-decrees",
+    "family_id": "ua.president.official-decrees",
+    "stratum": "uk",
+    "publisher": "Офіційне інтернет-представництво Президента України",
+    "catalog_url": "https://www.president.gov.ua/documents/decrees/",
+    "allowed_origin": "https://www.president.gov.ua",
+    "allowed_document_path": "/documents/<official-decree-slug>",
+    "one_conservative_family": true
+  },
+  "rights": {
+    "decision": "OFFICIAL_DECREE_TEXT_ONLY_CANDIDATE",
+    "law": "Закон України № 2811-IX Про авторське право і суміжні права",
+    "article": "8(1)(3)",
+    "authority_url": "https://zakon.rada.gov.ua/laws/show/2811-20",
+    "scope": "official acts including decrees",
+    "site_wide_cc_by_nc_nd_is_not_training_authority": true,
+    "exclude": [
+      "site chrome and navigation",
+      "news and press materials",
+      "photos video and design assets",
+      "linked third-party content",
+      "non-official attachments without separate rights authority"
+    ]
+  },
+  "bounded_execution": {
+    "class": "LOCAL_FREE",
+    "default_max_catalog_pages": 2,
+    "default_max_documents": 40,
+    "hard_max_catalog_pages": 8,
+    "hard_max_documents": 120,
+    "minimum_request_delay_seconds": 1.0,
+    "same_origin_redirects_only": true,
+    "double_catalog_discovery_required": true,
+    "double_document_fetch_required": true,
+    "canonical_extracted_payload_must_match": true,
+    "raw_html_may_differ_only_if_canonical_extracted_payload_is_identical": true,
+    "durable_evidence_must_be_body_free": true
+  },
+  "privacy_quality": {
+    "minimum_normalized_bytes": 1500,
+    "minimum_ukrainian_letter_ratio": 0.85,
+    "reject_personnel_awards_citizenship_sanctions_subjects": true,
+    "reject_email_phone_street_address_long_identifier": true,
+    "reject_high_person_name_density": true,
+    "remove_fixed_presidential_signatory_line": true,
+    "exact_normalized_dedup_within_family": true
+  },
+  "required_downstream_gates": [
+    "GLOBAL_EXACT_NEAR_FRAGMENT_LINEAGE_DEDUP",
+    "RESERVED_EVALUATION_DECONTAMINATION",
+    "POST_COMPOSITION_QUALITY_PRIVACY_BALANCE_FAMILY_CAPS",
+    "CLUSTER_SAFE_SPLIT",
+    "DETERMINISTIC_TOKENIZER_PACKING_DOUBLE_BUILD",
+    "POSITIVE_EXACT_UNIQUE_CAUSAL_LOSS_LEDGER"
+  ],
+  "claims": {
+    "canonical_capacity_credit_bytes": 0,
+    "training_authorized_bytes": 0,
+    "authorized_unique_loss_positions": 0,
+    "tokenizer_fit_authorized": false,
+    "model_training_executed": false,
+    "optimizer_updates": 0,
+    "final_test_accessed": false,
+    "paid_compute_authorized": false,
+    "learned_20m_claim": false
+  },
+  "contract_identity_sha256": "a5afbb870d5e792fa0b71a076ed2ecbda4cf448074df8b690c00e75356b467bf"
+}
