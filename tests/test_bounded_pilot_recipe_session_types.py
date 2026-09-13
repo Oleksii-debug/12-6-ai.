@@ -136,7 +136,8 @@ def test_durable_attempt_change_after_first_handoff_blocks_optimizer_hook(
 
     assert calls == 2
     assert trainer.optimizer_step == 0
-    assert trainer.tokens_seen == 0
+    assert trainer.micro_step == 1
+    assert trainer.tokens_seen == 2
     assert guard.consumed_loss_positions == 0
     assert all(
         left.equal(right)
