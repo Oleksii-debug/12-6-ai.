@@ -83,6 +83,80 @@ def test_attestation_rejects_imported_behavior_global_substitution(
         _attest_executable_module(module, label)
 
 
+@pytest.mark.parametrize(
+    ("label", "source", "global_name", "member_name"),
+    (
+        (
+            "DATA232",
+            (
+                "import re\nimport unicodedata\n"
+                "def normalize(value):\n"
+                "    return re.sub(r'\\s+', ' ', unicodedata.normalize('NFKC', value))\n"
+            ),
+            "unicodedata",
+            "normalize",
+        ),
+        (
+            "DATA232",
+            (
+                "import re\nimport unicodedata\n"
+                "def normalize(value):\n"
+                "    return re.sub(r'\\s+', ' ', unicodedata.normalize('NFKC', value))\n"
+            ),
+            "re",
+            "sub",
+        ),
+        (
+            "V1",
+            (
+                "import hashlib\n"
+                "def digest(value):\n"
+                "    return hashlib.sha256(value).hexdigest()\n"
+            ),
+            "hashlib",
+            "sha256",
+        ),
+        (
+            "V3",
+            (
+                "import html\n"
+                "def normalize(value):\n"
+                "    return html.unescape(value)\n"
+            ),
+            "html",
+            "unescape",
+        ),
+    ),
+)
+def test_attestation_rejects_imported_behavior_member_in_place_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    label: str,
+    source: str,
+    global_name: str,
+    member_name: str,
+) -> None:
+    module = _load_source_module(
+        tmp_path,
+        f"synthetic_{label.lower()}_{global_name}_{member_name}",
+        source,
+    )
+    _attest_executable_module(module, label)
+
+    imported = getattr(module, global_name)
+
+    def replacement(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+
+    with monkeypatch.context() as patch:
+        patch.setattr(imported, member_name, replacement)
+        with pytest.raises(
+            IndexedExecutionError,
+            match=rf"{label} imported behavior drift: {global_name}\.{member_name}",
+        ):
+            _attest_executable_module(module, label)
+
+
 def test_verifier_attests_before_reference_callable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

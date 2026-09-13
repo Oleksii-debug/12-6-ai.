@@ -8,10 +8,12 @@ semantics remain delegated to the exact incumbent V3 module.
 from __future__ import annotations
 
 import hashlib
+import html
 import inspect
 import marshal
 import re
 import sys
+import unicodedata
 from collections import Counter, defaultdict
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -35,6 +37,18 @@ EXPECTED_THRESHOLDS = {
 }
 DEFAULT_MAX_INDEX_POSTINGS = 100_000_000
 DEFAULT_MAX_PAIR_EXPANSIONS = 100_000_000
+
+_FROZEN_HASHLIB_SHA256 = hashlib.sha256
+
+# Freeze the exact behavior-bearing stdlib members used by the attested incumbent
+# modules. Re-executing authority source in this process intentionally reuses
+# sys.modules, so module-object identity alone cannot detect in-place member drift.
+_FROZEN_IMPORTED_BEHAVIOR_MEMBERS = (
+    ("DATA232", "unicodedata", "normalize", unicodedata.normalize),
+    ("DATA232", "re", "sub", re.sub),
+    ("V1", "hashlib", "sha256", _FROZEN_HASHLIB_SHA256),
+    ("V3", "html", "unescape", html.unescape),
+)
 
 
 class IndexedExecutionError(RuntimeError):
@@ -63,7 +77,7 @@ def _module_blob_sha1(module: Any) -> str:
 
 
 def _code_digest(code: CodeType) -> str:
-    return hashlib.sha256(marshal.dumps(code)).hexdigest()
+    return _FROZEN_HASHLIB_SHA256(marshal.dumps(code)).hexdigest()
 
 
 def _canonical_namespace(module: Any, label: str) -> dict[str, Any]:
@@ -151,6 +165,26 @@ def _attest_referenced_globals(
             raise IndexedExecutionError(f"{label} referenced global drift: {name}")
 
 
+def _attest_imported_behavior_members(
+    module: Any,
+    label: str,
+    names: Sequence[str],
+) -> None:
+    """Bind referenced imported behavior to member identities frozen at loader import."""
+    referenced = set(names)
+    live_namespace = vars(module)
+    for binding_label, global_name, member_name, expected_member in _FROZEN_IMPORTED_BEHAVIOR_MEMBERS:
+        if binding_label != label or global_name not in referenced:
+            continue
+        imported = live_namespace.get(global_name)
+        if imported is None:
+            raise IndexedExecutionError(f"{label} imported behavior global missing: {global_name}")
+        if getattr(imported, member_name, None) is not expected_member:
+            raise IndexedExecutionError(
+                f"{label} imported behavior drift: {global_name}.{member_name}"
+            )
+
+
 def _attest_executable_module(module: Any, label: str) -> dict[str, Any]:
     """Reconstruct source and bind its live executable global closure."""
     canonical = _canonical_namespace(module, label)
@@ -168,7 +202,9 @@ def _attest_executable_module(module: Any, label: str) -> dict[str, Any]:
         if live.__defaults__ != expected.__defaults__ or live.__kwdefaults__ != expected.__kwdefaults__:
             raise IndexedExecutionError(f"{label} callable default drift: {name}")
         referenced_globals.update(_referenced_global_names(expected.__code__))
-    _attest_referenced_globals(module, canonical, label, tuple(referenced_globals))
+    referenced_names = tuple(referenced_globals)
+    _attest_referenced_globals(module, canonical, label, referenced_names)
+    _attest_imported_behavior_members(module, label, referenced_names)
     return canonical
 
 
