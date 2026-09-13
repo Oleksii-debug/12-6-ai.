@@ -308,20 +308,20 @@ def _binding(
         overlay_sha256=_sha("overlay"),
         packet_sha256=packet_sha,
         packet=packet,
-     )
+    )
     return binding, portable_execution
 
 
 def _batch(batch_index: int) -> dict[str, torch.Tensor]:
     if batch_index == 0:
         return {
-            "input_ids": torch.tensor([[1, 2, 3]], dtype=torch.long),
-            "target_ids": torch.tensor([[2, 3, 4]], dtype=torch.long),
+            "input_ids": torch.tensor([[1, 2]], dtype=torch.long),
+            "target_ids": torch.tensor([[2, 3]], dtype=torch.long),
         }
     if batch_index == 1:
         return {
-            "input_ids": torch.tensor([[3, 4, 5]], dtype=torch.long),
-            "target_ids": torch.tensor([[4, 5, 6]], dtype=torch.long),
+            "input_ids": torch.tensor([[3, 4]], dtype=torch.long),
+            "target_ids": torch.tensor([[4, 5]], dtype=torch.long),
         }
     raise AssertionError("test batch index outside fixture")
 
