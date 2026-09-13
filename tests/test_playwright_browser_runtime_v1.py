@@ -2,13 +2,13 @@ import unittest
 
 from twelve_six.playwright_browser import (
     BROWSER_REVISION,
-    ContractError,
     GREENLET_VERSION,
     PACKAGE_VERSION,
     PYYYEE_VERSION,
-    RuntimeContract,
     TYPING_EXTENSIONS_VERSION,
     UPSTREAM_COMMIT,
+    ContractError,
+    RuntimeContract,
     validate_action,
     validate_selector,
     validate_url,
