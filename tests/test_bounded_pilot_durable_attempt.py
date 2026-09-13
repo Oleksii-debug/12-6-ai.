@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 import conftest
+import pytest
 from test_bounded_pilot import _authority, _batch, _gate, _next, _trainer
+
 from twelve_six.training.bounded_pilot import (
+    BoundedPilotAuthorizationError,
     BoundedPilotRecoveryRequiredError,
     _set_test_recovery_store_factory,
 )
@@ -128,7 +129,10 @@ def test_production_constructor_rejects_missing_durable_authority() -> None:
     try:
         guard, plan, manifest = _authority(batch_count=1)
         trainer = _trainer(max_steps=1)
-        with pytest.raises(Exception, match="durable TRAIN39 run/attempt authority is required"):
+        with pytest.raises(
+            BoundedPilotAuthorizationError,
+            match="durable TRAIN39 run/attempt authority is required",
+        ):
             _gate(trainer, guard, plan, manifest)
     finally:
         _set_test_recovery_store_factory(
