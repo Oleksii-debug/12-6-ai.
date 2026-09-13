@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR = ROOT / "tools/validate_eval_code_reserve_v1.py"
 MATERIALIZER = ROOT / "tools/materialize_eval_code_reserve_v1.py"
 MANIFEST = ROOT / "configs/evaluation/eval_code_reserve_v1.json"
+EVIDENCE = ROOT / "evidence/eval647/code_selection_source_materialization_v1.json"
 
 validator_spec = importlib.util.spec_from_file_location("eval647_validator", VALIDATOR)
 assert validator_spec is not None and validator_spec.loader is not None
@@ -29,11 +30,20 @@ def _manifest() -> dict:
     return json.loads(MANIFEST.read_text(encoding="utf-8"))
 
 
-def test_contract_is_reserved_but_not_authorized() -> None:
+def _evidence() -> dict:
+    return json.loads(EVIDENCE.read_text(encoding="utf-8"))
+
+
+def test_contract_is_source_sealed_but_not_authorized() -> None:
     result = validator.validate_document(_manifest())
     assert result["reserved_objects"] == 2
     assert result["independent_families"] == 2
     assert result["selection_validation_records_authorized"] == 0
+    assert result["status"] == "EXACT_RAW_OBJECTS_SEALED_PENDING_PROJECT_OVERLAP_AUDIT"
+
+
+def test_committed_source_evidence_binds_sealed_contract() -> None:
+    validator.validate_materialization_evidence(_manifest(), _evidence())
 
 
 def test_training_promotion_fails_closed() -> None:
@@ -55,6 +65,20 @@ def test_blob_identity_mutation_fails_closed() -> None:
     mutated["objects"][1]["git_blob_sha1"] = "0" * 40
     with pytest.raises(ValueError):
         validator.validate_document(mutated)
+
+
+def test_raw_sha_mutation_fails_closed() -> None:
+    mutated = copy.deepcopy(_manifest())
+    mutated["objects"][0]["raw_sha256"] = "0" * 64
+    with pytest.raises(ValueError):
+        validator.validate_document(mutated)
+
+
+def test_source_evidence_tamper_fails_closed() -> None:
+    mutated = copy.deepcopy(_evidence())
+    mutated["objects"][0]["raw_sha256"] = "0" * 64
+    with pytest.raises(ValueError):
+        validator.validate_materialization_evidence(_manifest(), mutated)
 
 
 def test_wrong_source_bytes_fail_before_credit(monkeypatch: pytest.MonkeyPatch) -> None:

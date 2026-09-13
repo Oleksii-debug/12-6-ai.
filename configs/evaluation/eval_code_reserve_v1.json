@@ -32,7 +32,7 @@
       "path": "tenacity/wait.py",
       "git_blob_sha1": "18fb6ea7b610f71f17cff7ea25de63177856dfbe",
       "expected_raw_bytes": 10438,
-      "raw_sha256": null,
+      "raw_sha256": "ed8fec5e66288a92f67a378611111865da025c26edee07ab1b8c88642e0dd0c0",
       "license_spdx": "Apache-2.0",
       "evaluation_use": "selection_validation",
       "training_allowed": false,
@@ -48,7 +48,7 @@
       "path": "more_itertools/recipes.py",
       "git_blob_sha1": "b984d86f2341b9fb74801d9b173f5e0fd00632f3",
       "expected_raw_bytes": 45752,
-      "raw_sha256": null,
+      "raw_sha256": "6aff1fac06b82008f90440892536195fc1a3fd0d933c59ee45cc0f6e007b4828",
       "license_spdx": "MIT",
       "evaluation_use": "selection_validation",
       "training_allowed": false,
@@ -56,20 +56,29 @@
       "permanent_future_training_exclusion": true
     }
   ],
-  "required_successor_gates": [
-    "IMMUTABLE_RAW_BYTES_MATERIALIZED_AND_SHA256_SEALED",
+  "materialization_evidence": {
+    "path": "evidence/eval647/code_selection_source_materialization_v1.json",
+    "identity_sha256": "ecde57cc0865e71f85dc4bce88bb17b0661fdf9d29e353a57b35ea4e04a7b6cc"
+  },
+  "completed_successor_gates": [
+    "IMMUTABLE_RAW_BYTES_MATERIALIZED_AND_SHA256_SEALED"
+  ],
+  "remaining_successor_gates": [
     "PROJECT_HISTORY_TOKENIZER_EXPOSURE_ZERO_PROVEN",
     "PROJECT_HISTORY_TRAINING_EXPOSURE_ZERO_PROVEN",
     "GLOBAL_CORPUS_EXACT_AND_NEAR_OVERLAP_ZERO_PROVEN",
     "FUTURE_TRAINING_EXCLUSION_CONSUMED_BY_CORPUS_PIPELINE",
     "PURPOSE_SPECIFIC_EVALUATION_AUTHORITY_TERMINAL"
   ],
-  "terminal_status": "RESERVED_PENDING_RAW_SHA256_AND_OVERLAP_AUDIT",
+  "terminal_status": "EXACT_RAW_OBJECTS_SEALED_PENDING_PROJECT_OVERLAP_AUDIT",
   "truth_boundary": {
     "selection_validation_records_authorized": 0,
     "final_test_touched": false,
     "model_training_authorized": false,
     "optimizer_updates_authorized": 0,
+    "tokenizer_fit_authorized": false,
+    "training_executed": false,
+    "learned_weights_created": false,
     "paid_compute_used": false
   }
 }
