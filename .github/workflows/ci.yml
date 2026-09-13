@@ -103,7 +103,7 @@ jobs:
           vector = build_postmaterialization_family_vector(
               inventory=inventory,
               materialization_evidence=evidence,
-              expected_execution_head_sha="b5e22261e2e3c75ca0e9ee5bb813feba16d6f0fc",
+              expected_execution_head_sha="2da11c62f066671a1122888ec116242502f4fb9c",
               expected_materialization_identity_sha256="27fd5c5dac5739ea3a983359308222870619bb807fc1a51b681b9143087cebff",
               expected_result_jsonl_sha256="b1ec0433fbd9675645b7e29c1e32b406e638fa081868cad7a56afec8f9a601cc",
               expected_record_count=255,
