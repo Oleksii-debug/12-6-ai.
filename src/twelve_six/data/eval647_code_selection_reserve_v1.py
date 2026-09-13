@@ -3,8 +3,8 @@ from __future__ import annotations
 import hashlib
 import json
 import urllib.request
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 RESERVE_PATH = Path("configs/evaluation/eval647_code_selection_reserve_v1.json")
 
