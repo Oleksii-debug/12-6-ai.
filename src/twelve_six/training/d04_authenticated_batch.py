@@ -31,7 +31,6 @@ from twelve_six.data.unique_loss_ledger_v2 import LedgerError
 from . import bounded_pilot_core as _core
 from .bounded_pilot import (
     BoundedPilotAuthorizationError,
-    BoundedPilotRecoveryRequiredError,
     BoundedPilotStepReceipt,
     BoundedPilotStepRunner,
 )
