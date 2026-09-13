@@ -180,6 +180,9 @@ def test_ordered_resume_roundtrip_binds_exact_next_exposure() -> None:
         resumed,
         plan,
         state,
+        expected_ordered_resume_identity_sha256=state[
+            "ordered_resume_identity_sha256"
+        ],
         expected_plan_identity_sha256=plan["plan_identity_sha256"],
         expected_trainer_state_binding=checkpoint,
     )
@@ -214,6 +217,9 @@ def test_ordered_resume_rejects_rehashed_plan_substitution_without_mutation() ->
             resumed,
             substitute,
             state,
+            expected_ordered_resume_identity_sha256=state[
+                "ordered_resume_identity_sha256"
+            ],
             expected_plan_identity_sha256=plan["plan_identity_sha256"],
             expected_trainer_state_binding=checkpoint,
         )
@@ -242,13 +248,16 @@ def test_ordered_resume_rejects_consumed_claims_not_matching_plan_prefix() -> No
             resumed,
             plan,
             tampered,
+            expected_ordered_resume_identity_sha256=tampered[
+                "ordered_resume_identity_sha256"
+            ],
             expected_plan_identity_sha256=plan["plan_identity_sha256"],
             expected_trainer_state_binding=checkpoint,
         )
     assert resumed.state_dict() == before
 
 
-def test_ordered_resume_restores_guard_after_next_identity_rejection() -> None:
+def test_ordered_resume_rejects_resealed_outer_state_against_external_root() -> None:
     ledger = _ledger()
     plan = _plan(ledger)
     checkpoint, state = _checkpoint_after_first(ledger, plan)
@@ -260,11 +269,14 @@ def test_ordered_resume_restores_guard_after_next_identity_rejection() -> None:
 
     resumed = _guard(ledger)
     before = resumed.state_dict()
-    with pytest.raises(LedgerError, match="next exposure identity does not match saved handoff"):
+    with pytest.raises(LedgerError, match="identity does not match external authority"):
         load_ordered_resume_state(
             resumed,
             plan,
             tampered,
+            expected_ordered_resume_identity_sha256=state[
+                "ordered_resume_identity_sha256"
+            ],
             expected_plan_identity_sha256=plan["plan_identity_sha256"],
             expected_trainer_state_binding=checkpoint,
         )
