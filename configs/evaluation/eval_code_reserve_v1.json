@@ -1,0 +1,75 @@
+{
+  "schema_version": "12-6.eval-code-reserve-v1.contract.v1",
+  "worker_id": "EVAL-647-CODE-SELECTION-RESERVE-V1",
+  "issue": 647,
+  "execution_class": "LOCAL_FREE",
+  "purpose": "selection_validation_only",
+  "predecessor": {
+    "worker_id": "NEXT100-057-CODE-EVAL-SET-V2",
+    "head_sha": "6713fe972b875b8a516122bda347264fb4099b2b"
+  },
+  "reservation": {
+    "effective_at_utc": "2026-08-26T19:46:57Z",
+    "minimum_independent_families": 2,
+    "final_test": false,
+    "final_test_payload_access_allowed": false,
+    "final_test_outcome_access_allowed": false,
+    "training_allowed": false,
+    "tokenizer_fit_allowed": false,
+    "permanent_future_training_exclusion": true,
+    "historical_training_exposure_required": 0,
+    "historical_tokenizer_fit_exposure_required": 0,
+    "training_overlap_required": 0,
+    "raw_payload_persisted_in_repository": false
+  },
+  "objects": [
+    {
+      "source_family": "github:jd/tenacity",
+      "repository": "jd/tenacity",
+      "release": "9.2.0",
+      "revision": "a2af454834c6bb5a1e39d67334031cdaf0f475b5",
+      "tree_sha1": "8ac992632c2c1c2d38741d9fad90a12759d32cb4",
+      "path": "tenacity/wait.py",
+      "git_blob_sha1": "18fb6ea7b610f71f17cff7ea25de63177856dfbe",
+      "expected_raw_bytes": 10438,
+      "raw_sha256": null,
+      "license_spdx": "Apache-2.0",
+      "evaluation_use": "selection_validation",
+      "training_allowed": false,
+      "tokenizer_fit_allowed": false,
+      "permanent_future_training_exclusion": true
+    },
+    {
+      "source_family": "github:more-itertools/more-itertools",
+      "repository": "more-itertools/more-itertools",
+      "release": "v11.1.0",
+      "revision": "64be96ceb2a6e836f76f069f4a96d2394d59fd0c",
+      "tree_sha1": "f7409b66b75d5649b9fc6414114f8035362f9fcf",
+      "path": "more_itertools/recipes.py",
+      "git_blob_sha1": "b984d86f2341b9fb74801d9b173f5e0fd00632f3",
+      "expected_raw_bytes": 45752,
+      "raw_sha256": null,
+      "license_spdx": "MIT",
+      "evaluation_use": "selection_validation",
+      "training_allowed": false,
+      "tokenizer_fit_allowed": false,
+      "permanent_future_training_exclusion": true
+    }
+  ],
+  "required_successor_gates": [
+    "IMMUTABLE_RAW_BYTES_MATERIALIZED_AND_SHA256_SEALED",
+    "PROJECT_HISTORY_TOKENIZER_EXPOSURE_ZERO_PROVEN",
+    "PROJECT_HISTORY_TRAINING_EXPOSURE_ZERO_PROVEN",
+    "GLOBAL_CORPUS_EXACT_AND_NEAR_OVERLAP_ZERO_PROVEN",
+    "FUTURE_TRAINING_EXCLUSION_CONSUMED_BY_CORPUS_PIPELINE",
+    "PURPOSE_SPECIFIC_EVALUATION_AUTHORITY_TERMINAL"
+  ],
+  "terminal_status": "RESERVED_PENDING_RAW_SHA256_AND_OVERLAP_AUDIT",
+  "truth_boundary": {
+    "selection_validation_records_authorized": 0,
+    "final_test_touched": false,
+    "model_training_authorized": false,
+    "optimizer_updates_authorized": 0,
+    "paid_compute_used": false
+  }
+}
