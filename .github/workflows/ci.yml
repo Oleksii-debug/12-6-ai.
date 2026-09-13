@@ -20,6 +20,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: PR945 real balance — checkout exact current-main Product candidate
+        if: github.event_name == 'pull_request' && github.head_ref == 'exec/1752-pr945-real-balance-20260913'
+        uses: actions/checkout@v4
+        with:
+          ref: 67aa1218924508d4caf4a1e999bdfb8b1b861f19
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -37,11 +43,15 @@ jobs:
 
       - name: PR945 real balance — prove execution-only carrier
         if: github.event_name == 'pull_request' && github.head_ref == 'exec/1752-pr945-real-balance-20260913'
+        env:
+          CARRIER_HEAD: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
-          test "$(git diff --name-only eddc498cc330b1e4b255eb4e5712f13391dd8169 HEAD)" = ".github/workflows/ci.yml"
+          test "$(git rev-parse HEAD)" = "67aa1218924508d4caf4a1e999bdfb8b1b861f19"
+          test "$(git diff --name-only eddc498cc330b1e4b255eb4e5712f13391dd8169 "$CARRIER_HEAD")" = ".github/workflows/ci.yml"
+          test "$(git rev-parse eddc498cc330b1e4b255eb4e5712f13391dd8169:src/twelve_six/data/postmaterialization_balance_projection_v1.py)" = "$(git rev-parse "$CARRIER_HEAD":src/twelve_six/data/postmaterialization_balance_projection_v1.py)"
+          test "$(git rev-parse eddc498cc330b1e4b255eb4e5712f13391dd8169:tools/materialize_d03_postmaterialization_balance_v1.py)" = "$(git rev-parse "$CARRIER_HEAD":tools/materialize_d03_postmaterialization_balance_v1.py)"
           test "$(git rev-parse eddc498cc330b1e4b255eb4e5712f13391dd8169:src/twelve_six/data/postmaterialization_balance_projection_v1.py)" = "$(git rev-parse HEAD:src/twelve_six/data/postmaterialization_balance_projection_v1.py)"
-          test "$(git rev-parse eddc498cc330b1e4b255eb4e5712f13391dd8169:tools/materialize_d03_postmaterialization_balance_v1.py)" = "$(git rev-parse HEAD:tools/materialize_d03_postmaterialization_balance_v1.py)"
 
       - name: PR945 real balance — retrieve #1630 machine evidence
         if: github.event_name == 'pull_request' && github.head_ref == 'exec/1752-pr945-real-balance-20260913'
@@ -143,6 +153,7 @@ jobs:
               "schema": "12-6.d03-real-postmaterialization-balance-execution.v1",
               "execution_profile": "LOCAL_FREE",
               "product_head_sha": "eddc498cc330b1e4b255eb4e5712f13391dd8169",
+              "product_candidate_merge_sha": "67aa1218924508d4caf4a1e999bdfb8b1b861f19",
               "materialization_artifact_id": 10325234135,
               "family_vector_identity_sha256": vector["family_vector_identity_sha256"],
               "next100_input_identity_sha256": binding["next100_input_identity_sha256"],
