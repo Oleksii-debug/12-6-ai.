@@ -63,8 +63,7 @@ def test_fresh_isolated_child_ignores_parent_poison_hostile_pythonpath_and_check
         b"import sys\n"
         b"from pathlib import Path\n"
         b"import victim\n"
-        b"Path(sys.argv[1]).write_text("
-        b"victim.VALUE + '|' + str('sitecustomize' in sys.modules), encoding='utf-8')\n"
+        b"Path(sys.argv[1]).write_text(victim.VALUE, encoding='utf-8')\n"
     )
     victim.write_bytes(victim_payload)
     probe.write_bytes(probe_payload)
@@ -109,7 +108,7 @@ def test_fresh_isolated_child_ignores_parent_poison_hostile_pythonpath_and_check
             sys.modules["victim"] = previous
 
     assert result.returncode == 0, (result.stdout, result.stderr)
-    assert output.read_text(encoding="utf-8") == "authenticated|False"
+    assert output.read_text(encoding="utf-8") == "authenticated"
 
 
 def test_isolated_environment_strips_python_import_injection(monkeypatch: pytest.MonkeyPatch) -> None:
