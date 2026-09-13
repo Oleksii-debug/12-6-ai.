@@ -647,6 +647,13 @@ class Trainer:
                 "failed trainer cannot be repaired in place; construct a fresh trainer "
                 "and restore the verified model + trainer checkpoint"
             )
+        if not self._model_state_is_finite() or not self._optimizer_state_is_finite():
+            reason = "non-finite live Trainer state before restore"
+            self._mark_failed(reason)
+            raise TrainingStateInvalidError(
+                "non-finite live Trainer cannot be repaired in place; construct a fresh "
+                "Trainer and restore a verified checkpoint"
+            )
         if isinstance(state, Mapping):
             state = TrainerState(**state)
 
