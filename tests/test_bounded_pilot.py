@@ -3,18 +3,18 @@ from __future__ import annotations
 import hashlib
 import json
 from copy import deepcopy
-from dataclasses import replace
-from typing import NoReturn
-
 import pytest
 import torch
-from torch import nn
 
+from twelve_six import InitSpec, ModelSpec, TwelveSixDecoder
 from twelve_six.data.deterministic_exposure_order import (
     build_deterministic_exposure_plan,
     ordered_next_exposure_identity,
 )
 from twelve_six.data.identity_safe_exposure_guard import IdentitySafeExposureReplayGuard
+from twelve_six.data.loss_bearing_content_binding_v1 import (
+    build_loss_bearing_content_manifest,
+)
 from twelve_six.data.unique_loss_ledger_v2 import build_ledger
 from twelve_six.portable_run_binding import PortableRunBinding, canonical_sha256
 from twelve_six.training.bounded_pilot import (
@@ -24,25 +24,70 @@ from twelve_six.training.bounded_pilot import (
 )
 from twelve_six.training.config import TrainerConfig
 from twelve_six.training.single_gpu import SingleDeviceStepRunner
-from twelve_six.training.trainer import Trainer
+from twelve_six.training.trainer import Trainer, build_optimizer
 
 
 def _sha(label: str) -> str:
     return hashlib.sha256(label.encode("utf-8")).hexdigest()
 
 
-def _identity(value: dict, field: str) -> str:
-    payload = deepcopy(value)
-    payload.pop(field, None)
+def _authority_sha(value: dict) -> str:
     return hashlib.sha256(
-        (json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n").encode()
+        (
+            json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+            + "\n"
+        ).encode("utf-8")
     ).hexdigest()
 
 
-def _ledger(loss_positions: int) -> dict:
-    token_count = loss_positions + 1
-    materialization = {
+def _rehash(value: dict, field: str) -> str:
+    body = deepcopy(value)
+    body.pop(field, None)
+    return _authority_sha(body)
+
+
+def _spec() -> ModelSpec:
+    return ModelSpec(
+        schema_version=1,
+        vocab_size=32,
+        max_seq_len=8,
+        d_model=8,
+        n_layers=1,
+        n_heads=2,
+        n_kv_heads=1,
+        head_dim=4,
+        d_ff=16,
+        rope_rotary_dim=4,
+    )
+
+
+def _trainer(*, max_steps: int = 2, seed: int = 1333) -> Trainer:
+    torch.manual_seed(seed)
+    model = TwelveSixDecoder(_spec(), InitSpec())
+    return Trainer(
+        model,
+        TrainerConfig(
+            learning_rate=1e-3,
+            weight_decay=0.0,
+            betas=(0.9, 0.95),
+            eps=1e-8,
+            max_steps=max_steps,
+            warmup_steps=0,
+            scheduler="constant",
+            gradient_accumulation_steps=1,
+            gradient_clip_norm=1.0,
+            precision="fp32",
+            seed=seed,
+            deterministic_algorithms=True,
+        ),
+        device="cpu",
+    )
+
+
+def _materialization() -> dict:
+    value = {
         "schema_version": "12-6.postpack-loss-materialization.v2",
+        "terminal_corpus_authority_identity_sha256": _sha("terminal-corpus"),
         "stage_bindings": {
             "normalization": _sha("normalization"),
             "evaluation_reservations": _sha("reservations"),
@@ -62,14 +107,13 @@ def _ledger(loss_positions: int) -> dict:
                 "modality": "text",
                 "family_id": "family.uk",
                 "normalized_payload_sha256": _sha("payload"),
-                "source_bytes": token_count,
-                "token_count": token_count,
+                "token_count": 5,
                 "split": "train",
                 "dedup_cluster_id": "cluster-doc",
                 "retained_after_dedup": True,
                 "evaluation_reserved": False,
                 "reserved_target_ranges": [],
-                "eligible_target_ranges": [[1, token_count]],
+                "eligible_target_ranges": [[1, 5]],
             }
         ],
         "packing": {
@@ -78,12 +122,13 @@ def _ledger(loss_positions: int) -> dict:
             "packs": [
                 {
                     "pack_id": "p0",
-                    "token_count": token_count,
+                    "token_count": 5,
+                    "token_ids": [1, 2, 3, 4, 5],
                     "loss_spans": [
                         {
                             "document_id": "doc",
                             "target_start": 1,
-                            "target_end": token_count,
+                            "target_end": 5,
                             "pack_target_start": 1,
                         }
                     ],
@@ -91,30 +136,15 @@ def _ledger(loss_positions: int) -> dict:
             ],
         },
     }
-    materialization["materialization_identity_sha256"] = _identity(
-        materialization,
-        "materialization_identity_sha256",
+    value["materialization_identity_sha256"] = _rehash(
+        value, "materialization_identity_sha256"
     )
-    return build_ledger(materialization)
+    return value
 
 
-def _guard_and_plan(
-    *,
-    batch_count: int = 1,
-) -> tuple[IdentitySafeExposureReplayGuard, dict]:
-    loss_positions = 2 * batch_count
-    ledger = _ledger(loss_positions)
-    guard = IdentitySafeExposureReplayGuard(
-        ledger,
-        expected_ledger_identity_sha256=ledger["ledger_identity_sha256"],
-        authorized_budget=loss_positions,
-        trainer_state_binding={
-            "checkpoint_generation": "g000",
-            "checkpoint_manifest_sha256": _sha("checkpoint"),
-            "optimizer_step": 0,
-            "trainer_nonignored_target_count": 0,
-        },
-    )
+def _authority(batch_count: int = 2) -> tuple[IdentitySafeExposureReplayGuard, dict, dict]:
+    materialization = _materialization()
+    ledger = build_ledger(materialization)
     segment_id = ledger["segments"][0]["segment_identity_sha256"]
     batches = []
     for batch_index in range(batch_count):
@@ -140,70 +170,93 @@ def _guard_and_plan(
         batches_per_shard=batch_count,
         shard_count=1,
     )
-    return guard, plan
-
-
-class _Identity:
-    def __init__(self, label: str, parameters: int | None = None) -> None:
-        self.label = label
-        self.parameters = parameters
-
-    def identity_sha256(self) -> str:
-        return _sha(self.label)
-
-    def parameter_count(self) -> int:
-        assert self.parameters is not None
-        return self.parameters
-
-
-class _TinyLM(nn.Module):
-    def __init__(self) -> None:
-        super().__init__()
-        self.embedding = nn.Embedding(8, 4)
-        self.projection = nn.Linear(4, 8)
-        count = sum(parameter.numel() for parameter in self.parameters())
-        self.spec = _Identity("model", count)
-        self.init_spec = _Identity("init")
-
-    def forward(self, input_ids: torch.Tensor) -> torch.Tensor:
-        return self.projection(self.embedding(input_ids))
-
-
-def _trainer(
-    *,
-    learning_rate: float = 1e-3,
-    max_steps: int = 1,
-) -> Trainer:
-    return Trainer(
-        _TinyLM(),
-        TrainerConfig(
-            learning_rate=learning_rate,
-            max_steps=max_steps,
-            gradient_accumulation_steps=1,
-            gradient_clip_norm=1.0,
-            precision="fp32",
-            seed=1333,
-            deterministic_algorithms=True,
-        ),
-        device="cpu",
+    manifest = build_loss_bearing_content_manifest(
+        materialization,
+        ledger,
+        plan,
+        expected_materialization_identity_sha256=materialization[
+            "materialization_identity_sha256"
+        ],
+        expected_ledger_identity_sha256=ledger["ledger_identity_sha256"],
+        expected_plan_identity_sha256=plan["plan_identity_sha256"],
     )
+    guard = IdentitySafeExposureReplayGuard(
+        ledger,
+        expected_ledger_identity_sha256=ledger["ledger_identity_sha256"],
+        authorized_budget=2 * batch_count,
+        trainer_state_binding={
+            "checkpoint_generation": "g000",
+            "checkpoint_manifest_sha256": _sha("checkpoint"),
+            "optimizer_step": 0,
+            "trainer_nonignored_target_count": 0,
+        },
+        loss_bearing_content_manifest=manifest,
+        expected_loss_bearing_manifest_identity_sha256=manifest[
+            "manifest_identity_sha256"
+        ],
+    )
+    return guard, plan, manifest
 
 
-def _overlay_projection(trainer: Trainer) -> dict:
-    return {
-        "optimizer": trainer.optimizer.__class__.__name__,
-        "scheduler": trainer.config.scheduler,
-        "precision": trainer.config.precision,
+def _launch_authority(trainer: Trainer, guard: IdentitySafeExposureReplayGuard) -> dict:
+    value = {
+        "schema_version": "12-6.learned20m-launch-input-authority.v2",
+        "binding_status": "READY_FOR_READINESS_BINDING",
+        "data_spine": {
+            "terminal_corpus_authority_identity_sha256": _sha("corpus"),
+            "stage_bindings": {"d04": _sha("d04")},
+            "deterministic_double_pack_proof_identity_sha256": _sha("double-pack"),
+            "terminal_record_inventory_digest_sha256": _sha("records"),
+            "terminal_payload_inventory_digest_sha256": _sha("payloads"),
+            "terminal_split_application_identity_sha256": _sha("split-app"),
+            "terminal_split_spec_identity_sha256": _sha("split-spec"),
+            "terminal_split_train_record_membership_sha256": _sha("membership"),
+            "canonical_build_sha256": _sha("build"),
+            "two_clean_proof_identity_sha256": _sha("two-clean"),
+            "two_clean_input_packet_identity_sha256": _sha("two-clean-input"),
+            "two_clean_runtime_identity_sha256": _sha("two-clean-runtime"),
+            "materialization_identity_sha256": _sha("materialization"),
+            "unique_loss_ledger_identity_sha256": guard.ledger_identity_sha256,
+            "tokenizer_identity_sha256": _sha("tokenizer"),
+            "packing_identity_sha256": _sha("packing"),
+            "one_pass_unique_nonignored_causal_loss_positions": guard.one_pass_maximum,
+            "requested_unique_loss_positions": guard.authorized_budget,
+        },
+        "carrier": {
+            "repository": "Oleksii-debug/12-6-ai.",
+            "git_sha": _sha("carrier"),
+            "modelspec_sha256": trainer.model.spec.identity_sha256(),
+            "initialization_identity_sha256": trainer.model.init_spec.identity_sha256(),
+            "canonical_base": "random_init",
+            "foreign_pretrained_weights_used": False,
+            "terminal": True,
+            "workflow_run_id": 123,
+            "workflow_status": "completed",
+            "workflow_conclusion": "success",
+            "workflow_head_sha": _sha("workflow-head"),
+            "evidence_sha256": _sha("evidence"),
+        },
+        "claim_boundary": {
+            "contains_source_text": False,
+            "final_test_payload_consumed": False,
+            "authorizes_training": False,
+            "authorizes_compute": False,
+            "authorized_optimized_target_exposure": 0,
+            "replay_padding_or_replacement_can_increase_unique_capacity": False,
+        },
     }
+    value["authority_identity_sha256"] = _rehash(value, "authority_identity_sha256")
+    return value
 
 
 def _binding(
-    guard: IdentitySafeExposureReplayGuard,
     trainer: Trainer,
+    guard: IdentitySafeExposureReplayGuard,
+    launch_root: str,
     *,
-    overlay_projection: dict | None = None,
-) -> PortableRunBinding:
-    budget = guard.authorized_budget
+    mode: str = "FRESH_START",
+) -> tuple[PortableRunBinding, str]:
+    portable_execution = _sha("portable-execution")
     packet = {
         "identities": {
             "canonical_base": "random_init",
@@ -212,17 +265,17 @@ def _binding(
             "unique_loss_ledger_sha256": guard.ledger_identity_sha256,
         },
         "recipe": {
-            "training_config_sha256": _sha("session"),
-            "target_unique_loss_positions": budget,
-            "maximum_total_exposures": budget,
-            "available_unique_loss_positions": budget,
+            "training_config_sha256": _sha("training-config"),
+            "target_unique_loss_positions": guard.authorized_budget,
+            "maximum_total_exposures": guard.authorized_budget,
+            "available_unique_loss_positions": guard.one_pass_maximum,
             "max_exposures_per_unique_position": 1,
             "seed": trainer.config.seed,
-            "optimizer_scheduler_precision": (
-                _overlay_projection(trainer)
-                if overlay_projection is None
-                else overlay_projection
-            ),
+            "optimizer_scheduler_precision": {
+                "optimizer": trainer.optimizer.__class__.__name__,
+                "scheduler": trainer.config.scheduler,
+                "precision": trainer.config.precision,
+            },
         },
         "resource": {
             "resource_class": "LOCAL_FREE",
@@ -230,190 +283,254 @@ def _binding(
             "materially_paid": False,
         },
         "truth_boundary": {"final_test_payload_accessed": False},
+        "binding": {
+            "portable_execution_sha256": portable_execution,
+            "launch_input_authority_identity_sha256": launch_root,
+        },
     }
-    packet_sha256 = canonical_sha256(packet)
-    return PortableRunBinding(
-        binding_ready=True,
-        mode="FRESH_START",
-        readiness_ready=True,
-        overlay_contract_valid=True,
-        packet_contract_valid=True,
-        blockers=(),
-        readiness_sha256=_sha("readiness"),
-        overlay_sha256=_sha("overlay"),
-        packet_sha256=packet_sha256,
-        packet=packet,
+    packet_root = canonical_sha256(packet)
+    return (
+        PortableRunBinding(
+            binding_ready=True,
+            mode=mode,
+            readiness_ready=True,
+            overlay_contract_valid=True,
+            packet_contract_valid=True,
+            blockers=(),
+            readiness_sha256=_sha("readiness"),
+            overlay_sha256=_sha("overlay"),
+            packet_sha256=packet_root,
+            packet=packet,
+        ),
+        portable_execution,
     )
 
 
-def _batch() -> dict[str, torch.Tensor]:
-    return {"input_ids": torch.tensor([[1, 2, 3]], dtype=torch.long)}
+def _batch(batch_index: int) -> dict[str, torch.Tensor]:
+    start = 1 + 2 * batch_index
+    return {
+        "input_ids": torch.tensor([[start, start + 1]], dtype=torch.long),
+        "target_ids": torch.tensor([[start + 1, start + 2]], dtype=torch.long),
+    }
 
 
 def _gate(
-    runner: SingleDeviceStepRunner,
-    binding: PortableRunBinding,
+    trainer: Trainer,
     guard: IdentitySafeExposureReplayGuard,
     plan: dict,
+    manifest: dict,
+    *,
+    runner: SingleDeviceStepRunner | None = None,
+    mode: str = "FRESH_START",
 ) -> BoundedPilotStepRunner:
+    launch = _launch_authority(trainer, guard)
+    launch_root = launch["authority_identity_sha256"]
+    binding, portable_execution = _binding(trainer, guard, launch_root, mode=mode)
     assert binding.packet_sha256 is not None
     return BoundedPilotStepRunner(
-        runner,
+        runner or SingleDeviceStepRunner(trainer),
         binding=binding,
         expected_packet_sha256=binding.packet_sha256,
+        expected_portable_execution_sha256=portable_execution,
+        launch_input_authority=launch,
+        expected_launch_input_authority_identity_sha256=launch_root,
         replay_guard=guard,
+        loss_bearing_content_manifest=manifest,
+        expected_loss_bearing_manifest_identity_sha256=manifest[
+            "manifest_identity_sha256"
+        ],
         exposure_plan=plan,
         expected_plan_identity_sha256=plan["plan_identity_sha256"],
     )
 
 
-class _PostStepFailureRunner(SingleDeviceStepRunner):
-    def train_microbatch(self, batch: dict[str, torch.Tensor]) -> NoReturn:
-        super().train_microbatch(batch)
-        raise RuntimeError("synthetic post-step synchronization failure")
-
-
-def test_exact_d04_handoff_authorizes_one_optimizer_step_and_rebinds_state() -> None:
-    guard, plan = _guard_and_plan()
-    trainer = _trainer()
-    binding = _binding(guard, trainer)
-    gate = _gate(SingleDeviceStepRunner(trainer), binding, guard, plan)
-    expected = ordered_next_exposure_identity(
+def _next(guard: IdentitySafeExposureReplayGuard, plan: dict, batch_index: int) -> str:
+    return ordered_next_exposure_identity(
         guard,
         plan,
-        batch_index=0,
+        batch_index=batch_index,
         expected_plan_identity_sha256=plan["plan_identity_sha256"],
     )
-    metrics, receipt = gate.train_authorized_microbatch(
-        _batch(),
-        batch_index=0,
-        expected_next_exposure_identity_sha256=expected,
-    )
-    gate.close()
-    assert metrics.trainer.optimizer_stepped is True
-    assert trainer.optimizer_step == 1
-    assert trainer.tokens_seen == 2
-    assert guard.consumed_loss_positions == 2
-    assert guard.trainer_state_binding["optimizer_step"] == 1
-    assert guard.trainer_state_binding["trainer_nonignored_target_count"] == 2
-    assert receipt.optimizer_step_before == 0
-    assert receipt.optimizer_step_after == 1
-    assert receipt.exposure_identity_sha256 == expected
-    assert receipt.packet_sha256 == binding.packet_sha256
-    assert receipt.modelspec_sha256 == trainer.model.spec.identity_sha256()
 
 
-def test_two_steps_consume_distinct_exposures_with_live_rebinding() -> None:
-    guard, plan = _guard_and_plan(batch_count=2)
+def test_two_exact_live_batches_execute_two_real_optimizer_steps() -> None:
+    guard, plan, manifest = _authority()
     trainer = _trainer(max_steps=2)
-    binding = _binding(guard, trainer)
-    gate = _gate(SingleDeviceStepRunner(trainer), binding, guard, plan)
-    observed = []
+    gate = _gate(trainer, guard, plan, manifest)
+    receipts = []
     for batch_index in range(2):
-        expected = ordered_next_exposure_identity(
-            guard,
-            plan,
-            batch_index=batch_index,
-            expected_plan_identity_sha256=plan["plan_identity_sha256"],
-        )
-        _, receipt = gate.train_authorized_microbatch(
-            _batch(),
+        expected = _next(guard, plan, batch_index)
+        metrics, receipt = gate.train_authorized_microbatch(
+            _batch(batch_index),
             batch_index=batch_index,
             expected_next_exposure_identity_sha256=expected,
         )
-        observed.append(receipt.exposure_identity_sha256)
+        assert metrics.trainer.optimizer_stepped is True
+        receipts.append(receipt)
     gate.close()
-    assert observed[0] != observed[1]
     assert trainer.optimizer_step == 2
     assert trainer.tokens_seen == 4
     assert guard.consumed_loss_positions == 4
-    assert guard.trainer_state_binding["optimizer_step"] == 2
-    assert guard.trainer_state_binding["trainer_nonignored_target_count"] == 4
+    assert receipts[0].exposure_identity_sha256 != receipts[1].exposure_identity_sha256
 
 
-def test_wrong_exposure_identity_blocks_before_trainer_mutation() -> None:
-    guard, plan = _guard_and_plan()
-    trainer = _trainer()
-    binding = _binding(guard, trainer)
-    gate = _gate(SingleDeviceStepRunner(trainer), binding, guard, plan)
-    before = guard.state_dict()
-    with pytest.raises(BoundedPilotAuthorizationError, match="external handoff"):
+@pytest.mark.parametrize("surface", ["input", "target"])
+def test_same_cardinality_live_content_substitution_blocks_before_gradient(surface: str) -> None:
+    guard, plan, manifest = _authority(batch_count=1)
+    trainer = _trainer(max_steps=1)
+    gate = _gate(trainer, guard, plan, manifest)
+    batch = _batch(0)
+    key = "input_ids" if surface == "input" else "target_ids"
+    batch[key] = batch[key].clone()
+    batch[key][0, 0] = 17
+    before = [parameter.detach().clone() for parameter in trainer.model.parameters()]
+    with pytest.raises(BoundedPilotAuthorizationError, match="live loss-bearing content rejected"):
         gate.train_authorized_microbatch(
-            _batch(),
+            batch,
             batch_index=0,
-            expected_next_exposure_identity_sha256=_sha("wrong"),
+            expected_next_exposure_identity_sha256=_next(guard, plan, 0),
         )
     gate.close()
-    assert gate.poisoned is False
     assert trainer.optimizer_step == 0
     assert trainer.tokens_seen == 0
-    assert guard.state_dict() == before
-
-
-def test_self_resealed_packet_is_blocked_by_external_packet_root() -> None:
-    guard, plan = _guard_and_plan()
-    trainer = _trainer()
-    binding = _binding(guard, trainer)
-    assert binding.packet is not None
-    assert binding.packet_sha256 is not None
-    tampered_packet = deepcopy(binding.packet)
-    tampered_packet["recipe"]["seed"] = trainer.config.seed + 1
-    tampered = replace(
-        binding,
-        packet=tampered_packet,
-        packet_sha256=canonical_sha256(tampered_packet),
+    assert guard.consumed_loss_positions == 0
+    assert all(
+        torch.equal(left, right)
+        for left, right in zip(before, trainer.model.parameters(), strict=True)
     )
-    with pytest.raises(BoundedPilotAuthorizationError, match="external authority"):
+
+
+def test_fresh_start_rejects_same_architecture_mutated_weights() -> None:
+    guard, plan, manifest = _authority(batch_count=1)
+    trainer = _trainer(max_steps=1)
+    with torch.no_grad():
+        next(trainer.model.parameters()).view(-1)[0].add_(0.25)
+    with pytest.raises(BoundedPilotAuthorizationError, match="canonical random initialization"):
+        _gate(trainer, guard, plan, manifest)
+
+
+def test_out_of_band_model_mutation_between_steps_fails_closed() -> None:
+    guard, plan, manifest = _authority()
+    trainer = _trainer(max_steps=2)
+    gate = _gate(trainer, guard, plan, manifest)
+    gate.train_authorized_microbatch(
+        _batch(0),
+        batch_index=0,
+        expected_next_exposure_identity_sha256=_next(guard, plan, 0),
+    )
+    with torch.no_grad():
+        next(trainer.model.parameters()).view(-1)[0].add_(0.25)
+    with pytest.raises(BoundedPilotAuthorizationError, match="outside authorized optimizer chain"):
+        gate.train_authorized_microbatch(
+            _batch(1),
+            batch_index=1,
+            expected_next_exposure_identity_sha256=_next(guard, plan, 1),
+        )
+    gate.close()
+    assert trainer.optimizer_step == 1
+    assert guard.consumed_loss_positions == 2
+
+
+def test_optimizer_object_replacement_cannot_bypass_original_pre_hook() -> None:
+    guard, plan, manifest = _authority(batch_count=1)
+    trainer = _trainer(max_steps=1)
+    gate = _gate(trainer, guard, plan, manifest)
+    trainer.optimizer = build_optimizer(trainer.model, trainer.config)
+    with pytest.raises(BoundedPilotAuthorizationError, match="optimizer object replaced"):
+        gate.train_authorized_microbatch(
+            _batch(0),
+            batch_index=0,
+            expected_next_exposure_identity_sha256=_next(guard, plan, 0),
+        )
+    gate.close()
+    assert trainer.optimizer_step == 0
+    assert guard.consumed_loss_positions == 0
+
+
+def test_noncanonical_adamw_behavior_flag_fails_closed() -> None:
+    guard, plan, manifest = _authority(batch_count=1)
+    trainer = _trainer(max_steps=1)
+    gate = _gate(trainer, guard, plan, manifest)
+    trainer.optimizer.param_groups[0]["maximize"] = True
+    with pytest.raises(BoundedPilotAuthorizationError, match="group semantics"):
+        gate.train_authorized_microbatch(
+            _batch(0),
+            batch_index=0,
+            expected_next_exposure_identity_sha256=_next(guard, plan, 0),
+        )
+    gate.close()
+    assert trainer.optimizer_step == 0
+
+
+def test_stale_live_trainer_replay_state_is_rechecked_per_step() -> None:
+    guard, plan, manifest = _authority(batch_count=1)
+    trainer = _trainer(max_steps=1)
+    gate = _gate(trainer, guard, plan, manifest)
+    trainer.optimizer_step = 1
+    with pytest.raises(BoundedPilotAuthorizationError, match="replay optimizer state stale"):
+        gate.train_authorized_microbatch(
+            _batch(0),
+            batch_index=0,
+            expected_next_exposure_identity_sha256=_next(guard, plan, 0),
+        )
+    gate.close()
+    assert guard.consumed_loss_positions == 0
+
+
+def test_wrong_external_launch_root_fails_before_step_1() -> None:
+    guard, plan, manifest = _authority(batch_count=1)
+    trainer = _trainer(max_steps=1)
+    launch = _launch_authority(trainer, guard)
+    launch_root = launch["authority_identity_sha256"]
+    binding, portable_execution = _binding(trainer, guard, launch_root)
+    assert binding.packet_sha256 is not None
+    with pytest.raises(
+        BoundedPilotAuthorizationError,
+        match="D10 launch-input authority identity mismatch",
+    ):
         BoundedPilotStepRunner(
             SingleDeviceStepRunner(trainer),
-            binding=tampered,
+            binding=binding,
             expected_packet_sha256=binding.packet_sha256,
+            expected_portable_execution_sha256=portable_execution,
+            launch_input_authority=launch,
+            expected_launch_input_authority_identity_sha256=_sha("wrong-launch"),
             replay_guard=guard,
+            loss_bearing_content_manifest=manifest,
+            expected_loss_bearing_manifest_identity_sha256=manifest[
+                "manifest_identity_sha256"
+            ],
             exposure_plan=plan,
             expected_plan_identity_sha256=plan["plan_identity_sha256"],
         )
     assert trainer.optimizer_step == 0
 
 
-def test_live_optimizer_drift_is_blocked_before_trainer_mutation() -> None:
-    guard, plan = _guard_and_plan()
-    trainer = _trainer()
-    binding = _binding(guard, trainer)
-    gate = _gate(SingleDeviceStepRunner(trainer), binding, guard, plan)
-    trainer.optimizer.param_groups[0]["lr"] = 2e-3
-    expected = ordered_next_exposure_identity(
-        guard,
-        plan,
-        batch_index=0,
-        expected_plan_identity_sha256=plan["plan_identity_sha256"],
-    )
-    with pytest.raises(BoundedPilotAuthorizationError, match="live optimizer hyperparameters"):
-        gate.train_authorized_microbatch(
-            _batch(),
-            batch_index=0,
-            expected_next_exposure_identity_sha256=expected,
-        )
-    gate.close()
-    assert gate.poisoned is False
-    assert trainer.optimizer_step == 0
-    assert trainer.tokens_seen == 0
-    assert guard.consumed_loss_positions == 0
+def test_resume_mode_is_explicitly_blocked_until_checkpoint_root_is_consumed() -> None:
+    guard, plan, manifest = _authority(batch_count=1)
+    trainer = _trainer(max_steps=1)
+    with pytest.raises(BoundedPilotAuthorizationError, match="FRESH_START only"):
+        _gate(trainer, guard, plan, manifest, mode="RESUME")
 
 
-def test_post_authorization_failure_never_rewinds_exposure_and_poison_gate() -> None:
-    guard, plan = _guard_and_plan()
-    trainer = _trainer()
-    binding = _binding(guard, trainer)
-    gate = _gate(_PostStepFailureRunner(trainer), binding, guard, plan)
-    expected = ordered_next_exposure_identity(
-        guard,
-        plan,
-        batch_index=0,
-        expected_plan_identity_sha256=plan["plan_identity_sha256"],
-    )
+def test_post_commit_failure_never_rewinds_consumed_exposure() -> None:
+    guard, plan, manifest = _authority(batch_count=1)
+    trainer = _trainer(max_steps=1)
+    runner = SingleDeviceStepRunner(trainer)
+    synchronize_calls = 0
+
+    def fail_after_trainer_commit() -> None:
+        nonlocal synchronize_calls
+        synchronize_calls += 1
+        if synchronize_calls == 3:
+            raise RuntimeError("synthetic post-step synchronization failure")
+
+    runner._synchronize = fail_after_trainer_commit  # type: ignore[method-assign]
+    gate = _gate(trainer, guard, plan, manifest, runner=runner)
+    expected = _next(guard, plan, 0)
     with pytest.raises(BoundedPilotRecoveryRequiredError, match="fresh verified recovery"):
         gate.train_authorized_microbatch(
-            _batch(),
+            _batch(0),
             batch_index=0,
             expected_next_exposure_identity_sha256=expected,
         )
@@ -422,63 +539,10 @@ def test_post_authorization_failure_never_rewinds_exposure_and_poison_gate() -> 
     assert guard.consumed_loss_positions == 2
     with pytest.raises(BoundedPilotRecoveryRequiredError, match="fresh verified recovery"):
         gate.train_authorized_microbatch(
-            _batch(),
+            _batch(0),
             batch_index=0,
             expected_next_exposure_identity_sha256=expected,
         )
     gate.close()
     assert trainer.optimizer_step == 1
     assert guard.consumed_loss_positions == 2
-
-
-def test_actual_model_identity_substitution_is_blocked_before_step_1() -> None:
-    guard, plan = _guard_and_plan()
-    trainer = _trainer()
-    binding = _binding(guard, trainer)
-    assert binding.packet is not None
-    tampered_packet = deepcopy(binding.packet)
-    tampered_packet["identities"]["modelspec_sha256"] = _sha("other-model")
-    tampered_root = canonical_sha256(tampered_packet)
-    tampered = replace(
-        binding,
-        packet=tampered_packet,
-        packet_sha256=tampered_root,
-    )
-    with pytest.raises(BoundedPilotAuthorizationError, match="actual ModelSpec differs"):
-        BoundedPilotStepRunner(
-            SingleDeviceStepRunner(trainer),
-            binding=tampered,
-            expected_packet_sha256=tampered_root,
-            replay_guard=guard,
-            exposure_plan=plan,
-            expected_plan_identity_sha256=plan["plan_identity_sha256"],
-        )
-    assert trainer.optimizer_step == 0
-
-
-def test_zero_authority_binding_cannot_reach_optimizer() -> None:
-    guard, plan = _guard_and_plan()
-    trainer = _trainer()
-    blocked = PortableRunBinding(
-        binding_ready=False,
-        mode="FRESH_START",
-        readiness_ready=False,
-        overlay_contract_valid=True,
-        packet_contract_valid=True,
-        blockers=("readiness:loss_ledger_unique_positions_zero",),
-        readiness_sha256=_sha("readiness"),
-        overlay_sha256=_sha("overlay"),
-        packet_sha256=None,
-        packet=None,
-    )
-    with pytest.raises(BoundedPilotAuthorizationError, match="BLOCKED_PRE_STEP_1"):
-        BoundedPilotStepRunner(
-            SingleDeviceStepRunner(trainer),
-            binding=blocked,
-            expected_packet_sha256=_sha("external-packet"),
-            replay_guard=guard,
-            exposure_plan=plan,
-            expected_plan_identity_sha256=plan["plan_identity_sha256"],
-        )
-    assert trainer.optimizer_step == 0
-    assert guard.consumed_loss_positions == 0

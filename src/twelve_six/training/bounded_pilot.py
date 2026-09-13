@@ -1,14 +1,17 @@
 """Fail-closed execution gate for the learned-20M bounded LOCAL_FREE pilot.
 
-The gate consumes canonical readiness/run-packet and D04 ordered-exposure
-contracts. It does not authorize training itself. Its job is to prove that the
-*actual* model/Trainer about to update match the authorized packet and to consume
-the exact next D04 exposure identity immediately before ``optimizer.step()``.
+The gate consumes canonical readiness/run-packet, D10 launch-input, and D04
+ordered/content exposure authorities. It does not authorize training itself.
+Every learned-target optimizer transition is bound to the exact live model,
+optimizer, Trainer state, packet roots, and loss-bearing content immediately
+before ``optimizer.step()``.
 """
 
 from __future__ import annotations
 
 import copy
+import hashlib
+import json
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
@@ -16,15 +19,14 @@ from typing import Any
 import torch
 from torch import Tensor
 
-from twelve_six.data.deterministic_exposure_order import (
-    authorize_ordered_batch,
-    ordered_next_exposure_identity,
-)
+from twelve_six.data.deterministic_exposure_order import ordered_next_exposure_identity
 from twelve_six.data.identity_safe_exposure_guard import IdentitySafeExposureReplayGuard
+from twelve_six.data.loss_bearing_content_binding_v1 import verify_live_loss_bearing_batch
+from twelve_six.model import TwelveSixDecoder
 from twelve_six.portable_run_binding import PortableRunBinding, canonical_sha256
 
 from .single_gpu import SingleDeviceStepMetrics, SingleDeviceStepRunner
-from .trainer import Trainer
+from .trainer import Trainer, build_optimizer
 
 Batch = Mapping[str, Tensor]
 
@@ -63,45 +65,319 @@ class BoundedPilotStepReceipt:
         }
 
 
+@dataclass(slots=True)
+class _PendingAuthorization:
+    batch: Batch
+    batch_index: int
+    expected_identity: str
+    actual_targets: int
+
+
 def _require_sha256(value: object, *, label: str) -> str:
     if (
         not isinstance(value, str)
         or len(value) != 64
         or any(character not in "0123456789abcdef" for character in value)
     ):
-        raise BoundedPilotAuthorizationError(f"BLOCKED_PRE_STEP_1: {label} is not canonical sha256")
+        raise BoundedPilotAuthorizationError(
+            f"BLOCKED_PRE_STEP_1: {label} is not canonical sha256"
+        )
     return value
 
 
-def _actual_nonignored_targets(batch: Batch) -> int:
-    if "input_ids" not in batch:
-        raise BoundedPilotAuthorizationError("batch is missing input_ids")
+def _canonical_json_bytes(value: Any) -> bytes:
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+
+
+def _authority_sha256(value: Any) -> str:
+    payload = (
+        json.dumps(
+            value,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
+        + "\n"
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+_LAUNCH_INPUT_SCHEMA = "12-6.learned20m-launch-input-authority.v2"
+_LAUNCH_ROOT_KEYS = frozenset(
+    {
+        "schema_version",
+        "binding_status",
+        "data_spine",
+        "carrier",
+        "claim_boundary",
+        "authority_identity_sha256",
+    }
+)
+_LAUNCH_DATA_SPINE_KEYS = frozenset(
+    {
+        "terminal_corpus_authority_identity_sha256",
+        "stage_bindings",
+        "deterministic_double_pack_proof_identity_sha256",
+        "terminal_record_inventory_digest_sha256",
+        "terminal_payload_inventory_digest_sha256",
+        "terminal_split_application_identity_sha256",
+        "terminal_split_spec_identity_sha256",
+        "terminal_split_train_record_membership_sha256",
+        "canonical_build_sha256",
+        "two_clean_proof_identity_sha256",
+        "two_clean_input_packet_identity_sha256",
+        "two_clean_runtime_identity_sha256",
+        "materialization_identity_sha256",
+        "unique_loss_ledger_identity_sha256",
+        "tokenizer_identity_sha256",
+        "packing_identity_sha256",
+        "one_pass_unique_nonignored_causal_loss_positions",
+        "requested_unique_loss_positions",
+    }
+)
+_LAUNCH_CARRIER_KEYS = frozenset(
+    {
+        "repository",
+        "git_sha",
+        "modelspec_sha256",
+        "initialization_identity_sha256",
+        "canonical_base",
+        "foreign_pretrained_weights_used",
+        "terminal",
+        "workflow_run_id",
+        "workflow_status",
+        "workflow_conclusion",
+        "workflow_head_sha",
+        "evidence_sha256",
+    }
+)
+_LAUNCH_CLAIM_BOUNDARY = {
+    "contains_source_text": False,
+    "final_test_payload_consumed": False,
+    "authorizes_training": False,
+    "authorizes_compute": False,
+    "authorized_optimized_target_exposure": 0,
+    "replay_padding_or_replacement_can_increase_unique_capacity": False,
+}
+
+
+def _verify_launch_input_v2_authority(
+    authority: Mapping[str, Any],
+    *,
+    expected_identity_sha256: str,
+    expected_modelspec_sha256: str,
+    expected_initspec_sha256: str,
+    expected_ledger_sha256: str,
+) -> None:
+    expected = _require_sha256(expected_identity_sha256, label="external D10 launch-input root")
+    if not isinstance(authority, Mapping) or set(authority) != set(_LAUNCH_ROOT_KEYS):
+        raise BoundedPilotAuthorizationError(
+            "BLOCKED_PRE_STEP_1: D10 launch-input authority root is not closed-world"
+        )
+    value = copy.deepcopy(dict(authority))
+    if value.get("schema_version") != _LAUNCH_INPUT_SCHEMA:
+        raise BoundedPilotAuthorizationError(
+            "BLOCKED_PRE_STEP_1: D10 launch-input v2 authority required"
+        )
+    if value.get("binding_status") != "READY_FOR_READINESS_BINDING":
+        raise BoundedPilotAuthorizationError(
+            "BLOCKED_PRE_STEP_1: D10 launch-input authority is not terminal for readiness"
+        )
+    observed = _require_sha256(value.get("authority_identity_sha256"), label="D10 authority root")
+    body = copy.deepcopy(value)
+    body.pop("authority_identity_sha256", None)
+    if _authority_sha256(body) != observed or observed != expected:
+        raise BoundedPilotAuthorizationError(
+            "BLOCKED_PRE_STEP_1: D10 launch-input authority identity mismatch"
+        )
+    data_spine = value.get("data_spine")
+    carrier = value.get("carrier")
+    claim_boundary = value.get("claim_boundary")
+    if not isinstance(data_spine, Mapping) or set(data_spine) != set(_LAUNCH_DATA_SPINE_KEYS):
+        raise BoundedPilotAuthorizationError(
+            "BLOCKED_PRE_STEP_1: D10 data spine is not closed-world"
+        )
+    if not isinstance(carrier, Mapping) or set(carrier) != set(_LAUNCH_CARRIER_KEYS):
+        raise BoundedPilotAuthorizationError(
+            "BLOCKED_PRE_STEP_1: D10 carrier is not closed-world"
+        )
+    if not isinstance(claim_boundary, Mapping) or dict(claim_boundary) != _LAUNCH_CLAIM_BOUNDARY:
+        raise BoundedPilotAuthorizationError(
+            "BLOCKED_PRE_STEP_1: D10 claim boundary widened"
+        )
+    if carrier.get("modelspec_sha256") != expected_modelspec_sha256:
+        raise BoundedPilotAuthorizationError(
+            "BLOCKED_PRE_STEP_1: D10 carrier ModelSpec differs from runtime packet"
+        )
+    if carrier.get("initialization_identity_sha256") != expected_initspec_sha256:
+        raise BoundedPilotAuthorizationError(
+            "BLOCKED_PRE_STEP_1: D10 carrier InitSpec differs from runtime packet"
+        )
+    if carrier.get("canonical_base") != "random_init":
+        raise BoundedPilotAuthorizationError(
+            "BLOCKED_PRE_STEP_1: D10 carrier is not random_init"
+        )
+    if carrier.get("foreign_pretrained_weights_used") is not False:
+        raise BoundedPilotAuthorizationError(
+            "BLOCKED_PRE_STEP_1: D10 carrier permits foreign pretrained weights"
+        )
+    if carrier.get("terminal") is not True or carrier.get("workflow_conclusion") != "success":
+        raise BoundedPilotAuthorizationError(
+            "BLOCKED_PRE_STEP_1: D10 carrier is not terminal-success"
+        )
+    if data_spine.get("unique_loss_ledger_identity_sha256") != expected_ledger_sha256:
+        raise BoundedPilotAuthorizationError(
+            "BLOCKED_PRE_STEP_1: D10 unique-loss ledger differs from runtime D04 ledger"
+        )
+    capacity = data_spine.get("one_pass_unique_nonignored_causal_loss_positions")
+    requested = data_spine.get("requested_unique_loss_positions")
+    if (
+        isinstance(capacity, bool)
+        or not isinstance(capacity, int)
+        or capacity <= 0
+        or isinstance(requested, bool)
+        or not isinstance(requested, int)
+        or requested <= 0
+        or requested > capacity
+    ):
+        raise BoundedPilotAuthorizationError(
+            "BLOCKED_PRE_STEP_1: D10 unique-loss capacity/request is invalid"
+        )
+
+
+def _typed_equal(left: Any, right: Any) -> bool:
+    if type(left) is not type(right):
+        return False
+    if isinstance(left, Mapping):
+        if set(left) != set(right):
+            return False
+        return all(_typed_equal(left[key], right[key]) for key in left)
+    if isinstance(left, (list, tuple)):
+        if len(left) != len(right):
+            return False
+        return all(_typed_equal(a, b) for a, b in zip(left, right, strict=True))
+    return bool(left == right)
+
+
+def _model_state_sha256(model: torch.nn.Module) -> str:
+    digest = hashlib.sha256(b"12-6.model-state.v1\x00")
+    state = model.state_dict()
+    for name in sorted(state):
+        tensor = state[name].detach().contiguous().cpu()
+        metadata = {
+            "name": name,
+            "dtype": str(tensor.dtype),
+            "shape": list(tensor.shape),
+        }
+        digest.update(_canonical_json_bytes(metadata))
+        digest.update(b"\x00")
+        digest.update(tensor.view(torch.uint8).numpy().tobytes())
+        digest.update(b"\x00")
+    return digest.hexdigest()
+
+
+def _require_fresh_start_model_state(trainer: Trainer) -> str:
+    model = trainer.model
+    if type(model) is not TwelveSixDecoder:
+        raise BoundedPilotAuthorizationError(
+            "BLOCKED_PRE_STEP_1: canonical TwelveSixDecoder required"
+        )
+    if trainer.optimizer_step != 0 or trainer.tokens_seen != 0 or trainer.micro_step != 0:
+        raise BoundedPilotAuthorizationError(
+            "BLOCKED_PRE_STEP_1: FRESH_START Trainer counters must be zero"
+        )
+    with torch.random.fork_rng(devices=[]):
+        torch.manual_seed(trainer.config.seed)
+        reference = TwelveSixDecoder(model.spec, model.init_spec)
+    expected = _model_state_sha256(reference)
+    observed = _model_state_sha256(model)
+    if observed != expected:
+        raise BoundedPilotAuthorizationError(
+            "BLOCKED_PRE_STEP_1: live model tensors differ from canonical random initialization"
+        )
+    return observed
+
+
+def _batch_projection(batch: Batch) -> tuple[Tensor, Tensor, Tensor | None, bool]:
+    input_ids = batch.get("input_ids")
+    if not isinstance(input_ids, Tensor) or input_ids.ndim != 2:
+        raise BoundedPilotAuthorizationError("batch input_ids must be a rank-2 tensor")
     if "labels" in batch and "target_ids" in batch:
         raise BoundedPilotAuthorizationError("batch must not contain both labels and target_ids")
-    aligned = "target_ids" in batch
-    targets = batch.get("target_ids", batch.get("labels", batch["input_ids"]))
-    if not isinstance(targets, Tensor) or targets.ndim != 2:
-        raise BoundedPilotAuthorizationError("training targets must be a rank-2 tensor")
-    if aligned:
-        valid = targets.ne(-100)
+    if "target_ids" in batch:
+        targets = batch["target_ids"]
+        if not isinstance(targets, Tensor) or targets.ndim != 2:
+            raise BoundedPilotAuthorizationError("target_ids must be a rank-2 tensor")
         loss_mask = batch.get("loss_mask")
-        if loss_mask is not None:
-            if not isinstance(loss_mask, Tensor) or loss_mask.shape != targets.shape:
-                raise BoundedPilotAuthorizationError("loss_mask must match target_ids")
-            valid = valid & loss_mask.bool()
-        return int(valid.sum().item())
-    return 0 if targets.shape[1] < 2 else int(targets[:, 1:].ne(-100).sum().item())
+        if loss_mask is not None and (
+            not isinstance(loss_mask, Tensor) or loss_mask.shape != targets.shape
+        ):
+            raise BoundedPilotAuthorizationError("loss_mask must match target_ids")
+        return input_ids, targets, loss_mask, False
+    if "loss_mask" in batch:
+        raise BoundedPilotAuthorizationError(
+            "shifted causal batches do not accept a separate loss_mask"
+        )
+    labels = batch.get("labels", input_ids)
+    if not isinstance(labels, Tensor) or labels.ndim != 2:
+        raise BoundedPilotAuthorizationError("shifted labels must be a rank-2 tensor")
+    return input_ids, labels, None, True
+
+
+def _actual_nonignored_targets(batch: Batch) -> int:
+    _, targets, loss_mask, shifted = _batch_projection(batch)
+    if shifted:
+        return 0 if targets.shape[1] < 2 else int(targets[:, 1:].ne(-100).sum().item())
+    valid = targets.ne(-100)
+    if loss_mask is not None:
+        valid = valid & loss_mask.bool()
+    return int(valid.sum().item())
+
+
+def _require_packet_roots(
+    packet: Mapping[str, Any],
+    *,
+    expected_portable_execution_sha256: str,
+    expected_launch_input_authority_identity_sha256: str,
+) -> None:
+    binding = packet.get("binding")
+    if not isinstance(binding, Mapping):
+        raise BoundedPilotAuthorizationError(
+            "BLOCKED_PRE_STEP_1: packet binding roots are missing"
+        )
+    expected_execution = _require_sha256(
+        expected_portable_execution_sha256,
+        label="external portable execution root",
+    )
+    expected_launch = _require_sha256(
+        expected_launch_input_authority_identity_sha256,
+        label="external D10 launch-input root",
+    )
+    if binding.get("portable_execution_sha256") != expected_execution:
+        raise BoundedPilotAuthorizationError(
+            "BLOCKED_PRE_STEP_1: portable execution root differs from external authority"
+        )
+    if binding.get("launch_input_authority_identity_sha256") != expected_launch:
+        raise BoundedPilotAuthorizationError(
+            "BLOCKED_PRE_STEP_1: D10 launch-input root differs from packet binding"
+        )
 
 
 def _require_local_free_packet(
     binding: PortableRunBinding,
     *,
     expected_packet_sha256: str,
+    expected_portable_execution_sha256: str,
+    expected_launch_input_authority_identity_sha256: str,
 ) -> tuple[dict[str, Any], str]:
-    expected_root = _require_sha256(
-        expected_packet_sha256,
-        label="external packet root",
-    )
+    expected_root = _require_sha256(expected_packet_sha256, label="external packet root")
     if (
         not binding.binding_ready
         or not binding.readiness_ready
@@ -113,6 +389,10 @@ def _require_local_free_packet(
         blockers = ",".join(binding.blockers) if binding.blockers else "binding_not_ready"
         raise BoundedPilotAuthorizationError(
             f"BLOCKED_PRE_STEP_1: portable run binding is not runnable: {blockers}"
+        )
+    if binding.mode != "FRESH_START":
+        raise BoundedPilotAuthorizationError(
+            "BLOCKED_PRE_STEP_1: current bounded runtime supports authenticated FRESH_START only"
         )
 
     binding_root = _require_sha256(binding.packet_sha256, label="binding packet root")
@@ -126,6 +406,13 @@ def _require_local_free_packet(
         raise BoundedPilotAuthorizationError(
             "BLOCKED_PRE_STEP_1: packet root differs from external authority"
         )
+    _require_packet_roots(
+        packet,
+        expected_portable_execution_sha256=expected_portable_execution_sha256,
+        expected_launch_input_authority_identity_sha256=(
+            expected_launch_input_authority_identity_sha256
+        ),
+    )
 
     resource = packet.get("resource")
     truth = packet.get("truth_boundary")
@@ -211,28 +498,39 @@ def _require_optimizer_parameter_coverage(trainer: Trainer) -> None:
         )
 
 
-def _require_live_optimizer_matches_config(trainer: Trainer) -> None:
+def _require_live_optimizer_matches_canonical_builder(trainer: Trainer) -> None:
     _require_optimizer_parameter_coverage(trainer)
-    if not trainer.optimizer.param_groups:
-        raise BoundedPilotAuthorizationError("BLOCKED_PRE_STEP_1: optimizer has no param groups")
-    expected = {
-        "lr": trainer.config.learning_rate,
-        "betas": trainer.config.betas,
-        "eps": trainer.config.eps,
-        "weight_decay": trainer.config.weight_decay,
-    }
-    for group_index, group in enumerate(trainer.optimizer.param_groups):
-        for key, expected_value in expected.items():
-            if key not in group:
-                raise BoundedPilotAuthorizationError(
-                    f"BLOCKED_PRE_STEP_1: optimizer group {group_index} lacks {key}"
-                )
-            actual_value = group[key]
-            if type(actual_value) is not type(expected_value) or actual_value != expected_value:
-                raise BoundedPilotAuthorizationError(
-                    "BLOCKED_PRE_STEP_1: live optimizer hyperparameters differ "
-                    f"from TrainerConfig ({key})"
-                )
+    reference = build_optimizer(trainer.model, trainer.config)
+    if type(trainer.optimizer) is not type(reference):
+        raise BoundedPilotAuthorizationError(
+            "BLOCKED_PRE_STEP_1: live optimizer type differs from canonical builder"
+        )
+    if not _typed_equal(trainer.optimizer.defaults, reference.defaults):
+        raise BoundedPilotAuthorizationError(
+            "BLOCKED_PRE_STEP_1: live optimizer defaults differ from canonical builder"
+        )
+    if len(trainer.optimizer.param_groups) != len(reference.param_groups):
+        raise BoundedPilotAuthorizationError(
+            "BLOCKED_PRE_STEP_1: live optimizer param-group count differs from canonical builder"
+        )
+    for index, (actual, expected) in enumerate(
+        zip(trainer.optimizer.param_groups, reference.param_groups, strict=True)
+    ):
+        actual_options = {key: value for key, value in actual.items() if key != "params"}
+        expected_options = {key: value for key, value in expected.items() if key != "params"}
+        if not _typed_equal(actual_options, expected_options):
+            raise BoundedPilotAuthorizationError(
+                "BLOCKED_PRE_STEP_1: live optimizer group semantics differ "
+                f"from canonical builder (group {index})"
+            )
+    if trainer.config.scheduler != "constant" or trainer.config.warmup_steps != 0:
+        raise BoundedPilotAuthorizationError(
+            "BLOCKED_PRE_STEP_1: learned-20M bounded pilot requires constant scheduler/warmup0"
+        )
+    if trainer.scheduler is not None:
+        raise BoundedPilotAuthorizationError(
+            "BLOCKED_PRE_STEP_1: canonical constant scheduler must not inject a scheduler object"
+        )
 
 
 def _require_actual_execution_matches_packet(
@@ -246,7 +544,6 @@ def _require_actual_execution_matches_packet(
         raise BoundedPilotAuthorizationError("BLOCKED_PRE_STEP_1: actual ModelSpec differs")
     if identities.get("initspec_sha256") != init_sha:
         raise BoundedPilotAuthorizationError("BLOCKED_PRE_STEP_1: actual InitSpec differs")
-
     expected_overlay = recipe.get("optimizer_scheduler_precision")
     actual_overlay = _actual_overlay_projection(trainer)
     if not isinstance(expected_overlay, dict) or set(expected_overlay) != set(actual_overlay):
@@ -263,8 +560,25 @@ def _require_actual_execution_matches_packet(
         raise BoundedPilotAuthorizationError(
             "BLOCKED_PRE_STEP_1: bounded pilot requires one microbatch per optimizer step"
         )
-    _require_live_optimizer_matches_config(trainer)
+    _require_live_optimizer_matches_canonical_builder(trainer)
     return model_sha, init_sha
+
+
+def _require_live_replay_state_consistency(
+    trainer: Trainer,
+    replay_guard: IdentitySafeExposureReplayGuard,
+) -> None:
+    if replay_guard.trainer_state_binding.get("optimizer_step") != trainer.optimizer_step:
+        raise BoundedPilotAuthorizationError("BLOCKED_PRE_STEP_1: replay optimizer state stale")
+    if (
+        replay_guard.trainer_state_binding.get("trainer_nonignored_target_count")
+        != replay_guard.consumed_loss_positions
+    ):
+        raise BoundedPilotAuthorizationError("BLOCKED_PRE_STEP_1: replay target counter stale")
+    if replay_guard.consumed_loss_positions != trainer.tokens_seen:
+        raise BoundedPilotAuthorizationError(
+            "BLOCKED_PRE_STEP_1: Trainer target counter differs from D04 replay state"
+        )
 
 
 class BoundedPilotStepRunner:
@@ -276,18 +590,46 @@ class BoundedPilotStepRunner:
         *,
         binding: PortableRunBinding,
         expected_packet_sha256: str,
+        expected_portable_execution_sha256: str,
+        launch_input_authority: Mapping[str, Any],
+        expected_launch_input_authority_identity_sha256: str,
         replay_guard: IdentitySafeExposureReplayGuard,
+        loss_bearing_content_manifest: Mapping[str, Any],
+        expected_loss_bearing_manifest_identity_sha256: str,
         exposure_plan: Mapping[str, Any],
         expected_plan_identity_sha256: str,
     ) -> None:
+        if type(runner) is not SingleDeviceStepRunner:
+            raise BoundedPilotAuthorizationError(
+                "BLOCKED_PRE_STEP_1: exact canonical SingleDeviceStepRunner required"
+            )
         self.runner = runner
         self.trainer: Trainer = runner.trainer
         self.binding = binding
+        launch_root = _require_sha256(
+            expected_launch_input_authority_identity_sha256,
+            label="external D10 launch-input root",
+        )
         self.packet, self._packet_sha256 = _require_local_free_packet(
             binding,
             expected_packet_sha256=expected_packet_sha256,
+            expected_portable_execution_sha256=expected_portable_execution_sha256,
+            expected_launch_input_authority_identity_sha256=launch_root,
         )
         self.replay_guard = replay_guard
+        manifest_root = _require_sha256(
+            expected_loss_bearing_manifest_identity_sha256,
+            label="external loss-bearing content manifest root",
+        )
+        if (
+            not replay_guard.content_authority_configured
+            or replay_guard.loss_bearing_manifest_identity_sha256 != manifest_root
+        ):
+            raise BoundedPilotAuthorizationError(
+                "BLOCKED_PRE_STEP_1: D04 replay guard lacks the externally rooted content manifest"
+            )
+        self.loss_bearing_content_manifest = copy.deepcopy(loss_bearing_content_manifest)
+        self._manifest_root = manifest_root
         self.exposure_plan = copy.deepcopy(exposure_plan)
         self.expected_plan_identity_sha256 = _require_sha256(
             expected_plan_identity_sha256,
@@ -297,31 +639,29 @@ class BoundedPilotStepRunner:
             raise BoundedPilotAuthorizationError(
                 "BLOCKED_PRE_STEP_1: D04 plan differs from external handoff"
             )
-        self._pending: tuple[int, str, int] | None = None
+        self._pending: _PendingAuthorization | None = None
         self._authorized_identity: str | None = None
         self._poisoned_reason: str | None = None
+        self._optimizer_object = self.trainer.optimizer
         self._modelspec_sha256, self._initspec_sha256 = _require_actual_execution_matches_packet(
             self.trainer,
             self.packet,
         )
-
         identities = self.packet["identities"]
         recipe = self.packet["recipe"]
+        _verify_launch_input_v2_authority(
+            launch_input_authority,
+            expected_identity_sha256=launch_root,
+            expected_modelspec_sha256=str(identities.get("modelspec_sha256")),
+            expected_initspec_sha256=str(identities.get("initspec_sha256")),
+            expected_ledger_sha256=replay_guard.ledger_identity_sha256,
+        )
         if identities.get("unique_loss_ledger_sha256") != replay_guard.ledger_identity_sha256:
             raise BoundedPilotAuthorizationError("BLOCKED_PRE_STEP_1: D04 ledger differs")
         if recipe.get("maximum_total_exposures") != replay_guard.authorized_budget:
             raise BoundedPilotAuthorizationError("BLOCKED_PRE_STEP_1: D04 budget differs")
-        if replay_guard.trainer_state_binding.get("optimizer_step") != self.trainer.optimizer_step:
-            raise BoundedPilotAuthorizationError("BLOCKED_PRE_STEP_1: replay optimizer state stale")
-        if (
-            replay_guard.trainer_state_binding.get("trainer_nonignored_target_count")
-            != replay_guard.consumed_loss_positions
-        ):
-            raise BoundedPilotAuthorizationError("BLOCKED_PRE_STEP_1: replay target counter stale")
-        if replay_guard.consumed_loss_positions != self.trainer.tokens_seen:
-            raise BoundedPilotAuthorizationError(
-                "BLOCKED_PRE_STEP_1: Trainer target counter differs from D04 replay state"
-            )
+        _require_live_replay_state_consistency(self.trainer, replay_guard)
+        self._expected_model_state_sha256 = _require_fresh_start_model_state(self.trainer)
 
         register = getattr(self.trainer.optimizer, "register_step_pre_hook", None)
         if register is None:
@@ -348,13 +688,47 @@ class BoundedPilotStepRunner:
             "BLOCKED_RECOVERY_REQUIRED: fresh verified recovery required; " + reason
         )
 
+    def _require_live_execution_chain(self) -> None:
+        if self.trainer.optimizer is not self._optimizer_object:
+            raise BoundedPilotAuthorizationError(
+                "BLOCKED_PRE_STEP_1: optimizer object replaced after "
+                "authorization hook installation"
+            )
+        _require_actual_execution_matches_packet(self.trainer, self.packet)
+        _require_live_replay_state_consistency(self.trainer, self.replay_guard)
+        observed_state = _model_state_sha256(self.trainer.model)
+        if observed_state != self._expected_model_state_sha256:
+            raise BoundedPilotAuthorizationError(
+                "BLOCKED_PRE_STEP_1: live model state changed outside authorized optimizer chain"
+            )
+
+    def _verify_live_content(self, batch: Batch, *, batch_index: int) -> str:
+        input_ids, targets, loss_mask, shifted = _batch_projection(batch)
+        try:
+            return verify_live_loss_bearing_batch(
+                self.loss_bearing_content_manifest,
+                expected_manifest_identity_sha256=self._manifest_root,
+                batch_index=batch_index,
+                input_ids=input_ids,
+                target_ids=targets,
+                loss_mask=loss_mask,
+                shifted=shifted,
+            )
+        except (TypeError, ValueError) as exc:
+            raise BoundedPilotAuthorizationError(
+                f"BLOCKED_PRE_STEP_1: live loss-bearing content rejected: {exc}"
+            ) from exc
+
     def _preflight_handoff(
         self,
         *,
+        batch: Batch,
         batch_index: int,
         expected_identity: str,
         actual_targets: int,
     ) -> None:
+        self._require_live_execution_chain()
+        self._verify_live_content(batch, batch_index=batch_index)
         observed = ordered_next_exposure_identity(
             self.replay_guard,
             self.exposure_plan,
@@ -373,7 +747,7 @@ class BoundedPilotStepRunner:
 
     def _authorize_immediately_before_optimizer_step(
         self,
-        _optimizer: torch.optim.Optimizer,
+        optimizer: torch.optim.Optimizer,
         _args: tuple[Any, ...],
         _kwargs: dict[str, Any],
     ) -> None:
@@ -383,20 +757,37 @@ class BoundedPilotStepRunner:
             raise BoundedPilotAuthorizationError(
                 "BLOCKED_PRE_STEP_1: optimizer step lacks D04 handoff"
             )
-        _require_actual_execution_matches_packet(self.trainer, self.packet)
-        batch_index, expected_identity, actual_targets = self._pending
+        if (
+            optimizer is not self._optimizer_object
+            or self.trainer.optimizer is not self._optimizer_object
+        ):
+            raise BoundedPilotAuthorizationError(
+                "BLOCKED_PRE_STEP_1: optimizer object differs from authorized hook target"
+            )
+        pending = self._pending
         self._preflight_handoff(
-            batch_index=batch_index,
-            expected_identity=expected_identity,
-            actual_targets=actual_targets,
+            batch=pending.batch,
+            batch_index=pending.batch_index,
+            expected_identity=pending.expected_identity,
+            actual_targets=pending.actual_targets,
         )
-        self._authorized_identity = authorize_ordered_batch(
-            self.replay_guard,
-            self.exposure_plan,
-            batch_index=batch_index,
-            expected_plan_identity_sha256=self.expected_plan_identity_sha256,
-            expected_ordered_next_exposure_identity_sha256=expected_identity,
-        )
+        plan_batch = self.exposure_plan["batches"][pending.batch_index]
+        input_ids, targets, loss_mask, shifted = _batch_projection(pending.batch)
+        try:
+            self._authorized_identity = self.replay_guard.authorize_live_batch_with_identity(
+                plan_batch["claims"],
+                actual_nonignored_targets=pending.actual_targets,
+                expected_next_exposure_identity_sha256=pending.expected_identity,
+                batch_index=pending.batch_index,
+                input_ids=input_ids,
+                target_ids=targets,
+                loss_mask=loss_mask,
+                shifted=shifted,
+            )
+        except (TypeError, ValueError) as exc:
+            raise BoundedPilotAuthorizationError(
+                f"BLOCKED_PRE_STEP_1: D04 live authorization rejected: {exc}"
+            ) from exc
 
     def _bind_live_post_step_state(self) -> None:
         if self.trainer.tokens_seen != self.replay_guard.consumed_loss_positions:
@@ -407,9 +798,10 @@ class BoundedPilotStepRunner:
         state["trainer_nonignored_target_count"] = self.trainer.tokens_seen
         try:
             self.replay_guard.bind_checkpoint_state(state)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - any post-commit failure must poison.
             self._poison(f"post-step D04 state binding failed: {exc}")
             self._raise_recovery_required()
+        self._expected_model_state_sha256 = _model_state_sha256(self.trainer.model)
 
     def train_authorized_microbatch(
         self,
@@ -427,25 +819,33 @@ class BoundedPilotStepRunner:
         batches = self.exposure_plan.get("batches")
         if not isinstance(batches, list) or batch_index >= len(batches):
             raise BoundedPilotAuthorizationError("batch_index outside exposure plan")
-        actual_targets = _actual_nonignored_targets(batch)
+        frozen_batch = {
+            key: tensor.detach().clone() for key, tensor in batch.items()
+        }
+        actual_targets = _actual_nonignored_targets(frozen_batch)
         planned_targets = batches[batch_index].get("actual_nonignored_targets")
         if actual_targets <= 0 or planned_targets != actual_targets:
             raise BoundedPilotAuthorizationError(
                 "BLOCKED_PRE_STEP_1: loss-bearing cardinality is not exact"
             )
-        _require_actual_execution_matches_packet(self.trainer, self.packet)
         self._preflight_handoff(
+            batch=frozen_batch,
             batch_index=batch_index,
             expected_identity=expected_next_exposure_identity_sha256,
             actual_targets=actual_targets,
         )
 
         before_step = self.trainer.optimizer_step
-        self._pending = (batch_index, expected_next_exposure_identity_sha256, actual_targets)
+        self._pending = _PendingAuthorization(
+            batch=frozen_batch,
+            batch_index=batch_index,
+            expected_identity=expected_next_exposure_identity_sha256,
+            actual_targets=actual_targets,
+        )
         self._authorized_identity = None
         try:
-            metrics = self.runner.train_microbatch(batch)
-        except Exception as exc:
+            metrics = self.runner.train_microbatch(frozen_batch)
+        except Exception as exc:  # noqa: BLE001 - ambiguous transition must fail closed.
             if self._authorized_identity is None:
                 reason = "Trainer execution failed after entering the transition boundary"
             else:
