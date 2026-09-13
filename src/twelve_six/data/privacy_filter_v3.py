@@ -40,6 +40,17 @@ PLACEHOLDERS = frozenset({
     "your_secret", "your_password", "token_here", "secret_here", "password_here",
     "xxxxxxxx", "********", "<secret>", "<token>", "<password>", "<redacted>",
 })
+PLACEHOLDER_PATTERNS = (
+    re.compile(r"\$\{[a-z_][a-z0-9_]*\}"),
+    re.compile(r"\$[a-z_][a-z0-9_]*"),
+    re.compile(r"%[a-z_][a-z0-9_]*%"),
+    re.compile(r"\{\{[a-z_][a-z0-9_.-]*\}\}"),
+    re.compile(r"process\.env\.[a-z_][a-z0-9_]*"),
+    re.compile(r"process\.env\[(?P<quote>['\"])[a-z_][a-z0-9_]*(?P=quote)\]"),
+    re.compile(
+        r"(?:os\.getenv|env)\(\s*(?P<quote>['\"])[a-z_][a-z0-9_]*(?P=quote)\s*\)"
+    ),
+)
 GENERIC_USER_SEGMENTS = frozenset({"user", "users", "username", "name", "example", "demo", "test", "rootfs"})
 EXAMPLE_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "example.com", "example.org", "example.net", "db.example.com"})
 
@@ -92,8 +103,10 @@ SENSITIVE_ENV_RE = re.compile(
     r"(?im)^\s*(?:export\s+|set\s+)?(?P<name>[A-Z][A-Z0-9_]{2,80})\s*=\s*(?P<quote>['\"]?)(?P<value>[^\r\n'\"]{1,2048})(?P=quote)\s*$"
 )
 GENERIC_SECRET_ASSIGN_RE = re.compile(
-    r"(?im)\b(?P<name>password|passwd|pwd|client_secret|api_secret|secret|token|api_key|access_token)\b"
-    r"\s*[:=]\s*(?P<quote>['\"]?)(?P<value>[^\s'\";,}]{8,256})(?P=quote)"
+    r"(?im)['\"]?\b"
+    r"(?P<name>password|passwd|pwd|client_secret|api_secret|secret|token|api_key|access_token)\b"
+    r"['\"]?\s*[:=]\s*(?P<quote>['\"]?)"
+    r"(?P<value>[^\s;,]{1,256})(?P=quote)(?=$|[\s;,])"
 )
 SENSITIVE_ENV_NAMES = re.compile(
     r"(?i)(?:^|_)(?:PASSWORD|PASSWD|PWD|SECRET|TOKEN|API_KEY|ACCESS_KEY|PRIVATE_KEY|CLIENT_SECRET|DATABASE_URL|DB_URL|CONNECTION_STRING|AUTH)(?:$|_)"
@@ -145,18 +158,24 @@ def policy_manifest() -> dict[str, Any]:
     return {**core, "policy_sha256": hashlib.sha256(_canonical_json_bytes(core)).hexdigest()}
 
 
+def _strip_matching_quotes(value: str) -> str:
+    value = value.strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
+        return value[1:-1].strip()
+    return value
+
+
 def _placeholder(value: str) -> bool:
-    v = value.strip().strip("'\"").casefold()
+    v = _strip_matching_quotes(value).casefold()
     if v in PLACEHOLDERS:
         return True
-    return (
-        v.startswith(("${", "{{", "$", "%", "process.env", "os.getenv", "env("))
-        or (v.startswith("<") and v.endswith(">"))
-    )
+    if any(pattern.fullmatch(v) for pattern in PLACEHOLDER_PATTERNS):
+        return True
+    return v.startswith("<") and v.endswith(">")
 
 
 def _secretish(value: str, *, min_len: int = 8) -> bool:
-    value = value.strip().strip("'\"")
+    value = _strip_matching_quotes(value)
     if len(value) < min_len or _placeholder(value):
         return False
     classes = sum(bool(re.search(p, value)) for p in (r"[a-z]", r"[A-Z]", r"\d", r"[^A-Za-z0-9_]"))

@@ -1,0 +1,85 @@
+{
+  "schema_version": "12-6.d03-common-pile-arxiv-abstracts-source-rights.v1",
+  "authority_id": "D03-COMMON-PILE-ARXIV-ABSTRACTS-SOURCE-RIGHTS-V1",
+  "status": "SOURCE_POLICY_QUALIFIED_CONDITIONAL",
+  "execution_profile": "LOCAL_FREE",
+  "generic_registry": {
+    "path": "configs/data/common_pile_source_rights_v1.json",
+    "blob_sha1": "7b4d6828288672bf25c551e85a5d7f7399e8ef0f",
+    "source_key": "arxiv_abstracts",
+    "expected_project_review_status": "REVIEW_REQUIRED",
+    "expected_rights_basis_class": "METADATA_OPEN_LICENSE",
+    "expected_license_signal": "CC0"
+  },
+  "upstream_common_pile": {
+    "repository": "https://github.com/r-three/common-pile",
+    "revision": "9457f04a14cb2355ab00023420369d46ffd4a395",
+    "mixer_config_path": "filtering/mixer_configs/arxiv_abstracts.json",
+    "mixer_config_blob_sha1": "d0ecfad4c364ef46ba3737cf8e29b961fe620590",
+    "licenses_path": "common_pile/licenses.py",
+    "licenses_blob_sha1": "668e3c29990b69f7f9185b67b73c949d63c76b3e"
+  },
+  "dataset_contract": {
+    "origin_pr": 879,
+    "origin_head": "3a238e461adfacf5b87d6a7078bf51462825a268",
+    "origin_config_path": "configs/data/d03_common_pile_arxiv_abstracts_bounded_v1.json",
+    "origin_config_blob_sha1": "4a819b3980634c8a2ba7de55cf854d44bcfd5757",
+    "dataset": "common-pile/arxiv_abstracts",
+    "revision": "46de78c48636c0b46f60049dfd1c5a3710d233f9",
+    "shard_path": "00003_arxiv-abstracts.jsonl.gz",
+    "shard_compressed_bytes": 232616926,
+    "shard_lfs_sha256": "3d781bf7617fd9a6840211227c6c8831280dba457a6d9c79a2a5a357e025a8b7",
+    "source_family": "scientific.arxiv.abstracts"
+  },
+  "record_contract": {
+    "source_value": "arxiv-abstracts",
+    "expected_metadata_license": "Creative Commons Zero - Public Domain - https://creativecommons.org/publicdomain/zero/1.0/",
+    "required_row_fields": [
+      "id",
+      "text",
+      "source",
+      "created",
+      "added",
+      "metadata"
+    ],
+    "rights_scope": "DESCRIPTIVE_METADATA_INCLUDING_ABSTRACT"
+  },
+  "primary_evidence": [
+    {
+      "authority": "arXiv",
+      "url": "https://info.arxiv.org/help/api/tou.html",
+      "title": "Terms of Use for arXiv APIs",
+      "accessed_utc": "2026-09-11T22:10:00Z",
+      "supported_fact": "arXiv permits reuse of descriptive e-print metadata under CC0 1.0 and explicitly includes abstracts in descriptive metadata; this does not grant permission to redistribute full e-print content."
+    }
+  ],
+  "project_decision": {
+    "decision": "CONDITIONAL_SOURCE_ADMISSION",
+    "scope": "SOURCE_POLICY_ONLY",
+    "legal_conclusion_claimed": false,
+    "dataset_package_license_is_training_authority": false,
+    "repository_code_license_is_dataset_license": false,
+    "cc0_scope_limited_to_descriptive_metadata_including_abstract": true,
+    "full_eprint_rights_inferred": false,
+    "conditional_admission_requires_exact_record_cc0": true,
+    "registry_or_dataset_drift_fails_closed": true
+  },
+  "truth_boundary": {
+    "payload_source_admission_executed": false,
+    "source_capacity_bytes_credited": 0,
+    "canonical_corpus_admitted": false,
+    "family_credit": false,
+    "training_authorized_bytes": 0,
+    "authorized_unique_loss_positions": 0,
+    "authorized_optimized_target_exposure": 0,
+    "tokenizer_fit_authorized": false,
+    "evaluation_authorized_bytes": 0,
+    "final_test_payload_accessed": false,
+    "model_training_executed": false,
+    "optimizer_updates": 0,
+    "paid_compute_used": false,
+    "foreign_pretrained_weights_used": false,
+    "external_llm_or_api_used_for_data_or_intelligence": false
+  },
+  "policy_identity_sha256": "b667a71cf476282d45476babc71b9d401ffdaaa38e03b9fac8a6319614b57442"
+}

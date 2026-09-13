@@ -7,10 +7,9 @@ The tool deliberately separates three authorities:
 3. terminal V8 global-dedup survivor authority selecting source objects.
 
 It cannot run while the config still says WAIT_EXACT_TERMINAL_V8_EVIDENCE. Once V8
-is terminal and the three exact identities are sealed in the config, this tool can
-produce a deterministic raw record JSONL for local downstream processing plus a
-text-free inventory/evidence file. Raw payloads must not be committed or uploaded
-as public evidence.
+is terminal and the exact authority is sealed, this tool produces a deterministic raw
+record JSONL for local downstream processing plus text-free inventory/evidence. Raw
+payloads must not be committed or uploaded as public evidence.
 """
 from __future__ import annotations
 
@@ -35,6 +34,21 @@ EXPECTED_HISTORICAL_BYTES = 2_215_615
 EXPECTED_BULK_FILES = 229
 EXPECTED_BULK_BYTES = 3_880_009
 EXPECTED_COMPOSED_SOURCES = EXPECTED_HISTORICAL_SOURCES + EXPECTED_BULK_FILES
+EXPECTED_V8_REPORT_SHA256 = "942cc15af60ee36a79345beba77fec347e33ee919d8148fb319b19d9ee072e5a"
+EXPECTED_V8_NESTED_V3_SHA256 = "e7244cb7f6df6062dc838112b1e3e6fe87e41644a9e8b0071e93c50f1166b67d"
+EXPECTED_V8_SURVIVOR_SHA256 = "8115b35662fa89900b37f54f7cffd5f2fa8b2f8c60a72bcb18b89c92aaade0cf"
+EXPECTED_V8_RUN_ID = 34159790818
+EXPECTED_V8_ARTIFACT_ID = 10032510626
+EXPECTED_V8_ARTIFACT_DIGEST = "sha256:960c678fdbe6245658fa69c39edf355eb7b38ef39b7f8f833155c894dbd90385"
+SURVIVOR_SOURCE_BINDING_FIELDS = (
+    "source_family",
+    "modality",
+    "declared_capacity_bytes",
+    "verified_raw_sha256",
+    "normalized_sha256",
+    "stable_origin_id_sha256",
+    "stable_object_id_sha256",
+)
 
 
 class Data526V8Error(RuntimeError):
@@ -62,6 +76,11 @@ def _canonical_ascii(value: Any) -> bytes:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
 
 
+def _canonical_utf8(value: Any) -> bytes:
+    """Canonicalization used by the V8 report producer."""
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+
+
 def _read_json(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -69,6 +88,22 @@ def _read_json(path: Path) -> dict[str, Any]:
         raise Data526V8Error(f"cannot read JSON {path}: {exc}") from exc
     _require(isinstance(value, dict), f"JSON root must be an object: {path}")
     return value
+
+
+def _expected_v8_terminal_input() -> dict[str, Any]:
+    return {
+        "pr": 824,
+        "required_report_schema": V8_REPORT_SCHEMA,
+        "required_survivor_schema": V8_SURVIVOR_SCHEMA,
+        "report_sha256": EXPECTED_V8_REPORT_SHA256,
+        "nested_v3_report_sha256": EXPECTED_V8_NESTED_V3_SHA256,
+        "survivor_authority_sha256": EXPECTED_V8_SURVIVOR_SHA256,
+        "workflow_run_id": EXPECTED_V8_RUN_ID,
+        "workflow_conclusion": "success",
+        "artifact_id": EXPECTED_V8_ARTIFACT_ID,
+        "artifact_digest": EXPECTED_V8_ARTIFACT_DIGEST,
+        "status": TERMINAL_V8_STATUS,
+    }
 
 
 def verify_config(config: Mapping[str, Any], *, require_terminal_v8: bool = True) -> None:
@@ -153,14 +188,13 @@ def verify_config(config: Mapping[str, Any], *, require_terminal_v8: bool = True
 
     v8 = config.get("v8_terminal_input")
     _require(isinstance(v8, Mapping), "V8 input authority missing")
-    _require(v8.get("pr") == 824, "V8 owner drift")
-    _require(v8.get("required_report_schema") == V8_REPORT_SCHEMA, "V8 report schema binding drift")
-    _require(v8.get("required_survivor_schema") == V8_SURVIVOR_SCHEMA, "V8 survivor schema binding drift")
+    expected_v8 = _expected_v8_terminal_input()
     if require_terminal_v8:
-        _require(v8.get("status") == TERMINAL_V8_STATUS, "V8 terminal evidence is not sealed")
-        for key in ("report_sha256", "nested_v3_report_sha256", "survivor_authority_sha256"):
-            value = v8.get(key)
-            _require(isinstance(value, str) and len(value) == 64, f"V8 terminal identity missing: {key}")
+        _require(dict(v8) == expected_v8, "terminal V8 authority drift/substitution")
+    else:
+        _require(v8.get("pr") == 824, "V8 owner drift")
+        _require(v8.get("required_report_schema") == V8_REPORT_SCHEMA, "V8 report schema binding drift")
+        _require(v8.get("required_survivor_schema") == V8_SURVIVOR_SCHEMA, "V8 survivor schema binding drift")
 
 
 def validate_historical_records(
@@ -200,41 +234,165 @@ def _bulk_source_id(repository: str, path: str) -> str:
     return f"data-bulk-code1:{repository}:{path}"
 
 
-def _survivor_ids(authority: Mapping[str, Any]) -> set[str]:
+def _survivor_rows(authority: Mapping[str, Any]) -> list[Mapping[str, Any]]:
     rows = authority.get("survivors")
     _require(isinstance(rows, list) and rows, "V8 survivor list missing")
+    result: list[Mapping[str, Any]] = []
     ids: set[str] = set()
     for row in rows:
         _require(isinstance(row, Mapping), "V8 survivor row must be an object")
         source_id = row.get("source_id")
         _require(isinstance(source_id, str) and source_id and source_id not in ids, "invalid/duplicate V8 survivor source id")
         ids.add(source_id)
-    return ids
+        result.append(row)
+    return result
+
+
+def _survivor_ids(authority: Mapping[str, Any]) -> set[str]:
+    return {str(row["source_id"]) for row in _survivor_rows(authority)}
+
+
+def _survivor_by_id(authority: Mapping[str, Any]) -> dict[str, Mapping[str, Any]]:
+    return {str(row["source_id"]): row for row in _survivor_rows(authority)}
+
+
+def _validate_v8_report_self_hash(report: Mapping[str, Any]) -> None:
+    body = dict(report)
+    claimed = body.pop("report_sha256", None)
+    _require(claimed == _sha256(_canonical_utf8(body)), "V8 report self-hash mismatch")
+
+
+def _validate_survivor_rows_against_report(
+    report: Mapping[str, Any], survivor: Mapping[str, Any]
+) -> None:
+    nested = report.get("dedup_v3")
+    _require(isinstance(nested, Mapping), "V8 nested V3 missing")
+    source_rows = nested.get("sources")
+    _require(isinstance(source_rows, list) and source_rows, "V8 nested source rows missing")
+    source_by_id: dict[str, Mapping[str, Any]] = {}
+    for raw in source_rows:
+        _require(isinstance(raw, Mapping), "V8 nested source row must be an object")
+        source_id = raw.get("source_id")
+        _require(
+            isinstance(source_id, str) and source_id and source_id not in source_by_id,
+            "invalid/duplicate V8 nested source id",
+        )
+        declared = raw.get("declared_capacity_bytes")
+        _require(
+            isinstance(declared, int) and not isinstance(declared, bool) and declared > 0,
+            f"invalid V8 nested source capacity: {source_id}",
+        )
+        source_by_id[source_id] = raw
+
+    rows = _survivor_rows(survivor)
+    for row in rows:
+        source_id = str(row["source_id"])
+        declared = row.get("declared_capacity_bytes")
+        _require(
+            isinstance(declared, int) and not isinstance(declared, bool) and declared > 0,
+            f"invalid V8 survivor source capacity: {source_id}",
+        )
+        source = source_by_id.get(source_id)
+        _require(source is not None, f"V8 survivor references unknown nested source: {source_id}")
+        for key in SURVIVOR_SOURCE_BINDING_FIELDS:
+            _require(row.get(key) == source.get(key), f"V8 survivor {key} drift: {source_id}")
+
+    pre_count = survivor.get("pre_dedup_source_object_count")
+    post_count = survivor.get("post_dedup_survivor_source_object_count")
+    _require(pre_count == len(source_rows) == EXPECTED_COMPOSED_SOURCES, "V8 source-row count summary drift")
+    _require(post_count == len(rows), "V8 survivor-row count summary drift")
+
+    source_bytes = sum(row["declared_capacity_bytes"] for row in source_rows)
+    survivor_bytes = sum(row["declared_capacity_bytes"] for row in rows)
+    _require(source_bytes == survivor.get("pre_dedup_declared_capacity_bytes"), "V8 pre-dedup row-byte summary drift")
+    _require(survivor_bytes == survivor.get("post_dedup_declared_capacity_bytes"), "V8 survivor row-byte summary drift")
+    _require(
+        source_bytes - survivor_bytes == survivor.get("duplicate_discount_bytes"),
+        "V8 duplicate-discount arithmetic drift",
+    )
+
+    clusters = survivor.get("duplicate_clusters")
+    _require(isinstance(clusters, list), "V8 duplicate-cluster list missing")
+    _require(len(clusters) == survivor.get("duplicate_cluster_count"), "V8 duplicate-cluster count drift")
+
+    by_modality = survivor.get("by_modality")
+    _require(isinstance(by_modality, Mapping), "V8 survivor modality summary missing")
+    for modality in ("uk", "en", "code"):
+        expected = {
+            "source_object_count": sum(1 for row in rows if row.get("modality") == modality),
+            "declared_capacity_bytes": sum(
+                int(row["declared_capacity_bytes"]) for row in rows if row.get("modality") == modality
+            ),
+        }
+        _require(by_modality.get(modality) == expected, f"V8 survivor {modality} summary drift")
+
+
+def _validate_materialized_source_binding(
+    survivor_row: Mapping[str, Any],
+    *,
+    source_id: str,
+    family: str,
+    modality: str,
+    declared_capacity_bytes: int,
+    verified_raw_sha256: str | None = None,
+) -> None:
+    _require(survivor_row.get("source_id") == source_id, f"survivor source-id binding drift: {source_id}")
+    _require(survivor_row.get("source_family") == family, f"survivor family/materialized family drift: {source_id}")
+    _require(survivor_row.get("modality") == modality, f"survivor modality/materialized modality drift: {source_id}")
+    _require(
+        survivor_row.get("declared_capacity_bytes") == declared_capacity_bytes,
+        f"survivor bytes/materialized bytes drift: {source_id}",
+    )
+    if verified_raw_sha256 is not None:
+        _require(
+            survivor_row.get("verified_raw_sha256") == verified_raw_sha256,
+            f"survivor raw hash/materialized raw hash drift: {source_id}",
+        )
 
 
 def validate_v8_inputs(
     report: Mapping[str, Any], survivor: Mapping[str, Any], config: Mapping[str, Any]
 ) -> None:
     sealed = config["v8_terminal_input"]
+    _require(dict(sealed) == _expected_v8_terminal_input(), "terminal V8 authority drift/substitution")
     _require(report.get("schema_version") == V8_REPORT_SCHEMA, "V8 report schema drift")
-    _require(report.get("report_sha256") == sealed["report_sha256"], "V8 report identity drift")
+    _require(report.get("report_sha256") == EXPECTED_V8_REPORT_SHA256, "V8 report identity drift")
+    _validate_v8_report_self_hash(report)
     nested = report.get("dedup_v3")
     _require(isinstance(nested, Mapping), "V8 nested V3 missing")
-    _require(nested.get("report_sha256") == sealed["nested_v3_report_sha256"], "V8 nested V3 identity drift")
+    _require(nested.get("report_sha256") == EXPECTED_V8_NESTED_V3_SHA256, "V8 nested V3 identity drift")
     _require(survivor.get("schema_version") == V8_SURVIVOR_SCHEMA, "V8 survivor schema drift")
-    _require(survivor.get("v8_report_sha256") == report.get("report_sha256"), "V8 survivor/report binding drift")
-    _require(survivor.get("nested_v3_report_sha256") == nested.get("report_sha256"), "V8 survivor/nested binding drift")
-    _require(survivor.get("survivor_authority_sha256") == sealed["survivor_authority_sha256"], "V8 survivor identity drift")
+    _require(survivor.get("v8_report_sha256") == EXPECTED_V8_REPORT_SHA256, "V8 survivor/report binding drift")
+    _require(survivor.get("nested_v3_report_sha256") == EXPECTED_V8_NESTED_V3_SHA256, "V8 survivor/nested binding drift")
+    _require(survivor.get("survivor_authority_sha256") == EXPECTED_V8_SURVIVOR_SHA256, "V8 survivor identity drift")
     body = dict(survivor)
     claimed = body.pop("survivor_authority_sha256", None)
     _require(claimed == _sha256(_canonical_ascii(body)), "V8 survivor self-hash mismatch")
     _require(survivor.get("pre_dedup_source_object_count") == EXPECTED_COMPOSED_SOURCES, "V8 pre-dedup source count drift")
     _require(survivor.get("pre_dedup_declared_capacity_bytes") == EXPECTED_HISTORICAL_BYTES + EXPECTED_BULK_BYTES, "V8 pre-dedup capacity drift")
+    _validate_survivor_rows_against_report(report, survivor)
     truth = survivor.get("truth_boundary")
     _require(isinstance(truth, Mapping), "V8 survivor truth boundary missing")
     _require(truth.get("source_object_authority_only") is True, "V8 survivor purpose drift")
     _require(truth.get("training_record_inventory_materialized") is False, "V8 survivor prematurely claims record graph")
     _require(truth.get("authorized_training_exposure") == 0, "V8 survivor fabricated training exposure")
+
+
+def _historical_source_aggregates(
+    records: list[dict[str, Any]],
+) -> dict[str, tuple[str, str, int]]:
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for record in records:
+        grouped.setdefault(str(record["source_id"]), []).append(record)
+    aggregates: dict[str, tuple[str, str, int]] = {}
+    for source_id, source_records in grouped.items():
+        families = {str(record["family"]) for record in source_records}
+        modalities = {str(record["modality"]) for record in source_records}
+        _require(len(families) == 1, f"historical source has mixed families: {source_id}")
+        _require(len(modalities) == 1, f"historical source has mixed modalities: {source_id}")
+        payload_bytes = sum(len(str(record["normalized_payload"]).encode("utf-8")) for record in source_records)
+        aggregates[source_id] = (next(iter(families)), next(iter(modalities)), payload_bytes)
+    return aggregates
 
 
 def compose_records(
@@ -244,8 +402,19 @@ def compose_records(
     bulk_workspace: Path,
     survivor_authority: Mapping[str, Any],
 ) -> list[dict[str, Any]]:
-    survivor_ids = _survivor_ids(survivor_authority)
+    survivor_by_id = _survivor_by_id(survivor_authority)
+    survivor_ids = set(survivor_by_id)
     historical_source_ids = {str(record["source_id"]) for record in historical_records}
+    historical_aggregates = _historical_source_aggregates(historical_records)
+    for source_id, (family, modality, payload_bytes) in historical_aggregates.items():
+        if source_id in survivor_by_id:
+            _validate_materialized_source_binding(
+                survivor_by_id[source_id],
+                source_id=source_id,
+                family=family,
+                modality=modality,
+                declared_capacity_bytes=payload_bytes,
+            )
 
     bulk_records: list[dict[str, Any]] = []
     bulk_source_ids: set[str] = set()
@@ -267,7 +436,15 @@ def compose_records(
                 payload = raw.decode("utf-8", errors="strict")
             except UnicodeDecodeError as exc:
                 raise Data526V8Error(f"fresh bulk strict UTF-8 drift: {sid}") from exc
-            if sid in survivor_ids:
+            if sid in survivor_by_id:
+                _validate_materialized_source_binding(
+                    survivor_by_id[sid],
+                    source_id=sid,
+                    family=family,
+                    modality="code",
+                    declared_capacity_bytes=len(raw),
+                    verified_raw_sha256=str(item["sha256"]),
+                )
                 bulk_records.append(
                     {
                         "record_id": sid,
