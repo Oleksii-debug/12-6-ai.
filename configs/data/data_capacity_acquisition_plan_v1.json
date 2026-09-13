@@ -1,0 +1,186 @@
+{
+  "authority_vector": {
+    "data301_terminal_build": {
+      "authorized_balanced_no_replay_capacity": 0,
+      "corpus_identity": null,
+      "evidence_identity_sha256": "939065abeefff8aed924415589608ff3fc721fe4b0a57fc200146a4b6a137e81",
+      "head_sha": "8820ba1b255f6bb95c7db0531fd846078a1aae01",
+      "status": "TERMINAL_BLOCKED"
+    },
+    "legacy_candidate": {
+      "contract_identity_sha256": "07d7beaaff4616e839450de6af3d407855c832bf75a24a959d1a12de5d9364e5",
+      "corpus_terminal": false,
+      "head_sha": "8ea7f830e50a23754d189dd4134f4afad76a7ee9",
+      "independent_family_count": 4,
+      "normalized_bytes": 183061,
+      "source_count": 5,
+      "worker": "DATA-300-CORPUS-V03-FROZEN-BUILD-CONTRACT"
+    },
+    "selection_validation": {
+      "composite_identity_sha256": "7b97a9ab04469236dc5bc17fc80155cb43430b01c443bb6209fac090557258fd",
+      "head_sha": "5e5a1de3b594cee5612e63d3d4c2a70499740ac7",
+      "nonempty": true,
+      "records": {
+        "code": 0,
+        "en": 2,
+        "uk": 8
+      },
+      "worker": "EVAL-303-SELECTION-VALIDATION-COMPOSITE"
+    },
+    "terminal_additive_sources": [
+      {
+        "authority_identity_sha256": "6b443faa7fef777214022028d5fdb356dae0ab1a9b71822b4e16bea8f92cd0d6",
+        "conservative_training_bytes": 1479,
+        "dedicated_workflow_conclusion": "success",
+        "dedicated_workflow_run": 32998002424,
+        "family": "ua.literature.lesia-ukrainka.na-krylah-pisen.1892-lviv",
+        "head_sha": "84c51e42b6daa51796fd20d793b5ef1ff01cc9d2",
+        "stratum": "uk",
+        "training_permission": "ALLOWED",
+        "worker": "NEXT100-022-DATA-UA-WIKISOURCE"
+      },
+      {
+        "authority_identity_sha256": "85f596e79b0ec6479d2ef815e2a6a9bdbfaa55993c797309c1ea4d93b1d9b0e7",
+        "conservative_training_bytes": 1659,
+        "dedicated_workflow_conclusion": "success",
+        "dedicated_workflow_run": 32998503672,
+        "family": "ua.verba.public-domain.nomis1864",
+        "head_sha": "d75edd497c7fb1054e86d892c9462f059c1f4aa9",
+        "stratum": "uk",
+        "training_permission": "ALLOWED",
+        "worker": "NEXT100-027-DATA-UA-PUBLIC-DOMAIN-LIT"
+      },
+      {
+        "accepted_chunk_count": 14,
+        "authority_identity_sha256": "46a00dc70db690ae2b3c4495a75283e7e752bdccb1047d4318c2ebadfa392f0d",
+        "capacity_reason": "Accepted chunk identities are terminal, but their exact retained byte sum is not published; capacity remains zero until record-level materialization.",
+        "conservative_training_bytes": 0,
+        "dedicated_workflow_conclusion": "success",
+        "dedicated_workflow_run": 32998356906,
+        "family": "python.cpython.documentation",
+        "head_sha": "5a6a495a24bce449334cbc5126d0114f61a9f57c",
+        "normalized_source_bytes": 17901,
+        "stratum": "en",
+        "training_permission": "ALLOWED_ACCEPTED_CHUNKS_ONLY",
+        "worker": "NEXT100-037-DATA-EN-PYTHON-DOCS"
+      }
+    ]
+  },
+  "execution_profile": "LOCAL_FREE",
+  "mixture_policy": {
+    "max_family_share_total": 0.25,
+    "max_family_share_within_stratum": 0.6,
+    "minimum_independent_families_per_stratum": 2,
+    "padding_counts_as_data": false,
+    "replay_allowed": false,
+    "sampling_with_replacement_allowed": false,
+    "target_shares": {
+      "code": 0.2,
+      "en": 0.35,
+      "uk": 0.45
+    }
+  },
+  "observed_training_source_capacity": {
+    "authorized_unique_loss_positions": 0,
+    "bounded_source_bytes_upper_bound_before_record_filters": 204100,
+    "by_stratum": {
+      "code": {
+        "conservative_training_bytes": 9703,
+        "families": [
+          "github:encode/httpx",
+          "github:psf/requests"
+        ],
+        "independent_families": 2
+      },
+      "en": {
+        "bounded_additional_bytes_not_counted": 17901,
+        "conservative_training_bytes": 84793,
+        "families": [
+          "en.standardebooks.manual",
+          "python.cpython.documentation"
+        ],
+        "independent_families": 2
+      },
+      "uk": {
+        "conservative_training_bytes": 91703,
+        "families": [
+          "ua.rada.open-data.laws-texts",
+          "ua.literature.lesia-ukrainka.na-krylah-pisen.1892-lviv",
+          "ua.verba.public-domain.nomis1864"
+        ],
+        "independent_families": 3
+      }
+    },
+    "capacity_semantics": "CONSERVATIVE_SOURCE_BYTES_ONLY_NOT_OPTIMIZED_LOSS_POSITIONS",
+    "conservative_training_bytes_total": 186199,
+    "corpus_identity": null,
+    "family_count_gate_minimum_two_per_stratum_observed": true,
+    "independent_family_count": 7
+  },
+  "plan_identity_sha256": "8328861c43c2e87b250715eb13dbe06318ee83e3520e8f020f3c9c4c52f99019",
+  "primary_20m_acquisition_gap": {
+    "activation_rule": "Do not authorize the 20M long campaign from source-byte planning alone. Require terminal corpus identity, decontamination, quality/privacy/dedup/split, two clean builds, and exact one-pass unique-loss ledger.",
+    "conservative_gap_by_stratum": {
+      "code": 3990297,
+      "en": 6915207,
+      "uk": 8908297
+    },
+    "conservative_gap_total": 19813801,
+    "effective_max_bytes_per_family_at_floor": {
+      "code": 2400000,
+      "en": 4200000,
+      "uk": 5000000
+    },
+    "planning_source_byte_floor": 20000000,
+    "priority_order": [
+      "uk",
+      "en",
+      "code"
+    ],
+    "target_by_stratum": {
+      "code": 4000000,
+      "en": 7000000,
+      "uk": 9000000
+    }
+  },
+  "repository": "Oleksii-debug/12-6-ai.",
+  "scale_gates": {
+    "later_1b": {
+      "meaningful_unique_position_range": [
+        625000000,
+        2500000000
+      ],
+      "parameter_target": 1000000000,
+      "source_byte_necessary_floor": 625000000,
+      "status": "PLANNING_ONLY"
+    },
+    "next_100m": {
+      "meaningful_unique_position_range": [
+        50000000,
+        200000000
+      ],
+      "parameter_target": 100000000,
+      "source_byte_necessary_floor": 50000000,
+      "status": "BLOCKED_UNTIL_20M_LEARNED_EVIDENCE_AND_DATA_CAPACITY"
+    },
+    "primary_20m": {
+      "meaningful_floor_unique_optimized_positions": 10000000,
+      "modelspec_sha256": "fbff24d561a2818453554d58ca23fc6ace3303b078f1935a8576c4565bd92441",
+      "parameter_count": 20613440,
+      "requested_unique_optimized_positions": 20000000,
+      "source_byte_floor_semantics": "Necessary planning floor only; source bytes are not relabelled as optimized loss positions.",
+      "source_byte_necessary_floor": 20000000
+    }
+  },
+  "schema_version": "12-6.data-capacity-acquisition-plan.v1",
+  "truth_boundary": {
+    "learned_100m_checkpoint_exists": false,
+    "learned_20m_checkpoint_exists": false,
+    "long_training_authorized": false,
+    "paid_compute_used": false,
+    "research_corpus_v1_frozen": false,
+    "source_bytes_equal_loss_positions_claimed": false,
+    "training_executed": false
+  },
+  "worker_id": "AUTOPULSE-DATA-CAPACITY-ACQUISITION"
+}
