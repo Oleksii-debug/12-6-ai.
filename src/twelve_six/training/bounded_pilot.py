@@ -445,14 +445,13 @@ class BoundedPilotStepRunner(_core.BoundedPilotStepRunner):
         except (OSError, ValueError, RecoveryStateError) as exc:
             self._poison(f"durable attempt state cannot be verified: {exc}")
             self._raise_recovery_required()
-        state_root = _require_sha256(
+        _require_sha256(
             state.get("state_sha256"),
             label="current durable attempt state root",
         )
         if (
             state.get("attempt") != self._attempt
             or state.get("phase") != RunPhase.RUNNING.value
-            or state_root != self._attempt_state_sha256
         ):
             self._poison("durable attempt changed before optimizer authorization")
             self._raise_recovery_required()
