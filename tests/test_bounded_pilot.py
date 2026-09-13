@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from copy import deepcopy
+
 import pytest
 import torch
 
@@ -217,23 +218,23 @@ def _launch_authority(trainer: Trainer, guard: IdentitySafeExposureReplayGuard) 
             "two_clean_runtime_identity_sha256": _sha("two-clean-runtime"),
             "materialization_identity_sha256": _sha("materialization"),
             "unique_loss_ledger_identity_sha256": guard.ledger_identity_sha256,
-            "tokenizer_identity_sha256": _sha("tokenizer"),
-            "packing_identity_sha256": _sha("packing"),
+            "tokenizer_identity_sha256": _sha("tokenizer-root"),
+            "packing_identity_sha256": _sha("pack-root"),
             "one_pass_unique_nonignored_causal_loss_positions": guard.one_pass_maximum,
             "requested_unique_loss_positions": guard.authorized_budget,
         },
         "carrier": {
             "repository": "Oleksii-debug/12-6-ai.",
-            "git_sha": _sha("carrier"),
+            "git_sha": _sha("git-sha")[:40],
             "modelspec_sha256": trainer.model.spec.identity_sha256(),
             "initialization_identity_sha256": trainer.model.init_spec.identity_sha256(),
             "canonical_base": "random_init",
             "foreign_pretrained_weights_used": False,
             "terminal": True,
-            "workflow_run_id": 123,
+            "workflow_run_id": "fixture-run",
             "workflow_status": "completed",
             "workflow_conclusion": "success",
-            "workflow_head_sha": _sha("workflow-head"),
+            "workflow_head_sha": _sha("head")[:40],
             "evidence_sha256": _sha("evidence"),
         },
         "claim_boundary": {
@@ -245,7 +246,9 @@ def _launch_authority(trainer: Trainer, guard: IdentitySafeExposureReplayGuard) 
             "replay_padding_or_replacement_can_increase_unique_capacity": False,
         },
     }
-    value["authority_identity_sha256"] = _rehash(value, "authority_identity_sha256")
+    body = deepcopy(value)
+    body.pop("authority_identity_sha256", None)
+    value["authority_identity_sha256"] = _authority_sha(body)
     return value
 
 
@@ -255,6 +258,7 @@ def _binding(
     launch_root: str,
     *,
     mode: str = "FRESH_START",
+    overlay_projection: dict | None = None,
 ) -> tuple[PortableRunBinding, str]:
     portable_execution = _sha("portable-execution")
     packet = {
@@ -265,17 +269,21 @@ def _binding(
             "unique_loss_ledger_sha256": guard.ledger_identity_sha256,
         },
         "recipe": {
-            "training_config_sha256": _sha("training-config"),
+            "training_config_sha256": _sha("session"),
             "target_unique_loss_positions": guard.authorized_budget,
             "maximum_total_exposures": guard.authorized_budget,
             "available_unique_loss_positions": guard.one_pass_maximum,
             "max_exposures_per_unique_position": 1,
             "seed": trainer.config.seed,
-            "optimizer_scheduler_precision": {
-                "optimizer": trainer.optimizer.__class__.__name__,
-                "scheduler": trainer.config.scheduler,
-                "precision": trainer.config.precision,
-            },
+            "optimizer_scheduler_precision": (
+                {
+                    "optimizer": trainer.optimizer.__class__.__name__,
+                    "scheduler": trainer.config.scheduler,
+                    "precision": trainer.config.precision,
+                }
+                if overlay_projection is None
+                else overlay_projection
+            ),
         },
         "resource": {
             "resource_class": "LOCAL_FREE",
@@ -288,30 +296,43 @@ def _binding(
             "launch_input_authority_identity_sha256": launch_root,
         },
     }
-    packet_root = canonical_sha256(packet)
-    return (
-        PortableRunBinding(
-            binding_ready=True,
-            mode=mode,
-            readiness_ready=True,
-            overlay_contract_valid=True,
-            packet_contract_valid=True,
-            blockers=(),
-            readiness_sha256=_sha("readiness"),
-            overlay_sha256=_sha("overlay"),
-            packet_sha256=packet_root,
-            packet=packet,
-        ),
-        portable_execution,
-    )
+    packet_sha = canonical_sha256(packet)
+    binding = PortableRunBinding(
+        binding_ready=True,
+        mode=mode,
+        readiness_ready=True,
+        overlay_contract_valid=True,
+        packet_contract_valid=True,
+        blockers=(),
+        readiness_sha256=_sha("readiness"),
+        overlay_sha256=_sha("overlay"),
+        packet_sha256=packet_sha,
+        packet=packet,
+     )
+    return binding, portable_execution
 
 
 def _batch(batch_index: int) -> dict[str, torch.Tensor]:
-    start = 1 + 2 * batch_index
-    return {
-        "input_ids": torch.tensor([[start, start + 1]], dtype=torch.long),
-        "target_ids": torch.tensor([[start + 1, start + 2]], dtype=torch.long),
-    }
+    if batch_index == 0:
+        return {
+            "input_ids": torch.tensor([[1, 2, 3]], dtype=torch.long),
+            "target_ids": torch.tensor([[2, 3, 4]], dtype=torch.long),
+        }
+    if batch_index == 1:
+        return {
+            "input_ids": torch.tensor([[3, 4, 5]], dtype=torch.long),
+            "target_ids": torch.tensor([[4, 5, 6]], dtype=torch.long),
+        }
+    raise AssertionError("test batch index outside fixture")
+
+
+def _next(guard: IdentitySafeExposureReplayGuard, plan: dict, index: int) -> str:
+    return ordered_next_exposure_identity(
+        guard,
+        plan,
+        batch_index=index,
+        expected_plan_identity_sha256=plan["plan_identity_sha256"],
+    )
 
 
 def _gate(
@@ -320,8 +341,9 @@ def _gate(
     plan: dict,
     manifest: dict,
     *,
-    runner: SingleDeviceStepRunner | None = None,
     mode: str = "FRESH_START",
+    runner: SingleDeviceStepRunner | None = None,
+    launch_root_override: str | None = None,
 ) -> BoundedPilotStepRunner:
     launch = _launch_authority(trainer, guard)
     launch_root = launch["authority_identity_sha256"]
@@ -333,28 +355,19 @@ def _gate(
         expected_packet_sha256=binding.packet_sha256,
         expected_portable_execution_sha256=portable_execution,
         launch_input_authority=launch,
-        expected_launch_input_authority_identity_sha256=launch_root,
+        expected_launch_input_authority_identity_sha256=(
+            launch_root if launch_root_override is None else launch_root_override
+        ),
         replay_guard=guard,
         loss_bearing_content_manifest=manifest,
-        expected_loss_bearing_manifest_identity_sha256=manifest[
-            "manifest_identity_sha256"
-        ],
+        expected_loss_bearing_manifest_identity_sha256=manifest["manifest_identity_sha256"],
         exposure_plan=plan,
         expected_plan_identity_sha256=plan["plan_identity_sha256"],
     )
 
 
-def _next(guard: IdentitySafeExposureReplayGuard, plan: dict, batch_index: int) -> str:
-    return ordered_next_exposure_identity(
-        guard,
-        plan,
-        batch_index=batch_index,
-        expected_plan_identity_sha256=plan["plan_identity_sha256"],
-    )
-
-
-def test_two_exact_live_batches_execute_two_real_optimizer_steps() -> None:
-    guard, plan, manifest = _authority()
+def test_exact_live_content_authorizes_two_real_optimizer_steps() -> None:
+    guard, plan, manifest = _authority(batch_count=2)
     trainer = _trainer(max_steps=2)
     gate = _gate(trainer, guard, plan, manifest)
     receipts = []
@@ -404,7 +417,7 @@ def test_fresh_start_rejects_same_architecture_mutated_weights() -> None:
     guard, plan, manifest = _authority(batch_count=1)
     trainer = _trainer(max_steps=1)
     with torch.no_grad():
-        next(trainer.model.parameters()).view(-1)[0].add_(0.25)
+        next(trainer.model.parameters()).view(1)[0].add_(0.25)
     with pytest.raises(BoundedPilotAuthorizationError, match="canonical random initialization"):
         _gate(trainer, guard, plan, manifest)
 
