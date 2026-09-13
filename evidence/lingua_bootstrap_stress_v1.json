@@ -1,0 +1,98 @@
+{
+  "schema": "12-6.lingua-bootstrap-stress.v1",
+  "worker": "SWARM-773",
+  "lane_key": "D03|LINGUA|REDTEAM-AUDIT|BOOTSTRAP-STRESS-V1",
+  "base_sha": "5020afd671a3885c1b738c8b4eafe7525f630546",
+  "upstream": {
+    "repository": "https://github.com/pemistahl/lingua-py",
+    "release": "v2.1.1",
+    "tag_sha": "7ce57e41af5ca9ce4630dac3d8e446dffe40513a",
+    "commit_sha": "31572a7b1957714364a8fafd24ab248c9ed15d68",
+    "license": "Apache-2.0",
+    "package": "lingua-language-detector",
+    "version": "2.1.1",
+    "python_requires": ">=3.10,<3.14",
+    "wheel": "lingua_language_detector-2.1.1-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
+    "wheel_sha256": "2a468c3fc9eaa6db733a347fee768fe171e76fac2c4bc49951e26bc79aec6a2a",
+    "wheel_source": "PyPI"
+  },
+  "environment": {
+    "python": {"version": "3.13.5", "implementation": "cpython", "executable": "/opt/pyvenv/bin/python3"},
+    "os": {"system": "Linux", "release": "6.18.35", "machine": "x86_64", "platform": "Linux-6.18.35-x86_64-with-glibc2.41"},
+    "cpu": {"processor": "", "count": 5},
+    "gpu": {"gpu_visible": false, "nvidia_smi": [127, ""]},
+    "package_managers": {"python": "/opt/pyvenv/bin/python", "python3": "/opt/pyvenv/bin/python3", "python3.11": null, "pip": "/opt/pyvenv/bin/pip", "pip3": "/opt/pyvenv/bin/pip3", "uv": "/opt/pyvenv/bin/uv", "poetry": null, "pdm": null, "conda": null, "git": "/usr/bin/git"},
+    "installed_packages": {"pytest": "9.0.2", "torch": "2.10.0+cpu"},
+    "cache_roots": []
+  },
+  "network": [
+    {"url": "https://pypi.org/simple/", "ok": false, "error_type": "URLError", "error": "<urlopen error [Errno -3] Temporary failure in name resolution>", "elapsed_ms": 13.66},
+    {"url": "https://github.com/", "ok": false, "error_type": "URLError", "error": "<urlopen error [Errno -3] Temporary failure in name resolution>", "elapsed_ms": 5011.38}
+  ],
+  "negative_checks": {
+    "selected_version_supports_cpython_311": true,
+    "latest_2_2_0_selected": false,
+    "latest_2_2_0_python_311_compatible": false,
+    "project_bootstrap_python_exact_31116_available": false,
+    "global_install_not_attempted": true,
+    "foreign_weights_used": false,
+    "canonical_base_touched": false
+  },
+  "adversarial": {
+    "missing_command_is_nonzero": true,
+    "non_fresh_venv_is_rejected": true,
+    "exact_hash_is_required": true,
+    "only_binary_prevents_sdist_fallback": true,
+    "undeclared_model_or_data_mutation": false
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "elapsed_ms": 2288.73,
+      "fresh": true,
+      "venv": "/tmp/swarm773/.venv-attempt-1",
+      "python_executable": "/tmp/swarm773/.venv-attempt-1/bin/python",
+      "venv_python_observed": {"returncode": 0, "stdout": "3.13.5\ncpython", "stderr": ""},
+      "project_python_match": false,
+      "install": {
+        "status": "FAIL",
+        "returncode": 1,
+        "elapsed_ms": 343.84,
+        "exact_wheel": "lingua_language_detector-2.1.1-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
+        "expected_sha256": "2a468c3fc9eaa6db733a347fee768fe171e76fac2c4bc49951e26bc79aec6a2a",
+        "stderr_tail": "ERROR: lingua_language_detector-2.1.1-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl is not a supported wheel on this platform."
+      },
+      "runtime": {"status": "NOT_EXECUTED", "reason": "Exact package installation failed."}
+    },
+    {
+      "attempt": 2,
+      "elapsed_ms": 1966.86,
+      "fresh": true,
+      "venv": "/tmp/swarm773/.venv-attempt-2",
+      "python_executable": "/tmp/swarm773/.venv-attempt-2/bin/python",
+      "venv_python_observed": {"returncode": 0, "stdout": "3.13.5\ncpython", "stderr": ""},
+      "project_python_match": false,
+      "install": {
+        "status": "FAIL",
+        "returncode": 1,
+        "elapsed_ms": 279.29,
+        "exact_wheel": "lingua_language_detector-2.1.1-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
+        "expected_sha256": "2a468c3fc9eaa6db733a347fee768fe171e76fac2c4bc49951e26bc79aec6a2a",
+        "stderr_tail": "ERROR: lingua_language_detector-2.1.1-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl is not a supported wheel on this platform."
+      },
+      "runtime": {"status": "NOT_EXECUTED", "reason": "Exact package installation failed."}
+    }
+  ],
+  "repeatability": {"attempt_count": 2, "same_install_status": true, "same_project_python_match": true, "same_runtime_classification": true},
+  "rights": {
+    "software_license": "Apache-2.0",
+    "license_file_blob_sha": "261eeb9e9f8b2b4b0d119366dda99c6fd7d35c64",
+    "model_or_embedded_language_data_rights": "NOT_SEPARATELY_ESTABLISHED",
+    "promotion_effect": "software-runtime candidate only; no model/data authority inferred"
+  },
+  "benchmark": {"real_runtime_status": "NOT_EXECUTED", "reason": "Exact project Python and exact runtime artifact could not execute locally."},
+  "parity": {"status": "NOT_EXECUTED", "reason": "Real Lingua runtime unavailable; no test-double parity credited.", "planned_inputs": ["Ukrainian", "English", "code", "mixed", "noise"]},
+  "verdict": "BLOCKED_ENVIRONMENT",
+  "verdict_reason": "Exact project runtime CPython 3.11.16 is unavailable locally; the selected cp311 wheel cannot be executed under the available CPython 3.13.5, and no version substitution is permitted.",
+  "identity_sha256": "a8dd162b276ddbc6dc4d2534246784b4c479e488eeac6cacbbc73746df50936b"
+}
