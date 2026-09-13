@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 
 from tools.verify_mlflow_runtime_bootstrap_stress_v1 import (
     EXPECTED_LICENSE_BLOB,
@@ -15,8 +19,6 @@ from tools.verify_mlflow_runtime_bootstrap_stress_v1 import (
     validate_metadata,
     validate_tracking_uri,
 )
-
-ROOT = Path(__file__).resolve().parents[1]
 
 
 def load(path: Path) -> dict:
