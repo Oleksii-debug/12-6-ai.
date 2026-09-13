@@ -1,0 +1,89 @@
+{
+  "schema_version": "12-6.d03-rada-bulk-quality-privacy.v1",
+  "worker_id": "D03-RADA-BULK-QUALITY-PRIVACY-20260911",
+  "local_free_only": true,
+  "parent_normalization": {
+    "pr": 864,
+    "head_sha": "656dd4abe7bdf9c379a86ac9a19f046d5b0d8538",
+    "branch": "d03/rada-bulk-normalization-current-main-20260907",
+    "execution_head_sha": "f62670084f80041757e162743356ac16e0fd81a7",
+    "execution_run_id": 34565921713,
+    "execution_evidence_identity_sha256": "e1633070beaff596ae11f4974bd9662785723618f502f382850f7e3bea27ab6a",
+    "manifest_schema": "12-6.d03-rada-bulk-normalization-manifest.v1",
+    "manifest_worker_id": "D03-RADA-BULK-NORMALIZATION-20260907",
+    "source_family": "ua.rada.open-data.laws-texts",
+    "safe_result": "NORMALIZED_RECORD_MATERIALIZATION_ONLY_DOWNSTREAM_GATES_REQUIRED",
+    "manifest_identity_sha256": "ee1c59dbc481b83bffb1380f751880e5fa6e64d654b5abad266c3e2c4d18293b",
+    "manifest_transport_sha256": "8923d26024ba396db14e6afeb367a5d3c54de573019252083aec88f2082bb119",
+    "jsonl_sha256": "b46baa0f1c5087f4a9772ee273da459e87c0e82111dd5e51b22fc0b85cde840e",
+    "record_count": 3052,
+    "nonempty_record_count": 3052,
+    "normalized_bytes_observed_not_credited": 211176449,
+    "normalized_record_inventory_sha256": "bd790b51809018950fcf8d9919f62920ab79aee64f8d73e131cbe16772554495",
+    "source_encoding_counts": {
+      "utf-8": 884,
+      "windows-1251": 2168
+    },
+    "pinned_probe_report_sha256": "9d94674323414d30f18517a71edbfee839a27a09a076eb94fe94d74cbaab53c8",
+    "archive_sha256": "0b9e8ed8fe8aa663a68d2bc4eba858a754c626391dd7b5c461d50c3b6260df63",
+    "entry_identity_sha256": "3939c8a407a910222173bba5a2df1b9c7d2edce1503c13b31a9c293d61c3a603"
+  },
+  "chunking": {
+    "name": "DATA228_DATA181_GENERIC_NATURAL_TEXT_V1",
+    "max_chars": 1200,
+    "min_chars": 80
+  },
+  "quality_privacy": {
+    "name": "DATA228_D03_PREVIEW_V1",
+    "min_chars": 60,
+    "max_chars": 1600,
+    "min_alpha_ratio": 0.35,
+    "reject_control_characters": true,
+    "reject_email": true,
+    "reject_phone": true,
+    "reject_empty": true
+  },
+  "output_contract": {
+    "accepted_jsonl_fields": [
+      "record_id",
+      "parent_record_id",
+      "source_path",
+      "source_encoding",
+      "chunk_index",
+      "normalized_bytes",
+      "normalized_sha256",
+      "text"
+    ],
+    "preserve_source_encoding_provenance": true,
+    "rejected_text_emitted": false,
+    "rejected_hashes_emitted": false,
+    "deterministic_json_serialization": true,
+    "self_hashed_report": true,
+    "two_clean_builds_required": true
+  },
+  "downstream_required": [
+    "GLOBAL_CROSS_SOURCE_EXACT_NEAR_DEDUP",
+    "EVALUATION_DECONTAMINATION",
+    "BALANCE_DIVERSITY_AND_FAMILY_CAP_RETEST",
+    "DETERMINISTIC_SPLIT_SHARD_PACK",
+    "TWO_CLEAN_BYTE_IDENTICAL_BUILDS",
+    "UNIQUE_CAUSAL_LOSS_LEDGER",
+    "TOKENIZER_FIT_AUTHORIZATION",
+    "D05_CHECKPOINT_REQUALIFICATION",
+    "LEARNED_20M_COMPUTE_AUTHORIZATION"
+  ],
+  "claim_boundary": {
+    "bulk_source_admitted": false,
+    "canonical_capacity_credited": false,
+    "training_authorized_bytes": 0,
+    "tokenizer_fit_authorized": false,
+    "model_training_executed": false,
+    "optimizer_updates": 0,
+    "paid_compute_used": false,
+    "evaluation_authorized": false,
+    "final_test_accessed": false,
+    "research_corpus_v1_released": false,
+    "learned_20m_claimed": false,
+    "safe_result": "QUALITY_PRIVACY_FILTERED_CANDIDATE_ONLY_DOWNSTREAM_GATES_REQUIRED"
+  }
+}

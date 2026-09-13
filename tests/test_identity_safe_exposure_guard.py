@@ -6,8 +6,12 @@ from copy import deepcopy
 
 import pytest
 
+from twelve_six.data.deterministic_exposure_order import build_deterministic_exposure_plan
 from twelve_six.data.identity_safe_exposure_guard import (
     IdentitySafeExposureReplayGuard,
+)
+from twelve_six.data.loss_bearing_content_binding_v1 import (
+    build_loss_bearing_content_manifest,
 )
 from twelve_six.data.unique_loss_ledger_v2 import LedgerError, build_ledger
 
@@ -71,6 +75,7 @@ def _materialization() -> dict:
                 {
                     "pack_id": "p0",
                     "token_count": 4,
+                    "token_ids": [10, 11, 12, 13],
                     "loss_spans": [
                         {
                             "document_id": "doc",
@@ -113,6 +118,55 @@ def _claim(ledger: dict, start: int, end: int) -> dict:
         "offset_start": start,
         "offset_end": end,
     }
+
+
+def _content_authority() -> tuple[dict, dict, dict, dict]:
+    materialization = _materialization()
+    ledger = build_ledger(materialization)
+    claim = _claim(ledger, 0, 3)
+    plan = build_deterministic_exposure_plan(
+        [
+            {
+                "global_batch_index": 0,
+                "shard_index": 0,
+                "worker_id": 0,
+                "claims": [claim],
+                "actual_nonignored_targets": 3,
+            }
+        ],
+        num_workers=1,
+        batches_per_shard=1,
+        shard_count=1,
+    )
+    manifest = build_loss_bearing_content_manifest(
+        materialization,
+        ledger,
+        plan,
+        expected_materialization_identity_sha256=materialization[
+            "materialization_identity_sha256"
+        ],
+        expected_ledger_identity_sha256=ledger["ledger_identity_sha256"],
+        expected_plan_identity_sha256=plan["plan_identity_sha256"],
+    )
+    return materialization, ledger, plan, manifest
+
+
+def _content_guard(
+    ledger: dict,
+    manifest: dict,
+    *,
+    expected_manifest_identity_sha256: str | None = None,
+) -> IdentitySafeExposureReplayGuard:
+    return IdentitySafeExposureReplayGuard(
+        ledger,
+        expected_ledger_identity_sha256=ledger["ledger_identity_sha256"],
+        authorized_budget=3,
+        trainer_state_binding=_binding(),
+        loss_bearing_content_manifest=manifest,
+        expected_loss_bearing_manifest_identity_sha256=(
+            expected_manifest_identity_sha256 or manifest["manifest_identity_sha256"]
+        ),
+    )
 
 
 def test_identity_safe_guard_accepts_exact_built_ledger() -> None:
@@ -208,6 +262,7 @@ def test_next_exposure_identity_is_stable_after_fresh_resume() -> None:
     resumed = _guard(ledger)
     resumed.load_state_dict(
         state,
+        expected_state_identity_sha256=state["state_identity_sha256"],
         expected_trainer_state_binding=checkpoint_binding,
     )
     assert resumed.next_exposure_identity(
@@ -241,3 +296,160 @@ def test_next_exposure_identity_rejects_replay_before_identity_is_issued() -> No
     )
     with pytest.raises(LedgerError, match="replay/overlapping"):
         guard.next_exposure_identity(claim, actual_nonignored_targets=1)
+
+
+def test_content_bound_guard_authorizes_exact_aligned_live_batch() -> None:
+    _, ledger, _, manifest = _content_authority()
+    guard = _content_guard(ledger, manifest)
+    claims = [_claim(ledger, 0, 3)]
+    identity = guard.next_exposure_identity(claims, actual_nonignored_targets=3)
+    observed = guard.authorize_live_batch_with_identity(
+        claims,
+        actual_nonignored_targets=3,
+        expected_next_exposure_identity_sha256=identity,
+        batch_index=0,
+        input_ids=[[10, 11, 12]],
+        target_ids=[[11, 12, 13]],
+        loss_mask=[[1, 1, 1]],
+    )
+    assert observed == identity
+    assert guard.consumed_loss_positions == 3
+    assert guard.claim_sequence == 1
+    assert guard.state_dict()["loss_bearing_manifest_identity_sha256"] == manifest[
+        "manifest_identity_sha256"
+    ]
+
+
+def test_content_bound_guard_authorizes_exact_shifted_live_batch() -> None:
+    _, ledger, _, manifest = _content_authority()
+    guard = _content_guard(ledger, manifest)
+    claims = [_claim(ledger, 0, 3)]
+    identity = guard.next_exposure_identity(claims, actual_nonignored_targets=3)
+    guard.authorize_live_batch_with_identity(
+        claims,
+        actual_nonignored_targets=3,
+        expected_next_exposure_identity_sha256=identity,
+        batch_index=0,
+        input_ids=[[10, 11, 12, 13]],
+        target_ids=[[10, 11, 12, 13]],
+        shifted=True,
+    )
+    assert guard.consumed_loss_positions == 3
+
+
+@pytest.mark.parametrize(
+    ("input_ids", "target_ids", "message"),
+    [
+        ([[10, 99, 12]], [[11, 12, 13]], "predictor/context"),
+        ([[10, 11, 12]], [[11, 99, 13]], "target content"),
+    ],
+)
+def test_content_mutation_rejects_without_guard_state_mutation(
+    input_ids: list[list[int]],
+    target_ids: list[list[int]],
+    message: str,
+) -> None:
+    _, ledger, _, manifest = _content_authority()
+    guard = _content_guard(ledger, manifest)
+    claims = [_claim(ledger, 0, 3)]
+    identity = guard.next_exposure_identity(claims, actual_nonignored_targets=3)
+    before = guard.state_dict()
+    with pytest.raises(LedgerError, match=message):
+        guard.authorize_live_batch_with_identity(
+            claims,
+            actual_nonignored_targets=3,
+            expected_next_exposure_identity_sha256=identity,
+            batch_index=0,
+            input_ids=input_ids,
+            target_ids=target_ids,
+            loss_mask=[[1, 1, 1]],
+        )
+    assert guard.state_dict() == before
+
+
+def test_equal_count_claim_relocation_rejects_before_mutation() -> None:
+    _, ledger, _, manifest = _content_authority()
+    guard = _content_guard(ledger, manifest)
+    relocated = [_claim(ledger, 0, 1), _claim(ledger, 1, 3)]
+    identity = guard.next_exposure_identity(relocated, actual_nonignored_targets=3)
+    before = guard.state_dict()
+    with pytest.raises(LedgerError, match="submitted claims differ"):
+        guard.authorize_live_batch_with_identity(
+            relocated,
+            actual_nonignored_targets=3,
+            expected_next_exposure_identity_sha256=identity,
+            batch_index=0,
+            input_ids=[[10, 11, 12]],
+            target_ids=[[11, 12, 13]],
+            loss_mask=[[1, 1, 1]],
+        )
+    assert guard.state_dict() == before
+
+
+def test_contentless_authorization_rejects_when_content_authority_is_configured() -> None:
+    _, ledger, _, manifest = _content_authority()
+    guard = _content_guard(ledger, manifest)
+    claims = [_claim(ledger, 0, 3)]
+    identity = guard.next_exposure_identity(claims, actual_nonignored_targets=3)
+    before = guard.state_dict()
+    with pytest.raises(LedgerError, match="content-aware authorization"):
+        guard.authorize_batch_with_identity(
+            claims,
+            actual_nonignored_targets=3,
+            expected_next_exposure_identity_sha256=identity,
+        )
+    assert guard.state_dict() == before
+
+
+def test_resealed_manifest_rejects_against_external_manifest_root() -> None:
+    _, ledger, _, manifest = _content_authority()
+    tampered = deepcopy(manifest)
+    tampered["future_content_semantics"] = "resealed"
+    tampered["manifest_identity_sha256"] = _identity(
+        tampered, "manifest_identity_sha256"
+    )
+    with pytest.raises(LedgerError, match="differs from external authority"):
+        _content_guard(
+            ledger,
+            tampered,
+            expected_manifest_identity_sha256=manifest["manifest_identity_sha256"],
+        )
+
+
+def test_resume_rejects_different_loss_bearing_manifest_root_before_mutation() -> None:
+    _, ledger, _, manifest = _content_authority()
+    source = _content_guard(ledger, manifest)
+    claims = [_claim(ledger, 0, 3)]
+    identity = source.next_exposure_identity(claims, actual_nonignored_targets=3)
+    source.authorize_live_batch_with_identity(
+        claims,
+        actual_nonignored_targets=3,
+        expected_next_exposure_identity_sha256=identity,
+        batch_index=0,
+        input_ids=[[10, 11, 12]],
+        target_ids=[[11, 12, 13]],
+        loss_mask=[[1, 1, 1]],
+    )
+    checkpoint_binding = {
+        "checkpoint_generation": "g001",
+        "checkpoint_manifest_sha256": _sha("checkpoint-g001"),
+        "optimizer_step": 1,
+        "trainer_nonignored_target_count": 3,
+    }
+    source.bind_checkpoint_state(checkpoint_binding)
+    state = source.state_dict()
+
+    other_manifest = deepcopy(manifest)
+    other_manifest["future_content_semantics"] = "other-authority"
+    other_manifest["manifest_identity_sha256"] = _identity(
+        other_manifest, "manifest_identity_sha256"
+    )
+    resumed = _content_guard(ledger, other_manifest)
+    before = resumed.state_dict()
+    with pytest.raises(LedgerError, match="content manifest identity mismatch"):
+        resumed.load_state_dict(
+            state,
+            expected_state_identity_sha256=state["state_identity_sha256"],
+            expected_trainer_state_binding=checkpoint_binding,
+        )
+    assert resumed.state_dict() == before

@@ -1,0 +1,110 @@
+{
+  "schema_version": "12-6.d03-loc-postrights-source-admission.v1",
+  "authority_id": "D03-LOC-POSTRIGHTS-SOURCE-ADMISSION-V1",
+  "status": "PAYLOAD_SOURCE_ADMISSION_EXECUTED_ZERO_CREDIT",
+  "execution_profile": "LOCAL_FREE",
+  "swarm": {
+    "control_issue": 723,
+    "worker_issue": 1381,
+    "lane_key": "D03|COMMON-PILE-LOC|POST-RIGHTS-PAYLOAD-ADMISSION|CURRENT-MAIN-CROSSBIND-V1"
+  },
+  "historical_execution": {
+    "product_pr": 1276,
+    "product_head_sha": "cdde55b75a10639e8233de7ccccaaea335b4055a",
+    "execution_head_sha": "8ce516160b91ba48b4dd4096e0ffeea409d221de",
+    "run_id": 34606219695,
+    "job_id": 103285166822,
+    "receipt_path": "evidence/d03-loc-real-execution-v1.json",
+    "receipt_blob_sha1": "3f7d5458135d7dfb0eb64045e1af99998d710ed8",
+    "materializer_path": "tools/materialize_d03_common_pile_loc.py",
+    "materializer_blob_sha1": "7d121300cd241672fd3f451451c573a98db680ed",
+    "intake_config_path": "configs/data/d03_common_pile_loc_intake_v1.json",
+    "intake_config_blob_sha1": "958339654703f3aab4ea9cc3686e4e4fd44a7e09",
+    "intake_module_path": "src/twelve_six/data/common_pile_loc_intake.py",
+    "intake_module_blob_sha1": "f7fe4166628dd18f8b18e5e2a412319f27170ff4"
+  },
+  "rights_authority": {
+    "merged_pr": 1162,
+    "product_head_sha": "7e096ffcfd17f6b0eb215037a60370f255202c02",
+    "merge_commit_sha": "3ee45353424991e471b749f807f231cad486a797",
+    "independent_audit_issue": 1167,
+    "audit_verdict": "PASS_FOR_INTEGRATION_MECHANICS",
+    "policy_path": "configs/data/d03_common_pile_loc_source_rights_v1.json",
+    "policy_blob_sha1": "f60a97b3041d4a0ad99fdde6f45f6062bfaf24cd",
+    "policy_identity_sha256": "1a140049b83da211e54003da8fa48fdd3e688eb30abed4bd3c327e2d64f36c1a",
+    "module_path": "src/twelve_six/common_pile_loc_rights.py",
+    "module_blob_sha1": "56bd02f070402b533c36ee04a3708a888c5ae7c5",
+    "decision": "CONDITIONAL_SOURCE_ADMISSION",
+    "scope": "SOURCE_POLICY_ONLY"
+  },
+  "record_contract": {
+    "source_value": "loc_books",
+    "expected_license": "Public Domain",
+    "expected_language": "english",
+    "record_id_role": "LCCN",
+    "item_url_template": "https://www.loc.gov/item/{lccn}",
+    "text_file_url_allowed_hosts": [
+      "tile.loc.gov",
+      "tiles.loc.gov"
+    ],
+    "required_metadata_fields": [
+      "license",
+      "language",
+      "year",
+      "item_url",
+      "text_file_url"
+    ]
+  },
+  "admitted_candidate": {
+    "source_sha256": "a6a6023d9cae067b5531ba84537877c180ab3ff1579f99aeac446d65d465ae0f",
+    "source_bytes": 358594502,
+    "examined_documents": 256,
+    "candidate_sha256": "f87201d71eb8c3f2510cdf2c9b3ce1a32b83d1a11198e8a1ff0ad67d0a3fec20",
+    "candidate_file_bytes": 4680968,
+    "accepted_records": 28,
+    "accepted_normalized_bytes": 4499908,
+    "candidate_inventory_identity_sha256": "d3906e11d3779b8d151753a5a126b7578d99d298b16cc6aa3aef129b55463511",
+    "contract_identity_sha256": "9f6fc98e3a3b720f58963b52b3f3cf3b651bdb9e35f08fa380c99f7b7112f828",
+    "payload_rematerialized_in_this_package": false
+  },
+  "proof": {
+    "historical_receipt_validated": true,
+    "historical_execution_code_blobs_verified": true,
+    "intake_contract_validated": true,
+    "record_contract_alignment_verified": true,
+    "rights_policy_repository_bindings_validated": true,
+    "rights_decision_applied_post_hoc_to_exact_historical_lineage": true,
+    "real_data_execution_repeated": false
+  },
+  "truth_boundary": {
+    "payload_source_admission_executed": true,
+    "source_admitted_candidate_records": 28,
+    "source_admitted_candidate_bytes": 4499908,
+    "canonical_capacity_credited": 0,
+    "training_authorized_bytes": 0,
+    "family_credit_added": 0,
+    "authorized_unique_loss_positions": 0,
+    "authorized_optimized_target_exposure": 0,
+    "tokenizer_fit_authorized": false,
+    "model_training_executed": false,
+    "optimizer_updates": 0,
+    "learned_weights_created": false,
+    "evaluation_authorized_bytes": 0,
+    "final_test_payload_accessed": false,
+    "final_test_outcomes_read": false,
+    "paid_compute_used": false,
+    "foreign_pretrained_weights_used": false,
+    "external_llm_or_api_used_for_data_or_intelligence": false
+  },
+  "downstream_required": [
+    "current_global_exact_near_lineage_dedup",
+    "reserved_evaluation_decontamination",
+    "canonical_quality_privacy",
+    "family_balance_caps",
+    "cluster_safe_split",
+    "deterministic_packing",
+    "two_clean_build_reproducibility",
+    "positive_unique_loss_accounting",
+    "positive_training_authority"
+  ]
+}

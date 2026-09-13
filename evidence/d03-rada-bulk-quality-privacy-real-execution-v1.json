@@ -1,0 +1,79 @@
+{
+  "environment": {
+    "platform": "Linux-6.17.0-1022-azure-x86_64-with-glibc2.39",
+    "python": "3.11.16",
+    "runner_arch": "X64",
+    "runner_os": "Linux"
+  },
+  "evidence_identity_sha256": "6f4952add1a2dabaf37170fac5ec2ffae9bdd3366b0a032c6a89886a8b898e74",
+  "execution_class": "LOCAL_FREE_GITHUB_HOSTED_ACTIONS",
+  "observed_quality_privacy": {
+    "accepted_bytes_observed_not_credited": 192078166,
+    "accepted_chunk_count": 101559,
+    "accepted_inventory_sha256": "afb940b48b5de52e598d8adf026c78cf5d51b228f1fbf56c9f0fbe472d946f65",
+    "accepted_jsonl_file_bytes": 224528099,
+    "accepted_jsonl_sha256": "48324e41385e12a5b9f590bd478516643edb21992f1a5ca5ca2c9eca75f7ab12",
+    "accepted_source_encoding_counts": {
+      "utf-8": 79960,
+      "windows-1251": 21599
+    },
+    "exact_duplicate_accepted_hashes_observed_not_removed": 764,
+    "parent_normalized_bytes": 211176449,
+    "parent_record_count": 3052,
+    "quality_report_file_sha256": "b05e1981370b1f92914997b25ba1cc4f96ba0a71cda8ad9bcf8114aec323972c",
+    "quality_report_identity_sha256": "fd7fa447c1876369b5de724deeee1bbeac741a486d737b62dd60af1ae2cbaa71",
+    "rejected_chunk_count": 11519,
+    "rejection_reasons": {
+      "low_alpha_ratio": 3599,
+      "pii_email": 1,
+      "pii_phone": 7919
+    },
+    "total_chunks": 113078
+  },
+  "parent_authority": {
+    "final_head_sha": "656dd4abe7bdf9c379a86ac9a19f046d5b0d8538",
+    "manifest_file_sha256": "8923d26024ba396db14e6afeb367a5d3c54de573019252083aec88f2082bb119",
+    "manifest_identity_sha256": "ee1c59dbc481b83bffb1380f751880e5fa6e64d654b5abad266c3e2c4d18293b",
+    "normalized_bytes_observed_not_credited": 211176449,
+    "normalized_jsonl_sha256": "b46baa0f1c5087f4a9772ee273da459e87c0e82111dd5e51b22fc0b85cde840e",
+    "normalized_record_inventory_sha256": "bd790b51809018950fcf8d9919f62920ab79aee64f8d73e131cbe16772554495",
+    "pr": 864,
+    "real_execution_evidence_identity_sha256": "e1633070beaff596ae11f4974bd9662785723618f502f382850f7e3bea27ab6a",
+    "real_execution_head_sha": "f62670084f80041757e162743356ac16e0fd81a7",
+    "real_execution_run_id": 34565921713,
+    "record_count": 3052
+  },
+  "repair_execution_head_sha": "cda7c4c0ed552771ddc6313647c5baf1a4d42f47",
+  "safe_result": "QUALITY_PRIVACY_FILTERED_CANDIDATE_ZERO_CREDIT_TWO_CLEAN_REAL_EXECUTION",
+  "schema_version": "12-6.d03-rada-bulk-quality-privacy-real-execution-evidence.v1",
+  "source_authority": {
+    "archive_bytes": 46709153,
+    "archive_sha256": "0b9e8ed8fe8aa663a68d2bc4eba858a754c626391dd7b5c461d50c3b6260df63",
+    "entry_identity_sha256": "3939c8a407a910222173bba5a2df1b9c7d2edce1503c13b31a9c293d61c3a603",
+    "observation_report_sha256": "e2ad0d8a4fce01d2da03fc93d636354253beaaf563db43968b11b600e26d0cdf",
+    "observation_run_id": 34535608294
+  },
+  "truth_boundary": {
+    "authorized_optimized_target_exposure": 0,
+    "canonical_capacity_credited": 0,
+    "current_corpus_eligible": false,
+    "external_llm_api_data_or_intelligence": false,
+    "final_test_accessed": false,
+    "foreign_pretrained_weights": false,
+    "learned_weights_created": false,
+    "model_training_executed": false,
+    "optimizer_updates_executed_on_real_targets": 0,
+    "paid_compute_used": false,
+    "tokenizer_fit_authorized": false,
+    "training_authorized_bytes": 0
+  },
+  "two_clean_reproducibility": {
+    "manifests_identical": true,
+    "normalized_jsonl_identical": true,
+    "quality_accepted_jsonl_identical": true,
+    "quality_reports_identical": true,
+    "source_archives_identical": true
+  },
+  "workflow_run_attempt": 1,
+  "workflow_run_id": 34669418910
+}
