@@ -1,0 +1,217 @@
+from __future__ import annotations
+
+import hashlib
+
+import pytest
+
+from twelve_six.checkpoint.core import CheckpointCompatibilityError
+from twelve_six.checkpoint.selection import (
+    CheckpointCandidate,
+    select_best,
+    select_chronological,
+    select_final,
+)
+
+
+def _sha(label: str) -> str:
+    return hashlib.sha256(label.encode("utf-8")).hexdigest()
+
+
+def _manifest(*, checkpoint_id: str, step: int, tokens_seen: int, run: str = "r") -> dict:
+    return {
+        "checkpoint_id": _sha(checkpoint_id),
+        "identity": {
+            "run_manifest_hash": _sha(run),
+            "model_spec_hash": _sha("model"),
+            "tokenizer_hash": _sha("tokenizer"),
+            "dataset_manifest_hash": _sha("dataset"),
+            "training_config_hash": _sha("training"),
+            "step": step,
+            "tokens_seen": tokens_seen,
+        },
+    }
+
+
+def _candidate(
+    checkpoint_id: str,
+    step: int,
+    tokens_seen: int,
+    *,
+    completed: bool = False,
+    metric_name: str | None = None,
+    metric_value: float | None = None,
+    run: str = "r",
+) -> CheckpointCandidate:
+    return CheckpointCandidate.from_manifest(
+        _manifest(checkpoint_id=checkpoint_id, step=step, tokens_seen=tokens_seen, run=run),
+        completed=completed,
+        metric_name=metric_name,
+        metric_value=metric_value,
+    )
+
+
+def _direct_candidate(**overrides: object) -> CheckpointCandidate:
+    values: dict[str, object] = {
+        "checkpoint_id": _sha("direct"),
+        "run_manifest_hash": _sha("r"),
+        "model_spec_hash": _sha("model"),
+        "tokenizer_hash": _sha("tokenizer"),
+        "dataset_manifest_hash": _sha("dataset"),
+        "training_config_hash": _sha("training"),
+        "step": 1,
+        "tokens_seen": 10,
+        "completed": False,
+        "metric_name": None,
+        "metric_value": None,
+    }
+    values.update(overrides)
+    return CheckpointCandidate(**values)  # type: ignore[arg-type]
+
+
+def test_candidate_requires_canonical_sha256_checkpoint_id() -> None:
+    for bad_hash in ("a" * 63, "A" * 64, "g" * 64, ""):
+        manifest = _manifest(checkpoint_id="checkpoint", step=1, tokens_seen=10)
+        manifest["checkpoint_id"] = bad_hash
+        with pytest.raises(CheckpointCompatibilityError, match="checkpoint_id"):
+            CheckpointCandidate.from_manifest(manifest)
+
+
+def test_candidate_requires_canonical_sha256_lineage_identities() -> None:
+    for bad_hash in ("a" * 63, "A" * 64, "g" * 64):
+        manifest = _manifest(checkpoint_id="a", step=1, tokens_seen=10)
+        manifest["identity"]["run_manifest_hash"] = bad_hash
+        with pytest.raises(CheckpointCompatibilityError, match="run_manifest_hash"):
+            CheckpointCandidate.from_manifest(manifest)
+
+
+@pytest.mark.parametrize(
+    ("overrides", "match"),
+    [
+        ({"checkpoint_id": "a" * 63}, "checkpoint_id"),
+        ({"run_manifest_hash": "A" * 64}, "run_manifest_hash"),
+        ({"model_spec_hash": "g" * 64}, "model_spec_hash"),
+        ({"step": -1}, "progress"),
+        ({"tokens_seen": True}, "progress"),
+        ({"completed": 1}, "completed"),
+        ({"metric_name": "validation_loss", "metric_value": None}, "both be present"),
+        ({"metric_name": "validation_loss", "metric_value": float("nan")}, "finite"),
+        ({"metric_name": "validation_loss", "metric_value": 10**10000}, "finite"),
+        ({"metric_name": " validation_loss", "metric_value": 1.0}, "canonical"),
+        ({"metric_name": "validation\nloss", "metric_value": 1.0}, "canonical"),
+    ],
+)
+def test_selection_revalidates_directly_constructed_candidates(
+    overrides: dict[str, object], match: str
+) -> None:
+    candidate = _direct_candidate(**overrides)
+    with pytest.raises(CheckpointCompatibilityError, match=match):
+        select_chronological([candidate])
+
+
+def test_chronological_uses_training_progress_not_publication_order() -> None:
+    early = _candidate("early", 3, 300)
+    late = _candidate("late", 4, 400)
+    assert select_chronological([late, early]) is late
+
+
+def test_chronological_rejects_equal_progress_distinct_artifacts() -> None:
+    a = _candidate("a", 4, 400)
+    b = _candidate("b", 4, 400)
+    with pytest.raises(CheckpointCompatibilityError, match="equal training progress"):
+        select_chronological([a, b])
+
+
+def test_selection_rejects_equal_progress_distinct_artifacts_for_best_too() -> None:
+    a = _candidate("a", 4, 400, metric_name="validation_loss", metric_value=1.1)
+    b = _candidate("b", 4, 400, metric_name="validation_loss", metric_value=1.0)
+    with pytest.raises(CheckpointCompatibilityError, match="equal training progress"):
+        select_best([a, b], metric_name="validation_loss", mode="min")
+
+
+def test_selection_rejects_cross_lineage_candidates() -> None:
+    a = _candidate("a", 4, 400, run="run-a")
+    b = _candidate("b", 5, 500, run="run-b")
+    with pytest.raises(CheckpointCompatibilityError, match="different lineages"):
+        select_chronological([a, b])
+
+
+def test_selection_rejects_duplicate_checkpoint_ids() -> None:
+    a = _candidate("same", 4, 400)
+    b = _candidate("same", 5, 500)
+    with pytest.raises(CheckpointCompatibilityError, match="duplicate checkpoint_id"):
+        select_chronological([a, b])
+
+
+@pytest.mark.parametrize(
+    ("left_step", "left_tokens", "right_step", "right_tokens"),
+    [
+        (5, 400, 4, 500),
+        (4, 500, 5, 400),
+        (4, 400, 4, 500),
+        (4, 400, 5, 400),
+    ],
+)
+def test_selection_rejects_inconsistent_progress_counters(
+    left_step: int,
+    left_tokens: int,
+    right_step: int,
+    right_tokens: int,
+) -> None:
+    left = _candidate("left", left_step, left_tokens)
+    right = _candidate("right", right_step, right_tokens)
+    with pytest.raises(CheckpointCompatibilityError, match="progress counters"):
+        select_chronological([left, right])
+
+
+def test_final_requires_explicit_completion_at_latest_progress() -> None:
+    final = _candidate("final", 5, 500, completed=True)
+    newer = _candidate("newer", 6, 600)
+    with pytest.raises(CheckpointCompatibilityError, match="not at the latest"):
+        select_final([final, newer])
+
+
+def test_final_returns_unique_completed_latest_checkpoint() -> None:
+    earlier = _candidate("earlier", 4, 400)
+    final = _candidate("final", 5, 500, completed=True)
+    assert select_final([earlier, final]) is final
+
+
+def test_best_min_and_max_are_explicit() -> None:
+    a = _candidate("a", 4, 400, metric_name="validation_loss", metric_value=1.25)
+    b = _candidate("b", 5, 500, metric_name="validation_loss", metric_value=1.10)
+    assert select_best([a, b], metric_name="validation_loss", mode="min") is b
+    assert select_best([a, b], metric_name="validation_loss", mode="max") is a
+
+
+def test_best_rejects_noncanonical_metric_authority() -> None:
+    candidate = _candidate("a", 4, 400, metric_name="validation_loss", metric_value=1.25)
+    for bad_name in (" validation_loss", "validation_loss ", "validation loss", "validation\nloss"):
+        with pytest.raises(CheckpointCompatibilityError, match="canonical"):
+            select_best([candidate], metric_name=bad_name, mode="min")
+
+
+def test_best_rejects_missing_or_mixed_metric_authority() -> None:
+    a = _candidate("a", 4, 400, metric_name="validation_loss", metric_value=1.25)
+    b = _candidate("b", 5, 500)
+    with pytest.raises(CheckpointCompatibilityError, match="every candidate"):
+        select_best([a, b], metric_name="validation_loss", mode="min")
+
+
+def test_best_rejects_equal_metric_tie() -> None:
+    a = _candidate("a", 4, 400, metric_name="validation_loss", metric_value=1.0)
+    b = _candidate("b", 5, 500, metric_name="validation_loss", metric_value=1.0)
+    with pytest.raises(CheckpointCompatibilityError, match="ambiguous best"):
+        select_best([a, b], metric_name="validation_loss", mode="min")
+
+
+def test_candidate_rejects_partial_metric_and_non_finite_metric() -> None:
+    with pytest.raises(CheckpointCompatibilityError, match="both be present"):
+        _candidate("a", 1, 10, metric_name="validation_loss")
+    with pytest.raises(CheckpointCompatibilityError, match="finite"):
+        _candidate("a", 1, 10, metric_name="validation_loss", metric_value=float("nan"))
+    with pytest.raises(CheckpointCompatibilityError, match="finite"):
+        CheckpointCandidate.from_manifest(
+            _manifest(checkpoint_id="overflow", step=1, tokens_seen=10),
+            metric_name="validation_loss",
+            metric_value=10**10000,  # type: ignore[arg-type]
+        )
