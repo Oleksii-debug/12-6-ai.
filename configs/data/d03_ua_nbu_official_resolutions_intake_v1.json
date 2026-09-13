@@ -1,0 +1,73 @@
+{
+  "schema": "12-6.d03-ua-nbu-official-resolutions-intake.v1",
+  "status": "PREPARED_DISCOVERY_ZERO_CREDIT",
+  "base_authority": {
+    "repository": "Oleksii-debug/12-6-ai.",
+    "git_sha": "e7379f31c4d5909b997cd4dc8d99155bc9a9764e",
+    "lane": "D03",
+    "control_issue": 548
+  },
+  "source": {
+    "source_id": "ua.nbu.official-resolutions",
+    "family_id": "ua.nbu.official-resolutions",
+    "stratum": "uk",
+    "publisher": "Національний банк України",
+    "catalog_url": "https://bank.gov.ua/ua/legislation/search",
+    "allowed_origin": "https://bank.gov.ua",
+    "document_path_regex": "^/ua/legislation/Resolution_[0-9]{8}_[0-9A-Za-z-]+$",
+    "official_pdf_path_regex": "^/admin_uploads/law/[0-9A-Za-z_.-]+\\.pdf$",
+    "required_title_prefix": "Постанова Правління Національного банку України",
+    "one_conservative_family": true
+  },
+  "rights": {
+    "decision": "OFFICIAL_NBU_RESOLUTION_TEXT_ONLY_CANDIDATE",
+    "law": "Закон України № 2811-IX Про авторське право і суміжні права",
+    "article": "8(1)(3)",
+    "authority_url": "https://zakon.rada.gov.ua/laws/show/2811-20",
+    "scope": "official acts of a public authority; only the exact NBU Board resolution text is in scope",
+    "blanket_site_rights_claimed": false,
+    "legal_conclusion_claimed": false,
+    "exclude": [
+      "site chrome and navigation",
+      "news, consultations, explanatory and press materials",
+      "images, video, design and branding",
+      "linked third-party content",
+      "attachments other than the official resolution PDF unless separately reviewed",
+      "control copies or consolidated texts that are not the exact selected resolution"
+    ]
+  },
+  "discovery_contract": {
+    "class": "LOCAL_FREE",
+    "catalog_fetches_required": 2,
+    "document_page_fetches_required": 2,
+    "hard_max_documents": 120,
+    "same_origin_https_only": true,
+    "query_fragment_forbidden_for_canonical_identity": true,
+    "stable_document_set_required": true,
+    "stable_official_pdf_set_required": true,
+    "durable_evidence_body_free": true
+  },
+  "required_downstream_gates": [
+    "IMMUTABLE_PDF_BYTE_IDENTITY_AND_TEXT_MATERIALIZATION",
+    "DOCUMENT_LEVEL_RIGHTS_CONFIRMATION",
+    "QUALITY_AND_PRIVACY",
+    "GLOBAL_EXACT_NEAR_FRAGMENT_LINEAGE_DEDUP",
+    "RESERVED_EVALUATION_DECONTAMINATION",
+    "POST_COMPOSITION_BALANCE_FAMILY_CAPS",
+    "CLUSTER_SAFE_SPLIT",
+    "DETERMINISTIC_TOKENIZER_PACKING_DOUBLE_BUILD",
+    "POSITIVE_EXACT_UNIQUE_CAUSAL_LOSS_LEDGER"
+  ],
+  "claims": {
+    "canonical_capacity_credit_bytes": 0,
+    "training_authorized_bytes": 0,
+    "authorized_unique_loss_positions": 0,
+    "tokenizer_fit_authorized": false,
+    "model_training_executed": false,
+    "optimizer_updates": 0,
+    "final_test_accessed": false,
+    "paid_compute_authorized": false,
+    "learned_20m_claim": false
+  },
+  "contract_identity_sha256": "2e04335a2e6e665167b63f392d09756ae52e4f65f5253d9a037c48f5d191d9ec"
+}
