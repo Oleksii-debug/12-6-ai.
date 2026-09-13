@@ -170,7 +170,7 @@ def test_canonical_bridge_composes_into_loss_bearing_content_authority() -> None
         "materialization_identity_sha256"
     ]
     assert manifest["ledger_identity_sha256"] == ledger["ledger_identity_sha256"]
-    assert manifest["exposure_plan_identity_sha256"] == plan["plan_identity_sha256"]
+    assert manifest["plan_identity_sha256"] == plan["plan_identity_sha256"]
     assert manifest["loss_bearing_target_count"] == loss_positions
     assert manifest["training_authorized_by_this_manifest"] is False
 
