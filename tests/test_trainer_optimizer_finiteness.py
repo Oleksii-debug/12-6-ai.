@@ -11,6 +11,7 @@ from twelve_six.training.trainer import (
     NonFiniteTrainingError,
     Trainer,
     TrainingStateInvalidError,
+    build_optimizer,
 )
 
 
@@ -22,6 +23,21 @@ class _TinyLanguageModel(nn.Module):
     def forward(self, input_ids: torch.Tensor) -> torch.Tensor:
         batch, sequence = input_ids.shape
         return self.logits.view(1, 1, -1).expand(batch, sequence, -1)
+
+
+class _PoisoningScheduler:
+    def __init__(self, optimizer) -> None:
+        self.optimizer = optimizer
+
+    def step(self) -> None:
+        self.optimizer.param_groups[0]["lr"] = float("inf")
+
+    def state_dict(self) -> dict[str, object]:
+        return {}
+
+    def load_state_dict(self, state: dict[str, object]) -> None:
+        if state:
+            raise ValueError("unexpected scheduler state")
 
 
 def _trainer(*, max_steps: int = 1) -> Trainer:
@@ -164,3 +180,29 @@ def test_post_step_optimizer_poison_never_commits_trainer_step() -> None:
     assert trainer.tokens_seen == 2
     with pytest.raises(TrainingStateInvalidError):
         trainer.train_microbatch(batch)
+
+
+def test_scheduler_induced_nonfinite_optimizer_state_cannot_return_success() -> None:
+    model = _TinyLanguageModel()
+    config = TrainerConfig(max_steps=1, gradient_clip_norm=1.0, precision="fp32")
+    optimizer = build_optimizer(model, config)
+    scheduler = _PoisoningScheduler(optimizer)
+    trainer = Trainer(
+        model,
+        config,
+        optimizer=optimizer,
+        scheduler=scheduler,  # type: ignore[arg-type]
+    )
+    batch = {"input_ids": torch.tensor([[0, 1, 2]], dtype=torch.long)}
+
+    with pytest.raises(
+        NonFiniteTrainingError,
+        match="non-finite optimizer/scheduler state at micro_step=1",
+    ):
+        trainer.train_microbatch(batch)
+
+    assert trainer.optimizer_step == 1
+    assert trainer.micro_step == 1
+    assert trainer.tokens_seen == 2
+    with pytest.raises(TrainingStateInvalidError):
+        trainer.assert_checkpoint_safe()
