@@ -106,7 +106,7 @@ def ordered_resume_state_dict(
     *,
     expected_plan_identity_sha256: str,
 ) -> dict[str, Any]:
-    """Build a durable checkpoint state bound to the exact deterministic plan prefix."""
+    """Build durable checkpoint state bound to the exact deterministic plan prefix."""
     batches, plan_identity = _validated_plan_batches(
         plan,
         expected_plan_identity_sha256=expected_plan_identity_sha256,
@@ -148,15 +148,20 @@ def load_ordered_resume_state(
     plan: Mapping[str, Any],
     state: Mapping[str, Any],
     *,
+    expected_ordered_resume_identity_sha256: str,
     expected_plan_identity_sha256: str,
     expected_trainer_state_binding: Mapping[str, Any],
 ) -> str:
-    """Restore only an exact plan-prefix state and preserve the guard on rejection."""
+    """Restore only an externally authenticated exact plan-prefix state."""
     if not isinstance(state, Mapping) or set(state) != _ORDERED_RESUME_KEYS:
         raise LedgerError("ordered resume state fields do not match schema")
     if state.get("schema_version") != ORDERED_RESUME_SCHEMA:
         raise LedgerError("ordered resume state schema mismatch")
 
+    expected_outer_identity = _require_sha256(
+        expected_ordered_resume_identity_sha256,
+        "expected_ordered_resume_identity_sha256",
+    )
     state_copy = deepcopy(dict(state))
     observed_state_identity = _require_sha256(
         state_copy.pop("ordered_resume_identity_sha256", None),
@@ -164,6 +169,8 @@ def load_ordered_resume_state(
     )
     if _canonical_sha256(state_copy) != observed_state_identity:
         raise LedgerError("ordered resume state self-hash mismatch")
+    if observed_state_identity != expected_outer_identity:
+        raise LedgerError("ordered resume state identity does not match external authority")
 
     batches, plan_identity = _validated_plan_batches(
         plan,
