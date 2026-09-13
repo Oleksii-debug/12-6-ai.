@@ -23,7 +23,10 @@ def _load_json(path: Path) -> dict[str, Any]:
 
 def _load_jsonl(path: Path) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
-    for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+    for number, line in enumerate(
+        path.read_text(encoding="utf-8").splitlines(),
+        start=1,
+    ):
         if not line.strip():
             continue
         value = json.loads(line)
@@ -36,7 +39,13 @@ def _load_jsonl(path: Path) -> list[dict[str, Any]]:
 def _write_json(path: Path, value: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
-        json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n",
+        json.dumps(
+            value,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n",
         encoding="utf-8",
     )
 
@@ -57,6 +66,11 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--g06-execution-envelope", required=True, type=Path)
     parser.add_argument("--expected-g06-envelope-identity", required=True)
     parser.add_argument("--expected-g06-execution-identity", required=True)
+    parser.add_argument("--g06-terminal-qualification", required=True, type=Path)
+    parser.add_argument(
+        "--expected-g06-terminal-qualification-identity",
+        required=True,
+    )
     parser.add_argument("--privacy-source", required=True, type=Path)
     parser.add_argument("--execution-head-sha", required=True)
     parser.add_argument(
@@ -80,10 +94,20 @@ def main() -> int:
             args.expected_composition_preflight_identity
         ),
         "g05_authority": _load_json(args.g05_authority),
-        "expected_g05_execution_identity_sha256": args.expected_g05_execution_identity,
+        "expected_g05_execution_identity_sha256": (
+            args.expected_g05_execution_identity
+        ),
         "g06_execution_envelope": _load_json(args.g06_execution_envelope),
-        "expected_g06_envelope_identity_sha256": args.expected_g06_envelope_identity,
-        "expected_g06_execution_identity_sha256": args.expected_g06_execution_identity,
+        "expected_g06_envelope_identity_sha256": (
+            args.expected_g06_envelope_identity
+        ),
+        "expected_g06_execution_identity_sha256": (
+            args.expected_g06_execution_identity
+        ),
+        "g06_terminal_qualification": _load_json(args.g06_terminal_qualification),
+        "expected_g06_terminal_qualification_identity_sha256": (
+            args.expected_g06_terminal_qualification_identity
+        ),
         "privacy_source_path": args.privacy_source,
         "execution_head_sha": args.execution_head_sha,
         "expected_materializer_implementation_git_blob_sha1": (
@@ -93,9 +117,13 @@ def main() -> int:
     records_a, inventory_a, evidence_a = materialize_post_g05_g06(**kwargs)
     records_b, inventory_b, evidence_b = materialize_post_g05_g06(**kwargs)
     if canonical_record_bytes(records_a) != canonical_record_bytes(records_b):
-        raise RuntimeError("repeat post-G05/G06 payload materialization is not byte-identical")
+        raise RuntimeError(
+            "repeat post-G05/G06 payload materialization is not byte-identical"
+        )
     if inventory_a != inventory_b or evidence_a != evidence_b:
-        raise RuntimeError("repeat post-G05/G06 evidence materialization is not byte-identical")
+        raise RuntimeError(
+            "repeat post-G05/G06 evidence materialization is not byte-identical"
+        )
     args.output_jsonl.parent.mkdir(parents=True, exist_ok=True)
     args.output_jsonl.write_bytes(canonical_record_bytes(records_a))
     _write_json(args.output_inventory, inventory_a)
@@ -104,9 +132,17 @@ def main() -> int:
     core = dict(repeat_evidence)
     core.pop("materialization_identity_sha256", None)
     canonical = (
-        json.dumps(core, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n"
+        json.dumps(
+            core,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n"
     ).encode("utf-8")
-    repeat_evidence["materialization_identity_sha256"] = hashlib.sha256(canonical).hexdigest()
+    repeat_evidence["materialization_identity_sha256"] = hashlib.sha256(
+        canonical
+    ).hexdigest()
     _write_json(args.output_evidence, repeat_evidence)
     print(repeat_evidence["materialization_identity_sha256"])
     return 0
