@@ -23,6 +23,45 @@ G05_CLASS = "G05_QUALITY_EXECUTION_ZERO_CREDIT"
 G06_ENVELOPE_SCHEMA = "12-6.current-survivor-g06-dependency-bound-execution.v1"
 G06_SCHEMA = "12-6.g06-privacy-execution-authority.v1"
 G06_CLASS = "G06_PRIVACY_EXECUTION_ZERO_CREDIT"
+G06_TERMINAL_QUALIFICATION_SCHEMA = "12-6.g06-exact-byte-terminal-qualification.v1"
+G06_TERMINAL_QUALIFICATION_STATUS = "PASS_FOR_G06_TERMINAL_CONSUMPTION"
+G06_TERMINAL_QUALIFICATION_KEYS = {
+    "schema",
+    "status",
+    "target_pr_number",
+    "target_head_git_sha",
+    "real_replay_head_git_sha",
+    "real_replay_run_id",
+    "real_replay_job_id",
+    "final_head_ci_run_id",
+    "final_head_ci_job_id",
+    "g06_envelope_identity_sha256",
+    "g06_execution_identity_sha256",
+    "input_rows_sha256",
+    "repeated_execution_evidence_sha256",
+    "artifact_id",
+    "artifact_zip_sha256",
+    "replay_record_count",
+    "replay_utf8_bytes",
+    "replay_count",
+    "independent_audit_issue_number",
+    "independent_audit_status",
+    "local_free_only",
+    "head_change_invalidates",
+    "truth_boundary",
+    "qualification_identity_sha256",
+}
+G06_TERMINAL_TRUTH = {
+    "current_corpus_eligible": False,
+    "training_authorized_bytes": 0,
+    "authorized_optimized_target_exposure": 0,
+    "tokenizer_fit_authorized": False,
+    "optimizer_updates_executed": 0,
+    "training_executed": False,
+    "learned_weights_created": False,
+    "final_test_outcomes_read": False,
+    "paid_compute_used": False,
+}
 PRIVACY_MODULE = "twelve_six.data.privacy_filter_v3"
 PRIVACY_SOURCE_RELATIVE_PATH = "privacy_filter_v3.py"
 PRIVACY_BINDING_KEYS = {
@@ -210,7 +249,8 @@ def _validate_preflight(
     expected_g05_identity: str,
     expected_g06_envelope_identity: str,
     expected_g06_identity: str,
-) -> None:
+    expected_g06_terminal_qualification_identity: str,
+) -> str:
     _need(value.get("schema") == PREFLIGHT_SCHEMA, "composition preflight schema drift")
     _identity(value, "composition_preflight_identity_sha256", expected_identity)
     _need(
@@ -233,6 +273,19 @@ def _validate_preflight(
         value.get("g06_execution_identity_sha256") == expected_g06_identity,
         "preflight G06 identity drift",
     )
+    expected_qualification = _hash64(
+        expected_g06_terminal_qualification_identity,
+        "expected terminal G06 qualification identity",
+    )
+    _need(
+        value.get("g06_terminal_qualification_identity_sha256")
+        == expected_qualification,
+        "preflight terminal G06 qualification identity drift",
+    )
+    input_rows_sha256 = _hash64(
+        value.get("input_rows_sha256"),
+        "preflight input rows root",
+    )
     _need(
         _int(value.get("g05_partial_record_count"), "g05_partial_record_count") == 0,
         "G05 partial materialization has no byte-span authority",
@@ -246,8 +299,134 @@ def _validate_preflight(
     if _int(value.get("g06_redaction_record_count"), "g06_redaction_record_count") > 0:
         expected_blockers.add("G06_REDACTION_MATERIALIZATION_REQUIRED")
     _need(bool(expected_blockers), "no post-G05/G06 materialization work remains")
-    _need(set(blockers) == expected_blockers, "preflight contains an unconsumed upstream blocker")
+    _need(
+        set(blockers) == expected_blockers,
+        "preflight contains an unconsumed upstream blocker",
+    )
     _zero_credit(value.get("truth_boundary"), "preflight truth")
+    return input_rows_sha256
+
+
+def _terminal_g06_qualification(
+    document: Mapping[str, Any] | None,
+    *,
+    expected_identity: str | None,
+    expected_g06_envelope_identity: str,
+    expected_g06_execution_identity: str,
+    expected_input_rows_sha256: str,
+    expected_record_count: int,
+    expected_utf8_bytes: int,
+) -> str:
+    """Verify PR1041's distinct externally expected terminal G06 qualification."""
+    _need(
+        document is not None and expected_identity is not None,
+        "terminal G06 qualification document and expected identity must be provided together",
+    )
+    qualification = _obj(document, "terminal G06 qualification")
+    _need(
+        set(qualification) == G06_TERMINAL_QUALIFICATION_KEYS,
+        "terminal G06 qualification schema is not closed",
+    )
+    _need(
+        qualification.get("schema") == G06_TERMINAL_QUALIFICATION_SCHEMA,
+        "terminal G06 qualification schema drift",
+    )
+    _need(
+        qualification.get("status") == G06_TERMINAL_QUALIFICATION_STATUS,
+        "terminal G06 qualification is not PASS",
+    )
+    identity = _identity(
+        qualification,
+        "qualification_identity_sha256",
+        expected_identity,
+    )
+    _need(
+        qualification.get("g06_envelope_identity_sha256")
+        == _hash64(expected_g06_envelope_identity, "expected G06 envelope identity"),
+        "terminal G06 qualification envelope lineage drift",
+    )
+    _need(
+        qualification.get("g06_execution_identity_sha256")
+        == _hash64(expected_g06_execution_identity, "expected G06 execution identity"),
+        "terminal G06 qualification execution lineage drift",
+    )
+    _need(
+        qualification.get("input_rows_sha256")
+        == _hash64(expected_input_rows_sha256, "expected input rows root"),
+        "terminal G06 qualification input lineage drift",
+    )
+    _need(
+        qualification.get("repeated_execution_evidence_sha256")
+        == qualification.get("g06_envelope_identity_sha256"),
+        "terminal G06 qualification replay evidence drift",
+    )
+    _hash40(qualification.get("target_head_git_sha"), "terminal G06 target head")
+    _hash40(
+        qualification.get("real_replay_head_git_sha"),
+        "terminal G06 real replay head",
+    )
+    for field in (
+        "target_pr_number",
+        "real_replay_run_id",
+        "real_replay_job_id",
+        "final_head_ci_run_id",
+        "final_head_ci_job_id",
+        "artifact_id",
+        "independent_audit_issue_number",
+    ):
+        _int(
+            qualification.get(field),
+            f"terminal G06 qualification.{field}",
+            minimum=1,
+        )
+    _hash64(
+        qualification.get("artifact_zip_sha256"),
+        "terminal G06 qualification artifact ZIP",
+    )
+    _need(
+        _int(
+            qualification.get("replay_record_count"),
+            "terminal G06 qualification.replay_record_count",
+            minimum=1,
+        )
+        == _int(expected_record_count, "expected terminal G06 record count", minimum=1),
+        "terminal G06 qualification record-count drift",
+    )
+    _need(
+        _int(
+            qualification.get("replay_utf8_bytes"),
+            "terminal G06 qualification.replay_utf8_bytes",
+            minimum=1,
+        )
+        == _int(expected_utf8_bytes, "expected terminal G06 UTF-8 bytes", minimum=1),
+        "terminal G06 qualification byte-count drift",
+    )
+    _need(
+        _int(
+            qualification.get("replay_count"),
+            "terminal G06 qualification.replay_count",
+            minimum=1,
+        )
+        >= 2,
+        "terminal G06 qualification requires two independent replays",
+    )
+    _need(
+        qualification.get("independent_audit_status") == "PASS_FOR_INTEGRATION_RELEASED",
+        "terminal G06 qualification independent audit is not released PASS",
+    )
+    _need(
+        qualification.get("local_free_only") is True,
+        "terminal G06 qualification is not LOCAL_FREE",
+    )
+    _need(
+        qualification.get("head_change_invalidates") is True,
+        "terminal G06 qualification does not fail closed on head change",
+    )
+    _need(
+        qualification.get("truth_boundary") == G06_TERMINAL_TRUTH,
+        "terminal G06 qualification truth boundary drift",
+    )
+    return identity
 
 
 def _validate_privacy_binding(value: Any) -> dict[str, str]:
@@ -303,9 +482,19 @@ def _rows_from_authorities(
         "G05 rows root drift",
     )
 
-    _need(g06_envelope.get("schema_version") == G06_ENVELOPE_SCHEMA, "G06 envelope schema drift")
-    _need(g06_envelope.get("execution_profile") == "LOCAL_FREE", "G06 execution profile drift")
-    _identity(g06_envelope, "evidence_identity_sha256", expected_g06_envelope_identity)
+    _need(
+        g06_envelope.get("schema_version") == G06_ENVELOPE_SCHEMA,
+        "G06 envelope schema drift",
+    )
+    _need(
+        g06_envelope.get("execution_profile") == "LOCAL_FREE",
+        "G06 execution profile drift",
+    )
+    _identity(
+        g06_envelope,
+        "evidence_identity_sha256",
+        expected_g06_envelope_identity,
+    )
     _zero_credit(g06_envelope.get("truth_boundary"), "G06 envelope truth")
     g06 = _obj(g06_envelope.get("privacy_execution_authority"), "G06 authority")
     _need(g06.get("schema_version") == G06_SCHEMA, "G06 schema drift")
@@ -325,7 +514,10 @@ def _rows_from_authorities(
         for number, raw in enumerate(rows):
             row = _obj(raw, f"{label}[{number}]")
             record_id = row.get("record_id")
-            _need(isinstance(record_id, str) and bool(record_id), f"{label} record_id missing")
+            _need(
+                isinstance(record_id, str) and bool(record_id),
+                f"{label} record_id missing",
+            )
             _need(record_id not in result, f"duplicate {label} record_id: {record_id}")
             result[record_id] = row
         _need(list(result) == sorted(result), f"{label} rows are not sorted")
@@ -349,7 +541,10 @@ def _materializer_implementation_blob(expected_git_blob_sha1: str) -> str:
             "cannot resolve running materializer implementation"
         ) from exc
     actual_blob = _git_blob_sha1(source)
-    _need(actual_blob == expected_blob, "materializer implementation Git blob drift")
+    _need(
+        actual_blob == expected_blob,
+        "materializer implementation Git blob drift",
+    )
     return actual_blob
 
 
@@ -378,7 +573,10 @@ def _privacy_runtime(
     detect = module.__dict__.get("detect")
     scan = module.__dict__.get("hash_safe_scan")
     manifest = module.__dict__.get("policy_manifest")
-    _need(callable(detect) and callable(scan) and callable(manifest), "privacy source API drift")
+    _need(
+        callable(detect) and callable(scan) and callable(manifest),
+        "privacy source API drift",
+    )
     policy = manifest()
     _need(isinstance(policy, Mapping), "privacy policy manifest missing")
     _need(
@@ -395,7 +593,10 @@ def _redact_text(text: str, findings: Sequence[Any]) -> str:
         action = getattr(finding, "action", None)
         start = getattr(finding, "start", None)
         end = getattr(finding, "end", None)
-        _need(action == "REDACT", f"REDACT row has non-REDACT finding[{index}]")
+        _need(
+            action == "REDACT",
+            f"REDACT row has non-REDACT finding[{index}]",
+        )
         _need(
             type(start) is int and type(end) is int,
             f"finding[{index}] span must be exact integers",
@@ -435,6 +636,8 @@ def materialize_post_g05_g06(
     g06_execution_envelope: Mapping[str, Any],
     expected_g06_envelope_identity_sha256: str,
     expected_g06_execution_identity_sha256: str,
+    g06_terminal_qualification: Mapping[str, Any] | None,
+    expected_g06_terminal_qualification_identity_sha256: str | None,
     privacy_source_path: Path,
     execution_head_sha: str,
     expected_materializer_implementation_git_blob_sha1: str,
@@ -444,19 +647,53 @@ def materialize_post_g05_g06(
     materializer_blob = _materializer_implementation_blob(
         expected_materializer_implementation_git_blob_sha1
     )
-    expected_g05 = _hash64(expected_g05_execution_identity_sha256, "expected G05 identity")
+    expected_g05 = _hash64(
+        expected_g05_execution_identity_sha256,
+        "expected G05 identity",
+    )
     expected_g06_envelope = _hash64(
         expected_g06_envelope_identity_sha256,
         "expected G06 envelope identity",
     )
-    expected_g06 = _hash64(expected_g06_execution_identity_sha256, "expected G06 identity")
-    _validate_preflight(
+    expected_g06 = _hash64(
+        expected_g06_execution_identity_sha256,
+        "expected G06 identity",
+    )
+    expected_qualification = _hash64(
+        expected_g06_terminal_qualification_identity_sha256,
+        "expected terminal G06 qualification identity",
+    )
+    input_rows_sha256 = _validate_preflight(
         composition_preflight,
         expected_identity=expected_composition_preflight_identity_sha256,
         expected_g05_identity=expected_g05,
         expected_g06_envelope_identity=expected_g06_envelope,
         expected_g06_identity=expected_g06,
+        expected_g06_terminal_qualification_identity=expected_qualification,
     )
+    qualification_identity = _terminal_g06_qualification(
+        g06_terminal_qualification,
+        expected_identity=expected_qualification,
+        expected_g06_envelope_identity=expected_g06_envelope,
+        expected_g06_execution_identity=expected_g06,
+        expected_input_rows_sha256=input_rows_sha256,
+        expected_record_count=_int(
+            composition_preflight.get("input_record_count"),
+            "preflight input record count",
+            minimum=1,
+        ),
+        expected_utf8_bytes=_int(
+            composition_preflight.get("input_utf8_bytes"),
+            "preflight input UTF-8 bytes",
+            minimum=1,
+        ),
+    )
+    _need(
+        qualification_identity
+        == composition_preflight.get("g06_terminal_qualification_identity_sha256"),
+        "terminal G06 qualification/preflight lineage drift",
+    )
+
     by_id, input_inventory = _validate_input_records(records)
     g05_rows, g06_rows, privacy_binding = _rows_from_authorities(
         g05_authority,
@@ -467,11 +704,13 @@ def materialize_post_g05_g06(
     )
     _need(set(by_id) == set(g05_rows), "payload/G05 record-set drift")
     _need(
-        input_inventory["record_count"] == composition_preflight.get("input_record_count"),
+        input_inventory["record_count"]
+        == composition_preflight.get("input_record_count"),
         "preflight record count drift",
     )
     _need(
-        input_inventory["total_payload_bytes"] == composition_preflight.get("input_utf8_bytes"),
+        input_inventory["total_payload_bytes"]
+        == composition_preflight.get("input_utf8_bytes"),
         "preflight payload byte drift",
     )
     input_raw = canonical_record_bytes(records)
@@ -514,7 +753,11 @@ def materialize_post_g05_g06(
                 f"{label} payload hash drift: {record_id}",
             )
             _need(
-                _int(row.get("utf8_bytes"), f"{label} bytes {record_id}", minimum=1)
+                _int(
+                    row.get("utf8_bytes"),
+                    f"{label} bytes {record_id}",
+                    minimum=1,
+                )
                 == payload_bytes,
                 f"{label} payload byte drift: {record_id}",
             )
@@ -562,7 +805,10 @@ def materialize_post_g05_g06(
         unchanged_ids.append(record_id)
         unchanged_bytes += payload_bytes
 
-    _need(len(output) == len(records) - len(drop_ids), "record-count conservation failure")
+    _need(
+        len(output) == len(records) - len(drop_ids),
+        "record-count conservation failure",
+    )
     _need(
         len(drop_ids) + len(redact_ids) + len(unchanged_ids) == len(records),
         "decision partition failure",
@@ -573,8 +819,14 @@ def materialize_post_g05_g06(
     expected_redact = composition_preflight.get("g06_redaction_record_count")
     expected_unchanged = composition_preflight.get("unchanged_allow_record_count")
     _need(len(drop_ids) == expected_drop, "drop count disagrees with preflight")
-    _need(len(redact_ids) == expected_redact, "redaction count disagrees with preflight")
-    _need(len(unchanged_ids) == expected_unchanged, "unchanged count disagrees with preflight")
+    _need(
+        len(redact_ids) == expected_redact,
+        "redaction count disagrees with preflight",
+    )
+    _need(
+        len(unchanged_ids) == expected_unchanged,
+        "unchanged count disagrees with preflight",
+    )
     _need(
         sorted(_record_hash(value) for value in drop_ids)
         == composition_preflight.get("drop_record_id_sha256"),
@@ -591,7 +843,8 @@ def materialize_post_g05_g06(
         "unchanged set disagrees with preflight",
     )
     _need(
-        unchanged_bytes == composition_preflight.get("unchanged_allow_input_utf8_bytes"),
+        unchanged_bytes
+        == composition_preflight.get("unchanged_allow_input_utf8_bytes"),
         "unchanged byte total drift",
     )
 
@@ -622,6 +875,8 @@ def materialize_post_g05_g06(
             "g05_execution_identity_sha256": expected_g05,
             "g06_envelope_identity_sha256": expected_g06_envelope,
             "g06_execution_identity_sha256": expected_g06,
+            "g06_terminal_qualification_identity_sha256": qualification_identity,
+            "input_rows_sha256": input_rows_sha256,
             "privacy_binding": dict(privacy_binding),
             "privacy_implementation_git_blob_sha1": privacy_blob,
             "record_payload_jsonl_sha256": _sha256(input_raw),
@@ -644,7 +899,9 @@ def materialize_post_g05_g06(
             "unchanged_record_count": len(unchanged_ids),
             "unchanged_input_payload_bytes": unchanged_bytes,
             "drop_record_id_sha256": sorted(_record_hash(value) for value in drop_ids),
-            "redact_record_id_sha256": sorted(_record_hash(value) for value in redact_ids),
+            "redact_record_id_sha256": sorted(
+                _record_hash(value) for value in redact_ids
+            ),
             "unchanged_record_id_sha256": sorted(
                 _record_hash(value) for value in unchanged_ids
             ),
@@ -665,5 +922,8 @@ def materialize_post_g05_g06(
         "remaining_materialization_blockers": [],
         "truth_boundary": truth,
     }
-    evidence = {**core, "materialization_identity_sha256": _sha256(_cjson(core))}
+    evidence = {
+        **core,
+        "materialization_identity_sha256": _sha256(_cjson(core)),
+    }
     return output, output_inventory, evidence
