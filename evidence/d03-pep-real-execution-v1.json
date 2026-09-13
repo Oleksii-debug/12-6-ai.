@@ -1,0 +1,132 @@
+{
+  "schema_version": "12-6.d03-pep-real-execution.v1",
+  "execution_profile": "LOCAL_FREE",
+  "claim_issue": 1229,
+  "product_pr": 878,
+  "qualified_product_head_sha": "930471ef19c1afff70dee6ed46c4813ded035c9e",
+  "product_git_blobs": {
+    "configs/data/d03_pep_public_domain_intake_v1.json": "0fe71942aa1f61c870a290f23a4d9b2bbb405d70",
+    "src/twelve_six/data/pep_intake.py": "d51e997059ed6a93667107062f4952e748a4dfa6",
+    "tests/test_d03_pep_intake.py": "f750ad0f59c0d77a48adb9433f3b1caeb665918e",
+    "tools/materialize_d03_peps.py": "310f5431dcad851c522d565d079513072ec9a1dc"
+  },
+  "source": {
+    "repository": "python/peps",
+    "revision": "24419b92ae550bf2878716f57c257cba00d3c1a1",
+    "tree_git_sha1": "fa6b95d941e6fbefc473fbcc50ca93458cdf0857",
+    "source_family": "technical_code_documentation",
+    "source_key": "python_enhancement_proposals",
+    "rights_mode": "public_domain_subset_only",
+    "known_opl_sentinels_verified_excluded": true
+  },
+  "successful_execution": {
+    "workflow_run_id": 34570806209,
+    "job_id": 103172292323,
+    "execution_head_sha": "8d031370797c7719d99ed17dd61e01164734077a",
+    "conclusion": "success",
+    "python": "3.11.16",
+    "platform": "Linux-6.17.0-1022-azure-x86_64-with-glibc2.39",
+    "focused_tests_passed": 13,
+    "acquisition_attempts_a": 1,
+    "acquisition_attempts_b": 1
+  },
+  "independent_execution_a": {
+    "examined_documents": 192,
+    "accepted_documents": 86,
+    "accepted_normalized_utf8_bytes": 4987775,
+    "candidate_file_bytes": 5152269,
+    "candidate_file_sha256": "65d1cf23354efc5a66d7132b67602a7af1715e18a0fb77e729595866c25d33c3",
+    "report_file_bytes": 1270,
+    "report_file_sha256": "bc217b3b795bfe5001b8ef266270eee10089c88bc148e8a8f0fa540c2451edcb",
+    "candidate_inventory_identity_sha256": "70c29175bf0ca278a19c4b6cef89a532b21a375a908b7103183cebe2841421cf",
+    "contract_identity_sha256": "c0cd68d0b5cfd90e75993c2c9232608d22a616c7213597bb48abca5608d5578b",
+    "rights_evidence_identity_sha256": "8a97407a08244f5b0cf2ee1dd2149ecee61cc549cb63c984fa13a84c5ac3bdd2"
+  },
+  "independent_execution_b": {
+    "examined_documents": 192,
+    "accepted_documents": 86,
+    "accepted_normalized_utf8_bytes": 4987775,
+    "candidate_file_bytes": 5152269,
+    "candidate_file_sha256": "65d1cf23354efc5a66d7132b67602a7af1715e18a0fb77e729595866c25d33c3",
+    "report_file_bytes": 1270,
+    "report_file_sha256": "bc217b3b795bfe5001b8ef266270eee10089c88bc148e8a8f0fa540c2451edcb",
+    "candidate_inventory_identity_sha256": "70c29175bf0ca278a19c4b6cef89a532b21a375a908b7103183cebe2841421cf",
+    "contract_identity_sha256": "c0cd68d0b5cfd90e75993c2c9232608d22a616c7213597bb48abca5608d5578b",
+    "rights_evidence_identity_sha256": "8a97407a08244f5b0cf2ee1dd2149ecee61cc549cb63c984fa13a84c5ac3bdd2"
+  },
+  "determinism": {
+    "candidate_identity_equal": true,
+    "report_identity_equal": true,
+    "candidate_bytes_equal": true,
+    "report_bytes_equal": true,
+    "accepted_counts_equal": true,
+    "accepted_normalized_bytes_equal": true
+  },
+  "durable_text_free_artifact": {
+    "artifact_id": 10187727366,
+    "name": "d03-pep-real-execution-evidence",
+    "size_in_bytes": 1565,
+    "digest": "sha256:6839f54d70402066ce43271985511f4cc93daff8e0e982ed44258bfc043718bf",
+    "member_name": "pep-real-execution-evidence.json",
+    "member_size_in_bytes": 2915,
+    "member_sha256": "9cc9b9455048fc6d61a5ade8e0f778ef1d2c2d98428c4574b3ffb74d6ea3a22f",
+    "created_at": "2026-09-11T06:40:34Z",
+    "expires_at": "2026-09-25T06:40:34Z"
+  },
+  "execution_history": [
+    {
+      "run_id": 34570469868,
+      "result": "TRANSIENT_TRANSPORT_FAILURE",
+      "detail": "raw.githubusercontent.com TLS connection reset during first acquisition; focused tests passed before failure"
+    },
+    {
+      "run_id": 34570615356,
+      "result": "REAL_A_B_MATERIALIZATION_AND_BYTE_COMPARISON_SUCCEEDED_EVIDENCE_HARNESS_FAILED",
+      "detail": "both materializations and both byte comparisons succeeded; temporary evidence harness asserted report keys not present in the qualified Product schema"
+    },
+    {
+      "run_id": 34570806209,
+      "result": "SUCCESS",
+      "detail": "exact qualified Product bytes, focused tests, independent A/B real materialization, byte equality, zero-credit truth assertions, and text-free artifact all succeeded"
+    }
+  ],
+  "content_boundary": {
+    "durable_candidate_text_retained_in_git": false,
+    "candidate_payload_uploaded_as_artifact": false,
+    "durable_evidence_text_free": true
+  },
+  "claim_boundary": {
+    "real_data_executed": true,
+    "candidate_status": "CANDIDATE_MATERIALIZED_ZERO_CREDIT",
+    "corpus_admitted": false,
+    "global_dedup": "NOT_RUN",
+    "reserved_evaluation_decontamination": "NOT_RUN",
+    "privacy_filter": "NOT_RUN",
+    "quality_filter": "NOT_RUN",
+    "family_balance": "NOT_RUN",
+    "cluster_safe_split": "NOT_RUN",
+    "deterministic_packing": "NOT_RUN",
+    "canonical_capacity_credited": 0,
+    "training_authorized_bytes": 0,
+    "authorized_unique_loss_positions": 0,
+    "authorized_optimized_target_exposure": 0,
+    "tokenizer_fit_authorized": false,
+    "optimizer_updates": 0,
+    "model_training_executed": false,
+    "learned_weights_created": false,
+    "final_test_payload_accessed": false,
+    "paid_compute_used": false,
+    "foreign_pretrained_weights_used": false,
+    "external_llm_or_api_used_for_data_or_intelligence": false
+  },
+  "next_required_before_any_training_credit": [
+    "current_global_exact_near_lineage_dedup",
+    "reserved_evaluation_decontamination",
+    "canonical_quality_privacy",
+    "family_balance_caps",
+    "cluster_safe_split",
+    "deterministic_packing",
+    "two_clean_build_reproducibility",
+    "positive_unique_loss_accounting"
+  ]
+}
