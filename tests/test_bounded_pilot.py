@@ -499,7 +499,7 @@ def test_wrong_external_launch_root_fails_before_step_1() -> None:
     assert binding.packet_sha256 is not None
     with pytest.raises(
         BoundedPilotAuthorizationError,
-        match="D10 launch-input authority identity mismatch",
+        match="D10 launch-input root differs from packet binding",
     ):
         BoundedPilotStepRunner(
             SingleDeviceStepRunner(trainer),
