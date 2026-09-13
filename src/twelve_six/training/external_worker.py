@@ -25,6 +25,7 @@ from twelve_six.checkpoint import (
     CheckpointIdentity,
     load_trainer_checkpoint,
     save_trainer_checkpoint,
+    verify_checkpoint,
 )
 from twelve_six.training.config import TrainerConfig
 from twelve_six.training.trainer import Trainer
@@ -644,7 +645,142 @@ def _validate_response(response: dict[str, object], *, request: dict[str, object
         raise ExternalTrainingWorkerError("incomplete response published candidate digest")
 
 
-def _load_replay(result_path: Path, request: dict[str, object]) -> dict[str, object]:
+def _verify_confirmed_replay_checkpoint(
+    *,
+    job_root: Path,
+    request: dict[str, object],
+    record: dict[str, object],
+    response: dict[str, object],
+) -> None:
+    state = response["resume_state"]
+    if type(state) is not dict:
+        raise ExternalTrainingWorkerError("confirmed replay resume state is invalid")
+    _require_exact_keys(
+        state,
+        {
+            "checkpoint_id",
+            "checkpoint_weights_sha256",
+            "init_spec_sha256",
+            "job_fingerprint",
+            "last_step_id",
+            "mode",
+            "model_spec_sha256",
+            "model_state_sha256",
+            "optimizer_step",
+            "schema",
+            "tokens_seen",
+            "trainer_sha256",
+        },
+        label="confirmed replay resume_state",
+    )
+    if state["schema"] != STATE_SCHEMA or state["mode"] != MODE:
+        raise ExternalTrainingWorkerError("confirmed replay resume state schema is invalid")
+    if state["job_fingerprint"] != request["job_fingerprint"]:
+        raise ExternalTrainingWorkerError("confirmed replay belongs to a different job")
+    if state["trainer_sha256"] != request["trainer_sha256"]:
+        raise ExternalTrainingWorkerError("confirmed replay belongs to a different trainer")
+    if state["last_step_id"] != request["step_id"]:
+        raise ExternalTrainingWorkerError("confirmed replay step binding is invalid")
+    if state["model_spec_sha256"] != MODEL_SPEC_SHA256:
+        raise ExternalTrainingWorkerError("confirmed replay model authority is invalid")
+    if state["init_spec_sha256"] != INIT_SPEC_SHA256:
+        raise ExternalTrainingWorkerError("confirmed replay init authority is invalid")
+
+    optimizer_step = state["optimizer_step"]
+    request_step_index = request["step_index"]
+    if (
+        type(optimizer_step) is not int
+        or type(request_step_index) is not int
+        or optimizer_step != request_step_index + 1
+    ):
+        raise ExternalTrainingWorkerError("confirmed replay optimizer progress is invalid")
+    tokens_seen = state["tokens_seen"]
+    if type(tokens_seen) is not int or tokens_seen < 0:
+        raise ExternalTrainingWorkerError("confirmed replay token progress is invalid")
+
+    checkpoint_id = _require_sha256(
+        state["checkpoint_id"], name="confirmed replay checkpoint_id"
+    )
+    weights_sha256 = _require_sha256(
+        state["checkpoint_weights_sha256"],
+        name="confirmed replay checkpoint_weights_sha256",
+    )
+    _require_sha256(state["model_state_sha256"], name="confirmed replay model_state_sha256")
+    if checkpoint_id != record["checkpoint_id"]:
+        raise ExternalTrainingWorkerError("confirmed replay checkpoint identity mismatch")
+    if weights_sha256 != record["checkpoint_weights_sha256"]:
+        raise ExternalTrainingWorkerError("confirmed replay weights identity mismatch")
+
+    job = request["job"]
+    if type(job) is not dict:
+        raise ExternalTrainingWorkerError("confirmed replay job identity is invalid")
+    max_steps = job["max_steps"]
+    if type(max_steps) is not int:
+        raise ExternalTrainingWorkerError("confirmed replay max_steps is invalid")
+    completed = optimizer_step >= max_steps
+    if response["completed"] is not completed:
+        raise ExternalTrainingWorkerError("confirmed replay completion state is invalid")
+    if completed and response["candidate_sha256"] != weights_sha256:
+        raise ExternalTrainingWorkerError("confirmed replay candidate identity mismatch")
+
+    checkpoint_path = _checkpoint_path(job_root, optimizer_step)
+    if checkpoint_path.is_symlink() or not checkpoint_path.is_dir():
+        raise ExternalTrainingWorkerError("confirmed replay checkpoint is unavailable")
+    try:
+        manifest = verify_checkpoint(checkpoint_path)
+    except Exception as exc:
+        raise ExternalTrainingWorkerError(
+            "confirmed replay checkpoint failed physical verification"
+        ) from exc
+    if manifest.get("checkpoint_id") != checkpoint_id:
+        raise ExternalTrainingWorkerError("confirmed replay checkpoint identity mismatch")
+    files = manifest.get("files")
+    if type(files) is not dict:
+        raise ExternalTrainingWorkerError("confirmed replay checkpoint file evidence is missing")
+    weights = files.get("weights.safetensors")
+    if type(weights) is not dict or weights.get("sha256") != weights_sha256:
+        raise ExternalTrainingWorkerError("confirmed replay physical weights identity mismatch")
+
+    identity = manifest.get("identity")
+    if type(identity) is not dict:
+        raise ExternalTrainingWorkerError("confirmed replay checkpoint lineage is missing")
+    job_fingerprint = request["job_fingerprint"]
+    trainer_sha256 = request["trainer_sha256"]
+    assert type(job_fingerprint) is str
+    assert type(trainer_sha256) is str
+    if identity.get("git_sha") != MODEL_CARRIER_GIT_SHA:
+        raise ExternalTrainingWorkerError("confirmed replay checkpoint git authority mismatch")
+    if identity.get("parameter_count") != EXPECTED_PARAMETERS:
+        raise ExternalTrainingWorkerError("confirmed replay checkpoint model size mismatch")
+    if identity.get("dataset_manifest_hash") != _mechanics_dataset_hash(job_fingerprint):
+        raise ExternalTrainingWorkerError("confirmed replay checkpoint dataset authority mismatch")
+    if identity.get("run_manifest_hash") != _run_manifest_hash(
+        job_fingerprint, trainer_sha256, max_steps
+    ):
+        raise ExternalTrainingWorkerError("confirmed replay checkpoint run authority mismatch")
+    if identity.get("seed") != MODEL_SEED or identity.get("step") != optimizer_step:
+        raise ExternalTrainingWorkerError("confirmed replay checkpoint progress authority mismatch")
+    if identity.get("tokens_seen") != tokens_seen:
+        raise ExternalTrainingWorkerError("confirmed replay checkpoint token authority mismatch")
+    training_config = identity.get("training_config")
+    if type(training_config) is not dict:
+        raise ExternalTrainingWorkerError("confirmed replay training authority is missing")
+    if (
+        training_config.get("mode") != MODE
+        or training_config.get("model_spec_sha256") != MODEL_SPEC_SHA256
+        or training_config.get("init_spec_sha256") != INIT_SPEC_SHA256
+        or training_config.get("nika_job_fingerprint") != job_fingerprint
+        or training_config.get("trainer_authority_sha256") != trainer_sha256
+    ):
+        raise ExternalTrainingWorkerError("confirmed replay training authority mismatch")
+
+
+def _load_replay(
+    result_path: Path,
+    request: dict[str, object],
+    *,
+    job_root: Path,
+) -> dict[str, object]:
     record = _read_durable_json(result_path, label="confirmed step result")
     _require_exact_keys(
         record,
@@ -682,6 +818,12 @@ def _load_replay(result_path: Path, request: dict[str, object]) -> dict[str, obj
     if type(response) is not dict:
         raise ExternalTrainingWorkerError("confirmed response is invalid")
     _validate_response(response, request=request)
+    _verify_confirmed_replay_checkpoint(
+        job_root=job_root,
+        request=request,
+        record=record,
+        response=response,
+    )
     return response
 
 
@@ -800,7 +942,7 @@ def handle_request(raw: bytes) -> bytes:
     result_path = job_root / "results" / f"{step_id}.json"
 
     if result_path.exists():
-        response = _load_replay(result_path, request)
+        response = _load_replay(result_path, request, job_root=job_root)
         return _canonical_json_bytes(response, label="response") + b"\n"
     if dispatch_path.exists():
         raise ExternalTrainingWorkerError(
@@ -817,7 +959,7 @@ def handle_request(raw: bytes) -> bytes:
         _atomic_create_json(dispatch_path, dispatch_record)
     except FileExistsError:
         if result_path.exists():
-            response = _load_replay(result_path, request)
+            response = _load_replay(result_path, request, job_root=job_root)
             return _canonical_json_bytes(response, label="response") + b"\n"
         raise ExternalTrainingWorkerError(
             "concurrent or unresolved step dispatch; refusing optimizer effect"
