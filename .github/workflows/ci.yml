@@ -9,6 +9,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
+  actions: read
   contents: read
 
 jobs:
@@ -33,3 +34,155 @@ jobs:
         run: python -m twelve_six.ci_workflow_policy --base "$BASE_SHA" --head "$HEAD_SHA"
       - run: ruff check src tests
       - run: pytest -q
+
+      - name: PR945 real balance — prove execution-only carrier
+        if: github.event_name == 'pull_request' && github.head_ref == 'exec/1752-pr945-real-balance-20260913'
+        run: |
+          set -euo pipefail
+          test "$(git diff --name-only eddc498cc330b1e4b255eb4e5712f13391dd8169 HEAD)" = ".github/workflows/ci.yml"
+          test "$(git rev-parse eddc498cc330b1e4b255eb4e5712f13391dd8169:src/twelve_six/data/postmaterialization_balance_projection_v1.py)" = "$(git rev-parse HEAD:src/twelve_six/data/postmaterialization_balance_projection_v1.py)"
+          test "$(git rev-parse eddc498cc330b1e4b255eb4e5712f13391dd8169:tools/materialize_d03_postmaterialization_balance_v1.py)" = "$(git rev-parse HEAD:tools/materialize_d03_postmaterialization_balance_v1.py)"
+
+      - name: PR945 real balance — retrieve #1630 machine evidence
+        if: github.event_name == 'pull_request' && github.head_ref == 'exec/1752-pr945-real-balance-20260913'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/Oleksii-debug/12-6-ai./actions/artifacts/10325234135/zip" \
+            -o /tmp/postg.zip
+          test "$(sha256sum /tmp/postg.zip | cut -d' ' -f1)" = "b65df0b4b508e2fc46679043c50426756d1d6efef8e8aaaea47010c50ef38793"
+          rm -rf /tmp/postg /tmp/balance-out
+          mkdir -p /tmp/postg /tmp/balance-out
+          unzip -q /tmp/postg.zip -d /tmp/postg
+          test "$(sha256sum /tmp/postg/inventory.json | cut -d' ' -f1)" = "b666df99b07baaa619ec937932c788db943015a830dc5e46f8702fdbf63fc1f7"
+          test "$(sha256sum /tmp/postg/evidence.json | cut -d' ' -f1)" = "7f892b6c9837d07b347330cfcd0b88f017c4daaeb19183c62540f72f6aa534d7"
+          test "$(sha256sum /tmp/postg/repeat-proof.json | cut -d' ' -f1)" = "6536e4173a8a9593c6f1d340d3c8daec2cb156ffaecae5a265cbfebaf60fd6c5"
+
+      - name: PR945 real balance — execute family vector and canonical NEXT100-106
+        if: github.event_name == 'pull_request' && github.head_ref == 'exec/1752-pr945-real-balance-20260913'
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          import tools.next100_106_balance_gate as gate
+          from twelve_six.data.postmaterialization_balance_projection_v1 import (
+              adapt_postmaterialization_family_vector_to_next100_106,
+              build_balance_result_binding,
+              build_postmaterialization_family_vector,
+              require_balanced_selection_ready,
+          )
+
+          def load(path):
+              value = json.loads(Path(path).read_text(encoding="utf-8"))
+              assert isinstance(value, dict)
+              return value
+
+          def dump(path, value):
+              Path(path).write_text(
+                  json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n",
+                  encoding="utf-8",
+              )
+
+          inventory = load("/tmp/postg/inventory.json")
+          evidence = load("/tmp/postg/evidence.json")
+          vector = build_postmaterialization_family_vector(
+              inventory=inventory,
+              materialization_evidence=evidence,
+              expected_execution_head_sha="b5e22261e2e3c75ca0e9ee5bb813feba16d6f0fc",
+              expected_materialization_identity_sha256="27fd5c5dac5739ea3a983359308222870619bb807fc1a51b681b9143087cebff",
+              expected_result_jsonl_sha256="b1ec0433fbd9675645b7e29c1e32b406e638fa081868cad7a56afec8f9a601cc",
+              expected_record_count=255,
+              expected_total_payload_bytes=5430017,
+              expected_source_object_count=242,
+              expected_record_inventory_digest_sha256="7f936f5518db1087578ef25a964e50796ff4572c0c9b666b83df78673af3ff4a",
+              expected_payload_inventory_digest_sha256="4ff5424fe95d335459f0d58a818859f89106683768decd1ed291f16f7b0012b3",
+              source_git_sha="eddc498cc330b1e4b255eb4e5712f13391dd8169",
+          )
+          dedup = {
+              "worker_id": "NEXT100-065F-CURRENT-MAIN-GLOBAL-DEDUP-V8",
+              "head_sha": "bda544143e7625d9dc08344843bfa7c3e12f509b",
+              "evidence_identity_sha256": "942cc15af60ee36a79345beba77fec347e33ee919d8148fb319b19d9ee072e5a",
+              "terminal_verdict": "PASS",
+          }
+          adapted = adapt_postmaterialization_family_vector_to_next100_106(
+              vector,
+              expected_family_vector_identity_sha256=vector["family_vector_identity_sha256"],
+              dedup_authority=dedup,
+              expected_dedup_worker_id=dedup["worker_id"],
+              expected_dedup_head_sha=dedup["head_sha"],
+              expected_dedup_evidence_identity_sha256=dedup["evidence_identity_sha256"],
+          )
+          policy = gate.load_json(gate.POLICY_PATH)
+          assert policy["policy_identity_sha256"] == "9a9242f47981c25e754fc95e2650050da4e4195aa1ef3a78f2c293f9e25d7ff7"
+          gate.validate_vector(adapted)
+          balance = gate.evaluate(policy, adapted)
+          binding = build_balance_result_binding(
+              family_vector=vector,
+              expected_family_vector_identity_sha256=vector["family_vector_identity_sha256"],
+              next100_input=adapted,
+              balance_result=balance,
+              expected_policy_identity_sha256=policy["policy_identity_sha256"],
+              expected_result_identity_sha256=balance["result_identity_sha256"],
+          )
+          selection_ready = True
+          selection_error = None
+          try:
+              require_balanced_selection_ready(
+                  binding,
+                  expected_binding_identity_sha256=binding["binding_identity_sha256"],
+              )
+          except Exception as exc:
+              selection_ready = False
+              selection_error = str(exc)
+          receipt = {
+              "schema": "12-6.d03-real-postmaterialization-balance-execution.v1",
+              "execution_profile": "LOCAL_FREE",
+              "product_head_sha": "eddc498cc330b1e4b255eb4e5712f13391dd8169",
+              "materialization_artifact_id": 10325234135,
+              "family_vector_identity_sha256": vector["family_vector_identity_sha256"],
+              "next100_input_identity_sha256": binding["next100_input_identity_sha256"],
+              "balance_policy_identity_sha256": policy["policy_identity_sha256"],
+              "balance_result_identity_sha256": balance["result_identity_sha256"],
+              "balance_binding_identity_sha256": binding["binding_identity_sha256"],
+              "balance_status": balance["status"],
+              "maximum_feasible_total_source_bytes": balance["maximum_feasible_total_source_bytes"],
+              "maximum_feasible_stratum_bytes": balance["maximum_feasible_stratum_bytes"],
+              "raw_capacity_by_stratum": balance["raw_capacity_by_stratum"],
+              "raw_gap_to_target_by_stratum": balance["raw_gap_to_target_by_stratum"],
+              "deterministic_maximum_allocation": balance["deterministic_maximum_allocation"],
+              "balanced_selection_ready": selection_ready,
+              "selection_blocker": selection_error,
+              "authorized_optimized_target_exposure": 0,
+              "tokenizer_fit_authorized": False,
+              "training_executed": False,
+              "optimizer_updates": 0,
+          }
+          dump("/tmp/balance-out/family-vector.json", vector)
+          dump("/tmp/balance-out/next100-input.json", adapted)
+          dump("/tmp/balance-out/balance-result.json", balance)
+          dump("/tmp/balance-out/balance-binding.json", binding)
+          dump("/tmp/balance-out/execution-receipt.json", receipt)
+          print(json.dumps(receipt, sort_keys=True))
+          PY
+          ! grep -R -q 'normalized_payload' /tmp/balance-out
+          test "$(python - <<'PY'
+          import json
+          from pathlib import Path
+          x=json.loads(Path('/tmp/balance-out/execution-receipt.json').read_text())
+          print(x['balance_status'])
+          PY
+          )" = "PARTIAL_MIX_FEASIBLE_ACQUIRE_MORE_DATA"
+
+      - name: PR945 real balance — upload text-free evidence
+        if: github.event_name == 'pull_request' && github.head_ref == 'exec/1752-pr945-real-balance-20260913'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr945-real-balance-${{ github.event.pull_request.head.sha }}
+          path: /tmp/balance-out
+          if-no-files-found: error
+          retention-days: 90
