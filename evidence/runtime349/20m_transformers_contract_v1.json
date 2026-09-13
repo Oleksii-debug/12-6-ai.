@@ -1,0 +1,91 @@
+{
+  "schema": "12-6.runtime349.20m-transformers-contract.v1",
+  "worker_id": "RUNTIME-349-20M-TRANSFORMERS-CONTRACT",
+  "status": "BLOCKED_NO_PUBLISHED_PRIMARY_20M_MODELSPEC",
+  "execution_policy": "LOCAL_FREE",
+  "repository": {
+    "requested_name": "Oleksii-debug/12-6-ai",
+    "resolved_name": "Oleksii-debug/12-6-ai.",
+    "base_branch": "runtime225/transformers-learned-10m-v2-20260826",
+    "base_sha": "0eb3c017a778eab30fd44ec23b84785ea5866e9d"
+  },
+  "maintained_standard_llama_path": {
+    "hf_exporter": "src/twelve_six/checkpoint/hf_export.py",
+    "interop": "src/twelve_six/inference/transformers_llama.py",
+    "standard_llama_materializer": "src/twelve_six/inference/llama_runtime_export.py",
+    "runtime": "src/twelve_six/inference/transformers_llama_runtime.py",
+    "target_architecture": "LlamaForCausalLM",
+    "transformers_version": "5.15.1",
+    "second_exporter_added": false
+  },
+  "primary_20m": {
+    "modelspec_status": "MISSING",
+    "modelspec_identity_sha256": null,
+    "parameter_count": null,
+    "learned_checkpoint_required_for_mechanics": false,
+    "mechanics_weight_policy": "RANDOM_INIT_AFTER_EXACT_MODELSPEC_EXISTS"
+  },
+  "live_discovery": {
+    "cutoff_utc": "2026-08-26T14:50:03Z",
+    "research339_branch_found": false,
+    "research339_pr_found": false,
+    "model341_branch_found": false,
+    "model341_pr_found": false,
+    "latest_observed_pr_number": 421,
+    "latest_observed_pr_title": "RESEARCH-336: fail-close external token-budget scaling",
+    "latest_observed_pr_created_at": "2026-08-26T14:26:59Z"
+  },
+  "llama_exact_representability_gate": {
+    "schema_version": 1,
+    "activation": "swiglu",
+    "norm_kind": "rmsnorm",
+    "norm_placement": "pre",
+    "position_embedding": "rope",
+    "full_rope_required": "rope_rotary_dim == head_dim",
+    "hidden_head_geometry_required": "n_heads * head_dim == d_model",
+    "attention_bias": false,
+    "mlp_bias": false,
+    "lm_head_bias": false,
+    "final_norm": true,
+    "gqa_supported": "n_heads % n_kv_heads == 0",
+    "rope_basis_conversion": "PAIRWISE_INTERLEAVED_TO_LLAMA_HALF_SPLIT",
+    "unsupported_semantics": "FAIL_CLOSED"
+  },
+  "incumbent_mechanics_evidence": {
+    "test": "tests/test_transformers_llama_runtime.py::test_transformers_mapping_is_not_s0_shape_specific",
+    "test_spec": {
+      "vocab_size": 256,
+      "max_seq_len": 256,
+      "d_model": 128,
+      "n_layers": 3,
+      "n_heads": 4,
+      "n_kv_heads": 2,
+      "head_dim": 32,
+      "d_ff": 256,
+      "rope_rotary_dim": 32
+    },
+    "strict_state_dict_load": true,
+    "complete_logits_comparison": true,
+    "atol": 1e-05,
+    "rtol": 1e-05,
+    "greedy_argmax_exact": true
+  },
+  "required_primary_20m_parity": {
+    "status": "NOT_RUN",
+    "reason": "exact primary 20M ModelSpec is not published",
+    "complete_logits_required": true,
+    "strict_state_dict_load_required": true,
+    "rope_conversion_layerwise_required": true,
+    "context_boundary_required": true,
+    "over_context_rejection_required": true,
+    "random_init_allowed_if_no_learned_20m": true,
+    "foreign_pretrained_weights_allowed": false
+  },
+  "verdict": {
+    "exactly_representable": null,
+    "complete_logits_parity": null,
+    "decision": "BLOCKED_NO_PUBLISHED_PRIMARY_20M_MODELSPEC",
+    "unlock": "publish the exact primary 20M ModelSpec, then run the maintained standard-Llama conversion/runtime parity path with random-init weights if no learned 20M checkpoint exists"
+  },
+  "evidence_sha256": "a06cb83959c0f865f1bea86899c722a949c8c9c91c528667b67efae47f41bc26"
+}

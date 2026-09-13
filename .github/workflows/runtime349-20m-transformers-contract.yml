@@ -1,0 +1,29 @@
+name: RUNTIME-349 20M Transformers contract
+
+on:
+  pull_request:
+    paths:
+      - "evidence/runtime349/**"
+      - "docs/RUNTIME349_20M_TRANSFORMERS_CONTRACT.md"
+      - "tools/validate_runtime349_20m_transformers_contract.py"
+      - "tests/test_runtime349_20m_transformers_contract.py"
+      - ".github/workflows/runtime349-20m-transformers-contract.yml"
+  workflow_dispatch:
+
+jobs:
+  validate-contract:
+    runs-on: ubuntu-latest
+    env:
+      LOCAL_FREE: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Compile validator and test
+        run: |
+          python -m py_compile tools/validate_runtime349_20m_transformers_contract.py tests/test_runtime349_20m_transformers_contract.py
+      - name: Validate durable evidence
+        run: python tools/validate_runtime349_20m_transformers_contract.py
+      - name: Run focused contract test
+        run: python -m pytest -q tests/test_runtime349_20m_transformers_contract.py
