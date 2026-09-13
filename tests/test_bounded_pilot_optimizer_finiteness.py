@@ -6,6 +6,7 @@ import pytest
 
 from test_bounded_pilot import _authority, _batch, _next
 from test_bounded_pilot_durable_attempt import _gate, _trainer
+
 from twelve_six.training.bounded_pilot import BoundedPilotRecoveryRequiredError
 
 
