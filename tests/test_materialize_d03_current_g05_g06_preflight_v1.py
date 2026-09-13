@@ -24,6 +24,7 @@ RECORD_ROOT = "4" * 64
 PAYLOAD_ROOT = "5" * 64
 PRIVACY_POLICY = "6" * 64
 PRIVACY_IMPL = "7" * 40
+_UNSET = object()
 
 
 def _cjson(value):
@@ -166,17 +167,72 @@ def _reseal_g06(g06):
     g06["evidence_identity_sha256"] = _sha(_cjson(envelope_core))
 
 
-def _build(*, g05=None, g06=None, terminal=False):
+def _terminal_qualification(g06):
+    g06_identity = g06["privacy_execution_authority"]["execution_identity_sha256"]
+    doc = {
+        "schema": m._G06_TERMINAL_QUALIFICATION_SCHEMA,
+        "status": m._G06_TERMINAL_QUALIFICATION_STATUS,
+        "target_pr_number": 1,
+        "target_head_git_sha": "8" * 40,
+        "real_replay_head_git_sha": "9" * 40,
+        "real_replay_run_id": 1,
+        "real_replay_job_id": 2,
+        "final_head_ci_run_id": 3,
+        "final_head_ci_job_id": 4,
+        "g06_envelope_identity_sha256": g06["evidence_identity_sha256"],
+        "g06_execution_identity_sha256": g06_identity,
+        "input_rows_sha256": INPUT_ROOT,
+        "repeated_execution_evidence_sha256": g06["evidence_identity_sha256"],
+        "artifact_id": 5,
+        "artifact_zip_sha256": "a" * 64,
+        "replay_record_count": 2,
+        "replay_utf8_bytes": 24,
+        "replay_count": 2,
+        "independent_audit_issue_number": 6,
+        "independent_audit_status": "PASS_FOR_INTEGRATION_RELEASED",
+        "local_free_only": True,
+        "head_change_invalidates": True,
+        "truth_boundary": _truth(),
+    }
+    doc["qualification_identity_sha256"] = _sha(_cjson(doc))
+    return doc
+
+
+def _reseal_qualification(qualification):
+    core = dict(qualification)
+    core.pop("qualification_identity_sha256", None)
+    qualification["qualification_identity_sha256"] = _sha(_cjson(core))
+
+
+def _build(
+    *,
+    g05=None,
+    g06=None,
+    terminal=False,
+    terminal_qualification=_UNSET,
+    expected_terminal_qualification_identity=_UNSET,
+):
     g05 = _g05() if g05 is None else g05
     g06 = _g06() if g06 is None else g06
     g06_identity = g06["privacy_execution_authority"]["execution_identity_sha256"]
+    if terminal_qualification is _UNSET:
+        terminal_qualification = _terminal_qualification(g06) if terminal else None
+    if expected_terminal_qualification_identity is _UNSET:
+        expected_terminal_qualification_identity = (
+            terminal_qualification["qualification_identity_sha256"]
+            if terminal_qualification is not None
+            else None
+        )
     return m.build_native_current_execution_preflight(
         g05_authority=g05,
         g06_execution_envelope=g06,
         expected_g05_execution_identity_sha256=g05["execution_identity_sha256"],
         expected_g06_envelope_identity_sha256=g06["evidence_identity_sha256"],
         expected_g06_execution_identity_sha256=g06_identity,
-        terminal_g06_execution_identity_sha256=g06_identity if terminal else None,
+        g06_terminal_qualification=terminal_qualification,
+        expected_g06_terminal_qualification_identity_sha256=(
+            expected_terminal_qualification_identity
+        ),
         expected_input_rows_sha256=INPUT_ROOT,
         expected_survivor_evidence_identity_sha256=SURVIVOR_EVIDENCE,
         expected_survivor_jsonl_sha256=SURVIVOR_JSONL,
@@ -214,6 +270,15 @@ def test_terminal_clean_execution_is_only_ready_for_final_binding():
     assert result["truth_boundary"]["training_authorized_bytes"] == 0
 
 
+def test_clean_execution_without_terminal_qualification_stays_blocked():
+    result = _build(
+        g05=_g05(("RETAIN_ALL", "RETAIN_ALL")),
+        g06=_g06(("ALLOW", "ALLOW")),
+    )
+    assert result["status"] == "BLOCKED_CURRENT_G05_G06_COMPOSITION"
+    assert result["blockers"] == ["G06_EXACT_BYTE_EXECUTION_AUTHORITY_NOT_TERMINAL"]
+
+
 def test_redaction_requires_materialization_instead_of_false_allow():
     result = _build(
         g05=_g05(("RETAIN_ALL", "RETAIN_ALL")),
@@ -239,3 +304,120 @@ def test_cross_execution_payload_substitution_fails_closed():
     _reseal_g06(g06)
     with pytest.raises(m.NativeCompositionError, match="payload binding drift"):
         _build(g06=g06)
+
+
+def test_terminal_qualification_document_and_expected_identity_are_atomic():
+    g06 = _g06(("ALLOW", "ALLOW"))
+    qualification = _terminal_qualification(g06)
+    with pytest.raises(m.NativeCompositionError, match="provided together"):
+        _build(
+            g05=_g05(("RETAIN_ALL", "RETAIN_ALL")),
+            g06=g06,
+            terminal_qualification=qualification,
+            expected_terminal_qualification_identity=None,
+        )
+    with pytest.raises(m.NativeCompositionError, match="provided together"):
+        _build(
+            g05=_g05(("RETAIN_ALL", "RETAIN_ALL")),
+            g06=g06,
+            terminal_qualification=None,
+            expected_terminal_qualification_identity="a" * 64,
+        )
+
+
+def test_terminal_qualification_requires_independently_expected_identity():
+    g06 = _g06(("ALLOW", "ALLOW"))
+    qualification = _terminal_qualification(g06)
+    with pytest.raises(m.NativeCompositionError, match="not independently expected"):
+        _build(
+            g05=_g05(("RETAIN_ALL", "RETAIN_ALL")),
+            g06=g06,
+            terminal_qualification=qualification,
+            expected_terminal_qualification_identity="b" * 64,
+        )
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement", "match"),
+    (
+        ("g06_envelope_identity_sha256", "c" * 64, "envelope lineage drift"),
+        ("g06_execution_identity_sha256", "d" * 64, "execution lineage drift"),
+        ("input_rows_sha256", "e" * 64, "input lineage drift"),
+    ),
+)
+def test_coherently_resealed_terminal_qualification_lineage_substitution_fails_closed(
+    field, replacement, match
+):
+    g06 = _g06(("ALLOW", "ALLOW"))
+    qualification = _terminal_qualification(g06)
+    qualification[field] = replacement
+    _reseal_qualification(qualification)
+    with pytest.raises(m.NativeCompositionError, match=match):
+        _build(
+            g05=_g05(("RETAIN_ALL", "RETAIN_ALL")),
+            g06=g06,
+            terminal_qualification=qualification,
+            expected_terminal_qualification_identity=qualification[
+                "qualification_identity_sha256"
+            ],
+        )
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement", "match"),
+    (
+        (
+            "independent_audit_status",
+            "CHANGES_REQUIRED",
+            "independent audit is not released PASS",
+        ),
+        ("replay_count", 1, "requires two independent replays"),
+    ),
+)
+def test_coherently_resealed_terminal_qualification_status_drift_fails_closed(
+    field, replacement, match
+):
+    g06 = _g06(("ALLOW", "ALLOW"))
+    qualification = _terminal_qualification(g06)
+    qualification[field] = replacement
+    _reseal_qualification(qualification)
+    with pytest.raises(m.NativeCompositionError, match=match):
+        _build(
+            g05=_g05(("RETAIN_ALL", "RETAIN_ALL")),
+            g06=g06,
+            terminal_qualification=qualification,
+            expected_terminal_qualification_identity=qualification[
+                "qualification_identity_sha256"
+            ],
+        )
+
+
+def test_terminal_qualification_widened_truth_boundary_fails_closed():
+    g06 = _g06(("ALLOW", "ALLOW"))
+    qualification = _terminal_qualification(g06)
+    qualification["truth_boundary"]["authorized_optimized_target_exposure"] = 1
+    _reseal_qualification(qualification)
+    with pytest.raises(m.NativeCompositionError, match="truth boundary drift"):
+        _build(
+            g05=_g05(("RETAIN_ALL", "RETAIN_ALL")),
+            g06=g06,
+            terminal_qualification=qualification,
+            expected_terminal_qualification_identity=qualification[
+                "qualification_identity_sha256"
+            ],
+        )
+
+
+def test_terminal_qualification_unknown_field_fails_closed():
+    g06 = _g06(("ALLOW", "ALLOW"))
+    qualification = _terminal_qualification(g06)
+    qualification["unexpected"] = True
+    with pytest.raises(m.NativeCompositionError, match="schema is not closed"):
+        _build(
+            g05=_g05(("RETAIN_ALL", "RETAIN_ALL")),
+            g06=g06,
+            terminal_qualification=qualification,
+            expected_terminal_qualification_identity=qualification[
+                "qualification_identity_sha256"
+            ],
+        )

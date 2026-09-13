@@ -131,6 +131,30 @@ def test_complete_fresh_packet_is_ready_only_for_initial_launch() -> None:
     assert result.resume_blockers == ("checkpoint_mode_is_not_resume",)
 
 
+def test_scalar_type_aliases_fail_closed() -> None:
+    for invalid_schema in (True, 1.0, "1"):
+        data = _ready_fresh_packet()
+        data["schema_version"] = invalid_schema
+        result = assess_portable_run_packet(data)
+        assert not result.contract_valid
+        assert "schema_version_mismatch" in result.contract_errors
+
+    for invalid_parameter_count in (20_613_440.0, True, "20613440"):
+        data = _ready_fresh_packet()
+        data["identities"]["parameter_count"] = invalid_parameter_count
+        result = assess_portable_run_packet(data)
+        assert not result.contract_valid
+        assert "model341_parameter_count_mismatch" in result.contract_errors
+
+    for invalid_replay_cap in (True, 1.0, "1"):
+        data = _ready_fresh_packet()
+        data["recipe"]["max_exposures_per_unique_position"] = invalid_replay_cap
+        result = assess_portable_run_packet(data)
+        assert result.contract_valid
+        assert not result.ready_for_initial_local_free_launch
+        assert "max_exposures_per_unique_position_must_be_one" in result.launch_blockers
+
+
 def test_unique_exposure_cannot_be_inflated_by_replay() -> None:
     data = _ready_fresh_packet()
     data["recipe"]["max_exposures_per_unique_position"] = 2
