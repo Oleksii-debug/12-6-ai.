@@ -233,6 +233,7 @@ def _pack_document(
             {
                 "pack_id": f"{document.document_id}:{index:08d}",
                 "token_count": len(example.input_ids),
+                "token_ids": list(example.input_ids),
                 "loss_spans": [
                     {
                         "document_id": document.document_id,
