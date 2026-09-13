@@ -78,7 +78,9 @@ def _canonical_namespace(module: Any, label: str) -> dict[str, Any]:
         "__package__": getattr(module, "__package__", None),
     }
     try:
-        exec(compile(payload, str(path), "exec", dont_inherit=True), namespace)
+        exec(  # noqa: S102 - exact local authority source bytes are intentionally re-executed
+            compile(payload, str(path), "exec", dont_inherit=True), namespace
+        )
     except Exception as exc:
         raise IndexedExecutionError(f"cannot reconstruct attested {label} executable closure") from exc
     return namespace
@@ -168,7 +170,7 @@ def attest_incumbent_runtime(v3: Any) -> None:
     )
 
     v1_canonical = _attest_executable_module(v1, "V1")
-    if v1_canonical.get("DEFAULT_THRESHOLDS") is not getattr(data232, "DEFAULT_THRESHOLDS"):
+    if v1_canonical.get("DEFAULT_THRESHOLDS") is not data232.DEFAULT_THRESHOLDS:
         raise IndexedExecutionError("reconstructed V1 does not bind terminal DATA-232 thresholds")
     _attest_globals(
         v1,
