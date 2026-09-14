@@ -204,7 +204,9 @@ def _fixture(tmp_path: Path) -> tuple[list[str], dict[str, str]]:
 
 def test_main_publishes_atomic_hash_only_bundle(tmp_path: Path, monkeypatch):
     argv, secrets = _fixture(tmp_path)
-    monkeypatch.setattr(runner, "require_exact_checkout", lambda *_: IMPLEMENTATION_SHA)
+    monkeypatch.setattr(
+        runner, "require_exact_implementation", lambda *_: IMPLEMENTATION_SHA
+    )
 
     assert runner.main(argv) == 0
 
@@ -288,7 +290,9 @@ def test_payload_identity_failure_leaves_bundle_unpublished(
     tmp_path: Path, monkeypatch
 ):
     argv, _ = _fixture(tmp_path)
-    monkeypatch.setattr(runner, "require_exact_checkout", lambda *_: IMPLEMENTATION_SHA)
+    monkeypatch.setattr(
+        runner, "require_exact_implementation", lambda *_: IMPLEMENTATION_SHA
+    )
     training_path = tmp_path / "training.jsonl"
     tampered = _row(
         "train-1",
@@ -306,7 +310,9 @@ def test_payload_identity_failure_leaves_bundle_unpublished(
 def test_existing_bundle_is_rejected_before_payload_reads(tmp_path: Path, monkeypatch):
     argv, _ = _fixture(tmp_path)
     (tmp_path / "bundle").mkdir()
-    monkeypatch.setattr(runner, "require_exact_checkout", lambda *_: IMPLEMENTATION_SHA)
+    monkeypatch.setattr(
+        runner, "require_exact_implementation", lambda *_: IMPLEMENTATION_SHA
+    )
     (tmp_path / "training.jsonl").unlink()
 
     with pytest.raises(FileExistsError, match="output bundle already exists"):
@@ -315,7 +321,9 @@ def test_existing_bundle_is_rejected_before_payload_reads(tmp_path: Path, monkey
 
 def test_receipt_rejects_durable_report_tamper(tmp_path: Path, monkeypatch):
     argv, _ = _fixture(tmp_path)
-    monkeypatch.setattr(runner, "require_exact_checkout", lambda *_: IMPLEMENTATION_SHA)
+    monkeypatch.setattr(
+        runner, "require_exact_implementation", lambda *_: IMPLEMENTATION_SHA
+    )
     runner.main(argv)
     bundle = tmp_path / "bundle"
     report = json.loads((bundle / runner.REPORT_NAME).read_text(encoding="utf-8"))
@@ -324,6 +332,29 @@ def test_receipt_rejects_durable_report_tamper(tmp_path: Path, monkeypatch):
     report["status"] = "TAMPERED"
 
     with pytest.raises(ValueError, match="output-file hash mismatch"):
+        runner.verify_run_receipt(receipt, report, evidence)
+
+
+def test_receipt_rejects_self_resealed_unknown_top_level_field(
+    tmp_path: Path, monkeypatch
+) -> None:
+    argv, _ = _fixture(tmp_path)
+    monkeypatch.setattr(
+        runner, "require_exact_implementation", lambda *_: IMPLEMENTATION_SHA
+    )
+    runner.main(argv)
+    bundle = tmp_path / "bundle"
+    report = json.loads((bundle / runner.REPORT_NAME).read_text(encoding="utf-8"))
+    evidence = json.loads((bundle / runner.EVIDENCE_NAME).read_text(encoding="utf-8"))
+    receipt = json.loads((bundle / runner.RECEIPT_NAME).read_text(encoding="utf-8"))
+    receipt["unexpected_authority"] = "forged-but-self-hashed"
+    body = dict(receipt)
+    body.pop("receipt_identity_sha256")
+    receipt["receipt_identity_sha256"] = runner._sha256_bytes(
+        runner._canonical_bytes(body)
+    )
+
+    with pytest.raises(ValueError, match="top-level key set drift"):
         runner.verify_run_receipt(receipt, report, evidence)
 
 
