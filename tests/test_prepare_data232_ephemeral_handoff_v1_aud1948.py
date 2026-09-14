@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from copy import deepcopy
+import copy
 
 import pytest
 
@@ -37,7 +37,7 @@ def _receipt() -> dict[str, object]:
 
 
 def _reseal(receipt: dict[str, object]) -> None:
-    body = deepcopy(receipt)
+    body = copy.deepcopy(receipt)
     body.pop("receipt_identity_sha256", None)
     receipt["receipt_identity_sha256"] = runner._sha256_bytes(
         runner._canonical_bytes(body)
@@ -74,7 +74,7 @@ def test_self_resealed_nested_hash_key_drift_is_rejected(group: str, mode: str) 
     receipt = _receipt()
     hashes = receipt[group]
     assert isinstance(hashes, dict)
-    first_key = sorted(hashes)[0]
+    first_key = min(hashes)
     value = hashes[first_key]
     if mode == "missing":
         del hashes[first_key]
