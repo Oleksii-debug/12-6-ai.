@@ -26,8 +26,13 @@ from twelve_six.checkpoint.durability import (
     fsync_checkpoint_tree,
     fsync_parent_directory,
 )
+from twelve_six.checkpoint.pinned_directory import (
+    PinnedDirectoryError,
+    pinned_real_directory,
+)
 from twelve_six.checkpoint.recovery_lock import exclusive_recovery_lock
 from twelve_six.scale141_resume_sidecar import (
+    SIDECAR_ROOT,
     ResumeSidecarContext,
     ResumeSidecarError,
     cleanup_orphan_resume_sidecars,
@@ -42,6 +47,7 @@ _GENERATION = re.compile(r"^generation-(\d{8})$")
 _HEX64 = re.compile(r"^[0-9a-f]{64}$")
 CURRENT_NAME = "current.json"
 CHECKPOINTS_DIR = "checkpoints"
+GENERATIONS_DIR = "generations"
 MANIFEST_NAME = "manifest.json"
 MAX_POINTER_BYTES = 64 * 1024
 
@@ -69,12 +75,7 @@ def _generation_name(number: int) -> str:
     return f"generation-{number:08d}"
 
 
-def _generation_numbers(root: Path) -> list[int]:
-    generations = root / "generations"
-    if not generations.exists():
-        return []
-    if generations.is_symlink() or not generations.is_dir():
-        raise RecoveryLifecycleError("recovery generations root must be a real directory")
+def _generation_numbers_from_root(generations: Path) -> list[int]:
     values: list[int] = []
     for entry in generations.iterdir():
         match = _GENERATION.fullmatch(entry.name)
@@ -86,6 +87,19 @@ def _generation_numbers(root: Path) -> list[int]:
             )
         values.append(int(match.group(1)))
     return sorted(values)
+
+
+def _generation_numbers(root: Path) -> list[int]:
+    visible = root / GENERATIONS_DIR
+    if not visible.exists() and not visible.is_symlink():
+        return []
+    try:
+        with pinned_real_directory(visible) as pinned:
+            values = _generation_numbers_from_root(pinned.path)
+            pinned.verify_binding()
+            return values
+    except PinnedDirectoryError as exc:
+        raise RecoveryLifecycleError("recovery generations root binding changed") from exc
 
 
 def _require_sha256(value: Any, *, field: str) -> str:
@@ -115,7 +129,7 @@ def _pointer_payload(
     value: dict[str, Any] = {
         "schema": POINTER_SCHEMA,
         "generation": generation,
-        "directory": f"generations/{_generation_name(generation)}",
+        "directory": f"{GENERATIONS_DIR}/{_generation_name(generation)}",
         "object_key": _content_key(checkpoint_id),
         "checkpoint_id": checkpoint_id,
         "manifest_sha256": manifest_sha256,
@@ -146,7 +160,7 @@ def _validate_pointer(value: Mapping[str, Any]) -> dict[str, Any]:
     generation = pointer.get("generation")
     if not isinstance(generation, int) or isinstance(generation, bool) or generation <= 0:
         raise RecoveryLifecycleError("recovery pointer generation is invalid")
-    expected_directory = f"generations/{_generation_name(generation)}"
+    expected_directory = f"{GENERATIONS_DIR}/{_generation_name(generation)}"
     if pointer.get("directory") != expected_directory:
         raise RecoveryLifecycleError("recovery pointer directory/generation mismatch")
     checkpoint_id = _require_sha256(pointer.get("checkpoint_id"), field="checkpoint_id")
@@ -240,20 +254,6 @@ def _fsync_directory(path: Path) -> None:
         os.fsync(fd)
     finally:
         os.close(fd)
-
-
-def _ensure_real_directory(path: Path) -> None:
-    created = False
-    try:
-        observed = path.lstat()
-    except FileNotFoundError:
-        path.mkdir()
-        created = True
-        observed = path.lstat()
-    if stat.S_ISLNK(observed.st_mode) or not stat.S_ISDIR(observed.st_mode):
-        raise RecoveryLifecycleError(f"recovery directory must be a real directory: {path.name}")
-    if created:
-        _fsync_directory(path.parent)
 
 
 def _atomic_publish_pointer(
@@ -383,10 +383,6 @@ def recovery_reference(pointer: Mapping[str, Any]) -> dict[str, Any]:
     return reference
 
 
-def _content_path(root: Path, checkpoint_id: str) -> Path:
-    return root / _content_key(checkpoint_id)
-
-
 def _verify_pointer_checkpoint(
     path: Path,
     pointer: Mapping[str, Any],
@@ -421,39 +417,62 @@ def resolve_recovery_generation(
     recovery_root = Path(root)
     pointer = _read_pointer(recovery_root)
     _assert_expected_reference(pointer, expected_reference)
-
-    content_path = _content_path(recovery_root, str(pointer["checkpoint_id"]))
-    manifest = _verify_pointer_checkpoint(
-        content_path,
-        pointer,
-        expected_source_sha=expected_source_sha,
-        expected_run_manifest_hash=expected_run_manifest_hash,
-        expected_step=expected_step,
-        expected_tokens_seen=expected_tokens_seen,
+    visible_content_path = recovery_root / _content_key(str(pointer["checkpoint_id"]))
+    visible_generation_path = (
+        recovery_root / GENERATIONS_DIR / _generation_name(pointer["generation"])
     )
 
-    # Keep verifying the ordinal immutable snapshot too. It is local retention
-    # metadata, not the portable content address, but divergence is corruption.
-    generation_path = recovery_root / "generations" / _generation_name(pointer["generation"])
-    generation_manifest = _verify_pointer_checkpoint(generation_path, pointer)
-    if generation_manifest != manifest:
-        raise RecoveryLifecycleError("ordinal generation diverges from content-addressed checkpoint")
-
-    resume_state = None
-    if "resume_state" in pointer:
-        try:
-            resume_state = load_resume_sidecar(
-                recovery_root,
-                generation=pointer["generation"],
-                checkpoint_path=content_path,
-                manifest=manifest,
-                reference=pointer["resume_state"],
+    try:
+        with pinned_real_directory(
+            recovery_root / CHECKPOINTS_DIR
+        ) as objects, pinned_real_directory(
+            recovery_root / GENERATIONS_DIR
+        ) as generations:
+            content_path = objects.path / str(pointer["checkpoint_id"])
+            manifest = _verify_pointer_checkpoint(
+                content_path,
+                pointer,
+                expected_source_sha=expected_source_sha,
+                expected_run_manifest_hash=expected_run_manifest_hash,
+                expected_step=expected_step,
+                expected_tokens_seen=expected_tokens_seen,
             )
-        except ResumeSidecarError as exc:
-            raise RecoveryLifecycleError("recovery D04 resume sidecar failed validation") from exc
+
+            generation_path = generations.path / _generation_name(pointer["generation"])
+            generation_manifest = _verify_pointer_checkpoint(generation_path, pointer)
+            if generation_manifest != manifest:
+                raise RecoveryLifecycleError(
+                    "ordinal generation diverges from content-addressed checkpoint"
+                )
+
+            resume_state = None
+            if "resume_state" in pointer:
+                try:
+                    with pinned_real_directory(
+                        recovery_root / SIDECAR_ROOT
+                    ) as sidecars:
+                        resume_state = load_resume_sidecar(
+                            recovery_root,
+                            generation=pointer["generation"],
+                            checkpoint_path=content_path,
+                            manifest=manifest,
+                            reference=pointer["resume_state"],
+                            _pinned_sidecar_root=sidecars.path,
+                        )
+                        sidecars.verify_binding()
+                except ResumeSidecarError as exc:
+                    raise RecoveryLifecycleError(
+                        "recovery D04 resume sidecar failed validation"
+                    ) from exc
+
+            objects.verify_binding()
+            generations.verify_binding()
+    except PinnedDirectoryError as exc:
+        raise RecoveryLifecycleError("recovery child directory binding changed") from exc
+
     return RecoveryResolution(
-        path=generation_path,
-        content_path=content_path,
+        path=visible_generation_path,
+        content_path=visible_content_path,
         reference=recovery_reference(pointer),
         manifest=manifest,
         resume_state=resume_state,
@@ -486,7 +505,7 @@ def _publish_checkpoint_clone_noreplace(source: Path, destination: Path) -> None
 
 
 def _publish_content_object_from_staging(
-    recovery_root: Path,
+    object_root: Path,
     staging: Path,
     manifest: Mapping[str, Any],
 ) -> tuple[Path, str, str, dict[str, Any]]:
@@ -501,9 +520,7 @@ def _publish_content_object_from_staging(
 
     checkpoint_id = _require_sha256(manifest.get("checkpoint_id"), field="checkpoint_id")
     object_key = _content_key(checkpoint_id)
-    object_root = recovery_root / CHECKPOINTS_DIR
-    _ensure_real_directory(object_root)
-    destination = recovery_root / object_key
+    destination = object_root / checkpoint_id
 
     if destination.exists() or destination.is_symlink():
         if destination.is_symlink() or not destination.is_dir():
@@ -556,109 +573,136 @@ def _publish_recovery_generation_unlocked(
         # Never advance over an invalid last-known-good pointer.
         resolve_recovery_generation(recovery_root)
 
-    generations_root = recovery_root / "generations"
-    if not generations_root.exists():
-        generations_root.mkdir()
-        _fsync_directory(recovery_root)
-    _ensure_real_directory(generations_root)
-    existing = _generation_numbers(recovery_root)
-    generation = (existing[-1] + 1) if existing else 1
-    generation_path = generations_root / _generation_name(generation)
-    if generation_path.exists() or generation_path.is_symlink():
-        raise RecoveryLifecycleError("next recovery generation unexpectedly already exists")
-
-    # The callback receives only a private staging location. The stable portable
-    # child locator is derived after checkpoint_id has been computed and verified.
-    staging_root = Path(tempfile.mkdtemp(prefix=".checkpoint-stage-", dir=recovery_root))
-    staging = staging_root / "checkpoint"
     try:
-        save_generation(staging)
-        staged_manifest = verify_checkpoint(staging)
-        checkpoint_id = _require_sha256(
-            staged_manifest.get("checkpoint_id"), field="checkpoint_id"
-        )
-        content_path, object_key, manifest_sha256, manifest = (
-            _publish_content_object_from_staging(
-                recovery_root, staging, staged_manifest
+        with pinned_real_directory(
+            recovery_root / GENERATIONS_DIR, create=True
+        ) as generations, pinned_real_directory(
+            recovery_root / CHECKPOINTS_DIR, create=True
+        ) as objects:
+            existing = _generation_numbers_from_root(generations.path)
+            generation = (existing[-1] + 1) if existing else 1
+            generation_path = generations.path / _generation_name(generation)
+            if generation_path.exists() or generation_path.is_symlink():
+                raise RecoveryLifecycleError(
+                    "next recovery generation unexpectedly already exists"
+                )
+
+            # The callback receives only a private staging location. The stable
+            # portable child locator is derived after checkpoint_id is verified.
+            staging_root = Path(
+                tempfile.mkdtemp(prefix=".checkpoint-stage-", dir=recovery_root)
             )
-        )
-        identity = manifest.get("identity")
-        if not isinstance(identity, Mapping):
-            raise RecoveryLifecycleError("canonical recovery checkpoint identity is missing")
-    finally:
-        shutil.rmtree(staging_root, ignore_errors=True)
+            staging = staging_root / "checkpoint"
+            try:
+                save_generation(staging)
+                staged_manifest = verify_checkpoint(staging)
+                checkpoint_id = _require_sha256(
+                    staged_manifest.get("checkpoint_id"), field="checkpoint_id"
+                )
+                content_path, object_key, manifest_sha256, manifest = (
+                    _publish_content_object_from_staging(
+                        objects.path, staging, staged_manifest
+                    )
+                )
+                identity = manifest.get("identity")
+                if not isinstance(identity, Mapping):
+                    raise RecoveryLifecycleError(
+                        "canonical recovery checkpoint identity is missing"
+                    )
+            finally:
+                shutil.rmtree(staging_root, ignore_errors=True)
 
-    pointer = _pointer_payload(
-        generation=generation,
-        checkpoint_id=checkpoint_id,
-        manifest_sha256=manifest_sha256,
-        source_sha=str(identity.get("git_sha")),
-        run_manifest_hash=str(identity.get("run_manifest_hash")),
-        optimizer_step=int(identity.get("step")),
-        tokens_seen=int(identity.get("tokens_seen")),
-    )
-    if pointer["object_key"] != object_key:
-        raise RecoveryLifecycleError("derived content-addressed object key mismatch")
-    _assert_manifest_binding(
-        manifest,
-        pointer,
-        expected_source_sha=expected_source_sha,
-        expected_run_manifest_hash=expected_run_manifest_hash,
-        expected_step=expected_step,
-        expected_tokens_seen=expected_tokens_seen,
-    )
-    _assert_manifest_sha256(content_path, manifest_sha256)
-
-    # Retain an immutable ordinal snapshot for local history/cleanup. It is never
-    # advertised as the content address and must equal the authoritative object.
-    _publish_checkpoint_clone_noreplace(content_path, generation_path)
-    _verify_pointer_checkpoint(generation_path, pointer)
-
-    if build_resume_state is not None:
-        try:
-            resume_reference = publish_resume_sidecar(
-                recovery_root,
+            pointer = _pointer_payload(
                 generation=generation,
-                checkpoint_path=content_path,
-                manifest=manifest,
-                build_exposure_state=build_resume_state,
+                checkpoint_id=checkpoint_id,
+                manifest_sha256=manifest_sha256,
+                source_sha=str(identity.get("git_sha")),
+                run_manifest_hash=str(identity.get("run_manifest_hash")),
+                optimizer_step=int(identity.get("step")),
+                tokens_seen=int(identity.get("tokens_seen")),
             )
-        except ResumeSidecarError as exc:
-            raise RecoveryLifecycleError("D04 resume sidecar publication failed") from exc
-        pointer = _pointer_payload(
-            generation=generation,
-            checkpoint_id=checkpoint_id,
-            manifest_sha256=manifest_sha256,
-            source_sha=str(identity.get("git_sha")),
-            run_manifest_hash=str(identity.get("run_manifest_hash")),
-            optimizer_step=int(identity.get("step")),
-            tokens_seen=int(identity.get("tokens_seen")),
-            resume_state=resume_reference,
-        )
-        if failpoint == "after_sidecar_before_pointer":
-            raise RecoveryPointerUpdateInterrupted(
-                "injected interruption after D04 sidecar publication and before pointer update"
+            if pointer["object_key"] != object_key:
+                raise RecoveryLifecycleError(
+                    "derived content-addressed object key mismatch"
+                )
+            _assert_manifest_binding(
+                manifest,
+                pointer,
+                expected_source_sha=expected_source_sha,
+                expected_run_manifest_hash=expected_run_manifest_hash,
+                expected_step=expected_step,
+                expected_tokens_seen=expected_tokens_seen,
             )
+            _assert_manifest_sha256(content_path, manifest_sha256)
 
-    pointer_failpoint = failpoint if failpoint == "before_pointer_replace" else None
-    _atomic_publish_pointer(recovery_root, pointer, failpoint=pointer_failpoint)
-    return recovery_reference(pointer)
+            # Retain an immutable ordinal snapshot for local history/cleanup.
+            _publish_checkpoint_clone_noreplace(content_path, generation_path)
+            _verify_pointer_checkpoint(generation_path, pointer)
+
+            pointer_failpoint = (
+                failpoint if failpoint == "before_pointer_replace" else None
+            )
+            if build_resume_state is not None:
+                with pinned_real_directory(
+                    recovery_root / SIDECAR_ROOT, create=True
+                ) as sidecars:
+                    try:
+                        resume_reference = publish_resume_sidecar(
+                            recovery_root,
+                            generation=generation,
+                            checkpoint_path=content_path,
+                            manifest=manifest,
+                            build_exposure_state=build_resume_state,
+                            _pinned_sidecar_root=sidecars.path,
+                        )
+                    except ResumeSidecarError as exc:
+                        raise RecoveryLifecycleError(
+                            "D04 resume sidecar publication failed"
+                        ) from exc
+                    pointer = _pointer_payload(
+                        generation=generation,
+                        checkpoint_id=checkpoint_id,
+                        manifest_sha256=manifest_sha256,
+                        source_sha=str(identity.get("git_sha")),
+                        run_manifest_hash=str(identity.get("run_manifest_hash")),
+                        optimizer_step=int(identity.get("step")),
+                        tokens_seen=int(identity.get("tokens_seen")),
+                        resume_state=resume_reference,
+                    )
+                    if failpoint == "after_sidecar_before_pointer":
+                        raise RecoveryPointerUpdateInterrupted(
+                            "injected interruption after D04 sidecar publication "
+                            "and before pointer update"
+                        )
+                    generations.verify_binding()
+                    objects.verify_binding()
+                    sidecars.verify_binding()
+                    _atomic_publish_pointer(
+                        recovery_root, pointer, failpoint=pointer_failpoint
+                    )
+            else:
+                generations.verify_binding()
+                objects.verify_binding()
+                _atomic_publish_pointer(
+                    recovery_root, pointer, failpoint=pointer_failpoint
+                )
+            return recovery_reference(pointer)
+    except PinnedDirectoryError as exc:
+        raise RecoveryLifecycleError(
+            "recovery child directory binding changed during publication"
+        ) from exc
 
 
-def _retained_checkpoint_ids(root: Path, numbers: set[int]) -> set[str]:
+def _retained_checkpoint_ids(generations_root: Path, numbers: set[int]) -> set[str]:
     retained: set[str] = set()
     for number in numbers:
-        path = root / "generations" / _generation_name(number)
+        path = generations_root / _generation_name(number)
         manifest = verify_checkpoint(path)
         retained.add(_require_sha256(manifest.get("checkpoint_id"), field="checkpoint_id"))
     return retained
 
 
-def _cleanup_content_objects(root: Path, *, retained_ids: set[str]) -> list[str]:
-    object_root = root / CHECKPOINTS_DIR
-    if not object_root.exists():
-        return []
-    _ensure_real_directory(object_root)
+def _cleanup_content_objects(object_root: Path, *, retained_ids: set[str]) -> list[str]:
     removed: list[str] = []
     for entry in object_root.iterdir():
         if entry.name in retained_ids:
@@ -668,7 +712,9 @@ def _cleanup_content_objects(root: Path, *, retained_ids: set[str]) -> list[str]
                 f"unexpected content-addressed checkpoint entry: {entry.name}"
             )
         if entry.is_symlink() or not entry.is_dir():
-            raise RecoveryLifecycleError("refusing cleanup through checkpoint-object symlink")
+            raise RecoveryLifecycleError(
+                "refusing cleanup through checkpoint-object symlink"
+            )
         shutil.rmtree(entry)
         removed.append(entry.name)
     if removed:
@@ -681,38 +727,59 @@ def _cleanup_recovery_generations_unlocked(root: str | Path, *, keep: int = 2) -
         raise ValueError("recovery cleanup keep must be >= 1")
     recovery_root = Path(root)
     current = resolve_recovery_generation(recovery_root)
-    numbers = _generation_numbers(recovery_root)
-    current_number = current.reference["generation"]
-    others = [number for number in numbers if number != current_number]
-    protected_others = set(others[-max(keep - 1, 0) :]) if keep > 1 else set()
-    removed: list[str] = []
-    for number in others:
-        if number in protected_others:
-            continue
-        path = recovery_root / "generations" / _generation_name(number)
-        if path.is_symlink():
-            raise RecoveryLifecycleError("refusing cleanup through recovery-generation symlink")
-        shutil.rmtree(path)
-        try:
-            remove_resume_sidecar(recovery_root, generation=number)
-        except ResumeSidecarError as exc:
-            raise RecoveryLifecycleError("resume sidecar cleanup failed") from exc
-        removed.append(path.name)
 
-    retained = set(_generation_numbers(recovery_root))
     try:
-        removed_sidecars = cleanup_orphan_resume_sidecars(
-            recovery_root, retained_generations=retained
-        )
-    except ResumeSidecarError as exc:
-        raise RecoveryLifecycleError("orphan resume sidecar cleanup failed") from exc
+        with pinned_real_directory(
+            recovery_root / GENERATIONS_DIR
+        ) as generations, pinned_real_directory(
+            recovery_root / CHECKPOINTS_DIR
+        ) as objects:
+            numbers = _generation_numbers_from_root(generations.path)
+            current_number = current.reference["generation"]
+            others = [number for number in numbers if number != current_number]
+            protected_others = (
+                set(others[-max(keep - 1, 0) :]) if keep > 1 else set()
+            )
+            removed: list[str] = []
+            for number in others:
+                if number in protected_others:
+                    continue
+                path = generations.path / _generation_name(number)
+                if path.is_symlink() or not path.is_dir():
+                    raise RecoveryLifecycleError(
+                        "refusing cleanup through recovery-generation symlink"
+                    )
+                shutil.rmtree(path)
+                try:
+                    remove_resume_sidecar(recovery_root, generation=number)
+                except ResumeSidecarError as exc:
+                    raise RecoveryLifecycleError(
+                        "resume sidecar cleanup failed"
+                    ) from exc
+                removed.append(path.name)
 
-    retained_ids = _retained_checkpoint_ids(recovery_root, retained)
-    removed_content_objects = _cleanup_content_objects(
-        recovery_root, retained_ids=retained_ids
-    )
+            retained = set(_generation_numbers_from_root(generations.path))
+            try:
+                removed_sidecars = cleanup_orphan_resume_sidecars(
+                    recovery_root, retained_generations=retained
+                )
+            except ResumeSidecarError as exc:
+                raise RecoveryLifecycleError(
+                    "orphan resume sidecar cleanup failed"
+                ) from exc
 
-    # Prove cleanup did not remove or corrupt the only authoritative generation.
+            retained_ids = _retained_checkpoint_ids(generations.path, retained)
+            removed_content_objects = _cleanup_content_objects(
+                objects.path, retained_ids=retained_ids
+            )
+            generations.verify_binding()
+            objects.verify_binding()
+    except PinnedDirectoryError as exc:
+        raise RecoveryLifecycleError(
+            "recovery child directory binding changed during cleanup"
+        ) from exc
+
+    # Prove cleanup did not remove or corrupt the authoritative generation.
     after = resolve_recovery_generation(
         recovery_root, expected_reference=current.reference
     )
