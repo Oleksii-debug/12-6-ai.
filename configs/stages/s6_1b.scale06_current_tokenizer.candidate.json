@@ -1,0 +1,42 @@
+{
+  "stage": "S6",
+  "target_parameters": 1000000000,
+  "expected_parameters": 999761920,
+  "canonical_base": "random_init",
+  "status": "engineering_candidate_not_frozen",
+  "promotion_allowed": false,
+  "requires_preceding_stage_pass": true,
+  "selection_basis": "SCALE-06 execution-compatible candidate using the currently integrated 256-token byte vocabulary; production tokenizer selection remains open",
+  "expected_model_identity_sha256": "f691e75eea9ca4c4edae197b5284c2564d3784a87fd3a831c6411af55dfc00be",
+  "expected_init_identity_sha256": "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5",
+  "model": {
+    "schema_version": 1,
+    "vocab_size": 256,
+    "max_seq_len": 4096,
+    "d_model": 2048,
+    "n_layers": 18,
+    "n_heads": 32,
+    "n_kv_heads": 8,
+    "head_dim": 64,
+    "d_ff": 7328,
+    "activation": "swiglu",
+    "norm_kind": "rmsnorm",
+    "norm_placement": "pre",
+    "norm_eps": 1e-5,
+    "position_embedding": "rope",
+    "rope_theta": 10000.0,
+    "rope_rotary_dim": 64,
+    "attention_bias": false,
+    "mlp_bias": false,
+    "attention_dropout": 0.0,
+    "final_norm": true,
+    "tie_word_embeddings": true,
+    "lm_head_bias": false
+  },
+  "init": {
+    "schema_version": 1,
+    "family": "normal",
+    "std": 0.02,
+    "residual_branch_scale": "sqrt_2_layers"
+  }
+}

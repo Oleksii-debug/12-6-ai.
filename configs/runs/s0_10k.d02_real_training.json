@@ -1,0 +1,77 @@
+{
+  "schema_version": "12-6.s0-real-training-config.v2",
+  "stage": "S0",
+  "run_kind": "integrated_pretraining_evidence",
+  "authorization": {
+    "class": "LOCAL_FREE",
+    "metered_cost_expected": false,
+    "paid_compute_authorized": false
+  },
+  "candidate": {
+    "repository": "Oleksii-debug/12-6-ai.",
+    "git_sha": "RUNTIME_REQUIRED_FULL_HEAD_SHA",
+    "integration_parent_sha": "1caa729c8efafc84e7a5c4b1f7295eb8dcdb5a8d",
+    "modelspec_sha256": "86c75b31dff05b7b5db9f6ed068c571a6ead01ba663412fe630f5e52b09d9b6b",
+    "initspec_sha256": "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5",
+    "parameter_count": 10140,
+    "canonical_base": "random_init_pretraining_only"
+  },
+  "data": {
+    "dataset_id": "s0-tiny-controlled-v1",
+    "dataset_identity_sha256": "bab60119d49e93303c972b77900fcb5553817f754cbc5d9a58019228cfa0ca89",
+    "dataset_manifest_sha256": "b085a7ab56510575a11a80824fcff3a95a17f237d46d1be820e59d1289f220c2",
+    "train_jsonl_sha256": "61d24b7138df56527d201cea405d11c9f607684b4a9593dfa20c599cc2ee6998",
+    "validation_jsonl_sha256": "57f18a846dcca75955a82612382d4635ba9583965aa6628e77626cd2a3eb19c5",
+    "tokenizer_config_sha256": "b04055c1061dd641dcab7cb9d62a931f09b8d1a070140a926ceb4e91d73ca8e1",
+    "tokenizer_vocab_sha256": "905ed40bb42cc4d550e228ff5f24158d504b38e8ed5974dfa3077bd5867ad571",
+    "tokenizer_version": "s0-byte-v1",
+    "packing_config_sha256": "23a695b807f3e3f5c61d19c34968bcd88fafc6a45346dc08673d7a494219f285",
+    "context_length": 128,
+    "train_scoreable_tokens_per_epoch": 1910,
+    "validation_scoreable_tokens": 404
+  },
+  "environment": {
+    "profile_id": "linux-x86_64",
+    "python_version": "3.11.16",
+    "lock_index_file_sha256": "61fa31fbb5da7a4289cccce5abfcebde943664f5318b0ce3d69ae9bb3db852ac",
+    "lock_index_sha256": "5de40d40012123ccf654b3e29d9cd47df814978e4155ca9dde232b61e9cd6341",
+    "lock_profile_manifest_sha256": "283ca83571e527babda700e0c66ed03fb1c2aa4674bee0dba2272f64f344e1bf",
+    "lock_profile_file_sha256": "0dbd74f05d2824082d378aa9031141c864f6a092f950d63ccfae0ade4d76e121",
+    "locked_environment_evidence": "RUNTIME_REQUIRED_SAME_SOURCE_SHA_JSON"
+  },
+  "training": {
+    "seed": 1337,
+    "seed_before_model_construction": true,
+    "optimizer": "AdamW",
+    "learning_rate": 0.03,
+    "betas": [0.9, 0.95],
+    "eps": 1e-8,
+    "weight_decay": 0.0,
+    "scheduler": "constant",
+    "max_steps": 40,
+    "batch_size_examples": 3,
+    "gradient_accumulation_steps": 1,
+    "gradient_clip_norm": 1.0,
+    "precision": "fp32",
+    "deterministic_algorithms": true,
+    "device": "cpu"
+  },
+  "validation_policy": {
+    "optimized_split": "train",
+    "validation_never_passed_to_trainer": true,
+    "held_out_evaluation": "separate torch.no_grad pass",
+    "validation_optimized_tokens": 0
+  },
+  "failure_policy": {
+    "abort_on_nan_or_inf": true,
+    "poison_failed_trainer": true,
+    "fresh_trainer_required_after_failure": true,
+    "blind_retry": false
+  },
+  "evidence": {
+    "schema_version": "12-6.s0-real-training-evidence.v2",
+    "validator": "python tools/validate_s0_training_evidence.py <manifest.json>",
+    "must_bind_same_source_locked_environment": true
+  },
+  "command": "python tools/run_s0_real_training.py --source-sha <FULL_HEAD_SHA> --locked-environment-evidence <LOCKED_ENVIRONMENT_JSON> --output <manifest.json> --seed 1337 --max-steps 40 --batch-size 3"
+}

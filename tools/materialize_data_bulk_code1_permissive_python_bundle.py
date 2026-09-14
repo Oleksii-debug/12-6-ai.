@@ -64,8 +64,7 @@ def _run(cmd: list[str], *, cwd: Path | None = None) -> str:
         cmd,
         cwd=cwd,
         check=False,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
         text=True,
         encoding="utf-8",
     )

@@ -1,0 +1,39 @@
+{
+  "format_version": "stage-candidate-manifest-v1",
+  "stage": "S0",
+  "integration_anchor_sha": "f2e94c7212888cdb960bb66154d56d210e9b27ab",
+  "status": "experimental",
+  "base_lineage": true,
+  "candidate_sha": null,
+  "audit_a": null,
+  "audit_b": null,
+  "release_artifact": null,
+  "required_lanes": [
+    "D01",
+    "D02",
+    "D03",
+    "D04",
+    "D05",
+    "D06",
+    "D07",
+    "D08"
+  ],
+  "components": [
+    {
+      "lane": "D08",
+      "source_sha": "f2e94c7212888cdb960bb66154d56d210e9b27ab",
+      "disposition": "held",
+      "component_kind": "scale_interface",
+      "notes": "Accept only with exact source-head CI evidence and candidate ancestry."
+    },
+    {
+      "lane": "D09",
+      "source_sha": "f2e94c7212888cdb960bb66154d56d210e9b27ab",
+      "disposition": "rejected",
+      "component_kind": "behavioral_weights",
+      "contains_behavioral_weights": true,
+      "contains_foreign_pretrained_weights": false,
+      "notes": "Early S0 Base rejects behavioral alignment weights."
+    }
+  ]
+}

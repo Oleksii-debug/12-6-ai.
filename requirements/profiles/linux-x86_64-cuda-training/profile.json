@@ -1,0 +1,33 @@
+{
+  "base_profile": {
+    "file_sha256": "94c8ae86932e894bbf5f39960ae32da0e2e4358935d098fce5937f096b8d74ba",
+    "manifest_sha256": "d2f4864500743922965ccd2ec1df51aa599f7c657129e55c5d184cddc7c14a0b",
+    "path": "requirements/locks/linux-x86_64/profile.json",
+    "profile_id": "linux-x86_64"
+  },
+  "canonical_lock": {
+    "file_sha256": "c50841c05f66ae2f3f2bbf08f407de5ac484b0ce83113989bfec19077a0fd268",
+    "index_sha256": "977dc42d00d03e766c34edc8467aaa7d462e32e6bbafdab1bdc89a02388f47fa",
+    "path": "requirements/locks/index.json"
+  },
+  "direct_requirements": [],
+  "kind": "linux-base-role",
+  "locks": {},
+  "platform": {
+    "machine": "x86_64",
+    "system": "Linux"
+  },
+  "profile_id": "linux-x86_64-cuda-training",
+  "profile_sha256": "dd14d1aec46a938442e7e79fb299c8565baa418357763e1a7258673203004421",
+  "purpose": "future CUDA training using the already locked PyTorch/CUDA closure",
+  "python": {
+    "implementation": "cpython",
+    "version": "3.11.16"
+  },
+  "runtime_expectations": {
+    "gpu_execution_required_for_runtime_pass": true,
+    "torch": "2.13.0",
+    "torch_cuda": "13.0"
+  },
+  "schema_version": "12-6.purpose-environment-profile.v1"
+}

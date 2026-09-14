@@ -1,0 +1,121 @@
+{
+  "schema": "12-6.perf207-gqa-static-kv-convergence.v1",
+  "worker_id": "PERF-207-GQA-STATIC-KV-CONVERGENCE",
+  "status": "BLOCKED_PARENT_NOT_ACCEPTED",
+  "decision": "DO_NOT_CONVERGE",
+  "paid_compute": false,
+  "paged_attention_implemented": false,
+  "base": {
+    "branch": "perf/batched-raw-base-20260825",
+    "sha": "3b89506958f9d968092dfe99581263c428b395d0",
+    "role": "current_d07_batched_cache_incumbent",
+    "exact_head_ci": "PASS"
+  },
+  "parents": {
+    "perf94": {
+      "branch": "perf94/native-gqa-production-20260826",
+      "sha": "a65c85522f3dbe826862c2f156720d5ceadadfc0",
+      "pr": 261,
+      "pr_state": "open",
+      "merged": false,
+      "native_gqa_unexpanded_kv": true,
+      "decode_cache_uses_torch_cat": true
+    },
+    "perf95": {
+      "branch": "perf95/static-kv-cache-20260826",
+      "sha": "75a885e221fdf16f647289df25a7150ef46e7528",
+      "static_preallocated_cache_found": false,
+      "accepted_static_cache_evidence_gate_found": false,
+      "decode_cache_uses_torch_cat": true,
+      "observed_branch_role": "MODEL35_GQA_GEOMETRY_EXPERIMENT"
+    }
+  },
+  "invariants": {
+    "model_weights_changed_by_perf207": false,
+    "generation_semantics_changed_by_perf207": false,
+    "checkpoint_format_changed_by_perf207": false,
+    "model_identity_changed_by_perf207": false,
+    "unexpanded_kv_storage_in_incumbent": true,
+    "accepted_static_path_has_no_torch_cat_growth": false
+  },
+  "available_hardware": {
+    "device": "cpu",
+    "platform": "Linux-6.17.0-1022-azure-x86_64-with-glibc2.39",
+    "python": "3.11.16",
+    "torch": "2.13.0+cu130",
+    "cuda_performance_claim": false
+  },
+  "benchmarks": {
+    "s2_gqa2_1m": {
+      "source_sha": "75a885e221fdf16f647289df25a7150ef46e7528",
+      "parameter_count": 1066624,
+      "query_heads": 4,
+      "kv_heads": 2,
+      "head_dim": 32,
+      "prompt_tokens": 64,
+      "generated_tokens": 6,
+      "final_cache_sequence_length": 69,
+      "greedy_parity": true,
+      "actual_fp32_cache_bytes": 141312,
+      "full_context_bf16_or_fp16_cache_bytes": 524288,
+      "full_context_fp32_cache_bytes": 1048576,
+      "mean_cached_generation_seconds": 0.013486693499984881,
+      "mean_stateless_generation_seconds": 0.021177577499997824,
+      "mean_cached_generated_tokens_per_second": 444.8949912331102,
+      "mean_stateless_generated_tokens_per_second": 283.32117187951155,
+      "cached_decoder_input_positions": 69,
+      "stateless_full_prefix_positions": 399,
+      "native_gqa_cuda_performance_claim": false
+    },
+    "s3_gqa4_10m": {
+      "source_sha": "75a885e221fdf16f647289df25a7150ef46e7528",
+      "parameter_count": 10061760,
+      "query_heads": 8,
+      "kv_heads": 4,
+      "head_dim": 40,
+      "prompt_tokens": 48,
+      "generated_tokens": 6,
+      "final_cache_sequence_length": 53,
+      "greedy_parity": true,
+      "actual_fp32_cache_bytes": 407040,
+      "full_context_bf16_or_fp16_cache_bytes": 3932160,
+      "full_context_fp32_cache_bytes": 7864320,
+      "mean_cached_generation_seconds": 0.04260299349999741,
+      "mean_stateless_generation_seconds": 0.08519158600000765,
+      "mean_cached_generated_tokens_per_second": 140.8770180408523,
+      "mean_stateless_generated_tokens_per_second": 70.43308811006222,
+      "cached_decoder_input_positions": 53,
+      "stateless_full_prefix_positions": 303,
+      "native_gqa_cuda_performance_claim": false
+    },
+    "current_d07_batched_s3_10m": {
+      "source_sha": "3b89506958f9d968092dfe99581263c428b395d0",
+      "parameter_count": 10059840,
+      "batch_size": 4,
+      "prompt_tokens": 64,
+      "max_new_tokens_by_request": [8, 4, 6, 8],
+      "greedy_parity": true,
+      "batched_peak_logical_fp32_kv_payload_bytes": 4362240,
+      "independent_concurrent_peak_logical_fp32_kv_payload_bytes": 4270080,
+      "batched_cached_median_seconds": 0.14037011799999277,
+      "independent_cached_median_seconds": 0.22298257199997806,
+      "batched_cached_model_calls": 8,
+      "independent_cached_model_calls": 26,
+      "model_call_reduction_ratio": 3.25,
+      "scheduled_cached_input_positions": 284,
+      "logical_cached_input_positions": 278,
+      "independent_stateless_input_positions": 1741,
+      "cache_bytes_are_allocator_peak": false
+    }
+  },
+  "not_run": {
+    "static_cache_allocation_growth": "PARENT_ABSENT",
+    "static_cache_decode_only_time": "PARENT_ABSENT",
+    "combined_greedy_parity": "PARENT_ABSENT",
+    "combined_seeded_sampling_parity": "PARENT_ABSENT",
+    "combined_context_boundary_parity": "PARENT_ABSENT",
+    "combined_batched_cached_parity": "PARENT_ABSENT",
+    "combined_eos_stop_parity": "PARENT_ABSENT",
+    "combined_cuda_benchmark": "NO_AUTHORIZED_VISIBLE_GPU_EVIDENCE"
+  }
+}

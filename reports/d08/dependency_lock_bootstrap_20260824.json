@@ -1,0 +1,39 @@
+{
+  "schema_version": "12-6.dependency-lock-bootstrap-evidence.v1",
+  "authority": "BOOTSTRAP_PROVENANCE_ONLY",
+  "source_head_sha": "a1102396fa9db74f73620710b976a8502630ae01",
+  "successful_bootstrap": {
+    "workflow_run_id": 32740813750,
+    "profiles": {
+      "linux-aarch64": {
+        "artifact_id": 9525060125,
+        "artifact_zip_sha256": "547bd654c7bd91f3e309a8a71eb6d93af09160adeb79255073f8ca5e3e6ff023",
+        "job_id": 97474552984,
+        "manifest_sha256": "695c990477bc0c16b7a208afe102a3a00b499245d63048bfba312bb6e88289ab",
+        "status": "SUCCESS"
+      },
+      "linux-x86_64": {
+        "artifact_id": 9525060696,
+        "artifact_zip_sha256": "389ed1611a021a262e4490262f398ed0e385374658cb10ffe4ea7146c737c69b",
+        "job_id": 97474552740,
+        "manifest_sha256": "283ca83571e527babda700e0c66ed03fb1c2aa4674bee0dba2272f64f344e1bf",
+        "status": "SUCCESS"
+      }
+    }
+  },
+  "windows_checkout_blocker": {
+    "workflow_run_id": 32740545812,
+    "job_id": 97473688530,
+    "runner": "windows-2025",
+    "status": "BLOCKED_BY_REPOSITORY_IDENTITY",
+    "phase": "actions/checkout",
+    "exact_error": "Directory 'D:\\a\\12-6-ai.\\12-6-ai.' does not exist",
+    "product_or_lock_code_executed": false,
+    "support_claim": "NOT_TESTED"
+  },
+  "committed_lock_index": {
+    "index_sha256": "5de40d40012123ccf654b3e29d9cd47df814978e4155ca9dde232b61e9cd6341",
+    "file_sha256": "61fa31fbb5da7a4289cccce5abfcebde943664f5318b0ce3d69ae9bb3db852ac"
+  },
+  "note": "Bootstrap artifacts are resolver provenance only. Final authority is the committed-lock clean-install CI on the later exact PR head."
+}

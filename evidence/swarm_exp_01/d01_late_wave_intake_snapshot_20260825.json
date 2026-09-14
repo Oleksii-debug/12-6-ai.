@@ -1,0 +1,159 @@
+{
+  "schema": "12-6.s0-late-wave-intake.v3",
+  "run_id": "12-6-AI-SWARM-EXP-01",
+  "repository": "Oleksii-debug/12-6-ai.",
+  "cutoff_utc": "2026-08-25T09:47:00Z",
+  "stage": "S0",
+  "base": {
+    "pr": 89,
+    "sha": "c631c024e641dac102036fafee6d78ba31c067cd",
+    "status": "EXACT_GREEN",
+    "required_workflows": {
+      "CI": {"run_id": 32778688850, "state": "completed", "conclusion": "success"},
+      "D02 Real S0 Training": {"run_id": 32778688832, "state": "completed", "conclusion": "success"},
+      "D02 S0 Determinism Repeatability": {"run_id": 32778688829, "state": "completed", "conclusion": "success"},
+      "D04 Strict S0 Exact-Candidate Evaluation": {"run_id": 32778688844, "state": "completed", "conclusion": "success"}
+    }
+  },
+  "truth_boundary": {
+    "canonical_base": "random_init_pretraining_only",
+    "foreign_pretrained_weights_allowed": false,
+    "instruction_or_alignment_base_work_allowed": false,
+    "paid_compute_authorized": false,
+    "promotion_eligible": false,
+    "audits": {"AUDIT-A": "CHANGES_REQUIRED", "AUDIT-B": "CHANGES_REQUIRED"},
+    "main_sha": "f2e94c7212888cdb960bb66154d56d210e9b27ab",
+    "main_protected": false
+  },
+  "collision_groups": [
+    {"id": "repeatability-intake", "owner_pr": 90, "members": [90, 97], "rule": "PR90 is the incumbent; PR97 closed unmerged as duplicate"},
+    {"id": "first-party-checkpoint-snapshot", "owner_pr": 91, "members": [91, 94, 98, 102], "rule": "PR91 is the incumbent; later same-surface attempts remain closed/unmerged"},
+    {"id": "hf-export-transactionality", "owner_pr": 95, "members": [95, 105, 111], "rule": "PR95 owns exporter transactionality; PR105/111 overlapping exporter attempts closed unmerged"},
+    {"id": "parity-oracle-hardening", "owner_pr": 134, "members": [134, 136], "rule": "PR134 owns parity oracle; PR136 closed after transferring its unique zero-step guard"}
+  ],
+  "composition": {
+    "state": "MATERIALIZED_REQUIRES_EXACT_HEAD_RERUN",
+    "commit": "425138d7cdad6b2b2c7600c63fcb34dee246f7fb",
+    "first_parent": "d6c054f7ecbc3161b7659ab30fe1b4130089b709",
+    "integrated_sources": [
+      {"pr": 90, "sha": "df13fbc5c218ff42b00b749384e6b02a1bc775c9", "changed_paths": ["configs/releases/s0_candidate_successor_convergence_20260825.experimental.json", "tests/test_s0_successor_convergence.py"]},
+      {"pr": 91, "sha": "ee620ff2f25fcba7537c41ef1322124ada82b02c", "changed_paths": ["docs/FIRST_PARTY_ATOMIC_CHECKPOINT_SNAPSHOT_S0.md", "src/twelve_six/inference/first_party.py", "tests/test_first_party_atomic_snapshot.py"]},
+      {"pr": 100, "sha": "f6e95128c885fa176b9eb7f5f71abd154e0b30b7", "changed_paths": ["docs/D04_S0_EVALUATION_REPEATABILITY_BUNDLE.md", "src/twelve_six/s0_evaluation_bundle.py", "tests/test_s0_evaluation_repeatability_binding.py"]}
+    ],
+    "changed_path_overlap": 0,
+    "history_destroyed": false,
+    "exact_head_validation_required": true
+  },
+  "items": [
+    {
+      "pr": 90,
+      "lane": "D01",
+      "head": "df13fbc5c218ff42b00b749384e6b02a1bc775c9",
+      "kind": "repeatability_composition_intake",
+      "classifications": ["INCUMBENT", "GREEN"],
+      "required_for_next_composition": false,
+      "workflow_evidence": {
+        "CI": {"run_id": 32779205999, "state": "completed", "conclusion": "success"},
+        "D02 Real S0 Training": {"run_id": 32779206011, "state": "completed", "conclusion": "success"},
+        "D02 S0 Determinism Repeatability": {"run_id": 32779205956, "state": "completed", "conclusion": "success"}
+      }
+    },
+    {
+      "pr": 91,
+      "lane": "D05_D07",
+      "head": "ee620ff2f25fcba7537c41ef1322124ada82b02c",
+      "kind": "single_verified_checkpoint_snapshot",
+      "classifications": ["INCUMBENT", "GREEN"],
+      "required_for_next_composition": false,
+      "workflow_evidence": {
+        "CI": {"run_id": 32779800315, "state": "completed", "conclusion": "success"},
+        "D02 Real S0 Training": {"run_id": 32779800261, "state": "completed", "conclusion": "success"},
+        "D02 S0 Determinism Repeatability": {"run_id": 32779800335, "state": "completed", "conclusion": "success"},
+        "D04 Strict S0 Exact-Candidate Evaluation": {"run_id": 32779800319, "state": "completed", "conclusion": "success"}
+      }
+    },
+    {
+      "pr": 92,
+      "lane": "D04",
+      "head": "c910b008d628256fc38ecd58a87e43f462660b54",
+      "kind": "locked_runtime_evaluation_bundle",
+      "classifications": ["GREEN"],
+      "required_for_next_composition": false,
+      "workflow_evidence": {
+        "CI": {"run_id": 32779334704, "state": "completed", "conclusion": "success"},
+        "D02 Real S0 Training": {"run_id": 32779334740, "state": "completed", "conclusion": "success"},
+        "D04 Strict S0 Exact-Candidate Evaluation": {"run_id": 32779334661, "state": "completed", "conclusion": "success"}
+      }
+    },
+    {
+      "pr": 95,
+      "lane": "D03_D05",
+      "head": "9d8deeb5368af8a87215c15f9674cf26cc4651b6",
+      "kind": "transactional_hf_export",
+      "classifications": ["INCUMBENT", "RED", "HOLD"],
+      "required_for_next_composition": false,
+      "workflow_evidence": {
+        "CI": {"run_id": 32779993542, "state": "completed", "conclusion": "failure"},
+        "D02 Real S0 Training": {"run_id": 32779993547, "state": "completed", "conclusion": "failure"},
+        "D04 Strict S0 Exact-Candidate Evaluation": {"run_id": 32779993531, "state": "completed", "conclusion": "failure"}
+      }
+    },
+    {
+      "pr": 100,
+      "lane": "D04",
+      "head": "f6e95128c885fa176b9eb7f5f71abd154e0b30b7",
+      "kind": "evaluation_repeatability_binding",
+      "classifications": ["GREEN"],
+      "required_for_next_composition": false,
+      "workflow_evidence": {
+        "CI": {"run_id": 32779657381, "state": "completed", "conclusion": "success"},
+        "D02 Real S0 Training": {"run_id": 32779657117, "state": "completed", "conclusion": "success"},
+        "D02 S0 Determinism Repeatability": {"run_id": 32779657126, "state": "completed", "conclusion": "success"}
+      }
+    },
+    {"pr": 106, "lane": "D02", "head": "8894b44eb8627971b50a734fecd36e74293c1093", "kind": "s1_numerical_preflight", "stage_scope": "S1", "classifications": ["HOLD"], "required_for_next_composition": false},
+    {"pr": 111, "lane": "D05", "head": "70325cf0bb2bac6b4bce9136ef8bba255c324644", "kind": "overlapping_hf_export_attempt", "classifications": ["DUPLICATE", "SUPERSEDED"], "required_for_next_composition": false},
+    {
+      "pr": 113,
+      "lane": "D10",
+      "head": "5e9723ba7e15706055a578c9f8b9f40000e088c7",
+      "kind": "release_authority_successor",
+      "classifications": ["RED", "HOLD"],
+      "required_for_next_composition": false,
+      "workflow_evidence": {
+        "CI": {"run_id": 32779892601, "state": "completed", "conclusion": "failure"},
+        "D02 Real S0 Training": {"run_id": 32779892410, "state": "completed", "conclusion": "failure"},
+        "D02 S0 Determinism Repeatability": {"run_id": 32779892505, "state": "completed", "conclusion": "failure"},
+        "D04 Strict S0 Exact-Candidate Evaluation": {"run_id": 32779892481, "state": "completed", "conclusion": "failure"},
+        "Dependency Security Evidence": {"run_id": 32779892595, "state": "completed", "conclusion": "success"},
+        "Secret History Diagnostic": {"run_id": 32779892366, "state": "completed", "conclusion": "success"}
+      }
+    },
+    {
+      "pr": 134,
+      "lane": "D05_D07",
+      "head": "16b3f510543cd1339eb3d804bdc6125e736bb2d7",
+      "kind": "parity_oracle_hardening",
+      "classifications": ["INCUMBENT", "GREEN"],
+      "required_for_next_composition": false,
+      "workflow_evidence": {
+        "CI": {"run_id": 32780746320, "state": "completed", "conclusion": "success"},
+        "D02 Real S0 Training": {"run_id": 32780746325, "state": "completed", "conclusion": "success"},
+        "D02 S0 Determinism Repeatability": {"run_id": 32780746305, "state": "completed", "conclusion": "success"},
+        "D04 Strict S0 Exact-Candidate Evaluation": {"run_id": 32780746290, "state": "completed", "conclusion": "success"}
+      }
+    }
+  ],
+  "pruning_decisions": {"duplicate_closed_unmerged": [94, 97, 98, 102, 105, 111, 136], "superseded_closed_unmerged": []},
+  "next_composition_policy": {
+    "minimum_required": [],
+    "integrated_required": [90, 91, 100],
+    "optional_green_for_semantic_review": [92, 134],
+    "held_red_or_separate": [95, 113],
+    "exclude_s1_from_s0": [106],
+    "never_accept_queued_or_red": true,
+    "preserve_real_git_ancestry": true,
+    "rerun_full_exact_head_workflows_after_composition": true,
+    "request_both_independent_audits_on_final_exact_head": true
+  }
+}
