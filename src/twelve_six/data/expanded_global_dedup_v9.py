@@ -15,10 +15,15 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import html
+import importlib.machinery
 import importlib.util
 import json
 import marshal
+import re
 import sys
+import unicodedata
+from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from types import FunctionType, ModuleType
@@ -42,6 +47,48 @@ _sha256 = _impl._sha256
 
 _LEGACY_VALIDATE_RADA_ROWS = _impl.validate_rada_rows
 _LEGACY_RUN_EXPANDED_DEDUP = _impl.run_expanded_dedup
+
+# Freeze the behavior-bearing stdlib primitives at facade import.  Fresh execution
+# of the pinned matcher source is not an independent reference for these objects:
+# both the live matcher and the reference import through the same process
+# ``sys.modules``.  Member-level mutation therefore has to be detected against an
+# earlier immutable reference, not merely against a freshly imported module object.
+_FROZEN_HASHLIB_MODULE = hashlib
+_FROZEN_HTML_MODULE = html
+_FROZEN_JSON_MODULE = json
+_FROZEN_MARSHAL_MODULE = marshal
+_FROZEN_RE_MODULE = re
+_FROZEN_UNICODEDATA_MODULE = unicodedata
+_FROZEN_IMPORTLIB_UTIL_MODULE = importlib.util
+_FROZEN_IMPORTLIB_MACHINERY_MODULE = importlib.machinery
+_FROZEN_PATH_CLASS = Path
+_FROZEN_COUNTER_CLASS = Counter
+
+_FROZEN_HASHLIB_SHA1 = hashlib.sha1
+_FROZEN_HASHLIB_SHA256 = hashlib.sha256
+_FROZEN_HTML_UNESCAPE = html.unescape
+_FROZEN_JSON_DUMPS = json.dumps
+_FROZEN_JSON_LOADS = json.loads
+_FROZEN_MARSHAL_DUMPS = marshal.dumps
+_FROZEN_RE_COMPILE = re.compile
+_FROZEN_RE_FULLMATCH = re.fullmatch
+_FROZEN_RE_SEARCH = re.search
+_FROZEN_RE_SUB = re.sub
+_FROZEN_UNICODEDATA_NORMALIZE = unicodedata.normalize
+_FROZEN_COUNTER_INIT = Counter.__init__
+_FROZEN_COUNTER_UPDATE = Counter.update
+_FROZEN_SPEC_FROM_FILE_LOCATION = importlib.util.spec_from_file_location
+_FROZEN_MODULE_FROM_SPEC = importlib.util.module_from_spec
+_FROZEN_SOURCE_FILE_LOADER = importlib.machinery.SourceFileLoader
+_FROZEN_SOURCE_FILE_LOADER_EXEC_MODULE = importlib.machinery.SourceFileLoader.exec_module
+_FROZEN_SOURCE_FILE_LOADER_GET_CODE = importlib.machinery.SourceFileLoader.get_code
+_FROZEN_SOURCE_FILE_LOADER_GET_DATA = importlib.machinery.SourceFileLoader.get_data
+_FROZEN_SOURCE_FILE_LOADER_GET_FILENAME = importlib.machinery.SourceFileLoader.get_filename
+_FROZEN_SOURCE_FILE_LOADER_PATH_STATS = importlib.machinery.SourceFileLoader.path_stats
+_FROZEN_SOURCE_FILE_LOADER_SOURCE_TO_CODE = importlib.machinery.SourceFileLoader.source_to_code
+_FROZEN_PATH_IS_FILE = Path.is_file
+_FROZEN_PATH_IS_SYMLINK = Path.is_symlink
+_FROZEN_PATH_READ_BYTES = Path.read_bytes
 
 # Exact Git blob identities from terminal V7 head
 # d3333ec1b4a508df232a5aefccd6686adda745fb.  Together these files are the
@@ -138,38 +185,143 @@ _V8_SURVIVOR_BINDING_FIELDS = (
 )
 
 
+def _verify_stdlib_runtime_semantic_closure() -> None:
+    """Reject shared-stdlib member drift before any matcher/reference execution."""
+
+    module_checks = (
+        (hashlib, _FROZEN_HASHLIB_MODULE, "hashlib module"),
+        (html, _FROZEN_HTML_MODULE, "html module"),
+        (json, _FROZEN_JSON_MODULE, "json module"),
+        (marshal, _FROZEN_MARSHAL_MODULE, "marshal module"),
+        (re, _FROZEN_RE_MODULE, "re module"),
+        (unicodedata, _FROZEN_UNICODEDATA_MODULE, "unicodedata module"),
+        (importlib.util, _FROZEN_IMPORTLIB_UTIL_MODULE, "importlib.util module"),
+        (
+            importlib.machinery,
+            _FROZEN_IMPORTLIB_MACHINERY_MODULE,
+            "importlib.machinery module",
+        ),
+        (Path, _FROZEN_PATH_CLASS, "pathlib.Path class"),
+        (Counter, _FROZEN_COUNTER_CLASS, "collections.Counter class"),
+    )
+    for current, expected, label in module_checks:
+        _require(current is expected, f"stdlib runtime object replaced: {label}")
+
+    member_checks = (
+        (hashlib.sha1, _FROZEN_HASHLIB_SHA1, "hashlib.sha1"),
+        (hashlib.sha256, _FROZEN_HASHLIB_SHA256, "hashlib.sha256"),
+        (html.unescape, _FROZEN_HTML_UNESCAPE, "html.unescape"),
+        (json.dumps, _FROZEN_JSON_DUMPS, "json.dumps"),
+        (json.loads, _FROZEN_JSON_LOADS, "json.loads"),
+        (marshal.dumps, _FROZEN_MARSHAL_DUMPS, "marshal.dumps"),
+        (re.compile, _FROZEN_RE_COMPILE, "re.compile"),
+        (re.fullmatch, _FROZEN_RE_FULLMATCH, "re.fullmatch"),
+        (re.search, _FROZEN_RE_SEARCH, "re.search"),
+        (re.sub, _FROZEN_RE_SUB, "re.sub"),
+        (
+            unicodedata.normalize,
+            _FROZEN_UNICODEDATA_NORMALIZE,
+            "unicodedata.normalize",
+        ),
+        (Counter.__init__, _FROZEN_COUNTER_INIT, "Counter.__init__"),
+        (Counter.update, _FROZEN_COUNTER_UPDATE, "Counter.update"),
+        (
+            importlib.util.spec_from_file_location,
+            _FROZEN_SPEC_FROM_FILE_LOCATION,
+            "importlib.util.spec_from_file_location",
+        ),
+        (
+            importlib.util.module_from_spec,
+            _FROZEN_MODULE_FROM_SPEC,
+            "importlib.util.module_from_spec",
+        ),
+        (
+            importlib.machinery.SourceFileLoader,
+            _FROZEN_SOURCE_FILE_LOADER,
+            "importlib.machinery.SourceFileLoader",
+        ),
+        (
+            importlib.machinery.SourceFileLoader.exec_module,
+            _FROZEN_SOURCE_FILE_LOADER_EXEC_MODULE,
+            "SourceFileLoader.exec_module",
+        ),
+        (
+            importlib.machinery.SourceFileLoader.get_code,
+            _FROZEN_SOURCE_FILE_LOADER_GET_CODE,
+            "SourceFileLoader.get_code",
+        ),
+        (
+            importlib.machinery.SourceFileLoader.get_data,
+            _FROZEN_SOURCE_FILE_LOADER_GET_DATA,
+            "SourceFileLoader.get_data",
+        ),
+        (
+            importlib.machinery.SourceFileLoader.get_filename,
+            _FROZEN_SOURCE_FILE_LOADER_GET_FILENAME,
+            "SourceFileLoader.get_filename",
+        ),
+        (
+            importlib.machinery.SourceFileLoader.path_stats,
+            _FROZEN_SOURCE_FILE_LOADER_PATH_STATS,
+            "SourceFileLoader.path_stats",
+        ),
+        (
+            importlib.machinery.SourceFileLoader.source_to_code,
+            _FROZEN_SOURCE_FILE_LOADER_SOURCE_TO_CODE,
+            "SourceFileLoader.source_to_code",
+        ),
+        (Path.is_file, _FROZEN_PATH_IS_FILE, "Path.is_file"),
+        (Path.is_symlink, _FROZEN_PATH_IS_SYMLINK, "Path.is_symlink"),
+        (Path.read_bytes, _FROZEN_PATH_READ_BYTES, "Path.read_bytes"),
+    )
+    for current, expected, label in member_checks:
+        _require(current is expected, f"stdlib runtime member replaced: {label}")
+
+
 def _git_blob_sha1(raw: bytes) -> str:
     prefix = f"blob {len(raw)}\0".encode("ascii")
-    return hashlib.sha1(prefix + raw).hexdigest()
+    return _FROZEN_HASHLIB_SHA1(prefix + raw).hexdigest()
 
 
 def _module_source_blob(module: ModuleType) -> str:
     source = getattr(module, "__file__", None)
     _require(isinstance(source, str) and source, f"matcher module has no source: {module.__name__}")
-    path = Path(source)
-    _require(path.is_file() and not path.is_symlink(), f"matcher module source is not a regular file: {path}")
-    return _git_blob_sha1(path.read_bytes())
+    path = _FROZEN_PATH_CLASS(source)
+    _require(
+        _FROZEN_PATH_IS_FILE(path) and not _FROZEN_PATH_IS_SYMLINK(path),
+        f"matcher module source is not a regular file: {path}",
+    )
+    return _git_blob_sha1(_FROZEN_PATH_READ_BYTES(path))
 
 
 def _load_reference_module(module: ModuleType, *, label: str) -> ModuleType:
     """Execute verified source bytes in a fresh namespace for runtime-code comparison."""
 
+    _verify_stdlib_runtime_semantic_closure()
     source = getattr(module, "__file__", None)
     _require(isinstance(source, str) and source, f"{label} module has no source")
-    path = Path(source)
-    _require(path.is_file() and not path.is_symlink(), f"{label} source is not a regular file")
-    spec = importlib.util.spec_from_file_location(f"_twelve_six_{label}_reference", path)
+    path = _FROZEN_PATH_CLASS(source)
+    _require(
+        _FROZEN_PATH_IS_FILE(path) and not _FROZEN_PATH_IS_SYMLINK(path),
+        f"{label} source is not a regular file",
+    )
+    spec = _FROZEN_SPEC_FROM_FILE_LOCATION(f"_twelve_six_{label}_reference", path)
     _require(spec is not None and spec.loader is not None, f"cannot load {label} reference module")
-    reference = importlib.util.module_from_spec(spec)
+    _require(
+        type(spec.loader) is _FROZEN_SOURCE_FILE_LOADER,
+        f"unexpected {label} reference loader",
+    )
+    reference = _FROZEN_MODULE_FROM_SPEC(spec)
     try:
-        spec.loader.exec_module(reference)
+        _FROZEN_SOURCE_FILE_LOADER_EXEC_MODULE(spec.loader, reference)
     except Exception as exc:
         raise ExpandedDedupError(f"cannot execute {label} reference module: {exc}") from exc
     return reference
 
 
 def _runtime_code_identity(function: FunctionType) -> str:
-    return hashlib.sha256(marshal.dumps(function.__code__)).hexdigest()
+    raw = _FROZEN_MARSHAL_DUMPS(function.__code__)
+    return _FROZEN_HASHLIB_SHA256(raw).hexdigest()
 
 
 def _verify_runtime_functions(
@@ -303,6 +455,7 @@ def _verify_matcher_semantic_closure(
 ) -> None:
     """Bind executable matcher callbacks to the exact terminal #824/V3 closure."""
 
+    _verify_stdlib_runtime_semantic_closure()
     audit_module_name = getattr(matcher_audit, "__module__", None)
     verify_module_name = getattr(matcher_verify, "__module__", None)
     _require(
@@ -346,11 +499,10 @@ def _verify_matcher_semantic_closure(
             f"matcher implementation authority drift: {module_name}",
         )
 
-    # AUDIT1055-003: file identity is not executable-object identity.  Re-execute
-    # only the already hash-verified source files in fresh private namespaces and
-    # compare the complete V3/V1 runtime closure that can affect audit_payloads()
-    # or verify_report().  This adds no matcher behavior; it rejects in-memory
-    # monkeypatches before the sealed-V8 preflight or any Rada-containing pair.
+    # File identity is not executable-object identity.  Re-execute only the already
+    # hash-verified source files in fresh private namespaces and compare the complete
+    # V3/V1 runtime closure that can affect audit_payloads() or verify_report().
+    # The stdlib member seal above runs before this shared-sys.modules reference.
     reference_data232 = _load_reference_module(canonical_data232, label="data232")
     reference_v1 = _load_reference_module(canonical_v1, label="v1")
     reference_v3 = _load_reference_module(v3, label="v3")
@@ -406,7 +558,7 @@ def _parse_authenticated_rada_jsonl(raw_jsonl: bytes) -> list[dict[str, Any]]:
         _require(bool(raw_line.strip()), f"blank authenticated Rada JSONL line: {line_no}")
         try:
             text = raw_line.decode("utf-8", errors="strict")
-            value = json.loads(text)
+            value = _FROZEN_JSON_LOADS(text)
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise ExpandedDedupError(f"invalid authenticated Rada JSONL row {line_no}: {exc}") from exc
         _require(isinstance(value, dict), f"authenticated Rada JSONL row {line_no} must be object")
@@ -568,6 +720,7 @@ def run_expanded_dedup(
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Hardened V9 entry point; no expanded matcher call occurs before authority proof."""
 
+    _verify_stdlib_runtime_semantic_closure()
     verified_rada_rows = validate_rada_rows(
         rada_rows,
         rada_raw_jsonl,
@@ -627,6 +780,7 @@ def run_expanded_dedup(
         ],
         "authenticated_rada_rows_only": True,
         "sealed_v8_semantic_preflight_required": True,
+        "stdlib_runtime_semantic_closure_required": True,
     }
     core = dict(report)
     core.pop("report_sha256", None)
