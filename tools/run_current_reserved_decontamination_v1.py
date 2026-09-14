@@ -7,6 +7,8 @@ receipt. This runner never grants corpus, tokenizer, exposure, or training autho
 from __future__ import annotations
 
 import argparse
+import ctypes
+import errno
 import hashlib
 import json
 import os
@@ -29,6 +31,33 @@ EVIDENCE_NAME = "execution_evidence.json"
 RECEIPT_NAME = "execution_receipt.json"
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _GIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+_RECEIPT_TOP_LEVEL_KEYS = frozenset(
+    {
+        "schema_version",
+        "decontamination_implementation_git_sha",
+        "input_files_sha256",
+        "output_files_sha256",
+        "status",
+        "training_corpus_identity_sha256",
+        "input_survivor_authority_sha256",
+        "training_handoff_identity_sha256",
+        "reserved_payload_binding_identity_sha256",
+        "selection_validation_identity_sha256",
+        "final_test_identity_sha256",
+        "decontamination_report_sha256",
+        "execution_identity_sha256",
+        "final_test_payload_accessed_for_decontamination",
+        "final_test_outcomes_read",
+        "durable_bundle_hash_only",
+        "raw_text_persisted_in_bundle",
+        "record_ids_persisted_in_bundle",
+        "authorized_training_exposure",
+        "tokenizer_fit_authorized",
+        "training_executed",
+        "paid_compute_used",
+        "receipt_identity_sha256",
+    }
+)
 
 
 def _canonical_bytes(value: object) -> bytes:
@@ -204,6 +233,8 @@ def verify_run_receipt(
     report: Mapping[str, Any],
     evidence: Mapping[str, Any],
 ) -> None:
+    if set(receipt) != _RECEIPT_TOP_LEVEL_KEYS:
+        raise ValueError("run receipt top-level key set drift")
     if receipt.get("schema_version") != RECEIPT_SCHEMA:
         raise ValueError("run receipt schema drift")
     claimed = _require_sha256(
@@ -285,6 +316,49 @@ def verify_run_receipt(
         raise ValueError("run receipt authorized training exposure is not exact zero")
 
 
+def _rename_directory_no_replace(source: Path, destination: Path) -> None:
+    if os.name == "nt":
+        os.rename(source, destination)
+        return
+
+    libc = ctypes.CDLL(None, use_errno=True)
+    try:
+        renameat2 = libc.renameat2
+    except AttributeError as exc:
+        raise RuntimeError(
+            "atomic no-replace directory publication is unsupported on this platform"
+        ) from exc
+    renameat2.argtypes = [
+        ctypes.c_int,
+        ctypes.c_char_p,
+        ctypes.c_int,
+        ctypes.c_char_p,
+        ctypes.c_uint,
+    ]
+    renameat2.restype = ctypes.c_int
+    result = renameat2(
+        -100,
+        os.fsencode(source),
+        -100,
+        os.fsencode(destination),
+        1,
+    )
+    if result == 0:
+        return
+    error_number = ctypes.get_errno()
+    if error_number in (errno.EEXIST, errno.ENOTEMPTY):
+        raise FileExistsError(
+            error_number,
+            os.strerror(error_number),
+            destination,
+        )
+    if error_number in (errno.ENOSYS, errno.EINVAL):
+        raise RuntimeError(
+            "atomic no-replace directory publication is unsupported on this platform"
+        )
+    raise OSError(error_number, os.strerror(error_number), destination)
+
+
 def _publish_bundle(output_dir: Path, files: Mapping[str, bytes]) -> None:
     if output_dir.exists():
         raise FileExistsError(f"output bundle already exists: {output_dir}")
@@ -304,7 +378,7 @@ def _publish_bundle(output_dir: Path, files: Mapping[str, bytes]) -> None:
             raise FileExistsError(
                 f"output bundle appeared during publication: {output_dir}"
             )
-        temporary.rename(output_dir)
+        _rename_directory_no_replace(temporary, output_dir)
     except Exception:
         shutil.rmtree(temporary, ignore_errors=True)
         raise
