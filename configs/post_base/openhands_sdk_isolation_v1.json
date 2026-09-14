@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "qualification_id": "OPENHANDS-SDK-ISOLATION-V1",
+  "status": "CANDIDATE_MECHANICS_ONLY",
+  "truth_boundary": "LOCAL_FREE_NO_EXTERNAL_AGENT_EXECUTION",
+  "project_binding": {
+    "repository": "Oleksii-debug/12-6-ai.",
+    "base_main_sha": "5020afd671a3885c1b738c8b4eafe7525f630546",
+    "control_issue": 720,
+    "lane_issue": 10,
+    "registry_path": "configs/research/open_source_reuse_registry_v2.json",
+    "registry_blob_sha": "d80a60357c56eacac135f948b8a72556bb849e5a",
+    "registry_component": {
+      "id": "OPENHANDS_AGENT_SDK",
+      "kind": "software_agent_runtime",
+      "upstream": "https://github.com/OpenHands/software-agent-sdk",
+      "license": "MIT",
+      "decision": "P1_POSTBASE_ISOLATION_REFERENCE",
+      "canonical_base_dependency": false
+    }
+  },
+  "upstream": {
+    "repository": "OpenHands/software-agent-sdk",
+    "release_tag": "v1.43.1",
+    "release_commit": "ddac55697c5d15cf8a34495b5ed6d46c86db092a",
+    "release_published_at": "2026-08-21T22:00:26Z",
+    "license": "MIT",
+    "license_blob_sha": "b0bd86a6335a564bd3766666bebbf014fd6a8013",
+    "observed_interface_facts": [
+      "sdk_supports_local_machine_workspace",
+      "sdk_supports_ephemeral_agent_server_workspace",
+      "sdk_exposes_python_and_rest_apis_for_software_agents"
+    ]
+  },
+  "promotion_states": ["DISCOVERED", "CANDIDATE", "PARITY_PROVEN", "ADOPTED"],
+  "promotion_state": "CANDIDATE",
+  "adoption_authorized": false,
+  "external_backend_executed": false,
+  "canonical_base_dependency": false,
+  "project_tool_registry_fixture": ["file_editor", "task_tracker", "terminal"],
+  "candidate_policy": {
+    "isolation_mode": "ephemeral_sandbox",
+    "filesystem_roots": ["/workspace"],
+    "network_hosts": [],
+    "inherit_host_env": false,
+    "secret_names": [],
+    "secrets_injected_by_broker": true,
+    "max_wall_seconds": 900,
+    "max_processes": 64,
+    "memory_mb": 4096,
+    "cpu_cores": 4,
+    "persistence": "ephemeral",
+    "audit_log": true,
+    "provenance_log": true,
+    "allowed_tools": ["file_editor", "task_tracker", "terminal"],
+    "promotion_state": "CANDIDATE"
+  },
+  "required_before_parity_proven": [
+    "execute_exact_pinned_backend_in_isolated_test_environment",
+    "prove_host_filesystem_and_host_environment_denial",
+    "prove_network_and_secret_broker_policy",
+    "prove_resource_deadline_enforcement",
+    "prove_project_tool_registry_capability_mapping",
+    "prove_deterministic_audit_and_provenance_envelope"
+  ],
+  "required_before_adopted": [
+    "all_parity_evidence_terminal",
+    "rollback_to_project_native_or_null_backend_verified",
+    "dependency_lock_and_notice_surface_recorded",
+    "operator_acceptance_of_residual_security_risk"
+  ],
+  "forbidden_claims": [
+    "sdk_metadata_implies_adoption",
+    "upstream_benchmark_implies_12_6_performance",
+    "host_workspace_is_acceptable_adopted_isolation",
+    "canonical_base_may_depend_on_agent_sdk",
+    "external_agent_output_may_enter_base_training_without_separate_data_authority"
+  ]
+}
