@@ -1,14 +1,26 @@
 from __future__ import annotations
 
+import importlib.util
 import subprocess
 import venv
 from pathlib import Path
 
 import pytest
 
-import tools.execution_bootstrap as eb
-
 ROOT = Path(__file__).resolve().parents[1]
+_TOOL_PATH = ROOT / "tools" / "execution_bootstrap.py"
+_SPEC = importlib.util.spec_from_file_location(
+    "twelve_six_env151_execution_bootstrap",
+    _TOOL_PATH,
+)
+if _SPEC is None or _SPEC.loader is None:
+    raise RuntimeError(f"unable to load execution bootstrap tool: {_TOOL_PATH}")
+eb = importlib.util.module_from_spec(_SPEC)
+_SPEC.loader.exec_module(eb)
+
+
+def test_execution_bootstrap_module_loaded_from_exact_tool_path() -> None:
+    assert Path(eb.__file__).resolve() == _TOOL_PATH
 
 
 def test_pytest_command_requires_tests_capability() -> None:
