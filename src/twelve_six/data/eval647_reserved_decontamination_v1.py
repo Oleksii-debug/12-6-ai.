@@ -60,6 +60,61 @@ def _require_sha256(value: Any, label: str) -> str:
     return str(value)
 
 
+def _verify_materialization_integrity(
+    manifest: Mapping[str, Any],
+    materialization_evidence: Mapping[str, Any],
+) -> tuple[str, str]:
+    """Recompute both terminal EVAL-647 hashes at the actual execution seam."""
+    claimed_evidence = _require_sha256(
+        materialization_evidence.get("evidence_identity_sha256"),
+        "EVAL-647 evidence_identity_sha256",
+    )
+    body = dict(materialization_evidence)
+    body.pop("evidence_identity_sha256", None)
+    _require(
+        _sha256(_canonical_bytes(body)) == claimed_evidence,
+        "EVAL-647 materialization evidence self-hash drift",
+    )
+
+    reservation = manifest.get("reservation")
+    _require(isinstance(reservation, Mapping), "EVAL-647 reservation missing")
+    effective_at = reservation.get("effective_at_utc")
+    _require(
+        isinstance(effective_at, str) and bool(effective_at),
+        "EVAL-647 reservation effective_at_utc missing",
+    )
+    objects = materialization_evidence.get("objects")
+    _require(
+        isinstance(objects, Sequence) and not isinstance(objects, (str, bytes)),
+        "EVAL-647 materialization objects missing",
+    )
+    claimed_membership = _require_sha256(
+        materialization_evidence.get("object_set_identity_sha256"),
+        "EVAL-647 object_set_identity_sha256",
+    )
+    expected_membership = _sha256(
+        _canonical_bytes(
+            {
+                "reservation_effective_at_utc": effective_at,
+                "objects": list(objects),
+            }
+        )
+    )
+    _require(
+        claimed_membership == expected_membership,
+        "EVAL-647 object-set identity self-hash drift",
+    )
+    _require(
+        materialization_evidence.get("workflow_conclusion") == "success",
+        "EVAL-647 source materialization workflow was not successful",
+    )
+    _require(
+        materialization_evidence.get("repeat_materializations") == 2,
+        "EVAL-647 repeat materialization count drift",
+    )
+    return claimed_evidence, claimed_membership
+
+
 def execute_eval647_reserved_decontamination(
     training_records: Sequence[Mapping[str, Any]],
     evaluation_records: Sequence[Mapping[str, Any]],
@@ -92,6 +147,26 @@ def execute_eval647_reserved_decontamination(
     substituted EVAL-647 materialization therefore cannot silently re-authorize
     it at this execution surface.
     """
+    observed_eval647_evidence, observed_eval647_membership = (
+        _verify_materialization_integrity(manifest, materialization_evidence)
+    )
+    expected_eval647_evidence = _require_sha256(
+        expected_eval647_materialization_evidence_identity_sha256,
+        "expected_eval647_materialization_evidence_identity_sha256",
+    )
+    expected_eval647_membership = _require_sha256(
+        expected_eval647_object_set_identity_sha256,
+        "expected_eval647_object_set_identity_sha256",
+    )
+    _require(
+        observed_eval647_evidence == expected_eval647_evidence,
+        "EVAL-647 materialization evidence is not independently expected",
+    )
+    _require(
+        observed_eval647_membership == expected_eval647_membership,
+        "EVAL-647 object-set identity is not independently expected",
+    )
+
     expected_base = _require_sha256(
         expected_base_reserved_binding_identity_sha256,
         "expected_base_reserved_binding_identity_sha256",
@@ -115,23 +190,14 @@ def execute_eval647_reserved_decontamination(
         manifest,
         materialization_evidence,
     )
-
-    expected_eval647_evidence = _require_sha256(
-        expected_eval647_materialization_evidence_identity_sha256,
-        "expected_eval647_materialization_evidence_identity_sha256",
-    )
-    expected_eval647_membership = _require_sha256(
-        expected_eval647_object_set_identity_sha256,
-        "expected_eval647_object_set_identity_sha256",
-    )
     _require(
         auxiliary.get("identity_sha256") == expected_eval647_evidence,
-        "EVAL-647 materialization evidence is not independently expected",
+        "EVAL-647 auxiliary evidence identity drift",
     )
     _require(
         auxiliary.get("source_membership_identity_sha256")
         == expected_eval647_membership,
-        "EVAL-647 object-set identity is not independently expected",
+        "EVAL-647 auxiliary object-set identity drift",
     )
 
     expected_composed = _require_sha256(
