@@ -447,7 +447,8 @@ def _receipt(
             "final_test_outcomes_read": False,
             "paid_compute_used": False,
             "foreign_pretrained_weights": False,
-            "external_llm_or_api_used_for_data_or_intelligence": False,
+            "upstream_source_evidence_external_llm_or_api_used": False,
+            "current_corpus_external_llm_free_claimed_by_this_adapter": False,
         },
     }
     return {**core, "receipt_identity_sha256": _sha256(_canonical(core))}
