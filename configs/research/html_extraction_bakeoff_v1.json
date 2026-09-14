@@ -1,0 +1,142 @@
+{
+  "authority_boundary": {
+    "allowed_terminal_states": [
+      "RETEST_RUNTIME_REQUIRED",
+      "RETEST_RUNTIME_IDENTITY",
+      "RETEST_NONDETERMINISTIC",
+      "NO_CLEAR_WINNER",
+      "CANDIDATE_TRAFILATURA",
+      "CANDIDATE_RESILIPARSE"
+    ],
+    "final_test_payload_accessed": false,
+    "forbidden_terminal_states": [
+      "ADOPTED",
+      "TRAINING_AUTHORIZED",
+      "CORPUS_RELEASED"
+    ],
+    "model_training_executed": false,
+    "paid_compute_used": false
+  },
+  "base_sha": "5020afd671a3885c1b738c8b4eafe7525f630546",
+  "contract_id": "D03-HTML-EXTRACTION-BAKEOFF-V1",
+  "contract_sha256": "5e6134eebd75738ac5dc116ebcbc4fae4d67045cf3e0e6df5268d164c8940d48",
+  "corpus_capacity_credited": 0,
+  "execution_profile": "LOCAL_FREE",
+  "extractors": {
+    "resiliparse": {
+      "adapter": "resiliparse.extract.html2text.extract_plain_text(main_content=True, preserve_formatting=False)",
+      "distribution": "resiliparse",
+      "license": "Apache-2.0",
+      "pypi_sdist_sha256": "872e4e37f0dd24b383feb3c112ccf1b8328eb77256279a137080e4a65fc36c20",
+      "release_date": "2026-07-20",
+      "upstream": "https://github.com/chatnoir-eu/chatnoir-resiliparse",
+      "version": "1.0.9"
+    },
+    "trafilatura": {
+      "adapter": "trafilatura.extract(include_comments=False, include_tables=False, output_format=txt)",
+      "distribution": "trafilatura",
+      "license": "Apache-2.0",
+      "pypi_sdist_sha256": "8c2cabb84066465228d03183fb698ce0b1245b81c58140b8ae0de57fddf3aae7",
+      "release_date": "2026-07-31",
+      "upstream": "https://github.com/adbar/trafilatura",
+      "version": "2.2.0"
+    }
+  },
+  "fixtures": [
+    {
+      "forbidden_boilerplate": [
+        "Home About Subscribe",
+        "Trending: noisy sidebar",
+        "Copyright Example Media",
+        "window.noise"
+      ],
+      "gold_text": "Small models need clean evidence A reliable benchmark keeps source content separate from navigation noise. Deterministic fixtures make extractor regressions visible before corpus admission. Measured extraction quality should guide an adapter choice, not marketing claims.",
+      "id": "en_article_nav_v1",
+      "language": "en",
+      "payload": "<!doctype html><html><head><title>Research note</title><style>.hidden{display:none}</style><script>window.noise=1</script></head><body><header>Daily Example</header><nav>Home About Subscribe</nav><aside>Trending: noisy sidebar</aside><main><article><h1>Small models need clean evidence</h1><p>A reliable benchmark keeps source content separate from navigation noise.</p><p>Deterministic fixtures make extractor regressions visible before corpus admission.</p><p>Measured extraction quality should guide an adapter choice, not marketing claims.</p></article></main><footer>Copyright Example Media — Privacy — Cookies</footer></body></html>",
+      "payload_kind": "html",
+      "payload_sha256": "1a9d4b1df1766c2a7f20be35a7141c6b714bb402e9730ed5a1300c1a64362cda",
+      "required_anchors": [
+        "Small models need clean evidence",
+        "Deterministic fixtures make extractor regressions visible",
+        "Measured extraction quality should guide an adapter choice"
+      ]
+    },
+    {
+      "forbidden_boilerplate": [
+        "Ми використовуємо файли cookie",
+        "Головна Новини Контакти",
+        "Популярне за тиждень",
+        "Політика конфіденційності"
+      ],
+      "gold_text": "Перевірка якості українського тексту Корпус має зберігати зміст статті та відкидати повторювані елементи сторінки. Для чесного порівняння обидва екстрактори отримують той самий заморожений HTML. Перший критерій — повнота змісту. Другий критерій — мінімум навігаційного шуму.",
+      "id": "uk_article_noise_v1",
+      "language": "uk",
+      "payload": "<!doctype html><html lang=\"uk\"><body><div class=\"cookie-banner\">Ми використовуємо файли cookie. Прийняти все.</div><nav>Головна Новини Контакти</nav><main><article><h1>Перевірка якості українського тексту</h1><p>Корпус має зберігати зміст статті та відкидати повторювані елементи сторінки.</p><p>Для чесного порівняння обидва екстрактори отримують той самий заморожений HTML.</p><ul><li>Перший критерій — повнота змісту.</li><li>Другий критерій — мінімум навігаційного шуму.</li></ul></article></main><aside>Популярне за тиждень</aside><footer>Політика конфіденційності | Реклама</footer></body></html>",
+      "payload_kind": "html",
+      "payload_sha256": "891e8f4943fcdbcad851ce28e6cded7e0ef08e957e3fbac2161af2ecaf52cb84",
+      "required_anchors": [
+        "Перевірка якості українського тексту",
+        "обидва екстрактори отримують той самий заморожений HTML",
+        "Другий критерій — мінімум навігаційного шуму"
+      ]
+    },
+    {
+      "forbidden_boilerplate": [
+        "Menu One Two",
+        "Related links should be excluded",
+        "Site footer"
+      ],
+      "gold_text": "Malformed pages still need deterministic handling The benchmark intentionally leaves several tags unclosed. Main text must remain recoverable without promoting navigation tokens.",
+      "id": "en_malformed_v1",
+      "language": "en",
+      "payload": "<html><body><nav>Menu One Two<div><main><article><h1>Malformed pages still need deterministic handling</h1><p>The benchmark intentionally leaves several tags unclosed.<p>Main text must remain recoverable without promoting navigation tokens.<div class=\"related\">Related links should be excluded</div></article></main><footer>Site footer",
+      "payload_kind": "html",
+      "payload_sha256": "222e48161ab6f9797d30acebd910c3a3acd97a484378179401acf82c56825a78",
+      "required_anchors": [
+        "Malformed pages still need deterministic handling",
+        "intentionally leaves several tags unclosed",
+        "Main text must remain recoverable"
+      ]
+    },
+    {
+      "forbidden_boilerplate": [
+        "Архів сторінок",
+        "Каталог Пошук",
+        "Довідка архіву"
+      ],
+      "gold_text": "WARC зберігає вихідну відповідь Екстракційний тест спочатку відокремлює HTTP-вміст, а потім передає однаковий HTML кожному адаптеру. Цей маленький конверт є тестовою фікстурою, а не виробничим WARC-парсером.",
+      "id": "uk_warc_response_v1",
+      "language": "uk",
+      "payload": "WARC/1.1\r\nWARC-Type: response\r\nWARC-Record-ID: <urn:uuid:swarm742-fixture>\r\nContent-Type: application/http; msgtype=response\r\n\r\nHTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n\r\n<!doctype html><html lang=\"uk\"><body><header>Архів сторінок</header><nav>Каталог Пошук</nav><main><article><h1>WARC зберігає вихідну відповідь</h1><p>Екстракційний тест спочатку відокремлює HTTP-вміст, а потім передає однаковий HTML кожному адаптеру.</p><p>Цей маленький конверт є тестовою фікстурою, а не виробничим WARC-парсером.</p></article></main><footer>Довідка архіву</footer></body></html>",
+      "payload_kind": "warc_response",
+      "payload_sha256": "4d1829364c2c8b496af7ca3f8467187ae28bea34609fd968a4ec6e5cf656f9a2",
+      "required_anchors": [
+        "WARC зберігає вихідну відповідь",
+        "передає однаковий HTML кожному адаптеру",
+        "не виробничим WARC-парсером"
+      ]
+    }
+  ],
+  "normalization": {
+    "casefold_for_scoring": true,
+    "unicode": "NFKC",
+    "whitespace": "collapse"
+  },
+  "parent_issues": [
+    4,
+    720
+  ],
+  "production_extractor_replacement_authorized": false,
+  "schema_version": 1,
+  "selection_rule": {
+    "maximum_macro_boilerplate_leakage": 0.25,
+    "minimum_macro_anchor_recall": 0.8,
+    "minimum_macro_token_f1_advantage": 0.02,
+    "tie_state": "NO_CLEAR_WINNER",
+    "winner_requires_no_worse_boilerplate_leakage": true
+  },
+  "swarm_lane_key": "D03|HTML-EXTRACTION|INDEPENDENT-VERIFY|TRAFILATURA-VS-RESILIPARSE",
+  "swarm_worker_id": "SWARM-742",
+  "training_authorized_bytes": 0
+}
