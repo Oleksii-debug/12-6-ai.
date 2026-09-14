@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from copy import deepcopy
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -74,7 +74,7 @@ def _manifest() -> dict:
     }
 
 
-NOW = datetime(2026, 9, 14, 0, 40, tzinfo=timezone.utc)
+NOW = datetime(2026, 9, 14, 0, 40, tzinfo=UTC)
 
 
 def test_manifest_digest_is_canonical_and_order_independent():
@@ -306,7 +306,7 @@ def test_missing_lease_and_naive_time_fail_closed():
     assert assessment.local_duplicate_guard_open is False
     assert assessment.blockers == ("training_run_lease_missing",)
     with pytest.raises(ValueError, match="timezone-aware"):
-        assess_training_run_lease(manifest, None, now=datetime(2026, 9, 14))
+        assess_training_run_lease(manifest, None, now=datetime(2026, 9, 14))  # noqa: DTZ001
 
 
 def test_expired_lease_cannot_be_renewed():
@@ -324,3 +324,112 @@ def test_expired_lease_cannot_be_renewed():
             now=NOW + timedelta(seconds=60),
             ttl_seconds=60,
         )
+
+
+def test_transition_validator_cannot_resurrect_expired_running_lease():
+    manifest = _manifest()
+    previous = build_training_run_lease(
+        manifest,
+        run_id="run-a",
+        holder_id="runner-a",
+        now=NOW,
+        ttl_seconds=60,
+    ).as_dict()
+    candidate = dict(previous)
+    candidate["renewed_at_utc"] = "2026-09-14T00:41:00Z"
+    candidate["expires_at_utc"] = "2026-09-14T00:42:00Z"
+    candidate["renewal_sequence"] = 1
+    errors = validate_lease_transition(previous, candidate, manifest)
+    assert "expired_lease_cannot_be_renewed" in errors
+
+
+def test_completed_transition_must_precede_previous_lease_expiry_but_failure_is_evidence():
+    manifest = _manifest()
+    previous = build_training_run_lease(
+        manifest,
+        run_id="run-a",
+        holder_id="runner-a",
+        now=NOW,
+        ttl_seconds=60,
+    ).as_dict()
+    completed = dict(previous)
+    completed["status"] = "COMPLETED"
+    completed["terminal_at_utc"] = "2026-09-14T00:41:00Z"
+    assert "completed_after_lease_expiry" in validate_lease_transition(previous, completed, manifest)
+
+    failed = dict(previous)
+    failed["status"] = "FAILED"
+    failed["terminal_at_utc"] = "2026-09-14T00:41:00Z"
+    assert validate_lease_transition(previous, failed, manifest) == ()
+
+
+def test_json_array_enum_values_fail_closed_without_typeerror():
+    manifest = _manifest()
+    bad_manifest = deepcopy(manifest)
+    bad_manifest["resource"]["resource_class"] = []
+    assert "resource_class_not_free_only" in validate_launch_manifest(bad_manifest)
+
+    lease = build_training_run_lease(
+        manifest,
+        run_id="run-a",
+        holder_id="runner-a",
+        now=NOW,
+        ttl_seconds=60,
+    ).as_dict()
+    bad_lease = dict(lease)
+    bad_lease["status"] = []
+    assert "lease_status_invalid" in validate_training_run_lease(bad_lease, manifest)
+
+    bad_previous = dict(lease)
+    bad_previous["status"] = []
+    assert "previous_lease_not_running" in validate_lease_transition(bad_previous, lease, manifest)
+
+    bad_candidate = dict(lease)
+    bad_candidate["status"] = []
+    assert "lease_transition_status_invalid" in validate_lease_transition(
+        lease, bad_candidate, manifest
+    )
+
+
+def test_future_dated_lease_is_valid_evidence_but_never_active_or_persisted(tmp_path):
+    manifest = _manifest()
+    future = build_training_run_lease(
+        manifest,
+        run_id="run-future",
+        holder_id="runner-future",
+        now=NOW + timedelta(hours=1),
+        ttl_seconds=3600,
+    )
+    assessment = assess_training_run_lease(manifest, future.as_dict(), now=NOW)
+    assert assessment.contract_valid is True
+    assert assessment.local_duplicate_guard_open is False
+    assert assessment.blockers == ("training_run_lease_not_yet_active",)
+
+    acquired = acquire_local_training_run_lease(tmp_path, manifest, future.as_dict(), now=NOW)
+    assert acquired.acquired is False
+    assert acquired.blockers == ("training_run_lease_not_yet_active",)
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_renewed_in_future_is_not_active_at_trusted_assessment_time():
+    manifest = _manifest()
+    lease = build_training_run_lease(
+        manifest,
+        run_id="run-a",
+        holder_id="runner-a",
+        now=NOW,
+        ttl_seconds=300,
+    )
+    renewed = renew_training_run_lease(
+        lease,
+        now=NOW + timedelta(seconds=120),
+        ttl_seconds=300,
+    )
+    assessment = assess_training_run_lease(
+        manifest,
+        renewed.as_dict(),
+        now=NOW + timedelta(seconds=60),
+    )
+    assert assessment.contract_valid is True
+    assert assessment.local_duplicate_guard_open is False
+    assert assessment.blockers == ("training_run_lease_renewed_in_future",)
