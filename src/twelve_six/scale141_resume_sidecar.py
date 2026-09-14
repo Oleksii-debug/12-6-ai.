@@ -21,6 +21,10 @@ from typing import Any
 
 from twelve_six.checkpoint import D04_RESUME_BINDING_SCHEMA, hash_json, sha256_file
 from twelve_six.checkpoint.durability import _atomic_publish_directory_noreplace
+from twelve_six.checkpoint.pinned_directory import (
+    PinnedDirectoryError,
+    pinned_real_directory,
+)
 
 SIDECAR_SCHEMA = "12-6.scale141-d04-resume-sidecar.v1"
 SIDECAR_ROOT = "resume-states"
@@ -317,10 +321,8 @@ def _fsync_directory(path: Path) -> None:
 
 
 def _write_payload_directory(
-    root: Path, generation: int, payload: Mapping[str, Any]
+    sidecar_root: Path, generation: int, payload: Mapping[str, Any]
 ) -> Path:
-    sidecar_root = root / SIDECAR_ROOT
-    sidecar_root.mkdir(parents=True, exist_ok=True)
     destination = sidecar_root / _generation_name(generation)
     if destination.exists() or destination.is_symlink():
         raise ResumeSidecarError("resume sidecar generation unexpectedly already exists")
@@ -354,19 +356,17 @@ def _write_payload_directory(
             shutil.rmtree(staging, ignore_errors=True)
 
 
-def publish_resume_sidecar(
-    root: str | Path,
+def _publish_resume_sidecar_in_root(
+    sidecar_root: Path,
     *,
     generation: int,
-    checkpoint_path: str | Path,
+    checkpoint_path: Path,
     manifest: Mapping[str, Any],
     build_exposure_state: Callable[[ResumeSidecarContext], Mapping[str, Any]],
 ) -> dict[str, Any]:
-    recovery_root = Path(root)
-    checkpoint = Path(checkpoint_path)
     d04_data = _checkpoint_d04_data(manifest)
     context = _context(
-        generation=generation, checkpoint_path=checkpoint, manifest=manifest
+        generation=generation, checkpoint_path=checkpoint_path, manifest=manifest
     )
     state = _validate_exposure_state(
         build_exposure_state(context), context=context, d04_data=d04_data
@@ -374,7 +374,7 @@ def publish_resume_sidecar(
     payload = _payload(
         context=context, d04_data=d04_data, exposure_state=state
     )
-    directory = _write_payload_directory(recovery_root, generation, payload)
+    directory = _write_payload_directory(sidecar_root, generation, payload)
     file_path = directory / SIDECAR_FILE
     file_bytes = file_path.stat().st_size
     if file_bytes <= 0:
@@ -392,6 +392,42 @@ def publish_resume_sidecar(
             "ordered_next_exposure_identity_sha256"
         ],
     }
+
+
+def publish_resume_sidecar(
+    root: str | Path,
+    *,
+    generation: int,
+    checkpoint_path: str | Path,
+    manifest: Mapping[str, Any],
+    build_exposure_state: Callable[[ResumeSidecarContext], Mapping[str, Any]],
+    _pinned_sidecar_root: Path | None = None,
+) -> dict[str, Any]:
+    recovery_root = Path(root)
+    checkpoint = Path(checkpoint_path)
+    if _pinned_sidecar_root is not None:
+        return _publish_resume_sidecar_in_root(
+            _pinned_sidecar_root,
+            generation=generation,
+            checkpoint_path=checkpoint,
+            manifest=manifest,
+            build_exposure_state=build_exposure_state,
+        )
+    try:
+        with pinned_real_directory(
+            recovery_root / SIDECAR_ROOT, create=True
+        ) as pinned:
+            result = _publish_resume_sidecar_in_root(
+                pinned.path,
+                generation=generation,
+                checkpoint_path=checkpoint,
+                manifest=manifest,
+                build_exposure_state=build_exposure_state,
+            )
+            pinned.verify_binding()
+            return result
+    except PinnedDirectoryError as exc:
+        raise ResumeSidecarError("resume sidecar root binding changed") from exc
 
 
 def validate_resume_reference(
@@ -504,25 +540,23 @@ def _read_payload(
     return value
 
 
-def load_resume_sidecar(
-    root: str | Path,
+def _load_resume_sidecar_from_root(
+    sidecar_root: Path,
     *,
     generation: int,
-    checkpoint_path: str | Path,
+    checkpoint_path: Path,
     manifest: Mapping[str, Any],
-    reference: Mapping[str, Any],
+    checked_reference: Mapping[str, Any],
 ) -> dict[str, Any]:
-    recovery_root = Path(root)
-    checked_reference = validate_resume_reference(reference, generation=generation)
-    directory = recovery_root / checked_reference["directory"]
+    directory = sidecar_root / _generation_name(generation)
     if directory.is_symlink() or not directory.is_dir():
         raise ResumeSidecarError(
             "recovery resume sidecar directory is missing or unsafe"
         )
     payload = _read_payload(
         directory / SIDECAR_FILE,
-        checked_reference["file_sha256"],
-        checked_reference["file_bytes"],
+        str(checked_reference["file_sha256"]),
+        int(checked_reference["file_bytes"]),
     )
     if set(payload) != _SIDECAR_PAYLOAD_KEYS:
         raise ResumeSidecarError(
@@ -540,7 +574,7 @@ def load_resume_sidecar(
     d04_data = _checkpoint_d04_data(manifest)
     context = _context(
         generation=generation,
-        checkpoint_path=Path(checkpoint_path),
+        checkpoint_path=checkpoint_path,
         manifest=manifest,
     )
     checks = {
@@ -591,44 +625,93 @@ def load_resume_sidecar(
     )
 
 
-def remove_resume_sidecar(root: str | Path, *, generation: int) -> None:
-    path = Path(root) / SIDECAR_ROOT / _generation_name(generation)
-    if not path.exists() and not path.is_symlink():
-        return
-    if path.is_symlink() or not path.is_dir():
-        raise ResumeSidecarError(
-            "refusing cleanup through resume-sidecar symlink"
+def load_resume_sidecar(
+    root: str | Path,
+    *,
+    generation: int,
+    checkpoint_path: str | Path,
+    manifest: Mapping[str, Any],
+    reference: Mapping[str, Any],
+    _pinned_sidecar_root: Path | None = None,
+) -> dict[str, Any]:
+    recovery_root = Path(root)
+    checked_reference = validate_resume_reference(reference, generation=generation)
+    checkpoint = Path(checkpoint_path)
+    if _pinned_sidecar_root is not None:
+        return _load_resume_sidecar_from_root(
+            _pinned_sidecar_root,
+            generation=generation,
+            checkpoint_path=checkpoint,
+            manifest=manifest,
+            checked_reference=checked_reference,
         )
-    shutil.rmtree(path)
+    try:
+        with pinned_real_directory(recovery_root / SIDECAR_ROOT) as pinned:
+            result = _load_resume_sidecar_from_root(
+                pinned.path,
+                generation=generation,
+                checkpoint_path=checkpoint,
+                manifest=manifest,
+                checked_reference=checked_reference,
+            )
+            pinned.verify_binding()
+            return result
+    except PinnedDirectoryError as exc:
+        raise ResumeSidecarError("resume sidecar root binding changed") from exc
+
+
+def remove_resume_sidecar(root: str | Path, *, generation: int) -> None:
+    visible_root = Path(root) / SIDECAR_ROOT
+    if not visible_root.exists() and not visible_root.is_symlink():
+        return
+    try:
+        with pinned_real_directory(visible_root) as pinned:
+            path = pinned.path / _generation_name(generation)
+            if not path.exists() and not path.is_symlink():
+                return
+            if path.is_symlink() or not path.is_dir():
+                raise ResumeSidecarError(
+                    "refusing cleanup through resume-sidecar symlink"
+                )
+            shutil.rmtree(path)
+            _fsync_directory(pinned.path)
+            pinned.verify_binding()
+    except PinnedDirectoryError as exc:
+        raise ResumeSidecarError("resume sidecar root binding changed during cleanup") from exc
 
 
 def cleanup_orphan_resume_sidecars(
     root: str | Path, *, retained_generations: set[int]
 ) -> list[str]:
-    sidecar_root = Path(root) / SIDECAR_ROOT
-    if not sidecar_root.exists():
+    visible_root = Path(root) / SIDECAR_ROOT
+    if not visible_root.exists():
         return []
-    if sidecar_root.is_symlink() or not sidecar_root.is_dir():
-        raise ResumeSidecarError("resume sidecar root must be a real directory")
-    removed: list[str] = []
-    for path in sidecar_root.iterdir():
-        if path.is_symlink() or not path.is_dir():
-            raise ResumeSidecarError(
-                "resume sidecar root contains an unsafe entry"
-            )
-        if not path.name.startswith("generation-") or len(path.name) != len(
-            "generation-00000000"
-        ):
-            raise ResumeSidecarError(
-                "resume sidecar root contains an unknown entry"
-            )
-        suffix = path.name.removeprefix("generation-")
-        if not suffix.isdigit():
-            raise ResumeSidecarError(
-                "resume sidecar root contains an invalid generation"
-            )
-        number = int(suffix)
-        if number not in retained_generations:
-            shutil.rmtree(path)
-            removed.append(path.name)
-    return sorted(removed)
+    try:
+        with pinned_real_directory(visible_root) as pinned:
+            removed: list[str] = []
+            for path in pinned.path.iterdir():
+                if path.is_symlink() or not path.is_dir():
+                    raise ResumeSidecarError(
+                        "resume sidecar root contains an unsafe entry"
+                    )
+                if not path.name.startswith("generation-") or len(path.name) != len(
+                    "generation-00000000"
+                ):
+                    raise ResumeSidecarError(
+                        "resume sidecar root contains an unknown entry"
+                    )
+                suffix = path.name.removeprefix("generation-")
+                if not suffix.isdigit():
+                    raise ResumeSidecarError(
+                        "resume sidecar root contains an invalid generation"
+                    )
+                number = int(suffix)
+                if number not in retained_generations:
+                    shutil.rmtree(path)
+                    removed.append(path.name)
+            if removed:
+                _fsync_directory(pinned.path)
+            pinned.verify_binding()
+            return sorted(removed)
+    except PinnedDirectoryError as exc:
+        raise ResumeSidecarError("resume sidecar root binding changed during cleanup") from exc
