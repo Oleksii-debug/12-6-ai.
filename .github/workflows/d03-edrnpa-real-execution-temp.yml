@@ -10,17 +10,19 @@ permissions:
   contents: read
 
 jobs:
-  diagnose-current-edrnpa-filter-boundary:
+  diagnose-current-edrnpa-real-shape:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
       - name: Check out exact Product head
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
-          python-version: '3.11'
+          python-version: '3.11.16'
 
       - name: Run focused structural regressions
         run: |
@@ -28,13 +30,14 @@ jobs:
           python -m pytest -q tests/test_probe_d03_edrnpa_open_data_v1.py
           python -m py_compile tools/probe_d03_edrnpa_open_data_v1.py
 
-      - name: Diagnose real aggregate extraction and filter counts without payload text
+      - name: Diagnose real XML hierarchy and attribute lengths without payload text
         run: |
           python - <<'PY'
+          import hashlib
           import importlib.util
           import tempfile
           import xml.etree.ElementTree as ET
-          from collections import Counter
+          from collections import Counter, defaultdict
           from pathlib import Path
 
           tool = Path('tools/probe_d03_edrnpa_open_data_v1.py')
@@ -44,12 +47,15 @@ jobs:
           spec.loader.exec_module(mod)
 
           counts = Counter()
-          item_attribute_names = set()
-          text_attribute_names = set()
-          richtext_attribute_names = set()
-          par_attribute_names = set()
+          path_counts = Counter()
+          attribute_names = defaultdict(set)
+          item_name_hash_counts = Counter()
+          par_def_by_item = defaultdict(Counter)
 
-          with tempfile.TemporaryDirectory(prefix='edrnpa-diagnose-') as tmp:
+          def value_hash(value: str) -> str:
+              return hashlib.sha256(value.encode('utf-8')).hexdigest()
+
+          with tempfile.TemporaryDirectory(prefix='edrnpa-shape-') as tmp:
               root = Path(tmp)
               source = root / 'source.zip'
               source_identity = mod.download_archive_to(source, timeout=240.0)
@@ -57,10 +63,7 @@ jobs:
               mod._extract_nested_zip(source, nested_path)
               nested, info, xml_path = mod._nested_xml_info(nested_path)
               stack = []
-              database_depth = 0
-              chunks = None
-              chars = 0
-              has_par = False
+              active_item_hashes = []
               with nested:
                   with nested.open(info) as raw:
                       guarded = mod._GuardedXMLReader(raw, expected_size=info.file_size)
@@ -68,66 +71,47 @@ jobs:
                           tag = mod._local_tag(elem.tag)
                           if event == 'start':
                               stack.append(tag)
-                              if tag == 'database':
-                                  database_depth += 1
-                              elif tag == 'document':
-                                  counts['documents'] += 1
-                                  chunks = []
-                                  chars = 0
-                                  has_par = False
-                              elif tag == 'item':
-                                  item_attribute_names.update(elem.attrib)
-                              elif tag == 'text':
-                                  text_attribute_names.update(elem.attrib)
-                              elif tag == 'richtext':
-                                  richtext_attribute_names.update(elem.attrib)
+                              if tag in {'item', 'text', 'richtext', 'par'}:
+                                  path_counts['/'.join(stack[-8:])] += 1
+                                  attribute_names[tag].update(elem.attrib)
+                              if tag == 'item':
+                                  raw_name = elem.attrib.get('name')
+                                  name_hash = value_hash(raw_name) if raw_name is not None else '<missing>'
+                                  active_item_hashes.append(name_hash)
+                                  item_name_hash_counts[name_hash] += 1
                               elif tag == 'par':
-                                  par_attribute_names.update(elem.attrib)
+                                  counts['par_elements_total'] += 1
+                                  if 'def' in elem.attrib:
+                                      value = elem.attrib['def']
+                                      encoded_len = len(value.encode('utf-8'))
+                                      counts['par_def_present'] += 1
+                                      counts['par_def_utf8_bytes'] += encoded_len
+                                      counts['par_def_max_utf8_bytes'] = max(
+                                          counts['par_def_max_utf8_bytes'], encoded_len
+                                      )
+                                      if value.strip():
+                                          counts['par_def_nonempty'] += 1
+                                      item_hash = active_item_hashes[-1] if active_item_hashes else '<no-item>'
+                                      bucket = par_def_by_item[item_hash]
+                                      bucket['elements'] += 1
+                                      bucket['utf8_bytes'] += encoded_len
+                                      bucket['max_utf8_bytes'] = max(
+                                          bucket['max_utf8_bytes'], encoded_len
+                                      )
+                                      if value.strip():
+                                          bucket['nonempty'] += 1
                               continue
 
-                          if chunks is not None and tag == 'par' and 'text' in stack:
-                              counts['par_elements'] += 1
-                              chunk = ''.join(elem.itertext())
-                              if chunk.strip():
-                                  counts['par_nonempty'] += 1
-                                  counts['par_chars'] += len(chunk)
-                                  if chars <= mod.MAX_DOCUMENT_CHARS:
-                                      chunks.append(chunk)
-                                      chars += len(chunk)
-                              has_par = True
-                              elem.clear()
-                          elif chunks is not None and tag == 'text' and not has_par:
-                              counts['text_without_par'] += 1
-                              chunk = ''.join(elem.itertext())
-                              if chunk.strip():
-                                  chunks.append(chunk)
-                                  chars += len(chunk)
-                              elem.clear()
-                          elif tag == 'document':
-                              text = mod._normalize_text(chunks or [])
-                              encoded = text.encode('utf-8')
-                              if not text:
-                                  counts['documents_without_text'] += 1
-                              else:
-                                  counts['documents_with_text'] += 1
-                                  counts['normalized_bytes'] += len(encoded)
-                                  if len(encoded) < mod.MIN_NORMALIZED_BYTES:
-                                      counts['documents_too_short'] += 1
-                                  elif len(encoded) > mod.MAX_SELECTED_BYTES:
-                                      counts['documents_over_single_object_cap'] += 1
-                                  else:
-                                      quality = mod._quality(text)
-                                      if quality['ukrainian_alpha_ratio'] < mod.MIN_UKRAINIAN_ALPHA_RATIO:
-                                          counts['documents_non_ukrainian'] += 1
-                                      elif quality['has_email'] or quality['has_phone']:
-                                          counts['documents_pii_quarantined'] += 1
-                                      else:
-                                          counts['documents_eligible_by_current_filter'] += 1
-                                          counts['eligible_bytes'] += len(encoded)
-                              chunks = None
-                              elem.clear()
-                          elif tag == 'database':
-                              database_depth -= 1
+                          if tag in {'text', 'richtext', 'par'}:
+                              element_text = ''.join(elem.itertext())
+                              encoded_len = len(element_text.encode('utf-8'))
+                              counts[f'{tag}_itertext_utf8_bytes'] += encoded_len
+                              counts[f'{tag}_itertext_nonempty'] += int(bool(element_text.strip()))
+                          if tag == 'item':
+                              if not active_item_hashes:
+                                  raise SystemExit('item stack underflow')
+                              active_item_hashes.pop()
+                          if tag in {'item', 'text', 'richtext', 'par'}:
                               elem.clear()
                           stack.pop()
 
@@ -142,11 +126,17 @@ jobs:
                   'nested_xml_bytes': info.file_size,
                   'counts': dict(sorted(counts.items())),
                   'xml10_control_removal_identity_sha256': control_identity,
-                  'item_attribute_names': sorted(item_attribute_names),
-                  'text_attribute_names': sorted(text_attribute_names),
-                  'richtext_attribute_names': sorted(richtext_attribute_names),
-                  'par_attribute_names': sorted(par_attribute_names),
+                  'target_paths': dict(sorted(path_counts.items())),
+                  'attribute_names': {
+                      tag: sorted(names) for tag, names in sorted(attribute_names.items())
+                  },
+                  'item_name_hash_counts': dict(sorted(item_name_hash_counts.items())),
+                  'par_def_by_item_name_hash': {
+                      key: dict(sorted(value.items()))
+                      for key, value in sorted(par_def_by_item.items())
+                  },
                   'payload_text_printed': False,
+                  'payload_attribute_values_printed': False,
               }
-              print('SAFE_REAL_DIAGNOSIS', mod.cjson(safe).decode('utf-8').strip())
+              print('SAFE_REAL_SHAPE', mod.cjson(safe).decode('utf-8').strip())
           PY
