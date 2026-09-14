@@ -172,6 +172,28 @@ def test_fetch_page_requires_validated_quality_and_seals_revision() -> None:
     assert snapshot.utf8_bytes > 64
 
 
+def test_fetch_page_validation_error_is_text_free_and_attributed() -> None:
+    title = f"{PAGE_PREFIX}13"
+    secret_body = "Таємний маркер"
+    normalized = normalize_rendered_text(secret_body)
+    responses = iter(
+        [
+            _approved_metadata(title, 560107),
+            {"parse": {"revid": 560107, "text": f"<div><p>{secret_body}</p></div>"}},
+            _approved_metadata(title, 560107),
+        ]
+    )
+    with pytest.raises(WikisourceIntakeError) as exc_info:
+        fetch_page_snapshot(title, get_json=lambda _: next(responses))
+    message = str(exc_info.value)
+    assert "page body is too short" in message
+    assert "page_number=13" in message
+    assert "page_revision_id=560107" in message
+    assert f"normalized_utf8_bytes={len(normalized.encode('utf-8'))}" in message
+    assert secret_body not in message
+    assert title not in message
+
+
 def test_fetch_page_rejects_unapproved_page_before_render() -> None:
     title = f"{PAGE_PREFIX}13"
     calls = []
