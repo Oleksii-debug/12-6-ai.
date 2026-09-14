@@ -1,0 +1,24 @@
+{
+  "bootstrap": {
+    "dependency_lock": "configs/research/playwright_browser_runtime_lock_linux_x86_64.txt",
+    "exact_runtime_available": false,
+    "install_attempt": "FAILED_DNS",
+    "install_command": "python -m pip install --disable-pip-version-check --no-cache-dir --only-binary=:all: playwright==1.62.0",
+    "isolated_env": "/tmp/swarm776-env",
+    "local_matching_cache": false,
+    "network_error": "Temporary failure in name resolution",
+    "substitution_used": false
+  },
+  "branch_base_sha": "5020afd671a3885c1b738c8b4eafe7525f630546",
+  "component_id": "PLAYWRIGHT_BROWSER_RUNTIME_V1",
+  "environment": {
+    "conda": "absent", "cpu_count": 5, "git": "2.47.3", "gpu": "none", "node": "22.16.0", "npm": "10.9.2", "os": "Linux 6.18.35 x86_64", "pdm": "absent", "pip": "25.1.1", "poetry": "absent", "python": "3.13.5", "system_chromium": "/usr/bin/chromium", "uv": "0.10.0"
+  },
+  "installed_before_isolation": {"greenlet": "3.5.1", "playwright": "1.57.0", "pyee": "13.0.1", "typing_extensions": "4.16.0"},
+  "schema_version": 1,
+  "scientific_truth": {"canonical_base_changed": false, "checkpoint_changed": false, "corpus_changed": false, "foreign_instruction_behavior": false, "foreign_pretrained_weights": false, "paid_compute": false, "tokenizer_changed": false, "training_executed": false},
+  "testing": {"benchmark": "NOT_EXECUTED", "benchmark_runs_executed": 0, "benchmark_runs_required": 2, "compileall": "PASS", "contract_validator": "PASS", "focused_adversarial_test_count": 12, "focused_adversarial_tests": "PASS", "parity_proven": false, "promotion_state": "CANDIDATE", "real_runtime_smoke": "NOT_EXECUTED_DEPENDENCY_ABSENT", "rights_record": "configs/research/playwright_browser_rights_v1.json"},
+  "upstream": {"browser": {"name": "chromium", "revision": "1234"}, "commit": "e3950d9c140d007bd52853b45813c6274b24e36f", "license": "Apache-2.0", "license_blob_sha1": "df112373eb2e23e459bf93ec412be1764dc5a38b", "linux_x86_64_wheel_sha256": "ba33bae6a13b3d9d354c751cb618af357d20fe1d57767cbcce52079bbef17ad3", "notice_blob_sha1": "814ec1696f7ad36c1b524fb6adeef14b4b367fec", "package": "playwright==1.62.0", "repository": "https://github.com/microsoft/playwright", "tag": "v1.62.0"},
+  "worker_id": "OPEN-SOURCE-BOOTSTRAP-STRESS-V1",
+  "worker_issue": 776
+}
