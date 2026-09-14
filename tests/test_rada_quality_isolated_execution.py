@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import hashlib
 import importlib.util
+import json
 import sys
 import types
 from pathlib import Path
@@ -8,16 +10,53 @@ from pathlib import Path
 import pytest
 
 RUNNER_PATH = Path(__file__).resolve().parents[1] / "tools" / "run_d03_rada_trees_quality_windows_isolated.py"
+EVIDENCE_PATH = (
+    Path(__file__).resolve().parents[1]
+    / "evidence"
+    / "d03-rada-trees"
+    / "quality-window-authoritative-real-replay-v4.json"
+)
 SPEC = importlib.util.spec_from_file_location("rada_isolated_runner", RUNNER_PATH)
 assert SPEC is not None and SPEC.loader is not None
 runner = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(runner)
 
 EXPECTED_LAUNCHER_BLOB = "5f6688cc45a0fea5fe2c2690252a2a2db756af57"
+EXPECTED_EXECUTION_HEAD = "d3f619fa5b7e4d0805ee9a76f2f3aa6a6ddd4c49"
+EXPECTED_EXECUTION_RUN = 34733315129
+EXPECTED_SUMMARY_SHA256 = "c22c18d354cd8e7a55acd57919148d4a3e058e916c230c4229379294d85a7d6a"
 
 
 def _blob(payload: bytes) -> str:
     return runner._git_blob_sha_bytes(payload)
+
+
+def test_terminal_execution_evidence_is_self_hashed_and_zero_credit() -> None:
+    evidence = json.loads(EVIDENCE_PATH.read_text(encoding="utf-8"))
+    claimed = evidence.pop("summary_sha256")
+    canonical = (
+        json.dumps(evidence, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        + "\n"
+    ).encode()
+
+    assert hashlib.sha256(canonical).hexdigest() == claimed == EXPECTED_SUMMARY_SHA256
+    assert evidence["workflow_run_id"] == EXPECTED_EXECUTION_RUN
+    assert evidence["pr_head_sha"] == EXPECTED_EXECUTION_HEAD
+    assert evidence["classification"] == "CURRENT_AUTHORITY_NO_SITE_ISOLATED_REAL_REPLAY_ZERO_CREDIT"
+    assert evidence["two_fresh_isolated_outputs_byte_identical"] is True
+    assert evidence["two_fresh_isolated_reports_byte_identical"] is True
+    assert evidence["two_fresh_isolated_closure_receipts_byte_identical"] is True
+    assert evidence["training_authorized_bytes"] == 0
+    assert evidence["unique_causal_loss_positions_authorized"] == 0
+    assert evidence["authorized_optimized_target_exposure"] == 0
+    assert evidence["tokenizer_fit_authorized"] is False
+    assert evidence["optimizer_updates"] == 0
+    assert evidence["model_training_executed"] is False
+    assert evidence["learned_weights_created"] is False
+    assert evidence["final_test_outcomes_read"] is False
+    assert evidence["paid_compute_used"] is False
+    assert evidence["foreign_pretrained_weights"] is False
+    assert evidence["external_llm_or_api_data_or_intelligence"] is False
 
 
 def test_live_behavior_closure_and_launcher_are_exact() -> None:
