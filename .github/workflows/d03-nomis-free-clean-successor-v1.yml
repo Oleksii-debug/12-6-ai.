@@ -229,8 +229,22 @@ jobs:
             "$RUNNER_TEMP/historical-a.jsonl" "$RUNNER_TEMP/historical-b.jsonl" \
             "$RUNNER_TEMP/records-a.jsonl" "$RUNNER_TEMP/records-b.jsonl"
 
+      - name: Upload text-free clean-successor evidence only
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: d03-nomis-free-clean-successor-${{ env.SOURCE_SHA }}
+          if-no-files-found: error
+          retention-days: 90
+          path: |
+            ${{ runner.temp }}/source-a.json
+            ${{ runner.temp }}/survivor-a.json
+            ${{ runner.temp }}/inventory-a.json
+            ${{ runner.temp }}/evidence-a.json
+            ${{ runner.temp }}/terminal-summary.json
+
       - name: Publish exact text-free terminal summary to Product PR
         if: github.event_name == 'pull_request'
+        continue-on-error: true
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
@@ -253,16 +267,3 @@ jobs:
             -H "Accept: application/vnd.github+json" \
             "/repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
             -f body="$(cat "$RUNNER_TEMP/comment.md")"
-
-      - name: Upload text-free clean-successor evidence only
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: d03-nomis-free-clean-successor-${{ env.SOURCE_SHA }}
-          if-no-files-found: error
-          retention-days: 90
-          path: |
-            ${{ runner.temp }}/source-a.json
-            ${{ runner.temp }}/survivor-a.json
-            ${{ runner.temp }}/inventory-a.json
-            ${{ runner.temp }}/evidence-a.json
-            ${{ runner.temp }}/terminal-summary.json
