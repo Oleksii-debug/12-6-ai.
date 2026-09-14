@@ -7,6 +7,8 @@ terminal proof ahead of every larger-model activity.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -37,6 +39,12 @@ TERMINAL_AUDIT_INDEPENDENCE_FIELDS = {
     "producer_and_audit_workflow_run_ids_must_differ",
     "producer_and_audit_evidence_sha256_must_differ",
     "same_code_git_sha_permitted",
+}
+
+TERMINAL_EVIDENCE_CROSSBINDING_FIELDS = {
+    "producer_must_attest_exact_evidence_manifest_sha256",
+    "audit_must_attest_exact_evidence_manifest_sha256",
+    "audit_must_bind_exact_producer_authority_sha256",
 }
 
 REQUIRED_TERMINAL_20M_EVIDENCE = {
@@ -185,6 +193,20 @@ def _is_positive_int(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value > 0
 
 
+def _canonical_sha256(value: Any) -> str | None:
+    try:
+        raw = json.dumps(
+            value,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
+    except (TypeError, ValueError):
+        return None
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
 def _expect(errors: list[str], condition: bool, message: str) -> None:
     if not condition:
         errors.append(message)
@@ -200,6 +222,25 @@ def _valid_terminal_authority(value: Any) -> bool:
         and _is_positive_int(value.get("workflow_run_id"))
         and value.get("workflow_conclusion") == "success"
         and value.get("terminal") is True
+    )
+
+
+def _authority_attests_manifest(authority: Any, manifest_sha256: Any) -> bool:
+    return (
+        _valid_terminal_authority(authority)
+        and _is_sha256(manifest_sha256)
+        and authority.get("attested_evidence_manifest_sha256") == manifest_sha256
+    )
+
+
+def _audit_binds_producer(audit: Any, producer: Any) -> bool:
+    if not (_valid_terminal_authority(audit) and _valid_terminal_authority(producer)):
+        return False
+    producer_sha256 = _canonical_sha256(producer)
+    return (
+        producer_sha256 is not None
+        and _is_sha256(audit.get("audited_producer_authority_sha256"))
+        and audit.get("audited_producer_authority_sha256") == producer_sha256
     )
 
 
@@ -328,6 +369,31 @@ def _validate_terminal_audit_independence(
             errors,
             contract.get(field) is True,
             f"terminal_audit_independence_{field}_must_be_true",
+        )
+
+
+def _validate_terminal_evidence_crossbinding(
+    errors: list[str], data: dict[str, Any]
+) -> None:
+    contract = data.get("terminal_evidence_crossbinding")
+    _expect(
+        errors,
+        isinstance(contract, dict),
+        "terminal_evidence_crossbinding_missing",
+    )
+    if not isinstance(contract, dict):
+        return
+
+    _expect(
+        errors,
+        set(contract) == TERMINAL_EVIDENCE_CROSSBINDING_FIELDS,
+        "terminal_evidence_crossbinding_keys_mismatch",
+    )
+    for field in TERMINAL_EVIDENCE_CROSSBINDING_FIELDS:
+        _expect(
+            errors,
+            contract.get(field) is True,
+            f"terminal_evidence_crossbinding_{field}_must_be_true",
         )
 
 
@@ -483,7 +549,11 @@ def _validate_portability(errors: list[str], data: dict[str, Any]) -> None:
         )
 
     qualification = portable.get("backend_qualification_requirements")
-    _expect(errors, isinstance(qualification, list), "backend_qualification_requirements_missing")
+    _expect(
+        errors,
+        isinstance(qualification, list),
+        "backend_qualification_requirements_missing",
+    )
     if isinstance(qualification, list):
         _expect(
             errors,
@@ -497,7 +567,11 @@ def _validate_portability(errors: list[str], data: dict[str, Any]) -> None:
         "backend_cannot_be_selected_without_evidence",
     )
     backends = portable.get("backend_candidates")
-    _expect(errors, isinstance(backends, list) and bool(backends), "backend_candidates_missing")
+    _expect(
+        errors,
+        isinstance(backends, list) and bool(backends),
+        "backend_candidates_missing",
+    )
     if isinstance(backends, list):
         names = []
         for candidate in backends:
@@ -568,9 +642,11 @@ def _validate_evidence_state(errors: list[str], data: dict[str, Any]) -> None:
             f"{name}_status_invalid",
         )
         if learned.get("status") == "PASS":
+            manifest_sha256 = learned.get("evidence_manifest_sha256")
+            manifest_valid = _is_sha256(manifest_sha256)
             _expect(
                 errors,
-                _is_sha256(learned.get("evidence_manifest_sha256")),
+                manifest_valid,
                 f"{name}_evidence_manifest_sha256_invalid",
             )
             satisfied = learned.get("requirements_satisfied")
@@ -594,6 +670,20 @@ def _validate_evidence_state(errors: list[str], data: dict[str, Any]) -> None:
                 audit_valid,
                 f"{name}_independent_audit_authority_invalid",
             )
+            if terminal_valid and manifest_valid:
+                _expect(
+                    errors,
+                    _authority_attests_manifest(
+                        terminal_authority, manifest_sha256
+                    ),
+                    f"{name}_terminal_authority_manifest_attestation_invalid",
+                )
+            if audit_valid and manifest_valid:
+                _expect(
+                    errors,
+                    _authority_attests_manifest(audit_authority, manifest_sha256),
+                    f"{name}_independent_audit_manifest_attestation_invalid",
+                )
             if terminal_valid and audit_valid:
                 _expect(
                     errors,
@@ -601,6 +691,11 @@ def _validate_evidence_state(errors: list[str], data: dict[str, Any]) -> None:
                         terminal_authority, audit_authority
                     ),
                     f"{name}_independent_audit_not_distinct",
+                )
+                _expect(
+                    errors,
+                    _audit_binds_producer(audit_authority, terminal_authority),
+                    f"{name}_independent_audit_producer_binding_invalid",
                 )
 
     feasibility_requirements = {
@@ -618,7 +713,8 @@ def _validate_evidence_state(errors: list[str], data: dict[str, Any]) -> None:
         )
         _expect(
             errors,
-            feasibility.get("decision") in {"NOT_EVALUATED", "GO", "HOLD", "NO_GO"},
+            feasibility.get("decision")
+            in {"NOT_EVALUATED", "GO", "HOLD", "NO_GO"},
             f"{name}_decision_invalid",
         )
         if feasibility.get("status") == "PASS":
@@ -684,6 +780,7 @@ def validate_roadmap(data: dict[str, Any]) -> list[str]:
     _validate_authority(errors, data)
     _validate_boundaries(errors, data)
     _validate_terminal_audit_independence(errors, data)
+    _validate_terminal_evidence_crossbinding(errors, data)
     _validate_route(errors, data)
     _validate_portability(errors, data)
     _validate_requirements(errors, data)
@@ -698,7 +795,9 @@ def _terminal_evidence(
         blockers.append(f"{name}_not_terminal_pass")
         return False
     valid = True
-    if not _is_sha256(value.get("evidence_manifest_sha256")):
+    manifest_sha256 = value.get("evidence_manifest_sha256")
+    manifest_valid = _is_sha256(manifest_sha256)
+    if not manifest_valid:
         blockers.append(f"{name}_evidence_manifest_sha256_invalid")
         valid = False
     satisfied = value.get("requirements_satisfied")
@@ -717,12 +816,33 @@ def _terminal_evidence(
         valid = False
     if (
         terminal_valid
+        and manifest_valid
+        and not _authority_attests_manifest(terminal_authority, manifest_sha256)
+    ):
+        blockers.append(f"{name}_terminal_authority_manifest_attestation_invalid")
+        valid = False
+    if (
+        audit_valid
+        and manifest_valid
+        and not _authority_attests_manifest(audit_authority, manifest_sha256)
+    ):
+        blockers.append(f"{name}_independent_audit_manifest_attestation_invalid")
+        valid = False
+    if (
+        terminal_valid
         and audit_valid
         and not _terminal_authorities_are_independent(
             terminal_authority, audit_authority
         )
     ):
         blockers.append(f"{name}_independent_audit_not_distinct")
+        valid = False
+    if (
+        terminal_valid
+        and audit_valid
+        and not _audit_binds_producer(audit_authority, terminal_authority)
+    ):
+        blockers.append(f"{name}_independent_audit_producer_binding_invalid")
         valid = False
     return valid
 
