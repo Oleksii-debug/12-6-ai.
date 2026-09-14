@@ -57,6 +57,91 @@ _EXPECTED_THRESHOLDS = {
     "code_copy_jaccard": 0.82,
     "code_copy_min_tokens": 16,
 }
+_EXPECTED_OUTCOME_PARTS = (
+    "accuracy",
+    "bpb",
+    "loss",
+    "margin",
+    "metric",
+    "outcome",
+    "perplexity",
+    "result",
+    "score",
+)
+_EXPECTED_INVISIBLE = dict.fromkeys(
+    map(ord, "\ufeff\u00ad\u200b\u200c\u200d\u2060"),
+    None,
+)
+_EXPECTED_KEYWORDS = {
+    "and",
+    "as",
+    "async",
+    "await",
+    "break",
+    "case",
+    "catch",
+    "class",
+    "const",
+    "continue",
+    "def",
+    "delete",
+    "do",
+    "else",
+    "elif",
+    "except",
+    "export",
+    "false",
+    "finally",
+    "for",
+    "from",
+    "function",
+    "if",
+    "import",
+    "in",
+    "instanceof",
+    "interface",
+    "lambda",
+    "let",
+    "match",
+    "new",
+    "none",
+    "not",
+    "null",
+    "or",
+    "package",
+    "pass",
+    "raise",
+    "return",
+    "select",
+    "static",
+    "struct",
+    "switch",
+    "throw",
+    "true",
+    "try",
+    "type",
+    "var",
+    "when",
+    "where",
+    "while",
+    "with",
+    "yield",
+}
+_EXPECTED_REGEX_BINDINGS = {
+    "TOKEN_RE": (r"\w+|[^\w\s]", re.UNICODE),
+    "CODE_TOKEN_RE": (
+        r"(?:[A-Za-z_][A-Za-z0-9_]*)|(?:0[xX][0-9A-Fa-f]+|\d+(?:\.\d+)?)|"
+        r"(?:==|!=|<=|>=|->|=>|::|\+\+|--|&&|\|\||<<|>>|\*\*)|(?:[^\s])",
+        0,
+    ),
+    "LINE_COMMENT": (r"(?m)(?://|#).*$", 0),
+    "BLOCK_COMMENT": (r"(?s)/\*.*?\*/", 0),
+    "STRING": (
+        r"(?s)(?:'''(?:\\.|[^\\])*?'''|\"\"\"(?:\\.|[^\\])*?\"\"\"|"
+        r"'(?:\\.|[^'\\])*'|\"(?:\\.|[^\"\\])*\")",
+        0,
+    ),
+}
 _RECEIPT_TOP_LEVEL_KEYS = frozenset(
     {
         "schema_version",
@@ -695,6 +780,33 @@ def _require_module_function_code(
             )
 
 
+def _require_matcher_behavior_globals() -> None:
+    if type(matching_impl.DEFAULT_THRESHOLDS) is not dict:
+        raise RuntimeError("DATA-232 behavior-global type drift: DEFAULT_THRESHOLDS")
+    if dict(matching_impl.DEFAULT_THRESHOLDS) != _EXPECTED_THRESHOLDS:
+        raise RuntimeError("DATA-232 behavior-global drift: DEFAULT_THRESHOLDS")
+    if type(matching_impl.OUTCOME_PARTS) is not tuple:
+        raise RuntimeError("DATA-232 behavior-global type drift: OUTCOME_PARTS")
+    if matching_impl.OUTCOME_PARTS != _EXPECTED_OUTCOME_PARTS:
+        raise RuntimeError("DATA-232 behavior-global drift: OUTCOME_PARTS")
+    if type(matching_impl.INVISIBLE) is not dict:
+        raise RuntimeError("DATA-232 behavior-global type drift: INVISIBLE")
+    if matching_impl.INVISIBLE != _EXPECTED_INVISIBLE:
+        raise RuntimeError("DATA-232 behavior-global drift: INVISIBLE")
+    if type(matching_impl.KEYWORDS) is not set:
+        raise RuntimeError("DATA-232 behavior-global type drift: KEYWORDS")
+    if matching_impl.KEYWORDS != _EXPECTED_KEYWORDS:
+        raise RuntimeError("DATA-232 behavior-global drift: KEYWORDS")
+    pattern_type = type(re.compile(""))
+    for name, (pattern, flags) in _EXPECTED_REGEX_BINDINGS.items():
+        actual = getattr(matching_impl, name, None)
+        expected = re.compile(pattern, flags)
+        if type(actual) is not pattern_type:
+            raise RuntimeError(f"DATA-232 behavior-global type drift: {name}")
+        if actual.pattern != expected.pattern or actual.flags != expected.flags:
+            raise RuntimeError(f"DATA-232 behavior-global drift: {name}")
+
+
 def _require_behavior_closure(repo_root: Path) -> None:
     runner_module = sys.modules[__name__]
     modules = {
@@ -722,6 +834,7 @@ def _require_behavior_closure(repo_root: Path) -> None:
             module_name,
         )
 
+    _require_matcher_behavior_globals()
     if (
         execute_reserved_decontamination
         is not current_impl.execute_reserved_decontamination
@@ -738,6 +851,7 @@ def _require_behavior_closure(repo_root: Path) -> None:
         "_fingerprint",
         "_pair",
         "_thresholds",
+        "_train_pairs",
         "authority_composite_identity",
         "sha256_bytes",
         "stable_identity",
