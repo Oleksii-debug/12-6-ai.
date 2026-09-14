@@ -5,6 +5,7 @@ on:
     paths:
       - "tools/run_d03_nomis_free_clean_successor_v1.py"
       - "tools/materialize_d03_nomis_free_data526_successor_v1.py"
+      - "tools/run_d03_nomis_free_v7_data_only_v1.py"
       - "tests/test_d03_nomis_free_clean_successor_v1.py"
       - "tests/test_d03_nomis_free_data526_successor_v1.py"
       - ".github/workflows/d03-nomis-free-clean-successor-v1.yml"
@@ -42,6 +43,7 @@ jobs:
           python -m py_compile \
             tools/run_d03_nomis_free_clean_successor_v1.py \
             tools/materialize_d03_nomis_free_data526_successor_v1.py \
+            tools/run_d03_nomis_free_v7_data_only_v1.py \
             tests/test_d03_nomis_free_clean_successor_v1.py \
             tests/test_d03_nomis_free_data526_successor_v1.py
 
@@ -93,7 +95,8 @@ jobs:
 
       - name: Independent clean source successor A
         run: >-
-          python tools/run_d03_nomis_free_clean_successor_v1.py run
+          python tools/run_d03_nomis_free_v7_data_only_v1.py _terminal_v7
+          tools/run_d03_nomis_free_clean_successor_v1.py run
           --current-root .
           --v7-root _terminal_v7
           --workspace "$RUNNER_TEMP/source-work-a"
@@ -102,7 +105,8 @@ jobs:
 
       - name: Independent clean source successor B
         run: >-
-          python tools/run_d03_nomis_free_clean_successor_v1.py run
+          python tools/run_d03_nomis_free_v7_data_only_v1.py _terminal_v7
+          tools/run_d03_nomis_free_clean_successor_v1.py run
           --current-root .
           --v7-root _terminal_v7
           --workspace "$RUNNER_TEMP/source-work-b"
@@ -121,7 +125,8 @@ jobs:
 
       - name: Independent clean DATA526 materialization A
         run: >-
-          python tools/materialize_d03_nomis_free_data526_successor_v1.py
+          python tools/run_d03_nomis_free_v7_data_only_v1.py _terminal_v7
+          tools/materialize_d03_nomis_free_data526_successor_v1.py
           --current-root .
           --execution-head-sha "$SOURCE_SHA"
           --v7-root _terminal_v7
@@ -137,7 +142,8 @@ jobs:
 
       - name: Independent clean DATA526 materialization B
         run: >-
-          python tools/materialize_d03_nomis_free_data526_successor_v1.py
+          python tools/run_d03_nomis_free_v7_data_only_v1.py _terminal_v7
+          tools/materialize_d03_nomis_free_data526_successor_v1.py
           --current-root .
           --execution-head-sha "$SOURCE_SHA"
           --v7-root _terminal_v7
