@@ -16,9 +16,15 @@ The checked contract is deliberately free-only: resource class is `LOCAL_FREE`, 
 
 ## Lease lifecycle
 
-`build_training_run_lease()` binds a unique `run_id` and holder to the exact manifest hash plus the exact training/compute authority references and hashes. A RUNNING lease has a maximum six-hour TTL and an explicit renewal sequence. Expired leases cannot be renewed. Terminal states are `COMPLETED`, `FAILED`, and `ABORTED`; terminal records cannot transition again.
+`build_training_run_lease()` binds a unique `run_id` and holder to the exact manifest hash plus the exact training/compute authority references and hashes. A RUNNING lease has a maximum six-hour TTL and an explicit renewal sequence. Expired leases cannot be renewed, including through a manually constructed transition candidate: the candidate renewal instant must still be strictly before the previous lease expiry.
+
+Trusted-time assessment is effectivity-aware. A structurally valid lease whose acquisition time is still in the future, or whose latest renewal is later than the assessor's trusted `now`, remains evidence but cannot open the local duplicate guard and cannot be persisted by the acquisition primitive.
+
+Terminal states are `COMPLETED`, `FAILED`, and `ABORTED`; terminal records cannot transition again. `COMPLETED` is success evidence and therefore its terminal instant must be strictly before the previous RUNNING lease expires. `FAILED` and `ABORTED` may be recorded at or after expiry as post-expiry failure/abort evidence; that distinction does not reopen the lease or authorize a replacement run.
 
 `acquire_local_training_run_lease()` derives exactly one path from the manifest hash and uses an exclusive filesystem create. A second acquisition for the same manifest on that filesystem fails. Existing records are never silently overwritten, including expired or terminal records; they remain evidence requiring an explicit higher-level replacement/relaunch decision.
+
+All enum-like fields supplied through JSON are type-guarded before membership checks. Malformed JSON arrays/objects are denied as candidate data instead of escaping the validator with a Python `TypeError`; the assessor CLI retains machine-readable denial behavior for these cases.
 
 ### Critical scope limit
 
@@ -34,7 +40,7 @@ The exclusive-create primitive proves only `SINGLE_SHARED_FILESYSTEM_ONLY` atomi
 python tools/assess_learned20m_training_lease.py MANIFEST [LEASE] [--now YYYY-MM-DDTHH:MM:SSZ]
 ```
 
-A zero exit means the **local duplicate-guard contract** is active for the supplied manifest/lease at that time. It does not mean training is authorized. Missing, malformed, terminal, or expired leases fail closed.
+A zero exit means the **local duplicate-guard contract** is active for the supplied manifest/lease at that time. It does not mean training is authorized. Missing, malformed, terminal, expired, or not-yet-effective leases fail closed.
 
 ## Required launcher composition before real training
 
